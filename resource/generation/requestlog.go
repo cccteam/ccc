@@ -471,6 +471,7 @@ func describeWords(log RequestLog, traces Traces) string {
 // names it: the path or prefix as mounted, and the words.
 type surface struct {
 	Prefix     string
+	Kind       resource.SurfaceKind
 	RequestLog RequestLog
 	Traces     Traces
 }
@@ -479,6 +480,7 @@ type surface struct {
 func (s surface) releaseSurface() resource.Surface {
 	return resource.Surface{
 		Prefix:   s.Prefix,
+		Kind:     s.Kind,
 		Log:      s.RequestLog.Word(),
 		Fraction: s.RequestLog.Fraction(),
 		Traces:   s.Traces.Setting(),

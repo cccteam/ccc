@@ -45,11 +45,12 @@ type ReleaseFile struct {
 	// (WithRequestLog), each outlet that declares a word or a setting as its prefix
 	// (OutletRequestLog, OutletTraces), each prefix the application mounts routes under
 	// by hand (WithMountedRoutes), and each generated route with its own words (@rpc,
-	// @file, @schedule) as the path the router mounts it at. The nearest declaration
-	// wins, so a reader resolves a path by its longest matching surface. The
-	// application's stack reads them to render the cloud's own request-log exclusion.
-	// None when the code declares nothing, and then every request's entry is written and
-	// every span follows the front end.
+	// @file, @schedule) as the path the router mounts it at. Each says whether it is a
+	// prefix or a route (Kind), since the router matches the two differently. The
+	// nearest declaration wins, so a reader resolves a path by its longest matching
+	// surface. The application's stack reads them to render the cloud's own request-log
+	// exclusion. None when the code declares nothing, and then every request's entry is
+	// written and every span follows the front end.
 	Surfaces []Surface `json:"surfaces,omitempty"`
 }
 
@@ -60,6 +61,14 @@ type Surface struct {
 	// pattern such as /api/widgets/{id}/content, where a segment in braces stands for any
 	// one segment; / is the application default.
 	Prefix string `json:"prefix"`
+	// Kind says how the router matches the prefix against a request's path:
+	// SurfacePrefix by prefix, so everything under /beacons/ is the surface's, or
+	// SurfaceRoute to the end of the path, so /api/widgets/{id}/content is the surface's
+	// and /api/widgets/{id}/content-extra is not. The application default, an outlet and
+	// a hand-mounted prefix are prefixes; an annotated method's route (@rpc, @file,
+	// @schedule) is a route. A file written before the surfaces carried their kind reads
+	// as prefixes throughout.
+	Kind SurfaceKind `json:"kind"`
 	// Log is the request log word: RequestLogAlways, RequestLogOnEvent, RequestLogSampled
 	// or RequestLogNever; empty when the surface declares its trace setting alone.
 	Log string `json:"log,omitempty"`
@@ -90,6 +99,21 @@ const (
 	TracesFollowFrontEnd = "followFrontEnd"
 	TracesCapped         = "capped"
 	TracesOff            = "off"
+)
+
+// SurfaceKind is how the router matches a surface's prefix against a request's path, as
+// the release file spells it.
+type SurfaceKind string
+
+// The surface kinds: a prefix is matched against the start of the path and a route to
+// its end.
+const (
+	// SurfacePrefix is a path prefix, matched by strings.HasPrefix as the router does: the
+	// application default at /, an outlet's prefix, or a prefix mounted by hand.
+	SurfacePrefix SurfaceKind = "prefix"
+	// SurfaceRoute is a route pattern, matched whole as the router does: an annotated
+	// method's path, a parameter in braces standing for one segment.
+	SurfaceRoute SurfaceKind = "route"
 )
 
 // FileRoute is one route in the release file that carries a file rather than JSON: an
@@ -248,7 +272,13 @@ func ReadReleaseFile(dir string) (ReleaseFile, error) {
 			return ReleaseFile{}, errors.Wrapf(err, "the release file %s", path)
 		}
 	}
-	for _, surface := range file.Surfaces {
+	for i := range file.Surfaces {
+		surface := &file.Surfaces[i]
+		if surface.Kind == "" {
+			// A file written before the surfaces carried their kind listed prefixes
+			// alone, and reads as it did.
+			surface.Kind = SurfacePrefix
+		}
 		if err := surface.validate(); err != nil {
 			return ReleaseFile{}, errors.Wrapf(err, "the release file %s", path)
 		}
@@ -258,13 +288,15 @@ func ReadReleaseFile(dir string) (ReleaseFile, error) {
 }
 
 // validate refuses a surface the generator would not write: a prefix not under the root,
-// neither word nor setting, a word or a setting outside the vocabulary, a fraction or a
-// rate outside (0, 1], a fraction without the sampled word, or a rate without the capped
-// setting.
-func (s Surface) validate() error {
+// a kind that is neither a prefix nor a route, neither word nor setting, a word or a
+// setting outside the vocabulary, a fraction or a rate outside (0, 1], a fraction without
+// the sampled word, or a rate without the capped setting.
+func (s *Surface) validate() error {
 	switch {
 	case !strings.HasPrefix(s.Prefix, "/"):
 		return errors.Newf("the surface %q is not a path under the root", s.Prefix)
+	case s.Kind != SurfacePrefix && s.Kind != SurfaceRoute:
+		return errors.Newf("the surface %s has the kind %q; a surface is a %s or a %s", s.Prefix, s.Kind, SurfacePrefix, SurfaceRoute)
 	case s.Log == "" && s.Traces == "":
 		return errors.Newf("the surface %s declares neither a request log word nor a trace setting", s.Prefix)
 	}

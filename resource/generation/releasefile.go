@@ -73,26 +73,27 @@ func (r *resourceGenerator) fileRoutesOf(outlets []routerOutlet, fileRoutes map[
 // surfacesOf lists the declared surfaces for the release file, in prefix order: the
 // application default at /, each outlet with a word or a setting at its prefix, each
 // hand-mounted prefix, each worded route at the path it is mounted at, and each
-// scheduled route with a word.
+// scheduled route with a word. Each carries its kind as the router matches it: the
+// default, an outlet and a hand-mounted prefix are prefixes, a route is a route.
 func (r *resourceGenerator) surfacesOf(outlets []routerOutlet, wordedRoutes map[string][]*generatedRoute, scheduledRoutes []*scheduledRoute) []resource.Surface {
 	var surfaces []surface
 	if r.requestLog.Declared() {
-		surfaces = append(surfaces, surface{Prefix: "/", RequestLog: r.requestLog})
+		surfaces = append(surfaces, surface{Prefix: "/", Kind: resource.SurfacePrefix, RequestLog: r.requestLog})
 	}
 	for _, o := range outlets {
 		if o.requestLog.Declared() || o.traces.Declared() {
-			surfaces = append(surfaces, surface{Prefix: "/" + o.prefix + "/", RequestLog: o.requestLog, Traces: o.traces})
+			surfaces = append(surfaces, surface{Prefix: "/" + o.prefix + "/", Kind: resource.SurfacePrefix, RequestLog: o.requestLog, Traces: o.traces})
 		}
 		for _, route := range wordedRoutes[o.name] {
-			surfaces = append(surfaces, surface{Prefix: route.Path, RequestLog: route.RequestLog, Traces: route.Traces})
+			surfaces = append(surfaces, surface{Prefix: route.Path, Kind: resource.SurfaceRoute, RequestLog: route.RequestLog, Traces: route.Traces})
 		}
 	}
 	for _, mounted := range r.mountedRoutes {
-		surfaces = append(surfaces, surface{Prefix: mounted.prefix, RequestLog: mounted.requestLog, Traces: mounted.traces})
+		surfaces = append(surfaces, surface{Prefix: mounted.prefix, Kind: resource.SurfacePrefix, RequestLog: mounted.requestLog, Traces: mounted.traces})
 	}
 	for _, route := range scheduledRoutes {
 		if route.RequestLog.Declared() {
-			surfaces = append(surfaces, surface{Prefix: route.Path, RequestLog: route.RequestLog})
+			surfaces = append(surfaces, surface{Prefix: route.Path, Kind: resource.SurfaceRoute, RequestLog: route.RequestLog})
 		}
 	}
 	slices.SortFunc(surfaces, func(a, b surface) int {

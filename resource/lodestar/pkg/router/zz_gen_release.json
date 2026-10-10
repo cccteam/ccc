@@ -69,11 +69,13 @@
   "surfaces": [
     {
       "prefix": "/beacons/",
+      "kind": "prefix",
       "log": "onEvent",
       "traces": "off"
     },
     {
       "prefix": "/droids/sectors/{sectorID}/ingest-droid-reports",
+      "kind": "route",
       "log": "onEvent"
     }
   ]

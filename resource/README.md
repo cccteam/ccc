@@ -580,10 +580,14 @@ them listed there, under `scheduled`, in path order: each route's `path`, its cr
 there are none. An application that declares request log words or trace settings (below,
 request logs and traces) also finds its surfaces listed there, under `surfaces`, in prefix
 order: each surface's `prefix` (`/` for the application default, an outlet's prefix, a
-route's path, or a prefix mounted by hand), its `log` word (`always`, `onEvent`,
-`sampled` with its `fraction`, `never`) and its `traces` setting (`followFrontEnd`,
-`capped` with its `rate`, `off`), each present only where declared, read into
-`ReleaseFile.Surfaces`; bedrock renders the stack's own log exclusion from them.
+route's path, or a prefix mounted by hand), its `kind` (`prefix` for the application
+default, an outlet and a prefix mounted by hand, matched against the start of the path;
+`route` for an annotated method's path, matched to its end; a file written before the
+kind existed reads as prefixes), its `log` word (`always`, `onEvent`, `sampled` with its
+`fraction`, `never`) and its `traces` setting (`followFrontEnd`, `capped` with its `rate`,
+`off`), the words and the setting each present only where declared, read into
+`ReleaseFile.Surfaces`; bedrock renders the stack's own log exclusion from them, a route
+matched to the end of its path and a prefix by prefix.
 
 **The generated test** drives every generated route through `New` with recording stubs
 and asserts the middleware each request passed through, in order, for its outlet; that

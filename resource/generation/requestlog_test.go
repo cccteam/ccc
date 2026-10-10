@@ -545,7 +545,9 @@ func TestRequireRouterForTraces(t *testing.T) {
 
 // Test_surfacesOf pins the release file's surfaces: the default at /, each outlet with
 // words at its prefix, each worded route at its path, each hand-mounted prefix, and each
-// scheduled method with a word, in prefix order, each carrying only what it declares.
+// scheduled method with a word, in prefix order, each carrying only what it declares and
+// its kind: the default, an outlet and a hand-mounted prefix are prefixes, a worded route
+// and a scheduled route are routes.
 func Test_surfacesOf(t *testing.T) {
 	t.Parallel()
 
@@ -567,13 +569,13 @@ func Test_surfacesOf(t *testing.T) {
 		{Path: "/_scheduled/send-digest"},
 	}
 	want := []resource.Surface{
-		{Prefix: "/", Log: resource.RequestLogOnEvent},
-		{Prefix: "/_scheduled/prune-logs", Log: resource.RequestLogOnEvent},
-		{Prefix: "/api/ships/{shipID}/content", Log: resource.RequestLogNever},
-		{Prefix: "/beacons/", Log: resource.RequestLogOnEvent, Traces: resource.TracesOff},
-		{Prefix: "/droids/", Log: resource.RequestLogSampled, Fraction: 0.01, Traces: resource.TracesCapped, Rate: 0.1},
-		{Prefix: "/droids/ingest-droid-reports", Traces: resource.TracesOff},
-		{Prefix: "/portal/api/", Traces: resource.TracesOff},
+		{Prefix: "/", Kind: resource.SurfacePrefix, Log: resource.RequestLogOnEvent},
+		{Prefix: "/_scheduled/prune-logs", Kind: resource.SurfaceRoute, Log: resource.RequestLogOnEvent},
+		{Prefix: "/api/ships/{shipID}/content", Kind: resource.SurfaceRoute, Log: resource.RequestLogNever},
+		{Prefix: "/beacons/", Kind: resource.SurfacePrefix, Log: resource.RequestLogOnEvent, Traces: resource.TracesOff},
+		{Prefix: "/droids/", Kind: resource.SurfacePrefix, Log: resource.RequestLogSampled, Fraction: 0.01, Traces: resource.TracesCapped, Rate: 0.1},
+		{Prefix: "/droids/ingest-droid-reports", Kind: resource.SurfaceRoute, Traces: resource.TracesOff},
+		{Prefix: "/portal/api/", Kind: resource.SurfacePrefix, Traces: resource.TracesOff},
 	}
 	if diff := cmp.Diff(want, r.surfacesOf(outlets, worded, scheduled)); diff != "" {
 		t.Errorf("surfacesOf() mismatch (-want +got):\n%s", diff)

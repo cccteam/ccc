@@ -31,10 +31,10 @@ func Test_renderReleaseFile(t *testing.T) {
 			name:    "the surfaces: the default, an outlet, a hand-mounted prefix and a route",
 			outlets: []routerOutlet{{name: "default", prefix: "api", servesSessions: true, auth: crew}},
 			surfaces: []resource.Surface{
-				{Prefix: "/", Log: resource.RequestLogOnEvent},
-				{Prefix: "/api/widgets/{widgetID}/content", Log: resource.RequestLogNever, Traces: resource.TracesOff},
-				{Prefix: "/beacons/", Log: resource.RequestLogSampled, Fraction: 0.01, Traces: resource.TracesCapped, Rate: 0.1},
-				{Prefix: "/droids/", Traces: resource.TracesFollowFrontEnd},
+				{Prefix: "/", Kind: resource.SurfacePrefix, Log: resource.RequestLogOnEvent},
+				{Prefix: "/api/widgets/{widgetID}/content", Kind: resource.SurfaceRoute, Log: resource.RequestLogNever, Traces: resource.TracesOff},
+				{Prefix: "/beacons/", Kind: resource.SurfacePrefix, Log: resource.RequestLogSampled, Fraction: 0.01, Traces: resource.TracesCapped, Rate: 0.1},
+				{Prefix: "/droids/", Kind: resource.SurfacePrefix, Traces: resource.TracesFollowFrontEnd},
 			},
 			want: `{
   "outlets": {
@@ -45,15 +45,18 @@ func Test_renderReleaseFile(t *testing.T) {
   "surfaces": [
     {
       "prefix": "/",
+      "kind": "prefix",
       "log": "onEvent"
     },
     {
       "prefix": "/api/widgets/{widgetID}/content",
+      "kind": "route",
       "log": "never",
       "traces": "off"
     },
     {
       "prefix": "/beacons/",
+      "kind": "prefix",
       "log": "sampled",
       "fraction": 0.01,
       "traces": "capped",
@@ -61,6 +64,7 @@ func Test_renderReleaseFile(t *testing.T) {
     },
     {
       "prefix": "/droids/",
+      "kind": "prefix",
       "traces": "followFrontEnd"
     }
   ]
@@ -69,10 +73,10 @@ func Test_renderReleaseFile(t *testing.T) {
 			wantRead: resource.ReleaseFile{
 				Outlets: map[string]resource.ReleaseOutlet{"default": {}},
 				Surfaces: []resource.Surface{
-					{Prefix: "/", Log: resource.RequestLogOnEvent},
-					{Prefix: "/api/widgets/{widgetID}/content", Log: resource.RequestLogNever, Traces: resource.TracesOff},
-					{Prefix: "/beacons/", Log: resource.RequestLogSampled, Fraction: 0.01, Traces: resource.TracesCapped, Rate: 0.1},
-					{Prefix: "/droids/", Traces: resource.TracesFollowFrontEnd},
+					{Prefix: "/", Kind: resource.SurfacePrefix, Log: resource.RequestLogOnEvent},
+					{Prefix: "/api/widgets/{widgetID}/content", Kind: resource.SurfaceRoute, Log: resource.RequestLogNever, Traces: resource.TracesOff},
+					{Prefix: "/beacons/", Kind: resource.SurfacePrefix, Log: resource.RequestLogSampled, Fraction: 0.01, Traces: resource.TracesCapped, Rate: 0.1},
+					{Prefix: "/droids/", Kind: resource.SurfacePrefix, Traces: resource.TracesFollowFrontEnd},
 				},
 			},
 		},
@@ -345,9 +349,9 @@ func Test_runServedRouterGeneration_writesReleaseFile(t *testing.T) {
 			want: resource.ReleaseFile{
 				Outlets: map[string]resource.ReleaseOutlet{"default": {}, "droids": {APIKey: true}},
 				Surfaces: []resource.Surface{
-					{Prefix: "/", Log: resource.RequestLogOnEvent},
-					{Prefix: "/api/", Log: resource.RequestLogNever, Traces: resource.TracesOff},
-					{Prefix: "/beacons/", Log: resource.RequestLogSampled, Fraction: 0.5, Traces: resource.TracesCapped, Rate: 0.25},
+					{Prefix: "/", Kind: resource.SurfacePrefix, Log: resource.RequestLogOnEvent},
+					{Prefix: "/api/", Kind: resource.SurfacePrefix, Log: resource.RequestLogNever, Traces: resource.TracesOff},
+					{Prefix: "/beacons/", Kind: resource.SurfacePrefix, Log: resource.RequestLogSampled, Fraction: 0.5, Traces: resource.TracesCapped, Rate: 0.25},
 				},
 			},
 		},
