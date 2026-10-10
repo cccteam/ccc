@@ -578,12 +578,17 @@ moves to it (`go get -tool`, then `go mod tidy`), the owned files are rendered a
 `go generate ./...` and `impulse check` run, and a clean check is committed as `upgrade:
 impulse <version>`; an impulse built from a checkout makes no such move, and one older than
 the pin refuses, since the pinned one is the impulse to run. A failing check stops the walk
-with the step's changes staged and the handoff brief written (`impulse handoff`, below; at
-a step checked by the pinned impulse, the brief carries that impulse's report and the agent
-is run by hand): fix the obligations or hand them to the agent, commit, and run `upgrade`
-again; it resumes from whatever `go.mod` says, since the pin is the checkpoint and nothing
-else records progress. No step is skipped: a recipe is written against the shape the step
-before it left behind. A step with no recipe is a pin bump and a commit.
+with the step's changes staged and the handoff brief written (`impulse handoff`, below). At
+a step checked by the pinned impulse, that impulse writes the brief from the staged tree
+and, with `--agent`, runs the agent and verifies its work, through `go tool impulse handoff
+--staged` with each recipe's change and meaning passed through, so the brief, the agent and
+the verification are the release that added the step's; a pinned release before v0.3.2,
+whose `handoff` has no `--staged`, leaves the walk to write the brief from that release's
+report, and the agent to the user. Fix the obligations or hand them to the agent, commit,
+and run `upgrade` again; it resumes from whatever `go.mod` says, since the pin is the
+checkpoint and nothing else records progress. No step is skipped: a recipe is written
+against the shape the step before it left behind. A step with no recipe is a pin bump and a
+commit.
 
 The ledger (`internal/ledger`) opens with the first published impulse release's pin set. A
 step is appended when the skeleton's pins move or a recipe is needed, and never otherwise,
@@ -620,6 +625,7 @@ impulse handoff                      # write the brief and print the command to 
 impulse handoff --agent              # launch Claude Code on the brief, then verify
 impulse handoff --verify             # after an agent run by hand: check + guardrails
 impulse handoff --reference ../tenanted --skip-generate
+impulse handoff --staged             # the change staged in the index is the one under review
 ```
 
 With `--agent` the tool launches Claude Code non-interactively (`claude -p`) with the
@@ -636,6 +642,16 @@ review, and there is no gate before it.
 The brief's rules are the ones the verification enforces: run the check until it is
 clean, do not edit generated files, the generator programs, or the lint configuration,
 do not stage or commit, keep the tests table-driven, stop when the check is clean.
+
+With `--staged` the change under review is what is staged in the index, and the working
+tree may hold it: the brief lists the staged paths under "What changed", with what each
+`--change` says was changed and what each `--meaning` says it means (both repeatable), and
+the check, the agent and the verification run as without the flag. A change beside the
+staged one, unstaged or untracked, is refused, so the index holds exactly the change under
+review and the agent's work is exactly its own. This is how `impulse upgrade` hands a
+failing step to the release that added it: the walk stages the step and runs `go tool
+impulse handoff --staged` through the pinned impulse, each recipe's change and meaning
+passed through, so the brief, the agent and the verification after it are that release's.
 
 ## impulse add
 

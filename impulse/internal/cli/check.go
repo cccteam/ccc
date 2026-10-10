@@ -59,7 +59,7 @@ files in the working tree; pass --skip-generate to leave it out.`,
 			results := check.Run(cmd.Context(), env, checks)
 			check.Report(cmd.OutOrStdout(), results)
 			if check.Failed(results) {
-				return exitError{code: 1}
+				return exitError{code: failedExit}
 			}
 
 			return nil

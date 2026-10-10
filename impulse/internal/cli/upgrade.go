@@ -20,10 +20,12 @@ import (
 	transition_ "github.com/cccteam/ccc/impulse/internal/transition"
 )
 
-// The commands an upgrade step runs in the application.
+// The commands an upgrade step runs in the application, and the name the pinned impulse
+// runs under (go tool impulse).
 const (
 	goCommand        = "go"
 	gitCommand       = "git"
+	impulseTool      = "impulse"
 	upgradeCommitTyp = "upgrade"
 )
 
@@ -34,6 +36,13 @@ const subjectLimit = 100
 // toolPinNote is the body of the commit of the tool-only move, the walk's last: the
 // running impulse is a release that added no step.
 const toolPinNote = "the impulse tool pin moves to the running impulse and the owned files are rendered again from the code"
+
+// handoffStagedSince is the first impulse release whose handoff takes the walk's staged
+// tree (impulse handoff --staged): the release the pull request that added the flag took.
+// At a step checked by a pinned impulse from it on, that impulse writes the brief and
+// runs the agent; at one checked by an earlier release, the walk reads its report back
+// and writes the brief itself.
+const handoffStagedSince = "v0.3.2"
 
 func newUpgrade() *cobra.Command {
 	var (
@@ -62,10 +71,13 @@ rendered again, go generate and impulse check run, and the result is committed a
 move, and one older than the pin refuses, since the pinned one is the impulse to run. Run
 the impulse to upgrade to without pinning it first (go run github.com/cccteam/ccc/impulse@<version>
 upgrade): go get -tool would drag the framework pins ahead of the steps. A failing check
-stops the walk with the handoff brief written (` + handoff.File + `) and the step's changes
-staged: fix or hand off, commit, and run upgrade again; it resumes from whatever go.mod
-says. No step is skipped, since a recipe is written against the shape the step before it
-left behind.`,
+stops the walk with the step's changes staged and the handoff brief written (` + handoff.File + `).
+At a step checked by the pinned impulse, that impulse writes the brief from the staged
+tree and, with --agent, runs the agent and verifies its work, through go tool impulse
+handoff --staged, from impulse ` + handoffStagedSince + ` on; a pinned release before it leaves the
+walk to write the brief from that release's report, and the agent to the user. Fix or
+hand off, commit, and run upgrade again; it resumes from whatever go.mod says. No step is
+skipped, since a recipe is written against the shape the step before it left behind.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			u := &upgrader{
@@ -93,10 +105,17 @@ left behind.`,
 	return cmd
 }
 
+// execer runs the walk's commands: held until they end (Run), or streamed as they run
+// (Stream), for the pinned impulse's handoff, whose agent talks as it works.
+type execer interface {
+	check.Execer
+	check.Streamer
+}
+
 // upgrader walks an application through the ledger. Its parts are injected so the walk is
 // tested without go, git or the checks.
 type upgrader struct {
-	exec    check.Execer
+	exec    execer
 	steps   []ledger.Step
 	running check.Build
 	// verify runs the checks on the application after a step; owned rewrites the owned
@@ -396,7 +415,7 @@ type commit struct {
 // finish ends a step after its edits: the application is read again, the owned files are
 // rendered, go generate runs, the checks run (by the pinned impulse when the step is not
 // the running release's), everything is staged, and a clean check is committed; a failing
-// one writes the brief and stops.
+// one is handed off and stops the walk.
 func (u *upgrader) finish(ctx context.Context, f *transitionFlags, repo handoff.Repo, c *commit) error {
 	a, err := app.Discover(f.appDir)
 	if err != nil {
@@ -406,11 +425,15 @@ func (u *upgrader) finish(ctx context.Context, f *transitionFlags, repo handoff.
 	if pin := goModImpulsePin(a.GoMod); c.release != "" && pin != u.release() {
 		pinned = pin
 	}
-	var results []check.Result
+	var (
+		results []check.Result
+		failed  bool
+	)
 	if pinned != "" {
-		results, err = u.checkPinned(ctx, f, a, pinned)
+		results, failed, err = u.checkPinned(ctx, f, a, pinned)
 	} else {
 		results, err = u.check(ctx, f, a)
+		failed = check.Failed(results)
 	}
 	if err != nil {
 		return err
@@ -418,7 +441,7 @@ func (u *upgrader) finish(ctx context.Context, f *transitionFlags, repo handoff.
 	if err := repo.StageAll(ctx); err != nil {
 		return err
 	}
-	if check.Failed(results) {
+	if failed {
 		return u.handoff(ctx, f, repo, a, c, results, pinned)
 	}
 	if out, err := u.exec.Run(ctx, a.Root, nil, gitCommand, "commit", "-q", "-m", c.subject, "-m", c.body); err != nil {
@@ -452,33 +475,64 @@ func (u *upgrader) check(ctx context.Context, f *transitionFlags, a *app.App) ([
 
 // checkPinned renders the owned files and runs the check through the impulse go.mod pins
 // (go tool impulse), so a step is rendered and checked by the release that added it, and
-// reads the pinned impulse's report back into results for the brief. The regeneration is
-// the application's own generator program, built against its pins, and runs as always. A
-// check the pinned impulse could not run at all (no report) is an error, not a failure.
-func (u *upgrader) checkPinned(ctx context.Context, f *transitionFlags, a *app.App, pinned string) ([]check.Result, error) {
+// reports whether the check failed. The regeneration is the application's own generator
+// program, built against its pins, and runs as always. A pinned release that writes its
+// own brief (handoffStaged) says how its check ended by its exit status, failedExit for
+// a failing check, and its report is printed and not read, since the brief comes from
+// that release's own check; an earlier release's report is read back into results for
+// the brief the walk writes. A check the pinned impulse could not run at all is an error,
+// not a failure.
+func (u *upgrader) checkPinned(ctx context.Context, f *transitionFlags, a *app.App, pinned string) ([]check.Result, bool, error) {
 	fmt.Fprintf(u.out, "The pinned impulse %s renders the owned files and checks the step.\n", pinned)
-	out, err := u.exec.Run(ctx, a.Root, nil, goCommand, "tool", "impulse", "render")
+	out, err := u.exec.Run(ctx, a.Root, nil, goCommand, "tool", impulseTool, "render")
 	if err != nil {
-		return nil, errors.Wrapf(err, "go tool impulse render: %s", lastLine(out))
+		return nil, false, errors.Wrapf(err, "go tool impulse render: %s", lastLine(out))
 	}
 	fmt.Fprint(u.out, string(out))
 	if !f.skipGenerate {
 		if err := u.regenerate(ctx, a); err != nil {
-			return nil, err
+			return nil, false, err
 		}
 	}
-	args := []string{"tool", "impulse", "check", "--fix"}
+	args := []string{"tool", impulseTool, "check", "--fix"}
 	if f.skipGenerate {
 		args = append(args, "--skip-generate")
 	}
 	out, err = u.exec.Run(ctx, a.Root, nil, goCommand, args...)
-	results := check.ParseReport(out)
-	if err != nil && !check.Failed(results) {
-		return nil, errors.Wrapf(err, "go tool impulse check: %s", lastLine(out))
+	var (
+		results []check.Result
+		failed  bool
+	)
+	if handoffStaged(pinned) {
+		failed = err != nil && exitCode(err) == failedExit
+	} else {
+		results = check.ParseReport(out)
+		failed = check.Failed(results)
+	}
+	if err != nil && !failed {
+		return nil, false, errors.Wrapf(err, "go tool impulse check: %s", lastLine(out))
 	}
 	fmt.Fprint(u.out, string(out))
 
-	return results, nil
+	return results, failed, nil
+}
+
+// handoffStaged reports whether the pinned impulse writes the brief for the walk's staged
+// tree: a release at or after handoffStagedSince. A pseudo-version names a commit between
+// two releases and sorts before the later one, so it reads as a release without the flag.
+func handoffStaged(pinned string) bool {
+	return semver.IsValid(pinned) && semver.Compare(pinned, handoffStagedSince) >= 0
+}
+
+// exitCode is the status a command that ran exited with, read through the error its
+// runner returned, or -1 for a command that did not run.
+func exitCode(err error) int {
+	var exited interface{ ExitCode() int }
+	if errors.As(err, &exited) {
+		return exited.ExitCode()
+	}
+
+	return -1
 }
 
 // env is the check environment of a step: the checks apply their mechanical remedies.
@@ -486,27 +540,82 @@ func (u *upgrader) env(f *transitionFlags, a *app.App) *check.Env {
 	return &check.Env{App: a, Exec: u.exec, SkipGenerate: f.skipGenerate, Fix: true, Out: u.err, Ledger: ledger.Current{}}
 }
 
-// handoff writes the brief for the failing check and stops the step with its changes
-// staged. The running impulse's check hands to the agent when asked (--agent); a step
-// checked by the pinned impulse writes the brief from its report and leaves the agent to
-// the user, since the verification after the agent would be the running impulse's.
+// handoff stops the step with its changes staged and the brief written for the failing
+// check. At a step checked in process the brief is written from the results, and the
+// agent is launched when asked (--agent). At a step checked by a pinned impulse that
+// writes its own brief (handoffStaged), that impulse does it all from the staged tree,
+// through go tool impulse handoff --staged: the brief, the agent and the verification
+// after it are the release that added the step's. An earlier pinned release's brief is
+// written here from its report, and the agent is left to the user, since the
+// verification after it would be the running impulse's.
 func (u *upgrader) handoff(ctx context.Context, f *transitionFlags, repo handoff.Repo, a *app.App, c *commit, results []check.Result, pinned string) error {
-	guard, err := handoff.Take(a, handoff.FromTree(a))
+	var err error
+	switch {
+	case pinned == "":
+		err = u.handoffInProcess(ctx, f, repo, a, c, results, f.agent)
+	case handoffStaged(pinned):
+		err = u.handoffPinned(ctx, f, a, c, pinned)
+	default:
+		if f.agent {
+			fmt.Fprintf(u.out, "The agent is not launched at a step checked by the pinned impulse %s, a release before %s; run it on the brief by hand.\n", pinned, handoffStagedSince)
+		}
+		err = u.handoffInProcess(ctx, f, repo, a, c, results, false)
+	}
 	if err != nil {
-		return err
-	}
-	brief := &handoff.Brief{App: a, Change: strings.Join(c.changes, "\n"), Meaning: strings.Join(c.meanings, "\n\n"), Results: results, Guard: guard}
-	ag := &handoff.Agent{Command: f.agentCommand, ExtraArgs: f.agentArgs}
-	launch := f.agent
-	if launch && pinned != "" {
-		fmt.Fprintf(u.out, "The agent is not launched at a step checked by the pinned impulse %s; run it on the brief by hand.\n", pinned)
-		launch = false
-	}
-	if err := completeHandoff(ctx, u.out, f.appDir, u.env(f, a), repo, brief, ag, launch); err != nil {
 		return err
 	}
 
 	return errors.Newf("%s left the check failing; its changes are staged and the brief is at %s. When the check is clean, commit and run impulse upgrade again: it resumes from go.mod", c.label, handoff.File)
+}
+
+// handoffInProcess writes the brief from the results, with the staged paths as the
+// change under review, and launches and verifies the agent when launch says so.
+func (u *upgrader) handoffInProcess(ctx context.Context, f *transitionFlags, repo handoff.Repo, a *app.App, c *commit, results []check.Result, launch bool) error {
+	guard, err := handoff.Take(a, handoff.FromTree(a))
+	if err != nil {
+		return err
+	}
+	staged, err := repo.Staged(ctx)
+	if err != nil {
+		return err
+	}
+	brief := &handoff.Brief{App: a, Change: strings.Join(c.changes, "\n"), Meaning: strings.Join(c.meanings, "\n\n"), Results: results, Guard: guard, Staged: staged}
+	ag := &handoff.Agent{Command: f.agentCommand, ExtraArgs: f.agentArgs}
+
+	return completeHandoff(ctx, u.out, f.appDir, u.env(f, a), repo, brief, ag, launch)
+}
+
+// handoffPinned hands the staged step to the pinned impulse's handoff (go tool impulse
+// handoff --staged), which runs its check again for the brief, writes it with each
+// recipe's change and meaning passed through, and launches and verifies the agent when
+// asked. Its output is streamed, since the agent talks as it works.
+func (u *upgrader) handoffPinned(ctx context.Context, f *transitionFlags, a *app.App, c *commit, pinned string) error {
+	does := "writes the brief"
+	if f.agent {
+		does = "writes the brief, runs the agent and verifies its work"
+	}
+	fmt.Fprintf(u.out, "The pinned impulse %s %s, through go tool impulse handoff --staged.\n", pinned, does)
+	args := []string{"tool", impulseTool, "handoff", "--staged"}
+	for _, change := range c.changes {
+		args = append(args, "--change", change)
+	}
+	for _, meaning := range c.meanings {
+		args = append(args, "--meaning", meaning)
+	}
+	if f.skipGenerate {
+		args = append(args, "--skip-generate")
+	}
+	if f.agent {
+		args = append(args, "--agent", "--agent-command", f.agentCommand)
+		for _, arg := range f.agentArgs {
+			args = append(args, "--agent-arg", arg)
+		}
+	}
+	if out, err := u.exec.Stream(ctx, a.Root, u.out, goCommand, args...); err != nil {
+		return errors.Wrapf(err, "go tool impulse handoff: %s", lastLine(out))
+	}
+
+	return nil
 }
 
 // recipes runs the step's recipes in order, each on the tree the one before it left, and

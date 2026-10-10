@@ -43,6 +43,11 @@ type Brief struct {
 	Reference string
 	// Guard names the files the agent must not move.
 	Guard Snapshot
+	// Staged lists the paths staged in the index when the change under review is the
+	// staged one (a step of impulse upgrade, impulse handoff --staged): the pins moved,
+	// the owned and generated files rendered, the recipes' edits. Change accounts for
+	// what a recipe did; the staged paths account for the whole of the change.
+	Staged []string
 	// Left counts the obligations the change itself lists (the hand-written uses a
 	// removal leaves), which the check cannot see; the brief is written for them even
 	// when no check fails.
@@ -55,10 +60,18 @@ func (b *Brief) Write(w io.Writer) {
 	fmt.Fprintf(w, "You are working in an Impulse application (Go services built on the cccteam libraries, with ccc/resource generating the handlers, routes, and browser clients from annotated resource structs; a listed resource declares its order with `@order` on the struct or every page of it names a `sort`, since a paged request with neither is refused). The application root is `%s`, and it is your working directory.\n\n", b.App.Root)
 
 	fmt.Fprintf(w, "## What changed\n\n")
-	if b.Change == "" {
-		fmt.Fprintf(w, "Nothing was changed by the tool. `%s` found the obligations below in the tree as it is.\n\n", CheckCommand)
-	} else {
+	switch {
+	case b.Change != "":
 		fmt.Fprintf(w, "%s\n\n", strings.TrimSpace(b.Change))
+	case len(b.Staged) == 0:
+		fmt.Fprintf(w, "Nothing was changed by the tool. `%s` found the obligations below in the tree as it is.\n\n", CheckCommand)
+	}
+	if len(b.Staged) > 0 {
+		fmt.Fprintf(w, "The change under review is staged in the index, %d path(s):\n\n", len(b.Staged))
+		for _, p := range b.Staged {
+			fmt.Fprintf(w, "- %s\n", p)
+		}
+		fmt.Fprintf(w, "\n")
 	}
 	if meanings := b.meanings(); len(meanings) > 0 {
 		fmt.Fprintf(w, "## What it means\n\n%s\n\n", strings.Join(meanings, "\n\n"))

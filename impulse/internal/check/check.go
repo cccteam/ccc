@@ -4,6 +4,7 @@
 package check
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -147,6 +148,27 @@ func (OSExec) Run(ctx context.Context, dir string, extraEnv []string, name strin
 	}
 
 	return out, nil
+}
+
+// Streamer runs an external command with its combined output written to a writer as it
+// comes, for a command that runs long and talks while it runs (an agent): what Run would
+// hold until the command ends reaches the user as it is written, and is returned as well.
+type Streamer interface {
+	Stream(ctx context.Context, dir string, out io.Writer, name string, args ...string) ([]byte, error)
+}
+
+// Stream implements Streamer.
+func (OSExec) Stream(ctx context.Context, dir string, out io.Writer, name string, args ...string) ([]byte, error) {
+	var held bytes.Buffer
+	cmd := exec.CommandContext(ctx, name, args...)
+	cmd.Dir = dir
+	cmd.Stdout = io.MultiWriter(out, &held)
+	cmd.Stderr = cmd.Stdout
+	if err := cmd.Run(); err != nil {
+		return held.Bytes(), errors.Wrapf(err, "%s %s", name, strings.Join(args, " "))
+	}
+
+	return held.Bytes(), nil
 }
 
 // All returns every check in run order: the cheap static reads first, the compiler next,

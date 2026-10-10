@@ -183,7 +183,7 @@ func validateImpulse(s *Step, at string) error {
 	if s.Impulse == "" {
 		return nil
 	}
-	if !isRelease(s.Impulse) {
+	if !IsRelease(s.Impulse) {
 		return errors.Newf("%s names impulse %q, which is not a release: a step names the tagged version of the impulse that added it (v0.2.0), or the version its pull request will take while it is pending", at, s.Impulse)
 	}
 
@@ -214,9 +214,9 @@ func validateOrder(s, prev *Step, at string, i int) error {
 	return nil
 }
 
-// isRelease reports whether the version is a release: canonical, with no pre-release or
+// IsRelease reports whether the version is a release: canonical, with no pre-release or
 // build part, so a pushed commit's pseudo-version is not one.
-func isRelease(version string) bool {
+func IsRelease(version string) bool {
 	return semver.IsValid(version) && semver.Canonical(version) == version && semver.Prerelease(version) == ""
 }
 
@@ -224,7 +224,7 @@ func isRelease(version string) bool {
 // the build checks, so a malformed version stops the program at start rather than
 // reading as a release.
 func release(version string) string {
-	if !isRelease(version) {
+	if !IsRelease(version) {
 		panic(fmt.Sprintf("ledger: malformed impulse release %q", version))
 	}
 

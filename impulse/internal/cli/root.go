@@ -59,6 +59,12 @@ func version() string {
 	return check.RunningVersion()
 }
 
+// failedExit is the status a command exits with when what it checked failed: impulse
+// check with a failing check, impulse handoff with a handoff not clean. A command that
+// could not run exits with 2, so a caller running the check as a command (the upgrade
+// walk, through go tool impulse) tells a failing check from one that did not run.
+const failedExit = 1
+
 // exitError carries a process exit code out of a command without printing anything.
 type exitError struct {
 	code int

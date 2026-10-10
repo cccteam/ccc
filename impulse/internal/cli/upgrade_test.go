@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -71,7 +72,8 @@ func (markerRecipe) Meaning() string { return "The marker names the form the ste
 // requires (drags) up to them, as the tool directive does through the build list. At each
 // commit it reads where go.mod stands (the step its pins reach and the impulse it pins), so
 // a test holds every commit to its step. The pinned impulse's check answers with report,
-// and fails as the command would when the report has a failing line.
+// and fails as the command would when the report has a failing line, with the failing
+// check's exit status; a command named by fail could not run, and exits as such.
 type upgradeExec struct {
 	root    string
 	steps   []ledger.Step
@@ -83,15 +85,32 @@ type upgradeExec struct {
 	fail    string
 }
 
+// exitStatus is the error a fake command exits non-zero with, carrying the status as the
+// error of a process does.
+type exitStatus struct {
+	code int
+	line string
+}
+
+func (e exitStatus) Error() string {
+	return e.line
+}
+
+func (e exitStatus) ExitCode() int {
+	return e.code
+}
+
 func (f *upgradeExec) Run(_ context.Context, _ string, _ []string, name string, args ...string) ([]byte, error) {
 	line := name + " " + strings.Join(args, " ")
 	f.calls = append(f.calls, line)
 	if f.fail != "" && strings.HasPrefix(line, f.fail) {
-		return []byte("refused: " + line + "\n"), errors.New(line)
+		return []byte("refused: " + line + "\n"), exitStatus{code: 2, line: line}
 	}
 	switch {
 	case line == "git status --porcelain --untracked-files=all":
 		return []byte(f.dirty), nil
+	case line == "git diff --cached --name-only":
+		return []byte("go.mod\n"), nil
 	case strings.HasPrefix(line, "go get -tool "):
 		module, version, _ := strings.Cut(args[len(args)-1], "@")
 		if err := f.pin(module, version, false); err != nil {
@@ -112,7 +131,7 @@ func (f *upgradeExec) Run(_ context.Context, _ string, _ []string, name string, 
 		return []byte("Warning: Sortie resolves its tenant through MissionId\n"), nil
 	case strings.HasPrefix(line, "go tool impulse check"):
 		if check.Failed(check.ParseReport([]byte(f.report))) {
-			return []byte(f.report), errors.New(line)
+			return []byte(f.report), exitStatus{code: failedExit, line: line}
 		}
 
 		return []byte(f.report), nil
@@ -121,6 +140,16 @@ func (f *upgradeExec) Run(_ context.Context, _ string, _ []string, name string, 
 	}
 
 	return nil, nil
+}
+
+// Stream runs the command as Run does, its output written through as well.
+func (f *upgradeExec) Stream(ctx context.Context, dir string, out io.Writer, name string, args ...string) ([]byte, error) {
+	held, err := f.Run(ctx, dir, nil, name, args...)
+	if _, werr := out.Write(held); werr != nil {
+		return held, errors.Wrap(werr, "out.Write()")
+	}
+
+	return held, err
 }
 
 // pin writes the module's version into go.mod; raiseOnly leaves a pin at or beyond it, as
@@ -179,16 +208,30 @@ func upgradeLedger() []ledger.Step {
 	}
 }
 
+// stagedLedger is upgradeLedger with the marker step added by the first release whose
+// handoff takes the staged tree, and the last step by a release after it, so a step with
+// a recipe and one without are each handed to the release that added them.
+func stagedLedger() []ledger.Step {
+	steps := upgradeLedger()
+	steps[1].Impulse = handoffStagedSince
+	steps[2].Impulse = "v0.4.0"
+
+	return steps
+}
+
 // upgradeDrags is what each impulse release's tool directive puts into an application's
 // build list: the resource its own step pins, and for v0.3.1, a patch that added no step,
 // the last step's. Moved ahead of the steps, v0.3.1 would carry resource to v0.3.0 while
 // access stayed at v0.1.0, and the pins would read as step 2 reached with its recipe never
-// run: the shape of the defect the walk's order answers.
+// run: the shape of the defect the walk's order answers. The staged ledger's releases drag
+// their own steps' resource.
 func upgradeDrags() map[string]map[string]string {
 	return map[string]map[string]string{
-		"v0.2.0": {upgradeResource: "v0.2.0"},
-		"v0.3.0": {upgradeResource: "v0.3.0"},
-		"v0.3.1": {upgradeResource: "v0.3.0"},
+		"v0.2.0":           {upgradeResource: "v0.2.0"},
+		"v0.3.0":           {upgradeResource: "v0.3.0"},
+		"v0.3.1":           {upgradeResource: "v0.3.0"},
+		handoffStagedSince: {upgradeResource: "v0.2.0"},
+		"v0.4.0":           {upgradeResource: "v0.3.0"},
 	}
 }
 
@@ -230,12 +273,15 @@ var (
 // the tool-only move last, every commit at exactly its step, a step the running release
 // added checked in process, a pin already ahead left alone, the recipe idempotent, a
 // checkout build making no tool-only move, a failing check stopping with the brief and
-// the step staged, and the refusals (a dirty tree, a tool pin newer than the running
-// impulse, a pin bump go refuses, a pinned render or check that could not run).
+// the step staged (by the pinned release through handoff --staged, with the agent when
+// asked, from the release that has the flag; from the pinned check's report before it),
+// and the refusals (a dirty tree, a tool pin newer than the running impulse, a pin bump go
+// refuses, a pinned render, check or handoff that could not run).
 func TestUpgrade(t *testing.T) {
 	t.Parallel()
 
 	failingReport := "FAIL  paging  1 offset\n      pkg/x.go:3: Offset\n"
+	markerChange := "`impulse upgrade (recipe marker, step 2)` made these changes and staged them:\n\n- moved the marker to its new form\n"
 	tests := []struct {
 		name         string
 		goMod        string
@@ -245,15 +291,18 @@ func TestUpgrade(t *testing.T) {
 		dryRun       bool
 		skipGenerate bool
 		agent        bool
+		agentArgs    []string
 		dirty        string
 		fail         string
 		report       string
 		verify       func(context.Context, *check.Env) []check.Result
-		// wantOut are fragments of the output in order; wantCalls the commands run (the
-		// git status and rev-parse reads left out); wantCommits where go.mod stood at
-		// each commit; wantMarker the marker after the walk; wantBrief whether the
-		// handoff brief exists after, wantInBrief a fragment of it; wantErr the error.
+		// wantOut are fragments of the output in order, wantNoOut fragments it must not
+		// hold; wantCalls the commands run (the git status, rev-parse and diff --cached
+		// reads left out); wantCommits where go.mod stood at each commit; wantMarker the
+		// marker after the walk; wantBrief whether the handoff brief exists after,
+		// wantInBrief a fragment of it; wantErr the error.
 		wantOut     []string
+		wantNoOut   []string
 		wantCalls   []string
 		wantCommits []string
 		wantMarker  string
@@ -412,7 +461,7 @@ func TestUpgrade(t *testing.T) {
 			},
 		},
 		{
-			name:    "a failing check by the pinned impulse stops the walk with the brief written from its report and the step staged; the agent is left to the user",
+			name:    "a failing check by a pinned release before handoff --staged stops the walk with the brief written from its report and the step staged; the agent is left to the user",
 			goMod:   upgradeGoMod("v0.1.0", "v0.1.0", "v0.1.0"),
 			marker:  "old\n",
 			steps:   upgradeLedger(),
@@ -423,26 +472,65 @@ func TestUpgrade(t *testing.T) {
 				"=== step 2",
 				"The pinned impulse v0.2.0 renders the owned files and checks the step.",
 				"FAIL  paging  1 offset\n      pkg/x.go:3: Offset",
-				"The agent is not launched at a step checked by the pinned impulse v0.2.0; run it on the brief by hand.",
+				"The agent is not launched at a step checked by the pinned impulse v0.2.0, a release before " + handoffStagedSince + "; run it on the brief by hand.",
 				"Wrote the brief to .impulse-handoff.md: 1 obligation(s) under 1 failing check(s).",
 			},
 			wantCalls:   []string{"go get github.com/cccteam/ccc/resource@v0.2.0", "go get -tool github.com/cccteam/ccc/impulse@v0.2.0", "go mod tidy", "go tool impulse render", "go generate ./...", "go tool impulse check --fix", "git add -A"},
 			wantMarker:  "new\n",
 			wantBrief:   true,
-			wantInBrief: "pkg/x.go:3: Offset",
+			wantInBrief: "## What changed\n\n" + markerChange + "\nThe change under review is staged in the index, 1 path(s):\n\n- go.mod\n\n## What it means\n\nThe marker names the form the step expects.\n\n## The failing checks\n\nThis is the output of `impulse check`, failing checks only. Each line under a check is one obligation.\n\n```\nFAIL  paging  1 offset\n      pkg/x.go:3: Offset\n```",
 			wantErr:     "step 2 (ccc/resource v0.2.0, ccc/impulse v0.2.0) left the check failing; its changes are staged and the brief is at .impulse-handoff.md. When the check is clean, commit and run impulse upgrade again: it resumes from go.mod",
 		},
 		{
-			name:    "a failing check on the tool-only move",
+			name:      "a failing check by a pinned release with handoff --staged: the staged step is handed to it with the recipe's change and meaning, and the agent when asked; no brief is written here",
+			goMod:     upgradeGoMod("v0.1.0", "v0.1.0", "v0.1.0"),
+			marker:    "old\n",
+			steps:     stagedLedger(),
+			running:   check.Build{Version: "(devel)"},
+			agent:     true,
+			agentArgs: []string{"--model", "sonnet"},
+			report:    failingReport,
+			wantOut: []string{
+				"=== step 2",
+				"The pinned impulse " + handoffStagedSince + " renders the owned files and checks the step.",
+				"FAIL  paging  1 offset\n      pkg/x.go:3: Offset",
+				"The pinned impulse " + handoffStagedSince + " writes the brief, runs the agent and verifies its work, through go tool impulse handoff --staged.",
+			},
+			wantNoOut: []string{"The agent is not launched", "Wrote the brief"},
+			wantCalls: []string{
+				"go get github.com/cccteam/ccc/resource@v0.2.0", "go get -tool github.com/cccteam/ccc/impulse@" + handoffStagedSince, "go mod tidy", "go tool impulse render", "go generate ./...", "go tool impulse check --fix", "git add -A",
+				"go tool impulse handoff --staged --change " + markerChange + " --meaning The marker names the form the step expects. --agent --agent-command claude --agent-arg --model --agent-arg sonnet",
+			},
+			wantMarker: "new\n",
+			wantErr:    "step 2 (ccc/resource v0.2.0, ccc/impulse " + handoffStagedSince + ") left the check failing; its changes are staged and the brief is at .impulse-handoff.md. When the check is clean, commit and run impulse upgrade again: it resumes from go.mod",
+		},
+		{
+			name:         "a failing check at a pin bump by a pinned release with handoff --staged, without the agent; the walk's --skip-generate reaches the handoff",
+			goMod:        upgradeGoMod("v0.2.0", "v0.1.0", handoffStagedSince),
+			steps:        stagedLedger(),
+			running:      check.Build{Version: "(devel)"},
+			skipGenerate: true,
+			report:       failingReport,
+			wantOut:      []string{"The pinned impulse v0.4.0 writes the brief, through go tool impulse handoff --staged."},
+			wantCalls: []string{
+				"go get github.com/cccteam/access@v0.2.0", "go get github.com/cccteam/ccc/resource@v0.3.0", "go get -tool github.com/cccteam/ccc/impulse@v0.4.0", "go mod tidy",
+				"go tool impulse render", "go tool impulse check --fix --skip-generate", "git add -A",
+				"go tool impulse handoff --staged --skip-generate",
+			},
+			wantErr: "step 3 (access v0.2.0, ccc/resource v0.3.0, ccc/impulse v0.4.0) left the check failing; its changes are staged and the brief is at .impulse-handoff.md",
+		},
+		{
+			name:    "a failing check on the tool-only move; the brief lists the staged paths",
 			goMod:   upgradeGoMod("v0.3.0", "v0.2.0", "v0.1.0"),
 			steps:   upgradeLedger(),
 			running: check.Build{Version: "v0.3.0", FromModule: true},
 			verify: func(context.Context, *check.Env) []check.Result {
 				return []check.Result{{Name: "ci-workflow", Status: check.Fail, Summary: "differs"}}
 			},
-			wantCalls: []string{"go get -tool github.com/cccteam/ccc/impulse@v0.3.0", "go mod tidy", "go generate ./...", "git add -A"},
-			wantBrief: true,
-			wantErr:   "the impulse v0.3.0 tool pin step left the check failing",
+			wantCalls:   []string{"go get -tool github.com/cccteam/ccc/impulse@v0.3.0", "go mod tidy", "go generate ./...", "git add -A"},
+			wantBrief:   true,
+			wantInBrief: "## What changed\n\nThe change under review is staged in the index, 1 path(s):\n\n- go.mod\n\n## The failing checks",
+			wantErr:     "the impulse v0.3.0 tool pin step left the check failing",
 		},
 		{
 			name:    "a dirty tree is refused",
@@ -490,6 +578,30 @@ func TestUpgrade(t *testing.T) {
 			wantCalls: []string{"go get github.com/cccteam/ccc/resource@v0.2.0", "go get -tool github.com/cccteam/ccc/impulse@v0.2.0", "go mod tidy", "go tool impulse render", "go generate ./...", "go tool impulse check --fix"},
 			wantErr:   "go tool impulse check: refused: go tool impulse check --fix",
 		},
+		{
+			name:      "a pinned check that could not run, by a release with handoff --staged, stops the step before the handoff: its exit status is not a failing check's",
+			goMod:     upgradeGoMod("v0.1.0", "v0.1.0", "v0.1.0"),
+			marker:    "new\n",
+			steps:     stagedLedger(),
+			running:   check.Build{Version: "(devel)"},
+			fail:      "go tool impulse check",
+			wantCalls: []string{"go get github.com/cccteam/ccc/resource@v0.2.0", "go get -tool github.com/cccteam/ccc/impulse@" + handoffStagedSince, "go mod tidy", "go tool impulse render", "go generate ./...", "go tool impulse check --fix"},
+			wantErr:   "go tool impulse check: refused: go tool impulse check --fix",
+		},
+		{
+			name:    "a pinned handoff that could not run stops the step",
+			goMod:   upgradeGoMod("v0.1.0", "v0.1.0", "v0.1.0"),
+			marker:  "new\n",
+			steps:   stagedLedger(),
+			running: check.Build{Version: "(devel)"},
+			fail:    "go tool impulse handoff",
+			report:  failingReport,
+			wantCalls: []string{
+				"go get github.com/cccteam/ccc/resource@v0.2.0", "go get -tool github.com/cccteam/ccc/impulse@" + handoffStagedSince, "go mod tidy", "go tool impulse render", "go generate ./...", "go tool impulse check --fix", "git add -A",
+				"go tool impulse handoff --staged",
+			},
+			wantErr: "go tool impulse handoff: refused: go tool impulse handoff --staged",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -519,7 +631,7 @@ func TestUpgrade(t *testing.T) {
 				owned: func(*app.App) ([]string, error) { return nil, nil },
 				out:   &out, err: &errOut,
 			}
-			err := u.run(t.Context(), &transitionFlags{appDir: root, agent: tt.agent, agentCommand: handoff.DefaultCommand, skipGenerate: tt.skipGenerate}, tt.dryRun)
+			err := u.run(t.Context(), &transitionFlags{appDir: root, agent: tt.agent, agentCommand: handoff.DefaultCommand, agentArgs: tt.agentArgs, skipGenerate: tt.skipGenerate}, tt.dryRun)
 			if tt.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 					t.Fatalf("run() error = %v, want %q; output:\n%s", err, tt.wantErr, out.String())
@@ -528,9 +640,14 @@ func TestUpgrade(t *testing.T) {
 				t.Fatalf("run() error = %v; output:\n%s", err, out.String())
 			}
 			containsInOrder(t, out.String(), tt.wantOut)
+			for _, fragment := range tt.wantNoOut {
+				if strings.Contains(out.String(), fragment) {
+					t.Errorf("output holds %q; output:\n%s", fragment, out.String())
+				}
+			}
 			var calls []string
 			for _, c := range exec.calls {
-				if strings.HasPrefix(c, "git status") || strings.HasPrefix(c, "git rev-parse") {
+				if strings.HasPrefix(c, "git status") || strings.HasPrefix(c, "git rev-parse") || strings.HasPrefix(c, "git diff --cached") {
 					continue
 				}
 				calls = append(calls, c)
@@ -562,6 +679,37 @@ func TestUpgrade(t *testing.T) {
 			}
 			if tt.wantInBrief != "" && !strings.Contains(string(brief), tt.wantInBrief) {
 				t.Errorf("brief lacks %q:\n%s", tt.wantInBrief, brief)
+			}
+		})
+	}
+}
+
+// TestHandoffStaged holds handoffStagedSince to a release, and reads which pinned
+// impulse writes its own brief: one at or after it; one before it, or a commit between
+// two releases, is left to the walk's report path.
+func TestHandoffStaged(t *testing.T) {
+	t.Parallel()
+
+	if !ledger.IsRelease(handoffStagedSince) {
+		t.Fatalf("handoffStagedSince = %q, not a release", handoffStagedSince)
+	}
+	tests := []struct {
+		name   string
+		pinned string
+		want   bool
+	}{
+		{name: "the release that added the flag", pinned: handoffStagedSince, want: true},
+		{name: "a later release", pinned: "v0.4.0", want: true},
+		{name: "the release before it", pinned: "v0.3.1", want: false},
+		{name: "a commit between, as a pseudo-version", pinned: semver.Canonical(handoffStagedSince) + "-0.20261010000000-abcdef123456", want: false},
+		{name: "no pin", pinned: "", want: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := handoffStaged(tt.pinned); got != tt.want {
+				t.Errorf("handoffStaged(%q) = %v, want %v", tt.pinned, got, tt.want)
 			}
 		})
 	}
