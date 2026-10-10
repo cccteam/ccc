@@ -42,8 +42,8 @@ github.com/cccteam/ccc/cloud v0.2.1 h1:W1vL3cyGSwGY/HaOJIS9Kn/EU9ai+YvH0W9JraMno
 github.com/cccteam/ccc/cloud v0.2.1/go.mod h1:bppXgzSKxWazRtkK1EmSkM9h3Es7wBQCVWYUJoSPsp4=
 github.com/cccteam/ccc/impulse v0.3.0 h1:Ues0urx4NMSPZf7QEYbCm65p0nW+3oJo6FN6znjMI2M=
 github.com/cccteam/ccc/impulse v0.3.0/go.mod h1:f5BnDbyAChKS+hglxcupJhaWbHfJXJvpHJdOG6q2cbk=
-github.com/cccteam/ccc/resource v0.13.1-0.20261010141715-20530e190bc0 h1:zCDnNguzWQP4/0REq15UFL4d7XWvcrQzxRoqS77wLPE=
-github.com/cccteam/ccc/resource v0.13.1-0.20261010141715-20530e190bc0/go.mod h1:Zll5l/BeJ42JjDHJtxoWJrhpjoTnqQwB0O3AgqaEBPM=
+github.com/cccteam/ccc/resource v0.13.1-0.20261010150715-b61a62d06b0b h1:W59fr009xZr7i6c+f4loOpy7/NPylSCxuCm3EYCX5NY=
+github.com/cccteam/ccc/resource v0.13.1-0.20261010150715-b61a62d06b0b/go.mod h1:LFrQugvlEcFxv4sJ4KWagRcXLqvh2RnVQjdAPSaNm6g=
 github.com/cespare/xxhash/v2 v2.3.0 h1:UL815xU9SqsFlibzuggzjXhog7bL6oX9BbNZnL2UFvs=
 github.com/cespare/xxhash/v2 v2.3.0/go.mod h1:VGX0DQ3Q6kWi7AoAeZDth3/j3BFtOZR5XLFGgcrjCOs=
 github.com/cncf/xds/go v0.0.0-20260202195803-dba9d589def2 h1:aBangftG7EVZoUb69Os8IaYg++6uMOdKK83QtkkvJik=

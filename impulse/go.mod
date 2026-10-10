@@ -4,7 +4,7 @@ go 1.26.9
 
 require (
 	github.com/cccteam/ccc/cloud v0.2.1
-	github.com/cccteam/ccc/resource v0.13.1-0.20261010141715-20530e190bc0
+	github.com/cccteam/ccc/resource v0.13.1-0.20261010150715-b61a62d06b0b
 	github.com/ettle/strcase v0.2.0
 	github.com/go-playground/errors/v5 v5.4.0
 	github.com/google/go-cmp v0.7.0
@@ -33,9 +33,9 @@ require (
 	github.com/GoogleCloudPlatform/opentelemetry-operations-go/internal/resourcemapping v0.62.0 // indirect
 	github.com/cccteam/ccc v0.3.3 // indirect
 	github.com/cccteam/ccc/accesstypes v0.6.0 // indirect
-	github.com/cccteam/ccc/tracer v0.2.0 // indirect
+	github.com/cccteam/ccc/tracer v0.2.2-0.20261009221627-cc079f540595 // indirect
 	github.com/cccteam/httpio v0.7.21 // indirect
-	github.com/cccteam/logger v0.1.27 // indirect
+	github.com/cccteam/logger v0.1.30 // indirect
 	github.com/cccteam/session v0.12.2 // indirect
 	github.com/cccteam/spxscan v0.0.16 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect

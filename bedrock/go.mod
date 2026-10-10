@@ -10,7 +10,7 @@ require (
 	cloud.google.com/go/storage v1.69.0
 	github.com/cccteam/ccc/cloud v0.2.1
 	github.com/cccteam/ccc/impulse v0.3.0
-	github.com/cccteam/ccc/resource v0.13.1-0.20261010141715-20530e190bc0
+	github.com/cccteam/ccc/resource v0.13.1-0.20261010150715-b61a62d06b0b
 	github.com/go-playground/errors/v5 v5.4.0
 	github.com/google/go-cmp v0.7.0
 	github.com/hashicorp/hcl/v2 v2.25.0

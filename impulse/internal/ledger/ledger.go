@@ -177,8 +177,8 @@ var Steps = []Step{
 			access v0.10.3
 			ccc v0.3.3
 			ccc/accesstypes v0.6.0
-			ccc/cloud v0.1.0
-			ccc/resource v0.13.1-0.20261009222719-0b4b3b9b3910
+			ccc/cloud v0.2.1
+			ccc/resource v0.13.1-0.20261010150715-b61a62d06b0b
 			ccc/tracer v0.2.2-0.20261009221627-cc079f540595
 			db-initiator v0.4.1
 			httpio v0.7.21
