@@ -38,11 +38,11 @@ const subjectLimit = 100
 const toolPinNote = "the impulse tool pin moves to the running impulse and the owned files are rendered again from the code"
 
 // handoffStagedSince is the first impulse release whose handoff takes the walk's staged
-// tree (impulse handoff --staged): the release the pull request that added the flag took.
-// At a step checked by a pinned impulse from it on, that impulse writes the brief and
-// runs the agent; at one checked by an earlier release, the walk reads its report back
-// and writes the brief itself.
-const handoffStagedSince = "v0.3.2"
+// tree (impulse handoff --staged): the release the pull request that added the flag
+// takes, a minor bump since it carries a feature. At a step checked by a pinned impulse
+// from it on, that impulse writes the brief and runs the agent; at one checked by an
+// earlier release, the walk reads its report back and writes the brief itself.
+const handoffStagedSince = "v0.4.0"
 
 func newUpgrade() *cobra.Command {
 	var (

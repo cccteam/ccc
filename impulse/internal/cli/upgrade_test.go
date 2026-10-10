@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -211,12 +212,27 @@ func upgradeLedger() []ledger.Step {
 // stagedLedger is upgradeLedger with the marker step added by the first release whose
 // handoff takes the staged tree, and the last step by a release after it, so a step with
 // a recipe and one without are each handed to the release that added them.
-func stagedLedger() []ledger.Step {
+func stagedLedger(t *testing.T) []ledger.Step {
+	t.Helper()
+
 	steps := upgradeLedger()
 	steps[1].Impulse = handoffStagedSince
-	steps[2].Impulse = "v0.4.0"
+	steps[2].Impulse = stagedLater(t)
 
 	return steps
+}
+
+// stagedLater is a release after handoffStagedSince, its minor bumped.
+func stagedLater(t *testing.T) string {
+	t.Helper()
+
+	major, minor, ok := strings.Cut(strings.TrimPrefix(semver.MajorMinor(handoffStagedSince), "v"), ".")
+	n, err := strconv.Atoi(minor)
+	if !ok || err != nil {
+		t.Fatalf("handoffStagedSince = %q: no major.minor to bump", handoffStagedSince)
+	}
+
+	return "v" + major + "." + strconv.Itoa(n+1) + ".0"
 }
 
 // upgradeDrags is what each impulse release's tool directive puts into an application's
@@ -225,13 +241,15 @@ func stagedLedger() []ledger.Step {
 // access stayed at v0.1.0, and the pins would read as step 2 reached with its recipe never
 // run: the shape of the defect the walk's order answers. The staged ledger's releases drag
 // their own steps' resource.
-func upgradeDrags() map[string]map[string]string {
+func upgradeDrags(t *testing.T) map[string]map[string]string {
+	t.Helper()
+
 	return map[string]map[string]string{
 		"v0.2.0":           {upgradeResource: "v0.2.0"},
 		"v0.3.0":           {upgradeResource: "v0.3.0"},
 		"v0.3.1":           {upgradeResource: "v0.3.0"},
 		handoffStagedSince: {upgradeResource: "v0.2.0"},
-		"v0.4.0":           {upgradeResource: "v0.3.0"},
+		stagedLater(t):     {upgradeResource: "v0.3.0"},
 	}
 }
 
@@ -485,7 +503,7 @@ func TestUpgrade(t *testing.T) {
 			name:      "a failing check by a pinned release with handoff --staged: the staged step is handed to it with the recipe's change and meaning, and the agent when asked; no brief is written here",
 			goMod:     upgradeGoMod("v0.1.0", "v0.1.0", "v0.1.0"),
 			marker:    "old\n",
-			steps:     stagedLedger(),
+			steps:     stagedLedger(t),
 			running:   check.Build{Version: "(devel)"},
 			agent:     true,
 			agentArgs: []string{"--model", "sonnet"},
@@ -507,17 +525,17 @@ func TestUpgrade(t *testing.T) {
 		{
 			name:         "a failing check at a pin bump by a pinned release with handoff --staged, without the agent; the walk's --skip-generate reaches the handoff",
 			goMod:        upgradeGoMod("v0.2.0", "v0.1.0", handoffStagedSince),
-			steps:        stagedLedger(),
+			steps:        stagedLedger(t),
 			running:      check.Build{Version: "(devel)"},
 			skipGenerate: true,
 			report:       failingReport,
-			wantOut:      []string{"The pinned impulse v0.4.0 writes the brief, through go tool impulse handoff --staged."},
+			wantOut:      []string{"The pinned impulse " + stagedLater(t) + " writes the brief, through go tool impulse handoff --staged."},
 			wantCalls: []string{
-				"go get github.com/cccteam/access@v0.2.0", "go get github.com/cccteam/ccc/resource@v0.3.0", "go get -tool github.com/cccteam/ccc/impulse@v0.4.0", "go mod tidy",
+				"go get github.com/cccteam/access@v0.2.0", "go get github.com/cccteam/ccc/resource@v0.3.0", "go get -tool github.com/cccteam/ccc/impulse@" + stagedLater(t), "go mod tidy",
 				"go tool impulse render", "go tool impulse check --fix --skip-generate", "git add -A",
 				"go tool impulse handoff --staged --skip-generate",
 			},
-			wantErr: "step 3 (access v0.2.0, ccc/resource v0.3.0, ccc/impulse v0.4.0) left the check failing; its changes are staged and the brief is at .impulse-handoff.md",
+			wantErr: "step 3 (access v0.2.0, ccc/resource v0.3.0, ccc/impulse " + stagedLater(t) + ") left the check failing; its changes are staged and the brief is at .impulse-handoff.md",
 		},
 		{
 			name:    "a failing check on the tool-only move; the brief lists the staged paths",
@@ -582,7 +600,7 @@ func TestUpgrade(t *testing.T) {
 			name:      "a pinned check that could not run, by a release with handoff --staged, stops the step before the handoff: its exit status is not a failing check's",
 			goMod:     upgradeGoMod("v0.1.0", "v0.1.0", "v0.1.0"),
 			marker:    "new\n",
-			steps:     stagedLedger(),
+			steps:     stagedLedger(t),
 			running:   check.Build{Version: "(devel)"},
 			fail:      "go tool impulse check",
 			wantCalls: []string{"go get github.com/cccteam/ccc/resource@v0.2.0", "go get -tool github.com/cccteam/ccc/impulse@" + handoffStagedSince, "go mod tidy", "go tool impulse render", "go generate ./...", "go tool impulse check --fix"},
@@ -592,7 +610,7 @@ func TestUpgrade(t *testing.T) {
 			name:    "a pinned handoff that could not run stops the step",
 			goMod:   upgradeGoMod("v0.1.0", "v0.1.0", "v0.1.0"),
 			marker:  "new\n",
-			steps:   stagedLedger(),
+			steps:   stagedLedger(t),
 			running: check.Build{Version: "(devel)"},
 			fail:    "go tool impulse handoff",
 			report:  failingReport,
@@ -624,7 +642,7 @@ func TestUpgrade(t *testing.T) {
 			if report == "" {
 				report = cleanReport
 			}
-			exec := &upgradeExec{root: root, steps: tt.steps, drags: upgradeDrags(), report: report, dirty: tt.dirty, fail: tt.fail}
+			exec := &upgradeExec{root: root, steps: tt.steps, drags: upgradeDrags(t), report: report, dirty: tt.dirty, fail: tt.fail}
 			var out, errOut strings.Builder
 			u := &upgrader{
 				exec: exec, steps: tt.steps, running: tt.running, verify: tt.verify,
@@ -699,7 +717,7 @@ func TestHandoffStaged(t *testing.T) {
 		want   bool
 	}{
 		{name: "the release that added the flag", pinned: handoffStagedSince, want: true},
-		{name: "a later release", pinned: "v0.4.0", want: true},
+		{name: "a later release", pinned: stagedLater(t), want: true},
 		{name: "the release before it", pinned: "v0.3.1", want: false},
 		{name: "a commit between, as a pseudo-version", pinned: semver.Canonical(handoffStagedSince) + "-0.20261010000000-abcdef123456", want: false},
 		{name: "no pin", pinned: "", want: false},
@@ -742,7 +760,7 @@ func TestToolPinDrag(t *testing.T) {
 			for module, version := range tt.from {
 				pins[module] = version
 			}
-			for module, version := range upgradeDrags()[tt.release] {
+			for module, version := range upgradeDrags(t)[tt.release] {
 				if have, ok := pins[module]; !ok || semver.Compare(have, version) < 0 {
 					pins[module] = version
 				}
