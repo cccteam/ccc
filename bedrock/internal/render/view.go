@@ -527,7 +527,7 @@ const (
 // GOTOOLCHAIN=local, so a newer go line fails them rather than downloading a toolchain,
 // and the fix is a new digest here (a test holds the two together).
 const (
-	goImage   = "cgr.dev/chainguard/go@sha256:75c0c2c118e36951cb63da108fa795f4724bde0c36ae84c9c17a4e08255ad324"
+	goImage   = "cgr.dev/chainguard/go@sha256:2c20827746d752c1f18989847956637a0dc979c42507f4059e1d9559ee7733af"
 	goImageGo = "1.27.2"
 )
 
