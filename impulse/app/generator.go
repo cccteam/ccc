@@ -3,9 +3,11 @@ package app
 import (
 	"fmt"
 	"go/ast"
+	"go/constant"
 	"go/parser"
 	"go/token"
 	"path"
+	"slices"
 	"strconv"
 
 	"github.com/go-playground/errors/v5"
@@ -68,14 +70,24 @@ const (
 	// ArgIdent is a qualified identifier of the generation package (generation.Password);
 	// Str holds the identifier.
 	ArgIdent
+	// ArgInt is a whole number: an integer literal, or a constant expression of integer
+	// literals (2<<20); Int holds the value.
+	ArgInt
+	// ArgConstructor is a call to one of the generation package's value constructors, a
+	// request log word or a trace setting, with its MinSeverity floor when one is chained;
+	// Str holds the call without the package qualifier, as
+	// LogSampled(0.1).MinSeverity(logging.Warning).
+	ArgConstructor
 )
 
 // Arg is one literal argument of an option call.
 type Arg struct {
 	Kind ArgKind
-	// Str holds a string literal's value or, for ArgIdent, the identifier.
+	// Str holds a string literal's value, for ArgIdent the identifier, and for
+	// ArgConstructor the call.
 	Str  string
 	Bool bool
+	Int  int64
 	List []string
 	// Map holds string- and bool-valued maps; bool values are rendered as "true"/"false".
 	Map map[string]string
@@ -198,6 +210,42 @@ func (g *Generator) TypescriptTargets() []TSTarget {
 	return targets
 }
 
+// RequestLog is the WithRequestLog word, the application's request log default, as the
+// program declares it (LogOnEvent().MinSeverity(logging.Warning)), or empty when the
+// program declares none and every request's entry is written.
+func (g *Generator) RequestLog() string {
+	c, ok := g.Option(optWithRequestLog)
+	if !ok || len(c.Args) != 1 || c.Args[0].Kind != ArgConstructor {
+		return ""
+	}
+
+	return c.Args[0].Str
+}
+
+// MountedRoutes is one WithMountedRoutes declaration: a path prefix the application
+// mounts routes under by hand, with the request log word and the trace setting declared
+// for it, as the program writes them (LogOnEvent(), TracesOff()).
+type MountedRoutes struct {
+	Prefix     string
+	RequestLog string
+	Traces     string
+	// Pos is the position of the WithMountedRoutes call.
+	Pos string
+}
+
+// MountedRoutes returns every WithMountedRoutes declaration, in order.
+func (g *Generator) MountedRoutes() []MountedRoutes {
+	var mounted []MountedRoutes
+	for _, c := range g.OptionsNamed(optWithMountedRoutes) {
+		if len(c.Args) != 3 || c.Args[0].Kind != ArgString || c.Args[1].Kind != ArgConstructor || c.Args[2].Kind != ArgConstructor {
+			continue
+		}
+		mounted = append(mounted, MountedRoutes{Prefix: c.Args[0].Str, RequestLog: c.Args[1].Str, Traces: c.Args[2].Str, Pos: c.Pos})
+	}
+
+	return mounted
+}
+
 // ParseGenerator reads one Go source file and returns the generator program it holds, or
 // nil when the file makes no generation.NewResourceGenerator call. Discover reads the
 // programs in the tree; this reads one from elsewhere, such as an earlier version of the
@@ -225,7 +273,7 @@ func parseGenerator(rel string, src []byte) (*Generator, error) {
 		return nil, nil
 	}
 
-	r := &reader{fset: fset, pkg: pkgName, g: &Generator{File: rel}}
+	r := &reader{fset: fset, pkg: pkgName, logging: localImportName(f, loggingImportPath), g: &Generator{File: rel}}
 	r.readProgram(call)
 
 	return r.g, nil
@@ -251,8 +299,12 @@ func isQualified(fun ast.Expr, pkg, name string) bool {
 // reader walks one NewResourceGenerator call and fills a Generator.
 type reader struct {
 	fset *token.FileSet
-	pkg  string
-	g    *Generator
+	// pkg is the local name the file imports the generation package under.
+	pkg string
+	// logging is the local name the file imports the logging library under, whose
+	// severity constants a MinSeverity floor names; empty when the file does not import it.
+	logging string
+	g       *Generator
 }
 
 func (r *reader) pos(n ast.Node) string {
@@ -384,6 +436,17 @@ func (r *reader) readArg(expr ast.Expr, option string, expect paramKind) Arg {
 
 			return Arg{Kind: ArgOther, Text: exprText(expr)}
 		}
+	case paramInt:
+		// A whole number is a literal or a constant expression of literals; anything else
+		// is read below, so a variable is reported as not a literal and a string literal
+		// against the kind expected.
+		if v, ok := intConst(expr); ok {
+			return Arg{Kind: ArgInt, Int: v}
+		}
+	case paramRequestLog:
+		return r.readConstructor(expr, option, expect, requestLogConstructors, true)
+	case paramTraces:
+		return r.readConstructor(expr, option, expect, tracesConstructors, false)
 	case paramString, paramBool, paramStringMap, paramBoolMap, paramAny, paramNone:
 	}
 
@@ -398,6 +461,106 @@ func (r *reader) readArg(expr ast.Expr, option string, expect paramKind) Arg {
 	}
 
 	return arg
+}
+
+// readConstructor reads a declared value, a request log word or a trace setting: a call
+// to one of the constructors, written as generation.<Name>(...), chained with a
+// MinSeverity floor when floors are allowed. Anything else is reported against the kind
+// expected, and a constructor with the wrong arguments by what is wrong with them.
+func (r *reader) readConstructor(expr ast.Expr, option string, expect paramKind, constructors map[string]constructorSpec, floors bool) Arg {
+	refused := Arg{Kind: ArgOther, Text: exprText(expr)}
+	call, floor := splitFloor(expr)
+	ce, isCall := call.(*ast.CallExpr)
+	var sel *ast.SelectorExpr
+	if isCall {
+		sel, isCall = ce.Fun.(*ast.SelectorExpr)
+	}
+	var spec constructorSpec
+	known := false
+	if isCall && isQualified(ce.Fun, r.pkg, sel.Sel.Name) {
+		spec, known = constructors[sel.Sel.Name]
+	}
+	if !known || (floor != nil && !floors) {
+		r.problemf(expr, "%s argument %s should be a %s", option, exprText(expr), expect)
+
+		return refused
+	}
+	text, ok := r.constructorArgs(ce, sel.Sel.Name, spec)
+	if !ok {
+		return refused
+	}
+	if floor != nil {
+		severity, ok := r.floor(floor)
+		if !ok {
+			return refused
+		}
+		text += "." + minSeverityMethod + "(" + severity + ")"
+	}
+
+	return Arg{Kind: ArgConstructor, Str: text}
+}
+
+// splitFloor separates a MinSeverity call chained onto a constructor from the
+// constructor: generation.LogOnEvent().MinSeverity(logging.Warning) returns the
+// LogOnEvent call and the MinSeverity call; anything else returns itself and nil.
+func splitFloor(expr ast.Expr) (constructor ast.Expr, floor *ast.CallExpr) {
+	ce, ok := expr.(*ast.CallExpr)
+	if !ok {
+		return expr, nil
+	}
+	sel, ok := ce.Fun.(*ast.SelectorExpr)
+	if !ok || sel.Sel.Name != minSeverityMethod {
+		return expr, nil
+	}
+	if _, chained := sel.X.(*ast.CallExpr); !chained {
+		return expr, nil
+	}
+
+	return sel.X, ce
+}
+
+// constructorArgs checks a constructor's arguments, the one number it takes or none,
+// and renders the call as the program records it: LogSampled(0.1), spelled the shortest
+// way that reads back exactly.
+func (r *reader) constructorArgs(ce *ast.CallExpr, name string, spec constructorSpec) (string, bool) {
+	want := 0
+	if spec.number != "" {
+		want = 1
+	}
+	if len(ce.Args) != want {
+		r.problemf(ce, "%s takes %d argument(s), found %d", name, want, len(ce.Args))
+
+		return "", false
+	}
+	if want == 0 {
+		return name + "()", true
+	}
+	f, ok := floatLit(ce.Args[0])
+	if !ok {
+		r.problemf(ce.Args[0], "%s argument %s should be a %s literal (0.1)", name, exprText(ce.Args[0]), spec.number)
+
+		return "", false
+	}
+
+	return name + "(" + strconv.FormatFloat(f, 'g', -1, 64) + ")", true
+}
+
+// floor reads the severity a MinSeverity floor names: one of the logging library's
+// constants, written through the name the file imports the library under, recorded as
+// logging.<Severity>.
+func (r *reader) floor(call *ast.CallExpr) (string, bool) {
+	if len(call.Args) != 1 {
+		r.problemf(call, "%s takes 1 argument(s), found %d", minSeverityMethod, len(call.Args))
+
+		return "", false
+	}
+	arg := call.Args[0]
+	if sel, ok := arg.(*ast.SelectorExpr); ok && r.logging != "" && isQualified(arg, r.logging, sel.Sel.Name) && slices.Contains(severityIdents, sel.Sel.Name) {
+		return loggingPackageName + "." + sel.Sel.Name, true
+	}
+	r.problemf(arg, "%s argument %s should be a logging.<Severity> constant (%s)", minSeverityMethod, exprText(arg), severityList)
+
+	return "", false
 }
 
 // literalArg interprets a literal expression.
@@ -444,6 +607,75 @@ func boolLit(expr ast.Expr) (value, ok bool) {
 		return false, true
 	default:
 		return false, false
+	}
+}
+
+// floatLit reads a number literal, whole or fractional (1, 0.1).
+func floatLit(expr ast.Expr) (float64, bool) {
+	lit, ok := expr.(*ast.BasicLit)
+	if !ok || (lit.Kind != token.FLOAT && lit.Kind != token.INT) {
+		return 0, false
+	}
+	f, err := strconv.ParseFloat(lit.Value, 64)
+	if err != nil {
+		return 0, false
+	}
+
+	return f, true
+}
+
+// maxShift bounds the shift count a constant expression may use, so a mistyped one
+// cannot ask for an enormous value.
+const maxShift = 63
+
+// intConst evaluates a whole number written as an integer literal or a constant
+// expression of integer literals over +, -, * and the shifts (2<<20), as the generation
+// package's WithBodyLimit is written. A named constant, a division, or a value outside
+// int64 is not read.
+func intConst(expr ast.Expr) (int64, bool) {
+	v, ok := intValue(expr)
+	if !ok {
+		return 0, false
+	}
+
+	return constant.Int64Val(v)
+}
+
+func intValue(expr ast.Expr) (constant.Value, bool) {
+	switch e := expr.(type) {
+	case *ast.BasicLit:
+		if e.Kind != token.INT {
+			return nil, false
+		}
+		v := constant.MakeFromLiteral(e.Value, token.INT, 0)
+
+		return v, v.Kind() == constant.Int
+	case *ast.ParenExpr:
+		return intValue(e.X)
+	case *ast.BinaryExpr:
+		x, ok := intValue(e.X)
+		if !ok {
+			return nil, false
+		}
+		y, ok := intValue(e.Y)
+		if !ok {
+			return nil, false
+		}
+		switch e.Op {
+		case token.ADD, token.SUB, token.MUL:
+			return constant.BinaryOp(x, e.Op, y), true
+		case token.SHL, token.SHR:
+			s, exact := constant.Uint64Val(y)
+			if !exact || s > maxShift {
+				return nil, false
+			}
+
+			return constant.Shift(x, e.Op, uint(s)), true
+		default:
+			return nil, false
+		}
+	default:
+		return nil, false
 	}
 }
 
@@ -516,6 +748,12 @@ func exprText(expr ast.Expr) string {
 		return exprText(e.X) + "." + e.Sel.Name
 	case *ast.CallExpr:
 		return exprText(e.Fun) + "(...)"
+	case *ast.BinaryExpr:
+		return exprText(e.X) + e.Op.String() + exprText(e.Y)
+	case *ast.UnaryExpr:
+		return e.Op.String() + exprText(e.X)
+	case *ast.ParenExpr:
+		return "(" + exprText(e.X) + ")"
 	case *ast.CompositeLit:
 		if e.Type != nil {
 			return exprText(e.Type) + "{...}"

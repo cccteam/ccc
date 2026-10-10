@@ -41,6 +41,16 @@ const (
 	// paramRelease is a release: a semantic version string literal, or the generation
 	// package's ThisRelease identifier for the server's own release.
 	paramRelease
+	// paramInt is a whole number: an integer literal, or a constant expression of integer
+	// literals (2<<20).
+	paramInt
+	// paramRequestLog is a request log word: a call to one of the generation package's
+	// RequestLog constructors (generation.LogOnEvent()), with its MinSeverity floor when
+	// one is chained.
+	paramRequestLog
+	// paramTraces is a trace setting: a call to one of the generation package's Traces
+	// constructors (generation.TracesOff()).
+	paramTraces
 )
 
 // ThisReleaseIdent is the generation package's identifier naming the server's own
@@ -67,6 +77,12 @@ func (k paramKind) String() string {
 		return "generation.<Flavor> identifier (Password, OIDCGoogle, or OIDCAzure)"
 	case paramRelease:
 		return "release string literal (\"1.5.0\") or generation." + ThisReleaseIdent
+	case paramInt:
+		return "whole number literal (4194304) or constant expression (2<<20)"
+	case paramRequestLog:
+		return "generation.<RequestLog> call (LogAlways(), LogOnEvent(), LogSampled(fraction) or LogNever(), with .MinSeverity(logging.<Severity>) chained when wanted)"
+	case paramTraces:
+		return "generation.<Traces> call (TracesFollowFrontEnd(), TracesCapped(rate) or TracesOff())"
 	case paramAny, paramNone:
 		return "argument"
 	default:
@@ -92,6 +108,10 @@ func (k paramKind) argKind() ArgKind {
 		return ArgIdent
 	case paramRelease:
 		return ArgString
+	case paramInt:
+		return ArgInt
+	case paramRequestLog, paramTraces:
+		return ArgConstructor
 	case paramAny, paramNone:
 		return ArgOther
 	default:
@@ -105,7 +125,7 @@ func (k paramKind) optionKind() optionKind {
 		return kindTSOption
 	case paramOutletOption:
 		return kindOutletOption
-	case paramNone, paramAny, paramString, paramBool, paramStringMap, paramBoolMap, paramComposite, paramFlavor, paramRelease:
+	case paramNone, paramAny, paramString, paramBool, paramStringMap, paramBoolMap, paramComposite, paramFlavor, paramRelease, paramInt, paramRequestLog, paramTraces:
 		return 0
 	default:
 		return 0
@@ -124,6 +144,10 @@ const (
 	optAPIKey             = "APIKey"
 	optWebApp             = "WebApp"
 	optOldestAnswered     = "OldestAnswered"
+	optWithRequestLog     = "WithRequestLog"
+	optWithMountedRoutes  = "WithMountedRoutes"
+	optOutletRequestLog   = "OutletRequestLog"
+	optOutletTraces       = "OutletTraces"
 )
 
 // The generation package's AuthFlavor identifiers, as a program writes them
@@ -153,6 +177,50 @@ func FlavorIdent(flavor string) string {
 
 	return ""
 }
+
+// constructorSpec describes one constructor of a declared value, a request log word or a
+// trace setting: the name of the number it takes, empty when it takes none.
+type constructorSpec struct {
+	number string
+}
+
+// requestLogConstructors are the generation package's RequestLog constructors, as a
+// program writes them (generation.LogSampled(0.1)): the words WithRequestLog,
+// OutletRequestLog and WithMountedRoutes take. They mirror
+// github.com/cccteam/ccc/resource/generation (requestlog.go), as knownOptions mirrors its
+// options.
+var requestLogConstructors = map[string]constructorSpec{
+	"LogAlways":  {},
+	"LogOnEvent": {},
+	"LogSampled": {number: "fraction"},
+	"LogNever":   {},
+}
+
+// tracesConstructors are the generation package's Traces constructors: the settings
+// OutletTraces and WithMountedRoutes take.
+var tracesConstructors = map[string]constructorSpec{
+	"TracesFollowFrontEnd": {},
+	"TracesCapped":         {number: "rate"},
+	"TracesOff":            {},
+}
+
+// minSeverityMethod is the RequestLog method that chains a severity floor onto a word
+// (generation.LogOnEvent().MinSeverity(logging.Warning)). A trace setting chains nothing.
+const minSeverityMethod = "MinSeverity"
+
+// loggingImportPath is the import path of the logging library whose severity constants
+// a floor names; loggingPackageName is the qualifier a recorded floor is written with,
+// whatever local name a program imports the library under.
+const (
+	loggingImportPath  = "cloud.google.com/go/logging"
+	loggingPackageName = "logging"
+)
+
+// severityIdents are the logging library's severity constants, as a program writes them
+// (logging.Warning), lowest first; severityList names them in a finding.
+var severityIdents = []string{"Default", "Debug", "Info", "Notice", "Warning", "Error", "Critical", "Alert", "Emergency"}
+
+const severityList = "Default, Debug, Info, Notice, Warning, Error, Critical, Alert or Emergency"
 
 // retiredOptions are the generation option constructors an earlier release knew and the
 // framework has since removed, each with where its declaration went. A program still
@@ -193,12 +261,17 @@ var knownOptions = map[string]optionSpec{
 	"WithRPC":                    {kind: kindResourceOption, params: []paramKind{paramString}},
 	"WithTypes":                  {kind: kindResourceOption, params: []paramKind{paramString}},
 	optWithImports:               {kind: kindResourceOption, variadic: paramString},
+	"WithBodyLimit":              {kind: kindResourceOption, params: []paramKind{paramInt}},
+	optWithRequestLog:            {kind: kindResourceOption, params: []paramKind{paramRequestLog}},
+	optWithMountedRoutes:         {kind: kindResourceOption, params: []paramKind{paramString, paramRequestLog, paramTraces}},
 
-	optServesSessions: {kind: kindOutletOption},
-	optAuth:           {kind: kindOutletOption, params: []paramKind{paramString, paramFlavor}},
-	optAPIKey:         {kind: kindOutletOption},
-	optWebApp:         {kind: kindOutletOption, params: []paramKind{paramString}},
-	optOldestAnswered: {kind: kindOutletOption, params: []paramKind{paramRelease}},
+	optServesSessions:   {kind: kindOutletOption},
+	optAuth:             {kind: kindOutletOption, params: []paramKind{paramString, paramFlavor}},
+	optAPIKey:           {kind: kindOutletOption},
+	optWebApp:           {kind: kindOutletOption, params: []paramKind{paramString}},
+	optOldestAnswered:   {kind: kindOutletOption, params: []paramKind{paramRelease}},
+	optOutletRequestLog: {kind: kindOutletOption, params: []paramKind{paramRequestLog}},
+	optOutletTraces:     {kind: kindOutletOption, params: []paramKind{paramTraces}},
 
 	"ForOutlet":           {kind: kindTSOption, params: []paramKind{paramString}},
 	"GeneratePermissions": {kind: kindTSOption},

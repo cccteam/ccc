@@ -98,6 +98,43 @@ func run() {
 				Configs: map[string]string{},
 			},
 		},
+		{
+			// The request log words, the trace settings and the body limit render as the
+			// reader records them, so a program declaring them compares by what it declares.
+			name: "a source declaring the request log words and a body limit",
+			read: func(rel string) ([]byte, error) {
+				if rel != flatProgram {
+					return nil, os.ErrNotExist
+				}
+
+				return []byte(`package main
+
+import (
+	"cloud.google.com/go/logging"
+	"github.com/cccteam/ccc/resource/generation"
+)
+
+func run() {
+	generation.NewResourceGenerator(nil, "pkg/resources", []string{"file://schema/migrations"},
+		generation.WithBodyLimit(2<<20),
+		generation.WithRequestLog(generation.LogSampled(0.1).MinSeverity(logging.Warning)),
+		generation.WithMountedRoutes("/beacons/", generation.LogOnEvent(), generation.TracesOff()),
+		generation.WithRouterOutlet("machines", "machines", generation.OutletRequestLog(generation.LogNever()), generation.OutletTraces(generation.TracesCapped(0.25))),
+	)
+}
+`), nil
+			},
+			want: Snapshot{
+				Programs: map[string][]string{flatProgram: {
+					`resources "pkg/resources"`, `migrations ["file://schema/migrations"]`,
+					`WithBodyLimit(2097152)`,
+					`WithRequestLog(LogSampled(0.1).MinSeverity(logging.Warning))`,
+					`WithMountedRoutes("/beacons/", LogOnEvent(), TracesOff())`,
+					`WithRouterOutlet("machines", "machines", OutletRequestLog(LogNever()), OutletTraces(TracesCapped(0.25)))`,
+				}},
+				Configs: map[string]string{},
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

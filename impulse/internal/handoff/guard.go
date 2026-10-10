@@ -229,7 +229,9 @@ func renderArg(a *app.Arg) string {
 		}
 
 		return "{" + strings.Join(pairs, ", ") + "}"
-	case app.ArgIdent:
+	case app.ArgInt:
+		return strconv.FormatInt(a.Int, 10)
+	case app.ArgIdent, app.ArgConstructor:
 		return a.Str
 	case app.ArgCall:
 		return renderCall(a.Call)

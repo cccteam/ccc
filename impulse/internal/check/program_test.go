@@ -50,6 +50,40 @@ func main() {
 	}
 }
 `
+	// wordsDeclaration is a declaring package whose program declares every request log
+	// word and trace setting the generation package constructs, where each may be
+	// declared: the application default, the default outlet's and an additional
+	// outlet's, a prefix mounted by hand, with a severity floor chained on one word, and
+	// a body limit as a constant expression.
+	wordsDeclaration = `package generate
+
+import (
+	"context"
+
+	"cloud.google.com/go/logging"
+	"github.com/cccteam/ccc/resource/generation"
+)
+
+func NewGenerator(ctx context.Context) (generation.Generator, error) {
+	return generation.NewResourceGenerator(ctx, "pkg/resources", []string{"file://schema/migrations"},
+		generation.GenerateHandlers("app"),
+		generation.GenerateRouter(),
+		generation.GenerateRoutes("pkg/router", "api",
+			generation.Auth("example.com/harbor/pkg/auth/staff", generation.Password),
+			generation.OutletRequestLog(generation.LogOnEvent().MinSeverity(logging.Warning)),
+			generation.OutletTraces(generation.TracesCapped(0.5)),
+		),
+		generation.WithRouterOutlet("machines", "machines",
+			generation.APIKey(),
+			generation.OutletRequestLog(generation.LogNever()),
+			generation.OutletTraces(generation.TracesOff()),
+		),
+		generation.WithRequestLog(generation.LogAlways()),
+		generation.WithMountedRoutes("/beacons/", generation.LogSampled(0.1), generation.TracesFollowFrontEnd()),
+		generation.WithBodyLimit(2<<20),
+	)
+}
+`
 	// declaringRunner is the runner of a program declared in a package of its own
 	// (cmd/generate), the layout an application takes when tests run the declaration
 	// in-process.
@@ -106,6 +140,14 @@ func TestGeneratorProgram(t *testing.T) {
 			name: "a declaring package whose runner reads the warnings",
 			files: map[string]string{
 				"cmd/generate/generator.go":              declaredProgram("pkg/resources", `generation.GenerateHandlers("app"),`, `generation.GenerateRoutes("pkg/router", "api"),`),
+				"cmd/generate/resourcegenerator/main.go": declaringRunner,
+			},
+			wantStatus: Pass, wantSummary: "1 generator program(s) read completely",
+		},
+		{
+			name: "a program declaring every request log word and trace setting reads completely",
+			files: map[string]string{
+				"cmd/generate/generator.go":              wordsDeclaration,
 				"cmd/generate/resourcegenerator/main.go": declaringRunner,
 			},
 			wantStatus: Pass, wantSummary: "1 generator program(s) read completely",

@@ -33,7 +33,9 @@ func (c outletShape) Run(_ context.Context, env *Env) Result {
 	var details []string
 	served := 0
 	for i := range p.Sites {
-		for _, o := range p.Sites[i].AllOutlets() {
+		outlets := p.Sites[i].AllOutlets()
+		for j := range outlets {
+			o := &outlets[j]
 			if o.WebApp == "" || !o.ServesSessions {
 				continue
 			}

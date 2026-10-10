@@ -206,8 +206,9 @@ func outletSurfaces(site *app.Site) []outletSurface {
 		Mount:   "generatedRoutes",
 		Default: true,
 	})
-	for _, o := range site.Outlets {
-		surfaces = append(surfaces, outletSurface{Outlet: o, Mount: "generated" + pascal(o.Name) + "Routes"})
+	for i := range site.Outlets {
+		o := &site.Outlets[i]
+		surfaces = append(surfaces, outletSurface{Outlet: *o, Mount: "generated" + pascal(o.Name) + "Routes"})
 	}
 
 	return surfaces

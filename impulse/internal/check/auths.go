@@ -108,7 +108,8 @@ func (authsWired) packageFindings(a *app.App, profile app.Profile, p *app.AuthPa
 		details = append(details, fmt.Sprintf("%s: no outlet declares Auth(%q, ...) and no surface takes *%s.Auth; nothing binds to the %s auth, so its people can sign in nowhere", p.Dir, p.Path, p.Name, p.Name))
 	}
 	if constructed := flavorOf(a, p); constructed != "" {
-		for _, o := range declared {
+		for i := range declared {
+			o := &declared[i]
 			if o.Auth.LoginFlavor() != constructed {
 				details = append(details, fmt.Sprintf("%s: outlet %s binds to the %s auth as %s, but %s constructs a %s authenticator; the generated router would mount the wrong login routes", o.Pos, o.Name, p.Name, o.Auth.Flavor, p.Dir, constructed))
 			}
@@ -317,9 +318,11 @@ func cookieCollisions(auths []app.Auth) []string {
 func outletBindings(profile app.Profile, importPath string) []app.Outlet {
 	var outlets []app.Outlet
 	for i := range profile.Sites {
-		for _, o := range profile.Sites[i].AllOutlets() {
+		all := profile.Sites[i].AllOutlets()
+		for j := range all {
+			o := &all[j]
 			if o.Auth != nil && o.Auth.ImportPath == importPath {
-				outlets = append(outlets, o)
+				outlets = append(outlets, *o)
 			}
 		}
 	}
@@ -337,7 +340,9 @@ func unknownAuthBindings(a *app.App, profile app.Profile) []string {
 	}
 	var details []string
 	for i := range profile.Sites {
-		for _, o := range profile.Sites[i].AllOutlets() {
+		all := profile.Sites[i].AllOutlets()
+		for j := range all {
+			o := &all[j]
 			if o.Auth != nil && !known[o.Auth.ImportPath] {
 				details = append(details, fmt.Sprintf("%s: outlet %s binds to Auth(%q, ...), which is not one of the application's auth packages (%s)", o.Pos, o.Name, o.Auth.ImportPath, strings.Join(slices.Sorted(maps.Keys(known)), ", ")))
 			}

@@ -51,8 +51,8 @@ func (r RemoveOutlet) declaring(a *app.App) []app.Site {
 	var sites []app.Site
 	p := a.Profile()
 	for i := range p.Sites {
-		for _, o := range p.Sites[i].Outlets {
-			if o.Name == r.Name {
+		for j := range p.Sites[i].Outlets {
+			if p.Sites[i].Outlets[j].Name == r.Name {
 				sites = append(sites, p.Sites[i])
 
 				break
