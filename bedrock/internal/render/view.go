@@ -192,7 +192,7 @@ type view struct {
 	// CodeDefaultsCell lists them for the README.
 	CodeDefaultsCell string
 	// SiteImageVars names the site-level variables the image sets to where it put a
-	// bundle; the job variable, which the image also sets, is told on its own.
+	// bundle.
 	SiteImageVars string
 	// MigrateLevels spells the levels the migration constructs: "core and data".
 	MigrateLevels string
