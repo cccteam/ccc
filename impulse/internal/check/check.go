@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"regexp"
 	"strings"
 
 	"github.com/go-playground/errors/v5"
@@ -234,6 +235,34 @@ func Report(w io.Writer, results []Result) {
 			fmt.Fprintf(w, "      %s\n", d)
 		}
 	}
+}
+
+// reportLine matches a line Report writes for a result: the status, two spaces, the name,
+// its padding, and the summary.
+var reportLine = regexp.MustCompile(`^(PASS|FAIL|WARN|SKIP) {2}(\S+) *(.*)$`)
+
+// reportStatuses are the statuses by the word Report writes for them.
+var reportStatuses = map[string]Status{Pass.String(): Pass, Fail.String(): Fail, Warn.String(): Warn, Skip.String(): Skip}
+
+// ParseReport reads results back from what Report wrote, for a check run as a command (go
+// tool impulse check, by the impulse an application pins) whose report is all the caller
+// has: a result line opens a result, the indented lines under it are its details, and any
+// other line (a progress note the command wrote beside the report) is passed over.
+func ParseReport(out []byte) []Result {
+	var results []Result
+	for line := range strings.Lines(string(out)) {
+		line = strings.TrimRight(line, "\r\n")
+		if m := reportLine.FindStringSubmatch(line); m != nil {
+			results = append(results, Result{Name: m[2], Status: reportStatuses[m[1]], Summary: strings.TrimSpace(m[3])})
+
+			continue
+		}
+		if detail, ok := strings.CutPrefix(line, "      "); ok && len(results) > 0 {
+			results[len(results)-1].Details = append(results[len(results)-1].Details, detail)
+		}
+	}
+
+	return results
 }
 
 // outputLines trims command output into detail lines, keeping the tail when it is long.

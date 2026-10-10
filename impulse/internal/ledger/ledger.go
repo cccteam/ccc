@@ -5,9 +5,13 @@
 // note that none is needed. impulse upgrade walks the ledger step by step, reading where
 // the application stands from the framework pins in its go.mod and committing each step as
 // it goes; the pin is the checkpoint, and nothing else records progress. The impulse tool
-// pin is not a step's: the walk moves it to the running impulse before the first step, so
-// an impulse release that changes nothing an application builds against needs no entry
-// here, and no entry names an impulse version.
+// pin moves with its step: a step names the impulse release that added it, the walk moves
+// the pin to that release after the step's framework pins, and the step is rendered and
+// checked by it. The tool directive puts impulse's own requirements into the application's
+// build list, so a pin moved ahead of a step would drag the framework pins past the steps
+// between and the walk would read a position it never reached. A release that changes
+// nothing an application builds against adds no step, and the walk moves the pin to it
+// last, by itself.
 //
 // A step is appended when the skeleton's pins move or a recipe is needed, and never
 // otherwise; the ledger's test holds the last step's pins to the skeleton's, so a pin bump
@@ -55,6 +59,14 @@ type Step struct {
 	// release pins check refuses it, and this ledger's validation holds the mark to the
 	// pins both ways.
 	Pending bool
+	// Impulse is the impulse release that added the step, "v0.2.0": the walk moves the
+	// tool pin to it after the step's framework pins and renders and checks the step with
+	// it (go tool impulse), so what the tool directive puts into the application's build
+	// list never runs past the step's set. The release's own pull request adds the step,
+	// so a pending step names the release that pull request will take, as its pins name
+	// the pushed commits. "" on the steps recorded before the pin moved with its step;
+	// once a step names a release, every later step does.
+	Impulse string
 }
 
 // Recipe is one code change a step needs: a detector that names what in the application
@@ -106,6 +118,7 @@ var Steps = []Step{
 		`),
 		Recipes: []Recipe{recipe.CloudDriver{}},
 		Note:    "the cloud driver builds the logs and traces, and the generated router installs tracing and the request logger",
+		Impulse: release("v0.2.0"),
 	},
 	{
 		Pins: pins(`
@@ -120,7 +133,8 @@ var Steps = []Step{
 			logger v0.1.27
 			session v0.12.2
 		`),
-		Note: "request bodies are bounded in one place: the generated router applies the application's limit (WithBodyLimit, 4 MiB when unset) and an RPC method may declare its own with @rpc(max:); regeneration carries it, no code change is needed",
+		Note:    "request bodies are bounded in one place: the generated router applies the application's limit (WithBodyLimit, 4 MiB when unset) and an RPC method may declare its own with @rpc(max:); regeneration carries it, no code change is needed",
+		Impulse: release("v0.3.0"),
 	},
 }
 
@@ -142,6 +156,61 @@ func validatePending(s *Step, at string) error {
 	}
 
 	return nil
+}
+
+// validateImpulse holds a step's Impulse to a release: "" or a canonical version with no
+// pre-release or build part. A pushed commit's pseudo-version is refused: a pending step
+// names the release its pull request will take, not the commit its pins name.
+func validateImpulse(s *Step, at string) error {
+	if s.Impulse == "" {
+		return nil
+	}
+	if !isRelease(s.Impulse) {
+		return errors.Newf("%s names impulse %q, which is not a release: a step names the tagged version of the impulse that added it (v0.2.0), or the version its pull request will take while it is pending", at, s.Impulse)
+	}
+
+	return nil
+}
+
+// validateOrder holds a step to the one before it: no pin moving backward, a pin moved
+// or a recipe named, and the release it names at or after the step before's, named
+// whenever the step before names one.
+func validateOrder(s, prev *Step, at string, i int) error {
+	for _, name := range s.PinNames() {
+		if have, ok := prev.Pins[name]; ok && semver.Compare(s.Pins[name], have) < 0 {
+			return errors.Newf("%s pins %s at %s, behind step %d's %s; the ledger walks forward only", at, name, s.Pins[name], i, have)
+		}
+	}
+	if len(s.Moves(prev.Pins)) == 0 && len(s.Recipes) == 0 {
+		return errors.Newf("%s moves no pin and names no recipe: it is not a step", at)
+	}
+	switch {
+	case prev.Impulse == "":
+		return nil
+	case s.Impulse == "":
+		return errors.Newf("%s names no impulse release and step %d names %s: once a step names the release that added it, every later step does", at, i, prev.Impulse)
+	case semver.Compare(s.Impulse, prev.Impulse) < 0:
+		return errors.Newf("%s names impulse %s, behind step %d's %s; the ledger walks forward only", at, s.Impulse, i, prev.Impulse)
+	}
+
+	return nil
+}
+
+// isRelease reports whether the version is a release: canonical, with no pre-release or
+// build part, so a pushed commit's pseudo-version is not one.
+func isRelease(version string) bool {
+	return semver.IsValid(version) && semver.Canonical(version) == version && semver.Prerelease(version) == ""
+}
+
+// release reads a step's impulse release, "v0.2.0". As with pins, the ledger is a table
+// the build checks, so a malformed version stops the program at start rather than
+// reading as a release.
+func release(version string) string {
+	if !isRelease(version) {
+		panic(fmt.Sprintf("ledger: malformed impulse release %q", version))
+	}
+
+	return version
 }
 
 // pins reads a step's pin set, one "ccc/resource v0.12.0" line per module, into the map
@@ -203,6 +272,13 @@ func (s *Step) Moves(from map[string]string) []string {
 	return moves
 }
 
+// MovesTool reports whether the step moves the impulse tool pin from the pin given: the
+// step names the release that added it, and the pin is missing or behind it. A pin at or
+// beyond the release stays, as a framework pin bumped by hand ahead of its step does.
+func (s *Step) MovesTool(pin string) bool {
+	return s.Impulse != "" && (pin == "" || semver.Compare(pin, s.Impulse) < 0)
+}
+
 // AppPins reads the framework pins from an application's go.mod: every required module
 // under the framework prefix but impulse itself, whose pin is the tool's.
 func AppPins(mod *modfile.File) map[string]string {
@@ -252,10 +328,11 @@ func Names(steps []Step) []string {
 }
 
 // Validate checks the ledger's shape: at least one step, each with a pin set of framework
-// modules at valid versions (impulse's own pin is the tool's, not a step's) and a note,
-// no pin moving backward from the step before, every step after the first moving a pin or
-// naming a recipe, and no recipe named twice in one step. The ledger's test holds Steps to
-// it.
+// modules at valid versions (impulse's own pin is not among them: a step names the release
+// that added it in Impulse, a release or "", never behind the step before's and always
+// named once a step before names one) and a note, no pin moving backward from the step
+// before, every step after the first moving a pin or naming a recipe, and no recipe named
+// twice in one step. The ledger's test holds Steps to it.
 func Validate(steps []Step) error {
 	if len(steps) == 0 {
 		return errors.New("the ledger records no step; the first is the first impulse release's pins")
@@ -272,7 +349,7 @@ func Validate(steps []Step) error {
 		for _, name := range s.PinNames() {
 			switch {
 			case name == check.ImpulseModule:
-				return errors.Newf("%s pins %s, which is the tool pin the walk moves to the running impulse, not a step's", at, name)
+				return errors.Newf("%s pins %s among the framework pins; the step names the impulse release that added it in Impulse, and the walk moves the tool pin to it", at, name)
 			case !strings.HasPrefix(name, FrameworkPrefix):
 				return errors.Newf("%s pins %s, which is not a framework module (%s...)", at, name, FrameworkPrefix)
 			case !semver.IsValid(s.Pins[name]):
@@ -282,15 +359,12 @@ func Validate(steps []Step) error {
 		if err := validatePending(s, at); err != nil {
 			return err
 		}
+		if err := validateImpulse(s, at); err != nil {
+			return err
+		}
 		if i > 0 {
-			prev := &steps[i-1]
-			for _, name := range s.PinNames() {
-				if have, ok := prev.Pins[name]; ok && semver.Compare(s.Pins[name], have) < 0 {
-					return errors.Newf("%s pins %s at %s, behind step %d's %s; the ledger walks forward only", at, name, s.Pins[name], i, have)
-				}
-			}
-			if len(s.Moves(prev.Pins)) == 0 && len(s.Recipes) == 0 {
-				return errors.Newf("%s moves no pin and names no recipe: it is not a step", at)
+			if err := validateOrder(s, &steps[i-1], at, i); err != nil {
+				return err
 			}
 		}
 		seen := map[string]bool{}
