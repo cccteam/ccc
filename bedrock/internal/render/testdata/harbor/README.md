@@ -264,6 +264,30 @@ from `2-env`'s state.
   service as `APP_SCHEDULER_INVOKER`, and answering any other call 401. So the
   invoker holds no role. A pull-request stack leaves the variable unset, and
   its scheduled routes refuse every call.
+- **The request log's exclusion** `imp-<env>-gbl-harbor-log-excl`
+  (`logging.tf`), in every environment and never in a pull-request stack.
+  Cloud Run and the load balancer each write an entry for every request the
+  service answers, and the code declares per surface which requests get one;
+  the exclusion holds the cloud's own entries to the same words, scoped to
+  this service's entries alone (Cloud Run's by the regional services' names,
+  the load balancer's by the backend's), since the project holds several
+  applications. The words, from `pkg/router/zz_gen_release.json`:
+
+  | Surface | Request log |
+  |---|---|
+  | `/_scheduled/send-daily-digest` | logged always |
+  | `/api/` | sampled at 0.1 |
+  | `/api/manifests/{id}/file` | never logged |
+
+  A surface logged always is kept whole. On event drops the entries of the
+  requests that answered below 400 and keeps every failure; sampled drops the
+  same but the declared fraction of them; never drops every entry under the
+  prefix; a route is matched to the end of its path and a prefix by prefix,
+  as the router matches them. A surface's clause excepts the surfaces
+  declared beneath it, whatever their words, since the application decides a
+  request's entry by its nearest declaration: an entry under a child is the
+  child's own clause's to drop, and kept whole when the child is logged
+  always.
 - **Load balancer backend**: a serverless NEG per region and one global
   backend service `imp-<env>-gbl-harbor-backend` over both, external managed,
   outlier detection on (5 consecutive errors in a 1-second interval eject a

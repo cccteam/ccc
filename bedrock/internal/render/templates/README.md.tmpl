@@ -281,6 +281,34 @@ from `2-env`'s state.
   invoker holds no role. A pull-request stack leaves the variable unset, and
   its scheduled routes refuse every call.
 {{- end}}
+{{- if .RequestLog}}
+- **The request log's exclusion** `{{.Prefix}}-<env>-gbl-{{.App}}-log-excl`
+  (`logging.tf`), in every environment and never in a pull-request stack.
+  Cloud Run and the load balancer each write an entry for every request the
+  service answers, and the code declares per surface which requests get one;
+  the exclusion holds the cloud's own entries to the same words, scoped to
+  this service's entries alone (Cloud Run's by the regional services' names,
+  the load balancer's by the backend's), since the project holds several
+  applications. The words, from `{{.RouterDir}}/{{.ReleaseFileName}}`:
+
+  | Surface | Request log |
+  |---|---|
+{{- range .Surfaces}}
+{{- if .Log}}
+  | `{{.Prefix}}` | {{.Policy}} |
+{{- end}}
+{{- end}}
+
+  A surface logged always is kept whole. On event drops the entries of the
+  requests that answered below 400 and keeps every failure; sampled drops the
+  same but the declared fraction of them; never drops every entry under the
+  prefix; a route is matched to the end of its path and a prefix by prefix,
+  as the router matches them. A surface's clause excepts the surfaces
+  declared beneath it, whatever their words, since the application decides a
+  request's entry by its nearest declaration: an entry under a child is the
+  child's own clause's to drop, and kept whole when the child is logged
+  always.
+{{- end}}
 - **Load balancer backend**: a serverless NEG per region and one global
   backend service `{{.Prefix}}-<env>-gbl-{{.App}}-backend` over both, external managed,
   outlier detection on ({{.P.Outlier.ConsecutiveErrors}} consecutive errors in a {{.P.Outlier.IntervalSeconds}}-second interval eject a

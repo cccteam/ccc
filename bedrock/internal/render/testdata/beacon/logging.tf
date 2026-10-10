@@ -73,3 +73,17 @@ resource "google_project_iam_member" "operations_reads_migrate_logs" {
     expression  = "resource.name == \"${local.migrate_logs_view}\""
   }
 }
+
+# ---------------------------------------------------------------------------
+# The request log's exclusion
+#
+# Nothing here yet. Cloud Run and the load balancer each write an entry for
+# every request the service answers, and so does the application. An
+# exclusion appears when the code declares a request log word that drops
+# some (on event, sampled or never: WithRequestLog, OutletRequestLog,
+# WithMountedRoutes, or log: on @rpc), which the generated router lists in
+# the release file beside the router (zz_gen_release.json, surfaces). The
+# stack then creates, in every environment but never in a pull-request
+# stack, one project-level exclusion imp-<env>-gbl-beacon-log-excl
+# scoped to this service's entries, which drops what the words drop.
+# ---------------------------------------------------------------------------

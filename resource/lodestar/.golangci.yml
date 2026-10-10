@@ -151,6 +151,12 @@ linters:
           - paralleltest
           - tparallel
         path: test/integration/(language|tenancy|impersonation_ops|rows_of)_test\.go
+      # The request log suite redirects the standard logger, which the console exporter
+      # writes through, to read each request's decision, so nothing else may write
+      # through it meanwhile.
+      - linters:
+          - paralleltest
+        path: test/integration/request_log_test\.go
       # Lodestar is committed in the resource module's own repository, so it builds
       # against the local source rather than a published version that cannot exist yet.
       - linters:

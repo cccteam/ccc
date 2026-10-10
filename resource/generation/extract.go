@@ -799,8 +799,9 @@ func (c *client) structsToRPCMethods(structs []*parser.Struct, validators ...str
 }
 
 // resolveRPCDeclarations applies a method's struct-level declarations in order: its
-// permission scope, its outlets, its transition, its answers, its upload, its feature
-// gate, its former names and its schedule, which reads the others off the method.
+// permission scope, its outlets, its transition, its answers, its upload, its body limit
+// and its words, its feature gate, its former names and its schedule, which reads the
+// others off the method.
 func (c *client) resolveRPCDeclarations(rpcMethod *rpcMethodInfo, s *parser.Struct, annotations genlang.StructAnnotations, structsByName map[string]*parser.Struct) error {
 	if err := resolvePermissionScope(annotations, &rpcMethod.PermissionScope); err != nil {
 		return errors.Wrapf(err, "on %s", s.Name())
@@ -823,6 +824,10 @@ func (c *client) resolveRPCDeclarations(rpcMethod *rpcMethodInfo, s *parser.Stru
 	}
 
 	if err := resolveRPCBodyLimit(rpcMethod, s, annotations); err != nil {
+		return err
+	}
+
+	if err := resolveRPCWords(rpcMethod, s, annotations); err != nil {
 		return err
 	}
 

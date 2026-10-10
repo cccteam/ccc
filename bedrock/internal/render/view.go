@@ -154,7 +154,11 @@ type view struct {
 	// without the other).
 	SchedulerVariable    string
 	JobsTemplateVariable string
-	JobsTemplate         *derive.Variable
+	// RequestLogClause is the surfaces' clause of the request log's exclusion
+	// (RequestLog.Clause) as an HCL string literal, for logging.tf; empty when the stack
+	// renders no exclusion.
+	RequestLogClause string
+	JobsTemplate     *derive.Variable
 	// ServerPackage is the framework's server, whose import by the site's main package
 	// is the declaration that the image speaks h2c (derive.ServerPackage).
 	ServerPackage   string
@@ -682,6 +686,9 @@ func newView(m *derive.Model) (*view, error) {
 	v.MaintenanceVariable = derive.MaintenanceVariable
 	v.SchedulerVariable, v.ScheduledPrefix, v.ReleaseFileName = derive.SchedulerInvokerVariable, derive.ScheduledPrefix, derive.ReleaseFileName
 	v.JobsTemplateVariable = derive.JobsTemplateVariable
+	if m.RequestLog != nil {
+		v.RequestLogClause = hclQuote(m.RequestLog.Clause)
+	}
 	v.ServerPackage = derive.ServerPackage
 	v.Directory = v.Auth.OIDC()
 	v.AuthVar = v.Auth.VariablePrefix()

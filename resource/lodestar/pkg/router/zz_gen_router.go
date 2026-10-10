@@ -5,11 +5,13 @@
 // outermost first, one line per group, each chain followed by what it stands in front of:
 //
 //	every request: tracing, hooks.Outermost, request logging, SecurityHeaders, httpio.WithParams
+//	  by hand under /beacons/: request log on event, traces off
 //	default (/console/api), password sessions of the crew auth:
 //	  BindAuth(crew.Name), NoCaching, CompressionMiddleware, StartSession, SetXSRFToken: POST /console/api/user/login, GET /console/api/user/session, DELETE /console/api/user/session
 //	  + ValidateSession, ValidateXSRFToken, CheckAPIVersion (oldest answered 0.1.0): hooks.Default, generatedRoutes
 //	droids (/droids), API key:
 //	  NoCaching, CompressionMiddleware, DroidsAuth: hooks.Droids, generatedDroidsRoutes
+//	  POST /droids/sectors/{sectorID}/ingest-droid-reports: request log on event
 //	portal (/portal/api), Google directory sessions of the members auth:
 //	  BindAuth(members.Name), NoCaching, CompressionMiddleware, StartSession, SetXSRFToken: GET /portal/api/user/login, GET /portal/api/user/callback, GET /portal/api/user/session, DELETE /portal/api/user/session
 //	  + ValidateSession, ValidateXSRFToken, CheckAPIVersion: hooks.Portal, generatedPortalRoutes
@@ -20,6 +22,12 @@
 // nothing else answers: an unknown path is 404. Outside every prefix the browser
 // applications answer, longer mount paths first: /console (DeepLink, Assets), /portal (PortalDeepLink, PortalAssets).
 // None is mounted at /: the root alone redirects to /console/, the default outlet's application.
+//
+// The request log word and the trace setting named at each place are the nearest
+// declarations, a route's over its outlet's and an outlet's over the application
+// default; a request under none writes its entry always and its spans follow the front
+// end. The root's request logger decides each entry when the request ends, and a handler
+// may change its own request's word through logger.FromReq(r).SetPolicy.
 package router
 
 import (
@@ -127,9 +135,22 @@ func New(h Handlers, hooks Hooks) *chi.Mux {
 	serverVersion := h.ServerVersion()
 
 	// Every request.
-	r.Use(tracer.NewHandler())
+	// The surfaces with a trace setting of their own, by the path each is mounted at: the
+	// sampler applies the longest match as the request's span starts, since a span's
+	// sampled flag is fixed then; a request under none follows the front end.
+	r.Use(tracer.NewHandler(tracer.Surfaces(map[string]tracer.Traces{
+		"/beacons/": tracer.TracesOff(),
+	})))
 	r.Use(hooks.Outermost...)
-	r.Use(logger.NewRequestLogger(h.LogExporter()))
+	// The request logger decides each request's entry when the request ends, under the
+	// word a request starts with, the word of the longest prefix declared by hand that
+	// the path sits under, else always; an outlet's word, a route's own and a handler's
+	// own request override it on the way down.
+	r.Use(logger.NewRequestLogger(h.LogExporter(),
+		logger.PolicyByPrefix(map[string]logger.Policy{
+			"/beacons/": logger.OnEvent(),
+		}),
+	))
 	r.Use(h.SecurityHeaders)
 	r.Use(httpio.WithParams)
 

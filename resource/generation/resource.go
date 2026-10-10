@@ -51,7 +51,14 @@ type resourceGenerator struct {
 	defaultOutlet routerOutlet
 	// extraOutlets are the router outlets declared by WithRouterOutlet, beyond the
 	// default outlet GenerateRoutes declares. Resources join them via @outlet.
-	extraOutlets        []routerOutlet
+	extraOutlets []routerOutlet
+	// requestLog is the application default (WithRequestLog), what a request writes to
+	// the request log when nothing nearer declares otherwise; undeclared leaves today's
+	// behavior, every request's entry written.
+	requestLog RequestLog
+	// mountedRoutes are the prefixes the application mounts routes under by hand, each
+	// with its words (WithMountedRoutes), in declaration order.
+	mountedRoutes       []mountedRoutes
 	typescriptTargets   []typescriptTarget
 	manualRegistrations []ManualRegistration
 	// warnings are the schema findings the last Generate raised (Warnings).
@@ -515,6 +522,10 @@ func (r *resourceGenerator) extractAndGenerateRPC(packageMap map[string]*package
 	}
 	r.rpcMethods, r.scheduledMethods = splitScheduled(methods)
 	if err := r.requireRouterForSchedules(); err != nil {
+		return err
+	}
+
+	if err := r.requireRouterForTraces(); err != nil {
 		return err
 	}
 	if err := r.validateRPCPickerSources(r.rpcMethods); err != nil {

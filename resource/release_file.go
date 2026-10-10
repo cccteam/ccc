@@ -40,7 +40,81 @@ type ReleaseFile struct {
 	// @upload method's route and each stored file's read route (@file). None when the
 	// code declares neither.
 	FileRoutes []FileRoute `json:"fileRoutes,omitempty"`
+	// Surfaces are the surfaces the code declares a request log word or a trace setting
+	// for, in prefix order: the application default as the surface at /
+	// (WithRequestLog), each outlet that declares a word or a setting as its prefix
+	// (OutletRequestLog, OutletTraces), each prefix the application mounts routes under
+	// by hand (WithMountedRoutes), and each generated route with its own words (@rpc,
+	// @file, @schedule) as the path the router mounts it at. Each says whether it is a
+	// prefix or a route (Kind), since the router matches the two differently. The
+	// nearest declaration wins, so a reader resolves a path by its longest matching
+	// surface. The application's stack reads them to render the cloud's own request-log
+	// exclusion. None when the code declares nothing, and then every request's entry is
+	// written and every span follows the front end.
+	Surfaces []Surface `json:"surfaces,omitempty"`
 }
+
+// Surface is one declared surface in the release file: a path prefix or a route pattern
+// as the router mounts it, with the request log word, the trace setting, or both.
+type Surface struct {
+	// Prefix is the path as mounted: a prefix such as /beacons/ or /droids/, or a route
+	// pattern such as /api/widgets/{id}/content, where a segment in braces stands for any
+	// one segment; / is the application default.
+	Prefix string `json:"prefix"`
+	// Kind says how the router matches the prefix against a request's path:
+	// SurfacePrefix by prefix, so everything under /beacons/ is the surface's, or
+	// SurfaceRoute to the end of the path, so /api/widgets/{id}/content is the surface's
+	// and /api/widgets/{id}/content-extra is not. The application default, an outlet and
+	// a hand-mounted prefix are prefixes; an annotated method's route (@rpc, @file,
+	// @schedule) is a route. A file written before the surfaces carried their kind reads
+	// as prefixes throughout.
+	Kind SurfaceKind `json:"kind"`
+	// Log is the request log word: RequestLogAlways, RequestLogOnEvent, RequestLogSampled
+	// or RequestLogNever; empty when the surface declares its trace setting alone.
+	Log string `json:"log,omitempty"`
+	// Fraction is the share of the quiet requests a sampled surface writes the entry for,
+	// above 0 and at most 1; set with RequestLogSampled alone.
+	Fraction float64 `json:"fraction,omitempty"`
+	// Traces is the trace setting: TracesFollowFrontEnd, TracesCapped or TracesOff; empty
+	// when the surface declares its request log word alone.
+	Traces string `json:"traces,omitempty"`
+	// Rate is the share of the front end's traces a capped surface keeps, above 0 and at
+	// most 1; set with TracesCapped alone.
+	Rate float64 `json:"rate,omitempty"`
+}
+
+// The request log words, as the release file and the annotations spell them: the entry
+// is written for every request, when a line attached or the request failed, as on event
+// plus a fraction of the quiet requests, or never.
+const (
+	RequestLogAlways  = "always"
+	RequestLogOnEvent = "onEvent"
+	RequestLogSampled = "sampled"
+	RequestLogNever   = "never"
+)
+
+// The trace settings, as the release file and the annotations spell them: a surface's
+// spans follow the front end, are capped at a rate, or are off.
+const (
+	TracesFollowFrontEnd = "followFrontEnd"
+	TracesCapped         = "capped"
+	TracesOff            = "off"
+)
+
+// SurfaceKind is how the router matches a surface's prefix against a request's path, as
+// the release file spells it.
+type SurfaceKind string
+
+// The surface kinds: a prefix is matched against the start of the path and a route to
+// its end.
+const (
+	// SurfacePrefix is a path prefix, matched by strings.HasPrefix as the router does: the
+	// application default at /, an outlet's prefix, or a prefix mounted by hand.
+	SurfacePrefix SurfaceKind = "prefix"
+	// SurfaceRoute is a route pattern, matched whole as the router does: an annotated
+	// method's path, a parameter in braces standing for one segment.
+	SurfaceRoute SurfaceKind = "route"
+)
 
 // FileRoute is one route in the release file that carries a file rather than JSON: an
 // @upload method's route, whose body is multipart, or a stored file's read route (@file
@@ -198,8 +272,60 @@ func ReadReleaseFile(dir string) (ReleaseFile, error) {
 			return ReleaseFile{}, errors.Wrapf(err, "the release file %s", path)
 		}
 	}
+	for i := range file.Surfaces {
+		surface := &file.Surfaces[i]
+		if surface.Kind == "" {
+			// A file written before the surfaces carried their kind listed prefixes
+			// alone, and reads as it did.
+			surface.Kind = SurfacePrefix
+		}
+		if err := surface.validate(); err != nil {
+			return ReleaseFile{}, errors.Wrapf(err, "the release file %s", path)
+		}
+	}
 
 	return file, nil
+}
+
+// validate refuses a surface the generator would not write: a prefix not under the root,
+// a kind that is neither a prefix nor a route, neither word nor setting, a word or a
+// setting outside the vocabulary, a fraction or a rate outside (0, 1], a fraction without
+// the sampled word, or a rate without the capped setting.
+func (s *Surface) validate() error {
+	switch {
+	case !strings.HasPrefix(s.Prefix, "/"):
+		return errors.Newf("the surface %q is not a path under the root", s.Prefix)
+	case s.Kind != SurfacePrefix && s.Kind != SurfaceRoute:
+		return errors.Newf("the surface %s has the kind %q; a surface is a %s or a %s", s.Prefix, s.Kind, SurfacePrefix, SurfaceRoute)
+	case s.Log == "" && s.Traces == "":
+		return errors.Newf("the surface %s declares neither a request log word nor a trace setting", s.Prefix)
+	}
+	switch s.Log {
+	case "", RequestLogAlways, RequestLogOnEvent, RequestLogNever:
+		if s.Fraction != 0 {
+			return errors.Newf("the surface %s carries a fraction without the %s word", s.Prefix, RequestLogSampled)
+		}
+	case RequestLogSampled:
+		if s.Fraction <= 0 || s.Fraction > 1 {
+			return errors.Newf("the surface %s is sampled at %v; the fraction is above 0 and at most 1", s.Prefix, s.Fraction)
+		}
+	default:
+		return errors.Newf("the surface %s has the request log word %q; the words are %s, %s, %s and %s", s.Prefix, s.Log, RequestLogAlways, RequestLogOnEvent, RequestLogSampled, RequestLogNever)
+	}
+	switch s.Traces {
+	case "", TracesFollowFrontEnd, TracesOff:
+		if s.Rate != 0 {
+			return errors.Newf("the surface %s carries a rate without the %s setting", s.Prefix, TracesCapped)
+		}
+	case TracesCapped:
+		if s.Rate <= 0 || s.Rate > 1 {
+			return errors.Newf("the surface %s is capped at %v; the rate is above 0 and at most 1", s.Prefix, s.Rate)
+		}
+	default:
+		return errors.Newf("the surface %s has the trace setting %q; the settings are %s, %s and %s", s.Prefix, s.Traces, TracesFollowFrontEnd, TracesCapped, TracesOff)
+	}
+
+	return nil
 }
 
 // validate refuses a file route the generator would not write: a kind that is neither

@@ -1,6 +1,8 @@
 package tracer
 
 import (
+	"fmt"
+	"math"
 	"strings"
 
 	"github.com/go-playground/errors/v5"
@@ -105,5 +107,74 @@ func WithSampling(s Sampling) ProviderOption {
 func WithTokenSource(ts oauth2.TokenSource) ProviderOption {
 	return func(c *providerConfig) {
 		c.tokenSource = ts
+	}
+}
+
+// Traces says how one surface's spans are sampled. It narrows the provider's Sampling and
+// never widens it: a surface follows the front end, is capped at a rate, or is off. The
+// generated router declares each surface's setting by its path (Surfaces), and the
+// sampler the provider builds applies the setting as the request's span starts, since a
+// span's sampled flag is fixed then and every child span, log line and outgoing header
+// inherits it.
+type Traces struct {
+	setting tracesSetting
+	rate    float64
+}
+
+// tracesSetting is the word a Traces was declared with.
+type tracesSetting uint8
+
+const (
+	tracesFollowFrontEnd tracesSetting = iota
+	tracesCapped
+	tracesOff
+)
+
+// The settings' names, as String spells them.
+const (
+	wordFollowFrontEnd = "follow the front end"
+	wordCapped         = "capped at %g"
+	wordOff            = "off"
+)
+
+// TracesFollowFrontEnd returns the setting that records a surface's spans as the
+// provider's Sampling alone decides: when the front end sampled the request, or every
+// request under SamplingAll. It is today's behavior and what a surface that declares
+// nothing gets.
+func TracesFollowFrontEnd() Traces {
+	return Traces{setting: tracesFollowFrontEnd}
+}
+
+// TracesCapped returns the setting that records a surface's span when the provider's
+// Sampling would and the trace falls under the rate, decided by its trace ID so one trace
+// is kept or dropped the same way wherever it is capped at the rate, for a chatty surface
+// the front end traces too often. The rate must be above 0 and at most 1; any other value
+// is refused with a panic, because the setting is a declaration and a bad rate is a
+// mistake in the code that declares it.
+func TracesCapped(rate float64) Traces {
+	if math.IsNaN(rate) || rate <= 0 || rate > 1 {
+		panic(fmt.Sprintf("tracer.TracesCapped(%v): the rate must be above 0 and at most 1", rate))
+	}
+
+	return Traces{setting: tracesCapped, rate: rate}
+}
+
+// TracesOff returns the setting that records no span for the surface, whatever the
+// caller sent: a health check, or a streaming surface whose fetches are not worth a
+// trace.
+func TracesOff() Traces {
+	return Traces{setting: tracesOff}
+}
+
+// String names the setting the way a chain comment reads it: "follow the front end",
+// "capped at 0.1" or "off".
+func (t Traces) String() string {
+	switch t.setting {
+	case tracesCapped:
+		return fmt.Sprintf(wordCapped, t.rate)
+	case tracesOff:
+		return wordOff
+	default:
+		return wordFollowFrontEnd
 	}
 }

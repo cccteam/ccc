@@ -250,6 +250,12 @@ type routerFileData struct {
 	BodyLimitText    string
 	BodyLimitDefault bool
 	HasBoundedRoutes bool
+	// RouteRequestLogs says a route or a scheduled route declares its own request log
+	// word, so the routes file imports the logger for logger.WithPolicy;
+	// RouteMinSeverities says one of those words carries a floor, so it imports the
+	// logging library for the severity.
+	RouteRequestLogs   bool
+	RouteMinSeverities bool
 	// ResourcePackage qualifies the feature constants the gated routes name.
 	ResourcePackage string
 	// AuthName and AuthParam are the default outlet's auth binding (see

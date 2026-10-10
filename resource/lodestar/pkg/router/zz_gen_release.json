@@ -65,5 +65,18 @@
       "path": "/portal/api/sectors/{sectorID}/mission-documents/{missionDocumentID}/content",
       "source": "MissionDocument.StoreKey"
     }
+  ],
+  "surfaces": [
+    {
+      "prefix": "/beacons/",
+      "kind": "prefix",
+      "log": "onEvent",
+      "traces": "off"
+    },
+    {
+      "prefix": "/droids/sectors/{sectorID}/ingest-droid-reports",
+      "kind": "route",
+      "log": "onEvent"
+    }
   ]
 }

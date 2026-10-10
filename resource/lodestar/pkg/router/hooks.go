@@ -37,6 +37,10 @@ type AppHandlers interface {
 	// The portal's hand-written route: a company's statement over the change log
 	// (registered through @manualAddResource(List, domain) with @outlet(portal)).
 	ClientStatements() http.HandlerFunc
+
+	// The beacon pulse outside every outlet (app/beacon.go), mounted through hooks.Root
+	// under the prefix the generator program declares quiet.
+	SectorBeacon() http.HandlerFunc
 }
 
 // consoleAPI is the console outlet's API prefix. The generator program mounts the
@@ -57,15 +61,35 @@ const RoleMembershipsRoute = consoleAPI + "/sectors/{sectorID}/roles/{role}/user
 // ClientStatementsRoute is the portal's statement route under the sector segment.
 const ClientStatementsRoute = "/portal/api/sectors/{sectorID}/client-statements"
 
+// BeaconsPrefix is the prefix the beacon pulses sit under, outside every outlet, and
+// what the generator program declares with WithMountedRoutes: every request under it
+// writes its request log on event and its spans are off. The router, the tracer and
+// the release file learn the prefix from that one declaration; this constant keeps the
+// route under it.
+//
+// Demonstrates: generation.request-log, generation.traces.
+const BeaconsPrefix = "/beacons/"
+
+// BeaconRoute is one sector's beacon pulse: a droid asks it, all day, whether the sector
+// is charted.
+const BeaconRoute = BeaconsPrefix + "{sectorID}"
+
 // AppHooks composes the application's own routes into the generated router (New), inside
 // the guards each outlet's group already carries: the console's routes behind the crew
 // auth's session validation and XSRF guard, the portal's behind the members auth's. The
 // generated router owns everything else: the every-request middleware, each outlet's
 // session or API-key group, the not-found handlers, and the two browser applications.
 //
-// Demonstrates: GenerateRouter, auth.two-populations, auth.user-management, outlet.session, outlet.api-key, outlet.isolation, hand-written-route, impersonation.read-only-backstop, impersonation.end, consolidation.batch.
+// Demonstrates: GenerateRouter, auth.two-populations, auth.user-management, outlet.session, outlet.api-key, outlet.isolation, hand-written-route, impersonation.read-only-backstop, impersonation.end, consolidation.batch, generation.request-log.
 func AppHooks(h AppHandlers) Hooks {
 	return Hooks{
+		// The root: the beacon pulse outside every outlet, behind the every-request
+		// chain alone, under the prefix the generator program declares quiet. The
+		// request logger starts each request under it with the prefix's word, on event,
+		// so a pulse answered 200 writes no entry and one answered 404 does.
+		Root: func(r chi.Router) {
+			r.Get(BeaconRoute, h.SectorBeacon())
+		},
 		// The console: the read-only backstop mounted after session validation, so a
 		// view-as session that somehow issues a write is refused at the door before any
 		// handler runs; the generated routes register beneath it.

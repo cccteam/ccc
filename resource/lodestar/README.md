@@ -11,7 +11,10 @@ baseline and the product-shaped tour in one.
 
 Round 3 (2026-09-09) is a from-scratch rebuild born from `impulse`: the layout, the
 configuration levels, the two auth packages, the environment template, the bun workspace,
-and the deploy split come from the tool; the plan's domain sits on top. Every struct,
+and the deploy split come from the tool; the plan's domain sits on top. The core level
+opens the cloud driver (`cloud/gcp`) as the skeletons do, so where the process's logs and
+spans go is built from the settings the level embeds and nothing in the application names
+a logging client or a trace provider ([`cloud.driver`](pkg/config/config.go)). Every struct,
 method, test, component, and persona that proves a framework capability says so in a
 `Demonstrates:` paragraph, and [DEMONSTRATIONS.md](DEMONSTRATIONS.md) is the generated
 table of what proves what. Everything here is synthetic. The crew personas' plaintext
@@ -394,6 +397,32 @@ the served stack with tokens from a fake of Google's keys: a call with no token,
 identity's token, or with a token for another route is refused and deletes nothing, and the
 scheduler's own call deletes the stale reading and keeps the fresh one.
 
+## The quiet surfaces
+
+Every request Lodestar serves writes one entry to the request log, as it always did, except
+on two surfaces that would flood it. The beacon pulse, `GET /beacons/{sectorID}`
+([`generation.request-log`](pkg/router/hooks.go), [`app/beacon.go`](app/beacon.go)), is
+asked all day by every droid in the sky, with no session and no key, outside every outlet:
+the generator program declares its prefix quiet once, with
+`generation.WithMountedRoutes("/beacons/", generation.LogOnEvent(), generation.TracesOff())`
+([`generation.traces`](cmd/generate/generator.go)), and the generated router hands the
+prefix to the request logger's prefix table and to the tracer's surface table, so a pulse
+answered 200 writes no entry and records no span, while a pulse answered 404, a droid
+asking after a sector that is not charted, is an event and writes its entry. The droid's
+own method, `IngestDroidReports`, is declared on event on its annotation,
+`@rpc(log: onEvent)` ([`@rpc.log`](pkg/rpc/ingest_droid_reports.go)): the generated routes
+file sets the word ahead of the handler with `logger.WithPolicy`, so a reading that lands
+writes no entry and a reading the method refuses writes the request's entry with every line
+the handler logged attached. The chain comment at the top of `pkg/router/zz_gen_router.go`
+names the word at each place, and the generated router test proves each decision against
+the logger's console exporter. The release file, `pkg/router/zz_gen_release.json`, lists the
+two surfaces under `surfaces` with their words, which bedrock reads to render the stack's own
+log exclusion from the same declarations.
+[`test/integration/request_log_test.go`](test/integration/request_log_test.go) drives both
+on the served stack and reads the console exporter's decisions: no entry for the pulse and
+the reading that land, an entry for the pulse and the reading that fail, and an entry for a
+droid's list, which declares nothing.
+
 ## Running against a real Spanner instance
 
 The emulator answers every test, but it returns no query plans, does not promise the
@@ -514,8 +543,11 @@ manifest: pick a card, sign in, switch, never more than two clicks.
   (`/console/api`, `/portal/api`, `/droids`; each browser outlet's API under its
   application's mount path) with its chain documented at the top of
   `zz_gen_router.go`, and `hooks.go`, the console's and the portal's own routes composed
-  into it; `app/`: wiring, middleware, the ship's log, the client statement, the
-  impersonation mint route, the watch desk, and the role-membership routes. The mission document download is
+  into it and the beacon pulse mounted outside every outlet under the prefix the
+  generator program declares quiet ([`generation.request-log`](cmd/generate/generator.go));
+  `app/`: wiring, middleware, the ship's log, the client statement, the
+  impersonation mint route, the watch desk, the role-membership routes and the beacon
+  pulse. The mission document download is
   generated from `MissionDocument.StoreKey`'s `@file`
   ([`@file.stored`](pkg/resources/mission_documents.go)), and the purser's expense
   manifest is a computed resource whose struct-scope `@file` renders a CSV sheet on

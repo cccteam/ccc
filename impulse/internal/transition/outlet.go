@@ -72,7 +72,8 @@ func (o Outlet) Validate(a *app.App) error {
 	if g.RoutesDir() == "" {
 		return errors.Newf("%s: an outlet needs GenerateRoutes", g.File)
 	}
-	for _, existing := range site.Outlets {
+	for i := range site.Outlets {
+		existing := &site.Outlets[i]
 		if existing.Name == o.Name {
 			return errors.Newf("%s: outlet %s is already declared", existing.Pos, o.Name)
 		}

@@ -141,6 +141,11 @@ linters:
           - gochecknoglobals
         path: tracing\.go
         text: traceCache
+      # The SDK's Sampler interface takes its parameters by value.
+      - linters:
+          - gocritic
+        path: surfaces\.go
+        text: 'hugeParam: p is heavy'
       - linters:
           - paralleltest
           - tparallel

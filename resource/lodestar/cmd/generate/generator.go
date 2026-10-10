@@ -68,6 +68,18 @@ func NewGenerator(ctx context.Context) (generation.Generator, error) {
 		//
 		// Demonstrates: generation.body-limit.
 		generation.WithBodyLimit(2<<20),
+		// The beacon pulses, mounted by hand through hooks.Root under /beacons/
+		// (pkg/router/hooks.go), are asked all day by every droid, so the prefix is
+		// declared quiet here, once: every request under it writes its request log on
+		// event (a pulse answered 200 writes no entry; one answered 404 does) and records
+		// no span. The generated router hands the prefix to the request logger and the
+		// tracer, and the release file lists it for the stack's own log exclusion.
+		// Everything else keeps today's behavior: an entry for every request, spans
+		// following the front end, since nothing declares otherwise; IngestDroidReports
+		// declares its own word on @rpc.
+		//
+		// Demonstrates: generation.request-log, generation.traces.
+		generation.WithMountedRoutes("/beacons/", generation.LogOnEvent(), generation.TracesOff()),
 		generation.WithRPC("pkg/rpc"),
 		generation.WithVirtualResources("pkg/virtualresources"),
 		generation.WithComputedResources("pkg/computedresources"),

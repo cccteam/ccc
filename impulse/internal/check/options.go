@@ -26,7 +26,7 @@ func (options) Describe() string {
 // overrides the earlier.
 var singleOptions = []string{
 	"GenerateHandlers", "GenerateRoutes", "GenerateRouter", "GenerateHandlerTests", "WithConcealedDomains",
-	"WithRPC", "ApplicationName", "WithSpannerEmulatorVersion", "WithConsolidatedHandlers",
+	"WithRPC", "ApplicationName", "WithSpannerEmulatorVersion", "WithConsolidatedHandlers", "WithBodyLimit",
 }
 
 func (c options) Run(_ context.Context, env *Env) Result {
@@ -146,8 +146,9 @@ func (c options) siteFindings(a *app.App, s *app.Site) []string {
 	}
 	details = append(details, c.routerFindings(a, s)...)
 
-	outlets := map[string]app.Outlet{}
-	for _, o := range s.Outlets {
+	outlets := map[string]*app.Outlet{}
+	for i := range s.Outlets {
+		o := &s.Outlets[i]
 		if first, ok := outlets[o.Name]; ok {
 			details = append(details, fmt.Sprintf("%s: outlet %q is declared again (first at %s)", o.Pos, o.Name, first.Pos))
 
@@ -180,7 +181,9 @@ func (options) routerFindings(a *app.App, s *app.Site) []string {
 		return nil
 	}
 	var details []string
-	for _, o := range s.AllOutlets() {
+	all := s.AllOutlets()
+	for i := range all {
+		o := &all[i]
 		if !s.GeneratedRouter {
 			var declared string
 			switch {
@@ -305,7 +308,8 @@ func profileSummary(p app.Profile) string {
 	generated := len(p.Sites) > 0
 	for i := range p.Sites {
 		s := &p.Sites[i]
-		for _, o := range s.Outlets {
+		for j := range s.Outlets {
+			o := &s.Outlets[j]
 			name := o.Name
 			if o.ServesSessions {
 				name += " (sessions)"
@@ -329,7 +333,8 @@ func profileSummary(p app.Profile) string {
 	return b.String()
 }
 
-// profileDetails lists each generator with where it writes.
+// profileDetails lists each generator with where it writes and, for a site, the request
+// log words and trace settings it declares.
 func profileDetails(p app.Profile) []string {
 	details := make([]string, 0, len(p.Sites)+len(p.Shared))
 	for i := range p.Sites {
@@ -350,6 +355,7 @@ func profileDetails(p app.Profile) []string {
 			parts = append(parts, "rpc "+rpc)
 		}
 		parts = append(parts, typescriptSummary(g)...)
+		parts = append(parts, requestLogSummary(s)...)
 		details = append(details, fmt.Sprintf("%s (%s): %s", s.Name, g.File, strings.Join(parts, ", ")))
 	}
 	for _, g := range p.Shared {
@@ -358,6 +364,43 @@ func profileDetails(p app.Profile) []string {
 	}
 
 	return details
+}
+
+// requestLogSummary lists what a site declares about the request log and the traces, as
+// the program writes it: the application default (WithRequestLog), each outlet with a
+// word or a setting of its own (OutletRequestLog, OutletTraces), and each prefix mounted
+// by hand (WithMountedRoutes). A site that declares nothing adds nothing.
+func requestLogSummary(s *app.Site) []string {
+	var parts []string
+	if word := s.Generator.RequestLog(); word != "" {
+		parts = append(parts, "request log "+word)
+	}
+	all := s.AllOutlets()
+	for i := range all {
+		o := &all[i]
+		if declared := declaredWords(o.RequestLog, o.Traces); declared != "" {
+			parts = append(parts, fmt.Sprintf("outlet %s (%s)", o.Name, declared))
+		}
+	}
+	for _, m := range s.Generator.MountedRoutes() {
+		parts = append(parts, fmt.Sprintf("mounted %s (%s)", m.Prefix, declaredWords(m.RequestLog, m.Traces)))
+	}
+
+	return parts
+}
+
+// declaredWords renders a surface's request log word and trace setting, whichever it
+// declares: "request log LogOnEvent(), traces TracesOff()".
+func declaredWords(requestLog, traces string) string {
+	var declared []string
+	if requestLog != "" {
+		declared = append(declared, "request log "+requestLog)
+	}
+	if traces != "" {
+		declared = append(declared, "traces "+traces)
+	}
+
+	return strings.Join(declared, ", ")
 }
 
 func typescriptSummary(g *app.Generator) []string {

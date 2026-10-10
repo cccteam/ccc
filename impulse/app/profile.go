@@ -112,6 +112,12 @@ type Outlet struct {
 	// ThisRelease for the server's own release, or empty when the outlet declares none
 	// (every release that sends one is answered).
 	OldestAnswered string
+	// RequestLog is the OutletRequestLog word as the program writes it
+	// (LogNever()), empty when the outlet declares none and takes the application's.
+	RequestLog string
+	// Traces is the OutletTraces setting as the program writes it (TracesOff()), empty
+	// when the outlet declares none and its spans follow the front end.
+	Traces string
 	// Pos is the position of the declaring call.
 	Pos string
 }
@@ -221,6 +227,14 @@ func readOutletOptions(o *Outlet, args []Arg) {
 			if len(c.Args) == 1 && (c.Args[0].Kind == ArgString || c.Args[0].Kind == ArgIdent) {
 				o.OldestAnswered = c.Args[0].Str
 			}
+		case optOutletRequestLog:
+			if len(c.Args) == 1 && c.Args[0].Kind == ArgConstructor {
+				o.RequestLog = c.Args[0].Str
+			}
+		case optOutletTraces:
+			if len(c.Args) == 1 && c.Args[0].Kind == ArgConstructor {
+				o.Traces = c.Args[0].Str
+			}
 		}
 	}
 }
@@ -273,10 +287,11 @@ func (p Profile) OutletNames() []string {
 	seen := map[string]bool{}
 	var names []string
 	for i := range p.Sites {
-		for _, o := range p.Sites[i].Outlets {
-			if !seen[o.Name] {
-				seen[o.Name] = true
-				names = append(names, o.Name)
+		for j := range p.Sites[i].Outlets {
+			name := p.Sites[i].Outlets[j].Name
+			if !seen[name] {
+				seen[name] = true
+				names = append(names, name)
 			}
 		}
 	}

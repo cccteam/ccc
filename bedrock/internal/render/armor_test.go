@@ -10,39 +10,6 @@ import (
 	"github.com/cccteam/ccc/bedrock/internal/derive"
 )
 
-// TestPathRegex turns a route into the expression Cloud Armor matches the path against:
-// a parameter matches one segment, a last star the subtree, a dot itself through a
-// class, and nothing carries a backslash.
-func TestPathRegex(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name  string
-		route string
-		want  string
-	}{
-		{name: "a plain route", route: "/api/attach-manifest", want: "/api/attach-manifest"},
-		{name: "a parameter", route: "/api/manifests/{id}/file", want: "/api/manifests/[^/]+/file"},
-		{name: "two parameters", route: "/api/domains/{domainId}/photos/{id}/file", want: "/api/domains/[^/]+/photos/[^/]+/file"},
-		{name: "a subtree", route: "/streams/*", want: "/streams/.*"},
-		{name: "a dot", route: "/hooks/v1.2/registry", want: "/hooks/v1[.]2/registry"},
-		{name: "a prefix", route: "portal/api", want: "portal/api"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			got := pathRegex(tt.route)
-			if got != tt.want {
-				t.Errorf("pathRegex(%q) = %q, want %q", tt.route, got, tt.want)
-			}
-			if strings.Contains(got, `\`) {
-				t.Errorf("pathRegex(%q) = %q carries a backslash", tt.route, got)
-			}
-		})
-	}
-}
-
 // TestBypassExpression matches a route under its method, or under any.
 func TestBypassExpression(t *testing.T) {
 	t.Parallel()

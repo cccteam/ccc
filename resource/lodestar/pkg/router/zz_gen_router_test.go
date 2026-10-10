@@ -4,12 +4,16 @@
 package router
 
 import (
+	"bytes"
 	"context"
 	"io"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"slices"
+	"strconv"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/cccteam/ccc/resource"
@@ -762,6 +766,128 @@ var prefixHookFields = map[string]string{
 	"/portal/api/":  "Portal",
 }
 
+// requestLogOutput collects what the console exporter writes through the standard
+// logger while the request log test runs.
+type requestLogOutput struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (o *requestLogOutput) Write(p []byte) (int, error) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+
+	return o.buf.Write(p)
+}
+
+func (o *requestLogOutput) reset() {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	o.buf.Reset()
+}
+
+func (o *requestLogOutput) String() string {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+
+	return o.buf.String()
+}
+
+// requestLogProbe answers the status and logs nothing, so the request's entry is the
+// word's decision alone.
+func requestLogProbe(status int) http.HandlerFunc {
+	return func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(status)
+	}
+}
+
+// requestLogOwnWord sets the word on its own request, as a handler that knows its request
+// matters, or does not, may, then answers 200.
+func requestLogOwnWord(word logger.Policy) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		logger.FromReq(r).SetPolicy(word)
+		w.WriteHeader(http.StatusOK)
+	}
+}
+
+// requestLogHooks registers the probes the request log test drives, each under the
+// surface its case names: through hooks.Root outside every outlet, and through each
+// outlet's hook inside its group.
+func requestLogHooks() Hooks {
+	return Hooks{
+		Root: func(r chi.Router) {
+			r.Get("/generated-router-probe", requestLogProbe(200))
+			r.Get("/generated-router-failure", requestLogProbe(404))
+			r.Get("/generated-router-own-word", requestLogOwnWord(logger.Never()))
+			r.Get("/beacons/generated-router-probe", requestLogProbe(200))
+			r.Get("/beacons/generated-router-failure", requestLogProbe(404))
+		},
+		Default: func(r chi.Router, generated func(chi.Router)) {
+			r.Get("/console/api/generated-router-probe", requestLogProbe(200))
+			generated(r)
+		},
+		Droids: func(r chi.Router, generated func(chi.Router)) {
+			generated(r)
+		},
+		Portal: func(r chi.Router, generated func(chi.Router)) {
+			generated(r)
+		},
+	}
+}
+
+// TestGeneratedRouterRequestLog proves the request log words land where the chain comment
+// says, with the console exporter deciding each request's entry: the application default
+// on a root route, quiet and failed; an outlet's word on a route inside its group, quiet
+// and failed, and an outlet without one taking the default; a route's own word on the
+// generated route; a prefix mounted by hand keeping its word; and a handler setting its
+// own request's word. A sampled word leaves a quiet request to the draw, which the test
+// does not assert. The test runs on its own, not in parallel: the console exporter writes
+// through the standard logger, which the test redirects to read the decisions.
+func TestGeneratedRouterRequestLog(t *testing.T) {
+	tests := []struct {
+		name   string
+		method string
+		url    string
+		status int
+		// want is the decision: written, dropped, or empty when the draw decides.
+		want string
+	}{
+		{name: "the application default, always, since nothing is declared, on a quiet request", method: http.MethodGet, url: "/generated-router-probe", status: 200, want: "written"},
+		{name: "the application default, always, since nothing is declared, on a failed request", method: http.MethodGet, url: "/generated-router-failure", status: 404, want: "written"},
+		{name: "a handler that sets its own request's word to never, under the application default, always, since nothing is declared", method: http.MethodGet, url: "/generated-router-own-word", status: 200, want: "dropped"},
+		{name: "the default outlet, which takes the application default, always, since nothing is declared", method: http.MethodGet, url: "/console/api/generated-router-probe", status: 200, want: "written"},
+		{name: "the prefix /beacons/ mounted by hand, on event, on a quiet request", method: http.MethodGet, url: "/beacons/generated-router-probe", status: 200, want: "dropped"},
+		{name: "the prefix /beacons/ mounted by hand, on event, on a failed request", method: http.MethodGet, url: "/beacons/generated-router-failure", status: 404, want: "written"},
+		{name: "the route's own word, on event, on POST /droids/sectors/{sectorID}/ingest-droid-reports", method: http.MethodPost, url: "/droids/sectors/testDomain/ingest-droid-reports", status: 200, want: "dropped"},
+	}
+	var output requestLogOutput
+	previous := log.Writer()
+	log.SetOutput(&output)
+	t.Cleanup(func() { log.SetOutput(previous) })
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			output.reset()
+			stub := newRouterHandlersStub(newRouterCallRecorder())
+			stub.exporter = logger.NewConsoleExporter().NoColor(true)
+			router := New(stub, requestLogHooks())
+			rr := httptest.NewRecorder()
+			router.ServeHTTP(rr, httptest.NewRequestWithContext(t.Context(), tt.method, tt.url, http.NoBody))
+
+			if got := rr.Code; got != tt.status {
+				t.Fatalf("response.Code = %v, want %v", got, tt.status)
+			}
+			entry := tt.method + " " + tt.url + " " + strconv.Itoa(tt.status)
+			written := strings.Contains(output.String(), entry)
+			switch {
+			case tt.want == "written" && !written:
+				t.Errorf("the request's entry %q was not written; the console wrote:\n%s", entry, output.String())
+			case tt.want == "dropped" && written:
+				t.Errorf("the request's entry %q was written; the console wrote:\n%s", entry, output.String())
+			}
+		})
+	}
+}
+
 // routerVersionProbe is one session outlet's version check as the generator declared
 // it: the prefix its routes sit under, the releases the test sends through it, and the
 // stored-file routes answered at any release.
@@ -1046,6 +1172,9 @@ type routerHandlersStub struct {
 	// serverVersion is the release the stub reports; empty, no release, so a case that
 	// sets none is never refused.
 	serverVersion string
+	// exporter is where the request log goes when a test sets one, the console for the
+	// request log test; nil hands the router the recording stub.
+	exporter logger.Exporter
 }
 
 func (s *routerHandlersStub) ServerVersion() string {
@@ -1107,6 +1236,10 @@ func (s *routerHandlersStub) PruneDroidReports() http.HandlerFunc {
 }
 
 func (s *routerHandlersStub) LogExporter() logger.Exporter {
+	if s.exporter != nil {
+		return s.exporter
+	}
+
 	return &routerLogExporterStub{rec: s.rec}
 }
 

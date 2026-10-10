@@ -71,6 +71,44 @@ func TestReadReleaseFile(t *testing.T) {
 		{name: "a file route carrying an interpolation", content: `{"outlets": {"default": {}}, "fileRoutes": [{"kind": "upload", "method": "POST", "path": "/api/${var.x}", "source": "AttachManifest"}]}`, wantErr: `the file route "/api/${var.x}" is not a path a router mounts`},
 		{name: "a file route listed twice", content: `{"outlets": {"default": {}}, "fileRoutes": [{"kind": "upload", "method": "POST", "path": "/api/attach-manifest", "source": "AttachManifest"}, {"kind": "upload", "method": "POST", "path": "/api/attach-manifest", "source": "AttachAgain"}]}`, wantErr: "the file route POST /api/attach-manifest is listed twice"},
 		{name: "a file route naming no source", content: `{"outlets": {"default": {}}, "fileRoutes": [{"kind": "upload", "method": "POST", "path": "/api/attach-manifest"}]}`, wantErr: "the file route POST /api/attach-manifest names no source"},
+		{
+			name:    "surfaces: the default, an outlet with both, a route, a mounted prefix, and a trace setting alone",
+			content: `{"outlets": {"default": {}}, "surfaces": [{"prefix": "/", "kind": "prefix", "log": "always"}, {"prefix": "/api/", "kind": "prefix", "log": "sampled", "fraction": 0.1, "traces": "capped", "rate": 0.5}, {"prefix": "/api/widgets/{id}/content", "kind": "route", "log": "never"}, {"prefix": "/beacons/", "kind": "prefix", "log": "onEvent", "traces": "off"}, {"prefix": "/portal/api/", "kind": "prefix", "traces": "followFrontEnd"}]}`,
+			want: &ReleaseFile{
+				Outlets: map[string]ReleaseOutlet{"default": {}},
+				Surfaces: []Surface{
+					{Prefix: "/", Kind: SurfacePrefix, Log: RequestLogAlways},
+					{Prefix: "/api/", Kind: SurfacePrefix, Log: RequestLogSampled, Fraction: 0.1, Traces: TracesCapped, Rate: 0.5},
+					{Prefix: "/api/widgets/{id}/content", Kind: SurfaceRoute, Log: RequestLogNever},
+					{Prefix: "/beacons/", Kind: SurfacePrefix, Log: RequestLogOnEvent, Traces: TracesOff},
+					{Prefix: "/portal/api/", Kind: SurfacePrefix, Traces: TracesFollowFrontEnd},
+				},
+			},
+		},
+		{
+			name:    "surfaces written before the kind existed read as prefixes",
+			content: `{"outlets": {"default": {}}, "surfaces": [{"prefix": "/beacons/", "log": "onEvent"}, {"prefix": "/api/widgets/{id}/content", "kind": "", "log": "never"}]}`,
+			want: &ReleaseFile{
+				Outlets: map[string]ReleaseOutlet{"default": {}},
+				Surfaces: []Surface{
+					{Prefix: "/beacons/", Kind: SurfacePrefix, Log: RequestLogOnEvent},
+					{Prefix: "/api/widgets/{id}/content", Kind: SurfacePrefix, Log: RequestLogNever},
+				},
+			},
+		},
+		{name: "a surface of a third kind", content: `{"outlets": {"default": {}}, "surfaces": [{"prefix": "/api/", "kind": "subtree", "log": "never"}]}`, wantErr: `the surface /api/ has the kind "subtree"; a surface is a prefix or a route`},
+		{name: "a surface not under the root", content: `{"outlets": {"default": {}}, "surfaces": [{"prefix": "api/", "log": "never"}]}`, wantErr: `the surface "api/" is not a path a router mounts (/beacons/, /api/photos/{id}/file)`},
+		{name: "a surface carrying an interpolation", content: `{"outlets": {"default": {}}, "surfaces": [{"prefix": "/api/${var.x}/", "log": "never"}]}`, wantErr: `the surface "/api/${var.x}/" is not a path a router mounts`},
+		{name: "a surface carrying a quote", content: `{"outlets": {"default": {}}, "surfaces": [{"prefix": "/api/\"/", "log": "never"}]}`, wantErr: `is not a path a router mounts`},
+		{name: "a surface listed twice", content: `{"outlets": {"default": {}}, "surfaces": [{"prefix": "/api/", "log": "never"}, {"prefix": "/api/", "log": "always"}]}`, wantErr: "the surface /api/ is listed twice"},
+		{name: "a surface with neither word nor setting", content: `{"outlets": {"default": {}}, "surfaces": [{"prefix": "/api/"}]}`, wantErr: "the surface /api/ declares neither a request log word nor a trace setting"},
+		{name: "a word outside the vocabulary", content: `{"outlets": {"default": {}}, "surfaces": [{"prefix": "/api/", "log": "sometimes"}]}`, wantErr: `the surface /api/ has the request log word "sometimes"; the words are always, onEvent, sampled and never`},
+		{name: "a fraction without the sampled word", content: `{"outlets": {"default": {}}, "surfaces": [{"prefix": "/api/", "log": "onEvent", "fraction": 0.5}]}`, wantErr: "the surface /api/ carries a fraction without the sampled word"},
+		{name: "sampled without a fraction", content: `{"outlets": {"default": {}}, "surfaces": [{"prefix": "/api/", "log": "sampled"}]}`, wantErr: "the surface /api/ is sampled at 0; the fraction is above 0 and at most 1"},
+		{name: "a fraction above one", content: `{"outlets": {"default": {}}, "surfaces": [{"prefix": "/api/", "log": "sampled", "fraction": 1.5}]}`, wantErr: "the surface /api/ is sampled at 1.5; the fraction is above 0 and at most 1"},
+		{name: "a setting outside the vocabulary", content: `{"outlets": {"default": {}}, "surfaces": [{"prefix": "/api/", "traces": "some"}]}`, wantErr: `the surface /api/ has the trace setting "some"; the settings are followFrontEnd, capped and off`},
+		{name: "a rate without the capped setting", content: `{"outlets": {"default": {}}, "surfaces": [{"prefix": "/api/", "traces": "off", "rate": 0.5}]}`, wantErr: "the surface /api/ carries a rate without the capped setting"},
+		{name: "capped without a rate", content: `{"outlets": {"default": {}}, "surfaces": [{"prefix": "/api/", "traces": "capped"}]}`, wantErr: "the surface /api/ is capped at 0; the rate is above 0 and at most 1"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

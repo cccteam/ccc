@@ -417,6 +417,19 @@ type generatedRoute struct {
 	// declared maximum): the generated route registration leaves it off the bounded
 	// group, since a limit outside the handler's own could only tighten it.
 	SelfBounded bool
+	// RequestLog is the route's own request log word (@rpc(log:), @file(log:)), which
+	// the registration sets with logger.WithPolicy ahead of the handler, and Traces its
+	// own trace setting (@rpc(trace:), @file(trace:)), which the served router's surface
+	// table carries under the route's path; either is undeclared when the route takes
+	// its outlet's.
+	RequestLog RequestLog
+	Traces     Traces
+}
+
+// DeclaresWords reports whether the route declares a request log word or a trace
+// setting of its own.
+func (g *generatedRoute) DeclaresWords() bool {
+	return g.RequestLog.Declared() || g.Traces.Declared()
 }
 
 // SharedHandler reports whether the route's handler is additionally registered
@@ -523,6 +536,12 @@ type rpcMethodInfo struct {
 	// method is served under the scheduled prefix alone, behind the scheduler's token
 	// check, and never on an outlet; nil for a method a person calls.
 	Schedule *rpcSchedule
+	// RequestLog is the method's own request log word (@rpc(log:)), which its route
+	// registers with, and Traces its own trace setting (@rpc(trace:)), which the
+	// router's surface table carries; either is undeclared when the method takes its
+	// outlet's.
+	RequestLog RequestLog
+	Traces     Traces
 }
 
 // FormerRouteName is the kebab-cased former name the method's former route is served
@@ -2033,7 +2052,7 @@ const (
 	resourceKeyword             string = "resource"             // Designates a struct as a resource
 	virtualKeyword              string = "virtual"              // Designates a struct as a virtual resource
 	computedKeyword             string = "computed"             // Designates a struct as a computed resource
-	rpcKeyword                  string = "rpc"                  // Designates a struct as an RPC method; max: bounds its request body: @rpc(max: 8MB)
+	rpcKeyword                  string = "rpc"                  // Designates a struct as an RPC method; max: bounds its request body, log: and trace: declare its words: @rpc(max: 8MB, log: onEvent, trace: off)
 	enumerateKeyword            string = "enumerate"            // Generate constants based on existing values in Spanner DB (from inserts in migrations directory)
 	suppressKeyword             string = "suppress"             // Suppresses generation of specified handler types or routes for a resource
 	defaultsCreateTypeKeyword   string = "defaultsCreateType"   // Specifies a type to call "Defaults()" on for setting defaults on resource creation
@@ -2059,11 +2078,11 @@ const (
 	uploadKeyword               string = "upload"               // Declares an RPC method as a multipart upload: @upload(max: 5MB[, store: S]); its Execute takes resource.Files, or resource.FilesIn[S] for the named store S
 	rowsOfKeyword               string = "rowsOf"               // Declares the table resource whose rows a virtual or computed view carries, one to one under the same key: @rowsOf(Missions)
 	typescriptKeyword           string = "typescript"           // Declares the TypeScript type of a type used as a field, on the type's declaration: @typescript(Name, from: "module")
-	fileKeyword                 string = "file"                 // Declares a file served under the resource's read route: on the store-key field, @file[(segment[, name: Field, type: Field])]; on a keyed @computed struct, @file[(segment)] rendered by <Name><Segment>
+	fileKeyword                 string = "file"                 // Declares a file served under the resource's read route: on the store-key field, @file[(segment[, name: Field, type: Field, log: word, trace: setting])]; on a keyed @computed struct, @file[(segment[, log: word, trace: setting])] rendered by <Name><Segment>
 	featureKeyword              string = "feature"              // Gates a resource, a field or an RPC method behind a feature flag, by the flag's constant: @feature(Debriefs)
 	tenantKeyword               string = "tenant"               // Declares the tenant record: the global, table-backed @resource whose rows are the tenants and whose key is the domain in every tenant-scoped URL
 	formerlyKeyword             string = "formerly"             // Declares a field's or a method's former name, answered beside the current one while older applications still send it: @formerly(Title)
-	scheduleKeyword             string = "schedule"             // Declares an RPC method a scheduled route Cloud Scheduler calls: @schedule("0 3 * * *"[, zone: "America/Denver"])
+	scheduleKeyword             string = "schedule"             // Declares an RPC method a scheduled route Cloud Scheduler calls: @schedule("0 3 * * *"[, zone: "America/Denver", log: onEvent])
 )
 
 func resourceKeywords() map[string]genlang.KeywordOpts {

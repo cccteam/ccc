@@ -160,6 +160,17 @@ const defaultOutletName = "default"
 type routerOutlet struct {
 	name   string
 	prefix string
+	// auth is the auth the generated router binds the outlet's browser sessions to
+	// (Auth); nil for an API-key outlet and for an outlet under a hand-written router.
+	auth *outletAuth
+	// webApp is the mount path of the browser application the outlet serves (WebApp),
+	// empty when it serves none.
+	webApp string
+	// oldestAnswered is the oldest release of the browser application the outlet
+	// still answers (OldestAnswered): a release, ThisRelease, or empty for every
+	// release that sends the header. declaredOldest, below, records the declaration,
+	// which contradicts APIKey and describes the generated router.
+	oldestAnswered string
 	// servesSessions declares the outlet a browser-session surface: the generated
 	// router registers the permission-digest, user-domains and live routes under its
 	// prefix. True for the default outlet unless it declares APIKey; opt-in via
@@ -167,23 +178,18 @@ type routerOutlet struct {
 	// never serves sessions: its generated routes are the resource routes its key
 	// authorizes and nothing else.
 	servesSessions bool
-	// auth is the auth the generated router binds the outlet's browser sessions to
-	// (Auth); nil for an API-key outlet and for an outlet under a hand-written router.
-	auth *outletAuth
 	// apiKey marks a machine outlet for the generated router (APIKey): no session
 	// handling and no XSRF guard, the application's <Outlet>Auth middleware in front.
 	apiKey bool
-	// webApp is the mount path of the browser application the outlet serves (WebApp),
-	// empty when it serves none.
-	webApp string
 	// declaredSessions records an explicit ServesSessions(), which contradicts APIKey.
 	declaredSessions bool
-	// oldestAnswered is the oldest release of the browser application the outlet
-	// still answers (OldestAnswered): a release, ThisRelease, or empty for every
-	// release that sends the header. declaredOldest records the declaration, which
-	// contradicts APIKey and describes the generated router.
-	oldestAnswered string
-	declaredOldest bool
+	declaredOldest   bool
+	// requestLog is the outlet's request log word (OutletRequestLog), which the
+	// generated router sets on every request in the outlet's group; traces is its trace
+	// setting (OutletTraces), which the router's surface table carries. Either is
+	// undeclared when the outlet takes the application's.
+	requestLog RequestLog
+	traces     Traces
 }
 
 // outletAuth is one Auth declaration: the auth package a session outlet binds to and the
@@ -411,6 +417,59 @@ func OldestAnswered(release string) OutletOption {
 	})
 }
 
+// OutletRequestLog declares what a request under the outlet writes to the request log,
+// for the generated router (GenerateRouter): LogAlways, LogOnEvent, LogSampled or LogNever,
+// with a MinSeverity floor when wanted. The router sets the word on every request in the
+// outlet's group, the session routes included, ahead of the outlet's hook and its
+// generated routes, so it overrides the application default (WithRequestLog) and a route's
+// own word (@rpc(log:), @file(log:)) overrides it in turn: the nearest declaration wins.
+// A hand-mounted prefix declared beneath the outlet (WithMountedRoutes) keeps its own
+// word. The default outlet declares it on GenerateRoutes, an additional outlet on
+// WithRouterOutlet; without it the outlet takes the application's word. The release file
+// lists the outlet's prefix with the word, so the stack renders the cloud's request-log
+// exclusion from it.
+func OutletRequestLog(log RequestLog) OutletOption {
+	return outletOption(func(o *routerOutlet) error {
+		if !log.Declared() {
+			return errors.New("OutletRequestLog(RequestLog{}) declares no word; the words are LogAlways(), LogOnEvent(), LogSampled(fraction) and LogNever()")
+		}
+		if err := log.validate(); err != nil {
+			return errors.Wrap(err, "OutletRequestLog()")
+		}
+		if o.requestLog.Declared() {
+			return errors.Newf("OutletRequestLog(%s) redeclares the outlet's request log word (%s): an outlet declares one", log, o.requestLog)
+		}
+		o.requestLog = log
+
+		return nil
+	})
+}
+
+// OutletTraces declares how the spans of requests under the outlet are sampled, for the
+// generated router (GenerateRouter): TracesFollowFrontEnd, TracesCapped(rate) or TracesOff.
+// The router hands the outlet's prefix with the setting to the tracer's surface table
+// (tracer.Surfaces), and the sampler applies it as each request's span starts, since a
+// span's sampled flag is fixed then; a route's own setting (@rpc(trace:), @file(trace:))
+// is the longer match and wins. The default outlet declares it on GenerateRoutes, an
+// additional outlet on WithRouterOutlet; without it the outlet's spans follow the front
+// end. The release file lists the outlet's prefix with the setting.
+func OutletTraces(traces Traces) OutletOption {
+	return outletOption(func(o *routerOutlet) error {
+		if !traces.Declared() {
+			return errors.New("OutletTraces(Traces{}) declares no setting; the settings are TracesFollowFrontEnd(), TracesCapped(rate) and TracesOff()")
+		}
+		if err := traces.validate(); err != nil {
+			return errors.Wrap(err, "OutletTraces()")
+		}
+		if o.traces.Declared() {
+			return errors.Newf("OutletTraces(%s) redeclares the outlet's trace setting (%s): an outlet declares one", traces, o.traces)
+		}
+		o.traces = traces
+
+		return nil
+	})
+}
+
 // isRelease reports whether version is a semantic version, with or without the
 // leading v, as the server's check reads one.
 func isRelease(version string) bool {
@@ -475,6 +534,78 @@ func WithBodyLimit(limit int64) ResourceOption {
 			return errors.Newf("WithBodyLimit(%d): the limit must be positive", limit)
 		}
 		r.bodyLimit = limit
+
+		return nil
+	})
+}
+
+// WithRequestLog sets what a request writes to the request log when nothing nearer
+// declares otherwise, the application default, for the generated router
+// (GenerateRouter): LogAlways, LogOnEvent, LogSampled(fraction) or LogNever, with a
+// MinSeverity floor when wanted. The router builds the request logger with it
+// (logger.DefaultPolicy), so every request starts with the word; an outlet's word
+// (OutletRequestLog), a hand-mounted prefix's (WithMountedRoutes) and a route's own
+// (@rpc(log:), @file(log:), @schedule(log:)) override it where they are declared, and a
+// handler may change its own request through logger.FromReq(r).SetPolicy. Without the
+// option every request's entry is written, as today. The release file lists the default
+// as the surface at /, so the stack renders the cloud's request-log exclusion from it.
+func WithRequestLog(log RequestLog) ResourceOption {
+	return resourceOption(func(r *resourceGenerator) error {
+		if !log.Declared() {
+			return errors.New("WithRequestLog(RequestLog{}) declares no word; the words are LogAlways(), LogOnEvent(), LogSampled(fraction) and LogNever()")
+		}
+		if err := log.validate(); err != nil {
+			return errors.Wrap(err, "WithRequestLog()")
+		}
+		if r.requestLog.Declared() {
+			return errors.Newf("WithRequestLog(%s) redeclares the application's request log word (%s): declare it once", log, r.requestLog)
+		}
+		r.requestLog = log
+
+		return nil
+	})
+}
+
+// WithMountedRoutes declares the words of routes the application mounts by hand, under a
+// path prefix, for the generated router (GenerateRouter): the routes hooks.Root registers
+// outside every outlet, or an outlet's hook inside its group. The generator never sees
+// those routes, since the application registers them at run time, so the declaration is
+// how the router, the tracer and the release file learn them from one place: the router
+// builds the request logger with the prefix (logger.PolicyByPrefix), so a request under it
+// starts with the word, the longest declared prefix first, ahead of the application
+// default and kept under an outlet's word; the tracer's surface table carries the prefix
+// with its trace setting; and the release file lists it, so the stack renders the
+// cloud's request-log exclusion from it. The author's own logger.WithPolicy in the hook
+// stays available for a decision only the handler can make.
+//
+// prefix is the path as mounted, starting with /, matched as a prefix of the request's
+// path: write it with its trailing slash, /beacons/, to mean everything under it. Both
+// words are declared; LogAlways() and TracesFollowFrontEnd() name today's behavior. The
+// option may be passed once per prefix.
+func WithMountedRoutes(prefix string, log RequestLog, traces Traces) ResourceOption {
+	return resourceOption(func(r *resourceGenerator) error {
+		switch {
+		case prefix == "/":
+			return errors.New(`WithMountedRoutes("/") declares the whole application; WithRequestLog declares the application default`)
+		case !strings.HasPrefix(prefix, "/") || strings.ContainsAny(prefix, "{}* \t\n\""):
+			return errors.Newf("WithMountedRoutes(%q) requires a path prefix starting with '/', such as \"/beacons/\"", prefix)
+		case !log.Declared():
+			return errors.Newf("WithMountedRoutes(%q) declares no request log word; the words are LogAlways(), LogOnEvent(), LogSampled(fraction) and LogNever(), and LogAlways() is today's behavior", prefix)
+		case !traces.Declared():
+			return errors.Newf("WithMountedRoutes(%q) declares no trace setting; the settings are TracesFollowFrontEnd(), TracesCapped(rate) and TracesOff(), and TracesFollowFrontEnd() is today's behavior", prefix)
+		}
+		if err := log.validate(); err != nil {
+			return errors.Wrapf(err, "WithMountedRoutes(%q)", prefix)
+		}
+		if err := traces.validate(); err != nil {
+			return errors.Wrapf(err, "WithMountedRoutes(%q)", prefix)
+		}
+		for _, mounted := range r.mountedRoutes {
+			if mounted.prefix == prefix {
+				return errors.Newf("WithMountedRoutes(%q) is declared twice: declare each prefix once", prefix)
+			}
+		}
+		r.mountedRoutes = append(r.mountedRoutes, mountedRoutes{prefix: prefix, requestLog: log, traces: traces})
 
 		return nil
 	})

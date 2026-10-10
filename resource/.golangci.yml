@@ -62,6 +62,7 @@ linters:
             - aidanwoods.dev/go-paseto
             - cloud.google.com/go/civil
             - cloud.google.com/go/firestore
+            - cloud.google.com/go/logging
             - cloud.google.com/go/spanner
             - cloud.google.com/go/storage
             - firebase.google.com/go/v4

@@ -10,27 +10,43 @@ import (
 	"github.com/go-playground/errors/v5"
 )
 
-// rpcMaxArgKey is @rpc's one argument: the method's own request body limit.
+// rpcMaxArgKey is @rpc's body limit argument: the method's own request body limit.
 const rpcMaxArgKey = "max"
+
+// rpcArgSpec is @rpc's argument shape: max:, the body limit, and the words log:,
+// fraction:, trace: and rate: (requestlog.go). A bare @rpc takes none.
+func rpcArgSpec() *genlang.ArgSpec {
+	return &genlang.ArgSpec{Keys: append(append([]string{rpcMaxArgKey}, requestLogArgKeys...), tracesArgKeys...)}
+}
+
+// rpcArguments parses @rpc's arguments once, for the body limit and the words; ok
+// reports whether the annotation carries any.
+func rpcArguments(pStruct *parser.Struct, annotations genlang.StructAnnotations) (args genlang.NamedArgs, ok bool, err error) {
+	arg := annotations.Struct.Get(rpcKeyword)
+	if arg.Count() == 0 {
+		return genlang.NamedArgs{}, false, nil
+	}
+	invocations, err := arg.ParseInvocations(rpcArgSpec())
+	if err != nil {
+		return genlang.NamedArgs{}, false, errors.Wrapf(err, "@%s on %s", rpcKeyword, pStruct.Name())
+	}
+
+	return invocations[0], true, nil
+}
 
 // resolveRPCBodyLimit reads @rpc's max: argument, the method's own request body limit,
 // which its generated handler applies in place of the router's BodyLimit. A bare @rpc
 // takes the application's limit. An upload declares its maximum on @upload and a
 // scheduled method takes no body, so max: on either is refused naming the struct.
 func resolveRPCBodyLimit(rpcMethod *rpcMethodInfo, pStruct *parser.Struct, annotations genlang.StructAnnotations) error {
-	arg := annotations.Struct.Get(rpcKeyword)
-	if arg.Count() == 0 {
+	args, ok, err := rpcArguments(pStruct, annotations)
+	if err != nil {
+		return err
+	}
+	maxText, declared := args.Named(rpcMaxArgKey)
+	if !ok || !declared {
 		return nil
 	}
-
-	invocations, err := arg.ParseInvocations(&genlang.ArgSpec{
-		Keys:     []string{rpcMaxArgKey},
-		Required: []string{rpcMaxArgKey},
-	})
-	if err != nil {
-		return errors.Wrapf(err, "@%s on %s", rpcKeyword, pStruct.Name())
-	}
-	maxText, _ := invocations[0].Named(rpcMaxArgKey)
 	maxText = strings.TrimSpace(maxText)
 	if rpcMethod.Upload != nil {
 		return errors.Newf("struct %s: @%s(%s: %s) on an upload; an upload declares its maximum on @%s(%s: ...), which bounds the whole multipart body", pStruct.Name(), rpcKeyword, rpcMaxArgKey, maxText, uploadKeyword, uploadMaxArgKey)
