@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.14.1](https://github.com/cccteam/ccc/compare/resource/v0.14.0...resource/v0.14.1) (2026-10-10)
+
+
+### Bug Fixes
+
+* **bedrock:** the module pins resource v0.14.0 ([#923](https://github.com/cccteam/ccc/issues/923)) ([737c6ff](https://github.com/cccteam/ccc/commit/737c6ff23f8f2cec017e3aa29d0e4e794de7163d))
+* **impulse:** the skeleton and the ledger pin tracer v0.3.0 and resource v0.14.0, the request log step's releases ([#923](https://github.com/cccteam/ccc/issues/923)) ([737c6ff](https://github.com/cccteam/ccc/commit/737c6ff23f8f2cec017e3aa29d0e4e794de7163d))
+
 ## [0.14.0](https://github.com/cccteam/ccc/compare/resource/v0.13.0...resource/v0.14.0) (2026-10-10)
 
 
