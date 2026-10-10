@@ -115,7 +115,7 @@ func (m *Model) jobsTemplate() error {
 	case v != nil && m.Jobs == nil:
 		return errors.Newf("%s:%d: %s (%s) reads the job process's template job, and the application has no job process (no main package at %s): the stack has no job to name; add the job process, or drop the job driver's settings from the configuration", v.File, v.Line, v.Name, v.Declaration(), jobsDir)
 	case v == nil && m.Jobs != nil:
-		return errors.Newf("%s is the job process, and no configuration level declares %s, which the stack sets on the service to the job process's template job: the service reads no template, so the framework's job driver (resource/jobs/cloudrun) would refuse every start; embed cloudrun.Settings in the served site's configuration", m.Jobs.Dir, JobsTemplateVariable)
+		return errors.Newf("%s is the job process, and no configuration level declares %s, which the stack sets on the service to the job process's template job: the service reads no template, so the framework's job driver (%s) would refuse every start; %s", m.Jobs.Dir, JobsTemplateVariable, jobDriver.path, m.driverRemedy(jobDriver, siteConfiguration))
 	case v != nil:
 		return m.jobsTemplateLevel(v)
 	default:
@@ -147,8 +147,12 @@ func (m *Model) jobsTemplateLevel(v *Variable) error {
 		construct = "construct"
 	}
 
-	return errors.Newf("%s:%d: %s (%s) is declared at the %s level, which %s %s as well as the served site (%s), and the stack sets the variable on the service alone: a process other than the served site would start with the job driver's template unset; embed cloudrun.Settings in the served site's configuration level, the one no other process constructs", v.File, v.Line, v.Name, v.Declaration(), v.Level, strings.Join(others, " and "), construct, m.Site.Main)
+	return errors.Newf("%s:%d: %s (%s) is declared at the %s level, which %s %s as well as the served site (%s), and the stack sets the variable on the service alone: a process other than the served site would start with the job driver's template unset; %s", v.File, v.Line, v.Name, v.Declaration(), v.Level, strings.Join(others, " and "), construct, m.Site.Main, jobDriver.handEdit(siteConfiguration+" level, the one no other process constructs"))
 }
+
+// siteConfiguration is where a remedy over the job driver's settings places them: the
+// served site's configuration, the level the stack sets the template on.
+const siteConfiguration = "the served site's configuration"
 
 // otherProcesses are the deployed processes other than the served site, those the
 // application has: the migration, then the job process.

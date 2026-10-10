@@ -562,6 +562,11 @@ go run github.com/cccteam/ccc/impulse@<version> upgrade --dry-run   # what the w
 go run github.com/cccteam/ccc/impulse@<version> upgrade             # walk, one commit per step
 ```
 
+Upgrade impulse first, then bedrock (`bedrock upgrade`), and land both in one change:
+bedrock's checks read what the walk writes (the drivers' settings the configuration embeds,
+the release file, the processes), and the walk reads nothing bedrock renders; the code after
+a step may need what only the newer stack provides.
+
 The impulse to upgrade to is run, not pinned first: a `go get -tool` ahead of the walk is
 the drag the walk avoids. Each pending step is one commit. Its recipes run first: a recipe
 detects the old form in the application (the generator program, the annotations, the known

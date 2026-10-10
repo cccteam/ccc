@@ -77,7 +77,12 @@ tree and, with --agent, runs the agent and verifies its work, through go tool im
 handoff --staged, from impulse ` + handoffStagedSince + ` on; a pinned release before it leaves the
 walk to write the brief from that release's report, and the agent to the user. Fix or
 hand off, commit, and run upgrade again; it resumes from whatever go.mod says. No step is
-skipped, since a recipe is written against the shape the step before it left behind.`,
+skipped, since a recipe is written against the shape the step before it left behind.
+
+Upgrade impulse first, then bedrock (bedrock upgrade), and land both in one change: bedrock's
+checks read what the walk writes (the drivers' settings the configuration embeds, the release
+file, the processes), and the walk reads nothing bedrock renders; the code after a step may
+need what only the newer stack provides.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			u := &upgrader{

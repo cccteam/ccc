@@ -100,6 +100,12 @@ type Model struct {
 	Environments []Environment
 	// Placement is the placement the model was derived for.
 	Placement *Placement
+	// behindDrivers is the resource version the application's go.mod requires when it
+	// sorts before the drivers' release (resourceBeforeDrivers), and empty otherwise: set,
+	// the application has not walked impulse's provider-drivers step, the one that embeds
+	// the drivers' settings in the configuration, and a refusal over missing settings
+	// names impulse upgrade as the remedy (driverRemedy).
+	behindDrivers string
 }
 
 // Outlet is one router outlet of the site: its name and the prefix its routes live under
@@ -674,7 +680,7 @@ func Derive(a *app.App, p *Placement) (*Model, error) {
 		return nil, err
 	}
 
-	m := &Model{App: code, Module: module, Repository: repositoryURL(module), EnvTemplate: a.EnvTemplate, Placement: p}
+	m := &Model{App: code, Module: module, Repository: repositoryURL(module), EnvTemplate: a.EnvTemplate, Placement: p, behindDrivers: resourceBeforeDrivers(a.GoMod)}
 	cfg, err := readConfig(a)
 	if err != nil {
 		return nil, err
@@ -753,7 +759,7 @@ func (m *Model) classify(cfg *config) error {
 		Name:     m.byRole(RoleDatabaseName),
 	}
 	if m.Database.Project == nil || m.Database.Instance == nil || m.Database.Name == nil {
-		return errors.Newf("the config package declares no database identity (%s)", strings.Join(databaseVariables(), ", "))
+		return errors.Newf("the config package declares no database identity (%s), which the stack reads from the database driver's settings; %s", strings.Join(databaseVariables(), ", "), m.driverRemedy(databaseDriver, levelConfiguration(LevelData)))
 	}
 	m.Database.Struct = m.Database.Project.Struct
 	m.fileStores()

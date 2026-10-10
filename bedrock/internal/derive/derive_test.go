@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 
+	"golang.org/x/mod/modfile"
+
 	"github.com/cccteam/ccc/bedrock/internal/hook"
 	"github.com/cccteam/ccc/impulse/app"
 	cloudrundeclaration "github.com/cccteam/ccc/resource/jobs/cloudrun/declaration"
@@ -1179,19 +1181,29 @@ func TestJobsTemplate(t *testing.T) {
 			wantErr: "pkg/config/site.go:64: APP_JOBS_TEMPLATE (siteConfig.Template) reads the job process's template job, and the application has no job process (no main package at cmd/jobs): the stack has no job to name; add the job process, or drop the job driver's settings from the configuration",
 		},
 		{
-			name:    "a job process without the variable is refused, naming the process",
+			name:    "a job process without the variable is refused, naming the process and the hand edit by the driver's alias",
 			model:   Model{Site: site, Jobs: jobs, Variables: []Variable{{Name: "APP_OTHER", Level: LevelSite}}},
-			wantErr: "cmd/jobs is the job process, and no configuration level declares APP_JOBS_TEMPLATE, which the stack sets on the service to the job process's template job: the service reads no template, so the framework's job driver (resource/jobs/cloudrun) would refuse every start; embed cloudrun.Settings in the served site's configuration",
+			wantErr: "cmd/jobs is the job process, and no configuration level declares APP_JOBS_TEMPLATE, which the stack sets on the service to the job process's template job: the service reads no template, so the framework's job driver (resource/jobs/cloudrun) would refuse every start; embed the job driver's settings (jobstarter.Settings, resource/jobs/cloudrun) in the served site's configuration",
+		},
+		{
+			name:    "a job process without the variable in an application behind the drivers' release is sent to impulse upgrade first",
+			model:   Model{Site: site, Jobs: jobs, Variables: []Variable{{Name: "APP_OTHER", Level: LevelSite}}, behindDrivers: "v0.13.0"},
+			wantErr: "cmd/jobs is the job process, and no configuration level declares APP_JOBS_TEMPLATE, which the stack sets on the service to the job process's template job: the service reads no template, so the framework's job driver (resource/jobs/cloudrun) would refuse every start; run impulse upgrade first (go.mod requires resource v0.13.0, before v0.14.0, the release with the drivers): its provider-drivers step embeds the driver settings in the configuration; then bedrock upgrade",
 		},
 		{
 			name:    "the variable at a level the job process constructs too is refused, naming the process",
 			model:   Model{Site: site, Jobs: jobs, Variables: []Variable{dataTemplate}},
-			wantErr: "pkg/config/data.go:228: APP_JOBS_TEMPLATE (dataConfig.Template) is declared at the data level, which cmd/jobs constructs as well as the served site (main.go), and the stack sets the variable on the service alone: a process other than the served site would start with the job driver's template unset; embed cloudrun.Settings in the served site's configuration level, the one no other process constructs",
+			wantErr: "pkg/config/data.go:228: APP_JOBS_TEMPLATE (dataConfig.Template) is declared at the data level, which cmd/jobs constructs as well as the served site (main.go), and the stack sets the variable on the service alone: a process other than the served site would start with the job driver's template unset; embed the job driver's settings (jobstarter.Settings, resource/jobs/cloudrun) in the served site's configuration level, the one no other process constructs",
 		},
 		{
 			name:    "the variable at a level two other processes construct is refused, naming both",
 			model:   Model{Site: site, Migrate: migrate, Jobs: jobs, Variables: []Variable{dataTemplate}},
-			wantErr: "pkg/config/data.go:228: APP_JOBS_TEMPLATE (dataConfig.Template) is declared at the data level, which cmd/deployment/migrate and cmd/jobs construct as well as the served site (main.go), and the stack sets the variable on the service alone: a process other than the served site would start with the job driver's template unset; embed cloudrun.Settings in the served site's configuration level, the one no other process constructs",
+			wantErr: "pkg/config/data.go:228: APP_JOBS_TEMPLATE (dataConfig.Template) is declared at the data level, which cmd/deployment/migrate and cmd/jobs construct as well as the served site (main.go), and the stack sets the variable on the service alone: a process other than the served site would start with the job driver's template unset; embed the job driver's settings (jobstarter.Settings, resource/jobs/cloudrun) in the served site's configuration level, the one no other process constructs",
+		},
+		{
+			name:    "the variable at another level is a hand edit whatever go.mod says, since the step moves no embedding",
+			model:   Model{Site: site, Jobs: jobs, Variables: []Variable{dataTemplate}, behindDrivers: "v0.13.0"},
+			wantErr: "a process other than the served site would start with the job driver's template unset; embed the job driver's settings (jobstarter.Settings, resource/jobs/cloudrun) in the served site's configuration level, the one no other process constructs",
 		},
 	}
 	for _, tt := range tests {
@@ -1218,7 +1230,10 @@ func TestJobsTemplate(t *testing.T) {
 // sides agree; a copy without the job process is refused at the embedding, a copy whose
 // site level embeds nothing is refused naming the process, and a copy embedding the
 // settings in its data level, which the migrate command and the job process construct
-// too, is refused at the embedding naming both.
+// too, is refused at the embedding naming both. The refusal naming the process ends in
+// the remedy the fixture's go.mod decides: the fixture requires resource at a
+// pseudo-version before the drivers' release, so it is sent to impulse upgrade first; a
+// copy whose go.mod requires the release is given the hand edit by the driver's alias.
 func TestDeriveJobsTemplate(t *testing.T) {
 	t.Parallel()
 
@@ -1245,13 +1260,23 @@ func TestDeriveJobsTemplate(t *testing.T) {
 			wantErr: siteFile + ":69: APP_JOBS_TEMPLATE (siteConfig.Template) reads the job process's template job, and the application has no job process (no main package at cmd/jobs): the stack has no job to name",
 		},
 		{
-			name: "a job process without the driver's settings embedded anywhere",
+			name: "a job process without the driver's settings embedded anywhere, behind the drivers' release",
 			mutate: func(t *testing.T, dir string) {
 				t.Helper()
 
 				dropEmbedding(t, filepath.Join(dir, siteFile))
 			},
-			wantErr: "cmd/jobs is the job process, and no configuration level declares APP_JOBS_TEMPLATE, which the stack sets on the service to the job process's template job: the service reads no template, so the framework's job driver (resource/jobs/cloudrun) would refuse every start; embed cloudrun.Settings in the served site's configuration",
+			wantErr: "cmd/jobs is the job process, and no configuration level declares APP_JOBS_TEMPLATE, which the stack sets on the service to the job process's template job: the service reads no template, so the framework's job driver (resource/jobs/cloudrun) would refuse every start; run impulse upgrade first (go.mod requires resource v0.10.7-0.20260922183153-31dedfd272da, before v0.14.0, the release with the drivers): its provider-drivers step embeds the driver settings in the configuration; then bedrock upgrade",
+		},
+		{
+			name: "a job process without the driver's settings embedded anywhere, at the drivers' release",
+			mutate: func(t *testing.T, dir string) {
+				t.Helper()
+
+				dropEmbedding(t, filepath.Join(dir, siteFile))
+				pinResource(t, dir, driversRelease)
+			},
+			wantErr: "cmd/jobs is the job process, and no configuration level declares APP_JOBS_TEMPLATE, which the stack sets on the service to the job process's template job: the service reads no template, so the framework's job driver (resource/jobs/cloudrun) would refuse every start; embed the job driver's settings (jobstarter.Settings, resource/jobs/cloudrun) in the served site's configuration",
 		},
 		{
 			name: "the driver's settings embedded at a level other processes construct",
@@ -1275,7 +1300,7 @@ func TestDeriveJobsTemplate(t *testing.T) {
 					t.Fatal(err)
 				}
 			},
-			wantErr: dataFile + ":228: APP_JOBS_TEMPLATE (dataConfig.Template) is declared at the data level, which cmd/deployment/migrate and cmd/jobs construct as well as the served site (main.go), and the stack sets the variable on the service alone: a process other than the served site would start with the job driver's template unset; embed cloudrun.Settings in the served site's configuration level, the one no other process constructs",
+			wantErr: dataFile + ":228: APP_JOBS_TEMPLATE (dataConfig.Template) is declared at the data level, which cmd/deployment/migrate and cmd/jobs construct as well as the served site (main.go), and the stack sets the variable on the service alone: a process other than the served site would start with the job driver's template unset; embed the job driver's settings (jobstarter.Settings, resource/jobs/cloudrun) in the served site's configuration level, the one no other process constructs",
 		},
 	}
 	for _, tt := range tests {
@@ -1307,6 +1332,32 @@ func TestDeriveJobsTemplate(t *testing.T) {
 				t.Errorf("Jobs = %+v, template variable = %+v; want the job process and %s at the site level, siteConfig.Template", m.Jobs, v, JobsTemplateVariable)
 			}
 		})
+	}
+}
+
+// pinResource moves the resource requirement of the fixture copy's go.mod to the version,
+// for the remedy fork the derive reads off it.
+func pinResource(t *testing.T, dir, version string) {
+	t.Helper()
+
+	file := filepath.Join(dir, "go.mod")
+	data, err := os.ReadFile(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f, err := modfile.Parse(file, data, nil)
+	if err != nil {
+		t.Fatalf("modfile.Parse() error = %v", err)
+	}
+	if err := f.AddRequire(resourceModule, version); err != nil {
+		t.Fatalf("AddRequire() error = %v", err)
+	}
+	pinned, err := f.Format()
+	if err != nil {
+		t.Fatalf("Format() error = %v", err)
+	}
+	if err := os.WriteFile(file, pinned, 0o600); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -1398,7 +1449,10 @@ func TestFirestore(t *testing.T) {
 		name      string
 		variables []Variable
 		files     map[string]string
-		wantErr   string
+		// behind is the resource version the model reads its go.mod as behind the
+		// drivers' release at, empty for one at or after it.
+		behind  string
+		wantErr string
 		// want is firestoreLine's reading; wantFields the fields' shapes, one per
 		// field: ttl, the index count, and whether the file lists indexes.
 		want       string
@@ -1416,9 +1470,15 @@ func TestFirestore(t *testing.T) {
 			wantFields: []string{"ttl, 2 index(es), listed", "no ttl, 0 index(es), listed", "ttl, 0 index(es), unlisted"},
 		},
 		{
-			name:      "a database without its project variable is refused",
+			name:      "a database without its project variable is refused, with the hand edit by the driver's alias",
 			variables: []Variable{database},
-			wantErr:   "APP_FIRESTORE_DATABASE (dataConfig.FirestoreDatabase) declares a Firestore database, and the config package declares no variable for its project (GOOGLE_CLOUD_FIRESTORE_PROJECT): the stack sets it to the environment project",
+			wantErr:   "APP_FIRESTORE_DATABASE (dataConfig.FirestoreDatabase) declares a Firestore database, and the config package declares no variable for its project (GOOGLE_CLOUD_FIRESTORE_PROJECT): the stack sets it to the environment project, where the database is, since the Spanner project is the shared instance's in an environment that shares one; embed the live driver's settings (liveservice.Settings, resource/live/firestore) in the data level's configuration, in place of the variables declared by hand",
+		},
+		{
+			name:      "a database without its project variable in an application behind the drivers' release is sent to impulse upgrade first",
+			variables: []Variable{database},
+			behind:    "v0.13.0",
+			wantErr:   "declares no variable for its project (GOOGLE_CLOUD_FIRESTORE_PROJECT): the stack sets it to the environment project, where the database is, since the Spanner project is the shared instance's in an environment that shares one; run impulse upgrade first (go.mod requires resource v0.13.0, before v0.14.0, the release with the drivers): its provider-drivers step embeds the driver settings in the configuration; then bedrock upgrade",
 		},
 		{
 			name:      "a project variable without a database is refused",
@@ -1506,7 +1566,7 @@ func TestFirestore(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			m := &Model{Variables: tt.variables, Schema: Schema{MigrationsDir: "schema/migrations"}}
+			m := &Model{Variables: tt.variables, Schema: Schema{MigrationsDir: "schema/migrations"}, behindDrivers: tt.behind}
 			err := m.firestore(writeFirestoreFiles(t, tt.files))
 			if tt.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
