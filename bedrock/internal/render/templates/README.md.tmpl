@@ -346,7 +346,7 @@ above them.
 | `{{.GroupLookup.Name}}` | {{.GroupLookup.Level}} | `var.{{.AuthVar}}_group_lookup` | yes | |{{if .Jobs}} |{{end}}
 {{- end}}
 {{- if .Jobs}}
-| `{{.JobsTemplateVariable}}` | none, the framework reads it | the job process's template job, which the site's own build's job is named from | yes | | |
+| `{{.JobsTemplateVariable}}` | {{.JobsTemplate.Level}} | the job process's template job, which the site's own build's job is named from (the job driver's settings, `{{.JobsTemplate.Declaration}}`) | yes | | |
 {{- end}}
 {{- if .Scheduled}}
 | `{{.SchedulerVariable}}` | none, the framework reads it | the scheduler's invoker identity, unset in a pull-request stack | yes | |{{if .Jobs}} |{{end}}

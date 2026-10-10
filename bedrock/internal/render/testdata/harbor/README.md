@@ -315,7 +315,7 @@ above them.
 | `APP_STAFF_OIDC_CLIENT_ID` | data | `var.staff_oidc_client_id[env]` | yes | | |
 | `APP_STAFF_OIDC_REDIRECT_URL` | data | `https://<first hostname>/api/user/callback` | yes | | |
 | `APP_STAFF_OIDC_GROUP_LOOKUP` | data | `var.staff_oidc_group_lookup` | yes | | |
-| `APP_JOBS_TEMPLATE` | none, the framework reads it | the job process's template job, which the site's own build's job is named from | yes | | |
+| `APP_JOBS_TEMPLATE` | site | the job process's template job, which the site's own build's job is named from (the job driver's settings, `siteConfig.Template`) | yes | | |
 | `APP_SCHEDULER_INVOKER` | none, the framework reads it | the scheduler's invoker identity, unset in a pull-request stack | yes | | |
 | `APP_COOKIE_KEY`, `APP_STAFF_OIDC_CLIENT_SECRET` | data | secret, at the pinned version | yes | | yes |
 
