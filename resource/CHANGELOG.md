@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.14.0](https://github.com/cccteam/ccc/compare/resource/v0.13.0...resource/v0.14.0) (2026-10-10)
+
+
+### ⚠ BREAKING CHANGES
+
+* **tracer:** tracer.NewHandler takes options (tracer.NewHandler(opts ...HandlerOption)); call sites with no arguments are unchanged, any other call moves to the options.
+* **resource:** jobs.NewCloudRun, jobs.CloudRun, jobs.FromEnvironment, jobs.JobOf and jobs.VersionKey leave resource/jobs for resource/jobs/cloudrun (cloudrun.Open, Driver.Start, JobOf, VersionKey); an application opens the job starter through the driver.
+
+### Features
+
+* **bedrock:** the stack derives its variables from the database, job and live drivers' declarations as well as the cloud driver's, reads the job template variable's name off the job driver's declaration, and refuses a job process without the driver's settings embedded or the settings embedded without a job process ([#915](https://github.com/cccteam/ccc/issues/915)) ([a81e76b](https://github.com/cccteam/ccc/commit/a81e76b28272e243a13bd8f742621312d3067d60))
+* **bedrock:** the stack renders a project-level log exclusion per application service and environment from the release file's surfaces, so the infrastructure's request-log entries follow the words the code declares ([#916](https://github.com/cccteam/ccc/issues/916)) ([c1a7104](https://github.com/cccteam/ccc/commit/c1a71042afb90bfb812176e21b4b97455c1b440f))
+* **impulse:** the provider-drivers recipe moves an application's configuration to the drivers under their neutral aliases and renames its wrappers for the kinds (DatabaseSettings, LiveSettings), the ledger takes the step, and the framework declarations list the four drivers' settings ([#915](https://github.com/cccteam/ccc/issues/915)) ([a81e76b](https://github.com/cccteam/ccc/commit/a81e76b28272e243a13bd8f742621312d3067d60))
+* **impulse:** the skeleton candidates and the ledger take the request log step: logger v0.1.30, the tracer's options and the generated declarations ([#916](https://github.com/cccteam/ccc/issues/916)) ([c1a7104](https://github.com/cccteam/ccc/commit/c1a71042afb90bfb812176e21b4b97455c1b440f))
+* **resource:** per-surface request log and trace declarations in the generator: WithRequestLog, WithMountedRoutes, OutletRequestLog, OutletTraces and the [@rpc](https://github.com/rpc), [@file](https://github.com/file) and [@schedule](https://github.com/schedule) log and trace words; the generated router hands the request logger and the tracer their prefix tables and the release file lists the surfaces ([#916](https://github.com/cccteam/ccc/issues/916)) ([c1a7104](https://github.com/cccteam/ccc/commit/c1a71042afb90bfb812176e21b4b97455c1b440f))
+* **resource:** the database, the live change feed and the Cloud Run job starter open through provider drivers with Settings, Open and Close: resource/database/spanner, resource/database/postgres, resource/live/firestore and resource/jobs/cloudrun, each with a declaration package the tools read; the application binds the drivers under neutral aliases (database, liveservice, jobstarter, cloud) so a provider swap is the import line, and the live driver resolves its emulator project itself ([#915](https://github.com/cccteam/ccc/issues/915)) ([a81e76b](https://github.com/cccteam/ccc/commit/a81e76b28272e243a13bd8f742621312d3067d60))
+* **tracer:** the handler takes options, and Surfaces hands it a prefix table that decides each request's sampling at span start: follow the front end, capped at a rate by trace id, or off ([#916](https://github.com/cccteam/ccc/issues/916)) ([c1a7104](https://github.com/cccteam/ccc/commit/c1a71042afb90bfb812176e21b4b97455c1b440f))
+
+
+### Bug Fixes
+
+* resource and securehash mark the Semgrep report's by-design findings at the site with their reasons ([#911](https://github.com/cccteam/ccc/issues/911)) ([7023586](https://github.com/cccteam/ccc/commit/702358613e0beb448a121d447704c77a38dc3d21))
+
 ## [0.13.0](https://github.com/cccteam/ccc/compare/resource/v0.12.0...resource/v0.13.0) (2026-10-09)
 
 
