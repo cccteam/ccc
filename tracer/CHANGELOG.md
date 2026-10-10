@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.3.0](https://github.com/cccteam/ccc/compare/tracer/v0.2.1...tracer/v0.3.0) (2026-10-10)
+
+
+### ⚠ BREAKING CHANGES
+
+* **tracer:** tracer.NewHandler takes options (tracer.NewHandler(opts ...HandlerOption)); call sites with no arguments are unchanged, any other call moves to the options.
+
+### Features
+
+* **bedrock:** the stack renders a project-level log exclusion per application service and environment from the release file's surfaces, so the infrastructure's request-log entries follow the words the code declares ([#916](https://github.com/cccteam/ccc/issues/916)) ([c1a7104](https://github.com/cccteam/ccc/commit/c1a71042afb90bfb812176e21b4b97455c1b440f))
+* **impulse:** the skeleton candidates and the ledger take the request log step: logger v0.1.30, the tracer's options and the generated declarations ([#916](https://github.com/cccteam/ccc/issues/916)) ([c1a7104](https://github.com/cccteam/ccc/commit/c1a71042afb90bfb812176e21b4b97455c1b440f))
+* **resource:** per-surface request log and trace declarations in the generator: WithRequestLog, WithMountedRoutes, OutletRequestLog, OutletTraces and the [@rpc](https://github.com/rpc), [@file](https://github.com/file) and [@schedule](https://github.com/schedule) log and trace words; the generated router hands the request logger and the tracer their prefix tables and the release file lists the surfaces ([#916](https://github.com/cccteam/ccc/issues/916)) ([c1a7104](https://github.com/cccteam/ccc/commit/c1a71042afb90bfb812176e21b4b97455c1b440f))
+* **tracer:** the handler takes options, and Surfaces hands it a prefix table that decides each request's sampling at span start: follow the front end, capped at a rate by trace id, or off ([#916](https://github.com/cccteam/ccc/issues/916)) ([c1a7104](https://github.com/cccteam/ccc/commit/c1a71042afb90bfb812176e21b4b97455c1b440f))
+
 ## [0.2.1](https://github.com/cccteam/ccc/compare/tracer/v0.2.0...tracer/v0.2.1) (2026-10-09)
 
 
