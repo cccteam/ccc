@@ -3,6 +3,7 @@ package config
 import (
 	"context"
 
+	"github.com/cccteam/ccc/resource/jobs/cloudrun"
 	"github.com/go-playground/errors/v5"
 	"github.com/go-playground/validator/v10"
 	"github.com/sethvargo/go-envconfig"
@@ -62,4 +63,8 @@ type siteConfig struct {
 	// PortalDist is the directory holding the portal's built Angular bundle, from the
 	// second browser workspace.
 	PortalDist string `env:"APP_PORTAL_DIST,default=portal/dist/portal"`
+
+	// The Cloud Run job driver's variables: the template job this build's job is named
+	// from.
+	cloudrun.Settings
 }

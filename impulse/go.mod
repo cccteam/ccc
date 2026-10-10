@@ -4,7 +4,7 @@ go 1.26.9
 
 require (
 	github.com/cccteam/ccc/cloud v0.2.1
-	github.com/cccteam/ccc/resource v0.13.0
+	github.com/cccteam/ccc/resource v0.13.1-0.20261010141715-20530e190bc0
 	github.com/ettle/strcase v0.2.0
 	github.com/go-playground/errors/v5 v5.4.0
 	github.com/google/go-cmp v0.7.0

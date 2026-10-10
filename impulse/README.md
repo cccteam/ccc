@@ -64,10 +64,16 @@ templates, this README, and the tool's source.
   the database), and **site** (one served site: its port and its built bundle). The site
   level is `SiteConfiguration` in both layouts, since a flat application is one site.
   The core level opens the cloud driver (`cloud/gcp`), which builds where the process's
-  logs and spans go from the settings the level embeds (`gcp.Settings`: the logging
+  logs and spans go from the settings the level embeds (`cloud.Settings`: the logging
   project and the trace sampling); the generated router installs tracing and the request
   logger from the App's `LogExporter`, so nothing in the application names a logging
-  client or a trace provider, and another cloud is another driver import and settings.
+  client or a trace provider. The data level opens the database driver
+  (`resource/database/spanner`) and the live driver (`resource/live/firestore`), and
+  the site level the job driver (`resource/jobs/cloudrun`), each driver's `Settings`
+  embedded in a wrapper named for the kind (`DatabaseSettings`, `LiveSettings`) and
+  opened with its `Open`. Every driver is bound under one neutral import alias
+  (`cloud`, `database`, `liveservice`, `jobstarter`), so the application names the
+  vendor on the import line alone, and another provider is another import line.
 - **Live pages**: list pages and record pages that stay current without polling. A
   request the page asked to be live carries `X-Subscribe`; the server registers the
   subscription before the query runs and publishes each commit's rows into the
@@ -847,10 +853,11 @@ impulse add feature debriefs --site console
 application, the whole of it, so the check is clean when it ends. The data level gains
 `FileStoreSettings` and `LoadFileStoreSettings` in `pkg/config/files.go`, reads
 `APP_FILE_STORE` into its environment struct, opens the store the variable names before
-the configuration is built (`openFileStore`; unset leaves the store closed, so the migrate
-and bootstrap commands run without one), builds the resource client over it
-(`resource.NewSpannerClient(client, fileStoreOptions(files)...)`, which is
-`resource.WithFileStore`) and releases it in `Close`. `.envrc.template` sets
+the database driver opens (`openFileStore`; unset leaves the store closed, so the migrate
+and bootstrap commands run without one), hands the driver the store's options
+(`database.Open(ctx, env.Database.Settings, fileStoreOptions(files)...)`, which is
+`resource.WithFileStore` on the resource client the driver builds) and releases it in
+`Close`. `.envrc.template` sets
 `APP_FILE_STORE=file://uploads` in the data block and `.gitignore` ignores `uploads/`;
 `cmd/bootstrap` gains `emptyFileStore`, called before the development seed, which empties
 a `file://` store since no row holds a file then. `pkg/jobs` declares the cleanup
@@ -861,11 +868,13 @@ marked `@rpc` and `@schedule("0 9 * * *")` whose `Execute` starts the job proces
 cleanup command through the client's `Jobs()`; an application without an rpc package gains
 `pkg/rpc` with a `Client` carrying the starter, and `WithRPC("pkg/rpc")` in the generator
 program. The site level builds the scheduler guard (`scheduled.FromEnvironment`, from
-`APP_SCHEDULER_INVOKER`) and the job starter (`jobs.FromEnvironment`, from `APP_JOBS_TEMPLATE` and `APP_VERSION`)
-and exposes them as `Scheduler()` and `Jobs()`; the `Configurer` asks for both, the `App`
-carries the guard and the RPC client built over the starter, and `app/scheduled.go`
-declares `SchedulerAuth` (the middleware the generated router mounts the scheduled routes
-behind) and `RPCClient`. Every test configurer (a type in a test file declaring
+`APP_SCHEDULER_INVOKER`) and opens the job driver (`cloudrun.Open`, over the
+`cloudrun.Settings` its environment struct embeds, which declare `APP_JOBS_TEMPLATE`, and
+the version the image bakes in), exposes them as `Scheduler()` and `Jobs()`, and closes
+the driver with the level; `.envrc.template` documents `APP_JOBS_TEMPLATE` in the site
+block, unset. The `Configurer` asks for both, the `App` carries the guard and the RPC
+client built over the starter, and `app/scheduled.go` declares `SchedulerAuth` (the
+middleware the generated router mounts the scheduled routes behind) and `RPCClient`. Every test configurer (a type in a test file declaring
 `LogExporter`) gains a nil guard, `jobs.NewFake()`, and a memory store its resource client
 is built over (`files *filestore.Mem`, passed as `resource.WithFileStore`), so a file route
 the application declares later is served in the suites. What the application wired already

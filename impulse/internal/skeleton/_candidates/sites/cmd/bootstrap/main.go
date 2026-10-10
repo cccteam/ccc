@@ -69,9 +69,9 @@ func run(ctx context.Context) error {
 		return errors.New("SPANNER_EMULATOR_HOST must be set: the bootstrap only targets a Spanner emulator")
 	}
 
-	settings, err := config.LoadSpannerSettings(ctx)
+	settings, err := config.LoadDatabaseSettings(ctx)
 	if err != nil {
-		return errors.Wrap(err, "config.LoadSpannerSettings()")
+		return errors.Wrap(err, "config.LoadDatabaseSettings()")
 	}
 
 	if err := initiator.NewSpannerInstance(ctx, settings.ProjectID, settings.InstanceID); err != nil {

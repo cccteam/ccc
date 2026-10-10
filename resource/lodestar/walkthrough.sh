@@ -381,7 +381,7 @@ if { [ "$d" = 200 ] && [ "$n" = 403 ]; } || { [ "$d" = 403 ] && [ "$n" = 200 ]; 
 # as before and never subscribed. Skipped when the stack runs without the Firestore emulator.
 # Demonstrates: live.pages.
 FS=${FIRESTORE_EMULATOR_HOST:-}
-FS_PROJECT=${GOOGLE_CLOUD_FIRESTORE_PROJECT:-${GOOGLE_CLOUD_SPANNER_PROJECT:-lodestar-dev}}
+FS_PROJECT=   # the project the live driver opened the emulator under: read off the token route below, the way the browser gets it
 FS_DB=${APP_FIRESTORE_DATABASE:-(default)}
 HERON=70000000-0000-4000-8000-000000000009
 HERON_REFIT=a0000000-0000-4000-8000-000000000008
@@ -420,7 +420,8 @@ cache_header() { # cache_header <label> <headers file> <want>: the response's Ca
 if [ -z "$FS" ]; then echo "SKIP  live pages: FIRESTORE_EMULATOR_HOST is unset, the stack serves none"; else
 login harbormaster
 r=$(req harbormaster GET "$API/live/token"); check "the token route hands Hollis her identity on the emulator" 200 "$r"
-assert_py "the payload names her uid and the emulator host, with no custom token" "$r" "rows['uid']=='$(uid harbormaster)' and rows['emulator']=='$FS' and rows['token']=='' and rows['project']=='$FS_PROJECT'"
+assert_py "the payload names her uid, the emulator host and the project the driver opened, with no custom token" "$r" "rows['uid']=='$(uid harbormaster)' and rows['emulator']=='$FS' and rows['token']=='' and rows['project']!='' and rows['project']==('${GOOGLE_CLOUD_FIRESTORE_PROJECT:-}' or rows['project'])"
+FS_PROJECT=$(body "$r" | py "print(rows['project'])")
 r=$(req harbormaster GET "$ANVIL/ships?_v=$SEED" "" -H "X-Subscribe: $TAB" -D "$S/live-list.h"); check "the fleet board at Anvil, live: X-Subscribe and _v" 200 "$r"
 cache_header "the live list is the browser's to cache for five minutes" "$S/live-list.h" "private, max-age=300"
 r=$(req harbormaster GET "$ANVIL/ships/$HERON?_v=$SEED" "" -H "X-Subscribe: $TAB" -D "$S/live-row.h"); check "the Patient Heron open on her board, live" 200 "$r"

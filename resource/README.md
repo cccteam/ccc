@@ -1216,9 +1216,12 @@ location) two stores on one location are refused where the client is built.
 
 **Wiring.** The resource client is the one wiring point: `resource.NewSpannerClient(db,
 resource.WithFileStore(files), resource.WithNamedFileStore[resources.Documents](docs))`,
-each store at most once, a second wiring of one store refused with a panic naming it, as
-a duplicate route is. The generated handlers read a store off the client
-(`Client.FileStore(name)`, nil when none is wired; the Postgres client holds none), and
+which the database drivers' `Open` takes the same options for
+(`database.Open(ctx, settings, resource.WithFileStore(files))`, `resource/database/spanner`
+or `resource/database/postgres` under the alias `database`, section 20), each store at
+most once, a second wiring of one store refused with a panic naming it, as a duplicate
+route is. The generated handlers read a store off the client (`Client.FileStore(name)`,
+nil when none is wired), and
 the generated router refuses to start when a store the package uses is not wired: every
 `@file` column's store, routed or not, and every `@upload`'s. An unwired store would
 otherwise surface on the first upload, file request or releasing delete; the message
@@ -1322,10 +1325,11 @@ would delete. It never runs in a pull-request stack, and in production a bucket'
 delete is the recovery. Lodestar's `cmd/jobs cleanup-files` runs it over both stores and
 the walkthrough proves it with one orphan and one live file. The cleanup runs from the
 service: a scheduled method (`@schedule`, daily) starts one execution of the job process
-with the cleanup command through `resource/jobs`, whose starter the configuration builds
-from the template job the stack sets on the service (`APP_JOBS_TEMPLATE`) and the version
-the image bakes in (`APP_VERSION`): the job of this build is the template's name with the
-version's key (`…-jobs-v0-1-15`), which the pipeline made on this build's image, so Cloud
+with the cleanup command through the job driver (`resource/jobs/cloudrun`), whose settings
+the site's configuration embeds (`cloudrun.Settings`, the template job the stack sets on
+the service as `APP_JOBS_TEMPLATE`) and whose `Open` takes the version the image bakes in
+(`APP_VERSION`): the job of this build is the template's name with the version's key
+(`…-jobs-v0-1-15`), which the pipeline made on this build's image, so Cloud
 Scheduler calls the service and the service starts the job deployed with it, which a
 traffic rollback rolls back too; where no job is configured (development, a pull-request
 stack) the start is refused and the call says so. Lodestar's `CleanUpFiles` is the method.
@@ -1434,8 +1438,17 @@ batch, unsubscribe a tab or a principal, the subscribers of a row, of a list in 
 of a resource), `ChangePublisher` (`Publish(ctx, domain, touched)`), `Identity` (the
 token payload and the revocation), `Signaler` and `Subscriber` (the signals below),
 bundled as `Service`; `Fanout` is the fan-out every publisher implementation writes, and
-`Fake` an in-memory service for tests. The Firestore implementation is
-`resource/live/firestore`: `subscriptions/{id}`, a flat server-owned collection with a
+`Fake` an in-memory service for tests. The Firestore implementation is the live driver,
+`resource/live/firestore`: the configuration embeds its `Settings` (the project, the
+database, the web API key and the emulator host) and opens it with `Open`, as it opens
+the database driver (`resource/database/spanner`, whose `Settings` are the three Spanner
+variables and the emulator host and whose `Open` builds the resource client) and the job
+driver (`resource/jobs/cloudrun`), each bound under a neutral import alias (section 20);
+each driver publishes the declaration of its settings in the package beside it, which
+impulse's checks and bedrock's stack read. Against the emulator with no project named,
+the live driver opens the emulator's database under `firestore.EmulatorProject`
+(`live-emulator`), and the token route hands the browser the same id. The layout is
+`subscriptions/{id}`, a flat server-owned collection with a
 time-to-live on `expiry` and one composite index per lookup shape, and
 `users/{uid}/changes/{id}` with a time-to-live on `expires`, which a user may read for
 their own uid and nobody writes from a client; `firestore.rules`, `firestore.indexes.json`
@@ -1840,3 +1853,40 @@ the release file (section 8), and that is where the application's stack reads th
 renders one Cloud Scheduler job per scheduled route in every environment, never in a
 pull-request stack, calling `https://<the environment's canonical hostname><path>` with a
 token of the invoker identity it creates, and sets `APP_SCHEDULER_INVOKER` on the service.
+
+## 20. The provider drivers
+
+The database, the live service and the job starter open through provider drivers, one
+package per provider in the shape the cloud driver set: `resource/database/spanner` and
+`resource/database/postgres` (the database), `resource/live/firestore` (the live
+service) and `resource/jobs/cloudrun` (the job starter), beside the cloud driver,
+`cloud/gcp`. Every driver exports the same names: `Settings`, the env-tagged variables
+it reads, which the application's configuration embeds; `Open`, which builds the driver
+from them; a `Driver` (the live driver's is its `Service`) with `Close`; and a
+`declaration` package beside it that publishes the settings' declaration for the tools
+that read an application without loading it (impulse's checks, bedrock's stack).
+
+The application binds each driver under one neutral import alias, one per kind of
+driver: `database`, `liveservice` (`live` is the seam package, `resource/live`, which
+the same file imports), `jobstarter` (`jobs` is `resource/jobs`, the starter's
+interface) and `cloud`. Named so, the application names the vendor once, on the import
+line, and moving to another provider's driver is that line alone:
+
+    import database "github.com/cccteam/ccc/resource/database/spanner"   // the only line that changes for PostgreSQL
+
+    type DatabaseSettings struct{ database.Settings }
+    db, err := database.Open(ctx, env.Database.Settings)
+
+The wrappers the configuration declares follow the kind, not the vendor
+(`DatabaseSettings` and `LiveSettings`, the config fields `Database` and `Live`, the
+accessor `Database()`, `LoadDatabaseSettings`), and a local variable never shadows an
+alias (`db, err := database.Open(...)`). The two database drivers take the same `Open`
+(`Open(ctx, settings, opts ...resource.ClientOption)`, the file store options of
+section 13), and the live driver resolves its own emulator project
+(`firestore.EmulatorProject`), so nothing but the import line differs between two
+applications on two providers. What stays vendor-specific is the Spanner client the
+database driver also holds (`Driver.SpannerClient`), which the session store and the
+permission engine open on until the PostgreSQL client lands (cccteam/ccc#852); the data
+level names that seam in one comment. Lodestar
+([data.go](lodestar/pkg/config/data.go), [site.go](lodestar/pkg/config/site.go)) and
+the skeleton candidates are the examples.

@@ -189,8 +189,8 @@ the server holds no connection open.
 
 The server side is wired. The data level opens the live service over the Firestore
 database the configuration names: `APP_FIRESTORE_DATABASE` in a deployment, the emulator
-through `FIRESTORE_EMULATOR_HOST` in development (`pkg/config`, `FirestoreSettings`;
-the project defaults to the Spanner project). The live service is required: with neither
+through `FIRESTORE_EMULATOR_HOST` in development (`pkg/config`, `LiveSettings`;
+with no project named, the driver opens the emulator under its own project id). The live service is required: with neither
 a database nor the emulator configured the data level refuses to start, naming the two
 variables. The App hands it to the generated handlers
 through `LiveService()`, and the generated router serves the live routes on the session outlet (`/api/live/renew`, `/api/live/unsubscribe`, `/api/live/token`). The

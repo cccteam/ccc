@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/cccteam/ccc/resource/jobs"
+	jobstarter "github.com/cccteam/ccc/resource/jobs/cloudrun"
 	"github.com/cccteam/ccc/resource/scheduled"
 	"github.com/go-playground/errors/v5"
 	"github.com/go-playground/validator/v10"
@@ -18,7 +19,8 @@ type SiteConfiguration struct {
 	validator    *validator.Validate
 	droidsAPIKey string
 	scheduler    *scheduled.Guard
-	jobs         jobs.Starter
+	// jobs is the job driver: the starter of this build's job, or of none.
+	jobs *jobstarter.Driver
 }
 
 // NewSiteConfiguration loads every level and constructs the served site's
@@ -50,9 +52,13 @@ func NewSiteConfiguration(ctx context.Context) (*SiteConfiguration, error) {
 	if err != nil {
 		return nil, errors.Wrap(err, "scheduled.FromEnvironment()")
 	}
-	starter, err := jobs.FromEnvironment(ctx)
+	// The job driver names the job of this build from the template job the stack sets
+	// (jobstarter.Settings, embedded in the site's environment) and the version the image
+	// bakes in, and starts it through the Cloud Run Admin API; without a template, as in
+	// development, every start is refused saying so, and the start logs it.
+	starter, err := jobstarter.Open(ctx, env.Settings, data.AppVersion())
 	if err != nil {
-		return nil, errors.Wrap(err, "jobs.FromEnvironment()")
+		return nil, errors.Wrap(err, "jobstarter.Open()")
 	}
 
 	return &SiteConfiguration{
@@ -65,8 +71,9 @@ func NewSiteConfiguration(ctx context.Context) (*SiteConfiguration, error) {
 	}, nil
 }
 
-// Close releases the levels below.
+// Close releases the job driver, then the levels below.
 func (c *SiteConfiguration) Close() {
+	c.jobs.Close()
 	c.DataConfiguration.Close()
 }
 
@@ -102,9 +109,10 @@ func (c *SiteConfiguration) Scheduler() *scheduled.Guard {
 	return c.scheduler
 }
 
-// Jobs starts the application's job process: the job of this build, named from the
-// template job the stack sets in APP_JOBS_TEMPLATE and the version the image bakes in
-// (resource/jobs), or a starter that refuses where no template is configured.
+// Jobs starts the application's job process: the job driver (resource/jobs/cloudrun),
+// which names the job of this build from the template job the stack sets in
+// APP_JOBS_TEMPLATE and the version the image bakes in, or refuses every start where no
+// template is configured.
 func (c *SiteConfiguration) Jobs() jobs.Starter {
 	return c.jobs
 }
@@ -124,4 +132,8 @@ type siteConfig struct {
 	// Unset, an ephemeral key is generated at startup, which keeps the surface
 	// fail-closed but unreachable until a key is configured.
 	DroidsAPIKey string `env:"APP_DROIDS_API_KEY"`
+
+	// The job driver's variables (jobstarter.Settings, whichever driver the import names:
+	// the Cloud Run driver's template job this build's job is named from).
+	jobstarter.Settings
 }

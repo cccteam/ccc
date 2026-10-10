@@ -16,6 +16,7 @@ import (
 	"github.com/go-playground/errors/v5"
 
 	"github.com/cccteam/ccc/impulse/app"
+	cloudrundeclaration "github.com/cccteam/ccc/resource/jobs/cloudrun/declaration"
 )
 
 const (
@@ -63,17 +64,104 @@ func (m *Model) processes(a *app.App, cfg *config) error {
 		}
 		m.Jobs = &jobs
 	}
+	if err := m.jobsJob(); err != nil {
+		return err
+	}
 
-	return m.jobsJob()
+	return m.jobsTemplate()
 }
 
 // JobsTemplateVariable is the variable the stack sets on the service to the job process's
 // template job, as the Cloud Run API names it (projects/<p>/locations/<l>/jobs/<j>): the
-// framework (resource/jobs) reads it, with the version the image bakes in, and names the
-// job of this build from the two, the template's name with the version's key, which the
-// pipeline made on this build's image. No configuration level declares it, as none
-// declares the scheduler's invoker.
-const JobsTemplateVariable = "APP_JOBS_TEMPLATE"
+// framework's job driver (resource/jobs/cloudrun) reads it, with the version the image
+// bakes in, and names the job of this build from the two, the template's name with the
+// version's key, which the pipeline made on this build's image. The served site declares
+// it by embedding the driver's settings in a configuration level, and the name is read
+// off the driver's declaration here, so the stack sets the variable the driver reads
+// however either side is spelled; jobsTemplate holds the declaration to the job process,
+// and its level to the served site.
+var JobsTemplateVariable = jobsTemplateVariable()
+
+// jobsTemplateField is the field of the job driver's settings struct that carries the
+// template job, by the name the declaration gives it.
+const jobsTemplateField = "Template"
+
+// jobsTemplateVariable reads the template variable off the job driver's declaration: the
+// variable the tag of its template field names. Empty when the declaration has no field
+// of that name, which the derive tests hold it against.
+func jobsTemplateVariable() string {
+	for _, f := range cloudrundeclaration.Settings().Fields {
+		if f.Name == jobsTemplateField {
+			variable, _ := tagOptions(f.Tag)
+
+			return variable
+		}
+	}
+
+	return ""
+}
+
+// jobsTemplate holds the two sides of the job process's template to one fact: the stack
+// sets JobsTemplateVariable on the service to the job process's template job, and the
+// served site reads it through the job driver's settings, which a configuration level
+// declares by embedding them (RoleJobsTemplate). A configuration with one side and not
+// the other is refused here, at check and render time, rather than at the first start:
+// the stack would have no job to name, or the service would read no template and the
+// driver refuse every start. With both sides there, the declaration's level is held to
+// the served site (jobsTemplateLevel).
+func (m *Model) jobsTemplate() error {
+	v := m.byRole(RoleJobsTemplate)
+	switch {
+	case v != nil && m.Jobs == nil:
+		return errors.Newf("%s:%d: %s (%s) reads the job process's template job, and the application has no job process (no main package at %s): the stack has no job to name; add the job process, or drop the job driver's settings from the configuration", v.File, v.Line, v.Name, v.Declaration(), jobsDir)
+	case v == nil && m.Jobs != nil:
+		return errors.Newf("%s is the job process, and no configuration level declares %s, which the stack sets on the service to the job process's template job: the service reads no template, so the framework's job driver (resource/jobs/cloudrun) would refuse every start; embed cloudrun.Settings in the served site's configuration", m.Jobs.Dir, JobsTemplateVariable)
+	case v != nil:
+		return m.jobsTemplateLevel(v)
+	default:
+		return nil
+	}
+}
+
+// jobsTemplateLevel holds the level declaring the job driver's settings to the served
+// site: the stack sets JobsTemplateVariable on the service alone, so a process other
+// than the served site that constructs the level would start with the driver's template
+// unset, reading a variable nothing sets for it. The declaration is refused, naming each
+// other process that constructs its level by directory; the served site is named as the
+// stack names it (Process.Main), and the other processes are the model's, so the check
+// follows whichever main packages the application has.
+func (m *Model) jobsTemplateLevel(v *Variable) error {
+	var others []string
+	for _, p := range m.otherProcesses() {
+		if p.Reads(v.Level) {
+			others = append(others, p.Dir)
+		}
+	}
+	if len(others) == 0 {
+		return nil
+	}
+	// The model has at most two processes besides the served site, so the pair reads
+	// with an "and" between them.
+	construct := "constructs"
+	if len(others) > 1 {
+		construct = "construct"
+	}
+
+	return errors.Newf("%s:%d: %s (%s) is declared at the %s level, which %s %s as well as the served site (%s), and the stack sets the variable on the service alone: a process other than the served site would start with the job driver's template unset; embed cloudrun.Settings in the served site's configuration level, the one no other process constructs", v.File, v.Line, v.Name, v.Declaration(), v.Level, strings.Join(others, " and "), construct, m.Site.Main)
+}
+
+// otherProcesses are the deployed processes other than the served site, those the
+// application has: the migration, then the job process.
+func (m *Model) otherProcesses() []*Process {
+	var others []*Process
+	for _, p := range []*Process{m.Migrate, m.Jobs} {
+		if p != nil {
+			others = append(others, p)
+		}
+	}
+
+	return others
+}
 
 // retiredJobsJob is the variable a site once declared for the job of its build, which the
 // pipeline baked into the image from the trigger's substitutions: the first release that

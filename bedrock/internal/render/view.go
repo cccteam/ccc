@@ -147,9 +147,14 @@ type view struct {
 	// routes to the service (scheduler.tf); ScheduledPrefix the path they are served
 	// under; ReleaseFileName the generated file that lists them. JobsTemplateVariable is
 	// the variable that names the job process's template job to the service, which the
-	// framework names the job of its own build from (locals.tf, jobs_template_env).
+	// framework's job driver names the job of its own build from (locals.tf,
+	// jobs_template_env), under the name the driver's declaration gives it; JobsTemplate
+	// is the variable as the served site declares it, by embedding the driver's settings
+	// in a configuration level, nil without a job process (derive refuses one side
+	// without the other).
 	SchedulerVariable    string
 	JobsTemplateVariable string
+	JobsTemplate         *derive.Variable
 	// ServerPackage is the framework's server, whose import by the site's main package
 	// is the declaration that the image speaks h2c (derive.ServerPackage).
 	ServerPackage   string
@@ -187,7 +192,7 @@ type view struct {
 	// CodeDefaultsCell lists them for the README.
 	CodeDefaultsCell string
 	// SiteImageVars names the site-level variables the image sets to where it put a
-	// bundle; the job variable, which the image also sets, is told on its own.
+	// bundle.
 	SiteImageVars string
 	// MigrateLevels spells the levels the migration constructs: "core and data".
 	MigrateLevels string
@@ -706,7 +711,8 @@ func newView(m *derive.Model) (*view, error) {
 }
 
 // roles finds the variables and levels the templates name: the well-known ones always,
-// the directory registration's only for a directory sign-in.
+// the directory registration's only for a directory sign-in, the job process's template
+// only with a job process.
 func (v *view) roles() error {
 	roles := []struct {
 		role derive.Role
@@ -737,6 +743,12 @@ func (v *view) roles() error {
 		}
 	}
 	v.TraceSampling = v.byRole(derive.RoleTraceSampling)
+	if v.Jobs != nil {
+		v.JobsTemplate = v.byRole(derive.RoleJobsTemplate)
+		if v.JobsTemplate == nil {
+			return errors.Newf("no variable in the %s role: the stack names the job process's template job to the service through it", derive.RoleJobsTemplate)
+		}
+	}
 	for _, s := range v.Secrets {
 		switch s.Variable.Role {
 		case derive.RoleCookieKey:
