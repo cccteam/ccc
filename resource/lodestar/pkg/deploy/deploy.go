@@ -41,7 +41,7 @@ const DevSeedSource = "file://schema/devseed"
 // MigrateSchema connects to the existing database and applies every pending schema
 // migration. Creating the database is not its business: a deployment's database exists
 // before its first migration runs, and cmd/bootstrap creates the emulator's.
-func MigrateSchema(ctx context.Context, settings config.SpannerSettings) error {
+func MigrateSchema(ctx context.Context, settings config.DatabaseSettings) error {
 	migrator, err := initiator.NewSpannerMigrator(ctx, settings.ProjectID, settings.InstanceID, settings.DatabaseName)
 	if err != nil {
 		return errors.Wrapf(err, "initiator.NewSpannerMigrator(): %s", settings.DatabasePath())
@@ -60,7 +60,7 @@ func MigrateSchema(ctx context.Context, settings config.SpannerSettings) error {
 // SeedDevelopmentData applies the demo world to the database as a data migration. The
 // sectors it seeds are the tenant roster the data configuration reads at startup, so it
 // runs before the configuration opens.
-func SeedDevelopmentData(ctx context.Context, settings config.SpannerSettings) error {
+func SeedDevelopmentData(ctx context.Context, settings config.DatabaseSettings) error {
 	migrator, err := initiator.NewSpannerMigrator(ctx, settings.ProjectID, settings.InstanceID, settings.DatabaseName)
 	if err != nil {
 		return errors.Wrapf(err, "initiator.NewSpannerMigrator(): %s", settings.DatabasePath())
@@ -87,7 +87,7 @@ const (
 // Versions reads what the schema and data migrations tables say about the database: no
 // version, clean at a version, or dirty at one with the progress the runner recorded.
 // Nothing is applied.
-func Versions(ctx context.Context, settings config.SpannerSettings) (schema, data initiator.Version, err error) {
+func Versions(ctx context.Context, settings config.DatabaseSettings) (schema, data initiator.Version, err error) {
 	migrator, err := initiator.NewSpannerMigrator(ctx, settings.ProjectID, settings.InstanceID, settings.DatabaseName)
 	if err != nil {
 		return initiator.Version{}, initiator.Version{}, errors.Wrapf(err, "initiator.NewSpannerMigrator(): %s", settings.DatabasePath())
@@ -112,7 +112,7 @@ func Versions(ctx context.Context, settings config.SpannerSettings) (schema, dat
 // operation Spanner no longer has, a file changed in its applied part): a person reads
 // the database's state, decides what it really holds, and forces that version, and the
 // next run continues from it.
-func Force(ctx context.Context, settings config.SpannerSettings, table Table, version int) error {
+func Force(ctx context.Context, settings config.DatabaseSettings, table Table, version int) error {
 	migrator, err := initiator.NewSpannerMigrator(ctx, settings.ProjectID, settings.InstanceID, settings.DatabaseName)
 	if err != nil {
 		return errors.Wrapf(err, "initiator.NewSpannerMigrator(): %s", settings.DatabasePath())

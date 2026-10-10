@@ -349,12 +349,21 @@ region (never run, never deployed to; each build copies it into a job of its own
 after it with the build's version, on the build's image), its runtime identity with the
 site's project roles and, when it constructs the data level, the database user grant and
 accessor on that level's secrets, its timeout, retries and resources as stack variables,
-and the template job's name on the service as `APP_JOBS_TEMPLATE`, which the framework
-(resource/jobs) names the job of its own build from with the version the image bakes in,
+and the template job's name on the service as `APP_JOBS_TEMPLATE`, which the framework's
+job driver (resource/jobs/cloudrun) names the job of its own build from with the version the image bakes in,
 with `run.jobsExecutorWithOverrides` for the site's identity on the template job (a start passes the command's arguments as container overrides), copied by the pipeline onto
 each build's job, so the running service, and only it, starts the job of its own build
 through the Cloud Run API
-(a schedule calls an endpoint on the service; the pipeline never runs it); a method the
+(a schedule calls an endpoint on the service; the pipeline never runs it). The variable's
+name comes from the job driver's declaration (`resource/jobs/cloudrun/declaration`), which
+the served site reads by embedding `cloudrun.Settings` in a configuration level, and
+`bedrock check` refuses a configuration with one half and not the other: a job process
+with no level declaring the variable, or the variable declared with no job process. It
+also refuses the driver's settings embedded at a level another process constructs (the
+migrate command's or the job process's), naming that process: the settings sit at the
+served site's level, the one no other process constructs, since only the service starts
+jobs and the stack sets the variable on the service alone, so no other process starts
+with the driver's template unset. A method the
 code marks `@schedule("<cron>", zone: "<IANA zone>")` on an `@rpc` struct, which the
 generated router serves at `POST /_scheduled/<method>` and lists in its release file,
 becomes one Cloud Scheduler job per environment in the primary region (`scheduler.tf`),

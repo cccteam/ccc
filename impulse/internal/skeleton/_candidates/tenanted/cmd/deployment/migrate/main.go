@@ -134,9 +134,9 @@ func run(ctx context.Context, o *options, out io.Writer) error {
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt)
 	defer stop()
 
-	settings, err := config.LoadSpannerSettings(ctx)
+	settings, err := config.LoadDatabaseSettings(ctx)
 	if err != nil {
-		return errors.Wrap(err, "config.LoadSpannerSettings()")
+		return errors.Wrap(err, "config.LoadDatabaseSettings()")
 	}
 	switch {
 	case o.version:
@@ -149,7 +149,7 @@ func run(ctx context.Context, o *options, out io.Writer) error {
 }
 
 // report prints one line per migrations table: what it says about the database.
-func report(ctx context.Context, settings config.SpannerSettings, out io.Writer) error {
+func report(ctx context.Context, settings config.DatabaseSettings, out io.Writer) error {
 	schema, data, err := deploy.Versions(ctx, settings)
 	if err != nil {
 		return errors.Wrap(err, "deploy.Versions()")
@@ -161,7 +161,7 @@ func report(ctx context.Context, settings config.SpannerSettings, out io.Writer)
 
 // force sets each table asked for to its version, the schema's first, printing the row
 // before and after each.
-func force(ctx context.Context, settings config.SpannerSettings, o *options, out io.Writer) error {
+func force(ctx context.Context, settings config.DatabaseSettings, o *options, out io.Writer) error {
 	forces := []struct {
 		table deploy.Table
 		flag  versionFlag
@@ -192,7 +192,7 @@ func force(ctx context.Context, settings config.SpannerSettings, o *options, out
 }
 
 // row is what one migrations table says about the database.
-func row(ctx context.Context, settings config.SpannerSettings, table deploy.Table) (string, error) {
+func row(ctx context.Context, settings config.DatabaseSettings, table deploy.Table) (string, error) {
 	schema, data, err := deploy.Versions(ctx, settings)
 	if err != nil {
 		return "", errors.Wrap(err, "deploy.Versions()")
@@ -205,7 +205,7 @@ func row(ctx context.Context, settings config.SpannerSettings, table deploy.Tabl
 }
 
 // migrate is the deployment's migration step itself.
-func migrate(ctx context.Context, settings config.SpannerSettings, seed bool) error {
+func migrate(ctx context.Context, settings config.DatabaseSettings, seed bool) error {
 	// The schema goes first, before any client opens: the tables the data level's
 	// clients read may not exist yet.
 	if err := deploy.MigrateSchema(ctx, settings); err != nil {

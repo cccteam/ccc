@@ -475,15 +475,39 @@ func structFieldOf(rel string, src []byte, structName, importPath, typeName stri
 	return "", nil
 }
 
+// ImportName returns the name the file refers to the import path by, its alias or the
+// path's last element, or empty when the file does not import it.
+func ImportName(rel string, src []byte, importPath string) (string, error) {
+	p, err := parseSource(rel, src)
+	if err != nil {
+		return "", err
+	}
+
+	return localImportName(p.file, importPath), nil
+}
+
 // AddImport adds an import path to the file's first import block, or an import
 // declaration after the package clause when the file has none. The result is formatted.
 func AddImport(rel string, src []byte, importPath string) ([]byte, error) {
+	return AddNamedImport(rel, src, "", importPath)
+}
+
+// AddNamedImport adds an import path under the given name, an alias the file refers to
+// the package by, or under the package's own name when the name is empty, to the file's
+// first import block, or as an import declaration after the package clause when the
+// file has none; a path the file imports already, under whatever name, is left as it is.
+// The result is formatted.
+func AddNamedImport(rel string, src []byte, name, importPath string) ([]byte, error) {
 	p, err := parseSource(rel, src)
 	if err != nil {
 		return nil, err
 	}
 	if localImportName(p.file, importPath) != "" {
 		return src, nil
+	}
+	imported := "\"" + importPath + "\""
+	if name != "" {
+		imported = name + " " + imported
 	}
 	for _, d := range p.file.Decls {
 		gd, ok := d.(*ast.GenDecl)
@@ -493,17 +517,17 @@ func AddImport(rel string, src []byte, importPath string) ([]byte, error) {
 		if gd.Lparen.IsValid() {
 			rparen := p.offset(gd.Rparen)
 
-			return p.splice(rel, rparen, rparen, "\""+importPath+"\"\n")
+			return p.splice(rel, rparen, rparen, imported+"\n")
 		}
 		// A single import without parentheses: wrap it.
 		start, end := p.offset(gd.Pos()), p.offset(gd.End())
 		spec := string(p.src[p.offset(gd.Specs[0].Pos()):p.offset(gd.Specs[0].End())])
 
-		return p.splice(rel, start, end, "import (\n"+spec+"\n\""+importPath+"\"\n)")
+		return p.splice(rel, start, end, "import (\n"+spec+"\n"+imported+"\n)")
 	}
 	after := p.offset(p.file.Name.End())
 
-	return p.splice(rel, after, after, "\n\nimport \""+importPath+"\"")
+	return p.splice(rel, after, after, "\n\nimport "+imported)
 }
 
 // AddStatementsBeforeConstruction inserts statements before the statement of the named

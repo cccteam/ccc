@@ -77,6 +77,7 @@ linters:
             - github.com/googleapis/gax-go/v2
             - github.com/moby/moby/api/types/container
             - github.com/moby/moby/api/types/network
+            - github.com/sethvargo/go-envconfig
             - github.com/testcontainers/testcontainers-go
             - github.com/google/uuid
             - github.com/jackc/pgx/v5/pgxpool
@@ -218,6 +219,17 @@ linters:
           - gocritic
         path: query_decoder_test\.go
         text: 'hugeParam: tr is heavy'
+      # A driver takes its settings by value, the shape every driver shares with
+      # cloud/gcp, and Open runs once; the PostgreSQL settings are six strings.
+      - linters:
+          - gocritic
+        path: database/postgres/postgres\.go
+        text: 'hugeParam: s is heavy'
+      # A settings declaration writes each field's type as the struct declares it.
+      - linters:
+          - goconst
+        path: declaration/declaration\.go
+        text: 'string `string`'
       - linters:
           - gocyclo
           - cyclop

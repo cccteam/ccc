@@ -122,6 +122,23 @@ var Steps = []Step{
 		`),
 		Note: "request bodies are bounded in one place: the generated router applies the application's limit (WithBodyLimit, 4 MiB when unset) and an RPC method may declare its own with @rpc(max:); regeneration carries it, no code change is needed",
 	},
+	{
+		Pins: pins(`
+			access v0.10.3
+			ccc v0.3.3
+			ccc/accesstypes v0.6.0
+			ccc/cloud v0.2.1
+			ccc/resource v0.13.1-0.20261010141715-20530e190bc0
+			ccc/tracer v0.2.0
+			db-initiator v0.4.1
+			httpio v0.7.21
+			logger v0.1.27
+			session v0.12.2
+		`),
+		Recipes: []Recipe{recipe.ProviderDrivers{}},
+		Note:    "the database, the live service and the job starter open through provider drivers (resource/database/spanner, resource/live/firestore, resource/jobs/cloudrun) whose settings the configuration embeds under the variable names already in use, each bound under a neutral import alias (database, liveservice, jobstarter, cloud) so moving to another provider is the import line; the recipe moves pkg/config onto them and renames its wrappers (DatabaseSettings, LiveSettings)",
+		Pending: true,
+	},
 }
 
 // validatePending holds a step's Pending mark to its pins: a pin at a pseudo-version

@@ -15,12 +15,16 @@ var _ Client = (*PostgresClient)(nil)
 // PostgresClient is a wrapper around the database.
 type PostgresClient struct {
 	postgres *pgxpool.Pool
+	stores   *fileStores
 }
 
-// NewPostgresClient creates a new Client.
-func NewPostgresClient(db *pgxpool.Pool) *PostgresClient {
+// NewPostgresClient creates a new Client. WithFileStore and WithNamedFileStore hand it
+// the stores the generated handlers read off it, the options the Spanner client takes; a
+// store wired twice, or two stores on one location, panics here.
+func NewPostgresClient(db *pgxpool.Pool, opts ...ClientOption) *PostgresClient {
 	return &PostgresClient{
 		postgres: db,
+		stores:   applyClientOptions(opts),
 	}
 }
 
@@ -29,9 +33,9 @@ func (c *PostgresClient) DBType() DBType {
 	return PostgresDBType
 }
 
-// FileStore returns nil: the Postgres client holds no file stores.
-func (c *PostgresClient) FileStore(StoreName) FileStore {
-	return nil
+// FileStore returns the store wired under name, nil when none is.
+func (c *PostgresClient) FileStore(name StoreName) FileStore {
+	return c.stores.get(name)
 }
 
 // Close closes the database connection.
