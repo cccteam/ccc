@@ -358,7 +358,12 @@ through the Cloud Run API
 name comes from the job driver's declaration (`resource/jobs/cloudrun/declaration`), which
 the served site reads by embedding `cloudrun.Settings` in a configuration level, and
 `bedrock check` refuses a configuration with one half and not the other: a job process
-with no level declaring the variable, or the variable declared with no job process. A method the
+with no level declaring the variable, or the variable declared with no job process. It
+also refuses the driver's settings embedded at a level another process constructs (the
+migrate command's or the job process's), naming that process: the settings sit at the
+served site's level, the one no other process constructs, since only the service starts
+jobs and the stack sets the variable on the service alone, so no other process starts
+with the driver's template unset. A method the
 code marks `@schedule("<cron>", zone: "<IANA zone>")` on an `@rpc` struct, which the
 generated router serves at `POST /_scheduled/<method>` and lists in its release file,
 becomes one Cloud Scheduler job per environment in the primary region (`scheduler.tf`),

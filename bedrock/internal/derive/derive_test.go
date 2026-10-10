@@ -1064,28 +1064,43 @@ func TestJobsTemplateVariable(t *testing.T) {
 
 // TestJobsTemplate refuses a configuration with one side of the job process's template
 // and not the other, over the model: the template variable in its role without a job
-// process, and a job process without the variable; both or neither pass.
+// process, and a job process without the variable; both or neither pass. With both, the
+// variable's level is held to the served site: a level another process constructs too is
+// refused at the declaration, naming each such process by directory.
 func TestJobsTemplate(t *testing.T) {
 	t.Parallel()
 
-	jobs := &Process{Name: jobsProcess, Dir: jobsDir}
+	site := Process{Name: siteProcess, Dir: ".", Main: mainFile, Levels: []string{LevelCore, LevelData, LevelSite}}
+	migrate := &Process{Name: migrateProcess, Dir: migrateDir, Main: migrateDir, Levels: []string{LevelCore, LevelData}}
+	jobs := &Process{Name: jobsProcess, Dir: jobsDir, Main: jobsDir, Levels: []string{LevelCore, LevelData}}
 	template := Variable{Name: JobsTemplateVariable, Role: RoleJobsTemplate, Level: LevelSite, Struct: "siteConfig", Field: jobsTemplateField, File: "pkg/config/site.go", Line: 64}
+	dataTemplate := Variable{Name: JobsTemplateVariable, Role: RoleJobsTemplate, Level: LevelData, Struct: "dataConfig", Field: jobsTemplateField, File: "pkg/config/data.go", Line: 228}
 	tests := []struct {
 		name    string
 		model   Model
 		wantErr string
 	}{
 		{name: "no variable, no process: nothing to hold together", model: Model{}},
-		{name: "the variable declared and the job process there agree", model: Model{Jobs: jobs, Variables: []Variable{template}}},
+		{name: "the variable declared at the served site's level and the job process there agree", model: Model{Site: site, Migrate: migrate, Jobs: jobs, Variables: []Variable{template}}},
 		{
 			name:    "the variable declared without a job process is refused at its declaration",
-			model:   Model{Variables: []Variable{template}},
+			model:   Model{Site: site, Variables: []Variable{template}},
 			wantErr: "pkg/config/site.go:64: APP_JOBS_TEMPLATE (siteConfig.Template) reads the job process's template job, and the application has no job process (no main package at cmd/jobs): the stack has no job to name; add the job process, or drop the job driver's settings from the configuration",
 		},
 		{
 			name:    "a job process without the variable is refused, naming the process",
-			model:   Model{Jobs: jobs, Variables: []Variable{{Name: "APP_OTHER", Level: LevelSite}}},
+			model:   Model{Site: site, Jobs: jobs, Variables: []Variable{{Name: "APP_OTHER", Level: LevelSite}}},
 			wantErr: "cmd/jobs is the job process, and no configuration level declares APP_JOBS_TEMPLATE, which the stack sets on the service to the job process's template job: the service reads no template, so the framework's job driver (resource/jobs/cloudrun) would refuse every start; embed cloudrun.Settings in the served site's configuration",
+		},
+		{
+			name:    "the variable at a level the job process constructs too is refused, naming the process",
+			model:   Model{Site: site, Jobs: jobs, Variables: []Variable{dataTemplate}},
+			wantErr: "pkg/config/data.go:228: APP_JOBS_TEMPLATE (dataConfig.Template) is declared at the data level, which cmd/jobs constructs as well as the served site (main.go), and the stack sets the variable on the service alone: a process other than the served site would start with the job driver's template unset; embed cloudrun.Settings in the served site's configuration level, the one no other process constructs",
+		},
+		{
+			name:    "the variable at a level two other processes construct is refused, naming both",
+			model:   Model{Site: site, Migrate: migrate, Jobs: jobs, Variables: []Variable{dataTemplate}},
+			wantErr: "pkg/config/data.go:228: APP_JOBS_TEMPLATE (dataConfig.Template) is declared at the data level, which cmd/deployment/migrate and cmd/jobs construct as well as the served site (main.go), and the stack sets the variable on the service alone: a process other than the served site would start with the job driver's template unset; embed cloudrun.Settings in the served site's configuration level, the one no other process constructs",
 		},
 	}
 	for _, tt := range tests {
@@ -1109,12 +1124,17 @@ func TestJobsTemplate(t *testing.T) {
 
 // TestDeriveJobsTemplate proves the agreement check over the harbor fixture, which has a
 // job process and embeds the job driver's settings in its site level: as it is, the two
-// sides agree; a copy without the job process is refused at the embedding, and a copy
-// whose site level embeds nothing is refused naming the process.
+// sides agree; a copy without the job process is refused at the embedding, a copy whose
+// site level embeds nothing is refused naming the process, and a copy embedding the
+// settings in its data level, which the migrate command and the job process construct
+// too, is refused at the embedding naming both.
 func TestDeriveJobsTemplate(t *testing.T) {
 	t.Parallel()
 
-	const siteFile = "pkg/config/site.go"
+	const (
+		siteFile = "pkg/config/site.go"
+		dataFile = "pkg/config/data.go"
+	)
 	tests := []struct {
 		name string
 		// mutate changes the copy of the fixture before it is derived.
@@ -1138,21 +1158,33 @@ func TestDeriveJobsTemplate(t *testing.T) {
 			mutate: func(t *testing.T, dir string) {
 				t.Helper()
 
-				file := filepath.Join(dir, siteFile)
+				dropEmbedding(t, filepath.Join(dir, siteFile))
+			},
+			wantErr: "cmd/jobs is the job process, and no configuration level declares APP_JOBS_TEMPLATE, which the stack sets on the service to the job process's template job: the service reads no template, so the framework's job driver (resource/jobs/cloudrun) would refuse every start; embed cloudrun.Settings in the served site's configuration",
+		},
+		{
+			name: "the driver's settings embedded at a level other processes construct",
+			mutate: func(t *testing.T, dir string) {
+				t.Helper()
+
+				dropEmbedding(t, filepath.Join(dir, siteFile))
+				file := filepath.Join(dir, dataFile)
 				src, err := os.ReadFile(file)
 				if err != nil {
 					t.Fatal(err)
 				}
-				without := strings.ReplaceAll(string(src), "\tcloudrun.Settings\n", "")
-				without = strings.ReplaceAll(without, "\t\"github.com/cccteam/ccc/resource/jobs/cloudrun\"\n", "")
-				if without == string(src) {
-					t.Fatalf("%s embeds no cloudrun.Settings to remove", siteFile)
+				// The import joins the file's, which moves the struct down a line, and the
+				// embedding is the struct's first field.
+				moved := strings.Replace(string(src), "\t\"github.com/cccteam/ccc/resource\"\n", "\t\"github.com/cccteam/ccc/resource\"\n\t\"github.com/cccteam/ccc/resource/jobs/cloudrun\"\n", 1)
+				moved = strings.Replace(moved, "type dataConfig struct {\n", "type dataConfig struct {\n\tcloudrun.Settings\n", 1)
+				if moved == string(src) || !strings.Contains(moved, "cloudrun.Settings") {
+					t.Fatalf("%s has no dataConfig to embed cloudrun.Settings in", dataFile)
 				}
-				if err := os.WriteFile(file, []byte(without), 0o600); err != nil {
+				if err := os.WriteFile(file, []byte(moved), 0o600); err != nil {
 					t.Fatal(err)
 				}
 			},
-			wantErr: "cmd/jobs is the job process, and no configuration level declares APP_JOBS_TEMPLATE, which the stack sets on the service to the job process's template job: the service reads no template, so the framework's job driver (resource/jobs/cloudrun) would refuse every start; embed cloudrun.Settings in the served site's configuration",
+			wantErr: dataFile + ":228: APP_JOBS_TEMPLATE (dataConfig.Template) is declared at the data level, which cmd/deployment/migrate and cmd/jobs construct as well as the served site (main.go), and the stack sets the variable on the service alone: a process other than the served site would start with the job driver's template unset; embed cloudrun.Settings in the served site's configuration level, the one no other process constructs",
 		},
 	}
 	for _, tt := range tests {
@@ -1184,6 +1216,25 @@ func TestDeriveJobsTemplate(t *testing.T) {
 				t.Errorf("Jobs = %+v, template variable = %+v; want the job process and %s at the site level, siteConfig.Template", m.Jobs, v, JobsTemplateVariable)
 			}
 		})
+	}
+}
+
+// dropEmbedding removes the job driver's settings from the fixture's site level: the
+// embedding and the driver's import, leaving a level that declares no template.
+func dropEmbedding(t *testing.T, file string) {
+	t.Helper()
+
+	src, err := os.ReadFile(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	without := strings.ReplaceAll(string(src), "\tcloudrun.Settings\n", "")
+	without = strings.ReplaceAll(without, "\t\"github.com/cccteam/ccc/resource/jobs/cloudrun\"\n", "")
+	if without == string(src) {
+		t.Fatalf("%s embeds no cloudrun.Settings to remove", file)
+	}
+	if err := os.WriteFile(file, []byte(without), 0o600); err != nil {
+		t.Fatal(err)
 	}
 }
 

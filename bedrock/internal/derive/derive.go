@@ -242,7 +242,8 @@ const (
 	RoleTraceSampling Role = "trace-sampling"
 	// RoleJobsTemplate names the job process's template job to the served site, which
 	// reads it through the job driver's settings (JobsTemplateVariable): the stack sets
-	// it on the service alone, and jobsTemplate holds it to the job process.
+	// it on the service alone, and jobsTemplate holds it to the job process and its
+	// level to the served site.
 	RoleJobsTemplate Role = "jobs-template"
 	// The directory registration of an OIDC auth, keyed as the auth package's Directory
 	// struct names them.
@@ -530,7 +531,7 @@ type Database struct {
 	Name     *Variable
 }
 
-// Process is one deployed process: the served site or the migration.
+// Process is one deployed process: the served site, the migration or the job process.
 type Process struct {
 	// Name is the process's short name: app for the site, migrate for the migration.
 	Name string
