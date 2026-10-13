@@ -88,6 +88,23 @@ func PlacementEnvironments(file string) ([]string, error) {
 // No file, no build_secrets map and no map for the environment all declare none; a map
 // that is not written out is refused.
 func BuildSecretNames(layerDir, env string) ([]string, error) {
+	return entryNames(layerDir, buildKey, env)
+}
+
+// PinnedVariables lists the variables the layer's placement (terraform.tfvars in
+// layerDir) pins a version for in the environment, the keys of secret_versions.<env>,
+// sorted, whatever each pins (a number, bare or quoted, or latest). A secret the code
+// declares that is not among them is mounted nowhere in the environment: its process
+// starts without the variable. No file, no secret_versions map and no map for the
+// environment all pin none; a map that is not written out is refused.
+func PinnedVariables(layerDir, env string) ([]string, error) {
+	return entryNames(layerDir, versionsKey, env)
+}
+
+// entryNames lists the keys of the environment's map under key (build_secrets, or
+// secret_versions) in the layer's placement, sorted. No file, no map under key and no
+// map for the environment all hold none; a map that is not written out is refused.
+func entryNames(layerDir, key, env string) ([]string, error) {
 	file := filepath.Join(layerDir, tfvarsFile)
 	src, err := os.ReadFile(file)
 	if err != nil {
@@ -101,10 +118,10 @@ func BuildSecretNames(layerDir, env string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	if _, ok := p.body.Attributes[buildKey]; !ok {
+	if _, ok := p.body.Attributes[key]; !ok {
 		return nil, nil
 	}
-	inner, err := p.versions(buildKey, env)
+	inner, err := p.versions(key, env)
 	if err != nil {
 		if errors.Is(err, errNoEnvironment) {
 			return nil, nil
@@ -116,7 +133,7 @@ func BuildSecretNames(layerDir, env string) ([]string, error) {
 	for _, item := range inner.Items {
 		name, err := ObjectKey(item.KeyExpr)
 		if err != nil {
-			return nil, errors.Wrap(err, p.at(buildKey+"."+env))
+			return nil, errors.Wrap(err, p.at(key+"."+env))
 		}
 		names = append(names, name)
 	}
