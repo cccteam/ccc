@@ -414,9 +414,11 @@ resource "google_cloudbuild_trigger" "plan" {
   repository_event_config {
     repository = google_cloudbuildv2_repository.infrastructure[0].id
 
+    # Comment control is left unset, which is "comments disabled": the API stores
+    # that value as unset, and a render that named it would show the trigger
+    # changing in place on every plan.
     pull_request {
-      branch          = "^${var.github_default_branch}$"
-      comment_control = "COMMENTS_DISABLED"
+      branch = "^${var.github_default_branch}$"
     }
   }
 

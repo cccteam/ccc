@@ -364,14 +364,17 @@ func TestTriggerSteps(t *testing.T) {
 		name    string
 		trigger string
 		// steps are the step ids the trigger holds; empty for a trigger that runs a file.
-		steps          []string
-		filename       string
-		identity       string
+		steps    []string
+		filename string
+		identity string
+		// pullRequest is whether the trigger runs on pull requests; commentControl is
+		// the comment control it names, empty for none (the API's "disabled").
+		pullRequest    bool
 		commentControl string
 	}{
-		{name: "the check-and-plan trigger", trigger: CheckTrigger, steps: CheckTriggerSteps, identity: "local.apply_identity_id", commentControl: `"COMMENTS_DISABLED"`},
-		{name: "the pull-request stack trigger", trigger: "pr_stack", steps: StackTriggerSteps, identity: "local.apply_identity_id", commentControl: `"COMMENTS_ENABLED"`},
-		{name: "the preview trigger keeps the pipeline file and the deploy identity", trigger: "pr", filename: `"cloudbuild.yaml"`, identity: "local.identities.deploy_identity_id", commentControl: `"COMMENTS_ENABLED"`},
+		{name: "the check-and-plan trigger names no comment control: the API's disabled", trigger: CheckTrigger, steps: CheckTriggerSteps, identity: "local.apply_identity_id", pullRequest: true},
+		{name: "the pull-request stack trigger", trigger: "pr_stack", steps: StackTriggerSteps, identity: "local.apply_identity_id", pullRequest: true, commentControl: `"COMMENTS_ENABLED"`},
+		{name: "the preview trigger keeps the pipeline file and the deploy identity", trigger: "pr", filename: `"cloudbuild.yaml"`, identity: "local.identities.deploy_identity_id", pullRequest: true, commentControl: `"COMMENTS_ENABLED"`},
 		{name: "the version trigger", trigger: "version", filename: `"cloudbuild.yaml"`, identity: "local.identities.deploy_identity_id"},
 		{name: "the sweep runs as the apply identity", trigger: "sweep", identity: "local.apply_identity_id"},
 	}
@@ -392,8 +395,8 @@ func TestTriggerSteps(t *testing.T) {
 					t.Errorf("filename = %s, want %s", got, tt.filename)
 				}
 				if event := nested(block, "repository_event_config"); event != nil {
-					if pr := nested(event, "pull_request"); (pr != nil) != (tt.commentControl != "") {
-						t.Errorf("pull_request block present %t, want %t", pr != nil, tt.commentControl != "")
+					if pr := nested(event, "pull_request"); (pr != nil) != tt.pullRequest {
+						t.Errorf("pull_request block present %t, want %t", pr != nil, tt.pullRequest)
 					} else if pr != nil {
 						if got := exprText(t, pr, "comment_control"); got != tt.commentControl {
 							t.Errorf("comment_control = %s, want %s", got, tt.commentControl)
