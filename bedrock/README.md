@@ -708,8 +708,13 @@ first; every application follows right after (step 7 says what breaks otherwise)
    check trigger) and `2-env` (the connection from the placement's values, the deployer
    key's grants on the boot container with a `removed` block for the environment's own
    container, tst's apply identity's grants for the stack's triggers, the records
-   bucket's policy). Commit and open the pull request. Its plan trigger does not exist
-   yet, and nothing bedrock configures on this repository requires a check, so the pull
+   bucket's policy). The first apply of the new render (step 5) sets every application
+   repository's branch rulesets to one approving review unless the placement says
+   otherwise (`approvingReviews`), and gives this repository a ruleset of its own on the
+   default branch, with the plan trigger's check required and the same reviews: from
+   then on a pull request here merges once that check passes and the reviews are given.
+   Commit and open the pull request. Its plan trigger does not exist yet, and nothing
+   bedrock configures on this repository requires a check until step 5, so the pull
    request waits for step 3 with no check on it.
 
 3. **0-bootstrap, by hand.** In a terminal, in `0-bootstrap` on the branch, as the
@@ -768,8 +773,9 @@ first; every application follows right after (step 7 says what breaks otherwise)
    first failure, which is then a person's to finish by hand ("Recovery, by hand"). 1-org
    destroys the three workflow bindings on each of its layer identities (`removed`,
    `destroy = true`) and creates the boot layers' plan identities, the triggers'
-   impersonation grants, the deployer key's grants and every application repository's
-   new required check. 2-env points each environment's connection at the boot project's
+   impersonation grants, the deployer key's grants, every application repository's new
+   required check and reviews, and the ruleset on this repository's default branch.
+   2-env points each environment's connection at the boot project's
    token (an update in place), destroys the environment's deployer key container with
    its versions (`removed`, `destroy = true`: the boot container holds the key now),
    grants every application's deploy identity and tst's apply identity the read of the
@@ -1945,6 +1951,16 @@ and 0-bootstrap grants each environment project's Cloud Build service agent its 
 every connection, the boot project's and each environment's, is rendered from the one
 authorization. The field is required: a placement without it is refused.
 
+The placement's `approvingReviews` is the number of approving reviews a pull request needs
+before it merges, on every application repository's default branch and hotfix lines and on
+the infrastructure repository's default branch. Left out, it is one. 0 is allowed: a writer
+merges alone once the checks pass. A negative number is refused when the placement is read.
+While the count is above 0, an approval given before the last push is dismissed and one
+given after it is needed. 1-org renders the count into `github.tf`, never into
+`terraform.tfvars`, and `bedrock org check` compares that file with the render, so a
+developer with write on an application repository cannot lower it, and lowering it for the
+infrastructure repository takes a merge that met the count in force.
+
 The organization's two regions (`regions`, the primary first) and its Spanner
 configuration (`spanner.config`, the instance 2-spn creates for stg and prd) are chosen
 together: the configuration is a multi-region one whose two read-write regions, where the
@@ -2122,11 +2138,16 @@ fixed jobs of the application's CI
 workflow (`title`, `go`, `web`, `image`, `secrets`, `migrations`, read from impulse's `ci`
 package; `web` gates the per-workspace browser jobs, so a failed browser build blocks the
 merge) passing on its latest commit, never the pull-request build (the developer's preview
-on `/gcbrun`),
-squash the only merge and, when the placement names an infrastructure team, that team's
-approval of a change to the workflow and Cloud Build files), and the GitHub Environments
-the operations workflow runs in (every environment, production's for the rerun of a
-release and the rollback, each deploying from the default branch alone). The apply
+on `/gcbrun`), `approvingReviews` approving reviews (one unless the placement says
+otherwise), squash the only merge and, when the placement names an infrastructure team,
+that team's approval of a change to the workflow and Cloud Build files), and the GitHub
+Environments the operations workflow runs in (every environment, production's for the
+rerun of a release and the rollback, each deploying from the default branch alone). The
+layer also rules the infrastructure repository's default branch: changed by pull request
+alone, the same reviews, squash the only merge, and the plan trigger's check
+(`<prefix>-boot-<region code>-layers-plan (<boot project id>)`) passing on the latest
+commit with the branch up to date with its base; the repository itself exists before
+0-bootstrap and is no resource of the layer. The apply
 trigger's run applies it with the infrastructure GitHub App's installation token, minted in
 the run; a person applying by hand uses their own sign-in,
 `GITHUB_TOKEN` from `gh auth token`, after reading the plan; the placement names the release app by its
@@ -2162,9 +2183,12 @@ below on private repositories. Which of them a private repository gets depends o
 organization's GitHub plan, so its plan must include all four.
 
 - **Rulesets that GitHub enforces on private repositories.** `1-org` gives each
-  application's repository three rulesets. The tag ruleset lets the release app alone
-  create, move or delete a release tag, which is what makes the pipeline's tag check
-  sound; a ruleset GitHub shows but does not enforce leaves the check unsound.
+  application's repository three rulesets, and the infrastructure repository's default
+  branch one. The branch rulesets require `approvingReviews` approving reviews (one
+  unless the placement says otherwise) and the checks passing on the latest commit. The
+  tag ruleset lets the release app alone create, move or delete a release tag, which is
+  what makes the pipeline's tag check sound; a ruleset GitHub shows but does not enforce
+  leaves the check unsound.
 - **Environments on private repositories.** The operations workflow runs a restore, a
   rerun or a rollback in a GitHub Environment per environment, each deploying from the
   default branch alone. No Environment requires reviewers: that rule needs GitHub

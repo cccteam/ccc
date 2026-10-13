@@ -117,11 +117,13 @@ the place it happens.
    (whoever creates it is its first owner): the organization itself, its
    machine account `{{.GithubMachineAccount}}` (`githubMachineAccount`, a GitHub
    user that is an owner of the organization and acts for no person), this
-   repository (never managed by the layers), and the release and deployer apps
+   repository (`1-org` rules its default branch; nothing else of it is the
+   layers'), and the release and deployer apps
    with the release app's two organization secrets ("The two GitHub Apps",
    below). The release app's App ID and slug are in `placement.json` before
    the first render. Nothing more is done by hand on GitHub: `1-org`
-   configures every application's repository.
+   configures every application's repository and rules this repository's
+   default branch.
 3. **Seed.** In a terminal, as the bootstrap administrator: `bedrock org
    preflight` first, which checks that the person holds each of these roles:
 {{range .BootstrapRoles}}   - {{.Title}} (`{{.Role}}`), on the {{.On}}

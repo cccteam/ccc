@@ -31,6 +31,9 @@ const (
 	githubLoginLength = 39
 	// replaceMe marks a value only a seed step can supply.
 	replaceMe = "REPLACEME"
+	// defaultApprovingReviews is the approving reviews a pull request needs before it
+	// merges when the placement leaves approvingReviews out.
+	defaultApprovingReviews = 1
 )
 
 var (
@@ -175,6 +178,13 @@ type Placement struct {
 	// whose approval a change to an application's workflow and Cloud Build files
 	// needs; empty for none.
 	GithubInfrastructureTeam string `json:"githubInfrastructureTeam,omitempty"`
+	// ApprovingReviews is how many approving reviews a pull request needs before it
+	// merges, on every application repository's default branch and hotfix lines and on
+	// this repository's default branch: one when left out, 0 for none (a writer merges
+	// alone once the checks pass). A pointer, so that 0 and left out differ. 1-org
+	// renders it into github.tf, an owned file bedrock org check compares with the
+	// render, so nobody lowers it in a file of their own.
+	ApprovingReviews *int `json:"approvingReviews,omitempty"`
 	// CiLargeRunner names the larger runner the applications' CI runs the jobs its
 	// //impulse:ci line chooses on (the two test legs and the image build without a
 	// line): a runner's name, a runner label or a runner group of the organization, set
@@ -336,8 +346,8 @@ func (p *Placement) Validate() error {
 		return err
 	}
 	for _, validate := range []func() error{
-		p.validateGithubApps, p.validateCloudBuild, p.validateBedrockPin, p.validateCiLargeRunner,
-		p.validateProjects, p.validateTeamGroups, p.validateEntitlementDurations,
+		p.validateGithubApps, p.validateApprovingReviews, p.validateCloudBuild, p.validateBedrockPin,
+		p.validateCiLargeRunner, p.validateProjects, p.validateTeamGroups, p.validateEntitlementDurations,
 	} {
 		if err := validate(); err != nil {
 			return err
@@ -392,6 +402,28 @@ func (p *Placement) validateGithubApps() error {
 	}
 
 	return nil
+}
+
+// validateApprovingReviews refuses a negative number of approving reviews; left out is
+// one, and 0 is none.
+func (p *Placement) validateApprovingReviews() error {
+	if p.ApprovingReviews != nil && *p.ApprovingReviews < 0 {
+		return errors.Newf("approvingReviews %d is negative: the approving reviews a pull request needs before it merges, 0 for none", *p.ApprovingReviews)
+	}
+
+	return nil
+}
+
+// ApprovingReviewCount is the approving reviews a pull request needs before it merges,
+// on every application repository's default branch and hotfix lines and on this
+// repository's default branch: the placement's approvingReviews, or one when it is left
+// out.
+func (p *Placement) ApprovingReviewCount() int {
+	if p.ApprovingReviews == nil {
+		return defaultApprovingReviews
+	}
+
+	return *p.ApprovingReviews
 }
 
 // validateCloudBuild refuses an installation id that is not one, a token secret version

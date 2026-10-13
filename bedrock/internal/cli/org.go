@@ -191,10 +191,11 @@ By hand, before the Cloud Build triggers can run (the commands are in 0-bootstra
      list the person may not view.
      On GitHub, as an organization owner: the organization, its machine account
      (%s, an owner of the organization, named in placement.json as
-     githubMachineAccount), this infrastructure repository (never managed by the
-     layers; default branch %s), the release, deployer and infrastructure apps, each
-     installed on all repositories, with their private keys (README.md, "The two GitHub
-     Apps", and 0-bootstrap/README.md, "The infrastructure GitHub App"; the release
+     githubMachineAccount), this infrastructure repository (default branch %s; 1-org
+     rules that branch and nothing else of it), the release, deployer and
+     infrastructure apps, each installed on all repositories, with their private keys
+     (README.md, "The two GitHub Apps", and 0-bootstrap/README.md, "The infrastructure
+     GitHub App"; the release
      app's App ID and slug go into placement.json, githubReleaseAppId and
      githubReleaseAppSlug, the deployer app's App ID into placement.json,
      githubDeployerAppId, and the infrastructure app's into placement.json,
