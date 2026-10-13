@@ -681,7 +681,8 @@ first; every application follows right after (step 7 says what breaks otherwise)
 
    Either way, in `placement.json` at the repository root: `cloudBuildInstallationId`,
    the installation's id (the value `github_app_installation_id` holds in
-   `2-env/terraform.tfvars`; one installation serves the organization), and
+   `2-env/terraform.tfvars`; one installation serves the organization; a string, in
+   quotes, like the app ids), and
    `cloudBuildTokenSecretVersion`, the boot project's version by its resource name
    (`projects/<boot project>/locations/<region>/secrets/<name>/versions/<n>` for the
    console's regional secret; `projects/<boot project>/secrets/<name>/versions/<n>` for a
@@ -694,7 +695,7 @@ first; every application follows right after (step 7 says what breaks otherwise)
    `2-env/terraform.tfvars`, take out the four values the placement carries now:
    `github_app_installation_id` and `github_oauth_token_secret_version` (step 1 recorded
    them), `github_deployer_app_id` (its value goes into `placement.json` as
-   `githubDeployerAppId`) and `github_deployer_key_secret_versions` (step 4 replaces it);
+   `githubDeployerAppId`, a string in quotes) and `github_deployer_key_secret_versions` (step 4 replaces it);
    `bedrock org check` reports each one left behind, and the triggers run that check
    first. The render removes `.github/workflows/layers.yml` and `1-org/workflow.tf`. It
    adds `0-bootstrap/cloud-build.tf` (the connection, the repository link, the planner and
