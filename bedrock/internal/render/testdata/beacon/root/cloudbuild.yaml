@@ -16,10 +16,9 @@
 #   ResolveDeploymentTarget   what is deployed and where (deploy resolve)
 #   ValidateRelease           whether this release may deploy here, and whether it waits for the maintenance window (deploy validate-release)
 #   GuardMigrations           the migrations are one sequence, unchanged once committed (deploy guard-migrations)
-#   PlanEnvironments          a pull request's preview: the stack planned and tested for every environment, as each one's plan identity (deploy plan-environments)
-#   *PullRequestStack         a pull request's own environment: plan, guard, apply (deploy pr-stack)
 #   CheckRelease              a release already built from this commit is reused (deploy check-release)
 #   BuildImage                one image per environment, built fresh from the commit over the registry's dependency caches and pushed (deploy build-image)
+#   ReadPullRequestStack      a pull-request build: what the pull request's stack job applied, read from the records bucket once the job has written it (deploy pr-outputs)
 #   MaintenanceOnRestore      a restore run's maintenance revision, before its database is replaced (deploy maintenance on)
 #   *EnvironmentStack         a tag build's apply of the environment's stack: planned, tested and applied as the apply identity (deploy stack)
 #   PreflightMigrations       a window release's migrate command run once with -version before the wait: the command, its configuration and the database answer with nothing changed (deploy migrate --preflight)
@@ -39,15 +38,18 @@
 #
 # Two kinds of trigger run it (README.md, "Deploying"): a version trigger per environment, on
 # a release tag; and the pull-request trigger for tst, started by a "/gcbrun" comment,
-# which stands the pull request's own environment up (or down, on "/gcbrun down").
+# which builds the pull request's image and deploys it into the pull request's own
+# environment (or marks it gone, on "/gcbrun down"). This file applies no Terraform for a
+# pull request: the pull request's stack is planned, guarded and applied by the stack's own
+# pr-stack trigger (infrastructure/cloud-build.tf) on the same comment, as the apply
+# identity, from steps a pull request cannot edit, and this build reads what that job
+# applied (ReadPullRequestStack). A tag build still applies the environment's stack here.
 #
-# The steps run in the order written, a step with no waitFor waiting for every step before it,
-# except for two lanes that run side by side: the pull request's stack (its plan, guard and
-# apply) and the image (the release check and the build), joined again at the restore run's
-# maintenance step. A window release (one that turns away the release the environment runs,
-# or any release where the environment's setting says all) builds its image and applies its stack,
-# then waits inside the run for the environment's maintenance window; the window holds only
-# maintenance, the migrations and the rollout.
+# The steps run in the order written, each waiting for every step before it. A window
+# release (one that turns away the release the environment runs, or any release where the
+# environment's setting says all) builds its image and applies its stack, then waits inside
+# the run for the environment's maintenance window; the window holds only maintenance, the
+# migrations and the rollout.
 
 steps:
   # The bedrock every later step runs: the commit the placement pins (bedrockVersion, a
@@ -112,54 +114,14 @@ steps:
     args: [deploy, guard-migrations]
     timeout: 300s
 
-  # A pull-request build only: the stack planned for every environment, each as that
-  # environment's plan identity (a reader, without the state lock), with the tests a tag
-  # build runs before its apply; the summaries go on the pull request, and a failing plan
-  # or test fails the build. The plan the reviewer approves is each environment's.
-  - id: PlanEnvironments
-    name: ghcr.io/opentofu/opentofu:1.12.6
-    entrypoint: /builder/home/bedrock
-    args: [deploy, plan-environments]
-    timeout: 1800s
-    waitFor: [GuardMigrations]
-
-  # A pull-request build only: the stack applied into the pull request's own prefix as the
-  # apply identity. The plan is saved, the guard lets only the pull request's own resources
-  # through, and the apply applies exactly that plan (a destroy on /gcbrun down).
-  - id: PlanPullRequestStack
-    name: ghcr.io/opentofu/opentofu:1.12.6
-    entrypoint: /builder/home/bedrock
-    args: [deploy, pr-stack, plan]
-    timeout: 900s
-    waitFor: [PlanEnvironments]
-
-  - id: GuardPullRequestPlan
-    name: gcr.io/cloud-builders/gcloud
-    entrypoint: /builder/home/bedrock
-    args: [deploy, pr-stack, guard]
-    timeout: 300s
-    waitFor: [PlanPullRequestStack]
-
-  - id: ApplyPullRequestStack
-    name: ghcr.io/opentofu/opentofu:1.12.6
-    entrypoint: /builder/home/bedrock
-    args: [deploy, pr-stack, apply]
-    timeout: 1800s
-    waitFor: [GuardPullRequestPlan]
-
-  # The image lane runs beside the pull request's stack: from the pull request's plan on
-  # (which marks a teardown, so no image is built for one), the release check and the
-  # image build take their time while the guard and the apply take theirs, and the
-  # maintenance step waits for both lanes. In a tag build the stack steps say so and end
-  # at once, so the lane costs nothing there.
   # Whether the image build runs: a release already built from this commit is reused, and
-  # a release tag naming another build is refused.
+  # a release tag naming another build is refused. A teardown (/gcbrun down) deploys nothing,
+  # so this and every deploying step after it stand down.
   - id: CheckRelease
     name: gcr.io/cloud-builders/gcloud
     entrypoint: /builder/home/bedrock
     args: [deploy, check-release]
     timeout: 300s
-    waitFor: [PlanPullRequestStack]
 
   # The image, built from the commit's Dockerfile with the declared build arguments and
   # build secrets, pushed under <release>-<env> and <commit>-<env>. The Dockerfile's two
@@ -174,7 +136,19 @@ steps:
     entrypoint: /builder/home/bedrock
     args: [deploy, build-image, --hooks]
     timeout: 1800s
-    waitFor: [CheckRelease]
+
+  # A pull-request build only: what the pull request's stack job applied, read from the
+  # records bucket (<app>/stacks/<env>/pr<N>/<commit>.json), where the stack's pr-stack
+  # trigger wrote it on the same /gcbrun comment, as the apply identity: the services, the
+  # hostname, the job, the migrate command's settings, the database mode and the build
+  # arguments go to environment.sh for the steps after. An object not yet written is waited
+  # for, up to ten minutes; a job that failed stops this build at once with its reason. On
+  # /gcbrun down the destroy is waited for the same way. A tag build says so and ends.
+  - id: ReadPullRequestStack
+    name: gcr.io/cloud-builders/gcloud
+    entrypoint: /builder/home/bedrock
+    args: [deploy, pr-outputs]
+    timeout: 900s
 
   # A run that replaces the database (a restore run) puts the application into maintenance
   # first: the release's image starts as a revision with the maintenance variable set, in
@@ -192,7 +166,6 @@ steps:
     entrypoint: /builder/home/bedrock
     args: [deploy, maintenance, "on"]
     timeout: 3600s
-    waitFor: [BuildImage, ApplyPullRequestStack]
 
   # A tag build only: the environment's stack planned and applied as the apply identity,
   # after the image build (a failed build changes no infrastructure) and before the

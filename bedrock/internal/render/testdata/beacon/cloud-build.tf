@@ -1,20 +1,55 @@
 # ---------------------------------------------------------------------------
 # Cloud Build triggers
 #
-# Two triggers on the repository link 2-env registered under the
-# environment's GitHub connection, both running cloudbuild.yaml from the
+# Five triggers on the repository link 2-env registered under the
+# environment's GitHub connection. Two run cloudbuild.yaml from the
 # repository as the deploy identity:
 #
-#   version  a tag v<major>.<minor>.<patch>, in every environment; stg and prd
-#            wait for an approval in Cloud Build (the design brief's gate for
-#            now: "Cloud Build's approval for now").
-#   pr       tst only: a pull request against master, run only when a
-#            collaborator comments /gcbrun (COMMENTS_ENABLED), so a pull
-#            request build is a command, not a side effect of a push.
+#   version   a tag v<major>.<minor>.<patch>, in every environment; stg and prd
+#             wait for an approval in Cloud Build.
+#   pr        tst only: the preview of a pull request against master, run
+#             only when a collaborator comments /gcbrun (COMMENTS_ENABLED), so a
+#             pull-request build is a command, not a side effect of a push. It
+#             builds the image and deploys it into the pull request's own
+#             environment, and applies no Terraform.
 #
-# Both wait on the repository link: until 2-env holds the environment's
+# Two hold their steps here, in the trigger, and run as the apply identity,
+# tst only. A pull request controls cloudbuild.yaml, so what applies
+# Terraform for a pull request never runs from that file: the guard on a pull
+# request's plan is only real when the pull request cannot edit the steps
+# around it.
+#
+#   check     every push to a pull request against master or a hotfix line
+#             (COMMENTS_DISABLED): bedrock check, then the stack planned and
+#             tested for every environment as that environment's plan identity
+#             (the summaries go on the pull request), then the pull request's
+#             own stack applied again when it already has a preview, so later
+#             pushes keep it current. Its result is the check a merge waits
+#             for (1-org's rulesets name it).
+#   pr-stack  the same /gcbrun comment as pr: bedrock check, then the pull
+#             request's own stack planned, guarded (only the pull request's
+#             own resources pass) and applied, or destroyed on /gcbrun down.
+#             What it applied is written to the records bucket
+#             (<app>/stacks/<env>/pr<N>/<commit>.json), which the preview
+#             build reads once its image is built.
+#
+# The sweep (below) runs cloudbuild-sweep.yaml from the default branch as the
+# apply identity, hourly.
+#
+# The trigger-held steps are this file's text, so a change to them is a
+# change to the stack: a release renders it, and it takes effect in an
+# environment with that release's stack apply there, one apply behind the
+# repository. The bedrock the steps run is never in the text: the first step
+# reads the pin (bedrockVersion, bedrockSha256) from
+# infrastructure/placement.json in the checkout at run time, so a pull request
+# that moves the pin runs the bedrock it pins under the steps of the apply
+# before. The rule that follows: a bedrock release runs under the previous
+# release's steps, which is why the steps are few, name one command each, and
+# the commands say so when the steps they run under are an older bedrock's.
+#
+# All five wait on the repository link: until 2-env holds the environment's
 # GitHub connection (its two GitHub values set, the authorization that comes
-# before the first application is registered), neither trigger exists, and no
+# before the first application is registered), no trigger exists, and no
 # build runs: every build starts from a trigger, and the pipeline refuses one
 # whose connection is empty. The rest of this layer applies either way.
 #
@@ -26,8 +61,9 @@
 # its labels, nothing else.
 #
 # Building as a user-specified service account needs the build logs sent to
-# Cloud Logging (options.logging: CLOUD_LOGGING_ONLY in cloudbuild.yaml); the
-# deploy identity holds logging.logWriter for it.
+# Cloud Logging (options.logging: CLOUD_LOGGING_ONLY, in cloudbuild.yaml and
+# in the trigger-held builds); the deploy identity holds logging.logWriter
+# for it, and the apply identity logging.admin.
 #
 # Modeled on CCC's reference deployment, with the dynamic
 # blocks resolved to the two shapes actually used.
@@ -101,6 +137,51 @@ locals {
   custom_substitutions = lookup(var.substitutions, var.environment, {})
   # A name the contract carries may not be redefined; the triggers refuse it.
   redefined_substitutions = setintersection(keys(local.custom_substitutions), keys(local.substitutions))
+
+  # The apply identity as a trigger names its service account: its full
+  # resource name, from the email 2-env outputs (2-env outputs the deploy
+  # identity's name, for the triggers it ran, and the apply identity's email).
+  apply_identity_id = "projects/${local.project_id}/serviceAccounts/${local.identities.apply_identity_email}"
+
+  # The first two steps of the trigger-held jobs. The pinned bedrock is read
+  # from infrastructure/placement.json in the checkout when the step runs, never
+  # from this text: a release pin (bedrockVersion with bedrockSha256) is
+  # downloaded from its GitHub Release and verified against the checksum here;
+  # a commit pin (no checksum) is written to a file for the next step, which
+  # builds it with go install in the Go image, where Go's checksum database
+  # verifies it, and does nothing for a release pin. Every $ is written $$:
+  # Cloud Build reads $NAME as a substitution and $$ as a literal $, which the
+  # shell then expands.
+  fetch_bedrock        = <<-EOT
+    set -eo pipefail
+    pin=$$(python3 -c 'import json; p = json.load(open("infrastructure/placement.json")); print(p["bedrockVersion"], p.get("bedrockSha256") or "-")')
+    set -- $$pin
+    version=$$1
+    sha256=$$2
+    rm -f /builder/home/bedrock /builder/home/bedrock.pin
+    if [ "$$sha256" = "-" ]; then
+      echo "$$version" > /builder/home/bedrock.pin
+      echo "bedrock $$version is a commit pin: the next step builds it with go install."
+      exit 0
+    fi
+    curl -fsSL --connect-timeout 10 --max-time 60 --retry 3 -o /builder/home/bedrock "https://github.com/cccteam/ccc/releases/download/bedrock/$$version/bedrock-linux-amd64"
+    echo "$$sha256  /builder/home/bedrock" | sha256sum --check -
+    chmod 0755 /builder/home/bedrock
+    /builder/home/bedrock --version
+  EOT
+  build_bedrock_commit = <<-EOT
+    set -eu
+    if [ ! -f /builder/home/bedrock.pin ]; then
+      echo "bedrock is a release pin, fetched by the step before: nothing to build."
+      exit 0
+    fi
+    go install -ldflags="-s -w" github.com/cccteam/ccc/bedrock@$$(cat /builder/home/bedrock.pin)
+    /builder/home/bedrock --version
+  EOT
+  go_install_env       = ["GOBIN=/builder/home", "CGO_ENABLED=0", "GOTOOLCHAIN=local", "GOFLAGS=-trimpath", "GOPATH=/tmp/go", "GOCACHE=/tmp/go-build", "GOMODCACHE=/tmp/go-mod", "GOPROXY=https://proxy.golang.org", "GOSUMDB=sum.golang.org", "GONOSUMDB=", "GOPRIVATE=", "GOINSECURE="]
+  # The build's own id and place, which the trigger-held commands read their
+  # build through the Cloud Build API by, as the pipeline's resolve step does.
+  build_env = ["BUILD_ID=$BUILD_ID", "PROJECT_ID=$PROJECT_ID", "LOCATION=$LOCATION"]
 }
 
 resource "google_cloudbuild_trigger" "version" {
@@ -183,6 +264,12 @@ resource "google_cloudbuild_trigger" "rollback" {
   }
 }
 
+# The preview build: cloudbuild.yaml on the /gcbrun comment, as the deploy
+# identity. The pull request's stack is the pr-stack trigger's, below, on the
+# same comment, and the environments' plans are the check trigger's: the
+# deploy identity may act as no plan identity (2-env grants that to the apply
+# identity now). It may still act as the apply identity, since a release's
+# tag build applies the environment's stack as it from this same file.
 resource "google_cloudbuild_trigger" "pr" {
   count = var.environment == "tst" && local.identities.repository_id != null && !local.is_pr ? 1 : 0
 
@@ -213,18 +300,202 @@ resource "google_cloudbuild_trigger" "pr" {
 }
 
 # ---------------------------------------------------------------------------
+# The check-and-plan job, tst only: on every push to a pull request, as the
+# apply identity, with its steps held here. Its result is the required check
+# the merge waits for, so a pull request merges only when bedrock check
+# passes on it and every environment's stack plans and tests clean. When the
+# pull request already has a preview, its stack is applied again at the end,
+# so the preview's infrastructure follows the pushes (the preview's image
+# does not: a /gcbrun comment deploys that).
+# ---------------------------------------------------------------------------
+
+resource "google_cloudbuild_trigger" "check" {
+  count = var.environment == "tst" && local.identities.repository_id != null && !local.is_pr ? 1 : 0
+
+  project  = local.project_id
+  location = local.primary_region
+  name     = "${local.name}-${local.primary_region_code}-${local.app}-check"
+
+  service_account    = local.apply_identity_id
+  include_build_logs = "INCLUDE_BUILD_LOGS_WITH_STATUS"
+  substitutions      = merge(local.substitutions, local.custom_substitutions, { _SEED = "true" })
+
+  approval_config {
+    approval_required = false
+  }
+
+  repository_event_config {
+    repository = local.identities.repository_id
+
+    pull_request {
+      branch          = "^(master|hotfix/[0-9]+\\.[0-9]+\\.x)$"
+      comment_control = "COMMENTS_DISABLED"
+    }
+  }
+
+  build {
+    timeout = "6600s"
+
+    step {
+      id         = "FetchBedrock"
+      name       = "gcr.io/cloud-builders/gcloud"
+      entrypoint = "bash"
+      args       = ["-c", local.fetch_bedrock]
+      timeout    = "300s"
+    }
+
+    step {
+      id         = "BuildBedrockCommit"
+      name       = "cgr.dev/chainguard/go@sha256:2c20827746d752c1f18989847956637a0dc979c42507f4059e1d9559ee7733af"
+      entrypoint = "sh"
+      args       = ["-c", local.build_bedrock_commit]
+      env        = local.go_install_env
+      timeout    = "600s"
+    }
+
+    # The committed stack and pipeline against the code, in the checkout.
+    step {
+      id         = "CheckStack"
+      name       = "gcr.io/cloud-builders/gcloud"
+      entrypoint = "/builder/home/bedrock"
+      args       = ["check"]
+      timeout    = "600s"
+    }
+
+    # The stack planned and tested for every environment as its plan identity
+    # (the apply identity may act as each), the summaries on the pull request,
+    # with the hotfix and window previews.
+    step {
+      id         = "PlanEnvironments"
+      name       = "ghcr.io/opentofu/opentofu:1.12.6"
+      entrypoint = "/builder/home/bedrock"
+      args       = ["deploy", "plan-environments"]
+      env        = local.build_env
+      timeout    = "1800s"
+    }
+
+    # The pull request's own stack applied again when it has a preview.
+    step {
+      id         = "RefreshPullRequestStack"
+      name       = "ghcr.io/opentofu/opentofu:1.12.6"
+      entrypoint = "/builder/home/bedrock"
+      args       = ["deploy", "pr-stack", "--if-exists"]
+      env        = local.build_env
+      timeout    = "2700s"
+    }
+
+    options {
+      logging             = "CLOUD_LOGGING_ONLY"
+      substitution_option = "ALLOW_LOOSE"
+    }
+  }
+
+  lifecycle {
+    precondition {
+      condition     = length(local.redefined_substitutions) == 0
+      error_message = "var.substitutions redefines a substitution the pipeline's contract carries; rename it: ${join(", ", local.redefined_substitutions)}."
+    }
+  }
+}
+
+# ---------------------------------------------------------------------------
+# The pull-request stack job, tst only: on the same /gcbrun comment as the
+# preview, as the apply identity, with its steps held here. It plans the pull
+# request's own stack, lets only the pull request's own resources through
+# (the guard), applies exactly that plan, and writes what it applied for the
+# preview build to read; on /gcbrun down it destroys the stack and writes
+# that. The preview build (the pr trigger) runs beside it and waits for the
+# object where it needs the stack.
+# ---------------------------------------------------------------------------
+
+resource "google_cloudbuild_trigger" "pr_stack" {
+  count = var.environment == "tst" && local.identities.repository_id != null && !local.is_pr ? 1 : 0
+
+  project  = local.project_id
+  location = local.primary_region
+  name     = "${local.name}-${local.primary_region_code}-${local.app}-pr-stack"
+
+  service_account    = local.apply_identity_id
+  include_build_logs = "INCLUDE_BUILD_LOGS_WITH_STATUS"
+  substitutions      = merge(local.substitutions, local.custom_substitutions, { _SEED = "true" })
+
+  approval_config {
+    approval_required = false
+  }
+
+  repository_event_config {
+    repository = local.identities.repository_id
+
+    pull_request {
+      branch          = "^(master|hotfix/[0-9]+\\.[0-9]+\\.x)$"
+      comment_control = "COMMENTS_ENABLED"
+    }
+  }
+
+  build {
+    timeout = "4800s"
+
+    step {
+      id         = "FetchBedrock"
+      name       = "gcr.io/cloud-builders/gcloud"
+      entrypoint = "bash"
+      args       = ["-c", local.fetch_bedrock]
+      timeout    = "300s"
+    }
+
+    step {
+      id         = "BuildBedrockCommit"
+      name       = "cgr.dev/chainguard/go@sha256:2c20827746d752c1f18989847956637a0dc979c42507f4059e1d9559ee7733af"
+      entrypoint = "sh"
+      args       = ["-c", local.build_bedrock_commit]
+      env        = local.go_install_env
+      timeout    = "600s"
+    }
+
+    step {
+      id         = "CheckStack"
+      name       = "gcr.io/cloud-builders/gcloud"
+      entrypoint = "/builder/home/bedrock"
+      args       = ["check"]
+      timeout    = "600s"
+    }
+
+    # The pull request's stack: plan, guard, apply (a destroy on /gcbrun down),
+    # and the outputs object for the preview build.
+    step {
+      id         = "ApplyPullRequestStack"
+      name       = "ghcr.io/opentofu/opentofu:1.12.6"
+      entrypoint = "/builder/home/bedrock"
+      args       = ["deploy", "pr-stack"]
+      env        = local.build_env
+      timeout    = "2700s"
+    }
+
+    options {
+      logging             = "CLOUD_LOGGING_ONLY"
+      substitution_option = "ALLOW_LOOSE"
+    }
+  }
+
+  lifecycle {
+    precondition {
+      condition     = length(local.redefined_substitutions) == 0
+      error_message = "var.substitutions redefines a substitution the pipeline's contract carries; rename it: ${join(", ", local.redefined_substitutions)}."
+    }
+  }
+}
+
+# ---------------------------------------------------------------------------
 # The sweep, tst only. A pull request's environment outlives the pull
 # request when nobody comments /gcbrun down, and closing or merging one starts
 # no build (Cloud Build has no event for it). Every hour Cloud Scheduler runs
-# the sweep trigger as the deploy identity: cloudbuild-sweep.yaml in the
-# repository lists this application's pull-request services by their
+# the sweep trigger as the apply identity: cloudbuild-sweep.yaml on the
+# default branch lists this application's pull-request services by their
 # pull_request label, asks GitHub whether each pull request is closed, and
-# destroys the stacks of the closed ones as the apply identity, the way
-# /gcbrun down does. The design brief gives the sweep an identity of its own;
-# this stack runs it as the deploy identity, which already holds the
-# impersonation the pull-request build uses. The scheduler runs the trigger as
-# that identity too, which needs Service Account User on the identity itself:
-# 2-env grants it in tst (deploy_runs_sweep).
+# destroys the stacks of the closed ones from their own state prefixes, the
+# way /gcbrun down does. The scheduler calls the trigger as the apply identity
+# too, which runs a trigger whose builds run as itself through the roles 2-env
+# gives it on the project (builds editor, Service Account User).
 # ---------------------------------------------------------------------------
 
 resource "google_cloudbuild_trigger" "sweep" {
@@ -234,7 +505,7 @@ resource "google_cloudbuild_trigger" "sweep" {
   location = local.primary_region
   name     = "${local.name}-${local.primary_region_code}-${local.app}-sweep"
 
-  service_account = local.identities.deploy_identity_id
+  service_account = local.apply_identity_id
   substitutions   = merge(local.substitutions, local.custom_substitutions, { _PR_NUMBER = "" })
   # No include_build_logs: Cloud Build accepts the log link on a GitHub-event
   # trigger only, and this one is run by the scheduler.
@@ -270,7 +541,7 @@ resource "google_cloud_scheduler_job" "sweep" {
     body        = base64encode("{}")
 
     oauth_token {
-      service_account_email = local.identities.deploy_identity_email
+      service_account_email = local.identities.apply_identity_email
       scope                 = "https://www.googleapis.com/auth/cloud-platform"
     }
   }

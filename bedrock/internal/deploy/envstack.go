@@ -1,8 +1,9 @@
 // envstack.go plans, tests and applies the environment's application stack: in a tag
 // build, as the apply identity, after the image build and before the migrations, so an
 // infrastructure change rides the release that carries it under the release's own gate; in
-// a pull-request build, a plan for every environment as that environment's plan identity,
-// so the plan a reviewer approves is each environment's.
+// the check-and-plan job of a pull request (the stack's check trigger, on every push), a
+// plan for every environment as that environment's plan identity, so the plan a reviewer
+// approves is each environment's.
 
 package deploy
 
@@ -24,6 +25,7 @@ import (
 
 	"github.com/cccteam/ccc/bedrock/internal/check"
 	"github.com/cccteam/ccc/bedrock/internal/derive"
+	"github.com/cccteam/ccc/bedrock/internal/render"
 )
 
 const (
@@ -46,7 +48,7 @@ const (
 	// enabledState is a secret version's state when a revision can mount it.
 	enabledState = "ENABLED"
 	// pullRequestBuildNotice is a tag-build step's answer in a pull-request build.
-	pullRequestBuildNotice = "Pull-request build: the stack is planned for every environment before the pull request's own, and applied nowhere."
+	pullRequestBuildNotice = "Pull-request build: the environments' stacks are planned by the stack's check trigger, and the pull request's own is applied by its pr-stack trigger; this build applies nothing."
 )
 
 // StackPlan is what a plan of the environment's stack would do: the counts tofu prints and
@@ -142,7 +144,7 @@ func PlanEnvironmentStack(ctx context.Context, clients *Clients, w Workspace, ou
 	if err != nil {
 		return err
 	}
-	args := []string{"plan", "-input=false", "-no-color", "-out=" + plan, varFlag, "environment=" + subs[envSub], varFlag, "database_generation=" + strconv.Itoa(generation)}
+	args := []string{"plan", noInputFlag, noColorFlag, "-out=" + plan, varFlag, "environment=" + subs[envSub], varFlag, "database_generation=" + strconv.Itoa(generation)}
 	// The plan is told the maintenance variable's live value, so that declared and live
 	// agree and the apply never starts an application revision from the template while
 	// the application is in maintenance: in this run (a restore run, after deploy
@@ -466,7 +468,7 @@ func ApplyEnvironmentStack(ctx context.Context, clients *Clients, w Workspace, o
 	if len(p.Changes) == 0 {
 		fmt.Fprintf(out, "Nothing to apply: %s's stack matches the code.\n", subs[envSub])
 	} else {
-		if err := s.tofu(ctx, "apply", "-input=false", "-no-color", filepath.Join(string(w), StackPlanFile)); err != nil {
+		if err := s.tofu(ctx, "apply", noInputFlag, noColorFlag, filepath.Join(string(w), StackPlanFile)); err != nil {
 			return err
 		}
 		fmt.Fprintf(out, "Applied %s's stack: %d added, %d changed, %d destroyed.\n", subs[envSub], p.Add, p.Change, p.Destroy)
@@ -619,26 +621,28 @@ func (s *stack) clearFirestore(ctx context.Context, subs map[string]string, w Wo
 	return w.Append(map[string]string{clearedFact: firestoreAddress})
 }
 
-// PlanEnvironments plans the stack for every environment in a pull-request build, each as
-// that environment's plan identity, a reader, without the state lock: the plan the
-// reviewer approves is each environment's, and a pull-request build in tst can never
-// change another environment. Each plan runs the tests; one comment on the pull request
+// PlanEnvironments plans the stack for every environment on a pull request (deploy
+// plan-environments, the check-and-plan trigger's step after bedrock check, as the apply
+// identity, on every push), each as that environment's plan identity, a reader, without
+// the state lock: the plan the reviewer approves is each environment's, and the job can
+// change no environment. Each plan runs the tests; one comment on the pull request
 // carries every summary; a failing plan or test stops the build, which is the required
-// check, and is said on the pull request. A tag build plans its own environment later
+// check, and is said on the pull request. After the plans come the pull request's looks
+// ahead, read as the same identities: the hotfix preview when the pull request is against
+// a hotfix line, and the window preview. A tag build plans its own environment later
 // instead (deploy stack plan). Triggers that carry no promotion order (a stack not yet
 // applied with a bedrock that writes it, which the first release on it does) plan
 // nothing, with a notice: the pull request that moves an application here builds.
-func PlanEnvironments(ctx context.Context, clients *Clients, w Workspace, out io.Writer) error {
-	env, build, ok, err := pullRequestStep(w, out)
-	if err != nil || !ok {
+func PlanEnvironments(ctx context.Context, clients *Clients, w Workspace, req *BuildRequest, out io.Writer) error {
+	build, builds, err := readBuild(ctx, clients, req)
+	if err != nil {
 		return err
 	}
-	subs := build.Substitutions
-	if env[downFact] == trueValue {
-		fmt.Fprintln(out, "/gcbrun down: nothing to plan for the environments.")
-
-		return nil
+	if err := pullRequestBuild(build); err != nil {
+		return err
 	}
+	staleSteps(build, render.CheckTrigger, render.CheckTriggerSteps, out)
+	subs := build.Substitutions
 	if subs[environmentsSub] == "" {
 		fmt.Fprintf(out, "The triggers carry no %s: the stack has not been applied with this bedrock yet, which the first release on it does; the environments' plans wait for it.\n", environmentsSub)
 
@@ -647,6 +651,12 @@ func PlanEnvironments(ctx context.Context, clients *Clients, w Workspace, out io
 	identities, err := planIdentities(subs)
 	if err != nil {
 		return err
+	}
+	env := map[string]string{}
+	if token, err := repositoryToken(ctx, builds, subs, req.Project, req.Location); err != nil {
+		fmt.Fprintf(out, "Notice: the repository's token could not be minted from connection %q (%v); a refusal is said through the deployer app alone.\n", subs["_REPO_CONNECTION_NAME"], errors.Cause(err))
+	} else {
+		env[githubTokenFact] = token
 	}
 	p, err := checkoutPlacement(w, "the state bucket is named")
 	if err != nil {
@@ -664,12 +674,33 @@ func PlanEnvironments(ctx context.Context, clients *Clients, w Workspace, out io
 	if err := os.RemoveAll(filepath.Join(string(w), stackDir, ".terraform")); err != nil {
 		return errors.Wrap(err, "os.RemoveAll()")
 	}
+	if err := previews(ctx, clients, w, subs, p, out); err != nil {
+		return err
+	}
 	pr, err := speaker(ctx, clients, build, env, false)
 	if err != nil || pr == nil {
 		return err
 	}
 
 	return pr.comment(ctx, fmt.Sprintf("The stack's plan for each environment (build %s), the same tests passed in each:\n\n%s", build.ID, strings.Join(summaries, "\n")), out)
+}
+
+// previews are the pull request's looks ahead, read as each environment's plan identity
+// after its plan: the hotfix preview, when the pull request is against a hotfix line, and
+// the window preview, which reads the release file the generated router's package holds,
+// found by reading the application in the checkout as bedrock check does.
+func previews(ctx context.Context, clients *Clients, w Workspace, subs map[string]string, p *derive.Placement, out io.Writer) error {
+	if hotfixBranchRE.MatchString(subs[baseBranchSub]) {
+		if err := hotfixPreview(ctx, clients.StorageAs, subs, w, out); err != nil {
+			return err
+		}
+	}
+	routerDir, err := routerDirOf(w, p)
+	if err != nil {
+		return err
+	}
+
+	return windowPreview(ctx, clients.StorageAs, w, subs, routerDir, out)
 }
 
 // planEnvironment plans one environment's stack for the pull request as the environment's
@@ -695,7 +726,7 @@ func planEnvironment(ctx context.Context, clients *Clients, w Workspace, build *
 		return "", err
 	}
 	plan := filepath.Join(string(w), "environment-"+e+".plan")
-	if err := s.tofu(ctx, "plan", "-input=false", "-no-color", "-lock=false", "-out="+plan, varFlag, "environment="+e, varFlag, "database_generation="+strconv.Itoa(generation)); err != nil {
+	if err := s.tofu(ctx, "plan", noInputFlag, noColorFlag, "-lock=false", "-out="+plan, varFlag, "environment="+e, varFlag, "database_generation="+strconv.Itoa(generation)); err != nil {
 		return "", refuse(ctx, clients, build, env, fmt.Sprintf("The plan of %s's stack failed; the build log says why (build %s).", e, build.ID), err, out)
 	}
 	shown, err := s.tofuOutput(ctx, "show", "-json", plan)
@@ -785,16 +816,17 @@ func tagBuildStep(w Workspace, out io.Writer) (subs map[string]string, ok bool, 
 }
 
 // newEnvironmentStack is the environment's stack in the checkout, driven through tofu as
-// the identity (the apply identity in a tag build, an environment's plan identity in a
-// pull-request build).
+// the identity, impersonated: the apply identity in a tag build (the pipeline runs as the
+// deploy identity), an environment's plan identity in the check-and-plan job (which runs
+// as the apply identity).
 func newEnvironmentStack(clients *Clients, w Workspace, identity string, out io.Writer) *stack {
 	return &stack{
-		run:      clients.Exec,
-		dir:      filepath.Join(string(w), stackDir),
-		env:      []string{"GOOGLE_IMPERSONATE_SERVICE_ACCOUNT=" + identity},
-		out:      out,
-		clients:  clients,
-		identity: identity,
+		run:         clients.Exec,
+		dir:         filepath.Join(string(w), stackDir),
+		identity:    identity,
+		impersonate: true,
+		out:         out,
+		clients:     clients,
 	}
 }
 
@@ -835,9 +867,7 @@ func (s *stack) initEnvironment(ctx context.Context, app, env, identity string) 
 	prefix := statePrefix(app, env)
 	fmt.Fprintf(s.out, "=== %s's stack at %s as %s ===\n", env, prefix, identity)
 
-	return s.tofu(ctx, "init", "-input=false", "-no-color",
-		"-backend-config=prefix="+prefix,
-		"-backend-config=impersonate_service_account="+identity)
+	return s.tofu(ctx, s.backendArgs(prefix)...)
 }
 
 // testStack runs the tests a plan of the environment's stack passes before it is applied,

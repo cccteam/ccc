@@ -27,12 +27,15 @@ thing, and appends what it learned for the steps after it; no step installs anyt
 cloudbuild.yaml runs them with the bedrock its first step gets: for a release pin, the release the
 placement pins (bedrockVersion) downloaded and verified against its checksum (bedrockSha256); for
 a commit pin, that commit built with go install and verified by Go's checksum database. The steps,
-in order: resolve, validate-release, guard-migrations, plan-environments, pr-stack plan, pr-stack
-guard, pr-stack apply, check-release, build-image, maintenance on (a restore run), stack plan, stack
+in order: resolve, validate-release, guard-migrations, check-release, build-image, pr-outputs (a
+pull-request build: what its stack job applied), maintenance on (a restore run), stack plan, stack
 apply, jobs (an application with a job process), migrate --preflight, window, maintenance on
 --window (a breaking release), migrate, service, shift-traffic, maintenance off, sweep-jobs (a job
 process again), record and talk-back, with hook <stage> where the application commits a hook
-script. The hourly sweep runs sweep.`,
+script. Two commands run in the stack's own triggers, as the apply identity, from steps a pull
+request cannot edit: plan-environments and pr-stack --if-exists in the check-and-plan trigger on
+every push, pr-stack in the pull-request stack trigger on the /gcbrun comment. The hourly sweep
+runs sweep.`,
 	}
 	envStack := &cobra.Command{
 		Use:   "stack",
@@ -46,16 +49,7 @@ several pull requests. A pull-request build skips both and plans every environme
 (plan-environments).`,
 	}
 	envStack.AddCommand(newDeployEnvStackPlan(d), newDeployEnvStackApply(d))
-	stack := &cobra.Command{
-		Use:   "pr-stack",
-		Short: "A pull request's own environment: plan, guard, apply",
-		Long: `pr-stack holds the three steps that stand a pull request's environment up, or take it down on
-/gcbrun down: the application's stack applied into the pull request's own state prefix
-(3-app/<app>/<env>/pr<N>) as the apply identity. plan saves the plan, guard lets only the pull
-request's own resources through, apply applies exactly that plan. A tag build skips all three.`,
-	}
-	stack.AddCommand(newDeployStackPlan(d), newDeployStackGuard(d), newDeployStackApply(d))
-	cmd.AddCommand(newDeployResolve(d), newDeployValidateRelease(d), newDeployGuardMigrations(d), newDeployPlanEnvironments(d), stack, newDeployHook(d),
+	cmd.AddCommand(newDeployResolve(d), newDeployValidateRelease(d), newDeployGuardMigrations(d), newDeployPlanEnvironments(d), newDeployPullRequestStack(d), newDeployStackOutputs(d), newDeployHook(d),
 		newDeployCheckRelease(d), newDeployBuildImage(d), envStack, newDeployBackup(d), newDeployMigrate(d), newDeployJobs(d), newDeployService(d),
 		newDeployShiftTraffic(d), newDeploySweepJobs(d), newDeployRecord(d), newDeployTalkBack(d), newDeploySweep(d), newDeployMaintenance(d), newDeployWindow(d))
 
@@ -107,7 +101,9 @@ checkout declares (buildArguments) are values of the stack's, so a tag build exp
 _BUILD_ARG_<NAME> for each name the checkout declares, saying when the trigger does not carry one
 yet (it comes with this build's stack apply, and reaches the image from the next release on), and
 a pull-request build exports none, its image taking the pull request's own stack's values (deploy
-pr-stack apply). It writes environment.sh (the facts, BUILD_SECRETS among them, then the
+pr-outputs). A teardown (/gcbrun down) deploys nothing: SKIP_DEPLOY is set, and the build waits for
+the stack job's destroy, runs the after-down hook and marks the deployment inactive. It writes
+environment.sh (the facts, BUILD_SECRETS among them, then the
 contract's substitutions as the trigger passed them and the declared ones as the checkout declares
 them), build-args.txt (the declared substitutions as the image build's arguments, NAME=value lines)
 and build.json (the build as Cloud Build describes it) to the workspace.`,
@@ -434,64 +430,79 @@ the fix (bedrock migration renumber, which go generate runs) and is posted on th
 	return cmd
 }
 
-// newDeployStackPlan is deploy pr-stack plan.
-func newDeployStackPlan(d deps) *cobra.Command {
-	var workspace string
+// buildRequest names the build a trigger-held command runs in, from the environment the
+// step passes (BUILD_ID, PROJECT_ID, LOCATION).
+func buildRequest() *deploy.BuildRequest {
+	return &deploy.BuildRequest{BuildID: os.Getenv("BUILD_ID"), Project: os.Getenv("PROJECT_ID"), Location: os.Getenv("LOCATION")}
+}
+
+// newDeployPullRequestStack is deploy pr-stack.
+func newDeployPullRequestStack(d deps) *cobra.Command {
+	var (
+		workspace string
+		ifExists  bool
+	)
 	cmd := &cobra.Command{
-		Use:   "plan",
-		Short: "Plan the pull request's stack and save the plan",
-		Long: `plan runs tofu init and tofu plan in the checkout's infrastructure directory as the apply identity,
-against the pull request's own state prefix: the destroy on /gcbrun down; without a database of
-its own on /gcbrun shared-db; with the pull request's database replaced when resolve decided it is
-recreated and it exists. It leaves the plan (pr.plan) and its JSON (pr-plan.json) in the workspace.
-It runs in the OpenTofu image, whose tofu it drives.`,
+		Use:   "pr-stack [--if-exists]",
+		Short: "A pull request's own environment: plan, guard, apply, or destroy on /gcbrun down",
+		Long: `pr-stack is the pull request's stack job: the step the stack's pull-request stack trigger
+(infrastructure/cloud-build.tf) holds and runs on the /gcbrun comment, as the apply identity, beside
+the preview build, from a step the pull request cannot edit. It reads its build through the Cloud
+Build API (BUILD_ID, PROJECT_ID and LOCATION, which the step passes), mints the repository's token
+from the Cloud Build connection, reads the latest /gcbrun comment, and applies the application's
+stack into the pull request's own state prefix (3-app/<app>/<env>/pr<N>): tofu init and tofu plan
+in the checkout's infrastructure directory (the destroy on /gcbrun down; without a database of its
+own on /gcbrun shared-db; with the pull request's database replaced on /gcbrun reload-db, or when
+the migrations the last build applied are no longer in the tree as applied, by the pull request's
+newest deployment record), then the guard, which reads the saved plan's JSON and lets only the pull
+request's own resources through (every resource it creates, changes or destroys carries the pull
+request's name, <app>-pr<N>, in what names it, or is an IAM membership of one of the pull request's
+accounts, or a grant bounded to its resources; anything else stops the job and is listed on the pull
+request; shared mode is refused too when the pull request changes the schema migrations against the
+default branch), then the apply of exactly that plan. What the stack now says (the services, the job
+process's job, the hostname, the migrate command's variables, the build arguments the placement
+declares and the database mode) goes to the records bucket as
+<app>/stacks/<env>/pr<N>/<commit>.json, which the preview build reads (deploy pr-outputs); a destroy
+and a failure, with its reason, are written the same way, so the preview stops at once. With
+--if-exists (the check-and-plan trigger's last step, on every push), the stack is applied again only
+when the pull request has a preview standing (its state holds resources), so the preview's
+infrastructure follows the pushes; a reload-db in the latest comment is that build's and is not
+repeated, a latest comment of down leaves the environment alone, and no comment at all applies the
+stack plain. It says when the build's steps are an older bedrock's than itself. It runs in the
+OpenTofu image, whose tofu it drives.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return deploy.PlanStack(cmd.Context(), d.deploy, deploy.Workspace(workspace), cmd.OutOrStdout())
+			return deploy.PullRequestStack(cmd.Context(), d.deploy, deploy.Workspace(workspace), buildRequest(), ifExists, cmd.OutOrStdout())
 		},
 	}
 	workspaceFlag(cmd, &workspace)
+	cmd.Flags().BoolVar(&ifExists, "if-exists", false, "apply the stack again only when the pull request has a preview standing; nothing otherwise")
 
 	return cmd
 }
 
-// newDeployStackGuard is deploy pr-stack guard.
-func newDeployStackGuard(d deps) *cobra.Command {
+// newDeployStackOutputs is deploy pr-outputs.
+func newDeployStackOutputs(d deps) *cobra.Command {
 	var workspace string
 	cmd := &cobra.Command{
-		Use:   "guard",
-		Short: "Refuse a plan that touches what is not the pull request's",
-		Long: `guard reads the saved plan's JSON and lets only the pull request's own resources through: every
-resource it creates, changes or destroys carries the pull request's name (<app>-pr<N>) in what
-names it, or is an IAM membership of one of the pull request's accounts. Anything else stops the
-build and is listed on the pull request. Shared mode is refused too when the pull request changes
-the schema migrations against the default branch.`,
+		Use:   "pr-outputs",
+		Short: "Read what the pull request's stack job applied, waiting for the job",
+		Long: `pr-outputs is the preview build's read of the pull request's stack, which this build never applies:
+the stack's pull-request stack trigger runs deploy pr-stack on the same /gcbrun comment as the apply
+identity and writes what it applied to the records bucket, <app>/stacks/<env>/pr<N>/<commit>.json,
+and this step reads the object written for this build's comment (COMMENT_ID, from resolve) and
+appends its facts to environment.sh for the steps after: SERVICES, JOBS_JOB, PR_HOSTNAME,
+MIGRATE_ENV, MIGRATE_DATABASES, the database mode (SHARED_DB, RELOAD_DB, RELOAD_DB_REASON) and
+the build arguments the placement declares (_BUILD_ARG_<NAME>, the pull request's own values). The
+job usually finishes before the image build does, so the wait is normally nothing; an object not yet
+written, or written for another comment on the same commit, is waited for up to ten minutes,
+fifteen seconds between looks, and then the step stops the build naming the trigger. A job that
+failed stops this build at once with the job's reason. On /gcbrun down the step waits for the job's
+destroy instead, after which the after-down hook runs and talk-back marks the deployment inactive.
+A tag build says so and ends.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return deploy.GuardPlan(cmd.Context(), d.deploy, deploy.Workspace(workspace), cmd.OutOrStdout())
-		},
-	}
-	workspaceFlag(cmd, &workspace)
-
-	return cmd
-}
-
-// newDeployStackApply is deploy pr-stack apply.
-func newDeployStackApply(d deps) *cobra.Command {
-	var workspace string
-	cmd := &cobra.Command{
-		Use:   "apply",
-		Short: "Apply the saved plan of the pull request's stack",
-		Long: `apply applies exactly the plan the guard passed. After a destroy nothing deploys (SKIP_DEPLOY is
-appended to environment.sh); else the stack's substitutions output names the pull request's
-services, job process's job, hostname, the migrate command's variables and the build arguments
-the placement declares (_BUILD_ARG_<NAME>, the pull request's own values, which the image build
-passes), which are appended for the steps after. A database recreated without being asked (resolve found the migrations the
-last build applied no longer in the tree) is said on the pull request. It runs in the OpenTofu
-image.`,
-		Args: cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			return deploy.ApplyStack(cmd.Context(), d.deploy, deploy.Workspace(workspace), cmd.OutOrStdout())
+			return deploy.ReadStackOutputs(cmd.Context(), d.deploy, deploy.Workspace(workspace), cmd.OutOrStdout())
 		},
 	}
 	workspaceFlag(cmd, &workspace)
@@ -505,18 +516,23 @@ func newDeployPlanEnvironments(d deps) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "plan-environments",
 		Short: "Plan and test the stack for every environment on a pull request, as each one's plan identity",
-		Long: `plan-environments runs, in a pull-request build, tofu init and tofu plan in the checkout's
-infrastructure directory once per environment of the promotion order (_ENVIRONMENTS), against
-that environment's state prefix (3-app/<app>/<env>) as its plan identity (_PLAN_IDENTITIES: a
-reader, so the plan runs without the state lock and a pull-request build in tst can change no
-environment). Each plan runs the tests a tag build runs before its apply: no authoritative IAM
-resource in the stack, and every secret version a planned revision template pins exists and is
-enabled. One comment on the pull request carries every environment's summary; a failing plan or
-test stops the build and is said on the pull request. A tag build plans its own environment
-later (stack plan). It runs in the OpenTofu image.`,
+		Long: `plan-environments is the check-and-plan trigger's step after bedrock check (infrastructure/
+cloud-build.tf), run on every push to a pull request as the apply identity, from a step the pull
+request cannot edit. It reads its build through the Cloud Build API (BUILD_ID, PROJECT_ID and
+LOCATION, which the step passes) and runs tofu init and tofu plan in the checkout's infrastructure
+directory once per environment of the promotion order (_ENVIRONMENTS), against that environment's
+state prefix (3-app/<app>/<env>) as its plan identity (_PLAN_IDENTITIES: a reader, which the apply
+identity may act as, so the plan runs without the state lock and the job can change no environment).
+Each plan runs the tests a tag build runs before its apply: no authoritative IAM resource in the
+stack, and every secret version a planned revision template pins exists and is enabled. Then the
+pull request's looks ahead, read as the same identities: the hotfix preview, when the pull request is
+against a hotfix line, and the window preview. One comment on the pull request carries every
+environment's summary; a failing plan or test stops the build, which is the check a merge waits for,
+and is said on the pull request. It says when the build's steps are an older bedrock's than itself.
+A tag build plans its own environment later (stack plan). It runs in the OpenTofu image.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return deploy.PlanEnvironments(cmd.Context(), d.deploy, deploy.Workspace(workspace), cmd.OutOrStdout())
+			return deploy.PlanEnvironments(cmd.Context(), d.deploy, deploy.Workspace(workspace), buildRequest(), cmd.OutOrStdout())
 		},
 	}
 	workspaceFlag(cmd, &workspace)
@@ -730,18 +746,16 @@ func newDeploySweep(d deps) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "sweep",
 		Short: "Destroy the environments of closed pull requests",
-		Long: `sweep is the hourly sweep's one step (cloudbuild-sweep.yaml). It reads its build through the Cloud
-Build API (BUILD_ID, PROJECT_ID and LOCATION, which the step passes), lists the pull requests
-whose services stand (the pull_request label on the application's services, in every region),
-asks GitHub which of them are closed with the repository's token minted from the Cloud Build
-connection, and destroys each closed one's stack as the apply identity from its own state prefix,
-the way /gcbrun down does. Closing or merging a pull request starts no build, so this is how an
-environment nobody took down goes away. It runs in the OpenTofu image.`,
+		Long: `sweep is the hourly sweep's one step (cloudbuild-sweep.yaml), run as the apply identity. It reads its
+build through the Cloud Build API (BUILD_ID, PROJECT_ID and LOCATION, which the step passes), lists
+the pull requests whose services stand (the pull_request label on the application's services, in
+every region), asks GitHub which of them are closed with the repository's token minted from the
+Cloud Build connection, and destroys each closed one's stack from its own state prefix, the way
+/gcbrun down does. Closing or merging a pull request starts no build, so this is how an environment
+nobody took down goes away. It runs in the OpenTofu image.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			req := &deploy.SweepRequest{BuildID: os.Getenv("BUILD_ID"), Project: os.Getenv("PROJECT_ID"), Location: os.Getenv("LOCATION")}
-
-			return deploy.Sweep(cmd.Context(), d.deploy, deploy.Workspace(workspace), req, cmd.OutOrStdout())
+			return deploy.Sweep(cmd.Context(), d.deploy, deploy.Workspace(workspace), buildRequest(), cmd.OutOrStdout())
 		},
 	}
 	workspaceFlag(cmd, &workspace)

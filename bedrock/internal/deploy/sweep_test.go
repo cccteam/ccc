@@ -33,12 +33,18 @@ func TestSweep(t *testing.T) {
 	// The pull request's stack names its own templates in its substitutions output; the
 	// trigger's substitutions name the environment's, which no copy of a pull request's is
 	// under.
-	const output = `{"_SERVICES": "us-central1=quill-pr7", "_MIGRATE_ENV": "{}", "_JOBS_JOB": "us-central1=quill-pr7-jobs", "_HOSTNAME": "quill-pr7.example.dev"}`
+	const (
+		output   = `{"_SERVICES": "us-central1=quill-pr7", "_MIGRATE_ENV": "{}", "_JOBS_JOB": "us-central1=quill-pr7-jobs", "_HOSTNAME": "quill-pr7.example.dev"}`
+		initLine = "tofu init -input=false -no-color -backend-config=prefix=3-app/quill/tst/pr7"
+		destroy  = "tofu destroy -auto-approve -input=false -no-color -var environment=tst -var pull_request=7"
+	)
 	tests := []struct {
-		name        string
-		services    map[string]map[string]any
-		states      map[int]string
-		output      string
+		name     string
+		services map[string]map[string]any
+		states   map[int]string
+		output   string
+		// another says the build runs as another identity than the apply identity.
+		another     bool
 		wantOut     []string
 		wantTofu    []string
 		wantDeleted []string
@@ -51,7 +57,7 @@ func TestSweep(t *testing.T) {
 			wantOut:  []string{"No pull-request environment in tst."},
 		},
 		{
-			name: "a closed pull request's stack is destroyed; an open one's and one GitHub cannot answer for stay",
+			name: "a closed pull request's stack is destroyed as the build's own identity; an open one's and one GitHub cannot answer for stay",
 			services: map[string]map[string]any{
 				"projects/p/locations/us-central1/services/quill-pr7":  service("quill-pr7", "quill", "7"),
 				"projects/p/locations/us-west3/services/quill-pr7":     service("quill-pr7", "quill", "7"),
@@ -67,15 +73,21 @@ func TestSweep(t *testing.T) {
 				"projects/p/locations/us-central1/jobs/quill-pr12-jobs-pr12-abc1234": job("quill-pr12-jobs-pr12-abc1234", "quill", "12", "pr12-abc1234"),
 				"projects/p/locations/us-central1/jobs/quill-jobs":                   job("quill-jobs", "quill", "", ""),
 			},
-			states:  map[int]string{7: "closed", 12: "open"},
-			output:  output,
-			wantOut: []string{"Pull requests with an environment: 7 9 12", "Pull request 7 is closed: its environment goes.", "Job quill-pr7-jobs-pr7-abc1234 deleted with pull request 7's environment.", "Job quill-pr7-jobs-pr7-def5678 deleted with pull request 7's environment.", "Notice: GitHub did not answer for pull request 9", "Pull request 12 is open: its environment stays."},
-			wantTofu: []string{
-				"tofu init -input=false -no-color -backend-config=prefix=3-app/quill/tst/pr7 -backend-config=impersonate_service_account=quill-apply@p.iam.gserviceaccount.com",
-				"tofu output -json substitutions",
-				"tofu destroy -auto-approve -input=false -no-color -var environment=tst -var pull_request=7",
-			},
+			states:      map[int]string{7: "closed", 12: "open"},
+			output:      output,
+			wantOut:     []string{"Pull requests with an environment: 7 9 12", "Pull request 7 is closed: its environment goes.", "=== Pull request 7: stack at 3-app/quill/tst/pr7 as quill-apply@p.iam.gserviceaccount.com ===", "Job quill-pr7-jobs-pr7-abc1234 deleted with pull request 7's environment.", "Job quill-pr7-jobs-pr7-def5678 deleted with pull request 7's environment.", "Notice: GitHub did not answer for pull request 9", "Pull request 12 is open: its environment stays."},
+			wantTofu:    []string{initLine, "tofu output -json substitutions", destroy},
 			wantDeleted: []string{"projects/p/locations/us-central1/jobs/quill-pr7-jobs-pr7-abc1234", "projects/p/locations/us-central1/jobs/quill-pr7-jobs-pr7-def5678"},
+		},
+		{
+			name: "a build run as another identity acts as the apply identity",
+			services: map[string]map[string]any{
+				"projects/p/locations/us-central1/services/quill-pr7": service("quill-pr7", "quill", "7"),
+			},
+			states:   map[int]string{7: "closed"},
+			output:   output,
+			another:  true,
+			wantTofu: []string{initLine + " -backend-config=impersonate_service_account=quill-apply@p.iam.gserviceaccount.com", "tofu output -json substitutions", destroy},
 		},
 		{
 			name: "a closed pull request whose stack has no output is destroyed, its jobs left alone",
@@ -83,13 +95,9 @@ func TestSweep(t *testing.T) {
 				"projects/p/locations/us-central1/services/quill-pr7":              service("quill-pr7", "quill", "7"),
 				"projects/p/locations/us-central1/jobs/quill-pr7-jobs-pr7-abc1234": job("quill-pr7-jobs-pr7-abc1234", "quill", "7", "pr7-abc1234"),
 			},
-			states:  map[int]string{7: "closed"},
-			wantOut: []string{"Pull request 7 is closed: its environment goes.", "Notice: pull request 7's stack names no jobs (", "none of its builds' jobs is deleted."},
-			wantTofu: []string{
-				"tofu init -input=false -no-color -backend-config=prefix=3-app/quill/tst/pr7 -backend-config=impersonate_service_account=quill-apply@p.iam.gserviceaccount.com",
-				"tofu output -json substitutions",
-				"tofu destroy -auto-approve -input=false -no-color -var environment=tst -var pull_request=7",
-			},
+			states:   map[int]string{7: "closed"},
+			wantOut:  []string{"Pull request 7 is closed: its environment goes.", "Notice: pull request 7's stack names no jobs (", "none of its builds' jobs is deleted."},
+			wantTofu: []string{initLine, "tofu output -json substitutions", destroy},
 		},
 		{name: "a build it cannot read is refused", badRequest: true, wantErr: "BUILD_ID is not set"},
 	}
@@ -98,14 +106,18 @@ func TestSweep(t *testing.T) {
 			t.Parallel()
 
 			subs := map[string]string{
-				appSub: "quill", envSub: tstEnvironment, "_PROJECT": "p", "_SERVICES": "us-central1=quill-app,us-west3=quill-app", applyIdentitySub: "quill-apply@p.iam.gserviceaccount.com",
-				"_REPO_CONNECTION_NAME": "conn", "_REPO_NAME": "quill", "_REPO_FULL_NAME": "acme/quill",
+				appSub: "quill", envSub: tstEnvironment, "_PROJECT": "p", "_SERVICES": "us-central1=quill-app,us-west3=quill-app", applyIdentitySub: applyIdentity,
+				"_REPO_CONNECTION_NAME": "conn", "_REPO_NAME": "quill", sweepRepoSub: "acme/quill",
 			}
-			builds := &fakeBuilds{build: buildFor(t, subs), token: "test-token"}
+			identity := applyIdentityID
+			if tt.another {
+				identity = ""
+			}
+			builds := &fakeBuilds{build: jobBuild(t, subs, identity, nil), token: "test-token"}
 			repo := &githubtest.Repo{PullStates: tt.states}
 			_, gh := githubStandIn(t, repo)
 			run := &fakeRunner{outputs: map[string]string{"tofu output": tt.output}}
-			req := &SweepRequest{BuildID: "b-1", Project: "p", Location: "us-central1"}
+			req := &BuildRequest{BuildID: "b-1", Project: "p", Location: "us-central1"}
 			if tt.badRequest {
 				req.BuildID = ""
 			}

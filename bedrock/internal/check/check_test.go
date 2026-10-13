@@ -71,9 +71,27 @@ func TestRun(t *testing.T) {
 			mutate:    func(*testing.T, string) {},
 			wantClean: true,
 			wantOutput: []string{
-				"24 owned file(s) match the code",
+				"23 owned file(s) match the code",
 				"warning  prd has no maintenance setting (placement.json \"maintenance\": {\"prd\": ...}): a breaking release to prd is refused at the start of its run until one is written; \"anytime\" is a setting, and so are the client's windows",
 				"warning  no release file at pkg/router/zz_gen_release.json: no outlet declares an oldest answered release, so no release is breaking and the maintenance window never holds a run; the resource generator writes it beside the generated router (go generate ./...)",
+			},
+		},
+		{
+			name: "the retired infrastructure workflow at the application root is reported stale",
+			mutate: func(t *testing.T, dir string) {
+				t.Helper()
+
+				path := filepath.Join(dir, "root", ".github", "workflows", "infrastructure.yml")
+				if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(path, []byte("name: infrastructure\n"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			},
+			wantOutput: []string{
+				"23 owned file(s) match the code",
+				"stale    .github/workflows/infrastructure.yml (at the application root): bedrock no longer renders it, and the stack's check trigger runs bedrock check in Cloud Build (infrastructure/cloud-build.tf); bedrock render removes it",
 			},
 		},
 		{
@@ -86,7 +104,7 @@ func TestRun(t *testing.T) {
 				}
 			},
 			wantFindings: []Finding{{Path: "cloudbuild.yaml", Root: true, Line: 1, Want: "# harbor's deploy pipeline: the Cloud Build steps that take one commit into one environment,", Got: "# edited"}},
-			wantOutput:   []string{"1 of 24 owned file(s) differ from the code", "differs  cloudbuild.yaml:1 (at the application root)"},
+			wantOutput:   []string{"1 of 23 owned file(s) differ from the code", "differs  cloudbuild.yaml:1 (at the application root)"},
 		},
 		{
 			name: "an edited owned file differs at its first changed line",
@@ -104,7 +122,7 @@ func TestRun(t *testing.T) {
 				}
 			},
 			wantFindings: []Finding{{Path: "locals.tf", Line: 5, Want: `  app = "harbor"`, Got: `  app = "haven"`}},
-			wantOutput:   []string{"1 of 24 owned file(s) differ", "differs  locals.tf:5", "code:        app = \"harbor\"", "committed:   app = \"haven\""},
+			wantOutput:   []string{"1 of 23 owned file(s) differ", "differs  locals.tf:5", "code:        app = \"harbor\"", "committed:   app = \"haven\""},
 		},
 		{
 			name: "a scheduler job edited in the committed stack differs",
@@ -122,7 +140,7 @@ func TestRun(t *testing.T) {
 				}
 			},
 			wantFindings: []Finding{{Path: "scheduler.tf", Line: 29, Want: `      schedule  = "0 7 * * 1-5"`, Got: `      schedule  = "0 9 * * *"`}},
-			wantOutput:   []string{"1 of 24 owned file(s) differ", "differs  scheduler.tf:29"},
+			wantOutput:   []string{"1 of 23 owned file(s) differ", "differs  scheduler.tf:29"},
 		},
 		{
 			name:   "a schedule the code changed differs from the committed job",
@@ -131,10 +149,10 @@ func TestRun(t *testing.T) {
 				m.Scheduled = []derive.ScheduledRoute{{Path: "/_scheduled/send-daily-digest", Schedule: "0 6 * * 1-5", TimeZone: "America/New_York"}}
 			},
 			wantFindings: []Finding{
-				{Path: "README.md", Line: 256, Want: "  | `POST /_scheduled/send-daily-digest` | `0 6 * * 1-5` | America/New_York |", Got: "  | `POST /_scheduled/send-daily-digest` | `0 7 * * 1-5` | America/New_York |"},
+				{Path: "README.md", Line: 258, Want: "  | `POST /_scheduled/send-daily-digest` | `0 6 * * 1-5` | America/New_York |", Got: "  | `POST /_scheduled/send-daily-digest` | `0 7 * * 1-5` | America/New_York |"},
 				{Path: "scheduler.tf", Line: 29, Want: `      schedule  = "0 6 * * 1-5"`, Got: `      schedule  = "0 7 * * 1-5"`},
 			},
-			wantOutput: []string{"2 of 24 owned file(s) differ", "differs  scheduler.tf:29"},
+			wantOutput: []string{"2 of 23 owned file(s) differ", "differs  scheduler.tf:29"},
 		},
 		{
 			name:   "a route the code adds has no job in the committed stack",
@@ -143,10 +161,10 @@ func TestRun(t *testing.T) {
 				m.Scheduled = append([]derive.ScheduledRoute{{Path: "/_scheduled/close-stale-holds", Schedule: "*/15 * * * *", TimeZone: "UTC"}}, m.Scheduled...)
 			},
 			wantFindings: []Finding{
-				{Path: "README.md", Line: 256, Want: "  | `POST /_scheduled/close-stale-holds` | `*/15 * * * *` | UTC |", Got: "  | `POST /_scheduled/send-daily-digest` | `0 7 * * 1-5` | America/New_York |"},
+				{Path: "README.md", Line: 258, Want: "  | `POST /_scheduled/close-stale-holds` | `*/15 * * * *` | UTC |", Got: "  | `POST /_scheduled/send-daily-digest` | `0 7 * * 1-5` | America/New_York |"},
 				{Path: "scheduler.tf", Line: 27, Want: `    "close-stale-holds" = {`, Got: `    "send-daily-digest" = {`},
 			},
-			wantOutput: []string{"2 of 24 owned file(s) differ", "differs  scheduler.tf:27"},
+			wantOutput: []string{"2 of 23 owned file(s) differ", "differs  scheduler.tf:27"},
 		},
 		{
 			name: "a missing owned file",
@@ -239,7 +257,7 @@ func TestRun(t *testing.T) {
 				}
 			},
 			wantRefused: []Authoritative{{Path: "custom.tf", Line: 2, Address: "google_project_iam_binding.owners"}},
-			wantOutput:  []string{"24 owned file(s) match the code", "refused  custom.tf:2 google_project_iam_binding.owners", "(a file store's bucket policy, storage.tf's, is the one admitted)"},
+			wantOutput:  []string{"23 owned file(s) match the code", "refused  custom.tf:2 google_project_iam_binding.owners", "(a file store's bucket policy, storage.tf's, is the one admitted)"},
 		},
 		{
 			name: "a binding on the file store's bucket is refused; the policy alone is admitted",
@@ -293,7 +311,7 @@ func TestRun(t *testing.T) {
 					t.Fatal(err)
 				}
 			},
-			wantOutput: []string{"24 owned file(s) match the code", "refused  Dockerfile:64 stage go-modules copies .; the stage copies only go.mod or go.sum (\"COPY . ./\"): the image build exports this stage's layers to the registry's cache"},
+			wantOutput: []string{"23 owned file(s) match the code", "refused  Dockerfile:64 stage go-modules copies .; the stage copies only go.mod or go.sum (\"COPY . ./\"): the image build exports this stage's layers to the registry's cache"},
 		},
 		{
 			name: "a build argument the placement declares that the Dockerfile does not is refused",

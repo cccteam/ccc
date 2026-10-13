@@ -311,13 +311,7 @@ type ResolveRequest struct {
 
 // check refuses a request that does not name the build.
 func (r *ResolveRequest) check() error {
-	for _, v := range []struct{ name, value string }{{"BUILD_ID", r.BuildID}, {"PROJECT_ID", r.Project}, {"LOCATION", r.Location}} {
-		if v.value == "" {
-			return errors.Newf("%s is not set: the pipeline's resolve step passes the build's id, project and location to the command", v.name)
-		}
-	}
-
-	return nil
+	return requireBuild(r.BuildID, r.Project, r.Location)
 }
 
 // Facts are what resolve found and computed: what the steps after it read.
@@ -328,8 +322,11 @@ type Facts struct {
 	PullRequest string
 	// Environment is the trigger's: tst, stg or prd.
 	Environment string
-	// Comment is the /gcbrun comment a pull-request build ran on.
-	Comment string
+	// Comment is the /gcbrun comment a pull-request build ran on, and CommentID its id,
+	// which the pull request's stack job writes into its outputs: the preview reads
+	// the outputs of the job that acted on the same comment.
+	Comment   string
+	CommentID int64
 	// Token is the repository's GitHub token, minted from the connection the trigger
 	// reads the repository through.
 	Token string
@@ -421,7 +418,7 @@ type Facts struct {
 	// (buildArguments) whose values a release build's trigger carries (_BUILD_ARG_<NAME>):
 	// the environment file exports those substitutions for the image build, sorted. A
 	// pull-request build exports none, its values coming from the pull request's own
-	// stack (stackFacts).
+	// stack job's outputs (deploy pr-outputs).
 	BuildArguments []string
 	// build is the build as the API described it, kept for the build file.
 	build []byte
@@ -454,9 +451,6 @@ func Resolve(ctx context.Context, clients *Clients, req *ResolveRequest, out io.
 		return nil, err
 	}
 	if err := f.trigger(ctx, clients.Comments, out); err != nil {
-		return nil, err
-	}
-	if err := f.staleDatabase(ctx, clients.Storage, req.Source, out); err != nil {
 		return nil, err
 	}
 	if err := f.seed(req.Source, out); err != nil {
@@ -627,13 +621,19 @@ func flagIf(set bool) string {
 	return ""
 }
 
-// skipReasonOf is why every step but the last stands down, when one does.
+// skipReasonOf is why every deploying step stands down, when one does: a maintenance-off
+// run, or a teardown (/gcbrun down), where the pull request's stack job destroys the
+// environment and this build waits for that, runs the after-down hook and marks the
+// deployment inactive, and nothing else.
 func skipReasonOf(f *Facts) string {
-	if f.MaintenanceOff {
+	switch {
+	case f.MaintenanceOff:
 		return fmt.Sprintf("Skipped: this run takes %s out of a maintenance an earlier run left on (bedrock maintenance off, asked for by %s) and deploys nothing.", f.Environment, f.Requester)
+	case f.Down:
+		return fmt.Sprintf("Skipped: %s down tears the pull request's environment down (its stack job destroys it); nothing deploys.", gcbrun)
+	default:
+		return ""
 	}
-
-	return ""
 }
 
 // generationRestore says the restore instruction names a backup, by its resource name or
@@ -665,25 +665,15 @@ func (f *Facts) migration() error {
 }
 
 // mint takes a GitHub token for the repository from the Cloud Build connection the
-// trigger reads it through; the deploy identity needs Read Token Accessor on it. Every
-// build starts from a trigger, and the triggers exist once 2-env holds the environment's
-// connection and the repository's link, so a build whose connection or repository name
-// is empty is one no trigger started, and the step refuses it: nothing is submitted by
-// hand.
+// trigger reads it through (repositoryToken); the deploy identity needs Read Token
+// Accessor on it.
 func (f *Facts) mint(ctx context.Context, builds Builds, req *ResolveRequest) error {
-	connection, repo := f.Substitutions["_REPO_CONNECTION_NAME"], f.Substitutions["_REPO_NAME"]
-	if connection == "" || repo == "" {
-		return errors.Newf("_REPO_CONNECTION_NAME=%q _REPO_NAME=%q: every build starts from a trigger, which passes the environment's Cloud Build connection and the repository's link (both exist once 2-env holds the GitHub authorization); nothing is submitted by hand", connection, repo)
+	if _, err := repositoryFullName(f.Substitutions); err != nil {
+		return err
 	}
-	// The branch check and the comment read address the repository by its full name, a
-	// trigger built-in; an empty name is a build no trigger started.
-	if f.Substitutions["REPO_FULL_NAME"] == "" {
-		return errors.New("REPO_FULL_NAME is not set: a trigger passes it as <organization>/<repository>, and every build starts from a trigger")
-	}
-	repository := "projects/" + req.Project + "/locations/" + req.Location + "/connections/" + connection + "/repositories/" + repo
-	token, err := builds.ReadToken(ctx, repository)
+	token, err := repositoryToken(ctx, builds, f.Substitutions, req.Project, req.Location)
 	if err != nil {
-		return errors.Wrapf(err, "could not mint a GitHub token from connection %s", connection)
+		return err
 	}
 	f.Token = token
 
@@ -693,9 +683,9 @@ func (f *Facts) mint(ctx context.Context, builds Builds, req *ResolveRequest) er
 // trigger reads the trigger: a tag names the version and the release (whether it may
 // deploy is the release check's question); a pull request's build reads its latest
 // /gcbrun comment for the instruction. A pull request has an environment of its own
-// (its stack, applied by the ApplyPullRequestStack step): the service is its own, so
-// the revision takes traffic, and the database is its own, so the migrations run every
-// build.
+// (its stack, applied by the stack's pr-stack trigger on the same comment, whose outputs
+// the ReadPullRequestStack step reads): the service is its own, so the revision takes
+// traffic, and the database is its own, so the migrations run every build.
 func (f *Facts) trigger(ctx context.Context, comments CommentsFunc, out io.Writer) error {
 	if f.Tag != "" {
 		fmt.Fprintf(out, "Triggered by tag %s\n", f.Tag)
@@ -738,14 +728,15 @@ func (f *Facts) trigger(ctx context.Context, comments CommentsFunc, out io.Write
 }
 
 // staleDatabase decides whether a pull request's own database is recreated without
-// being asked. The newest record of the pull request lists the migrations its build
-// applied, by name and content; when one of them is no longer in the tree as it was
-// (renumbered past an index the default branch took, or changed before it reached the
-// default branch), the database holds a history the files no longer describe, so it is
-// replaced and the migrations apply afresh: a pull request's database is disposable.
-// The first build has no record and decides nothing; a record left by a build whose
-// environment was torn down since is harmless, since the plan step replaces only a
-// database that exists.
+// being asked, in the pull request's stack job, which plans the replacement. The newest
+// record of the pull request lists the migrations its build applied, by name and
+// content; when one of them is no longer in the tree as it was (renumbered past an index
+// the default branch took, or changed before it reached the default branch), the
+// database holds a history the files no longer describe, so it is replaced and the
+// migrations apply afresh: a pull request's database is disposable. The first build has
+// no record and decides nothing; a record left by a build whose environment was torn
+// down since is harmless, since the plan replaces only a database that exists. The
+// preview build learns the decision from the job's outputs.
 func (f *Facts) staleDatabase(ctx context.Context, open StoreFunc, source string, out io.Writer) error {
 	if f.PullRequest == "" || f.Down || f.SharedDB || f.ReloadDB || !f.RunMigrations {
 		return nil
@@ -1113,16 +1104,29 @@ func newestRecordWhere(ctx context.Context, store Store, bucket, prefix string, 
 // environment is destroyed and nothing deploys). Anything else is a typo and stops the
 // build rather than being ignored.
 func (f *Facts) instruction(all []github.Comment) error {
-	for i := len(all) - 1; i >= 0; i-- {
-		if strings.HasPrefix(all[i].Body, gcbrun) {
-			f.Comment = strings.TrimSpace(all[i].Body)
-
-			break
-		}
-	}
-	if f.Comment == "" {
+	if !f.latestComment(all) {
 		return errors.Newf("no %s comment found on pull request %s", gcbrun, f.PullRequest)
 	}
+
+	return f.parseInstruction()
+}
+
+// latestComment finds the latest /gcbrun comment, keeping its body and its id; false
+// when the pull request has none.
+func (f *Facts) latestComment(all []github.Comment) bool {
+	for i := len(all) - 1; i >= 0; i-- {
+		if strings.HasPrefix(all[i].Body, gcbrun) {
+			f.Comment, f.CommentID = strings.TrimSpace(all[i].Body), all[i].ID
+
+			return true
+		}
+	}
+
+	return false
+}
+
+// parseInstruction reads the options off the comment latestComment found.
+func (f *Facts) parseInstruction() error {
 	for _, word := range strings.Fields(f.Comment)[1:] {
 		switch word {
 		case "shared-db":
@@ -1237,7 +1241,7 @@ func (f *Facts) stackArguments(source string, out io.Writer) error {
 		return nil
 	}
 	if f.Tag == "" {
-		fmt.Fprintf(out, "Build arguments %s declares (buildArguments): %s; the image build passes the pull request's own, from its stack once applied (deploy pr-stack apply).\n", checkoutPlacementPath, strings.Join(declared, ", "))
+		fmt.Fprintf(out, "Build arguments %s declares (buildArguments): %s; the image build passes the pull request's own, from its stack job's outputs (deploy pr-outputs).\n", checkoutPlacementPath, strings.Join(declared, ", "))
 
 		return nil
 	}
@@ -1381,7 +1385,8 @@ func (f *Facts) environment() string {
 		{seedFact, flag(f.Seed)},
 		{keepsReleaseBackupsFact, flag(f.KeepsReleaseBackups)},
 		{buildSecretsFact, f.BuildSecrets},
-		{skipDeploy, flagIf(f.MaintenanceOff)},
+		{skipDeploy, flagIf(f.MaintenanceOff || f.Down)},
+		{commentIDFact, strconv.FormatInt(f.CommentID, 10)},
 		{skipReasonFact, skipReasonOf(f)},
 		{maintenanceOffFact, flag(f.MaintenanceOff)},
 		{imageFact, f.Image},

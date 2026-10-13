@@ -1,7 +1,7 @@
 # beacon's sweep, rendered by bedrock from its template and owned by it (bedrock render
 # rewrites this file, bedrock check compares it): the environments of closed pull requests
 # are destroyed. Cloud Scheduler runs the sweep trigger (infrastructure/cloud-build.tf) every
-# hour as the deploy identity with the pipeline's substitutions; nothing else runs this file.
+# hour as the apply identity with the pipeline's substitutions; nothing else runs this file.
 # Closing or merging a pull request starts no build, so this is how an environment nobody
 # took down with /gcbrun down goes away.
 steps:
@@ -31,7 +31,7 @@ steps:
         /builder/home/bedrock --version
 
   # The pull requests whose services stand, which of them GitHub says are closed, and each
-  # closed one's stack destroyed as the apply identity from its own prefix (deploy sweep).
+  # closed one's stack destroyed from its own prefix, as this build's identity (deploy sweep).
   - id: SweepClosedPullRequests
     name: ghcr.io/opentofu/opentofu:1.12.6
     entrypoint: /builder/home/bedrock
