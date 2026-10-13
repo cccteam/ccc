@@ -547,6 +547,10 @@ func TestTriggerFetchCommitPin(t *testing.T) {
 			t.Skipf("no %s to run the step with", tool)
 		}
 	}
+	shell, err := exec.LookPath("bash")
+	if err != nil {
+		t.Skip("no bash to run the script with")
+	}
 	repository, onBranch, onTag := testRepository(t)
 	script := strings.ReplaceAll(triggerScript(t, "harbor", "fetch_bedrock"), "$$", "$")
 	const stamp = "v0.0.0-lab.1.0.20260928222237-"
@@ -594,7 +598,7 @@ func TestTriggerFetchCommitPin(t *testing.T) {
 			if repo == "" {
 				repo = repository
 			}
-			cmd := exec.CommandContext(t.Context(), "bash", "-c", strings.ReplaceAll(strings.ReplaceAll(script, release.CloneURL(), repo), "/builder/home", home))
+			cmd := exec.CommandContext(t.Context(), shell, "-c", strings.ReplaceAll(strings.ReplaceAll(script, release.CloneURL(), repo), "/builder/home", home))
 			cmd.Dir = checkout
 			cmd.Env = append(os.Environ(), "TMPDIR="+t.TempDir())
 			out, err := cmd.CombinedOutput()
