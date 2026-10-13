@@ -11,9 +11,10 @@
 #
 # Who grants what: IAM refuses a binding for a service account that does not
 # exist, so each layer grants on the bucket for the identities it creates.
-# This layer grants for its own two, the boot identity the seed made and the
-# org identity made here, both of which exist by the time the grant applies,
-# and gives both the bucket's policy authority (the custom role below): the
+# This layer grants for its own four, the boot identity the seed made and the
+# org identity and the two boot layers' plan identities made here
+# (bootstrap.tf), all of which exist by the time the grant applies, and gives
+# the two apply identities the bucket's policy authority (the custom role below): the
 # boot identity because it applies this layer through the workflow, the org
 # identity so 1-org can grant for the fourteen identities it creates and hand
 # the environment layer identities the same authority for the application
@@ -94,5 +95,30 @@ resource "google_storage_bucket_iam_member" "org_tofu_state_upstream" {
     title       = "${var.prefix}-org-gbl-upstream-state"
     description = "The upstream state 1-org reads outputs from."
     expression  = "resource.name.startsWith(\"${local.state_bucket_objects}/0-bootstrap/\")"
+  }
+}
+
+# The two boot layers' plan identities (bootstrap.tf) list the bucket and read
+# their layer's state and the upstream states it takes outputs from, and
+# write nothing: a plan runs without the state lock.
+resource "google_storage_bucket_iam_member" "boot_plan_state_list" {
+  for_each = local.boot_plans
+
+  bucket = var.state_bucket
+  role   = "roles/storage.legacyBucketReader"
+  member = google_service_account.boot_plan[each.key].member
+}
+
+resource "google_storage_bucket_iam_member" "boot_plan_state_read" {
+  for_each = local.boot_plans
+
+  bucket = var.state_bucket
+  role   = "roles/storage.objectViewer"
+  member = google_service_account.boot_plan[each.key].member
+
+  condition {
+    title       = "${var.prefix}-${each.key}-gbl-plan-state"
+    description = "The layer's own state prefix and the upstream states it reads."
+    expression  = join(" || ", [for p in each.value.reads : "resource.name.startsWith(\"${local.state_bucket_objects}/${p}/\")"])
   }
 }

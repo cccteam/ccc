@@ -153,7 +153,7 @@ resource "google_cloudbuildv2_repository" "infrastructure" {
 # The plan trigger's builds run as the planner, the apply trigger's as the
 # applier. Neither holds a layer's roles: each impersonates the layer
 # identities of its kind for that layer's tofu (roles/iam.serviceAccountTokenCreator
-# on each, granted here for the two identities this layer owns and in 1-org
+# on each, granted here for the four identities this layer owns and in 1-org
 # for the ones it creates), so a plan runs with a plan identity's reads and an
 # apply with the apply identity's writes, as before. What each holds itself:
 # the build logs (Cloud Logging, which a build as a user-specified service
@@ -218,10 +218,8 @@ resource "google_service_account_iam_member" "runner_boot_tofu_user" {
 }
 
 # The applier applies this layer as the boot identity and 1-org as the org
-# identity. Their plan identities are 1-org's to make (runners.tf there),
-# since this layer's own identity exists before it and a plan as an apply
-# identity would run a pull request's code with the power to apply; 1-org
-# grants the planner on them.
+# identity; the planner plans them as the two plan identities (bootstrap.tf).
+# 1-org grants the same on the identities it creates.
 resource "google_service_account_iam_member" "applier_boot_tofu" {
   service_account_id = google_service_account.boot_tofu.name
   role               = "roles/iam.serviceAccountTokenCreator"
@@ -232,6 +230,14 @@ resource "google_service_account_iam_member" "applier_org_tofu" {
   service_account_id = google_service_account.org_tofu.name
   role               = "roles/iam.serviceAccountTokenCreator"
   member             = google_service_account.applier.member
+}
+
+resource "google_service_account_iam_member" "boot_plan_planner" {
+  for_each = local.boot_plans
+
+  service_account_id = google_service_account.boot_plan[each.key].name
+  role               = "roles/iam.serviceAccountTokenCreator"
+  member             = google_service_account.planner.member
 }
 
 resource "google_cloudbuildv2_connection_iam_member" "runner_read_token" {

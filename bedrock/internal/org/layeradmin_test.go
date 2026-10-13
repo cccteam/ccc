@@ -252,7 +252,7 @@ func TestLayerAdministratorPlace(t *testing.T) {
 			path: "1-org/entitlements.tf",
 			want: []string{
 				"resource \"google_project_iam_member\" \"pam_service_agent\" {\n  project = var.boot_project_id\n  role    = \"roles/privilegedaccessmanager.serviceAgent\"\n",
-				"resource \"google_project_iam_member\" \"org_plan_entitlements\" {\n  project = var.boot_project_id\n  role    = \"roles/privilegedaccessmanager.viewer\"\n  member  = google_service_account.boot_plan[\"org\"].member\n}\n",
+				"removed {\n  from = google_project_iam_member.org_plan_entitlements\n\n  lifecycle {\n    destroy = false\n  }\n}\n",
 				"  entitlement_id       = \"${var.prefix}-${each.key}-layer-state\"\n  location             = \"global\"\n  parent               = \"projects/${var.boot_project_id}\"\n  max_request_duration = local.layer_state_duration\n",
 				"  layer_state_duration = \"14400s\"\n",
 				"      resource      = \"//cloudresourcemanager.googleapis.com/projects/${var.boot_project_id}\"\n",
@@ -265,6 +265,7 @@ func TestLayerAdministratorPlace(t *testing.T) {
 			want: []string{
 				"    \"privilegedaccessmanager.googleapis.com\", # the environments' layer state entitlements 1-org declares here\n",
 				"resource \"google_project_iam_member\" \"org_tofu_entitlements\" {\n  project = module.boot_project.project_id\n  role    = \"roles/privilegedaccessmanager.admin\"\n  member  = google_service_account.org_tofu.member\n}\n",
+				"resource \"google_project_iam_member\" \"org_plan_entitlements\" {\n  project = module.boot_project.project_id\n  role    = \"roles/privilegedaccessmanager.viewer\"\n  member  = google_service_account.boot_plan[\"org\"].member\n}\n",
 			},
 		},
 		{
