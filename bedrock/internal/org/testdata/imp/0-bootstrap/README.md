@@ -232,11 +232,18 @@ so a person leaving the organization breaks nothing.
    (`2-env`). This layer's first apply then adopts the console's connection
    (step 3).
 
-An alternative that skips the console is a fine-grained personal access
-token of `imp-machine` (contents, metadata, pull requests) added by
-hand as a version of a secret in the boot project, with
-`cloudBuildTokenSecretVersion` naming it; the installation is still made on
-GitHub, on the app's page.
+An alternative that skips the console is a classic personal access token of
+`imp-machine` with the `repo`, `read:user` and `read:org` scopes
+(Cloud Build accepts no fine-grained token), added by hand as a version of a
+secret in the boot project, with `cloudBuildTokenSecretVersion` naming it; the
+installation is still made on GitHub, on the app's page. A classic token
+expires on the schedule its creator set, while the console's authorization
+does not; and GitHub revokes either kind after a year unused. The token is
+exercised when a repository link is made, at an application's registration,
+so an organization that registers nothing for a year may find it revoked at
+the next registration. The remedy, either way, is the browser step again,
+signed in as the machine account `imp-machine`, or a new classic
+token pinned as a new version.
 
 ### 3. Apply with local state
 

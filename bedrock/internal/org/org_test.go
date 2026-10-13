@@ -290,7 +290,7 @@ func TestMachineAccount(t *testing.T) {
 				"belongs to the `imp-example`\norganization and is an owner of it",
 				"Sign in to GitHub as\n   the machine account `imp-machine`, install or select",
 				"Record both in `placement.json`, as `cloudBuildInstallationId` and\n   `cloudBuildTokenSecretVersion`",
-				"fine-grained personal access\ntoken of `imp-machine` (contents, metadata, pull requests)",
+				"classic personal access token of\n`imp-machine` with the `repo`, `read:user` and `read:org` scopes",
 			},
 		},
 		{

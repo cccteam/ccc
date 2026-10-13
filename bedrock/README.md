@@ -1939,8 +1939,9 @@ the login of a GitHub user that belongs to the organization as an owner and acts
 person. In the browser step that authorizes the Cloud Build GitHub connection, in the boot
 project before the first apply of 0-bootstrap (`0-bootstrap/README.md`, "The Cloud Build
 GitHub authorization"), a person signs in to GitHub as that account, so the connection's
-token is the account's and nobody's leaving breaks it; a personal access token of the
-same account is the alternative to that step. The token secret lives in the boot project,
+token is the account's and nobody's leaving breaks it; a classic personal access token of
+the same account (the `repo`, `read:user` and `read:org` scopes; Cloud Build accepts no
+fine-grained token) is the alternative to that step. The token secret lives in the boot project,
 and 0-bootstrap grants each environment project's Cloud Build service agent its read, so
 every connection, the boot project's and each environment's, is rendered from the one
 authorization. The field is required: a placement without it is refused.
