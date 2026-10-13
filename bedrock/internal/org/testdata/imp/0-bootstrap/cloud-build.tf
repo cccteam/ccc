@@ -185,6 +185,16 @@ resource "google_project_iam_member" "runner_logs" {
   member  = each.value.member
 }
 
+# A run reads its own build through the Cloud Build API (its substitutions, the
+# pull request, the commit) before it plans or applies anything.
+resource "google_project_iam_member" "runner_builds" {
+  for_each = local.runners
+
+  project = module.boot_project.project_id
+  role    = "roles/cloudbuild.builds.viewer"
+  member  = each.value.member
+}
+
 # Cloud Build runs a build as the trigger's service account on the service
 # agent's say-so, and whoever creates the trigger acts as that account: the
 # bootstrap administrator's Owner covers the first apply, the boot identity

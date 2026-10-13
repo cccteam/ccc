@@ -437,7 +437,8 @@ Who runs what, and why the first time works in order:
   this layer grants it on the boot and org identities, `1-org` on the
   fourteen it creates), so a plan runs with a plan identity's reads and an
   apply with the apply identity's writes. What each holds itself: the build
-  logs, the connection's read token (the changed files are read through
+  logs, the read of its own build (its substitutions, the pull request, the
+  commit), the connection's read token (the changed files are read through
   it), the two apps' keys, and, for the applier, the markers under
   `applied/` in the state bucket.
 - IAM refuses a binding for a service account that does not exist, so each
