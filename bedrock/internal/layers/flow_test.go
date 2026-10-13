@@ -8,6 +8,7 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -125,6 +126,7 @@ type fakeStore struct {
 	mu      sync.Mutex
 	objects map[string]string
 	written []string
+	listed  []string // the prefixes listed: a listing is the bucket's own permission, which the applier lacks
 }
 
 func (s *fakeStore) open(context.Context) (deploy.Store, error) {
@@ -143,6 +145,7 @@ func (s *fakeStore) Write(_ context.Context, bucket, object string, data []byte)
 func (s *fakeStore) List(_ context.Context, _, prefix string) ([]string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.listed = append(s.listed, prefix)
 	var names []string
 	for name := range s.objects {
 		if strings.HasPrefix(name, prefix) {
@@ -159,7 +162,7 @@ func (s *fakeStore) Read(_ context.Context, _, object string) ([]byte, error) {
 	defer s.mu.Unlock()
 	data, ok := s.objects[object]
 	if !ok {
-		return nil, errors.Newf("storage: object doesn't exist: %s", object)
+		return nil, fmt.Errorf("gs://%s: %w", object, os.ErrNotExist)
 	}
 
 	return []byte(data), nil
@@ -698,6 +701,9 @@ func TestApply(t *testing.T) {
 	wantWritten := []string{bucket + "/applied/2-shr=head2", bucket + "/applied/2-net=head2", bucket + "/applied/2-env/tst=head2"}
 	if !slices.Equal(f.store.written, wantWritten) {
 		t.Errorf("markers written = %v, want %v", f.store.written, wantWritten)
+	}
+	if f.store.listed != nil {
+		t.Errorf("the run listed %v: the applier's grant is on the markers' names, and cannot list the bucket", f.store.listed)
 	}
 	if want := []string{"imp-tst-gbl-tofu@imp-tst-gbl-core-1a2b.iam.gserviceaccount.com"}; !slices.Equal(f.keys.identities, want) {
 		t.Errorf("the keys were opened as %v, want %v", f.keys.identities, want)
