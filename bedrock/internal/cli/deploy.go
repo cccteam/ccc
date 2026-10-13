@@ -524,7 +524,10 @@ directory once per environment of the promotion order (_ENVIRONMENTS), against t
 state prefix (3-app/<app>/<env>) as its plan identity (_PLAN_IDENTITIES: a reader, which the apply
 identity may act as, so the plan runs without the state lock and the job can change no environment).
 Each plan runs the tests a tag build runs before its apply: no authoritative IAM resource in the
-stack, and every secret version a planned revision template pins exists and is enabled. Then the
+stack, and every secret version a planned revision template pins exists and is enabled. A secret the
+code declares that an environment after the first has no pinned version for (secret_versions.<env>
+in terraform.tfvars) is not refused here: that environment's summary names the variable and the pin
+to make, since the release's own plan refuses it there (stack plan). Then the
 pull request's looks ahead, read as the same identities: the hotfix preview, when the pull request is
 against a hotfix line, and the window preview. One comment on the pull request carries every
 environment's summary; a failing plan or test stops the build, which is the check a merge waits for,
@@ -551,7 +554,11 @@ against the environment's state prefix (3-app/<app>/<env>) as the apply identity
 leaves the plan (stack.plan) and its JSON (stack-plan.json) in the workspace, prints the summary
 and each change, appends the summary (STACK_PLAN) for the record, and runs the tests: no
 authoritative IAM resource in the stack, and every secret version a planned revision template pins
-exists and is enabled, read as the apply identity. A failing plan or test stops the build with the
+exists and is enabled, read as the apply identity. Before the plan, in an environment other than the
+first, it refuses the release when the code declares a secret the environment's secret_versions in
+terraform.tfvars pins no version for: the refusal names the environment, every unpinned variable and
+the pin to make (bedrock secret pin <env> <VARIABLE> <version>), and nothing is changed; the first
+environment runs without a pin ("not yet"). A failing plan or test stops the build with the
 stack unapplied. In a restore run (RESTORE=empty) the plan replaces the Spanner database and,
 in tst, the file stores' buckets, each when the stack has it (tofu state list), so the migrations apply
 afresh (and the seed, where the placement's seed list names the environment); what it replaces is

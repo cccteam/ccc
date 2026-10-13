@@ -950,7 +950,11 @@ thing one step hands the next. In order:
   preview. One
   comment on the pull request carries every summary; a failing plan or test stops the
   build, which is the check a merge waits for, and the comment says so. The plan the reviewer approves is each
-  environment's. An environment whose stack has never been applied (no state object
+  environment's. A secret the code declares that an environment after the first has no
+  pinned version for (`secret_versions.<env>` in `terraform.tfvars`) is not a refusal
+  here: that environment's summary names the variable and the pin to make, since the
+  release's own plan refuses it there (`deploy stack plan`, below), so the pin lands
+  before the release reaches the environment. An environment whose stack has never been applied (no state object
   under its prefix, which the plan identity reads) is skipped with the line "no stack
   yet: its first apply is by hand", in the log and in the comment, and the build goes
   on: a plan of a missing state would create it, a write a reader is refused, and the
@@ -1039,7 +1043,14 @@ thing one step hands the next. In order:
   `plan` saves the plan with its JSON, prints and appends the summary (`STACK_PLAN`), and
   runs the tests: no authoritative IAM resource in the stack other than the file stores'
   bucket policies, and every secret version a
-  planned revision template pins exists and is enabled. `apply` applies exactly that plan.
+  planned revision template pins exists and is enabled. Before the plan, in an
+  environment other than the first, it refuses the release when the code declares a
+  secret the environment's `secret_versions` in `terraform.tfvars` pins no version for
+  (the process would start without the variable): the refusal names the environment,
+  every unpinned variable and the pin to make (`bedrock secret pin <env> <VARIABLE>
+  <version>`, after `bedrock secret add <env> <VARIABLE>` has put the value in place),
+  and nothing is changed, a restore run's database included. The first environment runs
+  without a pin, "not yet", and the log names the variables it runs without. `apply` applies exactly that plan.
   The plan is the build's own: a saved plan is bound to the state it was made from, and a
   release bundles several pull requests. An infrastructure change must be safe on the
   running service (add first, remove later); one that is not is declared breaking in
@@ -1294,7 +1305,12 @@ pinned or rolled out; the command prints the pin to make.
 whether the version exists and is enabled. The pull request's plan shows the revision
 template change in that environment and nothing elsewhere; the pin promotes as a release
 (a commit with a releasable type, `fix(<env>): …`), whose tag build applies the stack and
-deploys. An argument left out is asked for at the terminal with the choices listed.
+deploys. An argument left out is asked for at the terminal with the choices listed. A
+secret with no pin is mounted nowhere in the environment, and the process starts without
+the variable: the first environment runs that way ("not yet"), and a release to any
+environment after it is refused at that environment's plan until every secret the code
+declares is pinned there, naming the variables and the pins to make; the pull request's
+plan says the same in the environment's summary ahead of the release.
 
 Both find the rest from where they run: the infrastructure root, the application, the
 environment project (by its labels) and the container (by its labels and the variable);

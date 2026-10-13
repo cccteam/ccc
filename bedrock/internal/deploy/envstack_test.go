@@ -277,7 +277,10 @@ func TestPlanEnvironmentStack(t *testing.T) {
 		objects map[string]string
 		// live is the maintenance variable's value on the live service the stack names
 		// (_SERVICES is set with it); "" leaves the service out.
-		live         string
+		live string
+		// tfvars is the stack's placement values in the checkout; every secret pinned in
+		// every environment when empty.
+		tfvars       string
 		wantOut      []string
 		wantTofu     []string
 		wantFact     string
@@ -617,11 +620,64 @@ func TestPlanEnvironmentStack(t *testing.T) {
 			wantTofu: []string{initLine},
 		},
 		{
-			name:     "a tag build plans, tests and appends the summary",
+			name:     "a tag build plans, tests and appends the summary, every secret the code declares pinned in stg",
 			subs:     tagSubs(),
 			pins:     enabledPins(),
-			wantOut:  []string{"=== stg's stack at 3-app/quill/stg as quill-apply@p-stg.iam.gserviceaccount.com ===", "Plan: 2 to add, 1 to change, 1 to destroy.", `  update google_cloud_run_v2_service.app["uc1"]`, "  delete+create google_secret_manager_secret.old", "Tests passed: no authoritative IAM resource other than a file store's bucket policy; 2 pinned secret version(s) exist and are enabled."},
+			wantOut:  []string{"=== stg's stack at 3-app/quill/stg as quill-apply@p-stg.iam.gserviceaccount.com ===", "Secret pins: every secret the code declares has a version pinned in stg (secret_versions.stg in infrastructure/terraform.tfvars).", "Plan: 2 to add, 1 to change, 1 to destroy.", `  update google_cloud_run_v2_service.app["uc1"]`, "  delete+create google_secret_manager_secret.old", "Tests passed: no authoritative IAM resource other than a file store's bucket policy; 2 pinned secret version(s) exist and are enabled."},
 			wantTofu: []string{initLine, planLine, showLine},
+			wantFact: "Plan: 2 to add, 1 to change, 1 to destroy.",
+		},
+		{
+			name:     "a secret with no pinned version in stg refuses the release before the plan, naming the variable and the pin to make",
+			subs:     tagSubs(),
+			pins:     enabledPins(),
+			tfvars:   pinnedTfvars(allPinned, `APP_COOKIE_KEY = "3"`, allPinned),
+			wantTofu: []string{initLine},
+			wantErr:  `Build REJECTED: the code declares a secret stg has no pinned version for (secret_versions.stg in infrastructure/terraform.tfvars): APP_STAFF_OIDC_CLIENT_SECRET. stg's processes would start without it, so the release is refused here; pin it after an operator adds its value (bedrock secret add stg APP_STAFF_OIDC_CLIENT_SECRET): bedrock secret pin stg APP_STAFF_OIDC_CLIENT_SECRET <version>. The pin promotes as a release; tst, the first environment, alone runs without one ("not yet").`,
+		},
+		{
+			name:     "every secret stg has no pinned version for is named in the one refusal, in declaration order, with the pin to make for each",
+			subs:     tagSubs(),
+			pins:     enabledPins(),
+			tfvars:   pinnedTfvars(allPinned, "", allPinned),
+			wantTofu: []string{initLine},
+			wantErr:  "Build REJECTED: the code declares secrets stg has no pinned version for (secret_versions.stg in infrastructure/terraform.tfvars): APP_COOKIE_KEY, APP_STAFF_OIDC_CLIENT_SECRET. stg's processes would start without them, so the release is refused here; pin each after an operator adds its value (bedrock secret add stg <VARIABLE>): bedrock secret pin stg APP_COOKIE_KEY <version>, bedrock secret pin stg APP_STAFF_OIDC_CLIENT_SECRET <version>. The pin promotes as a release",
+		},
+		{
+			name:     "a placement whose secret_versions lacks the environment's map pins none there, and the release is refused",
+			subs:     tagSubs(),
+			pins:     enabledPins(),
+			tfvars:   "secret_versions = {\n  tst = { " + allPinned + " }\n}\n",
+			wantTofu: []string{initLine},
+			wantErr:  "Build REJECTED: the code declares secrets stg has no pinned version for (secret_versions.stg in infrastructure/terraform.tfvars): APP_COOKIE_KEY, APP_STAFF_OIDC_CLIENT_SECRET.",
+		},
+		{
+			name:     "a restore run refused for a pin drops and restores nothing, since the test runs before the plan",
+			subs:     promotedSubs(),
+			pins:     enabledPins(),
+			env:      strings.Replace(restoreEnv, "empty", "production-backup", 1),
+			state:    "resource \"google_spanner_database\" \"quill\" {\n    instance = \"shared-spanner\"\n    name     = \"p-stg-gbl-quill-db\"\n    project  = \"p-spn\"\n}\n",
+			backup:   &Backup{Name: "projects/p-spn/instances/shared-spanner/backups/p-prd-gbl-quill-db-20261001", VersionTime: "2026-10-01T02:00:00Z", CreateTime: "2026-10-01T02:05:00Z", State: BackupReady},
+			tfvars:   pinnedTfvars(allPinned, "", allPinned),
+			wantTofu: []string{initLine},
+			wantErr:  "Build REJECTED: the code declares secrets stg has no pinned version for",
+		},
+		{
+			name:     "a secret with no pinned version in tst, the first environment, is allowed: the release runs without it, and the log says the environments after tst refuse it",
+			subs:     tstSubs(),
+			pins:     enabledPins(),
+			tfvars:   pinnedTfvars(`APP_COOKIE_KEY = "3"`, allPinned, allPinned),
+			wantOut:  []string{`tst has no pinned version for APP_STAFF_OIDC_CLIENT_SECRET (secret_versions.tst in infrastructure/terraform.tfvars): the first environment runs without it, "not yet"; a release to the environments after it is refused until it is pinned there.`, "Tests passed"},
+			wantTofu: []string{strings.Replace(initLine, "3-app/quill/stg", "3-app/quill/tst", 1), strings.Replace(planLine, "environment=stg", "environment=tst", 1), showLine},
+			wantFact: "Plan: 2 to add, 1 to change, 1 to destroy.",
+		},
+		{
+			name:     "every secret unpinned in tst is said, and the release still runs",
+			subs:     tstSubs(),
+			pins:     enabledPins(),
+			tfvars:   pinnedTfvars("", allPinned, allPinned),
+			wantOut:  []string{`tst has no pinned version for APP_COOKIE_KEY, APP_STAFF_OIDC_CLIENT_SECRET (secret_versions.tst in infrastructure/terraform.tfvars): the first environment runs without them, "not yet"; a release to the environments after it is refused until each is pinned there.`, "Tests passed"},
+			wantTofu: []string{strings.Replace(initLine, "3-app/quill/stg", "3-app/quill/tst", 1), strings.Replace(planLine, "environment=stg", "environment=tst", 1), showLine},
 			wantFact: "Plan: 2 to add, 1 to change, 1 to destroy.",
 		},
 		{
@@ -700,7 +756,11 @@ func TestPlanEnvironmentStack(t *testing.T) {
 				}
 				subs["_SERVICES"] = "us-central1=quill-app"
 			}
-			w := workspaceFiles(t, map[string]string{EnvironmentFile: envFile, BuildFile: buildFor(t, subs)})
+			tfvars := tt.tfvars
+			if tfvars == "" {
+				tfvars = pinnedTfvars(allPinned, allPinned, allPinned)
+			}
+			w := applicationWorkspace(t, map[string]string{EnvironmentFile: envFile, BuildFile: buildFor(t, subs), placementPath: testPlacement(""), tfvarsPath: tfvars})
 			if tt.stackFile != "" {
 				writeStackFile(t, w, tt.stackFile)
 			}
@@ -765,6 +825,9 @@ func TestPlanEnvironmentStack(t *testing.T) {
 			}
 			if tt.wantErr != "" && len(spanner.created) > 0 {
 				t.Errorf("a refused rollback started backups: %v", spanner.created)
+			}
+			if tt.wantErr != "" && (spanner.dropped != "" || spanner.restored != "") {
+				t.Errorf("a refused run dropped %q and restored %q", spanner.dropped, spanner.restored)
 			}
 			if tt.wantRestored != "" && spanner.restored != tt.wantRestored {
 				t.Errorf("restored %q, want %q", spanner.restored, tt.wantRestored)
@@ -1150,6 +1213,16 @@ func applicationWorkspace(t *testing.T, files map[string]string) Workspace {
 	return Workspace(dir)
 }
 
+// allPinned pins every secret harbor's code declares (APP_COOKIE_KEY and
+// APP_STAFF_OIDC_CLIENT_SECRET, in that order), as one environment's map body.
+const allPinned = `APP_COOKIE_KEY = "3", APP_STAFF_OIDC_CLIENT_SECRET = "1"`
+
+// pinnedTfvars is a terraform.tfvars whose secret_versions holds the map bodies given for
+// tst, stg and prd ("" for an environment that pins none).
+func pinnedTfvars(tst, stg, prd string) string {
+	return fmt.Sprintf("secret_versions = {\n  tst = { %s }\n  stg = { %s }\n  prd = { %s }\n}\n", tst, stg, prd)
+}
+
 func TestPlanEnvironments(t *testing.T) {
 	t.Parallel()
 
@@ -1188,14 +1261,42 @@ func TestPlanEnvironments(t *testing.T) {
 		// objects are the records buckets' objects, by gs:// path: a rollback's generation note.
 		objects map[string]string
 		// unapplied names an environment whose stack has no state object yet.
-		unapplied   string
-		badRequest  bool
+		unapplied  string
+		badRequest bool
+		// tfvars is the stack's placement values in the checkout; every secret pinned in
+		// every environment when empty.
+		tfvars      string
 		wantOut     []string
 		wantNotOut  []string
 		wantTofu    []string
 		wantComment []string
 		wantErr     string
 	}{
+		{
+			name:       "a secret with no pinned version in stg is said in stg's summary and the log, not refused; tst, the first environment, says nothing",
+			subs:       prSubs(),
+			pins:       enabledPins(),
+			deployer:   true,
+			tfvars:     pinnedTfvars("", `APP_COOKIE_KEY = "3"`, allPinned),
+			wantOut:    []string{"stg: APP_STAFF_OIDC_CLIENT_SECRET has no pinned version in stg (secret_versions.stg in infrastructure/terraform.tfvars); the release is refused there until it is pinned (bedrock secret pin stg APP_STAFF_OIDC_CLIENT_SECRET <version>, after bedrock secret add stg APP_STAFF_OIDC_CLIENT_SECRET has put the value in place).", "prd: Plan: 2 to add, 1 to change, 1 to destroy."},
+			wantNotOut: []string{"no pinned version in tst", "no pinned version in prd", "Build REJECTED"},
+			wantTofu:   every,
+			wantComment: []string{
+				"The stack's plan for each environment (build b-1), the same tests passed in each:",
+				"**tst**: Plan: 2 to add, 1 to change, 1 to destroy.\n  - `update",
+				"**stg**: Plan: 2 to add, 1 to change, 1 to destroy. APP_STAFF_OIDC_CLIENT_SECRET has no pinned version in stg (secret_versions.stg in infrastructure/terraform.tfvars); the release is refused there until it is pinned (bedrock secret pin stg APP_STAFF_OIDC_CLIENT_SECRET <version>, after bedrock secret add stg APP_STAFF_OIDC_CLIENT_SECRET has put the value in place).\n  - `update",
+				"**prd**: Plan: 2 to add, 1 to change, 1 to destroy.\n  - `update",
+			},
+		},
+		{
+			name:        "every secret an environment has no pinned version for is named in its summary, in declaration order, with the pin to make for each",
+			subs:        prSubs(),
+			pins:        enabledPins(),
+			deployer:    true,
+			tfvars:      pinnedTfvars(allPinned, allPinned, ""),
+			wantTofu:    every,
+			wantComment: []string{"**prd**: Plan: 2 to add, 1 to change, 1 to destroy. APP_COOKIE_KEY, APP_STAFF_OIDC_CLIENT_SECRET have no pinned version in prd (secret_versions.prd in infrastructure/terraform.tfvars); the release is refused there until each is pinned (bedrock secret pin prd APP_COOKIE_KEY <version>, bedrock secret pin prd APP_STAFF_OIDC_CLIENT_SECRET <version>, after bedrock secret add prd <VARIABLE> has put the value in place).\n  - `update"},
+		},
 		{
 			name:        "an environment whose stack was never applied is skipped with the line, the others planned, and the comment names it",
 			subs:        prSubs(),
@@ -1355,7 +1456,11 @@ func TestPlanEnvironments(t *testing.T) {
 			if steps == nil {
 				steps = render.CheckTriggerSteps
 			}
-			w := applicationWorkspace(t, map[string]string{placementPath: testPlacement("")})
+			tfvars := tt.tfvars
+			if tfvars == "" {
+				tfvars = pinnedTfvars(allPinned, allPinned, allPinned)
+			}
+			w := applicationWorkspace(t, map[string]string{placementPath: testPlacement(""), tfvarsPath: tfvars})
 			if tt.stackFile != "" {
 				writeStackFile(t, w, tt.stackFile)
 			}
@@ -1607,12 +1712,16 @@ func TestPreviews(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			m, err := checkoutModel(w, p)
+			if err != nil {
+				t.Fatal(err)
+			}
 			store := &memoryStore{objects: map[string]string{}}
 			for path, content := range tt.objects {
 				store.objects[path] = content
 			}
 			var out strings.Builder
-			if err := previews(t.Context(), &Clients{StorageAs: store.openAs}, w, subs, p, &out); err != nil {
+			if err := previews(t.Context(), &Clients{StorageAs: store.openAs}, w, subs, m, &out); err != nil {
 				t.Fatalf("previews() error = %v; output:\n%s", err, out.String())
 			}
 			containsAll(t, out.String(), tt.wantOut...)

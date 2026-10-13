@@ -37,13 +37,18 @@ every later apply is the pipeline's. A release's tag build plans the stack for
 its environment as the apply identity after the image build and before the
 migrations, runs the tests (no authoritative IAM resource other than the file
 stores' bucket policies; every secret version
-a revision template pins exists and is enabled), applies on a pass, and writes
+a revision template pins exists and is enabled; and, in every environment after
+tst, a version pinned for every secret the code declares, checked
+before the plan so that a refused release changes nothing; "Secret versions"
+has the rule), applies on a pass, and writes
 the plan's summary to the build log and the deployment record, under the
 release's own approval. The stack's check trigger (`cloud-build.tf`; "What it
 creates" has the triggers) plans the stack for every environment on every push
 to a pull request, as that environment's plan identity, a reader, and posts the
 summaries on the pull request: the plan the reviewer approves, and the check
-the merge waits for. An environment
+the merge waits for. A secret an environment after tst has no pin
+for is not a refusal there: the environment's summary says which, and the pin
+to make, ahead of the release it would refuse. An environment
 whose stack has not had its first apply yet is skipped with "no stack yet: its
 first apply is by hand", in the log and in the summary, until it has. So a change to
 this directory or to `terraform.tfvars` (a secret pin, a value for one
@@ -232,7 +237,15 @@ sets it), `APP_CONSOLE_DIST` (where the image put the bundle).
 
 `var.secret_versions` pins, per environment and per variable, the version the
 environment runs. A secret with no pin has its container but is not mounted:
-the process starts without the variable, which is "not yet". After an
+the process starts without the variable, which is "not yet". That is
+tst's allowance alone, where a value goes in ahead of the release
+that first reads it. In every environment after tst, a release
+whose code declares a secret the environment has no pin for is refused at that
+environment's plan, before anything is applied: the refusal names the
+environment, every unpinned variable and the pin to make (`bedrock secret pin
+<env> <VARIABLE> <version>`, after `bedrock secret add <env> <VARIABLE>` has
+put the value in place), and the pull request's plan says the same in that
+environment's summary, so the pin lands before the release reaches it. After an
 operator adds a value (`bedrock secret add <env> <VARIABLE>`, or `gcloud
 secrets versions add` as a Secret Version Adder), the pin is bumped in
 `terraform.tfvars` (`bedrock secret pin`) in the same pull request as the

@@ -131,20 +131,22 @@ func staleSteps(build *Build, trigger string, want []string, out io.Writer) {
 	fmt.Fprintf(out, "Notice: this build runs under the %s trigger's steps as an older bedrock rendered them (%s), where this bedrock renders %s. The steps are the stack's and take effect with the next release's stack apply in %s; this bedrock runs under either.\n", trigger, strings.Join(got, ", "), strings.Join(want, ", "), build.Substitutions[envSub])
 }
 
-// routerDirOf is the generated router's package directory in the checkout,
-// root-relative, where the resource generator writes the release file the window preview
-// reads; empty when the application generates no router. The pipeline file names it for
-// the release check (--router-dir, rendered from the application); a trigger-held job
-// reads the application in the checkout for it, as bedrock check does.
-func routerDirOf(w Workspace, p *derive.Placement) (string, error) {
+// checkoutModel reads the application in the checkout as bedrock check does, under the
+// placement given, for what a step derives from the code rather than from the rendered
+// stack: the generated router's package directory (RouterDir, where the resource generator
+// writes the release file the window preview reads; the pipeline file names it for the
+// release check as --router-dir, rendered from the application) and the secrets the code
+// declares (Secrets), which the plan's test of the pins reads against the placement's
+// pins.
+func checkoutModel(w Workspace, p *derive.Placement) (*derive.Model, error) {
 	a, err := app.Discover(string(w))
 	if err != nil {
-		return "", errors.Wrap(err, "reading the application in the checkout")
+		return nil, errors.Wrap(err, "reading the application in the checkout")
 	}
 	m, err := derive.Derive(a, p)
 	if err != nil {
-		return "", errors.Wrap(err, "deriving the application in the checkout")
+		return nil, errors.Wrap(err, "deriving the application in the checkout")
 	}
 
-	return m.RouterDir, nil
+	return m, nil
 }

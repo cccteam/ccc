@@ -112,11 +112,13 @@ func stackPlan(data []byte) (*StackPlan, error) {
 
 // PlanEnvironmentStack plans the environment's stack in a tag build, as the apply identity,
 // after the image build and before the migrations: tofu init on the environment's state
-// prefix, tofu plan saved to the workspace with its JSON beside it, the summary printed and
-// appended (STACK_PLAN), then the tests. A failing plan or test stops the build with the
-// stack unapplied. The plan is this build's own: the plan a reviewer approved on the pull
-// request was bound to the state of that moment, and a release bundles several pull
-// requests. A pull-request build plans every environment earlier instead.
+// prefix, the release's own test of the secret pins (testPins, before the plan, so that a
+// refused release changes nothing), tofu plan saved to the workspace with its JSON beside
+// it, the summary printed and appended (STACK_PLAN), then the plan's tests. A failing plan
+// or test stops the build with the stack unapplied. The plan is this build's own: the plan
+// a reviewer approved on the pull request was bound to the state of that moment, and a
+// release bundles several pull requests. A pull-request build plans every environment
+// earlier instead.
 func PlanEnvironmentStack(ctx context.Context, clients *Clients, w Workspace, out io.Writer) error {
 	subs, ok, err := tagBuildStep(w, out)
 	if err != nil || !ok {
@@ -139,6 +141,9 @@ func PlanEnvironmentStack(ctx context.Context, clients *Clients, w Workspace, ou
 		fmt.Fprintln(out, skipped(env))
 
 		return nil
+	}
+	if err := testPins(w, subs[envSub], out); err != nil {
+		return err
 	}
 	generation, err := s.planGeneration(ctx, clients, subs, env, w)
 	if err != nil {
@@ -627,12 +632,15 @@ func (s *stack) clearFirestore(ctx context.Context, subs map[string]string, w Wo
 // the state lock: the plan the reviewer approves is each environment's, and the job can
 // change no environment. Each plan runs the tests; one comment on the pull request
 // carries every summary; a failing plan or test stops the build, which is the required
-// check, and is said on the pull request. After the plans come the pull request's looks
-// ahead, read as the same identities: the hotfix preview when the pull request is against
-// a hotfix line, and the window preview. A tag build plans its own environment later
-// instead (deploy stack plan). Triggers that carry no promotion order (a stack not yet
-// applied with a bedrock that writes it, which the first release on it does) plan
-// nothing, with a notice: the pull request that moves an application here builds.
+// check, and is said on the pull request. A secret the code declares that an environment
+// after the first has no pinned version for is not a refusal here: the environment's
+// summary says it, with the pin to make, since the release's own plan refuses it there
+// (testPins). After the plans come the pull request's looks ahead, read as the same
+// identities: the hotfix preview when the pull request is against a hotfix line, and the
+// window preview. A tag build plans its own environment later instead (deploy stack
+// plan). Triggers that carry no promotion order (a stack not yet applied with a bedrock
+// that writes it, which the first release on it does) plan nothing, with a notice: the
+// pull request that moves an application here builds.
 func PlanEnvironments(ctx context.Context, clients *Clients, w Workspace, req *BuildRequest, out io.Writer) error {
 	build, builds, err := readBuild(ctx, clients, req)
 	if err != nil {
@@ -662,9 +670,13 @@ func PlanEnvironments(ctx context.Context, clients *Clients, w Workspace, req *B
 	if err != nil {
 		return err
 	}
+	m, err := checkoutModel(w, p)
+	if err != nil {
+		return err
+	}
 	var summaries []string
 	for _, e := range strings.Split(subs[environmentsSub], ",") {
-		summary, err := planEnvironment(ctx, clients, w, build, env, subs, e, identities[e], p.StateBucket, out)
+		summary, err := planEnvironment(ctx, clients, w, build, env, subs, e, identities[e], m, out)
 		if err != nil {
 			return err
 		}
@@ -674,7 +686,7 @@ func PlanEnvironments(ctx context.Context, clients *Clients, w Workspace, req *B
 	if err := os.RemoveAll(filepath.Join(string(w), stackDir, ".terraform")); err != nil {
 		return errors.Wrap(err, "os.RemoveAll()")
 	}
-	if err := previews(ctx, clients, w, subs, p, out); err != nil {
+	if err := previews(ctx, clients, w, subs, m, out); err != nil {
 		return err
 	}
 	pr, err := speaker(ctx, clients, build, env, false)
@@ -688,27 +700,25 @@ func PlanEnvironments(ctx context.Context, clients *Clients, w Workspace, req *B
 // previews are the pull request's looks ahead, read as each environment's plan identity
 // after its plan: the hotfix preview, when the pull request is against a hotfix line, and
 // the window preview, which reads the release file the generated router's package holds,
-// found by reading the application in the checkout as bedrock check does.
-func previews(ctx context.Context, clients *Clients, w Workspace, subs map[string]string, p *derive.Placement, out io.Writer) error {
+// where the application in the checkout (m, read as bedrock check reads it) says it is.
+func previews(ctx context.Context, clients *Clients, w Workspace, subs map[string]string, m *derive.Model, out io.Writer) error {
 	if hotfixBranchRE.MatchString(subs[baseBranchSub]) {
 		if err := hotfixPreview(ctx, clients.StorageAs, subs, w, out); err != nil {
 			return err
 		}
 	}
-	routerDir, err := routerDirOf(w, p)
-	if err != nil {
-		return err
-	}
 
-	return windowPreview(ctx, clients.StorageAs, w, subs, routerDir, out)
+	return windowPreview(ctx, clients.StorageAs, w, subs, m.RouterDir, out)
 }
 
 // planEnvironment plans one environment's stack for the pull request as the environment's
 // plan identity and answers its summary line for the comment: the skip line for an
-// environment whose stack has never been applied, else the plan's summary with its
-// changes, after the tests a tag build runs before its apply.
-func planEnvironment(ctx context.Context, clients *Clients, w Workspace, build *Build, env, subs map[string]string, e, identity, bucket string, out io.Writer) (string, error) {
-	applied, err := stackApplied(ctx, clients, identity, bucket, subs[appSub], e)
+// environment whose stack has never been applied, else the plan's summary, what it says
+// of the secret pins (pinSummary) and its changes, after the tests a tag build runs
+// before its apply. m is the application in the checkout, whose placement names the state
+// bucket and whose code declares the secrets.
+func planEnvironment(ctx context.Context, clients *Clients, w Workspace, build *Build, env, subs map[string]string, e, identity string, m *derive.Model, out io.Writer) (string, error) {
+	applied, err := stackApplied(ctx, clients, identity, m.Placement.StateBucket, subs[appSub], e)
 	if err != nil {
 		return "", err
 	}
@@ -742,8 +752,12 @@ func planEnvironment(ctx context.Context, clients *Clients, w Workspace, build *
 	if err := testStack(ctx, clients, s.dir, identity, subs, shown, out); err != nil {
 		return "", refuse(ctx, clients, build, env, fmt.Sprintf("The plan of %s's stack failed a test (build %s): %v", e, build.ID, errors.Cause(err)), err, out)
 	}
+	pins, err := pinSummary(w, m, e, out)
+	if err != nil {
+		return "", err
+	}
 
-	return fmt.Sprintf("**%s**: %s%s", e, p.Summary(), changeList(p)), nil
+	return fmt.Sprintf("**%s**: %s%s%s", e, p.Summary(), pins, changeList(p)), nil
 }
 
 // changeList is a plan's changes for a comment: one line each, after the summary; none
@@ -879,7 +893,8 @@ func (s *stack) initEnvironment(ctx context.Context, app, env, identity string) 
 // version a planned revision template pins exists and is enabled, read from Secret
 // Manager as the identity the plan ran as, so a revision never fails to start on a mount
 // the plan could not see. The migrations' sequence rule is GuardMigrations', earlier in
-// the same build.
+// the same build; the secret pins' rule is testPins, which a tag build runs before its
+// plan and a pull request says in each environment's summary (pinSummary).
 func testStack(ctx context.Context, clients *Clients, dir, identity string, subs map[string]string, plan []byte, out io.Writer) error {
 	found, err := check.ScanAuthoritative(dir, fileStorePolicies(subs, plan))
 	if err != nil {
