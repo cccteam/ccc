@@ -107,6 +107,21 @@ resource "google_cloudbuildv2_connection_iam_member" "deploy_read_token" {
   member   = google_service_account.deploy[each.key].member
 }
 
+# In tst the application stack's own triggers (the check trigger, the
+# pull-request stack trigger and the sweep) run as the apply identity and mint
+# the same token: the check trigger posts its plans on the pull request, the
+# stack job reads the /gcbrun comment, the sweep asks GitHub which pull
+# requests are closed.
+resource "google_cloudbuildv2_connection_iam_member" "apply_read_token" {
+  for_each = local.connected && local.is_tst ? local.apps : toset([])
+
+  project  = local.project_id
+  location = google_cloudbuildv2_connection.github[0].location
+  name     = google_cloudbuildv2_connection.github[0].name
+  role     = "roles/cloudbuild.readTokenAccessor"
+  member   = google_service_account.apply[each.key].member
+}
+
 # The repository link is per application and is registration, not
 # application infrastructure: creating one needs cloudbuild.repositories.create,
 # which only the connection administrator holds, and the design brief puts

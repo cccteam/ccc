@@ -8,7 +8,10 @@
 # bedrock secret add github-deployer-key <env> and pinned by resource name in
 # var.github_deployer_key_secret_versions with bedrock secret pin
 # github-deployer-key <env> <version> (never latest). Every application's
-# deploy identity reads it; no runtime identity does. The App ID
+# deploy identity reads it, and in tst its apply identity too (the stack's
+# check trigger and pull-request stack trigger run as the apply identity and
+# talk back on the pull request: the plans' summaries, the guard's refusals, a
+# database recreated); no runtime identity does. The App ID
 # (var.github_deployer_app_id) is not a secret. Until both are set for an
 # environment, the application stacks pass empty substitutions and the
 # pipeline talks back through nothing.
@@ -32,4 +35,13 @@ resource "google_secret_manager_secret_iam_member" "deploy_deployer_key" {
   secret_id = google_secret_manager_secret.github_deployer_key.secret_id
   role      = "roles/secretmanager.secretAccessor"
   member    = google_service_account.deploy[each.key].member
+}
+
+resource "google_secret_manager_secret_iam_member" "apply_deployer_key" {
+  for_each = local.is_tst ? local.apps : toset([])
+
+  project   = local.project_id
+  secret_id = google_secret_manager_secret.github_deployer_key.secret_id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = google_service_account.apply[each.key].member
 }

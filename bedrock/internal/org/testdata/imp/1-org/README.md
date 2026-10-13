@@ -345,8 +345,16 @@ hotfix` creates branches and pull requests, the pipeline talks back on a pull
 request.
 
 The required checks on the default branch and the hotfix lines are the
-infrastructure workflow's job, `bedrock check`, which GitHub Actions reports,
-and the fixed jobs of the application's own CI workflow,
+application stack's check trigger in tst's Cloud Build
+(`imp-tst-<region>-<app>-check`, set by the application's
+stack in tst: on every push to a pull request it runs
+`bedrock check`, plans and tests the stack for every environment as that
+environment's plan identity, posts the summaries, and applies the pull
+request's own stack again when one is standing; its steps are the stack's own
+text, which no pull request edits), which Google's Cloud Build GitHub App
+reports under the trigger's name and the project id (`<trigger> (<project
+id>)`; `github.tf` writes the form in one line, corrected there if the app
+reports another), and the fixed jobs of the application's own CI workflow,
 `.github/workflows/ci.yml`, which `impulse render` writes and GitHub Actions
 reports by their ids: `title`, `go`, `web`, `image`, `secrets` and `migrations`. Every
 application's workflow carries those; bedrock reads the list from impulse when
@@ -366,9 +374,10 @@ The pull-request build (the trigger
 `imp-tst-<region>-<app>-pr`, set by the application's
 stack in tst) is not a required check. It is the developer's
 preview: a `/gcbrun` comment builds the pull request and stands its own
-environment up in tst, and a pull request merges whether or
-not anyone built it. So release-please's release pull request needs no build:
-CI and `bedrock check` run on it, a person merges it, the tag is cut and
+environment up in tst (the stack's `-pr-stack` trigger applies
+the pull request's stack on the same comment), and a pull request merges
+whether or not anyone built it. So release-please's release pull request needs
+no build: CI and the check trigger run on it, a person merges it, the tag is cut and
 tst's tag build is the release's first build. What this
 gives up: a pull request whose image build or migration is broken can merge,
 and the breakage shows in tst's tag build; the fix is

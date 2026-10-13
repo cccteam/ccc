@@ -478,15 +478,21 @@ func TestRecordsBucketPolicy(t *testing.T) {
 			path: "2-env/records.tf",
 			want: []string{
 				"  records_deploy_members = [for app in var.applications : google_service_account.deploy[app].member]\n  records_plan_members   = [for app in var.applications : google_service_account.plan[app].member]\n",
-				"      { role = \"roles/storage.objectCreator\", members = local.records_deploy_members },\n",
-				"      { role = \"roles/storage.objectViewer\", members = concat(local.records_deploy_members, local.records_plan_members, local.records_ops_members, local.records_lower_ops_members, local.records_rehearsal_members, values(local.next_deploy_members), [local.team_group]) },\n",
+				"      { role = \"roles/storage.objectCreator\", members = local.records_deploy_members, condition = local.records_creator_condition },\n",
+				"      { role = \"roles/storage.objectViewer\", members = concat(local.records_deploy_members, local.records_plan_members, local.records_ops_members, local.records_lower_ops_members, local.records_rehearsal_members, values(local.next_deploy_members), [local.team_group]), condition = null },\n",
+				// In tst the stack jobs' outputs are the apply identities' to write, under
+				// their prefix alone, which the deploy identities' creator binding excludes.
+				"  records_stack_prefix = local.is_tst ? { for app in var.applications : app => \"projects/_/buckets/${google_storage_bucket.records.name}/objects/${app}/stacks/\" } : {}\n",
+				"    expression  = join(\" && \", [for app, prefix in local.records_stack_prefix : \"!resource.name.startsWith(\\\"${prefix}\\\")\"])\n",
+				"      role    = \"roles/storage.objectUser\"\n      members = [google_service_account.apply[app].member]\n",
+				"  ], local.records_stack_bindings)\n",
 				// In production, the lower environments' operations identities read the records
 				// for a restore from production's backup that names no release.
 				"  records_lower_ops_members = local.next_environment != \"\" ? [] : [\n    for pair in setproduct([for env, next in var.next_environment : env if next != \"\"], var.applications) :\n    \"serviceAccount:${local.prefix}-${pair[0]}-gbl-${pair[1]}-ops@${local.org.project_ids[pair[0]]}.iam.gserviceaccount.com\"\n  ]\n",
 				"    ] : b if length(b.members) > 0\n",
-				"data \"google_iam_policy\" \"records\" {\n  dynamic \"binding\" {\n    for_each = local.records_bindings\n    content {\n      role    = binding.value.role\n      members = binding.value.members\n    }\n  }\n}\n",
+				"data \"google_iam_policy\" \"records\" {\n  dynamic \"binding\" {\n    for_each = local.records_bindings\n    content {\n      role    = binding.value.role\n      members = binding.value.members\n\n      dynamic \"condition\" {\n        for_each = binding.value.condition == null ? [] : [binding.value.condition]\n",
 				"resource \"google_storage_bucket_iam_policy\" \"records\" {\n  bucket      = google_storage_bucket.records.name\n  policy_data = data.google_iam_policy.records.policy_data\n}\n",
-				"default grants to the project's basic roles (projectOwner, projectEditor",
+				"Cloud Storage's default grants to the project's basic roles (projectOwner,",
 				// The member resources the policy replaced leave the state without a destroy,
 				// which would take their members out of the live policy.
 				"removed {\n  from = google_storage_bucket_iam_member.deploy_records\n\n  lifecycle {\n    destroy = false\n  }\n}\n",
@@ -660,16 +666,17 @@ func TestDeployProjectRoles(t *testing.T) {
 		absent bool
 	}{
 		{
-			name: "the roles a build needs",
-			text: "  deploy_project_roles = concat([\n" +
+			name: "the roles a build needs, and no trigger runner: the sweep is the apply identity's",
+			text: "  deploy_project_roles = [\n" +
 				"    \"roles/serviceusage.serviceUsageConsumer\",\n" +
 				"    \"roles/run.developer\",\n" +
 				"    \"roles/logging.logWriter\",\n" +
 				"    \"roles/monitoring.viewer\",\n" +
 				"    local.org.run_job_policy_admin_role,\n" +
 				"    local.org.cloud_build_build_reader_role,\n" +
-				"  ], local.is_tst ? [local.org.cloud_build_trigger_runner_role] : [])\n",
+				"  ]\n",
 		},
+		{name: "no trigger runner for the deploy identity", text: "local.org.cloud_build_trigger_runner_role] : []", absent: true},
 		{name: "no builder bundle", text: "\"roles/cloudbuild.builds.builder\"", absent: true},
 	}
 	for _, tt := range tests {
@@ -2311,10 +2318,11 @@ func TestPublicInvoker(t *testing.T) {
 }
 
 // TestRepositoryRules reads the repository module 1-org renders: the applications it
-// configures, the checks a pull request must pass (the infrastructure workflow's job and
-// the six fixed jobs of impulse's CI workflow in the workflow's order, web among them so a
-// failed browser build blocks the merge; never the pull-request build, which is the
-// preview on /gcbrun), squash as the only merge, the branch up to date
+// configures, the checks a pull request must pass (the application stack's check trigger
+// in the first environment, reported by Google's Cloud Build GitHub App under the
+// trigger's name and the project id, and the six fixed jobs of impulse's CI workflow in
+// the workflow's order, web among them so a failed browser build blocks the merge; never
+// the pull-request build, which is the preview on /gcbrun), squash as the only merge, the branch up to date
 // before it merges, the environments the operations workflow runs in (every one), and the
 // placement's values as the variables' defaults.
 func TestRepositoryRules(t *testing.T) {
@@ -2340,12 +2348,18 @@ func TestRepositoryRules(t *testing.T) {
 			want: []string{`applications = ["harbor", "beacon"]`},
 		},
 		{
-			name: "the rules name the checks in order (bedrock check, impulse's six fixed jobs), squash alone and the branch up to date",
+			name: "the rules name the checks in order (the stack's check trigger, impulse's six fixed jobs), squash alone and the branch up to date",
 			path: "1-org/github.tf",
 			want: []string{
+				`data "github_app" "cloud_build" {
+  slug = "google-cloud-build"
+}`,
+				`  cloud_build_check = {
+    for app in var.applications : app => "${var.prefix}-tst-uc1-${app}-check (${module.project["tst"].project_id})"
+  }`,
 				`      {
-        context        = "bedrock check"
-        integration_id = tonumber(data.github_app.actions.id)
+        context        = local.cloud_build_check[app]
+        integration_id = tonumber(data.github_app.cloud_build.id)
       },
       {
         context        = "title"
@@ -2387,12 +2401,11 @@ func TestRepositoryRules(t *testing.T) {
 			},
 		},
 		{
-			name: "the pull-request build is not a required check, so the Cloud Build app is not read",
+			name: "the pull-request build is not a required check, and no Actions job of the name bedrock check is",
 			path: "1-org/github.tf",
 			absent: []string{
 				`-pr (${module.project["tst"].project_id})`,
-				`data.github_app.cloud_build`,
-				`google-cloud-build`,
+				`context        = "bedrock check"`,
 			},
 		},
 		{

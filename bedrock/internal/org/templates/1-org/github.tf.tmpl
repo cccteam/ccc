@@ -28,11 +28,17 @@
 # Environment of a private repository need GitHub Enterprise, which bedrock
 # does not require of an organization.
 #
-# The required checks are the infrastructure workflow's job, bedrock check,
-# which GitHub Actions reports, and the fixed jobs of the application's own
-# CI workflow, which impulse renders and GitHub Actions reports by their ids:
-# {{.ImpulseChecksProse}}. Every application's workflow
-# carries those; the list is read from impulse, so the names have one source.
+# The required checks are the application stack's check trigger in
+# {{.FirstEnvironment}}'s Cloud Build ({{.Prefix}}-{{.FirstEnvironment}}-{{.Primary.Code}}-<app>-check: on every
+# push to a pull request it runs bedrock check, plans and tests the stack for
+# every environment as that environment's plan identity and applies the pull
+# request's own stack again when one is standing; its steps are the stack's
+# own text, which no pull request edits), which Google's Cloud Build GitHub
+# App reports under the trigger's name and the project id, and the fixed
+# jobs of the application's own CI workflow, which impulse renders and
+# GitHub Actions reports by their ids: {{.ImpulseChecksProse}}. Every
+# application's workflow carries those; the list is read from impulse, so
+# the names have one source.
 # The workflow's browser jobs (angular-<workspace>, one per browser
 # workspace) are named per application, so the rule does not name them; web,
 # the gate over them, fails when any of them did, so a failed browser build
@@ -72,12 +78,17 @@
 # message.
 # ---------------------------------------------------------------------------
 
-# The app that reports the required checks: GitHub Actions, for the
-# infrastructure workflow's job and the application's CI jobs alike. It is
-# public, so its id is read by slug; the release app, the organization's own,
-# is named by its App ID (var.github_release_app_id).
+# The apps that report the required checks: GitHub Actions, for the
+# application's CI jobs, and Google's Cloud Build GitHub App, for the stack's
+# check trigger. Both are public, so their ids are read by slug; the release
+# app, the organization's own, is named by its App ID
+# (var.github_release_app_id).
 data "github_app" "actions" {
   slug = "github-actions"
+}
+
+data "github_app" "cloud_build" {
+  slug = "google-cloud-build"
 }
 
 data "github_team" "infrastructure" {
@@ -91,16 +102,25 @@ locals {
   # reaches every environment but production, a rerun of a release every one.
   operations_environments = {{.EnvironmentsList}}
 
+  # The context the Cloud Build app reports the check trigger's build under:
+  # the trigger's name, as the application's stack names it in {{.FirstEnvironment}}
+  # ({{.Prefix}}-{{.FirstEnvironment}}-{{.Primary.Code}}-<app>-check), then {{.FirstEnvironment}}'s project id in
+  # parentheses. The form is the app's, read off the checks it reports; a
+  # differing one is corrected here, in this one line.
+  cloud_build_check = {
+    for app in var.applications : app => "${var.prefix}-{{.FirstEnvironment}}-{{.Primary.Code}}-${app}-check (${module.project["{{.FirstEnvironment}}"].project_id})"
+  }
+
   # The checks a pull request into the default branch or a hotfix line must
   # pass, each by the name it is reported under and the app that reports it:
-  # bedrock check, then the application's CI jobs in the workflow's order. The
-  # pull-request build is not among them: it is the preview on /gcbrun (the
-  # header says what that gives up).
+  # the stack's check trigger, then the application's CI jobs in the
+  # workflow's order. The pull-request build is not among them: it is the
+  # preview on /gcbrun (the header says what that gives up).
   required_checks = {
     for app in var.applications : app => [
       {
-        context        = "bedrock check"
-        integration_id = tonumber(data.github_app.actions.id)
+        context        = local.cloud_build_check[app]
+        integration_id = tonumber(data.github_app.cloud_build.id)
       },
 {{- range .ImpulseChecks}}
       {
