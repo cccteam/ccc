@@ -20,6 +20,7 @@ import (
 	"golang.org/x/mod/modfile"
 
 	"github.com/cccteam/ccc/bedrock/internal/derive"
+	"github.com/cccteam/ccc/bedrock/internal/release"
 	"github.com/cccteam/ccc/impulse/app"
 	"github.com/cccteam/ccc/impulse/ci"
 )
@@ -449,7 +450,9 @@ func TestTriggerShell(t *testing.T) {
 			local: "fetch_bedrock",
 			want: []string{
 				`pin=$$(python3 -c 'import json; p = json.load(open("infrastructure/placement.json")); print(p["bedrockVersion"], p.get("bedrockSha256") or "-")')`,
-				"\nif [ \"$$sha256\" = \"-\" ]; then\n  echo \"$$version\" > /builder/home/bedrock.pin\n",
+				"\nif [ \"$$sha256\" = \"-\" ]; then\n  commit=$$(printf '%s' \"$$version\" | sed 's/.*-//')\n  branches=$$(mktemp -d)\n  if ! git clone --quiet --bare --no-tags --filter=tree:0 \"https://github.com/cccteam/ccc.git\" \"$$branches\"; then\n",
+				"\n  for head in $$(git -C \"$$branches\" for-each-ref --format='%(refname:short)' refs/heads/); do\n    if git -C \"$$branches\" merge-base --is-ancestor \"$$commit\" \"refs/heads/$$head\" 2>/dev/null; then\n      on=$$head\n      break\n",
+				"\n  if [ -z \"$$on\" ]; then\n    echo \"bedrock $$version pins commit $$commit, which no branch of https://github.com/cccteam/ccc.git reaches: the triggers build only a commit on a branch of github.com/cccteam/ccc, as bedrock upgrade accepts; move the pin to one, or to a release.\"\n    exit 1\n  fi\n  echo \"$$version\" > /builder/home/bedrock.pin\n  echo \"bedrock $$version is a commit pin on $$on: the next step builds it with go install.\"\n  exit 0\nfi\n",
 				`-o /builder/home/bedrock "https://github.com/cccteam/ccc/releases/download/bedrock/$$version/bedrock-linux-amd64"`,
 				`echo "$$sha256  /builder/home/bedrock" | sha256sum --check -`,
 			},
@@ -463,43 +466,11 @@ func TestTriggerShell(t *testing.T) {
 			},
 		},
 	}
-	file := filepath.Join("testdata", "harbor", "cloud-build.tf")
-	src, err := os.ReadFile(file)
-	if err != nil {
-		t.Fatal(err)
-	}
-	f, diags := hclsyntax.ParseConfig(src, file, hcl.InitialPos)
-	if diags.HasErrors() {
-		t.Fatalf("hclsyntax.ParseConfig() = %v", diags)
-	}
-	body, ok := f.Body.(*hclsyntax.Body)
-	if !ok {
-		t.Fatalf("body is %T", f.Body)
-	}
-	var attrs map[string]*hclsyntax.Attribute
-	for _, b := range body.Blocks {
-		if b.Type == "locals" {
-			if _, ok := b.Body.Attributes["fetch_bedrock"]; ok {
-				attrs = b.Body.Attributes
-			}
-		}
-	}
-	if attrs == nil {
-		t.Fatal("no locals block holds fetch_bedrock")
-	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			attr, ok := attrs[tt.local]
-			if !ok {
-				t.Fatalf("no local %s", tt.local)
-			}
-			value, diags := attr.Expr.Value(nil)
-			if diags.HasErrors() {
-				t.Fatalf("evaluating %s: %v", tt.local, diags)
-			}
-			script := value.AsString()
+			script := triggerScript(t, "harbor", tt.local)
 			for _, want := range tt.want {
 				if !strings.Contains(script, want) {
 					t.Errorf("%s lacks %q:\n%s", tt.local, want, script)
@@ -522,6 +493,164 @@ func TestTriggerShell(t *testing.T) {
 			}
 		})
 	}
+}
+
+// triggerScript evaluates a script local of the fixture's golden cloud-build.tf as HCL
+// reads it: the heredoc's text, its indentation stripped and its $$ still doubled.
+func triggerScript(t *testing.T, fixture, local string) string {
+	t.Helper()
+
+	file := filepath.Join("testdata", fixture, "cloud-build.tf")
+	src, err := os.ReadFile(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f, diags := hclsyntax.ParseConfig(src, file, hcl.InitialPos)
+	if diags.HasErrors() {
+		t.Fatalf("hclsyntax.ParseConfig() = %v", diags)
+	}
+	body, ok := f.Body.(*hclsyntax.Body)
+	if !ok {
+		t.Fatalf("body is %T", f.Body)
+	}
+	for _, b := range body.Blocks {
+		if b.Type != "locals" {
+			continue
+		}
+		attr, ok := b.Body.Attributes[local]
+		if !ok {
+			continue
+		}
+		value, diags := attr.Expr.Value(nil)
+		if diags.HasErrors() {
+			t.Fatalf("evaluating %s: %v", local, diags)
+		}
+
+		return value.AsString()
+	}
+	t.Fatalf("no locals block of %s holds %s", file, local)
+
+	return ""
+}
+
+// TestTriggerFetchCommitPin runs the fetch script for a commit pin as the trigger does
+// (its $$ turned into $, the home directory and the repository stood in for), over a
+// checkout whose placement pins a commit: a commit on a branch of the repository is noted
+// for the build step, with its branch named; a commit only a tag reaches, one the
+// repository does not hold and a repository that cannot be read are refused, and nothing
+// is noted.
+func TestTriggerFetchCommitPin(t *testing.T) {
+	t.Parallel()
+
+	for _, tool := range []string{"bash", "git", "python3"} {
+		if _, err := exec.LookPath(tool); err != nil {
+			t.Skipf("no %s to run the step with", tool)
+		}
+	}
+	repository, onBranch, onTag := testRepository(t)
+	script := strings.ReplaceAll(triggerScript(t, "harbor", "fetch_bedrock"), "$$", "$")
+	const stamp = "v0.0.0-lab.1.0.20260928222237-"
+	tests := []struct {
+		name       string
+		version    string
+		repository string
+		wantOut    string
+		wantErr    string
+	}{
+		{
+			name:    "a commit on a branch: noted for the build step, with its branch",
+			version: stamp + onBranch[:12],
+			wantOut: "bedrock " + stamp + onBranch[:12] + " is a commit pin on main: the next step builds it with go install.\n",
+		},
+		{
+			name:    "a commit only a tag reaches",
+			version: stamp + onTag[:12],
+			wantErr: "bedrock " + stamp + onTag[:12] + " pins commit " + onTag[:12] + ", which no branch of " + repository + " reaches: the triggers build only a commit on a branch of github.com/cccteam/ccc, as bedrock upgrade accepts; move the pin to one, or to a release.",
+		},
+		{
+			name:    "a commit the repository does not hold",
+			version: stamp + "0123456789ab",
+			wantErr: "pins commit 0123456789ab, which no branch of " + repository + " reaches",
+		},
+		{
+			name:       "a repository that cannot be read",
+			version:    stamp + onBranch[:12],
+			repository: "file://" + filepath.Join(t.TempDir(), "missing"),
+			wantErr:    "could not read the branches of file://",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			checkout, home := t.TempDir(), t.TempDir()
+			if err := os.MkdirAll(filepath.Join(checkout, "infrastructure"), 0o750); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(checkout, "infrastructure", "placement.json"), []byte(`{"bedrockVersion": "`+tt.version+`"}`), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			repo := tt.repository
+			if repo == "" {
+				repo = repository
+			}
+			cmd := exec.CommandContext(t.Context(), "bash", "-c", strings.ReplaceAll(strings.ReplaceAll(script, release.CloneURL(), repo), "/builder/home", home))
+			cmd.Dir = checkout
+			cmd.Env = append(os.Environ(), "TMPDIR="+t.TempDir())
+			out, err := cmd.CombinedOutput()
+			note, noteErr := os.ReadFile(filepath.Join(home, "bedrock.pin"))
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(string(out), tt.wantErr) {
+					t.Fatalf("the step failed = %v, want the refusal %q; output:\n%s", err, tt.wantErr, out)
+				}
+				if noteErr == nil {
+					t.Errorf("the step noted %q after refusing", note)
+				}
+
+				return
+			}
+			if err != nil {
+				t.Fatalf("the step failed: %v\n%s", err, out)
+			}
+			if string(out) != tt.wantOut {
+				t.Errorf("the step printed %q, want %q", out, tt.wantOut)
+			}
+			if string(note) != tt.version+"\n" {
+				t.Errorf("the note = %q (%v), want %q", note, noteErr, tt.version+"\n")
+			}
+		})
+	}
+}
+
+// testRepository makes a repository with one commit on its one branch, main, and one only
+// a tag reaches, and returns its clone URL and the two commits.
+func testRepository(t *testing.T) (repository, onBranch, onTag string) {
+	t.Helper()
+
+	dir := t.TempDir()
+	git := func(args ...string) string {
+		t.Helper()
+
+		cmd := exec.CommandContext(t.Context(), "git", append([]string{"-C", dir, "-c", "user.name=bedrock", "-c", "user.email=bedrock@example.com", "-c", "commit.gpgsign=false"}, args...)...)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+
+		return strings.TrimSpace(string(out))
+	}
+	git("init", "--quiet", "--initial-branch=main")
+	git("config", "uploadpack.allowFilter", "true")
+	git("commit", "--quiet", "--allow-empty", "-m", "one")
+	onBranch = git("rev-parse", "HEAD")
+	git("checkout", "--quiet", "-b", "side")
+	git("commit", "--quiet", "--allow-empty", "-m", "two")
+	onTag = git("rev-parse", "HEAD")
+	git("tag", "only-a-tag")
+	git("checkout", "--quiet", "main")
+	git("branch", "--quiet", "-D", "side")
+
+	return "file://" + dir, onBranch, onTag
 }
 
 // bareYAMLBool is the first unquoted item of a flow sequence on the line that YAML 1.1

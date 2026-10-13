@@ -265,8 +265,9 @@ resource "google_storage_bucket_iam_member" "applier_markers" {
 # Both run the same steps, declared once (local.steps) and followed by one
 # command each. The first two steps put the pinned bedrock in place: a
 # release's binary downloaded and verified against the checksum placement.json
-# records, or a commit pin built with go install in the Go image, where Go's
-# checksum database verifies it; the third runs bedrock org check; the last
+# records, or a commit pin, once git finds a branch of the repository that
+# reaches it, built with go install in the Go image, where Go's checksum
+# database verifies it; the third runs bedrock org check; the last
 # runs bedrock org plan or bedrock org apply, which read the build (its pull
 # request, its commit, _LAYER and _ENVIRONMENT) through the Cloud Build API.
 # The apply trigger also applies one layer again by hand, with no change to
@@ -285,18 +286,22 @@ locals {
   }
 
   # FetchBedrock reads the pin off placement.json in the checkout, at run
-  # time, with python3 in the gcloud image; BuildBedrock builds a commit pin
-  # in the Go image and has nothing to do for a release.
+  # time, with python3 in the gcloud image, and refuses a commit pin no branch
+  # of the repository reaches (a commits-only clone of its branches, with git);
+  # BuildBedrock builds a commit pin in the Go image and has nothing to do for
+  # a release.
   fetch_bedrock = <<-EOT
     import hashlib
     import json
     import os
     import re
+    import subprocess
     import sys
+    import tempfile
     import time
     import urllib.request
 
-    home, host = sys.argv[1], sys.argv[2]
+    home, host, repository = sys.argv[1], sys.argv[2], sys.argv[3]
     with open("placement.json", encoding="utf-8") as f:
         placement = json.load(f)
     version = placement.get("bedrockVersion", "")
@@ -304,9 +309,24 @@ locals {
     if not version:
         sys.exit("placement.json pins no bedrock (bedrockVersion): run bedrock upgrade in this repository, which records the pin and renders, and commit what it changed")
     if re.search(r"[-.][0-9]{14}-[0-9a-f]{12}\Z", version):
+        commit = version[-12:]
+        branches = tempfile.mkdtemp(prefix="bedrock-branches-")
+        cloned = subprocess.run(["git", "clone", "--quiet", "--bare", "--no-tags", "--filter=tree:0", repository, branches], capture_output=True, text=True, check=False)
+        if cloned.returncode != 0:
+            sys.exit("could not read the branches of " + repository + " to check the commit pin " + version + " against: " + cloned.stderr.strip())
+        heads = subprocess.run(["git", "-C", branches, "for-each-ref", "--format=%(refname)", "refs/heads/"], capture_output=True, text=True, check=False)
+        if heads.returncode != 0:
+            sys.exit("could not list the branches of " + repository + " to check the commit pin " + version + " against: " + heads.stderr.strip())
+        on = ""
+        for head in heads.stdout.split():
+            if subprocess.run(["git", "-C", branches, "merge-base", "--is-ancestor", commit, head], capture_output=True, check=False).returncode == 0:
+                on = head[len("refs/heads/"):]
+                break
+        if not on:
+            sys.exit("bedrock " + version + " pins commit " + commit + ", which no branch of " + repository + " reaches: the triggers build only a commit on a branch of github.com/cccteam/ccc, as bedrock upgrade accepts; move the pin to one, or to a release")
         with open(home + "/bedrock-commit", "w", encoding="utf-8") as f:
             f.write(version)
-        print("bedrock " + version + " is a commit pin: the next step builds it with go install")
+        print("bedrock " + version + " is a commit pin on " + on + ": the next step builds it with go install")
         sys.exit(0)
     if not re.fullmatch(r"[0-9a-f]{64}", digest):
         sys.exit("placement.json pins bedrock " + version + " without the checksum of its linux/amd64 binary (bedrockSha256): bedrock upgrade " + version + " records it from the release's checksums.txt")
@@ -344,7 +364,7 @@ locals {
       id         = "FetchBedrock"
       name       = "gcr.io/cloud-builders/gcloud"
       entrypoint = "python3"
-      args       = ["-c", local.fetch_bedrock, "/builder/home", "https://github.com"]
+      args       = ["-c", local.fetch_bedrock, "/builder/home", "https://github.com", "https://github.com/cccteam/ccc.git"]
       env        = []
       timeout    = "300s"
     },

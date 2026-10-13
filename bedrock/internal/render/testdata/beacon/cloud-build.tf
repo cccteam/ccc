@@ -147,11 +147,14 @@ locals {
   # from infrastructure/placement.json in the checkout when the step runs, never
   # from this text: a release pin (bedrockVersion with bedrockSha256) is
   # downloaded from its GitHub Release and verified against the checksum here;
-  # a commit pin (no checksum) is written to a file for the next step, which
-  # builds it with go install in the Go image, where Go's checksum database
-  # verifies it, and does nothing for a release pin. Every $ is written $$:
-  # Cloud Build reads $NAME as a substitution and $$ as a literal $, which the
-  # shell then expands.
+  # a commit pin (no checksum) is checked with git to be reachable from a
+  # branch of the repository (a commits-only clone of its branches, no tags,
+  # then merge-base --is-ancestor against each head; a commit no branch
+  # reaches is refused, as bedrock upgrade refuses it by hand) and written to
+  # a file for the next step, which builds it with go install in the Go image,
+  # where Go's checksum database verifies it, and does nothing for a release
+  # pin. Every $ is written $$: Cloud Build reads $NAME as a substitution and
+  # $$ as a literal $, which the shell then expands.
   fetch_bedrock        = <<-EOT
     set -eo pipefail
     pin=$$(python3 -c 'import json; p = json.load(open("infrastructure/placement.json")); print(p["bedrockVersion"], p.get("bedrockSha256") or "-")')
@@ -160,8 +163,25 @@ locals {
     sha256=$$2
     rm -f /builder/home/bedrock /builder/home/bedrock.pin
     if [ "$$sha256" = "-" ]; then
+      commit=$$(printf '%s' "$$version" | sed 's/.*-//')
+      branches=$$(mktemp -d)
+      if ! git clone --quiet --bare --no-tags --filter=tree:0 "https://github.com/cccteam/ccc.git" "$$branches"; then
+        echo "could not read the branches of https://github.com/cccteam/ccc.git to check the commit pin $$version against: see git's output above."
+        exit 1
+      fi
+      on=""
+      for head in $$(git -C "$$branches" for-each-ref --format='%(refname:short)' refs/heads/); do
+        if git -C "$$branches" merge-base --is-ancestor "$$commit" "refs/heads/$$head" 2>/dev/null; then
+          on=$$head
+          break
+        fi
+      done
+      if [ -z "$$on" ]; then
+        echo "bedrock $$version pins commit $$commit, which no branch of https://github.com/cccteam/ccc.git reaches: the triggers build only a commit on a branch of github.com/cccteam/ccc, as bedrock upgrade accepts; move the pin to one, or to a release."
+        exit 1
+      fi
       echo "$$version" > /builder/home/bedrock.pin
-      echo "bedrock $$version is a commit pin: the next step builds it with go install."
+      echo "bedrock $$version is a commit pin on $$on: the next step builds it with go install."
       exit 0
     fi
     curl -fsSL --connect-timeout 10 --max-time 60 --retry 3 -o /builder/home/bedrock "https://github.com/cccteam/ccc/releases/download/bedrock/$$version/bedrock-linux-amd64"

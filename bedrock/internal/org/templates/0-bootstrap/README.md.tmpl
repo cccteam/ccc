@@ -388,9 +388,11 @@ The steps are the trigger's, so a pull request cannot change them; a pull
 request changes only what the steps read. Each run is four steps: the first
 reads the bedrock pin off `placement.json` in the checkout (`bedrockVersion`
 and, for a release, `bedrockSha256`; `bedrock upgrade` moves it) and
-downloads the release's binary, verified against the checksum; the second
-builds the pin with `go install` when it is a commit, where Go's checksum
-database verifies it; the third runs `bedrock org check`, which refuses the
+downloads the release's binary, verified against the checksum, or for a
+commit checks with git that a branch of `cccteam/ccc` reaches it (a commit no
+branch reaches stops the run); the second builds the pin with `go install`
+when it is a commit, where Go's checksum database verifies it; the third
+runs `bedrock org check`, which refuses the
 run when a committed layer differs from what the placement renders, holds a
 `.tf` file no render produces, or holds an override file; the fourth runs
 `bedrock org plan` or `bedrock org apply`. The bedrock the run uses is the

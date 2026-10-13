@@ -21,7 +21,10 @@
 // A commit pin is the pseudo-version the Go module proxy gives a pushed commit of the
 // bedrock module (v0.0.0-lab.1.0.20260928222237-58b211dce544), with no checksum: the
 // pipeline and the triggers build it with go install, and Go's checksum database
-// verifies the module in place of a checksum in the placement. Resolve turns a
+// verifies the module in place of a checksum in the placement. A trigger's run builds a
+// commit pin only when a branch of the repository reaches the commit, which its fetch
+// step decides with git (a commits-only clone of the branches, CloneURL), as upgrade does
+// by hand; a commit no branch reaches is refused before anything is built. Resolve turns a
 // commit or a branch into that version. URL and Page name a release's assets and page and
 // are for release pins only. bedrock upgrade moves either pin through this package.
 package release
@@ -105,6 +108,13 @@ func URL(version, asset string) string {
 // Page is the release's page on GitHub.
 func Page(version string) string {
 	return githubURL + "/" + Repository + "/releases/tag/" + Tag(version)
+}
+
+// CloneURL is where git clones the repository from: what a trigger's run checks a commit
+// pin against before building it, since only a commit a branch of the repository reaches
+// is built.
+func CloneURL() string {
+	return githubURL + "/" + Repository + ".git"
 }
 
 func downloadURL(base, version, asset string) string {

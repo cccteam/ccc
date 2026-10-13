@@ -713,6 +713,12 @@ func (v *view) TriggerBedrockURL() string {
 	return release.URL("$$version", release.PipelineAsset())
 }
 
+// BedrockRepository is where a trigger-held job's first step clones the repository's
+// branches from, to check a commit pin against: only a commit a branch reaches is built.
+func (v *view) BedrockRepository() string {
+	return release.CloneURL()
+}
+
 // GoInstallEnvList is goInstallEnv with GOBIN as the items of an HCL list, for the step
 // of a trigger-held job that builds a commit pin.
 func (v *view) GoInstallEnvList() string {

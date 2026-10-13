@@ -33,7 +33,10 @@ placement pins it (`bedrockVersion`), one of two ways:
   module (`v0.0.0-lab.1.0.20260928222237-58b211dce544`), with no `bedrockSha256`. The
   pipeline and the stack's triggers build it with `go install` in a Go image pinned by
   digest, and Go's checksum database verifies the module in place of a checksum in the
-  placement. This runs bedrock from an unreleased commit, for trying a change in an
+  placement. The triggers build a commit only once git finds a branch of `cccteam/ccc`
+  that reaches it (their first step clones the repository's branches, commits only), as
+  `upgrade` checks by hand; a commit no branch reaches is refused before anything is
+  built. This runs bedrock from an unreleased commit, for trying a change in an
   application before it is released; it costs each pipeline build and each hourly sweep
   a minute or two of building.
 
@@ -569,8 +572,9 @@ The application's check runs in Cloud Build, from the stack's check trigger
 request against the default branch or a hotfix line, as the apply identity. The trigger
 holds its steps in its own text: the first reads the bedrock pin from
 `infrastructure/placement.json` in the checkout when it runs (a release downloaded from
-its GitHub Release and verified against the placement's checksum; a commit pin built with
-`go install` in the pipeline's Go image) and the next runs that bedrock's `check` in the
+its GitHub Release and verified against the placement's checksum; a commit pin checked
+with git to be on a branch of `cccteam/ccc`, then built with `go install` in the
+pipeline's Go image) and the next runs that bedrock's `check` in the
 checkout, which reads the code with Go's parser and needs no toolchain, no cloud role and
 no key. So the checker is the pipeline's, and a wording change in a newer bedrock fails no
 application's check until that application moves its pin. The same build then plans and
@@ -621,7 +625,9 @@ remedy.
   `exclude` directive is refused, since `go install` cannot build it. A commit named by
   its hash or its pseudo-version must be on a branch of `cccteam/ccc`: GitHub serves the
   commits of the repository's forks by hash too, and the proxy would fetch one, so
-  `upgrade` refuses a commit none of the repository's branches holds.
+  `upgrade` refuses a commit none of the repository's branches holds. The triggers' first
+  step makes the same check with git before building a commit pin, so a pin edited into
+  the placement by hand is refused there too.
 
 Push the commit before pinning it: the proxy knows only pushed commits, and when it is
 asked about one too soon it remembers for about 30 minutes that it did not know it.
@@ -1814,8 +1820,9 @@ The two Cloud Build triggers 0-bootstrap renders in the boot project plan and ap
 layers. Their steps live in the trigger, which a pull request cannot change: the first
 reads the bedrock pin off `placement.json` in the checkout at run time and puts that
 bedrock in place (a release's linux/amd64 binary downloaded and verified against
-`bedrockSha256`; a commit pin built with `go install` in the Go image, where Go's checksum
-database verifies it), the next runs `bedrock org check`, which refuses a `.tf` file no
+`bedrockSha256`; a commit pin, once git finds a branch of `cccteam/ccc` that reaches it,
+built with `go install` in the Go image, where Go's checksum database verifies it), the
+next runs `bedrock org check`, which refuses a `.tf` file no
 render produces, and the last runs `bedrock org plan` or `bedrock org apply`. A change to
 the steps is rendered by a new bedrock, applied by a run on the old steps, and the next run
 is the first on the new ones: the steps lag one apply behind the repository, and since the

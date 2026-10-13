@@ -327,8 +327,15 @@ func (*view) GoInstallEnvHCL() string {
 	return hclList(append([]string{"GOBIN=" + bedrockHome}, goInstallEnv...))
 }
 
+// BedrockRepository is where the first step clones the repository's branches from, to
+// check a commit pin against.
+func (*view) BedrockRepository() string {
+	return release.CloneURL()
+}
+
 // FetchBedrockScript is the first step's script, which reads the pin off placement.json
-// in the checkout; BuildBedrockScript the second's, which builds a commit pin.
+// in the checkout and checks a commit pin against the repository's branches;
+// BuildBedrockScript the second's, which builds a commit pin.
 func (*view) FetchBedrockScript() string {
 	return stepScript(fetchBedrockScript)
 }

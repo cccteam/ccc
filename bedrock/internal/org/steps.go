@@ -52,21 +52,28 @@ const (
 )
 
 // fetchBedrockScript is the FetchBedrock step, run by python3 in the gcloud image with
-// the home directory and the download host as its arguments. It reads the pin off
-// placement.json in the checkout. A release: the linux/amd64 binary of the release is
-// downloaded from GitHub and verified against bedrockSha256, as the application
-// pipeline's first step does with curl and sha256sum. A commit pin: the version is left
-// in a note for the next step, which builds it. No pin: the run stops here and says what
-// records one. The script holds no $, which Cloud Build would read as a substitution.
+// the home directory, the download host and the repository's clone URL as its arguments.
+// It reads the pin off placement.json in the checkout. A release: the linux/amd64 binary
+// of the release is downloaded from GitHub and verified against bedrockSha256, as the
+// application pipeline's first step does with curl and sha256sum. A commit pin: the
+// commit must be reachable from a branch of the repository, decided with git (a
+// commits-only clone of the repository's branches, no tags, then merge-base
+// --is-ancestor against each head), as bedrock upgrade decides by hand; a commit no
+// branch reaches, or a repository that cannot be read, stops the run, and otherwise the
+// version is left in a note for the next step, which builds it. No pin: the run stops
+// here and says what records one. The script holds no $, which Cloud Build would read
+// as a substitution.
 const fetchBedrockScript = `import hashlib
 import json
 import os
 import re
+import subprocess
 import sys
+import tempfile
 import time
 import urllib.request
 
-home, host = sys.argv[1], sys.argv[2]
+home, host, repository = sys.argv[1], sys.argv[2], sys.argv[3]
 with open("placement.json", encoding="utf-8") as f:
     placement = json.load(f)
 version = placement.get("bedrockVersion", "")
@@ -74,9 +81,24 @@ digest = placement.get("bedrockSha256", "")
 if not version:
     sys.exit("placement.json pins no bedrock (bedrockVersion): run bedrock upgrade in this repository, which records the pin and renders, and commit what it changed")
 if re.search(r"[-.][0-9]{14}-[0-9a-f]{12}\Z", version):
+    commit = version[-12:]
+    branches = tempfile.mkdtemp(prefix="bedrock-branches-")
+    cloned = subprocess.run(["git", "clone", "--quiet", "--bare", "--no-tags", "--filter=tree:0", repository, branches], capture_output=True, text=True, check=False)
+    if cloned.returncode != 0:
+        sys.exit("could not read the branches of " + repository + " to check the commit pin " + version + " against: " + cloned.stderr.strip())
+    heads = subprocess.run(["git", "-C", branches, "for-each-ref", "--format=%(refname)", "refs/heads/"], capture_output=True, text=True, check=False)
+    if heads.returncode != 0:
+        sys.exit("could not list the branches of " + repository + " to check the commit pin " + version + " against: " + heads.stderr.strip())
+    on = ""
+    for head in heads.stdout.split():
+        if subprocess.run(["git", "-C", branches, "merge-base", "--is-ancestor", commit, head], capture_output=True, check=False).returncode == 0:
+            on = head[len("refs/heads/"):]
+            break
+    if not on:
+        sys.exit("bedrock " + version + " pins commit " + commit + ", which no branch of " + repository + " reaches: the triggers build only a commit on a branch of github.com/cccteam/ccc, as bedrock upgrade accepts; move the pin to one, or to a release")
     with open(home + "/bedrock-commit", "w", encoding="utf-8") as f:
         f.write(version)
-    print("bedrock " + version + " is a commit pin: the next step builds it with go install")
+    print("bedrock " + version + " is a commit pin on " + on + ": the next step builds it with go install")
     sys.exit(0)
 if not re.fullmatch(r"[0-9a-f]{64}", digest):
     sys.exit("placement.json pins bedrock " + version + " without the checksum of its linux/amd64 binary (bedrockSha256): bedrock upgrade " + version + " records it from the release's checksums.txt")

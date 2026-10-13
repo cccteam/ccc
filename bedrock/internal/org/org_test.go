@@ -451,6 +451,17 @@ func TestGithubAppSteps(t *testing.T) {
 // bedrock made in the environment project is removed and destroyed; and the outputs carry
 // the App ID and the pinned version's resource name from placement.json, with no retired
 // tfvars value read anywhere.
+// retiredAttributes is every 2-env/terraform.tfvars attribute org check reports as
+// retired, whose value placement.json carries now.
+func retiredAttributes() []string {
+	names := make([]string, 0, len(retiredValues))
+	for _, v := range retiredValues {
+		names = append(names, v.attribute)
+	}
+
+	return names
+}
+
 func TestDeployerKeyGrants(t *testing.T) {
 	t.Parallel()
 
@@ -497,9 +508,9 @@ func TestDeployerKeyGrants(t *testing.T) {
 			absent: []string{"var.github_"},
 		},
 		{
-			name:   "no retired tfvars value is declared or read",
+			name:   "no value org check reports as retired is declared",
 			path:   "2-env/variables.tf",
-			absent: []string{"github_deployer_app_id", "github_deployer_key_secret_versions", "github_app_installation_id", "github_oauth_token_secret_version"},
+			absent: retiredAttributes(),
 		},
 	}
 	for _, tt := range tests {
@@ -2265,7 +2276,7 @@ func TestTriggers(t *testing.T) {
 				"    url = host + \"/cccteam/ccc/releases/download/bedrock/\" + version + \"/bedrock-linux-amd64\"\n",
 				"    if hashlib.sha256(data).hexdigest() != digest:\n",
 				"    go install -ldflags=\"-s -w\" github.com/cccteam/ccc/bedrock@\"$$(cat /builder/home/bedrock-commit)\"\n",
-				"    {\n      id         = \"FetchBedrock\"\n      name       = \"gcr.io/cloud-builders/gcloud\"\n      entrypoint = \"python3\"\n      args       = [\"-c\", local.fetch_bedrock, \"/builder/home\", \"https://github.com\"]\n      env        = []\n      timeout    = \"300s\"\n    },\n",
+				"    {\n      id         = \"FetchBedrock\"\n      name       = \"gcr.io/cloud-builders/gcloud\"\n      entrypoint = \"python3\"\n      args       = [\"-c\", local.fetch_bedrock, \"/builder/home\", \"https://github.com\", \"https://github.com/cccteam/ccc.git\"]\n      env        = []\n      timeout    = \"300s\"\n    },\n",
 				"    {\n      id         = \"BuildBedrock\"\n      name       = \"cgr.dev/chainguard/go@sha256:2c20827746d752c1f18989847956637a0dc979c42507f4059e1d9559ee7733af\"\n      entrypoint = \"sh\"\n      args       = [\"-c\", local.build_bedrock]\n      env        = [\"GOBIN=/builder/home\", \"CGO_ENABLED=0\", \"GOTOOLCHAIN=local\", \"GOFLAGS=-trimpath\", \"GOPATH=/tmp/go\", \"GOCACHE=/tmp/go-build\", \"GOMODCACHE=/tmp/go-mod\", \"GOPROXY=https://proxy.golang.org\", \"GOSUMDB=sum.golang.org\", \"GONOSUMDB=\", \"GOPRIVATE=\", \"GOINSECURE=\"]\n      timeout    = \"600s\"\n    },\n",
 				"    {\n      id         = \"Check\"\n      name       = \"ghcr.io/opentofu/opentofu:1.12.6\"\n      entrypoint = local.bedrock\n      args       = [\"org\", \"check\"]\n      env        = []\n      timeout    = \"600s\"\n    },\n  ]\n",
 				"    dynamic \"step\" {\n      for_each = local.steps\n      content {\n        id         = step.value.id\n        name       = step.value.name\n        entrypoint = step.value.entrypoint\n        args       = step.value.args\n        env        = step.value.env\n        timeout    = step.value.timeout\n      }\n    }\n",

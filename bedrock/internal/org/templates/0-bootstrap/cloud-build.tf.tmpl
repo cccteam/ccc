@@ -261,8 +261,9 @@ resource "google_storage_bucket_iam_member" "applier_markers" {
 # Both run the same steps, declared once (local.steps) and followed by one
 # command each. The first two steps put the pinned bedrock in place: a
 # release's binary downloaded and verified against the checksum placement.json
-# records, or a commit pin built with go install in the Go image, where Go's
-# checksum database verifies it; the third runs bedrock org check; the last
+# records, or a commit pin, once git finds a branch of the repository that
+# reaches it, built with go install in the Go image, where Go's checksum
+# database verifies it; the third runs bedrock org check; the last
 # runs bedrock org plan or bedrock org apply, which read the build (its pull
 # request, its commit, _LAYER and _ENVIRONMENT) through the Cloud Build API.
 # The apply trigger also applies one layer again by hand, with no change to
@@ -281,8 +282,10 @@ locals {
   }
 
   # FetchBedrock reads the pin off placement.json in the checkout, at run
-  # time, with python3 in the gcloud image; BuildBedrock builds a commit pin
-  # in the Go image and has nothing to do for a release.
+  # time, with python3 in the gcloud image, and refuses a commit pin no branch
+  # of the repository reaches (a commits-only clone of its branches, with git);
+  # BuildBedrock builds a commit pin in the Go image and has nothing to do for
+  # a release.
   fetch_bedrock = <<-EOT
 {{.FetchBedrockScript}}
   EOT
@@ -295,7 +298,7 @@ locals {
       id         = "FetchBedrock"
       name       = "{{.GcloudImage}}"
       entrypoint = "python3"
-      args       = ["-c", local.fetch_bedrock, "/builder/home", "https://github.com"]
+      args       = ["-c", local.fetch_bedrock, "/builder/home", "https://github.com", "{{.BedrockRepository}}"]
       env        = []
       timeout    = "{{.FetchSeconds}}s"
     },

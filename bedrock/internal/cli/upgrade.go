@@ -62,8 +62,9 @@ verifies it against Go's checksum database. The commit must be pushed first: the
 pushed commits, and remembers for about 30 minutes that it did not know one asked about too soon.
 A commit a release tag names moves to that release. A commit named by its hash or its
 pseudo-version must be on a branch of github.com/cccteam/ccc, since GitHub also serves the
-commits of the repository's forks by hash. A commit pin needs Go on this machine: the
-commit is built with go install into the user's cache directory to render with.
+commits of the repository's forks by hash; the triggers' first step checks the same with git
+before building a commit pin. A commit pin needs Go on this machine: the commit is built
+with go install into the user's cache directory to render with.
 
 Either way the stack and the pipeline are then rendered with that bedrock, so the committed files
 come from the bedrock the pin names. Commit placement.json with the rendered files: from that

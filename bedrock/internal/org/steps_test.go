@@ -58,9 +58,12 @@ func TestStepsMatchPipeline(t *testing.T) {
 
 // TestFetchBedrockScript runs the FetchBedrock step's script as the trigger does, with
 // python3 over a checkout holding placement.json: a release pin is downloaded from the
-// host given, verified against bedrockSha256 and run; a commit pin leaves the note the
-// build step reads and nothing else; no pin, a pin without its checksum and a download
-// that does not match are refused, each saying what records the pin.
+// host given, verified against bedrockSha256 and run; a commit pin on a branch of the
+// repository given leaves the note the build step reads, with its branch named, and
+// nothing else; a commit only a tag reaches, one the repository does not hold, a
+// repository that cannot be read, no pin, a pin without its checksum and a download that
+// does not match are refused, each saying what records the pin or what was not read, and
+// a refusal leaves no note and no binary.
 func TestFetchBedrockScript(t *testing.T) {
 	t.Parallel()
 
@@ -68,6 +71,11 @@ func TestFetchBedrockScript(t *testing.T) {
 	if err != nil {
 		t.Skip("no python3 to run the step with")
 	}
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("no git to run the step with")
+	}
+	repository, onBranch, onTag := testRepository(t)
+	const stamp = "v0.0.0-lab.1.0.20260928222237-"
 	const binary = "#!/bin/sh\necho \"bedrock v0.5.0 (a stand-in binary)\"\n"
 	digest := sha256.Sum256([]byte(binary))
 	sum := hex.EncodeToString(digest[:])
@@ -81,12 +89,13 @@ func TestFetchBedrockScript(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 	tests := []struct {
-		name      string
-		placement string
-		wantOut   string
-		wantErr   string
-		wantNote  string
-		wantRun   bool
+		name       string
+		placement  string
+		repository string
+		wantOut    string
+		wantErr    string
+		wantNote   string
+		wantRun    bool
 	}{
 		{
 			name:      "a release pin: downloaded, verified and run",
@@ -95,10 +104,26 @@ func TestFetchBedrockScript(t *testing.T) {
 			wantRun:   true,
 		},
 		{
-			name:      "a commit pin: the note for the build step",
-			placement: `{"bedrockVersion": "v0.0.0-lab.1.0.20260928222237-58b211dce544"}`,
-			wantOut:   "bedrock v0.0.0-lab.1.0.20260928222237-58b211dce544 is a commit pin: the next step builds it with go install\n",
-			wantNote:  "v0.0.0-lab.1.0.20260928222237-58b211dce544",
+			name:      "a commit pin on a branch: the note for the build step, with its branch",
+			placement: `{"bedrockVersion": "` + stamp + onBranch[:12] + `"}`,
+			wantOut:   "bedrock " + stamp + onBranch[:12] + " is a commit pin on main: the next step builds it with go install\n",
+			wantNote:  stamp + onBranch[:12],
+		},
+		{
+			name:      "a commit pin only a tag reaches",
+			placement: `{"bedrockVersion": "` + stamp + onTag[:12] + `"}`,
+			wantErr:   "bedrock " + stamp + onTag[:12] + " pins commit " + onTag[:12] + ", which no branch of " + repository + " reaches: the triggers build only a commit on a branch of github.com/cccteam/ccc, as bedrock upgrade accepts; move the pin to one, or to a release",
+		},
+		{
+			name:      "a commit pin the repository does not hold",
+			placement: `{"bedrockVersion": "` + stamp + `0123456789ab"}`,
+			wantErr:   "pins commit 0123456789ab, which no branch of " + repository + " reaches",
+		},
+		{
+			name:       "a commit pin, and a repository that cannot be read",
+			placement:  `{"bedrockVersion": "` + stamp + onBranch[:12] + `"}`,
+			repository: "file://" + filepath.Join(t.TempDir(), "missing"),
+			wantErr:    "could not read the branches of file://",
 		},
 		{
 			name:      "no pin",
@@ -124,8 +149,13 @@ func TestFetchBedrockScript(t *testing.T) {
 			if err := os.WriteFile(filepath.Join(checkout, "placement.json"), []byte(tt.placement), 0o600); err != nil {
 				t.Fatal(err)
 			}
-			cmd := exec.CommandContext(t.Context(), python, "-I", "-c", fetchBedrockScript, home, srv.URL)
+			repo := tt.repository
+			if repo == "" {
+				repo = repository
+			}
+			cmd := exec.CommandContext(t.Context(), python, "-I", "-c", fetchBedrockScript, home, srv.URL, repo)
 			cmd.Dir = checkout
+			cmd.Env = append(os.Environ(), "TMPDIR="+t.TempDir())
 			out, err := cmd.CombinedOutput()
 			if tt.wantErr != "" {
 				if err == nil || !strings.Contains(string(out), tt.wantErr) {
@@ -133,6 +163,9 @@ func TestFetchBedrockScript(t *testing.T) {
 				}
 				if _, err := os.Stat(filepath.Join(home, "bedrock")); !os.IsNotExist(err) {
 					t.Errorf("the step left a binary after refusing: %v", err)
+				}
+				if note, err := os.ReadFile(filepath.Join(home, "bedrock-commit")); err == nil {
+					t.Errorf("the step left a commit note after refusing: %q", note)
 				}
 
 				return
@@ -155,6 +188,37 @@ func TestFetchBedrockScript(t *testing.T) {
 			}
 		})
 	}
+}
+
+// testRepository makes a repository with one commit on its one branch, main, and one only
+// a tag reaches, and returns its clone URL and the two commits.
+func testRepository(t *testing.T) (repository, onBranch, onTag string) {
+	t.Helper()
+
+	dir := t.TempDir()
+	git := func(args ...string) string {
+		t.Helper()
+
+		cmd := exec.CommandContext(t.Context(), "git", append([]string{"-C", dir, "-c", "user.name=bedrock", "-c", "user.email=bedrock@example.com", "-c", "commit.gpgsign=false"}, args...)...)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+
+		return strings.TrimSpace(string(out))
+	}
+	git("init", "--quiet", "--initial-branch=main")
+	git("config", "uploadpack.allowFilter", "true")
+	git("commit", "--quiet", "--allow-empty", "-m", "one")
+	onBranch = git("rev-parse", "HEAD")
+	git("checkout", "--quiet", "-b", "side")
+	git("commit", "--quiet", "--allow-empty", "-m", "two")
+	onTag = git("rev-parse", "HEAD")
+	git("tag", "only-a-tag")
+	git("checkout", "--quiet", "main")
+	git("branch", "--quiet", "-D", "side")
+
+	return "file://" + dir, onBranch, onTag
 }
 
 // TestBuildBedrockScript runs the BuildBedrock step's script as the trigger does (the
