@@ -91,13 +91,17 @@ type deps struct {
 
 // orgClients are what the org commands open in Google Cloud: Cloud Resource Manager's
 // IAM policy read (org check's owner report), the API Keys API's list (org check's API
-// key report), Cloud Domains' registration read (org check's registration report), and
-// the permission tests on the organization and the billing account (org preflight).
+// key report) and its writes as a layer identity (org apply), Cloud Domains' registration
+// read (org check's registration report), and the permission tests on the organization
+// and the billing account (org preflight).
 type orgClients struct {
 	policies      org.PolicyReaderFunc
 	keys          org.KeyListerFunc
 	registrations domain.RegistrationReaderFunc
 	permissions   org.PermissionTesterFunc
+	// keysAs opens the API Keys API as an impersonated identity, for org apply's
+	// restriction of Firebase's browser key as the environment's layer identity.
+	keysAs org.KeyClientAsFunc
 }
 
 func newRoot() *cobra.Command {
@@ -105,7 +109,7 @@ func newRoot() *cobra.Command {
 		domains:     domain.NewCloudDomains,
 		secrets:     secret.NewSecretManager,
 		projects:    where.NewProjects,
-		org:         &orgClients{policies: org.NewPolicyReader, keys: org.NewKeyLister, registrations: domain.NewRegistrationReader, permissions: org.NewPermissionTester},
+		org:         &orgClients{policies: org.NewPolicyReader, keys: org.NewKeyLister, registrations: domain.NewRegistrationReader, permissions: org.NewPermissionTester, keysAs: org.NewKeyClientAs},
 		github:      github.Open,
 		interactive: stdinIsTerminal,
 		readSecret:  readHidden,
@@ -394,7 +398,7 @@ func (d deps) model(appDir, placement, stackDir string) (*derive.Model, error) {
 
 // pinned refuses a placement that pins no bedrock, and one that pins another bedrock
 // than the one running when that one is held to its pin (a release, or a commit installed
-// with go install): the pipeline and the infrastructure check run the pinned one, so the
+// with go install): the pipeline and the triggers run the pinned one, so the
 // committed files must come from it. A build from a checkout, at any commit, and (devel)
 // are nobody's pin and render any pin.
 func (d deps) pinned(p *derive.Placement, placement string) error {

@@ -2,28 +2,26 @@
 # Cloud Build, second generation: the GitHub connection and the repository
 # links
 #
-# One connection per environment project, authorized once. The Cloud Build
-# GitHub App is installed on the imp-example organization (one
-# installation ID for every environment), and the connection proves it may act
-# for that installation with a GitHub OAuth token held in Secret Manager. That
-# token is produced by a browser step that cannot be scripted: in the tst
-# project's Cloud Build console, Repositories > Create host connection >
-# GitHub, authorize as the machine account imp-machine. The console writes
-# the token as a regional secret in the tst project, in the connection's
-# region, and points the connection at its latest version; the values file
-# pins version 1 instead, so a re-authorization is a visible change here
-# rather than a silent one. That one version is then reused
-# by the stg and prd connections, so the browser step happens once per
-# organization rather than once per environment; the tst apply grants every
-# environment's Cloud Build service agent accessor on the secret.
+# One connection per environment project. The Cloud Build GitHub App is
+# installed on the imp-example organization (one installation ID for
+# every connection), and the connection proves it may act for that
+# installation with a GitHub OAuth token held in Secret Manager. That token is
+# produced once per organization by a browser step that cannot be scripted,
+# in the boot project's Cloud Build console, signed in to GitHub as the
+# machine account imp-machine, before the first apply of 0-bootstrap
+# (0-bootstrap/README.md, "The Cloud Build GitHub authorization"). The console
+# writes the token as a regional secret in the boot project, and placement.json
+# records the installation and the token secret's version
+# (cloudBuildInstallationId, cloudBuildTokenSecretVersion), which every
+# connection is rendered from: the boot project's, which the layers' triggers
+# watch this repository through, and each environment's. 0-bootstrap grants
+# this project's Cloud Build service agent the token's read, by the project
+# number placement.json records (projectNumbers).
 #
-# Apply order: tst first (it makes the grants), then stg and prd.
-#
-# Until the browser step has run, github_app_installation_id and
-# github_oauth_token_secret_version stay unset and everything below but the
-# service agent is skipped: the environment (identities, registries, records
-# bucket, the tst instance) applies without its connection, and the
-# application layer's triggers wait on it.
+# Until the browser step has run, placement.json records neither value and
+# everything below but the service agent is skipped: the environment
+# (identities, registries, records bucket, the tst instance) applies without
+# its connection, and the application layer's triggers wait on it.
 # ---------------------------------------------------------------------------
 
 # The Cloud Build service agent is the identity that reads the token. It is
@@ -36,39 +34,6 @@ resource "google_project_service_identity" "cloudbuild" {
   service = "cloudbuild.googleapis.com"
 }
 
-# tst only: the token secret lives here, so this apply is the one that can set
-# its policy (secretContainerAdmin carries secrets.setIamPolicy). One grant per
-# environment project's Cloud Build service agent, addressed by project
-# number from 1-org.
-locals {
-  github_token_readers = {
-    for env, number in local.org.project_numbers : env => number
-    if local.connected && local.is_tst && contains(["tst", "stg", "prd"], env)
-  }
-}
-
-# The console's host-connection flow writes the token as a regional secret in
-# the connection's region, and a regional secret has its own IAM resource.
-resource "google_secret_manager_regional_secret_iam_member" "github_token_accessor" {
-  for_each = local.github_token_regional ? local.github_token_readers : {}
-
-  project   = local.github_token_project
-  location  = local.github_token_location
-  secret_id = local.github_token_secret
-  role      = "roles/secretmanager.secretAccessor"
-  member    = "serviceAccount:service-${each.value}@gcp-sa-cloudbuild.iam.gserviceaccount.com"
-}
-
-# A token added by hand as a global secret (README) is granted the same way.
-resource "google_secret_manager_secret_iam_member" "github_token_accessor" {
-  for_each = local.github_token_regional ? {} : local.github_token_readers
-
-  project   = local.github_token_project
-  secret_id = local.github_token_secret
-  role      = "roles/secretmanager.secretAccessor"
-  member    = "serviceAccount:service-${each.value}@gcp-sa-cloudbuild.iam.gserviceaccount.com"
-}
-
 resource "google_cloudbuildv2_connection" "github" {
   count = local.connected ? 1 : 0
 
@@ -77,18 +42,34 @@ resource "google_cloudbuildv2_connection" "github" {
   name     = "${local.name}-${local.region_code}-github"
 
   github_config {
-    app_installation_id = var.github_app_installation_id
+    app_installation_id = local.cloud_build_installation_id
 
     authorizer_credential {
-      oauth_token_secret_version = var.github_oauth_token_secret_version
+      oauth_token_secret_version = local.cloud_build_token_secret_version
     }
   }
 
-  depends_on = [
-    google_project_service_identity.cloudbuild,
-    google_secret_manager_secret_iam_member.github_token_accessor,
-    google_secret_manager_regional_secret_iam_member.github_token_accessor,
-  ]
+  depends_on = [google_project_service_identity.cloudbuild]
+}
+
+# The token's accessor grants an earlier bedrock made from tst, when the token
+# secret lived there, are retired: 0-bootstrap grants on the secret in the
+# boot project now. Taken out of the state; the secret they named is gone
+# with the old connection.
+removed {
+  from = google_secret_manager_regional_secret_iam_member.github_token_accessor
+
+  lifecycle {
+    destroy = false
+  }
+}
+
+removed {
+  from = google_secret_manager_secret_iam_member.github_token_accessor
+
+  lifecycle {
+    destroy = false
+  }
 }
 
 # The pipeline mints a short-lived GitHub token from the connection (the tag
@@ -105,6 +86,21 @@ resource "google_cloudbuildv2_connection_iam_member" "deploy_read_token" {
   name     = google_cloudbuildv2_connection.github[0].name
   role     = "roles/cloudbuild.readTokenAccessor"
   member   = google_service_account.deploy[each.key].member
+}
+
+# In tst the application stack's own triggers (the check trigger, the
+# pull-request stack trigger and the sweep) run as the apply identity and mint
+# the same token: the check trigger posts its plans on the pull request, the
+# stack job reads the /gcbrun comment, the sweep asks GitHub which pull
+# requests are closed.
+resource "google_cloudbuildv2_connection_iam_member" "apply_read_token" {
+  for_each = local.connected && local.is_tst ? local.apps : toset([])
+
+  project  = local.project_id
+  location = google_cloudbuildv2_connection.github[0].location
+  name     = google_cloudbuildv2_connection.github[0].name
+  role     = "roles/cloudbuild.readTokenAccessor"
+  member   = google_service_account.apply[each.key].member
 }
 
 # The repository link is per application and is registration, not

@@ -7,9 +7,10 @@ variable "boot_layer_roles" {
   description = "Organization-level roles granted to the boot layer identity. The gcloud seed in this layer's README grants the same list; change both together."
   type        = list(string)
   default = [
+    "roles/cloudbuild.builds.editor",          # the two triggers that plan and apply the layers (cloud-build.tf)
+    "roles/cloudbuild.connectionAdmin",        # the connection and the repository link the triggers watch (cloud-build.tf)
     "roles/iam.organizationRoleAdmin",         # the custom roles this layer creates (project updater, state bucket policy admin)
-    "roles/iam.serviceAccountAdmin",           # the org layer identity's service account, and the federation bindings on both identities
-    "roles/iam.workloadIdentityPoolAdmin",     # the boot project's identity pool and provider for the layers workflow (github.tf)
+    "roles/iam.serviceAccountAdmin",           # the org layer identity, the two runner identities, and the grants on each
     "roles/resourcemanager.folderAdmin",       # the terraform folder
     "roles/resourcemanager.organizationAdmin", # org-level IAM bindings for the org layer identity
     "roles/resourcemanager.projectCreator",    # the boot project
@@ -25,7 +26,7 @@ variable "boot_project_id" {
 }
 
 variable "github_default_branch" {
-  description = "The default branch of the infrastructure repository, from which alone the layers workflow applies: the identity provider maps a token of a push to it, or of a run started from it, to apply (github.tf)."
+  description = "The default branch of the infrastructure repository: the plan trigger runs on a pull request into it, the apply trigger on a push to it (cloud-build.tf)."
   type        = string
   default     = "master"
 }
@@ -37,7 +38,7 @@ variable "github_organization" {
 }
 
 variable "infrastructure_repository" {
-  description = "This repository's name under the GitHub organization: the one repository whose workflow tokens the boot project's identity provider trusts (github.tf)."
+  description = "This repository's name under the GitHub organization: the repository the boot project's connection links and the triggers watch (cloud-build.tf)."
   type        = string
   default     = "imp-impulse-infrastructure"
 }

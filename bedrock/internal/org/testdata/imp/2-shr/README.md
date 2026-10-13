@@ -2,7 +2,7 @@
 
 The shared services project: the container registry. One Docker repository
 per application, and the grants that let each application's pipeline push and
-each environment's Cloud Run pull. Applied by the layers workflow as
+each environment's Cloud Run pull. Applied by the apply trigger's run as
 `imp-shr-gbl-tofu`, planned on a pull request as `imp-shr-gbl-plan`.
 
 ## What it creates
@@ -60,9 +60,10 @@ and an apply order nobody can see in the code.
 
 ## Applying
 
-By the layers workflow (`.github/workflows/layers.yml`), after `1-org` has been applied:
-a pull request that changes this directory plans it as the plan identity and
-posts the plan, and the merge applies it as the layer identity. Both hold
+By the Cloud Build triggers (`0-bootstrap/README.md`, "The Cloud Build
+triggers"), after `1-org` has been applied: a pull request that changes this
+directory plans it as the plan identity and posts the plan, and the merge
+applies it as the layer identity. Both hold
 their state-bucket grants from `1-org` (the list, `2-shr/` and the `1-org/`
 objects it reads). The first `init` writes `.terraform.lock.hcl`; commit it.
 

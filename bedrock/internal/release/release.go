@@ -6,7 +6,7 @@
 // release-please, and it is made in this order. release-please creates the tag at the
 // release commit and a draft release on it. A job of the same release-please run builds
 // the tool at the tag, one static binary per platform it runs on (bedrock-linux-amd64,
-// which the pipelines and the infrastructure workflows run; bedrock-linux-arm64 and
+// which the pipelines and the stack and layer triggers run; bedrock-linux-arm64 and
 // bedrock-darwin-arm64 for developer machines), and uploads them to the draft with
 // checksums.txt, the SHA-256 of each in the format sha256sum reads. It then checks the
 // draft's assets against checksums.txt and the digests GitHub reports, and publishes the
@@ -15,13 +15,16 @@
 // are on it.
 //
 // A release pin is the version and the linux/amd64 checksum; the rendered pipeline
-// downloads that binary at its first step and the rendered infrastructure workflow at its
-// own, and both verify it against the checksum before running it.
+// downloads that binary at its first step and the rendered triggers at their own, and all
+// verify it against the checksum before running it.
 //
 // A commit pin is the pseudo-version the Go module proxy gives a pushed commit of the
 // bedrock module (v0.0.0-lab.1.0.20260928222237-58b211dce544), with no checksum: the
-// pipeline and the infrastructure workflow build it with go install, and Go's checksum
-// database verifies the module in place of a checksum in the placement. Resolve turns a
+// pipeline and the triggers build it with go install, and Go's checksum database
+// verifies the module in place of a checksum in the placement. A trigger's run builds a
+// commit pin only when a branch of the repository reaches the commit, which its fetch
+// step decides with git (a commits-only clone of the branches, CloneURL), as upgrade does
+// by hand; a commit no branch reaches is refused before anything is built. Resolve turns a
 // commit or a branch into that version. URL and Page name a release's assets and page and
 // are for release pins only. bedrock upgrade moves either pin through this package.
 package release
@@ -59,8 +62,7 @@ const (
 	// ChecksumsFile is the asset listing the SHA-256 of every binary of a release, one
 	// line each, as sha256sum writes and reads them: <hex>  <name>.
 	ChecksumsFile = "checksums.txt"
-	// PipelineOS is the operating system the pipeline and the infrastructure workflow
-	// run the tool on, and PipelineArch its architecture: the binary whose checksum the
+	// PipelineOS is the operating system the pipeline and the triggers run the tool on, and PipelineArch its architecture: the binary whose checksum the
 	// placement pins.
 	PipelineOS = "linux"
 	// PipelineArch is the architecture beside PipelineOS.
@@ -93,7 +95,7 @@ func Asset(goos, goarch string) string {
 	return Name + "-" + goos + "-" + goarch
 }
 
-// PipelineAsset is the binary the pipeline and the infrastructure workflow run.
+// PipelineAsset is the binary the pipeline and the triggers run.
 func PipelineAsset() string {
 	return Asset(PipelineOS, PipelineArch)
 }
@@ -106,6 +108,13 @@ func URL(version, asset string) string {
 // Page is the release's page on GitHub.
 func Page(version string) string {
 	return githubURL + "/" + Repository + "/releases/tag/" + Tag(version)
+}
+
+// CloneURL is where git clones the repository from: what a trigger's run checks a commit
+// pin against before building it, since only a commit a branch of the repository reaches
+// is built.
+func CloneURL() string {
+	return githubURL + "/" + Repository + ".git"
 }
 
 func downloadURL(base, version, asset string) string {

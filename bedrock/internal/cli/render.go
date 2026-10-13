@@ -36,8 +36,11 @@ infrastructure directory, else from the working directory; --app overrides.
 The stack's .tf files and its README are owned: render rewrites them every time, and each
 says in a comment which declaration it comes from. So are the files at the application
 root: the pipeline, cloudbuild.yaml and cloudbuild-sweep.yaml, which Cloud Build reads there,
-and the generate-time step, cmd/generate/bedrock.go, which runs the migration renumber before
-the application's generators. The pipeline is where
+the release and operations workflows, and the generate-time step, cmd/generate/bedrock.go,
+which runs the migration renumber before the application's generators. A file bedrock owned
+once and renders no more (the infrastructure workflow, .github/workflows/infrastructure.yml,
+whose check runs in Cloud Build from the stack's check trigger now) is removed when it is
+found, and render says so. The pipeline is where
 the deploy sequence is bedrock's, and an application customizes it through hooks
 (infrastructure/hooks/<stage>.sh) and the substitutions declared in its placement values,
 never by editing the file. terraform.tfvars is seeded: written when absent, then a person's,
@@ -88,6 +91,9 @@ placement is read from --placement, or from placement.json in the stack director
 			}
 			if len(written.Kept) > 0 {
 				fmt.Fprintf(cmd.OutOrStdout(), "Kept %s as it was.\n", strings.Join(written.Kept, ", "))
+			}
+			for _, retired := range written.Removed {
+				fmt.Fprintf(cmd.OutOrStdout(), "Removed %s from %s: bedrock no longer renders it, and %s.\n", retired.Path, appDir, retired.Replacement)
 			}
 
 			return nil

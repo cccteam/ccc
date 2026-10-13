@@ -7,16 +7,15 @@ import (
 	"testing"
 )
 
-// TestSecretPlace: each organization secret's container is named as its layer names it,
-// in the project the placement records for it; a project the placement does not record
-// yet is refused with the key to record.
+// TestSecretPlace: each organization secret's container is named as 0-bootstrap names
+// it, in the boot project the placement records; a boot project not recorded yet is
+// refused with the key to record.
 func TestSecretPlace(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
 		name          string
 		secret        string
-		env           string
 		projects      map[string]string
 		wantProject   string
 		wantContainer string
@@ -30,12 +29,11 @@ func TestSecretPlace(t *testing.T) {
 			wantContainer: "ex-boot-gbl-github-infrastructure-key",
 		},
 		{
-			name:          "the deployer key, in the environment's project",
+			name:          "the deployer key, in the boot project too",
 			secret:        DeployerKey,
-			env:           "stg",
 			projects:      map[string]string{"boot": "ex-boot-gbl-core-a1b2", "stg": "ex-stg-gbl-core-3c4d"},
-			wantProject:   "ex-stg-gbl-core-3c4d",
-			wantContainer: "ex-stg-gbl-github-deployer-key",
+			wantProject:   "ex-boot-gbl-core-a1b2",
+			wantContainer: "ex-boot-gbl-github-deployer-key",
 		},
 		{
 			name:    "the boot project not recorded yet",
@@ -43,11 +41,10 @@ func TestSecretPlace(t *testing.T) {
 			wantErr: "placement.json records no project for boot (projects.boot): record the seed's value there, or pass --project",
 		},
 		{
-			name:     "the environment's project not recorded yet",
+			name:     "the boot project not recorded yet, for the deployer key",
 			secret:   DeployerKey,
-			env:      "prd",
-			projects: map[string]string{"boot": "ex-boot-gbl-core-a1b2"},
-			wantErr:  "placement.json records no project for prd (projects.prd): record 1-org's project_ids value there, or pass --project",
+			projects: map[string]string{"prd": "ex-prd-gbl-core-5e6f"},
+			wantErr:  "placement.json records no project for boot (projects.boot)",
 		},
 	}
 	for _, tt := range tests {
@@ -55,7 +52,7 @@ func TestSecretPlace(t *testing.T) {
 			t.Parallel()
 
 			p := &Placement{Prefix: "ex", Projects: tt.projects}
-			project, err := p.SecretProject(tt.secret, tt.env)
+			project, err := p.SecretProject()
 			if tt.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 					t.Fatalf("SecretProject() error = %v, wantErr %q", err, tt.wantErr)
@@ -69,8 +66,38 @@ func TestSecretPlace(t *testing.T) {
 			if project != tt.wantProject {
 				t.Errorf("SecretProject() = %q, want %q", project, tt.wantProject)
 			}
-			if got := p.SecretContainer(tt.secret, tt.env); got != tt.wantContainer {
+			if got := p.SecretContainer(tt.secret); got != tt.wantContainer {
 				t.Errorf("SecretContainer() = %q, want %q", got, tt.wantContainer)
+			}
+		})
+	}
+}
+
+// TestSecretVersionNames: the pinned versions' resource names, in the boot project,
+// empty until pinned or while the boot project is not recorded.
+func TestSecretVersionNames(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		placement Placement
+		want      string
+	}{
+		{name: "nothing pinned", placement: Placement{Prefix: "ex", Projects: map[string]string{"boot": "ex-boot-gbl-core-a1b2"}}, want: "|"},
+		{name: "the boot project not recorded", placement: Placement{Prefix: "ex", GithubInfrastructureKeyVersion: "2", GithubDeployerKeyVersion: "1"}, want: "|"},
+		{
+			name:      "both pinned",
+			placement: Placement{Prefix: "ex", Projects: map[string]string{"boot": "ex-boot-gbl-core-a1b2"}, GithubInfrastructureKeyVersion: "2", GithubDeployerKeyVersion: "1"},
+			want:      "projects/ex-boot-gbl-core-a1b2/secrets/ex-boot-gbl-github-infrastructure-key/versions/2|projects/ex-boot-gbl-core-a1b2/secrets/ex-boot-gbl-github-deployer-key/versions/1",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			p := tt.placement
+			if got := p.SecretVersionName(InfrastructureKey) + "|" + p.DeployerKeyVersionName(); got != tt.want {
+				t.Errorf("version names = %q, want %q", got, tt.want)
 			}
 		})
 	}

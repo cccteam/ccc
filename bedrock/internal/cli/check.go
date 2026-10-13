@@ -24,10 +24,13 @@ func newCheck(d deps) *cobra.Command {
 		Short: "Compare a committed stack with what the code declares",
 		Long: `check renders the application stack afresh and compares every owned file with the one in
 the stack directory, and the files it owns at the application root (cloudbuild.yaml,
-cloudbuild-sweep.yaml, and the generate-time step cmd/generate/bedrock.go) with the ones there. It exits 1 when any differs or is missing, listing each with
-the first line that differs: the drift between the code and the committed infrastructure.
-Seeded files (terraform.tfvars, .gitignore, the Dockerfile, release-please's files) are a
-person's and are not compared.
+cloudbuild-sweep.yaml, the release and operations workflows, and the generate-time step
+cmd/generate/bedrock.go) with the ones there. It exits 1 when any differs or is missing,
+listing each with the first line that differs: the drift between the code and the committed
+infrastructure. A file bedrock owned once and renders no more (the infrastructure workflow,
+.github/workflows/infrastructure.yml) is reported as stale while it is there, and fails the
+check the same way; bedrock render removes it. Seeded files (terraform.tfvars, .gitignore,
+the Dockerfile, release-please's files) are a person's and are not compared.
 
 It also refuses a schema migrations directory, or the seed directory beside it
 (schema/devseed), whose files do not form the sequence the migrate command applies:

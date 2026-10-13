@@ -27,13 +27,16 @@ Which bedrock an application runs is not the installed one's choice. The applica
 placement pins it (`bedrockVersion`), one of two ways:
 
 - **A release**, with the SHA-256 of its linux/amd64 binary (`bedrockSha256`). The
-  pipeline and the infrastructure check download that binary and verify it against the
+  pipeline and the stack's triggers download that binary and verify it against the
   checksum.
 - **A commit pin**: the pseudo-version the Go module proxy gives a pushed commit of this
   module (`v0.0.0-lab.1.0.20260928222237-58b211dce544`), with no `bedrockSha256`. The
-  pipeline and the infrastructure check build it with `go install` in a Go image pinned by
+  pipeline and the stack's triggers build it with `go install` in a Go image pinned by
   digest, and Go's checksum database verifies the module in place of a checksum in the
-  placement. This runs bedrock from an unreleased commit, for trying a change in an
+  placement. The triggers build a commit only once git finds a branch of `cccteam/ccc`
+  that reaches it (their first step clones the repository's branches, commits only), as
+  `upgrade` checks by hand; a commit no branch reaches is refused before anything is
+  built. This runs bedrock from an unreleased commit, for trying a change in an
   application before it is released; it costs each pipeline build and each hourly sweep
   a minute or two of building.
 
@@ -108,7 +111,7 @@ again does not, because its pull request is already labeled as tagged.
   stack's `.tf` files and its README, the pipeline files at the application root
   (`cloudbuild.yaml`, `cloudbuild-sweep.yaml`), the generate-time step
   (`cmd/generate/bedrock.go`, which runs the pinned bedrock through `go run` so `go
-  generate` needs no bedrock installed) and the GitHub workflows (`.github/workflows/infrastructure.yml`,
+  generate` needs no bedrock installed) and the GitHub workflows (`.github/workflows/operations.yml`,
   `release-please.yml`). A person never edits one; the code or the placement changes and
   the file is rendered again.
 - **Seeded file**: a file bedrock writes once when it is absent and then leaves to a
@@ -120,9 +123,10 @@ again does not, because its pull request is already labeled as tagged.
   `/gcbrun` comment and on a release tag. Every step but the image build is a `bedrock
   deploy` command run by the pinned bedrock release; the application customizes it
   through hooks, build secrets, declared substitutions and its Dockerfile, never by editing
-  the file. The steps run in order, except that in a pull-request build the image lane
-  (the release check and the image build) runs beside the pull request's stack lane (its
-  plan, guard and apply), the two joining before the application deploys.
+  the file. The steps run in order. A pull-request build applies no Terraform from it: the
+  pull request's own stack is the stack's pr-stack trigger's job (`infrastructure/cloud-build.tf`),
+  which runs as the apply identity from steps the pull request cannot edit, and the build
+  reads what that job applied.
 - **Hook**: a shell script the application commits at `infrastructure/hooks/<stage>.sh`,
   run at that stage of the pipeline as the deploy identity with the build's facts in its
   environment: `before-build`, `before-migrate`, `after-migrate`, `before-traffic`,
@@ -507,11 +511,12 @@ It also refuses:
   `cloud_armor` in `terraform.tfvars` names the environment with `"preview"` or
   `"enforce"`, attached to the backend services, and removing the entry detaches the
   policy and destroys it in one apply, which fails while the policy is attached. The
-  check reads the default branch's `terraform.tfvars` (origin's copy, or the local branch;
-  the infrastructure workflow fetches the branch before it runs) and refuses an
+  check reads the default branch's `terraform.tfvars` (origin's copy, or the local branch)
+  and refuses an
   environment on there whose entry the working tree removes: set it to `"off"` first
   (the policy kept, detached), merge and apply, then remove the entry. Outside a git
-  working tree, or without the default branch to read, nothing is compared.
+  working tree, or without the default branch to read (the check trigger's checkout holds
+  the pull request's commit alone), nothing is compared.
 - an authoritative IAM resource (`*_iam_binding`, `*_iam_policy`) anywhere in the stack:
   such a resource replaces every member of its role on each apply, so a pull-request stack
   applying one would remove the environment's members. A `*_iam_member` adds one member.
@@ -562,26 +567,40 @@ pinned says so. Pinning is the default and `latest` the exception for a secret t
 to follow its source, so the listing never fails the check; it keeps the exception
 visible.
 
-The application's infrastructure workflow, `.github/workflows/infrastructure.yml`, runs
-`bedrock check` on every pull request and on the default branch. It is rendered too: the
-job gets the bedrock the placement pins as the pipeline does (a release downloaded from
-its GitHub Release and verified against the placement's checksum; a commit pin built with
-`go install` in the pipeline's Go image, since the runner's Go is the application's and
-may be older than bedrock's) and runs that bedrock's `check` on the runner, whose Go
-toolchain the check reads the code with; no cloud identity, no service account, no key.
-So the checker is the pipeline's, and a wording change in a newer bedrock fails no
-application's check until that application moves its pin. `release-please.yml`
-is rendered beside it: release-please as the release app the placement names, on the
-default branch and the hotfix lines.
+The application's check runs in Cloud Build, from the stack's check trigger
+(`infrastructure/cloud-build.tf`, rendered with the stack), on every push to a pull
+request against the default branch or a hotfix line, as the apply identity. The trigger
+holds its steps in its own text: the first reads the bedrock pin from
+`infrastructure/placement.json` in the checkout when it runs (a release downloaded from
+its GitHub Release and verified against the placement's checksum; a commit pin checked
+with git to be on a branch of `cccteam/ccc`, then built with `go install` in the
+pipeline's Go image) and the next runs that bedrock's `check` in the
+checkout, which reads the code with Go's parser and needs no toolchain, no cloud role and
+no key. So the checker is the pipeline's, and a wording change in a newer bedrock fails no
+application's check until that application moves its pin. The same build then plans and
+tests the stack for every environment (`deploy plan-environments`) and applies the pull
+request's own stack again when one is standing (`deploy pr-stack --if-exists`); its result
+is the required check `1-org` names, reported by Google's Cloud Build GitHub App, which no
+Actions job can imitate. The steps are the stack's and change with its apply, one release
+behind the repository: a bedrock release works under the previous release's steps, and a
+command says in its log when it runs under older ones. The Actions workflow that ran the
+check before, `.github/workflows/infrastructure.yml`, is retired: `bedrock render` removes
+it when it finds one at the application root, and `bedrock check` reports it stale until
+then. `release-please.yml` is rendered beside the pipeline files: release-please as the
+release app the placement names, on the default branch and the hotfix lines.
 
 ## bedrock upgrade
 
 `bedrock upgrade [version|commit|branch]` moves the application's bedrock pin and renders
 the stack and the pipeline with the bedrock it names, so the committed files come from
 that bedrock. Commit `placement.json` with the rendered files: from that commit the
-pipeline's first step and the infrastructure check get that bedrock, and every
+pipeline's first step and the stack's triggers get that bedrock, and every
 `bedrock deploy` step runs it. The pin is the one place a bedrock version appears in an
-application; nothing else names one.
+application; nothing else names one. In the organization's infrastructure repository (the
+one whose `placement.json` at the root names the organization, `organizationId`) the same
+command moves the organization's pin instead, which the Cloud Build triggers' runs fetch
+at run time, and renders the layers with the bedrock it names (`bedrock org render`);
+`--dir` is the repository root there, and `--app` is refused.
 
 Upgrade impulse first, then bedrock, and land both in one change: bedrock's checks read
 what `impulse upgrade` writes (the drivers' settings the configuration embeds, the release
@@ -606,7 +625,9 @@ remedy.
   `exclude` directive is refused, since `go install` cannot build it. A commit named by
   its hash or its pseudo-version must be on a branch of `cccteam/ccc`: GitHub serves the
   commits of the repository's forks by hash too, and the proxy would fetch one, so
-  `upgrade` refuses a commit none of the repository's branches holds.
+  `upgrade` refuses a commit none of the repository's branches holds. The triggers' first
+  step makes the same check with git before building a commit pin, so a pin edited into
+  the placement by hand is refused there too.
 
 Push the commit before pinning it: the proxy knows only pushed commits, and when it is
 asked about one too soon it remembers for about 30 minutes that it did not know it.
@@ -619,6 +640,207 @@ when that one is held to its pin: a release, however it was built, and a commit 
 with `go install`. The refusal names how to install the pinned one: its release page, or
 `go install github.com/cccteam/ccc/bedrock@<pin>`. A build from a checkout, at any
 commit, and a `(devel)` build are nobody's pin and render any pin.
+
+### Upgrading to the Cloud Build triggers
+
+An organization made by an earlier bedrock ran its layers from a GitHub Actions workflow
+(`.github/workflows/layers.yml`) through a workload identity pool, held the Cloud Build
+GitHub token in its first environment's project, and kept a copy of the deployer GitHub
+App's key in every environment's project. Each application ran its infrastructure check
+from a workflow of its own (`.github/workflows/infrastructure.yml`). This bedrock plans and
+applies the layers from two Cloud Build triggers in the boot project, keeps one token and
+one deployer key there, and runs an application's check and its pull-request stack from
+two triggers of the stack's own. Moving an organization is a sequence of hand steps, in
+this order. Each step opens with where it happens and who does it. The organization goes
+first; every application follows right after (step 7 says what breaks otherwise).
+
+1. **The token, in the boot project.** The connections authorize with a GitHub token that
+   must be a secret version in the boot project. One of two ways:
+   - In the boot project's Cloud Build console, as the bootstrap administrator (Owner on
+     the boot project), signed in to GitHub as the organization's machine account
+     (`githubMachineAccount` in `placement.json`): the browser step once more, Create
+     host connection, GitHub, in the primary region, named
+     `<prefix>-boot-<region code>-github` (the name 0-bootstrap gives it), on the Google
+     Cloud Build GitHub App's existing installation on the organization
+     (`0-bootstrap/README.md`, "2. The Cloud Build GitHub authorization"). The console
+     stores the token as a regional secret in the boot project. Step 3 imports this
+     connection.
+   - In a terminal, as a person who may read the token secret the console made in the
+     first environment's project (`github_oauth_token_secret_version` in
+     `2-env/terraform.tfvars` names it; Owner on that project may read it, or an accessor
+     grant on the secret): a copy of that version into a new secret in the boot project,
+     piped from one command into the other, so the value touches no file:
+
+     ```bash
+     gcloud secrets versions access <version> --secret=<token secret> --location=<region> --project=<first environment's project> \
+       | gcloud secrets create <prefix>-boot-gbl-github-token --project=<boot project> --replication-policy=automatic --data-file=-
+     ```
+
+     Nothing is imported in step 3: 0-bootstrap creates the boot project's connection on
+     that secret.
+
+   Either way, in `placement.json` at the repository root: `cloudBuildInstallationId`,
+   the installation's id (the value `github_app_installation_id` holds in
+   `2-env/terraform.tfvars`; one installation serves the organization; a string, in
+   quotes, like the app ids), and
+   `cloudBuildTokenSecretVersion`, the boot project's version by its resource name
+   (`projects/<boot project>/locations/<region>/secrets/<name>/versions/<n>` for the
+   console's regional secret; `projects/<boot project>/secrets/<name>/versions/<n>` for a
+   global one). Every connection, the boot project's and each environment's, is rendered
+   from these two values.
+
+2. **The pin and the render.** In a terminal, in the infrastructure repository, on a
+   branch, as a person who may push to it: `bedrock upgrade <version>` (the organization
+   form: it moves the organization's pin and runs `bedrock org render`). Then, by hand in
+   `2-env/terraform.tfvars`, take out the four values the placement carries now:
+   `github_app_installation_id` and `github_oauth_token_secret_version` (step 1 recorded
+   them), `github_deployer_app_id` (its value goes into `placement.json` as
+   `githubDeployerAppId`, a string in quotes) and `github_deployer_key_secret_versions` (step 4 replaces it);
+   `bedrock org check` reports each one left behind, and the triggers run that check
+   first. The render removes `.github/workflows/layers.yml` and `1-org/workflow.tf`. It
+   adds `0-bootstrap/cloud-build.tf` (the connection, the repository link, the planner and
+   applier identities, the two triggers) and rewrites `0-bootstrap/github.tf` (the
+   deployer key's container in the boot project; `removed` blocks for the pool, its
+   provider and the two workflow bindings), `1-org/runners.tf` (the triggers' right to
+   become each layer identity, the plan identities of the two boot layers, the grants on
+   the deployer key's container; `removed` blocks for the workflow bindings),
+   `1-org/github.tf` (every application repository's required check becomes its stack's
+   check trigger) and `2-env` (the connection from the placement's values, the deployer
+   key's grants on the boot container with a `removed` block for the environment's own
+   container, tst's apply identity's grants for the stack's triggers, the records
+   bucket's policy). The first apply of the new render (step 5) sets every application
+   repository's branch rulesets to one approving review unless the placement says
+   otherwise (`approvingReviews`), adopts this repository (its merge settings become the
+   applications': squash the only merge, the update of a branch offered on the pull
+   request) and gives its default branch a ruleset, with the plan trigger's check required
+   and the same reviews: from then on a pull request here merges once that check passes
+   and the reviews are given.
+   Commit and open the pull request. Its plan trigger does not exist yet, and nothing
+   bedrock configures on this repository requires a check until step 5, so the pull
+   request waits for step 3 with no check on it.
+
+3. **0-bootstrap, by hand.** In a terminal, in `0-bootstrap` on the branch, as the
+   bootstrap administrator, signed in with `gcloud auth application-default login`: the
+   workflow is gone and the triggers do not exist until this apply, so this one is a
+   person's, the way `0-bootstrap/README.md`, "Recovery, by hand", runs a layer. The
+   import line is for the console way of step 1 only:
+
+   ```bash
+   cd 0-bootstrap
+   tofu init
+   tofu import 'google_cloudbuildv2_connection.github[0]' "projects/<boot project>/locations/<region>/connections/<prefix>-boot-<region code>-github"
+   tofu plan
+   tofu apply
+   ```
+
+   The plan destroys the workload identity pool, its provider and the two workflow
+   bindings on the boot and org identities (`removed` blocks, `destroy = true`), and
+   creates the connection (or shows it imported), the repository link, the planner and
+   applier identities with their grants, the two triggers, the deployer key's container
+   and the token's read for every environment project's Cloud Build service agent.
+   Nothing else changes. From here the plan trigger runs on a push to a pull request and
+   the apply trigger on a push to the default branch. A hand apply leaves no marker, so
+   the apply trigger's first run applies this layer once more, with no changes.
+
+4. **The deployer key, into the boot container.** In a terminal, in the infrastructure
+   repository on the branch, as the bootstrap administrator (the container exists since
+   step 3):
+
+   ```bash
+   bedrock secret add github-deployer-key --from-file <the .pem file>
+   bedrock secret pin github-deployer-key <version>
+   ```
+
+   `pin` records the version as `githubDeployerKeyVersion` in `placement.json` and renders
+   again (`2-env`'s output `github_deployer_key_secret_version` names it). Where the
+   `.pem` file was deleted after the first setup, the key is the same value every
+   environment's container holds (`<prefix>-<env>-gbl-github-deployer-key`, at the
+   version `github_deployer_key_secret_versions` pinned): a person who may read it
+   copies it in, with no file on disk:
+
+   ```bash
+   gcloud secrets versions access <version> --secret=<prefix>-tst-gbl-github-deployer-key --project=<tst project> \
+     | bedrock secret add github-deployer-key --from-file -
+   ```
+
+   Commit the placement and the render to the pull request and push. The plan trigger
+   runs on the push and stops at the first layer identity it cannot become (the plan
+   identities `1-org` makes, and its grants to the planner, are not applied yet):
+   expected here, and it blocks nothing.
+
+5. **The merge.** On GitHub, as a person who may merge: merge the pull request. The apply
+   trigger runs `bedrock org apply` as the applier. No layer has a marker yet, so it
+   applies every layer in order, each as that layer's apply identity: 0-bootstrap (no
+   changes), 1-org, 2-shr, 2-spn, 2-net, then 2-env in tst, stg and prd, stopping at the
+   first failure, which is then a person's to finish by hand ("Recovery, by hand"). 1-org
+   destroys the three workflow bindings on each of its layer identities (`removed`,
+   `destroy = true`) and creates the boot layers' plan identities, the triggers'
+   impersonation grants, the deployer key's grants, every application repository's new
+   required check and reviews, and the ruleset on this repository's default branch.
+   2-env points each environment's connection at the boot project's
+   token (an update in place), destroys the environment's deployer key container with
+   its versions (`removed`, `destroy = true`: the boot container holds the key now),
+   grants every application's deploy identity and tst's apply identity the read of the
+   boot container, grants tst's apply identity what the stack's triggers need, and takes
+   the earlier grants on the first environment's token secret and the records bucket's
+   four earlier bindings out of its state without destroying them (`removed`,
+   `destroy = false`: the token secret and its grants stay, to delete by hand once no
+   connection names them; the bucket's policy now holds its members whole).
+
+6. **Each application, right after.** From the moment 1-org applied in step 5, every
+   application repository's required check is its stack's check trigger, which exists
+   only once the stack is applied with the new render: until then no pull request of
+   that repository can merge. So, per application, in this order:
+   1. In a terminal, in the application repository, on a branch, as a person who may push
+      to it: `bedrock upgrade <version>`. The render removes
+      `.github/workflows/infrastructure.yml` and rewrites `infrastructure/cloud-build.tf`
+      (the check and pull-request stack triggers, the sweep run as the apply identity),
+      `cloudbuild.yaml` (the preview applies no Terraform; it reads what the pull-request
+      stack trigger applied), `cloudbuild-sweep.yaml` and the stack's README. Commit on
+      the branch; the pull request comes after the next step.
+   2. In a terminal, in `infrastructure/` on that branch, as the person who runs the
+      stack's first apply in an environment by hand (the stack's README, "Applying"):
+      the stack applied once in tst, so the two triggers exist:
+
+      ```bash
+      cd infrastructure
+      export TF_DATA_DIR=.terraform.tst
+      tofu init -backend-config="prefix=3-app/<app>/tst"
+      tofu plan -var environment=tst
+      tofu apply -var environment=tst
+      ```
+
+      The plan creates the check and pull-request stack triggers and moves the sweep
+      trigger to the apply identity; nothing on the service. Between 2-env's apply in
+      step 5 and this one, the hourly sweep is refused: Cloud Scheduler starts the old
+      sweep trigger as the deploy identity, whose right to run it 2-env took away. No
+      closed pull request's environment is destroyed in between; the first sweep after
+      this apply takes them down.
+   3. On GitHub: open the pull request. The check trigger runs on the push (`bedrock
+      check`, then the stack planned and tested for every environment) and on every push
+      after; `/gcbrun` runs the pull-request stack trigger and then the preview build.
+      Merge when the check passes. The other environments need nothing by hand: a
+      release's tag build applies their stacks, as before.
+
+7. **The order, and what breaks when it is skipped.** The organization first, then every
+   application, promptly.
+   - An application upgraded before the organization: its stack's triggers run as the
+     apply identity, which lacks what only the new 2-env grants (the connection's read
+     token, the right to become each environment's plan identity, the records bucket's
+     `<app>/stacks/` slot, the deployer key), so the check trigger's and the pull-request
+     stack trigger's runs fail at the first of them; and the repository's required check
+     is still the retired workflow's, which the render removed, so no pull request merges
+     until 1-org applies anew.
+   - An application not upgraded after the organization: no pull request of its merges
+     (the required check is a trigger that does not exist), and its pipeline's talk-back
+     on pull requests reads the deployer key at the environment container's version,
+     which 2-env destroyed, so a pull-request build fails there until the stack is
+     applied with the new render.
+   - The organization without step 1: with the two values unset, 0-bootstrap renders no
+     connection, no repository link and no trigger, and nothing but a person plans or
+     applies a layer: the workflow is gone.
+   - The organization without step 4: the layers' plans are in the runs' logs alone, and
+     every application's pipeline talks back through nothing, until the key is pinned.
 
 ## bedrock deploy
 
@@ -641,8 +863,8 @@ thing one step hands the next. In order:
   kind (a tag's build, or a pull request's, which deploys only to the first environment),
   the pull request's instruction (the words after its latest `/gcbrun` comment:
   `shared-db`, `reload-db`, `down`), the image and its tags, whether the migrations run
-  and traffic shifts, and whether a stale pull-request database is recreated (a migration
-  the last build applied is no longer in the tree). A tag build may carry a restore
+  and traffic shifts (a stale pull-request database, one whose last build applied a
+  migration no longer in the tree, is the stack job's decision, `deploy pr-stack`). A tag build may carry a restore
   instruction (`_RESTORE`: `empty`, or `production-backup` for the environment on
   production's instance, with `_REQUESTER` naming who asked): the environment's database
   is replaced before the release deploys. A pull-request build carries none, and
@@ -685,7 +907,8 @@ thing one step hands the next. In order:
   checkout declares, says when the trigger does not carry one yet (it comes with the
   build's stack apply, after the image build, and reaches the image from the next
   release on) and leaves out one the checkout no longer declares; a pull-request build
-  exports none, and `deploy pr-stack apply` appends the pull request's own stack's. The
+  exports none, and `deploy pr-outputs` appends the pull request's own stack's, from its
+  stack job's outputs. The
   log names the arguments, never their values. What the trigger carries beyond these is
   what only the stack knows (the identities, the buckets, the
   services, made by the stack or the organization's layers) or a gate's own record:
@@ -705,7 +928,8 @@ thing one step hands the next. In order:
   (`--router-dir`, which the pipeline passes) and the environment's newest live record,
   decides whether the release is breaking and whether the run waits for the window
   (`WINDOW_NEEDED`, `WINDOW_BREAKING`, `WINDOW_REASON`), and refuses here what can never
-  proceed (Maintenance windows, below). A pull-request build previews the window instead.
+  proceed (Maintenance windows, below). A pull-request build has no release to validate;
+  the hotfix and window previews are the check trigger's (`deploy plan-environments`).
   A hotfix passes one more check
   in every environment: the environment's newest live deployment record lists the
   migration and seed files its database holds, each with its hash, and the hotfix is
@@ -722,23 +946,52 @@ thing one step hands the next. In order:
   pull request's database when a seed its last build applied changed, and restores a
   seeded environment's when a seed its live release applied changed. A refusal is posted
   on the pull request and names the fix.
-- `deploy plan-environments`: in a pull-request build, plans the stack for every
+- `deploy plan-environments`: the stack's check trigger's step after `bedrock check`, on
+  every push to a pull request, as the apply identity, from a step the pull request
+  cannot edit. It reads its build through the Cloud Build API (`BUILD_ID`, `PROJECT_ID`
+  and `LOCATION`, which the step passes), plans the stack for every
   environment of the promotion order, each against that environment's state prefix as
-  its plan identity (a reader, without the state lock, so a pull-request build in tst
-  can change no environment), and runs the tests a tag build runs before its apply. One
+  its plan identity (a reader, without the state lock, so the job can change no
+  environment; the apply identity may act as each), and runs the tests a tag build runs
+  before its apply, then the pull request's looks ahead as the same identities: the
+  hotfix preview, when the pull request is against a hotfix line, and the window
+  preview. One
   comment on the pull request carries every summary; a failing plan or test stops the
-  build and the comment says so. The plan the reviewer approves is each
-  environment's. An environment whose stack has never been applied (no state object
+  build, which is the check a merge waits for, and the comment says so. The plan the reviewer approves is each
+  environment's. A secret the code declares that an environment after the first has no
+  pinned version for (`secret_versions.<env>` in `terraform.tfvars`) is not a refusal
+  here: that environment's summary names the variable and the pin to make, since the
+  release's own plan refuses it there (`deploy stack plan`, below), so the pin lands
+  before the release reaches the environment. An environment whose stack has never been applied (no state object
   under its prefix, which the plan identity reads) is skipped with the line "no stack
   yet: its first apply is by hand", in the log and in the comment, and the build goes
   on: a plan of a missing state would create it, a write a reader is refused, and the
-  first apply is a person's step on purpose.
-- `deploy pr-stack plan`, `guard`, `apply`: a pull request's own environment, the stack
-  applied into its own state prefix as the apply identity. The plan is saved, the guard
-  lets only the pull request's own resources through, the apply applies exactly that
-  plan and leaves the pull request's services, jobs, hostname and build arguments
-  (`_BUILD_ARG_<NAME>`, its own values of the stack's) for the steps after (a destroy on
-  `/gcbrun down`). A tag build skips all three.
+  first apply is a person's step on purpose. It says when the build's steps are an older
+  bedrock's than itself.
+- `deploy pr-stack`: the pull request's stack job, the stack's pr-stack trigger's step on
+  the `/gcbrun` comment, beside the preview build, as the apply identity. It reads its
+  build the same way, mints the repository's token from the Cloud Build connection, reads
+  the latest `/gcbrun` comment, and applies the pull request's own stack into its own
+  state prefix: the plan is saved, the guard lets only the pull request's own resources
+  through, the apply applies exactly that plan (a destroy on `/gcbrun down`; the
+  database replaced on `/gcbrun reload-db`, or when the migrations its last build applied
+  are no longer in the tree as applied). What the stack now says (the services, the job,
+  the hostname, the migrate command's settings, the build arguments the placement
+  declares, the database mode) goes to the records bucket as
+  `<app>/stacks/<env>/pr<N>/<commit>.json`, which the preview build reads; a destroy and
+  a failure, with its reason, are written the same way. With `--if-exists` (the check
+  trigger's last step, on every push) the stack is applied again only when the pull
+  request has a preview standing, so the preview's infrastructure follows the pushes; a
+  `reload-db` in the latest comment is that build's and is not repeated.
+- `deploy pr-outputs`: the preview build's read of what the pull request's stack job
+  applied, the object above matched to this build's `/gcbrun` comment, whose facts go to
+  `environment.sh` for the steps after. Before the image build when the placement
+  declares build arguments (the image carries the pull request's own values), after it
+  otherwise. An object not yet written is waited for, up to ten minutes, fifteen seconds
+  between looks, then the step stops the build naming the trigger; a job that failed
+  stops this build at once with the job's reason. On `/gcbrun down` the step waits for
+  the job's destroy instead, after which the after-down hook runs and talk-back marks
+  the deployment inactive. A tag build says so and ends.
 - `deploy check-release`: reads the registry before the image build. Neither tag exists,
   the build runs; the commit is built and the release tag is not, the release name is
   added to that build; both exist and agree, the build is reused; the release tag names
@@ -798,7 +1051,14 @@ thing one step hands the next. In order:
   `plan` saves the plan with its JSON, prints and appends the summary (`STACK_PLAN`), and
   runs the tests: no authoritative IAM resource in the stack other than the file stores'
   bucket policies, and every secret version a
-  planned revision template pins exists and is enabled. `apply` applies exactly that plan.
+  planned revision template pins exists and is enabled. Before the plan, in an
+  environment other than the first, it refuses the release when the code declares a
+  secret the environment's `secret_versions` in `terraform.tfvars` pins no version for
+  (the process would start without the variable): the refusal names the environment,
+  every unpinned variable and the pin to make (`bedrock secret pin <env> <VARIABLE>
+  <version>`, after `bedrock secret add <env> <VARIABLE>` has put the value in place),
+  and nothing is changed, a restore run's database included. The first environment runs
+  without a pin, "not yet", and the log names the variables it runs without. `apply` applies exactly that plan.
   The plan is the build's own: a saved plan is bound to the state it was made from, and a
   release bundles several pull requests. An infrastructure change must be safe on the
   running service (add first, remove later); one that is not is declared breaking in
@@ -1053,7 +1313,12 @@ pinned or rolled out; the command prints the pin to make.
 whether the version exists and is enabled. The pull request's plan shows the revision
 template change in that environment and nothing elsewhere; the pin promotes as a release
 (a commit with a releasable type, `fix(<env>): …`), whose tag build applies the stack and
-deploys. An argument left out is asked for at the terminal with the choices listed.
+deploys. An argument left out is asked for at the terminal with the choices listed. A
+secret with no pin is mounted nowhere in the environment, and the process starts without
+the variable: the first environment runs that way ("not yet"), and a release to any
+environment after it is refused at that environment's plan until every secret the code
+declares is pinned there, naming the variables and the pins to make; the pull request's
+plan says the same in the environment's summary ahead of the release.
 
 Both find the rest from where they run: the infrastructure root, the application, the
 environment project (by its labels) and the container (by its labels and the variable);
@@ -1067,24 +1332,27 @@ a variable:
 ```sh
 bedrock secret add github-infrastructure-key --from-file infrastructure.pem   # the boot project's container
 bedrock secret pin github-infrastructure-key 2                                # placement.json, then org render
-bedrock secret add github-deployer-key tst --from-file deployer.pem          # the environment's container
-bedrock secret pin github-deployer-key tst 1                                  # 2-env/terraform.tfvars
+bedrock secret add github-deployer-key --from-file deployer.pem               # the boot project's other container
+bedrock secret pin github-deployer-key 1                                      # placement.json, then org render
 ```
 
-`github-infrastructure-key` is the key of the infrastructure GitHub App, the app the layers
-workflow acts as when 1-org configures the applications' repositories. It lives in
+`github-infrastructure-key` is the key of the infrastructure GitHub App, the app the
+triggers' runs act as when 1-org configures the applications' repositories. It lives in
 0-bootstrap's container `<prefix>-boot-gbl-github-infrastructure-key` in the boot project,
 and its pin is `githubInfrastructureKeyVersion` in `placement.json`: `pin` writes it and
-runs `org render`, so the workflow mints its token from that version. `github-deployer-key`
-is the key of the deployer GitHub App, the app the pipeline talks back on a pull request as.
-It lives in 2-env's container `<prefix>-<env>-gbl-github-deployer-key` in each environment's
-project, and its pin is the version's resource name under the environment in 2-env's
-`github_deployer_key_secret_versions`, which the application stacks pass to their
+runs `org render`; from the merge on, a run of the triggers that plans or applies 1-org
+mints its token from that version. `github-deployer-key` is the key of the deployer GitHub
+App, the app the plan trigger's run posts each layer's plan as and the app every
+application's pipeline talks back on a pull request as. It lives in 0-bootstrap's other
+container, `<prefix>-boot-gbl-github-deployer-key`, in the boot project too, and its pin is
+`githubDeployerKeyVersion` in `placement.json`: `pin` writes it and runs `org render`, which
+carries the version's resource name into 2-env's output
+`github_deployer_key_secret_version`, from which the application stacks pass it to their
 pipelines. Both are pinned by number, never `latest`, after Secret Manager confirms the
 version is enabled. `add` refuses a project that lacks the container rather than creating
-it, because the container is the layer's own and its apply makes it. The projects come from
-`placement.json` (`projects.boot`, `projects.<env>`); `--project` and `--container`
-override. In an application's repository these names are refused, and in the
+it, because the container is 0-bootstrap's own and its apply makes it. The project comes
+from `placement.json` (`projects.boot`); `--project` and `--container` override. Neither
+takes an environment. In an application's repository these names are refused, and in the
 infrastructure repository an application's `[env] [VARIABLE]` is.
 
 ## bedrock migration renumber
@@ -1634,13 +1902,22 @@ bedrock org preflight                                           # before the see
 bedrock org render                                              # after a placement change
 bedrock org check                                               # the committed layers against the placement
 bedrock org register quill ../quill                             # an application joins the foundation; its first placement.json is written into its checkout
+bedrock org plan                                                # what the plan trigger runs on a pull request
+bedrock org apply                                               # what the apply trigger runs on a push to the default branch
 ```
 
 `org new` renders the six layers, each with its `.tf` files, its README and its seeded
-`terraform.tfvars`, the layers workflow (`.github/workflows/layers.yml`), and at the root
-the README, the journal, the ignore rules and the OpenTofu version, then prints the hand
-steps the model needs before the workflow can run. Everything the seed decides is
-`REPLACEME` in the seeded values until it has run.
+`terraform.tfvars`, and at the root the README, the journal, the ignore rules and the
+OpenTofu version, then prints the hand steps the model needs before the Cloud Build
+triggers can run. 0-bootstrap carries the two triggers (`0-bootstrap/cloud-build.tf`): one
+plans the layers a pull request changes, the other applies the layers a push to the default
+branch changes, each running `bedrock org plan` or `bedrock org apply` after `bedrock org
+check`. Everything the seed decides is `REPLACEME` in the seeded values until it has run.
+The triggers' runs fetch the bedrock the placement pins (`bedrockVersion`, and for a
+release `bedrockSha256`): `org new` records the bedrock running it when that is a release
+or a commit installed with `go install`, and `bedrock upgrade`, run in the repository,
+moves the pin and renders the layers with the bedrock it names; `org render`, `org check`
+and `org register` refuse a placement pinned to another bedrock than the one running them.
 
 A new organization is set up in this order. Each step opens with the place it happens,
 and the rendered root README ("How the layers are applied", "The two GitHub Apps") and
@@ -1654,21 +1931,25 @@ and the rendered root README ("How the layers are applied", "The two GitHub Apps
    into the placement, and `org new` renders.
 2. In a terminal, as the bootstrap administrator: `gcloud auth application-default
    login`, then `bedrock org preflight`, which must find every role held, then the seed.
-3. In this repository: the seed's values in the placement and `org render`; then, in a
-   terminal, the first apply of 0-bootstrap on local state and its migration into the
-   bucket.
-4. In a terminal, as a billing administrator: the two billing grants. In the Billing
+3. In this repository: the seed's values in the placement and `org render`.
+4. In the boot project's Cloud Build console, as the bootstrap administrator (Owner on
+   the boot project from the seed), signed in to GitHub as the machine account: the Cloud
+   Build GitHub authorization, before the first apply of 0-bootstrap. Its installation id
+   and the token secret's version go into the placement (`cloudBuildInstallationId`,
+   `cloudBuildTokenSecretVersion`); then, in a terminal, in this repository, `bedrock
+   upgrade`, which pins the bedrock the triggers run and renders.
+5. In a terminal: the first apply of 0-bootstrap on local state, the console's connection
+   imported into it, and its migration into the bucket. From here the two triggers exist.
+6. In a terminal, as a billing administrator: the two billing grants. In the Billing
    console, as the same administrator: the spend budget, which nothing renders.
-5. In a terminal: the first apply of 1-org, then its projects in the placement and
-   `org render`.
-6. In a terminal, in this repository: the infrastructure app's key, `bedrock secret add
+7. In a terminal: the first apply of 1-org, then its projects in the placement and
+   `org render`. From here on the apply trigger applies every layer.
+8. In a terminal, in this repository: the infrastructure app's key, `bedrock secret add
    github-infrastructure-key` and `bedrock secret pin github-infrastructure-key
-   <version>`, with its App ID in the placement.
-7. In the first environment's Cloud Build console, signed in to GitHub as the machine
-   account: the Cloud Build GitHub authorization, before the first application.
-8. In a terminal, in this repository, per environment once 2-env has applied there: the
-   deployer app's key, `bedrock secret add github-deployer-key <env>` and `bedrock secret
-   pin github-deployer-key <env> <version>`.
+   <version>`, with its App ID in the placement; and the deployer app's key, `bedrock
+   secret add github-deployer-key` and `bedrock secret pin github-deployer-key
+   <version>`, with its App ID in the placement (`githubDeployerAppId`). Both containers
+   are 0-bootstrap's, in the boot project.
 9. In each environment project's Google Cloud console: the consent screen, with the
    audience Internal, before the first application's OAuth client is made there.
 10. In the Workspace Admin console, for each application before its first sign-in: its
@@ -1679,12 +1960,25 @@ and the rendered root README ("How the layers are applied", "The two GitHub Apps
 
 The organization's placement names its GitHub machine account (`githubMachineAccount`):
 the login of a GitHub user that belongs to the organization as an owner and acts for no
-person. In the browser step that authorizes the Cloud Build GitHub connection, before the
-first application (`2-env/README.md`, "The GitHub authorization, before the first
-application"), a person signs in to GitHub as that account, so the connection's token is
-the account's and nobody's leaving breaks it; a personal access token of the same
-account is the alternative to that step. `2-env` renders the login where it names the
-account. The field is required: a placement without it is refused.
+person. In the browser step that authorizes the Cloud Build GitHub connection, in the boot
+project before the first apply of 0-bootstrap (`0-bootstrap/README.md`, "The Cloud Build
+GitHub authorization"), a person signs in to GitHub as that account, so the connection's
+token is the account's and nobody's leaving breaks it; a classic personal access token of
+the same account (the `repo`, `read:user` and `read:org` scopes; Cloud Build accepts no
+fine-grained token) is the alternative to that step. The token secret lives in the boot project,
+and 0-bootstrap grants each environment project's Cloud Build service agent its read, so
+every connection, the boot project's and each environment's, is rendered from the one
+authorization. The field is required: a placement without it is refused.
+
+The placement's `approvingReviews` is the number of approving reviews a pull request needs
+before it merges, on every application repository's default branch and hotfix lines and on
+the infrastructure repository's default branch. Left out, it is one. 0 is allowed: a writer
+merges alone once the checks pass. A negative number is refused when the placement is read.
+While the count is above 0, an approval given before the last push is dismissed and one
+given after it is needed. 1-org renders the count into `github.tf`, never into
+`terraform.tfvars`, and `bedrock org check` compares that file with the render, so a
+developer with write on an application repository cannot lower it, and lowering it for the
+infrastructure repository takes a merge that met the count in force.
 
 The organization's two regions (`regions`, the primary first) and its Spanner
 configuration (`spanner.config`, the instance 2-spn creates for stg and prd) are chosen
@@ -1717,9 +2011,17 @@ organization, and Billing Account User on the billing account. It prints one lin
 `holds` or `missing` with the permissions tested, and exits 1 when a role is missing, saying
 who grants it where, or when it could not check (no credentials, or an API that refused).
 
-`org render` rewrites the owned files from the placement, seeds the absent ones and says
-what the workflow still lacks in the placement; `org check` compares the owned files, the
-workflow among them, and exits 1 on drift. Before anything else, `org check` reports each
+`org render` rewrites the owned files from the placement, seeds the absent ones, removes
+the retired layers workflow (`.github/workflows/layers.yml`, which an earlier bedrock
+rendered and the triggers replace) when the repository still carries it, and says what the
+triggers still lack in the placement; `org check` compares the owned files and exits 1 on
+drift. It also refuses, with the file and the reason, a `.tf` file in a layer that no
+render produces (one added by hand would run as the layer's identity), an override file
+(`override.tf`, `*_override.tf`, which OpenTofu would merge into the layer), the retired
+workflow, and a value `2-env/terraform.tfvars` still sets that the placement carries now; a
+person's inputs (`terraform.tfvars`, the lock file, the `*.auto.tfvars` bedrock writes)
+pass. Both triggers run `org check` before their command, so nothing a pull request adds to
+a layer by hand runs there. Before anything else, `org check` reports each
 domain 2-net registers (`registrations` in `2-net/terraform.tfvars`) as Cloud Domains
 holds it in the network project: first every registration whose registrant mailbox is not
 verified yet, naming the mailbox and the date the registrar's verification mail must be
@@ -1732,65 +2034,101 @@ cannot be reached, it says so and never fails the check. `org check` then lists 
 member) holding `roles/owner` on an environment project the placement records, with the
 project: the grant a project's creator receives, which the first apply of 1-org by hand
 leaves the bootstrap administrator with on every project it creates, temporary by design
-and removed by hand once the workflow applies the layers (`1-org/README.md`, "Applying").
+and removed by hand once the apply trigger applies the layers (`1-org/README.md`, "Applying").
 The listing reads the projects' IAM policies with the run's Google credentials (`gcloud
 auth application-default login`); without any it says so, and it never fails the check.
 Last it lists each API key in an environment project that carries no API restriction (the
 list of APIs that accept the key; a key with none is accepted by every API in the project
 that takes an API key), with the same credentials and on the same terms: Firebase's browser
 key, which initializing Identity Platform creates in each environment project, when
-Firebase has made it again since the workflow restricted it, or any other key
+Firebase has made it again since `bedrock org apply` restricted it, or any other key
 (`2-env/README.md`, "Identity Platform").
 
-The layers workflow plans every layer a pull request changes, as that layer's plan
-identity, and posts each plan on the pull request; the merge applies those layers as their
-apply identities, in layer order (0-bootstrap, 1-org, 2-shr, 2-spn and 2-net, then 2-env
-for tst, stg and prd), one at a time, stopping at the first failure. The plans run side by
-side (`tofu plan <layer>`) and each is judged once all have finished (`plan <layer>`): a
-plan that fails only because it reads outputs the plan of an earlier layer in the same pull
-request creates (an unsupported attribute that plan shows as a new output) passes, its
-comment saying it is planned after that layer applies, since the merge applies that layer
-first; any other failure fails. The judgment is a script bedrock renders into the workflow
-(`internal/org/planverdict.sh`, run by its tests over both outcomes). Run workflow on the
-Actions tab applies one layer again with no change to it. Each layer's apply holds a
-concurrency group of its own (`layers-apply-<layer>`; GitHub runs one job of a concurrency
-group at a time), so an apply waits for another apply of the same layer and for no other
-layer; GitHub keeps one job of a group waiting behind the running one, and a third that
-arrives cancels the one waiting, so where several layers go by Run workflow, start each
-when the previous has finished. After each apply of 2-env it
-restricts Firebase's browser key ("Browser key (auto created by Firebase)") in the
-environment project to the two sign-in APIs, identitytoolkit.googleapis.com and
-securetoken.googleapis.com, as the layer identity: no layer can declare the key, since
-OpenTofu adopts a key only by the id Firebase assigns it and the Google provider finds no
-key by its name. No key exists anywhere: a run
-signs in through a workload identity pool in the boot project (0-bootstrap's `github.tf`)
-whose provider trusts tokens of the infrastructure repository from that workflow file
-alone and maps each token's event and ref to plan or apply, and each identity's binding
-admits one of the two, so a pull request's code reads and never writes. The placement
-names what the workflow runs with: every project under `projects` (`boot` from the seed,
-the six others from 1-org's `project_ids`), the boot project's number under
-`projectNumbers.boot` (the provider's name), and the infrastructure GitHub App whose token
-1-org's GitHub provider takes (`githubInfrastructureAppId`, and
-`githubInfrastructureKeyVersion`, the pinned version of its key in the boot project's
-container; `0-bootstrap/README.md` has the person's steps). The first applies of
-0-bootstrap and 1-org are the bootstrap administrator's, before the identities exist;
-recovery is by hand, for 2-env by a member of the environment's team group under the
-layer administrator entitlement (the environment layer identity's roles on the environment
-project) and the layer state entitlement (its slot in the state bucket, on the boot
-project), running the layer as themselves, for the other layers as the bootstrap
-administrator.
+The two Cloud Build triggers 0-bootstrap renders in the boot project plan and apply the
+layers. Their steps live in the trigger, which a pull request cannot change: the first
+reads the bedrock pin off `placement.json` in the checkout at run time and puts that
+bedrock in place (a release's linux/amd64 binary downloaded and verified against
+`bedrockSha256`; a commit pin, once git finds a branch of `cccteam/ccc` that reaches it,
+built with `go install` in the Go image, where Go's checksum database verifies it), the
+next runs `bedrock org check`, which refuses a `.tf` file no
+render produces, and the last runs `bedrock org plan` or `bedrock org apply`. A change to
+the steps is rendered by a new bedrock, applied by a run on the old steps, and the next run
+is the first on the new ones: the steps lag one apply behind the repository, and since the
+pin is read at run time a pull request that moves it already runs the new bedrock under the
+old steps, so the one rule bedrock keeps is that a release works under the previous
+release's steps. Both triggers pass `_BEDROCK_STEPS`, the shape of their steps, and the
+two commands say in the run's log when they run under another shape. No key exists
+anywhere: each trigger runs as a runner identity in the boot project (`<prefix>-org-gbl-
+planner`, `<prefix>-org-gbl-applier`) that holds no layer's roles and impersonates the
+layer identities of its kind (`roles/iam.serviceAccountTokenCreator`, granted by
+0-bootstrap on the two identities it owns and by 1-org on the ones it creates), so a plan
+runs with a plan identity's reads and an apply with the apply identity's writes.
+
+`org plan` is the plan trigger's command, on a pull request into the default branch. It
+reads the build through the Cloud Build API (`BUILD_ID`, `PROJECT_ID` and `LOCATION`, which
+the step passes): the pull request, its base and its commit; reads the files the pull
+request changes against its base through the repository's connection; and plans every
+layer whose `.tf`, `.tfvars` or lock file changed, and every layer when
+`.opentofu-version` changed, side by side, each in its own directory as the layer's plan
+identity (2-env once per environment, with its own state prefix), without the state lock.
+Once every plan has finished each gets its verdict: its `Plan:` line when it succeeded;
+passed, as planned after the layers before it apply, when it failed only because it reads
+outputs their plans create (an unsupported attribute an earlier plan shows as a new
+output), since the merge applies those first; failed otherwise. One comment per layer goes
+on the pull request as the deployer GitHub App, found by its first line and updated on a
+later push (`internal/layers`, whose tests run the verdict over every outcome); the plans
+stay in the run's log while the placement records no deployer app. It exits 1 when any plan
+failed.
+
+`org apply` is the apply trigger's command, on a push to the default branch. Without
+`_LAYER` it applies every layer changed since its last successful apply: a marker object
+per layer in the state bucket (`applied/<layer>`, `applied/2-env/<env>`) holds the commit
+of that apply, the files changed between it and the push are read through the connection,
+and a layer with no marker is applied. The layers apply in layer order (0-bootstrap, 1-org,
+2-shr, 2-spn and 2-net, then 2-env for tst, stg and prd), one at a time, each as its apply
+identity (`tofu init` at the layer's state prefix, a plan, the apply of that plan, then the
+marker), stopping at the first failure. After each apply of 2-env it restricts Firebase's
+browser key ("Browser key (auto created by Firebase)") in the environment project to the
+two sign-in APIs, identitytoolkit.googleapis.com and securetoken.googleapis.com, as the
+layer identity: no layer can declare the key, since OpenTofu adopts a key only by the id
+Firebase assigns it and the Google provider finds no key by its name. A person applies one
+layer again with no change to it by starting the apply trigger with `_LAYER`, and for
+2-env `_ENVIRONMENT` (`gcloud builds triggers run <prefix>-boot-<region code>-layers-apply
+--region=<region> --project=<boot project> --branch=<default branch>
+--substitutions=_LAYER=2-env,_ENVIRONMENT=tst`; `0-bootstrap/README.md`, "The Cloud
+Build triggers"). The placement names what the runs work with: every project under
+`projects` (`boot` from the seed, the six others from 1-org's `project_ids`), the
+environment projects' numbers under `projectNumbers` (their Cloud Build service agents'
+read of the token), the Cloud Build GitHub authorization (`cloudBuildInstallationId`,
+`cloudBuildTokenSecretVersion`), the infrastructure GitHub App whose token 1-org's GitHub
+provider takes (`githubInfrastructureAppId`, and `githubInfrastructureKeyVersion`, the
+pinned version of its key in the boot project's container), the deployer app the plans are
+posted as (`githubDeployerAppId`, `githubDeployerKeyVersion`) and the bedrock pin;
+`0-bootstrap/README.md` has the person's steps. A run of the triggers that plans or
+applies a layer whose project the placement does not record yet (REPLACEME) stops and says
+which ids to record; one that plans or applies 1-org without the infrastructure app
+recorded stops and says what records it. The first applies of 0-bootstrap and 1-org are
+the bootstrap administrator's, before the identities exist; recovery is by hand, for 2-env
+by a member of the environment's team group under the layer administrator entitlement (the
+environment layer identity's roles on the environment project) and the layer state
+entitlement (its slot in the state bucket, on the boot project), running the layer as
+themselves, for the other layers as the bootstrap administrator; an apply by hand leaves
+the layer's marker as it was, so the next push applies the layer again, with an empty plan
+when the hand apply was complete.
 
 `org register <app>` adds an application: its code goes into `placement.json`'s
 applications, each layer's values are rendered from it (1-org's repositories and its
 `public-invokers.auto.tfvars`, 2-env's list, 2-shr's pushers and pullers, 2-spn's database
 admins, 2-net's hostnames with the wildcard for pull-request environments), and the pull
-requests the registration takes through the workflow are printed, since one pass in layer
+requests the registration takes through the triggers are printed, since one pass in layer
 order does not follow the order the grants need: first 1-org's repository with 2-env's
-identities, then 2-env again from the Actions tab (each environment grants the next
-environment's deploy identity read on its records bucket, from state the first pass did not
-have), then 1-org's public-invoker grants with 2-shr and 2-spn (grants on identities that
-exist now), then the application's own stack per environment, then 2-net. A file a later
-pull request carries stays in the working tree until then.
+identities, then 2-env again by starting the apply trigger by hand (each environment grants
+the next environment's deploy identity read on its records bucket, from state the first
+pass did not have), then 1-org's public-invoker grants with 2-shr and 2-spn (grants on
+identities that exist now), then the application's own stack per environment, then 2-net.
+A file a later pull request carries stays in the working tree until then. Register refuses
+the first application while the placement does not record the Cloud Build GitHub
+authorization, since the applications' triggers exist once 2-env holds the connection.
 
 `org register` also makes the application's first `placement.json` (The application's
 placement, above), every field from the organization's placement and none asked of the
@@ -1812,18 +2150,26 @@ the squashed commit titled from the pull request; the head branch deleted on mer
 destroyed by the layer), its three rulesets (a `v*` or `*/v*` tag created, moved or
 deleted by the release app alone, with no bypass for the repository's admins, which is
 what makes the pipeline's tag check sound; the default branch and the hotfix lines
-changed by pull request alone, with the branch up to date with its base, the
-infrastructure workflow's `bedrock check` and the six fixed jobs of the application's CI
+changed by pull request alone, with the branch up to date with its base, the application
+stack's check trigger in the first environment (reported by Google's Cloud Build GitHub
+App under `<trigger name> (<project id>)`, so no Actions job can imitate it) and the six
+fixed jobs of the application's CI
 workflow (`title`, `go`, `web`, `image`, `secrets`, `migrations`, read from impulse's `ci`
 package; `web` gates the per-workspace browser jobs, so a failed browser build blocks the
 merge) passing on its latest commit, never the pull-request build (the developer's preview
-on `/gcbrun`),
-squash the only merge and, when the placement names an infrastructure team, that team's
-approval of a change to the workflow and Cloud Build files), and the GitHub Environments
-the operations workflow runs in (every environment, production's for the rerun of a
-release and the rollback, each deploying from the default branch alone). The workflow applies it with the
-infrastructure GitHub App's
-installation token, minted in the run; a person applying by hand uses their own sign-in,
+on `/gcbrun`), `approvingReviews` approving reviews (one unless the placement says
+otherwise), squash the only merge and, when the placement names an infrastructure team,
+that team's approval of a change to the workflow and Cloud Build files), and the GitHub
+Environments the operations workflow runs in (every environment, production's for the
+rerun of a release and the rollback, each deploying from the default branch alone). The
+layer also adopts the infrastructure repository on its first apply (it exists before
+0-bootstrap; an import block brings it into the state), sets its merge settings as it does
+the applications', and rules its default branch: changed by pull request alone, the same
+reviews, squash the only merge, and the plan trigger's check
+(`<prefix>-boot-<region code>-layers-plan (<boot project id>)`) passing on the latest
+commit with the branch up to date with its base. The apply
+trigger's run applies it with the infrastructure GitHub App's installation token, minted in
+the run; a person applying by hand uses their own sign-in,
 `GITHUB_TOKEN` from `gh auth token`, after reading the plan; the placement names the release app by its
 App ID (`githubReleaseAppId`, from the app's settings page: a private app cannot be read
 by its slug) and also records the slug (`githubReleaseAppSlug`, the name in the app's
@@ -1857,9 +2203,12 @@ below on private repositories. Which of them a private repository gets depends o
 organization's GitHub plan, so its plan must include all four.
 
 - **Rulesets that GitHub enforces on private repositories.** `1-org` gives each
-  application's repository three rulesets. The tag ruleset lets the release app alone
-  create, move or delete a release tag, which is what makes the pipeline's tag check
-  sound; a ruleset GitHub shows but does not enforce leaves the check unsound.
+  application's repository three rulesets, and the infrastructure repository's default
+  branch one. The branch rulesets require `approvingReviews` approving reviews (one
+  unless the placement says otherwise) and the checks passing on the latest commit. The
+  tag ruleset lets the release app alone create, move or delete a release tag, which is
+  what makes the pipeline's tag check sound; a ruleset GitHub shows but does not enforce
+  leaves the check unsound.
 - **Environments on private repositories.** The operations workflow runs a restore, a
   rerun or a rollback in a GitHub Environment per environment, each deploying from the
   default branch alone. No Environment requires reviewers: that rule needs GitHub
@@ -1880,27 +2229,42 @@ organization's GitHub plan, so its plan must include all four.
 
 And one account: the machine account (`githubMachineAccount`, under bedrock org above), a
 GitHub user that is an owner of the organization and acts for no person, which authorizes
-the Cloud Build GitHub connection.
+the Cloud Build GitHub connection once, in the boot project, as the bootstrap administrator
+at the console; the token secret lives there, and every connection, the boot project's for
+the layers' triggers and each environment's for the applications', is rendered from it.
 
 ## The application's pipeline
 
-The pipeline a render writes runs on two triggers per environment: a pull request's
-`/gcbrun` comment (the first environment only) and a release tag (every environment, in
-promotion order, the later ones by a person's approval where the placement says so). A
+The pipeline a render writes runs on a release tag in every environment, in promotion
+order, the later ones by a person's approval where the placement says so, and on a pull
+request's `/gcbrun` comment in the first environment: the preview. Beside it the stack
+renders three triggers of its own in the first environment, which hold their steps in the
+trigger's text and run as the apply identity, so what applies Terraform for a pull request
+never runs from a file the pull request edits: the check trigger, on every push to a pull
+request (`bedrock check`, the stack planned and tested for every environment, the pull
+request's own stack applied again while a preview stands; the required check), the
+pr-stack trigger, on the same `/gcbrun` comment as the preview (the pull request's stack
+planned, guarded and applied, or destroyed on `/gcbrun down`, and what it applied written
+to the records bucket for the preview build), and the hourly sweep. A
 pull-request build stands its own environment up under `<app>-pr<N>` on the pull-request
 hostname, with its own database (or the environment's, on `/gcbrun shared-db`), and tears
 it down on `/gcbrun down` or by the hourly sweep once the pull request closes. The build
 talks back on the pull request: a deployment the sidebar shows, a comment with the release
-and the database mode, the guard's refusals. The pull-request build is the developer's
-preview, not a check the merge waits for: a pull request merges on `bedrock check` and the
+and the database mode; the stack's triggers talk back the same way with the plans'
+summaries and the guard's refusals. The pull-request build is the developer's
+preview, not a check the merge waits for: a pull request merges on the check trigger and the
 CI jobs (`1-org/github.tf` names them), so release-please's release pull request merges
-with no build, and a release's first build is the first environment's tag build.
+with no build, and a release's first build is the first environment's tag build. The
+trigger-held steps change with the stack's apply, one release behind the repository, and
+read the bedrock pin from the checkout's placement when they run, so a bedrock release
+works under the previous release's steps and a command says when it runs under older ones.
 
 The guards run before anything deploys: the migration guard (the sequence, one up file
 each, no gaps; a committed schema migration never changes, a seed file may; against the
 default branch for a pull request; a refusal names `bedrock migration renumber` as the
 fix), and the plan guard (a pull-request stack may only create and change what carries
-its own number).
+its own number), which holds because it runs in the pr-stack trigger, from steps the pull
+request cannot edit.
 
 A run that replaces the database (a restore run) puts the application into maintenance
 first: the release's own image starts as a revision with `APP_MAINTENANCE` set, which

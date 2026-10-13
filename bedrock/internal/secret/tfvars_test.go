@@ -253,6 +253,55 @@ func TestBuildSecretNames(t *testing.T) {
 	}
 }
 
+// TestPinnedVariables: the variables an environment's secret_versions pins, sorted,
+// whatever each pins; none where the file, the map or the environment's map is absent; a
+// map not written out refused.
+func TestPinnedVariables(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		tfvars  string
+		missing bool
+		env     string
+		want    []string
+		wantErr string
+	}{
+		{name: "the variables for the environment, sorted, whatever each pins", tfvars: "secret_versions = {\n  tst = {\n    APP_B = \"1\"\n    APP_A = \"latest\"\n    APP_C = 3\n  }\n  stg = {}\n}\n", env: "tst", want: []string{"APP_A", "APP_B", "APP_C"}},
+		{name: "an environment with none", tfvars: "secret_versions = {\n  tst = {\n    APP_A = \"2\"\n  }\n  stg = {}\n}\n", env: "stg"},
+		{name: "an environment the map lacks pins none", tfvars: "secret_versions = {\n  tst = {\n    APP_A = \"2\"\n  }\n}\n", env: "prd"},
+		{name: "a placement without the map pins none", tfvars: "build_secrets = {\n  tst = {\n    APP_A = \"2\"\n  }\n}\n", env: "tst"},
+		{name: "no placement pins none", missing: true, env: "tst"},
+		{name: "a map that is not written out is refused", tfvars: "secret_versions = var.x\n", env: "tst", wantErr: "secret_versions in"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			dir := t.TempDir()
+			if !tt.missing {
+				if err := os.WriteFile(filepath.Join(dir, tfvarsFile), []byte(tt.tfvars), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			got, err := PinnedVariables(dir, tt.env)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("PinnedVariables() error = %v, wantErr %q", err, tt.wantErr)
+				}
+
+				return
+			}
+			if err != nil {
+				t.Fatalf("PinnedVariables() error = %v", err)
+			}
+			if strings.Join(got, ",") != strings.Join(tt.want, ",") {
+				t.Errorf("PinnedVariables() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 // TestLatestVersions: the secrets an environment's secret_versions lets track latest,
 // sorted; none where every secret is pinned, and none where the file, the map or the
 // environment's map is absent; a map not written out and a version that is not a literal

@@ -15,24 +15,49 @@
 # tags created, moved or deleted by the release app alone, with no bypass for
 # the repository's admins; the default branch and the hotfix lines changed by
 # pull request alone, no force push, no deletion, with the branch up to date
-# with its base, the required checks passing on its latest commit, squash the
-# only merge and, when var.github_infrastructure_team names a team, that
-# team's approval of a change to the workflow and Cloud Build files, given
-# after the last push), and the GitHub Environments the operations workflow
-# runs in (one per environment, production included, since a release is run
-# again and a rollback is run there from GitHub, each deploying from the
-# default branch alone). No Environment waits for a reviewer: a rollback or a
-# rerun waits for its approval in Cloud Build where the environment requires
-# one (placement.json's approvals), as a release does, and the approver is
+# with its base, the required checks passing on its latest commit,
+# local.approving_reviews approving reviews, squash the only merge and, when
+# var.github_infrastructure_team names a team, that team's approval of a
+# change to the workflow and Cloud Build files, given after the last push),
+# and the GitHub Environments the operations workflow runs in (one per
+# environment, production included, since a release is run again and a
+# rollback is run there from GitHub, each deploying from the default branch
+# alone). No Environment waits for a reviewer: a rollback or a rerun waits
+# for its approval in Cloud Build where the environment requires one
+# (placement.json's approvals), as a release does, and the approver is
 # written into the deployment record. GitHub's required reviewers on an
 # Environment of a private repository need GitHub Enterprise, which bedrock
 # does not require of an organization.
 #
-# The required checks are the infrastructure workflow's job, bedrock check,
-# which GitHub Actions reports, and the fixed jobs of the application's own
-# CI workflow, which impulse renders and GitHub Actions reports by their ids:
-# title, go, web, image, secrets and migrations. Every application's workflow
-# carries those; the list is read from impulse, so the names have one source.
+# The approving reviews are placement.json's approvingReviews: one unless it
+# says otherwise, 0 for none (a writer merges alone once the checks pass).
+# While the count is above 0, an approval given before the last push is
+# dismissed and one given after it is needed. The count is rendered into this
+# file (local.approving_reviews), never read from terraform.tfvars: this file
+# is bedrock's, and bedrock org check compares it with the render, so a
+# developer with write on an application repository cannot lower the count,
+# and lowering it for this repository takes a merge that met the count in
+# force.
+#
+# This repository's default branch, from which alone the apply trigger
+# applies the layers, gets a ruleset of its own: changed by pull request
+# alone, no force push, no deletion, the same reviews, squash the only merge,
+# and the plan trigger's build (0-bootstrap/cloud-build.tf) passing on the
+# latest commit with the branch up to date with its base. The repository
+# exists before 0-bootstrap and is no resource of this layer; the ruleset
+# alone is declared here.
+#
+# The required checks are the application stack's check trigger in
+# tst's Cloud Build (imp-tst-uc1-<app>-check: on every
+# push to a pull request it runs bedrock check, plans and tests the stack for
+# every environment as that environment's plan identity and applies the pull
+# request's own stack again when one is standing; its steps are the stack's
+# own text, which no pull request edits), which Google's Cloud Build GitHub
+# App reports under the trigger's name and the project id, and the fixed
+# jobs of the application's own CI workflow, which impulse renders and
+# GitHub Actions reports by their ids: title, go, web, image, secrets and migrations. Every
+# application's workflow carries those; the list is read from impulse, so
+# the names have one source.
 # The workflow's browser jobs (angular-<workspace>, one per browser
 # workspace) are named per application, so the rule does not name them; web,
 # the gate over them, fails when any of them did, so a failed browser build
@@ -72,12 +97,17 @@
 # message.
 # ---------------------------------------------------------------------------
 
-# The app that reports the required checks: GitHub Actions, for the
-# infrastructure workflow's job and the application's CI jobs alike. It is
-# public, so its id is read by slug; the release app, the organization's own,
-# is named by its App ID (var.github_release_app_id).
+# The apps that report the required checks: GitHub Actions, for the
+# application's CI jobs, and Google's Cloud Build GitHub App, for the stack's
+# check trigger. Both are public, so their ids are read by slug; the release
+# app, the organization's own, is named by its App ID
+# (var.github_release_app_id).
 data "github_app" "actions" {
   slug = "github-actions"
+}
+
+data "github_app" "cloud_build" {
+  slug = "google-cloud-build"
 }
 
 data "github_team" "infrastructure" {
@@ -91,16 +121,38 @@ locals {
   # reaches every environment but production, a rerun of a release every one.
   operations_environments = ["tst", "stg", "prd"]
 
+  # The approving reviews a pull request needs before it merges, on every
+  # application repository's default branch and hotfix lines and on this
+  # repository's default branch: placement.json's approvingReviews, one when
+  # the placement leaves it out, 0 for none. Rendered here, in an owned file,
+  # never read from terraform.tfvars (the header says why).
+  approving_reviews = 1
+
+  # The context the Cloud Build app reports the check trigger's build under:
+  # the trigger's name, as the application's stack names it in tst
+  # (imp-tst-uc1-<app>-check), then tst's project id in
+  # parentheses. The form is the app's, read off the checks it reports; a
+  # differing one is corrected here, in this one line.
+  cloud_build_check = {
+    for app in var.applications : app => "${var.prefix}-tst-uc1-${app}-check (${module.project["tst"].project_id})"
+  }
+
+  # The context the same app reports the plan trigger's build under, this
+  # repository's required check: the trigger's name as 0-bootstrap/cloud-build.tf
+  # gives it (imp-boot-uc1-layers-plan; a renamed trigger is a change in both
+  # files), then the boot project's id in parentheses.
+  layers_plan_check = "${var.prefix}-boot-uc1-layers-plan (${var.boot_project_id})"
+
   # The checks a pull request into the default branch or a hotfix line must
   # pass, each by the name it is reported under and the app that reports it:
-  # bedrock check, then the application's CI jobs in the workflow's order. The
-  # pull-request build is not among them: it is the preview on /gcbrun (the
-  # header says what that gives up).
+  # the stack's check trigger, then the application's CI jobs in the
+  # workflow's order. The pull-request build is not among them: it is the
+  # preview on /gcbrun (the header says what that gives up).
   required_checks = {
     for app in var.applications : app => [
       {
-        context        = "bedrock check"
-        integration_id = tonumber(data.github_app.actions.id)
+        context        = local.cloud_build_check[app]
+        integration_id = tonumber(data.github_app.cloud_build.id)
       },
       {
         context        = "title"
@@ -265,8 +317,9 @@ resource "github_repository_ruleset" "branch" {
     non_fast_forward = true
 
     pull_request {
-      required_approving_review_count = 0
-      require_last_push_approval      = var.github_infrastructure_team != ""
+      required_approving_review_count = local.approving_reviews
+      require_last_push_approval      = local.approving_reviews > 0 || var.github_infrastructure_team != ""
+      dismiss_stale_reviews_on_push   = local.approving_reviews > 0
       allowed_merge_methods           = ["squash"]
 
       dynamic "required_reviewers" {
@@ -298,6 +351,80 @@ resource "github_repository_ruleset" "branch" {
           context        = required_check.value.context
           integration_id = required_check.value.integration_id
         }
+      }
+    }
+  }
+}
+
+# This repository, from which the triggers plan and apply the layers. It
+# exists before 0-bootstrap (a person makes it, and the layers live in it), so
+# this layer adopts it on its first apply (the import block, a no-op once the
+# repository is in the state) and sets what the applications' repositories
+# get: squash the only merge, the squashed commit titled from the pull
+# request, the head branch deleted on merge, and the update of a branch
+# offered on the pull request, which the ruleset's strict checks need. It is
+# never deleted by this layer, and what it says about itself stays its own.
+import {
+  id = var.infrastructure_repository
+  to = github_repository.infrastructure
+}
+
+resource "github_repository" "infrastructure" {
+  name       = var.infrastructure_repository
+  visibility = "private"
+
+  allow_merge_commit          = false
+  allow_rebase_merge          = false
+  allow_squash_merge          = true
+  squash_merge_commit_title   = "PR_TITLE"
+  squash_merge_commit_message = "PR_BODY"
+  delete_branch_on_merge      = true
+  allow_update_branch         = true
+
+  lifecycle {
+    prevent_destroy = true
+    ignore_changes = [
+      description, homepage_url, topics, archived, vulnerability_alerts,
+      has_issues, has_projects, has_wiki, has_discussions,
+    ]
+  }
+}
+
+# This repository's default branch: its ruleset, with the review settings of
+# the applications' branch rulesets and the plan trigger's build as the
+# required check, which Google's Cloud Build GitHub App reports under the
+# trigger's name and the boot project's id. The apply trigger's build is not
+# a check: it runs after the merge.
+resource "github_repository_ruleset" "infrastructure" {
+  name        = local.lines.default.name
+  repository  = github_repository.infrastructure.name
+  target      = "branch"
+  enforcement = "active"
+
+  conditions {
+    ref_name {
+      include = local.lines.default.include
+      exclude = []
+    }
+  }
+
+  rules {
+    deletion         = true
+    non_fast_forward = true
+
+    pull_request {
+      required_approving_review_count = local.approving_reviews
+      require_last_push_approval      = local.approving_reviews > 0 || var.github_infrastructure_team != ""
+      dismiss_stale_reviews_on_push   = local.approving_reviews > 0
+      allowed_merge_methods           = ["squash"]
+    }
+
+    required_status_checks {
+      strict_required_status_checks_policy = true
+
+      required_check {
+        context        = local.layers_plan_check
+        integration_id = tonumber(data.github_app.cloud_build.id)
       }
     }
   }

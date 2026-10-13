@@ -180,8 +180,11 @@ variable "secret_versions" {
     then by the environment variable the secret feeds (the struct tag in
     pkg/config/data.go). A secret with no entry has its container created but
     is not mounted: the process starts without the variable, which is "not
-    yet" for a value an operator has not added. A rotation is a new version
-    added by an operator plus a one-line bump here, released like any change.
+    yet" for a value an operator has not added. tst alone runs
+    that way; in every environment after it a release is refused at its plan
+    until each secret the code declares has an entry here. A rotation is a
+    new version added by an operator plus a one-line bump here, released like
+    any change.
 
     A value is a version number. "latest" is allowed only where the map says
     so, and means the environment tracks whatever version is added next; the

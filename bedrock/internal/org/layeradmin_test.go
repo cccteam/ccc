@@ -282,8 +282,8 @@ func TestLayerAdministratorPlace(t *testing.T) {
 		{
 			name:   "0-bootstrap's recovery names the two entitlements",
 			path:   "0-bootstrap/README.md",
-			want:   []string{"asks for two entitlements for the same short time", "and the audit\nlog names the person"},
-			absent: []string{"GOOGLE_IMPERSONATE_SERVICE_ACCOUNT", "serviceAccountTokenCreator"},
+			want:   []string{"asks for two entitlements for the same short time", "and the audit log names the person"},
+			absent: []string{"GOOGLE_IMPERSONATE_SERVICE_ACCOUNT"},
 		},
 		{
 			name:   "the root README too",

@@ -3,8 +3,8 @@
 Where the organization is described: folders, the org policy baseline,
 Essential Contacts, every project, and the identities that manage each
 project's own layer. Its first apply is the bootstrap administrator's; from
-then on the layers workflow applies it as `imp-org-gbl-tofu` and plans it
-on a pull request as `imp-org-gbl-plan`.
+then on the apply trigger applies it as `imp-org-gbl-tofu` and the plan
+trigger plans it on a pull request as `imp-org-gbl-plan`.
 
 ## What it creates
 
@@ -53,19 +53,23 @@ on a pull request as `imp-org-gbl-plan`.
   on the project, creating a bucket and listing the project's buckets, is the
   custom role `storageBucketCreator` in the `app` role set (below).
 - The plan identities of the two boot layers, `imp-boot-gbl-plan` and
-  `imp-org-gbl-plan`, in the boot project (`workflow.tf`), with the
+  `imp-org-gbl-plan`, in the boot project (`runners.tf`), with the
   organization-level reads of `var.boot_plan_roles`: `0-bootstrap` cannot
   make its own, and a plan of either layer as its apply identity would run a
   pull request's code with the power to apply.
-- For every identity it creates, what the layers workflow needs
-  (`workflow.tf`): the federation binding on the boot project's pool (a plan
-  identity admits a pull request's run, an apply identity a run on the
-  default branch alone) and the state bucket's grants (the list, the layer's
-  own prefix, the upstream prefixes it reads). The environment layer
-  identities also get the bucket's policy authority (`0-bootstrap`'s custom
-  role), for the application identities `2-env` creates, and the environment
-  layers' plan identities the read of that policy (`bucketPolicyReader`,
-  below), which a plan of `2-env` refreshes those grants through. Each layer grants
+- For every identity it creates, what the Cloud Build triggers need
+  (`runners.tf`): the right of the trigger runner of its kind to impersonate
+  it (`roles/iam.serviceAccountTokenCreator`: the planner on a plan identity,
+  the applier on an apply identity; `0-bootstrap/README.md`, "The Cloud Build
+  triggers") and the state bucket's grants (the list, the layer's own prefix,
+  the upstream prefixes it reads). The environment layer identities also get
+  the bucket's policy authority (`0-bootstrap`'s custom role), for the
+  application identities `2-env` creates, the administration of the deployer
+  GitHub App's key container in the boot project (`secretContainerAdmin`,
+  below), so `2-env` can grant those identities its read, and the environment
+  layers' plan identities the read of the bucket's policy (`bucketPolicyReader`,
+  below) and of that container's policy (`roles/secretmanager.viewer` on the
+  container), which a plan of `2-env` refreshes those grants through. Each layer grants
   for the identities it creates because IAM refuses a binding for a service
   account that does not exist.
 - Per environment, the layer state entitlement `imp-<env>-layer-state`
@@ -171,7 +175,8 @@ on a pull request as `imp-org-gbl-plan`.
   environment): the GitHub connection and the repository links, the
   pull-request backend service and endpoint groups, the Identity Platform
   configuration, the operations pool with its provider and attestation
-  rules, the team group's entitlements, the deployer key's container, the
+  rules, the team group's entitlements, the deployer key container an earlier
+  bedrock made in the environment project (until its removal is applied), the
   environment's own Spanner instance and the records bucket.
   `servicesLayerPlanReader` (`2-shr`): the image repositories.
   `networkLayerPlanReader` (`2-net`): the certificate, its authorization, the
@@ -192,7 +197,7 @@ on a pull request as `imp-org-gbl-plan`.
   bucket's policy; the bucket roles that read a policy also set it
   (`legacyBucketOwner`) or carry every object (`admin`). This layer grants it
   on the state bucket to each environment layer's plan identity
-  (`workflow.tf`).
+  (`runners.tf`).
 - The custom organization role `cloudTasksQueueOperator`: pauses, resumes and
   purges a Cloud Tasks queue, and reads it, nothing else. An application's stack
   grants it on the application's own queue to its deploy identity: a release that
@@ -232,11 +237,20 @@ on a pull request as `imp-org-gbl-plan`.
   alone, with no bypass for the repository's admins; the default branch and the
   hotfix lines `hotfix/*` changed by pull request alone, no force push, no
   deletion, with the branch up to date with its base, the required checks
-  passing and squash the only merge) and the GitHub Environments the operations
-  workflow runs in (`tst`, `stg` and `prd`, each deploying from the default
-  branch alone; production's for the rerun of a release and the rollback,
-  since it is never restored by a run). See "The applications'
-  repositories" below.
+  passing, one approving review and squash the only merge) and the GitHub
+  Environments the operations workflow runs in (`tst`, `stg` and `prd`, each
+  deploying from the default branch alone; production's for the rerun of a
+  release and the rollback, since it is never restored by a run). See "The
+  applications' repositories" below.
+
+- This repository's default branch: one ruleset (changed by pull request
+  alone, no force push, no deletion, with the branch up to date with its
+  base, the plan trigger's build passing, one approving review and
+  squash the only merge), and the repository itself, which exists before
+  0-bootstrap: this layer adopts it on its first apply and sets its merge
+  settings as it does the applications' (squash the only merge, the squashed
+  commit titled from the pull request, the head branch deleted on merge, the
+  update of a branch offered); it never deletes it.
 
 ## Applying
 
@@ -259,17 +273,18 @@ Review the plan carefully. It creates folders, org policy, and projects with
 `deletion_policy = "PREVENT"` and a lien each, which are hard to undo. The
 first `init` writes `.terraform.lock.hcl`; commit it. Then record the
 `project_ids` and `project_numbers` outputs in `placement.json` (`projects`,
-`projectNumbers`) and run `bedrock org render`: the layers workflow names
-every layer's identities by them.
+`projectNumbers`) and run `bedrock org render`: the layers name every
+identity by them, and `0-bootstrap` grants each environment project's Cloud
+Build service agent the read of the connections' token by its number.
 
 The apply leaves the person with what Google gives a creator: `roles/owner`
 on each project it made, and Folder Admin and Folder Editor on each folder
 (the seed left the same on the boot project and the `terraform` folder).
 Nothing here grants them, and they are temporary: the layers run as their
 identities, and a person's access to an environment comes from its team
-group (`2-env/README.md`, "The team group"). Once the workflow applies the
-layers, remove them by hand, per project in `project_ids` and per folder in
-`folder_ids`:
+group (`2-env/README.md`, "The team group"). Once the apply trigger applies
+the layers, remove them by hand, per project in `project_ids` and per folder
+in `folder_ids`:
 
 ```bash
 gcloud projects remove-iam-policy-binding <project id> --member="user:<person>" --role=roles/owner
@@ -283,15 +298,15 @@ that read the projects' IAM policies; without any it says so. The
 organization-level roles the seed names stay with the bootstrap
 administrator for recovery (`0-bootstrap/README.md`, "Recovery, by hand").
 
-From then on the layers workflow (`.github/workflows/layers.yml`) applies this layer as
-`imp-org-gbl-tofu` on a merge into `master` and plans it on a
+From then on the apply trigger applies this layer as `imp-org-gbl-tofu`
+on a merge into `master` and the plan trigger plans it on a
 pull request as `imp-org-gbl-plan`, the plan identity this layer makes for
-itself (`workflow.tf`); the GitHub side runs with the infrastructure GitHub
-App's token, minted in the run (`0-bootstrap/README.md`, "The infrastructure
-GitHub App"). By hand, for recovery, the bootstrap administrator applies it
-the way the first apply ran: with their own sign-in, their own GitHub token
-and the organization-level roles the seed names. No entitlement covers this
-layer.
+itself (`runners.tf`; `0-bootstrap/README.md`, "The Cloud Build triggers");
+the GitHub side runs with the infrastructure GitHub App's token, minted in
+the run (`0-bootstrap/README.md`, "The infrastructure GitHub App"). By hand,
+for recovery, the bootstrap administrator applies it the way the first apply
+ran: with their own sign-in, their own GitHub token and the organization-level
+roles the seed names. No entitlement covers this layer.
 
 Set `essential_contact_emails` in `terraform.tfvars` before applying if you
 want Essential Contacts registered. Addresses must be in one of
@@ -334,9 +349,9 @@ rerun waits for its approval in Cloud Build where the environment requires
 one, as a release does, and the approver is written into the deployment
 record. GitHub's required reviewers on a private repository's Environment
 need GitHub Enterprise, which bedrock does not require of an organization.
-The layers workflow applies it with the infrastructure
-GitHub App's installation token, minted in the run from the key the boot
-project holds, so the audit log names the app; a person applying by hand sets
+A run of the triggers applies it with the infrastructure GitHub App's
+installation token, minted in the run from the key the boot project holds,
+so the audit log names the app; a person applying by hand sets
 `GITHUB_TOKEN` to the token of an owner of the organization before `tofu plan`
 or `tofu apply` (`export GITHUB_TOKEN=$(gh auth token)` with gh signed in as
 that owner), and the audit log names the person. bedrock commands use the
@@ -345,8 +360,16 @@ hotfix` creates branches and pull requests, the pipeline talks back on a pull
 request.
 
 The required checks on the default branch and the hotfix lines are the
-infrastructure workflow's job, `bedrock check`, which GitHub Actions reports,
-and the fixed jobs of the application's own CI workflow,
+application stack's check trigger in tst's Cloud Build
+(`imp-tst-<region>-<app>-check`, set by the application's
+stack in tst: on every push to a pull request it runs
+`bedrock check`, plans and tests the stack for every environment as that
+environment's plan identity, posts the summaries, and applies the pull
+request's own stack again when one is standing; its steps are the stack's own
+text, which no pull request edits), which Google's Cloud Build GitHub App
+reports under the trigger's name and the project id (`<trigger> (<project
+id>)`; `github.tf` writes the form in one line, corrected there if the app
+reports another), and the fixed jobs of the application's own CI workflow,
 `.github/workflows/ci.yml`, which `impulse render` writes and GitHub Actions
 reports by their ids: `title`, `go`, `web`, `image`, `secrets` and `migrations`. Every
 application's workflow carries those; bedrock reads the list from impulse when
@@ -366,13 +389,42 @@ The pull-request build (the trigger
 `imp-tst-<region>-<app>-pr`, set by the application's
 stack in tst) is not a required check. It is the developer's
 preview: a `/gcbrun` comment builds the pull request and stands its own
-environment up in tst, and a pull request merges whether or
-not anyone built it. So release-please's release pull request needs no build:
-CI and `bedrock check` run on it, a person merges it, the tag is cut and
+environment up in tst (the stack's `-pr-stack` trigger applies
+the pull request's stack on the same comment), and a pull request merges
+whether or not anyone built it. So release-please's release pull request needs
+no build: CI and the check trigger run on it, a person merges it, the tag is cut and
 tst's tag build is the release's first build. What this
 gives up: a pull request whose image build or migration is broken can merge,
 and the breakage shows in tst's tag build; the fix is
 another pull request and another release.
+
+Every pull request into the default branch or a hotfix line needs
+one approving review (`approvingReviews` in `placement.json`; one when
+the placement leaves it out, 0 for none, so a writer merges alone once the
+checks pass). While the count is above 0, an approval given before the last
+push is dismissed and one given after it is needed. The count is rendered
+into `github.tf` (`local.approving_reviews`), never read from
+`terraform.tfvars`: `bedrock org check` compares the file with the render, so
+a developer with write on an application repository cannot lower it, and
+lowering it for this repository takes a merge that met the count in force.
+
+This repository's default branch, from which alone the apply trigger applies
+the layers, has a ruleset of its own
+(`github_repository_ruleset.infrastructure`): changed by pull request alone,
+no force push, no deletion, the same reviews as the applications' branches,
+squash the only merge, and the plan trigger's build passing on the pull
+request's latest commit with the branch up to date with its base, which
+Google's Cloud Build GitHub App reports under `imp-boot-uc1-layers-plan (<boot
+project id>)`. The repository itself exists before 0-bootstrap; this layer
+adopts it on its first apply through an import block (a no-op once the
+repository is in the state) and sets its merge settings as it does the
+applications' repositories' (`github_repository.infrastructure`): squash the
+only merge, the squashed commit titled from the pull request, the head branch
+deleted on merge, and the update of a branch offered on the pull request,
+which the strict checks need. It never deletes it, and what the repository
+says about itself stays its own. A ruleset made on it by hand is imported
+like an application's (`tofu import github_repository_ruleset.infrastructure
+imp-impulse-infrastructure:<id>`), so the apply changes it instead of adding a second one.
 
 When `github_infrastructure_team` names a team of the organization (its slug;
 empty by default), a change to the files that define what the checks run
@@ -433,7 +485,7 @@ required checks, the rulesets' names.
 | `allowed_contact_domains` | Domains permitted as Essential Contacts. | `list(string)` | `["@imp.example"]` | no |
 | `audit_log_retention_days` | Retention for the audit log bucket; only with `central_logging`. | `number` | `400` | no |
 | `billing_account_id` | Billing account to link projects to. | `string` | n/a | yes |
-| `boot_plan_roles` | Organization-level reads of the two boot layers' plan identities. | `list(string)` | nine roles, see `variables.tf` | no |
+| `boot_plan_roles` | Organization-level reads of the two boot layers' plan identities. | `list(string)` | eight roles, see `variables.tf` | no |
 | `boot_project_id` | Boot project from `0-bootstrap`; quota and billing project for API calls. | `string` | n/a | yes |
 | `central_logging` | Create the log project, audit log bucket, and folder sinks. | `bool` | `false` | no |
 | `essential_contact_emails` | Addresses registered as Essential Contacts on every folder. | `list(string)` | `[]` | no |
@@ -455,7 +507,7 @@ required checks, the rulesets' names.
 
 | Set | Roles |
 |---|---|
-| `app` | artifactregistry.admin, cloudbuild.builds.editor, cloudbuild.connectionAdmin, cloudscheduler.admin, cloudtasks.queueAdmin, compute.loadBalancerAdmin, iam.serviceAccountAdmin, iam.serviceAccountUser, iam.workloadIdentityPoolAdmin, identityplatform.admin, logging.admin, monitoring.admin, privilegedaccessmanager.admin (the team group's entitlements), resourcemanager.projectIamAdmin, run.admin, serviceusage.apiKeysAdmin (the layers workflow restricts Firebase's browser key after each apply of `2-env`), serviceusage.serviceUsageAdmin, spanner.admin, `secretContainerAdmin`, `storageBucketCreator` (storage.admin itself is granted beside the set, under a condition naming the environment's records bucket; `service-accounts.tf`) |
+| `app` | artifactregistry.admin, cloudbuild.builds.editor, cloudbuild.connectionAdmin, cloudscheduler.admin, cloudtasks.queueAdmin, compute.loadBalancerAdmin, iam.serviceAccountAdmin, iam.serviceAccountUser, iam.workloadIdentityPoolAdmin, identityplatform.admin, logging.admin, monitoring.admin, privilegedaccessmanager.admin (the team group's entitlements), resourcemanager.projectIamAdmin, run.admin, serviceusage.apiKeysAdmin (`bedrock org apply` restricts Firebase's browser key after each apply of `2-env`), serviceusage.serviceUsageAdmin, spanner.admin, `secretContainerAdmin`, `storageBucketCreator` (storage.admin itself is granted beside the set, under a condition naming the environment's records bucket; `service-accounts.tf`) |
 | `shr` | artifactregistry.admin, iam.serviceAccountAdmin, iam.serviceAccountUser, iam.workloadIdentityPoolAdmin, logging.admin, monitoring.admin, resourcemanager.projectIamAdmin, serviceusage.serviceUsageAdmin, storage.admin, `secretContainerAdmin` |
 | `net` | certificatemanager.editor, compute.loadBalancerAdmin, compute.networkAdmin, compute.securityAdmin, dns.admin, domains.admin, iam.serviceAccountAdmin, iam.serviceAccountUser, logging.admin, monitoring.admin, resourcemanager.projectIamAdmin, serviceusage.serviceUsageAdmin, storage.admin |
 | `spn` | iam.serviceAccountAdmin, iam.serviceAccountUser, logging.admin, monitoring.admin, privilegedaccessmanager.admin (the environments' Spanner entitlements), resourcemanager.projectIamAdmin, serviceusage.serviceUsageAdmin, spanner.admin, storage.admin |

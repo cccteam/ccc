@@ -1,4 +1,4 @@
-// guardplan.go is the guard on a pull request's plan.
+// guardplan.go is the guard on a pull request's plan, in the pull request's stack job.
 
 package deploy
 
@@ -15,22 +15,19 @@ import (
 	"github.com/go-playground/errors/v5"
 )
 
-// GuardPlan lets through only what belongs to the pull request. A pull request may have
+// guardPlan lets through only what belongs to the pull request. A pull request may have
 // edited the stack any way at all, so every resource the saved plan creates, changes or
 // destroys must carry the pull request's name (<app>-pr<N>) in what names it (name,
 // account_id, service, job, database, parent, secret_id, service_account_id, bucket, or
 // the source of a ruleset), be an IAM membership of one of the pull request's own
 // accounts, or be a grant whose condition bounds it to one of the pull request's resources
 // (the deploy identity's Firestore role on the pull request's database). Resources outside
-// the google provider (time_sleep) shape nothing and pass. Anything else stops the build and is
+// the google provider (time_sleep) shape nothing and pass. Anything else stops the job and is
 // listed on the pull request. Shared mode (/gcbrun shared-db) is refused too when the
 // pull request changes the migrations, which would change the shared database before any
-// release.
-func GuardPlan(ctx context.Context, clients *Clients, w Workspace, out io.Writer) error {
-	env, build, ok, err := pullRequestStep(w, out)
-	if err != nil || !ok {
-		return err
-	}
+// release. env is the job's mode (the repository's token, shared-db); the plan's JSON is
+// read from the workspace, where the plan left it.
+func guardPlan(ctx context.Context, clients *Clients, w Workspace, build *Build, env map[string]string, out io.Writer) error {
 	subs := build.Substitutions
 	if env[sharedDBFact] == trueValue {
 		if err := sharedMigrations(ctx, clients, subs, env, out); err != nil {

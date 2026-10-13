@@ -8,8 +8,11 @@ state_bucket = "imp-boot-gbl-state-REPLACEME"
 # is keyed by environment so one file serves all three applies.
 
 # The version of each secret an environment runs. Empty means "not yet": the
-# container exists, nothing is mounted. Bump here after an operator adds a
-# version. "latest" only for a secret the placement marks as tracking it.
+# container exists, nothing is mounted; tst alone runs that way,
+# and a release to any other environment is refused until every secret the
+# code declares is pinned there. Bump here after an operator adds a version
+# (bedrock secret pin). "latest" only for a secret the placement marks as
+# tracking it.
 secret_versions = {
   tst = {}
   stg = {}

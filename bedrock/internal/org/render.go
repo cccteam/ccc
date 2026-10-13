@@ -18,6 +18,7 @@ import (
 
 	"github.com/go-playground/errors/v5"
 
+	"github.com/cccteam/ccc/bedrock/internal/release"
 	"github.com/cccteam/ccc/bedrock/internal/render"
 	"github.com/cccteam/ccc/impulse/ci"
 )
@@ -31,16 +32,14 @@ const (
 	tfvarsFile  = "terraform.tfvars"
 	journalFile = "JOURNAL.md"
 	ignoreFile  = ".gitignore"
-	// workflowDir holds the layers workflow, the one GitHub workflow of the repository:
-	// rendered and owned like the layers' files, compared by org check.
-	workflowDir = ".github/workflows"
-	// workflowName is the workflow file's name under workflowDir.
-	workflowName = "layers.yml"
-	// mappedPurpose is the attribute the boot project's identity provider maps a
-	// GitHub token's event and ref to: plan for a pull request into the default branch,
-	// apply for a push to it or a run started from it, none for anything else. Each
-	// identity's federation binding selects one value.
-	mappedPurpose = "attribute.purpose"
+	// StepsVersion names the shape of the triggers' inline steps this bedrock renders
+	// (0-bootstrap/cloud-build.tf): the substitutions they carry and what each step
+	// does. Both triggers pass it as _BEDROCK_STEPS, and bedrock org plan and apply
+	// compare it with their own, since a trigger's steps lag one apply behind the
+	// repository: a change to them is rendered by the new bedrock, planned and applied
+	// by a run on the old steps, and the next run is the first on the new ones. It
+	// changes when the steps change in a way the commands have to know about.
+	StepsVersion = "1"
 	// modelLabelWidth is the width of the model's longest label key,
 	// terraform_source_path, which every labels block aligns to.
 	modelLabelWidth = len("terraform_source_path")
@@ -63,8 +62,16 @@ const (
 // Layers are the model's layers, in apply order.
 var Layers = []string{bootstrapLayer, orgLayer, shrLayer, spnLayer, netLayer, envLayer}
 
-// WorkflowFile is the layers workflow's path under the repository root.
-const WorkflowFile = workflowDir + "/" + workflowName
+// RetiredWorkflowFile is the layers workflow an earlier bedrock rendered under the
+// repository root, which the Cloud Build triggers replaced: org render removes it and
+// org check reports it while it is there.
+const RetiredWorkflowFile = ".github/workflows/layers.yml"
+
+// retiredFiles are the owned files an earlier bedrock rendered that this one does not:
+// the layers workflow, and 1-org's workflow.tf, whose resources runners.tf carries now.
+// org render removes each when present, and org check reports it: a .tf file left
+// behind declares resources twice.
+var retiredFiles = []string{RetiredWorkflowFile, orgLayer + "/workflow.tf"}
 
 // layerProjects is the project each single-run layer's identities live in, by layer: the
 // boot project for the two boot layers (both identities are named after their layer, boot
@@ -95,13 +102,14 @@ func (*view) Environments() []string {
 }
 
 // FirebaseBrowserKey is the display name of the API key Firebase creates when Identity
-// Platform is initialized, which the layers workflow restricts after each apply of 2-env.
+// Platform is initialized, which bedrock org apply restricts after each apply of 2-env.
 func (*view) FirebaseBrowserKey() string {
 	return FirebaseBrowserKey
 }
 
-// SignInAPITargets is the API restriction the layers workflow sets on Firebase's browser
-// key, as gcloud services api-keys update takes it: one --api-target per sign-in API.
+// SignInAPITargets is the API restriction bedrock org apply sets on Firebase's browser
+// key, as gcloud services api-keys update takes it for the same restriction by hand: one
+// --api-target per sign-in API.
 func (*view) SignInAPITargets() string {
 	targets := make([]string, 0, len(SignInAPIs))
 	for _, api := range SignInAPIs {
@@ -218,88 +226,159 @@ func (*view) Prd() string {
 	return Environments[len(Environments)-1]
 }
 
-// LayerRun is one run of the layers workflow: a layer, the environment it is applied in
-// (2-env alone; empty for the rest), the state prefix its init names (2-env alone), and
-// the identities the run signs in as: the apply identity on the default branch, the plan
-// identity on a pull request. Name is the run as the workflow and its comments call it.
-type LayerRun struct {
-	Name        string
-	Layer       string
-	Environment string
-	StatePrefix string
-	Apply       string
-	Plan        string
-}
-
-// LayerRuns is every run of the layers workflow in layer order: the five single-run
-// layers, then 2-env once per environment in promotion order. An identity under a project
-// the placement does not record carries REPLACEME, which the workflow refuses to run.
-func (v *view) LayerRuns() []LayerRun {
-	runs := make([]LayerRun, 0, len(Layers)-1+len(Environments))
-	for _, layer := range Layers {
-		if layer == envLayer {
-			for _, env := range Environments {
-				runs = append(runs, LayerRun{
-					Name: layer + " " + env, Layer: layer, Environment: env, StatePrefix: layer + "/" + env,
-					Apply: v.identityEmail(env, env, "tofu"), Plan: v.identityEmail(env, env, "plan"),
-				})
-			}
-
-			continue
-		}
-		p := layerProjects[layer]
-		runs = append(runs, LayerRun{
-			Name: layer, Layer: layer,
-			Apply: v.identityEmail(p.name, p.project, "tofu"), Plan: v.identityEmail(p.name, p.project, "plan"),
-		})
-	}
-
-	return runs
-}
-
-// identityEmail is a layer identity's email: <prefix>-<name>-gbl-<suffix> in the project
-// under the key, as 0-bootstrap and 1-org name them.
-func (v *view) identityEmail(name, projectKey, suffix string) string {
-	return v.Prefix + "-" + name + "-gbl-" + suffix + "@" + v.Project(projectKey) + ".iam.gserviceaccount.com"
-}
-
-// BootProject is the boot project's id, or its REPLACEME form until the seed's values
-// are recorded.
-func (v *view) BootProject() string {
-	return v.Project(bootProject)
-}
-
-// WorkflowPool is the id of the boot project's workload identity pool for the layers
-// workflow, as 0-bootstrap names it; WorkflowProvider the full name of its provider,
-// which the workflow's sign-in step takes, or empty until the placement records the boot
-// project's number.
-func (v *view) WorkflowPool() string {
-	return v.Prefix + "-boot-github"
-}
-
-func (v *view) WorkflowProvider() string {
-	number, ok := v.ProjectNumbers[bootProject]
-	if !ok {
-		return ""
-	}
-
-	return "projects/" + number + "/locations/global/workloadIdentityPools/" + v.WorkflowPool() + "/providers/github"
-}
-
-// WorkflowPath is the workflow file's path, for the provider's condition and the READMEs.
-func (*view) WorkflowPath() string {
-	return WorkflowFile
-}
-
-// MappedPurpose is the provider attribute the federation bindings select on.
-func (*view) MappedPurpose() string {
-	return mappedPurpose
-}
-
 // InfrastructureRepository is this repository under its GitHub organization, the one
-// repository whose tokens the boot project's provider trusts.
+// repository the boot project's connection links and the triggers watch.
 func (v *view) InfrastructureRepository() string {
 	return v.GithubOrganization + "/" + v.SourceRepo
+}
+
+// StepsVersion is the shape of the triggers' steps, passed as _BEDROCK_STEPS.
+func (*view) StepsVersion() string {
+	return StepsVersion
+}
+
+// MarkerPrefix is where bedrock org apply keeps its markers in the state bucket.
+func (*view) MarkerPrefix() string {
+	return MarkerPrefix
+}
+
+// CloudBuildInstallationIDHCL is the installation id as an HCL value: the number, or
+// null until the authorization is recorded. CloudBuildTokenSecretVersionHCL is the token
+// secret version's resource name, quoted, or null.
+func (v *view) CloudBuildInstallationIDHCL() string {
+	if v.CloudBuildInstallationID == "" {
+		return hclNull
+	}
+
+	return v.CloudBuildInstallationID
+}
+
+func (v *view) CloudBuildTokenSecretVersionHCL() string {
+	return hclStringOrNull(v.CloudBuildTokenSecretVersion)
+}
+
+// GithubDeployerAppIDHCL is the deployer app's App ID as an HCL value, or null until the
+// app is recorded; DeployerKeyVersionNameHCL the pinned version of its key by resource
+// name, quoted, or null until one is pinned.
+func (v *view) GithubDeployerAppIDHCL() string {
+	if v.GithubDeployerAppID == "" {
+		return hclNull
+	}
+
+	return v.GithubDeployerAppID
+}
+
+func (v *view) DeployerKeyVersionNameHCL() string {
+	return hclStringOrNull(v.DeployerKeyVersionName())
+}
+
+// hclNull is HCL's null, the value of what the placement does not record yet.
+const hclNull = "null"
+
+// hclStringOrNull is the value as a quoted HCL string, or null when empty.
+func hclStringOrNull(value string) string {
+	if value == "" {
+		return hclNull
+	}
+
+	return strconv.Quote(value)
+}
+
+// EnvironmentProjectNumbersHCL is the environment projects' numbers the placement
+// records as an HCL map by environment, {} when it records none: 0-bootstrap grants
+// their Cloud Build service agents the read of the connections' token secret.
+func (v *view) EnvironmentProjectNumbersHCL() string {
+	var lines []string
+	for _, env := range Environments {
+		if number, ok := v.ProjectNumbers[env]; ok {
+			lines = append(lines, fmt.Sprintf("    %s = %q", env, number))
+		}
+	}
+	if len(lines) == 0 {
+		return "{}"
+	}
+
+	return "{\n" + strings.Join(lines, "\n") + "\n  }"
+}
+
+// BedrockModule is the module go install builds for a commit pin.
+func (*view) BedrockModule() string {
+	return release.Module
+}
+
+// The images the triggers' steps run in, the application pipeline's: the gcloud image
+// (python3 and curl, for the fetch), the Go image a commit pin is built in, pinned by
+// digest, and the OpenTofu image the check and the commands run in.
+func (*view) GcloudImage() string {
+	return gcloudImage
+}
+
+func (*view) GoImage() string {
+	return goImage
+}
+
+func (*view) OpenTofuImage() string {
+	return openTofuImage
+}
+
+// GoInstallEnvHCL is the environment go install builds a commit pin in, the application
+// pipeline's, as an HCL list of KEY=value strings.
+func (*view) GoInstallEnvHCL() string {
+	return hclList(append([]string{"GOBIN=" + bedrockHome}, goInstallEnv...))
+}
+
+// BedrockRepository is where the first step clones the repository's branches from, to
+// check a commit pin against.
+func (*view) BedrockRepository() string {
+	return release.CloneURL()
+}
+
+// FetchBedrockScript is the first step's script, which reads the pin off placement.json
+// in the checkout and checks a commit pin against the repository's branches;
+// BuildBedrockScript the second's, which builds a commit pin.
+func (*view) FetchBedrockScript() string {
+	return stepScript(fetchBedrockScript)
+}
+
+func (*view) BuildBedrockScript() string {
+	return stepScript(buildBedrockScript)
+}
+
+// BedrockPath is where the steps leave the fetched bedrock, and the entrypoint of the
+// steps that run it.
+func (*view) BedrockPath() string {
+	return bedrockPath
+}
+
+// The steps' timeouts, in seconds: the fetch (a release's download, three tries), the
+// build of a commit pin, the check, a plan of every layer side by side, and the apply of
+// every layer in order; and the whole build's, which holds the steps.
+func (*view) FetchSeconds() int {
+	return fetchSeconds
+}
+
+func (*view) BuildSeconds() int {
+	return buildSeconds
+}
+
+func (*view) CheckSeconds() int {
+	return checkSeconds
+}
+
+func (*view) PlanSeconds() int {
+	return planSeconds
+}
+
+func (*view) ApplySeconds() int {
+	return applySeconds
+}
+
+func (*view) PlanBuildSeconds() int {
+	return fetchSeconds + buildSeconds + checkSeconds + planSeconds
+}
+
+func (*view) ApplyBuildSeconds() int {
+	return fetchSeconds + buildSeconds + checkSeconds + applySeconds
 }
 
 // LayerOrderProse spells the apply order: 0-bootstrap, 1-org, 2-shr, 2-spn and 2-net,
@@ -316,12 +395,6 @@ func (*view) SingleRunLayers() []string {
 // Layers is the model's layers in apply order, for the templates.
 func (*view) Layers() []string {
 	return Layers
-}
-
-// WorkflowName is the workflow file's name, which the workflow names itself by when it
-// asks GitHub for its earlier runs.
-func (*view) WorkflowName() string {
-	return workflowName
 }
 
 // FirstEnvironment is the first environment in promotion order, where the pull-request
@@ -344,6 +417,24 @@ func (*view) ImpulseChecks() []string {
 // image, secrets and migrations.
 func (*view) ImpulseChecksProse() string {
 	return prose(ci.FixedChecks)
+}
+
+// ApprovingReviewsProse spells the approving reviews a pull request needs before it
+// merges, for the READMEs: one approving review, two approving reviews, no approving
+// review.
+func (v *view) ApprovingReviewsProse() string {
+	count := v.ApprovingReviewCount()
+	switch count {
+	case 0:
+		return "no approving review"
+	case 1:
+		return "one approving review"
+	}
+	if word, ok := numberWords[count]; ok {
+		return word + " approving reviews"
+	}
+
+	return strconv.Itoa(count) + " approving reviews"
 }
 
 // ImpulseChecksProseQuoted is the job ids as prose, backticked for a README: `title`,
@@ -608,11 +699,6 @@ func Render(p *Placement) ([]render.File, error) {
 		return nil, err
 	}
 	files = append(files, root...)
-	workflow, err := renderDir(templateDir+"/"+workflowDir, workflowDir+"/", v)
-	if err != nil {
-		return nil, err
-	}
-	files = append(files, workflow...)
 	for _, layer := range Layers {
 		rendered, err := renderDir(templateDir+"/"+layer, layer+"/", v)
 		if err != nil {
@@ -662,14 +748,80 @@ func renderDir(dir, prefix string, v *view) ([]render.File, error) {
 	return files, nil
 }
 
+// Written is what Write did: the files written, and the retired files it removed.
+type Written struct {
+	*render.Written
+	// Removed are the retired files an earlier bedrock rendered that were in the
+	// repository and are gone now, by path.
+	Removed []string
+}
+
 // Write puts the files into the repository directory, creating it and the layer
-// directories when absent: owned files always, seeded files only when absent.
-func Write(files []render.File, dir string) (*render.Written, error) {
+// directories when absent: owned files always, seeded files only when absent. A retired
+// file an earlier bedrock rendered (retiredFiles) is removed, and the directories the
+// layers workflow sat in with it, once empty.
+func Write(files []render.File, dir string) (*Written, error) {
 	for _, layer := range Layers {
 		if err := os.MkdirAll(filepath.Join(dir, layer), 0o750); err != nil {
 			return nil, errors.Wrapf(err, "os.MkdirAll(): %s", layer)
 		}
 	}
+	written, err := render.Write(files, dir, dir)
+	if err != nil {
+		return nil, err
+	}
+	w := &Written{Written: written}
+	for _, retired := range retiredFiles {
+		removed, err := removeRetired(dir, retired)
+		if err != nil {
+			return nil, err
+		}
+		if removed {
+			w.Removed = append(w.Removed, retired)
+		}
+	}
 
-	return render.Write(files, dir, dir)
+	return w, nil
+}
+
+// removeRetired removes the retired file under dir when it is there, and then each
+// directory above it up to dir that is left empty (the workflow's .github/workflows).
+func removeRetired(dir, retired string) (bool, error) {
+	path := filepath.Join(dir, filepath.FromSlash(retired))
+	if err := os.Remove(path); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return false, nil
+		}
+
+		return false, errors.Wrapf(err, "os.Remove(): %s", retired)
+	}
+	removeEmptyParents(dir, path)
+
+	return true, nil
+}
+
+// removeEmptyParents removes each directory above path, up to dir, that is empty: the
+// first one that is not (or that cannot be removed) ends it.
+func removeEmptyParents(dir, path string) {
+	for parent := filepath.Dir(path); parent != dir && strings.HasPrefix(parent, dir); parent = filepath.Dir(parent) {
+		if os.Remove(parent) != nil {
+			return
+		}
+	}
+}
+
+// RetiredFiles are the retired files present under dir, by path.
+func RetiredFiles(dir string) ([]string, error) {
+	var present []string
+	for _, retired := range retiredFiles {
+		_, err := os.Stat(filepath.Join(dir, filepath.FromSlash(retired)))
+		switch {
+		case err == nil:
+			present = append(present, retired)
+		case !errors.Is(err, os.ErrNotExist):
+			return nil, errors.Wrapf(err, "os.Stat(): %s", retired)
+		}
+	}
+
+	return present, nil
 }

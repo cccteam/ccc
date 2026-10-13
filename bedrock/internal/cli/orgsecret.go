@@ -1,7 +1,7 @@
 // orgsecret.go is the organization form of secret add and pin: run in the organization's
 // infrastructure repository, they take one of the organization's secrets (the
-// infrastructure and deployer GitHub Apps' private keys) in place of an application's
-// environment and variable.
+// infrastructure and deployer GitHub Apps' private keys, both in the boot project) in
+// place of an application's environment and variable.
 
 package cli
 
@@ -17,7 +17,6 @@ import (
 
 	"github.com/cccteam/ccc/bedrock/internal/org"
 	"github.com/cccteam/ccc/bedrock/internal/prompt"
-	"github.com/cccteam/ccc/bedrock/internal/secret"
 	"github.com/cccteam/ccc/bedrock/internal/where"
 )
 
@@ -90,37 +89,24 @@ func orgFlags(f *pinFlags) error {
 	return nil
 }
 
-// orgSecretArgs are the organization secret's name and, for the deployer key, the
-// environment, from the arguments or asked at the terminal; next is the index of the
-// argument after them. An environment in the secret's place is an application's
-// argument, refused here with what the repository takes.
-func orgSecretArgs(args []string, ask *prompt.Prompter, p *org.Placement, verb string) (name, env string, next int, err error) {
+// orgSecretArgs is the organization secret's name, from the arguments or asked at the
+// terminal; next is the index of the argument after it. An environment in the secret's
+// place is an application's argument, refused here with what the repository takes.
+func orgSecretArgs(args []string, ask *prompt.Prompter, p *org.Placement, verb string) (name string, next int, err error) {
 	name, err = argument(args, 0, ask, "organization secret", "Which secret?", func() ([]prompt.Choice, error) {
 		return plain(org.Secrets, nil)
 	})
 	if err != nil {
-		return "", "", 0, err
+		return "", 0, err
 	}
 	if slices.Contains(org.Environments, name) {
-		return "", "", 0, errors.Newf("this is the organization's infrastructure repository (placement.json names organization %s): secret %s takes an organization secret here, %s or %s with an environment; an application's secret ([env] [VARIABLE]) is %s from the application's repository", p.OrganizationID, verb, org.InfrastructureKey, org.DeployerKey, verbPast(verb))
+		return "", 0, errors.Newf("this is the organization's infrastructure repository (placement.json names organization %s): secret %s takes an organization secret here, %s or %s; an application's secret ([env] [VARIABLE]) is %s from the application's repository", p.OrganizationID, verb, org.InfrastructureKey, org.DeployerKey, verbPast(verb))
 	}
 	if err := org.ValidateSecret(name); err != nil {
-		return "", "", 0, err
-	}
-	if !org.SecretPerEnvironment(name) {
-		return name, "", 1, nil
-	}
-	env, err = argument(args, 1, ask, "environment", "Which environment?", func() ([]prompt.Choice, error) {
-		return plain(org.Environments, nil)
-	})
-	if err != nil {
-		return "", "", 0, err
-	}
-	if err := secret.ValidateEnv(env); err != nil {
-		return "", "", 0, err
+		return "", 0, err
 	}
 
-	return name, env, 2, nil
+	return name, 1, nil
 }
 
 // verbPast is the command's verb in a sentence: added, or pinned.
@@ -132,9 +118,9 @@ func verbPast(verb string) string {
 	return "pinned"
 }
 
-// tooManyOrgArgs refuses arguments past the ones the secret takes, which only the
-// infrastructure key can be given: it lives in the boot project and takes no environment.
-// use spells the command line it takes.
+// tooManyOrgArgs refuses arguments past the ones the secret takes: both organization
+// secrets live in the boot project and take no environment. use spells the command line
+// the secret takes.
 func tooManyOrgArgs(args []string, name, use string, want int) error {
 	if len(args) <= want {
 		return nil
@@ -144,17 +130,18 @@ func tooManyOrgArgs(args []string, name, use string, want int) error {
 }
 
 // orgSecretPlace is the secret's project and container: --project and --container as
-// given, else the project the placement records and the container the layer names.
-func orgSecretPlace(p *org.Placement, f *pinFlags, name, env string) (project, container string, err error) {
+// given, else the boot project the placement records and the container 0-bootstrap
+// names.
+func orgSecretPlace(p *org.Placement, f *pinFlags, name string) (project, container string, err error) {
 	project, container = f.project, f.container
 	if project == "" {
-		project, err = p.SecretProject(name, env)
+		project, err = p.SecretProject()
 		if err != nil {
 			return "", "", err
 		}
 	}
 	if container == "" {
-		container = p.SecretContainer(name, env)
+		container = p.SecretContainer(name)
 	}
 
 	return project, container, nil
@@ -166,14 +153,14 @@ func (d deps) addOrgSecret(cmd *cobra.Command, args []string, f *addFlags, p *or
 	if err := orgFlags(&f.pinFlags); err != nil {
 		return err
 	}
-	name, env, next, err := orgSecretArgs(args, d.asker(cmd), p, addVerb)
+	name, next, err := orgSecretArgs(args, d.asker(cmd), p, addVerb)
 	if err != nil {
 		return err
 	}
 	if err := tooManyOrgArgs(args, name, "bedrock secret add "+name, next); err != nil {
 		return err
 	}
-	project, container, err := orgSecretPlace(p, &f.pinFlags, name, env)
+	project, container, err := orgSecretPlace(p, &f.pinFlags, name)
 	if err != nil {
 		return err
 	}
@@ -181,7 +168,7 @@ func (d deps) addOrgSecret(cmd *cobra.Command, args []string, f *addFlags, p *or
 	if err != nil {
 		return err
 	}
-	r, err := org.AddSecret(cmd.Context(), d.secrets, &org.SecretAddRequest{Secret: name, Env: env, Project: project, Container: container, Value: value})
+	r, err := org.AddSecret(cmd.Context(), d.secrets, &org.SecretAddRequest{Secret: name, Project: project, Container: container, Value: value})
 	if err != nil {
 		return err
 	}
@@ -197,22 +184,22 @@ func (d deps) pinOrgSecret(cmd *cobra.Command, args []string, f *pinFlags, root 
 		return err
 	}
 	ask := d.asker(cmd)
-	name, env, next, err := orgSecretArgs(args, ask, p, pinVerb)
+	name, next, err := orgSecretArgs(args, ask, p, pinVerb)
 	if err != nil {
 		return err
 	}
 	if err := tooManyOrgArgs(args, name, "bedrock secret pin "+name+" <version>", next+1); err != nil {
 		return err
 	}
-	project, container, err := orgSecretPlace(p, f, name, env)
+	project, container, err := orgSecretPlace(p, f, name)
 	if err != nil {
 		return err
 	}
-	version, err := d.resolveVersion(cmd.Context(), args, next, ask, project, container, "the layers could not read it")
+	version, err := d.resolveVersion(cmd.Context(), args, next, ask, project, container, "the triggers' runs could not read it")
 	if err != nil {
 		return err
 	}
-	r, err := org.PinSecret(cmd.Context(), d.secrets, p, &org.SecretPinRequest{Secret: name, Env: env, Version: version, Dir: root, Project: project, Container: container})
+	r, err := org.PinSecret(cmd.Context(), d.secrets, p, &org.SecretPinRequest{Secret: name, Version: version, Dir: root, Project: project, Container: container})
 	if err != nil {
 		return err
 	}
@@ -222,8 +209,8 @@ func (d deps) pinOrgSecret(cmd *cobra.Command, args []string, f *pinFlags, root 
 }
 
 // completeOrgSecret lists what the next argument of the organization form can be: the
-// secrets, the environments for the deployer key, and, for pin, the container's versions
-// with their states; nothing when it cannot be told.
+// secrets, and, for pin, the container's versions with their states; nothing when it
+// cannot be told.
 func (d deps) completeOrgSecret(ctx context.Context, args []string, f *pinFlags, p *org.Placement, versions bool) []string {
 	if len(args) == 0 {
 		return org.Secrets
@@ -232,17 +219,10 @@ func (d deps) completeOrgSecret(ctx context.Context, args []string, f *pinFlags,
 	if org.ValidateSecret(name) != nil {
 		return nil
 	}
-	env, next := "", 1
-	if org.SecretPerEnvironment(name) {
-		if len(args) == 1 {
-			return org.Environments
-		}
-		env, next = args[1], 2
-	}
-	if !versions || len(args) != next {
+	if !versions || len(args) != 1 {
 		return nil
 	}
-	project, container, err := orgSecretPlace(p, f, name, env)
+	project, container, err := orgSecretPlace(p, f, name)
 	if err != nil {
 		return nil
 	}

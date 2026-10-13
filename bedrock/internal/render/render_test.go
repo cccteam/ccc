@@ -6,15 +6,21 @@ import (
 	"flag"
 	"fmt"
 	goversion "go/version"
+	"maps"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
 
+	"github.com/google/go-cmp/cmp"
+	"github.com/hashicorp/hcl/v2"
+	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"golang.org/x/mod/modfile"
 
 	"github.com/cccteam/ccc/bedrock/internal/derive"
+	"github.com/cccteam/ccc/bedrock/internal/release"
 	"github.com/cccteam/ccc/impulse/app"
 	"github.com/cccteam/ccc/impulse/ci"
 )
@@ -207,23 +213,27 @@ func TestPipelineFlowItems(t *testing.T) {
 
 // TestPipelineOrder proves the rendered pipeline keeps the order a window release needs,
 // start check, image, the job where the application has a job process, pre-flight, wait,
-// maintenance, migrate, revision, traffic, record, carries the release file's directory to
-// the release check and the version variable to the migration steps, renders the job steps
-// only for an application with a job process, and keeps every step's own timeout under the
-// whole-build ceiling of 24 hours.
+// maintenance, migrate, revision, traffic, record, reads the pull request's stack job's
+// outputs before the image build where the placement declares build arguments (harbor)
+// and after it otherwise (beacon), applies no Terraform for a pull request (none of the
+// stack steps the pr-stack trigger holds, and no waitFor: the steps run in order), carries
+// the release file's directory to the release check, renders the job steps only for an
+// application with a job process, and keeps every step's own timeout under the whole-build
+// ceiling of 24 hours.
 func TestPipelineOrder(t *testing.T) {
 	t.Parallel()
 
-	order := []string{"ValidateRelease", "CheckRelease", "BuildImage", "MaintenanceOnRestore", "PlanEnvironmentStack", "ApplyEnvironmentStack", "CreateJobs", "PreflightMigrations", "WaitForWindow", "MaintenanceOnWindow", "RunMigrations", "DeployServiceNoTraffic", "ShiftTraffic", "MaintenanceOff", "SweepJobs", "WriteDeploymentRecord"}
 	jobSteps := []string{"CreateJobs", "SweepJobs"}
-	timeouts := map[string]string{"ValidateRelease": "300s", "BuildImage": "1800s", "MaintenanceOnRestore": "3600s", "PlanEnvironmentStack": "7200s", "PreflightMigrations": "1200s", "WaitForWindow": "86400s", "MaintenanceOnWindow": "900s", "RunMigrations": "2400s", "DeployServiceNoTraffic": "1200s", "ShiftTraffic": "600s"}
+	timeouts := map[string]string{"ValidateRelease": "300s", "ReadPullRequestStack": "900s", "BuildImage": "1800s", "MaintenanceOnRestore": "3600s", "PlanEnvironmentStack": "7200s", "PreflightMigrations": "1200s", "WaitForWindow": "86400s", "MaintenanceOnWindow": "900s", "RunMigrations": "2400s", "DeployServiceNoTraffic": "1200s", "ShiftTraffic": "600s"}
+	after := []string{"MaintenanceOnRestore", "PlanEnvironmentStack", "ApplyEnvironmentStack", "CreateJobs", "PreflightMigrations", "WaitForWindow", "MaintenanceOnWindow", "RunMigrations", "DeployServiceNoTraffic", "ShiftTraffic", "MaintenanceOff", "SweepJobs", "WriteDeploymentRecord"}
 	tests := []struct {
-		name string
-		file string
-		jobs bool
+		name  string
+		file  string
+		jobs  bool
+		order []string
 	}{
-		{name: "harbor's pipeline", file: "testdata/harbor/root/cloudbuild.yaml", jobs: true},
-		{name: "beacon's pipeline", file: "testdata/beacon/root/cloudbuild.yaml"},
+		{name: "harbor's pipeline, whose image takes the pull request's own build arguments", file: "testdata/harbor/root/cloudbuild.yaml", jobs: true, order: append([]string{"ValidateRelease", "CheckRelease", "ReadPullRequestStack", "BuildImage"}, after...)},
+		{name: "beacon's pipeline, whose image takes none", file: "testdata/beacon/root/cloudbuild.yaml", order: append([]string{"ValidateRelease", "CheckRelease", "BuildImage", "ReadPullRequestStack"}, after...)},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -242,10 +252,18 @@ func TestPipelineOrder(t *testing.T) {
 				if timeout, ok := strings.CutPrefix(line, "    timeout: "); ok && len(ids) > 0 {
 					seen[ids[len(ids)-1]] = timeout
 				}
+				if strings.Contains(line, "waitFor") {
+					t.Errorf("the pipeline branches (%q); its steps run in order", strings.TrimSpace(line))
+				}
 			}
-			want := order
+			for _, id := range []string{"PlanEnvironments", "PlanPullRequestStack", "GuardPullRequestPlan", "ApplyPullRequestStack", "RefreshPullRequestStack"} {
+				if slices.Contains(ids, id) {
+					t.Errorf("step %s is rendered: the pull request's stack is the stack's own triggers' job, never this file's", id)
+				}
+			}
+			want := tt.order
 			if !tt.jobs {
-				want = slices.DeleteFunc(slices.Clone(order), func(id string) bool {
+				want = slices.DeleteFunc(slices.Clone(tt.order), func(id string) bool {
 					return slices.Contains(jobSteps, id)
 				})
 				for _, id := range jobSteps {
@@ -277,6 +295,365 @@ func TestPipelineOrder(t *testing.T) {
 			}
 		})
 	}
+}
+
+// triggerBlocks are the google_cloudbuild_trigger resources of a rendered cloud-build.tf,
+// by name, parsed with HCL's own parser.
+func triggerBlocks(t *testing.T, file string) map[string]*hclsyntax.Block {
+	t.Helper()
+
+	src, err := os.ReadFile(file)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	f, diags := hclsyntax.ParseConfig(src, file, hcl.InitialPos)
+	if diags.HasErrors() {
+		t.Fatalf("hclsyntax.ParseConfig() = %v", diags)
+	}
+	body, ok := f.Body.(*hclsyntax.Body)
+	if !ok {
+		t.Fatalf("body is %T", f.Body)
+	}
+	triggers := map[string]*hclsyntax.Block{}
+	for _, b := range body.Blocks {
+		if b.Type == "resource" && len(b.Labels) == 2 && b.Labels[0] == "google_cloudbuild_trigger" {
+			triggers[b.Labels[1]] = b
+		}
+	}
+
+	return triggers
+}
+
+// exprText is an attribute's expression as the source writes it.
+func exprText(t *testing.T, block *hclsyntax.Block, name string) string {
+	t.Helper()
+
+	attr, ok := block.Body.Attributes[name]
+	if !ok {
+		return ""
+	}
+	src, err := os.ReadFile(attr.SrcRange.Filename)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return string(attr.Expr.Range().SliceBytes(src))
+}
+
+// nested is the first block of the type under the block, or nil.
+func nested(block *hclsyntax.Block, typ string) *hclsyntax.Block {
+	for _, b := range block.Body.Blocks {
+		if b.Type == typ {
+			return b
+		}
+	}
+
+	return nil
+}
+
+// TestTriggerSteps reads the stack's triggers from the golden stacks: the check-and-plan
+// trigger and the pull-request stack trigger hold their steps in the trigger, the step
+// ids the deploy package compares a build's against, run as the apply identity, on every
+// push (comments disabled) and on the /gcbrun comment, with the build logs sent to Cloud
+// Logging; the preview trigger keeps cloudbuild.yaml and the deploy identity; the sweep
+// runs as the apply identity.
+func TestTriggerSteps(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		trigger string
+		// steps are the step ids the trigger holds; empty for a trigger that runs a file.
+		steps          []string
+		filename       string
+		identity       string
+		commentControl string
+	}{
+		{name: "the check-and-plan trigger", trigger: CheckTrigger, steps: CheckTriggerSteps, identity: "local.apply_identity_id", commentControl: `"COMMENTS_DISABLED"`},
+		{name: "the pull-request stack trigger", trigger: "pr_stack", steps: StackTriggerSteps, identity: "local.apply_identity_id", commentControl: `"COMMENTS_ENABLED"`},
+		{name: "the preview trigger keeps the pipeline file and the deploy identity", trigger: "pr", filename: `"cloudbuild.yaml"`, identity: "local.identities.deploy_identity_id", commentControl: `"COMMENTS_ENABLED"`},
+		{name: "the version trigger", trigger: "version", filename: `"cloudbuild.yaml"`, identity: "local.identities.deploy_identity_id"},
+		{name: "the sweep runs as the apply identity", trigger: "sweep", identity: "local.apply_identity_id"},
+	}
+	for _, fixture := range []string{"harbor", "beacon"} {
+		triggers := triggerBlocks(t, filepath.Join("testdata", fixture, "cloud-build.tf"))
+		for _, tt := range tests {
+			t.Run(fixture+": "+tt.name, func(t *testing.T) {
+				t.Parallel()
+
+				block, ok := triggers[tt.trigger]
+				if !ok {
+					t.Fatalf("no trigger %q among %v", tt.trigger, slices.Sorted(maps.Keys(triggers)))
+				}
+				if got := exprText(t, block, "service_account"); got != tt.identity {
+					t.Errorf("service_account = %s, want %s", got, tt.identity)
+				}
+				if got := exprText(t, block, "filename"); got != tt.filename {
+					t.Errorf("filename = %s, want %s", got, tt.filename)
+				}
+				if event := nested(block, "repository_event_config"); event != nil {
+					if pr := nested(event, "pull_request"); (pr != nil) != (tt.commentControl != "") {
+						t.Errorf("pull_request block present %t, want %t", pr != nil, tt.commentControl != "")
+					} else if pr != nil {
+						if got := exprText(t, pr, "comment_control"); got != tt.commentControl {
+							t.Errorf("comment_control = %s, want %s", got, tt.commentControl)
+						}
+					}
+				}
+				build := nested(block, "build")
+				if (build != nil) != (len(tt.steps) > 0) {
+					t.Fatalf("build block present %t, want %t", build != nil, len(tt.steps) > 0)
+				}
+				if build == nil {
+					return
+				}
+				var ids []string
+				for _, step := range build.Body.Blocks {
+					if step.Type == "step" {
+						ids = append(ids, strings.Trim(exprText(t, step, "id"), `"`))
+						if entry := exprText(t, step, "entrypoint"); entry != `"bash"` && entry != `"sh"` && entry != `"/builder/home/bedrock"` {
+							t.Errorf("step %s runs %s, want bash, sh or the fetched bedrock", ids[len(ids)-1], entry)
+						}
+					}
+				}
+				if diff := cmp.Diff(tt.steps, ids); diff != "" {
+					t.Errorf("steps (-want +got):\n%s", diff)
+				}
+				options := nested(build, "options")
+				if options == nil {
+					t.Fatal("no options block")
+				}
+				if got := exprText(t, options, "logging"); got != `"CLOUD_LOGGING_ONLY"` {
+					t.Errorf("options.logging = %s, want CLOUD_LOGGING_ONLY", got)
+				}
+			})
+		}
+	}
+}
+
+// TestTriggerShell evaluates the two shell scripts the trigger-held jobs start with, as
+// HCL reads them out of the golden stack: every dollar sign is doubled (Cloud Build reads
+// $NAME as a substitution and $$ as a literal $, and ALLOW_LOOSE leaves an unknown $NAME
+// in place, which the shell would then read as an empty variable), the pin is read from
+// the checkout's placement at run time, never from the text, and the scripts parse once
+// Cloud Build has turned $$ into $.
+func TestTriggerShell(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		local string
+		want  []string
+	}{
+		{
+			name:  "the fetch reads the pin from the placement and downloads or defers to the build",
+			local: "fetch_bedrock",
+			want: []string{
+				`pin=$$(python3 -c 'import json; p = json.load(open("infrastructure/placement.json")); print(p["bedrockVersion"], p.get("bedrockSha256") or "-")')`,
+				"\nif [ \"$$sha256\" = \"-\" ]; then\n  commit=$$(printf '%s' \"$$version\" | sed 's/.*-//')\n  branches=$$(mktemp -d)\n  if ! git clone --quiet --bare --no-tags --filter=tree:0 \"https://github.com/cccteam/ccc.git\" \"$$branches\"; then\n",
+				"\n  for head in $$(git -C \"$$branches\" for-each-ref --format='%(refname:short)' refs/heads/); do\n    if git -C \"$$branches\" merge-base --is-ancestor \"$$commit\" \"refs/heads/$$head\" 2>/dev/null; then\n      on=$$head\n      break\n",
+				"\n  if [ -z \"$$on\" ]; then\n    echo \"bedrock $$version pins commit $$commit, which no branch of https://github.com/cccteam/ccc.git reaches: the triggers build only a commit on a branch of github.com/cccteam/ccc, as bedrock upgrade accepts; move the pin to one, or to a release.\"\n    exit 1\n  fi\n  echo \"$$version\" > /builder/home/bedrock.pin\n  echo \"bedrock $$version is a commit pin on $$on: the next step builds it with go install.\"\n  exit 0\nfi\n",
+				`-o /builder/home/bedrock "https://github.com/cccteam/ccc/releases/download/bedrock/$$version/bedrock-linux-amd64"`,
+				`echo "$$sha256  /builder/home/bedrock" | sha256sum --check -`,
+			},
+		},
+		{
+			name:  "the build installs a commit pin and does nothing for a release",
+			local: "build_bedrock_commit",
+			want: []string{
+				"if [ ! -f /builder/home/bedrock.pin ]; then\n  echo \"bedrock is a release pin, fetched by the step before: nothing to build.\"\n  exit 0\nfi\n",
+				`go install -ldflags="-s -w" github.com/cccteam/ccc/bedrock@$$(cat /builder/home/bedrock.pin)`,
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			script := triggerScript(t, "harbor", tt.local)
+			for _, want := range tt.want {
+				if !strings.Contains(script, want) {
+					t.Errorf("%s lacks %q:\n%s", tt.local, want, script)
+				}
+			}
+			if strings.Contains(script, "$$$") || strings.Count(script, "$") != 2*strings.Count(script, "$$") {
+				t.Errorf("%s has a dollar sign Cloud Build would read as a substitution:\n%s", tt.local, script)
+			}
+			if strings.HasPrefix(script, " ") || strings.HasPrefix(script, "\n") {
+				t.Errorf("%s starts with whitespace: the heredoc's indentation is not stripped:\n%s", tt.local, script)
+			}
+			shell, err := exec.LookPath("bash")
+			if err != nil {
+				t.Skip("no bash to parse the script with")
+			}
+			cmd := exec.CommandContext(t.Context(), shell, "-n")
+			cmd.Stdin = strings.NewReader(strings.ReplaceAll(script, "$$", "$"))
+			if out, err := cmd.CombinedOutput(); err != nil {
+				t.Errorf("bash -n: %v\n%s", err, out)
+			}
+		})
+	}
+}
+
+// triggerScript evaluates a script local of the fixture's golden cloud-build.tf as HCL
+// reads it: the heredoc's text, its indentation stripped and its $$ still doubled.
+func triggerScript(t *testing.T, fixture, local string) string {
+	t.Helper()
+
+	file := filepath.Join("testdata", fixture, "cloud-build.tf")
+	src, err := os.ReadFile(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f, diags := hclsyntax.ParseConfig(src, file, hcl.InitialPos)
+	if diags.HasErrors() {
+		t.Fatalf("hclsyntax.ParseConfig() = %v", diags)
+	}
+	body, ok := f.Body.(*hclsyntax.Body)
+	if !ok {
+		t.Fatalf("body is %T", f.Body)
+	}
+	for _, b := range body.Blocks {
+		if b.Type != "locals" {
+			continue
+		}
+		attr, ok := b.Body.Attributes[local]
+		if !ok {
+			continue
+		}
+		value, diags := attr.Expr.Value(nil)
+		if diags.HasErrors() {
+			t.Fatalf("evaluating %s: %v", local, diags)
+		}
+
+		return value.AsString()
+	}
+	t.Fatalf("no locals block of %s holds %s", file, local)
+
+	return ""
+}
+
+// TestTriggerFetchCommitPin runs the fetch script for a commit pin as the trigger does
+// (its $$ turned into $, the home directory and the repository stood in for), over a
+// checkout whose placement pins a commit: a commit on a branch of the repository is noted
+// for the build step, with its branch named; a commit only a tag reaches, one the
+// repository does not hold and a repository that cannot be read are refused, and nothing
+// is noted.
+func TestTriggerFetchCommitPin(t *testing.T) {
+	t.Parallel()
+
+	for _, tool := range []string{"bash", "git", "python3"} {
+		if _, err := exec.LookPath(tool); err != nil {
+			t.Skipf("no %s to run the step with", tool)
+		}
+	}
+	repository, onBranch, onTag := testRepository(t)
+	script := strings.ReplaceAll(triggerScript(t, "harbor", "fetch_bedrock"), "$$", "$")
+	const stamp = "v0.0.0-lab.1.0.20260928222237-"
+	tests := []struct {
+		name       string
+		version    string
+		repository string
+		wantOut    string
+		wantErr    string
+	}{
+		{
+			name:    "a commit on a branch: noted for the build step, with its branch",
+			version: stamp + onBranch[:12],
+			wantOut: "bedrock " + stamp + onBranch[:12] + " is a commit pin on main: the next step builds it with go install.\n",
+		},
+		{
+			name:    "a commit only a tag reaches",
+			version: stamp + onTag[:12],
+			wantErr: "bedrock " + stamp + onTag[:12] + " pins commit " + onTag[:12] + ", which no branch of " + repository + " reaches: the triggers build only a commit on a branch of github.com/cccteam/ccc, as bedrock upgrade accepts; move the pin to one, or to a release.",
+		},
+		{
+			name:    "a commit the repository does not hold",
+			version: stamp + "0123456789ab",
+			wantErr: "pins commit 0123456789ab, which no branch of " + repository + " reaches",
+		},
+		{
+			name:       "a repository that cannot be read",
+			version:    stamp + onBranch[:12],
+			repository: "file://" + filepath.Join(t.TempDir(), "missing"),
+			wantErr:    "could not read the branches of file://",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			checkout, home := t.TempDir(), t.TempDir()
+			if err := os.MkdirAll(filepath.Join(checkout, "infrastructure"), 0o750); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(checkout, "infrastructure", "placement.json"), []byte(`{"bedrockVersion": "`+tt.version+`"}`), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			repo := tt.repository
+			if repo == "" {
+				repo = repository
+			}
+			// The script is the trigger step the render holds, run against a local git
+			// repository to prove the commit-pin check; no input but the test's reaches it.
+			// nosemgrep: go.lang.security.audit.dangerous-exec-command.dangerous-exec-command
+			cmd := exec.CommandContext(t.Context(), "bash", "-c", strings.ReplaceAll(strings.ReplaceAll(script, release.CloneURL(), repo), "/builder/home", home))
+			cmd.Dir = checkout
+			cmd.Env = append(os.Environ(), "TMPDIR="+t.TempDir())
+			out, err := cmd.CombinedOutput()
+			note, noteErr := os.ReadFile(filepath.Join(home, "bedrock.pin"))
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(string(out), tt.wantErr) {
+					t.Fatalf("the step failed = %v, want the refusal %q; output:\n%s", err, tt.wantErr, out)
+				}
+				if noteErr == nil {
+					t.Errorf("the step noted %q after refusing", note)
+				}
+
+				return
+			}
+			if err != nil {
+				t.Fatalf("the step failed: %v\n%s", err, out)
+			}
+			if string(out) != tt.wantOut {
+				t.Errorf("the step printed %q, want %q", out, tt.wantOut)
+			}
+			if string(note) != tt.version+"\n" {
+				t.Errorf("the note = %q (%v), want %q", note, noteErr, tt.version+"\n")
+			}
+		})
+	}
+}
+
+// testRepository makes a repository with one commit on its one branch, main, and one only
+// a tag reaches, and returns its clone URL and the two commits.
+func testRepository(t *testing.T) (repository, onBranch, onTag string) {
+	t.Helper()
+
+	dir := t.TempDir()
+	git := func(args ...string) string {
+		t.Helper()
+
+		cmd := exec.CommandContext(t.Context(), "git", append([]string{"-C", dir, "-c", "user.name=bedrock", "-c", "user.email=bedrock@example.com", "-c", "commit.gpgsign=false"}, args...)...)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+
+		return strings.TrimSpace(string(out))
+	}
+	git("init", "--quiet", "--initial-branch=main")
+	git("config", "uploadpack.allowFilter", "true")
+	git("commit", "--quiet", "--allow-empty", "-m", "one")
+	onBranch = git("rev-parse", "HEAD")
+	git("checkout", "--quiet", "-b", "side")
+	git("commit", "--quiet", "--allow-empty", "-m", "two")
+	onTag = git("rev-parse", "HEAD")
+	git("tag", "only-a-tag")
+	git("checkout", "--quiet", "main")
+	git("branch", "--quiet", "-D", "side")
+
+	return "file://" + dir, onBranch, onTag
 }
 
 // bareYAMLBool is the first unquoted item of a flow sequence on the line that YAML 1.1
@@ -360,6 +737,8 @@ func TestWrite(t *testing.T) {
 		wantKept     []string
 		wantTfvars   string
 		wantDocker   string
+		// wantRemoved are the retired files the write removed from the application root.
+		wantRemoved []string
 	}{
 		{
 			name:         "empty directories get everything",
@@ -368,6 +747,16 @@ func TestWrite(t *testing.T) {
 			wantSeeded:   []string{"terraform.tfvars", "Dockerfile"},
 			wantTfvars:   "seeded\n",
 			wantDocker:   "image\n",
+		},
+		{
+			name:         "the retired infrastructure workflow is removed from the application root and said",
+			existingRoot: map[string]string{".github/workflows/infrastructure.yml": "name: infrastructure\n"},
+			wantOwned:    2,
+			wantPipeline: []string{"cloudbuild.yaml"},
+			wantSeeded:   []string{"terraform.tfvars", "Dockerfile"},
+			wantTfvars:   "seeded\n",
+			wantDocker:   "image\n",
+			wantRemoved:  []string{".github/workflows/infrastructure.yml"},
 		},
 		{
 			name:         "owned files are rewritten, seeded files kept, in both places",
@@ -395,6 +784,9 @@ func TestWrite(t *testing.T) {
 				}
 			}
 			for name, content := range tt.existingRoot {
+				if err := os.MkdirAll(filepath.Dir(filepath.Join(appDir, name)), 0o750); err != nil {
+					t.Fatal(err)
+				}
 				if err := os.WriteFile(filepath.Join(appDir, name), []byte(content), 0o600); err != nil {
 					t.Fatal(err)
 				}
@@ -422,6 +814,16 @@ func TestWrite(t *testing.T) {
 			if strings.Join(written.Kept, ",") != strings.Join(tt.wantKept, ",") {
 				t.Errorf("Write() kept = %v, want %v", written.Kept, tt.wantKept)
 			}
+			var removed []string
+			for _, r := range written.Removed {
+				removed = append(removed, r.Path)
+				if _, err := os.Stat(filepath.Join(appDir, filepath.FromSlash(r.Path))); !os.IsNotExist(err) {
+					t.Errorf("%s is still at the application root: %v", r.Path, err)
+				}
+			}
+			if strings.Join(removed, ",") != strings.Join(tt.wantRemoved, ",") {
+				t.Errorf("Write() removed = %v, want %v", removed, tt.wantRemoved)
+			}
 			for path, want := range map[string]string{
 				filepath.Join(dir, "locals.tf"):          "new\n",
 				filepath.Join(dir, "terraform.tfvars"):   tt.wantTfvars,
@@ -435,6 +837,50 @@ func TestWrite(t *testing.T) {
 				if string(got) != want {
 					t.Errorf("%s = %q, want %q", path, got, want)
 				}
+			}
+		})
+	}
+}
+
+// TestStale: the retired files an application root still carries, which bedrock check
+// reports and bedrock render removes.
+func TestStale(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		files []string
+		want  []string
+	}{
+		{name: "a root without retired files", files: []string{".github/workflows/operations.yml", "cloudbuild.yaml"}},
+		{name: "the retired infrastructure workflow", files: []string{".github/workflows/infrastructure.yml", ".github/workflows/operations.yml"}, want: []string{".github/workflows/infrastructure.yml"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			appDir := t.TempDir()
+			for _, name := range tt.files {
+				if err := os.MkdirAll(filepath.Dir(filepath.Join(appDir, name)), 0o750); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(appDir, name), []byte("x\n"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			stale, err := Stale(appDir)
+			if err != nil {
+				t.Fatalf("Stale() error = %v", err)
+			}
+			var got []string
+			for _, r := range stale {
+				got = append(got, r.Path)
+				if r.Replacement == "" {
+					t.Errorf("%s names no replacement", r.Path)
+				}
+			}
+			if strings.Join(got, ",") != strings.Join(tt.want, ",") {
+				t.Errorf("Stale() = %v, want %v", got, tt.want)
 			}
 		})
 	}
@@ -1138,7 +1584,7 @@ func TestBuildArguments(t *testing.T) {
 				"substitutions = merge(local.substitutions, local.custom_substitutions, { _PR_NUMBER = \"\" })",
 				"substitutions      = merge(local.substitutions, local.custom_substitutions, { _SEED = \"true\" })",
 			},
-			wantPipeline: []string{"    waitFor: [CheckRelease, ApplyPullRequestStack]\n", "carries its values (FIREBASE_API_KEY and PROJECT_ID)."},
+			wantPipeline: []string{"    args: [deploy, pr-outputs]\n", "values the step before read from that stack (FIREBASE_API_KEY and PROJECT_ID)."},
 			wantDocker:   []string{"ARG VERSION\n# The values the stack makes that placement.json's buildArguments declares, which the\n# build script reads the same way: FIREBASE_API_KEY and PROJECT_ID.\nARG FIREBASE_API_KEY\nARG PROJECT_ID\nENV CI=true\n"},
 			wantReadme:   []string{"(`_BUILD_ARG_FIREBASE_API_KEY` and `_BUILD_ARG_PROJECT_ID`)", "This application declares\n  `FIREBASE_API_KEY` (`firebaseApiKey`) and `PROJECT_ID` (`projectId`).", "  - `hostname`: the service's canonical hostname in the environment.\n"},
 		},
@@ -1152,17 +1598,17 @@ func TestBuildArguments(t *testing.T) {
 				"    _BUILD_ARG_FIRESTORE_DB = google_firestore_database.firestore.name # firestoreDatabase\n",
 				"    _BUILD_ARG_SITE_HOST    = local.hostnames[0]                       # hostname\n",
 			},
-			wantPipeline: []string{"    waitFor: [CheckRelease, ApplyPullRequestStack]\n"},
+			wantPipeline: []string{"values the step before read from that stack ("},
 			wantDocker:   []string{"ARG APP_ENV\nARG FIRESTORE_DB\nARG SITE_HOST\nENV CI=true\n"},
 			absent:       []string{"_BUILD_ARG_FIREBASE_API_KEY", "_BUILD_ARG_PROJECT_ID"},
 		},
 		{
-			name:         "beacon's none: no substitution, no wait, no ARG",
+			name:         "beacon's none: no substitution, the stack read after the image, no ARG",
 			fixture:      "beacon",
 			placement:    "placement-beacon.json",
-			wantPipeline: []string{"    waitFor: [CheckRelease]\n"},
+			wantPipeline: []string{"    args: [deploy, pr-outputs]\n"},
 			wantReadme:   []string{"(none: the placement declares no build argument)", "This application declares none."},
-			absent:       []string{"_BUILD_ARG_FIREBASE", "\nARG FIREBASE_API_KEY\n", "CheckRelease, ApplyPullRequestStack"},
+			absent:       []string{"_BUILD_ARG_FIREBASE", "\nARG FIREBASE_API_KEY\n", "the step before read from that stack", "waitFor"},
 		},
 	}
 	for _, tt := range tests {

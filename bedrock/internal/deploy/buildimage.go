@@ -87,7 +87,7 @@ var cacheStages = []cacheStage{
 // the template job the stack sets on the service), the build arguments the placement declares, values of
 // the stack's (every _BUILD_ARG_<NAME> the environment file carries, as NAME=value: a
 // release build's trigger's, which resolve exported, or a pull request's own stack's, which
-// deploy pr-stack apply appended; the log names them and never their values), the declared
+// deploy pr-outputs appended; the log names them and never their values), the declared
 // substitutions and what a hook before the build added (the build arguments file,
 // NAME=value lines). Each build secret resolve
 // found declared (BUILD_SECRETS: the checkout's pins in the stack's containers) is read as

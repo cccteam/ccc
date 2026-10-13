@@ -18,11 +18,19 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/cccteam/ccc/bedrock/internal/derive"
+	"github.com/cccteam/ccc/bedrock/internal/org"
 	"github.com/cccteam/ccc/bedrock/internal/release"
 )
 
-// upgradeCommand is the name of the upgrade command.
-const upgradeCommand = "upgrade"
+// upgradeCommand is the name of the upgrade command; the options are those the pinned
+// bedrock is told where to render with.
+const (
+	upgradeCommand  = "upgrade"
+	appOption       = "--app"
+	dirOption       = "--dir"
+	outOption       = "--out"
+	placementOption = "--placement"
+)
 
 func newUpgrade(d deps) *cobra.Command {
 	var (
@@ -35,28 +43,32 @@ func newUpgrade(d deps) *cobra.Command {
 		Use:   upgradeCommand + " [version|commit|branch] [--app <dir>] [--dir <dir>]",
 		Short: "Move the application to a bedrock release or a pushed commit",
 		Long: `upgrade moves the application's bedrock pin in placement.json (bedrockVersion, and for a release
-bedrockSha256), which its pipeline and its infrastructure workflow run. The pin is one of two kinds.
+bedrockSha256), which its pipeline and its stack's triggers run. In the organization's
+infrastructure repository (the one whose placement.json at the root names the organization,
+organizationId) it moves the organization's pin instead, which the Cloud Build triggers' runs
+fetch, and renders the layers with it (bedrock org render). The pin is one of two kinds.
 
 A release: the version given (v0.4.0), else the latest release; a pre-release is moved to by name.
 The checksum of its linux/amd64 binary is read from the release's checksums.txt, never typed, and
-the pipeline and the infrastructure check download that binary and verify it against the checksum.
+the pipeline and the stack's triggers download that binary and verify it against the checksum.
 The release is fetched for this machine (into the user's cache directory, verified against the
 same file) to render with.
 
 A commit pin: a commit of github.com/cccteam/ccc (a full or abbreviated hash), a branch (its head
 commit, read from the GitHub API) or the pseudo-version Go gives a commit. The Go module proxy
 names its version (v0.0.0-lab.1.0.20260928222237-58b211dce544); the placement holds that version
-and no checksum, and the pipeline and the infrastructure check build it with go install, which
+and no checksum, and the pipeline and the stack's triggers build it with go install, which
 verifies it against Go's checksum database. The commit must be pushed first: the proxy knows only
 pushed commits, and remembers for about 30 minutes that it did not know one asked about too soon.
 A commit a release tag names moves to that release. A commit named by its hash or its
 pseudo-version must be on a branch of github.com/cccteam/ccc, since GitHub also serves the
-commits of the repository's forks by hash. A commit pin needs Go on this machine: the
-commit is built with go install into the user's cache directory to render with.
+commits of the repository's forks by hash; the triggers' first step checks the same with git
+before building a commit pin. A commit pin needs Go on this machine: the commit is built
+with go install into the user's cache directory to render with.
 
 Either way the stack and the pipeline are then rendered with that bedrock, so the committed files
 come from the bedrock the pin names. Commit placement.json with the rendered files: from that
-commit the pipeline's first step and the infrastructure check get the pinned bedrock, and every
+commit the pipeline's first step and the stack's triggers get the pinned bedrock, and every
 bedrock deploy step runs it. The pin is the one place a bedrock version appears in the
 application.
 
@@ -68,9 +80,24 @@ provider-drivers step is refused here, and the refusal names impulse upgrade as 
 render and check refuse a placement pinned to another bedrock than a release or an installed
 commit running them, so the installed bedrock is kept at the pin; upgrade is the command that
 moves it. Run from anywhere inside the repository, it finds the stack and the application as
-render does; --dir, --app and --placement override.`,
+render does; --dir, --app and --placement override. In the organization's repository --dir
+is the repository root.`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			root, p, err := d.orgRepository(dirFlag)
+			if err != nil {
+				return err
+			}
+			if p != nil {
+				if appFlag != "" {
+					return errors.New("--app names an application: the organization's repository has none, and upgrade moves its own pin here")
+				}
+				if placement == "" {
+					placement = filepath.Join(root, orgPlacementFile)
+				}
+
+				return d.upgrade(cmd, args, orgTarget(p, root, placement))
+			}
 			appDir, dir, err := d.stack(appFlag, dirFlag)
 			if err != nil {
 				return err
@@ -78,8 +105,12 @@ render does; --dir, --app and --placement override.`,
 			if placement == "" {
 				placement = filepath.Join(dir, placementFile)
 			}
+			t, err := appTarget(appDir, dir, placement)
+			if err != nil {
+				return err
+			}
 
-			return d.upgrade(cmd, args, appDir, dir, placement)
+			return d.upgrade(cmd, args, t)
 		},
 	}
 
@@ -92,28 +123,75 @@ render does; --dir, --app and --placement override.`,
 	return cmd
 }
 
-// upgrade moves the pin in the placement and renders with the bedrock it names.
-func (d deps) upgrade(cmd *cobra.Command, args []string, appDir, dir, placement string) error {
-	ctx := cmd.Context()
+// upgradeTarget is the placement upgrade moves, an application's or the organization's:
+// where it is, its pin as it stands, how the new pin is written, the arguments the
+// pinned bedrock renders with, and who runs the pin from the commit, for the messages.
+type upgradeTarget struct {
+	placement string
+	version   string
+	sum       string
+	write     func(version, sum string) error
+	render    []string
+	// runner is who runs the pin from the commit; builds says who builds a commit pin.
+	runner string
+	builds string
+}
+
+// appTarget is an application's placement: the stack is rendered with the pinned
+// bedrock (bedrock render --app --out --placement).
+func appTarget(appDir, dir, placement string) (*upgradeTarget, error) {
 	p, err := derive.ReadPlacement(placement)
 	if err != nil {
-		return err
+		return nil, err
 	}
+
+	return &upgradeTarget{
+		placement: placement, version: p.BedrockVersion, sum: p.BedrockSHA256,
+		write: func(version, sum string) error {
+			p.BedrockVersion, p.BedrockSHA256 = version, sum
+
+			return derive.WritePlacement(placement, p)
+		},
+		render: []string{renderCommand, appOption, appDir, outOption, dir, placementOption, placement},
+		runner: "the pipeline and the stack's triggers",
+		builds: "the pipeline builds it",
+	}, nil
+}
+
+// orgTarget is the organization's placement: the layers are rendered with the pinned
+// bedrock (bedrock org render --dir --placement).
+func orgTarget(p *org.Placement, root, placement string) *upgradeTarget {
+	return &upgradeTarget{
+		placement: placement, version: p.BedrockVersion, sum: p.BedrockSHA256,
+		write: func(version, sum string) error {
+			p.BedrockVersion, p.BedrockSHA256 = version, sum
+
+			return p.Write(placement)
+		},
+		render: []string{orgCommand, renderCommand, dirOption, root, placementOption, placement},
+		runner: "the Cloud Build triggers' runs",
+		builds: "the triggers' runs build it",
+	}
+}
+
+// upgrade moves the pin in the placement and renders with the bedrock it names.
+func (d deps) upgrade(cmd *cobra.Command, args []string, t *upgradeTarget) error {
+	ctx := cmd.Context()
 	src := d.releases()
 	version, err := targetVersion(ctx, src, args)
 	if err != nil {
 		return err
 	}
 	if release.IsCommitPin(version) {
-		return d.upgradeToCommit(cmd, p, version, appDir, dir, placement)
+		return d.upgradeToCommit(cmd, t, version)
 	}
 
-	return d.upgradeToRelease(cmd, src, p, version, appDir, dir, placement)
+	return d.upgradeToRelease(cmd, src, t, version)
 }
 
 // upgradeToRelease moves the pin to a release: its version and its pipeline binary's
 // checksum, rendering with its binary for this machine.
-func (d deps) upgradeToRelease(cmd *cobra.Command, src *release.Source, p *derive.Placement, version, appDir, dir, placement string) error {
+func (d deps) upgradeToRelease(cmd *cobra.Command, src *release.Source, t *upgradeTarget, version string) error {
 	ctx := cmd.Context()
 	out := cmd.OutOrStdout()
 	sums, pipelineSum, err := releaseChecksums(ctx, src, version)
@@ -125,8 +203,8 @@ func (d deps) upgradeToRelease(cmd *cobra.Command, src *release.Source, p *deriv
 	if !ok {
 		return errors.Newf("bedrock %s publishes no binary for %s/%s (%s): upgrade runs on a platform the release covers", version, runtime.GOOS, runtime.GOARCH, asset)
 	}
-	if p.BedrockVersion == version && p.BedrockSHA256 == pipelineSum {
-		fmt.Fprintf(out, "%s already pins bedrock %s.\n", placement, version)
+	if t.version == version && t.sum == pipelineSum {
+		fmt.Fprintf(out, "%s already pins bedrock %s.\n", t.placement, version)
 
 		return nil
 	}
@@ -134,16 +212,15 @@ func (d deps) upgradeToRelease(cmd *cobra.Command, src *release.Source, p *deriv
 	if err != nil {
 		return err
 	}
-	was := pinName(p)
-	p.BedrockVersion, p.BedrockSHA256 = version, pipelineSum
-	if err := derive.WritePlacement(placement, p); err != nil {
+	was := pinName(t.version)
+	if err := t.write(version, pipelineSum); err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "Moved %s from %s to bedrock %s (%s %s).\n", placement, was, version, release.PipelineAsset(), pipelineSum)
-	if err := renderWith(cmd, bin, version, appDir, dir, placement); err != nil {
+	fmt.Fprintf(out, "Moved %s from %s to bedrock %s (%s %s).\n", t.placement, was, version, release.PipelineAsset(), pipelineSum)
+	if err := renderWith(cmd, bin, version, t.render); err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "Commit %s with the rendered files: from that commit the pipeline and the infrastructure check run bedrock %s.\n", placement, version)
+	fmt.Fprintf(out, "Commit %s with the rendered files: from that commit %s run bedrock %s.\n", t.placement, t.runner, version)
 
 	return nil
 }
@@ -167,10 +244,10 @@ func releaseChecksums(ctx context.Context, src *release.Source, version string) 
 // upgradeToCommit moves the pin to a commit: its pseudo-version and no checksum, which also
 // clears the checksum a release pin left. The commit is installed before the placement is
 // written, so a failed install leaves the placement as it was.
-func (d deps) upgradeToCommit(cmd *cobra.Command, p *derive.Placement, version, appDir, dir, placement string) error {
+func (d deps) upgradeToCommit(cmd *cobra.Command, t *upgradeTarget, version string) error {
 	out := cmd.OutOrStdout()
-	if p.BedrockVersion == version && p.BedrockSHA256 == "" {
-		fmt.Fprintf(out, "%s already pins bedrock %s.\n", placement, version)
+	if t.version == version && t.sum == "" {
+		fmt.Fprintf(out, "%s already pins bedrock %s.\n", t.placement, version)
 
 		return nil
 	}
@@ -178,34 +255,34 @@ func (d deps) upgradeToCommit(cmd *cobra.Command, p *derive.Placement, version, 
 	if err != nil {
 		return err
 	}
-	was := pinName(p)
-	p.BedrockVersion, p.BedrockSHA256 = version, ""
-	if err := derive.WritePlacement(placement, p); err != nil {
+	was := pinName(t.version)
+	if err := t.write(version, ""); err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "Moved %s from %s to bedrock %s, a commit pin: the pipeline builds it with go install and Go's checksum database verifies it.\n", placement, was, version)
-	if err := renderWith(cmd, bin, version, appDir, dir, placement); err != nil {
+	fmt.Fprintf(out, "Moved %s from %s to bedrock %s, a commit pin: %s with go install and Go's checksum database verifies it.\n", t.placement, was, version, t.builds)
+	if err := renderWith(cmd, bin, version, t.render); err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "Commit %s with the rendered files: from that commit the pipeline and the infrastructure check build bedrock %s with go install and run it.\n", placement, version)
+	fmt.Fprintf(out, "Commit %s with the rendered files: from that commit %s build bedrock %s with go install and run it.\n", t.placement, t.runner, version)
 
 	return nil
 }
 
 // pinName names the placement's pin before a move, for the message that says what moved.
-func pinName(p *derive.Placement) string {
-	if !p.Pinned() {
+func pinName(version string) string {
+	if version == "" {
 		return "no bedrock"
 	}
 
-	return "bedrock " + p.BedrockVersion
+	return "bedrock " + version
 }
 
-// renderWith runs the render of the bedrock at bin, the one the pin now names.
-func renderWith(cmd *cobra.Command, bin, version, appDir, dir, placement string) error {
+// renderWith runs the render of the bedrock at bin, the one the pin now names, with the
+// target's arguments.
+func renderWith(cmd *cobra.Command, bin, version string, args []string) error {
 	out := cmd.OutOrStdout()
 	fmt.Fprintf(out, "Rendering with bedrock %s (%s):\n", version, bin)
-	render := exec.CommandContext(cmd.Context(), bin, renderCommand, "--app", appDir, "--out", dir, "--placement", placement)
+	render := exec.CommandContext(cmd.Context(), bin, args...)
 	render.Stdout, render.Stderr = out, cmd.ErrOrStderr()
 	if err := render.Run(); err != nil {
 		return errors.Newf("rendering with bedrock %s failed (%v): what it said is above", version, err)

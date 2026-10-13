@@ -31,10 +31,11 @@ type view struct {
 	// from the application code, so that many applications' sweeps in one
 	// environment do not all queue at the top of the hour.
 	SweepMinute int
-	// BedrockURL is where the pipeline's first step and the infrastructure workflow
-	// download the bedrock a release pin names: the linux/amd64 binary of the release;
-	// empty for a commit pin. CommitPin reports a commit pin, which both build with go
-	// install in GoImage, the Go image pinned by digest.
+	// BedrockURL is where the pipeline's first step downloads the bedrock a release pin
+	// names: the linux/amd64 binary of the release; empty for a commit pin. CommitPin
+	// reports a commit pin, which the step builds with go install in GoImage, the Go
+	// image pinned by digest. The stack's trigger-held jobs read the pin at run time and
+	// carry neither (TriggerBedrockURL).
 	BedrockURL string
 	CommitPin  bool
 	GoImage    string
@@ -512,8 +513,7 @@ func newImageView(m *derive.Model, siteLevel string) imageView {
 	return iv
 }
 
-// The images the pipeline runs bedrock in. The OpenTofu version is the one the stack's
-// infrastructure workflow checks with.
+// The images the pipeline and the stack's trigger-held jobs run bedrock in.
 const (
 	gcloudImage   = "gcr.io/cloud-builders/gcloud"
 	openTofuImage = "ghcr.io/opentofu/opentofu:1.12.6"
@@ -521,7 +521,7 @@ const (
 )
 
 // goImage is the image a commit pin is built in, by the pipeline's first step and the
-// infrastructure workflow: the Go image the seeded Dockerfile builds the application in,
+// trigger-held jobs' second: the Go image the seeded Dockerfile builds the application in,
 // pinned at the same digest, so bedrock names one Go image. goImageGo is the Go it carries,
 // which must be at least the go line of bedrock's go.mod: the builds set
 // GOTOOLCHAIN=local, so a newer go line fails them rather than downloading a toolchain,
@@ -532,7 +532,7 @@ const (
 )
 
 // goInstallEnv is the environment go install builds a commit pin in, the pipeline's and
-// the infrastructure workflow's alike. A static binary (CGO_ENABLED=0): the later steps run
+// the trigger-held jobs' alike. A static binary (CGO_ENABLED=0): the later steps run
 // it in OpenTofu's image, which is Alpine and has no glibc. The image's Go and no other
 // (GOTOOLCHAIN=local). The build directory kept out of the binary (-trimpath). The caches
 // and GOPATH (where Go keeps what the checksum database said) under /tmp, off the home
@@ -636,16 +636,153 @@ func (v *view) BedrockModule() string {
 	return release.Module
 }
 
-// GoInstallDockerEnv is goInstallEnv as the -e options of docker run, for the
-// infrastructure workflow, which builds a commit pin in the same image: one line each,
-// continued with a backslash and indented to sit under its docker run.
-func (v *view) GoInstallDockerEnv() string {
-	lines := make([]string, 0, len(goInstallEnv))
-	for _, e := range goInstallEnv {
-		lines = append(lines, "            -e "+e+" \\")
+// The trigger-held jobs of the stack (cloud-build.tf): the check-and-plan trigger, which
+// runs on every push to a pull request and reports the check a merge waits for, and the
+// pull-request stack trigger, which runs on the /gcbrun comment beside the preview. Their
+// steps are the trigger's own text, so a pull request cannot change them, and the deploy
+// package names each trigger and its steps by these when it says that a build runs under
+// an older bedrock's steps.
+const (
+	CheckTrigger = "check"
+	StackTrigger = "pr-stack"
+	// The step ids the two triggers hold, in order: the pinned bedrock read from the
+	// checkout's placement (a release downloaded and verified; a commit pin built in the
+	// next step), bedrock check, then the trigger's own commands.
+	fetchBedrockStep       = "FetchBedrock"
+	buildBedrockCommitStep = "BuildBedrockCommit"
+	checkStackStep         = "CheckStack"
+	planEnvironmentsStep   = "PlanEnvironments"
+	refreshStackStep       = "RefreshPullRequestStack"
+	applyStackStep         = "ApplyPullRequestStack"
+	// The steps' timeouts in seconds: the fetch (releaseFetchSeconds), the commit build
+	// (commitFetchSeconds), the check, the environments' plans, and the pull request's
+	// stack (a plan, the guard and an apply, or a destroy); the whole job is their sum
+	// and time to pull the images.
+	checkStepSeconds      = 600
+	planEnvironmentsSteps = 1800
+	stackStepSeconds      = 2700
+	triggerPullSeconds    = 600
+	// readStackSeconds is the preview build's ReadPullRequestStack step's timeout: the
+	// wait for the stack job's object, ten minutes at most, and the read.
+	readStackSeconds = 900
+)
+
+// CheckTriggerSteps are the check-and-plan trigger's step ids, in order, and
+// StackTriggerSteps the pull-request stack trigger's.
+var (
+	CheckTriggerSteps = []string{fetchBedrockStep, buildBedrockCommitStep, checkStackStep, planEnvironmentsStep, refreshStackStep}
+	StackTriggerSteps = []string{fetchBedrockStep, buildBedrockCommitStep, checkStackStep, applyStackStep}
+)
+
+// ReadStackStep is the pipeline's step that reads what the pull request's stack job
+// applied (deploy pr-outputs), printed once, at the place the build first needs the
+// stack: before the image build when the placement declares build arguments, since the
+// image carries the pull request's own values; after it otherwise, where the job has
+// usually finished and the wait is nothing.
+func (v *view) ReadStackStep() string {
+	return `  # A pull-request build only: what the pull request's stack job applied, read from the
+  # records bucket (<app>/stacks/<env>/pr<N>/<commit>.json), where the stack's pr-stack
+  # trigger wrote it on the same /gcbrun comment, as the apply identity: the services, the
+  # hostname, the job, the migrate command's settings, the database mode and the build
+  # arguments go to environment.sh for the steps after. An object not yet written is waited
+  # for, up to ten minutes; a job that failed stops this build at once with its reason. On
+  # /gcbrun down the destroy is waited for the same way. A tag build says so and ends.
+  - id: ReadPullRequestStack
+    name: ` + v.GcloudImage + `
+    entrypoint: /builder/home/bedrock
+    args: [deploy, pr-outputs]
+    timeout: ` + strconv.Itoa(readStackSeconds) + `s`
+}
+
+// CheckTriggerName is the check-and-plan trigger's name suffix, and StackTriggerName the
+// pull-request stack trigger's: the trigger is <prefix>-<env>-<region code>-<app>-<suffix>.
+func (v *view) CheckTriggerName() string {
+	return CheckTrigger
+}
+
+// StackTriggerName is the pull-request stack trigger's name suffix.
+func (v *view) StackTriggerName() string {
+	return StackTrigger
+}
+
+// TriggerBedrockURL is where a trigger-held job's first step downloads a release pin
+// from, with the version left to the step's shell: the step reads bedrockVersion from the
+// checkout's placement at run time, so the trigger's text names no version. The $$ is
+// Cloud Build's escape for a literal $, which the shell then expands.
+func (v *view) TriggerBedrockURL() string {
+	return release.URL("$$version", release.PipelineAsset())
+}
+
+// BedrockRepository is where a trigger-held job's first step clones the repository's
+// branches from, to check a commit pin against: only a commit a branch reaches is built.
+func (v *view) BedrockRepository() string {
+	return release.CloneURL()
+}
+
+// GoInstallEnvList is goInstallEnv with GOBIN as the items of an HCL list, for the step
+// of a trigger-held job that builds a commit pin.
+func (v *view) GoInstallEnvList() string {
+	items := make([]string, 0, len(goInstallEnv)+1)
+	for _, e := range append([]string{"GOBIN=/builder/home"}, goInstallEnv...) {
+		items = append(items, strconv.Quote(e))
 	}
 
-	return strings.Join(lines, "\n")
+	return strings.Join(items, ", ")
+}
+
+// TriggerStep names a step of the trigger-held jobs by its place: fetch, build, check,
+// plan, refresh, apply.
+func (v *view) TriggerStep(place string) string {
+	switch place {
+	case "fetch":
+		return fetchBedrockStep
+	case "build":
+		return buildBedrockCommitStep
+	case "check":
+		return checkStackStep
+	case "plan":
+		return planEnvironmentsStep
+	case "refresh":
+		return refreshStackStep
+	default:
+		return applyStackStep
+	}
+}
+
+// The trigger-held jobs' timeouts, as the steps and the whole build name them.
+func (v *view) ReleaseFetchTimeout() string {
+	return strconv.Itoa(releaseFetchSeconds) + "s"
+}
+
+// CommitBuildTimeout is the commit pin's build step's timeout.
+func (v *view) CommitBuildTimeout() string {
+	return strconv.Itoa(commitFetchSeconds) + "s"
+}
+
+// CheckStepTimeout is bedrock check's timeout in a trigger-held job.
+func (v *view) CheckStepTimeout() string {
+	return strconv.Itoa(checkStepSeconds) + "s"
+}
+
+// PlanEnvironmentsTimeout is the environments' plans' timeout.
+func (v *view) PlanEnvironmentsTimeout() string {
+	return strconv.Itoa(planEnvironmentsSteps) + "s"
+}
+
+// StackStepTimeout is the pull request's stack step's timeout, in either job.
+func (v *view) StackStepTimeout() string {
+	return strconv.Itoa(stackStepSeconds) + "s"
+}
+
+// CheckTriggerTimeout is the check-and-plan job's whole-build timeout, and
+// StackTriggerTimeout the pull-request stack job's.
+func (v *view) CheckTriggerTimeout() string {
+	return strconv.Itoa(releaseFetchSeconds+commitFetchSeconds+checkStepSeconds+planEnvironmentsSteps+stackStepSeconds+triggerPullSeconds) + "s"
+}
+
+// StackTriggerTimeout is the pull-request stack job's whole-build timeout.
+func (v *view) StackTriggerTimeout() string {
+	return strconv.Itoa(releaseFetchSeconds+commitFetchSeconds+checkStepSeconds+stackStepSeconds+triggerPullSeconds) + "s"
 }
 
 // HasHook reports whether the application implements a hook for the stage, a script or

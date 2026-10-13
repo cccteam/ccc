@@ -1,6 +1,7 @@
 package org
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
@@ -8,6 +9,7 @@ import (
 	"reflect"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -50,6 +52,11 @@ func renderedFile(t *testing.T, path string) string {
 	t.Fatalf("%s is not rendered", path)
 
 	return ""
+}
+
+// intPtr is a pointer to the number, for writing a placement's optional count.
+func intPtr(n int) *int {
+	return &n
 }
 
 func TestPlacementValidate(t *testing.T) {
@@ -101,8 +108,43 @@ func TestPlacementValidate(t *testing.T) {
 		{name: "a name a hosted runner cannot carry", mutate: func(p *Placement) { p.CiLargeRunner = "ci large" }, wantErr: `ciLargeRunner "ci large" cannot name a GitHub-hosted runner`},
 		{name: "a cap without a size", mutate: func(p *Placement) { p.CiLargeRunnerSize = "" }, wantErr: "ciLargeRunnerMaximum 10 caps the runner 1-org creates, and ciLargeRunnerSize is empty"},
 		{name: "a negative cap", mutate: func(p *Placement) { p.CiLargeRunnerMaximum = -1 }, wantErr: "ciLargeRunnerMaximum -1 is negative"},
+		{name: "the approving reviews left out", mutate: func(p *Placement) {
+			p.ApprovingReviews = nil
+		}},
+		{name: "no approving review", mutate: func(p *Placement) {
+			p.ApprovingReviews = intPtr(0)
+		}},
+		{name: "two approving reviews", mutate: func(p *Placement) {
+			p.ApprovingReviews = intPtr(2)
+		}},
+		{name: "a negative number of approving reviews", mutate: func(p *Placement) {
+			p.ApprovingReviews = intPtr(-1)
+		}, wantErr: "approvingReviews -1 is negative: the approving reviews a pull request needs before it merges, 0 for none"},
 		{name: "an infrastructure app named by slug", mutate: func(p *Placement) { p.GithubInfrastructureAppID = "imp-infrastructure" }, wantErr: `githubInfrastructureAppId "imp-infrastructure" is not an App ID`},
 		{name: "a key version of latest", mutate: func(p *Placement) { p.GithubInfrastructureKeyVersion = "latest" }, wantErr: `githubInfrastructureKeyVersion "latest" is not a secret version's number (digits, never latest)`},
+		{name: "no deployer app yet", mutate: func(p *Placement) { p.GithubDeployerAppID, p.GithubDeployerKeyVersion = "", "" }},
+		{name: "a deployer app named by slug", mutate: func(p *Placement) { p.GithubDeployerAppID = "imp-deployer" }, wantErr: `githubDeployerAppId "imp-deployer" is not an App ID (digits)`},
+		{name: "a deployer key version of latest", mutate: func(p *Placement) { p.GithubDeployerKeyVersion = "latest" }, wantErr: `githubDeployerKeyVersion "latest" is not a secret version's number (digits, never latest)`},
+		{name: "no Cloud Build authorization yet", mutate: func(p *Placement) { p.CloudBuildInstallationID, p.CloudBuildTokenSecretVersion = "", "" }},
+		{name: "an installation id that is not one", mutate: func(p *Placement) { p.CloudBuildInstallationID = "imp" }, wantErr: `cloudBuildInstallationId "imp" is not an installation id (digits, from the installation's settings page)`},
+		{name: "a token secret version named by latest", mutate: func(p *Placement) {
+			p.CloudBuildTokenSecretVersion = "projects/imp-boot-gbl-core-a1b2/locations/us-central1/secrets/github-token/versions/latest"
+		}, wantErr: `is not a secret version's resource name (projects/<project>[/locations/<region>]/secrets/<secret>/versions/<number>, a number and never latest)`},
+		{name: "a token secret version that is a number alone", mutate: func(p *Placement) { p.CloudBuildTokenSecretVersion = "1" }, wantErr: `cloudBuildTokenSecretVersion "1" is not a secret version's resource name`},
+		{name: "a global token secret version", mutate: func(p *Placement) {
+			p.CloudBuildTokenSecretVersion = "projects/imp-boot-gbl-core-a1b2/secrets/github-token/versions/3"
+		}},
+		{name: "the installation id without the token", mutate: func(p *Placement) { p.CloudBuildTokenSecretVersion = "" }, wantErr: "cloudBuildInstallationId and cloudBuildTokenSecretVersion are recorded together: the browser authorization in the boot project's Cloud Build console gives both (0-bootstrap/README.md, \"The Cloud Build GitHub authorization\")"},
+		{name: "the token without the installation id", mutate: func(p *Placement) { p.CloudBuildInstallationID = "" }, wantErr: "cloudBuildInstallationId and cloudBuildTokenSecretVersion are recorded together"},
+		{name: "no bedrock pin yet", mutate: func(p *Placement) { p.BedrockVersion, p.BedrockSHA256 = "", "" }},
+		{name: "a release pin without its checksum", mutate: func(p *Placement) { p.BedrockSHA256 = "" }, wantErr: "bedrockVersion v0.5.0 is a release, and bedrockSha256 \"\" is not the SHA-256 checksum of its bedrock-linux-amd64: bedrock upgrade v0.5.0 records it from the release's checksums.txt"},
+		{name: "a release pin with a short checksum", mutate: func(p *Placement) { p.BedrockSHA256 = "abc123" }, wantErr: `bedrockSha256 "abc123" is not the SHA-256 checksum`},
+		{name: "a commit pin", mutate: func(p *Placement) {
+			p.BedrockVersion, p.BedrockSHA256 = "v0.0.0-lab.1.0.20260928222237-58b211dce544", ""
+		}},
+		{name: "a commit pin with a checksum", mutate: func(p *Placement) { p.BedrockVersion = "v0.0.0-lab.1.0.20260928222237-58b211dce544" }, wantErr: "bedrockVersion v0.0.0-lab.1.0.20260928222237-58b211dce544 is a commit pin, which carries no checksum (go install verifies it against Go's checksum database): drop bedrockSha256"},
+		{name: "a checksum without a version", mutate: func(p *Placement) { p.BedrockVersion = "" }, wantErr: "bedrockSha256 is recorded without bedrockVersion: bedrock upgrade records both"},
+		{name: "a pin that is neither", mutate: func(p *Placement) { p.BedrockVersion, p.BedrockSHA256 = "0.5.0", "" }, wantErr: `bedrockVersion "0.5.0" is neither a release (v0.5.0) nor a commit pin (the pseudo-version the Go module proxy names a commit by): bedrock upgrade records one`},
 		{name: "no team groups at all", mutate: func(p *Placement) { p.TeamGroups = nil }, wantErr: "teamGroups.tst is empty: each environment names the group"},
 		{name: "no team group for one environment", mutate: func(p *Placement) { delete(p.TeamGroups, "stg") }, wantErr: "teamGroups.stg is empty"},
 		{name: "a team group that is a person", mutate: func(p *Placement) { p.TeamGroups["prd"] = "user:someone@imp.example" }, wantErr: `teamGroups.prd "user:someone@imp.example" is a person (user:): an environment's team is a group`},
@@ -259,17 +301,23 @@ func TestMachineAccount(t *testing.T) {
 		want []string
 	}{
 		{
-			name: "the README's browser step, its requirements and the token",
-			path: "2-env/README.md",
+			name: "0-bootstrap's README: the browser step in the boot project, by the bootstrap administrator as the machine account, and the token",
+			path: "0-bootstrap/README.md",
 			want: []string{
-				"The browser step signs in to GitHub as the organization's machine account,\n`imp-machine` (`githubMachineAccount` in `placement.json`)",
-				"It must belong to the `imp-example` organization and be an\nowner of it",
-				"Sign in to GitHub\n   as the machine account `imp-machine`, install or select",
-				"fine-grained personal access token of\n`imp-machine` (contents, metadata, pull requests)",
+				"### 2. The Cloud Build GitHub authorization\n",
+				"The person at the browser is the bootstrap\nadministrator, who is Owner on the boot project from step 1; the GitHub\naccount signed in is the organization's machine account,\n`imp-machine` (`githubMachineAccount` in `placement.json`)",
+				"belongs to the `imp-example`\norganization and is an owner of it",
+				"Sign in to GitHub as\n   the machine account `imp-machine`, install or select",
+				"Record both in `placement.json`, as `cloudBuildInstallationId` and\n   `cloudBuildTokenSecretVersion`",
+				"classic personal access token of\n`imp-machine` with the `repo`, `read:user` and `read:org` scopes",
 			},
 		},
-		{name: "the connection's comment", path: "2-env/cloud-build.tf", want: []string{"# GitHub, authorize as the machine account imp-machine. The console writes"}},
-		{name: "the token variable's description", path: "2-env/variables.tf", want: []string{"classic token of the machine account imp-machine added by hand"}},
+		{
+			name: "2-env's README points at it",
+			path: "2-env/README.md",
+			want: []string{"## The GitHub authorization\n", "before the first apply of `0-bootstrap` (`0-bootstrap/README.md`, \"2. The\nCloud Build GitHub authorization\")", "signed in to GitHub as the organization's machine account\n`imp-machine` (`githubMachineAccount` in `placement.json`)"},
+		},
+		{name: "the environment connection's comment", path: "2-env/cloud-build.tf", want: []string{"machine account imp-machine, before the first apply of 0-bootstrap"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -359,7 +407,7 @@ func TestGithubAppSteps(t *testing.T) {
 				"   - the deployer app: Checks, Deployments, Issues and Pull requests, each\n     read and write.\n",
 				"Install App, on the organization,\n   for all repositories",
 				"`RELEASE_APP_ID` holds the release app's App ID and\n   `RELEASE_APP_PRIVATE_KEY` the whole of its `.pem` file",
-				"   bedrock secret add github-deployer-key <env> --from-file <the .pem file>\n   bedrock secret pin github-deployer-key <env> <version>\n",
+				"   bedrock secret add github-deployer-key --from-file <the .pem file>\n   bedrock secret pin github-deployer-key <version>\n",
 				"([GitHub prerequisites](https://github.com/cccteam/ccc/blob/master/bedrock/README.md#github-prerequisites))",
 			},
 		},
@@ -378,20 +426,110 @@ func TestGithubAppSteps(t *testing.T) {
 			path: "0-bootstrap/README.md",
 			want: []string{
 				"   bedrock secret add github-infrastructure-key --from-file <the .pem file>\n   bedrock secret pin github-infrastructure-key <version>\n",
-				"### 4. Billing grants and the budget, by a billing administrator\n",
+				"### 5. Billing grants and the budget, by a billing administrator\n",
 				"In the Billing console, as the same billing administrator, set the spend\nbudget",
+				"## The deployer GitHub App's key\n",
+				"   bedrock secret add github-deployer-key --from-file <the .pem file>\n   bedrock secret pin github-deployer-key <version>\n",
+				"records it as `githubDeployerKeyVersion` in `placement.json`",
 			},
-			absent: []string{"gcloud secrets versions add"},
+			absent: []string{"gcloud secrets versions add", "github-deployer-key <env>"},
 		},
 		{
-			name: "2-env: the deployer key added and pinned with bedrock secret",
+			name: "2-env: the deployer key is 0-bootstrap's, added and pinned there",
 			path: "2-env/README.md",
 			want: []string{
-				"## The deployer GitHub App's key, after each environment's first apply\n",
-				"   bedrock secret add github-deployer-key <env> --from-file <the .pem file>\n   bedrock secret pin github-deployer-key <env> <version>\n",
-				"written here by `bedrock secret pin github-deployer-key <env> <version>`",
+				"## The deployer GitHub App's key\n",
+				"added with\n`bedrock secret add github-deployer-key` and pinned with `bedrock secret pin\ngithub-deployer-key <version>` (`0-bootstrap/README.md`, \"The deployer GitHub\nApp's key\")",
+				"`imp-<env>-gbl-github-deployer-key`, held\na copy of the key pinned per environment; a `removed` block destroys it with\nits versions on the first apply of this render, and the grants move to the\nboot container.",
 			},
-			absent: []string{"gcloud secrets versions add"},
+			absent: []string{"gcloud secrets versions add", "github-deployer-key <env>", "github_deployer_key_secret_versions"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := renderedFile(t, tt.path)
+			for _, w := range tt.want {
+				if !strings.Contains(got, w) {
+					t.Errorf("%s lacks %q", tt.path, w)
+				}
+			}
+			for _, a := range tt.absent {
+				if strings.Contains(got, a) {
+					t.Errorf("%s still carries %q", tt.path, a)
+				}
+			}
+		})
+	}
+}
+
+// TestDeployerKeyGrants reads 2-env's grants on the deployer GitHub App's key: the one
+// container is 0-bootstrap's in the boot project, named by locals.tf and read by every
+// application's deploy identity and in tst by its apply identity; the container an earlier
+// bedrock made in the environment project is removed and destroyed; and the outputs carry
+// the App ID and the pinned version's resource name from placement.json, with no retired
+// tfvars value read anywhere.
+// retiredAttributes is every 2-env/terraform.tfvars attribute org check reports as
+// retired, whose value placement.json carries now.
+func retiredAttributes() []string {
+	names := make([]string, 0, len(retiredValues))
+	for _, v := range retiredValues {
+		names = append(names, v.attribute)
+	}
+
+	return names
+}
+
+func TestDeployerKeyGrants(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		path   string
+		want   []string
+		absent []string
+	}{
+		{
+			name: "the environment project's container is removed and destroyed",
+			path: "2-env/github-apps.tf",
+			want: []string{
+				"removed {\n  from = google_secret_manager_secret.github_deployer_key\n\n  lifecycle {\n    destroy = true\n  }\n}\n",
+			},
+			absent: []string{"resource \"google_secret_manager_secret\" \"github_deployer_key\"", "local.project_id", "var.github_deployer"},
+		},
+		{
+			name: "the deploy identities and tst's apply identities read the boot container",
+			path: "2-env/github-apps.tf",
+			want: []string{
+				"resource \"google_secret_manager_secret_iam_member\" \"deploy_deployer_key\" {\n  for_each = local.apps\n\n  project   = var.boot_project_id\n  secret_id = local.github_deployer_key_secret\n  role      = \"roles/secretmanager.secretAccessor\"\n  member    = google_service_account.deploy[each.key].member\n}\n",
+				"resource \"google_secret_manager_secret_iam_member\" \"apply_deployer_key\" {\n  for_each = local.is_tst ? local.apps : toset([])\n\n  project   = var.boot_project_id\n  secret_id = local.github_deployer_key_secret\n  role      = \"roles/secretmanager.secretAccessor\"\n  member    = google_service_account.apply[each.key].member\n}\n",
+			},
+		},
+		{
+			name: "locals.tf names the boot container and carries the pin from placement.json",
+			path: "2-env/locals.tf",
+			want: []string{
+				"  github_deployer_key_secret         = \"${local.prefix}-boot-gbl-github-deployer-key\"\n",
+				"  github_deployer_key_secret_version = \"projects/imp-boot-gbl-core-a1b2/secrets/imp-boot-gbl-github-deployer-key/versions/1\"\n",
+			},
+			absent: []string{"var.github_deployer_app_id", "var.github_deployer_key_secret_versions"},
+		},
+		{
+			name: "the outputs carry the App ID and the pinned version's resource name",
+			path: "2-env/outputs.tf",
+			want: []string{
+				"output \"github_deployer_app_id\" {",
+				"  value       = local.github_deployer_app_id\n",
+				"output \"github_deployer_key_secret_version\" {",
+				"  value       = local.github_deployer_key_secret_version\n",
+			},
+			absent: []string{"var.github_"},
+		},
+		{
+			name:   "no value org check reports as retired is declared",
+			path:   "2-env/variables.tf",
+			absent: retiredAttributes(),
 		},
 	}
 	for _, tt := range tests {
@@ -436,7 +574,7 @@ func TestRenderTiers(t *testing.T) {
 		{name: "a layer's values are seeded", path: "2-net/terraform.tfvars", want: render.Seeded},
 		{name: "a layer's application values are owned", path: "2-shr/applications.auto.tfvars", want: render.Owned},
 		{name: "the public-invoker grants are owned", path: "1-org/public-invokers.auto.tfvars", want: render.Owned},
-		{name: "the layers workflow is owned", path: WorkflowFile, want: render.Owned},
+		{name: "the triggers' file is owned", path: "0-bootstrap/cloud-build.tf", want: render.Owned},
 		{name: "the journal is seeded", path: "JOURNAL.md", want: render.Seeded},
 		{name: "the ignore rules are seeded", path: ".gitignore", want: render.Seeded},
 	}
@@ -478,15 +616,21 @@ func TestRecordsBucketPolicy(t *testing.T) {
 			path: "2-env/records.tf",
 			want: []string{
 				"  records_deploy_members = [for app in var.applications : google_service_account.deploy[app].member]\n  records_plan_members   = [for app in var.applications : google_service_account.plan[app].member]\n",
-				"      { role = \"roles/storage.objectCreator\", members = local.records_deploy_members },\n",
-				"      { role = \"roles/storage.objectViewer\", members = concat(local.records_deploy_members, local.records_plan_members, local.records_ops_members, local.records_lower_ops_members, local.records_rehearsal_members, values(local.next_deploy_members), [local.team_group]) },\n",
+				"      { role = \"roles/storage.objectCreator\", members = local.records_deploy_members, condition = local.records_creator_condition },\n",
+				"      { role = \"roles/storage.objectViewer\", members = concat(local.records_deploy_members, local.records_plan_members, local.records_ops_members, local.records_lower_ops_members, local.records_rehearsal_members, values(local.next_deploy_members), [local.team_group]), condition = null },\n",
+				// In tst the stack jobs' outputs are the apply identities' to write, under
+				// their prefix alone, which the deploy identities' creator binding excludes.
+				"  records_stack_prefix = local.is_tst ? { for app in var.applications : app => \"projects/_/buckets/${google_storage_bucket.records.name}/objects/${app}/stacks/\" } : {}\n",
+				"    expression  = join(\" && \", [for app, prefix in local.records_stack_prefix : \"!resource.name.startsWith(\\\"${prefix}\\\")\"])\n",
+				"      role    = \"roles/storage.objectUser\"\n      members = [google_service_account.apply[app].member]\n",
+				"  ], local.records_stack_bindings)\n",
 				// In production, the lower environments' operations identities read the records
 				// for a restore from production's backup that names no release.
 				"  records_lower_ops_members = local.next_environment != \"\" ? [] : [\n    for pair in setproduct([for env, next in var.next_environment : env if next != \"\"], var.applications) :\n    \"serviceAccount:${local.prefix}-${pair[0]}-gbl-${pair[1]}-ops@${local.org.project_ids[pair[0]]}.iam.gserviceaccount.com\"\n  ]\n",
 				"    ] : b if length(b.members) > 0\n",
-				"data \"google_iam_policy\" \"records\" {\n  dynamic \"binding\" {\n    for_each = local.records_bindings\n    content {\n      role    = binding.value.role\n      members = binding.value.members\n    }\n  }\n}\n",
+				"data \"google_iam_policy\" \"records\" {\n  dynamic \"binding\" {\n    for_each = local.records_bindings\n    content {\n      role    = binding.value.role\n      members = binding.value.members\n\n      dynamic \"condition\" {\n        for_each = binding.value.condition == null ? [] : [binding.value.condition]\n",
 				"resource \"google_storage_bucket_iam_policy\" \"records\" {\n  bucket      = google_storage_bucket.records.name\n  policy_data = data.google_iam_policy.records.policy_data\n}\n",
-				"default grants to the project's basic roles (projectOwner, projectEditor",
+				"Cloud Storage's default grants to the project's basic roles (projectOwner,",
 				// The member resources the policy replaced leave the state without a destroy,
 				// which would take their members out of the live policy.
 				"removed {\n  from = google_storage_bucket_iam_member.deploy_records\n\n  lifecycle {\n    destroy = false\n  }\n}\n",
@@ -660,16 +804,17 @@ func TestDeployProjectRoles(t *testing.T) {
 		absent bool
 	}{
 		{
-			name: "the roles a build needs",
-			text: "  deploy_project_roles = concat([\n" +
+			name: "the roles a build needs, and no trigger runner: the sweep is the apply identity's",
+			text: "  deploy_project_roles = [\n" +
 				"    \"roles/serviceusage.serviceUsageConsumer\",\n" +
 				"    \"roles/run.developer\",\n" +
 				"    \"roles/logging.logWriter\",\n" +
 				"    \"roles/monitoring.viewer\",\n" +
 				"    local.org.run_job_policy_admin_role,\n" +
 				"    local.org.cloud_build_build_reader_role,\n" +
-				"  ], local.is_tst ? [local.org.cloud_build_trigger_runner_role] : [])\n",
+				"  ]\n",
 		},
+		{name: "no trigger runner for the deploy identity", text: "local.org.cloud_build_trigger_runner_role] : []", absent: true},
 		{name: "no builder bundle", text: "\"roles/cloudbuild.builds.builder\"", absent: true},
 	}
 	for _, tt := range tests {
@@ -1386,14 +1531,51 @@ func TestViewPhrases(t *testing.T) {
 		{name: "the bucket before the seed", placement: Placement{Prefix: "acme"}, check: func(v *view) string { return v.Bucket() }, want: "acme-boot-gbl-state-REPLACEME"},
 		{name: "the bucket after the seed", placement: Placement{Prefix: "acme", StateBucket: "acme-boot-gbl-state-1a2b"}, check: func(v *view) string { return v.Bucket() }, want: "acme-boot-gbl-state-1a2b"},
 		{name: "the layer order", placement: Placement{}, check: func(v *view) string { return v.LayerOrderProse() }, want: "0-bootstrap, 1-org, 2-shr, 2-spn and 2-net, then 2-env for tst, stg and prd"},
-		{name: "the provider before the boot project's number is recorded", placement: Placement{Prefix: "acme"}, check: func(v *view) string { return v.WorkflowProvider() + "|" + v.WorkflowPool() }, want: "|acme-boot-github"},
+		{name: "the approving reviews, left out and at 0, 2 and 12, as a count and as prose", placement: Placement{}, check: func(v *view) string {
+			parts := []string{strconv.Itoa(v.ApprovingReviewCount()) + " " + v.ApprovingReviewsProse()}
+			for _, n := range []int{0, 2, 12} {
+				v.ApprovingReviews = intPtr(n)
+				parts = append(parts, strconv.Itoa(v.ApprovingReviewCount())+" "+v.ApprovingReviewsProse())
+			}
+
+			return strings.Join(parts, "|")
+		}, want: "1 one approving review|0 no approving review|2 two approving reviews|12 12 approving reviews"},
 		{
-			name:      "the provider, the boot project, the repository and the key container",
-			placement: Placement{Prefix: "acme", GithubOrganization: "acme", SourceRepo: "acme-infrastructure", Projects: map[string]string{"boot": "acme-boot-gbl-core-1a2b"}, ProjectNumbers: map[string]string{"boot": "42"}},
+			name:      "the connection, the repository link and the triggers, named in the primary region",
+			placement: Placement{Prefix: "acme", Regions: []Region{{Name: "us-central1", Code: "usc"}, {Name: "us-east1", Code: "use"}}},
 			check: func(v *view) string {
-				return v.WorkflowProvider() + " " + v.BootProject() + " " + v.InfrastructureRepository() + " " + v.InfrastructureKeySecret()
+				return v.ConnectionName() + " " + v.RepositoryLinkName() + " " + v.PlanTriggerName() + " " + v.ApplyTriggerName()
 			},
-			want: "projects/42/locations/global/workloadIdentityPools/acme-boot-github/providers/github acme-boot-gbl-core-1a2b acme/acme-infrastructure acme-boot-gbl-github-infrastructure-key",
+			want: "acme-boot-usc-github acme-boot-usc-infrastructure-repo acme-boot-usc-layers-plan acme-boot-usc-layers-apply",
+		},
+		{
+			name:      "the boot project, the repository and the two key containers",
+			placement: Placement{Prefix: "acme", GithubOrganization: "acme", SourceRepo: "acme-infrastructure", Projects: map[string]string{"boot": "acme-boot-gbl-core-1a2b"}},
+			check: func(v *view) string {
+				return v.BootProject() + " " + v.InfrastructureRepository() + " " + v.InfrastructureKeySecret() + " " + v.DeployerKeySecret()
+			},
+			want: "acme-boot-gbl-core-1a2b acme/acme-infrastructure acme-boot-gbl-github-infrastructure-key acme-boot-gbl-github-deployer-key",
+		},
+		{name: "the boot project before the seed", placement: Placement{Prefix: "acme"}, check: func(v *view) string { return v.BootProject() }, want: "acme-boot-gbl-core-REPLACEME"},
+		{
+			name:      "the Cloud Build values as HCL before the authorization",
+			placement: Placement{Prefix: "acme"},
+			check: func(v *view) string {
+				return v.CloudBuildInstallationIDHCL() + " " + v.CloudBuildTokenSecretVersionHCL() + " " + v.GithubDeployerAppIDHCL() + " " + v.DeployerKeyVersionNameHCL() + " " + v.EnvironmentProjectNumbersHCL()
+			},
+			want: "null null null null {}",
+		},
+		{
+			name: "the Cloud Build values as HCL once recorded",
+			placement: Placement{
+				Prefix: "acme", Projects: map[string]string{"boot": "acme-boot-gbl-core-1a2b"}, ProjectNumbers: map[string]string{"boot": "42", "tst": "43", "prd": "45"},
+				CloudBuildInstallationID: "12345678", CloudBuildTokenSecretVersion: "projects/acme-boot-gbl-core-1a2b/locations/us-central1/secrets/github-token/versions/1",
+				GithubDeployerAppID: "5080800", GithubDeployerKeyVersion: "3",
+			},
+			check: func(v *view) string {
+				return v.CloudBuildInstallationIDHCL() + " " + v.CloudBuildTokenSecretVersionHCL() + " " + v.GithubDeployerAppIDHCL() + " " + v.DeployerKeyVersionNameHCL() + " " + v.EnvironmentProjectNumbersHCL()
+			},
+			want: "12345678 \"projects/acme-boot-gbl-core-1a2b/locations/us-central1/secrets/github-token/versions/1\" 5080800 \"projects/acme-boot-gbl-core-1a2b/secrets/acme-boot-gbl-github-deployer-key/versions/3\" {\n    tst = \"43\"\n    prd = \"45\"\n  }",
 		},
 		{
 			name:      "identities, backends and hosts under the recorded projects, REPLACEME for the rest",
@@ -1448,6 +1630,7 @@ func TestCheck(t *testing.T) {
 		mutate       func(t *testing.T, dir string)
 		wantClean    bool
 		wantFinding  string
+		wantReason   string
 		wantUnseeded int
 	}{
 		{name: "the fixture is clean", mutate: func(*testing.T, string) {}, wantClean: true},
@@ -1480,23 +1663,101 @@ func TestCheck(t *testing.T) {
 			wantUnseeded: 1,
 		},
 		{
-			name: "a hand edit to the layers workflow is drift",
+			name: "a .tf file bedrock does not render is refused",
 			mutate: func(t *testing.T, dir string) {
 				t.Helper()
-				path := filepath.Join(dir, filepath.FromSlash(WorkflowFile))
+				if err := os.WriteFile(filepath.Join(dir, "1-org", "extra.tf"), []byte("resource \"google_project_iam_member\" \"extra\" {}\n"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			},
+			wantFinding: "1-org/extra.tf",
+			wantReason:  "not rendered by bedrock: every .tf file of a layer comes from the placement, and a file added by hand would run as the layer's identity; move what it declares into the placement, or remove it",
+		},
+		{
+			name: "a JSON configuration file bedrock does not render is refused too",
+			mutate: func(t *testing.T, dir string) {
+				t.Helper()
+				if err := os.WriteFile(filepath.Join(dir, "2-net", "extra.tf.json"), []byte("{}\n"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			},
+			wantFinding: "2-net/extra.tf.json",
+			wantReason:  "not rendered by bedrock",
+		},
+		{
+			name: "an override file is refused",
+			mutate: func(t *testing.T, dir string) {
+				t.Helper()
+				if err := os.WriteFile(filepath.Join(dir, "2-env", "identities_override.tf"), []byte("resource \"google_service_account\" \"tofu\" {}\n"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			},
+			wantFinding: "2-env/identities_override.tf",
+			wantReason:  "an override file: OpenTofu merges it into the layer, so it changes what the layer declares without a rendered file changing; the layers hold no override files",
+		},
+		{
+			name: "the plain override file is refused",
+			mutate: func(t *testing.T, dir string) {
+				t.Helper()
+				if err := os.WriteFile(filepath.Join(dir, "0-bootstrap", "override.tf"), []byte("terraform {}\n"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			},
+			wantFinding: "0-bootstrap/override.tf",
+			wantReason:  "an override file",
+		},
+		{
+			name: "a person's inputs are allowed",
+			mutate: func(t *testing.T, dir string) {
+				t.Helper()
+				for _, f := range []string{"2-env/.terraform.lock.hcl", "2-env/extra.auto.tfvars", "2-env/notes.md"} {
+					if err := os.WriteFile(filepath.Join(dir, filepath.FromSlash(f)), []byte("# a person's\n"), 0o600); err != nil {
+						t.Fatal(err)
+					}
+				}
+			},
+			wantClean: true,
+		},
+		{
+			name: "the retired layers workflow is reported, and render removes it",
+			mutate: func(t *testing.T, dir string) {
+				t.Helper()
+				if err := os.MkdirAll(filepath.Join(dir, ".github", "workflows"), 0o750); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(dir, filepath.FromSlash(RetiredWorkflowFile)), []byte("name: layers\n"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			},
+			wantFinding: RetiredWorkflowFile,
+			wantReason:  "the layers workflow is retired: the Cloud Build triggers 0-bootstrap renders plan and apply the layers (0-bootstrap/README.md, \"The Cloud Build triggers\"); bedrock org render removes it",
+		},
+		{
+			name: "1-org's retired workflow.tf is reported",
+			mutate: func(t *testing.T, dir string) {
+				t.Helper()
+				if err := os.WriteFile(filepath.Join(dir, "1-org", "workflow.tf"), []byte("# the old file\n"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			},
+			wantFinding: "1-org/workflow.tf",
+			wantReason:  "retired: 1-org/runners.tf carries its resources now, and a .tf file left beside it declares them twice; bedrock org render removes it",
+		},
+		{
+			name: "a value 2-env's tfvars still sets that the placement carries now",
+			mutate: func(t *testing.T, dir string) {
+				t.Helper()
+				path := filepath.Join(dir, "2-env", "terraform.tfvars")
 				data, err := os.ReadFile(path)
 				if err != nil {
 					t.Fatal(err)
 				}
-				edited := strings.Replace(string(data), "      max-parallel: 1\n", "      max-parallel: 2\n", 1)
-				if edited == string(data) {
-					t.Fatal("the workflow has no max-parallel line to edit")
-				}
-				if err := os.WriteFile(path, []byte(edited), 0o600); err != nil {
+				if err := os.WriteFile(path, append(data, []byte("github_app_installation_id = 12345678\n")...), 0o600); err != nil {
 					t.Fatal(err)
 				}
 			},
-			wantFinding: WorkflowFile,
+			wantFinding: "2-env/terraform.tfvars",
+			wantReason:  "sets github_app_installation_id, which placement.json carries now as cloudBuildInstallationId: record it there (bedrock org render reads it) and remove it here",
 		},
 	}
 	for _, tt := range tests {
@@ -1521,6 +1782,9 @@ func TestCheck(t *testing.T) {
 			}
 			if tt.wantFinding != "" && (len(r.Findings) != 1 || r.Findings[0].Path != tt.wantFinding) {
 				t.Errorf("Findings = %+v, want one for %s", r.Findings, tt.wantFinding)
+			}
+			if tt.wantReason != "" && (len(r.Findings) != 1 || !strings.Contains(r.Findings[0].Reason, tt.wantReason)) {
+				t.Errorf("Findings = %+v, want the reason %q", r.Findings, tt.wantReason)
 			}
 			if len(r.Unseeded) != tt.wantUnseeded {
 				t.Errorf("Unseeded = %v, want %d", r.Unseeded, tt.wantUnseeded)
@@ -1851,43 +2115,77 @@ func TestWildcardOutlierThresholds(t *testing.T) {
 	}
 }
 
-// TestWorkflowUnwired names what the layers workflow still lacks in a placement: the boot
-// project's number, which names the identity provider, and every project the layer
-// identities are named under.
-func TestWorkflowUnwired(t *testing.T) {
+// TestUnrecordedProjects names what the triggers' runs still lack in a placement: every
+// project the layer identities are named under.
+func TestUnrecordedProjects(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
 		name     string
 		projects map[string]string
-		numbers  map[string]string
 		want     string
 	}{
-		{name: "nothing recorded", want: "projectNumbers.boot,projects.boot,projects.shr,projects.net,projects.spn,projects.tst,projects.stg,projects.prd"},
-		{name: "the seed's values alone", projects: map[string]string{"boot": "imp-boot-gbl-core-a1b2"}, numbers: map[string]string{"boot": "1"}, want: "projects.shr,projects.net,projects.spn,projects.tst,projects.stg,projects.prd"},
-		{name: "the environments alone", projects: map[string]string{"tst": "a", "stg": "b", "prd": "c"}, want: "projectNumbers.boot,projects.boot,projects.shr,projects.net,projects.spn"},
-		{
-			name:     "everything",
-			projects: map[string]string{"boot": "a", "shr": "b", "net": "c", "spn": "d", "tst": "e", "stg": "f", "prd": "g"},
-			numbers:  map[string]string{"boot": "1"},
-		},
+		{name: "nothing recorded", want: "projects.boot,projects.shr,projects.net,projects.spn,projects.tst,projects.stg,projects.prd"},
+		{name: "the seed's values alone", projects: map[string]string{"boot": "imp-boot-gbl-core-a1b2"}, want: "projects.shr,projects.net,projects.spn,projects.tst,projects.stg,projects.prd"},
+		{name: "the environments alone", projects: map[string]string{"tst": "a", "stg": "b", "prd": "c"}, want: "projects.boot,projects.shr,projects.net,projects.spn"},
+		{name: "everything", projects: map[string]string{"boot": "a", "shr": "b", "net": "c", "spn": "d", "tst": "e", "stg": "f", "prd": "g"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
 			p := testPlacement(t)
-			p.Projects, p.ProjectNumbers = tt.projects, tt.numbers
-			if got := strings.Join(p.WorkflowUnwired(), ","); got != tt.want {
-				t.Errorf("WorkflowUnwired() = %q, want %q", got, tt.want)
+			p.Projects = tt.projects
+			if got := strings.Join(p.UnrecordedProjects(), ","); got != tt.want {
+				t.Errorf("UnrecordedProjects() = %q, want %q", got, tt.want)
 			}
 		})
 	}
 }
 
-// TestLayerRuns reads the runs the workflow is rendered with: the five single-run layers
-// then 2-env per environment, each with its identities under the recorded projects, and
-// REPLACEME under a project the placement does not record.
+// authorized is a placement recording the Cloud Build authorization's two values.
+func authorized(installation, version string) Placement {
+	p := Placement{}
+	p.CloudBuildInstallationID = installation
+	p.CloudBuildTokenSecretVersion = version
+
+	return p
+}
+
+// TestConnectionUnset names the Cloud Build values the placement does not record yet.
+func TestConnectionUnset(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		placement Placement
+		want      string
+		connected bool
+	}{
+		{name: "neither", want: "cloudBuildInstallationId,cloudBuildTokenSecretVersion"},
+		{name: "the installation alone", placement: authorized("1", ""), want: "cloudBuildTokenSecretVersion"},
+		{name: "the token alone", placement: authorized("", "projects/p/secrets/s/versions/1"), want: "cloudBuildInstallationId"},
+		{name: "both", placement: authorized("1", "projects/p/secrets/s/versions/1"), connected: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			p := tt.placement
+			if got := strings.Join(p.ConnectionUnset(), ","); got != tt.want {
+				t.Errorf("ConnectionUnset() = %q, want %q", got, tt.want)
+			}
+			if p.Connected() != tt.connected {
+				t.Errorf("Connected() = %t, want %t", p.Connected(), tt.connected)
+			}
+		})
+	}
+}
+
+// TestLayerRuns reads the runs the triggers' commands drive: the five single-run layers
+// then 2-env per environment, each with its state prefix, its marker object and its
+// identities under the recorded projects, and REPLACEME under a project the placement
+// does not record.
 func TestLayerRuns(t *testing.T) {
 	t.Parallel()
 
@@ -1900,11 +2198,11 @@ func TestLayerRuns(t *testing.T) {
 			name:     "every project recorded",
 			projects: map[string]string{"boot": "acme-boot-gbl-core-1a2b", "shr": "acme-shr-gbl-core-3c4d", "net": "acme-net-gbl-core-5e6f", "spn": "acme-spn-gbl-core-7a8b", "tst": "acme-tst-gbl-core-9c0d", "stg": "acme-stg-gbl-core-1e2f", "prd": "acme-prd-gbl-core-3a4b"},
 			want: []string{
-				"0-bootstrap||acme-boot-gbl-tofu@acme-boot-gbl-core-1a2b.iam.gserviceaccount.com|acme-boot-gbl-plan@acme-boot-gbl-core-1a2b.iam.gserviceaccount.com",
-				"1-org||acme-org-gbl-tofu@acme-boot-gbl-core-1a2b.iam.gserviceaccount.com|acme-org-gbl-plan@acme-boot-gbl-core-1a2b.iam.gserviceaccount.com",
-				"2-shr||acme-shr-gbl-tofu@acme-shr-gbl-core-3c4d.iam.gserviceaccount.com|acme-shr-gbl-plan@acme-shr-gbl-core-3c4d.iam.gserviceaccount.com",
-				"2-spn||acme-spn-gbl-tofu@acme-spn-gbl-core-7a8b.iam.gserviceaccount.com|acme-spn-gbl-plan@acme-spn-gbl-core-7a8b.iam.gserviceaccount.com",
-				"2-net||acme-net-gbl-tofu@acme-net-gbl-core-5e6f.iam.gserviceaccount.com|acme-net-gbl-plan@acme-net-gbl-core-5e6f.iam.gserviceaccount.com",
+				"0-bootstrap|0-bootstrap|acme-boot-gbl-tofu@acme-boot-gbl-core-1a2b.iam.gserviceaccount.com|acme-boot-gbl-plan@acme-boot-gbl-core-1a2b.iam.gserviceaccount.com",
+				"1-org|1-org|acme-org-gbl-tofu@acme-boot-gbl-core-1a2b.iam.gserviceaccount.com|acme-org-gbl-plan@acme-boot-gbl-core-1a2b.iam.gserviceaccount.com",
+				"2-shr|2-shr|acme-shr-gbl-tofu@acme-shr-gbl-core-3c4d.iam.gserviceaccount.com|acme-shr-gbl-plan@acme-shr-gbl-core-3c4d.iam.gserviceaccount.com",
+				"2-spn|2-spn|acme-spn-gbl-tofu@acme-spn-gbl-core-7a8b.iam.gserviceaccount.com|acme-spn-gbl-plan@acme-spn-gbl-core-7a8b.iam.gserviceaccount.com",
+				"2-net|2-net|acme-net-gbl-tofu@acme-net-gbl-core-5e6f.iam.gserviceaccount.com|acme-net-gbl-plan@acme-net-gbl-core-5e6f.iam.gserviceaccount.com",
 				"2-env tst|2-env/tst|acme-tst-gbl-tofu@acme-tst-gbl-core-9c0d.iam.gserviceaccount.com|acme-tst-gbl-plan@acme-tst-gbl-core-9c0d.iam.gserviceaccount.com",
 				"2-env stg|2-env/stg|acme-stg-gbl-tofu@acme-stg-gbl-core-1e2f.iam.gserviceaccount.com|acme-stg-gbl-plan@acme-stg-gbl-core-1e2f.iam.gserviceaccount.com",
 				"2-env prd|2-env/prd|acme-prd-gbl-tofu@acme-prd-gbl-core-3a4b.iam.gserviceaccount.com|acme-prd-gbl-plan@acme-prd-gbl-core-3a4b.iam.gserviceaccount.com",
@@ -1914,11 +2212,11 @@ func TestLayerRuns(t *testing.T) {
 			name:     "a project not recorded carries REPLACEME",
 			projects: map[string]string{"boot": "acme-boot-gbl-core-1a2b"},
 			want: []string{
-				"0-bootstrap||acme-boot-gbl-tofu@acme-boot-gbl-core-1a2b.iam.gserviceaccount.com|acme-boot-gbl-plan@acme-boot-gbl-core-1a2b.iam.gserviceaccount.com",
-				"1-org||acme-org-gbl-tofu@acme-boot-gbl-core-1a2b.iam.gserviceaccount.com|acme-org-gbl-plan@acme-boot-gbl-core-1a2b.iam.gserviceaccount.com",
-				"2-shr||acme-shr-gbl-tofu@acme-shr-gbl-core-REPLACEME.iam.gserviceaccount.com|acme-shr-gbl-plan@acme-shr-gbl-core-REPLACEME.iam.gserviceaccount.com",
-				"2-spn||acme-spn-gbl-tofu@acme-spn-gbl-core-REPLACEME.iam.gserviceaccount.com|acme-spn-gbl-plan@acme-spn-gbl-core-REPLACEME.iam.gserviceaccount.com",
-				"2-net||acme-net-gbl-tofu@acme-net-gbl-core-REPLACEME.iam.gserviceaccount.com|acme-net-gbl-plan@acme-net-gbl-core-REPLACEME.iam.gserviceaccount.com",
+				"0-bootstrap|0-bootstrap|acme-boot-gbl-tofu@acme-boot-gbl-core-1a2b.iam.gserviceaccount.com|acme-boot-gbl-plan@acme-boot-gbl-core-1a2b.iam.gserviceaccount.com",
+				"1-org|1-org|acme-org-gbl-tofu@acme-boot-gbl-core-1a2b.iam.gserviceaccount.com|acme-org-gbl-plan@acme-boot-gbl-core-1a2b.iam.gserviceaccount.com",
+				"2-shr|2-shr|acme-shr-gbl-tofu@acme-shr-gbl-core-REPLACEME.iam.gserviceaccount.com|acme-shr-gbl-plan@acme-shr-gbl-core-REPLACEME.iam.gserviceaccount.com",
+				"2-spn|2-spn|acme-spn-gbl-tofu@acme-spn-gbl-core-REPLACEME.iam.gserviceaccount.com|acme-spn-gbl-plan@acme-spn-gbl-core-REPLACEME.iam.gserviceaccount.com",
+				"2-net|2-net|acme-net-gbl-tofu@acme-net-gbl-core-REPLACEME.iam.gserviceaccount.com|acme-net-gbl-plan@acme-net-gbl-core-REPLACEME.iam.gserviceaccount.com",
 				"2-env tst|2-env/tst|acme-tst-gbl-tofu@acme-tst-gbl-core-REPLACEME.iam.gserviceaccount.com|acme-tst-gbl-plan@acme-tst-gbl-core-REPLACEME.iam.gserviceaccount.com",
 				"2-env stg|2-env/stg|acme-stg-gbl-tofu@acme-stg-gbl-core-REPLACEME.iam.gserviceaccount.com|acme-stg-gbl-plan@acme-stg-gbl-core-REPLACEME.iam.gserviceaccount.com",
 				"2-env prd|2-env/prd|acme-prd-gbl-tofu@acme-prd-gbl-core-REPLACEME.iam.gserviceaccount.com|acme-prd-gbl-plan@acme-prd-gbl-core-REPLACEME.iam.gserviceaccount.com",
@@ -1929,10 +2227,20 @@ func TestLayerRuns(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			v := &view{Placement: &Placement{Prefix: "acme", Projects: tt.projects}}
+			p := &Placement{Prefix: "acme", Projects: tt.projects}
 			var got []string
-			for _, r := range v.LayerRuns() {
+			for _, r := range p.LayerRuns() {
 				got = append(got, r.Name+"|"+r.StatePrefix+"|"+r.Apply+"|"+r.Plan)
+				if want := strings.Contains(r.Apply, "REPLACEME"); r.Unrecorded() != want {
+					t.Errorf("%s: Unrecorded() = %t, want %t", r.Name, r.Unrecorded(), want)
+				}
+				wantMarker := "applied/" + r.Layer
+				if r.Environment != "" {
+					wantMarker += "/" + r.Environment
+				}
+				if r.Marker() != wantMarker {
+					t.Errorf("%s: Marker() = %q, want %q", r.Name, r.Marker(), wantMarker)
+				}
 			}
 			if strings.Join(got, "\n") != strings.Join(tt.want, "\n") {
 				t.Errorf("LayerRuns() =\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(tt.want, "\n"))
@@ -1941,14 +2249,15 @@ func TestLayerRuns(t *testing.T) {
 	}
 }
 
-// TestWorkflow reads the rendered layers workflow: a plan job on pull requests into the
-// default branch alone, holding the pull-request write and nothing more, every layer's
-// plan in parallel; an apply job on pushes to the default branch and on a run started from
-// it, one layer at a time in layer order, canceling the rest at the first failure; the
-// identity rows in layer order with 2-env once per environment; the boot project's provider
-// from the placement; the OpenTofu version from the repository's pin; and the
-// infrastructure app's values where the placement records them.
-func TestWorkflow(t *testing.T) {
+// TestTriggers reads the triggers 0-bootstrap renders: the connection and the repository
+// link from the placement's authorization, the two triggers on the infrastructure
+// repository (the plan trigger on pull requests into the default branch with comment
+// control off, the apply trigger on pushes to it), each running as its runner identity,
+// the shared steps (the fetch that reads the pin off placement.json at run time, the
+// build of a commit pin, the check) followed by the one command, the substitutions by
+// which a person applies one layer again and by which the commands know the steps'
+// shape, logging to Cloud Logging alone, and nothing of the retired workflow.
+func TestTriggers(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -1958,97 +2267,60 @@ func TestWorkflow(t *testing.T) {
 		absent []string
 	}{
 		{
-			name:   "the triggers",
+			name:   "the connection and the repository link, from the placement's authorization",
 			mutate: func(*Placement) {},
 			want: []string{
-				"on:\n  pull_request:\n    types: [opened, synchronize, reopened]\n    branches: [master]\n  push:\n    branches: [master]\n  workflow_dispatch:\n",
-				"        options:\n          - 0-bootstrap\n          - 1-org\n          - 2-shr\n          - 2-spn\n          - 2-net\n          - 2-env\n",
-				"\npermissions: {}\n",
+				"  cloud_build_installation_id      = 12345678\n  cloud_build_token_secret_version = \"projects/imp-boot-gbl-core-a1b2/locations/us-central1/secrets/github-github-oauthtoken-abcdef/versions/1\"\n  connected                        = local.cloud_build_installation_id != null && local.cloud_build_token_secret_version != null\n",
+				"resource \"google_cloudbuildv2_connection\" \"github\" {\n  count = local.connected ? 1 : 0\n\n  project  = module.boot_project.project_id\n  location = local.region\n  name     = \"${var.prefix}-boot-${local.region_code}-github\"\n\n  github_config {\n    app_installation_id = local.cloud_build_installation_id\n\n    authorizer_credential {\n      oauth_token_secret_version = local.cloud_build_token_secret_version\n    }\n  }\n",
+				"resource \"google_cloudbuildv2_repository\" \"infrastructure\" {\n  count = local.connected ? 1 : 0\n\n  project           = module.boot_project.project_id\n  location          = local.region\n  name              = \"${var.prefix}-boot-${local.region_code}-infrastructure-repo\"\n  parent_connection = google_cloudbuildv2_connection.github[0].id\n  remote_uri        = \"https://github.com/${var.github_organization}/${var.infrastructure_repository}.git\"\n}\n",
+				"  environment_project_numbers = {\n    tst = \"100000000002\"\n    stg = \"100000000003\"\n    prd = \"100000000004\"\n  }\n  token_readers = local.connected ? merge(\n    { boot = module.boot_project.project_number },\n    local.environment_project_numbers,\n  ) : {}\n",
+				"resource \"google_secret_manager_regional_secret_iam_member\" \"token_accessor\" {\n  for_each = local.token_regional ? local.token_readers : {}\n\n  project   = local.token_project\n  location  = local.token_location\n  secret_id = local.token_secret\n  role      = \"roles/secretmanager.secretAccessor\"\n  member    = \"serviceAccount:service-${each.value}@gcp-sa-cloudbuild.iam.gserviceaccount.com\"\n}\n",
 			},
 		},
 		{
-			name:   "the tofu plan job: pull requests, side by side, as the plan identity, leaving its result and no value",
+			name:   "the plan trigger: pull requests into the default branch, no comment control, as the planner",
 			mutate: func(*Placement) {},
 			want: []string{
-				"  tofu:\n    name: tofu plan ${{ matrix.name }}\n    needs: layers\n    if: github.event_name == 'pull_request' && needs.layers.outputs.count != '0'\n    runs-on: ubuntu-latest\n    permissions:\n      contents: read\n      id-token: write\n    strategy:\n      fail-fast: false\n",
-				"          service_account: ${{ env.IDENTITY }}\n",
-				"      IDENTITY: ${{ matrix.plan }}\n",
-				"tofu plan -input=false -lock=false -no-color -out=\"$RUNNER_TEMP/plan.tfplan\" -json-into=\"$RUNNER_TEMP/plan-log.json\" ${ENVIRONMENT:+-var environment=$ENVIRONMENT}",
-				"jq -s '[.[] | select(.type == \"diagnostic\" and .diagnostic.severity == \"error\") | .diagnostic | {summary, detail}]'",
-				"tofu show -json \"$RUNNER_TEMP/plan.tfplan\" | jq '.output_changes // {} | map_values(.actions)' > \"$result/outputs.json\"",
-				"      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1\n        with:\n          name: plan-${{ matrix.slug }}\n",
-				"| .slug = (.name | gsub(\" \"; \"-\"))]')",
+				"resource \"google_cloudbuild_trigger\" \"plan\" {\n  count = local.connected ? 1 : 0\n\n  project  = module.boot_project.project_id\n  location = local.region\n  name     = \"${var.prefix}-boot-${local.region_code}-layers-plan\"\n\n  service_account    = google_service_account.planner.id\n  include_build_logs = \"INCLUDE_BUILD_LOGS_WITH_STATUS\"\n  substitutions      = local.substitutions\n\n  repository_event_config {\n    repository = google_cloudbuildv2_repository.infrastructure[0].id\n\n    pull_request {\n      branch          = \"^${var.github_default_branch}$\"\n      comment_control = \"COMMENTS_DISABLED\"\n    }\n  }\n",
+				"    step {\n      id         = \"Plan\"\n      name       = \"ghcr.io/opentofu/opentofu:1.12.6\"\n      entrypoint = local.bedrock\n      args       = [\"org\", \"plan\"]\n      env        = local.run_env\n      timeout    = \"3600s\"\n    }\n\n    timeout = \"5100s\"\n\n    options {\n      logging = \"CLOUD_LOGGING_ONLY\"\n    }\n  }\n\n  depends_on = [google_service_account_iam_member.runner_agent_user]\n}\n",
 			},
 		},
 		{
-			name:   "the plan job: each layer's verdict once every plan has finished, the pull-request write and nothing more",
+			name:   "the apply trigger: pushes to the default branch, as the applier",
 			mutate: func(*Placement) {},
 			want: []string{
-				"  plan:\n    name: plan ${{ matrix.name }}\n    needs: [layers, tofu]\n    if: ${{ (success() || failure()) && github.event_name == 'pull_request' && needs.layers.result == 'success' && needs.layers.outputs.count != '0' }}\n    runs-on: ubuntu-latest\n    permissions:\n      pull-requests: write\n    strategy:\n      fail-fast: false\n",
-				"      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1\n        continue-on-error: true\n        with:\n          pattern: plan-*\n",
-				"order=$(printf '%s' \"$MATRIX\" | jq -r 'map(.slug) | join(\" \")')",
-				"          if [ -f \"$plans/status\" ] && [ ! -d \"$plans/plan-$SLUG\" ]; then\n            mkdir \"$plans/plan-$SLUG\"\n",
-				"echo \"As \\`$IDENTITY\\` at $HEAD_SHA: ${summary:-no summary line}\"",
-				"gh api --method PATCH \"repos/$GITHUB_REPOSITORY/issues/comments/$id\"",
-				"          exit \"$verdict\"\n",
-			},
-			absent: []string{"    if: always() && steps.plan.outcome != 'skipped'"},
-		},
-		{
-			name:   "the apply job: the default branch, one layer at a time, stopping at the first failure",
-			mutate: func(*Placement) {},
-			want: []string{
-				"  apply:\n    name: apply ${{ matrix.name }}\n    needs: layers\n    if: github.event_name != 'pull_request' && needs.layers.outputs.count != '0'\n    runs-on: ubuntu-latest\n    permissions:\n      contents: read\n      id-token: write\n",
-				"    strategy:\n      fail-fast: true\n      max-parallel: 1\n      matrix:\n        include: ${{ fromJSON(needs.layers.outputs.matrix) }}\n",
-				"      IDENTITY: ${{ matrix.apply }}\n",
-				"tofu apply -input=false -no-color \"$RUNNER_TEMP/plan.tfplan\"",
+				"resource \"google_cloudbuild_trigger\" \"apply\" {\n  count = local.connected ? 1 : 0\n\n  project  = module.boot_project.project_id\n  location = local.region\n  name     = \"${var.prefix}-boot-${local.region_code}-layers-apply\"\n\n  service_account    = google_service_account.applier.id\n  include_build_logs = \"INCLUDE_BUILD_LOGS_WITH_STATUS\"\n  substitutions      = local.substitutions\n\n  repository_event_config {\n    repository = google_cloudbuildv2_repository.infrastructure[0].id\n\n    push {\n      branch = \"^${var.github_default_branch}$\"\n    }\n  }\n",
+				"    step {\n      id         = \"Apply\"\n      name       = \"ghcr.io/opentofu/opentofu:1.12.6\"\n      entrypoint = local.bedrock\n      args       = [\"org\", \"apply\"]\n      env        = local.run_env\n      timeout    = \"7200s\"\n    }\n\n    timeout = \"8700s\"\n",
+				"gcloud builds triggers run imp-boot-uc1-layers-apply --region=us-central1 --project=imp-boot-gbl-core-a1b2 --branch=master --substitutions=_LAYER=2-env,_ENVIRONMENT=tst\n",
 			},
 		},
 		{
-			name:   "concurrency: a pull request's plans give way to its next push, a push or a Run workflow waits on its layers alone, one group per layer",
+			name:   "the shared steps: the pin read off placement.json at run time, the commit pin built, the check; then the substitutions",
 			mutate: func(*Placement) {},
 			want: []string{
-				"\nconcurrency:\n  group: ${{ github.event_name == 'pull_request' && format('layers-plan-{0}', github.ref) || format('layers-run-{0}', github.run_id) }}\n  cancel-in-progress: ${{ github.event_name == 'pull_request' }}\n",
-				"      id-token: write\n    # One concurrency group per layer (layers-apply-<layer>, 2-env's environments in one group), so\n",
-				"    concurrency:\n      group: layers-apply-${{ matrix.layer }}\n      cancel-in-progress: false\n    # One layer at a time, in the matrix's order (layer order); a failure cancels the rest. A push\n    # run keeps that order inside the run.\n    strategy:\n      fail-fast: true\n      max-parallel: 1\n",
-				"GitHub runs one\n    # job of a group and keeps at most one more pending behind it; a job that arrives while one is\n    # pending cancels that pending one",
+				"  bedrock = \"/builder/home/bedrock\"\n  run_env = [\"BUILD_ID=$BUILD_ID\", \"PROJECT_ID=$PROJECT_ID\", \"LOCATION=$LOCATION\"]\n",
+				"    _LAYER         = \"\"  # a layer to apply again by hand, with no change check; empty for the push's changes\n    _ENVIRONMENT   = \"\"  # with _LAYER=2-env, one environment; empty for the three in order\n    _BEDROCK_STEPS = \"" + StepsVersion + "\" # the shape of these steps, which bedrock org plan and apply compare with their own\n",
+				"    with open(\"placement.json\", encoding=\"utf-8\") as f:\n        placement = json.load(f)\n    version = placement.get(\"bedrockVersion\", \"\")\n    digest = placement.get(\"bedrockSha256\", \"\")\n",
+				"    url = host + \"/cccteam/ccc/releases/download/bedrock/\" + version + \"/bedrock-linux-amd64\"\n",
+				"    if hashlib.sha256(data).hexdigest() != digest:\n",
+				"    go install -ldflags=\"-s -w\" github.com/cccteam/ccc/bedrock@\"$$(cat /builder/home/bedrock-commit)\"\n",
+				"    {\n      id         = \"FetchBedrock\"\n      name       = \"gcr.io/cloud-builders/gcloud\"\n      entrypoint = \"python3\"\n      args       = [\"-c\", local.fetch_bedrock, \"/builder/home\", \"https://github.com\", \"https://github.com/cccteam/ccc.git\"]\n      env        = []\n      timeout    = \"300s\"\n    },\n",
+				"    {\n      id         = \"BuildBedrock\"\n      name       = \"cgr.dev/chainguard/go@sha256:2c20827746d752c1f18989847956637a0dc979c42507f4059e1d9559ee7733af\"\n      entrypoint = \"sh\"\n      args       = [\"-c\", local.build_bedrock]\n      env        = [\"GOBIN=/builder/home\", \"CGO_ENABLED=0\", \"GOTOOLCHAIN=local\", \"GOFLAGS=-trimpath\", \"GOPATH=/tmp/go\", \"GOCACHE=/tmp/go-build\", \"GOMODCACHE=/tmp/go-mod\", \"GOPROXY=https://proxy.golang.org\", \"GOSUMDB=sum.golang.org\", \"GONOSUMDB=\", \"GOPRIVATE=\", \"GOINSECURE=\"]\n      timeout    = \"600s\"\n    },\n",
+				"    {\n      id         = \"Check\"\n      name       = \"ghcr.io/opentofu/opentofu:1.12.6\"\n      entrypoint = local.bedrock\n      args       = [\"org\", \"check\"]\n      env        = []\n      timeout    = \"600s\"\n    },\n  ]\n",
+				"    dynamic \"step\" {\n      for_each = local.steps\n      content {\n        id         = step.value.id\n        name       = step.value.name\n        entrypoint = step.value.entrypoint\n        args       = step.value.args\n        env        = step.value.env\n        timeout    = step.value.timeout\n      }\n    }\n",
 			},
-			absent: []string{"|| 'layers-apply' }}", "Applies queue behind one another"},
+			absent: []string{"v0.5.0", "0123456789abcdef", "workloadIdentityPool", "layers.yml", "GOOGLE_IMPERSONATE_SERVICE_ACCOUNT", "-core-REPLACEME"},
 		},
 		{
-			name:   "the identity per layer, in layer order, 2-env once per environment",
-			mutate: func(*Placement) {},
-			want: []string{
-				"          0-bootstrap - - imp-boot-gbl-tofu@imp-boot-gbl-core-a1b2.iam.gserviceaccount.com imp-boot-gbl-plan@imp-boot-gbl-core-a1b2.iam.gserviceaccount.com\n" +
-					"          1-org - - imp-org-gbl-tofu@imp-boot-gbl-core-a1b2.iam.gserviceaccount.com imp-org-gbl-plan@imp-boot-gbl-core-a1b2.iam.gserviceaccount.com\n" +
-					"          2-shr - - imp-shr-gbl-tofu@imp-shr-gbl-core-7a8b.iam.gserviceaccount.com imp-shr-gbl-plan@imp-shr-gbl-core-7a8b.iam.gserviceaccount.com\n" +
-					"          2-spn - - imp-spn-gbl-tofu@imp-spn-gbl-core-2e3f.iam.gserviceaccount.com imp-spn-gbl-plan@imp-spn-gbl-core-2e3f.iam.gserviceaccount.com\n" +
-					"          2-net - - imp-net-gbl-tofu@imp-net-gbl-core-9c0d.iam.gserviceaccount.com imp-net-gbl-plan@imp-net-gbl-core-9c0d.iam.gserviceaccount.com\n" +
-					"          2-env tst 2-env/tst imp-tst-gbl-tofu@imp-tst-gbl-core-1a2b.iam.gserviceaccount.com imp-tst-gbl-plan@imp-tst-gbl-core-1a2b.iam.gserviceaccount.com\n" +
-					"          2-env stg 2-env/stg imp-stg-gbl-tofu@imp-stg-gbl-core-3c4d.iam.gserviceaccount.com imp-stg-gbl-plan@imp-stg-gbl-core-3c4d.iam.gserviceaccount.com\n" +
-					"          2-env prd 2-env/prd imp-prd-gbl-tofu@imp-prd-gbl-core-5e6f.iam.gserviceaccount.com imp-prd-gbl-plan@imp-prd-gbl-core-5e6f.iam.gserviceaccount.com\n",
-				"  PROVIDER: projects/100000000001/locations/global/workloadIdentityPools/imp-boot-github/providers/github\n",
-				"          tofu_version: ${{ needs.layers.outputs.tofu }}\n",
-				"echo \"tofu=$(tr -d '[:space:]' < .opentofu-version)\"",
-				"          APP_ID: 5080700\n          KEY_VERSION: 1\n          KEY_SECRET: imp-boot-gbl-github-infrastructure-key\n          BOOT_PROJECT: imp-boot-gbl-core-a1b2\n",
-			},
-			absent: []string{"-core-REPLACEME", "GOOGLE_IMPERSONATE_SERVICE_ACCOUNT"},
-		},
-		{
-			name: "before the seed's values and the infrastructure app are recorded",
+			name: "before the authorization and the project numbers are recorded",
 			mutate: func(p *Placement) {
-				p.Projects, p.ProjectNumbers = nil, nil
-				p.GithubInfrastructureAppID, p.GithubInfrastructureKeyVersion = "", ""
+				p.CloudBuildInstallationID, p.CloudBuildTokenSecretVersion = "", ""
+				p.ProjectNumbers = nil
 			},
 			want: []string{
-				"  PROVIDER: \"\"\n",
-				"          2-shr - - imp-shr-gbl-tofu@imp-shr-gbl-core-REPLACEME.iam.gserviceaccount.com imp-shr-gbl-plan@imp-shr-gbl-core-REPLACEME.iam.gserviceaccount.com\n",
-				"          APP_ID: \"\"\n          KEY_VERSION: \"\"\n",
-				"          app-id: \"\"\n",
-				"if printf '%s' \"$selected\" | grep -q REPLACEME; then",
-				"record its App ID as githubInfrastructureAppId in placement.json, add its key to $KEY_SECRET in $BOOT_PROJECT with bedrock secret add github-infrastructure-key, and pin the version with bedrock secret pin github-infrastructure-key <version>, which records githubInfrastructureKeyVersion and runs bedrock org render",
+				"  cloud_build_installation_id      = null\n  cloud_build_token_secret_version = null\n",
+				"  environment_project_numbers = {}\n",
 			},
-			absent: []string{"gcloud secrets versions add"},
 		},
 	}
 	for _, tt := range tests {
@@ -2061,35 +2333,39 @@ func TestWorkflow(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Render() error = %v", err)
 			}
-			var workflow string
+			const path = "0-bootstrap/cloud-build.tf"
+			var content string
 			for _, f := range files {
-				if f.Path == WorkflowFile {
-					workflow = string(f.Content)
+				if f.Path == path {
+					content = string(f.Content)
 				}
 			}
-			if workflow == "" {
-				t.Fatalf("%s is not rendered", WorkflowFile)
+			if content == "" {
+				t.Fatalf("%s is not rendered", path)
 			}
 			for _, w := range tt.want {
-				if !strings.Contains(workflow, w) {
-					t.Errorf("%s lacks:\n%s", WorkflowFile, w)
+				if !strings.Contains(content, w) {
+					t.Errorf("%s lacks:\n%s", path, w)
 				}
 			}
 			for _, a := range tt.absent {
-				if strings.Contains(workflow, a) {
-					t.Errorf("%s still carries %q", WorkflowFile, a)
+				if strings.Contains(content, a) {
+					t.Errorf("%s still carries %q", path, a)
 				}
 			}
 		})
 	}
 }
 
-// TestFederation reads the sign-in the layers render: 0-bootstrap's pool and provider, which
-// trust the infrastructure repository and the workflow file alone and map a token's event
-// and ref to plan or apply; the bindings on the two identities 0-bootstrap owns, which admit
-// a run that applies; and 1-org's bindings, which admit a run that applies for every apply
-// identity and a run that plans for every plan identity, the two boot layers' included.
-func TestFederation(t *testing.T) {
+// TestRunnerIdentities reads who may become each layer identity: the two runner
+// identities 0-bootstrap creates with what each holds itself (the logs, the connection's
+// read token, the apps' keys, the markers for the applier), the applier's impersonation
+// of the two identities 0-bootstrap owns, 1-org's grants letting the planner impersonate
+// every plan identity and the applier every apply identity, the retired workload
+// identity pool, provider and bindings taken out of the state and destroyed, and the
+// boot identity's organization roles carrying the connection administration in place of
+// the pool administration.
+func TestRunnerIdentities(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -2099,49 +2375,60 @@ func TestFederation(t *testing.T) {
 		absent []string
 	}{
 		{
-			name: "the pool and provider trust the repository and the workflow file, and map the purpose",
-			path: "0-bootstrap/github.tf",
+			name: "the two runner identities, and what each holds itself",
+			path: "0-bootstrap/cloud-build.tf",
 			want: []string{
-				`workload_identity_pool_id = "${var.prefix}-boot-github"`,
-				`workload_identity_pool_provider_id = "github"`,
-				`"attribute.purpose"    = "assertion.event_name == \"pull_request\" && assertion.base_ref == \"${var.github_default_branch}\" ? \"plan\" : ((assertion.event_name == \"push\" || assertion.event_name == \"workflow_dispatch\") && assertion.ref == \"refs/heads/${var.github_default_branch}\" ? \"apply\" : \"none\")"`,
-				`attribute_condition = "assertion.repository == \"${var.github_organization}/${var.infrastructure_repository}\" && assertion.job_workflow_ref.startsWith(\"${var.github_organization}/${var.infrastructure_repository}/.github/workflows/layers.yml@\")"`,
-				`issuer_uri = "https://token.actions.githubusercontent.com"`,
-				`workflow_plan  = "principalSet://iam.googleapis.com/${google_iam_workload_identity_pool.github.name}/attribute.purpose/plan"`,
-				`workflow_apply = "principalSet://iam.googleapis.com/${google_iam_workload_identity_pool.github.name}/attribute.purpose/apply"`,
+				"resource \"google_service_account\" \"planner\" {\n  project      = module.boot_project.project_id\n  account_id   = \"${var.prefix}-org-gbl-planner\"\n",
+				"resource \"google_service_account\" \"applier\" {\n  project      = module.boot_project.project_id\n  account_id   = \"${var.prefix}-org-gbl-applier\"\n",
+				"resource \"google_project_iam_member\" \"runner_logs\" {\n  for_each = local.runners\n\n  project = module.boot_project.project_id\n  role    = \"roles/logging.logWriter\"\n  member  = each.value.member\n}\n",
+				"resource \"google_service_account_iam_member\" \"runner_agent_user\" {\n  for_each = local.runners\n\n  service_account_id = each.value.name\n  role               = \"roles/iam.serviceAccountUser\"\n  member             = \"serviceAccount:service-${module.boot_project.project_number}@gcp-sa-cloudbuild.iam.gserviceaccount.com\"\n",
+				"resource \"google_cloudbuildv2_connection_iam_member\" \"runner_read_token\" {\n  for_each = local.connected ? local.runners : {}\n\n  project  = module.boot_project.project_id\n  location = google_cloudbuildv2_connection.github[0].location\n  name     = google_cloudbuildv2_connection.github[0].name\n  role     = \"roles/cloudbuild.readTokenAccessor\"\n  member   = each.value.member\n}\n",
+				"resource \"google_secret_manager_secret_iam_member\" \"runner_keys\" {\n  for_each = local.runner_keys\n\n  project   = module.boot_project.project_id\n  secret_id = local.key_containers[each.value.key]\n  role      = \"roles/secretmanager.secretAccessor\"\n  member    = local.runners[each.value.runner].member\n}\n",
+				"resource \"google_storage_bucket_iam_member\" \"applier_markers\" {\n  bucket = var.state_bucket\n  role   = \"roles/storage.objectUser\"\n  member = google_service_account.applier.member\n\n  condition {\n    title       = \"${var.prefix}-org-gbl-applied-markers\"\n    description = \"The markers of the layers' last successful applies.\"\n    expression  = \"resource.name.startsWith(\\\"${local.state_bucket_objects}/applied/\\\")\"\n  }\n}\n",
 			},
 		},
 		{
-			name: "the two identities 0-bootstrap owns admit a run that applies, and no plan",
-			path: "0-bootstrap/github.tf",
+			name: "the applier becomes the two identities 0-bootstrap owns; the planner none of them",
+			path: "0-bootstrap/cloud-build.tf",
 			want: []string{
-				"resource \"google_service_account_iam_member\" \"boot_tofu_workflow\" {\n  service_account_id = google_service_account.boot_tofu.name\n  role               = \"roles/iam.workloadIdentityUser\"\n  member             = local.workflow_apply\n}\n",
-				"resource \"google_service_account_iam_member\" \"org_tofu_workflow\" {\n  service_account_id = google_service_account.org_tofu.name\n  role               = \"roles/iam.workloadIdentityUser\"\n  member             = local.workflow_apply\n}\n",
+				"resource \"google_service_account_iam_member\" \"applier_boot_tofu\" {\n  service_account_id = google_service_account.boot_tofu.name\n  role               = \"roles/iam.serviceAccountTokenCreator\"\n  member             = google_service_account.applier.member\n}\n",
+				"resource \"google_service_account_iam_member\" \"applier_org_tofu\" {\n  service_account_id = google_service_account.org_tofu.name\n  role               = \"roles/iam.serviceAccountTokenCreator\"\n  member             = google_service_account.applier.member\n}\n",
 			},
-			absent: []string{"member             = local.workflow_plan"},
+			absent: []string{"member             = google_service_account.planner.member"},
 		},
 		{
-			name: "the infrastructure app's key container, read and administered by the org identity",
+			name: "the two key containers, administered by the org identity; the pool, the provider and the bindings retired",
 			path: "0-bootstrap/github.tf",
 			want: []string{
 				`secret_id = "${var.prefix}-boot-gbl-github-infrastructure-key"`,
+				`secret_id = "${var.prefix}-boot-gbl-github-deployer-key"`,
 				"resource \"google_secret_manager_secret_iam_member\" \"org_tofu_infrastructure_key\" {\n  project   = module.boot_project.project_id\n  secret_id = google_secret_manager_secret.github_infrastructure_key.secret_id\n  role      = \"roles/secretmanager.admin\"\n  member    = google_service_account.org_tofu.member\n}\n",
+				"resource \"google_secret_manager_secret_iam_member\" \"org_tofu_deployer_key\" {\n  project   = module.boot_project.project_id\n  secret_id = google_secret_manager_secret.github_deployer_key.secret_id\n  role      = \"roles/secretmanager.admin\"\n  member    = google_service_account.org_tofu.member\n}\n",
+				"removed {\n  from = google_iam_workload_identity_pool.github\n\n  lifecycle {\n    destroy = true\n  }\n}\n",
+				"removed {\n  from = google_iam_workload_identity_pool_provider.github\n\n  lifecycle {\n    destroy = true\n  }\n}\n",
+				"removed {\n  from = google_service_account_iam_member.boot_tofu_workflow\n\n  lifecycle {\n    destroy = true\n  }\n}\n",
+				"removed {\n  from = google_service_account_iam_member.org_tofu_workflow\n\n  lifecycle {\n    destroy = true\n  }\n}\n",
 			},
+			absent: []string{"resource \"google_iam_workload_identity_pool\"", "workloadIdentityUser", "attribute.purpose", "token.actions.githubusercontent.com"},
 		},
 		{
-			name: "1-org's apply identities admit a run that applies, its plan identities a run that plans",
-			path: "1-org/workflow.tf",
+			name: "1-org: the applier becomes every apply identity, the planner every plan identity, the boot layers' included",
+			path: "1-org/runners.tf",
 			want: []string{
-				`workflow_plan  = "principalSet://iam.googleapis.com/${local.boot.github_pool_name}/attribute.purpose/plan"`,
-				`workflow_apply = "principalSet://iam.googleapis.com/${local.boot.github_pool_name}/attribute.purpose/apply"`,
-				"resource \"google_service_account_iam_member\" \"tofu_workflow\" {\n  for_each = local.layers\n\n  service_account_id = google_service_account.tofu[each.key].name\n  role               = \"roles/iam.workloadIdentityUser\"\n  member             = local.workflow_apply\n}\n",
-				"resource \"google_service_account_iam_member\" \"plan_workflow\" {\n  for_each = local.layers\n\n  service_account_id = google_service_account.plan[each.key].name\n  role               = \"roles/iam.workloadIdentityUser\"\n  member             = local.workflow_plan\n}\n",
-				"resource \"google_service_account_iam_member\" \"boot_plan_workflow\" {\n  for_each = local.boot_plans\n\n  service_account_id = google_service_account.boot_plan[each.key].name\n  role               = \"roles/iam.workloadIdentityUser\"\n  member             = local.workflow_plan\n}\n",
+				"resource \"google_service_account_iam_member\" \"tofu_applier\" {\n  for_each = local.layers\n\n  service_account_id = google_service_account.tofu[each.key].name\n  role               = \"roles/iam.serviceAccountTokenCreator\"\n  member             = local.boot.applier_member\n}\n",
+				"resource \"google_service_account_iam_member\" \"plan_planner\" {\n  for_each = local.layers\n\n  service_account_id = google_service_account.plan[each.key].name\n  role               = \"roles/iam.serviceAccountTokenCreator\"\n  member             = local.boot.planner_member\n}\n",
+				"resource \"google_service_account_iam_member\" \"boot_plan_planner\" {\n  for_each = local.boot_plans\n\n  service_account_id = google_service_account.boot_plan[each.key].name\n  role               = \"roles/iam.serviceAccountTokenCreator\"\n  member             = local.boot.planner_member\n}\n",
+				"removed {\n  from = google_service_account_iam_member.tofu_workflow\n\n  lifecycle {\n    destroy = true\n  }\n}\n",
+				"removed {\n  from = google_service_account_iam_member.plan_workflow\n\n  lifecycle {\n    destroy = true\n  }\n}\n",
+				"removed {\n  from = google_service_account_iam_member.boot_plan_workflow\n\n  lifecycle {\n    destroy = true\n  }\n}\n",
+				"resource \"google_secret_manager_secret_iam_member\" \"environment_tofu_deployer_key\" {\n  for_each = local.environment_layers\n\n  project   = var.boot_project_id\n  secret_id = local.boot.github_deployer_key_secret\n  role      = google_organization_iam_custom_role.secret_container_admin.id\n  member    = google_service_account.tofu[each.key].member\n}\n",
+				"resource \"google_secret_manager_secret_iam_member\" \"environment_plan_deployer_key\" {\n  for_each = local.environment_layers\n\n  project   = var.boot_project_id\n  secret_id = local.boot.github_deployer_key_secret\n  role      = \"roles/secretmanager.viewer\"\n  member    = google_service_account.plan[each.key].member\n}\n",
 			},
+			absent: []string{"workflow_plan", "workflow_apply", "workloadIdentityUser", "github_pool_name"},
 		},
 		{
 			name: "the boot layers' plan identities, their organization-level reads and the key's read",
-			path: "1-org/workflow.tf",
+			path: "1-org/runners.tf",
 			want: []string{
 				"resource \"google_service_account\" \"boot_plan\" {\n  for_each = local.boot_plans\n\n  project      = var.boot_project_id\n  account_id   = \"${var.prefix}-${each.key}-gbl-plan\"\n",
 				"    boot = { layer = \"0-bootstrap\", reads = [\"0-bootstrap\"] }\n    org  = { layer = \"1-org\", reads = [\"0-bootstrap\", \"1-org\"] }\n",
@@ -2150,14 +2437,33 @@ func TestFederation(t *testing.T) {
 			},
 		},
 		{
-			name: "1-org reads 0-bootstrap's state for the pool, and the boot identity holds the pool role",
+			name: "1-org reads 0-bootstrap's state for the runners and the containers",
 			path: "1-org/initialize.tf",
 			want: []string{"data \"terraform_remote_state\" \"boot\" {\n  backend = \"gcs\"\n  config = {\n    bucket = var.state_bucket\n    prefix = \"0-bootstrap\"\n  }\n}\n"},
 		},
 		{
-			name: "the boot identity's organization roles carry the pool role; the org identity's the tag role",
-			path: "0-bootstrap/variables.tf",
-			want: []string{`"roles/iam.workloadIdentityPoolAdmin",     # the boot project's identity pool and provider`, `"roles/resourcemanager.tagAdmin",        # the public-invoker tag and the grants on its value`},
+			name: "0-bootstrap publishes the runners and the containers for 1-org",
+			path: "0-bootstrap/outputs.tf",
+			want: []string{
+				"output \"planner_member\" {\n", "  value       = google_service_account.planner.member\n",
+				"output \"applier_member\" {\n", "  value       = google_service_account.applier.member\n",
+				"output \"github_deployer_key_secret\" {\n", "  value       = google_secret_manager_secret.github_deployer_key.secret_id\n",
+				"output \"connection_name\" {\n", "  value       = one(google_cloudbuildv2_connection.github[*].name)\n",
+				"output \"plan_trigger_name\" {\n", "  value       = one(google_cloudbuild_trigger.plan[*].name)\n",
+				"output \"apply_trigger_name\" {\n", "  value       = one(google_cloudbuild_trigger.apply[*].name)\n",
+			},
+			absent: []string{"github_pool_name", "github_provider_name"},
+		},
+		{
+			name:   "the boot identity's organization roles carry the connection administration, not the pool's; the org identity's the tag role",
+			path:   "0-bootstrap/variables.tf",
+			want:   []string{`"roles/cloudbuild.builds.editor",          # the two triggers that plan and apply the layers (cloud-build.tf)`, `"roles/cloudbuild.connectionAdmin",        # the connection and the repository link the triggers watch (cloud-build.tf)`, `"roles/resourcemanager.tagAdmin",        # the public-invoker tag and the grants on its value`},
+			absent: []string{"workloadIdentityPoolAdmin"},
+		},
+		{
+			name:   "the boot plan identities' roles no longer read the pool",
+			path:   "1-org/variables.tf",
+			absent: []string{"workloadIdentityPoolViewer"},
 		},
 	}
 	for _, tt := range tests {
@@ -2216,7 +2522,7 @@ func TestStateBucketGrants(t *testing.T) {
 		},
 		{
 			name: "1-org grants for the identities it creates",
-			path: "1-org/workflow.tf",
+			path: "1-org/runners.tf",
 			want: []string{
 				`layer_state_prefixes    = { for k, v in local.layers : k => v.folder == "shared" ? "2-${k}" : "2-env/${k}" }`,
 				`layer_upstream_prefixes = { for k, v in local.layers : k => v.folder == "shared" ? ["1-org"] : ["1-org", "2-shr", "2-spn", "2-net", "2-env"] }`,
@@ -2236,7 +2542,7 @@ func TestStateBucketGrants(t *testing.T) {
 		},
 		{
 			name: "the environment layers' plan identities read the bucket's policy, which the slots refresh through",
-			path: "1-org/workflow.tf",
+			path: "1-org/runners.tf",
 			want: []string{
 				"resource \"google_storage_bucket_iam_member\" \"environment_plan_policy_reader\" {\n  for_each = local.environment_layers\n\n  bucket = var.state_bucket\n  role   = google_organization_iam_custom_role.bucket_policy_reader.id\n  member = google_service_account.plan[each.key].member\n}\n",
 			},
@@ -2311,10 +2617,11 @@ func TestPublicInvoker(t *testing.T) {
 }
 
 // TestRepositoryRules reads the repository module 1-org renders: the applications it
-// configures, the checks a pull request must pass (the infrastructure workflow's job and
-// the six fixed jobs of impulse's CI workflow in the workflow's order, web among them so a
-// failed browser build blocks the merge; never the pull-request build, which is the
-// preview on /gcbrun), squash as the only merge, the branch up to date
+// configures, the checks a pull request must pass (the application stack's check trigger
+// in the first environment, reported by Google's Cloud Build GitHub App under the
+// trigger's name and the project id, and the six fixed jobs of impulse's CI workflow in
+// the workflow's order, web among them so a failed browser build blocks the merge; never
+// the pull-request build, which is the preview on /gcbrun), squash as the only merge, the branch up to date
 // before it merges, the environments the operations workflow runs in (every one), and the
 // placement's values as the variables' defaults.
 func TestRepositoryRules(t *testing.T) {
@@ -2333,6 +2640,8 @@ func TestRepositoryRules(t *testing.T) {
 		path   string
 		want   []string
 		absent []string
+		// count is how many times a text appears, for what both branch rulesets carry.
+		count map[string]int
 	}{
 		{
 			name: "the applications are the repositories",
@@ -2340,12 +2649,18 @@ func TestRepositoryRules(t *testing.T) {
 			want: []string{`applications = ["harbor", "beacon"]`},
 		},
 		{
-			name: "the rules name the checks in order (bedrock check, impulse's six fixed jobs), squash alone and the branch up to date",
+			name: "the rules name the checks in order (the stack's check trigger, impulse's six fixed jobs), squash alone and the branch up to date",
 			path: "1-org/github.tf",
 			want: []string{
+				`data "github_app" "cloud_build" {
+  slug = "google-cloud-build"
+}`,
+				`  cloud_build_check = {
+    for app in var.applications : app => "${var.prefix}-tst-uc1-${app}-check (${module.project["tst"].project_id})"
+  }`,
 				`      {
-        context        = "bedrock check"
-        integration_id = tonumber(data.github_app.actions.id)
+        context        = local.cloud_build_check[app]
+        integration_id = tonumber(data.github_app.cloud_build.id)
       },
       {
         context        = "title"
@@ -2375,7 +2690,6 @@ func TestRepositoryRules(t *testing.T) {
 				`strict_required_status_checks_policy = true`,
 				`do_not_enforce_on_create = true`,
 				`allowed_merge_methods           = ["squash"]`,
-				`require_last_push_approval      = var.github_infrastructure_team != ""`,
 				`operations_environments = ["tst", "stg", "prd"]`,
 				`moved {
   from = github_repository_environment.restorable
@@ -2387,12 +2701,81 @@ func TestRepositoryRules(t *testing.T) {
 			},
 		},
 		{
-			name: "the pull-request build is not a required check, so the Cloud Build app is not read",
+			name: "the pull-request build is not a required check, and no Actions job of the name bedrock check is",
 			path: "1-org/github.tf",
 			absent: []string{
 				`-pr (${module.project["tst"].project_id})`,
-				`data.github_app.cloud_build`,
-				`google-cloud-build`,
+				`context        = "bedrock check"`,
+			},
+		},
+		{
+			name: "the reviews: the placement's count rendered as a local, one when it is left out, read by both branch rulesets of every application",
+			path: "1-org/github.tf",
+			want: []string{
+				"  approving_reviews = 1\n",
+				`      required_approving_review_count = local.approving_reviews
+      require_last_push_approval      = local.approving_reviews > 0 || var.github_infrastructure_team != ""
+      dismiss_stale_reviews_on_push   = local.approving_reviews > 0
+      allowed_merge_methods           = ["squash"]
+
+      dynamic "required_reviewers" {`,
+			},
+			absent: []string{"required_approving_review_count = 0", "approving_reviews = var."},
+		},
+		{
+			name: "this repository's default branch: its own ruleset, with the same reviews and the plan trigger's check reported under the boot project",
+			path: "1-org/github.tf",
+			want: []string{
+				`  layers_plan_check = "${var.prefix}-boot-uc1-layers-plan (${var.boot_project_id})"`,
+				`import {
+  id = var.infrastructure_repository
+  to = github_repository.infrastructure
+}
+
+resource "github_repository" "infrastructure" {
+  name       = var.infrastructure_repository
+  visibility = "private"
+`,
+				`resource "github_repository_ruleset" "infrastructure" {
+  name        = local.lines.default.name
+  repository  = github_repository.infrastructure.name
+  target      = "branch"
+  enforcement = "active"
+
+  conditions {
+    ref_name {
+      include = local.lines.default.include
+      exclude = []
+    }
+  }
+
+  rules {
+    deletion         = true
+    non_fast_forward = true
+
+    pull_request {
+      required_approving_review_count = local.approving_reviews
+      require_last_push_approval      = local.approving_reviews > 0 || var.github_infrastructure_team != ""
+      dismiss_stale_reviews_on_push   = local.approving_reviews > 0
+      allowed_merge_methods           = ["squash"]
+    }
+
+    required_status_checks {
+      strict_required_status_checks_policy = true
+
+      required_check {
+        context        = local.layers_plan_check
+        integration_id = tonumber(data.github_app.cloud_build.id)
+      }
+    }
+  }
+}`,
+			},
+			count: map[string]int{
+				`required_approving_review_count = local.approving_reviews`:                                             2,
+				`require_last_push_approval      = local.approving_reviews > 0 || var.github_infrastructure_team != ""`: 2,
+				`dismiss_stale_reviews_on_push   = local.approving_reviews > 0`:                                         2,
+				`resource "github_repository_ruleset"`:                                                                  3,
 			},
 		},
 		{
@@ -2411,6 +2794,7 @@ func TestRepositoryRules(t *testing.T) {
 				`default     = "master"`,
 				`default     = "imp-example"`,
 				"variable \"github_infrastructure_team\" {\n  description = \"Slug of the organization's infrastructure team, whose approval a change to an application's workflow and Cloud Build files needs, given after the last push. Empty for none.\"\n  type        = string\n  default     = \"\"",
+				"variable \"infrastructure_repository\" {\n  description = \"This repository's name under var.github_organization (placement.json, sourceRepo): the repository the triggers plan and apply the layers from, which github.tf adopts on the first apply and whose default branch it rules. It exists before 0-bootstrap.\"\n  type        = string\n  default     = \"imp-impulse-infrastructure\"",
 			},
 		},
 		{
@@ -2436,6 +2820,188 @@ func TestRepositoryRules(t *testing.T) {
 				if strings.Contains(content, a) {
 					t.Errorf("%s still carries %q", tt.path, a)
 				}
+			}
+			for text, n := range tt.count {
+				if got := strings.Count(content, text); got != n {
+					t.Errorf("%s carries %q %d times, want %d", tt.path, text, got, n)
+				}
+			}
+		})
+	}
+}
+
+// TestApprovingReviews reads placements that write approvingReviews, or leave it out,
+// and pins what is rendered from each: github.tf's local and the READMEs' prose, one
+// when the key is left out and 0 when it is written as 0, so the two differ; a negative
+// count is refused when the placement is read, by the key's name.
+func TestApprovingReviews(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		// reviews is the value written under approvingReviews; nil leaves the key out.
+		reviews any
+		want    map[string][]string
+		wantErr string
+	}{
+		{
+			name:    "left out",
+			reviews: nil,
+			want: map[string][]string{
+				"1-org/github.tf": {"  approving_reviews = 1\n"},
+				"1-org/README.md": {"one approving review (`approvingReviews` in `placement.json`", "the plan trigger's build passing, one approving review and"},
+			},
+		},
+		{
+			name:    "none",
+			reviews: 0,
+			want: map[string][]string{
+				"1-org/github.tf": {"  approving_reviews = 0\n"},
+				"1-org/README.md": {"no approving review (`approvingReviews` in `placement.json`"},
+			},
+		},
+		{
+			name:    "two reviews",
+			reviews: 2,
+			want: map[string][]string{
+				"1-org/github.tf": {"  approving_reviews = 2\n"},
+				"1-org/README.md": {"two approving reviews (`approvingReviews` in `placement.json`"},
+			},
+		},
+		{
+			name:    "negative",
+			reviews: -1,
+			wantErr: "approvingReviews -1 is negative",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			p, err := ReadPlacement(writePlacement(t, "approvingReviews", tt.reviews))
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("ReadPlacement() error = %v, wantErr %q", err, tt.wantErr)
+				}
+
+				return
+			}
+			if err != nil {
+				t.Fatalf("ReadPlacement() error = %v", err)
+			}
+			files, err := Render(p)
+			if err != nil {
+				t.Fatalf("Render() error = %v", err)
+			}
+			byPath := map[string]string{}
+			for _, f := range files {
+				byPath[f.Path] = string(f.Content)
+			}
+			for path, wants := range tt.want {
+				content, ok := byPath[path]
+				if !ok {
+					t.Fatalf("%s is not rendered", path)
+				}
+				for _, w := range wants {
+					if !strings.Contains(content, w) {
+						t.Errorf("%s lacks %q", path, w)
+					}
+				}
+			}
+		})
+	}
+}
+
+// writePlacement writes the fixture organization's placement with one key written as
+// the value, or left out when the value is nil, into a temporary directory, and returns
+// the file's path.
+func writePlacement(t *testing.T, key string, value any) string {
+	t.Helper()
+
+	data, err := os.ReadFile(filepath.Join(fixture, "placement.json"))
+	if err != nil {
+		t.Fatalf("os.ReadFile() error = %v", err)
+	}
+	var fields map[string]any
+	if err := json.Unmarshal(data, &fields); err != nil {
+		t.Fatalf("json.Unmarshal() error = %v", err)
+	}
+	if value == nil {
+		delete(fields, key)
+	} else {
+		fields[key] = value
+	}
+	out, err := json.Marshal(fields)
+	if err != nil {
+		t.Fatalf("json.Marshal() error = %v", err)
+	}
+	path := filepath.Join(t.TempDir(), "placement.json")
+	if err := os.WriteFile(path, out, 0o600); err != nil {
+		t.Fatalf("os.WriteFile() error = %v", err)
+	}
+
+	return path
+}
+
+// TestLayersPlanCheck ties the check 1-org requires on this repository's default branch
+// to the plan trigger 0-bootstrap names: each file spells the trigger's name in HCL, and
+// with the variables and locals replaced by the placement's values each is
+// PlanTriggerName(), the name bedrock's own messages give the trigger.
+func TestLayersPlanCheck(t *testing.T) {
+	t.Parallel()
+
+	p := testPlacement(t)
+	files, err := Render(p)
+	if err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+	byPath := map[string]string{}
+	for _, f := range files {
+		byPath[f.Path] = string(f.Content)
+	}
+	values := map[string]string{
+		"${var.prefix}":          p.Prefix,
+		"${local.region_code}":   p.Primary().Code,
+		"${var.boot_project_id}": p.BootProject(),
+	}
+	tests := []struct {
+		name string
+		path string
+		// expression captures the HCL string the file spells the name in.
+		expression *regexp.Regexp
+		want       string
+	}{
+		{
+			name:       "0-bootstrap names the plan trigger",
+			path:       "0-bootstrap/cloud-build.tf",
+			expression: regexp.MustCompile(`name\s+= "([^"]*-layers-plan)"`),
+			want:       p.PlanTriggerName(),
+		},
+		{
+			name:       "1-org requires the trigger's check, under the boot project, on this repository",
+			path:       "1-org/github.tf",
+			expression: regexp.MustCompile(`layers_plan_check = "([^"]+)"`),
+			want:       p.PlanTriggerName() + " (" + p.BootProject() + ")",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			content, ok := byPath[tt.path]
+			if !ok {
+				t.Fatalf("%s is not rendered", tt.path)
+			}
+			match := tt.expression.FindStringSubmatch(content)
+			if match == nil {
+				t.Fatalf("%s lacks %s", tt.path, tt.expression)
+			}
+			got := match[1]
+			for reference, value := range values {
+				got = strings.ReplaceAll(got, reference, value)
+			}
+			if got != tt.want {
+				t.Errorf("%s names %q, want %q", tt.path, got, tt.want)
 			}
 		})
 	}

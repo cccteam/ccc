@@ -44,9 +44,10 @@ import {
   to = google_folder.terraform
 }
 
-# The boot project hosts the layer identities, the state bucket, the layers
-# workflow's identity pool and the infrastructure GitHub App's key (github.tf),
-# and acts as the quota and billing project for every downstream layer.
+# The boot project hosts the layer identities, the state bucket, the Cloud
+# Build connection and triggers that plan and apply the layers (cloud-build.tf),
+# the two GitHub Apps' keys (github.tf), and acts as the quota and billing
+# project for every downstream layer.
 #
 # random_project_id is off and the ID comes from a variable: the project already
 # exists with a suffix the seed script chose, and the module would otherwise
@@ -71,14 +72,14 @@ module "boot_project" {
     "cloudbilling.googleapis.com",            # link the billing account to projects created by 1-org
     "cloudresourcemanager.googleapis.com",    # folders, projects, IAM
     "essentialcontacts.googleapis.com",       # Essential Contacts set by 1-org
-    "iam.googleapis.com",                     # service accounts, the layers workflow's identity pool
-    "iamcredentials.googleapis.com",          # the short-lived tokens the workflow runs a layer with
-    "logging.googleapis.com",                 # the log sinks if 1-org's central logging is turned on
+    "cloudbuild.googleapis.com",              # the connection and the triggers that plan and apply the layers (cloud-build.tf)
+    "iam.googleapis.com",                     # service accounts
+    "iamcredentials.googleapis.com",          # the short-lived tokens a trigger's run impersonates a layer identity with
+    "logging.googleapis.com",                 # the triggers' build logs; the log sinks if 1-org's central logging is turned on
     "orgpolicy.googleapis.com",               # org policy constraints
     "privilegedaccessmanager.googleapis.com", # the environments' layer state entitlements 1-org declares here
     "serviceusage.googleapis.com",            # API enablement in downstream projects
     "storage.googleapis.com",                 # the state bucket
-    "sts.googleapis.com",                     # the token exchange of the workflow's sign-in (github.tf)
 
     # Every downstream layer reaches its APIs through this project as the quota project
     # (user_project_override), and an API refuses a quota project where it is disabled:
@@ -104,15 +105,15 @@ import {
   to = module.boot_project.module.project-factory.google_project.main
 }
 
-# The identity this layer runs as through the layers workflow, after the
-# bootstrap administrator's first apply (github.tf). The seed script creates
-# it; it is adopted rather than recreated, because destroying it mid-run would
-# cut off the run doing the destroying.
+# The identity this layer runs as through the apply trigger, after the
+# bootstrap administrator's first apply (cloud-build.tf). The seed script
+# creates it; it is adopted rather than recreated, because destroying it
+# mid-run would cut off the run doing the destroying.
 resource "google_service_account" "boot_tofu" {
   project      = var.boot_project_id
   account_id   = "${var.prefix}-boot-gbl-tofu"
   display_name = "OpenTofu SA - ${local.boot_layer_name}"
-  description  = "Layer identity for ${local.boot_layer_name}. Applies the 0-bootstrap layer from the infrastructure repository's workflow."
+  description  = "Layer identity for ${local.boot_layer_name}. Applies the 0-bootstrap layer from the infrastructure repository's apply trigger."
 }
 
 import {
@@ -126,7 +127,7 @@ import {
 # shrinking boot_layer_roles revokes permissions from the identity running the
 # apply, and the run that does it may not survive to finish.
 resource "google_organization_iam_member" "boot_tofu" {
-  # checkov:skip=CKV_GCP_117: the boot layer identity has to create folders, projects, org-level IAM bindings, and custom roles before any narrower scope exists. It has no keys and runs only from the infrastructure repository's workflow, from its default branch.
+  # checkov:skip=CKV_GCP_117: the boot layer identity has to create folders, projects, org-level IAM bindings, and custom roles before any narrower scope exists. It has no keys and runs only from the infrastructure repository's apply trigger, on its default branch.
   # checkov:skip=CKV_GCP_49: See CKV_GCP_117 above.
   # checkov:skip=CKV_GCP_45: iam.serviceAccountAdmin is granted at the org node because this layer creates service accounts in a project that is itself created here.
   for_each = toset(var.boot_layer_roles)
@@ -160,11 +161,11 @@ resource "google_service_account" "org_tofu" {
   project      = module.boot_project.project_id
   account_id   = "${var.prefix}-org-gbl-tofu"
   display_name = "OpenTofu SA - ${local.org_layer_name}"
-  description  = "Layer identity for ${local.org_layer_name}. Applies the 1-org layer from the infrastructure repository's workflow."
+  description  = "Layer identity for ${local.org_layer_name}. Applies the 1-org layer from the infrastructure repository's apply trigger."
 }
 
 resource "google_organization_iam_member" "org_tofu" {
-  # checkov:skip=CKV_GCP_117: the org layer identity must manage folders, projects, org policies, IAM, and a custom role across the hierarchy this repo owns. It has no keys and runs only from the infrastructure repository's workflow, from its default branch.
+  # checkov:skip=CKV_GCP_117: the org layer identity must manage folders, projects, org policies, IAM, and a custom role across the hierarchy this repo owns. It has no keys and runs only from the infrastructure repository's apply trigger, on its default branch.
   # checkov:skip=CKV_GCP_49: See CKV_GCP_117 above.
   # checkov:skip=CKV_GCP_45: iam.serviceAccountAdmin is granted at the org node because 1-org creates service accounts inside projects that do not exist at bootstrap time, so project-level scoping is not possible.
   for_each = toset(var.org_layer_roles)
@@ -191,7 +192,7 @@ resource "google_organization_iam_member" "org_tofu_project_updater" {
 }
 
 # The boot identity manages the boot project's labels and metadata through the
-# project module when this layer runs through the workflow; the bootstrap
+# project module when this layer runs through the apply trigger; the bootstrap
 # administrator's Owner covered the first apply.
 resource "google_organization_iam_member" "boot_tofu_project_updater" {
   org_id = local.org_id

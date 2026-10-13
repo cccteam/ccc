@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path"
 	"path/filepath"
@@ -18,6 +19,7 @@ import (
 	"github.com/google/go-cmp/cmp/cmpopts"
 
 	"github.com/cccteam/ccc/bedrock/internal/github/githubtest"
+	"github.com/cccteam/ccc/bedrock/internal/render"
 )
 
 // stackPlanJSON is a plan of a stack as tofu show -json gives it: a service updated (its
@@ -275,7 +277,10 @@ func TestPlanEnvironmentStack(t *testing.T) {
 		objects map[string]string
 		// live is the maintenance variable's value on the live service the stack names
 		// (_SERVICES is set with it); "" leaves the service out.
-		live         string
+		live string
+		// tfvars is the stack's placement values in the checkout; every secret pinned in
+		// every environment when empty.
+		tfvars       string
 		wantOut      []string
 		wantTofu     []string
 		wantFact     string
@@ -615,11 +620,64 @@ func TestPlanEnvironmentStack(t *testing.T) {
 			wantTofu: []string{initLine},
 		},
 		{
-			name:     "a tag build plans, tests and appends the summary",
+			name:     "a tag build plans, tests and appends the summary, every secret the code declares pinned in stg",
 			subs:     tagSubs(),
 			pins:     enabledPins(),
-			wantOut:  []string{"=== stg's stack at 3-app/quill/stg as quill-apply@p-stg.iam.gserviceaccount.com ===", "Plan: 2 to add, 1 to change, 1 to destroy.", `  update google_cloud_run_v2_service.app["uc1"]`, "  delete+create google_secret_manager_secret.old", "Tests passed: no authoritative IAM resource other than a file store's bucket policy; 2 pinned secret version(s) exist and are enabled."},
+			wantOut:  []string{"=== stg's stack at 3-app/quill/stg as quill-apply@p-stg.iam.gserviceaccount.com ===", "Secret pins: every secret the code declares has a version pinned in stg (secret_versions.stg in infrastructure/terraform.tfvars).", "Plan: 2 to add, 1 to change, 1 to destroy.", `  update google_cloud_run_v2_service.app["uc1"]`, "  delete+create google_secret_manager_secret.old", "Tests passed: no authoritative IAM resource other than a file store's bucket policy; 2 pinned secret version(s) exist and are enabled."},
 			wantTofu: []string{initLine, planLine, showLine},
+			wantFact: "Plan: 2 to add, 1 to change, 1 to destroy.",
+		},
+		{
+			name:     "a secret with no pinned version in stg refuses the release before the plan, naming the variable and the pin to make",
+			subs:     tagSubs(),
+			pins:     enabledPins(),
+			tfvars:   pinnedTfvars(allPinned, `APP_COOKIE_KEY = "3"`, allPinned),
+			wantTofu: []string{initLine},
+			wantErr:  `Build REJECTED: the code declares a secret stg has no pinned version for (secret_versions.stg in infrastructure/terraform.tfvars): APP_STAFF_OIDC_CLIENT_SECRET. stg's processes would start without it, so the release is refused here; pin it after an operator adds its value (bedrock secret add stg APP_STAFF_OIDC_CLIENT_SECRET): bedrock secret pin stg APP_STAFF_OIDC_CLIENT_SECRET <version>. The pin promotes as a release; tst, the first environment, alone runs without one ("not yet").`,
+		},
+		{
+			name:     "every secret stg has no pinned version for is named in the one refusal, in declaration order, with the pin to make for each",
+			subs:     tagSubs(),
+			pins:     enabledPins(),
+			tfvars:   pinnedTfvars(allPinned, "", allPinned),
+			wantTofu: []string{initLine},
+			wantErr:  "Build REJECTED: the code declares secrets stg has no pinned version for (secret_versions.stg in infrastructure/terraform.tfvars): APP_COOKIE_KEY, APP_STAFF_OIDC_CLIENT_SECRET. stg's processes would start without them, so the release is refused here; pin each after an operator adds its value (bedrock secret add stg <VARIABLE>): bedrock secret pin stg APP_COOKIE_KEY <version>, bedrock secret pin stg APP_STAFF_OIDC_CLIENT_SECRET <version>. The pin promotes as a release",
+		},
+		{
+			name:     "a placement whose secret_versions lacks the environment's map pins none there, and the release is refused",
+			subs:     tagSubs(),
+			pins:     enabledPins(),
+			tfvars:   "secret_versions = {\n  tst = { " + allPinned + " }\n}\n",
+			wantTofu: []string{initLine},
+			wantErr:  "Build REJECTED: the code declares secrets stg has no pinned version for (secret_versions.stg in infrastructure/terraform.tfvars): APP_COOKIE_KEY, APP_STAFF_OIDC_CLIENT_SECRET.",
+		},
+		{
+			name:     "a restore run refused for a pin drops and restores nothing, since the test runs before the plan",
+			subs:     promotedSubs(),
+			pins:     enabledPins(),
+			env:      strings.Replace(restoreEnv, "empty", "production-backup", 1),
+			state:    "resource \"google_spanner_database\" \"quill\" {\n    instance = \"shared-spanner\"\n    name     = \"p-stg-gbl-quill-db\"\n    project  = \"p-spn\"\n}\n",
+			backup:   &Backup{Name: "projects/p-spn/instances/shared-spanner/backups/p-prd-gbl-quill-db-20261001", VersionTime: "2026-10-01T02:00:00Z", CreateTime: "2026-10-01T02:05:00Z", State: BackupReady},
+			tfvars:   pinnedTfvars(allPinned, "", allPinned),
+			wantTofu: []string{initLine},
+			wantErr:  "Build REJECTED: the code declares secrets stg has no pinned version for",
+		},
+		{
+			name:     "a secret with no pinned version in tst, the first environment, is allowed: the release runs without it, and the log says the environments after tst refuse it",
+			subs:     tstSubs(),
+			pins:     enabledPins(),
+			tfvars:   pinnedTfvars(`APP_COOKIE_KEY = "3"`, allPinned, allPinned),
+			wantOut:  []string{`tst has no pinned version for APP_STAFF_OIDC_CLIENT_SECRET (secret_versions.tst in infrastructure/terraform.tfvars): the first environment runs without it, "not yet"; a release to the environments after it is refused until it is pinned there.`, "Tests passed"},
+			wantTofu: []string{strings.Replace(initLine, "3-app/quill/stg", "3-app/quill/tst", 1), strings.Replace(planLine, "environment=stg", "environment=tst", 1), showLine},
+			wantFact: "Plan: 2 to add, 1 to change, 1 to destroy.",
+		},
+		{
+			name:     "every secret unpinned in tst is said, and the release still runs",
+			subs:     tstSubs(),
+			pins:     enabledPins(),
+			tfvars:   pinnedTfvars("", allPinned, allPinned),
+			wantOut:  []string{`tst has no pinned version for APP_COOKIE_KEY, APP_STAFF_OIDC_CLIENT_SECRET (secret_versions.tst in infrastructure/terraform.tfvars): the first environment runs without them, "not yet"; a release to the environments after it is refused until each is pinned there.`, "Tests passed"},
+			wantTofu: []string{strings.Replace(initLine, "3-app/quill/stg", "3-app/quill/tst", 1), strings.Replace(planLine, "environment=stg", "environment=tst", 1), showLine},
 			wantFact: "Plan: 2 to add, 1 to change, 1 to destroy.",
 		},
 		{
@@ -698,7 +756,11 @@ func TestPlanEnvironmentStack(t *testing.T) {
 				}
 				subs["_SERVICES"] = "us-central1=quill-app"
 			}
-			w := workspaceFiles(t, map[string]string{EnvironmentFile: envFile, BuildFile: buildFor(t, subs)})
+			tfvars := tt.tfvars
+			if tfvars == "" {
+				tfvars = pinnedTfvars(allPinned, allPinned, allPinned)
+			}
+			w := applicationWorkspace(t, map[string]string{EnvironmentFile: envFile, BuildFile: buildFor(t, subs), placementPath: testPlacement(""), tfvarsPath: tfvars})
 			if tt.stackFile != "" {
 				writeStackFile(t, w, tt.stackFile)
 			}
@@ -763,6 +825,9 @@ func TestPlanEnvironmentStack(t *testing.T) {
 			}
 			if tt.wantErr != "" && len(spanner.created) > 0 {
 				t.Errorf("a refused rollback started backups: %v", spanner.created)
+			}
+			if tt.wantErr != "" && (spanner.dropped != "" || spanner.restored != "") {
+				t.Errorf("a refused run dropped %q and restored %q", spanner.dropped, spanner.restored)
 			}
 			if tt.wantRestored != "" && spanner.restored != tt.wantRestored {
 				t.Errorf("restored %q, want %q", spanner.restored, tt.wantRestored)
@@ -1125,11 +1190,44 @@ func (f *fakeFirestore) DeleteAllDocuments(_ context.Context, database string) e
 // environmentApplied is a fact the apply never writes: the record reads the plan's JSON.
 const environmentApplied = "STACK_APPLIED"
 
+// applicationWorkspace is a checkout holding the harbor fixture as the application (the
+// window preview finds the router package by reading the application, as bedrock check
+// does) and the files given over it.
+func applicationWorkspace(t *testing.T, files map[string]string) Workspace {
+	t.Helper()
+
+	dir := t.TempDir()
+	if err := os.CopyFS(dir, os.DirFS(filepath.Join("..", "derive", "testdata", "harbor"))); err != nil {
+		t.Fatal(err)
+	}
+	for name, content := range files {
+		file := filepath.Join(dir, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(file), 0o750); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(file, []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	return Workspace(dir)
+}
+
+// allPinned pins every secret harbor's code declares (APP_COOKIE_KEY and
+// APP_STAFF_OIDC_CLIENT_SECRET, in that order), as one environment's map body.
+const allPinned = `APP_COOKIE_KEY = "3", APP_STAFF_OIDC_CLIENT_SECRET = "1"`
+
+// pinnedTfvars is a terraform.tfvars whose secret_versions holds the map bodies given for
+// tst, stg and prd ("" for an environment that pins none).
+func pinnedTfvars(tst, stg, prd string) string {
+	return fmt.Sprintf("secret_versions = {\n  tst = { %s }\n  stg = { %s }\n  prd = { %s }\n}\n", tst, stg, prd)
+}
+
 func TestPlanEnvironments(t *testing.T) {
 	t.Parallel()
 
 	prSubs := func() map[string]string {
-		subs := stackSubs()
+		subs := jobSubs()
 		subs[environmentsSub] = "tst,stg,prd"
 		subs[planIdentitiesSub] = "tst=quill-plan@p-tst.iam.gserviceaccount.com,stg=quill-plan@p-stg.iam.gserviceaccount.com,prd=quill-plan@p-prd.iam.gserviceaccount.com"
 
@@ -1145,23 +1243,60 @@ func TestPlanEnvironments(t *testing.T) {
 		return "tofu show -json WS/environment-" + env + ".plan"
 	}
 	every := []string{initOf("tst", "p-tst"), planOf("tst"), showOf("tst"), initOf("stg", "p-stg"), planOf("stg"), showOf("stg"), initOf("prd", "p-prd"), planOf("prd"), showOf("prd")}
+	const (
+		windowPreview = "Window preview: whether the release this pull request becomes part of turns away the release each environment runs, and which environments hold it for their maintenance window:"
+		noOldest      = "The release file pkg/router/zz_gen_release.json declares no oldest answered release on any outlet: every release that sends its version is answered."
+		unnamed       = "its records bucket or plan identity is not named (_RECORDS_BUCKETS, _PLAN_IDENTITIES); nothing read."
+	)
 	tests := []struct {
 		name      string
-		env       string
 		stackFile string
 		subs      map[string]string
-		pins      map[string]string
-		deployer  bool
-		planErr   error
+		// steps are the build's step ids (the check trigger's own when nil).
+		steps    []string
+		pins     map[string]string
+		deployer bool
+		mintErr  error
+		planErr  error
 		// objects are the records buckets' objects, by gs:// path: a rollback's generation note.
 		objects map[string]string
 		// unapplied names an environment whose stack has no state object yet.
-		unapplied   string
+		unapplied  string
+		badRequest bool
+		// tfvars is the stack's placement values in the checkout; every secret pinned in
+		// every environment when empty.
+		tfvars      string
 		wantOut     []string
+		wantNotOut  []string
 		wantTofu    []string
 		wantComment []string
 		wantErr     string
 	}{
+		{
+			name:       "a secret with no pinned version in stg is said in stg's summary and the log, not refused; tst, the first environment, says nothing",
+			subs:       prSubs(),
+			pins:       enabledPins(),
+			deployer:   true,
+			tfvars:     pinnedTfvars("", `APP_COOKIE_KEY = "3"`, allPinned),
+			wantOut:    []string{"stg: APP_STAFF_OIDC_CLIENT_SECRET has no pinned version in stg (secret_versions.stg in infrastructure/terraform.tfvars); the release is refused there until it is pinned (bedrock secret pin stg APP_STAFF_OIDC_CLIENT_SECRET <version>, after bedrock secret add stg APP_STAFF_OIDC_CLIENT_SECRET has put the value in place).", "prd: Plan: 2 to add, 1 to change, 1 to destroy."},
+			wantNotOut: []string{"no pinned version in tst", "no pinned version in prd", "Build REJECTED"},
+			wantTofu:   every,
+			wantComment: []string{
+				"The stack's plan for each environment (build b-1), the same tests passed in each:",
+				"**tst**: Plan: 2 to add, 1 to change, 1 to destroy.\n  - `update",
+				"**stg**: Plan: 2 to add, 1 to change, 1 to destroy. APP_STAFF_OIDC_CLIENT_SECRET has no pinned version in stg (secret_versions.stg in infrastructure/terraform.tfvars); the release is refused there until it is pinned (bedrock secret pin stg APP_STAFF_OIDC_CLIENT_SECRET <version>, after bedrock secret add stg APP_STAFF_OIDC_CLIENT_SECRET has put the value in place).\n  - `update",
+				"**prd**: Plan: 2 to add, 1 to change, 1 to destroy.\n  - `update",
+			},
+		},
+		{
+			name:        "every secret an environment has no pinned version for is named in its summary, in declaration order, with the pin to make for each",
+			subs:        prSubs(),
+			pins:        enabledPins(),
+			deployer:    true,
+			tfvars:      pinnedTfvars(allPinned, allPinned, ""),
+			wantTofu:    every,
+			wantComment: []string{"**prd**: Plan: 2 to add, 1 to change, 1 to destroy. APP_COOKIE_KEY, APP_STAFF_OIDC_CLIENT_SECRET have no pinned version in prd (secret_versions.prd in infrastructure/terraform.tfvars); the release is refused there until each is pinned (bedrock secret pin prd APP_COOKIE_KEY <version>, bedrock secret pin prd APP_STAFF_OIDC_CLIENT_SECRET <version>, after bedrock secret add prd <VARIABLE> has put the value in place).\n  - `update"},
+		},
 		{
 			name:        "an environment whose stack was never applied is skipped with the line, the others planned, and the comment names it",
 			subs:        prSubs(),
@@ -1199,8 +1334,7 @@ func TestPlanEnvironments(t *testing.T) {
 			wantTofu: every,
 		},
 		{
-			name:      "a policy on a bucket that is not a file store's fails the first environment's test, said on the pull request",
-			env:       "export GITHUB_TOKEN=\"test-token\"\n",
+			name:      "a policy on a bucket that is not a file store's fails the first environment's test, said on the pull request with the repository's token",
 			stackFile: "resource \"google_storage_bucket_iam_policy\" \"records\" {}\n",
 			subs: func() map[string]string {
 				subs := prSubs()
@@ -1214,19 +1348,44 @@ func TestPlanEnvironments(t *testing.T) {
 			wantErr:     "iam.tf:1 google_storage_bucket_iam_policy.records",
 		},
 		{
-			name:        "every environment is planned as its plan identity, the summaries said on the pull request",
-			subs:        prSubs(),
-			pins:        enabledPins(),
-			deployer:    true,
-			wantOut:     []string{"=== tst's stack at 3-app/quill/tst as quill-plan@p-tst.iam.gserviceaccount.com ===", "stg: Plan: 2 to add, 1 to change, 1 to destroy.", "=== prd's stack at 3-app/quill/prd as quill-plan@p-prd.iam.gserviceaccount.com ==="},
+			name:     "every environment is planned as its plan identity, then the window previewed as the same identities, the summaries said on the pull request",
+			subs:     prSubs(),
+			pins:     enabledPins(),
+			deployer: true,
+			wantOut: []string{
+				"=== tst's stack at 3-app/quill/tst as quill-plan@p-tst.iam.gserviceaccount.com ===", "stg: Plan: 2 to add, 1 to change, 1 to destroy.", "=== prd's stack at 3-app/quill/prd as quill-plan@p-prd.iam.gserviceaccount.com ===",
+				windowPreview, noOldest, "  tst: " + unnamed, "  prd: " + unnamed,
+			},
+			wantNotOut:  []string{"Hotfix preview", "Notice: this build runs under"},
 			wantTofu:    every,
 			wantComment: []string{"The stack's plan for each environment (build b-1), the same tests passed in each:", "**tst**: Plan: 2 to add, 1 to change, 1 to destroy.\n  - `update google_cloud_run_v2_service.app[\"uc1\"]`", "**prd**: Plan: 2 to add, 1 to change, 1 to destroy."},
+		},
+		{
+			name: "a pull request against a hotfix line previews each environment's answer to the hotfix after the plans",
+			subs: func() map[string]string {
+				subs := prSubs()
+				subs[baseBranchSub] = "hotfix/1.2.x"
+				subs[recordsBucketsSub] = "tst=records-tst,stg=records-stg,prd=records-prd"
+
+				return subs
+			}(),
+			pins:     enabledPins(),
+			wantOut:  []string{"Hotfix preview: this pull request is against hotfix/1.2.x, and each environment's release check will say this to the line's next release", "  tst: no live deployment record; nothing to be behind.", "  prd: no live deployment record; nothing to be behind.", windowPreview},
+			wantTofu: every,
 		},
 		{
 			name:     "without a deployer app the summaries stay in the log",
 			subs:     prSubs(),
 			pins:     enabledPins(),
 			wantOut:  []string{"prd: Plan: 2 to add, 1 to change, 1 to destroy."},
+			wantTofu: every,
+		},
+		{
+			name:     "an older bedrock's steps are said, and the job runs under them",
+			subs:     prSubs(),
+			steps:    []string{"FetchBedrock", "CheckStack", "PlanEnvironments"},
+			pins:     enabledPins(),
+			wantOut:  []string{"Notice: this build runs under the check trigger's steps as an older bedrock rendered them (FetchBedrock, CheckStack, PlanEnvironments), where this bedrock renders FetchBedrock, BuildBedrockCommit, CheckStack, PlanEnvironments, RefreshPullRequestStack. The steps are the stack's and take effect with the next release's stack apply in tst; this bedrock runs under either."},
 			wantTofu: every,
 		},
 		{
@@ -1241,7 +1400,6 @@ func TestPlanEnvironments(t *testing.T) {
 		},
 		{
 			name:        "a failing test is said on the pull request with the repository's token",
-			env:         "export GITHUB_TOKEN=\"test-token\"\n",
 			subs:        prSubs(),
 			pins:        map[string]string{cookieVersion: "DESTROYED", dbVersion: enabledState},
 			wantTofu:    []string{initOf("tst", "p-tst"), planOf("tst"), showOf("tst")},
@@ -1250,7 +1408,6 @@ func TestPlanEnvironments(t *testing.T) {
 		},
 		{
 			name:        "a failing plan is said on the pull request",
-			env:         "export GITHUB_TOKEN=\"test-token\"\n",
 			subs:        prSubs(),
 			planErr:     errors.New("tofu failed: fake"),
 			wantTofu:    []string{initOf("tst", "p-tst"), planOf("tst")},
@@ -1258,20 +1415,31 @@ func TestPlanEnvironments(t *testing.T) {
 			wantErr:     "fake",
 		},
 		{
-			name:    "a teardown plans nothing",
-			env:     "export DOWN=\"true\"\n",
-			subs:    prSubs(),
-			wantOut: []string{"/gcbrun down: nothing to plan for the environments."},
+			name:        "a token that cannot be minted is said, and a refusal goes through the deployer app alone",
+			subs:        prSubs(),
+			pins:        map[string]string{cookieVersion: "DESTROYED", dbVersion: enabledState},
+			deployer:    true,
+			mintErr:     errors.New("denied"),
+			wantOut:     []string{"Notice: the repository's token could not be minted from connection \"conn\" (denied); a refusal is said through the deployer app alone."},
+			wantTofu:    []string{initOf("tst", "p-tst"), planOf("tst"), showOf("tst")},
+			wantComment: []string{"The plan of tst's stack failed a test (build b-1)"},
+			wantErr:     "which is DESTROYED",
 		},
 		{
 			name:    "triggers without the promotion order plan nothing, with a notice",
-			subs:    stackSubs(),
+			subs:    jobSubs(),
 			wantOut: []string{"The triggers carry no _ENVIRONMENTS: the stack has not been applied with this bedrock yet, which the first release on it does; the environments' plans wait for it."},
 		},
 		{
-			name:    "a tag build does nothing here",
+			name:    "a tag build is refused",
 			subs:    tagSubs(),
-			wantOut: []string{tagBuildNotice},
+			wantErr: "_PR_NUMBER is not set: this command runs in the stack's pull-request triggers",
+		},
+		{
+			name:       "a build it cannot read is refused",
+			subs:       prSubs(),
+			badRequest: true,
+			wantErr:    "BUILD_ID is not set",
 		},
 	}
 	for _, tt := range tests {
@@ -1284,11 +1452,20 @@ func TestPlanEnvironments(t *testing.T) {
 				subs, secrets = deployerSubs(subs), deployerSecrets(t)
 				secrets.states = tt.pins
 			}
-			w := workspaceFiles(t, map[string]string{EnvironmentFile: "export SKIP_DEPLOY=\"\"\n" + tt.env, BuildFile: buildFor(t, subs), placementPath: testPlacement("")})
+			steps := tt.steps
+			if steps == nil {
+				steps = render.CheckTriggerSteps
+			}
+			tfvars := tt.tfvars
+			if tfvars == "" {
+				tfvars = pinnedTfvars(allPinned, allPinned, allPinned)
+			}
+			w := applicationWorkspace(t, map[string]string{placementPath: testPlacement(""), tfvarsPath: tfvars})
 			if tt.stackFile != "" {
 				writeStackFile(t, w, tt.stackFile)
 			}
 			run := &fakeRunner{outputs: map[string]string{"tofu show": stackPlanJSON}, fail: map[string]error{"tofu plan": tt.planErr}}
+			builds := &fakeBuilds{build: jobBuild(t, subs, applyIdentityID, steps), token: "test-token", mintErr: tt.mintErr}
 			repo := &githubtest.Repo{}
 			_, gh := githubStandIn(t, repo)
 			// Every environment's stack has been applied (its state object exists) but the
@@ -1302,8 +1479,13 @@ func TestPlanEnvironments(t *testing.T) {
 			for k, v := range tt.objects {
 				store.objects[k] = v
 			}
+			req := &BuildRequest{BuildID: "b-1", Project: "p", Location: "us-central1"}
+			if tt.badRequest {
+				req = &BuildRequest{}
+			}
+			clients := &Clients{Builds: builds.open, Exec: run, GitHub: gh, Secrets: secrets.open, SecretsAs: secrets.openAs, Storage: store.open, StorageAs: store.openAs}
 			var out strings.Builder
-			err := PlanEnvironments(t.Context(), &Clients{Exec: run, GitHub: gh, Secrets: secrets.open, SecretsAs: secrets.openAs, StorageAs: store.openAs}, w, &out)
+			err := PlanEnvironments(t.Context(), clients, w, req, &out)
 			if tt.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 					t.Fatalf("PlanEnvironments() error = %v, want %q; output:\n%s", err, tt.wantErr, out.String())
@@ -1312,6 +1494,11 @@ func TestPlanEnvironments(t *testing.T) {
 				t.Fatalf("PlanEnvironments() error = %v; output:\n%s", err, out.String())
 			}
 			containsAll(t, out.String(), tt.wantOut...)
+			for _, unwanted := range tt.wantNotOut {
+				if strings.Contains(out.String(), unwanted) {
+					t.Errorf("output carries %q:\n%s", unwanted, out.String())
+				}
+			}
 			lines := strings.ReplaceAll(strings.Join(run.lines(), "\n"), string(w), "WS")
 			if diff := cmp.Diff(strings.Join(tt.wantTofu, "\n"), lines); diff != "" {
 				t.Errorf("tofu (-want +got):\n%s", diff)
@@ -1325,11 +1512,228 @@ func TestPlanEnvironments(t *testing.T) {
 				return
 			}
 			if len(comments) != 1 {
-				t.Fatalf("posted %d comment(s), want one", len(comments))
+				t.Fatalf("posted %d comment(s), want one; output:\n%s", len(comments), out.String())
 			}
 			containsAll(t, comments[0].Body, tt.wantComment...)
 			if _, err := os.Stat(filepath.Join(string(w), stackDir, ".terraform")); !os.IsNotExist(err) {
 				t.Errorf("the backend cache stays after the plans: %v", err)
+			}
+		})
+	}
+}
+
+// TestPreviews: the pull request's looks ahead after the environments' plans, read as
+// each environment's plan identity: the hotfix preview when the pull request is against a
+// hotfix line, and the window preview, from the release file beside the generated router.
+func TestPreviews(t *testing.T) {
+	t.Parallel()
+
+	// first and refits are two migration files the environment's records may list, as the
+	// build may carry them; seed is a seed file a seeded environment's record lists beside
+	// the schema files.
+	first := migrationFile{dir: "schema/migrations", name: "000001_Init.up.sql", content: "create table t"}
+	refits := migrationFile{dir: "schema/migrations", name: "000002_Refits.up.sql", content: "alter table t"}
+	seed := migrationFile{dir: "schema/devseed", name: "000001_Seed.up.sql", content: "insert a"}
+	// liveWith is env's live record of a release, listing the files its build applied.
+	liveWith := func(env, version string, applied ...migrationFile) string {
+		var list []string
+		for _, m := range applied {
+			list = append(list, `{"dir": "`+m.dir+`", "name": "`+m.name+`", "hash": "`+m.hash()+`"}`)
+		}
+
+		return `{"app": "quill", "env": "` + env + `", "version": "` + version + `", "status": "live", "timestamp": "2026-09-28T05:30:00Z", "build": "b-5", "migrations": [` + strings.Join(list, ", ") + `]}`
+	}
+	// hotfixPR is a pull request against hotfix/1.2.x previewed in every environment;
+	// seededPR one previewed in tst alone.
+	hotfixPR := map[string]string{
+		baseBranchSub: "hotfix/1.2.x", environmentsSub: "tst,stg,prd",
+		planIdentitiesSub: "tst=plan-tst@x.iam,stg=plan-stg@x.iam,prd=plan-prd@x.iam",
+		recordsBucketsSub: "tst=tst-records,stg=stg-records,prd=prd-records",
+	}
+	seededPR := map[string]string{baseBranchSub: "hotfix/1.2.x", environmentsSub: "tst", planIdentitiesSub: "tst=plan-tst@x.iam", recordsBucketsSub: "tst=tst-records"}
+	production := func(line string) map[string]string {
+		return map[string]string{baseBranchSub: line, environmentsSub: "prd", planIdentitiesSub: "prd=plan-prd@x.iam", recordsBucketsSub: "prd=prd-records"}
+	}
+	tests := []struct {
+		name string
+		subs map[string]string
+		// placement is the checkout's placement (the default has no maintenance setting);
+		// objects the environments' records; files the migration files and the release
+		// file the checkout carries.
+		placement  string
+		objects    map[string]string
+		files      map[string]string
+		wantOut    []string
+		wantAbsent []string
+		// wantIdentities are the identities the records were read as, in order.
+		wantIdentities []string
+	}{
+		{
+			name: "a pull request against a hotfix line previews each environment's answer, read as its plan identity",
+			subs: hotfixPR,
+			objects: map[string]string{
+				"gs://tst-records/quill/tst/v1.2.4/b-1.json": strings.Replace(liveIn("tst", "v1.2.4"), `"build": "b-5"`, `"build": "b-0"`, 1),
+				"gs://stg-records/quill/stg/v1.3.0/b-5.json": liveWith("stg", "v1.3.0", first, refits),
+				"gs://prd-records/quill/prd/v1.2.3/b-7.json": liveWith("prd", "v1.2.3", first),
+			},
+			files: map[string]string{first.path(): first.content},
+			wantOut: []string{
+				"Hotfix preview: this pull request is against hotfix/1.2.x, and each environment's release check will say this to the line's next release",
+				"tst: would take the hotfix; its database holds nothing this pull request does not carry (0 file(s) recorded by v1.2.4, build b-0).",
+				"stg: WILL REFUSE the hotfix: stg's database holds schema/migrations/000002_Refits.up.sql (in v1.3.0's record), which this pull request does not carry; restore stg to the hotfix first: a restore run replaces the database and skips this check.",
+				"prd: would take the hotfix; its database holds nothing this pull request does not carry (1 file(s) recorded by v1.2.3, build b-5).",
+				"Window preview:",
+			},
+			// The hotfix preview and the window preview each read every environment's record.
+			wantIdentities: []string{"plan-tst@x.iam", "plan-stg@x.iam", "plan-prd@x.iam", "plan-tst@x.iam", "plan-stg@x.iam", "plan-prd@x.iam"},
+		},
+		{
+			name: "a pull request previews the window in every environment, read as its plan identity",
+			subs: map[string]string{
+				baseBranchSub: "master", environmentsSub: "tst,stg,prd",
+				planIdentitiesSub: "tst=plan-tst@x.iam,stg=plan-stg@x.iam,prd=plan-prd@x.iam",
+				recordsBucketsSub: "tst=tst-records,stg=stg-records,prd=prd-records",
+			},
+			placement: testPlacement(`{"stg": {"timeZone": "America/Chicago", "weekly": [{"day": "Sunday", "from": "02:00", "to": "04:00"}]}}`),
+			objects: map[string]string{
+				"gs://tst-records/quill/tst/v1.4.0/b-1.json": liveIn("tst", "v1.4.0"),
+				"gs://stg-records/quill/stg/v1.5.0/b-5.json": liveIn("stg", "v1.5.0"),
+				"gs://prd-records/quill/prd/v1.4.0/b-7.json": liveIn("prd", "v1.4.0"),
+			},
+			files: map[string]string{releaseFilePath: releaseFile(`{"default": {"oldestAnswered": "1.5.0"}, "api": {"kind": "api-key"}}`)},
+			wantOut: []string{
+				"Window preview: whether the release this pull request becomes part of turns away the release each environment runs",
+				"tst: breaking (the default outlet answers 1.5.0 at the oldest, and tst runs v1.4.0, which it turns away); tst takes it at any time, behind the maintenance page.",
+				"stg: not breaking (the default outlet answers 1.5.0 at the oldest, which stg's v1.5.0 is not older than); the release deploys at any time.",
+				"prd: breaking (the default outlet answers 1.5.0 at the oldest, and prd runs v1.4.0, which it turns away); prd has no maintenance setting, so the release WILL BE REFUSED at the start of its run there until placement.json names one (\"anytime\" is a setting).",
+			},
+			wantAbsent:     []string{"Hotfix preview"},
+			wantIdentities: []string{"plan-tst@x.iam", "plan-stg@x.iam", "plan-prd@x.iam"},
+		},
+		{
+			name: "the window preview says where every release waits for the window and where it is held with the maintenance page",
+			subs: map[string]string{
+				baseBranchSub: "master", environmentsSub: "stg,prd",
+				planIdentitiesSub: "stg=plan-stg@x.iam,prd=plan-prd@x.iam", recordsBucketsSub: "stg=stg-records,prd=prd-records",
+			},
+			placement: testPlacement(`{"stg": {"timeZone": "America/Chicago", "weekly": [{"day": "Sunday", "from": "02:00", "to": "04:00"}], "releases": "all"}, "prd": {"timeZone": "America/Chicago", "weekly": [{"day": "Sunday", "from": "02:00", "to": "04:00"}]}}`),
+			objects: map[string]string{
+				"gs://stg-records/quill/stg/v1.5.0/b-5.json": liveIn("stg", "v1.5.0"),
+				"gs://prd-records/quill/prd/v1.4.0/b-7.json": liveIn("prd", "v1.4.0"),
+			},
+			files: map[string]string{releaseFilePath: releaseFile(`{"default": {"oldestAnswered": "1.5.0"}}`)},
+			wantOut: []string{
+				"stg: not breaking (the default outlet answers 1.5.0 at the oldest, which stg's v1.5.0 is not older than; every release waits for stg's window (releases: all)); the run waits for stg's window (Sunday 02:00 to 04:00 America/Chicago, every release) and deploys the rolling way.",
+				"prd: breaking (the default outlet answers 1.5.0 at the oldest, and prd runs v1.4.0, which it turns away); the run waits for prd's window (Sunday 02:00 to 04:00 America/Chicago) and deploys behind the maintenance page.",
+			},
+		},
+		{
+			name:    "a pull request against a hotfix line of another release line is told production will refuse it at the door",
+			subs:    production("hotfix/1.1.x"),
+			objects: map[string]string{"gs://prd-records/quill/prd/v1.2.3/b-7.json": liveWith("prd", "v1.2.3")},
+			wantOut: []string{"prd: WILL REFUSE the hotfix at production's door: production runs v1.2.3, line 1.2; this hotfix is on hotfix/1.1.x. A hotfix is based on the release production runs."},
+		},
+		{
+			name:       "production holding files the line lacks is still answered at the door first, never with a restore",
+			subs:       production("hotfix/1.2.x"),
+			objects:    map[string]string{"gs://prd-records/quill/prd/v1.3.0/b-7.json": liveWith("prd", "v1.3.0", first, refits)},
+			files:      map[string]string{first.path(): first.content},
+			wantOut:    []string{"prd: WILL REFUSE the hotfix at production's door: production runs v1.3.0, line 1.3; this hotfix is on hotfix/1.2.x. A hotfix is based on the release production runs."},
+			wantAbsent: []string{"restore prd"},
+		},
+		{
+			name:    "a pull request behind production on its own line is told to start the line from production's release",
+			subs:    production("hotfix/1.2.x"),
+			objects: map[string]string{"gs://prd-records/quill/prd/v1.2.5/b-7.json": liveWith("prd", "v1.2.5", first, refits)},
+			files:   map[string]string{first.path(): first.content},
+			wantOut: []string{"prd: WILL REFUSE the hotfix: prd's database holds schema/migrations/000002_Refits.up.sql (in v1.2.5's record), which this pull request does not carry; production is never restored by a run: a hotfix is based on the release production runs, so start the line from v1.2.5."},
+		},
+		{
+			name:      "a seeded environment whose seed is not in the tree as applied is told the release's build restores it itself and takes the hotfix, before any schema file is compared",
+			subs:      seededPR,
+			placement: seededPlacement(`["tst"]`),
+			objects:   map[string]string{"gs://tst-records/quill/tst/v1.3.0/b-5.json": liveWith("tst", "v1.3.0", first, refits, seed)},
+			files:     map[string]string{first.path(): first.content, seed.path(): seed.content + ", edited"},
+			wantOut: []string{
+				"tst: would take the hotfix, after the restore the release's build decides itself: the seed changed since v1.3.0 applied it (build b-5): schema/devseed/000001_Seed.up.sql, not in the tree as applied (edited, renumbered or removed since), so the database is recreated and the migrations and the seed apply from the start, and what the database holds is not compared with the hotfix.",
+			},
+			wantAbsent: []string{"WILL REFUSE", "000002_Refits"},
+		},
+		{
+			name:       "a seeded environment whose seed matches the tree is answered on its schema files: refused on one the pull request does not carry",
+			subs:       seededPR,
+			placement:  seededPlacement(`["tst"]`),
+			objects:    map[string]string{"gs://tst-records/quill/tst/v1.3.0/b-5.json": liveWith("tst", "v1.3.0", first, refits, seed)},
+			files:      map[string]string{first.path(): first.content, seed.path(): seed.content},
+			wantOut:    []string{"tst: WILL REFUSE the hotfix: tst's database holds schema/migrations/000002_Refits.up.sql (in v1.3.0's record), which this pull request does not carry; restore tst to the hotfix first: a restore run replaces the database and skips this check."},
+			wantAbsent: []string{"the restore the release's build decides itself"},
+		},
+		{
+			name:      "a seeded environment whose seed matches the tree and whose schema files are all in it would take the hotfix",
+			subs:      seededPR,
+			placement: seededPlacement(`["tst"]`),
+			objects:   map[string]string{"gs://tst-records/quill/tst/v1.3.0/b-5.json": liveWith("tst", "v1.3.0", first, seed)},
+			files:     map[string]string{first.path(): first.content, seed.path(): seed.content},
+			wantOut:   []string{"tst: would take the hotfix; its database holds nothing this pull request does not carry (2 file(s) recorded by v1.3.0, build b-5)."},
+		},
+		{
+			name:      "an environment off the seed list holding a changed seed file is answered as before: refused on the file",
+			subs:      seededPR,
+			placement: seededPlacement(`["stg"]`),
+			objects:   map[string]string{"gs://tst-records/quill/tst/v1.3.0/b-5.json": liveWith("tst", "v1.3.0", first, seed)},
+			files:     map[string]string{first.path(): first.content, seed.path(): seed.content + ", edited"},
+			wantOut:   []string{"tst: WILL REFUSE the hotfix: tst's database holds schema/devseed/000001_Seed.up.sql with other content than this pull request carries (by v1.3.0's record); restore tst to the hotfix first: a restore run replaces the database and skips this check."},
+		},
+		{
+			name: "a pull request against a hotfix line whose environment's records cannot be read is told so and goes on",
+			subs: map[string]string{
+				baseBranchSub: "hotfix/1.2.x", environmentsSub: "tst,stg",
+				planIdentitiesSub: "tst=plan-tst@x.iam", recordsBucketsSub: "tst=tst-records,stg=stg-records",
+			},
+			wantOut: []string{"tst: no live deployment record; nothing to be behind.", "stg: its records bucket or plan identity is not named (_RECORDS_BUCKETS, _PLAN_IDENTITIES); nothing read."},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			subs := map[string]string{appSub: "quill", migrationsSub: "schema/migrations", prNumberSub: "7"}
+			maps.Copy(subs, tt.subs)
+			placement := tt.placement
+			if placement == "" {
+				placement = testPlacement("")
+			}
+			files := map[string]string{placementPath: placement}
+			for name, content := range tt.files {
+				files[name] = content
+			}
+			w := applicationWorkspace(t, files)
+			p, err := checkoutPlacement(w, "the test reads it")
+			if err != nil {
+				t.Fatal(err)
+			}
+			m, err := checkoutModel(w, p)
+			if err != nil {
+				t.Fatal(err)
+			}
+			store := &memoryStore{objects: map[string]string{}}
+			for path, content := range tt.objects {
+				store.objects[path] = content
+			}
+			var out strings.Builder
+			if err := previews(t.Context(), &Clients{StorageAs: store.openAs}, w, subs, m, &out); err != nil {
+				t.Fatalf("previews() error = %v; output:\n%s", err, out.String())
+			}
+			containsAll(t, out.String(), tt.wantOut...)
+			for _, absent := range tt.wantAbsent {
+				if strings.Contains(out.String(), absent) {
+					t.Errorf("output has %q:\n%s", absent, out.String())
+				}
+			}
+			if tt.wantIdentities != nil {
+				if diff := cmp.Diff(tt.wantIdentities, store.identities); diff != "" {
+					t.Errorf("identities (-want +got):\n%s", diff)
+				}
 			}
 		})
 	}
