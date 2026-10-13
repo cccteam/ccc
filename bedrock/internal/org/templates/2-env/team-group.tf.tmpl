@@ -85,7 +85,7 @@ locals {
   #                        identity's roles on this project for a short time,
   #                        so a person plans and applies this layer as
   #                        themselves with exactly the identity's roles, on
-  #                        the same code the layers workflow runs, and the
+  #                        the same code the apply trigger runs, and the
   #                        audit log names the person. With the layer state
   #                        entitlement on the boot project (above).
   entitlements = {

@@ -236,7 +236,7 @@ check "repositories_registered" {
 # bucket and open only its own. The bucket is the boot project's; this layer
 # grants on it because this layer creates the identity (a grant on an
 # identity that does not exist is refused), with the bucket's policy
-# authority 1-org gives each environment layer identity (1-org/workflow.tf).
+# authority 1-org gives each environment layer identity (1-org/runners.tf).
 # ---------------------------------------------------------------------------
 
 resource "google_storage_bucket_iam_member" "apply_state_list" {

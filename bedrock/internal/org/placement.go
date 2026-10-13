@@ -21,6 +21,7 @@ import (
 	"github.com/go-playground/errors/v5"
 
 	"github.com/cccteam/ccc/bedrock/internal/derive"
+	"github.com/cccteam/ccc/bedrock/internal/release"
 )
 
 const (
@@ -45,6 +46,11 @@ var (
 	githubLoginRE = regexp.MustCompile(`^[A-Za-z0-9]+(-[A-Za-z0-9]+)*$`)
 	// appSlugRE is a GitHub App's slug: lowercase letters and digits, hyphens between.
 	appSlugRE = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
+	// secretVersionNameRE is a Secret Manager version by its resource name, regional or
+	// global, numbered and never latest.
+	secretVersionNameRE = regexp.MustCompile(`^projects/[^/]+(/locations/[^/]+)?/secrets/[^/]+/versions/[1-9][0-9]*$`)
+	// sha256RE is a SHA-256 checksum as sha256sum prints it.
+	sha256RE = regexp.MustCompile(`^[0-9a-f]{64}$`)
 )
 
 // The environments' entitlements, by the key placement.json names each under
@@ -121,18 +127,50 @@ type Placement struct {
 	GithubReleaseAppSlug string `json:"githubReleaseAppSlug"`
 	// GithubDefaultBranch is the default branch of every application repository, from
 	// which alone the operations workflow's Environments deploy, and of this repository,
-	// from which alone the layers workflow applies.
+	// from which alone the apply trigger applies the layers.
 	GithubDefaultBranch string `json:"githubDefaultBranch"`
 	// GithubInfrastructureAppID is the App ID of the infrastructure GitHub App, whose
-	// installation token the layers workflow mints for 1-org's GitHub provider: digits,
-	// from the app's settings page. Empty until the app exists; a run of 1-org through
-	// the workflow refuses until it is recorded.
+	// installation token a run of the triggers mints for 1-org's GitHub provider: digits,
+	// from the app's settings page. Empty until the app exists; a run that plans or
+	// applies 1-org refuses until it is recorded.
 	GithubInfrastructureAppID string `json:"githubInfrastructureAppId,omitempty"`
 	// GithubInfrastructureKeyVersion is the number of the Secret Manager version holding
 	// the infrastructure app's private key, in the container 0-bootstrap creates in the
 	// boot project (<prefix>-boot-gbl-github-infrastructure-key): pinned, never latest.
 	// Empty until a version was added.
 	GithubInfrastructureKeyVersion string `json:"githubInfrastructureKeyVersion,omitempty"`
+	// GithubDeployerAppID is the App ID of the deployer GitHub App, which the
+	// applications' pipelines talk back on a pull request as and the plan trigger's run
+	// posts the layers' plans as: digits, from the app's settings page. Empty until the
+	// app exists; until then the plans are in the run's log alone.
+	GithubDeployerAppID string `json:"githubDeployerAppId,omitempty"`
+	// GithubDeployerKeyVersion is the number of the Secret Manager version holding the
+	// deployer app's private key, in the container 0-bootstrap creates in the boot
+	// project (<prefix>-boot-gbl-github-deployer-key): pinned, never latest. Empty until
+	// a version was added.
+	GithubDeployerKeyVersion string `json:"githubDeployerKeyVersion,omitempty"`
+	// CloudBuildInstallationID is the installation id of the Google Cloud Build GitHub
+	// App on the GitHub organization (digits, from the installation's settings page),
+	// which every Cloud Build connection names: the boot project's for the layers and
+	// each environment's for the applications. Recorded after the browser authorization
+	// in the boot project's Cloud Build console (0-bootstrap/README.md); empty until
+	// then, and the connections, the repository links and the triggers wait.
+	CloudBuildInstallationID string `json:"cloudBuildInstallationId,omitempty"`
+	// CloudBuildTokenSecretVersion is the resource name of the Secret Manager version
+	// holding the GitHub token the connections authorize with, which the same browser
+	// step writes into the boot project: projects/<boot project>/locations/<region>/
+	// secrets/<name>/versions/<n> as the console writes it (a regional secret in the
+	// connection's region), or projects/<boot project>/secrets/<name>/versions/<n> for a
+	// global one. A numbered version, never latest. Empty with CloudBuildInstallationID.
+	CloudBuildTokenSecretVersion string `json:"cloudBuildTokenSecretVersion,omitempty"`
+	// BedrockVersion is the bedrock the triggers' runs fetch at their first step and run
+	// (bedrock upgrade moves it): a release (v0.5.0), whose linux/amd64 binary
+	// BedrockSHA256 is the checksum of, or a commit pin (the pseudo-version the Go
+	// module proxy names a commit by), which the run builds with go install and carries
+	// no checksum. Empty until recorded, and a run of the triggers stops at its first
+	// step saying so.
+	BedrockVersion string `json:"bedrockVersion,omitempty"`
+	BedrockSHA256  string `json:"bedrockSha256,omitempty"`
 	// GithubInfrastructureTeam is the slug of the organization's infrastructure team,
 	// whose approval a change to an application's workflow and Cloud Build files
 	// needs; empty for none.
@@ -195,15 +233,16 @@ type Placement struct {
 	// Projects are the projects by key: boot, the project the seed chose, and shr, net,
 	// spn, tst, stg and prd, the ids 1-org's apply chose (its project_ids output). The
 	// environment projects are what the applications' identities and backends are named
-	// under; every project names the layer identities the layers workflow signs in as.
+	// under; every project names the layer identities the triggers' runs impersonate.
 	// Absent until the seed or 1-org has run; REPLACEME is rendered in their place.
 	Projects map[string]string `json:"projects,omitempty"`
-	// ProjectNumbers are the projects' numbers by the same keys: boot from the seed (the
-	// layers workflow names the boot project's identity provider by it), the rest from
-	// 1-org's project_numbers output, recorded beside Projects. An application's placement
-	// records its environments' ids and numbers together (bedrock org register writes
-	// them into its first placement, org render prints the block), for the operations
-	// workflow that starts a restore from GitHub.
+	// ProjectNumbers are the projects' numbers by the same keys: boot from the seed, the
+	// rest from 1-org's project_numbers output, recorded beside Projects. 0-bootstrap
+	// grants each recorded environment project's Cloud Build service agent the read of
+	// the connections' token secret by its number. An application's placement records
+	// its environments' ids and numbers together (bedrock org register writes them into
+	// its first placement, org render prints the block), for the operations workflow
+	// that starts a restore from GitHub.
 	ProjectNumbers map[string]string `json:"projectNumbers,omitempty"`
 	// Labels are the labels every project and bucket carries beyond the model's own.
 	Labels map[string]string `json:"labels"`
@@ -296,20 +335,13 @@ func (p *Placement) Validate() error {
 	if err := p.CloudArmor.Validate(); err != nil {
 		return err
 	}
-	if err := p.validateGithubApps(); err != nil {
-		return err
-	}
-	if err := p.validateCiLargeRunner(); err != nil {
-		return err
-	}
-	if err := p.validateProjects(); err != nil {
-		return err
-	}
-	if err := p.validateTeamGroups(); err != nil {
-		return err
-	}
-	if err := p.validateEntitlementDurations(); err != nil {
-		return err
+	for _, validate := range []func() error{
+		p.validateGithubApps, p.validateCloudBuild, p.validateBedrockPin, p.validateCiLargeRunner,
+		p.validateProjects, p.validateTeamGroups, p.validateEntitlementDurations,
+	} {
+		if err := validate(); err != nil {
+			return err
+		}
 	}
 	for _, d := range p.ContactDomains {
 		if !strings.HasPrefix(d, "@") || len(d) < 3 {
@@ -352,8 +384,65 @@ func (p *Placement) validateGithubApps() error {
 	if p.GithubInfrastructureKeyVersion != "" && !projectNumberRE.MatchString(p.GithubInfrastructureKeyVersion) {
 		return errors.Newf("githubInfrastructureKeyVersion %q is not a secret version's number (digits, never latest)", p.GithubInfrastructureKeyVersion)
 	}
+	if p.GithubDeployerAppID != "" && !projectNumberRE.MatchString(p.GithubDeployerAppID) {
+		return errors.Newf("githubDeployerAppId %q is not an App ID (digits)", p.GithubDeployerAppID)
+	}
+	if p.GithubDeployerKeyVersion != "" && !projectNumberRE.MatchString(p.GithubDeployerKeyVersion) {
+		return errors.Newf("githubDeployerKeyVersion %q is not a secret version's number (digits, never latest)", p.GithubDeployerKeyVersion)
+	}
 
 	return nil
+}
+
+// validateCloudBuild refuses an installation id that is not one, a token secret version
+// that is not a version's resource name or is latest, and one of the two recorded without
+// the other: the browser authorization produces both at once.
+func (p *Placement) validateCloudBuild() error {
+	if p.CloudBuildInstallationID != "" && !projectNumberRE.MatchString(p.CloudBuildInstallationID) {
+		return errors.Newf("cloudBuildInstallationId %q is not an installation id (digits, from the installation's settings page)", p.CloudBuildInstallationID)
+	}
+	if p.CloudBuildTokenSecretVersion != "" && !secretVersionNameRE.MatchString(p.CloudBuildTokenSecretVersion) {
+		return errors.Newf("cloudBuildTokenSecretVersion %q is not a secret version's resource name (projects/<project>[/locations/<region>]/secrets/<secret>/versions/<number>, a number and never latest)", p.CloudBuildTokenSecretVersion)
+	}
+	if (p.CloudBuildInstallationID == "") != (p.CloudBuildTokenSecretVersion == "") {
+		return errors.New("cloudBuildInstallationId and cloudBuildTokenSecretVersion are recorded together: the browser authorization in the boot project's Cloud Build console gives both (0-bootstrap/README.md, \"The Cloud Build GitHub authorization\")")
+	}
+
+	return nil
+}
+
+// validateBedrockPin refuses a pin that is neither a release nor a commit pin, a release
+// without its binary's checksum or with one that is not a checksum, and a commit pin with
+// a checksum (go install verifies it against Go's checksum database instead).
+func (p *Placement) validateBedrockPin() error {
+	switch {
+	case p.BedrockVersion == "" && p.BedrockSHA256 != "":
+		return errors.New("bedrockSha256 is recorded without bedrockVersion: bedrock upgrade records both")
+	case p.BedrockVersion == "":
+		return nil
+	case release.IsVersion(p.BedrockVersion):
+		if !sha256RE.MatchString(p.BedrockSHA256) {
+			return errors.Newf("bedrockVersion %s is a release, and bedrockSha256 %q is not the SHA-256 checksum of its %s: bedrock upgrade %s records it from the release's %s", p.BedrockVersion, p.BedrockSHA256, release.PipelineAsset(), p.BedrockVersion, release.ChecksumsFile)
+		}
+	case release.IsCommitPin(p.BedrockVersion):
+		if p.BedrockSHA256 != "" {
+			return errors.Newf("bedrockVersion %s is a commit pin, which carries no checksum (go install verifies it against Go's checksum database): drop bedrockSha256", p.BedrockVersion)
+		}
+	default:
+		return errors.Newf("bedrockVersion %q is neither a release (v0.5.0) nor a commit pin (the pseudo-version the Go module proxy names a commit by): bedrock upgrade records one", p.BedrockVersion)
+	}
+
+	return nil
+}
+
+// Pinned reports whether the placement pins a bedrock.
+func (p *Placement) Pinned() bool {
+	return p.BedrockVersion != ""
+}
+
+// CommitPin reports whether the pin is a commit pin, built with go install.
+func (p *Placement) CommitPin() bool {
+	return release.IsCommitPin(p.BedrockVersion)
 }
 
 // The shapes of a GitHub-hosted runner's name and machine size.
@@ -544,6 +633,12 @@ func (p *Placement) Project(key string) string {
 	return p.Prefix + "-" + key + "-gbl-core-" + replaceMe
 }
 
+// BootProject is the boot project's id, or its REPLACEME form until the seed's values
+// are recorded.
+func (p *Placement) BootProject() string {
+	return p.Project(bootProject)
+}
+
 // AppsZone is where the apps domain's zone is: the network project, empty until the
 // placement records 1-org's project_ids (projects.net), and the name 2-net's dns.tf gives
 // the zone, <prefix>-net-gbl-dns-apps.
@@ -551,15 +646,12 @@ func (p *Placement) AppsZone() (project, zone string) {
 	return p.Projects[netProject], p.Prefix + "-" + netProject + "-gbl-dns-apps"
 }
 
-// WorkflowUnwired names the placement values the layers workflow still lacks, as the
-// keys a person records: projectNumbers.boot (the identity provider is named by the
-// boot project's number) and projects.<key> for every project whose layer identities
-// the workflow signs in as. Empty once every layer can run.
-func (p *Placement) WorkflowUnwired() []string {
+// UnrecordedProjects names the projects the placement does not record yet, as the keys
+// a person records (projects.<key>): the layer identities of such a project are rendered
+// with REPLACEME, and a run of the triggers refuses to plan or apply its layer. Empty
+// once every layer can run.
+func (p *Placement) UnrecordedProjects() []string {
 	var missing []string
-	if _, ok := p.ProjectNumbers[bootProject]; !ok {
-		missing = append(missing, "projectNumbers."+bootProject)
-	}
 	for _, key := range ProjectKeys {
 		if _, ok := p.Projects[key]; !ok {
 			missing = append(missing, "projects."+key)
@@ -567,6 +659,160 @@ func (p *Placement) WorkflowUnwired() []string {
 	}
 
 	return missing
+}
+
+// Connected reports whether the placement records the Cloud Build GitHub authorization:
+// the installation id and the token secret's version, which the connections, the
+// repository links and the triggers take.
+func (p *Placement) Connected() bool {
+	return p.CloudBuildInstallationID != "" && p.CloudBuildTokenSecretVersion != ""
+}
+
+// ConnectionUnset names the placement keys of the Cloud Build GitHub authorization that
+// are not recorded yet, in the order the README records them; none when both are.
+func (p *Placement) ConnectionUnset() []string {
+	var unset []string
+	if p.CloudBuildInstallationID == "" {
+		unset = append(unset, "cloudBuildInstallationId")
+	}
+	if p.CloudBuildTokenSecretVersion == "" {
+		unset = append(unset, "cloudBuildTokenSecretVersion")
+	}
+
+	return unset
+}
+
+// TokenSecret is the connections' token secret by the parts of its resource name: its
+// project, its location (empty for a global secret) and its id.
+type TokenSecret struct {
+	Project  string
+	Location string
+	Secret   string
+}
+
+// TokenSecret reads the token secret's parts off the version's resource name, or nil
+// while the placement records none.
+func (p *Placement) TokenSecret() *TokenSecret {
+	if !p.Connected() {
+		return nil
+	}
+	parts := strings.Split(p.CloudBuildTokenSecretVersion, "/")
+	// projects/P/secrets/S/versions/N, or projects/P/locations/L/secrets/S/versions/N.
+	if len(parts) == regionalSecretParts {
+		return &TokenSecret{Project: parts[1], Location: parts[3], Secret: parts[5]}
+	}
+
+	return &TokenSecret{Project: parts[1], Secret: parts[3]}
+}
+
+// regionalSecretParts is how many segments a regional secret version's name has.
+const regionalSecretParts = 8
+
+// The runner identities of the Cloud Build triggers, by the suffix of their account ids
+// in the boot project: the planner runs the plan trigger's builds, the applier the apply
+// trigger's; each impersonates the layer identities of its kind.
+const (
+	plannerSuffix = "planner"
+	applierSuffix = "applier"
+	// MarkerPrefix is the prefix in the state bucket under which bedrock org apply keeps
+	// one marker object per layer run, holding the commit its last successful apply was
+	// of: applied/<layer>, or applied/2-env/<env>.
+	MarkerPrefix = "applied"
+)
+
+// ConnectionName is the boot project's Cloud Build connection, as 0-bootstrap names it:
+// regional, in the primary region.
+func (p *Placement) ConnectionName() string {
+	return p.Prefix + "-boot-" + p.Primary().Code + "-github"
+}
+
+// RepositoryLinkName is the infrastructure repository's link under the connection, which
+// the triggers watch.
+func (p *Placement) RepositoryLinkName() string {
+	return p.Prefix + "-boot-" + p.Primary().Code + "-infrastructure-repo"
+}
+
+// PlanTriggerName is the plan trigger, as 0-bootstrap names it.
+func (p *Placement) PlanTriggerName() string {
+	return p.Prefix + "-boot-" + p.Primary().Code + "-layers-plan"
+}
+
+// ApplyTriggerName is the apply trigger, as 0-bootstrap names it.
+func (p *Placement) ApplyTriggerName() string {
+	return p.Prefix + "-boot-" + p.Primary().Code + "-layers-apply"
+}
+
+// PlannerIdentity is the email of the plan trigger's runner identity, in the boot
+// project.
+func (p *Placement) PlannerIdentity() string {
+	return p.identityEmail("org", bootProject, plannerSuffix)
+}
+
+// ApplierIdentity is the email of the apply trigger's runner identity, in the boot
+// project.
+func (p *Placement) ApplierIdentity() string {
+	return p.identityEmail("org", bootProject, applierSuffix)
+}
+
+// identityEmail is a layer identity's email: <prefix>-<name>-gbl-<suffix> in the project
+// under the key, as 0-bootstrap and 1-org name them.
+func (p *Placement) identityEmail(name, projectKey, suffix string) string {
+	return p.Prefix + "-" + name + "-gbl-" + suffix + "@" + p.Project(projectKey) + ".iam.gserviceaccount.com"
+}
+
+// LayerRun is one run of the triggers: a layer, the environment it is applied in (2-env
+// alone; empty for the rest), the state prefix its init names (2-env alone), and the
+// identities the run impersonates for its tofu: the apply identity on the apply trigger,
+// the plan identity on the plan trigger. Name is the run as the commands and the plan
+// comments call it.
+type LayerRun struct {
+	Name        string
+	Layer       string
+	Environment string
+	StatePrefix string
+	Apply       string
+	Plan        string
+}
+
+// Marker is the marker object bedrock org apply keeps for the run in the state bucket.
+func (r LayerRun) Marker() string {
+	if r.Environment == "" {
+		return MarkerPrefix + "/" + r.Layer
+	}
+
+	return MarkerPrefix + "/" + r.Layer + "/" + r.Environment
+}
+
+// Unrecorded reports whether an identity of the run is under a project the placement
+// does not record yet (REPLACEME).
+func (r LayerRun) Unrecorded() bool {
+	return strings.Contains(r.Apply, replaceMe) || strings.Contains(r.Plan, replaceMe)
+}
+
+// LayerRuns is every run of the triggers in layer order: the five single-run layers,
+// then 2-env once per environment in promotion order. An identity under a project the
+// placement does not record carries REPLACEME, which the commands refuse to run.
+func (p *Placement) LayerRuns() []LayerRun {
+	runs := make([]LayerRun, 0, len(Layers)-1+len(Environments))
+	for _, layer := range Layers {
+		if layer == envLayer {
+			for _, env := range Environments {
+				runs = append(runs, LayerRun{
+					Name: layer + " " + env, Layer: layer, Environment: env, StatePrefix: layer + "/" + env,
+					Apply: p.identityEmail(env, env, "tofu"), Plan: p.identityEmail(env, env, "plan"),
+				})
+			}
+
+			continue
+		}
+		lp := layerProjects[layer]
+		runs = append(runs, LayerRun{
+			Name: layer, Layer: layer, StatePrefix: layer,
+			Apply: p.identityEmail(lp.name, lp.project, "tofu"), Plan: p.identityEmail(lp.name, lp.project, "plan"),
+		})
+	}
+
+	return runs
 }
 
 // ApplicationProjects is the block an application's placement records for its

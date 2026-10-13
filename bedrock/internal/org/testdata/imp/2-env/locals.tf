@@ -92,21 +92,24 @@ locals {
   net_lb_service_user = try(data.terraform_remote_state.net.outputs.load_balancer_service_user, "serviceAccount:${local.org.layer_service_accounts["net"]}")
   net_compute_agent   = try(data.terraform_remote_state.net.outputs.compute_service_agent, "serviceAccount:service-${local.org.project_numbers["net"]}@compute-system.iam.gserviceaccount.com")
 
-  # The GitHub token secret behind the Cloud Build connection, without its
-  # version: the IAM grant is on the secret.
-  # The Cloud Build connection exists once both GitHub values are set; until
-  # then the environment applies without it (cloud-build.tf).
-  connected = var.github_app_installation_id != null && var.github_oauth_token_secret_version != null
-  # The token secret's resource name, without its version, in either of the two
-  # shapes Secret Manager uses. The console's host-connection flow writes a
-  # regional secret in the connection's region
-  # (projects/P/locations/L/secrets/N), so the accessor grant is the regional
-  # resource; a global secret (projects/P/secrets/N) added by hand still works.
-  github_token_parts    = local.connected ? split("/", var.github_oauth_token_secret_version) : []
-  github_token_regional = length(local.github_token_parts) == 8
-  github_token_location = local.github_token_regional ? local.github_token_parts[3] : null
-  github_token_project  = local.connected ? local.github_token_parts[1] : null
-  github_token_secret   = local.connected ? local.github_token_parts[local.github_token_regional ? 5 : 3] : null
+  # The Cloud Build GitHub authorization, from placement.json
+  # (cloudBuildInstallationId, cloudBuildTokenSecretVersion): the Cloud Build
+  # GitHub App's installation on the organization and the token secret's
+  # version in the boot project, which every connection names. Null until the
+  # browser step has run; the connection then exists (cloud-build.tf) and
+  # until then the environment applies without it.
+  cloud_build_installation_id      = 12345678
+  cloud_build_token_secret_version = "projects/imp-boot-gbl-core-a1b2/locations/us-central1/secrets/github-github-oauthtoken-abcdef/versions/1"
+  connected                        = local.cloud_build_installation_id != null && local.cloud_build_token_secret_version != null
+
+  # The deployer GitHub App the pipelines talk back on a pull request as, from
+  # placement.json (githubDeployerAppId, githubDeployerKeyVersion): its App ID
+  # and the pinned version of its private key, in the container 0-bootstrap
+  # creates in the boot project, by resource name. Null until recorded; this
+  # layer's outputs carry both to the applications' pipelines.
+  github_deployer_app_id             = 5080800
+  github_deployer_key_secret         = "${local.prefix}-boot-gbl-github-deployer-key"
+  github_deployer_key_secret_version = "projects/imp-boot-gbl-core-a1b2/secrets/imp-boot-gbl-github-deployer-key/versions/1"
 
   # Role sets. Project-level roles are the price of a shared environment
   # project; the design brief tests how far IAM conditions on

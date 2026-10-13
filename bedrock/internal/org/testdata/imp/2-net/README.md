@@ -2,7 +2,7 @@
 
 The shared network project: the one global external Application Load
 Balancer every application is served through, its address, certificate, and
-the public DNS zone of the apps domain. Applied by the layers workflow as
+the public DNS zone of the apps domain. Applied by the apply trigger's run as
 `imp-net-gbl-tofu`, planned on a pull request as `imp-net-gbl-plan`.
 
 There is no VPC in this project. See "Cross-project backends" for why.
@@ -291,9 +291,10 @@ A transfer out, if the client wants the domain at another registrar:
 
 ## Applying
 
-By the layers workflow (`.github/workflows/layers.yml`), after `1-org` has been applied:
-a pull request that changes this directory plans it as the plan identity and
-posts the plan, and the merge applies it as the layer identity. Both hold
+By the Cloud Build triggers (`0-bootstrap/README.md`, "The Cloud Build
+triggers"), after `1-org` has been applied: a pull request that changes this
+directory plans it as the plan identity and posts the plan, and the merge
+applies it as the layer identity. Both hold
 their state-bucket grants from `1-org`. The first `init` writes
 `.terraform.lock.hcl`; commit it.
 

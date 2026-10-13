@@ -29,7 +29,6 @@ variable "boot_plan_roles" {
     "roles/essentialcontacts.viewer",        # Essential Contacts per folder
     "roles/iam.securityReviewer",            # every IAM policy the grants are refreshed through, and the custom roles
     "roles/iam.serviceAccountViewer",        # the identities in every project
-    "roles/iam.workloadIdentityPoolViewer",  # the boot project's pool and provider
     "roles/orgpolicy.policyViewer",          # the folder-scoped constraints
     "roles/resourcemanager.tagViewer",       # the public-invoker tag
     "roles/secretmanager.viewer",            # the key container's metadata, never a version's payload
@@ -144,7 +143,7 @@ variable "layer_roles" {
       "roles/privilegedaccessmanager.admin",
       "roles/resourcemanager.projectIamAdmin",
       "roles/run.admin",
-      # The layers workflow restricts Firebase's browser key, which initializing
+      # bedrock org apply restricts Firebase's browser key, which initializing
       # Identity Platform creates in the environment project, to the sign-in
       # APIs after each apply of 2-env, as this identity: the list and the
       # update of the project's API keys.
@@ -407,7 +406,7 @@ variable "public_invokers" {
 }
 
 variable "state_bucket" {
-  description = "The seeded state bucket every backend block names (placement.json, stateBucket). This layer reads 0-bootstrap's state from it and grants on it for the identities it creates (workflow.tf)."
+  description = "The seeded state bucket every backend block names (placement.json, stateBucket). This layer reads 0-bootstrap's state from it and grants on it for the identities it creates (runners.tf)."
   type        = string
   default     = "imp-boot-gbl-state-a1b2"
 }

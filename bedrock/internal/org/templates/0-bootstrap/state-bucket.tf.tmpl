@@ -20,7 +20,8 @@
 # identities 2-env creates. The first-time order holds by itself: the seed
 # makes the bucket, this layer grants on it as the bootstrap administrator,
 # 1-org grants on it as the same person, and from then on each layer's own
-# identity holds what its grants need.
+# identity holds what its grants need. The apply trigger's runner keeps the
+# markers of the layers' last applies under applied/ (cloud-build.tf).
 #
 # The bucket itself is seeded and stays outside OpenTofu (bootstrap.tf).
 # ---------------------------------------------------------------------------
@@ -82,8 +83,8 @@ resource "google_storage_bucket_iam_member" "state_own" {
   }
 }
 
-# 1-org reads this layer's state: the pool its bindings name, the policy role
-# it grants, the key container it grants the read of.
+# 1-org reads this layer's state: the runner identities it grants on, the
+# policy role it grants, the key containers it grants on.
 resource "google_storage_bucket_iam_member" "org_tofu_state_upstream" {
   bucket = var.state_bucket
   role   = "roles/storage.objectViewer"

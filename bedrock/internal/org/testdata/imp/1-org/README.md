@@ -3,8 +3,8 @@
 Where the organization is described: folders, the org policy baseline,
 Essential Contacts, every project, and the identities that manage each
 project's own layer. Its first apply is the bootstrap administrator's; from
-then on the layers workflow applies it as `imp-org-gbl-tofu` and plans it
-on a pull request as `imp-org-gbl-plan`.
+then on the apply trigger applies it as `imp-org-gbl-tofu` and the plan
+trigger plans it on a pull request as `imp-org-gbl-plan`.
 
 ## What it creates
 
@@ -53,18 +53,21 @@ on a pull request as `imp-org-gbl-plan`.
   on the project, creating a bucket and listing the project's buckets, is the
   custom role `storageBucketCreator` in the `app` role set (below).
 - The plan identities of the two boot layers, `imp-boot-gbl-plan` and
-  `imp-org-gbl-plan`, in the boot project (`workflow.tf`), with the
+  `imp-org-gbl-plan`, in the boot project (`runners.tf`), with the
   organization-level reads of `var.boot_plan_roles`: `0-bootstrap` cannot
   make its own, and a plan of either layer as its apply identity would run a
   pull request's code with the power to apply.
-- For every identity it creates, what the layers workflow needs
-  (`workflow.tf`): the federation binding on the boot project's pool (a plan
-  identity admits a pull request's run, an apply identity a run on the
-  default branch alone) and the state bucket's grants (the list, the layer's
-  own prefix, the upstream prefixes it reads). The environment layer
-  identities also get the bucket's policy authority (`0-bootstrap`'s custom
-  role), for the application identities `2-env` creates, and the environment
-  layers' plan identities the read of that policy (`bucketPolicyReader`,
+- For every identity it creates, what the Cloud Build triggers need
+  (`runners.tf`): the right of the trigger runner of its kind to impersonate
+  it (`roles/iam.serviceAccountTokenCreator`: the planner on a plan identity,
+  the applier on an apply identity; `0-bootstrap/README.md`, "The Cloud Build
+  triggers") and the state bucket's grants (the list, the layer's own prefix,
+  the upstream prefixes it reads). The environment layer identities also get
+  the bucket's policy authority (`0-bootstrap`'s custom role), for the
+  application identities `2-env` creates, the administration of the deployer
+  GitHub App's key container in the boot project (`secretContainerAdmin`,
+  below), so `2-env` can grant those identities its read, and the environment
+  layers' plan identities the read of the bucket's policy (`bucketPolicyReader`,
   below), which a plan of `2-env` refreshes those grants through. Each layer grants
   for the identities it creates because IAM refuses a binding for a service
   account that does not exist.
@@ -192,7 +195,7 @@ on a pull request as `imp-org-gbl-plan`.
   bucket's policy; the bucket roles that read a policy also set it
   (`legacyBucketOwner`) or carry every object (`admin`). This layer grants it
   on the state bucket to each environment layer's plan identity
-  (`workflow.tf`).
+  (`runners.tf`).
 - The custom organization role `cloudTasksQueueOperator`: pauses, resumes and
   purges a Cloud Tasks queue, and reads it, nothing else. An application's stack
   grants it on the application's own queue to its deploy identity: a release that
@@ -259,17 +262,18 @@ Review the plan carefully. It creates folders, org policy, and projects with
 `deletion_policy = "PREVENT"` and a lien each, which are hard to undo. The
 first `init` writes `.terraform.lock.hcl`; commit it. Then record the
 `project_ids` and `project_numbers` outputs in `placement.json` (`projects`,
-`projectNumbers`) and run `bedrock org render`: the layers workflow names
-every layer's identities by them.
+`projectNumbers`) and run `bedrock org render`: the layers name every
+identity by them, and `0-bootstrap` grants each environment project's Cloud
+Build service agent the read of the connections' token by its number.
 
 The apply leaves the person with what Google gives a creator: `roles/owner`
 on each project it made, and Folder Admin and Folder Editor on each folder
 (the seed left the same on the boot project and the `terraform` folder).
 Nothing here grants them, and they are temporary: the layers run as their
 identities, and a person's access to an environment comes from its team
-group (`2-env/README.md`, "The team group"). Once the workflow applies the
-layers, remove them by hand, per project in `project_ids` and per folder in
-`folder_ids`:
+group (`2-env/README.md`, "The team group"). Once the apply trigger applies
+the layers, remove them by hand, per project in `project_ids` and per folder
+in `folder_ids`:
 
 ```bash
 gcloud projects remove-iam-policy-binding <project id> --member="user:<person>" --role=roles/owner
@@ -283,15 +287,15 @@ that read the projects' IAM policies; without any it says so. The
 organization-level roles the seed names stay with the bootstrap
 administrator for recovery (`0-bootstrap/README.md`, "Recovery, by hand").
 
-From then on the layers workflow (`.github/workflows/layers.yml`) applies this layer as
-`imp-org-gbl-tofu` on a merge into `master` and plans it on a
+From then on the apply trigger applies this layer as `imp-org-gbl-tofu`
+on a merge into `master` and the plan trigger plans it on a
 pull request as `imp-org-gbl-plan`, the plan identity this layer makes for
-itself (`workflow.tf`); the GitHub side runs with the infrastructure GitHub
-App's token, minted in the run (`0-bootstrap/README.md`, "The infrastructure
-GitHub App"). By hand, for recovery, the bootstrap administrator applies it
-the way the first apply ran: with their own sign-in, their own GitHub token
-and the organization-level roles the seed names. No entitlement covers this
-layer.
+itself (`runners.tf`; `0-bootstrap/README.md`, "The Cloud Build triggers");
+the GitHub side runs with the infrastructure GitHub App's token, minted in
+the run (`0-bootstrap/README.md`, "The infrastructure GitHub App"). By hand,
+for recovery, the bootstrap administrator applies it the way the first apply
+ran: with their own sign-in, their own GitHub token and the organization-level
+roles the seed names. No entitlement covers this layer.
 
 Set `essential_contact_emails` in `terraform.tfvars` before applying if you
 want Essential Contacts registered. Addresses must be in one of
@@ -334,9 +338,9 @@ rerun waits for its approval in Cloud Build where the environment requires
 one, as a release does, and the approver is written into the deployment
 record. GitHub's required reviewers on a private repository's Environment
 need GitHub Enterprise, which bedrock does not require of an organization.
-The layers workflow applies it with the infrastructure
-GitHub App's installation token, minted in the run from the key the boot
-project holds, so the audit log names the app; a person applying by hand sets
+A run of the triggers applies it with the infrastructure GitHub App's
+installation token, minted in the run from the key the boot project holds,
+so the audit log names the app; a person applying by hand sets
 `GITHUB_TOKEN` to the token of an owner of the organization before `tofu plan`
 or `tofu apply` (`export GITHUB_TOKEN=$(gh auth token)` with gh signed in as
 that owner), and the audit log names the person. bedrock commands use the
@@ -433,7 +437,7 @@ required checks, the rulesets' names.
 | `allowed_contact_domains` | Domains permitted as Essential Contacts. | `list(string)` | `["@imp.example"]` | no |
 | `audit_log_retention_days` | Retention for the audit log bucket; only with `central_logging`. | `number` | `400` | no |
 | `billing_account_id` | Billing account to link projects to. | `string` | n/a | yes |
-| `boot_plan_roles` | Organization-level reads of the two boot layers' plan identities. | `list(string)` | nine roles, see `variables.tf` | no |
+| `boot_plan_roles` | Organization-level reads of the two boot layers' plan identities. | `list(string)` | eight roles, see `variables.tf` | no |
 | `boot_project_id` | Boot project from `0-bootstrap`; quota and billing project for API calls. | `string` | n/a | yes |
 | `central_logging` | Create the log project, audit log bucket, and folder sinks. | `bool` | `false` | no |
 | `essential_contact_emails` | Addresses registered as Essential Contacts on every folder. | `list(string)` | `[]` | no |
@@ -455,7 +459,7 @@ required checks, the rulesets' names.
 
 | Set | Roles |
 |---|---|
-| `app` | artifactregistry.admin, cloudbuild.builds.editor, cloudbuild.connectionAdmin, cloudscheduler.admin, cloudtasks.queueAdmin, compute.loadBalancerAdmin, iam.serviceAccountAdmin, iam.serviceAccountUser, iam.workloadIdentityPoolAdmin, identityplatform.admin, logging.admin, monitoring.admin, privilegedaccessmanager.admin (the team group's entitlements), resourcemanager.projectIamAdmin, run.admin, serviceusage.apiKeysAdmin (the layers workflow restricts Firebase's browser key after each apply of `2-env`), serviceusage.serviceUsageAdmin, spanner.admin, `secretContainerAdmin`, `storageBucketCreator` (storage.admin itself is granted beside the set, under a condition naming the environment's records bucket; `service-accounts.tf`) |
+| `app` | artifactregistry.admin, cloudbuild.builds.editor, cloudbuild.connectionAdmin, cloudscheduler.admin, cloudtasks.queueAdmin, compute.loadBalancerAdmin, iam.serviceAccountAdmin, iam.serviceAccountUser, iam.workloadIdentityPoolAdmin, identityplatform.admin, logging.admin, monitoring.admin, privilegedaccessmanager.admin (the team group's entitlements), resourcemanager.projectIamAdmin, run.admin, serviceusage.apiKeysAdmin (`bedrock org apply` restricts Firebase's browser key after each apply of `2-env`), serviceusage.serviceUsageAdmin, spanner.admin, `secretContainerAdmin`, `storageBucketCreator` (storage.admin itself is granted beside the set, under a condition naming the environment's records bucket; `service-accounts.tf`) |
 | `shr` | artifactregistry.admin, iam.serviceAccountAdmin, iam.serviceAccountUser, iam.workloadIdentityPoolAdmin, logging.admin, monitoring.admin, resourcemanager.projectIamAdmin, serviceusage.serviceUsageAdmin, storage.admin, `secretContainerAdmin` |
 | `net` | certificatemanager.editor, compute.loadBalancerAdmin, compute.networkAdmin, compute.securityAdmin, dns.admin, domains.admin, iam.serviceAccountAdmin, iam.serviceAccountUser, logging.admin, monitoring.admin, resourcemanager.projectIamAdmin, serviceusage.serviceUsageAdmin, storage.admin |
 | `spn` | iam.serviceAccountAdmin, iam.serviceAccountUser, logging.admin, monitoring.admin, privilegedaccessmanager.admin (the environments' Spanner entitlements), resourcemanager.projectIamAdmin, serviceusage.serviceUsageAdmin, spanner.admin, storage.admin |

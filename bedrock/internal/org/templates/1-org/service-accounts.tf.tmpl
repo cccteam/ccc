@@ -13,10 +13,10 @@
 # the cloud's bundle for a reader reads data as well as resources (the rows
 # of every Spanner database in the project, every container image, and the
 # objects of any bucket that still carries Cloud Storage's default grants to
-# the project's basic roles), none of which a plan reads. Both run from the
-# infrastructure repository's layers workflow, signed in through the boot
-# project's identity pool (workflow.tf); neither has keys, and org policy
-# forbids creating any.
+# the project's basic roles), none of which a plan reads. Both are
+# impersonated by the infrastructure repository's Cloud Build triggers
+# (runners.tf: the planner becomes a plan identity, the applier an apply
+# identity); neither has keys, and org policy forbids creating any.
 # ---------------------------------------------------------------------------
 
 resource "google_service_account" "tofu" {
@@ -25,7 +25,7 @@ resource "google_service_account" "tofu" {
   project      = module.project[each.key].project_id
   account_id   = "${local.layer_names[each.key]}-tofu"
   display_name = "OpenTofu SA - ${local.layer_names[each.key]}"
-  description  = "Layer identity for ${local.layer_names[each.key]}. Applies the layer from the infrastructure repository's workflow."
+  description  = "Layer identity for ${local.layer_names[each.key]}. Applies the layer from the infrastructure repository's apply trigger."
 
   depends_on = [time_sleep.apis_ready]
 }
@@ -42,7 +42,7 @@ resource "google_service_account" "plan" {
 }
 
 resource "google_project_iam_member" "tofu" {
-  # checkov:skip=CKV_GCP_49: these are automation identities, not human accounts. Roles come from var.layer_roles rather than roles/owner and are scoped to a single project; the identity has no keys and runs only from the infrastructure repository's workflow.
+  # checkov:skip=CKV_GCP_49: these are automation identities, not human accounts. Roles come from var.layer_roles rather than roles/owner and are scoped to a single project; the identity has no keys and runs only from the infrastructure repository's apply trigger.
   for_each = {
     for pair in flatten([
       for key, cfg in local.layers : [

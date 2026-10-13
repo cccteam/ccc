@@ -346,7 +346,7 @@ resource "google_organization_iam_custom_role" "environment_layer_plan_reader" {
     "spanner.instances.get",
     # Cloud Storage: the deployment records bucket, and not its objects. The
     # state bucket's policy, which the slots this layer grants there refresh
-    # through, is bucketPolicyReader's, granted on that bucket (workflow.tf).
+    # through, is bucketPolicyReader's, granted on that bucket (runners.tf).
     "storage.buckets.get",
   ]
 }
@@ -417,7 +417,7 @@ resource "google_organization_iam_custom_role" "spanner_layer_plan_reader" {
 # bucket's policy. roles/iam.securityReviewer is granted on the project, and
 # the bucket roles that read a policy also set it (legacyBucketOwner) or carry
 # every object (admin). 1-org grants this role on the state bucket to each
-# environment layer's plan identity (workflow.tf), beside the list and the
+# environment layer's plan identity (runners.tf), beside the list and the
 # conditioned reads of the state.
 resource "google_organization_iam_custom_role" "bucket_policy_reader" {
   org_id      = local.org_id

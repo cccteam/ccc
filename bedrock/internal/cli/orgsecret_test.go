@@ -7,24 +7,21 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cccteam/ccc/bedrock/internal/org"
 	"github.com/cccteam/ccc/bedrock/internal/secret"
 )
 
 const (
-	infraKey     = "imp-boot-gbl-github-infrastructure-key"
-	tstDeployer  = "imp-tst-gbl-github-deployer-key"
-	stgDeployer  = "imp-stg-gbl-github-deployer-key"
-	tstKeyPinned = `tst = "projects/imp-tst-gbl-core-1a2b/secrets/imp-tst-gbl-github-deployer-key/versions/1"`
+	infraKey    = "imp-boot-gbl-github-infrastructure-key"
+	deployerKey = "imp-boot-gbl-github-deployer-key"
 )
 
-// orgSecrets are the organization's containers: the infrastructure key at three
-// versions, the third disabled, and the deployer key in tst at one and in stg at two;
-// prd's container has not been made yet.
+// orgSecrets are the organization's containers, both in the boot project: the
+// infrastructure key at three versions, the third disabled, and the deployer key at two.
 func orgSecrets() labSecrets {
 	return labSecrets{containers: map[string][]string{
 		infraKey:    {secret.Enabled, secret.Enabled, "DISABLED"},
-		tstDeployer: {secret.Enabled},
-		stgDeployer: {secret.Enabled, secret.Enabled},
+		deployerKey: {secret.Enabled, secret.Enabled},
 	}}
 }
 
@@ -45,21 +42,21 @@ func orgSecretRepo(t *testing.T) string {
 }
 
 // TestOrgSecret: in the organization's infrastructure repository, secret add stores an
-// organization secret's value in the container its layer made, and secret pin writes the
-// version where the layers read it: the infrastructure key in placement.json and, through
-// org render, the layers workflow; the deployer key per environment in 2-env's placement.
-// An unknown secret, an application's arguments and a key past what it takes are refused.
+// organization secret's value in the container 0-bootstrap made in the boot project, and
+// secret pin writes the version in placement.json, where the triggers' runs read it, and
+// renders (the deployer key's version reaches 2-env's outputs). An unknown secret, an
+// application's arguments and an environment are refused.
 func TestOrgSecret(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
 		name string
 		// args are the command line after "secret"; --dir <root> is added unless cwd
-		// names a directory under the root to run from. tfvars is appended to 2-env's
-		// placement first. value is standard input.
+		// names a directory under the root to run from. edit changes the placement
+		// first. value is standard input.
 		args       []string
 		cwd        string
-		tfvars     string
+		edit       func(p *org.Placement)
 		value      string
 		wantErr    string
 		wantOut    []string
@@ -80,21 +77,21 @@ func TestOrgSecret(t *testing.T) {
 			wantAdded: map[string]string{infraKey: "infrastructure key\n"},
 		},
 		{
-			name:  "the deployer key is added to the environment's container, found from the working directory",
-			args:  []string{"add", "github-deployer-key", "stg"},
+			name:  "the deployer key is added to the boot project's container too, found from the working directory",
+			args:  []string{"add", "github-deployer-key"},
 			cwd:   "2-env",
 			value: "deployer-pem",
 			wantOut: []string{
-				"Added version 3 of imp-stg-gbl-github-deployer-key in project imp-stg-gbl-core-3c4d: the deployer GitHub App's private key in stg.\n",
-				"Pin it: bedrock secret pin github-deployer-key stg 3\n",
+				"Added version 3 of imp-boot-gbl-github-deployer-key in project imp-boot-gbl-core-a1b2: the deployer GitHub App's private key.\n",
+				"Pin it: bedrock secret pin github-deployer-key 3\n",
 			},
-			wantAdded: map[string]string{stgDeployer: "deployer-pem"},
+			wantAdded: map[string]string{deployerKey: "deployer-pem"},
 		},
 		{
 			name:    "a container the layer has not made is refused, not created",
-			args:    []string{"add", "github-deployer-key", "prd"},
+			args:    []string{"add", "github-deployer-key", "--container", "imp-boot-gbl-github-deployer-key-2"},
 			value:   "deployer-pem",
-			wantErr: "project imp-prd-gbl-core-5e6f has no container imp-prd-gbl-github-deployer-key: the apply of 2-env in prd creates it; apply the layer, then add the value",
+			wantErr: "project imp-boot-gbl-core-a1b2 has no container imp-boot-gbl-github-deployer-key-2: the apply of 0-bootstrap creates it; apply the layer, then add the value",
 		},
 		{
 			name:    "an empty value is refused",
@@ -102,10 +99,10 @@ func TestOrgSecret(t *testing.T) {
 			wantErr: "the value of github-infrastructure-key is empty: nothing to add",
 		},
 		{
-			name:    "the deployer key's environment left out is refused with the choices",
-			args:    []string{"add", "github-deployer-key"},
+			name:    "the deployer key takes no environment either",
+			args:    []string{"add", "github-deployer-key", "stg"},
 			value:   "deployer-pem",
-			wantErr: "no environment given and no terminal to ask on: pass one of tst, stg, prd",
+			wantErr: "github-deployer-key lives in the boot project and takes no environment: bedrock secret add github-deployer-key (given github-deployer-key stg)",
 		},
 		{
 			name:    "the secret left out is refused with the choices",
@@ -129,39 +126,41 @@ func TestOrgSecret(t *testing.T) {
 			name:    "an application's secret is refused on add",
 			args:    []string{"add", "tst", "APP_MAIL_API_KEY"},
 			value:   "k-1",
-			wantErr: "this is the organization's infrastructure repository (placement.json names organization 123456789012): secret add takes an organization secret here, github-infrastructure-key or github-deployer-key with an environment; an application's secret ([env] [VARIABLE]) is added from the application's repository",
+			wantErr: "this is the organization's infrastructure repository (placement.json names organization 123456789012): secret add takes an organization secret here, github-infrastructure-key or github-deployer-key; an application's secret ([env] [VARIABLE]) is added from the application's repository",
 		},
 		{
 			name:    "an application's layer flag is refused",
-			args:    []string{"add", "github-deployer-key", "tst", "--app", "quill"},
+			args:    []string{"add", "github-deployer-key", "--app", "quill"},
 			value:   "pem",
 			wantErr: "--app and --layer name an application's layer: an organization secret takes neither",
 		},
 		{
-			name: "the infrastructure key's version is pinned in placement.json and rendered into the workflow",
+			name: "the infrastructure key's version is pinned in placement.json, where the triggers' runs read it",
 			args: []string{"pin", "github-infrastructure-key", "2"},
 			wantOut: []string{
 				"Pinned github-infrastructure-key to version 2: githubInfrastructureKeyVersion in ",
 				"Secret Manager confirms version 2 of imp-boot-gbl-github-infrastructure-key in project imp-boot-gbl-core-a1b2 is enabled.\n",
 				"Next: commit placement.json and the files org render rewrote (",
-				"from its merge on, the layers workflow mints 1-org's GitHub token from version 2.\n",
+				"from its merge on, the triggers' runs mint 1-org's GitHub token from version 2.\n",
 			},
 			wantAbsent: []string{"githubInfrastructureAppId"},
-			wantFiles: map[string][]string{
-				"placement.json":               {`"githubInfrastructureKeyVersion": "2"`},
-				".github/workflows/layers.yml": {"KEY_VERSION: 2\n"},
-			},
+			wantFiles:  map[string][]string{"placement.json": {`"githubInfrastructureKeyVersion": "2"`}},
 		},
 		{
-			name:      "the infrastructure key's version pinned already changes nothing",
-			args:      []string{"pin", "github-infrastructure-key", "1"},
-			wantOut:   []string{"github-infrastructure-key is already pinned to version 1 (githubInfrastructureKeyVersion in "},
-			wantFiles: map[string][]string{".github/workflows/layers.yml": {"KEY_VERSION: 1\n"}},
+			name:    "the infrastructure key's version pinned already changes nothing",
+			args:    []string{"pin", "github-infrastructure-key", "1"},
+			wantOut: []string{"github-infrastructure-key is already pinned to version 1 (githubInfrastructureKeyVersion in "},
+		},
+		{
+			name:    "the infrastructure app not recorded is said",
+			args:    []string{"pin", "github-infrastructure-key", "2"},
+			edit:    func(p *org.Placement) { p.GithubInfrastructureAppID = "" },
+			wantOut: []string{"placement.json records no githubInfrastructureAppId: record the infrastructure app's App ID there, from the app's settings page, and run bedrock org render; until both are recorded a run of the triggers that plans or applies 1-org stops.\n"},
 		},
 		{
 			name:    "a disabled version is refused",
 			args:    []string{"pin", "github-infrastructure-key", "3"},
-			wantErr: "version 3 of imp-boot-gbl-github-infrastructure-key in project imp-boot-gbl-core-a1b2 is DISABLED, not ENABLED: the layers could not read it; choose an enabled version",
+			wantErr: "version 3 of imp-boot-gbl-github-infrastructure-key in project imp-boot-gbl-core-a1b2 is DISABLED, not ENABLED: the triggers' runs could not read it; choose an enabled version",
 		},
 		{
 			name:    "latest is refused",
@@ -174,39 +173,42 @@ func TestOrgSecret(t *testing.T) {
 			wantErr: "github-infrastructure-key lives in the boot project and takes no environment: bedrock secret pin github-infrastructure-key <version> (given github-infrastructure-key tst 2)",
 		},
 		{
-			name: "the deployer key's version is pinned in 2-env's placement by resource name, from the working directory",
-			args: []string{"pin", "github-deployer-key", "tst", "1"},
+			name: "the deployer key's version is pinned in placement.json and rendered into 2-env's outputs, from the working directory",
+			args: []string{"pin", "github-deployer-key", "2"},
 			cwd:  "2-env",
 			wantOut: []string{
-				"Pinned github-deployer-key in tst to version 1: github_deployer_key_secret_versions.tst in ",
-				"projects/imp-tst-gbl-core-1a2b/secrets/imp-tst-gbl-github-deployer-key/versions/1.\n",
-				"Secret Manager confirms version 1 of imp-tst-gbl-github-deployer-key in project imp-tst-gbl-core-1a2b is enabled.\n",
-				"2-env/terraform.tfvars leaves github_deployer_app_id unset: set it to the deployer app's App ID, from the app's settings page; until then the pipeline talks back through nothing.\n",
-				"Next: commit 2-env/terraform.tfvars and open the pull request; the layers workflow's plan of 2-env shows the change to tst's output github_deployer_key_secret_version",
+				"Pinned github-deployer-key to version 2: githubDeployerKeyVersion in ",
+				"Secret Manager confirms version 2 of imp-boot-gbl-github-deployer-key in project imp-boot-gbl-core-a1b2 is enabled.\n",
+				"Next: commit placement.json and the files org render rewrote (",
+				"2-env's outputs among them) and open the pull request; from its merge on, the plan trigger's run posts the layers' plans as the deployer app from version 2, and each environment's apply of 2-env carries the version to the applications' pipelines through its output github_deployer_key_secret_version.\n",
 			},
-			wantFiles: map[string][]string{"2-env/terraform.tfvars": {"github_deployer_key_secret_versions = {\n  " + tstKeyPinned + "\n}\n"}},
+			wantAbsent: []string{"githubDeployerAppId"},
+			wantFiles: map[string][]string{
+				"placement.json":  {`"githubDeployerKeyVersion": "2"`},
+				"2-env/locals.tf": {`github_deployer_key_secret_version = "projects/imp-boot-gbl-core-a1b2/secrets/imp-boot-gbl-github-deployer-key/versions/2"`},
+			},
 		},
 		{
-			name:       "a second environment's pin joins the first, beside the app's id",
-			args:       []string{"pin", "github-deployer-key", "stg", "2"},
-			tfvars:     "github_deployer_app_id = 5080800\ngithub_deployer_key_secret_versions = {\n  " + tstKeyPinned + "\n}\n",
-			wantOut:    []string{"Pinned github-deployer-key in stg to version 2: github_deployer_key_secret_versions.stg in "},
-			wantAbsent: []string{"leaves github_deployer_app_id unset"},
-			wantFiles: map[string][]string{"2-env/terraform.tfvars": {
-				tstKeyPinned + "\n  stg = \"projects/imp-stg-gbl-core-3c4d/secrets/imp-stg-gbl-github-deployer-key/versions/2\"\n}\n",
-			}},
+			name:    "the deployer app not recorded is said",
+			args:    []string{"pin", "github-deployer-key", "2"},
+			edit:    func(p *org.Placement) { p.GithubDeployerAppID = "" },
+			wantOut: []string{"placement.json records no githubDeployerAppId: record the deployer app's App ID there, from the app's settings page, and run bedrock org render; until both are recorded the plans are posted by nobody and the pipelines talk back through nothing.\n"},
 		},
 		{
 			name:      "the deployer key's version pinned already changes nothing",
-			args:      []string{"pin", "github-deployer-key", "tst", "1"},
-			tfvars:    "github_deployer_key_secret_versions = { " + tstKeyPinned + " }\n",
-			wantOut:   []string{"github-deployer-key in tst is already pinned to version 1 (github_deployer_key_secret_versions.tst in "},
-			wantFiles: map[string][]string{"2-env/terraform.tfvars": {"github_deployer_key_secret_versions = { " + tstKeyPinned + " }\n"}},
+			args:      []string{"pin", "github-deployer-key", "1"},
+			wantOut:   []string{"github-deployer-key is already pinned to version 1 (githubDeployerKeyVersion in "},
+			wantFiles: map[string][]string{"placement.json": {`"githubDeployerKeyVersion": "1"`}},
 		},
 		{
 			name:    "the deployer key's version left out is refused with the container's versions",
-			args:    []string{"pin", "github-deployer-key", "stg"},
+			args:    []string{"pin", "github-deployer-key"},
 			wantErr: "no version given and no terminal to ask on: pass one of 2 (ENABLED), 1 (ENABLED)",
+		},
+		{
+			name:    "the deployer key takes its version alone",
+			args:    []string{"pin", "github-deployer-key", "tst", "1"},
+			wantErr: "github-deployer-key lives in the boot project and takes no environment: bedrock secret pin github-deployer-key <version> (given github-deployer-key tst 1)",
 		},
 		{
 			name:    "an unknown organization secret is refused on pin",
@@ -216,7 +218,7 @@ func TestOrgSecret(t *testing.T) {
 		{
 			name:    "an application's secret is refused on pin",
 			args:    []string{"pin", "tst", "APP_COOKIE_KEY", "3"},
-			wantErr: "secret pin takes an organization secret here, github-infrastructure-key or github-deployer-key with an environment; an application's secret ([env] [VARIABLE]) is pinned from the application's repository",
+			wantErr: "secret pin takes an organization secret here, github-infrastructure-key or github-deployer-key; an application's secret ([env] [VARIABLE]) is pinned from the application's repository",
 		},
 	}
 	for _, tt := range tests {
@@ -224,15 +226,8 @@ func TestOrgSecret(t *testing.T) {
 			t.Parallel()
 
 			dir := orgSecretRepo(t)
-			if tt.tfvars != "" {
-				file := filepath.Join(dir, "2-env", "terraform.tfvars")
-				data, err := os.ReadFile(file)
-				if err != nil {
-					t.Fatal(err)
-				}
-				if err := os.WriteFile(file, append(data, []byte(tt.tfvars)...), 0o600); err != nil {
-					t.Fatal(err)
-				}
+			if tt.edit != nil {
+				editPlacement(t, dir, tt.edit)
 			}
 			secrets := orgSecrets()
 			secrets.created, secrets.added = map[string]map[string]string{}, map[string]string{}
@@ -332,8 +327,7 @@ func TestOrgSecretInApplication(t *testing.T) {
 }
 
 // TestOrgSecretCompletion: in the infrastructure repository the arguments complete to the
-// organization's secrets, the deployer key's environments and, for pin, the container's
-// versions with their states.
+// organization's secrets and, for pin, the container's versions with their states.
 func TestOrgSecretCompletion(t *testing.T) {
 	t.Parallel()
 
@@ -343,10 +337,10 @@ func TestOrgSecretCompletion(t *testing.T) {
 		want []string
 	}{
 		{name: "the secrets", args: []string{"pin", ""}, want: []string{"github-infrastructure-key", "github-deployer-key"}},
-		{name: "the deployer key's environments", args: []string{"add", "github-deployer-key", ""}, want: []string{"tst", "stg", "prd"}},
 		{name: "the infrastructure key's versions", args: []string{"pin", "github-infrastructure-key", ""}, want: []string{"3\tDISABLED", "2\tENABLED", "1\tENABLED"}},
-		{name: "the deployer key's versions in the environment", args: []string{"pin", "github-deployer-key", "stg", ""}, want: []string{"2\tENABLED", "1\tENABLED"}},
+		{name: "the deployer key's versions", args: []string{"pin", "github-deployer-key", ""}, want: []string{"2\tENABLED", "1\tENABLED"}},
 		{name: "nothing after the infrastructure key on add", args: []string{"add", "github-infrastructure-key", ""}},
+		{name: "nothing after the deployer key on add", args: []string{"add", "github-deployer-key", ""}},
 		{name: "nothing after an unknown secret", args: []string{"pin", "github-release-key", ""}},
 	}
 	for _, tt := range tests {

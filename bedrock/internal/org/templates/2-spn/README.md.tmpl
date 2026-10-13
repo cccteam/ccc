@@ -1,7 +1,7 @@
 # 2-spn
 
 The shared Spanner project: one multi-region instance that every application's
-stg and prd databases live on. Applied by the layers workflow as
+stg and prd databases live on. Applied by the apply trigger's run as
 `{{.Prefix}}-spn-gbl-tofu`, planned on a pull request as `{{.Prefix}}-spn-gbl-plan`.
 
 ## What it creates
@@ -117,9 +117,10 @@ cap is a change to the validation, visible in review, not a number in
 
 ## Applying
 
-By the layers workflow (`{{.WorkflowPath}}`), after `1-org` has been applied:
-a pull request that changes this directory plans it as the plan identity and
-posts the plan, and the merge applies it as the layer identity. Both hold
+By the Cloud Build triggers (`0-bootstrap/README.md`, "The Cloud Build
+triggers"), after `1-org` has been applied: a pull request that changes this
+directory plans it as the plan identity and posts the plan, and the merge
+applies it as the layer identity. Both hold
 their state-bucket grants from `1-org`. The first `init` writes
 `.terraform.lock.hcl`; commit it.
 

@@ -17,30 +17,39 @@ import (
 
 	"github.com/cccteam/ccc/bedrock/internal/derive"
 	"github.com/cccteam/ccc/bedrock/internal/domain"
+	"github.com/cccteam/ccc/bedrock/internal/layers"
 	"github.com/cccteam/ccc/bedrock/internal/org"
 	"github.com/cccteam/ccc/bedrock/internal/release"
 	"github.com/cccteam/ccc/bedrock/internal/where"
 )
 
-const orgPlacementFile = "placement.json"
+// The org command group's name and the two commands the triggers run, which deploy's
+// stack commands share the names of.
+const (
+	orgCommand       = "org"
+	orgPlacementFile = "placement.json"
+	planCommand      = "plan"
+	applyCommand     = "apply"
+)
 
 func newOrg(d deps) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "org",
+		Use:   orgCommand,
 		Short: "The organization foundation: the layers every application deploys into",
 		Long: `org holds the commands that render and check an organization's infrastructure repository:
 the six layers of the CCC provisioning model (0-bootstrap, 1-org, 2-shr, 2-spn, 2-net, 2-env)
-and the layers workflow that plans them on a pull request and applies them on its merge,
-rendered from the organization placement, placement.json at the repository root, the way an
-application's stack is rendered from its code; and the check, before the seed, that the
-bootstrap administrator holds the roles the seed and the first applies need (preflight).`,
+and the two Cloud Build triggers in the boot project that plan them on a pull request and apply
+them on the merge, rendered from the organization placement, placement.json at the repository
+root, the way an application's stack is rendered from its code; the two commands those
+triggers run (plan, apply); and the check, before the seed, that the bootstrap administrator
+holds the roles the seed and the first applies need (preflight).`,
 	}
-	cmd.AddCommand(newOrgNew(d), newOrgPreflight(d), newOrgRender(d), newOrgCheck(d), newOrgRegister(d))
+	cmd.AddCommand(newOrgNew(d), newOrgPreflight(d), newOrgRender(d), newOrgCheck(d), newOrgRegister(d), newOrgPlan(d), newOrgApply(d))
 
 	return cmd
 }
 
-func newOrgNew(_ deps) *cobra.Command {
+func newOrgNew(d deps) *cobra.Command {
 	var placement string
 
 	cmd := &cobra.Command{
@@ -48,22 +57,27 @@ func newOrgNew(_ deps) *cobra.Command {
 		Short: "Render an organization foundation for an organization that has none",
 		Long: `new renders an organization's infrastructure repository into a new or empty directory from
 its placement: the six layers of the CCC provisioning model, each with its .tf files, its
-README and its seeded terraform.tfvars, the layers workflow under .github/workflows, and at
-the root the README, the journal, the ignore rules and the OpenTofu version. It then prints
-the hand steps the model needs before the workflow can run, each opening with the place it
-happens: the team and role groups, the GitHub organization with its apps, their keys and
-the release app's organization secrets, org preflight's check of the bootstrap
-administrator's roles and the seed (the terraform folder, the boot project, the boot
-identity and the state bucket, as the bootstrap administrator), the bootstrap apply on local
-state and its migration into the bucket, the billing grants and the spend budget, the first
-apply of 1-org, the Cloud Build GitHub authorization and the consent screen, spelled out in
-0-bootstrap/README.md and the root README; from then on the workflow plans every layer on a
-pull request and applies it on the merge, as the layer's own identity.
+README and its seeded terraform.tfvars, and at the root the README, the journal, the ignore
+rules and the OpenTofu version. 0-bootstrap carries the two Cloud Build triggers, in the boot
+project, that plan the layers on a pull request and apply them on the merge, running bedrock
+org plan and bedrock org apply. It then prints the hand steps the model needs before the
+triggers can run, each opening with the place it happens: the team and role groups, the
+GitHub organization with its apps, their keys and the release app's organization secrets, org
+preflight's check of the bootstrap administrator's roles and the seed (the terraform folder,
+the boot project, the boot identity and the state bucket, as the bootstrap administrator), the
+Cloud Build GitHub authorization in the boot project, the bootstrap apply on local state and
+its migration into the bucket, the billing grants and the spend budget, the first apply of
+1-org and the consent screen, spelled out in 0-bootstrap/README.md and the root README; from
+then on the triggers plan every layer on a pull request and apply it on the merge, as the
+layer's own identity.
 
 The placement is read from --placement, or from placement.json in the directory. The .tf
-files, the READMEs and the workflow are owned: org render rewrites them, and org check
-compares them. Everything the seed decides (the boot project's suffix, the state bucket, the
-folder) is REPLACEME in the seeded values until the seed has run.`,
+files and the READMEs are owned: org render rewrites them, and org check compares them.
+Everything the seed decides (the boot project's suffix, the state bucket, the folder) is
+REPLACEME in the seeded values until the seed has run. The triggers' runs fetch the bedrock
+the placement pins (bedrockVersion, and for a release bedrockSha256), so new records the
+bedrock running it as the pin when that is a release or a commit installed with go install;
+a build from a checkout is nobody's pin, and bedrock upgrade records one later.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			dir := args[0]
@@ -74,6 +88,10 @@ folder) is REPLACEME in the seeded values until the seed has run.`,
 			if err != nil {
 				return err
 			}
+			out := cmd.OutOrStdout()
+			if err := d.pinOrg(cmd.Context(), p, placement, out); err != nil {
+				return err
+			}
 			files, err := org.Render(p)
 			if err != nil {
 				return err
@@ -82,12 +100,13 @@ folder) is REPLACEME in the seeded values until the seed has run.`,
 			if err != nil {
 				return err
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "Rendered the %s foundation into %s: %d owned file(s) in %s; seeded %s.\n",
+			fmt.Fprintf(out, "Rendered the %s foundation into %s: %d owned file(s) in %s; seeded %s.\n",
 				p.Prefix, dir, written.Owned, strings.Join(org.Layers, ", "), strings.Join(written.Seeded, ", "))
 			if len(written.Kept) > 0 {
-				fmt.Fprintf(cmd.OutOrStdout(), "Kept %s as it was.\n", strings.Join(written.Kept, ", "))
+				fmt.Fprintf(out, "Kept %s as it was.\n", strings.Join(written.Kept, ", "))
 			}
-			fmt.Fprint(cmd.OutOrStdout(), handSteps(p))
+			fmt.Fprint(out, removedNotice(written))
+			fmt.Fprint(out, handSteps(p))
 
 			return nil
 		},
@@ -97,8 +116,62 @@ folder) is REPLACEME in the seeded values until the seed has run.`,
 	return cmd
 }
 
-// handSteps says what a person does before the workflow can run, and where the commands are.
-// Each step opens with the place it happens; the bootstrap roles are org preflight's
+// pinOrg records the bedrock running org new as the placement's pin when it is one a
+// placement can hold (a release, with its pipeline binary's checksum, or an installed
+// commit), writing the placement; a build from a checkout pins nothing, and the notice
+// says what records a pin. A placement that pins another bedrock than the one running is
+// refused, as render is.
+func (d deps) pinOrg(ctx context.Context, p *org.Placement, placement string, out io.Writer) error {
+	if p.Pinned() {
+		return d.orgPinned(p, placement)
+	}
+	if !d.running().heldToPin() {
+		fmt.Fprintf(out, "This bedrock is %s, which no placement can pin: %s pins no bedrock yet, and the triggers' runs need one; bedrock upgrade in the repository records a release or an installed commit and renders with it.\n", d.running().version, placement)
+
+		return nil
+	}
+	version, sum, err := d.firstPin(ctx)
+	if err != nil {
+		return err
+	}
+	p.BedrockVersion, p.BedrockSHA256 = version, sum
+	if err := p.Write(placement); err != nil {
+		return err
+	}
+	fmt.Fprintf(out, "Pinned bedrock %s in %s: the triggers' runs fetch it.\n", version, placement)
+
+	return nil
+}
+
+// orgPinned refuses a placement pinned to another bedrock than the release or installed
+// commit running the command, as the application's render and check do: the committed
+// files say which bedrock they come from through the pin, and bedrock upgrade moves it.
+// A placement that pins nothing yet is let through: the triggers' runs are what need
+// the pin, and the notice says so.
+func (d deps) orgPinned(p *org.Placement, placement string) error {
+	running := d.running()
+	if !p.Pinned() || !running.heldToPin() || running.version == p.BedrockVersion {
+		return nil
+	}
+	install := release.Page(p.BedrockVersion)
+	if p.CommitPin() {
+		install = "go install " + release.Module + "@" + p.BedrockVersion
+	}
+
+	return errors.Newf("%s pins bedrock %s and this is bedrock %s: install the pinned one (%s) or move the pin (bedrock upgrade)", placement, p.BedrockVersion, running.version, install)
+}
+
+// removedNotice says which retired files the write removed, or nothing.
+func removedNotice(written *org.Written) string {
+	if len(written.Removed) == 0 {
+		return ""
+	}
+
+	return fmt.Sprintf("Removed %s: retired; the Cloud Build triggers 0-bootstrap renders plan and apply the layers now.\n", strings.Join(written.Removed, ", "))
+}
+
+// handSteps says what a person does before the triggers can run, and where the commands
+// are. Each step opens with the place it happens; the bootstrap roles are org preflight's
 // table, one line each, so the steps name what the check checks.
 func handSteps(p *org.Placement) string {
 	var roles strings.Builder
@@ -107,7 +180,7 @@ func handSteps(p *org.Placement) string {
 	}
 
 	return fmt.Sprintf(`
-By hand, before the layers workflow can run (the commands are in 0-bootstrap/README.md):
+By hand, before the Cloud Build triggers can run (the commands are in 0-bootstrap/README.md):
   0. In the Workspace Admin console: one team group per environment, named in
      placement.json (teamGroups: a group's address each; production's is not the first
      environment's), whose members approve the environment's releases and ask for its
@@ -123,17 +196,17 @@ By hand, before the layers workflow can run (the commands are in 0-bootstrap/REA
      installed on all repositories, with their private keys (README.md, "The two GitHub
      Apps", and 0-bootstrap/README.md, "The infrastructure GitHub App"; the release
      app's App ID and slug go into placement.json, githubReleaseAppId and
-     githubReleaseAppSlug, the deployer app's App ID into 2-env/terraform.tfvars,
-     github_deployer_app_id, and the infrastructure app's into placement.json,
+     githubReleaseAppSlug, the deployer app's App ID into placement.json,
+     githubDeployerAppId, and the infrastructure app's into placement.json,
      githubInfrastructureAppId), the release app's two organization secrets
      RELEASE_APP_ID and RELEASE_APP_PRIVATE_KEY, set once by an owner for all
      repositories, and, if a team is to approve changes to the applications' check
      files, that team (githubInfrastructureTeam).
-     In a terminal, in this repository, the apps' keys, never by hand: bedrock secret
-     add github-infrastructure-key and bedrock secret pin github-infrastructure-key
-     <version> once 0-bootstrap has made its container; bedrock secret add
-     github-deployer-key <env> and bedrock secret pin github-deployer-key <env>
-     <version> per environment once 2-env has made its container there.
+     In a terminal, in this repository, the apps' keys, never by hand, once 0-bootstrap
+     has made their two containers in the boot project: bedrock secret add
+     github-infrastructure-key and bedrock secret pin github-infrastructure-key
+     <version>; bedrock secret add github-deployer-key and bedrock secret pin
+     github-deployer-key <version>.
   1. In a terminal, as %s, after gcloud auth application-default login:
      bedrock org preflight, which must find each of these roles held:
 %s     then the seed: the terraform folder at the organization root (%s), the boot
@@ -143,34 +216,40 @@ By hand, before the layers workflow can run (the commands are in 0-bootstrap/REA
      0-bootstrap/terraform.tfvars, boot_project_id in 1-org and 2-env, and in
      placement.json the bucket (stateBucket) and the boot project's id and number
      (projects.boot, projectNumbers.boot); then bedrock org render, for the backend
-     blocks, the bucket's grants and the workflow.
-  3. In a terminal, in 0-bootstrap: the apply on local state, then the migration of its
-     state into the bucket.
-  4. In a terminal, as a billing administrator of %s: roles/billing.user on
+     blocks, the bucket's grants and the triggers.
+  3. In the boot project's Cloud Build console, as %s (the bootstrap
+     administrator, Owner on the boot project from the seed), signed in to GitHub as the
+     organization's machine account (%s): the Cloud Build GitHub App's authorization
+     (0-bootstrap/README.md, "The Cloud Build GitHub authorization"), a connection named
+     %s in %s; its installation id and the token secret's version go
+     into placement.json (cloudBuildInstallationId, cloudBuildTokenSecretVersion). Then,
+     in a terminal, in this repository: bedrock upgrade, which pins the bedrock the
+     triggers run (bedrockVersion) and renders. bedrock org register refuses the first
+     application until the two values are set.
+  4. In a terminal, in 0-bootstrap: the apply on local state, the connection imported
+     into it first, then the migration of its state into the bucket.
+  5. In a terminal, as a billing administrator of %s: roles/billing.user on
      it for the two identities. In the Billing console, as the same administrator: the
-     spend budget on the account (0-bootstrap/README.md, step 4); nothing renders it.
-  5. In a terminal, in 1-org: the apply, with GITHUB_TOKEN set to an organization
+     spend budget on the account (0-bootstrap/README.md, step 5); nothing renders it.
+  6. In a terminal, in 1-org: the apply, with GITHUB_TOKEN set to an organization
      owner's token; then its project_ids and project_numbers recorded in placement.json
-     (projects, projectNumbers), and bedrock org render, so the workflow names every
+     (projects, projectNumbers), and bedrock org render, so the triggers name every
      layer's identities. The apply leaves you Owner on each project it creates, as the
      seed left you Folder Admin and Folder Editor on the folder: a creator's grants,
-     temporary, removed by hand once the workflow applies the layers (bedrock org check
-     lists each person still holding roles/owner on an environment project).
-  6. In the tst project's Cloud Build console, signed in to GitHub as the organization's
-     machine account (%s): the Cloud Build GitHub App's authorization (2-env/README.md, "The
-     GitHub authorization, before the first application"); its installation id and the
-     token secret's version go into 2-env/terraform.tfvars, applied through the workflow.
-     bedrock org register refuses the first application until both are set.
+     temporary, removed by hand once the apply trigger applies the layers (bedrock org
+     check lists each person still holding roles/owner on an environment project).
   7. In each environment project's Google Cloud console, before the first application's
      OAuth client is made there: the consent screen (APIs & Services, OAuth consent
      screen), with the audience Internal, the organization's own users.
-From then on the layers workflow (%s) applies every layer, these two included: a pull
-request plans the layers it touches as their plan identities and posts the plans, the
-merge applies them as their apply identities, in layer order. The shared layers, 2-env per
-environment and the applications' registrations go through it; a person applies by hand
-for recovery alone (0-bootstrap/README.md, "Recovery, by hand").
+From then on the two Cloud Build triggers in the boot project (%s and %s)
+apply every layer, these two included: a pull request plans the layers it touches as their
+plan identities and posts the plans on it, the merge applies them as their apply
+identities, in layer order. The shared layers, 2-env per environment and the applications'
+registrations go through them; a person applies by hand for recovery alone
+(0-bootstrap/README.md, "Recovery, by hand").
 After the first apply of 2-net: bedrock domain check prints what the apps domain still needs, and where.
-`, p.OrganizationDomain, p.GithubMachineAccount, p.GithubDefaultBranch, p.Operator, roles.String(), p.OrganizationID, p.Prefix, p.Prefix, p.Prefix, p.BillingAccount, p.GithubMachineAccount, org.WorkflowFile)
+`, p.OrganizationDomain, p.GithubMachineAccount, p.GithubDefaultBranch, p.Operator, roles.String(), p.OrganizationID, p.Prefix, p.Prefix, p.Prefix,
+		p.Operator, p.GithubMachineAccount, p.ConnectionName(), p.Primary().Name, p.BillingAccount, p.PlanTriggerName(), p.ApplyTriggerName())
 }
 
 func newOrgPreflight(d deps) *cobra.Command {
@@ -224,17 +303,25 @@ func (d deps) permissionTester() org.PermissionTesterFunc {
 	return d.org.permissions
 }
 
-// workflowNotice says what the layers workflow still lacks in the placement, or nothing.
-func workflowNotice(p *org.Placement) string {
-	missing := p.WorkflowUnwired()
-	if len(missing) == 0 {
-		return ""
+// triggerNotice says what the triggers still lack in the placement, or nothing: the
+// projects whose layers they cannot run yet, the pin their runs fetch, and the GitHub
+// authorization 0-bootstrap renders them from.
+func triggerNotice(p *org.Placement) string {
+	var b strings.Builder
+	if missing := p.UnrecordedProjects(); len(missing) > 0 {
+		fmt.Fprintf(&b, "The triggers cannot run every layer yet: record %s in placement.json and run bedrock org render.\n", strings.Join(missing, ", "))
+	}
+	if !p.Pinned() {
+		b.WriteString("placement.json pins no bedrock (bedrockVersion), and the triggers' runs fetch the pinned one: run bedrock upgrade in this repository, which records the pin and renders.\n")
+	}
+	if unset := p.ConnectionUnset(); len(unset) > 0 {
+		fmt.Fprintf(&b, "0-bootstrap renders the Cloud Build connection and the triggers once placement.json records %s, from the GitHub authorization in the boot project (0-bootstrap/README.md, \"The Cloud Build GitHub authorization\").\n", strings.Join(unset, " and "))
 	}
 
-	return fmt.Sprintf("The layers workflow cannot run every layer yet: record %s in placement.json and run bedrock org render.\n", strings.Join(missing, ", "))
+	return b.String()
 }
 
-func newOrgRender(_ deps) *cobra.Command {
+func newOrgRender(d deps) *cobra.Command {
 	var (
 		dir       string
 		placement string
@@ -244,13 +331,19 @@ func newOrgRender(_ deps) *cobra.Command {
 		Use:   renderCommand,
 		Short: "Rewrite the organization's owned files from the placement",
 		Long: `render rewrites the owned files of the organization's infrastructure repository (the layers'
-.tf files and READMEs, the layers workflow, the root README and the OpenTofu version) from
-the placement, and seeds the files that are absent. Run from the repository root, or name it
+.tf files and READMEs, the root README and the OpenTofu version) from the placement, and seeds
+the files that are absent. A file an earlier bedrock rendered and this one retires (the layers
+workflow under .github/workflows, which the Cloud Build triggers replace) is removed, and the
+command says so. It refuses a placement pinned to another bedrock than the release or installed
+commit running it (bedrock upgrade moves the pin). Run from the repository root, or name it
 with --dir.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			p, err := orgPlacement(dir, placement)
 			if err != nil {
+				return err
+			}
+			if err := d.orgPinned(p, orgPlacementPath(dir, placement)); err != nil {
 				return err
 			}
 			files, err := org.Render(p)
@@ -265,7 +358,8 @@ with --dir.`,
 			if len(written.Seeded) > 0 {
 				fmt.Fprintf(cmd.OutOrStdout(), "Seeded %s.\n", strings.Join(written.Seeded, ", "))
 			}
-			fmt.Fprint(cmd.OutOrStdout(), workflowNotice(p))
+			fmt.Fprint(cmd.OutOrStdout(), removedNotice(written))
+			fmt.Fprint(cmd.OutOrStdout(), triggerNotice(p))
 			if len(p.Applications) > 0 {
 				fmt.Fprint(cmd.OutOrStdout(), applicationProjects(p, "each application"))
 			}
@@ -288,11 +382,18 @@ func newOrgCheck(d deps) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   checkCommand,
 		Short: "Compare the organization's committed layers with what the placement renders",
-		Long: `check renders the organization's layers and the layers workflow afresh and compares every
-owned file with the one in the repository. It exits 1 when any differs or is missing, listing
-each with the first line that differs: the drift between the placement and the committed
-infrastructure. Seeded files (each layer's terraform.tfvars, the journal, the ignore rules)
-are a person's and are not compared.
+		Long: `check renders the organization's layers afresh and compares every owned file with the one in
+the repository. It exits 1 when any differs or is missing, listing each with the first line
+that differs: the drift between the placement and the committed infrastructure. Seeded files
+(each layer's terraform.tfvars, the journal, the ignore rules) are a person's and are not
+compared. It also lists, and fails on, a file in a layer it does not render: a .tf file added
+by hand, which would run as the layer's identity, or an override file (override.tf,
+*_override.tf), which OpenTofu merges into the layer; a value 2-env/terraform.tfvars still
+sets that placement.json carries now (the Cloud Build authorization, the deployer app); and
+the retired layers workflow (.github/workflows/layers.yml), which org render removes. It
+refuses a placement pinned to another bedrock than the release or installed commit running
+it (bedrock upgrade moves the pin). The plan trigger runs it before each plan, and the apply
+trigger before each apply, so nothing a pull request adds to a layer by hand runs there.
 
 Before anything else it reports each domain 2-net registers (registrations in
 2-net/terraform.tfvars) as Cloud Domains holds it in the network project: first every
@@ -307,19 +408,22 @@ placement (2-net's zones rendered without prevent_destroy, for making a zone aga
 so and what is left to do, also without failing the check. It then lists each person (a user: member) holding
 roles/owner on an environment project the placement records: the grant a project's creator
 receives, which the first apply of 1-org by hand leaves the bootstrap administrator with on
-every project it creates, temporary by design and removed by hand once the layers workflow
+every project it creates, temporary by design and removed by hand once the apply trigger
 applies the layers. That listing reads the projects' IAM policies with the run's Google
 credentials (gcloud auth application-default login); without any it says so, and it never
 fails the check. Last it lists each API key in an environment project that carries no API
 restriction, which answers every API in the project that accepts an API key: Firebase's
-browser key, which initializing Identity Platform creates and the layers workflow
-restricts after each apply of 2-env, when Firebase has made it again since, or any other.
+browser key, which initializing Identity Platform creates and bedrock org apply restricts
+after each apply of 2-env, when Firebase has made it again since, or any other.
 That listing reads the projects' API keys with the same credentials, says so without any,
 and never fails the check either.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			p, err := orgPlacement(dir, placement)
 			if err != nil {
+				return err
+			}
+			if err := d.orgPinned(p, orgPlacementPath(dir, placement)); err != nil {
 				return err
 			}
 			r, err := org.Check(p, dir)
@@ -329,12 +433,14 @@ and never fails the check either.`,
 			registrationReport(cmd.Context(), d, p, dir, cmd.OutOrStdout())
 			fmt.Fprint(cmd.OutOrStdout(), zoneReplacementNotice(p))
 			for _, f := range r.Findings {
-				if f.Missing {
+				switch {
+				case f.Reason != "":
+					fmt.Fprintf(cmd.OutOrStdout(), "%s: %s\n", f.Path, f.Reason)
+				case f.Missing:
 					fmt.Fprintf(cmd.OutOrStdout(), "%s: missing\n", f.Path)
-
-					continue
+				default:
+					fmt.Fprintf(cmd.OutOrStdout(), "%s: line %d differs\n  want: %s\n  got:  %s\n", f.Path, f.Line, f.Want, f.Got)
 				}
-				fmt.Fprintf(cmd.OutOrStdout(), "%s: line %d differs\n  want: %s\n  got:  %s\n", f.Path, f.Line, f.Want, f.Got)
 			}
 			for _, path := range r.Unseeded {
 				fmt.Fprintf(cmd.OutOrStdout(), "%s: not seeded yet (org render writes it)\n", path)
@@ -342,7 +448,7 @@ and never fails the check either.`,
 			ownerReport(cmd.Context(), d, p, cmd.OutOrStdout())
 			keyReport(cmd.Context(), d, p, cmd.OutOrStdout())
 			if !r.Clean() {
-				fmt.Fprintf(cmd.OutOrStdout(), "%d of %d owned file(s) differ from what the placement renders\n", len(r.Findings), r.Checked)
+				fmt.Fprintf(cmd.OutOrStdout(), "%d finding(s) against the %d owned file(s) the placement renders\n", len(r.Findings), r.Checked)
 
 				return exitError{code: 1}
 			}
@@ -395,7 +501,7 @@ func registrationReport(ctx context.Context, d deps, p *org.Placement, dir strin
 // ownerReport lists each person holding roles/owner on an environment project the
 // placement records: the grant a project's creator receives, which the first apply of
 // 1-org by hand leaves the bootstrap administrator with on every project it creates, and
-// which a hand step removes once the layers workflow applies the layers (1-org/README.md,
+// which a hand step removes once the apply trigger applies the layers (1-org/README.md,
 // Applying). The read needs Google credentials; without any the report says so and what
 // it would have done. Nothing here fails the check: the drift between the placement and
 // the repository is the check's verdict, and the grants are a person's to remove.
@@ -430,14 +536,14 @@ func ownerReport(ctx context.Context, d deps, p *org.Placement, out io.Writer) {
 		return
 	}
 	for _, o := range owners {
-		fmt.Fprintf(out, "%s (%s): %s holds roles/owner, the creator's grant from the first apply of 1-org by hand; it is temporary, removed once the layers workflow applies the layers (1-org/README.md, Applying).\n", o.Environment, o.Project, o.Member)
+		fmt.Fprintf(out, "%s (%s): %s holds roles/owner, the creator's grant from the first apply of 1-org by hand; it is temporary, removed once the apply trigger applies the layers (1-org/README.md, Applying).\n", o.Environment, o.Project, o.Member)
 	}
 }
 
 // keyReport lists each API key in an environment project that carries no API
 // restriction: such a key answers every API in the project that accepts an API key. The
 // one expected is Firebase's browser key, which initializing Identity Platform creates
-// (2-env's identity-platform.tf) and the layers workflow restricts to the sign-in APIs
+// (2-env's identity-platform.tf) and bedrock org apply restricts to the sign-in APIs
 // after each apply of 2-env, when Firebase has made it again since; any other is a
 // person's to restrict or delete. The read needs Google credentials; without any the
 // report says so and what it would have done. Nothing here fails the check, as with the
@@ -475,7 +581,7 @@ func keyReport(ctx context.Context, d deps, p *org.Placement, out io.Writer) {
 	}
 	for _, k := range keys {
 		if k.Key.DisplayName == org.FirebaseBrowserKey {
-			fmt.Fprintf(out, "%s (%s): the API key %q (%s) carries no API restriction, so it answers every API in the project that accepts an API key; the layers workflow restricts it to %s after each apply of 2-env: run the workflow for 2-env (Run workflow, on the Actions tab) to restrict it now (2-env/README.md, Identity Platform).\n", k.Environment, k.Project, k.Key.DisplayName, k.Key.Name, strings.Join(org.SignInAPIs, " and "))
+			fmt.Fprintf(out, "%s (%s): the API key %q (%s) carries no API restriction, so it answers every API in the project that accepts an API key; bedrock org apply restricts it to %s after each apply of 2-env: start the apply trigger for that environment (%s) to restrict it now (2-env/README.md, Identity Platform).%s\n", k.Environment, k.Project, k.Key.DisplayName, k.Key.Name, strings.Join(org.SignInAPIs, " and "), triggerRun(p, k.Environment), triggerUnrendered(p))
 
 			continue
 		}
@@ -495,11 +601,11 @@ func newOrgRegister(d deps) *cobra.Command {
 		Long: `register adds an application to the organization: its code goes into placement.json's
 applications, the layers' values are rendered from it (1-org's repositories and its
 public-invoker grants, 2-env's list, 2-shr's pushers and pullers, 2-spn's database admins,
-2-net's hostnames), and the pull requests the registration takes through the layers workflow
-are printed, since one pass in layer order does not follow the order the grants need: first
-1-org and 2-env (the repository, then the identities under it), then 2-env again from the
-Actions tab (each environment grants the next environment's deploy identity read on its
-records bucket, from state the first pass did not have), then 1-org's public-invoker grants
+2-net's hostnames), and the pull requests the registration takes through the Cloud Build
+triggers are printed, since one pass in layer order does not follow the order the grants
+need: first 1-org and 2-env (the repository, then the identities under it), then 2-env again
+by starting the apply trigger by hand (each environment grants the next environment's deploy
+identity read on its records bucket, from state the first pass did not have), then 1-org's public-invoker grants
 with 2-shr and 2-spn (the grants, on identities that exist now), then the application's own
 stack per environment, then 2-net (the hostnames, onto backends that exist now). The files a
 later pull request carries stay in the working tree until then. An application code is 1 to 6
@@ -523,10 +629,10 @@ window is the team's to write before its first breaking release.
 The placement must record 1-org's project ids and numbers for every environment (projects,
 projectNumbers) and the seed's state bucket, which the application's placement names. The
 Cloud Build GitHub App's browser authorization comes before the first application: register
-refuses while 2-env's terraform.tfvars leaves github_app_installation_id or
-github_oauth_token_secret_version unset (2-env/README.md, "The GitHub authorization, before
-the first application"), since the applications' triggers exist once 2-env holds the
-connection and nothing is built by hand before them. A refusal changes nothing.`,
+refuses while placement.json leaves cloudBuildInstallationId or cloudBuildTokenSecretVersion
+unset (0-bootstrap/README.md, "The Cloud Build GitHub authorization"), since the
+applications' triggers exist once 2-env holds the connection and nothing is built by hand
+before them. A refusal changes nothing.`,
 		Args: cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			app := args[0]
@@ -537,15 +643,14 @@ connection and nothing is built by hand before them. A refusal changes nothing.`
 			if err != nil {
 				return err
 			}
+			if err := d.orgPinned(p, placement); err != nil {
+				return err
+			}
 			if err := p.Register(app); err != nil {
 				return err
 			}
-			unset, err := org.ConnectionUnset(dir)
-			if err != nil {
-				return err
-			}
-			if len(unset) > 0 {
-				return errors.Newf("%s leaves %s unset: the Cloud Build GitHub App's browser authorization comes before the first application (2-env/README.md, \"The GitHub authorization, before the first application\"); set both and register again", org.EnvTfvars, strings.Join(unset, " and "))
+			if unset := p.ConnectionUnset(); len(unset) > 0 {
+				return errors.Newf("placement.json leaves %s unset: the Cloud Build GitHub App's browser authorization in the boot project comes before the first application (0-bootstrap/README.md, \"The Cloud Build GitHub authorization\"); record both and register again", strings.Join(unset, " and "))
 			}
 			first, err := d.firstPlacement(cmd.Context(), p, app)
 			if err != nil {
@@ -570,7 +675,8 @@ connection and nothing is built by hand before them. A refusal changes nothing.`
 			}
 			out := cmd.OutOrStdout()
 			fmt.Fprintf(out, "Registered %s in %s; rendered %d owned file(s), the five applications.auto.tfvars and 1-org/public-invokers.auto.tfvars among them.\n", app, placement, written.Owned)
-			fmt.Fprint(out, workflowNotice(p))
+			fmt.Fprint(out, removedNotice(written))
+			fmt.Fprint(out, triggerNotice(p))
 			fmt.Fprint(out, applySequence(p, app))
 
 			return writeFirstPlacement(out, first, app, target)
@@ -671,19 +777,21 @@ func applicationProjects(p *org.Placement, app string) string {
 	return b.String()
 }
 
-// applySequence says how a registered application reaches the layers through the layers
-// workflow: the pull requests, in order, and the one run from the Actions tab.
+// applySequence says how a registered application reaches the layers through the Cloud
+// Build triggers: the pull requests, in order, and the one run of the apply trigger by hand.
 func applySequence(p *org.Placement, app string) string {
 	return fmt.Sprintf(`
-Register through the layers workflow, as pull requests into %s (each merge applies the layers
-it touches, in layer order); a file a later pull request carries stays in the working tree
-until then:
+Register through the Cloud Build triggers, as pull requests into %s (each merge applies the
+layers it touches, in layer order); a file a later pull request carries stays in the working
+tree until then:
   1. placement.json, 1-org/applications.auto.tfvars and 2-env/applications.auto.tfvars:
      %s's repository (private, squash the only merge, its rulesets and Environments; a
      repository made before this is imported first, 1-org/README.md), then, in tst, stg
      and prd, its identities, database, repository link and triggers.
-  2. Run workflow (the Actions tab) with 2-env: tst and stg grant the next environment's
-     deploy identity read on their records bucket, from state the first pass did not have.
+  2. The apply trigger by hand with 2-env, in a terminal:
+     %s
+     tst and stg grant the next environment's deploy identity read on their records
+     bucket, from state the first pass did not have.
   3. 1-org/public-invokers.auto.tfvars, 2-shr/applications.auto.tfvars and
      2-spn/applications.auto.tfvars: the public-invoker tag, the registry grants and the
      database admins, on identities that exist now.
@@ -693,7 +801,135 @@ until then:
      build runs before it); every later apply is its pipeline's, with each release.
   5. 2-net/applications.auto.tfvars: the hostnames, onto the backends the stack created.
   6. After 2-net's apply: bedrock domain check, which passes when the apps domain resolves to its zone.
-`, p.GithubDefaultBranch, app, app)
+`, p.GithubDefaultBranch, app, triggerRun(p, ""), app)
+}
+
+// triggerUnrendered says, while the placement records no Cloud Build authorization, that
+// the triggers exist once it does and 0-bootstrap has applied; empty otherwise.
+func triggerUnrendered(p *org.Placement) string {
+	if p.Connected() {
+		return ""
+	}
+
+	return " The trigger exists once placement.json records the Cloud Build GitHub authorization (cloudBuildInstallationId, cloudBuildTokenSecretVersion) and 0-bootstrap has applied."
+}
+
+// triggerRun is the command that starts the apply trigger by hand for 2-env: one
+// environment, or without one the three in order.
+func triggerRun(p *org.Placement, env string) string {
+	substitutions := "_LAYER=2-env"
+	if env != "" {
+		substitutions += ",_ENVIRONMENT=" + env
+	}
+
+	return fmt.Sprintf("gcloud builds triggers run %s --region=%s --project=%s --branch=%s --substitutions=%s", p.ApplyTriggerName(), p.Primary().Name, p.BootProject(), p.GithubDefaultBranch, substitutions)
+}
+
+// orgPlacementPath is the placement's path as the messages name it: the file named, or
+// placement.json at the repository root.
+func orgPlacementPath(dir, placement string) string {
+	if placement != "" {
+		return placement
+	}
+
+	return filepath.Join(dir, orgPlacementFile)
+}
+
+func newOrgPlan(d deps) *cobra.Command {
+	var dir string
+
+	cmd := &cobra.Command{
+		Use:   planCommand,
+		Short: "Plan the layers a pull request changes, from the plan trigger's run",
+		Long: `plan is what the plan trigger 0-bootstrap renders runs on a pull request into the default
+branch, after bedrock org check. It reads the build through the Cloud Build API (BUILD_ID,
+PROJECT_ID and LOCATION, which the trigger's step passes): the pull request (_PR_NUMBER), its
+base (_BASE_BRANCH) and its commit (COMMIT_SHA); reads the files the pull request changes
+against its base through the repository's Cloud Build connection; and plans every layer
+whose .tf, .tfvars or lock file changed, and every layer when .opentofu-version changed, side
+by side, each in its own directory as the layer's plan identity (impersonated by the plan
+trigger's runner; 2-env once per environment, with its own state prefix), without the state
+lock. Once every plan has finished each gets its verdict: its Plan: line when it succeeded;
+passed, as planned after the layers before it apply, when it failed only because it reads
+outputs their plans create, since the merge applies those first; failed otherwise, a plan
+that did not run included. One comment per layer goes on the pull request as the deployer
+GitHub App, found by its first line and updated on a later push; the plans stay in the run's
+log while placement.json records no deployer app (githubDeployerAppId,
+githubDeployerKeyVersion). 1-org's plan gets the infrastructure GitHub App's token as
+GITHUB_TOKEN, minted from the app's key in the boot project at the version placement.json
+pins. _LAYER names one layer to plan whatever the pull request changes, and _ENVIRONMENT one
+environment of 2-env. It exits 1 when any plan failed. It refuses a build that did not start
+from the trigger (no _BEDROCK_STEPS substitution) and a layer whose identity is under a
+project placement.json does not record yet (REPLACEME), and says so when it runs under a
+step list an earlier bedrock rendered: the trigger's steps lag one apply behind the
+repository, and a release keeps working under the previous release's steps.`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return layers.Plan(cmd.Context(), d.layerClients(), layerRequest(dir), cmd.OutOrStdout())
+		},
+	}
+	cmd.Flags().StringVar(&dir, "dir", ".", "the repository root")
+
+	return cmd
+}
+
+func newOrgApply(d deps) *cobra.Command {
+	var dir string
+
+	cmd := &cobra.Command{
+		Use:   applyCommand,
+		Short: "Apply the layers changed since their last apply, from the apply trigger's run",
+		Long: `apply is what the apply trigger 0-bootstrap renders runs on a push to the default branch,
+after bedrock org check, and what a person starts by hand for one layer (gcloud builds
+triggers run <apply trigger> --substitutions=_LAYER=<layer>, and for 2-env
+_ENVIRONMENT=<env>; 0-bootstrap/README.md, "The Cloud Build triggers"). It reads the build
+through the Cloud Build API (BUILD_ID, PROJECT_ID and LOCATION, which the trigger's step
+passes): the commit (COMMIT_SHA), _LAYER and _ENVIRONMENT. Without _LAYER it applies every
+layer changed since its last successful apply: a marker object per layer in the state bucket
+(applied/<layer>; applied/2-env/<env>) holds the commit of that apply, the files changed
+between it and this commit are read through the repository's Cloud Build connection, and a
+layer with no marker is applied. With _LAYER it applies that layer alone, changed or not
+(_ENVIRONMENT one environment of 2-env; without it, the three in order). The layers apply in
+layer order, one at a time, each in its own directory as the layer's apply identity
+(impersonated by the apply trigger's runner): tofu init at the layer's state prefix, a plan,
+the apply of that plan, then the marker. It stops at the first failure, the markers of the
+layers applied before it written. After each apply of 2-env it restricts Firebase's browser
+key in the environment project to the sign-in APIs (2-env/README.md, Identity Platform).
+1-org's apply gets the infrastructure GitHub App's token as GITHUB_TOKEN, minted from the
+app's key in the boot project at the version placement.json pins. It refuses a build that did
+not start from the trigger (no _BEDROCK_STEPS substitution) and a layer whose identity is
+under a project placement.json does not record yet (REPLACEME), and says so when it runs
+under a step list an earlier bedrock rendered: the trigger's steps lag one apply behind the
+repository, and a release keeps working under the previous release's steps.`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return layers.Apply(cmd.Context(), d.layerClients(), layerRequest(dir), cmd.OutOrStdout())
+		},
+	}
+	cmd.Flags().StringVar(&dir, "dir", ".", "the repository root")
+
+	return cmd
+}
+
+// layerRequest is the run's request: the build the trigger's step names in the
+// environment, and the checkout.
+func layerRequest(dir string) *layers.Request {
+	return &layers.Request{BuildID: os.Getenv("BUILD_ID"), Project: os.Getenv("PROJECT_ID"), Location: os.Getenv("LOCATION"), Dir: dir}
+}
+
+// layerClients are what org plan and org apply reach the world through: the deploy
+// sequence's seams (Cloud Build, Cloud Storage, Secret Manager, GitHub, the programs a
+// step runs) and the API Keys API as an impersonated identity.
+func (d deps) layerClients() *layers.Clients {
+	c := &layers.Clients{}
+	if d.deploy != nil {
+		c.Builds, c.Store, c.Secrets, c.GitHub, c.Exec = d.deploy.Builds, d.deploy.Storage, d.deploy.Secrets, d.deploy.GitHub, d.deploy.Exec
+	}
+	if d.org != nil {
+		c.Keys = d.org.keysAs
+	}
+
+	return c
 }
 
 // orgPlacement reads the placement named, or the one at the repository root.

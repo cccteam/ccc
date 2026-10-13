@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/cccteam/ccc/bedrock/internal/derive"
+	"github.com/cccteam/ccc/bedrock/internal/org"
 	"github.com/cccteam/ccc/bedrock/internal/release"
 )
 
@@ -315,6 +316,103 @@ func TestPinGuard(t *testing.T) {
 			}
 			if err != nil || !strings.Contains(out, "Rendered the harbor stack") {
 				t.Fatalf("error = %v; output:\n%s", err, out)
+			}
+		})
+	}
+}
+
+// TestUpgradeOrganization: in the organization's infrastructure repository, upgrade
+// moves the organization's pin, which the triggers' runs fetch, and renders the layers
+// with the bedrock it names (bedrock org render); --app is refused there.
+func TestUpgradeOrganization(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name          string
+		args          []string
+		wantVersion   string
+		wantSum       bool
+		wantInstalled string
+		wantOut       []string
+		wantErr       string
+	}{
+		{
+			name: "a release", args: []string{"v0.4.0"}, wantVersion: "v0.4.0", wantSum: true,
+			wantOut: []string{"from bedrock " + headVersion + " to bedrock v0.4.0 (bedrock-linux-amd64 ", "bedrock stand-in org render --dir ", "with the rendered files: from that commit the Cloud Build triggers' runs run bedrock v0.4.0.\n"},
+		},
+		{
+			name: "a commit", args: []string{taggedCommit[:8]}, wantVersion: "v0.4.0", wantSum: true,
+			wantOut: []string{"to bedrock v0.4.0 (bedrock-linux-amd64 "},
+		},
+		{
+			name: "already at the commit", args: []string{headCommit}, wantVersion: headVersion,
+			wantOut: []string{"already pins bedrock " + headVersion},
+		},
+		{
+			name: "a release to a commit", args: []string{"--", headCommit[:12]}, wantVersion: headVersion, wantInstalled: headVersion,
+			wantOut: []string{"a commit pin: the triggers' runs build it with go install", "bedrock stand-in org render --dir ", "from that commit the Cloud Build triggers' runs build bedrock " + headVersion + " with go install and run it.\n"},
+		},
+		{
+			name: "an application named", args: []string{"v0.4.0", "--app", "."}, wantVersion: headVersion,
+			wantErr: "--app names an application: the organization's repository has none, and upgrade moves its own pin here",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			src, sum := releaseServer(t)
+			dir := orgRepo(t)
+			if code, out := runOrg(t, "org", "new", dir); code != 0 {
+				t.Fatalf("org new: %d %s", code, out)
+			}
+			if tt.name == "a release to a commit" {
+				editPlacement(t, dir, func(p *org.Placement) {
+					p.BedrockVersion, p.BedrockSHA256 = "v0.4.0", sum
+				})
+				tt.args = tt.args[1:]
+			}
+			fake := &installs{src: src, sum: sum}
+			d := deps{
+				interactive: never,
+				releases: func() *release.Source {
+					return src
+				},
+				cacheDir: t.TempDir(),
+				install:  fake.install,
+				cwd:      dir,
+				version:  installedHead,
+			}
+			args := append([]string{upgradeCommand}, tt.args...)
+			args = append(args, "--dir", dir)
+			out, err := execute(d, "", args...)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("error = %v, want %q; output:\n%s", err, tt.wantErr, out)
+				}
+			} else if err != nil {
+				t.Fatalf("error = %v; output:\n%s", err, out)
+			}
+			for _, want := range tt.wantOut {
+				if !strings.Contains(out, want) {
+					t.Errorf("output lacks %q:\n%s", want, out)
+				}
+			}
+			p, err := org.ReadPlacement(filepath.Join(dir, orgPlacementFile))
+			if err != nil {
+				t.Fatalf("ReadPlacement() after: %v", err)
+			}
+			if p.BedrockVersion != tt.wantVersion {
+				t.Errorf("bedrockVersion = %q, want %q", p.BedrockVersion, tt.wantVersion)
+			}
+			if tt.wantSum && p.BedrockSHA256 != sum {
+				t.Errorf("bedrockSha256 = %q, want the release's %q", p.BedrockSHA256, sum)
+			}
+			if !tt.wantSum && p.BedrockSHA256 != "" {
+				t.Errorf("bedrockSha256 = %q, want none", p.BedrockSHA256)
+			}
+			if got := strings.Join(fake.versions, " "); got != tt.wantInstalled {
+				t.Errorf("installed %q, want %q", got, tt.wantInstalled)
 			}
 		})
 	}

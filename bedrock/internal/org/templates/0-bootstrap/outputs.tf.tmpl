@@ -8,12 +8,12 @@ output "boot_project_id" {
 }
 
 output "boot_project_number" {
-  description = "Number of the boot project; placement.json records it (projectNumbers.boot) so the layers workflow can name the identity provider."
+  description = "Number of the boot project; placement.json records it (projectNumbers.boot)."
   value       = module.boot_project.project_number
 }
 
 output "boot_service_account_email" {
-  description = "Email of the boot layer identity. The layers workflow applies this layer as it, after the first apply."
+  description = "Email of the boot layer identity. The apply trigger's run applies this layer as it, after the first apply."
   value       = google_service_account.boot_tofu.email
 }
 
@@ -22,14 +22,34 @@ output "github_infrastructure_key_secret" {
   value       = google_secret_manager_secret.github_infrastructure_key.secret_id
 }
 
-output "github_pool_name" {
-  description = "Full name of the boot project's workload identity pool for the layers workflow (projects/<number>/locations/global/workloadIdentityPools/<id>); 1-org binds the identities it creates to its principal sets."
-  value       = google_iam_workload_identity_pool.github.name
+output "github_deployer_key_secret" {
+  description = "Secret Manager container in the boot project holding the deployer GitHub App's private key; 1-org grants each environment layer identity its administration, so 2-env can grant the applications' identities the read."
+  value       = google_secret_manager_secret.github_deployer_key.secret_id
 }
 
-output "github_provider_name" {
-  description = "Full name of the pool's GitHub provider, the one the workflow's sign-in step names."
-  value       = google_iam_workload_identity_pool_provider.github.name
+output "planner_member" {
+  description = "The plan trigger's runner identity as an IAM member; 1-org lets it impersonate the plan identities it creates (roles/iam.serviceAccountTokenCreator)."
+  value       = google_service_account.planner.member
+}
+
+output "applier_member" {
+  description = "The apply trigger's runner identity as an IAM member; 1-org lets it impersonate the apply identities it creates."
+  value       = google_service_account.applier.member
+}
+
+output "connection_name" {
+  description = "Short name of the boot project's Cloud Build GitHub connection, the one the triggers watch the infrastructure repository through; null until the authorization is recorded in placement.json."
+  value       = one(google_cloudbuildv2_connection.github[*].name)
+}
+
+output "plan_trigger_name" {
+  description = "The plan trigger, which runs on a pull request into the default branch; null until the authorization is recorded."
+  value       = one(google_cloudbuild_trigger.plan[*].name)
+}
+
+output "apply_trigger_name" {
+  description = "The apply trigger, which runs on a push to the default branch and, started by hand with _LAYER, applies one layer again; null until the authorization is recorded."
+  value       = one(google_cloudbuild_trigger.apply[*].name)
 }
 
 output "org_id" {
@@ -38,7 +58,7 @@ output "org_id" {
 }
 
 output "org_service_account_email" {
-  description = "Email of the org layer identity. The layers workflow applies 1-org as it, after the first apply."
+  description = "Email of the org layer identity. The apply trigger's run applies 1-org as it, after the first apply."
   value       = google_service_account.org_tofu.email
 }
 

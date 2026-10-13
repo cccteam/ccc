@@ -438,7 +438,7 @@ the fix (bedrock migration renumber, which go generate runs) and is posted on th
 func newDeployStackPlan(d deps) *cobra.Command {
 	var workspace string
 	cmd := &cobra.Command{
-		Use:   "plan",
+		Use:   planCommand,
 		Short: "Plan the pull request's stack and save the plan",
 		Long: `plan runs tofu init and tofu plan in the checkout's infrastructure directory as the apply identity,
 against the pull request's own state prefix: the destroy on /gcbrun down; without a database of
@@ -480,7 +480,7 @@ the schema migrations against the default branch.`,
 func newDeployStackApply(d deps) *cobra.Command {
 	var workspace string
 	cmd := &cobra.Command{
-		Use:   "apply",
+		Use:   applyCommand,
 		Short: "Apply the saved plan of the pull request's stack",
 		Long: `apply applies exactly the plan the guard passed. After a destroy nothing deploys (SKIP_DEPLOY is
 appended to environment.sh); else the stack's substitutions output names the pull request's

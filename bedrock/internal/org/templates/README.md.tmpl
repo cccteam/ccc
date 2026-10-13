@@ -9,9 +9,10 @@ organization without the names colliding. Modeled on
 [cccteam/tf-gcp-setup](https://github.com/cccteam/tf-gcp-setup): numbered
 layers, one identity per layer, no static credentials anywhere. The difference
 is the control plane. There is no Scalr; state lives in a Cloud Storage bucket
-in the boot project, and the layers run from a GitHub workflow in this
-repository as their own service accounts, signed in with no key: a pull
-request plans, its merge applies.
+in the boot project, and the layers run from two Cloud Build triggers in the
+boot project, whose steps live in the trigger and not in this repository, as
+their own service accounts, with no key anywhere: a pull request plans, its
+merge applies.
 
 The running log is [JOURNAL.md](JOURNAL.md). Every step that changes the organization
 gets a line there first.
@@ -20,12 +21,12 @@ gets a line there first.
 
 | Layer | Directory | Applied as | Creates |
 |---|---|---|---|
-| 0 | [`0-bootstrap/`](0-bootstrap/) | the bootstrap administrator the first time (local state, then migrated); then the workflow as `{{.Prefix}}-boot-gbl-tofu` | adopts the seeded `terraform` folder, boot project, and boot identity; the org layer identity and its org-level grants; the project-updater and state-bucket-policy custom roles; the workflow's identity pool and provider; the state bucket's grants for its two identities |
-| 1 | [`1-org/`](1-org/) | the bootstrap administrator the first time; then the workflow as `{{.Prefix}}-org-gbl-tofu` | folders `shared`, `tst`, `stg`, `prd`; the org policy baseline; Essential Contacts; the six projects; a layer identity and a plan identity per project and the two boot layers' plan identities, each with its federation binding and state bucket grants; the `secretContainerAdmin` custom role; the applications' repositories |
-| 2 | [`2-shr/`](2-shr/) | the workflow as `{{.Prefix}}-shr-gbl-tofu` | one Artifact Registry Docker repository per application, immutable tags, cleanup policies; reader for each environment's Cloud Run, writer for each application's deploy identities |
-| 2 | [`2-spn/`](2-spn/) | the workflow as `{{.Prefix}}-spn-gbl-tofu` | the shared Spanner instance `{{.Prefix}}-spn-gbl-spanner` ({{.Spanner.Config}}, 100 processing units, capped at 200); instance-level database admin grants; the Spanner entitlements of the environments on it |
-| 2 | [`2-net/`](2-net/) | the workflow as `{{.Prefix}}-net-gbl-tofu` | the global external Application Load Balancer, its address, SSL policy, managed certificate and map, the apps domain zone, and a URL map routed from `hosts`; no VPC |
-| 2 | [`2-env/`](2-env/) | the workflow as `{{.Prefix}}-<env>-gbl-tofu`, once per environment (`-var environment=`) | what every application in an environment shares: the tst Spanner instance, the Cloud Build GitHub connection and repository links, the deployment-record bucket, the team group's release approval and entitlements, the per-application apply and deploy identities with their grants |
+| 0 | [`0-bootstrap/`](0-bootstrap/) | the bootstrap administrator the first time (local state, then migrated); then the apply trigger as `{{.Prefix}}-boot-gbl-tofu` | adopts the seeded `terraform` folder, boot project, and boot identity; the org layer identity and its org-level grants; the project-updater and state-bucket-policy custom roles; the Cloud Build connection, the two runner identities and the two triggers that plan and apply the layers; the two GitHub Apps' key containers; the state bucket's grants for its two identities |
+| 1 | [`1-org/`](1-org/) | the bootstrap administrator the first time; then the apply trigger as `{{.Prefix}}-org-gbl-tofu` | folders `shared`, `tst`, `stg`, `prd`; the org policy baseline; Essential Contacts; the six projects; a layer identity and a plan identity per project and the two boot layers' plan identities, each impersonated by the trigger runner of its kind, with its state bucket grants; the `secretContainerAdmin` custom role; the applications' repositories |
+| 2 | [`2-shr/`](2-shr/) | the apply trigger as `{{.Prefix}}-shr-gbl-tofu` | one Artifact Registry Docker repository per application, immutable tags, cleanup policies; reader for each environment's Cloud Run, writer for each application's deploy identities |
+| 2 | [`2-spn/`](2-spn/) | the apply trigger as `{{.Prefix}}-spn-gbl-tofu` | the shared Spanner instance `{{.Prefix}}-spn-gbl-spanner` ({{.Spanner.Config}}, 100 processing units, capped at 200); instance-level database admin grants; the Spanner entitlements of the environments on it |
+| 2 | [`2-net/`](2-net/) | the apply trigger as `{{.Prefix}}-net-gbl-tofu` | the global external Application Load Balancer, its address, SSL policy, managed certificate and map, the apps domain zone, and a URL map routed from `hosts`; no VPC |
+| 2 | [`2-env/`](2-env/) | the apply trigger as `{{.Prefix}}-<env>-gbl-tofu`, once per environment (`-var environment=`) | what every application in an environment shares: the tst Spanner instance, the Cloud Build GitHub connection and repository links, the deployment-record bucket, the team group's release approval and entitlements, the per-application apply and deploy identities with their grants |
 | 3 | the application's own repository, `infrastructure/` (state slot `3-app/<app>/<env>` in this organization's bucket) | `{{.Prefix}}-<env>-gbl-<app>-tofu`, once per environment | the application's stack, derived from its code by bedrock: runtime identities, database, secret containers, Cloud Run services and job, load balancer backend, Cloud Build triggers; {{.ExampleApp}}'s is at {{.GithubOrganization}}/{{.ExampleApp}} |
 
 The three shared layers read `1-org`'s state and are independent of one
@@ -63,34 +64,38 @@ random four-hex suffix.{{if .ExtraLabels}} Every project and bucket carries the 
 
 ## How the layers are applied
 
-Routine changes go through pull requests. The workflow
-[`{{.WorkflowPath}}`]({{.WorkflowPath}}), rendered by bedrock like the layers,
-plans every layer a pull request changes as that layer's plan identity and
-posts the plan on the pull request; the merge applies those layers as their
-apply identities, in layer order ({{.LayerOrderProse}}), one at a time,
-stopping at the first failure.
+Routine changes go through pull requests. Two Cloud Build triggers in the
+boot project, rendered by bedrock like the layers (`0-bootstrap/cloud-build.tf`;
+`0-bootstrap/README.md`, "The Cloud Build triggers"), run them. The plan
+trigger plans every layer a pull request changes as that layer's plan
+identity and posts the plan on the pull request, one comment per layer, kept
+current across pushes; the apply trigger, on the merge, applies every layer
+changed since its last successful apply as its apply identity, in layer order
+({{.LayerOrderProse}}), one at a time, stopping at the first failure.
 
 A pull request may add an output to one layer and read it in a later one, as
 a bedrock upgrade does when `2-env` starts reading a new output of `1-org`.
 The later layer's plan cannot see the output yet: it exists once the earlier
 layer is applied, so that plan fails with tofu's "Unsupported attribute"
-error. The workflow plans the layers side by side, then judges each plan once all of
+error. The plan trigger plans the layers side by side, then judges each plan once all of
 them have finished: a plan that fails only because it reads outputs the plan
 of an earlier layer in the same pull request creates passes, and its comment
 on the pull request says it is "planned after" that layer applies. The merge
 applies the earlier layer first, so the later one reads the new output when
 its turn comes. Any other failure fails the pull request.
 
-No key exists anywhere: a run presents
-GitHub's short-lived token to the boot project's workload identity pool
-(`0-bootstrap/github.tf`), and Google answers with a token for the identity;
-a plan identity may be used from a pull request's run and an apply identity
-from the default branch alone. Run workflow on the Actions tab applies one
-layer again with no change to it, which a registration's second pass of
-`2-env` needs. An apply waits for another apply of the same layer and for
-no other layer, so where several layers go by Run workflow, start each when
-the previous has finished: GitHub keeps one apply of a layer waiting behind
-the running one, and a third that arrives cancels the one waiting. Recovery is by hand (`0-bootstrap/README.md`, "Recovery, by hand"):
+The steps a run takes are the trigger's own and never this repository's: a
+pull request changes what the steps read, never what they do. A run fetches
+the bedrock `placement.json` pins (`bedrockVersion`, moved by `bedrock
+upgrade`), checks the committed layers against the placement (`bedrock org
+check`, which also refuses a `.tf` file no render produces and any override
+file) and only then plans or applies. No key exists anywhere: the trigger's
+runner identity impersonates each layer's own identity for that layer's
+tofu, the planner the plan identities and the applier the apply identities.
+`gcloud builds triggers run` on the apply trigger applies one layer again
+with no change to it, which a registration's second pass of `2-env` needs
+(`0-bootstrap/README.md`, "The Cloud Build triggers", which also says how a
+change to the steps themselves lands one apply later). Recovery is by hand (`0-bootstrap/README.md`, "Recovery, by hand"):
 for `2-env` as a member of the environment's team group under the
 layer administrator and layer state entitlements, which grant the
 environment layer identity's roles for a short time, so the person runs the
@@ -127,47 +132,58 @@ the place it happens.
    Seed with gcloud". In a terminal, a billing administrator separately
    grants `roles/billing.user` on the billing account to the two layer
    identities; in the Billing console, the same administrator sets the spend
-   budget (`0-bootstrap/README.md`, "4. Billing grants and the budget").
-4. **`0-bootstrap`.** In a terminal, in `0-bootstrap/`, as the bootstrap
+   budget (`0-bootstrap/README.md`, "5. Billing grants and the budget").
+4. **The Cloud Build GitHub authorization.** In the boot project's Cloud
+   Build console, as the bootstrap administrator (Owner on the boot project
+   from the seed), signed in to GitHub as the machine account
+   `{{.GithubMachineAccount}}`, before the first apply of `0-bootstrap`
+   (`0-bootstrap/README.md`, "2. The Cloud Build GitHub authorization"): the
+   host connection, which installs the Google Cloud Build GitHub App on the
+   organization and stores its token in the boot project. Its installation
+   ID and the token secret's version go into `placement.json`
+   (`cloudBuildInstallationId`, `cloudBuildTokenSecretVersion`), where every
+   connection, the boot project's and each environment's, is rendered from.
+   The bedrock the triggers run goes in beside them: `bedrock upgrade`, in
+   this repository, which records the release as `bedrockVersion` and
+   `bedrockSha256` and renders.
+5. **`0-bootstrap`.** In a terminal, in `0-bootstrap/`, as the bootstrap
    administrator. The first apply runs on local state, with the backend block
-   commented out, and adopts the seeded resources through `import` blocks.
-   The seed's values go into `placement.json` (`stateBucket`,
-   `projects.boot`, `projectNumbers.boot`) and `bedrock org render` names the
-   bucket in every backend block; the state is then moved in with `tofu init
-   -migrate-state`.
-5. **`1-org`.** In a terminal, in `1-org/`, as the same person, against the
+   commented out, and adopts the seeded resources and the console's connection
+   through `import` blocks and an import. The seed's values go into
+   `placement.json` (`stateBucket`, `projects.boot`, `projectNumbers.boot`)
+   and `bedrock org render` names the bucket in every backend block; the
+   state is then moved in with `tofu init -migrate-state`. From here the plan
+   and apply triggers exist, and their steps are the trigger's own.
+6. **`1-org`.** In a terminal, in `1-org/`, as the same person, against the
    bucket directly, with their own GitHub token. Its `project_ids` and
    `project_numbers` outputs go into `placement.json` (`projects`,
    `projectNumbers`), and `bedrock org render` names every layer's identities
-   in the workflow. From here on the workflow applies every layer, these two
-   included. The creator's grants that steps 3 to 5 leave behind (Owner on
-   each project made, Folder Admin and Folder Editor on each folder, which
-   Google gives whoever creates them) are temporary: once the workflow
-   applies the layers, a hand step removes them (`1-org/README.md`,
-   "Applying"), and `bedrock org check` lists each person still holding
-   `roles/owner` on an environment project until then.
-6. **The infrastructure GitHub App** (`0-bootstrap/README.md`, "The
+   and grants each environment's Cloud Build service agent the token's read.
+   From here on the apply trigger applies every layer, these two included.
+   The creator's grants that steps 3 to 6 leave behind (Owner on each project
+   made, Folder Admin and Folder Editor on each folder, which Google gives
+   whoever creates them) are temporary: once the apply trigger applies the
+   layers, a hand step removes them (`1-org/README.md`, "Applying"), and
+   `bedrock org check` lists each person still holding `roles/owner` on an
+   environment project until then.
+7. **The infrastructure GitHub App** (`0-bootstrap/README.md`, "The
    infrastructure GitHub App"). On GitHub, as an organization owner: the app,
    its private key and its installation. Then in a terminal, in this
    repository: its App ID recorded in `placement.json`
    (`githubInfrastructureAppId`), and its key added to the boot project's
    container and pinned with `bedrock secret add github-infrastructure-key`
    and `bedrock secret pin github-infrastructure-key <version>`, which records
-   the version and renders. Until then a run of `1-org` through the workflow
-   says so and stops.
-7. **The Cloud Build GitHub App's browser authorization.** In the
-   `{{.FirstEnvironment}}` project's Cloud Build console, signed in to GitHub
-   as the machine account `{{.GithubMachineAccount}}`, before the first
-   application is registered (`2-env/README.md`, "The GitHub authorization,
-   before the first application"): its installation ID and the token
-   secret's version go into `2-env/terraform.tfvars` and through the
-   workflow. `bedrock org register` refuses the first application until both
-   are set, since the applications' triggers exist once `2-env` holds the
-   connection and nothing is built by hand before them.
-8. **The deployer app's key.** In a terminal, in this repository, per
-   environment once `2-env` has applied there: `bedrock secret add
-   github-deployer-key <env>` and `bedrock secret pin github-deployer-key
-   <env> <version>` ("The two GitHub Apps", below).
+   the version and renders. Until then a run of the triggers that plans or
+   applies `1-org` says so and stops.
+8. **The deployer app's key** (`0-bootstrap/README.md`, "The deployer GitHub
+   App's key"). In a terminal, in this repository, once `0-bootstrap` has
+   applied: its App ID recorded in `placement.json` (`githubDeployerAppId`),
+   `bedrock secret add github-deployer-key` and `bedrock secret pin
+   github-deployer-key <version>` ("The two GitHub Apps", below). Until then
+   the plans are in the runs' logs alone and the pipelines talk back through
+   nothing. `bedrock org register` refuses the first application while step
+   4's values are not recorded, since the applications' triggers exist once
+   `2-env` holds the connection and nothing is built by hand before them.
 9. **The consent screen.** In each environment project's Google Cloud
    console, before the first application's OAuth client is made there: APIs &
    Services, OAuth consent screen, with the audience **Internal**, so only the
@@ -238,26 +254,25 @@ Once, by a person:
    `githubReleaseAppSlug`; then `bedrock org render`. `1-org` names the app in
    each repository's tag ruleset, and every application's placement names the
    slug as the author of its releases.
-5. In `2-env/terraform.tfvars`: the deployer app's App ID as
-   `github_deployer_app_id`, one value for the organization.
-6. In a terminal, in this repository, per environment once `2-env` has
-   applied there and made the key's container, as a member of the
-   environment's team group under its secret operator entitlement
-   (`2-env/README.md`, "The team group"):
+5. In `placement.json`: the deployer app's App ID as `githubDeployerAppId`,
+   one value for the organization.
+6. In a terminal, in this repository, once `0-bootstrap` has applied and made
+   the key's container, as the bootstrap administrator:
 
    ```bash
-   bedrock secret add github-deployer-key <env> --from-file <the .pem file>
-   bedrock secret pin github-deployer-key <env> <version>
+   bedrock secret add github-deployer-key --from-file <the .pem file>
+   bedrock secret pin github-deployer-key <version>
    ```
 
-   `add` puts the key into `{{.Prefix}}-<env>-gbl-github-deployer-key` in the
-   environment's project and prints the version; `pin` checks that it is
-   enabled and writes its resource name into `2-env/terraform.tfvars`
-   (`github_deployer_key_secret_versions`). The pull request that carries it
-   applies `2-env`, and each application's stack passes the key to its
-   pipeline at its next apply. Delete the deployer app's `.pem` file once
-   every environment has it. Until an environment has both values, its
-   pipeline talks back through nothing.
+   `add` puts the key into `{{.DeployerKeySecret}}` in the boot project and
+   prints the version; `pin` checks that it is enabled, records it in
+   `placement.json` (`githubDeployerKeyVersion`) and renders. The pull request
+   that carries it applies `2-env` in every environment, whose output names
+   the version, and each application's stack passes the key to its pipeline
+   at its next apply; the plan trigger posts the layers' plans as the app
+   from then on. Delete the deployer app's `.pem` file once it is pinned.
+   Until both values are recorded, the pipelines talk back through nothing
+   and the plans are in the runs' logs alone.
 
 ## Deviations from tf-gcp-setup
 
@@ -265,10 +280,10 @@ Decided before writing:
 
 1. **No Scalr.** No `scalr` provider, workspaces, tags, or provider
    configurations. "Workspaces" become layers and their service accounts are
-   layer identities. The runner is a GitHub workflow in this repository,
-   signed in through one Workload Identity Federation pool in the boot
-   project as the layer's service account; no Cloud Build trigger runs a
-   layer. The service accounts and their role grants are kept.
+   layer identities. The runner is a pair of Cloud Build triggers in the boot
+   project, whose steps live in the trigger and not in this repository, each
+   impersonating the layer's service account for its tofu; no GitHub workflow
+   runs a layer. The service accounts and their role grants are kept.
 2. **GCS backend.** `backend "gcs"` in every layer, one bucket
    (`{{.Prefix}}-boot-gbl-state-<suffix>`, created by the seed) with a prefix per
    layer. The bucket name is substituted into the backend blocks once.
@@ -303,9 +318,11 @@ Consequences of the above, not separately decided:
   workspace (`gcp_region`, `allowed_contact_domains`,
   `essential_contact_emails`) are gone from that layer; `1-org` reads them
   from its own `terraform.tfvars` and defaults.
-- `roles/iam.workloadIdentityPoolAdmin` stays with the boot layer identity,
-  which makes the workflow's pool, and is dropped from the org layer
-  identity, which makes none. `roles/logging.configWriter` and
+- `roles/iam.workloadIdentityPoolAdmin` is dropped from both layer
+  identities: the triggers need no pool, and the application identities'
+  pools are 2-env's. `roles/cloudbuild.builds.editor` and
+  `roles/cloudbuild.connectionAdmin` go to the boot layer identity, which
+  makes the connection and the triggers. `roles/logging.configWriter` and
   `roles/storage.admin` are dropped from the org layer identity (no central
   logging). `roles/iam.organizationRoleAdmin` is added to it, because `1-org`
   creates custom organization roles, and `roles/resourcemanager.tagAdmin`,
@@ -322,8 +339,8 @@ Consequences of the above, not separately decided:
 1. Branch from `{{.GithubDefaultBranch}}`.
 2. Follow the naming convention.
 3. Run `tofu fmt -recursive` and `tofu validate` before committing.
-4. Open a pull request describing the change. The workflow posts each touched
-   layer's plan on it; the merge applies.
+4. Open a pull request describing the change. The plan trigger posts each
+   touched layer's plan on it; the merge applies.
 
 A few things resist deletion on purpose. Projects carry
 `deletion_policy = "PREVENT"` and a lien, and folders carry

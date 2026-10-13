@@ -21,7 +21,9 @@ import (
 
 const orgFixture = "../org/testdata/imp"
 
-// orgRepo copies the fixture organization's placement into a temporary directory.
+// orgRepo copies the fixture organization's placement into a temporary directory,
+// without its bedrock pin: the commands refuse a placement pinned to another bedrock
+// than the one running, and the tests run as the head commit.
 func orgRepo(t *testing.T) string {
 	t.Helper()
 
@@ -33,8 +35,26 @@ func orgRepo(t *testing.T) string {
 	if err := os.WriteFile(filepath.Join(dir, "placement.json"), data, 0o600); err != nil {
 		t.Fatal(err)
 	}
+	editPlacement(t, dir, func(p *org.Placement) {
+		p.BedrockVersion, p.BedrockSHA256 = "", ""
+	})
 
 	return dir
+}
+
+// editPlacement changes the organization's placement in the directory.
+func editPlacement(t *testing.T, dir string, edit func(p *org.Placement)) {
+	t.Helper()
+
+	file := filepath.Join(dir, "placement.json")
+	p, err := org.ReadPlacement(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	edit(p)
+	if err := p.Write(file); err != nil {
+		t.Fatal(err)
+	}
 }
 
 // orgDeps are the org commands' seams in tests: no cloud client answers, the owner and
@@ -86,20 +106,14 @@ func runOrg(t *testing.T, args ...string) (code int, out string) {
 	return code, out
 }
 
-// authorizeConnection sets the two connection values in 2-env's placement, as the
-// browser step's reader does before the first application is registered.
-func authorizeConnection(t *testing.T, dir string) {
+// unauthorizeConnection clears the two Cloud Build values the fixture placement
+// records, as a placement stands before the browser step in the boot project.
+func unauthorizeConnection(t *testing.T, dir string) {
 	t.Helper()
 
-	path := filepath.Join(dir, "2-env", "terraform.tfvars")
-	data, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	values := "github_app_installation_id        = 12345678\ngithub_oauth_token_secret_version = \"projects/imp-tst-gbl-core-1a2b/locations/us-central1/secrets/github-github-oauthtoken-abcdef/versions/1\"\n"
-	if err := os.WriteFile(path, append(data, []byte(values)...), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	editPlacement(t, dir, func(p *org.Placement) {
+		p.CloudBuildInstallationID, p.CloudBuildTokenSecretVersion = "", ""
+	})
 }
 
 // fakePolicyReader answers every project's IAM policy from one map; a project it lacks
@@ -135,7 +149,7 @@ func TestOrgCheckOwners(t *testing.T) {
 				}}, nil
 			},
 			wantOut: []string{
-				"tst (imp-tst-gbl-core-1a2b): user:seed@imp.example holds roles/owner, the creator's grant from the first apply of 1-org by hand; it is temporary, removed once the layers workflow applies the layers (1-org/README.md, Applying).",
+				"tst (imp-tst-gbl-core-1a2b): user:seed@imp.example holds roles/owner, the creator's grant from the first apply of 1-org by hand; it is temporary, removed once the apply trigger applies the layers (1-org/README.md, Applying).",
 				"owned file(s) match the placement",
 			},
 		},
@@ -194,7 +208,7 @@ func (*fakeKeyLister) Close() error {
 
 // TestOrgCheckAPIKeys: org check lists each API key in an environment project that
 // carries no API restriction, with the project and what to do (Firebase's browser key is
-// the layers workflow's to restrict; any other key is a person's), names none when every
+// bedrock org apply's to restrict; any other key is a person's), names none when every
 // key is restricted or there are none, and says what it does when it has no credentials;
 // none of it fails the check.
 func TestOrgCheckAPIKeys(t *testing.T) {
@@ -228,7 +242,7 @@ func TestOrgCheckAPIKeys(t *testing.T) {
 			name: "the browser key unrestricted",
 			keys: lister(map[string][]org.APIKey{prd: {{Name: "projects/" + prd + "/locations/global/keys/0f1e", DisplayName: org.FirebaseBrowserKey}}}),
 			wantOut: []string{
-				`prd (imp-prd-gbl-core-5e6f): the API key "Browser key (auto created by Firebase)" (projects/imp-prd-gbl-core-5e6f/locations/global/keys/0f1e) carries no API restriction, so it answers every API in the project that accepts an API key; the layers workflow restricts it to identitytoolkit.googleapis.com and securetoken.googleapis.com after each apply of 2-env: run the workflow for 2-env (Run workflow, on the Actions tab) to restrict it now (2-env/README.md, Identity Platform).`,
+				`prd (imp-prd-gbl-core-5e6f): the API key "Browser key (auto created by Firebase)" (projects/imp-prd-gbl-core-5e6f/locations/global/keys/0f1e) carries no API restriction, so it answers every API in the project that accepts an API key; bedrock org apply restricts it to identitytoolkit.googleapis.com and securetoken.googleapis.com after each apply of 2-env: start the apply trigger for that environment (gcloud builds triggers run imp-boot-uc1-layers-apply --region=us-central1 --project=imp-boot-gbl-core-a1b2 --branch=master --substitutions=_LAYER=2-env,_ENVIRONMENT=prd) to restrict it now (2-env/README.md, Identity Platform).`,
 				"owned file(s) match the placement",
 			},
 			absent: []string{"Every API key in the environment projects carries an API restriction."},
@@ -548,8 +562,9 @@ func TestOrgRegisterNeedsAuthorization(t *testing.T) {
 	if code, out := runOrg(t, "org", "new", dir); code != 0 {
 		t.Fatalf("org new: %d %s", code, out)
 	}
+	unauthorizeConnection(t, dir)
 	_, err := execute(orgDeps(dir), "", "org", "register", "quill", "--dir", dir)
-	want := `2-env/terraform.tfvars leaves github_app_installation_id and github_oauth_token_secret_version unset: the Cloud Build GitHub App's browser authorization comes before the first application (2-env/README.md, "The GitHub authorization, before the first application"); set both and register again`
+	want := `placement.json leaves cloudBuildInstallationId and cloudBuildTokenSecretVersion unset: the Cloud Build GitHub App's browser authorization in the boot project comes before the first application (0-bootstrap/README.md, "The Cloud Build GitHub authorization"); record both and register again`
 	if err == nil || !strings.Contains(err.Error(), want) {
 		t.Fatalf("Execute() error = %v, want %q", err, want)
 	}
@@ -580,11 +595,11 @@ func TestOrgCommands(t *testing.T) {
 			},
 			wantOut: []string{
 				"Rendered the imp foundation", "69 owned file(s)", "seeded .gitignore, 0-bootstrap/terraform.tfvars",
-				"By hand, before the layers workflow can run", "0. In the Workspace Admin console: one team group per environment, named in\n     placement.json (teamGroups",
+				"By hand, before the Cloud Build triggers can run", "0. In the Workspace Admin console: one team group per environment, named in\n     placement.json (teamGroups",
 				"its role groups (<group prefix><role>@imp.example), each created with\n     \"Who can view members\" set so that its members can",
 				"On GitHub, as an organization owner: the organization, its machine account\n     (imp-machine, an owner of the organization, named in placement.json as\n     githubMachineAccount)",
 				"the release app's two organization secrets\n     RELEASE_APP_ID and RELEASE_APP_PRIVATE_KEY, set once by an owner for all\n     repositories",
-				"In a terminal, in this repository, the apps' keys, never by hand: bedrock secret\n     add github-infrastructure-key and bedrock secret pin github-infrastructure-key\n     <version> once 0-bootstrap has made its container; bedrock secret add\n     github-deployer-key <env> and bedrock secret pin github-deployer-key <env>\n     <version> per environment once 2-env has made its container there.",
+				"In a terminal, in this repository, the apps' keys, never by hand, once 0-bootstrap\n     has made their two containers in the boot project: bedrock secret add\n     github-infrastructure-key and bedrock secret pin github-infrastructure-key\n     <version>; bedrock secret add github-deployer-key and bedrock secret pin\n     github-deployer-key <version>.",
 				"1. In a terminal, as seed@imp.example, after gcloud auth application-default login:\n     bedrock org preflight, which must find each of these roles held:\n" +
 					"       - Folder Creator (roles/resourcemanager.folderCreator), on the organization\n" +
 					"       - Project Creator (roles/resourcemanager.projectCreator), on the organization\n" +
@@ -595,23 +610,28 @@ func TestOrgCommands(t *testing.T) {
 					"       - Billing Account User (roles/billing.user), on the billing account\n" +
 					"     then the seed: the terraform folder at the organization root (123456789012)",
 				"imp-boot-gbl-tofu", "projects.boot, projectNumbers.boot",
-				"4. In a terminal, as a billing administrator of 012345-6789AB-CDEF01: roles/billing.user on\n     it for the two identities. In the Billing console, as the same administrator: the\n     spend budget on the account",
-				"5. In a terminal, in 1-org: the apply, with GITHUB_TOKEN", "a creator's grants,\n     temporary, removed by hand once the workflow applies the layers",
+				"3. In the boot project's Cloud Build console, as seed@imp.example (the bootstrap\n     administrator, Owner on the boot project from the seed), signed in to GitHub as the\n     organization's machine account (imp-machine): the Cloud Build GitHub App's authorization\n     (0-bootstrap/README.md, \"The Cloud Build GitHub authorization\"), a connection named\n     imp-boot-uc1-github in us-central1; its installation id and the token secret's version go\n     into placement.json (cloudBuildInstallationId, cloudBuildTokenSecretVersion). Then,\n     in a terminal, in this repository: bedrock upgrade, which pins the bedrock the\n     triggers run (bedrockVersion) and renders. bedrock org register refuses the first\n     application until the two values are set.",
+				"4. In a terminal, in 0-bootstrap: the apply on local state, the connection imported\n     into it first, then the migration of its state into the bucket.",
+				"5. In a terminal, as a billing administrator of 012345-6789AB-CDEF01: roles/billing.user on\n     it for the two identities. In the Billing console, as the same administrator: the\n     spend budget on the account (0-bootstrap/README.md, step 5)",
+				"6. In a terminal, in 1-org: the apply, with GITHUB_TOKEN", "a creator's grants,\n     temporary, removed by hand once the apply trigger applies the layers",
 				"7. In each environment project's Google Cloud console, before the first application's\n     OAuth client is made there: the consent screen (APIs & Services, OAuth consent\n     screen), with the audience Internal",
-				"6. In the tst project's Cloud Build console, signed in to GitHub as the organization's\n     machine account (imp-machine): the Cloud Build GitHub App's authorization", "bedrock org register refuses the first application until both are set.",
-				"the layers workflow (.github/workflows/layers.yml) applies every layer",
+				"From then on the two Cloud Build triggers in the boot project (imp-boot-uc1-layers-plan and imp-boot-uc1-layers-apply)\napply every layer, these two included: a pull request plans the layers it touches as their\nplan identities and posts the plans on it, the merge applies them as their apply\nidentities, in layer order.",
+				"Pinned bedrock " + headVersion + " in ",
 				"\nAfter the first apply of 2-net: bedrock domain check prints what the apps domain still needs, and where.\n",
 			},
 		},
 		{
-			name: "check is clean after new, the workflow among the owned files",
+			name: "check is clean after new, the triggers' file among the owned files and no workflow",
 			steps: func(t *testing.T, dir string) (int, string) {
 				t.Helper()
 				if code, out := runOrg(t, "org", "new", dir); code != 0 {
 					t.Fatalf("org new: %d %s", code, out)
 				}
-				if _, err := os.Stat(filepath.Join(dir, ".github", "workflows", "layers.yml")); err != nil {
-					t.Errorf("org new wrote no workflow: %v", err)
+				if _, err := os.Stat(filepath.Join(dir, "0-bootstrap", "cloud-build.tf")); err != nil {
+					t.Errorf("org new wrote no triggers: %v", err)
+				}
+				if _, err := os.Stat(filepath.Join(dir, ".github")); !os.IsNotExist(err) {
+					t.Errorf("org new wrote a .github directory: %v", err)
 				}
 
 				return runOrg(t, "org", "check", "--dir", dir)
@@ -625,7 +645,6 @@ func TestOrgCommands(t *testing.T) {
 				if code, out := runOrg(t, "org", "new", dir); code != 0 {
 					t.Fatalf("org new: %d %s", code, out)
 				}
-				authorizeConnection(t, dir)
 				code, out := runOrg(t, "org", "register", "quill", "--dir", dir)
 				placement, err := os.ReadFile(filepath.Join(dir, "placement.json"))
 				if err != nil {
@@ -648,14 +667,15 @@ func TestOrgCommands(t *testing.T) {
 				return code, out
 			},
 			wantOut: []string{
-				"Registered quill in", "1-org/public-invokers.auto.tfvars among them", "Register through the layers workflow, as pull requests into master",
-				"1. placement.json, 1-org/applications.auto.tfvars and 2-env/applications.auto.tfvars", "2. Run workflow (the Actions tab) with 2-env",
+				"Registered quill in", "1-org/public-invokers.auto.tfvars among them", "Register through the Cloud Build triggers, as pull requests into master",
+				"1. placement.json, 1-org/applications.auto.tfvars and 2-env/applications.auto.tfvars",
+				"2. The apply trigger by hand with 2-env, in a terminal:\n     gcloud builds triggers run imp-boot-uc1-layers-apply --region=us-central1 --project=imp-boot-gbl-core-a1b2 --branch=master --substitutions=_LAYER=2-env\n     tst and stg grant the next environment's deploy identity read on their records\n     bucket, from state the first pass did not have.",
 				"3. 1-org/public-invokers.auto.tfvars, 2-shr/applications.auto.tfvars and", "5. 2-net/applications.auto.tfvars: the hostnames",
 				"\n  6. After 2-net's apply: bedrock domain check, which passes when the apps domain resolves to its zone.\n",
 			},
 		},
 		{
-			name: "render says what the workflow still lacks",
+			name: "render says what the triggers still lack",
 			steps: func(t *testing.T, dir string) (int, string) {
 				t.Helper()
 				if code, out := runOrg(t, "org", "new", dir); code != 0 {
@@ -674,7 +694,62 @@ func TestOrgCommands(t *testing.T) {
 
 				return runOrg(t, "org", "render", "--dir", dir)
 			},
-			wantOut: []string{"69 owned file(s) written", "The layers workflow cannot run every layer yet: record projectNumbers.boot, projects.boot in placement.json and run bedrock org render."},
+			wantOut: []string{"69 owned file(s) written", "The triggers cannot run every layer yet: record projects.boot in placement.json and run bedrock org render."},
+		},
+		{
+			name: "render says what the triggers' runs still lack: the pin and the authorization",
+			steps: func(t *testing.T, dir string) (int, string) {
+				t.Helper()
+				if code, out := runOrg(t, "org", "new", dir); code != 0 {
+					t.Fatalf("org new: %d %s", code, out)
+				}
+				editPlacement(t, dir, func(p *org.Placement) {
+					p.BedrockVersion, p.BedrockSHA256 = "", ""
+					p.CloudBuildInstallationID, p.CloudBuildTokenSecretVersion = "", ""
+				})
+
+				return runOrg(t, "org", "render", "--dir", dir)
+			},
+			wantOut: []string{
+				"placement.json pins no bedrock (bedrockVersion), and the triggers' runs fetch the pinned one: run bedrock upgrade in this repository, which records the pin and renders.\n",
+				"0-bootstrap renders the Cloud Build connection and the triggers once placement.json records cloudBuildInstallationId and cloudBuildTokenSecretVersion, from the GitHub authorization in the boot project (0-bootstrap/README.md, \"The Cloud Build GitHub authorization\").\n",
+			},
+		},
+		{
+			name: "new says when the running bedrock cannot be pinned",
+			steps: func(t *testing.T, dir string) (int, string) {
+				t.Helper()
+				d := orgDeps(dir)
+				d.version = func() build {
+					return build{version: develVersion, kind: buildDevel}
+				}
+				out, err := execute(d, "", "org", "new", dir)
+				if err != nil {
+					t.Fatalf("org new error = %v; output:\n%s", err, out)
+				}
+
+				return 0, out
+			},
+			wantOut: []string{"This bedrock is (devel), which no placement can pin: ", "placement.json pins no bedrock yet, and the triggers' runs need one; bedrock upgrade in the repository records a release or an installed commit and renders with it.\n"},
+		},
+		{
+			name: "render refuses a placement pinned to another bedrock",
+			steps: func(t *testing.T, dir string) (int, string) {
+				t.Helper()
+				if code, out := runOrg(t, "org", "new", dir); code != 0 {
+					t.Fatalf("org new: %d %s", code, out)
+				}
+				editPlacement(t, dir, func(p *org.Placement) {
+					p.BedrockVersion, p.BedrockSHA256 = "v0.5.0", strings.Repeat("0", 64)
+				})
+				_, err := execute(orgDeps(dir), "", "org", "render", "--dir", dir)
+				if err == nil {
+					t.Fatal("org render ran on a placement pinned to another bedrock")
+				}
+
+				return 0, err.Error()
+			},
+			wantOut: []string{"placement.json pins bedrock v0.5.0 and this is bedrock " + headVersion + ": install the pinned one (https://github.com/cccteam/ccc/releases/tag/bedrock/v0.5.0) or move the pin (bedrock upgrade)"},
 		},
 		{
 			name: "check reports a hand edit",
@@ -695,29 +770,46 @@ func TestOrgCommands(t *testing.T) {
 				return runOrg(t, "org", "check", "--dir", dir)
 			},
 			wantCode: 1,
-			wantOut:  []string{"2-shr/registry.tf: line 1 differs", "1 of 69 owned file(s) differ"},
+			wantOut:  []string{"2-shr/registry.tf: line 1 differs", "1 finding(s) against the 69 owned file(s) the placement renders"},
 		},
 		{
-			name: "check reports a hand edit to the workflow",
+			name: "check reports the retired workflow and a .tf file added by hand; render removes the workflow",
 			steps: func(t *testing.T, dir string) (int, string) {
 				t.Helper()
 				if code, out := runOrg(t, "org", "new", dir); code != 0 {
 					t.Fatalf("org new: %d %s", code, out)
 				}
-				path := filepath.Join(dir, ".github", "workflows", "layers.yml")
-				data, err := os.ReadFile(path)
-				if err != nil {
+				workflow := filepath.Join(dir, ".github", "workflows", "layers.yml")
+				if err := os.MkdirAll(filepath.Dir(workflow), 0o750); err != nil {
 					t.Fatal(err)
 				}
-				edited := strings.Replace(string(data), "      fail-fast: true\n", "      fail-fast: false\n", 1)
-				if err := os.WriteFile(path, []byte(edited), 0o600); err != nil {
+				if err := os.WriteFile(workflow, []byte("name: layers\n"), 0o600); err != nil {
 					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(dir, "2-env", "extra.tf"), []byte("# by hand\n"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+				code, out := runOrg(t, "org", "check", "--dir", dir)
+				if code != 1 {
+					t.Errorf("org check: %d, want 1:\n%s", code, out)
+				}
+				for _, want := range []string{
+					".github/workflows/layers.yml: the layers workflow is retired: the Cloud Build triggers 0-bootstrap renders plan and apply the layers (0-bootstrap/README.md, \"The Cloud Build triggers\"); bedrock org render removes it\n",
+					"2-env/extra.tf: not rendered by bedrock: every .tf file of a layer comes from the placement, and a file added by hand would run as the layer's identity; move what it declares into the placement, or remove it\n",
+					"2 finding(s) against the 69 owned file(s) the placement renders\n",
+				} {
+					if !strings.Contains(out, want) {
+						t.Errorf("org check output lacks %q:\n%s", want, out)
+					}
+				}
+				code, out = runOrg(t, "org", "render", "--dir", dir)
+				if _, err := os.Stat(filepath.Join(dir, ".github")); !os.IsNotExist(err) {
+					t.Errorf("render left the workflow's directory: %v", err)
 				}
 
-				return runOrg(t, "org", "check", "--dir", dir)
+				return code, out
 			},
-			wantCode: 1,
-			wantOut:  []string{".github/workflows/layers.yml: line ", "  want:       fail-fast: true", "  got:        fail-fast: false", "1 of 69 owned file(s) differ"},
+			wantOut: []string{"69 owned file(s) written", "Removed .github/workflows/layers.yml: retired; the Cloud Build triggers 0-bootstrap renders plan and apply the layers now.\n"},
 		},
 		{
 			name: "render keeps the seeded values",
@@ -844,7 +936,9 @@ func TestOrgRegisterPlacement(t *testing.T) {
 			if code, out := runOrg(t, "org", "new", dir); code != 0 {
 				t.Fatalf("org new: %d %s", code, out)
 			}
-			authorizeConnection(t, dir)
+			editPlacement(t, dir, func(p *org.Placement) {
+				p.BedrockVersion, p.BedrockSHA256 = "", ""
+			})
 			orgFile := filepath.Join(dir, "placement.json")
 			if tt.edit != nil {
 				p, err := org.ReadPlacement(orgFile)
@@ -974,7 +1068,6 @@ func TestOrgRegisterThenRender(t *testing.T) {
 			if code, out := runOrg(t, "org", "new", dir); code != 0 {
 				t.Fatalf("org new: %d %s", code, out)
 			}
-			authorizeConnection(t, dir)
 			orgFile := filepath.Join(dir, "placement.json")
 			p, err := org.ReadPlacement(orgFile)
 			if err != nil {

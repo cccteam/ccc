@@ -1,32 +1,33 @@
 # ---------------------------------------------------------------------------
-# The layers workflow's identities
+# The triggers' reach, and the boot layers' plan identities
 #
 # Every layer is planned on a pull request as its plan identity and applied on
-# the merge as its apply identity by .github/workflows/layers.yml, signed in through the
-# boot project's workload identity pool (0-bootstrap/github.tf) with no key.
-# This layer creates the identities of the six project layers
-# (service-accounts.tf) and, here, the plan identities of the two boot layers,
-# which 0-bootstrap cannot make for itself: its own identity exists before it,
-# and a plan of either layer as an apply identity would run a pull request's
-# code with the power to apply. Until this layer's first apply, a pull request
-# that touches 0-bootstrap or 1-org gets no plan.
+# a push to {{.GithubDefaultBranch}} as its apply identity by the two Cloud
+# Build triggers 0-bootstrap renders (0-bootstrap/cloud-build.tf): the plan
+# trigger's run impersonates the plan identity for that layer's tofu, the
+# apply trigger's run the apply identity. This layer creates the identities of
+# the six project layers (service-accounts.tf) and, here, the plan identities
+# of the two boot layers, which 0-bootstrap cannot make for itself: its own
+# identity exists before it, and a plan of either layer as an apply identity
+# would run a pull request's code with the power to apply. Until this layer's
+# first apply, a pull request that touches 0-bootstrap or 1-org gets no plan.
 #
-# For every identity it creates, this layer makes the federation binding (a
-# plan identity admits a pull request's run, an apply identity a run on the
-# default branch alone) and the state bucket's grants: the layer's own prefix,
-# the upstream prefixes it reads, and the list. 0-bootstrap makes the same
-# for the two identities it owns. IAM refuses a binding for a service account
-# that does not exist, which is why each layer grants for the identities it
-# creates, and why the environment layer identities receive the bucket's
-# policy authority here: 2-env grants the application identities it creates
-# their slots (2-env/identities.tf).
+# For every identity it creates, this layer lets the runner of its kind
+# impersonate it (roles/iam.serviceAccountTokenCreator: the planner on a plan
+# identity, the applier on an apply identity) and makes the state bucket's
+# grants: the layer's own prefix, the upstream prefixes it reads, and the
+# list. 0-bootstrap makes the same for the two identities it owns. IAM refuses
+# a binding for a service account that does not exist, which is why each
+# layer grants for the identities it creates, and why the environment layer
+# identities receive the bucket's policy authority here: 2-env grants the
+# application identities it creates their slots (2-env/identities.tf). The
+# environment layer identities also administer the deployer GitHub App's key
+# container in the boot project here, so 2-env can grant the applications'
+# identities its read.
 # ---------------------------------------------------------------------------
 
 locals {
   boot = data.terraform_remote_state.boot.outputs
-
-  workflow_plan  = "principalSet://iam.googleapis.com/${local.boot.github_pool_name}/attribute.purpose/plan"
-  workflow_apply = "principalSet://iam.googleapis.com/${local.boot.github_pool_name}/attribute.purpose/apply"
 
   # The two boot layers' plan identities, in the boot project, named after
   # their layers (boot, org), with the state prefixes each one reads.
@@ -92,31 +93,75 @@ resource "google_secret_manager_secret_iam_member" "org_plan_infrastructure_key"
 }
 
 # ---------------------------------------------------------------------------
-# Federation bindings: who may become each identity
+# Who may become each identity: the trigger runners of its kind
 # ---------------------------------------------------------------------------
 
-resource "google_service_account_iam_member" "tofu_workflow" {
+resource "google_service_account_iam_member" "tofu_applier" {
   for_each = local.layers
 
   service_account_id = google_service_account.tofu[each.key].name
-  role               = "roles/iam.workloadIdentityUser"
-  member             = local.workflow_apply
+  role               = "roles/iam.serviceAccountTokenCreator"
+  member             = local.boot.applier_member
 }
 
-resource "google_service_account_iam_member" "plan_workflow" {
+resource "google_service_account_iam_member" "plan_planner" {
   for_each = local.layers
 
   service_account_id = google_service_account.plan[each.key].name
-  role               = "roles/iam.workloadIdentityUser"
-  member             = local.workflow_plan
+  role               = "roles/iam.serviceAccountTokenCreator"
+  member             = local.boot.planner_member
 }
 
-resource "google_service_account_iam_member" "boot_plan_workflow" {
+resource "google_service_account_iam_member" "boot_plan_planner" {
   for_each = local.boot_plans
 
   service_account_id = google_service_account.boot_plan[each.key].name
-  role               = "roles/iam.workloadIdentityUser"
-  member             = local.workflow_plan
+  role               = "roles/iam.serviceAccountTokenCreator"
+  member             = local.boot.planner_member
+}
+
+# The federation bindings an earlier bedrock made for the layers workflow are
+# retired with its pool: taken out of the state and destroyed.
+removed {
+  from = google_service_account_iam_member.tofu_workflow
+
+  lifecycle {
+    destroy = true
+  }
+}
+
+removed {
+  from = google_service_account_iam_member.plan_workflow
+
+  lifecycle {
+    destroy = true
+  }
+}
+
+removed {
+  from = google_service_account_iam_member.boot_plan_workflow
+
+  lifecycle {
+    destroy = true
+  }
+}
+
+# ---------------------------------------------------------------------------
+# The deployer GitHub App's key container
+#
+# The environment layer identities administer the container's policy
+# (secretContainerAdmin: the policy and the container's lifecycle, never a
+# version's payload), so 2-env can grant each application's identities the
+# read of the pinned version its output names.
+# ---------------------------------------------------------------------------
+
+resource "google_secret_manager_secret_iam_member" "environment_tofu_deployer_key" {
+  for_each = local.environment_layers
+
+  project   = var.boot_project_id
+  secret_id = local.boot.github_deployer_key_secret
+  role      = google_organization_iam_custom_role.secret_container_admin.id
+  member    = google_service_account.tofu[each.key].member
 }
 
 # ---------------------------------------------------------------------------

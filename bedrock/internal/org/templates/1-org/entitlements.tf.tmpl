@@ -9,7 +9,7 @@
 # quota project are grants in the boot project, which an entitlement on the
 # environment project cannot reach (an entitlement grants on one project), so
 # each environment has a second entitlement, declared here, where the
-# identity's slot is made (workflow.tf) and from the same prefixes, so the
+# identity's slot is made (runners.tf) and from the same prefixes, so the
 # two cannot drift. The person asks for both, for the same time; the longest
 # grant is the layer administrator's (placement.json, entitlementDurations).
 # A request takes a justification and, in the approval environments, one
@@ -35,7 +35,7 @@ locals {
   state_bucket_name = "projects/_/buckets/${var.state_bucket}"
 
   # What the environment layer identity holds on the state bucket and the boot
-  # project (workflow.tf, service-accounts.tf), as bindings on the boot
+  # project (runners.tf, service-accounts.tf), as bindings on the boot
   # project: a binding there reaches the bucket, and a condition on the
   # resource's name bounds it. The bucket's own name admits the list and the
   # read of the bucket (a list is a request on the bucket) and its policy,

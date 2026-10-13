@@ -19,10 +19,11 @@
 # Initializing it makes Firebase create an API key in the project with no
 # restriction, "Browser key (auto created by Firebase)". No resource here
 # declares it (OpenTofu adopts a key only by the id Firebase assigns it, and
-# the provider finds no key by its name): the layers workflow restricts every
+# the provider finds no key by its name): bedrock org apply restricts every
 # key of that name to the two sign-in APIs the applications' keys admit after
-# each apply of this layer, and bedrock org check names any key in the project
-# left without an API restriction (README.md, Identity Platform).
+# each apply of this layer, as this layer's identity, and bedrock org check
+# names any key in the project left without an API restriction
+# (README.md, Identity Platform).
 # ---------------------------------------------------------------------------
 
 resource "google_identity_platform_config" "project" {

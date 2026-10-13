@@ -108,6 +108,7 @@ var (
 	contentsRE  = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/contents/(.+)$`)
 	issueRE     = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/issues/(\d+)$`)
 	commentsRE  = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/issues/(\d+)/comments$`)
+	commentRE   = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/issues/comments/(\d+)$`)
 	releaseRE   = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/releases/tags/(.+)$`)
 	pullRE      = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/pulls/(\d+)$`)
 	pullsRE     = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/pulls$`)
@@ -230,6 +231,10 @@ var routes = []route{
 	{commentsRE, func(s *Server, w http.ResponseWriter, r *http.Request, m []string) {
 		number, _ := strconv.Atoi(m[3])
 		s.comments(w, r, m[1]+"/"+m[2], number)
+	}},
+	{commentRE, func(s *Server, w http.ResponseWriter, r *http.Request, m []string) {
+		id, _ := strconv.ParseInt(m[3], 10, 64)
+		s.updateComment(w, r, m[1]+"/"+m[2], id)
 	}},
 	{releaseRE, func(s *Server, w http.ResponseWriter, _ *http.Request, m []string) {
 		s.release(w, m[1]+"/"+m[2], m[3])
@@ -645,6 +650,38 @@ func (s *Server) comments(w http.ResponseWriter, r *http.Request, key string, nu
 	comments := make([]github.Comment, 0, end-start)
 	comments = append(comments, all[start:end]...)
 	reply(w, http.StatusOK, comments)
+}
+
+// updateComment replaces a comment's body by its id (PATCH), or answers 404.
+func (s *Server) updateComment(w http.ResponseWriter, r *http.Request, key string, id int64) {
+	repo, ok := s.repo(w, key)
+	if !ok {
+		return
+	}
+	if r.Method != http.MethodPatch {
+		reply(w, http.StatusMethodNotAllowed, map[string]string{messageKey: "PATCH only"})
+
+		return
+	}
+	var in struct {
+		Body string `json:"body"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil || in.Body == "" {
+		reply(w, http.StatusUnprocessableEntity, map[string]string{messageKey: "body is required"})
+
+		return
+	}
+	for number, comments := range repo.Comments {
+		for i, c := range comments {
+			if c.ID == id {
+				repo.Comments[number][i].Body = in.Body
+				reply(w, http.StatusOK, repo.Comments[number][i])
+
+				return
+			}
+		}
+	}
+	reply(w, http.StatusNotFound, map[string]string{messageKey: notFound})
 }
 
 // release answers the release a tag belongs to, or 404.

@@ -28,9 +28,9 @@ terraform {
   }
 }
 
-# 0-bootstrap's outputs: the layers workflow's identity pool, the bucket policy
-# role and the key container, which this layer binds and grants with
-# (workflow.tf).
+# 0-bootstrap's outputs: the triggers' runner identities, the bucket policy
+# role and the key containers, which this layer grants on and with
+# (runners.tf).
 data "terraform_remote_state" "boot" {
   backend = "gcs"
   config = {
@@ -53,9 +53,10 @@ provider "google-beta" {
 }
 
 # The applications' repositories (github.tf) are configured with GITHUB_TOKEN:
-# in the layers workflow an installation token of the infrastructure GitHub
-# App, minted in the run (0-bootstrap/github.tf); by hand, the token of an
-# owner of the organization (gh auth token). Nothing in this layer holds it.
+# in a run of the triggers an installation token of the infrastructure GitHub
+# App, minted in the run from the key the boot project holds
+# (0-bootstrap/github.tf); by hand, the token of an owner of the organization
+# (gh auth token). Nothing in this layer holds it.
 provider "github" {
   owner = var.github_organization
 }

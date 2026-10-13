@@ -27,12 +27,12 @@ output "github_identity_provider" {
 }
 
 output "connection_id" {
-  description = "Full resource name of the Cloud Build GitHub connection in this environment (projects/.../locations/.../connections/...); null until the GitHub values are set."
+  description = "Full resource name of the Cloud Build GitHub connection in this environment (projects/.../locations/.../connections/...); null until placement.json records the authorization."
   value       = one(google_cloudbuildv2_connection.github[*].id)
 }
 
 output "connection_name" {
-  description = "Short name of the Cloud Build GitHub connection; null until the GitHub values are set."
+  description = "Short name of the Cloud Build GitHub connection; null until placement.json records the authorization."
   value       = one(google_cloudbuildv2_connection.github[*].name)
 }
 
@@ -96,11 +96,11 @@ output "pull_request_backend_id" {
 }
 
 output "github_deployer_app_id" {
-  description = "App ID of the deployer GitHub App the pipeline talks back on a pull request as; null when unset."
-  value       = var.github_deployer_app_id
+  description = "App ID of the deployer GitHub App the pipeline talks back on a pull request as, from placement.json; null until recorded."
+  value       = local.github_deployer_app_id
 }
 
 output "github_deployer_key_secret_version" {
-  description = "Resource name of the pinned Secret Manager version holding the deployer app's private key in this environment's container; null until an operator has added it and pinned it here."
-  value       = lookup(var.github_deployer_key_secret_versions, var.environment, null)
+  description = "Resource name of the pinned Secret Manager version holding the deployer app's private key, in the container 0-bootstrap creates in the boot project, from placement.json (githubDeployerKeyVersion); null until pinned."
+  value       = local.github_deployer_key_secret_version
 }

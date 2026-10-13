@@ -42,8 +42,8 @@ func newSecret(d deps) *cobra.Command {
 that reads it (add), and that pin, in an application layer's placement, the version of a
 secret an environment runs (pin); the layer's cloud-run.tf mounts that version. In the
 organization's infrastructure repository the same two commands take one of the
-organization's secrets instead, the private keys of its GitHub Apps: github-infrastructure-key,
-in the boot project, and github-deployer-key, in each environment's project.`,
+organization's secrets instead, the private keys of its GitHub Apps: github-infrastructure-key
+and github-deployer-key, both in the boot project.`,
 	}
 	cmd.AddCommand(newSecretAdd(d))
 	cmd.AddCommand(newSecretPin(d))
@@ -99,14 +99,16 @@ absent. A variable already pinned to the version leaves the file as it is.
 In the organization's infrastructure repository (the one whose placement.json at the root
 names the organization, organizationId), pin takes one of the organization's secrets and a
 version's number, never latest. pin github-infrastructure-key <version> writes
-githubInfrastructureKeyVersion in placement.json and runs org render, which writes it into
-the layers workflow; the container is <prefix>-boot-gbl-github-infrastructure-key in the
-boot project (projects.boot). pin github-deployer-key <env> <version> writes the version's
-resource name under <env> in 2-env/terraform.tfvars (github_deployer_key_secret_versions);
-the container is <prefix>-<env>-gbl-github-deployer-key in the environment's project
-(projects.<env>). --project and --container override; --app and --layer are refused, and so
-is an application's [env] [VARIABLE]. Secret Manager is asked first, as above, and the pull
-request carrying the change goes through the layers workflow.`,
+githubInfrastructureKeyVersion in placement.json and runs org render; from the merge on,
+the Cloud Build triggers' runs mint 1-org's GitHub token from that version. The container
+is <prefix>-boot-gbl-github-infrastructure-key in the boot project (projects.boot). pin
+github-deployer-key <version> writes githubDeployerKeyVersion the same way; the plan
+trigger's runs post the layers' plans as the deployer app from that version, and 2-env's
+outputs carry it to the applications' pipelines. The container is
+<prefix>-boot-gbl-github-deployer-key, in the boot project too. --project and --container
+override; --app and --layer are refused, and so is an application's [env] [VARIABLE].
+Secret Manager is asked first, as above, and the pull request carrying the change goes
+through the Cloud Build triggers.`,
 		Args: cobra.MaximumNArgs(3),
 		ValidArgsFunction: func(cmd *cobra.Command, args []string, _ string) ([]string, cobra.ShellCompDirective) {
 			if _, p, err := d.orgRepository(f.dir); err == nil && p != nil {
@@ -431,16 +433,13 @@ team-group.tf) and holds the role for the time asked.
 In the organization's infrastructure repository (the one whose placement.json at the root
 names the organization, organizationId), add takes one of the organization's secrets in
 place of [env] [VARIABLE]: github-infrastructure-key, the infrastructure GitHub App's private
-key, into <prefix>-boot-gbl-github-infrastructure-key in the boot project (projects.boot),
-or github-deployer-key <env>, the deployer GitHub App's private key, into
-<prefix>-<env>-gbl-github-deployer-key in the environment's project (projects.<env>).
---project and --container override; --app and --layer are refused, and so is an
-application's [env] [VARIABLE]. The value is read as above; a .pem file is stored as given.
-The container is the layer's own resource (0-bootstrap's, or 2-env's in the environment),
-so a project without it is refused: apply the layer first. Adding to the boot project's
-container is the bootstrap administrator's; adding to an environment's is the secret
-operator entitlement's, as for an application's secret. The command prints the pin to
-make.`,
+key, into <prefix>-boot-gbl-github-infrastructure-key, or github-deployer-key, the deployer
+GitHub App's private key, into <prefix>-boot-gbl-github-deployer-key, both in the boot
+project (projects.boot). --project and --container override; --app and --layer are refused,
+and so is an application's [env] [VARIABLE]. The value is read as above; a .pem file is
+stored as given. The containers are 0-bootstrap's own resources, so a project without them
+is refused: apply the layer first. Adding to them is the bootstrap administrator's. The
+command prints the pin to make.`,
 		Args: cobra.MaximumNArgs(2),
 		ValidArgsFunction: func(cmd *cobra.Command, args []string, _ string) ([]string, cobra.ShellCompDirective) {
 			if _, p, err := d.orgRepository(f.dir); err == nil && p != nil {
