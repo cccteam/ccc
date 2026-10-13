@@ -15,13 +15,20 @@
 # against a hotfix line previews each environment's release check from its
 # live record), the next environment's deploy identities read them (the
 # record gate), and the environment's team group reads them (a person reads
-# a record through the group, never through a project role). Cloud Storage's
-# default grants to the project's basic roles (projectOwner, projectEditor
-# and projectViewer) are not listed, so they are removed, and a grant added
-# on the bucket by hand is removed by the next apply; a grant added on the
-# project is not. This layer's own identity reaches the bucket through its
-# storage admin, which 1-org bounds to this bucket's name; the applications'
-# apply identities, bounded to their own buckets (identities.tf), do not.
+# a record through the group, never through a project role). In tst the
+# application stacks' pull-request stack jobs, which run as the applications'
+# apply identities, write what they applied for the preview build under
+# <app>/stacks/, one object per pull request and commit, written again on a
+# new /gcbrun comment (objectUser, under a condition on the prefix), and the
+# deploy identities' creator binding stops at that prefix, so a preview build,
+# which runs a file the pull request edits, can only read what the job wrote.
+# Cloud Storage's default grants to the project's basic roles (projectOwner,
+# projectEditor and projectViewer) are not listed, so they are removed, and a
+# grant added on the bucket by hand is removed by the next apply; a grant
+# added on the project is not. This layer's own identity reaches the bucket
+# through its storage admin, which 1-org bounds to this bucket's name; the
+# applications' apply identities, bounded to their own buckets
+# (identities.tf), reach it under <app>/stacks/ alone, and in tst alone.
 #
 # The name carries a random four-hex suffix because bucket names are global
 # and permanent, as with the state bucket. US multi-region, since nothing
@@ -79,12 +86,32 @@ locals {
     for app in var.applications :
     "serviceAccount:${local.prefix}-${local.previous_environment}-gbl-${app}-deploy@${local.org.project_ids[local.previous_environment]}.iam.gserviceaccount.com"
   ]
-  records_bindings = [
-    for b in [
-      { role = "roles/storage.objectCreator", members = local.records_deploy_members },
-      { role = "roles/storage.objectViewer", members = concat(local.records_deploy_members, local.records_plan_members, local.records_ops_members, local.records_lower_ops_members, local.records_rehearsal_members, values(local.next_deploy_members), [local.team_group]) },
-    ] : b if length(b.members) > 0
+  # The stack jobs' outputs, tst only: the prefix each application's apply
+  # identity writes under, which the deploy identities' creator binding
+  # excludes.
+  records_stack_prefix = local.is_tst ? { for app in var.applications : app => "projects/_/buckets/${google_storage_bucket.records.name}/objects/${app}/stacks/" } : {}
+  records_creator_condition = length(local.records_stack_prefix) == 0 ? null : {
+    title       = "${local.name}-records-not-stacks"
+    description = "Every object but the stack jobs' outputs, which the applications' apply identities write."
+    expression  = join(" && ", [for app, prefix in local.records_stack_prefix : "!resource.name.startsWith(\"${prefix}\")"])
+  }
+  records_stack_bindings = [
+    for app, prefix in local.records_stack_prefix : {
+      role    = "roles/storage.objectUser"
+      members = [google_service_account.apply[app].member]
+      condition = {
+        title       = "${local.name}-${app}-stacks"
+        description = "The stack jobs' outputs of the application's pull requests, which its apply identity writes."
+        expression  = "resource.name.startsWith(\"${prefix}\")"
+      }
+    }
   ]
+  records_bindings = concat([
+    for b in [
+      { role = "roles/storage.objectCreator", members = local.records_deploy_members, condition = local.records_creator_condition },
+      { role = "roles/storage.objectViewer", members = concat(local.records_deploy_members, local.records_plan_members, local.records_ops_members, local.records_lower_ops_members, local.records_rehearsal_members, values(local.next_deploy_members), [local.team_group]), condition = null },
+    ] : b if length(b.members) > 0
+  ], local.records_stack_bindings)
 }
 
 data "google_iam_policy" "records" {
@@ -93,6 +120,15 @@ data "google_iam_policy" "records" {
     content {
       role    = binding.value.role
       members = binding.value.members
+
+      dynamic "condition" {
+        for_each = binding.value.condition == null ? [] : [binding.value.condition]
+        content {
+          title       = condition.value.title
+          description = condition.value.description
+          expression  = condition.value.expression
+        }
+      }
     }
   }
 }

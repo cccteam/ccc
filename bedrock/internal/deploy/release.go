@@ -101,8 +101,8 @@ func splitRepo(fullName string) (owner, repo string, err error) {
 // release turns away the one this environment runs, read from the release file in the
 // checkout's router package (routerDir) and the environment's newest live record, and
 // whether the run can wait for the window; what can never proceed is refused here,
-// before anything is built. A pull-request build has no release to validate, and
-// previews the window instead. A tag build first says which bedrock runs it (bedrock, the
+// before anything is built. A pull-request build has no release to validate, and says
+// so; its previews are the check-and-plan job's. A tag build first says which bedrock runs it (bedrock, the
 // running version), and whether that is a commit pin: a release may be deployed by a
 // bedrock built from an unreleased commit, and the log says so rather than refusing it.
 func ValidateRelease(ctx context.Context, clients *Clients, w Workspace, bedrock, routerDir string, out io.Writer) error {
@@ -121,17 +121,7 @@ func ValidateRelease(ctx context.Context, clients *Clients, w Workspace, bedrock
 	}
 	subs := build.Substitutions
 	if subs[tagSub] == "" {
-		if subs[prNumberSub] != "" && hotfixBranchRE.MatchString(subs[baseBranchSub]) {
-			if err := hotfixPreview(ctx, clients.StorageAs, subs, w, out); err != nil {
-				return err
-			}
-		}
-		if subs[prNumberSub] != "" {
-			if err := windowPreview(ctx, clients.StorageAs, w, subs, routerDir, out); err != nil {
-				return err
-			}
-		}
-		fmt.Fprintln(out, "Pull-request build: no release to validate.")
+		fmt.Fprintln(out, "Pull-request build: no release to validate. The hotfix and window previews are the stack's check trigger's (deploy plan-environments), on every push to the pull request.")
 
 		return nil
 	}

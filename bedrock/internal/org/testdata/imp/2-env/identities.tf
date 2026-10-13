@@ -292,30 +292,20 @@ resource "google_storage_bucket_iam_member" "apply_state_upstream" {
 
 # The deploy identity may act as the apply identity: a release's tag build
 # applies the environment's application stack (plan, tests, apply, as the
-# apply identity) after the image build and before the migrations, and in tst
-# the pull-request build applies the application's pull-request stack (its own
-# state prefix, short names) before it deploys into it, and destroys it on
-# /gcbrun down or when the pull request closes. The deploy identity itself
-# never applies: everything that touches infrastructure runs as the apply
-# identity.
+# apply identity) after the image build and before the migrations, from the
+# pipeline file. A pull request's own stack is the stack's pr-stack trigger's
+# (tst), which runs as the apply identity itself, from steps a pull request
+# cannot edit, so this grant serves the tag build alone; the deploy identity
+# itself never applies: everything that touches infrastructure runs as the
+# apply identity. In tst the apply identity also runs the stack's check
+# trigger and its sweep: Cloud Scheduler runs the sweep trigger as the apply
+# identity, which may run a trigger whose builds run as itself through the
+# roles it holds on the project (Cloud Build editor, Service Account User).
 resource "google_service_account_iam_member" "deploy_impersonates_apply" {
   for_each = local.apps
 
   service_account_id = google_service_account.apply[each.key].name
   role               = "roles/iam.serviceAccountTokenCreator"
-  member             = google_service_account.deploy[each.key].member
-}
-
-# In tst only: the deploy identity may act as itself. Cloud Scheduler runs the
-# application's sweep trigger (tst only) as the deploy identity, and running a
-# trigger whose builds run as a service account needs iam.serviceAccounts.actAs
-# on that account, which no builder role carries. Without it every scheduled
-# sweep was refused (PERMISSION_DENIED, from the first one on 2026-09-27).
-resource "google_service_account_iam_member" "deploy_runs_sweep" {
-  for_each = local.is_tst ? local.apps : toset([])
-
-  service_account_id = google_service_account.deploy[each.key].name
-  role               = "roles/iam.serviceAccountUser"
   member             = google_service_account.deploy[each.key].member
 }
 
@@ -336,8 +326,12 @@ resource "google_service_account_iam_member" "deploy_runs_sweep" {
 # bucket, the list and a read of
 # the application's own state prefix and of the upstream states, the same
 # prefixes the apply identity reads, and no write (the plan runs without the
-# state lock). tst's deploy identity of the same application may impersonate
-# it, since tst's Cloud Build runs the pull-request builds; nothing else may.
+# state lock). tst's apply identity of the same application may impersonate
+# it, since the stack's check trigger in tst plans every environment's stack
+# on a pull request as that environment's plan identity, and that trigger
+# runs as the apply identity; nothing else may, the deploy identity (which
+# runs the pull request's own build from a file the pull request edits)
+# least of all.
 # ---------------------------------------------------------------------------
 
 resource "google_project_iam_member" "plan" {
@@ -383,8 +377,8 @@ resource "google_storage_bucket_iam_member" "plan_state_read" {
   }
 }
 
-resource "google_service_account_iam_member" "tst_deploy_impersonates_plan" {
-  for_each = local.tst_deploy_members
+resource "google_service_account_iam_member" "tst_apply_impersonates_plan" {
+  for_each = local.tst_apply_members
 
   service_account_id = google_service_account.plan[each.key].name
   role               = "roles/iam.serviceAccountTokenCreator"

@@ -43,21 +43,21 @@ func newUpgrade(d deps) *cobra.Command {
 		Use:   upgradeCommand + " [version|commit|branch] [--app <dir>] [--dir <dir>]",
 		Short: "Move the application to a bedrock release or a pushed commit",
 		Long: `upgrade moves the application's bedrock pin in placement.json (bedrockVersion, and for a release
-bedrockSha256), which its pipeline and its infrastructure workflow run. In the organization's
+bedrockSha256), which its pipeline and its stack's triggers run. In the organization's
 infrastructure repository (the one whose placement.json at the root names the organization,
 organizationId) it moves the organization's pin instead, which the Cloud Build triggers' runs
 fetch, and renders the layers with it (bedrock org render). The pin is one of two kinds.
 
 A release: the version given (v0.4.0), else the latest release; a pre-release is moved to by name.
 The checksum of its linux/amd64 binary is read from the release's checksums.txt, never typed, and
-the pipeline and the infrastructure check download that binary and verify it against the checksum.
+the pipeline and the stack's triggers download that binary and verify it against the checksum.
 The release is fetched for this machine (into the user's cache directory, verified against the
 same file) to render with.
 
 A commit pin: a commit of github.com/cccteam/ccc (a full or abbreviated hash), a branch (its head
 commit, read from the GitHub API) or the pseudo-version Go gives a commit. The Go module proxy
 names its version (v0.0.0-lab.1.0.20260928222237-58b211dce544); the placement holds that version
-and no checksum, and the pipeline and the infrastructure check build it with go install, which
+and no checksum, and the pipeline and the stack's triggers build it with go install, which
 verifies it against Go's checksum database. The commit must be pushed first: the proxy knows only
 pushed commits, and remembers for about 30 minutes that it did not know one asked about too soon.
 A commit a release tag names moves to that release. A commit named by its hash or its
@@ -67,7 +67,7 @@ commit is built with go install into the user's cache directory to render with.
 
 Either way the stack and the pipeline are then rendered with that bedrock, so the committed files
 come from the bedrock the pin names. Commit placement.json with the rendered files: from that
-commit the pipeline's first step and the infrastructure check get the pinned bedrock, and every
+commit the pipeline's first step and the stack's triggers get the pinned bedrock, and every
 bedrock deploy step runs it. The pin is the one place a bedrock version appears in the
 application.
 
@@ -152,7 +152,7 @@ func appTarget(appDir, dir, placement string) (*upgradeTarget, error) {
 			return derive.WritePlacement(placement, p)
 		},
 		render: []string{renderCommand, appOption, appDir, outOption, dir, placementOption, placement},
-		runner: "the pipeline and the infrastructure check",
+		runner: "the pipeline and the stack's triggers",
 		builds: "the pipeline builds it",
 	}, nil
 }

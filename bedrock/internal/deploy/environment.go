@@ -150,6 +150,23 @@ type Build struct {
 	// run knows who approved it and writes them into the record. Nil where none is
 	// required.
 	Approval *BuildApproval `json:"approval,omitempty"`
+	// ServiceAccount is the identity the build runs as (projects/<p>/serviceAccounts/
+	// <email>): a trigger-held job runs as the apply identity and drives tofu as itself,
+	// where the pipeline's deploy identity impersonates it.
+	ServiceAccount string `json:"serviceAccount,omitempty"`
+	// Steps are the build's steps as Cloud Build describes them: a trigger-held job reads
+	// their ids to say when it runs under an older bedrock's steps.
+	Steps []BuildStep `json:"steps,omitempty"`
+}
+
+// BuildStep is one step of a build as Cloud Build describes it, by its id.
+type BuildStep struct {
+	ID string `json:"id,omitempty"`
+}
+
+// runsAs reports whether the build runs as the identity, by its email.
+func (b *Build) runsAs(email string) bool {
+	return email != "" && strings.HasSuffix(b.ServiceAccount, "/serviceAccounts/"+email)
 }
 
 // BuildApproval is a build's approval: its state (PENDING, APPROVED, REJECTED) and, once

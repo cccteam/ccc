@@ -398,7 +398,7 @@ func (d deps) model(appDir, placement, stackDir string) (*derive.Model, error) {
 
 // pinned refuses a placement that pins no bedrock, and one that pins another bedrock
 // than the one running when that one is held to its pin (a release, or a commit installed
-// with go install): the pipeline and the infrastructure check run the pinned one, so the
+// with go install): the pipeline and the triggers run the pinned one, so the
 // committed files must come from it. A build from a checkout, at any commit, and (devel)
 // are nobody's pin and render any pin.
 func (d deps) pinned(p *derive.Placement, placement string) error {

@@ -96,7 +96,11 @@ and a `shared_vpc_id` that is null.
   role: `roles/storage.objectCreator` for the environment's deploy
   identities, and `roles/storage.objectViewer` for those deploy identities,
   the environment's application plan identities (the hotfix preview reads
-  the live record), the environment's operations identities (a rollback
+  the live record), in tst `roles/storage.objectUser` for each application's
+  apply identity under `<app>/stacks/` alone (the stack jobs' outputs, one
+  object per pull request and commit, written again on each `/gcbrun`
+  comment), where the deploy identities' creator binding stops, so a preview
+  build only reads what the job wrote; the environment's operations identities (a rollback
   reads what is live and what it returns to), in production the lower
   environments' operations identities too (a restore from production's
   backup reads production's live release), the next environment's deploy
@@ -190,8 +194,15 @@ stack reads: `1-org/`, every `2-env/<env>/` (the plan identities a
 pull-request build impersonates, the previous environment's records bucket),
 `2-shr/`. The deploy identity of the same application may impersonate it
 (`roles/iam.serviceAccountTokenCreator` on the account): a release's tag build
-applies the environment's stack as it, and in tst the pull-request build
-applies the pull request's stack as it.
+applies the environment's stack as it. In tst the application stack's own
+triggers run as this identity (the check trigger on every push to a pull
+request, the pull-request stack trigger on the `/gcbrun` comment, and the
+sweep), so there it also holds `roles/iam.serviceAccountTokenCreator` on
+every environment's plan identity (granted where that identity lives, from
+tst's `2-env` state), `roles/cloudbuild.readTokenAccessor` on the Cloud Build
+connection, `roles/secretmanager.secretAccessor` on the deployer GitHub App's
+key container in the boot project, and `roles/storage.objectUser` under
+`<app>/stacks/` in the records bucket.
 
 ### Application plan identity `imp-<env>-gbl-<app>-plan`
 
@@ -212,17 +223,17 @@ refreshed from, a bucket's and a queue's among them) and
 states the apply identity reads; no write, so the plan runs without the state
 lock. On its own environment's records bucket: `roles/storage.objectViewer`,
 a binding of the bucket's policy (`records.tf`),
-since a pull-request build against a hotfix line reads the environment's live
+since the check trigger's build of a pull request against a hotfix line reads the environment's live
 record as this identity to say where the line's next release will be refused.
 On the Spanner instance the application's database lives on, the
 organization's `spannerPlanReader` role (the database, its IAM policy and its
 backup schedules, nothing of the data): on the tst instance from this layer,
 on the shared instance from `2-spn`'s `database_planners`, which also holds
 `roles/iam.securityReviewer` on the `spn` project for the stack's metric
-writer grants there. tst's deploy identity of the same application may impersonate it
+writer grants there. tst's apply identity of the same application may impersonate it
 (`roles/iam.serviceAccountTokenCreator`, read from tst's `2-env` state; tst's
-own in tst), since tst's Cloud Build runs the pull-request builds; nothing
-else may.
+own in tst), since the stack's check trigger in tst plans every environment's
+stack as it; nothing else may.
 
 ### Application deploy identity `imp-<env>-gbl-<app>-deploy`
 
@@ -237,9 +248,9 @@ application's job process) and `cloudBuildBuildReader` (`1-org`'s custom role:
 reads the build it runs in, the pipeline's first step, and nothing else of
 Cloud Build; `roles/cloudbuild.builds.builder`, the cloud's bundle for a
 build's service account, would carry every object of every bucket in the
-project with it); in tst also `cloudBuildTriggerRunner`, since Cloud Scheduler
-runs the application's sweep trigger as this identity. Bounded grants:
-`roles/storage.objectCreator` and `roles/storage.objectViewer` on its own
+project with it). Bounded grants:
+`roles/storage.objectCreator` (in tst, everywhere but under `<app>/stacks/`,
+the stack jobs' outputs) and `roles/storage.objectViewer` on its own
 environment's records bucket, as bindings of the bucket's policy (`records.tf`;
 for the environment before production, the one on production's instance, also
 `roles/storage.objectViewer` on production's records bucket: the staging
@@ -449,9 +460,13 @@ key in the boot project's container `imp-boot-gbl-github-deployer-key`, added wi
 github-deployer-key <version>` (`0-bootstrap/README.md`, "The deployer GitHub
 App's key"). This layer carries the pinned version's resource name to the
 applications' pipelines through its output `github_deployer_key_secret_version`
-and grants their identities its read. Until both values are recorded, the
-pipelines talk back through nothing; the rest of the layer and the
-deployments are unaffected.
+and grants their identities its read: every application's deploy identity,
+and in tst its apply identity too. The container an earlier bedrock made in
+this environment's project, `imp-<env>-gbl-github-deployer-key`, held
+a copy of the key pinned per environment; a `removed` block destroys it with
+its versions on the first apply of this render, and the grants move to the
+boot container. Until both values are recorded, the pipelines talk back
+through nothing; the rest of the layer and the deployments are unaffected.
 
 ## Prerequisites this layer does not create
 
@@ -460,9 +475,11 @@ deployments are unaffected.
   `2-spn/`, `2-net/` and every `2-env/`, object user on `2-env/<env>/`, and
   the bucket's policy authority (0-bootstrap's custom role) so this layer
   can grant the application identities their slots (below). The right of the
-  apply trigger's runner to become the identity is `1-org`'s too, and so is
+  apply trigger's runner to become the identity is `1-org`'s too, and so are
   the identity's administration of the deployer key's container in the boot
-  project, which the grant to the applications' identities needs.
+  project, which the grant to the applications' identities needs, and the
+  plan identity's read of that container's policy (`roles/secretmanager.viewer`
+  on the container), which a plan refreshes the grants through.
 - `roles/resourcemanager.tagUser` on the public-invoker tag for each
   application's apply identity, from `1-org` (`public-invokers.auto.tfvars`),
   committed after this layer has created the identities.

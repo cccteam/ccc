@@ -50,8 +50,8 @@ type Placement struct {
 	// authored, and the repository's rules let it alone create one; not even an admin
 	// may bypass them.
 	ReleaseApp string `json:"releaseApp"`
-	// BedrockVersion is the bedrock the pipeline and the infrastructure workflow run, one
-	// of two kinds of pin. A release (v0.4.0: the tag bedrock/v0.4.0 of
+	// BedrockVersion is the bedrock the pipeline and the stack's triggers run, one of two
+	// kinds of pin. A release (v0.4.0: the tag bedrock/v0.4.0 of
 	// github.com/cccteam/ccc) comes with BedrockSHA256, the SHA-256, in hex, of that
 	// release's linux/amd64 binary, which both download and verify before running it. A
 	// commit pin (v0.0.0-lab.1.0.20260928222237-58b211dce544: the pseudo-version the Go

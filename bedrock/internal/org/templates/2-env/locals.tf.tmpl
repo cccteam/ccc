@@ -28,17 +28,17 @@ locals {
   # first), whose 2-env state an application stack reads for the record gate.
   previous_environment = one([for k, v in var.next_environment : k if v == var.environment])
 
-  # tst's deploy identities (by application): they run every pull-request
-  # build, which plans each environment's application stack as that
-  # environment's plan identity, so each of them may impersonate this
-  # environment's plan identity of its own application. Read from tst's 2-env
-  # state; in tst they are this layer's own.
-  tst_deploy_members = local.is_tst ? { for app in var.applications : app => google_service_account.deploy[app].member } : try({ for app, a in data.terraform_remote_state.tst_env[0].outputs.applications : app => a.deploy_identity_member }, {})
+  # tst's apply identities (by application): they run the stack's check
+  # trigger, which plans each environment's application stack on a pull
+  # request as that environment's plan identity, so each of them may
+  # impersonate this environment's plan identity of its own application. Read
+  # from tst's 2-env state; in tst they are this layer's own.
+  tst_apply_members = local.is_tst ? { for app in var.applications : app => google_service_account.apply[app].member } : try({ for app, a in data.terraform_remote_state.tst_env[0].outputs.applications : app => a.apply_identity_member }, {})
 
   # The upstream states an application stack reads outputs from (its
-  # initialize.tf): the foundation, every environment (the plan identities a
-  # pull-request build impersonates, the previous environment's records bucket
-  # for the record gate), and 2-shr. The apply and plan identities get object
+  # initialize.tf): the foundation, every environment (the plan identities the
+  # stack's check trigger impersonates, the previous environment's records
+  # bucket for the record gate), and 2-shr. The apply and plan identities get object
   # read on exactly these.
   upstream_state_prefixes = concat(
     ["1-org"],
@@ -159,22 +159,21 @@ locals {
   # Build: roles/cloudbuild.builds.builder, the cloud's bundle for a build's
   # service account, would carry every object of every bucket in the project
   # with it, the deployment records and the applications' file stores among
-  # them. In tst, Cloud Scheduler runs each application's sweep trigger as its
-  # deploy identity, so there it also holds cloudBuildTriggerRunner. Its
-  # bounded grants are elsewhere: creator and viewer in the records bucket's
-  # policy (records.tf), accessor on the build-time secrets (identities.tf);
+  # them. Its bounded grants are elsewhere: creator and viewer in the records
+  # bucket's policy (records.tf), accessor on the build-time secrets
+  # (identities.tf);
   # writer on its
   # image repository is 2-shr's grant (var.pushers there), and Service Account
   # User on the runtime identities is granted where they are created, in the
   # application stack.
-  deploy_project_roles = concat([
+  deploy_project_roles = [
     "roles/serviceusage.serviceUsageConsumer",
     "roles/run.developer",
     "roles/logging.logWriter",
     "roles/monitoring.viewer",
     local.org.run_job_policy_admin_role,
     local.org.cloud_build_build_reader_role,
-  ], local.is_tst ? [local.org.cloud_build_trigger_runner_role] : [])
+  ]
 
   # The application plan identity plans the application's stack for this
   # environment on a pull request and writes nothing: applicationPlanReader,

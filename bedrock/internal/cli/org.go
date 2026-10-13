@@ -23,8 +23,8 @@ import (
 	"github.com/cccteam/ccc/bedrock/internal/where"
 )
 
-// The org command group's name and the two commands the triggers run, which deploy's
-// stack commands share the names of.
+// The org command group's name, its placement file and the two commands the triggers
+// run.
 const (
 	orgCommand       = "org"
 	orgPlacementFile = "placement.json"

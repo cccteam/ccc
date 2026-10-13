@@ -469,7 +469,7 @@ func TestResolve(t *testing.T) {
 			comments:   []string{"/gcbrun"},
 			placement:  declaringArguments,
 			want:       withComment(pr, "/gcbrun", func(*outcome) {}),
-			wantOut:    []string{"Build arguments infrastructure/placement.json declares (buildArguments): FIREBASE_API_KEY, PROJECT_ID; the image build passes the pull request's own, from its stack once applied (deploy pr-stack apply)."},
+			wantOut:    []string{"Build arguments infrastructure/placement.json declares (buildArguments): FIREBASE_API_KEY, PROJECT_ID; the image build passes the pull request's own, from its stack job's outputs (deploy pr-outputs)."},
 			wantNotOut: []string{"AIzaTstKey", "does not carry yet"},
 		},
 		{
@@ -630,57 +630,6 @@ func TestResolve(t *testing.T) {
 			comments: []string{"/gcbrun shared-db"},
 			want:     withComment(pr, "/gcbrun shared-db", func(o *outcome) { o.SharedDB = true; o.RunMigrations = false }),
 			wantOut:  []string{"RUN_MIGRATIONS=false SHIFT_TRAFFIC=true REVISION_TAG="},
-		},
-		{
-			name:     "a migration the last build applied is no longer in the tree: the database is recreated",
-			subs:     prBuild(map[string]string{"_RECORDS_BUCKET": "records", "_MIGRATIONS_DIR": "schema/migrations"}),
-			comments: []string{"/gcbrun"},
-			records:  map[string]string{"gs://records/harbor/tst/pr7-0000abc/b-0.json": recordWith("b-0", "2026-09-27T05:00:00Z", Migration{Dir: "schema/migrations", Name: "000003_Sites.up.sql", Hash: hashOf(sitesContent)})},
-			tree:     map[string]string{"schema/migrations/000004_Sites.up.sql": sitesContent},
-			want: withComment(pr, "/gcbrun", func(o *outcome) {
-				o.ReloadDB = true
-				o.ReloadReason = "the database applied schema/migrations/000003_Sites.up.sql (build b-0), which the tree no longer carries as applied: renumbered or changed since, so the database is recreated and the migrations apply afresh"
-			}),
-			wantOut: []string{"Reload: the database applied schema/migrations/000003_Sites.up.sql (build b-0)"},
-		},
-		{
-			name:     "a migration changed since the last build applied it is the same case",
-			subs:     prBuild(map[string]string{"_RECORDS_BUCKET": "records", "_MIGRATIONS_DIR": "schema/migrations"}),
-			comments: []string{"/gcbrun"},
-			records:  map[string]string{"gs://records/harbor/tst/pr7-0000abc/b-0.json": recordWith("b-0", "2026-09-27T05:00:00Z", Migration{Dir: "schema/migrations", Name: "000003_Sites.up.sql", Hash: hashOf(sitesContent)})},
-			tree:     map[string]string{sitesUp: sitesContent + ", edited"},
-			want: withComment(pr, "/gcbrun", func(o *outcome) {
-				o.ReloadDB = true
-				o.ReloadReason = "the database applied schema/migrations/000003_Sites.up.sql (build b-0), which the tree no longer carries as applied: renumbered or changed since, so the database is recreated and the migrations apply afresh"
-			}),
-		},
-		{
-			name:     "the tree still carries what the last build applied: nothing is recreated",
-			subs:     prBuild(map[string]string{"_RECORDS_BUCKET": "records", "_MIGRATIONS_DIR": "schema/migrations"}),
-			comments: []string{"/gcbrun"},
-			records:  map[string]string{"gs://records/harbor/tst/pr7-0000abc/b-0.json": recordWith("b-0", "2026-09-27T05:00:00Z", Migration{Dir: "schema/migrations", Name: "000003_Sites.up.sql", Hash: hashOf(sitesContent)})},
-			tree:     map[string]string{sitesUp: sitesContent, "schema/migrations/000004_Audit.up.sql": "create table Audit"},
-			want:     withComment(pr, "/gcbrun", func(*outcome) {}),
-		},
-		{
-			name:     "a seed file the last build applied changed: the database is recreated so the seed applies from the start",
-			subs:     prBuild(map[string]string{"_RECORDS_BUCKET": "records", "_MIGRATIONS_DIR": "schema/migrations"}),
-			comments: []string{"/gcbrun"},
-			records:  map[string]string{"gs://records/harbor/tst/pr7-0000abc/b-0.json": recordWith("b-0", "2026-09-27T05:00:00Z", Migration{Dir: "schema/migrations", Name: "000003_Sites.up.sql", Hash: hashOf(sitesContent)}, Migration{Dir: "schema/devseed", Name: "000001_Seed.up.sql", Hash: hashOf("insert a")})},
-			tree:     map[string]string{sitesUp: sitesContent, "schema/devseed/000001_Seed.up.sql": "insert a, edited"},
-			want: withComment(pr, "/gcbrun", func(o *outcome) {
-				o.ReloadDB = true
-				o.ReloadReason = "the database applied schema/devseed/000001_Seed.up.sql (build b-0), which the tree no longer carries as applied: renumbered or changed since, so the database is recreated and the migrations apply afresh"
-			}),
-			wantOut: []string{"Reload: the database applied schema/devseed/000001_Seed.up.sql (build b-0)"},
-		},
-		{
-			name:     "a new seed file beside the applied ones changes nothing",
-			subs:     prBuild(map[string]string{"_RECORDS_BUCKET": "records", "_MIGRATIONS_DIR": "schema/migrations"}),
-			comments: []string{"/gcbrun"},
-			records:  map[string]string{"gs://records/harbor/tst/pr7-0000abc/b-0.json": recordWith("b-0", "2026-09-27T05:00:00Z", Migration{Dir: "schema/migrations", Name: "000003_Sites.up.sql", Hash: hashOf(sitesContent)}, Migration{Dir: "schema/devseed", Name: "000001_Seed.up.sql", Hash: hashOf("insert a")})},
-			tree:     map[string]string{sitesUp: sitesContent, "schema/devseed/000001_Seed.up.sql": "insert a", "schema/devseed/000002_More.up.sql": "insert b"},
-			want:     withComment(pr, "/gcbrun", func(*outcome) {}),
 		},
 		{
 			name:      "a seed file the environment's live release applied changed: the release restores the database so the seed applies from the start",
@@ -1188,6 +1137,130 @@ func TestResolve(t *testing.T) {
 	}
 }
 
+// TestStaleDatabase: the pull request's stack job recreates the pull request's database
+// without being asked when a migration or seed file its last build applied is no longer
+// in the tree by name and content, by the pull request's newest record.
+func TestStaleDatabase(t *testing.T) {
+	t.Parallel()
+
+	const (
+		sitesReason = "the database applied schema/migrations/000003_Sites.up.sql (build b-0), which the tree no longer carries as applied: renumbered or changed since, so the database is recreated and the migrations apply afresh"
+		seedReason  = "the database applied schema/devseed/000001_Seed.up.sql (build b-0), which the tree no longer carries as applied: renumbered or changed since, so the database is recreated and the migrations apply afresh"
+	)
+	sites := Migration{Dir: "schema/migrations", Name: "000003_Sites.up.sql", Hash: hashOf(sitesContent)}
+	seeded := Migration{Dir: "schema/devseed", Name: "000001_Seed.up.sql", Hash: hashOf("insert a")}
+	record := map[string]string{"gs://records/harbor/tst/pr7-0000abc/b-0.json": recordWith("b-0", "2026-09-27T05:00:00Z", sites)}
+	seededRecord := map[string]string{"gs://records/harbor/tst/pr7-0000abc/b-0.json": recordWith("b-0", "2026-09-27T05:00:00Z", sites, seeded)}
+	pull := func(change func(f *Facts)) Facts {
+		f := Facts{PullRequest: "7", Environment: tstEnvironment, RunMigrations: true, Substitutions: map[string]string{recordsBucket: "records", appSub: "harbor"}}
+		if change != nil {
+			change(&f)
+		}
+
+		return f
+	}
+	tests := []struct {
+		name       string
+		facts      Facts
+		records    map[string]string
+		tree       map[string]string
+		wantReason string
+		wantOut    []string
+	}{
+		{
+			name:       "a migration the last build applied is no longer in the tree: the database is recreated",
+			facts:      pull(nil),
+			records:    record,
+			tree:       map[string]string{"schema/migrations/000004_Sites.up.sql": sitesContent},
+			wantReason: sitesReason,
+			wantOut:    []string{"Reload: the database applied schema/migrations/000003_Sites.up.sql (build b-0)"},
+		},
+		{
+			name:       "a migration changed since the last build applied it is the same case",
+			facts:      pull(nil),
+			records:    record,
+			tree:       map[string]string{sitesUp: sitesContent + ", edited"},
+			wantReason: sitesReason,
+		},
+		{
+			name:    "the tree still carries what the last build applied: nothing is recreated",
+			facts:   pull(nil),
+			records: record,
+			tree:    map[string]string{sitesUp: sitesContent, "schema/migrations/000004_Audit.up.sql": "create table Audit"},
+		},
+		{
+			name:       "a seed file the last build applied changed: the database is recreated so the seed applies from the start",
+			facts:      pull(nil),
+			records:    seededRecord,
+			tree:       map[string]string{sitesUp: sitesContent, "schema/devseed/000001_Seed.up.sql": "insert a, edited"},
+			wantReason: seedReason,
+			wantOut:    []string{"Reload: the database applied schema/devseed/000001_Seed.up.sql (build b-0)"},
+		},
+		{
+			name:    "a new seed file beside the applied ones changes nothing",
+			facts:   pull(nil),
+			records: seededRecord,
+			tree:    map[string]string{sitesUp: sitesContent, "schema/devseed/000001_Seed.up.sql": "insert a", "schema/devseed/000002_More.up.sql": "insert b"},
+		},
+		{
+			name:  "the first build has no record and decides nothing",
+			facts: pull(nil),
+			tree:  map[string]string{sitesUp: sitesContent},
+		},
+		{
+			name:    "a teardown decides nothing",
+			facts:   pull(func(f *Facts) { f.Down = true }),
+			records: record,
+			tree:    map[string]string{sitesUp: sitesContent + ", edited"},
+		},
+		{
+			name:    "shared mode decides nothing: the pull request has no database of its own",
+			facts:   pull(func(f *Facts) { f.SharedDB, f.RunMigrations = true, false }),
+			records: record,
+			tree:    map[string]string{sitesUp: sitesContent + ", edited"},
+		},
+		{
+			name:       "a reload asked for keeps its own reason",
+			facts:      pull(func(f *Facts) { f.ReloadDB, f.ReloadReason = true, "/gcbrun reload-db" }),
+			records:    record,
+			tree:       map[string]string{sitesUp: sitesContent + ", edited"},
+			wantReason: "/gcbrun reload-db",
+		},
+		{
+			name:    "a tag build decides nothing",
+			facts:   pull(func(f *Facts) { f.PullRequest = "" }),
+			records: record,
+			tree:    map[string]string{sitesUp: sitesContent + ", edited"},
+		},
+		{
+			name:    "triggers without a records bucket decide nothing",
+			facts:   pull(func(f *Facts) { delete(f.Substitutions, recordsBucket) }),
+			records: record,
+			tree:    map[string]string{sitesUp: sitesContent + ", edited"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			f := tt.facts
+			store := &memoryStore{objects: map[string]string{}}
+			for path, content := range tt.records {
+				store.objects[path] = content
+			}
+			source := workspaceFiles(t, tt.tree)
+			var out strings.Builder
+			if err := f.staleDatabase(t.Context(), store.open, string(source), &out); err != nil {
+				t.Fatalf("staleDatabase() error = %v", err)
+			}
+			if f.ReloadDB != (tt.wantReason != "") || f.ReloadReason != tt.wantReason {
+				t.Errorf("ReloadDB = %t, ReloadReason = %q, want %q", f.ReloadDB, f.ReloadReason, tt.wantReason)
+			}
+			containsAll(t, out.String(), tt.wantOut...)
+		})
+	}
+}
+
 func TestResolveRequest(t *testing.T) {
 	t.Parallel()
 
@@ -1277,11 +1350,20 @@ func TestFactsWrite(t *testing.T) {
 			wantShell:  "\n",
 		},
 		{
-			name:      "a pull request in shared mode",
+			name:      "a pull request in shared mode, the comment's id exported for the read of its stack job's outputs",
 			subs:      prBuild(map[string]string{"_WIDGET_MODE": ""}),
 			tfvars:    stackTfvarsWith("{}", "{}"),
-			comments:  []string{"/gcbrun shared-db"},
-			wantEnv:   map[string]string{sharedDBFact: "true", "RELOAD_DB": "", "DOWN": "", runMigrationsFact: "false", seedFact: "true", "VERSION": "pr7@deadbee", prNumberSub: "7"},
+			comments:  []string{"looks good", "/gcbrun shared-db"},
+			wantEnv:   map[string]string{sharedDBFact: "true", "RELOAD_DB": "", "DOWN": "", "SKIP_DEPLOY": "", commentIDFact: "2", runMigrationsFact: "false", seedFact: "true", "VERSION": "pr7@deadbee", prNumberSub: "7"},
+			wantArgs:  "",
+			wantShell: "\n",
+		},
+		{
+			name:      "/gcbrun down deploys nothing: the build waits for its stack job's destroy and marks the deployment inactive",
+			subs:      prBuild(map[string]string{"_WIDGET_MODE": ""}),
+			tfvars:    stackTfvarsWith("{}", "{}"),
+			comments:  []string{"/gcbrun down"},
+			wantEnv:   map[string]string{"DOWN": "true", "SKIP_DEPLOY": "true", skipReasonFact: "Skipped: /gcbrun down tears the pull request's environment down (its stack job destroys it); nothing deploys.", commentIDFact: "1", prNumberSub: "7"},
 			wantArgs:  "",
 			wantShell: "\n",
 		},

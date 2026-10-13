@@ -4,8 +4,8 @@
 # GitHub Release on it. A draft raises no release event, so release-please.yml calls this
 # workflow from a job of the same run, with the tag, the release's id and its commit. The
 # job checks out the tag and refuses one whose commit is not the release's, builds the tool
-# there, one static binary per platform it runs on (linux/amd64, which every application's
-# pipeline and infrastructure check download; linux/arm64 and darwin/arm64 for developer
+# there, one static binary per platform it runs on (linux/amd64, which the pipelines and the
+# Cloud Build triggers download; linux/arm64 and darwin/arm64 for developer
 # machines), writes checksums.txt (the SHA-256 of each, in sha256sum's format) and uploads
 # them to the draft. Before publishing it reads the draft's assets back and refuses when one
 # is not a file it built or its digest, as GitHub reports it, differs from checksums.txt:

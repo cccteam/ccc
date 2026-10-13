@@ -52,7 +52,7 @@ RUN bun run build
 `
 
 // stackArgsEnv is the environment file's build arguments of the stack, as resolve exports a
-// release build's from its trigger (or deploy pr-stack apply appends a pull request's).
+// release build's from its trigger (or deploy pr-outputs appends a pull request's).
 const stackArgsEnv = "export _BUILD_ARG_FIREBASE_API_KEY='AIzaTstKey'\nexport _BUILD_ARG_PROJECT_ID='tst-project'\n"
 
 // recordJSON is one deployment record as the records bucket holds it.

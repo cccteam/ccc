@@ -164,6 +164,20 @@ resource "google_secret_manager_secret_iam_member" "environment_tofu_deployer_ke
   member    = google_service_account.tofu[each.key].member
 }
 
+# The environment layers' plan identities refresh those grants on a pull
+# request, which reads the container's policy: the container lives in the
+# boot project, where the plan identity's project roles do not reach. The
+# viewer role reads the container and its versions' metadata, never a
+# version's payload.
+resource "google_secret_manager_secret_iam_member" "environment_plan_deployer_key" {
+  for_each = local.environment_layers
+
+  project   = var.boot_project_id
+  secret_id = local.boot.github_deployer_key_secret
+  role      = "roles/secretmanager.viewer"
+  member    = google_service_account.plan[each.key].member
+}
+
 # ---------------------------------------------------------------------------
 # The state bucket
 # ---------------------------------------------------------------------------

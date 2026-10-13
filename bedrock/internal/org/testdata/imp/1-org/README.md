@@ -68,7 +68,8 @@ trigger plans it on a pull request as `imp-org-gbl-plan`.
   GitHub App's key container in the boot project (`secretContainerAdmin`,
   below), so `2-env` can grant those identities its read, and the environment
   layers' plan identities the read of the bucket's policy (`bucketPolicyReader`,
-  below), which a plan of `2-env` refreshes those grants through. Each layer grants
+  below) and of that container's policy (`roles/secretmanager.viewer` on the
+  container), which a plan of `2-env` refreshes those grants through. Each layer grants
   for the identities it creates because IAM refuses a binding for a service
   account that does not exist.
 - Per environment, the layer state entitlement `imp-<env>-layer-state`
@@ -174,7 +175,8 @@ trigger plans it on a pull request as `imp-org-gbl-plan`.
   environment): the GitHub connection and the repository links, the
   pull-request backend service and endpoint groups, the Identity Platform
   configuration, the operations pool with its provider and attestation
-  rules, the team group's entitlements, the deployer key's container, the
+  rules, the team group's entitlements, the deployer key container an earlier
+  bedrock made in the environment project (until its removal is applied), the
   environment's own Spanner instance and the records bucket.
   `servicesLayerPlanReader` (`2-shr`): the image repositories.
   `networkLayerPlanReader` (`2-net`): the certificate, its authorization, the
@@ -349,8 +351,16 @@ hotfix` creates branches and pull requests, the pipeline talks back on a pull
 request.
 
 The required checks on the default branch and the hotfix lines are the
-infrastructure workflow's job, `bedrock check`, which GitHub Actions reports,
-and the fixed jobs of the application's own CI workflow,
+application stack's check trigger in tst's Cloud Build
+(`imp-tst-<region>-<app>-check`, set by the application's
+stack in tst: on every push to a pull request it runs
+`bedrock check`, plans and tests the stack for every environment as that
+environment's plan identity, posts the summaries, and applies the pull
+request's own stack again when one is standing; its steps are the stack's own
+text, which no pull request edits), which Google's Cloud Build GitHub App
+reports under the trigger's name and the project id (`<trigger> (<project
+id>)`; `github.tf` writes the form in one line, corrected there if the app
+reports another), and the fixed jobs of the application's own CI workflow,
 `.github/workflows/ci.yml`, which `impulse render` writes and GitHub Actions
 reports by their ids: `title`, `go`, `web`, `image`, `secrets` and `migrations`. Every
 application's workflow carries those; bedrock reads the list from impulse when
@@ -370,9 +380,10 @@ The pull-request build (the trigger
 `imp-tst-<region>-<app>-pr`, set by the application's
 stack in tst) is not a required check. It is the developer's
 preview: a `/gcbrun` comment builds the pull request and stands its own
-environment up in tst, and a pull request merges whether or
-not anyone built it. So release-please's release pull request needs no build:
-CI and `bedrock check` run on it, a person merges it, the tag is cut and
+environment up in tst (the stack's `-pr-stack` trigger applies
+the pull request's stack on the same comment), and a pull request merges
+whether or not anyone built it. So release-please's release pull request needs
+no build: CI and the check trigger run on it, a person merges it, the tag is cut and
 tst's tag build is the release's first build. What this
 gives up: a pull request whose image build or migration is broken can merge,
 and the breakage shows in tst's tag build; the fix is

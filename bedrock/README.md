@@ -27,11 +27,11 @@ Which bedrock an application runs is not the installed one's choice. The applica
 placement pins it (`bedrockVersion`), one of two ways:
 
 - **A release**, with the SHA-256 of its linux/amd64 binary (`bedrockSha256`). The
-  pipeline and the infrastructure check download that binary and verify it against the
+  pipeline and the stack's triggers download that binary and verify it against the
   checksum.
 - **A commit pin**: the pseudo-version the Go module proxy gives a pushed commit of this
   module (`v0.0.0-lab.1.0.20260928222237-58b211dce544`), with no `bedrockSha256`. The
-  pipeline and the infrastructure check build it with `go install` in a Go image pinned by
+  pipeline and the stack's triggers build it with `go install` in a Go image pinned by
   digest, and Go's checksum database verifies the module in place of a checksum in the
   placement. This runs bedrock from an unreleased commit, for trying a change in an
   application before it is released; it costs each pipeline build and each hourly sweep
@@ -108,7 +108,7 @@ again does not, because its pull request is already labeled as tagged.
   stack's `.tf` files and its README, the pipeline files at the application root
   (`cloudbuild.yaml`, `cloudbuild-sweep.yaml`), the generate-time step
   (`cmd/generate/bedrock.go`, which runs the pinned bedrock through `go run` so `go
-  generate` needs no bedrock installed) and the GitHub workflows (`.github/workflows/infrastructure.yml`,
+  generate` needs no bedrock installed) and the GitHub workflows (`.github/workflows/operations.yml`,
   `release-please.yml`). A person never edits one; the code or the placement changes and
   the file is rendered again.
 - **Seeded file**: a file bedrock writes once when it is absent and then leaves to a
@@ -120,9 +120,10 @@ again does not, because its pull request is already labeled as tagged.
   `/gcbrun` comment and on a release tag. Every step but the image build is a `bedrock
   deploy` command run by the pinned bedrock release; the application customizes it
   through hooks, build secrets, declared substitutions and its Dockerfile, never by editing
-  the file. The steps run in order, except that in a pull-request build the image lane
-  (the release check and the image build) runs beside the pull request's stack lane (its
-  plan, guard and apply), the two joining before the application deploys.
+  the file. The steps run in order. A pull-request build applies no Terraform from it: the
+  pull request's own stack is the stack's pr-stack trigger's job (`infrastructure/cloud-build.tf`),
+  which runs as the apply identity from steps the pull request cannot edit, and the build
+  reads what that job applied.
 - **Hook**: a shell script the application commits at `infrastructure/hooks/<stage>.sh`,
   run at that stage of the pipeline as the deploy identity with the build's facts in its
   environment: `before-build`, `before-migrate`, `after-migrate`, `before-traffic`,
@@ -507,11 +508,12 @@ It also refuses:
   `cloud_armor` in `terraform.tfvars` names the environment with `"preview"` or
   `"enforce"`, attached to the backend services, and removing the entry detaches the
   policy and destroys it in one apply, which fails while the policy is attached. The
-  check reads the default branch's `terraform.tfvars` (origin's copy, or the local branch;
-  the infrastructure workflow fetches the branch before it runs) and refuses an
+  check reads the default branch's `terraform.tfvars` (origin's copy, or the local branch)
+  and refuses an
   environment on there whose entry the working tree removes: set it to `"off"` first
   (the policy kept, detached), merge and apply, then remove the entry. Outside a git
-  working tree, or without the default branch to read, nothing is compared.
+  working tree, or without the default branch to read (the check trigger's checkout holds
+  the pull request's commit alone), nothing is compared.
 - an authoritative IAM resource (`*_iam_binding`, `*_iam_policy`) anywhere in the stack:
   such a resource replaces every member of its role on each apply, so a pull-request stack
   applying one would remove the environment's members. A `*_iam_member` adds one member.
@@ -562,24 +564,33 @@ pinned says so. Pinning is the default and `latest` the exception for a secret t
 to follow its source, so the listing never fails the check; it keeps the exception
 visible.
 
-The application's infrastructure workflow, `.github/workflows/infrastructure.yml`, runs
-`bedrock check` on every pull request and on the default branch. It is rendered too: the
-job gets the bedrock the placement pins as the pipeline does (a release downloaded from
+The application's check runs in Cloud Build, from the stack's check trigger
+(`infrastructure/cloud-build.tf`, rendered with the stack), on every push to a pull
+request against the default branch or a hotfix line, as the apply identity. The trigger
+holds its steps in its own text: the first reads the bedrock pin from
+`infrastructure/placement.json` in the checkout when it runs (a release downloaded from
 its GitHub Release and verified against the placement's checksum; a commit pin built with
-`go install` in the pipeline's Go image, since the runner's Go is the application's and
-may be older than bedrock's) and runs that bedrock's `check` on the runner, whose Go
-toolchain the check reads the code with; no cloud identity, no service account, no key.
-So the checker is the pipeline's, and a wording change in a newer bedrock fails no
-application's check until that application moves its pin. `release-please.yml`
-is rendered beside it: release-please as the release app the placement names, on the
-default branch and the hotfix lines.
+`go install` in the pipeline's Go image) and the next runs that bedrock's `check` in the
+checkout, which reads the code with Go's parser and needs no toolchain, no cloud role and
+no key. So the checker is the pipeline's, and a wording change in a newer bedrock fails no
+application's check until that application moves its pin. The same build then plans and
+tests the stack for every environment (`deploy plan-environments`) and applies the pull
+request's own stack again when one is standing (`deploy pr-stack --if-exists`); its result
+is the required check `1-org` names, reported by Google's Cloud Build GitHub App, which no
+Actions job can imitate. The steps are the stack's and change with its apply, one release
+behind the repository: a bedrock release works under the previous release's steps, and a
+command says in its log when it runs under older ones. The Actions workflow that ran the
+check before, `.github/workflows/infrastructure.yml`, is retired: `bedrock render` removes
+it when it finds one at the application root, and `bedrock check` reports it stale until
+then. `release-please.yml` is rendered beside the pipeline files: release-please as the
+release app the placement names, on the default branch and the hotfix lines.
 
 ## bedrock upgrade
 
 `bedrock upgrade [version|commit|branch]` moves the application's bedrock pin and renders
 the stack and the pipeline with the bedrock it names, so the committed files come from
 that bedrock. Commit `placement.json` with the rendered files: from that commit the
-pipeline's first step and the infrastructure check get that bedrock, and every
+pipeline's first step and the stack's triggers get that bedrock, and every
 `bedrock deploy` step runs it. The pin is the one place a bedrock version appears in an
 application; nothing else names one. In the organization's infrastructure repository (the
 one whose `placement.json` at the root names the organization, `organizationId`) the same
@@ -645,8 +656,8 @@ thing one step hands the next. In order:
   kind (a tag's build, or a pull request's, which deploys only to the first environment),
   the pull request's instruction (the words after its latest `/gcbrun` comment:
   `shared-db`, `reload-db`, `down`), the image and its tags, whether the migrations run
-  and traffic shifts, and whether a stale pull-request database is recreated (a migration
-  the last build applied is no longer in the tree). A tag build may carry a restore
+  and traffic shifts (a stale pull-request database, one whose last build applied a
+  migration no longer in the tree, is the stack job's decision, `deploy pr-stack`). A tag build may carry a restore
   instruction (`_RESTORE`: `empty`, or `production-backup` for the environment on
   production's instance, with `_REQUESTER` naming who asked): the environment's database
   is replaced before the release deploys. A pull-request build carries none, and
@@ -689,7 +700,8 @@ thing one step hands the next. In order:
   checkout declares, says when the trigger does not carry one yet (it comes with the
   build's stack apply, after the image build, and reaches the image from the next
   release on) and leaves out one the checkout no longer declares; a pull-request build
-  exports none, and `deploy pr-stack apply` appends the pull request's own stack's. The
+  exports none, and `deploy pr-outputs` appends the pull request's own stack's, from its
+  stack job's outputs. The
   log names the arguments, never their values. What the trigger carries beyond these is
   what only the stack knows (the identities, the buckets, the
   services, made by the stack or the organization's layers) or a gate's own record:
@@ -709,7 +721,8 @@ thing one step hands the next. In order:
   (`--router-dir`, which the pipeline passes) and the environment's newest live record,
   decides whether the release is breaking and whether the run waits for the window
   (`WINDOW_NEEDED`, `WINDOW_BREAKING`, `WINDOW_REASON`), and refuses here what can never
-  proceed (Maintenance windows, below). A pull-request build previews the window instead.
+  proceed (Maintenance windows, below). A pull-request build has no release to validate;
+  the hotfix and window previews are the check trigger's (`deploy plan-environments`).
   A hotfix passes one more check
   in every environment: the environment's newest live deployment record lists the
   migration and seed files its database holds, each with its hash, and the hotfix is
@@ -726,23 +739,48 @@ thing one step hands the next. In order:
   pull request's database when a seed its last build applied changed, and restores a
   seeded environment's when a seed its live release applied changed. A refusal is posted
   on the pull request and names the fix.
-- `deploy plan-environments`: in a pull-request build, plans the stack for every
+- `deploy plan-environments`: the stack's check trigger's step after `bedrock check`, on
+  every push to a pull request, as the apply identity, from a step the pull request
+  cannot edit. It reads its build through the Cloud Build API (`BUILD_ID`, `PROJECT_ID`
+  and `LOCATION`, which the step passes), plans the stack for every
   environment of the promotion order, each against that environment's state prefix as
-  its plan identity (a reader, without the state lock, so a pull-request build in tst
-  can change no environment), and runs the tests a tag build runs before its apply. One
+  its plan identity (a reader, without the state lock, so the job can change no
+  environment; the apply identity may act as each), and runs the tests a tag build runs
+  before its apply, then the pull request's looks ahead as the same identities: the
+  hotfix preview, when the pull request is against a hotfix line, and the window
+  preview. One
   comment on the pull request carries every summary; a failing plan or test stops the
-  build and the comment says so. The plan the reviewer approves is each
+  build, which is the check a merge waits for, and the comment says so. The plan the reviewer approves is each
   environment's. An environment whose stack has never been applied (no state object
   under its prefix, which the plan identity reads) is skipped with the line "no stack
   yet: its first apply is by hand", in the log and in the comment, and the build goes
   on: a plan of a missing state would create it, a write a reader is refused, and the
-  first apply is a person's step on purpose.
-- `deploy pr-stack plan`, `guard`, `apply`: a pull request's own environment, the stack
-  applied into its own state prefix as the apply identity. The plan is saved, the guard
-  lets only the pull request's own resources through, the apply applies exactly that
-  plan and leaves the pull request's services, jobs, hostname and build arguments
-  (`_BUILD_ARG_<NAME>`, its own values of the stack's) for the steps after (a destroy on
-  `/gcbrun down`). A tag build skips all three.
+  first apply is a person's step on purpose. It says when the build's steps are an older
+  bedrock's than itself.
+- `deploy pr-stack`: the pull request's stack job, the stack's pr-stack trigger's step on
+  the `/gcbrun` comment, beside the preview build, as the apply identity. It reads its
+  build the same way, mints the repository's token from the Cloud Build connection, reads
+  the latest `/gcbrun` comment, and applies the pull request's own stack into its own
+  state prefix: the plan is saved, the guard lets only the pull request's own resources
+  through, the apply applies exactly that plan (a destroy on `/gcbrun down`; the
+  database replaced on `/gcbrun reload-db`, or when the migrations its last build applied
+  are no longer in the tree as applied). What the stack now says (the services, the job,
+  the hostname, the migrate command's settings, the build arguments the placement
+  declares, the database mode) goes to the records bucket as
+  `<app>/stacks/<env>/pr<N>/<commit>.json`, which the preview build reads; a destroy and
+  a failure, with its reason, are written the same way. With `--if-exists` (the check
+  trigger's last step, on every push) the stack is applied again only when the pull
+  request has a preview standing, so the preview's infrastructure follows the pushes; a
+  `reload-db` in the latest comment is that build's and is not repeated.
+- `deploy pr-outputs`: the preview build's read of what the pull request's stack job
+  applied, the object above matched to this build's `/gcbrun` comment, whose facts go to
+  `environment.sh` for the steps after. Before the image build when the placement
+  declares build arguments (the image carries the pull request's own values), after it
+  otherwise. An object not yet written is waited for, up to ten minutes, fifteen seconds
+  between looks, then the step stops the build naming the trigger; a job that failed
+  stops this build at once with the job's reason. On `/gcbrun down` the step waits for
+  the job's destroy instead, after which the after-down hook runs and talk-back marks
+  the deployment inactive. A tag build says so and ends.
 - `deploy check-release`: reads the registry before the image build. Neither tag exists,
   the build runs; the commit is built and the release tag is not, the release name is
   added to that build; both exist and agree, the build is reused; the release tag names
@@ -1877,8 +1915,10 @@ the squashed commit titled from the pull request; the head branch deleted on mer
 destroyed by the layer), its three rulesets (a `v*` or `*/v*` tag created, moved or
 deleted by the release app alone, with no bypass for the repository's admins, which is
 what makes the pipeline's tag check sound; the default branch and the hotfix lines
-changed by pull request alone, with the branch up to date with its base, the
-infrastructure workflow's `bedrock check` and the six fixed jobs of the application's CI
+changed by pull request alone, with the branch up to date with its base, the application
+stack's check trigger in the first environment (reported by Google's Cloud Build GitHub
+App under `<trigger name> (<project id>)`, so no Actions job can imitate it) and the six
+fixed jobs of the application's CI
 workflow (`title`, `go`, `web`, `image`, `secrets`, `migrations`, read from impulse's `ci`
 package; `web` gates the per-workspace browser jobs, so a failed browser build blocks the
 merge) passing on its latest commit, never the pull-request build (the developer's preview
@@ -1951,23 +1991,36 @@ the layers' triggers and each environment's for the applications', is rendered f
 
 ## The application's pipeline
 
-The pipeline a render writes runs on two triggers per environment: a pull request's
-`/gcbrun` comment (the first environment only) and a release tag (every environment, in
-promotion order, the later ones by a person's approval where the placement says so). A
+The pipeline a render writes runs on a release tag in every environment, in promotion
+order, the later ones by a person's approval where the placement says so, and on a pull
+request's `/gcbrun` comment in the first environment: the preview. Beside it the stack
+renders three triggers of its own in the first environment, which hold their steps in the
+trigger's text and run as the apply identity, so what applies Terraform for a pull request
+never runs from a file the pull request edits: the check trigger, on every push to a pull
+request (`bedrock check`, the stack planned and tested for every environment, the pull
+request's own stack applied again while a preview stands; the required check), the
+pr-stack trigger, on the same `/gcbrun` comment as the preview (the pull request's stack
+planned, guarded and applied, or destroyed on `/gcbrun down`, and what it applied written
+to the records bucket for the preview build), and the hourly sweep. A
 pull-request build stands its own environment up under `<app>-pr<N>` on the pull-request
 hostname, with its own database (or the environment's, on `/gcbrun shared-db`), and tears
 it down on `/gcbrun down` or by the hourly sweep once the pull request closes. The build
 talks back on the pull request: a deployment the sidebar shows, a comment with the release
-and the database mode, the guard's refusals. The pull-request build is the developer's
-preview, not a check the merge waits for: a pull request merges on `bedrock check` and the
+and the database mode; the stack's triggers talk back the same way with the plans'
+summaries and the guard's refusals. The pull-request build is the developer's
+preview, not a check the merge waits for: a pull request merges on the check trigger and the
 CI jobs (`1-org/github.tf` names them), so release-please's release pull request merges
-with no build, and a release's first build is the first environment's tag build.
+with no build, and a release's first build is the first environment's tag build. The
+trigger-held steps change with the stack's apply, one release behind the repository, and
+read the bedrock pin from the checkout's placement when they run, so a bedrock release
+works under the previous release's steps and a command says when it runs under older ones.
 
 The guards run before anything deploys: the migration guard (the sequence, one up file
 each, no gaps; a committed schema migration never changes, a seed file may; against the
 default branch for a pull request; a refusal names `bedrock migration renumber` as the
 fix), and the plan guard (a pull-request stack may only create and change what carries
-its own number).
+its own number), which holds because it runs in the pr-stack trigger, from steps the pull
+request cannot edit.
 
 A run that replaces the database (a restore run) puts the application into maintenance
 first: the release's own image starts as a revision with `APP_MAINTENANCE` set, which

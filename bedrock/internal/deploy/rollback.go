@@ -225,7 +225,7 @@ func (s *stack) restoreGeneration(ctx context.Context, subs, facts map[string]st
 		return 0, err
 	}
 	address := fmt.Sprintf("google_spanner_database.restored[%q]", strconv.Itoa(next))
-	if err := s.tofu(ctx, "import", "-input=false", "-no-color", varFlag, "environment="+env, varFlag, "database_generation="+strconv.Itoa(next), address, note.Database); err != nil {
+	if err := s.tofu(ctx, "import", noInputFlag, noColorFlag, varFlag, "environment="+env, varFlag, "database_generation="+strconv.Itoa(next), address, note.Database); err != nil {
 		return 0, errors.Wrapf(err, "importing %s into the stack as %s", restored, address)
 	}
 	fmt.Fprintf(s.out, "Imported %s into the stack as %s; the plan points the stack at generation %d.\n", restored, address, next)

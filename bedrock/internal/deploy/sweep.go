@@ -6,13 +6,9 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"os"
-	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
-
-	"github.com/go-playground/errors/v5"
 )
 
 // The labels a pull request's services carry.
@@ -21,35 +17,25 @@ const (
 	pullRequestLabel = "pull_request"
 )
 
-// SweepRequest names the sweep's build: its id and where it runs, as the step passes them.
-type SweepRequest struct {
-	BuildID, Project, Location string
-}
-
 // closedState is a pull request's state on GitHub once it is closed or merged.
 const closedState = "closed"
+
+// sweepRepoSub is the repository as GitHub names it, passed by the sweep trigger as a
+// substitution of its own: Cloud Scheduler starts the sweep's build through the API,
+// which sets none of the built-ins a GitHub event sets (REPO_FULL_NAME among them).
+const sweepRepoSub = "_REPO_FULL_NAME"
 
 // Sweep destroys the environments of closed pull requests. A pull request has an
 // environment while its services stand (the pull_request label on the application's
 // services, in every region of _SERVICES); GitHub says which of those pull requests are
 // closed, asked with the repository's token minted from the Cloud Build connection the
-// way resolve mints it; and each closed one's stack is destroyed as the apply identity,
-// from its own state prefix, the way /gcbrun down destroys it. Closing or merging a pull
-// request starts no build, so this is how an environment nobody took down goes away. An
-// open pull request's environment stays, and so does one GitHub cannot answer for.
-func Sweep(ctx context.Context, clients *Clients, w Workspace, req *SweepRequest, out io.Writer) error {
-	if err := (&ResolveRequest{BuildID: req.BuildID, Project: req.Project, Location: req.Location}).check(); err != nil {
-		return err
-	}
-	builds, err := clients.Builds(ctx)
-	if err != nil {
-		return err
-	}
-	data, err := builds.Get(ctx, req.Project, req.Location, req.BuildID)
-	if err != nil {
-		return err
-	}
-	build, err := parseBuild(data)
+// way resolve mints it; and each closed one's stack is destroyed from its own state
+// prefix, the way /gcbrun down destroys it, as the apply identity, which the sweep
+// trigger runs as. Closing or merging a pull request starts no build, so this is how an
+// environment nobody took down goes away. An open pull request's environment stays, and
+// so does one GitHub cannot answer for.
+func Sweep(ctx context.Context, clients *Clients, w Workspace, req *BuildRequest, out io.Writer) error {
+	build, builds, err := readBuild(ctx, clients, req)
 	if err != nil {
 		return err
 	}
@@ -64,17 +50,16 @@ func Sweep(ctx context.Context, clients *Clients, w Workspace, req *SweepRequest
 		return nil
 	}
 	fmt.Fprintf(out, "Pull requests with an environment: %s\n", strings.Join(numbers, " "))
-	repository := "projects/" + req.Project + "/locations/" + req.Location + "/connections/" + subs["_REPO_CONNECTION_NAME"] + "/repositories/" + subs["_REPO_NAME"]
-	token, err := builds.ReadToken(ctx, repository)
+	token, err := repositoryToken(ctx, builds, subs, req.Project, req.Location)
 	if err != nil {
 		return err
 	}
-	owner, repo, err := splitRepo(subs["_REPO_FULL_NAME"])
+	owner, repo, err := splitRepo(subs[sweepRepoSub])
 	if err != nil {
 		return err
 	}
 	gh := clients.GitHub(token)
-	s := newStack(clients, w, subs, out)
+	s := newStack(clients, w, build, out)
 	for _, number := range numbers {
 		n, _ := strconv.Atoi(number)
 		state, err := gh.PullRequestState(ctx, owner, repo, n)
@@ -90,16 +75,13 @@ func Sweep(ctx context.Context, clients *Clients, w Workspace, req *SweepRequest
 		}
 		fmt.Fprintf(out, "Pull request %s is closed: its environment goes.\n", number)
 		// Each pull request's stack is initialized afresh against its own prefix.
-		if err := os.RemoveAll(filepath.Join(s.dir, ".terraform")); err != nil {
-			return errors.Wrap(err, "os.RemoveAll()")
-		}
 		if err := s.init(ctx, subs, number); err != nil {
 			return err
 		}
 		if err := deleteBuildJobs(ctx, clients, s, subs, number, out); err != nil {
 			return err
 		}
-		if err := s.tofu(ctx, "destroy", "-auto-approve", "-input=false", "-no-color", varFlag, "environment="+subs[envSub], varFlag, "pull_request="+number); err != nil {
+		if err := s.tofu(ctx, "destroy", "-auto-approve", noInputFlag, noColorFlag, varFlag, "environment="+subs[envSub], varFlag, "pull_request="+number); err != nil {
 			return err
 		}
 	}
