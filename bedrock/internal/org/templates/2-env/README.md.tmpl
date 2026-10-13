@@ -110,13 +110,7 @@ and a `shared_vpc_id` that is null.
   or the organization reads no record through them. A grant added on the
   bucket by hand, for a day's debugging, is removed by this layer's next
   apply; a grant added on the project is not, so an Owner of the project can
-  still give itself a storage role there. An organization whose state still
-  holds the four member resources an earlier bedrock granted the bucket with
-  applies this layer once to move to the policy: `records.tf` takes them out
-  of the state without destroying them (`removed` blocks with
-  `destroy = false`, carried for one bedrock release), since destroying one
-  would take its member out of the permission list the policy has just set,
-  until the next apply set it again.
+  still give itself a storage role there.
 - The team group's grants (`team-group.tf`): `roles/cloudbuild.builds.approver`
   on the environment project for the environment's team group in
   {{.ApprovalEnvironmentsProse}}, and the Privileged Access Manager
@@ -461,12 +455,9 @@ github-deployer-key <version>` (`0-bootstrap/README.md`, "The deployer GitHub
 App's key"). This layer carries the pinned version's resource name to the
 applications' pipelines through its output `github_deployer_key_secret_version`
 and grants their identities its read: every application's deploy identity,
-and in tst its apply identity too. The container an earlier bedrock made in
-this environment's project, `{{.Prefix}}-<env>-gbl-github-deployer-key`, held
-a copy of the key pinned per environment; a `removed` block destroys it with
-its versions on the first apply of this render, and the grants move to the
-boot container. Until both values are recorded, the pipelines talk back
-through nothing; the rest of the layer and the deployments are unaffected.
+and in tst its apply identity too. Until both values are recorded, the pipelines
+talk back through nothing; the rest of the layer and the deployments are
+unaffected.
 
 ## Prerequisites this layer does not create
 

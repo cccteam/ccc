@@ -59,17 +59,6 @@ resource "google_storage_bucket" "{{.Resource}}" {
   labels = local.labels
 }
 
-# The bucket and its policy were unconditional before a pull-request stack
-# could share {{$.Integration}}'s bucket; the state's instances keep their place.
-moved {
-  from = google_storage_bucket.{{.Resource}}
-  to   = google_storage_bucket.{{.Resource}}[0]
-}
-
-moved {
-  from = google_storage_bucket_iam_policy.{{.Resource}}
-  to   = google_storage_bucket_iam_policy.{{.Resource}}[0]
-}
 
 # In {{$.Integration}}, the identities of the application's pull-request
 # stacks ({{$.App}}-pr<N>-app{{if .JobsReads}}, -jobs{{end}}), which share this bucket
@@ -134,32 +123,6 @@ resource "google_storage_bucket_iam_member" "{{.Resource}}_preview" {
   role   = "roles/storage.objectUser"
   member = {{if .JobsReads}}each.key == "app" ? local.app_member : local.jobs_member{{else}}local.app_member{{end}}
 }
-
-# The member resource{{if .JobsReads}}s{{end}} the policy above replaced, taken out of the state
-# without being destroyed. Destroying one would remove its member from the
-# bucket's live permission list, which the policy has just set whole, and the
-# member would stay missing until the next release's apply set the list again;
-# taken out of the state, the member stays, and the policy holds every member
-# after one apply. Carried for one bedrock release, so a stack that moves to
-# the policy is applied once; dropped in the next release, when no state holds
-# {{if .JobsReads}}them{{else}}it{{end}} any more.
-removed {
-  from = google_storage_bucket_iam_member.{{.Resource}}_app
-
-  lifecycle {
-    destroy = false
-  }
-}
-{{- if .JobsReads}}
-
-removed {
-  from = google_storage_bucket_iam_member.{{.Resource}}_jobs
-
-  lifecycle {
-    destroy = false
-  }
-}
-{{- end}}
 {{- end}}
 {{else -}}
 # ---------------------------------------------------------------------------

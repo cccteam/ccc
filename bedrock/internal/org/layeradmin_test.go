@@ -252,7 +252,6 @@ func TestLayerAdministratorPlace(t *testing.T) {
 			path: "1-org/entitlements.tf",
 			want: []string{
 				"resource \"google_project_iam_member\" \"pam_service_agent\" {\n  project = var.boot_project_id\n  role    = \"roles/privilegedaccessmanager.serviceAgent\"\n",
-				"removed {\n  from = google_project_iam_member.org_plan_entitlements\n\n  lifecycle {\n    destroy = false\n  }\n}\n",
 				"  entitlement_id       = \"${var.prefix}-${each.key}-layer-state\"\n  location             = \"global\"\n  parent               = \"projects/${var.boot_project_id}\"\n  max_request_duration = local.layer_state_duration\n",
 				"  layer_state_duration = \"14400s\"\n",
 				"      resource      = \"//cloudresourcemanager.googleapis.com/projects/${var.boot_project_id}\"\n",

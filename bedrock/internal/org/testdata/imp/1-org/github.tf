@@ -442,13 +442,6 @@ resource "github_repository_environment" "operations" {
   }
 }
 
-# The Environments were the restorable environments' alone at first; the
-# state's instances keep their place under the new name.
-moved {
-  from = github_repository_environment.restorable
-  to   = github_repository_environment.operations
-}
-
 resource "github_repository_environment_deployment_policy" "default_branch" {
   for_each = local.repository_environments
 

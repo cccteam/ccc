@@ -62,17 +62,6 @@ const (
 // Layers are the model's layers, in apply order.
 var Layers = []string{bootstrapLayer, orgLayer, shrLayer, spnLayer, netLayer, envLayer}
 
-// RetiredWorkflowFile is the layers workflow an earlier bedrock rendered under the
-// repository root, which the Cloud Build triggers replaced: org render removes it and
-// org check reports it while it is there.
-const RetiredWorkflowFile = ".github/workflows/layers.yml"
-
-// retiredFiles are the owned files an earlier bedrock rendered that this one does not:
-// the layers workflow, and 1-org's workflow.tf, whose resources runners.tf carries now.
-// org render removes each when present, and org check reports it: a .tf file left
-// behind declares resources twice.
-var retiredFiles = []string{RetiredWorkflowFile, orgLayer + "/workflow.tf"}
-
 // layerProjects is the project each single-run layer's identities live in, by layer: the
 // boot project for the two boot layers (both identities are named after their layer, boot
 // and org), the layer's own project for the shared ones. 2-env's are the environments'.
@@ -748,18 +737,13 @@ func renderDir(dir, prefix string, v *view) ([]render.File, error) {
 	return files, nil
 }
 
-// Written is what Write did: the files written, and the retired files it removed.
+// Written is what Write did: the files written.
 type Written struct {
 	*render.Written
-	// Removed are the retired files an earlier bedrock rendered that were in the
-	// repository and are gone now, by path.
-	Removed []string
 }
 
 // Write puts the files into the repository directory, creating it and the layer
-// directories when absent: owned files always, seeded files only when absent. A retired
-// file an earlier bedrock rendered (retiredFiles) is removed, and the directories the
-// layers workflow sat in with it, once empty.
+// directories when absent: owned files always, seeded files only when absent.
 func Write(files []render.File, dir string) (*Written, error) {
 	for _, layer := range Layers {
 		if err := os.MkdirAll(filepath.Join(dir, layer), 0o750); err != nil {
@@ -770,58 +754,6 @@ func Write(files []render.File, dir string) (*Written, error) {
 	if err != nil {
 		return nil, err
 	}
-	w := &Written{Written: written}
-	for _, retired := range retiredFiles {
-		removed, err := removeRetired(dir, retired)
-		if err != nil {
-			return nil, err
-		}
-		if removed {
-			w.Removed = append(w.Removed, retired)
-		}
-	}
 
-	return w, nil
-}
-
-// removeRetired removes the retired file under dir when it is there, and then each
-// directory above it up to dir that is left empty (the workflow's .github/workflows).
-func removeRetired(dir, retired string) (bool, error) {
-	path := filepath.Join(dir, filepath.FromSlash(retired))
-	if err := os.Remove(path); err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return false, nil
-		}
-
-		return false, errors.Wrapf(err, "os.Remove(): %s", retired)
-	}
-	removeEmptyParents(dir, path)
-
-	return true, nil
-}
-
-// removeEmptyParents removes each directory above path, up to dir, that is empty: the
-// first one that is not (or that cannot be removed) ends it.
-func removeEmptyParents(dir, path string) {
-	for parent := filepath.Dir(path); parent != dir && strings.HasPrefix(parent, dir); parent = filepath.Dir(parent) {
-		if os.Remove(parent) != nil {
-			return
-		}
-	}
-}
-
-// RetiredFiles are the retired files present under dir, by path.
-func RetiredFiles(dir string) ([]string, error) {
-	var present []string
-	for _, retired := range retiredFiles {
-		_, err := os.Stat(filepath.Join(dir, filepath.FromSlash(retired)))
-		switch {
-		case err == nil:
-			present = append(present, retired)
-		case !errors.Is(err, os.ErrNotExist):
-			return nil, errors.Wrapf(err, "os.Stat(): %s", retired)
-		}
-	}
-
-	return present, nil
+	return &Written{Written: written}, nil
 }

@@ -56,10 +56,7 @@ trigger plans it on a pull request as `{{.Prefix}}-org-gbl-plan`.
   and `{{.Prefix}}-org-gbl-plan`: they are `0-bootstrap`'s, with their
   organization-level reads (`0-bootstrap/README.md`), since a binding at the
   organization node is `0-bootstrap`'s to make and this layer's identity holds
-  no role there that sets the organization's policy. An earlier bedrock made
-  them here; `runners.tf` and `entitlements.tf` take them and their grants
-  out of this layer's state without destroying them (`removed`,
-  `destroy = false`).
+  no role there that sets the organization's policy.
 - For every identity it creates, what the Cloud Build triggers need
   (`runners.tf`): the right of the trigger runner of its kind to impersonate
   it (`roles/iam.serviceAccountTokenCreator`: the planner on a plan identity,
@@ -178,9 +175,8 @@ trigger plans it on a pull request as `{{.Prefix}}-org-gbl-plan`.
   environment): the GitHub connection and the repository links, the
   pull-request backend service and endpoint groups, the Identity Platform
   configuration, the operations pool with its provider and attestation
-  rules, the team group's entitlements, the deployer key container an earlier
-  bedrock made in the environment project (until its removal is applied), the
-  environment's own Spanner instance and the records bucket.
+  rules, the team group's entitlements, the environment's own Spanner instance
+  and the records bucket.
   `servicesLayerPlanReader` (`2-shr`): the image repositories.
   `networkLayerPlanReader` (`2-net`): the certificate, its authorization, the
   map and its entries, the load balancer's backend service, address,
@@ -461,12 +457,11 @@ status checks and required reviewers, and deployment branch policies on
 Environments. The layer asks GitHub nothing about the organization's plan; a
 feature the plan lacks is refused by GitHub, and that refusal is the message.
 
-A repository that exists before this layer declares it (one made by hand, or
-configured by the retired `bedrock repository protect`) is imported into the
-state before the first apply, so the apply changes it instead of making a
-second one. For each such application, in this directory, with `GITHUB_TOKEN`
-set (the ruleset ids come from `gh api repos/<org>/<app>/rulesets`, the
-deployment policy ids from
+A repository that exists before this layer declares it (one made by hand) is
+imported into the state before the first apply, so the apply changes it
+instead of making a second one. For each such application, in this directory,
+with `GITHUB_TOKEN` set (the ruleset ids come from
+`gh api repos/<org>/<app>/rulesets`, the deployment policy ids from
 `gh api repos/<org>/<app>/environments/<env>/deployment-branch-policies`):
 
 ```bash

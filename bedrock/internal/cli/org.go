@@ -105,7 +105,6 @@ a build from a checkout is nobody's pin, and bedrock upgrade records one later.`
 			if len(written.Kept) > 0 {
 				fmt.Fprintf(out, "Kept %s as it was.\n", strings.Join(written.Kept, ", "))
 			}
-			fmt.Fprint(out, removedNotice(written))
 			fmt.Fprint(out, handSteps(p))
 
 			return nil
@@ -159,15 +158,6 @@ func (d deps) orgPinned(p *org.Placement, placement string) error {
 	}
 
 	return errors.Newf("%s pins bedrock %s and this is bedrock %s: install the pinned one (%s) or move the pin (bedrock upgrade)", placement, p.BedrockVersion, running.version, install)
-}
-
-// removedNotice says which retired files the write removed, or nothing.
-func removedNotice(written *org.Written) string {
-	if len(written.Removed) == 0 {
-		return ""
-	}
-
-	return fmt.Sprintf("Removed %s: retired; the Cloud Build triggers 0-bootstrap renders plan and apply the layers now.\n", strings.Join(written.Removed, ", "))
 }
 
 // handSteps says what a person does before the triggers can run, and where the commands
@@ -333,11 +323,9 @@ func newOrgRender(d deps) *cobra.Command {
 		Short: "Rewrite the organization's owned files from the placement",
 		Long: `render rewrites the owned files of the organization's infrastructure repository (the layers'
 .tf files and READMEs, the root README and the OpenTofu version) from the placement, and seeds
-the files that are absent. A file an earlier bedrock rendered and this one retires (the layers
-workflow under .github/workflows, which the Cloud Build triggers replace) is removed, and the
-command says so. It refuses a placement pinned to another bedrock than the release or installed
-commit running it (bedrock upgrade moves the pin). Run from the repository root, or name it
-with --dir.`,
+the files that are absent. It refuses a placement pinned to another bedrock than the release
+or installed commit running it (bedrock upgrade moves the pin). Run from the repository root,
+or name it with --dir.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			p, err := orgPlacement(dir, placement)
@@ -359,7 +347,6 @@ with --dir.`,
 			if len(written.Seeded) > 0 {
 				fmt.Fprintf(cmd.OutOrStdout(), "Seeded %s.\n", strings.Join(written.Seeded, ", "))
 			}
-			fmt.Fprint(cmd.OutOrStdout(), removedNotice(written))
 			fmt.Fprint(cmd.OutOrStdout(), triggerNotice(p))
 			if len(p.Applications) > 0 {
 				fmt.Fprint(cmd.OutOrStdout(), applicationProjects(p, "each application"))
@@ -389,10 +376,7 @@ that differs: the drift between the placement and the committed infrastructure. 
 (each layer's terraform.tfvars, the journal, the ignore rules) are a person's and are not
 compared. It also lists, and fails on, a file in a layer it does not render: a .tf file added
 by hand, which would run as the layer's identity, or an override file (override.tf,
-*_override.tf), which OpenTofu merges into the layer; a value 2-env/terraform.tfvars still
-sets that placement.json carries now (the Cloud Build authorization, the deployer app); and
-the retired layers workflow (.github/workflows/layers.yml), which org render removes. It
-refuses a placement pinned to another bedrock than the release or installed commit running
+*_override.tf), which OpenTofu merges into the layer. It refuses a placement pinned to another bedrock than the release or installed commit running
 it (bedrock upgrade moves the pin). The plan trigger runs it before each plan, and the apply
 trigger before each apply, so nothing a pull request adds to a layer by hand runs there.
 
@@ -676,7 +660,6 @@ before them. A refusal changes nothing.`,
 			}
 			out := cmd.OutOrStdout()
 			fmt.Fprintf(out, "Registered %s in %s; rendered %d owned file(s), the five applications.auto.tfvars and 1-org/public-invokers.auto.tfvars among them.\n", app, placement, written.Owned)
-			fmt.Fprint(out, removedNotice(written))
 			fmt.Fprint(out, triggerNotice(p))
 			fmt.Fprint(out, applySequence(p, app))
 

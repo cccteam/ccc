@@ -41,73 +41,12 @@ locals {
   environment_layers      = { for k, v in local.layers : k => v if v.folder != "shared" }
 }
 
-# ---------------------------------------------------------------------------
-# The boot layers' plan identities, retired from this layer
-#
-# An earlier bedrock made the two boot layers' plan identities here, with
-# their organization-level reads, which this layer's identity cannot grant
-# (a binding at the organization node); a person applied them. 0-bootstrap
-# declares the same identities and grants now. They leave this state and
-# stay as they are (destroy = false): 0-bootstrap adopts the two accounts and
-# refreshes the grants, the same bindings (README, "Upgrading to the Cloud
-# Build triggers", step 3).
-# ---------------------------------------------------------------------------
 
-removed {
-  from = google_service_account.boot_plan
 
-  lifecycle {
-    destroy = false
-  }
-}
 
-removed {
-  from = google_organization_iam_member.boot_plan
 
-  lifecycle {
-    destroy = false
-  }
-}
 
-removed {
-  from = google_project_iam_member.boot_plan_quota
 
-  lifecycle {
-    destroy = false
-  }
-}
-
-removed {
-  from = google_secret_manager_secret_iam_member.org_plan_infrastructure_key
-
-  lifecycle {
-    destroy = false
-  }
-}
-
-removed {
-  from = google_service_account_iam_member.boot_plan_planner
-
-  lifecycle {
-    destroy = false
-  }
-}
-
-removed {
-  from = google_storage_bucket_iam_member.boot_plan_state_list
-
-  lifecycle {
-    destroy = false
-  }
-}
-
-removed {
-  from = google_storage_bucket_iam_member.boot_plan_state_read
-
-  lifecycle {
-    destroy = false
-  }
-}
 
 # ---------------------------------------------------------------------------
 # Who may become each identity: the trigger runners of its kind
@@ -129,31 +68,7 @@ resource "google_service_account_iam_member" "plan_planner" {
   member             = local.boot.planner_member
 }
 
-# The federation bindings an earlier bedrock made for the layers workflow are
-# retired with its pool: taken out of the state and destroyed.
-removed {
-  from = google_service_account_iam_member.tofu_workflow
 
-  lifecycle {
-    destroy = true
-  }
-}
-
-removed {
-  from = google_service_account_iam_member.plan_workflow
-
-  lifecycle {
-    destroy = true
-  }
-}
-
-removed {
-  from = google_service_account_iam_member.boot_plan_workflow
-
-  lifecycle {
-    destroy = true
-  }
-}
 
 # ---------------------------------------------------------------------------
 # The deployer GitHub App's key container

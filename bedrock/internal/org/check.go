@@ -1,6 +1,6 @@
 // check.go compares a committed organization repository with what the placement
-// renders: the drift between the placement and the layers, the files a layer holds that
-// no render produces, and the files an earlier bedrock rendered and this one retired.
+// renders: the drift between the placement and the layers, and the files a layer holds
+// that no render produces.
 
 package org
 
@@ -13,15 +13,12 @@ import (
 	"strings"
 
 	"github.com/go-playground/errors/v5"
-	"github.com/hashicorp/hcl/v2"
-	"github.com/hashicorp/hcl/v2/hclsyntax"
 
 	"github.com/cccteam/ccc/bedrock/internal/render"
 )
 
 // Finding is one file that is not as the render says it should be: an owned file that
-// differs or is missing, a file in a layer that no render produces, a retired file still
-// there, or a value a person's file carries that the placement carries now.
+// differs or is missing, or a file in a layer that no render produces.
 type Finding struct {
 	// Path is the file's path relative to the repository root.
 	Path string
@@ -34,7 +31,7 @@ type Finding struct {
 	Want string
 	Got  string
 	// Reason, when set, says why the file is refused: a .tf file no render produces, an
-	// override file, a retired file, or a value the placement carries now.
+	// override file.
 	Reason string
 }
 
@@ -61,25 +58,10 @@ func (r *Report) Clean() bool {
 // lock, and the values bedrock itself renders (*.auto.tfvars are owned, compared above).
 var personOwned = []string{tfvarsFile, ".terraform.lock.hcl"}
 
-// retiredValues are the attributes of 2-env's values that placement.json carries now,
-// each with the placement key that carries it: a values file that still sets one is
-// reported.
-var retiredValues = []struct {
-	attribute string
-	key       string
-}{
-	{attribute: "github_app_installation_id", key: "cloudBuildInstallationId"},
-	{attribute: "github_oauth_token_secret_version", key: "cloudBuildTokenSecretVersion"},
-	{attribute: "github_deployer_app_id", key: "githubDeployerAppId"},
-	{attribute: "github_deployer_key_secret_versions", key: "githubDeployerKeyVersion"},
-}
-
 // Check renders the placement and compares the owned files with the repository's; then
 // it refuses, in each layer, every .tf file the render does not produce and every
 // override file (OpenTofu merges an override.tf or *_override.tf into the layer, so a
-// pull request could change what the layers declare without touching a rendered file),
-// the retired files an earlier bedrock rendered, and a value in 2-env's terraform.tfvars
-// that placement.json carries now.
+// pull request could change what the layers declare without touching a rendered file).
 func Check(p *Placement, dir string) (*Report, error) {
 	files, err := Render(p)
 	if err != nil {
@@ -115,29 +97,8 @@ func Check(p *Placement, dir string) (*Report, error) {
 		return nil, err
 	}
 	r.Findings = append(r.Findings, unknown...)
-	retired, err := RetiredFiles(dir)
-	if err != nil {
-		return nil, err
-	}
-	for _, path := range retired {
-		r.Findings = append(r.Findings, Finding{Path: path, Reason: retiredReason(path)})
-	}
-	values, err := retiredValueFindings(dir)
-	if err != nil {
-		return nil, err
-	}
-	r.Findings = append(r.Findings, values...)
 
 	return r, nil
-}
-
-// retiredReason says what a retired file was and what replaced it.
-func retiredReason(path string) string {
-	if path == RetiredWorkflowFile {
-		return "the layers workflow is retired: the Cloud Build triggers 0-bootstrap renders plan and apply the layers (0-bootstrap/README.md, \"The Cloud Build triggers\"); bedrock org render removes it"
-	}
-
-	return "retired: 1-org/runners.tf carries its resources now, and a .tf file left beside it declares them twice; bedrock org render removes it"
 }
 
 // unknownFiles lists, in each layer, every .tf and .tf.json file the render does not
@@ -158,9 +119,6 @@ func unknownFiles(dir string, rendered map[string]bool) ([]Finding, error) {
 				continue
 			}
 			path := layer + "/" + entry.Name()
-			if slices.Contains(retiredFiles, path) {
-				continue
-			}
 			if reason := refusal(entry.Name(), rendered[path]); reason != "" {
 				findings = append(findings, Finding{Path: path, Reason: reason})
 			}
@@ -189,37 +147,6 @@ func refusal(name string, rendered bool) string {
 	}
 
 	return ""
-}
-
-// retiredValueFindings reports each attribute of 2-env's terraform.tfvars that
-// placement.json carries now, naming the key that carries it. A values file that is
-// absent or does not parse is left to the layer's own init to report.
-func retiredValueFindings(dir string) ([]Finding, error) {
-	path := envLayer + "/" + tfvarsFile
-	src, err := os.ReadFile(filepath.Join(dir, envLayer, tfvarsFile))
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return nil, nil
-		}
-
-		return nil, errors.Wrapf(err, "os.ReadFile(): %s", path)
-	}
-	f, diags := hclsyntax.ParseConfig(src, path, hcl.InitialPos)
-	if diags.HasErrors() {
-		return nil, nil
-	}
-	body, ok := f.Body.(*hclsyntax.Body)
-	if !ok {
-		return nil, nil
-	}
-	var findings []Finding
-	for _, retired := range retiredValues {
-		if _, set := body.Attributes[retired.attribute]; set {
-			findings = append(findings, Finding{Path: path, Reason: "sets " + retired.attribute + ", which placement.json carries now as " + retired.key + ": record it there (bedrock org render reads it) and remove it here"})
-		}
-	}
-
-	return findings, nil
 }
 
 // firstDifference finds the first line where the rendered and committed contents part.

@@ -27,9 +27,7 @@ the stack directory, and the files it owns at the application root (cloudbuild.y
 cloudbuild-sweep.yaml, the release and operations workflows, and the generate-time step
 cmd/generate/bedrock.go) with the ones there. It exits 1 when any differs or is missing,
 listing each with the first line that differs: the drift between the code and the committed
-infrastructure. A file bedrock owned once and renders no more (the infrastructure workflow,
-.github/workflows/infrastructure.yml) is reported as stale while it is there, and fails the
-check the same way; bedrock render removes it. Seeded files (terraform.tfvars, .gitignore,
+infrastructure. Seeded files (terraform.tfvars, .gitignore,
 the Dockerfile, release-please's files) are a person's and are not compared.
 
 It also refuses a schema migrations directory, or the seed directory beside it

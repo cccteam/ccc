@@ -773,43 +773,23 @@ func TestOrgCommands(t *testing.T) {
 			wantOut:  []string{"2-shr/registry.tf: line 1 differs", "1 finding(s) against the 69 owned file(s) the placement renders"},
 		},
 		{
-			name: "check reports the retired workflow and a .tf file added by hand; render removes the workflow",
+			name: "check reports a .tf file added by hand",
 			steps: func(t *testing.T, dir string) (int, string) {
 				t.Helper()
 				if code, out := runOrg(t, "org", "new", dir); code != 0 {
 					t.Fatalf("org new: %d %s", code, out)
 				}
-				workflow := filepath.Join(dir, ".github", "workflows", "layers.yml")
-				if err := os.MkdirAll(filepath.Dir(workflow), 0o750); err != nil {
-					t.Fatal(err)
-				}
-				if err := os.WriteFile(workflow, []byte("name: layers\n"), 0o600); err != nil {
-					t.Fatal(err)
-				}
 				if err := os.WriteFile(filepath.Join(dir, "2-env", "extra.tf"), []byte("# by hand\n"), 0o600); err != nil {
 					t.Fatal(err)
 				}
-				code, out := runOrg(t, "org", "check", "--dir", dir)
-				if code != 1 {
-					t.Errorf("org check: %d, want 1:\n%s", code, out)
-				}
-				for _, want := range []string{
-					".github/workflows/layers.yml: the layers workflow is retired: the Cloud Build triggers 0-bootstrap renders plan and apply the layers (0-bootstrap/README.md, \"The Cloud Build triggers\"); bedrock org render removes it\n",
-					"2-env/extra.tf: not rendered by bedrock: every .tf file of a layer comes from the placement, and a file added by hand would run as the layer's identity; move what it declares into the placement, or remove it\n",
-					"2 finding(s) against the 69 owned file(s) the placement renders\n",
-				} {
-					if !strings.Contains(out, want) {
-						t.Errorf("org check output lacks %q:\n%s", want, out)
-					}
-				}
-				code, out = runOrg(t, "org", "render", "--dir", dir)
-				if _, err := os.Stat(filepath.Join(dir, ".github")); !os.IsNotExist(err) {
-					t.Errorf("render left the workflow's directory: %v", err)
-				}
 
-				return code, out
+				return runOrg(t, "org", "check", "--dir", dir)
 			},
-			wantOut: []string{"69 owned file(s) written", "Removed .github/workflows/layers.yml: retired; the Cloud Build triggers 0-bootstrap renders plan and apply the layers now.\n"},
+			wantCode: 1,
+			wantOut: []string{
+				"2-env/extra.tf: not rendered by bedrock: every .tf file of a layer comes from the placement, and a file added by hand would run as the layer's identity; move what it declares into the placement, or remove it\n",
+				"1 finding(s) against the 69 owned file(s) the placement renders\n",
+			},
 		},
 		{
 			name: "render keeps the seeded values",

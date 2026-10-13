@@ -57,17 +57,6 @@ resource "google_storage_bucket" "files" {
   labels = local.labels
 }
 
-# The bucket and its policy were unconditional before a pull-request stack
-# could share tst's bucket; the state's instances keep their place.
-moved {
-  from = google_storage_bucket.files
-  to   = google_storage_bucket.files[0]
-}
-
-moved {
-  from = google_storage_bucket_iam_policy.files
-  to   = google_storage_bucket_iam_policy.files[0]
-}
 
 # In tst, the identities of the application's pull-request
 # stacks (harbor-pr<N>-app, -jobs), which share this bucket
@@ -131,28 +120,4 @@ resource "google_storage_bucket_iam_member" "files_preview" {
   bucket = local.files_bucket_name
   role   = "roles/storage.objectUser"
   member = each.key == "app" ? local.app_member : local.jobs_member
-}
-
-# The member resources the policy above replaced, taken out of the state
-# without being destroyed. Destroying one would remove its member from the
-# bucket's live permission list, which the policy has just set whole, and the
-# member would stay missing until the next release's apply set the list again;
-# taken out of the state, the member stays, and the policy holds every member
-# after one apply. Carried for one bedrock release, so a stack that moves to
-# the policy is applied once; dropped in the next release, when no state holds
-# them any more.
-removed {
-  from = google_storage_bucket_iam_member.files_app
-
-  lifecycle {
-    destroy = false
-  }
-}
-
-removed {
-  from = google_storage_bucket_iam_member.files_jobs
-
-  lifecycle {
-    destroy = false
-  }
 }

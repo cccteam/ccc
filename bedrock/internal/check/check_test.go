@@ -77,24 +77,6 @@ func TestRun(t *testing.T) {
 			},
 		},
 		{
-			name: "the retired infrastructure workflow at the application root is reported stale",
-			mutate: func(t *testing.T, dir string) {
-				t.Helper()
-
-				path := filepath.Join(dir, "root", ".github", "workflows", "infrastructure.yml")
-				if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
-					t.Fatal(err)
-				}
-				if err := os.WriteFile(path, []byte("name: infrastructure\n"), 0o600); err != nil {
-					t.Fatal(err)
-				}
-			},
-			wantOutput: []string{
-				"23 owned file(s) match the code",
-				"stale    .github/workflows/infrastructure.yml (at the application root): bedrock no longer renders it, and the stack's check trigger runs bedrock check in Cloud Build (infrastructure/cloud-build.tf); bedrock render removes it",
-			},
-		},
-		{
 			name: "an edited pipeline file at the application root differs",
 			mutate: func(t *testing.T, dir string) {
 				t.Helper()
@@ -149,7 +131,7 @@ func TestRun(t *testing.T) {
 				m.Scheduled = []derive.ScheduledRoute{{Path: "/_scheduled/send-daily-digest", Schedule: "0 6 * * 1-5", TimeZone: "America/New_York"}}
 			},
 			wantFindings: []Finding{
-				{Path: "README.md", Line: 263, Want: "  | `POST /_scheduled/send-daily-digest` | `0 6 * * 1-5` | America/New_York |", Got: "  | `POST /_scheduled/send-daily-digest` | `0 7 * * 1-5` | America/New_York |"},
+				{Path: "README.md", Line: 257, Want: "  | `POST /_scheduled/send-daily-digest` | `0 6 * * 1-5` | America/New_York |", Got: "  | `POST /_scheduled/send-daily-digest` | `0 7 * * 1-5` | America/New_York |"},
 				{Path: "scheduler.tf", Line: 29, Want: `      schedule  = "0 6 * * 1-5"`, Got: `      schedule  = "0 7 * * 1-5"`},
 			},
 			wantOutput: []string{"2 of 23 owned file(s) differ", "differs  scheduler.tf:29"},
@@ -161,7 +143,7 @@ func TestRun(t *testing.T) {
 				m.Scheduled = append([]derive.ScheduledRoute{{Path: "/_scheduled/close-stale-holds", Schedule: "*/15 * * * *", TimeZone: "UTC"}}, m.Scheduled...)
 			},
 			wantFindings: []Finding{
-				{Path: "README.md", Line: 263, Want: "  | `POST /_scheduled/close-stale-holds` | `*/15 * * * *` | UTC |", Got: "  | `POST /_scheduled/send-daily-digest` | `0 7 * * 1-5` | America/New_York |"},
+				{Path: "README.md", Line: 257, Want: "  | `POST /_scheduled/close-stale-holds` | `*/15 * * * *` | UTC |", Got: "  | `POST /_scheduled/send-daily-digest` | `0 7 * * 1-5` | America/New_York |"},
 				{Path: "scheduler.tf", Line: 27, Want: `    "close-stale-holds" = {`, Got: `    "send-daily-digest" = {`},
 			},
 			wantOutput: []string{"2 of 23 owned file(s) differ", "differs  scheduler.tf:27"},
