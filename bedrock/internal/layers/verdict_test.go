@@ -15,10 +15,14 @@ func lacking(attribute string) diagnostic {
 // The plans the cases are made of: 1-org's plan creating the role output 2-env reads,
 // 2-env tst's failing on it, and the failures that are not that.
 var (
-	createsRole   = map[string][]string{"storage_bucket_creator_role": {createAction}, "spanner_admin_role": {"no-op"}}
-	invalidRef    = diagnostic{Summary: "Reference to undeclared resource", Detail: `A managed resource "google_project" "x" has not been declared in the root module.`}
-	failedPlan    = "Error: Unsupported attribute\n"
-	succeededPlan = "Plan: 1 to add, 0 to change, 0 to destroy.\n"
+	createsRole = map[string][]string{"storage_bucket_creator_role": {createAction}, "spanner_admin_role": {"no-op"}}
+	invalidRef  = diagnostic{Summary: "Reference to undeclared resource", Detail: `A managed resource "google_project" "x" has not been declared in the root module.`}
+	// The failed lines the cases expect: the plan's errors, each its summary and detail.
+	failedInvalidRef  = "The plan failed: `Reference to undeclared resource: A managed resource \"google_project\" \"x\" has not been declared in the root module.`."
+	failedLackingRole = "The plan failed: `Unsupported attribute: This object does not have an attribute named \"storage_bucket_creator_role\".`."
+	failedBoth        = "The plan failed: `Unsupported attribute: This object does not have an attribute named \"storage_bucket_creator_role\".`; `Reference to undeclared resource: A managed resource \"google_project\" \"x\" has not been declared in the root module.`."
+	failedPlan        = "Error: Unsupported attribute\n"
+	succeededPlan     = "Plan: 1 to add, 0 to change, 0 to destroy.\n"
 	// outputsOnlyPlan is what OpenTofu prints for a plan that changes outputs alone: no Plan
 	// line and no "No changes.".
 	outputsOnlyPlan = "OpenTofu will perform the following actions:\n\nChanges to Outputs:\n  + storage_bucket_creator_role = \"projects/x/roles/y\"\n\nYou can apply this plan to save these new output values to the OpenTofu state, without changing any real infrastructure.\n"
@@ -109,24 +113,29 @@ func TestVerdicts(t *testing.T) {
 			pass: true,
 		},
 		{
-			name:    "a real failure still fails, whatever the earlier plans create",
+			name:    "a real failure still fails, whatever the earlier plans create, and its line carries the error",
 			results: []*planResult{org1, failed("2-env tst", invalidRef)},
-			want:    planFailed,
+			want:    failedInvalidRef,
 		},
 		{
-			name:    "a real failure beside an attribute an earlier plan creates still fails",
+			name:    "a real failure beside an attribute an earlier plan creates still fails, with both errors",
 			results: []*planResult{org1, failed("2-env tst", lacking("storage_bucket_creator_role"), invalidRef)},
-			want:    planFailed,
+			want:    failedBoth,
 		},
 		{
 			name:    "an attribute no earlier plan creates fails",
 			results: []*planResult{succeeded("1-org", succeededPlan, map[string][]string{"other_role": {createAction}}), tst},
-			want:    planFailed,
+			want:    failedLackingRole,
 		},
 		{
 			name:    "an output the earlier plan changes rather than creates fails: it exists, and the attribute is missing for another reason",
 			results: []*planResult{succeeded("1-org", succeededPlan, map[string][]string{"storage_bucket_creator_role": {"update"}}), tst},
-			want:    planFailed,
+			want:    failedLackingRole,
+		},
+		{
+			name:    "a plan with more errors than the line carries names the first three and counts the rest",
+			results: []*planResult{org1, failed("2-env tst", invalidRef, invalidRef, invalidRef, invalidRef, invalidRef)},
+			want:    "The plan failed: `Reference to undeclared resource: A managed resource \"google_project\" \"x\" has not been declared in the root module.`; `Reference to undeclared resource: A managed resource \"google_project\" \"x\" has not been declared in the root module.`; `Reference to undeclared resource: A managed resource \"google_project\" \"x\" has not been declared in the root module.`; and 2 more, which the log has.",
 		},
 		{
 			name:    "an output a layer the merge applies after this one creates fails",
@@ -137,15 +146,15 @@ func TestVerdicts(t *testing.T) {
 		{
 			name:    "an earlier plan that failed creates nothing",
 			results: []*planResult{failed("1-org", invalidRef), tst},
-			want:    planFailed,
+			want:    failedLackingRole,
 		},
 		{
 			name:    "a layer the pull request does not touch planned nothing: the failure stands",
 			results: []*planResult{tst},
-			want:    planFailed,
+			want:    failedLackingRole,
 		},
 		{
-			name:    "a failed plan that recorded no error fails",
+			name:    "a failed plan that recorded no error fails with the fixed line",
 			results: []*planResult{org1, failed("2-env tst")},
 			want:    planFailed,
 		},
@@ -192,7 +201,7 @@ func TestVerdictsInOrder(t *testing.T) {
 	want := []string{
 		"Plan: 1 to add, 0 to change, 0 to destroy.",
 		"planned after 1-org applies: this plan reads the output storage_bucket_creator_role, which 1-org's plan creates, and the merge applies 1-org first.",
-		planFailed,
+		"The plan failed: `Unsupported attribute: This object does not have an attribute named \"storage_bucket_creator_role\".`; `Unsupported attribute: This object does not have an attribute named \"records_bucket\".`.",
 	}
 	var got []string
 	for _, v := range verdicts(results) {

@@ -418,7 +418,7 @@ func TestPlan(t *testing.T) {
 		"2-shr: Plan: 1 to add, 0 to change, 0 to destroy.\n",
 		"2-env tst: planned after 2-shr applies: this plan reads the output repository_names, which 2-shr's plan creates, and the merge applies 2-shr first.\n",
 		"2-env stg: No changes. Your infrastructure matches the configuration.\n",
-		"2-env prd: The plan failed; the log says why.\n",
+		"2-env prd: The plan failed: `Reference to undeclared resource: A managed resource \"google_project\" \"x\" has not been declared in the root module.`.\n",
 		"Posted the plans on pull request #7 as the deployer app.\n",
 	}
 	for _, want := range wantOut {
@@ -470,7 +470,7 @@ func TestPlan(t *testing.T) {
 			t.Errorf("comment %d is not %s's:\n%s", 2+i, name, comments[2+i].Body)
 		}
 	}
-	if !strings.Contains(comments[4].Body, "at head1: The plan failed; the log says why.\n") {
+	if !strings.Contains(comments[4].Body, "at head1: The plan failed: `Reference to undeclared resource: A managed resource \"google_project\" \"x\" has not been declared in the root module.`.\n") {
 		t.Errorf("2-env prd's comment lacks its verdict:\n%s", comments[4].Body)
 	}
 }

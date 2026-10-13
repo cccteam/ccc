@@ -10,20 +10,24 @@ import (
 	"regexp"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/cccteam/ccc/bedrock/internal/org"
 )
 
 // The verdict's fixed lines, the summary of the error a read of a missing output gives,
-// and the action a plan shows for an output it creates.
+// and the action a plan shows for an output it creates. A failed plan's line carries
+// its errors, up to failedErrors of them.
 const (
 	planFailed     = "The plan failed; the log says why."
+	planFailedWith = "The plan failed: "
 	planNotRun     = "The plan did not run; the log says why."
 	outputsOnly    = "No resource changes; outputs change only."
 	noSummary      = "no summary line"
 	unsupportedSum = "Unsupported attribute"
 	createAction   = "create"
+	failedErrors   = 3
 )
 
 var (
@@ -80,14 +84,37 @@ func judge(res *planResult, earlier []*planResult) verdict {
 	}
 	attributes, ok := lackingAttributes(res.diagnostics)
 	if !ok {
-		return verdict{summary: planFailed}
+		return verdict{summary: failedSummary(res.diagnostics)}
 	}
 	producers, byProducer := producersOf(attributes, earlier)
 	if producers == nil {
-		return verdict{summary: planFailed}
+		return verdict{summary: failedSummary(res.diagnostics)}
 	}
 
 	return verdict{summary: plannedAfter(producers, byProducer), pass: true}
+}
+
+// failedSummary is a failed plan's line: its errors, each the summary and the first
+// line of the detail tofu gave, the first failedErrors of them when there are more;
+// the fixed line when it recorded none.
+func failedSummary(diagnostics []diagnostic) string {
+	if len(diagnostics) == 0 {
+		return planFailed
+	}
+	var errs []string
+	for _, d := range diagnostics[:min(len(diagnostics), failedErrors)] {
+		text := strings.TrimSpace(d.Summary)
+		if detail, _, _ := strings.Cut(strings.TrimSpace(d.Detail), "\n"); detail != "" {
+			text += ": " + detail
+		}
+		errs = append(errs, "`"+text+"`")
+	}
+	line := planFailedWith + strings.Join(errs, "; ")
+	if more := len(diagnostics) - failedErrors; more > 0 {
+		line += "; and " + strconv.Itoa(more) + " more, which the log has"
+	}
+
+	return line + "."
 }
 
 // summaryOf is a succeeded plan's last Plan: or No changes. line, the outputs-only
