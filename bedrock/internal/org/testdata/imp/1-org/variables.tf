@@ -108,7 +108,7 @@ variable "github_release_app_id" {
 }
 
 variable "infrastructure_repository" {
-  description = "This repository's name under var.github_organization (placement.json, sourceRepo): the repository the triggers plan and apply the layers from, whose default branch github.tf rules. It exists before 0-bootstrap and is no resource of this layer."
+  description = "This repository's name under var.github_organization (placement.json, sourceRepo): the repository the triggers plan and apply the layers from, which github.tf adopts on the first apply and whose default branch it rules. It exists before 0-bootstrap."
   type        = string
   default     = "imp-impulse-infrastructure"
 }

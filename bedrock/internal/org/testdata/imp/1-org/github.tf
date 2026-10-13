@@ -356,15 +356,48 @@ resource "github_repository_ruleset" "branch" {
   }
 }
 
-# This repository's default branch. The repository exists before 0-bootstrap
-# and is no resource of this layer: the ruleset alone is declared, with the
-# review settings of the applications' branch rulesets and the plan trigger's
-# build as the required check, which Google's Cloud Build GitHub App reports
-# under the trigger's name and the boot project's id. The apply trigger's
-# build is not a check: it runs after the merge.
+# This repository, from which the triggers plan and apply the layers. It
+# exists before 0-bootstrap (a person makes it, and the layers live in it), so
+# this layer adopts it on its first apply (the import block, a no-op once the
+# repository is in the state) and sets what the applications' repositories
+# get: squash the only merge, the squashed commit titled from the pull
+# request, the head branch deleted on merge, and the update of a branch
+# offered on the pull request, which the ruleset's strict checks need. It is
+# never deleted by this layer, and what it says about itself stays its own.
+import {
+  id = var.infrastructure_repository
+  to = github_repository.infrastructure
+}
+
+resource "github_repository" "infrastructure" {
+  name       = var.infrastructure_repository
+  visibility = "private"
+
+  allow_merge_commit          = false
+  allow_rebase_merge          = false
+  allow_squash_merge          = true
+  squash_merge_commit_title   = "PR_TITLE"
+  squash_merge_commit_message = "PR_BODY"
+  delete_branch_on_merge      = true
+  allow_update_branch         = true
+
+  lifecycle {
+    prevent_destroy = true
+    ignore_changes = [
+      description, homepage_url, topics, archived, vulnerability_alerts,
+      has_issues, has_projects, has_wiki, has_discussions,
+    ]
+  }
+}
+
+# This repository's default branch: its ruleset, with the review settings of
+# the applications' branch rulesets and the plan trigger's build as the
+# required check, which Google's Cloud Build GitHub App reports under the
+# trigger's name and the boot project's id. The apply trigger's build is not
+# a check: it runs after the merge.
 resource "github_repository_ruleset" "infrastructure" {
   name        = local.lines.default.name
-  repository  = var.infrastructure_repository
+  repository  = github_repository.infrastructure.name
   target      = "branch"
   enforcement = "active"
 

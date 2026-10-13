@@ -2727,9 +2727,18 @@ func TestRepositoryRules(t *testing.T) {
 			path: "1-org/github.tf",
 			want: []string{
 				`  layers_plan_check = "${var.prefix}-boot-uc1-layers-plan (${var.boot_project_id})"`,
+				`import {
+  id = var.infrastructure_repository
+  to = github_repository.infrastructure
+}
+
+resource "github_repository" "infrastructure" {
+  name       = var.infrastructure_repository
+  visibility = "private"
+`,
 				`resource "github_repository_ruleset" "infrastructure" {
   name        = local.lines.default.name
-  repository  = var.infrastructure_repository
+  repository  = github_repository.infrastructure.name
   target      = "branch"
   enforcement = "active"
 
@@ -2785,7 +2794,7 @@ func TestRepositoryRules(t *testing.T) {
 				`default     = "master"`,
 				`default     = "imp-example"`,
 				"variable \"github_infrastructure_team\" {\n  description = \"Slug of the organization's infrastructure team, whose approval a change to an application's workflow and Cloud Build files needs, given after the last push. Empty for none.\"\n  type        = string\n  default     = \"\"",
-				"variable \"infrastructure_repository\" {\n  description = \"This repository's name under var.github_organization (placement.json, sourceRepo): the repository the triggers plan and apply the layers from, whose default branch github.tf rules. It exists before 0-bootstrap and is no resource of this layer.\"\n  type        = string\n  default     = \"imp-impulse-infrastructure\"",
+				"variable \"infrastructure_repository\" {\n  description = \"This repository's name under var.github_organization (placement.json, sourceRepo): the repository the triggers plan and apply the layers from, which github.tf adopts on the first apply and whose default branch it rules. It exists before 0-bootstrap.\"\n  type        = string\n  default     = \"imp-impulse-infrastructure\"",
 			},
 		},
 		{

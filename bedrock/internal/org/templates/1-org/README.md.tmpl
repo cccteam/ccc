@@ -246,8 +246,11 @@ trigger plans it on a pull request as `{{.Prefix}}-org-gbl-plan`.
 - This repository's default branch: one ruleset (changed by pull request
   alone, no force push, no deletion, with the branch up to date with its
   base, the plan trigger's build passing, {{.ApprovingReviewsProse}} and
-  squash the only merge). The repository exists before 0-bootstrap and is no
-  resource of this layer.
+  squash the only merge), and the repository itself, which exists before
+  0-bootstrap: this layer adopts it on its first apply and sets its merge
+  settings as it does the applications' (squash the only merge, the squashed
+  commit titled from the pull request, the head branch deleted on merge, the
+  update of a branch offered); it never deletes it.
 
 ## Applying
 
@@ -409,14 +412,19 @@ This repository's default branch, from which alone the apply trigger applies
 the layers, has a ruleset of its own
 (`github_repository_ruleset.infrastructure`): changed by pull request alone,
 no force push, no deletion, the same reviews as the applications' branches,
-squash the only merge (the repository's own settings must allow one), and the
-plan trigger's build passing on the pull request's latest commit with the
-branch up to date with its base, which Google's Cloud Build GitHub App
-reports under `{{.PlanTriggerName}} (<boot project id>)`. The repository
-itself exists before 0-bootstrap and is no resource of this layer. A ruleset
-made on it by hand is imported like an application's (`tofu import
-github_repository_ruleset.infrastructure {{.SourceRepo}}:<id>`), so the apply
-changes it instead of adding a second one.
+squash the only merge, and the plan trigger's build passing on the pull
+request's latest commit with the branch up to date with its base, which
+Google's Cloud Build GitHub App reports under `{{.PlanTriggerName}} (<boot
+project id>)`. The repository itself exists before 0-bootstrap; this layer
+adopts it on its first apply through an import block (a no-op once the
+repository is in the state) and sets its merge settings as it does the
+applications' repositories' (`github_repository.infrastructure`): squash the
+only merge, the squashed commit titled from the pull request, the head branch
+deleted on merge, and the update of a branch offered on the pull request,
+which the strict checks need. It never deletes it, and what the repository
+says about itself stays its own. A ruleset made on it by hand is imported
+like an application's (`tofu import github_repository_ruleset.infrastructure
+{{.SourceRepo}}:<id>`), so the apply changes it instead of adding a second one.
 
 When `github_infrastructure_team` names a team of the organization (its slug;
 empty by default), a change to the files that define what the checks run

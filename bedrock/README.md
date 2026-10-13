@@ -710,9 +710,11 @@ first; every application follows right after (step 7 says what breaks otherwise)
    container, tst's apply identity's grants for the stack's triggers, the records
    bucket's policy). The first apply of the new render (step 5) sets every application
    repository's branch rulesets to one approving review unless the placement says
-   otherwise (`approvingReviews`), and gives this repository a ruleset of its own on the
-   default branch, with the plan trigger's check required and the same reviews: from
-   then on a pull request here merges once that check passes and the reviews are given.
+   otherwise (`approvingReviews`), adopts this repository (its merge settings become the
+   applications': squash the only merge, the update of a branch offered on the pull
+   request) and gives its default branch a ruleset, with the plan trigger's check required
+   and the same reviews: from then on a pull request here merges once that check passes
+   and the reviews are given.
    Commit and open the pull request. Its plan trigger does not exist yet, and nothing
    bedrock configures on this repository requires a check until step 5, so the pull
    request waits for step 3 with no check on it.
@@ -2160,11 +2162,12 @@ otherwise), squash the only merge and, when the placement names an infrastructur
 that team's approval of a change to the workflow and Cloud Build files), and the GitHub
 Environments the operations workflow runs in (every environment, production's for the
 rerun of a release and the rollback, each deploying from the default branch alone). The
-layer also rules the infrastructure repository's default branch: changed by pull request
-alone, the same reviews, squash the only merge, and the plan trigger's check
+layer also adopts the infrastructure repository on its first apply (it exists before
+0-bootstrap; an import block brings it into the state), sets its merge settings as it does
+the applications', and rules its default branch: changed by pull request alone, the same
+reviews, squash the only merge, and the plan trigger's check
 (`<prefix>-boot-<region code>-layers-plan (<boot project id>)`) passing on the latest
-commit with the branch up to date with its base; the repository itself exists before
-0-bootstrap and is no resource of the layer. The apply
+commit with the branch up to date with its base. The apply
 trigger's run applies it with the infrastructure GitHub App's installation token, minted in
 the run; a person applying by hand uses their own sign-in,
 `GITHUB_TOKEN` from `gh auth token`, after reading the plan; the placement names the release app by its
