@@ -21,21 +21,6 @@ variable "billing_account_id" {
   type        = string
 }
 
-variable "boot_plan_roles" {
-  description = "Organization-level roles granted to the plan identities of the two boot layers (0-bootstrap and 1-org, both in the boot project): the reads a plan of either layer needs, at the organization node since the layers declare folders, projects, tags and custom roles across it. A starting set, completed by refusal."
-  type        = list(string)
-  default = [
-    "roles/browser",                         # the organization, its folders and projects
-    "roles/essentialcontacts.viewer",        # Essential Contacts per folder
-    "roles/iam.securityReviewer",            # every IAM policy the grants are refreshed through, and the custom roles
-    "roles/iam.serviceAccountViewer",        # the identities in every project
-    "roles/orgpolicy.policyViewer",          # the folder-scoped constraints
-    "roles/resourcemanager.tagViewer",       # the public-invoker tag
-    "roles/secretmanager.viewer",            # the key container's metadata, never a version's payload
-    "roles/serviceusage.serviceUsageViewer", # each project's enabled APIs
-  ]
-}
-
 variable "boot_project_id" {
   description = "(Required) Boot project created by 0-bootstrap. Used as the quota and billing project for API calls."
   type        = string

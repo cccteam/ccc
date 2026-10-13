@@ -17,8 +17,13 @@ output "boot_service_account_email" {
   value       = google_service_account.boot_tofu.email
 }
 
+output "boot_plan_service_accounts" {
+  description = "Read-only plan identity email of the two boot layers (boot for 0-bootstrap, org for 1-org), in the boot project; a pull request plans those layers as them."
+  value       = { for k, sa in google_service_account.boot_plan : k => sa.email }
+}
+
 output "github_infrastructure_key_secret" {
-  description = "Secret Manager container in the boot project holding the infrastructure GitHub App's private key; 1-org grants its plan identity the read."
+  description = "Secret Manager container in the boot project holding the infrastructure GitHub App's private key; the org plan identity reads it for a plan of 1-org."
   value       = google_secret_manager_secret.github_infrastructure_key.secret_id
 }
 

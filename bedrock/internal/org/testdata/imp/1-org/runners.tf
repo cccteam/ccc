@@ -6,17 +6,17 @@
 # Build triggers 0-bootstrap renders (0-bootstrap/cloud-build.tf): the plan
 # trigger's run impersonates the plan identity for that layer's tofu, the
 # apply trigger's run the apply identity. This layer creates the identities of
-# the six project layers (service-accounts.tf) and, here, the plan identities
-# of the two boot layers, which 0-bootstrap cannot make for itself: its own
-# identity exists before it, and a plan of either layer as an apply identity
-# would run a pull request's code with the power to apply. Until this layer's
-# first apply, a pull request that touches 0-bootstrap or 1-org gets no plan.
+# the six project layers (service-accounts.tf); the two boot layers' plan
+# identities are 0-bootstrap's, with their organization-level reads
+# (0-bootstrap/bootstrap.tf): a binding at the organization node is
+# 0-bootstrap's to make, since this layer's identity holds no role there that
+# sets the organization's policy.
 #
 # For every identity it creates, this layer lets the runner of its kind
 # impersonate it (roles/iam.serviceAccountTokenCreator: the planner on a plan
 # identity, the applier on an apply identity) and makes the state bucket's
 # grants: the layer's own prefix, the upstream prefixes it reads, and the
-# list. 0-bootstrap makes the same for the two identities it owns. IAM refuses
+# list. 0-bootstrap makes the same for the four identities it owns. IAM refuses
 # a binding for a service account that does not exist, which is why each
 # layer grants for the identities it creates, and why the environment layer
 # identities receive the bucket's policy authority here: 2-env grants the
@@ -28,13 +28,6 @@
 
 locals {
   boot = data.terraform_remote_state.boot.outputs
-
-  # The two boot layers' plan identities, in the boot project, named after
-  # their layers (boot, org), with the state prefixes each one reads.
-  boot_plans = {
-    boot = { layer = "0-bootstrap", reads = ["0-bootstrap"] }
-    org  = { layer = "1-org", reads = ["0-bootstrap", "1-org"] }
-  }
 
   state_bucket_objects = "projects/_/buckets/${var.state_bucket}/objects"
 
@@ -49,47 +42,71 @@ locals {
 }
 
 # ---------------------------------------------------------------------------
-# The boot layers' plan identities
+# The boot layers' plan identities, retired from this layer
+#
+# An earlier bedrock made the two boot layers' plan identities here, with
+# their organization-level reads, which this layer's identity cannot grant
+# (a binding at the organization node); a person applied them. 0-bootstrap
+# declares the same identities and grants now. They leave this state and
+# stay as they are (destroy = false): 0-bootstrap adopts the two accounts and
+# refreshes the grants, the same bindings (README, "Upgrading to the Cloud
+# Build triggers", step 3).
 # ---------------------------------------------------------------------------
 
-resource "google_service_account" "boot_plan" {
-  for_each = local.boot_plans
+removed {
+  from = google_service_account.boot_plan
 
-  project      = var.boot_project_id
-  account_id   = "${var.prefix}-${each.key}-gbl-plan"
-  display_name = "OpenTofu plan SA - ${var.prefix}-${each.key}-gbl"
-  description  = "Read-only plan identity for ${var.prefix}-${each.key}-gbl. Plans ${each.value.layer} on a pull request of the infrastructure repository and never applies."
-}
-
-# Organization-level reads (var.boot_plan_roles): the layers they plan declare
-# folders, projects, tags and custom roles across the organization.
-resource "google_organization_iam_member" "boot_plan" {
-  for_each = {
-    for pair in setproduct(keys(local.boot_plans), var.boot_plan_roles) :
-    "${pair[0]}__${pair[1]}" => { plan = pair[0], role = pair[1] }
+  lifecycle {
+    destroy = false
   }
-
-  org_id = local.org_id
-  role   = each.value.role
-  member = google_service_account.boot_plan[each.value.plan].member
 }
 
-resource "google_project_iam_member" "boot_plan_quota" {
-  for_each = local.boot_plans
+removed {
+  from = google_organization_iam_member.boot_plan
 
-  project = var.boot_project_id
-  role    = "roles/serviceusage.serviceUsageConsumer"
-  member  = google_service_account.boot_plan[each.key].member
+  lifecycle {
+    destroy = false
+  }
 }
 
-# A plan of this layer reads the applications' repositories with the
-# infrastructure GitHub App's token, minted from the key the boot project
-# holds; the org plan identity reads that one secret.
-resource "google_secret_manager_secret_iam_member" "org_plan_infrastructure_key" {
-  project   = var.boot_project_id
-  secret_id = local.boot.github_infrastructure_key_secret
-  role      = "roles/secretmanager.secretAccessor"
-  member    = google_service_account.boot_plan["org"].member
+removed {
+  from = google_project_iam_member.boot_plan_quota
+
+  lifecycle {
+    destroy = false
+  }
+}
+
+removed {
+  from = google_secret_manager_secret_iam_member.org_plan_infrastructure_key
+
+  lifecycle {
+    destroy = false
+  }
+}
+
+removed {
+  from = google_service_account_iam_member.boot_plan_planner
+
+  lifecycle {
+    destroy = false
+  }
+}
+
+removed {
+  from = google_storage_bucket_iam_member.boot_plan_state_list
+
+  lifecycle {
+    destroy = false
+  }
+}
+
+removed {
+  from = google_storage_bucket_iam_member.boot_plan_state_read
+
+  lifecycle {
+    destroy = false
+  }
 }
 
 # ---------------------------------------------------------------------------
@@ -108,14 +125,6 @@ resource "google_service_account_iam_member" "plan_planner" {
   for_each = local.layers
 
   service_account_id = google_service_account.plan[each.key].name
-  role               = "roles/iam.serviceAccountTokenCreator"
-  member             = local.boot.planner_member
-}
-
-resource "google_service_account_iam_member" "boot_plan_planner" {
-  for_each = local.boot_plans
-
-  service_account_id = google_service_account.boot_plan[each.key].name
   role               = "roles/iam.serviceAccountTokenCreator"
   member             = local.boot.planner_member
 }
@@ -198,14 +207,6 @@ resource "google_storage_bucket_iam_member" "plan_state_list" {
   member = google_service_account.plan[each.key].member
 }
 
-resource "google_storage_bucket_iam_member" "boot_plan_state_list" {
-  for_each = local.boot_plans
-
-  bucket = var.state_bucket
-  role   = "roles/storage.legacyBucketReader"
-  member = google_service_account.boot_plan[each.key].member
-}
-
 resource "google_storage_bucket_iam_member" "tofu_state_own" {
   for_each = local.layers
 
@@ -245,20 +246,6 @@ resource "google_storage_bucket_iam_member" "plan_state_read" {
     title       = "${local.layer_names[each.key]}-plan-state"
     description = "The layer's own state prefix and the upstream states it reads."
     expression  = join(" || ", [for p in concat([local.layer_state_prefixes[each.key]], local.layer_upstream_prefixes[each.key]) : "resource.name.startsWith(\"${local.state_bucket_objects}/${p}/\")"])
-  }
-}
-
-resource "google_storage_bucket_iam_member" "boot_plan_state_read" {
-  for_each = local.boot_plans
-
-  bucket = var.state_bucket
-  role   = "roles/storage.objectViewer"
-  member = google_service_account.boot_plan[each.key].member
-
-  condition {
-    title       = "${var.prefix}-${each.key}-gbl-plan-state"
-    description = "The layer's own state prefix and the upstream states it reads."
-    expression  = join(" || ", [for p in each.value.reads : "resource.name.startsWith(\"${local.state_bucket_objects}/${p}/\")"])
   }
 }
 

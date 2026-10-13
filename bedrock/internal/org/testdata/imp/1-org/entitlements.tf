@@ -68,11 +68,15 @@ resource "google_project_iam_member" "pam_service_agent" {
 }
 
 # A pull request plans this layer as its plan identity, which refreshes the
-# entitlements: their read, on the boot project alone.
-resource "google_project_iam_member" "org_plan_entitlements" {
-  project = var.boot_project_id
-  role    = "roles/privilegedaccessmanager.viewer"
-  member  = google_service_account.boot_plan["org"].member
+# entitlements: their read, on the boot project alone, is 0-bootstrap's grant
+# with the identity (0-bootstrap/bootstrap.tf). An earlier bedrock granted it
+# here; the grant leaves this state and stays.
+removed {
+  from = google_project_iam_member.org_plan_entitlements
+
+  lifecycle {
+    destroy = false
+  }
 }
 
 resource "google_privileged_access_manager_entitlement" "layer_state" {

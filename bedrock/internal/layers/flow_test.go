@@ -8,6 +8,7 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -125,6 +126,7 @@ type fakeStore struct {
 	mu      sync.Mutex
 	objects map[string]string
 	written []string
+	listed  []string // the prefixes listed: a listing is the bucket's own permission, which the applier lacks
 }
 
 func (s *fakeStore) open(context.Context) (deploy.Store, error) {
@@ -143,6 +145,7 @@ func (s *fakeStore) Write(_ context.Context, bucket, object string, data []byte)
 func (s *fakeStore) List(_ context.Context, _, prefix string) ([]string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.listed = append(s.listed, prefix)
 	var names []string
 	for name := range s.objects {
 		if strings.HasPrefix(name, prefix) {
@@ -159,7 +162,7 @@ func (s *fakeStore) Read(_ context.Context, _, object string) ([]byte, error) {
 	defer s.mu.Unlock()
 	data, ok := s.objects[object]
 	if !ok {
-		return nil, errors.Newf("storage: object doesn't exist: %s", object)
+		return nil, fmt.Errorf("gs://%s: %w", object, os.ErrNotExist)
 	}
 
 	return []byte(data), nil
@@ -415,7 +418,7 @@ func TestPlan(t *testing.T) {
 		"2-shr: Plan: 1 to add, 0 to change, 0 to destroy.\n",
 		"2-env tst: planned after 2-shr applies: this plan reads the output repository_names, which 2-shr's plan creates, and the merge applies 2-shr first.\n",
 		"2-env stg: No changes. Your infrastructure matches the configuration.\n",
-		"2-env prd: The plan failed; the log says why.\n",
+		"2-env prd: The plan failed: `Reference to undeclared resource: A managed resource \"google_project\" \"x\" has not been declared in the root module.`.\n",
 		"Posted the plans on pull request #7 as the deployer app.\n",
 	}
 	for _, want := range wantOut {
@@ -467,7 +470,7 @@ func TestPlan(t *testing.T) {
 			t.Errorf("comment %d is not %s's:\n%s", 2+i, name, comments[2+i].Body)
 		}
 	}
-	if !strings.Contains(comments[4].Body, "at head1: The plan failed; the log says why.\n") {
+	if !strings.Contains(comments[4].Body, "at head1: The plan failed: `Reference to undeclared resource: A managed resource \"google_project\" \"x\" has not been declared in the root module.`.\n") {
 		t.Errorf("2-env prd's comment lacks its verdict:\n%s", comments[4].Body)
 	}
 }
@@ -698,6 +701,9 @@ func TestApply(t *testing.T) {
 	wantWritten := []string{bucket + "/applied/2-shr=head2", bucket + "/applied/2-net=head2", bucket + "/applied/2-env/tst=head2"}
 	if !slices.Equal(f.store.written, wantWritten) {
 		t.Errorf("markers written = %v, want %v", f.store.written, wantWritten)
+	}
+	if f.store.listed != nil {
+		t.Errorf("the run listed %v: the applier's grant is on the markers' names, and cannot list the bucket", f.store.listed)
 	}
 	if want := []string{"imp-tst-gbl-tofu@imp-tst-gbl-core-1a2b.iam.gserviceaccount.com"}; !slices.Equal(f.keys.identities, want) {
 		t.Errorf("the keys were opened as %v, want %v", f.keys.identities, want)

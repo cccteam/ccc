@@ -20,7 +20,7 @@
 # around it.
 #
 #   check     every push to a pull request against master or a hotfix line
-#             (COMMENTS_DISABLED): bedrock check, then the stack planned and
+#             (no comment control: every push): bedrock check, then the stack planned and
 #             tested for every environment as that environment's plan identity
 #             (the summaries go on the pull request), then the pull request's
 #             own stack applied again when it already has a preview, so later
@@ -360,9 +360,11 @@ resource "google_cloudbuild_trigger" "check" {
   repository_event_config {
     repository = local.identities.repository_id
 
+    # Comment control is left unset, which is "comments disabled": the API stores
+    # that value as unset, and a render that named it would show the trigger
+    # changing in place on every plan.
     pull_request {
-      branch          = "^(master|hotfix/[0-9]+\\.[0-9]+\\.x)$"
-      comment_control = "COMMENTS_DISABLED"
+      branch = "^(master|hotfix/[0-9]+\\.[0-9]+\\.x)$"
     }
   }
 

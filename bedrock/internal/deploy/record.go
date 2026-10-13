@@ -456,7 +456,8 @@ func (r *Record) JSON() ([]byte, error) {
 // Store writes objects into buckets: Cloud Storage, or a fake in tests.
 type Store interface {
 	Write(ctx context.Context, bucket, object string, data []byte) error
-	// List names the objects under the prefix; Read is one object's content.
+	// List names the objects under the prefix; Read is one object's content, and
+	// answers an error that is os.ErrNotExist for an object that is not there.
 	List(ctx context.Context, bucket, prefix string) ([]string, error)
 	Read(ctx context.Context, bucket, object string) ([]byte, error)
 	Close() error
@@ -521,6 +522,9 @@ func (s *cloudStorage) List(ctx context.Context, bucket, prefix string) ([]strin
 
 func (s *cloudStorage) Read(ctx context.Context, bucket, object string) ([]byte, error) {
 	r, err := s.client.Bucket(bucket).Object(object).NewReader(ctx)
+	if errors.Is(err, storage.ErrObjectNotExist) {
+		return nil, fmt.Errorf("gs://%s/%s: %w", bucket, object, os.ErrNotExist)
+	}
 	if err != nil {
 		return nil, errors.Wrapf(err, "storage.ObjectHandle.NewReader(): gs://%s/%s", bucket, object)
 	}

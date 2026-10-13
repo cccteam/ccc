@@ -10,13 +10,28 @@ variable "boot_layer_roles" {
     "roles/cloudbuild.builds.editor",          # the two triggers that plan and apply the layers (cloud-build.tf)
     "roles/cloudbuild.connectionAdmin",        # the connection and the repository link the triggers watch (cloud-build.tf)
     "roles/iam.organizationRoleAdmin",         # the custom roles this layer creates (project updater, state bucket policy admin)
-    "roles/iam.serviceAccountAdmin",           # the org layer identity, the two runner identities, and the grants on each
+    "roles/iam.serviceAccountAdmin",           # the org layer identity, the two runner identities, the two plan identities, and the grants on each
     "roles/resourcemanager.folderAdmin",       # the terraform folder
-    "roles/resourcemanager.organizationAdmin", # org-level IAM bindings for the org layer identity
+    "roles/resourcemanager.organizationAdmin", # org-level IAM bindings for the org layer identity and the two plan identities
     "roles/resourcemanager.projectCreator",    # the boot project
     "roles/resourcemanager.projectDeleter",    # project lifecycle
     "roles/resourcemanager.projectIamAdmin",   # IAM bindings inside the boot project
     "roles/serviceusage.serviceUsageAdmin",    # API enablement in the boot project
+  ]
+}
+
+variable "boot_plan_roles" {
+  description = "Organization-level roles granted to the plan identities of the two boot layers (0-bootstrap and 1-org, both in the boot project): the reads a plan of either layer needs, at the organization node since the layers declare folders, projects, tags and custom roles across it. A starting set, completed by refusal."
+  type        = list(string)
+  default = [
+    "roles/browser",                         # the organization, its folders and projects
+    "roles/essentialcontacts.viewer",        # Essential Contacts per folder
+    "roles/iam.securityReviewer",            # every IAM policy the grants are refreshed through, and the custom roles
+    "roles/iam.serviceAccountViewer",        # the identities in every project
+    "roles/orgpolicy.policyViewer",          # the folder-scoped constraints
+    "roles/resourcemanager.tagViewer",       # the public-invoker tag
+    "roles/secretmanager.viewer",            # the key container's metadata, never a version's payload
+    "roles/serviceusage.serviceUsageViewer", # each project's enabled APIs
   ]
 }
 

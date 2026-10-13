@@ -99,10 +99,23 @@ func TestCommentBody(t *testing.T) {
 			},
 		},
 		{
-			name:    "a plan that did not run",
+			name:    "a plan that did not run folds the end of its init, where the refusal is",
+			result:  &planResult{run: run, log: "Initializing the backend...\nError: Failed to get existing workspaces: querying Cloud Storage failed: Permission 'iam.serviceAccounts.getAccessToken' denied on resource (or it may not exist).\ntofu failed: exit status 1\n"},
+			summary: planNotRun,
+			want:    []string{"at abc123: The plan did not run; the log says why.\n", "````text\ntofu init failed, so nothing was planned; the last of what it printed:\n\nInitializing the backend...\nError: Failed to get existing workspaces: querying Cloud Storage failed: Permission 'iam.serviceAccounts.getAccessToken' denied on resource (or it may not exist).\ntofu failed: exit status 1\n````\n"},
+			absent:  []string{"left no plan"},
+		},
+		{
+			name:    "a plan that did not run and printed nothing says so",
 			result:  &planResult{run: run},
 			summary: planNotRun,
-			want:    []string{"at abc123: The plan did not run; the log says why.\n", "````text\ntofu plan 2-env tst left no plan; its log says why.\n````\n"},
+			want:    []string{"````text\ntofu init failed, so nothing was planned; the last of what it printed:\n\n(nothing was printed; the run's log has what there is)\n````\n"},
+		},
+		{
+			name:    "a long init is cut to its last lines",
+			result:  &planResult{run: run, log: strings.Repeat("line\n", 50) + "Error: the last line\n"},
+			summary: planNotRun,
+			want:    []string{"printed:\n\n...\n" + strings.Repeat("line\n", 39) + "Error: the last line\n````\n"},
 		},
 		{
 			name:    "a long plan is cut",

@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
 	"regexp"
 	"strings"
 
@@ -72,21 +73,20 @@ func (r *run) appliedRuns(ctx context.Context, store deploy.Store) ([]org.LayerR
 	if runs, ok, err := r.namedRuns(); ok || err != nil {
 		return runs, err
 	}
-	markers, err := store.List(ctx, r.p.StateBucket, org.MarkerPrefix+"/")
-	if err != nil {
-		return nil, err
-	}
 	commit := r.subs[commitSub]
 	changed := map[string][]string{}
 	var runs []org.LayerRun
 	for _, lr := range r.p.LayerRuns() {
-		if !contains(markers, lr.Marker()) {
+		// Each marker is read by its name: the applier's grant on the bucket is
+		// conditioned on the markers' prefix, and a listing is the bucket's own
+		// permission, which no condition on an object's name grants.
+		data, err := store.Read(ctx, r.p.StateBucket, lr.Marker())
+		if errors.Is(err, os.ErrNotExist) {
 			fmt.Fprintf(r.out, "%s: never applied by the trigger (no marker gs://%s/%s); applying it.\n", lr.Name, r.p.StateBucket, lr.Marker())
 			runs = append(runs, lr)
 
 			continue
 		}
-		data, err := store.Read(ctx, r.p.StateBucket, lr.Marker())
 		if err != nil {
 			return nil, err
 		}

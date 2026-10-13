@@ -52,11 +52,14 @@ trigger plans it on a pull request as `{{.Prefix}}-org-gbl-plan`.
   bucket `2-env` declares (`service-accounts.tf`); what Cloud Storage checks
   on the project, creating a bucket and listing the project's buckets, is the
   custom role `storageBucketCreator` in the `app` role set (below).
-- The plan identities of the two boot layers, `{{.Prefix}}-boot-gbl-plan` and
-  `{{.Prefix}}-org-gbl-plan`, in the boot project (`runners.tf`), with the
-  organization-level reads of `var.boot_plan_roles`: `0-bootstrap` cannot
-  make its own, and a plan of either layer as its apply identity would run a
-  pull request's code with the power to apply.
+- Not the plan identities of the two boot layers, `{{.Prefix}}-boot-gbl-plan`
+  and `{{.Prefix}}-org-gbl-plan`: they are `0-bootstrap`'s, with their
+  organization-level reads (`0-bootstrap/README.md`), since a binding at the
+  organization node is `0-bootstrap`'s to make and this layer's identity holds
+  no role there that sets the organization's policy. An earlier bedrock made
+  them here; `runners.tf` and `entitlements.tf` take them and their grants
+  out of this layer's state without destroying them (`removed`,
+  `destroy = false`).
 - For every identity it creates, what the Cloud Build triggers need
   (`runners.tf`): the right of the trigger runner of its kind to impersonate
   it (`roles/iam.serviceAccountTokenCreator`: the planner on a plan identity,
@@ -300,8 +303,8 @@ administrator for recovery (`0-bootstrap/README.md`, "Recovery, by hand").
 
 From then on the apply trigger applies this layer as `{{.Prefix}}-org-gbl-tofu`
 on a merge into `{{.GithubDefaultBranch}}` and the plan trigger plans it on a
-pull request as `{{.Prefix}}-org-gbl-plan`, the plan identity this layer makes for
-itself (`runners.tf`; `0-bootstrap/README.md`, "The Cloud Build triggers");
+pull request as `{{.Prefix}}-org-gbl-plan`, the plan identity `0-bootstrap` makes
+for it (`0-bootstrap/README.md`, "The Cloud Build triggers");
 the GitHub side runs with the infrastructure GitHub App's token, minted in
 the run (`0-bootstrap/README.md`, "The infrastructure GitHub App"). By hand,
 for recovery, the bootstrap administrator applies it the way the first apply
@@ -485,7 +488,6 @@ required checks, the rulesets' names.
 | `allowed_contact_domains` | Domains permitted as Essential Contacts. | `list(string)` | `{{.ContactDomainsList}}` | no |
 | `audit_log_retention_days` | Retention for the audit log bucket; only with `central_logging`. | `number` | `400` | no |
 | `billing_account_id` | Billing account to link projects to. | `string` | n/a | yes |
-| `boot_plan_roles` | Organization-level reads of the two boot layers' plan identities. | `list(string)` | eight roles, see `variables.tf` | no |
 | `boot_project_id` | Boot project from `0-bootstrap`; quota and billing project for API calls. | `string` | n/a | yes |
 | `central_logging` | Create the log project, audit log bucket, and folder sinks. | `bool` | `false` | no |
 | `essential_contact_emails` | Addresses registered as Essential Contacts on every folder. | `list(string)` | `[]` | no |
@@ -629,7 +631,6 @@ bucket, prefix `1-org`.
 | `gcp_region`, `region_code` | Primary region and its short code. |
 | `gcp_secondary_region`, `secondary_region_code` | Secondary region and its short code. |
 | `layer_service_accounts` | Layer identity email by environment code. |
-| `boot_plan_service_accounts` | Plan identity email of the two boot layers (boot, org). |
 | `log_project_id` | Log project; `null` while `central_logging` is off. |
 | `org_id` | Numeric organization ID. |
 | `plan_service_accounts` | Plan identity email by environment code. |

@@ -175,6 +175,58 @@ resource "google_organization_iam_member" "org_tofu" {
   member = google_service_account.org_tofu.member
 }
 
+# ---------------------------------------------------------------------------
+# The two boot layers' plan identities
+#
+# A pull request plans this layer and 1-org as read-only identities of their
+# own, in the boot project beside the apply identities: a plan as an apply
+# identity would run a pull request's code with the power to apply. They are
+# this layer's to make, with the apply identities, and their organization-level
+# reads are this layer's to grant: a binding at the organization node is, like
+# every one of them, since the org layer identity holds no role there that
+# sets the organization's policy (var.org_layer_roles), by design.
+# ---------------------------------------------------------------------------
+
+locals {
+  # The two plan identities, named after their layers (boot, org), with the
+  # state prefixes each one reads (state-bucket.tf).
+  boot_plans = {
+    boot = { layer = "0-bootstrap", reads = ["0-bootstrap"] }
+    org  = { layer = "1-org", reads = ["0-bootstrap", "1-org"] }
+  }
+}
+
+resource "google_service_account" "boot_plan" {
+  for_each = local.boot_plans
+
+  project      = module.boot_project.project_id
+  account_id   = "${var.prefix}-${each.key}-gbl-plan"
+  display_name = "OpenTofu plan SA - ${var.prefix}-${each.key}-gbl"
+  description  = "Read-only plan identity for ${var.prefix}-${each.key}-gbl. Plans ${each.value.layer} on a pull request of the infrastructure repository and never applies."
+}
+
+# Organization-level reads (var.boot_plan_roles): the layers they plan declare
+# folders, projects, tags and custom roles across the organization.
+resource "google_organization_iam_member" "boot_plan" {
+  for_each = {
+    for pair in setproduct(keys(local.boot_plans), var.boot_plan_roles) :
+    "${pair[0]}__${pair[1]}" => { plan = pair[0], role = pair[1] }
+  }
+
+  org_id = local.org_id
+  role   = each.value.role
+  member = google_service_account.boot_plan[each.value.plan].member
+}
+
+# The boot project is a plan's quota project, as it is every layer's.
+resource "google_project_iam_member" "boot_plan_quota" {
+  for_each = local.boot_plans
+
+  project = module.boot_project.project_id
+  role    = "roles/serviceusage.serviceUsageConsumer"
+  member  = google_service_account.boot_plan[each.key].member
+}
+
 # resourcemanager.projects.update is not carried by any narrow predefined role
 # at org scope, so a custom role is the only way to grant it short of owner.
 resource "google_organization_iam_custom_role" "project_updater" {
@@ -210,6 +262,14 @@ resource "google_project_iam_member" "org_tofu_entitlements" {
   project = module.boot_project.project_id
   role    = "roles/privilegedaccessmanager.admin"
   member  = google_service_account.org_tofu.member
+}
+
+# A pull request plans 1-org as its plan identity, which refreshes the
+# entitlements: their read, on the boot project alone.
+resource "google_project_iam_member" "org_plan_entitlements" {
+  project = module.boot_project.project_id
+  role    = "roles/privilegedaccessmanager.viewer"
+  member  = google_service_account.boot_plan["org"].member
 }
 
 # Billing is granted on the billing account, not the org node. Gated for the

@@ -2281,7 +2281,7 @@ func TestTriggers(t *testing.T) {
 			name:   "the plan trigger: pull requests into the default branch, no comment control, as the planner",
 			mutate: func(*Placement) {},
 			want: []string{
-				"resource \"google_cloudbuild_trigger\" \"plan\" {\n  count = local.connected ? 1 : 0\n\n  project  = module.boot_project.project_id\n  location = local.region\n  name     = \"${var.prefix}-boot-${local.region_code}-layers-plan\"\n\n  service_account    = google_service_account.planner.id\n  include_build_logs = \"INCLUDE_BUILD_LOGS_WITH_STATUS\"\n  substitutions      = local.substitutions\n\n  repository_event_config {\n    repository = google_cloudbuildv2_repository.infrastructure[0].id\n\n    pull_request {\n      branch          = \"^${var.github_default_branch}$\"\n      comment_control = \"COMMENTS_DISABLED\"\n    }\n  }\n",
+				"resource \"google_cloudbuild_trigger\" \"plan\" {\n  count = local.connected ? 1 : 0\n\n  project  = module.boot_project.project_id\n  location = local.region\n  name     = \"${var.prefix}-boot-${local.region_code}-layers-plan\"\n\n  service_account    = google_service_account.planner.id\n  include_build_logs = \"INCLUDE_BUILD_LOGS_WITH_STATUS\"\n  substitutions      = local.substitutions\n\n  repository_event_config {\n    repository = google_cloudbuildv2_repository.infrastructure[0].id\n\n    # Comment control is left unset, which is \"comments disabled\": the API stores\n    # that value as unset, and a render that named it would show the trigger\n    # changing in place on every plan.\n    pull_request {\n      branch = \"^${var.github_default_branch}$\"\n    }\n  }\n",
 				"    step {\n      id         = \"Plan\"\n      name       = \"ghcr.io/opentofu/opentofu:1.12.6\"\n      entrypoint = local.bedrock\n      args       = [\"org\", \"plan\"]\n      env        = local.run_env\n      timeout    = \"3600s\"\n    }\n\n    timeout = \"5100s\"\n\n    options {\n      logging = \"CLOUD_LOGGING_ONLY\"\n    }\n  }\n\n  depends_on = [google_service_account_iam_member.runner_agent_user]\n}\n",
 			},
 		},
@@ -2360,8 +2360,12 @@ func TestTriggers(t *testing.T) {
 // TestRunnerIdentities reads who may become each layer identity: the two runner
 // identities 0-bootstrap creates with what each holds itself (the logs, the connection's
 // read token, the apps' keys, the markers for the applier), the applier's impersonation
-// of the two identities 0-bootstrap owns, 1-org's grants letting the planner impersonate
-// every plan identity and the applier every apply identity, the retired workload
+// of the two apply identities 0-bootstrap owns and the planner's of the two boot layers'
+// plan identities, which 0-bootstrap makes with their organization-level reads (a
+// binding at the organization node is 0-bootstrap's, since 1-org's identity sets no
+// policy there), 1-org's grants letting the planner impersonate every plan identity it
+// creates and the applier every apply identity, the boot layers' plan identities an
+// earlier bedrock made in 1-org taken out of its state and kept, the retired workload
 // identity pool, provider and bindings taken out of the state and destroyed, and the
 // boot identity's organization roles carrying the connection administration in place of
 // the pool administration.
@@ -2381,6 +2385,7 @@ func TestRunnerIdentities(t *testing.T) {
 				"resource \"google_service_account\" \"planner\" {\n  project      = module.boot_project.project_id\n  account_id   = \"${var.prefix}-org-gbl-planner\"\n",
 				"resource \"google_service_account\" \"applier\" {\n  project      = module.boot_project.project_id\n  account_id   = \"${var.prefix}-org-gbl-applier\"\n",
 				"resource \"google_project_iam_member\" \"runner_logs\" {\n  for_each = local.runners\n\n  project = module.boot_project.project_id\n  role    = \"roles/logging.logWriter\"\n  member  = each.value.member\n}\n",
+				"resource \"google_project_iam_member\" \"runner_builds\" {\n  for_each = local.runners\n\n  project = module.boot_project.project_id\n  role    = \"roles/cloudbuild.builds.viewer\"\n  member  = each.value.member\n}\n",
 				"resource \"google_service_account_iam_member\" \"runner_agent_user\" {\n  for_each = local.runners\n\n  service_account_id = each.value.name\n  role               = \"roles/iam.serviceAccountUser\"\n  member             = \"serviceAccount:service-${module.boot_project.project_number}@gcp-sa-cloudbuild.iam.gserviceaccount.com\"\n",
 				"resource \"google_cloudbuildv2_connection_iam_member\" \"runner_read_token\" {\n  for_each = local.connected ? local.runners : {}\n\n  project  = module.boot_project.project_id\n  location = google_cloudbuildv2_connection.github[0].location\n  name     = google_cloudbuildv2_connection.github[0].name\n  role     = \"roles/cloudbuild.readTokenAccessor\"\n  member   = each.value.member\n}\n",
 				"resource \"google_secret_manager_secret_iam_member\" \"runner_keys\" {\n  for_each = local.runner_keys\n\n  project   = module.boot_project.project_id\n  secret_id = local.key_containers[each.value.key]\n  role      = \"roles/secretmanager.secretAccessor\"\n  member    = local.runners[each.value.runner].member\n}\n",
@@ -2388,13 +2393,43 @@ func TestRunnerIdentities(t *testing.T) {
 			},
 		},
 		{
-			name: "the applier becomes the two identities 0-bootstrap owns; the planner none of them",
+			name: "the applier becomes the two apply identities 0-bootstrap owns, the planner its two plan identities",
 			path: "0-bootstrap/cloud-build.tf",
 			want: []string{
 				"resource \"google_service_account_iam_member\" \"applier_boot_tofu\" {\n  service_account_id = google_service_account.boot_tofu.name\n  role               = \"roles/iam.serviceAccountTokenCreator\"\n  member             = google_service_account.applier.member\n}\n",
 				"resource \"google_service_account_iam_member\" \"applier_org_tofu\" {\n  service_account_id = google_service_account.org_tofu.name\n  role               = \"roles/iam.serviceAccountTokenCreator\"\n  member             = google_service_account.applier.member\n}\n",
+				"resource \"google_service_account_iam_member\" \"boot_plan_planner\" {\n  for_each = local.boot_plans\n\n  service_account_id = google_service_account.boot_plan[each.key].name\n  role               = \"roles/iam.serviceAccountTokenCreator\"\n  member             = google_service_account.planner.member\n}\n",
+				"resource \"google_project_iam_member\" \"boot_plan_cloud_build\" {\n  for_each = toset([\"roles/cloudbuild.connectionViewer\", \"roles/cloudbuild.builds.viewer\"])\n\n  project = module.boot_project.project_id\n  role    = each.value\n  member  = google_service_account.boot_plan[\"boot\"].member\n}\n",
 			},
-			absent: []string{"member             = google_service_account.planner.member"},
+			absent: []string{"member             = google_service_account.planner.member\n}\n\nresource \"google_service_account_iam_member\" \"applier"},
+		},
+		{
+			name: "0-bootstrap makes the boot layers' plan identities, their organization-level reads, their quota project and the entitlements' read",
+			path: "0-bootstrap/bootstrap.tf",
+			want: []string{
+				"    boot = { layer = \"0-bootstrap\", reads = [\"0-bootstrap\"] }\n    org  = { layer = \"1-org\", reads = [\"0-bootstrap\", \"1-org\"] }\n",
+				"resource \"google_service_account\" \"boot_plan\" {\n  for_each = local.boot_plans\n\n  project      = module.boot_project.project_id\n  account_id   = \"${var.prefix}-${each.key}-gbl-plan\"\n",
+				"resource \"google_organization_iam_member\" \"boot_plan\" {\n  for_each = {\n    for pair in setproduct(keys(local.boot_plans), var.boot_plan_roles) :\n    \"${pair[0]}__${pair[1]}\" => { plan = pair[0], role = pair[1] }\n  }\n\n  org_id = local.org_id\n  role   = each.value.role\n  member = google_service_account.boot_plan[each.value.plan].member\n}\n",
+				"resource \"google_project_iam_member\" \"boot_plan_quota\" {\n  for_each = local.boot_plans\n\n  project = module.boot_project.project_id\n  role    = \"roles/serviceusage.serviceUsageConsumer\"\n  member  = google_service_account.boot_plan[each.key].member\n}\n",
+				"resource \"google_project_iam_member\" \"org_plan_entitlements\" {\n  project = module.boot_project.project_id\n  role    = \"roles/privilegedaccessmanager.viewer\"\n  member  = google_service_account.boot_plan[\"org\"].member\n}\n",
+			},
+		},
+		{
+			name: "the org plan identity reads the infrastructure app's key, granted where the key lives",
+			path: "0-bootstrap/github.tf",
+			want: []string{
+				"resource \"google_secret_manager_secret_iam_member\" \"org_plan_infrastructure_key\" {\n  project   = module.boot_project.project_id\n  secret_id = google_secret_manager_secret.github_infrastructure_key.secret_id\n  role      = \"roles/secretmanager.secretAccessor\"\n  member    = google_service_account.boot_plan[\"org\"].member\n}\n",
+			},
+		},
+		{
+			name: "0-bootstrap's variables carry the boot plan roles, which no longer read the pool",
+			path: "0-bootstrap/variables.tf",
+			want: []string{
+				"variable \"boot_plan_roles\" {\n",
+				"    \"roles/browser\",                         # the organization, its folders and projects\n",
+				"    \"roles/serviceusage.serviceUsageViewer\", # each project's enabled APIs\n  ]\n}\n",
+			},
+			absent: []string{"workloadIdentityPoolViewer"},
 		},
 		{
 			name: "the two key containers, administered by the org identity; the pool, the provider and the bindings retired",
@@ -2412,28 +2447,30 @@ func TestRunnerIdentities(t *testing.T) {
 			absent: []string{"resource \"google_iam_workload_identity_pool\"", "workloadIdentityUser", "attribute.purpose", "token.actions.githubusercontent.com"},
 		},
 		{
-			name: "1-org: the applier becomes every apply identity, the planner every plan identity, the boot layers' included",
+			name: "1-org: the applier becomes every apply identity it creates, the planner every plan identity it creates",
 			path: "1-org/runners.tf",
 			want: []string{
 				"resource \"google_service_account_iam_member\" \"tofu_applier\" {\n  for_each = local.layers\n\n  service_account_id = google_service_account.tofu[each.key].name\n  role               = \"roles/iam.serviceAccountTokenCreator\"\n  member             = local.boot.applier_member\n}\n",
 				"resource \"google_service_account_iam_member\" \"plan_planner\" {\n  for_each = local.layers\n\n  service_account_id = google_service_account.plan[each.key].name\n  role               = \"roles/iam.serviceAccountTokenCreator\"\n  member             = local.boot.planner_member\n}\n",
-				"resource \"google_service_account_iam_member\" \"boot_plan_planner\" {\n  for_each = local.boot_plans\n\n  service_account_id = google_service_account.boot_plan[each.key].name\n  role               = \"roles/iam.serviceAccountTokenCreator\"\n  member             = local.boot.planner_member\n}\n",
 				"removed {\n  from = google_service_account_iam_member.tofu_workflow\n\n  lifecycle {\n    destroy = true\n  }\n}\n",
 				"removed {\n  from = google_service_account_iam_member.plan_workflow\n\n  lifecycle {\n    destroy = true\n  }\n}\n",
 				"removed {\n  from = google_service_account_iam_member.boot_plan_workflow\n\n  lifecycle {\n    destroy = true\n  }\n}\n",
 				"resource \"google_secret_manager_secret_iam_member\" \"environment_tofu_deployer_key\" {\n  for_each = local.environment_layers\n\n  project   = var.boot_project_id\n  secret_id = local.boot.github_deployer_key_secret\n  role      = google_organization_iam_custom_role.secret_container_admin.id\n  member    = google_service_account.tofu[each.key].member\n}\n",
 				"resource \"google_secret_manager_secret_iam_member\" \"environment_plan_deployer_key\" {\n  for_each = local.environment_layers\n\n  project   = var.boot_project_id\n  secret_id = local.boot.github_deployer_key_secret\n  role      = \"roles/secretmanager.viewer\"\n  member    = google_service_account.plan[each.key].member\n}\n",
 			},
-			absent: []string{"workflow_plan", "workflow_apply", "workloadIdentityUser", "github_pool_name"},
+			absent: []string{"workflow_plan", "workflow_apply", "workloadIdentityUser", "github_pool_name", "resource \"google_service_account\" \"boot_plan\"", "var.boot_plan_roles", "local.boot_plans"},
 		},
 		{
-			name: "the boot layers' plan identities, their organization-level reads and the key's read",
+			name: "the boot layers' plan identities an earlier bedrock made in 1-org leave its state and stay",
 			path: "1-org/runners.tf",
 			want: []string{
-				"resource \"google_service_account\" \"boot_plan\" {\n  for_each = local.boot_plans\n\n  project      = var.boot_project_id\n  account_id   = \"${var.prefix}-${each.key}-gbl-plan\"\n",
-				"    boot = { layer = \"0-bootstrap\", reads = [\"0-bootstrap\"] }\n    org  = { layer = \"1-org\", reads = [\"0-bootstrap\", \"1-org\"] }\n",
-				"    for pair in setproduct(keys(local.boot_plans), var.boot_plan_roles) :",
-				"resource \"google_secret_manager_secret_iam_member\" \"org_plan_infrastructure_key\" {\n  project   = var.boot_project_id\n  secret_id = local.boot.github_infrastructure_key_secret\n  role      = \"roles/secretmanager.secretAccessor\"\n  member    = google_service_account.boot_plan[\"org\"].member\n}\n",
+				"removed {\n  from = google_service_account.boot_plan\n\n  lifecycle {\n    destroy = false\n  }\n}\n",
+				"removed {\n  from = google_organization_iam_member.boot_plan\n\n  lifecycle {\n    destroy = false\n  }\n}\n",
+				"removed {\n  from = google_project_iam_member.boot_plan_quota\n\n  lifecycle {\n    destroy = false\n  }\n}\n",
+				"removed {\n  from = google_secret_manager_secret_iam_member.org_plan_infrastructure_key\n\n  lifecycle {\n    destroy = false\n  }\n}\n",
+				"removed {\n  from = google_service_account_iam_member.boot_plan_planner\n\n  lifecycle {\n    destroy = false\n  }\n}\n",
+				"removed {\n  from = google_storage_bucket_iam_member.boot_plan_state_list\n\n  lifecycle {\n    destroy = false\n  }\n}\n",
+				"removed {\n  from = google_storage_bucket_iam_member.boot_plan_state_read\n\n  lifecycle {\n    destroy = false\n  }\n}\n",
 			},
 		},
 		{
@@ -2447,6 +2484,7 @@ func TestRunnerIdentities(t *testing.T) {
 			want: []string{
 				"output \"planner_member\" {\n", "  value       = google_service_account.planner.member\n",
 				"output \"applier_member\" {\n", "  value       = google_service_account.applier.member\n",
+				"output \"boot_plan_service_accounts\" {\n", "  value       = { for k, sa in google_service_account.boot_plan : k => sa.email }\n",
 				"output \"github_deployer_key_secret\" {\n", "  value       = google_secret_manager_secret.github_deployer_key.secret_id\n",
 				"output \"connection_name\" {\n", "  value       = one(google_cloudbuildv2_connection.github[*].name)\n",
 				"output \"plan_trigger_name\" {\n", "  value       = one(google_cloudbuild_trigger.plan[*].name)\n",
@@ -2461,9 +2499,14 @@ func TestRunnerIdentities(t *testing.T) {
 			absent: []string{"workloadIdentityPoolAdmin"},
 		},
 		{
-			name:   "the boot plan identities' roles no longer read the pool",
+			name:   "1-org's variables and outputs no longer carry the boot layers' plan identities",
 			path:   "1-org/variables.tf",
-			absent: []string{"workloadIdentityPoolViewer"},
+			absent: []string{"workloadIdentityPoolViewer", "boot_plan_roles"},
+		},
+		{
+			name:   "1-org's outputs no longer name the boot layers' plan identities",
+			path:   "1-org/outputs.tf",
+			absent: []string{"boot_plan_service_accounts"},
 		},
 	}
 	for _, tt := range tests {
@@ -2485,10 +2528,11 @@ func TestRunnerIdentities(t *testing.T) {
 	}
 }
 
-// TestStateBucketGrants reads the state bucket's grants: 0-bootstrap grants for the two
-// identities it owns (the list, each one's own prefix, the org identity's read of
-// 0-bootstrap's state) and gives both the bucket's policy authority through its custom
-// role; 1-org grants for every identity it creates (the list for all, the own prefix for
+// TestStateBucketGrants reads the state bucket's grants: 0-bootstrap grants for the four
+// identities it owns (the list, each apply identity's own prefix, the org identity's read
+// of 0-bootstrap's state, each boot layer plan identity's reads) and gives the two apply
+// identities the bucket's policy authority through its custom role; 1-org grants for
+// every identity it creates (the list for all, the own prefix for
 // the apply identities, the upstream reads for both kinds) and gives the environment layer
 // identities the same authority for the application identities 2-env creates.
 func TestStateBucketGrants(t *testing.T) {
@@ -2508,9 +2552,12 @@ func TestStateBucketGrants(t *testing.T) {
 			},
 		},
 		{
-			name: "0-bootstrap grants for its two identities",
+			name: "0-bootstrap grants for its four identities",
 			path: "0-bootstrap/state-bucket.tf",
 			want: []string{
+				"resource \"google_storage_bucket_iam_member\" \"boot_plan_state_list\" {\n  for_each = local.boot_plans\n\n  bucket = var.state_bucket\n  role   = \"roles/storage.legacyBucketReader\"\n  member = google_service_account.boot_plan[each.key].member\n}\n",
+				"resource \"google_storage_bucket_iam_member\" \"boot_plan_state_read\" {\n  for_each = local.boot_plans\n\n  bucket = var.state_bucket\n  role   = \"roles/storage.objectViewer\"\n  member = google_service_account.boot_plan[each.key].member\n",
+				`expression  = join(" || ", [for p in each.value.reads : "resource.name.startsWith(\"${local.state_bucket_objects}/${p}/\")"])`,
 				"    boot = { member = google_service_account.boot_tofu.member, prefix = \"0-bootstrap\" }\n    org  = { member = google_service_account.org_tofu.member, prefix = \"1-org\" }\n",
 				"resource \"google_storage_bucket_iam_member\" \"policy_admin\" {\n  for_each = local.own_identities\n\n  bucket = var.state_bucket\n  role   = google_organization_iam_custom_role.state_bucket_policy_admin.id\n",
 				"resource \"google_storage_bucket_iam_member\" \"state_list\" {\n  for_each = local.own_identities\n\n  bucket = var.state_bucket\n  role   = \"roles/storage.legacyBucketReader\"\n",
@@ -2528,15 +2575,12 @@ func TestStateBucketGrants(t *testing.T) {
 				`layer_upstream_prefixes = { for k, v in local.layers : k => v.folder == "shared" ? ["1-org"] : ["1-org", "2-shr", "2-spn", "2-net", "2-env"] }`,
 				"resource \"google_storage_bucket_iam_member\" \"tofu_state_list\" {\n  for_each = local.layers\n\n  bucket = var.state_bucket\n  role   = \"roles/storage.legacyBucketReader\"\n  member = google_service_account.tofu[each.key].member\n}\n",
 				"resource \"google_storage_bucket_iam_member\" \"plan_state_list\" {\n  for_each = local.layers\n\n  bucket = var.state_bucket\n  role   = \"roles/storage.legacyBucketReader\"\n  member = google_service_account.plan[each.key].member\n}\n",
-				"resource \"google_storage_bucket_iam_member\" \"boot_plan_state_list\" {\n  for_each = local.boot_plans\n",
 				"resource \"google_storage_bucket_iam_member\" \"tofu_state_own\" {\n  for_each = local.layers\n\n  bucket = var.state_bucket\n  role   = \"roles/storage.objectUser\"\n  member = google_service_account.tofu[each.key].member\n",
 				`expression  = "resource.name.startsWith(\"${local.state_bucket_objects}/${local.layer_state_prefixes[each.key]}/\")"`,
 				"resource \"google_storage_bucket_iam_member\" \"tofu_state_upstream\" {\n  for_each = local.layers\n\n  bucket = var.state_bucket\n  role   = \"roles/storage.objectViewer\"\n",
 				`expression  = join(" || ", [for p in local.layer_upstream_prefixes[each.key] : "resource.name.startsWith(\"${local.state_bucket_objects}/${p}/\")"])`,
 				"resource \"google_storage_bucket_iam_member\" \"plan_state_read\" {\n  for_each = local.layers\n\n  bucket = var.state_bucket\n  role   = \"roles/storage.objectViewer\"\n  member = google_service_account.plan[each.key].member\n",
 				`expression  = join(" || ", [for p in concat([local.layer_state_prefixes[each.key]], local.layer_upstream_prefixes[each.key]) : "resource.name.startsWith(\"${local.state_bucket_objects}/${p}/\")"])`,
-				"resource \"google_storage_bucket_iam_member\" \"boot_plan_state_read\" {\n  for_each = local.boot_plans\n\n  bucket = var.state_bucket\n  role   = \"roles/storage.objectViewer\"\n",
-				`expression  = join(" || ", [for p in each.value.reads : "resource.name.startsWith(\"${local.state_bucket_objects}/${p}/\")"])`,
 				"resource \"google_storage_bucket_iam_member\" \"environment_tofu_policy_admin\" {\n  for_each = local.environment_layers\n\n  bucket = var.state_bucket\n  role   = local.boot.state_bucket_policy_admin_role\n  member = google_service_account.tofu[each.key].member\n}\n",
 			},
 		},

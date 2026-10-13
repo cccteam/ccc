@@ -25,6 +25,17 @@ Build triggers" below).
   entitlement, the environment layer identity's slot in the state bucket for a
   recovery of `2-env` by hand (`2-env/README.md`, "Applying").
 - The org layer identity `imp-org-gbl-tofu`, in the boot project.
+- The two boot layers' plan identities `imp-boot-gbl-plan` and
+  `imp-org-gbl-plan`, in the boot project, with the organization-level
+  reads of `var.boot_plan_roles`, the boot project as their quota project, the
+  planner's right to become them (`cloud-build.tf`), for the boot one the
+  reads of the connection, the repository link and the triggers on the boot
+  project (`roles/cloudbuild.connectionViewer`, `roles/cloudbuild.builds.viewer`,
+  `cloud-build.tf`) and, for the org one, the
+  read of the infrastructure GitHub App's key (`github.tf`) and of the
+  entitlements `1-org` declares on the boot project: a pull request plans each
+  boot layer as its own read-only identity. A binding at the organization
+  node is this layer's to make; the org layer identity sets no policy there.
 - The custom organization role `impGblOrgProjectUpdater`
   (`resourcemanager.projects.update`), granted to both identities.
 - `roles/billing.user` on the billing account for both identities, only when
@@ -47,12 +58,13 @@ Build triggers" below).
   `1-org`'s GitHub provider needs, and `imp-boot-gbl-github-deployer-key` for the
   deployer app, which the plan trigger posts the plans as and every
   application's pipeline talks back as; the org identity administers both.
-- The state bucket's grants for the two identities (`state-bucket.tf`): the
-  list, each one's own prefix (`0-bootstrap/`, `1-org/`), the org identity's
-  read of `0-bootstrap/`, and the custom organization role
+- The state bucket's grants for the four identities (`state-bucket.tf`): the
+  list, each apply identity's own prefix (`0-bootstrap/`, `1-org/`), the org
+  identity's read of `0-bootstrap/`, each plan identity's read of the prefixes
+  its layer's plan reads, and the custom organization role
   `impGblStateBucketPolicyAdmin` (reads and sets a bucket's IAM policy,
-  nothing else) on the bucket for both, so each layer can grant for the
-  identities it creates; and for the applier, the markers under `applied/`
+  nothing else) on the bucket for the two apply identities, so each layer can
+  grant for the identities it creates; and for the applier, the markers under `applied/`
   that record each layer's last successful apply (`cloud-build.tf`).
 
 Not created here, on purpose: the state bucket. It is seeded and left outside
@@ -345,6 +357,7 @@ manages budgets.
 |---|---|---|---|:---:|
 | `billing_account_id` | Billing account ID to link projects to. | `string` | n/a | yes |
 | `boot_layer_roles` | Org-level roles granted to the boot layer identity. The seed grants the same list; change both together. | `list(string)` | ten roles, see `variables.tf` | no |
+| `boot_plan_roles` | Organization-level reads of the two boot layers' plan identities. | `list(string)` | eight roles, see `variables.tf` | no |
 | `boot_project_id` | Project ID of the seeded boot project, suffix included. Adopted, not created. | `string` | n/a | yes |
 | `github_default_branch` | The infrastructure repository's default branch: the plan trigger runs on a pull request into it, the apply trigger on a push to it. | `string` | `"master"` | no |
 | `github_organization` | The GitHub organization of the infrastructure and application repositories. | `string` | `"imp-example"` | no |
@@ -353,7 +366,7 @@ manages budgets.
 | `org_layer_roles` | Org-level roles granted to the org layer identity. | `list(string)` | twelve roles, see `variables.tf` | no |
 | `organization_domain` | Domain of the GCP organization. | `string` | n/a | yes |
 | `prefix` | Short org-wide prefix used in resource names. | `string` | `"imp"` | no |
-| `state_bucket` | The seeded state bucket, granted on here for the two identities and the applier. | `string` | the placement's `stateBucket` | no |
+| `state_bucket` | The seeded state bucket, granted on here for the four identities and the applier. | `string` | the placement's `stateBucket` | no |
 | `terraform_folder_id` | Numeric ID of the seeded `terraform` folder, without `folders/`. Adopted, not created. | `string` | n/a | yes |
 
 `terraform.tfvars` sets the required ones and `manage_billing_iam = false`;
@@ -366,6 +379,7 @@ authorization and the environment projects' numbers among them.
 |---|---|
 | `apply_trigger_name`, `plan_trigger_name` | The two triggers; `null` until the authorization is recorded. |
 | `applier_member`, `planner_member` | The two runner identities as IAM members, which `1-org` lets impersonate the identities it creates. |
+| `boot_plan_service_accounts` | The two boot layers' plan identities' emails (boot, org). |
 | `boot_project_id` | The boot project, quota and billing project for every downstream layer. |
 | `boot_project_number` | The boot project's number, recorded in `placement.json` as `projectNumbers.boot`. |
 | `boot_service_account_email` | The boot layer identity. |
@@ -440,20 +454,20 @@ Who runs what, and why the first time works in order:
   the apply trigger's as the applier (`imp-org-gbl-applier`). Neither
   holds a layer's roles: each impersonates the layer identity of its kind for
   that layer's tofu (`roles/iam.serviceAccountTokenCreator` on each identity:
-  this layer grants it on the boot and org identities, `1-org` on the
-  fourteen it creates), so a plan runs with a plan identity's reads and an
+  this layer grants it on its four identities, `1-org` on the twelve it
+  creates), so a plan runs with a plan identity's reads and an
   apply with the apply identity's writes. What each holds itself: the build
-  logs, the connection's read token (the changed files are read through
+  logs, the read of its own build (its substitutions, the pull request, the
+  commit), the connection's read token (the changed files are read through
   it), the two apps' keys, and, for the applier, the markers under
   `applied/` in the state bucket.
 - IAM refuses a binding for a service account that does not exist, so each
   layer grants for the identities it creates. This layer grants for the boot
-  identity and the org identity, both of which exist when its grants apply.
-  `1-org` makes the plan identities of the two boot layers
-  (`imp-boot-gbl-plan`, `imp-org-gbl-plan`) and grants for them
-  and for the twelve identities of the six projects. `2-env` grants for the
-  application identities it creates, with the bucket's policy authority
-  `1-org` gives each environment layer identity.
+  identity, the org identity and the two boot layers' plan identities
+  (`imp-boot-gbl-plan`, `imp-org-gbl-plan`), all of which exist
+  when its grants apply; `1-org` grants for the twelve identities of the six
+  projects. `2-env` grants for the application identities it creates, with
+  the bucket's policy authority `1-org` gives each environment layer identity.
 - The first apply of this layer and the first apply of `1-org` are the
   bootstrap administrator's (steps 3 and 4 above, and `1-org/README.md`),
   with the roles step 1 lists. The bucket exists from step 1, so this layer's
@@ -461,14 +475,16 @@ Who runs what, and why the first time works in order:
   the same person, and from then on as the org identity, which holds the
   bucket's policy authority from here.
 - From the first apply of this layer on, a push to `master`
-  can apply this layer and `1-org` through the apply trigger (their apply
-  identities and the applier's grants on them exist). From the first apply of
-  `1-org` on, a pull request can plan them too. Before that, a run that
-  touches them says which identity it cannot become, and stops.
+  can apply this layer and `1-org` through the apply trigger, and a pull
+  request can plan them (their four identities and the runners' grants on
+  them exist). The project layers follow from the first apply of `1-org`.
+  Before that, a run that touches a layer says which identity it cannot
+  become, and stops.
 
 Each identity's role set is completed by refusal: a layer applied as its
 identity that is refused a permission gets the role that carries it, in
-`var.boot_layer_roles`, `var.org_layer_roles` or `1-org`'s `layer_roles`.
+`var.boot_layer_roles`, `var.org_layer_roles` or `1-org`'s `layer_roles`; a
+plan of a boot layer, in `var.boot_plan_roles`.
 
 ## The infrastructure GitHub App
 

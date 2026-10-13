@@ -701,9 +701,12 @@ first; every application follows right after (step 7 says what breaks otherwise)
    adds `0-bootstrap/cloud-build.tf` (the connection, the repository link, the planner and
    applier identities, the two triggers) and rewrites `0-bootstrap/github.tf` (the
    deployer key's container in the boot project; `removed` blocks for the pool, its
-   provider and the two workflow bindings), `1-org/runners.tf` (the triggers' right to
-   become each layer identity, the plan identities of the two boot layers, the grants on
-   the deployer key's container; `removed` blocks for the workflow bindings),
+   provider and the two workflow bindings) and `0-bootstrap/bootstrap.tf` (the two boot
+   layers' plan identities with their organization-level reads, which an earlier bedrock
+   declared in `1-org`, whose identity cannot grant at the organization node; step 3
+   adopts them), `1-org/runners.tf` (the triggers' right to become each layer identity,
+   the grants on the deployer key's container; `removed` blocks for the workflow
+   bindings, and for the boot layers' plan identities and their grants, kept),
    `1-org/github.tf` (every application repository's required check becomes its stack's
    check trigger) and `2-env` (the connection from the placement's values, the deployer
    key's grants on the boot container with a `removed` block for the environment's own
@@ -723,12 +726,22 @@ first; every application follows right after (step 7 says what breaks otherwise)
    bootstrap administrator, signed in with `gcloud auth application-default login`: the
    workflow is gone and the triggers do not exist until this apply, so this one is a
    person's, the way `0-bootstrap/README.md`, "Recovery, by hand", runs a layer. The
-   import line is for the console way of step 1 only:
+   first import line is for the console way of step 1 only. The two imports after it
+   adopt the boot layers' plan identities where `1-org` made them (`1-org/workflow.tf`
+   declared `google_service_account.boot_plan`: every organization from the layers
+   workflow on; an older one skips them, and the apply creates the two). The two
+   `gcloud` lines take back the read of the retired pool those identities were granted
+   at the organization node, a binding `1-org` leaves behind, since its identity cannot
+   touch it and `0-bootstrap` never held it:
 
    ```bash
    cd 0-bootstrap
    tofu init
    tofu import 'google_cloudbuildv2_connection.github[0]' "projects/<boot project>/locations/<region>/connections/<prefix>-boot-<region code>-github"
+   tofu import 'google_service_account.boot_plan["boot"]' "projects/<boot project>/serviceAccounts/<prefix>-boot-gbl-plan@<boot project>.iam.gserviceaccount.com"
+   tofu import 'google_service_account.boot_plan["org"]' "projects/<boot project>/serviceAccounts/<prefix>-org-gbl-plan@<boot project>.iam.gserviceaccount.com"
+   gcloud organizations remove-iam-policy-binding <organization id> --member "serviceAccount:<prefix>-boot-gbl-plan@<boot project>.iam.gserviceaccount.com" --role roles/iam.workloadIdentityPoolViewer
+   gcloud organizations remove-iam-policy-binding <organization id> --member "serviceAccount:<prefix>-org-gbl-plan@<boot project>.iam.gserviceaccount.com" --role roles/iam.workloadIdentityPoolViewer
    tofu plan
    tofu apply
    ```
@@ -736,11 +749,17 @@ first; every application follows right after (step 7 says what breaks otherwise)
    The plan destroys the workload identity pool, its provider and the two workflow
    bindings on the boot and org identities (`removed` blocks, `destroy = true`), and
    creates the connection (or shows it imported), the repository link, the planner and
-   applier identities with their grants, the two triggers, the deployer key's container
-   and the token's read for every environment project's Cloud Build service agent.
-   Nothing else changes. From here the plan trigger runs on a push to a pull request and
-   the apply trigger on a push to the default branch. A hand apply leaves no marker, so
-   the apply trigger's first run applies this layer once more, with no changes.
+   applier identities with their grants, the two triggers, the deployer key's container,
+   the token's read for every environment project's Cloud Build service agent, and the
+   boot layers' plan identities (or shows the two imported) with their grants: the
+   organization-level reads, the quota project, the planner's right to become them, the
+   state bucket's reads, the boot one's Cloud Build reads on the boot project, the org
+   one's reads of the infrastructure key and of the entitlements; where `1-org` made the
+   same grants they are the same bindings, and nothing changes in the organization.
+   Nothing else changes. From here the plan trigger
+   runs on a push to a pull request and the apply trigger on a push to the default
+   branch. A hand apply leaves no marker, so the apply trigger's first run applies this
+   layer once more, with no changes.
 
 4. **The deployer key, into the boot container.** In a terminal, in the infrastructure
    repository on the branch, as the bootstrap administrator (the container exists since
@@ -764,8 +783,9 @@ first; every application follows right after (step 7 says what breaks otherwise)
    ```
 
    Commit the placement and the render to the pull request and push. The plan trigger
-   runs on the push and stops at the first layer identity it cannot become (the plan
-   identities `1-org` makes, and its grants to the planner, are not applied yet):
+   runs on the push: it plans `0-bootstrap` and `1-org` as their plan identities (step 3
+   made the planner's grants on them) and stops at the first project layer identity it
+   cannot become (`1-org`'s grants to the planner on them are not applied yet):
    expected here, and it blocks nothing.
 
 5. **The merge.** On GitHub, as a person who may merge: merge the pull request. The apply
@@ -774,9 +794,11 @@ first; every application follows right after (step 7 says what breaks otherwise)
    changes), 1-org, 2-shr, 2-spn, 2-net, then 2-env in tst, stg and prd, stopping at the
    first failure, which is then a person's to finish by hand ("Recovery, by hand"). 1-org
    destroys the three workflow bindings on each of its layer identities (`removed`,
-   `destroy = true`) and creates the boot layers' plan identities, the triggers'
-   impersonation grants, the deployer key's grants, every application repository's new
-   required check and reviews, and the ruleset on this repository's default branch.
+   `destroy = true`), takes the boot layers' plan identities and their grants out of its
+   state without destroying them (`removed`, `destroy = false`: `0-bootstrap` holds
+   them since step 3), and creates the triggers' impersonation grants, the deployer
+   key's grants, every application repository's new required check and reviews, and
+   the ruleset on this repository's default branch.
    2-env points each environment's connection at the boot project's
    token (an update in place), destroys the environment's deployer key container with
    its versions (`removed`, `destroy = true`: the boot container holds the key now),

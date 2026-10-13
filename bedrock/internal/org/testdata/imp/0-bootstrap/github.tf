@@ -19,11 +19,11 @@
 #     grants their identities the read.
 #
 # The org identity administers both containers' policies (and reads the
-# infrastructure key for 1-org's apply): 1-org grants its own plan identity
-# the infrastructure key's read, since a plan of 1-org reads the repositories
-# too, and grants each environment layer identity the deployer container's
-# administration, so 2-env can grant the applications' identities their read.
-# The runners' reads are cloud-build.tf's. The retired workload identity pool
+# infrastructure key for 1-org's apply); 1-org's plan identity (bootstrap.tf)
+# reads the infrastructure key too, since a plan of 1-org reads the
+# repositories. 1-org grants each environment layer identity the deployer
+# container's administration, so 2-env can grant the applications' identities
+# their read. The runners' reads are cloud-build.tf's. The retired workload identity pool
 # and provider of the layers workflow are gone from this layer; the triggers
 # need no sign-in from GitHub.
 # ---------------------------------------------------------------------------
@@ -62,6 +62,15 @@ resource "google_secret_manager_secret_iam_member" "org_tofu_deployer_key" {
   secret_id = google_secret_manager_secret.github_deployer_key.secret_id
   role      = "roles/secretmanager.admin"
   member    = google_service_account.org_tofu.member
+}
+
+# A plan of 1-org reads the applications' repositories with the infrastructure
+# app's token, minted from the key: the org plan identity reads that one secret.
+resource "google_secret_manager_secret_iam_member" "org_plan_infrastructure_key" {
+  project   = module.boot_project.project_id
+  secret_id = google_secret_manager_secret.github_infrastructure_key.secret_id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = google_service_account.boot_plan["org"].member
 }
 
 # The boot identity manages the containers when this layer runs through the
