@@ -17,8 +17,12 @@ import (
 	"github.com/cccteam/ccc/bedrock/internal/org"
 )
 
-// commentCut is where a plan's text is cut in the comment on the pull request.
-const commentCut = 60000
+// commentCut is where a plan's text is cut in the comment on the pull request;
+// initTail is how many of init's last lines a plan that did not run folds in its place.
+const (
+	commentCut = 60000
+	initTail   = 40
+)
 
 // Plan plans the layers a pull request changes, side by side, each as its layer's plan
 // identity, judges every plan once all have finished (verdict.go), posts one comment per
@@ -226,6 +230,21 @@ func (r *run) comment(ctx context.Context, number int, results []*planResult, ve
 	return nil
 }
 
+// lastLines is the last n lines of text, or all of it when it is shorter, or a note
+// when it is empty.
+func lastLines(text string, n int) string {
+	text = strings.TrimRight(text, "\n")
+	if text == "" {
+		return "(nothing was printed; the run's log has what there is)\n"
+	}
+	lines := strings.Split(text, "\n")
+	if len(lines) > n {
+		lines = append([]string{"..."}, lines[len(lines)-n:]...)
+	}
+
+	return strings.Join(lines, "\n") + "\n"
+}
+
 // markerOf is the line a run's comment starts with, by which a later push finds it.
 func markerOf(name string) string {
 	return "<!-- layers: " + name + " -->"
@@ -243,11 +262,13 @@ func findComment(comments []github.Comment, marker string) (int64, bool) {
 }
 
 // commentBody is a plan's comment: the marker, the heading, the identity and the
-// commit with the verdict, and the plan's text folded under it, cut when long.
+// commit with the verdict, and the plan's text folded under it, cut when long. A plan
+// that did not run folds the end of what its init printed instead, where the refusal
+// is (an identity it could not become, a backend it could not read).
 func commentBody(res *planResult, summary, commit string) string {
 	text := res.text
 	if !res.ran {
-		text = "tofu plan " + res.run.Name + " left no plan; its log says why.\n"
+		text = "tofu init failed, so nothing was planned; the last of what it printed:\n\n" + lastLines(res.log, initTail)
 	}
 	switch {
 	case len(text) > commentCut:
