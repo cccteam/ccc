@@ -107,6 +107,12 @@ variable "github_release_app_id" {
   default     = {{.GithubReleaseAppID}}
 }
 
+variable "infrastructure_repository" {
+  description = "This repository's name under var.github_organization (placement.json, sourceRepo): the repository the triggers plan and apply the layers from, whose default branch github.tf rules. It exists before 0-bootstrap and is no resource of this layer."
+  type        = string
+  default     = "{{.SourceRepo}}"
+}
+
 variable "layer_roles" {
   description = <<-EOT
     Project-level roles granted to each layer identity on its own project.

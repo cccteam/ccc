@@ -387,6 +387,9 @@ locals {
   ]
 }
 
+# The plan trigger's name is also the check 1-org requires on this
+# repository's default branch (1-org/github.tf, local.layers_plan_check): a
+# renamed trigger is a change in both files.
 resource "google_cloudbuild_trigger" "plan" {
   count = local.connected ? 1 : 0
 

@@ -419,6 +419,24 @@ func (*view) ImpulseChecksProse() string {
 	return prose(ci.FixedChecks)
 }
 
+// ApprovingReviewsProse spells the approving reviews a pull request needs before it
+// merges, for the READMEs: one approving review, two approving reviews, no approving
+// review.
+func (v *view) ApprovingReviewsProse() string {
+	count := v.ApprovingReviewCount()
+	switch count {
+	case 0:
+		return "no approving review"
+	case 1:
+		return "one approving review"
+	}
+	if word, ok := numberWords[count]; ok {
+		return word + " approving reviews"
+	}
+
+	return strconv.Itoa(count) + " approving reviews"
+}
+
 // ImpulseChecksProseQuoted is the job ids as prose, backticked for a README: `title`,
 // `go`, `web`, `image`, `secrets` and `migrations`.
 func (*view) ImpulseChecksProseQuoted() string {

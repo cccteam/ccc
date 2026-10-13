@@ -1,6 +1,7 @@
 package org
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
@@ -8,6 +9,7 @@ import (
 	"reflect"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -50,6 +52,11 @@ func renderedFile(t *testing.T, path string) string {
 	t.Fatalf("%s is not rendered", path)
 
 	return ""
+}
+
+// intPtr is a pointer to the number, for writing a placement's optional count.
+func intPtr(n int) *int {
+	return &n
 }
 
 func TestPlacementValidate(t *testing.T) {
@@ -101,6 +108,18 @@ func TestPlacementValidate(t *testing.T) {
 		{name: "a name a hosted runner cannot carry", mutate: func(p *Placement) { p.CiLargeRunner = "ci large" }, wantErr: `ciLargeRunner "ci large" cannot name a GitHub-hosted runner`},
 		{name: "a cap without a size", mutate: func(p *Placement) { p.CiLargeRunnerSize = "" }, wantErr: "ciLargeRunnerMaximum 10 caps the runner 1-org creates, and ciLargeRunnerSize is empty"},
 		{name: "a negative cap", mutate: func(p *Placement) { p.CiLargeRunnerMaximum = -1 }, wantErr: "ciLargeRunnerMaximum -1 is negative"},
+		{name: "the approving reviews left out", mutate: func(p *Placement) {
+			p.ApprovingReviews = nil
+		}},
+		{name: "no approving review", mutate: func(p *Placement) {
+			p.ApprovingReviews = intPtr(0)
+		}},
+		{name: "two approving reviews", mutate: func(p *Placement) {
+			p.ApprovingReviews = intPtr(2)
+		}},
+		{name: "a negative number of approving reviews", mutate: func(p *Placement) {
+			p.ApprovingReviews = intPtr(-1)
+		}, wantErr: "approvingReviews -1 is negative: the approving reviews a pull request needs before it merges, 0 for none"},
 		{name: "an infrastructure app named by slug", mutate: func(p *Placement) { p.GithubInfrastructureAppID = "imp-infrastructure" }, wantErr: `githubInfrastructureAppId "imp-infrastructure" is not an App ID`},
 		{name: "a key version of latest", mutate: func(p *Placement) { p.GithubInfrastructureKeyVersion = "latest" }, wantErr: `githubInfrastructureKeyVersion "latest" is not a secret version's number (digits, never latest)`},
 		{name: "no deployer app yet", mutate: func(p *Placement) { p.GithubDeployerAppID, p.GithubDeployerKeyVersion = "", "" }},
@@ -1512,6 +1531,15 @@ func TestViewPhrases(t *testing.T) {
 		{name: "the bucket before the seed", placement: Placement{Prefix: "acme"}, check: func(v *view) string { return v.Bucket() }, want: "acme-boot-gbl-state-REPLACEME"},
 		{name: "the bucket after the seed", placement: Placement{Prefix: "acme", StateBucket: "acme-boot-gbl-state-1a2b"}, check: func(v *view) string { return v.Bucket() }, want: "acme-boot-gbl-state-1a2b"},
 		{name: "the layer order", placement: Placement{}, check: func(v *view) string { return v.LayerOrderProse() }, want: "0-bootstrap, 1-org, 2-shr, 2-spn and 2-net, then 2-env for tst, stg and prd"},
+		{name: "the approving reviews, left out and at 0, 2 and 12, as a count and as prose", placement: Placement{}, check: func(v *view) string {
+			parts := []string{strconv.Itoa(v.ApprovingReviewCount()) + " " + v.ApprovingReviewsProse()}
+			for _, n := range []int{0, 2, 12} {
+				v.ApprovingReviews = intPtr(n)
+				parts = append(parts, strconv.Itoa(v.ApprovingReviewCount())+" "+v.ApprovingReviewsProse())
+			}
+
+			return strings.Join(parts, "|")
+		}, want: "1 one approving review|0 no approving review|2 two approving reviews|12 12 approving reviews"},
 		{
 			name:      "the connection, the repository link and the triggers, named in the primary region",
 			placement: Placement{Prefix: "acme", Regions: []Region{{Name: "us-central1", Code: "usc"}, {Name: "us-east1", Code: "use"}}},
@@ -2612,6 +2640,8 @@ func TestRepositoryRules(t *testing.T) {
 		path   string
 		want   []string
 		absent []string
+		// count is how many times a text appears, for what both branch rulesets carry.
+		count map[string]int
 	}{
 		{
 			name: "the applications are the repositories",
@@ -2660,7 +2690,6 @@ func TestRepositoryRules(t *testing.T) {
 				`strict_required_status_checks_policy = true`,
 				`do_not_enforce_on_create = true`,
 				`allowed_merge_methods           = ["squash"]`,
-				`require_last_push_approval      = var.github_infrastructure_team != ""`,
 				`operations_environments = ["tst", "stg", "prd"]`,
 				`moved {
   from = github_repository_environment.restorable
@@ -2680,6 +2709,67 @@ func TestRepositoryRules(t *testing.T) {
 			},
 		},
 		{
+			name: "the reviews: the placement's count rendered as a local, one when it is left out, read by both branch rulesets of every application",
+			path: "1-org/github.tf",
+			want: []string{
+				"  approving_reviews = 1\n",
+				`      required_approving_review_count = local.approving_reviews
+      require_last_push_approval      = local.approving_reviews > 0 || var.github_infrastructure_team != ""
+      dismiss_stale_reviews_on_push   = local.approving_reviews > 0
+      allowed_merge_methods           = ["squash"]
+
+      dynamic "required_reviewers" {`,
+			},
+			absent: []string{"required_approving_review_count = 0", "approving_reviews = var."},
+		},
+		{
+			name: "this repository's default branch: its own ruleset, with the same reviews and the plan trigger's check reported under the boot project",
+			path: "1-org/github.tf",
+			want: []string{
+				`  layers_plan_check = "${var.prefix}-boot-uc1-layers-plan (${var.boot_project_id})"`,
+				`resource "github_repository_ruleset" "infrastructure" {
+  name        = local.lines.default.name
+  repository  = var.infrastructure_repository
+  target      = "branch"
+  enforcement = "active"
+
+  conditions {
+    ref_name {
+      include = local.lines.default.include
+      exclude = []
+    }
+  }
+
+  rules {
+    deletion         = true
+    non_fast_forward = true
+
+    pull_request {
+      required_approving_review_count = local.approving_reviews
+      require_last_push_approval      = local.approving_reviews > 0 || var.github_infrastructure_team != ""
+      dismiss_stale_reviews_on_push   = local.approving_reviews > 0
+      allowed_merge_methods           = ["squash"]
+    }
+
+    required_status_checks {
+      strict_required_status_checks_policy = true
+
+      required_check {
+        context        = local.layers_plan_check
+        integration_id = tonumber(data.github_app.cloud_build.id)
+      }
+    }
+  }
+}`,
+			},
+			count: map[string]int{
+				`required_approving_review_count = local.approving_reviews`:                                             2,
+				`require_last_push_approval      = local.approving_reviews > 0 || var.github_infrastructure_team != ""`: 2,
+				`dismiss_stale_reviews_on_push   = local.approving_reviews > 0`:                                         2,
+				`resource "github_repository_ruleset"`:                                                                  3,
+			},
+		},
+		{
 			name: "the README says the pull-request build is the preview and tst's tag build is a release's first build",
 			path: "1-org/README.md",
 			want: []string{
@@ -2695,6 +2785,7 @@ func TestRepositoryRules(t *testing.T) {
 				`default     = "master"`,
 				`default     = "imp-example"`,
 				"variable \"github_infrastructure_team\" {\n  description = \"Slug of the organization's infrastructure team, whose approval a change to an application's workflow and Cloud Build files needs, given after the last push. Empty for none.\"\n  type        = string\n  default     = \"\"",
+				"variable \"infrastructure_repository\" {\n  description = \"This repository's name under var.github_organization (placement.json, sourceRepo): the repository the triggers plan and apply the layers from, whose default branch github.tf rules. It exists before 0-bootstrap and is no resource of this layer.\"\n  type        = string\n  default     = \"imp-impulse-infrastructure\"",
 			},
 		},
 		{
@@ -2720,6 +2811,188 @@ func TestRepositoryRules(t *testing.T) {
 				if strings.Contains(content, a) {
 					t.Errorf("%s still carries %q", tt.path, a)
 				}
+			}
+			for text, n := range tt.count {
+				if got := strings.Count(content, text); got != n {
+					t.Errorf("%s carries %q %d times, want %d", tt.path, text, got, n)
+				}
+			}
+		})
+	}
+}
+
+// TestApprovingReviews reads placements that write approvingReviews, or leave it out,
+// and pins what is rendered from each: github.tf's local and the READMEs' prose, one
+// when the key is left out and 0 when it is written as 0, so the two differ; a negative
+// count is refused when the placement is read, by the key's name.
+func TestApprovingReviews(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		// reviews is the value written under approvingReviews; nil leaves the key out.
+		reviews any
+		want    map[string][]string
+		wantErr string
+	}{
+		{
+			name:    "left out",
+			reviews: nil,
+			want: map[string][]string{
+				"1-org/github.tf": {"  approving_reviews = 1\n"},
+				"1-org/README.md": {"one approving review (`approvingReviews` in `placement.json`", "the plan trigger's build passing, one approving review and"},
+			},
+		},
+		{
+			name:    "none",
+			reviews: 0,
+			want: map[string][]string{
+				"1-org/github.tf": {"  approving_reviews = 0\n"},
+				"1-org/README.md": {"no approving review (`approvingReviews` in `placement.json`"},
+			},
+		},
+		{
+			name:    "two reviews",
+			reviews: 2,
+			want: map[string][]string{
+				"1-org/github.tf": {"  approving_reviews = 2\n"},
+				"1-org/README.md": {"two approving reviews (`approvingReviews` in `placement.json`"},
+			},
+		},
+		{
+			name:    "negative",
+			reviews: -1,
+			wantErr: "approvingReviews -1 is negative",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			p, err := ReadPlacement(writePlacement(t, "approvingReviews", tt.reviews))
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("ReadPlacement() error = %v, wantErr %q", err, tt.wantErr)
+				}
+
+				return
+			}
+			if err != nil {
+				t.Fatalf("ReadPlacement() error = %v", err)
+			}
+			files, err := Render(p)
+			if err != nil {
+				t.Fatalf("Render() error = %v", err)
+			}
+			byPath := map[string]string{}
+			for _, f := range files {
+				byPath[f.Path] = string(f.Content)
+			}
+			for path, wants := range tt.want {
+				content, ok := byPath[path]
+				if !ok {
+					t.Fatalf("%s is not rendered", path)
+				}
+				for _, w := range wants {
+					if !strings.Contains(content, w) {
+						t.Errorf("%s lacks %q", path, w)
+					}
+				}
+			}
+		})
+	}
+}
+
+// writePlacement writes the fixture organization's placement with one key written as
+// the value, or left out when the value is nil, into a temporary directory, and returns
+// the file's path.
+func writePlacement(t *testing.T, key string, value any) string {
+	t.Helper()
+
+	data, err := os.ReadFile(filepath.Join(fixture, "placement.json"))
+	if err != nil {
+		t.Fatalf("os.ReadFile() error = %v", err)
+	}
+	var fields map[string]any
+	if err := json.Unmarshal(data, &fields); err != nil {
+		t.Fatalf("json.Unmarshal() error = %v", err)
+	}
+	if value == nil {
+		delete(fields, key)
+	} else {
+		fields[key] = value
+	}
+	out, err := json.Marshal(fields)
+	if err != nil {
+		t.Fatalf("json.Marshal() error = %v", err)
+	}
+	path := filepath.Join(t.TempDir(), "placement.json")
+	if err := os.WriteFile(path, out, 0o600); err != nil {
+		t.Fatalf("os.WriteFile() error = %v", err)
+	}
+
+	return path
+}
+
+// TestLayersPlanCheck ties the check 1-org requires on this repository's default branch
+// to the plan trigger 0-bootstrap names: each file spells the trigger's name in HCL, and
+// with the variables and locals replaced by the placement's values each is
+// PlanTriggerName(), the name bedrock's own messages give the trigger.
+func TestLayersPlanCheck(t *testing.T) {
+	t.Parallel()
+
+	p := testPlacement(t)
+	files, err := Render(p)
+	if err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+	byPath := map[string]string{}
+	for _, f := range files {
+		byPath[f.Path] = string(f.Content)
+	}
+	values := map[string]string{
+		"${var.prefix}":          p.Prefix,
+		"${local.region_code}":   p.Primary().Code,
+		"${var.boot_project_id}": p.BootProject(),
+	}
+	tests := []struct {
+		name string
+		path string
+		// expression captures the HCL string the file spells the name in.
+		expression *regexp.Regexp
+		want       string
+	}{
+		{
+			name:       "0-bootstrap names the plan trigger",
+			path:       "0-bootstrap/cloud-build.tf",
+			expression: regexp.MustCompile(`name\s+= "([^"]*-layers-plan)"`),
+			want:       p.PlanTriggerName(),
+		},
+		{
+			name:       "1-org requires the trigger's check, under the boot project, on this repository",
+			path:       "1-org/github.tf",
+			expression: regexp.MustCompile(`layers_plan_check = "([^"]+)"`),
+			want:       p.PlanTriggerName() + " (" + p.BootProject() + ")",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			content, ok := byPath[tt.path]
+			if !ok {
+				t.Fatalf("%s is not rendered", tt.path)
+			}
+			match := tt.expression.FindStringSubmatch(content)
+			if match == nil {
+				t.Fatalf("%s lacks %s", tt.path, tt.expression)
+			}
+			got := match[1]
+			for reference, value := range values {
+				got = strings.ReplaceAll(got, reference, value)
+			}
+			if got != tt.want {
+				t.Errorf("%s names %q, want %q", tt.path, got, tt.want)
 			}
 		})
 	}

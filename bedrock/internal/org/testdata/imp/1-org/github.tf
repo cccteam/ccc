@@ -15,18 +15,37 @@
 # tags created, moved or deleted by the release app alone, with no bypass for
 # the repository's admins; the default branch and the hotfix lines changed by
 # pull request alone, no force push, no deletion, with the branch up to date
-# with its base, the required checks passing on its latest commit, squash the
-# only merge and, when var.github_infrastructure_team names a team, that
-# team's approval of a change to the workflow and Cloud Build files, given
-# after the last push), and the GitHub Environments the operations workflow
-# runs in (one per environment, production included, since a release is run
-# again and a rollback is run there from GitHub, each deploying from the
-# default branch alone). No Environment waits for a reviewer: a rollback or a
-# rerun waits for its approval in Cloud Build where the environment requires
-# one (placement.json's approvals), as a release does, and the approver is
+# with its base, the required checks passing on its latest commit,
+# local.approving_reviews approving reviews, squash the only merge and, when
+# var.github_infrastructure_team names a team, that team's approval of a
+# change to the workflow and Cloud Build files, given after the last push),
+# and the GitHub Environments the operations workflow runs in (one per
+# environment, production included, since a release is run again and a
+# rollback is run there from GitHub, each deploying from the default branch
+# alone). No Environment waits for a reviewer: a rollback or a rerun waits
+# for its approval in Cloud Build where the environment requires one
+# (placement.json's approvals), as a release does, and the approver is
 # written into the deployment record. GitHub's required reviewers on an
 # Environment of a private repository need GitHub Enterprise, which bedrock
 # does not require of an organization.
+#
+# The approving reviews are placement.json's approvingReviews: one unless it
+# says otherwise, 0 for none (a writer merges alone once the checks pass).
+# While the count is above 0, an approval given before the last push is
+# dismissed and one given after it is needed. The count is rendered into this
+# file (local.approving_reviews), never read from terraform.tfvars: this file
+# is bedrock's, and bedrock org check compares it with the render, so a
+# developer with write on an application repository cannot lower the count,
+# and lowering it for this repository takes a merge that met the count in
+# force.
+#
+# This repository's default branch, from which alone the apply trigger
+# applies the layers, gets a ruleset of its own: changed by pull request
+# alone, no force push, no deletion, the same reviews, squash the only merge,
+# and the plan trigger's build (0-bootstrap/cloud-build.tf) passing on the
+# latest commit with the branch up to date with its base. The repository
+# exists before 0-bootstrap and is no resource of this layer; the ruleset
+# alone is declared here.
 #
 # The required checks are the application stack's check trigger in
 # tst's Cloud Build (imp-tst-uc1-<app>-check: on every
@@ -102,6 +121,13 @@ locals {
   # reaches every environment but production, a rerun of a release every one.
   operations_environments = ["tst", "stg", "prd"]
 
+  # The approving reviews a pull request needs before it merges, on every
+  # application repository's default branch and hotfix lines and on this
+  # repository's default branch: placement.json's approvingReviews, one when
+  # the placement leaves it out, 0 for none. Rendered here, in an owned file,
+  # never read from terraform.tfvars (the header says why).
+  approving_reviews = 1
+
   # The context the Cloud Build app reports the check trigger's build under:
   # the trigger's name, as the application's stack names it in tst
   # (imp-tst-uc1-<app>-check), then tst's project id in
@@ -110,6 +136,12 @@ locals {
   cloud_build_check = {
     for app in var.applications : app => "${var.prefix}-tst-uc1-${app}-check (${module.project["tst"].project_id})"
   }
+
+  # The context the same app reports the plan trigger's build under, this
+  # repository's required check: the trigger's name as 0-bootstrap/cloud-build.tf
+  # gives it (imp-boot-uc1-layers-plan; a renamed trigger is a change in both
+  # files), then the boot project's id in parentheses.
+  layers_plan_check = "${var.prefix}-boot-uc1-layers-plan (${var.boot_project_id})"
 
   # The checks a pull request into the default branch or a hotfix line must
   # pass, each by the name it is reported under and the app that reports it:
@@ -285,8 +317,9 @@ resource "github_repository_ruleset" "branch" {
     non_fast_forward = true
 
     pull_request {
-      required_approving_review_count = 0
-      require_last_push_approval      = var.github_infrastructure_team != ""
+      required_approving_review_count = local.approving_reviews
+      require_last_push_approval      = local.approving_reviews > 0 || var.github_infrastructure_team != ""
+      dismiss_stale_reviews_on_push   = local.approving_reviews > 0
       allowed_merge_methods           = ["squash"]
 
       dynamic "required_reviewers" {
@@ -318,6 +351,47 @@ resource "github_repository_ruleset" "branch" {
           context        = required_check.value.context
           integration_id = required_check.value.integration_id
         }
+      }
+    }
+  }
+}
+
+# This repository's default branch. The repository exists before 0-bootstrap
+# and is no resource of this layer: the ruleset alone is declared, with the
+# review settings of the applications' branch rulesets and the plan trigger's
+# build as the required check, which Google's Cloud Build GitHub App reports
+# under the trigger's name and the boot project's id. The apply trigger's
+# build is not a check: it runs after the merge.
+resource "github_repository_ruleset" "infrastructure" {
+  name        = local.lines.default.name
+  repository  = var.infrastructure_repository
+  target      = "branch"
+  enforcement = "active"
+
+  conditions {
+    ref_name {
+      include = local.lines.default.include
+      exclude = []
+    }
+  }
+
+  rules {
+    deletion         = true
+    non_fast_forward = true
+
+    pull_request {
+      required_approving_review_count = local.approving_reviews
+      require_last_push_approval      = local.approving_reviews > 0 || var.github_infrastructure_team != ""
+      dismiss_stale_reviews_on_push   = local.approving_reviews > 0
+      allowed_merge_methods           = ["squash"]
+    }
+
+    required_status_checks {
+      strict_required_status_checks_policy = true
+
+      required_check {
+        context        = local.layers_plan_check
+        integration_id = tonumber(data.github_app.cloud_build.id)
       }
     }
   }

@@ -237,11 +237,17 @@ trigger plans it on a pull request as `imp-org-gbl-plan`.
   alone, with no bypass for the repository's admins; the default branch and the
   hotfix lines `hotfix/*` changed by pull request alone, no force push, no
   deletion, with the branch up to date with its base, the required checks
-  passing and squash the only merge) and the GitHub Environments the operations
-  workflow runs in (`tst`, `stg` and `prd`, each deploying from the default
-  branch alone; production's for the rerun of a release and the rollback,
-  since it is never restored by a run). See "The applications'
-  repositories" below.
+  passing, one approving review and squash the only merge) and the GitHub
+  Environments the operations workflow runs in (`tst`, `stg` and `prd`, each
+  deploying from the default branch alone; production's for the rerun of a
+  release and the rollback, since it is never restored by a run). See "The
+  applications' repositories" below.
+
+- This repository's default branch: one ruleset (changed by pull request
+  alone, no force push, no deletion, with the branch up to date with its
+  base, the plan trigger's build passing, one approving review and
+  squash the only merge). The repository exists before 0-bootstrap and is no
+  resource of this layer.
 
 ## Applying
 
@@ -388,6 +394,29 @@ tst's tag build is the release's first build. What this
 gives up: a pull request whose image build or migration is broken can merge,
 and the breakage shows in tst's tag build; the fix is
 another pull request and another release.
+
+Every pull request into the default branch or a hotfix line needs
+one approving review (`approvingReviews` in `placement.json`; one when
+the placement leaves it out, 0 for none, so a writer merges alone once the
+checks pass). While the count is above 0, an approval given before the last
+push is dismissed and one given after it is needed. The count is rendered
+into `github.tf` (`local.approving_reviews`), never read from
+`terraform.tfvars`: `bedrock org check` compares the file with the render, so
+a developer with write on an application repository cannot lower it, and
+lowering it for this repository takes a merge that met the count in force.
+
+This repository's default branch, from which alone the apply trigger applies
+the layers, has a ruleset of its own
+(`github_repository_ruleset.infrastructure`): changed by pull request alone,
+no force push, no deletion, the same reviews as the applications' branches,
+squash the only merge (the repository's own settings must allow one), and the
+plan trigger's build passing on the pull request's latest commit with the
+branch up to date with its base, which Google's Cloud Build GitHub App
+reports under `imp-boot-uc1-layers-plan (<boot project id>)`. The repository
+itself exists before 0-bootstrap and is no resource of this layer. A ruleset
+made on it by hand is imported like an application's (`tofu import
+github_repository_ruleset.infrastructure imp-impulse-infrastructure:<id>`), so the apply
+changes it instead of adding a second one.
 
 When `github_infrastructure_team` names a team of the organization (its slug;
 empty by default), a change to the files that define what the checks run
