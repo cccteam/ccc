@@ -28,7 +28,10 @@ Build triggers" below).
 - The two boot layers' plan identities `imp-boot-gbl-plan` and
   `imp-org-gbl-plan`, in the boot project, with the organization-level
   reads of `var.boot_plan_roles`, the boot project as their quota project, the
-  planner's right to become them (`cloud-build.tf`) and, for the org one, the
+  planner's right to become them (`cloud-build.tf`), for the boot one the
+  reads of the connection, the repository link and the triggers on the boot
+  project (`roles/cloudbuild.connectionViewer`, `roles/cloudbuild.builds.viewer`,
+  `cloud-build.tf`) and, for the org one, the
   read of the infrastructure GitHub App's key (`github.tf`) and of the
   entitlements `1-org` declares on the boot project: a pull request plans each
   boot layer as its own read-only identity. A binding at the organization

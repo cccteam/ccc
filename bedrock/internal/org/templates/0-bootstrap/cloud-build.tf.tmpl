@@ -236,6 +236,21 @@ resource "google_service_account_iam_member" "boot_plan_planner" {
   member             = google_service_account.planner.member
 }
 
+# A plan of this layer reads the connection, the repository link and the two
+# triggers as the boot plan identity, whose organization-level reads
+# (var.boot_plan_roles) carry nothing of Cloud Build: the connection and the
+# link through roles/cloudbuild.connectionViewer, a regional trigger through
+# roles/cloudbuild.builds.viewer (its read is answered on cloudbuild.builds.get;
+# cloudbuild.triggers.get is not asked for), both on this project alone, where
+# every one of them lives.
+resource "google_project_iam_member" "boot_plan_cloud_build" {
+  for_each = toset(["roles/cloudbuild.connectionViewer", "roles/cloudbuild.builds.viewer"])
+
+  project = module.boot_project.project_id
+  role    = each.value
+  member  = google_service_account.boot_plan["boot"].member
+}
+
 resource "google_cloudbuildv2_connection_iam_member" "runner_read_token" {
   for_each = local.connected ? local.runners : {}
 

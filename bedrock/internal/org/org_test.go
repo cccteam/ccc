@@ -2399,6 +2399,7 @@ func TestRunnerIdentities(t *testing.T) {
 				"resource \"google_service_account_iam_member\" \"applier_boot_tofu\" {\n  service_account_id = google_service_account.boot_tofu.name\n  role               = \"roles/iam.serviceAccountTokenCreator\"\n  member             = google_service_account.applier.member\n}\n",
 				"resource \"google_service_account_iam_member\" \"applier_org_tofu\" {\n  service_account_id = google_service_account.org_tofu.name\n  role               = \"roles/iam.serviceAccountTokenCreator\"\n  member             = google_service_account.applier.member\n}\n",
 				"resource \"google_service_account_iam_member\" \"boot_plan_planner\" {\n  for_each = local.boot_plans\n\n  service_account_id = google_service_account.boot_plan[each.key].name\n  role               = \"roles/iam.serviceAccountTokenCreator\"\n  member             = google_service_account.planner.member\n}\n",
+				"resource \"google_project_iam_member\" \"boot_plan_cloud_build\" {\n  for_each = toset([\"roles/cloudbuild.connectionViewer\", \"roles/cloudbuild.builds.viewer\"])\n\n  project = module.boot_project.project_id\n  role    = each.value\n  member  = google_service_account.boot_plan[\"boot\"].member\n}\n",
 			},
 			absent: []string{"member             = google_service_account.planner.member\n}\n\nresource \"google_service_account_iam_member\" \"applier"},
 		},

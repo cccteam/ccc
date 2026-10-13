@@ -753,9 +753,10 @@ first; every application follows right after (step 7 says what breaks otherwise)
    the token's read for every environment project's Cloud Build service agent, and the
    boot layers' plan identities (or shows the two imported) with their grants: the
    organization-level reads, the quota project, the planner's right to become them, the
-   state bucket's reads, the org one's reads of the infrastructure key and of the
-   entitlements; where `1-org` made the same grants they are the same bindings, and
-   nothing changes in the organization. Nothing else changes. From here the plan trigger
+   state bucket's reads, the boot one's Cloud Build reads on the boot project, the org
+   one's reads of the infrastructure key and of the entitlements; where `1-org` made the
+   same grants they are the same bindings, and nothing changes in the organization.
+   Nothing else changes. From here the plan trigger
    runs on a push to a pull request and the apply trigger on a push to the default
    branch. A hand apply leaves no marker, so the apply trigger's first run applies this
    layer once more, with no changes.
