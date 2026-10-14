@@ -39,10 +39,9 @@ resource "google_cloud_run_v2_service" "app" {
     labels                = local.labels
 
     # Scale to zero, and to Cloud Run's default maximum instances per region:
-    # the placement caps no environment (maxInstances).
-    scaling {
-      min_instance_count = 0
-    }
+    # the placement caps no environment (maxInstances). No scaling block: Cloud
+    # Run's defaults are exactly that, and a block setting only a minimum of
+    # zero is dropped by the service, which every later plan would add again.
 
     containers {
       image = var.placeholder_image
