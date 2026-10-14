@@ -163,8 +163,11 @@ resource "google_clouddomains_registration" "this" {
     # kept; the zone's name servers are the ones registered (the hostnames
     # resolve). A zone made again is the one case they part, and the
     # registration is then pointed at it in Cloud Domains (README.md, "Making a
-    # zone again"), never by this apply.
-    ignore_changes  = [contact_settings, dns_settings]
+    # zone again"), never by this apply. The labels are the ones at
+    # registration too: the provider replaces a registration to change its
+    # labels (effective_labels forces replacement), and a registration is
+    # never replaced for a label.
+    ignore_changes  = [contact_settings, dns_settings, labels]
     prevent_destroy = true
 
     precondition {

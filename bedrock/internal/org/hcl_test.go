@@ -80,10 +80,10 @@ func TestZonePreventDestroy(t *testing.T) {
 	}{
 		{name: "the apps zone, by default", path: "2-net/dns.tf", address: "google_dns_managed_zone.apps", wantRule: true},
 		{name: "every parked zone, by default", path: "2-net/domains.tf", address: "google_dns_managed_zone.parked", wantRule: true},
-		{name: "the registration, by default", path: "2-net/domains.tf", address: registration, wantRule: true, wantIgnored: []string{"contact_settings", "dns_settings"}},
+		{name: "the registration, by default", path: "2-net/domains.tf", address: registration, wantRule: true, wantIgnored: []string{"contact_settings", "dns_settings", "labels"}},
 		{name: "the apps zone, zoneReplacement set", zoneReplacement: true, path: "2-net/dns.tf", address: "google_dns_managed_zone.apps"},
 		{name: "every parked zone, zoneReplacement set", zoneReplacement: true, path: "2-net/domains.tf", address: "google_dns_managed_zone.parked"},
-		{name: "the registration, zoneReplacement set", zoneReplacement: true, path: "2-net/domains.tf", address: registration, wantRule: true, wantIgnored: []string{"contact_settings", "dns_settings"}},
+		{name: "the registration, zoneReplacement set", zoneReplacement: true, path: "2-net/domains.tf", address: registration, wantRule: true, wantIgnored: []string{"contact_settings", "dns_settings", "labels"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
