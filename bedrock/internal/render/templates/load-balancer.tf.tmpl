@@ -29,13 +29,6 @@ resource "google_compute_region_network_endpoint_group" "app" {
   }
 }
 
-# The backend gained its count when pull-request stacks arrived; the one
-# already in every environment's state keeps its place.
-moved {
-  from = google_compute_backend_service.app
-  to   = google_compute_backend_service.app[0]
-}
-
 resource "google_compute_backend_service" "app" {
   count = local.is_pr ? 0 : 1
 

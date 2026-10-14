@@ -740,8 +740,6 @@ func TestWrite(t *testing.T) {
 		wantKept     []string
 		wantTfvars   string
 		wantDocker   string
-		// wantRemoved are the retired files the write removed from the application root.
-		wantRemoved []string
 	}{
 		{
 			name:         "empty directories get everything",
@@ -750,16 +748,6 @@ func TestWrite(t *testing.T) {
 			wantSeeded:   []string{"terraform.tfvars", "Dockerfile"},
 			wantTfvars:   "seeded\n",
 			wantDocker:   "image\n",
-		},
-		{
-			name:         "the retired infrastructure workflow is removed from the application root and said",
-			existingRoot: map[string]string{".github/workflows/infrastructure.yml": "name: infrastructure\n"},
-			wantOwned:    2,
-			wantPipeline: []string{"cloudbuild.yaml"},
-			wantSeeded:   []string{"terraform.tfvars", "Dockerfile"},
-			wantTfvars:   "seeded\n",
-			wantDocker:   "image\n",
-			wantRemoved:  []string{".github/workflows/infrastructure.yml"},
 		},
 		{
 			name:         "owned files are rewritten, seeded files kept, in both places",
@@ -817,16 +805,6 @@ func TestWrite(t *testing.T) {
 			if strings.Join(written.Kept, ",") != strings.Join(tt.wantKept, ",") {
 				t.Errorf("Write() kept = %v, want %v", written.Kept, tt.wantKept)
 			}
-			var removed []string
-			for _, r := range written.Removed {
-				removed = append(removed, r.Path)
-				if _, err := os.Stat(filepath.Join(appDir, filepath.FromSlash(r.Path))); !os.IsNotExist(err) {
-					t.Errorf("%s is still at the application root: %v", r.Path, err)
-				}
-			}
-			if strings.Join(removed, ",") != strings.Join(tt.wantRemoved, ",") {
-				t.Errorf("Write() removed = %v, want %v", removed, tt.wantRemoved)
-			}
 			for path, want := range map[string]string{
 				filepath.Join(dir, "locals.tf"):          "new\n",
 				filepath.Join(dir, "terraform.tfvars"):   tt.wantTfvars,
@@ -840,50 +818,6 @@ func TestWrite(t *testing.T) {
 				if string(got) != want {
 					t.Errorf("%s = %q, want %q", path, got, want)
 				}
-			}
-		})
-	}
-}
-
-// TestStale: the retired files an application root still carries, which bedrock check
-// reports and bedrock render removes.
-func TestStale(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name  string
-		files []string
-		want  []string
-	}{
-		{name: "a root without retired files", files: []string{".github/workflows/operations.yml", "cloudbuild.yaml"}},
-		{name: "the retired infrastructure workflow", files: []string{".github/workflows/infrastructure.yml", ".github/workflows/operations.yml"}, want: []string{".github/workflows/infrastructure.yml"}},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			appDir := t.TempDir()
-			for _, name := range tt.files {
-				if err := os.MkdirAll(filepath.Dir(filepath.Join(appDir, name)), 0o750); err != nil {
-					t.Fatal(err)
-				}
-				if err := os.WriteFile(filepath.Join(appDir, name), []byte("x\n"), 0o600); err != nil {
-					t.Fatal(err)
-				}
-			}
-			stale, err := Stale(appDir)
-			if err != nil {
-				t.Fatalf("Stale() error = %v", err)
-			}
-			var got []string
-			for _, r := range stale {
-				got = append(got, r.Path)
-				if r.Replacement == "" {
-					t.Errorf("%s names no replacement", r.Path)
-				}
-			}
-			if strings.Join(got, ",") != strings.Join(tt.want, ",") {
-				t.Errorf("Stale() = %v, want %v", got, tt.want)
 			}
 		})
 	}
@@ -1252,20 +1186,12 @@ func TestFileStorePolicy(t *testing.T) {
 				"  name     = local.files_bucket_name\n  location = local.files_location\n",
 				"  dynamic \"custom_placement_config\" {\n    for_each = local.files_regional ? [] : [1]\n",
 				"  soft_delete_policy {\n    retention_duration_seconds = local.is_prd ? 604800 : 0\n  }\n",
-				"moved {\n  from = google_storage_bucket.files\n  to   = google_storage_bucket.files[0]\n}\n",
-				"moved {\n  from = google_storage_bucket_iam_policy.files\n  to   = google_storage_bucket_iam_policy.files[0]\n}\n",
 				"data \"google_service_accounts\" \"files_previews\" {\n  count = local.own_database && !local.is_pr && var.environment == \"tst\" ? 1 : 0\n\n  project = local.project_id\n  prefix  = \"${local.app}-pr\"\n}\n",
 				"data \"google_iam_policy\" \"files\" {\n  count = local.own_database ? 1 : 0\n\n  binding {\n    role    = \"roles/storage.objectUser\"\n    members = concat([local.app_member, local.jobs_member], local.files_preview_members)\n  }\n}\n",
 				"resource \"google_storage_bucket_iam_policy\" \"files\" {\n  count = local.own_database ? 1 : 0\n\n  bucket      = google_storage_bucket.files[0].name\n  policy_data = data.google_iam_policy.files[0].policy_data\n\n  depends_on = [google_service_account.app, google_service_account.jobs]\n",
 				"  lifecycle {\n    replace_triggered_by = [google_storage_bucket.files[0]]\n  }\n",
 				"resource \"google_storage_bucket_iam_member\" \"files_preview\" {\n  for_each = local.own_database ? toset([]) : toset([\"app\", \"jobs\"])\n\n  bucket = local.files_bucket_name\n  role   = \"roles/storage.objectUser\"\n  member = each.key == \"app\" ? local.app_member : local.jobs_member\n}\n",
 				"the one authoritative IAM resource the stack\n# declares",
-				// The member resources the policy replaced leave the state without a
-				// destroy, which would take their members out of the live policy.
-				"removed {\n  from = google_storage_bucket_iam_member.files_app\n\n  lifecycle {\n    destroy = false\n  }\n}\n",
-				"removed {\n  from = google_storage_bucket_iam_member.files_jobs\n\n  lifecycle {\n    destroy = false\n  }\n}\n",
-				"# The member resources the policy above replaced, taken out of the state\n# without being destroyed.",
-				"Carried for one bedrock release, so a stack that moves to\n# the policy is applied once; dropped in the next release",
 			},
 			absent: []string{"resource \"google_storage_bucket_iam_member\" \"files_app\"", "resource \"google_storage_bucket_iam_member\" \"files_jobs\""},
 		},
@@ -1276,8 +1202,6 @@ func TestFileStorePolicy(t *testing.T) {
 				"    members = concat([local.app_member], local.files_preview_members)\n",
 				"  depends_on = [google_service_account.app]\n",
 				"  for_each = local.own_database ? toset([]) : toset([\"app\"])\n\n  bucket = local.files_bucket_name\n  role   = \"roles/storage.objectUser\"\n  member = local.app_member\n}\n",
-				"# The member resource the policy above replaced,",
-				"removed {\n  from = google_storage_bucket_iam_member.files_app\n\n  lifecycle {\n    destroy = false\n  }\n}\n",
 			},
 			absent: []string{"resource \"google_storage_bucket_iam_member\" \"files_app\"", "local.jobs_member", "files_jobs"},
 		},

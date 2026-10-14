@@ -440,7 +440,7 @@ func TestGithubAppSteps(t *testing.T) {
 			want: []string{
 				"## The deployer GitHub App's key\n",
 				"added with\n`bedrock secret add github-deployer-key` and pinned with `bedrock secret pin\ngithub-deployer-key <version>` (`0-bootstrap/README.md`, \"The deployer GitHub\nApp's key\")",
-				"`imp-<env>-gbl-github-deployer-key`, held\na copy of the key pinned per environment; a `removed` block destroys it with\nits versions on the first apply of this render, and the grants move to the\nboot container.",
+				"This layer carries the pinned version's resource name to the\napplications' pipelines through its output `github_deployer_key_secret_version`\nand grants their identities its read: every application's deploy identity,\nand in tst its apply identity too.",
 			},
 			absent: []string{"gcloud secrets versions add", "github-deployer-key <env>", "github_deployer_key_secret_versions"},
 		},
@@ -466,20 +466,9 @@ func TestGithubAppSteps(t *testing.T) {
 
 // TestDeployerKeyGrants reads 2-env's grants on the deployer GitHub App's key: the one
 // container is 0-bootstrap's in the boot project, named by locals.tf and read by every
-// application's deploy identity and in tst by its apply identity; the container an earlier
-// bedrock made in the environment project is removed and destroyed; and the outputs carry
-// the App ID and the pinned version's resource name from placement.json, with no retired
-// tfvars value read anywhere.
-// retiredAttributes is every 2-env/terraform.tfvars attribute org check reports as
-// retired, whose value placement.json carries now.
-func retiredAttributes() []string {
-	names := make([]string, 0, len(retiredValues))
-	for _, v := range retiredValues {
-		names = append(names, v.attribute)
-	}
-
-	return names
-}
+// application's deploy identity and in tst by its apply identity; and the outputs carry
+// the App ID and the pinned version's resource name from placement.json, with no tfvars
+// value for them read anywhere.
 
 func TestDeployerKeyGrants(t *testing.T) {
 	t.Parallel()
@@ -491,12 +480,9 @@ func TestDeployerKeyGrants(t *testing.T) {
 		absent []string
 	}{
 		{
-			name: "the environment project's container is removed and destroyed",
-			path: "2-env/github-apps.tf",
-			want: []string{
-				"removed {\n  from = google_secret_manager_secret.github_deployer_key\n\n  lifecycle {\n    destroy = true\n  }\n}\n",
-			},
-			absent: []string{"resource \"google_secret_manager_secret\" \"github_deployer_key\"", "local.project_id", "var.github_deployer"},
+			name:   "2-env declares no container of its own for the key",
+			path:   "2-env/github-apps.tf",
+			absent: []string{"resource \"google_secret_manager_secret\" \"github_deployer_key\"", "local.project_id", "var.github_deployer", "removed {"},
 		},
 		{
 			name: "the deploy identities and tst's apply identities read the boot container",
@@ -527,9 +513,9 @@ func TestDeployerKeyGrants(t *testing.T) {
 			absent: []string{"var.github_"},
 		},
 		{
-			name:   "no value org check reports as retired is declared",
+			name:   "no tfvars value the placement carries is declared",
 			path:   "2-env/variables.tf",
-			absent: retiredAttributes(),
+			absent: []string{"github_app_installation_id", "github_oauth_token_secret_version", "github_deployer_app_id", "github_deployer_key_secret_versions"},
 		},
 	}
 	for _, tt := range tests {
@@ -631,13 +617,6 @@ func TestRecordsBucketPolicy(t *testing.T) {
 				"data \"google_iam_policy\" \"records\" {\n  dynamic \"binding\" {\n    for_each = local.records_bindings\n    content {\n      role    = binding.value.role\n      members = binding.value.members\n\n      dynamic \"condition\" {\n        for_each = binding.value.condition == null ? [] : [binding.value.condition]\n",
 				"resource \"google_storage_bucket_iam_policy\" \"records\" {\n  bucket      = google_storage_bucket.records.name\n  policy_data = data.google_iam_policy.records.policy_data\n}\n",
 				"Cloud Storage's default grants to the project's basic roles (projectOwner,",
-				// The member resources the policy replaced leave the state without a destroy,
-				// which would take their members out of the live policy.
-				"removed {\n  from = google_storage_bucket_iam_member.deploy_records\n\n  lifecycle {\n    destroy = false\n  }\n}\n",
-				"removed {\n  from = google_storage_bucket_iam_member.deploy_records_viewer\n\n  lifecycle {\n    destroy = false\n  }\n}\n",
-				"removed {\n  from = google_storage_bucket_iam_member.plan_records\n\n  lifecycle {\n    destroy = false\n  }\n}\n",
-				"removed {\n  from = google_storage_bucket_iam_member.next_deploy_records_viewer\n\n  lifecycle {\n    destroy = false\n  }\n}\n",
-				"Carried for one bedrock release, so an organization that\n# moves to the policy applies this layer once; dropped in the next release",
 			},
 			absent: []string{"resource \"google_storage_bucket_iam_member\"", "builder role"},
 		},
@@ -654,7 +633,6 @@ func TestRecordsBucketPolicy(t *testing.T) {
 				"the environment's team group (a person\n  reads a record through the group)",
 				"in production the lower\n  environments' operations identities too (a restore from production's\n  backup reads production's live release)",
 				"A grant added on the\n  bucket by hand, for a day's debugging, is removed by this layer's next\n  apply; a grant added on the project is not",
-				"applies this layer once to move to the policy",
 			},
 		},
 	}
@@ -956,7 +934,7 @@ func TestCustomRolePermissions(t *testing.T) {
 				"iam.workloadIdentityPoolProviders.get",
 				"iam.workloadIdentityPools.get", "iam.workloadIdentityPools.getAttestationRules",
 				"privilegedaccessmanager.entitlements.get",
-				"secretmanager.secrets.get", "spanner.instances.get", "storage.buckets.get",
+				"spanner.instances.get", "storage.buckets.get",
 			},
 		},
 		{
@@ -1718,47 +1696,6 @@ func TestCheck(t *testing.T) {
 			},
 			wantClean: true,
 		},
-		{
-			name: "the retired layers workflow is reported, and render removes it",
-			mutate: func(t *testing.T, dir string) {
-				t.Helper()
-				if err := os.MkdirAll(filepath.Join(dir, ".github", "workflows"), 0o750); err != nil {
-					t.Fatal(err)
-				}
-				if err := os.WriteFile(filepath.Join(dir, filepath.FromSlash(RetiredWorkflowFile)), []byte("name: layers\n"), 0o600); err != nil {
-					t.Fatal(err)
-				}
-			},
-			wantFinding: RetiredWorkflowFile,
-			wantReason:  "the layers workflow is retired: the Cloud Build triggers 0-bootstrap renders plan and apply the layers (0-bootstrap/README.md, \"The Cloud Build triggers\"); bedrock org render removes it",
-		},
-		{
-			name: "1-org's retired workflow.tf is reported",
-			mutate: func(t *testing.T, dir string) {
-				t.Helper()
-				if err := os.WriteFile(filepath.Join(dir, "1-org", "workflow.tf"), []byte("# the old file\n"), 0o600); err != nil {
-					t.Fatal(err)
-				}
-			},
-			wantFinding: "1-org/workflow.tf",
-			wantReason:  "retired: 1-org/runners.tf carries its resources now, and a .tf file left beside it declares them twice; bedrock org render removes it",
-		},
-		{
-			name: "a value 2-env's tfvars still sets that the placement carries now",
-			mutate: func(t *testing.T, dir string) {
-				t.Helper()
-				path := filepath.Join(dir, "2-env", "terraform.tfvars")
-				data, err := os.ReadFile(path)
-				if err != nil {
-					t.Fatal(err)
-				}
-				if err := os.WriteFile(path, append(data, []byte("github_app_installation_id = 12345678\n")...), 0o600); err != nil {
-					t.Fatal(err)
-				}
-			},
-			wantFinding: "2-env/terraform.tfvars",
-			wantReason:  "sets github_app_installation_id, which placement.json carries now as cloudBuildInstallationId: record it there (bedrock org render reads it) and remove it here",
-		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -2256,7 +2193,7 @@ func TestLayerRuns(t *testing.T) {
 // the shared steps (the fetch that reads the pin off placement.json at run time, the
 // build of a commit pin, the check) followed by the one command, the substitutions by
 // which a person applies one layer again and by which the commands know the steps'
-// shape, logging to Cloud Logging alone, and nothing of the retired workflow.
+// shape, and logging to Cloud Logging alone.
 func TestTriggers(t *testing.T) {
 	t.Parallel()
 
@@ -2364,11 +2301,8 @@ func TestTriggers(t *testing.T) {
 // plan identities, which 0-bootstrap makes with their organization-level reads (a
 // binding at the organization node is 0-bootstrap's, since 1-org's identity sets no
 // policy there), 1-org's grants letting the planner impersonate every plan identity it
-// creates and the applier every apply identity, the boot layers' plan identities an
-// earlier bedrock made in 1-org taken out of its state and kept, the retired workload
-// identity pool, provider and bindings taken out of the state and destroyed, and the
-// boot identity's organization roles carrying the connection administration in place of
-// the pool administration.
+// creates and the applier every apply identity, and the boot identity's organization
+// roles carrying the connection administration.
 func TestRunnerIdentities(t *testing.T) {
 	t.Parallel()
 
@@ -2432,17 +2366,13 @@ func TestRunnerIdentities(t *testing.T) {
 			absent: []string{"workloadIdentityPoolViewer"},
 		},
 		{
-			name: "the two key containers, administered by the org identity; the pool, the provider and the bindings retired",
+			name: "the two key containers, administered by the org identity, and no workload identity pool",
 			path: "0-bootstrap/github.tf",
 			want: []string{
 				`secret_id = "${var.prefix}-boot-gbl-github-infrastructure-key"`,
 				`secret_id = "${var.prefix}-boot-gbl-github-deployer-key"`,
 				"resource \"google_secret_manager_secret_iam_member\" \"org_tofu_infrastructure_key\" {\n  project   = module.boot_project.project_id\n  secret_id = google_secret_manager_secret.github_infrastructure_key.secret_id\n  role      = \"roles/secretmanager.admin\"\n  member    = google_service_account.org_tofu.member\n}\n",
 				"resource \"google_secret_manager_secret_iam_member\" \"org_tofu_deployer_key\" {\n  project   = module.boot_project.project_id\n  secret_id = google_secret_manager_secret.github_deployer_key.secret_id\n  role      = \"roles/secretmanager.admin\"\n  member    = google_service_account.org_tofu.member\n}\n",
-				"removed {\n  from = google_iam_workload_identity_pool.github\n\n  lifecycle {\n    destroy = true\n  }\n}\n",
-				"removed {\n  from = google_iam_workload_identity_pool_provider.github\n\n  lifecycle {\n    destroy = true\n  }\n}\n",
-				"removed {\n  from = google_service_account_iam_member.boot_tofu_workflow\n\n  lifecycle {\n    destroy = true\n  }\n}\n",
-				"removed {\n  from = google_service_account_iam_member.org_tofu_workflow\n\n  lifecycle {\n    destroy = true\n  }\n}\n",
 			},
 			absent: []string{"resource \"google_iam_workload_identity_pool\"", "workloadIdentityUser", "attribute.purpose", "token.actions.githubusercontent.com"},
 		},
@@ -2452,26 +2382,10 @@ func TestRunnerIdentities(t *testing.T) {
 			want: []string{
 				"resource \"google_service_account_iam_member\" \"tofu_applier\" {\n  for_each = local.layers\n\n  service_account_id = google_service_account.tofu[each.key].name\n  role               = \"roles/iam.serviceAccountTokenCreator\"\n  member             = local.boot.applier_member\n}\n",
 				"resource \"google_service_account_iam_member\" \"plan_planner\" {\n  for_each = local.layers\n\n  service_account_id = google_service_account.plan[each.key].name\n  role               = \"roles/iam.serviceAccountTokenCreator\"\n  member             = local.boot.planner_member\n}\n",
-				"removed {\n  from = google_service_account_iam_member.tofu_workflow\n\n  lifecycle {\n    destroy = true\n  }\n}\n",
-				"removed {\n  from = google_service_account_iam_member.plan_workflow\n\n  lifecycle {\n    destroy = true\n  }\n}\n",
-				"removed {\n  from = google_service_account_iam_member.boot_plan_workflow\n\n  lifecycle {\n    destroy = true\n  }\n}\n",
 				"resource \"google_secret_manager_secret_iam_member\" \"environment_tofu_deployer_key\" {\n  for_each = local.environment_layers\n\n  project   = var.boot_project_id\n  secret_id = local.boot.github_deployer_key_secret\n  role      = google_organization_iam_custom_role.secret_container_admin.id\n  member    = google_service_account.tofu[each.key].member\n}\n",
 				"resource \"google_secret_manager_secret_iam_member\" \"environment_plan_deployer_key\" {\n  for_each = local.environment_layers\n\n  project   = var.boot_project_id\n  secret_id = local.boot.github_deployer_key_secret\n  role      = \"roles/secretmanager.viewer\"\n  member    = google_service_account.plan[each.key].member\n}\n",
 			},
 			absent: []string{"workflow_plan", "workflow_apply", "workloadIdentityUser", "github_pool_name", "resource \"google_service_account\" \"boot_plan\"", "var.boot_plan_roles", "local.boot_plans"},
-		},
-		{
-			name: "the boot layers' plan identities an earlier bedrock made in 1-org leave its state and stay",
-			path: "1-org/runners.tf",
-			want: []string{
-				"removed {\n  from = google_service_account.boot_plan\n\n  lifecycle {\n    destroy = false\n  }\n}\n",
-				"removed {\n  from = google_organization_iam_member.boot_plan\n\n  lifecycle {\n    destroy = false\n  }\n}\n",
-				"removed {\n  from = google_project_iam_member.boot_plan_quota\n\n  lifecycle {\n    destroy = false\n  }\n}\n",
-				"removed {\n  from = google_secret_manager_secret_iam_member.org_plan_infrastructure_key\n\n  lifecycle {\n    destroy = false\n  }\n}\n",
-				"removed {\n  from = google_service_account_iam_member.boot_plan_planner\n\n  lifecycle {\n    destroy = false\n  }\n}\n",
-				"removed {\n  from = google_storage_bucket_iam_member.boot_plan_state_list\n\n  lifecycle {\n    destroy = false\n  }\n}\n",
-				"removed {\n  from = google_storage_bucket_iam_member.boot_plan_state_read\n\n  lifecycle {\n    destroy = false\n  }\n}\n",
-			},
 		},
 		{
 			name: "1-org reads 0-bootstrap's state for the runners and the containers",
@@ -2735,10 +2649,6 @@ func TestRepositoryRules(t *testing.T) {
 				`do_not_enforce_on_create = true`,
 				`allowed_merge_methods           = ["squash"]`,
 				`operations_environments = ["tst", "stg", "prd"]`,
-				`moved {
-  from = github_repository_environment.restorable
-  to   = github_repository_environment.operations
-}`,
 				`include = ["refs/tags/v*", "refs/tags/*/v*"]`,
 				`hotfix  = { name = "hotfix lines", include = ["refs/heads/hotfix/**"] }`,
 				`prevent_destroy = true`,

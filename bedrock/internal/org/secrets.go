@@ -248,9 +248,8 @@ type SecretPinResult struct {
 	Project   string
 	Container string
 	// Rendered is the number of owned files org render wrote after the placement
-	// changed, and Removed the retired files it took away.
+	// changed.
 	Rendered int
-	Removed  []string
 	// AppUnset is true when the app's id is not recorded beside its key.
 	AppUnset bool
 }
@@ -294,7 +293,7 @@ func PinSecret(ctx context.Context, open secret.ClientFunc, p *Placement, req *S
 	if err != nil {
 		return nil, err
 	}
-	r.Rendered, r.Removed = written.Owned, written.Removed
+	r.Rendered = written.Owned
 
 	return r, nil
 }
@@ -330,9 +329,6 @@ func (r *SecretPinResult) Write(w io.Writer) {
 	fmt.Fprintf(w, "Pinned %s to version %s: %s in %s.\n", r.Secret, r.Version, r.Key, r.File)
 	fmt.Fprintf(w, "Secret Manager confirms version %s of %s in project %s is enabled.\n", r.Version, r.Container, r.Project)
 	r.writeAppUnset(w)
-	if len(r.Removed) > 0 {
-		fmt.Fprintf(w, "Removed %s: retired.\n", strings.Join(r.Removed, ", "))
-	}
 	if r.Secret == DeployerKey {
 		fmt.Fprintf(w, "Next: commit placement.json and the files org render rewrote (%d owned file(s), 2-env's outputs among them) and open the pull request; from its merge on, the plan trigger's run posts the layers' plans as the deployer app from version %s, and each environment's apply of 2-env carries the version to the applications' pipelines through its output github_deployer_key_secret_version.\n", r.Rendered, r.Version)
 

@@ -340,10 +340,6 @@ resource "google_organization_iam_custom_role" "environment_layer_plan_reader" {
     "iam.workloadIdentityPools.getAttestationRules",
     # Privileged Access Manager: the team group's entitlements (team-group.tf).
     "privilegedaccessmanager.entitlements.get",
-    # Secret Manager: the deployer key container an earlier bedrock made in the
-    # environment project, read until its removal is applied; never a payload.
-    # The boot project's container is read through the grant on it (runners.tf).
-    "secretmanager.secrets.get",
     # Spanner: the environment's own instance (tst), and nothing it holds.
     "spanner.instances.get",
     # Cloud Storage: the deployment records bucket, and not its objects. The

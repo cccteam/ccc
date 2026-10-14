@@ -4,9 +4,7 @@
 // A file has a tier. An owned file is rewritten on every render: the stack's .tf files
 // and its README say what the code declares and nothing a person keeps by hand, and so
 // do the pipeline files Cloud Build reads at the application root (cloudbuild.yaml,
-// cloudbuild-sweep.yaml). A retired file is one the tool owned and writes no more: render
-// removes it when it is present, and check reports it as stale. A seeded file is written
-// once, when absent, and never again:
+// cloudbuild-sweep.yaml). A seeded file is written once, when absent, and never again:
 // terraform.tfvars holds the placement values a person fills in per environment, the
 // stack's .gitignore keeps the per-environment backend caches and saved plans out of
 // the repository, the Dockerfile at the application root is the image build a person
@@ -156,26 +154,7 @@ const (
 	workflowsDir       = ".github/workflows"
 	releaseWorkflow    = "release-please.yml"
 	OperationsWorkflow = "operations.yml"
-	// infrastructureWorkflow is the retired infrastructure workflow, which ran bedrock
-	// check in GitHub Actions on every pull request: the check runs in Cloud Build now,
-	// from the stack's check trigger, whose steps a pull request cannot edit.
-	infrastructureWorkflow = "infrastructure.yml"
 )
-
-// Retired are the files the tool owned once and writes no more, root-relative, each with
-// what took its place: render removes one it finds, saying so, and check reports it as
-// stale, since a file the tool no longer renders keeps doing what it did (a workflow keeps
-// running, a check keeps reporting under a name no ruleset requires).
-var Retired = []RetiredFile{
-	{Path: path.Join(workflowsDir, infrastructureWorkflow), Replacement: "the stack's check trigger runs bedrock check in Cloud Build (infrastructure/cloud-build.tf)"},
-}
-
-// RetiredFile is one retired file: its path at the application root, and what took its
-// place.
-type RetiredFile struct {
-	Path        string
-	Replacement string
-}
 
 // Render renders every file of the application's stack.
 func Render(m *derive.Model) ([]File, error) {
@@ -280,13 +259,10 @@ type Written struct {
 	// Seeded lists the seeded files created, and Kept the ones left as they were.
 	Seeded []string
 	Kept   []string
-	// Removed lists the retired files found at the application root and removed.
-	Removed []RetiredFile
 }
 
 // Write puts the files into dir, creating it when absent, and the root files into
-// appDir, which exists: owned files always, seeded files only when absent. A retired
-// file found at the application root is removed.
+// appDir, which exists: owned files always, seeded files only when absent.
 func Write(files []File, dir, appDir string) (*Written, error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, errors.Wrap(err, "os.MkdirAll()")
@@ -331,32 +307,6 @@ func Write(files []File, dir, appDir string) (*Written, error) {
 			return nil, errors.Wrapf(err, "os.Root.WriteFile(): %s", f.Path)
 		}
 	}
-	for _, retired := range Retired {
-		if _, err := app.Stat(filepath.FromSlash(retired.Path)); err != nil {
-			continue
-		}
-		if err := app.Remove(filepath.FromSlash(retired.Path)); err != nil {
-			return nil, errors.Wrapf(err, "os.Root.Remove(): %s", retired.Path)
-		}
-		w.Removed = append(w.Removed, retired)
-	}
 
 	return w, nil
-}
-
-// Stale lists the retired files present at the application root: what check reports.
-func Stale(appDir string) ([]RetiredFile, error) {
-	var stale []RetiredFile
-	for _, retired := range Retired {
-		_, err := os.Stat(filepath.Join(appDir, filepath.FromSlash(retired.Path)))
-		switch {
-		case err == nil:
-			stale = append(stale, retired)
-		case errors.Is(err, os.ErrNotExist):
-		default:
-			return nil, errors.Wrapf(err, "os.Stat(): %s", retired.Path)
-		}
-	}
-
-	return stale, nil
 }

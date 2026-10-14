@@ -52,25 +52,6 @@ resource "google_cloudbuildv2_connection" "github" {
   depends_on = [google_project_service_identity.cloudbuild]
 }
 
-# The token's accessor grants an earlier bedrock made from tst, when the token
-# secret lived there, are retired: 0-bootstrap grants on the secret in the
-# boot project now. Taken out of the state; the secret they named is gone
-# with the old connection.
-removed {
-  from = google_secret_manager_regional_secret_iam_member.github_token_accessor
-
-  lifecycle {
-    destroy = false
-  }
-}
-
-removed {
-  from = google_secret_manager_secret_iam_member.github_token_accessor
-
-  lifecycle {
-    destroy = false
-  }
-}
 
 # The pipeline mints a short-lived GitHub token from the connection (the tag
 # check reads the compare API, the pull-request build reads its /gcbrun

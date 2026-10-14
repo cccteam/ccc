@@ -92,9 +92,6 @@ placement is read from --placement, or from placement.json in the stack director
 			if len(written.Kept) > 0 {
 				fmt.Fprintf(cmd.OutOrStdout(), "Kept %s as it was.\n", strings.Join(written.Kept, ", "))
 			}
-			for _, retired := range written.Removed {
-				fmt.Fprintf(cmd.OutOrStdout(), "Removed %s from %s: bedrock no longer renders it, and %s.\n", retired.Path, appDir, retired.Replacement)
-			}
 
 			return nil
 		},

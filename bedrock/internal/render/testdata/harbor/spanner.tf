@@ -38,13 +38,6 @@ resource "google_spanner_database" "harbor" {
   enable_drop_protection   = local.is_prd
 }
 
-# The database gained a count when shared mode arrived; the one that exists
-# keeps its state.
-moved {
-  from = google_spanner_database.harbor
-  to   = google_spanner_database.harbor[0]
-}
-
 # The databases a rollback restored a backup into, generation 2 onwards
 # (var.database_generation): each named after the first with its number, made
 # by the rollback build that restored it and imported into this stack before

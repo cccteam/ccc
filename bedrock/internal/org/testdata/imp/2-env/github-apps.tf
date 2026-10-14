@@ -19,21 +19,8 @@
 # ID (placement.json's githubDeployerAppId) is not a secret. Until both are
 # recorded, the application stacks pass empty substitutions and the pipeline
 # talks back through nothing.
-#
-# An earlier bedrock held a copy of the key in a container of this
-# environment's project, <name>-gbl-github-deployer-key, pinned per
-# environment. The removed block destroys that container with its versions on
-# the first apply of this render; the boot container holds the key from then
-# on, and the two grants below move there with it.
 # ---------------------------------------------------------------------------
 
-removed {
-  from = google_secret_manager_secret.github_deployer_key
-
-  lifecycle {
-    destroy = true
-  }
-}
 
 resource "google_secret_manager_secret_iam_member" "deploy_deployer_key" {
   for_each = local.apps

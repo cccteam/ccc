@@ -23,9 +23,8 @@
 # reads the infrastructure key too, since a plan of 1-org reads the
 # repositories. 1-org grants each environment layer identity the deployer
 # container's administration, so 2-env can grant the applications' identities
-# their read. The runners' reads are cloud-build.tf's. The retired workload identity pool
-# and provider of the layers workflow are gone from this layer; the triggers
-# need no sign-in from GitHub.
+# their read. The runners' reads are cloud-build.tf's. The triggers need no
+# sign-in from GitHub.
 # ---------------------------------------------------------------------------
 
 resource "google_secret_manager_secret" "github_infrastructure_key" {
@@ -81,37 +80,5 @@ resource "google_project_iam_member" "boot_tofu_secrets" {
   member  = google_service_account.boot_tofu.member
 }
 
-# The pool and provider an earlier bedrock made for the layers workflow, and
-# the bindings on the two identities, are retired: taken out of the state
-# and destroyed, since nothing presents a GitHub token to them any more.
-removed {
-  from = google_iam_workload_identity_pool.github
 
-  lifecycle {
-    destroy = true
-  }
-}
 
-removed {
-  from = google_iam_workload_identity_pool_provider.github
-
-  lifecycle {
-    destroy = true
-  }
-}
-
-removed {
-  from = google_service_account_iam_member.boot_tofu_workflow
-
-  lifecycle {
-    destroy = true
-  }
-}
-
-removed {
-  from = google_service_account_iam_member.org_tofu_workflow
-
-  lifecycle {
-    destroy = true
-  }
-}

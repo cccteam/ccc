@@ -63,17 +63,6 @@ resource "google_iam_workload_identity_pool_provider" "github" {
   }
 }
 
-# The pool and the provider were made below production alone at first, under a
-# count; the state's instances keep their place.
-moved {
-  from = google_iam_workload_identity_pool.github[0]
-  to   = google_iam_workload_identity_pool.github
-}
-
-moved {
-  from = google_iam_workload_identity_pool_provider.github[0]
-  to   = google_iam_workload_identity_pool_provider.github
-}
 
 resource "google_service_account" "operations" {
   for_each = local.apps

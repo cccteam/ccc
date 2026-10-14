@@ -73,10 +73,6 @@ type Report struct {
 	// Unseeded lists the seeded files the directory lacks: not drift, since the tool
 	// writes them once and a person keeps them, but worth a line.
 	Unseeded []string
-	// Stale lists the retired files present at the application root: files the tool
-	// owned once and renders no more, which keep doing what they did until they go;
-	// render removes them.
-	Stale []render.RetiredFile
 	// Authoritative lists the authoritative IAM resources declared anywhere in the
 	// stack, owned files and a person's alike, in path then line order, the file
 	// stores' bucket policies excepted.
@@ -144,13 +140,13 @@ type MaintenanceFinding struct {
 	Problem string
 }
 
-// Clean reports no drift, no retired file left behind, no refused resource, a sound migration sequence, every
+// Clean reports no drift, no refused resource, a sound migration sequence, every
 // required build secret declared, every job's binary built, reserved stages holding
 // their install alone, every declared build argument declared by the Dockerfile, release
 // lines that a feature release opens, a changelog section for every accepted title type,
 // release-please's files in place, and no Cloud Armor policy removed in one step.
 func (r *Report) Clean() bool {
-	return len(r.Findings) == 0 && len(r.Stale) == 0 && len(r.Authoritative) == 0 && len(r.Migrations) == 0 && len(r.BuildSecrets) == 0 && len(r.Binaries) == 0 && len(r.Bundles) == 0 && len(r.Stages) == 0 && len(r.BuildArguments) == 0 && len(r.ReleaseLines) == 0 && len(r.ReleaseSections) == 0 && len(r.ReleaseFiles) == 0 && len(r.CloudArmor) == 0
+	return len(r.Findings) == 0 && len(r.Authoritative) == 0 && len(r.Migrations) == 0 && len(r.BuildSecrets) == 0 && len(r.Binaries) == 0 && len(r.Bundles) == 0 && len(r.Stages) == 0 && len(r.BuildArguments) == 0 && len(r.ReleaseLines) == 0 && len(r.ReleaseSections) == 0 && len(r.ReleaseFiles) == 0 && len(r.CloudArmor) == 0
 }
 
 // Run renders the model and compares the owned files with the directory's, and the
@@ -193,11 +189,6 @@ func Run(ctx context.Context, m *derive.Model, dir, appDir string) (*Report, err
 			r.Findings = append(r.Findings, Finding{Path: f.Path, Root: f.Root, Line: line, Want: want, Got: got})
 		}
 	}
-	stale, err := render.Stale(appDir)
-	if err != nil {
-		return nil, err
-	}
-	r.Stale = stale
 	authoritative, err := scanAuthoritative(dir, fileStorePolicies(m))
 	if err != nil {
 		return nil, err
@@ -450,9 +441,6 @@ func (r *Report) Write(w io.Writer) {
 	}
 	for _, path := range r.Unseeded {
 		fmt.Fprintf(w, "  unseeded %s (bedrock render creates it once)\n", path)
-	}
-	for _, s := range r.Stale {
-		fmt.Fprintf(w, "  stale    %s (at the application root): bedrock no longer renders it, and %s; bedrock render removes it\n", s.Path, s.Replacement)
 	}
 	if len(r.Latest) == 0 {
 		fmt.Fprintln(w, "  latest   no secret tracks latest: every entry of secret_versions in terraform.tfvars pins a version number")
