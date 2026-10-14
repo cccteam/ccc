@@ -35,12 +35,17 @@ const (
 	// (githubDeployerKeyVersion), from which the plan trigger's run posts the layers'
 	// plans and every application's pipeline talks back on a pull request.
 	DeployerKey = "github-deployer-key"
+	// ReleaseKey is the release GitHub App's private key: the container 0-bootstrap
+	// creates in the boot project, its version pinned in placement.json
+	// (githubReleaseKeyVersion), from which each application's release trigger mints the
+	// token release-please cuts the releases with.
+	ReleaseKey = "github-release-key"
 	// PlacementFile is the organization placement at the repository root.
 	PlacementFile = "placement.json"
 )
 
 // Secrets are the organization's secrets, by the name the commands take.
-var Secrets = []string{InfrastructureKey, DeployerKey}
+var Secrets = []string{InfrastructureKey, DeployerKey, ReleaseKey}
 
 // secretVersionRE is a pinned version: a positive number, never latest.
 var secretVersionRE = regexp.MustCompile(`^[1-9]\d*$`)
@@ -96,13 +101,22 @@ func (p *Placement) DeployerKeySecret() string {
 	return p.Prefix + "-boot-gbl-github-deployer-key"
 }
 
+// ReleaseKeySecret is the Secret Manager container in the boot project that holds the
+// release GitHub App's private key, as 0-bootstrap names it.
+func (p *Placement) ReleaseKeySecret() string {
+	return p.Prefix + "-boot-gbl-github-release-key"
+}
+
 // SecretContainer is the secret's container in the boot project.
 func (p *Placement) SecretContainer(name string) string {
-	if name == DeployerKey {
+	switch name {
+	case DeployerKey:
 		return p.DeployerKeySecret()
+	case ReleaseKey:
+		return p.ReleaseKeySecret()
+	default:
+		return p.InfrastructureKeySecret()
 	}
-
-	return p.InfrastructureKeySecret()
 }
 
 // SecretProject is the project holding the organization's secrets as the placement
@@ -119,10 +133,7 @@ func (p *Placement) SecretProject() (string, error) {
 // SecretVersionName is the resource name of the secret's pinned version in the boot
 // project, or empty while the placement pins none or records no boot project.
 func (p *Placement) SecretVersionName(name string) string {
-	version := p.GithubInfrastructureKeyVersion
-	if name == DeployerKey {
-		version = p.GithubDeployerKeyVersion
-	}
+	version := *p.pinned(name)
 	project, ok := p.Projects[bootProject]
 	if version == "" || !ok {
 		return ""
@@ -137,32 +148,71 @@ func (p *Placement) DeployerKeyVersionName() string {
 	return p.SecretVersionName(DeployerKey)
 }
 
+// ReleaseKeyVersionName is the resource name of the release key's pinned version, which
+// 2-env's output carries to every application's release trigger; empty until pinned.
+func (p *Placement) ReleaseKeyVersionName() string {
+	return p.SecretVersionName(ReleaseKey)
+}
+
+// pinned is where the placement pins the secret's version, and app the App ID recorded
+// beside it (the release app's is required of every placement).
+func (p *Placement) pinned(name string) *string {
+	switch name {
+	case DeployerKey:
+		return &p.GithubDeployerKeyVersion
+	case ReleaseKey:
+		return &p.GithubReleaseKeyVersion
+	default:
+		return &p.GithubInfrastructureKeyVersion
+	}
+}
+
+func (p *Placement) app(name string) string {
+	switch name {
+	case DeployerKey:
+		return p.GithubDeployerAppID
+	case ReleaseKey:
+		return p.GithubReleaseAppID
+	default:
+		return p.GithubInfrastructureAppID
+	}
+}
+
 // secretWhat names the secret in a sentence.
 func secretWhat(name string) string {
-	if name == DeployerKey {
+	switch name {
+	case DeployerKey:
 		return "the deployer GitHub App's private key"
+	case ReleaseKey:
+		return "the release GitHub App's private key"
+	default:
+		return "the infrastructure GitHub App's private key"
 	}
-
-	return "the infrastructure GitHub App's private key"
 }
 
 // pinKey is the placement key the secret's version is pinned under.
 func pinKey(name string) string {
-	if name == DeployerKey {
+	switch name {
+	case DeployerKey:
 		return "githubDeployerKeyVersion"
+	case ReleaseKey:
+		return "githubReleaseKeyVersion"
+	default:
+		return "githubInfrastructureKeyVersion"
 	}
-
-	return "githubInfrastructureKeyVersion"
 }
 
 // appKey is the placement key the secret's app is named under, and appWhat what to
 // record there.
 func appKey(name string) string {
-	if name == DeployerKey {
+	switch name {
+	case DeployerKey:
 		return "githubDeployerAppId"
+	case ReleaseKey:
+		return "githubReleaseAppId"
+	default:
+		return "githubInfrastructureAppId"
 	}
-
-	return "githubInfrastructureAppId"
 }
 
 // SecretAddRequest is what secret add was asked to do with an organization secret.
@@ -256,9 +306,9 @@ type SecretPinResult struct {
 
 // PinSecret writes the version where the triggers' runs read it, after Secret Manager
 // confirms it is enabled: the version's number in placement.json
-// (githubInfrastructureKeyVersion or githubDeployerKeyVersion), followed by org render,
-// which writes it into the layers (2-env's output of the deployer key's version among
-// them). A version that is not a number (latest among them) is refused, and a version
+// (githubInfrastructureKeyVersion, githubDeployerKeyVersion or githubReleaseKeyVersion),
+// followed by org render, which writes it into the layers (2-env's outputs of the
+// deployer and release keys' versions among them). A version that is not a number (latest among them) is refused, and a version
 // pinned already leaves every file as it is.
 func PinSecret(ctx context.Context, open secret.ClientFunc, p *Placement, req *SecretPinRequest) (*SecretPinResult, error) {
 	if err := ValidateSecret(req.Secret); err != nil {
@@ -268,10 +318,7 @@ func PinSecret(ctx context.Context, open secret.ClientFunc, p *Placement, req *S
 		return nil, errors.Newf("version %q: an organization secret is pinned by its number, never %s", req.Version, secret.Latest)
 	}
 	r := &SecretPinResult{Secret: req.Secret, Version: req.Version, Project: req.Project, Container: req.Container, File: filepath.Join(req.Dir, PlacementFile), Key: pinKey(req.Secret)}
-	pinned, app := &p.GithubInfrastructureKeyVersion, p.GithubInfrastructureAppID
-	if req.Secret == DeployerKey {
-		pinned, app = &p.GithubDeployerKeyVersion, p.GithubDeployerAppID
-	}
+	pinned, app := p.pinned(req.Secret), p.app(req.Secret)
 	r.AppUnset = app == ""
 	if *pinned == req.Version {
 		r.Unchanged = true

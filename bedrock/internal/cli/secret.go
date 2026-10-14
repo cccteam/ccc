@@ -5,6 +5,7 @@ package cli
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -18,6 +19,7 @@ import (
 	"github.com/cccteam/ccc/bedrock/internal/prompt"
 	"github.com/cccteam/ccc/bedrock/internal/secret"
 	"github.com/cccteam/ccc/bedrock/internal/where"
+	"github.com/cccteam/ccc/impulse/app"
 )
 
 const (
@@ -45,13 +47,113 @@ func newSecret(d deps) *cobra.Command {
 that reads it (add), and that pin, in an application layer's placement, the version of a
 secret an environment runs (pin); the layer's cloud-run.tf mounts that version. In the
 organization's infrastructure repository the same two commands take one of the
-organization's secrets instead, the private keys of its GitHub Apps: github-infrastructure-key
-and github-deployer-key, both in the boot project.`,
+organization's secrets instead, the private keys of its GitHub Apps: github-infrastructure-key,
+github-deployer-key and github-release-key, all in the boot project. A secret the code declares
+secret:"generated" takes neither: the pipeline makes its value and derives its version at each
+build, and rotate adds the next version from GitHub and runs the live release on it.`,
 	}
 	cmd.AddCommand(newSecretAdd(d))
 	cmd.AddCommand(newSecretPin(d))
+	cmd.AddCommand(newSecretRotate(d))
 
 	return cmd
+}
+
+// refuseGenerated refuses a variable the code declares secret:"generated" for add and pin:
+// the pipeline makes its value and derives its version, so neither applies. The secrets
+// are read as the prompts list them: the code, else the layer's locals.
+func refuseGenerated(place *pinPlace, variable, verb string) error {
+	secrets, err := where.Secrets(place.appDir, place.layerDir)
+	if err != nil {
+		return err
+	}
+	for _, s := range secrets {
+		if s.Name == variable && s.Generated {
+			return errors.Newf("%s is generated (secret:%q in the code): the pipeline makes its value and derives its version at each build, so there is nothing to %s; bedrock secret rotate <env> %s adds the next version and runs the live release again on it", variable, secret.Generated, verb, variable)
+		}
+	}
+
+	return nil
+}
+
+func newSecretRotate(d deps) *cobra.Command {
+	var dirFlag, placementFlag string
+	cmd := &cobra.Command{
+		Use:   "rotate <env> <VARIABLE>",
+		Short: "Rotate a generated secret: a new random version, and the live release run again on it, from GitHub",
+		Long: `rotate starts the operations workflow of the application's repository for the environment with the
+rotate action and the variable: the workflow's job, in the GitHub Environment named after the
+environment, exchanges its GitHub token for the environment's operations identity, adds a new
+version to the secret's container (32 bytes of cryptographically secure random data, base64, made
+on the runner and never printed; the stack grants that identity the adding of versions on the
+generated containers alone) and runs the environment's version trigger for the live release, as
+bedrock rerun does. That build's plan step derives the new version as the pin, so the revision
+that takes traffic carries it, and the record names the version. A rotated cookie key signs every
+user of the environment out, which is the point. Production is reached like any environment: the
+trigger's approval gate applies as to any release, and the GitHub Environment's lock as to a restore.
+
+The variable is one the code declares secret:"generated" (the cookie key, in a skeleton); a secret
+someone puts in place is rotated by adding a version (the Secret Manager console, gcloud secrets
+versions add, or bedrock secret add) and pinning it (bedrock secret pin). The command itself
+changes nothing: it checks the variable against the code and that the placement records the
+environment's project (projects, which bedrock org register prints), then dispatches the workflow
+as the person signed in to gh (or GITHUB_TOKEN) and prints where to watch it.`,
+		Args: cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			env, variable := args[0], args[1]
+			rc, err := d.operationTarget(dirFlag, placementFlag, env)
+			if err != nil {
+				return err
+			}
+			if err := secret.ValidateVariable(variable); err != nil {
+				return err
+			}
+			if err := generatedSecret(rc, variable); err != nil {
+				return err
+			}
+			login, err := dispatchOperation(cmd.Context(), d, rc, env, "", map[string]string{actionInput: actionRotate, variableInput: variable})
+			if err != nil {
+				return err
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "Asked, as %s, for %s's %s to be rotated: the operations workflow of %s/%s runs it (%s). Its job adds a random version as %s's operations identity and runs the live release again, whose plan pins the revision to the new version; every session the old value signed ends.\n",
+				login, env, variable, rc.owner, rc.repo, workflowURL(rc), env)
+
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&dirFlag, "dir", "", "the stack directory holding the placement (default: the application's stack, found from the working directory)")
+	cmd.Flags().StringVar(&placementFlag, "placement", "", "placement file (default: placement.json in the stack directory)")
+
+	return cmd
+}
+
+// generatedSecret checks that the variable is one the repository's code declares
+// secret:"generated", read the way render reads it, and refuses any other with what
+// the code declares.
+func generatedSecret(rc *repositoryContext, variable string) error {
+	a, err := app.Discover(rc.root)
+	if err != nil {
+		return errors.Wrap(err, "reading the application")
+	}
+	m, err := derive.Derive(a, rc.placement)
+	if err != nil {
+		return errors.Wrap(err, "deriving the application")
+	}
+	var generated []string
+	for _, s := range m.Secrets {
+		if s.Variable.Name == variable && s.Generated {
+			return nil
+		}
+		if s.Generated {
+			generated = append(generated, s.Variable.Name)
+		}
+	}
+	declares := noneWord
+	if len(generated) > 0 {
+		declares = strings.Join(generated, ", ")
+	}
+
+	return errors.Newf("%s is not a secret the code declares secret:%q (it declares %s): a value someone puts in place is rotated by adding a version (the Secret Manager console, gcloud secrets versions add, or bedrock secret add) and pinning it (bedrock secret pin)", variable, secret.Generated, declares)
 }
 
 // pinFlags are the flags of secret pin, each an override of what the command finds.
@@ -108,7 +210,10 @@ is <prefix>-boot-gbl-github-infrastructure-key in the boot project (projects.boo
 github-deployer-key <version> writes githubDeployerKeyVersion the same way; the plan
 trigger's runs post the layers' plans as the deployer app from that version, and 2-env's
 outputs carry it to the applications' pipelines. The container is
-<prefix>-boot-gbl-github-deployer-key, in the boot project too. --project and --container
+<prefix>-boot-gbl-github-deployer-key, in the boot project too. pin github-release-key
+<version> writes githubReleaseKeyVersion the same way; 2-env's outputs carry it to the
+applications' release triggers, which mint the release app's token from it. The container is
+<prefix>-boot-gbl-github-release-key, in the boot project too. --project and --container
 override; --app and --layer are refused, and so is an application's [env] [VARIABLE].
 Secret Manager is asked first, as above, and the pull request carrying the change goes
 through the Cloud Build triggers.`,
@@ -245,6 +350,9 @@ func (d deps) resolvePin(cmd *cobra.Command, args []string, f *pinFlags) (*secre
 	}
 	isBuild := slices.Contains(build, variable)
 	if err := validateName(variable, isBuild); err != nil {
+		return nil, err
+	}
+	if err := refuseGenerated(place, variable, pinVerb); err != nil {
 		return nil, err
 	}
 	project, err := d.resolveProject(ctx, f.project, env, place)
@@ -445,9 +553,10 @@ team-group.tf) and holds the role for the time asked.
 In the organization's infrastructure repository (the one whose placement.json at the root
 names the organization, organizationId), add takes one of the organization's secrets in
 place of [env] [VARIABLE]: github-infrastructure-key, the infrastructure GitHub App's private
-key, into <prefix>-boot-gbl-github-infrastructure-key, or github-deployer-key, the deployer
-GitHub App's private key, into <prefix>-boot-gbl-github-deployer-key, both in the boot
-project (projects.boot). --project and --container override; --app and --layer are refused,
+key, into <prefix>-boot-gbl-github-infrastructure-key, github-deployer-key, the deployer
+GitHub App's private key, into <prefix>-boot-gbl-github-deployer-key, or github-release-key,
+the release GitHub App's private key, into <prefix>-boot-gbl-github-release-key, all in the
+boot project (projects.boot). --project and --container override; --app and --layer are refused,
 and so is an application's [env] [VARIABLE]. The value is read as above; a .pem file is
 stored as given. The containers are 0-bootstrap's own resources, so a project without them
 is refused: apply the layer first. Adding to them is the bootstrap administrator's. The
@@ -559,6 +668,9 @@ func (d deps) resolveAdd(cmd *cobra.Command, args []string, f *addFlags) (*secre
 		}
 
 		return nil, errors.Newf("the code declares no secret variable %s (it declares %s): a container is added only for a secret the application reads, or for a build secret the placement declares for %s (it declares %s)", variable, strings.Join(declared, ", "), env, declares)
+	}
+	if err := refuseGenerated(place, variable, addVerb); err != nil {
+		return nil, err
 	}
 	project, err := d.resolveProject(ctx, f.project, env, place)
 	if err != nil {

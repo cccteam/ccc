@@ -30,6 +30,23 @@ func harborRepo(t *testing.T, remote string) string {
 	return dir
 }
 
+// generatedConfig is harbor's data-level configuration with the cookie key declared
+// secret:"generated".
+func generatedConfig(t *testing.T) string {
+	t.Helper()
+
+	data, err := os.ReadFile(filepath.Join(fixtureApp, "pkg", "config", "data.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	const tagged = "`env:\"APP_COOKIE_KEY\" secret:\"true\"`"
+	if !strings.Contains(string(data), tagged) {
+		t.Fatalf("harbor's data.go lacks %s", tagged)
+	}
+
+	return strings.Replace(string(data), tagged, strings.Replace(tagged, "true", "generated", 1), 1)
+}
+
 // labGitHub is the stand-in GitHub with harbor at v0.1.4 (c4) on master, plus what the
 // test adds.
 func labGitHub(t *testing.T) (*githubtest.Server, *githubtest.Repo) {
@@ -58,7 +75,9 @@ func TestRestoreAndHotfix(t *testing.T) {
 		prepare func(server *githubtest.Server, repo *githubtest.Repo)
 		args    []string
 		// in is what the person types: a rollback asks for the environment's name.
-		in      string
+		in string
+		// files are written over the copy: the configuration with a generated secret.
+		files   map[string]string
 		wantOut []string
 		// wantDispatch is the workflow_dispatch event the run leaves: file, ref and inputs.
 		wantDispatch string
@@ -239,6 +258,41 @@ func TestRestoreAndHotfix(t *testing.T) {
 			wantErr: "no release v0.9.9 in impulseframework/harbor: an operation names a release that exists",
 		},
 		{
+			name:   "secret rotate dispatches the rotate action with the variable, production included, for a secret the code declares generated",
+			remote: "git@github.com:impulseframework/harbor.git",
+			files:  map[string]string{"pkg/config/data.go": generatedConfig(t)},
+			args:   []string{"secret", "rotate", "prd", "APP_COOKIE_KEY", "--placement", placement},
+			wantOut: []string{
+				"Asked, as octocat, for prd's APP_COOKIE_KEY to be rotated: the operations workflow of impulseframework/harbor runs it (https://github.com/impulseframework/harbor/actions/workflows/operations.yml). Its job adds a random version as prd's operations identity and runs the live release again, whose plan pins the revision to the new version; every session the old value signed ends.",
+			},
+			wantDispatch: "operations.yml master action=rotate environment=prd release= variable=APP_COOKIE_KEY",
+		},
+		{
+			name:    "secret rotate refuses a secret the code does not declare generated, naming what it declares",
+			remote:  "git@github.com:impulseframework/harbor.git",
+			args:    []string{"secret", "rotate", "tst", "APP_COOKIE_KEY", "--placement", placement},
+			wantErr: `APP_COOKIE_KEY is not a secret the code declares secret:"generated" (it declares none): a value someone puts in place is rotated by adding a version (the Secret Manager console, gcloud secrets versions add, or bedrock secret add) and pinning it (bedrock secret pin)`,
+		},
+		{
+			name:    "secret rotate refuses a variable the code declares generated but names another",
+			remote:  "git@github.com:impulseframework/harbor.git",
+			files:   map[string]string{"pkg/config/data.go": generatedConfig(t)},
+			args:    []string{"secret", "rotate", "tst", "APP_STAFF_OIDC_CLIENT_SECRET", "--placement", placement},
+			wantErr: `APP_STAFF_OIDC_CLIENT_SECRET is not a secret the code declares secret:"generated" (it declares APP_COOKIE_KEY)`,
+		},
+		{
+			name:    "secret rotate refuses a variable of the wrong shape before reading the code",
+			remote:  "git@github.com:impulseframework/harbor.git",
+			args:    []string{"secret", "rotate", "tst", "cookie", "--placement", placement},
+			wantErr: `variable "cookie": an environment variable in upper snake case under the APP_ prefix`,
+		},
+		{
+			name:    "secret rotate refuses an environment the placement does not list",
+			remote:  "git@github.com:impulseframework/harbor.git",
+			args:    []string{"secret", "rotate", "qa", "APP_COOKIE_KEY", "--placement", placement},
+			wantErr: `"qa" is not one of the environments (tst, stg, prd)`,
+		},
+		{
 			name:   "rerun dispatches the operations workflow with the run action, production included",
 			remote: "git@github.com:impulseframework/harbor.git",
 			args:   []string{"rerun", "prd", "v0.1.4", "--placement", placement},
@@ -365,6 +419,11 @@ func TestRestoreAndHotfix(t *testing.T) {
 				tt.prepare(server, repo)
 			}
 			dir := harborRepo(t, tt.remote)
+			for name, content := range tt.files {
+				if err := os.WriteFile(filepath.Join(dir, filepath.FromSlash(name)), []byte(content), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
 			d := deps{
 				domains: noCloudDomains, secrets: noSecretManager, projects: noProjects, cwd: dir, interactive: never,
 				github: func(context.Context) (*github.Client, error) {

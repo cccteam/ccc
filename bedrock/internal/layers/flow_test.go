@@ -194,6 +194,27 @@ func (*fakeSecrets) State(context.Context, string) (string, error) {
 	return "ENABLED", nil
 }
 
+// The generated secrets' seam, which an organization layer's build never reaches.
+func (*fakeSecrets) Container(context.Context, string) (bool, error) {
+	return false, nil
+}
+
+func (*fakeSecrets) Create(context.Context, string, string, map[string]string) error {
+	return nil
+}
+
+func (*fakeSecrets) Newest(context.Context, string) (string, error) {
+	return "", nil
+}
+
+func (*fakeSecrets) Grant(context.Context, string, string, string) error {
+	return nil
+}
+
+func (*fakeSecrets) Add(context.Context, string, []byte) (string, error) {
+	return "", nil
+}
+
 func (*fakeSecrets) Close() error {
 	return nil
 }

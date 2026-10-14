@@ -94,10 +94,13 @@ locals {
   # names the field it comes from.
   # ---------------------------------------------------------------------------
 
-  # Secrets: the fields of pkg/config tagged secret:"true". One container per
-  # variable per environment, named imp-<env>-gbl-beacon-<kebab of the
-  # variable without its APP_ prefix>. No versions: an operator adds the value
-  # (Secret Version Adder), and var.secret_versions pins which one runs.
+  # Secrets: the fields of pkg/config tagged secret:"true" or secret:"generated".
+  # One container per variable per environment, named
+  # imp-<env>-gbl-beacon-<kebab of the variable without its APP_ prefix>. No
+  # versions here: someone adds the value (Secret Version Adder) and
+  # var.secret_versions pins which one runs, or, for a generated secret, the
+  # pipeline adds the first version and derives the pin at each build
+  # (var.generated_secret_versions; secret-manager.tf, "Generated secrets").
   #
   # readers: which runtime identity mounts it. Only the service: the migrate
   # command also constructs the data level, but the session library reads the
@@ -114,6 +117,8 @@ locals {
       level   = "data"
       source  = "pkg/config/data.go dataConfig.CookieKey"
       purpose = "Signs session cookies and seals list cursors: Base64 of 32+ random bytes. Rotating it ends every session and cursor."
+      # generated: the tooling makes the value (secret:"generated"); nobody types it.
+      generated = true
     }
   }
 
@@ -121,7 +126,20 @@ locals {
   # environment's, which a pull-request stack shares with tst and never creates.
   secret_ids = { for key, s in local.secrets : key => "${local.name}-gbl-${local.app}-${s.name}" }
 
-  secret_versions = lookup(var.secret_versions, var.environment, {})
+  # The secrets the tooling makes (secret:"generated"): their entry in
+  # var.secret_versions is the word generated, and their version the number the
+  # pipeline's plan step derived and passed as var.generated_secret_versions.
+  generated_secrets = { for key, s in local.secrets : key => s if s.generated }
+
+  # The versions this environment runs: the placement's pins (a number, or
+  # latest) for the secrets someone puts in place, and the derived numbers for
+  # the generated ones. A generated secret the build passed no number for (a plan
+  # run by hand) is not mounted, as a secret with no pin is not.
+  declared_versions = lookup(var.secret_versions, var.environment, {})
+  secret_versions = merge(
+    { for key, v in local.declared_versions : key => v if v != "generated" },
+    { for key, v in var.generated_secret_versions : key => v if contains(keys(local.generated_secrets), key) },
+  )
 
   # Only a secret with a pinned version is mounted.
   mounted_secrets = {

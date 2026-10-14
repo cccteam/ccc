@@ -142,38 +142,23 @@ func PlanEnvironmentStack(ctx context.Context, clients *Clients, w Workspace, ou
 
 		return nil
 	}
-	if err := testPins(w, subs[envSub], out); err != nil {
+	m, err := testPins(w, subs[envSub], out)
+	if err != nil {
 		return err
 	}
 	generation, err := s.planGeneration(ctx, clients, subs, env, w)
 	if err != nil {
 		return err
 	}
-	args := []string{planCommand, noInputFlag, noColorFlag, "-out=" + plan, varFlag, "environment=" + subs[envSub], varFlag, "database_generation=" + strconv.Itoa(generation)}
-	// The plan is told the maintenance variable's live value, so that declared and live
-	// agree and the apply never starts an application revision from the template while
-	// the application is in maintenance: in this run (a restore run, after deploy
-	// maintenance on), or from an earlier run that failed after its maintenance on, whose
-	// database may hold no tables until the migrations run (a revision started then
-	// cannot come up, and the apply waits on it). An entry of the env set cannot be
-	// ignored on its own; the release's own revision is deployed with the variable
-	// cleared, after the migrations.
-	build, err := w.Build()
+	pins, err := generatedPins(ctx, clients, identity, m, subs[appSub], subs[envSub], subs[projectSub], true, out)
 	if err != nil {
 		return err
 	}
-	live, err := liveMaintenance(ctx, clients, build, env, out)
+	args, err := s.planArguments(ctx, clients, w, subs, env, plan, generation, pins, out)
 	if err != nil {
 		return err
 	}
-	if live != "" {
-		args = append(args, varFlag, "maintenance="+live)
-	}
-	restore, err := s.restoreArguments(ctx, subs, env, w)
-	if err != nil {
-		return err
-	}
-	if err := s.tofu(ctx, append(args, restore...)...); err != nil {
+	if err := s.tofu(ctx, args...); err != nil {
 		return err
 	}
 	shown, err := s.tofuOutput(ctx, "show", "-json", plan)
@@ -191,8 +176,44 @@ func PlanEnvironmentStack(ctx context.Context, clients *Clients, w Workspace, ou
 	if err := testStack(ctx, clients, s.dir, identity, subs, shown, out); err != nil {
 		return err
 	}
+	facts := map[string]string{stackPlanFact: p.Summary()}
+	if len(pins) > 0 {
+		facts[generatedFact] = generatedFactValue(pins)
+	}
 
-	return w.Append(map[string]string{stackPlanFact: p.Summary()})
+	return w.Append(facts)
+}
+
+// planArguments are the tag build's plan arguments: the environment and the database
+// generation, the generated secrets' pins, the maintenance variable's live value and the
+// run's restore. The plan is told the maintenance variable's live value, so that declared
+// and live agree and the apply never starts an application revision from the template
+// while the application is in maintenance: in this run (a restore run, after deploy
+// maintenance on), or from an earlier run that failed after its maintenance on, whose
+// database may hold no tables until the migrations run (a revision started then cannot
+// come up, and the apply waits on it). An entry of the env set cannot be ignored on its
+// own; the release's own revision is deployed with the variable cleared, after the
+// migrations.
+func (s *stack) planArguments(ctx context.Context, clients *Clients, w Workspace, subs, env map[string]string, plan string, generation int, pins map[string]string, out io.Writer) ([]string, error) {
+	args := []string{planCommand, noInputFlag, noColorFlag, "-out=" + plan, varFlag, "environment=" + subs[envSub], varFlag, "database_generation=" + strconv.Itoa(generation)}
+	args = append(args, generatedArgs(pins)...)
+	build, err := w.Build()
+	if err != nil {
+		return nil, err
+	}
+	live, err := liveMaintenance(ctx, clients, build, env, out)
+	if err != nil {
+		return nil, err
+	}
+	if live != "" {
+		args = append(args, varFlag, "maintenance="+live)
+	}
+	restore, err := s.restoreArguments(ctx, subs, env, w)
+	if err != nil {
+		return nil, err
+	}
+
+	return append(args, restore...), nil
 }
 
 // restoreArguments are the plan's arguments for the run's restore: none without one and
@@ -735,8 +756,13 @@ func planEnvironment(ctx context.Context, clients *Clients, w Workspace, build *
 	if err != nil {
 		return "", err
 	}
+	pins, err := generatedPins(ctx, clients, identity, m, subs[appSub], e, identityProject(identity), false, out)
+	if err != nil {
+		return "", err
+	}
 	plan := filepath.Join(string(w), "environment-"+e+".plan")
-	planned, err := s.tofuCaptured(ctx, planCommand, noInputFlag, noColorFlag, "-lock=false", "-out="+plan, varFlag, "environment="+e, varFlag, "database_generation="+strconv.Itoa(generation))
+	args := []string{planCommand, noInputFlag, noColorFlag, "-lock=false", "-out=" + plan, varFlag, "environment=" + e, varFlag, "database_generation=" + strconv.Itoa(generation)}
+	planned, err := s.tofuCaptured(ctx, append(args, generatedArgs(pins)...)...)
 	if err != nil {
 		return "", refuse(ctx, clients, build, env, failedPlanLine(e, planned, build.ID), err, out)
 	}
@@ -753,12 +779,12 @@ func planEnvironment(ctx context.Context, clients *Clients, w Workspace, build *
 	if err := testStack(ctx, clients, s.dir, identity, subs, shown, out); err != nil {
 		return "", refuse(ctx, clients, build, env, fmt.Sprintf("The plan of %s's stack failed a test (build %s): %v", e, build.ID, errors.Cause(err)), err, out)
 	}
-	pins, err := pinSummary(w, m, e, out)
+	pinned, err := pinSummary(w, m, e, out)
 	if err != nil {
 		return "", err
 	}
 
-	return fmt.Sprintf("**%s**: %s%s%s", e, p.Summary(), pins, changeList(p)), nil
+	return fmt.Sprintf("**%s**: %s%s%s", e, p.Summary(), pinned, changeList(p)), nil
 }
 
 // changeList is a plan's changes for a comment: one line each, after the summary; none

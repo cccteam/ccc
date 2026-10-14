@@ -95,6 +95,10 @@ type Record struct {
 	// backup restored and the forensic one taken, the database restored into and the one
 	// kept. Absent otherwise.
 	Rollback *Rollback `json:"rollback,omitempty"`
+	// GeneratedSecrets are the versions the run's plan derived for the secrets the code
+	// declares generated (generated.go), by variable: what the revisions mount for each.
+	// Absent when the code declares none, and in a pull-request build.
+	GeneratedSecrets map[string]string `json:"generatedSecrets,omitempty"`
 }
 
 // ReleaseBackup is the backup a release build took as of its cut, as the record keeps it.
@@ -381,30 +385,31 @@ func NewRecordRequest(ctx context.Context, open StoreFunc, w Workspace, now time
 		object = releaseObject(app, environment, id, env[releaseFact], build.ID)
 	}
 	record := Record{
-		App:           app,
-		Env:           environment,
-		StackID:       id,
-		Version:       env[versionFact],
-		Commit:        build.Substitutions[commitSub],
-		Image:         env[imageFact] + "@" + env[digestFact],
-		Digest:        env[digestFact],
-		Regions:       regions,
-		Revisions:     revisions,
-		Timestamp:     now.UTC().Format(time.RFC3339),
-		Status:        status,
-		Build:         build.ID,
-		Migrations:    applied,
-		Stack:         stack,
-		Requester:     build.Substitutions[requesterSub],
-		Approval:      approvalOf(env),
-		Restore:       restore,
-		Maintenance:   maintenance,
-		Force:         forceOf(env, build),
-		Window:        windowOf(env),
-		Cut:           env[cutFact],
-		ReleaseBackup: releaseBackupOf(env),
-		Database:      databaseOf(env),
-		Rollback:      rollbackOf(env),
+		App:              app,
+		Env:              environment,
+		StackID:          id,
+		Version:          env[versionFact],
+		Commit:           build.Substitutions[commitSub],
+		Image:            env[imageFact] + "@" + env[digestFact],
+		Digest:           env[digestFact],
+		Regions:          regions,
+		Revisions:        revisions,
+		Timestamp:        now.UTC().Format(time.RFC3339),
+		Status:           status,
+		Build:            build.ID,
+		Migrations:       applied,
+		Stack:            stack,
+		Requester:        build.Substitutions[requesterSub],
+		Approval:         approvalOf(env),
+		Restore:          restore,
+		Maintenance:      maintenance,
+		Force:            forceOf(env, build),
+		Window:           windowOf(env),
+		Cut:              env[cutFact],
+		GeneratedSecrets: generatedOf(env),
+		ReleaseBackup:    releaseBackupOf(env),
+		Database:         databaseOf(env),
+		Rollback:         rollbackOf(env),
 	}
 
 	return &RecordRequest{Bucket: bucket, Object: object, Record: record}, nil

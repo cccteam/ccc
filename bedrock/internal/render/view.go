@@ -18,6 +18,7 @@ import (
 	"github.com/cccteam/ccc/bedrock/internal/derive"
 	"github.com/cccteam/ccc/bedrock/internal/hook"
 	"github.com/cccteam/ccc/bedrock/internal/release"
+	"github.com/cccteam/ccc/bedrock/internal/secret"
 )
 
 // view is the data every template executes against.
@@ -45,6 +46,11 @@ type view struct {
 	GcloudImage   string
 	OpenTofuImage string
 	DockerImage   string
+	// NodeImage is the image the release trigger's release-please step runs bedrock in,
+	// pinned by digest: Node for npx. ReleasePleaseVersion is the release-please the step
+	// runs through npx (release.PleaseVersion).
+	NodeImage            string
+	ReleasePleaseVersion string
 
 	// Prefix is the placement's naming prefix.
 	Prefix string
@@ -186,6 +192,22 @@ type view struct {
 	SecretExample string
 	// SecretsCell lists the secrets for the README table.
 	SecretsCell string
+	// GeneratedSecrets are the secrets the code declares secret:"generated", whose values
+	// the tooling makes; PinnedSecrets the rest, which someone puts in place and pins.
+	// GeneratedCell lists the generated ones for the README, GeneratedPairs for the
+	// operations workflow (VARIABLE=<container name segment>, space separated), and
+	// TfvarsSecretVersions is the seeded secret_versions block: the word generated for
+	// each generated secret in every environment, nothing else.
+	GeneratedSecrets     []derive.Secret
+	PinnedSecrets        []derive.Secret
+	GeneratedCell        string
+	GeneratedPairs       string
+	TfvarsSecretVersions string
+	// CookieKeyStep and PinStep number the README's hand steps (the directory
+	// registration first, where there is one); HandSteps reports there is any.
+	CookieKeyStep int
+	PinStep       int
+	HandSteps     bool
 	// DatabaseVariablesCell lists the database variables for the README table, the
 	// common prefix written once.
 	DatabaseVariablesCell string
@@ -518,6 +540,9 @@ const (
 	gcloudImage   = "gcr.io/cloud-builders/gcloud"
 	openTofuImage = "ghcr.io/opentofu/opentofu:1.12.6"
 	dockerImage   = "gcr.io/cloud-builders/docker"
+	// nodeImage is the image the release trigger runs release-please in (npx, Node 22),
+	// Docker Hub's node:22-alpine pinned by digest; a bedrock release moves it.
+	nodeImage = "docker.io/library/node@sha256:0a7108bf6c7bf5de370ffb1a3ed6be93d405b43ff159f681a8d18c0e2bc2e402"
 )
 
 // goImage is the image a commit pin is built in, by the pipeline's first step and the
@@ -643,8 +668,9 @@ func (v *view) BedrockModule() string {
 // package names each trigger and its steps by these when it says that a build runs under
 // an older bedrock's steps.
 const (
-	CheckTrigger = "check"
-	StackTrigger = "pr-stack"
+	CheckTrigger   = "check"
+	StackTrigger   = "pr-stack"
+	ReleaseTrigger = "release"
 	// The step ids the two triggers hold, in order: the pinned bedrock read from the
 	// checkout's placement (a release downloaded and verified; a commit pin built in the
 	// next step), bedrock check, then the trigger's own commands.
@@ -654,6 +680,7 @@ const (
 	planEnvironmentsStep   = "PlanEnvironments"
 	refreshStackStep       = "RefreshPullRequestStack"
 	applyStackStep         = "ApplyPullRequestStack"
+	releaseStep            = "Release"
 	// The steps' timeouts in seconds: the fetch (releaseFetchSeconds), the commit build
 	// (commitFetchSeconds), the check, the environments' plans, and the pull request's
 	// stack (a plan, the guard and an apply, or a destroy); the whole job is their sum
@@ -662,6 +689,9 @@ const (
 	planEnvironmentsSteps = 1800
 	stackStepSeconds      = 2700
 	triggerPullSeconds    = 600
+	// releaseStepSeconds bounds release-please's two runs: npx fetches it, then it reads
+	// the commits since the last release and opens or updates the release pull request.
+	releaseStepSeconds = 900
 	// readStackSeconds is the preview build's ReadPullRequestStack step's timeout: the
 	// wait for the stack job's object, ten minutes at most, and the read.
 	readStackSeconds = 900
@@ -672,6 +702,8 @@ const (
 var (
 	CheckTriggerSteps = []string{fetchBedrockStep, buildBedrockCommitStep, checkStackStep, planEnvironmentsStep, refreshStackStep}
 	StackTriggerSteps = []string{fetchBedrockStep, buildBedrockCommitStep, checkStackStep, applyStackStep}
+	// ReleaseTriggerSteps are the release trigger's steps, in order.
+	ReleaseTriggerSteps = []string{fetchBedrockStep, buildBedrockCommitStep, releaseStep}
 )
 
 // ReadStackStep is the pipeline's step that reads what the pull request's stack job
@@ -705,6 +737,11 @@ func (v *view) StackTriggerName() string {
 	return StackTrigger
 }
 
+// ReleaseTriggerName is the release trigger's name suffix.
+func (v *view) ReleaseTriggerName() string {
+	return ReleaseTrigger
+}
+
 // TriggerBedrockURL is where a trigger-held job's first step downloads a release pin
 // from, with the version left to the step's shell: the step reads bedrockVersion from the
 // checkout's placement at run time, so the trigger's text names no version. The $$ is
@@ -731,7 +768,7 @@ func (v *view) GoInstallEnvList() string {
 }
 
 // TriggerStep names a step of the trigger-held jobs by its place: fetch, build, check,
-// plan, refresh, apply.
+// plan, refresh, release, apply.
 func (v *view) TriggerStep(place string) string {
 	switch place {
 	case "fetch":
@@ -744,6 +781,8 @@ func (v *view) TriggerStep(place string) string {
 		return planEnvironmentsStep
 	case "refresh":
 		return refreshStackStep
+	case "release":
+		return releaseStep
 	default:
 		return applyStackStep
 	}
@@ -785,6 +824,17 @@ func (v *view) StackTriggerTimeout() string {
 	return strconv.Itoa(releaseFetchSeconds+commitFetchSeconds+checkStepSeconds+stackStepSeconds+triggerPullSeconds) + "s"
 }
 
+// ReleaseStepTimeout is the release trigger's release-please step's timeout, and
+// ReleaseTriggerTimeout the job's whole-build timeout.
+func (v *view) ReleaseStepTimeout() string {
+	return strconv.Itoa(releaseStepSeconds) + "s"
+}
+
+// ReleaseTriggerTimeout is the release job's whole-build timeout.
+func (v *view) ReleaseTriggerTimeout() string {
+	return strconv.Itoa(releaseFetchSeconds+commitFetchSeconds+releaseStepSeconds+triggerPullSeconds) + "s"
+}
+
 // HasHook reports whether the application implements a hook for the stage, a script or
 // its hooks program: the pipeline has a step for it.
 func (v *view) HasHook(stage string) bool {
@@ -819,6 +869,7 @@ func newView(m *derive.Model) (*view, error) {
 	}
 	v.GoImage = goImage
 	v.GcloudImage, v.OpenTofuImage, v.DockerImage = gcloudImage, openTofuImage, dockerImage
+	v.NodeImage, v.ReleasePleaseVersion = nodeImage, release.PleaseVersion
 	v.Auth = &m.Auths[0]
 	v.MaintenanceVariable = derive.MaintenanceVariable
 	v.SchedulerVariable, v.ScheduledPrefix, v.ReleaseFileName = derive.SchedulerInvokerVariable, derive.ScheduledPrefix, derive.ReleaseFileName
@@ -1070,22 +1121,55 @@ func (v *view) regions() {
 	v.PrimaryCode = v.P.Primary().Code
 }
 
-// secrets spells the secrets.
+// secrets spells the secrets: the files declaring them, the README's cells and example
+// pin, the generated ones apart (the workflow's pairs, the seeded placement's word), and
+// the hand steps' numbers.
 func (v *view) secrets() {
-	var files, example []string
+	var files, example, generatedCells, pairs, entries []string
 	cells := make([]string, 0, len(v.Secrets))
 	for i, s := range v.Secrets {
 		if len(files) == 0 || files[len(files)-1] != s.Variable.File {
 			files = append(files, s.Variable.File)
 		}
 		cells = append(cells, "`"+s.Variable.Name+"`")
+		version := `"1"`
+		if s.Generated {
+			version = `"` + secret.Generated + `"`
+			v.GeneratedSecrets = append(v.GeneratedSecrets, s)
+			generatedCells = append(generatedCells, "`"+s.Variable.Name+"`")
+			pairs = append(pairs, s.Variable.Name+"="+s.Name)
+			entries = append(entries, s.Variable.Name+" = "+version)
+		} else {
+			v.PinnedSecrets = append(v.PinnedSecrets, s)
+		}
 		if i < 2 {
-			example = append(example, s.Variable.Name+` = "1"`)
+			example = append(example, s.Variable.Name+" = "+version)
 		}
 	}
 	v.SecretsFiles = strings.Join(files, ", ")
 	v.SecretsCell = strings.Join(cells, ", ")
 	v.SecretExample = strings.Join(example, ", ")
+	v.GeneratedCell = strings.Join(generatedCells, ", ")
+	v.GeneratedPairs = strings.Join(pairs, " ")
+	value := "{}"
+	if len(entries) > 0 {
+		value = "{ " + strings.Join(entries, ", ") + " }"
+	}
+	versions := make([][2]string, 0, len(v.P.Environments))
+	for _, env := range v.P.Environments {
+		versions = append(versions, [2]string{env, value})
+	}
+	v.TfvarsSecretVersions = aligned("  ", versions)
+	cookieGenerated := v.CookieKeySecret != nil && v.CookieKeySecret.Generated
+	v.CookieKeyStep = 1
+	if v.Directory {
+		v.CookieKeyStep = 2
+	}
+	v.PinStep = v.CookieKeyStep
+	if !cookieGenerated {
+		v.PinStep++
+	}
+	v.HandSteps = v.Directory || !cookieGenerated || len(v.PinnedSecrets) > 0
 }
 
 // blocks prepares the aligned blocks and the remaining phrases.

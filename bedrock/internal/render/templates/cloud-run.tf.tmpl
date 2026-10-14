@@ -135,8 +135,20 @@ resource "google_cloud_run_v2_service" "app" {
     ]
 
     precondition {
-      condition     = alltrue([for key in keys(local.secret_versions) : contains(keys(local.secrets), key)])
+      condition     = alltrue([for key in keys(local.declared_versions) : contains(keys(local.secrets), key)])
       error_message = "secret_versions for ${var.environment} names a variable no secret in {{.ConfigDir}} declares. Known: ${join(", ", keys(local.secrets))}."
+    }
+
+    # A generated secret's entry is the word generated, never a number: its
+    # version is derived at each build. The word on any other secret pins nothing.
+    precondition {
+      condition     = alltrue([for key in keys(local.generated_secrets) : lookup(local.declared_versions, key, "generated") == "generated"])
+      error_message = "secret_versions for ${var.environment} pins a version number for a generated secret (${join(", ", [for key in keys(local.generated_secrets) : key if lookup(local.declared_versions, key, "generated") != "generated"])}), whose version the pipeline derives at each build: write generated there."
+    }
+
+    precondition {
+      condition     = alltrue([for key, v in local.declared_versions : v != "generated" || contains(keys(local.generated_secrets), key)])
+      error_message = "secret_versions for ${var.environment} says generated for a secret the code does not declare secret:\"generated\" (${join(", ", [for key, v in local.declared_versions : key if v == "generated" && !contains(keys(local.generated_secrets), key)])}): pin a version number, or declare it generated in the code."
     }
   }
 

@@ -285,9 +285,11 @@ resource "google_organization_iam_custom_role" "application_plan_reader" {
     "run.services.get",
     "run.services.listTagBindings",
     # Secret Manager: the secrets, and the metadata of the versions a revision pins (the
-    # pipeline checks after the plan that each exists and is enabled); never a payload.
+    # pipeline checks after the plan that each exists and is enabled, and reads a
+    # generated secret's newest enabled version as the pin); never a payload.
     "secretmanager.secrets.get",
     "secretmanager.versions.get",
+    "secretmanager.versions.list",
     # API keys: the web API key the application's browsers present, by name and string
     # (a public value by design). The API Keys service answers on its own permissions,
     # not Service Usage's: the key's read asks apikeys.keys.get and, for the string the

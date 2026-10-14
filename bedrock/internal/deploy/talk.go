@@ -92,15 +92,22 @@ func (pr *pullRequest) comment(ctx context.Context, body string, out io.Writer) 
 	return nil
 }
 
-// deployerToken mints the deployer app's installation token on the repository: the app's
-// private key is read from Secret Manager by its pinned version, a JWT signed with it
-// asks GitHub for the app's installation on the repository and then for a token good for
-// an hour. No deployer app in the environment answers empty.
+// deployerToken mints the deployer app's installation token on the repository. No
+// deployer app in the environment answers empty.
 func deployerToken(ctx context.Context, clients *Clients, subs map[string]string, owner, repo string) (string, error) {
 	appID, keyVersion := subs[deployerAppSub], subs[deployerKeySub]
 	if appID == "" || keyVersion == "" {
 		return "", nil
 	}
+
+	return appToken(ctx, clients, appID, keyVersion, owner, repo, "the deployer app")
+}
+
+// appToken mints a GitHub App's installation token on the repository: the app's private
+// key is read from Secret Manager by its pinned version, a JWT signed with it asks GitHub
+// for the app's installation on the repository and then for a token good for an hour.
+// what names the app in an error (the deployer app, the release app).
+func appToken(ctx context.Context, clients *Clients, appID, keyVersion, owner, repo, what string) (string, error) {
 	secrets, err := clients.Secrets(ctx)
 	if err != nil {
 		return "", err
@@ -108,20 +115,20 @@ func deployerToken(ctx context.Context, clients *Clients, subs map[string]string
 	defer secrets.Close()
 	pemKey, err := secrets.Access(ctx, keyVersion)
 	if err != nil {
-		return "", errors.Wrapf(err, "the deployer app's key (%s)", keyVersion)
+		return "", errors.Wrapf(err, "%s's key (%s)", what, keyVersion)
 	}
 	jwt, err := appJWT(appID, pemKey, time.Now())
 	if err != nil {
-		return "", err
+		return "", errors.Wrapf(err, "%s's key (%s)", what, keyVersion)
 	}
 	app := clients.GitHub(jwt)
 	installation, err := app.RepositoryInstallation(ctx, owner, repo)
 	if err != nil {
-		return "", errors.Wrapf(err, "the deployer app %s's installation on %s/%s", appID, owner, repo)
+		return "", errors.Wrapf(err, "%s %s's installation on %s/%s", what, appID, owner, repo)
 	}
 	token, err := app.InstallationToken(ctx, installation)
 	if err != nil {
-		return "", errors.Wrapf(err, "a token for the deployer app %s's installation %d", appID, installation)
+		return "", errors.Wrapf(err, "a token for %s %s's installation %d", what, appID, installation)
 	}
 
 	return token, nil
@@ -133,7 +140,7 @@ func deployerToken(ctx context.Context, clients *Clients, subs map[string]string
 func appJWT(appID string, pemKey []byte, now time.Time) (string, error) {
 	block, _ := pem.Decode(pemKey)
 	if block == nil {
-		return "", errors.New("the deployer app's key is not PEM")
+		return "", errors.New("the key is not PEM")
 	}
 	key, err := parseRSAKey(block.Bytes)
 	if err != nil {
@@ -161,11 +168,11 @@ func parseRSAKey(der []byte) (*rsa.PrivateKey, error) {
 	}
 	parsed, err := x509.ParsePKCS8PrivateKey(der)
 	if err != nil {
-		return nil, errors.New("the deployer app's key is neither a PKCS#1 nor a PKCS#8 private key")
+		return nil, errors.New("the key is neither a PKCS#1 nor a PKCS#8 private key")
 	}
 	key, ok := parsed.(*rsa.PrivateKey)
 	if !ok {
-		return nil, errors.New("the deployer app's key is not an RSA key")
+		return nil, errors.New("the key is not an RSA key")
 	}
 
 	return key, nil

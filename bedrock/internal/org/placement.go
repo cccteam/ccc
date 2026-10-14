@@ -152,6 +152,12 @@ type Placement struct {
 	// project (<prefix>-boot-gbl-github-deployer-key): pinned, never latest. Empty until
 	// a version was added.
 	GithubDeployerKeyVersion string `json:"githubDeployerKeyVersion,omitempty"`
+	// GithubReleaseKeyVersion is the number of the Secret Manager version holding the
+	// release GitHub App's private key, in the container 0-bootstrap creates in the boot
+	// project (<prefix>-boot-gbl-github-release-key): pinned, never latest. Empty until
+	// pinned; 2-env then carries the version to each application's release trigger, which
+	// mints the token release-please cuts the releases with.
+	GithubReleaseKeyVersion string `json:"githubReleaseKeyVersion,omitempty"`
 	// CloudBuildInstallationID is the installation id of the Google Cloud Build GitHub
 	// App on the GitHub organization (digits, from the installation's settings page),
 	// which every Cloud Build connection names: the boot project's for the layers and
@@ -399,6 +405,9 @@ func (p *Placement) validateGithubApps() error {
 	}
 	if p.GithubDeployerKeyVersion != "" && !projectNumberRE.MatchString(p.GithubDeployerKeyVersion) {
 		return errors.Newf("githubDeployerKeyVersion %q is not a secret version's number (digits, never latest)", p.GithubDeployerKeyVersion)
+	}
+	if p.GithubReleaseKeyVersion != "" && !projectNumberRE.MatchString(p.GithubReleaseKeyVersion) {
+		return errors.Newf("githubReleaseKeyVersion %q is not a secret version's number (digits, never latest)", p.GithubReleaseKeyVersion)
 	}
 
 	return nil

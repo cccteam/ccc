@@ -922,17 +922,24 @@ func TestSecretFor(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name    string
-		v       Variable
-		want    bool
-		wantErr string
+		name          string
+		v             Variable
+		want          bool
+		wantGenerated bool
+		wantErr       string
 	}{
 		{name: "tagged true", v: Variable{Name: "APP_COOKIE_KEY", SecretTag: "true"}, want: true},
+		{name: "tagged generated is a secret the tooling makes", v: Variable{Name: "APP_COOKIE_KEY", SecretTag: "generated"}, want: true, wantGenerated: true},
 		{name: "tagged true with a plain name", v: Variable{Name: "APP_SMTP_PASS", SecretTag: "true"}, want: true},
 		{name: "tagged false with a credential-sounding name", v: Variable{Name: "APP_LICENSE_KEY", SecretTag: "false"}, want: false},
 		{name: "untagged plain name", v: Variable{Name: "APP_STAFF_OIDC_CLIENT_ID"}, want: false},
 		{name: "an untagged credential-sounding name in a role the stack derives is the stack's", v: Variable{Name: varFirebaseAPIKey, Role: RoleFirebaseAPIKey}, want: false},
 		{name: "a derived role tagged false is fine", v: Variable{Name: varFirebaseAPIKey, Role: RoleFirebaseAPIKey, SecretTag: "false"}, want: false},
+		{
+			name:    "a derived role tagged generated is refused too",
+			v:       Variable{Name: varFirebaseAPIKey, Role: RoleFirebaseAPIKey, SecretTag: "generated", File: "pkg/config/data.go", Line: 20, Struct: "dataConfig", Field: "FirebaseAPIKey"},
+			wantErr: "pkg/config/data.go:20: APP_FIREBASE_API_KEY (dataConfig.FirebaseAPIKey) is a value the stack derives and sets on the process, not a secret: drop the secret tag",
+		},
 		{
 			name:    "a derived role tagged true is refused",
 			v:       Variable{Name: varFirebaseAPIKey, Role: RoleFirebaseAPIKey, SecretTag: "true", File: "pkg/config/data.go", Line: 20, Struct: "dataConfig", Field: "FirebaseAPIKey"},
@@ -941,12 +948,12 @@ func TestSecretFor(t *testing.T) {
 		{
 			name:    "untagged credential-sounding name is refused",
 			v:       Variable{Name: "APP_MAIL_API_KEY", File: "pkg/config/data.go", Line: 12, Struct: "dataConfig", Field: "MailAPIKey"},
-			wantErr: `pkg/config/data.go:12: APP_MAIL_API_KEY sounds like a credential (its name ends in _KEY) and dataConfig.MailAPIKey carries no secret tag: add secret:"true" to mount it from Secret Manager, or secret:"false" if it is a plain value`,
+			wantErr: `pkg/config/data.go:12: APP_MAIL_API_KEY sounds like a credential (its name ends in _KEY) and dataConfig.MailAPIKey carries no secret tag: add secret:"true" to mount it from Secret Manager, secret:"generated" for a value the tooling makes, or secret:"false" if it is a plain value`,
 		},
 		{
 			name:    "another value is refused",
 			v:       Variable{Name: "APP_COOKIE_KEY", SecretTag: "yes", File: "pkg/config/data.go", Line: 3, Struct: "dataConfig", Field: "CookieKey"},
-			wantErr: `pkg/config/data.go:3: secret:"yes" on dataConfig.CookieKey: the secret tag takes "true" or "false"`,
+			wantErr: `pkg/config/data.go:3: secret:"yes" on dataConfig.CookieKey: the secret tag takes "true", "generated" or "false"`,
 		},
 	}
 	for _, tt := range tests {
@@ -954,7 +961,7 @@ func TestSecretFor(t *testing.T) {
 			t.Parallel()
 
 			v := tt.v
-			got, err := secretFor(&v)
+			got, generated, err := secretFor(&v)
 			if tt.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 					t.Fatalf("secretFor() error = %v, wantErr %q", err, tt.wantErr)
@@ -962,8 +969,8 @@ func TestSecretFor(t *testing.T) {
 
 				return
 			}
-			if err != nil || got != tt.want {
-				t.Errorf("secretFor() = %v, %v; want %v", got, err, tt.want)
+			if err != nil || got != tt.want || generated != tt.wantGenerated {
+				t.Errorf("secretFor() = %v, %v, %v; want %v, %v", got, generated, err, tt.want, tt.wantGenerated)
 			}
 		})
 	}

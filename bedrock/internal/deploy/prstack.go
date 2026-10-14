@@ -232,7 +232,21 @@ func (j *stackJob) run(ctx context.Context, outputs *StackOutputs) (bool, error)
 		githubTokenFact: f.Token, downFact: flag(f.Down), sharedDBFact: flag(f.SharedDB),
 		reloadDBFact: flag(f.ReloadDB), reloadReasonFact: f.ReloadReason,
 	}
-	if err := s.plan(ctx, env, subs); err != nil {
+	// The generated secrets' pins, read from tst's containers as the apply identity:
+	// the pull request's stack mounts tst's newest versions and adds none.
+	p, err := checkoutPlacement(j.w, "the prefix is named")
+	if err != nil {
+		return false, err
+	}
+	m, err := checkoutModel(j.w, p)
+	if err != nil {
+		return false, err
+	}
+	pins, err := generatedPins(ctx, j.clients, s.identity, m, subs[appSub], subs[envSub], subs[projectSub], false, j.out)
+	if err != nil {
+		return false, err
+	}
+	if err := s.plan(ctx, env, subs, generatedArgs(pins)); err != nil {
 		return false, err
 	}
 	if err := guardPlan(ctx, j.clients, j.w, j.build, env, j.out); err != nil {
@@ -322,12 +336,14 @@ func (j *stackJob) previewStanding(ctx context.Context, s *stack) (bool, error) 
 
 // plan plans the pull request's stack and saves the plan: the destroy on /gcbrun down;
 // else the stack, without a database of its own on shared-db, and with the pull
-// request's database replaced when the job decided it is recreated and it exists. The
-// plan and its JSON are left in the workspace for the guard and the apply.
-func (s *stack) plan(ctx context.Context, env, subs map[string]string) error {
+// request's database replaced when the job decided it is recreated and it exists, and
+// with the extra arguments (the generated secrets' pins). The plan and its JSON are left
+// in the workspace for the guard and the apply.
+func (s *stack) plan(ctx context.Context, env, subs map[string]string, extra []string) error {
 	w := Workspace(filepath.Dir(s.dir))
 	plan := filepath.Join(string(w), PlanFile)
 	args := []string{planCommand, noInputFlag, noColorFlag, "-out=" + plan, varFlag, "environment=" + subs[envSub], varFlag, "pull_request=" + subs[prNumberSub]}
+	args = append(args, extra...)
 	switch {
 	case env[downFact] == trueValue:
 		fmt.Fprintln(s.out, "=== /gcbrun down: planning the destroy of the pull request's environment ===")

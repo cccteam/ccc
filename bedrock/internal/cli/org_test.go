@@ -598,8 +598,8 @@ func TestOrgCommands(t *testing.T) {
 				"By hand, before the Cloud Build triggers can run", "0. In the Workspace Admin console: one team group per environment, named in\n     placement.json (teamGroups",
 				"its role groups (<group prefix><role>@imp.example), each created with\n     \"Who can view members\" set so that its members can",
 				"On GitHub, as an organization owner: the organization, its machine account\n     (imp-machine, an owner of the organization, named in placement.json as\n     githubMachineAccount)",
-				"the release app's two organization secrets\n     RELEASE_APP_ID and RELEASE_APP_PRIVATE_KEY, set once by an owner for all\n     repositories",
-				"In a terminal, in this repository, the apps' keys, never by hand, once 0-bootstrap\n     has made their two containers in the boot project: bedrock secret add\n     github-infrastructure-key and bedrock secret pin github-infrastructure-key\n     <version>; bedrock secret add github-deployer-key and bedrock secret pin\n     github-deployer-key <version>.",
+				"has made their three containers in the boot project: bedrock secret add\n     github-infrastructure-key and bedrock secret pin github-infrastructure-key\n     <version>; the same with github-deployer-key and github-release-key. No key reaches\n     GitHub",
+				"In a terminal, in this repository, the apps' keys, never by hand, once 0-bootstrap\n     has made their three containers in the boot project: bedrock secret add\n     github-infrastructure-key and bedrock secret pin github-infrastructure-key\n     <version>; the same with github-deployer-key and github-release-key. No key reaches\n     GitHub: the release trigger of each application's stack mints the release app's\n     token from the pinned version in Cloud Build.",
 				"1. In a terminal, as seed@imp.example, after gcloud auth application-default login:\n     bedrock org preflight, which must find each of these roles held:\n" +
 					"       - Folder Creator (roles/resourcemanager.folderCreator), on the organization\n" +
 					"       - Project Creator (roles/resourcemanager.projectCreator), on the organization\n" +

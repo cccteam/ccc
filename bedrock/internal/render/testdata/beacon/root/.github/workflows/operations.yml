@@ -14,9 +14,10 @@
 # below production, reads the lines the migrate command wrote into the build's log (through the
 # view over the bucket holding this application's build logs, and no other log), and nothing else.
 # Started by bedrock restore <env>, bedrock rerun <env> <release>, bedrock rollback <env> --reason,
-# bedrock backups <env>, bedrock maintenance off <env>, bedrock migration version|rerun|force, or
-# the Run workflow button; a release waits for its approval in Cloud Build as any release does, a
-# rerun, a restore, a rollback and the maintenance step in production included.
+# bedrock backups <env>, bedrock maintenance off <env>, bedrock secret rotate <env> <VARIABLE>,
+# bedrock migration version|rerun|force, or the Run workflow button; a release waits for its
+# approval in Cloud Build as any release does, a rerun, a restore, a rollback, a rotation and the
+# maintenance step in production included.
 #
 # restore (tst, stg, or prd): two kinds. The environment's own restore (tst or stg;
 # production has none): the application goes into maintenance, the database is replaced (an empty
@@ -69,6 +70,15 @@
 # deploys, traffic moves, and the record names the requester. The one door to production, where
 # the migrations' rerun does not reach; nobody runs a trigger by hand.
 #
+# rotate (tst, stg, or prd): a generated secret (secret:"generated" in the code: `APP_COOKIE_KEY`)
+# gets a new version, 32 bytes of cryptographically secure random data, base64, made on the runner
+# and never printed, added by the job as the environment's operations identity (the stack grants it
+# the adding of versions on the generated containers alone), and the live release's build runs
+# again with nothing but who asked: its plan step derives the newest version as the pin, so the
+# revision that takes traffic carries it, and the record names the version. A cookie key rotated
+# this way signs every user of the environment out, which is the point. With no release live yet,
+# the version waits for the next release's build.
+#
 # version (tst or stg): the migrate command prints what each migrations table says about
 # the database (no version, a version, or dirty at one with the progress recorded) and nothing else
 # deploys. rerun: the release runs again, so the migrate command continues a file that stopped from
@@ -100,6 +110,7 @@ on:
           - version
           - rerun
           - force
+          - rotate
       environment:
         description: The environment (tst, stg, or prd)
         type: choice
@@ -138,6 +149,10 @@ on:
           - data
       version:
         description: "For force: the version the database is at (an integer 0 or above, or -1 for no version)"
+        type: string
+        default: ""
+      variable:
+        description: "For rotate: the generated secret's variable (APP_COOKIE_KEY)"
         type: string
         default: ""
 
@@ -447,6 +462,113 @@ jobs:
             case "$status" in
               SUCCESS) echo "Build $build succeeded: $ENVIRONMENT runs $RELEASE."; exit 0 ;;
               FAILURE|CANCELLED|TIMEOUT|INTERNAL_ERROR|EXPIRED) echo "::error::Build $build ended $status; its log says why."; exit 1 ;;
+              PENDING) echo "Build $build is pending: an approval in Cloud Build may be waiting." ;;
+            esac
+            sleep 30
+          done
+
+  rotate:
+    name: rotate a generated secret
+    if: ${{ inputs.action == 'rotate' }}
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    permissions:
+      id-token: write
+    env:
+      ENVIRONMENT: ${{ inputs.environment }}
+      VARIABLE: ${{ inputs.variable }}
+      REQUESTER: ${{ github.actor }}
+      REGION: us-central1
+      APP: beacon
+      PREFIX: imp
+      # The generated secrets the code declares, VARIABLE=<container name segment>.
+      GENERATED: "APP_COOKIE_KEY=cookie-key"
+    steps:
+      # The variable is one the code declares generated, else nothing runs; then the
+      # environment's values, from the placement's projects, and the secret's container.
+      - name: The environment's project, identity, trigger and the secret's container
+        id: target
+        run: |
+          if [ -z "$VARIABLE" ]; then
+            echo "::error::rotate names the generated secret's variable (the code declares: ${GENERATED:-none})"
+            exit 1
+          fi
+          suffix=
+          for pair in $GENERATED; do
+            case "$pair" in "$VARIABLE="*) suffix=${pair#*=} ;; esac
+          done
+          if [ -z "$suffix" ]; then
+            echo "::error::$VARIABLE is not a secret the code declares secret:\"generated\" (it declares: ${GENERATED:-none}): a value someone puts in place is rotated by adding a version (the Secret Manager console, gcloud secrets versions add, or bedrock secret add) and pinning it (bedrock secret pin)"
+            exit 1
+          fi
+          project=$(eval "printf '%s' \"\${PROJECT_$ENVIRONMENT:-}\"")
+          if [ -z "$project" ]; then
+            echo "::error::$ENVIRONMENT is not wired for operations: record its project (projects.$ENVIRONMENT, the id and the number bedrock org render prints) in infrastructure/placement.json and render"
+            exit 1
+          fi
+          printf 'container=%s\n' "$PREFIX-$ENVIRONMENT-gbl-$APP-$suffix" >> "$GITHUB_OUTPUT"
+          for name in project provider identity trigger; do
+            upper=$(printf '%s' "$name" | tr '[:lower:]' '[:upper:]')
+            printf '%s=%s\n' "$name" "$(eval "printf '%s' \"\${${upper}_$ENVIRONMENT}\"")" >> "$GITHUB_OUTPUT"
+          done
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: ${{ steps.target.outputs.provider }}
+          service_account: ${{ steps.target.outputs.identity }}
+      - uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+      # The new version: random bytes from the runner, piped into Secret Manager and never
+      # printed or kept; the identity may add to this container and read nothing.
+      - name: Add a random version
+        id: version
+        env:
+          PROJECT: ${{ steps.target.outputs.project }}
+          CONTAINER: ${{ steps.target.outputs.container }}
+        run: |
+          version=$(openssl rand -base64 32 | tr -d '\n' | gcloud secrets versions add "$CONTAINER" --project "$PROJECT" --data-file=- --format='value(name)')
+          echo "Version ${version##*/} of $CONTAINER added for $VARIABLE in $ENVIRONMENT (32 random bytes, base64, never printed), asked for by $REQUESTER."
+          printf 'version=%s\n' "${version##*/}" >> "$GITHUB_OUTPUT"
+      # The live release's build again, from the environment's deployment records, waited for
+      # to its end: its plan derives the new version as the pin. No live release: the version
+      # waits for the next release's build.
+      - name: Run the live release again on it
+        env:
+          PROJECT: ${{ steps.target.outputs.project }}
+          TRIGGER: ${{ steps.target.outputs.trigger }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          # records <bucket> <env> [<n>]: the environment's newest <n> (forty) deployment records
+          # as the objects variable, newest first: the release records under the stack the
+          # bucket's pointer names (<app>/stacks/<env>/stack.json, which the stack's apply
+          # writes). 1 when the stack says no id, 2 when it has no record yet.
+          records() {
+            id=$(gcloud storage cat "gs://$1/$APP/stacks/$2/stack.json" 2>/dev/null | jq -r '.id // empty')
+            [ -n "$id" ] || return 1
+            objects=$(gcloud storage ls -l "gs://$1/$APP/$2/$id/releases/*/*.json" 2>/dev/null | grep '^ *[0-9]' | sort -k2,2r | head -"${3:-40}" | awk '{print $3}')
+            [ -n "$objects" ] || return 2
+          }
+          bucket=$(gcloud builds triggers describe "$TRIGGER" --region "$REGION" --project "$PROJECT" --format='value(substitutions._RECORDS_BUCKET)')
+          if [ -z "$bucket" ]; then
+            echo "::error::the version trigger $TRIGGER names no records bucket (_RECORDS_BUCKET): the stack has not been applied with this bedrock yet; version $VERSION waits for the next release's build"
+            exit 1
+          fi
+          records "$bucket" "$ENVIRONMENT" || case $? in
+            1) echo "::error::$ENVIRONMENT's stack says no id (nothing at gs://$bucket/$APP/stacks/$ENVIRONMENT/stack.json): its apply writes it, so the stack has not been applied by a bedrock with stack ids; apply it once, and version $VERSION waits for the next release's build"; exit 1 ;;
+            2) echo "No release is live in $ENVIRONMENT by its deployment records (gs://$bucket/$APP/$ENVIRONMENT/$id/releases/): version $VERSION waits for the next release's build, whose plan pins it."; exit 0 ;;
+          esac
+          live=$(gcloud storage cat $objects | jq -r -s '[.[] | select(.status == "live")] | sort_by(.timestamp) | last | .version // empty')
+          if [ -z "$live" ]; then
+            echo "No release is live in $ENVIRONMENT by its deployment records: version $VERSION waits for the next release's build, whose plan pins it."
+            exit 0
+          fi
+          build=$(gcloud builds triggers run "$TRIGGER" --tag "$live" --region "$REGION" --project "$PROJECT" \
+            --substitutions "_REQUESTER=$REQUESTER" --format='value(metadata.build.id)')
+          echo "Build $build in $ENVIRONMENT runs $live again on version $VERSION of $VARIABLE, asked for by $REQUESTER."
+          echo "https://console.cloud.google.com/cloud-build/builds;region=$REGION/$build?project=$PROJECT"
+          while :; do
+            status=$(gcloud builds describe "$build" --region "$REGION" --project "$PROJECT" --format='value(status)')
+            case "$status" in
+              SUCCESS) echo "Build $build succeeded: $ENVIRONMENT runs $live on version $VERSION of $VARIABLE."; exit 0 ;;
+              FAILURE|CANCELLED|TIMEOUT|INTERNAL_ERROR|EXPIRED) echo "::error::Build $build ended $status; its log says why. Version $VERSION stands, and the next build pins it."; exit 1 ;;
               PENDING) echo "Build $build is pending: an approval in Cloud Build may be waiting." ;;
             esac
             sleep 30

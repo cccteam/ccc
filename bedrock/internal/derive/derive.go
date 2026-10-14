@@ -163,8 +163,12 @@ type Variable struct {
 	// deploy step does.
 	Image bool
 	// Secret reports that the variable holds a credential: the field carries the
-	// secret tag, secret:"true". SecretTag is that tag's value as written, or empty.
+	// secret tag, secret:"true" or secret:"generated". Generated reports the second: a
+	// value the tooling makes (32 random bytes, base64) and nobody types, whose version
+	// the pipeline derives at each build. SecretTag is the tag's value as written, or
+	// empty.
 	Secret    bool
+	Generated bool
 	SecretTag string
 }
 
@@ -513,13 +517,16 @@ var directoryRoles = map[string]Role{
 const cookieKeyField = "CookieKey"
 
 // secretTag is the struct tag that declares a secret: secret:"true" mounts the
-// variable from Secret Manager at a pinned version, secret:"false" says a value whose
-// name sounds like a credential is a plain one. The environment library reads its own
-// env tag only, so the second tag costs the running program nothing.
+// variable from Secret Manager at a pinned version, secret:"generated" mounts a value
+// the tooling makes and nobody types (the pipeline adds the first version and derives
+// the pin at each build; bedrock secret rotate adds the next), secret:"false" says a
+// value whose name sounds like a credential is a plain one. The environment library
+// reads its own env tag only, so the second tag costs the running program nothing.
 const (
-	secretTag   = "secret"
-	secretTrue  = "true"
-	secretFalse = "false"
+	secretTag       = "secret"
+	secretTrue      = "true"
+	secretGenerated = "generated"
+	secretFalse     = "false"
 )
 
 // secretSuffixes are the name endings that sound like a credential: a key, a secret,
@@ -533,6 +540,9 @@ type Secret struct {
 	// Name is the secret container's name segment: the variable without its APP_ prefix,
 	// in kebab case.
 	Name string
+	// Generated reports a value the tooling makes (secret:"generated"): the placement
+	// carries the word generated for it, never a version number.
+	Generated bool
 }
 
 // Database is the struct that identifies the database, with its three variables.
@@ -736,13 +746,13 @@ func (m *Model) classify(cfg *config) error {
 			v.Role = RoleCookieKey
 		}
 		v.Image = cfg.image[v.Name]
-		secret, err := secretFor(v)
+		secret, generated, err := secretFor(v)
 		if err != nil {
 			return err
 		}
-		v.Secret = secret
+		v.Secret, v.Generated = secret, generated
 		if v.Secret {
-			m.Secrets = append(m.Secrets, Secret{Variable: v, Name: secretName(v.Name)})
+			m.Secrets = append(m.Secrets, Secret{Variable: v, Name: secretName(v.Name), Generated: generated})
 		}
 	}
 	for role, field := range cfg.directory {
@@ -840,30 +850,31 @@ func (m *Model) Level(name string) (Level, bool) {
 	return Level{}, false
 }
 
-// secretFor reads the variable's secret tag: "true" makes it a secret, "false" a plain
-// value. Any other value is refused, and so is a variable whose name sounds like a
-// credential and carries no tag, since the name alone decides nothing. A variable in a
-// role the stack derives is the stack's to set, whatever its name sounds like (the
-// Firebase web API key is one), and tagging it a secret is refused: the stack sets it on
-// the process as a plain value and would never mount it.
-func secretFor(v *Variable) (bool, error) {
+// secretFor reads the variable's secret tag: "true" makes it a secret, "generated" a
+// secret whose value the tooling makes, "false" a plain value. Any other value is
+// refused, and so is a variable whose name sounds like a credential and carries no tag,
+// since the name alone decides nothing. A variable in a role the stack derives is the
+// stack's to set, whatever its name sounds like (the Firebase web API key is one), and
+// tagging it a secret is refused: the stack sets it on the process as a plain value and
+// would never mount it.
+func secretFor(v *Variable) (secret, generated bool, err error) {
 	switch v.SecretTag {
-	case secretTrue:
+	case secretTrue, secretGenerated:
 		if v.Role.Derived() {
-			return false, errors.Newf("%s:%d: %s (%s) is a value the stack derives and sets on the process, not a secret: drop the secret tag", v.File, v.Line, v.Name, v.Declaration())
+			return false, false, errors.Newf("%s:%d: %s (%s) is a value the stack derives and sets on the process, not a secret: drop the secret tag", v.File, v.Line, v.Name, v.Declaration())
 		}
 
-		return true, nil
+		return true, v.SecretTag == secretGenerated, nil
 	case secretFalse:
-		return false, nil
+		return false, false, nil
 	case "":
 		if isSecret(v.Name) && !v.Role.Derived() {
-			return false, errors.Newf("%s:%d: %s sounds like a credential (its name ends in %s) and %s carries no secret tag: add secret:\"true\" to mount it from Secret Manager, or secret:\"false\" if it is a plain value", v.File, v.Line, v.Name, suffixOf(v.Name), v.Declaration())
+			return false, false, errors.Newf("%s:%d: %s sounds like a credential (its name ends in %s) and %s carries no secret tag: add secret:\"true\" to mount it from Secret Manager, secret:\"generated\" for a value the tooling makes, or secret:\"false\" if it is a plain value", v.File, v.Line, v.Name, suffixOf(v.Name), v.Declaration())
 		}
 
-		return false, nil
+		return false, false, nil
 	default:
-		return false, errors.Newf("%s:%d: secret:%q on %s: the secret tag takes \"true\" or \"false\"", v.File, v.Line, v.SecretTag, v.Declaration())
+		return false, false, errors.Newf("%s:%d: secret:%q on %s: the secret tag takes \"true\", \"generated\" or \"false\"", v.File, v.Line, v.SecretTag, v.Declaration())
 	}
 }
 

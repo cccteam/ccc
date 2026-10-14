@@ -233,7 +233,11 @@ variable "secret_versions" {
     A value is a version number. "latest" is allowed only where the map says
     so, and means the environment tracks whatever version is added next; the
     design brief reserves it for secrets whose placement marks them as
-    tracking, and bedrock check names each one, per environment.
+    tracking, and bedrock check names each one, per environment. The word
+    "generated" is the entry of a secret the code declares secret:"generated"
+    (bedrock render seeds it): the pipeline makes its value and passes its
+    version in var.generated_secret_versions, so a number here pins nothing,
+    and bedrock check refuses one there and the word on any other secret.
 
       secret_versions = {
         {{.Integration}} = { {{.SecretExample}} }
@@ -247,10 +251,30 @@ variable "secret_versions" {
   validation {
     condition = alltrue(flatten([
       for env, versions in var.secret_versions : [
-        for name, version in versions : can(regex("^([1-9][0-9]*|latest)$", version))
+        for name, version in versions : can(regex("^([1-9][0-9]*|latest|generated)$", version))
       ]
     ]))
-    error_message = "Every secret version is a positive integer or the word latest."
+    error_message = "Every secret version is a positive integer, the word latest, or the word generated for a secret the code declares secret:\"generated\"."
+  }
+}
+
+variable "generated_secret_versions" {
+  description = <<-EOT
+    The version of each generated secret this environment runs (the fields of
+    {{.SecretsFiles}} tagged secret:"generated"), keyed by the environment
+    variable: the number the pipeline's plan step derived from the container's
+    newest enabled version (adding version 1 as the apply identity when the
+    container was empty) and passed with -var, the way the image digest is
+    derived at build time. Never written in terraform.tfvars. A plan run by
+    hand without it mounts no generated secret and shows that as its change;
+    the next release build mounts them again.
+  EOT
+  type        = map(string)
+  default     = {}
+
+  validation {
+    condition     = alltrue([for name, version in var.generated_secret_versions : can(regex("^[1-9][0-9]*$", version))])
+    error_message = "Every generated secret version is a positive integer, the number the build derived."
   }
 }
 

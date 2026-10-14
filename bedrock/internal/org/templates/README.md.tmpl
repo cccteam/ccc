@@ -132,8 +132,7 @@ the place it happens.
    machine account `{{.GithubMachineAccount}}` (`githubMachineAccount`, a GitHub
    user that is an owner of the organization and acts for no person), this
    repository (`1-org` rules its default branch; nothing else of it is the
-   layers'), and the release and deployer apps
-   with the release app's two organization secrets ("The two GitHub Apps",
+   layers'), and the release and deployer apps ("The two GitHub Apps",
    below). The release app's App ID and slug are in `placement.json` before
    the first render. Nothing more is done by hand on GitHub: `1-org`
    configures every application's repository and rules this repository's
@@ -234,11 +233,13 @@ the values a layer runs with belong in the repository.
 
 Besides the infrastructure app `1-org` acts as (`0-bootstrap/README.md`), the
 organization holds two GitHub Apps that every application uses: the release
-app, which cuts each release (the tag and the GitHub Release carry it as their
-author, and each repository's tag ruleset lets it alone make a release tag),
-and the deployer app, which the pipeline talks back on a pull request as (a
-deployment carrying the environment's URL, a comment, the guard's refusals).
-Once, by a person:
+app, which cuts each release (release-please runs as it from each
+application's release trigger in Cloud Build, so the tag and the GitHub
+Release carry it as their author, and each repository's tag ruleset lets it
+alone make a release tag), and the deployer app, which the pipeline talks
+back on a pull request as (a deployment carrying the environment's URL, a
+comment, the guard's refusals). Both keys live in Secret Manager in the boot
+project, and neither reaches GitHub. Once, by a person:
 
 1. On GitHub, as an owner of the `{{.GithubOrganization}}` organization: the
    organization's Settings, Developer settings, GitHub Apps, New GitHub App,
@@ -255,40 +256,36 @@ Once, by a person:
    for all repositories, so a new application's repository is covered with no
    step of its own. Then Private keys, Generate a private key: the browser
    downloads a `.pem` file.
-3. On GitHub, as an organization owner, in the organization's Settings,
-   Secrets and variables, Actions: two organization secrets, visible to all
-   repositories. `RELEASE_APP_ID` holds the release app's App ID and
-   `RELEASE_APP_PRIVATE_KEY` the whole of its `.pem` file; each
-   application's release workflow makes the app's token from them. They are
-   set once, here and not on each repository, and nothing in OpenTofu holds
-   them. Writing an organization secret takes an owner signed in, or an
-   owner's token carrying the organization-administration scope; a token
-   without that scope is refused. Delete the release app's `.pem` file once
-   both are saved.
-4. In `placement.json`: the release app's App ID as `githubReleaseAppId` and
+3. In `placement.json`: the release app's App ID as `githubReleaseAppId` and
    its slug, the name in its address `github.com/apps/<slug>`, as
    `githubReleaseAppSlug`; then `bedrock org render`. `1-org` names the app in
    each repository's tag ruleset, and every application's placement names the
    slug as the author of its releases.
-5. In `placement.json`: the deployer app's App ID as `githubDeployerAppId`,
+4. In `placement.json`: the deployer app's App ID as `githubDeployerAppId`,
    one value for the organization.
-6. In a terminal, in this repository, once `0-bootstrap` has applied and made
-   the key's container, as the bootstrap administrator:
+5. In a terminal, in this repository, once `0-bootstrap` has applied and made
+   the keys' containers, as the bootstrap administrator, for each of the two
+   apps:
 
    ```bash
-   bedrock secret add github-deployer-key --from-file <the .pem file>
+   bedrock secret add github-deployer-key --from-file <the deployer app's .pem file>
    bedrock secret pin github-deployer-key <version>
+   bedrock secret add github-release-key --from-file <the release app's .pem file>
+   bedrock secret pin github-release-key <version>
    ```
 
-   `add` puts the key into `{{.DeployerKeySecret}}` in the boot project and
-   prints the version; `pin` checks that it is enabled, records it in
-   `placement.json` (`githubDeployerKeyVersion`) and renders. The pull request
-   that carries it applies `2-env` in every environment, whose output names
-   the version, and each application's stack passes the key to its pipeline
-   at its next apply; the plan trigger posts the layers' plans as the app
-   from then on. Delete the deployer app's `.pem` file once it is pinned.
-   Until both values are recorded, the pipelines talk back through nothing
-   and the plans are in the runs' logs alone.
+   `add` puts the key into its container in the boot project
+   (`{{.DeployerKeySecret}}`, `{{.ReleaseKeySecret}}`) and prints the version;
+   `pin` checks that it is enabled, records it in `placement.json`
+   (`githubDeployerKeyVersion`, `githubReleaseKeyVersion`) and renders. The
+   pull request that carries them applies `2-env` in every environment, whose
+   outputs name the versions, and each application's stack passes the keys
+   to its pipeline and its release trigger at its next apply; the plan
+   trigger posts the layers' plans as the deployer app from then on, and the
+   release trigger exists from then on. Delete both `.pem` files once they
+   are pinned. Until the values are recorded, the pipelines talk back through
+   nothing, the plans are in the runs' logs alone, and no push cuts a
+   release.
 
 ## Deviations from tf-gcp-setup
 

@@ -103,6 +103,35 @@ resource "google_secret_manager_secret_iam_member" "environment_plan_deployer_ke
 }
 
 # ---------------------------------------------------------------------------
+# The release GitHub App's key container
+#
+# The same for the release app's key, which each application's release
+# trigger mints its token from (release-please, in tst's Cloud Build as the
+# application's release identity): the environment layer identities
+# administer the container's policy, so tst's 2-env can grant each release
+# identity the read, and the plan identities read the policy on a pull
+# request.
+# ---------------------------------------------------------------------------
+
+resource "google_secret_manager_secret_iam_member" "environment_tofu_release_key" {
+  for_each = local.environment_layers
+
+  project   = var.boot_project_id
+  secret_id = local.boot.github_release_key_secret
+  role      = google_organization_iam_custom_role.secret_container_admin.id
+  member    = google_service_account.tofu[each.key].member
+}
+
+resource "google_secret_manager_secret_iam_member" "environment_plan_release_key" {
+  for_each = local.environment_layers
+
+  project   = var.boot_project_id
+  secret_id = local.boot.github_release_key_secret
+  role      = "roles/secretmanager.viewer"
+  member    = google_service_account.plan[each.key].member
+}
+
+# ---------------------------------------------------------------------------
 # The state bucket
 # ---------------------------------------------------------------------------
 

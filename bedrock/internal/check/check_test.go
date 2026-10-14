@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/google/go-cmp/cmp"
+
 	"github.com/cccteam/ccc/bedrock/internal/derive"
 	"github.com/cccteam/ccc/impulse/app"
 )
@@ -71,7 +73,7 @@ func TestRun(t *testing.T) {
 			mutate:    func(*testing.T, string) {},
 			wantClean: true,
 			wantOutput: []string{
-				"23 owned file(s) match the code",
+				"22 owned file(s) match the code",
 				"warning  prd has no maintenance setting (placement.json \"maintenance\": {\"prd\": ...}): a breaking release to prd is refused at the start of its run until one is written; \"anytime\" is a setting, and so are the client's windows",
 				"warning  no release file at pkg/router/zz_gen_release.json: no outlet declares an oldest answered release, so no release is breaking and the maintenance window never holds a run; the resource generator writes it beside the generated router (go generate ./...)",
 			},
@@ -86,7 +88,22 @@ func TestRun(t *testing.T) {
 				}
 			},
 			wantFindings: []Finding{{Path: "cloudbuild.yaml", Root: true, Line: 1, Want: "# harbor's deploy pipeline: the Cloud Build steps that take one commit into one environment,", Got: "# edited"}},
-			wantOutput:   []string{"1 of 23 owned file(s) differ from the code", "differs  cloudbuild.yaml:1 (at the application root)"},
+			wantOutput:   []string{"1 of 22 owned file(s) differ from the code", "differs  cloudbuild.yaml:1 (at the application root)"},
+		},
+		{
+			name: "a retired file at the application root is reported until removed",
+			mutate: func(t *testing.T, dir string) {
+				t.Helper()
+
+				workflows := filepath.Join(dir, "root", ".github", "workflows")
+				if err := os.MkdirAll(workflows, 0o750); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(workflows, "release-please.yml"), []byte("name: release-please\n"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			},
+			wantOutput: []string{"22 owned file(s) match the code", "retired  .github/workflows/release-please.yml (at the application root): an earlier bedrock rendered it; bedrock render removes it"},
 		},
 		{
 			name: "an edited owned file differs at its first changed line",
@@ -104,7 +121,7 @@ func TestRun(t *testing.T) {
 				}
 			},
 			wantFindings: []Finding{{Path: "locals.tf", Line: 5, Want: `  app = "harbor"`, Got: `  app = "haven"`}},
-			wantOutput:   []string{"1 of 23 owned file(s) differ", "differs  locals.tf:5", "code:        app = \"harbor\"", "committed:   app = \"haven\""},
+			wantOutput:   []string{"1 of 22 owned file(s) differ", "differs  locals.tf:5", "code:        app = \"harbor\"", "committed:   app = \"haven\""},
 		},
 		{
 			name: "a scheduler job edited in the committed stack differs",
@@ -122,7 +139,7 @@ func TestRun(t *testing.T) {
 				}
 			},
 			wantFindings: []Finding{{Path: "scheduler.tf", Line: 29, Want: `      schedule  = "0 7 * * 1-5"`, Got: `      schedule  = "0 9 * * *"`}},
-			wantOutput:   []string{"1 of 23 owned file(s) differ", "differs  scheduler.tf:29"},
+			wantOutput:   []string{"1 of 22 owned file(s) differ", "differs  scheduler.tf:29"},
 		},
 		{
 			name:   "a schedule the code changed differs from the committed job",
@@ -134,7 +151,7 @@ func TestRun(t *testing.T) {
 				{Path: "README.md", Line: 258, Want: "  | `POST /_scheduled/send-daily-digest` | `0 6 * * 1-5` | America/New_York |", Got: "  | `POST /_scheduled/send-daily-digest` | `0 7 * * 1-5` | America/New_York |"},
 				{Path: "scheduler.tf", Line: 29, Want: `      schedule  = "0 6 * * 1-5"`, Got: `      schedule  = "0 7 * * 1-5"`},
 			},
-			wantOutput: []string{"2 of 23 owned file(s) differ", "differs  scheduler.tf:29"},
+			wantOutput: []string{"2 of 22 owned file(s) differ", "differs  scheduler.tf:29"},
 		},
 		{
 			name:   "a route the code adds has no job in the committed stack",
@@ -146,7 +163,7 @@ func TestRun(t *testing.T) {
 				{Path: "README.md", Line: 258, Want: "  | `POST /_scheduled/close-stale-holds` | `*/15 * * * *` | UTC |", Got: "  | `POST /_scheduled/send-daily-digest` | `0 7 * * 1-5` | America/New_York |"},
 				{Path: "scheduler.tf", Line: 27, Want: `    "close-stale-holds" = {`, Got: `    "send-daily-digest" = {`},
 			},
-			wantOutput: []string{"2 of 23 owned file(s) differ", "differs  scheduler.tf:27"},
+			wantOutput: []string{"2 of 22 owned file(s) differ", "differs  scheduler.tf:27"},
 		},
 		{
 			name: "a missing owned file",
@@ -239,7 +256,7 @@ func TestRun(t *testing.T) {
 				}
 			},
 			wantRefused: []Authoritative{{Path: "custom.tf", Line: 2, Address: "google_project_iam_binding.owners"}},
-			wantOutput:  []string{"23 owned file(s) match the code", "refused  custom.tf:2 google_project_iam_binding.owners", "(a file store's bucket policy, storage.tf's, is the one admitted)"},
+			wantOutput:  []string{"22 owned file(s) match the code", "refused  custom.tf:2 google_project_iam_binding.owners", "(a file store's bucket policy, storage.tf's, is the one admitted)"},
 		},
 		{
 			name: "a binding on the file store's bucket is refused; the policy alone is admitted",
@@ -293,7 +310,7 @@ func TestRun(t *testing.T) {
 					t.Fatal(err)
 				}
 			},
-			wantOutput: []string{"23 owned file(s) match the code", "refused  Dockerfile:64 stage go-modules copies .; the stage copies only go.mod or go.sum (\"COPY . ./\"): the image build exports this stage's layers to the registry's cache"},
+			wantOutput: []string{"22 owned file(s) match the code", "refused  Dockerfile:64 stage go-modules copies .; the stage copies only go.mod or go.sum (\"COPY . ./\"): the image build exports this stage's layers to the registry's cache"},
 		},
 		{
 			name: "a build argument the placement declares that the Dockerfile does not is refused",
@@ -489,6 +506,129 @@ func TestFirstDifference(t *testing.T) {
 			line, w, g, same := firstDifference([]byte(tt.want), []byte(tt.got))
 			if line != tt.wantLine || w != tt.wantW || g != tt.wantG || same != tt.wantSame {
 				t.Errorf("firstDifference() = %d, %q, %q, %v; want %d, %q, %q, %v", line, w, g, same, tt.wantLine, tt.wantW, tt.wantG, tt.wantSame)
+			}
+		})
+	}
+}
+
+// generatedModel is harbor with its cookie key declared secret:"generated": a copy of the
+// fixture with the tag changed, derived as harborModel is.
+func generatedModel(t *testing.T) *derive.Model {
+	t.Helper()
+
+	dir := filepath.Join(t.TempDir(), "harbor")
+	if err := os.CopyFS(dir, os.DirFS(filepath.Join(fixtures, "harbor"))); err != nil {
+		t.Fatalf("os.CopyFS() error = %v", err)
+	}
+	config := filepath.Join(dir, "pkg", "config", "data.go")
+	data, err := os.ReadFile(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const tagged = "`env:\"APP_COOKIE_KEY\" secret:\"true\"`"
+	if !bytes.Contains(data, []byte(tagged)) {
+		t.Fatalf("%s lacks %s", config, tagged)
+	}
+	data = bytes.Replace(data, []byte(tagged), []byte(strings.Replace(tagged, "true", "generated", 1)), 1)
+	if err := os.WriteFile(config, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	p, err := derive.ReadPlacement(filepath.Join(fixtures, "placement.json"))
+	if err != nil {
+		t.Fatalf("derive.ReadPlacement() error = %v", err)
+	}
+	a, err := app.Discover(dir)
+	if err != nil {
+		t.Fatalf("app.Discover() error = %v", err)
+	}
+	m, err := derive.Derive(a, p)
+	if err != nil {
+		t.Fatalf("derive.Derive() error = %v", err)
+	}
+
+	return m
+}
+
+// TestRunGenerated: check refuses an environment's secret_versions entry that disagrees
+// with the code's secret tags: a number, latest or no entry for a generated secret, and the
+// word generated on a secret someone puts in place; the word on a generated secret in every
+// environment leaves the check clean. The committed stack's render is harbor's, whose
+// cookie key is not generated, so the drift the tag change itself makes is left aside here.
+func TestRunGenerated(t *testing.T) {
+	t.Parallel()
+
+	const seeded = "secret_versions = {\n  tst = {}\n  stg = {}\n  prd = {}\n}\n"
+	tests := []struct {
+		name      string
+		generated bool
+		versions  string
+		want      []GeneratedFinding
+		wantOut   []string
+	}{
+		{
+			name:      "the word in every environment is what a generated secret needs",
+			generated: true,
+			versions:  "secret_versions = {\n  tst = { APP_COOKIE_KEY = \"generated\" }\n  stg = { APP_COOKIE_KEY = \"generated\", APP_STAFF_OIDC_CLIENT_SECRET = \"1\" }\n  prd = { APP_COOKIE_KEY = \"generated\", APP_STAFF_OIDC_CLIENT_SECRET = 2 }\n}\n",
+		},
+		{
+			name:      "a number, latest and no entry for a generated secret are refused, per environment in promotion order",
+			generated: true,
+			versions:  "secret_versions = {\n  tst = { APP_COOKIE_KEY = 3 }\n  stg = { APP_COOKIE_KEY = \"latest\" }\n  prd = {}\n}\n",
+			want: []GeneratedFinding{
+				{Environment: "tst", Variable: "APP_COOKIE_KEY", Problem: `APP_COOKIE_KEY is generated (secret:"generated" at pkg/config/data.go:236) and secret_versions.tst in terraform.tfvars pins "3" where the word generated belongs: write APP_COOKIE_KEY = "generated" there; its version is derived at each build, and bedrock secret rotate tst APP_COOKIE_KEY adds the next`},
+				{Environment: "stg", Variable: "APP_COOKIE_KEY", Problem: `APP_COOKIE_KEY is generated (secret:"generated" at pkg/config/data.go:236) and secret_versions.stg in terraform.tfvars pins "latest" where the word generated belongs: write APP_COOKIE_KEY = "generated" there; its version is derived at each build, and bedrock secret rotate stg APP_COOKIE_KEY adds the next`},
+				{Environment: "prd", Variable: "APP_COOKIE_KEY", Problem: `APP_COOKIE_KEY is generated (secret:"generated" at pkg/config/data.go:236) and secret_versions.prd in terraform.tfvars has no entry for it: write APP_COOKIE_KEY = "generated" there; its version is derived at each build`},
+			},
+			wantOut: []string{"  refused  APP_COOKIE_KEY is generated (secret:\"generated\" at pkg/config/data.go:236) and secret_versions.tst in terraform.tfvars pins \"3\" where the word generated belongs"},
+		},
+		{
+			name:     "the word on a secret someone puts in place is refused",
+			versions: "secret_versions = {\n  tst = { APP_STAFF_OIDC_CLIENT_SECRET = \"generated\" }\n  stg = {}\n  prd = {}\n}\n",
+			want: []GeneratedFinding{
+				{Environment: "tst", Variable: "APP_STAFF_OIDC_CLIENT_SECRET", Problem: `APP_STAFF_OIDC_CLIENT_SECRET carries the word generated in secret_versions.tst in terraform.tfvars, and the code declares it secret:"true" (pkg/config/data.go:243): pin a version number (bedrock secret pin tst APP_STAFF_OIDC_CLIENT_SECRET <version>), or declare it secret:"generated" in the code`},
+			},
+		},
+		{
+			name:     "a stack without generated secrets and without the word has nothing to refuse",
+			versions: "secret_versions = {\n  tst = { APP_COOKIE_KEY = \"3\" }\n  stg = {}\n  prd = {}\n}\n",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			dir := copyGolden(t)
+			path := filepath.Join(dir, "terraform.tfvars")
+			data, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Contains(data, []byte(seeded)) {
+				t.Fatalf("the golden placement lacks the seeded map")
+			}
+			if err := os.WriteFile(path, bytes.Replace(data, []byte(seeded), []byte(tt.versions), 1), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			m := harborModel(t)
+			if tt.generated {
+				m = generatedModel(t)
+			}
+			report, err := Run(t.Context(), m, dir, filepath.Join(dir, "root"))
+			if err != nil {
+				t.Fatalf("Run() error = %v", err)
+			}
+			if diff := cmp.Diff(tt.want, report.Generated); diff != "" {
+				t.Errorf("Generated (-want +got):\n%s", diff)
+			}
+			if clean := len(report.Generated) == 0; report.Clean() != (clean && len(report.Findings) == 0) {
+				t.Errorf("Clean() = %v with %d generated findings and %d drift findings", report.Clean(), len(report.Generated), len(report.Findings))
+			}
+			var out bytes.Buffer
+			report.Write(&out)
+			for _, want := range tt.wantOut {
+				if !strings.Contains(out.String(), want) {
+					t.Errorf("output lacks %q:\n%s", want, out.String())
+				}
 			}
 		})
 	}

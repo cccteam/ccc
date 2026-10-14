@@ -38,6 +38,10 @@ const (
 	// Latest is the version alias for the most recently added version. The layer allows
 	// it only for a secret the placement marks as tracking it.
 	Latest = "latest"
+	// Generated is the word the placement carries in place of a version for a secret the
+	// code declares secret:"generated": its value is made by the tooling and its version
+	// derived at each build, so there is nothing to pin.
+	Generated = "generated"
 	// Enabled is the state Secret Manager reports for a version that can be accessed.
 	Enabled = "ENABLED"
 	// variablePrefix is the prefix of every environment variable the application reads;

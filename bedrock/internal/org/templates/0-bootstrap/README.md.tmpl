@@ -543,15 +543,20 @@ Until both values are recorded, a run of the triggers that plans or applies
 person applying `1-org` by hand keeps using their own token
 (`1-org/README.md`).
 
-## The deployer GitHub App's key
+## The deployer and release GitHub Apps' keys
 
 The plan trigger's run posts each layer's plan on the pull request as the
 organization's deployer GitHub App, and every application's pipeline talks
 back on its pull requests as the same app (a deployment carrying the
-environment's URL, a comment, the guard's refusals). The app itself, its
-permissions and its installation are made once on GitHub (the root
-`README.md`, "The two GitHub Apps"). What this layer needs from it, once,
-after its first apply has made the container:
+environment's URL, a comment, the guard's refusals). Each application's
+release trigger cuts the application's releases as the organization's
+release GitHub App (release-please, in Cloud Build as the application's
+release identity). The apps themselves, their permissions and their
+installations are made once on GitHub (the root `README.md`, "The two GitHub
+Apps"). What this layer needs from the deployer app, once, after its first
+apply has made the container (and the same for the release app, with
+`github-release-key`, `githubReleaseKeyVersion` and `{{.ReleaseKeySecret}}`;
+its App ID, `githubReleaseAppId`, is in `placement.json` from the start):
 
 1. In `placement.json`: the app's App ID, from its settings page, as
    `githubDeployerAppId`.
@@ -577,7 +582,9 @@ after its first apply has made the container:
    identity on it.
 
 Until both values are recorded, the plans are in the runs' logs alone and
-the pipelines talk back through nothing; nothing else is affected.
+the pipelines talk back through nothing; nothing else is affected. Until the
+release key is pinned, no application's stack makes its release trigger, and
+no push cuts a release.
 
 ## Recovery, by hand
 

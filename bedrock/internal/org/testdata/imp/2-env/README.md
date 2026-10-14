@@ -276,6 +276,19 @@ constructs that level), for the migrations the pipeline runs on the build
 worker as this identity. The `repositories_registered` check warns while `2-shr` does not
 list the application at all.
 
+### Application release identity `imp-tst-gbl-<app>-release`
+
+In tst alone, where the application's release trigger runs (`cloud-build.tf`
+of its stack: every push to the default branch or a hotfix line). The trigger
+runs release-please as this identity, as the organization's release GitHub
+App: the step mints the app's token from the key's pinned version, which this
+layer grants the identity the read of (`github-apps.tf`, on the container in
+the boot project), and release-please opens the release pull request or, once
+it merged, makes the tag and the GitHub Release. On the environment project
+`roles/logging.logWriter` alone (a build as a user-specified service account
+sends its logs to Cloud Logging). Nothing of the deploy identity's, and
+application code never runs as it.
+
 ### Application operations identity `imp-<env>-gbl-<app>-ops`
 
 A restore of the environment to a release (`bedrock restore <env> <release>`),
@@ -299,7 +312,11 @@ Below production the application's own stack adds one bounded read (its
 `logging.tf`): `roles/logging.viewAccessor` on the view over the bucket
 holding the application's build logs, so the workflow's migration job prints
 the lines the migrate command wrote into the build's log and reads no other
-log. In `prd` the identity serves the
+log. In every environment the stack adds one bounded write (its
+`secret-manager.tf`): `roles/secretmanager.secretVersionAdder` on the
+containers of the secrets the code declares `secret:"generated"` alone, so
+the workflow's rotate job (`bedrock secret rotate`) adds a random version and
+runs the live release again on it, reading no payload. In `prd` the identity serves the
 rerun alone and holds those two grants and nothing more: the workflow and the
 pipeline refuse the restore instruction there, no migration operation reaches
 it, and it reads no log view. The role carries `cloudbuild.builds.create`,
@@ -446,7 +463,7 @@ while either value is not recorded, since the applications' triggers exist
 once this layer holds the connection and the repository's link, and nothing
 is built by hand before them.
 
-## The deployer GitHub App's key
+## The deployer and release GitHub Apps' keys
 
 The pipeline talks back on a pull request as the organization's deployer
 GitHub App (`github-apps.tf`): a deployment carrying the environment's URL, a
@@ -454,13 +471,19 @@ comment, the guard's refusals. The app, its key and its pin are
 `0-bootstrap`'s: its App ID in `placement.json` (`githubDeployerAppId`), its
 key in the boot project's container `imp-boot-gbl-github-deployer-key`, added with
 `bedrock secret add github-deployer-key` and pinned with `bedrock secret pin
-github-deployer-key <version>` (`0-bootstrap/README.md`, "The deployer GitHub
-App's key"). This layer carries the pinned version's resource name to the
+github-deployer-key <version>` (`0-bootstrap/README.md`, "The deployer and
+release GitHub Apps' keys"). This layer carries the pinned version's resource name to the
 applications' pipelines through its output `github_deployer_key_secret_version`
 and grants their identities its read: every application's deploy identity,
 and in tst its apply identity too. Until both values are recorded, the pipelines
 talk back through nothing; the rest of the layer and the deployments are
 unaffected.
+
+The release GitHub App's key is the same arrangement (`githubReleaseAppId`,
+`imp-boot-gbl-github-release-key`, `bedrock secret add|pin github-release-key`): this
+layer carries the pinned version through `github_release_key_secret_version`
+and, in tst, grants each application's release identity its read. Each
+application's stack makes its release trigger once the version is pinned.
 
 ## Prerequisites this layer does not create
 

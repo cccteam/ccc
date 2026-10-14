@@ -29,6 +29,7 @@ import (
 	"github.com/hashicorp/hcl/v2/hclwrite"
 
 	"github.com/cccteam/ccc/bedrock/internal/derive"
+	"github.com/cccteam/ccc/bedrock/internal/release"
 )
 
 // Tier says whether the tool owns a file or only seeds it.
@@ -92,14 +93,15 @@ const (
 	rulesFile = derive.FirestoreRulesFile
 )
 
-// release-please's two files at the application root, which the rendered release
-// workflow reads: its configuration, and the manifest holding the last released version.
-// Both are seeded, the configuration with initial-version 0.1.0 and the manifest at
-// 0.0.0, so the first release pull request proposes 0.1.0; from then on release-please
-// moves the manifest and the configuration is the application's.
+// release-please's two files at the application root, which the stack's release trigger
+// reads (release.PleaseConfig, release.PleaseManifest): its configuration, and the
+// manifest holding the last released version. Both are seeded, the configuration with
+// initial-version 0.1.0 and the manifest at 0.0.0, so the first release pull request
+// proposes 0.1.0; from then on release-please moves the manifest and the configuration is
+// the application's.
 const (
-	ReleasePleaseConfig   = "release-please-config.json"
-	ReleasePleaseManifest = ".release-please-manifest.json"
+	ReleasePleaseConfig   = release.PleaseConfig
+	ReleasePleaseManifest = release.PleaseManifest
 )
 
 // ReleaseFiles are release-please's files, which bedrock check refuses an application
@@ -137,24 +139,25 @@ var placed = map[string]func(v *view) string{
 
 		return rulesFile
 	},
-	// The GitHub workflows, under .github/workflows: the release workflow and the
-	// operations workflow.
-	releaseWorkflow: func(*view) string {
-		return path.Join(workflowsDir, releaseWorkflow)
-	},
+	// The GitHub workflow, under .github/workflows: the operations workflow.
 	OperationsWorkflow: func(*view) string {
 		return path.Join(workflowsDir, OperationsWorkflow)
 	},
 }
 
-// The GitHub workflows bedrock renders at the application root: the release workflow,
-// and the operations workflow, which starts a restore of an environment (bedrock restore
-// dispatches it by this name).
+// The GitHub workflow bedrock renders at the application root: the operations workflow,
+// which starts a restore of an environment (bedrock restore dispatches it by this name).
 const (
 	workflowsDir       = ".github/workflows"
-	releaseWorkflow    = "release-please.yml"
 	OperationsWorkflow = "operations.yml"
 )
+
+// Retired are the files an earlier bedrock rendered at the application root and this one
+// does not, relative to the root: bedrock render removes each it finds, and bedrock check
+// reports one still committed. The release workflow (release-please.yml) ran release-please
+// in GitHub Actions with the release app's key in an organization secret; the stack's
+// release trigger runs it in Cloud Build now, with the key in Secret Manager.
+var Retired = []string{path.Join(workflowsDir, "release-please.yml")}
 
 // Render renders every file of the application's stack.
 func Render(m *derive.Model) ([]File, error) {
@@ -259,6 +262,8 @@ type Written struct {
 	// Seeded lists the seeded files created, and Kept the ones left as they were.
 	Seeded []string
 	Kept   []string
+	// Removed lists the retired files found at the application root and removed.
+	Removed []string
 }
 
 // Write puts the files into dir, creating it when absent, and the root files into
@@ -306,6 +311,16 @@ func Write(files []File, dir, appDir string) (*Written, error) {
 		if err := root.WriteFile(dst, f.Content, 0o644); err != nil {
 			return nil, errors.Wrapf(err, "os.Root.WriteFile(): %s", f.Path)
 		}
+	}
+	for _, name := range Retired {
+		dst := filepath.FromSlash(name)
+		if _, err := app.Stat(dst); err != nil {
+			continue
+		}
+		if err := app.Remove(dst); err != nil {
+			return nil, errors.Wrapf(err, "os.Root.Remove(): %s", name)
+		}
+		w.Removed = append(w.Removed, name)
 	}
 
 	return w, nil

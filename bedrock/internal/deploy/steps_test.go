@@ -5,13 +5,21 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
+	"encoding/base64"
 	"encoding/pem"
+	"fmt"
 	"io"
+	"maps"
+	"path"
+	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
 
 	"github.com/go-playground/errors/v5"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/cccteam/ccc/bedrock/internal/github"
 	"github.com/cccteam/ccc/bedrock/internal/github/githubtest"
@@ -98,6 +106,13 @@ type fakeSecrets struct {
 	payloads map[string]string
 	// states are the versions that exist, by name, with their state.
 	states map[string]string
+	// containers are the containers that exist with no version (created here, or given);
+	// a container with a version in states exists too. denied is how many adds are
+	// refused as PermissionDenied first, a fresh grant not yet in effect.
+	containers map[string]map[string]string
+	denied     int
+	// events are what the derivation did: create, grant and add lines.
+	events []string
 }
 
 func (s *fakeSecrets) openAs(context.Context, string) (Secrets, error) {
@@ -124,6 +139,91 @@ func (s *fakeSecrets) Access(_ context.Context, version string) ([]byte, error) 
 	}
 
 	return []byte(payload), nil
+}
+
+func (s *fakeSecrets) Container(_ context.Context, name string) (bool, error) {
+	if _, ok := s.containers[name]; ok {
+		return true, nil
+	}
+	for version := range s.states {
+		if strings.HasPrefix(version, name+"/versions/") {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
+func (s *fakeSecrets) Create(_ context.Context, project, id string, labels map[string]string) error {
+	if s.containers == nil {
+		s.containers = map[string]map[string]string{}
+	}
+	name := "projects/" + project + "/secrets/" + id
+	s.containers[name] = labels
+	s.events = append(s.events, "create "+name+" "+labelsLine(labels))
+
+	return nil
+}
+
+func (s *fakeSecrets) Newest(_ context.Context, container string) (string, error) {
+	newest := 0
+	for version, state := range s.states {
+		if !strings.HasPrefix(version, container+"/versions/") || state != enabledState {
+			continue
+		}
+		if n, err := strconv.Atoi(path.Base(version)); err == nil && n > newest {
+			newest = n
+		}
+	}
+	if newest == 0 {
+		return "", nil
+	}
+
+	return strconv.Itoa(newest), nil
+}
+
+func (s *fakeSecrets) Grant(_ context.Context, container, role, member string) error {
+	s.events = append(s.events, "grant "+container+" "+role+" "+member)
+
+	return nil
+}
+
+func (s *fakeSecrets) Add(_ context.Context, container string, payload []byte) (string, error) {
+	if s.denied > 0 {
+		s.denied--
+
+		return "", errors.Wrap(status.Error(codes.PermissionDenied, "Permission 'secretmanager.versions.add' denied"), "secretmanager.Client.AddSecretVersion()")
+	}
+	newest := 0
+	for version := range s.states {
+		if strings.HasPrefix(version, container+"/versions/") {
+			if n, err := strconv.Atoi(path.Base(version)); err == nil && n > newest {
+				newest = n
+			}
+		}
+	}
+	version := container + "/versions/" + strconv.Itoa(newest+1)
+	if s.states == nil {
+		s.states = map[string]string{}
+	}
+	s.states[version] = enabledState
+	decoded, err := base64.StdEncoding.DecodeString(string(payload))
+	if err != nil {
+		return "", errors.Wrap(err, "base64.Encoding.DecodeString()")
+	}
+	s.events = append(s.events, fmt.Sprintf("add %s (%d random bytes, base64)", version, len(decoded)))
+
+	return strconv.Itoa(newest + 1), nil
+}
+
+// labelsLine spells labels as key=value, sorted.
+func labelsLine(labels map[string]string) string {
+	pairs := make([]string, 0, len(labels))
+	for _, k := range slices.Sorted(maps.Keys(labels)) {
+		pairs = append(pairs, k+"="+labels[k])
+	}
+
+	return strings.Join(pairs, ",")
 }
 
 func (*fakeSecrets) Close() error {

@@ -488,3 +488,52 @@ func TestSetMapEntry(t *testing.T) {
 		})
 	}
 }
+
+// TestVersions: the environment's secret_versions map whole, a bare number spelled out,
+// with the same refusals as the other readers.
+func TestVersions(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		tfvars  string
+		missing bool
+		env     string
+		want    map[string]string
+		wantErr string
+	}{
+		{name: "every entry, a bare number spelled out", tfvars: "secret_versions = {\n  tst = {\n    APP_B = \"latest\"\n    APP_C = 3\n    \"APP_A\" = \"generated\"\n  }\n}\n", env: "tst", want: map[string]string{"APP_A": "generated", "APP_B": "latest", "APP_C": "3"}},
+		{name: "an empty map for the environment holds none", tfvars: "secret_versions = {\n  tst = {}\n}\n", env: "tst", want: map[string]string{}},
+		{name: "an environment the map lacks holds none", tfvars: "secret_versions = {\n  tst = { APP_B = \"2\" }\n}\n", env: "prd", want: map[string]string{}},
+		{name: "a placement without the map holds none", tfvars: "build_secrets = {\n  tst = {}\n}\n", env: "tst", want: map[string]string{}},
+		{name: "no placement holds none", missing: true, env: "tst", want: map[string]string{}},
+		{name: "a map that is not written out is refused", tfvars: "secret_versions = var.x\n", env: "tst", wantErr: "secret_versions in"},
+		{name: "an entry that is neither a string nor a number is refused", tfvars: "secret_versions = {\n  tst = { APP_B = true }\n}\n", env: "tst", wantErr: "is neither a string nor a number"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			dir := t.TempDir()
+			if !tt.missing {
+				if err := os.WriteFile(filepath.Join(dir, tfvarsFile), []byte(tt.tfvars), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			got, err := Versions(dir, tt.env)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("Versions() error = %v, wantErr %q", err, tt.wantErr)
+				}
+
+				return
+			}
+			if err != nil {
+				t.Fatalf("Versions() error = %v", err)
+			}
+			if !maps.Equal(got, tt.want) {
+				t.Errorf("Versions() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}

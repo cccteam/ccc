@@ -2,11 +2,12 @@
 # Per-application identities
 #
 # Three service accounts per application, in the environment project, mirroring
-# 1-org's layer/plan pair one level down:
+# 1-org's layer/plan pair one level down, and a fourth in tst alone:
 #
-#   {{.Prefix}}-<env>-gbl-<app>-tofu    applies the application's stack (state slot 3-app/<app>) for this environment
-#   {{.Prefix}}-<env>-gbl-<app>-deploy  runs every build and deploy of the application
-#   {{.Prefix}}-<env>-gbl-<app>-plan    plans the application's stack for this environment on a pull request; reads, never writes
+#   {{.Prefix}}-<env>-gbl-<app>-tofu     applies the application's stack (state slot 3-app/<app>) for this environment
+#   {{.Prefix}}-<env>-gbl-<app>-deploy   runs every build and deploy of the application
+#   {{.Prefix}}-<env>-gbl-<app>-plan     plans the application's stack for this environment on a pull request; reads, never writes
+#   {{.Prefix}}-tst-gbl-<app>-release    cuts the application's releases: its release trigger runs release-please as it, as the release GitHub App
 #
 # None has keys (org policy forbids them); all run from Cloud Build. The
 # design brief's "Who may do what" table is the source of each role set, and
@@ -38,6 +39,32 @@ resource "google_service_account" "plan" {
   account_id   = "${local.name}-gbl-${each.key}-plan"
   display_name = "Plan SA - ${local.name}-gbl-${each.key}"
   description  = "Plan identity for ${each.key} in ${var.environment}. Plans 3-app/${each.key} for this environment on a pull request, from tst's Cloud Build; reads, never writes."
+}
+
+# The release identity, in tst alone, where the application's release trigger
+# runs (cloud-build.tf of its stack, on pushes to the default branch and the
+# hotfix lines): it mints the release GitHub App's token from the key 2-env
+# grants it the read of (github-apps.tf) and runs release-please with it,
+# which opens the release pull request and, once that merges, makes the tag
+# and the GitHub Release. Nothing of the deploy identity's: it writes logs,
+# reads one secret version, and holds no role in the project beyond that.
+# Application code never runs as it.
+resource "google_service_account" "release" {
+  for_each = local.is_tst ? local.apps : toset([])
+
+  project      = local.project_id
+  account_id   = "${local.name}-gbl-${each.key}-release"
+  display_name = "Release SA - ${local.name}-gbl-${each.key}"
+  description  = "Release identity for ${each.key}: its release trigger cuts the application's releases as the release GitHub App, from Cloud Build."
+}
+
+# A build as a user-specified service account sends its logs to Cloud Logging.
+resource "google_project_iam_member" "release_logs" {
+  for_each = local.is_tst ? local.apps : toset([])
+
+  project = local.project_id
+  role    = "roles/logging.logWriter"
+  member  = google_service_account.release[each.key].member
 }
 
 # ---------------------------------------------------------------------------

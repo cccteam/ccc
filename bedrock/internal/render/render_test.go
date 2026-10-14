@@ -377,6 +377,7 @@ func TestTriggerSteps(t *testing.T) {
 		{name: "the preview trigger keeps the pipeline file and the deploy identity", trigger: "pr", filename: `"cloudbuild.yaml"`, identity: "local.identities.deploy_identity_id", pullRequest: true, commentControl: `"COMMENTS_ENABLED"`},
 		{name: "the version trigger", trigger: "version", filename: `"cloudbuild.yaml"`, identity: "local.identities.deploy_identity_id"},
 		{name: "the sweep runs as the apply identity", trigger: "sweep", identity: "local.apply_identity_id"},
+		{name: "the release trigger runs as the release identity, on pushes, with its steps held", trigger: "release", steps: ReleaseTriggerSteps, identity: "local.release_identity_id"},
 	}
 	for _, fixture := range []string{"harbor", "beacon"} {
 		triggers := triggerBlocks(t, filepath.Join("testdata", fixture, "cloud-build.tf"))
@@ -738,9 +739,21 @@ func TestWrite(t *testing.T) {
 		wantPipeline []string
 		wantSeeded   []string
 		wantKept     []string
-		wantTfvars   string
-		wantDocker   string
+		// wantRemoved are the retired files found at the application root and removed.
+		wantRemoved []string
+		wantTfvars  string
+		wantDocker  string
 	}{
+		{
+			name:         "a retired file at the application root is removed",
+			existingRoot: map[string]string{".github/workflows/release-please.yml": "name: release-please\n"},
+			wantOwned:    2,
+			wantPipeline: []string{"cloudbuild.yaml"},
+			wantSeeded:   []string{"terraform.tfvars", "Dockerfile"},
+			wantRemoved:  []string{".github/workflows/release-please.yml"},
+			wantTfvars:   "seeded\n",
+			wantDocker:   "image\n",
+		},
 		{
 			name:         "empty directories get everything",
 			wantOwned:    2,
@@ -804,6 +817,14 @@ func TestWrite(t *testing.T) {
 			}
 			if strings.Join(written.Kept, ",") != strings.Join(tt.wantKept, ",") {
 				t.Errorf("Write() kept = %v, want %v", written.Kept, tt.wantKept)
+			}
+			if strings.Join(written.Removed, ",") != strings.Join(tt.wantRemoved, ",") {
+				t.Errorf("Write() removed = %v, want %v", written.Removed, tt.wantRemoved)
+			}
+			for _, name := range Retired {
+				if _, err := os.Stat(filepath.Join(appDir, filepath.FromSlash(name))); err == nil {
+					t.Errorf("%s is still there after the write", name)
+				}
 			}
 			for path, want := range map[string]string{
 				filepath.Join(dir, "locals.tf"):          "new\n",
