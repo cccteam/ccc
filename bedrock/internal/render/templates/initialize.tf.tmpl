@@ -29,6 +29,10 @@ terraform {
       source  = "hashicorp/time"
       version = "~> 0.13"
     }
+    random = {
+      source  = "hashicorp/random"
+      version = "~> 3.6"
+    }
   }
 }
 
@@ -106,4 +110,30 @@ data "terraform_remote_state" "shr" {
     bucket = var.state_bucket
     prefix = "2-shr"
   }
+}
+
+# ---------------------------------------------------------------------------
+# The stack's id: a random value born with this state on the first apply and
+# gone with it, telling one deployment of this stack from the next one under
+# the same name. It is the suffix of the names Google holds after a delete
+# (the task queue, the Firebase API key, the migrate log bucket), so a stack
+# torn down and applied again collides with nothing of its predecessor, and
+# the stack's deployment records lie under it in the records bucket
+# (<app>/<env>/<id>/), so a new stack starts a history of its own and the old
+# one's stays whole. The pipeline learns the id from the object below, which
+# the stack writes beside the pull requests' outputs in the environment's
+# records bucket (<app>/stacks/<env>/stack.json) and which goes with the stack.
+# ---------------------------------------------------------------------------
+
+resource "random_id" "stack" {
+  byte_length = 2
+}
+
+resource "google_storage_bucket_object" "stack" {
+  count = local.is_pr ? 0 : 1
+
+  bucket       = data.terraform_remote_state.env.outputs.records_bucket
+  name         = "${local.app}/stacks/${var.environment}/stack.json"
+  content      = jsonencode({ id = random_id.stack.hex })
+  content_type = "application/json"
 }

@@ -3,7 +3,11 @@
 #
 # Roles granted to layer identities where no predefined role has the right
 # shape. Created at the org node so one definition serves every project, and
-# named in var.layer_roles by bare ID (see local.custom_roles).
+# named in var.layer_roles by bare ID (see local.custom_roles). Each role's id
+# carries the organization's suffix (local.boot.organization_suffix,
+# 0-bootstrap's random_id.organization): a role's id is unique across the
+# Google Cloud organization, which may hold more than one bedrock
+# organization, and a deleted role's id stays taken for 37 days.
 # ---------------------------------------------------------------------------
 
 # Secret Manager without the payloads. A layer identity creates secrets as
@@ -14,7 +18,7 @@
 # would put every secret value within reach of the deploy pipeline.
 resource "google_organization_iam_custom_role" "secret_container_admin" {
   org_id      = local.org_id
-  role_id     = "secretContainerAdmin"
+  role_id     = "secretContainerAdmin_${local.boot.organization_suffix}"
   title       = "Secret Container Admin"
   description = "Creates and manages Secret Manager secrets and the lifecycle of their versions, without access to any version payload."
   permissions = [
@@ -47,7 +51,7 @@ resource "google_organization_iam_custom_role" "secret_container_admin" {
 # pipeline and its creation a release behind the value.
 resource "google_organization_iam_custom_role" "secret_operator" {
   org_id      = local.org_id
-  role_id     = "secretOperator"
+  role_id     = "secretOperator_${local.boot.organization_suffix}"
   title       = "Secret Operator"
   description = "Creates Secret Manager secrets and adds versions to them, without access to any version payload."
   permissions = [
@@ -74,7 +78,7 @@ resource "google_organization_iam_custom_role" "secret_operator" {
 # roles/run.developer.
 resource "google_organization_iam_custom_role" "run_job_policy_admin" {
   org_id      = local.org_id
-  role_id     = "runJobPolicyAdmin"
+  role_id     = "runJobPolicyAdmin_${local.boot.organization_suffix}"
   title       = "Cloud Run Job Policy Admin"
   description = "Reads and sets the IAM policy of Cloud Run jobs, and nothing else about them."
   permissions = [
@@ -94,7 +98,7 @@ resource "google_organization_iam_custom_role" "run_job_policy_admin" {
 # instance) and 2-env (an environment's own).
 resource "google_organization_iam_custom_role" "spanner_plan_reader" {
   org_id      = local.org_id
-  role_id     = "spannerPlanReader"
+  role_id     = "spannerPlanReader_${local.boot.organization_suffix}"
   title       = "Spanner Plan Reader"
   description = "Reads an instance's databases, their IAM policies and their backup schedules, and nothing of their data."
   permissions = [
@@ -117,7 +121,7 @@ resource "google_organization_iam_custom_role" "spanner_plan_reader" {
 # changes nothing it did not make.
 resource "google_organization_iam_custom_role" "spanner_database_creator" {
   org_id      = local.org_id
-  role_id     = "spannerDatabaseCreator"
+  role_id     = "spannerDatabaseCreator_${local.boot.organization_suffix}"
   title       = "Spanner Database Creator"
   description = "Creates a database on an instance and lists the instance's databases, backups and operations; changes nothing that exists."
   permissions = [
@@ -148,7 +152,7 @@ resource "google_organization_iam_custom_role" "spanner_database_creator" {
 # identities' other roles.
 resource "google_organization_iam_custom_role" "storage_bucket_creator" {
   org_id      = local.org_id
-  role_id     = "storageBucketCreator"
+  role_id     = "storageBucketCreator_${local.boot.organization_suffix}"
   title       = "Storage Bucket Creator"
   description = "Creates a bucket in a project and lists the project's buckets; changes nothing that exists."
   permissions = [
@@ -175,7 +179,7 @@ resource "google_organization_iam_custom_role" "storage_bucket_creator" {
 # (2-env/operations.tf).
 resource "google_organization_iam_custom_role" "cloud_build_trigger_runner" {
   org_id      = local.org_id
-  role_id     = "cloudBuildTriggerRunner"
+  role_id     = "cloudBuildTriggerRunner_${local.boot.organization_suffix}"
   title       = "Cloud Build Trigger Runner"
   description = "Runs Cloud Build triggers, reads the builds they start and cancels one left waiting, and nothing else."
   permissions = [
@@ -199,7 +203,7 @@ resource "google_organization_iam_custom_role" "cloud_build_trigger_runner" {
 # roles/cloudtasks.queueAdmin would also create, change and delete queues.
 resource "google_organization_iam_custom_role" "cloud_tasks_queue_operator" {
   org_id      = local.org_id
-  role_id     = "cloudTasksQueueOperator"
+  role_id     = "cloudTasksQueueOperator_${local.boot.organization_suffix}"
   title       = "Cloud Tasks Queue Operator"
   description = "Pauses, resumes and purges a Cloud Tasks queue, and reads it, and nothing else."
   permissions = [
@@ -225,7 +229,7 @@ resource "google_organization_iam_custom_role" "cloud_tasks_queue_operator" {
 # 2-env grants cloudBuildTriggerRunner beside it.
 resource "google_organization_iam_custom_role" "cloud_build_build_reader" {
   org_id      = local.org_id
-  role_id     = "cloudBuildBuildReader"
+  role_id     = "cloudBuildBuildReader_${local.boot.organization_suffix}"
   title       = "Cloud Build Build Reader"
   description = "Reads Cloud Build builds, and nothing else."
   permissions = [
@@ -247,7 +251,7 @@ resource "google_organization_iam_custom_role" "cloud_build_build_reader" {
 # roles/iam.securityReviewer's, granted beside it.
 resource "google_organization_iam_custom_role" "application_plan_reader" {
   org_id      = local.org_id
-  role_id     = "applicationPlanReader"
+  role_id     = "applicationPlanReader_${local.boot.organization_suffix}"
   title       = "Application Plan Reader"
   description = "Reads the resources an application stack declares, for a plan, and nothing of their data."
   permissions = [
@@ -320,7 +324,7 @@ resource "google_organization_iam_custom_role" "application_plan_reader" {
 # The environment layer (2-env, planned once per environment: tst, stg, prd).
 resource "google_organization_iam_custom_role" "environment_layer_plan_reader" {
   org_id      = local.org_id
-  role_id     = "environmentLayerPlanReader"
+  role_id     = "environmentLayerPlanReader_${local.boot.organization_suffix}"
   title       = "Environment Layer Plan Reader"
   description = "Reads the resources an environment's layer declares, for a plan, and nothing of their data."
   permissions = [
@@ -354,7 +358,7 @@ resource "google_organization_iam_custom_role" "environment_layer_plan_reader" {
 # The shared services layer (2-shr: the container registry).
 resource "google_organization_iam_custom_role" "services_layer_plan_reader" {
   org_id      = local.org_id
-  role_id     = "servicesLayerPlanReader"
+  role_id     = "servicesLayerPlanReader_${local.boot.organization_suffix}"
   title       = "Services Layer Plan Reader"
   description = "Reads the resources the shared services layer declares, for a plan, and nothing of their data."
   permissions = [
@@ -367,7 +371,7 @@ resource "google_organization_iam_custom_role" "services_layer_plan_reader" {
 # The shared network layer (2-net: the load balancer, DNS and certificates).
 resource "google_organization_iam_custom_role" "network_layer_plan_reader" {
   org_id      = local.org_id
-  role_id     = "networkLayerPlanReader"
+  role_id     = "networkLayerPlanReader_${local.boot.organization_suffix}"
   title       = "Network Layer Plan Reader"
   description = "Reads the resources the shared network layer declares, for a plan, and nothing of their data."
   permissions = [
@@ -397,7 +401,7 @@ resource "google_organization_iam_custom_role" "network_layer_plan_reader" {
 # The shared Spanner layer (2-spn: the instance stg and prd share).
 resource "google_organization_iam_custom_role" "spanner_layer_plan_reader" {
   org_id      = local.org_id
-  role_id     = "spannerLayerPlanReader"
+  role_id     = "spannerLayerPlanReader_${local.boot.organization_suffix}"
   title       = "Spanner Layer Plan Reader"
   description = "Reads the resources the shared Spanner layer declares, for a plan, and nothing of their data."
   permissions = [
@@ -421,7 +425,7 @@ resource "google_organization_iam_custom_role" "spanner_layer_plan_reader" {
 # conditioned reads of the state.
 resource "google_organization_iam_custom_role" "bucket_policy_reader" {
   org_id      = local.org_id
-  role_id     = "bucketPolicyReader"
+  role_id     = "bucketPolicyReader_${local.boot.organization_suffix}"
   title       = "Bucket Policy Reader"
   description = "Reads a bucket's IAM policy, and nothing else about it."
   permissions = [

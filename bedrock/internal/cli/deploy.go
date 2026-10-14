@@ -374,8 +374,11 @@ func newDeployRecord(d deps) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "record",
 		Short: "Write the deployment record once traffic has moved",
-		Long: `record writes what this build deployed to the records bucket, as <app>/<env>/<release>/<build
-id>.json: the version, the commit, the image and its digest, the regions and the revision each
+		Long: `record writes what this build deployed to the records bucket: a release's record as
+<app>/<env>/<stack id>/releases/<release>/<build id>.json, under the id of the environment's
+stack (the object the stack's apply wrote, <app>/stacks/<env>/stack.json; a stack that says
+none is refused), a pull request's as <app>/<env>/pr<N>-<commit>/<build id>.json. The record
+carries the version, the commit, the image and its digest, the regions and the revision each
 runs, the time, and whether traffic shifted to it (live) or not (preview: a pull request's
 revision, serving under its tag), with the plan of the stack the build applied and, in a restore
 run, what replaced the database, who asked and what the stack replaced. The next environment's
@@ -386,7 +389,7 @@ application, the environment, the records bucket, the commit) and revisions.txt 
 the deploy step created). A torn-down pull-request environment (SKIP_DEPLOY) records nothing.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			req, err := deploy.NewRecordRequest(deploy.Workspace(workspace), time.Now())
+			req, err := deploy.NewRecordRequest(cmd.Context(), d.deploy.Storage, deploy.Workspace(workspace), time.Now())
 			if err != nil {
 				return err
 			}

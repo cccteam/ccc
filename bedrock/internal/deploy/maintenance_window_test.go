@@ -153,7 +153,7 @@ func TestMaintenanceOnWindow(t *testing.T) {
 			run := newFakeRun(resources)
 			tasks := &fakeTasks{}
 			metrics := &fakeMetrics{counts: map[string][]int{"harbor-app-00007-prev": {0}}}
-			store := &memoryStore{objects: map[string]string{"gs://tst-records/harbor/tst/v0.2.1/b-0.json": live}}
+			store := &memoryStore{objects: withStacks(map[string]string{"gs://tst-records/harbor/tst/1a2b/releases/v0.2.1/b-0.json": live})}
 			probe := &probeAnswers{answers: []probeAnswer{{status: http.StatusServiceUnavailable, marker: "1"}}}
 			clock := &fakeClock{now: chicago(10, 5, 10, 0)}
 			spanner := &fakeSpanner{backup: tt.backup, creating: tt.creating}

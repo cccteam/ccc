@@ -926,7 +926,7 @@ func (f *Facts) rehearsal(ctx context.Context, open StoreFunc, source string, ou
 		return err
 	}
 	defer store.Close()
-	release, err := newestRecordWhere(ctx, store, previousBucket, app+"/"+previous+"/"+f.Tag+"/", func(r *Record) bool { return r.Status == Live })
+	release, err := newestLiveOf(ctx, store, previousBucket, app, previous, f.Tag)
 	if err != nil {
 		return err
 	}
@@ -1057,16 +1057,6 @@ func stagingAhead(source string, live *Record, tag string) (string, error) {
 func newestRecord(ctx context.Context, store Store, bucket, prefix string) (*Record, error) {
 	return newestRecordWhere(ctx, store, bucket, prefix, func(r *Record) bool {
 		return len(r.Migrations) > 0
-	})
-}
-
-// newestLiveRelease is the environment's newest live record of a release: what the
-// environment runs. A pull request's records lie under the same prefix
-// (<app>/<env>/pr<N>-<commit>/) and are live too, for the pull request's own environment;
-// they are not the environment's release and are left out.
-func newestLiveRelease(ctx context.Context, store Store, bucket, app, env string) (*Record, error) {
-	return newestRecordWhere(ctx, store, bucket, app+"/"+env+"/", func(r *Record) bool {
-		return r.Status == Live && strings.HasPrefix(r.Version, "v")
 	})
 }
 

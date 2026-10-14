@@ -5,7 +5,17 @@ rendered by bedrock. The name says whose and what: `imp` is the
 organization prefix every resource here carries, and this is the Impulse
 infrastructure, one repository per (organization, kind), so a GitHub
 organization can hold infrastructure for more than one Google Cloud
-organization without the names colliding. Modeled on
+organization without the names colliding. The other way round holds too: a
+Google Cloud organization can hold more than one bedrock organization, each
+under a folder of its prefix's name at the organization root (`0-bootstrap`),
+with projects, identities, custom roles and a tag key of its own. The
+projects carry the label `organization = imp`, and the two kinds of
+name that are unique across the Google Cloud organization, the custom roles'
+ids and the public-invoker tag key's short name, carry a four-hex suffix of
+this organization's (`0-bootstrap`'s `random_id.organization`), so two
+organizations never collide on one and one torn down never waits for the
+other's names to clear. Development runs organizations side by side this
+way. Modeled on
 [cccteam/tf-gcp-setup](https://github.com/cccteam/tf-gcp-setup): numbered
 layers, one identity per layer, no static credentials anywhere. The difference
 is the control plane. There is no Scalr; state lives in a Cloud Storage bucket
@@ -59,7 +69,11 @@ region code, `uc1` for us-central1 and `uw3` for us-west3.
 | state bucket | `imp-boot-gbl-state-a1b2` |
 
 Project IDs and bucket names are globally unique and permanent, so both carry a
-random four-hex suffix. Every project and bucket carries the label
+random four-hex suffix. The custom roles' ids (`orgProjectUpdater_a1b2`) and the
+public-invoker tag key's short name (`public-invoker-a1b2`) carry one of the
+organization's own, since both are unique across the Google Cloud organization
+and a deleted role's id stays taken for 37 days; the READMEs name the roles by
+their bare names. Every project carries the label `organization = imp`, and every project and bucket the label
 `bedrock-lab = "true"`.
 
 ## How the layers are applied
@@ -307,7 +321,8 @@ Decided before writing:
    `central_logging` in `1-org` gates all of it; the README there says what
    turning it on needs.
 6. **Projects.** `shr`, `net`, `spn` under `shared`; `tst`, `stg`, `prd` each
-   in a folder of its own name.
+   in a folder of its own name; every folder under the organization's folder
+   `imp`, beside `terraform`.
 7. **Role sets.** `roles/secretmanager.admin` is replaced by the custom
    organization role `secretContainerAdmin`, which manages secrets and their
    versions' lifecycle but can neither add nor read a version payload. The

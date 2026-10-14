@@ -22,12 +22,15 @@ import (
 
 const (
 	// The labels the environment project and the secret containers are found by: the
-	// environment, and the layer that created them (1-org for the projects, 3-app-<app>
-	// for the containers, a label value admitting no slash).
-	environmentLabel = "environment"
-	sourcePathLabel  = "terraform_source_path"
-	orgSourcePath    = "1-org"
-	appSourcePath    = "3-app-"
+	// environment, the layer that created them (1-org for the projects, 3-app-<app> for
+	// the containers, a label value admitting no slash) and, for the project, the
+	// organization (its prefix, as the placement beside the layer states it), since
+	// several bedrock organizations may share one Google Cloud organization.
+	environmentLabel  = "environment"
+	organizationLabel = "organization"
+	sourcePathLabel   = "terraform_source_path"
+	orgSourcePath     = "1-org"
+	appSourcePath     = "3-app-"
 	// secretFlag is the older name of --container, kept hidden.
 	secretFlag = "secret"
 	// secretCommand is the command's name.
@@ -244,7 +247,7 @@ func (d deps) resolvePin(cmd *cobra.Command, args []string, f *pinFlags) (*secre
 	if err := validateName(variable, isBuild); err != nil {
 		return nil, err
 	}
-	project, err := d.resolveProject(ctx, f.project, env)
+	project, err := d.resolveProject(ctx, f.project, env, place)
 	if err != nil {
 		return nil, err
 	}
@@ -271,13 +274,22 @@ func (d deps) resolvePin(cmd *cobra.Command, args []string, f *pinFlags) (*secre
 }
 
 // resolveProject is the environment project: --project as given, else the one active
-// project labeled with the environment and the organization layer.
-func (d deps) resolveProject(ctx context.Context, flag, env string) (string, error) {
+// project labeled with the environment, the organization layer and, where the placement
+// beside the layer names the organization's prefix, the organization.
+func (d deps) resolveProject(ctx context.Context, flag, env string, place *pinPlace) (string, error) {
 	if flag != "" {
 		return flag, nil
 	}
+	labels := map[string]string{environmentLabel: env, sourcePathLabel: orgSourcePath}
+	p, err := where.Placement(place.layerDir)
+	if err != nil {
+		return "", err
+	}
+	if p != nil {
+		labels[organizationLabel] = p.Prefix
+	}
 
-	return where.ProjectByLabels(ctx, d.projects, map[string]string{environmentLabel: env, sourcePathLabel: orgSourcePath})
+	return where.ProjectByLabels(ctx, d.projects, labels)
 }
 
 // resolveContainer is the secret container: --container as given, else the one
@@ -352,7 +364,7 @@ func (d deps) completePin(ctx context.Context, args []string, f *pinFlags) []str
 
 		return append(variables, build...)
 	case 2:
-		return d.completeVersions(ctx, f, place.app, args[0], args[1])
+		return d.completeVersions(ctx, f, place, args[0], args[1])
 	default:
 		return nil
 	}
@@ -361,12 +373,12 @@ func (d deps) completePin(ctx context.Context, args []string, f *pinFlags) []str
 // completeVersions lists the container's versions for completion, each with its state
 // as the description, or nothing when the project, the container or the versions cannot
 // be found.
-func (d deps) completeVersions(ctx context.Context, f *pinFlags, application, env, variable string) []string {
-	project, err := d.resolveProject(ctx, f.project, env)
+func (d deps) completeVersions(ctx context.Context, f *pinFlags, place *pinPlace, env, variable string) []string {
+	project, err := d.resolveProject(ctx, f.project, env, place)
 	if err != nil {
 		return nil
 	}
-	container, err := d.resolveContainer(ctx, f.container, project, application, variable)
+	container, err := d.resolveContainer(ctx, f.container, project, place.app, variable)
 	if err != nil {
 		return nil
 	}
@@ -548,7 +560,7 @@ func (d deps) resolveAdd(cmd *cobra.Command, args []string, f *addFlags) (*secre
 
 		return nil, errors.Newf("the code declares no secret variable %s (it declares %s): a container is added only for a secret the application reads, or for a build secret the placement declares for %s (it declares %s)", variable, strings.Join(declared, ", "), env, declares)
 	}
-	project, err := d.resolveProject(ctx, f.project, env)
+	project, err := d.resolveProject(ctx, f.project, env, place)
 	if err != nil {
 		return nil, err
 	}

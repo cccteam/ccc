@@ -96,11 +96,12 @@ and a `shared_vpc_id` that is null.
   role: `roles/storage.objectCreator` for the environment's deploy
   identities, and `roles/storage.objectViewer` for those deploy identities,
   the environment's application plan identities (the hotfix preview reads
-  the live record), in tst `roles/storage.objectUser` for each application's
-  apply identity under `<app>/stacks/` alone (the stack jobs' outputs, one
-  object per pull request and commit, written again on each `/gcbrun`
-  comment), where the deploy identities' creator binding stops, so a preview
-  build only reads what the job wrote; the environment's operations identities (a rollback
+  the live record), `roles/storage.objectUser` for each application's
+  apply identity under `<app>/stacks/` alone (what the stack writes itself:
+  the object naming its id, `<app>/stacks/<env>/stack.json`, and in tst the
+  stack jobs' outputs, one object per pull request and commit, written again
+  on each `/gcbrun` comment), where the deploy identities' creator binding
+  stops, so a preview build only reads what the job wrote; the environment's operations identities (a rollback
   reads what is live and what it returns to), in production the lower
   environments' operations identities too (a restore from production's
   backup reads production's live release), the next environment's deploy
@@ -194,9 +195,11 @@ request, the pull-request stack trigger on the `/gcbrun` comment, and the
 sweep), so there it also holds `roles/iam.serviceAccountTokenCreator` on
 every environment's plan identity (granted where that identity lives, from
 tst's `2-env` state), `roles/cloudbuild.readTokenAccessor` on the Cloud Build
-connection, `roles/secretmanager.secretAccessor` on the deployer GitHub App's
-key container in the boot project, and `roles/storage.objectUser` under
-`<app>/stacks/` in the records bucket.
+connection and `roles/secretmanager.secretAccessor` on the deployer GitHub
+App's key container in the boot project. In every environment it holds
+`roles/storage.objectUser` under `<app>/stacks/` in the records bucket: the
+stack writes the object naming its id there (`<app>/stacks/<env>/stack.json`),
+and in tst the stack jobs write their outputs.
 
 ### Application plan identity `{{.Prefix}}-<env>-gbl-<app>-plan`
 
@@ -243,8 +246,8 @@ reads the build it runs in, the pipeline's first step, and nothing else of
 Cloud Build; `roles/cloudbuild.builds.builder`, the cloud's bundle for a
 build's service account, would carry every object of every bucket in the
 project with it). Bounded grants:
-`roles/storage.objectCreator` (in tst, everywhere but under `<app>/stacks/`,
-the stack jobs' outputs) and `roles/storage.objectViewer` on its own
+`roles/storage.objectCreator` (everywhere but under `<app>/stacks/`, what
+the applications' stacks write themselves) and `roles/storage.objectViewer` on its own
 environment's records bucket, as bindings of the bucket's policy (`records.tf`;
 for the environment before production, the one on production's instance, also
 `roles/storage.objectViewer` on production's records bucket: the staging

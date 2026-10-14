@@ -183,11 +183,14 @@ locals {
   # Every resource carries these. terraform_source_path is the stack's state slot
   # in the organization's bucket (3-app/beacon) written as a label value, which
   # admits no slash (Secret Manager and Cloud Run refuse it); source_repo is the
-  # application repository's name, from the placement.
+  # application repository's name, from the placement; organization is the
+  # bedrock organization's prefix, which tells its projects from another's in
+  # the same GCP organization.
   base_labels = {
     terraform             = "true"
     terraform_source_path = "3-app-beacon"
     source_repo           = "beacon"
+    organization          = "imp"
     environment           = var.environment
     application           = local.app
     bedrock-lab           = "true"

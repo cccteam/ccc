@@ -40,7 +40,7 @@ resource "google_logging_project_bucket_config" "migrate_logs" {
 
   project        = local.project_id
   location       = "global"
-  bucket_id      = "${local.name}-gbl-${local.app}-migrate-logs"
+  bucket_id      = "${local.name}-gbl-${local.app}-migrate-logs-${random_id.stack.hex}"
   description    = "The build logs of {{.App}}'s pipeline in ${var.environment}, the migration's lines among them: what the operations workflow shows."
   retention_days = 30
 }

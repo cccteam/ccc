@@ -10,7 +10,8 @@ Build triggers" below).
 
 ## What it creates
 
-- Adopts, through `import` blocks: the `terraform` folder at the org root, the
+- Adopts, through `import` blocks: the organization's folder at the org root
+  and the `terraform` folder under it, the
   boot project `imp-boot-gbl-core-<suffix>` inside it, and the boot layer
   identity `imp-boot-gbl-tofu`. From the first apply on they are ordinary
   managed resources.
@@ -122,15 +123,27 @@ export PREFIX=imp
 export REGION=us-central1
 ```
 
-Create the `terraform` folder at the org root:
+Create the organization's folder at the org root, named after the prefix,
+and the `terraform` folder under it. The organization's folder is the one
+tree this bedrock organization keeps in the GCP organization: another
+bedrock organization beside it keeps its own, since sibling folders must
+differ in name.
 
 ```bash
 gcloud resource-manager folders create \
-  --display-name=terraform \
+  --display-name="${PREFIX}" \
   --organization="${ORG_ID}"
 
+export ORGANIZATION_FOLDER_ID=$(gcloud resource-manager folders list \
+  --organization="${ORG_ID}" --filter="displayName=${PREFIX}" \
+  --format='value(name)' | sed 's|folders/||')
+
+gcloud resource-manager folders create \
+  --display-name=terraform \
+  --folder="${ORGANIZATION_FOLDER_ID}"
+
 export TERRAFORM_FOLDER_ID=$(gcloud resource-manager folders list \
-  --organization="${ORG_ID}" --filter="displayName=terraform" \
+  --folder="${ORGANIZATION_FOLDER_ID}" --filter="displayName=terraform" \
   --format='value(name)' | sed 's|folders/||')
 ```
 
@@ -144,7 +157,7 @@ export BOOT_PROJECT_ID="${PREFIX}-boot-gbl-core-$(od -An -tx1 -N2 /dev/urandom |
 
 gcloud projects create "${BOOT_PROJECT_ID}" \
   --folder="${TERRAFORM_FOLDER_ID}" \
-  --labels=terraform=true,terraform_source_path=0-bootstrap,source_repo=imp-impulse-infrastructure,environment=boot,bedrock-lab=true
+  --labels=terraform=true,terraform_source_path=0-bootstrap,source_repo=imp-impulse-infrastructure,organization=imp,environment=boot,bedrock-lab=true
 
 gcloud billing projects link "${BOOT_PROJECT_ID}" --billing-account="${BILLING_ACCOUNT_ID}"
 
@@ -206,10 +219,10 @@ gcloud storage buckets create "gs://${STATE_BUCKET}" \
 
 gcloud storage buckets update "gs://${STATE_BUCKET}" \
   --versioning \
-  --update-labels=terraform=true,terraform_source_path=0-bootstrap,source_repo=imp-impulse-infrastructure,environment=boot,bedrock-lab=true
+  --update-labels=terraform=true,terraform_source_path=0-bootstrap,source_repo=imp-impulse-infrastructure,organization=imp,environment=boot,bedrock-lab=true
 ```
 
-Keep `BOOT_PROJECT_ID`, `TERRAFORM_FOLDER_ID`, and `STATE_BUCKET`. Steps 2 to
+Keep `BOOT_PROJECT_ID`, `ORGANIZATION_FOLDER_ID`, `TERRAFORM_FOLDER_ID`, and `STATE_BUCKET`. Steps 2 to
 4 need them, and so does `placement.json`.
 
 ### 2. The Cloud Build GitHub authorization
@@ -260,7 +273,7 @@ token pinned as a new version.
 ### 3. Apply with local state
 
 In a terminal, in this directory. Fill in `terraform.tfvars` first:
-`boot_project_id` and `terraform_folder_id` from step 1. Then record the
+`boot_project_id`, `organization_folder_id` and `terraform_folder_id` from step 1. Then record the
 seed's values in `placement.json` at the repository root (`stateBucket`,
 `projects.boot` and `projectNumbers.boot`, the number from
 `gcloud projects describe "${BOOT_PROJECT_ID}" --format='value(projectNumber)'`),
@@ -367,7 +380,8 @@ manages budgets.
 | `organization_domain` | Domain of the GCP organization. | `string` | n/a | yes |
 | `prefix` | Short org-wide prefix used in resource names. | `string` | `"imp"` | no |
 | `state_bucket` | The seeded state bucket, granted on here for the four identities and the applier. | `string` | the placement's `stateBucket` | no |
-| `terraform_folder_id` | Numeric ID of the seeded `terraform` folder, without `folders/`. Adopted, not created. | `string` | n/a | yes |
+| `organization_folder_id` | Numeric ID of the seeded organization folder, named after the prefix, without `folders/`. Adopted, not created; 1-org creates the environment folders under it. |
+| `terraform_folder_id` | Numeric ID of the seeded `terraform` folder, under the organization folder, without `folders/`. Adopted, not created. | `string` | n/a | yes |
 
 `terraform.tfvars` sets the required ones and `manage_billing_iam = false`;
 the rest are rendered from `placement.json`, the Cloud Build GitHub

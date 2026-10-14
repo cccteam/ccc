@@ -83,7 +83,7 @@ func TestBuildImage(t *testing.T) {
 	firstBuild := []string{goStage + toC9Go + tail, webStage + toC9W + tail}
 	tagged := map[string]string{"_RECORDS_BUCKET": "records", "_APP": "harbor", "_ENV": "tst"}
 	pulled := map[string]string{"_RECORDS_BUCKET": "records", "_APP": "harbor", "_ENV": "tst", prNumberSub: "7"}
-	live := map[string]string{"gs://records/harbor/tst/v1.2.2/b-0.json": recordJSON("v1.2.2", "c8", "b-0", Live, "2026-09-27T05:00:00Z")}
+	live := map[string]string{"gs://records/harbor/tst/1a2b/releases/v1.2.2/b-0.json": recordJSON("v1.2.2", "c8", "b-0", Live, "2026-09-27T05:00:00Z")}
 	tests := []struct {
 		name string
 		env  string
@@ -240,7 +240,7 @@ func TestBuildImage(t *testing.T) {
 			env:        env,
 			metadata:   `{"containerimage.digest": "sha256:new"}`,
 			subs:       pulled,
-			records:    map[string]string{"gs://records/harbor/tst/pr7-c7/b-3.json": recordJSON("pr7@c7", "c7", "b-3", Live, "2026-09-28T05:00:00Z"), "gs://records/harbor/tst/v1.2.2/b-0.json": live["gs://records/harbor/tst/v1.2.2/b-0.json"]},
+			records:    map[string]string{"gs://records/harbor/tst/pr7-c7/b-3.json": recordJSON("pr7@c7", "c7", "b-3", Live, "2026-09-28T05:00:00Z"), "gs://records/harbor/tst/1a2b/releases/v1.2.2/b-0.json": live["gs://records/harbor/tst/1a2b/releases/v1.2.2/b-0.json"]},
 			held:       []string{"cache-c7-go", "cache-c7-web", "cache-c8-go", "cache-c8-web"},
 			wantStages: []string{goStage + fromC7Go + fromC8Go + toC9Go + tail, webStage + fromC7W + fromC8W + toC9W + tail},
 			wantArgs:   []string{fromC7Go + fromC8Go + fromC7W + fromC8W + " --tag"},
@@ -345,7 +345,7 @@ func TestBuildImage(t *testing.T) {
 			for _, tag := range tt.held {
 				registry.digests["reg/quill:"+tag] = "sha256:" + tag
 			}
-			store := &memoryStore{objects: tt.records}
+			store := &memoryStore{objects: withStacks(tt.records)}
 			clients := &Clients{Exec: run, Secrets: (&fakeSecrets{payloads: tt.secrets}).open, Registry: registry.open, Storage: store.open}
 			var out strings.Builder
 			err := BuildImage(t.Context(), clients, w, secretDir, migrate, hooks, &out)
@@ -464,24 +464,24 @@ func TestCacheSources(t *testing.T) {
 		{
 			name:    "a tag build reads its own commit's cache, then the live release's",
 			subs:    tagged,
-			records: map[string]string{"gs://records/harbor/tst/v1.2.2/b-0.json": recordJSON("v1.2.2", "c8", "b-0", Live, "2026-09-27T05:00:00Z")},
+			records: map[string]string{"gs://records/harbor/tst/1a2b/releases/v1.2.2/b-0.json": recordJSON("v1.2.2", "c8", "b-0", Live, "2026-09-27T05:00:00Z")},
 			want:    []string{"c9 (this commit)", "c8 (the live release v1.2.2, build b-0)"},
 		},
 		{
 			name: "a pull-request build reads its last build's cache before the live release's, and never names its own commit",
 			subs: pulled,
 			records: map[string]string{
-				"gs://records/harbor/tst/pr7-c7/b-3.json": recordJSON("pr7@c7", "c7", "b-3", Live, "2026-09-28T05:00:00Z"),
-				"gs://records/harbor/tst/v1.2.2/b-0.json": recordJSON("v1.2.2", "c8", "b-0", Live, "2026-09-27T05:00:00Z"),
-				"gs://records/harbor/tst/pr8-c6/b-4.json": recordJSON("pr8@c6", "c6", "b-4", Live, "2026-09-29T05:00:00Z"),
-				"gs://records/harbor/tst/v1.2.1/b-9.json": recordJSON("v1.2.1", "c5", "b-9", Preview, "2026-09-29T06:00:00Z"),
+				"gs://records/harbor/tst/pr7-c7/b-3.json":               recordJSON("pr7@c7", "c7", "b-3", Live, "2026-09-28T05:00:00Z"),
+				"gs://records/harbor/tst/1a2b/releases/v1.2.2/b-0.json": recordJSON("v1.2.2", "c8", "b-0", Live, "2026-09-27T05:00:00Z"),
+				"gs://records/harbor/tst/pr8-c6/b-4.json":               recordJSON("pr8@c6", "c6", "b-4", Live, "2026-09-29T05:00:00Z"),
+				"gs://records/harbor/tst/1a2b/releases/v1.2.1/b-9.json": recordJSON("v1.2.1", "c5", "b-9", Preview, "2026-09-29T06:00:00Z"),
 			},
 			want: []string{"c7 (the pull request's last build, build b-3)", "c8 (the live release v1.2.2, build b-0)"},
 		},
 		{
 			name:    "a pull request's first build reads the live release's alone",
 			subs:    pulled,
-			records: map[string]string{"gs://records/harbor/tst/v1.2.2/b-0.json": recordJSON("v1.2.2", "c8", "b-0", Live, "2026-09-27T05:00:00Z")},
+			records: map[string]string{"gs://records/harbor/tst/1a2b/releases/v1.2.2/b-0.json": recordJSON("v1.2.2", "c8", "b-0", Live, "2026-09-27T05:00:00Z")},
 			want:    []string{"c8 (the live release v1.2.2, build b-0)"},
 		},
 		{
@@ -493,7 +493,7 @@ func TestCacheSources(t *testing.T) {
 		{
 			name:    "a commit that is this commit and the live release is listed once, with both reasons",
 			subs:    tagged,
-			records: map[string]string{"gs://records/harbor/tst/v1.2.3/b-1.json": recordJSON("v1.2.3", "c9", "b-1", Live, "2026-09-27T05:00:00Z")},
+			records: map[string]string{"gs://records/harbor/tst/1a2b/releases/v1.2.3/b-1.json": recordJSON("v1.2.3", "c9", "b-1", Live, "2026-09-27T05:00:00Z")},
 			want:    []string{"c9 (this commit, the live release v1.2.3, build b-1)"},
 		},
 	}
@@ -501,7 +501,7 @@ func TestCacheSources(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			store := &memoryStore{objects: tt.records}
+			store := &memoryStore{objects: withStacks(tt.records)}
 			sources, err := cacheSources(t.Context(), store.open, &Build{ID: "b-1", Substitutions: tt.subs})
 			if err != nil {
 				t.Fatalf("cacheSources() error = %v", err)

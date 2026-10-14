@@ -157,7 +157,7 @@ locals {
 
   # The task queue ({{.TasksQueue.Declaration}}), by name and as the Cloud Tasks API
   # names it: {{.Integration}}'s for a pull-request stack, which enqueues on it (tasks.tf).
-  tasks_queue_name = "${local.name}-${local.primary_region_code}-${local.app}-tasks"
+  tasks_queue_name = "${local.name}-${local.primary_region_code}-${local.app}-tasks-${random_id.stack.hex}"
   tasks_queue      = "projects/${local.project_id}/locations/${local.primary_region}/queues/${local.tasks_queue_name}"
 {{- end}}
 {{- if .FirestoreDatabase}}
@@ -168,7 +168,7 @@ locals {
 {{- if .FirebaseAPIKey}}
   # The browser's web API key ({{.FirebaseAPIKey.Declaration}}), by name (firestore.tf); a
   # pull-request stack has its own.
-  firebase_key_name = local.is_pr ? "${local.pr_name}-firebase" : "${local.name}-gbl-${local.app}-firebase"
+  firebase_key_name = local.is_pr ? "${local.pr_name}-firebase-${random_id.stack.hex}" : "${local.name}-gbl-${local.app}-firebase-${random_id.stack.hex}"
 {{- end}}
 {{- end}}
 {{- if .Jobs}}
@@ -395,11 +395,14 @@ locals {
   # Every resource carries these. terraform_source_path is the stack's state slot
   # in the organization's bucket (3-app/{{.App}}) written as a label value, which
   # admits no slash (Secret Manager and Cloud Run refuse it); source_repo is the
-  # application repository's name, from the placement.
+  # application repository's name, from the placement; organization is the
+  # bedrock organization's prefix, which tells its projects from another's in
+  # the same GCP organization.
   base_labels = {
     terraform             = "true"
     terraform_source_path = "3-app-{{.App}}"
     source_repo           = "{{.P.Repository}}"
+    organization          = "{{.P.Prefix}}"
     environment           = var.environment
     application           = local.app
 {{.LabelLines}}

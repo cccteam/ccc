@@ -604,9 +604,10 @@ func TestRecordsBucketPolicy(t *testing.T) {
 				"  records_deploy_members = [for app in var.applications : google_service_account.deploy[app].member]\n  records_plan_members   = [for app in var.applications : google_service_account.plan[app].member]\n",
 				"      { role = \"roles/storage.objectCreator\", members = local.records_deploy_members, condition = local.records_creator_condition },\n",
 				"      { role = \"roles/storage.objectViewer\", members = concat(local.records_deploy_members, local.records_plan_members, local.records_ops_members, local.records_lower_ops_members, local.records_rehearsal_members, values(local.next_deploy_members), [local.team_group]), condition = null },\n",
-				// In tst the stack jobs' outputs are the apply identities' to write, under
-				// their prefix alone, which the deploy identities' creator binding excludes.
-				"  records_stack_prefix = local.is_tst ? { for app in var.applications : app => \"projects/_/buckets/${google_storage_bucket.records.name}/objects/${app}/stacks/\" } : {}\n",
+				// What a stack writes itself (its id object, and in tst the stack jobs'
+				// outputs) is the apply identity's to write, under its prefix alone, which
+				// the deploy identities' creator binding excludes.
+				"  records_stack_prefix = { for app in var.applications : app => \"projects/_/buckets/${google_storage_bucket.records.name}/objects/${app}/stacks/\" }\n",
 				"    expression  = join(\" && \", [for app, prefix in local.records_stack_prefix : \"!resource.name.startsWith(\\\"${prefix}\\\")\"])\n",
 				"      role    = \"roles/storage.objectUser\"\n      members = [google_service_account.apply[app].member]\n",
 				"  ], local.records_stack_bindings)\n",
@@ -975,7 +976,7 @@ func TestCustomRolePermissions(t *testing.T) {
 
 			header := "resource \"google_organization_iam_custom_role\" \"" + tt.resource + "\" {\n" +
 				"  org_id      = local.org_id\n" +
-				"  role_id     = \"" + tt.roleID + "\"\n"
+				"  role_id     = \"" + tt.roleID + "_${local.boot.organization_suffix}\"\n"
 			start := strings.Index(roles, header)
 			if start < 0 {
 				t.Fatalf("1-org/custom-roles.tf lacks the role %s", tt.roleID)
@@ -1456,22 +1457,22 @@ func TestLabelsBlock(t *testing.T) {
 	}{
 		{
 			name: "the model's labels alone", layer: "2-shr", env: "local.environment",
-			want: "  labels = {\n    terraform             = \"true\"\n    terraform_source_path = \"2-shr\"\n    source_repo           = \"acme-infrastructure\"\n    environment           = local.environment\n  }",
+			want: "  labels = {\n    terraform             = \"true\"\n    terraform_source_path = \"2-shr\"\n    source_repo           = \"acme-infrastructure\"\n    organization          = \"acme\"\n    environment           = local.environment\n  }",
 		},
 		{
 			name: "a short extra label keeps the model's width", labels: map[string]string{"team": "core"}, layer: "1-org", env: "\"org\"",
-			want: "  labels = {\n    terraform             = \"true\"\n    terraform_source_path = \"1-org\"\n    source_repo           = \"acme-infrastructure\"\n    environment           = \"org\"\n    team                  = \"core\"\n  }",
+			want: "  labels = {\n    terraform             = \"true\"\n    terraform_source_path = \"1-org\"\n    source_repo           = \"acme-infrastructure\"\n    organization          = \"acme\"\n    environment           = \"org\"\n    team                  = \"core\"\n  }",
 		},
 		{
 			name: "a long extra label widens the block", labels: map[string]string{"cost_center_and_owner_key": "x"}, layer: "2-net", env: "local.environment",
-			want: "  labels = {\n    terraform                 = \"true\"\n    terraform_source_path     = \"2-net\"\n    source_repo               = \"acme-infrastructure\"\n    environment               = local.environment\n    cost_center_and_owner_key = \"x\"\n  }",
+			want: "  labels = {\n    terraform                 = \"true\"\n    terraform_source_path     = \"2-net\"\n    source_repo               = \"acme-infrastructure\"\n    organization              = \"acme\"\n    environment               = local.environment\n    cost_center_and_owner_key = \"x\"\n  }",
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			v := &view{Placement: &Placement{SourceRepo: "acme-infrastructure", Labels: tt.labels}}
+			v := &view{Placement: &Placement{Prefix: "acme", SourceRepo: "acme-infrastructure", Labels: tt.labels}}
 			if got := v.LabelsBlock(tt.layer, tt.env); got != tt.want {
 				t.Errorf("LabelsBlock() =\n%s\nwant\n%s", got, tt.want)
 			}
@@ -1493,7 +1494,7 @@ func TestViewPhrases(t *testing.T) {
 		{name: "no contact domains", placement: Placement{OrganizationDomain: "acme.com"}, check: func(v *view) string { return v.ContactDomainsList() + " " + v.ContactDomainsProse() }, want: "[\"@acme.com\"] contact domain `@acme.com`"},
 		{name: "one contact domain", placement: Placement{OrganizationDomain: "acme.com", ContactDomains: []string{"@acme.org"}}, check: func(v *view) string { return v.ContactDomainsList() + " " + v.ContactDomainsProse() }, want: "[\"@acme.org\"] contact domain `@acme.org`"},
 		{name: "two contact domains", placement: Placement{ContactDomains: []string{"@acme.com", "@partner.example"}}, check: func(v *view) string { return v.ContactDomainsList() + " " + v.ContactDomainsProse() }, want: "[\"@acme.com\", \"@partner.example\"] contact domains `@acme.com` and `@partner.example`"},
-		{name: "seed labels", placement: Placement{SourceRepo: "acme-infrastructure", Labels: map[string]string{"team": "core"}}, check: func(v *view) string { return v.SeedLabels() }, want: "terraform=true,terraform_source_path=0-bootstrap,source_repo=acme-infrastructure,environment=boot,team=core"},
+		{name: "seed labels", placement: Placement{Prefix: "acme", SourceRepo: "acme-infrastructure", Labels: map[string]string{"team": "core"}}, check: func(v *view) string { return v.SeedLabels() }, want: "terraform=true,terraform_source_path=0-bootstrap,source_repo=acme-infrastructure,organization=acme,environment=boot,team=core"},
 		{name: "label prose", placement: Placement{Labels: map[string]string{"team": "core", "cost": "a"}}, check: func(v *view) string { return v.ExtraLabelsProse() + " / " + v.ExtraLabelKeys() }, want: "`cost = \"a\"`, `team = \"core\"` / `cost`, `team`"},
 		{name: "the environments, as a list and as prose", placement: Placement{}, check: func(v *view) string { return v.EnvironmentsList() + " " + v.EnvironmentsProse() }, want: "[\"tst\", \"stg\", \"prd\"] `tst`, `stg` and `prd`"},
 		{name: "the approval environments, as a list and as prose", placement: Placement{}, check: func(v *view) string { return v.ApprovalEnvironmentsList() + " " + v.ApprovalEnvironmentsProse() }, want: "[\"stg\", \"prd\"] `stg` and `prd`"},
@@ -2461,7 +2462,7 @@ func TestStateBucketGrants(t *testing.T) {
 			name: "the policy role sets a bucket's policy and nothing else",
 			path: "0-bootstrap/state-bucket.tf",
 			want: []string{
-				"resource \"google_organization_iam_custom_role\" \"state_bucket_policy_admin\" {\n  org_id      = local.org_id\n  role_id     = \"${var.prefix}GblStateBucketPolicyAdmin\"\n",
+				"resource \"google_organization_iam_custom_role\" \"state_bucket_policy_admin\" {\n  org_id      = local.org_id\n  role_id     = \"stateBucketPolicyAdmin_${random_id.organization.hex}\"\n",
 				"  permissions = [\n    \"storage.buckets.get\",\n    \"storage.buckets.getIamPolicy\",\n    \"storage.buckets.setIamPolicy\",\n  ]\n",
 			},
 		},

@@ -33,9 +33,37 @@ locals {
 # hierarchy means an environment folder can be reorganised without touching the
 # identity that provisions it, and the org policies 1-org applies to the
 # environment folders never reach the identities that manage them.
+# The organization's suffix: a random value born with this state on the first
+# apply and gone with it, telling this bedrock organization from another in
+# the same GCP organization and from its own predecessor. It is the suffix of
+# every name the layers put at the organization node, where names must differ
+# between organizations and where Google holds a deleted name for weeks: the
+# custom roles (here and in 1-org) and the public-invoker tag key (1-org).
+# Nothing inside a project carries it; the project ids carry their own.
+resource "random_id" "organization" {
+  byte_length = 2
+}
+
+# The organization's folder, named after its prefix, holds everything the
+# layers make under the GCP organization: the terraform folder here, the
+# environment folders 1-org creates. Sibling folders must differ in name, so
+# two bedrock organizations in one GCP organization each keep their own tree.
+# Seeded, like the terraform folder, since the boot project must exist before
+# this layer can run.
+resource "google_folder" "organization" {
+  display_name        = var.prefix
+  parent              = local.org_name
+  deletion_protection = true
+}
+
+import {
+  id = "folders/${var.organization_folder_id}"
+  to = google_folder.organization
+}
+
 resource "google_folder" "terraform" {
   display_name        = "terraform"
-  parent              = local.org_name
+  parent              = google_folder.organization.name
   deletion_protection = true
 }
 
@@ -231,7 +259,7 @@ resource "google_project_iam_member" "boot_plan_quota" {
 # at org scope, so a custom role is the only way to grant it short of owner.
 resource "google_organization_iam_custom_role" "project_updater" {
   org_id      = local.org_id
-  role_id     = "${var.prefix}GblOrgProjectUpdater"
+  role_id     = "orgProjectUpdater_${random_id.organization.hex}"
   title       = "Project Updater"
   description = "Grants resourcemanager.projects.update so the org layer identity can manage project labels and metadata."
   permissions = ["resourcemanager.projects.update"]

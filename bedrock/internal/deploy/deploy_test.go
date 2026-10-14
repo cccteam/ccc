@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -129,7 +130,7 @@ func TestNewRecordRequest(t *testing.T) {
 				BuildFile:       `{"id": "b-1", "substitutions": {"_APP": "harbor", "_ENV": "prd", "_RECORDS_BUCKET": "records", "COMMIT_SHA": "deadbeef", "_REQUESTER": "octocat"}}`,
 				RevisionsFile:   revisionsLines,
 			},
-			wantObject:    "harbor/prd/v1.2.3/b-1.json",
+			wantObject:    "harbor/prd/5e6f/releases/v1.2.3/b-1.json",
 			wantStatus:    Live,
 			wantRegions:   "us-central1,us-west3",
 			wantRequester: "octocat",
@@ -144,7 +145,7 @@ func TestNewRecordRequest(t *testing.T) {
 				BuildFile:       `{"id": "b-1", "substitutions": {"_APP": "harbor", "_ENV": "prd", "_RECORDS_BUCKET": "records", "COMMIT_SHA": "deadbeef", "_REQUESTER": "octocat"}}`,
 				RevisionsFile:   revisionsLines,
 			},
-			wantObject:    "harbor/prd/v1.2.3/b-1.json",
+			wantObject:    "harbor/prd/5e6f/releases/v1.2.3/b-1.json",
 			wantStatus:    Live,
 			wantRegions:   "us-central1,us-west3",
 			wantRequester: "octocat",
@@ -163,7 +164,7 @@ func TestNewRecordRequest(t *testing.T) {
 				BuildFile:       `{"id": "b-1", "substitutions": {"_APP": "harbor", "_ENV": "prd", "_RECORDS_BUCKET": "records", "COMMIT_SHA": "deadbeef"}}`,
 				RevisionsFile:   revisionsLines,
 			},
-			wantObject:        "harbor/prd/v1.2.3/b-1.json",
+			wantObject:        "harbor/prd/5e6f/releases/v1.2.3/b-1.json",
 			wantStatus:        Live,
 			wantRegions:       "us-central1,us-west3",
 			wantCut:           "2026-10-05T04:30:15Z",
@@ -177,7 +178,7 @@ func TestNewRecordRequest(t *testing.T) {
 				BuildFile:       `{"id": "b-1", "substitutions": {"_APP": "harbor", "_ENV": "prd", "_RECORDS_BUCKET": "records", "COMMIT_SHA": "deadbeef"}}`,
 				RevisionsFile:   revisionsLines,
 			},
-			wantObject:   "harbor/prd/v1.2.3/b-1.json",
+			wantObject:   "harbor/prd/5e6f/releases/v1.2.3/b-1.json",
 			wantStatus:   Live,
 			wantRegions:  "us-central1,us-west3",
 			wantDatabase: &DatabaseRef{Name: "projects/spn/instances/i/databases/imp-prd-gbl-harbor-db-2", Generation: 2},
@@ -185,7 +186,7 @@ func TestNewRecordRequest(t *testing.T) {
 		{
 			name:        "a window release records whether it was breaking, why, the opening that let it in and the wait",
 			files:       map[string]string{EnvironmentFile: liveEnvironment + "export WINDOW_NEEDED=\"true\"\nexport WINDOW_BREAKING=\"true\"\nexport WINDOW_REASON=\"the default outlet answers 1.2.3 at the oldest, and tst runs v1.2.2, which it turns away\"\nexport WINDOW_SLOT=\"Sunday 02:00 to 04:00 America/Chicago\"\nexport WINDOW_OPENED=\"2026-10-04T07:00:00Z\"\nexport WINDOW_WAITED=\"6h0m0s\"\n", BuildFile: buildJSON, RevisionsFile: revisionsLines},
-			wantObject:  "harbor/tst/v1.2.3/b-1.json",
+			wantObject:  "harbor/tst/1a2b/releases/v1.2.3/b-1.json",
 			wantStatus:  Live,
 			wantRegions: "us-central1,us-west3",
 			wantWindow:  &Window{Breaking: true, Reason: "the default outlet answers 1.2.3 at the oldest, and tst runs v1.2.2, which it turns away", Slot: "Sunday 02:00 to 04:00 America/Chicago", Opened: "2026-10-04T07:00:00Z", Waited: "6h0m0s"},
@@ -193,7 +194,7 @@ func TestNewRecordRequest(t *testing.T) {
 		{
 			name:        "an ordinary release inside a window under all records the window without maintenance",
 			files:       map[string]string{EnvironmentFile: liveEnvironment + "export WINDOW_NEEDED=\"true\"\nexport WINDOW_BREAKING=\"\"\nexport WINDOW_REASON=\"every release waits for tst's window (releases: all)\"\nexport WINDOW_SLOT=\"anytime\"\nexport WINDOW_OPENED=\"2026-10-04T07:00:00Z\"\nexport WINDOW_WAITED=\"\"\n", BuildFile: buildJSON, RevisionsFile: revisionsLines},
-			wantObject:  "harbor/tst/v1.2.3/b-1.json",
+			wantObject:  "harbor/tst/1a2b/releases/v1.2.3/b-1.json",
 			wantStatus:  Live,
 			wantRegions: "us-central1,us-west3",
 			wantWindow:  &Window{Reason: "every release waits for tst's window (releases: all)", Slot: "anytime", Opened: "2026-10-04T07:00:00Z"},
@@ -201,7 +202,7 @@ func TestNewRecordRequest(t *testing.T) {
 		{
 			name:          "a run that forced a migration version records the table, the version and who asked",
 			files:         map[string]string{EnvironmentFile: liveEnvironment + "export RUN_MIGRATIONS=\"true\"\nexport MIGRATE_FORCED_TABLE=\"schema\"\nexport MIGRATE_FORCED_VERSION=\"40\"\n", BuildFile: `{"id": "b-1", "substitutions": {"_APP": "harbor", "_ENV": "tst", "_RECORDS_BUCKET": "records", "COMMIT_SHA": "deadbeef", "_MIGRATE_ACTION": "force", "_MIGRATE_VERSION": "40", "_REQUESTER": "octocat"}}`, RevisionsFile: revisionsLines},
-			wantObject:    "harbor/tst/v1.2.3/b-1.json",
+			wantObject:    "harbor/tst/1a2b/releases/v1.2.3/b-1.json",
 			wantStatus:    Live,
 			wantRegions:   "us-central1,us-west3",
 			wantForce:     &Force{Table: "schema", Version: 40, Requester: "octocat"},
@@ -210,7 +211,7 @@ func TestNewRecordRequest(t *testing.T) {
 		{
 			name:          "a run that forced no version to the data table records -1",
 			files:         map[string]string{EnvironmentFile: liveEnvironment + "export MIGRATE_FORCED_TABLE=\"data\"\nexport MIGRATE_FORCED_VERSION=\"-1\"\n", BuildFile: `{"id": "b-1", "substitutions": {"_APP": "harbor", "_ENV": "tst", "_RECORDS_BUCKET": "records", "COMMIT_SHA": "deadbeef", "_REQUESTER": "octocat"}}`, RevisionsFile: revisionsLines},
-			wantObject:    "harbor/tst/v1.2.3/b-1.json",
+			wantObject:    "harbor/tst/1a2b/releases/v1.2.3/b-1.json",
 			wantStatus:    Live,
 			wantRegions:   "us-central1,us-west3",
 			wantForce:     &Force{Table: "data", Version: -1, Requester: "octocat"},
@@ -219,7 +220,7 @@ func TestNewRecordRequest(t *testing.T) {
 		{
 			name:          "a rerun records who asked and nothing of a restore",
 			files:         map[string]string{EnvironmentFile: liveEnvironment + "export RUN_MIGRATIONS=\"true\"\n", BuildFile: `{"id": "b-1", "substitutions": {"_APP": "harbor", "_ENV": "prd", "_RECORDS_BUCKET": "records", "COMMIT_SHA": "deadbeef", "_REQUESTER": "octocat"}}`, RevisionsFile: revisionsLines},
-			wantObject:    "harbor/prd/v1.2.3/b-1.json",
+			wantObject:    "harbor/prd/5e6f/releases/v1.2.3/b-1.json",
 			wantStatus:    Live,
 			wantRegions:   "us-central1,us-west3",
 			wantRequester: "octocat",
@@ -232,7 +233,7 @@ func TestNewRecordRequest(t *testing.T) {
 		{
 			name:            "a run in maintenance records its revisions, queue, canceled executions and wait",
 			files:           map[string]string{EnvironmentFile: liveEnvironment + "export MAINTENANCE=\"true\"\nexport MAINTENANCE_REVISIONS=\"us-central1=harbor-app-00008-maint,us-west3=harbor-app-00008-maint\"\nexport MAINTENANCE_QUEUE=\"projects/p/locations/us-central1/queues/harbor-tasks\"\nexport MAINTENANCE_PURGED=\"true\"\nexport MAINTENANCE_CANCELED=\"2\"\nexport MAINTENANCE_WAITED=\"4s: no active instance\"\n", BuildFile: buildJSON, RevisionsFile: revisionsLines},
-			wantObject:      "harbor/tst/v1.2.3/b-1.json",
+			wantObject:      "harbor/tst/1a2b/releases/v1.2.3/b-1.json",
 			wantStatus:      Live,
 			wantRegions:     "us-central1,us-west3",
 			wantMaintenance: &Maintenance{Revisions: map[string]string{"us-central1": "harbor-app-00008-maint", "us-west3": "harbor-app-00008-maint"}, Queue: "projects/p/locations/us-central1/queues/harbor-tasks", Purged: true, Canceled: 2, Waited: "4s: no active instance"},
@@ -240,7 +241,7 @@ func TestNewRecordRequest(t *testing.T) {
 		{
 			name:        "a restore run records what replaced the database and who asked",
 			files:       map[string]string{EnvironmentFile: liveEnvironment + "export RESTORE=\"empty\"\nexport RESTORE_REQUESTER=\"octocat\"\nexport RESTORE_REPLACED=\"google_spanner_database.harbor[0],google_storage_bucket.files\"\nexport RESTORE_CLEARED=\"google_firestore_database.firestore\"\nexport RESTORE_BACKUP=\"projects/p/instances/i/backups/b-20261001\"\nexport RESTORE_BACKUP_TIME=\"2026-10-01T02:00:00Z\"\n", BuildFile: buildJSON, RevisionsFile: revisionsLines},
-			wantObject:  "harbor/tst/v1.2.3/b-1.json",
+			wantObject:  "harbor/tst/1a2b/releases/v1.2.3/b-1.json",
 			wantStatus:  Live,
 			wantRegions: "us-central1,us-west3",
 			wantRestore: &Restore{Kind: "empty", Requester: "octocat", Replaced: []string{"google_spanner_database.harbor[0]", "google_storage_bucket.files"}, Cleared: []string{"google_firestore_database.firestore"}, Backup: "projects/p/instances/i/backups/b-20261001", BackupTime: "2026-10-01T02:00:00Z"},
@@ -248,7 +249,7 @@ func TestNewRecordRequest(t *testing.T) {
 		{
 			name:        "a release that restored a seeded environment on its own records the reason beside the restore",
 			files:       map[string]string{EnvironmentFile: liveEnvironment + "export RESTORE=\"empty\"\nexport RESTORE_REQUESTER=\"release v1.2.3\"\nexport RESTORE_REASON=\"the seed changed since v1.2.2 applied it (build b-0): schema/devseed/000001_Seed.up.sql, not in the tree as applied (edited, renumbered or removed since), so the database is recreated and the migrations and the seed apply from the start\"\nexport RESTORE_REPLACED=\"google_spanner_database.harbor[0]\"\n", BuildFile: buildJSON, RevisionsFile: revisionsLines},
-			wantObject:  "harbor/tst/v1.2.3/b-1.json",
+			wantObject:  "harbor/tst/1a2b/releases/v1.2.3/b-1.json",
 			wantStatus:  Live,
 			wantRegions: "us-central1,us-west3",
 			wantRestore: &Restore{Kind: "empty", Requester: "release v1.2.3", Reason: "the seed changed since v1.2.2 applied it (build b-0): schema/devseed/000001_Seed.up.sql, not in the tree as applied (edited, renumbered or removed since), so the database is recreated and the migrations and the seed apply from the start", Replaced: []string{"google_spanner_database.harbor[0]"}},
@@ -259,7 +260,7 @@ func TestNewRecordRequest(t *testing.T) {
 				EnvironmentFile: liveEnvironment + "export RUN_MIGRATIONS=\"true\"\nexport SEED=\"true\"\n", BuildFile: `{"id": "b-1", "substitutions": {"_APP": "harbor", "_ENV": "tst", "_RECORDS_BUCKET": "records", "COMMIT_SHA": "deadbeef", "_MIGRATIONS_DIR": "schema/migrations", "_SEED": "false"}}`, RevisionsFile: revisionsLines,
 				"schema/migrations/000001_Init.up.sql": "create table a", "schema/migrations/000001_Init.down.sql": "drop table a", "schema/migrations/notes.txt": "not a migration", "schema/devseed/000001_Marker.up.sql": "insert marker",
 			},
-			wantObject:  "harbor/tst/v1.2.3/b-1.json",
+			wantObject:  "harbor/tst/1a2b/releases/v1.2.3/b-1.json",
 			wantStatus:  Live,
 			wantRegions: "us-central1,us-west3",
 			wantMigrations: []Migration{
@@ -271,7 +272,7 @@ func TestNewRecordRequest(t *testing.T) {
 		{
 			name:           "a build that ran the schema migrations alone leaves the seed out, though the trigger's _SEED said true",
 			files:          map[string]string{EnvironmentFile: liveEnvironment + "export RUN_MIGRATIONS=\"true\"\n", BuildFile: `{"id": "b-1", "substitutions": {"_APP": "harbor", "_ENV": "tst", "_RECORDS_BUCKET": "records", "COMMIT_SHA": "deadbeef", "_MIGRATIONS_DIR": "schema/migrations", "_SEED": "true"}}`, RevisionsFile: revisionsLines, "schema/migrations/000001_Init.up.sql": "create table a", "schema/devseed/000001_Marker.up.sql": "insert marker"},
-			wantObject:     "harbor/tst/v1.2.3/b-1.json",
+			wantObject:     "harbor/tst/1a2b/releases/v1.2.3/b-1.json",
 			wantStatus:     Live,
 			wantRegions:    "us-central1,us-west3",
 			wantMigrations: []Migration{{Dir: "schema/migrations", Name: "000001_Init.up.sql", Hash: hashOf("create table a")}},
@@ -279,24 +280,29 @@ func TestNewRecordRequest(t *testing.T) {
 		{
 			name:        "a live deployment in two regions",
 			files:       map[string]string{EnvironmentFile: liveEnvironment, BuildFile: buildJSON, RevisionsFile: revisionsLines},
-			wantObject:  "harbor/tst/v1.2.3/b-1.json",
+			wantObject:  "harbor/tst/1a2b/releases/v1.2.3/b-1.json",
 			wantStatus:  Live,
 			wantRegions: "us-central1,us-west3",
 		},
 		{
 			name:        "a tag build's apply of the environment's stack is recorded from its saved plan",
 			files:       map[string]string{EnvironmentFile: liveEnvironment, BuildFile: buildJSON, RevisionsFile: revisionsLines, StackPlanJSONFile: `{"resource_changes": [{"address": "google_storage_bucket.files", "type": "google_storage_bucket", "change": {"actions": ["create"], "after": {}}}]}`},
-			wantObject:  "harbor/tst/v1.2.3/b-1.json",
+			wantObject:  "harbor/tst/1a2b/releases/v1.2.3/b-1.json",
 			wantStatus:  Live,
 			wantRegions: "us-central1,us-west3",
 			wantStack:   &StackPlan{Add: 1, Changes: []StackChange{{Address: "google_storage_bucket.files", Actions: []string{actionCreate}}}},
 		},
 		{
-			name:        "a pull request's revision under its tag is a preview",
-			files:       map[string]string{EnvironmentFile: strings.Replace(liveEnvironment, `SHIFT_TRAFFIC="true"`, `SHIFT_TRAFFIC="false"`, 1) + "export RELEASE=\"pr7-deadbee\"\n", BuildFile: buildJSON, RevisionsFile: revisionsLines},
+			name:        "a pull request's revision under its tag is a preview, recorded under the pull request's own prefix",
+			files:       map[string]string{EnvironmentFile: strings.Replace(liveEnvironment, `SHIFT_TRAFFIC="true"`, `SHIFT_TRAFFIC="false"`, 1) + "export RELEASE=\"pr7-deadbee\"\n", BuildFile: strings.Replace(buildJSON, `"_ENV": "tst"`, `"_ENV": "tst", "_PR_NUMBER": "7"`, 1), RevisionsFile: revisionsLines},
 			wantObject:  "harbor/tst/pr7-deadbee/b-1.json",
 			wantStatus:  Preview,
 			wantRegions: "us-central1,us-west3",
+		},
+		{
+			name:    "a release's record is refused when the environment's stack says no id",
+			files:   map[string]string{EnvironmentFile: liveEnvironment, BuildFile: strings.Replace(buildJSON, `"_ENV": "tst"`, `"_ENV": "stg"`, 1), RevisionsFile: revisionsLines},
+			wantErr: "stg's stack says no id (nothing at gs://records/harbor/stacks/stg/stack.json): the stack's apply writes it, so the stack has not been applied by a bedrock with stack ids; apply it once",
 		},
 		{
 			name:        "a torn-down environment records nothing",
@@ -328,7 +334,8 @@ func TestNewRecordRequest(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			req, err := NewRecordRequest(workspaceFiles(t, tt.files), now)
+			store := &memoryStore{objects: map[string]string{stackKey("records", "harbor", "tst"): stackJSON("1a2b"), stackKey("records", "harbor", "prd"): stackJSON("5e6f")}}
+			req, err := NewRecordRequest(t.Context(), store.open, workspaceFiles(t, tt.files), now)
 			if tt.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 					t.Fatalf("NewRecordRequest() error = %v, wantErr %q", err, tt.wantErr)
@@ -349,6 +356,14 @@ func TestNewRecordRequest(t *testing.T) {
 				t.Errorf("gs://%s/%s, want gs://records/%s", req.Bucket, req.Object, tt.wantObject)
 			}
 			r := req.Record
+			// A release's record names the stack it lies under; a pull request's names none.
+			var wantStackID string
+			if parts := strings.Split(tt.wantObject, "/"); len(parts) == 6 {
+				wantStackID = parts[2]
+			}
+			if r.StackID != wantStackID {
+				t.Errorf("StackID = %q, want %q", r.StackID, wantStackID)
+			}
 			if r.Status != tt.wantStatus || strings.Join(r.Regions, ",") != tt.wantRegions || r.Image != "us-central1-docker.pkg.dev/shr/repo/harbor@sha256:abc" || r.Digest != "sha256:abc" || r.Commit != "deadbeef" || r.Build != "b-1" || r.Timestamp != "2026-09-27T05:30:00Z" || len(r.Revisions) != 2 || r.Revisions[1].Revision != "harbor-app-00007-def" {
 				t.Errorf("Record = %+v", r)
 			}
@@ -444,12 +459,43 @@ func (m *memoryStore) List(_ context.Context, bucket, prefix string) ([]string, 
 }
 
 func (m *memoryStore) Read(_ context.Context, bucket, object string) ([]byte, error) {
+	if slices.Contains(m.denied, bucket) {
+		return nil, errors.Newf("googleapi: Error 403: stg-deploy@p.iam does not have storage.objects.get access to the Google Cloud Storage object gs://%s/%s", bucket, object)
+	}
 	data, ok := m.objects["gs://"+bucket+"/"+object]
 	if !ok {
-		return nil, errors.Newf("gs://%s/%s: no such object", bucket, object)
+		return nil, fmt.Errorf("gs://%s/%s: %w", bucket, object, os.ErrNotExist)
 	}
 
 	return []byte(data), nil
+}
+
+// stackKey is the gs:// path of the object the environment's stack writes with its id.
+func stackKey(bucket, app, env string) string {
+	return "gs://" + bucket + "/" + stackObject(app, env)
+}
+
+// stackJSON is the object the environment's stack writes with its id.
+func stackJSON(id string) string {
+	return `{"id": "` + id + `"}`
+}
+
+// withStacks is the objects with, for every environment whose records lie among them
+// (gs://<bucket>/<app>/<env>/<id>/releases/... or .../<id>/database/...), the object
+// the environment's stack writes with its id, which every reader of the records starts
+// from. A pull request's records (gs://<bucket>/<app>/<env>/pr<N>-<commit>/...) name
+// no stack.
+func withStacks(objects map[string]string) map[string]string {
+	all := make(map[string]string, len(objects))
+	for key, content := range objects {
+		all[key] = content
+		parts := strings.Split(strings.TrimPrefix(key, "gs://"), "/")
+		if len(parts) > 5 && (parts[4] == releasesSegment || parts[4] == generationPrefix) {
+			all[stackKey(parts[0], parts[1], parts[2])] = stackJSON(parts[3])
+		}
+	}
+
+	return all
 }
 
 func (*memoryStore) Close() error {
@@ -470,9 +516,9 @@ func TestWriteRecord(t *testing.T) {
 	}{
 		{
 			name:       "the record is written and printed with where it went",
-			req:        &RecordRequest{Bucket: "records", Object: "harbor/tst/v1.2.3/b-1.json", Record: record},
-			wantOut:    []string{`"status": "live"`, "Recorded live deployment of v1.2.3 in tst: gs://records/harbor/tst/v1.2.3/b-1.json"},
-			wantStored: "gs://records/harbor/tst/v1.2.3/b-1.json",
+			req:        &RecordRequest{Bucket: "records", Object: "harbor/tst/1a2b/releases/v1.2.3/b-1.json", Record: record},
+			wantOut:    []string{`"status": "live"`, "Recorded live deployment of v1.2.3 in tst: gs://records/harbor/tst/1a2b/releases/v1.2.3/b-1.json"},
+			wantStored: "gs://records/harbor/tst/1a2b/releases/v1.2.3/b-1.json",
 		},
 		{
 			name:    "a skipped record says so and writes nothing",

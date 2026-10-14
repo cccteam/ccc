@@ -58,6 +58,16 @@ variable "infrastructure_repository" {
   default     = "{{.SourceRepo}}"
 }
 
+variable "organization_folder_id" {
+  description = "(Required) Numeric ID of the organization's folder created during the gcloud seed, without the folders/ prefix: the folder named after the prefix that holds the terraform folder and, from 1-org, the environment folders. Adopted, not created."
+  type        = string
+
+  validation {
+    condition     = can(regex("^[0-9]+$", var.organization_folder_id))
+    error_message = "organization_folder_id must be the bare numeric ID, not the folders/{id} resource name."
+  }
+}
+
 variable "terraform_folder_id" {
   description = "(Required) Numeric ID of the terraform folder created during the gcloud seed, without the \"folders/\" prefix. Adopted by this layer on its first run."
   type        = string

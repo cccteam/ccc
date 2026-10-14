@@ -30,8 +30,12 @@ import (
 // (a release reaches an environment after it is live in the previous one) and the
 // release check reuses the image it names.
 type Record struct {
-	App       string     `json:"app"`
-	Env       string     `json:"env"`
+	App string `json:"app"`
+	Env string `json:"env"`
+	// StackID is the id of the environment's stack the release deployed into
+	// (stackid.go), the prefix the record lies under. Absent in a pull-request build's
+	// record, which lies under the pull request's own prefix.
+	StackID   string     `json:"stackId,omitempty"`
 	Version   string     `json:"version"`
 	Commit    string     `json:"commit"`
 	Image     string     `json:"image"`
@@ -311,8 +315,13 @@ const (
 
 // NewRecordRequest composes the record from the workspace: the facts the resolve step
 // exported (and the image build appended), the build's substitutions, and the revisions
-// the deploy step created. now stamps it.
-func NewRecordRequest(w Workspace, now time.Time) (*RecordRequest, error) {
+// the deploy step created. now stamps it. A release's record goes under the
+// environment's stack's id, <app>/<env>/<id>/releases/<release>/<build>.json, read
+// through open from the object the stack's apply wrote (stackid.go); a stack without one
+// has not been applied by a bedrock with stack ids, and the record is refused. A pull
+// request's record goes under the pull request's own prefix,
+// <app>/<env>/pr<N>-<commit>/<build>.json.
+func NewRecordRequest(ctx context.Context, open StoreFunc, w Workspace, now time.Time) (*RecordRequest, error) {
 	env, err := w.Environment()
 	if err != nil {
 		return nil, err
@@ -362,9 +371,19 @@ func NewRecordRequest(w Workspace, now time.Time) (*RecordRequest, error) {
 		return nil, err
 	}
 	maintenance, restore := maintenanceOf(env), restoreOf(env)
+	app, environment, bucket := build.Substitutions[appSub], build.Substitutions[envSub], build.Substitutions[recordsBucket]
+	object := app + "/" + environment + "/" + env[releaseFact] + "/" + build.ID + ".json"
+	var id string
+	if build.Substitutions[prNumberSub] == "" {
+		if id, err = appliedStackID(ctx, open, bucket, app, environment); err != nil {
+			return nil, err
+		}
+		object = releaseObject(app, environment, id, env[releaseFact], build.ID)
+	}
 	record := Record{
-		App:           build.Substitutions[appSub],
-		Env:           build.Substitutions[envSub],
+		App:           app,
+		Env:           environment,
+		StackID:       id,
 		Version:       env[versionFact],
 		Commit:        build.Substitutions[commitSub],
 		Image:         env[imageFact] + "@" + env[digestFact],
@@ -388,11 +407,7 @@ func NewRecordRequest(w Workspace, now time.Time) (*RecordRequest, error) {
 		Rollback:      rollbackOf(env),
 	}
 
-	return &RecordRequest{
-		Bucket: build.Substitutions[recordsBucket],
-		Object: record.App + "/" + record.Env + "/" + env[releaseFact] + "/" + build.ID + ".json",
-		Record: record,
-	}, nil
+	return &RecordRequest{Bucket: bucket, Object: object, Record: record}, nil
 }
 
 // listMigrations reads the migration files under each directory of the checkout, in

@@ -44,7 +44,7 @@ locals {
 # and keeps the day-to-day reach at the prefixes granted.
 resource "google_organization_iam_custom_role" "state_bucket_policy_admin" {
   org_id      = local.org_id
-  role_id     = "${var.prefix}GblStateBucketPolicyAdmin"
+  role_id     = "stateBucketPolicyAdmin_${random_id.organization.hex}"
   title       = "State Bucket Policy Admin"
   description = "Reads and sets a bucket's IAM policy, for the layers that grant state-bucket access to the identities they create."
   permissions = [
