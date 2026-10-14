@@ -1341,13 +1341,13 @@ func TestMaxInstances(t *testing.T) {
 		absent     []string
 	}{
 		{
-			name: "no cap: Cloud Run's default, and no local",
+			name: "no cap: Cloud Run's default, no scaling block, and no local",
 			caps: nil,
 			wantRun: []string{
-				"    # Scale to zero, and to Cloud Run's default maximum instances per region:\n    # the placement caps no environment (maxInstances).\n    scaling {\n      min_instance_count = 0\n    }\n",
+				"    # Scale to zero, and to Cloud Run's default maximum instances per region:\n    # the placement caps no environment (maxInstances). No scaling block: Cloud\n    # Run's defaults are exactly that, and a block setting only a minimum of\n    # zero is dropped by the service, which every later plan would add again.\n",
 			},
 			wantReadme: "It scales from zero to Cloud Run's default maximum instances per region, the placement capping no environment (`maxInstances`).",
-			absent:     []string{"max_instance_count", "max_instances"},
+			absent:     []string{"max_instance_count", "max_instances", "scaling {"},
 		},
 		{
 			name:       "the same cap in every environment",

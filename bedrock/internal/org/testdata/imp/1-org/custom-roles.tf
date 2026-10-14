@@ -269,9 +269,11 @@ resource "google_organization_iam_custom_role" "application_plan_reader" {
     # Firebase Rules: the database's security rules, the ruleset and its release.
     "firebaserules.releases.get",
     "firebaserules.rulesets.get",
-    # Cloud Logging: the bucket holding the application's build logs and the sink that fills
-    # it (the stack's logging.tf); never an entry.
+    # Cloud Logging: the bucket holding the application's build logs, the sink that fills
+    # it, and the exclusion that holds the request log entries (the stack's logging.tf);
+    # never an entry.
     "logging.buckets.get",
+    "logging.exclusions.get",
     "logging.sinks.get",
     # Cloud Run: the services, the jobs, and a service's tag bindings, which Cloud Run
     # checks on its own permission rather than Resource Manager's.

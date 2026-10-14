@@ -149,7 +149,7 @@ func PlanEnvironmentStack(ctx context.Context, clients *Clients, w Workspace, ou
 	if err != nil {
 		return err
 	}
-	args := []string{"plan", noInputFlag, noColorFlag, "-out=" + plan, varFlag, "environment=" + subs[envSub], varFlag, "database_generation=" + strconv.Itoa(generation)}
+	args := []string{planCommand, noInputFlag, noColorFlag, "-out=" + plan, varFlag, "environment=" + subs[envSub], varFlag, "database_generation=" + strconv.Itoa(generation)}
 	// The plan is told the maintenance variable's live value, so that declared and live
 	// agree and the apply never starts an application revision from the template while
 	// the application is in maintenance: in this run (a restore run, after deploy
@@ -736,8 +736,9 @@ func planEnvironment(ctx context.Context, clients *Clients, w Workspace, build *
 		return "", err
 	}
 	plan := filepath.Join(string(w), "environment-"+e+".plan")
-	if err := s.tofu(ctx, "plan", noInputFlag, noColorFlag, "-lock=false", "-out="+plan, varFlag, "environment="+e, varFlag, "database_generation="+strconv.Itoa(generation)); err != nil {
-		return "", refuse(ctx, clients, build, env, fmt.Sprintf("The plan of %s's stack failed; the build log says why (build %s).", e, build.ID), err, out)
+	planned, err := s.tofuCaptured(ctx, planCommand, noInputFlag, noColorFlag, "-lock=false", "-out="+plan, varFlag, "environment="+e, varFlag, "database_generation="+strconv.Itoa(generation))
+	if err != nil {
+		return "", refuse(ctx, clients, build, env, failedPlanLine(e, planned, build.ID), err, out)
 	}
 	shown, err := s.tofuOutput(ctx, "show", "-json", plan)
 	if err != nil {
