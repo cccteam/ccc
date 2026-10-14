@@ -14,6 +14,7 @@
 package deploy
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -110,12 +111,27 @@ func (s *stack) backendArgs(prefix string) []string {
 	return args
 }
 
+// tofuBinary is the OpenTofu binary the stack runs; planCommand is its plan subcommand.
+const (
+	tofuBinary  = "tofu"
+	planCommand = "plan"
+)
+
 func (s *stack) tofu(ctx context.Context, args ...string) error {
-	return s.run.Run(ctx, Command{Dir: s.dir, Env: s.env(), Name: "tofu", Args: args}, s.out)
+	return s.run.Run(ctx, Command{Dir: s.dir, Env: s.env(), Name: tofuBinary, Args: args}, s.out)
+}
+
+// tofuCaptured runs tofu with its output on the log and answers a copy of it, for a
+// command whose text the run reads back after a failure.
+func (s *stack) tofuCaptured(ctx context.Context, args ...string) (string, error) {
+	var captured bytes.Buffer
+	err := s.run.Run(ctx, Command{Dir: s.dir, Env: s.env(), Name: tofuBinary, Args: args}, io.MultiWriter(s.out, &captured))
+
+	return captured.String(), err
 }
 
 func (s *stack) tofuOutput(ctx context.Context, args ...string) ([]byte, error) {
-	return s.run.Output(ctx, Command{Dir: s.dir, Env: s.env(), Name: "tofu", Args: args}, s.out)
+	return s.run.Output(ctx, Command{Dir: s.dir, Env: s.env(), Name: tofuBinary, Args: args}, s.out)
 }
 
 // pullRequestPrefix is the pull request's state prefix, 3-app/<app>/<env>/pr<N>.
@@ -311,7 +327,7 @@ func (j *stackJob) previewStanding(ctx context.Context, s *stack) (bool, error) 
 func (s *stack) plan(ctx context.Context, env, subs map[string]string) error {
 	w := Workspace(filepath.Dir(s.dir))
 	plan := filepath.Join(string(w), PlanFile)
-	args := []string{"plan", noInputFlag, noColorFlag, "-out=" + plan, varFlag, "environment=" + subs[envSub], varFlag, "pull_request=" + subs[prNumberSub]}
+	args := []string{planCommand, noInputFlag, noColorFlag, "-out=" + plan, varFlag, "environment=" + subs[envSub], varFlag, "pull_request=" + subs[prNumberSub]}
 	switch {
 	case env[downFact] == trueValue:
 		fmt.Fprintln(s.out, "=== /gcbrun down: planning the destroy of the pull request's environment ===")

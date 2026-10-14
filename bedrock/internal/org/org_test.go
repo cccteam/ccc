@@ -917,7 +917,7 @@ func TestCustomRolePermissions(t *testing.T) {
 				"compute.backendServices.get", "compute.regionNetworkEndpointGroups.get", "compute.securityPolicies.get",
 				"datastore.databases.getMetadata", "datastore.indexes.get",
 				"firebaserules.releases.get", "firebaserules.rulesets.get",
-				"logging.buckets.get", "logging.sinks.get",
+				"logging.buckets.get", "logging.exclusions.get", "logging.sinks.get",
 				"run.jobs.get", "run.services.get", "run.services.listTagBindings",
 				"secretmanager.secrets.get", "secretmanager.versions.get",
 				"apikeys.keys.get", "apikeys.keys.getKeyString", "storage.buckets.get",
