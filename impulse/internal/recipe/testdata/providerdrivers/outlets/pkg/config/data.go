@@ -368,7 +368,7 @@ type dataConfig struct {
 	// CookieKey signs session cookies: a Base64-encoded string of at least 32 bytes of
 	// cryptographically secure random data. Unset, an ephemeral key is generated at
 	// startup.
-	CookieKey string `env:"APP_COOKIE_KEY" secret:"true"`
+	CookieKey string `env:"APP_COOKIE_KEY" secret:"generated"`
 
 	// The members auth's directory registration (pkg/auth/members): the OpenID Connect
 	// issuer, the application's client credentials, and the callback the directory
