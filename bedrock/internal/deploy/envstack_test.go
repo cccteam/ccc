@@ -20,6 +20,7 @@ import (
 
 	"github.com/cccteam/ccc/bedrock/internal/github/githubtest"
 	"github.com/cccteam/ccc/bedrock/internal/render"
+	"github.com/cccteam/ccc/bedrock/internal/secret"
 )
 
 // stackPlanJSON is a plan of a stack as tofu show -json gives it: a service updated (its
@@ -296,7 +297,67 @@ func TestPlanEnvironmentStack(t *testing.T) {
 		wantErr      string
 		// noStack says stg's stack says no id (nothing at its stack object).
 		noStack bool
+		// generated declares the cookie key generated in the checkout's code; containers
+		// are the containers that exist with no version; denied how many adds Secret
+		// Manager refuses first; wantSecrets what the derivation did to Secret Manager.
+		generated   bool
+		containers  map[string]map[string]string
+		denied      int
+		wantSecrets []string
 	}{
+		{
+			name:      "a generated secret's pin is its container's newest enabled version, read as the apply identity and left for the record",
+			subs:      tagSubs(),
+			generated: true,
+			pins:      map[string]string{cookieVersion: enabledState, dbVersion: enabledState, generatedContainer + "/versions/2": enabledState, generatedContainer + "/versions/3": "DISABLED"},
+			tfvars:    pinnedTfvars(generatedPinned, generatedPinned, generatedPinned),
+			wantOut:   []string{"Secret pins: every secret the code declares has a version pinned in stg", "APP_COOKIE_KEY: version 2 of imp-stg-gbl-quill-cookie-key, its newest enabled, is the pin (a generated secret: its version is derived at each plan)."},
+			wantTofu:  []string{initLine, planLine + ` -var generated_secret_versions={APP_COOKIE_KEY="2"}`, showLine},
+			wantFact:  "Plan: 2 to add, 1 to change, 1 to destroy.",
+			wantFacts: map[string]string{generatedFact: "APP_COOKIE_KEY=2"},
+		},
+		{
+			name:       "an empty container gets its first version as the apply identity, granted the adding first and retried while the grant takes effect",
+			subs:       tagSubs(),
+			generated:  true,
+			pins:       enabledPins(),
+			containers: map[string]map[string]string{generatedContainer: {}},
+			denied:     1,
+			tfvars:     pinnedTfvars(generatedPinned, generatedPinned, generatedPinned),
+			wantOut: []string{
+				"Waiting for the grant on imp-stg-gbl-quill-cookie-key to take effect: Secret Manager refused the add (10s).",
+				"APP_COOKIE_KEY: added version 1 of imp-stg-gbl-quill-cookie-key as quill-apply@p-stg.iam.gserviceaccount.com (32 random bytes, base64, never printed): the pin; a rotation (bedrock secret rotate stg APP_COOKIE_KEY) adds the next.",
+			},
+			wantTofu:    []string{initLine, planLine + ` -var generated_secret_versions={APP_COOKIE_KEY="1"}`, showLine},
+			wantFact:    "Plan: 2 to add, 1 to change, 1 to destroy.",
+			wantFacts:   map[string]string{generatedFact: "APP_COOKIE_KEY=1"},
+			wantSecrets: []string{"grant " + generatedContainer + " roles/secretmanager.secretVersionAdder serviceAccount:quill-apply@p-stg.iam.gserviceaccount.com", "add " + generatedContainer + "/versions/1 (32 random bytes, base64)"},
+		},
+		{
+			name:      "a container the project lacks is created with the stack's labels ahead of the apply, which adopts it",
+			subs:      tagSubs(),
+			generated: true,
+			pins:      enabledPins(),
+			tfvars:    pinnedTfvars(generatedPinned, generatedPinned, generatedPinned),
+			wantOut:   []string{"APP_COOKIE_KEY: created imp-stg-gbl-quill-cookie-key in p-stg with the stack's labels, ahead of the apply, which adopts it."},
+			wantTofu:  []string{initLine, planLine + ` -var generated_secret_versions={APP_COOKIE_KEY="1"}`, showLine},
+			wantFact:  "Plan: 2 to add, 1 to change, 1 to destroy.",
+			wantSecrets: []string{
+				"create " + generatedContainer + " " + labelsLine(secret.ContainerLabels("quill", "stg", "quill", "APP_COOKIE_KEY", nil)),
+				"grant " + generatedContainer + " roles/secretmanager.secretVersionAdder serviceAccount:quill-apply@p-stg.iam.gserviceaccount.com",
+				"add " + generatedContainer + "/versions/1 (32 random bytes, base64)",
+			},
+		},
+		{
+			name:      "a generated secret with no entry in the placement is not an unpinned one: its version is derived, not pinned",
+			subs:      tagSubs(),
+			generated: true,
+			pins:      map[string]string{cookieVersion: enabledState, dbVersion: enabledState, generatedContainer + "/versions/1": enabledState},
+			tfvars:    pinnedTfvars(`APP_STAFF_OIDC_CLIENT_SECRET = "1"`, `APP_STAFF_OIDC_CLIENT_SECRET = "1"`, `APP_STAFF_OIDC_CLIENT_SECRET = "1"`),
+			wantOut:   []string{"Secret pins: every secret the code declares has a version pinned in stg"},
+			wantTofu:  []string{initLine, planLine + ` -var generated_secret_versions={APP_COOKIE_KEY="1"}`, showLine},
+			wantFact:  "Plan: 2 to add, 1 to change, 1 to destroy.",
+		},
 		{
 			name:         "a restore run replaces the database, the Firestore database and, in tst, the file store's bucket",
 			subs:         tstSubs(),
@@ -772,7 +833,11 @@ func TestPlanEnvironmentStack(t *testing.T) {
 			if tfvars == "" {
 				tfvars = pinnedTfvars(allPinned, allPinned, allPinned)
 			}
-			w := applicationWorkspace(t, map[string]string{EnvironmentFile: envFile, BuildFile: buildFor(t, subs), placementPath: testPlacement(""), tfvarsPath: tfvars})
+			files := map[string]string{EnvironmentFile: envFile, BuildFile: buildFor(t, subs), placementPath: testPlacement(""), tfvarsPath: tfvars}
+			if tt.generated {
+				files[configPath] = generatedConfig(t)
+			}
+			w := applicationWorkspace(t, files)
 			if tt.stackFile != "" {
 				writeStackFile(t, w, tt.stackFile)
 			}
@@ -781,7 +846,7 @@ func TestPlanEnvironmentStack(t *testing.T) {
 				planJSON = stackPlanJSON
 			}
 			run := &fakeRunner{outputs: map[string]string{"tofu show": planJSON, "tofu state": tt.state}}
-			secrets := &fakeSecrets{states: tt.pins}
+			secrets := &fakeSecrets{states: tt.pins, containers: tt.containers, denied: tt.denied}
 			spanner := &fakeSpanner{backup: tt.backup, creating: tt.creating, pending: tt.pending}
 			// stg's stack has been applied by a bedrock with stack ids, but where the case
 			// says otherwise.
@@ -852,6 +917,11 @@ func TestPlanEnvironmentStack(t *testing.T) {
 			for fact, want := range tt.wantFacts {
 				if env[fact] != want {
 					t.Errorf("%s = %q, want %q", fact, env[fact], want)
+				}
+			}
+			if tt.wantSecrets != nil {
+				if diff := cmp.Diff(tt.wantSecrets, secrets.events); diff != "" {
+					t.Errorf("Secret Manager (-want +got):\n%s", diff)
 				}
 			}
 			if tt.wantObject != "" {
@@ -1228,8 +1298,33 @@ func applicationWorkspace(t *testing.T, files map[string]string) Workspace {
 }
 
 // allPinned pins every secret harbor's code declares (APP_COOKIE_KEY and
-// APP_STAFF_OIDC_CLIENT_SECRET, in that order), as one environment's map body.
-const allPinned = `APP_COOKIE_KEY = "3", APP_STAFF_OIDC_CLIENT_SECRET = "1"`
+// APP_STAFF_OIDC_CLIENT_SECRET, in that order), as one environment's map body;
+// generatedPinned is the same with the cookie key declared generated, as render seeds it.
+const (
+	allPinned       = `APP_COOKIE_KEY = "3", APP_STAFF_OIDC_CLIENT_SECRET = "1"`
+	generatedPinned = `APP_COOKIE_KEY = "generated", APP_STAFF_OIDC_CLIENT_SECRET = "1"`
+	// configPath is harbor's data-level configuration in the checkout, and
+	// generatedContainer the cookie key's container in stg when it is generated.
+	configPath         = "pkg/config/data.go"
+	generatedContainer = "projects/p-stg/secrets/imp-stg-gbl-quill-cookie-key"
+)
+
+// generatedConfig is harbor's data-level configuration with the cookie key declared
+// secret:"generated", for a checkout whose code declares a generated secret.
+func generatedConfig(t *testing.T) string {
+	t.Helper()
+
+	data, err := os.ReadFile(filepath.Join("..", "derive", "testdata", "harbor", configPath))
+	if err != nil {
+		t.Fatal(err)
+	}
+	const tagged = "`env:\"APP_COOKIE_KEY\" secret:\"true\"`"
+	if !strings.Contains(string(data), tagged) {
+		t.Fatalf("harbor's %s lacks %s", configPath, tagged)
+	}
+
+	return strings.Replace(string(data), tagged, strings.Replace(tagged, "true", "generated", 1), 1)
+}
 
 // pinnedTfvars is a terraform.tfvars whose secret_versions holds the map bodies given for
 // tst, stg and prd ("" for an environment that pins none).
@@ -1278,14 +1373,30 @@ func TestPlanEnvironments(t *testing.T) {
 		unapplied  string
 		badRequest bool
 		// tfvars is the stack's placement values in the checkout; every secret pinned in
-		// every environment when empty.
+		// every environment when empty. generated declares the cookie key generated in the
+		// checkout's code.
 		tfvars      string
+		generated   bool
 		wantOut     []string
 		wantNotOut  []string
 		wantTofu    []string
 		wantComment []string
 		wantErr     string
 	}{
+		{
+			name:      "a generated secret is pinned to each environment's newest enabled version, read as its plan identity, and left unmounted where none exists yet",
+			subs:      prSubs(),
+			generated: true,
+			pins:      map[string]string{cookieVersion: enabledState, dbVersion: enabledState, "projects/p-stg/secrets/imp-stg-gbl-quill-cookie-key/versions/4": enabledState},
+			tfvars:    pinnedTfvars(generatedPinned, generatedPinned, generatedPinned),
+			wantOut: []string{
+				"APP_COOKIE_KEY: imp-tst-gbl-quill-cookie-key has no enabled version yet (a generated secret, whose first version tst's next release build adds): the plan mounts nothing for it.",
+				"APP_COOKIE_KEY: version 4 of imp-stg-gbl-quill-cookie-key, its newest enabled, is the pin (a generated secret: its version is derived at each plan).",
+				"APP_COOKIE_KEY: imp-prd-gbl-quill-cookie-key has no enabled version yet",
+			},
+			wantNotOut: []string{"no pinned version", "Build REJECTED"},
+			wantTofu:   []string{initOf("tst", "p-tst"), planOf("tst"), showOf("tst"), initOf("stg", "p-stg"), planOf("stg") + ` -var generated_secret_versions={APP_COOKIE_KEY="4"}`, showOf("stg"), initOf("prd", "p-prd"), planOf("prd"), showOf("prd")},
+		},
 		{
 			name:       "a secret with no pinned version in stg is said in stg's summary and the log, not refused; tst, the first environment, says nothing",
 			subs:       prSubs(),
@@ -1474,7 +1585,11 @@ func TestPlanEnvironments(t *testing.T) {
 			if tfvars == "" {
 				tfvars = pinnedTfvars(allPinned, allPinned, allPinned)
 			}
-			w := applicationWorkspace(t, map[string]string{placementPath: testPlacement(""), tfvarsPath: tfvars})
+			files := map[string]string{placementPath: testPlacement(""), tfvarsPath: tfvars}
+			if tt.generated {
+				files[configPath] = generatedConfig(t)
+			}
+			w := applicationWorkspace(t, files)
 			if tt.stackFile != "" {
 				writeStackFile(t, w, tt.stackFile)
 			}

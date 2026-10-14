@@ -452,11 +452,12 @@ func TestLocalsSecrets(t *testing.T) {
 	tests := []struct {
 		name    string
 		src     string
-		want    []string
+		want    []SecretVariable
 		wantErr string
 	}{
-		{name: "the keys in order", src: "locals {\n  secrets = {\n    APP_A_KEY = { name = \"a-key\" }\n    \"APP_B_KEY\" = { name = \"b-key\" }\n  }\n}\n", want: []string{"APP_A_KEY", "APP_B_KEY"}},
-		{name: "the secrets local in a second locals block", src: "locals {\n  app = \"quill\"\n}\nlocals {\n  secrets = {}\n}\n", want: []string{}},
+		{name: "the keys in order", src: "locals {\n  secrets = {\n    APP_A_KEY = { name = \"a-key\" }\n    \"APP_B_KEY\" = { name = \"b-key\" }\n  }\n}\n", want: []SecretVariable{{Name: "APP_A_KEY"}, {Name: "APP_B_KEY"}}},
+		{name: "a generated entry says so, a plain one or a false one does not", src: "locals {\n  secrets = {\n    APP_A_KEY = { name = \"a-key\", generated = true }\n    APP_B_KEY = { name = \"b-key\", generated = false }\n    APP_C_KEY = \"c\"\n  }\n}\n", want: []SecretVariable{{Name: "APP_A_KEY", Generated: true}, {Name: "APP_B_KEY"}, {Name: "APP_C_KEY"}}},
+		{name: "the secrets local in a second locals block", src: "locals {\n  app = \"quill\"\n}\nlocals {\n  secrets = {}\n}\n", want: []SecretVariable{}},
 		{name: "no secrets local", src: "locals {\n  app = \"quill\"\n}\n", wantErr: "no secrets local in"},
 		{name: "a secrets local that is not written out", src: "locals {\n  secrets = merge({}, {})\n}\n", wantErr: "is not a map written out"},
 		{name: "a file that will not parse", src: "locals {\n", wantErr: "hclsyntax.ParseConfig()"},
@@ -481,7 +482,7 @@ func TestLocalsSecrets(t *testing.T) {
 				t.Fatalf("localsSecrets() error = %v", err)
 			}
 			if !slices.Equal(got, tt.want) {
-				t.Errorf("localsSecrets() = %q, want %q", got, tt.want)
+				t.Errorf("localsSecrets() = %+v, want %+v", got, tt.want)
 			}
 		})
 	}

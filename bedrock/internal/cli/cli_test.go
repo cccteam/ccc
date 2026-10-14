@@ -676,6 +676,32 @@ func addArgs(args ...string) []string {
 	return append([]string{secretCommand, "add"}, args...)
 }
 
+// generatedLocals is the flat fixture's quill layer with its cookie key generated, as
+// render lists the secrets.
+const generatedLocals = `locals {
+  app = "quill"
+
+  secrets = {
+    APP_COOKIE_KEY = {
+      name      = "cookie-key"
+      source    = "pkg/config/data.go dataConfig.CookieKey"
+      purpose   = "Signs session cookies."
+      generated = true
+    }
+    APP_MAIL_API_KEY = {
+      name      = "mail-api-key"
+      source    = "pkg/config/data.go dataConfig.MailAPIKey"
+      purpose   = "Sends mail."
+      generated = false
+    }
+  }
+
+  labels = {
+    terraform_source_path = "3-app-quill"
+  }
+}
+`
+
 func TestSecretAdd(t *testing.T) {
 	t.Parallel()
 
@@ -704,12 +730,22 @@ func TestSecretAdd(t *testing.T) {
 		hidden      string
 		projects    where.ProjectClientFunc
 		secrets     labSecrets
+		// locals replaces the layer's locals.tf: the secrets as render lists them.
+		locals      string
 		wantErr     string
 		wantOut     []string
 		wantAbsent  []string
 		wantCreated map[string]string
 		wantValue   string
 	}{
+		{
+			name:     "a generated secret takes no value: the pipeline makes it",
+			args:     []string{"tst", "APP_COOKIE_KEY", "--container", "x"},
+			value:    "k-1",
+			projects: noProjects,
+			locals:   generatedLocals,
+			wantErr:  `APP_COOKIE_KEY is generated (secret:"generated" in the code): the pipeline makes its value and derives its version at each build, so there is nothing to add; bedrock secret rotate <env> APP_COOKIE_KEY adds the next version and runs the live release again on it`,
+		},
 		{
 			name:     "a build secret the placement declares for the environment is accepted, no prefix needed",
 			args:     []string{"tst", "UI_LICENSE", "--project", "lab-tst-1", "--container", "imp-tst-gbl-quill-ui-license"},
@@ -848,6 +884,11 @@ func TestSecretAdd(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
+			if tt.locals != "" {
+				if err := os.WriteFile(filepath.Join(layer, "locals.tf"), []byte(tt.locals), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
 			secrets := tt.secrets
 			if secrets.containers == nil {
 				secrets = quillSecrets()
@@ -944,10 +985,20 @@ func TestSecretPin(t *testing.T) {
 		in          string
 		projects    where.ProjectClientFunc
 		secrets     labSecrets
-		wantErr     string
-		wantOut     []string
-		wantFile    []string
+		// locals replaces the layer's locals.tf: the secrets as render lists them.
+		locals   string
+		wantErr  string
+		wantOut  []string
+		wantFile []string
 	}{
+		{
+			name:     "a generated secret is not pinned: its version is derived at each build",
+			args:     []string{"tst", "APP_COOKIE_KEY", "3", "--project", "lab-tst-1", "--container", "imp-tst-gbl-quill-cookie-key"},
+			withDir:  true,
+			projects: noProjects,
+			locals:   generatedLocals,
+			wantErr:  `APP_COOKIE_KEY is generated (secret:"generated" in the code): the pipeline makes its value and derives its version at each build, so there is nothing to pin; bedrock secret rotate <env> APP_COOKIE_KEY adds the next version and runs the live release again on it`,
+		},
 		{
 			name:     "everything typed",
 			args:     []string{"tst", "APP_COOKIE_KEY", "3", "--project", "lab-tst-1", "--container", "imp-tst-gbl-quill-cookie-key"},
@@ -1144,6 +1195,11 @@ func TestSecretPin(t *testing.T) {
 			placement := filepath.Join(infra, "3-app", "quill", "terraform.tfvars")
 			if fixture == fixtureAppRepo {
 				placement = filepath.Join(infra, "terraform.tfvars")
+			}
+			if tt.locals != "" {
+				if err := os.WriteFile(filepath.Join(filepath.Dir(placement), "locals.tf"), []byte(tt.locals), 0o600); err != nil {
+					t.Fatal(err)
+				}
 			}
 			d := deps{domains: noCloudDomains, secrets: quillSecrets().open, projects: labs, cwd: filepath.Join(dir, tt.cwd), interactive: never}
 			if tt.projects != nil {

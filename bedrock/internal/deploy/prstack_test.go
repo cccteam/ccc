@@ -114,6 +114,10 @@ func TestPullRequestStack(t *testing.T) {
 		deployer bool
 		// badRequest names no build.
 		badRequest bool
+		// generated declares the cookie key generated in the checkout's code; pins are
+		// the secret versions that exist, by name, with their state.
+		generated  bool
+		pins       map[string]string
 		wantTofu   []string
 		wantOut    []string
 		wantNotOut []string
@@ -138,6 +142,23 @@ func TestPullRequestStack(t *testing.T) {
 				strings.Replace(written, "%s", "applied", 1),
 			},
 			wantNotOut: []string{"AIzaPr7Key", "Notice: this build runs under"},
+			wantObject: applied(1),
+		},
+		{
+			name:       "a generated secret is mounted at tst's newest enabled version, read as the apply identity; the pull request's stack adds none",
+			comments:   []string{"/gcbrun"},
+			generated:  true,
+			pins:       map[string]string{"projects/p/secrets/imp-tst-gbl-quill-cookie-key/versions/5": enabledState, "projects/p/secrets/imp-tst-gbl-quill-cookie-key/versions/6": "DISABLED"},
+			wantTofu:   []string{initLine, planLine + ` -var generated_secret_versions={APP_COOKIE_KEY="5"}`, showLine, applyLine, outputLine},
+			wantOut:    []string{"APP_COOKIE_KEY: version 5 of imp-tst-gbl-quill-cookie-key, its newest enabled, is the pin (a generated secret: its version is derived at each plan)."},
+			wantObject: applied(1),
+		},
+		{
+			name:       "a generated secret with no version in tst yet is said and left unmounted",
+			comments:   []string{"/gcbrun"},
+			generated:  true,
+			wantTofu:   []string{initLine, planLine, showLine, applyLine, outputLine},
+			wantOut:    []string{"APP_COOKIE_KEY: imp-tst-gbl-quill-cookie-key has no enabled version yet (a generated secret, whose first version tst's next release build adds): the plan mounts nothing for it."},
 			wantObject: applied(1),
 		},
 		{
@@ -360,6 +381,7 @@ func TestPullRequestStack(t *testing.T) {
 			if tt.deployer {
 				subs, secrets = deployerSubs(subs), deployerSecrets(t)
 			}
+			secrets.states = tt.pins
 			identity := applyIdentityID
 			if tt.another {
 				identity = ""
@@ -382,7 +404,11 @@ func TestPullRequestStack(t *testing.T) {
 			for name, content := range tt.tree {
 				files[name] = content
 			}
-			w := workspaceFiles(t, files)
+			if tt.generated {
+				files[configPath] = generatedConfig(t)
+			}
+			// The job reads the application in the checkout for its generated secrets.
+			w := applicationWorkspace(t, files)
 			builds := &fakeBuilds{build: jobBuild(t, subs, identity, steps), token: "test-token"}
 			comments := &fakeComments{bodies: tt.comments}
 			run := &fakeRunner{outputs: map[string]string{"tofu show": plan, "tofu output": output, "tofu state": tt.state}, fail: map[string]error{"tofu apply": tt.applyErr}}
@@ -401,7 +427,7 @@ func TestPullRequestStack(t *testing.T) {
 				"projects/p/locations/us-central1/jobs/quill-pr7-jobs-pr7-c9": {"name": "projects/p/locations/us-central1/jobs/quill-pr7-jobs-pr7-c9", "labels": map[string]any{applicationLabel: "quill", pullRequestLabel: "7", versionLabel: "pr7-c9"}},
 			})
 			clients := &Clients{
-				Builds: builds.open, Comments: comments.read, Exec: run, GitHub: gh, Secrets: secrets.open, Storage: store.open, Run: cloudRun.open,
+				Builds: builds.open, Comments: comments.read, Exec: run, GitHub: gh, Secrets: secrets.open, SecretsAs: secrets.openAs, Storage: store.open, Run: cloudRun.open,
 				Now: func() time.Time { return time.Date(2026, 10, 12, 10, 0, 0, 0, time.UTC) },
 			}
 			req := &BuildRequest{BuildID: "b-1", Project: "p", Location: "us-central1"}

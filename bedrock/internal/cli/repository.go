@@ -19,6 +19,8 @@ type repositoryContext struct {
 	owner     string
 	repo      string
 	placement *derive.Placement
+	// root is the repository's root, where the application's code is read from.
+	root string
 }
 
 // repository finds the repository from the working directory and reads the placement:
@@ -53,5 +55,5 @@ func (d deps) repository(dirFlag, placementFlag string) (*repositoryContext, err
 		return nil, err
 	}
 
-	return &repositoryContext{owner: owner, repo: repo, placement: p}, nil
+	return &repositoryContext{owner: owner, repo: repo, placement: p, root: repoRoot}, nil
 }

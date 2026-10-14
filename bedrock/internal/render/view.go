@@ -18,6 +18,7 @@ import (
 	"github.com/cccteam/ccc/bedrock/internal/derive"
 	"github.com/cccteam/ccc/bedrock/internal/hook"
 	"github.com/cccteam/ccc/bedrock/internal/release"
+	"github.com/cccteam/ccc/bedrock/internal/secret"
 )
 
 // view is the data every template executes against.
@@ -191,6 +192,22 @@ type view struct {
 	SecretExample string
 	// SecretsCell lists the secrets for the README table.
 	SecretsCell string
+	// GeneratedSecrets are the secrets the code declares secret:"generated", whose values
+	// the tooling makes; PinnedSecrets the rest, which someone puts in place and pins.
+	// GeneratedCell lists the generated ones for the README, GeneratedPairs for the
+	// operations workflow (VARIABLE=<container name segment>, space separated), and
+	// TfvarsSecretVersions is the seeded secret_versions block: the word generated for
+	// each generated secret in every environment, nothing else.
+	GeneratedSecrets     []derive.Secret
+	PinnedSecrets        []derive.Secret
+	GeneratedCell        string
+	GeneratedPairs       string
+	TfvarsSecretVersions string
+	// CookieKeyStep and PinStep number the README's hand steps (the directory
+	// registration first, where there is one); HandSteps reports there is any.
+	CookieKeyStep int
+	PinStep       int
+	HandSteps     bool
 	// DatabaseVariablesCell lists the database variables for the README table, the
 	// common prefix written once.
 	DatabaseVariablesCell string
@@ -1104,22 +1121,55 @@ func (v *view) regions() {
 	v.PrimaryCode = v.P.Primary().Code
 }
 
-// secrets spells the secrets.
+// secrets spells the secrets: the files declaring them, the README's cells and example
+// pin, the generated ones apart (the workflow's pairs, the seeded placement's word), and
+// the hand steps' numbers.
 func (v *view) secrets() {
-	var files, example []string
+	var files, example, generatedCells, pairs, entries []string
 	cells := make([]string, 0, len(v.Secrets))
 	for i, s := range v.Secrets {
 		if len(files) == 0 || files[len(files)-1] != s.Variable.File {
 			files = append(files, s.Variable.File)
 		}
 		cells = append(cells, "`"+s.Variable.Name+"`")
+		version := `"1"`
+		if s.Generated {
+			version = `"` + secret.Generated + `"`
+			v.GeneratedSecrets = append(v.GeneratedSecrets, s)
+			generatedCells = append(generatedCells, "`"+s.Variable.Name+"`")
+			pairs = append(pairs, s.Variable.Name+"="+s.Name)
+			entries = append(entries, s.Variable.Name+" = "+version)
+		} else {
+			v.PinnedSecrets = append(v.PinnedSecrets, s)
+		}
 		if i < 2 {
-			example = append(example, s.Variable.Name+` = "1"`)
+			example = append(example, s.Variable.Name+" = "+version)
 		}
 	}
 	v.SecretsFiles = strings.Join(files, ", ")
 	v.SecretsCell = strings.Join(cells, ", ")
 	v.SecretExample = strings.Join(example, ", ")
+	v.GeneratedCell = strings.Join(generatedCells, ", ")
+	v.GeneratedPairs = strings.Join(pairs, " ")
+	value := "{}"
+	if len(entries) > 0 {
+		value = "{ " + strings.Join(entries, ", ") + " }"
+	}
+	versions := make([][2]string, 0, len(v.P.Environments))
+	for _, env := range v.P.Environments {
+		versions = append(versions, [2]string{env, value})
+	}
+	v.TfvarsSecretVersions = aligned("  ", versions)
+	cookieGenerated := v.CookieKeySecret != nil && v.CookieKeySecret.Generated
+	v.CookieKeyStep = 1
+	if v.Directory {
+		v.CookieKeyStep = 2
+	}
+	v.PinStep = v.CookieKeyStep
+	if !cookieGenerated {
+		v.PinStep++
+	}
+	v.HandSteps = v.Directory || !cookieGenerated || len(v.PinnedSecrets) > 0
 }
 
 // blocks prepares the aligned blocks and the remaining phrases.

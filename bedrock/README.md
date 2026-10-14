@@ -538,6 +538,11 @@ It also refuses:
   that some environment's `build_secrets` in `terraform.tfvars` does not declare, naming
   the environments: a release that passed the earlier environments would fail in the
   image build of the one lacking it. An optional mount passes with nothing said.
+- an entry of `secret_versions` in `terraform.tfvars` that disagrees with the code's
+  secret tags: a version number, `latest` or no entry for a secret declared
+  `secret:"generated"`, whose version the pipeline derives at each build and whose entry
+  is the word `generated` in every environment; and the word on a secret someone puts in
+  place. Each line names the environment, the entry and what to write.
 - a build argument `placement.json` declares (`buildArguments`) that no stage of the
   Dockerfile declares with `ARG`, naming the line to add (`ARG FIREBASE_API_KEY`) to the
   stage that builds with it: the image build would be given the value and drop it. An
@@ -851,7 +856,11 @@ thing one step hands the next. In order:
   `plan` saves the plan with its JSON, prints and appends the summary (`STACK_PLAN`), and
   runs the tests: no authoritative IAM resource in the stack other than the file stores'
   bucket policies, and every secret version a
-  planned revision template pins exists and is enabled. Before the plan, in an
+  planned revision template pins exists and is enabled. Before the plan it derives the
+  generated secrets' pins (`secret:"generated"`): the newest enabled version of each
+  container, read as the apply identity, version 1 added when the container has none
+  (the container created ahead of the apply, which adopts it), passed to the plan as
+  `var.generated_secret_versions` and left for the record. Before the plan, in an
   environment other than the first, it refuses the release when the code declares a
   secret the environment's `secret_versions` in `terraform.tfvars` pins no version for
   (the process would start without the variable): the refusal names the environment,
@@ -1098,6 +1107,7 @@ version. Two commands move them along.
 ```sh
 bedrock secret add tst APP_MAIL_API_KEY --from-file key.txt     # a new version, the container created when absent
 bedrock secret pin tst APP_MAIL_API_KEY 2                       # terraform.tfvars secret_versions.tst
+bedrock secret rotate tst APP_COOKIE_KEY                        # a generated secret: a random version, the live release run again
 ```
 
 `secret add` stores a value as a new version of the container the stack names for the
@@ -1122,7 +1132,28 @@ plan says the same in the environment's summary ahead of the release.
 
 Both find the rest from where they run: the infrastructure root, the application, the
 environment project (by its labels) and the container (by its labels and the variable);
-`--dir`, `--app`, `--project` and `--container` override.
+`--dir`, `--app`, `--project` and `--container` override. A value from outside goes in
+through the Secret Manager console first, as a member of the environment's team group
+holding the secret operator entitlement for the time asked, else `gcloud secrets versions
+add`, else `secret add`; the pin is a pull request either way.
+
+A secret the code declares `secret:"generated"` (beside `secret:"true"`; the skeletons'
+cookie key) has a value nobody types: 32 bytes of cryptographically secure random data,
+base64, made by the tooling. Its entry in `secret_versions` is the word `generated` in
+every environment (`render` seeds it; `check` refuses a number there, and the word on a
+secret someone puts in place), `secret add` and `secret pin` refuse the variable, and its
+version is derived at each build the way the image digest is: the tag build's plan step,
+as the apply identity, reads the container's newest enabled version, adds version 1 when
+the container has none (creating the container ahead of the apply, which adopts it), and
+passes the number to the plan (`var.generated_secret_versions`), so the revision template
+pins `versions/N` exactly as a committed pin does, and the deployment record names N
+(`generatedSecrets`). A pull request's plans read each environment's newest version the
+same way and add none. `secret rotate <env> <VARIABLE>` starts the operations workflow
+with the rotate action: its job, as the environment's operations identity, adds a new
+random version (the stack grants that identity and the apply identity the adding of
+versions on the generated containers alone) and runs the live release again, so a
+revision pinned to the new version takes traffic in the same action; a rotated cookie key
+signs every user of the environment out, which is the point.
 
 In the organization's infrastructure repository (the one whose `placement.json` at the root
 names the organization, `organizationId`), the same two commands take one of the

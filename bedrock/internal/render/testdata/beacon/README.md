@@ -257,13 +257,17 @@ environment's plan, before anything is applied: the refusal names the
 environment, every unpinned variable and the pin to make (`bedrock secret pin
 <env> <VARIABLE> <version>`, after `bedrock secret add <env> <VARIABLE>` has
 put the value in place), and the pull request's plan says the same in that
-environment's summary, so the pin lands before the release reaches it. After an
-operator adds a value (`bedrock secret add <env> <VARIABLE>`, or `gcloud
-secrets versions add` as a Secret Version Adder), the pin is bumped in
-`terraform.tfvars` (`bedrock secret pin`) in the same pull request as the
-rotation and rolled out by the next apply and deploy. `latest` is allowed
-only where the map says so, for a secret whose placement marks it as tracking;
-a pinned number is the default posture.
+environment's summary, so the pin lands before the release reaches it. A value
+from outside (an OAuth client secret, a third party's key) goes in through the
+Secret Manager console first, as a member of the environment's team group
+holding the secret operator entitlement for the time asked (`2-env`'s
+`team-group.tf`), else `gcloud secrets versions add`, else `bedrock secret add
+<env> <VARIABLE>`; the pin is then bumped in `terraform.tfvars` (`bedrock
+secret pin`) in the same pull request as the rotation and rolled out by the
+next apply and deploy. `latest` is allowed only where the map says so, for a
+secret whose placement marks it as tracking; a pinned number is the default
+posture. A secret the code declares `secret:"generated"` needs none of this
+(next section).
 
 A new secret's value goes in ahead of the release that first reads it: the
 operator creates the container and adds the value (`bedrock secret add`
@@ -276,6 +280,33 @@ container and adding a version is the `secretOperator` role 1-org defines,
 which nobody holds standing: a member of the environment's team group asks
 for the secret operator entitlement (2-env's `team-group.tf`) and holds the
 role for the time asked.
+
+### Generated secrets
+
+A secret declared `secret:"generated"` in the code (`APP_COOKIE_KEY`) has a
+value nobody types: 32 bytes of cryptographically secure random data, base64,
+made by the tooling. Its entry in `secret_versions` is the word `generated` in
+every environment (`bedrock render` seeds it; `bedrock check` refuses a
+number there, and the word on a secret someone puts in place), and its
+version is derived at each build the way the image digest is: the release's
+plan step, as the apply identity, reads the container's newest enabled
+version, adds version 1 when the container has none (creating the container
+ahead of the apply, which adopts it, with the adding grant on it), and passes
+the number to the plan (`var.generated_secret_versions`), so the revision
+template pins `versions/N` exactly as a committed pin does, and the
+deployment record names N. A pull request's plans read each environment's
+newest version the same way and add none; a plan run by hand without the
+variable mounts no generated secret (the first apply by hand runs that way),
+and the next release build does.
+
+`bedrock secret rotate <env> <VARIABLE>` rotates one: the operations workflow,
+as the environment's operations identity, adds a new random version and runs
+the live release again, so a revision pinned to the new version takes traffic
+in the same action. `secret-manager.tf` grants the apply and operations
+identities Secret Version Adder on the generated containers alone (adding,
+never reading). A rotated cookie key signs every user of that environment
+out, which is the point. `bedrock secret add` and `bedrock secret pin` refuse
+a generated variable.
 
 ### Build secrets
 
@@ -735,9 +766,9 @@ off, and the stack made in its place has an id of its own.
 
 Per environment, after the first apply:
 
-1. Generate a cookie key (`openssl rand -base64 32`) and add it as version 1
-   of `imp-<env>-gbl-beacon-cookie-key`.
-2. Pin the versions in `secret_versions` and apply.
+None: every secret the code declares is generated (the first release build in
+each environment adds its first version and pins it; the first apply by hand
+mounts none yet), and the sign-in needs no registration.
 
 ## Inputs
 
@@ -746,9 +777,10 @@ Per environment, after the first apply:
 | `build_secrets` | Build-time secrets per environment, NAME = pinned version; each reaches the image build as a BuildKit secret. | `map(map(string))` | `{}` | no |
 | `cloud_armor` | Cloud Armor per environment: `"preview"`, `"enforce"` or `"off"` (the policy kept, detached); an environment left out has no policy. Off before removed. | `map(string)` | `{}` | no |
 | `environment` | `tst`, `stg`, or `prd`; passed as `-var` on every run. | `string` | n/a | yes |
+| `generated_secret_versions` | The generated secrets' versions, derived and passed by the pipeline's plan step; never written here. | `map(string)` | `{}` | no |
 | `hostnames` | Hostnames per environment; the first is canonical. | `map(list(string))` | the three above | no |
 | `placeholder_image` | Image the services and job are created with. | `string` | `us-docker.pkg.dev/cloudrun/container/hello` | no |
-| `secret_versions` | Pinned secret version per environment per variable. | `map(map(string))` | all empty | no |
+| `secret_versions` | Pinned secret version per environment per variable; the word `generated` for a generated secret. | `map(map(string))` | all empty | no |
 | `substitutions` | Extra trigger substitutions per environment, for the hooks and the image build. | `map(map(string))` | `{}` | no |
 | `state_bucket` | State bucket, for the upstream layers' outputs. | `string` | n/a | yes |
 

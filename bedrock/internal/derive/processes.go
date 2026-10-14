@@ -41,8 +41,9 @@ func (m *Model) processes(a *app.App, cfg *config) error {
 	if !slices.Contains(a.MainPackages, siteDir) {
 		return errors.Newf("no main package at %s, the site's directory", siteDir)
 	}
-	for _, o := range profile.Sites[0].AllOutlets() {
-		m.Outlets = append(m.Outlets, Outlet{Name: o.Name, Prefix: o.Prefix})
+	outlets := profile.Sites[0].AllOutlets()
+	for i := range outlets {
+		m.Outlets = append(m.Outlets, Outlet{Name: outlets[i].Name, Prefix: outlets[i].Prefix})
 	}
 	site, err := m.process(a, cfg, siteProcess, siteDir)
 	if err != nil {

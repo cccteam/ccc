@@ -1009,7 +1009,7 @@ func TestCustomRolePermissions(t *testing.T) {
 				"firebaserules.releases.get", "firebaserules.rulesets.get",
 				"logging.buckets.get", "logging.exclusions.get", "logging.sinks.get",
 				"run.jobs.get", "run.services.get", "run.services.listTagBindings",
-				"secretmanager.secrets.get", "secretmanager.versions.get",
+				"secretmanager.secrets.get", "secretmanager.versions.get", "secretmanager.versions.list",
 				"apikeys.keys.get", "apikeys.keys.getKeyString", "storage.buckets.get",
 			},
 		},

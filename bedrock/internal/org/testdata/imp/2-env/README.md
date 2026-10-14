@@ -312,7 +312,11 @@ Below production the application's own stack adds one bounded read (its
 `logging.tf`): `roles/logging.viewAccessor` on the view over the bucket
 holding the application's build logs, so the workflow's migration job prints
 the lines the migrate command wrote into the build's log and reads no other
-log. In `prd` the identity serves the
+log. In every environment the stack adds one bounded write (its
+`secret-manager.tf`): `roles/secretmanager.secretVersionAdder` on the
+containers of the secrets the code declares `secret:"generated"` alone, so
+the workflow's rotate job (`bedrock secret rotate`) adds a random version and
+runs the live release again on it, reading no payload. In `prd` the identity serves the
 rerun alone and holds those two grants and nothing more: the workflow and the
 pipeline refuse the restore instruction there, no migration operation reaches
 it, and it reads no log view. The role carries `cloudbuild.builds.create`,

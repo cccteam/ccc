@@ -192,12 +192,67 @@ func LatestVersions(layerDir, env string) ([]string, error) {
 	return names, nil
 }
 
+// Versions reads the environment's secret_versions map in the layer's placement
+// (terraform.tfvars in layerDir) whole: each variable's entry as written, a version
+// number (bare or quoted), the word latest, or the word generated. No file, no
+// secret_versions map and no map for the environment all hold none; a map that is not
+// written out, and an entry that is neither a string nor a number, are refused.
+func Versions(layerDir, env string) (map[string]string, error) {
+	values := map[string]string{}
+	file := filepath.Join(layerDir, tfvarsFile)
+	src, err := os.ReadFile(file)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return values, nil
+		}
+
+		return nil, errors.Wrap(err, "os.ReadFile()")
+	}
+	p, err := parsePlacement(src, file)
+	if err != nil {
+		return nil, err
+	}
+	if _, ok := p.body.Attributes[versionsKey]; !ok {
+		return values, nil
+	}
+	inner, err := p.versions(versionsKey, env)
+	if err != nil {
+		if errors.Is(err, errNoEnvironment) {
+			return values, nil
+		}
+
+		return nil, err
+	}
+	for _, item := range inner.Items {
+		name, err := ObjectKey(item.KeyExpr)
+		if err != nil {
+			return nil, errors.Wrap(err, p.at(versionsKey+"."+env))
+		}
+		v, diags := item.ValueExpr.Value(nil)
+		if diags.HasErrors() {
+			return nil, errors.Wrap(diags, p.at(versionsKey+"."+env+"."+name))
+		}
+		switch {
+		case !v.IsNull() && v.Type().Equals(cty.String):
+			values[name] = v.AsString()
+		case !v.IsNull() && v.Type().Equals(cty.Number):
+			values[name] = v.AsBigFloat().Text('f', 0)
+		default:
+			return nil, errors.Newf("%s is neither a string nor a number", p.at(versionsKey+"."+env+"."+name))
+		}
+	}
+
+	return values, nil
+}
+
 // The placement's maps EnvironmentValues reads for the pipeline: the substitutions the
 // application declares for its hooks and its image build (the stack's var.substitutions),
-// and the build secrets' pins (var.build_secrets).
+// the build secrets' pins (var.build_secrets), and the secret versions (var.secret_versions,
+// whose values bedrock check reads whole: a number, latest, or generated).
 const (
 	SubstitutionsKey = "substitutions"
 	BuildSecretsKey  = buildKey
+	VersionsKey      = versionsKey
 )
 
 // EnvironmentValues is the environment's map of strings under key in the layer's

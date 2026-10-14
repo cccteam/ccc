@@ -88,6 +88,9 @@ linters:
             # project by its labels through Cloud Resource Manager. Both clients page
             # their answers through the iterator package.
             - cloud.google.com/go/secretmanager
+            # The generated secrets' grant: the apply identity lets itself add a version
+            # through the secret's IAM handle (deploy/generated.go).
+            - cloud.google.com/go/iam
             # org check lists the people holding roles/owner on the environment projects:
             # it reads each project's IAM policy through the Cloud Resource Manager
             # client, whose request and policy types are the IAM API's.

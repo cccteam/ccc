@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/google/go-cmp/cmp"
+
 	"github.com/cccteam/ccc/bedrock/internal/derive"
 	"github.com/cccteam/ccc/impulse/app"
 )
@@ -504,6 +506,129 @@ func TestFirstDifference(t *testing.T) {
 			line, w, g, same := firstDifference([]byte(tt.want), []byte(tt.got))
 			if line != tt.wantLine || w != tt.wantW || g != tt.wantG || same != tt.wantSame {
 				t.Errorf("firstDifference() = %d, %q, %q, %v; want %d, %q, %q, %v", line, w, g, same, tt.wantLine, tt.wantW, tt.wantG, tt.wantSame)
+			}
+		})
+	}
+}
+
+// generatedModel is harbor with its cookie key declared secret:"generated": a copy of the
+// fixture with the tag changed, derived as harborModel is.
+func generatedModel(t *testing.T) *derive.Model {
+	t.Helper()
+
+	dir := filepath.Join(t.TempDir(), "harbor")
+	if err := os.CopyFS(dir, os.DirFS(filepath.Join(fixtures, "harbor"))); err != nil {
+		t.Fatalf("os.CopyFS() error = %v", err)
+	}
+	config := filepath.Join(dir, "pkg", "config", "data.go")
+	data, err := os.ReadFile(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const tagged = "`env:\"APP_COOKIE_KEY\" secret:\"true\"`"
+	if !bytes.Contains(data, []byte(tagged)) {
+		t.Fatalf("%s lacks %s", config, tagged)
+	}
+	data = bytes.Replace(data, []byte(tagged), []byte(strings.Replace(tagged, "true", "generated", 1)), 1)
+	if err := os.WriteFile(config, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	p, err := derive.ReadPlacement(filepath.Join(fixtures, "placement.json"))
+	if err != nil {
+		t.Fatalf("derive.ReadPlacement() error = %v", err)
+	}
+	a, err := app.Discover(dir)
+	if err != nil {
+		t.Fatalf("app.Discover() error = %v", err)
+	}
+	m, err := derive.Derive(a, p)
+	if err != nil {
+		t.Fatalf("derive.Derive() error = %v", err)
+	}
+
+	return m
+}
+
+// TestRunGenerated: check refuses an environment's secret_versions entry that disagrees
+// with the code's secret tags: a number, latest or no entry for a generated secret, and the
+// word generated on a secret someone puts in place; the word on a generated secret in every
+// environment leaves the check clean. The committed stack's render is harbor's, whose
+// cookie key is not generated, so the drift the tag change itself makes is left aside here.
+func TestRunGenerated(t *testing.T) {
+	t.Parallel()
+
+	const seeded = "secret_versions = {\n  tst = {}\n  stg = {}\n  prd = {}\n}\n"
+	tests := []struct {
+		name      string
+		generated bool
+		versions  string
+		want      []GeneratedFinding
+		wantOut   []string
+	}{
+		{
+			name:      "the word in every environment is what a generated secret needs",
+			generated: true,
+			versions:  "secret_versions = {\n  tst = { APP_COOKIE_KEY = \"generated\" }\n  stg = { APP_COOKIE_KEY = \"generated\", APP_STAFF_OIDC_CLIENT_SECRET = \"1\" }\n  prd = { APP_COOKIE_KEY = \"generated\", APP_STAFF_OIDC_CLIENT_SECRET = 2 }\n}\n",
+		},
+		{
+			name:      "a number, latest and no entry for a generated secret are refused, per environment in promotion order",
+			generated: true,
+			versions:  "secret_versions = {\n  tst = { APP_COOKIE_KEY = 3 }\n  stg = { APP_COOKIE_KEY = \"latest\" }\n  prd = {}\n}\n",
+			want: []GeneratedFinding{
+				{Environment: "tst", Variable: "APP_COOKIE_KEY", Problem: `APP_COOKIE_KEY is generated (secret:"generated" at pkg/config/data.go:236) and secret_versions.tst in terraform.tfvars pins "3" where the word generated belongs: write APP_COOKIE_KEY = "generated" there; its version is derived at each build, and bedrock secret rotate tst APP_COOKIE_KEY adds the next`},
+				{Environment: "stg", Variable: "APP_COOKIE_KEY", Problem: `APP_COOKIE_KEY is generated (secret:"generated" at pkg/config/data.go:236) and secret_versions.stg in terraform.tfvars pins "latest" where the word generated belongs: write APP_COOKIE_KEY = "generated" there; its version is derived at each build, and bedrock secret rotate stg APP_COOKIE_KEY adds the next`},
+				{Environment: "prd", Variable: "APP_COOKIE_KEY", Problem: `APP_COOKIE_KEY is generated (secret:"generated" at pkg/config/data.go:236) and secret_versions.prd in terraform.tfvars has no entry for it: write APP_COOKIE_KEY = "generated" there; its version is derived at each build`},
+			},
+			wantOut: []string{"  refused  APP_COOKIE_KEY is generated (secret:\"generated\" at pkg/config/data.go:236) and secret_versions.tst in terraform.tfvars pins \"3\" where the word generated belongs"},
+		},
+		{
+			name:     "the word on a secret someone puts in place is refused",
+			versions: "secret_versions = {\n  tst = { APP_STAFF_OIDC_CLIENT_SECRET = \"generated\" }\n  stg = {}\n  prd = {}\n}\n",
+			want: []GeneratedFinding{
+				{Environment: "tst", Variable: "APP_STAFF_OIDC_CLIENT_SECRET", Problem: `APP_STAFF_OIDC_CLIENT_SECRET carries the word generated in secret_versions.tst in terraform.tfvars, and the code declares it secret:"true" (pkg/config/data.go:243): pin a version number (bedrock secret pin tst APP_STAFF_OIDC_CLIENT_SECRET <version>), or declare it secret:"generated" in the code`},
+			},
+		},
+		{
+			name:     "a stack without generated secrets and without the word has nothing to refuse",
+			versions: "secret_versions = {\n  tst = { APP_COOKIE_KEY = \"3\" }\n  stg = {}\n  prd = {}\n}\n",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			dir := copyGolden(t)
+			path := filepath.Join(dir, "terraform.tfvars")
+			data, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Contains(data, []byte(seeded)) {
+				t.Fatalf("the golden placement lacks the seeded map")
+			}
+			if err := os.WriteFile(path, bytes.Replace(data, []byte(seeded), []byte(tt.versions), 1), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			m := harborModel(t)
+			if tt.generated {
+				m = generatedModel(t)
+			}
+			report, err := Run(t.Context(), m, dir, filepath.Join(dir, "root"))
+			if err != nil {
+				t.Fatalf("Run() error = %v", err)
+			}
+			if diff := cmp.Diff(tt.want, report.Generated); diff != "" {
+				t.Errorf("Generated (-want +got):\n%s", diff)
+			}
+			if clean := len(report.Generated) == 0; report.Clean() != (clean && len(report.Findings) == 0) {
+				t.Errorf("Clean() = %v with %d generated findings and %d drift findings", report.Clean(), len(report.Generated), len(report.Findings))
+			}
+			var out bytes.Buffer
+			report.Write(&out)
+			for _, want := range tt.wantOut {
+				if !strings.Contains(out.String(), want) {
+					t.Errorf("output lacks %q:\n%s", want, out.String())
+				}
 			}
 		})
 	}

@@ -24,6 +24,7 @@ import (
 	"github.com/go-playground/errors/v5"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
+	"github.com/zclconf/go-cty/cty"
 	"golang.org/x/mod/modfile"
 
 	"github.com/cccteam/ccc/bedrock/internal/derive"
@@ -287,31 +288,54 @@ func Placement(layerDir string) (*derive.Placement, error) {
 	return derive.ReadPlacement(file)
 }
 
-// Variables lists the secret variables the application declares. With the application's
-// source directory known, they are read from the code the way render reads it: the model
-// derived from the code and the placement beside the layer, and its secrets in
-// declaration order. Without it, or when the code cannot be read that way, they are the
-// keys of the secrets local in the layer's locals.tf, which render wrote from the same
-// model.
+// SecretVariable is one secret variable the application declares: its name, and whether
+// its value is the tooling's to make (secret:"generated"), which bedrock secret add and
+// pin refuse and bedrock secret rotate serves.
+type SecretVariable struct {
+	Name      string
+	Generated bool
+}
+
+// Variables lists the secret variables the application declares, by name (Secrets, with
+// which are generated).
 func Variables(appDir, layerDir string) ([]string, error) {
-	if appDir == "" {
-		return localsSecrets(filepath.Join(layerDir, localsFile))
+	secrets, err := Secrets(appDir, layerDir)
+	if err != nil {
+		return nil, err
 	}
-	names, err := derivedSecrets(appDir, layerDir)
-	if err == nil {
-		return names, nil
-	}
-	names, fallbackErr := localsSecrets(filepath.Join(layerDir, localsFile))
-	if fallbackErr != nil {
-		return nil, errors.Newf("%s (and reading the code at %s: %s)", errors.Cause(fallbackErr), appDir, errors.Cause(err))
+	names := make([]string, 0, len(secrets))
+	for _, s := range secrets {
+		names = append(names, s.Name)
 	}
 
 	return names, nil
 }
 
+// Secrets lists the secret variables the application declares. With the application's
+// source directory known, they are read from the code the way render reads it: the model
+// derived from the code and the placement beside the layer, and its secrets in
+// declaration order. Without it, or when the code cannot be read that way, they are the
+// entries of the secrets local in the layer's locals.tf, which render wrote from the same
+// model (each entry's generated attribute says which).
+func Secrets(appDir, layerDir string) ([]SecretVariable, error) {
+	if appDir == "" {
+		return localsSecrets(filepath.Join(layerDir, localsFile))
+	}
+	secrets, err := derivedSecrets(appDir, layerDir)
+	if err == nil {
+		return secrets, nil
+	}
+	secrets, fallbackErr := localsSecrets(filepath.Join(layerDir, localsFile))
+	if fallbackErr != nil {
+		return nil, errors.Newf("%s (and reading the code at %s: %s)", errors.Cause(fallbackErr), appDir, errors.Cause(err))
+	}
+
+	return secrets, nil
+}
+
 // derivedSecrets reads the secret variables from the application's code, through the
 // model derived with the placement beside the layer.
-func derivedSecrets(appDir, layerDir string) ([]string, error) {
+func derivedSecrets(appDir, layerDir string) ([]SecretVariable, error) {
 	a, err := app.Discover(appDir)
 	if err != nil {
 		return nil, err
@@ -324,17 +348,17 @@ func derivedSecrets(appDir, layerDir string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	names := make([]string, 0, len(m.Secrets))
+	secrets := make([]SecretVariable, 0, len(m.Secrets))
 	for _, s := range m.Secrets {
-		names = append(names, s.Variable.Name)
+		secrets = append(secrets, SecretVariable{Name: s.Variable.Name, Generated: s.Generated})
 	}
 
-	return names, nil
+	return secrets, nil
 }
 
-// localsSecrets reads the keys of the secrets local in the locals file, in the file's
-// order.
-func localsSecrets(file string) ([]string, error) {
+// localsSecrets reads the entries of the secrets local in the locals file, in the file's
+// order: each key, and whether its object's generated attribute is true.
+func localsSecrets(file string) ([]SecretVariable, error) {
 	src, err := os.ReadFile(file)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
@@ -363,17 +387,41 @@ func localsSecrets(file string) ([]string, error) {
 		if !ok {
 			return nil, errors.Newf("%s in %s is not a map written out ({ ... })", secretsLocal, file)
 		}
-		names := make([]string, 0, len(obj.Items))
+		secrets := make([]SecretVariable, 0, len(obj.Items))
 		for _, item := range obj.Items {
 			name, err := secret.ObjectKey(item.KeyExpr)
 			if err != nil {
 				return nil, errors.Wrapf(err, "%s in %s", secretsLocal, file)
 			}
-			names = append(names, name)
+			secrets = append(secrets, SecretVariable{Name: name, Generated: generatedEntry(item.ValueExpr)})
 		}
 
-		return names, nil
+		return secrets, nil
 	}
 
 	return nil, errors.Newf("no %s local in %s: the application layer's locals list the secret variables the code declares", secretsLocal, file)
+}
+
+// generatedLocal is the attribute of a secrets entry that says the tooling makes its
+// value, as render writes it.
+const generatedLocal = "generated"
+
+// generatedEntry reports whether a secrets entry (an object written out) says generated
+// = true; any other shape is a secret someone puts in place.
+func generatedEntry(expr hclsyntax.Expression) bool {
+	obj, ok := expr.(*hclsyntax.ObjectConsExpr)
+	if !ok {
+		return false
+	}
+	for _, item := range obj.Items {
+		key, err := secret.ObjectKey(item.KeyExpr)
+		if err != nil || key != generatedLocal {
+			continue
+		}
+		v, diags := item.ValueExpr.Value(nil)
+
+		return !diags.HasErrors() && v.Type().Equals(cty.Bool) && v.True()
+	}
+
+	return false
 }

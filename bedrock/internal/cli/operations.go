@@ -1,5 +1,5 @@
 // operations.go is what the commands that start the operations workflow share (restore,
-// rerun, rollback, migration version, rerun and force): the repository and its placement, the
+// rerun, rollback, secret rotate, migration version, rerun and force): the repository and its placement, the
 // checks on the environment and the release, and the dispatch as the signed-in person
 // with the inputs the workflow declares.
 
@@ -25,6 +25,7 @@ import (
 const (
 	actionInput       = "action"
 	releaseInput      = "release"
+	variableInput     = "variable"
 	tableInput        = "table"
 	versionInput      = "version"
 	reasonInput       = "reason"
@@ -39,6 +40,7 @@ const (
 	actionVersion     = "version"
 	actionRerun       = "rerun"
 	actionForce       = "force"
+	actionRotate      = "rotate"
 )
 
 // releaseTagRE is a release tag, v<major>.<minor>.<patch>.

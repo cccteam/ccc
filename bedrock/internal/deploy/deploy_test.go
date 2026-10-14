@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -121,8 +122,22 @@ func TestNewRecordRequest(t *testing.T) {
 		wantRollback *Rollback
 		// wantApproval is the approval a build that waited for one records.
 		wantApproval *Approval
-		wantErr      string
+		// wantGenerated are the generated secrets' versions the plan derived.
+		wantGenerated map[string]string
+		wantErr       string
 	}{
+		{
+			name: "a release's record names the versions the plan derived for the generated secrets",
+			files: map[string]string{
+				EnvironmentFile: liveEnvironment + "export GENERATED_SECRETS=\"APP_COOKIE_KEY=3,APP_SIGNING_KEY=1\"\n",
+				BuildFile:       buildJSON,
+				RevisionsFile:   revisionsLines,
+			},
+			wantObject:    "harbor/tst/1a2b/releases/v1.2.3/b-1.json",
+			wantStatus:    Live,
+			wantRegions:   "us-central1,us-west3",
+			wantGenerated: map[string]string{"APP_COOKIE_KEY": "3", "APP_SIGNING_KEY": "1"},
+		},
 		{
 			name: "a rollback run records who asked and why and the release left, with the database's generation as it is",
 			files: map[string]string{
@@ -356,6 +371,9 @@ func TestNewRecordRequest(t *testing.T) {
 				t.Errorf("gs://%s/%s, want gs://records/%s", req.Bucket, req.Object, tt.wantObject)
 			}
 			r := req.Record
+			if !maps.Equal(r.GeneratedSecrets, tt.wantGenerated) {
+				t.Errorf("GeneratedSecrets = %v, want %v", r.GeneratedSecrets, tt.wantGenerated)
+			}
 			// A release's record names the stack it lies under; a pull request's names none.
 			var wantStackID string
 			if parts := strings.Split(tt.wantObject, "/"); len(parts) == 6 {

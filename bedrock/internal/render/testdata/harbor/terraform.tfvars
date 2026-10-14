@@ -24,9 +24,11 @@ staff_oidc_admin_subject = {
 # The version of each secret an environment runs. Empty means "not yet": the
 # container exists, nothing is mounted; tst alone runs that way,
 # and a release to any other environment is refused until every secret the
-# code declares is pinned there. Bump here after an operator adds a version
+# code declares is pinned there. Bump here after someone adds a version
 # (bedrock secret pin). "latest" only for a secret the placement marks as
-# tracking it.
+# tracking it. "generated" for a secret the code declares secret:"generated":
+# the pipeline makes its value and derives its version at each build, so the
+# word stays, and bedrock secret rotate adds the next version.
 secret_versions = {
   tst = {}
   stg = {}

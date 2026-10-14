@@ -127,6 +127,23 @@ type Report struct {
 	// latest the exception a secret with a real need takes, and the check names each one
 	// so the exception stays visible.
 	Latest []LatestSecret
+	// Generated are the entries of secret_versions in terraform.tfvars that disagree with
+	// the code's secret tags, per environment: a generated secret (secret:"generated",
+	// whose version the pipeline derives at each build) with a version number, latest or
+	// no entry, where the word generated belongs; and a secret someone puts in place
+	// carrying the word. Refused: the stack's own precondition refuses the same.
+	Generated []GeneratedFinding
+}
+
+// GeneratedFinding is one disagreement between a secret's tag in the code and its entry
+// in an environment's secret_versions.
+type GeneratedFinding struct {
+	// Environment is the environment, and Variable the environment variable the secret
+	// feeds, its key in secret_versions.<environment>.
+	Environment string
+	Variable    string
+	// Problem says what the entry is and what to write.
+	Problem string
 }
 
 // LatestSecret is one secret an environment runs at whatever version is added next.
@@ -149,7 +166,7 @@ type MaintenanceFinding struct {
 // lines that a feature release opens, a changelog section for every accepted title type,
 // release-please's files in place, and no Cloud Armor policy removed in one step.
 func (r *Report) Clean() bool {
-	return len(r.Findings) == 0 && len(r.Authoritative) == 0 && len(r.Migrations) == 0 && len(r.BuildSecrets) == 0 && len(r.Binaries) == 0 && len(r.Bundles) == 0 && len(r.Stages) == 0 && len(r.BuildArguments) == 0 && len(r.ReleaseLines) == 0 && len(r.ReleaseSections) == 0 && len(r.ReleaseFiles) == 0 && len(r.CloudArmor) == 0 && len(r.Retired) == 0
+	return len(r.Findings) == 0 && len(r.Authoritative) == 0 && len(r.Migrations) == 0 && len(r.BuildSecrets) == 0 && len(r.Generated) == 0 && len(r.Binaries) == 0 && len(r.Bundles) == 0 && len(r.Stages) == 0 && len(r.BuildArguments) == 0 && len(r.ReleaseLines) == 0 && len(r.ReleaseSections) == 0 && len(r.ReleaseFiles) == 0 && len(r.CloudArmor) == 0 && len(r.Retired) == 0
 }
 
 // Run renders the model and compares the owned files with the directory's, and the
@@ -242,8 +259,46 @@ func (r *Report) scanPlacement(ctx context.Context, m *derive.Model, dir string)
 		return err
 	}
 	r.Latest = latest
+	generated, err := scanGenerated(dir, m)
+	if err != nil {
+		return err
+	}
+	r.Generated = generated
 
 	return nil
+}
+
+// scanGenerated reads the stack's terraform.tfvars against the code's secret tags,
+// environment by environment in promotion order: a generated secret's entry is the word
+// generated in every environment (its version is derived at each build, so a number or
+// latest there pins nothing and a missing entry leaves the placement silent about it),
+// and no other secret's entry is the word.
+func scanGenerated(dir string, m *derive.Model) ([]GeneratedFinding, error) {
+	var found []GeneratedFinding
+	for _, env := range m.Placement.Environments {
+		values, err := secret.Versions(dir, env)
+		if err != nil {
+			return nil, err
+		}
+		for _, s := range m.Secrets {
+			name := s.Variable.Name
+			value, present := values[name]
+			var problem string
+			switch {
+			case s.Generated && !present:
+				problem = fmt.Sprintf("%s is generated (secret:%q at %s:%d) and secret_versions.%s in terraform.tfvars has no entry for it: write %s = %q there; its version is derived at each build", name, secret.Generated, s.Variable.File, s.Variable.Line, env, name, secret.Generated)
+			case s.Generated && value != secret.Generated:
+				problem = fmt.Sprintf("%s is generated (secret:%q at %s:%d) and secret_versions.%s in terraform.tfvars pins %q where the word %s belongs: write %s = %q there; its version is derived at each build, and bedrock secret rotate %s %s adds the next", name, secret.Generated, s.Variable.File, s.Variable.Line, env, value, secret.Generated, name, secret.Generated, env, name)
+			case !s.Generated && value == secret.Generated:
+				problem = fmt.Sprintf("%s carries the word %s in secret_versions.%s in terraform.tfvars, and the code declares it secret:\"true\" (%s:%d): pin a version number (bedrock secret pin %s %s <version>), or declare it secret:%q in the code", name, secret.Generated, env, s.Variable.File, s.Variable.Line, env, name, secret.Generated)
+			default:
+				continue
+			}
+			found = append(found, GeneratedFinding{Environment: env, Variable: name, Problem: problem})
+		}
+	}
+
+	return found, nil
 }
 
 // scanRelease reads release-please's configuration at the application root for the
@@ -464,6 +519,9 @@ func (r *Report) Write(w io.Writer) {
 	}
 	for _, mf := range r.Migrations {
 		fmt.Fprintf(w, "  refused  %s: %s\n", mf.Path, mf.Problem)
+	}
+	for _, g := range r.Generated {
+		fmt.Fprintf(w, "  refused  %s\n", g.Problem)
 	}
 	for _, bs := range r.BuildSecrets {
 		fmt.Fprintf(w, "  refused  Dockerfile mounts build secret %s as required; %s declare%s no such secret (terraform.tfvars build_secrets)\n", bs.ID, joinEnvironments(bs.Missing), pluralS(len(bs.Missing)))

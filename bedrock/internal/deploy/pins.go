@@ -27,7 +27,8 @@ import (
 
 // unpinnedSecrets are the secrets the code declares (the model's, in declaration order)
 // that the stack's placement in the checkout pins no version for in env: what env's
-// processes would start without.
+// processes would start without. A generated secret is never among them: its version is
+// derived at the plan (generated.go), and the placement carries the word for it.
 func unpinnedSecrets(w Workspace, m *derive.Model, env string) ([]string, error) {
 	pinned, err := secret.PinnedVariables(filepath.Join(string(w), stackDir), env)
 	if err != nil {
@@ -35,7 +36,7 @@ func unpinnedSecrets(w Workspace, m *derive.Model, env string) ([]string, error)
 	}
 	var unpinned []string
 	for _, s := range m.Secrets {
-		if !slices.Contains(pinned, s.Variable.Name) {
+		if !s.Generated && !slices.Contains(pinned, s.Variable.Name) {
 			unpinned = append(unpinned, s.Variable.Name)
 		}
 	}
@@ -43,35 +44,48 @@ func unpinnedSecrets(w Workspace, m *derive.Model, env string) ([]string, error)
 	return unpinned, nil
 }
 
+// pinnable counts the secrets the code declares that someone pins: every one but the
+// generated.
+func pinnable(m *derive.Model) int {
+	n := 0
+	for _, s := range m.Secrets {
+		if !s.Generated {
+			n++
+		}
+	}
+
+	return n
+}
+
 // testPins is the release's own test in a tag build, run before the plan so that a refused
 // release changes nothing (a restore run drops and restores the database before its plan):
 // in the first environment an unpinned secret is said and allowed; in any other it refuses
 // the release, naming each unpinned variable and the pin to make; every secret pinned is
-// said.
-func testPins(w Workspace, env string, out io.Writer) error {
+// said. It answers the application in the checkout, which the plan reads on.
+func testPins(w Workspace, env string, out io.Writer) (*derive.Model, error) {
 	p, err := checkoutPlacement(w, "the promotion order is written")
 	if err != nil {
-		return err
+		return nil, err
 	}
 	m, err := checkoutModel(w, p)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	unpinned, err := unpinnedSecrets(w, m, env)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	switch {
-	case len(unpinned) == 0 && len(m.Secrets) > 0:
+	case len(unpinned) == 0 && pinnable(m) > 0:
 		fmt.Fprintf(out, "Secret pins: every secret the code declares has a version pinned in %s (%s in %s).\n", env, pinsKey(env), stackTfvars)
 	case len(unpinned) == 0:
 	case env == p.Integration():
 		fmt.Fprintf(out, "%s has no pinned version for %s (%s in %s): the first environment runs without %s, \"not yet\"; a release to the environments after it is refused until %s is pinned there.\n", env, strings.Join(unpinned, ", "), pinsKey(env), stackTfvars, them(unpinned), each(unpinned))
 	default:
-		return errors.Newf("%s%s", rejected, pinRefusal(env, p.Integration(), unpinned))
+		return nil, errors.Newf("%s%s", rejected, pinRefusal(env, p.Integration(), unpinned))
 	}
 
-	return nil
+	return m, nil
 }
 
 // pinSummary is what an environment's summary says of its secret pins on a pull request:
