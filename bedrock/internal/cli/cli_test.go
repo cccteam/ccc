@@ -71,7 +71,7 @@ func TestRenderThenCheck(t *testing.T) {
 			name:      "a fresh render checks clean",
 			afterFunc: func(*testing.T, string, string) {},
 			wantCode:  0,
-			wantOut:   []string{"23 owned file(s) match the code"},
+			wantOut:   []string{"22 owned file(s) match the code"},
 		},
 		{
 			name: "an edited owned file fails the check",
@@ -95,7 +95,7 @@ func TestRenderThenCheck(t *testing.T) {
 				}
 			},
 			wantCode: 1,
-			wantOut:  []string{"23 owned file(s) match the code", "refused  release-please-config.json is missing at the application root", "bedrock render seeds it when absent"},
+			wantOut:  []string{"22 owned file(s) match the code", "refused  release-please-config.json is missing at the application root", "bedrock render seeds it when absent"},
 		},
 		{
 			name: "an edited seeded file is left alone",
@@ -116,7 +116,7 @@ func TestRenderThenCheck(t *testing.T) {
 			dir := filepath.Join(t.TempDir(), "stack")
 			app := copyRepo(t, fixtureApp)
 			code, out := run(t, "render", "--app", app, "--out", dir, "--placement", placement)
-			if code != 0 || !strings.Contains(out, "Rendered the harbor stack") || !strings.Contains(out, "Seeded terraform.tfvars") || !strings.Contains(out, "Rendered the pipeline into "+app+": .github/workflows/operations.yml, .github/workflows/release-please.yml, cloudbuild-sweep.yaml, cloudbuild.yaml, cmd/generate/bedrock.go.") {
+			if code != 0 || !strings.Contains(out, "Rendered the harbor stack") || !strings.Contains(out, "Seeded terraform.tfvars") || !strings.Contains(out, "Rendered the pipeline into "+app+": .github/workflows/operations.yml, cloudbuild-sweep.yaml, cloudbuild.yaml, cmd/generate/bedrock.go.") {
 				t.Fatalf("render exit = %d, output:\n%s", code, out)
 			}
 			for _, seeded := range []string{
@@ -257,7 +257,7 @@ func TestStackFromLayout(t *testing.T) {
 			if err != nil {
 				t.Fatalf("check error = %v; output:\n%s", err, out)
 			}
-			if want := "23 owned file(s) match the code"; !strings.Contains(out, want) {
+			if want := "22 owned file(s) match the code"; !strings.Contains(out, want) {
 				t.Errorf("check output lacks %q:\n%s", want, out)
 			}
 		})
@@ -1484,6 +1484,38 @@ func TestDeployResolve(t *testing.T) {
 				if !strings.Contains(string(data), want) {
 					t.Errorf("%s lacks %q:\n%s", name, want, data)
 				}
+			}
+		})
+	}
+}
+
+func TestDeployRelease(t *testing.T) {
+	// Not parallel: the cases set the step's variables in the process's environment.
+	tests := []struct {
+		name string
+		// env are the step's variables, name then value.
+		env     [][2]string
+		wantErr string
+	}{
+		{
+			name:    "the step's variables are required, the app's id first",
+			wantErr: "RELEASE_APP_ID is not set: the release trigger's step passes the release app, its key's pinned version, the repository and the pushed branch to the command",
+		},
+		{
+			name:    "the repository is owner/name",
+			env:     [][2]string{{"RELEASE_APP_ID", "1"}, {"RELEASE_KEY_SECRET", "projects/p/secrets/k/versions/1"}, {"REPO_FULL_NAME", "quill"}, {"BRANCH_NAME", "master"}},
+			wantErr: `REPO_FULL_NAME "quill" is not <organization>/<repository>`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			for _, v := range tt.env {
+				t.Setenv(v[0], v[1])
+			}
+			d := deps{domains: noCloudDomains, secrets: noSecretManager, projects: noProjects, deploy: &deploy.Clients{}, interactive: never}
+			out, err := execute(d, "", "deploy", "release")
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("Execute() error = %v, wantErr %q; output:\n%s", err, tt.wantErr, out)
 			}
 		})
 	}

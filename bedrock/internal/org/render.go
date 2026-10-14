@@ -261,6 +261,12 @@ func (v *view) DeployerKeyVersionNameHCL() string {
 	return hclStringOrNull(v.DeployerKeyVersionName())
 }
 
+// ReleaseKeyVersionNameHCL is the pinned version of the release app's key by resource
+// name, quoted, or null until one is pinned.
+func (v *view) ReleaseKeyVersionNameHCL() string {
+	return hclStringOrNull(v.ReleaseKeyVersionName())
+}
+
 // hclNull is HCL's null, the value of what the placement does not record yet.
 const hclNull = "null"
 

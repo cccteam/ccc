@@ -51,7 +51,7 @@ several pull requests. A pull-request build skips both and plans every environme
 	envStack.AddCommand(newDeployEnvStackPlan(d), newDeployEnvStackApply(d))
 	cmd.AddCommand(newDeployResolve(d), newDeployValidateRelease(d), newDeployGuardMigrations(d), newDeployPlanEnvironments(d), newDeployPullRequestStack(d), newDeployStackOutputs(d), newDeployHook(d),
 		newDeployCheckRelease(d), newDeployBuildImage(d), envStack, newDeployBackup(d), newDeployMigrate(d), newDeployJobs(d), newDeployService(d),
-		newDeployShiftTraffic(d), newDeploySweepJobs(d), newDeployRecord(d), newDeployTalkBack(d), newDeploySweep(d), newDeployMaintenance(d), newDeployWindow(d))
+		newDeployShiftTraffic(d), newDeploySweepJobs(d), newDeployRecord(d), newDeployTalkBack(d), newDeploySweep(d), newDeployRelease(d), newDeployMaintenance(d), newDeployWindow(d))
 
 	return cmd
 }
@@ -366,6 +366,30 @@ the traffic where it is.`,
 	cmd.Flags().StringVar(&workspace, "workspace", "/workspace", "the directory the build's steps share")
 
 	return cmd
+}
+
+// newDeployRelease is deploy release.
+func newDeployRelease(d deps) *cobra.Command {
+	return &cobra.Command{
+		Use:   "release",
+		Short: "Cut the application's releases: release-please as the release GitHub App",
+		Long: `release runs in the stack's release trigger, in the first environment, on every push to the default
+branch or a hotfix line, as the application's release identity, from steps a pull request cannot
+edit. It mints the release GitHub App's installation token from its key's pinned version
+(RELEASE_APP_ID and RELEASE_KEY_SECRET, which the trigger passes from 2-env's outputs) and runs
+release-please, pinned, through npx, twice for the pushed branch (REPO_FULL_NAME, BRANCH_NAME):
+github-release, which makes the tag and the GitHub Release of a release pull request the push
+merged, then release-pr, which opens or updates the release pull request from the commits since
+the last release, with the repository's release-please-config.json and .release-please-manifest.json.
+The token is in the two processes' environment and nowhere else; the tag then fires the version
+trigger in every environment, as a tag always has. The release app's key never reaches GitHub.`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			req := &deploy.ReleaseRequest{AppID: os.Getenv("RELEASE_APP_ID"), KeyVersion: os.Getenv("RELEASE_KEY_SECRET"), RepoFullName: os.Getenv("REPO_FULL_NAME"), Branch: os.Getenv("BRANCH_NAME")}
+
+			return deploy.RunRelease(cmd.Context(), d.deploy, req, cmd.OutOrStdout())
+		},
+	}
 }
 
 // newDeployRecord is deploy record.

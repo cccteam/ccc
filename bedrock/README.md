@@ -111,9 +111,12 @@ again does not, because its pull request is already labeled as tagged.
   stack's `.tf` files and its README, the pipeline files at the application root
   (`cloudbuild.yaml`, `cloudbuild-sweep.yaml`), the generate-time step
   (`cmd/generate/bedrock.go`, which runs the pinned bedrock through `go run` so `go
-  generate` needs no bedrock installed) and the GitHub workflows (`.github/workflows/operations.yml`,
-  `release-please.yml`). A person never edits one; the code or the placement changes and
-  the file is rendered again.
+  generate` needs no bedrock installed) and the operations workflow
+  (`.github/workflows/operations.yml`). A person never edits one; the code or the
+  placement changes and the file is rendered again. A **retired file** is one an earlier
+  bedrock rendered and this one does not (`.github/workflows/release-please.yml`: the
+  stack's release trigger cuts the releases in Cloud Build now); `render` removes it and
+  `check` reports it until removed.
 - **Seeded file**: a file bedrock writes once when it is absent and then leaves to a
   person: `terraform.tfvars` (the placement values per environment: the pins, the build
   secrets, the substitutions), the stack's `.gitignore`, and at the application root the

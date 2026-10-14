@@ -21,7 +21,7 @@ placement values per environment; `.gitignore` here, keeping the
 per-environment backend caches and saved plans out of the repository; the
 `Dockerfile` at the root, the image build in its first shape ("Customizing the
 pipeline"), with its `.dockerignore`; and release-please's two files at the
-root, which the release workflow reads: `release-please-config.json`, starting
+root, which the release trigger reads (`cloud-build.tf`): `release-please-config.json`, starting
 the releases at 0.1.0 (`initial-version`) with a feature on the minor below
 1.0 and a changelog section for every title type the CI's `title` check
 accepts (`upgrade`, `infra` and `config` shown, so a merge of only those
@@ -321,6 +321,18 @@ from `2-env`'s state.
   stack, lets only the pull request's resources through, applies it (or
   destroys it, on `/gcbrun down`) and writes what it applied to the records
   bucket for the preview build ("The pipeline's contract" has the object).
+  One holds its steps in the trigger and runs as the release identity
+  (`2-env` makes it in tst alone):
+  `imp-tst-uc1-harbor-release`, on every push to
+  `master` or a hotfix line, runs release-please (pinned, through
+  `bedrock deploy release`) as the organization's release GitHub App: it
+  makes the tag and the GitHub Release of a release pull request the push
+  merged, then opens or updates the release pull request from the commits
+  since the last release. The step mints the app's token from its key's
+  pinned version in Secret Manager (`2-env`'s output; the key never reaches
+  GitHub), and the trigger exists once that version is pinned
+  (`bedrock secret pin github-release-key`, in the organization's
+  repository). The tag then fires the version trigger in every environment.
 - `imp-tst-<primary region code>-harbor-sweep`, tst only: the sweep, run
   hourly by the Cloud Scheduler job of the same name as the apply identity.
   The trigger-held steps are this file's text, so they change with the stack:

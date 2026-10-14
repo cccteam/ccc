@@ -108,7 +108,7 @@ func TestOrgSecret(t *testing.T) {
 			name:    "the secret left out is refused with the choices",
 			args:    []string{"add"},
 			value:   "pem",
-			wantErr: "no organization secret given and no terminal to ask on: pass one of github-infrastructure-key, github-deployer-key",
+			wantErr: "no organization secret given and no terminal to ask on: pass one of github-infrastructure-key, github-deployer-key, github-release-key",
 		},
 		{
 			name:    "the infrastructure key takes no environment",
@@ -118,9 +118,9 @@ func TestOrgSecret(t *testing.T) {
 		},
 		{
 			name:    "an unknown organization secret is refused on add",
-			args:    []string{"add", "github-release-key"},
+			args:    []string{"add", "github-other-key"},
 			value:   "pem",
-			wantErr: `"github-release-key" is not an organization secret: one of github-infrastructure-key, github-deployer-key`,
+			wantErr: `"github-other-key" is not an organization secret: one of github-infrastructure-key, github-deployer-key, github-release-key`,
 		},
 		{
 			name:    "an application's secret is refused on add",
@@ -212,8 +212,8 @@ func TestOrgSecret(t *testing.T) {
 		},
 		{
 			name:    "an unknown organization secret is refused on pin",
-			args:    []string{"pin", "github-release-key", "1"},
-			wantErr: `"github-release-key" is not an organization secret: one of github-infrastructure-key, github-deployer-key`,
+			args:    []string{"pin", "github-other-key", "1"},
+			wantErr: `"github-other-key" is not an organization secret: one of github-infrastructure-key, github-deployer-key, github-release-key`,
 		},
 		{
 			name:    "an application's secret is refused on pin",
@@ -336,12 +336,12 @@ func TestOrgSecretCompletion(t *testing.T) {
 		args []string
 		want []string
 	}{
-		{name: "the secrets", args: []string{"pin", ""}, want: []string{"github-infrastructure-key", "github-deployer-key"}},
+		{name: "the secrets", args: []string{"pin", ""}, want: []string{"github-infrastructure-key", "github-deployer-key", "github-release-key"}},
 		{name: "the infrastructure key's versions", args: []string{"pin", "github-infrastructure-key", ""}, want: []string{"3\tDISABLED", "2\tENABLED", "1\tENABLED"}},
 		{name: "the deployer key's versions", args: []string{"pin", "github-deployer-key", ""}, want: []string{"2\tENABLED", "1\tENABLED"}},
 		{name: "nothing after the infrastructure key on add", args: []string{"add", "github-infrastructure-key", ""}},
 		{name: "nothing after the deployer key on add", args: []string{"add", "github-deployer-key", ""}},
-		{name: "nothing after an unknown secret", args: []string{"pin", "github-release-key", ""}},
+		{name: "nothing after an unknown secret", args: []string{"pin", "github-other-key", ""}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

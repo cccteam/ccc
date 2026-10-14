@@ -15,6 +15,8 @@ output "applications" {
       plan_identity_member       = google_service_account.plan[app].member
       operations_identity_email  = google_service_account.operations[app].email
       operations_identity_member = google_service_account.operations[app].member
+      release_identity_email     = try(google_service_account.release[app].email, null)
+      release_identity_id        = try(google_service_account.release[app].name, null)
       repository_id              = try(google_cloudbuildv2_repository.app[app].id, null)
       repository_name            = try(google_cloudbuildv2_repository.app[app].name, null)
     }
@@ -103,4 +105,14 @@ output "github_deployer_app_id" {
 output "github_deployer_key_secret_version" {
   description = "Resource name of the pinned Secret Manager version holding the deployer app's private key, in the container 0-bootstrap creates in the boot project, from placement.json (githubDeployerKeyVersion); null until pinned."
   value       = local.github_deployer_key_secret_version
+}
+
+output "github_release_app_id" {
+  description = "App ID of the release GitHub App each application's release trigger cuts the releases as, from placement.json."
+  value       = local.github_release_app_id
+}
+
+output "github_release_key_secret_version" {
+  description = "Resource name of the pinned Secret Manager version holding the release app's private key, in the container 0-bootstrap creates in the boot project, from placement.json; null until pinned. The applications' release triggers mint their token from it, in tst, where the release identities live."
+  value       = local.github_release_key_secret_version
 }

@@ -1,7 +1,7 @@
 # ---------------------------------------------------------------------------
 # Cloud Build triggers
 #
-# Five triggers on the repository link 2-env registered under the
+# Six triggers on the repository link 2-env registered under the
 # environment's GitHub connection. Two run cloudbuild.yaml from the
 # repository as the deploy identity:
 #
@@ -33,6 +33,15 @@
 #             (<app>/stacks/<env>/pr<N>/<commit>.json), which the preview
 #             build reads once its image is built.
 #
+# One holds its steps here and runs as the release identity, tst only:
+#
+#   release   every push to master or a hotfix line: release-please, pinned,
+#             as the release GitHub App, whose token the step mints from the
+#             key's pinned version in Secret Manager (2-env's output). It opens
+#             or updates the release pull request and, on the push that merges
+#             it, makes the tag and the GitHub Release; the tag fires version.
+#             The key never reaches GitHub.
+#
 # The sweep (below) runs cloudbuild-sweep.yaml from the default branch as the
 # apply identity, hourly.
 #
@@ -47,7 +56,7 @@
 # release's steps, which is why the steps are few, name one command each, and
 # the commands say so when the steps they run under are an older bedrock's.
 #
-# All five wait on the repository link: until 2-env holds the environment's
+# All six wait on the repository link: until 2-env holds the environment's
 # GitHub connection (its two GitHub values set, the authorization that comes
 # before the first application is registered), no trigger exists, and no
 # build runs: every build starts from a trigger, and the pipeline refuses one
@@ -142,6 +151,13 @@ locals {
   # resource name, from the email 2-env outputs (2-env outputs the deploy
   # identity's name, for the triggers it ran, and the apply identity's email).
   apply_identity_id = "projects/${local.project_id}/serviceAccounts/${local.identities.apply_identity_email}"
+
+  # The release identity's full resource name, from 2-env (null outside tst,
+  # and on a 2-env before the identity), and the release app's key as 2-env
+  # names its pinned version (null until pinned): the release trigger exists
+  # once both are there.
+  release_identity_id = try(coalesce(local.identities.release_identity_id), null)
+  release_key_secret  = try(coalesce(local.env.github_release_key_secret_version), null)
 
   # The first two steps of the trigger-held jobs. The pinned bedrock is read
   # from infrastructure/placement.json in the checkout when the step runs, never
@@ -503,6 +519,86 @@ resource "google_cloudbuild_trigger" "pr_stack" {
     precondition {
       condition     = length(local.redefined_substitutions) == 0
       error_message = "var.substitutions redefines a substitution the pipeline's contract carries; rename it: ${join(", ", local.redefined_substitutions)}."
+    }
+  }
+}
+
+# ---------------------------------------------------------------------------
+# The release job, tst only: on every push to master or a hotfix
+# line, as the release identity (2-env makes it in tst alone), with its
+# steps held here. release-please, pinned (bedrock deploy release), as the
+# release GitHub App: it makes the tag and the GitHub Release of a release
+# pull request the push merged, then opens or updates the release pull
+# request from the commits since the last release. The app's key never leaves
+# Secret Manager: the step mints the app's installation token from the pinned
+# version 2-env names and hands it to release-please in the process's
+# environment. The trigger exists once the key is pinned (bedrock secret pin
+# github-release-key, in the organization's repository); until then a push
+# cuts nothing.
+# ---------------------------------------------------------------------------
+
+resource "google_cloudbuild_trigger" "release" {
+  count = var.environment == "tst" && local.identities.repository_id != null && !local.is_pr && local.release_identity_id != null && local.release_key_secret != null ? 1 : 0
+
+  project  = local.project_id
+  location = local.primary_region
+  name     = "${local.name}-${local.primary_region_code}-${local.app}-release"
+
+  service_account    = local.release_identity_id
+  include_build_logs = "INCLUDE_BUILD_LOGS_WITH_STATUS"
+  substitutions = {
+    _RELEASE_APP_ID     = tostring(local.env.github_release_app_id)
+    _RELEASE_KEY_SECRET = local.release_key_secret
+    _REPO_FULL_NAME     = "impulseframework/beacon"
+  }
+
+  approval_config {
+    approval_required = false
+  }
+
+  repository_event_config {
+    repository = local.identities.repository_id
+
+    push {
+      branch = "^(master|hotfix/[0-9]+\\.[0-9]+\\.x)$"
+    }
+  }
+
+  build {
+    timeout = "2400s"
+
+    step {
+      id         = "FetchBedrock"
+      name       = "gcr.io/cloud-builders/gcloud"
+      entrypoint = "bash"
+      args       = ["-c", local.fetch_bedrock]
+      timeout    = "300s"
+    }
+
+    step {
+      id         = "BuildBedrockCommit"
+      name       = "cgr.dev/chainguard/go@sha256:2c20827746d752c1f18989847956637a0dc979c42507f4059e1d9559ee7733af"
+      entrypoint = "sh"
+      args       = ["-c", local.build_bedrock_commit]
+      env        = local.go_install_env
+      timeout    = "600s"
+    }
+
+    # release-please through npx, in the Node image, with the token the command
+    # mints from the key: the step's environment names the app, the key's
+    # version, the repository and the pushed branch, and nothing else.
+    step {
+      id         = "Release"
+      name       = "docker.io/library/node@sha256:0a7108bf6c7bf5de370ffb1a3ed6be93d405b43ff159f681a8d18c0e2bc2e402"
+      entrypoint = "/builder/home/bedrock"
+      args       = ["deploy", "release"]
+      env        = ["RELEASE_APP_ID=$_RELEASE_APP_ID", "RELEASE_KEY_SECRET=$_RELEASE_KEY_SECRET", "REPO_FULL_NAME=$_REPO_FULL_NAME", "BRANCH_NAME=$BRANCH_NAME"]
+      timeout    = "900s"
+    }
+
+    options {
+      logging             = "CLOUD_LOGGING_ONLY"
+      substitution_option = "ALLOW_LOOSE"
     }
   }
 }

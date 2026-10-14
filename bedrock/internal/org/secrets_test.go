@@ -36,6 +36,13 @@ func TestSecretPlace(t *testing.T) {
 			wantContainer: "ex-boot-gbl-github-deployer-key",
 		},
 		{
+			name:          "the release key, in the boot project too",
+			secret:        ReleaseKey,
+			projects:      map[string]string{"boot": "ex-boot-gbl-core-a1b2"},
+			wantProject:   "ex-boot-gbl-core-a1b2",
+			wantContainer: "ex-boot-gbl-github-release-key",
+		},
+		{
 			name:    "the boot project not recorded yet",
 			secret:  InfrastructureKey,
 			wantErr: "placement.json records no project for boot (projects.boot): record the seed's value there, or pass --project",
@@ -82,6 +89,8 @@ func TestSecretVersionNames(t *testing.T) {
 		name      string
 		placement Placement
 		want      string
+		// release is the release key's version name, pinned apart from the other two.
+		release string
 	}{
 		{name: "nothing pinned", placement: Placement{Prefix: "ex", Projects: map[string]string{"boot": "ex-boot-gbl-core-a1b2"}}, want: "|"},
 		{name: "the boot project not recorded", placement: Placement{Prefix: "ex", GithubInfrastructureKeyVersion: "2", GithubDeployerKeyVersion: "1"}, want: "|"},
@@ -89,6 +98,12 @@ func TestSecretVersionNames(t *testing.T) {
 			name:      "both pinned",
 			placement: Placement{Prefix: "ex", Projects: map[string]string{"boot": "ex-boot-gbl-core-a1b2"}, GithubInfrastructureKeyVersion: "2", GithubDeployerKeyVersion: "1"},
 			want:      "projects/ex-boot-gbl-core-a1b2/secrets/ex-boot-gbl-github-infrastructure-key/versions/2|projects/ex-boot-gbl-core-a1b2/secrets/ex-boot-gbl-github-deployer-key/versions/1",
+		},
+		{
+			name:      "the release key pinned",
+			placement: Placement{Prefix: "ex", Projects: map[string]string{"boot": "ex-boot-gbl-core-a1b2"}, GithubReleaseKeyVersion: "3"},
+			want:      "|",
+			release:   "projects/ex-boot-gbl-core-a1b2/secrets/ex-boot-gbl-github-release-key/versions/3",
 		},
 	}
 	for _, tt := range tests {
@@ -98,6 +113,9 @@ func TestSecretVersionNames(t *testing.T) {
 			p := tt.placement
 			if got := p.SecretVersionName(InfrastructureKey) + "|" + p.DeployerKeyVersionName(); got != tt.want {
 				t.Errorf("version names = %q, want %q", got, tt.want)
+			}
+			if got := p.ReleaseKeyVersionName(); got != tt.release {
+				t.Errorf("ReleaseKeyVersionName() = %q, want %q", got, tt.release)
 			}
 		})
 	}

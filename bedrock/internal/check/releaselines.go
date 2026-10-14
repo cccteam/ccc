@@ -28,7 +28,7 @@ type ReleaseLineFinding struct {
 }
 
 // releasePleaseConfig is release-please's configuration file at the application root,
-// the one the rendered release workflow names and render seeds.
+// the one the stack's release trigger reads and render seeds.
 const releasePleaseConfig = render.ReleasePleaseConfig
 
 // patchForFeature is the setting that puts a feature on the patch below 1.0.

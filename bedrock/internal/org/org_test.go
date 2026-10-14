@@ -125,6 +125,7 @@ func TestPlacementValidate(t *testing.T) {
 		{name: "no deployer app yet", mutate: func(p *Placement) { p.GithubDeployerAppID, p.GithubDeployerKeyVersion = "", "" }},
 		{name: "a deployer app named by slug", mutate: func(p *Placement) { p.GithubDeployerAppID = "imp-deployer" }, wantErr: `githubDeployerAppId "imp-deployer" is not an App ID (digits)`},
 		{name: "a deployer key version of latest", mutate: func(p *Placement) { p.GithubDeployerKeyVersion = "latest" }, wantErr: `githubDeployerKeyVersion "latest" is not a secret version's number (digits, never latest)`},
+		{name: "a release key version of latest", mutate: func(p *Placement) { p.GithubReleaseKeyVersion = "latest" }, wantErr: `githubReleaseKeyVersion "latest" is not a secret version's number (digits, never latest)`},
 		{name: "no Cloud Build authorization yet", mutate: func(p *Placement) { p.CloudBuildInstallationID, p.CloudBuildTokenSecretVersion = "", "" }},
 		{name: "an installation id that is not one", mutate: func(p *Placement) { p.CloudBuildInstallationID = "imp" }, wantErr: `cloudBuildInstallationId "imp" is not an installation id (digits, from the installation's settings page)`},
 		{name: "a token secret version named by latest", mutate: func(p *Placement) {
@@ -399,15 +400,15 @@ func TestGithubAppSteps(t *testing.T) {
 		absent []string
 	}{
 		{
-			name: "the root README: the two apps' permissions, installation and secrets",
+			name: "the root README: the two apps' permissions, installation and keys",
 			path: "README.md",
 			want: []string{
 				"## The two GitHub Apps\n",
 				"   - the release app: Contents, Issues and Pull requests, each read and\n     write;\n",
 				"   - the deployer app: Checks, Deployments, Issues and Pull requests, each\n     read and write.\n",
 				"Install App, on the organization,\n   for all repositories",
-				"`RELEASE_APP_ID` holds the release app's App ID and\n   `RELEASE_APP_PRIVATE_KEY` the whole of its `.pem` file",
-				"   bedrock secret add github-deployer-key --from-file <the .pem file>\n   bedrock secret pin github-deployer-key <version>\n",
+				"   bedrock secret add github-deployer-key --from-file <the deployer app's .pem file>\n   bedrock secret pin github-deployer-key <version>\n   bedrock secret add github-release-key --from-file <the release app's .pem file>\n   bedrock secret pin github-release-key <version>\n",
+				"Both keys live in Secret Manager in the boot\nproject, and neither reaches GitHub.",
 				"([GitHub prerequisites](https://github.com/cccteam/ccc/blob/master/bedrock/README.md#github-prerequisites))",
 			},
 		},
@@ -428,7 +429,7 @@ func TestGithubAppSteps(t *testing.T) {
 				"   bedrock secret add github-infrastructure-key --from-file <the .pem file>\n   bedrock secret pin github-infrastructure-key <version>\n",
 				"### 5. Billing grants and the budget, by a billing administrator\n",
 				"In the Billing console, as the same billing administrator, set the spend\nbudget",
-				"## The deployer GitHub App's key\n",
+				"## The deployer and release GitHub Apps' keys\n",
 				"   bedrock secret add github-deployer-key --from-file <the .pem file>\n   bedrock secret pin github-deployer-key <version>\n",
 				"records it as `githubDeployerKeyVersion` in `placement.json`",
 			},
@@ -438,8 +439,8 @@ func TestGithubAppSteps(t *testing.T) {
 			name: "2-env: the deployer key is 0-bootstrap's, added and pinned there",
 			path: "2-env/README.md",
 			want: []string{
-				"## The deployer GitHub App's key\n",
-				"added with\n`bedrock secret add github-deployer-key` and pinned with `bedrock secret pin\ngithub-deployer-key <version>` (`0-bootstrap/README.md`, \"The deployer GitHub\nApp's key\")",
+				"## The deployer and release GitHub Apps' keys\n",
+				"added with\n`bedrock secret add github-deployer-key` and pinned with `bedrock secret pin\ngithub-deployer-key <version>` (`0-bootstrap/README.md`, \"The deployer and\nrelease GitHub Apps' keys\")",
 				"This layer carries the pinned version's resource name to the\napplications' pipelines through its output `github_deployer_key_secret_version`\nand grants their identities its read: every application's deploy identity,\nand in tst its apply identity too.",
 			},
 			absent: []string{"gcloud secrets versions add", "github-deployer-key <env>", "github_deployer_key_secret_versions"},
@@ -458,6 +459,94 @@ func TestGithubAppSteps(t *testing.T) {
 			for _, a := range tt.absent {
 				if strings.Contains(got, a) {
 					t.Errorf("%s still carries %q", tt.path, a)
+				}
+			}
+		})
+	}
+}
+
+// TestReleaseKeyGrants reads 2-env's release identity and its one grant: the container
+// is 0-bootstrap's in the boot project, read by the release identity in tst alone, where
+// the release trigger runs; the outputs carry the release app's App ID and the pinned
+// version's resource name, null until pinned.
+func TestReleaseKeyGrants(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		path   string
+		want   []string
+		absent []string
+	}{
+		{
+			name: "the release identity exists in tst alone, writing logs and nothing else",
+			path: "2-env/identities.tf",
+			want: []string{
+				"resource \"google_service_account\" \"release\" {\n  for_each = local.is_tst ? local.apps : toset([])\n",
+				"  account_id   = \"${local.name}-gbl-${each.key}-release\"\n",
+				"resource \"google_project_iam_member\" \"release_logs\" {\n  for_each = local.is_tst ? local.apps : toset([])\n\n  project = local.project_id\n  role    = \"roles/logging.logWriter\"\n  member  = google_service_account.release[each.key].member\n}\n",
+			},
+		},
+		{
+			name: "the release identity reads the boot container, in tst alone",
+			path: "2-env/github-apps.tf",
+			want: []string{
+				"resource \"google_secret_manager_secret_iam_member\" \"release_release_key\" {\n  for_each = local.is_tst ? local.apps : toset([])\n\n  project   = var.boot_project_id\n  secret_id = local.github_release_key_secret\n  role      = \"roles/secretmanager.secretAccessor\"\n  member    = google_service_account.release[each.key].member\n}\n",
+			},
+			absent: []string{"resource \"google_secret_manager_secret\" \"github_release_key\""},
+		},
+		{
+			name: "locals.tf names the boot container, the app and the pin from placement.json",
+			path: "2-env/locals.tf",
+			want: []string{
+				"  github_release_app_id             = 5080645\n",
+				"  github_release_key_secret         = \"${local.prefix}-boot-gbl-github-release-key\"\n",
+				"  github_release_key_secret_version = null\n",
+			},
+		},
+		{
+			name: "the outputs carry the identity, the App ID and the pinned version's resource name",
+			path: "2-env/outputs.tf",
+			want: []string{
+				"      release_identity_email     = try(google_service_account.release[app].email, null)\n",
+				"      release_identity_id        = try(google_service_account.release[app].name, null)\n",
+				"output \"github_release_app_id\" {",
+				"output \"github_release_key_secret_version\" {",
+			},
+		},
+		{
+			name: "0-bootstrap makes the container and 1-org hands its administration to the environment layers",
+			path: "0-bootstrap/github.tf",
+			want: []string{
+				"resource \"google_secret_manager_secret\" \"github_release_key\" {\n  project   = module.boot_project.project_id\n  secret_id = \"${var.prefix}-boot-gbl-github-release-key\"\n",
+				"resource \"google_secret_manager_secret_iam_member\" \"org_tofu_release_key\" {",
+			},
+		},
+		{
+			name: "1-org grants the environment layers the container's administration and their plan identities its read",
+			path: "1-org/runners.tf",
+			want: []string{
+				"resource \"google_secret_manager_secret_iam_member\" \"environment_tofu_release_key\" {\n  for_each = local.environment_layers\n\n  project   = var.boot_project_id\n  secret_id = local.boot.github_release_key_secret\n",
+				"resource \"google_secret_manager_secret_iam_member\" \"environment_plan_release_key\" {",
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			data, err := os.ReadFile(filepath.Join("testdata", "imp", tt.path))
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, want := range tt.want {
+				if !strings.Contains(string(data), want) {
+					t.Errorf("%s lacks %q", tt.path, want)
+				}
+			}
+			for _, absent := range tt.absent {
+				if strings.Contains(string(data), absent) {
+					t.Errorf("%s carries %q", tt.path, absent)
 				}
 			}
 		})

@@ -1,11 +1,12 @@
 # ---------------------------------------------------------------------------
 # The GitHub Apps' keys
 #
-# Two of the organization's GitHub Apps act from the boot project, and their
+# The organization's three GitHub Apps act from the boot project, and their
 # private keys live here, each a version of a container this layer creates,
 # pinned by number in placement.json and never read as latest. The apps are a
 # person's to create and the keys a person's to add (README, "The
-# infrastructure GitHub App" and "The deployer GitHub App's key"):
+# infrastructure GitHub App" and "The deployer and release GitHub Apps'
+# keys"):
 #
 #   imp-boot-gbl-github-infrastructure-key  the infrastructure GitHub App, whose
 #     installation token 1-org's GitHub provider needs, with an organization
@@ -17,14 +18,20 @@
 #     application's pipeline talks back on its pull requests as: 2-env
 #     carries the pinned version to the applications through its output, and
 #     grants their identities the read.
+#   imp-boot-gbl-github-release-key  the release GitHub App, which cuts every
+#     application's releases: each application's release trigger, in tst's
+#     Cloud Build as the application's release identity, mints the app's
+#     token from the key and runs release-please with it. 2-env carries the
+#     pinned version through its output and grants the release identities
+#     the read. The key never reaches GitHub.
 #
-# The org identity administers both containers' policies (and reads the
+# The org identity administers the three containers' policies (and reads the
 # infrastructure key for 1-org's apply); 1-org's plan identity (bootstrap.tf)
 # reads the infrastructure key too, since a plan of 1-org reads the
-# repositories. 1-org grants each environment layer identity the deployer
-# container's administration, so 2-env can grant the applications' identities
-# their read. The runners' reads are cloud-build.tf's. The triggers need no
-# sign-in from GitHub.
+# repositories. 1-org grants each environment layer identity the deployer and
+# release containers' administration, so 2-env can grant the applications'
+# identities their read. The runners' reads are cloud-build.tf's. The triggers
+# need no sign-in from GitHub.
 # ---------------------------------------------------------------------------
 
 resource "google_secret_manager_secret" "github_infrastructure_key" {
@@ -59,6 +66,24 @@ resource "google_secret_manager_secret_iam_member" "org_tofu_infrastructure_key"
 resource "google_secret_manager_secret_iam_member" "org_tofu_deployer_key" {
   project   = module.boot_project.project_id
   secret_id = google_secret_manager_secret.github_deployer_key.secret_id
+  role      = "roles/secretmanager.admin"
+  member    = google_service_account.org_tofu.member
+}
+
+resource "google_secret_manager_secret" "github_release_key" {
+  project   = module.boot_project.project_id
+  secret_id = "${var.prefix}-boot-gbl-github-release-key"
+
+  replication {
+    auto {}
+  }
+
+  labels = local.labels
+}
+
+resource "google_secret_manager_secret_iam_member" "org_tofu_release_key" {
+  project   = module.boot_project.project_id
+  secret_id = google_secret_manager_secret.github_release_key.secret_id
   role      = "roles/secretmanager.admin"
   member    = google_service_account.org_tofu.member
 }

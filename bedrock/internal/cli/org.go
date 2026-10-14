@@ -62,7 +62,7 @@ rules and the OpenTofu version. 0-bootstrap carries the two Cloud Build triggers
 project, that plan the layers on a pull request and apply them on the merge, running bedrock
 org plan and bedrock org apply. It then prints the hand steps the model needs before the
 triggers can run, each opening with the place it happens: the team and role groups, the
-GitHub organization with its apps, their keys and the release app's organization secrets, org
+GitHub organization with its apps and their keys, org
 preflight's check of the bootstrap administrator's roles and the seed (the terraform folder,
 the boot project, the boot identity and the state bucket, as the bootstrap administrator), the
 Cloud Build GitHub authorization in the boot project, the bootstrap apply on local state and
@@ -189,15 +189,14 @@ By hand, before the Cloud Build triggers can run (the commands are in 0-bootstra
      app's App ID and slug go into placement.json, githubReleaseAppId and
      githubReleaseAppSlug, the deployer app's App ID into placement.json,
      githubDeployerAppId, and the infrastructure app's into placement.json,
-     githubInfrastructureAppId), the release app's two organization secrets
-     RELEASE_APP_ID and RELEASE_APP_PRIVATE_KEY, set once by an owner for all
-     repositories, and, if a team is to approve changes to the applications' check
-     files, that team (githubInfrastructureTeam).
+     githubInfrastructureAppId) and, if a team is to approve changes to the applications'
+     check files, that team (githubInfrastructureTeam).
      In a terminal, in this repository, the apps' keys, never by hand, once 0-bootstrap
-     has made their two containers in the boot project: bedrock secret add
+     has made their three containers in the boot project: bedrock secret add
      github-infrastructure-key and bedrock secret pin github-infrastructure-key
-     <version>; bedrock secret add github-deployer-key and bedrock secret pin
-     github-deployer-key <version>.
+     <version>; the same with github-deployer-key and github-release-key. No key reaches
+     GitHub: the release trigger of each application's stack mints the release app's
+     token from the pinned version in Cloud Build.
   1. In a terminal, as %s, after gcloud auth application-default login:
      bedrock org preflight, which must find each of these roles held:
 %s     then the seed: the terraform folder at the organization root (%s), the boot

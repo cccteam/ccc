@@ -19,6 +19,12 @@
 # ID (placement.json's githubDeployerAppId) is not a secret. Until both are
 # recorded, the application stacks pass empty substitutions and the pipeline
 # talks back through nothing.
+#
+# The release GitHub App's key (local.github_release_key_secret, pinned as
+# githubReleaseKeyVersion) is read by each application's release identity, in
+# tst alone, where the release trigger runs: the trigger mints the app's token
+# from it and runs release-please. No other identity reads it, and the key
+# never reaches GitHub.
 # ---------------------------------------------------------------------------
 
 
@@ -38,4 +44,13 @@ resource "google_secret_manager_secret_iam_member" "apply_deployer_key" {
   secret_id = local.github_deployer_key_secret
   role      = "roles/secretmanager.secretAccessor"
   member    = google_service_account.apply[each.key].member
+}
+
+resource "google_secret_manager_secret_iam_member" "release_release_key" {
+  for_each = local.is_tst ? local.apps : toset([])
+
+  project   = var.boot_project_id
+  secret_id = local.github_release_key_secret
+  role      = "roles/secretmanager.secretAccessor"
+  member    = google_service_account.release[each.key].member
 }

@@ -45,8 +45,8 @@ func newSecret(d deps) *cobra.Command {
 that reads it (add), and that pin, in an application layer's placement, the version of a
 secret an environment runs (pin); the layer's cloud-run.tf mounts that version. In the
 organization's infrastructure repository the same two commands take one of the
-organization's secrets instead, the private keys of its GitHub Apps: github-infrastructure-key
-and github-deployer-key, both in the boot project.`,
+organization's secrets instead, the private keys of its GitHub Apps: github-infrastructure-key,
+github-deployer-key and github-release-key, all in the boot project.`,
 	}
 	cmd.AddCommand(newSecretAdd(d))
 	cmd.AddCommand(newSecretPin(d))
@@ -108,7 +108,10 @@ is <prefix>-boot-gbl-github-infrastructure-key in the boot project (projects.boo
 github-deployer-key <version> writes githubDeployerKeyVersion the same way; the plan
 trigger's runs post the layers' plans as the deployer app from that version, and 2-env's
 outputs carry it to the applications' pipelines. The container is
-<prefix>-boot-gbl-github-deployer-key, in the boot project too. --project and --container
+<prefix>-boot-gbl-github-deployer-key, in the boot project too. pin github-release-key
+<version> writes githubReleaseKeyVersion the same way; 2-env's outputs carry it to the
+applications' release triggers, which mint the release app's token from it. The container is
+<prefix>-boot-gbl-github-release-key, in the boot project too. --project and --container
 override; --app and --layer are refused, and so is an application's [env] [VARIABLE].
 Secret Manager is asked first, as above, and the pull request carrying the change goes
 through the Cloud Build triggers.`,
@@ -445,9 +448,10 @@ team-group.tf) and holds the role for the time asked.
 In the organization's infrastructure repository (the one whose placement.json at the root
 names the organization, organizationId), add takes one of the organization's secrets in
 place of [env] [VARIABLE]: github-infrastructure-key, the infrastructure GitHub App's private
-key, into <prefix>-boot-gbl-github-infrastructure-key, or github-deployer-key, the deployer
-GitHub App's private key, into <prefix>-boot-gbl-github-deployer-key, both in the boot
-project (projects.boot). --project and --container override; --app and --layer are refused,
+key, into <prefix>-boot-gbl-github-infrastructure-key, github-deployer-key, the deployer
+GitHub App's private key, into <prefix>-boot-gbl-github-deployer-key, or github-release-key,
+the release GitHub App's private key, into <prefix>-boot-gbl-github-release-key, all in the
+boot project (projects.boot). --project and --container override; --app and --layer are refused,
 and so is an application's [env] [VARIABLE]. The value is read as above; a .pem file is
 stored as given. The containers are 0-bootstrap's own resources, so a project without them
 is refused: apply the layer first. Adding to them is the bootstrap administrator's. The

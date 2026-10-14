@@ -112,6 +112,17 @@ locals {
   github_deployer_key_secret         = "${local.prefix}-boot-gbl-github-deployer-key"
   github_deployer_key_secret_version = "projects/imp-boot-gbl-core-a1b2/secrets/imp-boot-gbl-github-deployer-key/versions/1"
 
+  # The release GitHub App each application's release trigger cuts the
+  # releases as (release-please, run in Cloud Build as the application's
+  # release identity): its App ID, from placement.json (githubReleaseAppId),
+  # and the pinned version of its private key (githubReleaseKeyVersion), in
+  # the container 0-bootstrap creates in the boot project, by resource name.
+  # The version is null until pinned; this layer's outputs carry both to the
+  # applications' stacks, and in tst it grants each release identity the read.
+  github_release_app_id             = 5080645
+  github_release_key_secret         = "${local.prefix}-boot-gbl-github-release-key"
+  github_release_key_secret_version = null
+
   # Role sets. Project-level roles are the price of a shared environment
   # project; the design brief tests how far IAM conditions on
   # resource names can bound them to the application's own prefix.

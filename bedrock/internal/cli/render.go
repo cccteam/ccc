@@ -49,7 +49,7 @@ keeps the per-environment backend caches and saved plans out of the repository, 
 Dockerfile at the application root, the image build in its first shape, with its
 .dockerignore, and release-please's two files there, release-please-config.json (the
 first release 0.1.0, a feature on the minor below 1.0) and .release-please-manifest.json
-(at 0.0.0, which release-please then moves), which the release workflow reads. The
+(at 0.0.0, which release-please then moves), which the stack's release trigger reads. The
 placement is read from --placement, or from placement.json in the stack directory.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -72,6 +72,9 @@ placement is read from --placement, or from placement.json in the stack director
 			fmt.Fprintf(cmd.OutOrStdout(), "Rendered the %s stack into %s: %d owned file(s) written.\n", m.App, outDir, written.Owned)
 			if len(written.Pipeline) > 0 {
 				fmt.Fprintf(cmd.OutOrStdout(), "Rendered the pipeline into %s: %s.\n", appDir, strings.Join(written.Pipeline, ", "))
+			}
+			for _, name := range written.Removed {
+				fmt.Fprintf(cmd.OutOrStdout(), "Removed %s from %s: an earlier bedrock rendered it, and the stack's release trigger cuts the releases now (cloud-build.tf).\n", name, appDir)
 			}
 			for _, name := range written.Seeded {
 				switch name {

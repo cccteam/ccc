@@ -39,7 +39,7 @@ migration modified, renamed or removed against the default branch, and an index 
 default branch has taken since the branch was cut.
 
 It refuses an application root without release-please's configuration or its manifest
-(release-please-config.json, .release-please-manifest.json): the release workflow reads both,
+(release-please-config.json, .release-please-manifest.json): the release trigger reads both,
 and without them no release is cut and nothing reaches an environment. bedrock render seeds
 both when absent; edited, they are the application's. It refuses a configuration whose
 changelog-sections (at the top level, or a package's own) lacks a type the CI's title check

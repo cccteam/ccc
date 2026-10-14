@@ -96,6 +96,9 @@ type Report struct {
 	// BuildArguments are the build arguments the placement declares (buildArguments) that
 	// no stage of the Dockerfile declares with ARG.
 	BuildArguments []BuildArgumentFinding
+	// Retired lists the files an earlier bedrock rendered at the application root that
+	// are still committed (render.Retired); bedrock render removes them.
+	Retired []string
 	// ReleaseLines are the release-please settings under which a feature release would
 	// not open a new hotfix line (a feature on the patch below 1.0).
 	ReleaseLines []ReleaseLineFinding
@@ -146,7 +149,7 @@ type MaintenanceFinding struct {
 // lines that a feature release opens, a changelog section for every accepted title type,
 // release-please's files in place, and no Cloud Armor policy removed in one step.
 func (r *Report) Clean() bool {
-	return len(r.Findings) == 0 && len(r.Authoritative) == 0 && len(r.Migrations) == 0 && len(r.BuildSecrets) == 0 && len(r.Binaries) == 0 && len(r.Bundles) == 0 && len(r.Stages) == 0 && len(r.BuildArguments) == 0 && len(r.ReleaseLines) == 0 && len(r.ReleaseSections) == 0 && len(r.ReleaseFiles) == 0 && len(r.CloudArmor) == 0
+	return len(r.Findings) == 0 && len(r.Authoritative) == 0 && len(r.Migrations) == 0 && len(r.BuildSecrets) == 0 && len(r.Binaries) == 0 && len(r.Bundles) == 0 && len(r.Stages) == 0 && len(r.BuildArguments) == 0 && len(r.ReleaseLines) == 0 && len(r.ReleaseSections) == 0 && len(r.ReleaseFiles) == 0 && len(r.CloudArmor) == 0 && len(r.Retired) == 0
 }
 
 // Run renders the model and compares the owned files with the directory's, and the
@@ -187,6 +190,11 @@ func Run(ctx context.Context, m *derive.Model, dir, appDir string) (*Report, err
 		}
 		if line, want, got, same := firstDifference(f.Content, committed); !same {
 			r.Findings = append(r.Findings, Finding{Path: f.Path, Root: f.Root, Line: line, Want: want, Got: got})
+		}
+	}
+	for _, name := range render.Retired {
+		if _, err := os.Stat(filepath.Join(appDir, filepath.FromSlash(name))); err == nil {
+			r.Retired = append(r.Retired, name)
 		}
 	}
 	authoritative, err := scanAuthoritative(dir, fileStorePolicies(m))
@@ -441,6 +449,9 @@ func (r *Report) Write(w io.Writer) {
 	}
 	for _, path := range r.Unseeded {
 		fmt.Fprintf(w, "  unseeded %s (bedrock render creates it once)\n", path)
+	}
+	for _, path := range r.Retired {
+		fmt.Fprintf(w, "  retired  %s (at the application root): an earlier bedrock rendered it; bedrock render removes it\n", path)
 	}
 	if len(r.Latest) == 0 {
 		fmt.Fprintln(w, "  latest   no secret tracks latest: every entry of secret_versions in terraform.tfvars pins a version number")
