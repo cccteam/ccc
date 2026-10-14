@@ -50,6 +50,7 @@ locals {
     terraform             = "true"
     terraform_source_path = "2-env"
     source_repo           = "imp-impulse-infrastructure"
+    organization          = "imp"
     environment           = var.environment
     bedrock-lab           = "true"
   }

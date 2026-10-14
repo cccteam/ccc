@@ -119,29 +119,40 @@ func rollbackOf(env map[string]string) *Rollback {
 	return &Rollback{Requester: env[requesterFact], Reason: env[rollbackReasonFact], From: env[rollbackFact]}
 }
 
-// generationObject is the object under which a rollback leaves the environment's database
-// generation beside the deployment records: <app>/database/<env>/<n>.json, a prefix no
-// record reader lists.
-func generationObject(app, env string, generation int) string {
-	return app + "/" + generationPrefix + "/" + env + "/" + strconv.Itoa(generation) + ".json"
+// generationPath is where the stack's database generations lie beside its deployment
+// records: <app>/<env>/<id>/database/, a prefix no record reader lists.
+func generationPath(app, env, id string) string {
+	return app + "/" + env + "/" + id + "/" + generationPrefix + "/"
+}
+
+// generationObject is the object under which a restore leaves the environment's database
+// generation: <app>/<env>/<id>/database/<n>.json.
+func generationObject(app, env, id string, generation int) string {
+	return generationPath(app, env, id) + strconv.Itoa(generation) + ".json"
 }
 
 // databaseGeneration is the generation of the environment's database the stack is told:
-// the highest a rollback has written under <app>/database/<env>/, or 1 when none has.
-func databaseGeneration(ctx context.Context, store Store, bucket, app, env string) (int, error) {
-	objects, err := store.List(ctx, bucket, app+"/"+generationPrefix+"/"+env+"/")
-	if err != nil {
-		return 0, errors.Wrapf(err, "listing gs://%s/%s/%s/%s/", bucket, app, generationPrefix, env)
+// the highest a restore has written under the stack's database prefix, with its object,
+// or 1 (and no object) when none has, or when the stack has not been applied.
+func databaseGeneration(ctx context.Context, store Store, bucket, app, env string) (generation int, object string, err error) {
+	id, err := stackID(ctx, store, bucket, app, env)
+	if err != nil || id == "" {
+		return 1, "", err
 	}
-	generation := 1
-	for _, object := range objects {
-		n, err := strconv.Atoi(strings.TrimSuffix(path.Base(object), ".json"))
+	prefix := generationPath(app, env, id)
+	objects, err := store.List(ctx, bucket, prefix)
+	if err != nil {
+		return 0, "", errors.Wrapf(err, "listing gs://%s/%s", bucket, prefix)
+	}
+	generation = 1
+	for _, o := range objects {
+		n, err := strconv.Atoi(strings.TrimSuffix(path.Base(o), ".json"))
 		if err == nil && n > generation {
-			generation = n
+			generation, object = n, o
 		}
 	}
 
-	return generation, nil
+	return generation, object, nil
 }
 
 // generationNote is what a rollback writes under the generation object: enough to read
@@ -173,6 +184,11 @@ func (s *stack) restoreGeneration(ctx context.Context, subs, facts map[string]st
 	app, env := subs[appSub], subs[envSub]
 	if subs[recordsBucket] == "" {
 		return 0, errors.Newf("%s carries no %s: a restore writes the database's generation beside the deployment records, so the run refuses before touching anything", BuildFile, recordsBucket)
+	}
+	// The stack's id, read before anything is touched: the generation is written under it.
+	id, err := appliedStackID(ctx, s.clients.Storage, subs[recordsBucket], app, env)
+	if err != nil {
+		return 0, err
 	}
 	b, err := w.Build()
 	if err != nil {
@@ -221,7 +237,7 @@ func (s *stack) restoreGeneration(ctx context.Context, subs, facts map[string]st
 	}
 	fmt.Fprintf(s.out, "Restored %s from %s; Spanner optimizes it in the background and it serves meanwhile.\n", restored, path.Base(backup.Name))
 	note := generationNote{Generation: next, Database: instance + databaseDatabaseSegment + restored, Backup: backup.Name, Kept: database, Build: b.ID, Release: subs[tagSub], Requester: facts[requesterFact], Approver: facts[approverFact], Reason: facts[restoreReasonFact], At: now.UTC().Format(time.RFC3339)}
-	if err := s.writeGeneration(ctx, subs[recordsBucket], app, env, &note); err != nil {
+	if err := s.writeGeneration(ctx, subs[recordsBucket], app, env, id, &note); err != nil {
 		return 0, err
 	}
 	address := fmt.Sprintf("google_spanner_database.restored[%q]", strconv.Itoa(next))
@@ -301,9 +317,9 @@ func readyBackup(ctx context.Context, clients *Clients, store Spanner, backup *B
 	return backup, nil
 }
 
-// writeGeneration leaves the generation note beside the deployment records, as the deploy
-// identity, which may create objects there and nothing else.
-func (s *stack) writeGeneration(ctx context.Context, bucket, app, env string, note *generationNote) error {
+// writeGeneration leaves the generation note beside the deployment records, under the
+// stack's id, as the deploy identity, which may create objects there and nothing else.
+func (s *stack) writeGeneration(ctx context.Context, bucket, app, env, id string, note *generationNote) error {
 	if bucket == "" {
 		return errors.Newf("%s carries no %s: the generation is written beside the deployment records", BuildFile, recordsBucket)
 	}
@@ -316,7 +332,7 @@ func (s *stack) writeGeneration(ctx context.Context, bucket, app, env string, no
 	if err != nil {
 		return errors.Wrap(err, "json.MarshalIndent()")
 	}
-	object := generationObject(app, env, note.Generation)
+	object := generationObject(app, env, id, note.Generation)
 	if err := store.Write(ctx, bucket, object, append(data, '\n')); err != nil {
 		return errors.Wrapf(err, "writing gs://%s/%s", bucket, object)
 	}

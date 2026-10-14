@@ -140,7 +140,7 @@ locals {
 
   # The task queue (dataConfig.TasksQueue), by name and as the Cloud Tasks API
   # names it: tst's for a pull-request stack, which enqueues on it (tasks.tf).
-  tasks_queue_name = "${local.name}-${local.primary_region_code}-${local.app}-tasks"
+  tasks_queue_name = "${local.name}-${local.primary_region_code}-${local.app}-tasks-${random_id.stack.hex}"
   tasks_queue      = "projects/${local.project_id}/locations/${local.primary_region}/queues/${local.tasks_queue_name}"
 
   # The Firestore database (FirestoreSettings.DatabaseID), by id; a pull-request
@@ -148,7 +148,7 @@ locals {
   firestore_database_id = local.is_pr ? "${local.pr_name}-fs" : "${local.name}-gbl-${local.app}-fs"
   # The browser's web API key (FirestoreSettings.APIKey), by name (firestore.tf); a
   # pull-request stack has its own.
-  firebase_key_name = local.is_pr ? "${local.pr_name}-firebase" : "${local.name}-gbl-${local.app}-firebase"
+  firebase_key_name = local.is_pr ? "${local.pr_name}-firebase-${random_id.stack.hex}" : "${local.name}-gbl-${local.app}-firebase-${random_id.stack.hex}"
 
   # The job process's template job (cmd/jobs), in the primary region, by name
   # and as the Cloud Run API names it; each build's job is named after it with the
@@ -337,11 +337,14 @@ locals {
   # Every resource carries these. terraform_source_path is the stack's state slot
   # in the organization's bucket (3-app/harbor) written as a label value, which
   # admits no slash (Secret Manager and Cloud Run refuse it); source_repo is the
-  # application repository's name, from the placement.
+  # application repository's name, from the placement; organization is the
+  # bedrock organization's prefix, which tells its projects from another's in
+  # the same GCP organization.
   base_labels = {
     terraform             = "true"
     terraform_source_path = "3-app-harbor"
     source_repo           = "harbor"
+    organization          = "imp"
     environment           = var.environment
     application           = local.app
     bedrock-lab           = "true"

@@ -294,6 +294,8 @@ func TestPlanEnvironmentStack(t *testing.T) {
 		wantFacts    map[string]string
 		wantObject   string
 		wantErr      string
+		// noStack says stg's stack says no id (nothing at its stack object).
+		noStack bool
 	}{
 		{
 			name:         "a restore run replaces the database, the Firestore database and, in tst, the file store's bucket",
@@ -497,7 +499,17 @@ func TestPlanEnvironmentStack(t *testing.T) {
 				// The forensic backup stands as the run's release backup in the record.
 				cutFact: "2026-10-05T04:30:00Z", releaseBackupFact: "projects/p-spn/instances/shared-spanner/backups/p-stg-gbl-quill-db-forensic-20261005-0430", releaseBackupTimeFact: "2026-10-05T04:30:00Z", releaseBackupExpiresFact: "2026-11-04T04:30:00Z",
 			},
-			wantObject: "gs://records/quill/database/stg/2.json",
+			wantObject: "gs://records/quill/stg/3c4d/database/2.json",
+		},
+		{
+			name:     "a restore is refused before anything is touched when the stack says no id",
+			subs:     rollbackSubs(),
+			pins:     enabledPins(),
+			env:      generationEnv,
+			backup:   &Backup{Name: releaseBackupName, Database: quillDatabase, State: BackupReady, VersionTime: "2026-10-04T02:00:00Z"},
+			noStack:  true,
+			wantTofu: []string{initLine},
+			wantErr:  "stg's stack says no id (nothing at gs://records/quill/stacks/stg/stack.json): the stack's apply writes it, so the stack has not been applied by a bedrock with stack ids; apply it once",
 		},
 		{
 			name:         "a restore waits for a backup Spanner is still taking, and starts the forensic backup once it is READY",
@@ -543,13 +555,13 @@ func TestPlanEnvironmentStack(t *testing.T) {
 			pins:         enabledPins(),
 			env:          generationEnv,
 			backup:       &Backup{Name: releaseBackupName, Database: quillDatabase, State: BackupReady, VersionTime: "2026-10-04T02:00:00Z"},
-			objects:      map[string]string{"gs://records/quill/database/stg/2.json": "{}"},
-			wantOut:      []string{"Generation 2: a restore put stg's database into its generation 2 (gs://records/quill/database/stg/2.json); the plan points the stack at it.", "Forensic backup: p-stg-gbl-quill-db-2-forensic-20261005-0430 holds p-stg-gbl-quill-db-2", "into p-stg-gbl-quill-db-3, generation 3 of quill's database ==="},
+			objects:      map[string]string{"gs://records/quill/stg/3c4d/database/2.json": "{}"},
+			wantOut:      []string{"Generation 2: a restore put stg's database into its generation 2 (gs://records/quill/stg/3c4d/database/2.json); the plan points the stack at it.", "Forensic backup: p-stg-gbl-quill-db-2-forensic-20261005-0430 holds p-stg-gbl-quill-db-2", "into p-stg-gbl-quill-db-3, generation 3 of quill's database ==="},
 			wantTofu:     []string{initLine, `tofu import -input=false -no-color -var environment=stg -var database_generation=3 google_spanner_database.restored["3"] ` + quillDatabase + "-3", strings.Replace(planLine, "generation=1", "generation=3", 1) + " -var maintenance=1", showLine},
 			wantFact:     "Plan: 2 to add, 1 to change, 1 to destroy.",
 			wantRestored: "p-stg-gbl-quill-db-3 from " + releaseBackupName,
 			wantFacts:    map[string]string{databaseGenerationFact: "3", previousGenerationFact: "2", restoreKeptFact: quillDatabase + "-2", restoreIntoFact: quillDatabase + "-3"},
-			wantObject:   "gs://records/quill/database/stg/3.json",
+			wantObject:   "gs://records/quill/stg/3c4d/database/3.json",
 		},
 		{
 			name:      "a rollback run plans at the generation as it is: nothing restored, no backup started, no maintenance",
@@ -567,7 +579,7 @@ func TestPlanEnvironmentStack(t *testing.T) {
 			pins:         enabledPins(),
 			env:          strings.Replace(generationEnv, releaseBackupName, "@2026-10-04T02:00:00Z", 1) + "export RESTORE_SOURCE_DATABASE=\"p-stg-gbl-quill-db\"\n",
 			backup:       &Backup{Name: "projects/p-spn/instances/shared-spanner/backups/p-stg-gbl-quill-db-pit-20261004-0200", Database: quillDatabase, State: BackupReady, VersionTime: "2026-10-04T02:00:00Z"},
-			objects:      map[string]string{"gs://records/quill/database/stg/2.json": "{}"},
+			objects:      map[string]string{"gs://records/quill/stg/3c4d/database/2.json": "{}"},
 			wantOut:      []string{"Point in time: p-stg-gbl-quill-db-pit-20261004-0200 is made of p-stg-gbl-quill-db as of 2026-10-04T02:00:00Z, kept fourteen days; the restore waits for it.", "Forensic backup: p-stg-gbl-quill-db-2-forensic-20261005-0430 holds p-stg-gbl-quill-db-2", "into p-stg-gbl-quill-db-3, generation 3 of quill's database ==="},
 			wantTofu:     []string{initLine, `tofu import -input=false -no-color -var environment=stg -var database_generation=3 google_spanner_database.restored["3"] ` + quillDatabase + "-3", strings.Replace(planLine, "generation=1", "generation=3", 1) + " -var maintenance=1", showLine},
 			wantFact:     "Plan: 2 to add, 1 to change, 1 to destroy.",
@@ -579,8 +591,8 @@ func TestPlanEnvironmentStack(t *testing.T) {
 			name:      "a release build after a restore plans at the generation the restore wrote",
 			subs:      rollbackSubs(),
 			pins:      enabledPins(),
-			objects:   map[string]string{"gs://records/quill/database/stg/2.json": "{}"},
-			wantOut:   []string{"Generation 2: a restore put stg's database into its generation 2 (gs://records/quill/database/stg/2.json); the plan points the stack at it.", "Tests passed"},
+			objects:   map[string]string{"gs://records/quill/stg/3c4d/database/2.json": "{}"},
+			wantOut:   []string{"Generation 2: a restore put stg's database into its generation 2 (gs://records/quill/stg/3c4d/database/2.json); the plan points the stack at it.", "Tests passed"},
 			wantTofu:  []string{initLine, strings.Replace(planLine, "generation=1", "generation=2", 1), showLine},
 			wantFact:  "Plan: 2 to add, 1 to change, 1 to destroy.",
 			wantFacts: map[string]string{databaseGenerationFact: "2"},
@@ -771,9 +783,11 @@ func TestPlanEnvironmentStack(t *testing.T) {
 			run := &fakeRunner{outputs: map[string]string{"tofu show": planJSON, "tofu state": tt.state}}
 			secrets := &fakeSecrets{states: tt.pins}
 			spanner := &fakeSpanner{backup: tt.backup, creating: tt.creating, pending: tt.pending}
-			store := &memoryStore{objects: map[string]string{}}
-			for k, v := range tt.objects {
-				store.objects[k] = v
+			// stg's stack has been applied by a bedrock with stack ids, but where the case
+			// says otherwise.
+			store := &memoryStore{objects: withStacks(tt.objects)}
+			if !tt.noStack {
+				store.objects[stackKey("records", "quill", "stg")] = stackJSON("3c4d")
 			}
 			clients := &Clients{Exec: run, SecretsAs: secrets.openAs, SpannerAs: spanner.open, Storage: store.open, Sleep: noSleep, Now: func() time.Time { return time.Date(2026, 10, 5, 4, 30, 0, 0, time.UTC) }}
 			if tt.live != "" || strings.Contains(tt.name, "serves") {
@@ -1316,8 +1330,8 @@ func TestPlanEnvironments(t *testing.T) {
 				return subs
 			}(),
 			pins:     enabledPins(),
-			objects:  map[string]string{"gs://records-prd/quill/database/prd/2.json": "{}"},
-			wantOut:  []string{"Generation 2: a restore put prd's database into its generation 2 (gs://records-prd/quill/database/prd/2.json); the plan points the stack at it.", "prd: Plan: 2 to add, 1 to change, 1 to destroy."},
+			objects:  map[string]string{"gs://records-prd/quill/prd/5e6f/database/2.json": "{}"},
+			wantOut:  []string{"Generation 2: a restore put prd's database into its generation 2 (gs://records-prd/quill/prd/5e6f/database/2.json); the plan points the stack at it.", "prd: Plan: 2 to add, 1 to change, 1 to destroy."},
 			wantTofu: []string{initOf("tst", "p-tst"), planOf("tst"), showOf("tst"), initOf("stg", "p-stg"), planOf("stg"), showOf("stg"), initOf("prd", "p-prd"), strings.Replace(planOf("prd"), "generation=1", "generation=2", 1), showOf("prd")},
 		},
 		{
@@ -1476,7 +1490,7 @@ func TestPlanEnvironments(t *testing.T) {
 					store.objects["gs://"+testStateBucket+"/"+statePrefix(subs[appSub], e)+"/default.tfstate"] = "{}"
 				}
 			}
-			for k, v := range tt.objects {
+			for k, v := range withStacks(tt.objects) {
 				store.objects[k] = v
 			}
 			req := &BuildRequest{BuildID: "b-1", Project: "p", Location: "us-central1"}
@@ -1572,9 +1586,9 @@ func TestPreviews(t *testing.T) {
 			name: "a pull request against a hotfix line previews each environment's answer, read as its plan identity",
 			subs: hotfixPR,
 			objects: map[string]string{
-				"gs://tst-records/quill/tst/v1.2.4/b-1.json": strings.Replace(liveIn("tst", "v1.2.4"), `"build": "b-5"`, `"build": "b-0"`, 1),
-				"gs://stg-records/quill/stg/v1.3.0/b-5.json": liveWith("stg", "v1.3.0", first, refits),
-				"gs://prd-records/quill/prd/v1.2.3/b-7.json": liveWith("prd", "v1.2.3", first),
+				"gs://tst-records/quill/tst/1a2b/releases/v1.2.4/b-1.json": strings.Replace(liveIn("tst", "v1.2.4"), `"build": "b-5"`, `"build": "b-0"`, 1),
+				"gs://stg-records/quill/stg/3c4d/releases/v1.3.0/b-5.json": liveWith("stg", "v1.3.0", first, refits),
+				"gs://prd-records/quill/prd/5e6f/releases/v1.2.3/b-7.json": liveWith("prd", "v1.2.3", first),
 			},
 			files: map[string]string{first.path(): first.content},
 			wantOut: []string{
@@ -1596,9 +1610,9 @@ func TestPreviews(t *testing.T) {
 			},
 			placement: testPlacement(`{"stg": {"timeZone": "America/Chicago", "weekly": [{"day": "Sunday", "from": "02:00", "to": "04:00"}]}}`),
 			objects: map[string]string{
-				"gs://tst-records/quill/tst/v1.4.0/b-1.json": liveIn("tst", "v1.4.0"),
-				"gs://stg-records/quill/stg/v1.5.0/b-5.json": liveIn("stg", "v1.5.0"),
-				"gs://prd-records/quill/prd/v1.4.0/b-7.json": liveIn("prd", "v1.4.0"),
+				"gs://tst-records/quill/tst/1a2b/releases/v1.4.0/b-1.json": liveIn("tst", "v1.4.0"),
+				"gs://stg-records/quill/stg/3c4d/releases/v1.5.0/b-5.json": liveIn("stg", "v1.5.0"),
+				"gs://prd-records/quill/prd/5e6f/releases/v1.4.0/b-7.json": liveIn("prd", "v1.4.0"),
 			},
 			files: map[string]string{releaseFilePath: releaseFile(`{"default": {"oldestAnswered": "1.5.0"}, "api": {"kind": "api-key"}}`)},
 			wantOut: []string{
@@ -1618,8 +1632,8 @@ func TestPreviews(t *testing.T) {
 			},
 			placement: testPlacement(`{"stg": {"timeZone": "America/Chicago", "weekly": [{"day": "Sunday", "from": "02:00", "to": "04:00"}], "releases": "all"}, "prd": {"timeZone": "America/Chicago", "weekly": [{"day": "Sunday", "from": "02:00", "to": "04:00"}]}}`),
 			objects: map[string]string{
-				"gs://stg-records/quill/stg/v1.5.0/b-5.json": liveIn("stg", "v1.5.0"),
-				"gs://prd-records/quill/prd/v1.4.0/b-7.json": liveIn("prd", "v1.4.0"),
+				"gs://stg-records/quill/stg/3c4d/releases/v1.5.0/b-5.json": liveIn("stg", "v1.5.0"),
+				"gs://prd-records/quill/prd/5e6f/releases/v1.4.0/b-7.json": liveIn("prd", "v1.4.0"),
 			},
 			files: map[string]string{releaseFilePath: releaseFile(`{"default": {"oldestAnswered": "1.5.0"}}`)},
 			wantOut: []string{
@@ -1630,13 +1644,13 @@ func TestPreviews(t *testing.T) {
 		{
 			name:    "a pull request against a hotfix line of another release line is told production will refuse it at the door",
 			subs:    production("hotfix/1.1.x"),
-			objects: map[string]string{"gs://prd-records/quill/prd/v1.2.3/b-7.json": liveWith("prd", "v1.2.3")},
+			objects: map[string]string{"gs://prd-records/quill/prd/5e6f/releases/v1.2.3/b-7.json": liveWith("prd", "v1.2.3")},
 			wantOut: []string{"prd: WILL REFUSE the hotfix at production's door: production runs v1.2.3, line 1.2; this hotfix is on hotfix/1.1.x. A hotfix is based on the release production runs."},
 		},
 		{
 			name:       "production holding files the line lacks is still answered at the door first, never with a restore",
 			subs:       production("hotfix/1.2.x"),
-			objects:    map[string]string{"gs://prd-records/quill/prd/v1.3.0/b-7.json": liveWith("prd", "v1.3.0", first, refits)},
+			objects:    map[string]string{"gs://prd-records/quill/prd/5e6f/releases/v1.3.0/b-7.json": liveWith("prd", "v1.3.0", first, refits)},
 			files:      map[string]string{first.path(): first.content},
 			wantOut:    []string{"prd: WILL REFUSE the hotfix at production's door: production runs v1.3.0, line 1.3; this hotfix is on hotfix/1.2.x. A hotfix is based on the release production runs."},
 			wantAbsent: []string{"restore prd"},
@@ -1644,7 +1658,7 @@ func TestPreviews(t *testing.T) {
 		{
 			name:    "a pull request behind production on its own line is told to start the line from production's release",
 			subs:    production("hotfix/1.2.x"),
-			objects: map[string]string{"gs://prd-records/quill/prd/v1.2.5/b-7.json": liveWith("prd", "v1.2.5", first, refits)},
+			objects: map[string]string{"gs://prd-records/quill/prd/5e6f/releases/v1.2.5/b-7.json": liveWith("prd", "v1.2.5", first, refits)},
 			files:   map[string]string{first.path(): first.content},
 			wantOut: []string{"prd: WILL REFUSE the hotfix: prd's database holds schema/migrations/000002_Refits.up.sql (in v1.2.5's record), which this pull request does not carry; production is never restored by a run: a hotfix is based on the release production runs, so start the line from v1.2.5."},
 		},
@@ -1652,7 +1666,7 @@ func TestPreviews(t *testing.T) {
 			name:      "a seeded environment whose seed is not in the tree as applied is told the release's build restores it itself and takes the hotfix, before any schema file is compared",
 			subs:      seededPR,
 			placement: seededPlacement(`["tst"]`),
-			objects:   map[string]string{"gs://tst-records/quill/tst/v1.3.0/b-5.json": liveWith("tst", "v1.3.0", first, refits, seed)},
+			objects:   map[string]string{"gs://tst-records/quill/tst/1a2b/releases/v1.3.0/b-5.json": liveWith("tst", "v1.3.0", first, refits, seed)},
 			files:     map[string]string{first.path(): first.content, seed.path(): seed.content + ", edited"},
 			wantOut: []string{
 				"tst: would take the hotfix, after the restore the release's build decides itself: the seed changed since v1.3.0 applied it (build b-5): schema/devseed/000001_Seed.up.sql, not in the tree as applied (edited, renumbered or removed since), so the database is recreated and the migrations and the seed apply from the start, and what the database holds is not compared with the hotfix.",
@@ -1663,7 +1677,7 @@ func TestPreviews(t *testing.T) {
 			name:       "a seeded environment whose seed matches the tree is answered on its schema files: refused on one the pull request does not carry",
 			subs:       seededPR,
 			placement:  seededPlacement(`["tst"]`),
-			objects:    map[string]string{"gs://tst-records/quill/tst/v1.3.0/b-5.json": liveWith("tst", "v1.3.0", first, refits, seed)},
+			objects:    map[string]string{"gs://tst-records/quill/tst/1a2b/releases/v1.3.0/b-5.json": liveWith("tst", "v1.3.0", first, refits, seed)},
 			files:      map[string]string{first.path(): first.content, seed.path(): seed.content},
 			wantOut:    []string{"tst: WILL REFUSE the hotfix: tst's database holds schema/migrations/000002_Refits.up.sql (in v1.3.0's record), which this pull request does not carry; restore tst to the hotfix first: a restore run replaces the database and skips this check."},
 			wantAbsent: []string{"the restore the release's build decides itself"},
@@ -1672,7 +1686,7 @@ func TestPreviews(t *testing.T) {
 			name:      "a seeded environment whose seed matches the tree and whose schema files are all in it would take the hotfix",
 			subs:      seededPR,
 			placement: seededPlacement(`["tst"]`),
-			objects:   map[string]string{"gs://tst-records/quill/tst/v1.3.0/b-5.json": liveWith("tst", "v1.3.0", first, seed)},
+			objects:   map[string]string{"gs://tst-records/quill/tst/1a2b/releases/v1.3.0/b-5.json": liveWith("tst", "v1.3.0", first, seed)},
 			files:     map[string]string{first.path(): first.content, seed.path(): seed.content},
 			wantOut:   []string{"tst: would take the hotfix; its database holds nothing this pull request does not carry (2 file(s) recorded by v1.3.0, build b-5)."},
 		},
@@ -1680,7 +1694,7 @@ func TestPreviews(t *testing.T) {
 			name:      "an environment off the seed list holding a changed seed file is answered as before: refused on the file",
 			subs:      seededPR,
 			placement: seededPlacement(`["stg"]`),
-			objects:   map[string]string{"gs://tst-records/quill/tst/v1.3.0/b-5.json": liveWith("tst", "v1.3.0", first, seed)},
+			objects:   map[string]string{"gs://tst-records/quill/tst/1a2b/releases/v1.3.0/b-5.json": liveWith("tst", "v1.3.0", first, seed)},
 			files:     map[string]string{first.path(): first.content, seed.path(): seed.content + ", edited"},
 			wantOut:   []string{"tst: WILL REFUSE the hotfix: tst's database holds schema/devseed/000001_Seed.up.sql with other content than this pull request carries (by v1.3.0's record); restore tst to the hotfix first: a restore run replaces the database and skips this check."},
 		},
@@ -1716,10 +1730,7 @@ func TestPreviews(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			store := &memoryStore{objects: map[string]string{}}
-			for path, content := range tt.objects {
-				store.objects[path] = content
-			}
+			store := &memoryStore{objects: withStacks(tt.objects)}
 			var out strings.Builder
 			if err := previews(t.Context(), &Clients{StorageAs: store.openAs}, w, subs, m, &out); err != nil {
 				t.Fatalf("previews() error = %v; output:\n%s", err, out.String())

@@ -110,7 +110,7 @@ func TestValidateRelease(t *testing.T) {
 		liveRecord  = `{"app": "quill", "env": "tst", "version": "v1.2.3", "status": "live", "timestamp": "2026-09-27T05:30:00Z", "build": "b-0"}`
 		previewOnly = `{"app": "quill", "env": "tst", "version": "v1.2.3", "status": "preview", "timestamp": "2026-09-27T05:00:00Z", "build": "b-9"}`
 	)
-	live := map[string]string{"gs://tst-records/quill/tst/v1.2.3/b-0.json": liveRecord, "gs://tst-records/quill/tst/v1.2.3/b-9.json": previewOnly}
+	live := map[string]string{"gs://tst-records/quill/tst/1a2b/releases/v1.2.3/b-0.json": liveRecord, "gs://tst-records/quill/tst/1a2b/releases/v1.2.3/b-9.json": previewOnly}
 	// hotfixLive is the hotfix v1.2.4 live in tst, for the gate; first and refits are two
 	// migration files the environment's records may list, as the build may carry them.
 	hotfixLive := strings.Replace(liveRecord, "v1.2.3", "v1.2.4", 1)
@@ -159,7 +159,7 @@ func TestValidateRelease(t *testing.T) {
 			name:      "a breaking release into an environment that takes one at any time passes the gate open",
 			env:       connected,
 			routerDir: routerDir,
-			objects:   mergeObjects(live, map[string]string{"gs://stg-records/quill/stg/v1.2.2/b-3.json": liveIn("stg", "v1.2.2")}),
+			objects:   mergeObjects(live, map[string]string{"gs://stg-records/quill/stg/3c4d/releases/v1.2.2/b-3.json": liveIn("stg", "v1.2.2")}),
 			files:     map[string]string{releaseFilePath: releaseFile(`{"default": {"oldestAnswered": "1.2.3"}}`)},
 			wantOut: []string{
 				"Gate passed: v1.2.3 is live in tst",
@@ -172,7 +172,7 @@ func TestValidateRelease(t *testing.T) {
 			name:       "a release whose oldest answered release the environment runs already deploys at any time",
 			env:        connected,
 			routerDir:  routerDir,
-			objects:    mergeObjects(live, map[string]string{"gs://stg-records/quill/stg/v1.2.2/b-3.json": liveIn("stg", "v1.2.2")}),
+			objects:    mergeObjects(live, map[string]string{"gs://stg-records/quill/stg/3c4d/releases/v1.2.2/b-3.json": liveIn("stg", "v1.2.2")}),
 			files:      map[string]string{releaseFilePath: releaseFile(`{"default": {"oldestAnswered": "1.2.2"}}`)},
 			wantOut:    []string{"No maintenance window: the default outlet answers 1.2.2 at the oldest, which stg's v1.2.2 is not older than; v1.2.3 deploys at any time."},
 			wantWindow: map[string]string{windowNeededFact: "", windowBreakingFact: ""},
@@ -190,7 +190,7 @@ func TestValidateRelease(t *testing.T) {
 			name:       "an outlet that answers its own release alone makes the release breaking",
 			env:        connected,
 			routerDir:  routerDir,
-			objects:    mergeObjects(live, map[string]string{"gs://stg-records/quill/stg/v1.2.2/b-3.json": liveIn("stg", "v1.2.2")}),
+			objects:    mergeObjects(live, map[string]string{"gs://stg-records/quill/stg/3c4d/releases/v1.2.2/b-3.json": liveIn("stg", "v1.2.2")}),
 			files:      map[string]string{releaseFilePath: releaseFile(`{"default": {"oldestAnswered": ""}, "portal": {"oldestAnswered": "this"}}`)},
 			wantOut:    []string{"Maintenance window: v1.2.3 is a breaking release for stg (the portal outlet answers this release alone (oldest answered: this), and stg runs v1.2.2, which it turns away); the window is anytime."},
 			wantWindow: map[string]string{windowNeededFact: trueValue, windowBreakingFact: trueValue},
@@ -205,7 +205,7 @@ func TestValidateRelease(t *testing.T) {
 			subs:      map[string]string{tagSub: "v1.6.0", envSub: prdEnvironment, previousEnvSub: stgEnvironment, previousRecordsSub: "stg-records", recordsBucket: "prd-records"},
 			routerDir: routerDir,
 			placement: testPlacement(`{"prd": "anytime"}`),
-			objects:   map[string]string{"gs://stg-records/quill/stg/v1.6.0/b-5.json": liveIn("stg", "v1.6.0"), "gs://prd-records/quill/prd/v1.4.0/b-7.json": liveIn("prd", "v1.4.0")},
+			objects:   map[string]string{"gs://stg-records/quill/stg/3c4d/releases/v1.6.0/b-5.json": liveIn("stg", "v1.6.0"), "gs://prd-records/quill/prd/5e6f/releases/v1.4.0/b-7.json": liveIn("prd", "v1.4.0")},
 			files:     map[string]string{releaseFilePath: releaseFile(`{"default": {"oldestAnswered": "1.5.0"}}`)},
 			wantOut:   []string{"Maintenance window: v1.6.0 is a breaking release for prd (the default outlet answers 1.5.0 at the oldest, and prd runs v1.4.0, which it turns away); the window is anytime."},
 		},
@@ -218,7 +218,7 @@ func TestValidateRelease(t *testing.T) {
 			},
 			subs:      map[string]string{tagSub: "v1.6.0", envSub: prdEnvironment, previousEnvSub: stgEnvironment, previousRecordsSub: "stg-records", recordsBucket: "prd-records"},
 			routerDir: routerDir,
-			objects:   map[string]string{"gs://stg-records/quill/stg/v1.6.0/b-5.json": liveIn("stg", "v1.6.0"), "gs://prd-records/quill/prd/v1.5.0/b-8.json": liveIn("prd", "v1.5.0")},
+			objects:   map[string]string{"gs://stg-records/quill/stg/3c4d/releases/v1.6.0/b-5.json": liveIn("stg", "v1.6.0"), "gs://prd-records/quill/prd/5e6f/releases/v1.5.0/b-8.json": liveIn("prd", "v1.5.0")},
 			files:     map[string]string{releaseFilePath: releaseFile(`{"default": {"oldestAnswered": "1.5.0"}}`)},
 			wantOut:   []string{"No maintenance window: the default outlet answers 1.5.0 at the oldest, which prd's v1.5.0 is not older than; v1.6.0 deploys at any time."},
 		},
@@ -231,7 +231,7 @@ func TestValidateRelease(t *testing.T) {
 			},
 			subs:      map[string]string{tagSub: "v1.6.0", envSub: prdEnvironment, previousEnvSub: stgEnvironment, previousRecordsSub: "stg-records", recordsBucket: "prd-records"},
 			routerDir: routerDir,
-			objects:   map[string]string{"gs://stg-records/quill/stg/v1.6.0/b-5.json": liveIn("stg", "v1.6.0"), "gs://prd-records/quill/prd/v1.4.0/b-7.json": liveIn("prd", "v1.4.0")},
+			objects:   map[string]string{"gs://stg-records/quill/stg/3c4d/releases/v1.6.0/b-5.json": liveIn("stg", "v1.6.0"), "gs://prd-records/quill/prd/5e6f/releases/v1.4.0/b-7.json": liveIn("prd", "v1.4.0")},
 			files:     map[string]string{releaseFilePath: releaseFile(`{"default": {"oldestAnswered": "1.5.0"}}`)},
 			wantErr:   `Build REJECTED: prd has no maintenance setting in infrastructure/placement.json and v1.6.0 is a breaking release (the default outlet answers 1.5.0 at the oldest, and prd runs v1.4.0, which it turns away). Write "maintenance": {"prd": "anytime"} for a release at any time, or the client's windows, and release again.`,
 		},
@@ -241,7 +241,7 @@ func TestValidateRelease(t *testing.T) {
 			routerDir: routerDir,
 			placement: testPlacement(`{"stg": {"timeZone": "America/Chicago", "weekly": [{"day": "Sunday", "from": "02:00", "to": "04:00"}], "releases": "all"}}`),
 			now:       chicago(10, 4, 2, 30),
-			objects:   mergeObjects(live, map[string]string{"gs://stg-records/quill/stg/v1.2.2/b-3.json": liveIn("stg", "v1.2.2")}),
+			objects:   mergeObjects(live, map[string]string{"gs://stg-records/quill/stg/3c4d/releases/v1.2.2/b-3.json": liveIn("stg", "v1.2.2")}),
 			files:     map[string]string{releaseFilePath: releaseFile(`{"default": {"oldestAnswered": "1.2.2"}}`)},
 			wantOut: []string{
 				"Maintenance window: v1.2.3 is a release for stg (the default outlet answers 1.2.2 at the oldest, which stg's v1.2.2 is not older than; every release waits for stg's window (releases: all)); the window is Sunday 02:00 to 04:00 America/Chicago, every release.",
@@ -255,7 +255,7 @@ func TestValidateRelease(t *testing.T) {
 			routerDir: routerDir,
 			placement: testPlacement(`{"stg": {"timeZone": "America/Chicago", "weekly": [{"day": "Sunday", "from": "02:00", "to": "04:00"}]}}`),
 			now:       chicago(10, 3, 20, 0),
-			objects:   mergeObjects(live, map[string]string{"gs://stg-records/quill/stg/v1.2.2/b-3.json": liveIn("stg", "v1.2.2")}),
+			objects:   mergeObjects(live, map[string]string{"gs://stg-records/quill/stg/3c4d/releases/v1.2.2/b-3.json": liveIn("stg", "v1.2.2")}),
 			files:     map[string]string{releaseFilePath: releaseFile(`{"default": {"oldestAnswered": "1.2.3"}}`)},
 			wantOut:   []string{"stg's window next opens Sunday 2026-10-04 02:00 CDT (in 6h, Sunday 02:00 to 04:00 America/Chicago): the image is built and the jobs are made now, and the run waits for the window before maintenance begins."},
 		},
@@ -265,7 +265,7 @@ func TestValidateRelease(t *testing.T) {
 			routerDir: routerDir,
 			placement: testPlacement(`{"stg": {"timeZone": "America/Chicago", "weekly": [{"day": "Sunday", "from": "02:00", "to": "04:00"}]}}`),
 			now:       chicago(10, 5, 10, 0),
-			objects:   mergeObjects(live, map[string]string{"gs://stg-records/quill/stg/v1.2.2/b-3.json": liveIn("stg", "v1.2.2")}),
+			objects:   mergeObjects(live, map[string]string{"gs://stg-records/quill/stg/3c4d/releases/v1.2.2/b-3.json": liveIn("stg", "v1.2.2")}),
 			files:     map[string]string{releaseFilePath: releaseFile(`{"default": {"oldestAnswered": "1.2.3"}}`)},
 			wantErr:   "Build REJECTED: stg's maintenance window next opens Sunday 2026-10-11 02:00 CDT (in 136h, Sunday 02:00 to 04:00 America/Chicago), further away than this run can wait (until Tuesday 2026-10-06 07:00 CDT, the build's timeout less 3h0m0s for the steps after the window): start the release on the day of the window.",
 		},
@@ -275,7 +275,7 @@ func TestValidateRelease(t *testing.T) {
 			routerDir: routerDir,
 			placement: testPlacement(`{"stg": {"timeZone": "America/Chicago", "dates": [{"on": "2026-11-15", "from": "22:00", "to": "23:30"}]}}`),
 			now:       chicago(11, 15, 22, 10),
-			objects:   mergeObjects(live, map[string]string{"gs://stg-records/quill/stg/v1.2.2/b-3.json": liveIn("stg", "v1.2.2")}),
+			objects:   mergeObjects(live, map[string]string{"gs://stg-records/quill/stg/3c4d/releases/v1.2.2/b-3.json": liveIn("stg", "v1.2.2")}),
 			files:     map[string]string{releaseFilePath: releaseFile(`{"default": {"oldestAnswered": "1.2.3"}}`)},
 			wantOut:   []string{"stg's window is open now (the dated slot 2026-11-15 22:00 to 23:30 America/Chicago, until Sunday 2026-11-15 23:30 CST)"},
 		},
@@ -284,7 +284,7 @@ func TestValidateRelease(t *testing.T) {
 			env:       connected,
 			routerDir: routerDir,
 			placement: testPlacement(`{"stg": {"timeZone": "America/Chicago", "dates": [{"on": "2026-09-15", "from": "22:00", "to": "23:30"}]}}`),
-			objects:   mergeObjects(live, map[string]string{"gs://stg-records/quill/stg/v1.2.2/b-3.json": liveIn("stg", "v1.2.2")}),
+			objects:   mergeObjects(live, map[string]string{"gs://stg-records/quill/stg/3c4d/releases/v1.2.2/b-3.json": liveIn("stg", "v1.2.2")}),
 			files:     map[string]string{releaseFilePath: releaseFile(`{"default": {"oldestAnswered": "1.2.3"}}`)},
 			wantErr:   "Build REJECTED: stg's maintenance window has no opening ahead (its dated slots have passed and it has no weekly slot): write the next slot in infrastructure/placement.json and release again.",
 		},
@@ -293,7 +293,7 @@ func TestValidateRelease(t *testing.T) {
 			env:       connected + "export RESTORE=\"empty\"\n",
 			routerDir: routerDir,
 			placement: testPlacement(`{"stg": {"timeZone": "America/Chicago", "weekly": [{"day": "Sunday", "from": "02:00", "to": "04:00"}]}}`),
-			objects:   mergeObjects(live, map[string]string{"gs://stg-records/quill/stg/v1.2.2/b-3.json": liveIn("stg", "v1.2.2")}),
+			objects:   mergeObjects(live, map[string]string{"gs://stg-records/quill/stg/3c4d/releases/v1.2.2/b-3.json": liveIn("stg", "v1.2.2")}),
 			files:     map[string]string{releaseFilePath: releaseFile(`{"default": {"oldestAnswered": "1.2.3"}}`)},
 			wantOut:   []string{"The gate is open to a restore run: stg's database is replaced behind the maintenance page whatever the window says."},
 		},
@@ -303,7 +303,7 @@ func TestValidateRelease(t *testing.T) {
 			subs:      map[string]string{servicesSub: "us-central1=quill-app", projectSub: "stg-project"},
 			routerDir: routerDir,
 			placement: testPlacement(`{"stg": {"timeZone": "America/Chicago", "weekly": [{"day": "Sunday", "from": "02:00", "to": "04:00"}]}}`),
-			objects:   mergeObjects(live, map[string]string{"gs://stg-records/quill/stg/v1.2.2/b-3.json": liveIn("stg", "v1.2.2")}),
+			objects:   mergeObjects(live, map[string]string{"gs://stg-records/quill/stg/3c4d/releases/v1.2.2/b-3.json": liveIn("stg", "v1.2.2")}),
 			files:     map[string]string{releaseFilePath: releaseFile(`{"default": {"oldestAnswered": "1.2.3"}}`)},
 			wantOut:   []string{"stg is in maintenance from an earlier run (APP_MAINTENANCE=1 on quill-app): the gate counts the window as open, so the rerun proceeds without waiting for the next one."},
 		},
@@ -311,7 +311,7 @@ func TestValidateRelease(t *testing.T) {
 			name:       "without a release file no release is breaking, and the log says so",
 			env:        connected,
 			routerDir:  routerDir,
-			objects:    mergeObjects(live, map[string]string{"gs://stg-records/quill/stg/v1.2.2/b-3.json": liveIn("stg", "v1.2.2")}),
+			objects:    mergeObjects(live, map[string]string{"gs://stg-records/quill/stg/3c4d/releases/v1.2.2/b-3.json": liveIn("stg", "v1.2.2")}),
 			wantOut:    []string{"Warning: no release file at pkg/router/zz_gen_release.json in the checkout, so no outlet declares an oldest answered release and no release is breaking; the resource generator writes it beside the router.", "No maintenance window: no outlet declares an oldest answered release, so the release turns no running release away; v1.2.3 deploys at any time."},
 			wantWindow: map[string]string{windowNeededFact: "", windowBreakingFact: ""},
 		},
@@ -419,14 +419,14 @@ func TestValidateRelease(t *testing.T) {
 			name:    "a hotfix at the tip of its line is validated, and an environment without a live record has nothing to be behind",
 			env:     connected,
 			subs:    map[string]string{tagSub: "v1.2.4", commitSub: "h1"},
-			objects: map[string]string{"gs://tst-records/quill/tst/v1.2.4/b-1.json": hotfixLive},
+			objects: map[string]string{"gs://tst-records/quill/tst/1a2b/releases/v1.2.4/b-1.json": hotfixLive},
 			wantOut: []string{"Tag v1.2.4 validated as a hotfix: the tip of hotfix/1.2.x, branched from release v1.2.3 on master", "Gate passed: v1.2.4 is live in tst", "Hotfix check: stg has no live deployment record; nothing for v1.2.4 to be behind."},
 		},
 		{
 			name:    "a hotfix is refused where the database holds a migration it does not carry, naming the restore",
 			env:     connected,
 			subs:    map[string]string{tagSub: "v1.2.4", commitSub: "h1"},
-			objects: map[string]string{"gs://tst-records/quill/tst/v1.2.4/b-1.json": hotfixLive, "gs://stg-records/quill/stg/v1.3.0/b-5.json": stgLive("v1.3.0", first, refits)},
+			objects: map[string]string{"gs://tst-records/quill/tst/1a2b/releases/v1.2.4/b-1.json": hotfixLive, "gs://stg-records/quill/stg/3c4d/releases/v1.3.0/b-5.json": stgLive("v1.3.0", first, refits)},
 			files:   map[string]string{first.path(): first.content},
 			wantErr: "Build REJECTED: stg's database holds schema/migrations/000002_Refits.up.sql (in v1.3.0's record), which hotfix v1.2.4 does not carry; restore stg to v1.2.4 first: a restore run replaces the database and skips this check.",
 		},
@@ -434,7 +434,7 @@ func TestValidateRelease(t *testing.T) {
 			name:    "a hotfix is refused where a migration's content differs from what the database applied",
 			env:     connected,
 			subs:    map[string]string{tagSub: "v1.2.4", commitSub: "h1"},
-			objects: map[string]string{"gs://tst-records/quill/tst/v1.2.4/b-1.json": hotfixLive, "gs://stg-records/quill/stg/v1.3.0/b-5.json": stgLive("v1.3.0", first)},
+			objects: map[string]string{"gs://tst-records/quill/tst/1a2b/releases/v1.2.4/b-1.json": hotfixLive, "gs://stg-records/quill/stg/3c4d/releases/v1.3.0/b-5.json": stgLive("v1.3.0", first)},
 			files:   map[string]string{first.path(): "create table other"},
 			wantErr: "Build REJECTED: stg's database holds schema/migrations/000001_Init.up.sql with other content than hotfix v1.2.4 carries (by v1.3.0's record); restore stg to v1.2.4 first: a restore run replaces the database and skips this check.",
 		},
@@ -443,9 +443,9 @@ func TestValidateRelease(t *testing.T) {
 			env:  connected,
 			subs: map[string]string{tagSub: "v1.2.4", commitSub: "h1"},
 			objects: map[string]string{
-				"gs://tst-records/quill/tst/v1.2.4/b-1.json":      hotfixLive,
-				"gs://stg-records/quill/stg/v1.3.0/b-5.json":      stgLive("v1.3.0", first, refits),
-				"gs://stg-records/quill/stg/pr9-abc0123/b-8.json": strings.NewReplacer("v1.3.0", "pr9@abc0123", "2026-09-28", "2026-09-29", "b-5", "b-8").Replace(stgLive("v1.3.0", first)),
+				"gs://tst-records/quill/tst/1a2b/releases/v1.2.4/b-1.json": hotfixLive,
+				"gs://stg-records/quill/stg/3c4d/releases/v1.3.0/b-5.json": stgLive("v1.3.0", first, refits),
+				"gs://stg-records/quill/stg/pr9-abc0123/b-8.json":          strings.NewReplacer("v1.3.0", "pr9@abc0123", "2026-09-28", "2026-09-29", "b-5", "b-8").Replace(stgLive("v1.3.0", first)),
 			},
 			files:   map[string]string{first.path(): first.content},
 			wantErr: "Build REJECTED: stg's database holds schema/migrations/000002_Refits.up.sql (in v1.3.0's record), which hotfix v1.2.4 does not carry; restore stg to v1.2.4 first: a restore run replaces the database and skips this check.",
@@ -454,7 +454,7 @@ func TestValidateRelease(t *testing.T) {
 			name:    "the refusal names the up file, whatever order the record lists the files in",
 			env:     connected,
 			subs:    map[string]string{tagSub: "v1.2.4", commitSub: "h1"},
-			objects: map[string]string{"gs://tst-records/quill/tst/v1.2.4/b-1.json": hotfixLive, "gs://stg-records/quill/stg/v1.3.0/b-5.json": stgLive("v1.3.0", first, refitsDown, refits)},
+			objects: map[string]string{"gs://tst-records/quill/tst/1a2b/releases/v1.2.4/b-1.json": hotfixLive, "gs://stg-records/quill/stg/3c4d/releases/v1.3.0/b-5.json": stgLive("v1.3.0", first, refitsDown, refits)},
 			files:   map[string]string{first.path(): first.content},
 			wantErr: "Build REJECTED: stg's database holds schema/migrations/000002_Refits.up.sql (in v1.3.0's record), which hotfix v1.2.4 does not carry; restore stg to v1.2.4 first: a restore run replaces the database and skips this check.",
 		},
@@ -462,7 +462,7 @@ func TestValidateRelease(t *testing.T) {
 			name:    "a hotfix deploys where every applied file is in it, whatever release the environment runs",
 			env:     connected,
 			subs:    map[string]string{tagSub: "v1.2.4", commitSub: "h1"},
-			objects: map[string]string{"gs://tst-records/quill/tst/v1.2.4/b-1.json": hotfixLive, "gs://stg-records/quill/stg/v1.3.0/b-5.json": stgLive("v1.3.0", first)},
+			objects: map[string]string{"gs://tst-records/quill/tst/1a2b/releases/v1.2.4/b-1.json": hotfixLive, "gs://stg-records/quill/stg/3c4d/releases/v1.3.0/b-5.json": stgLive("v1.3.0", first)},
 			files:   map[string]string{first.path(): first.content, refits.path(): refits.content},
 			wantOut: []string{"Hotfix check passed: stg's database holds nothing v1.2.4 does not carry (1 file(s) recorded by v1.3.0, build b-5)"},
 		},
@@ -470,7 +470,7 @@ func TestValidateRelease(t *testing.T) {
 			name:       "a restore run is not checked: the database is about to be replaced",
 			env:        connected + "export RESTORE=\"empty\"\nexport RESTORE_REQUESTER=\"octocat\"\n",
 			subs:       map[string]string{tagSub: "v1.2.4", commitSub: "h1"},
-			objects:    map[string]string{"gs://tst-records/quill/tst/v1.2.4/b-1.json": hotfixLive, "gs://stg-records/quill/stg/v1.3.0/b-5.json": stgLive("v1.3.0", first, refits)},
+			objects:    map[string]string{"gs://tst-records/quill/tst/1a2b/releases/v1.2.4/b-1.json": hotfixLive, "gs://stg-records/quill/stg/3c4d/releases/v1.3.0/b-5.json": stgLive("v1.3.0", first, refits)},
 			files:      map[string]string{first.path(): first.content},
 			wantOut:    []string{"Gate passed: v1.2.4 is live in tst", "Restore run: stg's database is replaced before v1.2.4 deploys, so what it holds is not compared with the hotfix."},
 			wantAbsent: []string{"Hotfix check"},
@@ -480,10 +480,10 @@ func TestValidateRelease(t *testing.T) {
 			env:  connected,
 			subs: map[string]string{tagSub: "v1.2.4", commitSub: "h1"},
 			objects: map[string]string{
-				"gs://tst-records/quill/tst/v1.2.4/b-1.json": hotfixLive,
-				"gs://stg-records/quill/stg/v1.2.3/b-3.json": strings.Replace(stgLive("v1.2.3", first, refits), "2026-09-28", "2026-09-20", 1),
-				"gs://stg-records/quill/stg/v1.3.0/b-5.json": stgLive("v1.3.0", first),
-				"gs://stg-records/quill/stg/v1.4.0/b-7.json": strings.Replace(strings.Replace(stgLive("v1.4.0", first, refits), "2026-09-28", "2026-09-29", 1), Live, Preview, 1),
+				"gs://tst-records/quill/tst/1a2b/releases/v1.2.4/b-1.json": hotfixLive,
+				"gs://stg-records/quill/stg/3c4d/releases/v1.2.3/b-3.json": strings.Replace(stgLive("v1.2.3", first, refits), "2026-09-28", "2026-09-20", 1),
+				"gs://stg-records/quill/stg/3c4d/releases/v1.3.0/b-5.json": stgLive("v1.3.0", first),
+				"gs://stg-records/quill/stg/3c4d/releases/v1.4.0/b-7.json": strings.Replace(strings.Replace(stgLive("v1.4.0", first, refits), "2026-09-28", "2026-09-29", 1), Live, Preview, 1),
 			},
 			files:   map[string]string{first.path(): first.content},
 			wantOut: []string{"Hotfix check passed: stg's database holds nothing v1.2.4 does not carry (1 file(s) recorded by v1.3.0, build b-5)"},
@@ -497,14 +497,14 @@ func TestValidateRelease(t *testing.T) {
 				r.Refs["refs/tags/v1.2.5"] = github.Object{Type: "commit", SHA: "h2"}
 				r.Releases["v1.2.5"] = github.Release{TagName: "v1.2.5", Author: github.User{Login: "release-app[bot]"}}
 			},
-			objects: map[string]string{"gs://tst-records/quill/tst/v1.2.5/b-1.json": strings.Replace(hotfixLive, "v1.2.4", "v1.2.5", 1), "gs://stg-records/quill/stg/v1.3.0/b-5.json": stgLive("v1.3.0", first, refits)},
+			objects: map[string]string{"gs://tst-records/quill/tst/1a2b/releases/v1.2.5/b-1.json": strings.Replace(hotfixLive, "v1.2.4", "v1.2.5", 1), "gs://stg-records/quill/stg/3c4d/releases/v1.3.0/b-5.json": stgLive("v1.3.0", first, refits)},
 			files:   map[string]string{first.path(): first.content},
 			wantErr: "Build REJECTED: stg's database holds schema/migrations/000002_Refits.up.sql (in v1.3.0's record), which hotfix v1.2.5 does not carry; restore stg to v1.2.5 first: a restore run replaces the database and skips this check.",
 		},
 		{
 			name:       "a release on the default branch is not checked against the environment's database",
 			env:        connected,
-			objects:    map[string]string{"gs://tst-records/quill/tst/v1.2.3/b-0.json": liveRecord, "gs://stg-records/quill/stg/v1.3.0/b-5.json": stgLive("v1.3.0", first, refits)},
+			objects:    map[string]string{"gs://tst-records/quill/tst/1a2b/releases/v1.2.3/b-0.json": liveRecord, "gs://stg-records/quill/stg/3c4d/releases/v1.3.0/b-5.json": stgLive("v1.3.0", first, refits)},
 			files:      map[string]string{first.path(): first.content},
 			wantOut:    []string{"Tag v1.2.3 validated: its commit is on master", "Gate passed: v1.2.3 is live in tst"},
 			wantAbsent: []string{"Hotfix check"},
@@ -514,8 +514,8 @@ func TestValidateRelease(t *testing.T) {
 			env:  connected,
 			subs: map[string]string{tagSub: "v1.2.4", commitSub: "h1", envSub: prdEnvironment, previousEnvSub: stgEnvironment, previousRecordsSub: "stg-records", recordsBucket: "prd-records"},
 			objects: map[string]string{
-				"gs://stg-records/quill/stg/v1.2.4/b-1.json": strings.Replace(hotfixLive, `"env": "tst"`, `"env": "stg"`, 1),
-				"gs://prd-records/quill/prd/v1.3.0/b-5.json": strings.Replace(stgLive("v1.3.0", first), `"env": "stg"`, `"env": "prd"`, 1),
+				"gs://stg-records/quill/stg/3c4d/releases/v1.2.4/b-1.json": strings.Replace(hotfixLive, `"env": "tst"`, `"env": "stg"`, 1),
+				"gs://prd-records/quill/prd/5e6f/releases/v1.3.0/b-5.json": strings.Replace(stgLive("v1.3.0", first), `"env": "stg"`, `"env": "prd"`, 1),
 			},
 			files:   map[string]string{first.path(): first.content},
 			wantErr: "Build REJECTED: production runs v1.3.0, line 1.3; hotfix v1.2.4 is on line 1.2. A hotfix is based on the release production runs.",
@@ -525,8 +525,8 @@ func TestValidateRelease(t *testing.T) {
 			env:  connected,
 			subs: map[string]string{tagSub: "v1.2.4", commitSub: "h1", envSub: prdEnvironment, previousEnvSub: stgEnvironment, previousRecordsSub: "stg-records", recordsBucket: "prd-records"},
 			objects: map[string]string{
-				"gs://stg-records/quill/stg/v1.2.4/b-1.json": strings.Replace(hotfixLive, `"env": "tst"`, `"env": "stg"`, 1),
-				"gs://prd-records/quill/prd/v1.3.0/b-5.json": strings.Replace(stgLive("v1.3.0", first, refits), `"env": "stg"`, `"env": "prd"`, 1),
+				"gs://stg-records/quill/stg/3c4d/releases/v1.2.4/b-1.json": strings.Replace(hotfixLive, `"env": "tst"`, `"env": "stg"`, 1),
+				"gs://prd-records/quill/prd/5e6f/releases/v1.3.0/b-5.json": strings.Replace(stgLive("v1.3.0", first, refits), `"env": "stg"`, `"env": "prd"`, 1),
 			},
 			files:   map[string]string{first.path(): first.content},
 			wantErr: "Build REJECTED: production runs v1.3.0, line 1.3; hotfix v1.2.4 is on line 1.2. A hotfix is based on the release production runs.",
@@ -536,8 +536,8 @@ func TestValidateRelease(t *testing.T) {
 			env:  connected,
 			subs: map[string]string{tagSub: "v1.2.4", commitSub: "h1", envSub: prdEnvironment, previousEnvSub: stgEnvironment, previousRecordsSub: "stg-records", recordsBucket: "prd-records"},
 			objects: map[string]string{
-				"gs://stg-records/quill/stg/v1.2.4/b-1.json": strings.Replace(hotfixLive, `"env": "tst"`, `"env": "stg"`, 1),
-				"gs://prd-records/quill/prd/v1.2.5/b-5.json": strings.Replace(stgLive("v1.2.5", first, refits), `"env": "stg"`, `"env": "prd"`, 1),
+				"gs://stg-records/quill/stg/3c4d/releases/v1.2.4/b-1.json": strings.Replace(hotfixLive, `"env": "tst"`, `"env": "stg"`, 1),
+				"gs://prd-records/quill/prd/5e6f/releases/v1.2.5/b-5.json": strings.Replace(stgLive("v1.2.5", first, refits), `"env": "stg"`, `"env": "prd"`, 1),
 			},
 			files:   map[string]string{first.path(): first.content},
 			wantErr: "Build REJECTED: prd's database holds schema/migrations/000002_Refits.up.sql (in v1.2.5's record), which hotfix v1.2.4 does not carry; production is never restored by a run: a hotfix is based on the release production runs, so start the line from v1.2.5.",
@@ -547,8 +547,8 @@ func TestValidateRelease(t *testing.T) {
 			env:  connected,
 			subs: map[string]string{tagSub: "v1.2.4", commitSub: "h1", envSub: prdEnvironment, previousEnvSub: stgEnvironment, previousRecordsSub: "stg-records", recordsBucket: "prd-records"},
 			objects: map[string]string{
-				"gs://stg-records/quill/stg/v1.2.4/b-1.json": strings.Replace(hotfixLive, `"env": "tst"`, `"env": "stg"`, 1),
-				"gs://prd-records/quill/prd/v1.2.3/b-5.json": strings.Replace(stgLive("v1.2.3", first), `"env": "stg"`, `"env": "prd"`, 1),
+				"gs://stg-records/quill/stg/3c4d/releases/v1.2.4/b-1.json": strings.Replace(hotfixLive, `"env": "tst"`, `"env": "stg"`, 1),
+				"gs://prd-records/quill/prd/5e6f/releases/v1.2.3/b-5.json": strings.Replace(stgLive("v1.2.3", first), `"env": "stg"`, `"env": "prd"`, 1),
 			},
 			files:   map[string]string{first.path(): first.content},
 			wantOut: []string{"Hotfix check passed: prd's database holds nothing v1.2.4 does not carry (1 file(s) recorded by v1.2.3, build b-5)"},
@@ -589,12 +589,18 @@ func TestValidateRelease(t *testing.T) {
 		{
 			name:    "no record in the previous environment is refused",
 			env:     connected,
-			wantErr: "Build REJECTED: release v1.2.3 has no deployment record in tst (nothing under gs://tst-records/quill/tst/v1.2.3/); a release reaches stg after it is live in tst.",
+			objects: map[string]string{stackKey("tst-records", "quill", "tst"): stackJSON("1a2b")},
+			wantErr: "Build REJECTED: release v1.2.3 has no deployment record in tst (nothing under gs://tst-records/quill/tst/1a2b/releases/v1.2.3/); a release reaches stg after it is live in tst.",
+		},
+		{
+			name:    "a previous environment whose stack says no id is refused",
+			env:     connected,
+			wantErr: "Build REJECTED: release v1.2.3 has no deployment record in tst (quill's stack has not been applied there: nothing at gs://tst-records/quill/stacks/tst/stack.json); a release reaches stg after it is live in tst.",
 		},
 		{
 			name:    "records with none live are refused",
 			env:     connected,
-			objects: map[string]string{"gs://tst-records/quill/tst/v1.2.3/b-9.json": previewOnly},
+			objects: map[string]string{"gs://tst-records/quill/tst/1a2b/releases/v1.2.3/b-9.json": previewOnly},
 			wantErr: "Build REJECTED: release v1.2.3 has deployment records in tst but none is live: traffic never shifted to it there.",
 		},
 	}
@@ -608,10 +614,7 @@ func TestValidateRelease(t *testing.T) {
 				tt.repo(repo)
 			}
 			srv.AddRepo("acme", "quill", repo)
-			store := &memoryStore{objects: map[string]string{}}
-			for path, content := range tt.objects {
-				store.objects[path] = content
-			}
+			store := &memoryStore{objects: withStacks(tt.objects)}
 			inMaintenance := serviceDoc("projects/stg-project/locations/us-central1/services/quill-app")
 			container, _ := inMaintenance["template"].(map[string]any)["containers"].([]any)[0].(map[string]any)
 			container["env"] = []any{map[string]any{keyName: "APP_MAINTENANCE", keyValue: "1"}}

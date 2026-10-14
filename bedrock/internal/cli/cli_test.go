@@ -562,10 +562,19 @@ func projectsOf(projects ...where.Project) where.ProjectClientFunc {
 	}
 }
 
-// lab is a project of the lab organization in the environment, labeled as 1-org labels
-// the projects it creates.
+// lab is a project of the lab organization (prefix imp) in the environment, labeled as
+// 1-org labels the projects it creates.
 func lab(id, env string) where.Project {
-	return where.Project{ID: id, DisplayName: "Lab " + env, State: where.Active, Labels: map[string]string{"environment": env, "terraform_source_path": "1-org"}}
+	return where.Project{ID: id, DisplayName: "Lab " + env, State: where.Active, Labels: map[string]string{"environment": env, "organization": "imp", "terraform_source_path": "1-org"}}
+}
+
+// other is a project of another bedrock organization (prefix oth) sharing the Google
+// Cloud organization, in the environment.
+func other(id, env string) where.Project {
+	p := lab(id, env)
+	p.DisplayName, p.Labels["organization"] = "Other "+env, "oth"
+
+	return p
 }
 
 // labSecrets is a Secret Manager holding, by container name, the state of each version
@@ -737,6 +746,15 @@ func TestSecretAdd(t *testing.T) {
 			name:      "the project is found by its labels and the container named from the placement; the value from standard input",
 			args:      []string{"tst", "APP_MAIL_API_KEY"},
 			placement: placement,
+			value:     "k-3",
+			wantOut:   added3,
+			wantValue: "k-3",
+		},
+		{
+			name:      "the placement's prefix tells the organization's project from another organization's in the same environment",
+			args:      []string{"tst", "APP_MAIL_API_KEY"},
+			placement: placement,
+			projects:  projectsOf(other("oth-tst-1", "tst"), lab("lab-tst-1", "tst")),
 			value:     "k-3",
 			wantOut:   added3,
 			wantValue: "k-3",
@@ -1285,7 +1303,7 @@ func (m *memoryStore) List(_ context.Context, bucket, prefix string) ([]string, 
 func (m *memoryStore) Read(_ context.Context, bucket, object string) ([]byte, error) {
 	data, ok := m.objects["gs://"+bucket+"/"+object]
 	if !ok {
-		return nil, errors.Newf("gs://%s/%s: no such object", bucket, object)
+		return nil, fmt.Errorf("gs://%s/%s: %w", bucket, object, os.ErrNotExist)
 	}
 
 	return []byte(data), nil
@@ -1310,8 +1328,8 @@ func TestDeployRecord(t *testing.T) {
 		{
 			name:       "the record is written from the workspace",
 			files:      map[string]string{"environment.sh": environment, "build.json": build, "revisions.txt": "us-central1,harbor-app,harbor-app-00007-abc\n"},
-			wantOut:    []string{`"status": "live"`, `"commit": "deadbeef"`, "Recorded live deployment of v1.2.3 in tst: gs://records/harbor/tst/v1.2.3/b-1.json"},
-			wantStored: "gs://records/harbor/tst/v1.2.3/b-1.json",
+			wantOut:    []string{`"status": "live"`, `"commit": "deadbeef"`, "Recorded live deployment of v1.2.3 in tst: gs://records/harbor/tst/1a2b/releases/v1.2.3/b-1.json"},
+			wantStored: "gs://records/harbor/tst/1a2b/releases/v1.2.3/b-1.json",
 		},
 		{
 			name:    "a torn-down environment records nothing",
@@ -1334,7 +1352,8 @@ func TestDeployRecord(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			store := &memoryStore{objects: map[string]string{}}
+			// tst's stack has been applied: its id is in the records bucket.
+			store := &memoryStore{objects: map[string]string{"gs://records/harbor/stacks/tst/stack.json": `{"id": "1a2b"}`}}
 			d := deps{domains: noCloudDomains, secrets: noSecretManager, projects: noProjects, deploy: &deploy.Clients{Storage: store.open}, interactive: never}
 			out, err := execute(d, "", "deploy", "record", "--workspace", workspace)
 			if tt.wantErr != "" {
@@ -1352,6 +1371,7 @@ func TestDeployRecord(t *testing.T) {
 					t.Errorf("output lacks %q:\n%s", want, out)
 				}
 			}
+			delete(store.objects, "gs://records/harbor/stacks/tst/stack.json")
 			if tt.wantStored == "" && len(store.objects) != 0 {
 				t.Errorf("stored %v, want nothing", store.objects)
 			}

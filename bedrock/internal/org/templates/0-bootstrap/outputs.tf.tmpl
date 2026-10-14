@@ -76,3 +76,13 @@ output "terraform_folder_id" {
   description = "Folder ID of the terraform folder holding the automation plane."
   value       = google_folder.terraform.folder_id
 }
+
+output "organization_folder_id" {
+  description = "Folder ID of the organization's folder, named after the prefix, under which 1-org creates the environment folders."
+  value       = google_folder.organization.folder_id
+}
+
+output "organization_suffix" {
+  description = "The organization's suffix (bootstrap.tf): the random value every name at the organization node ends with, the custom roles and the public-invoker tag key among them."
+  value       = random_id.organization.hex
+}

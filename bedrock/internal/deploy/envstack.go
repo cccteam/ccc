@@ -531,12 +531,12 @@ func (s *stack) generation(ctx context.Context, open StoreFunc, subs map[string]
 		return 0, err
 	}
 	defer store.Close()
-	generation, err := databaseGeneration(ctx, store, bucket, subs[appSub], env)
+	generation, object, err := databaseGeneration(ctx, store, bucket, subs[appSub], env)
 	if err != nil {
 		return 0, err
 	}
 	if generation > 1 {
-		fmt.Fprintf(s.out, "Generation %d: a restore put %s's database into its generation %d (gs://%s/%s); the plan points the stack at it.\n", generation, env, generation, bucket, generationObject(subs[appSub], env, generation))
+		fmt.Fprintf(s.out, "Generation %d: a restore put %s's database into its generation %d (gs://%s/%s); the plan points the stack at it.\n", generation, env, generation, bucket, object)
 	}
 
 	return generation, nil

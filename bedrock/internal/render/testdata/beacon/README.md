@@ -404,10 +404,15 @@ substitutions and this stack's outputs:
   raises it; only a private pool's CPU quota is adjustable. The machines a
   placement may name, with their vCPUs: `E2_MEDIUM` (1 vCPU), `E2_STANDARD_2` (2 vCPUs), `E2_HIGHCPU_8` (8 vCPUs), and `E2_HIGHCPU_32` (32 vCPUs).
 - The deploy identity writes one object per run into `_RECORDS_BUCKET`, at
-  `<app>/<env>/<release>/<build>.json`, and can never overwrite one; a
-  release that runs again in an environment adds a record, and the newest
-  under the release's prefix is its current one. A record carries the plan
-  of this stack the build applied (`stack`: counts and changes).
+  `beacon/<env>/<stack id>/releases/<release>/<build>.json` (a pull request's
+  at `beacon/tst/pr<N>-<commit>/<build>.json`), and can never
+  overwrite one; a release that runs again in an environment adds a record,
+  and the newest under the release's prefix is its current one. A record
+  carries the plan of this stack the build applied (`stack`: counts and
+  changes) and the id of the stack it lies under (`stackId`; "The stack's
+  id"). A restore writes the database's generation beside the records,
+  `beacon/<env>/<stack id>/database/<n>.json`, and every later build reads
+  the highest.
 - The pull request's stack job (`deploy pr-stack`, in the pr-stack trigger, as
   the apply identity) writes one object per pull request and commit into
   `_RECORDS_BUCKET`, at `beacon/stacks/tst/pr<N>/<commit>.json`, written again
@@ -690,6 +695,30 @@ bounds). What an application adds is declared in files of its own:
 Anything beyond that is a new hook point or a new `bedrock deploy` command,
 never an edit to the rendered file.
 
+## The stack's id
+
+The first apply gives the stack an id, `random_id.stack` in `initialize.tf`:
+four hex characters, kept in the state for the stack's life. Three names
+carry it as a suffix, the Cloud Tasks queue
+`imp-<env>-uc1-beacon-tasks-<id>`, the Firebase web API key
+`imp-<env>-gbl-beacon-firebase-<id>` and the migrate log bucket
+`imp-<env>-gbl-beacon-migrate-logs-<id>`: Google keeps each of those
+names for a while after a delete (a queue's for days, a log bucket's for
+seven, an API key's for thirty), so a stack destroyed and made again takes
+names of its own instead of waiting for the old ones to clear. The id is also
+where the stack's deployment records lie. The apply writes it to the records
+bucket as `beacon/stacks/<env>/stack.json` (`{"id": "<hex>"}`), the pipeline
+reads it there before it reads or writes a record, and the records sit under
+`beacon/<env>/<id>/` ("The pipeline's contract"), so a new stack starts a
+history of its own and the old stack's records stay where they were, read by
+nothing. A release build whose stack says no id (the stack was applied by a
+bedrock without one) is refused at the record; apply the stack once. The id
+is the output `stack_id`. In prd the stack protects the database
+(deletion and drop protection), the Cloud Run services and the Firestore
+database from deletion, and a destroy refuses them as they stand: a
+production stack given up is destroyed after an apply with the protections
+off, and the stack made in its place has an id of its own.
+
 ## Hand steps
 
 Per environment, after the first apply:
@@ -723,6 +752,7 @@ Per environment, after the first apply:
 | `registry` | `<hostname>/<project>/<repository>`; null until `2-shr` registers beacon. |
 | `secrets` | Per variable: `secret_id` and the pinned `version` (null when unpinned). |
 | `services` | Per region code: `name`, `region`, `uri`. |
+| `stack_id` | The stack's id (four hex characters): the suffix of the names Google keeps after a delete, and the prefix of the stack's deployment records. |
 | `substitutions` | What the triggers pass to `cloudbuild.yaml`. |
 | `triggers` | `{ version, pr }` trigger IDs (`pr` null outside tst). |
 

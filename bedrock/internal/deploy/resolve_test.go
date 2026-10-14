@@ -232,9 +232,9 @@ var (
 		return string(data)
 	}
 	rehearsing = map[string]string{
-		"gs://tst-records/harbor/tst/v1.2.3/b-7.json": liveRecordWith("tst", "v1.2.3", "b-7", "2026-10-06T01:00:00Z", initUp, widgetsUp),
-		"gs://prd-records/harbor/prd/v1.2.2/b-5.json": productionRec(initUp),
-		"gs://stg-records/harbor/stg/v1.2.2/b-6.json": liveRecordWith("stg", "v1.2.2", "b-6", "2026-10-05T11:00:00Z", initUp),
+		"gs://tst-records/harbor/tst/1a2b/releases/v1.2.3/b-7.json": liveRecordWith("tst", "v1.2.3", "b-7", "2026-10-06T01:00:00Z", initUp, widgetsUp),
+		"gs://prd-records/harbor/prd/5e6f/releases/v1.2.2/b-5.json": productionRec(initUp),
+		"gs://stg-records/harbor/stg/3c4d/releases/v1.2.2/b-6.json": liveRecordWith("stg", "v1.2.2", "b-6", "2026-10-05T11:00:00Z", initUp),
 	}
 	rehearsalTree     = map[string]string{"schema/migrations/000001_Init.up.sql": "create table a", "schema/migrations/000002_Widgets.up.sql": "create table widgets"}
 	rehearsalVersions = "tst applied version 2, build b-7; prd runs version 1, release v1.2.2, build b-5"
@@ -305,7 +305,7 @@ var (
 var declaringArguments = strings.TrimSuffix(testPlacement(""), "}\n") + `, "buildArguments": {"FIREBASE_API_KEY": "firebaseApiKey", "PROJECT_ID": "projectId"}}` + "\n"
 
 // liveSeeded is tst's live record of v1.2.2 with the seed applied.
-var liveSeeded = map[string]string{"gs://records/harbor/tst/v1.2.2/b-0.json": liveRecordWith("tst", "v1.2.2", "b-0", "2026-09-27T05:00:00Z", Migration{Dir: "schema/migrations", Name: "000003_Sites.up.sql", Hash: hashOf(sitesContent)}, Migration{Dir: "schema/devseed", Name: "000001_Seed.up.sql", Hash: hashOf(seedContent)})}
+var liveSeeded = map[string]string{"gs://records/harbor/tst/1a2b/releases/v1.2.2/b-0.json": liveRecordWith("tst", "v1.2.2", "b-0", "2026-09-27T05:00:00Z", Migration{Dir: "schema/migrations", Name: "000003_Sites.up.sql", Hash: hashOf(sitesContent)}, Migration{Dir: "schema/devseed", Name: "000001_Seed.up.sql", Hash: hashOf(seedContent)})}
 
 func TestResolve(t *testing.T) {
 	t.Parallel()
@@ -681,7 +681,7 @@ func TestResolve(t *testing.T) {
 			name:      "the release that puts the environment on the placement's seed list seeds in that release, though the trigger's _SEED still says false",
 			subs:      seededTag(map[string]string{seedSub: "false"}),
 			placement: seedingTst,
-			records:   map[string]string{"gs://records/harbor/tst/v1.2.2/b-0.json": liveRecordWith("tst", "v1.2.2", "b-0", "2026-09-27T05:00:00Z", Migration{Dir: "schema/migrations", Name: "000003_Sites.up.sql", Hash: hashOf(sitesContent)})},
+			records:   map[string]string{"gs://records/harbor/tst/1a2b/releases/v1.2.2/b-0.json": liveRecordWith("tst", "v1.2.2", "b-0", "2026-09-27T05:00:00Z", Migration{Dir: "schema/migrations", Name: "000003_Sites.up.sql", Hash: hashOf(sitesContent)})},
 			tree:      map[string]string{sitesUp: sitesContent, seedUp: seedContent},
 			want:      seeded,
 			wantOut:   []string{"Seed: tst is on the seed list of the placement in the checkout (infrastructure/placement.json).", "The trigger's _SEED=false is what the stack said at its last apply; the placement in the checkout decides for this release."},
@@ -724,7 +724,7 @@ func TestResolve(t *testing.T) {
 			name:      "only a live record counts: a preview is a build whose traffic never shifted",
 			subs:      seededTag(nil),
 			placement: seedingTst,
-			records:   map[string]string{"gs://records/harbor/tst/v1.2.2/b-0.json": recordWith("b-0", "2026-09-27T05:00:00Z", Migration{Dir: "schema/devseed", Name: "000001_Seed.up.sql", Hash: hashOf(seedContent)})},
+			records:   map[string]string{"gs://records/harbor/tst/1a2b/releases/v1.2.2/b-0.json": recordWith("b-0", "2026-09-27T05:00:00Z", Migration{Dir: "schema/devseed", Name: "000001_Seed.up.sql", Hash: hashOf(seedContent)})},
 			tree:      map[string]string{sitesUp: sitesContent, seedUp: seedContent + ", edited"},
 			want:      seeded,
 		},
@@ -733,8 +733,8 @@ func TestResolve(t *testing.T) {
 			subs:      seededTag(nil),
 			placement: seedingTst,
 			records: map[string]string{
-				"gs://records/harbor/tst/v1.2.1/b-9.json": liveRecordWith("tst", "v1.2.1", "b-9", "2026-09-26T05:00:00Z", Migration{Dir: "schema/devseed", Name: "000001_Seed.up.sql", Hash: hashOf("insert a, old")}),
-				"gs://records/harbor/tst/v1.2.2/b-0.json": liveSeeded["gs://records/harbor/tst/v1.2.2/b-0.json"],
+				"gs://records/harbor/tst/1a2b/releases/v1.2.1/b-9.json": liveRecordWith("tst", "v1.2.1", "b-9", "2026-09-26T05:00:00Z", Migration{Dir: "schema/devseed", Name: "000001_Seed.up.sql", Hash: hashOf("insert a, old")}),
+				"gs://records/harbor/tst/1a2b/releases/v1.2.2/b-0.json": liveSeeded["gs://records/harbor/tst/1a2b/releases/v1.2.2/b-0.json"],
 			},
 			tree: map[string]string{sitesUp: sitesContent, seedUp: seedContent},
 			want: seeded,
@@ -744,8 +744,8 @@ func TestResolve(t *testing.T) {
 			subs:      seededTag(nil),
 			placement: seedingTst,
 			records: map[string]string{
-				"gs://records/harbor/tst/v1.2.2/b-0.json":      liveSeeded["gs://records/harbor/tst/v1.2.2/b-0.json"],
-				"gs://records/harbor/tst/pr9-abc0123/b-8.json": liveRecordWith("tst", "pr9@abc0123", "b-8", "2026-09-28T05:00:00Z", Migration{Dir: "schema/devseed", Name: "000001_Seed.up.sql", Hash: hashOf("insert a, the pull request's")}),
+				"gs://records/harbor/tst/1a2b/releases/v1.2.2/b-0.json": liveSeeded["gs://records/harbor/tst/1a2b/releases/v1.2.2/b-0.json"],
+				"gs://records/harbor/tst/pr9-abc0123/b-8.json":          liveRecordWith("tst", "pr9@abc0123", "b-8", "2026-09-28T05:00:00Z", Migration{Dir: "schema/devseed", Name: "000001_Seed.up.sql", Hash: hashOf("insert a, the pull request's")}),
 			},
 			tree: map[string]string{sitesUp: sitesContent, seedUp: seedContent},
 			want: seeded,
@@ -753,7 +753,7 @@ func TestResolve(t *testing.T) {
 		{
 			name:    "production is never restored by a run: its seed is not compared",
 			subs:    seededTag(map[string]string{"_ENV": "prd"}),
-			records: map[string]string{"gs://records/harbor/prd/v1.2.2/b-0.json": liveRecordWith("prd", "v1.2.2", "b-0", "2026-09-27T05:00:00Z", Migration{Dir: "schema/devseed", Name: "000001_Seed.up.sql", Hash: hashOf(seedContent)})},
+			records: map[string]string{"gs://records/harbor/prd/5e6f/releases/v1.2.2/b-0.json": liveRecordWith("prd", "v1.2.2", "b-0", "2026-09-27T05:00:00Z", Migration{Dir: "schema/devseed", Name: "000001_Seed.up.sql", Hash: hashOf(seedContent)})},
 			tree:    map[string]string{sitesUp: sitesContent, seedUp: seedContent + ", edited"},
 			want: withComment(tag, "", func(o *outcome) {
 				o.ImageTag, o.CommitTag, o.KeepsReleaseBackups = "v1.2.3-prd", "deadbeefcafe-prd", true
@@ -999,9 +999,9 @@ func TestResolve(t *testing.T) {
 			name: "staging rehearsal: a release whose migrations production has applied deploys to staging as it stands",
 			subs: stagingTag(nil),
 			records: map[string]string{
-				"gs://tst-records/harbor/tst/v1.2.3/b-7.json": liveRecordWith("tst", "v1.2.3", "b-7", "2026-10-06T01:00:00Z", initUp),
-				"gs://prd-records/harbor/prd/v1.2.2/b-5.json": productionRec(initUp),
-				"gs://stg-records/harbor/stg/v1.2.2/b-6.json": liveRecordWith("stg", "v1.2.2", "b-6", "2026-10-05T11:00:00Z", initUp),
+				"gs://tst-records/harbor/tst/1a2b/releases/v1.2.3/b-7.json": liveRecordWith("tst", "v1.2.3", "b-7", "2026-10-06T01:00:00Z", initUp),
+				"gs://prd-records/harbor/prd/5e6f/releases/v1.2.2/b-5.json": productionRec(initUp),
+				"gs://stg-records/harbor/stg/3c4d/releases/v1.2.2/b-6.json": liveRecordWith("stg", "v1.2.2", "b-6", "2026-10-05T11:00:00Z", initUp),
 			},
 			tree:    rehearsalTree,
 			want:    staged,
@@ -1011,9 +1011,9 @@ func TestResolve(t *testing.T) {
 			name: "staging rehearsal: staging ahead of the release (a failed release's migration) is restored to production's state",
 			subs: stagingTag(nil),
 			records: map[string]string{
-				"gs://tst-records/harbor/tst/v1.2.3/b-7.json": liveRecordWith("tst", "v1.2.3", "b-7", "2026-10-06T01:00:00Z", initUp),
-				"gs://prd-records/harbor/prd/v1.2.2/b-5.json": productionRec(initUp),
-				"gs://stg-records/harbor/stg/v1.2.9/b-8.json": liveRecordWith("stg", "v1.2.9", "b-8", "2026-10-06T00:30:00Z", initUp, failedUp),
+				"gs://tst-records/harbor/tst/1a2b/releases/v1.2.3/b-7.json": liveRecordWith("tst", "v1.2.3", "b-7", "2026-10-06T01:00:00Z", initUp),
+				"gs://prd-records/harbor/prd/5e6f/releases/v1.2.2/b-5.json": productionRec(initUp),
+				"gs://stg-records/harbor/stg/3c4d/releases/v1.2.9/b-8.json": liveRecordWith("stg", "v1.2.9", "b-8", "2026-10-06T00:30:00Z", initUp, failedUp),
 			},
 			tree: rehearsalTree,
 			want: withComment(staged, "", func(o *outcome) {
@@ -1038,12 +1038,12 @@ func TestResolve(t *testing.T) {
 			denied:  []string{"prd-records"},
 			tree:    rehearsalTree,
 			want:    staged,
-			wantOut: []string{"Staging rehearsal: prd's deployment records could not be read as the build (", "googleapi: Error 403: stg-deploy@p.iam does not have storage.objects.list access to the Google Cloud Storage bucket prd-records); stg deploys as it stands. Production's records bucket lets this environment's deploy identity read once production's 2-env is applied at this bedrock."},
+			wantOut: []string{"Staging rehearsal: prd's deployment records could not be read as the build (", "googleapi: Error 403: stg-deploy@p.iam does not have storage.objects.get access to the Google Cloud Storage object gs://prd-records/harbor/stacks/prd/stack.json); stg deploys as it stands. Production's records bucket lets this environment's deploy identity read once production's 2-env is applied at this bedrock."},
 		},
 		{
 			name:    "staging rehearsal: no tst record of the release yet is left to the release check",
 			subs:    stagingTag(nil),
-			records: map[string]string{"gs://prd-records/harbor/prd/v1.2.2/b-5.json": productionRec(initUp)},
+			records: map[string]string{"gs://prd-records/harbor/prd/5e6f/releases/v1.2.2/b-5.json": productionRec(initUp)},
 			tree:    rehearsalTree,
 			want:    staged,
 			wantOut: []string{"Staging rehearsal: tst has no live deployment record of v1.2.3 yet; the release check decides whether v1.2.3 may reach stg."},
@@ -1051,7 +1051,7 @@ func TestResolve(t *testing.T) {
 		{
 			name:    "staging rehearsal: production without a live record has no data to run against",
 			subs:    stagingTag(nil),
-			records: map[string]string{"gs://tst-records/harbor/tst/v1.2.3/b-7.json": liveRecordWith("tst", "v1.2.3", "b-7", "2026-10-06T01:00:00Z", initUp, widgetsUp)},
+			records: map[string]string{"gs://tst-records/harbor/tst/1a2b/releases/v1.2.3/b-7.json": liveRecordWith("tst", "v1.2.3", "b-7", "2026-10-06T01:00:00Z", initUp, widgetsUp)},
 			tree:    rehearsalTree,
 			want:    staged,
 			wantOut: []string{"Staging rehearsal: prd has no live deployment record, so there is no production data to run v1.2.3 against; stg deploys as it stands."},
@@ -1082,7 +1082,7 @@ func TestResolve(t *testing.T) {
 
 			builds := &fakeBuilds{build: buildFor(t, tt.subs), token: "tok", mintErr: tt.mintErr}
 			comments := &fakeComments{bodies: tt.comments, err: tt.commentsErr}
-			store := &memoryStore{objects: tt.records, denied: tt.denied}
+			store := &memoryStore{objects: withStacks(tt.records), denied: tt.denied}
 			clients := &Clients{Builds: builds.open, Comments: comments.read, Storage: store.open, StorageAs: store.openAs}
 			tree := maps.Clone(tt.tree)
 			if tree == nil {
@@ -1244,10 +1244,7 @@ func TestStaleDatabase(t *testing.T) {
 			t.Parallel()
 
 			f := tt.facts
-			store := &memoryStore{objects: map[string]string{}}
-			for path, content := range tt.records {
-				store.objects[path] = content
-			}
+			store := &memoryStore{objects: withStacks(tt.records)}
 			source := workspaceFiles(t, tt.tree)
 			var out strings.Builder
 			if err := f.staleDatabase(t.Context(), store.open, string(source), &out); err != nil {

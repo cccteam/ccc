@@ -554,8 +554,15 @@ func gate(ctx context.Context, open StoreFunc, subs map[string]string, out io.Wr
 		return err
 	}
 	defer store.Close()
-	bucket := subs[previousRecordsSub]
-	prefix := subs[appSub] + "/" + previous + "/" + tag + "/"
+	bucket, app := subs[previousRecordsSub], subs[appSub]
+	prefix, err := releasesPrefix(ctx, store, bucket, app, previous)
+	if err != nil {
+		return err
+	}
+	if prefix == "" {
+		return errors.Newf("%srelease %s has no deployment record in %s (%s's stack has not been applied there: nothing at gs://%s/%s); a release reaches %s after it is live in %s.", rejected, tag, previous, app, bucket, stackObject(app, previous), subs[envSub], previous)
+	}
+	prefix += tag + "/"
 	objects, err := store.List(ctx, bucket, prefix)
 	if err != nil {
 		return err

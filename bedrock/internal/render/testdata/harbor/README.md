@@ -152,7 +152,7 @@ from `2-env`'s state.
   file through them. A grant added on the bucket by hand, for a day's
   debugging, is removed by the next release's apply; a grant added on the
   project is not. The migrate command gets neither the URL nor a grant.
-- **The task queue** `imp-<env>-uc1-harbor-tasks`
+- **The task queue** `imp-<env>-uc1-harbor-tasks-<id>` (the stack's id, below)
   (`dataConfig.TasksQueue` names it to the processes that construct the
   data level), in the primary region, `var.tasks_max_concurrent` tasks
   in flight and `var.tasks_max_attempts` attempts each. The site and the
@@ -181,7 +181,8 @@ from `2-env`'s state.
   `cloud.firestore/<database id>` from `firestore.rules`, bedrock's owned copy
   beside the `.tf` files; `roles/iam.serviceAccountTokenCreator` for the site
   on its own account, for the custom tokens it mints through the IAM
-  Credentials API; and the web API key `imp-<env>-gbl-harbor-firebase`
+  Credentials API; and the web API key `imp-<env>-gbl-harbor-firebase-<id>`
+  (the stack's id, below)
   the browser presents to sign in with one, restricted to the Identity Toolkit
   and Secure Token APIs, handed to the processes that construct the data
   level as `APP_FIREBASE_API_KEY` (`FirestoreSettings.APIKey`). Firebase
@@ -560,10 +561,15 @@ substitutions and this stack's outputs:
   raises it; only a private pool's CPU quota is adjustable. The machines a
   placement may name, with their vCPUs: `E2_MEDIUM` (1 vCPU), `E2_STANDARD_2` (2 vCPUs), `E2_HIGHCPU_8` (8 vCPUs), and `E2_HIGHCPU_32` (32 vCPUs).
 - The deploy identity writes one object per run into `_RECORDS_BUCKET`, at
-  `<app>/<env>/<release>/<build>.json`, and can never overwrite one; a
-  release that runs again in an environment adds a record, and the newest
-  under the release's prefix is its current one. A record carries the plan
-  of this stack the build applied (`stack`: counts and changes).
+  `harbor/<env>/<stack id>/releases/<release>/<build>.json` (a pull request's
+  at `harbor/tst/pr<N>-<commit>/<build>.json`), and can never
+  overwrite one; a release that runs again in an environment adds a record,
+  and the newest under the release's prefix is its current one. A record
+  carries the plan of this stack the build applied (`stack`: counts and
+  changes) and the id of the stack it lies under (`stackId`; "The stack's
+  id"). A restore writes the database's generation beside the records,
+  `harbor/<env>/<stack id>/database/<n>.json`, and every later build reads
+  the highest.
 - The pull request's stack job (`deploy pr-stack`, in the pr-stack trigger, as
   the apply identity) writes one object per pull request and commit into
   `_RECORDS_BUCKET`, at `harbor/stacks/tst/pr<N>/<commit>.json`, written again
@@ -853,6 +859,30 @@ bounds). What an application adds is declared in files of its own:
 Anything beyond that is a new hook point or a new `bedrock deploy` command,
 never an edit to the rendered file.
 
+## The stack's id
+
+The first apply gives the stack an id, `random_id.stack` in `initialize.tf`:
+four hex characters, kept in the state for the stack's life. Three names
+carry it as a suffix, the Cloud Tasks queue
+`imp-<env>-uc1-harbor-tasks-<id>`, the Firebase web API key
+`imp-<env>-gbl-harbor-firebase-<id>` and the migrate log bucket
+`imp-<env>-gbl-harbor-migrate-logs-<id>`: Google keeps each of those
+names for a while after a delete (a queue's for days, a log bucket's for
+seven, an API key's for thirty), so a stack destroyed and made again takes
+names of its own instead of waiting for the old ones to clear. The id is also
+where the stack's deployment records lie. The apply writes it to the records
+bucket as `harbor/stacks/<env>/stack.json` (`{"id": "<hex>"}`), the pipeline
+reads it there before it reads or writes a record, and the records sit under
+`harbor/<env>/<id>/` ("The pipeline's contract"), so a new stack starts a
+history of its own and the old stack's records stay where they were, read by
+nothing. A release build whose stack says no id (the stack was applied by a
+bedrock without one) is refused at the record; apply the stack once. The id
+is the output `stack_id`. In prd the stack protects the database
+(deletion and drop protection), the Cloud Run services and the Firestore
+database from deletion, and a destroy refuses them as they stand: a
+production stack given up is destroyed after an apply with the protections
+off, and the stack made in its place has an id of its own.
+
 ## Hand steps
 
 Per environment, after the first apply:
@@ -919,6 +949,7 @@ Per environment, after the first apply:
 | `registry` | `<hostname>/<project>/<repository>`; null until `2-shr` registers harbor. |
 | `secrets` | Per variable: `secret_id` and the pinned `version` (null when unpinned). |
 | `services` | Per region code: `name`, `region`, `uri`. |
+| `stack_id` | The stack's id (four hex characters): the suffix of the names Google keeps after a delete, and the prefix of the stack's deployment records. |
 | `tasks_queue` | The task queue's resource name. |
 | `staff_oidc_redirect_url` | The redirect URI to register on the OAuth client. |
 | `substitutions` | What the triggers pass to `cloudbuild.yaml`. |

@@ -8,9 +8,10 @@ trigger plans it on a pull request as `{{.Prefix}}-org-gbl-plan`.
 
 ## What it creates
 
-- Folders `shared`, `tst`, `stg`, and `prd` at the org root, beside the
-  `terraform` folder from `0-bootstrap`. They exist ahead of the projects
-  because they are where org policy and Essential Contacts attach.
+- Folders `shared`, `tst`, `stg`, and `prd` under the organization's folder
+  `{{.Prefix}}` from `0-bootstrap` (its output `organization_folder_id`),
+  beside the `terraform` folder. They exist ahead of the projects because
+  they are where org policy and Essential Contacts attach.
 - The org policy baseline on each folder, from `var.org_policies`, plus
   `essentialcontacts.managed.allowedContactDomains` from
   `var.allowed_contact_domains`. Folder-scoped, so the `terraform` folder and
@@ -18,7 +19,7 @@ trigger plans it on a pull request as `{{.Prefix}}-org-gbl-plan`.
 - Essential Contacts on each folder, from `var.essential_contact_emails`
   (empty for now).
 - Six projects from `var.projects`, `{{.Prefix}}-<key>-gbl-core-<suffix>`, each with
-  its API set, labels ({{if .ExtraLabels}}{{.ExtraLabelKeys}}, {{end}}`environment = <key>`), a lien
+  its API set, labels ({{if .ExtraLabels}}{{.ExtraLabelKeys}}, {{end}}`organization = {{.Prefix}}`, `environment = <key>`), a lien
   that refuses its deletion (see "Removing a project"), and no default
   compute service account:
 
@@ -94,6 +95,13 @@ trigger plans it on a pull request as `{{.Prefix}}-org-gbl-plan`.
   `public-invokers.auto.tfvars`): the identity binds the tag to its own Cloud
   Run services. Rendered by `bedrock org register` and committed once `2-env`
   has created the identities.
+- Every custom role here has the id `<name>_<suffix>`, and the public-invoker
+  tag key the short name `public-invoker-<suffix>`: the suffix is
+  `0-bootstrap`'s `organization_suffix` (four hex characters), since a role's
+  id and a tag key's short name are unique across the Google Cloud
+  organization, which may hold more than one bedrock organization, and a
+  deleted role's id stays taken for 37 days. This README names the roles by
+  their bare names.
 - The custom organization role `secretContainerAdmin`: creates, updates,
   deletes, and lists secrets, manages their IAM, and enables, disables, and
   destroys versions, but can neither add a version (`versions.add`) nor read

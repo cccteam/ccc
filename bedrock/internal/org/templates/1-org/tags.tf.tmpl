@@ -12,9 +12,12 @@
 # where the tag is owned, from var.public_invokers.
 # ---------------------------------------------------------------------------
 
+# The key's name ends with the organization's suffix: a tag key sits at the
+# organization node (a folder cannot hold one), where names are unique per
+# parent and held after a delete.
 resource "google_tags_tag_key" "public_invoker" {
   parent      = local.org_name
-  short_name  = "public-invoker"
+  short_name  = "public-invoker-${local.boot.organization_suffix}"
   description = "true on a Cloud Run service that may grant roles/run.invoker to allUsers, for the load balancer; see org-policies.tf."
 }
 

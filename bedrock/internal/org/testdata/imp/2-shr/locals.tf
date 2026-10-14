@@ -21,6 +21,7 @@ locals {
     terraform             = "true"
     terraform_source_path = "2-shr"
     source_repo           = "imp-impulse-infrastructure"
+    organization          = "imp"
     environment           = local.environment
     bedrock-lab           = "true"
   }

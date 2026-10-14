@@ -45,7 +45,7 @@ const (
 	modelLabelWidth = len("terraform_source_path")
 	// seedLabelCount and blockLineCount are the model's own lines in the seed's label
 	// list and in a labels block (its four labels plus the braces).
-	seedLabelCount = 4
+	seedLabelCount = 5
 	blockLineCount = 6
 )
 
@@ -619,7 +619,7 @@ func (v *view) ExtraLabelKeys() string {
 func (v *view) SeedLabels() string {
 	keys := v.labelKeys()
 	parts := make([]string, 0, seedLabelCount+len(keys))
-	parts = append(parts, "terraform=true", "terraform_source_path=0-bootstrap", "source_repo="+v.SourceRepo, "environment=boot")
+	parts = append(parts, "terraform=true", "terraform_source_path=0-bootstrap", "source_repo="+v.SourceRepo, "organization="+v.Prefix, "environment=boot")
 	for _, k := range keys {
 		parts = append(parts, k+"="+v.Labels[k])
 	}
@@ -640,6 +640,7 @@ func (v *view) LabelsBlock(layer, environment string) string {
 		fmt.Sprintf("    %-*s = %q", width, "terraform", "true"),
 		fmt.Sprintf("    %-*s = %q", width, "terraform_source_path", layer),
 		fmt.Sprintf("    %-*s = %q", width, "source_repo", v.SourceRepo),
+		fmt.Sprintf("    %-*s = %q", width, "organization", v.Prefix),
 		fmt.Sprintf("    %-*s = %s", width, "environment", environment),
 	)
 	for _, k := range keys {
