@@ -284,9 +284,11 @@ type EnvTag struct {
 	Name       string
 	Required   bool
 	HasDefault bool
-	// Secret reports the field's secret tag, secret:"true": the variable holds a
-	// credential that the infrastructure mounts from a secret store.
-	Secret bool
+	// Secret reports the field's secret tag, secret:"true" or secret:"generated": the
+	// variable holds a credential that the infrastructure mounts from a secret store.
+	// Generated reports the second: a value the tooling makes and nobody types.
+	Secret    bool
+	Generated bool
 	// Origin names the framework settings struct that declares the variable when the
 	// application embeds one instead of declaring the field itself, as import path and
 	// type name (github.com/cccteam/ccc/cloud/gcp.Settings); the tag stands at the

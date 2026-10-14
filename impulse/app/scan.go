@@ -817,7 +817,7 @@ func parseEnvTags(rel string, src []byte) ([]EnvTag, error) {
 		return true
 	})
 	if r.bad != nil {
-		return nil, errors.Newf("%s:%d: secret:%q on %s: the secret tag takes %q or %q", rel, r.bad.Line, r.badValue, r.bad.Name, secretTrue, secretFalse)
+		return nil, errors.Newf("%s:%d: secret:%q on %s: the secret tag takes %q, %q or %q", rel, r.bad.Line, r.badValue, r.bad.Name, secretTrue, secretGenerated, secretFalse)
 	}
 
 	return r.tags, nil
@@ -873,6 +873,8 @@ func (r *envTagReader) readField(field *ast.Field, line int) {
 		switch secret {
 		case secretTrue:
 			tag.Secret = true
+		case secretGenerated:
+			tag.Secret, tag.Generated = true, true
 		case secretFalse:
 		default:
 			r.bad, r.badValue = &tag, secret
@@ -924,12 +926,14 @@ func declaredTags(d cloud.Declaration, rel string, line int) []EnvTag {
 	return tags
 }
 
-// secretTag is the struct tag beside the env tag that declares a secret; secretTrue
-// and secretFalse are its two values.
+// secretTag is the struct tag beside the env tag that declares a secret: secretTrue a
+// value someone puts in place, secretGenerated one the tooling makes, secretFalse a plain
+// value whose name sounds like a credential.
 const (
-	secretTag   = "secret"
-	secretTrue  = "true"
-	secretFalse = "false"
+	secretTag       = "secret"
+	secretTrue      = "true"
+	secretGenerated = "generated"
+	secretFalse     = "false"
 )
 
 // parseEnvTag interprets an envconfig tag value: NAME[,required][,default=VALUE][,...].
