@@ -236,17 +236,26 @@ jobs:
           RESTORE: ${{ steps.target.outputs.restore }}
           KIND: ${{ steps.target.outputs.kind }}
         run: |
+          # records <bucket> <env> [<n>]: the environment's newest <n> (forty) deployment records
+          # as the objects variable, newest first: the release records under the stack the
+          # bucket's pointer names (<app>/stacks/<env>/stack.json, which the stack's apply
+          # writes). 1 when the stack says no id, 2 when it has no record yet.
+          records() {
+            id=$(gcloud storage cat "gs://$1/$APP/stacks/$2/stack.json" 2>/dev/null | jq -r '.id // empty')
+            [ -n "$id" ] || return 1
+            objects=$(gcloud storage ls -l "gs://$1/$APP/$2/$id/releases/*/*.json" 2>/dev/null | grep '^ *[0-9]' | sort -k2,2r | head -"${3:-40}" | awk '{print $3}')
+            [ -n "$objects" ] || return 2
+          }
           if [ "$KIND" = generation ]; then
             bucket=$(gcloud builds triggers describe "$TRIGGER" --region "$REGION" --project "$PROJECT" --format='value(substitutions._RECORDS_BUCKET)')
             if [ -z "$bucket" ]; then
               echo "::error::the version trigger $TRIGGER names no records bucket (_RECORDS_BUCKET): the stack has not been applied with this bedrock yet"
               exit 1
             fi
-            objects=$(gcloud storage ls -l "gs://$bucket/$APP/$ENVIRONMENT/*/*.json" 2>/dev/null | grep '^ *[0-9]' | sort -k2,2r | head -80 | awk '{print $3}')
-            if [ -z "$objects" ]; then
-              echo "::error::$ENVIRONMENT has no deployment records (gs://$bucket/$APP/$ENVIRONMENT/): nothing is live there to restore under"
-              exit 1
-            fi
+            records "$bucket" "$ENVIRONMENT" 80 || case $? in
+              1) echo "::error::$ENVIRONMENT's stack says no id (nothing at gs://$bucket/$APP/stacks/$ENVIRONMENT/stack.json): its apply writes it, so the stack has not been applied by a bedrock with stack ids; apply it once"; exit 1 ;;
+              2) echo "::error::$ENVIRONMENT has no deployment records (gs://$bucket/$APP/$ENVIRONMENT/$id/releases/): nothing is live there to restore under"; exit 1 ;;
+            esac
             gcloud storage cat $objects | jq -s '[.[] | select(.status == "live")] | sort_by(.timestamp)' > records.json
             live=$(jq -r 'last | .version // empty' records.json)
             if [ -z "$live" ]; then
@@ -313,13 +322,16 @@ jobs:
             echo "::error::the version trigger $TRIGGER names no records bucket for $PRODUCTION (_RECORDS_BUCKETS): the stack has not been applied with this bedrock yet"
             exit 1
           fi
-          objects=$(gcloud storage ls -l "gs://$bucket/$APP/$PRODUCTION/*/*.json" 2>/dev/null | grep '^ *[0-9]' | sort -k2,2r | head -40 | awk '{print $3}')
-          record=$( [ -n "$objects" ] && gcloud storage cat $objects | jq -c -s '[.[] | select(.status == "live")] | sort_by(.timestamp) | reverse | .[0] // empty' )
+          records "$bucket" "$PRODUCTION" || case $? in
+            1) echo "::error::$PRODUCTION's stack says no id (nothing at gs://$bucket/$APP/stacks/$PRODUCTION/stack.json): its apply writes it, so the stack has not been applied by a bedrock with stack ids; apply it once"; exit 1 ;;
+            2) echo "::error::no release is live in $PRODUCTION by its deployment records (gs://$bucket/$APP/$PRODUCTION/$id/releases/): name the release to run"; exit 1 ;;
+          esac
+          record=$(gcloud storage cat $objects | jq -c -s '[.[] | select(.status == "live")] | sort_by(.timestamp) | reverse | .[0] // empty')
           live=$(printf '%s' "$record" | jq -r '.version // empty')
           database=$(printf '%s' "$record" | jq -r '.database.name // empty')
           source=$(printf '%s' "$record" | jq -r '(.restore | select(. != null and .database != null) | .backup) // .rollback.backup // empty')
           if [ -z "$live" ]; then
-            echo "::error::no release is live in $PRODUCTION by its deployment records (gs://$bucket/$APP/$PRODUCTION/): name the release to run"
+            echo "::error::no release is live in $PRODUCTION by its deployment records (gs://$bucket/$APP/$PRODUCTION/$id/releases/): name the release to run"
             exit 1
           fi
           if [ -z "$RELEASE" ]; then
@@ -598,16 +610,25 @@ jobs:
           PROJECT: ${{ steps.target.outputs.project }}
           TRIGGER: ${{ steps.target.outputs.trigger }}
         run: |
+          # records <bucket> <env> [<n>]: the environment's newest <n> (forty) deployment records
+          # as the objects variable, newest first: the release records under the stack the
+          # bucket's pointer names (<app>/stacks/<env>/stack.json, which the stack's apply
+          # writes). 1 when the stack says no id, 2 when it has no record yet.
+          records() {
+            id=$(gcloud storage cat "gs://$1/$APP/stacks/$2/stack.json" 2>/dev/null | jq -r '.id // empty')
+            [ -n "$id" ] || return 1
+            objects=$(gcloud storage ls -l "gs://$1/$APP/$2/$id/releases/*/*.json" 2>/dev/null | grep '^ *[0-9]' | sort -k2,2r | head -"${3:-40}" | awk '{print $3}')
+            [ -n "$objects" ] || return 2
+          }
           bucket=$(gcloud builds triggers describe "$TRIGGER" --region "$REGION" --project "$PROJECT" --format='value(substitutions._RECORDS_BUCKET)')
           if [ -z "$bucket" ]; then
             echo "::error::the version trigger $TRIGGER names no records bucket (_RECORDS_BUCKET): the stack has not been applied with this bedrock yet"
             exit 1
           fi
-          objects=$(gcloud storage ls -l "gs://$bucket/$APP/$ENVIRONMENT/*/*.json" 2>/dev/null | grep '^ *[0-9]' | sort -k2,2r | head -40 | awk '{print $3}')
-          if [ -z "$objects" ]; then
-            echo "::error::$ENVIRONMENT has no deployment records (gs://$bucket/$APP/$ENVIRONMENT/): nothing is live there to return from"
-            exit 1
-          fi
+          records "$bucket" "$ENVIRONMENT" || case $? in
+            1) echo "::error::$ENVIRONMENT's stack says no id (nothing at gs://$bucket/$APP/stacks/$ENVIRONMENT/stack.json): its apply writes it, so the stack has not been applied by a bedrock with stack ids; apply it once"; exit 1 ;;
+            2) echo "::error::$ENVIRONMENT has no deployment records (gs://$bucket/$APP/$ENVIRONMENT/$id/releases/): nothing is live there to return from"; exit 1 ;;
+          esac
           gcloud storage cat $objects | jq -s '[.[] | select(.status == "live")] | sort_by(.timestamp) | reverse' > records.json
           from=$(jq -r '.[0].version // empty' records.json)
           if [ -z "$from" ]; then
@@ -719,16 +740,25 @@ jobs:
           PROJECT: ${{ steps.target.outputs.project }}
           TRIGGER: ${{ steps.target.outputs.trigger }}
         run: |
+          # records <bucket> <env> [<n>]: the environment's newest <n> (forty) deployment records
+          # as the objects variable, newest first: the release records under the stack the
+          # bucket's pointer names (<app>/stacks/<env>/stack.json, which the stack's apply
+          # writes). 1 when the stack says no id, 2 when it has no record yet.
+          records() {
+            id=$(gcloud storage cat "gs://$1/$APP/stacks/$2/stack.json" 2>/dev/null | jq -r '.id // empty')
+            [ -n "$id" ] || return 1
+            objects=$(gcloud storage ls -l "gs://$1/$APP/$2/$id/releases/*/*.json" 2>/dev/null | grep '^ *[0-9]' | sort -k2,2r | head -"${3:-40}" | awk '{print $3}')
+            [ -n "$objects" ] || return 2
+          }
           bucket=$(gcloud builds triggers describe "$TRIGGER" --region "$REGION" --project "$PROJECT" --format='value(substitutions._RECORDS_BUCKET)')
           if [ -z "$bucket" ]; then
             echo "::error::the version trigger $TRIGGER names no records bucket (_RECORDS_BUCKET): the stack has not been applied with this bedrock yet"
             exit 1
           fi
-          objects=$(gcloud storage ls -l "gs://$bucket/$APP/$ENVIRONMENT/*/*.json" 2>/dev/null | grep '^ *[0-9]' | sort -k2,2r | head -200 | awk '{print $3}')
-          if [ -z "$objects" ]; then
-            echo "$ENVIRONMENT has no deployment records (gs://$bucket/$APP/$ENVIRONMENT/): nothing ran there yet."
-            exit 0
-          fi
+          records "$bucket" "$ENVIRONMENT" 200 || case $? in
+            1) echo "$ENVIRONMENT's stack says no id (nothing at gs://$bucket/$APP/stacks/$ENVIRONMENT/stack.json): nothing ran there with a bedrock with stack ids yet."; exit 0 ;;
+            2) echo "$ENVIRONMENT has no deployment records (gs://$bucket/$APP/$ENVIRONMENT/$id/releases/): nothing ran there yet."; exit 0 ;;
+          esac
           gcloud storage cat $objects | jq -s '.' > records.json
           {
             echo "## $APP in $ENVIRONMENT: what a restore can return to"
@@ -794,15 +824,28 @@ jobs:
           PROJECT: ${{ steps.target.outputs.project }}
           TRIGGER: ${{ steps.target.outputs.trigger }}
         run: |
+          # records <bucket> <env> [<n>]: the environment's newest <n> (forty) deployment records
+          # as the objects variable, newest first: the release records under the stack the
+          # bucket's pointer names (<app>/stacks/<env>/stack.json, which the stack's apply
+          # writes). 1 when the stack says no id, 2 when it has no record yet.
+          records() {
+            id=$(gcloud storage cat "gs://$1/$APP/stacks/$2/stack.json" 2>/dev/null | jq -r '.id // empty')
+            [ -n "$id" ] || return 1
+            objects=$(gcloud storage ls -l "gs://$1/$APP/$2/$id/releases/*/*.json" 2>/dev/null | grep '^ *[0-9]' | sort -k2,2r | head -"${3:-40}" | awk '{print $3}')
+            [ -n "$objects" ] || return 2
+          }
           bucket=$(gcloud builds triggers describe "$TRIGGER" --region "$REGION" --project "$PROJECT" --format='value(substitutions._RECORDS_BUCKET)')
           if [ -z "$bucket" ]; then
             echo "::error::the version trigger $TRIGGER names no records bucket (_RECORDS_BUCKET): the stack has not been applied with this bedrock yet"
             exit 1
           fi
-          objects=$(gcloud storage ls -l "gs://$bucket/$APP/$ENVIRONMENT/*/*.json" 2>/dev/null | grep '^ *[0-9]' | sort -k2,2r | head -40 | awk '{print $3}')
-          live=$( [ -n "$objects" ] && gcloud storage cat $objects | jq -r -s '[.[] | select(.status == "live")] | sort_by(.timestamp) | last | .version // empty' )
+          records "$bucket" "$ENVIRONMENT" || case $? in
+            1) echo "::error::$ENVIRONMENT's stack says no id (nothing at gs://$bucket/$APP/stacks/$ENVIRONMENT/stack.json): its apply writes it, so the stack has not been applied by a bedrock with stack ids; apply it once"; exit 1 ;;
+            2) echo "::error::no release is live in $ENVIRONMENT by its deployment records (gs://$bucket/$APP/$ENVIRONMENT/$id/releases/): nothing to take out of maintenance"; exit 1 ;;
+          esac
+          live=$(gcloud storage cat $objects | jq -r -s '[.[] | select(.status == "live")] | sort_by(.timestamp) | last | .version // empty')
           if [ -z "$live" ]; then
-            echo "::error::no release is live in $ENVIRONMENT by its deployment records (gs://$bucket/$APP/$ENVIRONMENT/): nothing to take out of maintenance"
+            echo "::error::no release is live in $ENVIRONMENT by its deployment records (gs://$bucket/$APP/$ENVIRONMENT/$id/releases/): nothing to take out of maintenance"
             exit 1
           fi
           build=$(gcloud builds triggers run "$TRIGGER" --tag "$live" --region "$REGION" --project "$PROJECT" \
