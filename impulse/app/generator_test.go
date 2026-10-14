@@ -444,9 +444,17 @@ func TestParseEnvTagsSecret(t *testing.T) {
 			},
 		},
 		{
+			name: "the generated value marks a secret the tooling makes",
+			src:  "package config\n\ntype dataConfig struct {\n\tCookieKey string `env:\"APP_COOKIE_KEY\" secret:\"generated\"`\n\tMailKey string `env:\"APP_MAIL_KEY\" secret:\"true\"`\n}\n",
+			want: []EnvTag{
+				{File: "pkg/config/data.go", Line: 4, Name: "APP_COOKIE_KEY", Secret: true, Generated: true},
+				{File: "pkg/config/data.go", Line: 5, Name: "APP_MAIL_KEY", Secret: true},
+			},
+		},
+		{
 			name:    "another value is refused",
 			src:     "package config\n\ntype dataConfig struct {\n\tCookieKey string `env:\"APP_COOKIE_KEY\" secret:\"yes\"`\n}\n",
-			wantErr: `pkg/config/data.go:4: secret:"yes" on APP_COOKIE_KEY: the secret tag takes "true" or "false"`,
+			wantErr: `pkg/config/data.go:4: secret:"yes" on APP_COOKIE_KEY: the secret tag takes "true", "generated" or "false"`,
 		},
 	}
 	for _, tt := range tests {
