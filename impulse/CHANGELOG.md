@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.2](https://github.com/cccteam/ccc/compare/impulse/v0.4.1...impulse/v0.4.2) (2026-10-14)
+
+
+### Features
+
+* the env scan accepts secret:"generated", a secret whose value the tooling makes and nobody types ([#936](https://github.com/cccteam/ccc/issues/936)) ([ac68368](https://github.com/cccteam/ccc/commit/ac683682cb71753dca15b498ab23eb62a00961e1))
+
 ## [0.4.1](https://github.com/cccteam/ccc/compare/impulse/v0.4.0...impulse/v0.4.1) (2026-10-10)
 
 
