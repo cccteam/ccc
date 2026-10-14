@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.3](https://github.com/cccteam/ccc/compare/impulse/v0.4.2...impulse/v0.4.3) (2026-10-14)
+
+
+### Features
+
+* the skeletons' cookie key is generated: bedrock makes its value at the first release, and nobody types it ([#939](https://github.com/cccteam/ccc/issues/939)) ([3dbe35d](https://github.com/cccteam/ccc/commit/3dbe35d4c6764f5482c7cf706eaa1e0f8f50db15))
+
 ## [0.4.2](https://github.com/cccteam/ccc/compare/impulse/v0.4.1...impulse/v0.4.2) (2026-10-14)
 
 
