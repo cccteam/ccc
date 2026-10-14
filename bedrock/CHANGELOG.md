@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.3.0](https://github.com/cccteam/ccc/compare/bedrock/v0.2.2...bedrock/v0.3.0) (2026-10-14)
+
+
+### ⚠ BREAKING CHANGES
+
+* **bedrock:** an organization and its applications move by the hand steps in bedrock/README.md, "Upgrading to the Cloud Build triggers": the Cloud Build token and the deployer GitHub App's key move to the boot project and placement.json, 2-env's four GitHub values retire, 0-bootstrap is applied once by hand, and every application's stack is applied once in tst by hand so its triggers exist.
+
+### Features
+
+* **bedrock:** a release whose code declares a secret with no pinned version in an environment after the first is refused at that environment's plan; a pull request's plan summary says it ([#930](https://github.com/cccteam/ccc/issues/930)) ([2ecb1f3](https://github.com/cccteam/ccc/commit/2ecb1f32581f3ee643c67553f81f6c97b9b7b2f3))
+* **bedrock:** the number of approving reviews a merge needs is a placement setting, one by default, on every application repository and the organization's own, whose default branch also requires the plan trigger's check ([#930](https://github.com/cccteam/ccc/issues/930)) ([2ecb1f3](https://github.com/cccteam/ccc/commit/2ecb1f32581f3ee643c67553f81f6c97b9b7b2f3))
+* **bedrock:** the organization's layers and an application's pull-request stack are planned and applied from Cloud Build triggers whose steps the render holds, the check of every owned file first; the layers and infrastructure workflows and the federation pool retire; each application's required check is its stack's check trigger ([#930](https://github.com/cccteam/ccc/issues/930)) ([2ecb1f3](https://github.com/cccteam/ccc/commit/2ecb1f32581f3ee643c67553f81f6c97b9b7b2f3))
+* release-please runs in Cloud Build as a release identity; generated secrets are made and pinned by the pipeline ([#937](https://github.com/cccteam/ccc/issues/937)) ([5ba7a19](https://github.com/cccteam/ccc/commit/5ba7a196f41586c7d2067c6d8a62be1878478a9a))
+* stack and organization ids in the names Google holds after a delete and in the deployment records' paths ([#935](https://github.com/cccteam/ccc/issues/935)) ([ff29eee](https://github.com/cccteam/ccc/commit/ff29eee202a5acdb3d718a82df77a5cee8530389))
+
+
+### Bug Fixes
+
+* bedrock carries no migration blocks or retired-file removals; an earlier shape is re-created, not migrated ([#933](https://github.com/cccteam/ccc/issues/933)) ([77d1f62](https://github.com/cccteam/ccc/commit/77d1f62c429a040c6f80ce6619c35a99147801fd))
+* **bedrock:** the bootstrap README's alternative to the Cloud Build browser step is a classic personal access token with the repo, read:user and read:org scopes ([#930](https://github.com/cccteam/ccc/issues/930)) ([2ecb1f3](https://github.com/cccteam/ccc/commit/2ecb1f32581f3ee643c67553f81f6c97b9b7b2f3))
+* the application plan identity reads the request-log exclusion; a failed plan's comment carries its errors; no empty scaling block ([#934](https://github.com/cccteam/ccc/issues/934)) ([ad818a1](https://github.com/cccteam/ccc/commit/ad818a1b115699018d13040ebb384a370256053c))
+* the Cloud Build triggers' first lab runs: runner reads, markers by name, boot plan identities, plan comments ([537c142](https://github.com/cccteam/ccc/commit/537c14247c9ac2f5c943a1103b69654ec130781d))
+
 ## [0.2.2](https://github.com/cccteam/ccc/compare/bedrock/v0.2.1...bedrock/v0.2.2) (2026-10-10)
 
 
