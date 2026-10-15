@@ -35,7 +35,7 @@ module "project" {
   default_service_account = "delete"
 
   disable_dependent_services = true
-  deletion_policy            = "PREVENT"
+  deletion_policy            = var.destroy ? "DELETE" : "PREVENT"
   lien                       = true
   activate_apis              = var.required_apis[each.value.api_set]
 

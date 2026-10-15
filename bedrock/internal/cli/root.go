@@ -60,8 +60,10 @@ type deps struct {
 	secrets  secret.ClientFunc
 	projects where.ProjectClientFunc
 	org      *orgClients
-	// github opens the GitHub API client with the token found for the account.
-	github github.ClientFunc
+	// github opens the GitHub API client with the token found for the account, and
+	// githubToken finds that token for the programs a command runs (org destroy's tofu).
+	github      github.ClientFunc
+	githubToken github.TokenFunc
 	// cwd is where the repository is looked for when --dir is not given; empty means
 	// the process's working directory.
 	cwd string
@@ -114,6 +116,7 @@ func newRoot() *cobra.Command {
 		projects:    where.NewProjects,
 		org:         &orgClients{policies: org.NewPolicyReader, keys: org.NewKeyLister, registrations: domain.NewRegistrationReader, permissions: org.NewPermissionTester, keysAs: org.NewKeyClientAs},
 		github:      github.Open,
+		githubToken: github.Token,
 		interactive: stdinIsTerminal,
 		readSecret:  readHidden,
 		deploy:      deploy.DefaultClients(),

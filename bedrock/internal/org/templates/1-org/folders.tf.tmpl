@@ -7,6 +7,7 @@ resource "google_folder" "this" {
   display_name = each.value
   parent       = "folders/${local.boot.organization_folder_id}"
 
-  # Guards against a folder being removed while it still holds projects.
-  deletion_protection = true
+  # Guards against a folder being removed while it still holds projects;
+  # bedrock org destroy lifts it on its own runs (var.destroy).
+  deletion_protection = !var.destroy
 }

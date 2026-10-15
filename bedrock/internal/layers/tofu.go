@@ -33,6 +33,9 @@ const (
 	dataDirEnv  = "TF_DATA_DIR"
 	// diagnosticType is the type of a log line that carries an error or a warning.
 	diagnosticType = "diagnostic"
+	// The flags every tofu command gets: no questions, no color.
+	noInput = "-input=false"
+	noColor = "-no-color"
 )
 
 // tofu is one run's tofu: the layer's directory, the environment the run gets, the
@@ -78,7 +81,7 @@ func (t *tofu) command(args ...string) deploy.Command {
 // init points the layer at the run's state prefix, impersonating the identity for the
 // backend as for the provider.
 func (t *tofu) init(ctx context.Context) error {
-	return t.exec.Run(ctx, t.command("init", "-input=false", "-no-color", "-backend-config=prefix="+t.run.StatePrefix, "-backend-config=impersonate_service_account="+t.identity), t.out)
+	return t.exec.Run(ctx, t.command("init", noInput, noColor, "-backend-config=prefix="+t.run.StatePrefix, "-backend-config=impersonate_service_account="+t.identity), t.out)
 }
 
 // plan plans the layer into the working directory, with the JSON log beside it, and
@@ -86,7 +89,7 @@ func (t *tofu) init(ctx context.Context) error {
 // lock on a pull request (the plan identity reads and writes nothing). An error is the
 // run's own, never the plan failing.
 func (t *tofu) plan(ctx context.Context, lock bool) (text string, ok bool) {
-	args := []string{"plan", "-input=false", "-no-color", "-out=" + filepath.Join(t.work, planFile), "-json-into=" + filepath.Join(t.work, logFile)}
+	args := []string{"plan", noInput, noColor, "-out=" + filepath.Join(t.work, planFile), "-json-into=" + filepath.Join(t.work, logFile)}
 	if !lock {
 		args = append(args, "-lock=false")
 	}
@@ -102,7 +105,7 @@ func (t *tofu) plan(ctx context.Context, lock bool) (text string, ok bool) {
 // apply applies the saved plan and answers what tofu printed.
 func (t *tofu) apply(ctx context.Context) (string, error) {
 	var printed bytes.Buffer
-	if err := t.exec.Run(ctx, t.command("apply", "-input=false", "-no-color", filepath.Join(t.work, planFile)), io.MultiWriter(&printed, t.out)); err != nil {
+	if err := t.exec.Run(ctx, t.command(applyCommand, noInput, noColor, filepath.Join(t.work, planFile)), io.MultiWriter(&printed, t.out)); err != nil {
 		return printed.String(), err
 	}
 
