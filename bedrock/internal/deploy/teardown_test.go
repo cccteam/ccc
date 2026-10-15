@@ -209,7 +209,7 @@ google_service_account.app
 				"=== tst: teardown of harbor's stack at 3-app/harbor/tst ===",
 				"The plan destroys the 10 resource(s) the teardown names and keeps 9, as meant; applying it.",
 				"Tore harbor's stack in tst down: 10 resource(s) destroyed, 9 kept (the database, the file stores, the secret containers, the identities, the Firestore database, the task queue, the migrate logs, the stack's id). A record went to gs://imp-tst-gbl-harbor-records/harbor/stacks/tst/teardown.json.",
-				"To bring it back: apply the stack by hand from the checkout of the release it ran (infrastructure/README.md, \"Applying\"), which makes the services, the triggers and the rest again, then bedrock rerun tst <release> deploys the release through them.",
+				"To bring it back: the operations workflow's apply action in tst runs the stack trigger, which applies the stack again (the services, the triggers and the rest), then bedrock rerun tst <release> deploys the release through them.",
 			},
 			wantRan: []string{
 				"tofu init -input=false -no-color -reconfigure -backend-config=prefix=3-app/harbor/tst",

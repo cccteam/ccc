@@ -61,9 +61,10 @@ which environments still stand and the command to run from each checkout (bedroc
 --all), and writes the journal line once none does. The prefix typed back gates each run (--yes
 stands in for it where there is no terminal).
 
-The inverse is the same loop the other way: each stack applied by hand from the checkout of the
-release it ran, teardown removed from placement.json on a pull request (a host names a backend
-service that must exist), then bedrock rerun <env> <release> per environment.`,
+The inverse is the same loop the other way: each stack applied again with the operations
+workflow's apply action per environment, teardown removed from placement.json on a pull request
+(a host names a backend service that must exist), then bedrock rerun <env> <release> per
+environment.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return d.teardownOrg(cmd, dir, yes)
@@ -97,7 +98,7 @@ func (d deps) teardownOrgNet(cmd *cobra.Command, dir string, p *org.Placement, y
 	if err := d.orgPinned(p, path); err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "bedrock org teardown takes the %s organization's applications out of service. This run takes the hosts and the load balancer's listeners (the forwarding rules, the proxies, the URL maps and the sink) out of 2-net, on the pull request it prepares; the address, the certificate and its DNS authorization stay. The next run, once the merge's apply has 2-net routing nothing, tears every registered application (%s) down to what it keeps. Nothing here is undone by bedrock: the inverse is each stack applied by hand, teardown removed from placement.json on a pull request, and a rerun per environment.\n\n", p.Prefix, applicationsList(p))
+	fmt.Fprintf(out, "bedrock org teardown takes the %s organization's applications out of service. This run takes the hosts and the load balancer's listeners (the forwarding rules, the proxies, the URL maps and the sink) out of 2-net, on the pull request it prepares; the address, the certificate and its DNS authorization stay. The next run, once the merge's apply has 2-net routing nothing, tears every registered application (%s) down to what it keeps. Nothing here is undone by bedrock: the inverse is each stack applied again with the operations workflow's apply action, teardown removed from placement.json on a pull request, and a rerun per environment.\n\n", p.Prefix, applicationsList(p))
 	ok, err := d.confirmTeardown(cmd, orgTeardownCmd, p.Prefix, yes)
 	if err != nil || !ok {
 		return err
@@ -239,7 +240,7 @@ func (d deps) teardownOrgAccount(ctx context.Context, dir string, p *org.Placeme
 // teardownOrgDone writes the journal line that ends the teardown and says what the
 // organization is left with.
 func (deps) teardownOrgDone(dir string, p *org.Placement, out io.Writer) error {
-	line := fmt.Sprintf("- %s: bedrock org teardown: every application torn down to what it keeps (%s); 2-net routes nothing. The inverse: each stack applied by hand, teardown removed from placement.json on a pull request, a rerun per environment.\n", time.Now().UTC().Format("2006-01-02 15:04Z"), applicationsList(p))
+	line := fmt.Sprintf("- %s: bedrock org teardown: every application torn down to what it keeps (%s); 2-net routes nothing. The inverse: each stack applied again with the operations workflow's apply action, teardown removed from placement.json on a pull request, a rerun per environment.\n", time.Now().UTC().Format("2006-01-02 15:04Z"), applicationsList(p))
 	if err := appendJournalLine(dir, line); err != nil {
 		return err
 	}
