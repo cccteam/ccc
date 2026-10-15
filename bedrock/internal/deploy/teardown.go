@@ -247,7 +247,7 @@ func refuseRouted(ctx context.Context, store Store, bucket string, state *stateF
 		return nil
 	}
 
-	return errors.Newf("2-net routes %s: the load balancer uses %s's backend service, Google refuses its deletion while it does, and the services behind it cannot go either. Take the hosts out of 2-net first, one of two ways: bedrock org teardown, whose first step does, or %s's removal from placement.json through an organization pull request; then run bedrock %s again", strings.Join(routed, ", "), req.Env, req.App, req.command())
+	return errors.Newf("2-net routes %s: the load balancer uses %s's backend service, Google refuses its deletion while it does, and the services behind it cannot go either. Take the hosts out of 2-net first, one of three ways, each through an organization pull request: bedrock org teardown, whose first step does; %s's registration set back to grants in placement.json (registration), which takes its hostnames out and leaves the rest; or %s's removal from placement.json; then run bedrock %s again", strings.Join(routed, ", "), req.Env, req.App, req.App, req.command())
 }
 
 // readRecords reads what the plan's variables and the record come from: the stack's id,

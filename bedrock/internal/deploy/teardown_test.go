@@ -157,7 +157,7 @@ google_service_account.app
 			name:    "refuses while 2-net routes a host to the environment's backend",
 			env:     "tst",
 			routed:  true,
-			wantErr: "2-net routes harbor-tst.impulseframework.dev to " + tstBackend + ": the load balancer uses tst's backend service, Google refuses its deletion while it does, and the services behind it cannot go either. Take the hosts out of 2-net first, one of two ways: bedrock org teardown, whose first step does, or harbor's removal from placement.json through an organization pull request; then run bedrock teardown again",
+			wantErr: "2-net routes harbor-tst.impulseframework.dev to " + tstBackend + ": the load balancer uses tst's backend service, Google refuses its deletion while it does, and the services behind it cannot go either. Take the hosts out of 2-net first, one of three ways, each through an organization pull request: bedrock org teardown, whose first step does; harbor's registration set back to grants in placement.json (registration), which takes its hostnames out and leaves the rest; or harbor's removal from placement.json; then run bedrock teardown again",
 		},
 		{
 			name:    "says so when the stack has not been applied",
