@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.14.2](https://github.com/cccteam/ccc/compare/resource/v0.14.1...resource/v0.14.2) (2026-10-15)
+
+
+### Features
+
+* impulse add job &lt;name&gt; scaffolds a command of the job process, now a cobra command tree (@cccteam/impulse) ([#953](https://github.com/cccteam/ccc/issues/953)) ([f797dce](https://github.com/cccteam/ccc/commit/f797dce8e56fe60a3649bc0aa402a58ca6e03cb9))
+* Lodestar's job process takes the cobra command tree shape (@cccteam/resource) ([#953](https://github.com/cccteam/ccc/issues/953)) ([f797dce](https://github.com/cccteam/ccc/commit/f797dce8e56fe60a3649bc0aa402a58ca6e03cb9))
+
 ## [0.14.1](https://github.com/cccteam/ccc/compare/resource/v0.14.0...resource/v0.14.1) (2026-10-10)
 
 
