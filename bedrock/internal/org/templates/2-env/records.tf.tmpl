@@ -14,8 +14,9 @@
 # ever is), its application plan identities read them (a pull-request build
 # against a hotfix line previews each environment's release check from its
 # live record), the next environment's deploy identities read them (the
-# record gate), and the environment's team group reads them (a person reads
-# a record through the group, never through a project role). The application
+# record gate), and the environment's team group reads them (a person on the
+# team reads a record through the group; an owner through the project's basic
+# roles, kept below). The application
 # stacks write what is theirs under <app>/stacks/ as the applications' apply
 # identities (objectUser, under a condition on the prefix): the object naming
 # the stack's id (<app>/stacks/<env>/stack.json, which the pipeline reads
@@ -24,8 +25,12 @@
 # written again on a new /gcbrun comment. The deploy identities' creator
 # binding stops at that prefix, so a preview build, which runs a file the
 # pull request edits, can only read what the job wrote.
-# Cloud Storage's default grants to the project's basic roles (projectOwner,
-# projectEditor and projectViewer) are not listed, so they are removed, and a
+# Cloud Storage's default grants to the project's basic roles (projectOwner
+# and projectEditor own the bucket and its objects, projectViewer reads them)
+# are listed as Cloud Storage makes them, so an organization or project owner
+# reaches the records the way an owner reaches everything: the records are the
+# pipeline's evidence (what is live, the stack's id, the pins, a teardown), and
+# a record changed by hand can mislead it, which is the owner's to know. A
 # grant added on the bucket by hand is removed by the next apply; a grant
 # added on the project is not. This layer's own identity reaches the bucket
 # through its storage admin, which 1-org bounds to this bucket's name; the
@@ -114,7 +119,15 @@ locals {
       }
     }
   ]
-  records_bindings = concat([
+  # Cloud Storage's default grants to the project's basic roles, kept as it
+  # makes them on a new bucket.
+  records_basic_bindings = [
+    { role = "roles/storage.legacyBucketOwner", members = ["projectOwner:${local.project_id}", "projectEditor:${local.project_id}"], condition = null },
+    { role = "roles/storage.legacyObjectOwner", members = ["projectOwner:${local.project_id}", "projectEditor:${local.project_id}"], condition = null },
+    { role = "roles/storage.legacyBucketReader", members = ["projectViewer:${local.project_id}"], condition = null },
+    { role = "roles/storage.legacyObjectReader", members = ["projectViewer:${local.project_id}"], condition = null },
+  ]
+  records_bindings = concat(local.records_basic_bindings, [
     for b in [
       { role = "roles/storage.objectCreator", members = local.records_deploy_members, condition = local.records_creator_condition },
       { role = "roles/storage.objectViewer", members = concat(local.records_deploy_members, local.records_plan_members, local.records_ops_members, local.records_lower_ops_members, local.records_rehearsal_members, values(local.next_deploy_members), [local.team_group]), condition = null },

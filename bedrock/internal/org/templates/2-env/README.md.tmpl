@@ -114,13 +114,15 @@ null.
   reads what is live and what it returns to), in production the lower
   environments' operations identities too (a restore from production's
   backup reads production's live release), the next environment's deploy
-  identities (the record gate) and the environment's team group (a person
-  reads a record through the group). Nobody else: Cloud Storage's default grants to the project's
-  basic roles are gone from it, so an Owner, Editor or Viewer of the project
-  or the organization reads no record through them. A grant added on the
-  bucket by hand, for a day's debugging, is removed by this layer's next
-  apply; a grant added on the project is not, so an Owner of the project can
-  still give itself a storage role there.
+  identities (the record gate), the environment's team group (a person on
+  the team reads a record through the group) and the project's basic roles,
+  which keep Cloud Storage's default grants: an Owner of the project or the
+  organization reads and changes the records the way an Owner reaches
+  everything. The records are the pipeline's evidence (what is live, the
+  stack's id, the generated secrets' pins, a teardown), and a record changed
+  by hand can mislead it; that is the Owner's to know. Nobody else. A grant
+  added on the bucket by hand, for a day's debugging, is removed by this
+  layer's next apply; a grant added on the project is not.
 - The team group's grants (`team-group.tf`): `roles/cloudbuild.builds.approver`
   on the environment project for the environment's team group in
   {{.ApprovalEnvironmentsProse}}, `roles/storage.objectUser` under
@@ -221,8 +223,8 @@ the environment project: `applicationPlanReader` (`1-org`'s custom role: the
 read of every resource type the stack declares, found in the lab from
 the plans' refusals, and nothing of what those resources hold; `roles/viewer`
 would read the rows of a database in this project, and reads no record and
-no uploaded file either way, since the records bucket and the file stores
-carry no default grant to the project's basic roles),
+no uploaded file either way, since it holds no basic role of the project
+and nothing names it on the records bucket or the file stores),
 `roles/iam.securityReviewer` (reading the IAM policies the stack's grants are
 refreshed from, a bucket's and a queue's among them) and
 `roles/serviceusage.serviceUsageConsumer`. On the state bucket:

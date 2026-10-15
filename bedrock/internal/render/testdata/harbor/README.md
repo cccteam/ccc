@@ -152,13 +152,14 @@ from `2-env`'s state.
   its own bucket; one sharing tst's database uses tst's, its
   identities granted on it, since the rows it reads name objects there. The service's
   first revision waits for the bucket's grants. The site and the job
-  process hold `roles/storage.objectUser` on it, and nobody else: the stack
-  sets the bucket's whole permission list (`google_storage_bucket_iam_policy.files`),
-  so Cloud Storage's default grants to the project's basic roles are gone
-  from it and no Owner, Editor or Viewer of the project reads an uploaded
-  file through them. A grant added on the bucket by hand, for a day's
-  debugging, is removed by the next release's apply; a grant added on the
-  project is not. The migrate command gets neither the URL nor a grant.
+  process hold `roles/storage.objectUser` on it, and the project's basic
+  roles keep Cloud Storage's default grants (an Owner reaches an uploaded file
+  the way an Owner reaches everything, and can change what the application
+  stored); nobody else: the stack sets the bucket's whole permission list
+  (`google_storage_bucket_iam_policy.files`), so a grant added on the
+  bucket by hand, for a day's debugging, is removed by the next release's
+  apply; a grant added on the project is not. The migrate command gets neither
+  the URL nor a grant.
 - **The task queue** `imp-<env>-uc1-harbor-tasks-<id>` (the stack's id, below)
   (`dataConfig.TasksQueue` names it to the processes that construct the
   data level), in the primary region, `var.tasks_max_concurrent` tasks
@@ -761,8 +762,8 @@ authoritative IAM resource (`*_iam_binding`, `*_iam_policy`) anywhere in the
 stack: one apply would remove another's members. The file stores' bucket
 policies (`storage.tf`) are the one exception, admitted by their addresses: a
 pull-request stack makes buckets of its own, so their policies remove nobody
-else's members, and the policy is what keeps the project's basic roles off
-the bucket.
+else's members, and the policy is what keeps a grant added by hand from
+outliving the next apply.
 
 The migration guard. The schema migrations under `schema/migrations` and the seed
 migrations beside them (`devseed`) are applied once each in the order of their

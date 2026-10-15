@@ -597,8 +597,8 @@ authoritative IAM resource (`*_iam_binding`, `*_iam_policy`) anywhere in the
 stack: one apply would remove another's members. The file stores' bucket
 policies (`storage.tf`) are the one exception, admitted by their addresses: a
 pull-request stack makes buckets of its own, so their policies remove nobody
-else's members, and the policy is what keeps the project's basic roles off
-the bucket.
+else's members, and the policy is what keeps a grant added by hand from
+outliving the next apply.
 
 The migration guard. The schema migrations under `schema/migrations` and the seed
 migrations beside them (`devseed`) are applied once each in the order of their
