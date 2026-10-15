@@ -28,19 +28,19 @@ func TestRunRelease(t *testing.T) {
 		{
 			name:    "the token minted, release-please runs github-release then release-pr for the branch",
 			req:     request(),
-			wantRan: []string{"npx --yes release-please@" + release.PleaseVersion + " github-release --repo-url=acme/quill --target-branch=master --config-file=release-please-config.json --manifest-file=.release-please-manifest.json", "npx --yes release-please@" + release.PleaseVersion + " release-pr --repo-url=acme/quill --target-branch=master --config-file=release-please-config.json --manifest-file=.release-please-manifest.json"},
+			wantRan: []string{"npx --yes release-please@" + release.PleaseVersion + " github-release --repo-url=acme/quill --target-branch=master --config-file=release-please-config.json --manifest-file=.release-please-manifest.json --token=test-token", "npx --yes release-please@" + release.PleaseVersion + " release-pr --repo-url=acme/quill --target-branch=master --config-file=release-please-config.json --manifest-file=.release-please-manifest.json --token=test-token"},
 			wantOut: []string{"Release app " + deployerAppID + ": a token minted for its installation on acme/quill; release-please " + release.PleaseVersion + " runs for master.", "=== release-please github-release on acme/quill (master) ===", "=== release-please release-pr on acme/quill (master) ==="},
 		},
 		{
 			name:    "a hotfix line is released on its own branch",
 			req:     &ReleaseRequest{AppID: deployerAppID, KeyVersion: deployerKeyVersion, RepoFullName: "acme/quill", Branch: "hotfix/1.2.x"},
-			wantRan: []string{"npx --yes release-please@" + release.PleaseVersion + " github-release --repo-url=acme/quill --target-branch=hotfix/1.2.x --config-file=release-please-config.json --manifest-file=.release-please-manifest.json", "npx --yes release-please@" + release.PleaseVersion + " release-pr --repo-url=acme/quill --target-branch=hotfix/1.2.x --config-file=release-please-config.json --manifest-file=.release-please-manifest.json"},
+			wantRan: []string{"npx --yes release-please@" + release.PleaseVersion + " github-release --repo-url=acme/quill --target-branch=hotfix/1.2.x --config-file=release-please-config.json --manifest-file=.release-please-manifest.json --token=test-token", "npx --yes release-please@" + release.PleaseVersion + " release-pr --repo-url=acme/quill --target-branch=hotfix/1.2.x --config-file=release-please-config.json --manifest-file=.release-please-manifest.json --token=test-token"},
 		},
 		{
 			name:    "a failed github-release stops before release-pr",
 			req:     request(),
 			fail:    map[string]error{"npx --yes": errors.New("npx failed: exit status 1")},
-			wantRan: []string{"npx --yes release-please@" + release.PleaseVersion + " github-release --repo-url=acme/quill --target-branch=master --config-file=release-please-config.json --manifest-file=.release-please-manifest.json"},
+			wantRan: []string{"npx --yes release-please@" + release.PleaseVersion + " github-release --repo-url=acme/quill --target-branch=master --config-file=release-please-config.json --manifest-file=.release-please-manifest.json --token=test-token"},
 			wantErr: "release-please github-release",
 		},
 		{
@@ -78,16 +78,19 @@ func TestRunRelease(t *testing.T) {
 			var ran []string
 			for _, c := range run.ran {
 				ran = append(ran, c.String())
-				if len(c.Env) != 1 || !strings.HasPrefix(c.Env[0], "GITHUB_TOKEN=") || c.Env[0] == "GITHUB_TOKEN=" {
-					t.Errorf("%s ran with env %v, want the release app's token alone", c.String(), c.Env)
+				if len(c.Env) != 0 {
+					t.Errorf("%s ran with env %v, want none: release-please reads its token from --token alone", c.String(), c.Env)
 				}
 			}
 			if strings.Join(ran, "\n") != strings.Join(tt.wantRan, "\n") {
 				t.Errorf("ran:\n%s\nwant:\n%s", strings.Join(ran, "\n"), strings.Join(tt.wantRan, "\n"))
 			}
 			containsAll(t, out.String(), tt.wantOut...)
-			if strings.Contains(out.String(), "GITHUB_TOKEN=") {
-				t.Errorf("output carries the token:\n%s", out.String())
+			// The fake runner echoes each command line; the step's own lines carry no token.
+			for _, line := range strings.Split(out.String(), "\n") {
+				if !strings.HasPrefix(line, "ran ") && strings.Contains(line, "test-token") {
+					t.Errorf("output carries the token:\n%s", out.String())
+				}
 			}
 		})
 	}
