@@ -576,7 +576,7 @@ jobs:
 
   migration:
     name: the migrations' operation
-    if: ${{ inputs.action != 'restore' && inputs.action != 'run' && inputs.action != 'rollback' && inputs.action != 'list' && inputs.action != 'maintenance' }}
+    if: ${{ inputs.action != 'restore' && inputs.action != 'run' && inputs.action != 'rollback' && inputs.action != 'list' && inputs.action != 'maintenance' && inputs.action != 'rotate' }}
     runs-on: ubuntu-latest
     environment: ${{ inputs.environment }}
     permissions:
