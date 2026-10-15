@@ -757,10 +757,59 @@ history of its own and the old stack's records stay where they were, read by
 nothing. A release build whose stack says no id (the stack was applied by a
 bedrock without one) is refused at the record; apply the stack once. The id
 is the output `stack_id`. In prd the stack protects the database
-(deletion and drop protection), the Cloud Run services and the Firestore
-database from deletion, and a destroy refuses them as they stand: a
-production stack given up is destroyed after an apply with the protections
-off, and the stack made in its place has an id of its own.
+(deletion and drop protection), the Cloud Run services, the file stores (no
+force-destroy) and the Firestore database from deletion, and a destroy
+refuses them as they stand; `bedrock destroy` lifts them with an apply before
+its destroy ("Taking an environment down"), and the stack made in its place
+has an id of its own.
+
+## Taking an environment down
+
+Two commands take an environment's stack down by hand, by a person at their
+own computer with their own sign-in, driving tofu in this directory against
+the environment's prefix the way the first apply does; neither runs from a
+trigger. Both refuse while `2-net` routes a host to the environment's
+backend service, since Google refuses the backend's deletion while the load
+balancer uses it: the hosts come out of `2-net` first, through
+`bedrock org teardown` or the application's removal from the organization's
+`placement.json` in a pull request. Both ask for the environment's name typed
+back (`--yes` stands in where there is no terminal), and both leave a record
+beside the stack's id (`beacon/stacks/<env>/teardown.json`: what went, when,
+by whom, and the release that was live).
+
+`bedrock teardown <env>` destroys what a pipeline makes again and keeps what
+holds data or a name. Goes: the Cloud Run services and the job with their
+invoker grants and tags, the endpoint groups and backend services, the Cloud
+Build triggers and the sweep's schedule, the scheduled routes' jobs and
+identity, the Cloud Armor policy, the request-log exclusion. Stays: the
+database and every generation of it, the file stores with their policies,
+the secret containers with their accessors, the identities with their
+grants, the Firestore database with its indexes, fields and rules, the
+Firebase key, the migrate log bucket and sink, the Cloud Tasks queue with its
+grants, and `random_id.stack`, so the records and the names stay the
+environment's own. In prd the command applies the stack with
+`teardown=true` first, recording that the services' deletion protection is
+lifted; then it plans the destroy with every kept resource excluded, reads
+the plan back and holds it against what it means to destroy (anything beyond
+or short of it stops the run with nothing applied), and applies it. Bringing
+the environment back is the apply by hand above ("Applying"), from the
+checkout of the release it ran, which makes the services and the triggers
+again with the placeholder image, then `bedrock rerun <env> <release>`
+through them.
+
+`bedrock destroy <env>` destroys the stack whole, the database, the file
+stores and their objects, the Firestore database, the secret containers and
+their versions, the identities, the queue, the logs and the key included, in
+prd after an apply with `destroy=true` recording every protection
+lifted. The deployment records stay in the records bucket under
+`beacon/<env>/<id>/`, read by nothing; the Spanner backups the pipeline and
+the schedules took stay until their retention ends; Google keeps the three
+names above for a while, and a stack applied again takes an id of its own.
+
+With `--all`, either command takes every environment in promotion order
+(tst, stg, prd), then destroys every pull-request stack under
+`3-app/beacon/tst/` whole, the way the sweep destroys a closed
+pull request's.
 
 ## Hand steps
 
@@ -776,12 +825,14 @@ mounts none yet), and the sign-in needs no registration.
 |---|---|---|---|:---:|
 | `build_secrets` | Build-time secrets per environment, NAME = pinned version; each reaches the image build as a BuildKit secret. | `map(map(string))` | `{}` | no |
 | `cloud_armor` | Cloud Armor per environment: `"preview"`, `"enforce"` or `"off"` (the policy kept, detached); an environment left out has no policy. Off before removed. | `map(string)` | `{}` | no |
+| `destroy` | Set by `bedrock destroy` alone: every protection lifted at the apply before its destroy. | `bool` | `false` | no |
 | `environment` | `tst`, `stg`, or `prd`; passed as `-var` on every run. | `string` | n/a | yes |
 | `generated_secret_versions` | The generated secrets' versions, derived and passed by the pipeline's plan step; never written here. | `map(string)` | `{}` | no |
 | `hostnames` | Hostnames per environment; the first is canonical. | `map(list(string))` | the three above | no |
 | `placeholder_image` | Image the services and job are created with. | `string` | `us-docker.pkg.dev/cloudrun/container/hello` | no |
 | `secret_versions` | Pinned secret version per environment per variable; the word `generated` for a generated secret. | `map(map(string))` | all empty | no |
 | `substitutions` | Extra trigger substitutions per environment, for the hooks and the image build. | `map(map(string))` | `{}` | no |
+| `teardown` | Set by `bedrock teardown` alone: the services' deletion protection lifted at the apply before its destroy. | `bool` | `false` | no |
 | `state_bucket` | State bucket, for the upstream layers' outputs. | `string` | n/a | yes |
 
 ## Outputs

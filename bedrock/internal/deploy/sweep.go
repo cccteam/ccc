@@ -78,15 +78,23 @@ func Sweep(ctx context.Context, clients *Clients, w Workspace, req *BuildRequest
 		if err := s.init(ctx, subs, number); err != nil {
 			return err
 		}
-		if err := deleteBuildJobs(ctx, clients, s, subs, number, out); err != nil {
-			return err
-		}
-		if err := s.tofu(ctx, "destroy", "-auto-approve", noInputFlag, noColorFlag, varFlag, "environment="+subs[envSub], varFlag, "pull_request="+number); err != nil {
+		if err := destroyPullRequestStack(ctx, clients, s, subs, number, out); err != nil {
 			return err
 		}
 	}
 
 	return nil
+}
+
+// destroyPullRequestStack destroys the pull request's stack, initialized at its own
+// prefix: its builds' jobs deleted first, then the stack. The sweep does it for a closed
+// pull request, and bedrock teardown --all and destroy --all for every pull request's.
+func destroyPullRequestStack(ctx context.Context, clients *Clients, s *stack, subs map[string]string, number string, out io.Writer) error {
+	if err := deleteBuildJobs(ctx, clients, s, subs, number, out); err != nil {
+		return err
+	}
+
+	return s.tofu(ctx, destroyCmd, autoApprove, noInputFlag, noColorFlag, varFlag, "environment="+subs[envSub], varFlag, "pull_request="+number)
 }
 
 // deleteBuildJobs deletes the jobs the pull request's builds made: the copies of its
