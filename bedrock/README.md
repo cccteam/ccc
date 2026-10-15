@@ -1663,9 +1663,9 @@ writes a record beside the stack's id (`<app>/stacks/<env>/teardown.json`: what 
 by whom, and the release that was live; the environment's team group writes under
 `<app>/stacks/`, so the person running the command can). A run that finds nothing of a
 teardown's left to destroy writes the record when the stack has none since its live release
-(an earlier run's write failed after its apply), and says so. Bringing the environment back is the stack's
-apply by hand from the checkout of the release it ran (the stack README's "Applying"),
-which makes the services and the triggers again, then `bedrock rerun <env> <release>`
+(an earlier run's write failed after its apply), and says so. Bringing the environment back is
+the operations workflow's `apply` action, which runs the environment's stack trigger and
+applies the stack again (the services and the triggers), then `bedrock rerun <env> <release>`
 through them.
 
 A destroy takes everything, in production after an apply with `destroy=true` recording
@@ -2008,10 +2008,10 @@ environment in promotion order, then the pull-request stacks, the summaries show
 the prefix is typed back) when the stacks live under `3-app/`, or, when each application
 carries its own stack, reads the state bucket and the records, says which environments
 still stand and the command to run from each checkout, and writes the journal line once
-none does. The inverse is the same loop the other way: each stack applied by hand from the
-checkout of the release it ran, `teardown` removed from `placement.json` on a pull request,
-then `bedrock rerun <env> <release>` per environment ("bedrock teardown and bedrock destroy",
-above).
+none does. The inverse is the same loop the other way: each stack applied again with the
+operations workflow's `apply` action per environment, `teardown` removed from
+`placement.json` on a pull request, then `bedrock rerun <env> <release>` per environment
+("bedrock teardown and bedrock destroy", above).
 
 `org register <app>` adds an application: its code goes into `placement.json`'s
 applications, each layer's values are rendered from it (1-org's repositories and its

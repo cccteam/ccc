@@ -7,7 +7,7 @@
 // the task queue, the migrate logs, the stack's id); and bedrock destroy <env>, which
 // destroys the whole stack. Both drive tofu in the checkout's stack directory as the
 // person (their own sign-in, no identity impersonated), against the environment's state
-// prefix, the way the first apply by hand does: an apply that records the protections
+// prefix, the way the stack trigger's first apply does: an apply that records the protections
 // lifted where production holds them (var.teardown, var.destroy), a destroy plan with
 // the kept resources excluded, the plan read back and held against what the command
 // means to destroy, the apply of that plan, and a record of what was done beside the
@@ -609,7 +609,7 @@ func (t *EnvironmentTeardown) epilogue() string {
 		return b.String()
 	}
 	fmt.Fprintf(&b, "Tore %s's stack in %s down: %d resource(s) destroyed, %d kept (the database, the file stores, the secret containers, the identities, the Firestore database, the task queue, the migrate logs, the stack's id). A record went to gs://%s/%s.\n", app, env, len(t.destroyed), len(t.kept), t.records, teardownObject(app, env))
-	fmt.Fprintf(&b, "To bring it back: apply the stack by hand from the checkout of the release it ran (infrastructure/README.md, \"Applying\"), which makes the services, the triggers and the rest again, then bedrock rerun %s <release> deploys the release through them.\n", env)
+	fmt.Fprintf(&b, "To bring it back: the operations workflow's apply action in %s runs the stack trigger, which applies the stack again (the services, the triggers and the rest), then bedrock rerun %s <release> deploys the release through them.\n", env, env)
 
 	return b.String()
 }

@@ -56,7 +56,7 @@ stay its own. A kept resource that depends on a destroyed one goes with it (the 
 names the version trigger and the services in its filter), since tofu keeps an excluded resource's
 dependencies; the next apply makes it again. It runs by a person at their own computer with their
 own sign-in (gcloud auth application-default login), driving tofu in the stack directory against
-the environment's state prefix the way the first apply by hand does: in production, an apply with
+the environment's state prefix the way the stack trigger's first apply does: in production, an apply with
 teardown=true first, recording in the state that the services' deletion protection is lifted;
 then a destroy plan with every kept resource excluded, read back and held against what the
 teardown names (anything beyond or short of it stops the run with nothing applied), and its
@@ -71,9 +71,9 @@ stands in for it where there is no terminal). With --all
 it takes every environment down in promotion order, then destroys every pull-request stack
 under the integration environment's prefix whole, the way the sweep destroys a closed pull
 request's.
-Bringing an environment back is the stack's apply by hand from the checkout of the release it
-ran (the README's "Applying"), which makes the services and the triggers again, then bedrock rerun
-<env> <release> through them.`,
+Bringing an environment back is the operations workflow's apply action, which runs the
+environment's stack trigger and applies the stack again (the services and the triggers), then
+bedrock rerun <env> <release> through them.`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return d.takeDown(cmd, args, &f, false)
@@ -95,7 +95,7 @@ of it, the file stores and their objects, the Firestore database, the secret con
 versions, the identities, the Cloud Tasks queue, the migrate logs, the Firebase key, the services,
 the jobs, the triggers, the schedules and the stack's id. It runs by a person at their own
 computer with their own sign-in (gcloud auth application-default login), driving tofu in the stack
-directory against the environment's state prefix the way the first apply by hand does: in
+directory against the environment's state prefix the way the stack trigger's first apply does: in
 production, an apply with destroy=true first, recording in the state that every protection is
 lifted (the services' deletion protection, the database's deletion and drop protection, the file
 stores' force-destroy, the Firestore database's delete protection); then a destroy plan, read back
@@ -271,7 +271,7 @@ func teardownWarning(destroy bool, app string, envs []string, a *deploy.Applicat
 	if destroy {
 		fmt.Fprintf(&b, "bedrock destroy destroys %s's stack whole in %s: the database and every generation of it, the file stores and their objects, the Firestore database, the secret containers and their versions, the identities, the task queue, the migrate logs, the Firebase key, the services, the jobs, the triggers and the schedules. The deployment records stay in the records bucket, read by nothing; the Spanner backups the pipeline and the schedules took stay until their retention ends; a stack applied again takes an id of its own.\n\n", app, in)
 	} else {
-		fmt.Fprintf(&b, "bedrock teardown takes %s's stack in %s down to what it keeps: the Cloud Run services and jobs go, with their endpoint groups and backend services, the triggers, the schedules and the Cloud Armor policy; the database and every generation of it, the file stores, the secret containers, the identities, the Firestore database, the task queue, the migrate logs and the stack's id stay. Bringing an environment back is the stack's apply by hand (the README's \"Applying\") and bedrock rerun <env> <release>.\n\n", app, in)
+		fmt.Fprintf(&b, "bedrock teardown takes %s's stack in %s down to what it keeps: the Cloud Run services and jobs go, with their endpoint groups and backend services, the triggers, the schedules and the Cloud Armor policy; the database and every generation of it, the file stores, the secret containers, the identities, the Firestore database, the task queue, the migrate logs and the stack's id stay. Bringing an environment back is the operations workflow's apply action and bedrock rerun <env> <release>.\n\n", app, in)
 	}
 	b.WriteString(a.Summary())
 	b.WriteString("\nNothing here is undone by bedrock.\n\n")
