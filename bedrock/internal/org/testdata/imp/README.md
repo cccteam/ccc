@@ -232,8 +232,9 @@ owner of it. bedrock's README lists each with what needs it
 a registration takes, and writes the application's first `placement.json`
 into its checkout (`infrastructure/placement.json`), or prints it. The
 registration goes in steps, since the grants on an application's identities
-need `2-env` to have created them and its hostnames need its stack's
-backends: `placement.json`'s `registration` records the step each
+need `2-env` to have created them, and its hostnames and its repository's
+required check need its stack's backends and check trigger: `placement.json`'s
+`registration` records the step each
 application has reached (`identities`, then `grants`; none once complete),
 the layers render what that step may apply, and `bedrock org register <app>
 --next` moves to the next step once the apply before it has happened. Every

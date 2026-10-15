@@ -145,40 +145,47 @@ locals {
 
   # The checks a pull request into the default branch or a hotfix line must
   # pass, each by the name it is reported under and the app that reports it:
-  # the stack's check trigger, then the application's CI jobs in the
-  # workflow's order. The pull-request build is not among them: it is the
-  # preview on /gcbrun (the header says what that gives up).
+  # the stack's check trigger, for an application whose stack has had its
+  # first apply (var.applied_applications: the trigger is the stack's, and a
+  # check nobody reports would hold every pull request before it), then the
+  # application's CI jobs in the workflow's order. The pull-request build is
+  # not among them: it is the preview on /gcbrun (the header says what that
+  # gives up).
   required_checks = {
-    for app in var.applications : app => [
-      {
-        context        = local.cloud_build_check[app]
-        integration_id = tonumber(data.github_app.cloud_build.id)
-      },
-      {
-        context        = "title"
-        integration_id = tonumber(data.github_app.actions.id)
-      },
-      {
-        context        = "go"
-        integration_id = tonumber(data.github_app.actions.id)
-      },
-      {
-        context        = "web"
-        integration_id = tonumber(data.github_app.actions.id)
-      },
-      {
-        context        = "image"
-        integration_id = tonumber(data.github_app.actions.id)
-      },
-      {
-        context        = "secrets"
-        integration_id = tonumber(data.github_app.actions.id)
-      },
-      {
-        context        = "migrations"
-        integration_id = tonumber(data.github_app.actions.id)
-      },
-    ]
+    for app in var.applications : app => concat(
+      contains(var.applied_applications, app) ? [
+        {
+          context        = local.cloud_build_check[app]
+          integration_id = tonumber(data.github_app.cloud_build.id)
+        },
+      ] : [],
+      [
+        {
+          context        = "title"
+          integration_id = tonumber(data.github_app.actions.id)
+        },
+        {
+          context        = "go"
+          integration_id = tonumber(data.github_app.actions.id)
+        },
+        {
+          context        = "web"
+          integration_id = tonumber(data.github_app.actions.id)
+        },
+        {
+          context        = "image"
+          integration_id = tonumber(data.github_app.actions.id)
+        },
+        {
+          context        = "secrets"
+          integration_id = tonumber(data.github_app.actions.id)
+        },
+        {
+          context        = "migrations"
+          integration_id = tonumber(data.github_app.actions.id)
+        },
+      ],
+    )
   }
 
   # The files that define what the checks run. A change to them needs the
