@@ -97,13 +97,14 @@ on:
   workflow_dispatch:
     inputs:
       action:
-        description: "What to do: restore the environment's database (an empty database or production's backup below production; a backup by name, @<moment> or a release's cut anywhere, production included); run the release again (its tag build, with no instruction; production included); rollback (return the environment to an earlier release, with nothing of the database); list (the releases, their cuts and backups, and the database generations the environment can be restored to, in this run's summary); maintenance (take the application out of a maintenance an earlier run left on); or a migration operation (version, rerun, force, below production)"
+        description: "What to do: restore the environment's database (an empty database or production's backup below production; a backup by name, @<moment> or a release's cut anywhere, production included); run the release again (its tag build, with no instruction; production included); apply (the environment's stack for the first time, from the default branch, before any release exists there); rollback (return the environment to an earlier release, with nothing of the database); list (the releases, their cuts and backups, and the database generations the environment can be restored to, in this run's summary); maintenance (take the application out of a maintenance an earlier run left on); or a migration operation (version, rerun, force, below production)"
         type: choice
         required: true
         default: restore
         options:
           - restore
           - run
+          - apply
           - rollback
           - list
           - maintenance
@@ -494,6 +495,74 @@ jobs:
             sleep 30
           done
 
+  apply:
+    name: apply the environment's stack for the first time
+    if: ${{ inputs.action == 'apply' }}
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    permissions:
+      id-token: write
+    env:
+      ENVIRONMENT: ${{ inputs.environment }}
+      REQUESTER: ${{ github.actor }}
+      REGION: us-central1
+      BRANCH: master
+      PROJECT_tst: imp-tst-gbl-core-b241
+      PROVIDER_tst: projects/123456789012/locations/global/workloadIdentityPools/imp-tst-github/providers/github
+      IDENTITY_tst: imp-tst-gbl-harbor-ops@imp-tst-gbl-core-b241.iam.gserviceaccount.com
+      TRIGGER_tst: imp-tst-uc1-harbor-stack
+      PROJECT_stg: imp-stg-gbl-core-0fa7
+      PROVIDER_stg: projects/234567890123/locations/global/workloadIdentityPools/imp-stg-github/providers/github
+      IDENTITY_stg: imp-stg-gbl-harbor-ops@imp-stg-gbl-core-0fa7.iam.gserviceaccount.com
+      TRIGGER_stg: imp-stg-uc1-harbor-stack
+      PROJECT_prd: imp-prd-gbl-core-abe8
+      PROVIDER_prd: projects/345678901234/locations/global/workloadIdentityPools/imp-prd-github/providers/github
+      IDENTITY_prd: imp-prd-gbl-harbor-ops@imp-prd-gbl-core-abe8.iam.gserviceaccount.com
+      TRIGGER_prd: imp-prd-uc1-harbor-stack
+    steps:
+      # The environment's values, from the placement's projects: an environment the
+      # placement records no project for is not wired, and the run stops before touching
+      # anything.
+      - name: The environment's project, identity and trigger
+        id: target
+        run: |
+          project=$(eval "printf '%s' \"\${PROJECT_$ENVIRONMENT:-}\"")
+          if [ -z "$project" ]; then
+            echo "::error::$ENVIRONMENT is not wired for operations: record its project (projects.$ENVIRONMENT, the id and the number bedrock org render prints) in infrastructure/placement.json and render"
+            exit 1
+          fi
+          for name in project provider identity trigger; do
+            upper=$(printf '%s' "$name" | tr '[:lower:]' '[:upper:]')
+            printf '%s=%s\n' "$name" "$(eval "printf '%s' \"\${${upper}_$ENVIRONMENT}\"")" >> "$GITHUB_OUTPUT"
+          done
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: ${{ steps.target.outputs.provider }}
+          service_account: ${{ steps.target.outputs.identity }}
+      - uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+      # The stack trigger's build (2-env's, run as the deploy identity): the stack applied
+      # for the first time from the default branch, as the apply identity, waited for to its
+      # end; in an environment whose builds wait for an approval in Cloud Build it waits here
+      # too. A stack a release has run on is refused there, and run is the action for it.
+      - name: Run the stack trigger
+        env:
+          PROJECT: ${{ steps.target.outputs.project }}
+          TRIGGER: ${{ steps.target.outputs.trigger }}
+        run: |
+          build=$(gcloud builds triggers run "$TRIGGER" --branch "$BRANCH" --region "$REGION" --project "$PROJECT" \
+            --format='value(metadata.build.id)')
+          echo "Build $build applies $ENVIRONMENT's stack for the first time from $BRANCH, asked for by $REQUESTER."
+          echo "https://console.cloud.google.com/cloud-build/builds;region=$REGION/$build?project=$PROJECT"
+          while :; do
+            status=$(gcloud builds describe "$build" --region "$REGION" --project "$PROJECT" --format='value(status)')
+            case "$status" in
+              SUCCESS) echo "Build $build succeeded: $ENVIRONMENT's stack is applied."; exit 0 ;;
+              FAILURE|CANCELLED|TIMEOUT|INTERNAL_ERROR|EXPIRED) echo "::error::Build $build ended $status; its log says why."; exit 1 ;;
+              PENDING) echo "Build $build is pending: an approval in Cloud Build may be waiting." ;;
+            esac
+            sleep 30
+          done
+
   rotate:
     name: rotate a generated secret
     if: ${{ inputs.action == 'rotate' }}
@@ -615,7 +684,7 @@ jobs:
 
   migration:
     name: the migrations' operation
-    if: ${{ inputs.action != 'restore' && inputs.action != 'run' && inputs.action != 'rollback' && inputs.action != 'list' && inputs.action != 'maintenance' }}
+    if: ${{ inputs.action != 'restore' && inputs.action != 'run' && inputs.action != 'rollback' && inputs.action != 'list' && inputs.action != 'maintenance' && inputs.action != 'apply' }}
     runs-on: ubuntu-latest
     environment: ${{ inputs.environment }}
     permissions:

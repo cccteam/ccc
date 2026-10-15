@@ -1428,9 +1428,9 @@ func TestPlanEnvironments(t *testing.T) {
 			pins:        enabledPins(),
 			deployer:    true,
 			unapplied:   "stg",
-			wantOut:     []string{"stg: no stack yet: its first apply is by hand (the stack README, Applying; the registration sequence's step 4), and the plan waits for it.", "prd: Plan: 2 to add, 1 to change, 1 to destroy."},
+			wantOut:     []string{"stg: no stack yet: its first apply is the operations workflow's apply action (the stack README, Applying; the registration sequence's step 4), and the plan waits for it.", "prd: Plan: 2 to add, 1 to change, 1 to destroy."},
 			wantTofu:    []string{initOf("tst", "p-tst"), planOf("tst"), showOf("tst"), initOf("prd", "p-prd"), planOf("prd"), showOf("prd")},
-			wantComment: []string{"**tst**: Plan: 2 to add, 1 to change, 1 to destroy.", "**stg**: no stack yet: its first apply is by hand, and the plan waits for it\n**prd**: Plan: 2 to add, 1 to change, 1 to destroy."},
+			wantComment: []string{"**tst**: Plan: 2 to add, 1 to change, 1 to destroy.", "**stg**: no stack yet: its first apply is the operations workflow's apply action, and the plan waits for it\n**prd**: Plan: 2 to add, 1 to change, 1 to destroy."},
 		},
 		{
 			name: "an environment a rollback moved to generation 2 is planned at it, read from its records bucket as the plan identity",

@@ -1067,6 +1067,9 @@ type operationsEnv struct {
 	Trigger    string
 	Restore    string
 	Logs       string
+	// Stack is the environment's stack trigger, 2-env's, which the apply action runs:
+	// the stack's first apply, before any release exists there.
+	Stack string
 	// Rollback is the environment's rollback trigger, which bedrock rollback runs: the
 	// earlier release's build again with nothing of the database, in every environment.
 	Rollback string
@@ -1096,6 +1099,7 @@ func (v *view) operations() {
 			o.Restore = v.P.RestoreKind(env)
 		}
 		o.Rollback = v.Prefix + "-" + env + "-" + v.PrimaryCode + "-" + v.App + "-rollback"
+		o.Stack = v.Prefix + "-" + env + "-" + v.PrimaryCode + "-" + v.App + "-stack"
 		if project, ok := v.P.Project(env); ok {
 			o.Wired = true
 			o.Project = project.ID

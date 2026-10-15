@@ -334,6 +334,27 @@ application's first placement from `projects` and `projectNumbers` in
 renders the workflow with the provider's name (`github_identity_provider`)
 and the identity's email from them.
 
+
+### The stack trigger `imp-<env>-<region>-<app>-stack`
+
+An application's stack is applied by its releases' builds once it exists; its
+first apply in this environment, before any release, is this trigger's
+(`cloud-build.tf`): one per application, manual, its source the application's
+repository at the default branch, run as the application's deploy identity
+(which may become its apply identity), and started by the application's
+operations workflow (its `apply` action, as the operations identity above, in
+the GitHub Environment named after this environment), so no person holds a
+cloud role for an application's first apply and the audit log names who
+asked. Its steps are the organization's triggers' (fetch the bedrock the
+checkout's `infrastructure/placement.json` pins, build a commit pin, `bedrock
+check`) and then `bedrock deploy stack first`, which applies the stack as the
+apply identity with the environment alone (no generated-secret pin: the first
+release derives it) and refuses a stack a release has run on (its deployment
+records say so), since a release's build applies an applied stack. In the
+environments whose releases wait for an approval in Cloud Build, so does this
+build. The registration sequence (`bedrock org register`) names it as its
+step 4, between the grants and the hostnames.
+
 ### The team group
 
 Each person's access to this environment comes from one group, the

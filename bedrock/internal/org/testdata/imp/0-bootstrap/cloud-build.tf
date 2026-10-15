@@ -333,12 +333,13 @@ locals {
     import urllib.request
 
     home, host, repository = sys.argv[1], sys.argv[2], sys.argv[3]
-    with open("placement.json", encoding="utf-8") as f:
+    placement_path = sys.argv[4] if len(sys.argv) > 4 else "placement.json"
+    with open(placement_path, encoding="utf-8") as f:
         placement = json.load(f)
     version = placement.get("bedrockVersion", "")
     digest = placement.get("bedrockSha256", "")
     if not version:
-        sys.exit("placement.json pins no bedrock (bedrockVersion): run bedrock upgrade in this repository, which records the pin and renders, and commit what it changed")
+        sys.exit(placement_path + " pins no bedrock (bedrockVersion): run bedrock upgrade in this repository, which records the pin and renders, and commit what it changed")
     if re.search(r"[-.][0-9]{14}-[0-9a-f]{12}\Z", version):
         commit = version[-12:]
         branches = tempfile.mkdtemp(prefix="bedrock-branches-")
@@ -360,7 +361,7 @@ locals {
         print("bedrock " + version + " is a commit pin on " + on + ": the next step builds it with go install")
         sys.exit(0)
     if not re.fullmatch(r"[0-9a-f]{64}", digest):
-        sys.exit("placement.json pins bedrock " + version + " without the checksum of its linux/amd64 binary (bedrockSha256): bedrock upgrade " + version + " records it from the release's checksums.txt")
+        sys.exit(placement_path + " pins bedrock " + version + " without the checksum of its linux/amd64 binary (bedrockSha256): bedrock upgrade " + version + " records it from the release's checksums.txt")
     url = host + "/cccteam/ccc/releases/download/bedrock/" + version + "/bedrock-linux-amd64"
     data = None
     for attempt in range(3):
@@ -374,7 +375,7 @@ locals {
     if data is None:
         sys.exit("could not download " + url)
     if hashlib.sha256(data).hexdigest() != digest:
-        sys.exit(url + " does not match bedrockSha256 in placement.json: the file downloaded is not the release's binary")
+        sys.exit(url + " does not match bedrockSha256 in " + placement_path + ": the file downloaded is not the release's binary")
     with open(home + "/bedrock", "wb") as f:
         f.write(data)
     os.chmod(home + "/bedrock", 0o755)
