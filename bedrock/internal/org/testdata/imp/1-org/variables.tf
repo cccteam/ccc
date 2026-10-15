@@ -487,3 +487,16 @@ variable "required_apis" {
     ]
   }
 }
+
+variable "destroy" {
+  description = <<-EOT
+    Set by bedrock org destroy alone, on its own runs: the environment projects' deletion
+    policy becomes DELETE, no API is disabled on the destroy (the project's
+    deletion takes everything in it, and disabling an API a resource outside
+    this layer's state uses would refuse), and the folders' deletion protection
+    comes off, all three recorded by an apply before the destroy, since the
+    provider reads them from the state. Every other run leaves it false.
+  EOT
+  type        = bool
+  default     = false
+}

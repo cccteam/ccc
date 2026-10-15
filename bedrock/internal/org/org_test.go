@@ -3071,9 +3071,9 @@ func TestProjectLien(t *testing.T) {
 		want []string
 	}{
 		{
-			name: "the project module places the lien, unconditionally",
+			name: "the project module places the lien, unconditionally, and keeps the project unless bedrock org destroy runs",
 			path: "1-org/projects.tf",
-			want: []string{"  deletion_policy            = \"PREVENT\"\n  lien                       = true\n"},
+			want: []string{"  disable_services_on_destroy = !var.destroy\n  deletion_policy             = var.destroy ? \"DELETE\" : \"PREVENT\"\n  lien                        = true\n"},
 		},
 		{
 			name: "the org layer identity holds the role that places and removes a lien",

@@ -54,16 +54,30 @@ func New(base, token string) *Client {
 // Open finds a token and returns a client over the public API: GITHUB_TOKEN when set,
 // else the token gh holds for its signed-in account. With neither it refuses.
 func Open(ctx context.Context) (*Client, error) {
+	token, err := Token(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return New(DefaultBase, token), nil
+}
+
+// TokenFunc finds the token a command runs GitHub's API with.
+type TokenFunc func(ctx context.Context) (string, error)
+
+// Token is the token the account has: GITHUB_TOKEN when set, else the token gh holds for
+// its signed-in account. With neither it refuses.
+func Token(ctx context.Context) (string, error) {
 	if token := os.Getenv(tokenEnv); token != "" {
-		return New(DefaultBase, token), nil
+		return token, nil
 	}
 	out, err := exec.CommandContext(ctx, "gh", "auth", "token").Output()
 	token := strings.TrimSpace(string(out))
 	if err != nil || token == "" {
-		return nil, errors.Newf("no GitHub token: set %s, or sign in with gh (gh auth login) so that gh auth token prints one", tokenEnv)
+		return "", errors.Newf("no GitHub token: set %s, or sign in with gh (gh auth login) so that gh auth token prints one", tokenEnv)
 	}
 
-	return New(DefaultBase, token), nil
+	return token, nil
 }
 
 // Error is the API's refusal: the status it answered and the message it gave.
