@@ -1646,6 +1646,55 @@ release's own action is `run`, and `bedrock rerun` is its command. Nobody runs a
 or submits a build by hand: every build starts from a trigger, and a release is run again
 through this door.
 
+## bedrock teardown and bedrock destroy
+
+`teardown <env>` takes an environment's stack down to what it keeps, and `destroy <env>`
+destroys it whole; with `--all` either takes every environment in promotion order and then
+destroys every pull-request stack under the integration environment's prefix, the way the
+sweep destroys a closed pull request's. Both run by a person at their own computer with
+their own sign-in (`gcloud auth application-default login`), driving tofu in the stack
+directory against the environment's state prefix the way the stack trigger's first apply does,
+never from a trigger, and both ask for the environment's name typed back before anything
+runs (`--yes` stands in where there is no terminal). Both refuse while `2-net` routes a
+host to the environment's backend service, since Google refuses the backend's deletion
+while the load balancer uses it and OpenTofu keeps everything an excluded resource depends
+on: the hosts come out of `2-net` first, through `bedrock org teardown` or the
+application's removal from the organization's `placement.json` in a pull request.
+
+A teardown destroys what a pipeline makes again (the Cloud Run services and jobs with
+their invoker grants, the endpoint groups and backend services, the Cloud Build triggers
+and the sweep's schedule, the scheduled routes' jobs and identity, the Cloud Armor policy,
+the request-log exclusion) and keeps what holds data or a name (the Spanner database and
+every generation of it, the file stores with their policies, the secret containers with
+their accessors, the identities with their grants, the Firestore database with its indexes,
+fields and rules, the Firebase key, the migrate log bucket, the Cloud Tasks queue with its
+grants, and the stack's id, so the environment's records and names stay its own). A kept
+resource that depends on a destroyed one goes with it (the migrate-log sink names the
+version trigger and the services in its filter), since tofu keeps an excluded resource's
+dependencies; the next apply makes it again, and the command's summary names it.
+In production it applies the stack with `teardown=true` first, recording in the state that
+the services' deletion protection is lifted; then it plans the destroy with every kept
+resource excluded, reads the plan back and holds it against what it means to destroy
+(anything beyond or short of it stops the run with nothing applied), applies it, and
+writes a record beside the stack's id (`<app>/stacks/<env>/teardown.json`: what went, when,
+by whom, and the release that was live; the environment's team group writes under
+`<app>/stacks/`, so the person running the command can). A run that finds nothing of a
+teardown's left to destroy writes the record when the stack has none since its live release
+(an earlier run's write failed after its apply), and says so. Bringing the environment back is
+the operations workflow's `apply` action, which runs the environment's stack trigger and
+applies the stack again (the services and the triggers), then `bedrock rerun <env> <release>`
+through them.
+
+A destroy takes everything, in production after an apply with `destroy=true` recording
+every protection lifted (the services' deletion protection, the database's deletion and
+drop protection, the file stores' force-destroy, the Firestore database's delete
+protection). The stack's id object goes with the stack, so the pipeline's readers see an
+environment never applied; the deployment records stay in the records bucket under
+`<app>/<env>/<id>/`, read by nothing; the Spanner backups the pipeline and the schedules
+took stay until their retention ends; Google keeps the names of the task queue, the
+Firebase key and the migrate log bucket for a while, and a stack applied again takes an id
+of its own. Nothing of either command is undone by bedrock.
+
 ## bedrock domain
 
 `domain add <domain>` puts a domain registration into the network layer's placement,
@@ -1752,6 +1801,7 @@ bedrock org check                                               # the committed 
 bedrock org register quill ../quill                             # an application joins the foundation; its first placement.json is written into its checkout
 bedrock org plan                                                # what the plan trigger runs on a pull request
 bedrock org apply                                               # what the apply trigger runs on a push to the default branch
+bedrock org teardown                                            # the applications out of service: 2-net's hosts and listeners, then every application torn down
 ```
 
 `org new` renders the six layers, each with its `.tf` files, its README and its seeded
@@ -1960,6 +2010,25 @@ entitlement (its slot in the state bucket, on the boot project), running the lay
 themselves, for the other layers as the bootstrap administrator; an apply by hand leaves
 the layer's marker as it was, so the next push applies the layer again, with an empty plan
 when the hand apply was complete.
+
+`org teardown` takes the organization's applications out of service and keeps the
+foundation, in two runs by a person with their own sign-in. The first sets `teardown` in
+`placement.json`, renders 2-net with no host and `serving = false`
+(`2-net/applications.auto.tfvars`), writes the journal line and leaves the working tree for
+a pull request: its merge has the apply trigger take the hosts and the load balancer's
+listeners (the forwarding rules, the proxies, the URL maps and the sink) out of 2-net, while
+the address, the certificate and its DNS authorization stay, so the IP never changes and no
+certificate is issued again; the hosts go first because a backend service cannot be deleted
+while the URL map names it. The second run, once 2-net's state routes nothing, tears every
+registered application down to what it keeps the way `bedrock teardown --all` does (each
+environment in promotion order, then the pull-request stacks, the summaries shown before
+the prefix is typed back) when the stacks live under `3-app/`, or, when each application
+carries its own stack, reads the state bucket and the records, says which environments
+still stand and the command to run from each checkout, and writes the journal line once
+none does. The inverse is the same loop the other way: each stack applied again with the
+operations workflow's `apply` action per environment, `teardown` removed from
+`placement.json` on a pull request, then `bedrock rerun <env> <release>` per environment
+("bedrock teardown and bedrock destroy", above).
 
 `org register <app>` adds an application: its code goes into `placement.json`'s
 applications, each layer's values are rendered from it (1-org's repositories, its

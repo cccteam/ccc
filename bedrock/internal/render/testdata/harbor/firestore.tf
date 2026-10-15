@@ -30,7 +30,7 @@ resource "google_firestore_database" "firestore" {
   type        = "FIRESTORE_NATIVE"
 
   point_in_time_recovery_enablement = local.is_prd ? "POINT_IN_TIME_RECOVERY_ENABLED" : "POINT_IN_TIME_RECOVERY_DISABLED"
-  delete_protection_state           = local.is_prd ? "DELETE_PROTECTION_ENABLED" : "DELETE_PROTECTION_DISABLED"
+  delete_protection_state           = local.is_prd && !var.destroy ? "DELETE_PROTECTION_ENABLED" : "DELETE_PROTECTION_DISABLED"
   deletion_policy                   = "DELETE"
 }
 

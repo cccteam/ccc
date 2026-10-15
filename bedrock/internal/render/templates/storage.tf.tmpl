@@ -52,9 +52,10 @@ resource "google_storage_bucket" "{{.Resource}}" {
     retention_duration_seconds = local.is_prd ? 604800 : 0
   }
 
-  # {{$.Production}} keeps its objects through a destroy; every other environment can be
-  # rebuilt by a pipeline, and a pull-request stack is torn down with its objects.
-  force_destroy = !local.is_prd
+  # {{$.Production}} keeps its objects through a destroy, unless bedrock destroy lifts
+  # that with its apply (var.destroy); every other environment can be rebuilt by a
+  # pipeline, and a pull-request stack is torn down with its objects.
+  force_destroy = !local.is_prd || var.destroy
 
   labels = local.labels
 }

@@ -256,6 +256,12 @@ type Placement struct {
 	// past identities, its hostnames (2-net) once its registration is complete. bedrock
 	// org register writes the first step, and register --next moves to the following.
 	Registration map[string]string `json:"registration,omitempty"`
+	// Teardown says the organization is torn down: bedrock org teardown sets it, and
+	// 2-net renders with no hosts and its load balancer's listeners gone (serving =
+	// false in applications.auto.tfvars), the address, the certificate and its DNS
+	// authorization kept. A person flips it back on a pull request once every
+	// application's stack is applied again.
+	Teardown bool `json:"teardown,omitempty"`
 	// Projects are the projects by key: boot, the project the seed chose, and shr, net,
 	// spn, tst, stg and prd, the ids 1-org's apply chose (its project_ids output). The
 	// environment projects are what the applications' identities and backends are named

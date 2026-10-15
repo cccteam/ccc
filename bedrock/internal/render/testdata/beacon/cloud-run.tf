@@ -27,8 +27,10 @@ resource "google_cloud_run_v2_service" "app" {
   # inside the VPC); the org policy run.allowedIngress pins this value.
   ingress = "INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER"
 
-  # prd resists deletion; the other environments can be rebuilt by a pipeline.
-  deletion_protection = local.is_prd
+  # prd resists deletion; the other environments can be rebuilt by a
+  # pipeline. bedrock teardown and bedrock destroy lift it there, with an apply
+  # before their destroy (var.teardown, var.destroy).
+  deletion_protection = local.is_prd && !var.teardown && !var.destroy
 
   labels = local.labels
 

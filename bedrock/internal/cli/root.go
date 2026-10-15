@@ -87,6 +87,9 @@ type deps struct {
 	// lookups are what domain check reads through: Cloud DNS for the apps domain's zone,
 	// and the resolver for what the world sees.
 	lookups *domain.Lookups
+	// principal names the account the command's credentials sign as, for the records a
+	// teardown or a destroy leaves (nil: the computer's user at its host).
+	principal func(ctx context.Context) (string, error)
 }
 
 // orgClients are what the org commands open in Google Cloud: Cloud Resource Manager's
@@ -117,6 +120,7 @@ func newRoot() *cobra.Command {
 		releases:    release.GitHub,
 		version:     version,
 		lookups:     domain.DefaultLookups(),
+		principal:   deploy.Principal,
 	})
 }
 
@@ -143,6 +147,8 @@ its own: the code and a placement are the inputs, the stack is the output.`,
 	root.AddCommand(newHotfix(d))
 	root.AddCommand(newRestore(d))
 	root.AddCommand(newRerun(d))
+	root.AddCommand(newTeardown(d))
+	root.AddCommand(newDestroy(d))
 	root.AddCommand(newRollback(d))
 	root.AddCommand(newBackups(d))
 	root.AddCommand(newMaintenance(d))

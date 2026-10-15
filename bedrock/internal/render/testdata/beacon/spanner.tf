@@ -34,8 +34,8 @@ resource "google_spanner_database" "beacon" {
 
   database_dialect         = "GOOGLE_STANDARD_SQL"
   version_retention_period = local.spanner_retention[var.environment]
-  deletion_protection      = local.is_prd
-  enable_drop_protection   = local.is_prd
+  deletion_protection      = local.is_prd && !var.destroy
+  enable_drop_protection   = local.is_prd && !var.destroy
 }
 
 # The databases a rollback restored a backup into, generation 2 onwards
@@ -55,8 +55,8 @@ resource "google_spanner_database" "restored" {
 
   database_dialect         = "GOOGLE_STANDARD_SQL"
   version_retention_period = local.spanner_retention[var.environment]
-  deletion_protection      = local.is_prd
-  enable_drop_protection   = local.is_prd
+  deletion_protection      = local.is_prd && !var.destroy
+  enable_drop_protection   = local.is_prd && !var.destroy
 }
 
 # Rows, as the site reads and writes them (config.NewDataConfiguration opens

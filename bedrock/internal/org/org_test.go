@@ -695,10 +695,11 @@ func TestRecordsBucketPolicy(t *testing.T) {
 				"      { role = \"roles/storage.objectViewer\", members = concat(local.records_deploy_members, local.records_plan_members, local.records_ops_members, local.records_lower_ops_members, local.records_rehearsal_members, values(local.next_deploy_members), [local.team_group]), condition = null },\n",
 				// What a stack writes itself (its id object, and in tst the stack jobs'
 				// outputs) is the apply identity's to write, under its prefix alone, which
-				// the deploy identities' creator binding excludes.
+				// the deploy identities' creator binding excludes; the team group writes
+				// there too (a person's teardown record, a destroy taking the id object).
 				"  records_stack_prefix = { for app in var.applications : app => \"projects/_/buckets/${google_storage_bucket.records.name}/objects/${app}/stacks/\" }\n",
 				"    expression  = join(\" && \", [for app, prefix in local.records_stack_prefix : \"!resource.name.startsWith(\\\"${prefix}\\\")\"])\n",
-				"      role    = \"roles/storage.objectUser\"\n      members = [google_service_account.apply[app].member]\n",
+				"      role    = \"roles/storage.objectUser\"\n      members = [google_service_account.apply[app].member, local.team_group]\n",
 				"  ], local.records_stack_bindings)\n",
 				// In production, the lower environments' operations identities read the records
 				// for a restore from production's backup that names no release.
@@ -1422,7 +1423,8 @@ func TestTeamGroup(t *testing.T) {
 			path: "2-env/README.md",
 			want: []string{
 				"### The team group",
-				"Release approval is the one standing grant: `roles/cloudbuild.builds.approver`\non the environment project in `stg` and `prd`",
+				"Release approval is one of two standing grants: `roles/cloudbuild.builds.approver`\non the environment project in `stg` and `prd`",
+				"The other,\nin every environment, is `roles/storage.objectUser` under `<app>/stacks/` in\nthe records bucket (`records.tf`)",
 				"unset, the secret operator an hour, the Spanner admin two hours, the Spanner viewer four hours and the layer administrator four hours.",
 				"so `2-spn`\ndeclares them on that project (`entitlements.tf` there)",
 				"recovery is the bootstrap administrator's",
@@ -3333,5 +3335,61 @@ func TestStackTrigger(t *testing.T) {
 		if !strings.Contains(got, want) {
 			t.Errorf("2-env/cloud-build.tf lacks %q", want)
 		}
+	}
+}
+
+// TestRenderTeardown: with teardown in the placement, 2-net routes no host and takes its
+// listeners down (serving = false), and the file says why.
+func TestRenderTeardown(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		teardown bool
+		want     []string
+		wantNot  []string
+	}{
+		{
+			name:    "serving: every registered application's hosts, serving by default",
+			want:    []string{`"harbor-tst.apps.imp.example"`, `"*.apps.imp.example"`},
+			wantNot: []string{"serving = false", "hosts   = {}"},
+		},
+		{
+			name:     "torn down: no host, serving = false, the way back named",
+			teardown: true,
+			want:     []string{"hosts   = {}", "serving = false", "# Torn down: bedrock org teardown set teardown in placement.json", "A person flips it back on a pull request"},
+			wantNot:  []string{`"harbor-tst.apps.imp.example"`, `"*.apps.imp.example"`},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			p := testPlacement(t)
+			p.Teardown = tt.teardown
+			files, err := Render(p)
+			if err != nil {
+				t.Fatalf("Render() error = %v", err)
+			}
+			var text string
+			for _, f := range files {
+				if f.Path == "2-net/applications.auto.tfvars" {
+					text = string(f.Content)
+				}
+			}
+			if text == "" {
+				t.Fatal("2-net/applications.auto.tfvars was not rendered")
+			}
+			for _, want := range tt.want {
+				if !strings.Contains(text, want) {
+					t.Errorf("the file lacks %q:\n%s", want, text)
+				}
+			}
+			for _, not := range tt.wantNot {
+				if strings.Contains(text, not) {
+					t.Errorf("the file has %q:\n%s", not, text)
+				}
+			}
+		})
 	}
 }

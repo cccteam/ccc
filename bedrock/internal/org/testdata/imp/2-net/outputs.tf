@@ -69,12 +69,12 @@ output "shared_vpc_id" {
 
 output "url_map_id" {
   description = "Full resource ID of the HTTPS URL map."
-  value       = google_compute_url_map.lb.id
+  value       = one(google_compute_url_map.lb[*].id)
 }
 
 output "url_map_name" {
   description = "Name of the HTTPS URL map."
-  value       = google_compute_url_map.lb.name
+  value       = one(google_compute_url_map.lb[*].name)
 }
 
 output "registrations" {

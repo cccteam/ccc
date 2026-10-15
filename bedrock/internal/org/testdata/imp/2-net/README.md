@@ -32,6 +32,16 @@ There is no VPC in this project. See "Cross-project backends" for why.
   with 404 before any backend is chosen. A request to the bare address, or to
   a hostname in the wildcard no application owns, gets 404 and nothing else.
 
+The URL maps, the proxies, the forwarding rules and the sink stand while
+`serving` is true, its default. `bedrock org teardown` renders
+`applications.auto.tfvars` with `serving = false` and no host (`teardown` in
+`placement.json`): the apply takes the listeners down and the applications'
+backend services are free to go with their stacks, while the address, the
+certificate and its DNS authorization stay, so the IP never changes and no
+certificate is issued again. A person flips `teardown` back on a pull request
+once every application's stack is applied again, since a host names a
+backend service that must exist.
+
 Not created here, on purpose:
 
 - **Backend services, serverless NEGs, Cloud Run services.** Those belong to
@@ -316,6 +326,7 @@ tofu apply
 | `apps_domain` | Domain the applications are served under. | `string` | `"apps.imp.example"` | no |
 | `extra_records` | Further records in the zone (mail, verification). | `list(object)` | `[]` | no |
 | `hosts` | Hostname to backend service URI, one entry per served host. | `map(string)` | `{}` | no |
+| `serving` | Whether the listeners stand and hosts route; `bedrock org teardown` renders it false. | `bool` | `true` | no |
 | `ssl_policy_profile` | Cipher profile of the SSL policy. | `string` | `"MODERN"` | no |
 
 Project ID and number, the layer identity, the boot project, and the prefix

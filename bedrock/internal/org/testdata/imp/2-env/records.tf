@@ -93,7 +93,10 @@ locals {
   # the pipeline learns where the stack's deployment records lie, and in tst
   # the stack jobs' outputs for the pull requests. The prefix the application's
   # apply identity writes under, which the deploy identities' creator binding
-  # excludes.
+  # excludes. The team group's members write there too: bedrock teardown and
+  # bedrock destroy, run by a person with their own sign-in, leave their record
+  # beside the id (<app>/stacks/<env>/teardown.json), and a destroy takes the
+  # id object with the stack.
   records_stack_prefix = { for app in var.applications : app => "projects/_/buckets/${google_storage_bucket.records.name}/objects/${app}/stacks/" }
   records_creator_condition = length(local.records_stack_prefix) == 0 ? null : {
     title       = "${local.name}-records-not-stacks"
@@ -103,10 +106,10 @@ locals {
   records_stack_bindings = [
     for app, prefix in local.records_stack_prefix : {
       role    = "roles/storage.objectUser"
-      members = [google_service_account.apply[app].member]
+      members = [google_service_account.apply[app].member, local.team_group]
       condition = {
         title       = "${local.name}-${app}-stacks"
-        description = "What the application's stack writes itself: its id object, and the stack jobs' outputs of its pull requests; its apply identity writes them."
+        description = "What the application's stack writes itself: its id object, and the stack jobs' outputs of its pull requests; its apply identity writes them, and the team group's members running bedrock teardown or destroy write the teardown record and take the id object with a destroyed stack."
         expression  = "resource.name.startsWith(\"${prefix}\")"
       }
     }
