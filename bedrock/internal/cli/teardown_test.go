@@ -31,6 +31,12 @@ const (
 
 func (f *teardownTofu) Run(_ context.Context, c deploy.Command, _ io.Writer) error {
 	f.ran = append(f.ran, c.String())
+	if len(c.Args) > 0 && c.Args[0] == "init" && c.Dir != "" {
+		// An init writes the provider lock file into the working directory, as tofu does.
+		if err := os.WriteFile(filepath.Join(c.Dir, lockFileName), []byte("# lock\n"), 0o600); err != nil {
+			return err
+		}
+	}
 
 	return nil
 }
@@ -109,6 +115,9 @@ func TestTeardownAndDestroy(t *testing.T) {
 		// computer's user at its host.
 		noAccount bool
 		wantBy    string
+		// lockFile puts a provider lock file in the stack directory before the run, which
+		// the run leaves as it found it; without one, the run leaves none behind.
+		lockFile bool
 	}{
 		{
 			name:        "refuses without an environment",
@@ -159,10 +168,11 @@ func TestTeardownAndDestroy(t *testing.T) {
 			wantBy:      `"by": "jo@lab.example"`,
 		},
 		{
-			name:        "names the computer's user at its host when the credentials' account cannot be read",
+			name:        "names the computer's user at its host when the credentials' account cannot be read, and leaves a lock file that was there",
 			args:        []string{"teardown", "tst", "--yes"},
 			interactive: never,
 			noAccount:   true,
+			lockFile:    true,
 			wantOut:     []string{"Tore quill's stack in tst down: 2 resource(s) destroyed, 1 kept"},
 			wantRan: []string{
 				"tofu init -input=false -no-color -reconfigure -backend-config=prefix=3-app/quill/tst", "tofu state list", "tofu show -json",
@@ -199,6 +209,12 @@ func TestTeardownAndDestroy(t *testing.T) {
 			repo := teardownRepo(t)
 			store := teardownStore(t)
 			tofu := &teardownTofu{}
+			lockFile := filepath.Join(repo, "infrastructure", lockFileName)
+			if tt.lockFile {
+				if err := os.WriteFile(lockFile, []byte("# theirs\n"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
 			principal := func(context.Context) (string, error) { return "jo@lab.example", nil }
 			if tt.noAccount {
 				principal = func(context.Context) (string, error) { return "", errors.New("no credentials") }
@@ -222,6 +238,9 @@ func TestTeardownAndDestroy(t *testing.T) {
 			}
 			if strings.Join(got, "\n") != strings.Join(tt.wantRan, "\n") {
 				t.Errorf("ran:\n%s\nwant:\n%s", strings.Join(got, "\n"), strings.Join(tt.wantRan, "\n"))
+			}
+			if _, err := os.Stat(lockFile); (err == nil) != tt.lockFile {
+				t.Errorf("lock file %s exists = %v after the run, want %v", lockFile, err == nil, tt.lockFile)
 			}
 			for _, key := range tt.wantRecords {
 				if !strings.Contains(store.objects[key], `"by": "`) {
