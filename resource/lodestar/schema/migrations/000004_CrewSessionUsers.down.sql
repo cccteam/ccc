@@ -1,2 +1,0 @@
-DROP INDEX CrewCrewSessionUsersByNormalizedUsername;
-DROP TABLE CrewSessionUsers;

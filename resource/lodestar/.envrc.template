@@ -79,18 +79,24 @@ export FIRESTORE_EMULATOR_HOST=127.0.0.1:${FIRESTORE_EMULATOR_PORT}
 # ...), so the server would listen on PORT+100 and the console proxy would miss it.
 export OVERMIND_NO_PORT=1
 
-# --- members auth: the directory its people sign in through (pkg/auth/members) ---
-# The Procfile builds with the session library's skipAuth tag, which simulates the
-# directory: every login through it is APP_USERNAME (APP_ROLES are the role claims), and
-# only the redirect URL, the hosted domain, and the group prefix below is read. Register the application in a directory, fill the
-# rest in, and drop the tag to use one.
+# --- the Google directories the two auths sign people in through ---
+# The Procfile builds with the session library's skipAuth tag, which simulates every
+# directory: a login through one is the person the environment names for its
+# registration, and only the redirect URL, the hosted domain, and the group prefix below
+# are read. Register the application in a directory, fill the rest in, and drop the tag
+# to use one.
+#
+# The members auth's directory (pkg/auth/members), registered as "directory": every
+# simulated login through it is APP_USERNAME, in the groups APP_ROLES names, since the
+# registration sets no pair of its own.
 export APP_USERNAME=client
 export APP_ROLES=client-portal,client-account
 # export APP_MEMBERS_OIDC_CLIENT_ID=
 # export APP_MEMBERS_OIDC_CLIENT_SECRET=
 # APP_MEMBERS_OIDC_REDIRECT_URL is the browser-facing callback of the surface that binds to
-# the members auth, such as http://127.0.0.1:4300/console/api/user/callback through the dev proxy.
-export APP_MEMBERS_OIDC_REDIRECT_URL=http://127.0.0.1:4301/portal/api/user/callback
+# the members auth: the registration's callback route under the portal's API, through the
+# dev proxy.
+export APP_MEMBERS_OIDC_REDIRECT_URL=http://127.0.0.1:4301/portal/api/user/directory/callback
 # APP_MEMBERS_OIDC_HOSTED_DOMAIN is the Google Workspace domain logins are restricted to; the
 # simulated directory presents it too, so it is set in development.
 export APP_MEMBERS_OIDC_HOSTED_DOMAIN=example.com
@@ -103,3 +109,22 @@ export APP_MEMBERS_OIDC_GROUP_PREFIX=members-
 # groups they are in, level by level, for a directory that nests its role groups. The lookup
 # runs with the person's own sign-in token. No effect under the simulated directory.
 # export APP_MEMBERS_OIDC_GROUP_LOOKUP=direct
+#
+# The crew auth's directory (pkg/auth/crew), the second way into the console beside the
+# password, registered as "google": every simulated login through it is
+# APP_GOOGLE_USERNAME, in the groups APP_GOOGLE_ROLES names (the registration's own pair,
+# so the console's Google sign-in and the portal's client are two people). The login is
+# one that is on no manifest: a Google sign-in provisions the person under the verified
+# email, and a name a password persona already holds would be refused as a conflict.
+export APP_GOOGLE_USERNAME=navigator
+export APP_GOOGLE_ROLES=pilot
+# export APP_CREW_OIDC_CLIENT_ID=
+# export APP_CREW_OIDC_CLIENT_SECRET=
+# APP_CREW_OIDC_REDIRECT_URL is the registration's callback route under the console's API,
+# through the dev proxy.
+export APP_CREW_OIDC_REDIRECT_URL=http://127.0.0.1:4300/console/api/user/google/callback
+export APP_CREW_OIDC_HOSTED_DOMAIN=example.com
+# APP_CREW_OIDC_GROUP_PREFIX names the Google Groups that carry crew roles: <prefix><role>@<domain>
+# assigns <role>, in the names pkg/auth/crew/roles.json holds.
+export APP_CREW_OIDC_GROUP_PREFIX=crew-
+# export APP_CREW_OIDC_GROUP_LOOKUP=direct

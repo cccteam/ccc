@@ -121,6 +121,8 @@ func TestExecute(t *testing.T) {
 	// that carry roles; nothing signs in here, so any values serve.
 	t.Setenv("APP_MEMBERS_OIDC_HOSTED_DOMAIN", "example.com")
 	t.Setenv("APP_MEMBERS_OIDC_GROUP_PREFIX", "members-")
+	t.Setenv("APP_CREW_OIDC_HOSTED_DOMAIN", "example.com")
+	t.Setenv("APP_CREW_OIDC_GROUP_PREFIX", "crew-")
 	last := lastMigration(t)
 
 	tests := []struct {

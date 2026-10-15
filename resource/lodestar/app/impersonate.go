@@ -105,7 +105,7 @@ func (a *App) Impersonate() http.HandlerFunc {
 			MaxDuration:     viewAsMaxDuration,
 		})
 		if err != nil {
-			return httpio.NewEncoder(w).ClientMessage(ctx, errors.Wrap(err, "session.PasswordAuthAPI.StartImpersonatedSession()"))
+			return httpio.NewEncoder(w).ClientMessage(ctx, errors.Wrap(err, "session.AuthAPI.StartImpersonatedSession()"))
 		}
 
 		return httpio.NewEncoder(w).Ok(impersonateResponse{SessionID: id})

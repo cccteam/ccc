@@ -74,6 +74,10 @@ github.com/cccteam/logger v0.1.30 h1:qXTDpDg27gAlfTL5A6pMs8Tr1ZmHtlvjNeoHM+1kSDg
 github.com/cccteam/logger v0.1.30/go.mod h1:iXUwTSSBsVV+3EprEzBaTVdBZKQmKsc3rT7dHtzuBew=
 github.com/cccteam/session v0.12.2 h1:o4dVFFRIha2UoXd0qkIIOw1XQhqsIEypuxgqL/91F3g=
 github.com/cccteam/session v0.12.2/go.mod h1:xL2HNSzntmp0ESkbgdpTakZkGHDu+035RN10cA+mDtI=
+github.com/cccteam/session v0.12.4-0.20261015172240-d22159880b72 h1:dTCYNa7wWTvUgVD3RpH2LFXB+3CMBmRvEhEF3BUxpeQ=
+github.com/cccteam/session v0.12.4-0.20261015172240-d22159880b72/go.mod h1:PMCEwdUXa0l6EPmuoqkMQwRaAYMejPZWpS4Zxl9Sgog=
+github.com/cccteam/spxscan v0.0.16 h1:uxiygpeXkHa26Tw67GIxsxtsLSdDB5GyIjcp75HzPcg=
+github.com/cccteam/spxscan v0.0.16/go.mod h1:LeR7y3/cHEqM5hlLWgy1k357acegyTRa1/dnfFDcSas=
 github.com/cccteam/spxscan v0.0.17 h1:K7Js6L4gtwEttyDt6iP5W1tFBbopR/rrNu3Z3UHF5Mc=
 github.com/cccteam/spxscan v0.0.17/go.mod h1:pDMvFxoeWqOH+/VSv4dMpSbi0DrR/MkbYXpCj3dARV0=
 github.com/cenkalti/backoff/v4 v4.3.0 h1:MyRJ/UdXutAwSAT+s3wNd7MfTIcy71VQueUuFK343L8=
@@ -131,6 +135,8 @@ github.com/felixge/httpsnoop v1.1.0 h1:3YtUj32ZZkqZtt3sZZsClsymw/QDuVfpNhoA31zeO
 github.com/felixge/httpsnoop v1.1.0/go.mod h1:Zqxgdd+1Rkcz8euOqdr7lqgCRJztwr5hp9vDSi5UZCE=
 github.com/fxamacker/cbor/v2 v2.9.6 h1:NHZPxuUjJXQjX9itA785y/5NKSlI4HQ+S7noZsmI7hs=
 github.com/fxamacker/cbor/v2 v2.9.6/go.mod h1:4EaZp6ClVunETjQ4GHmGNzysDK91Lr+r6Yz6tJqzVCw=
+github.com/georgysavva/scany/v2 v2.1.4 h1:nrzHEJ4oQVRoiKmocRqA1IyGOmM/GQOEsg9UjMR5Ip4=
+github.com/georgysavva/scany/v2 v2.1.4/go.mod h1:fqp9yHZzM/PFVa3/rYEC57VmDx+KDch0LoqrJzkvtos=
 github.com/go-chi/chi/v5 v5.3.2 h1:5YQkICvTCSZ25hoRsyJazN0scjzKGiu4VAUc7H1o1nY=
 github.com/go-chi/chi/v5 v5.3.2/go.mod h1:R+tYY2hNuVUUjxoPtqUdgBqevM9s9njzkTLutVsOCto=
 github.com/go-jose/go-jose/v4 v4.1.5 h1:RjgjO2LOtWOJKUC5wpwY9LR3B3vwVAz6JS2YHfYU6eA=
@@ -195,6 +201,8 @@ github.com/googleapis/gax-go/v2 v2.26.2 h1:ydkmNXxj7bEmmeK5AihkKnWxyOyBR9TDebvp5
 github.com/googleapis/gax-go/v2 v2.26.2/go.mod h1:sMKqnMesnKH+3wiRJROcttA+cJoZoGbZl1vDQ8XYtGk=
 github.com/grpc-ecosystem/grpc-gateway/v2 v2.31.0 h1:Bd7KaOxzULLxtZ/K5s1aLbWhR0+5RToO65TXHsf3bqQ=
 github.com/grpc-ecosystem/grpc-gateway/v2 v2.31.0/go.mod h1:nN7ts3dFXKtCZWc//yfkpcQNKJABg16/uDVAZpLDalo=
+github.com/jackc/pgerrcode v0.0.0-20250907135507-afb5586c32a6 h1:D/V0gu4zQ3cL2WKeVNVM4r2gLxGGf6McLwgXzRTo2RQ=
+github.com/jackc/pgerrcode v0.0.0-20250907135507-afb5586c32a6/go.mod h1:a/s9Lp5W7n/DD0VrVoyJ00FbP2ytTPDVOivvn2bMlds=
 github.com/jackc/pgpassfile v1.0.0 h1:/6Hmqy13Ss2zCq62VdNG8tM1wchn8zjSGOBJ6icpsIM=
 github.com/jackc/pgpassfile v1.0.0/go.mod h1:CEx0iS5ambNFdcRtxPj5JhEz+xB6uRky5eyVu/W2HEg=
 github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 h1:iCEnooe7UlwOQYpKFhBabPMi4aNAfoODPEFNiAnClxo=
@@ -354,6 +362,8 @@ golang.org/x/sync v0.0.0-20180314180146-1d60e4601c6f/go.mod h1:RxMgew5VJxzue5/jJ
 golang.org/x/sync v0.0.0-20181108010431-42b317875d0f/go.mod h1:RxMgew5VJxzue5/jJTE5uejpjVlOe/izrB70Jof72aM=
 golang.org/x/sync v0.0.0-20190423024810-112230192c58/go.mod h1:RxMgew5VJxzue5/jJTE5uejpjVlOe/izrB70Jof72aM=
 golang.org/x/sync v0.0.0-20220722155255-886fb9371eb4/go.mod h1:RxMgew5VJxzue5/jJTE5uejpjVlOe/izrB70Jof72aM=
+golang.org/x/sync v0.23.0 h1:KameEIfc1IkluZyXWLn39Wd4tURc6GbCiISGiZm2bQk=
+golang.org/x/sync v0.23.0/go.mod h1:sUUOizhqBxiL6pEWpqNLUiaJn1ShEbZ6BBqskPbjZm0=
 golang.org/x/sync v0.24.0 h1:iqiDrGoDgyuvAKrhLQthUEzU/R378N78gXbBjxed7oA=
 golang.org/x/sync v0.24.0/go.mod h1:sUUOizhqBxiL6pEWpqNLUiaJn1ShEbZ6BBqskPbjZm0=
 golang.org/x/sys v0.0.0-20180830151530-49385e6e1522/go.mod h1:STP8DvDyc/dI5b8T5hshtkjS+E42TnysNCUPdjciGhY=

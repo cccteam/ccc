@@ -27,25 +27,36 @@ DROIDS=$B/droids
 KEY=${APP_DROIDS_API_KEY:-}
 fails=0
 
-login() { # login <persona>: the crew's password login under the console prefix
+login() { # login <persona>: the crew's password method under the console prefix
   local p=$1
   rm -f "$S/$p.jar"
-  # -L: the XSRF handshake answers a 307 set-and-retry; -c saves the jar.
-  curl -s -L -c "$S/$p.jar" -b "$S/$p.jar" -o /dev/null -H 'Content-Type: application/json' \
-    -d "{\"username\":\"$p\",\"password\":\"lodestar\"}" "$API/user/login"
+  # The sign-in's POST sits behind the XSRF guard like every POST: the session read primes
+  # the auth's XSRF cookie (-L follows its 307 set-and-retry; -c saves the jar), and the
+  # POST echoes the token in the header, as the browser does.
+  curl -s -L -c "$S/$p.jar" -b "$S/$p.jar" -o /dev/null "$API/user/session"
+  curl -s -c "$S/$p.jar" -b "$S/$p.jar" -o /dev/null -H "X-XSRF-TOKEN: $(xsrf "$p")" -H 'Content-Type: application/json' \
+    -d "{\"username\":\"$p\",\"password\":\"lodestar\"}" "$API/user/password/login"
 }
 
-login_portal() { # login_portal <persona>: the directory login, simulated under skipAuth (APP_USERNAME on the server)
-  local p=$1
+login_through() { # login_through <persona> <login url> <session url>: a redirect sign-in, simulated under skipAuth
+  local p=$1 login=$2 session=$3
   rm -f "$S/$p.jar"
   # The login route sends the browser to the directory, which returns it to the registered
   # callback (the dev proxy's host in .envrc); the walkthrough talks to the server directly,
   # so it follows the callback on the server's own host.
   local location
-  location=$(curl -s -D - -o /dev/null -c "$S/$p.jar" -b "$S/$p.jar" "$PORTAL/user/login?returnUrl=/portal/tracker" | awk 'tolower($1)=="location:" {print $2}' | tr -d '\r')
+  location=$(curl -s -D - -o /dev/null -c "$S/$p.jar" -b "$S/$p.jar" "$login" | awk 'tolower($1)=="location:" {print $2}' | tr -d '\r')
   location="$B/${location#*://*/}"
   curl -s -L -c "$S/$p.jar" -b "$S/$p.jar" -o /dev/null "$location"
-  curl -s -L -c "$S/$p.jar" -b "$S/$p.jar" -o /dev/null "$PORTAL/user/session"
+  curl -s -L -c "$S/$p.jar" -b "$S/$p.jar" -o /dev/null "$session"
+}
+
+login_portal() { # login_portal <persona>: the members auth's directory, whose simulated person is APP_USERNAME on the server
+  login_through "$1" "$PORTAL/user/directory/login?returnUrl=/portal/tracker" "$PORTAL/user/session"
+}
+
+login_google() { # login_google <persona>: the crew auth's Google method, whose simulated person is APP_GOOGLE_USERNAME on the server
+  login_through "$1" "$API/user/google/login?returnUrl=/console/dashboard" "$API/user/session"
 }
 
 xsrf() { # xsrf <persona>: the auth's own XSRF cookie, crew-xsrf for the crew, members-xsrf for the client
@@ -142,10 +153,21 @@ for p in governor marshal cadet pilot veteran lead dispatcher overseer booking w
   login "$p"
 done
 login_portal client
-echo "--- personas logged in (crew by password, the client through the simulated directory) ---"
+login_google navigator
+echo "--- personas logged in (crew by password, the navigator through the fleet's directory, the client through the company directory; both directories simulated) ---"
 
-# ---- the two auths ----
+# ---- what each login page is told ----
+# Each outlet's methods route lists the sign-in methods its auth offers, in the order the
+# generator program registered them, each at the path the router mounted it: the login
+# pages render from the list and name no path of their own.
+r=$(curl -s -w '\n%{http_code}' "$API/user/methods"); check "the console tells its login page what the crew auth offers" 200 "$r"
+assert_py "two methods: the password form, then the Google directory, each at its own path, and the pending sign-in's routes" "$r" "[(m['name'],m['kind'],m['path']) for m in rows['methods']]==[('password','password','/console/api/user/password/login'),('google','redirect','/console/api/user/google/login')] and rows['pending']['confirm']=='/console/api/user/pending/confirm'"
+r=$(curl -s -w '\n%{http_code}' "$PORTAL/user/methods"); assert_py "the portal tells its login page the company directory alone" "$r" "[(m['name'],m['method'],m['kind'],m['label']) for m in rows['methods']]==[('directory','google','redirect','Company directory')]"
+
+# ---- the two auths, and the crew's two ways in ----
 r=$(req client GET "$PORTAL/user/session"); assert_py "cleo is signed in through the directory" "$r" "rows['authenticated'] and rows['username']=='client'"
+r=$(req navigator GET "$API/user/session"); assert_py "the navigator is signed in on the console through the fleet's directory: a crew session like the password personas'" "$r" "rows['authenticated'] and rows['username']=='navigator'"
+r=$(req navigator GET "$API/user-domains"); assert_py "the directory's pilot group seats the navigator in every sector (Pilot is held in every sector), spelled the role file's way" "$r" "rows==['anvil','bastion','cinder']"
 r=$(req client GET "$ANVIL/missions"); check "a client's session is a stranger to the console" 401 "$r"
 r=$(req marshal GET "$PORTAL/user-domains"); check "a crew session is a stranger to the portal" 401 "$r"
 
@@ -479,8 +501,9 @@ fi
 login_second() { # login_second <persona>: the persona signed in on the second instance, its jar kept apart (the instances share no cookie key)
   local p=$1
   rm -f "$S/$p.2.jar"
-  curl -s -L -c "$S/$p.2.jar" -b "$S/$p.2.jar" -o /dev/null -H 'Content-Type: application/json' \
-    -d "{\"username\":\"$p\",\"password\":\"lodestar\"}" "$API2/user/login"
+  curl -s -L -c "$S/$p.2.jar" -b "$S/$p.2.jar" -o /dev/null "$API2/user/session"
+  curl -s -c "$S/$p.2.jar" -b "$S/$p.2.jar" -o /dev/null -H "X-XSRF-TOKEN: $(awk '$6=="crew-xsrf" {print $7}' "$S/$p.2.jar" | tail -1)" -H 'Content-Type: application/json' \
+    -d "{\"username\":\"$p\",\"password\":\"lodestar\"}" "$API2/user/password/login"
 }
 login adjutant
 r=$(req adjutant GET "$API/features"); check "the features route answers anyone signed in: nothing is on" 200 "$r"

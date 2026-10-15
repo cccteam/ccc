@@ -6,14 +6,16 @@
 //
 //	every request: tracing, hooks.Outermost, request logging, SecurityHeaders, httpio.WithParams
 //	  by hand under /beacons/: request log on event, traces off
-//	default (/console/api), password sessions of the crew auth:
-//	  BindAuth(crew.Name), NoCaching, CompressionMiddleware, StartSession, SetXSRFToken: POST /console/api/user/login, GET /console/api/user/session, DELETE /console/api/user/session
+//	default (/console/api), sessions of the crew auth (password, google):
+//	  BindAuth(crew.Name), NoCaching, CompressionMiddleware, StartSession, SetXSRFToken: GET /console/api/user/methods, GET /console/api/user/session, DELETE /console/api/user/session, GET /console/api/user/pending, GET /console/api/user/google/login, GET /console/api/user/google/callback
+//	  + ValidateXSRFToken: POST /console/api/user/password/login, POST /console/api/user/pending/confirm, POST /console/api/user/pending/cancel
 //	  + ValidateSession, ValidateXSRFToken, CheckAPIVersion (oldest answered 0.1.0): hooks.Default, generatedRoutes
 //	droids (/droids), API key:
 //	  NoCaching, CompressionMiddleware, DroidsAuth: hooks.Droids, generatedDroidsRoutes
 //	  POST /droids/sectors/{sectorID}/ingest-droid-reports: request log on event
-//	portal (/portal/api), Google directory sessions of the members auth:
-//	  BindAuth(members.Name), NoCaching, CompressionMiddleware, StartSession, SetXSRFToken: GET /portal/api/user/login, GET /portal/api/user/callback, GET /portal/api/user/session, DELETE /portal/api/user/session
+//	portal (/portal/api), sessions of the members auth (directory):
+//	  BindAuth(members.Name), NoCaching, CompressionMiddleware, StartSession, SetXSRFToken: GET /portal/api/user/methods, GET /portal/api/user/session, DELETE /portal/api/user/session, GET /portal/api/user/pending, GET /portal/api/user/directory/login, GET /portal/api/user/directory/callback
+//	  + ValidateXSRFToken: POST /portal/api/user/pending/confirm, POST /portal/api/user/pending/cancel
 //	  + ValidateSession, ValidateXSRFToken, CheckAPIVersion: hooks.Portal, generatedPortalRoutes
 //	scheduled (/_scheduled), Cloud Scheduler's token:
 //	  NoCaching, CompressionMiddleware, SchedulerAuth: generatedScheduledRoutes
@@ -55,10 +57,10 @@ type Handlers interface {
 	// stores the generated code reads and writes are wired on it, and New refuses to
 	// start without them (resource.RequireFileStores).
 	ResourceClient() resource.Client
-	// The default outlet's session handlers: the crew auth's.
-	session.PasswordAuthHandlers
-	// Portal returns the portal outlet's session handlers: the members auth's.
-	Portal() session.OIDCGoogleHandlers
+	// The default outlet's session surface: the crew auth's.
+	DefaultSession
+	// Portal returns the portal outlet's session surface: the members auth's.
+	Portal() PortalSession
 	// BindAuth marks a session group's requests as authenticated by the named auth, so
 	// the handlers behind it check permissions and tenant visibility in that auth's store.
 	BindAuth(name string) func(http.Handler) http.Handler
@@ -93,6 +95,56 @@ type Handlers interface {
 	// the entry document, PortalAssets serves the built bundle.
 	PortalDeepLink(next http.Handler) http.Handler
 	PortalAssets() http.HandlerFunc
+}
+
+// DefaultSession is the default outlet's session surface: the Auth's middleware and
+// handlers, what the login page is told, the pending sign-in handlers, and the handlers
+// of the sign-in methods registered on the Auth, each under its registration name.
+type DefaultSession interface {
+	StartSession(next http.Handler) http.Handler
+	SetXSRFToken(next http.Handler) http.Handler
+	ValidateSession(next http.Handler) http.Handler
+	ValidateXSRFToken(next http.Handler) http.Handler
+	// The session's own routes (session.Auth): read and ended.
+	Authenticated() http.HandlerFunc
+	Logout() http.HandlerFunc
+	// Methods tells the login page what the outlet offers (session.Auth.Methods): the
+	// router hands it the methods below at the paths it mounts them.
+	Methods(list *session.MethodList) http.HandlerFunc
+	// The pending sign-in (session.PendingHandlers): a sign-in that waits for a
+	// password confirmation or the application's MFA step.
+	PendingStatus() http.HandlerFunc
+	PendingConfirmWithPassword() http.HandlerFunc
+	PendingCancel() http.HandlerFunc
+	// The password method's login (session.PasswordMethod).
+	PasswordLogin() http.HandlerFunc
+	// The google registration's login and callback (google.Method).
+	GoogleLogin() http.HandlerFunc
+	GoogleCallback() http.HandlerFunc
+}
+
+// PortalSession is the portal outlet's session surface: the Auth's middleware and
+// handlers, what the login page is told, the pending sign-in handlers, and the handlers
+// of the sign-in methods registered on the Auth, each under its registration name.
+type PortalSession interface {
+	StartSession(next http.Handler) http.Handler
+	SetXSRFToken(next http.Handler) http.Handler
+	ValidateSession(next http.Handler) http.Handler
+	ValidateXSRFToken(next http.Handler) http.Handler
+	// The session's own routes (session.Auth): read and ended.
+	Authenticated() http.HandlerFunc
+	Logout() http.HandlerFunc
+	// Methods tells the login page what the outlet offers (session.Auth.Methods): the
+	// router hands it the methods below at the paths it mounts them.
+	Methods(list *session.MethodList) http.HandlerFunc
+	// The pending sign-in (session.PendingHandlers): a sign-in that waits for a
+	// password confirmation or the application's MFA step.
+	PendingStatus() http.HandlerFunc
+	PendingConfirmWithPassword() http.HandlerFunc
+	PendingCancel() http.HandlerFunc
+	// The directory registration's login and callback (google.Method).
+	DirectoryLogin() http.HandlerFunc
+	DirectoryCallback() http.HandlerFunc
 }
 
 // Hooks are the application's additions to the generated router. They compose inward
@@ -163,7 +215,7 @@ func New(h Handlers, hooks Hooks) *chi.Mux {
 		})
 	}
 
-	// The default outlet (/console/api): password sessions of the crew auth.
+	// The default outlet (/console/api): sessions of the crew auth (password, google).
 	r.Group(func(r chi.Router) {
 		r.Use(h.BindAuth(crew.Name))
 		r.Use(h.NoCaching)
@@ -171,11 +223,26 @@ func New(h Handlers, hooks Hooks) *chi.Mux {
 		r.Use(h.StartSession)
 		r.Use(h.SetXSRFToken)
 
-		// The session routes are bounded at BodyLimit, as the generated routes are.
+		// The session routes are bounded at BodyLimit, as the generated routes are. The
+		// login page reads what the outlet offers from the method list, at the paths
+		// mounted below; the sign-in's POSTs sit behind the XSRF guard.
 		bounded := r.With(resource.BodyLimit(BodyLimit))
-		bounded.Post("/console/api/user/login", h.Login())
+		guarded := bounded.With(h.ValidateXSRFToken)
+		bounded.Get("/console/api/user/methods", h.Methods(&session.MethodList{
+			Methods: []session.AdvertisedMethod{
+				{Name: "password", Label: "Password", Path: "/console/api/user/password/login"},
+				{Name: "google", Label: "Google", Path: "/console/api/user/google/login"},
+			},
+			Pending: session.PendingRoutes{Status: "/console/api/user/pending", Confirm: "/console/api/user/pending/confirm", Cancel: "/console/api/user/pending/cancel"},
+		}))
 		bounded.Get("/console/api/user/session", h.Authenticated())
 		bounded.Delete("/console/api/user/session", h.Logout())
+		bounded.Get("/console/api/user/pending", h.PendingStatus())
+		bounded.Get("/console/api/user/google/login", h.GoogleLogin())
+		bounded.Get("/console/api/user/google/callback", h.GoogleCallback())
+		guarded.Post("/console/api/user/password/login", h.PasswordLogin())
+		guarded.Post("/console/api/user/pending/confirm", h.PendingConfirmWithPassword())
+		guarded.Post("/console/api/user/pending/cancel", h.PendingCancel())
 
 		r.Group(func(r chi.Router) {
 			r.Use(h.ValidateSession)
@@ -213,7 +280,7 @@ func New(h Handlers, hooks Hooks) *chi.Mux {
 		})
 	})
 
-	// The portal outlet (/portal/api): Google directory sessions of the members auth.
+	// The portal outlet (/portal/api): sessions of the members auth (directory).
 	portalSession := h.Portal()
 	r.Group(func(r chi.Router) {
 		r.Use(h.BindAuth(members.Name))
@@ -222,12 +289,24 @@ func New(h Handlers, hooks Hooks) *chi.Mux {
 		r.Use(portalSession.StartSession)
 		r.Use(portalSession.SetXSRFToken)
 
-		// The session routes are bounded at BodyLimit, as the generated routes are.
+		// The session routes are bounded at BodyLimit, as the generated routes are. The
+		// login page reads what the outlet offers from the method list, at the paths
+		// mounted below; the sign-in's POSTs sit behind the XSRF guard.
 		bounded := r.With(resource.BodyLimit(BodyLimit))
-		bounded.Get("/portal/api/user/login", portalSession.Login())
-		bounded.Get("/portal/api/user/callback", portalSession.CallbackOIDC())
+		guarded := bounded.With(portalSession.ValidateXSRFToken)
+		bounded.Get("/portal/api/user/methods", portalSession.Methods(&session.MethodList{
+			Methods: []session.AdvertisedMethod{
+				{Name: "directory", Label: "Company directory", Path: "/portal/api/user/directory/login"},
+			},
+			Pending: session.PendingRoutes{Status: "/portal/api/user/pending", Confirm: "/portal/api/user/pending/confirm", Cancel: "/portal/api/user/pending/cancel"},
+		}))
 		bounded.Get("/portal/api/user/session", portalSession.Authenticated())
 		bounded.Delete("/portal/api/user/session", portalSession.Logout())
+		bounded.Get("/portal/api/user/pending", portalSession.PendingStatus())
+		bounded.Get("/portal/api/user/directory/login", portalSession.DirectoryLogin())
+		bounded.Get("/portal/api/user/directory/callback", portalSession.DirectoryCallback())
+		guarded.Post("/portal/api/user/pending/confirm", portalSession.PendingConfirmWithPassword())
+		guarded.Post("/portal/api/user/pending/cancel", portalSession.PendingCancel())
 
 		r.Group(func(r chi.Router) {
 			r.Use(portalSession.ValidateSession)

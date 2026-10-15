@@ -76,6 +76,10 @@ github.com/cccteam/logger v0.1.30 h1:qXTDpDg27gAlfTL5A6pMs8Tr1ZmHtlvjNeoHM+1kSDg
 github.com/cccteam/logger v0.1.30/go.mod h1:iXUwTSSBsVV+3EprEzBaTVdBZKQmKsc3rT7dHtzuBew=
 github.com/cccteam/session v0.12.2 h1:o4dVFFRIha2UoXd0qkIIOw1XQhqsIEypuxgqL/91F3g=
 github.com/cccteam/session v0.12.2/go.mod h1:xL2HNSzntmp0ESkbgdpTakZkGHDu+035RN10cA+mDtI=
+github.com/cccteam/session v0.12.4-0.20261015172240-d22159880b72 h1:dTCYNa7wWTvUgVD3RpH2LFXB+3CMBmRvEhEF3BUxpeQ=
+github.com/cccteam/session v0.12.4-0.20261015172240-d22159880b72/go.mod h1:PMCEwdUXa0l6EPmuoqkMQwRaAYMejPZWpS4Zxl9Sgog=
+github.com/cccteam/spxscan v0.0.16 h1:uxiygpeXkHa26Tw67GIxsxtsLSdDB5GyIjcp75HzPcg=
+github.com/cccteam/spxscan v0.0.16/go.mod h1:LeR7y3/cHEqM5hlLWgy1k357acegyTRa1/dnfFDcSas=
 github.com/cccteam/spxscan v0.0.17 h1:K7Js6L4gtwEttyDt6iP5W1tFBbopR/rrNu3Z3UHF5Mc=
 github.com/cccteam/spxscan v0.0.17/go.mod h1:pDMvFxoeWqOH+/VSv4dMpSbi0DrR/MkbYXpCj3dARV0=
 github.com/cenkalti/backoff/v4 v4.3.0 h1:MyRJ/UdXutAwSAT+s3wNd7MfTIcy71VQueUuFK343L8=
@@ -391,6 +395,8 @@ golang.org/x/sync v0.0.0-20180314180146-1d60e4601c6f/go.mod h1:RxMgew5VJxzue5/jJ
 golang.org/x/sync v0.0.0-20181108010431-42b317875d0f/go.mod h1:RxMgew5VJxzue5/jJTE5uejpjVlOe/izrB70Jof72aM=
 golang.org/x/sync v0.0.0-20190423024810-112230192c58/go.mod h1:RxMgew5VJxzue5/jJTE5uejpjVlOe/izrB70Jof72aM=
 golang.org/x/sync v0.0.0-20220722155255-886fb9371eb4/go.mod h1:RxMgew5VJxzue5/jJTE5uejpjVlOe/izrB70Jof72aM=
+golang.org/x/sync v0.23.0 h1:KameEIfc1IkluZyXWLn39Wd4tURc6GbCiISGiZm2bQk=
+golang.org/x/sync v0.23.0/go.mod h1:sUUOizhqBxiL6pEWpqNLUiaJn1ShEbZ6BBqskPbjZm0=
 golang.org/x/sync v0.24.0 h1:iqiDrGoDgyuvAKrhLQthUEzU/R378N78gXbBjxed7oA=
 golang.org/x/sync v0.24.0/go.mod h1:sUUOizhqBxiL6pEWpqNLUiaJn1ShEbZ6BBqskPbjZm0=
 golang.org/x/sys v0.0.0-20180830151530-49385e6e1522/go.mod h1:STP8DvDyc/dI5b8T5hshtkjS+E42TnysNCUPdjciGhY=

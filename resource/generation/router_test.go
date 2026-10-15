@@ -189,8 +189,8 @@ func Test_singleKeyRouteTestParam(t *testing.T) {
 func Test_authBindings(t *testing.T) {
 	t.Parallel()
 
-	crew := &outletAuth{importPath: "example.com/app/pkg/auth/crew", flavor: Password}
-	members := &outletAuth{importPath: "example.com/app/pkg/auth/members", flavor: OIDCGoogle}
+	crew := &outletAuth{importPath: "example.com/app/pkg/auth/crew", methods: []AuthMethod{PasswordMethod()}}
+	members := &outletAuth{importPath: "example.com/app/pkg/auth/members", methods: []AuthMethod{GoogleMethod("google")}}
 
 	type binding struct {
 		name, testParam string
@@ -275,7 +275,7 @@ func Test_authBindings(t *testing.T) {
 func Test_allOutlets_defaultServesSessions(t *testing.T) {
 	t.Parallel()
 
-	staff := &outletAuth{importPath: "example.com/app/pkg/auth/staff", flavor: Password}
+	staff := &outletAuth{importPath: "example.com/app/pkg/auth/staff", methods: []AuthMethod{PasswordMethod()}}
 	tests := []struct {
 		name          string
 		defaultOutlet routerOutlet

@@ -23,11 +23,11 @@ import (
 	"github.com/cccteam/ccc/resource/lodestar/pkg/auth/members"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/computedresources"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/resources"
+	"github.com/cccteam/ccc/resource/lodestar/pkg/router"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/rpc"
 	"github.com/cccteam/ccc/resource/scheduled"
 	"github.com/cccteam/httpio"
 	"github.com/cccteam/logger"
-	"github.com/cccteam/session"
 	"github.com/cccteam/session/sessioninfo"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-playground/errors/v5"
@@ -156,8 +156,12 @@ type App struct {
 	// name, for requests a session group bound to another auth.
 	access  access.Controller
 	engines map[string]access.Controller
-	*session.PasswordAuth[session.NoCustomData, session.NoCustomData]
-	portal         *session.OIDCGoogle[session.NoCustomData, session.NoCustomData]
+	// The console outlet's session surface (router.DefaultSession), embedded: the crew
+	// auth's Auth session with the password and the Google methods registered on it, so
+	// the App's own routes reach the session middleware and the impersonation API
+	// directly. portal is the portal outlet's: the members auth's, with the directory.
+	*crew.Handlers
+	portal         *members.Handlers
 	resourceClient resource.Client
 	cursorKey      *resource.CursorKey
 	validate       *validator.Validate
@@ -227,10 +231,10 @@ func New(cfg Configurer) *App {
 	// The authorization suites bind no auth: they compose the API surface through the
 	// test router, and nothing on that path touches the session.
 	if crewAuth := cfg.Crew(); crewAuth != nil {
-		a.PasswordAuth = crewAuth.Session()
+		a.Handlers = crewAuth.Handlers()
 	}
 	if membersAuth := cfg.Members(); membersAuth != nil {
-		a.portal = membersAuth.Session()
+		a.portal = membersAuth.Handlers()
 	}
 	if membersEngine := cfg.MembersAccess(); membersEngine != nil {
 		a.engines[members.Name] = membersEngine
@@ -261,11 +265,11 @@ func (a *App) engine(ctx context.Context) access.Controller {
 	return a.access
 }
 
-// Portal returns the portal outlet's session handlers: the members auth's, so a portal
+// Portal returns the portal outlet's session surface: the members auth's, so a portal
 // session opens nothing on the console and a console session nothing on the portal.
 //
 // Demonstrates: auth.directory-roles.
-func (a *App) Portal() session.OIDCGoogleHandlers {
+func (a *App) Portal() router.PortalSession {
 	if a.portal == nil {
 		return nil
 	}

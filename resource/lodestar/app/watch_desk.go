@@ -44,7 +44,7 @@ func (a *App) ActiveImpersonations() http.HandlerFunc {
 
 		imps, err := a.API().ActiveImpersonations(ctx, &session.ImpersonationQuery{})
 		if err != nil {
-			return httpio.NewEncoder(w).ClientMessage(ctx, errors.Wrap(err, "session.PasswordAuthAPI.ActiveImpersonations()"))
+			return httpio.NewEncoder(w).ClientMessage(ctx, errors.Wrap(err, "session.AuthAPI.ActiveImpersonations()"))
 		}
 
 		out := make([]activeImpersonation, 0, len(imps))
@@ -69,7 +69,7 @@ func (a *App) RevokeImpersonation() http.HandlerFunc {
 
 		id := httpio.Param[ccc.UUID](r, ImpersonationID)
 		if err := a.API().DestroyImpersonatedSession(ctx, id); err != nil {
-			return httpio.NewEncoder(w).ClientMessage(ctx, errors.Wrap(err, "session.PasswordAuthAPI.DestroyImpersonatedSession()"))
+			return httpio.NewEncoder(w).ClientMessage(ctx, errors.Wrap(err, "session.AuthAPI.DestroyImpersonatedSession()"))
 		}
 
 		w.WriteHeader(http.StatusNoContent)
