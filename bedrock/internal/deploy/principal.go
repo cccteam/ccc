@@ -29,7 +29,7 @@ func Principal(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", errors.Wrap(err, "google.DefaultClient()")
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, userinfoURL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, userinfoURL, http.NoBody)
 	if err != nil {
 		return "", errors.Wrap(err, "http.NewRequestWithContext()")
 	}
