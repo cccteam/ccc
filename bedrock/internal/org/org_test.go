@@ -1018,7 +1018,7 @@ func TestCustomRolePermissions(t *testing.T) {
 			resource: "environment_layer_plan_reader",
 			roleID:   "environmentLayerPlanReader",
 			permissions: []string{
-				"cloudbuild.connections.get", "cloudbuild.repositories.get",
+				"cloudbuild.builds.get", "cloudbuild.connections.get", "cloudbuild.repositories.get",
 				"compute.backendServices.get", "compute.regionNetworkEndpointGroups.get",
 				"firebaseauth.configs.get",
 				"iam.workloadIdentityPoolProviders.get",
