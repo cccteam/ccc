@@ -1890,6 +1890,144 @@ func TestPlacementRegister(t *testing.T) {
 			if strings.Join(p.Applications, ",") != strings.Join(tt.want, ",") {
 				t.Errorf("Applications = %v, want %v", p.Applications, tt.want)
 			}
+			if p.Step(tt.app) != RegistrationIdentities {
+				t.Errorf("Step(%s) = %q, want %q", tt.app, p.Step(tt.app), RegistrationIdentities)
+			}
+		})
+	}
+}
+
+// TestPlacementAdvance: a registration moves from its identities to its grants and then
+// to complete, where the entry leaves the placement; an application not registered and
+// one registered in full are refused.
+func TestPlacementAdvance(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		registration map[string]string
+		app          string
+		wantStep     string
+		wantAfter    map[string]string
+		wantErr      string
+	}{
+		{name: "identities to grants", registration: map[string]string{"beacon": RegistrationIdentities}, app: "beacon", wantStep: RegistrationGrants, wantAfter: map[string]string{"beacon": RegistrationGrants}},
+		{name: "grants to complete, the last entry leaves", registration: map[string]string{"beacon": RegistrationGrants}, app: "beacon", wantStep: "", wantAfter: nil},
+		{name: "grants to complete beside another registration", registration: map[string]string{"beacon": RegistrationGrants, "harbor": RegistrationIdentities}, app: "beacon", wantStep: "", wantAfter: map[string]string{"harbor": RegistrationIdentities}},
+		{name: "a registration in full is refused", app: "harbor", wantErr: `application "harbor" is registered in full`},
+		{name: "an application not registered is refused", app: "quill", wantErr: `application "quill" is not registered (bedrock org register quill)`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			p := Placement{Applications: []string{"harbor", "beacon"}, Registration: tt.registration}
+			step, err := p.Advance(tt.app)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("Advance() error = %v, wantErr %q", err, tt.wantErr)
+				}
+
+				return
+			}
+			if err != nil {
+				t.Fatalf("Advance() error = %v", err)
+			}
+			if step != tt.wantStep {
+				t.Errorf("Advance() = %q, want %q", step, tt.wantStep)
+			}
+			if fmt.Sprint(p.Registration) != fmt.Sprint(tt.wantAfter) {
+				t.Errorf("Registration = %v, want %v", p.Registration, tt.wantAfter)
+			}
+		})
+	}
+}
+
+// TestRegistrationRender: the layers render what an application's registration step may
+// apply. At its identities the application is in 1-org's and 2-env's lists and 2-shr's
+// repositories alone; at its grants it is in 1-org's public invokers, 2-shr's pushers and
+// pullers and 2-spn's admins too; complete, its hostnames are in 2-net's hosts.
+func TestRegistrationRender(t *testing.T) {
+	t.Parallel()
+
+	const (
+		repositories  = `applications = ["harbor", "beacon"]`
+		publicInvoker = `"serviceAccount:imp-tst-gbl-beacon-tofu@imp-tst-gbl-core-1a2b.iam.gserviceaccount.com",`
+		pusher        = `"serviceAccount:imp-tst-gbl-beacon-deploy@imp-tst-gbl-core-1a2b.iam.gserviceaccount.com",`
+		admin         = `"serviceAccount:imp-stg-gbl-beacon-tofu@imp-stg-gbl-core-3c4d.iam.gserviceaccount.com" = { environment = "stg", application = "beacon", restore_from = "prd" }`
+		host          = `"beacon-tst.apps.imp.example"`
+	)
+	tests := []struct {
+		name   string
+		step   string
+		want   map[string][]string
+		absent map[string][]string
+	}{
+		{
+			name: "at its identities",
+			step: RegistrationIdentities,
+			want: map[string][]string{
+				"1-org/applications.auto.tfvars": {repositories},
+				"2-env/applications.auto.tfvars": {repositories},
+				"2-shr/applications.auto.tfvars": {repositories},
+			},
+			absent: map[string][]string{
+				"1-org/public-invokers.auto.tfvars": {publicInvoker},
+				"2-shr/applications.auto.tfvars":    {pusher},
+				"2-spn/applications.auto.tfvars":    {admin},
+				"2-net/applications.auto.tfvars":    {host},
+			},
+		},
+		{
+			name: "at its grants",
+			step: RegistrationGrants,
+			want: map[string][]string{
+				"1-org/public-invokers.auto.tfvars": {publicInvoker},
+				"2-shr/applications.auto.tfvars":    {repositories, pusher},
+				"2-spn/applications.auto.tfvars":    {admin},
+			},
+			absent: map[string][]string{"2-net/applications.auto.tfvars": {host}},
+		},
+		{
+			name: "complete",
+			want: map[string][]string{
+				"1-org/public-invokers.auto.tfvars": {publicInvoker},
+				"2-shr/applications.auto.tfvars":    {repositories, pusher},
+				"2-spn/applications.auto.tfvars":    {admin},
+				"2-net/applications.auto.tfvars":    {host},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			p := testPlacement(t)
+			if tt.step != "" {
+				p.Registration = map[string]string{"beacon": tt.step}
+			}
+			files, err := Render(p)
+			if err != nil {
+				t.Fatalf("Render() error = %v", err)
+			}
+			rendered := map[string]string{}
+			for _, f := range files {
+				rendered[f.Path] = string(f.Content)
+			}
+			for path, lines := range tt.want {
+				for _, line := range lines {
+					if !strings.Contains(rendered[path], line) {
+						t.Errorf("%s lacks %q:\n%s", path, line, rendered[path])
+					}
+				}
+			}
+			for path, lines := range tt.absent {
+				for _, line := range lines {
+					if strings.Contains(rendered[path], line) {
+						t.Errorf("%s carries %q, which the step does not render", path, line)
+					}
+				}
+			}
 		})
 	}
 }

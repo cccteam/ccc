@@ -1946,17 +1946,25 @@ when the hand apply was complete.
 
 `org register <app>` adds an application: its code goes into `placement.json`'s
 applications, each layer's values are rendered from it (1-org's repositories and its
-`public-invokers.auto.tfvars`, 2-env's list, 2-shr's pushers and pullers, 2-spn's database
-admins, 2-net's hostnames with the wildcard for pull-request environments), and the pull
-requests the registration takes through the triggers are printed, since one pass in layer
-order does not follow the order the grants need: first 1-org's repository with 2-env's
-identities, then 2-env again by starting the apply trigger by hand (each environment grants
-the next environment's deploy identity read on its records bucket, from state the first
-pass did not have), then 1-org's public-invoker grants with 2-shr and 2-spn (grants on
-identities that exist now), then the application's own stack per environment, then 2-net.
-A file a later pull request carries stays in the working tree until then. Register refuses
-the first application while the placement does not record the Cloud Build GitHub
-authorization, since the applications' triggers exist once 2-env holds the connection.
+`public-invokers.auto.tfvars`, 2-env's list, 2-shr's repositories and its pushers and
+pullers, 2-spn's database admins, 2-net's hostnames with the wildcard for pull-request
+environments), and the pull requests the registration takes through the triggers are
+printed, since one pass in layer order does not follow the order the grants need: first
+1-org's repository with 2-env's identities, then 2-env again by starting the apply trigger
+by hand (each environment grants the next environment's deploy identity read on its records
+bucket, from state the first pass did not have), then 1-org's public-invoker grants with
+2-shr and 2-spn (grants on identities that exist now), then the application's own stack per
+environment, then 2-net. The placement records how far the registration has gone
+(`registration`: the application's step, `identities` while its repository and identities
+are declared and nothing else is rendered for it yet, `grants` while the grants on its
+identities are declared too and its hostnames are not, and no entry once complete), the
+layers render what that step may apply, and `org register <app> --next` moves to the next
+step: to `grants` once 2-env's state in every environment holds the application's
+identities, to complete once its stack has a state in every environment, each read from
+the state bucket and refused before. So every pull request of the sequence carries every
+rendered file, and `org check` passes on each. Register refuses the first application
+while the placement does not record the Cloud Build GitHub authorization, since the
+applications' triggers exist once 2-env holds the connection.
 
 `org register` also makes the application's first `placement.json` (The application's
 placement, above), every field from the organization's placement and none asked of the

@@ -439,7 +439,8 @@ resource "google_secret_manager_secret_iam_member" "deploy_build_secrets" {
 # Run services, which is what lets it grant allUsers roles/run.invoker there
 # under the environment folder's domain policy. tagUser on the value is 1-org's
 # grant, where the tag is owned (its public-invokers.auto.tfvars names this
-# identity), since setting the value's policy is the tag owner's right.
+# identity once the registration is past its identities), since setting the
+# value's policy is the tag owner's right.
 
 # The people who own the secret values hold no standing grant: a member of the
 # environment's team group asks for the secret operator entitlement

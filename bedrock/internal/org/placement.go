@@ -246,6 +246,16 @@ type Placement struct {
 	// order they were added; empty for an organization with none yet. bedrock org
 	// register adds one; the layers' applications.auto.tfvars are rendered from it.
 	Applications []string `json:"applications"`
+	// Registration is how far each application's registration has gone, by code, for
+	// the applications whose registration is under way: RegistrationIdentities, then
+	// RegistrationGrants; an application absent from the map is registered in full. The
+	// layers' values render from it, so the repository matches the render at every step
+	// of the sequence bedrock org register prints and bedrock org check passes on every
+	// pull request of it: the grants on an application's identities (1-org's
+	// public-invoker tag, 2-shr's registry, 2-spn's databases) are rendered once it is
+	// past identities, its hostnames (2-net) once its registration is complete. bedrock
+	// org register writes the first step, and register --next moves to the following.
+	Registration map[string]string `json:"registration,omitempty"`
 	// Projects are the projects by key: boot, the project the seed chose, and shr, net,
 	// spn, tst, stg and prd, the ids 1-org's apply chose (its project_ids output). The
 	// environment projects are what the applications' identities and backends are named
@@ -367,6 +377,14 @@ func (p *Placement) Validate() error {
 	for _, a := range p.Applications {
 		if !applicationRE.MatchString(a) {
 			return errors.Newf("application %q is not 1 to 6 lowercase alphanumeric characters starting with a letter", a)
+		}
+	}
+	for app, step := range p.Registration {
+		if !slices.Contains(p.Applications, app) {
+			return errors.Newf("registration names %q, which applications does not list", app)
+		}
+		if step != RegistrationIdentities && step != RegistrationGrants {
+			return errors.Newf("registration of %q is %q, not %s or %s", app, step, RegistrationIdentities, RegistrationGrants)
 		}
 	}
 	for k, v := range p.Labels {
@@ -935,8 +953,18 @@ func (p *Placement) ApplicationPlacement(app, bedrockVersion, bedrockSHA256 stri
 	return a, nil
 }
 
-// Register adds an application to the placement: a code of one to six lowercase
-// alphanumeric characters starting with a letter, not registered yet.
+// The steps of an application's registration (Placement.Registration): identities, while
+// its repository and its identities are declared and its grants and hostnames are not
+// rendered yet; grants, while the grants on its identities are declared too and its
+// hostnames are not. A registration that is complete has no step.
+const (
+	RegistrationIdentities = "identities"
+	RegistrationGrants     = "grants"
+)
+
+// Register adds an application to the placement, at the first step of its registration:
+// a code of one to six lowercase alphanumeric characters starting with a letter, not
+// registered yet.
 func (p *Placement) Register(app string) error {
 	if !applicationRE.MatchString(app) {
 		return errors.Newf("application %q is not 1 to 6 lowercase alphanumeric characters starting with a letter", app)
@@ -945,8 +973,69 @@ func (p *Placement) Register(app string) error {
 		return errors.Newf("application %q is registered already", app)
 	}
 	p.Applications = append(p.Applications, app)
+	if p.Registration == nil {
+		p.Registration = map[string]string{}
+	}
+	p.Registration[app] = RegistrationIdentities
 
 	return nil
+}
+
+// Step is how far the application's registration has gone: RegistrationIdentities,
+// RegistrationGrants, or "" for one registered in full.
+func (p *Placement) Step(app string) string {
+	return p.Registration[app]
+}
+
+// Advance moves the application's registration to its next step and answers that step:
+// identities to grants, grants to complete (""). An application the placement does not
+// list and one registered in full are refused.
+func (p *Placement) Advance(app string) (string, error) {
+	if !slices.Contains(p.Applications, app) {
+		return "", errors.Newf("application %q is not registered (bedrock org register %s)", app, app)
+	}
+	switch p.Registration[app] {
+	case RegistrationIdentities:
+		p.Registration[app] = RegistrationGrants
+
+		return RegistrationGrants, nil
+	case RegistrationGrants:
+		delete(p.Registration, app)
+		if len(p.Registration) == 0 {
+			p.Registration = nil
+		}
+
+		return "", nil
+	default:
+		return "", errors.Newf("application %q is registered in full: there is no step left", app)
+	}
+}
+
+// Granted lists the applications past the identities step, in registration order: those
+// whose grants the layers render (1-org's public-invoker tag, 2-shr's registry, 2-spn's
+// databases), since their identities exist.
+func (p *Placement) Granted() []string {
+	apps := make([]string, 0, len(p.Applications))
+	for _, app := range p.Applications {
+		if p.Registration[app] != RegistrationIdentities {
+			apps = append(apps, app)
+		}
+	}
+
+	return apps
+}
+
+// Served lists the applications registered in full, in registration order: those whose
+// hostnames 2-net serves, since their stacks' backends exist.
+func (p *Placement) Served() []string {
+	apps := make([]string, 0, len(p.Applications))
+	for _, app := range p.Applications {
+		if p.Registration[app] == "" {
+			apps = append(apps, app)
+		}
+	}
+
+	return apps
 }
 
 // Write puts the placement back in its file, indented the way a person reads it.
