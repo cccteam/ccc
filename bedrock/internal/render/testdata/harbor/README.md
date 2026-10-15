@@ -956,10 +956,9 @@ environment's own. In prd the command applies the stack with
 lifted; then it plans the destroy with every kept resource excluded, reads
 the plan back and holds it against what it means to destroy (anything beyond
 or short of it stops the run with nothing applied), and applies it. Bringing
-the environment back is the apply by hand above ("Applying"), from the
-checkout of the release it ran, which makes the services and the triggers
-again with the placeholder image, then `bedrock rerun <env> <release>`
-through them.
+the environment back is the `apply` action above ("Applying"), which makes
+the services and the triggers again with the placeholder image, then
+`bedrock rerun <env> <release>` through them (the `run` action).
 
 `bedrock destroy <env>` destroys the stack whole, the database, the file
 stores and their objects, the Firestore database, the secret containers and
