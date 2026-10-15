@@ -32,8 +32,17 @@ type.
 
 ## Applying
 
-The first apply of an environment is by hand, before any release exists there;
-every later apply is the pipeline's. A release's tag build plans the stack for
+The first apply of an environment, before any release exists there, is the
+operations workflow's `apply` action (Actions, operations, with the
+environment): it runs in the GitHub Environment named after the environment,
+as the environment's operations identity, and starts the stack trigger `2-env`
+holds for this application there, which applies the stack from the default
+branch as the apply identity (`bedrock deploy stack first`: the plan with the
+environment alone, no generated-secret pin, which the first release derives).
+Nobody holds a cloud role for it: repository write and the Environment's
+approval are what the action takes, and the audit log names who asked. Every
+later apply is the pipeline's, and a release run again (the `run` action)
+applies the stack again. A release's tag build plans the stack for
 its environment as the apply identity after the image build and before the
 migrations, runs the tests (no authoritative IAM resource other than the file
 stores' bucket policies; every secret version
@@ -50,7 +59,8 @@ the merge waits for. A secret an environment after tst has no pin
 for is not a refusal there: the environment's summary says which, and the pin
 to make, ahead of the release it would refuse. An environment
 whose stack has not had its first apply yet is skipped with "no stack yet: its
-first apply is by hand", in the log and in the summary, until it has. So a change to
+first apply is the operations workflow's apply action", in the log and in the
+summary, until it has. So a change to
 this directory or to `terraform.tfvars` (a secret pin, a value for one
 environment) is a commit with a releasable type, and promotes as a release.
 An infrastructure change must be safe on the running service: add first,
@@ -72,17 +82,10 @@ shows the job and the account destroyed and the grants created, and nothing
 on the service. The log bucket and its sink keep their names; the sink's
 filter now names this application's builds.
 
-By hand, the same shape as `2-env`: no workspaces, one state prefix per
-environment (`3-app/harbor/<env>`, the stack's slot in the organization's
-state bucket), supplied at init, with a backend cache per environment:
-
-```bash
-cd infrastructure
-export TF_DATA_DIR=.terraform.tst
-tofu init -backend-config="prefix=3-app/harbor/tst"
-tofu plan -var environment=tst
-tofu apply -var environment=tst
-```
+The state: no workspaces, one state prefix per environment
+(`3-app/harbor/<env>`, the stack's slot in the organization's state bucket),
+supplied at init, with a backend cache per environment (`TF_DATA_DIR`), which
+every apply, the first included, points tofu at.
 
 `2-env` for the same environment must be applied first (identities,
 connection, repository link, records bucket, instance), `2-shr` before that

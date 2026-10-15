@@ -2465,7 +2465,7 @@ func TestTriggers(t *testing.T) {
 			want: []string{
 				"  bedrock = \"/builder/home/bedrock\"\n  run_env = [\"BUILD_ID=$BUILD_ID\", \"PROJECT_ID=$PROJECT_ID\", \"LOCATION=$LOCATION\"]\n",
 				"    _LAYER         = \"\"  # a layer to apply again by hand, with no change check; empty for the push's changes\n    _ENVIRONMENT   = \"\"  # with _LAYER=2-env, one environment; empty for the three in order\n    _BEDROCK_STEPS = \"" + StepsVersion + "\" # the shape of these steps, which bedrock org plan and apply compare with their own\n",
-				"    with open(\"placement.json\", encoding=\"utf-8\") as f:\n        placement = json.load(f)\n    version = placement.get(\"bedrockVersion\", \"\")\n    digest = placement.get(\"bedrockSha256\", \"\")\n",
+				"    placement_path = sys.argv[4] if len(sys.argv) > 4 else \"placement.json\"\n    with open(placement_path, encoding=\"utf-8\") as f:\n        placement = json.load(f)\n    version = placement.get(\"bedrockVersion\", \"\")\n    digest = placement.get(\"bedrockSha256\", \"\")\n",
 				"    url = host + \"/cccteam/ccc/releases/download/bedrock/\" + version + \"/bedrock-linux-amd64\"\n",
 				"    if hashlib.sha256(data).hexdigest() != digest:\n",
 				"    go install -ldflags=\"-s -w\" github.com/cccteam/ccc/bedrock@\"$$(cat /builder/home/bedrock-commit)\"\n",
@@ -3293,5 +3293,36 @@ func TestAppsZone(t *testing.T) {
 				t.Errorf("%s lacks %q: the zone domain check reads is not the one 2-net names", tt.path, tt.want)
 			}
 		})
+	}
+}
+
+// TestStackTrigger: 2-env renders, per application, the stack trigger an application's
+// first apply runs through: manual, from the repository link at the default branch, as the
+// deploy identity, carrying the application, the environment, the apply identity and the
+// records bucket, with the organization triggers' steps and then bedrock deploy stack
+// first, waiting for an approval where the environment's releases do.
+func TestStackTrigger(t *testing.T) {
+	t.Parallel()
+
+	got := renderedFile(t, "2-env/cloud-build.tf")
+	for _, want := range []string{
+		`resource "google_cloudbuild_trigger" "stack" {`,
+		`  for_each = local.connected ? local.apps : toset([])`,
+		`  name     = "${local.name}-${local.region_code}-${each.key}-stack"`,
+		`  service_account    = google_service_account.deploy[each.key].id`,
+		`    _APPLY_IDENTITY = google_service_account.apply[each.key].email`,
+		`    _RECORDS_BUCKET = google_storage_bucket.records.name`,
+		`    approval_required = local.approval_required`,
+		`    repository = google_cloudbuildv2_repository.app[each.key].id`,
+		`    ref        = "refs/heads/master"`,
+		`      args       = ["-c", local.stack_fetch_bedrock, "/builder/home", "https://github.com", "https://github.com/cccteam/ccc.git", "infrastructure/placement.json"]`,
+		`      args       = ["check"]`,
+		`      args       = ["deploy", "stack", "first"]`,
+		`      env        = local.stack_build_env`,
+		`    placement_path = sys.argv[4] if len(sys.argv) > 4 else "placement.json"`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("2-env/cloud-build.tf lacks %q", want)
+		}
 	}
 }
