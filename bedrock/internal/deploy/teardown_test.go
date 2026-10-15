@@ -80,19 +80,44 @@ google_secret_manager_secret.harbor["APP_COOKIE_KEY"]
 random_id.stack
 google_storage_bucket_object.stack[0]
 google_cloud_tasks_queue.tasks[0]
+google_storage_bucket.migrate_logs[0]
+google_logging_project_sink.migrate_logs[0]
 `
+
+// tstDependencies is what tst's resources depend on, as the state records it: the
+// migrate-log sink names the version trigger and the services in its filter, and its
+// bucket as its destination.
+var tstDependencies = map[string][]string{
+	"google_logging_project_sink.migrate_logs[0]": {"google_cloud_run_v2_service.app", "google_cloudbuild_trigger.version", "google_storage_bucket.migrate_logs"},
+	"google_cloudbuild_trigger.version[0]":        {"google_cloud_run_v2_service.app"},
+	"google_storage_bucket_object.stack[0]":       {"random_id.stack"},
+}
 
 var (
 	tstGoes = []string{
 		`google_cloud_run_v2_service.app["uc1"]`, `google_cloud_run_v2_service.app["uw3"]`, `google_cloud_run_v2_service_iam_member.invoker["uc1"]`,
 		"google_cloudbuild_trigger.version[0]", "google_cloudbuild_trigger.sweep[0]", "google_cloud_scheduler_job.sweep[0]",
 		`google_compute_region_network_endpoint_group.app["uc1"]`, "google_compute_backend_service.app[0]", "google_service_account.scheduler[0]",
+		"google_logging_project_sink.migrate_logs[0]",
 	}
 	tstStays = []string{
 		"google_service_account.app", "google_spanner_database.harbor[0]", "google_storage_bucket.files[0]", "google_firestore_database.firestore",
 		`google_secret_manager_secret.harbor["APP_COOKIE_KEY"]`, "random_id.stack", "google_storage_bucket_object.stack[0]", "google_cloud_tasks_queue.tasks[0]",
+		"google_storage_bucket.migrate_logs[0]",
 	}
 )
+
+// stateJSON is tofu show -json of a state holding the addresses, each with what it
+// depends on, and a data resource beside them.
+func stateJSON(addresses []string, dependencies map[string][]string) string {
+	resources := []map[string]any{{"address": "data.terraform_remote_state.env", "mode": "data", "depends_on": []string{"random_id.stack"}}}
+	for _, address := range addresses {
+		resources = append(resources, map[string]any{"address": address, "mode": "managed", "depends_on": dependencies[address]})
+	}
+	data, _ := json.Marshal(map[string]any{"values": map[string]any{"root_module": map[string]any{"resources": resources}}})
+
+	return string(data)
+}
 
 // planJSON is tofu show -json of a destroy plan deleting the addresses, with a data
 // resource read beside them.
@@ -140,18 +165,19 @@ google_service_account.app
 `
 	prdAll := managedAddresses(prdStateList)
 	tests := []struct {
-		name       string
-		env        string
-		destroy    bool
-		routed     bool
-		empty      bool
-		stateList  string
-		shown      string
-		wantErr    string
-		wantOut    []string
-		wantRan    []string
-		wantRecord []string
-		wantNil    bool
+		name        string
+		env         string
+		destroy     bool
+		routed      bool
+		empty       bool
+		stateList   string
+		shown       string
+		wantErr     string
+		wantSummary []string
+		wantOut     []string
+		wantRan     []string
+		wantRecord  []string
+		wantNil     bool
 	}{
 		{
 			name:    "refuses while 2-net routes a host to the environment's backend",
@@ -173,24 +199,26 @@ google_service_account.app
 			wantOut: []string{"No stack in stg: gs://imp-boot-gbl-state/3-app/harbor/stg/default.tfstate is empty (an init wrote it, no apply did), so there is nothing to take down."},
 		},
 		{
-			name:      "tears tst down: nothing to unprotect, the kept resources excluded, the plan held against the teardown, the record written",
-			env:       "tst",
-			stateList: tstStateList,
-			shown:     planJSON(tstGoes...),
+			name:        "tears tst down: nothing to unprotect, the kept resources excluded but the sink that depends on destroyed ones, the plan held against the teardown, the record written",
+			env:         "tst",
+			stateList:   tstStateList,
+			shown:       planJSON(tstGoes...),
+			wantSummary: []string{"tst: 10 resource(s) destroyed, 9 kept.", "goes with what it depends on, made again by the next apply: google_logging_project_sink.migrate_logs[0] (google_cloud_run_v2_service.app, google_cloudbuild_trigger.version)"},
 			wantOut: []string{
 				"=== tst: teardown of harbor's stack at 3-app/harbor/tst ===",
-				"The plan destroys the 9 resource(s) the teardown names and keeps 8, as meant; applying it.",
-				"Tore harbor's stack in tst down: 9 resource(s) destroyed, 8 kept (the database, the file stores, the secret containers, the identities, the Firestore database, the task queue, the migrate logs, the stack's id). A record went to gs://imp-tst-gbl-harbor-records/harbor/stacks/tst/teardown.json.",
+				"The plan destroys the 10 resource(s) the teardown names and keeps 9, as meant; applying it.",
+				"Tore harbor's stack in tst down: 10 resource(s) destroyed, 9 kept (the database, the file stores, the secret containers, the identities, the Firestore database, the task queue, the migrate logs, the stack's id). A record went to gs://imp-tst-gbl-harbor-records/harbor/stacks/tst/teardown.json.",
 				"To bring it back: apply the stack by hand from the checkout of the release it ran (infrastructure/README.md, \"Applying\"), which makes the services, the triggers and the rest again, then bedrock rerun tst <release> deploys the release through them.",
 			},
 			wantRan: []string{
 				"tofu init -input=false -no-color -reconfigure -backend-config=prefix=3-app/harbor/tst",
 				"tofu state list",
-				`tofu plan -destroy -input=false -no-color -out=DATA/tst/teardown.tfplan -var environment=tst -var database_generation=1 -var generated_secret_versions={APP_COOKIE_KEY="3"} -var teardown=true -exclude=google_service_account.app -exclude=google_spanner_database.harbor[0] -exclude=google_storage_bucket.files[0] -exclude=google_firestore_database.firestore -exclude=google_secret_manager_secret.harbor["APP_COOKIE_KEY"] -exclude=random_id.stack -exclude=google_storage_bucket_object.stack[0] -exclude=google_cloud_tasks_queue.tasks[0]`,
+				"tofu show -json",
+				`tofu plan -destroy -input=false -no-color -out=DATA/tst/teardown.tfplan -var environment=tst -var database_generation=1 -var generated_secret_versions={APP_COOKIE_KEY="3"} -var teardown=true -exclude=google_service_account.app -exclude=google_spanner_database.harbor[0] -exclude=google_storage_bucket.files[0] -exclude=google_firestore_database.firestore -exclude=google_secret_manager_secret.harbor["APP_COOKIE_KEY"] -exclude=random_id.stack -exclude=google_storage_bucket_object.stack[0] -exclude=google_cloud_tasks_queue.tasks[0] -exclude=google_storage_bucket.migrate_logs[0]`,
 				"tofu show -json DATA/tst/teardown.tfplan",
 				"tofu apply -input=false -no-color DATA/tst/teardown.tfplan",
 			},
-			wantRecord: []string{`"kind": "teardown"`, `"stackId": "9f3c"`, `"by": "jo@lab"`, `"at": "2026-10-15T04:00:00Z"`, `"release": "v0.1.4"`, `"google_cloud_run_v2_service.app[\"uc1\"]"`, `"kept": [`, `"random_id.stack"`},
+			wantRecord: []string{`"kind": "teardown"`, `"stackId": "9f3c"`, `"by": "jo@lab"`, `"at": "2026-10-15T04:00:00Z"`, `"release": "v0.1.4"`, `"google_cloud_run_v2_service.app[\"uc1\"]"`, `"google_logging_project_sink.migrate_logs[0]"`, `"kept": [`, `"random_id.stack"`},
 		},
 		{
 			name:      "destroys prd: the protections lifted first with the pipeline's variables, everything planned, the id named",
@@ -218,11 +246,12 @@ google_service_account.app
 			env:       "tst",
 			stateList: tstStateList,
 			shown:     planJSON(append(tstGoes[1:], "google_spanner_database.harbor[0]")...),
-			wantErr:   `the destroy plan of tst's stack is not the teardown's; it destroys what the teardown keeps: google_spanner_database.harbor[0]; it leaves out what the teardown destroys (a kept resource depends on it, or the state changed under the run): google_cloud_run_v2_service.app["uc1"]. Nothing was applied`,
+			wantErr:   `the destroy plan of tst's stack is not the teardown's; it destroys what the teardown keeps: google_spanner_database.harbor[0]; it leaves out what the teardown destroys (the state changed under the run): google_cloud_run_v2_service.app["uc1"]. Nothing was applied`,
 			wantRan: []string{
 				"tofu init -input=false -no-color -reconfigure -backend-config=prefix=3-app/harbor/tst",
 				"tofu state list",
-				`tofu plan -destroy -input=false -no-color -out=DATA/tst/teardown.tfplan -var environment=tst -var database_generation=1 -var generated_secret_versions={APP_COOKIE_KEY="3"} -var teardown=true -exclude=google_service_account.app -exclude=google_spanner_database.harbor[0] -exclude=google_storage_bucket.files[0] -exclude=google_firestore_database.firestore -exclude=google_secret_manager_secret.harbor["APP_COOKIE_KEY"] -exclude=random_id.stack -exclude=google_storage_bucket_object.stack[0] -exclude=google_cloud_tasks_queue.tasks[0]`,
+				"tofu show -json",
+				`tofu plan -destroy -input=false -no-color -out=DATA/tst/teardown.tfplan -var environment=tst -var database_generation=1 -var generated_secret_versions={APP_COOKIE_KEY="3"} -var teardown=true -exclude=google_service_account.app -exclude=google_spanner_database.harbor[0] -exclude=google_storage_bucket.files[0] -exclude=google_firestore_database.firestore -exclude=google_secret_manager_secret.harbor["APP_COOKIE_KEY"] -exclude=random_id.stack -exclude=google_storage_bucket_object.stack[0] -exclude=google_cloud_tasks_queue.tasks[0] -exclude=google_storage_bucket.migrate_logs[0]`,
 				"tofu show -json DATA/tst/teardown.tfplan",
 			},
 		},
@@ -230,7 +259,7 @@ google_service_account.app
 			name:      "says so when nothing of the stack is a teardown's to destroy",
 			env:       "tst",
 			stateList: strings.Join(tstStays, "\n") + "\n",
-			wantOut:   []string{"Nothing of tst's stack is for a teardown to destroy: it holds 8 resource(s), every one kept."},
+			wantOut:   []string{"Nothing of tst's stack is for a teardown to destroy: it holds 9 resource(s), every one kept."},
 			wantRan:   []string{"tofu init -input=false -no-color -reconfigure -backend-config=prefix=3-app/harbor/tst", "tofu state list"},
 		},
 	}
@@ -242,14 +271,20 @@ google_service_account.app
 			if tt.empty {
 				store.objects["gs://"+teardownStateBucket+"/3-app/harbor/stg/default.tfstate"] = `{"version": 4, "outputs": {}, "resources": []}`
 			}
-			tofu := &fakeRunner{outputs: map[string]string{"tofu state": tt.stateList, "tofu show": tt.shown}}
+			tofu := &fakeRunner{outputs: map[string]string{"tofu state": tt.stateList, "tofu show": tt.shown, "tofu show -json": stateJSON(managedAddresses(tt.stateList), tstDependencies)}}
 			clients := &Clients{Storage: store.open, Exec: tofu}
 			req := &TeardownRequest{Dir: "/checkout/infrastructure", DataDir: "DATA", Placement: teardownPlacement(), App: "harbor", Env: tt.env, Destroy: tt.destroy, By: "jo@lab", Now: func() time.Time { return time.Date(2026, 10, 15, 4, 0, 0, 0, time.UTC) }}
 			var out strings.Builder
 			prepared, err := PrepareTeardown(context.Background(), clients, req, &out)
 			if err == nil && prepared != nil {
-				if got := prepared.Summary(); !strings.Contains(got, tt.env+": ") {
+				got := prepared.Summary()
+				if !strings.Contains(got, tt.env+": ") {
 					t.Errorf("Summary() = %q, want it to start with the environment", got)
+				}
+				for _, want := range tt.wantSummary {
+					if !strings.Contains(got, want) {
+						t.Errorf("Summary() = %q, want it to contain %q", got, want)
+					}
 				}
 				err = prepared.Run(context.Background(), &out)
 			}
