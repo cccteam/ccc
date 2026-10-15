@@ -1735,6 +1735,7 @@ bedrock org check                                               # the committed 
 bedrock org register quill ../quill                             # an application joins the foundation; its first placement.json is written into its checkout
 bedrock org plan                                                # what the plan trigger runs on a pull request
 bedrock org apply                                               # what the apply trigger runs on a push to the default branch
+bedrock org destroy                                             # every project of the organization deleted, by hand, after the prefix typed back
 ```
 
 `org new` renders the six layers, each with its `.tf` files, its README and its seeded
@@ -1943,6 +1944,24 @@ entitlement (its slot in the state bucket, on the boot project), running the lay
 themselves, for the other layers as the bootstrap administrator; an apply by hand leaves
 the layer's marker as it was, so the next push applies the layer again, with an empty plan
 when the hand apply was complete.
+
+`org destroy` deletes every project of the organization, by a person at their own computer
+with their own sign-in (an owner of the GCP organization; `GITHUB_TOKEN`, or gh's token, for
+1-org's GitHub provider: the infrastructure GitHub App's installation token, or an
+organization owner's). It says what goes, project by project, and asks for the prefix typed
+back before anything runs (`--yes` stands in for it where there is no terminal). It destroys
+1-org, its GitHub repositories taken out of the state first so that they stay with their
+code, pull requests and releases (the rulesets, the operations environments, the runner group
+and the organization variable go), then 0-bootstrap on a local copy of its state, since the
+state bucket goes with the boot project; in each an apply with `destroy=true` records the
+projects' deletion policy and lifts the folders' protection first, and the destroy is tried
+again after a pause while it fails (a folder refuses for a while after its last project's
+deletion). Google keeps a deleted project for 30 days; its id never returns. A layer whose
+state holds nothing is skipped. When 2-net registers domains the network project is kept,
+with its folder and the organization's, for a person: a registration cannot move to another
+project. It refuses a layer rendered by an earlier bedrock, which declares no `destroy`
+variable, and ends with a line in `JOURNAL.md` and what starting over takes (the rendered
+`0-bootstrap/README.md`, "Destroying the organization").
 
 `org register <app>` adds an application: its code goes into `placement.json`'s
 applications, each layer's values are rendered from it (1-org's repositories and its

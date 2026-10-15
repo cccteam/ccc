@@ -209,6 +209,15 @@ func Registrations(ctx context.Context, open RegistrationReaderFunc, req Registr
 	return r, nil
 }
 
+// RegisteredDomains lists the domains the network layer's placement registers
+// (registrations in 2-net/terraform.tfvars), in file order: a repository without that
+// placement, or one listing none, registers none.
+func RegisteredDomains(dir string) ([]string, error) {
+	names, _, err := registeredDomains(dir)
+
+	return names, err
+}
+
 // registeredDomains lists the domains the network layer's placement registers, in file
 // order, and the registrant mailbox it names; a repository without that placement has
 // none.

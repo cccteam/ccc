@@ -320,8 +320,10 @@ Answer yes to copying the local state into the bucket, confirm with
 `tofu plan` (no changes), and delete the local `terraform.tfstate` and its
 backup. From here on every run inits against the bucket directly.
 
-Record `boot_project_id` in `1-org/terraform.tfvars` and add a line to
-`JOURNAL.md`.
+Record `boot_project_id` in `1-org/terraform.tfvars` and in
+`2-env/terraform.tfvars`, where `state_bucket` must name the bucket too (both
+are seeded files, which a render never rewrites: a repository rendered again
+on a new seed still carries the old values), and add a line to `JOURNAL.md`.
 
 ### 5. Billing grants and the budget, by a billing administrator
 
@@ -602,3 +604,54 @@ administrator's, with the roles step 1 lists and their own sign-in, the way
 the first applies ran (step 3 above, without the local state). An apply by
 hand leaves the layer's marker as it was, so the next push applies the layer
 again: the plan is empty when the hand apply was complete.
+
+## Destroying the organization
+
+`bedrock org destroy` deletes every project of the organization, and with them
+everything the layers and the applications made: the layer identities, the
+state bucket with every layer's and every application's state and records, the
+connection and the triggers, the GitHub Apps' keys, the registry and its
+images, the Spanner instances and databases, the load balancer and the zone,
+every environment's services, jobs, secrets, records and files. The folders,
+the custom roles and the tag, the org policies, the entitlements and the audit
+log sink go with them, and on GitHub the rulesets, the operations environments,
+the runner group and the organization variable. The repositories stay, with
+their code, pull requests and releases. Google keeps a deleted project for 30
+days, in which the console can restore it; its id never returns after.
+
+It runs by hand, at a person's computer: an owner of the GCP organization
+(deleting projects and folders, organization roles and the tag is theirs),
+signed in with `gcloud auth application-default login`, with `GITHUB_TOKEN`
+set to the infrastructure GitHub App's installation token or an organization
+owner's token (gh's token serves when gh is signed in as one). It says what
+goes, project by project, and asks for the prefix typed back before anything
+runs; `--yes` stands in for it where there is no terminal, as in a disposable
+organization's scripts.
+
+Then it destroys `1-org` and `0-bootstrap`, in that order, each in two steps.
+An apply with `destroy=true`, the variable both layers declare for this command
+alone, records the projects' deletion policy as DELETE and lifts the folders'
+deletion protection, which the provider reads from the state and not from the
+configuration. Then the destroy, tried again after a pause while it fails: a
+folder refuses for a while after its last project's deletion, and a tag value
+while a binding in a project being deleted still holds it, and the next attempt
+gets past both. `1-org`'s GitHub repositories are taken out of its state
+first. `0-bootstrap`'s state lives in the bucket the boot project holds, so its
+destroy runs on a copy of the layer with a local copy of the state, pulled
+before the project goes. A layer whose state holds nothing is skipped, so the
+command also finishes an organization whose first applies stopped halfway. The
+inner layers and the applications' stacks are never destroyed one by one:
+deleting a project takes everything in it, whatever its resources' own
+protections say.
+
+When `2-net` registers domains (`registrations` in `2-net/terraform.tfvars`),
+the network project is kept, with its folder and the organization's: a
+registration cannot move to another project, and that project is a person's to
+deal with (`1-org/README.md`, "Removing a project"). The command refuses a
+checkout rendered by an earlier bedrock, which declares no `destroy` variable:
+`bedrock org render` first.
+
+It ends with a line in `JOURNAL.md`. Starting over is a new seed (step 1, with
+a new boot project), `bedrock org render` on its values, and the hand steps
+again; the GitHub side (the organization, its machine account
+`{{.GithubMachineAccount}}`, the apps and their installations) is as it was.

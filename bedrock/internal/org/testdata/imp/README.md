@@ -114,7 +114,9 @@ for `2-env` as a member of the environment's team group under the
 layer administrator and layer state entitlements, which grant the
 environment layer identity's roles for a short time, so the person runs the
 layer as themselves and the audit log names them; for the other layers as
-the bootstrap administrator.
+the bootstrap administrator. Destroying the organization, projects and all,
+is `bedrock org destroy`, by hand (`0-bootstrap/README.md`, "Destroying the
+organization").
 
 First-time setup, by hand, before any identity can run. Each step opens with
 the place it happens.

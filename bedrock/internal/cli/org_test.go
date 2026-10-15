@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"io"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/go-playground/errors/v5"
 
+	"github.com/cccteam/ccc/bedrock/internal/deploy"
 	"github.com/cccteam/ccc/bedrock/internal/derive"
 	"github.com/cccteam/ccc/bedrock/internal/domain"
 	"github.com/cccteam/ccc/bedrock/internal/org"
@@ -1124,6 +1126,143 @@ func TestOrgRegisterRefusal(t *testing.T) {
 			}
 			if strings.Count(string(placement), `"harbor"`) != 1 || strings.Contains(string(placement), "Harbor") {
 				t.Errorf("placement.json changed on a refusal:\n%s", placement)
+			}
+		})
+	}
+}
+
+// destroyTofu is tofu in org destroy's tests: it records every command by the layer it
+// ran in and answers each layer's state list with one project, the repository in 1-org.
+type destroyTofu struct {
+	ran []string
+}
+
+func (f *destroyTofu) Run(_ context.Context, c deploy.Command, _ io.Writer) error {
+	f.ran = append(f.ran, filepath.Base(c.Dir)+": "+c.String())
+
+	return nil
+}
+
+func (f *destroyTofu) Output(_ context.Context, c deploy.Command, _ io.Writer) ([]byte, error) {
+	f.ran = append(f.ran, filepath.Base(c.Dir)+": "+c.String())
+	switch {
+	case c.Args[1] == "pull":
+		return []byte(`{"version": 4}`), nil
+	case filepath.Base(c.Dir) == "1-org":
+		return []byte("github_repository.infrastructure\nmodule.project[\"tst\"].module.project-factory.google_project.main\n"), nil
+	default:
+		return []byte("module.boot_project.module.project-factory.google_project.main\n"), nil
+	}
+}
+
+// destroyRepo is the fixture organization's placement with the two outer layers' files
+// the destroy reads (the variables declaring destroy, the backend) and, when asked, a
+// network placement registering a domain.
+func destroyRepo(t *testing.T, registered bool) string {
+	t.Helper()
+
+	dir := orgRepo(t)
+	files := map[string]string{
+		"0-bootstrap/variables.tf":  "variable \"destroy\" {\n  type    = bool\n  default = false\n}\n",
+		"0-bootstrap/initialize.tf": "terraform {\n  backend \"gcs\" {}\n}\n",
+		"1-org/variables.tf":        "variable \"destroy\" {\n  type    = bool\n  default = false\n}\n",
+		"JOURNAL.md":                "# Journal\n",
+	}
+	if registered {
+		files["2-net/terraform.tfvars"] = "registrations = {\n  \"example.dev\" = {\n    yearly_price_usd = 12\n  }\n}\n"
+	}
+	for name, content := range files {
+		path := filepath.Join(dir, name)
+		if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	return dir
+}
+
+func TestOrgDestroy(t *testing.T) {
+	t.Parallel()
+
+	const warning = "bedrock org destroy deletes every project of the imp organization"
+	tests := []struct {
+		name        string
+		registered  bool
+		interactive func() bool
+		in          string
+		args        []string
+		wantErr     string
+		wantOut     []string
+		wantRan     int
+		wantJournal string
+	}{
+		{
+			name:        "refuses without a terminal and without --yes",
+			interactive: never,
+			wantErr:     "asks for the prefix typed back at the terminal, and this run has none: --yes stands in for it",
+			wantOut:     []string{warning, "imp-tst-gbl-core-1a2b (tst): every application's tst services, jobs, secrets, records and files, and the tst Spanner instance"},
+		},
+		{
+			name:        "stops when something else than the prefix is typed",
+			interactive: always,
+			in:          "no\n",
+			wantOut:     []string{"Type the prefix (imp) to go on; anything else stops:", "Stopped: nothing was deleted."},
+		},
+		{
+			name:        "destroys when the prefix is typed, and writes the journal",
+			interactive: always,
+			in:          "imp\n",
+			wantOut:     []string{warning, "Took github_repository.infrastructure out of 1-org's state", "Destroyed 1-org.", "Destroyed 0-bootstrap.", "Deleted the imp organization's projects; a line went into JOURNAL.md.", "To start over: a new seed"},
+			wantRan:     11,
+			wantJournal: "bedrock org destroy deleted the organization's projects (imp-boot-gbl-core-a1b2, imp-shr-gbl-core-7a8b, imp-net-gbl-core-9c0d, imp-spn-gbl-core-2e3f, imp-tst-gbl-core-1a2b, imp-stg-gbl-core-3c4d, imp-prd-gbl-core-5e6f): Google holds them for 30 days, their ids never return. The GitHub repositories stay.\n",
+		},
+		{
+			name:        "keeps the network project when the layer registers a domain, with --yes",
+			registered:  true,
+			interactive: never,
+			args:        []string{"--yes"},
+			wantOut:     []string{"Kept: the network project imp-net-gbl-core-9c0d, with its folder and the organization's, since 2-net registers example.dev there", "The network project imp-net-gbl-core-9c0d stays with its registrations, for a person."},
+			wantRan:     11,
+			wantJournal: "(imp-boot-gbl-core-a1b2, imp-shr-gbl-core-7a8b, imp-spn-gbl-core-2e3f, imp-tst-gbl-core-1a2b, imp-stg-gbl-core-3c4d, imp-prd-gbl-core-5e6f): Google holds them for 30 days, their ids never return. The GitHub repositories stay. The network project imp-net-gbl-core-9c0d was kept with its registrations, for a person.\n",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			dir := destroyRepo(t, tt.registered)
+			tofu := &destroyTofu{}
+			d := orgDeps(dir)
+			d.interactive = tt.interactive
+			d.deploy = &deploy.Clients{Exec: tofu}
+			d.githubToken = func(context.Context) (string, error) { return "ghs_token", nil }
+			out, err := execute(d, tt.in, append([]string{"org", "destroy", "--dir", dir}, tt.args...)...)
+			switch {
+			case tt.wantErr == "" && err != nil:
+				t.Fatalf("org destroy = %v, want no error; printed:\n%s", err, out)
+			case tt.wantErr != "" && (err == nil || !strings.Contains(err.Error(), tt.wantErr)):
+				t.Fatalf("org destroy = %v, want an error containing %q", err, tt.wantErr)
+			}
+			for _, want := range tt.wantOut {
+				if !strings.Contains(out, want) {
+					t.Errorf("printed:\n%s\nwant it to contain %q", out, want)
+				}
+			}
+			if len(tofu.ran) != tt.wantRan {
+				t.Errorf("%d tofu commands ran, want %d:\n%s", len(tofu.ran), tt.wantRan, strings.Join(tofu.ran, "\n"))
+			}
+			journal, err := os.ReadFile(filepath.Join(dir, "JOURNAL.md"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tt.wantJournal == "" && string(journal) != "# Journal\n" {
+				t.Errorf("the journal changed:\n%s", journal)
+			}
+			if tt.wantJournal != "" && !strings.HasSuffix(string(journal), tt.wantJournal) {
+				t.Errorf("the journal is:\n%s\nwant it to end with %q", journal, tt.wantJournal)
 			}
 		})
 	}

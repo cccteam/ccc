@@ -60,7 +60,7 @@ resource "random_id" "organization" {
 resource "google_folder" "organization" {
   display_name        = var.prefix
   parent              = local.org_name
-  deletion_protection = true
+  deletion_protection = !var.destroy
 }
 
 import {
@@ -71,7 +71,7 @@ import {
 resource "google_folder" "terraform" {
   display_name        = "terraform"
   parent              = google_folder.organization.name
-  deletion_protection = true
+  deletion_protection = !var.destroy
 }
 
 import {
@@ -100,7 +100,7 @@ module "boot_project" {
   create_project_sa          = false
   default_service_account    = "delete"
   disable_dependent_services = true
-  deletion_policy            = "PREVENT"
+  deletion_policy            = var.destroy ? "DELETE" : "PREVENT"
   labels                     = local.labels
 
   activate_apis = [

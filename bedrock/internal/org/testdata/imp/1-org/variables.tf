@@ -485,3 +485,14 @@ variable "required_apis" {
     ]
   }
 }
+
+variable "destroy" {
+  description = <<-EOT
+    Set by bedrock org destroy alone, on its own runs: the projects' deletion policy
+    becomes DELETE and the folders' deletion protection comes off, both recorded by
+    an apply before the destroy, since the provider reads them from the state. Every
+    other run leaves it false.
+  EOT
+  type        = bool
+  default     = false
+}
