@@ -47,7 +47,7 @@ root, the way an application's stack is rendered from its code; the two commands
 triggers run (plan, apply); and the check, before the seed, that the bootstrap administrator
 holds the roles the seed and the first applies need (preflight).`,
 	}
-	cmd.AddCommand(newOrgNew(d), newOrgPreflight(d), newOrgRender(d), newOrgCheck(d), newOrgRegister(d), newOrgPlan(d), newOrgApply(d), newOrgTeardown(d))
+	cmd.AddCommand(newOrgNew(d), newOrgPreflight(d), newOrgRender(d), newOrgCheck(d), newOrgRegister(d), newOrgPlan(d), newOrgApply(d), newOrgTeardown(d), newOrgDestroy(d))
 
 	return cmd
 }
@@ -1070,6 +1070,210 @@ repository, and a release keeps working under the previous release's steps.`,
 	cmd.Flags().StringVar(&dir, "dir", ".", "the repository root")
 
 	return cmd
+}
+
+// The destroy command, its flag that stands in for the prefix typed, and the journal
+// the command writes its line to.
+const (
+	destroyCommand = "destroy"
+	yesFlag        = "yes"
+	journalFile    = "JOURNAL.md"
+	netKey         = "net"
+)
+
+// projectContents says what each shared project of the organization holds, by the key
+// the placement records it under, for the destroy's warning; an environment's is said
+// from its name.
+var projectContents = map[string]string{
+	"boot": "the layer identities, the state bucket with every layer's and every application's state and records, the Cloud Build connection and triggers, the GitHub Apps' keys",
+	"shr":  "the image registry with every application's images",
+	"spn":  "the shared Spanner instance with every application's stg and prd databases",
+	netKey: "the load balancer, its address and certificate, the apps domain's zone",
+	"log":  "the audit logs",
+}
+
+func newOrgDestroy(d deps) *cobra.Command {
+	var dir string
+	var yes bool
+
+	cmd := &cobra.Command{
+		Use:   destroyCommand,
+		Short: "Delete the organization's projects, and with them everything the layers and the applications made",
+		Long: `destroy deletes every project of the organization, by a person at their own computer with their
+own sign-in (gcloud auth application-default login as the bootstrap administrator, with the roles
+0-bootstrap/README.md step 1 lists; GITHUB_TOKEN, or gh's token, for 1-org's GitHub provider:
+the infrastructure GitHub App's installation token, or an organization owner's). It says what
+goes, project by project, and asks for the prefix typed back before anything runs (--yes stands
+in for it where there is no terminal, as in a disposable organization's scripts). Then it
+destroys 1-org, the GitHub repositories taken out of its state first so that they stay with
+their code, pull requests and releases (the rulesets, the operations environments, the runner
+group and the organization variable go), an apply with destroy=true recording the projects'
+deletion policy, that no API is disabled first, and the folders' protection lifted, and the destroy tried again after a
+pause while it fails (a folder refuses for a while after its last project's deletion); then
+0-bootstrap the same way, on a local copy of its state, since the state bucket is in the boot
+project and goes with it. Google keeps a deleted project for 30 days, in which the console can
+restore it; its id never returns after. A layer whose state holds nothing is skipped. When 2-net
+registers domains (registrations in 2-net/terraform.tfvars) the network project is kept, with
+its folder and the organization's, since a registration cannot move to another project: that
+project is a person's to deal with (1-org/README.md, "Removing a project"). It refuses a layer
+rendered by an earlier bedrock, which declares no destroy variable. It ends with a line in
+JOURNAL.md and what starting over takes.`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return d.destroyOrg(cmd, dir, yes)
+		},
+	}
+	cmd.Flags().StringVar(&dir, "dir", ".", "the repository root")
+	cmd.Flags().BoolVar(&yes, yesFlag, false, "go on without the prefix typed back, where there is no terminal to type it at")
+
+	return cmd
+}
+
+// destroyOrg is the destroy: the warning, the prefix typed back, the two layers, the
+// journal line and what is next.
+func (d deps) destroyOrg(cmd *cobra.Command, dir string, yes bool) error {
+	out := cmd.OutOrStdout()
+	p, err := orgPlacement(dir, "")
+	if err != nil {
+		return err
+	}
+	registered, err := domain.RegisteredDomains(dir)
+	if err != nil {
+		return err
+	}
+	keepNet := len(registered) > 0
+	fmt.Fprint(out, destroyWarning(p, registered))
+	if !yes {
+		if !d.interactive() {
+			return errors.Newf("bedrock org %s asks for the prefix typed back at the terminal, and this run has none: --%s stands in for it", destroyCommand, yesFlag)
+		}
+		typed, err := d.asker(cmd).Line(fmt.Sprintf("Type the prefix (%s) to go on; anything else stops:", p.Prefix))
+		if err != nil {
+			return err
+		}
+		if typed != p.Prefix {
+			fmt.Fprintln(out, "Stopped: nothing was deleted.")
+
+			return nil
+		}
+	}
+	var exec deploy.Runner
+	if d.deploy != nil {
+		exec = d.deploy.Exec
+	}
+	req := &layers.DestroyRequest{Dir: dir, GithubToken: d.githubToken, KeepNet: keepNet, Pause: layers.DestroyPause}
+	if err := layers.Destroy(cmd.Context(), exec, req, out); err != nil {
+		return err
+	}
+	if err := appendJournal(dir, destroyJournalLine(p, keepNet, time.Now().UTC())); err != nil {
+		return err
+	}
+	fmt.Fprint(out, destroyEpilogue(p, keepNet))
+
+	return nil
+}
+
+// destroyWarning says what the destroy deletes: each project the placement records
+// with what it holds, what else goes, what stays, and the grace Google gives.
+func destroyWarning(p *org.Placement, registered []string) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "bedrock org destroy deletes every project of the %s organization, and with them everything the layers and the applications made:\n\n", p.Prefix)
+	for _, key := range destroyedProjectKeys(p) {
+		if len(registered) > 0 && key == netKey {
+			continue
+		}
+		fmt.Fprintf(&b, "  %s (%s): %s\n", p.Projects[key], key, projectContentsOf(key))
+	}
+	b.WriteString("\nAlso gone: the folders, the custom roles and the tag, the org policies, the entitlements, the audit log sink, and on GitHub the rulesets, the operations environments, the runner group and the organization variable. The repositories stay, with their code, pull requests and releases.\n")
+	if len(registered) > 0 {
+		fmt.Fprintf(&b, "\nKept: the network project %s, with its folder and the organization's, since 2-net registers %s there (registrations in 2-net/terraform.tfvars) and a registration cannot move to another project; it is a person's to deal with (1-org/README.md, \"Removing a project\").\n", p.Projects[netKey], strings.Join(registered, ", "))
+	}
+	b.WriteString("\nGoogle keeps a deleted project for 30 days, in which the console can restore it; its id never returns after. Nothing here is undone by bedrock.\n\n")
+
+	return b.String()
+}
+
+// destroyedProjectKeys is every project key the placement records, the known ones in
+// their order and the rest after them.
+func destroyedProjectKeys(p *org.Placement) []string {
+	var keys []string
+	for _, key := range org.ProjectKeys {
+		if _, ok := p.Projects[key]; ok {
+			keys = append(keys, key)
+		}
+	}
+	var rest []string
+	for key := range p.Projects {
+		if !slices.Contains(keys, key) {
+			rest = append(rest, key)
+		}
+	}
+	slices.Sort(rest)
+
+	return append(keys, rest...)
+}
+
+// projectContentsOf says what a project holds: a shared project's from the table, an
+// environment's from its name (the first environment, tst, holds its own Spanner
+// instance; the others' databases are on the shared one), or that it is the project
+// under its key.
+func projectContentsOf(key string) string {
+	if contents, ok := projectContents[key]; ok {
+		return contents
+	}
+	if slices.Contains(org.Environments, key) {
+		contents := fmt.Sprintf("every application's %s services, jobs, secrets, records and files", key)
+		if key == org.Environments[0] {
+			contents += fmt.Sprintf(", and the %s Spanner instance", key)
+		}
+
+		return contents
+	}
+
+	return "the " + key + " project's contents"
+}
+
+// destroyJournalLine is the line the destroy adds to the journal.
+func destroyJournalLine(p *org.Placement, keepNet bool, now time.Time) string {
+	var ids []string
+	for _, key := range destroyedProjectKeys(p) {
+		if keepNet && key == netKey {
+			continue
+		}
+		ids = append(ids, p.Projects[key])
+	}
+	line := fmt.Sprintf("- %s: bedrock org destroy deleted the organization's projects (%s): Google holds them for 30 days, their ids never return. The GitHub repositories stay.", now.Format("2006-01-02 15:04Z"), strings.Join(ids, ", "))
+	if keepNet {
+		line += fmt.Sprintf(" The network project %s was kept with its registrations, for a person.", p.Projects[netKey])
+	}
+
+	return line + "\n"
+}
+
+// appendJournal adds the line to the repository's journal, creating it when absent.
+func appendJournal(dir, line string) error {
+	f, err := os.OpenFile(filepath.Join(dir, journalFile), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+	if err != nil {
+		return errors.Wrap(err, "os.OpenFile(): the journal")
+	}
+	defer f.Close()
+	if _, err := f.WriteString(line); err != nil {
+		return errors.Wrap(err, "os.File.WriteString(): the journal")
+	}
+
+	return nil
+}
+
+// destroyEpilogue says what the destroy left and what starting over takes.
+func destroyEpilogue(p *org.Placement, keepNet bool) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "\nDeleted the %s organization's projects; a line went into %s. Google holds them for 30 days (their ids never return); the GitHub repositories are as they were, without the rulesets, environments and runners 1-org made.\n", p.Prefix, journalFile)
+	if keepNet {
+		fmt.Fprintf(&b, "The network project %s stays with its registrations, for a person.\n", p.Projects[netKey])
+	}
+	b.WriteString("To start over: a new seed (0-bootstrap/README.md, \"First-time setup\"), bedrock org render on its values, and the hand steps again (bedrock org new prints them).\n")
+
+	return b.String()
 }
 
 // layerRequest is the run's request: the build the trigger's step names in the
