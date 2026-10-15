@@ -352,9 +352,9 @@ from `2-env`'s state.
   is that a bedrock release works under the previous release's steps, which
   is why the steps are few (fetch bedrock, `bedrock check`, one command) and a
   command says in its log when the steps it runs under are an older bedrock's.
-  A stack first rendered with these triggers is applied by hand in tst once
-  before the pull request that brings it can pass the check, since the check
-  trigger does not exist until then.
+  A stack first rendered with these triggers is applied in tst once, by the
+  `apply` action, before the pull request that brings it can pass the check,
+  since the check trigger does not exist until then.
   The environments chain by deployment records: a release runs in an
   environment only after the previous one in the order (tst, stg, prd) holds
   a live record of it, which the pipeline checks before it builds. A release
@@ -453,9 +453,9 @@ ahead of the apply, which adopts it, with the adding grant on it), and passes
 the number to the plan (`var.generated_secret_versions`), so the revision
 template pins `versions/N` exactly as a committed pin does, and the
 deployment record names N. A pull request's plans read each environment's
-newest version the same way and add none; a plan run by hand without the
-variable mounts no generated secret (the first apply by hand runs that way),
-and the next release build does.
+newest version the same way and add none; a plan without the variable
+mounts no generated secret (the first apply runs that way while a container
+has no version), and the next release build does.
 
 `bedrock secret rotate <env> <VARIABLE>` rotates one: the operations workflow,
 as the environment's operations identity, adds a new random version and runs
