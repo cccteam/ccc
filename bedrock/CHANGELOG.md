@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.3.1](https://github.com/cccteam/ccc/compare/bedrock/v0.3.0...bedrock/v0.3.1) (2026-10-15)
+
+
+### Features
+
+* 2-env's stack trigger applies an application's stack for the first time, started by the operations workflow ([#947](https://github.com/cccteam/ccc/issues/947)) ([2bff55a](https://github.com/cccteam/ccc/commit/2bff55ab43e7d73c014f6820d4dc855b2c2a8255))
+* an application's repository requires the stack's check trigger once the stack has had its first apply ([#948](https://github.com/cccteam/ccc/issues/948)) ([f00bf79](https://github.com/cccteam/ccc/commit/f00bf7994b24f459b8bcfec8f683e0b6b9ffbb56))
+* bedrock org destroy deletes the organization's projects by hand, 1-org then 0-bootstrap on local state ([#941](https://github.com/cccteam/ccc/issues/941)) ([b55495f](https://github.com/cccteam/ccc/commit/b55495fb799cbf642755d985ec713b34f655a608))
+* bedrock org teardown &lt;app&gt; and bedrock org serve take one application out of service and back ([#957](https://github.com/cccteam/ccc/issues/957)) ([eb748aa](https://github.com/cccteam/ccc/commit/eb748aa357c97997e2188ee0279131c41fff453f))
+* bedrock teardown and destroy take an environment's stack down by hand, and bedrock org teardown takes the organization's applications out of service ([#944](https://github.com/cccteam/ccc/issues/944)) ([725f3b8](https://github.com/cccteam/ccc/commit/725f3b8137c0709d76b497d33fc49a97e2369d92))
+* the placement records how far an application's registration has gone, so every pull request of it passes the check ([#946](https://github.com/cccteam/ccc/issues/946)) ([746915d](https://github.com/cccteam/ccc/commit/746915d1f092e7ad01871b71a4f776367ee592cc))
+* the stack trigger's apply brings a torn-down stack back, with the generated secrets' pins derived from their containers ([#952](https://github.com/cccteam/ccc/issues/952)) ([599b0bd](https://github.com/cccteam/ccc/commit/599b0bd82174b623cf2beb2d313f611b12e9f10f))
+
+
+### Bug Fixes
+
+* 2-env applies before 2-net and the environment layer identity may add Firebase to its project ([#942](https://github.com/cccteam/ccc/issues/942)) ([8a73acf](https://github.com/cccteam/ccc/commit/8a73acfb55fc658267a708941ebaebcbee19f273))
+* the apply run initializes every layer before applying any, so a layer may read one that has never applied ([#945](https://github.com/cccteam/ccc/issues/945)) ([5b411e6](https://github.com/cccteam/ccc/commit/5b411e6230497ad3ce9b7fddf6c880afc74b2a46))
+* the operations workflow's migrations job leaves the rotate action alone, as it leaves the other actions ([#951](https://github.com/cccteam/ccc/issues/951)) ([68fb54b](https://github.com/cccteam/ccc/commit/68fb54b7a31f2393042ceeec46640f2981fd71b4))
+* the plan trigger passes a layer that has never applied as planned after its first apply instead of failing its init ([#943](https://github.com/cccteam/ccc/issues/943)) ([3a3a5c6](https://github.com/cccteam/ccc/commit/3a3a5c6955f50c04738df948e21b4fb9a7bb247a))
+* the release trigger's step hands release-please its token as --token, the one place release-please reads it ([#950](https://github.com/cccteam/ccc/issues/950)) ([24513ff](https://github.com/cccteam/ccc/commit/24513ff20fa16e839e3f337098212cc0238c4e62))
+
 ## [0.3.0](https://github.com/cccteam/ccc/compare/bedrock/v0.2.2...bedrock/v0.3.0) (2026-10-14)
 
 
