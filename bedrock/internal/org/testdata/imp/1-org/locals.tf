@@ -67,13 +67,14 @@ locals {
   # default cannot reference a resource, so var.layer_roles and var.plan_roles
   # carry the ID and service-accounts.tf resolves it through this map.
   custom_roles = {
-    secretContainerAdmin       = google_organization_iam_custom_role.secret_container_admin.id
-    secretOperator             = google_organization_iam_custom_role.secret_operator.id
-    storageBucketCreator       = google_organization_iam_custom_role.storage_bucket_creator.id
-    runJobPolicyAdmin          = google_organization_iam_custom_role.run_job_policy_admin.id
-    environmentLayerPlanReader = google_organization_iam_custom_role.environment_layer_plan_reader.id
-    servicesLayerPlanReader    = google_organization_iam_custom_role.services_layer_plan_reader.id
-    networkLayerPlanReader     = google_organization_iam_custom_role.network_layer_plan_reader.id
-    spannerLayerPlanReader     = google_organization_iam_custom_role.spanner_layer_plan_reader.id
+    secretContainerAdmin        = google_organization_iam_custom_role.secret_container_admin.id
+    identityPlatformInitializer = google_organization_iam_custom_role.identity_platform_initializer.id
+    secretOperator              = google_organization_iam_custom_role.secret_operator.id
+    storageBucketCreator        = google_organization_iam_custom_role.storage_bucket_creator.id
+    runJobPolicyAdmin           = google_organization_iam_custom_role.run_job_policy_admin.id
+    environmentLayerPlanReader  = google_organization_iam_custom_role.environment_layer_plan_reader.id
+    servicesLayerPlanReader     = google_organization_iam_custom_role.services_layer_plan_reader.id
+    networkLayerPlanReader      = google_organization_iam_custom_role.network_layer_plan_reader.id
+    spannerLayerPlanReader      = google_organization_iam_custom_role.spanner_layer_plan_reader.id
   }
 }

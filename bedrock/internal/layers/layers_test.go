@@ -37,7 +37,7 @@ func TestLayersOf(t *testing.T) {
 		{name: "the placement alone changes nothing: render carries it into the layers", paths: []string{"placement.json"}},
 		{name: "a file under a layer's subdirectory changes nothing", paths: []string{"2-env/.terraform/modules/x.tf"}},
 		{name: "a file outside the layers changes nothing", paths: []string{"scripts/x.tf", ".github/workflows/layers.yml"}},
-		{name: "the OpenTofu version changes every layer", paths: []string{".opentofu-version"}, want: "0-bootstrap,1-org,2-shr,2-spn,2-net,2-env"},
+		{name: "the OpenTofu version changes every layer", paths: []string{".opentofu-version"}, want: "0-bootstrap,1-org,2-shr,2-spn,2-env,2-net"},
 		{name: "a layer twice is one layer", paths: []string{"1-org/a.tf", "1-org/b.tf"}, want: "1-org"},
 	}
 	for _, tt := range tests {

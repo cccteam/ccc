@@ -85,7 +85,7 @@ trigger plans every layer a pull request changes as that layer's plan
 identity and posts the plan on the pull request, one comment per layer, kept
 current across pushes; the apply trigger, on the merge, applies every layer
 changed since its last successful apply as its apply identity, in layer order
-(0-bootstrap, 1-org, 2-shr, 2-spn and 2-net, then 2-env for tst, stg and prd), one at a time, stopping at the first failure.
+(0-bootstrap, 1-org, 2-shr and 2-spn, then 2-env for tst, stg and prd, then 2-net), one at a time, stopping at the first failure.
 
 A pull request may add an output to one layer and read it in a later one, as
 a bedrock upgrade does when `2-env` starts reading a new output of `1-org`.
