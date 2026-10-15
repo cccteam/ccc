@@ -330,7 +330,10 @@ resource "google_organization_iam_custom_role" "environment_layer_plan_reader" {
   title       = "Environment Layer Plan Reader"
   description = "Reads the resources an environment's layer declares, for a plan, and nothing of their data."
   permissions = [
-    # Cloud Build: the GitHub connection and each application's repository link.
+    # Cloud Build: the GitHub connection, each application's repository link, and
+    # each application's stack trigger (a regional trigger's read is answered on
+    # builds.get; triggers.get is not asked for).
+    "cloudbuild.builds.get",
     "cloudbuild.connections.get",
     "cloudbuild.repositories.get",
     # The pull-request load balancer's backend service and serverless network

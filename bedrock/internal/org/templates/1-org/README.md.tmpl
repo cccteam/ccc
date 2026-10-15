@@ -181,8 +181,9 @@ trigger plans it on a pull request as `{{.Prefix}}-org-gbl-plan`.
   refused permission added, the list narrowed by taking permissions out
   again), and nothing of what the resources hold; the exact lists are in
   `custom-roles.tf`. `environmentLayerPlanReader` (`2-env`, planned once per
-  environment): the GitHub connection and the repository links, the
-  pull-request backend service and endpoint groups, the Identity Platform
+  environment): the GitHub connection, the repository links and the
+  applications' stack triggers, the pull-request backend service and endpoint
+  groups, the Identity Platform
   configuration, the operations pool with its provider and attestation
   rules, the team group's entitlements, the environment's own Spanner instance
   and the records bucket.
