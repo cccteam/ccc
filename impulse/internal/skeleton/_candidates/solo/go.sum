@@ -68,6 +68,8 @@ github.com/cccteam/ccc/pkg v0.1.5 h1:GIVO4sb8c8a/AXL7O+kHg9z5EiIR/e3dQUCMx8o2Z2A
 github.com/cccteam/ccc/pkg v0.1.5/go.mod h1:ISzGwxFtyr4yJG+AX83MvZrrXVE+HSwDAULWZl9ApCg=
 github.com/cccteam/ccc/resource v0.14.0 h1:4b7u6yuRjw+pdL0AzjnuD5FNP3VMEsChvLQDadEONZY=
 github.com/cccteam/ccc/resource v0.14.0/go.mod h1:Gx85F+vBzVCiNHXudAdKJ94qvhsMPg4pKCek6zSJPPw=
+github.com/cccteam/ccc/resource v0.14.2 h1:SfisnHfXcsx8dmW+hBc8QGGtjgnVs2pGPjYYjD0n5Uc=
+github.com/cccteam/ccc/resource v0.14.2/go.mod h1:Gx85F+vBzVCiNHXudAdKJ94qvhsMPg4pKCek6zSJPPw=
 github.com/cccteam/ccc/securehash v0.0.14 h1:hQ/h4vSnPo1KnPWP9xPxJ2sLgEcSbz3b7J5whq9ZPLw=
 github.com/cccteam/ccc/securehash v0.0.14/go.mod h1:BHeqHG9ME8fr+kGngwTlGIRCbb1Oy+fqm5dU0sHhPV4=
 github.com/cccteam/ccc/tracer v0.3.0 h1:8oM3zGSsvNuyTy0OWVrc46Z6nqI7r86Z0cNN3bw7CuU=

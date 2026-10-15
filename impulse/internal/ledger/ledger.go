@@ -187,6 +187,22 @@ var Steps = []Step{
 		Impulse: release("v0.4.0"),
 		Note:    "request log words and trace settings are declared per surface: WithRequestLog sets the application default, OutletRequestLog and OutletTraces an outlet's, WithMountedRoutes a prefix mounted by hand, and @rpc(log:), @rpc(trace:), @file and @schedule(log:) a route's own; the generated router applies them, the tracer samples by them, and the release file lists the surfaces; an application that declares nothing keeps its behavior, and regeneration carries the generated test",
 	},
+	{
+		Pins: pins(`
+			access v0.10.3
+			ccc v0.3.3
+			ccc/accesstypes v0.6.0
+			ccc/cloud v0.2.1
+			ccc/resource v0.14.2
+			ccc/tracer v0.3.0
+			db-initiator v0.4.1
+			httpio v0.7.21
+			logger v0.1.30
+			session v0.12.2
+		`),
+		Impulse: release("v0.4.4"),
+		Note:    "no code change is needed: resource 0.14.2 carries Lodestar's job process as a command tree and nothing the skeletons call",
+	},
 }
 
 // validatePending holds a step's Pending mark to its pins: a pin at a pseudo-version
