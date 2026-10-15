@@ -737,6 +737,8 @@ func TestApply(t *testing.T) {
 		"2-spn: unchanged since its last apply at base1.\n",
 		"2-net: changed since its last apply at base1; applying it.\n",
 		"2-env tst: changed since its last apply at base1; applying it.\n",
+		"=== init of 2-shr as imp-shr-gbl-tofu@imp-shr-gbl-core-7a8b.iam.gserviceaccount.com ===\n",
+		"=== init of 2-env stg as imp-stg-gbl-tofu@imp-stg-gbl-core-3c4d.iam.gserviceaccount.com ===\n",
 		"=== apply of 2-shr as imp-shr-gbl-tofu@imp-shr-gbl-core-7a8b.iam.gserviceaccount.com ===\n",
 		"2-shr: Apply complete! Resources: 1 added, 0 changed, 0 destroyed.\n",
 		"Recorded the apply of 2-shr at head2 in gs://imp-boot-gbl-state-a1b2/applied/2-shr.\n",
@@ -785,13 +787,33 @@ func TestApply(t *testing.T) {
 		}
 	}
 	order := []string{}
-	for _, c := range f.runner.ran {
-		if c.Args[0] == "apply" {
+	inits := []string{}
+	firstPlan, lastInit := -1, -1
+	for i, c := range f.runner.ran {
+		switch c.Args[0] {
+		case applyCommand:
 			order = append(order, f.runner.key(c))
+		case "init":
+			inits = append(inits, f.runner.key(c))
+			lastInit = i
+		case planCommand:
+			if firstPlan < 0 {
+				firstPlan = i
+			}
 		}
 	}
 	if want := []string{"2-shr", "2-env tst", "2-env stg"}; !slices.Equal(order, want) {
 		t.Errorf("applied in the order %v, want %v (2-net, after 2-env in layer order, never had its turn)", order, want)
+	}
+	// Every run is initialized, the ones never reached included, before any is planned:
+	// a layer that reads one that has never applied finds the empty state the other's
+	// init wrote.
+	slices.Sort(inits)
+	if want := []string{"2-env prd", "2-env stg", "2-env tst", "2-net", "2-shr"}; !slices.Equal(inits, want) {
+		t.Errorf("initialized %v, want %v", inits, want)
+	}
+	if lastInit > firstPlan {
+		t.Errorf("a run was initialized after the first plan (init at %d, plan at %d):\n%s", lastInit, firstPlan, strings.Join(lines, "\n"))
 	}
 }
 

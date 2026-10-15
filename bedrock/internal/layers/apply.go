@@ -58,13 +58,53 @@ func Apply(ctx context.Context, clients *Clients, req *Request, out io.Writer) e
 	if err != nil {
 		return err
 	}
-	for _, lr := range runs {
-		if err := r.applyOne(ctx, store, lr, githubToken); err != nil {
+	tofus, err := r.initialized(ctx, runs, githubToken)
+	if err != nil {
+		return err
+	}
+	defer closeAll(tofus)
+	for i, lr := range runs {
+		if err := r.applyOne(ctx, store, lr, tofus[i]); err != nil {
 			return err
 		}
 	}
 
 	return nil
+}
+
+// initialized initializes every run, in order, as its apply identity, before any
+// applies. A run's init writes the empty state of a layer that has never applied (the
+// gcs backend creates a state the first time anything opens it), and a later layer reads
+// that state through terraform_remote_state as a reader; without this pass the read
+// would be the write, at the other layer's prefix, which the reading layer's identity
+// may not do (2-env tst reads 2-net and stg before either applies in a new
+// organization). The runs are closed by the caller.
+func (r *run) initialized(ctx context.Context, runs []org.LayerRun, githubToken string) ([]*tofu, error) {
+	tofus := make([]*tofu, 0, len(runs))
+	for _, lr := range runs {
+		t, err := newTofu(r.clients.Exec, r.req.Dir, lr, lr.Apply, githubToken, r.out)
+		if err != nil {
+			closeAll(tofus)
+
+			return nil, err
+		}
+		tofus = append(tofus, t)
+		fmt.Fprintf(r.out, "=== init of %s as %s ===\n", lr.Name, lr.Apply)
+		if err := t.init(ctx); err != nil {
+			closeAll(tofus)
+
+			return nil, errors.Wrapf(err, "the init of %s failed; the log says why", lr.Name)
+		}
+	}
+
+	return tofus, nil
+}
+
+// closeAll removes the runs' working directories.
+func closeAll(tofus []*tofu) {
+	for _, t := range tofus {
+		t.close()
+	}
 }
 
 // appliedRuns is what the run applies: the run _LAYER names, else every run whose
@@ -137,18 +177,10 @@ func (r *run) changedLayers(ctx context.Context, since, commit string) ([]string
 	return layers, nil
 }
 
-// applyOne plans and applies one run as its apply identity, records the marker, and for
-// 2-env restricts Firebase's browser key.
-func (r *run) applyOne(ctx context.Context, store deploy.Store, lr org.LayerRun, githubToken string) error {
+// applyOne plans and applies one run, initialized already, as its apply identity,
+// records the marker, and for 2-env restricts Firebase's browser key.
+func (r *run) applyOne(ctx context.Context, store deploy.Store, lr org.LayerRun, t *tofu) error {
 	fmt.Fprintf(r.out, "=== apply of %s as %s ===\n", lr.Name, lr.Apply)
-	t, err := newTofu(r.clients.Exec, r.req.Dir, lr, lr.Apply, githubToken, r.out)
-	if err != nil {
-		return err
-	}
-	defer t.close()
-	if err := t.init(ctx); err != nil {
-		return errors.Wrapf(err, "the init of %s failed; the log says why", lr.Name)
-	}
 	planText, ok := t.plan(ctx, true)
 	if !ok {
 		return errors.Newf("the plan of %s failed; the log says why", lr.Name)
