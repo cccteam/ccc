@@ -38,11 +38,15 @@ environment): it runs in the GitHub Environment named after the environment,
 as the environment's operations identity, and starts the stack trigger `2-env`
 holds for this application there, which applies the stack from the default
 branch as the apply identity (`bedrock deploy stack first`: the plan with the
-environment alone, no generated-secret pin, which the first release derives).
+environment and the generated secrets' pins derived from their containers,
+nothing while a container has no version, which the first release adds).
 Nobody holds a cloud role for it: repository write and the Environment's
 approval are what the action takes, and the audit log names who asked. Every
 later apply is the pipeline's, and a release run again (the `run` action)
-applies the stack again. A release's tag build plans the stack for
+applies the stack again. After a teardown (`bedrock teardown`), which
+destroyed the triggers a release's build would run in, the same `apply`
+action brings the stack back, and the `run` action then runs the release
+the environment ran. A release's tag build plans the stack for
 its environment as the apply identity after the image build and before the
 migrations, runs the tests (no authoritative IAM resource other than the file
 stores' bucket policies; every secret version
@@ -214,9 +218,9 @@ from `2-env`'s state.
   is that a bedrock release works under the previous release's steps, which
   is why the steps are few (fetch bedrock, `bedrock check`, one command) and a
   command says in its log when the steps it runs under are an older bedrock's.
-  A stack first rendered with these triggers is applied by hand in tst once
-  before the pull request that brings it can pass the check, since the check
-  trigger does not exist until then.
+  A stack first rendered with these triggers is applied in tst once, by the
+  `apply` action, before the pull request that brings it can pass the check,
+  since the check trigger does not exist until then.
   The environments chain by deployment records: a release runs in an
   environment only after the previous one in the order (tst, stg, prd) holds
   a live record of it, which the pipeline checks before it builds. A release
@@ -298,9 +302,9 @@ ahead of the apply, which adopts it, with the adding grant on it), and passes
 the number to the plan (`var.generated_secret_versions`), so the revision
 template pins `versions/N` exactly as a committed pin does, and the
 deployment record names N. A pull request's plans read each environment's
-newest version the same way and add none; a plan run by hand without the
-variable mounts no generated secret (the first apply by hand runs that way),
-and the next release build does.
+newest version the same way and add none; a plan without the variable
+mounts no generated secret (the first apply runs that way while a container
+has no version), and the next release build does.
 
 `bedrock secret rotate <env> <VARIABLE>` rotates one: the operations workflow,
 as the environment's operations identity, adds a new random version and runs
@@ -770,8 +774,8 @@ off, and the stack made in its place has an id of its own.
 Per environment, after the first apply:
 
 None: every secret the code declares is generated (the first release build in
-each environment adds its first version and pins it; the first apply by hand
-mounts none yet), and the sign-in needs no registration.
+each environment adds its first version and pins it; the first apply mounts
+none yet), and the sign-in needs no registration.
 
 ## Inputs
 

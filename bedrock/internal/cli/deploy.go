@@ -640,17 +640,21 @@ func newDeployEnvStackFirst(d deps) *cobra.Command {
 	var workspace string
 	cmd := &cobra.Command{
 		Use:   "first",
-		Short: "Apply the environment's stack for the first time, in the stack trigger's build",
+		Short: "Apply the environment's stack when no release's build can (the first time, or again after a teardown), in the stack trigger's build",
 		Long: `first is the stack trigger's step: 2-env renders one such trigger per application and environment,
 run as the deploy identity, and the application's operations workflow starts it with its apply
-action, so no person holds a cloud role for an application's first apply. It reads its build (the
-trigger carries the application, the environment, the apply identity and the records bucket),
-refuses a stack a release has run on (its deployment records say so: a release's build applies an
-applied stack, with the generated secrets' pins this apply does not carry, and the workflow's run
-action runs the live release again), runs tofu init on the environment's state prefix
-(3-app/<app>/<env>) as the apply identity, plans with the environment alone (no generated-secret
-pin: the secret containers come with this apply, and the first release derives the pins), prints
-the plan's summary and applies it. It runs in the OpenTofu image.`,
+action, so no person holds a cloud role for it. It applies the environment's stack when no
+release's build can: for the first time, before any release exists there, and again after a
+teardown (bedrock teardown), which destroyed the triggers a release's build would run in. It reads
+its build (the trigger carries the application, the environment, the apply identity and the records
+bucket), refuses a live stack (its deployment records say a release has run on it, and no teardown
+record beside the stack's id is newer than its newest live release: a release's build applies a
+live stack, and the workflow's run action runs the live release again), runs tofu init on the
+environment's state prefix (3-app/<app>/<env>) as the apply identity, plans with the environment
+and the generated secrets' pins derived from their containers the way a pull request's plan
+derives them (each container's newest enabled version; nothing while a container has none, since
+the first release adds it), prints the plan's summary and applies it. After a teardown the
+workflow's run action then runs the release the environment ran. It runs in the OpenTofu image.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return deploy.FirstApply(cmd.Context(), d.deploy, deploy.Workspace(workspace), buildRequest(), cmd.OutOrStdout())
