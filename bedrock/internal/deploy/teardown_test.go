@@ -3,6 +3,8 @@ package deploy
 import (
 	"context"
 	"encoding/json"
+	"maps"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -359,6 +361,76 @@ func TestTeardownPullRequests(t *testing.T) {
 				if !strings.Contains(out.String(), want) {
 					t.Errorf("output lacks %q; printed:\n%s", want, out.String())
 				}
+			}
+		})
+	}
+}
+
+func TestApplicationStanding(t *testing.T) {
+	t.Parallel()
+
+	torn, _ := json.Marshal(TeardownRecord{Kind: teardownVar, StackID: teardownStackID})
+	earlier, _ := json.Marshal(TeardownRecord{Kind: teardownVar, StackID: "0000"})
+	tests := []struct {
+		name    string
+		objects map[string]string
+		want    []Standing
+	}{
+		{
+			name: "never applied, applied by an init alone, standing with a live release, torn down, and a teardown of an earlier stack",
+			objects: map[string]string{
+				"gs://" + teardownStateBucket + "/3-app/harbor/stg/default.tfstate":                                  `{"outputs": {}}`,
+				"gs://" + teardownStateBucket + "/3-app/harbor/prd/default.tfstate":                                  stackState("prd"),
+				stackKey("imp-prd-gbl-harbor-records", "harbor", "prd"):                                              stackJSON(teardownStackID),
+				"gs://imp-prd-gbl-harbor-records/" + releaseObject("harbor", "prd", teardownStackID, "v0.1.3", "b2"): liveRecord("v0.1.3", nil),
+				"gs://imp-prd-gbl-harbor-records/" + teardownObject("harbor", "prd"):                                 string(torn),
+				"gs://" + teardownStateBucket + "/3-app/harbor/tst/default.tfstate":                                  stackState("tst"),
+				stackKey("imp-tst-gbl-harbor-records", "harbor", "tst"):                                              stackJSON(teardownStackID),
+				"gs://imp-tst-gbl-harbor-records/" + releaseObject("harbor", "tst", teardownStackID, "v0.1.4", "b1"): liveRecord("v0.1.4", nil),
+				"gs://imp-tst-gbl-harbor-records/" + teardownObject("harbor", "tst"):                                 string(earlier),
+			},
+			want: []Standing{{Env: "tst", Stack: true, Release: "v0.1.4"}, {Env: "stg"}, {Env: "prd", Stack: true, TornDown: true, Release: "v0.1.3"}},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			store := &memoryStore{objects: tt.objects}
+			got, err := ApplicationStanding(context.Background(), &Clients{Storage: store.open}, teardownStateBucket, "harbor", []string{"tst", "stg", "prd"})
+			if err != nil {
+				t.Fatalf("ApplicationStanding() = %v", err)
+			}
+			if !slices.Equal(got, tt.want) {
+				t.Errorf("ApplicationStanding() = %+v, want %+v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestNetHosts(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		objects map[string]string
+		want    map[string]string
+	}{
+		{name: "2-net never applied", objects: map[string]string{}, want: nil},
+		{name: "2-net routes nothing", objects: map[string]string{"gs://" + teardownStateBucket + "/2-net/default.tfstate": netState(map[string]string{})}, want: map[string]string{}},
+		{name: "2-net routes a host", objects: map[string]string{"gs://" + teardownStateBucket + "/2-net/default.tfstate": netState(map[string]string{"harbor-tst.impulseframework.dev": tstBackend})}, want: map[string]string{"harbor-tst.impulseframework.dev": tstBackend}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			store := &memoryStore{objects: tt.objects}
+			got, err := NetHosts(context.Background(), &Clients{Storage: store.open}, teardownStateBucket)
+			if err != nil {
+				t.Fatalf("NetHosts() = %v", err)
+			}
+			if !maps.Equal(got, tt.want) {
+				t.Errorf("NetHosts() = %v, want %v", got, tt.want)
 			}
 		})
 	}

@@ -425,3 +425,10 @@ func generatedEntry(expr hclsyntax.Expression) bool {
 
 	return false
 }
+
+// HasApplicationLayers reports whether the infrastructure root holds the application
+// layers' directory (3-app), the organization layout; an application's own stack
+// (the application layout) holds none.
+func HasApplicationLayers(infraRoot string) bool {
+	return isDir(filepath.Join(infraRoot, appLayers))
+}

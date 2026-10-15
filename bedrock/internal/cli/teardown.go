@@ -5,7 +5,9 @@
 package cli
 
 import (
+	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/user"
 	"path/filepath"
@@ -200,43 +202,41 @@ func (d deps) takeDown(cmd *cobra.Command, args []string, f *teardownFlags, dest
 	request := func(env string) *deploy.TeardownRequest {
 		return &deploy.TeardownRequest{Dir: stackDir, DataDir: dataDir, Placement: p, App: app, Env: env, Destroy: destroy, By: takenDownBy(), Now: time.Now}
 	}
-	var prepared []*deploy.EnvironmentTeardown
-	for _, env := range envs {
-		t, err := deploy.PrepareTeardown(ctx, d.deploy, request(env), out)
-		if err != nil {
-			return err
-		}
-		if t != nil {
-			prepared = append(prepared, t)
-		}
-	}
-	var numbers []string
+	var a *deploy.ApplicationTeardown
 	if f.all {
-		numbers, err = deploy.PullRequestStacks(ctx, d.deploy, request(p.Integration()))
-		if err != nil {
-			return err
-		}
+		a, err = deploy.PrepareApplication(ctx, d.deploy, request(""), out)
+	} else {
+		a, err = prepareOne(ctx, d.deploy, request(envs[0]), out)
 	}
-	if len(prepared) == 0 && len(numbers) == 0 {
+	if err != nil {
+		return err
+	}
+	if a.Empty() {
 		fmt.Fprintf(out, "Nothing of %s to take down.\n", app)
 
 		return nil
 	}
-	fmt.Fprint(out, teardownWarning(destroy, app, p.Integration(), envs, prepared, numbers))
+	fmt.Fprint(out, teardownWarning(destroy, app, envs, a))
 	ok, err := d.confirmTeardown(cmd, command, word, f.yes)
 	if err != nil || !ok {
 		return err
 	}
-	for _, t := range prepared {
-		if err := t.Run(ctx, out); err != nil {
-			return err
-		}
+
+	return a.Run(ctx, out)
+}
+
+// prepareOne is the one environment's teardown as an application's, for the one run.
+func prepareOne(ctx context.Context, clients *deploy.Clients, req *deploy.TeardownRequest, out io.Writer) (*deploy.ApplicationTeardown, error) {
+	t, err := deploy.PrepareTeardown(ctx, clients, req, out)
+	if err != nil {
+		return nil, err
 	}
-	if len(numbers) > 0 {
-		return deploy.TeardownPullRequests(ctx, d.deploy, request(p.Integration()), numbers, out)
+	a := &deploy.ApplicationTeardown{}
+	if t != nil {
+		a.Environments = []*deploy.EnvironmentTeardown{t}
 	}
 
-	return nil
+	return a, nil
 }
 
 // teardownEnvironments are the environments the run takes down and the word typed back
@@ -260,7 +260,7 @@ func teardownEnvironments(args []string, all bool, app string, p *derive.Placeme
 // teardownWarning says what the run does before the name is typed back: what the
 // command destroys and keeps, each environment's count by type, the pull-request stacks
 // after them, and that nothing is undone.
-func teardownWarning(destroy bool, app, integration string, envs []string, prepared []*deploy.EnvironmentTeardown, numbers []string) string {
+func teardownWarning(destroy bool, app string, envs []string, a *deploy.ApplicationTeardown) string {
 	var b strings.Builder
 	in := strings.Join(envs, ", ")
 	if destroy {
@@ -268,12 +268,7 @@ func teardownWarning(destroy bool, app, integration string, envs []string, prepa
 	} else {
 		fmt.Fprintf(&b, "bedrock teardown takes %s's stack in %s down to what it keeps: the Cloud Run services and jobs go, with their endpoint groups and backend services, the triggers, the schedules and the Cloud Armor policy; the database and every generation of it, the file stores, the secret containers, the identities, the Firestore database, the task queue, the migrate logs and the stack's id stay. Bringing an environment back is the stack's apply by hand (the README's \"Applying\") and bedrock rerun <env> <release>.\n\n", app, in)
 	}
-	for _, t := range prepared {
-		b.WriteString(t.Summary())
-	}
-	if len(numbers) > 0 {
-		fmt.Fprintf(&b, "Pull-request stacks under %s, destroyed whole with their builds' jobs: %s\n", integration, strings.Join(numbers, ", "))
-	}
+	b.WriteString(a.Summary())
 	b.WriteString("\nNothing here is undone by bedrock.\n\n")
 
 	return b.String()
