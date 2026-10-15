@@ -8,10 +8,12 @@ import (
 
 // TestFirstApply: the stack trigger's step inits the environment's state prefix as the
 // apply identity (impersonated when the build runs as the deploy identity, as itself
-// otherwise), plans with the environment alone, applies the saved plan and says what it
-// did; a plan with no change applies nothing; a stack a release has run on, which its
-// deployment records say, is refused before tofu runs, as is a build whose trigger
-// carries less than the step needs.
+// otherwise), plans with the environment and the generated secrets' pins derived from
+// their containers (nothing while a container has no version), applies the saved plan and
+// says what it did; a plan with no change applies nothing; a live stack (a release's,
+// which its deployment records say, with no teardown since) is refused before tofu runs,
+// a torn-down one (a teardown record for this stack newer than its newest live release)
+// is applied again, and a build whose trigger carries less than the step needs is refused.
 func TestFirstApply(t *testing.T) {
 	t.Parallel()
 
@@ -24,10 +26,21 @@ func TestFirstApply(t *testing.T) {
 		showLine    = "tofu show -json WS/stack.plan"
 		applyLine   = "tofu apply -input=false -no-color WS/stack.plan"
 	)
+	const (
+		liveRecord     = `{"status": "live", "version": "v0.1.0", "timestamp": "2026-10-15T07:00:00Z"}`
+		tornDownAfter  = `{"kind": "teardown", "stackId": "ab12", "at": "2026-10-15T08:00:00Z"}`
+		tornDownBefore = `{"kind": "teardown", "stackId": "ab12", "at": "2026-10-15T06:00:00Z"}`
+		otherStackDown = `{"kind": "teardown", "stackId": "zz99", "at": "2026-10-15T08:00:00Z"}`
+		cookieKey      = "projects/p-stg/secrets/imp-tst-gbl-quill-cookie-key/versions/"
+	)
 	tests := []struct {
 		name    string
 		build   string
 		objects map[string]string
+		// generated declares the cookie key generated in the checkout, and pins are the
+		// secret versions that exist.
+		generated bool
+		pins      map[string]string
 		// shown is what tofu show answers for the saved plan.
 		shown      string
 		wantOut    []string
@@ -69,11 +82,49 @@ func TestFirstApply(t *testing.T) {
 			wantEnv:  "GOOGLE_IMPERSONATE_SERVICE_ACCOUNT=quill-apply@p-stg.iam.gserviceaccount.com",
 		},
 		{
-			name:       "a stack a release has run on is refused before tofu runs",
+			name:       "a live stack, a release's with no teardown since, is refused before tofu runs",
 			build:      deployBuild,
-			objects:    map[string]string{"gs://records/quill/stacks/tst/stack.json": `{"id": "ab12"}`, "gs://records/quill/tst/ab12/releases/v1.0.0/b-0.json": `{}`},
+			objects:    map[string]string{"gs://records/quill/stacks/tst/stack.json": `{"id": "ab12"}`, "gs://records/quill/tst/ab12/releases/v0.1.0/b-0.json": liveRecord},
 			wantNoTofu: true,
-			wantErr:    "tst's stack has deployment records (1 under gs://records/quill/tst/ab12/releases/): a release has run there, and a release's build applies the stack with the generated secrets' pins this first apply does not carry. To apply the stack again, run the live release again (the operations workflow's run action)",
+			wantErr:    "tst's stack is live: it has deployment records (1 under gs://records/quill/tst/ab12/releases/) and no teardown since. A release's build applies a live stack; to apply it again, run the live release again (the operations workflow's run action). After a teardown this apply brings the stack back",
+		},
+		{
+			name:      "a torn-down stack is applied again, with the generated secrets' pins derived from their containers",
+			build:     deployBuild,
+			objects:   map[string]string{"gs://records/quill/stacks/tst/stack.json": `{"id": "ab12"}`, "gs://records/quill/tst/ab12/releases/v0.1.0/b-0.json": liveRecord, "gs://records/quill/stacks/tst/teardown.json": tornDownAfter},
+			generated: true,
+			pins:      map[string]string{cookieKey + "1": enabledState, cookieKey + "2": enabledState},
+			shown:     stackPlanJSON,
+			wantOut: []string{
+				"tst's stack was torn down at 2026-10-15T08:00:00Z (gs://records/quill/stacks/tst/teardown.json): it is applied again, with the generated secrets' pins derived from their containers.",
+				"APP_COOKIE_KEY: version 2 of imp-tst-gbl-quill-cookie-key, its newest enabled, is the pin (a generated secret: its version is derived at each plan).",
+				"Applied tst's stack again after its teardown: 2 added, 1 changed, 1 destroyed. Its triggers are back; the operations workflow's run action runs the release it ran, and a release's build applies it from here on.",
+			},
+			wantTofu: initLine + " -backend-config=impersonate_service_account=quill-apply@p-stg.iam.gserviceaccount.com\n" + planLine + ` -var generated_secret_versions={APP_COOKIE_KEY="2"}` + "\n" + showLine + "\n" + applyLine,
+			wantEnv:  "GOOGLE_IMPERSONATE_SERVICE_ACCOUNT=quill-apply@p-stg.iam.gserviceaccount.com",
+		},
+		{
+			name:       "a teardown older than the live release is no teardown: the stack is live",
+			build:      deployBuild,
+			objects:    map[string]string{"gs://records/quill/stacks/tst/stack.json": `{"id": "ab12"}`, "gs://records/quill/tst/ab12/releases/v0.1.0/b-0.json": liveRecord, "gs://records/quill/stacks/tst/teardown.json": tornDownBefore},
+			wantNoTofu: true,
+			wantErr:    "tst's stack is live",
+		},
+		{
+			name:       "an earlier stack's teardown record does not take the current stack down",
+			build:      deployBuild,
+			objects:    map[string]string{"gs://records/quill/stacks/tst/stack.json": `{"id": "ab12"}`, "gs://records/quill/tst/ab12/releases/v0.1.0/b-0.json": liveRecord, "gs://records/quill/stacks/tst/teardown.json": otherStackDown},
+			wantNoTofu: true,
+			wantErr:    "tst's stack is live",
+		},
+		{
+			name:      "a generated secret with no version yet is left unmounted on the first apply",
+			build:     deployBuild,
+			generated: true,
+			shown:     stackPlanJSON,
+			wantOut:   []string{"APP_COOKIE_KEY: imp-tst-gbl-quill-cookie-key has no enabled version yet (a generated secret, whose first version tst's next release build adds): the plan mounts nothing for it.", "Applied tst's stack for the first time"},
+			wantTofu:  initLine + " -backend-config=impersonate_service_account=quill-apply@p-stg.iam.gserviceaccount.com\n" + planLine + "\n" + showLine + "\n" + applyLine,
+			wantEnv:   "GOOGLE_IMPERSONATE_SERVICE_ACCOUNT=quill-apply@p-stg.iam.gserviceaccount.com",
 		},
 		{
 			name:       "a trigger that carries less than the step needs is refused",
@@ -86,16 +137,21 @@ func TestFirstApply(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			w := Workspace(t.TempDir())
+			files := map[string]string{placementPath: testPlacement("")}
+			if tt.generated {
+				files[configPath] = generatedConfig(t)
+			}
+			w := applicationWorkspace(t, files)
 			objects := map[string]string{}
 			for k, v := range tt.objects {
 				objects[k] = v
 			}
 			store := &memoryStore{objects: objects}
 			builds := &fakeBuilds{build: tt.build}
+			secrets := &fakeSecrets{states: tt.pins}
 			run := &fakeRunner{outputs: map[string]string{"tofu show": tt.shown}}
 			var out bytes.Buffer
-			err := FirstApply(t.Context(), &Clients{Builds: builds.open, Exec: run, Storage: store.open}, w, &BuildRequest{BuildID: "b", Project: "p", Location: "l"}, &out)
+			err := FirstApply(t.Context(), &Clients{Builds: builds.open, Exec: run, Storage: store.open, SecretsAs: secrets.openAs}, w, &BuildRequest{BuildID: "b", Project: "p", Location: "l"}, &out)
 			if tt.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 					t.Fatalf("FirstApply() error = %v, wantErr %q", err, tt.wantErr)

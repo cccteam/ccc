@@ -100,11 +100,13 @@ resource "google_cloudbuildv2_repository" "app" {
 }
 
 # ---------------------------------------------------------------------------
-# The stack trigger: an application's first apply in this environment
+# The stack trigger: an application's stack applied when no release's build can
 #
 # An application's stack (the infrastructure directory of its repository) is
 # applied by its releases' builds, as the apply identity, once it exists. Its
-# first apply, before any release, is this trigger's: one per application,
+# first apply, before any release, is this trigger's, and so is the apply after
+# a teardown (bedrock teardown), which destroyed the triggers a release's build
+# would run in: one per application,
 # manual, its source the application's repository at the default branch, run
 # as the deploy identity (which may become the apply identity, identities.tf)
 # and started by the application's operations workflow (its apply action, as
@@ -112,8 +114,9 @@ resource "google_cloudbuildv2_repository" "app" {
 # environment), so no person holds a cloud role for it and the audit log names
 # who asked. Its steps are the organization's triggers' (0-bootstrap): fetch
 # the bedrock the checkout's infrastructure/placement.json pins, build a commit
-# pin, bedrock check, then bedrock deploy stack first, which refuses a stack a
-# release has run on. In the environments whose releases wait for an approval
+# pin, bedrock check, then bedrock deploy stack first, which refuses a live
+# stack (a release has run on it, and no teardown since). In the environments
+# whose releases wait for an approval
 # in Cloud Build (team-group.tf), so does this build.
 # ---------------------------------------------------------------------------
 
