@@ -1956,6 +1956,8 @@ func TestRegistrationRender(t *testing.T) {
 		pusher        = `"serviceAccount:imp-tst-gbl-beacon-deploy@imp-tst-gbl-core-1a2b.iam.gserviceaccount.com",`
 		admin         = `"serviceAccount:imp-stg-gbl-beacon-tofu@imp-stg-gbl-core-3c4d.iam.gserviceaccount.com" = { environment = "stg", application = "beacon", restore_from = "prd" }`
 		host          = `"beacon-tst.apps.imp.example"`
+		applied       = `applied_applications = ["harbor"]`
+		appliedBoth   = `applied_applications = ["harbor", "beacon"]`
 	)
 	tests := []struct {
 		name   string
@@ -1967,7 +1969,7 @@ func TestRegistrationRender(t *testing.T) {
 			name: "at its identities",
 			step: RegistrationIdentities,
 			want: map[string][]string{
-				"1-org/applications.auto.tfvars": {repositories},
+				"1-org/applications.auto.tfvars": {repositories, applied},
 				"2-env/applications.auto.tfvars": {repositories},
 				"2-shr/applications.auto.tfvars": {repositories},
 			},
@@ -1982,6 +1984,7 @@ func TestRegistrationRender(t *testing.T) {
 			name: "at its grants",
 			step: RegistrationGrants,
 			want: map[string][]string{
+				"1-org/applications.auto.tfvars":    {repositories, applied},
 				"1-org/public-invokers.auto.tfvars": {publicInvoker},
 				"2-shr/applications.auto.tfvars":    {repositories, pusher},
 				"2-spn/applications.auto.tfvars":    {admin},
@@ -1991,6 +1994,7 @@ func TestRegistrationRender(t *testing.T) {
 		{
 			name: "complete",
 			want: map[string][]string{
+				"1-org/applications.auto.tfvars":    {repositories, appliedBoth},
 				"1-org/public-invokers.auto.tfvars": {publicInvoker},
 				"2-shr/applications.auto.tfvars":    {repositories, pusher},
 				"2-spn/applications.auto.tfvars":    {admin},
@@ -2835,7 +2839,7 @@ func TestRepositoryRules(t *testing.T) {
 			want: []string{`applications = ["harbor", "beacon"]`},
 		},
 		{
-			name: "the rules name the checks in order (the stack's check trigger, impulse's six fixed jobs), squash alone and the branch up to date",
+			name: "the rules name the checks in order (the stack's check trigger once the stack is applied, impulse's six fixed jobs), squash alone and the branch up to date",
 			path: "1-org/github.tf",
 			want: []string{
 				`data "github_app" "cloud_build" {
@@ -2844,35 +2848,40 @@ func TestRepositoryRules(t *testing.T) {
 				`  cloud_build_check = {
     for app in var.applications : app => "${var.prefix}-tst-uc1-${app}-check (${module.project["tst"].project_id})"
   }`,
-				`      {
-        context        = local.cloud_build_check[app]
-        integration_id = tonumber(data.github_app.cloud_build.id)
-      },
-      {
-        context        = "title"
-        integration_id = tonumber(data.github_app.actions.id)
-      },
-      {
-        context        = "go"
-        integration_id = tonumber(data.github_app.actions.id)
-      },
-      {
-        context        = "web"
-        integration_id = tonumber(data.github_app.actions.id)
-      },
-      {
-        context        = "image"
-        integration_id = tonumber(data.github_app.actions.id)
-      },
-      {
-        context        = "secrets"
-        integration_id = tonumber(data.github_app.actions.id)
-      },
-      {
-        context        = "migrations"
-        integration_id = tonumber(data.github_app.actions.id)
-      },
-    ]`,
+				`    for app in var.applications : app => concat(
+      contains(var.applied_applications, app) ? [
+        {
+          context        = local.cloud_build_check[app]
+          integration_id = tonumber(data.github_app.cloud_build.id)
+        },
+      ] : [],
+      [
+        {
+          context        = "title"
+          integration_id = tonumber(data.github_app.actions.id)
+        },
+        {
+          context        = "go"
+          integration_id = tonumber(data.github_app.actions.id)
+        },
+        {
+          context        = "web"
+          integration_id = tonumber(data.github_app.actions.id)
+        },
+        {
+          context        = "image"
+          integration_id = tonumber(data.github_app.actions.id)
+        },
+        {
+          context        = "secrets"
+          integration_id = tonumber(data.github_app.actions.id)
+        },
+        {
+          context        = "migrations"
+          integration_id = tonumber(data.github_app.actions.id)
+        },
+      ],
+    )`,
 				`strict_required_status_checks_policy = true`,
 				`do_not_enforce_on_create = true`,
 				`allowed_merge_methods           = ["squash"]`,

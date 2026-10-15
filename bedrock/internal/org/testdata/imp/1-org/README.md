@@ -370,7 +370,11 @@ request.
 The required checks on the default branch and the hotfix lines are the
 application stack's check trigger in tst's Cloud Build
 (`imp-tst-<region>-<app>-check`, set by the application's
-stack in tst: on every push to a pull request it runs
+stack in tst, so required once the stack has had its first apply:
+`applied_applications` in `applications.auto.tfvars` lists the applications
+registered in full, and the pull requests of one under registration merge on
+the CI jobs alone until `bedrock org register <app> --next` completes it.
+On every push to a pull request the trigger runs
 `bedrock check`, plans and tests the stack for every environment as that
 environment's plan identity, posts the summaries, and applies the pull
 request's own stack again when one is standing; its steps are the stack's own
@@ -490,6 +494,8 @@ required checks, the rulesets' names.
 | Name | Description | Type | Default | Required |
 |---|---|---|---|:---:|
 | `allowed_contact_domains` | Domains permitted as Essential Contacts. | `list(string)` | `["@imp.example"]` | no |
+| `applications` | The applications whose GitHub repositories this layer configures. Rendered into `applications.auto.tfvars`. | `list(string)` | `[]` | no |
+| `applied_applications` | The applications whose stacks have had their first apply: their rulesets require the stack's check trigger. Rendered into `applications.auto.tfvars`. | `list(string)` | `[]` | no |
 | `audit_log_retention_days` | Retention for the audit log bucket; only with `central_logging`. | `number` | `400` | no |
 | `billing_account_id` | Billing account to link projects to. | `string` | n/a | yes |
 | `boot_project_id` | Boot project from `0-bootstrap`; quota and billing project for API calls. | `string` | n/a | yes |

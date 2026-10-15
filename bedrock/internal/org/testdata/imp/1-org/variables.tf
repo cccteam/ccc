@@ -10,6 +10,12 @@ variable "applications" {
   default     = []
 }
 
+variable "applied_applications" {
+  description = "The applications whose stacks have had their first apply in every environment (registered in full in placement.json): their repositories' rulesets require the stack's check trigger, which the first apply made, beside the CI jobs every application's require. Rendered into applications.auto.tfvars by bedrock org register <app> --next."
+  type        = list(string)
+  default     = []
+}
+
 variable "audit_log_retention_days" {
   description = "Retention period, in days, for the central audit log bucket in the log project. Only used when central_logging is true."
   type        = number

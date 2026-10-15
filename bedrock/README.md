@@ -1986,16 +1986,19 @@ variable, and ends with a line in `JOURNAL.md` and what starting over takes (the
 `0-bootstrap/README.md`, "Destroying the organization").
 
 `org register <app>` adds an application: its code goes into `placement.json`'s
-applications, each layer's values are rendered from it (1-org's repositories and its
-`public-invokers.auto.tfvars`, 2-env's list, 2-shr's repositories and its pushers and
-pullers, 2-spn's database admins, 2-net's hostnames with the wildcard for pull-request
+applications, each layer's values are rendered from it (1-org's repositories, its
+`public-invokers.auto.tfvars` and its `applied_applications`, 2-env's list, 2-shr's
+repositories and its pushers and pullers, 2-spn's database admins, 2-net's hostnames with
+the wildcard for pull-request
 environments), and the pull requests the registration takes through the triggers are
 printed, since one pass in layer order does not follow the order the grants need: first
 1-org's repository with 2-env's identities, then 2-env again by starting the apply trigger
 by hand (each environment grants the next environment's deploy identity read on its records
 bucket, from state the first pass did not have), then 1-org's public-invoker grants with
 2-shr and 2-spn (grants on identities that exist now), then the application's own stack per
-environment, then 2-net. The placement records how far the registration has gone
+environment, then 2-net with 1-org's required check (the stack's check trigger, which the
+first apply made; until then the application's pull requests merge on the CI jobs alone). The
+placement records how far the registration has gone
 (`registration`: the application's step, `identities` while its repository and identities
 are declared and nothing else is rendered for it yet, `grants` while the grants on its
 identities are declared too and its hostnames are not, and no entry once complete), the

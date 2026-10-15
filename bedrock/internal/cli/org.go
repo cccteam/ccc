@@ -745,9 +745,10 @@ bedrock org register %s --next.
 	}
 	fmt.Fprintf(out, "Completed %s's registration in %s; rendered %d owned file(s).\n", app, placement, written.Owned)
 	fmt.Fprint(out, `
-The pull request now carries 2-net/applications.auto.tfvars: the hostnames, onto the
-backends the stack created. After its merge and apply: bedrock domain check, which passes
-when the apps domain resolves to its zone.
+The pull request now carries 2-net/applications.auto.tfvars and 1-org/applications.auto.tfvars:
+the hostnames, onto the backends the stack created, and the stack's check trigger as a
+required check of the repository, which the first apply made. After its merge and apply:
+bedrock domain check, which passes when the apps domain resolves to its zone.
 `)
 
 	return nil
@@ -957,7 +958,9 @@ every rendered file:
      trigger 2-env made there applies it as the apply identity); every later apply is
      its pipeline's, with each release.
   5. bedrock org register %s --next once more, then the pull request it renders: the
-     hostnames (2-net), onto the backends the stack created.
+     hostnames (2-net), onto the backends the stack created, and the stack's check trigger
+     as a required check of the repository (1-org), which the first apply made; until then
+     the repository's pull requests merge on the CI jobs alone.
   6. After 2-net's apply: bedrock domain check, which passes when the apps domain resolves to its zone.
 `, p.GithubDefaultBranch, app, triggerRun(p, ""), app, app, app)
 }

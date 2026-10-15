@@ -570,6 +570,18 @@ func (v *view) ApplicationsList() string {
 	return `["` + strings.Join(v.Applications, `", "`) + `"]`
 }
 
+// AppliedList is the applications registered in full (Served) as an HCL list: those whose
+// stacks have had their first apply, so their repositories' rulesets may require the
+// stack's check trigger.
+func (v *view) AppliedList() string {
+	served := v.Served()
+	if len(served) == 0 {
+		return "[]"
+	}
+
+	return `["` + strings.Join(served, `", "`) + `"]`
+}
+
 // ExampleApp is the application the layers' examples name: the first one, or app.
 func (v *view) ExampleApp() string {
 	if len(v.Applications) == 0 {
