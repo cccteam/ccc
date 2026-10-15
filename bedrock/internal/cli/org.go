@@ -832,10 +832,11 @@ against its base through the repository's Cloud Build connection; and plans ever
 whose .tf, .tfvars or lock file changed, and every layer when .opentofu-version changed, side
 by side, each in its own directory as the layer's plan identity (impersonated by the plan
 trigger's runner; 2-env once per environment, with its own state prefix), without the state
-lock. Once every plan has finished each gets its verdict: its Plan: line when it succeeded;
-passed, as planned after the layers before it apply, when it failed only because it reads
-outputs their plans create, since the merge applies those first; failed otherwise, a plan
-that did not run included. One comment per layer goes on the pull request as the deployer
+lock. A layer with no state yet (never applied: its plan identity reads the bucket and finds
+no state object) is not planned, and passes as planned after its first apply. Once every plan
+has finished each gets its verdict: its Plan: line when it succeeded; passed, as planned after
+the layers before it apply, when it failed only because it reads outputs their plans create,
+since the merge applies those first; failed otherwise, a plan that did not run included. One comment per layer goes on the pull request as the deployer
 GitHub App, found by its first line and updated on a later push; the plans stay in the run's
 log while placement.json records no deployer app (githubDeployerAppId,
 githubDeployerKeyVersion). 1-org's plan gets the infrastructure GitHub App's token as
@@ -906,7 +907,7 @@ func layerRequest(dir string) *layers.Request {
 func (d deps) layerClients() *layers.Clients {
 	c := &layers.Clients{}
 	if d.deploy != nil {
-		c.Builds, c.Store, c.Secrets, c.GitHub, c.Exec = d.deploy.Builds, d.deploy.Storage, d.deploy.Secrets, d.deploy.GitHub, d.deploy.Exec
+		c.Builds, c.Store, c.StoreAs, c.Secrets, c.GitHub, c.Exec = d.deploy.Builds, d.deploy.Storage, d.deploy.StorageAs, d.deploy.Secrets, d.deploy.GitHub, d.deploy.Exec
 	}
 	if d.org != nil {
 		c.Keys = d.org.keysAs

@@ -1898,7 +1898,10 @@ the step passes): the pull request, its base and its commit; reads the files the
 request changes against its base through the repository's connection; and plans every
 layer whose `.tf`, `.tfvars` or lock file changed, and every layer when
 `.opentofu-version` changed, side by side, each in its own directory as the layer's plan
-identity (2-env once per environment, with its own state prefix), without the state lock.
+identity (2-env once per environment, with its own state prefix), without the state lock. A
+layer with no state yet is not planned: it has never applied, its plan identity (which
+writes nothing) finds no state object under its prefix, and the run passes as planned after
+its first apply, which the merge's apply trigger makes as the apply identity.
 Once every plan has finished each gets its verdict: its `Plan:` line when it succeeded;
 passed, as planned after the layers before it apply, when it failed only because it reads
 outputs their plans create (an unsupported attribute an earlier plan shows as a new

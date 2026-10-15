@@ -36,6 +36,8 @@ const (
 	tofuVersionFile = ".opentofu-version"
 	// lockFile is a layer's provider lock, which changes the layer.
 	lockFile = ".terraform.lock.hcl"
+	// stateObject is the object a run's state lives in under its prefix in the bucket.
+	stateObject = "default.tfstate"
 )
 
 // The two commands, as the triggers run them, and the layer whose GitHub provider
@@ -67,12 +69,14 @@ func (req *Request) check(command string) error {
 }
 
 // Clients are the seams a run reaches the world through: Cloud Build (the build and the
-// connection's read token), Cloud Storage (the applied markers), Secret Manager (the
-// apps' keys), GitHub (with a token), the API Keys API as an impersonated identity, and
-// the programs a step runs (tofu). Tests pass fakes.
+// connection's read token), Cloud Storage (the applied markers, and as a plan identity
+// the state it would plan against), Secret Manager (the apps' keys), GitHub (with a
+// token), the API Keys API as an impersonated identity, and the programs a step runs
+// (tofu). Tests pass fakes.
 type Clients struct {
 	Builds  deploy.BuildsFunc
 	Store   deploy.StoreFunc
+	StoreAs deploy.StoreAsFunc
 	Secrets deploy.SecretsFunc
 	GitHub  deploy.GitHubFunc
 	Keys    org.KeyClientAsFunc
@@ -87,6 +91,7 @@ func (c *Clients) ready() error {
 	}{
 		{"Cloud Build client", c.Builds == nil},
 		{"Cloud Storage client", c.Store == nil},
+		{"Cloud Storage client as an identity", c.StoreAs == nil},
 		{"Secret Manager client", c.Secrets == nil},
 		{"GitHub client", c.GitHub == nil},
 		{"API Keys client", c.Keys == nil},
