@@ -170,6 +170,7 @@ func (d deps) teardownOrgLayers(cmd *cobra.Command, dir string, p *org.Placement
 		if ap == nil {
 			return errors.Newf("%s has no %s: the application's stack under %s was not rendered by bedrock", app, placementFile, layerDir)
 		}
+		defer leaveLockFile(layerDir)()
 		req := &deploy.TeardownRequest{Dir: layerDir, DataDir: dataDir, Placement: ap, App: app, By: d.takenDownBy(cmd.Context()), Now: time.Now}
 		a, err := deploy.PrepareApplication(ctx, d.deploy, req, out)
 		if err != nil {

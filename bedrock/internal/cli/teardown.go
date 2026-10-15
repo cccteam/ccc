@@ -204,6 +204,7 @@ func (d deps) takeDown(cmd *cobra.Command, args []string, f *teardownFlags, dest
 		return errors.Wrap(err, "os.MkdirTemp()")
 	}
 	defer os.RemoveAll(dataDir)
+	defer leaveLockFile(stackDir)()
 	request := func(env string) *deploy.TeardownRequest {
 		return &deploy.TeardownRequest{Dir: stackDir, DataDir: dataDir, Placement: p, App: app, Env: env, Destroy: destroy, By: d.takenDownBy(cmd.Context()), Now: time.Now}
 	}
@@ -277,6 +278,22 @@ func teardownWarning(destroy bool, app string, envs []string, a *deploy.Applicat
 	b.WriteString("\nNothing here is undone by bedrock.\n\n")
 
 	return b.String()
+}
+
+// lockFileName is tofu's provider lock file, which an init writes into the stack
+// directory whatever the data directory is.
+const lockFileName = ".terraform.lock.hcl"
+
+// leaveLockFile answers a function that leaves the stack directory's lock file as the run
+// found it: one that was there stays, one the run's init made goes. The repository tracks
+// none (a release's build initializes afresh), so a person's teardown should leave none.
+func leaveLockFile(dir string) func() {
+	path := filepath.Join(dir, lockFileName)
+	if _, err := os.Stat(path); err == nil {
+		return func() {}
+	}
+
+	return func() { _ = os.Remove(path) }
 }
 
 // takenDownBy names who runs the command for the record: the account the credentials sign
