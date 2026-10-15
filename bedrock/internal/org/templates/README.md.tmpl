@@ -85,7 +85,10 @@ trigger plans every layer a pull request changes as that layer's plan
 identity and posts the plan on the pull request, one comment per layer, kept
 current across pushes; the apply trigger, on the merge, applies every layer
 changed since its last successful apply as its apply identity, in layer order
-({{.LayerOrderProse}}), one at a time, stopping at the first failure.
+({{.LayerOrderProse}}), one at a time, every one of them initialized before the
+first applies (a layer that has never applied gets its empty state written by
+its own init, which a later layer may then read), stopping at the first
+failure.
 
 A pull request may add an output to one layer and read it in a later one, as
 a bedrock upgrade does when `2-env` starts reading a new output of `1-org`.
