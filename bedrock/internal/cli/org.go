@@ -47,7 +47,7 @@ root, the way an application's stack is rendered from its code; the two commands
 triggers run (plan, apply); and the check, before the seed, that the bootstrap administrator
 holds the roles the seed and the first applies need (preflight).`,
 	}
-	cmd.AddCommand(newOrgNew(d), newOrgPreflight(d), newOrgRender(d), newOrgCheck(d), newOrgRegister(d), newOrgPlan(d), newOrgApply(d), newOrgDestroy(d))
+	cmd.AddCommand(newOrgNew(d), newOrgPreflight(d), newOrgRender(d), newOrgCheck(d), newOrgRegister(d), newOrgPlan(d), newOrgApply(d), newOrgDestroy(d), newOrgTeardown(d))
 
 	return cmd
 }
