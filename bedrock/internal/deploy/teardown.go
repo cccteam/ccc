@@ -113,9 +113,11 @@ var (
 
 // TeardownRequest is one environment's teardown, or its destroy with Destroy.
 type TeardownRequest struct {
-	// Dir is the stack directory of the checkout; DataDir the directory tofu keeps its
-	// providers and its backend cache in for the run (TF_DATA_DIR), one for every stack
-	// of the run.
+	// Dir is the stack directory of the checkout; DataDir the run's directory for what
+	// tofu keeps between its commands (TF_DATA_DIR): each environment's stack gets a
+	// directory of its own under it, named after the environment, and the pull-request
+	// stacks share one, since a backend's prefix is recorded at init and a run prepares
+	// every environment before any runs.
 	Dir     string
 	DataDir string
 	// Placement is the application's placement beside the stack; App the application
@@ -203,7 +205,7 @@ func PrepareTeardown(ctx context.Context, clients *Clients, req *TeardownRequest
 	if err := t.readRecords(ctx, store); err != nil {
 		return nil, err
 	}
-	t.s = handStack(clients, req.Dir, req.DataDir, out)
+	t.s = handStack(clients, req.Dir, req.dataDir(), out)
 	fmt.Fprintf(out, "=== %s: %s of %s's stack at %s ===\n", env, req.command(), app, statePrefix(app, env))
 	if err := t.s.initAt(ctx, statePrefix(app, env)); err != nil {
 		return nil, err
@@ -338,7 +340,10 @@ func (t *EnvironmentTeardown) Run(ctx context.Context, out io.Writer) error {
 			return err
 		}
 	}
-	plan := filepath.Join(t.req.DataDir, teardownPlanFile)
+	if err := os.MkdirAll(t.req.dataDir(), 0o750); err != nil {
+		return errors.Wrap(err, "os.MkdirAll()")
+	}
+	plan := filepath.Join(t.req.dataDir(), teardownPlanFile)
 	args := append([]string{planCommand, destroyFlag, noInputFlag, noColorFlag, "-out=" + plan}, t.vars()...)
 	for _, address := range t.kept {
 		args = append(args, excludeFlag+address)
@@ -503,7 +508,7 @@ func TeardownPullRequests(ctx context.Context, clients *Clients, req *TeardownRe
 		return errors.Newf("placement.json records no project for %s (projects.%s): the jobs of a pull request's builds are deleted in it before its stack", integration, integration)
 	}
 	subs := map[string]string{appSub: req.App, envSub: integration, projectSub: project.ID}
-	s := handStack(clients, req.Dir, req.DataDir, out)
+	s := handStack(clients, req.Dir, filepath.Join(req.DataDir, pullRequestsDataDir), out)
 	for _, number := range numbers {
 		prefix := pullRequestPrefix(subs, number)
 		fmt.Fprintf(out, "=== Pull request %s: stack at %s ===\n", number, prefix)
@@ -518,8 +523,17 @@ func TeardownPullRequests(ctx context.Context, clients *Clients, req *TeardownRe
 	return nil
 }
 
+// pullRequestsDataDir is the pull-request stacks' directory under the run's data
+// directory; an environment's is named after it.
+const pullRequestsDataDir = "pull-requests"
+
+// dataDir is the environment's stack's directory under the run's data directory.
+func (r *TeardownRequest) dataDir() string {
+	return filepath.Join(r.DataDir, r.Env)
+}
+
 // handStack is a stack driven by hand: as the person, no identity impersonated, in the
-// run's data directory.
+// stack's data directory.
 func handStack(clients *Clients, dir, dataDir string, out io.Writer) *stack {
 	return &stack{run: clients.Exec, dir: dir, dataDir: dataDir, out: out, clients: clients}
 }
