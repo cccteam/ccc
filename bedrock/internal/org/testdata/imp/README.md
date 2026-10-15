@@ -96,7 +96,10 @@ them have finished: a plan that fails only because it reads outputs the plan
 of an earlier layer in the same pull request creates passes, and its comment
 on the pull request says it is "planned after" that layer applies. The merge
 applies the earlier layer first, so the later one reads the new output when
-its turn comes. Any other failure fails the pull request.
+its turn comes. A layer that has never applied (no state object under its
+prefix yet, as on a new organization's first pull request) is not planned at
+all and passes the same way, planned after its first apply, which the merge
+makes. Any other failure fails the pull request.
 
 The steps a run takes are the trigger's own and never this repository's: a
 pull request changes what the steps read, never what they do. A run fetches

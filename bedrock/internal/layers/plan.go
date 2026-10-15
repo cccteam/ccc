@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -165,10 +166,25 @@ func (r *run) planAll(ctx context.Context, runs []org.LayerRun, githubToken stri
 }
 
 // planOne plans one run as its plan identity, without the state lock, and reads its
-// errors or its output changes.
+// errors or its output changes. A run with no state yet is not planned: it has never
+// applied, and its plan identity could not even initialize (tofu writes an empty state
+// and its lock for a workspace that has none, and the identity writes nothing).
 func (r *run) planOne(ctx context.Context, lr org.LayerRun, githubToken string) *planResult {
 	var log bytes.Buffer
 	res := &planResult{run: lr}
+	defer func() { res.log = log.String() }()
+	absent, err := r.stateAbsent(ctx, lr)
+	if err != nil {
+		res.err = err
+
+		return res
+	}
+	if absent {
+		res.unapplied = true
+		fmt.Fprintf(&log, "No state at gs://%s/%s/%s: %s has never applied, so there is nothing to plan against; the merge applies it.\n", r.p.StateBucket, lr.StatePrefix, stateObject, lr.Name)
+
+		return res
+	}
 	t, err := newTofu(r.clients.Exec, r.req.Dir, lr, lr.Plan, githubToken, &log)
 	if err != nil {
 		res.err = err
@@ -176,7 +192,6 @@ func (r *run) planOne(ctx context.Context, lr org.LayerRun, githubToken string) 
 		return res
 	}
 	defer t.close()
-	defer func() { res.log = log.String() }()
 	if err := t.init(ctx); err != nil {
 		fmt.Fprintf(&log, "%v\n", err)
 
@@ -192,6 +207,29 @@ func (r *run) planOne(ctx context.Context, lr org.LayerRun, githubToken string) 
 	res.diagnostics, res.err = t.errorDiagnostics()
 
 	return res
+}
+
+// stateAbsent reports whether the run's state object is not in the bucket: the run has
+// never applied. The read is the plan identity's own, which holds read on its prefix;
+// nothing is checked while the placement records no bucket.
+func (r *run) stateAbsent(ctx context.Context, lr org.LayerRun) (bool, error) {
+	if r.p.StateBucket == "" {
+		return false, nil
+	}
+	store, err := r.clients.StoreAs(ctx, lr.Plan)
+	if err != nil {
+		return false, errors.Wrapf(err, "opening the state bucket as %s", lr.Plan)
+	}
+	defer store.Close()
+	_, err = store.Read(ctx, r.p.StateBucket, lr.StatePrefix+"/"+stateObject)
+	if errors.Is(err, os.ErrNotExist) {
+		return true, nil
+	}
+	if err != nil {
+		return false, errors.Wrapf(err, "reading %s's state as %s", lr.Name, lr.Plan)
+	}
+
+	return false, nil
 }
 
 // comment posts each plan on the pull request as the deployer app: one comment per
@@ -267,7 +305,10 @@ func findComment(comments []github.Comment, marker string) (int64, bool) {
 // is (an identity it could not become, a backend it could not read).
 func commentBody(res *planResult, summary, commit string) string {
 	text := res.text
-	if !res.ran {
+	switch {
+	case res.unapplied:
+		text = lastLines(res.log, initTail)
+	case !res.ran:
 		text = "tofu init failed, so nothing was planned; the last of what it printed:\n\n" + lastLines(res.log, initTail)
 	}
 	switch {

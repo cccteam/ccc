@@ -123,14 +123,48 @@ func (b *fakeBuilds) ReadToken(_ context.Context, repository string) (string, er
 
 // fakeStore is the state bucket's objects.
 type fakeStore struct {
-	mu      sync.Mutex
-	objects map[string]string
-	written []string
-	listed  []string // the prefixes listed: a listing is the bucket's own permission, which the applier lacks
+	mu         sync.Mutex
+	objects    map[string]string
+	written    []string
+	listed     []string // the prefixes listed: a listing is the bucket's own permission, which the applier lacks
+	identities []string // the identities the store was opened as: the plan identities' state reads
 }
 
 func (s *fakeStore) open(context.Context) (deploy.Store, error) {
 	return s, nil
+}
+
+// openAs records the identity the store was opened as and answers the same store.
+func (s *fakeStore) openAs(_ context.Context, identity string) (deploy.Store, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.identities = append(s.identities, identity)
+
+	return s, nil
+}
+
+// withoutState forgets the run's state object: the run has never applied.
+func (s *fakeStore) withoutState(prefix string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.objects, prefix+"/"+stateObject)
+}
+
+// states are the state objects of every run, as an applied organization has them.
+func states() map[string]string {
+	objects := map[string]string{}
+	for _, layer := range org.Layers {
+		if layer == "2-env" {
+			for _, env := range org.Environments {
+				objects[layer+"/"+env+"/"+stateObject] = "{}"
+			}
+
+			continue
+		}
+		objects[layer+"/"+stateObject] = "{}"
+	}
+
+	return objects
 }
 
 func (s *fakeStore) Write(_ context.Context, bucket, object string, data []byte) error {
@@ -390,7 +424,7 @@ func newFlow(t *testing.T, subs map[string]string, appID string, runs map[string
 
 	return &flow{
 		builds:  &fakeBuilds{build: buildJSON(subs)},
-		store:   &fakeStore{objects: map[string]string{}},
+		store:   &fakeStore{objects: states()},
 		secrets: &fakeSecrets{payloads: map[string]string{deployerVersion: pemKey, infraVersion: pemKey}},
 		keys:    &fakeKeys{keys: map[string][]org.APIKey{"imp-tst-gbl-core-1a2b": {{Name: "projects/100000000002/locations/global/keys/0f1e", DisplayName: org.FirebaseBrowserKey}}}},
 		runner:  &fakeRunner{runs: runs},
@@ -401,7 +435,7 @@ func newFlow(t *testing.T, subs map[string]string, appID string, runs map[string
 
 func (f *flow) clients() *Clients {
 	return &Clients{
-		Builds: f.builds.open, Store: f.store.open, Secrets: f.secrets.open, Keys: f.keys.openAs, Exec: f.runner,
+		Builds: f.builds.open, Store: f.store.open, StoreAs: f.store.openAs, Secrets: f.secrets.open, Keys: f.keys.openAs, Exec: f.runner,
 		GitHub: func(token string) *github.Client {
 			return github.New(f.srv.URL, token)
 		},
