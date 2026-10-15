@@ -34,7 +34,7 @@ func (f *teardownTofu) Run(_ context.Context, c deploy.Command, _ io.Writer) err
 	if len(c.Args) > 0 && c.Args[0] == "init" && c.Dir != "" {
 		// An init writes the provider lock file into the working directory, as tofu does.
 		if err := os.WriteFile(filepath.Join(c.Dir, lockFileName), []byte("# lock\n"), 0o600); err != nil {
-			return err
+			return errors.Wrap(err, "os.WriteFile()")
 		}
 	}
 
