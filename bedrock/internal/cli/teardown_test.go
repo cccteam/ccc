@@ -22,6 +22,7 @@ type teardownTofu struct {
 const (
 	teardownStateList = "google_cloud_run_v2_service.app[\"uc1\"]\ngoogle_cloudbuild_trigger.version[0]\ngoogle_spanner_database.quill[0]\n"
 	teardownPlan      = `{"resource_changes": [{"address": "google_cloud_run_v2_service.app[\"uc1\"]", "mode": "managed", "change": {"actions": ["delete"]}}, {"address": "google_cloudbuild_trigger.version[0]", "mode": "managed", "change": {"actions": ["delete"]}}]}`
+	teardownState     = `{"values": {"root_module": {"resources": [{"address": "google_cloud_run_v2_service.app[\"uc1\"]", "mode": "managed"}, {"address": "google_cloudbuild_trigger.version[0]", "mode": "managed", "depends_on": ["google_cloud_run_v2_service.app"]}, {"address": "google_spanner_database.quill[0]", "mode": "managed"}]}}}`
 	destroyPlan       = `{"resource_changes": [{"address": "google_cloud_run_v2_service.app[\"uc1\"]", "mode": "managed", "change": {"actions": ["delete"]}}, {"address": "google_cloudbuild_trigger.version[0]", "mode": "managed", "change": {"actions": ["delete"]}}, {"address": "google_spanner_database.quill[0]", "mode": "managed", "change": {"actions": ["delete"]}}]}`
 )
 
@@ -36,6 +37,8 @@ func (f *teardownTofu) Output(_ context.Context, c deploy.Command, _ io.Writer) 
 	switch {
 	case strings.HasPrefix(c.String(), "tofu state list"):
 		return []byte(teardownStateList), nil
+	case c.String() == "tofu show -json":
+		return []byte(teardownState), nil
 	case strings.HasPrefix(c.String(), "tofu output"):
 		return []byte(`{"_SERVICES": "uc1=quill-pr4"}`), nil
 	case strings.Contains(strings.Join(f.ran, "\n"), "-var destroy=true"):
@@ -124,7 +127,7 @@ func TestTeardownAndDestroy(t *testing.T) {
 			interactive: never,
 			wantErr:     "bedrock teardown asks for tst typed back at the terminal, and this run has none: --yes stands in for it",
 			wantOut:     []string{"bedrock teardown takes quill's stack in tst down to what it keeps", "tst: 2 resource(s) destroyed, 1 kept.", "goes: 1 google_cloud_run_v2_service, 1 google_cloudbuild_trigger", "stays: 1 google_spanner_database", "Nothing here is undone by bedrock."},
-			wantRan:     []string{"tofu init -input=false -no-color -reconfigure -backend-config=prefix=3-app/quill/tst", "tofu state list"},
+			wantRan:     []string{"tofu init -input=false -no-color -reconfigure -backend-config=prefix=3-app/quill/tst", "tofu state list", "tofu show -json"},
 		},
 		{
 			name:        "stops when something else than the environment is typed",
@@ -141,7 +144,7 @@ func TestTeardownAndDestroy(t *testing.T) {
 			in:          "tst\n",
 			wantOut:     []string{"Type tst to go on; anything else stops:", "The plan destroys the 2 resource(s) the teardown names and keeps 1, as meant; applying it.", "Tore quill's stack in tst down: 2 resource(s) destroyed, 1 kept"},
 			wantRan: []string{
-				"tofu init -input=false -no-color -reconfigure -backend-config=prefix=3-app/quill/tst", "tofu state list",
+				"tofu init -input=false -no-color -reconfigure -backend-config=prefix=3-app/quill/tst", "tofu state list", "tofu show -json",
 				"tofu plan -destroy -input=false -no-color -out=DATA/tst/teardown.tfplan -var environment=tst -var database_generation=1 -var teardown=true -exclude=google_spanner_database.quill[0]",
 				"tofu show -json DATA/tst/teardown.tfplan", "tofu apply -input=false -no-color DATA/tst/teardown.tfplan",
 			},

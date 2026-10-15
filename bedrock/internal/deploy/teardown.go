@@ -150,10 +150,13 @@ type EnvironmentTeardown struct {
 	clients *Clients
 	s       *stack
 	// destroyed and kept are the stack's managed resources sorted; protected are the
-	// ones whose protection the apply before the destroy lifts.
-	destroyed []string
-	kept      []string
-	protected []string
+	// ones whose protection the apply before the destroy lifts; dependents are the
+	// resources of a kept type that go with what they depend on, each with what it
+	// depends on.
+	destroyed  []string
+	kept       []string
+	protected  []string
+	dependents []string
 	// generation and pins are the plan's variables, as the pipeline's last plan had
 	// them; live is the environment's live release, or nil; id the stack's id, or "".
 	generation int
@@ -215,8 +218,98 @@ func PrepareTeardown(ctx context.Context, clients *Clients, req *TeardownRequest
 		return nil, err
 	}
 	t.sortResources(managedAddresses(string(listed)))
+	if !req.Destroy && len(t.destroyed) > 0 {
+		shown, err := t.s.tofuOutput(ctx, "show", "-json")
+		if err != nil {
+			return nil, err
+		}
+		dependencies, err := stateDependencies(shown)
+		if err != nil {
+			return nil, err
+		}
+		t.sweepDependents(dependencies)
+	}
 
 	return t, nil
+}
+
+// stateDependencies reads, off tofu show -json of the state, what each managed resource
+// depends on: resource addresses without their instance keys, as the state records
+// them.
+func stateDependencies(shown []byte) (map[string][]string, error) {
+	var state struct {
+		Values map[string]json.RawMessage `json:"values"`
+	}
+	if err := json.Unmarshal(shown, &state); err != nil {
+		return nil, errors.Wrap(err, "json.Unmarshal(): tofu show -json of the state")
+	}
+	var module struct {
+		Resources []map[string]json.RawMessage `json:"resources"`
+	}
+	if raw, ok := state.Values["root_module"]; ok {
+		if err := json.Unmarshal(raw, &module); err != nil {
+			return nil, errors.Wrap(err, "json.Unmarshal(): tofu show -json of the state, root_module")
+		}
+	}
+	dependencies := map[string][]string{}
+	for _, r := range module.Resources {
+		var address, mode string
+		var dependsOn []string
+		if err := errors.Join(unmarshalField(r, "address", &address), unmarshalField(r, "mode", &mode), unmarshalField(r, "depends_on", &dependsOn)); err != nil {
+			return nil, errors.Wrap(err, "json.Unmarshal(): tofu show -json of the state, resources")
+		}
+		if mode == managedMode {
+			dependencies[address] = dependsOn
+		}
+	}
+
+	return dependencies, nil
+}
+
+// unmarshalField reads one field of a JSON object into v; an absent field leaves v as is.
+func unmarshalField(object map[string]json.RawMessage, name string, v any) error {
+	raw, ok := object[name]
+	if !ok {
+		return nil
+	}
+	if err := json.Unmarshal(raw, v); err != nil {
+		return errors.Wrap(err, name)
+	}
+
+	return nil
+}
+
+// sweepDependents moves a kept resource that depends on a destroyed one over to the
+// destroyed, to the closure: OpenTofu keeps an excluded resource's dependencies with it,
+// so a kept resource holding on to a destroyed one would hold the teardown short (the
+// migrate-log sink names the version trigger in its filter, and the trigger names the
+// services). What goes this way is of a kept type and made again by the next apply.
+func (t *EnvironmentTeardown) sweepDependents(dependencies map[string][]string) {
+	for swept := true; swept; {
+		swept = false
+		destroyed := map[string]bool{}
+		for _, address := range t.destroyed {
+			destroyed[resourceName(address)] = true
+		}
+		var kept []string
+		for _, address := range t.kept {
+			var on []string
+			for _, dependency := range dependencies[address] {
+				if destroyed[dependency] {
+					on = append(on, dependency)
+				}
+			}
+			if len(on) == 0 {
+				kept = append(kept, address)
+
+				continue
+			}
+			t.destroyed = append(t.destroyed, address)
+			t.dependents = append(t.dependents, address+" ("+strings.Join(on, ", ")+")")
+			swept = true
+		}
+		t.kept = kept
+	}
 }
 
 // refuseRouted refuses the run while 2-net routes a host to one of the environment's
@@ -313,6 +406,9 @@ func (t *EnvironmentTeardown) Summary() string {
 	if len(t.protected) > 0 {
 		fmt.Fprintf(&b, "  protection lifted first: %s\n", strings.Join(t.protected, ", "))
 	}
+	if len(t.dependents) > 0 {
+		fmt.Fprintf(&b, "  goes with what it depends on, made again by the next apply: %s\n", strings.Join(t.dependents, "; "))
+	}
 	if t.live != nil {
 		fmt.Fprintf(&b, "  live release: %s (its records stay under %s/%s/%s/)\n", t.live.Version, t.req.App, t.req.Env, t.id)
 	}
@@ -397,7 +493,7 @@ func (t *EnvironmentTeardown) checkPlanned(planned []string) error {
 		reasons = append(reasons, "it destroys what the "+t.req.command()+" keeps: "+strings.Join(beyond, ", "))
 	}
 	if len(left) > 0 {
-		reasons = append(reasons, "it leaves out what the "+t.req.command()+" destroys (a kept resource depends on it, or the state changed under the run): "+strings.Join(left, ", "))
+		reasons = append(reasons, "it leaves out what the "+t.req.command()+" destroys (the state changed under the run): "+strings.Join(left, ", "))
 	}
 
 	return errors.Newf("the destroy plan of %s's stack is not the %s's; %s. Nothing was applied", t.req.Env, t.req.command(), strings.Join(reasons, "; "))

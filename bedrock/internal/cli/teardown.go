@@ -50,22 +50,25 @@ with their invoker grants, the endpoint groups and backend services, the Cloud B
 the sweep's schedule, the scheduled routes' jobs and identity, the Cloud Armor policy and the
 request-log exclusion. It keeps the Spanner database and every generation of it, the file stores
 with their policies, the secret containers with their accessors, the identities with their grants,
-the Firestore database with its indexes, fields and rules, the Firebase key, the migrate log bucket
-and sink, the Cloud Tasks queue with its grants, and the stack's id, so the environment's records
-and names stay its own. It runs by a person at their own computer with their own sign-in (gcloud
-auth application-default login), driving tofu in the stack directory against the environment's
-state prefix the way the first apply by hand does: in production, an apply with teardown=true
-first, recording in the state that the services' deletion protection is lifted; then a destroy
-plan with every kept resource excluded, read back and held against what the teardown names
-(anything beyond or short of it stops the run with nothing applied), and its apply; then a record
-of what went, by whom and when, beside the stack's id in the records bucket
-(<app>/stacks/<env>/teardown.json). It refuses while 2-net routes a host to the environment's
-backend service (Google refuses the backend's deletion while the load balancer uses it): take the
-hosts out of 2-net first, with bedrock org teardown or the application's removal from
-placement.json through an organization pull request. It asks for the environment typed back
-before anything runs (--yes stands in for it where there is no terminal). With --all it takes
-every environment down in promotion order, then destroys every pull-request stack under the
-integration environment's prefix whole, the way the sweep destroys a closed pull request's.
+the Firestore database with its indexes, fields and rules, the Firebase key, the migrate log bucket,
+the Cloud Tasks queue with its grants, and the stack's id, so the environment's records and names
+stay its own. A kept resource that depends on a destroyed one goes with it (the migrate-log sink
+names the version trigger and the services in its filter), since tofu keeps an excluded resource's
+dependencies; the next apply makes it again. It runs by a person at their own computer with their
+own sign-in (gcloud auth application-default login), driving tofu in the stack directory against
+the environment's state prefix the way the first apply by hand does: in production, an apply with
+teardown=true first, recording in the state that the services' deletion protection is lifted;
+then a destroy plan with every kept resource excluded, read back and held against what the
+teardown names (anything beyond or short of it stops the run with nothing applied), and its
+apply; then a record of what went, by whom and when, beside the stack's id in the records
+bucket (<app>/stacks/<env>/teardown.json). It refuses while 2-net routes a host to the
+environment's backend service (Google refuses the backend's deletion while the load balancer
+uses it): take the hosts out of 2-net first, with bedrock org teardown or the application's
+removal from placement.json through an organization pull request. It asks for the environment
+typed back before anything runs (--yes stands in for it where there is no terminal). With --all
+it takes every environment down in promotion order, then destroys every pull-request stack
+under the integration environment's prefix whole, the way the sweep destroys a closed pull
+request's.
 Bringing an environment back is the stack's apply by hand from the checkout of the release it
 ran (the README's "Applying"), which makes the services and the triggers again, then bedrock rerun
 <env> <release> through them.`,
