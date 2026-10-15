@@ -437,3 +437,20 @@ resource "google_organization_iam_custom_role" "bucket_policy_reader" {
     "storage.buckets.getIamPolicy",
   ]
 }
+
+# Firebase added to a project, which initializing Identity Platform does first
+# (FirebaseProjectService.AddFirebase, checked for firebase.projects.update on
+# the project): one permission the predefined roles bundle with hundreds of
+# others (roles/firebase.admin, roles/firebase.editor). The environment layer
+# identity holds it beside roles/identityplatform.admin, for 2-env's
+# google_identity_platform_config alone.
+resource "google_organization_iam_custom_role" "identity_platform_initializer" {
+  org_id      = local.org_id
+  role_id     = "identityPlatformInitializer_${local.boot.organization_suffix}"
+  title       = "Identity Platform Initializer"
+  description = "Adds Firebase to a project, which initializing Identity Platform does first; nothing else of Firebase."
+  permissions = [
+    "firebase.projects.get",
+    "firebase.projects.update",
+  ]
+}

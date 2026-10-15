@@ -1981,7 +1981,8 @@ failed.
 per layer in the state bucket (`applied/<layer>`, `applied/2-env/<env>`) holds the commit
 of that apply, the files changed between it and the push are read through the connection,
 and a layer with no marker is applied. The layers apply in layer order (0-bootstrap, 1-org,
-2-shr, 2-spn and 2-net, then 2-env for tst, stg and prd), one at a time, each as its apply
+2-shr and 2-spn, then 2-env for tst, stg and prd, then 2-net: 2-net's URL map names tst's
+pull-request backend, which 2-env tst makes), one at a time, each as its apply
 identity (`tofu init` at the layer's state prefix, a plan, the apply of that plan, then the
 marker), stopping at the first failure. After each apply of 2-env it restricts Firebase's
 browser key ("Browser key (auto created by Firebase)") in the environment project to the

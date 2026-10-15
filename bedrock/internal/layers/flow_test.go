@@ -564,7 +564,7 @@ func TestPlanRefusals(t *testing.T) {
 		{
 			name:    "a layer that is not one",
 			subs:    func(subs map[string]string) { subs[layerSub] = "3-app" },
-			wantErr: `_LAYER is 3-app and _ENVIRONMENT is "": no such run; the layers are 0-bootstrap, 1-org, 2-shr, 2-spn, 2-net, 2-env, and _ENVIRONMENT names one of tst, stg, prd for 2-env`,
+			wantErr: `_LAYER is 3-app and _ENVIRONMENT is "": no such run; the layers are 0-bootstrap, 1-org, 2-shr, 2-spn, 2-env, 2-net, and _ENVIRONMENT names one of tst, stg, prd for 2-env`,
 		},
 		{
 			name:    "a layer named: planned alone, whatever the pull request changes",
@@ -716,10 +716,12 @@ func TestApply(t *testing.T) {
 			t.Errorf("output lacks %q:\n%s", want, out.String())
 		}
 	}
-	if strings.Contains(out.String(), "apply of 2-env prd") {
-		t.Errorf("the run went on past the failure:\n%s", out.String())
+	for _, later := range []string{"apply of 2-env prd", "apply of 2-net"} {
+		if strings.Contains(out.String(), later) {
+			t.Errorf("the run went on past the failure (%s):\n%s", later, out.String())
+		}
 	}
-	wantWritten := []string{bucket + "/applied/2-shr=head2", bucket + "/applied/2-net=head2", bucket + "/applied/2-env/tst=head2"}
+	wantWritten := []string{bucket + "/applied/2-shr=head2", bucket + "/applied/2-env/tst=head2"}
 	if !slices.Equal(f.store.written, wantWritten) {
 		t.Errorf("markers written = %v, want %v", f.store.written, wantWritten)
 	}
@@ -732,7 +734,6 @@ func TestApply(t *testing.T) {
 	lines := f.runner.lines()
 	wantLines := []string{
 		"2-shr: tofu init -input=false -no-color -backend-config=prefix=2-shr -backend-config=impersonate_service_account=imp-shr-gbl-tofu@imp-shr-gbl-core-7a8b.iam.gserviceaccount.com",
-		"2-net: tofu plan -input=false -no-color -out=",
 		"2-env tst: tofu apply -input=false -no-color ",
 		"2-env stg: tofu apply -input=false -no-color ",
 	}
@@ -755,8 +756,8 @@ func TestApply(t *testing.T) {
 			order = append(order, f.runner.key(c))
 		}
 	}
-	if want := []string{"2-shr", "2-net", "2-env tst", "2-env stg"}; !slices.Equal(order, want) {
-		t.Errorf("applied in the order %v, want %v", order, want)
+	if want := []string{"2-shr", "2-env tst", "2-env stg"}; !slices.Equal(order, want) {
+		t.Errorf("applied in the order %v, want %v (2-net, after 2-env in layer order, never had its turn)", order, want)
 	}
 }
 

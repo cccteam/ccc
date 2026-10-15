@@ -61,6 +61,7 @@ locals {
   # carry the ID and service-accounts.tf resolves it through this map.
   custom_roles = {
     secretContainerAdmin       = google_organization_iam_custom_role.secret_container_admin.id
+    identityPlatformInitializer = google_organization_iam_custom_role.identity_platform_initializer.id
     secretOperator             = google_organization_iam_custom_role.secret_operator.id
     storageBucketCreator       = google_organization_iam_custom_role.storage_bucket_creator.id
     runJobPolicyAdmin          = google_organization_iam_custom_role.run_job_policy_admin.id
