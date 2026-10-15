@@ -636,8 +636,12 @@ organization's scripts.
 
 Then it destroys `1-org` and `0-bootstrap`, in that order, each in two steps.
 An apply with `destroy=true`, the variable both layers declare for this command
-alone, records the projects' deletion policy as DELETE and lifts the folders'
-deletion protection, which the provider reads from the state and not from the
+alone, records the projects' deletion policy as DELETE, records that no API is
+disabled on the destroy (the project module disables each API it enabled before
+deleting the project, and an API a resource outside the layer's state still uses,
+Compute Engine's for `2-env`'s pull-request backend, refuses; the project's
+deletion takes everything regardless), and lifts the folders' deletion
+protection, all three read by the provider from the state and not from the
 configuration. Then the destroy, tried again after a pause while it fails: a
 folder refuses for a while after its last project's deletion, and a tag value
 while a binding in a project being deleted still holds it, and the next attempt

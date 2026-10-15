@@ -100,8 +100,14 @@ module "boot_project" {
   create_project_sa          = false
   default_service_account    = "delete"
   disable_dependent_services = true
-  deletion_policy            = var.destroy ? "DELETE" : "PREVENT"
-  labels                     = local.labels
+  # bedrock org destroy deletes the project, which takes everything in it (the
+  # state bucket included); an API disabled first refuses while a resource
+  # outside this layer's state still uses it, so a destroy run disables none.
+  # The provider reads both settings from the state, which the command records
+  # before its destroy (var.destroy).
+  disable_services_on_destroy = !var.destroy
+  deletion_policy             = var.destroy ? "DELETE" : "PREVENT"
+  labels                      = local.labels
 
   activate_apis = [
     "cloudbilling.googleapis.com",            # link the billing account to projects created by 1-org
