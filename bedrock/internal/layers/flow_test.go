@@ -805,10 +805,12 @@ func TestApply(t *testing.T) {
 	if want := []string{"2-shr", "2-env tst", "2-env stg"}; !slices.Equal(order, want) {
 		t.Errorf("applied in the order %v, want %v (2-net, after 2-env in layer order, never had its turn)", order, want)
 	}
-	// Every run is initialized before any is planned: a layer that reads one that has
-	// never applied finds the empty state the other's init wrote.
-	if want := []string{"2-shr", "2-net", "2-env tst", "2-env stg", "2-env prd"}; !slices.Equal(inits, want) {
-		t.Errorf("initialized in the order %v, want %v", inits, want)
+	// Every run is initialized, the ones never reached included, before any is planned:
+	// a layer that reads one that has never applied finds the empty state the other's
+	// init wrote.
+	slices.Sort(inits)
+	if want := []string{"2-env prd", "2-env stg", "2-env tst", "2-net", "2-shr"}; !slices.Equal(inits, want) {
+		t.Errorf("initialized %v, want %v", inits, want)
 	}
 	if lastInit > firstPlan {
 		t.Errorf("a run was initialized after the first plan (init at %d, plan at %d):\n%s", lastInit, firstPlan, strings.Join(lines, "\n"))
