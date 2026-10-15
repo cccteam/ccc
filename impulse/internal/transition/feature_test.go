@@ -194,7 +194,7 @@ func TestRemoveFeatureApply(t *testing.T) {
 		name      string
 		extra     map[string]string
 		wantDid   []string
-		wantUses  []string
+		wantLeft  []string
 		wantGone  []string
 		wantFiles map[string]string
 	}{
@@ -207,7 +207,7 @@ func TestRemoveFeatureApply(t *testing.T) {
 				`schema/devseed/000002_dev_feature_flags.up.sql and .down.sql: removed the "debriefs" row; the table's row goes at the next deploy, when MigrateFeatures deletes what the release no longer declares, and its FeatureFlagChanges rows stay as the audit`,
 				`ran go generate ./..., which dropped "debriefs" from Features() and from the browser's Feature union`,
 			},
-			wantUses: []string{
+			wantLeft: []string{
 				"app/debriefs.go:5: resources.Debriefs",
 				"web/console/src/app/nav.ts:1: Feature.Debriefs",
 			},
@@ -245,11 +245,11 @@ func TestRemoveFeatureApply(t *testing.T) {
 			if diff := cmp.Diff(tt.wantDid, change.Did); diff != "" {
 				t.Errorf("Did mismatch (-want +got):\n%s", diff)
 			}
-			if diff := cmp.Diff(tt.wantUses, change.Uses, cmpopts.EquateEmpty()); diff != "" {
-				t.Errorf("Uses mismatch (-want +got):\n%s", diff)
+			if diff := cmp.Diff(tt.wantLeft, change.Left, cmpopts.EquateEmpty()); diff != "" {
+				t.Errorf("Left mismatch (-want +got):\n%s", diff)
 			}
-			if change.UsesNote != usesNote {
-				t.Errorf("UsesNote = %q", change.UsesNote)
+			if change.LeftNote != usesNote {
+				t.Errorf("LeftNote = %q", change.LeftNote)
 			}
 			for _, rel := range tt.wantGone {
 				if _, err := os.Stat(a.Abs(rel)); !os.IsNotExist(err) {
@@ -271,7 +271,7 @@ func TestRemoveFeatureApply(t *testing.T) {
 func TestFeatureChangeText(t *testing.T) {
 	t.Parallel()
 
-	change := Change{Command: "impulse remove feature debriefs", Did: []string{"a"}, Uses: []string{"app/x.go:3: resources.Debriefs"}, UsesNote: "Note."}
+	change := Change{Command: "impulse remove feature debriefs", Did: []string{"a"}, Left: []string{"app/x.go:3: resources.Debriefs"}, LeftNote: "Note."}
 	want := "`impulse remove feature debriefs` made these changes and staged them:\n\n- a\n\nNote.\n\n- app/x.go:3: resources.Debriefs\n"
 	if diff := cmp.Diff(want, change.Text()); diff != "" {
 		t.Errorf("Text() mismatch (-want +got):\n%s", diff)

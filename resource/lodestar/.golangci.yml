@@ -71,6 +71,7 @@ linters:
             - github.com/shopspring/decimal
             - google.golang.org/api/iterator
             - google.golang.org/grpc/codes
+            - github.com/spf13/cobra
     exhaustive:
       default-signifies-exhaustive: true
     funlen:

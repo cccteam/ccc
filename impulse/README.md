@@ -185,7 +185,8 @@ application builds against local checkouts.
 The tree is committed as the application's first commit (`--skip-git` leaves it
 uncommitted), so `impulse add` can start from a clean tree; with `--dev-root` the `go.work`
 it writes is ignored by git. Options come afterwards, one reviewable change each:
-`impulse add tenancy`, `impulse add outlet`, `impulse add auth`, `impulse add files`.
+`impulse add tenancy`, `impulse add outlet`, `impulse add auth`, `impulse add files`,
+`impulse add job`.
 
 Options can be composed into the creation: `--tenancy` (with `--tenant-table`, default
 `Tenants`), `--outlet <name>=<prefix>` (repeatable; `--api-outlet` for a machine surface),
@@ -866,14 +867,17 @@ and bootstrap commands run without one), hands the driver the store's options
 `Close`. `.envrc.template` sets
 `APP_FILE_STORE=file://uploads` in the data block and `.gitignore` ignores `uploads/`;
 `cmd/bootstrap` gains `emptyFileStore`, called before the development seed, which empties
-a `file://` store since no row holds a file then. `pkg/jobs` declares the cleanup
-(`CleanupCommand`, `cleanup-files`, and `CleanupFiles`, `filestore.Cleanup` over the
-default store through the generated `FileHolders()`), and `cmd/jobs` is the job process
-running it with `-window` and `-dry-run`. The rpc package gains `CleanUpFiles`, a method
-marked `@rpc` and `@schedule("0 9 * * *")` whose `Execute` starts the job process on the
-cleanup command through the client's `Jobs()`; an application without an rpc package gains
-`pkg/rpc` with a `Client` carrying the starter, and `WithRPC("pkg/rpc")` in the generator
-program. The site level builds the scheduler guard (`scheduled.FromEnvironment`, from
+a `file://` store since no row holds a file then. The cleanup is a job of the job
+process's scaffold (section add job): `pkg/jobs/cleanup.go` declares the command
+(`CleanupCommand`, `cleanup-files`) and the work (`CleanupFiles`, `filestore.Cleanup`
+over the default store through the generated `FileHolders()`),
+`cmd/jobs/cleanupfiles` is the cobra command running it with `--window` and `--dry-run`,
+and `cmd/jobs/main.go`, the root that opens the data level once and registers every
+command, is written when the application has none and extended when it has one. The rpc
+package gains `CleanUpFiles`, a method marked `@rpc` and `@schedule("0 9 * * *")` whose
+`Execute` starts the job process on the cleanup command through the client's `Jobs()`;
+an application without an rpc package gains `pkg/rpc` with a `Client` carrying the
+starter, and `WithRPC("pkg/rpc")` in the generator program. The site level builds the scheduler guard (`scheduled.FromEnvironment`, from
 `APP_SCHEDULER_INVOKER`) and opens the job driver (`cloudrun.Open`, over the
 `cloudrun.Settings` its environment struct embeds, which declare `APP_JOBS_TEMPLATE`, and
 the version the image bakes in), exposes them as `Scheduler()` and `Jobs()`, and closes
@@ -891,9 +895,10 @@ requirement.
 
 An application already holding an rpc package keeps its `Client`: the method is written
 into the package, and giving the client a `Jobs()` accessor fed from the configuration is
-the agent's, as is the cleanup command where `cmd/jobs` exists, and the image: a Dockerfile
-builds `/jobs` beside the other binaries (`bedrock check` asks for it once the job process
-exists). Which resources record
+the agent's unless the client declares one already; a `cmd/jobs/main.go` without a
+`root.AddCommand` call in `run` leaves the cleanup's registration to the agent too. The
+image is bedrock's: the Dockerfile it seeds builds `/jobs` beside the other binaries
+once the job process exists. Which resources record
 files (`@file` on a `resource.Key` column, an `@upload` method) is the application's;
 until one does, the store is wired and idle. The `file-store` check watches the variable
 from then on, and the stack reads it to make the bucket (`gs://<bucket>` on Cloud Run),
@@ -902,6 +907,47 @@ deploy the job process beside the service and schedule the method.
 ```sh
 impulse add files
 impulse new ./harbor --module example.com/harbor --auth staff --files
+```
+
+### add job
+
+`add job <name>` scaffolds a command of the application's job process, the second binary
+(`cmd/jobs`) bedrock deploys as the Cloud Run job beside the service, so adding a job is
+the work alone. The job process is a cobra command tree: `cmd/jobs/main.go` is the root,
+which opens the data level once (`config.NewDataConfiguration`) and registers every
+command over it, written by the first job and extended by each one after (the
+`root.AddCommand` call in `run` gains a line); a command is a package under `cmd/jobs`
+named for the job (`prune-reports` becomes `cmd/jobs/prunereports`) whose `Command(data)`
+builds the cobra command and whose `Run` runs the job's work over the resource client;
+and the work is a function in `pkg/jobs` named for the job (`PruneReports`, in
+`prune_reports.go`), written empty, which refuses until it is written, beside the
+constant the job process runs it under (`PruneReportsCommand`, `"prune-reports"`). A
+name carrying a group (`reports/materialize`) puts the command under a group command of
+that word (`cmd/jobs/reports`, `jobs reports materialize`), written with the group's
+first job, with the group's name in `pkg/jobs` (`ReportsGroup`). The lint configuration's
+depguard list admits the command tree's library (`github.com/spf13/cobra`) and `go mod
+tidy` makes it a direct requirement.
+
+`--schedule "<cron>"` also writes the method marked `@rpc` and `@schedule` in the rpc
+package (`PruneReports`, answering `PruneReportsStarted`) whose `Execute` starts the job
+through the client's `Jobs()`, since a job is started by the running service and never
+by a schedule of its own; where the application lacks the starter's wiring the job
+brings it, exactly as `add files` wires it for the cleanup (the rpc package and its
+`Client`, the site level's scheduler guard and job driver, `SchedulerAuth` and
+`RPCClient` on the `App`, the test configurers' fakes, `WithRPC` in the generator program,
+`APP_JOBS_TEMPLATE` documented in the template), and what is wired already is found in
+place; then `go generate` emits the method's handler and its route under `/_scheduled`.
+The schedule is read in UTC; another zone is `zone:` on the annotation. Without a
+schedule nothing starts the job until a scheduled method or a caller does.
+
+The work, its suite (a test in `test/integration` driving the function over the test
+database, as the cleanup's does), and the schedule when none was given are handed to
+the agent; the brief lists them even when the check is clean, since no check sees an
+empty job.
+
+```sh
+impulse add job prune-reports --schedule "0 3 * * *" --agent
+impulse add job reports/materialize
 ```
 
 ### swap auth

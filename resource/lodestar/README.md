@@ -83,7 +83,10 @@ row that names a file), and `go run -tags skipAuth ./cmd/jobs
 cleanup-files` is the orphaned-file cleanup: the job process lists a store, reads every
 key the rows hold through the generated `resources.FileHolders()`, and deletes the
 UUID-named objects older than the window (two days by default, a day at least) that no
-row holds, refusing a store no row holds any key in; `-dry-run` lists what would go. On
+row holds, refusing a store no row holds any key in; `--dry-run` lists what would go. The
+job process is a cobra command tree (`cmd/jobs/main.go` opens the data level once and
+registers each command's package, `cmd/jobs/cleanupfiles` the cleanup's), the shape
+`impulse add job` scaffolds. On
 Cloud Run both variables are buckets (`gs://<bucket>`), which bedrock builds and names.
 To run the stores against a fake Cloud Storage in development instead, add to the
 Procfile `gcs: podman run --rm -p 127.0.0.1:4443:4443 docker.io/fsouza/fake-gcs-server:1.52.2
