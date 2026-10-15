@@ -263,11 +263,16 @@ func TestAuthFlavorApply(t *testing.T) {
 			},
 		},
 		{
-			name:   "a fresh staff auth from impulse new is born in the Google shape",
+			name:   "a fresh staff auth from impulse new is born in the Google shape, and the migrations after it move down to close the sequence",
 			flavor: AuthFlavor{Name: "staff", Flavor: FlavorOIDCGoogle, Authority: AuthorityDirectory, Fresh: true},
+			extra: map[string]string{
+				"schema/migrations/000005_FeatureFlags.up.sql":   "CREATE TABLE FeatureFlags (Name STRING(128) NOT NULL) PRIMARY KEY (Name);\n",
+				"schema/migrations/000005_FeatureFlags.down.sql": "DROP TABLE FeatureFlags;\n",
+				"README.md": "# beacon\n\nThe value lives in the `FeatureFlags` table (migration\n`000005_FeatureFlags`, the library's own statements).\n",
+			},
 			wantDid: []string{
 				"pkg/auth/staff/staff.go: rewritten as the staff auth in the oidc-google flavor (Google OpenID Connect) from the reference skeleton's members auth, role membership the directory's (session.GoogleRoleSync) (tables StaffSessions and StaffOIDCUsers, cookie staff, store prefix Staff); what the file carried beyond the base's shape is in git to re-apply",
-				"schema/migrations: 000003_StaffOIDCGoogle replaces 000003_StaffSessions, 000004_StaffSessionUsers; the staff auth is born in the oidc-google shape, StaffSessions and StaffOIDCUsers, and its role assignments stay as the base laid them",
+				"schema/migrations: 000003_StaffOIDCGoogle replaces 000003_StaffSessions, 000004_StaffSessionUsers; the staff auth is born in the oidc-google shape, StaffSessions and StaffOIDCUsers, and its role assignments stay as the base laid them; 000005_FeatureFlags to 000004_FeatureFlags, so the sequence runs on without a gap, and README.md names the moved migration by its new number",
 				"pkg/config/data.go: dataConfig reads the staff auth's directory registration from APP_STAFF_OIDC_CLIENT_ID, _CLIENT_SECRET, _REDIRECT_URL, _HOSTED_DOMAIN, _GROUP_PREFIX, and _GROUP_LOOKUP",
 				"pkg/config/data.go: the staff auth's construction now passes the login page and the directory registration",
 				"app/app.go, pkg/router/router.go: session.PasswordAuthHandlers and *session.PasswordAuth[session.NoCustomData, session.NoCustomData] swapped for session.OIDCGoogleHandlers and *session.OIDCGoogle[session.NoCustomData, session.NoCustomData]",
@@ -278,12 +283,21 @@ func TestAuthFlavorApply(t *testing.T) {
 			},
 			check: func(t *testing.T, a *app.App) {
 				t.Helper()
-				for _, gone := range []string{"000003_StaffSessions", "000004_StaffSessionUsers"} {
+				for _, gone := range []string{"000003_StaffSessions", "000004_StaffSessionUsers", "000005_FeatureFlags"} {
 					for _, suffix := range []string{".up.sql", ".down.sql"} {
 						if _, err := os.Stat(a.Abs("schema/migrations/" + gone + suffix)); !os.IsNotExist(err) {
-							t.Errorf("%s%s still exists (err = %v); a fresh auth's password migrations are replaced", gone, suffix, err)
+							t.Errorf("%s%s still exists (err = %v); a fresh auth's password migrations are replaced and what follows moves down", gone, suffix, err)
 						}
 					}
+				}
+				if got := read(t, a, "schema/migrations/000004_FeatureFlags.up.sql"); !strings.Contains(got, "CREATE TABLE FeatureFlags") {
+					t.Errorf("000004_FeatureFlags.up.sql is not the moved migration:\n%s", got)
+				}
+				if got := read(t, a, "schema/migrations/000004_FeatureFlags.down.sql"); !strings.Contains(got, "DROP TABLE FeatureFlags") {
+					t.Errorf("000004_FeatureFlags.down.sql is not the moved migration:\n%s", got)
+				}
+				if got := read(t, a, "README.md"); !strings.Contains(got, "`000004_FeatureFlags`") || strings.Contains(got, "000005") {
+					t.Errorf("README.md does not name the moved migration by its new number:\n%s", got)
 				}
 				up := read(t, a, "schema/migrations/000003_StaffOIDCGoogle.up.sql")
 				for _, want := range []string{"signs in through Google OpenID Connect from the start", "CREATE TABLE StaffSessions (", "CREATE TABLE StaffOIDCUsers (", "CREATE UNIQUE INDEX StaffOIDCUsersBySub ON StaffOIDCUsers (Sub);"} {

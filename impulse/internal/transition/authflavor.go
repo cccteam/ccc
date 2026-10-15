@@ -301,9 +301,96 @@ func (f AuthFlavor) replaceMigrations(a *app.App, dir string, old []migration, c
 	if err := writeNew(a, path.Join(dir, base+".down.sql"), strings.TrimRight(drop, "\n")+"\n"); err != nil {
 		return err
 	}
-	ch.didf("%s: %s replaces %s; the %s auth is born in the %s shape, %sSessions and %sOIDCUsers, and its role assignments stay as the base laid them", dir, base, strings.Join(names, ", "), f.Name, au.Flavor, au.Pascal(), au.Pascal())
+	moves, err := closeSequence(a, dir, old)
+	if err != nil {
+		return err
+	}
+	followed := ""
+	if len(moves) > 0 {
+		followed = fmt.Sprintf("; %s, so the sequence runs on without a gap, and README.md names the moved migration by its new number", strings.Join(moves, ", "))
+	}
+	ch.didf("%s: %s replaces %s; the %s auth is born in the %s shape, %sSessions and %sOIDCUsers, and its role assignments stay as the base laid them%s", dir, base, strings.Join(names, ", "), f.Name, au.Flavor, au.Pascal(), au.Pascal(), followed)
 
 	return nil
+}
+
+// The two halves of a migration pair.
+const (
+	upSuffix   = ".up.sql"
+	downSuffix = ".down.sql"
+)
+
+// closeSequence moves the migrations after the replaced ones down by the number the
+// replacement took out, so the sequence a fresh application is born with runs
+// contiguously: the base's two session migrations became one, and 000005_FeatureFlags
+// becomes 000004_FeatureFlags. Nothing has run against a fresh application, so its files
+// may move; once committed, a hole stays (bedrock check refuses it, and a committed
+// migration is never renamed). The README's mention of a moved migration follows. It
+// answers each move as "<old> to <new>".
+func closeSequence(a *app.App, dir string, old []migration) ([]string, error) {
+	shift := len(old) - 1
+	if shift <= 0 {
+		return nil, nil
+	}
+	last, err := migrationNumber(old[len(old)-1].base)
+	if err != nil {
+		return nil, err
+	}
+	entries, err := os.ReadDir(a.Abs(dir))
+	if err != nil {
+		return nil, errors.Wrap(err, "os.ReadDir()")
+	}
+	var moves []string
+	renamed := map[string]string{}
+	// ReadDir lists by name, so the lower numbers move first into the slots freed above them.
+	for _, e := range entries {
+		name := e.Name()
+		suffix := ""
+		for _, s := range []string{upSuffix, downSuffix} {
+			if strings.HasSuffix(name, s) {
+				suffix = s
+			}
+		}
+		if suffix == "" {
+			continue
+		}
+		oldBase := strings.TrimSuffix(name, suffix)
+		num, stem, ok := strings.Cut(oldBase, "_")
+		n, convErr := strconv.Atoi(num)
+		if !ok || convErr != nil || n <= last {
+			continue
+		}
+		newBase := fmt.Sprintf("%06d_%s", n-shift, stem)
+		if err := os.Rename(a.Abs(path.Join(dir, name)), a.Abs(path.Join(dir, newBase+suffix))); err != nil {
+			return nil, errors.Wrapf(err, "os.Rename(): %s", name)
+		}
+		if _, seen := renamed[oldBase]; !seen {
+			renamed[oldBase] = newBase
+			moves = append(moves, oldBase+" to "+newBase)
+		}
+	}
+	if len(renamed) == 0 {
+		return nil, nil
+	}
+	readme, mode, err := readFile(a, readmeFile)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return moves, nil
+		}
+
+		return nil, err
+	}
+	edited := string(readme)
+	for oldBase, newBase := range renamed {
+		edited = strings.ReplaceAll(edited, oldBase, newBase)
+	}
+	if edited != string(readme) {
+		if err := os.WriteFile(a.Abs(readmeFile), []byte(edited), mode); err != nil {
+			return nil, errors.Wrap(err, "os.WriteFile(): README.md")
+		}
+	}
+
+	return moves, nil
 }
 
 // migrationNumber reads a migration's number prefix.
