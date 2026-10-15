@@ -88,7 +88,7 @@ func TestRunRelease(t *testing.T) {
 			containsAll(t, out.String(), tt.wantOut...)
 			// The fake runner echoes each command line; the step's own lines carry no token.
 			for _, line := range strings.Split(out.String(), "\n") {
-				if !strings.HasPrefix(line, "npx ") && strings.Contains(line, "test-token") {
+				if !strings.HasPrefix(line, "ran ") && strings.Contains(line, "test-token") {
 					t.Errorf("output carries the token:\n%s", out.String())
 				}
 			}
