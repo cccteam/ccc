@@ -5,8 +5,10 @@
 // Manager and runs release-please twice for the pushed branch: github-release, which
 // makes the tag and the GitHub Release of a release pull request the push merged, then
 // release-pr, which opens or updates the release pull request from the commits since the
-// last release. The token lives in the two processes' environment and nowhere else; the
-// tag then fires the version trigger in every environment, as a tag always has.
+// last release. The token goes to the two processes as their --token argument, which is
+// the one place release-please reads it (its environment is not), and the step prints
+// its own line per command, never the argument list; the tag then fires the version
+// trigger in every environment, as a tag always has.
 
 package deploy
 
@@ -75,8 +77,7 @@ func RunRelease(ctx context.Context, clients *Clients, req *ReleaseRequest, out 
 	for _, command := range releasePleaseCommands {
 		c := Command{
 			Name: releasePleaseBin,
-			Args: []string{"--yes", "release-please@" + release.PleaseVersion, command, "--repo-url=" + req.RepoFullName, "--target-branch=" + req.Branch, "--config-file=" + release.PleaseConfig, "--manifest-file=" + release.PleaseManifest},
-			Env:  []string{githubTokenFact + "=" + token},
+			Args: []string{"--yes", "release-please@" + release.PleaseVersion, command, "--repo-url=" + req.RepoFullName, "--target-branch=" + req.Branch, "--config-file=" + release.PleaseConfig, "--manifest-file=" + release.PleaseManifest, "--token=" + token},
 		}
 		fmt.Fprintf(out, "=== release-please %s on %s (%s) ===\n", command, req.RepoFullName, req.Branch)
 		if err := clients.Exec.Run(ctx, c, out); err != nil {
