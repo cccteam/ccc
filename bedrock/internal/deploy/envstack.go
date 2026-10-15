@@ -744,9 +744,9 @@ func planEnvironment(ctx context.Context, clients *Clients, w Workspace, build *
 		return "", err
 	}
 	if !applied {
-		fmt.Fprintf(out, "%s: no stack yet: its first apply is by hand (the stack README, Applying; the registration sequence's step 4), and the plan waits for it.\n", e)
+		fmt.Fprintf(out, "%s: no stack yet: its first apply is the operations workflow's apply action (the stack README, Applying; the registration sequence's step 4), and the plan waits for it.\n", e)
 
-		return "**" + e + "**: no stack yet: its first apply is by hand, and the plan waits for it", nil
+		return "**" + e + "**: no stack yet: its first apply is the operations workflow's apply action, and the plan waits for it", nil
 	}
 	s := newEnvironmentStack(clients, w, identity, out)
 	if err := s.initEnvironment(ctx, subs[appSub], e, identity); err != nil {
@@ -880,7 +880,8 @@ func statePrefix(app, env string) string {
 // object exists under its prefix, read as the environment's plan identity, which reads
 // the prefix. A plan of a stack that has no state yet would create the state, a write
 // the plan identity, a reader, is refused (the lock is written first); the first apply is
-// a person's, so a pull-request build says so and plans the environment once it has.
+// the stack trigger's (FirstApply), so a pull-request build says so and plans the
+// environment once it has.
 func stackApplied(ctx context.Context, clients *Clients, identity, bucket, app, env string) (bool, error) {
 	if bucket == "" {
 		return false, errors.Newf("the checkout's placement names no state bucket (stateBucket): the stack's state lives in it")

@@ -736,7 +736,8 @@ func (d deps) registerNext(ctx context.Context, out io.Writer, p *org.Placement,
 The pull request now carries 1-org/public-invokers.auto.tfvars, 2-shr/applications.auto.tfvars
 and 2-spn/applications.auto.tfvars: the public-invoker tag, the registry grants and the
 database admins, on identities that exist now. After its merge and apply: %s's own stack,
-its first apply by hand in each environment (its infrastructure/README.md, Applying), then
+applied for the first time in each environment through its operations workflow (Actions,
+operations, apply; its infrastructure/README.md, Applying), then
 bedrock org register %s --next.
 `, app, app)
 
@@ -951,9 +952,10 @@ every rendered file:
      tag (1-org), the registry grants (2-shr) and the database admins (2-spn), on
      identities that exist now.
   4. %s's own stack, rendered in its repository (bedrock render) from its first
-     placement.json (below): its first apply in each environment is by hand, as the
-     stack's README says under Applying (the triggers are part of the stack, so no
-     build runs before it); every later apply is its pipeline's, with each release.
+     placement.json (below), applied for the first time in each environment through its
+     operations workflow (Actions, operations, apply, with the environment: the stack
+     trigger 2-env made there applies it as the apply identity); every later apply is
+     its pipeline's, with each release.
   5. bedrock org register %s --next once more, then the pull request it renders: the
      hostnames (2-net), onto the backends the stack created.
   6. After 2-net's apply: bedrock domain check, which passes when the apps domain resolves to its zone.

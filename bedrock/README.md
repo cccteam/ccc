@@ -769,10 +769,10 @@ thing one step hands the next. In order:
   release's own plan refuses it there (`deploy stack plan`, below), so the pin lands
   before the release reaches the environment. An environment whose stack has never been applied (no state object
   under its prefix, which the plan identity reads) is skipped with the line "no stack
-  yet: its first apply is by hand", in the log and in the comment, and the build goes
-  on: a plan of a missing state would create it, a write a reader is refused, and the
-  first apply is a person's step on purpose. It says when the build's steps are an older
-  bedrock's than itself.
+  yet: its first apply is the operations workflow's apply action", in the log and in the
+  comment, and the build goes on: a plan of a missing state would create it, a write a
+  reader is refused, and the first apply is the stack trigger's (`deploy stack first`,
+  below). It says when the build's steps are an older bedrock's than itself.
 - `deploy pr-stack`: the pull request's stack job, the stack's pr-stack trigger's step on
   the `/gcbrun` comment, beside the preview build, as the apply identity. It reads its
   build the same way, mints the repository's token from the Cloud Build connection, reads
@@ -871,8 +871,8 @@ thing one step hands the next. In order:
   The plan is the build's own: a saved plan is bound to the state it was made from, and a
   release bundles several pull requests. An infrastructure change must be safe on the
   running service (add first, remove later); one that is not is declared breaking in
-  release-please's way and becomes a window release. The first apply of an environment
-  stays by hand, before any release exists there. In a restore run (`_RESTORE=empty`) the
+  release-please's way and becomes a window release. The first apply of an environment,
+  before any release exists there, is `first`'s (below). In a restore run (`_RESTORE=empty`) the
   plan replaces the Spanner database and, in the first environment, the file stores'
   buckets (every one the stack's `_FILE_STORES` names), each when the stack has it, so
   the migrations apply afresh, and the seed where the placement's seed list names the
@@ -901,6 +901,18 @@ thing one step hands the next. In order:
   declares `APP_MAINTENANCE` with `var.maintenance`, empty by default, and an entry of the
   service's env set cannot be ignored on its own, so declared and live agree and the apply
   leaves the service alone while the database is replaced.
+- `deploy stack first`: the stack trigger's step, the environment's stack applied for the
+  first time, before any release exists there. `2-env` renders one such trigger per
+  application and environment, run as the deploy identity, and the application's
+  operations workflow starts it with its `apply` action, so no person holds a cloud role
+  for an application's first apply. It reads its build (the trigger carries the
+  application, the environment, the apply identity and the records bucket), refuses a
+  stack a release has run on (its deployment records say so: a release's build applies an
+  applied stack, with the generated secrets' pins this apply does not carry, and the
+  workflow's `run` action runs the live release again), runs `tofu init` on the
+  environment's state prefix as the apply identity, plans with the environment alone (no
+  generated-secret pin: the secret containers come with this apply, and the first release
+  derives the pins), prints the plan's summary and applies it.
 - `deploy migrate`: runs the release's migrate command, which `deploy build-image` took
   out of the image (`/builder/home/migrate`), on the build worker as the deploy identity,
   once to completion, from the checkout's root (where the command finds the schema
