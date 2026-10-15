@@ -79,11 +79,26 @@ describe('LoginComponent', () => {
     expect(element.querySelectorAll('button.redirect')).toHaveLength(1);
   });
 
-  it('posts the credentials to the path the server named for the password method', () => {
+  it('ends the attempt when the refreshed list no longer offers a password sign-in', () => {
     answerMethods();
     const component = fixture.componentInstance;
     component.fillPersona('overseer');
     component.login();
+    answerMethods({ methods: [GOOGLE_METHOD] });
+    http.expectNone('/console/api/user/password/login');
+    expect(component.busy()).toBe(false);
+    expect(fixture.nativeElement.querySelector('form')).toBeNull();
+  });
+
+  it('refreshes the XSRF token with a request, then posts the credentials to the path the server named for the password method', () => {
+    answerMethods();
+    const component = fixture.componentInstance;
+    component.fillPersona('overseer');
+    component.login();
+    // The sign-in's POST must echo the auth's XSRF cookie, which a page left open may have
+    // outlived: the page reads the list again first, and the answer refreshes the cookie.
+    http.expectNone('/console/api/user/password/login');
+    answerMethods();
     const request = http.expectOne('/console/api/user/password/login');
     expect(request.request.method).toBe('POST');
     expect(request.request.body).toEqual({ username: 'overseer', password: DEMO_PASSWORD });

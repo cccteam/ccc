@@ -14,7 +14,7 @@ import { AuthService } from '@cccteam/resource-angular/auth-service';
 import { API_URL } from '@cccteam/resource-angular/types';
 import { UiCoreService } from '@cccteam/resource-angular/ui-core-service';
 import { IdleService } from '@cccteam/resource-angular/ui-idle-service';
-import { map } from 'rxjs';
+import { map, Observable, switchMap, tap } from 'rxjs';
 
 /** One card on the crew manifest: the login is the job word, the name alliterates. */
 interface Persona {
@@ -153,18 +153,41 @@ export class LoginComponent {
   constructor() {
     this.auth.logout().subscribe();
     this.idle.stop();
-    this.http.get<LoginMethods>(`${this.apiUrl}/user/methods`).subscribe((list) => this.methods.set(list.methods));
+    this.readMethods().subscribe();
   }
 
-  /** Posts the form to the password method's path and, signed in, moves to the page the guard turned away from. */
+  /**
+   * Asks the outlet what it offers and keeps the answer. The request also refreshes the
+   * auth's XSRF cookie, which every sign-in POST must echo: the page reads the list on
+   * arrival and again right before it posts, so a page left open past the cookie's life
+   * signs in on the first click instead of being refused for a stale token.
+   */
+  private readMethods(): Observable<LoginMethods> {
+    return this.http.get<LoginMethods>(`${this.apiUrl}/user/methods`).pipe(tap((list) => this.methods.set(list.methods)));
+  }
+
+  /**
+   * Refreshes the XSRF token, then posts the form to the password method's path and,
+   * signed in, moves to the page the guard turned away from. A list that no longer
+   * offers a password method ends the attempt, and the page re-renders from it.
+   */
   login(): void {
-    const method = this.passwordMethod();
-    if (this.busy() || !method) {
+    if (this.busy() || !this.passwordMethod()) {
       return;
     }
     this.busy.set(true);
 
-    this.http.post(method.path, { username: this.username, password: this.password }).subscribe({
+    this.readMethods()
+      .pipe(
+        switchMap(() => {
+          const method = this.passwordMethod();
+          if (!method) {
+            throw new Error('the outlet no longer offers a password sign-in');
+          }
+          return this.http.post(method.path, { username: this.username, password: this.password });
+        }),
+      )
+      .subscribe({
       next: () => {
         this.auth.checkUserSession().subscribe({
           next: () => {
