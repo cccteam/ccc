@@ -136,8 +136,9 @@ resource "google_cloudbuild_trigger" "stack" {
   location = local.region
   name     = "${local.name}-${local.region_code}-${each.key}-stack"
 
-  service_account    = google_service_account.deploy[each.key].id
-  include_build_logs = "INCLUDE_BUILD_LOGS_WITH_STATUS"
+  # No build logs on a status: a trigger run from a repository link (source_to_build)
+  # reports to no pull request, and Cloud Build refuses the setting on one.
+  service_account = google_service_account.deploy[each.key].id
   substitutions = {
     _APP            = each.key
     _ENV            = var.environment
