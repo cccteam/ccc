@@ -5,6 +5,7 @@ package cli
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -579,6 +580,7 @@ func newOrgRegister(d deps) *cobra.Command {
 	var (
 		dir       string
 		placement string
+		next      bool
 	)
 
 	cmd := &cobra.Command{
@@ -586,17 +588,23 @@ func newOrgRegister(d deps) *cobra.Command {
 		Short: "Register an application in the foundation and write its first placement",
 		Long: `register adds an application to the organization: its code goes into placement.json's
 applications, the layers' values are rendered from it (1-org's repositories and its
-public-invoker grants, 2-env's list, 2-shr's pushers and pullers, 2-spn's database admins,
-2-net's hostnames), and the pull requests the registration takes through the Cloud Build
-triggers are printed, since one pass in layer order does not follow the order the grants
-need: first 1-org and 2-env (the repository, then the identities under it), then 2-env again
-by starting the apply trigger by hand (each environment grants the next environment's deploy
-identity read on its records bucket, from state the first pass did not have), then 1-org's public-invoker grants
-with 2-shr and 2-spn (the grants, on identities that exist now), then the application's own
-stack per environment, then 2-net (the hostnames, onto backends that exist now). The files a
-later pull request carries stay in the working tree until then. An application code is 1 to 6
-lowercase alphanumeric characters starting with a letter, registered once. Run from the
-repository root, or name it with --dir.
+public-invoker grants, 2-env's list, 2-shr's repository and its pushers and pullers, 2-spn's
+database admins, 2-net's hostnames), and the pull requests the registration takes through
+the Cloud Build triggers are printed, since one pass in layer order does not follow the
+order the grants need: first 1-org and 2-env (the repository, then the identities under it),
+then 2-env again by starting the apply trigger by hand (each environment grants the next
+environment's deploy identity read on its records bucket, from state the first pass did not
+have), then 1-org's public-invoker grants with 2-shr and 2-spn (the grants, on identities
+that exist now), then the application's own stack per environment, then 2-net (the
+hostnames, onto backends that exist now). placement.json records how far the registration
+has gone (registration: identities, then grants, then nothing once complete), the layers
+render what that step may apply, and register <app> --next moves to the next step: to
+grants once 2-env's state in every environment holds the application's identities, to
+complete once its stack has a state in every environment, each read from the state bucket,
+and refused before. So every pull request of the sequence carries every rendered file, and
+bedrock org check passes on each. An application code is 1 to 6 lowercase alphanumeric
+characters starting with a letter, registered once. Run from the repository root, or name
+it with --dir.
 
 It also makes the application's first placement.json, the file bedrock render reads in the
 application's repository (infrastructure/placement.json), from this placement and nothing
@@ -632,45 +640,206 @@ before them. A refusal changes nothing.`,
 			if err := d.orgPinned(p, placement); err != nil {
 				return err
 			}
-			if err := p.Register(app); err != nil {
-				return err
-			}
-			if unset := p.ConnectionUnset(); len(unset) > 0 {
-				return errors.Newf("placement.json leaves %s unset: the Cloud Build GitHub App's browser authorization in the boot project comes before the first application (0-bootstrap/README.md, \"The Cloud Build GitHub authorization\"); record both and register again", strings.Join(unset, " and "))
-			}
-			first, err := d.firstPlacement(cmd.Context(), p, app)
-			if err != nil {
-				return err
-			}
-			target := ""
-			if len(args) == 2 {
-				if target, err = firstPlacementFile(args[1]); err != nil {
-					return err
+			if next {
+				if len(args) == 2 {
+					return errors.New("--next moves a registration on and writes no first placement: leave the checkout out")
 				}
-			}
-			if err := p.Write(placement); err != nil {
-				return err
-			}
-			files, err := org.Render(p)
-			if err != nil {
-				return err
-			}
-			written, err := org.Write(files, dir)
-			if err != nil {
-				return err
-			}
-			out := cmd.OutOrStdout()
-			fmt.Fprintf(out, "Registered %s in %s; rendered %d owned file(s), the five applications.auto.tfvars and 1-org/public-invokers.auto.tfvars among them.\n", app, placement, written.Owned)
-			fmt.Fprint(out, triggerNotice(p))
-			fmt.Fprint(out, applySequence(p, app))
 
-			return writeFirstPlacement(out, first, app, target)
+				return d.registerNext(cmd.Context(), cmd.OutOrStdout(), p, placement, dir, app)
+			}
+
+			return d.registerFirst(cmd.Context(), cmd.OutOrStdout(), p, placement, dir, args)
 		},
 	}
 	cmd.Flags().StringVar(&dir, "dir", ".", "the repository root")
 	cmd.Flags().StringVar(&placement, "placement", "", "placement file (default: placement.json in the repository root)")
+	cmd.Flags().BoolVar(&next, "next", false, "move the application's registration to its next step: grants, then complete")
 
 	return cmd
+}
+
+// registerFirst registers the application at its identities: the placement written and
+// rendered, the sequence printed, and the application's first placement written into
+// the checkout named second or printed.
+func (d deps) registerFirst(ctx context.Context, out io.Writer, p *org.Placement, placement, dir string, args []string) error {
+	app := args[0]
+	if err := p.Register(app); err != nil {
+		return err
+	}
+	if unset := p.ConnectionUnset(); len(unset) > 0 {
+		return errors.Newf("placement.json leaves %s unset: the Cloud Build GitHub App's browser authorization in the boot project comes before the first application (0-bootstrap/README.md, \"The Cloud Build GitHub authorization\"); record both and register again", strings.Join(unset, " and "))
+	}
+	first, err := d.firstPlacement(ctx, p, app)
+	if err != nil {
+		return err
+	}
+	target := ""
+	if len(args) == 2 {
+		if target, err = firstPlacementFile(args[1]); err != nil {
+			return err
+		}
+	}
+	if err := p.Write(placement); err != nil {
+		return err
+	}
+	files, err := org.Render(p)
+	if err != nil {
+		return err
+	}
+	written, err := org.Write(files, dir)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(out, "Registered %s in %s at its identities; rendered %d owned file(s), the five applications.auto.tfvars and 1-org/public-invokers.auto.tfvars among them.\n", app, placement, written.Owned)
+	fmt.Fprint(out, triggerNotice(p))
+	fmt.Fprint(out, applySequence(p, app))
+
+	return writeFirstPlacement(out, first, app, target)
+}
+
+// The state objects register --next reads from the state bucket before it moves a
+// registration on: a layer's or a stack's state at its prefix.
+const (
+	stateObject    = "default.tfstate"
+	envStatePrefix = "2-env/"
+	appStatePrefix = "3-app/"
+	// applicationsOutput is 2-env's output of the applications' identities, keyed by
+	// application.
+	applicationsOutput = "applications"
+)
+
+// registerNext moves the application's registration to its next step, once the state the
+// step needs is there, writes the placement, renders, and prints what the pull request
+// carries and what follows its apply.
+func (d deps) registerNext(ctx context.Context, out io.Writer, p *org.Placement, placement, dir, app string) error {
+	if err := d.registrationReady(ctx, p, app); err != nil {
+		return err
+	}
+	step, err := p.Advance(app)
+	if err != nil {
+		return err
+	}
+	if err := p.Write(placement); err != nil {
+		return err
+	}
+	files, err := org.Render(p)
+	if err != nil {
+		return err
+	}
+	written, err := org.Write(files, dir)
+	if err != nil {
+		return err
+	}
+	if step == org.RegistrationGrants {
+		fmt.Fprintf(out, "Moved %s's registration to its grants in %s; rendered %d owned file(s).\n", app, placement, written.Owned)
+		fmt.Fprintf(out, `
+The pull request now carries 1-org/public-invokers.auto.tfvars, 2-shr/applications.auto.tfvars
+and 2-spn/applications.auto.tfvars: the public-invoker tag, the registry grants and the
+database admins, on identities that exist now. After its merge and apply: %s's own stack,
+its first apply by hand in each environment (its infrastructure/README.md, Applying), then
+bedrock org register %s --next.
+`, app, app)
+
+		return nil
+	}
+	fmt.Fprintf(out, "Completed %s's registration in %s; rendered %d owned file(s).\n", app, placement, written.Owned)
+	fmt.Fprint(out, `
+The pull request now carries 2-net/applications.auto.tfvars: the hostnames, onto the
+backends the stack created. After its merge and apply: bedrock domain check, which passes
+when the apps domain resolves to its zone.
+`)
+
+	return nil
+}
+
+// registrationReady refuses the registration's next step while the state it needs is not
+// there: the grants need the application's identities in 2-env's state in every
+// environment (the apply run after the first pull request), and the completion needs the
+// stack's state in every environment (its first applies by hand). An application the
+// placement does not list or has registered in full is refused by Advance.
+func (d deps) registrationReady(ctx context.Context, p *org.Placement, app string) error {
+	step := p.Step(app)
+	if step == "" || !slices.Contains(p.Applications, app) {
+		return nil
+	}
+	store, err := d.deploy.Storage(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = store.Close() }()
+	for _, env := range org.Environments {
+		switch step {
+		case org.RegistrationIdentities:
+			if err := identitiesInState(ctx, store, p.StateBucket, env, app); err != nil {
+				return err
+			}
+		case org.RegistrationGrants:
+			if err := stackInState(ctx, store, p.StateBucket, env, app); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+// tofuState is the part of a state file the registration reads: its outputs by name.
+type tofuState struct {
+	Outputs map[string]struct {
+		Value json.RawMessage `json:"value"`
+	} `json:"outputs"`
+}
+
+// readTofuState reads one state object; absent, it answers no outputs and no error.
+func readTofuState(ctx context.Context, store deploy.Store, bucket, object string) (*tofuState, error) {
+	data, err := store.Read(ctx, bucket, object)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return &tofuState{}, nil
+		}
+
+		return nil, errors.Wrapf(err, "reading gs://%s/%s", bucket, object)
+	}
+	var state tofuState
+	if err := json.Unmarshal(data, &state); err != nil {
+		return nil, errors.Wrapf(err, "json.Unmarshal(): gs://%s/%s", bucket, object)
+	}
+
+	return &state, nil
+}
+
+// identitiesInState refuses while 2-env's state in the environment lacks the
+// application's identities.
+func identitiesInState(ctx context.Context, store deploy.Store, bucket, env, app string) error {
+	state, err := readTofuState(ctx, store, bucket, envStatePrefix+env+"/"+stateObject)
+	if err != nil {
+		return err
+	}
+	var applications map[string]json.RawMessage
+	if raw, ok := state.Outputs[applicationsOutput]; ok {
+		if err := json.Unmarshal(raw.Value, &applications); err != nil {
+			return errors.Wrapf(err, "json.Unmarshal(): 2-env %s's %s output", env, applicationsOutput)
+		}
+	}
+	if _, ok := applications[app]; !ok {
+		return errors.Newf("%s's identities are not in 2-env %s's state yet: merge the registration's pull request and start the apply trigger with 2-env (the sequence's step 2) before moving on", app, env)
+	}
+
+	return nil
+}
+
+// stackInState refuses while the application's stack has no state with outputs in the
+// environment.
+func stackInState(ctx context.Context, store deploy.Store, bucket, env, app string) error {
+	state, err := readTofuState(ctx, store, bucket, appStatePrefix+app+"/"+env+"/"+stateObject)
+	if err != nil {
+		return err
+	}
+	if len(state.Outputs) == 0 {
+		return errors.Newf("%s's stack has no state in %s yet (%s%s/%s): its first apply there is by hand (the sequence's step 4) before moving on", app, env, appStatePrefix, app, env)
+	}
+
+	return nil
 }
 
 // firstPlacement is the application's first placement: every field from the
@@ -767,26 +936,28 @@ func applicationProjects(p *org.Placement, app string) string {
 func applySequence(p *org.Placement, app string) string {
 	return fmt.Sprintf(`
 Register through the Cloud Build triggers, as pull requests into %s (each merge applies the
-layers it touches, in layer order); a file a later pull request carries stays in the working
-tree until then:
-  1. placement.json, 1-org/applications.auto.tfvars and 2-env/applications.auto.tfvars:
-     %s's repository (private, squash the only merge, its rulesets and Environments; a
-     repository made before this is imported first, 1-org/README.md), then, in tst, stg
-     and prd, its identities, database, repository link and triggers.
+layers it touches, in layer order). placement.json records how far the registration has gone
+(registration), the layers render what that step may apply, and every pull request carries
+every rendered file:
+  1. This render, %s at its identities: its repository (private, squash the only merge,
+     its rulesets and Environments; a repository made before this is imported first,
+     1-org/README.md) and its registry repository, then, in tst, stg and prd, its
+     identities, database, repository link and triggers.
   2. The apply trigger by hand with 2-env, in a terminal:
      %s
      tst and stg grant the next environment's deploy identity read on their records
      bucket, from state the first pass did not have.
-  3. 1-org/public-invokers.auto.tfvars, 2-shr/applications.auto.tfvars and
-     2-spn/applications.auto.tfvars: the public-invoker tag, the registry grants and the
-     database admins, on identities that exist now.
+  3. bedrock org register %s --next, then the pull request it renders: the public-invoker
+     tag (1-org), the registry grants (2-shr) and the database admins (2-spn), on
+     identities that exist now.
   4. %s's own stack, rendered in its repository (bedrock render) from its first
      placement.json (below): its first apply in each environment is by hand, as the
      stack's README says under Applying (the triggers are part of the stack, so no
      build runs before it); every later apply is its pipeline's, with each release.
-  5. 2-net/applications.auto.tfvars: the hostnames, onto the backends the stack created.
+  5. bedrock org register %s --next once more, then the pull request it renders: the
+     hostnames (2-net), onto the backends the stack created.
   6. After 2-net's apply: bedrock domain check, which passes when the apps domain resolves to its zone.
-`, p.GithubDefaultBranch, app, triggerRun(p, ""), app)
+`, p.GithubDefaultBranch, app, triggerRun(p, ""), app, app, app)
 }
 
 // triggerUnrendered says, while the placement records no Cloud Build authorization, that

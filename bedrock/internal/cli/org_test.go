@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -659,8 +660,11 @@ func TestOrgCommands(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				if !strings.Contains(string(hosts), `"quill-tst.apps.imp.example"       = "projects/imp-tst-gbl-core-1a2b/global/backendServices/imp-tst-gbl-quill-backend"`) {
-					t.Errorf("2-net/applications.auto.tfvars lacks quill's host:\n%s", hosts)
+				if strings.Contains(string(hosts), "quill") {
+					t.Errorf("2-net/applications.auto.tfvars carries quill's hosts at its identities:\n%s", hosts)
+				}
+				if !strings.Contains(string(placement), "\"registration\": {\n    \"quill\": \"identities\"\n  }") {
+					t.Errorf("placement.json does not record quill at its identities:\n%s", placement)
 				}
 				if code, out := runOrg(t, "org", "check", "--dir", dir); code != 0 {
 					t.Errorf("org check after register: %d %s", code, out)
@@ -669,10 +673,11 @@ func TestOrgCommands(t *testing.T) {
 				return code, out
 			},
 			wantOut: []string{
-				"Registered quill in", "1-org/public-invokers.auto.tfvars among them", "Register through the Cloud Build triggers, as pull requests into master",
-				"1. placement.json, 1-org/applications.auto.tfvars and 2-env/applications.auto.tfvars",
+				"Registered quill in", "at its identities; rendered", "1-org/public-invokers.auto.tfvars among them", "Register through the Cloud Build triggers, as pull requests into master",
+				"1. This render, quill at its identities: its repository",
 				"2. The apply trigger by hand with 2-env, in a terminal:\n     gcloud builds triggers run imp-boot-uc1-layers-apply --region=us-central1 --project=imp-boot-gbl-core-a1b2 --branch=master --substitutions=_LAYER=2-env\n     tst and stg grant the next environment's deploy identity read on their records\n     bucket, from state the first pass did not have.",
-				"3. 1-org/public-invokers.auto.tfvars, 2-shr/applications.auto.tfvars and", "5. 2-net/applications.auto.tfvars: the hostnames",
+				"3. bedrock org register quill --next, then the pull request it renders: the public-invoker\n     tag (1-org), the registry grants (2-shr) and the database admins (2-spn)",
+				"5. bedrock org register quill --next once more, then the pull request it renders: the\n     hostnames (2-net)",
 				"\n  6. After 2-net's apply: bedrock domain check, which passes when the apps domain resolves to its zone.\n",
 			},
 		},
@@ -1263,6 +1268,167 @@ func TestOrgDestroy(t *testing.T) {
 			}
 			if tt.wantJournal != "" && !strings.HasSuffix(string(journal), tt.wantJournal) {
 				t.Errorf("the journal is:\n%s\nwant it to end with %q", journal, tt.wantJournal)
+			}
+		})
+	}
+}
+
+// TestOrgRegisterNext: register --next moves a registration on once the state the step
+// needs is in the bucket, renders what the step may apply, and refuses before: the grants
+// wait for 2-env's state to hold the identities in every environment, the completion for
+// the stack's state in every environment, and a registration in full has no step left.
+func TestOrgRegisterNext(t *testing.T) {
+	t.Parallel()
+
+	envState := func(apps ...string) string {
+		entries := make([]string, 0, len(apps))
+		for _, app := range apps {
+			entries = append(entries, fmt.Sprintf(`%q: {"apply_identity_email": "imp-tst-gbl-%s-tofu@imp-tst-gbl-core-1a2b.iam.gserviceaccount.com"}`, app, app))
+		}
+
+		return `{"outputs": {"applications": {"value": {` + strings.Join(entries, ", ") + `}}}}`
+	}
+	const (
+		stackState = `{"outputs": {"net_hosts": {"value": {"quill-tst.apps.imp.example": "projects/p/global/backendServices/b"}}}}`
+		bucket     = "imp-boot-gbl-state-a1b2"
+		host       = `"quill-tst.apps.imp.example"`
+		invoker    = `"serviceAccount:imp-tst-gbl-quill-tofu@imp-tst-gbl-core-1a2b.iam.gserviceaccount.com",`
+	)
+	type step struct {
+		// objects are added to the store before the run.
+		objects map[string]string
+		args    []string
+		// wantCode and wantOut are the run's; wantFiles and wantAbsent are lines the
+		// rendered files must and must not carry after it.
+		wantCode   int
+		wantOut    []string
+		wantFiles  map[string][]string
+		wantAbsent map[string][]string
+	}
+	tests := []struct {
+		name  string
+		steps []step
+	}{
+		{
+			name: "the grants wait for the identities, the completion for the stacks",
+			steps: []step{
+				{
+					args: []string{"org", "register", "quill", "--next"}, wantCode: 1,
+					wantOut: []string{"quill's identities are not in 2-env tst's state yet: merge the registration's pull request and start the apply trigger with 2-env (the sequence's step 2) before moving on"},
+				},
+				{
+					objects: map[string]string{"2-env/tst/default.tfstate": envState("harbor", "quill"), "2-env/stg/default.tfstate": envState("quill")},
+					args:    []string{"org", "register", "quill", "--next"}, wantCode: 1,
+					wantOut: []string{"quill's identities are not in 2-env prd's state yet"},
+				},
+				{
+					objects: map[string]string{"2-env/prd/default.tfstate": envState("quill")},
+					args:    []string{"org", "register", "quill", "--next"},
+					wantOut: []string{
+						"Moved quill's registration to its grants in", "The pull request now carries 1-org/public-invokers.auto.tfvars, 2-shr/applications.auto.tfvars\nand 2-spn/applications.auto.tfvars",
+						"then\nbedrock org register quill --next.\n",
+					},
+					wantFiles:  map[string][]string{"1-org/public-invokers.auto.tfvars": {invoker}, "placement.json": {"\"quill\": \"grants\""}},
+					wantAbsent: map[string][]string{"2-net/applications.auto.tfvars": {host}},
+				},
+				{
+					args: []string{"org", "register", "quill", "--next"}, wantCode: 1,
+					wantOut: []string{"quill's stack has no state in tst yet (3-app/quill/tst): its first apply there is by hand (the sequence's step 4) before moving on"},
+				},
+				{
+					objects: map[string]string{"3-app/quill/tst/default.tfstate": stackState, "3-app/quill/stg/default.tfstate": stackState, "3-app/quill/prd/default.tfstate": `{"outputs": {}}`},
+					args:    []string{"org", "register", "quill", "--next"}, wantCode: 1,
+					wantOut: []string{"quill's stack has no state in prd yet"},
+				},
+				{
+					objects:    map[string]string{"3-app/quill/prd/default.tfstate": stackState},
+					args:       []string{"org", "register", "quill", "--next"},
+					wantOut:    []string{"Completed quill's registration in", "The pull request now carries 2-net/applications.auto.tfvars: the hostnames"},
+					wantFiles:  map[string][]string{"2-net/applications.auto.tfvars": {host}, "1-org/public-invokers.auto.tfvars": {invoker}},
+					wantAbsent: map[string][]string{"placement.json": {"registration"}},
+				},
+				{
+					args: []string{"org", "register", "quill", "--next"}, wantCode: 1,
+					wantOut: []string{`application "quill" is registered in full: there is no step left`},
+				},
+			},
+		},
+		{
+			name: "a checkout with --next is refused",
+			steps: []step{{
+				args: []string{"org", "register", "quill", "../quill", "--next"}, wantCode: 1,
+				wantOut: []string{"--next moves a registration on and writes no first placement: leave the checkout out"},
+			}},
+		},
+		{
+			name: "an application not registered is refused",
+			steps: []step{{
+				args: []string{"org", "register", "nobody", "--next"}, wantCode: 1,
+				wantOut: []string{`application "nobody" is not registered (bedrock org register nobody)`},
+			}},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			dir := orgRepo(t)
+			if code, out := runOrg(t, "org", "new", dir); code != 0 {
+				t.Fatalf("org new: %d %s", code, out)
+			}
+			if code, out := runOrg(t, "org", "register", "quill", "--dir", dir); code != 0 {
+				t.Fatalf("org register: %d %s", code, out)
+			}
+			store := &memoryStore{objects: map[string]string{}}
+			d := orgDeps(dir)
+			d.deploy = &deploy.Clients{Storage: store.open}
+			for i, st := range tt.steps {
+				for object, data := range st.objects {
+					store.objects["gs://"+bucket+"/"+object] = data
+				}
+				args := append(append([]string{}, st.args...), "--dir", dir)
+				// A refusal is the command's error, which the root prints and exits 1 on.
+				out, err := execute(d, "", args...)
+				code := 0
+				if err != nil {
+					code = 1
+					out += err.Error()
+				}
+				if code != st.wantCode {
+					t.Fatalf("step %d: code = %d, want %d; output:\n%s", i, code, st.wantCode, out)
+				}
+				for _, want := range st.wantOut {
+					if !strings.Contains(out, want) {
+						t.Errorf("step %d: output lacks %q:\n%s", i, want, out)
+					}
+				}
+				for path, lines := range st.wantFiles {
+					data, err := os.ReadFile(filepath.Join(dir, filepath.FromSlash(path)))
+					if err != nil {
+						t.Fatal(err)
+					}
+					for _, line := range lines {
+						if !strings.Contains(string(data), line) {
+							t.Errorf("step %d: %s lacks %q:\n%s", i, path, line, data)
+						}
+					}
+				}
+				for path, lines := range st.wantAbsent {
+					data, err := os.ReadFile(filepath.Join(dir, filepath.FromSlash(path)))
+					if err != nil {
+						t.Fatal(err)
+					}
+					for _, line := range lines {
+						if strings.Contains(string(data), line) {
+							t.Errorf("step %d: %s carries %q", i, path, line)
+						}
+					}
+				}
+				if st.wantCode == 0 {
+					if code, out := runOrg(t, "org", "check", "--dir", dir); code != 0 {
+						t.Errorf("step %d: org check: %d %s", i, code, out)
+					}
+				}
 			}
 		})
 	}

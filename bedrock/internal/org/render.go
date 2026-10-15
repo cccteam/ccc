@@ -176,8 +176,9 @@ type HostRow struct {
 // row per application and environment in that order and the pull-request wildcard
 // last, the keys padded to the longest so the rendered map is tofu fmt clean.
 func (v *view) HostRows() []HostRow {
-	rows := make([]HostRow, 0, 2*len(v.Applications)*len(Environments)+1)
-	for _, app := range v.Applications {
+	served := v.Served()
+	rows := make([]HostRow, 0, 2*len(served)*len(Environments)+1)
+	for _, app := range served {
 		for _, env := range Environments {
 			rows = append(rows,
 				HostRow{Key: `"` + v.Host(env, app) + `"`, Value: v.Backend(env, app)},

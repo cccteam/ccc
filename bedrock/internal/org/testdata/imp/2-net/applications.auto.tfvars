@@ -9,7 +9,10 @@
 # which serves the revision the pipeline deployed and has not yet moved traffic to (the
 # revision tag next), for the hook before traffic. The wildcard routes every pull-request
 # environment, <app>-pr<N>, to the first environment's pull-request backend, which picks
-# the Cloud Run service by the hostname's first label; exact hostnames win.
+# the Cloud Run service by the hostname's first label; exact hostnames win. An
+# application's hostnames are listed once its registration is complete (placement.json's
+# registration, moved by bedrock org register <app> --next after its stack's first apply in
+# every environment has created the backends).
 hosts = {
   "harbor-tst.apps.imp.example"      = "projects/imp-tst-gbl-core-1a2b/global/backendServices/imp-tst-gbl-harbor-backend"
   "harbor-tst-next.apps.imp.example" = "projects/imp-tst-gbl-core-1a2b/global/backendServices/imp-tst-gbl-harbor-next-backend"

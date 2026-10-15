@@ -6,7 +6,9 @@
 # Each application's apply identity in the environments whose databases live on the
 # shared instance (every one but the first, whose instance is its own), with the
 # environment and application its grants are bounded to and, in every environment but
-# production, the environment whose backups it may restore from.
+# production, the environment whose backups it may restore from. An application is listed
+# once its registration is past its identities (placement.json's registration, moved by
+# bedrock org register <app> --next after 2-env's apply has created them).
 database_admins = {
   "serviceAccount:imp-stg-gbl-harbor-tofu@imp-stg-gbl-core-3c4d.iam.gserviceaccount.com" = { environment = "stg", application = "harbor", restore_from = "prd" } # harbor's stg apply identity (2-env stg)
   "serviceAccount:imp-prd-gbl-harbor-tofu@imp-prd-gbl-core-5e6f.iam.gserviceaccount.com" = { environment = "prd", application = "harbor" }                       # harbor's prd apply identity (2-env prd)
@@ -17,7 +19,8 @@ database_admins = {
 # Each application's plan identity in the same environments: the organization's
 # spannerPlanReader role on the instance, since a pull-request build plans the
 # environment's stack as it and refreshes the database, its grants and its
-# backup schedules here.
+# backup schedules here. Listed once the registration is past its identities, as the
+# database admins.
 database_planners = [
   "serviceAccount:imp-stg-gbl-harbor-plan@imp-stg-gbl-core-3c4d.iam.gserviceaccount.com", # harbor's stg plan identity (2-env stg)
   "serviceAccount:imp-prd-gbl-harbor-plan@imp-prd-gbl-core-5e6f.iam.gserviceaccount.com", # harbor's prd plan identity (2-env prd)

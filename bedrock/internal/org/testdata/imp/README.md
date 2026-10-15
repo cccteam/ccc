@@ -238,7 +238,15 @@ owner of it. bedrock's README lists each with what needs it
 
 `bedrock org register <app> [<application checkout>]` prints the pull requests
 a registration takes, and writes the application's first `placement.json`
-into its checkout (`infrastructure/placement.json`), or prints it.
+into its checkout (`infrastructure/placement.json`), or prints it. The
+registration goes in steps, since the grants on an application's identities
+need `2-env` to have created them and its hostnames need its stack's
+backends: `placement.json`'s `registration` records the step each
+application has reached (`identities`, then `grants`; none once complete),
+the layers render what that step may apply, and `bedrock org register <app>
+--next` moves to the next step once the apply before it has happened. Every
+pull request of the sequence carries every rendered file, and `bedrock org
+check` passes on each.
 
 Each layer's `terraform.tfvars` is committed. It holds IDs, not secrets, and
 the values a layer runs with belong in the repository.
