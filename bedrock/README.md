@@ -1914,8 +1914,13 @@ per layer in the state bucket (`applied/<layer>`, `applied/2-env/<env>`) holds t
 of that apply, the files changed between it and the push are read through the connection,
 and a layer with no marker is applied. The layers apply in layer order (0-bootstrap, 1-org,
 2-shr, 2-spn and 2-net, then 2-env for tst, stg and prd), one at a time, each as its apply
-identity (`tofu init` at the layer's state prefix, a plan, the apply of that plan, then the
-marker), stopping at the first failure. After each apply of 2-env it restricts Firebase's
+identity: every run's `tofu init` at its state prefix first, then, layer by layer, a plan,
+the apply of that plan and the marker, stopping at the first failure. The inits come first
+because the gcs backend writes a state the first time anything opens it: a layer that has
+never applied gets its empty state from its own init, and a later layer's read of it
+(`terraform_remote_state`) is a read; without the pass that read would be the write, at the
+other layer's prefix, which the reading layer's identity may not do (2-env tst reads 2-net
+and stg before either applies in a new organization). After each apply of 2-env it restricts Firebase's
 browser key ("Browser key (auto created by Firebase)") in the environment project to the
 two sign-in APIs, identitytoolkit.googleapis.com and securetoken.googleapis.com, as the
 layer identity: no layer can declare the key, since OpenTofu adopts a key only by the id
