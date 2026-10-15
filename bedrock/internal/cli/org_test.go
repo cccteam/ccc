@@ -1205,7 +1205,7 @@ func TestOrgRegisterNext(t *testing.T) {
 				{
 					objects:    map[string]string{"3-app/quill/prd/default.tfstate": stackState},
 					args:       []string{"org", "register", "quill", "--next"},
-					wantOut:    []string{"Completed quill's registration in", "The pull request now carries 2-net/applications.auto.tfvars: the hostnames"},
+					wantOut:    []string{"Completed quill's registration in", "The pull request now carries 2-net/applications.auto.tfvars and 1-org/applications.auto.tfvars:\nthe hostnames"},
 					wantFiles:  map[string][]string{"2-net/applications.auto.tfvars": {host}, "1-org/public-invokers.auto.tfvars": {invoker}},
 					wantAbsent: map[string][]string{"placement.json": {"registration"}},
 				},
