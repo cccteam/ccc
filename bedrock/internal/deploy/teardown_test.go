@@ -186,9 +186,9 @@ google_service_account.app
 			wantRan: []string{
 				"tofu init -input=false -no-color -reconfigure -backend-config=prefix=3-app/harbor/tst",
 				"tofu state list",
-				`tofu plan -destroy -input=false -no-color -out=DATA/teardown.tfplan -var environment=tst -var database_generation=1 -var generated_secret_versions={APP_COOKIE_KEY="3"} -var teardown=true -exclude=google_service_account.app -exclude=google_spanner_database.harbor[0] -exclude=google_storage_bucket.files[0] -exclude=google_firestore_database.firestore -exclude=google_secret_manager_secret.harbor["APP_COOKIE_KEY"] -exclude=random_id.stack -exclude=google_storage_bucket_object.stack[0] -exclude=google_cloud_tasks_queue.tasks[0]`,
-				"tofu show -json DATA/teardown.tfplan",
-				"tofu apply -input=false -no-color DATA/teardown.tfplan",
+				`tofu plan -destroy -input=false -no-color -out=DATA/tst/teardown.tfplan -var environment=tst -var database_generation=1 -var generated_secret_versions={APP_COOKIE_KEY="3"} -var teardown=true -exclude=google_service_account.app -exclude=google_spanner_database.harbor[0] -exclude=google_storage_bucket.files[0] -exclude=google_firestore_database.firestore -exclude=google_secret_manager_secret.harbor["APP_COOKIE_KEY"] -exclude=random_id.stack -exclude=google_storage_bucket_object.stack[0] -exclude=google_cloud_tasks_queue.tasks[0]`,
+				"tofu show -json DATA/tst/teardown.tfplan",
+				"tofu apply -input=false -no-color DATA/tst/teardown.tfplan",
 			},
 			wantRecord: []string{`"kind": "teardown"`, `"stackId": "9f3c"`, `"by": "jo@lab"`, `"at": "2026-10-15T04:00:00Z"`, `"release": "v0.1.4"`, `"google_cloud_run_v2_service.app[\"uc1\"]"`, `"kept": [`, `"random_id.stack"`},
 		},
@@ -207,9 +207,9 @@ google_service_account.app
 				"tofu init -input=false -no-color -reconfigure -backend-config=prefix=3-app/harbor/prd",
 				"tofu state list",
 				`tofu apply -input=false -no-color -auto-approve -var environment=prd -var database_generation=2 -var destroy=true -target=google_cloud_run_v2_service.app["uc1"] -target=google_spanner_database.harbor[0] -target=google_spanner_database.restored["2"] -target=google_storage_bucket.files[0] -target=google_firestore_database.firestore`,
-				"tofu plan -destroy -input=false -no-color -out=DATA/teardown.tfplan -var environment=prd -var database_generation=2 -var destroy=true",
-				"tofu show -json DATA/teardown.tfplan",
-				"tofu apply -input=false -no-color DATA/teardown.tfplan",
+				"tofu plan -destroy -input=false -no-color -out=DATA/prd/teardown.tfplan -var environment=prd -var database_generation=2 -var destroy=true",
+				"tofu show -json DATA/prd/teardown.tfplan",
+				"tofu apply -input=false -no-color DATA/prd/teardown.tfplan",
 			},
 			wantRecord: []string{`"kind": "destroy"`, `"stackId": "77aa"`, `"release": "v0.1.3"`, `"google_service_account.app"`},
 		},
@@ -222,8 +222,8 @@ google_service_account.app
 			wantRan: []string{
 				"tofu init -input=false -no-color -reconfigure -backend-config=prefix=3-app/harbor/tst",
 				"tofu state list",
-				`tofu plan -destroy -input=false -no-color -out=DATA/teardown.tfplan -var environment=tst -var database_generation=1 -var generated_secret_versions={APP_COOKIE_KEY="3"} -var teardown=true -exclude=google_service_account.app -exclude=google_spanner_database.harbor[0] -exclude=google_storage_bucket.files[0] -exclude=google_firestore_database.firestore -exclude=google_secret_manager_secret.harbor["APP_COOKIE_KEY"] -exclude=random_id.stack -exclude=google_storage_bucket_object.stack[0] -exclude=google_cloud_tasks_queue.tasks[0]`,
-				"tofu show -json DATA/teardown.tfplan",
+				`tofu plan -destroy -input=false -no-color -out=DATA/tst/teardown.tfplan -var environment=tst -var database_generation=1 -var generated_secret_versions={APP_COOKIE_KEY="3"} -var teardown=true -exclude=google_service_account.app -exclude=google_spanner_database.harbor[0] -exclude=google_storage_bucket.files[0] -exclude=google_firestore_database.firestore -exclude=google_secret_manager_secret.harbor["APP_COOKIE_KEY"] -exclude=random_id.stack -exclude=google_storage_bucket_object.stack[0] -exclude=google_cloud_tasks_queue.tasks[0]`,
+				"tofu show -json DATA/tst/teardown.tfplan",
 			},
 		},
 		{
@@ -270,8 +270,8 @@ google_service_account.app
 				if got := tofu.lines(); strings.Join(got, "\n") != strings.Join(tt.wantRan, "\n") {
 					t.Errorf("ran:\n%s\nwant:\n%s", strings.Join(got, "\n"), strings.Join(tt.wantRan, "\n"))
 				}
-				if env := tofu.ran[0].Env; len(env) != 1 || env[0] != "TF_DATA_DIR=DATA" {
-					t.Errorf("init ran with env %v, want the data directory alone", env)
+				if env := tofu.ran[0].Env; len(env) != 1 || env[0] != "TF_DATA_DIR=DATA/"+tt.env {
+					t.Errorf("init ran with env %v, want the environment's data directory alone", env)
 				}
 			}
 			if tt.wantRecord != nil {
