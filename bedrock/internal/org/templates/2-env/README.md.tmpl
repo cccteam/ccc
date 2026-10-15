@@ -98,11 +98,15 @@ and a `shared_vpc_id` that is null.
   identities, and `roles/storage.objectViewer` for those deploy identities,
   the environment's application plan identities (the hotfix preview reads
   the live record), `roles/storage.objectUser` for each application's
-  apply identity under `<app>/stacks/` alone (what the stack writes itself:
-  the object naming its id, `<app>/stacks/<env>/stack.json`, and in tst the
-  stack jobs' outputs, one object per pull request and commit, written again
-  on each `/gcbrun` comment), where the deploy identities' creator binding
-  stops, so a preview build only reads what the job wrote; the environment's operations identities (a rollback
+  apply identity and the environment's team group under `<app>/stacks/`
+  alone (what the stack writes itself: the object naming its id,
+  `<app>/stacks/<env>/stack.json`, and in tst the stack jobs' outputs, one
+  object per pull request and commit, written again on each `/gcbrun`
+  comment; and what a person's `bedrock teardown` or `bedrock destroy`
+  writes there, the record beside the id, `<app>/stacks/<env>/teardown.json`,
+  a destroy taking the id object with the stack), where the deploy
+  identities' creator binding stops, so a preview build only reads what the
+  job wrote; the environment's operations identities (a rollback
   reads what is live and what it returns to), in production the lower
   environments' operations identities too (a restore from production's
   backup reads production's live release), the next environment's deploy
@@ -115,10 +119,12 @@ and a `shared_vpc_id` that is null.
   still give itself a storage role there.
 - The team group's grants (`team-group.tf`): `roles/cloudbuild.builds.approver`
   on the environment project for the environment's team group in
-  {{.ApprovalEnvironmentsProse}}, and the Privileged Access Manager
-  entitlements its members ask for: the secret operator, the layer
-  administrator and, for an environment on its own instance, the Spanner
-  admin and viewer ("The team group" below).
+  {{.ApprovalEnvironmentsProse}}, `roles/storage.objectUser` under
+  `<app>/stacks/` in the records bucket (`records.tf`: a person's `bedrock
+  teardown` or `bedrock destroy` writes its record there), and the Privileged
+  Access Manager entitlements its members ask for: the secret operator, the
+  layer administrator and, for an environment on its own instance, the
+  Spanner admin and viewer ("The team group" below).
 - Firebase Authentication on the environment project (`identity-platform.tf`):
   Identity Platform initialized once, with no sign-in provider and no sign-up
   a browser could make on its own. An application that serves live pages
@@ -370,13 +376,18 @@ an environment, nothing in this layer names a person, and the three
 environments' groups may be the same people or not: production's is named
 on its own.
 
-Release approval is the one standing grant: `roles/cloudbuild.builds.approver`
+Release approval is one of two standing grants: `roles/cloudbuild.builds.approver`
 on the environment project in {{.ApprovalEnvironmentsProse}}, the
 environments whose version triggers wait for a release's approval (every
 environment but the first, the rule the application stacks declare their
 triggers from); approving is the gate itself, and the audit log records who
-approved. In `{{.FirstEnvironment}}` nothing waits for an approval and the group
-holds nothing standing.
+approved. In `{{.FirstEnvironment}}` nothing waits for an approval. The other,
+in every environment, is `roles/storage.objectUser` under `<app>/stacks/` in
+the records bucket (`records.tf`), what `bedrock teardown` and `bedrock
+destroy`, run by a member at their own computer with their own sign-in, write:
+the record of what went beside the stack's id
+(`<app>/stacks/<env>/teardown.json`), and a destroy takes the id object with
+the stack; it changes no environment, and the audit log records the writer.
 
 Everything else is an entitlement in Privileged Access Manager
 (`team-group.tf`, which first sets the service up on the project: its service

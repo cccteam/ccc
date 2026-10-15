@@ -695,10 +695,11 @@ func TestRecordsBucketPolicy(t *testing.T) {
 				"      { role = \"roles/storage.objectViewer\", members = concat(local.records_deploy_members, local.records_plan_members, local.records_ops_members, local.records_lower_ops_members, local.records_rehearsal_members, values(local.next_deploy_members), [local.team_group]), condition = null },\n",
 				// What a stack writes itself (its id object, and in tst the stack jobs'
 				// outputs) is the apply identity's to write, under its prefix alone, which
-				// the deploy identities' creator binding excludes.
+				// the deploy identities' creator binding excludes; the team group writes
+				// there too (a person's teardown record, a destroy taking the id object).
 				"  records_stack_prefix = { for app in var.applications : app => \"projects/_/buckets/${google_storage_bucket.records.name}/objects/${app}/stacks/\" }\n",
 				"    expression  = join(\" && \", [for app, prefix in local.records_stack_prefix : \"!resource.name.startsWith(\\\"${prefix}\\\")\"])\n",
-				"      role    = \"roles/storage.objectUser\"\n      members = [google_service_account.apply[app].member]\n",
+				"      role    = \"roles/storage.objectUser\"\n      members = [google_service_account.apply[app].member, local.team_group]\n",
 				"  ], local.records_stack_bindings)\n",
 				// In production, the lower environments' operations identities read the records
 				// for a restore from production's backup that names no release.
@@ -1422,7 +1423,8 @@ func TestTeamGroup(t *testing.T) {
 			path: "2-env/README.md",
 			want: []string{
 				"### The team group",
-				"Release approval is the one standing grant: `roles/cloudbuild.builds.approver`\non the environment project in `stg` and `prd`",
+				"Release approval is one of two standing grants: `roles/cloudbuild.builds.approver`\non the environment project in `stg` and `prd`",
+				"The other,\nin every environment, is `roles/storage.objectUser` under `<app>/stacks/` in\nthe records bucket (`records.tf`)",
 				"unset, the secret operator an hour, the Spanner admin two hours, the Spanner viewer four hours and the layer administrator four hours.",
 				"so `2-spn`\ndeclares them on that project (`entitlements.tf` there)",
 				"recovery is the bootstrap administrator's",
