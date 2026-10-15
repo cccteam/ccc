@@ -2039,7 +2039,8 @@ back before anything runs (`--yes` stands in for it where there is no terminal).
 code, pull requests and releases (the rulesets, the operations environments, the runner group
 and the organization variable go), then 0-bootstrap on a local copy of its state, since the
 state bucket goes with the boot project; in each an apply with `destroy=true` records the
-projects' deletion policy and lifts the folders' protection first, and the destroy is tried
+projects' deletion policy, that no API is disabled first (one a resource outside the layer's
+state uses would refuse) and lifts the folders' protection, and the destroy is tried
 again after a pause while it fails (a folder refuses for a while after its last project's
 deletion). Google keeps a deleted project for 30 days; its id never returns. A layer whose
 state holds nothing is skipped. When 2-net registers domains the network project is kept,

@@ -40,9 +40,11 @@ const (
 	// state, kept with it since the network project's folder stays inside.
 	netProjectAddress         = `module.project["net"]`
 	organizationFolderAddress = "google_folder.organization"
-	// The suffixes of the state addresses the apply before the destroy targets: every
-	// project (the project-factory module's project, under a key) and every folder.
+	// What the apply before the destroy targets, by their state addresses: every project
+	// (the project-factory module's, under its key), every service of a project (the
+	// module's too, its disabling on destroy) and every folder.
 	projectSuffix = ".google_project.main"
+	serviceMark   = ".google_project_service."
 	folderPrefix  = "google_folder."
 	// variablesFile is where a layer declares its variables; a checkout rendered by an
 	// earlier bedrock declares no destroy variable, and the command refuses it.
@@ -351,26 +353,34 @@ func (h *handTofu) stateList(ctx context.Context) ([]string, error) {
 	return addresses, nil
 }
 
-// unprotect applies destroy=true to every project and folder in the state but the
-// excluded ones: the provider reads a project's deletion policy and a folder's deletion
-// protection from the state, so the destroy needs them recorded first.
+// unprotect applies destroy=true to every project, every project service and every
+// folder in the state but the excluded ones: the provider reads a project's deletion
+// policy, a service's disabling on destroy and a folder's deletion protection from the
+// state, so the destroy needs them recorded first. Nothing else is targeted, so the
+// apply changes nothing else.
 func (h *handTofu) unprotect(ctx context.Context, addresses, excluded []string) error {
 	args := []string{applyCommand, noInput, noColor, autoApprove, "-var", destroyVar + "=true"}
-	var targets int
+	var projects, services, folders int
 	for _, address := range addresses {
-		if !strings.HasSuffix(address, projectSuffix) && !strings.HasPrefix(address, folderPrefix) {
+		switch {
+		case strings.HasSuffix(address, projectSuffix):
+			projects++
+		case strings.Contains(address, serviceMark):
+			services++
+		case strings.HasPrefix(address, folderPrefix):
+			folders++
+		default:
 			continue
 		}
 		if slices.ContainsFunc(excluded, func(e string) bool { return strings.HasPrefix(address, e) }) {
 			continue
 		}
 		args = append(args, "-target="+address)
-		targets++
 	}
-	if targets == 0 {
+	if projects+services+folders == 0 {
 		return nil
 	}
-	fmt.Fprintf(h.out, "Recording the deletion policy of %d project(s) and folder(s) of %s before the destroy.\n", targets, h.layer)
+	fmt.Fprintf(h.out, "Recording on %s that the destroy deletes %d project(s) with %d service(s) and %d folder(s), disabling no API first.\n", h.layer, projects, services, folders)
 	if err := h.run(ctx, args...); err != nil {
 		return errors.Wrapf(err, "the apply recording %s's deletion policies failed; the log says why", h.layer)
 	}

@@ -1108,7 +1108,7 @@ in for it where there is no terminal, as in a disposable organization's scripts)
 destroys 1-org, the GitHub repositories taken out of its state first so that they stay with
 their code, pull requests and releases (the rulesets, the operations environments, the runner
 group and the organization variable go), an apply with destroy=true recording the projects'
-deletion policy and lifting the folders' protection first, and the destroy tried again after a
+deletion policy, that no API is disabled first, and the folders' protection lifted, and the destroy tried again after a
 pause while it fails (a folder refuses for a while after its last project's deletion); then
 0-bootstrap the same way, on a local copy of its state, since the state bucket is in the boot
 project and goes with it. Google keeps a deleted project for 30 days, in which the console can
