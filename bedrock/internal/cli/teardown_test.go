@@ -5,10 +5,13 @@ import (
 	"encoding/json"
 	"io"
 	"os"
+	"os/user"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/go-playground/errors/v5"
 
 	"github.com/cccteam/ccc/bedrock/internal/deploy"
 )
@@ -102,6 +105,10 @@ func TestTeardownAndDestroy(t *testing.T) {
 		wantOut     []string
 		wantRan     []string
 		wantRecords []string
+		// noAccount leaves the credentials' account unreadable, so the record names the
+		// computer's user at its host.
+		noAccount bool
+		wantBy    string
 	}{
 		{
 			name:        "refuses without an environment",
@@ -149,6 +156,21 @@ func TestTeardownAndDestroy(t *testing.T) {
 				"tofu show -json DATA/tst/teardown.tfplan", "tofu apply -input=false -no-color DATA/tst/teardown.tfplan",
 			},
 			wantRecords: []string{"gs://imp-tst-gbl-quill-records/quill/stacks/tst/teardown.json"},
+			wantBy:      `"by": "jo@lab.example"`,
+		},
+		{
+			name:        "names the computer's user at its host when the credentials' account cannot be read",
+			args:        []string{"teardown", "tst", "--yes"},
+			interactive: never,
+			noAccount:   true,
+			wantOut:     []string{"Tore quill's stack in tst down: 2 resource(s) destroyed, 1 kept"},
+			wantRan: []string{
+				"tofu init -input=false -no-color -reconfigure -backend-config=prefix=3-app/quill/tst", "tofu state list", "tofu show -json",
+				"tofu plan -destroy -input=false -no-color -out=DATA/tst/teardown.tfplan -var environment=tst -var database_generation=1 -var teardown=true -exclude=google_spanner_database.quill[0]",
+				"tofu show -json DATA/tst/teardown.tfplan", "tofu apply -input=false -no-color DATA/tst/teardown.tfplan",
+			},
+			wantRecords: []string{"gs://imp-tst-gbl-quill-records/quill/stacks/tst/teardown.json"},
+			wantBy:      `"by": "` + computerUser() + `@`,
 		},
 		{
 			name:        "destroys every environment and the pull-request stacks with --all --yes, the unapplied one skipped",
@@ -177,7 +199,11 @@ func TestTeardownAndDestroy(t *testing.T) {
 			repo := teardownRepo(t)
 			store := teardownStore(t)
 			tofu := &teardownTofu{}
-			d := deps{domains: noCloudDomains, secrets: noSecretManager, projects: noProjects, cwd: repo, interactive: tt.interactive, deploy: &deploy.Clients{Storage: store.open, Exec: tofu}}
+			principal := func(context.Context) (string, error) { return "jo@lab.example", nil }
+			if tt.noAccount {
+				principal = func(context.Context) (string, error) { return "", errors.New("no credentials") }
+			}
+			d := deps{domains: noCloudDomains, secrets: noSecretManager, projects: noProjects, cwd: repo, interactive: tt.interactive, deploy: &deploy.Clients{Storage: store.open, Exec: tofu}, principal: principal}
 			out, err := execute(d, tt.in, tt.args...)
 			switch {
 			case tt.wantErr == "" && err != nil:
@@ -201,6 +227,9 @@ func TestTeardownAndDestroy(t *testing.T) {
 				if !strings.Contains(store.objects[key], `"by": "`) {
 					t.Errorf("no record at %s; objects: %v", key, store.objects)
 				}
+				if tt.wantBy != "" && !strings.Contains(store.objects[key], tt.wantBy) {
+					t.Errorf("record at %s = %s, want it to contain %s", key, store.objects[key], tt.wantBy)
+				}
 			}
 		})
 	}
@@ -209,3 +238,12 @@ func TestTeardownAndDestroy(t *testing.T) {
 // dataDirRE matches the run's data directory in a command line, which the test cannot
 // know.
 var dataDirRE = regexp.MustCompile(`/[^ ]*bedrock-[a-z-]*(teardown|destroy)-[^ /]*`)
+
+// computerUser is the name the record falls back to: the process's user.
+func computerUser() string {
+	if u, err := user.Current(); err == nil && u.Username != "" {
+		return u.Username
+	}
+
+	return nobody
+}

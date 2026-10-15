@@ -1636,7 +1636,7 @@ destroys it whole; with `--all` either takes every environment in promotion orde
 destroys every pull-request stack under the integration environment's prefix, the way the
 sweep destroys a closed pull request's. Both run by a person at their own computer with
 their own sign-in (`gcloud auth application-default login`), driving tofu in the stack
-directory against the environment's state prefix the way the first apply by hand does,
+directory against the environment's state prefix the way the stack trigger's first apply does,
 never from a trigger, and both ask for the environment's name typed back before anything
 runs (`--yes` stands in where there is no terminal). Both refuse while `2-net` routes a
 host to the environment's backend service, since Google refuses the backend's deletion

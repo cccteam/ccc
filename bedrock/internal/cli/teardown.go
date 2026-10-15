@@ -205,7 +205,7 @@ func (d deps) takeDown(cmd *cobra.Command, args []string, f *teardownFlags, dest
 	}
 	defer os.RemoveAll(dataDir)
 	request := func(env string) *deploy.TeardownRequest {
-		return &deploy.TeardownRequest{Dir: stackDir, DataDir: dataDir, Placement: p, App: app, Env: env, Destroy: destroy, By: takenDownBy(), Now: time.Now}
+		return &deploy.TeardownRequest{Dir: stackDir, DataDir: dataDir, Placement: p, App: app, Env: env, Destroy: destroy, By: d.takenDownBy(cmd.Context()), Now: time.Now}
 	}
 	var a *deploy.ApplicationTeardown
 	if f.all {
@@ -279,8 +279,15 @@ func teardownWarning(destroy bool, app string, envs []string, a *deploy.Applicat
 	return b.String()
 }
 
-// takenDownBy names who runs the command for the record: the signed-in user at the host.
-func takenDownBy() string {
+// takenDownBy names who runs the command for the record: the account the credentials sign
+// as (what the cloud's audit logs record), or, when none can be read, the computer's user
+// at its host.
+func (d deps) takenDownBy(ctx context.Context) string {
+	if d.principal != nil {
+		if account, err := d.principal(ctx); err == nil && account != "" {
+			return account
+		}
+	}
 	name := nobody
 	if u, err := user.Current(); err == nil && u.Username != "" {
 		name = u.Username
