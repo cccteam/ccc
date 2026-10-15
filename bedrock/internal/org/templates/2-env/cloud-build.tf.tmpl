@@ -98,3 +98,103 @@ resource "google_cloudbuildv2_repository" "app" {
   parent_connection = google_cloudbuildv2_connection.github[0].id
   remote_uri        = "https://github.com/${var.github_organization}/${each.key}.git"
 }
+
+# ---------------------------------------------------------------------------
+# The stack trigger: an application's first apply in this environment
+#
+# An application's stack (the infrastructure directory of its repository) is
+# applied by its releases' builds, as the apply identity, once it exists. Its
+# first apply, before any release, is this trigger's: one per application,
+# manual, its source the application's repository at the default branch, run
+# as the deploy identity (which may become the apply identity, identities.tf)
+# and started by the application's operations workflow (its apply action, as
+# the operations identity, in the GitHub Environment named after this
+# environment), so no person holds a cloud role for it and the audit log names
+# who asked. Its steps are the organization's triggers' (0-bootstrap): fetch
+# the bedrock the checkout's infrastructure/placement.json pins, build a commit
+# pin, bedrock check, then bedrock deploy stack first, which refuses a stack a
+# release has run on. In the environments whose releases wait for an approval
+# in Cloud Build (team-group.tf), so does this build.
+# ---------------------------------------------------------------------------
+
+locals {
+  stack_fetch_bedrock = <<-EOT
+{{.FetchBedrockScript}}
+  EOT
+  stack_build_bedrock = <<-EOT
+{{.BuildBedrockScript}}
+  EOT
+  # The build's own id and place, which the command reads its build through
+  # the Cloud Build API by.
+  stack_build_env = ["BUILD_ID=$BUILD_ID", "PROJECT_ID=$PROJECT_ID", "LOCATION=$LOCATION"]
+}
+
+resource "google_cloudbuild_trigger" "stack" {
+  for_each = local.connected ? local.apps : toset([])
+
+  project  = local.project_id
+  location = local.region
+  name     = "${local.name}-${local.region_code}-${each.key}-stack"
+
+  # No build logs on a status: a trigger run from a repository link (source_to_build)
+  # reports to no pull request, and Cloud Build refuses the setting on one.
+  service_account = google_service_account.deploy[each.key].id
+  substitutions = {
+    _APP            = each.key
+    _ENV            = var.environment
+    _APPLY_IDENTITY = google_service_account.apply[each.key].email
+    _RECORDS_BUCKET = google_storage_bucket.records.name
+  }
+
+  approval_config {
+    approval_required = local.approval_required
+  }
+
+  source_to_build {
+    repository = google_cloudbuildv2_repository.app[each.key].id
+    ref        = "refs/heads/{{.GithubDefaultBranch}}"
+    repo_type  = "GITHUB"
+  }
+
+  build {
+    step {
+      id         = "FetchBedrock"
+      name       = "{{.GcloudImage}}"
+      entrypoint = "python3"
+      args       = ["-c", local.stack_fetch_bedrock, "/builder/home", "https://github.com", "{{.BedrockRepository}}", "infrastructure/placement.json"]
+      timeout    = "{{.FetchSeconds}}s"
+    }
+
+    step {
+      id         = "BuildBedrock"
+      name       = "{{.GoImage}}"
+      entrypoint = "sh"
+      args       = ["-c", local.stack_build_bedrock]
+      env        = {{.GoInstallEnvHCL}}
+      timeout    = "{{.BuildSeconds}}s"
+    }
+
+    step {
+      id         = "Check"
+      name       = "{{.OpenTofuImage}}"
+      entrypoint = "{{.BedrockPath}}"
+      args       = ["check"]
+      timeout    = "{{.CheckSeconds}}s"
+    }
+
+    step {
+      id         = "FirstApply"
+      name       = "{{.OpenTofuImage}}"
+      entrypoint = "{{.BedrockPath}}"
+      args       = ["deploy", "stack", "first"]
+      env        = local.stack_build_env
+      timeout    = "{{.ApplySeconds}}s"
+    }
+
+    timeout = "{{.ApplyBuildSeconds}}s"
+
+    options {
+      logging = "CLOUD_LOGGING_ONLY"
+    }
+  }
+}

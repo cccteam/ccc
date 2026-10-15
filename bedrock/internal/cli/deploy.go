@@ -39,16 +39,17 @@ runs sweep.`,
 	}
 	envStack := &cobra.Command{
 		Use:   "stack",
-		Short: "The environment's stack in a tag build: plan, apply",
+		Short: "The environment's stack: plan and apply in a tag build, first in the stack trigger's build",
 		Long: `stack holds the two steps of a tag build that apply the environment's application stack, after the
 image build and before the migrations, as the apply identity: plan runs tofu init on the
 environment's state prefix (3-app/<app>/<env>), saves the plan with its JSON, prints and appends its
 summary and runs the tests; apply applies exactly that plan. The plan is this build's own: the one a
 reviewer approved on the pull request was bound to the state of that moment, and a release bundles
 several pull requests. A pull-request build skips both and plans every environment earlier
-(plan-environments).`,
+(plan-environments). first is the stack's first apply, before any release exists in the environment:
+the step of 2-env's stack trigger, which the application's operations workflow starts.`,
 	}
-	envStack.AddCommand(newDeployEnvStackPlan(d), newDeployEnvStackApply(d))
+	envStack.AddCommand(newDeployEnvStackPlan(d), newDeployEnvStackApply(d), newDeployEnvStackFirst(d))
 	cmd.AddCommand(newDeployResolve(d), newDeployValidateRelease(d), newDeployGuardMigrations(d), newDeployPlanEnvironments(d), newDeployPullRequestStack(d), newDeployStackOutputs(d), newDeployHook(d),
 		newDeployCheckRelease(d), newDeployBuildImage(d), envStack, newDeployBackup(d), newDeployMigrate(d), newDeployJobs(d), newDeployService(d),
 		newDeployShiftTraffic(d), newDeploySweepJobs(d), newDeployRecord(d), newDeployTalkBack(d), newDeploySweep(d), newDeployRelease(d), newDeployMaintenance(d), newDeployWindow(d))
@@ -627,6 +628,32 @@ identity, since they refer to rows the restore replaced; what it cleared is appe
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return deploy.ApplyEnvironmentStack(cmd.Context(), d.deploy, deploy.Workspace(workspace), cmd.OutOrStdout())
+		},
+	}
+	workspaceFlag(cmd, &workspace)
+
+	return cmd
+}
+
+// newDeployEnvStackFirst is deploy stack first.
+func newDeployEnvStackFirst(d deps) *cobra.Command {
+	var workspace string
+	cmd := &cobra.Command{
+		Use:   "first",
+		Short: "Apply the environment's stack for the first time, in the stack trigger's build",
+		Long: `first is the stack trigger's step: 2-env renders one such trigger per application and environment,
+run as the deploy identity, and the application's operations workflow starts it with its apply
+action, so no person holds a cloud role for an application's first apply. It reads its build (the
+trigger carries the application, the environment, the apply identity and the records bucket),
+refuses a stack a release has run on (its deployment records say so: a release's build applies an
+applied stack, with the generated secrets' pins this apply does not carry, and the workflow's run
+action runs the live release again), runs tofu init on the environment's state prefix
+(3-app/<app>/<env>) as the apply identity, plans with the environment alone (no generated-secret
+pin: the secret containers come with this apply, and the first release derives the pins), prints
+the plan's summary and applies it. It runs in the OpenTofu image.`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return deploy.FirstApply(cmd.Context(), d.deploy, deploy.Workspace(workspace), buildRequest(), cmd.OutOrStdout())
 		},
 	}
 	workspaceFlag(cmd, &workspace)
