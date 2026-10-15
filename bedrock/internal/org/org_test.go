@@ -3393,3 +3393,163 @@ func TestRenderTeardown(t *testing.T) {
 		})
 	}
 }
+
+// TestOutOfServiceRender: 2-net's hosts leave out the environments an application is
+// out of service in, and nothing else of the application changes; the organization's
+// teardown takes every host regardless.
+func TestOutOfServiceRender(t *testing.T) {
+	t.Parallel()
+
+	const (
+		beaconTst     = `"beacon-tst.apps.imp.example"`
+		beaconTstNext = `"beacon-tst-next.apps.imp.example"`
+		beaconPrd     = `"beacon.apps.imp.example"`
+		harborTst     = `"harbor-tst.apps.imp.example"`
+		pusher        = `"serviceAccount:imp-tst-gbl-beacon-deploy@imp-tst-gbl-core-1a2b.iam.gserviceaccount.com",`
+	)
+	tests := []struct {
+		name         string
+		outOfService map[string][]string
+		teardown     bool
+		want         []string
+		absent       []string
+	}{
+		{name: "in service", want: []string{beaconTst, beaconTstNext, beaconPrd, harborTst}},
+		{name: "one environment out", outOfService: map[string][]string{"beacon": {"tst"}}, want: []string{beaconPrd, harborTst}, absent: []string{beaconTst, beaconTstNext}},
+		{name: "every environment out", outOfService: map[string][]string{"beacon": {"tst", "stg", "prd"}}, want: []string{harborTst}, absent: []string{beaconTst, beaconPrd}},
+		{name: "the organization torn down", outOfService: map[string][]string{"beacon": {"tst"}}, teardown: true, want: []string{"hosts   = {}", "serving = false"}, absent: []string{beaconPrd, harborTst}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			p := testPlacement(t)
+			p.OutOfService = tt.outOfService
+			p.Teardown = tt.teardown
+			files, err := Render(p)
+			if err != nil {
+				t.Fatalf("Render() error = %v", err)
+			}
+			var net, shr string
+			for _, f := range files {
+				switch f.Path {
+				case "2-net/applications.auto.tfvars":
+					net = string(f.Content)
+				case "2-shr/applications.auto.tfvars":
+					shr = string(f.Content)
+				}
+			}
+			for _, line := range tt.want {
+				if !strings.Contains(net, line) {
+					t.Errorf("2-net lacks %q:\n%s", line, net)
+				}
+			}
+			for _, line := range tt.absent {
+				if strings.Contains(net, line) {
+					t.Errorf("2-net carries %q, which is out of service:\n%s", line, net)
+				}
+			}
+			if !strings.Contains(shr, pusher) {
+				t.Errorf("2-shr lost the application's grants:\n%s", shr)
+			}
+		})
+	}
+}
+
+func TestOutOfServiceValidate(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		outOfService map[string][]string
+		registration map[string]string
+		wantErr      string
+	}{
+		{name: "none"},
+		{name: "one environment", outOfService: map[string][]string{"beacon": {"stg"}}},
+		{name: "every environment in order", outOfService: map[string][]string{"harbor": {"tst", "stg", "prd"}}},
+		{name: "an application not registered is refused", outOfService: map[string][]string{"quill": {"tst"}}, wantErr: `outOfService names "quill", which is not registered in full: only a registered application has hostnames to take out`},
+		{name: "a registration under way is refused", outOfService: map[string][]string{"beacon": {"tst"}}, registration: map[string]string{"beacon": RegistrationGrants}, wantErr: `outOfService names "beacon", which is not registered in full`},
+		{name: "no environment is refused", outOfService: map[string][]string{"beacon": {}}, wantErr: `outOfService lists no environment for "beacon": an application in service is left out of the map`},
+		{name: "an environment the model lacks is refused", outOfService: map[string][]string{"beacon": {"qa"}}, wantErr: `outOfService names "qa" for "beacon", which is not one of tst, stg, prd`},
+		{name: "out of promotion order is refused", outOfService: map[string][]string{"beacon": {"prd", "tst"}}, wantErr: `outOfService lists "beacon"'s environments as prd, tst: each once, in promotion order (tst, stg, prd)`},
+		{name: "twice is refused", outOfService: map[string][]string{"beacon": {"tst", "tst"}}, wantErr: `outOfService lists "beacon"'s environments as tst, tst: each once, in promotion order (tst, stg, prd)`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			p := testPlacement(t)
+			p.OutOfService = tt.outOfService
+			p.Registration = tt.registration
+			err := p.Validate()
+			switch {
+			case tt.wantErr == "" && err != nil:
+				t.Fatalf("Validate() = %v, want no error", err)
+			case tt.wantErr != "" && (err == nil || !strings.Contains(err.Error(), tt.wantErr)):
+				t.Fatalf("Validate() = %v, want an error containing %q", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestOutOfServiceChanges(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		before       map[string][]string
+		registration map[string]string
+		take         bool
+		app          string
+		envs         []string
+		wantChanged  []string
+		wantAfter    map[string][]string
+		wantErr      string
+	}{
+		{name: "one environment out", take: true, app: "beacon", envs: []string{"stg"}, wantChanged: []string{"stg"}, wantAfter: map[string][]string{"beacon": {"stg"}}},
+		{name: "every environment out", take: true, app: "beacon", wantChanged: []string{"tst", "stg", "prd"}, wantAfter: map[string][]string{"beacon": {"tst", "stg", "prd"}}},
+		{name: "more environments out, kept in order", before: map[string][]string{"beacon": {"stg"}}, take: true, app: "beacon", envs: []string{"prd", "tst"}, wantChanged: []string{"tst", "prd"}, wantAfter: map[string][]string{"beacon": {"tst", "stg", "prd"}}},
+		{name: "out already is refused", before: map[string][]string{"beacon": {"tst"}}, take: true, app: "beacon", envs: []string{"tst"}, wantErr: "beacon is out of service in tst already (outOfService in placement.json)"},
+		{name: "an application not registered is refused", take: true, app: "quill", wantErr: `application "quill" is not registered (bedrock org register quill)`},
+		{name: "a registration under way is refused", registration: map[string]string{"beacon": RegistrationGrants}, take: true, app: "beacon", wantErr: `application "beacon" is at the grants step of its registration: it has no hostnames in 2-net`},
+		{name: "an environment the model lacks is refused", take: true, app: "beacon", envs: []string{"qa"}, wantErr: `environment "qa" is not one of tst, stg, prd`},
+		{name: "one environment back", before: map[string][]string{"beacon": {"tst", "prd"}}, app: "beacon", envs: []string{"tst"}, wantChanged: []string{"tst"}, wantAfter: map[string][]string{"beacon": {"prd"}}},
+		{name: "the last environment back leaves the map", before: map[string][]string{"beacon": {"prd"}}, app: "beacon", envs: []string{"prd"}, wantChanged: []string{"prd"}, wantAfter: nil},
+		{name: "every environment back", before: map[string][]string{"beacon": {"tst", "stg", "prd"}, "harbor": {"tst"}}, app: "beacon", wantChanged: []string{"tst", "stg", "prd"}, wantAfter: map[string][]string{"harbor": {"tst"}}},
+		{name: "in service already is refused", app: "beacon", envs: []string{"tst"}, wantErr: "beacon is in service in tst already: nothing to put back (outOfService in placement.json)"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			p := testPlacement(t)
+			p.OutOfService = tt.before
+			p.Registration = tt.registration
+			var changed []string
+			var err error
+			if tt.take {
+				changed, err = p.TakeOutOfService(tt.app, tt.envs)
+			} else {
+				changed, err = p.PutInService(tt.app, tt.envs)
+			}
+			switch {
+			case tt.wantErr == "" && err != nil:
+				t.Fatalf("change = %v, want no error", err)
+			case tt.wantErr != "" && (err == nil || !strings.Contains(err.Error(), tt.wantErr)):
+				t.Fatalf("change = %v, want an error containing %q", err, tt.wantErr)
+			case tt.wantErr != "":
+				return
+			}
+			if fmt.Sprint(changed) != fmt.Sprint(tt.wantChanged) {
+				t.Errorf("changed = %v, want %v", changed, tt.wantChanged)
+			}
+			if fmt.Sprint(p.OutOfService) != fmt.Sprint(tt.wantAfter) {
+				t.Errorf("OutOfService = %v, want %v", p.OutOfService, tt.wantAfter)
+			}
+			if err := p.Validate(); err != nil {
+				t.Errorf("Validate() after the change = %v", err)
+			}
+		})
+	}
+}

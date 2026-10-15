@@ -173,13 +173,17 @@ type HostRow struct {
 }
 
 // HostRows is every hostname the load balancer serves with its backend service, one
-// row per application and environment in that order and the pull-request wildcard
-// last, the keys padded to the longest so the rendered map is tofu fmt clean.
+// row per application and environment in that order, an environment out of service
+// (Placement.OutOfService) left out, and the pull-request wildcard last, the keys
+// padded to the longest so the rendered map is tofu fmt clean.
 func (v *view) HostRows() []HostRow {
 	served := v.Served()
 	rows := make([]HostRow, 0, 2*len(served)*len(Environments)+1)
 	for _, app := range served {
 		for _, env := range Environments {
+			if !v.Routed(app, env) {
+				continue
+			}
 			rows = append(rows,
 				HostRow{Key: `"` + v.Host(env, app) + `"`, Value: v.Backend(env, app)},
 				HostRow{Key: `"` + v.NextHost(env, app) + `"`, Value: v.NextBackend(env, app)},

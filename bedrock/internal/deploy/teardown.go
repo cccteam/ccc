@@ -344,7 +344,7 @@ func refuseRouted(ctx context.Context, store Store, bucket string, state *stateF
 		return nil
 	}
 
-	return errors.Newf("2-net routes %s: the load balancer uses %s's backend service, Google refuses its deletion while it does, and the services behind it cannot go either. Take the hosts out of 2-net first, one of three ways, each through an organization pull request: bedrock org teardown, whose first step does; %s's registration set back to grants in placement.json (registration), which takes its hostnames out and leaves the rest; or %s's removal from placement.json; then run bedrock %s again", strings.Join(routed, ", "), req.Env, req.App, req.App, req.command())
+	return errors.Newf("2-net routes %s: the load balancer uses %s's backend service, Google refuses its deletion while it does, and the services behind it cannot go either. Take the hosts out of 2-net first, one of three ways, each through an organization pull request: bedrock org teardown %s %s, which takes the environment's hostnames out and leaves the rest; bedrock org teardown, whose first step takes every application's out; or %s's removal from placement.json; then run bedrock %s again", strings.Join(routed, ", "), req.Env, req.App, req.Env, req.App, req.command())
 }
 
 // readRecords reads what the plan's variables and the record come from: the stack's id,
@@ -921,7 +921,8 @@ func NetHosts(ctx context.Context, clients *Clients, bucket string) (map[string]
 type Standing struct {
 	Env string
 	// Stack says the environment's stack has been applied; TornDown that a teardown of
-	// that stack is recorded beside its id. Release is the live release, or "".
+	// that stack is recorded beside its id with no live release since (a release run
+	// after the way back's apply ends it). Release is the live release, or "".
 	Stack    bool
 	TornDown bool
 	Release  string
@@ -964,6 +965,13 @@ func environmentStanding(ctx context.Context, store Store, bucket, app, env stri
 	if err != nil {
 		return s, err
 	}
+	live, err := newestLiveRelease(ctx, store, records, app, env)
+	if err != nil {
+		return s, err
+	}
+	if live != nil {
+		s.Release = live.Version
+	}
 	data, err := store.Read(ctx, records, teardownObject(app, env))
 	switch {
 	case errors.Is(err, os.ErrNotExist):
@@ -974,14 +982,9 @@ func environmentStanding(ctx context.Context, store Store, bucket, app, env stri
 		if err := json.Unmarshal(data, &r); err != nil {
 			return s, errors.Wrapf(err, "json.Unmarshal(): gs://%s/%s", records, teardownObject(app, env))
 		}
-		s.TornDown = r.Kind == teardownVar && r.StackID == id
-	}
-	live, err := newestLiveRelease(ctx, store, records, app, env)
-	if err != nil {
-		return s, err
-	}
-	if live != nil {
-		s.Release = live.Version
+		// Torn down the way the stack trigger reads it: a teardown of this stack with no
+		// live release since; a release run after the way back's apply ends it.
+		s.TornDown = r.Kind == teardownVar && r.StackID == id && after(r.At, live)
 	}
 
 	return s, nil

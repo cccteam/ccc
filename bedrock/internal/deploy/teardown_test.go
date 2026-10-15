@@ -184,7 +184,7 @@ google_service_account.app
 			name:    "refuses while 2-net routes a host to the environment's backend",
 			env:     "tst",
 			routed:  true,
-			wantErr: "2-net routes harbor-tst.impulseframework.dev to " + tstBackend + ": the load balancer uses tst's backend service, Google refuses its deletion while it does, and the services behind it cannot go either. Take the hosts out of 2-net first, one of three ways, each through an organization pull request: bedrock org teardown, whose first step does; harbor's registration set back to grants in placement.json (registration), which takes its hostnames out and leaves the rest; or harbor's removal from placement.json; then run bedrock teardown again",
+			wantErr: "2-net routes harbor-tst.impulseframework.dev to " + tstBackend + ": the load balancer uses tst's backend service, Google refuses its deletion while it does, and the services behind it cannot go either. Take the hosts out of 2-net first, one of three ways, each through an organization pull request: bedrock org teardown harbor tst, which takes the environment's hostnames out and leaves the rest; bedrock org teardown, whose first step takes every application's out; or harbor's removal from placement.json; then run bedrock teardown again",
 		},
 		{
 			name:    "says so when the stack has not been applied",
@@ -417,8 +417,11 @@ func TestTeardownPullRequests(t *testing.T) {
 func TestApplicationStanding(t *testing.T) {
 	t.Parallel()
 
-	torn, _ := json.Marshal(TeardownRecord{Kind: teardownVar, StackID: teardownStackID})
-	earlier, _ := json.Marshal(TeardownRecord{Kind: teardownVar, StackID: "0000"})
+	// The live records are of 2026-10-14T20:00:00Z: torn is a teardown after it, back
+	// one before it (a release run since the teardown), earlier one of another stack.
+	torn, _ := json.Marshal(TeardownRecord{Kind: teardownVar, StackID: teardownStackID, At: "2026-10-15T09:00:00Z"})
+	back, _ := json.Marshal(TeardownRecord{Kind: teardownVar, StackID: teardownStackID, At: "2026-10-13T09:00:00Z"})
+	earlier, _ := json.Marshal(TeardownRecord{Kind: teardownVar, StackID: "0000", At: "2026-10-15T09:00:00Z"})
 	tests := []struct {
 		name    string
 		objects map[string]string
@@ -439,13 +442,30 @@ func TestApplicationStanding(t *testing.T) {
 			},
 			want: []Standing{{Env: "tst", Stack: true, Release: "v0.1.4"}, {Env: "stg"}, {Env: "prd", Stack: true, TornDown: true, Release: "v0.1.3"}},
 		},
+		{
+			name: "a release run since the teardown ends it, and a teardown with no release stands",
+			objects: map[string]string{
+				"gs://" + teardownStateBucket + "/3-app/harbor/prd/default.tfstate":                                  stackState("prd"),
+				stackKey("imp-prd-gbl-harbor-records", "harbor", "prd"):                                              stackJSON(teardownStackID),
+				"gs://imp-prd-gbl-harbor-records/" + releaseObject("harbor", "prd", teardownStackID, "v0.1.3", "b2"): liveRecord("v0.1.3", nil),
+				"gs://imp-prd-gbl-harbor-records/" + teardownObject("harbor", "prd"):                                 string(back),
+				"gs://" + teardownStateBucket + "/3-app/harbor/tst/default.tfstate":                                  stackState("tst"),
+				stackKey("imp-tst-gbl-harbor-records", "harbor", "tst"):                                              stackJSON(teardownStackID),
+				"gs://imp-tst-gbl-harbor-records/" + teardownObject("harbor", "tst"):                                 string(torn),
+			},
+			want: []Standing{{Env: "tst", Stack: true, TornDown: true}, {Env: "prd", Stack: true, Release: "v0.1.3"}},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
 			store := &memoryStore{objects: tt.objects}
-			got, err := ApplicationStanding(context.Background(), &Clients{Storage: store.open}, teardownStateBucket, "harbor", []string{"tst", "stg", "prd"})
+			envs := make([]string, 0, len(tt.want))
+			for _, w := range tt.want {
+				envs = append(envs, w.Env)
+			}
+			got, err := ApplicationStanding(context.Background(), &Clients{Storage: store.open}, teardownStateBucket, "harbor", envs)
 			if err != nil {
 				t.Fatalf("ApplicationStanding() = %v", err)
 			}

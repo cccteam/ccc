@@ -119,7 +119,10 @@ How a host is added, in order:
    `"harbor-tst.apps.imp.example" = "projects/.../global/backendServices/..."`,
    rendered from `placement.json` when the application was registered
    (`bedrock org register`), and this layer is applied. DNS and the
-   certificate already cover the hostname; nothing else changes.
+   certificate already cover the hostname; nothing else changes. The entry
+   leaves the same way while the application's stack there is torn down
+   (`bedrock org teardown <app>`, then `bedrock org serve <app>` to put it
+   back), since the URL map must not name a backend service the stack destroys.
 
 The apply order on a fresh organization is therefore this layer first with no
 application registered yet (the wildcard host alone), then the environment
@@ -325,7 +328,7 @@ tofu apply
 |---|---|---|---|:---:|
 | `apps_domain` | Domain the applications are served under. | `string` | `"apps.imp.example"` | no |
 | `extra_records` | Further records in the zone (mail, verification). | `list(object)` | `[]` | no |
-| `hosts` | Hostname to backend service URI, one entry per served host. | `map(string)` | `{}` | no |
+| `hosts` | Hostname to backend service URI, one entry per served host; an environment an application is out of service in (`bedrock org teardown <app>`) is left out. | `map(string)` | `{}` | no |
 | `serving` | Whether the listeners stand and hosts route; `bedrock org teardown` renders it false. | `bool` | `true` | no |
 | `ssl_policy_profile` | Cipher profile of the SSL policy. | `string` | `"MODERN"` | no |
 
