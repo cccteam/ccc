@@ -3318,7 +3318,7 @@ func TestStackTrigger(t *testing.T) {
 		`resource "google_cloudbuild_trigger" "stack" {`,
 		`  for_each = local.connected ? local.apps : toset([])`,
 		`  name     = "${local.name}-${local.region_code}-${each.key}-stack"`,
-		`  service_account    = google_service_account.deploy[each.key].id`,
+		`  service_account = google_service_account.deploy[each.key].id`,
 		`    _APPLY_IDENTITY = google_service_account.apply[each.key].email`,
 		`    _RECORDS_BUCKET = google_storage_bucket.records.name`,
 		`    approval_required = local.approval_required`,
