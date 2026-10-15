@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.2](https://github.com/cccteam/ccc/compare/bedrock/v0.3.1...bedrock/v0.3.2) (2026-10-15)
+
+
+### Bug Fixes
+
+* the records buckets and the file stores keep Cloud Storage's default grants to the project's basic roles ([#960](https://github.com/cccteam/ccc/issues/960)) ([d7f041b](https://github.com/cccteam/ccc/commit/d7f041bc2f6e3a842269e647c8479b888977d9ea))
+
 ## [0.3.1](https://github.com/cccteam/ccc/compare/bedrock/v0.3.0...bedrock/v0.3.1) (2026-10-15)
 
 
