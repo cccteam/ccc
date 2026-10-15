@@ -205,4 +205,4 @@ func TestTeardownAndDestroy(t *testing.T) {
 
 // dataDirRE matches the run's data directory in a command line, which the test cannot
 // know.
-var dataDirRE = regexp.MustCompile(`/[^ ]*bedrock-(teardown|destroy)-[^ /]*`)
+var dataDirRE = regexp.MustCompile(`/[^ ]*bedrock-[a-z-]*(teardown|destroy)-[^ /]*`)

@@ -55,6 +55,8 @@ resource "google_compute_ssl_policy" "lb" {
 # learn nothing. The service exists only because a URL map must name a
 # default service; nothing is ever attached to it.
 resource "google_compute_backend_service" "sink" {
+  count = var.serving ? 1 : 0
+
   project               = local.project_id
   name                  = "${local.name_prefix}-sink"
   description           = "Empty default backend of the URL map; every request to it is answered 404 by the URL map"
@@ -71,11 +73,13 @@ resource "google_compute_backend_service" "sink" {
 # backend service the map names. The application layer adds a host by
 # providing its backend service; nothing in this file changes.
 resource "google_compute_url_map" "lb" {
+  count = var.serving ? 1 : 0
+
   project     = local.project_id
   name        = "${local.name_prefix}-urlmap"
   description = "Hostname routing for the global external Application Load Balancer"
 
-  default_service = google_compute_backend_service.sink.id
+  default_service = google_compute_backend_service.sink[0].id
 
   # 404 for anything no host rule claims. A fault-injection abort is the one
   # URL map action that answers without a backend; default_service above is
@@ -109,6 +113,8 @@ resource "google_compute_url_map" "lb" {
 # Port 80 exists only to send clients to 443. A separate URL map, because a
 # redirect is a URL map action and the HTTPS map must not carry it.
 resource "google_compute_url_map" "redirect" {
+  count = var.serving ? 1 : 0
+
   project     = local.project_id
   name        = "${local.name_prefix}-urlmap-redirect"
   description = "Redirects every HTTP request to HTTPS"
@@ -121,20 +127,24 @@ resource "google_compute_url_map" "redirect" {
 }
 
 resource "google_compute_target_http_proxy" "lb" {
+  count = var.serving ? 1 : 0
+
   project     = local.project_id
   name        = "${local.name_prefix}-http-proxy"
   description = "HTTP listener; redirects to HTTPS"
-  url_map     = google_compute_url_map.redirect.id
+  url_map     = google_compute_url_map.redirect[0].id
 }
 
 # The certificate map, not a list of certificates: Certificate Manager picks
 # the certificate by SNI from the map, and a certificate added to the map
 # later needs no change to the proxy.
 resource "google_compute_target_https_proxy" "lb" {
+  count = var.serving ? 1 : 0
+
   project         = local.project_id
   name            = "${local.name_prefix}-https-proxy"
   description     = "HTTPS listener of the global external Application Load Balancer"
-  url_map         = google_compute_url_map.lb.id
+  url_map         = google_compute_url_map.lb[0].id
   certificate_map = "//certificatemanager.googleapis.com/${google_certificate_manager_certificate_map.apps.id}"
   ssl_policy      = google_compute_ssl_policy.lb.id
 }
@@ -144,23 +154,27 @@ resource "google_compute_target_https_proxy" "lb" {
 # the only one that supports cross-project service referencing without a
 # Shared VPC.
 resource "google_compute_global_forwarding_rule" "http" {
+  count = var.serving ? 1 : 0
+
   project               = local.project_id
   name                  = "${local.name_prefix}-http-rule"
   description           = "Port 80 of the global external Application Load Balancer"
   load_balancing_scheme = "EXTERNAL_MANAGED"
   ip_address            = google_compute_global_address.lb.id
   port_range            = "80"
-  target                = google_compute_target_http_proxy.lb.id
+  target                = google_compute_target_http_proxy.lb[0].id
   labels                = local.labels
 }
 
 resource "google_compute_global_forwarding_rule" "https" {
+  count = var.serving ? 1 : 0
+
   project               = local.project_id
   name                  = "${local.name_prefix}-https-rule"
   description           = "Port 443 of the global external Application Load Balancer"
   load_balancing_scheme = "EXTERNAL_MANAGED"
   ip_address            = google_compute_global_address.lb.id
   port_range            = "443"
-  target                = google_compute_target_https_proxy.lb.id
+  target                = google_compute_target_https_proxy.lb[0].id
   labels                = local.labels
 }

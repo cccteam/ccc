@@ -487,3 +487,26 @@ func TestLocalsSecrets(t *testing.T) {
 		})
 	}
 }
+
+func TestHasApplicationLayers(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		root string
+		want bool
+	}{
+		{name: "the layers at the repository root", root: "testdata/flat", want: true},
+		{name: "the layers under infrastructure", root: "testdata/nested/infrastructure", want: true},
+		{name: "an application's own stack", root: "testdata/apprepo/infrastructure", want: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := HasApplicationLayers(tt.root); got != tt.want {
+				t.Errorf("HasApplicationLayers(%s) = %v, want %v", tt.root, got, tt.want)
+			}
+		})
+	}
+}

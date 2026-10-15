@@ -10,8 +10,17 @@
 # revision tag next), for the hook before traffic. The wildcard routes every pull-request
 # environment, <app>-pr<N>, to the first environment's pull-request backend, which picks
 # the Cloud Run service by the hostname's first label; exact hostnames win.
+{{- if .Teardown}}
+# Torn down: bedrock org teardown set teardown in placement.json, so no host routes and
+# the load balancer's listeners are gone (serving = false); the address, the certificate
+# and its DNS authorization stay. A person flips it back on a pull request once every
+# application's stack is applied again, since a host names a backend that must exist.
+hosts   = {}
+serving = false
+{{- else}}
 hosts = {
 {{- range .HostRows}}
   {{.Key}} = "{{.Value}}"
 {{- end}}
 }
+{{- end}}

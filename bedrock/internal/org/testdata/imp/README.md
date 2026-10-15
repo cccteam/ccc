@@ -235,6 +235,27 @@ into its checkout (`infrastructure/placement.json`), or prints it.
 Each layer's `terraform.tfvars` is committed. It holds IDs, not secrets, and
 the values a layer runs with belong in the repository.
 
+## Tearing the organization down
+
+`bedrock org teardown` takes the applications out of service and keeps the
+foundation: the projects, the folders, the identities, the roles and
+policies, the state, the triggers, the Spanner instances, the registry, the
+connection and the keys stay, and so does every application's data. It runs
+twice. The first run sets `teardown` in `placement.json` and renders `2-net`
+with no host and `serving = false` (`2-net/applications.auto.tfvars`), writes
+the journal line, and leaves the working tree for a pull request: its merge
+has the apply trigger take the hosts and the load balancer's listeners out of
+`2-net`, while the address, the certificate and its DNS authorization stay.
+The second run, once `2-net` routes nothing, tears every registered
+application down to what it keeps (`bedrock teardown --all`, each environment
+in promotion order, then the pull-request stacks) when the applications'
+stacks live under `3-app/`, or, when each application carries its own stack,
+says which still stand and the command to run from each checkout, and writes
+the journal line once none does. The inverse is the same loop the other way:
+each stack applied by hand, `teardown` removed from `placement.json` on a pull
+request (a host names a backend service that must exist), then
+`bedrock rerun <env> <release>` per environment.
+
 ## The two GitHub Apps
 
 Besides the infrastructure app `1-org` acts as (`0-bootstrap/README.md`), the

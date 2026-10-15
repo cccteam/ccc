@@ -3157,3 +3157,59 @@ func TestAppsZone(t *testing.T) {
 		})
 	}
 }
+
+// TestRenderTeardown: with teardown in the placement, 2-net routes no host and takes its
+// listeners down (serving = false), and the file says why.
+func TestRenderTeardown(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		teardown bool
+		want     []string
+		wantNot  []string
+	}{
+		{
+			name:    "serving: every registered application's hosts, serving by default",
+			want:    []string{`"harbor-tst.apps.imp.example"`, `"*.apps.imp.example"`},
+			wantNot: []string{"serving = false", "hosts   = {}"},
+		},
+		{
+			name:     "torn down: no host, serving = false, the way back named",
+			teardown: true,
+			want:     []string{"hosts   = {}", "serving = false", "# Torn down: bedrock org teardown set teardown in placement.json", "A person flips it back on a pull request"},
+			wantNot:  []string{`"harbor-tst.apps.imp.example"`, `"*.apps.imp.example"`},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			p := testPlacement(t)
+			p.Teardown = tt.teardown
+			files, err := Render(p)
+			if err != nil {
+				t.Fatalf("Render() error = %v", err)
+			}
+			var text string
+			for _, f := range files {
+				if f.Path == "2-net/applications.auto.tfvars" {
+					text = string(f.Content)
+				}
+			}
+			if text == "" {
+				t.Fatal("2-net/applications.auto.tfvars was not rendered")
+			}
+			for _, want := range tt.want {
+				if !strings.Contains(text, want) {
+					t.Errorf("the file lacks %q:\n%s", want, text)
+				}
+			}
+			for _, not := range tt.wantNot {
+				if strings.Contains(text, not) {
+					t.Errorf("the file has %q:\n%s", not, text)
+				}
+			}
+		})
+	}
+}

@@ -44,6 +44,20 @@ variable "extra_records" {
   }
 }
 
+variable "serving" {
+  description = <<-EOT
+    Whether the load balancer serves: its listeners (the forwarding rules, the
+    proxies, the URL maps and the sink backend) stand and hosts route. False
+    takes them down while the address, the certificate and its DNS
+    authorization stay, so the IP never changes and no certificate is issued
+    again. Rendered into applications.auto.tfvars from the placement: bedrock
+    org teardown sets it false with hosts empty, and a person flips it back
+    on a pull request once the applications' stacks are applied again.
+  EOT
+  type        = bool
+  default     = true
+}
+
 variable "hosts" {
   description = <<-EOT
     The hostnames the load balancer serves, each with the backend service that

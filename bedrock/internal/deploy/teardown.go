@@ -658,3 +658,165 @@ func difference(a, b []string) []string {
 
 	return d
 }
+
+// ApplicationTeardown is one application's teardown or destroy in every environment,
+// prepared, with the pull-request stacks after them: bedrock teardown --all and
+// bedrock destroy --all, and bedrock org teardown's loop over the registered
+// applications.
+type ApplicationTeardown struct {
+	req     *TeardownRequest
+	clients *Clients
+	// Environments are the environments with a stack, in promotion order;
+	// PullRequests the numbers of the pull-request stacks under the integration
+	// environment's prefix.
+	Environments []*EnvironmentTeardown
+	PullRequests []string
+}
+
+// PrepareApplication prepares every environment of the application in promotion order
+// (a refusal in any stops the whole before anything runs) and lists the pull-request
+// stacks. The request's environment is ignored.
+func PrepareApplication(ctx context.Context, clients *Clients, req *TeardownRequest, out io.Writer) (*ApplicationTeardown, error) {
+	a := &ApplicationTeardown{req: req, clients: clients}
+	for _, env := range req.Placement.Environments {
+		r := *req
+		r.Env = env
+		t, err := PrepareTeardown(ctx, clients, &r, out)
+		if err != nil {
+			return nil, err
+		}
+		if t != nil {
+			a.Environments = append(a.Environments, t)
+		}
+	}
+	numbers, err := PullRequestStacks(ctx, clients, req)
+	if err != nil {
+		return nil, err
+	}
+	a.PullRequests = numbers
+
+	return a, nil
+}
+
+// Empty reports that nothing of the application stands: no environment's stack and no
+// pull-request stack.
+func (a *ApplicationTeardown) Empty() bool {
+	return len(a.Environments) == 0 && len(a.PullRequests) == 0
+}
+
+// Summary says what the run does, environment by environment, and which pull-request
+// stacks go after them.
+func (a *ApplicationTeardown) Summary() string {
+	var b strings.Builder
+	for _, t := range a.Environments {
+		b.WriteString(t.Summary())
+	}
+	if len(a.PullRequests) > 0 {
+		fmt.Fprintf(&b, "Pull-request stacks under %s, destroyed whole with their builds' jobs: %s\n", a.req.Placement.Integration(), strings.Join(a.PullRequests, ", "))
+	}
+
+	return b.String()
+}
+
+// Run runs every environment in promotion order, then destroys the pull-request stacks.
+func (a *ApplicationTeardown) Run(ctx context.Context, out io.Writer) error {
+	for _, t := range a.Environments {
+		if err := t.Run(ctx, out); err != nil {
+			return err
+		}
+	}
+	if len(a.PullRequests) == 0 {
+		return nil
+	}
+
+	return TeardownPullRequests(ctx, a.clients, a.req, a.PullRequests, out)
+}
+
+// NetHosts are the hosts 2-net routes, by backend service, read from its state in the
+// state bucket as the person: none when the layer has not applied or routes nothing.
+func NetHosts(ctx context.Context, clients *Clients, bucket string) (map[string]string, error) {
+	store, err := clients.Storage(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer store.Close()
+	net, ok, err := readState(ctx, store, bucket, netLayer)
+	if err != nil || !ok {
+		return nil, err
+	}
+
+	return net.stringMap(hostsOutput)
+}
+
+// Standing is what one environment of an application holds, read from the state bucket
+// and the records as the person, for bedrock org teardown's account of the
+// applications whose stacks it cannot reach (each in its own repository): whether a
+// stack stands there, whether a teardown took it down, and the release that is live.
+type Standing struct {
+	Env string
+	// Stack says the environment's stack has been applied; TornDown that a teardown of
+	// that stack is recorded beside its id. Release is the live release, or "".
+	Stack    bool
+	TornDown bool
+	Release  string
+}
+
+// ApplicationStanding reads every environment's standing.
+func ApplicationStanding(ctx context.Context, clients *Clients, bucket, app string, envs []string) ([]Standing, error) {
+	store, err := clients.Storage(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer store.Close()
+	standings := make([]Standing, 0, len(envs))
+	for _, env := range envs {
+		s, err := environmentStanding(ctx, store, bucket, app, env)
+		if err != nil {
+			return nil, err
+		}
+		standings = append(standings, s)
+	}
+
+	return standings, nil
+}
+
+// environmentStanding is one environment's standing: the stack's state says whether it
+// stands, its records whether a teardown of this stack is recorded and what is live.
+func environmentStanding(ctx context.Context, store Store, bucket, app, env string) (Standing, error) {
+	s := Standing{Env: env}
+	state, ok, err := readState(ctx, store, bucket, statePrefix(app, env))
+	if err != nil || !ok || len(state.Outputs) == 0 {
+		return s, err
+	}
+	s.Stack = true
+	subs, err := state.stringMap(substitutionsOutput)
+	if err != nil || subs[recordsBucket] == "" {
+		return s, err
+	}
+	records := subs[recordsBucket]
+	id, err := stackID(ctx, store, records, app, env)
+	if err != nil {
+		return s, err
+	}
+	data, err := store.Read(ctx, records, teardownObject(app, env))
+	switch {
+	case errors.Is(err, os.ErrNotExist):
+	case err != nil:
+		return s, err
+	default:
+		var r TeardownRecord
+		if err := json.Unmarshal(data, &r); err != nil {
+			return s, errors.Wrapf(err, "json.Unmarshal(): gs://%s/%s", records, teardownObject(app, env))
+		}
+		s.TornDown = r.Kind == teardownVar && r.StackID == id
+	}
+	live, err := newestLiveRelease(ctx, store, records, app, env)
+	if err != nil {
+		return s, err
+	}
+	if live != nil {
+		s.Release = live.Version
+	}
+
+	return s, nil
+}

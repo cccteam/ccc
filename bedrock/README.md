@@ -1778,6 +1778,7 @@ bedrock org check                                               # the committed 
 bedrock org register quill ../quill                             # an application joins the foundation; its first placement.json is written into its checkout
 bedrock org plan                                                # what the plan trigger runs on a pull request
 bedrock org apply                                               # what the apply trigger runs on a push to the default branch
+bedrock org teardown                                            # the applications out of service: 2-net's hosts and listeners, then every application torn down
 ```
 
 `org new` renders the six layers, each with its `.tf` files, its README and its seeded
@@ -1986,6 +1987,25 @@ entitlement (its slot in the state bucket, on the boot project), running the lay
 themselves, for the other layers as the bootstrap administrator; an apply by hand leaves
 the layer's marker as it was, so the next push applies the layer again, with an empty plan
 when the hand apply was complete.
+
+`org teardown` takes the organization's applications out of service and keeps the
+foundation, in two runs by a person with their own sign-in. The first sets `teardown` in
+`placement.json`, renders 2-net with no host and `serving = false`
+(`2-net/applications.auto.tfvars`), writes the journal line and leaves the working tree for
+a pull request: its merge has the apply trigger take the hosts and the load balancer's
+listeners (the forwarding rules, the proxies, the URL maps and the sink) out of 2-net, while
+the address, the certificate and its DNS authorization stay, so the IP never changes and no
+certificate is issued again; the hosts go first because a backend service cannot be deleted
+while the URL map names it. The second run, once 2-net's state routes nothing, tears every
+registered application down to what it keeps the way `bedrock teardown --all` does (each
+environment in promotion order, then the pull-request stacks, the summaries shown before
+the prefix is typed back) when the stacks live under `3-app/`, or, when each application
+carries its own stack, reads the state bucket and the records, says which environments
+still stand and the command to run from each checkout, and writes the journal line once
+none does. The inverse is the same loop the other way: each stack applied by hand from the
+checkout of the release it ran, `teardown` removed from `placement.json` on a pull request,
+then `bedrock rerun <env> <release>` per environment ("bedrock teardown and bedrock destroy",
+above).
 
 `org register <app>` adds an application: its code goes into `placement.json`'s
 applications, each layer's values are rendered from it (1-org's repositories and its
