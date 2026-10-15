@@ -61,11 +61,13 @@ teardown=true first, recording in the state that the services' deletion protecti
 then a destroy plan with every kept resource excluded, read back and held against what the
 teardown names (anything beyond or short of it stops the run with nothing applied), and its
 apply; then a record of what went, by whom and when, beside the stack's id in the records
-bucket (<app>/stacks/<env>/teardown.json). It refuses while 2-net routes a host to the
-environment's backend service (Google refuses the backend's deletion while the load balancer
-uses it): take the hosts out of 2-net first, with bedrock org teardown or the application's
-removal from placement.json through an organization pull request. It asks for the environment
-typed back before anything runs (--yes stands in for it where there is no terminal). With --all
+bucket (<app>/stacks/<env>/teardown.json). A run that finds nothing left to destroy writes the
+record when the stack has none since its live release (an earlier run's write failed after its
+apply). It refuses while 2-net routes a host to the environment's backend service (Google
+refuses the backend's deletion while the load balancer uses it): take the hosts out of 2-net
+first, with bedrock org teardown or the application's removal from placement.json through an
+organization pull request. It asks for the environment typed back before anything runs (--yes
+stands in for it where there is no terminal). With --all
 it takes every environment down in promotion order, then destroys every pull-request stack
 under the integration environment's prefix whole, the way the sweep destroys a closed pull
 request's.

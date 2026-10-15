@@ -158,11 +158,13 @@ type EnvironmentTeardown struct {
 	protected  []string
 	dependents []string
 	// generation and pins are the plan's variables, as the pipeline's last plan had
-	// them; live is the environment's live release, or nil; id the stack's id, or "".
+	// them; live is the environment's live release, or nil; id the stack's id, or "";
+	// recorded whether the records hold a teardown of this stack since the live release.
 	generation int
 	pins       map[string]string
 	live       *Record
 	id         string
+	recorded   bool
 	// records is the environment's records bucket, from the stack's state.
 	records string
 }
@@ -366,8 +368,52 @@ func (t *EnvironmentTeardown) readRecords(ctx context.Context, store Store) erro
 	if t.live != nil {
 		t.pins = t.live.GeneratedSecrets
 	}
+	t.recorded, err = teardownRecorded(ctx, store, t.records, app, env, id, t.live)
+	if err != nil {
+		return err
+	}
 
 	return nil
+}
+
+// teardownRecorded reports whether the records bucket holds a teardown record of the
+// stack (its id) since the live release: the teardown is done and recorded. A run that
+// finds nothing of a teardown's left to destroy writes the record when there is none,
+// since an earlier run's write may have failed after its apply.
+func teardownRecorded(ctx context.Context, store Store, bucket, app, env, id string, live *Record) (bool, error) {
+	object := teardownObject(app, env)
+	data, err := store.Read(ctx, bucket, object)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return false, nil
+		}
+
+		return false, errors.Wrapf(err, "reading gs://%s/%s", bucket, object)
+	}
+	var r TeardownRecord
+	if err := json.Unmarshal(data, &r); err != nil {
+		return false, errors.Wrapf(err, "json.Unmarshal(): gs://%s/%s", bucket, object)
+	}
+
+	return r.Kind == teardownVar && r.StackID == id && recordAfter(r.At, live), nil
+}
+
+// recordAfter reports whether the record's time is after the live release's; with no
+// live release, any record is.
+func recordAfter(at string, live *Record) bool {
+	if live == nil {
+		return true
+	}
+	t, err := time.Parse(time.RFC3339, at)
+	if err != nil {
+		return false
+	}
+	l, err := time.Parse(time.RFC3339, live.Timestamp)
+	if err != nil {
+		return false
+	}
+
+	return t.After(l)
 }
 
 // sortResources sorts the stack's managed resources into what goes and what stays, and
@@ -422,9 +468,15 @@ func (t *EnvironmentTeardown) Summary() string {
 func (t *EnvironmentTeardown) Run(ctx context.Context, out io.Writer) error {
 	env, command := t.req.Env, t.req.command()
 	if len(t.destroyed) == 0 {
-		fmt.Fprintf(out, "Nothing of %s's stack is for a %s to destroy: it holds %d resource(s), every one kept.\n", env, command, len(t.kept))
+		fmt.Fprintf(out, "Nothing of %s's stack is for a %s to destroy: it holds %d resource(s), every one kept", env, command, len(t.kept))
+		if t.req.Destroy || t.live == nil || t.recorded {
+			fmt.Fprintln(out, ".")
 
-		return nil
+			return nil
+		}
+		fmt.Fprintf(out, "; its teardown has no record yet (an earlier run's write failed after its apply), so one goes to gs://%s/%s.\n", t.records, teardownObject(t.req.App, env))
+
+		return t.writeRecord(ctx)
 	}
 	if len(t.protected) > 0 {
 		fmt.Fprintf(out, "Recording in %s's state that %s lifts the protection of %s.\n", env, command, strings.Join(t.protected, ", "))
@@ -525,7 +577,11 @@ func teardownObject(app, env string) string {
 
 // writeRecord writes the record of what was done to the records bucket.
 func (t *EnvironmentTeardown) writeRecord(ctx context.Context) error {
-	r := TeardownRecord{Kind: t.req.command(), App: t.req.App, Env: t.req.Env, StackID: t.id, At: t.req.Now().UTC().Format(time.RFC3339), By: t.req.By, Destroyed: t.destroyed, Kept: t.kept}
+	destroyed := t.destroyed
+	if destroyed == nil {
+		destroyed = []string{}
+	}
+	r := TeardownRecord{Kind: t.req.command(), App: t.req.App, Env: t.req.Env, StackID: t.id, At: t.req.Now().UTC().Format(time.RFC3339), By: t.req.By, Destroyed: destroyed, Kept: t.kept}
 	if t.live != nil {
 		r.Release = t.live.Version
 	}

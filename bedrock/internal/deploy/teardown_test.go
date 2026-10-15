@@ -169,6 +169,7 @@ google_service_account.app
 		env         string
 		destroy     bool
 		routed      bool
+		recorded    bool
 		empty       bool
 		stateList   string
 		shown       string
@@ -256,11 +257,20 @@ google_service_account.app
 			},
 		},
 		{
-			name:      "says so when nothing of the stack is a teardown's to destroy",
+			name:      "says so when nothing of the stack is a teardown's to destroy, the teardown recorded",
 			env:       "tst",
+			recorded:  true,
 			stateList: strings.Join(tstStays, "\n") + "\n",
 			wantOut:   []string{"Nothing of tst's stack is for a teardown to destroy: it holds 9 resource(s), every one kept."},
 			wantRan:   []string{"tofu init -input=false -no-color -reconfigure -backend-config=prefix=3-app/harbor/tst", "tofu state list"},
+		},
+		{
+			name:       "records a teardown an earlier run applied and could not record: nothing to destroy, the record written",
+			env:        "tst",
+			stateList:  strings.Join(tstStays, "\n") + "\n",
+			wantOut:    []string{"Nothing of tst's stack is for a teardown to destroy: it holds 9 resource(s), every one kept; its teardown has no record yet (an earlier run's write failed after its apply), so one goes to gs://imp-tst-gbl-harbor-records/harbor/stacks/tst/teardown.json."},
+			wantRan:    []string{"tofu init -input=false -no-color -reconfigure -backend-config=prefix=3-app/harbor/tst", "tofu state list"},
+			wantRecord: []string{`"kind": "teardown"`, `"stackId": "9f3c"`, `"release": "v0.1.4"`, `"destroyed": []`, `"kept": [`, `"google_storage_bucket.migrate_logs[0]"`},
 		},
 	}
 	for _, tt := range tests {
@@ -268,6 +278,9 @@ google_service_account.app
 			t.Parallel()
 
 			store := teardownStore(tt.routed)
+			if tt.recorded {
+				store.objects["gs://imp-tst-gbl-harbor-records/harbor/stacks/tst/teardown.json"] = `{"kind": "teardown", "stackId": "9f3c", "at": "2026-10-15T03:00:00Z", "destroyed": []}`
+			}
 			if tt.empty {
 				store.objects["gs://"+teardownStateBucket+"/3-app/harbor/stg/default.tfstate"] = `{"version": 4, "outputs": {}, "resources": []}`
 			}
