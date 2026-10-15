@@ -109,7 +109,7 @@ on:
   workflow_dispatch:
     inputs:
       action:
-        description: "What to do: restore the environment's database (an empty database or production's backup below production; a backup by name, @<moment> or a release's cut anywhere, production included); run the release again (its tag build, with no instruction; production included); apply (the environment's stack for the first time, from the default branch, before any release exists there); rollback (return the environment to an earlier release, with nothing of the database); list (the releases, their cuts and backups, and the database generations the environment can be restored to, in this run's summary); maintenance (take the application out of a maintenance an earlier run left on); or a migration operation (version, rerun, force, below production)"
+        description: "What to do: restore the environment's database (an empty database or production's backup below production; a backup by name, @<moment> or a release's cut anywhere, production included); run the release again (its tag build, with no instruction; production included); apply (the environment's stack when no release's build can, from the default branch: for the first time, before any release exists there, or again after a teardown); rollback (return the environment to an earlier release, with nothing of the database); list (the releases, their cuts and backups, and the database generations the environment can be restored to, in this run's summary); maintenance (take the application out of a maintenance an earlier run left on); or a migration operation (version, rerun, force, below production)"
         type: choice
         required: true
         default: restore
@@ -489,7 +489,7 @@ jobs:
           done
 
   apply:
-    name: apply the environment's stack for the first time
+    name: apply the environment's stack when no release's build can
     if: ${{"{{"}} inputs.action == 'apply' {{"}}"}}
     runs-on: ubuntu-latest
     environment: ${{"{{"}} inputs.environment {{"}}"}}
@@ -530,9 +530,10 @@ jobs:
           service_account: ${{"{{"}} steps.target.outputs.identity {{"}}"}}
       - uses: google-github-actions/setup-gcloud@{{.GcloudAction}}
       # The stack trigger's build (2-env's, run as the deploy identity): the stack applied
-      # for the first time from the default branch, as the apply identity, waited for to its
-      # end; in an environment whose builds wait for an approval in Cloud Build it waits here
-      # too. A stack a release has run on is refused there, and run is the action for it.
+      # from the default branch as the apply identity, for the first time or again after a
+      # teardown, waited for to its end; in an environment whose builds wait for an approval
+      # in Cloud Build it waits here too. A live stack is refused there, and run is the
+      # action for it.
       - name: Run the stack trigger
         env:
           PROJECT: ${{"{{"}} steps.target.outputs.project {{"}}"}}
@@ -540,7 +541,7 @@ jobs:
         run: |
           build=$(gcloud builds triggers run "$TRIGGER" --branch "$BRANCH" --region "$REGION" --project "$PROJECT" \
             --format='value(metadata.build.id)')
-          echo "Build $build applies $ENVIRONMENT's stack for the first time from $BRANCH, asked for by $REQUESTER."
+          echo "Build $build applies $ENVIRONMENT's stack from $BRANCH (the first time, or again after a teardown), asked for by $REQUESTER."
           echo "https://console.cloud.google.com/cloud-build/builds;region=$REGION/$build?project=$PROJECT"
           while :; do
             status=$(gcloud builds describe "$build" --region "$REGION" --project "$PROJECT" --format='value(status)')

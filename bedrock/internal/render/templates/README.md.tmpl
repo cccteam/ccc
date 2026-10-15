@@ -38,11 +38,15 @@ environment): it runs in the GitHub Environment named after the environment,
 as the environment's operations identity, and starts the stack trigger `2-env`
 holds for this application there, which applies the stack from the default
 branch as the apply identity (`bedrock deploy stack first`: the plan with the
-environment alone, no generated-secret pin, which the first release derives).
+environment and the generated secrets' pins derived from their containers,
+nothing while a container has no version, which the first release adds).
 Nobody holds a cloud role for it: repository write and the Environment's
 approval are what the action takes, and the audit log names who asked. Every
 later apply is the pipeline's, and a release run again (the `run` action)
-applies the stack again. A release's tag build plans the stack for
+applies the stack again. After a teardown (`bedrock teardown`), which
+destroyed the triggers a release's build would run in, the same `apply`
+action brings the stack back, and the `run` action then runs the release
+the environment ran. A release's tag build plans the stack for
 its environment as the apply identity after the image build and before the
 migrations, runs the tests (no authoritative IAM resource other than the file
 stores' bucket policies; every secret version

@@ -348,9 +348,12 @@ cloud role for an application's first apply and the audit log names who
 asked. Its steps are the organization's triggers' (fetch the bedrock the
 checkout's `infrastructure/placement.json` pins, build a commit pin, `bedrock
 check`) and then `bedrock deploy stack first`, which applies the stack as the
-apply identity with the environment alone (no generated-secret pin: the first
-release derives it) and refuses a stack a release has run on (its deployment
-records say so), since a release's build applies an applied stack. In the
+apply identity, with the generated secrets' pins derived from their containers
+(nothing while a container has no version: the first release adds it), and
+refuses a live stack (its deployment records say a release has run on it, and
+no teardown since), since a release's build applies a live stack. After a
+teardown (`bedrock teardown`), which destroyed the triggers a release's build
+would run in, the same trigger brings the stack back. In the
 environments whose releases wait for an approval in Cloud Build, so does this
 build. The registration sequence (`bedrock org register`) names it as its
 step 4, between the grants and the hostnames.
