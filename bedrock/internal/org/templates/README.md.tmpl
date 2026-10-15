@@ -267,6 +267,19 @@ each stack applied by hand, `teardown` removed from `placement.json` on a pull
 request (a host names a backend service that must exist), then
 `bedrock rerun <env> <release>` per environment.
 
+One application goes out of service on its own, the others untouched:
+`bedrock org teardown <app>` (or `<app> <env>...` for some of its environments)
+records the environments under `outOfService` in `placement.json`, renders
+`2-net` without that application's hostnames there while the listeners and
+every other application's hosts stay, writes the journal line, and leaves the
+working tree for a pull request; once the merge's apply has `2-net` routing
+nothing to it, `bedrock teardown` or `bedrock destroy` runs from the
+application's checkout. The way back is the operations workflow's `apply`
+action and `bedrock rerun` per environment, then `bedrock org serve <app>`
+(or `<app> <env>...`), which refuses an environment whose stack is still torn
+down, removes the entry, renders the hostnames back and leaves the pull
+request the same way.
+
 ## The two GitHub Apps
 
 Besides the infrastructure app `1-org` acts as (`0-bootstrap/README.md`), the

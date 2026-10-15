@@ -262,6 +262,14 @@ type Placement struct {
 	// authorization kept. A person flips it back on a pull request once every
 	// application's stack is applied again.
 	Teardown bool `json:"teardown,omitempty"`
+	// OutOfService lists, by application code, the environments whose hostnames 2-net
+	// does not serve while the application's stack there is torn down: bedrock org
+	// teardown <app> [<env>...] adds them, the hosts file renders without those
+	// hostnames (the listeners and every other application's hosts stay), and bedrock
+	// org serve <app> [<env>...] removes them once the stack is applied again, since a
+	// host names a backend service that must exist. Each application named is registered
+	// in full; each environment is one of the model's, listed once, in promotion order.
+	OutOfService map[string][]string `json:"outOfService,omitempty"`
 	// Projects are the projects by key: boot, the project the seed chose, and shr, net,
 	// spn, tst, stg and prd, the ids 1-org's apply chose (its project_ids output). The
 	// environment projects are what the applications' identities and backends are named
@@ -370,6 +378,7 @@ func (p *Placement) Validate() error {
 	for _, validate := range []func() error{
 		p.validateGithubApps, p.validateApprovingReviews, p.validateCloudBuild, p.validateBedrockPin,
 		p.validateCiLargeRunner, p.validateProjects, p.validateTeamGroups, p.validateEntitlementDurations,
+		p.validateApplications, p.validateOutOfService,
 	} {
 		if err := validate(); err != nil {
 			return err
@@ -378,19 +387,6 @@ func (p *Placement) Validate() error {
 	for _, d := range p.ContactDomains {
 		if !strings.HasPrefix(d, "@") || len(d) < 3 {
 			return errors.Newf("contact domain %q is not @<domain>", d)
-		}
-	}
-	for _, a := range p.Applications {
-		if !applicationRE.MatchString(a) {
-			return errors.Newf("application %q is not 1 to 6 lowercase alphanumeric characters starting with a letter", a)
-		}
-	}
-	for app, step := range p.Registration {
-		if !slices.Contains(p.Applications, app) {
-			return errors.Newf("registration names %q, which applications does not list", app)
-		}
-		if step != RegistrationIdentities && step != RegistrationGrants {
-			return errors.Newf("registration of %q is %q, not %s or %s", app, step, RegistrationIdentities, RegistrationGrants)
 		}
 	}
 	for k, v := range p.Labels {
@@ -1042,6 +1038,152 @@ func (p *Placement) Served() []string {
 	}
 
 	return apps
+}
+
+// validateApplications refuses an application code that is not one to six lowercase
+// alphanumeric characters starting with a letter, and a registration step naming an
+// application the placement does not list or a step that is not one of the two.
+func (p *Placement) validateApplications() error {
+	for _, a := range p.Applications {
+		if !applicationRE.MatchString(a) {
+			return errors.Newf("application %q is not 1 to 6 lowercase alphanumeric characters starting with a letter", a)
+		}
+	}
+	for app, step := range p.Registration {
+		if !slices.Contains(p.Applications, app) {
+			return errors.Newf("registration names %q, which applications does not list", app)
+		}
+		if step != RegistrationIdentities && step != RegistrationGrants {
+			return errors.Newf("registration of %q is %q, not %s or %s", app, step, RegistrationIdentities, RegistrationGrants)
+		}
+	}
+
+	return nil
+}
+
+// validateOutOfService refuses an out-of-service entry naming an application the
+// placement does not register in full, an environment the model lacks, one listed twice
+// or out of promotion order, or an application with no environment.
+func (p *Placement) validateOutOfService() error {
+	for app, envs := range p.OutOfService {
+		if !slices.Contains(p.Served(), app) {
+			return errors.Newf("outOfService names %q, which is not registered in full: only a registered application has hostnames to take out", app)
+		}
+		if len(envs) == 0 {
+			return errors.Newf("outOfService lists no environment for %q: an application in service is left out of the map", app)
+		}
+		last := -1
+		for _, env := range envs {
+			i := slices.Index(Environments, env)
+			if i < 0 {
+				return errors.Newf("outOfService names %q for %q, which is not one of %s", env, app, strings.Join(Environments, ", "))
+			}
+			if i <= last {
+				return errors.Newf("outOfService lists %q's environments as %s: each once, in promotion order (%s)", app, strings.Join(envs, ", "), strings.Join(Environments, ", "))
+			}
+			last = i
+		}
+	}
+
+	return nil
+}
+
+// Routed says whether 2-net serves the application's hostnames in the environment: the
+// application is registered in full, the organization is not torn down, and the
+// environment is not out of service.
+func (p *Placement) Routed(app, env string) bool {
+	return !p.Teardown && slices.Contains(p.Served(), app) && !slices.Contains(p.OutOfService[app], env)
+}
+
+// TakeOutOfService adds the environments to the application's out-of-service entry
+// (every environment when none is given) and answers the ones added; an application
+// not registered in full, an environment the model lacks, and environments all out of
+// service already are refused.
+func (p *Placement) TakeOutOfService(app string, envs []string) ([]string, error) {
+	envs, err := p.serviceEnvironments(app, envs)
+	if err != nil {
+		return nil, err
+	}
+	var added []string
+	for _, env := range envs {
+		if !slices.Contains(p.OutOfService[app], env) {
+			added = append(added, env)
+		}
+	}
+	if len(added) == 0 {
+		return nil, errors.Newf("%s is out of service in %s already (outOfService in placement.json)", app, strings.Join(envs, ", "))
+	}
+	if p.OutOfService == nil {
+		p.OutOfService = map[string][]string{}
+	}
+	p.OutOfService[app] = inPromotionOrder(append(p.OutOfService[app], added...))
+
+	return added, nil
+}
+
+// PutInService removes the environments from the application's out-of-service entry
+// (every environment when none is given) and answers the ones removed; an application
+// not registered in full, an environment the model lacks, and environments in service
+// already are refused.
+func (p *Placement) PutInService(app string, envs []string) ([]string, error) {
+	envs, err := p.serviceEnvironments(app, envs)
+	if err != nil {
+		return nil, err
+	}
+	var removed []string
+	for _, env := range envs {
+		if slices.Contains(p.OutOfService[app], env) {
+			removed = append(removed, env)
+		}
+	}
+	if len(removed) == 0 {
+		return nil, errors.Newf("%s is in service in %s already: nothing to put back (outOfService in placement.json)", app, strings.Join(envs, ", "))
+	}
+	left := slices.DeleteFunc(slices.Clone(p.OutOfService[app]), func(env string) bool { return slices.Contains(removed, env) })
+	if len(left) == 0 {
+		delete(p.OutOfService, app)
+		if len(p.OutOfService) == 0 {
+			p.OutOfService = nil
+		}
+	} else {
+		p.OutOfService[app] = left
+	}
+
+	return removed, nil
+}
+
+// serviceEnvironments checks the application and the environments an out-of-service
+// change names: the application registered in full, each environment one of the model's;
+// none given means every environment.
+func (p *Placement) serviceEnvironments(app string, envs []string) ([]string, error) {
+	if !slices.Contains(p.Applications, app) {
+		return nil, errors.Newf("application %q is not registered (bedrock org register %s)", app, app)
+	}
+	if !slices.Contains(p.Served(), app) {
+		return nil, errors.Newf("application %q is at the %s step of its registration: it has no hostnames in 2-net", app, p.Registration[app])
+	}
+	if len(envs) == 0 {
+		return slices.Clone(Environments), nil
+	}
+	for _, env := range envs {
+		if !slices.Contains(Environments, env) {
+			return nil, errors.Newf("environment %q is not one of %s", env, strings.Join(Environments, ", "))
+		}
+	}
+
+	return inPromotionOrder(envs), nil
+}
+
+// inPromotionOrder is the environments each once, in the model's order.
+func inPromotionOrder(envs []string) []string {
+	ordered := make([]string, 0, len(Environments))
+	for _, env := range Environments {
+		if slices.Contains(envs, env) {
+			ordered = append(ordered, env)
+		}
+	}
+
+	return ordered
 }
 
 // Write puts the placement back in its file, indented the way a person reads it.

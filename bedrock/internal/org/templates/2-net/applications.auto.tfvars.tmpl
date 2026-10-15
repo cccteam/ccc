@@ -12,7 +12,11 @@
 # the Cloud Run service by the hostname's first label; exact hostnames win. An
 # application's hostnames are listed once its registration is complete (placement.json's
 # registration, moved by bedrock org register <app> --next after its stack's first apply in
-# every environment has created the backends).
+# every environment has created the backends), and left out for an environment the
+# application is out of service in (placement.json's outOfService: bedrock org teardown
+# <app> [<env>...] takes an application's hostnames out ahead of its stack's teardown,
+# while the listeners and every other application's hosts stay; bedrock org serve <app>
+# [<env>...] puts them back once the stack is applied again).
 {{- if .Teardown}}
 # Torn down: bedrock org teardown set teardown in placement.json, so no host routes and
 # the load balancer's listeners are gone (serving = false); the address, the certificate

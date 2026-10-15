@@ -1658,7 +1658,9 @@ never from a trigger, and both ask for the environment's name typed back before 
 runs (`--yes` stands in where there is no terminal). Both refuse while `2-net` routes a
 host to the environment's backend service, since Google refuses the backend's deletion
 while the load balancer uses it and OpenTofu keeps everything an excluded resource depends
-on: the hosts come out of `2-net` first, through `bedrock org teardown` or the
+on: the hosts come out of `2-net` first, through `bedrock org teardown <app>` (that
+application's hostnames alone, in the environments named or all of them; the listeners and
+the other applications stay), `bedrock org teardown` (every application's), or the
 application's removal from the organization's `placement.json` in a pull request.
 
 A teardown destroys what a pipeline makes again (the Cloud Run services and jobs with
@@ -1683,7 +1685,8 @@ teardown's left to destroy writes the record when the stack has none since its l
 (an earlier run's write failed after its apply), and says so. Bringing the environment back is
 the operations workflow's `apply` action, which runs the environment's stack trigger and
 applies the stack again (the services and the triggers), then `bedrock rerun <env> <release>`
-through them.
+through them, then `bedrock org serve <app> [<env>...]` from the organization's checkout, which
+puts the hostnames back on a pull request once the release is live.
 
 A destroy takes everything, in production after an apply with `destroy=true` recording
 every protection lifted (the services' deletion protection, the database's deletion and
@@ -1802,6 +1805,8 @@ bedrock org register quill ../quill                             # an application
 bedrock org plan                                                # what the plan trigger runs on a pull request
 bedrock org apply                                               # what the apply trigger runs on a push to the default branch
 bedrock org teardown                                            # the applications out of service: 2-net's hosts and listeners, then every application torn down
+bedrock org teardown <app> [<env>...]                            # one application's hostnames out of 2-net ahead of bedrock teardown from its checkout
+bedrock org serve [<app> [<env>...]]                             # the way back: the hostnames (or the listeners and every host) return to 2-net on a pull request
 bedrock org destroy                                             # every project of the organization deleted, by hand, after the prefix typed back
 ```
 
@@ -2036,9 +2041,21 @@ the prefix is typed back) when the stacks live under `3-app/`, or, when each app
 carries its own stack, reads the state bucket and the records, says which environments
 still stand and the command to run from each checkout, and writes the journal line once
 none does. The inverse is the same loop the other way: each stack applied again with the
-operations workflow's `apply` action per environment, `teardown` removed from
-`placement.json` on a pull request, then `bedrock rerun <env> <release>` per environment
+operations workflow's `apply` action per environment, `bedrock rerun <env> <release>` per
+environment, then `bedrock org serve`, which reads the state bucket and the records,
+refuses while a stack is still torn down, removes `teardown` from `placement.json`,
+renders 2-net with its listeners and every host back and leaves the pull request
 ("bedrock teardown and bedrock destroy", above).
+
+`org teardown <app>` takes one application out of service, the others untouched: in the
+environments named or in every environment, it records them under `outOfService` in
+`placement.json`, renders 2-net without that application's hostnames there while the
+listeners and every other application's hosts stay, writes the journal line and leaves the
+working tree for a pull request; once the merge's apply has 2-net routing nothing to the
+application, `bedrock teardown` or `bedrock destroy` runs from its checkout. `org serve
+<app> [<env>...]` is its way back after the `apply` action and the rerun: it refuses an
+environment whose stack is still torn down (no release run since its teardown), removes
+the entry, renders the hostnames back and leaves the pull request the same way.
 `org destroy` deletes every project of the organization, by a person at their own computer
 with their own sign-in (an owner of the GCP organization; `GITHUB_TOKEN`, or gh's token, for
 1-org's GitHub provider: the infrastructure GitHub App's installation token, or an
