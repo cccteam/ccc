@@ -1677,7 +1677,10 @@ the services' deletion protection is lifted; then it plans the destroy with ever
 resource excluded, reads the plan back and holds it against what it means to destroy
 (anything beyond or short of it stops the run with nothing applied), applies it, and
 writes a record beside the stack's id (`<app>/stacks/<env>/teardown.json`: what went, when,
-by whom, and the release that was live). Bringing the environment back is the stack's
+by whom, and the release that was live; the environment's team group writes under
+`<app>/stacks/`, so the person running the command can). A run that finds nothing of a
+teardown's left to destroy writes the record when the stack has none since its live release
+(an earlier run's write failed after its apply), and says so. Bringing the environment back is the stack's
 apply by hand from the checkout of the release it ran (the stack README's "Applying"),
 which makes the services and the triggers again, then `bedrock rerun <env> <release>`
 through them.
