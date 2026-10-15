@@ -872,7 +872,8 @@ thing one step hands the next. In order:
   release bundles several pull requests. An infrastructure change must be safe on the
   running service (add first, remove later); one that is not is declared breaking in
   release-please's way and becomes a window release. The first apply of an environment,
-  before any release exists there, is `first`'s (below). In a restore run (`_RESTORE=empty`) the
+  before any release exists there, is `first`'s (below), and so is the apply after a
+  teardown. In a restore run (`_RESTORE=empty`) the
   plan replaces the Spanner database and, in the first environment, the file stores'
   buckets (every one the stack's `_FILE_STORES` names), each when the stack has it, so
   the migrations apply afresh, and the seed where the placement's seed list names the
@@ -901,18 +902,22 @@ thing one step hands the next. In order:
   declares `APP_MAINTENANCE` with `var.maintenance`, empty by default, and an entry of the
   service's env set cannot be ignored on its own, so declared and live agree and the apply
   leaves the service alone while the database is replaced.
-- `deploy stack first`: the stack trigger's step, the environment's stack applied for the
-  first time, before any release exists there. `2-env` renders one such trigger per
+- `deploy stack first`: the stack trigger's step, the environment's stack applied when no
+  release's build can: for the first time, before any release exists there, and again
+  after a teardown (`bedrock teardown`), which destroyed the triggers a release's build
+  would run in. `2-env` renders one such trigger per
   application and environment, run as the deploy identity, and the application's
   operations workflow starts it with its `apply` action, so no person holds a cloud role
   for an application's first apply. It reads its build (the trigger carries the
   application, the environment, the apply identity and the records bucket), refuses a
-  stack a release has run on (its deployment records say so: a release's build applies an
-  applied stack, with the generated secrets' pins this apply does not carry, and the
-  workflow's `run` action runs the live release again), runs `tofu init` on the
-  environment's state prefix as the apply identity, plans with the environment alone (no
-  generated-secret pin: the secret containers come with this apply, and the first release
-  derives the pins), prints the plan's summary and applies it.
+  live stack (its deployment records say a release has run on it, and no teardown record
+  beside the stack's id is newer than its newest live release: a release's build applies
+  a live stack, and the workflow's `run` action runs the live release again), runs `tofu init` on the
+  environment's state prefix as the apply identity, plans with the environment and the
+  generated secrets' pins derived from their containers the way a pull request's plan
+  derives them (each container's newest enabled version; nothing while a container has
+  none, since the first release adds it), prints the plan's summary and applies it. After
+  a teardown the workflow's `run` action then runs the release the environment ran.
 - `deploy migrate`: runs the release's migrate command, which `deploy build-image` took
   out of the image (`/builder/home/migrate`), on the build worker as the deploy identity,
   once to completion, from the checkout's root (where the command finds the schema
