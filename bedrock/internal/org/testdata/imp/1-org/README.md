@@ -93,8 +93,9 @@ trigger plans it on a pull request as `imp-org-gbl-plan`.
 - `roles/resourcemanager.tagUser` on the public-invoker tag value for each
   application's apply identity in every environment (`tags.tf`, from
   `public-invokers.auto.tfvars`): the identity binds the tag to its own Cloud
-  Run services. Rendered by `bedrock org register` and committed once `2-env`
-  has created the identities.
+  Run services. Rendered for the applications whose registration is past
+  their identities (`placement.json`'s `registration`, moved by `bedrock org
+  register <app> --next` once `2-env` has created them).
 - Every custom role here has the id `<name>_<suffix>`, and the public-invoker
   tag key the short name `public-invoker-<suffix>`: the suffix is
   `0-bootstrap`'s `organization_suffix` (four hex characters), since a role's

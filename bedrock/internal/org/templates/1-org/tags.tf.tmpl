@@ -29,8 +29,9 @@ resource "google_tags_tag_value" "public_invoker" {
 
 # Each application's apply identity in every environment may bind the value to
 # its own Cloud Run services (public-invokers.auto.tfvars, rendered from
-# placement.json once 2-env has created the identities: a grant on an identity
-# that does not exist is refused).
+# placement.json for the applications whose registration is past their
+# identities, after 2-env has created them: a grant on an identity that does
+# not exist is refused).
 resource "google_tags_tag_value_iam_member" "public_invoker" {
   for_each = toset(flatten(values(var.public_invokers)))
 
