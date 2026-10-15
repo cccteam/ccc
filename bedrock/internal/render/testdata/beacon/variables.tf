@@ -236,6 +236,34 @@ variable "generated_secret_versions" {
   }
 }
 
+variable "teardown" {
+  description = <<-EOT
+    Set by bedrock teardown alone, never in terraform.tfvars: the environment
+    is being taken down to what it keeps (its database, its files, its secrets,
+    its identities, its Firestore database, its task queue, its migrate logs
+    and its id) and the Cloud Run services may go, prd's included. The
+    command applies the stack with it before the destroy, so that the state
+    records the services' deletion protection lifted, which is what the
+    provider reads at the destroy.
+  EOT
+  type        = bool
+  default     = false
+}
+
+variable "destroy" {
+  description = <<-EOT
+    Set by bedrock destroy alone, never in terraform.tfvars: the environment
+    is being destroyed whole, prd's database, files and Firestore
+    database included. The command applies the stack with it before the
+    destroy, so that the state records every protection lifted: the
+    services' deletion protection, the database's deletion and drop
+    protection, the file stores' force-destroy and the Firestore database's
+    delete protection.
+  EOT
+  type        = bool
+  default     = false
+}
+
 variable "state_bucket" {
   description = "(Required) State bucket 0-bootstrap seeded, read for the upstream layers' outputs. The same name is substituted into the backend block by hand."
   type        = string

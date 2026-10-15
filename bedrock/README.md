@@ -1646,6 +1646,49 @@ release's own action is `run`, and `bedrock rerun` is its command. Nobody runs a
 or submits a build by hand: every build starts from a trigger, and a release is run again
 through this door.
 
+## bedrock teardown and bedrock destroy
+
+`teardown <env>` takes an environment's stack down to what it keeps, and `destroy <env>`
+destroys it whole; with `--all` either takes every environment in promotion order and then
+destroys every pull-request stack under the integration environment's prefix, the way the
+sweep destroys a closed pull request's. Both run by a person at their own computer with
+their own sign-in (`gcloud auth application-default login`), driving tofu in the stack
+directory against the environment's state prefix the way the first apply by hand does,
+never from a trigger, and both ask for the environment's name typed back before anything
+runs (`--yes` stands in where there is no terminal). Both refuse while `2-net` routes a
+host to the environment's backend service, since Google refuses the backend's deletion
+while the load balancer uses it and OpenTofu keeps everything an excluded resource depends
+on: the hosts come out of `2-net` first, through `bedrock org teardown` or the
+application's removal from the organization's `placement.json` in a pull request.
+
+A teardown destroys what a pipeline makes again (the Cloud Run services and jobs with
+their invoker grants, the endpoint groups and backend services, the Cloud Build triggers
+and the sweep's schedule, the scheduled routes' jobs and identity, the Cloud Armor policy,
+the request-log exclusion) and keeps what holds data or a name (the Spanner database and
+every generation of it, the file stores with their policies, the secret containers with
+their accessors, the identities with their grants, the Firestore database with its indexes,
+fields and rules, the Firebase key, the migrate log bucket and sink, the Cloud Tasks queue
+with its grants, and the stack's id, so the environment's records and names stay its own).
+In production it applies the stack with `teardown=true` first, recording in the state that
+the services' deletion protection is lifted; then it plans the destroy with every kept
+resource excluded, reads the plan back and holds it against what it means to destroy
+(anything beyond or short of it stops the run with nothing applied), applies it, and
+writes a record beside the stack's id (`<app>/stacks/<env>/teardown.json`: what went, when,
+by whom, and the release that was live). Bringing the environment back is the stack's
+apply by hand from the checkout of the release it ran (the stack README's "Applying"),
+which makes the services and the triggers again, then `bedrock rerun <env> <release>`
+through them.
+
+A destroy takes everything, in production after an apply with `destroy=true` recording
+every protection lifted (the services' deletion protection, the database's deletion and
+drop protection, the file stores' force-destroy, the Firestore database's delete
+protection). The stack's id object goes with the stack, so the pipeline's readers see an
+environment never applied; the deployment records stay in the records bucket under
+`<app>/<env>/<id>/`, read by nothing; the Spanner backups the pipeline and the schedules
+took stay until their retention ends; Google keeps the names of the task queue, the
+Firebase key and the migrate log bucket for a while, and a stack applied again takes an id
+of its own. Nothing of either command is undone by bedrock.
+
 ## bedrock domain
 
 `domain add <domain>` puts a domain registration into the network layer's placement,

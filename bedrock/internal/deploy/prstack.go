@@ -66,6 +66,10 @@ type stack struct {
 	// clients is what the apply step opens beyond tofu (Firestore, as the apply
 	// identity) in a restore run.
 	clients *Clients
+	// dataDir is the directory tofu keeps its providers and backend cache in
+	// (TF_DATA_DIR) when a command by hand drives several stacks of a checkout in one
+	// run; empty in a build, which has one stack and tofu's default.
+	dataDir string
 }
 
 // The flags every tofu command runs with: a variable (plan, destroy, import), no
@@ -91,13 +95,18 @@ func newStack(clients *Clients, w Workspace, build *Build, out io.Writer) *stack
 	}
 }
 
-// env is what tofu runs with: the identity to impersonate, or nothing.
+// env is what tofu runs with: the identity to impersonate, the data directory of a run
+// by hand, or nothing.
 func (s *stack) env() []string {
-	if !s.impersonate {
-		return nil
+	var env []string
+	if s.impersonate {
+		env = append(env, "GOOGLE_IMPERSONATE_SERVICE_ACCOUNT="+s.identity)
+	}
+	if s.dataDir != "" {
+		env = append(env, "TF_DATA_DIR="+s.dataDir)
 	}
 
-	return []string{"GOOGLE_IMPERSONATE_SERVICE_ACCOUNT=" + s.identity}
+	return env
 }
 
 // backendArgs point tofu's state at the prefix, impersonating the identity when the
@@ -148,6 +157,13 @@ func (s *stack) init(ctx context.Context, subs map[string]string, number string)
 	fmt.Fprintf(s.out, "=== Pull request %s: stack at %s as %s ===\n", number, prefix, s.identity)
 
 	return s.tofu(ctx, s.backendArgs(prefix)...)
+}
+
+// initAt points the stack at the prefix in the run's data directory, afresh: one data
+// directory serves every stack of a run by hand, and -reconfigure moves its backend from
+// one prefix to the next. As the person, no identity is impersonated.
+func (s *stack) initAt(ctx context.Context, prefix string) error {
+	return s.tofu(ctx, "init", noInputFlag, noColorFlag, reconfigure, backendPrefix+prefix)
 }
 
 // PullRequestStack is the pull request's stack job (deploy pr-stack): the build read
