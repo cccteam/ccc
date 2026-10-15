@@ -65,6 +65,7 @@ func skeletonFiles(t *testing.T) map[string]string {
 		"test/integration/harness_test.go",
 		".envrc.template",
 		".gitignore",
+		".golangci.yml",
 	} {
 		files[rel] = strings.ReplaceAll(skeletonFile(t, rel), skeletonModule, "example.com/acme/beacon")
 	}
@@ -170,7 +171,11 @@ func TestFilesApply(t *testing.T) {
 		".envrc.template: APP_FILE_STORE=file://uploads, the development store, and APP_JOBS_TEMPLATE documented in the site block, unset",
 		".gitignore: uploads/, the development store's directory",
 		"cmd/bootstrap/files.go: emptyFileStore, which empties a file:// store; cmd/bootstrap/main.go calls it before the development seed",
-		"pkg/jobs/cleanup.go: CleanupCommand (cleanup-files) and CleanupFiles, the orphaned-file cleanup over the store through the generated FileHolders(); cmd/jobs/main.go: the job process running it, with -window and -dry-run",
+		"pkg/jobs/cleanup.go: CleanupCommand (cleanup-files) and CleanupFiles, the orphaned-file cleanup over the store through the generated FileHolders()",
+		"cmd/jobs/main.go: the job process, a cobra root that opens the data level once and registers the commands",
+		"cmd/jobs/cleanupfiles/cleanupfiles.go: the cleanup-files command, with --window and --dry-run",
+		"cmd/jobs/main.go: cleanupfiles.Command(data) registered on the root",
+		"go.mod: github.com/spf13/cobra, the command tree's library, required directly (go mod tidy)",
 		`pkg/rpc: the rpc package, its Client carrying the job process's starter (Jobs()), and CleanUpFiles (@rpc, @schedule("0 9 * * *")), which starts cmd/jobs cleanup-files through it`,
 		"pkg/config/site.go: SiteConfiguration gained the fields, built from the environment; pkg/config/scheduled.go: Scheduler() and Jobs(), which the app's Configurer asks for, and Close(), which releases the driver with the level",
 		"app/app.go: App gained Scheduler() and Jobs() on Configurer, the scheduler field, its construction, and the RPC client built over the starter; app/scheduled.go: SchedulerAuth, the middleware the generated router mounts the scheduled routes behind, and RPCClient(), the dependencies of the RPC methods",
@@ -184,7 +189,7 @@ func TestFilesApply(t *testing.T) {
 	if len(change.Skipped) != 0 {
 		t.Errorf("Skipped = %q, want none: the base skeleton takes every edit", change.Skipped)
 	}
-	if diff := cmp.Diff([]string{"go generate ./..."}, exec.calls); diff != "" {
+	if diff := cmp.Diff([]string{"go mod tidy", "go generate ./..."}, exec.calls); diff != "" {
 		t.Errorf("exec calls mismatch (-want +got):\n%s", diff)
 	}
 
@@ -199,16 +204,18 @@ func TestFilesApply(t *testing.T) {
 			"files:             files,",
 			"if c.files != nil {\n\t\tif err := c.files.Close(); err != nil {\n\t\t\tlog.Print(errors.Wrap(err, \"filestore.Store.Close()\"))",
 		},
-		"pkg/config/files.go":     {"package config", "Default string `env:\"APP_FILE_STORE\"`", "func LoadFileStoreSettings(", "func openFileStore(", "func fileStoreOptions("},
-		"pkg/config/site.go":      {"scheduler *scheduled.Guard", "jobs *jobstarter.Driver", "scheduler, err := scheduled.FromEnvironment(ctx)", "starter, err := jobstarter.Open(ctx, env.Settings, data.AppVersion())", "scheduler:         scheduler,", "jobs:              starter,", "\tjobstarter.Settings\n}", `jobstarter "github.com/cccteam/ccc/resource/jobs/cloudrun"`},
-		"pkg/config/scheduled.go": {"func (c *SiteConfiguration) Scheduler() *scheduled.Guard", "func (c *SiteConfiguration) Jobs() jobs.Starter", "func (c *SiteConfiguration) Close() {\n\tc.jobs.Close()\n\tc.DataConfiguration.Close()\n}"},
-		"app/app.go":              {"Scheduler() *scheduled.Guard", "Jobs() jobs.Starter", "scheduler   *scheduled.Guard", "rpcClient   *rpc.Client", "scheduler:      cfg.Scheduler(),", "rpcClient:      rpc.NewClient(cfg.Jobs()),", `"example.com/acme/beacon/pkg/rpc"`},
-		"app/scheduled.go":        {"func (a *App) SchedulerAuth(next http.Handler) http.Handler", "return a.scheduler.Middleware(next)", "func (a *App) RPCClient() *rpc.Client", "(pkg/rpc)"},
-		"cmd/bootstrap/main.go":   {"\t// The file store is emptied before the seed (files.go): no row holds a file yet.\n\tif err := emptyFileStore(ctx); err != nil {\n\t\treturn err\n\t}\n\n\t// The development seed:"},
-		"cmd/bootstrap/files.go":  {"config.LoadFileStoreSettings(ctx)", "filestore.SchemeDir", "store.Delete(ctx, keys)"},
-		"pkg/jobs/cleanup.go":     {"package jobs", `const CleanupCommand = "cleanup-files"`, `"example.com/acme/beacon/pkg/resources"`, "Holders: resources.FileHolders(),", "Store:   resource.DefaultStore,"},
-		"cmd/jobs/main.go":        {"package main", `"example.com/acme/beacon/pkg/config"`, `"example.com/acme/beacon/pkg/jobs"`, "config.NewDataConfiguration(ctx)", "jobs.CleanupFiles(ctx, data.ResourceClient(), jobs.CleanupOptions{Window: *window, DryRun: *dryRun})"},
-		"pkg/rpc/rpc.go":          {"package rpc", "func NewClient(starter jobs.Starter) *Client", "func (c *Client) Jobs() jobs.Starter"},
+		"pkg/config/files.go":                   {"package config", "Default string `env:\"APP_FILE_STORE\"`", "func LoadFileStoreSettings(", "func openFileStore(", "func fileStoreOptions("},
+		"pkg/config/site.go":                    {"scheduler *scheduled.Guard", "jobs *jobstarter.Driver", "scheduler, err := scheduled.FromEnvironment(ctx)", "starter, err := jobstarter.Open(ctx, env.Settings, data.AppVersion())", "scheduler:         scheduler,", "jobs:              starter,", "\tjobstarter.Settings\n}", `jobstarter "github.com/cccteam/ccc/resource/jobs/cloudrun"`},
+		"pkg/config/scheduled.go":               {"func (c *SiteConfiguration) Scheduler() *scheduled.Guard", "func (c *SiteConfiguration) Jobs() jobs.Starter", "func (c *SiteConfiguration) Close() {\n\tc.jobs.Close()\n\tc.DataConfiguration.Close()\n}"},
+		"app/app.go":                            {"Scheduler() *scheduled.Guard", "Jobs() jobs.Starter", "scheduler   *scheduled.Guard", "rpcClient   *rpc.Client", "scheduler:      cfg.Scheduler(),", "rpcClient:      rpc.NewClient(cfg.Jobs()),", `"example.com/acme/beacon/pkg/rpc"`},
+		"app/scheduled.go":                      {"import (\n\t\"net/http\"\n\n\t\"example.com/acme/beacon/pkg/rpc\"\n)", "func (a *App) SchedulerAuth(next http.Handler) http.Handler", "return a.scheduler.Middleware(next)", "func (a *App) RPCClient() *rpc.Client", "(pkg/rpc)"},
+		"cmd/bootstrap/main.go":                 {"\t// The file store is emptied before the seed (files.go): no row holds a file yet.\n\tif err := emptyFileStore(ctx); err != nil {\n\t\treturn err\n\t}\n\n\t// The development seed:"},
+		"cmd/bootstrap/files.go":                {"config.LoadFileStoreSettings(ctx)", "filestore.SchemeDir", "store.Delete(ctx, keys)"},
+		"pkg/jobs/cleanup.go":                   {"// Package jobs holds the work the application's job process runs", "package jobs", `const CleanupCommand = "cleanup-files"`, `"example.com/acme/beacon/pkg/resources"`, "Holders: resources.FileHolders(),", "Store:   resource.DefaultStore,"},
+		"cmd/jobs/main.go":                      {"package main", `"example.com/acme/beacon/pkg/config"`, `"example.com/acme/beacon/cmd/jobs/cleanupfiles"`, `"github.com/spf13/cobra"`, "data, err := config.NewDataConfiguration(ctx)", "defer data.Close()", "root := &cobra.Command{", "\troot.AddCommand(\n\t\tcleanupfiles.Command(data),\n\t)\n", "root.ExecuteContext(ctx)"},
+		"cmd/jobs/cleanupfiles/cleanupfiles.go": {"package cleanupfiles", `"example.com/acme/beacon/pkg/config"`, `"example.com/acme/beacon/pkg/jobs"`, "func Command(data *config.DataConfiguration) *cobra.Command", "Use:   jobs.CleanupCommand,", `cmd.Flags().DurationVar(&c.window, "window", 0,`, `cmd.Flags().BoolVar(&c.dryRun, "dry-run", false,`, "jobs.CleanupFiles(ctx, c.data.ResourceClient(), jobs.CleanupOptions{Window: c.window, DryRun: c.dryRun})"},
+		".golangci.yml":                         {"            - google.golang.org/grpc/codes\n            - github.com/spf13/cobra\n    exhaustive:"},
+		"pkg/rpc/rpc.go":                        {"package rpc", "func NewClient(starter jobs.Starter) *Client", "func (c *Client) Jobs() jobs.Starter"},
 		"pkg/rpc/clean_up_files.go": {
 			"// @rpc\n\t// @schedule(\"0 9 * * *\")\n\tCleanUpFiles struct{}",
 			"func (m *CleanUpFiles) Execute(ctx context.Context, _ resource.ReadWriteTransaction, c *Client) (*CleanupStarted, error)",
@@ -281,7 +288,7 @@ func TestFilesApplyExistingRPC(t *testing.T) {
 		}
 	}
 	wantSkipped := []string{
-		"cmd/jobs exists, so the cleanup-files command was not written; add it there: the data level, then filestore.Cleanup over resource.DefaultStore with the generated FileHolders(), -window and -dry-run",
+		"cmd/jobs/main.go: no run with a root.AddCommand call to register cleanupfiles.Command(data) on; register it on the root",
 		"pkg/rpc: give Client a Jobs() jobs.Starter accessor fed from the configuration's Jobs() (the job driver, resource/jobs/cloudrun), which CleanUpFiles starts the job through",
 		"app/app.go: the app's RPCClient() keeps the client it builds; hand it the configuration's Jobs() so CleanUpFiles can start the job",
 	}

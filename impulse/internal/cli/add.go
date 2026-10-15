@@ -37,6 +37,49 @@ launches Claude Code on it and verifies the guardrails when it returns.`,
 	cmd.AddCommand(newAddSite())
 	cmd.AddCommand(newAddFeature())
 	cmd.AddCommand(newAddFiles())
+	cmd.AddCommand(newAddJob())
+
+	return cmd
+}
+
+func newAddJob() *cobra.Command {
+	var (
+		f        transitionFlags
+		schedule string
+	)
+
+	cmd := &cobra.Command{
+		Use:   "job <name>",
+		Short: "Add a job: a command of the job process, its work to write, and optionally the schedule that starts it",
+		Long: `job scaffolds a command of the application's job process, the second binary (cmd/jobs)
+bedrock deploys as the Cloud Run job beside the service: pkg/jobs gains the job's work,
+a function named for the job (prune-reports becomes PruneReports) written empty, which
+refuses until the work is written, with the command's name the job process runs it
+under; cmd/jobs/<name> gains the command, a cobra command whose Run runs the work over
+the resource client of the data level; cmd/jobs/main.go, the root that opens the data
+level once and registers every command, is written by the first job and extended by the
+rest; the lint configuration admits the command tree's library (github.com/spf13/cobra)
+and go.mod requires it. A name carrying a group (files/cleanup) puts the command under a
+group command of that word.
+
+--schedule "<cron>" also writes the method marked @rpc and @schedule in the rpc package
+that starts the job on the schedule through the job process's starter (the service
+starts its job, never a schedule of the job's own), with the starter's wiring where the
+application lacks it (the rpc package and its Client, the site level's scheduler guard
+and job driver, the App's SchedulerAuth and RPCClient, the test configurers' fakes,
+WithRPC in the generator program), as impulse add files wires it for the cleanup; then go
+generate emits the method's handler and route. Without a schedule nothing starts the job
+until a scheduled method or a caller does.
+
+The work itself, the suite that proves it, and the schedule when none was given are
+handed to the agent.`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runTransition(cmd, &f, transition_.Job{Name: args[0], Schedule: schedule}, "")
+		},
+	}
+	f.bind(cmd)
+	cmd.Flags().StringVar(&schedule, "schedule", "", "the cron expression Cloud Scheduler starts the job on, in UTC (\"0 3 * * *\"); a method marked @schedule is written to start it")
 
 	return cmd
 }
@@ -441,9 +484,10 @@ func runTransitions(cmd *cobra.Command, f *transitionFlags, repo handoff.Repo, t
 	out := cmd.OutOrStdout()
 	exec := check.OSExec{}
 	var changes, meanings []string
-	// uses counts the hand-written uses a removal left behind, obligations the check
-	// cannot see, so the handoff happens for them even when the check is clean.
-	uses := 0
+	// left counts the obligations the changes list themselves (the hand-written uses a
+	// removal leaves, a scaffolded job's work), which the check cannot see, so the
+	// handoff happens for them even when the check is clean.
+	left := 0
 	for _, t := range ts {
 		// Each transition reads the tree the one before it left.
 		a, err := app.Discover(f.appDir)
@@ -460,7 +504,7 @@ func runTransitions(cmd *cobra.Command, f *transitionFlags, repo handoff.Repo, t
 		writeChange(out, change)
 		changes = append(changes, change.Text())
 		meanings = append(meanings, t.Meaning())
-		uses += len(change.Uses)
+		left += len(change.Left)
 	}
 
 	// The tree changed, so the application is read again for the checks.
@@ -484,7 +528,7 @@ func runTransitions(cmd *cobra.Command, f *transitionFlags, repo handoff.Repo, t
 		return err
 	}
 	check.Report(out, results)
-	if !check.Failed(results) && uses == 0 {
+	if !check.Failed(results) && left == 0 {
 		if len(ts) == 1 {
 			fmt.Fprintf(out, "\nThe check is clean: the option is wired. Review the diff and open the pull request.\n")
 		} else {
@@ -504,7 +548,7 @@ func runTransitions(cmd *cobra.Command, f *transitionFlags, repo handoff.Repo, t
 	if err != nil {
 		return err
 	}
-	brief := &handoff.Brief{App: a, Change: strings.Join(changes, "\n"), Meaning: strings.Join(meanings, "\n\n"), Results: results, Reference: referenceDir, Guard: guard, Left: uses}
+	brief := &handoff.Brief{App: a, Change: strings.Join(changes, "\n"), Meaning: strings.Join(meanings, "\n\n"), Results: results, Reference: referenceDir, Guard: guard, Left: left}
 	ag := &handoff.Agent{Command: f.agentCommand, ExtraArgs: f.agentArgs}
 
 	return completeHandoff(ctx, out, f.appDir, env, repo, brief, ag, f.agent)
@@ -522,9 +566,9 @@ func writeChange(w io.Writer, change *transition_.Change) {
 			fmt.Fprintf(w, "  - %s\n", s)
 		}
 	}
-	if len(change.Uses) > 0 {
-		fmt.Fprintf(w, "Still named by the hand-written code (%s):\n", change.UsesNote)
-		for _, u := range change.Uses {
+	if len(change.Left) > 0 {
+		fmt.Fprintf(w, "Yours (%s):\n", change.LeftNote)
+		for _, u := range change.Left {
 			fmt.Fprintf(w, "  - %s\n", u)
 		}
 	}

@@ -732,6 +732,37 @@ func ExtendMethodCall(rel string, src []byte, typeName, funcName, callee, argume
 	return p.splice(rel, at, at, text)
 }
 
+// AppendCallArgument adds an argument after the last one of the first call to callee, a
+// dotted name as the source writes it, inside the named function, and renders the call
+// one argument per line with a trailing comma, the shape a list of registrations keeps
+// as it grows. The result is formatted.
+func AppendCallArgument(rel string, src []byte, funcName, callee, argument string) ([]byte, error) {
+	p, err := parseSource(rel, src)
+	if err != nil {
+		return nil, err
+	}
+	fd := p.funcDecl(funcName)
+	if fd == nil {
+		return nil, errors.Wrapf(ErrNoAnchor, "%s declares no function %s", rel, funcName)
+	}
+	call := callIn(fd.Body, callee)
+	if call == nil {
+		return nil, errors.Wrapf(ErrNoAnchor, "%s: function %s makes no %s call", rel, funcName, callee)
+	}
+	start, end := p.offset(call.Lparen)+1, p.offset(call.Rparen)
+	text := "\n" + argument + ",\n"
+	if len(call.Args) > 0 {
+		start = p.offset(call.Args[len(call.Args)-1].End())
+		if comma := bytes.IndexByte(p.src[start:end], ','); comma >= 0 {
+			start += comma + 1
+		} else {
+			text = "," + text
+		}
+	}
+
+	return p.splice(rel, start, end, text)
+}
+
 // methodDecl finds the named function, or the named method of the type when typeName is
 // set (a pointer or a value receiver).
 func (p *parsed) methodDecl(typeName, name string) *ast.FuncDecl {

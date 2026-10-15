@@ -565,3 +565,61 @@ type SiteConfiguration struct {
 		})
 	}
 }
+
+func TestAppendCallArgument(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		src     string
+		want    string
+		wantErr string
+	}{
+		{
+			name: "an empty call gains its first argument on a line of its own",
+			src:  "package main\n\nfunc run() {\n\troot.AddCommand()\n}\n",
+			want: "package main\n\nfunc run() {\n\troot.AddCommand(\n\t\tfirst.Command(data),\n\t)\n}\n",
+		},
+		{
+			name: "a call written one per line gains a line",
+			src:  "package main\n\nfunc run() {\n\troot.AddCommand(\n\t\tfirst.Command(data),\n\t)\n}\n",
+			want: "package main\n\nfunc run() {\n\troot.AddCommand(\n\t\tfirst.Command(data),\n\t\tsecond.Command(data),\n\t)\n}\n",
+		},
+		{
+			name: "a one-line call takes the shape",
+			src:  "package main\n\nfunc run() {\n\troot.AddCommand(first.Command(data))\n}\n",
+			want: "package main\n\nfunc run() {\n\troot.AddCommand(first.Command(data),\n\t\tsecond.Command(data),\n\t)\n}\n",
+		},
+		{
+			name:    "no function",
+			src:     "package main\n\nfunc other() {\n\troot.AddCommand()\n}\n",
+			wantErr: "declares no function run",
+		},
+		{
+			name:    "no call",
+			src:     "package main\n\nfunc run() {\n\tgroup.AddCommand()\n}\n",
+			wantErr: "makes no root.AddCommand call",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			argument := "first.Command(data)"
+			if strings.Contains(tt.src, "first.Command") {
+				argument = "second.Command(data)"
+			}
+			got, err := AppendCallArgument("main.go", []byte(tt.src), "run", "root.AddCommand", argument)
+			switch {
+			case tt.wantErr != "":
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) || !errors.Is(err, ErrNoAnchor) {
+					t.Fatalf("AppendCallArgument() error = %v, want ErrNoAnchor with %q", err, tt.wantErr)
+				}
+			case err != nil:
+				t.Fatalf("AppendCallArgument() error = %v", err)
+			case string(got) != tt.want:
+				t.Errorf("AppendCallArgument() =\n%s\nwant\n%s", got, tt.want)
+			}
+		})
+	}
+}

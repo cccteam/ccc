@@ -26,13 +26,13 @@ type Change struct {
 	// so they reach the command's output and the brief instead of ending in a swallowed
 	// clean run.
 	Warnings []string
-	// Uses lists what the hand-written code still names after a removal, one line per
-	// use (file:line: what), and UsesNote the sentence that says what to do about them.
-	// The check cannot see them all (a browser use fails the browser's own build, not
-	// the check), so a change with uses is handed to the agent even when the check is
-	// clean.
-	Uses     []string
-	UsesNote string
+	// Left lists the obligations the change leaves that the check cannot see, one line
+	// per item (file:line: what, or the item alone): the hand-written code that still
+	// names a removed flag (a browser use fails the browser's own build, not the check),
+	// the work of a scaffolded job. LeftNote is the sentence that says what to do about
+	// them. A change with any is handed to the agent even when the check is clean.
+	Left     []string
+	LeftNote string
 }
 
 func (c *Change) didf(format string, args ...any) {
@@ -56,9 +56,9 @@ func (c *Change) Text() string {
 			fmt.Fprintf(&b, "- %s\n", s)
 		}
 	}
-	if len(c.Uses) > 0 {
-		fmt.Fprintf(&b, "\n%s\n\n", c.UsesNote)
-		for _, u := range c.Uses {
+	if len(c.Left) > 0 {
+		fmt.Fprintf(&b, "\n%s\n\n", c.LeftNote)
+		for _, u := range c.Left {
 			fmt.Fprintf(&b, "- %s\n", u)
 		}
 	}

@@ -353,10 +353,10 @@ func (r RemoveFeature) Apply(ctx context.Context, a *app.App, exec check.Execer)
 			if path.Ext(use.File) != ".go" {
 				what = "Feature." + flag.Constant
 			}
-			ch.Uses = append(ch.Uses, fmt.Sprintf("%s:%d: %s", use.File, use.Line, what))
+			ch.Left = append(ch.Left, fmt.Sprintf("%s:%d: %s", use.File, use.Line, what))
 		}
 	}
-	ch.UsesNote = usesNote
+	ch.LeftNote = usesNote
 	if err := r.removeSeedRows(a, ch); err != nil {
 		return nil, err
 	}

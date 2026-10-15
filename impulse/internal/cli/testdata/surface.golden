@@ -23,6 +23,13 @@ impulse add files
   --agent-command string (default claude)
   --app string (default .)
   --skip-generate bool
+impulse add job <name>
+  --agent bool
+  --agent-arg stringArray
+  --agent-command string (default claude)
+  --app string (default .)
+  --schedule string
+  --skip-generate bool
 impulse add outlet <name>
   --agent bool
   --agent-arg stringArray
