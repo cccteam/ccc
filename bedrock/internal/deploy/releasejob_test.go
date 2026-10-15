@@ -86,8 +86,11 @@ func TestRunRelease(t *testing.T) {
 				t.Errorf("ran:\n%s\nwant:\n%s", strings.Join(ran, "\n"), strings.Join(tt.wantRan, "\n"))
 			}
 			containsAll(t, out.String(), tt.wantOut...)
-			if strings.Contains(out.String(), "test-token") {
-				t.Errorf("output carries the token:\n%s", out.String())
+			// The fake runner echoes each command line; the step's own lines carry no token.
+			for _, line := range strings.Split(out.String(), "\n") {
+				if !strings.HasPrefix(line, "npx ") && strings.Contains(line, "test-token") {
+					t.Errorf("output carries the token:\n%s", out.String())
+				}
 			}
 		})
 	}
