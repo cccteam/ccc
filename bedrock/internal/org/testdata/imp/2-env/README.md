@@ -22,7 +22,8 @@ environment's deploy identities read on its records bucket (the release gate
 reads the previous environment's records) and reads those identities from the
 next environment's state, which the first pass did not have yet, so a
 registration applies this layer twice; `bedrock org register <app>` prints
-that sequence. The first `init` writes `.terraform.lock.hcl`; commit it.
+that sequence, and `placement.json`'s `registration` records how far it has
+gone, so the layers render what each of its pull requests may apply. The first `init` writes `.terraform.lock.hcl`; commit it.
 `terraform.tfvars` is committed and holds the boot project and the bucket;
 `environment` is never in it; the connection's GitHub values and the deployer
 app's are `placement.json`'s, rendered into `locals.tf`; the applications
@@ -499,7 +500,8 @@ application's stack makes its release trigger once the version is pinned.
   on the container), which a plan refreshes the grants through.
 - `roles/resourcemanager.tagUser` on the public-invoker tag for each
   application's apply identity, from `1-org` (`public-invokers.auto.tfvars`),
-  committed after this layer has created the identities.
+  rendered once the registration is past its identities, after this layer has
+  created them.
 - Nothing grants the application apply identity anything on the boot
   project, so the application stacks use their environment project as quota
   project; this layer grants `serviceUsageConsumer` there for that.
