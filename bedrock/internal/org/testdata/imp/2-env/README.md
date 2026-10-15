@@ -63,9 +63,13 @@ holds nothing: each application's deploy identity is a pusher in `2-shr`
 admins in `2-spn` (on the shared instance); both are rendered into those
 layers' `applications.auto.tfvars` from `placement.json`, never copied by
 hand. Then the application stacks, then `2-net` with their backends in its
-rendered `hosts`. The `2-net` read here is optional: it publishes the
-two load balancer principals, which are derived from `1-org` until it exists,
-and a `shared_vpc_id` that is null.
+rendered `hosts`. `2-net` comes after this layer in the apply order on
+purpose: its URL map's wildcard host rule names tst's pull-request backend,
+which `pull-requests.tf` makes here, and the apps domain that backend's URL
+mask carries is `placement.json`'s, rendered, not a `2-net` output. The
+`2-net` read here is optional: it publishes the two load balancer principals,
+which are derived from `1-org` until it exists, and a `shared_vpc_id` that is
+null.
 
 ## What it creates
 

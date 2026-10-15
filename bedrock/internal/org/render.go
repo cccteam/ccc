@@ -59,8 +59,11 @@ const (
 	envLayer       = "2-env"
 )
 
-// Layers are the model's layers, in apply order.
-var Layers = []string{bootstrapLayer, orgLayer, shrLayer, spnLayer, netLayer, envLayer}
+// Layers are the model's layers, in apply order: 2-env before 2-net, since 2-net's URL
+// map names tst's pull-request backend, which 2-env tst makes, while nothing in 2-env
+// waits on 2-net (its two load balancer principals are derived from 1-org until 2-net
+// exists, and the apps domain is the placement's).
+var Layers = []string{bootstrapLayer, orgLayer, shrLayer, spnLayer, envLayer, netLayer}
 
 // layerProjects is the project each single-run layer's identities live in, by layer: the
 // boot project for the two boot layers (both identities are named after their layer, boot
@@ -377,15 +380,21 @@ func (*view) ApplyBuildSeconds() int {
 	return fetchSeconds + buildSeconds + checkSeconds + applySeconds
 }
 
-// LayerOrderProse spells the apply order: 0-bootstrap, 1-org, 2-shr, 2-spn and 2-net,
-// then 2-env for tst, stg and prd.
+// LayerOrderProse spells the apply order: 0-bootstrap, 1-org, 2-shr and 2-spn, then
+// 2-env for tst, stg and prd, then 2-net.
 func (*view) LayerOrderProse() string {
-	return prose(Layers[:len(Layers)-1]) + ", then " + Layers[len(Layers)-1] + " for " + prose(Environments)
+	i := slices.Index(Layers, envLayer)
+	text := prose(Layers[:i]) + ", then " + envLayer + " for " + prose(Environments)
+	if after := Layers[i+1:]; len(after) > 0 {
+		text += ", then " + prose(after)
+	}
+
+	return text
 }
 
 // SingleRunLayers are the layers applied once, in order: every one but 2-env.
 func (*view) SingleRunLayers() []string {
-	return Layers[:len(Layers)-1]
+	return slices.DeleteFunc(slices.Clone(Layers), func(layer string) bool { return layer == envLayer })
 }
 
 // Layers is the model's layers in apply order, for the templates.

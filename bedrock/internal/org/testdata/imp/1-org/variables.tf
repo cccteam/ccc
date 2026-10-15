@@ -131,8 +131,10 @@ variable "layer_roles" {
       "roles/iam.workloadIdentityPoolAdmin",
       # 2-env initializes Identity Platform on the environment project, the
       # Firebase Authentication the applications' live pages sign browsers in
-      # through.
+      # through; the initialization adds Firebase to the project first, which
+      # the custom role beside the predefined one permits (custom-roles.tf).
       "roles/identityplatform.admin",
+      "identityPlatformInitializer",
       "roles/logging.admin",
       "roles/monitoring.admin",
       # 2-env declares the team group's entitlements on the environment project

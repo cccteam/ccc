@@ -12,6 +12,11 @@
 # environment's own hostnames keep their exact host rules, which win over
 # the wildcard. Same outlier detection and logging as an application's
 # backend (3-app).
+#
+# The apps domain is placement.json's (appsDomain), rendered here as it is
+# into 2-net's hosts, never read from 2-net's state: this layer is applied
+# before 2-net, whose wildcard host rule names the backend made here, so
+# nothing here may wait on 2-net.
 # ---------------------------------------------------------------------------
 
 locals {
@@ -20,7 +25,7 @@ locals {
     (local.region_code)           = local.region
     (local.secondary_region_code) = local.secondary_region
   } : {}
-  apps_domain = data.terraform_remote_state.net.outputs.apps_domain
+  apps_domain = "apps.imp.example"
 }
 
 resource "google_compute_region_network_endpoint_group" "pull_requests" {

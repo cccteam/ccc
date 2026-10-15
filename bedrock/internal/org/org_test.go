@@ -814,7 +814,7 @@ func TestStorageAdminBounds(t *testing.T) {
 		{
 			name: "1-org resolves the creator role by bare id and publishes it",
 			path: "1-org/locals.tf",
-			want: []string{"    storageBucketCreator       = google_organization_iam_custom_role.storage_bucket_creator.id\n"},
+			want: []string{"    storageBucketCreator        = google_organization_iam_custom_role.storage_bucket_creator.id\n"},
 		},
 		{
 			name: "the output",
@@ -1144,10 +1144,10 @@ func TestLayerPlanRoles(t *testing.T) {
 			name: "the custom roles resolve by bare ID",
 			path: "1-org/locals.tf",
 			want: []string{
-				"    environmentLayerPlanReader = google_organization_iam_custom_role.environment_layer_plan_reader.id\n",
-				"    servicesLayerPlanReader    = google_organization_iam_custom_role.services_layer_plan_reader.id\n",
-				"    networkLayerPlanReader     = google_organization_iam_custom_role.network_layer_plan_reader.id\n",
-				"    spannerLayerPlanReader     = google_organization_iam_custom_role.spanner_layer_plan_reader.id\n",
+				"    environmentLayerPlanReader  = google_organization_iam_custom_role.environment_layer_plan_reader.id\n",
+				"    servicesLayerPlanReader     = google_organization_iam_custom_role.services_layer_plan_reader.id\n",
+				"    networkLayerPlanReader      = google_organization_iam_custom_role.network_layer_plan_reader.id\n",
+				"    spannerLayerPlanReader      = google_organization_iam_custom_role.spanner_layer_plan_reader.id\n",
 			},
 		},
 		{
@@ -1600,7 +1600,7 @@ func TestViewPhrases(t *testing.T) {
 		}, want: "title,go,web,image,secrets,migrations / title, go, web, image, secrets and migrations / `title`, `go`, `web`, `image`, `secrets` and `migrations`"},
 		{name: "the bucket before the seed", placement: Placement{Prefix: "acme"}, check: func(v *view) string { return v.Bucket() }, want: "acme-boot-gbl-state-REPLACEME"},
 		{name: "the bucket after the seed", placement: Placement{Prefix: "acme", StateBucket: "acme-boot-gbl-state-1a2b"}, check: func(v *view) string { return v.Bucket() }, want: "acme-boot-gbl-state-1a2b"},
-		{name: "the layer order", placement: Placement{}, check: func(v *view) string { return v.LayerOrderProse() }, want: "0-bootstrap, 1-org, 2-shr, 2-spn and 2-net, then 2-env for tst, stg and prd"},
+		{name: "the layer order", placement: Placement{}, check: func(v *view) string { return v.LayerOrderProse() }, want: "0-bootstrap, 1-org, 2-shr and 2-spn, then 2-env for tst, stg and prd, then 2-net"},
 		{name: "the approving reviews, left out and at 0, 2 and 12, as a count and as prose", placement: Placement{}, check: func(v *view) string {
 			parts := []string{strconv.Itoa(v.ApprovingReviewCount()) + " " + v.ApprovingReviewsProse()}
 			for _, n := range []int{0, 2, 12} {
@@ -2373,10 +2373,10 @@ func TestLayerRuns(t *testing.T) {
 				"1-org|1-org|acme-org-gbl-tofu@acme-boot-gbl-core-1a2b.iam.gserviceaccount.com|acme-org-gbl-plan@acme-boot-gbl-core-1a2b.iam.gserviceaccount.com",
 				"2-shr|2-shr|acme-shr-gbl-tofu@acme-shr-gbl-core-3c4d.iam.gserviceaccount.com|acme-shr-gbl-plan@acme-shr-gbl-core-3c4d.iam.gserviceaccount.com",
 				"2-spn|2-spn|acme-spn-gbl-tofu@acme-spn-gbl-core-7a8b.iam.gserviceaccount.com|acme-spn-gbl-plan@acme-spn-gbl-core-7a8b.iam.gserviceaccount.com",
-				"2-net|2-net|acme-net-gbl-tofu@acme-net-gbl-core-5e6f.iam.gserviceaccount.com|acme-net-gbl-plan@acme-net-gbl-core-5e6f.iam.gserviceaccount.com",
 				"2-env tst|2-env/tst|acme-tst-gbl-tofu@acme-tst-gbl-core-9c0d.iam.gserviceaccount.com|acme-tst-gbl-plan@acme-tst-gbl-core-9c0d.iam.gserviceaccount.com",
 				"2-env stg|2-env/stg|acme-stg-gbl-tofu@acme-stg-gbl-core-1e2f.iam.gserviceaccount.com|acme-stg-gbl-plan@acme-stg-gbl-core-1e2f.iam.gserviceaccount.com",
 				"2-env prd|2-env/prd|acme-prd-gbl-tofu@acme-prd-gbl-core-3a4b.iam.gserviceaccount.com|acme-prd-gbl-plan@acme-prd-gbl-core-3a4b.iam.gserviceaccount.com",
+				"2-net|2-net|acme-net-gbl-tofu@acme-net-gbl-core-5e6f.iam.gserviceaccount.com|acme-net-gbl-plan@acme-net-gbl-core-5e6f.iam.gserviceaccount.com",
 			},
 		},
 		{
@@ -2387,10 +2387,10 @@ func TestLayerRuns(t *testing.T) {
 				"1-org|1-org|acme-org-gbl-tofu@acme-boot-gbl-core-1a2b.iam.gserviceaccount.com|acme-org-gbl-plan@acme-boot-gbl-core-1a2b.iam.gserviceaccount.com",
 				"2-shr|2-shr|acme-shr-gbl-tofu@acme-shr-gbl-core-REPLACEME.iam.gserviceaccount.com|acme-shr-gbl-plan@acme-shr-gbl-core-REPLACEME.iam.gserviceaccount.com",
 				"2-spn|2-spn|acme-spn-gbl-tofu@acme-spn-gbl-core-REPLACEME.iam.gserviceaccount.com|acme-spn-gbl-plan@acme-spn-gbl-core-REPLACEME.iam.gserviceaccount.com",
-				"2-net|2-net|acme-net-gbl-tofu@acme-net-gbl-core-REPLACEME.iam.gserviceaccount.com|acme-net-gbl-plan@acme-net-gbl-core-REPLACEME.iam.gserviceaccount.com",
 				"2-env tst|2-env/tst|acme-tst-gbl-tofu@acme-tst-gbl-core-REPLACEME.iam.gserviceaccount.com|acme-tst-gbl-plan@acme-tst-gbl-core-REPLACEME.iam.gserviceaccount.com",
 				"2-env stg|2-env/stg|acme-stg-gbl-tofu@acme-stg-gbl-core-REPLACEME.iam.gserviceaccount.com|acme-stg-gbl-plan@acme-stg-gbl-core-REPLACEME.iam.gserviceaccount.com",
 				"2-env prd|2-env/prd|acme-prd-gbl-tofu@acme-prd-gbl-core-REPLACEME.iam.gserviceaccount.com|acme-prd-gbl-plan@acme-prd-gbl-core-REPLACEME.iam.gserviceaccount.com",
+				"2-net|2-net|acme-net-gbl-tofu@acme-net-gbl-core-REPLACEME.iam.gserviceaccount.com|acme-net-gbl-plan@acme-net-gbl-core-REPLACEME.iam.gserviceaccount.com",
 			},
 		},
 	}

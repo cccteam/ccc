@@ -421,7 +421,7 @@ across pushes. The apply trigger (`imp-boot-uc1-layers-apply`) runs on every pus
 to `master`: it applies each layer changed since that layer's
 last successful apply (a marker under `applied/` in the state bucket holds
 the commit; a layer with no marker is applied), as that layer's apply
-identity, in layer order (0-bootstrap, 1-org, 2-shr, 2-spn and 2-net, then 2-env for tst, stg and prd), one at a time, stopping at
+identity, in layer order (0-bootstrap, 1-org, 2-shr and 2-spn, then 2-env for tst, stg and prd, then 2-net), one at a time, stopping at
 the first failure. A plan that fails only because it reads outputs the plan
 of an earlier layer in the same pull request creates passes, "planned after"
 that layer applies, since the merge applies that layer first (the root README,

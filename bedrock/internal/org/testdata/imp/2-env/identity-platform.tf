@@ -14,7 +14,10 @@
 # delete the account its token made. Anonymous users do not exist here, so
 # nothing is auto-deleted. The Identity Toolkit API is in the set 1-org
 # enables on the project, and this layer's identity holds
-# roles/identityplatform.admin there for this resource.
+# roles/identityplatform.admin there for this resource, with the
+# organization's Identity Platform Initializer role (1-org/custom-roles.tf)
+# for the step inside the initialization that adds Firebase to the project
+# (firebase.projects.update).
 #
 # Initializing it makes Firebase create an API key in the project with no
 # restriction, "Browser key (auto created by Firebase)". No resource here
