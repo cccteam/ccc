@@ -1650,8 +1650,11 @@ and the sweep's schedule, the scheduled routes' jobs and identity, the Cloud Arm
 the request-log exclusion) and keeps what holds data or a name (the Spanner database and
 every generation of it, the file stores with their policies, the secret containers with
 their accessors, the identities with their grants, the Firestore database with its indexes,
-fields and rules, the Firebase key, the migrate log bucket and sink, the Cloud Tasks queue
-with its grants, and the stack's id, so the environment's records and names stay its own).
+fields and rules, the Firebase key, the migrate log bucket, the Cloud Tasks queue with its
+grants, and the stack's id, so the environment's records and names stay its own). A kept
+resource that depends on a destroyed one goes with it (the migrate-log sink names the
+version trigger and the services in its filter), since tofu keeps an excluded resource's
+dependencies; the next apply makes it again, and the command's summary names it.
 In production it applies the stack with `teardown=true` first, recording in the state that
 the services' deletion protection is lifted; then it plans the destroy with every kept
 resource excluded, reads the plan back and holds it against what it means to destroy

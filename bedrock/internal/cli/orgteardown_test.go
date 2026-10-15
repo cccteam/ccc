@@ -129,8 +129,8 @@ func TestOrgTeardown(t *testing.T) {
 			in:          "imp\n",
 			wantOut:     []string{"harbor:\ntst: 2 resource(s) destroyed, 1 kept.", `protection lifted first: google_cloud_run_v2_service.app["uc1"]`, "beacon: nothing stands.", "Type imp to go on; anything else stops:", "Tore harbor's stack in tst down: 2 resource(s) destroyed, 1 kept", "The imp organization is torn down: its applications (harbor, beacon) keep their data, identities and records, and nothing serves"},
 			wantRan: []string{
-				"tofu init -input=false -no-color -reconfigure -backend-config=prefix=3-app/harbor/tst", "tofu state list",
-				"tofu init -input=false -no-color -reconfigure -backend-config=prefix=3-app/harbor/prd", "tofu state list",
+				"tofu init -input=false -no-color -reconfigure -backend-config=prefix=3-app/harbor/tst", "tofu state list", "tofu show -json",
+				"tofu init -input=false -no-color -reconfigure -backend-config=prefix=3-app/harbor/prd", "tofu state list", "tofu show -json",
 				"tofu plan -destroy -input=false -no-color -out=DATA/tst/teardown.tfplan -var environment=tst -var database_generation=1 -var teardown=true -exclude=google_spanner_database.quill[0]",
 				"tofu show -json DATA/tst/teardown.tfplan", "tofu apply -input=false -no-color DATA/tst/teardown.tfplan",
 				`tofu apply -input=false -no-color -auto-approve -var environment=prd -var database_generation=1 -var teardown=true -target=google_cloud_run_v2_service.app["uc1"]`,
