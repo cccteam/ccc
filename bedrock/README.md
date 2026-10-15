@@ -423,9 +423,9 @@ location code the region's (`uc1`) or the instance configuration's (`nam10`), un
 access, no public access, soft delete seven days in production and none elsewhere, the
 variable set to the bucket's `gs://` URL for the processes that construct its level, with
 `objectUser` for the site and, when it constructs that level, the job process, as the
-bucket's whole permission list (set on every apply, so Cloud Storage's default grants to
-the project's basic roles are gone from it and a grant added on the bucket by hand does
-not outlive the next release), the service's first revision waiting for those grants
+bucket's whole permission list (set on every apply, with Cloud Storage's default grants to
+the project's basic roles kept, so a grant added on the bucket by hand does not outlive the
+next release and an Owner reaches the files as an Owner does), the service's first revision waiting for those grants
 (its `depends_on`), a pull-request stack with its own database having its own bucket and
 one sharing the integration environment's database using its bucket, its identities
 granted on it, since the rows it reads name objects there, and
@@ -525,9 +525,8 @@ It also refuses:
   applying one would remove the environment's members. A `*_iam_member` adds one member.
   The file stores' bucket policies (`google_storage_bucket_iam_policy.files`, one per
   store, as `storage.tf` declares them) are the one exception, admitted by address: the
-  stack sets each bucket's whole permission list on purpose, so that Cloud Storage's
-  default grants to the project's basic roles are gone from it, and a pull-request stack
-  makes buckets of its own. The pipeline's test before every apply admits the same
+  stack sets each bucket's whole permission list on purpose, so that a grant added by hand
+  does not outlive the next apply, and a pull-request stack makes buckets of its own. The pipeline's test before every apply admits the same
   addresses, named from the buckets its trigger carries (`_FILE_STORES`).
 - a Dockerfile whose browser build stage (the stage that runs `bun run build`) does not
   declare `ARG VERSION`: a build argument is visible inside a stage only after the stage
@@ -1680,7 +1679,8 @@ resource excluded, reads the plan back and holds it against what it means to des
 (anything beyond or short of it stops the run with nothing applied), applies it, and
 writes a record beside the stack's id (`<app>/stacks/<env>/teardown.json`: what went, when,
 by whom, and the release that was live; the environment's team group writes under
-`<app>/stacks/`, so the person running the command can). A run that finds nothing of a
+`<app>/stacks/`, and an Owner of the project or the organization holds the bucket through
+Cloud Storage's default grants, so the person running the command can). A run that finds nothing of a
 teardown's left to destroy writes the record when the stack has none since its live release
 (an earlier run's write failed after its apply), and says so. Bringing the environment back is
 the operations workflow's `apply` action, which runs the environment's stack trigger and

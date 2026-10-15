@@ -79,11 +79,12 @@ locals {
 
 # The bucket's permission list, set whole: the site and the job process on its
 # objects (create, read, list and delete, and nothing of the bucket itself),
-# in tst the pull-request stacks' identities too, and nobody else,
-# the project's basic roles included. Cloud Storage's default grants to those
-# roles are not listed, so they are removed, and a grant added on the bucket
-# by hand is removed by the next release's apply; a grant added on the
-# project is not. This is the one authoritative IAM resource the stack
+# in tst the pull-request stacks' identities too, and the project's
+# basic roles as Cloud Storage grants them on a new bucket (an owner reaches
+# an uploaded file the way an owner reaches everything, which is the owner's
+# to know); nobody else. A grant added on the bucket by hand is removed by
+# the next release's apply; a grant added on the project is not. This is
+# the one authoritative IAM resource the stack
 # declares (bedrock check and the pipeline's test admit it by this address):
 # a pull-request stack with its own bucket makes its own policy, which removes
 # nobody else's members, and one sharing tst's bucket sets none.
@@ -93,6 +94,25 @@ data "google_iam_policy" "files" {
   binding {
     role    = "roles/storage.objectUser"
     members = concat([local.app_member, local.jobs_member], local.files_preview_members)
+  }
+
+  # Cloud Storage's default grants to the project's basic roles, kept as it
+  # makes them.
+  binding {
+    role    = "roles/storage.legacyBucketOwner"
+    members = ["projectOwner:${local.project_id}", "projectEditor:${local.project_id}"]
+  }
+  binding {
+    role    = "roles/storage.legacyObjectOwner"
+    members = ["projectOwner:${local.project_id}", "projectEditor:${local.project_id}"]
+  }
+  binding {
+    role    = "roles/storage.legacyBucketReader"
+    members = ["projectViewer:${local.project_id}"]
+  }
+  binding {
+    role    = "roles/storage.legacyObjectReader"
+    members = ["projectViewer:${local.project_id}"]
   }
 }
 

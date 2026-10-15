@@ -707,7 +707,9 @@ func TestRecordsBucketPolicy(t *testing.T) {
 				"    ] : b if length(b.members) > 0\n",
 				"data \"google_iam_policy\" \"records\" {\n  dynamic \"binding\" {\n    for_each = local.records_bindings\n    content {\n      role    = binding.value.role\n      members = binding.value.members\n\n      dynamic \"condition\" {\n        for_each = binding.value.condition == null ? [] : [binding.value.condition]\n",
 				"resource \"google_storage_bucket_iam_policy\" \"records\" {\n  bucket      = google_storage_bucket.records.name\n  policy_data = data.google_iam_policy.records.policy_data\n}\n",
-				"Cloud Storage's default grants to the project's basic roles (projectOwner,",
+				"Cloud Storage's default grants to the project's basic roles (projectOwner\n# and projectEditor own the bucket and its objects, projectViewer reads them)\n# are listed as Cloud Storage makes them",
+				"  records_basic_bindings = [\n    { role = \"roles/storage.legacyBucketOwner\", members = [\"projectOwner:${local.project_id}\", \"projectEditor:${local.project_id}\"], condition = null },\n    { role = \"roles/storage.legacyObjectOwner\", members = [\"projectOwner:${local.project_id}\", \"projectEditor:${local.project_id}\"], condition = null },\n    { role = \"roles/storage.legacyBucketReader\", members = [\"projectViewer:${local.project_id}\"], condition = null },\n    { role = \"roles/storage.legacyObjectReader\", members = [\"projectViewer:${local.project_id}\"], condition = null },\n  ]\n",
+				"  records_bindings = concat(local.records_basic_bindings, [\n",
 			},
 			absent: []string{"resource \"google_storage_bucket_iam_member\"", "builder role"},
 		},
@@ -721,9 +723,9 @@ func TestRecordsBucketPolicy(t *testing.T) {
 			name: "the README says who reads a record and what a hand grant's fate is",
 			path: "2-env/README.md",
 			want: []string{
-				"the environment's team group (a person\n  reads a record through the group)",
+				"the environment's team group (a person on\n  the team reads a record through the group) and the project's basic roles,\n  which keep Cloud Storage's default grants: an Owner of the project or the\n  organization reads and changes the records the way an Owner reaches\n  everything",
 				"in production the lower\n  environments' operations identities too (a restore from production's\n  backup reads production's live release)",
-				"A grant added on the\n  bucket by hand, for a day's debugging, is removed by this layer's next\n  apply; a grant added on the project is not",
+				"A grant\n  added on the bucket by hand, for a day's debugging, is removed by this\n  layer's next apply; a grant added on the project is not",
 			},
 		},
 	}
