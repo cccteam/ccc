@@ -1,8 +1,9 @@
 // verdict.go judges one run's plan of a pull request once every plan has finished: a
 // plan that succeeded passes with its summary; a plan that failed only because it reads
 // outputs the plans of runs before it in layer order create passes too, planned after
-// those runs apply, since the merge applies them first; any other failure fails, a plan
-// that did not run included.
+// those runs apply, since the merge applies them first; a run with no state yet passes,
+// planned after its first apply; any other failure fails, a plan that did not run
+// included.
 
 package layers
 
@@ -23,6 +24,7 @@ const (
 	planFailed     = "The plan failed; the log says why."
 	planFailedWith = "The plan failed: "
 	planNotRun     = "The plan did not run; the log says why."
+	firstApply     = "planned after its first apply: the run has no state yet (it has never applied), so nothing was planned, and the merge applies it."
 	outputsOnly    = "No resource changes; outputs change only."
 	noSummary      = "no summary line"
 	unsupportedSum = "Unsupported attribute"
@@ -42,10 +44,11 @@ var (
 // planResult is one run's plan as the verdict judges it.
 type planResult struct {
 	run org.LayerRun
-	// ran reports whether tofu plan ran at all (the init succeeded); ok whether it
-	// succeeded.
-	ran bool
-	ok  bool
+	// unapplied reports that the run has no state yet and nothing was planned; ran
+	// whether tofu plan ran at all (the init succeeded); ok whether it succeeded.
+	unapplied bool
+	ran       bool
+	ok        bool
 	// text is what tofu plan printed; diagnostics its errors; outputs the output
 	// changes it makes, when it succeeded.
 	text        string
@@ -77,7 +80,11 @@ func verdicts(results []*planResult) []verdict {
 // judge is one plan's verdict, given the results of the runs before it.
 func judge(res *planResult, earlier []*planResult) verdict {
 	switch {
-	case !res.ran || res.err != nil:
+	case res.err != nil:
+		return verdict{summary: planNotRun}
+	case res.unapplied:
+		return verdict{summary: firstApply, pass: true}
+	case !res.ran:
 		return verdict{summary: planNotRun}
 	case res.ok:
 		return verdict{summary: summaryOf(res.text), pass: true}
