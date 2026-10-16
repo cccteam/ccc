@@ -19,7 +19,7 @@ require (
 	github.com/cccteam/db-initiator v0.4.3
 	github.com/cccteam/httpio v0.7.21
 	github.com/cccteam/logger v0.1.30
-	github.com/cccteam/session v0.12.4-0.20261016170548-5eceefe5ed71
+	github.com/cccteam/session v0.12.4-0.20261016191212-5f93a53b816b
 	github.com/cccteam/spxscan v0.0.17
 	github.com/go-chi/chi/v5 v5.3.2
 	github.com/go-playground/errors/v5 v5.4.0
