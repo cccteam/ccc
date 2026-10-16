@@ -115,8 +115,14 @@ resource "google_cloudbuildv2_repository" "app" {
 # who asked. Its steps are the organization's triggers' (0-bootstrap): fetch
 # the bedrock the checkout's infrastructure/placement.json pins, build a commit
 # pin (the application's pin is read at run time, so the build step stays and
-# has nothing to do for a release), bedrock check, then bedrock deploy stack first, which refuses a live
-# stack (a release has run on it, and no teardown since). In the environments
+# has nothing to do for a release), bedrock check, then bedrock deploy stack
+# <action>: first, the default, which refuses a live stack (a release has run
+# on it, and no teardown since); teardown and destroy, which the operations
+# workflow's teardown and destroy actions set (_STACK_ACTION, with _REQUESTER
+# naming who asked), run the code bedrock teardown and bedrock destroy run by
+# hand, as the apply identity, so a person who is not an organization owner
+# takes an environment down through the pipeline, and the record names the
+# actor and the approver. In the environments
 # whose releases wait for an approval
 # in Cloud Build (team-group.tf), so does this build.
 # ---------------------------------------------------------------------------
@@ -211,6 +217,8 @@ resource "google_cloudbuild_trigger" "stack" {
     _ENV            = var.environment
     _APPLY_IDENTITY = google_service_account.apply[each.key].email
     _RECORDS_BUCKET = google_storage_bucket.records.name
+    _STACK_ACTION   = "first"
+    _REQUESTER      = ""
   }
 
   approval_config {
@@ -250,10 +258,10 @@ resource "google_cloudbuild_trigger" "stack" {
     }
 
     step {
-      id         = "FirstApply"
+      id         = "StackAction"
       name       = "ghcr.io/opentofu/opentofu:1.12.6"
       entrypoint = "/builder/home/bedrock"
-      args       = ["deploy", "stack", "first"]
+      args       = ["deploy", "stack", "$_STACK_ACTION"]
       env        = local.stack_build_env
       timeout    = "7200s"
     }

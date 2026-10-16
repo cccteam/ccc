@@ -1755,7 +1755,7 @@ func TestMigrationGrants(t *testing.T) {
 				"logging.tf":                            {`resource.labels.build_trigger_id`, `"operations_reads_migrate_logs"`},
 				"README.md":                             {"`roles/spanner.databaseAdmin` on the database only, for DDL", "`roles/monitoring.metricWriter` on the project for the Spanner\n  client's metrics", "The first apply after a render with this bedrock removes them"},
 				"root/cloudbuild.yaml":                  {"args: [deploy, migrate, --preflight, --version-variable, APP_VERSION]", "args: [deploy, migrate, --version-variable, APP_VERSION]"},
-				"root/.github/workflows/operations.yml": {`labels.build_step=~\"(Preflight|Run)Migrations\"`, "    name: restore the environment\n", "    name: run the release again\n", "    name: the migrations' operation\n"},
+				"root/.github/workflows/operations.yml": {`labels.build_step=~\"(Preflight|Run)Migrations\"`, "    name: restore the environment\n", "    name: run the release again\n", "    name: tear the environment down or destroy it\n", "    name: the migrations' operation\n"},
 			}
 			absent := map[string][]string{
 				"spanner.tf":                            {"migrate_admin", "local.migrate_member"},

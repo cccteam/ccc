@@ -496,9 +496,20 @@ type StoreAsFunc func(ctx context.Context, identity string) (Store, error)
 // deployment records as that environment's plan identity, which may read what the
 // deploy identity may not.
 func NewStorageAs(ctx context.Context, identity string) (Store, error) {
+	return storageAs(ctx, identity, "https://www.googleapis.com/auth/devstorage.read_only")
+}
+
+// NewStorageAsWriter opens Cloud Storage as the identity for writing: the stack
+// trigger's teardown, run as the deploy identity, writes its record under the prefix
+// the apply identity alone writes (<app>/stacks/).
+func NewStorageAsWriter(ctx context.Context, identity string) (Store, error) {
+	return storageAs(ctx, identity, "https://www.googleapis.com/auth/devstorage.read_write")
+}
+
+func storageAs(ctx context.Context, identity, scope string) (Store, error) {
 	source, err := impersonate.CredentialsTokenSource(ctx, impersonate.CredentialsConfig{
 		TargetPrincipal: identity,
-		Scopes:          []string{"https://www.googleapis.com/auth/devstorage.read_only"},
+		Scopes:          []string{scope},
 	})
 	if err != nil {
 		return nil, errors.Wrapf(err, "impersonate.CredentialsTokenSource(): %s", identity)

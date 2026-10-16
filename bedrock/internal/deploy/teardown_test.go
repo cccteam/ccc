@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"maps"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -29,6 +30,15 @@ func teardownPlacement() *derive.Placement {
 		Projects: map[string]derive.Project{"tst": {ID: "imp-tst-gbl-core-1a2b", Number: "1"}},
 	}
 }
+
+// teardownPlacementJSON is teardownPlacement as the checkout's placement.json.
+func teardownPlacementJSON() string {
+	return `{"prefix": "imp", "environments": ["tst", "stg", "prd"], "regions": [{"name": "us-central1", "code": "uc1"}], "appsDomain": "impulseframework.dev", "hostedDomain": "example.com", "stateBucket": "` + teardownStateBucket + `", "placeholderImage": "i", "defaultBranch": "master", "repository": "harbor", "releaseApp": "release-app", "projects": {"tst": {"id": "imp-tst-gbl-core-1a2b", "number": "1"}}}` + "\n"
+}
+
+// dataDirRE matches the temporary data directory a stack trigger's teardown makes, in
+// tofu's lines.
+var dataDirRE = regexp.MustCompile(`/(?:[^\s/]+/)*bedrock-stack-(?:teardown|destroy)-\d+/`)
 
 // stackState is an environment's state object with the outputs the commands read.
 func stackState(env string, backends ...string) string {

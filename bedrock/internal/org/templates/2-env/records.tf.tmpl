@@ -101,7 +101,9 @@ locals {
   # excludes. The team group's members write there too: bedrock teardown and
   # bedrock destroy, run by a person with their own sign-in, leave their record
   # beside the id (<app>/stacks/<env>/teardown.json), and a destroy takes the
-  # id object with the stack.
+  # id object with the stack; through the pipeline (the operations workflow's
+  # teardown and destroy actions, the stack trigger's build), the apply
+  # identity writes the same record.
   records_stack_prefix = { for app in var.applications : app => "projects/_/buckets/${google_storage_bucket.records.name}/objects/${app}/stacks/" }
   records_creator_condition = length(local.records_stack_prefix) == 0 ? null : {
     title       = "${local.name}-records-not-stacks"

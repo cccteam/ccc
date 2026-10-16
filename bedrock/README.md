@@ -1754,8 +1754,18 @@ nothing (only initialized, or destroyed already) is skipped with a line and its 
 the same way. Both run by a person at their own computer with
 their own sign-in (`gcloud auth application-default login`), driving tofu in the stack
 directory against the environment's state prefix the way the stack trigger's first apply does,
-never from a trigger, and both ask for the environment's name typed back before anything
-runs (`--yes` stands in where there is no terminal). Both refuse while `2-net` routes a
+and both ask for the environment's name typed back before anything
+runs (`--yes` stands in where there is no terminal). The same two run through the pipeline
+for a person who is not an organization owner: the operations workflow's `teardown` and
+`destroy` actions (the environment's name typed into the run's `confirm` input, in place of
+the prompt) run the environment's stack trigger, 2-env's, which survives a teardown, with
+the action (`_STACK_ACTION`, with `_REQUESTER` naming the GitHub actor), and its step runs
+`bedrock deploy stack teardown` or `destroy` as the deploy identity, which becomes the apply
+identity (the one that holds what the stack needs): the state and the records are read as
+it, tofu drives the stack as it, the refusals and the plan's check are the hand command's,
+and the record is written as it, naming the actor and, outside the first environment,
+who approved the build in Cloud Build, where the workflow waits for the approval the
+environment's builds wait for (thirty minutes, then it cancels the build). Both refuse while `2-net` routes a
 host to the environment's backend service, since Google refuses the backend's deletion
 while the load balancer uses it and OpenTofu keeps everything an excluded resource depends
 on: the hosts come out of `2-net` first, through `bedrock org teardown <app>` (that
@@ -1781,7 +1791,7 @@ resource excluded, reads the plan back and holds it against what it means to des
 writes a record beside the stack's id (`<app>/stacks/<env>/teardown.json`: what went, when,
 by whom, and the release that was live; the environment's team group writes under
 `<app>/stacks/`, and an Owner of the project or the organization holds the bucket through
-Cloud Storage's default grants, so the person running the command can). A run that finds nothing of a
+Cloud Storage's default grants, so the person running the command can, and so can the apply identity through the pipeline). A run that finds nothing of a
 teardown's left to destroy writes the record when the stack has none since its live release
 (an earlier run's write failed after its apply), and says so. Bringing the environment back is
 the operations workflow's `apply` action, which runs the environment's stack trigger and
@@ -2143,8 +2153,9 @@ registered application down to what it keeps the way `bedrock teardown --all` do
 environment in promotion order, then the pull-request stacks, the summaries shown before
 the prefix is typed back) when the stacks live under `3-app/`, or, when each application
 carries its own stack, reads the state bucket and the records, says which environments
-still stand and the command to run from each checkout, and writes the journal line once
-none does. The inverse is the same loop the other way: each stack applied again with the
+still stand and the command to run from each checkout (or the operations workflow's
+`teardown` action in each, for a person who is not an organization owner), and writes the
+journal line once none does. The inverse is the same loop the other way: each stack applied again with the
 operations workflow's `apply` action per environment, `bedrock rerun <env> <release>` per
 environment, then `bedrock org serve`, which reads the state bucket and the records,
 refuses while a stack is still torn down, removes `teardown` from `placement.json`,

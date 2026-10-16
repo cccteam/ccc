@@ -255,8 +255,11 @@ check "repositories_registered" {
 #
 # The apply identity reads and writes its own state under
 # 3-app/<app>/<env>/ (the pull-request stacks sit below it, at
-# 3-app/<app>/<env>/pr<N>/) and reads the upstream states its stack takes
-# outputs from (local.upstream_state_prefixes). Both are conditions on the
+# 3-app/<app>/<env>/pr<N>/), reads the upstream states its stack takes
+# outputs from (local.upstream_state_prefixes), and reads 2-net's, whose
+# routed hosts the stack trigger's teardown and destroy (bedrock deploy stack
+# teardown, run as this identity) hold against the environment's backend
+# services before anything goes. Each is a condition on the
 # object name. Listing cannot be conditioned (a list is a request on the
 # bucket, not on an object), so it is granted on its own, unconditionally,
 # through legacyBucketReader: the identity can name every object in the
@@ -299,6 +302,20 @@ resource "google_storage_bucket_iam_member" "apply_state_upstream" {
     title       = "${local.name}-${each.key}-upstream-state"
     description = "The upstream states the application stack reads outputs from."
     expression  = join(" || ", [for p in local.upstream_state_prefixes : "resource.name.startsWith(\"projects/_/buckets/${var.state_bucket}/objects/${p}/\")"])
+  }
+}
+
+resource "google_storage_bucket_iam_member" "apply_state_net" {
+  for_each = local.apps
+
+  bucket = var.state_bucket
+  role   = "roles/storage.objectViewer"
+  member = google_service_account.apply[each.key].member
+
+  condition {
+    title       = "${local.name}-${each.key}-net-state"
+    description = "2-net's state: the hosts it routes, which the stack trigger's teardown and destroy hold against the environment's backend services."
+    expression  = "resource.name.startsWith(\"projects/_/buckets/${var.state_bucket}/objects/2-net/\")"
   }
 }
 

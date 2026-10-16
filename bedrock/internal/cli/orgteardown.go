@@ -307,7 +307,7 @@ func (d deps) teardownOrgAccount(ctx context.Context, dir string, p *org.Placeme
 		}
 	}
 	if standing > 0 {
-		fmt.Fprintf(out, "\n%d environment(s) stand: run the command above from each application's checkout, then bedrock org teardown again.\n", standing)
+		fmt.Fprintf(out, "\n%d environment(s) stand: run the command above from each application's checkout (or the operations workflow's teardown action in each environment), then bedrock org teardown again.\n", standing)
 
 		return nil
 	}
