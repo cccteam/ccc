@@ -1292,6 +1292,53 @@ default branch took since the branch was cut (the branch's migration moves up), 
 (the branch's migration moves down), and a removed seed file (the seed files after it
 move down). Nothing to do prints nothing.
 
+## bedrock migration consolidate
+
+`migration consolidate` folds the schema migrations, as the default branch holds them,
+into one up file and one down file carrying the latest index and the name `Consolidated`
+(`NNNNNN_Consolidated.up.sql`), removes the folded files and stages the change for the
+pull request. The up file is the up files in order, each under a comment naming the file
+it came from and closed with a semicolon; the down file is the down files in reverse
+order. Identical by construction, data migrations included: a database holds one number,
+the highest migration applied, and a run applies every file with a higher number in
+order, comparing no content, so a database at the latest index applies nothing after the
+fold, a fresh database (a pull-request environment, a new environment, a developer's
+emulator) runs the one file and gets the same schema, and the migrate command sends a
+file's statements as one batch per kind, one schema operation instead of one per file.
+The author reviews the diff and may tidy the fold by hand (an index created and dropped
+in the history). An older release deployed afterwards (a restore, a patch cut from an
+older tag) is harmless: its files are all at or below the database's number.
+
+```sh
+bedrock migration consolidate          # on a branch cut from the default branch
+```
+
+```
+schema/migrations: 000001_Init, 000002_Audit, 000003_Sites folded into 000003_Consolidated (up, down)
+  000002_Audit had no down file; the down file reverses the others.
+Consolidated 3 migration(s) of refs/heads/master at 1a2b3c4 into schema/migrations/000003_Consolidated.up.sql: ...
+```
+
+A consolidation is a pull request of its own, cut from the default branch: the command
+refuses a change under the directory and a migration of the branch's own, and leaves a
+sequence of one file alone. A branch cut from a patch line folds the line's sequence
+instead; a consolidation never travels a patch line, since it changes nothing visible.
+The seed directory is not folded.
+
+What accepts the pull request is not built yet: the pull-request workflow's `migrations`
+job and the pipeline's migration guard read the folded files as committed migrations
+deleted and refuse it today. The design (cccteam's register, the consolidation item):
+both read a schema directory holding exactly one file, numbered where the base branch's
+sequence ended, as a consolidation and verify it the same way, the base branch's
+sequence and the folded file applied to two fresh emulator databases, information schema
+and rows compared as values (the migrate runner's parity check); the guard also reads
+each environment's migration number from its database, through a database role the
+migrate runner creates with select on the migrations table alone, which the environment
+layer grants the test environment's deploy identity on the application's databases in
+the other environments, and refuses while any environment is below the latest index; and
+the migrate step refuses a consolidation when the database in front of it is below the
+index, so a restore between merge and deploy is caught where it happens.
+
 ## bedrock migration version, rerun and force
 
 The migrate command of every Impulse application answers three flags beside `-seed`:

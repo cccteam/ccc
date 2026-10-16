@@ -1,7 +1,8 @@
 // migration.go is the migration command group: the schema migrations as the pipeline
-// reads them, one sequence, the renumber that keeps a branch's own files in it, and the
-// three operations on an environment's migrations started from GitHub (version, rerun,
-// force) for the states the migration runner refuses to guess at.
+// reads them, one sequence, the renumber that keeps a branch's own files in it, the
+// consolidate that folds the sequence into one file, and the three operations on an
+// environment's migrations started from GitHub (version, rerun, force) for the states
+// the migration runner refuses to guess at.
 
 package cli
 
@@ -42,7 +43,8 @@ func newMigration(d deps) *cobra.Command {
 sequence the migrate command applies in order: six-digit indexes, one up file each, contiguous,
 and a committed schema migration never changes (a seed file is development data and may). bedrock
 check and the pipeline's guard refuse a directory that is not; renumber moves a branch's own
-migrations back into the sequence, and the seed files after a removed one down.
+migrations back into the sequence, and the seed files after a removed one down; consolidate folds
+the whole schema sequence into one file at the latest index, so a fresh database runs one file.
 
 It also holds the three operations on an environment's migrations, started from GitHub through the
 operations workflow and done by the environment's pipeline as the deploy identity, which runs the
@@ -53,7 +55,7 @@ at and lets the release continue. They are for the states the migration runner r
 at, and none reaches production, which is the platform operator's (the README, When the migration
 fails).`,
 	}
-	cmd.AddCommand(newMigrationCheck(d), newMigrationRenumber(d), newMigrationVersion(d), newMigrationRerun(d), newMigrationForce(d))
+	cmd.AddCommand(newMigrationCheck(d), newMigrationRenumber(d), newMigrationConsolidate(d), newMigrationVersion(d), newMigrationRerun(d), newMigrationForce(d))
 
 	return cmd
 }
@@ -372,6 +374,100 @@ the line instead, since a line is behind the default branch on purpose.`,
 			for _, note := range result.Notes {
 				fmt.Fprintf(out, "Left alone: %s\n", note)
 			}
+
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&appFlag, "app", "", "the application's source directory (default: the one the repository layout names, else the working directory)")
+	cmd.Flags().StringVar(&dirFlag, "dir", "", "the stack directory holding placement.json (default: the one the repository layout names)")
+	cmd.Flags().StringVar(&placement, "placement", "", "the placement file (default: placement.json in the stack directory)")
+
+	return cmd
+}
+
+// newMigrationConsolidate folds the schema sequence into one file at the latest index.
+func newMigrationConsolidate(d deps) *cobra.Command {
+	var (
+		appFlag   string
+		dirFlag   string
+		placement string
+	)
+
+	cmd := &cobra.Command{
+		Use:   "consolidate [--app <dir>] [--dir <dir>]",
+		Short: "Fold the whole schema sequence into one file at the latest index",
+		Long: `consolidate folds the schema migrations, as the default branch holds them, into one up file and
+one down file carrying the latest index and the name Consolidated (NNNNNN_Consolidated.up.sql),
+removes the folded files and stages the change for the pull request. The up file is the up files
+in order, each under a comment naming the file it came from and closed with a semicolon; the down
+file is the down files in reverse order. Identical by construction, data migrations included: a
+database holds one number, the highest migration applied, and a run applies every file with a
+higher number in order, comparing no content, so a database at the latest index applies nothing
+after the fold, a fresh database (a pull-request environment, a new environment, a developer's
+emulator) runs the one file and gets the same schema, and the migrate command sends a file's
+statements as one batch per kind, one schema operation instead of one per file. The author
+reviews the diff and may tidy the fold by hand (an index created and dropped in the history).
+
+A consolidation is a pull request of its own, cut from the default branch: the command refuses a
+change under the directory and a migration of the branch's own, and leaves a sequence of one file
+alone. A branch cut from a patch line folds the line's sequence instead; a consolidation never
+travels a patch line, since it changes nothing visible. The seed directory is not folded.
+
+The pull-request workflow's migrations job and the pipeline's migration guard read the folded files
+as committed migrations deleted and refuse the pull request today; what accepts a consolidation is
+its verification, the default branch's sequence and the folded file applied to two fresh emulator
+databases and compared, which is not built yet, and a consolidation is refused until every
+environment's database is at the latest index. The stack directory and the application are found
+the way check finds them; --app, --dir and --placement override.`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			appDir, stackDir, err := d.stack(appFlag, dirFlag)
+			if err != nil {
+				return err
+			}
+			if placement == "" {
+				placement = filepath.Join(stackDir, placementFile)
+			}
+			p, err := derive.ReadPlacement(placement)
+			if err != nil {
+				return err
+			}
+			if p.DefaultBranch == "" {
+				return errors.Newf("%s names no defaultBranch: the branch whose migrations the consolidation folds", placement)
+			}
+			opts, err := renumberOptions(appDir, p.DefaultBranch)
+			if err != nil {
+				return err
+			}
+			dir := ""
+			for _, candidate := range opts.Dirs {
+				if path.Base(candidate) != derive.SeedDir {
+					dir = candidate
+				}
+			}
+			if dir == "" {
+				return errors.Newf("%s declares no schema migrations directory", appDir)
+			}
+			c, err := migration.Consolidate(cmd.Context(), migration.ConsolidateOptions{Root: opts.Root, Dir: dir, Branch: opts.Branch})
+			if err != nil {
+				return err
+			}
+			out := cmd.OutOrStdout()
+			if len(c.Folded) == 0 {
+				fmt.Fprintf(out, "Nothing to consolidate: %s holds one migration or none as %s holds it.\n", dir, c.Ref)
+
+				return nil
+			}
+			files := "up"
+			if c.Down != "" {
+				files = "up, down"
+			}
+			fmt.Fprintf(out, "%s: %s folded into %06d_%s (%s)\n", dir, strings.Join(c.Folded, ", "), c.Index, migration.ConsolidatedName, files)
+			for _, s := range c.WithoutDown {
+				fmt.Fprintf(out, "  %s had no down file; the down file reverses the others.\n", s)
+			}
+			fmt.Fprintf(out, "Consolidated %d migration(s) of %s at %s into %s: the up files in order, each under a comment naming it and closed with a semicolon, and the down files in reverse order. The folded files are removed and the change is staged; review the diff.\n", len(c.Folded), c.Ref, c.Commit, path.Join(dir, c.Up))
+			fmt.Fprintln(out, "The pull-request workflow's migrations job and the pipeline's guard read the folded files as committed migrations deleted and refuse the pull request today; the consolidation's verification (the sequence and the folded file applied to two emulator databases and compared) is what accepts it, and is not built yet.")
 
 			return nil
 		},

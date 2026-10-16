@@ -262,6 +262,85 @@ func TestMigrationRenumber(t *testing.T) {
 	}
 }
 
+func TestMigrationConsolidate(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		committed []string
+		own       []string
+		wantOut   []string
+		wantFiles []string
+		wantErr   string
+	}{
+		{
+			name:      "folds the committed sequence into the latest index, staged, and says what accepts it",
+			committed: []string{"schema/migrations/000001_Init.up.sql", "schema/migrations/000001_Init.down.sql", "schema/migrations/000002_Audit.up.sql", "schema/migrations/000003_Sites.up.sql", "schema/migrations/000003_Sites.down.sql"},
+			wantOut: []string{
+				"schema/migrations: 000001_Init, 000002_Audit, 000003_Sites folded into 000003_Consolidated (up, down)",
+				"  000002_Audit had no down file; the down file reverses the others.",
+				"Consolidated 3 migration(s) of refs/heads/master at ",
+				" into schema/migrations/000003_Consolidated.up.sql: the up files in order, each under a comment naming it and closed with a semicolon, and the down files in reverse order. The folded files are removed and the change is staged; review the diff.",
+				"The pull-request workflow's migrations job and the pipeline's guard read the folded files as committed migrations deleted and refuse the pull request today",
+			},
+			wantFiles: []string{"schema/migrations/000003_Consolidated.down.sql", "schema/migrations/000003_Consolidated.up.sql"},
+		},
+		{
+			name:      "one migration is nothing to consolidate",
+			committed: []string{"schema/migrations/000001_Init.up.sql"},
+			wantOut:   []string{"Nothing to consolidate: schema/migrations holds one migration or none as refs/heads/master holds it."},
+			wantFiles: []string{"schema/migrations/000001_Init.up.sql"},
+		},
+		{
+			name:      "a migration of the branch's own is refused",
+			committed: []string{"schema/migrations/000001_Init.up.sql", "schema/migrations/000002_Audit.up.sql"},
+			own:       []string{"schema/migrations/000003_Sites.up.sql"},
+			wantErr:   "schema/migrations is not as master holds it (git status lists a change under it)",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			repo := appRepo(t)
+			if err := os.Remove(filepath.Join(repo, ".git")); err != nil {
+				t.Fatal(err)
+			}
+			migrationFiles(t, repo, tt.committed...)
+			gitRepo(t, repo)
+			gitTag(t, repo, "v0.1.0")
+			migrationFiles(t, repo, tt.own...)
+			d := deps{domains: noCloudDomains, secrets: noSecretManager, projects: noProjects, cwd: repo, interactive: never}
+			out, err := execute(d, "", "migration", "consolidate")
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("Execute() error = %v, wantErr %q; output:\n%s", err, tt.wantErr, out)
+				}
+
+				return
+			}
+			if err != nil {
+				t.Fatalf("Execute() error = %v; output:\n%s", err, out)
+			}
+			for _, want := range tt.wantOut {
+				if !strings.Contains(out, want) {
+					t.Errorf("output lacks %q:\n%s", want, out)
+				}
+			}
+			entries, err := os.ReadDir(filepath.Join(repo, "schema", "migrations"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			var got []string
+			for _, e := range entries {
+				got = append(got, "schema/migrations/"+e.Name())
+			}
+			if strings.Join(got, " ") != strings.Join(tt.wantFiles, " ") {
+				t.Errorf("files = %v, want %v", got, tt.wantFiles)
+			}
+		})
+	}
+}
+
 // TestMigrationRenumberFollowsPatchLine: a fix branch cut from a patch line follows the
 // line's committed sequence, not the default branch's, which has moved on.
 func TestMigrationRenumberFollowsPatchLine(t *testing.T) {
