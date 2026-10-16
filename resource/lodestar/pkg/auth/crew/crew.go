@@ -223,17 +223,14 @@ func New(ctx context.Context, db *cloudspanner.Client, settings *Settings) (*Aut
 
 	// The directory's groups are the source of a Google sign-in's role membership, read
 	// through the Cloud Identity Groups API with the person's own sign-in token, as far
-	// as the configured lookup reaches, and written through the writer that spells the
-	// groups' lowercase names the role file's way. Under the session library's skipAuth
-	// build tag the lookup is simulated: the sign-in is in the groups APP_GOOGLE_ROLES
-	// names.
+	// as the configured lookup reaches. A group is an email address, so the directory
+	// names a role in lowercase (crew-pilot@ names pilot); the sync resolves each name
+	// at the store without regard to case and writes the role file's spelling (Pilot).
+	// Under the session library's skipAuth build tag the lookup is simulated: the
+	// sign-in is in the groups APP_GOOGLE_ROLES names, in any case.
 	lookup, err := google.ParseGroupLookup(settings.Directory.GroupLookup)
 	if err != nil {
 		return nil, errors.Wrap(err, "google.ParseGroupLookup()")
-	}
-	roleWriter, err := newDirectoryRoles(accessClient.UserManager(), Roles())
-	if err != nil {
-		return nil, errors.Wrap(err, "newDirectoryRoles()")
 	}
 
 	// The methods, registered before the first request: the password method under the
@@ -245,7 +242,7 @@ func New(ctx context.Context, db *cloudspanner.Client, settings *Settings) (*Aut
 		ClientSecret: settings.Directory.ClientSecret,
 		RedirectURL:  settings.Directory.RedirectURL,
 		HostedDomain: settings.Directory.HostedDomain,
-		RoleSync:     google.RoleSync(roleWriter, settings.Directory.GroupPrefix, lookup),
+		RoleSync:     google.RoleSync(accessClient.UserManager(), settings.Directory.GroupPrefix, lookup),
 		LoginURL:     settings.LoginURL,
 	})
 

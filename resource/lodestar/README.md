@@ -499,8 +499,8 @@ start; the store holds no row for them, and the bootstrap assigns the membership
 directory admits is provisioned under the verified email at their first sign-in, a login
 on no manifest, and their roles are the directory's groups, reconciled at every sign-in;
 a Google group is an email address, so the names the groups carry are lowercase, and the
-crew auth's own role writer (`pkg/auth/crew/directoryroles.go`) spells them the role
-file's way (`crew-pilot@` names `Pilot`). The clients sign in through their company's
+sync resolves each at the store without regard to case and writes the role file's
+spelling (`crew-pilot@` names `Pilot`). The clients sign in through their company's
 Google directory at `/portal/api/user/directory/login`; their roles are the directory's
 groups (`google.RoleSync`), reconciled at every login and never assigned in the
 application, a global role held in the global partition and a domain role in every

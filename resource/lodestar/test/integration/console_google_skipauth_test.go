@@ -14,11 +14,11 @@ import (
 // TestConsoleGoogleLogin signs in on the console through the fleet's Google directory,
 // the crew auth's second method beside the password, as a person on no manifest: the
 // first sign-in provisions them under the verified email and seats them in the roles
-// the directory's groups name, spelled the role file's way (the groups name pilot, the
-// crew's role is Pilot); a password persona's session and theirs are sessions of the
-// same auth, read at the same route; and the next sign-in reconciles the roles to the
-// groups again, holding what the directory still names and dropping what it no longer
-// does, with no churn in between.
+// the directory's groups name, resolved at the store without regard to case (the groups
+// name pilot, the crew's role is Pilot); a password persona's session and theirs are
+// sessions of the same auth, read at the same route; and the next sign-in reconciles
+// the roles to the groups again, whatever case the groups carry, holding what the
+// directory still names and dropping what it no longer does, with no churn in between.
 //
 // Demonstrates: auth.multi-method, auth.directory-roles, auth.skipauth-directory.
 func TestConsoleGoogleLogin(t *testing.T) {
@@ -52,9 +52,9 @@ func TestConsoleGoogleLogin(t *testing.T) {
 		t.Errorf("the marshal's session reads as %v", got)
 	}
 
-	// The next sign-in names the same groups: nothing is added or removed, and the
-	// foothold stands.
-	if status, _ := b.loginConsoleGoogle(ctx, navigatorUser, "pilot", "crewcommon"); status != http.StatusFound {
+	// The next sign-in names the same groups, in whatever case the directory carries
+	// them: nothing is added or removed, and the foothold stands.
+	if status, _ := b.loginConsoleGoogle(ctx, navigatorUser, "PiLot", "CREWCOMMON"); status != http.StatusFound {
 		t.Fatalf("second console Google login: status %d", status)
 	}
 	if got, want := b.domains(ctx), []string{anvil, bastion, cinder}; !slices.Equal(got, want) {
