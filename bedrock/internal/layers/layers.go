@@ -170,8 +170,8 @@ func (r *run) checkSteps(command string) error {
 	if !ok {
 		return errors.Newf("no %s substitution: bedrock org %s runs from the %s trigger 0-bootstrap renders (0-bootstrap/cloud-build.tf), whose substitutions carry the steps' shape; this build did not start from it", stepsSub, command, command)
 	}
-	if steps != org.StepsVersion {
-		fmt.Fprintf(r.out, "This run's steps are of shape %s, and this bedrock renders shape %s: the trigger's steps lag one apply behind the repository, and the next run of the trigger is the first on the shape this bedrock renders (0-bootstrap/README.md, \"The Cloud Build triggers\"). This run goes on with what the steps pass.\n", steps, org.StepsVersion)
+	if shape := org.StepsShape(r.p); steps != shape {
+		fmt.Fprintf(r.out, "This run's steps are of shape %s, and this bedrock renders shape %s for the placement's pin: the trigger's steps lag one apply behind the repository, and the next run of the trigger is the first on the shape this bedrock renders (0-bootstrap/README.md, \"The Cloud Build triggers\"). This run goes on with what the steps pass.\n", steps, shape)
 	}
 
 	return nil

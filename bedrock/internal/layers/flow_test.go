@@ -94,11 +94,11 @@ func buildJSON(subs map[string]string) string {
 // pullRequestSubs are the plan trigger's substitutions on a pull request; pushSubs the
 // apply trigger's on a push.
 func pullRequestSubs() map[string]string {
-	return map[string]string{prNumberSub: "7", baseBranchSub: "master", headBranchSub: "feature", commitSub: headSHA, stepsSub: org.StepsVersion, layerSub: "", environmentSub: ""}
+	return map[string]string{prNumberSub: "7", baseBranchSub: "master", headBranchSub: "feature", commitSub: headSHA, stepsSub: org.StepsVersion + "-release", layerSub: "", environmentSub: ""}
 }
 
 func pushSubs() map[string]string {
-	return map[string]string{commitSub: pushSHA, stepsSub: org.StepsVersion, layerSub: "", environmentSub: ""}
+	return map[string]string{commitSub: pushSHA, stepsSub: org.StepsVersion + "-release", layerSub: "", environmentSub: ""}
 }
 
 // fakeBuilds answers one build and one read token.
@@ -580,7 +580,7 @@ func TestPlanRefusals(t *testing.T) {
 			subs:    func(subs map[string]string) { subs[stepsSub] = "0" },
 			changed: []string{"2-shr/registry.tf"},
 			runs:    map[string]tofuRun{"2-shr": {text: succeededPlan}},
-			wantOut: []string{"This run's steps are of shape 0, and this bedrock renders shape " + org.StepsVersion, "2-shr: Plan: 1 to add, 0 to change, 0 to destroy.\n"},
+			wantOut: []string{"This run's steps are of shape 0, and this bedrock renders shape " + org.StepsVersion + "-release for the placement's pin", "2-shr: Plan: 1 to add, 0 to change, 0 to destroy.\n"},
 		},
 		{
 			name:    "the deployer app not recorded: the plans stay in the log",

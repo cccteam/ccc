@@ -1950,15 +1950,18 @@ layers. Their steps live in the trigger, which a pull request cannot change: the
 reads the bedrock pin off `placement.json` in the checkout at run time and puts that
 bedrock in place (a release's linux/amd64 binary downloaded and verified against
 `bedrockSha256`; a commit pin, once git finds a branch of `cccteam/ccc` that reaches it,
-built with `go install` in the Go image, where Go's checksum database verifies it), the
+built with `go install` in the Go image, where Go's checksum database verifies it; the
+steps follow the pin's kind at render time, so a release pin renders no build step and a
+production organization's runs never pull the Go image), the
 next runs `bedrock org check`, which refuses a `.tf` file no
 render produces, and the last runs `bedrock org plan` or `bedrock org apply`. A change to
 the steps is rendered by a new bedrock, applied by a run on the old steps, and the next run
 is the first on the new ones: the steps lag one apply behind the repository, and since the
 pin is read at run time a pull request that moves it already runs the new bedrock under the
 old steps, so the one rule bedrock keeps is that a release works under the previous
-release's steps. Both triggers pass `_BEDROCK_STEPS`, the shape of their steps, and the
-two commands say in the run's log when they run under another shape. No key exists
+release's steps. Both triggers pass `_BEDROCK_STEPS`, the shape of their steps and the
+kind of pin they were rendered for, and the two commands say in the run's log when they
+run under another shape. No key exists
 anywhere: each trigger runs as a runner identity in the boot project (`<prefix>-org-gbl-
 planner`, `<prefix>-org-gbl-applier`) that holds no layer's roles and impersonates the
 layer identities of its kind (`roles/iam.serviceAccountTokenCreator`, granted by

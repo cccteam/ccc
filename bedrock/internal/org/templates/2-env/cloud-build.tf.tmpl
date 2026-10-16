@@ -114,7 +114,8 @@ resource "google_cloudbuildv2_repository" "app" {
 # environment), so no person holds a cloud role for it and the audit log names
 # who asked. Its steps are the organization's triggers' (0-bootstrap): fetch
 # the bedrock the checkout's infrastructure/placement.json pins, build a commit
-# pin, bedrock check, then bedrock deploy stack first, which refuses a live
+# pin (the application's pin is read at run time, so the build step stays and
+# has nothing to do for a release), bedrock check, then bedrock deploy stack first, which refuses a live
 # stack (a release has run on it, and no teardown since). In the environments
 # whose releases wait for an approval
 # in Cloud Build (team-group.tf), so does this build.

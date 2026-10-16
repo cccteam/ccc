@@ -20,7 +20,8 @@
 # time, so a pull request that moves it already runs the new bedrock under
 # the old steps; the one rule is that a bedrock release works under the
 # previous release's steps. Both triggers pass _BEDROCK_STEPS, the shape of
-# these steps, and the commands say when they run under another.
+# these steps and the kind of pin they were rendered for, and the commands say
+# when they run under another.
 #
 # The connection and the repository link exist once placement.json records
 # the Cloud Build GitHub authorization (cloudBuildInstallationId,
@@ -314,15 +315,19 @@ locals {
 
   # FetchBedrock reads the pin off placement.json in the checkout, at run
   # time, with python3 in the gcloud image, and refuses a commit pin no branch
-  # of the repository reaches (a commits-only clone of its branches, with git);
-  # BuildBedrock builds a commit pin in the Go image and has nothing to do for
-  # a release.
+  # of the repository reaches (a commits-only clone of its branches, with git).
+  # The steps follow the pin's kind at render time, as the application
+  # pipeline's do: a release pin renders FetchBedrock alone, and a commit pin
+  # adds BuildBedrock, which builds it in the Go image. bedrock upgrade renders
+  # this layer with the pin it moves, and the next apply updates the triggers.
   fetch_bedrock = <<-EOT
 {{.FetchBedrockScript}}
   EOT
+{{- if .CommitPin}}
   build_bedrock = <<-EOT
 {{.BuildBedrockScript}}
   EOT
+{{- end}}
 
   steps = [
     {
@@ -333,6 +338,7 @@ locals {
       env        = []
       timeout    = "{{.FetchSeconds}}s"
     },
+{{- if .CommitPin}}
     {
       id         = "BuildBedrock"
       name       = "{{.GoImage}}"
@@ -341,6 +347,7 @@ locals {
       env        = {{.GoInstallEnvHCL}}
       timeout    = "{{.BuildSeconds}}s"
     },
+{{- end}}
     {
       id         = "Check"
       name       = "{{.OpenTofuImage}}"

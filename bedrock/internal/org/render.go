@@ -34,12 +34,14 @@ const (
 	ignoreFile  = ".gitignore"
 	// StepsVersion names the shape of the triggers' inline steps this bedrock renders
 	// (0-bootstrap/cloud-build.tf): the substitutions they carry and what each step
-	// does. Both triggers pass it as _BEDROCK_STEPS, and bedrock org plan and apply
-	// compare it with their own, since a trigger's steps lag one apply behind the
+	// does. The steps also follow the pin's kind (a release pin renders FetchBedrock
+	// alone, a commit pin adds BuildBedrock), so what both triggers pass as
+	// _BEDROCK_STEPS is StepsShape, this version and the kind, and bedrock org plan and
+	// apply compare it with their own, since a trigger's steps lag one apply behind the
 	// repository: a change to them is rendered by the new bedrock, planned and applied
 	// by a run on the old steps, and the next run is the first on the new ones. It
 	// changes when the steps change in a way the commands have to know about.
-	StepsVersion = "1"
+	StepsVersion = "2"
 	// modelLabelWidth is the width of the model's longest label key,
 	// terraform_source_path, which every labels block aligns to.
 	modelLabelWidth = len("terraform_source_path")
@@ -229,9 +231,26 @@ func (v *view) InfrastructureRepository() string {
 	return v.GithubOrganization + "/" + v.SourceRepo
 }
 
+// StepsShape is what the triggers pass as _BEDROCK_STEPS: StepsVersion and the kind of
+// pin the steps were rendered for (2-release, 2-commit), since a release pin renders
+// the fetch step alone and a commit pin the fetch and build steps.
+func StepsShape(p *Placement) string {
+	if release.IsCommitPin(p.BedrockVersion) {
+		return StepsVersion + "-commit"
+	}
+
+	return StepsVersion + "-release"
+}
+
 // StepsVersion is the shape of the triggers' steps, passed as _BEDROCK_STEPS.
-func (*view) StepsVersion() string {
-	return StepsVersion
+func (v *view) StepsVersion() string {
+	return StepsShape(v.Placement)
+}
+
+// CommitPin reports a commit pin, which the triggers' second step builds with go
+// install; a release pin renders no such step, since its binary is downloaded whole.
+func (v *view) CommitPin() bool {
+	return release.IsCommitPin(v.BedrockVersion)
 }
 
 // MarkerPrefix is where bedrock org apply keeps its markers in the state bucket.

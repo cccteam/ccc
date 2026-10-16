@@ -190,11 +190,11 @@ func TestCheckSteps(t *testing.T) {
 		wantErr string
 		wantOut string
 	}{
-		{name: "this bedrock's shape", subs: map[string]string{stepsSub: org.StepsVersion}},
+		{name: "this bedrock's shape for the placement's pin", subs: map[string]string{stepsSub: org.StepsVersion + "-release"}},
 		{
 			name:    "another shape",
 			subs:    map[string]string{stepsSub: "0"},
-			wantOut: "This run's steps are of shape 0, and this bedrock renders shape " + org.StepsVersion + ": the trigger's steps lag one apply behind the repository, and the next run of the trigger is the first on the shape this bedrock renders (0-bootstrap/README.md, \"The Cloud Build triggers\"). This run goes on with what the steps pass.\n",
+			wantOut: "This run's steps are of shape 0, and this bedrock renders shape " + org.StepsVersion + "-release for the placement's pin: the trigger's steps lag one apply behind the repository, and the next run of the trigger is the first on the shape this bedrock renders (0-bootstrap/README.md, \"The Cloud Build triggers\"). This run goes on with what the steps pass.\n",
 		},
 		{
 			name:    "no shape: not the trigger's build",
@@ -207,7 +207,7 @@ func TestCheckSteps(t *testing.T) {
 			t.Parallel()
 
 			var out bytes.Buffer
-			r := &run{out: &out, subs: tt.subs}
+			r := &run{out: &out, subs: tt.subs, p: &org.Placement{BedrockVersion: "v0.5.0"}}
 			err := r.checkSteps(planCommand)
 			if tt.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
