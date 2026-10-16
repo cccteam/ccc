@@ -10,10 +10,11 @@ import (
 
 // migrationsRepo is the repository the guard reads: the pull request's commit c9
 // branched from c3, whose tree holds 000001 and three seed files; master has moved on
-// to c4, which added 000002.
+// to c4, which added 000002. The release tag at c3 freezes the committed schema
+// migrations; a test before the first release removes it.
 func migrationsRepo() *githubtest.Repo {
 	return &githubtest.Repo{
-		Refs:      map[string]github.Object{"refs/heads/master": {Type: "commit", SHA: "c4"}},
+		Refs:      map[string]github.Object{"refs/heads/master": {Type: "commit", SHA: "c4"}, "refs/tags/" + releaseTag: {Type: "commit", SHA: "c3"}},
 		Ancestry:  map[string][]string{"c4": {"c4", "c3"}, "c3": {"c3"}, "c9": {"c9", "c3"}},
 		MergeBase: map[string]string{"c4 c9": "c3"},
 		Trees:     map[string]string{"c3": "t3", "c4": "t4"},
@@ -30,6 +31,9 @@ func migrationsRepo() *githubtest.Repo {
 		},
 	}
 }
+
+// releaseTag is the repository's one release tag.
+const releaseTag = "v0.1.0"
 
 func TestGuardMigrations(t *testing.T) {
 	t.Parallel()
@@ -48,6 +52,8 @@ func TestGuardMigrations(t *testing.T) {
 		repoFiles map[string]string
 		// refs adds branches to the repository.
 		refs map[string]github.Object
+		// unreleased removes the release tag: the repository is before its first release.
+		unreleased bool
 		// deployer registers the deployer app's key, so a refusal is posted as the app.
 		deployer    bool
 		wantOut     []string
@@ -150,6 +156,35 @@ func TestGuardMigrations(t *testing.T) {
 			wantComment: "removed or renamed",
 		},
 		{
+			name:       "before the first release a modified committed migration passes: the freeze starts at the first release",
+			env:        env,
+			subs:       prSubs(),
+			unreleased: true,
+			files:      map[string]string{"schema/migrations/000001_Init.up.sql": "create a, edited", "schema/migrations/000003_Mine.up.sql": "create c"},
+			wantOut:    []string{"schema/migrations: 3 migration(s), 000001 to 000003, read together with master.", "Guard passed: the migrations form one sequence, read together with master; the repository has no release tag, so a committed schema migration may still change until the first release."},
+			wantNotOut: []string{"modified"},
+			wantCalls:  []string{"GET /repos/acme/quill/tags"},
+		},
+		{
+			name:       "before the first release a renamed committed migration passes while the sequence stays whole",
+			env:        env,
+			subs:       prSubs(),
+			unreleased: true,
+			files:      map[string]string{"schema/migrations/000001_Mine.up.sql": "create a"},
+			wantOut:    []string{"schema/migrations: 2 migration(s), 000001 to 000002, read together with master.", "Guard passed"},
+			wantNotOut: []string{"removed or renamed"},
+		},
+		{
+			name:        "before the first release the refusal names the pack",
+			env:         env,
+			subs:        prSubs(),
+			unreleased:  true,
+			files:       map[string]string{"schema/migrations/000001_Init.up.sql": "create a", "schema/migrations/000002_Mine.up.sql": "create c"},
+			wantOut:     []string{"schema/migrations/000002_Mine.up.sql: index 000002 has 2 up files", "the repository has no release tag, so a committed migration may still change", "packs the whole sequence from 000001 with no gap, committed migrations included"},
+			wantErr:     "Build REJECTED",
+			wantComment: "packs the whole sequence from 000001",
+		},
+		{
 			name:       "an edited seed passes: seed files are development data",
 			env:        env,
 			subs:       prSubs(),
@@ -196,6 +231,9 @@ func TestGuardMigrations(t *testing.T) {
 			repo := migrationsRepo()
 			for ref, object := range tt.refs {
 				repo.Refs[ref] = object
+			}
+			if tt.unreleased {
+				delete(repo.Refs, "refs/tags/"+releaseTag)
 			}
 			for name, content := range tt.repoFiles {
 				repo.Files[name] = content

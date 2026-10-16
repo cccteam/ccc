@@ -109,7 +109,10 @@ func TestRenumber(t *testing.T) {
 		// branch is the default branch to read; master when empty.
 		branch string
 		// editable names the directories whose committed files may move down.
-		editable    []string
+		editable []string
+		// unreleased leaves the repository without a release tag; with one (the default)
+		// the committed schema migrations are frozen.
+		unreleased  bool
 		wantRenames []Rename
 		wantNotes   []string
 		wantFiles   map[string][]string
@@ -234,13 +237,59 @@ func TestRenumber(t *testing.T) {
 			wantStaged: "R  schema/devseed/000003_Orders.up.sql -> schema/devseed/000002_Orders.up.sql",
 		},
 		{
-			name: "a removed committed schema migration is not closed over: a committed schema migration never moves",
+			name: "a removed committed schema migration is not closed over: a committed schema migration never moves once the repository has a release",
 			setup: func(r *repo) {
 				masterWithTwo(r)
 				r.git("rm", "-q", migrations+"/000001_Init.up.sql", migrations+"/000001_Init.down.sql")
 				r.write(pair(migrations, "000003_Sites")...)
 			},
 			wantFiles: map[string][]string{migrations: {"000002_Widgets.down.sql", "000002_Widgets.up.sql", "000003_Sites.down.sql", "000003_Sites.up.sql"}},
+		},
+		{
+			name: "no release tag: the whole schema sequence is packed from 000001, committed migrations included",
+			setup: func(r *repo) {
+				r.commit("a hole the generator left", join(pair(migrations, "000001_Init"), pair(migrations, "000002_Audit"), pair(migrations, "000003_Sites"), pair(migrations, "000005_Zones"))...)
+				r.git("checkout", "-q", "-b", "feature")
+				r.write(pair(migrations, "000007_Mine")...)
+			},
+			unreleased: true,
+			wantRenames: []Rename{
+				{Dir: migrations, From: "000005_Zones", To: "000004_Zones", Files: []string{"up", "down"}},
+				{Dir: migrations, From: "000007_Mine", To: "000005_Mine", Files: []string{"up", "down"}},
+			},
+			wantFiles:  map[string][]string{migrations: {"000001_Init.down.sql", "000001_Init.up.sql", "000002_Audit.down.sql", "000002_Audit.up.sql", "000003_Sites.down.sql", "000003_Sites.up.sql", "000004_Zones.down.sql", "000004_Zones.up.sql", "000005_Mine.down.sql", "000005_Mine.up.sql"}},
+			wantStaged: "R  schema/migrations/000005_Zones.up.sql -> schema/migrations/000004_Zones.up.sql",
+		},
+		{
+			name: "no release tag: a removed committed schema migration is closed over, the files after it moving down",
+			setup: func(r *repo) {
+				masterWithTwo(r)
+				r.git("rm", "-q", migrations+"/000001_Init.up.sql", migrations+"/000001_Init.down.sql")
+				r.write(pair(migrations, "000003_Sites")...)
+			},
+			unreleased: true,
+			wantRenames: []Rename{
+				{Dir: migrations, From: "000002_Widgets", To: "000001_Widgets", Files: []string{"up", "down"}},
+				{Dir: migrations, From: "000003_Sites", To: "000002_Sites", Files: []string{"up", "down"}},
+			},
+			wantFiles: map[string][]string{migrations: {"000001_Widgets.down.sql", "000001_Widgets.up.sql", "000002_Sites.down.sql", "000002_Sites.up.sql"}},
+		},
+		{
+			name: "no release tag: a committed schema migration the default branch's additions would push up is left alone with a note",
+			setup: func(r *repo) {
+				r.commit("three", join(pair(migrations, "000001_Init"), pair(migrations, "000002_People"), pair(migrations, "000003_Orders"))...)
+				r.git("checkout", "-q", "-b", "feature")
+				r.git("checkout", "-q", "master")
+				r.git("rm", "-q", migrations+"/000002_People.up.sql", migrations+"/000002_People.down.sql")
+				r.git("mv", migrations+"/000003_Orders.up.sql", migrations+"/000002_Orders.up.sql")
+				r.git("mv", migrations+"/000003_Orders.down.sql", migrations+"/000002_Orders.down.sql")
+				r.commit("packed on master", pair(migrations, "000003_Zones")...)
+				r.git("checkout", "-q", "feature")
+				r.write(pair(migrations, "000004_Shipments")...)
+			},
+			unreleased: true,
+			wantNotes:  []string{"schema/migrations: master added 000003_Zones since the branch was cut, and 000002_People, which the branch was cut with, would move up past it; a committed migration only moves down. Merge master into the branch, then run the renumber again"},
+			wantFiles:  map[string][]string{migrations: {"000001_Init.down.sql", "000001_Init.up.sql", "000002_People.down.sql", "000002_People.up.sql", "000003_Orders.down.sql", "000003_Orders.up.sql", "000004_Shipments.down.sql", "000004_Shipments.up.sql"}},
 		},
 		{
 			name: "the branch's own seed files skip the index the default branch took since the branch was cut",
@@ -333,6 +382,9 @@ func TestRenumber(t *testing.T) {
 			t.Parallel()
 			r := newRepo(t)
 			tt.setup(r)
+			if !tt.unreleased {
+				r.git("tag", "v0.1.0")
+			}
 			dirs := tt.dirs
 			if dirs == nil {
 				dirs = []string{migrations}
@@ -351,6 +403,9 @@ func TestRenumber(t *testing.T) {
 			}
 			if err != nil {
 				t.Fatalf("Renumber() error = %v", err)
+			}
+			if got.Unreleased != tt.unreleased {
+				t.Errorf("Renumber().Unreleased = %v, want %v", got.Unreleased, tt.unreleased)
 			}
 			if diff := cmp.Diff(tt.wantRenames, got.Renames); diff != "" {
 				t.Errorf("Renames mismatch (-want +got):\n%s", diff)

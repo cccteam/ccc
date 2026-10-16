@@ -19,6 +19,7 @@ import (
 	"github.com/go-playground/errors/v5"
 
 	"github.com/cccteam/ccc/bedrock/internal/derive"
+	"github.com/cccteam/ccc/bedrock/internal/gitcmd"
 	"github.com/cccteam/ccc/bedrock/internal/migration"
 	"github.com/cccteam/ccc/bedrock/internal/render"
 	"github.com/cccteam/ccc/bedrock/internal/secret"
@@ -80,7 +81,10 @@ type Report struct {
 	Authoritative []Authoritative
 	// Migrations are the problems with the schema migrations directory: a file that
 	// is not a migration, an index with two up files, a gap in the sequence.
-	Migrations []MigrationFinding
+	// MigrationsFix names their fix when the checkout has no release tag: the renumber
+	// packs the whole sequence until the first release (MigrationsFix).
+	Migrations    []MigrationFinding
+	MigrationsFix string
 	// BuildSecrets are the build secrets the Dockerfile mounts as required that some
 	// environment's placement does not declare.
 	BuildSecrets []BuildSecretFinding
@@ -225,6 +229,9 @@ func Run(ctx context.Context, m *derive.Model, dir, appDir string) (*Report, err
 		return nil, err
 	}
 	r.Migrations = migrations
+	if len(migrations) > 0 {
+		r.MigrationsFix = MigrationsFix(ctx, appDir)
+	}
 	buildSecrets, err := scanBuildSecrets(appDir, dir, m.Placement.Environments)
 	if err != nil {
 		return nil, err
@@ -417,6 +424,22 @@ func Migrations(appDir string, m *derive.Model) (findings []MigrationFinding, sp
 	return findings, spans, nil
 }
 
+// MigrationsFix is the line that names the fix for the sequence rule's findings while the
+// checkout has no release tag: until the first release a committed migration may still
+// change, and bedrock migration renumber packs the whole sequence from 000001. Empty once
+// a release tag is in the checkout, or outside a git work tree, where git says nothing.
+func MigrationsFix(ctx context.Context, appDir string) string {
+	if !gitcmd.InWorkTree(ctx, appDir) {
+		return ""
+	}
+	released, err := migration.Released(ctx, appDir)
+	if err != nil || released {
+		return ""
+	}
+
+	return "no release tag is in this checkout: until the first release a committed migration may still change, and bedrock migration renumber (go generate ./... runs it) packs the whole sequence from 000001, committed migrations included"
+}
+
 // migrationDirs is the schema migrations directory and the seed directory beside it
 // (schema/devseed, the data migrations the migrate command applies with -seed), both
 // root-relative; none when the application has no schema.
@@ -543,6 +566,9 @@ func (r *Report) Write(w io.Writer) {
 	}
 	for _, mf := range r.Migrations {
 		fmt.Fprintf(w, "  refused  %s: %s\n", mf.Path, mf.Problem)
+	}
+	if r.MigrationsFix != "" {
+		fmt.Fprintf(w, "           %s\n", r.MigrationsFix)
 	}
 	for _, g := range r.Generated {
 		fmt.Fprintf(w, "  refused  %s\n", g.Problem)

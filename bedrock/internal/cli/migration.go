@@ -96,7 +96,7 @@ prints its count and its lowest and highest index; a problem is refused.`,
 				}
 			}
 
-			return refuseMigrations(cmd.OutOrStdout(), findings, "the CI migrations job refuses them on every pull request, and bedrock check in every build")
+			return refuseMigrations(cmd.OutOrStdout(), findings, check.MigrationsFix(cmd.Context(), appDir), "the CI migrations job refuses them on every pull request, and bedrock check in every build")
 		},
 	}
 	cmd.Flags().StringVar(&appFlag, "app", "", "application root, the directory holding go.mod (default: the repository root when the stack is in its infrastructure directory, else the working directory)")
@@ -119,14 +119,18 @@ func migrationsSound(dir string, findings []check.MigrationFinding) bool {
 	return true
 }
 
-// refuseMigrations prints the sequence rule's findings as bedrock check prints them and
-// ends with exit 1, as bedrock check ends; consequence says who else refuses them.
-func refuseMigrations(out io.Writer, findings []check.MigrationFinding, consequence string) error {
+// refuseMigrations prints the sequence rule's findings as bedrock check prints them, the
+// fix when there is one to name (check.MigrationsFix), and ends with exit 1, as bedrock
+// check ends; consequence says who else refuses them.
+func refuseMigrations(out io.Writer, findings []check.MigrationFinding, fix, consequence string) error {
 	if len(findings) == 0 {
 		return nil
 	}
 	for _, f := range findings {
 		fmt.Fprintf(out, "  refused  %s: %s\n", f.Path, f.Problem)
+	}
+	if fix != "" {
+		fmt.Fprintf(out, "           %s\n", fix)
 	}
 	fmt.Fprintf(out, "The migrations break the sequence rule the migrate command needs (%d problem(s) above): %s.\n", len(findings), consequence)
 
@@ -305,9 +309,12 @@ func newMigrationRenumber(d deps) *cobra.Command {
 		Short: "Move the branch's own migrations to follow the default branch's",
 		Long: `renumber moves the migrations this branch added, up and down files together, to follow the
 default branch's highest index with no gap, keeping their order. A schema migration the default
-branch holds is never touched: git says which files are the branch's own (the ones under the
-directory that the default branch's tree does not hold), and the default branch is read from
-origin's copy of it when the repository has one, else from the local branch, so fetch first. A
+branch holds is never touched once the repository has a release tag: git says which files are the
+branch's own (the ones under the directory that the default branch's tree does not hold), and the
+default branch is read from origin's copy of it when the repository has one, else from the local
+branch, so fetch first. Before the first release nothing has run the migrations but disposable
+environments, so the whole schema sequence is packed from 000001 instead, committed files included,
+the way the seed directory is packed (below); the tags are the checkout's, so fetch them too. A
 tracked file moves with git mv, staging the rename; an untracked one is renamed on disk.
 
 The seed directory beside the migrations (devseed) is renumbered against its own sequence, and
@@ -358,6 +365,9 @@ the line instead, since a line is behind the default branch on purpose.`,
 			}
 			if len(result.Renames) > 0 {
 				fmt.Fprintf(out, "Renumbered %d migration(s) to follow %s at %s.\n", len(result.Renames), result.Ref, result.Commit)
+				if result.Unreleased {
+					fmt.Fprintln(out, "No release tag is in this checkout, so the whole sequence is packed from 000001, committed migrations included; the freeze starts at the first release.")
+				}
 			}
 			for _, note := range result.Notes {
 				fmt.Fprintf(out, "Left alone: %s\n", note)

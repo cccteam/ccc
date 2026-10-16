@@ -282,7 +282,9 @@ so the gate covers every job:
 - `secrets`: TruffleHog over the whole history reachable from the pull request's head; a
   secret confirmed live, or one whose check could not finish, fails.
 - `migrations`: against the base branch, `schema/migrations` gains files only; a committed
-  migration is never modified or deleted. Then the whole directory, and the seed directory
+  migration is never modified or deleted once the repository has a release tag (before the
+  first release nothing has run the migrations but disposable environments, and a pull
+  request may still rewrite the sequence). Then the whole directory, and the seed directory
   beside it, is read by the sequence rule the migrate command needs (`bedrock migration
   check`, run with the bedrock the placement pins), so a gap already on the default branch
   fails the next pull request; before the application is registered there is no placement,

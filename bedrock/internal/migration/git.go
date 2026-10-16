@@ -60,6 +60,32 @@ func gitMove(ctx context.Context, root, from, to string) error {
 	return err
 }
 
+// ReleaseTagRE is a release tag as release-please cuts them: v<major>.<minor>.<patch>,
+// a prerelease suffix allowed.
+var ReleaseTagRE = regexp.MustCompile(`^v\d+\.\d+\.\d+($|-)`)
+
+// IsReleaseTag says whether the tag name is a release's.
+func IsReleaseTag(name string) bool {
+	return ReleaseTagRE.MatchString(name)
+}
+
+// Released says whether the repository holds a release tag: the freeze on committed
+// schema migrations starts at the first release, and before it the whole sequence may
+// be packed. The tags are the ones the checkout has, so fetch first.
+func Released(ctx context.Context, root string) (bool, error) {
+	out, err := gitcmd.Output(ctx, root, "tag", "--list")
+	if err != nil {
+		return false, errors.Wrap(err, "git tag --list")
+	}
+	for _, name := range strings.Fields(out) {
+		if IsReleaseTag(name) {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
 // mergeBase is the commit the working tree's branch was cut from the ref at: where the
 // committed files it still holds are told from the ones the default branch added since.
 // A tree with no history in common with the ref (git says so with exit status 1 and
