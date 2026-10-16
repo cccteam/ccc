@@ -412,9 +412,10 @@ The auth behind a session outlet, `generation.Auth(importPath, methods...)`: the
 package (the package exporting `Name`) and the sign-in methods its `session.Auth`
 registers, in the order the login page offers them: `PasswordMethod()`, and each
 external method under its registration name, `GoogleMethod("google")`,
-`AzureMethod("lakeside-entra")`, `WorkOSMethod("sso")`, with `.Labeled(text)` for the
-label the page shows (the method's own name otherwise: Password, Google, Microsoft,
-Single sign-on). An outlet naming no method, a registration name outside
+`AzureMethod("lakeside-entra")`, with `.Labeled(text)` for the label the page shows
+(the method's own name otherwise: Password, Google, Microsoft). The session library's
+WorkOS method is held under its internal tree in v0.13.0, so the generator offers no
+declaration for it until the package returns. An outlet naming no method, a registration name outside
 `[a-z][a-z0-9-]*`, an external method named `password`, a name declared twice or an
 empty label is refused. A machine outlet declares `generation.APIKey()` instead. And the browser
 application an outlet serves, when it serves one: `generation.WebApp(mountPath)`, `"/"`

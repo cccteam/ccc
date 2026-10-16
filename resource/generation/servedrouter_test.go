@@ -29,9 +29,9 @@ func Test_routerOutletOptions(t *testing.T) {
 		},
 		{
 			name:    "several methods keep their order and their labels",
-			options: []OutletOption{Auth("example.com/acme/beacon/pkg/auth/crew", GoogleMethod("google").Labeled("Fleet directory"), PasswordMethod(), AzureMethod("lakeside-entra"), WorkOSMethod("sso"))},
+			options: []OutletOption{Auth("example.com/acme/beacon/pkg/auth/crew", GoogleMethod("google").Labeled("Fleet directory"), PasswordMethod(), AzureMethod("lakeside-entra"))},
 			want: routerOutlet{servesSessions: true, auth: &outletAuth{importPath: "example.com/acme/beacon/pkg/auth/crew", methods: []AuthMethod{
-				{kind: methodGoogle, name: "google", label: "Fleet directory"}, PasswordMethod(), AzureMethod("lakeside-entra"), WorkOSMethod("sso"),
+				{kind: methodGoogle, name: "google", label: "Fleet directory"}, PasswordMethod(), AzureMethod("lakeside-entra"),
 			}}},
 		},
 		{
