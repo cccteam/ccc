@@ -38,7 +38,7 @@ func TestResetDevelopmentData(t *testing.T) {
 		CookieKey:      testCookieKey,
 		SessionTimeout: time.Minute,
 		Collection:     router.Collection(),
-		Directory:      auth.Directory{HostedDomain: "example.com", GroupPrefix: "crew-"},
+		Directory:      auth.Directory{Connection: "example", HostedDomain: "example.com", GroupPrefix: "crew-"},
 		ChangeSignal:   auth.PolicySignal(live.NewFake()),
 	})
 	if err != nil {

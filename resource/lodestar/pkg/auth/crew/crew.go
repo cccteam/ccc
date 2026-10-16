@@ -238,12 +238,13 @@ func New(ctx context.Context, db *cloudspanner.Client, settings *Settings) (*Aut
 	// person the directory verifies for the first time under the verified email.
 	password := session.PasswordSignIn(crewSession)
 	googleMethod := google.SignIn(crewSession, GoogleRegistration, provisionCrew, &google.Config{
-		ClientID:     settings.Directory.ClientID,
-		ClientSecret: settings.Directory.ClientSecret,
-		RedirectURL:  settings.Directory.RedirectURL,
-		HostedDomain: settings.Directory.HostedDomain,
-		RoleSync:     google.RoleSync(accessClient.UserManager(), settings.Directory.GroupPrefix, lookup),
-		LoginURL:     settings.LoginURL,
+		ClientID:      settings.Directory.ClientID,
+		ClientSecret:  settings.Directory.ClientSecret,
+		RedirectURL:   settings.Directory.RedirectURL,
+		Connection:    settings.Directory.Connection,
+		HostedDomains: []string{settings.Directory.HostedDomain},
+		RoleSync:      google.RoleSync(accessClient.UserManager(), settings.Directory.GroupPrefix, lookup),
+		LoginURL:      settings.LoginURL,
 	})
 
 	return &Auth{access: accessClient, handlers: &Handlers{Session: crewSession, password: password, google: googleMethod}}, nil

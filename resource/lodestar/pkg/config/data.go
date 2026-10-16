@@ -166,6 +166,7 @@ func NewDataConfiguration(ctx context.Context) (*DataConfiguration, error) {
 			ClientID:     env.CrewClientID,
 			ClientSecret: env.CrewClientSecret,
 			RedirectURL:  env.CrewRedirectURL,
+			Connection:   env.CrewConnection,
 			HostedDomain: env.CrewHostedDomain,
 			GroupPrefix:  env.CrewGroupPrefix,
 			GroupLookup:  env.CrewGroupLookup,
@@ -218,6 +219,7 @@ func NewDataConfiguration(ctx context.Context) (*DataConfiguration, error) {
 			ClientID:     env.MembersClientID,
 			ClientSecret: env.MembersClientSecret,
 			RedirectURL:  env.MembersRedirectURL,
+			Connection:   env.MembersConnection,
 			HostedDomain: env.MembersHostedDomain,
 			GroupPrefix:  env.MembersGroupPrefix,
 			GroupLookup:  env.MembersGroupLookup,
@@ -358,16 +360,18 @@ type dataConfig struct {
 	// logins are restricted to, the prefix of the Google Groups that carry roles, and how
 	// far the groups lookup reaches: direct (the default), or nested for a directory that
 	// nests its role groups. Under the session library's skipAuth build tag only the
-	// redirect URL, the hosted domain, and the group prefix are read.
+	// redirect URL, the connection, the hosted domain, and the group prefix are read.
 	CrewClientID        string `env:"APP_CREW_OIDC_CLIENT_ID"`
 	CrewClientSecret    string `env:"APP_CREW_OIDC_CLIENT_SECRET"`
 	CrewRedirectURL     string `env:"APP_CREW_OIDC_REDIRECT_URL"`
+	CrewConnection      string `env:"APP_CREW_OIDC_CONNECTION"`
 	CrewHostedDomain    string `env:"APP_CREW_OIDC_HOSTED_DOMAIN"`
 	CrewGroupPrefix     string `env:"APP_CREW_OIDC_GROUP_PREFIX"`
 	CrewGroupLookup     string `env:"APP_CREW_OIDC_GROUP_LOOKUP"`
 	MembersClientID     string `env:"APP_MEMBERS_OIDC_CLIENT_ID"`
 	MembersClientSecret string `env:"APP_MEMBERS_OIDC_CLIENT_SECRET"`
 	MembersRedirectURL  string `env:"APP_MEMBERS_OIDC_REDIRECT_URL"`
+	MembersConnection   string `env:"APP_MEMBERS_OIDC_CONNECTION"`
 	MembersHostedDomain string `env:"APP_MEMBERS_OIDC_HOSTED_DOMAIN"`
 	MembersGroupPrefix  string `env:"APP_MEMBERS_OIDC_GROUP_PREFIX"`
 	MembersGroupLookup  string `env:"APP_MEMBERS_OIDC_GROUP_LOOKUP"`

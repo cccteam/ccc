@@ -216,12 +216,13 @@ func New(ctx context.Context, db *cloudspanner.Client, settings *Settings) (*Aut
 	// keeps no list of sectors. Hand-assigned roles do not survive it, so nothing in the
 	// application assigns roles in this store.
 	directory := google.SignIn(membersSession, DirectoryRegistration, provisionMember, &google.Config{
-		ClientID:     settings.Directory.ClientID,
-		ClientSecret: settings.Directory.ClientSecret,
-		RedirectURL:  settings.Directory.RedirectURL,
-		HostedDomain: settings.Directory.HostedDomain,
-		RoleSync:     google.RoleSync(accessClient.UserManager(), settings.Directory.GroupPrefix, lookup),
-		LoginURL:     settings.LoginURL,
+		ClientID:      settings.Directory.ClientID,
+		ClientSecret:  settings.Directory.ClientSecret,
+		RedirectURL:   settings.Directory.RedirectURL,
+		Connection:    settings.Directory.Connection,
+		HostedDomains: []string{settings.Directory.HostedDomain},
+		RoleSync:      google.RoleSync(accessClient.UserManager(), settings.Directory.GroupPrefix, lookup),
+		LoginURL:      settings.LoginURL,
 	})
 
 	return &Auth{access: accessClient, handlers: &Handlers{Session: membersSession, directory: directory}}, nil

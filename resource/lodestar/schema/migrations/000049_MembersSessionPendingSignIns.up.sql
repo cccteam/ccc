@@ -24,6 +24,7 @@ CREATE TABLE MembersSessionPendingSignIns (
     Factors           ARRAY<STRING(MAX)>,
     ReturnUrl         STRING(MAX) NOT NULL,
     ProviderSessionId STRING(MAX),
+    ProviderSessionIssuer STRING(MAX),
     CreatedAt         TIMESTAMP NOT NULL OPTIONS (allow_commit_timestamp = true),
     ExpiresAt         TIMESTAMP NOT NULL,
     ConsumedAt        TIMESTAMP OPTIONS (allow_commit_timestamp = true),

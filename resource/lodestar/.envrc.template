@@ -97,6 +97,10 @@ export APP_ROLES=client-portal,client-account
 # the members auth: the registration's callback route under the portal's API, through the
 # dev proxy.
 export APP_MEMBERS_OIDC_REDIRECT_URL=http://127.0.0.1:4301/portal/api/user/directory/callback
+# APP_MEMBERS_OIDC_CONNECTION is the application's own name for the Google Workspace the members
+# directory is; it keys every Google identity link, so it is set once and kept. Read under the
+# simulated directory too, so it is set in development.
+export APP_MEMBERS_OIDC_CONNECTION=example
 # APP_MEMBERS_OIDC_HOSTED_DOMAIN is the Google Workspace domain logins are restricted to; the
 # simulated directory presents it too, so it is set in development.
 export APP_MEMBERS_OIDC_HOSTED_DOMAIN=example.com
@@ -123,6 +127,8 @@ export APP_GOOGLE_ROLES=pilot
 # APP_CREW_OIDC_REDIRECT_URL is the registration's callback route under the console's API,
 # through the dev proxy.
 export APP_CREW_OIDC_REDIRECT_URL=http://127.0.0.1:4300/console/api/user/google/callback
+# APP_CREW_OIDC_CONNECTION names the crew's Google Workspace the same way.
+export APP_CREW_OIDC_CONNECTION=example
 export APP_CREW_OIDC_HOSTED_DOMAIN=example.com
 # APP_CREW_OIDC_GROUP_PREFIX names the Google Groups that carry crew roles: <prefix><role>@<domain>
 # assigns <role>, in the names pkg/auth/crew/roles.json holds.

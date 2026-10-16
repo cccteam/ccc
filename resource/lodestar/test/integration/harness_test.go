@@ -718,6 +718,7 @@ func newServedAt(ctx context.Context, t *testing.T, version string) *served {
 		Collection:     router.Collection(),
 		Directory: auth.Directory{
 			RedirectURL:  "http://" + server.Listener.Addr().String() + consoleAPI + "/user/google/callback",
+			Connection:   "example",
 			HostedDomain: "example.com",
 			GroupPrefix:  "crew-",
 		},
@@ -739,6 +740,7 @@ func newServedAt(ctx context.Context, t *testing.T, version string) *served {
 		Collection:     router.Collection(),
 		Directory: auth.Directory{
 			RedirectURL:  "http://" + server.Listener.Addr().String() + portalAPI + "/user/directory/callback",
+			Connection:   "example",
 			HostedDomain: "example.com",
 			GroupPrefix:  "members-",
 		},

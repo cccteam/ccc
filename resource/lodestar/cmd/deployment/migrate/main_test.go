@@ -119,8 +119,10 @@ func TestExecute(t *testing.T) {
 	// The data level opens the members auth too, whose Google sign-in refuses to start
 	// without the Workspace domain logins are restricted to and the prefix of the groups
 	// that carry roles; nothing signs in here, so any values serve.
+	t.Setenv("APP_MEMBERS_OIDC_CONNECTION", "example")
 	t.Setenv("APP_MEMBERS_OIDC_HOSTED_DOMAIN", "example.com")
 	t.Setenv("APP_MEMBERS_OIDC_GROUP_PREFIX", "members-")
+	t.Setenv("APP_CREW_OIDC_CONNECTION", "example")
 	t.Setenv("APP_CREW_OIDC_HOSTED_DOMAIN", "example.com")
 	t.Setenv("APP_CREW_OIDC_GROUP_PREFIX", "crew-")
 	last := lastMigration(t)

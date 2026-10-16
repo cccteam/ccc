@@ -38,6 +38,9 @@ type Directory struct {
 	ClientID     string
 	ClientSecret string
 	RedirectURL  string
+	// Connection is the application's own name for the Google Workspace organization the
+	// directory is: it keys every Google identity link, so it is set once and kept.
+	Connection   string
 	HostedDomain string
 	// GroupPrefix is the local-part prefix of the Google Groups that carry roles: a group
 	// <GroupPrefix><role>@<domain> assigns <role>. It is never empty, since it is the only
