@@ -797,7 +797,7 @@ func servedSessionOf(so *servedOutlet, o *routerOutlet) {
 			sm.Handlers = []string{sm.Accessor + "Login"}
 			sm.Description = "The password method's login (session.PasswordMethod)"
 			guarded = append(guarded, route(http.MethodPost, base+"/login", sm.Accessor+"Login", true))
-		case methodGoogle, methodAzure:
+		case methodGoogle, methodWorkOS, methodAzure:
 			sm.LoginPath = prefix + base + "/login"
 			sm.Handlers = []string{sm.Accessor + "Login", sm.Accessor + "Callback"}
 			sm.Description = fmt.Sprintf("The %s registration's login and callback (%s.Method)", m.name, m.kind)

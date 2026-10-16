@@ -304,12 +304,9 @@ const (
 	// methodAzure is Microsoft Entra ID sign-in (azure.SignIn): Google's routes plus
 	// user/<name>/logout, the directory's front-channel logout.
 	methodAzure authMethodKind = "azure"
+	// methodWorkOS is WorkOS single sign-on (workos.SignIn): Google's routes.
+	methodWorkOS authMethodKind = "workos"
 )
-
-// The WorkOS single sign-on method is built in the session library but held under
-// its internal tree in v0.13.0 until its review, so no application can register it
-// yet: the generator offers no declaration for it until the library's session/workos
-// package returns, when it is Google's routes under its registration name.
 
 // passwordMethodName is the name the session library registers the password method
 // under; no external registration may take it.
@@ -317,8 +314,8 @@ const passwordMethodName = "password"
 
 // AuthMethod is one sign-in method registered on a session outlet's Auth, as the
 // generated router mounts it: the method, the name it is registered under, and the
-// label the login page shows for it. Build one with PasswordMethod, GoogleMethod or
-// AzureMethod, and reword its label with Labeled.
+// label the login page shows for it. Build one with PasswordMethod, GoogleMethod,
+// AzureMethod or WorkOSMethod, and reword its label with Labeled.
 type AuthMethod struct {
 	kind  authMethodKind
 	name  string
@@ -341,6 +338,12 @@ func GoogleMethod(name string) AuthMethod {
 // "Microsoft".
 func AzureMethod(name string) AuthMethod {
 	return AuthMethod{kind: methodAzure, name: name, label: "Microsoft"}
+}
+
+// WorkOSMethod is the WorkOS single sign-on method registered under name, with the
+// label "Single sign-on".
+func WorkOSMethod(name string) AuthMethod {
+	return AuthMethod{kind: methodWorkOS, name: name, label: "Single sign-on"}
 }
 
 // Labeled gives the method the label the login page shows for it, in the
@@ -366,7 +369,7 @@ func (m AuthMethod) String() string {
 	switch m.kind {
 	case methodPassword:
 		return "PasswordMethod()"
-	case methodGoogle, methodAzure:
+	case methodGoogle, methodAzure, methodWorkOS:
 		return fmt.Sprintf("%sMethod(%q)", caser.ToPascal(string(m.kind)), m.name)
 	default:
 		return string(m.kind)
@@ -394,7 +397,7 @@ func validateAuthMethods(importPath string, methods []AuthMethod) error {
 	for _, m := range methods {
 		switch {
 		case m.kind == "":
-			return errors.Newf("Auth(%q) is given a zero AuthMethod: build each with PasswordMethod, GoogleMethod or AzureMethod", importPath)
+			return errors.Newf("Auth(%q) is given a zero AuthMethod: build each with PasswordMethod, GoogleMethod, AzureMethod or WorkOSMethod", importPath)
 		case !registrationName.MatchString(m.name):
 			return errors.Newf("Auth(%q, %s) names the registration %q; a registration name is lowercase letters, digits and hyphens, starting with a letter", importPath, m, m.name)
 		case m.kind != methodPassword && m.name == passwordMethodName:
