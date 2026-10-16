@@ -674,7 +674,7 @@ func TestRenderTiers(t *testing.T) {
 // for every application; neither role overwrites or deletes a record.
 // TestRecordsBucketPolicy reads the records bucket's policy, which 2-env sets whole: one
 // binding per role, the deploy identities' create and read, the plan identities' read (the
-// hotfix preview), the next environment's deploy identities' read (the record gate) and
+// patch preview), the next environment's deploy identities' read (the record gate) and
 // the team group's read, no binding for a role nobody holds, and no member resource left
 // on the bucket beside the policy.
 func TestRecordsBucketPolicy(t *testing.T) {
@@ -2906,7 +2906,7 @@ func TestRepositoryRules(t *testing.T) {
 				`allowed_merge_methods           = ["squash"]`,
 				`operations_environments = ["tst", "stg", "prd"]`,
 				`include = ["refs/tags/v*", "refs/tags/*/v*"]`,
-				`hotfix  = { name = "hotfix lines", include = ["refs/heads/hotfix/**"] }`,
+				`patch   = { name = "patch lines", include = ["refs/heads/patch/**"] }`,
 				`prevent_destroy = true`,
 			},
 		},

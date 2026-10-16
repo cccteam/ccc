@@ -104,16 +104,16 @@ func mergeBase(ctx context.Context, root, ref string) (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
-// lineRE is a hotfix line: hotfix/<major>.<minor>.x.
-var lineRE = regexp.MustCompile(`^hotfix/\d+\.\d+\.x$`)
+// lineRE is a patch line: patch/<major>.<minor>.x.
+var lineRE = regexp.MustCompile(`^patch/\d+\.\d+\.x$`)
 
 // followedBranch is the branch whose committed sequence the renumber follows: the
-// default branch, or a hotfix line nearer to HEAD in the history, since a fix for a
+// default branch, or a patch line nearer to HEAD in the history, since a fix for a
 // line is cut from the line, which is behind the default branch on purpose. Nearness
 // is the number of commits HEAD has beyond the branch; a branch that is not an
 // ancestor of HEAD is not followed, and a tie goes to the default branch.
 func followedBranch(ctx context.Context, root, defaultBranch string) (string, error) {
-	out, err := gitcmd.Output(ctx, root, "for-each-ref", "--format=%(refname:short)", "refs/remotes/origin/hotfix/", "refs/heads/hotfix/")
+	out, err := gitcmd.Output(ctx, root, "for-each-ref", "--format=%(refname:short)", "refs/remotes/origin/patch/", "refs/heads/patch/")
 	if err != nil {
 		return "", errors.Wrap(err, "git for-each-ref")
 	}

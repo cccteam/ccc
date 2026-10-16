@@ -212,7 +212,7 @@ impulse new ./fleet --module example.com/fleet --auth crew --site console --site
 The application ships its CI, and impulse owns it. Three workflows are rendered from the
 code: `.github/workflows/ci.yml`, the checks on every pull request;
 `.github/workflows/ci-cache.yml`, the run after a push to the default branch (`main` or
-`master`, or the one the `//impulse:ci` line declares) or a `hotfix/` branch that fills
+`master`, or the one the `//impulse:ci` line declares) or a `patch/` branch that fills
 the caches the checks restore; and `.github/workflows/security-scan.yml`, the daily run
 of the vulnerability check and the image scan over the default branch and the latest
 release, which reports to an issue of the repository (below). `impulse new`
@@ -244,7 +244,7 @@ so the gate covers every job:
   directory an OIDC auth signs in through); its tests run under the race detector, one leg
   per tag; golangci-lint runs at the version the skeleton's `.golangci.yml` is written
   for, one leg per tag; govulncheck; Semgrep over the findings the pull request introduces
-  (its baseline is the pull request's base branch, so a hotfix-line pull request diffs
+  (its baseline is the pull request's base branch, so a patch release-line pull request diffs
   against its own base); and `go tool impulse check` with its regeneration (the generators
   start the Spanner emulator in a container, which the runner has), failing on a tree the
   checks changed. The pins fix the engines, not what they know: govulncheck reads
@@ -313,7 +313,7 @@ compile they share. Neither cache can serve a stale result: a module is verified
 `go.sum` when read, and a build output is addressed by the hash of its inputs (the
 toolchain, the flags, the sources, the dependencies' outputs), so an entry from an older
 commit is either exactly what this commit computes or unused. The entries come from
-`ci-cache.yml`: after each push to the default branch or a hotfix branch it builds and
+`ci-cache.yml`: after each push to the default branch or a patch branch it builds and
 tests what those jobs build and test, at the branch's head (the tests run rather than
 compile, since what a test builds as it runs is in the cache only when it ran), and
 saves under their keys with the commit's, so a pull request's first run starts from the

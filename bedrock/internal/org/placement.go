@@ -185,7 +185,7 @@ type Placement struct {
 	// needs; empty for none.
 	GithubInfrastructureTeam string `json:"githubInfrastructureTeam,omitempty"`
 	// ApprovingReviews is how many approving reviews a pull request needs before it
-	// merges, on every application repository's default branch and hotfix lines and on
+	// merges, on every application repository's default branch and patch lines and on
 	// this repository's default branch: one when left out, 0 for none (a writer merges
 	// alone once the checks pass). A pointer, so that 0 and left out differ. 1-org
 	// renders it into github.tf, an owned file bedrock org check compares with the
@@ -444,7 +444,7 @@ func (p *Placement) validateApprovingReviews() error {
 }
 
 // ApprovingReviewCount is the approving reviews a pull request needs before it merges,
-// on every application repository's default branch and hotfix lines and on this
+// on every application repository's default branch and patch lines and on this
 // repository's default branch: the placement's approvingReviews, or one when it is left
 // out.
 func (p *Placement) ApprovingReviewCount() int {

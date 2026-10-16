@@ -161,7 +161,7 @@ func TestVersionKey(t *testing.T) {
 		{name: "a release tag", version: "v0.1.15", want: "v0-1-15"},
 		{name: "a pull request's version", version: "pr39@abc1234", want: "pr39-abc1234"},
 		{name: "a pre-release", version: "v1.0.0-rc.1+build.7", want: "v1-0-0-rc-1-build-7"},
-		{name: "letter case and the ends", version: "-Hotfix_2--", want: "hotfix-2"},
+		{name: "letter case and the ends", version: "-Patch_2--", want: "patch-2"},
 		{name: "nothing to name", version: "@@", want: ""},
 	}
 	for _, tt := range tests {

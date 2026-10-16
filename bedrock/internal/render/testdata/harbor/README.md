@@ -309,7 +309,7 @@ from `2-env`'s state.
   `cloudbuild.yaml` as the deploy identity: `imp-<env>-uc1-harbor-version` on a
   tag `^v\d+\.\d+\.\d+$` in every environment, with Cloud Build approval
   required in stg and prd (the placement's `approvals`); `imp-tst-uc1-harbor-pr` in tst only, on a pull
-  request against `master` or a hotfix line, run only on a `/gcbrun`
+  request against `master` or a patch line, run only on a `/gcbrun`
   comment: the preview, which builds the pull request's image and deploys it
   into the pull request's own environment, and applies no Terraform. Their builds
   run on Cloud Build's default machine, the placement naming no
@@ -318,9 +318,9 @@ from `2-env`'s state.
   apply identity, tst only, so what applies Terraform for a pull request
   never runs from a file the pull request edits:
   `imp-tst-uc1-harbor-check`, on every push to a pull request
-  against `master` or a hotfix line, runs `bedrock check`, plans and
+  against `master` or a patch line, runs `bedrock check`, plans and
   tests the stack for every environment as that environment's plan identity
-  (the summaries go on the pull request, with the hotfix and window previews)
+  (the summaries go on the pull request, with the patch release and window previews)
   and applies the pull request's own stack again when it has a preview
   standing, so the preview's infrastructure follows the pushes; its result is
   the required check the merge waits for (`1-org` names it, reported by
@@ -332,7 +332,7 @@ from `2-env`'s state.
   One holds its steps in the trigger and runs as the release identity
   (`2-env` makes it in tst alone):
   `imp-tst-uc1-harbor-release`, on every push to
-  `master` or a hotfix line, runs release-please (pinned, through
+  `master` or a patch line, runs release-please (pinned, through
   `bedrock deploy release`) as the organization's release GitHub App: it
   makes the tag and the GitHub Release of a release pull request the push
   merged, then opens or updates the release pull request from the commits
@@ -523,8 +523,8 @@ substitutions and this stack's outputs:
   order, `_PLAN_IDENTITIES`, each environment's plan identity
   (`<env>=<email>`), which a pull-request build plans the stack for every
   environment as, and `_RECORDS_BUCKETS`, each environment's records bucket
-  (`<env>=<bucket>`), which a pull-request build against a hotfix line reads
-  as those identities to say where the hotfix will be refused; `_APPLY_IDENTITY`, the identity the tag build applies this
+  (`<env>=<bucket>`), which a pull-request build against a patch line reads
+  as those identities to say where the patch release will be refused; `_APPLY_IDENTITY`, the identity the tag build applies this
   environment's stack as (impersonated by the deploy identity), and the
   identity the stack's own triggers run as in tst (the check trigger, the
   pull-request stack trigger, the sweep), which drive tofu as themselves;

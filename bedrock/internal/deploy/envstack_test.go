@@ -1481,21 +1481,21 @@ func TestPlanEnvironments(t *testing.T) {
 				"=== tst's stack at 3-app/quill/tst as quill-plan@p-tst.iam.gserviceaccount.com ===", "stg: Plan: 2 to add, 1 to change, 1 to destroy.", "=== prd's stack at 3-app/quill/prd as quill-plan@p-prd.iam.gserviceaccount.com ===",
 				windowPreview, noOldest, "  tst: " + unnamed, "  prd: " + unnamed,
 			},
-			wantNotOut:  []string{"Hotfix preview", "Notice: this build runs under"},
+			wantNotOut:  []string{"Patch preview", "Notice: this build runs under"},
 			wantTofu:    every,
 			wantComment: []string{"The stack's plan for each environment (build b-1), the same tests passed in each:", "**tst**: Plan: 2 to add, 1 to change, 1 to destroy.\n  - `update google_cloud_run_v2_service.app[\"uc1\"]`", "**prd**: Plan: 2 to add, 1 to change, 1 to destroy."},
 		},
 		{
-			name: "a pull request against a hotfix line previews each environment's answer to the hotfix after the plans",
+			name: "a pull request against a patch line previews each environment's answer to the patch release after the plans",
 			subs: func() map[string]string {
 				subs := prSubs()
-				subs[baseBranchSub] = "hotfix/1.2.x"
+				subs[baseBranchSub] = "patch/1.2.x"
 				subs[recordsBucketsSub] = "tst=records-tst,stg=records-stg,prd=records-prd"
 
 				return subs
 			}(),
 			pins:     enabledPins(),
-			wantOut:  []string{"Hotfix preview: this pull request is against hotfix/1.2.x, and each environment's release check will say this to the line's next release", "  tst: no live deployment record; nothing to be behind.", "  prd: no live deployment record; nothing to be behind.", windowPreview},
+			wantOut:  []string{"Patch preview: this pull request is against patch/1.2.x, and each environment's release check will say this to the line's next release", "  tst: no live deployment record; nothing to be behind.", "  prd: no live deployment record; nothing to be behind.", windowPreview},
 			wantTofu: every,
 		},
 		{
@@ -1652,8 +1652,8 @@ func TestPlanEnvironments(t *testing.T) {
 }
 
 // TestPreviews: the pull request's looks ahead after the environments' plans, read as
-// each environment's plan identity: the hotfix preview when the pull request is against a
-// hotfix line, and the window preview, from the release file beside the generated router.
+// each environment's plan identity: the patch preview when the pull request is against a
+// patch line, and the window preview, from the release file beside the generated router.
 func TestPreviews(t *testing.T) {
 	t.Parallel()
 
@@ -1672,14 +1672,14 @@ func TestPreviews(t *testing.T) {
 
 		return `{"app": "quill", "env": "` + env + `", "version": "` + version + `", "status": "live", "timestamp": "2026-09-28T05:30:00Z", "build": "b-5", "migrations": [` + strings.Join(list, ", ") + `]}`
 	}
-	// hotfixPR is a pull request against hotfix/1.2.x previewed in every environment;
+	// patchPR is a pull request against patch/1.2.x previewed in every environment;
 	// seededPR one previewed in tst alone.
-	hotfixPR := map[string]string{
-		baseBranchSub: "hotfix/1.2.x", environmentsSub: "tst,stg,prd",
+	patchPR := map[string]string{
+		baseBranchSub: "patch/1.2.x", environmentsSub: "tst,stg,prd",
 		planIdentitiesSub: "tst=plan-tst@x.iam,stg=plan-stg@x.iam,prd=plan-prd@x.iam",
 		recordsBucketsSub: "tst=tst-records,stg=stg-records,prd=prd-records",
 	}
-	seededPR := map[string]string{baseBranchSub: "hotfix/1.2.x", environmentsSub: "tst", planIdentitiesSub: "tst=plan-tst@x.iam", recordsBucketsSub: "tst=tst-records"}
+	seededPR := map[string]string{baseBranchSub: "patch/1.2.x", environmentsSub: "tst", planIdentitiesSub: "tst=plan-tst@x.iam", recordsBucketsSub: "tst=tst-records"}
 	production := func(line string) map[string]string {
 		return map[string]string{baseBranchSub: line, environmentsSub: "prd", planIdentitiesSub: "prd=plan-prd@x.iam", recordsBucketsSub: "prd=prd-records"}
 	}
@@ -1698,8 +1698,8 @@ func TestPreviews(t *testing.T) {
 		wantIdentities []string
 	}{
 		{
-			name: "a pull request against a hotfix line previews each environment's answer, read as its plan identity",
-			subs: hotfixPR,
+			name: "a pull request against a patch line previews each environment's answer, read as its plan identity",
+			subs: patchPR,
 			objects: map[string]string{
 				"gs://tst-records/quill/tst/1a2b/releases/v1.2.4/b-1.json": strings.Replace(liveIn("tst", "v1.2.4"), `"build": "b-5"`, `"build": "b-0"`, 1),
 				"gs://stg-records/quill/stg/3c4d/releases/v1.3.0/b-5.json": liveWith("stg", "v1.3.0", first, refits),
@@ -1707,13 +1707,13 @@ func TestPreviews(t *testing.T) {
 			},
 			files: map[string]string{first.path(): first.content},
 			wantOut: []string{
-				"Hotfix preview: this pull request is against hotfix/1.2.x, and each environment's release check will say this to the line's next release",
-				"tst: would take the hotfix; its database holds nothing this pull request does not carry (0 file(s) recorded by v1.2.4, build b-0).",
-				"stg: WILL REFUSE the hotfix: stg's database holds schema/migrations/000002_Refits.up.sql (in v1.3.0's record), which this pull request does not carry; restore stg to the hotfix first: a restore run replaces the database and skips this check.",
-				"prd: would take the hotfix; its database holds nothing this pull request does not carry (1 file(s) recorded by v1.2.3, build b-5).",
+				"Patch preview: this pull request is against patch/1.2.x, and each environment's release check will say this to the line's next release",
+				"tst: would take the patch release; its database holds nothing this pull request does not carry (0 file(s) recorded by v1.2.4, build b-0).",
+				"stg: WILL REFUSE the patch release: stg's database holds schema/migrations/000002_Refits.up.sql (in v1.3.0's record), which this pull request does not carry; restore stg to the patch release first: a restore run replaces the database and skips this check.",
+				"prd: would take the patch release; its database holds nothing this pull request does not carry (1 file(s) recorded by v1.2.3, build b-5).",
 				"Window preview:",
 			},
-			// The hotfix preview and the window preview each read every environment's record.
+			// The patch preview and the window preview each read every environment's record.
 			wantIdentities: []string{"plan-tst@x.iam", "plan-stg@x.iam", "plan-prd@x.iam", "plan-tst@x.iam", "plan-stg@x.iam", "plan-prd@x.iam"},
 		},
 		{
@@ -1736,7 +1736,7 @@ func TestPreviews(t *testing.T) {
 				"stg: not breaking (the default outlet answers 1.5.0 at the oldest, which stg's v1.5.0 is not older than); the release deploys at any time.",
 				"prd: breaking (the default outlet answers 1.5.0 at the oldest, and prd runs v1.4.0, which it turns away); prd has no maintenance setting, so the release WILL BE REFUSED at the start of its run there until placement.json names one (\"anytime\" is a setting).",
 			},
-			wantAbsent:     []string{"Hotfix preview"},
+			wantAbsent:     []string{"Patch preview"},
 			wantIdentities: []string{"plan-tst@x.iam", "plan-stg@x.iam", "plan-prd@x.iam"},
 		},
 		{
@@ -1757,34 +1757,34 @@ func TestPreviews(t *testing.T) {
 			},
 		},
 		{
-			name:    "a pull request against a hotfix line of another release line is told production will refuse it at the door",
-			subs:    production("hotfix/1.1.x"),
+			name:    "a pull request against a patch line of another release line is told production will refuse it at the door",
+			subs:    production("patch/1.1.x"),
 			objects: map[string]string{"gs://prd-records/quill/prd/5e6f/releases/v1.2.3/b-7.json": liveWith("prd", "v1.2.3")},
-			wantOut: []string{"prd: WILL REFUSE the hotfix at production's door: production runs v1.2.3, line 1.2; this hotfix is on hotfix/1.1.x. A hotfix is based on the release production runs."},
+			wantOut: []string{"prd: WILL REFUSE the patch release at production's door: production runs v1.2.3, line 1.2; this patch release is on patch/1.1.x. A patch release is based on the release production runs."},
 		},
 		{
 			name:       "production holding files the line lacks is still answered at the door first, never with a restore",
-			subs:       production("hotfix/1.2.x"),
+			subs:       production("patch/1.2.x"),
 			objects:    map[string]string{"gs://prd-records/quill/prd/5e6f/releases/v1.3.0/b-7.json": liveWith("prd", "v1.3.0", first, refits)},
 			files:      map[string]string{first.path(): first.content},
-			wantOut:    []string{"prd: WILL REFUSE the hotfix at production's door: production runs v1.3.0, line 1.3; this hotfix is on hotfix/1.2.x. A hotfix is based on the release production runs."},
+			wantOut:    []string{"prd: WILL REFUSE the patch release at production's door: production runs v1.3.0, line 1.3; this patch release is on patch/1.2.x. A patch release is based on the release production runs."},
 			wantAbsent: []string{"restore prd"},
 		},
 		{
 			name:    "a pull request behind production on its own line is told to start the line from production's release",
-			subs:    production("hotfix/1.2.x"),
+			subs:    production("patch/1.2.x"),
 			objects: map[string]string{"gs://prd-records/quill/prd/5e6f/releases/v1.2.5/b-7.json": liveWith("prd", "v1.2.5", first, refits)},
 			files:   map[string]string{first.path(): first.content},
-			wantOut: []string{"prd: WILL REFUSE the hotfix: prd's database holds schema/migrations/000002_Refits.up.sql (in v1.2.5's record), which this pull request does not carry; production is never restored by a run: a hotfix is based on the release production runs, so start the line from v1.2.5."},
+			wantOut: []string{"prd: WILL REFUSE the patch release: prd's database holds schema/migrations/000002_Refits.up.sql (in v1.2.5's record), which this pull request does not carry; production is never restored by a run: a patch release is based on the release production runs, so start the line from v1.2.5."},
 		},
 		{
-			name:      "a seeded environment whose seed is not in the tree as applied is told the release's build restores it itself and takes the hotfix, before any schema file is compared",
+			name:      "a seeded environment whose seed is not in the tree as applied is told the release's build restores it itself and takes the patch release, before any schema file is compared",
 			subs:      seededPR,
 			placement: seededPlacement(`["tst"]`),
 			objects:   map[string]string{"gs://tst-records/quill/tst/1a2b/releases/v1.3.0/b-5.json": liveWith("tst", "v1.3.0", first, refits, seed)},
 			files:     map[string]string{first.path(): first.content, seed.path(): seed.content + ", edited"},
 			wantOut: []string{
-				"tst: would take the hotfix, after the restore the release's build decides itself: the seed changed since v1.3.0 applied it (build b-5): schema/devseed/000001_Seed.up.sql, not in the tree as applied (edited, renumbered or removed since), so the database is recreated and the migrations and the seed apply from the start, and what the database holds is not compared with the hotfix.",
+				"tst: would take the patch release, after the restore the release's build decides itself: the seed changed since v1.3.0 applied it (build b-5): schema/devseed/000001_Seed.up.sql, not in the tree as applied (edited, renumbered or removed since), so the database is recreated and the migrations and the seed apply from the start, and what the database holds is not compared with the patch.",
 			},
 			wantAbsent: []string{"WILL REFUSE", "000002_Refits"},
 		},
@@ -1794,16 +1794,16 @@ func TestPreviews(t *testing.T) {
 			placement:  seededPlacement(`["tst"]`),
 			objects:    map[string]string{"gs://tst-records/quill/tst/1a2b/releases/v1.3.0/b-5.json": liveWith("tst", "v1.3.0", first, refits, seed)},
 			files:      map[string]string{first.path(): first.content, seed.path(): seed.content},
-			wantOut:    []string{"tst: WILL REFUSE the hotfix: tst's database holds schema/migrations/000002_Refits.up.sql (in v1.3.0's record), which this pull request does not carry; restore tst to the hotfix first: a restore run replaces the database and skips this check."},
+			wantOut:    []string{"tst: WILL REFUSE the patch release: tst's database holds schema/migrations/000002_Refits.up.sql (in v1.3.0's record), which this pull request does not carry; restore tst to the patch release first: a restore run replaces the database and skips this check."},
 			wantAbsent: []string{"the restore the release's build decides itself"},
 		},
 		{
-			name:      "a seeded environment whose seed matches the tree and whose schema files are all in it would take the hotfix",
+			name:      "a seeded environment whose seed matches the tree and whose schema files are all in it would take the patch release",
 			subs:      seededPR,
 			placement: seededPlacement(`["tst"]`),
 			objects:   map[string]string{"gs://tst-records/quill/tst/1a2b/releases/v1.3.0/b-5.json": liveWith("tst", "v1.3.0", first, seed)},
 			files:     map[string]string{first.path(): first.content, seed.path(): seed.content},
-			wantOut:   []string{"tst: would take the hotfix; its database holds nothing this pull request does not carry (2 file(s) recorded by v1.3.0, build b-5)."},
+			wantOut:   []string{"tst: would take the patch release; its database holds nothing this pull request does not carry (2 file(s) recorded by v1.3.0, build b-5)."},
 		},
 		{
 			name:      "an environment off the seed list holding a changed seed file is answered as before: refused on the file",
@@ -1811,12 +1811,12 @@ func TestPreviews(t *testing.T) {
 			placement: seededPlacement(`["stg"]`),
 			objects:   map[string]string{"gs://tst-records/quill/tst/1a2b/releases/v1.3.0/b-5.json": liveWith("tst", "v1.3.0", first, seed)},
 			files:     map[string]string{first.path(): first.content, seed.path(): seed.content + ", edited"},
-			wantOut:   []string{"tst: WILL REFUSE the hotfix: tst's database holds schema/devseed/000001_Seed.up.sql with other content than this pull request carries (by v1.3.0's record); restore tst to the hotfix first: a restore run replaces the database and skips this check."},
+			wantOut:   []string{"tst: WILL REFUSE the patch release: tst's database holds schema/devseed/000001_Seed.up.sql with other content than this pull request carries (by v1.3.0's record); restore tst to the patch release first: a restore run replaces the database and skips this check."},
 		},
 		{
-			name: "a pull request against a hotfix line whose environment's records cannot be read is told so and goes on",
+			name: "a pull request against a patch line whose environment's records cannot be read is told so and goes on",
 			subs: map[string]string{
-				baseBranchSub: "hotfix/1.2.x", environmentsSub: "tst,stg",
+				baseBranchSub: "patch/1.2.x", environmentsSub: "tst,stg",
 				planIdentitiesSub: "tst=plan-tst@x.iam", recordsBucketsSub: "tst=tst-records,stg=stg-records",
 			},
 			wantOut: []string{"tst: no live deployment record; nothing to be behind.", "stg: its records bucket or plan identity is not named (_RECORDS_BUCKETS, _PLAN_IDENTITIES); nothing read."},

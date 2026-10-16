@@ -12,7 +12,7 @@
 # environment's deploy identities create and read objects (a record is
 # written once and never rewritten, and versioning keeps the history if one
 # ever is), its application plan identities read them (a pull-request build
-# against a hotfix line previews each environment's release check from its
+# against a patch line previews each environment's release check from its
 # live record), the next environment's deploy identities read them (the
 # record gate), and the environment's team group reads them (a person on the
 # team reads a record through the group; an owner through the project's basic

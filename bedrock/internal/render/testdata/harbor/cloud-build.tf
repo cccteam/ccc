@@ -19,7 +19,7 @@
 # request's plan is only real when the pull request cannot edit the steps
 # around it.
 #
-#   check     every push to a pull request against master or a hotfix line
+#   check     every push to a pull request against master or a patch line
 #             (no comment control: every push): bedrock check, then the stack planned and
 #             tested for every environment as that environment's plan identity
 #             (the summaries go on the pull request), then the pull request's
@@ -35,11 +35,13 @@
 #
 # One holds its steps here and runs as the release identity, tst only:
 #
-#   release   every push to master or a hotfix line: release-please, pinned,
+#   release   every push to master or a patch line: release-please, pinned,
 #             as the release GitHub App, whose token the step mints from the
 #             key's pinned version in Secret Manager (2-env's output). It opens
 #             or updates the release pull request and, on the push that merges
 #             it, makes the tag and the GitHub Release; the tag fires version.
+#             On master the merge-back guard runs first: no regular
+#             release is cut while a patch release is not merged back.
 #             The key never reaches GitHub.
 #
 # The sweep (below) runs cloudbuild-sweep.yaml from the default branch as the
@@ -339,10 +341,10 @@ resource "google_cloudbuild_trigger" "pr" {
     repository = local.identities.repository_id
 
     pull_request {
-      # The default branch and the hotfix lines (hotfix/<major>.<minor>.x): a fix
+      # The default branch and the patch lines (patch/<major>.<minor>.x): a fix
       # on a line gets its pull-request build like any change, and the guard
       # compares its migrations with the line's (_BASE_BRANCH).
-      branch          = "^(master|hotfix/[0-9]+\\.[0-9]+\\.x)$"
+      branch          = "^(master|patch/[0-9]+\\.[0-9]+\\.x)$"
       comment_control = "COMMENTS_ENABLED"
     }
   }
@@ -380,7 +382,7 @@ resource "google_cloudbuild_trigger" "check" {
     # that value as unset, and a render that named it would show the trigger
     # changing in place on every plan.
     pull_request {
-      branch = "^(master|hotfix/[0-9]+\\.[0-9]+\\.x)$"
+      branch = "^(master|patch/[0-9]+\\.[0-9]+\\.x)$"
     }
   }
 
@@ -415,7 +417,7 @@ resource "google_cloudbuild_trigger" "check" {
 
     # The stack planned and tested for every environment as its plan identity
     # (the apply identity may act as each), the summaries on the pull request,
-    # with the hotfix and window previews.
+    # with the patch release and window previews.
     step {
       id         = "PlanEnvironments"
       name       = "ghcr.io/opentofu/opentofu:1.12.6"
@@ -478,7 +480,7 @@ resource "google_cloudbuild_trigger" "pr_stack" {
     repository = local.identities.repository_id
 
     pull_request {
-      branch          = "^(master|hotfix/[0-9]+\\.[0-9]+\\.x)$"
+      branch          = "^(master|patch/[0-9]+\\.[0-9]+\\.x)$"
       comment_control = "COMMENTS_ENABLED"
     }
   }
@@ -537,7 +539,7 @@ resource "google_cloudbuild_trigger" "pr_stack" {
 }
 
 # ---------------------------------------------------------------------------
-# The release job, tst only: on every push to master or a hotfix
+# The release job, tst only: on every push to master or a patch release
 # line, as the release identity (2-env makes it in tst alone), with its
 # steps held here. release-please, pinned (bedrock deploy release), as the
 # release GitHub App: it makes the tag and the GitHub Release of a release
@@ -573,7 +575,7 @@ resource "google_cloudbuild_trigger" "release" {
     repository = local.identities.repository_id
 
     push {
-      branch = "^(master|hotfix/[0-9]+\\.[0-9]+\\.x)$"
+      branch = "^(master|patch/[0-9]+\\.[0-9]+\\.x)$"
     }
   }
 

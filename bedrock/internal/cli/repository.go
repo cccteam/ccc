@@ -13,7 +13,7 @@ import (
 // repositoryContext is the repository a command acts on and the placement that says
 // how: the origin of the repository the command runs in, and the placement beside the
 // stack. The commands that take it act on the repository through the GitHub API (a
-// restore's dispatch, a hotfix line's branches and pull requests); what configures the
+// restore's dispatch, a patch line's branches and pull requests); what configures the
 // repository is declared in the organization's infrastructure, never by a command.
 type repositoryContext struct {
 	owner     string

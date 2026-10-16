@@ -218,7 +218,7 @@ jobs:
           if [ -z "$BACKUP" ] && [ -z "$BEFORE" ]; then
             kind=own
             if [ "$ENVIRONMENT" = "$PRODUCTION" ]; then
-              echo "::error::$ENVIRONMENT is production, whose database is restored to a backup: name one (backup), a moment (backup, as @<moment>) or a release's cut (before); the list action shows them. An empty database is never made there, and a hotfix is based on the release production runs (bedrock hotfix start)."
+              echo "::error::$ENVIRONMENT is production, whose database is restored to a backup: name one (backup), a moment (backup, as @<moment>) or a release's cut (before); the list action shows them. An empty database is never made there, and a patch release is based on the release production runs (bedrock patch start)."
               exit 1
             fi
             if [ -z "$RELEASE" ] && [ "$restore" != production-backup ]; then

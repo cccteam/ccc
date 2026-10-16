@@ -670,7 +670,7 @@ func TestResolve(t *testing.T) {
 			want:      seeded,
 		},
 		{
-			name:      "a changed schema migration is the hotfix check's concern, not the seed comparison's",
+			name:      "a changed schema migration is the patch check's concern, not the seed comparison's",
 			subs:      seededTag(nil),
 			placement: seedingTst,
 			records:   liveSeeded,

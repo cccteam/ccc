@@ -80,15 +80,15 @@ func (m migrationFile) hash() string {
 }
 
 // quillRepo is the repository the release checks read: master at c4 over c3, c2, c1;
-// v1.2.3 released at c3 by the release app; hotfix/1.2.x at h1, branched from c3.
+// v1.2.3 released at c3 by the release app; patch/1.2.x at h1, branched from c3.
 func quillRepo() *githubtest.Repo {
 	return &githubtest.Repo{
 		Refs: map[string]github.Object{
-			"refs/heads/master":       {Type: "commit", SHA: "c4"},
-			"refs/heads/hotfix/1.2.x": {Type: "commit", SHA: "h1"},
-			"refs/tags/v1.2.3":        {Type: "commit", SHA: "c3"},
-			"refs/tags/v1.2.4":        {Type: "commit", SHA: "h1"},
-			"refs/tags/v1.3.0-rc1":    {Type: "commit", SHA: "h1"},
+			"refs/heads/master":      {Type: "commit", SHA: "c4"},
+			"refs/heads/patch/1.2.x": {Type: "commit", SHA: "h1"},
+			"refs/tags/v1.2.3":       {Type: "commit", SHA: "c3"},
+			"refs/tags/v1.2.4":       {Type: "commit", SHA: "h1"},
+			"refs/tags/v1.3.0-rc1":   {Type: "commit", SHA: "h1"},
 		},
 		Ancestry: map[string][]string{
 			"c4": {"c4", "c3", "c2", "c1"}, "c3": {"c3", "c2", "c1"}, "h1": {"h1", "c3", "c2", "c1"}, "h2": {"h2", "h1", "c3", "c2", "c1"},
@@ -111,9 +111,9 @@ func TestValidateRelease(t *testing.T) {
 		previewOnly = `{"app": "quill", "env": "tst", "version": "v1.2.3", "status": "preview", "timestamp": "2026-09-27T05:00:00Z", "build": "b-9"}`
 	)
 	live := map[string]string{"gs://tst-records/quill/tst/1a2b/releases/v1.2.3/b-0.json": liveRecord, "gs://tst-records/quill/tst/1a2b/releases/v1.2.3/b-9.json": previewOnly}
-	// hotfixLive is the hotfix v1.2.4 live in tst, for the gate; first and refits are two
+	// patchLive is the patch release v1.2.4 live in tst, for the gate; first and refits are two
 	// migration files the environment's records may list, as the build may carry them.
-	hotfixLive := strings.Replace(liveRecord, "v1.2.3", "v1.2.4", 1)
+	patchLive := strings.Replace(liveRecord, "v1.2.3", "v1.2.4", 1)
 	first := migrationFile{dir: "schema/migrations", name: "000001_Init.up.sql", content: "create table t"}
 	refits := migrationFile{dir: "schema/migrations", name: "000002_Refits.up.sql", content: "alter table t"}
 	refitsDown := migrationFile{dir: "schema/migrations", name: "000002_Refits.down.sql", content: "alter table t drop"}
@@ -131,7 +131,7 @@ func TestValidateRelease(t *testing.T) {
 		env  string
 		subs map[string]string
 		// repo changes the repository; objects the records (the previous environment's,
-		// and this environment's for a hotfix); files the migration files the checkout
+		// and this environment's for a patch release); files the migration files the checkout
 		// carries.
 		repo    func(r *githubtest.Repo)
 		objects map[string]string
@@ -416,90 +416,90 @@ func TestValidateRelease(t *testing.T) {
 			wantErr: "Build REJECTED: the GitHub Release for v1.2.3 was made by mallory, not by an accepted release actor (release-app[bot],other).",
 		},
 		{
-			name:    "a hotfix at the tip of its line is validated, and an environment without a live record has nothing to be behind",
+			name:    "a patch release at the tip of its line is validated, and an environment without a live record has nothing to be behind",
 			env:     connected,
 			subs:    map[string]string{tagSub: "v1.2.4", commitSub: "h1"},
-			objects: map[string]string{"gs://tst-records/quill/tst/1a2b/releases/v1.2.4/b-1.json": hotfixLive},
-			wantOut: []string{"Tag v1.2.4 validated as a hotfix: the tip of hotfix/1.2.x, branched from release v1.2.3 on master", "Gate passed: v1.2.4 is live in tst", "Hotfix check: stg has no live deployment record; nothing for v1.2.4 to be behind."},
+			objects: map[string]string{"gs://tst-records/quill/tst/1a2b/releases/v1.2.4/b-1.json": patchLive},
+			wantOut: []string{"Tag v1.2.4 validated as a patch release: the tip of patch/1.2.x, branched from release v1.2.3 on master", "Gate passed: v1.2.4 is live in tst", "Patch check: stg has no live deployment record; nothing for v1.2.4 to be behind."},
 		},
 		{
-			name:    "a hotfix is refused where the database holds a migration it does not carry, naming the restore",
+			name:    "a patch release is refused where the database holds a migration it does not carry, naming the restore",
 			env:     connected,
 			subs:    map[string]string{tagSub: "v1.2.4", commitSub: "h1"},
-			objects: map[string]string{"gs://tst-records/quill/tst/1a2b/releases/v1.2.4/b-1.json": hotfixLive, "gs://stg-records/quill/stg/3c4d/releases/v1.3.0/b-5.json": stgLive("v1.3.0", first, refits)},
+			objects: map[string]string{"gs://tst-records/quill/tst/1a2b/releases/v1.2.4/b-1.json": patchLive, "gs://stg-records/quill/stg/3c4d/releases/v1.3.0/b-5.json": stgLive("v1.3.0", first, refits)},
 			files:   map[string]string{first.path(): first.content},
-			wantErr: "Build REJECTED: stg's database holds schema/migrations/000002_Refits.up.sql (in v1.3.0's record), which hotfix v1.2.4 does not carry; restore stg to v1.2.4 first: a restore run replaces the database and skips this check.",
+			wantErr: "Build REJECTED: stg's database holds schema/migrations/000002_Refits.up.sql (in v1.3.0's record), which patch release v1.2.4 does not carry; restore stg to v1.2.4 first: a restore run replaces the database and skips this check.",
 		},
 		{
-			name:    "a hotfix is refused where a migration's content differs from what the database applied",
+			name:    "a patch release is refused where a migration's content differs from what the database applied",
 			env:     connected,
 			subs:    map[string]string{tagSub: "v1.2.4", commitSub: "h1"},
-			objects: map[string]string{"gs://tst-records/quill/tst/1a2b/releases/v1.2.4/b-1.json": hotfixLive, "gs://stg-records/quill/stg/3c4d/releases/v1.3.0/b-5.json": stgLive("v1.3.0", first)},
+			objects: map[string]string{"gs://tst-records/quill/tst/1a2b/releases/v1.2.4/b-1.json": patchLive, "gs://stg-records/quill/stg/3c4d/releases/v1.3.0/b-5.json": stgLive("v1.3.0", first)},
 			files:   map[string]string{first.path(): "create table other"},
-			wantErr: "Build REJECTED: stg's database holds schema/migrations/000001_Init.up.sql with other content than hotfix v1.2.4 carries (by v1.3.0's record); restore stg to v1.2.4 first: a restore run replaces the database and skips this check.",
+			wantErr: "Build REJECTED: stg's database holds schema/migrations/000001_Init.up.sql with other content than patch release v1.2.4 carries (by v1.3.0's record); restore stg to v1.2.4 first: a restore run replaces the database and skips this check.",
 		},
 		{
 			name: "a pull request's live record under the environment is its own environment's, not the release stg runs",
 			env:  connected,
 			subs: map[string]string{tagSub: "v1.2.4", commitSub: "h1"},
 			objects: map[string]string{
-				"gs://tst-records/quill/tst/1a2b/releases/v1.2.4/b-1.json": hotfixLive,
+				"gs://tst-records/quill/tst/1a2b/releases/v1.2.4/b-1.json": patchLive,
 				"gs://stg-records/quill/stg/3c4d/releases/v1.3.0/b-5.json": stgLive("v1.3.0", first, refits),
 				"gs://stg-records/quill/stg/pr9-abc0123/b-8.json":          strings.NewReplacer("v1.3.0", "pr9@abc0123", "2026-09-28", "2026-09-29", "b-5", "b-8").Replace(stgLive("v1.3.0", first)),
 			},
 			files:   map[string]string{first.path(): first.content},
-			wantErr: "Build REJECTED: stg's database holds schema/migrations/000002_Refits.up.sql (in v1.3.0's record), which hotfix v1.2.4 does not carry; restore stg to v1.2.4 first: a restore run replaces the database and skips this check.",
+			wantErr: "Build REJECTED: stg's database holds schema/migrations/000002_Refits.up.sql (in v1.3.0's record), which patch release v1.2.4 does not carry; restore stg to v1.2.4 first: a restore run replaces the database and skips this check.",
 		},
 		{
 			name:    "the refusal names the up file, whatever order the record lists the files in",
 			env:     connected,
 			subs:    map[string]string{tagSub: "v1.2.4", commitSub: "h1"},
-			objects: map[string]string{"gs://tst-records/quill/tst/1a2b/releases/v1.2.4/b-1.json": hotfixLive, "gs://stg-records/quill/stg/3c4d/releases/v1.3.0/b-5.json": stgLive("v1.3.0", first, refitsDown, refits)},
+			objects: map[string]string{"gs://tst-records/quill/tst/1a2b/releases/v1.2.4/b-1.json": patchLive, "gs://stg-records/quill/stg/3c4d/releases/v1.3.0/b-5.json": stgLive("v1.3.0", first, refitsDown, refits)},
 			files:   map[string]string{first.path(): first.content},
-			wantErr: "Build REJECTED: stg's database holds schema/migrations/000002_Refits.up.sql (in v1.3.0's record), which hotfix v1.2.4 does not carry; restore stg to v1.2.4 first: a restore run replaces the database and skips this check.",
+			wantErr: "Build REJECTED: stg's database holds schema/migrations/000002_Refits.up.sql (in v1.3.0's record), which patch release v1.2.4 does not carry; restore stg to v1.2.4 first: a restore run replaces the database and skips this check.",
 		},
 		{
-			name:    "a hotfix deploys where every applied file is in it, whatever release the environment runs",
+			name:    "a patch release deploys where every applied file is in it, whatever release the environment runs",
 			env:     connected,
 			subs:    map[string]string{tagSub: "v1.2.4", commitSub: "h1"},
-			objects: map[string]string{"gs://tst-records/quill/tst/1a2b/releases/v1.2.4/b-1.json": hotfixLive, "gs://stg-records/quill/stg/3c4d/releases/v1.3.0/b-5.json": stgLive("v1.3.0", first)},
+			objects: map[string]string{"gs://tst-records/quill/tst/1a2b/releases/v1.2.4/b-1.json": patchLive, "gs://stg-records/quill/stg/3c4d/releases/v1.3.0/b-5.json": stgLive("v1.3.0", first)},
 			files:   map[string]string{first.path(): first.content, refits.path(): refits.content},
-			wantOut: []string{"Hotfix check passed: stg's database holds nothing v1.2.4 does not carry (1 file(s) recorded by v1.3.0, build b-5)"},
+			wantOut: []string{"Patch check passed: stg's database holds nothing v1.2.4 does not carry (1 file(s) recorded by v1.3.0, build b-5)"},
 		},
 		{
 			name:       "a restore run is not checked: the database is about to be replaced",
 			env:        connected + "export RESTORE=\"empty\"\nexport RESTORE_REQUESTER=\"octocat\"\n",
 			subs:       map[string]string{tagSub: "v1.2.4", commitSub: "h1"},
-			objects:    map[string]string{"gs://tst-records/quill/tst/1a2b/releases/v1.2.4/b-1.json": hotfixLive, "gs://stg-records/quill/stg/3c4d/releases/v1.3.0/b-5.json": stgLive("v1.3.0", first, refits)},
+			objects:    map[string]string{"gs://tst-records/quill/tst/1a2b/releases/v1.2.4/b-1.json": patchLive, "gs://stg-records/quill/stg/3c4d/releases/v1.3.0/b-5.json": stgLive("v1.3.0", first, refits)},
 			files:      map[string]string{first.path(): first.content},
-			wantOut:    []string{"Gate passed: v1.2.4 is live in tst", "Restore run: stg's database is replaced before v1.2.4 deploys, so what it holds is not compared with the hotfix."},
-			wantAbsent: []string{"Hotfix check"},
+			wantOut:    []string{"Gate passed: v1.2.4 is live in tst", "Restore run: stg's database is replaced before v1.2.4 deploys, so what it holds is not compared with the patch."},
+			wantAbsent: []string{"Patch check"},
 		},
 		{
 			name: "the newest live record is the one compared, not a preview or an older release",
 			env:  connected,
 			subs: map[string]string{tagSub: "v1.2.4", commitSub: "h1"},
 			objects: map[string]string{
-				"gs://tst-records/quill/tst/1a2b/releases/v1.2.4/b-1.json": hotfixLive,
+				"gs://tst-records/quill/tst/1a2b/releases/v1.2.4/b-1.json": patchLive,
 				"gs://stg-records/quill/stg/3c4d/releases/v1.2.3/b-3.json": strings.Replace(stgLive("v1.2.3", first, refits), "2026-09-28", "2026-09-20", 1),
 				"gs://stg-records/quill/stg/3c4d/releases/v1.3.0/b-5.json": stgLive("v1.3.0", first),
 				"gs://stg-records/quill/stg/3c4d/releases/v1.4.0/b-7.json": strings.Replace(strings.Replace(stgLive("v1.4.0", first, refits), "2026-09-28", "2026-09-29", 1), Live, Preview, 1),
 			},
 			files:   map[string]string{first.path(): first.content},
-			wantOut: []string{"Hotfix check passed: stg's database holds nothing v1.2.4 does not carry (1 file(s) recorded by v1.3.0, build b-5)"},
+			wantOut: []string{"Patch check passed: stg's database holds nothing v1.2.4 does not carry (1 file(s) recorded by v1.3.0, build b-5)"},
 		},
 		{
-			name: "the restore named is the hotfix itself",
+			name: "the restore named is the patch release itself",
 			env:  connected,
 			subs: map[string]string{tagSub: "v1.2.5", commitSub: "h2"},
 			repo: func(r *githubtest.Repo) {
-				r.Refs["refs/heads/hotfix/1.2.x"] = github.Object{Type: "commit", SHA: "h2"}
+				r.Refs["refs/heads/patch/1.2.x"] = github.Object{Type: "commit", SHA: "h2"}
 				r.Refs["refs/tags/v1.2.5"] = github.Object{Type: "commit", SHA: "h2"}
 				r.Releases["v1.2.5"] = github.Release{TagName: "v1.2.5", Author: github.User{Login: "release-app[bot]"}}
 			},
-			objects: map[string]string{"gs://tst-records/quill/tst/1a2b/releases/v1.2.5/b-1.json": strings.Replace(hotfixLive, "v1.2.4", "v1.2.5", 1), "gs://stg-records/quill/stg/3c4d/releases/v1.3.0/b-5.json": stgLive("v1.3.0", first, refits)},
+			objects: map[string]string{"gs://tst-records/quill/tst/1a2b/releases/v1.2.5/b-1.json": strings.Replace(patchLive, "v1.2.4", "v1.2.5", 1), "gs://stg-records/quill/stg/3c4d/releases/v1.3.0/b-5.json": stgLive("v1.3.0", first, refits)},
 			files:   map[string]string{first.path(): first.content},
-			wantErr: "Build REJECTED: stg's database holds schema/migrations/000002_Refits.up.sql (in v1.3.0's record), which hotfix v1.2.5 does not carry; restore stg to v1.2.5 first: a restore run replaces the database and skips this check.",
+			wantErr: "Build REJECTED: stg's database holds schema/migrations/000002_Refits.up.sql (in v1.3.0's record), which patch release v1.2.5 does not carry; restore stg to v1.2.5 first: a restore run replaces the database and skips this check.",
 		},
 		{
 			name:       "a release on the default branch is not checked against the environment's database",
@@ -507,84 +507,84 @@ func TestValidateRelease(t *testing.T) {
 			objects:    map[string]string{"gs://tst-records/quill/tst/1a2b/releases/v1.2.3/b-0.json": liveRecord, "gs://stg-records/quill/stg/3c4d/releases/v1.3.0/b-5.json": stgLive("v1.3.0", first, refits)},
 			files:      map[string]string{first.path(): first.content},
 			wantOut:    []string{"Tag v1.2.3 validated: its commit is on master", "Gate passed: v1.2.3 is live in tst"},
-			wantAbsent: []string{"Hotfix check"},
+			wantAbsent: []string{"Patch check"},
 		},
 		{
-			name: "a hotfix from a line production does not run is refused at production's door",
+			name: "a patch release from a line production does not run is refused at production's door",
 			env:  connected,
 			subs: map[string]string{tagSub: "v1.2.4", commitSub: "h1", envSub: prdEnvironment, previousEnvSub: stgEnvironment, previousRecordsSub: "stg-records", recordsBucket: "prd-records"},
 			objects: map[string]string{
-				"gs://stg-records/quill/stg/3c4d/releases/v1.2.4/b-1.json": strings.Replace(hotfixLive, `"env": "tst"`, `"env": "stg"`, 1),
+				"gs://stg-records/quill/stg/3c4d/releases/v1.2.4/b-1.json": strings.Replace(patchLive, `"env": "tst"`, `"env": "stg"`, 1),
 				"gs://prd-records/quill/prd/5e6f/releases/v1.3.0/b-5.json": strings.Replace(stgLive("v1.3.0", first), `"env": "stg"`, `"env": "prd"`, 1),
 			},
 			files:   map[string]string{first.path(): first.content},
-			wantErr: "Build REJECTED: production runs v1.3.0, line 1.3; hotfix v1.2.4 is on line 1.2. A hotfix is based on the release production runs.",
+			wantErr: "Build REJECTED: production runs v1.3.0, line 1.3; patch v1.2.4 is on line 1.2. A patch release is based on the release production runs.",
 		},
 		{
-			name: "a hotfix from another line is refused at production's door before production's files are compared",
+			name: "a patch release from another line is refused at production's door before production's files are compared",
 			env:  connected,
 			subs: map[string]string{tagSub: "v1.2.4", commitSub: "h1", envSub: prdEnvironment, previousEnvSub: stgEnvironment, previousRecordsSub: "stg-records", recordsBucket: "prd-records"},
 			objects: map[string]string{
-				"gs://stg-records/quill/stg/3c4d/releases/v1.2.4/b-1.json": strings.Replace(hotfixLive, `"env": "tst"`, `"env": "stg"`, 1),
+				"gs://stg-records/quill/stg/3c4d/releases/v1.2.4/b-1.json": strings.Replace(patchLive, `"env": "tst"`, `"env": "stg"`, 1),
 				"gs://prd-records/quill/prd/5e6f/releases/v1.3.0/b-5.json": strings.Replace(stgLive("v1.3.0", first, refits), `"env": "stg"`, `"env": "prd"`, 1),
 			},
 			files:   map[string]string{first.path(): first.content},
-			wantErr: "Build REJECTED: production runs v1.3.0, line 1.3; hotfix v1.2.4 is on line 1.2. A hotfix is based on the release production runs.",
+			wantErr: "Build REJECTED: production runs v1.3.0, line 1.3; patch v1.2.4 is on line 1.2. A patch release is based on the release production runs.",
 		},
 		{
-			name: "a hotfix behind production on its own line is refused with production's release named, never a restore",
+			name: "a patch release behind production on its own line is refused with production's release named, never a restore",
 			env:  connected,
 			subs: map[string]string{tagSub: "v1.2.4", commitSub: "h1", envSub: prdEnvironment, previousEnvSub: stgEnvironment, previousRecordsSub: "stg-records", recordsBucket: "prd-records"},
 			objects: map[string]string{
-				"gs://stg-records/quill/stg/3c4d/releases/v1.2.4/b-1.json": strings.Replace(hotfixLive, `"env": "tst"`, `"env": "stg"`, 1),
+				"gs://stg-records/quill/stg/3c4d/releases/v1.2.4/b-1.json": strings.Replace(patchLive, `"env": "tst"`, `"env": "stg"`, 1),
 				"gs://prd-records/quill/prd/5e6f/releases/v1.2.5/b-5.json": strings.Replace(stgLive("v1.2.5", first, refits), `"env": "stg"`, `"env": "prd"`, 1),
 			},
 			files:   map[string]string{first.path(): first.content},
-			wantErr: "Build REJECTED: prd's database holds schema/migrations/000002_Refits.up.sql (in v1.2.5's record), which hotfix v1.2.4 does not carry; production is never restored by a run: a hotfix is based on the release production runs, so start the line from v1.2.5.",
+			wantErr: "Build REJECTED: prd's database holds schema/migrations/000002_Refits.up.sql (in v1.2.5's record), which patch release v1.2.4 does not carry; production is never restored by a run: a patch release is based on the release production runs, so start the line from v1.2.5.",
 		},
 		{
-			name: "a hotfix on production's line passes its door",
+			name: "a patch release on production's line passes its door",
 			env:  connected,
 			subs: map[string]string{tagSub: "v1.2.4", commitSub: "h1", envSub: prdEnvironment, previousEnvSub: stgEnvironment, previousRecordsSub: "stg-records", recordsBucket: "prd-records"},
 			objects: map[string]string{
-				"gs://stg-records/quill/stg/3c4d/releases/v1.2.4/b-1.json": strings.Replace(hotfixLive, `"env": "tst"`, `"env": "stg"`, 1),
+				"gs://stg-records/quill/stg/3c4d/releases/v1.2.4/b-1.json": strings.Replace(patchLive, `"env": "tst"`, `"env": "stg"`, 1),
 				"gs://prd-records/quill/prd/5e6f/releases/v1.2.3/b-5.json": strings.Replace(stgLive("v1.2.3", first), `"env": "stg"`, `"env": "prd"`, 1),
 			},
 			files:   map[string]string{first.path(): first.content},
-			wantOut: []string{"Hotfix check passed: prd's database holds nothing v1.2.4 does not carry (1 file(s) recorded by v1.2.3, build b-5)"},
+			wantOut: []string{"Patch check passed: prd's database holds nothing v1.2.4 does not carry (1 file(s) recorded by v1.2.3, build b-5)"},
 		},
 		{
 			name:    "a tag off the branch that is not a version is refused",
 			env:     connected,
 			subs:    map[string]string{tagSub: "v1.3.0-rc1", commitSub: "h1"},
-			wantErr: "Build REJECTED: tag v1.3.0-rc1 is not on master (compare status: diverged) and is not a v<major>.<minor>.<patch> tag a hotfix line could carry.",
+			wantErr: "Build REJECTED: tag v1.3.0-rc1 is not on master (compare status: diverged) and is not a v<major>.<minor>.<patch> tag a patch line could carry.",
 		},
 		{
-			name: "a hotfix line without a branch is refused",
+			name: "a patch line without a branch is refused",
 			env:  connected,
 			subs: map[string]string{tagSub: "v1.2.4", commitSub: "h1"},
 			repo: func(r *githubtest.Repo) {
-				delete(r.Refs, "refs/heads/hotfix/1.2.x")
+				delete(r.Refs, "refs/heads/patch/1.2.x")
 			},
-			wantErr: "Build REJECTED: tag v1.2.4 is not on master (compare status: diverged) and there is no branch hotfix/1.2.x it could be a hotfix of.",
+			wantErr: "Build REJECTED: tag v1.2.4 is not on master (compare status: diverged) and there is no branch patch/1.2.x it could be a patch release of.",
 		},
 		{
-			name: "a hotfix tag behind its branch's tip is refused",
+			name: "a patch release tag behind its branch's tip is refused",
 			env:  connected,
 			subs: map[string]string{tagSub: "v1.2.4", commitSub: "h1"},
 			repo: func(r *githubtest.Repo) {
-				r.Refs["refs/heads/hotfix/1.2.x"] = github.Object{Type: "commit", SHA: "h2"}
+				r.Refs["refs/heads/patch/1.2.x"] = github.Object{Type: "commit", SHA: "h2"}
 			},
-			wantErr: "Build REJECTED: tag v1.2.4 (commit h1) is not at the tip of hotfix/1.2.x (h2); a hotfix release is the branch's tip.",
+			wantErr: "Build REJECTED: tag v1.2.4 (commit h1) is not at the tip of patch/1.2.x (h2); a patch release is the branch's tip.",
 		},
 		{
-			name: "a hotfix line that starts at no release is refused",
+			name: "a patch line that starts at no release is refused",
 			env:  connected,
 			subs: map[string]string{tagSub: "v1.2.4", commitSub: "h1"},
 			repo: func(r *githubtest.Repo) {
 				delete(r.Refs, "refs/tags/v1.2.3")
 			},
-			wantErr: "Build REJECTED: hotfix/1.2.x branches from c3 on master, which carries no v1.2.* release tag; a hotfix line starts at a release.",
+			wantErr: "Build REJECTED: patch/1.2.x branches from c3 on master, which carries no v1.2.* release tag; a patch line starts at a release.",
 		},
 		{
 			name:    "no record in the previous environment is refused",

@@ -127,6 +127,12 @@ type Placement struct {
 	// Every environment but production is anytime unless written; production has no
 	// default, and a breaking release to it is refused until its setting is written.
 	Maintenance map[string]MaintenanceWindow `json:"maintenance,omitempty"`
+	// MaintenanceWindow is the application's routine maintenance window as the team
+	// declares it, a value for the team: when its patch releases are made, by whom and
+	// under what approval is the team's configuration, never the framework's. bedrock
+	// carries the value and bedrock patch status prints it; nothing in the framework
+	// acts on it. (Maintenance, above, is the environments' release windows.)
+	MaintenanceWindow string `json:"maintenanceWindow,omitempty"`
 	// Projects are the environment projects by environment, as the organization's
 	// apply chose them: the id and the number (bedrock org register writes them into the
 	// first placement from the organization's, and org render prints the block). The

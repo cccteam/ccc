@@ -1,4 +1,4 @@
-package hotfix_test
+package patch_test
 
 import (
 	"strings"
@@ -6,7 +6,7 @@ import (
 
 	"github.com/cccteam/ccc/bedrock/internal/github"
 	"github.com/cccteam/ccc/bedrock/internal/github/githubtest"
-	"github.com/cccteam/ccc/bedrock/internal/hotfix"
+	"github.com/cccteam/ccc/bedrock/internal/patch"
 )
 
 func TestBranch(t *testing.T) {
@@ -18,8 +18,8 @@ func TestBranch(t *testing.T) {
 		want    string
 		wantErr string
 	}{
-		{name: "a patch release", tag: "v0.1.21", want: "hotfix/0.1.x"},
-		{name: "a minor release", tag: "v2.0.0", want: "hotfix/2.0.x"},
+		{name: "a patch release", tag: "v0.1.21", want: "patch/0.1.x"},
+		{name: "a minor release", tag: "v2.0.0", want: "patch/2.0.x"},
 		{name: "no v", tag: "0.1.21", wantErr: `tag "0.1.21" is not a release tag`},
 		{name: "a prerelease", tag: "v0.1.21-rc1", wantErr: "is not a release tag"},
 	}
@@ -27,7 +27,7 @@ func TestBranch(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			got, err := hotfix.Branch(tt.tag)
+			got, err := patch.Branch(tt.tag)
 			if tt.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 					t.Fatalf("Branch() error = %v, wantErr %q", err, tt.wantErr)
@@ -90,7 +90,7 @@ func TestStart(t *testing.T) {
 		// existing puts the line's branch in place at the commit.
 		existing string
 		tag      string
-		want     hotfix.Result
+		want     patch.Result
 		// wantTip is the commit the branch is created at: the tag's, or the continuation
 		// commit made through the API (a name the stand-in makes up).
 		wantTip        string
@@ -100,45 +100,45 @@ func TestStart(t *testing.T) {
 		wantNoCreation bool
 	}{
 		{
-			name: "the first hotfix of the latest line",
+			name: "the first patch of the latest line",
 			tag:  "v0.1.21",
-			want: hotfix.Result{Tag: "v0.1.21", Commit: "c21", Branch: "hotfix/0.1.x", Latest: "v0.9.0", Next: "v0.1.22"},
+			want: patch.Result{Tag: "v0.1.21", Commit: "c21", Branch: "patch/0.1.x", Latest: "v0.9.0", Next: "v0.1.22"},
 		},
 		{
 			name:  "master has moved to the next minor: the line's next patch, nothing to tell release-please",
 			later: []string{"v0.2.0"},
 			tag:   "v0.1.21",
-			want:  hotfix.Result{Tag: "v0.1.21", Commit: "c21", Branch: "hotfix/0.1.x", Latest: "v0.9.0", Next: "v0.1.22"},
+			want:  patch.Result{Tag: "v0.1.21", Commit: "c21", Branch: "patch/0.1.x", Latest: "v0.9.0", Next: "v0.1.22"},
 		},
 		{
 			name:         "master has cut the line's next patch already: the branch starts at a commit naming the one after, the manifest unchanged",
 			later:        []string{"v0.1.22"},
 			tag:          "v0.1.21",
-			want:         hotfix.Result{Tag: "v0.1.21", Commit: "c21", Branch: "hotfix/0.1.x", Latest: "v0.9.0", Skipped: "v0.1.22", Next: "v0.1.23"},
+			want:         patch.Result{Tag: "v0.1.21", Commit: "c21", Branch: "patch/0.1.x", Latest: "v0.9.0", Skipped: "v0.1.22", Next: "v0.1.23"},
 			wantManifest: "{\n  \".\": \"0.1.21\"\n}\n",
-			wantMessage:  "chore(hotfix): the 0.1 line continues after v0.1.22, which master has already cut\n\nRelease-As: 0.1.23",
+			wantMessage:  "chore(patch): the 0.1 line continues after v0.1.22, which master has already cut\n\nRelease-As: 0.1.23",
 		},
 		{
 			name:     "an existing line is reported, not recreated",
 			existing: "c21",
 			tag:      "v0.1.21",
-			want:     hotfix.Result{Tag: "v0.1.21", Commit: "c21", Branch: "hotfix/0.1.x", Latest: "v0.9.0", Existed: true, BranchCommit: "c21", Carries: true},
+			want:     patch.Result{Tag: "v0.1.21", Commit: "c21", Branch: "patch/0.1.x", Latest: "v0.9.0", Existed: true, BranchCommit: "c21", Carries: true},
 		},
 		{
-			name:     "an existing line started from an earlier release does not carry the hotfix",
+			name:     "an existing line started from an earlier release does not carry the patch release",
 			existing: "c20",
 			tag:      "v0.1.21",
-			want:     hotfix.Result{Tag: "v0.1.21", Commit: "c21", Branch: "hotfix/0.1.x", Latest: "v0.9.0", Existed: true, BranchCommit: "c20"},
+			want:     patch.Result{Tag: "v0.1.21", Commit: "c21", Branch: "patch/0.1.x", Latest: "v0.9.0", Existed: true, BranchCommit: "c20"},
 		},
 		{
 			name:    "a release off the default branch is refused",
 			tag:     "v0.9.0",
-			wantErr: "tag v0.9.0 (commit c99) is not on master (diverged): a hotfix line starts from a release on the default branch",
+			wantErr: "tag v0.9.0 (commit c99) is not on master (diverged): a patch line starts from a release on the default branch",
 		},
 		{
 			name:    "an absent tag is refused",
 			tag:     "v0.1.5",
-			wantErr: "no tag v0.1.5 in acme/quill: a hotfix line starts from a release that exists",
+			wantErr: "no tag v0.1.5 in acme/quill: a patch line starts from a release that exists",
 		},
 		{
 			name:    "a tag of the wrong shape is refused before anything is looked up",
@@ -153,15 +153,15 @@ func TestStart(t *testing.T) {
 			server := githubtest.New(t)
 			repo := quill(t, server, tt.later...)
 			if tt.existing != "" {
-				repo.Refs["refs/heads/hotfix/0.1.x"] = github.Object{Type: "commit", SHA: tt.existing}
+				repo.Refs["refs/heads/patch/0.1.x"] = github.Object{Type: "commit", SHA: tt.existing}
 			}
-			req := hotfix.Request{Owner: "acme", Repo: "quill", DefaultBranch: "master", Tag: tt.tag}
-			got, err := hotfix.Start(t.Context(), server.Client(), req)
+			req := patch.Request{Owner: "acme", Repo: "quill", DefaultBranch: "master", Tag: tt.tag}
+			got, err := patch.Start(t.Context(), server.Client(), req)
 			if tt.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 					t.Fatalf("Start() error = %v, wantErr %q", err, tt.wantErr)
 				}
-				if _, created := repo.Refs["refs/heads/hotfix/0.1.x"]; created && tt.existing == "" {
+				if _, created := repo.Refs["refs/heads/patch/0.1.x"]; created && tt.existing == "" {
 					t.Error("Start() created the branch although it refused")
 				}
 
@@ -173,7 +173,7 @@ func TestStart(t *testing.T) {
 			if *got != tt.want {
 				t.Errorf("Start() = %+v, want %+v", *got, tt.want)
 			}
-			branch, ok := repo.Refs["refs/heads/hotfix/0.1.x"]
+			branch, ok := repo.Refs["refs/heads/patch/0.1.x"]
 			if !ok {
 				t.Fatal("no branch after Start()")
 			}
@@ -195,7 +195,7 @@ func TestStart(t *testing.T) {
 				t.Fatal("branch at the tag's commit, want a continuation commit on it")
 			}
 			tree := repo.Trees[branch.SHA]
-			if manifest := repo.Files[tree+":"+hotfix.ManifestFile]; manifest != tt.wantManifest {
+			if manifest := repo.Files[tree+":"+patch.ManifestFile]; manifest != tt.wantManifest {
 				t.Errorf("manifest on the branch = %q, want %q", manifest, tt.wantManifest)
 			}
 			if len(server.Messages) != 1 || server.Messages[0] != tt.wantMessage {
@@ -208,14 +208,14 @@ func TestStart(t *testing.T) {
 	}
 }
 
-// quillLine adds the hotfix line of 0.1 to quill: hotfix/0.1.x at h1, a fix commit on
+// quillLine adds the patch line of 0.1 to quill: patch/0.1.x at h1, a fix commit on
 // v0.1.21 (c21), released as v0.1.22 with notes; master has moved on to v0.2.0 (c30),
 // so the line and master have diverged at c21.
 func quillLine(t *testing.T, server *githubtest.Server) *githubtest.Repo {
 	t.Helper()
 
 	repo := quill(t, server, "v0.2.0")
-	repo.Refs["refs/heads/hotfix/0.1.x"] = github.Object{Type: "commit", SHA: "h1"}
+	repo.Refs["refs/heads/patch/0.1.x"] = github.Object{Type: "commit", SHA: "h1"}
 	repo.Refs["refs/tags/v0.1.22"] = github.Object{Type: "commit", SHA: "h1"}
 	repo.Ancestry["h1"] = []string{"h1", "c21", "c20"}
 	repo.MergeBase["c30 h1"] = "c21"
@@ -232,7 +232,7 @@ func TestMerge(t *testing.T) {
 		// prepare adjusts the repository before the run.
 		prepare func(repo *githubtest.Repo)
 		tag     string
-		want    hotfix.MergeResult
+		want    patch.MergeResult
 		// wantPulls is the number of pull requests after the run, and wantBody the
 		// opened one's body.
 		wantPulls int
@@ -242,7 +242,7 @@ func TestMerge(t *testing.T) {
 		{
 			name:      "the branch at the release's commit and the pull request into master",
 			tag:       "v0.1.22",
-			want:      hotfix.MergeResult{Tag: "v0.1.22", Line: "hotfix/0.1.x", Commit: "h1", Branch: "merge-back/v0.1.22", Number: 1, URL: "https://github.com/acme/quill/pull/1", Title: "fix: v0.1.22"},
+			want:      patch.MergeResult{Tag: "v0.1.22", Line: "patch/0.1.x", Commit: "h1", Branch: "merge-back/v0.1.22", Number: 1, URL: "https://github.com/acme/quill/pull/1", Title: "fix: v0.1.22"},
 			wantPulls: 1,
 			wantBody:  "### Bug Fixes\n\n* the fix",
 		},
@@ -252,7 +252,7 @@ func TestMerge(t *testing.T) {
 				repo.Refs["refs/heads/merge-back/v0.1.22"] = github.Object{Type: "commit", SHA: "h1"}
 			},
 			tag:       "v0.1.22",
-			want:      hotfix.MergeResult{Tag: "v0.1.22", Line: "hotfix/0.1.x", Commit: "h1", Branch: "merge-back/v0.1.22", BranchExisted: true, BranchCommit: "h1", Number: 1, URL: "https://github.com/acme/quill/pull/1", Title: "fix: v0.1.22"},
+			want:      patch.MergeResult{Tag: "v0.1.22", Line: "patch/0.1.x", Commit: "h1", Branch: "merge-back/v0.1.22", BranchExisted: true, BranchCommit: "h1", Number: 1, URL: "https://github.com/acme/quill/pull/1", Title: "fix: v0.1.22"},
 			wantPulls: 1,
 			wantBody:  "### Bug Fixes\n\n* the fix",
 		},
@@ -263,7 +263,7 @@ func TestMerge(t *testing.T) {
 				repo.PullRequests = []github.PullRequest{{Number: 7, State: "open", HTMLURL: "https://github.com/acme/quill/pull/7", Head: github.PullRequestRef{Ref: "merge-back/v0.1.22", SHA: "h1"}}}
 			},
 			tag:       "v0.1.22",
-			want:      hotfix.MergeResult{Tag: "v0.1.22", Line: "hotfix/0.1.x", Commit: "h1", Branch: "merge-back/v0.1.22", BranchExisted: true, BranchCommit: "h1", Number: 7, URL: "https://github.com/acme/quill/pull/7", Existed: true, Title: "fix: v0.1.22"},
+			want:      patch.MergeResult{Tag: "v0.1.22", Line: "patch/0.1.x", Commit: "h1", Branch: "merge-back/v0.1.22", BranchExisted: true, BranchCommit: "h1", Number: 7, URL: "https://github.com/acme/quill/pull/7", Existed: true, Title: "fix: v0.1.22"},
 			wantPulls: 1,
 		},
 		{
@@ -273,7 +273,7 @@ func TestMerge(t *testing.T) {
 				repo.PullRequests = []github.PullRequest{{Number: 7, State: "closed", MergedAt: "2026-10-02T01:00:00Z", HTMLURL: "https://github.com/acme/quill/pull/7", Head: github.PullRequestRef{Ref: "merge-back/v0.1.22", SHA: "h1"}}}
 			},
 			tag:       "v0.1.22",
-			want:      hotfix.MergeResult{Tag: "v0.1.22", Line: "hotfix/0.1.x", Commit: "h1", Branch: "merge-back/v0.1.22", BranchExisted: true, BranchCommit: "h1", Number: 7, URL: "https://github.com/acme/quill/pull/7", Existed: true, Merged: true, Title: "fix: v0.1.22"},
+			want:      patch.MergeResult{Tag: "v0.1.22", Line: "patch/0.1.x", Commit: "h1", Branch: "merge-back/v0.1.22", BranchExisted: true, BranchCommit: "h1", Number: 7, URL: "https://github.com/acme/quill/pull/7", Existed: true, Merged: true, Title: "fix: v0.1.22"},
 			wantPulls: 1,
 		},
 		{
@@ -282,9 +282,9 @@ func TestMerge(t *testing.T) {
 			wantErr: "tag v0.1.21 (commit c21) is already on master: nothing to merge back",
 		},
 		{
-			name:    "a release without a hotfix line is refused",
+			name:    "a release without a patch line is refused",
 			tag:     "v0.9.0",
-			wantErr: "no hotfix line hotfix/0.9.x in acme/quill: v0.9.0 is not a release on a hotfix line",
+			wantErr: "no patch line patch/0.9.x in acme/quill: v0.9.0 is not a release on a patch line",
 		},
 		{
 			name: "a release without its GitHub Release is refused",
@@ -314,8 +314,8 @@ func TestMerge(t *testing.T) {
 			if tt.prepare != nil {
 				tt.prepare(repo)
 			}
-			req := hotfix.MergeRequest{Owner: "acme", Repo: "quill", DefaultBranch: "master", Tag: tt.tag}
-			got, err := hotfix.Merge(t.Context(), server.Client(), req)
+			req := patch.MergeRequest{Owner: "acme", Repo: "quill", DefaultBranch: "master", Tag: tt.tag}
+			got, err := patch.Merge(t.Context(), server.Client(), req)
 			if tt.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 					t.Fatalf("Merge() error = %v, wantErr %q", err, tt.wantErr)

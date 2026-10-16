@@ -138,15 +138,15 @@ func newDeployValidateRelease(d deps) *cobra.Command {
 build has no release to validate). Two checks through the GitHub API, with the token resolve
 minted: the tag belongs to a GitHub Release cut by an accepted release actor (_RELEASE_ACTORS: the
 release app as <slug>[bot]), which is how release-please, and nothing else, makes a release; and
-the tagged commit is on the default branch, or it is a hotfix, the tip of hotfix/<major>.<minor>.x
+the tagged commit is on the default branch, or it is a patch release, the tip of patch/<major>.<minor>.x
 whose base on the default branch carries a release tag of the same line. Then the record gate:
 this environment follows the previous one in the promotion order (_PREVIOUS_ENV, empty in the
 first), and a release runs here only after the previous environment holds a live deployment
-record of it. A hotfix passes one more check: this environment's newest live record lists the
-migration and seed files its database holds, each with its hash, and the hotfix is refused when
+record of it. A patch release passes one more check: this environment's newest live record lists the
+migration and seed files its database holds, each with its hash, and the patch release is refused when
 the database holds a file it does not carry, or one whose content differs, naming the file; the
-environment is restored to the hotfix first (a restore run replaces the database and skips the
-check); in prd the hotfix must also be on the line production runs. Last the maintenance window:
+environment is restored to the patch release first (a restore run replaces the database and skips the
+check); in prd the patch release must also be on the line production runs. Last the maintenance window:
 the release is breaking when the oldest release its session outlets still answer, read from the
 release file the resource generator writes beside the generated router (--router-dir names the
 router package; zz_gen_release.json), is newer than the release this environment runs live (its
@@ -375,7 +375,7 @@ func newDeployRelease(d deps) *cobra.Command {
 		Use:   "release",
 		Short: "Cut the application's releases: release-please as the release GitHub App",
 		Long: `release runs in the stack's release trigger, in the first environment, on every push to the default
-branch or a hotfix line, as the application's release identity, from steps a pull request cannot
+branch or a patch line, as the application's release identity, from steps a pull request cannot
 edit. It mints the release GitHub App's installation token from its key's pinned version
 (RELEASE_APP_ID and RELEASE_KEY_SECRET, which the trigger passes from 2-env's outputs) and runs
 release-please, pinned, through npx, twice for the pushed branch (REPO_FULL_NAME, BRANCH_NAME):
@@ -556,8 +556,8 @@ stack, and every secret version a planned revision template pins exists and is e
 code declares that an environment after the first has no pinned version for (secret_versions.<env>
 in terraform.tfvars) is not refused here: that environment's summary names the variable and the pin
 to make, since the release's own plan refuses it there (stack plan). Then the
-pull request's looks ahead, read as the same identities: the hotfix preview, when the pull request is
-against a hotfix line, and the window preview. One comment on the pull request carries every
+pull request's looks ahead, read as the same identities: the patch preview, when the pull request is
+against a patch line, and the window preview. One comment on the pull request carries every
 environment's summary; a failing plan or test stops the build, which is the check a merge waits for,
 and is said on the pull request. It says when the build's steps are an older bedrock's than itself.
 A tag build plans its own environment later (stack plan). It runs in the OpenTofu image.`,

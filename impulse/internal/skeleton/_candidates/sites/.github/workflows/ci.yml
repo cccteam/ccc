@@ -19,7 +19,7 @@
 #
 # The caches. The build and test legs restore the Go module cache and build cache from the
 # nearest entry saved under their job's key (ci-cache.yml saves one after each push to the
-# default branch or a hotfix branch; a pull request run saves one of its own only when it
+# default branch or a patch branch; a pull request run saves one of its own only when it
 # found none for its go.sum). Neither serves a stale result: a module is verified against
 # go.sum when read and a build output is addressed by the hash of its inputs, so an entry
 # from an older commit is either what this one computes or unused. The image build is not
@@ -294,7 +294,7 @@ jobs:
           go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...
           go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 -tags skipAuth ./...
 
-  # Semgrep over the findings the pull request introduces: its baseline is the pull request's base, so a hotfix-line pull request diffs against its own base.
+  # Semgrep over the findings the pull request introduces: its baseline is the pull request's base, so a patch release-line pull request diffs against its own base.
   go-semgrep:
     runs-on: ubuntu-latest
     timeout-minutes: 15

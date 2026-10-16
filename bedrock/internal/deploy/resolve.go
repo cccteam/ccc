@@ -846,8 +846,8 @@ func (f *Facts) releaseBackups(source string, out io.Writer) error {
 // the seed list never applied the seed, so a changed seed is nothing to it; production is
 // never on the list, and is never restored by a run. Only a live record of a release
 // counts: a preview is a build whose traffic never shifted, and a pull request's record is
-// its own environment's. The hotfix preview reads the same list against a pull request's
-// tree (hotfixPreviewer), so what it promises is what this decides.
+// its own environment's. The patch preview reads the same list against a pull request's
+// tree (patchPreviewer), so what it promises is what this decides.
 func (f *Facts) seedChanged(ctx context.Context, open StoreFunc, source string, out io.Writer) error {
 	if f.Tag == "" || f.Restore != "" || !f.RunMigrations || f.Environment == prdEnvironment || !f.Seed {
 		return nil
@@ -896,7 +896,7 @@ func (f *Facts) seedChanged(ctx context.Context, open StoreFunc, source string, 
 // applied; the release's version above production's means migrations will run. Staging
 // is restored as well when its own live record lists a migration file the release does
 // not carry as applied (a failed release's, stagingAhead): between releases staging sits
-// at production's release, and the hotfix check would refuse the release otherwise.
+// at production's release, and the patch check would refuse the release otherwise.
 // Both records are read as the build: tst's as the gate reads it, production's from the
 // bucket _RECORDS_BUCKETS names, which production's 2-env lets this environment's deploy
 // identity read; production's record also names its live database and the backup a

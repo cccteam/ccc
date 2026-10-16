@@ -124,7 +124,7 @@ func (*view) SignInAPIsCode() string {
 	return prose(backticked(SignInAPIs))
 }
 
-// Production is the last environment: the one a hotfix is based on, and the one whose
+// Production is the last environment: the one a patch release is based on, and the one whose
 // backups the other environments restore from.
 func (*view) Production() string {
 	return Environments[len(Environments)-1]

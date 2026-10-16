@@ -149,7 +149,7 @@ func newRestore(d deps) *cobra.Command {
 // production's backup for the environment on production's instance.
 func ownRestore(cmd *cobra.Command, d deps, rc *repositoryContext, env, tag string, out interface{ Write([]byte) (int, error) }) error {
 	if env == rc.placement.Production() {
-		return errors.Newf("%s is production, whose database is restored to a backup: --before <release>, --at <moment> or --backup <name> (bedrock backups %s lists them); it is never emptied by a run, and a hotfix is based on the release production runs", env, env)
+		return errors.Newf("%s is production, whose database is restored to a backup: --before <release>, --at <moment> or --backup <name> (bedrock backups %s lists them); it is never emptied by a run, and a patch release is based on the release production runs", env, env)
 	}
 	kind := rc.placement.RestoreKind(env)
 	if tag == "" && kind != derive.RestoreBackup {
