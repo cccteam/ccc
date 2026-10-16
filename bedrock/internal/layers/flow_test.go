@@ -202,6 +202,17 @@ func (s *fakeStore) Read(_ context.Context, _, object string) ([]byte, error) {
 	return []byte(data), nil
 }
 
+func (s *fakeStore) Delete(_ context.Context, _, object string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.objects[object]; !ok {
+		return fmt.Errorf("gs://%s: %w", object, os.ErrNotExist)
+	}
+	delete(s.objects, object)
+
+	return nil
+}
+
 func (*fakeStore) Close() error {
 	return nil
 }

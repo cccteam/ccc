@@ -49,7 +49,7 @@ func (f *teardownTofu) Output(_ context.Context, c deploy.Command, _ io.Writer) 
 	case c.String() == "tofu show -json":
 		return []byte(teardownState), nil
 	case strings.HasPrefix(c.String(), "tofu output"):
-		return []byte(`{"_SERVICES": "uc1=quill-pr4"}`), nil
+		return []byte(`{"substitutions": {"value": {"_SERVICES": "uc1=quill-pr4"}}}`), nil
 	case strings.Contains(strings.Join(f.ran, "\n"), "-var destroy=true"):
 		return []byte(destroyPlan), nil
 	default:
@@ -196,7 +196,8 @@ func TestTeardownAndDestroy(t *testing.T) {
 				"tofu plan -destroy -input=false -no-color -out=DATA/prd/teardown.tfplan -var environment=prd -var database_generation=1 -var destroy=true",
 				"tofu show -json DATA/prd/teardown.tfplan", "tofu apply -input=false -no-color DATA/prd/teardown.tfplan",
 				"tofu init -input=false -no-color -reconfigure -backend-config=prefix=3-app/quill/tst/pr4",
-				"tofu output -json substitutions",
+				"tofu state list",
+				"tofu output -json",
 				"tofu destroy -auto-approve -input=false -no-color -var environment=tst -var pull_request=4",
 			},
 			wantRecords: []string{"gs://imp-tst-gbl-quill-records/quill/stacks/tst/teardown.json", "gs://imp-prd-gbl-quill-records/quill/stacks/prd/teardown.json"},

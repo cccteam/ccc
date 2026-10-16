@@ -26,7 +26,7 @@ import (
 )
 
 // fakeRunner is Runner in tests: it records every command, answers Output from outputs
-// by the whole command line ("tofu output -json substitutions") or else by the command's
+// by the whole command line ("tofu output -json") or else by the command's
 // name and first argument ("tofu show"), fails the commands fail names the same two ways,
 // and runs effect on each Run (docker writing its metadata file).
 type fakeRunner struct {

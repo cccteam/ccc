@@ -1365,6 +1365,16 @@ func (m *memoryStore) Read(_ context.Context, bucket, object string) ([]byte, er
 	return []byte(data), nil
 }
 
+func (m *memoryStore) Delete(_ context.Context, bucket, object string) error {
+	key := "gs://" + bucket + "/" + object
+	if _, ok := m.objects[key]; !ok {
+		return fmt.Errorf("%s: %w", key, os.ErrNotExist)
+	}
+	delete(m.objects, key)
+
+	return nil
+}
+
 func (*memoryStore) Close() error {
 	return nil
 }

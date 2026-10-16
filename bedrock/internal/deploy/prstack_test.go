@@ -75,7 +75,7 @@ func TestPullRequestStack(t *testing.T) {
 		planLine      = "tofu plan -input=false -no-color -out=WS/pr.plan -var environment=tst -var pull_request=7"
 		showLine      = "tofu show -json WS/pr.plan"
 		applyLine     = "tofu apply -input=false -no-color WS/pr.plan"
-		outputLine    = "tofu output -json substitutions"
+		outputLine    = "tofu output -json"
 		stateLine     = "tofu state list"
 		object        = "gs://records/quill/stacks/tst/pr7/c9.json"
 		written       = "The stack's outputs (%s) are at gs://records/quill/stacks/tst/pr7/c9.json for the preview build."
@@ -411,7 +411,7 @@ func TestPullRequestStack(t *testing.T) {
 			w := applicationWorkspace(t, files)
 			builds := &fakeBuilds{build: jobBuild(t, subs, identity, steps), token: "test-token"}
 			comments := &fakeComments{bodies: tt.comments}
-			run := &fakeRunner{outputs: map[string]string{"tofu show": plan, "tofu output": output, "tofu state": tt.state}, fail: map[string]error{"tofu apply": tt.applyErr}}
+			run := &fakeRunner{outputs: map[string]string{"tofu show": plan, "tofu output": `{"substitutions": {"value": ` + output + `}}`, "tofu state": tt.state}, fail: map[string]error{"tofu apply": tt.applyErr}}
 			repo := &githubtest.Repo{
 				Refs:     map[string]github.Object{"refs/heads/master": {Type: "commit", SHA: "c4"}},
 				Ancestry: map[string][]string{"c9": {"c9", "c4"}, "c4": {"c4"}},

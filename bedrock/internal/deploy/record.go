@@ -477,9 +477,11 @@ func (r *Record) JSON() ([]byte, error) {
 type Store interface {
 	Write(ctx context.Context, bucket, object string, data []byte) error
 	// List names the objects under the prefix; Read is one object's content, and
-	// answers an error that is os.ErrNotExist for an object that is not there.
+	// answers an error that is os.ErrNotExist for an object that is not there, as
+	// Delete does.
 	List(ctx context.Context, bucket, prefix string) ([]string, error)
 	Read(ctx context.Context, bucket, object string) ([]byte, error)
+	Delete(ctx context.Context, bucket, object string) error
 	Close() error
 }
 
@@ -567,6 +569,18 @@ func (s *cloudStorage) Write(ctx context.Context, bucket, object string, data []
 	}
 	if err := w.Close(); err != nil {
 		return errors.Wrapf(err, "storage.Writer.Close(): gs://%s/%s", bucket, object)
+	}
+
+	return nil
+}
+
+func (s *cloudStorage) Delete(ctx context.Context, bucket, object string) error {
+	err := s.client.Bucket(bucket).Object(object).Delete(ctx)
+	if errors.Is(err, storage.ErrObjectNotExist) {
+		return fmt.Errorf("gs://%s/%s: %w", bucket, object, os.ErrNotExist)
+	}
+	if err != nil {
+		return errors.Wrapf(err, "storage.ObjectHandle.Delete(): gs://%s/%s", bucket, object)
 	}
 
 	return nil

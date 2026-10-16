@@ -1033,7 +1033,7 @@ that has both a script and a function, and the image build (`deploy build-image 
 takes the program out of the image for the hook steps (`deploy hook <stage> --program`).
 The pipeline has a step for each stage the application implements. `deploy sweep`
 is the hourly sweep's one step: the pull requests whose services stand, which of them
-are closed, and each closed one's stack destroyed.
+are closed, and each closed one's stack destroyed, its state object deleted last.
 
 ## Maintenance windows
 
@@ -1700,7 +1700,10 @@ through this door.
 `teardown <env>` takes an environment's stack down to what it keeps, and `destroy <env>`
 destroys it whole; with `--all` either takes every environment in promotion order and then
 destroys every pull-request stack under the integration environment's prefix, the way the
-sweep destroys a closed pull request's. Both run by a person at their own computer with
+sweep destroys a closed pull request's: its builds' jobs, the stack, then its state object,
+so nothing of it is kept and no later run walks an empty state; a stack whose state holds
+nothing (only initialized, or destroyed already) is skipped with a line and its object goes
+the same way. Both run by a person at their own computer with
 their own sign-in (`gcloud auth application-default login`), driving tofu in the stack
 directory against the environment's state prefix the way the stack trigger's first apply does,
 never from a trigger, and both ask for the environment's name typed back before anything

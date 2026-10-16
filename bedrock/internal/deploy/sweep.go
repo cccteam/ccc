@@ -6,9 +6,12 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/go-playground/errors/v5"
 )
 
 // The labels a pull request's services carry.
@@ -59,6 +62,10 @@ func Sweep(ctx context.Context, clients *Clients, w Workspace, req *BuildRequest
 		return err
 	}
 	gh := clients.GitHub(token)
+	p, err := checkoutPlacement(w, "the state bucket is named")
+	if err != nil {
+		return err
+	}
 	s := newStack(clients, w, build, out)
 	for _, number := range numbers {
 		n, _ := strconv.Atoi(number)
@@ -78,7 +85,7 @@ func Sweep(ctx context.Context, clients *Clients, w Workspace, req *BuildRequest
 		if err := s.init(ctx, subs, number); err != nil {
 			return err
 		}
-		if err := destroyPullRequestStack(ctx, clients, s, subs, number, out); err != nil {
+		if err := destroyPullRequestStack(ctx, clients, s, subs, number, p.StateBucket, out); err != nil {
 			return err
 		}
 	}
@@ -87,14 +94,50 @@ func Sweep(ctx context.Context, clients *Clients, w Workspace, req *BuildRequest
 }
 
 // destroyPullRequestStack destroys the pull request's stack, initialized at its own
-// prefix: its builds' jobs deleted first, then the stack. The sweep does it for a closed
-// pull request, and bedrock teardown --all and destroy --all for every pull request's.
-func destroyPullRequestStack(ctx context.Context, clients *Clients, s *stack, subs map[string]string, number string, out io.Writer) error {
+// prefix: its builds' jobs deleted first, then the stack, then its state object in the
+// bucket, so nothing of the stack is kept and no later run walks an empty state. A state
+// that holds no resources (a stack only initialized, or destroyed already) is skipped
+// before any output is read, and its object goes the same way. The sweep does it for a
+// closed pull request, and bedrock teardown --all and destroy --all for every pull
+// request's.
+func destroyPullRequestStack(ctx context.Context, clients *Clients, s *stack, subs map[string]string, number, bucket string, out io.Writer) error {
+	listed, err := s.tofuOutput(ctx, "state", "list")
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(string(listed)) == "" {
+		fmt.Fprintf(out, "Pull request %s's stack holds nothing (never applied, or destroyed already); skipped.\n", number)
+
+		return deleteStateObject(ctx, clients, bucket, pullRequestPrefix(subs, number), number, out)
+	}
 	if err := deleteBuildJobs(ctx, clients, s, subs, number, out); err != nil {
 		return err
 	}
+	if err := s.tofu(ctx, destroyCmd, autoApprove, noInputFlag, noColorFlag, varFlag, "environment="+subs[envSub], varFlag, "pull_request="+number); err != nil {
+		return err
+	}
 
-	return s.tofu(ctx, destroyCmd, autoApprove, noInputFlag, noColorFlag, varFlag, "environment="+subs[envSub], varFlag, "pull_request="+number)
+	return deleteStateObject(ctx, clients, bucket, pullRequestPrefix(subs, number), number, out)
+}
+
+// deleteStateObject deletes the pull request's state object at its prefix in the state
+// bucket, the last thing of its stack; one already gone is nothing to delete.
+func deleteStateObject(ctx context.Context, clients *Clients, bucket, prefix, number string, out io.Writer) error {
+	store, err := clients.Storage(ctx)
+	if err != nil {
+		return err
+	}
+	defer store.Close()
+	object := prefix + "/" + stateObjectName
+	switch err := store.Delete(ctx, bucket, object); {
+	case errors.Is(err, os.ErrNotExist):
+		return nil
+	case err != nil:
+		return errors.Wrapf(err, "deleting gs://%s/%s", bucket, object)
+	}
+	fmt.Fprintf(out, "Pull request %s's state object gs://%s/%s is deleted: nothing of its stack is kept.\n", number, bucket, object)
+
+	return nil
 }
 
 // deleteBuildJobs deletes the jobs the pull request's builds made: the copies of its
@@ -108,7 +151,7 @@ func destroyPullRequestStack(ctx context.Context, clients *Clients, s *stack, su
 func deleteBuildJobs(ctx context.Context, clients *Clients, s *stack, subs map[string]string, number string, out io.Writer) error {
 	facts, err := s.facts(ctx)
 	if err != nil {
-		fmt.Fprintf(out, "Notice: pull request %s's stack names no jobs (%v); none of its builds' jobs is deleted.\n", number, err)
+		fmt.Fprintf(out, "Notice: pull request %s's stack names no jobs (%v); none of its builds' jobs is deleted.\n", number, errors.Cause(err))
 
 		return nil
 	}

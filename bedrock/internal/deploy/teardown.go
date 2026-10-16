@@ -652,7 +652,8 @@ func PullRequestStacks(ctx context.Context, clients *Clients, req *TeardownReque
 // TeardownPullRequests destroys every pull-request stack under the integration
 // environment's prefix, each the way the sweep destroys a closed pull request's: its
 // builds' jobs deleted in the environment's project (which the placement records), then
-// the stack from its own prefix. Nothing of a pull request's stack is kept.
+// the stack from its own prefix, then its state object; a state that holds nothing is
+// skipped and its object goes. Nothing of a pull request's stack is kept.
 func TeardownPullRequests(ctx context.Context, clients *Clients, req *TeardownRequest, numbers []string, out io.Writer) error {
 	integration := req.Placement.Integration()
 	project, ok := req.Placement.Project(integration)
@@ -667,7 +668,7 @@ func TeardownPullRequests(ctx context.Context, clients *Clients, req *TeardownRe
 		if err := s.initAt(ctx, prefix); err != nil {
 			return err
 		}
-		if err := destroyPullRequestStack(ctx, clients, s, subs, number, out); err != nil {
+		if err := destroyPullRequestStack(ctx, clients, s, subs, number, req.Placement.StateBucket, out); err != nil {
 			return err
 		}
 	}

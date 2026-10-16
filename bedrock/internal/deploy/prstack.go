@@ -462,14 +462,26 @@ func (s *stack) apply(ctx context.Context, build *Build, env map[string]string) 
 }
 
 // facts reads the stack's substitutions output from its state into the facts the deploy
-// steps read (stackFacts).
+// steps read (stackFacts). The outputs are read whole, so a state without the output
+// (never applied, or applied by a bedrock before the output) is said plainly, not in
+// tofu's words for a missing output.
 func (s *stack) facts(ctx context.Context) (map[string]string, error) {
-	data, err := s.tofuOutput(ctx, "output", "-json", "substitutions")
+	data, err := s.tofuOutput(ctx, "output", "-json")
 	if err != nil {
 		return nil, err
 	}
+	var outputs map[string]struct {
+		Value json.RawMessage `json:"value"`
+	}
+	if err := json.Unmarshal(data, &outputs); err != nil {
+		return nil, errors.Wrap(err, "json.Unmarshal(): tofu output -json")
+	}
+	substitutions, ok := outputs[substitutionsOutput]
+	if !ok {
+		return nil, errors.Newf("the stack's state has no %s output: never applied, or applied by a bedrock before the output", substitutionsOutput)
+	}
 
-	return stackFacts(data)
+	return stackFacts(substitutions.Value)
 }
 
 // stackFacts reads the stack's substitutions output (a map of the trigger's

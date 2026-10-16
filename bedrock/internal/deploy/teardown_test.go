@@ -341,10 +341,14 @@ func TestTeardownPullRequests(t *testing.T) {
 		name     string
 		objects  []string
 		projects map[string]derive.Project
+		// empty says every pull request's state holds no resources.
+		empty    bool
 		wantErr  string
 		wantNums []string
 		wantRan  []string
 		wantOut  []string
+		// wantKept are the state objects still in the bucket after the run.
+		wantKept []string
 	}{
 		{
 			name:     "finds the pull-request stacks by their state objects, in number order, and destroys each the sweep's way",
@@ -353,19 +357,36 @@ func TestTeardownPullRequests(t *testing.T) {
 			wantNums: []string{"7", "12"},
 			wantRan: []string{
 				"tofu init -input=false -no-color -reconfigure -backend-config=prefix=3-app/harbor/tst/pr7",
-				"tofu output -json substitutions",
+				"tofu state list",
+				"tofu output -json",
 				"tofu destroy -auto-approve -input=false -no-color -var environment=tst -var pull_request=7",
 				"tofu init -input=false -no-color -reconfigure -backend-config=prefix=3-app/harbor/tst/pr12",
-				"tofu output -json substitutions",
+				"tofu state list",
+				"tofu output -json",
 				"tofu destroy -auto-approve -input=false -no-color -var environment=tst -var pull_request=12",
 			},
-			wantOut: []string{"=== Pull request 7: stack at 3-app/harbor/tst/pr7 ===", "Pull request 7's stack names no template for a job process; its builds made no job.", "=== Pull request 12: stack at 3-app/harbor/tst/pr12 ==="},
+			wantOut:  []string{"=== Pull request 7: stack at 3-app/harbor/tst/pr7 ===", "Pull request 7's stack names no template for a job process; its builds made no job.", "Pull request 7's state object gs://imp-boot-gbl-state/3-app/harbor/tst/pr7/default.tfstate is deleted: nothing of its stack is kept.", "=== Pull request 12: stack at 3-app/harbor/tst/pr12 ===", "Pull request 12's state object gs://imp-boot-gbl-state/3-app/harbor/tst/pr12/default.tfstate is deleted"},
+			wantKept: []string{"3-app/harbor/tst/default.tfstate", "3-app/harbor/tst/pr7/other.json", "3-app/harbor/tst/prx/default.tfstate"},
+		},
+		{
+			name:     "a state that holds nothing is skipped before any output is read, and its object goes",
+			objects:  []string{"3-app/harbor/tst/pr7/default.tfstate", "3-app/harbor/tst/default.tfstate"},
+			projects: map[string]derive.Project{"tst": {ID: "imp-tst-gbl-core-1a2b"}},
+			empty:    true,
+			wantNums: []string{"7"},
+			wantRan: []string{
+				"tofu init -input=false -no-color -reconfigure -backend-config=prefix=3-app/harbor/tst/pr7",
+				"tofu state list",
+			},
+			wantOut:  []string{"Pull request 7's stack holds nothing (never applied, or destroyed already); skipped.", "Pull request 7's state object gs://imp-boot-gbl-state/3-app/harbor/tst/pr7/default.tfstate is deleted"},
+			wantKept: []string{"3-app/harbor/tst/default.tfstate"},
 		},
 		{
 			name:     "finds none",
 			objects:  []string{"3-app/harbor/tst/default.tfstate"},
 			projects: map[string]derive.Project{"tst": {ID: "imp-tst-gbl-core-1a2b"}},
 			wantNums: nil,
+			wantKept: []string{"3-app/harbor/tst/default.tfstate"},
 		},
 		{
 			name:     "refuses to destroy a pull request's stack without the project its jobs are in",
@@ -382,7 +403,11 @@ func TestTeardownPullRequests(t *testing.T) {
 			for _, object := range tt.objects {
 				store.objects["gs://"+teardownStateBucket+"/"+object] = "{}"
 			}
-			tofu := &fakeRunner{outputs: map[string]string{"tofu output": `{"_SERVICES": "uc1=harbor-pr7"}`}}
+			listed := "google_cloud_run_v2_service.app[0]\n"
+			if tt.empty {
+				listed = ""
+			}
+			tofu := &fakeRunner{outputs: map[string]string{"tofu output": `{"substitutions": {"value": {"_SERVICES": "uc1=harbor-pr7"}}}`, "tofu state list": listed}}
 			clients := &Clients{Storage: store.open, Exec: tofu}
 			p := teardownPlacement()
 			p.Projects = tt.projects
@@ -408,6 +433,12 @@ func TestTeardownPullRequests(t *testing.T) {
 			for _, want := range tt.wantOut {
 				if !strings.Contains(out.String(), want) {
 					t.Errorf("output lacks %q; printed:\n%s", want, out.String())
+				}
+			}
+			if tt.wantErr == "" {
+				kept, _ := store.List(context.Background(), teardownStateBucket, "")
+				if strings.Join(kept, ",") != strings.Join(tt.wantKept, ",") {
+					t.Errorf("the bucket keeps %v, want %v", kept, tt.wantKept)
 				}
 			}
 		})
