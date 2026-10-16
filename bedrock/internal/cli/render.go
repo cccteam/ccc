@@ -8,6 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/cccteam/ccc/bedrock/internal/check"
 	"github.com/cccteam/ccc/bedrock/internal/render"
 )
 
@@ -40,7 +41,9 @@ the release and operations workflows, and the generate-time step, cmd/generate/b
 which runs the migration renumber before the application's generators. A file bedrock owned
 once and renders no more (the infrastructure workflow, .github/workflows/infrastructure.yml,
 whose check runs in Cloud Build from the stack's check trigger now) is removed when it is
-found, and render says so. The pipeline is where
+found, and render says so. The render ends by reading the schema migrations by the sequence
+rule (bedrock migration check), so a gap a generator left is refused before the first push
+and never reaches the default branch. The pipeline is where
 the deploy sequence is bedrock's, and an application customizes it through hooks
 (infrastructure/hooks/<stage>.sh) and the substitutions declared in its placement values,
 never by editing the file. terraform.tfvars is seeded: written when absent, then a person's,
@@ -95,8 +98,14 @@ placement is read from --placement, or from placement.json in the stack director
 			if len(written.Kept) > 0 {
 				fmt.Fprintf(cmd.OutOrStdout(), "Kept %s as it was.\n", strings.Join(written.Kept, ", "))
 			}
+			// The migrations are read by the sequence rule last, so a gap a generator left
+			// is refused here, before the first push, and never reaches the default branch.
+			findings, _, err := check.Migrations(appDir, m)
+			if err != nil {
+				return err
+			}
 
-			return nil
+			return refuseMigrations(cmd.OutOrStdout(), findings, "fix them before the first push; bedrock check refuses them in every build, and the CI migrations job on every pull request")
 		},
 	}
 

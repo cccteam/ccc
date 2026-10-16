@@ -903,7 +903,7 @@ func writeFirstPlacement(out io.Writer, first *derive.Placement, app, file strin
 		if err := derive.CreatePlacement(file, first); err != nil {
 			return err
 		}
-		fmt.Fprintf(out, "\nWrote %s, %s's first placement, pinned to bedrock %s: commit it in the application's repository, where bedrock render writes the stack beside it. %s\n", file, app, first.BedrockVersion, defaults)
+		fmt.Fprintf(out, "\nWrote %s, %s's first placement, pinned to bedrock %s: commit it in the application's repository, where bedrock render writes the stack beside it and refuses a migrations directory that breaks the sequence rule, so a generator's mistake never reaches the default branch. %s\n", file, app, first.BedrockVersion, defaults)
 
 		return nil
 	}

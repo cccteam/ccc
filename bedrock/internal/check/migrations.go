@@ -27,14 +27,15 @@ type MigrationFinding struct {
 // present to the highest, one up file each, so a consolidated history that starts above
 // 000001 passes and a skipped number does not. A directory that does not exist has nothing
 // to check. Findings name their files under rel, the directory as the application names it.
-func scanMigrations(dir, rel string) ([]MigrationFinding, error) {
+// The span is the directory's count and its lowest and highest index.
+func scanMigrations(dir, rel string) ([]MigrationFinding, migration.Span, error) {
 	dirEntries, err := os.ReadDir(dir)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return nil, nil
+			return nil, migration.Span{}, nil
 		}
 
-		return nil, errors.Wrapf(err, "os.ReadDir(): %s", dir)
+		return nil, migration.Span{}, errors.Wrapf(err, "os.ReadDir(): %s", dir)
 	}
 	entries := make([]migration.Entry, 0, len(dirEntries))
 	for _, e := range dirEntries {
@@ -42,7 +43,7 @@ func scanMigrations(dir, rel string) ([]MigrationFinding, error) {
 			entries = append(entries, migration.Entry{Name: e.Name()})
 		}
 	}
-	problems, _ := migration.Sequence(entries)
+	problems, span := migration.Sequence(entries)
 	findings := make([]MigrationFinding, 0, len(problems))
 	for _, p := range problems {
 		where := rel
@@ -52,5 +53,5 @@ func scanMigrations(dir, rel string) ([]MigrationFinding, error) {
 		findings = append(findings, MigrationFinding{Path: where, Problem: p.Text})
 	}
 
-	return findings, nil
+	return findings, span, nil
 }
