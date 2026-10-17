@@ -6,8 +6,8 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"net/url"
 	"slices"
-	"strings"
 	"testing"
 )
 
@@ -19,6 +19,9 @@ import (
 // sessions of the same auth, read at the same route; and the next sign-in reconciles
 // the roles to the groups again, whatever case the groups carry, holding what the
 // directory still names and dropping what it no longer does, with no churn in between.
+// A directory identity whose verified email is a password persona's login is not taken
+// at the directory's word: the sign-in waits for that persona's password, which links
+// the identity and opens the session as the persona.
 //
 // Demonstrates: auth.multi-method, auth.directory-roles, auth.skipauth-directory.
 func TestConsoleGoogleLogin(t *testing.T) {
@@ -85,18 +88,42 @@ func TestConsoleGoogleLogin(t *testing.T) {
 	}
 
 	// A directory identity whose verified email is a login a password persona already
-	// holds is not that persona: the provisioning refuses the taken username, the
-	// browser returns to the login page with a code, and no session opens as the marshal.
+	// holds is not taken at the directory's word: the library's standard account rule
+	// holds the sign-in for that persona's password. The browser lands on the login page
+	// with the pending marker and no session opens; the pending route names the step;
+	// the marshal's password links the identity and opens the session as the marshal,
+	// whose roles the directory's groups govern from this sign-in on.
 	taken := newBrowser(t, s, consoleAPI)
 	if status, body := taken.do(ctx, http.MethodGet, consoleAPI+"/user/session", nil); status != http.StatusOK {
 		t.Fatalf("GET session before the conflicting login: status %d: %s", status, body)
 	}
 	status, location = taken.loginConsoleGoogle(ctx, "marshal", "pilot")
-	if status != http.StatusFound || !strings.HasPrefix(location, consoleLogin+"?code=") {
-		t.Fatalf("console Google login as a password persona's login: status %d to %q, want %d to the login page with a code", status, location, http.StatusFound)
+	if want := consoleLogin + "?pending=confirmation&returnUrl=" + url.QueryEscape(consolePage); status != http.StatusFound || location != want {
+		t.Fatalf("console Google login as a password persona's login: status %d to %q, want %d to %q", status, location, http.StatusFound, want)
 	}
 	if got := taken.session(ctx); got["authenticated"] != false {
-		t.Errorf("session after the conflicting sign-in = %v, want unauthenticated", got)
+		t.Errorf("session while the sign-in waits = %v, want unauthenticated", got)
+	}
+	status, body := taken.do(ctx, http.MethodGet, consoleAPI+"/user/pending", nil)
+	var pending struct {
+		Reason string `json:"reason"`
+		Email  string `json:"email"`
+	}
+	if err := json.Unmarshal(body, &pending); status != http.StatusOK || err != nil || pending.Reason != "confirmation" || pending.Email != "marshal" {
+		t.Fatalf("pending sign-in: status %d: %s (%v), want a confirmation for marshal", status, body, err)
+	}
+	confirmation, err := json.Marshal(map[string]string{"password": personaPassword})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status, body := taken.do(ctx, http.MethodPost, consoleAPI+"/user/pending/confirm", confirmation); status != http.StatusOK {
+		t.Fatalf("confirming the sign-in with the marshal's password: status %d: %s", status, body)
+	}
+	if sess := taken.session(ctx); sess["authenticated"] != true || sess["username"] != "marshal" {
+		t.Fatalf("session after the confirmation = %v, want authenticated as marshal", sess)
+	}
+	if got, want := taken.domains(ctx), []string{anvil, bastion, cinder}; !slices.Equal(got, want) {
+		t.Errorf("user-domains after the directory signed the marshal in = %v, want the pilot group's %v", got, want)
 	}
 }
 

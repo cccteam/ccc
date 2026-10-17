@@ -497,7 +497,9 @@ permission collection when the auth opens, so a release whose roles are wrong do
 start; the store holds no row for them, and the bootstrap assigns the memberships from
 `cmd/bootstrap/users.json`, a role held in every sector as one membership). A person the
 directory admits is provisioned under the verified email at their first sign-in, a login
-on no manifest, and their roles are the directory's groups, reconciled at every sign-in;
+on no manifest (a verified email that is a password persona's login links the identity to
+that persona once their password confirms it), and their roles are the directory's groups,
+reconciled at every sign-in;
 a Google group is an email address, so the names the groups carry are lowercase, and the
 sync resolves each at the store without regard to case and writes the role file's
 spelling (`crew-pilot@` names `Pilot`). The clients sign in through their company's

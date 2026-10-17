@@ -35,7 +35,6 @@ import (
 	"github.com/cccteam/session"
 	"github.com/cccteam/session/google"
 	"github.com/cccteam/session/sessionstorage"
-	"github.com/cccteam/session/signin"
 	"github.com/go-playground/errors/v5"
 )
 
@@ -179,13 +178,12 @@ func New(ctx context.Context, db *cloudspanner.Client, settings *Settings) (*Aut
 		return nil, errors.Wrap(err, "sessionstorage.NewAuthEventsTable()")
 	}
 
-	// One Auth session the directory establishes. Every verified sign-in the hosted
-	// domain admits goes ahead (signin.AllowAll); the directory's groups then decide
-	// what the person may do.
+	// One Auth session the directory establishes. The members have no sign-in policy of
+	// their own: every verified sign-in the Workspace admits goes ahead on the library's
+	// checks, and the directory's groups then decide what the person may do.
 	membersSession, err := session.NewAuth[session.NoCustomData, session.NoCustomData](
 		sessionstorage.NewSpannerAuth(db, sessionstorage.WithAuthEvents(events)),
 		settings.CookieKey,
-		signin.AllowAll,
 		session.WithSessionTableName(sessionsTable),
 		session.WithUserTableName(usersTable),
 		session.WithIdentitiesTableName(identitiesTable),
@@ -215,25 +213,23 @@ func New(ctx context.Context, db *cloudspanner.Client, settings *Settings) (*Aut
 	// is written in the global partition and a domain role in every sector, so the sync
 	// keeps no list of sectors. Hand-assigned roles do not survive it, so nothing in the
 	// application assigns roles in this store.
-	directory := google.SignIn(membersSession, DirectoryRegistration, provisionMember, &google.Config{
-		ClientID:      settings.Directory.ClientID,
-		ClientSecret:  settings.Directory.ClientSecret,
-		RedirectURL:   settings.Directory.RedirectURL,
-		Connection:    settings.Directory.Connection,
-		HostedDomains: []string{settings.Directory.HostedDomain},
-		RoleSync:      google.RoleSync(accessClient.UserManager(), settings.Directory.GroupPrefix, lookup),
-		LoginURL:      settings.LoginURL,
+	// The organization slot is the members' one Workspace, named by the connection
+	// setting (the name every link carries) and checked against the hosted domain. The
+	// account rule is the library's standard one, members of the directory: an identity
+	// the directory verifies for the first time becomes a member under the verified
+	// email, with no password (the directory is their only way in), linked by the
+	// directory's immutable subject so a renamed account stays the same person at the
+	// next sign-in.
+	directory := google.SignIn(membersSession, DirectoryRegistration, nil, &google.Config{
+		ClientID:     settings.Directory.ClientID,
+		ClientSecret: settings.Directory.ClientSecret,
+		RedirectURL:  settings.Directory.RedirectURL,
+		Workspaces:   google.Workspace(settings.Directory.Connection, settings.Directory.HostedDomain),
+		RoleSync:     google.RoleSync(accessClient.UserManager(), settings.Directory.GroupPrefix, lookup),
+		LoginURL:     settings.LoginURL,
 	})
 
 	return &Auth{access: accessClient, handlers: &Handlers{Session: membersSession, directory: directory}}, nil
-}
-
-// provisionMember is the directory's user resolver: an identity the directory verifies
-// for the first time becomes a member under the verified email, with no password (the
-// directory is their only way in), linked by the directory's immutable subject so a
-// renamed account stays the same person at the next sign-in.
-func provisionMember(_ context.Context, _ *cloudspanner.ReadWriteTransaction, identity *google.Identity) (*signin.Resolution, error) {
-	return signin.Provision(&signin.NewUser{Username: identity.Email}, nil), nil
 }
 
 // Access returns the auth's permission engine: the handlers check against it, and its

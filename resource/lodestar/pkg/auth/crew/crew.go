@@ -34,7 +34,6 @@ import (
 	"github.com/cccteam/session"
 	"github.com/cccteam/session/google"
 	"github.com/cccteam/session/sessionstorage"
-	"github.com/cccteam/session/signin"
 	"github.com/go-playground/errors/v5"
 )
 
@@ -201,13 +200,11 @@ func New(ctx context.Context, db *cloudspanner.Client, settings *Settings) (*Aut
 		return nil, errors.Wrap(err, "sessionstorage.NewAuthEventsTable()")
 	}
 
-	// One Auth session that both methods establish. Every valid credential signs in
-	// (signin.AllowAll): the crew has no sign-in policy beyond the directory's and the
-	// password's own checks.
+	// One Auth session that both methods establish. The crew has no sign-in policy of
+	// its own: the library's checks decide, and a valid credential signs in.
 	crewSession, err := session.NewAuth[session.NoCustomData, session.NoCustomData](
 		sessionstorage.NewSpannerAuth(db, sessionstorage.WithImpersonation(impersonation), sessionstorage.WithAuthEvents(events)),
 		settings.CookieKey,
-		signin.AllowAll,
 		session.WithSessionTableName(sessionsTable),
 		session.WithUserTableName(usersTable),
 		session.WithIdentitiesTableName(identitiesTable),
@@ -234,31 +231,27 @@ func New(ctx context.Context, db *cloudspanner.Client, settings *Settings) (*Aut
 	}
 
 	// The methods, registered before the first request: the password method under the
-	// library's name, and the Google method under GoogleRegistration, provisioning a
-	// person the directory verifies for the first time under the verified email.
+	// library's name, and the Google method under GoogleRegistration. The Google method's
+	// organization slot is the crew's one Workspace, named by the connection setting
+	// (the name every directory identity's link carries) and checked against the hosted
+	// domain. Its account rule is the library's standard one, members of the directory:
+	// a person the directory verifies for the first time becomes a crew member under the
+	// verified email, with no password (the directory is their way in) and the roles
+	// the sync writes at this sign-in. A verified email that is a username a password
+	// persona already holds links the identity to that persona once their password
+	// confirms it (the directory's word alone is not enough), so the development login
+	// APP_GOOGLE_USERNAME names is one that is not on the manifest.
 	password := session.PasswordSignIn(crewSession)
-	googleMethod := google.SignIn(crewSession, GoogleRegistration, provisionCrew, &google.Config{
-		ClientID:      settings.Directory.ClientID,
-		ClientSecret:  settings.Directory.ClientSecret,
-		RedirectURL:   settings.Directory.RedirectURL,
-		Connection:    settings.Directory.Connection,
-		HostedDomains: []string{settings.Directory.HostedDomain},
-		RoleSync:      google.RoleSync(accessClient.UserManager(), settings.Directory.GroupPrefix, lookup),
-		LoginURL:      settings.LoginURL,
+	googleMethod := google.SignIn(crewSession, GoogleRegistration, nil, &google.Config{
+		ClientID:     settings.Directory.ClientID,
+		ClientSecret: settings.Directory.ClientSecret,
+		RedirectURL:  settings.Directory.RedirectURL,
+		Workspaces:   google.Workspace(settings.Directory.Connection, settings.Directory.HostedDomain),
+		RoleSync:     google.RoleSync(accessClient.UserManager(), settings.Directory.GroupPrefix, lookup),
+		LoginURL:     settings.LoginURL,
 	})
 
 	return &Auth{access: accessClient, handlers: &Handlers{Session: crewSession, password: password, google: googleMethod}}, nil
-}
-
-// provisionCrew is the Google method's user resolver: a Google identity that is linked
-// to no crew member yet becomes a new member under the verified email, with no password
-// (the directory is their way in) and the roles the sync writes at this sign-in. A
-// username a password persona already holds refuses the sign-in with a conflict, so
-// the development login APP_GOOGLE_USERNAME names is one that is not on the manifest.
-//
-// Demonstrates: auth.multi-method.
-func provisionCrew(_ context.Context, _ *cloudspanner.ReadWriteTransaction, identity *google.Identity) (*signin.Resolution, error) {
-	return signin.Provision(&signin.NewUser{Username: identity.Email}, nil), nil
 }
 
 // Access returns the auth's permission engine: the handlers check against it, and its
