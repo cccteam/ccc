@@ -33,8 +33,10 @@ const (
 	xFrameOptions       = "DENY"
 )
 
-// cspPolicy writes the content security policy: the console's own assets plus the
-// Google Fonts hosts index.html links for the Roboto and Material Icons faces;
+// cspPolicy writes the content security policy: the console's own assets alone (the
+// Roboto and Material Icons faces come with the bundle, from @cccteam/resource-angular,
+// so no font host is named: the service worker fetches the page's requests under the
+// policy delivered with its own script, where a third-party font host would fail);
 // connections to the application itself and to the origins the live change feed is
 // reached at (the Firestore emulator in development, Firebase's hosts in production),
 // since the browser's feed connects to them directly rather than through the API; and no page may frame the application
@@ -44,8 +46,8 @@ func cspPolicy(liveOrigins []string) string {
 	connect := strings.Join(append([]string{"'self'"}, liveOrigins...), " ")
 
 	return "default-src 'self'; worker-src 'self'; connect-src " + connect + "; " +
-		"style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
-		"font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data:; " +
+		"style-src 'self' 'unsafe-inline'; " +
+		"font-src 'self' data:; img-src 'self' data:; " +
 		"frame-ancestors 'none'"
 }
 

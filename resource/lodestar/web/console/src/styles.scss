@@ -1,5 +1,9 @@
 // The @cccteam/resource-angular form and list components' cross-cutting classes and
-// variables (the field grid, read-only and edit-mode treatments, the sticky list header).
+// variables (the field grid, read-only and edit-mode treatments, the sticky list header),
+// and the fonts the components render in: Roboto and the Material Icons as files of the
+// library, which the build carries into the bundle as same-origin assets (no Google Fonts
+// link in index.html, no font host in the content security policy, the service worker
+// caches them), with the Material typography's fallback chain.
 @use '@cccteam/resource-angular/styles';
 
 /* Global styles for the Lodestar crew console. */
