@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.6](https://github.com/cccteam/ccc/compare/v0.3.5...v0.3.6) (2026-10-17)
+
+
+### Code Upgrade
+
+* **deps:** the root, middleware and resource modules take dependabot's three dependency groups in one change ([#975](https://github.com/cccteam/ccc/issues/975)) ([bbecfa2](https://github.com/cccteam/ccc/commit/bbecfa25ec8141797c85dcabc6def7e7e722547c))
+
 ## [0.3.5](https://github.com/cccteam/ccc/compare/v0.3.4...v0.3.5) (2026-10-09)
 
 
