@@ -119,7 +119,8 @@ export APP_MEMBERS_OIDC_GROUP_PREFIX=members-
 # APP_GOOGLE_USERNAME, in the groups APP_GOOGLE_ROLES names (the registration's own pair,
 # so the console's Google sign-in and the portal's client are two people). The login is
 # one that is on no manifest: a Google sign-in provisions the person under the verified
-# email, and a name a password persona already holds would be refused as a conflict.
+# email, and a name a password persona already holds would hold the sign-in for that
+# persona's password instead.
 export APP_GOOGLE_USERNAME=navigator
 export APP_GOOGLE_ROLES=pilot
 # export APP_CREW_OIDC_CLIENT_ID=
