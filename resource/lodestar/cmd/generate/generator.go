@@ -59,7 +59,19 @@ func NewGenerator(ctx context.Context) (generation.Generator, error) {
 		// permission-digest and user-domains routes, and the portal's browser
 		// application at /portal.
 		generation.WithRouterOutlet("portal", "portal/api",
-			generation.Auth("github.com/cccteam/ccc/resource/lodestar/pkg/auth/members", generation.GoogleMethod("directory").Labeled("Company directory")),
+			generation.Auth("github.com/cccteam/ccc/resource/lodestar/pkg/auth/members",
+				generation.GoogleMethod("directory").Labeled("Company directory"),
+				// The proof registrations (pkg/auth/members/proof.go): one per
+				// organization-slot shape of the session library's sign-in rules, for
+				// the proof against the real identity providers.
+				generation.AzureMethod("entra").Labeled("Microsoft, lab tenant"),
+				generation.AzureMethod("entra-listed").Labeled("Microsoft, listed tenants"),
+				generation.AzureMethod("entra-any").Labeled("Microsoft, any tenant (invited)"),
+				generation.AzureMethod("entra-personal").Labeled("Microsoft, lab tenant and personal accounts (invited)"),
+				generation.GoogleMethod("google-any-invited").Labeled("Google, any account (invited)"),
+				generation.GoogleMethod("google-any-open").Labeled("Google, any account (open sign-up)"),
+				generation.GoogleMethod("google-listed").Labeled("Google, listed Workspaces"),
+			),
 			generation.WebApp("/portal"),
 		),
 		// Sector-scoped resources and methods are served under /console/api/sectors/{sectorID}/,

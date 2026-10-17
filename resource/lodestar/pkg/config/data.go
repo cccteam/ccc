@@ -224,6 +224,7 @@ func NewDataConfiguration(ctx context.Context) (*DataConfiguration, error) {
 			GroupPrefix:  env.MembersGroupPrefix,
 			GroupLookup:  env.MembersGroupLookup,
 		},
+		Proof:        proofSettings(env),
 		ChangeSignal: policySignal,
 	})
 	if err != nil {
@@ -307,6 +308,26 @@ func (c *DataConfiguration) Crew() *crew.Auth {
 	return c.crew
 }
 
+// proofSettings are the proof registrations' settings from the environment
+// (pkg/auth/members/proof.go).
+func proofSettings(env *dataConfig) members.ProofSettings {
+	return members.ProofSettings{
+		TenantID:           env.ProofEntraTenantID,
+		SecondTenantID:     env.ProofEntraSecondTenantID,
+		ClientID:           env.ProofEntraClientID,
+		ClientSecret:       env.ProofEntraClientSecret,
+		MultiClientID:      env.ProofEntraMultiClientID,
+		MultiClientSecret:  env.ProofEntraMultiClientSecret,
+		GoogleSecondDomain: env.ProofGoogleSecondDomain,
+	}
+}
+
+// ProofInvitedUsers returns the sign-in names the bootstrap pre-creates as members for
+// the proof registrations' invited-only shapes (APP_PROOF_INVITED_USERS).
+func (c *DataConfiguration) ProofInvitedUsers() []string {
+	return c.env.ProofInvitedUsers
+}
+
 // UserManagement returns the crew engine's user-management handlers (access.Handlers),
 // which the console's role-membership routes delegate to behind their own permission
 // checks: the crew's roles are the application's, so seating crew in a sector is the
@@ -375,6 +396,20 @@ type dataConfig struct {
 	MembersHostedDomain string `env:"APP_MEMBERS_OIDC_HOSTED_DOMAIN"`
 	MembersGroupPrefix  string `env:"APP_MEMBERS_OIDC_GROUP_PREFIX"`
 	MembersGroupLookup  string `env:"APP_MEMBERS_OIDC_GROUP_LOOKUP"`
+	// The proof registrations on the members auth (pkg/auth/members/proof.go): the lab
+	// tenant and the second test tenant, the two Entra application registrations (one for
+	// the lab tenant alone, one admitting any organization and personal accounts), the
+	// second Workspace's domain, and the sign-in names the bootstrap pre-creates as members
+	// for the invited-only shapes. The tenant ids default to placeholders, so a development
+	// run, where the directories are simulated, starts without them.
+	ProofEntraTenantID          string   `env:"APP_PROOF_ENTRA_TENANT_ID,default=00000000-0000-4000-8000-00000000000a"`
+	ProofEntraSecondTenantID    string   `env:"APP_PROOF_ENTRA_SECOND_TENANT_ID,default=00000000-0000-4000-8000-00000000000b"`
+	ProofEntraClientID          string   `env:"APP_PROOF_ENTRA_CLIENT_ID"`
+	ProofEntraClientSecret      string   `env:"APP_PROOF_ENTRA_CLIENT_SECRET"`
+	ProofEntraMultiClientID     string   `env:"APP_PROOF_ENTRA_MULTI_CLIENT_ID"`
+	ProofEntraMultiClientSecret string   `env:"APP_PROOF_ENTRA_MULTI_CLIENT_SECRET"`
+	ProofGoogleSecondDomain     string   `env:"APP_PROOF_GOOGLE_SECOND_DOMAIN"`
+	ProofInvitedUsers           []string `env:"APP_PROOF_INVITED_USERS"`
 
 	// FileStores are the file stores' URLs.
 	FileStores FileStoreSettings

@@ -13,8 +13,8 @@
 //	droids (/droids), API key:
 //	  NoCaching, CompressionMiddleware, DroidsAuth: hooks.Droids, generatedDroidsRoutes
 //	  POST /droids/sectors/{sectorID}/ingest-droid-reports: request log on event
-//	portal (/portal/api), sessions of the members auth (directory):
-//	  BindAuth(members.Name), NoCaching, CompressionMiddleware, StartSession, SetXSRFToken: GET /portal/api/user/methods, GET /portal/api/user/session, DELETE /portal/api/user/session, GET /portal/api/user/pending, GET /portal/api/user/directory/login, GET /portal/api/user/directory/callback
+//	portal (/portal/api), sessions of the members auth (directory, entra, entra-listed, entra-any, entra-personal, google-any-invited, google-any-open, google-listed):
+//	  BindAuth(members.Name), NoCaching, CompressionMiddleware, StartSession, SetXSRFToken: GET /portal/api/user/methods, GET /portal/api/user/session, DELETE /portal/api/user/session, GET /portal/api/user/pending, GET /portal/api/user/directory/login, GET /portal/api/user/directory/callback, GET /portal/api/user/entra/login, GET /portal/api/user/entra/callback, GET /portal/api/user/entra/logout, GET /portal/api/user/entra-listed/login, GET /portal/api/user/entra-listed/callback, GET /portal/api/user/entra-listed/logout, GET /portal/api/user/entra-any/login, GET /portal/api/user/entra-any/callback, GET /portal/api/user/entra-any/logout, GET /portal/api/user/entra-personal/login, GET /portal/api/user/entra-personal/callback, GET /portal/api/user/entra-personal/logout, GET /portal/api/user/google-any-invited/login, GET /portal/api/user/google-any-invited/callback, GET /portal/api/user/google-any-open/login, GET /portal/api/user/google-any-open/callback, GET /portal/api/user/google-listed/login, GET /portal/api/user/google-listed/callback
 //	  + ValidateXSRFToken: POST /portal/api/user/pending/confirm, POST /portal/api/user/pending/cancel
 //	  + ValidateSession, ValidateXSRFToken, CheckAPIVersion: hooks.Portal, generatedPortalRoutes
 //	scheduled (/_scheduled), Cloud Scheduler's token:
@@ -145,6 +145,31 @@ type PortalSession interface {
 	// The directory registration's login and callback (google.Method).
 	DirectoryLogin() http.HandlerFunc
 	DirectoryCallback() http.HandlerFunc
+	// The entra registration's login, callback and front-channel logout (azure.Method).
+	EntraLogin() http.HandlerFunc
+	EntraCallback() http.HandlerFunc
+	EntraFrontChannelLogout() http.HandlerFunc
+	// The entra-listed registration's login, callback and front-channel logout (azure.Method).
+	EntraListedLogin() http.HandlerFunc
+	EntraListedCallback() http.HandlerFunc
+	EntraListedFrontChannelLogout() http.HandlerFunc
+	// The entra-any registration's login, callback and front-channel logout (azure.Method).
+	EntraAnyLogin() http.HandlerFunc
+	EntraAnyCallback() http.HandlerFunc
+	EntraAnyFrontChannelLogout() http.HandlerFunc
+	// The entra-personal registration's login, callback and front-channel logout (azure.Method).
+	EntraPersonalLogin() http.HandlerFunc
+	EntraPersonalCallback() http.HandlerFunc
+	EntraPersonalFrontChannelLogout() http.HandlerFunc
+	// The google-any-invited registration's login and callback (google.Method).
+	GoogleAnyInvitedLogin() http.HandlerFunc
+	GoogleAnyInvitedCallback() http.HandlerFunc
+	// The google-any-open registration's login and callback (google.Method).
+	GoogleAnyOpenLogin() http.HandlerFunc
+	GoogleAnyOpenCallback() http.HandlerFunc
+	// The google-listed registration's login and callback (google.Method).
+	GoogleListedLogin() http.HandlerFunc
+	GoogleListedCallback() http.HandlerFunc
 }
 
 // Hooks are the application's additions to the generated router. They compose inward
@@ -280,7 +305,7 @@ func New(h Handlers, hooks Hooks) *chi.Mux {
 		})
 	})
 
-	// The portal outlet (/portal/api): sessions of the members auth (directory).
+	// The portal outlet (/portal/api): sessions of the members auth (directory, entra, entra-listed, entra-any, entra-personal, google-any-invited, google-any-open, google-listed).
 	portalSession := h.Portal()
 	r.Group(func(r chi.Router) {
 		r.Use(h.BindAuth(members.Name))
@@ -297,6 +322,13 @@ func New(h Handlers, hooks Hooks) *chi.Mux {
 		bounded.Get("/portal/api/user/methods", portalSession.Methods(&session.MethodList{
 			Methods: []session.AdvertisedMethod{
 				{Name: "directory", Label: "Company directory", Path: "/portal/api/user/directory/login"},
+				{Name: "entra", Label: "Microsoft, lab tenant", Path: "/portal/api/user/entra/login"},
+				{Name: "entra-listed", Label: "Microsoft, listed tenants", Path: "/portal/api/user/entra-listed/login"},
+				{Name: "entra-any", Label: "Microsoft, any tenant (invited)", Path: "/portal/api/user/entra-any/login"},
+				{Name: "entra-personal", Label: "Microsoft, lab tenant and personal accounts (invited)", Path: "/portal/api/user/entra-personal/login"},
+				{Name: "google-any-invited", Label: "Google, any account (invited)", Path: "/portal/api/user/google-any-invited/login"},
+				{Name: "google-any-open", Label: "Google, any account (open sign-up)", Path: "/portal/api/user/google-any-open/login"},
+				{Name: "google-listed", Label: "Google, listed Workspaces", Path: "/portal/api/user/google-listed/login"},
 			},
 			Pending: session.PendingRoutes{Status: "/portal/api/user/pending", Confirm: "/portal/api/user/pending/confirm", Cancel: "/portal/api/user/pending/cancel"},
 		}))
@@ -305,6 +337,24 @@ func New(h Handlers, hooks Hooks) *chi.Mux {
 		bounded.Get("/portal/api/user/pending", portalSession.PendingStatus())
 		bounded.Get("/portal/api/user/directory/login", portalSession.DirectoryLogin())
 		bounded.Get("/portal/api/user/directory/callback", portalSession.DirectoryCallback())
+		bounded.Get("/portal/api/user/entra/login", portalSession.EntraLogin())
+		bounded.Get("/portal/api/user/entra/callback", portalSession.EntraCallback())
+		bounded.Get("/portal/api/user/entra/logout", portalSession.EntraFrontChannelLogout())
+		bounded.Get("/portal/api/user/entra-listed/login", portalSession.EntraListedLogin())
+		bounded.Get("/portal/api/user/entra-listed/callback", portalSession.EntraListedCallback())
+		bounded.Get("/portal/api/user/entra-listed/logout", portalSession.EntraListedFrontChannelLogout())
+		bounded.Get("/portal/api/user/entra-any/login", portalSession.EntraAnyLogin())
+		bounded.Get("/portal/api/user/entra-any/callback", portalSession.EntraAnyCallback())
+		bounded.Get("/portal/api/user/entra-any/logout", portalSession.EntraAnyFrontChannelLogout())
+		bounded.Get("/portal/api/user/entra-personal/login", portalSession.EntraPersonalLogin())
+		bounded.Get("/portal/api/user/entra-personal/callback", portalSession.EntraPersonalCallback())
+		bounded.Get("/portal/api/user/entra-personal/logout", portalSession.EntraPersonalFrontChannelLogout())
+		bounded.Get("/portal/api/user/google-any-invited/login", portalSession.GoogleAnyInvitedLogin())
+		bounded.Get("/portal/api/user/google-any-invited/callback", portalSession.GoogleAnyInvitedCallback())
+		bounded.Get("/portal/api/user/google-any-open/login", portalSession.GoogleAnyOpenLogin())
+		bounded.Get("/portal/api/user/google-any-open/callback", portalSession.GoogleAnyOpenCallback())
+		bounded.Get("/portal/api/user/google-listed/login", portalSession.GoogleListedLogin())
+		bounded.Get("/portal/api/user/google-listed/callback", portalSession.GoogleListedCallback())
 		guarded.Post("/portal/api/user/pending/confirm", portalSession.PendingConfirmWithPassword())
 		guarded.Post("/portal/api/user/pending/cancel", portalSession.PendingCancel())
 

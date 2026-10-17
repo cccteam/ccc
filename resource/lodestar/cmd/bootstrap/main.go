@@ -177,6 +177,31 @@ func run(ctx context.Context, reset bool) error {
 	if err := seedIdentities(ctx, data); err != nil {
 		return errors.Wrap(err, "seedIdentities()")
 	}
+	if err := seedProofMembers(ctx, data); err != nil {
+		return errors.Wrap(err, "seedProofMembers()")
+	}
+
+	return nil
+}
+
+// proofMemberRole is the role every pre-created proof member holds, so a member the proof
+// signs in sees the portal: the global client-account role of pkg/auth/members/roles.json.
+const proofMemberRole accesstypes.Role = "client-account"
+
+// seedProofMembers pre-creates the sign-in names APP_PROOF_INVITED_USERS lists as
+// password-less members, for the proof registrations whose account rule is invited users
+// only (pkg/auth/members/proof.go): a person pre-created under their sign-in name is
+// linked at their first sign-in, and anyone else is refused.
+func seedProofMembers(ctx context.Context, data *config.DataConfiguration) error {
+	for _, name := range data.ProofInvitedUsers() {
+		if _, err := data.Members().Session().API().CreateSessionUser(ctx, &session.CreateUserRequest{Username: name}); err != nil {
+			return errors.Wrapf(err, "session.AuthAPI.CreateSessionUser(): proof member %s", name)
+		}
+		if err := data.Members().Access().UserManager().AddUserRoles(ctx, accesstypes.GlobalPolicyScope(), accesstypes.User(name), proofMemberRole); err != nil {
+			return errors.Wrapf(err, "access.UserManager.AddUserRoles(): proof member %s", name)
+		}
+		fmt.Printf("Created proof member %s\n", name)
+	}
 
 	return nil
 }

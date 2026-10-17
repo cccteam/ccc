@@ -174,6 +174,13 @@ var testCursorKey = func() *resource.CursorKey {
 // testCookieKey signs session cookies in the suites; any 32 bytes will do.
 const testCookieKey = "dGVzdC1jb29raWUta2V5LXRlc3QtY29va2llLWtleS0xMjM0NTY="
 
+// The proof registrations' tenants in the served stack (pkg/auth/members/proof.go):
+// placeholders the simulated directory asserts.
+const (
+	proofTenantID       = "00000000-0000-4000-8000-00000000000a"
+	proofSecondTenantID = "00000000-0000-4000-8000-00000000000b"
+)
+
 // grants is a static permission table: the set of resources granted for each permission.
 type grants map[accesstypes.Permission][]accesstypes.Resource
 
@@ -744,6 +751,7 @@ func newServedAt(ctx context.Context, t *testing.T, version string) *served {
 			HostedDomain: "example.com",
 			GroupPrefix:  "members-",
 		},
+		Proof:        members.ProofSettings{TenantID: proofTenantID, SecondTenantID: proofSecondTenantID},
 		ChangeSignal: policySignal,
 	})
 	if err != nil {
