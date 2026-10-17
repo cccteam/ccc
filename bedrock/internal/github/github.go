@@ -46,9 +46,18 @@ type Client struct {
 // ClientFunc opens the client: the CLI wires Open, tests a client over a test server.
 type ClientFunc func(ctx context.Context) (*Client, error)
 
-// New is a client over the API at base, authenticated with the token.
+// New is a client over the API at base, authenticated with the token. It carries a
+// transport of its own, a copy of the default one, so nothing that closes the default
+// transport's idle connections (a test server's close does) touches a request of its
+// in flight.
 func New(base, token string) *Client {
-	return &Client{base: strings.TrimRight(base, "/"), token: token, http: &http.Client{Timeout: 30 * time.Second}}
+	transport, ok := http.DefaultTransport.(*http.Transport)
+	var own http.RoundTripper
+	if ok {
+		own = transport.Clone()
+	}
+
+	return &Client{base: strings.TrimRight(base, "/"), token: token, http: &http.Client{Timeout: 30 * time.Second, Transport: own}}
 }
 
 // Open finds a token and returns a client over the public API: GITHUB_TOKEN when set,
