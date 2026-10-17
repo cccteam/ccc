@@ -26,8 +26,8 @@ type loginMethods struct {
 
 // TestLoginMethods reads each outlet's methods route the way its login page does, before
 // any sign-in: the console offers the password and the fleet's Google directory, the
-// portal the company directory alone, each method at the path the generated router
-// mounted it, and every path is under the outlet's own prefix.
+// portal the company directory and then the proof registrations, each method at the path
+// the generated router mounted it, and every path is under the outlet's own prefix.
 //
 // Demonstrates: auth.multi-method, auth.login-methods.
 func TestLoginMethods(t *testing.T) {
@@ -50,10 +50,17 @@ func TestLoginMethods(t *testing.T) {
 				`"pending":{"status":"/console/api/user/pending","confirm":"/console/api/user/pending/confirm","cancel":"/console/api/user/pending/cancel"}}`,
 		},
 		{
-			name:   "the portal offers the company directory alone",
+			name:   "the portal offers the company directory and the proof registrations",
 			prefix: portalAPI,
 			want: `{"methods":[` +
-				`{"name":"directory","method":"google","kind":"redirect","label":"Company directory","path":"/portal/api/user/directory/login"}],` +
+				`{"name":"directory","method":"google","kind":"redirect","label":"Company directory","path":"/portal/api/user/directory/login"},` +
+				`{"name":"entra","method":"azure","kind":"redirect","label":"Microsoft, lab tenant","path":"/portal/api/user/entra/login"},` +
+				`{"name":"entra-listed","method":"azure","kind":"redirect","label":"Microsoft, listed tenants","path":"/portal/api/user/entra-listed/login"},` +
+				`{"name":"entra-any","method":"azure","kind":"redirect","label":"Microsoft, any tenant (invited)","path":"/portal/api/user/entra-any/login"},` +
+				`{"name":"entra-personal","method":"azure","kind":"redirect","label":"Microsoft, lab tenant and personal accounts (invited)","path":"/portal/api/user/entra-personal/login"},` +
+				`{"name":"google-any-invited","method":"google","kind":"redirect","label":"Google, any account (invited)","path":"/portal/api/user/google-any-invited/login"},` +
+				`{"name":"google-any-open","method":"google","kind":"redirect","label":"Google, any account (open sign-up)","path":"/portal/api/user/google-any-open/login"},` +
+				`{"name":"google-listed","method":"google","kind":"redirect","label":"Google, listed Workspaces","path":"/portal/api/user/google-listed/login"}],` +
 				`"pending":{"status":"/portal/api/user/pending","confirm":"/portal/api/user/pending/confirm","cancel":"/portal/api/user/pending/cancel"}}`,
 		},
 	}

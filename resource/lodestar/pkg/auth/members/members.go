@@ -12,7 +12,7 @@
 // application, so one registration is never both.
 //
 // An auth is a package. It owns its session manager, one Auth session with the sign-in
-// methods registered on it, here the directory alone, with its own session, user,
+// methods registered on it, here the directory and the proof registrations, with its own session, user,
 // identity, auth event and pending sign-in tables and cookie; its permission store, with
 // its own table prefix; and its role configuration. A site or an outlet binds to an auth
 // by composing its handlers, and two auths on one database and one host never collide,
@@ -94,6 +94,9 @@ type Settings struct {
 	LoginURL string
 	// Directory identifies the application to the directory that verifies its logins.
 	Directory auth.Directory
+	// Proof are the proof registrations' settings (proof.go): one registration per
+	// organization-slot shape of the session library's sign-in rules, beside the directory.
+	Proof ProofSettings
 	// Collection is the generated permission collection the role file validates against:
 	// the resources, fields and conditions the release declares. The router package
 	// generates it and imports this one, so the configuration passes it in.
@@ -123,6 +126,8 @@ type Auth struct {
 type Handlers struct {
 	*Session
 	directory *google.Method
+	// proof are the proof registrations (proof.go), whose handlers that file holds.
+	proof *proofMethods
 }
 
 // DirectoryLogin sends the browser to the company's directory.
@@ -229,7 +234,14 @@ func New(ctx context.Context, db *cloudspanner.Client, settings *Settings) (*Aut
 		LoginURL:     settings.LoginURL,
 	})
 
-	return &Auth{access: accessClient, handlers: &Handlers{Session: membersSession, directory: directory}}, nil
+	// The proof registrations, one per organization-slot shape of the library's sign-in
+	// rules, beside the directory (proof.go).
+	proof, err := registerProof(membersSession, accessClient, settings)
+	if err != nil {
+		return nil, errors.Wrap(err, "registerProof()")
+	}
+
+	return &Auth{access: accessClient, handlers: &Handlers{Session: membersSession, directory: directory, proof: proof}}, nil
 }
 
 // Access returns the auth's permission engine: the handlers check against it, and its

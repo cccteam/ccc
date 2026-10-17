@@ -94,6 +94,24 @@ func routerSessionRoutes() []routerSessionRoute {
 		{url: "/portal/api/user/pending", suffix: "/user/pending", method: http.MethodGet, handler: "PortalPendingStatus"},
 		{url: "/portal/api/user/directory/login", suffix: "/user/directory/login", method: http.MethodGet, handler: "PortalDirectoryLogin"},
 		{url: "/portal/api/user/directory/callback", suffix: "/user/directory/callback", method: http.MethodGet, handler: "PortalDirectoryCallback"},
+		{url: "/portal/api/user/entra/login", suffix: "/user/entra/login", method: http.MethodGet, handler: "PortalEntraLogin"},
+		{url: "/portal/api/user/entra/callback", suffix: "/user/entra/callback", method: http.MethodGet, handler: "PortalEntraCallback"},
+		{url: "/portal/api/user/entra/logout", suffix: "/user/entra/logout", method: http.MethodGet, handler: "PortalEntraFrontChannelLogout"},
+		{url: "/portal/api/user/entra-listed/login", suffix: "/user/entra-listed/login", method: http.MethodGet, handler: "PortalEntraListedLogin"},
+		{url: "/portal/api/user/entra-listed/callback", suffix: "/user/entra-listed/callback", method: http.MethodGet, handler: "PortalEntraListedCallback"},
+		{url: "/portal/api/user/entra-listed/logout", suffix: "/user/entra-listed/logout", method: http.MethodGet, handler: "PortalEntraListedFrontChannelLogout"},
+		{url: "/portal/api/user/entra-any/login", suffix: "/user/entra-any/login", method: http.MethodGet, handler: "PortalEntraAnyLogin"},
+		{url: "/portal/api/user/entra-any/callback", suffix: "/user/entra-any/callback", method: http.MethodGet, handler: "PortalEntraAnyCallback"},
+		{url: "/portal/api/user/entra-any/logout", suffix: "/user/entra-any/logout", method: http.MethodGet, handler: "PortalEntraAnyFrontChannelLogout"},
+		{url: "/portal/api/user/entra-personal/login", suffix: "/user/entra-personal/login", method: http.MethodGet, handler: "PortalEntraPersonalLogin"},
+		{url: "/portal/api/user/entra-personal/callback", suffix: "/user/entra-personal/callback", method: http.MethodGet, handler: "PortalEntraPersonalCallback"},
+		{url: "/portal/api/user/entra-personal/logout", suffix: "/user/entra-personal/logout", method: http.MethodGet, handler: "PortalEntraPersonalFrontChannelLogout"},
+		{url: "/portal/api/user/google-any-invited/login", suffix: "/user/google-any-invited/login", method: http.MethodGet, handler: "PortalGoogleAnyInvitedLogin"},
+		{url: "/portal/api/user/google-any-invited/callback", suffix: "/user/google-any-invited/callback", method: http.MethodGet, handler: "PortalGoogleAnyInvitedCallback"},
+		{url: "/portal/api/user/google-any-open/login", suffix: "/user/google-any-open/login", method: http.MethodGet, handler: "PortalGoogleAnyOpenLogin"},
+		{url: "/portal/api/user/google-any-open/callback", suffix: "/user/google-any-open/callback", method: http.MethodGet, handler: "PortalGoogleAnyOpenCallback"},
+		{url: "/portal/api/user/google-listed/login", suffix: "/user/google-listed/login", method: http.MethodGet, handler: "PortalGoogleListedLogin"},
+		{url: "/portal/api/user/google-listed/callback", suffix: "/user/google-listed/callback", method: http.MethodGet, handler: "PortalGoogleListedCallback"},
 		{url: "/portal/api/user/pending/confirm", suffix: "/user/pending/confirm", method: http.MethodPost, handler: "PortalPendingConfirmWithPassword", xsrf: true},
 		{url: "/portal/api/user/pending/cancel", suffix: "/user/pending/cancel", method: http.MethodPost, handler: "PortalPendingCancel", xsrf: true},
 	}
@@ -1188,6 +1206,78 @@ func (s *routerPortalSessionStub) DirectoryLogin() http.HandlerFunc {
 
 func (s *routerPortalSessionStub) DirectoryCallback() http.HandlerFunc {
 	return s.rec.RecordHandlerCall(s.prefix + "DirectoryCallback")
+}
+
+func (s *routerPortalSessionStub) EntraLogin() http.HandlerFunc {
+	return s.rec.RecordHandlerCall(s.prefix + "EntraLogin")
+}
+
+func (s *routerPortalSessionStub) EntraCallback() http.HandlerFunc {
+	return s.rec.RecordHandlerCall(s.prefix + "EntraCallback")
+}
+
+func (s *routerPortalSessionStub) EntraFrontChannelLogout() http.HandlerFunc {
+	return s.rec.RecordHandlerCall(s.prefix + "EntraFrontChannelLogout")
+}
+
+func (s *routerPortalSessionStub) EntraListedLogin() http.HandlerFunc {
+	return s.rec.RecordHandlerCall(s.prefix + "EntraListedLogin")
+}
+
+func (s *routerPortalSessionStub) EntraListedCallback() http.HandlerFunc {
+	return s.rec.RecordHandlerCall(s.prefix + "EntraListedCallback")
+}
+
+func (s *routerPortalSessionStub) EntraListedFrontChannelLogout() http.HandlerFunc {
+	return s.rec.RecordHandlerCall(s.prefix + "EntraListedFrontChannelLogout")
+}
+
+func (s *routerPortalSessionStub) EntraAnyLogin() http.HandlerFunc {
+	return s.rec.RecordHandlerCall(s.prefix + "EntraAnyLogin")
+}
+
+func (s *routerPortalSessionStub) EntraAnyCallback() http.HandlerFunc {
+	return s.rec.RecordHandlerCall(s.prefix + "EntraAnyCallback")
+}
+
+func (s *routerPortalSessionStub) EntraAnyFrontChannelLogout() http.HandlerFunc {
+	return s.rec.RecordHandlerCall(s.prefix + "EntraAnyFrontChannelLogout")
+}
+
+func (s *routerPortalSessionStub) EntraPersonalLogin() http.HandlerFunc {
+	return s.rec.RecordHandlerCall(s.prefix + "EntraPersonalLogin")
+}
+
+func (s *routerPortalSessionStub) EntraPersonalCallback() http.HandlerFunc {
+	return s.rec.RecordHandlerCall(s.prefix + "EntraPersonalCallback")
+}
+
+func (s *routerPortalSessionStub) EntraPersonalFrontChannelLogout() http.HandlerFunc {
+	return s.rec.RecordHandlerCall(s.prefix + "EntraPersonalFrontChannelLogout")
+}
+
+func (s *routerPortalSessionStub) GoogleAnyInvitedLogin() http.HandlerFunc {
+	return s.rec.RecordHandlerCall(s.prefix + "GoogleAnyInvitedLogin")
+}
+
+func (s *routerPortalSessionStub) GoogleAnyInvitedCallback() http.HandlerFunc {
+	return s.rec.RecordHandlerCall(s.prefix + "GoogleAnyInvitedCallback")
+}
+
+func (s *routerPortalSessionStub) GoogleAnyOpenLogin() http.HandlerFunc {
+	return s.rec.RecordHandlerCall(s.prefix + "GoogleAnyOpenLogin")
+}
+
+func (s *routerPortalSessionStub) GoogleAnyOpenCallback() http.HandlerFunc {
+	return s.rec.RecordHandlerCall(s.prefix + "GoogleAnyOpenCallback")
+}
+
+func (s *routerPortalSessionStub) GoogleListedLogin() http.HandlerFunc {
+	return s.rec.RecordHandlerCall(s.prefix + "GoogleListedLogin")
+}
+
+func (s *routerPortalSessionStub) GoogleListedCallback() http.HandlerFunc {
+	return s.rec.RecordHandlerCall(s.prefix + "GoogleListedCallback")
 }
 
 func (s *routerPortalSessionStub) PendingConfirmWithPassword() http.HandlerFunc {

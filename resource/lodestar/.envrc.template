@@ -135,3 +135,25 @@ export APP_CREW_OIDC_HOSTED_DOMAIN=example.com
 # assigns <role>, in the names pkg/auth/crew/roles.json holds.
 export APP_CREW_OIDC_GROUP_PREFIX=crew-
 # export APP_CREW_OIDC_GROUP_LOOKUP=direct
+#
+# --- the proof registrations on the members auth (pkg/auth/members/proof.go) ---
+# One registration per organization-slot shape of the session library's sign-in rules,
+# for the proof against the real identity providers; the portal's login page offers each
+# as a button. In development the directories are simulated and the tenant ids default to
+# placeholders, so nothing below needs a value. For a real run: the lab tenant and the
+# second test tenant (tenant ids), the single-tenant application registration's
+# credentials, the credentials of the registration that admits any organization and
+# personal accounts, the second Workspace's domain (unset when there is none; the listed
+# Workspaces shape then refuses everything outside the lab Workspace), and the sign-in
+# names cmd/bootstrap pre-creates as password-less members for the invited-only shapes (a
+# user principal name, the personal account's address, a gmail address), comma-separated.
+# Every proof registration's callback is APP_MEMBERS_OIDC_REDIRECT_URL with its own name
+# in place of "directory"; the Google ones share the members OAuth client.
+# export APP_PROOF_ENTRA_TENANT_ID=
+# export APP_PROOF_ENTRA_SECOND_TENANT_ID=
+# export APP_PROOF_ENTRA_CLIENT_ID=
+# export APP_PROOF_ENTRA_CLIENT_SECRET=
+# export APP_PROOF_ENTRA_MULTI_CLIENT_ID=
+# export APP_PROOF_ENTRA_MULTI_CLIENT_SECRET=
+# export APP_PROOF_GOOGLE_SECOND_DOMAIN=
+# export APP_PROOF_INVITED_USERS=

@@ -516,6 +516,28 @@ seat and unseat crew in a sector through the access library's user-management ha
 ([one channel](#one-channel-between-instances)); the members' are reconciled by the
 directory at every login, and no route writes them.
 
+### Proof registrations on the portal (the session library's sign-in rules)
+
+This branch carries a proof harness beside the members' directory sign-in: one
+registration per organization-slot shape of the session library's sign-in rules
+(`pkg/auth/members/proof.go`), so the portal's login page offers each as a button and a
+deployment against the real identity providers proves every shape, a positive sign-in and
+its key refusals each. Microsoft Entra: `entra` admits the lab tenant alone, with role
+synchronization from the token's application roles; `entra-listed` admits the lab tenant
+and a second tenant, each named (`lab-a`, `lab-b`), the name every link made through it
+carries as its tenant key; `entra-any` admits any work or school account, for people
+pre-created under their user principal names (invited users only); `entra-personal`
+admits the lab tenant and Microsoft personal accounts, invited users only. Google, on the
+members OAuth client: `google-any-invited` admits any Google account for people
+pre-created under their verified email; `google-any-open` admits any Google account and
+signs anyone up; `google-listed` admits the lab Workspace (`lab`) and a second one
+(`second`). Their settings are the `APP_PROOF_*` variables of `.envrc.template`; every
+callback is `APP_MEMBERS_OIDC_REDIRECT_URL` with the registration's name in place of
+`directory`, and the bootstrap pre-creates the sign-in names `APP_PROOF_INVITED_USERS`
+lists as password-less members holding the `client-account` role. In development the
+directories are simulated and the tenant ids default to placeholders, so the harness
+costs nothing to run.
+
 ## The personas
 
 All crew passwords are `lodestar`; the login is the job word. The login page is the crew
