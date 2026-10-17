@@ -5,7 +5,10 @@
 // branch took since the branch was cut is refused. A branch opens two holes in that
 // sequence, an index taken twice and a gap, and this closes both: the files the branch
 // added move, up and down together, to follow the default branch's highest index with
-// no gap, keeping their order. A committed schema migration is never touched. The seed
+// no gap, keeping their order. A committed schema migration is never touched once the
+// repository has a release tag: a migration that ran somewhere is never rewritten. Before
+// the first release nothing has run the migrations but disposable environments, so the
+// whole schema sequence is packed from 000001 instead, committed files included. The seed
 // directory's files are editable, so a committed seed file may be removed: the committed
 // seed files after it move down to close the gap, and the branch's own follow them.
 package migration
@@ -60,6 +63,9 @@ type Result struct {
 	Renames []Rename
 	// Notes name the files left alone, and why.
 	Notes []string
+	// Unreleased says the repository has no release tag, so the schema directories were
+	// packed from 000001, committed migrations included.
+	Unreleased bool
 }
 
 // NameRE is a migration file name: a six-digit index, an underscore, a name, and .up.sql
@@ -111,7 +117,11 @@ func Renumber(ctx context.Context, opts Options) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
-	n := &renumbering{root: opts.Root, ref: ref, base: base, branch: branch, result: &Result{Ref: ref, Commit: commit}}
+	released, err := Released(ctx, opts.Root)
+	if err != nil {
+		return nil, err
+	}
+	n := &renumbering{root: opts.Root, ref: ref, base: base, branch: branch, released: released, result: &Result{Ref: ref, Commit: commit, Unreleased: !released}}
 	for _, dir := range opts.Dirs {
 		if err := n.dir(ctx, dir, slices.Contains(opts.Editable, dir)); err != nil {
 			return nil, err
@@ -122,16 +132,18 @@ func Renumber(ctx context.Context, opts Options) (*Result, error) {
 }
 
 // renumbering is one run: the default branch's ref, the commit the branch was cut from it
-// at, and the result the directories add to.
+// at, whether the repository has a release tag, and the result the directories add to.
 type renumbering struct {
 	root, ref, base, branch string
+	released                bool
 	result                  *Result
 }
 
 // dir renumbers one directory: the files the working tree holds that the default branch
 // does not are the branch's own; they follow the highest index the default branch holds
 // there, or, when it holds none, their own lowest. An editable directory is packed
-// instead (seedRenames).
+// instead from its lowest index (packRenames), and so is every directory before the
+// first release, from 000001.
 func (n *renumbering) dir(ctx context.Context, dir string, editable bool) error {
 	abs := filepath.Join(n.root, filepath.FromSlash(dir))
 	entries, err := os.ReadDir(abs)
@@ -161,17 +173,25 @@ func (n *renumbering) dir(ctx context.Context, dir string, editable bool) error 
 	}
 	sort.Strings(n.result.Notes)
 	var pending []Rename
-	if editable {
-		pending, err = n.seedRenames(ctx, dir, entries, committed)
+	switch {
+	case editable:
+		pending, err = n.packRenames(ctx, dir, entries, committed, 0, "seed file")
 		if err != nil {
 			return err
 		}
-	} else if stems := ordered(withUp(own)); len(stems) > 0 {
-		first := stems[0].idx
-		if highest, found := highestIndex(committed); found {
-			first = highest + 1
+	case !n.released:
+		pending, err = n.packRenames(ctx, dir, entries, committed, 1, "migration")
+		if err != nil {
+			return err
 		}
-		pending = packed(dir, stems, first)
+	default:
+		if stems := ordered(withUp(own)); len(stems) > 0 {
+			first := stems[0].idx
+			if highest, found := highestIndex(committed); found {
+				first = highest + 1
+			}
+			pending = packed(dir, stems, first)
+		}
 	}
 	if len(pending) == 0 {
 		return nil
@@ -184,13 +204,14 @@ func (n *renumbering) dir(ctx context.Context, dir string, editable bool) error 
 	return n.result.apply(ctx, n.root, abs, tracked, pending)
 }
 
-// seedRenames is an editable directory's renames: every file the tree holds, in its order,
-// packed from the lowest index with no gap, around the indexes the default branch took
-// since the branch was cut (its files there that the tree does not hold), so a removed
-// file leaves no gap and the branch's own files follow. A file the branch was cut with
-// moves down only: when the default branch's additions would push one up, the directory
-// is left alone with a note, as it is noted when they leave a gap only a merge closes.
-func (n *renumbering) seedRenames(ctx context.Context, dir string, entries []os.DirEntry, committed map[string]bool) ([]Rename, error) {
+// packRenames is a packed directory's renames: every file the tree holds, in its order,
+// packed from the index from (0: the lowest the tree holds) with no gap, around the
+// indexes the default branch took since the branch was cut (its files there that the
+// tree does not hold), so a removed file leaves no gap and the branch's own files follow.
+// A file the branch was cut with moves down only: when the default branch's additions
+// would push one up, the directory is left alone with a note, as it is noted when they
+// leave a gap only a merge closes. what names a committed file in the notes.
+func (n *renumbering) packRenames(ctx context.Context, dir string, entries []os.DirEntry, committed map[string]bool, from int, what string) ([]Rename, error) {
 	atBase, err := treeFiles(ctx, n.root, n.base, dir)
 	if err != nil {
 		return nil, err
@@ -214,15 +235,27 @@ func (n *renumbering) seedRenames(ctx context.Context, dir string, entries []os.
 	if len(stems) == 0 {
 		return nil, nil
 	}
+	// At one index, a file the branch was cut with comes before the branch's own: it
+	// moves down only, so the own file is the one that moves up past it.
+	sort.SliceStable(stems, func(i, j int) bool {
+		if stems[i].idx != stems[j].idx {
+			return stems[i].idx < stems[j].idx
+		}
+
+		return atBase[stems[i].key()+".up.sql"] && !atBase[stems[j].key()+".up.sql"]
+	})
 	var pending []Rename
-	next, pushed := stems[0].idx, ""
+	next, pushed := from, ""
+	if next == 0 {
+		next = stems[0].idx
+	}
 	for _, s := range stems {
 		for taken[next] != "" {
 			pushed = taken[next]
 			next++
 		}
 		if next > s.idx && atBase[s.key()+".up.sql"] {
-			n.result.Notes = append(n.result.Notes, fmt.Sprintf("%s: %s added %s since the branch was cut, and %s, which the branch was cut with, would move up past it; a committed seed file only moves down. Merge %s into the branch, then run the renumber again", dir, n.branch, pushed, s.key(), n.branch))
+			n.result.Notes = append(n.result.Notes, fmt.Sprintf("%s: %s added %s since the branch was cut, and %s, which the branch was cut with, would move up past it; a committed %s only moves down. Merge %s into the branch, then run the renumber again", dir, n.branch, pushed, s.key(), what, n.branch))
 
 			return nil, nil
 		}

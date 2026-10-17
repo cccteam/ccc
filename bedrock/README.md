@@ -483,12 +483,14 @@ It also refuses:
 - a schema migrations directory, or the seed directory beside it (`schema/devseed`),
   whose files do not form the sequence the migrate command applies: six-digit indexes, one
   up file per index, at most one down, contiguous from the lowest present. The pipeline
-  repeats that rule on every build and, in a pull-request build, also refuses a schema
-  migration modified, renamed or removed against the default branch, and an index the
-  default branch has taken since the branch was cut; `bedrock migration renumber` is the
-  fix it names. The pull-request workflow's `migrations` job reads the whole directory by
-  the same rule (`bedrock migration check`), and `bedrock render` does before the first
-  push. Seed files are development data and may be edited or removed, the
+  repeats that rule on every build and, in a pull-request build once the repository has
+  a release tag, also refuses a schema migration modified, renamed or removed against the
+  default branch, and an index the default branch has taken since the branch was cut;
+  `bedrock migration renumber` is the fix it names. The pull-request workflow's
+  `migrations` job reads the whole directory by the same rule (`bedrock migration check`),
+  and `bedrock render` does before the first push. While the checkout has no release tag,
+  the refusal adds the line that names the fix: the renumber packs the whole sequence from
+  000001 until the first release, committed migrations included. Seed files are development data and may be edited or removed, the
   directory staying one sequence; a changed seed applies from the start by recreating
   the database: a pull request's on its next build, a seeded environment's by the next
   release, as a restore run the release asks for itself.
@@ -1234,15 +1236,29 @@ render` before the first push; the pull-request workflow's `migrations` job runs
 github.com/cccteam/ccc/bedrock@<pin> migration check` with the bedrock the placement pins,
 beside its own rule that a pull request only adds to `schema/migrations`. A gap already on
 the default branch, which a diff against the base branch never sees, fails the next pull
-request there, and `bedrock migration renumber` is the fix.
+request there, and `bedrock migration renumber` is the fix: before the first release it
+packs the whole sequence, and the refusal says so while the checkout has no release tag.
 
 ## bedrock migration renumber
 
 `migration renumber` moves the migrations this branch added, up and down files together,
 to follow the default branch's highest index with no gap, keeping their order. A schema
-migration the default branch holds is never touched: git says which files are the
+migration the default branch holds is never touched once the repository has a release
+tag: a migration that ran somewhere is never rewritten. Git says which files are the
 branch's own, and the default branch is read from origin's copy of it when the repository
-has one, else from the local branch, so fetch first. `go generate ./...` runs it before the
+has one, else from the local branch, so fetch first.
+
+The freeze starts at the first release. Before it nothing has run the migrations but
+developers' emulators and pull-request environments, which are disposable (a pull-request
+environment that ran the old numbering is destroyed and made again: close and reopen the
+pull request), so until the repository has a release tag the renumber packs the whole
+schema sequence from 000001 with no gap, committed migrations included, the way it packs
+the seed directory: a committed file moves down only, around the indexes the default
+branch took since the branch was cut. The tags are the checkout's, so fetch them too (a
+clone has them; CI checks out with the whole history). The pull-request workflow's
+`migrations` job and the pipeline's migration guard hold the same line: before the first
+release a pull request may rename, rewrite or remove a committed migration while the
+sequence stays whole, and from the first release on a committed migration never changes. `go generate ./...` runs it before the
 application's own generators through the owned `cmd/generate/bedrock.go`, whose directive
 is `go run <module>@<pinned version> migration renumber`: the Go toolchain builds the
 pinned bedrock from the module proxy the first time and caches it, so neither a developer
@@ -2267,9 +2283,10 @@ read the bedrock pin from the checkout's placement when they run, so a bedrock r
 works under the previous release's steps and a command says when it runs under older ones.
 
 The guards run before anything deploys: the migration guard (the sequence, one up file
-each, no gaps; a committed schema migration never changes, a seed file may; against the
-default branch for a pull request; a refusal names `bedrock migration renumber` as the
-fix), and the plan guard (a pull-request stack may only create and change what carries
+each, no gaps; a committed schema migration never changes once the repository has a
+release tag, before the first release it may; a seed file may; against the default branch
+for a pull request; a refusal names `bedrock migration renumber` as the fix), and the
+plan guard (a pull-request stack may only create and change what carries
 its own number), which holds because it runs in the pr-stack trigger, from steps the pull
 request cannot edit.
 

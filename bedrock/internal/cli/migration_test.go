@@ -26,6 +26,15 @@ func gitRepo(t *testing.T, dir string) {
 	run("checkout", "-q", "-b", "feature")
 }
 
+// gitTag tags the repository's HEAD.
+func gitTag(t *testing.T, dir, name string) {
+	t.Helper()
+	cmd := exec.CommandContext(context.Background(), "git", "-C", dir, "tag", name)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git tag %s: %v\n%s", name, err, out)
+	}
+}
+
 // migrationFiles writes empty migration files under the application.
 func migrationFiles(t *testing.T, dir string, names ...string) {
 	t.Helper()
@@ -44,10 +53,14 @@ func TestMigrationCheck(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name     string
-		files    []string
-		wantCode int
-		wantOut  []string
+		name  string
+		files []string
+		// git commits the application, migrations included, so the checkout can say
+		// whether a release tag is in it; tag adds one.
+		git, tag   bool
+		wantCode   int
+		wantOut    []string
+		wantNotOut []string
 	}{
 		{
 			name:     "no migrations directory: nothing to check",
@@ -67,6 +80,22 @@ func TestMigrationCheck(t *testing.T) {
 			wantOut:  []string{"schema/migrations: 3 migration(s), 000001 to 000004\n", "  refused  schema/migrations: gap: no migration 000003 between 000001 and 000004; the sequence is contiguous so nothing is skipped\n", "(1 problem(s) above): the CI migrations job refuses them on every pull request, and bedrock check in every build."},
 		},
 		{
+			name:     "a gap in a checkout without a release tag names the pack as the fix",
+			files:    []string{"schema/migrations/000001_Init.up.sql", "schema/migrations/000002_Audit.up.sql", "schema/migrations/000004_Late.up.sql"},
+			git:      true,
+			wantCode: 1,
+			wantOut:  []string{"  refused  schema/migrations: gap: no migration 000003 between 000001 and 000004", "           no release tag is in this checkout: until the first release a committed migration may still change, and bedrock migration renumber (go generate ./... runs it) packs the whole sequence from 000001, committed migrations included\n"},
+		},
+		{
+			name:       "a gap in a released checkout names no pack: the committed migrations are frozen",
+			files:      []string{"schema/migrations/000001_Init.up.sql", "schema/migrations/000002_Audit.up.sql", "schema/migrations/000004_Late.up.sql"},
+			git:        true,
+			tag:        true,
+			wantCode:   1,
+			wantOut:    []string{"  refused  schema/migrations: gap: no migration 000003 between 000001 and 000004"},
+			wantNotOut: []string{"no release tag"},
+		},
+		{
 			name:     "the seed directory beside the schema is read by the same rule",
 			files:    []string{"schema/migrations/000001_Init.up.sql", "schema/devseed/000001_People.up.sql", "schema/devseed/000003_Sites.up.sql"},
 			wantCode: 1,
@@ -83,6 +112,15 @@ func TestMigrationCheck(t *testing.T) {
 				t.Fatalf("render exit = %d, output:\n%s", code, out)
 			}
 			migrationFiles(t, app, tt.files...)
+			if tt.git {
+				if err := os.Remove(filepath.Join(app, ".git")); err != nil {
+					t.Fatal(err)
+				}
+				gitRepo(t, app)
+			}
+			if tt.tag {
+				gitTag(t, app, "v0.1.0")
+			}
 			code, out := run(t, "migration", "check", "--app", app, "--dir", dir, "--placement", placement)
 			if code != tt.wantCode {
 				t.Errorf("migration check exit = %d, want %d; output:\n%s", code, tt.wantCode, out)
@@ -90,6 +128,11 @@ func TestMigrationCheck(t *testing.T) {
 			for _, want := range tt.wantOut {
 				if !strings.Contains(out, want) {
 					t.Errorf("migration check output lacks %q:\n%s", want, out)
+				}
+			}
+			for _, s := range tt.wantNotOut {
+				if strings.Contains(out, s) {
+					t.Errorf("migration check output holds %q, want it absent:\n%s", s, out)
 				}
 			}
 		})
@@ -131,6 +174,9 @@ func TestMigrationRenumber(t *testing.T) {
 		// the branch is cut.
 		committed []string
 		own       []string
+		// released tags the committed state as a release: the committed schema
+		// migrations are frozen from then on.
+		released bool
 		// cwd is where the command runs, relative to the repository.
 		cwd       string
 		wantOut   []string
@@ -138,9 +184,17 @@ func TestMigrationRenumber(t *testing.T) {
 		wantErr   string
 	}{
 		{
+			name:      "no release tag: the whole sequence is packed from 000001, a committed hole closed",
+			committed: []string{"schema/migrations/000001_Init.up.sql", "schema/migrations/000001_Init.down.sql", "schema/migrations/000002_Audit.up.sql", "schema/migrations/000004_Late.up.sql", "schema/migrations/000004_Late.down.sql"},
+			own:       []string{"schema/migrations/000005_Sites.up.sql", "schema/migrations/000005_Sites.down.sql"},
+			wantOut:   []string{"schema/migrations: 000004_Late -> 000003_Late (up, down)", "schema/migrations: 000005_Sites -> 000004_Sites (up, down)", "Renumbered 2 migration(s) to follow refs/heads/master at ", "No release tag is in this checkout, so the whole sequence is packed from 000001, committed migrations included; the freeze starts at the first release."},
+			wantFiles: []string{"schema/migrations/000001_Init.down.sql", "schema/migrations/000001_Init.up.sql", "schema/migrations/000002_Audit.up.sql", "schema/migrations/000003_Late.down.sql", "schema/migrations/000003_Late.up.sql", "schema/migrations/000004_Sites.down.sql", "schema/migrations/000004_Sites.up.sql"},
+		},
+		{
 			name:      "the branch's migration moves past the one master took, from a package directory",
 			committed: []string{"schema/migrations/000001_Init.up.sql", "schema/migrations/000001_Init.down.sql", "schema/migrations/000002_Audit.up.sql", "schema/migrations/000002_Audit.down.sql"},
 			own:       []string{"schema/migrations/000002_Sites.up.sql", "schema/migrations/000002_Sites.down.sql"},
+			released:  true,
 			cwd:       filepath.Join("cmd", "generate"),
 			wantOut:   []string{"schema/migrations: 000002_Sites -> 000003_Sites (up, down)", "Renumbered 1 migration(s) to follow refs/heads/master at "},
 			wantFiles: []string{"schema/migrations/000001_Init.down.sql", "schema/migrations/000001_Init.up.sql", "schema/migrations/000002_Audit.down.sql", "schema/migrations/000002_Audit.up.sql", "schema/migrations/000003_Sites.down.sql", "schema/migrations/000003_Sites.up.sql"},
@@ -167,6 +221,9 @@ func TestMigrationRenumber(t *testing.T) {
 			}
 			migrationFiles(t, repo, tt.committed...)
 			gitRepo(t, repo)
+			if tt.released {
+				gitTag(t, repo, "v0.1.0")
+			}
 			migrationFiles(t, repo, tt.own...)
 			d := deps{domains: noCloudDomains, secrets: noSecretManager, projects: noProjects, cwd: filepath.Join(repo, tt.cwd), interactive: never}
 			out, err := execute(d, "", "migration", "renumber")

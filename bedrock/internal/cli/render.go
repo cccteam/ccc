@@ -105,7 +105,7 @@ placement is read from --placement, or from placement.json in the stack director
 				return err
 			}
 
-			return refuseMigrations(cmd.OutOrStdout(), findings, "fix them before the first push; bedrock check refuses them in every build, and the CI migrations job on every pull request")
+			return refuseMigrations(cmd.OutOrStdout(), findings, check.MigrationsFix(cmd.Context(), appDir), "fix them before the first push; bedrock check refuses them in every build, and the CI migrations job on every pull request")
 		},
 	}
 

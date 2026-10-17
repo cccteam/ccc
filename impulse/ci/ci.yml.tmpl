@@ -360,9 +360,10 @@ jobs:
           head: ${{ github.event.pull_request.head.sha }}
           extra_args: --results=verified,unknown
 
-  # The migrations: a committed migration is never modified or deleted, so against the pull request's base
-  # schema/migrations gains files only; and the whole directory keeps the sequence rule the migrate command
-  # needs, read by the bedrock the placement pins, so a gap already on the default branch fails the next pull request.
+  # The migrations: once the repository has a release tag a committed migration is never modified or deleted, so
+  # against the pull request's base schema/migrations gains files only (before the first release a pull request may
+  # still rewrite the sequence); and the whole directory keeps the sequence rule the migrate command needs, read by
+  # the bedrock the placement pins, so a gap already on the default branch fails the next pull request.
   migrations:
     runs-on: [[index .RunsOn "migrations"]]
     timeout-minutes: 10
@@ -378,6 +379,11 @@ jobs:
         run: |
           set -euo pipefail
           git fetch origin "$BASE_REF"
+          # The checkout's fetch-depth 0 brings the tags; the freeze starts at the first release.
+          if [ -z "$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*')" ]; then
+            echo "schema/migrations: no release tag yet, so a committed migration may still change; the freeze starts at the first release"
+            exit 0
+          fi
           changed="$(git diff --no-renames --diff-filter=MD --name-only "origin/$BASE_REF...HEAD" -- schema/migrations/)"
           if [ -n "$changed" ]; then
             echo "A committed migration is never modified or deleted; write a new migration instead. Modified or deleted against $BASE_REF:"

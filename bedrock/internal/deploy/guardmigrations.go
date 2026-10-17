@@ -24,18 +24,22 @@ import (
 // in order, before anything is touched. The schema migrations directory and the seed
 // directory beside it (schema/devseed) are each one sequence by the rule
 // (migration.Sequence). In a pull-request build two more things hold for the schema
-// migrations: every one the branch started from (the merge base with the default branch)
-// is still in the tree, unchanged, since a committed schema migration never changes; and
-// the sequence is read over the tree together with the default branch's, so an index the
-// default branch has taken since the branch was cut is refused now, not after the merge.
-// Seed files are development data: a pull request may edit or remove one, and the seed
-// directory keeps only the sequence rule (a removal renumbers the files after it), read
-// together with the files the default branch added since the branch was cut. A changed
-// seed applies from the start by recreating the database, which the resolve step does
-// for a pull request's on its next build (staleDatabase). A refusal lists every problem,
-// names the fix (bedrock migration renumber, which go generate runs) and is posted on the
-// pull request. A torn-down environment, a teardown and an application without a schema
-// have nothing to guard.
+// migrations once the repository has a release tag: every one the branch started from
+// (the merge base with the default branch) is still in the tree, unchanged, since a
+// committed schema migration never changes; and the sequence is read over the tree
+// together with the default branch's, so an index the default branch has taken since the
+// branch was cut is refused now, not after the merge. Before the first release nothing has
+// run the migrations but disposable environments, so the freeze is off: the schema
+// directory is read as the seed directory is, and a pull request may rename, rewrite or
+// remove a committed migration while the sequence stays whole. Seed files are development
+// data: a pull request may edit or remove one, and the seed directory keeps only the
+// sequence rule (a removal renumbers the files after it), read together with the files
+// the default branch added since the branch was cut. A changed seed applies from the
+// start by recreating the database, which the resolve step does for a pull request's on
+// its next build (staleDatabase). A refusal lists every problem, names the fix (bedrock
+// migration renumber, which go generate runs) and is posted on the pull request. A
+// torn-down environment, a teardown and an application without a schema have nothing to
+// guard.
 func GuardMigrations(ctx context.Context, clients *Clients, w Workspace, out io.Writer) error {
 	env, err := w.Environment()
 	if err != nil {
@@ -67,7 +71,7 @@ func GuardMigrations(ctx context.Context, clients *Clients, w Workspace, out io.
 	if branch == "" {
 		branch = subs[defaultBranchSub]
 	}
-	g := &migrationGuard{w: w, branch: branch}
+	g := &migrationGuard{w: w, branch: branch, released: true}
 	if subs[prNumberSub] != "" {
 		if err := g.branchedFrom(ctx, clients, subs, env); err != nil {
 			return err
@@ -75,14 +79,17 @@ func GuardMigrations(ctx context.Context, clients *Clients, w Workspace, out io.
 	}
 	dir := subs[migrationsSub]
 	for _, d := range []string{dir, path.Join(path.Dir(dir), derive.SeedDir)} {
-		if err := g.guard(ctx, d, d != dir, out); err != nil {
+		if err := g.guard(ctx, d, d != dir || !g.released, out); err != nil {
 			return err
 		}
 	}
 	if len(g.problems) == 0 {
 		against := ""
-		if g.base != "" {
+		switch {
+		case g.base != "" && g.released:
 			against = ", the committed schema migrations unchanged against " + g.branch
+		case g.base != "":
+			against = ", read together with " + g.branch + "; the repository has no release tag, so a committed schema migration may still change until the first release"
 		}
 		fmt.Fprintf(out, "Guard passed: the migrations form one sequence%s.\n", against)
 
@@ -94,24 +101,47 @@ func GuardMigrations(ctx context.Context, clients *Clients, w Workspace, out io.
 
 // migrationGuard is one guard's reading: the branch the migrations are compared with
 // (the pull request's base branch, or the default branch in a tag build), the commit
-// the pull request branched from (empty in a tag build) and the problems found so far.
+// the pull request branched from (empty in a tag build), whether the repository has a
+// release tag (true in a tag build, which runs on one) and the problems found so far.
 type migrationGuard struct {
 	w           Workspace
 	gh          *github.Client
 	owner, repo string
 	branch      string
 	base        string
+	released    bool
 	problems    []string
 }
 
-// The guard's refusal, and its fix, as the log and the pull request read them.
+// The guard's refusal, and its fix, as the log and the pull request read them: one pair
+// once the repository has a release, one before it.
 const (
-	sequenceRule   = "the migrations are not one sequence the migrate command can apply in order (six-digit indexes, one up file each, contiguous; a committed schema migration never changes)"
-	renumberFixFmt = "The fix for an index %[1]s has taken, or a gap: `bedrock migration renumber` on the branch (`go generate ./...` runs it) moves the pull request's own migrations, up and down together, to follow %[1]s's highest index with no gap, and the seed files after a removed one down; a committed schema migration is never renumbered."
+	sequenceRule     = "the migrations are not one sequence the migrate command can apply in order (six-digit indexes, one up file each, contiguous; a committed schema migration never changes)"
+	renumberFixFmt   = "The fix for an index %[1]s has taken, or a gap: `bedrock migration renumber` on the branch (`go generate ./...` runs it) moves the pull request's own migrations, up and down together, to follow %[1]s's highest index with no gap, and the seed files after a removed one down; a committed schema migration is never renumbered."
+	unreleasedRule   = "the migrations are not one sequence the migrate command can apply in order (six-digit indexes, one up file each, contiguous; the repository has no release tag, so a committed migration may still change)"
+	unreleasedFixFmt = "The fix for an index %[1]s has taken, or a gap, before the first release: `bedrock migration renumber` on the branch (`go generate ./...` runs it) packs the whole sequence from 000001 with no gap, committed migrations included, around the indexes %[1]s took since the branch was cut; the freeze on committed migrations starts at the first release tag."
 )
 
-// branchedFrom finds the commit the pull request branched from, through the GitHub API
-// with the repository's token.
+// rule is the guard's refusal, and fix its fix, for the repository's side of the first
+// release.
+func (g *migrationGuard) rule() string {
+	if g.released {
+		return sequenceRule
+	}
+
+	return unreleasedRule
+}
+
+func (g *migrationGuard) fix() string {
+	if g.released {
+		return fmt.Sprintf(renumberFixFmt, g.branch)
+	}
+
+	return fmt.Sprintf(unreleasedFixFmt, g.branch)
+}
+
+// branchedFrom finds the commit the pull request branched from, and whether the
+// repository has a release tag, through the GitHub API with the repository's token.
 func (g *migrationGuard) branchedFrom(ctx context.Context, clients *Clients, subs, env map[string]string) error {
 	owner, repo, err := splitRepo(subs[repoFullNameSub])
 	if err != nil {
@@ -126,16 +156,29 @@ func (g *migrationGuard) branchedFrom(ctx context.Context, clients *Clients, sub
 		return errors.Newf("%sGitHub gave no merge base for %s...%s", rejected, g.branch, subs[commitSub])
 	}
 	g.base = cmp.MergeBaseCommit.SHA
+	tags, err := g.gh.Tags(ctx, owner, repo)
+	if err != nil {
+		return err
+	}
+	g.released = false
+	for _, t := range tags {
+		if migration.IsReleaseTag(t.Name) {
+			g.released = true
+
+			break
+		}
+	}
 
 	return nil
 }
 
 // guard reads one directory: for the schema migrations of a pull request, the committed
 // files still there unchanged; then the sequence over the tree and, for a pull request,
-// the default branch's names. seed says the directory is the seed's: its files may change
-// or go, so only the names the default branch added since the merge base join the
-// sequence, not the ones the pull request removed.
-func (g *migrationGuard) guard(ctx context.Context, dir string, seed bool, out io.Writer) error {
+// the default branch's names. editable says the directory's files may change or go (the
+// seed's, and the schema's before the first release), so only the names the default
+// branch added since the merge base join the sequence, not the ones the pull request
+// removed.
+func (g *migrationGuard) guard(ctx context.Context, dir string, editable bool, out io.Writer) error {
 	local := filepath.Join(string(g.w), filepath.FromSlash(dir))
 	info, err := os.Stat(local)
 	switch {
@@ -155,7 +198,7 @@ func (g *migrationGuard) guard(ctx context.Context, dir string, seed bool, out i
 		entries = append(entries, migration.Entry{Name: name})
 	}
 	if g.base != "" {
-		if !seed {
+		if !editable {
 			if err := g.unchanged(ctx, dir, local); err != nil {
 				return err
 			}
@@ -165,7 +208,7 @@ func (g *migrationGuard) guard(ctx context.Context, dir string, seed bool, out i
 			return err
 		}
 		removed := map[string]bool{}
-		if seed {
+		if editable {
 			atBase, err := g.listing(ctx, dir, g.base)
 			if err != nil {
 				return err
@@ -250,24 +293,25 @@ func (g *migrationGuard) listing(ctx context.Context, dir, ref string) ([]github
 // the build.
 func (g *migrationGuard) refuse(ctx context.Context, clients *Clients, build *Build, env map[string]string, out io.Writer) error {
 	list := "  " + strings.Join(g.problems, "\n  ") + "\n"
-	fmt.Fprintf(out, "Build REJECTED: %s:\n%s", sequenceRule, list)
+	rule := g.rule()
+	fmt.Fprintf(out, "Build REJECTED: %s:\n%s", rule, list)
 	if build.Substitutions[prNumberSub] == "" {
-		return errors.New(rejected + sequenceRule)
+		return errors.New(rejected + rule)
 	}
-	fix := fmt.Sprintf(renumberFixFmt, g.branch)
+	fix := g.fix()
 	fmt.Fprintln(out, strings.ReplaceAll(fix, "`", ""))
 	pr, err := speaker(ctx, clients, build, env, true)
 	if err != nil {
 		return err
 	}
 	if pr != nil {
-		body := fmt.Sprintf("The pull-request build stopped: %s. Build %s:\n\n```\n%s```\n%s", sequenceRule, build.ID, list, fix)
+		body := fmt.Sprintf("The pull-request build stopped: %s. Build %s:\n\n```\n%s```\n%s", rule, build.ID, list, fix)
 		if err := pr.comment(ctx, body, out); err != nil {
 			return err
 		}
 	}
 
-	return errors.New(rejected + sequenceRule)
+	return errors.New(rejected + rule)
 }
 
 // fileNames are the names of the regular files directly in dir, sorted.
