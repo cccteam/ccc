@@ -10,7 +10,8 @@
 // the first release nothing has run the migrations but disposable environments, so the
 // whole schema sequence is packed from 000001 instead, committed files included. The seed
 // directory's files are editable, so a committed seed file may be removed: the committed
-// seed files after it move down to close the gap, and the branch's own follow them.
+// seed files after it move down to close the gap, and the branch's own follow them. It
+// also folds the whole schema sequence into one file at the latest index (consolidate.go).
 package migration
 
 import (
