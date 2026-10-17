@@ -40,7 +40,7 @@ func TestScanMigrations(t *testing.T) {
 					}
 				}
 			}
-			findings, err := scanMigrations(dir, "schema/migrations")
+			findings, _, err := scanMigrations(dir, "schema/migrations")
 			if err != nil {
 				t.Fatalf("scanMigrations() error = %v", err)
 			}

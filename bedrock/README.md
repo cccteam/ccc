@@ -337,6 +337,12 @@ application repository's `infrastructure` directory, or the one application laye
 repository root when the stack is in its infrastructure directory, else from the working
 directory; `--app` overrides.
 
+The render ends by reading the schema migrations, and the seed directory beside them, by
+the sequence rule the migrate command needs (`bedrock migration check`, below). The stack
+is written first; a problem is then listed as `bedrock check` lists it and the render exits
+1. So a gap a generator left (two migrations given one index, a number skipped) is refused
+before the first push and never reaches the default branch.
+
 The service scales from zero instances. Where the placement caps an environment
 (`"maxInstances": {"prd": 10}`, the most instances per region, at least 1), the
 service there runs at most that many: a cap bounds what the environment can cost when
@@ -480,7 +486,9 @@ It also refuses:
   repeats that rule on every build and, in a pull-request build, also refuses a schema
   migration modified, renamed or removed against the default branch, and an index the
   default branch has taken since the branch was cut; `bedrock migration renumber` is the
-  fix it names. Seed files are development data and may be edited or removed, the
+  fix it names. The pull-request workflow's `migrations` job reads the whole directory by
+  the same rule (`bedrock migration check`), and `bedrock render` does before the first
+  push. Seed files are development data and may be edited or removed, the
   directory staying one sequence; a changed seed applies from the start by recreating
   the database: a pull request's on its next build, a seeded environment's by the next
   release, as a restore run the release asks for itself.
@@ -1201,6 +1209,32 @@ it, because the container is 0-bootstrap's own and its apply makes it. The proje
 from `placement.json` (`projects.boot`); `--project` and `--container` override. Neither
 takes an environment. In an application's repository these names are refused, and in the
 infrastructure repository an application's `[env] [VARIABLE]` is.
+
+## bedrock migration check
+
+`migration check` reads the schema migrations directory, and the seed directory beside it
+(`schema/devseed`), by the sequence rule the migrate command needs: six-digit indexes, one
+up file per index, at most one down, contiguous from the lowest present to the highest,
+every `.sql` file a migration. It reads the whole directory, not a pull request's changes.
+Each directory prints its count and its span, a sound one as one sequence; a problem is
+listed as `bedrock check` lists it, and the command exits 1.
+
+```sh
+bedrock migration check                        # from anywhere inside the application repository
+bedrock migration check --app . --dir infrastructure
+```
+
+```
+schema/migrations: 12 migration(s), 000001 to 000012, one sequence
+schema/devseed: no migrations
+```
+
+It is the rule's third reading. `bedrock check` applies it in every build, and `bedrock
+render` before the first push; the pull-request workflow's `migrations` job runs `go run
+github.com/cccteam/ccc/bedrock@<pin> migration check` with the bedrock the placement pins,
+beside its own rule that a pull request only adds to `schema/migrations`. A gap already on
+the default branch, which a diff against the base branch never sees, fails the next pull
+request there, and `bedrock migration renumber` is the fix.
 
 ## bedrock migration renumber
 

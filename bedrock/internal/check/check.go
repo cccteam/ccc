@@ -19,6 +19,7 @@ import (
 	"github.com/go-playground/errors/v5"
 
 	"github.com/cccteam/ccc/bedrock/internal/derive"
+	"github.com/cccteam/ccc/bedrock/internal/migration"
 	"github.com/cccteam/ccc/bedrock/internal/render"
 	"github.com/cccteam/ccc/bedrock/internal/secret"
 )
@@ -219,13 +220,11 @@ func Run(ctx context.Context, m *derive.Model, dir, appDir string) (*Report, err
 		return nil, err
 	}
 	r.Authoritative = authoritative
-	for _, d := range migrationDirs(m) {
-		migrations, err := scanMigrations(filepath.Join(appDir, filepath.FromSlash(d)), d)
-		if err != nil {
-			return nil, err
-		}
-		r.Migrations = append(r.Migrations, migrations...)
+	migrations, _, err := Migrations(appDir, m)
+	if err != nil {
+		return nil, err
 	}
+	r.Migrations = migrations
 	buildSecrets, err := scanBuildSecrets(appDir, dir, m.Placement.Environments)
 	if err != nil {
 		return nil, err
@@ -391,6 +390,31 @@ func scanMaintenance(m *derive.Model, appDir string, now time.Time) []Maintenanc
 	}
 
 	return findings
+}
+
+// MigrationSpan is what one migration directory holds as the sequence rule reads it: the
+// directory as the application names it, and the count and the lowest and highest index.
+type MigrationSpan struct {
+	Dir string
+	migration.Span
+}
+
+// Migrations reads the application's migration directories, the schema migrations and
+// the seed beside them, by the sequence rule (migration.Sequence) and answers every
+// problem and each directory's span. It is bedrock check's reading of the migrations,
+// which bedrock render applies before the first push and bedrock migration check in the
+// CI migrations job, over the whole directory rather than a pull request's changes.
+func Migrations(appDir string, m *derive.Model) (findings []MigrationFinding, spans []MigrationSpan, err error) {
+	for _, d := range migrationDirs(m) {
+		dirFindings, span, err := scanMigrations(filepath.Join(appDir, filepath.FromSlash(d)), d)
+		if err != nil {
+			return nil, nil, err
+		}
+		findings = append(findings, dirFindings...)
+		spans = append(spans, MigrationSpan{Dir: d, Span: span})
+	}
+
+	return findings, spans, nil
 }
 
 // migrationDirs is the schema migrations directory and the seed directory beside it

@@ -40,6 +40,88 @@ func migrationFiles(t *testing.T, dir string, names ...string) {
 	}
 }
 
+func TestMigrationCheck(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		files    []string
+		wantCode int
+		wantOut  []string
+	}{
+		{
+			name:     "no migrations directory: nothing to check",
+			wantCode: 0,
+			wantOut:  []string{"schema/migrations: no migrations\n", "schema/devseed: no migrations\n"},
+		},
+		{
+			name:     "a sound directory prints its span",
+			files:    []string{"schema/migrations/000001_Init.up.sql", "schema/migrations/000001_Init.down.sql", "schema/migrations/000002_Audit.up.sql", "schema/migrations/000003_Sites.up.sql"},
+			wantCode: 0,
+			wantOut:  []string{"schema/migrations: 3 migration(s), 000001 to 000003, one sequence\n"},
+		},
+		{
+			name:     "a gap already on the default branch is refused: the whole directory is read, not a pull request's changes",
+			files:    []string{"schema/migrations/000001_Init.up.sql", "schema/migrations/000002_Audit.up.sql", "schema/migrations/000004_Late.up.sql"},
+			wantCode: 1,
+			wantOut:  []string{"schema/migrations: 3 migration(s), 000001 to 000004\n", "  refused  schema/migrations: gap: no migration 000003 between 000001 and 000004; the sequence is contiguous so nothing is skipped\n", "(1 problem(s) above): the CI migrations job refuses them on every pull request, and bedrock check in every build."},
+		},
+		{
+			name:     "the seed directory beside the schema is read by the same rule",
+			files:    []string{"schema/migrations/000001_Init.up.sql", "schema/devseed/000001_People.up.sql", "schema/devseed/000003_Sites.up.sql"},
+			wantCode: 1,
+			wantOut:  []string{"schema/migrations: 1 migration(s), 000001 to 000001, one sequence\n", "schema/devseed: 2 migration(s), 000001 to 000003\n", "  refused  schema/devseed: gap: no migration 000002 between 000001 and 000003"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			app := copyRepo(t, fixtureApp)
+			dir := filepath.Join(app, "infrastructure")
+			if code, out := run(t, "render", "--app", app, "--out", dir, "--placement", placement); code != 0 {
+				t.Fatalf("render exit = %d, output:\n%s", code, out)
+			}
+			migrationFiles(t, app, tt.files...)
+			code, out := run(t, "migration", "check", "--app", app, "--dir", dir, "--placement", placement)
+			if code != tt.wantCode {
+				t.Errorf("migration check exit = %d, want %d; output:\n%s", code, tt.wantCode, out)
+			}
+			for _, want := range tt.wantOut {
+				if !strings.Contains(out, want) {
+					t.Errorf("migration check output lacks %q:\n%s", want, out)
+				}
+			}
+		})
+	}
+}
+
+// TestRenderRefusesBrokenSequence: render writes the stack and then refuses a migrations
+// directory that breaks the sequence rule, before the first push.
+func TestRenderRefusesBrokenSequence(t *testing.T) {
+	t.Parallel()
+
+	app := copyRepo(t, fixtureApp)
+	migrationFiles(t, app, "schema/migrations/000001_Init.up.sql", "schema/migrations/000003_Sites.up.sql")
+	dir := filepath.Join(app, "infrastructure")
+	code, out := run(t, "render", "--app", app, "--out", dir, "--placement", placement)
+	if code != 1 {
+		t.Errorf("render exit = %d, want 1; output:\n%s", code, out)
+	}
+	for _, want := range []string{
+		"Rendered the harbor stack into " + dir,
+		"  refused  schema/migrations: gap: no migration 000002 between 000001 and 000003; the sequence is contiguous so nothing is skipped\n",
+		"(1 problem(s) above): fix them before the first push; bedrock check refuses them in every build, and the CI migrations job on every pull request.",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("render output lacks %q:\n%s", want, out)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(dir, "outputs.tf")); err != nil {
+		t.Errorf("the stack is written before the migrations are read: %v", err)
+	}
+}
+
 func TestMigrationRenumber(t *testing.T) {
 	t.Parallel()
 

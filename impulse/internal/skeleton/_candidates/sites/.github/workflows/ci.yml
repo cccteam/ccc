@@ -515,10 +515,12 @@ jobs:
           head: ${{ github.event.pull_request.head.sha }}
           extra_args: --results=verified,unknown
 
-  # A committed migration is never modified or deleted: against the pull request's base, schema/migrations gains files only.
+  # The migrations: a committed migration is never modified or deleted, so against the pull request's base
+  # schema/migrations gains files only; and the whole directory keeps the sequence rule the migrate command
+  # needs, read by the bedrock the placement pins, so a gap already on the default branch fails the next pull request.
   migrations:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     permissions:
       contents: read
     steps:
@@ -538,3 +540,19 @@ jobs:
             exit 1
           fi
           echo "schema/migrations: no committed migration is modified or deleted against $BASE_REF"
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: go.mod
+      - name: The whole sequence keeps the rule
+        run: |
+          set -euo pipefail
+          if [ ! -f infrastructure/placement.json ]; then
+            echo "infrastructure/placement.json: not yet; the sequence is read once the application is registered"
+            exit 0
+          fi
+          pin="$(jq -r '.bedrockVersion // empty' infrastructure/placement.json)"
+          if [ -z "$pin" ]; then
+            echo "infrastructure/placement.json pins no bedrock (bedrockVersion); bedrock org register writes the pin"
+            exit 1
+          fi
+          go run github.com/cccteam/ccc/bedrock@"$pin" migration check

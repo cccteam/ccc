@@ -282,7 +282,11 @@ so the gate covers every job:
 - `secrets`: TruffleHog over the whole history reachable from the pull request's head; a
   secret confirmed live, or one whose check could not finish, fails.
 - `migrations`: against the base branch, `schema/migrations` gains files only; a committed
-  migration is never modified or deleted.
+  migration is never modified or deleted. Then the whole directory, and the seed directory
+  beside it, is read by the sequence rule the migrate command needs (`bedrock migration
+  check`, run with the bedrock the placement pins), so a gap already on the default branch
+  fails the next pull request; before the application is registered there is no placement,
+  and the step says so and passes.
 
 The security scan. The pull request checks run only when a pull request changes, and a
 vulnerability is published on its own day, so `security-scan.yml` runs every day at 14:00

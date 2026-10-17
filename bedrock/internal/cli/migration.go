@@ -7,6 +7,7 @@ package cli
 
 import (
 	"fmt"
+	"io"
 	"path"
 	"path/filepath"
 	"strconv"
@@ -15,6 +16,7 @@ import (
 	"github.com/go-playground/errors/v5"
 	"github.com/spf13/cobra"
 
+	"github.com/cccteam/ccc/bedrock/internal/check"
 	"github.com/cccteam/ccc/bedrock/internal/derive"
 	"github.com/cccteam/ccc/bedrock/internal/migration"
 	"github.com/cccteam/ccc/bedrock/internal/where"
@@ -51,9 +53,84 @@ at and lets the release continue. They are for the states the migration runner r
 at, and none reaches production, which is the platform operator's (the README, When the migration
 fails).`,
 	}
-	cmd.AddCommand(newMigrationRenumber(d), newMigrationVersion(d), newMigrationRerun(d), newMigrationForce(d))
+	cmd.AddCommand(newMigrationCheck(d), newMigrationRenumber(d), newMigrationVersion(d), newMigrationRerun(d), newMigrationForce(d))
 
 	return cmd
+}
+
+// newMigrationCheck is migration check: the sequence rule over the whole directory.
+func newMigrationCheck(d deps) *cobra.Command {
+	var appFlag, dirFlag, placement string
+	cmd := &cobra.Command{
+		Use:   "check [--app <dir>] [--dir <dir>]",
+		Short: "Read the schema migrations by the sequence rule, the whole directory",
+		Long: `check reads the schema migrations directory, and the seed directory beside it, by the rule the
+migrate command needs: six-digit indexes, one up file each, at most one down, contiguous from the
+lowest index to the highest, every .sql file a migration. It reads the whole directory, not a pull
+request's changes, so a gap already on the default branch, a generator's among them, fails the next
+pull request: the CI migrations job runs it with the bedrock the placement pins. bedrock check
+applies the same rule in every build, and bedrock render before the first push. A sound directory
+prints its count and its lowest and highest index; a problem is refused.`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			appDir, stackDir, err := d.stack(appFlag, dirFlag)
+			if err != nil {
+				return err
+			}
+			m, err := d.model(appDir, placement, stackDir)
+			if err != nil {
+				return err
+			}
+			findings, spans, err := check.Migrations(appDir, m)
+			if err != nil {
+				return err
+			}
+			for _, s := range spans {
+				switch {
+				case s.Count == 0:
+					fmt.Fprintf(cmd.OutOrStdout(), "%s: no migrations\n", s.Dir)
+				case migrationsSound(s.Dir, findings):
+					fmt.Fprintf(cmd.OutOrStdout(), "%s: %d migration(s), %06d to %06d, one sequence\n", s.Dir, s.Count, s.Low, s.High)
+				default:
+					fmt.Fprintf(cmd.OutOrStdout(), "%s: %d migration(s), %06d to %06d\n", s.Dir, s.Count, s.Low, s.High)
+				}
+			}
+
+			return refuseMigrations(cmd.OutOrStdout(), findings, "the CI migrations job refuses them on every pull request, and bedrock check in every build")
+		},
+	}
+	cmd.Flags().StringVar(&appFlag, "app", "", "application root, the directory holding go.mod (default: the repository root when the stack is in its infrastructure directory, else the working directory)")
+	cmd.Flags().StringVar(&dirFlag, "dir", "", "the stack directory holding the placement (default: the application's stack, found from the working directory)")
+	cmd.Flags().StringVar(&placement, "placement", "", "placement file (default: placement.json in the stack directory)")
+	_ = cmd.MarkFlagDirname("app")
+	_ = cmd.MarkFlagDirname("dir")
+
+	return cmd
+}
+
+// migrationsSound says whether no finding names the directory or a file in it.
+func migrationsSound(dir string, findings []check.MigrationFinding) bool {
+	for _, f := range findings {
+		if f.Path == dir || strings.HasPrefix(f.Path, dir+"/") {
+			return false
+		}
+	}
+
+	return true
+}
+
+// refuseMigrations prints the sequence rule's findings as bedrock check prints them and
+// ends with exit 1, as bedrock check ends; consequence says who else refuses them.
+func refuseMigrations(out io.Writer, findings []check.MigrationFinding, consequence string) error {
+	if len(findings) == 0 {
+		return nil
+	}
+	for _, f := range findings {
+		fmt.Fprintf(out, "  refused  %s: %s\n", f.Path, f.Problem)
+	}
+	fmt.Fprintf(out, "The migrations break the sequence rule the migrate command needs (%d problem(s) above): %s.\n", len(findings), consequence)
+
+	return exitError{code: 1}
 }
 
 // operationFlags are the flags the three operations share: the release, and where the
