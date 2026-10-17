@@ -43,7 +43,7 @@ resource "google_service_account" "plan" {
 
 # The release identity, in tst alone, where the application's release trigger
 # runs (cloud-build.tf of its stack, on pushes to the default branch and the
-# hotfix lines): it mints the release GitHub App's token from the key 2-env
+# patch lines): it mints the release GitHub App's token from the key 2-env
 # grants it the read of (github-apps.tf) and runs release-please with it,
 # which opens the release pull request and, once that merges, makes the tag
 # and the GitHub Release. Nothing of the deploy identity's: it writes logs,
@@ -313,7 +313,7 @@ resource "google_storage_bucket_iam_member" "apply_state_upstream" {
 # cloudBuildBuildReader, and the apply identity it may act as holds storage
 # admin under a condition naming the application's own buckets (above), so a
 # record is written once. The plan identity's read of the records (a
-# pull-request build against a hotfix line previews what each environment's
+# pull-request build against a patch line previews what each environment's
 # release check will say to the line's next release, as that environment's
 # plan identity) is a binding of the same policy.
 

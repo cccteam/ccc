@@ -65,7 +65,7 @@ func GuardMigrations(ctx context.Context, clients *Clients, w Workspace, out io.
 		return nil
 	}
 	// A pull request's migrations are compared with its base branch's: the default
-	// branch, or the hotfix line the fix is for, which is behind the default branch on
+	// branch, or the patch line the fix is for, which is behind the default branch on
 	// purpose. A tag build has no base branch and reads the default branch's.
 	branch := subs[baseBranchSub]
 	if branch == "" {

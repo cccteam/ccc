@@ -110,19 +110,19 @@ func TestGuardMigrations(t *testing.T) {
 			},
 		},
 		{
-			name: "a pull request against a hotfix line is compared with the line, which is behind the default branch",
+			name: "a pull request against a patch line is compared with the line, which is behind the default branch",
 			env:  env,
 			subs: func() map[string]string {
 				subs := prSubs()
-				subs[baseBranchSub] = "hotfix/0.1.x"
+				subs[baseBranchSub] = "patch/0.1.x"
 
 				return subs
 			}(),
-			refs:  map[string]github.Object{"refs/heads/hotfix/0.1.x": {Type: "commit", SHA: "c3"}},
+			refs:  map[string]github.Object{"refs/heads/patch/0.1.x": {Type: "commit", SHA: "c3"}},
 			files: map[string]string{"schema/migrations/000001_Init.up.sql": "create a", "schema/migrations/000002_Mine.up.sql": "create c", "schema/devseed/000001_Seed.up.sql": "insert a"},
 			wantOut: []string{
-				"schema/migrations: 2 migration(s), 000001 to 000002, read together with hotfix/0.1.x.",
-				"Guard passed: the migrations form one sequence, the committed schema migrations unchanged against hotfix/0.1.x.",
+				"schema/migrations: 2 migration(s), 000001 to 000002, read together with patch/0.1.x.",
+				"Guard passed: the migrations form one sequence, the committed schema migrations unchanged against patch/0.1.x.",
 			},
 		},
 		{

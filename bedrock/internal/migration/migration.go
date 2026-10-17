@@ -36,7 +36,7 @@ type Options struct {
 	Root string
 	Dirs []string
 	// Branch is the default branch, whose committed sequence the branch's own files
-	// follow; a working branch cut from a hotfix line follows the line instead, which
+	// follow; a working branch cut from a patch line follows the line instead, which
 	// Renumber finds (followedBranch). The followed branch's tree is read from origin's
 	// copy of it when the repository has one, else from the local branch.
 	Branch string

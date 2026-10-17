@@ -1,11 +1,11 @@
-// Package hotfix starts a hotfix line: the branch hotfix/<major>.<minor>.x at the
+// Package patch starts a patch line: the branch patch/<major>.<minor>.x at the
 // commit of a release on the default branch, on which fixes are released by
 // release-please as the line's next patch versions.
 //
 // release-please numbers a release from the manifest file as it stands on the branch
 // it releases and from the commits since that version's release in the branch's
 // history. At the release's commit the manifest names that release, so the line's first
-// hotfix is the next patch, whatever the default branch has released since. One case
+// patch is the next patch, whatever the default branch has released since. One case
 // needs help: when the default branch has already cut a later patch of the same line
 // (v0.1.22 cut while production still runs v0.1.21), the branch would compute v0.1.22
 // again. Start then creates the branch at a commit on the release's commit whose message
@@ -13,7 +13,7 @@
 // so the line's first release skips to it. The manifest is left as the release wrote it:
 // set to a version whose release the line does not hold, release-please would count the
 // line's whole history as unreleased, and the feature commits in it would bump the minor.
-package hotfix
+package patch
 
 import (
 	"context"
@@ -38,7 +38,7 @@ const (
 // tagRE is a release tag: v<major>.<minor>.<patch>.
 var tagRE = regexp.MustCompile(`^v(\d+)\.(\d+)\.(\d+)$`)
 
-// Request names the release the hotfix line starts from.
+// Request names the release the patch line starts from.
 type Request struct {
 	Owner         string
 	Repo          string
@@ -54,7 +54,7 @@ type Result struct {
 	Branch string
 	// Carries is true, for a branch that existed, when it holds the release's commit:
 	// the line started from that release or a later one. A line started from an
-	// earlier release serves the patches after it and cannot take this hotfix.
+	// earlier release serves the patches after it and cannot take this patch.
 	Carries bool
 	// Existed is true when the line already had its branch; BranchCommit is then the
 	// commit at its tip, and nothing was created.
@@ -64,22 +64,22 @@ type Result struct {
 	// the tag, when there was one: the branch then starts at a commit that sets the
 	// manifest to it, so the next release is Next.
 	Skipped string
-	// Next is the version release-please will give the line's first hotfix.
+	// Next is the version release-please will give the line's first patch.
 	Next string
 	// Latest is the repository's latest release by version, among its v<major>.<minor>.
-	// <patch> tags: when it is not Tag, the hotfix may not be based on the release
+	// <patch> tags: when it is not Tag, the patch release may not be based on the release
 	// production runs, which GitHub cannot tell.
 	Latest string
 }
 
-// Branch is the hotfix branch of the tag's release line: hotfix/<major>.<minor>.x.
+// Branch is the patch branch of the tag's release line: patch/<major>.<minor>.x.
 func Branch(tag string) (string, error) {
 	line, err := parse(tag)
 	if err != nil {
 		return "", err
 	}
 
-	return "hotfix/" + strconv.Itoa(line.major) + "." + strconv.Itoa(line.minor) + ".x", nil
+	return "patch/" + strconv.Itoa(line.major) + "." + strconv.Itoa(line.minor) + ".x", nil
 }
 
 // version is a parsed release tag.
@@ -120,7 +120,7 @@ func Start(ctx context.Context, client *github.Client, req Request) (*Result, er
 	commit, err := client.TagCommit(ctx, req.Owner, req.Repo, req.Tag)
 	if err != nil {
 		if github.NotFound(err) {
-			return nil, errors.Newf("no tag %s in %s/%s: a hotfix line starts from a release that exists", req.Tag, req.Owner, req.Repo)
+			return nil, errors.Newf("no tag %s in %s/%s: a patch line starts from a release that exists", req.Tag, req.Owner, req.Repo)
 		}
 
 		return nil, errors.Wrapf(err, "resolving tag %s", req.Tag)
@@ -172,7 +172,7 @@ func onDefaultBranch(ctx context.Context, client *github.Client, req Request, co
 		return errors.Wrapf(err, "comparing %s with %s", req.Tag, req.DefaultBranch)
 	}
 	if cmp.Status != statusAhead && cmp.Status != statusIdentical {
-		return errors.Newf("tag %s (commit %s) is not on %s (%s): a hotfix line starts from a release on the default branch", req.Tag, short(commit), req.DefaultBranch, cmp.Status)
+		return errors.Newf("tag %s (commit %s) is not on %s (%s): a patch line starts from a release on the default branch", req.Tag, short(commit), req.DefaultBranch, cmp.Status)
 	}
 
 	return nil
@@ -224,7 +224,7 @@ func continuationCommit(ctx context.Context, client *github.Client, req Request,
 	if err != nil {
 		return "", errors.Wrapf(err, "reading commit %s", short(parent))
 	}
-	message := "chore(hotfix): the " + strconv.Itoa(highest.major) + "." + strconv.Itoa(highest.minor) + " line continues after " + highest.String() + ", which " + req.DefaultBranch + " has already cut\n\nRelease-As: " + next.bare()
+	message := "chore(patch): the " + strconv.Itoa(highest.major) + "." + strconv.Itoa(highest.minor) + " line continues after " + highest.String() + ", which " + req.DefaultBranch + " has already cut\n\nRelease-As: " + next.bare()
 	commit, err := client.CreateCommit(ctx, req.Owner, req.Repo, message, parentCommit.Tree.SHA, []string{parent})
 	if err != nil {
 		return "", errors.Wrap(err, "creating the continuation commit")

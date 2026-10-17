@@ -100,7 +100,7 @@ null.
   permission list is set whole by this layer (`records.tf`), one binding per
   role: `roles/storage.objectCreator` for the environment's deploy
   identities, and `roles/storage.objectViewer` for those deploy identities,
-  the environment's application plan identities (the hotfix preview reads
+  the environment's application plan identities (the patch preview reads
   the live record), `roles/storage.objectUser` for each application's
   apply identity and the environment's team group under `<app>/stacks/`
   alone (what the stack writes itself: the object naming its id,
@@ -233,7 +233,7 @@ refreshed from, a bucket's and a queue's among them) and
 states the apply identity reads; no write, so the plan runs without the state
 lock. On its own environment's records bucket: `roles/storage.objectViewer`,
 a binding of the bucket's policy (`records.tf`),
-since the check trigger's build of a pull request against a hotfix line reads the environment's live
+since the check trigger's build of a pull request against a patch line reads the environment's live
 record as this identity to say where the line's next release will be refused.
 On the Spanner instance the application's database lives on, the
 organization's `spannerPlanReader` role (the database, its IAM policy and its
@@ -292,7 +292,7 @@ list the application at all.
 ### Application release identity `imp-tst-gbl-<app>-release`
 
 In tst alone, where the application's release trigger runs (`cloud-build.tf`
-of its stack: every push to the default branch or a hotfix line). The trigger
+of its stack: every push to the default branch or a patch line). The trigger
 runs release-please as this identity, as the organization's release GitHub
 App: the step mints the app's token from the key's pinned version, which this
 layer grants the identity the read of (`github-apps.tf`, on the container in

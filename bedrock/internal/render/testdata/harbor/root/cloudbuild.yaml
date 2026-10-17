@@ -81,14 +81,14 @@ steps:
     timeout: 300s
 
   # A tag build: the tag is a release cut by the release app, its commit is on the
-  # default branch (or tips its hotfix line), and the previous environment runs it live.
+  # default branch (or tips its patch line), and the previous environment runs it live.
   # Then the maintenance window: the release is breaking when the oldest release its
   # outlets still answer (the release file beside the generated router) is newer than the
   # one this environment runs, and a breaking release, or any release where the setting
   # says all, waits for the environment's window; what can never proceed (production
   # without a setting, an opening further away than the build can wait) is refused here.
   # A pull-request build previews both: from each environment's live record read as its
-  # plan identity, where a hotfix line's next release will be refused, and which
+  # plan identity, where a patch line's next release will be refused, and which
   # environments will hold the release for their window.
   - id: ValidateRelease
     name: gcr.io/cloud-builders/gcloud

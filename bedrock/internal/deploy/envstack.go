@@ -657,7 +657,7 @@ func (s *stack) clearFirestore(ctx context.Context, subs map[string]string, w Wo
 // after the first has no pinned version for is not a refusal here: the environment's
 // summary says it, with the pin to make, since the release's own plan refuses it there
 // (testPins). After the plans come the pull request's looks ahead, read as the same
-// identities: the hotfix preview when the pull request is against a hotfix line, and the
+// identities: the patch preview when the pull request is against a patch line, and the
 // window preview. A tag build plans its own environment later instead (deploy stack
 // plan). Triggers that carry no promotion order (a stack not yet applied with a bedrock
 // that writes it, which the first release on it does) plan nothing, with a notice: the
@@ -719,12 +719,12 @@ func PlanEnvironments(ctx context.Context, clients *Clients, w Workspace, req *B
 }
 
 // previews are the pull request's looks ahead, read as each environment's plan identity
-// after its plan: the hotfix preview, when the pull request is against a hotfix line, and
+// after its plan: the patch preview, when the pull request is against a patch line, and
 // the window preview, which reads the release file the generated router's package holds,
 // where the application in the checkout (m, read as bedrock check reads it) says it is.
 func previews(ctx context.Context, clients *Clients, w Workspace, subs map[string]string, m *derive.Model, out io.Writer) error {
-	if hotfixBranchRE.MatchString(subs[baseBranchSub]) {
-		if err := hotfixPreview(ctx, clients.StorageAs, subs, w, out); err != nil {
+	if patchBranchRE.MatchString(subs[baseBranchSub]) {
+		if err := patchPreview(ctx, clients.StorageAs, subs, w, out); err != nil {
 			return err
 		}
 	}

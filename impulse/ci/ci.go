@@ -1,6 +1,6 @@
 // Package ci renders the application's CI workflows from the code, and owns them:
 // .github/workflows/ci.yml, the checks on every pull request;
-// .github/workflows/ci-cache.yml, the run after a push to the default branch or a hotfix
+// .github/workflows/ci-cache.yml, the run after a push to the default branch or a patch release
 // branch that fills the caches the checks restore; and
 // .github/workflows/security-scan.yml, the daily run of the vulnerability check and the
 // image scan over the default branch and the latest release, which reports to an issue of
@@ -47,7 +47,7 @@ import (
 const File = ".github/workflows/ci.yml"
 
 // CacheFile is where the cache-filling workflow lives: the run after a push to the
-// default branch (main or master) or a hotfix branch that builds and tests at the
+// default branch (main or master) or a patch branch that builds and tests at the
 // branch's head, as the pull request jobs do, and saves the caches under the same keys
 // they restore, so a pull request's first run starts from the branch it targets. The
 // tests run rather than compile, since what a test builds as it runs (the generators'
@@ -136,11 +136,11 @@ const StandardRunner = "ubuntu-latest"
 
 // DefaultBranches are the names the cache-filling workflow runs on when the application's
 // //impulse:ci line declares no default-branch: GitHub's two usual names, of which a
-// repository has one, so the other is never pushed to. HotfixBranches is the pattern of
-// the hotfix lines bedrock's hotfix command creates, which the workflow runs on too.
+// repository has one, so the other is never pushed to. PatchBranches is the pattern of
+// the patch lines bedrock's patch command creates, which the workflow runs on too.
 var (
 	DefaultBranches = []string{"main", "master"}
-	HotfixBranches  = "hotfix/**"
+	PatchBranches   = "patch/**"
 )
 
 // Settings are what the application's //impulse:ci line decides, with impulse's defaults
@@ -150,7 +150,7 @@ type Settings struct {
 	// id: DefaultLargeRunner, or the line's large-runner (none is an empty list).
 	LargeRunner []string
 	// DefaultBranches are the branches the cache-filling workflow runs on besides the
-	// hotfix lines: DefaultBranches, or the one branch the line's default-branch names.
+	// patch lines: DefaultBranches, or the one branch the line's default-branch names.
 	DefaultBranches []string
 	// TestCache reports that the test legs reuse Go's cached test results, which carry
 	// over between runs in the saved build cache: off (go test -count=1) unless the line
@@ -333,7 +333,7 @@ type data struct {
 	// LargeJobs are the jobs on the larger runner, for the header's sentence.
 	LargeJobs []string
 	// Branches is the cache-filling workflow's push trigger's branch list, as YAML:
-	// the default branches and the hotfix lines.
+	// the default branches and the patch lines.
 	Branches string
 	// TestCache is the test-cache setting; TestFlags is what it adds to go test's
 	// flags: -count=1 (then a space) while the cached results are off, nothing while on.
@@ -428,9 +428,9 @@ func render(a *app.App, file string) ([]byte, error) {
 }
 
 // branchList writes the push trigger's branch list: the default branches bare, the
-// hotfix pattern quoted, as GitHub's workflow syntax wants them.
+// patch pattern quoted, as GitHub's workflow syntax wants them.
 func branchList(defaults []string) string {
-	return "[" + strings.Join(defaults, ", ") + ", '" + HotfixBranches + "']"
+	return "[" + strings.Join(defaults, ", ") + ", '" + PatchBranches + "']"
 }
 
 // Outcome reports what Write did.

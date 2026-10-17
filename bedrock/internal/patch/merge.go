@@ -1,4 +1,4 @@
-package hotfix
+package patch
 
 import (
 	"context"
@@ -11,12 +11,12 @@ import (
 // mergeBranchPrefix names the merge-back branches: merge-back/<release>.
 const mergeBranchPrefix = "merge-back/"
 
-// MergeRequest names the released hotfix to bring to the default branch.
+// MergeRequest names the released patch to bring to the default branch.
 type MergeRequest struct {
 	Owner         string
 	Repo          string
 	DefaultBranch string
-	// Tag is the patch release on a hotfix line, v<major>.<minor>.<patch>.
+	// Tag is the patch release on a patch line, v<major>.<minor>.<patch>.
 	Tag string
 }
 
@@ -48,13 +48,13 @@ func MergeBranch(tag string) string {
 	return mergeBranchPrefix + tag
 }
 
-// Merge brings a released hotfix to the default branch: it creates the branch
+// Merge brings a released patch to the default branch: it creates the branch
 // merge-back/<tag> at the release's commit (the tag's, so the merge-back carries exactly
 // what shipped, not unreleased commits on the line) and opens a pull request from it
 // into the default branch, titled fix: <tag> with the release's notes as its body. The
-// hotfix line is never the pull request's head: conflicts are resolved by commits on the
+// patch line is never the pull request's head: conflicts are resolved by commits on the
 // merge-back branch, which the squash merge deletes. Merge refuses a tag that is not a
-// release tag, a release without a hotfix line, a release that is not on its line, one
+// release tag, a release without a patch line, a release that is not on its line, one
 // the default branch already carries, and one without a GitHub Release; an existing
 // merge-back branch or pull request for the release is reported, not made again.
 func Merge(ctx context.Context, client *github.Client, req MergeRequest) (*MergeResult, error) {
@@ -65,7 +65,7 @@ func Merge(ctx context.Context, client *github.Client, req MergeRequest) (*Merge
 	lineRef, err := client.Ref(ctx, req.Owner, req.Repo, "heads/"+line)
 	if err != nil {
 		if github.NotFound(err) {
-			return nil, errors.Newf("no hotfix line %s in %s/%s: %s is not a release on a hotfix line (hotfix start makes the line, and release-please releases its fixes)", line, req.Owner, req.Repo, req.Tag)
+			return nil, errors.Newf("no patch line %s in %s/%s: %s is not a release on a patch line (patch start makes the line, and release-please releases its fixes)", line, req.Owner, req.Repo, req.Tag)
 		}
 
 		return nil, errors.Wrapf(err, "looking for branch %s", line)
@@ -120,7 +120,7 @@ func Merge(ctx context.Context, client *github.Client, req MergeRequest) (*Merge
 	return result, nil
 }
 
-// onBranch refuses a release whose commit is not on its hotfix line, and one the
+// onBranch refuses a release whose commit is not on its patch line, and one the
 // default branch already carries.
 func onBranch(ctx context.Context, client *github.Client, req MergeRequest, commit, line, lineTip string) error {
 	cmp, err := client.Compare(ctx, req.Owner, req.Repo, commit, lineTip)
@@ -128,7 +128,7 @@ func onBranch(ctx context.Context, client *github.Client, req MergeRequest, comm
 		return errors.Wrapf(err, "comparing %s with %s", req.Tag, line)
 	}
 	if cmp.Status != statusAhead && cmp.Status != statusIdentical {
-		return errors.Newf("tag %s (commit %s) is not on %s (%s): a merge-back brings a release made on a hotfix line", req.Tag, short(commit), line, cmp.Status)
+		return errors.Newf("tag %s (commit %s) is not on %s (%s): a merge-back brings a release made on a patch line", req.Tag, short(commit), line, cmp.Status)
 	}
 	cmp, err = client.Compare(ctx, req.Owner, req.Repo, commit, req.DefaultBranch)
 	if err != nil {

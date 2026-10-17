@@ -485,9 +485,9 @@ func TestTestCache(t *testing.T) {
 	}
 }
 
-// TestDefaultBranch: the cache-filling workflow runs on main, master and the hotfix lines
+// TestDefaultBranch: the cache-filling workflow runs on main, master and the patch lines
 // unless the //impulse:ci line declares the default branch, and then on that branch and
-// the hotfix lines.
+// the patch lines.
 func TestDefaultBranch(t *testing.T) {
 	t.Parallel()
 
@@ -496,9 +496,9 @@ func TestDefaultBranch(t *testing.T) {
 		ci   *app.CIDirective
 		want string
 	}{
-		{name: "no line", want: "    branches: [main, master, 'hotfix/**']\n"},
-		{name: "a line without the setting", ci: &app.CIDirective{TestCache: boolPtr(true)}, want: "    branches: [main, master, 'hotfix/**']\n"},
-		{name: "a declared default branch", ci: &app.CIDirective{DefaultBranch: "trunk"}, want: "    branches: [trunk, 'hotfix/**']\n"},
+		{name: "no line", want: "    branches: [main, master, 'patch/**']\n"},
+		{name: "a line without the setting", ci: &app.CIDirective{TestCache: boolPtr(true)}, want: "    branches: [main, master, 'patch/**']\n"},
+		{name: "a declared default branch", ci: &app.CIDirective{DefaultBranch: "trunk"}, want: "    branches: [trunk, 'patch/**']\n"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -516,7 +516,7 @@ func TestDefaultBranch(t *testing.T) {
 			if !strings.Contains(string(cache), "  push:\n"+tt.want) {
 				t.Errorf("the cache-filling workflow's trigger lacks %q:\n%s", tt.want, cache)
 			}
-			if want := "[" + strings.Join(settings.DefaultBranches, ", ") + ", 'hotfix/**']"; !strings.Contains(tt.want, want) {
+			if want := "[" + strings.Join(settings.DefaultBranches, ", ") + ", 'patch/**']"; !strings.Contains(tt.want, want) {
 				t.Errorf("SettingsOf().DefaultBranches = %v, not what the trigger names", settings.DefaultBranches)
 			}
 			if pr, err := ci.Render(a); err != nil || strings.Contains(string(pr), "branches:") {
@@ -596,7 +596,7 @@ func TestCacheSteps(t *testing.T) {
 			t.Errorf("the cache-filling %s saves under another job's key:\n%s", id, j)
 		}
 	}
-	for _, text := range []string{"    branches: [main, master, 'hotfix/**']\n", "  group: ci-cache-${{ github.ref }}\n", "permissions: {}\n"} {
+	for _, text := range []string{"    branches: [main, master, 'patch/**']\n", "  group: ci-cache-${{ github.ref }}\n", "permissions: {}\n"} {
 		if !strings.Contains(string(cache), text) {
 			t.Errorf("the cache-filling workflow lacks %q", text)
 		}

@@ -262,14 +262,14 @@ func TestMigrationRenumber(t *testing.T) {
 	}
 }
 
-// TestMigrationRenumberFollowsHotfixLine: a fix branch cut from a hotfix line follows the
+// TestMigrationRenumberFollowsPatchLine: a fix branch cut from a patch line follows the
 // line's committed sequence, not the default branch's, which has moved on.
-func TestMigrationRenumberFollowsHotfixLine(t *testing.T) {
+func TestMigrationRenumberFollowsPatchLine(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
 		name string
-		// line are the migrations committed on hotfix/0.1.x after it is cut; master the
+		// line are the migrations committed on patch/0.1.x after it is cut; master the
 		// ones master adds after the line is cut; own the fix branch's.
 		line      []string
 		master    []string
@@ -288,7 +288,7 @@ func TestMigrationRenumberFollowsHotfixLine(t *testing.T) {
 			line:      []string{"schema/migrations/000002_Line.up.sql"},
 			master:    []string{"schema/migrations/000002_Master.up.sql"},
 			own:       []string{"schema/migrations/000002_Fix.up.sql"},
-			wantOut:   []string{"schema/migrations: 000002_Fix -> 000003_Fix (up)", "Renumbered 1 migration(s) to follow refs/heads/hotfix/0.1.x at "},
+			wantOut:   []string{"schema/migrations: 000002_Fix -> 000003_Fix (up)", "Renumbered 1 migration(s) to follow refs/heads/patch/0.1.x at "},
 			wantFiles: []string{"schema/migrations/000001_Init.up.sql", "schema/migrations/000002_Line.up.sql", "schema/migrations/000003_Fix.up.sql"},
 		},
 	}
@@ -308,7 +308,7 @@ func TestMigrationRenumberFollowsHotfixLine(t *testing.T) {
 					t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
 				}
 			}
-			run("checkout", "-q", "-b", "hotfix/0.1.x", "master")
+			run("checkout", "-q", "-b", "patch/0.1.x", "master")
 			if len(tt.line) > 0 {
 				migrationFiles(t, repo, tt.line...)
 				run("add", "-A")
@@ -318,7 +318,7 @@ func TestMigrationRenumberFollowsHotfixLine(t *testing.T) {
 			migrationFiles(t, repo, tt.master...)
 			run("add", "-A")
 			run("commit", "-q", "-m", "master moves on")
-			run("checkout", "-q", "-b", "fix", "hotfix/0.1.x")
+			run("checkout", "-q", "-b", "fix", "patch/0.1.x")
 			migrationFiles(t, repo, tt.own...)
 			d := deps{domains: noCloudDomains, secrets: noSecretManager, projects: noProjects, cwd: repo, interactive: never}
 			out, err := execute(d, "", "migration", "renumber")

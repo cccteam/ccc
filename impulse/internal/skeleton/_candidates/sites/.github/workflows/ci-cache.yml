@@ -1,6 +1,6 @@
 # The caches the pull request checks restore, filled after a push to the default branch
 # (main or master, or the one the application's //impulse:ci line declares with
-# default-branch=<name>; impulse check compares that with origin's) or a hotfix branch.
+# default-branch=<name>; impulse check compares that with origin's) or a patch branch.
 # Rendered by impulse and owned by it as
 # .github/workflows/ci.yml is: impulse render rewrites both from the code, impulse check
 # compares the committed files with what it renders, and the pins move with impulse
@@ -15,7 +15,7 @@ name: CI cache
 
 on:
   push:
-    branches: [main, master, 'hotfix/**']
+    branches: [main, master, 'patch/**']
 
 concurrency:
   group: ci-cache-${{ github.ref }}

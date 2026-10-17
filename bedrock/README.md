@@ -2,7 +2,7 @@
 
 `bedrock` is the command-line tool for the infrastructure of Impulse applications: the
 organization foundation an application deploys into, the application's own stack, the
-pipeline that deploys it, and the operations around a deployment (secrets, hotfix lines,
+pipeline that deploys it, and the operations around a deployment (secrets, patch lines,
 repository rules, migration renumbering).
 
 The tool keeps no record of its own. It derives what an application needs from the
@@ -146,8 +146,8 @@ again does not, because its pull request is already labeled as tagged.
   behind the maintenance page inside the environment's maintenance window, the time the
   client allows for a release that interrupts service (`placement.json`, `maintenance`).
 - **Release**: a tag `v<major>.<minor>.<patch>` cut by release-please as the release app;
-  the pipeline accepts a release from that author only. A **hotfix line** is the branch
-  `hotfix/<major>.<minor>.x` on which release-please releases the line's next patch
+  the pipeline accepts a release from that author only. A **patch line** is the branch
+  `patch/<major>.<minor>.x` on which release-please releases the line's next patch
   versions while the default branch moves on. A feature release advances the minor,
   below 1.0 too (release-please's `bump-patch-for-minor-pre-major` off; `check` refuses
   it on), so a feature production does not run yet opens a new line; a fix is a patch on
@@ -217,6 +217,11 @@ and what its absence means:
   environment but production is `anytime`; production has none, and a breaking release
   to it is refused until the team writes its window, which is done before the first
   breaking release.
+- `maintenanceWindow`: the application's routine maintenance window as the team declares
+  it, a value for the team (`"Tuesdays 02:00-04:00 UTC"`): when its patch releases are
+  made, by whom and under what approval is the team's configuration, never the
+  framework's. bedrock carries the value and `bedrock patch status` prints it; nothing in
+  the framework acts on it. Not written.
 - `buildMachine`: the Cloud Build machine the pipeline's builds run on, one of
   `E2_MEDIUM`, `E2_STANDARD_2`, `E2_HIGHCPU_8` and `E2_HIGHCPU_32`. Not written. Absent,
   Cloud Build's default machine.
@@ -515,9 +520,9 @@ It also refuses:
   choice; only an absent entry is refused.
 - a release-please configuration (`release-please-config.json`) with
   `bump-patch-for-minor-pre-major` true, at the top level or for a package: below 1.0 a
-  feature release would bump the patch and stay on production's hotfix line
-  (`v<major>.<minor>.x`), so a hotfix of production's release could be neither numbered
-  (the line's next patch is taken) nor passed by the hotfix check (the feature's
+  feature release would bump the patch and stay on production's patch line
+  (`v<major>.<minor>.x`), so a patch release of production's release could be neither numbered
+  (the line's next patch is taken) nor passed by the patch check (the feature's
   migrations are what the environment would be restored to). Off, a feature opens a new
   line, a fix bumps the patch and a breaking change the minor.
 - a Cloud Armor policy removed in one step: an environment's policy is on while
@@ -586,7 +591,7 @@ visible.
 
 The application's check runs in Cloud Build, from the stack's check trigger
 (`infrastructure/cloud-build.tf`, rendered with the stack), on every push to a pull
-request against the default branch or a hotfix line, as the apply identity. The trigger
+request against the default branch or a patch line, as the apply identity. The trigger
 holds its steps in its own text: the first reads the bedrock pin from
 `infrastructure/placement.json` in the checkout when it runs (a release downloaded from
 its GitHub Release and verified against the placement's checksum; a commit pin checked
@@ -602,7 +607,7 @@ Actions job can imitate. The steps are the stack's and change with its apply, on
 behind the repository: a bedrock release works under the previous release's steps, and a
 command says in its log when it runs under older ones. `release-please.yml` is rendered
 beside the pipeline files: release-please as the release app the placement names, on the
-default branch and the hotfix lines.
+default branch and the patch lines.
 
 ## bedrock upgrade
 
@@ -731,7 +736,7 @@ thing one step hands the next. In order:
   trigger's beside the identities and buckets it is paired with.
 - `deploy validate-release`: for a tag build, the tag belongs to a GitHub Release cut by
   an accepted release actor, the tagged commit is on the default branch or at the tip of
-  a hotfix line, and the record gate holds: the release is live in the previous
+  a patch line, and the record gate holds: the release is live in the previous
   environment. A refusal starts with `Build REJECTED` and says why. A tag build's log first
   names the bedrock running it, and says when that is a commit pin; a release may deploy
   with a commit pin. A release whose notes carry release-please's breaking-changes section
@@ -743,15 +748,15 @@ thing one step hands the next. In order:
   decides whether the release is breaking and whether the run waits for the window
   (`WINDOW_NEEDED`, `WINDOW_BREAKING`, `WINDOW_REASON`), and refuses here what can never
   proceed (Maintenance windows, below). A pull-request build has no release to validate;
-  the hotfix and window previews are the check trigger's (`deploy plan-environments`).
-  A hotfix passes one more check
+  the patch release and window previews are the check trigger's (`deploy plan-environments`).
+  A patch release passes one more check
   in every environment: the environment's newest live deployment record lists the
-  migration and seed files its database holds, each with its hash, and the hotfix is
-  refused when the database holds a file the hotfix does not carry, or one whose content
-  differs, naming the file; the environment is restored to the hotfix first (staging's
+  migration and seed files its database holds, each with its hash, and the patch release is
+  refused when the database holds a file the patch release does not carry, or one whose content
+  differs, naming the file; the environment is restored to the patch release first (staging's
   own build restores it, as the staging rehearsal says, when its database is ahead of the
   release; tst is restored with `bedrock restore tst`; a restore
-  run replaces the database and skips this check); at production's door the hotfix must
+  run replaces the database and skips this check); at production's door the patch release must
   also be on the line production runs, read from the same record.
 - `deploy guard-migrations`: the schema migrations and the seed are each one sequence
   (the rule `bedrock check` applies), and in a pull-request build every schema migration
@@ -768,7 +773,7 @@ thing one step hands the next. In order:
   its plan identity (a reader, without the state lock, so the job can change no
   environment; the apply identity may act as each), and runs the tests a tag build runs
   before its apply, then the pull request's looks ahead as the same identities: the
-  hotfix preview, when the pull request is against a hotfix line, and the window
+  patch preview, when the pull request is against a patch line, and the window
   preview. One
   comment on the pull request carries every summary; a failing plan or test stops the
   build, which is the check a merge waits for, and the comment says so. The plan the reviewer approves is each
@@ -1076,7 +1081,7 @@ changes), weekly slots (a day, from a time of day to another; a slot whose `to` 
 after its `from` crosses midnight and ends the next day) and dated slots (a one-off the
 client agreed to, on one date, `from` before `to`; a slot past midnight is the next
 date's own). `releases` says which releases wait for the window: `breaking` (the
-default when absent) or `all`, under which every release from master waits, hotfixes
+default when absent) or `all`, under which every release from master waits, patch releases
 included, and an ordinary release then deploys the rolling way: the window says when a
 release may go in, maintenance mode says what a breaking release does when it goes.
 Every environment but production is `anytime` unless its setting is written. Production
@@ -1263,8 +1268,8 @@ application's own generators through the owned `cmd/generate/bedrock.go`, whose 
 is `go run <module>@<pinned version> migration renumber`: the Go toolchain builds the
 pinned bedrock from the module proxy the first time and caches it, so neither a developer
 nor the CI job installs bedrock for it. A tracked file moves with `git mv`;
-an untracked one is renamed on disk. A branch cut from a hotfix line
-(`hotfix/<major>.<minor>.x`, nearer to the branch in the history than the default branch
+an untracked one is renamed on disk. A branch cut from a patch line
+(`patch/<major>.<minor>.x`, nearer to the branch in the history than the default branch
 is) follows the line instead, since a line is behind the default branch on purpose; the
 pipeline's guard compares such a pull request with the line too (Cloud Build's
 `_BASE_BRANCH`), and the pull-request trigger covers the lines beside the default branch.
@@ -1339,14 +1344,45 @@ it checks the environment (one of the placement's, not production, wired with a 
 the release (a tag that exists) and, for a force, the version, then dispatches and prints
 where to watch.
 
-## bedrock hotfix
+## bedrock patch
 
-`hotfix start <release>` starts the hotfix line of a release: the branch
-`hotfix/<major>.<minor>.x` at the release's commit, on which release-please releases
+`patch` is the new name of `bedrock hotfix`, which still runs it: a patch release of the
+version production runs, whatever the reason. A fix a person makes because something is
+broken is a patch release; routine maintenance (library and version updates) a team makes
+in its window is a patch release; a security update is either, by severity. The framework
+names the path and not the reason: the window, the actor, who approves and when are the
+team's configuration (the placement carries `maintenanceWindow` for it), never bedrock's.
+The path, end to end: read the window; `patch status` (wait unless the same release is
+live everywhere, nothing is pending on the line and nothing is owed); `patch start`; a
+pull request against the line, merged on CI under the organization's rulesets; the line's
+release pull request, the tag, the version trigger through tst, stg and prd; `patch merge
+<tag>`.
+
+`patch status` is the known read of the line's state, so nobody interprets the records
+bucket or the repository by hand: the maintenance window the placement declares; the
+release each environment runs, from its newest live deployment record (the stack's state
+names the records bucket); the patch line of the release production runs, whether its
+branch exists, and whether a patch release is pending on it (the branch has commits past
+its newest release: a release pull request in flight, or changes no release carries yet);
+every patch release the default branch does not carry, with its merge-back pull request,
+merged or owed; and the last line, whether a patch release may start.
+
+```
+Maintenance window: Tuesdays 02:00-04:00 UTC (placement.json maintenanceWindow; the team's to act on, bedrock acts on it nowhere).
+tst: v0.1.4 live since 2026-10-15T20:00:00Z (build b1).
+stg: v0.1.4 live since 2026-10-15T20:30:00Z (build b2).
+prd: v0.1.4 live since 2026-10-15T21:00:00Z (build b3).
+Line: patch/0.1.x at 9f3c2e1, which is its newest release v0.1.4; nothing pending.
+Merge-backs: none owed; master carries every release.
+Ready for a patch release: yes.
+```
+
+`patch start <release>` starts the patch line of a release: the branch
+`patch/<major>.<minor>.x` at the release's commit, on which release-please releases
 fixes as the line's next patch versions while the default branch moves on. The pipeline's
 release check accepts a tag at the tip of such a line whose base on the default branch
 carries a release tag of the same line. The line's next patch must be free for the
-hotfix, so a feature release on the default branch advances the minor, below 1.0 as
+patch, so a feature release on the default branch advances the minor, below 1.0 as
 above it: `check` refuses release-please's `bump-patch-for-minor-pre-major`. When the
 default branch has already cut a later patch of the line (production runs v0.1.21 while
 v0.1.22 is out), the branch starts at a commit on the release's commit whose message names
@@ -1356,25 +1392,25 @@ release's, since release-please counts the line's commits from the manifest's re
 the branch, and set to a version the line does not hold it would count the line's whole
 history and let its feature commits bump the minor.
 
-A hotfix is based on the release production runs, and it deploys like any release:
+A patch release is based on the release production runs, and it deploys like any release:
 through tst and stg, then prd, each after the one before holds it live. What matters in
 an environment that ran a later release is its database. When the later release applied
-no migration and no seed file, the hotfix deploys into that environment as it is: its
-migrate command finds a database at a version it knows, and the environment runs the hotfix
+no migration and no seed file, the patch release deploys into that environment as it is: its
+migrate command finds a database at a version it knows, and the environment runs the patch release
 until the held-up release resumes. When the later release did move the database, the
-environment holds a file the hotfix does not carry, and the release check refuses the
-hotfix there, naming the file; the environment is restored to the hotfix first (staging's own build does
+environment holds a file the patch release does not carry, and the release check refuses the
+patch there, naming the file; the environment is restored to the patch release first (staging's own build does
 it, as the staging rehearsal says; tst is restored with `bedrock restore tst`), from an
 empty database or from production's backup, since a restore run replaces the database
-and skips the check. At production's door the hotfix must be on the
-line production runs, and that is checked first; a hotfix from an older line that
+and skips the check. At production's door the patch release must be on the
+line production runs, and that is checked first; a patch release from an older line that
 happens to carry every file would roll production's application back. Production is
-never restored by a run, so a hotfix behind production's release on its own line is
-told to start the line from the release production runs. `hotfix start` prints the rule, and warns
+never restored by a run, so a patch release behind production's release on its own line is
+told to start the line from the release production runs. `patch start` prints the rule, and warns
 when the release is not the repository's latest, which GitHub can tell; what production
 runs, only its deployment record can.
 
-`hotfix merge <release>` brings a released hotfix to the default branch. It creates the
+`patch merge <release>` brings a released patch to the default branch. It creates the
 branch `merge-back/<release>` at the release's commit (the tag's, so the merge-back
 carries exactly what shipped and not unreleased commits on the line) and opens a pull
 request from it into the default branch, titled `fix: <release>` (the conventional-commit
@@ -1382,25 +1418,37 @@ line the squash merge carries and release-please reads; the author may edit it) 
 release's notes as its body. Conflicts, such as release-please's manifest and changelog
 when the default branch has released since the line's base, or code the default branch
 has reworked, are resolved by commits on that branch, which is unprotected; the squash
-merge deletes it, and the hotfix line is never the pull request's head, so it is never
+merge deletes it, and the patch line is never the pull request's head, so it is never
 deleted and never receives a conflict commit. Never a merge commit, and never a pull
 request from the line's tip itself. The command refuses a release that is not on a
-hotfix line or that the default branch already carries, and reports an existing
+patch line or that the default branch already carries, and reports an existing
 merge-back branch or pull request for the release instead of making a second.
 
-A fix on a hotfix line gets its pull-request build like any change: the pull-request
+The merge-back guard holds the rule that no regular release is cut while a patch release
+is not merged back. The stack's release trigger runs it on every push to the default
+branch, before release-please opens or updates the branch's release pull request and
+before the merge of that pull request would make the tag: every release tag the default
+branch cannot reach (a line's tags never are, since the merge-back is a squash) must have
+a merged pull request from its merge-back branch, the line's newest release covering the
+older ones, since the line is one branch. Otherwise the trigger stops, naming the tag and
+the command (`bedrock patch merge <tag>`, then the merge of its pull request). A further
+patch release on the line is allowed meanwhile: a push to a line never runs the guard.
+The number rule stays: the line's patch numbers never disturb the minor the default branch
+is staging.
+
+A fix on a patch line gets its pull-request build like any change: the pull-request
 trigger covers the lines beside the default branch, and the build's migration guard
 compares the pull request with the line (Cloud Build's `_BASE_BRANCH`), which is behind
 the default branch on purpose. The build also looks ahead for the line's next release:
 `ValidateRelease` reads each environment's live deployment record as that environment's
 plan identity (the identity the build already plans the environment as; `2-env` grants it
 the read of its own environment's records) and says, environment by environment, whether
-the hotfix would be taken or refused there, naming the file the database holds that the
+the patch release would be taken or refused there, naming the file the database holds that the
 pull request does not carry, or the line production runs, so the developer learns before
 the merge that a restore comes first, and where. In an environment the placement's seed
 list names (the placement in the pull request's tree), the preview reads the seed rule
 first: when the environment's record holds a seed file that is not in the tree as
-applied, the release's build will restore the environment itself and take the hotfix,
+applied, the release's build will restore the environment itself and take the patch release,
 and the preview says so, naming the file; the schema migrations are compared only when
 the seed matches. The preview warns and never refuses.
 
@@ -1408,7 +1456,7 @@ The restore is a run of the environment's version trigger for the release, carry
 instruction `_RESTORE` (`empty`, or `production-backup` for the environment on
 production's instance) and `_REQUESTER`. Everything that changes the environment happens
 inside that run, in the pipeline's order: the release is validated (the record gate
-holds; the hotfix check is skipped, since the database is about to be replaced), the
+holds; the patch check is skipped, since the database is about to be replaced), the
 image is built, the stack's plan replaces the database (and, in the first environment,
 the file stores' buckets) and the apply deletes the Firestore database's documents, the jobs are
 created, the migrations apply
@@ -1462,7 +1510,7 @@ the workflow's `action` input and the `bedrock migration` command that dispatche
    force applies no statement itself: a file whose applied part changed is forced to the
    version before it and applied again whole, so its statements must be safe to repeat.
 3. **The database is at a version the build does not carry.** The release check refuses
-   the run, naming a file the database holds that the release does not: a hotfix behind
+   the run, naming a file the database holds that the release does not: a patch release behind
    an environment that ran a later release. No force helps. The environment is restored
    to the release: action `restore`, `bedrock restore <env> <release>`, which replaces
    the database and runs the migrations the release carries (bedrock restore, below).
@@ -1928,7 +1976,7 @@ every connection, the boot project's and each environment's, is rendered from th
 authorization. The field is required: a placement without it is refused.
 
 The placement's `approvingReviews` is the number of approving reviews a pull request needs
-before it merges, on every application repository's default branch and hotfix lines and on
+before it merges, on every application repository's default branch and patch lines and on
 the infrastructure repository's default branch. Left out, it is one. 0 is allowed: a writer
 merges alone once the checks pass. A negative number is refused when the placement is read.
 While the count is above 0, an approval given before the last push is dismissed and one
@@ -2175,7 +2223,7 @@ never by a bedrock command: the repository itself (private; squash the only merg
 the squashed commit titled from the pull request; the head branch deleted on merge; never
 destroyed by the layer), its three rulesets (a `v*` or `*/v*` tag created, moved or
 deleted by the release app alone, with no bypass for the repository's admins, which is
-what makes the pipeline's tag check sound; the default branch and the hotfix lines
+what makes the pipeline's tag check sound; the default branch and the patch lines
 changed by pull request alone, with the branch up to date with its base, the application
 stack's check trigger in the first environment (reported by Google's Cloud Build GitHub
 App under `<trigger name> (<project id>)`, so no Actions job can imitate it) and the six
@@ -2213,7 +2261,7 @@ GitHub's default), through the app's Self-hosted runners organization permission
 bills it per minute by its size on the Team and Enterprise plans. A repository that existed before the layer
 declared it is imported into the state first; `1-org/README.md` lists the commands.
 bedrock's commands use the GitHub API only to act: `restore` dispatches a workflow,
-`hotfix` creates branches and pull requests, the pipeline talks back on a pull request. OpenTofu reads `*.auto.tfvars` after `terraform.tfvars`, which keeps what a person
+`patch` creates branches and pull requests, the pipeline talks back on a pull request. OpenTofu reads `*.auto.tfvars` after `terraform.tfvars`, which keeps what a person
 decides. Once `placement.json` records the environment projects' ids and numbers
 (`projects` and `projectNumbers`, from 1-org's `project_ids` and `project_numbers`
 outputs), `org render` prints the `projects` block an application's placement records
@@ -2321,7 +2369,7 @@ a model, `internal/render` writes the stack from templates (goldens under
 `internal/render/testdata/<application>`), `internal/check` compares, `internal/release` is the tool's own distribution (its
 release assets, their checksums, the verified fetch), `internal/deploy`
 holds the pipeline's steps over the Cloud Build, Cloud Run, Artifact Registry and Cloud
-Storage APIs, `internal/org` renders the foundation, `internal/secret`, `internal/hotfix`,
+Storage APIs, `internal/org` renders the foundation, `internal/secret`, `internal/patch`,
 and `internal/migration` hold the operations, and `internal/cli` is the
 command surface. Every rendered file carries a comment naming what it comes from; a
 change to a template is a change to the goldens, and the render test reads every golden

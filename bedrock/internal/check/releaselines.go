@@ -1,8 +1,8 @@
-// releaselines.go checks release-please's configuration for the hotfix model: a hotfix
+// releaselines.go checks release-please's configuration for the patch model: a patch release
 // line is v<major>.<minor>.x, the line of the release production runs, so a feature
 // release must advance the minor, below 1.0 as above it. release-please's
 // bump-patch-for-minor-pre-major makes a feature bump the patch below 1.0, which keeps
-// every feature on production's line and leaves a hotfix of production's release no
+// every feature on production's line and leaves a patch release of production's release no
 // number of its own.
 
 package check
@@ -19,7 +19,7 @@ import (
 )
 
 // ReleaseLineFinding is a release-please setting under which a feature release does not
-// open a new hotfix line.
+// open a new patch line.
 type ReleaseLineFinding struct {
 	// Path is the configuration file, relative to the application root.
 	Path string
@@ -35,7 +35,7 @@ const releasePleaseConfig = render.ReleasePleaseConfig
 const patchForFeature = "bump-patch-for-minor-pre-major"
 
 // patchForFeatureProblem is the finding's text.
-const patchForFeatureProblem = patchForFeature + " is true: below 1.0 a feature release bumps the patch and stays on the line production runs (v<major>.<minor>.x), so a hotfix of production's release cannot be numbered (the line's next patch is taken) nor pass the hotfix check (the feature's migrations are what the environment would be restored to); set it to false, so a feature opens a new line, a fix bumps the patch and a breaking change the minor"
+const patchForFeatureProblem = patchForFeature + " is true: below 1.0 a feature release bumps the patch and stays on the line production runs (v<major>.<minor>.x), so a patch release of production's release cannot be numbered (the line's next patch is taken) nor pass the patch check (the feature's migrations are what the environment would be restored to); set it to false, so a feature opens a new line, a fix bumps the patch and a breaking change the minor"
 
 // scanReleaseLines reads release-please's configuration at the application root and
 // reports bump-patch-for-minor-pre-major set to true, at the top level or for a package

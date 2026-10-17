@@ -105,7 +105,7 @@ type Report struct {
 	// are still committed (render.Retired); bedrock render removes them.
 	Retired []string
 	// ReleaseLines are the release-please settings under which a feature release would
-	// not open a new hotfix line (a feature on the patch below 1.0).
+	// not open a new patch line (a feature on the patch below 1.0).
 	ReleaseLines []ReleaseLineFinding
 	// ReleaseSections are the release-please changelog-sections lists that lack a type
 	// the CI's title check accepts, under which a merge of only such titles would never
