@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.3.3](https://github.com/cccteam/ccc/compare/bedrock/v0.3.2...bedrock/v0.3.3) (2026-10-17)
+
+
+### Features
+
+* bedrock migration consolidate folds the schema sequence into one file at the latest index, the up files in order and the down files in reverse ([#972](https://github.com/cccteam/ccc/issues/972)) ([64ae779](https://github.com/cccteam/ccc/commit/64ae779134b61b3acb48328b56b2eaa4485b7d58))
+* bedrock patch names the hotfix path what it is, with patch status, the placement's maintenance window and the merge-back guard ([#969](https://github.com/cccteam/ccc/issues/969)) ([fbcdfb3](https://github.com/cccteam/ccc/commit/fbcdfb3f1aec48ba85bae026c2cf1c5e7e6d1587))
+* the operations workflow's teardown and destroy actions take an environment down through the stack trigger as the apply identity ([#970](https://github.com/cccteam/ccc/issues/970)) ([45a082a](https://github.com/cccteam/ccc/commit/45a082afb2e77ab2b5ebe8389facaf1535af1215))
+
+
+### Bug Fixes
+
+* a destroyed pull-request stack's state object is deleted, and a state that holds nothing is skipped before any output is read ([#968](https://github.com/cccteam/ccc/issues/968)) ([5ee5868](https://github.com/cccteam/ccc/commit/5ee5868ce4ed40ee53c68045453e91ba45666479))
+* the CI migrations job and bedrock render read the whole migrations directory by the sequence rule ([#963](https://github.com/cccteam/ccc/issues/963)) ([a60cc3c](https://github.com/cccteam/ccc/commit/a60cc3c100ebbd7378b6261822c0e57cf6b11b7d))
+* the freeze on committed migrations starts at the first release; before it the renumber packs the whole sequence ([#967](https://github.com/cccteam/ccc/issues/967)) ([7fb8356](https://github.com/cccteam/ccc/commit/7fb8356273f69d500f2d9fdbbc027c6793f7568c))
+* the organization triggers' steps follow the pin kind, so a release pin renders no build step and pulls no Go image ([#962](https://github.com/cccteam/ccc/issues/962)) ([ab01fda](https://github.com/cccteam/ccc/commit/ab01fda0a36aaba271f67037a6746607ee30ddfa))
+
 ## [0.3.2](https://github.com/cccteam/ccc/compare/bedrock/v0.3.1...bedrock/v0.3.2) (2026-10-15)
 
 
