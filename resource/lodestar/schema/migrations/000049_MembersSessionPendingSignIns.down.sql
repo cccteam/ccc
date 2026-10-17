@@ -1,0 +1,5 @@
+DROP INDEX MembersSessionPendingSignInsByExpiresAt;
+
+DROP INDEX MembersSessionPendingSignInsByTokenHash;
+
+DROP TABLE MembersSessionPendingSignIns;

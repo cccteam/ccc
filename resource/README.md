@@ -408,9 +408,15 @@ bare for test composition. What sits in front of them in production is the route
 contract is unchanged: generated route tables plus a hand-written router.
 
 **What the program declares.** Two facts per outlet that the generator cannot derive.
-The auth behind a session outlet, `generation.Auth(importPath, flavor)`: the auth package
-(the package exporting `Name`) and how its people sign in, `Password`, `OIDCGoogle`, or
-`OIDCAzure`. A machine outlet declares `generation.APIKey()` instead. And the browser
+The auth behind a session outlet, `generation.Auth(importPath, methods...)`: the auth
+package (the package exporting `Name`) and the sign-in methods its `session.Auth`
+registers, in the order the login page offers them: `PasswordMethod()`, and each
+external method under its registration name, `GoogleMethod("google")`,
+`AzureMethod("lakeside-entra")`, `WorkOSMethod("sso")`, with `.Labeled(text)` for the
+label the page shows (the method's own name otherwise: Password, Google, Microsoft,
+Single sign-on). An outlet naming no method, a registration name outside
+`[a-z][a-z0-9-]*`, an external method named `password`, a name declared twice or an
+empty label is refused. A machine outlet declares `generation.APIKey()` instead. And the browser
 application an outlet serves, when it serves one: `generation.WebApp(mountPath)`, `"/"`
 for the application at the root, `"/console"` for one under a path. The default outlet
 declares them on `GenerateRoutes`, the others on `WithRouterOutlet`. A session `Auth`
@@ -420,12 +426,12 @@ stays for applications that keep a hand-written router. Lodestar's program:
 ```go
 generation.GenerateRouter(),
 generation.GenerateRoutes("pkg/router", "api",
-	generation.Auth("github.com/cccteam/ccc/resource/lodestar/pkg/auth/crew", generation.Password),
+	generation.Auth("github.com/cccteam/ccc/resource/lodestar/pkg/auth/crew", generation.PasswordMethod(), generation.GoogleMethod("google")),
 	generation.WebApp("/console"),
 ),
 generation.WithRouterOutlet("droids", "droids", generation.APIKey()),
 generation.WithRouterOutlet("portal", "portal/api",
-	generation.Auth("github.com/cccteam/ccc/resource/lodestar/pkg/auth/members", generation.OIDCGoogle),
+	generation.Auth("github.com/cccteam/ccc/resource/lodestar/pkg/auth/members", generation.GoogleMethod("directory").Labeled("Company directory")),
 	generation.WebApp("/portal"),
 ),
 ```
@@ -451,9 +457,13 @@ the package documentation: every outlet's middleware in order, outermost first, 
 per group, each chain followed by what it stands in front of. It is the review surface:
 what sits in front of every REST handler, readable without the code beneath it.
 `Handlers` is the full surface the router needs: the generated handlers of every outlet;
-the default outlet's session handlers embedded (`session.PasswordAuthHandlers` for
-Lodestar) and each additional session outlet's through a getter named after it
-(`Portal() session.OIDCGoogleHandlers`); `BindAuth(name)` only when more than one session
+each session outlet's session surface as an interface the generator writes for it,
+`<Outlet>Session`: the `Auth`'s middleware and session routes, `Methods`, the pending
+sign-in's three handlers, and each declared method's handlers under its registration
+name (`PasswordLogin`; `GoogleLogin` and `GoogleCallback` for a method named `google`;
+`LakesideEntraLogout` too for an Azure one), the default outlet's embedded
+(`DefaultSession`) and each additional one's through a getter named after it
+(`Portal() PortalSession`); `BindAuth(name)` only when more than one session
 auth is declared, so a misspelled or removed auth package is a compile error at
 `BindAuth(crew.Name)`; `<Outlet>Auth(next)` per API-key outlet; `LogExporter`, where
 the request log goes, from which the router builds the request logger; `SecurityHeaders`,
@@ -494,14 +504,20 @@ paths first, so an application at `"/"` is the catch-all; and, with several web 
 root redirect.
 
 A session outlet's group is `BindAuth(<pkg>.Name)` (with two session auths), `NoCaching`,
-`CompressionMiddleware`, `StartSession`, `SetXSRFToken`; the flavor's login routes under
-the prefix; then the authenticated sub-group, `ValidateSession` and `ValidateXSRFToken`
-around the hook and the generated routes. The flavor's routes: Password mounts `POST
-user/login`, `GET user/session`, `DELETE user/session`; OIDCGoogle mounts `GET
-user/login`, `GET user/callback`, and the two session routes; OIDCAzure adds `GET
-user/logout`, the directory's front-channel logout. An API-key outlet's group is
-`NoCaching`, `CompressionMiddleware`, `<Outlet>Auth`, then the hook and the routes: no
-session handling and no XSRF guard.
+`CompressionMiddleware`, `StartSession`, `SetXSRFToken`; the session routes under the
+prefix; then the authenticated sub-group, `ValidateSession` and `ValidateXSRFToken`
+around the hook and the generated routes. The session routes, every one under
+`<prefix>/user/`: `GET user/methods`, what the login page is told (`session.Auth.Methods`,
+handed the declared methods at the paths below, so the page and the router read one
+declaration); `GET user/session` and `DELETE user/session`; `GET user/pending`; and per
+external method under its registration name, `GET user/<name>/login` and `GET
+user/<name>/callback` (`GET user/<name>/logout` too for Azure, the directory's
+front-channel logout). The sign-in's POSTs sit behind the outlet's XSRF guard alone, as
+the session library wires them: `POST user/password/login`, `POST user/pending/confirm`,
+`POST user/pending/cancel`; a browser reaches them with the XSRF cookie its first request
+was issued, echoed in the header. An API-key outlet's group is `NoCaching`,
+`CompressionMiddleware`, `<Outlet>Auth`, then the hook and the routes: no session
+handling and no XSRF guard.
 
 **The auth in the route tables.** Each session outlet's routes function binds the name of
 its auth for the live pages (section 14): `generatedRoutes` opens with

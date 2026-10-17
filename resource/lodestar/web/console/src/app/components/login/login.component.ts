@@ -1,16 +1,20 @@
-/** Demonstrates: login-manifest, auth.password. */
+/** Demonstrates: login-manifest, auth.password, auth.multi-method, auth.login-methods, auth.login-refusal-code. */
+import { DOCUMENT } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
-import { Component, inject, signal } from '@angular/core';
+import { Component, computed, inject, signal } from '@angular/core';
+import { toSignal } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
-import { Router } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import { AuthService } from '@cccteam/resource-angular/auth-service';
 import { API_URL } from '@cccteam/resource-angular/types';
+import { UiCoreService } from '@cccteam/resource-angular/ui-core-service';
 import { IdleService } from '@cccteam/resource-angular/ui-idle-service';
+import { map, Observable, switchMap, tap } from 'rxjs';
 
 /** One card on the crew manifest: the login is the job word, the name alliterates. */
 interface Persona {
@@ -18,6 +22,26 @@ interface Persona {
   name: string;
   deck: string;
   proves: string;
+}
+
+/**
+ * One sign-in method the outlet offers, as the server's methods route describes it: the
+ * registration's name, the library method behind it, how the page drives it (a password
+ * form, or a redirect that sends the browser away), the label to show, and the path the
+ * router mounted it at. The page names no path of its own.
+ */
+export interface LoginMethod {
+  name: string;
+  method: string;
+  kind: 'password' | 'redirect';
+  label: string;
+  path: string;
+}
+
+/** What the methods route answers: the methods in the order they were registered, and the pending sign-in's routes. */
+export interface LoginMethods {
+  methods: LoginMethod[];
+  pending?: { status: string; confirm: string; cancel: string };
 }
 
 /** The demo password every persona shares (seeded by cmd/bootstrap, committed deliberately). */
@@ -57,6 +81,28 @@ export const CREW_MANIFEST: Persona[] = [
   { login: 'surveyor', name: 'Surveyor Shen', deck: 'Headquarters', proves: 'Charts new sectors: a sector she creates is served at once, on every instance, with no restart, migration or new login.' },
 ];
 
+/**
+ * The crew's second way in. Navigator Nova is on no manifest and has no password: the
+ * fleet's Google directory signs her in, provisions her under her verified email at the
+ * first sign-in, and her roles are the directory's groups (crew-pilot names Pilot). In
+ * development the session library's skipAuth build simulates the directory from
+ * APP_GOOGLE_USERNAME and APP_GOOGLE_ROLES in .envrc.
+ */
+export const DIRECTORY_PERSONA = {
+  login: 'navigator',
+  name: 'Navigator Nova',
+  proves: 'Signs in through the fleet’s directory, no password: provisioned at her first sign-in, seated by her groups at every one.',
+};
+
+/**
+ * The console's login page renders from what the server tells it. On arrival it asks the
+ * outlet's methods route what the crew auth offers, in the order the generator program
+ * registered the methods: the password, which it drives as a form posted to the path the
+ * route names, and the Google directory, a redirect it sends the browser to with the
+ * page to return to. A refused or waiting redirect sign-in comes back here with the
+ * reason as a code in the query (?code=), never text; the page shows the sentence it
+ * holds for the code and nothing for a code it does not know.
+ */
 @Component({
   selector: 'app-login',
   templateUrl: './login.component.html',
@@ -66,15 +112,33 @@ export const CREW_MANIFEST: Persona[] = [
 export class LoginComponent {
   private http = inject(HttpClient);
   private auth = inject(AuthService);
+  private ui = inject(UiCoreService);
   private router = inject(Router);
+  private route = inject(ActivatedRoute);
   private idle = inject(IdleService);
   private apiUrl = inject(API_URL);
+  private document = inject(DOCUMENT);
 
   username = '';
   password = '';
   busy = signal(false);
 
+  /** The methods the outlet offers, as the server listed them; empty until the route answers. */
+  methods = signal<LoginMethod[]>([]);
+  /** The password form's method, when the outlet offers one. */
+  passwordMethod = computed(() => this.methods().find((method) => method.kind === 'password'));
+  /** The redirect sign-ins, one button each, in the server's order. */
+  redirectMethods = computed(() => this.methods().filter((method) => method.kind === 'redirect'));
+
+  /** The refusal code a refused redirect sign-in came back with, or empty: the only thing the URL says. */
+  code = toSignal(this.route.queryParamMap.pipe(map((params) => params.get('code') ?? '')), {
+    initialValue: '',
+  });
+  /** The sentence this page holds for the code, from the library's login messages; nothing for a code it does not know. */
+  message = computed(() => this.ui.loginMessage(this.code()));
+
   readonly manifest = CREW_MANIFEST;
+  readonly directoryPersona = DIRECTORY_PERSONA;
   readonly decks = [...new Set(CREW_MANIFEST.map((p) => p.deck))];
 
   personasOn(deck: string): Persona[] {
@@ -89,15 +153,41 @@ export class LoginComponent {
   constructor() {
     this.auth.logout().subscribe();
     this.idle.stop();
+    this.readMethods().subscribe();
   }
 
+  /**
+   * Asks the outlet what it offers and keeps the answer. The request also refreshes the
+   * auth's XSRF cookie, which every sign-in POST must echo: the page reads the list on
+   * arrival and again right before it posts, so a page left open past the cookie's life
+   * signs in on the first click instead of being refused for a stale token.
+   */
+  private readMethods(): Observable<LoginMethods> {
+    return this.http.get<LoginMethods>(`${this.apiUrl}/user/methods`).pipe(tap((list) => this.methods.set(list.methods)));
+  }
+
+  /**
+   * Refreshes the XSRF token, then posts the form to the password method's path and,
+   * signed in, moves to the page the guard turned away from. A list that no longer
+   * offers a password method ends the attempt, and the page re-renders from it.
+   */
   login(): void {
-    if (this.busy()) {
+    if (this.busy() || !this.passwordMethod()) {
       return;
     }
     this.busy.set(true);
 
-    this.http.post(`${this.apiUrl}/user/login`, { username: this.username, password: this.password }).subscribe({
+    this.readMethods()
+      .pipe(
+        switchMap(() => {
+          const method = this.passwordMethod();
+          if (!method) {
+            throw new Error('the outlet no longer offers a password sign-in');
+          }
+          return this.http.post(method.path, { username: this.username, password: this.password });
+        }),
+      )
+      .subscribe({
       next: () => {
         this.auth.checkUserSession().subscribe({
           next: () => {
@@ -109,6 +199,17 @@ export class LoginComponent {
       },
       error: () => this.busy.set(false),
     });
+  }
+
+  /** Sends the browser to a redirect method's path, naming the page the callback returns to. */
+  signInThrough(method: LoginMethod): void {
+    const returnUrl = encodeURIComponent(this.returnPage(this.getAndResetRedirectUrl()));
+    this.document.location.assign(`${method.path}?returnUrl=${returnUrl}`);
+  }
+
+  /** The browser path of an application page, resolved against the document's base (the console's mount). */
+  private returnPage(page: string): string {
+    return new URL(page.replace(/^\//, ''), this.document.baseURI).pathname;
   }
 
   private getAndResetRedirectUrl(): string {

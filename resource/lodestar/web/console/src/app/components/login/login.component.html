@@ -5,26 +5,37 @@
       <mat-card-subtitle>Rescue and salvage operations console</mat-card-subtitle>
     </mat-card-header>
     <mat-card-content>
-      <form (ngSubmit)="login()">
-        <mat-form-field appearance="outline" class="full-width">
-          <mat-label>Login</mat-label>
-          <input matInput name="username" [(ngModel)]="username" autocomplete="username" required />
-        </mat-form-field>
-        <mat-form-field appearance="outline" class="full-width">
-          <mat-label>Password</mat-label>
-          <input
-            matInput
-            name="password"
-            type="password"
-            [(ngModel)]="password"
-            autocomplete="current-password"
-            required />
-        </mat-form-field>
-        <button mat-flat-button color="primary" type="submit" class="full-width" [disabled]="busy()">Sign in</button>
-      </form>
+      @if (passwordMethod(); as method) {
+        <form (ngSubmit)="login()">
+          <mat-form-field appearance="outline" class="full-width">
+            <mat-label>Login</mat-label>
+            <input matInput name="username" [(ngModel)]="username" autocomplete="username" required />
+          </mat-form-field>
+          <mat-form-field appearance="outline" class="full-width">
+            <mat-label>{{ method.label }}</mat-label>
+            <input
+              matInput
+              name="password"
+              type="password"
+              [(ngModel)]="password"
+              autocomplete="current-password"
+              required />
+          </mat-form-field>
+          <button mat-flat-button color="primary" type="submit" class="full-width" [disabled]="busy()">Sign in</button>
+        </form>
+      }
+      @for (method of redirectMethods(); track method.name) {
+        <button mat-stroked-button type="button" class="full-width redirect" (click)="signInThrough(method)">
+          Sign in with {{ method.label }}
+        </button>
+      }
+      @if (message()) {
+        <p class="error">{{ message() }}</p>
+      }
       <p class="hint">
         Every persona shares the password <code>lodestar</code>. Pick a card from the crew manifest to fill the form,
-        then sign in.
+        then sign in. The sign-in buttons are what the server lists at <code>user/methods</code>, in the order the
+        generator program registered them; the page names no path of its own.
       </p>
     </mat-card-content>
   </mat-card>
@@ -46,6 +57,20 @@
         }
       </div>
     }
+    <h3>Fleet directory</h3>
+    <div class="cards">
+      <div class="persona directory">
+        <span class="login">{{ directoryPersona.login }}</span>
+        <span class="name">{{ directoryPersona.name }}</span>
+        <span class="proves">{{ directoryPersona.proves }}</span>
+      </div>
+    </div>
+    <p class="droid">
+      <mat-icon>badge</mat-icon>
+      Development: the server runs with the session library's <code>skipAuth</code> tag, which simulates the fleet's
+      directory, so the Google sign-in is <code>APP_GOOGLE_USERNAME</code> from <code>.envrc</code> (navigator) in the
+      groups <code>APP_GOOGLE_ROLES</code> names. No Google tenant is contacted.
+    </p>
     <p class="droid">
       <mat-icon>smart_toy</mat-icon>
       R7, the droid service account, has no login: it posts telemetry through the API-keyed droid channel (see

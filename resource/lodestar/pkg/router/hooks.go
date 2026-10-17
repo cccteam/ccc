@@ -19,9 +19,14 @@ type AppHandlers interface {
 	// The console's hand-written routes: the sector-scoped ship's log over the
 	// change-tracking table (registered through @manualAddResource(List, domain)), the
 	// impersonation mint route and the watch desk over the live impersonated sessions.
-	// EndImpersonation and EnforceReadOnlyMask are the session library's own, through
-	// PasswordAuthHandlers. The mission document download is generated: the @file on
-	// MissionDocument.StoreKey serves it under the read route.
+	// EndImpersonation and EnforceReadOnlyMask are the session library's own, on the
+	// crew auth's session the App embeds; the generated router names the rest of that
+	// session (DefaultSession) and mounts neither of these, so the application names
+	// them here and mounts them inside the console's guards itself. The mission
+	// document download is generated: the @file on MissionDocument.StoreKey serves it
+	// under the read route.
+	EndImpersonation() http.HandlerFunc
+	EnforceReadOnlyMask(next http.Handler) http.Handler
 	ShipsLogEntries() http.HandlerFunc
 	Impersonate() http.HandlerFunc
 	ActiveImpersonations() http.HandlerFunc

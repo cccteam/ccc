@@ -72,9 +72,9 @@ func Test_servedRouter_generatedTestRuns(t *testing.T) {
 	// word and a setting of its own. The droids outlet writes its request log on event
 	// with a prefix mounted by hand beneath it that never does; the portal caps its spans.
 	outlets := []routerOutlet{
-		{name: "default", prefix: "api", servesSessions: true, auth: &outletAuth{importPath: fixturePath + "/crew", flavor: Password}, webApp: "/console", oldestAnswered: "1.5.0", declaredOldest: true},
+		{name: "default", prefix: "api", servesSessions: true, auth: &outletAuth{importPath: fixturePath + "/crew", methods: []AuthMethod{PasswordMethod()}}, webApp: "/console", oldestAnswered: "1.5.0", declaredOldest: true},
 		{name: "droids", prefix: "droids", apiKey: true, requestLog: LogOnEvent(), traces: TracesOff()},
-		{name: "portal", prefix: "portal/api", servesSessions: true, auth: &outletAuth{importPath: fixturePath + "/members", flavor: OIDCGoogle}, webApp: "/portal", oldestAnswered: ThisRelease, declaredOldest: true, traces: TracesCapped(0.1)},
+		{name: "portal", prefix: "portal/api", servesSessions: true, auth: &outletAuth{importPath: fixturePath + "/members", methods: []AuthMethod{GoogleMethod("google")}}, webApp: "/portal", oldestAnswered: ThisRelease, declaredOldest: true, traces: TracesCapped(0.1)},
 	}
 	content := &generatedRoute{Method: "GET", Path: "/api/widgets/{widgetId}/content", TestURL: "/api/widgets/7/content", HandlerFunc: "WidgetContent", HandlerType: fileHandler, RequestLog: LogNever(), Traces: TracesOff()}
 	fileRoutes := map[string][]*generatedRoute{"default": {content}}
@@ -135,18 +135,21 @@ func Test_servedRouter_generatedTestRuns(t *testing.T) {
 		"--- PASS: TestGeneratedRouter/GET-url-api-widgets-7",
 		"--- PASS: TestGeneratedRouter/GET-url-portal-api-orders",
 		"--- PASS: TestGeneratedRouter/GET-url-droids-beacons",
-		"--- PASS: TestGeneratedRouterSessionRoutes/GET-url-portal-api-user-callback",
-		"--- PASS: TestGeneratedRouterNotFound/POST-url-droids-user-login",
+		"--- PASS: TestGeneratedRouterSessionRoutes/GET-url-portal-api-user-google-callback",
+		"--- PASS: TestGeneratedRouterSessionRoutes/GET-url-api-user-methods",
+		"--- PASS: TestGeneratedRouterSessionRoutes/POST-url-api-user-password-login",
+		"--- PASS: TestGeneratedRouterSessionRoutes/POST-url-portal-api-user-pending-confirm",
+		"--- PASS: TestGeneratedRouterNotFound/POST-url-droids-user-password-login",
 		"--- PASS: TestGeneratedRouterHooks",
 		"--- PASS: TestGeneratedRouterAPIVersion/-api-the_oldest_answered_release",
 		"--- PASS: TestGeneratedRouterAPIVersion/-api-a_release_below_the_oldest_answered",
 		"--- PASS: TestGeneratedRouterAPIVersion/-api-a_release_above_the_server's",
 		"--- PASS: TestGeneratedRouterAPIVersion/-api-no_header",
 		"--- PASS: TestGeneratedRouterAPIVersion/-api-a_server_that_is_not_a_release",
-		"--- PASS: TestGeneratedRouterAPIVersion/-api-a_session_route_at_any_release_POST-user-login",
+		"--- PASS: TestGeneratedRouterAPIVersion/-api-a_session_route_at_any_release_POST-user-password-login",
 		"--- PASS: TestGeneratedRouterAPIVersion/-api-a_stored-file_route_at_any_release_WidgetContent",
 		"--- PASS: TestGeneratedRouterAPIVersion/-portal-api-a_release_below_the_oldest_answered",
-		"--- PASS: TestGeneratedRouterAPIVersion/-portal-api-a_session_route_at_any_release_GET-user-callback",
+		"--- PASS: TestGeneratedRouterAPIVersion/-portal-api-a_session_route_at_any_release_GET-user-google-callback",
 		"--- PASS: TestGeneratedRouterAPIVersion/droids_outlet_is_not_checked",
 		"--- PASS: TestGeneratedRouterAPIVersion/a_refused_request_never_reaches_the_hook",
 		"--- PASS: TestGeneratedRouterScheduled/POST-url-_scheduled-prune-logs",

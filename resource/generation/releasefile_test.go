@@ -16,7 +16,7 @@ import (
 func Test_renderReleaseFile(t *testing.T) {
 	t.Parallel()
 
-	crew := &outletAuth{importPath: "example.com/acme/beacon/pkg/auth/crew", flavor: Password}
+	crew := &outletAuth{importPath: "example.com/acme/beacon/pkg/auth/crew", methods: []AuthMethod{PasswordMethod()}}
 
 	tests := []struct {
 		name       string
@@ -327,7 +327,7 @@ func Test_fileRoutesOf(t *testing.T) {
 func Test_runServedRouterGeneration_writesReleaseFile(t *testing.T) {
 	t.Parallel()
 
-	crew := &outletAuth{importPath: "example.com/acme/beacon/pkg/auth/crew", flavor: Password}
+	crew := &outletAuth{importPath: "example.com/acme/beacon/pkg/auth/crew", methods: []AuthMethod{PasswordMethod()}}
 
 	tests := []struct {
 		name    string

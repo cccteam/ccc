@@ -52,6 +52,12 @@ const (
 	consoleAPI = "/console/api"
 	portalAPI  = "/portal/api"
 
+	// The browser applications' login pages, where a refused or waiting redirect
+	// sign-in returns with its code or step in the query, and the page a console
+	// login returns to.
+	consoleLogin = "/console/login"
+	consolePage  = "/console/dashboard"
+
 	// The droids outlet's API key in the suites.
 	droidsAPIKey = "integration-droids-key"
 
@@ -61,7 +67,11 @@ const (
 	// The portal's client: a member of the members auth who signs in through the
 	// simulated directory; its roles are the groups the directory names (APP_ROLES).
 	clientUser = "client"
-	droidUser  = "droid-r7"
+	// The console's Google sign-in: a crew member the fleet's directory admits who is on
+	// no manifest, so the password personas and the directory's people stay apart;
+	// its roles are the groups the simulated directory names (APP_GOOGLE_ROLES).
+	navigatorUser = "navigator"
+	droidUser     = "droid-r7"
 
 	// The served world's idle session timeout, the application's default. A test signs in
 	// in its body and reads in parallel subtests, which start when a slot frees; on a loaded
@@ -695,11 +705,24 @@ func newServedAt(ctx context.Context, t *testing.T, version string) *served {
 	// policy kind through it, and the App subscribes and publishes through it.
 	fake := live.NewFake()
 	policySignal := auth.PolicySignal(fake)
-	crewAuth, err := crew.New(ctx, db.Client, crew.Settings{
+
+	// The server is allocated before the auths so each directory's callback can name
+	// the server's own address.
+	server := httptest.NewUnstartedServer(nil)
+	t.Cleanup(server.Close)
+
+	crewAuth, err := crew.New(ctx, db.Client, &crew.Settings{
 		CookieKey:      testCookieKey,
 		SessionTimeout: servedSessionTimeout,
+		LoginURL:       consoleLogin,
 		Collection:     router.Collection(),
-		ChangeSignal:   policySignal,
+		Directory: auth.Directory{
+			RedirectURL:  "http://" + server.Listener.Addr().String() + consoleAPI + "/user/google/callback",
+			Connection:   "example",
+			HostedDomain: "example.com",
+			GroupPrefix:  "crew-",
+		},
+		ChangeSignal: policySignal,
 	})
 	if err != nil {
 		t.Fatalf("crew.New() error = %v", err)
@@ -710,18 +733,14 @@ func newServedAt(ctx context.Context, t *testing.T, version string) *served {
 		}
 	})
 
-	// The server is allocated before the members auth so the auth's directory callback
-	// can name the server's own address.
-	server := httptest.NewUnstartedServer(nil)
-	t.Cleanup(server.Close)
-
 	membersAuth, err := members.New(ctx, db.Client, &members.Settings{
 		CookieKey:      testCookieKey,
 		SessionTimeout: servedSessionTimeout,
-		LoginURL:       "/portal/login",
+		LoginURL:       portalLogin,
 		Collection:     router.Collection(),
-		Directory: members.Directory{
-			RedirectURL:  "http://" + server.Listener.Addr().String() + portalAPI + "/user/callback",
+		Directory: auth.Directory{
+			RedirectURL:  "http://" + server.Listener.Addr().String() + portalAPI + "/user/directory/callback",
+			Connection:   "example",
 			HostedDomain: "example.com",
 			GroupPrefix:  "members-",
 		},
@@ -806,7 +825,7 @@ func newBrowser(t *testing.T, s *served, prefix string) *browser {
 	return &browser{t: t, base: s.server.URL, prefix: prefix, xsrf: xsrf, client: &http.Client{Jar: jar}}
 }
 
-// login posts the credentials to the outlet's login route and returns the status.
+// login posts the credentials to the outlet's password login route and returns the status.
 func (b *browser) login(ctx context.Context, user, password string) (status int, body []byte) {
 	b.t.Helper()
 
@@ -815,7 +834,7 @@ func (b *browser) login(ctx context.Context, user, password string) (status int,
 		b.t.Fatal(err)
 	}
 
-	return b.do(ctx, http.MethodPost, b.prefix+"/user/login", credentials)
+	return b.do(ctx, http.MethodPost, b.prefix+"/user/password/login", credentials)
 }
 
 // signIn primes the XSRF handshake and signs a persona in on the console, failing the

@@ -1,6 +1,7 @@
 package generation
 
 import (
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -9,8 +10,9 @@ import (
 	"github.com/google/go-cmp/cmp"
 )
 
-// Test_routerOutletOptions pins the outlet options' own checks: an import path and a
-// known flavor for Auth, a mount path for WebApp, and one declaration of each per outlet.
+// Test_routerOutletOptions pins the outlet options' own checks: an import path and
+// well-formed methods for Auth, a mount path for WebApp, and one declaration of each per
+// outlet.
 func Test_routerOutletOptions(t *testing.T) {
 	t.Parallel()
 
@@ -22,8 +24,15 @@ func Test_routerOutletOptions(t *testing.T) {
 	}{
 		{
 			name:    "a session auth serves sessions",
-			options: []OutletOption{Auth("example.com/acme/beacon/pkg/auth/staff", Password)},
-			want:    routerOutlet{servesSessions: true, auth: &outletAuth{importPath: "example.com/acme/beacon/pkg/auth/staff", flavor: Password}},
+			options: []OutletOption{Auth("example.com/acme/beacon/pkg/auth/staff", PasswordMethod())},
+			want:    routerOutlet{servesSessions: true, auth: &outletAuth{importPath: "example.com/acme/beacon/pkg/auth/staff", methods: []AuthMethod{PasswordMethod()}}},
+		},
+		{
+			name:    "several methods keep their order and their labels",
+			options: []OutletOption{Auth("example.com/acme/beacon/pkg/auth/crew", GoogleMethod("google").Labeled("Fleet directory"), PasswordMethod(), AzureMethod("lakeside-entra"), WorkOSMethod("sso"))},
+			want: routerOutlet{servesSessions: true, auth: &outletAuth{importPath: "example.com/acme/beacon/pkg/auth/crew", methods: []AuthMethod{
+				{kind: methodGoogle, name: "google", label: "Fleet directory"}, PasswordMethod(), AzureMethod("lakeside-entra"), WorkOSMethod("sso"),
+			}}},
 		},
 		{
 			name:    "an API key with a web app is recorded; the contradiction is the generator's to refuse",
@@ -35,18 +44,24 @@ func Test_routerOutletOptions(t *testing.T) {
 			options: []OutletOption{ServesSessions()},
 			want:    routerOutlet{servesSessions: true, declaredSessions: true},
 		},
-		{name: "an empty import path", options: []OutletOption{Auth("", Password)}, wantErr: "requires an import path"},
-		{name: "a slash-wrapped import path", options: []OutletOption{Auth("/pkg/auth/staff/", Password)}, wantErr: "requires an import path"},
-		{name: "an unknown flavor", options: []OutletOption{Auth("example.com/pkg/auth/staff", AuthFlavor("ldap"))}, wantErr: "unknown flavor"},
-		{name: "two auths", options: []OutletOption{Auth("example.com/pkg/auth/staff", Password), Auth("example.com/pkg/auth/members", OIDCAzure)}, wantErr: "redeclares the outlet's auth"},
+		{name: "an empty import path", options: []OutletOption{Auth("", PasswordMethod())}, wantErr: "requires an import path"},
+		{name: "a slash-wrapped import path", options: []OutletOption{Auth("/pkg/auth/staff/", PasswordMethod())}, wantErr: "requires an import path"},
+		{name: "no method", options: []OutletOption{Auth("example.com/pkg/auth/staff")}, wantErr: "declares no sign-in method"},
+		{name: "a zero method", options: []OutletOption{Auth("example.com/pkg/auth/staff", AuthMethod{})}, wantErr: "zero AuthMethod"},
+		{name: "a registration name that is not a path segment", options: []OutletOption{Auth("example.com/pkg/auth/staff", GoogleMethod("Google Workspace"))}, wantErr: `names the registration "Google Workspace"`},
+		{name: "an external registration named like the password method", options: []OutletOption{Auth("example.com/pkg/auth/staff", AzureMethod("password"))}, wantErr: "the name the library keeps for the password method"},
+		{name: "a name registered twice", options: []OutletOption{Auth("example.com/pkg/auth/staff", GoogleMethod("directory"), AzureMethod("directory"))}, wantErr: `registers "directory" twice`},
+		{name: "two password methods", options: []OutletOption{Auth("example.com/pkg/auth/staff", PasswordMethod(), PasswordMethod())}, wantErr: `registers "password" twice`},
+		{name: "an empty label", options: []OutletOption{Auth("example.com/pkg/auth/staff", PasswordMethod().Labeled(""))}, wantErr: "has an empty label"},
+		{name: "two auths", options: []OutletOption{Auth("example.com/pkg/auth/staff", PasswordMethod()), Auth("example.com/pkg/auth/members", AzureMethod("azure"))}, wantErr: "redeclares the outlet's auth"},
 		{name: "a relative mount path", options: []OutletOption{WebApp("portal")}, wantErr: "requires a mount path starting with '/'"},
 		{name: "a trailing slash", options: []OutletOption{WebApp("/portal/")}, wantErr: "without a trailing '/'"},
 		{name: "a wildcard mount path", options: []OutletOption{WebApp("/portal/*")}, wantErr: "requires a mount path"},
 		{name: "two web apps", options: []OutletOption{WebApp("/"), WebApp("/portal")}, wantErr: "redeclares the outlet's browser application"},
 		{
 			name:    "an oldest answered release is remembered as written",
-			options: []OutletOption{Auth("example.com/acme/beacon/pkg/auth/staff", Password), OldestAnswered("1.5.0")},
-			want:    routerOutlet{servesSessions: true, auth: &outletAuth{importPath: "example.com/acme/beacon/pkg/auth/staff", flavor: Password}, oldestAnswered: "1.5.0", declaredOldest: true},
+			options: []OutletOption{Auth("example.com/acme/beacon/pkg/auth/staff", PasswordMethod()), OldestAnswered("1.5.0")},
+			want:    routerOutlet{servesSessions: true, auth: &outletAuth{importPath: "example.com/acme/beacon/pkg/auth/staff", methods: []AuthMethod{PasswordMethod()}}, oldestAnswered: "1.5.0", declaredOldest: true},
 		},
 		{
 			name:    "an oldest answered release with a leading v",
@@ -90,7 +105,7 @@ func Test_routerOutletOptions(t *testing.T) {
 			switch {
 			case (got.auth == nil) != (tt.want.auth == nil):
 				t.Errorf("auth = %+v, want %+v", got.auth, tt.want.auth)
-			case got.auth != nil && *got.auth != *tt.want.auth:
+			case got.auth != nil && (got.auth.importPath != tt.want.auth.importPath || !slices.Equal(got.auth.methods, tt.want.auth.methods)):
 				t.Errorf("auth = %+v, want %+v", *got.auth, *tt.want.auth)
 			}
 		})
@@ -105,8 +120,8 @@ func Test_routerOutletOptions(t *testing.T) {
 func Test_validateRouterConfig(t *testing.T) {
 	t.Parallel()
 
-	staff := Auth("example.com/acme/beacon/pkg/auth/staff", Password)
-	members := Auth("example.com/acme/beacon/pkg/auth/members", OIDCGoogle)
+	staff := Auth("example.com/acme/beacon/pkg/auth/staff", PasswordMethod())
+	members := Auth("example.com/acme/beacon/pkg/auth/members", GoogleMethod("google"))
 
 	tests := []struct {
 		name    string
@@ -341,8 +356,8 @@ func Test_validateRouterConfig(t *testing.T) {
 func Test_servedRouterData(t *testing.T) {
 	t.Parallel()
 
-	crew := &outletAuth{importPath: "example.com/acme/beacon/pkg/auth/crew", flavor: Password}
-	members := &outletAuth{importPath: "example.com/acme/beacon/pkg/auth/members", flavor: OIDCAzure}
+	crew := &outletAuth{importPath: "example.com/acme/beacon/pkg/auth/crew", methods: []AuthMethod{PasswordMethod()}}
+	members := &outletAuth{importPath: "example.com/acme/beacon/pkg/auth/members", methods: []AuthMethod{AzureMethod("azure")}}
 
 	tests := []struct {
 		name       string
@@ -359,8 +374,14 @@ func Test_servedRouterData(t *testing.T) {
 					t.Errorf("MultiAuth = %v, AuthImports = %v; want neither", data.MultiAuth, data.AuthImports)
 				}
 				o := data.Outlets[0]
-				if o.AuthPackage != "" || o.Getter != "" || o.Receiver != "h" || o.HookField != "Default" || o.SessionHandlers != "session.OIDCAzureHandlers" {
+				if o.AuthPackage != "" || o.Getter != "" || o.Receiver != "h" || o.HookField != "Default" || o.SessionInterface != "DefaultSession" || o.StubType != "routerDefaultSessionStub" {
 					t.Errorf("default outlet = %+v", o)
+				}
+				if o.AuthLabel != "sessions (azure)" || o.MethodsPath != "/api/user/methods" || o.Pending != (servedPending{Status: "/api/user/pending", Confirm: "/api/user/pending/confirm", Cancel: "/api/user/pending/cancel"}) {
+					t.Errorf("default outlet's session = %+v", o)
+				}
+				if len(o.Methods) != 1 || o.Methods[0].Name != "azure" || o.Methods[0].Kind != "azure" || o.Methods[0].Label != "Microsoft" || o.Methods[0].Accessor != "Azure" || o.Methods[0].LoginPath != "/api/user/azure/login" || strings.Join(o.Methods[0].Handlers, ",") != "AzureLogin,AzureCallback,AzureFrontChannelLogout" {
+					t.Errorf("default outlet's methods = %+v", o.Methods)
 				}
 				if o.OldestAnswered != "" || o.OldestAnsweredExpr != "" || o.OldestAnsweredNote != "" || o.AnswersSentence != "every release up to the server's own is answered" || len(o.FileRoutes) != 0 {
 					t.Errorf("version check of an outlet with no oldest answered = %+v", o)
@@ -370,20 +391,26 @@ func Test_servedRouterData(t *testing.T) {
 				}
 				paths := make([]string, 0, len(o.Routes))
 				for _, route := range o.Routes {
-					paths = append(paths, route.Method+" "+route.Path)
+					guard := ""
+					if route.XSRF {
+						guard = " (xsrf)"
+					}
+					paths = append(paths, route.Method+" "+route.Path+" "+route.Handler+guard)
 				}
-				want := "GET /api/user/login,GET /api/user/callback,GET /api/user/session,DELETE /api/user/session,GET /api/user/logout"
+				want := "GET /api/user/methods Methods,GET /api/user/session Authenticated,DELETE /api/user/session Logout,GET /api/user/pending PendingStatus," +
+					"GET /api/user/azure/login AzureLogin,GET /api/user/azure/callback AzureCallback,GET /api/user/azure/logout AzureFrontChannelLogout," +
+					"POST /api/user/pending/confirm PendingConfirmWithPassword (xsrf),POST /api/user/pending/cancel PendingCancel (xsrf)"
 				if got := strings.Join(paths, ","); got != want {
 					t.Errorf("routes = %s, want %s", got, want)
+				}
+				if len(o.OpenRoutes) != 7 || len(o.GuardedRoutes) != 2 {
+					t.Errorf("open, guarded = %d, %d; want 7, 2", len(o.OpenRoutes), len(o.GuardedRoutes))
 				}
 				if len(data.WebApps) != 1 || data.WebApps[0].DeepLink != "DeepLink" || data.WebApps[0].Assets != "Assets" || !data.HasRootWebApp {
 					t.Errorf("web apps = %+v", data.WebApps)
 				}
 				if data.RootRedirect != "" || data.RootRedirectOutlet != "" {
 					t.Errorf("root redirect = %q to %q; want none with an application at /", data.RootRedirectOutlet, data.RootRedirect)
-				}
-				if len(data.Flavors) != 1 || data.Flavors[0].StubType != "routerOIDCAzureStub" {
-					t.Errorf("flavors = %+v", data.Flavors)
 				}
 			},
 		},
@@ -400,8 +427,18 @@ func Test_servedRouterData(t *testing.T) {
 					t.Errorf("MultiAuth = %v, AuthImports = %v", data.MultiAuth, data.AuthImports)
 				}
 				portal := data.Outlets[2]
-				if portal.AuthPackage != "members" || portal.Getter != "Portal" || portal.Receiver != "portalSession" || portal.StubField != "portal" || portal.StubPrefix != "Portal" {
+				if portal.AuthPackage != "members" || portal.Getter != "Portal" || portal.Receiver != "portalSession" || portal.StubField != "portal" || portal.StubPrefix != "Portal" || portal.SessionInterface != "PortalSession" || portal.StubType != "routerPortalSessionStub" {
 					t.Errorf("portal outlet = %+v", portal)
+				}
+				if portal.AuthLabel != "sessions of the members auth (azure)" || data.Outlets[0].AuthLabel != "sessions of the crew auth (password)" {
+					t.Errorf("auth labels = %q, %q", data.Outlets[0].AuthLabel, portal.AuthLabel)
+				}
+				crewRoutes := make([]string, 0, len(data.Outlets[0].Routes))
+				for _, route := range data.Outlets[0].Routes {
+					crewRoutes = append(crewRoutes, route.Method+" "+route.Path)
+				}
+				if want := "GET /api/user/methods,GET /api/user/session,DELETE /api/user/session,GET /api/user/pending,POST /api/user/password/login,POST /api/user/pending/confirm,POST /api/user/pending/cancel"; strings.Join(crewRoutes, ",") != want {
+					t.Errorf("crew routes = %v, want %s", crewRoutes, want)
 				}
 				droids := data.Outlets[1]
 				if !droids.APIKey || droids.AuthMiddleware != "DroidsAuth" || droids.RoutesFunc != "generatedDroidsRoutes" || droids.NotFoundPrefix != "/droids/" {
@@ -446,8 +483,8 @@ func Test_servedRouterData(t *testing.T) {
 				if data.MultiAuth {
 					t.Error("MultiAuth = true for one auth on two outlets")
 				}
-				if len(data.Flavors) != 1 {
-					t.Errorf("flavors = %+v, want one", data.Flavors)
+				if data.Outlets[0].StubType == data.Outlets[1].StubType || data.Outlets[1].SessionInterface != "KioskSession" {
+					t.Errorf("each session outlet has its own surface and stub: %q/%q, %q/%q", data.Outlets[0].SessionInterface, data.Outlets[0].StubType, data.Outlets[1].SessionInterface, data.Outlets[1].StubType)
 				}
 				if data.RootRedirect != "" || data.RootRedirectOutlet != "" {
 					t.Errorf("root redirect = %q to %q; want none without a browser application", data.RootRedirectOutlet, data.RootRedirect)
@@ -545,8 +582,8 @@ func Test_versionProbesFor(t *testing.T) {
 func Test_servedRouterTemplates(t *testing.T) {
 	t.Parallel()
 
-	crew := &outletAuth{importPath: "example.com/acme/beacon/pkg/auth/crew", flavor: Password}
-	members := &outletAuth{importPath: "example.com/acme/beacon/pkg/auth/members", flavor: OIDCGoogle}
+	crew := &outletAuth{importPath: "example.com/acme/beacon/pkg/auth/crew", methods: []AuthMethod{PasswordMethod()}}
+	members := &outletAuth{importPath: "example.com/acme/beacon/pkg/auth/members", methods: []AuthMethod{GoogleMethod("google")}}
 
 	tests := []struct {
 		name                string
@@ -561,20 +598,26 @@ func Test_servedRouterTemplates(t *testing.T) {
 	}{
 		{
 			name:    "one Azure outlet with a browser application",
-			outlets: []routerOutlet{{name: "default", prefix: "api", servesSessions: true, auth: &outletAuth{importPath: "example.com/acme/beacon/pkg/config", flavor: OIDCAzure}, webApp: "/"}},
+			outlets: []routerOutlet{{name: "default", prefix: "api", servesSessions: true, auth: &outletAuth{importPath: "example.com/acme/beacon/pkg/config", methods: []AuthMethod{AzureMethod("azure")}}, webApp: "/"}},
 			wantRouter: []string{
 				"// Package router serves the application.",
 				"//\tevery request: tracing, hooks.Outermost, request logging, SecurityHeaders, httpio.WithParams",
-				"//\tdefault (/api), Azure directory sessions:",
-				"//\t  NoCaching, CompressionMiddleware, StartSession, SetXSRFToken: GET /api/user/login, GET /api/user/callback, GET /api/user/session, DELETE /api/user/session, GET /api/user/logout",
+				"//\tdefault (/api), sessions (azure):",
+				"//\t  NoCaching, CompressionMiddleware, StartSession, SetXSRFToken: GET /api/user/methods, GET /api/user/session, DELETE /api/user/session, GET /api/user/pending, GET /api/user/azure/login, GET /api/user/azure/callback, GET /api/user/azure/logout",
+				"//\t  + ValidateXSRFToken: POST /api/user/pending/confirm, POST /api/user/pending/cancel",
 				"//\t  + ValidateSession, ValidateXSRFToken, CheckAPIVersion: hooks.Default, generatedRoutes",
-				"\tsession.OIDCAzureHandlers\n",
+				"\t// The default outlet's session surface.\n\tDefaultSession\n",
+				"type DefaultSession interface {\n\tStartSession(next http.Handler) http.Handler\n",
+				"\tMethods(list *session.MethodList) http.HandlerFunc\n",
+				"\tPendingStatus() http.HandlerFunc\n\tPendingConfirmWithPassword() http.HandlerFunc\n\tPendingCancel() http.HandlerFunc\n\t// The azure registration's login, callback and front-channel logout (azure.Method).\n\tAzureLogin() http.HandlerFunc\n\tAzureCallback() http.HandlerFunc\n\tAzureFrontChannelLogout() http.HandlerFunc\n}",
+				"\t\tbounded := r.With(resource.BodyLimit(BodyLimit))\n\t\tguarded := bounded.With(h.ValidateXSRFToken)\n\t\tbounded.Get(\"/api/user/methods\", h.Methods(&session.MethodList{\n\t\t\tMethods: []session.AdvertisedMethod{\n\t\t\t\t{Name: \"azure\", Label: \"Microsoft\", Path: \"/api/user/azure/login\"},\n\t\t\t},\n\t\t\tPending: session.PendingRoutes{Status: \"/api/user/pending\", Confirm: \"/api/user/pending/confirm\", Cancel: \"/api/user/pending/cancel\"},\n\t\t}))\n",
+				"\t\tguarded.Post(\"/api/user/pending/confirm\", h.PendingConfirmWithPassword())\n\t\tguarded.Post(\"/api/user/pending/cancel\", h.PendingCancel())\n",
 				"\tServerVersion() string\n",
 				"func New(h Handlers, hooks Hooks) *chi.Mux {",
 				"\tr := chi.NewRouter()\n\t// The release this server was built from, which every session outlet's version\n\t// check compares a browser application's X-Api-Version against.\n\tserverVersion := h.ServerVersion()\n",
 				"\tr.Use(tracer.NewHandler())\n\tr.Use(hooks.Outermost...)\n\tr.Use(logger.NewRequestLogger(h.LogExporter()))\n\tr.Use(h.SecurityHeaders)\n\tr.Use(httpio.WithParams)\n",
 				"\tLogExporter() logger.Exporter\n",
-				"\t\tbounded.Get(\"/api/user/logout\", h.FrontChannelLogout())\n",
+				"\t\tbounded.Get(\"/api/user/azure/logout\", h.AzureFrontChannelLogout())\n",
 				"\t\t\tr.Use(h.ValidateSession)\n\t\t\tr.Use(h.ValidateXSRFToken)\n\t\t\t// The version check: a browser application sends its release in X-Api-Version,\n\t\t\t// and every release up to the server's own is answered. An application outside that\n\t\t\t// range is refused with 412 naming the server's release, before its body is read;\n\t\t\t// a request without the header, the session routes above are answered at any release.\n\t\t\tr.Use(resource.CheckAPIVersion(resource.APIVersionCheck{\n\t\t\t\tServerVersion: serverVersion,\n\t\t\t}))\n\n\t\t\tregisterGenerated(r, hooks.Default, \"Default\", func(r chi.Router) {\n\t\t\t\tgeneratedRoutes(r, h)\n\t\t\t})",
 				"\tfor _, prefix := range []string{\"/api/\"} {",
 				"\t// The default outlet's browser application at /, the catch-all.\n\tr.Route(\"/\", func(r chi.Router) {\n\t\tr.Use(h.DeepLink)\n\n\t\tr.Get(\"/*\", h.Assets())\n\t})\n\n\treturn r\n}",
@@ -587,9 +630,12 @@ func Test_servedRouterTemplates(t *testing.T) {
 				"var routerRootChain = []string{\"LogExporter\", \"SecurityHeaders\"}",
 				"func (s *routerHandlersStub) LogExporter() logger.Exporter {\n\tif s.exporter != nil {\n\t\treturn s.exporter\n\t}\n\n\treturn &routerLogExporterStub{rec: s.rec}\n}",
 				"func (s *routerLogExporterStub) Middleware() func(http.Handler) http.Handler {\n\treturn s.rec.Middleware(\"LogExporter\")\n}",
-				"type routerOIDCAzureStub struct {\n\tsession.OIDCAzureHandlers",
-				"func (s *routerOIDCAzureStub) FrontChannelLogout() http.HandlerFunc {",
-				"\t\t{url: \"/api/user/logout\", suffix: \"/user/logout\", method: http.MethodGet, handler: \"FrontChannelLogout\"},",
+				"type routerDefaultSessionStub struct {\n\trec    *routerCallRecorder\n\tprefix string\n}",
+				"func (s *routerDefaultSessionStub) AzureFrontChannelLogout() http.HandlerFunc {",
+				"func (s *routerDefaultSessionStub) Methods(*session.MethodList) http.HandlerFunc {\n\treturn s.rec.RecordHandlerCall(s.prefix + \"Methods\")\n}",
+				"\t\t{url: \"/api/user/azure/logout\", suffix: \"/user/azure/logout\", method: http.MethodGet, handler: \"AzureFrontChannelLogout\"},",
+				"\t\t{url: \"/api/user/pending/confirm\", suffix: \"/user/pending/confirm\", method: http.MethodPost, handler: \"PendingConfirmWithPassword\", xsrf: true},",
+				"\t\t\tif tt.xsrf {\n\t\t\t\twant = append(want, chain.guards[1])\n\t\t\t}",
 				"\t\tguards: []string{\"ValidateSession\", \"ValidateXSRFToken\"},",
 				"func TestGeneratedRouterWebApps(t *testing.T) {",
 				"nothing else, and that the\n// application at / is the catch-all.",
@@ -599,7 +645,7 @@ func Test_servedRouterTemplates(t *testing.T) {
 				"\tserverVersion string\n\t// exporter is where the request log goes when a test sets one, the console for the\n\t// request log test; nil hands the router the recording stub.\n\texporter logger.Exporter\n}\n\nfunc (s *routerHandlersStub) ServerVersion() string {\n\treturn s.serverVersion\n}",
 				"\t\t\tDefault: func(r chi.Router, generated func(chi.Router)) {\n\t\t\t\tr.Use(rec.Middleware(\"DefaultHook\"))\n\t\t\t\tgenerated(r)\n\t\t\t},",
 			},
-			wantNotRouterTest: []string{"BindAuth", "routerPasswordStub", "TestGeneratedRouterRoot", "files: []routerFileRoute"},
+			wantNotRouterTest: []string{"BindAuth", "routerPortalSessionStub", "PasswordLogin", "TestGeneratedRouterRoot", "files: []routerFileRoute"},
 		},
 		{
 			name: "oldest answered on the default outlet with a stored-file route",
@@ -659,11 +705,18 @@ func Test_servedRouterTemplates(t *testing.T) {
 				{name: "portal", prefix: "portal/api", servesSessions: true, auth: members, webApp: "/portal"},
 			},
 			wantRouter: []string{
-				"//\tdefault (/api), password sessions of the crew auth:",
-				"//\t  BindAuth(crew.Name), NoCaching, CompressionMiddleware, StartSession, SetXSRFToken: POST /api/user/login, GET /api/user/session, DELETE /api/user/session",
+				"//\tdefault (/api), sessions of the crew auth (password):",
+				"//\t  BindAuth(crew.Name), NoCaching, CompressionMiddleware, StartSession, SetXSRFToken: GET /api/user/methods, GET /api/user/session, DELETE /api/user/session, GET /api/user/pending",
+				"//\t  + ValidateXSRFToken: POST /api/user/password/login, POST /api/user/pending/confirm, POST /api/user/pending/cancel",
+				"//\tportal (/portal/api), sessions of the members auth (google):",
 				"//\tdroids (/droids), API key:\n//\t  NoCaching, CompressionMiddleware, DroidsAuth: hooks.Droids, generatedDroidsRoutes",
 				"\tGeneratedHandlers\n\tGeneratedDroidsHandlers\n\tGeneratedPortalHandlers\n",
-				"\tPortal() session.OIDCGoogleHandlers\n",
+				"\t// Portal returns the portal outlet's session surface: the members auth's.\n\tPortal() PortalSession\n",
+				"type PortalSession interface {",
+				"\t// The google registration's login and callback (google.Method).\n\tGoogleLogin() http.HandlerFunc\n\tGoogleCallback() http.HandlerFunc\n}",
+				"\t// The password method's login (session.PasswordMethod).\n\tPasswordLogin() http.HandlerFunc\n}",
+				"\t\tguarded.Post(\"/api/user/password/login\", h.PasswordLogin())",
+				"\t\t\t\t{Name: \"google\", Label: \"Google\", Path: \"/portal/api/user/google/login\"},",
 				"\tBindAuth(name string) func(http.Handler) http.Handler\n",
 				"\tDroidsAuth(next http.Handler) http.Handler\n",
 				"\tPortalDeepLink(next http.Handler) http.Handler\n\tPortalAssets() http.HandlerFunc\n",
@@ -671,7 +724,8 @@ func Test_servedRouterTemplates(t *testing.T) {
 				"\t\tr.Use(h.NoCaching)\n\t\tr.Use(h.CompressionMiddleware())\n\t\tr.Use(h.DroidsAuth)\n\n\t\tregisterGenerated(r, hooks.Droids, \"Droids\"",
 				"\tportalSession := h.Portal()\n",
 				"\t\tr.Use(portalSession.StartSession)",
-				"\t\tbounded.Get(\"/portal/api/user/callback\", portalSession.CallbackOIDC())",
+				"\t\tbounded.Get(\"/portal/api/user/google/callback\", portalSession.GoogleCallback())",
+				"\t\tguarded := bounded.With(portalSession.ValidateXSRFToken)",
 				"\tfor _, prefix := range []string{\"/api/\", \"/droids/\", \"/portal/api/\"} {",
 				"// applications answer, longer mount paths first: /console (DeepLink, Assets), /portal (PortalDeepLink, PortalAssets).\n// None is mounted at /: the root alone redirects to /console/, the default outlet's application.\npackage router",
 				"\t// The default outlet's browser application at /console.\n\tr.Route(\"/console\", func(r chi.Router) {\n\t\tr.Use(h.DeepLink)\n\n\t\tr.Get(\"/*\", h.Assets())\n\t})\n\n\t// The portal outlet's browser application at /portal.\n\tr.Route(\"/portal\", func(r chi.Router) {\n\t\tr.Use(h.PortalDeepLink)\n\n\t\tr.Get(\"/*\", h.PortalAssets())\n\t})\n\n\t// No browser application is mounted at /:",
@@ -684,10 +738,15 @@ func Test_servedRouterTemplates(t *testing.T) {
 				"\t\tgroup:  []string{\"BindAuth(\" + crew.Name + \")\", \"NoCaching\", \"CompressionMiddleware\", \"StartSession\", \"SetXSRFToken\"},",
 				"\t\tgroup: []string{\"NoCaching\", \"CompressionMiddleware\", \"DroidsAuth\"},",
 				"\t\tgroup:  []string{\"BindAuth(\" + members.Name + \")\", \"NoCaching\", \"CompressionMiddleware\", \"PortalStartSession\", \"PortalSetXSRFToken\"},",
-				"type routerPasswordStub struct {\n\tsession.PasswordAuthHandlers",
-				"type routerOIDCGoogleStub struct {\n\tsession.OIDCGoogleHandlers",
-				"\tportal *routerOIDCGoogleStub\n",
-				"\t\tportal:                &routerOIDCGoogleStub{rec: rec, prefix: \"Portal\"},",
+				"type routerDefaultSessionStub struct {",
+				"type routerPortalSessionStub struct {",
+				"func (s *routerDefaultSessionStub) PasswordLogin() http.HandlerFunc {",
+				"func (s *routerPortalSessionStub) GoogleCallback() http.HandlerFunc {",
+				"\tportal *routerPortalSessionStub\n",
+				"\t\tportal:                   &routerPortalSessionStub{rec: rec, prefix: \"Portal\"},",
+				"func (s *routerHandlersStub) Portal() PortalSession {\n\treturn s.portal\n}",
+				"\t\t{url: \"/portal/api/user/google/callback\", suffix: \"/user/google/callback\", method: http.MethodGet, handler: \"PortalGoogleCallback\"},",
+				"\t\t{url: \"/api/user/password/login\", suffix: \"/user/password/login\", method: http.MethodPost, handler: \"PasswordLogin\", xsrf: true},",
 				"func (s *routerHandlersStub) DroidsAuth(next http.Handler) http.Handler {",
 				"func (s *routerHandlersStub) BindAuth(name string) func(http.Handler) http.Handler {",
 				"\t\t\tDroids: func(r chi.Router, generated func(chi.Router)) {",
@@ -697,7 +756,7 @@ func Test_servedRouterTemplates(t *testing.T) {
 				"\t\t{name: \"the root redirects\", url: \"/\", code: http.StatusTemporaryRedirect, location: \"/console/\"},",
 				"\t\t{name: \"an unmatched path is not found\", url: \"/generated-router-unmatched\", code: http.StatusNotFound},",
 			},
-			wantNotRouterTest: []string{"routerOIDCAzureStub", "catch-all"},
+			wantNotRouterTest: []string{"FrontChannelLogout", "catch-all"},
 		},
 		{
 			name: "a default outlet without a browser application redirects the root to the first outlet that serves one",
@@ -723,10 +782,10 @@ func Test_servedRouterTemplates(t *testing.T) {
 				"\tDefaultAuth(next http.Handler) http.Handler\n",
 				"\tServerVersion() string\n",
 			},
-			wantNotRouter: []string{"StartSession", "session.PasswordAuthHandlers", "session.OIDC", "http.Redirect", "r.Use(resource.CheckAPIVersion(", "serverVersion :="},
+			wantNotRouter: []string{"StartSession", "DefaultSession", "session.MethodList", "http.Redirect", "r.Use(resource.CheckAPIVersion(", "serverVersion :="},
 			// resource stays imported: the body limit wraps hooks.Root's group on every router.
 			wantNoRouterImports: []string{"github.com/cccteam/session"},
-			wantNotRouterTest:   []string{"session.PasswordAuthHandlers", "session.OIDC", "TestGeneratedRouterWebApps", "func TestGeneratedRouterSessionRoutes", "TestGeneratedRouterRoot", "TestGeneratedRouterAPIVersion", "routerVersionProbe"},
+			wantNotRouterTest:   []string{"SessionStub", "session.MethodList", "TestGeneratedRouterWebApps", "func TestGeneratedRouterSessionRoutes", "TestGeneratedRouterRoot", "TestGeneratedRouterAPIVersion", "routerVersionProbe"},
 		},
 	}
 	r := &resourceGenerator{client: &client{}}
@@ -809,11 +868,11 @@ func Test_generateRoutesOutletOptions(t *testing.T) {
 	}{
 		{
 			name:   "a session auth and a browser application on the default outlet",
-			option: GenerateRoutes("pkg/router", "api", Auth("example.com/acme/beacon/pkg/auth/staff", Password), WebApp("/")),
+			option: GenerateRoutes("pkg/router", "api", Auth("example.com/acme/beacon/pkg/auth/staff", PasswordMethod()), WebApp("/")),
 			check: func(t *testing.T, r *resourceGenerator) {
 				t.Helper()
 				outlets := r.allOutlets()
-				if len(outlets) != 1 || outlets[0].auth == nil || outlets[0].auth.flavor != Password || outlets[0].webApp != "/" || !outlets[0].servesSessions || outlets[0].name != defaultOutletName || outlets[0].prefix != "api" {
+				if len(outlets) != 1 || outlets[0].auth == nil || len(outlets[0].auth.methods) != 1 || outlets[0].auth.methods[0] != PasswordMethod() || outlets[0].webApp != "/" || !outlets[0].servesSessions || outlets[0].name != defaultOutletName || outlets[0].prefix != "api" {
 					t.Errorf("default outlet = %+v", outlets[0])
 				}
 			},
@@ -855,8 +914,8 @@ func Test_generateRoutesOutletOptions(t *testing.T) {
 func wordedRouterShape(t *testing.T) (r *resourceGenerator, outlets []routerOutlet, fileRoutes, wordedRoutes map[string][]*generatedRoute) {
 	t.Helper()
 
-	crew := &outletAuth{importPath: "example.com/acme/beacon/pkg/auth/crew", flavor: Password}
-	members := &outletAuth{importPath: "example.com/acme/beacon/pkg/auth/members", flavor: OIDCGoogle}
+	crew := &outletAuth{importPath: "example.com/acme/beacon/pkg/auth/crew", methods: []AuthMethod{PasswordMethod()}}
+	members := &outletAuth{importPath: "example.com/acme/beacon/pkg/auth/members", methods: []AuthMethod{GoogleMethod("google")}}
 	scheduledStruct := fixtureStructs(loadFixture(t, "schedulefixture"))["PruneLogs"]
 	r = &resourceGenerator{
 		client: &client{
@@ -1024,7 +1083,7 @@ func Test_servedRouterData_words(t *testing.T) {
 func Test_servedRouterData_wordsUndeclared(t *testing.T) {
 	t.Parallel()
 
-	crew := &outletAuth{importPath: "example.com/acme/beacon/pkg/auth/crew", flavor: Password}
+	crew := &outletAuth{importPath: "example.com/acme/beacon/pkg/auth/crew", methods: []AuthMethod{PasswordMethod()}}
 	r := &resourceGenerator{client: &client{}}
 	r.router = packageDir("pkg/router")
 	r.resource = packageDir("pkg/resources")
@@ -1059,7 +1118,7 @@ func Test_servedRouterTemplates_words(t *testing.T) {
 
 	r, outlets, fileRoutes, wordedRoutes := wordedRouterShape(t)
 	alone := []routerOutlet{
-		{name: "default", prefix: "api", servesSessions: true, auth: &outletAuth{importPath: "example.com/acme/beacon/pkg/auth/crew", flavor: Password}, requestLog: LogOnEvent()},
+		{name: "default", prefix: "api", servesSessions: true, auth: &outletAuth{importPath: "example.com/acme/beacon/pkg/auth/crew", methods: []AuthMethod{PasswordMethod()}}, requestLog: LogOnEvent()},
 	}
 	plain := &resourceGenerator{client: &client{}}
 	plain.router = packageDir("pkg/router")
@@ -1085,8 +1144,8 @@ func Test_servedRouterTemplates_words(t *testing.T) {
 			fileRoutes:   fileRoutes,
 			wordedRoutes: wordedRoutes,
 			wantRouter: []string{
-				"//\tevery request: tracing, hooks.Outermost, request logging (always, Warning and above), SecurityHeaders, httpio.WithParams\n//\t  by hand under /beacons/: request log on event, traces off\n//\tdefault (/api), password sessions of the crew auth:\n",
-				"//\t  + ValidateSession, ValidateXSRFToken, CheckAPIVersion: hooks.Default, generatedRoutes\n//\t  GET /api/widgets/{widgetID}/content: request log never, traces off\n//\tdroids (/droids), API key, request log on event, traces off:\n//\t  NoCaching, CompressionMiddleware, DroidsAuth: hooks.Droids, generatedDroidsRoutes\n//\t  by hand under /droids/telemetry/: request log never, traces capped at 0.5\n//\t  POST /droids/ingest: request log sampled at 0.5\n//\tportal (/portal/api), Google directory sessions of the members auth, traces capped at 0.1:\n",
+				"//\tevery request: tracing, hooks.Outermost, request logging (always, Warning and above), SecurityHeaders, httpio.WithParams\n//\t  by hand under /beacons/: request log on event, traces off\n//\tdefault (/api), sessions of the crew auth (password):\n",
+				"//\t  + ValidateSession, ValidateXSRFToken, CheckAPIVersion: hooks.Default, generatedRoutes\n//\t  GET /api/widgets/{widgetID}/content: request log never, traces off\n//\tdroids (/droids), API key, request log on event, traces off:\n//\t  NoCaching, CompressionMiddleware, DroidsAuth: hooks.Droids, generatedDroidsRoutes\n//\t  by hand under /droids/telemetry/: request log never, traces capped at 0.5\n//\t  POST /droids/ingest: request log sampled at 0.5\n//\tportal (/portal/api), sessions of the members auth (google), traces capped at 0.1:\n",
 				"//\tscheduled (/_scheduled), Cloud Scheduler's token:\n//\t  NoCaching, CompressionMiddleware, SchedulerAuth: generatedScheduledRoutes\n//\t  POST /_scheduled/prune-logs: request log on event\n//\n",
 				"// None is mounted at /: the root alone redirects to /console/, the default outlet's application.\n//\n// The request log word and the trace setting named at each place are the nearest\n// declarations, a route's over its outlet's and an outlet's over the application\n// default; a request under none writes its entry always and its spans follow the front\n// end. The root's request logger decides each entry when the request ends, and a handler\n// may change its own request's word through logger.FromReq(r).SetPolicy.\npackage router\n",
 				"\tr.Use(tracer.NewHandler(tracer.Surfaces(map[string]tracer.Traces{\n\t\t\"/api/widgets/{widgetID}/content\": tracer.TracesOff(),\n\t\t\"/beacons/\":                       tracer.TracesOff(),\n\t\t\"/droids/\":                        tracer.TracesOff(),\n\t\t\"/droids/telemetry/\":              tracer.TracesCapped(0.5),\n\t\t\"/portal/api/\":                    tracer.TracesCapped(0.1),\n\t})))\n\tr.Use(hooks.Outermost...)\n",
@@ -1118,7 +1177,7 @@ func Test_servedRouterTemplates_words(t *testing.T) {
 			r:       plain,
 			outlets: alone,
 			wantRouter: []string{
-				"//\tevery request: tracing, hooks.Outermost, request logging, SecurityHeaders, httpio.WithParams\n//\tdefault (/api), password sessions, request log on event:\n",
+				"//\tevery request: tracing, hooks.Outermost, request logging, SecurityHeaders, httpio.WithParams\n//\tdefault (/api), sessions (password), request log on event:\n",
 				"\tr.Use(tracer.NewHandler())\n",
 				"\tr.Use(logger.NewRequestLogger(h.LogExporter()))\n",
 				"\tr.Group(func(r chi.Router) {\n\t\t// Every request under the outlet writes its request log on event.\n\t\tr.Use(logger.WithPolicy(logger.OnEvent()))\n\t\tr.Use(h.NoCaching)\n",
