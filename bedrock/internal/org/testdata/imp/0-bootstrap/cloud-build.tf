@@ -20,7 +20,8 @@
 # time, so a pull request that moves it already runs the new bedrock under
 # the old steps; the one rule is that a bedrock release works under the
 # previous release's steps. Both triggers pass _BEDROCK_STEPS, the shape of
-# these steps, and the commands say when they run under another.
+# these steps and the kind of pin they were rendered for, and the commands say
+# when they run under another.
 #
 # The connection and the repository link exist once placement.json records
 # the Cloud Build GitHub authorization (cloudBuildInstallationId,
@@ -311,16 +312,18 @@ locals {
   bedrock = "/builder/home/bedrock"
   run_env = ["BUILD_ID=$BUILD_ID", "PROJECT_ID=$PROJECT_ID", "LOCATION=$LOCATION"]
   substitutions = {
-    _LAYER         = ""  # a layer to apply again by hand, with no change check; empty for the push's changes
-    _ENVIRONMENT   = ""  # with _LAYER=2-env, one environment; empty for the three in order
-    _BEDROCK_STEPS = "1" # the shape of these steps, which bedrock org plan and apply compare with their own
+    _LAYER         = ""          # a layer to apply again by hand, with no change check; empty for the push's changes
+    _ENVIRONMENT   = ""          # with _LAYER=2-env, one environment; empty for the three in order
+    _BEDROCK_STEPS = "2-release" # the shape of these steps, which bedrock org plan and apply compare with their own
   }
 
   # FetchBedrock reads the pin off placement.json in the checkout, at run
   # time, with python3 in the gcloud image, and refuses a commit pin no branch
-  # of the repository reaches (a commits-only clone of its branches, with git);
-  # BuildBedrock builds a commit pin in the Go image and has nothing to do for
-  # a release.
+  # of the repository reaches (a commits-only clone of its branches, with git).
+  # The steps follow the pin's kind at render time, as the application
+  # pipeline's do: a release pin renders FetchBedrock alone, and a commit pin
+  # adds BuildBedrock, which builds it in the Go image. bedrock upgrade renders
+  # this layer with the pin it moves, and the next apply updates the triggers.
   fetch_bedrock = <<-EOT
     import hashlib
     import json
@@ -381,15 +384,6 @@ locals {
     os.chmod(home + "/bedrock", 0o755)
     os.execv(home + "/bedrock", [home + "/bedrock", "--version"])
   EOT
-  build_bedrock = <<-EOT
-    set -eu
-    if [ ! -f /builder/home/bedrock-commit ]; then
-      echo "a release pin: nothing to build"
-      exit 0
-    fi
-    go install -ldflags="-s -w" github.com/cccteam/ccc/bedrock@"$$(cat /builder/home/bedrock-commit)"
-    /builder/home/bedrock --version
-  EOT
 
   steps = [
     {
@@ -399,14 +393,6 @@ locals {
       args       = ["-c", local.fetch_bedrock, "/builder/home", "https://github.com", "https://github.com/cccteam/ccc.git"]
       env        = []
       timeout    = "300s"
-    },
-    {
-      id         = "BuildBedrock"
-      name       = "cgr.dev/chainguard/go@sha256:2c20827746d752c1f18989847956637a0dc979c42507f4059e1d9559ee7733af"
-      entrypoint = "sh"
-      args       = ["-c", local.build_bedrock]
-      env        = ["GOBIN=/builder/home", "CGO_ENABLED=0", "GOTOOLCHAIN=local", "GOFLAGS=-trimpath", "GOPATH=/tmp/go", "GOCACHE=/tmp/go-build", "GOMODCACHE=/tmp/go-mod", "GOPROXY=https://proxy.golang.org", "GOSUMDB=sum.golang.org", "GONOSUMDB=", "GOPRIVATE=", "GOINSECURE="]
-      timeout    = "600s"
     },
     {
       id         = "Check"

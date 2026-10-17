@@ -2468,11 +2468,26 @@ func TestTriggers(t *testing.T) {
 			},
 		},
 		{
-			name:   "the shared steps: the pin read off placement.json at run time, the commit pin built, the check; then the substitutions",
+			name:   "the shared steps for a release pin: the pin read off placement.json at run time, no build step, the check; then the substitutions",
 			mutate: func(*Placement) {},
 			want: []string{
 				"  bedrock = \"/builder/home/bedrock\"\n  run_env = [\"BUILD_ID=$BUILD_ID\", \"PROJECT_ID=$PROJECT_ID\", \"LOCATION=$LOCATION\"]\n",
-				"    _LAYER         = \"\"  # a layer to apply again by hand, with no change check; empty for the push's changes\n    _ENVIRONMENT   = \"\"  # with _LAYER=2-env, one environment; empty for the three in order\n    _BEDROCK_STEPS = \"" + StepsVersion + "\" # the shape of these steps, which bedrock org plan and apply compare with their own\n",
+				"    _BEDROCK_STEPS = \"" + StepsVersion + "-release\" # the shape of these steps, which bedrock org plan and apply compare with their own\n",
+				"    placement_path = sys.argv[4] if len(sys.argv) > 4 else \"placement.json\"\n    with open(placement_path, encoding=\"utf-8\") as f:\n        placement = json.load(f)\n    version = placement.get(\"bedrockVersion\", \"\")\n    digest = placement.get(\"bedrockSha256\", \"\")\n",
+				"    url = host + \"/cccteam/ccc/releases/download/bedrock/\" + version + \"/bedrock-linux-amd64\"\n",
+				"    if hashlib.sha256(data).hexdigest() != digest:\n",
+				"    {\n      id         = \"FetchBedrock\"\n      name       = \"gcr.io/cloud-builders/gcloud\"\n      entrypoint = \"python3\"\n      args       = [\"-c\", local.fetch_bedrock, \"/builder/home\", \"https://github.com\", \"https://github.com/cccteam/ccc.git\"]\n      env        = []\n      timeout    = \"300s\"\n    },\n",
+				"    {\n      id         = \"Check\"\n      name       = \"ghcr.io/opentofu/opentofu:1.12.6\"\n      entrypoint = local.bedrock\n      args       = [\"org\", \"check\"]\n      env        = []\n      timeout    = \"600s\"\n    },\n  ]\n",
+				"    dynamic \"step\" {\n      for_each = local.steps\n      content {\n        id         = step.value.id\n        name       = step.value.name\n        entrypoint = step.value.entrypoint\n        args       = step.value.args\n        env        = step.value.env\n        timeout    = step.value.timeout\n      }\n    }\n",
+			},
+			absent: []string{"id         = \"BuildBedrock\"", "build_bedrock = <<-EOT", "cgr.dev/chainguard/go", "v0.5.0", "0123456789abcdef", "workloadIdentityPool", "layers.yml", "GOOGLE_IMPERSONATE_SERVICE_ACCOUNT", "-core-REPLACEME"},
+		},
+		{
+			name:   "the shared steps for a commit pin: the pin read off placement.json at run time, the commit pin built, the check; then the substitutions",
+			mutate: func(p *Placement) { p.BedrockVersion, p.BedrockSHA256 = "v0.5.1-0.20260928222237-58b211dce544", "" },
+			want: []string{
+				"  bedrock = \"/builder/home/bedrock\"\n  run_env = [\"BUILD_ID=$BUILD_ID\", \"PROJECT_ID=$PROJECT_ID\", \"LOCATION=$LOCATION\"]\n",
+				"    _BEDROCK_STEPS = \"" + StepsVersion + "-commit\" # the shape of these steps, which bedrock org plan and apply compare with their own\n",
 				"    placement_path = sys.argv[4] if len(sys.argv) > 4 else \"placement.json\"\n    with open(placement_path, encoding=\"utf-8\") as f:\n        placement = json.load(f)\n    version = placement.get(\"bedrockVersion\", \"\")\n    digest = placement.get(\"bedrockSha256\", \"\")\n",
 				"    url = host + \"/cccteam/ccc/releases/download/bedrock/\" + version + \"/bedrock-linux-amd64\"\n",
 				"    if hashlib.sha256(data).hexdigest() != digest:\n",

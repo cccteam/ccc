@@ -428,18 +428,22 @@ that layer applies, since the merge applies that layer first (the root README,
 "How the layers are applied").
 
 The steps are the trigger's, so a pull request cannot change them; a pull
-request changes only what the steps read. Each run is four steps: the first
-reads the bedrock pin off `placement.json` in the checkout (`bedrockVersion`
-and, for a release, `bedrockSha256`; `bedrock upgrade` moves it) and
-downloads the release's binary, verified against the checksum, or for a
-commit checks with git that a branch of `cccteam/ccc` reaches it (a commit no
-branch reaches stops the run); the second builds the pin with `go install`
-when it is a commit, where Go's checksum database verifies it; the third
-runs `bedrock org check`, which refuses the
-run when a committed layer differs from what the placement renders, holds a
-`.tf` file no render produces, or holds an override file; the fourth runs
-`bedrock org plan` or `bedrock org apply`. The bedrock the run uses is the
-one the checkout pins, never one the trigger names.
+request changes only what the steps read. Each run is three steps for a
+release pin and four for a commit pin: the first reads the bedrock pin off
+`placement.json` in the checkout (`bedrockVersion` and, for a release,
+`bedrockSha256`; `bedrock upgrade` moves it) and downloads the release's
+binary, verified against the checksum, or for a commit checks with git that a
+branch of `cccteam/ccc` reaches it (a commit no branch reaches stops the
+run); for a commit pin a second step builds it with `go install`, where Go's
+checksum database verifies it (a release pin renders no such step, so a
+production organization's runs never pull the Go image); the next runs
+`bedrock org check`, which refuses the run when a committed layer differs
+from what the placement renders, holds a `.tf` file no render produces, or
+holds an override file; the last runs `bedrock org plan` or `bedrock org
+apply`. The steps follow the pin's kind at render time: `bedrock upgrade`
+renders this layer with the pin it moves, and the next apply updates the
+triggers. The bedrock the run uses is the one the checkout pins, never one
+the trigger names.
 
 The trigger's steps lag one apply behind the repository. A change to them
 is rendered by a new bedrock, planned and applied by a run on the old steps,
@@ -447,8 +451,8 @@ and the next run is the first on the new ones. Since the pin is read at run
 time, a pull request that moves it already runs the new bedrock under the
 old steps, so the one rule bedrock keeps is that a release works under the
 previous release's steps. Both triggers pass `_BEDROCK_STEPS`, the shape of
-their steps, and `bedrock org plan` and `apply` say in the run's log when
-they run under another shape.
+their steps and the kind of pin they were rendered for, and `bedrock org
+plan` and `apply` say in the run's log when they run under another shape.
 
 To apply one layer again with no change to it, which a registration's second
 pass of `2-env` needs, start the apply trigger by hand on the default branch
