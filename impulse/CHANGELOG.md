@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.4.5](https://github.com/cccteam/ccc/compare/impulse/v0.4.4...impulse/v0.4.5) (2026-10-17)
+
+
+### Features
+
+* bedrock patch names the hotfix path what it is, with patch status, the placement's maintenance window and the merge-back guard ([#969](https://github.com/cccteam/ccc/issues/969)) ([fbcdfb3](https://github.com/cccteam/ccc/commit/fbcdfb3f1aec48ba85bae026c2cf1c5e7e6d1587))
+
+
+### Bug Fixes
+
+* the CI migrations job and bedrock render read the whole migrations directory by the sequence rule ([#963](https://github.com/cccteam/ccc/issues/963)) ([a60cc3c](https://github.com/cccteam/ccc/commit/a60cc3c100ebbd7378b6261822c0e57cf6b11b7d))
+* the freeze on committed migrations starts at the first release; before it the renumber packs the whole sequence ([#967](https://github.com/cccteam/ccc/issues/967)) ([7fb8356](https://github.com/cccteam/ccc/commit/7fb8356273f69d500f2d9fdbbc027c6793f7568c))
+* the skeleton and Lodestar take their fonts from the library, so the service worker's loads render Material text and icons ([#971](https://github.com/cccteam/ccc/issues/971)) ([4649033](https://github.com/cccteam/ccc/commit/4649033f6e594079c13b60ee71b318b1d23cd28b))
+
 ## [0.4.4](https://github.com/cccteam/ccc/compare/impulse/v0.4.3...impulse/v0.4.4) (2026-10-15)
 
 
