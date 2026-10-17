@@ -119,7 +119,7 @@ func TestOrgTeardown(t *testing.T) {
 			tornDown:    true,
 			interactive: never,
 			args:        []string{"--yes"},
-			wantOut:     []string{"harbor tst: stands.", "harbor stg: no stack.", "harbor prd: torn down.", "From harbor's checkout: bedrock teardown --all", "beacon tst: no stack.", "1 environment(s) stand: run the command above from each application's checkout, then bedrock org teardown again."},
+			wantOut:     []string{"harbor tst: stands.", "harbor stg: no stack.", "harbor prd: torn down.", "From harbor's checkout: bedrock teardown --all", "beacon tst: no stack.", "1 environment(s) stand: run the command above from each application's checkout (or the operations workflow's teardown action in each environment), then bedrock org teardown again."},
 		},
 		{
 			name:        "the second run tears the applications under 3-app down, with the prefix typed",

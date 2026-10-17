@@ -79,6 +79,16 @@
 # this way signs every user of the environment out, which is the point. With no release live yet,
 # the version waits for the next release's build.
 #
+# teardown and destroy (tst, stg, or prd): the pipeline's path to take the environment down, for
+# a person who is not an organization owner. The environment's name is typed into the confirm input,
+# in place of the prompt bedrock teardown and bedrock destroy ask at the terminal; the job runs the
+# environment's stack trigger (2-env's, which survives the teardown) with the action, and the build
+# runs the code the hand commands run, as the apply identity, waiting for the team group's approval
+# in Cloud Build outside the first environment; the record beside the stack's id names the GitHub
+# actor and the approver. teardown takes the stack down to what it keeps (the database, the file
+# stores, the secret containers, the identities, the stack's id); destroy takes everything. Bringing
+# the environment back is the apply action, then run.
+#
 # version (tst or stg): the migrate command prints what each migrations table says about
 # the database (no version, a version, or dirty at one with the progress recorded) and nothing else
 # deploys. rerun: the release runs again, so the migrate command continues a file that stopped from
@@ -97,7 +107,7 @@ on:
   workflow_dispatch:
     inputs:
       action:
-        description: "What to do: restore the environment's database (an empty database or production's backup below production; a backup by name, @<moment> or a release's cut anywhere, production included); run the release again (its tag build, with no instruction; production included); apply (the environment's stack when no release's build can, from the default branch: for the first time, before any release exists there, or again after a teardown); rollback (return the environment to an earlier release, with nothing of the database); list (the releases, their cuts and backups, and the database generations the environment can be restored to, in this run's summary); maintenance (take the application out of a maintenance an earlier run left on); or a migration operation (version, rerun, force, below production)"
+        description: "What to do: restore the environment's database (an empty database or production's backup below production; a backup by name, @<moment> or a release's cut anywhere, production included); run the release again (its tag build, with no instruction; production included); apply (the environment's stack when no release's build can, from the default branch: for the first time, before any release exists there, or again after a teardown); teardown or destroy (the environment's stack taken down to what it keeps, or destroyed whole, through the stack trigger as the apply identity; the environment's name typed into confirm); rollback (return the environment to an earlier release, with nothing of the database); list (the releases, their cuts and backups, and the database generations the environment can be restored to, in this run's summary); maintenance (take the application out of a maintenance an earlier run left on); or a migration operation (version, rerun, force, below production)"
         type: choice
         required: true
         default: restore
@@ -105,6 +115,8 @@ on:
           - restore
           - run
           - apply
+          - teardown
+          - destroy
           - rollback
           - list
           - maintenance
@@ -154,6 +166,10 @@ on:
         default: ""
       variable:
         description: "For rotate: the generated secret's variable (APP_COOKIE_KEY)"
+        type: string
+        default: ""
+      confirm:
+        description: "For teardown and destroy: the environment's name typed again, in place of the prompt the hand command asks at the terminal"
         type: string
         default: ""
 
@@ -525,6 +541,80 @@ jobs:
             sleep 30
           done
 
+  teardown:
+    name: tear the environment down or destroy it
+    if: ${{ inputs.action == 'teardown' || inputs.action == 'destroy' }}
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    permissions:
+      id-token: write
+    env:
+      ENVIRONMENT: ${{ inputs.environment }}
+      ACTION: ${{ inputs.action }}
+      CONFIRM: ${{ inputs.confirm }}
+      REQUESTER: ${{ github.actor }}
+      REGION: us-central1
+      BRANCH: master
+      APP: beacon
+    steps:
+      # The environment's name typed back, in place of the prompt the hand command asks;
+      # then the environment's values, from the placement's projects: an environment the
+      # placement records no project for is not wired, and the run stops before touching
+      # anything.
+      - name: The environment typed back, and its project, identity and trigger
+        id: target
+        run: |
+          if [ "$CONFIRM" != "$ENVIRONMENT" ]; then
+            echo "::error::$ACTION takes the environment's name typed into confirm ($ENVIRONMENT), in place of the prompt bedrock $ACTION asks at the terminal; nothing ran"
+            exit 1
+          fi
+          project=$(eval "printf '%s' \"\${PROJECT_$ENVIRONMENT:-}\"")
+          if [ -z "$project" ]; then
+            echo "::error::$ENVIRONMENT is not wired for operations: record its project (projects.$ENVIRONMENT, the id and the number bedrock org render prints) in infrastructure/placement.json and render"
+            exit 1
+          fi
+          for name in project provider identity trigger; do
+            upper=$(printf '%s' "$name" | tr '[:lower:]' '[:upper:]')
+            printf '%s=%s\n' "$name" "$(eval "printf '%s' \"\${${upper}_$ENVIRONMENT}\"")" >> "$GITHUB_OUTPUT"
+          done
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: ${{ steps.target.outputs.provider }}
+          service_account: ${{ steps.target.outputs.identity }}
+      - uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+      # The stack trigger's build (2-env's, run as the deploy identity) with the action: the
+      # code bedrock teardown and bedrock destroy run by hand, as the apply identity, from
+      # the default branch, waited for to its end. In an environment whose builds wait for
+      # an approval in Cloud Build it waits here too; thirty minutes without one and the job
+      # cancels it, so a teardown nobody approved is not left waiting.
+      - name: Run the stack trigger with the action
+        env:
+          PROJECT: ${{ steps.target.outputs.project }}
+          TRIGGER: ${{ steps.target.outputs.trigger }}
+        run: |
+          build=$(gcloud builds triggers run "$TRIGGER" --branch "$BRANCH" --region "$REGION" --project "$PROJECT" \
+            --substitutions "_STACK_ACTION=$ACTION,_REQUESTER=$REQUESTER" --format='value(metadata.build.id)')
+          echo "Build $build in $ENVIRONMENT: $ACTION of $APP's stack from $BRANCH as the apply identity, asked for by $REQUESTER."
+          echo "https://console.cloud.google.com/cloud-build/builds;region=$REGION/$build?project=$PROJECT"
+          pending=0
+          while :; do
+            status=$(gcloud builds describe "$build" --region "$REGION" --project "$PROJECT" --format='value(status)')
+            case "$status" in
+              SUCCESS) echo "Build $build succeeded: the $ACTION of $ENVIRONMENT's stack is done; its record beside the stack's id names $REQUESTER and the approver. The apply action brings the stack back, then run."; exit 0 ;;
+              FAILURE|CANCELLED|TIMEOUT|INTERNAL_ERROR|EXPIRED) echo "::error::Build $build ended $status; its log says why."; exit 1 ;;
+              PENDING)
+                pending=$((pending + 30))
+                if [ "$pending" -ge 1800 ]; then
+                  gcloud builds cancel "$build" --region "$REGION" --project "$PROJECT" --quiet > /dev/null
+                  echo "::error::Build $build waited thirty minutes for its approval in Cloud Build and was cancelled; nothing changed. Ask again when an approver is ready."
+                  exit 1
+                fi
+                echo "Build $build is pending its approval in Cloud Build ($pending s)." ;;
+              *) pending=0 ;;
+            esac
+            sleep 30
+          done
+
   rotate:
     name: rotate a generated secret
     if: ${{ inputs.action == 'rotate' }}
@@ -634,7 +724,7 @@ jobs:
 
   migration:
     name: the migrations' operation
-    if: ${{ inputs.action != 'restore' && inputs.action != 'run' && inputs.action != 'rollback' && inputs.action != 'list' && inputs.action != 'maintenance' && inputs.action != 'apply' && inputs.action != 'rotate' }}
+    if: ${{ inputs.action != 'restore' && inputs.action != 'run' && inputs.action != 'rollback' && inputs.action != 'list' && inputs.action != 'maintenance' && inputs.action != 'apply' && inputs.action != 'teardown' && inputs.action != 'destroy' && inputs.action != 'rotate' }}
     runs-on: ubuntu-latest
     environment: ${{ inputs.environment }}
     permissions:

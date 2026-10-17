@@ -127,9 +127,50 @@ type TeardownRequest struct {
 	Env       string
 	// Destroy destroys the whole stack instead of tearing it down.
 	Destroy bool
-	// By names who runs the command, for the record; Now is the clock it is dated by.
-	By  string
-	Now func() time.Time
+	// By names who runs the command, for the record (the person by hand; the GitHub
+	// actor through the operations workflow), and Approval who approved the build in
+	// Cloud Build, where one did; Now is the clock the record is dated by.
+	By       string
+	Approval *Approval
+	Now      func() time.Time
+	// Identity is the apply identity the stack trigger's build runs the teardown as
+	// (StackTeardown), with Impersonate when the build runs as the deploy identity and
+	// becomes it: the state and the records are read as it, tofu drives the stack as it,
+	// and the record is written as it. Empty by hand: the person, nothing impersonated.
+	Identity    string
+	Impersonate bool
+}
+
+// stateStore opens Cloud Storage for the state bucket's reads (the stack's state, 2-net's):
+// as the apply identity when the build impersonates it, since the apply identity holds the
+// stack's slot and the states its teardown reads (2-env's identities.tf), else as the
+// process's credentials: the person's by hand, the apply identity's in a build that runs
+// as it.
+func (r *TeardownRequest) stateStore(ctx context.Context, clients *Clients) (Store, error) {
+	if r.Impersonate {
+		return clients.StorageAs(ctx, r.Identity)
+	}
+
+	return clients.Storage(ctx)
+}
+
+// recordsStore opens Cloud Storage for the records bucket's reads (the stack's id, the
+// database generation, the live release): the process's credentials, the person's by
+// hand or the deploy identity's in the build, which reads every record; the apply
+// identity reads under <app>/stacks/ alone.
+func (*TeardownRequest) recordsStore(ctx context.Context, clients *Clients) (Store, error) {
+	return clients.Storage(ctx)
+}
+
+// recordStore opens Cloud Storage for the record's write under <app>/stacks/: as the apply
+// identity when the build impersonates it (the deploy identity's creator grant excludes
+// the prefix; the apply identity's user grant is on it), else as the process's credentials.
+func (r *TeardownRequest) recordStore(ctx context.Context, clients *Clients) (Store, error) {
+	if r.Impersonate {
+		return clients.StorageAsWriter(ctx, r.Identity)
+	}
+
+	return clients.Storage(ctx)
 }
 
 // command is the command's name, which is also the stack variable it sets.
@@ -176,7 +217,7 @@ type EnvironmentTeardown struct {
 // backend service refuses the run), the records (the database generation, the generated
 // secrets' pins, the live release), and the stack's state listed after its init.
 func PrepareTeardown(ctx context.Context, clients *Clients, req *TeardownRequest, out io.Writer) (*EnvironmentTeardown, error) {
-	store, err := clients.Storage(ctx)
+	store, err := req.stateStore(ctx, clients)
 	if err != nil {
 		return nil, err
 	}
@@ -207,13 +248,25 @@ func PrepareTeardown(ctx context.Context, clients *Clients, req *TeardownRequest
 	if t.records == "" {
 		return nil, errors.Newf("%s's stack names no records bucket in its state (output %s, %s): it was applied by a bedrock before the records; apply it once with this one first", env, substitutionsOutput, recordsBucket)
 	}
-	if err := t.readRecords(ctx, store); err != nil {
+	records, err := req.recordsStore(ctx, clients)
+	if err != nil {
 		return nil, err
 	}
-	t.s = handStack(clients, req.Dir, req.dataDir(), out)
-	fmt.Fprintf(out, "=== %s: %s of %s's stack at %s ===\n", env, req.command(), app, statePrefix(app, env))
-	if err := t.s.initAt(ctx, statePrefix(app, env)); err != nil {
+	defer records.Close()
+	if err := t.readRecords(ctx, records); err != nil {
 		return nil, err
+	}
+	fmt.Fprintf(out, "=== %s: %s of %s's stack at %s ===\n", env, req.command(), app, statePrefix(app, env))
+	if req.Identity != "" {
+		t.s = &stack{run: clients.Exec, dir: req.Dir, dataDir: req.dataDir(), identity: req.Identity, impersonate: req.Impersonate, out: out, clients: clients}
+		if err := t.s.initEnvironment(ctx, app, env, req.Identity); err != nil {
+			return nil, err
+		}
+	} else {
+		t.s = handStack(clients, req.Dir, req.dataDir(), out)
+		if err := t.s.initAt(ctx, statePrefix(app, env)); err != nil {
+			return nil, err
+		}
 	}
 	listed, err := t.s.tofuOutput(ctx, "state", "list")
 	if err != nil {
@@ -552,22 +605,24 @@ func (t *EnvironmentTeardown) checkPlanned(planned []string) error {
 }
 
 // TeardownRecord is what a teardown or a destroy leaves beside the stack's id
-// (<app>/stacks/<env>/teardown.json): what was done, when, by whom, to which stack, with
-// the release that was live and what went and stayed. A destroy takes the stack's id
+// (<app>/stacks/<env>/teardown.json): what was done, when, by whom (and who approved
+// the build, through the operations workflow outside the first environment), to which
+// stack, with the release that was live and what went and stayed. A destroy takes the stack's id
 // object with the stack (google_storage_bucket_object.stack), so a reader finding the
 // record without the id knows the stack is gone; one finding both with the same id
 // knows the environment is torn down; one finding an id the record does not name knows
 // the record is an earlier stack's.
 type TeardownRecord struct {
-	Kind      string   `json:"kind"`
-	App       string   `json:"app"`
-	Env       string   `json:"env"`
-	StackID   string   `json:"stackId,omitempty"`
-	At        string   `json:"at"`
-	By        string   `json:"by"`
-	Release   string   `json:"release,omitempty"`
-	Destroyed []string `json:"destroyed"`
-	Kept      []string `json:"kept,omitempty"`
+	Kind      string    `json:"kind"`
+	App       string    `json:"app"`
+	Env       string    `json:"env"`
+	StackID   string    `json:"stackId,omitempty"`
+	At        string    `json:"at"`
+	By        string    `json:"by"`
+	Approval  *Approval `json:"approval,omitempty"`
+	Release   string    `json:"release,omitempty"`
+	Destroyed []string  `json:"destroyed"`
+	Kept      []string  `json:"kept,omitempty"`
 }
 
 // teardownObject is the record's object in the records bucket.
@@ -581,7 +636,7 @@ func (t *EnvironmentTeardown) writeRecord(ctx context.Context) error {
 	if destroyed == nil {
 		destroyed = []string{}
 	}
-	r := TeardownRecord{Kind: t.req.command(), App: t.req.App, Env: t.req.Env, StackID: t.id, At: t.req.Now().UTC().Format(time.RFC3339), By: t.req.By, Destroyed: destroyed, Kept: t.kept}
+	r := TeardownRecord{Kind: t.req.command(), App: t.req.App, Env: t.req.Env, StackID: t.id, At: t.req.Now().UTC().Format(time.RFC3339), By: t.req.By, Approval: t.req.Approval, Destroyed: destroyed, Kept: t.kept}
 	if t.live != nil {
 		r.Release = t.live.Version
 	}
@@ -589,7 +644,7 @@ func (t *EnvironmentTeardown) writeRecord(ctx context.Context) error {
 	if err != nil {
 		return errors.Wrap(err, "json.MarshalIndent()")
 	}
-	store, err := t.clients.Storage(ctx)
+	store, err := t.req.recordStore(ctx, t.clients)
 	if err != nil {
 		return err
 	}

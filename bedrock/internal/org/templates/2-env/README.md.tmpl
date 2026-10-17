@@ -200,7 +200,8 @@ bucket (the boot project's): `roles/storage.legacyBucketReader` unconditionally
 sit below it), and `roles/storage.objectViewer` on the upstream states its
 stack reads: `1-org/`, every `2-env/<env>/` (the plan identities a
 pull-request build impersonates, the previous environment's records bucket),
-`2-shr/`. The deploy identity of the same application may impersonate it
+`2-shr/`; and on `2-net/`, whose routed hosts the stack trigger's teardown
+and destroy hold against the environment's backend services. The deploy identity of the same application may impersonate it
 (`roles/iam.serviceAccountTokenCreator` on the account): a release's tag build
 applies the environment's stack as it. In tst the application stack's own
 triggers run as this identity (the check trigger on every push to a pull
@@ -365,7 +366,12 @@ apply identity, with the generated secrets' pins derived from their containers
 refuses a live stack (its deployment records say a release has run on it, and
 no teardown since), since a release's build applies a live stack. After a
 teardown (`bedrock teardown`), which destroyed the triggers a release's build
-would run in, the same trigger brings the stack back. In the
+would run in, the same trigger brings the stack back. The same trigger is the
+pipeline's path to take an environment down: the workflow's `teardown` and
+`destroy` actions run it with the action (`_STACK_ACTION`, and `_REQUESTER`
+naming the GitHub actor), and `bedrock deploy stack teardown` or `destroy`
+runs the code the hand commands run, as the apply identity, writing the
+record beside the stack's id with the actor and the approver. In the
 environments whose releases wait for an approval in Cloud Build, so does this
 build. The registration sequence (`bedrock org register`) names it as its
 step 4, between the grants and the hostnames.

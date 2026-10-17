@@ -47,9 +47,11 @@ summary and runs the tests; apply applies exactly that plan. The plan is this bu
 reviewer approved on the pull request was bound to the state of that moment, and a release bundles
 several pull requests. A pull-request build skips both and plans every environment earlier
 (plan-environments). first is the stack's first apply, before any release exists in the environment:
-the step of 2-env's stack trigger, which the application's operations workflow starts.`,
+the step of 2-env's stack trigger, which the application's operations workflow starts with its
+apply action; teardown and destroy are the same trigger's step for the workflow's teardown and
+destroy actions, the pipeline's path to take an environment down.`,
 	}
-	envStack.AddCommand(newDeployEnvStackPlan(d), newDeployEnvStackApply(d), newDeployEnvStackFirst(d))
+	envStack.AddCommand(newDeployEnvStackPlan(d), newDeployEnvStackApply(d), newDeployEnvStackFirst(d), newDeployEnvStackTeardown(d, false), newDeployEnvStackTeardown(d, true))
 	cmd.AddCommand(newDeployResolve(d), newDeployValidateRelease(d), newDeployGuardMigrations(d), newDeployPlanEnvironments(d), newDeployPullRequestStack(d), newDeployStackOutputs(d), newDeployHook(d),
 		newDeployCheckRelease(d), newDeployBuildImage(d), envStack, newDeployBackup(d), newDeployMigrate(d), newDeployJobs(d), newDeployService(d),
 		newDeployShiftTraffic(d), newDeploySweepJobs(d), newDeployRecord(d), newDeployTalkBack(d), newDeploySweep(d), newDeployRelease(d), newDeployMaintenance(d), newDeployWindow(d))
@@ -658,6 +660,36 @@ workflow's run action then runs the release the environment ran. It runs in the 
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return deploy.FirstApply(cmd.Context(), d.deploy, deploy.Workspace(workspace), buildRequest(), cmd.OutOrStdout())
+		},
+	}
+	workspaceFlag(cmd, &workspace)
+
+	return cmd
+}
+
+// newDeployEnvStackTeardown is deploy stack teardown, and deploy stack destroy with destroy.
+func newDeployEnvStackTeardown(d deps, destroy bool) *cobra.Command {
+	var workspace string
+	use, does := teardownUse, "takes the environment's stack down to what it keeps"
+	if destroy {
+		use, does = destroyUse, "destroys the environment's stack whole"
+	}
+	cmd := &cobra.Command{
+		Use:   use,
+		Short: "The stack trigger's step for the operations workflow's " + use + " action: " + does + " as the apply identity",
+		Long: use + ` is the stack trigger's step when the application's operations workflow starts it with its ` + use + `
+action (the environment's name typed into the run's confirm input, in place of the prompt bedrock ` + use + `
+asks at the terminal): the pipeline's path to take an environment down, for a person who is not an
+organization owner. The build runs as the deploy identity and becomes the apply identity, which
+holds what the stack needs, and ` + does + ` the way bedrock ` + use + ` does by hand: the state
+and the records read as the apply identity, the same refusals (a host 2-net still routes, a plan
+beyond or short of what the command means to destroy), the plan held and applied, and the record
+beside the stack's id (<app>/stacks/<env>/teardown.json) written as the apply identity, naming the
+GitHub actor (_REQUESTER) and, outside the first environment, who approved the build in Cloud
+Build. Bringing the environment back is the workflow's apply action, then run.`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return deploy.StackTeardown(cmd.Context(), d.deploy, deploy.Workspace(workspace), buildRequest(), destroy, cmd.OutOrStdout())
 		},
 	}
 	workspaceFlag(cmd, &workspace)

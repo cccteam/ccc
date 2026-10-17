@@ -716,7 +716,7 @@ func TestRecordsBucketPolicy(t *testing.T) {
 		{
 			name:   "no member resource on the bucket beside the policy",
 			path:   "2-env/identities.tf",
-			want:   []string{"bindings of the records\n# bucket's policy (records.tf)"},
+			want:   []string{"bindings of the records\n# bucket's policy (records.tf)", "resource \"google_storage_bucket_iam_member\" \"apply_state_net\" {\n  for_each = local.apps\n\n  bucket = var.state_bucket\n  role   = \"roles/storage.objectViewer\"\n  member = google_service_account.apply[each.key].member\n", "objects/2-net/\\\")\"\n"},
 			absent: []string{"\"deploy_records\"", "\"deploy_records_viewer\"", "\"plan_records\"", "\"next_deploy_records_viewer\"", "bucket = google_storage_bucket.records.name"},
 		},
 		{
@@ -3345,7 +3345,8 @@ func TestStackTrigger(t *testing.T) {
 		`    ref        = "refs/heads/master"`,
 		`      args       = ["-c", local.stack_fetch_bedrock, "/builder/home", "https://github.com", "https://github.com/cccteam/ccc.git", "infrastructure/placement.json"]`,
 		`      args       = ["check"]`,
-		`      args       = ["deploy", "stack", "first"]`,
+		`      args       = ["deploy", "stack", "$_STACK_ACTION"]`,
+		`    _STACK_ACTION   = "first"`,
 		`      env        = local.stack_build_env`,
 		`    placement_path = sys.argv[4] if len(sys.argv) > 4 else "placement.json"`,
 	} {
