@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.14.3](https://github.com/cccteam/ccc/compare/resource/v0.14.2...resource/v0.14.3) (2026-10-17)
+
+
+### Bug Fixes
+
+* the skeleton and Lodestar take their fonts from the library, so the service worker's loads render Material text and icons ([#971](https://github.com/cccteam/ccc/issues/971)) ([4649033](https://github.com/cccteam/ccc/commit/4649033f6e594079c13b60ee71b318b1d23cd28b))
+
+
+### Code Upgrade
+
+* **deps:** the root, middleware and resource modules take dependabot's three dependency groups in one change ([#975](https://github.com/cccteam/ccc/issues/975)) ([bbecfa2](https://github.com/cccteam/ccc/commit/bbecfa25ec8141797c85dcabc6def7e7e722547c))
+
 ## [0.14.2](https://github.com/cccteam/ccc/compare/resource/v0.14.1...resource/v0.14.2) (2026-10-15)
 
 
