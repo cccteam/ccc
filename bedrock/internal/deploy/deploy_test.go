@@ -432,9 +432,11 @@ func hashOf(content string) string {
 	return hex.EncodeToString(sum[:8])
 }
 
-// memoryStore is a Store holding what was written, by gs:// path.
+// memoryStore is a Store holding what was written, by gs:// path; deleted are the paths
+// deleted, in order.
 type memoryStore struct {
 	objects    map[string]string
+	deleted    []string
 	fail       error
 	identities []string
 	// denied are the buckets a list is refused on, as Cloud Storage refuses one without a grant.
@@ -486,6 +488,17 @@ func (m *memoryStore) Read(_ context.Context, bucket, object string) ([]byte, er
 	}
 
 	return []byte(data), nil
+}
+
+func (m *memoryStore) Delete(_ context.Context, bucket, object string) error {
+	path := "gs://" + bucket + "/" + object
+	if _, ok := m.objects[path]; !ok {
+		return fmt.Errorf("%s: %w", path, os.ErrNotExist)
+	}
+	delete(m.objects, path)
+	m.deleted = append(m.deleted, path)
+
+	return nil
 }
 
 // stackKey is the gs:// path of the object the environment's stack writes with its id.

@@ -957,7 +957,7 @@ func TestApplyEnvironmentStack(t *testing.T) {
 	// settings, and the two reads by their command lines.
 	const (
 		substitutionsOutput = `{"_SERVICES": "us-central1=quill-app", "_MIGRATE_ENV": "{\"APP_SERVICE_NAME\":\"quill-migrate\"}", "_MIGRATE_DATABASES": "[\"projects/p-stg/instances/i/databases/quill-db\"]"}`
-		readSubstitutions   = "tofu output -json substitutions"
+		readSubstitutions   = "tofu output -json"
 		readFirestore       = "tofu output -raw firestore_database"
 	)
 	settingsRead := "The migrate command's settings and databases are read from the stack as applied (_MIGRATE_ENV, _MIGRATE_DATABASES)."
@@ -991,7 +991,7 @@ func TestApplyEnvironmentStack(t *testing.T) {
 			subs:         tstSubs(),
 			planJSON:     stackPlanJSON,
 			env:          applyRestoreEnv,
-			outputs:      map[string]string{readSubstitutions: substitutionsOutput, readFirestore: "quill-fs\n"},
+			outputs:      map[string]string{readSubstitutions: `{"substitutions": {"value": ` + substitutionsOutput + `}}`, readFirestore: "quill-fs\n"},
 			wantOut:      []string{"Applied tst's stack: 2 added, 1 changed, 1 destroyed.", settingsRead, "Restore: every document of the Firestore database quill-fs is deleted; its documents referred to rows the restore replaced."},
 			wantTofu:     []string{"tofu apply -input=false -no-color WS/stack.plan", readSubstitutions, readFirestore},
 			wantSettings: `{"APP_SERVICE_NAME":"quill-migrate"}`,
@@ -1002,7 +1002,7 @@ func TestApplyEnvironmentStack(t *testing.T) {
 			subs:         tstSubs(),
 			planJSON:     stackPlanJSON,
 			env:          applyRestoreEnv,
-			outputs:      map[string]string{readSubstitutions: substitutionsOutput},
+			outputs:      map[string]string{readSubstitutions: `{"substitutions": {"value": ` + substitutionsOutput + `}}`},
 			fail:         map[string]error{readFirestore: errors.New("no output")},
 			wantOut:      []string{"No Firestore database to clear: the stack has no firestore_database output"},
 			wantTofu:     []string{"tofu apply -input=false -no-color WS/stack.plan", readSubstitutions, readFirestore},
@@ -1012,7 +1012,7 @@ func TestApplyEnvironmentStack(t *testing.T) {
 			name:         "the saved plan is applied as the apply identity, and the migrate command's settings read from the applied stack",
 			subs:         tagSubs(),
 			planJSON:     stackPlanJSON,
-			outputs:      map[string]string{readSubstitutions: substitutionsOutput},
+			outputs:      map[string]string{readSubstitutions: `{"substitutions": {"value": ` + substitutionsOutput + `}}`},
 			wantOut:      []string{"Applied stg's stack: 2 added, 1 changed, 1 destroyed.", settingsRead},
 			wantTofu:     []string{"tofu apply -input=false -no-color WS/stack.plan", readSubstitutions},
 			wantSettings: `{"APP_SERVICE_NAME":"quill-migrate"}`,
@@ -1021,7 +1021,7 @@ func TestApplyEnvironmentStack(t *testing.T) {
 			name:         "the environment's hostname is read back from the applied stack, where the trigger still names its last apply's",
 			subs:         withSub(tagSubs(), hostnameSub, "quill-stg.example.dev"),
 			planJSON:     stackPlanJSON,
-			outputs:      map[string]string{readSubstitutions: strings.Replace(substitutionsOutput, "{", `{"_HOSTNAME": "quill.stg.example.dev", `, 1)},
+			outputs:      map[string]string{readSubstitutions: `{"substitutions": {"value": ` + strings.Replace(substitutionsOutput, "{", `{"_HOSTNAME": "quill.stg.example.dev", `, 1) + `}}`},
 			wantOut:      []string{"The environment's hostname is read from the stack as applied (_HOSTNAME): quill.stg.example.dev, where the trigger (its stack's last apply) says \"quill-stg.example.dev\".", settingsRead},
 			wantTofu:     []string{"tofu apply -input=false -no-color WS/stack.plan", readSubstitutions},
 			wantSettings: `{"APP_SERVICE_NAME":"quill-migrate"}`,
@@ -1031,7 +1031,7 @@ func TestApplyEnvironmentStack(t *testing.T) {
 			name:         "a hostname the trigger names alike is read back without a word",
 			subs:         withSub(tagSubs(), hostnameSub, "quill-stg.example.dev"),
 			planJSON:     stackPlanJSON,
-			outputs:      map[string]string{readSubstitutions: strings.Replace(substitutionsOutput, "{", `{"_HOSTNAME": "quill-stg.example.dev", `, 1)},
+			outputs:      map[string]string{readSubstitutions: `{"substitutions": {"value": ` + strings.Replace(substitutionsOutput, "{", `{"_HOSTNAME": "quill-stg.example.dev", `, 1) + `}}`},
 			wantOut:      []string{settingsRead},
 			wantTofu:     []string{"tofu apply -input=false -no-color WS/stack.plan", readSubstitutions},
 			wantSettings: `{"APP_SERVICE_NAME":"quill-migrate"}`,
@@ -1041,7 +1041,7 @@ func TestApplyEnvironmentStack(t *testing.T) {
 			name:          "the services, the job process's template job and a build argument the trigger lacks are read from the applied stack",
 			subs:          withSub(tagSubs(), servicesSub, "us-central1=quill-app"),
 			planJSON:      stackPlanJSON,
-			outputs:       map[string]string{readSubstitutions: strings.Replace(substitutionsOutput, `{"_SERVICES": "us-central1=quill-app",`, `{"_SERVICES": "us-central1=quill-app,us-central1=quill-portal", "_JOBS_JOB": "us-central1=quill-jobs", "_BUILD_ARG_THEME": "dark",`, 1)},
+			outputs:       map[string]string{readSubstitutions: `{"substitutions": {"value": ` + strings.Replace(substitutionsOutput, `{"_SERVICES": "us-central1=quill-app",`, `{"_SERVICES": "us-central1=quill-app,us-central1=quill-portal", "_JOBS_JOB": "us-central1=quill-jobs", "_BUILD_ARG_THEME": "dark",`, 1) + `}}`},
 			wantOut:       []string{"The services read from the stack as applied (_SERVICES): us-central1=quill-app,us-central1=quill-portal, where the trigger (its stack's last apply) says \"us-central1=quill-app\".", "The job process's template job read from the stack as applied (_JOBS_JOB): us-central1=quill-jobs, where the trigger (its stack's last apply) says \"\".", "The build argument THEME is read from the stack as applied (_BUILD_ARG_THEME), for the steps after the image build, which passed what the trigger carried.", settingsRead},
 			wantTofu:      []string{"tofu apply -input=false -no-color WS/stack.plan", readSubstitutions},
 			wantSettings:  `{"APP_SERVICE_NAME":"quill-migrate"}`,
@@ -1053,7 +1053,7 @@ func TestApplyEnvironmentStack(t *testing.T) {
 			name:          "values the trigger names alike are read back without a word",
 			subs:          withSub(withSub(withSub(tagSubs(), servicesSub, "us-central1=quill-app"), jobsJobSub, "us-central1=quill-jobs"), "_BUILD_ARG_THEME", "dark"),
 			planJSON:      stackPlanJSON,
-			outputs:       map[string]string{readSubstitutions: strings.Replace(substitutionsOutput, `{"_SERVICES": "us-central1=quill-app",`, `{"_SERVICES": "us-central1=quill-app", "_JOBS_JOB": "us-central1=quill-jobs", "_BUILD_ARG_THEME": "dark",`, 1)},
+			outputs:       map[string]string{readSubstitutions: `{"substitutions": {"value": ` + strings.Replace(substitutionsOutput, `{"_SERVICES": "us-central1=quill-app",`, `{"_SERVICES": "us-central1=quill-app", "_JOBS_JOB": "us-central1=quill-jobs", "_BUILD_ARG_THEME": "dark",`, 1) + `}}`},
 			wantOut:       []string{settingsRead},
 			wantTofu:      []string{"tofu apply -input=false -no-color WS/stack.plan", readSubstitutions},
 			wantSettings:  `{"APP_SERVICE_NAME":"quill-migrate"}`,
@@ -1065,7 +1065,7 @@ func TestApplyEnvironmentStack(t *testing.T) {
 			name:         "a plan with no change applies nothing, and still reads the settings",
 			subs:         tagSubs(),
 			planJSON:     `{"resource_changes": []}`,
-			outputs:      map[string]string{readSubstitutions: substitutionsOutput},
+			outputs:      map[string]string{readSubstitutions: `{"substitutions": {"value": ` + substitutionsOutput + `}}`},
 			wantOut:      []string{"Nothing to apply: stg's stack matches the code.", settingsRead},
 			wantTofu:     []string{readSubstitutions},
 			wantSettings: `{"APP_SERVICE_NAME":"quill-migrate"}`,
@@ -1074,14 +1074,14 @@ func TestApplyEnvironmentStack(t *testing.T) {
 			name:     "a stack whose output names no settings for the migrate command is refused",
 			subs:     tagSubs(),
 			planJSON: `{"resource_changes": []}`,
-			outputs:  map[string]string{readSubstitutions: `{"_SERVICES": "us-central1=quill-app"}`},
+			outputs:  map[string]string{readSubstitutions: `{"substitutions": {"value": ` + `{"_SERVICES": "us-central1=quill-app"}` + `}}`},
 			wantErr:  "the stack's substitutions output names no _MIGRATE_ENV, the migrate command's settings",
 		},
 		{
 			name:     "a stack whose output names no databases for the migrate command is refused",
 			subs:     tagSubs(),
 			planJSON: `{"resource_changes": []}`,
-			outputs:  map[string]string{readSubstitutions: `{"_SERVICES": "us-central1=quill-app", "_MIGRATE_ENV": "{\"APP_SERVICE_NAME\":\"quill-migrate\"}"}`},
+			outputs:  map[string]string{readSubstitutions: `{"substitutions": {"value": ` + `{"_SERVICES": "us-central1=quill-app", "_MIGRATE_ENV": "{\"APP_SERVICE_NAME\":\"quill-migrate\"}"}` + `}}`},
 			wantErr:  "the stack's substitutions output names no _MIGRATE_DATABASES, the databases the migrate command reaches",
 		},
 		{
