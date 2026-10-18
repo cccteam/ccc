@@ -18,7 +18,9 @@ import (
 	"regexp"
 	"sort"
 	"strings"
-	"text/template"
+
+	// The templates render Go source files, never HTML, so text/template is the right package.
+	"text/template" // nosemgrep: go.lang.security.audit.xss.import-text-template.import-text-template
 
 	"github.com/go-playground/errors/v5"
 
@@ -239,6 +241,20 @@ type Field struct {
 	Simulated bool
 }
 
+// The names of a method's settings fields, as the rendered settings struct spells them
+// and as the development template and the data level edits refer to them.
+const (
+	FieldTenantID     = "TenantID"
+	FieldTenants      = "Tenants"
+	FieldClientID     = "ClientID"
+	FieldClientSecret = "ClientSecret"
+	FieldRedirectURL  = "RedirectURL"
+	FieldHostedDomain = "HostedDomain"
+	FieldWorkspaces   = "Workspaces"
+	FieldGroupPrefix  = "GroupPrefix"
+	FieldGroupLookup  = "GroupLookup"
+)
+
 // Fields lists the settings a method reads, in order: what the method's settings struct
 // holds, what the data level reads from the environment and what bedrock supplies per
 // environment.
@@ -251,31 +267,31 @@ func (m *Method) Fields() []Field {
 	case app.MethodAzure:
 		switch m.slot() {
 		case SlotOne, SlotOnePersonal:
-			fields = append(fields, Field{Name: "TenantID", Suffix: "TENANT_ID", Simulated: true, Doc: "the tenant whose accounts the registration admits, by its tenant id (the tid claim, a GUID); the slot is validated at registration, so the simulated directory needs a well-formed placeholder"})
+			fields = append(fields, Field{Name: FieldTenantID, Suffix: "TENANT_ID", Simulated: true, Doc: "the tenant whose accounts the registration admits, by its tenant id (the tid claim, a GUID); the slot is validated at registration, so the simulated directory needs a well-formed placeholder"})
 		case SlotListed:
-			fields = append(fields, Field{Name: "Tenants", Suffix: "TENANTS", Simulated: true, Doc: "the tenants the registration admits, each named: <name>=<tenant id>, comma-separated (lab-a=<guid>,lab-b=<guid>); the name is the tenant key every link made through it carries, and the slot is validated at registration, so the simulated directory needs well-formed placeholders"})
+			fields = append(fields, Field{Name: FieldTenants, Suffix: "TENANTS", Simulated: true, Doc: "the tenants the registration admits, each named: <name>=<tenant id>, comma-separated (lab-a=<guid>,lab-b=<guid>); the name is the tenant key every link made through it carries, and the slot is validated at registration, so the simulated directory needs well-formed placeholders"})
 		}
 		fields = append(fields,
-			Field{Name: "ClientID", Suffix: "CLIENT_ID", Doc: "the app registration's application (client) id"},
-			Field{Name: "ClientSecret", Suffix: "CLIENT_SECRET", Secret: true, Doc: "the app registration's client secret"},
-			Field{Name: "RedirectURL", Suffix: "REDIRECT_URL", Simulated: true, Doc: "the browser-facing callback the directory returns the browser to: <base>/<outlet>/api/user/" + m.Name + "/callback"},
+			Field{Name: FieldClientID, Suffix: "CLIENT_ID", Doc: "the app registration's application (client) id"},
+			Field{Name: FieldClientSecret, Suffix: "CLIENT_SECRET", Secret: true, Doc: "the app registration's client secret"},
+			Field{Name: FieldRedirectURL, Suffix: "REDIRECT_URL", Simulated: true, Doc: "the browser-facing callback the directory returns the browser to: <base>/<outlet>/api/user/" + m.Name + "/callback"},
 		)
 	case app.MethodGoogle:
 		switch m.slot() {
 		case SlotOne, SlotMixed:
-			fields = append(fields, Field{Name: "HostedDomain", Suffix: "HOSTED_DOMAIN", Simulated: true, Doc: "the Workspace's domain, checked against the verified hd claim"})
+			fields = append(fields, Field{Name: FieldHostedDomain, Suffix: "HOSTED_DOMAIN", Simulated: true, Doc: "the Workspace's domain, checked against the verified hd claim"})
 		case SlotListed:
-			fields = append(fields, Field{Name: "Workspaces", Suffix: "WORKSPACES", Simulated: true, Doc: "the Workspaces the registration admits, each named with its domains: <name>=<domain>[+<domain>], comma-separated (lab=example.com,second=other.org); the name is the connection every link made through it carries"})
+			fields = append(fields, Field{Name: FieldWorkspaces, Suffix: "WORKSPACES", Simulated: true, Doc: "the Workspaces the registration admits, each named with its domains: <name>=<domain>[+<domain>], comma-separated (lab=example.com,second=other.org); the name is the connection every link made through it carries"})
 		}
 		fields = append(fields,
-			Field{Name: "ClientID", Suffix: "CLIENT_ID", Doc: "the OAuth client's id"},
-			Field{Name: "ClientSecret", Suffix: "CLIENT_SECRET", Secret: true, Doc: "the OAuth client's secret"},
-			Field{Name: "RedirectURL", Suffix: "REDIRECT_URL", Simulated: true, Doc: "the browser-facing callback Google returns the browser to: <base>/<outlet>/api/user/" + m.Name + "/callback"},
+			Field{Name: FieldClientID, Suffix: "CLIENT_ID", Doc: "the OAuth client's id"},
+			Field{Name: FieldClientSecret, Suffix: "CLIENT_SECRET", Secret: true, Doc: "the OAuth client's secret"},
+			Field{Name: FieldRedirectURL, Suffix: "REDIRECT_URL", Simulated: true, Doc: "the browser-facing callback Google returns the browser to: <base>/<outlet>/api/user/" + m.Name + "/callback"},
 		)
 		if m.Authority == app.AuthorityDirectory {
 			fields = append(fields,
-				Field{Name: "GroupPrefix", Suffix: "GROUP_PREFIX", Simulated: true, Doc: "the local-part prefix of the Google Groups that carry roles: <prefix><role>@<domain> assigns <role>"},
-				Field{Name: "GroupLookup", Suffix: "GROUP_LOOKUP", Doc: "how far the groups lookup reaches: direct (the groups the person is a direct member of) or nested (the groups above those too, level by level); empty is direct"},
+				Field{Name: FieldGroupPrefix, Suffix: "GROUP_PREFIX", Simulated: true, Doc: "the local-part prefix of the Google Groups that carry roles: <prefix><role>@<domain> assigns <role>"},
+				Field{Name: FieldGroupLookup, Suffix: "GROUP_LOOKUP", Doc: "how far the groups lookup reaches: direct (the groups the person is a direct member of) or nested (the groups above those too, level by level); empty is direct"},
 			)
 		}
 	}

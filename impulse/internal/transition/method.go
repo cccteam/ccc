@@ -555,7 +555,7 @@ func writeMethodEnv(a *app.App, auth string, spec *authpkg.Method, ch *Change) e
 		f := &fields[i]
 		variable := spec.Variable(auth, f)
 		switch {
-		case f.Name == "RedirectURL":
+		case f.Name == authpkg.FieldRedirectURL:
 			fmt.Fprintf(&b, "# %s is the browser-facing callback of the surface that binds to the %s auth, such as\n# http://127.0.0.1:4300/api/user/%s/callback through the dev proxy; read under the\n# simulated directory too, since it is where the simulated sign-in returns.\nexport %s=\n", variable, auth, spec.Name, variable)
 		case f.Simulated:
 			fmt.Fprintf(&b, "# %s: %s. Read under the simulated directory too.\nexport %s=%s\n", variable, f.Doc, variable, devValue(f, auth))
@@ -581,15 +581,15 @@ const placeholderTenant = "00000000-0000-0000-0000-000000000000"
 // reads: a placeholder that lets the simulation run.
 func devValue(f *authpkg.Field, auth string) string {
 	switch f.Name {
-	case "TenantID":
+	case authpkg.FieldTenantID:
 		return placeholderTenant
-	case "Tenants":
+	case authpkg.FieldTenants:
 		return "lab-a=" + placeholderTenant
-	case "HostedDomain":
+	case authpkg.FieldHostedDomain:
 		return "example.com"
-	case "Workspaces":
+	case authpkg.FieldWorkspaces:
 		return "lab=example.com"
-	case "GroupPrefix":
+	case authpkg.FieldGroupPrefix:
 		return auth + "-"
 	default:
 		return ""
