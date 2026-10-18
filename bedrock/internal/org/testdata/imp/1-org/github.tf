@@ -249,7 +249,7 @@ resource "github_actions_hosted_runner" "ci_large" {
 resource "github_repository" "app" {
   for_each = toset(var.applications)
 
-  name       = each.key
+  name       = var.application_repositories[each.key]
   visibility = "private"
 
   allow_merge_commit          = false

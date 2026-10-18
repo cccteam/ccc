@@ -5,9 +5,12 @@
 // outermost first, one line per group, each chain followed by what it stands in front of:
 //
 //	every request: hooks.Outermost, LoggerMiddleware, SecurityHeaders, httpio.WithParams
-//	default (/api), Google directory sessions:
-//	  NoCaching, CompressionMiddleware, StartSession, SetXSRFToken: GET /api/user/login, GET /api/user/callback, GET /api/user/session, DELETE /api/user/session
+//	default (/api), sessions of the staff auth (directory):
+//	  NoCaching, CompressionMiddleware, StartSession, SetXSRFToken: GET /api/user/methods, GET /api/user/session, DELETE /api/user/session, GET /api/user/pending, GET /api/user/directory/login, GET /api/user/directory/callback
 //	  + ValidateSession, ValidateXSRFToken: hooks.Default, generatedRoutes
+//	portal (/portal/api), sessions of the members auth (directory, password):
+//	  NoCaching, CompressionMiddleware, StartSession, SetXSRFToken: GET /portal/api/user/methods, GET /portal/api/user/session, DELETE /portal/api/user/session, GET /portal/api/user/pending, GET /portal/api/user/directory/login, GET /portal/api/user/directory/callback, GET /portal/api/user/directory/logout, POST /portal/api/user/password/login
+//	  + ValidateSession, ValidateXSRFToken: hooks.Portal, generatedPortalRoutes
 //	scheduled (/_scheduled), Cloud Scheduler's token:
 //	  NoCaching, CompressionMiddleware, SchedulerAuth: generatedScheduledRoutes
 //
@@ -87,17 +90,18 @@ func New(h Handlers, hooks Hooks) *chi.Mux {
 		})
 	}
 
-	// The default outlet (/api): Google directory sessions.
+	// The default outlet (/api): sessions of the staff auth (directory).
 	r.Group(func(r chi.Router) {
 		r.Use(h.NoCaching)
 		r.Use(h.CompressionMiddleware())
 		r.Use(h.StartSession)
 		r.Use(h.SetXSRFToken)
 
-		r.Get("/api/user/login", h.Login())
-		r.Get("/api/user/callback", h.CallbackOIDC())
 		r.Get("/api/user/session", h.Authenticated())
 		r.Delete("/api/user/session", h.Logout())
+		r.Get("/api/user/pending", h.PendingStatus())
+		r.Get("/api/user/directory/login", h.DirectoryLogin())
+		r.Get("/api/user/directory/callback", h.DirectoryCallback())
 
 		r.Group(func(r chi.Router) {
 			r.Use(h.ValidateSession)
@@ -122,7 +126,7 @@ func New(h Handlers, hooks Hooks) *chi.Mux {
 
 	// Under an outlet's prefix nothing else answers: an unknown API path is 404, never a
 	// browser application's entry document.
-	for _, prefix := range []string{"/api/", "/_scheduled/"} {
+	for _, prefix := range []string{"/api/", "/portal/api/", "/_scheduled/"} {
 		r.Route(prefix, func(r chi.Router) {
 			r.NotFound(func(w http.ResponseWriter, _ *http.Request) {
 				http.Error(w, "Not Found", http.StatusNotFound)

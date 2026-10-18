@@ -5,9 +5,25 @@ variable "allowed_contact_domains" {
 }
 
 variable "applications" {
-  description = "The applications whose GitHub repositories this layer configures, one repository per application named after it. Rendered into applications.auto.tfvars by bedrock org register."
+  description = "The applications whose GitHub repositories this layer configures, by code, one repository per application named by application_repositories. Rendered into applications.auto.tfvars by bedrock org register."
   type        = list(string)
   default     = []
+
+  validation {
+    condition     = alltrue([for a in var.applications : can(regex("{{.ApplicationCodePattern}}", a))])
+    error_message = "Every application code must be 1-6 lowercase letters and digits starting with a letter."
+  }
+}
+
+variable "application_repositories" {
+  description = "Each application's repository name under the organization, by code: what this layer creates the repository as (github.tf) and the rest of the organization refers to it by. Rendered into applications.auto.tfvars by bedrock org register, from the application's module path."
+  type        = map(string)
+  default     = {}
+
+  validation {
+    condition     = toset(keys(var.application_repositories)) == toset(var.applications)
+    error_message = "application_repositories names every application code and no other."
+  }
 }
 
 variable "applied_applications" {

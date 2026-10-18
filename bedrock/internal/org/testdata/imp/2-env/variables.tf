@@ -15,12 +15,23 @@ variable "applications" {
 
   validation {
     condition     = alltrue([for a in var.applications : can(regex("^[a-z][a-z0-9]{0,5}$", a))])
-    error_message = "Every application code must be 1-6 lowercase alphanumeric characters starting with a letter."
+    error_message = "Every application code must be 1-6 lowercase letters and digits starting with a letter."
   }
 
   validation {
     condition     = length(distinct(var.applications)) == length(var.applications)
     error_message = "Application codes must be unique."
+  }
+}
+
+variable "application_repositories" {
+  description = "Each application's repository name under the GitHub organization, by code: the repository link (cloud-build.tf) and the operations workflow's identity binding (operations.tf) name it. Rendered into applications.auto.tfvars by bedrock org register."
+  type        = map(string)
+  default     = {}
+
+  validation {
+    condition     = toset(keys(var.application_repositories)) == toset(var.applications)
+    error_message = "application_repositories names every application code and no other."
   }
 }
 

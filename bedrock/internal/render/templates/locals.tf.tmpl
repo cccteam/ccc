@@ -104,12 +104,16 @@ locals {
   # The next revision's hostnames, the first label with -next: what the hook before
   # traffic calls while the old revision still serves. None for a pull-request stack.
   next_hostnames = local.is_pr ? [] : [for host in local.hostnames : replace(host, "/^([^.]+)\\./", "$1-next.")]
-{{- if .Directory}}
+{{- range .Methods}}
 
-  # From {{.EnvTemplate}}: {{.RedirectURL.Name}} is the browser-facing
-  # callback, the route {{.Auth.Callback.File}} registers as
-  # {{.Auth.Callback.Method}} {{.Auth.Callback.Path}}, on the environment's canonical host.
-  redirect_url = "https://${local.hostnames[0]}{{.Auth.Callback.Path}}"
+  # From {{$.EnvTemplate}}: {{(.Variable "RedirectURL").Name}} is the browser-facing
+  # callback of {{.Label}}, the route the generated router ({{$.RouterDir}})
+  # registers as {{.Callback.Method}} {{.Callback.Path}}, on the environment's canonical host.
+  {{.Var "REDIRECT_URL"}} = "https://${local.hostnames[0]}{{.Callback.Path}}"
+{{- if .Microsoft}}
+  # The front-channel logout the app registration names, {{.Logout.Method}} {{.Logout.Path}}.
+  {{.Var "LOGOUT_URL"}} = "https://${local.hostnames[0]}{{.Logout.Path}}"
+{{- end}}
 {{- end}}
 
   # The database the site opens: the environment's own, a pull request's own,
@@ -278,9 +282,9 @@ locals {
   data_env = {
     # {{.Database.Struct}}, all required: the database identity.
 {{.DatabaseEnv}}
-{{- if .Directory}}
-    # {{.HostedDomain.Declaration}} and {{.GroupPrefix.Field}}: the session library
-    # refuses to construct without them, so every data-level process gets both.
+{{- if .DirectoryEnv}}
+    # The directory registrations' settings the session library reads when it makes
+    # each registration, at construction, so every data-level process gets them.
 {{.DirectoryEnv}}
 {{- end}}
 {{- range .CodeDefaults}}
@@ -289,16 +293,16 @@ locals {
   }
 {{- if .Directory}}
 
-  # The directory registration the served site needs and a migration does not.
-  # They live at the data level in the code, but a process that never signs
-  # anyone in has no use for them, so the migrate command goes without.
+  # The directory registrations' settings the served site needs and a migration
+  # does not. They live at the data level in the code, but a process that never
+  # signs anyone in has no use for them, so the migrate command goes without.
   site_directory_env = {
-    # {{.ClientID.Declaration}}: public half of the OAuth client.
-    {{.ClientID.Name}} = var.{{.AuthVar}}_client_id[var.environment]
-    # {{.RedirectURL.Declaration}}: built from the canonical hostname.
-    {{.RedirectURL.Name}} = local.redirect_url
-    # {{.GroupLookup.Declaration}}: how far the groups read reaches, direct or nested.
-    {{.GroupLookup.Name}} = var.{{.AuthVar}}_group_lookup
+{{- range .Methods}}
+    # The {{.Auth}} auth's {{.Name}} registration: the client id, public half of the
+    # registration, per environment; the redirect URL, built from the canonical
+    # hostname{{if .Groups}}; how far the groups read reaches, direct or nested{{end}}.
+{{.SiteEnv}}
+{{- end}}
   }
 {{- end}}
 

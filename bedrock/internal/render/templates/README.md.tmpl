@@ -418,12 +418,20 @@ above them.
 {{- if .FirebaseAPIKey}}
 | `{{.FirebaseAPIKey.Name}}` | {{.FirebaseAPIKey.Level}} | the Firebase web API key | yes |{{if .MigrateReadsFirestore}} yes{{end}} |{{if .Jobs}} {{if .JobsReadsFirestore}}yes{{end}} |{{end}}
 {{- end}}
-{{- if .Directory}}
-| `{{.HostedDomain.Name}}` | {{.HostedDomain.Level}} | `var.{{.AuthVar}}_hosted_domain` | yes | yes |{{if .Jobs}} {{if .JobsReadsData}}yes{{end}} |{{end}}
-| `{{.GroupPrefix.Name}}` | {{.GroupPrefix.Level}} | `var.{{.AuthVar}}_group_prefix` | yes | yes |{{if .Jobs}} {{if .JobsReadsData}}yes{{end}} |{{end}}
-| `{{.ClientID.Name}}` | {{.ClientID.Level}} | `var.{{.AuthVar}}_client_id[env]` | yes | |{{if .Jobs}} |{{end}}
-| `{{.RedirectURL.Name}}` | {{.RedirectURL.Level}} | `https://<first hostname>{{.Auth.Callback.Path}}` | yes | |{{if .Jobs}} |{{end}}
-| `{{.GroupLookup.Name}}` | {{.GroupLookup.Level}} | `var.{{.AuthVar}}_group_lookup` | yes | |{{if .Jobs}} |{{end}}
+{{- range .Methods}}
+{{- $m := .}}
+{{- range .Fields}}
+{{- if eq .Field "ClientSecret"}}
+{{- else if eq .Field "ClientID"}}
+| `{{.Variable.Name}}` | {{.Variable.Level}} | `var.{{$m.Var .Suffix}}[env]` | yes | |{{if $.Jobs}} |{{end}}
+{{- else if eq .Field "RedirectURL"}}
+| `{{.Variable.Name}}` | {{.Variable.Level}} | `https://<first hostname>{{$m.Callback.Path}}` | yes | |{{if $.Jobs}} |{{end}}
+{{- else if .Variable.Role.ConstructionTime}}
+| `{{.Variable.Name}}` | {{.Variable.Level}} | `var.{{$m.Var .Suffix}}` | yes | yes |{{if $.Jobs}} {{if $.JobsReadsData}}yes{{end}} |{{end}}
+{{- else}}
+| `{{.Variable.Name}}` | {{.Variable.Level}} | `var.{{$m.Var .Suffix}}` | yes | |{{if $.Jobs}} |{{end}}
+{{- end}}
+{{- end}}
 {{- end}}
 {{- if .Jobs}}
 | `{{.JobsTemplateVariable}}` | {{.JobsTemplate.Level}} | the job process's template job, which the site's own build's job is named from (the job driver's settings, `{{.JobsTemplate.Declaration}}`) | yes | | |
@@ -433,8 +441,8 @@ above them.
 {{- end}}
 | {{.SecretsCell}} | {{.CookieKeySecret.Variable.Level}} | secret, at the pinned version | yes | |{{if .Jobs}} {{if .JobsReadsData}}yes{{end}} |{{end}}
 
-{{if .Directory}}The migrate command{{if .JobsReadsData}} and the job process{{end}} carr{{if .JobsReadsData}}y{{else}}ies{{end}} the hosted domain and group prefix because the session
-library refuses to construct without them. {{end}}{{if .MigrateReadsFirestore}}The migrate command carries the Firestore
+{{if .DirectoryEnv}}The migrate command{{if .JobsReadsData}} and the job process{{end}} carr{{if .JobsReadsData}}y{{else}}ies{{end}} the registrations' organization slots and group prefixes because the session
+library validates them when it makes each registration, at construction. {{end}}{{if .MigrateReadsFirestore}}The migrate command carries the Firestore
 database because the {{.FirestoreDatabase.Level}} level opens its live service when it is constructed, and
 the release's role migration signals the running instances through it{{if .FirebaseAPIKey}}; the web
 API key rides beside it, a public value{{end}}. {{end}}Not set: `{{.Version.Name}}` (the
@@ -686,7 +694,7 @@ substitutions and this stack's outputs:
 `var.hostnames` gives each environment its hostnames, in `2-net`'s
 convention of one label under the apps domain (its wildcard certificate
 covers exactly that): {{.HostnamesProse}}. The first is
-canonical{{if .Directory}} and forms the {{.Auth.Name}} sign-in's redirect URL{{end}}. `2-net` routes a
+canonical{{if .Directory}} and forms the directory registrations' redirect URLs{{end}}. `2-net` routes a
 hostname from an entry in its `hosts` variable, hostname to backend service
 URI, in its `terraform.tfvars`; this stack's `net_hosts` output is exactly
 those entries for the environment:
@@ -1028,28 +1036,52 @@ pull request's.
 
 Per environment, after the first apply:
 
-{{if .Directory -}}
-1. In the Google Cloud console, in the environment project: first the
-   project's consent screen, if the organization has not configured it there
-   yet (APIs & Services > OAuth consent screen, audience **Internal**, so only
-   the organization's own users sign in; one per project, shared by every
-   application's client in it). Then APIs & Services > Credentials > Create
-   credentials > OAuth client ID, type Web application, authorized redirect
-   URI = output `{{.AuthVar}}_redirect_url`. Put the client
-   ID in `terraform.tfvars` (`{{.AuthVar}}_client_id`) and add the client secret
-   as version 1 of `{{.Prefix}}-<env>-gbl-{{.App}}-{{.ClientSecretSecret.Name}}`.
-   In {{.Integration}}, each pull request's environment signs in through the same
+{{range .Methods -}}
+{{if .Microsoft -}}
+{{.Step}}. In the Microsoft Entra admin center, for {{.Label}}: one app
+   registration per environment (Identity > Applications > App registrations >
+   New registration), accounts in this organizational directory only, platform
+   Web with the redirect URI = output `{{.Var "REDIRECT_URL"}}` and the
+   front-channel logout URL = output `{{.Var "LOGOUT_URL"}}`; then Certificates &
+   secrets > New client secret. Put the application (client) ID in
+   `terraform.tfvars` (`{{.Var "CLIENT_ID"}}`){{if .Slot}}, {{if eq .Slot.Field "TenantID"}}the directory (tenant) ID in
+   `{{.Var "TENANT_ID"}}`{{else}}the tenants it admits, named, in `{{.Var "TENANTS"}}`{{end}} (once for the
+   organization; the session library validates it at construction, so the first
+   release in an environment waits on it){{end}}, and add the client secret as
+   version 1 of `{{$.Prefix}}-<env>-gbl-{{$.App}}-{{.Secret.Name}}`.
+   In {{$.Integration}}, each pull request's environment signs in through the same
+   registration: add its callback,
+   `https://{{$.App}}-pr<N>.{{$.P.AppsDomain}}{{.Callback.Path}}`, to the
+   registration's redirect URIs before signing in there, until the organization
+   runs a test identity gateway.
+{{else -}}
+{{.Step}}. In the Google Cloud console, in the environment project, for {{.Label}}:
+   first the project's consent screen, if the organization has not configured
+   it there yet (APIs & Services > OAuth consent screen, audience **Internal**,
+   so only the organization's own users sign in; one per project, shared by
+   every application's client in it). Then APIs & Services > Credentials >
+   Create credentials > OAuth client ID, type Web application, authorized
+   redirect URI = output `{{.Var "REDIRECT_URL"}}`. Put the client ID in
+   `terraform.tfvars` (`{{.Var "CLIENT_ID"}}`){{if .Slot}}, the Workspaces it admits,
+   named, in `{{.Var "WORKSPACES"}}` (once for the organization; the session
+   library validates them at construction, so the first release in an
+   environment waits on them){{end}}, and add the client secret as version 1 of
+   `{{$.Prefix}}-<env>-gbl-{{$.App}}-{{.Secret.Name}}`.
+   In {{$.Integration}}, each pull request's environment signs in through the same
    client: add its callback,
-   `https://{{.App}}-pr<N>.{{.P.AppsDomain}}{{.Auth.Callback.Path}}`, to the client's
+   `https://{{$.App}}-pr<N>.{{$.P.AppsDomain}}{{.Callback.Path}}`, to the client's
    authorized redirect URIs before signing in there, until the organization
    runs a test identity gateway.
+{{- if .Groups}}
    The role-groups read needs no step of its own: the sign-in reads a person's
    groups through the Cloud Identity Groups API with their own sign-in token,
    and 1-org enables that API in the environment project. The groups
    themselves are made in the Workspace Admin console, each set so that its
    members can view its member list (the infrastructure repository's README,
    "The role groups"). If the role groups
-   are nested, set `{{.AuthVar}}_group_lookup = "nested"` in `terraform.tfvars`.
+   are nested, set `{{.Var "GROUP_LOOKUP"}} = "nested"` in `terraform.tfvars`.
+{{- end}}
+{{end -}}
 {{end -}}
 {{if not .CookieKeySecret.Generated -}}
 {{.CookieKeyStep}}. Generate a cookie key (`openssl rand -base64 32`) and add it as version 1
@@ -1086,11 +1118,27 @@ none yet), and the sign-in needs no registration.
 | `tasks_max_concurrent` | Tasks of the queue in flight at once. | `number` | `10` | no |
 {{- end}}
 | `teardown` | Set by `bedrock teardown` alone: the services' deletion protection lifted at the apply before its destroy. | `bool` | `false` | no |
-{{- if .Directory}}
-| `{{.AuthVar}}_client_id` | OAuth client ID, per environment. | `map(string)` | all empty | no |
-| `{{.AuthVar}}_group_lookup` | How far the groups read reaches: direct or nested. | `string` | `"{{.Auth.GroupLookupDefault}}"` | no |
-| `{{.AuthVar}}_group_prefix` | Prefix of the role groups. | `string` | `"{{.Auth.GroupPrefixDefault}}"` | no |
-| `{{.AuthVar}}_hosted_domain` | Workspace domain logins are restricted to. | `string` | `"{{.P.HostedDomain}}"` | no |
+{{- range .Methods}}
+{{- $m := .}}
+| `{{.Var "CLIENT_ID"}}` | Client ID of {{.Label}}, per environment. | `map(string)` | all empty | no |
+{{- with .Setting "TenantID"}}
+| `{{$m.Var "TENANT_ID"}}` | Tenant id of the Entra tenant {{$m.Label}} admits. | `string` | `""` | no |
+{{- end}}
+{{- with .Setting "Tenants"}}
+| `{{$m.Var "TENANTS"}}` | The Entra tenants {{$m.Label}} admits, named. | `string` | `""` | no |
+{{- end}}
+{{- with .Setting "Workspaces"}}
+| `{{$m.Var "WORKSPACES"}}` | The Workspaces {{$m.Label}} admits, named. | `string` | `""` | no |
+{{- end}}
+{{- with .Setting "GroupLookup"}}
+| `{{$m.Var "GROUP_LOOKUP"}}` | How far the groups read of {{$m.Label}} reaches: direct or nested. | `string` | `"{{$m.GroupLookupDefault}}"` | no |
+{{- end}}
+{{- with .Setting "GroupPrefix"}}
+| `{{$m.Var "GROUP_PREFIX"}}` | Prefix of the role groups of {{$m.Label}}. | `string` | `"{{$m.GroupPrefixDefault}}"` | no |
+{{- end}}
+{{- with .Setting "HostedDomain"}}
+| `{{$m.Var "HOSTED_DOMAIN"}}` | Workspace domain the logins of {{$m.Label}} are restricted to. | `string` | `"{{$.P.HostedDomain}}"` | no |
+{{- end}}
 {{- end}}
 | `state_bucket` | State bucket, for the upstream layers' outputs. | `string` | n/a | yes |
 
@@ -1119,8 +1167,11 @@ none yet), and the sign-in needs no registration.
 {{- if .TasksQueue}}
 | `tasks_queue` | The task queue's resource name. |
 {{- end}}
-{{- if .Directory}}
-| `{{.AuthVar}}_redirect_url` | The redirect URI to register on the OAuth client. |
+{{- range .Methods}}
+| `{{.Var "REDIRECT_URL"}}` | The redirect URI to register on {{.Label}}. |
+{{- if .Microsoft}}
+| `{{.Var "LOGOUT_URL"}}` | The front-channel logout URL to register on {{.Label}}. |
+{{- end}}
 {{- end}}
 | `substitutions` | What the triggers pass to `cloudbuild.yaml`. |
 | `triggers` | `{ version, pr }` trigger IDs (`pr` null outside {{.Integration}}). |

@@ -83,9 +83,12 @@ variable "hostnames" {
     label under the apps domain because that is what its wildcard certificate
     covers ({{.App}}.{{.Integration}}.<domain> would not be). The first one is the canonical
 {{- if .Directory}}
-    host: the {{.Auth.Name}} sign-in's redirect URL is built from it
-    (https://<host>{{.Auth.Callback.Path}}, the route {{.RoutesDir}} registers for
-    {{.RedirectURL.Name}}). Every hostname here is registered with the
+    host: each directory registration's redirect URL is built from it, the
+    callback the generated router ({{.RouterDir}}) registers for it:
+{{- range .Methods}}
+    https://<host>{{.Callback.Path}} for {{.Label}} ({{(.Variable "RedirectURL").Name}}){{if .Last}}.{{else}},{{end}}
+{{- end}}
+    Every hostname here is registered with the
 {{- else}}
     host. Every hostname here is registered with the
 {{- end}}
@@ -306,51 +309,96 @@ variable "destroy" {
   default     = false
 }
 
-{{if .Directory -}}
-variable "{{.AuthVar}}_client_id" {
+{{range .Methods -}}
+{{$m := . -}}
+{{with .Setting "ClientID" -}}
+variable "{{$m.Var "CLIENT_ID"}}" {
   description = <<-EOT
-    Per environment, the OAuth client ID of the application's registration with
-    Google ({{.ClientID.Name}}, {{.ClientID.File}}
-    {{.ClientID.Declaration}}). Created by hand in the environment project's
-    console (APIs & Services > Credentials > OAuth client ID, Web application)
-    with the redirect URI this stack outputs as {{.AuthVar}}_redirect_url. The
-    client ID is public; its secret goes into the {{.ClientSecretSecret.Name}}
+    Per environment, the client ID of {{$m.Label}} with {{$m.Provider}}
+    ({{.Variable.Name}}, {{.Variable.File}} {{.Variable.Declaration}}).
+{{- if $m.Microsoft}}
+    Created by hand in the Microsoft Entra admin center (App registrations), one
+    per environment, with the redirect URI this stack outputs as
+    {{$m.Var "REDIRECT_URL"}} and the front-channel logout URL it outputs as
+    {{$m.Var "LOGOUT_URL"}}.
+{{- else}}
+    Created by hand in the environment project's console (APIs & Services >
+    Credentials > OAuth client ID, Web application) with the redirect URI this
+    stack outputs as {{$m.Var "REDIRECT_URL"}}.
+{{- end}}
+    The client ID is public; its secret goes into the {{$m.Secret.Name}}
     container. Empty until registered.
   EOT
   type        = map(string)
   default = {
-{{.EmptyEnvStrings}}
+{{$.EmptyEnvStrings}}
   }
 }
 
-variable "{{.AuthVar}}_group_lookup" {
-  description = "How far the {{.Auth.Name}} sign-in's groups read reaches ({{.GroupLookup.Name}}, {{.GroupLookup.Declaration}}): direct reads the Google Groups the person is a direct member of; nested climbs from those to the groups they are in, level by level, for a directory that nests its role groups. The read runs with the person's own sign-in token through the Cloud Identity Groups API, which 1-org enables in the environment project."
+{{end -}}
+{{with .Setting "TenantID" -}}
+variable "{{$m.Var "TENANT_ID"}}" {
+  description = "The Microsoft Entra tenant whose accounts {{$m.Label}} admits, by its tenant id, a GUID ({{.Variable.Name}}, {{.Variable.Declaration}}): the directory (tenant) ID on the app registration's overview page. The session library validates it when the registration is made, at construction, so every data-level process carries it and the first release in an environment waits on it (README, \"Hand steps\")."
   type        = string
-  default     = "{{.Auth.GroupLookupDefault}}"
+  default     = ""
 
   validation {
-    condition     = contains(["direct", "nested"], var.{{.AuthVar}}_group_lookup)
-    error_message = "{{.AuthVar}}_group_lookup is direct or nested."
+    condition     = var.{{$m.Var "TENANT_ID"}} == "" || can(regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$", var.{{$m.Var "TENANT_ID"}}))
+    error_message = "{{$m.Var "TENANT_ID"}} is a tenant id: a GUID, or empty before the registration."
   }
 }
 
-variable "{{.AuthVar}}_group_prefix" {
-  description = "Local-part prefix of the Google Groups that carry {{.Auth.Name}} roles: <prefix><role>@<domain> assigns <role> ({{.GroupPrefix.Name}}, {{.GroupPrefix.Declaration}}). Required non-empty by the session library at construction, so the migrate command carries it too."
+{{end -}}
+{{with .Setting "Tenants" -}}
+variable "{{$m.Var "TENANTS"}}" {
+  description = "The Microsoft Entra tenants {{$m.Label}} admits, each named: <name>=<tenant id>, comma-separated ({{.Variable.Name}}, {{.Variable.Declaration}}); the name is the tenant key every link made through it carries. The session library validates the list when the registration is made, at construction, so every data-level process carries it and the first release in an environment waits on it (README, \"Hand steps\")."
   type        = string
-  default     = "{{.Auth.GroupPrefixDefault}}"
+  default     = ""
+}
+
+{{end -}}
+{{with .Setting "Workspaces" -}}
+variable "{{$m.Var "WORKSPACES"}}" {
+  description = "The Google Workspaces {{$m.Label}} admits, each named with its domains: <name>=<domain>[+<domain>], comma-separated ({{.Variable.Name}}, {{.Variable.Declaration}}); the name is the connection every link made through it carries. The session library validates the list when the registration is made, at construction, so every data-level process carries it and the first release in an environment waits on it (README, \"Hand steps\")."
+  type        = string
+  default     = ""
+}
+
+{{end -}}
+{{with .Setting "GroupLookup" -}}
+variable "{{$m.Var "GROUP_LOOKUP"}}" {
+  description = "How far the groups read of {{$m.Label}} reaches ({{.Variable.Name}}, {{.Variable.Declaration}}): direct reads the Google Groups the person is a direct member of; nested climbs from those to the groups they are in, level by level, for a directory that nests its role groups. The read runs with the person's own sign-in token through the Cloud Identity Groups API, which 1-org enables in the environment project."
+  type        = string
+  default     = "{{$m.GroupLookupDefault}}"
 
   validation {
-    condition     = length(var.{{.AuthVar}}_group_prefix) > 0
-    error_message = "{{.AuthVar}}_group_prefix must not be empty: it is the only filter between role groups and the rest of the directory."
+    condition     = contains(["direct", "nested"], var.{{$m.Var "GROUP_LOOKUP"}})
+    error_message = "{{$m.Var "GROUP_LOOKUP"}} is direct or nested."
   }
 }
 
-variable "{{.AuthVar}}_hosted_domain" {
-  description = "Google Workspace domain {{.Auth.Name}} logins are restricted to ({{.HostedDomain.Name}}, {{.HostedDomain.Declaration}}). Required non-empty by the session library at construction, so the migrate command carries it too."
+{{end -}}
+{{with .Setting "GroupPrefix" -}}
+variable "{{$m.Var "GROUP_PREFIX"}}" {
+  description = "Local-part prefix of the Google Groups that carry {{$m.Auth}} roles through {{$m.Label}}: <prefix><role>@<domain> assigns <role> ({{.Variable.Name}}, {{.Variable.Declaration}}). Required non-empty by the session library at construction, so the migrate command carries it too."
   type        = string
-  default     = "{{.P.HostedDomain}}"
+  default     = "{{$m.GroupPrefixDefault}}"
+
+  validation {
+    condition     = length(var.{{$m.Var "GROUP_PREFIX"}}) > 0
+    error_message = "{{$m.Var "GROUP_PREFIX"}} must not be empty: it is the only filter between role groups and the rest of the directory."
+  }
 }
 
+{{end -}}
+{{with .Setting "HostedDomain" -}}
+variable "{{$m.Var "HOSTED_DOMAIN"}}" {
+  description = "Google Workspace domain the logins of {{$m.Label}} are restricted to ({{.Variable.Name}}, {{.Variable.Declaration}}). Required non-empty by the session library at construction, so the migrate command carries it too."
+  type        = string
+  default     = "{{$.P.HostedDomain}}"
+}
+
+{{end -}}
 {{end -}}
 variable "state_bucket" {
   description = "(Required) State bucket 0-bootstrap seeded, read for the upstream layers' outputs. The same name is substituted into the backend block by hand."

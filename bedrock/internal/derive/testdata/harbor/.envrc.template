@@ -31,29 +31,40 @@ export SPANNER_EMULATOR_HOST=127.0.0.1:${SPANNER_EMULATOR_PORT}
 # ...), so the server would listen on PORT+100 and the console proxy would miss it.
 export OVERMIND_NO_PORT=1
 
-# --- staff auth: the directory its people sign in through (pkg/auth/staff) ---
+# --- staff auth: the directory registration its people sign in through (pkg/auth/staff) ---
 # The Procfile builds with the session library's skipAuth tag, which simulates the
-# directory: every login through it is APP_USERNAME, in the role groups APP_ROLES names
+# directory: every login through the registration is APP_DIRECTORY_USERNAME, or APP_USERNAME
+# when that is unset, in the role groups APP_DIRECTORY_ROLES or APP_ROLES name
 # (comma-separated, as schema/roles/staff.json spells the roles), and only the redirect
 # URL, the hosted domain, and the group prefix below are read. Register the application in
 # a directory, fill the rest in, and drop the tag to use one.
 export APP_USERNAME=staff-dev
 export APP_ROLES=administrator_global
-# export APP_STAFF_OIDC_CLIENT_ID=
-# export APP_STAFF_OIDC_CLIENT_SECRET=
-# APP_STAFF_OIDC_REDIRECT_URL is the browser-facing callback of the surface that binds to
-# the staff auth, such as http://127.0.0.1:4300/api/user/callback through the dev proxy;
-# a script following the callback (a curl walkthrough) uses the server's own host and port.
-export APP_STAFF_OIDC_REDIRECT_URL=http://127.0.0.1:4300/api/user/callback
-# APP_STAFF_OIDC_HOSTED_DOMAIN is the Google Workspace domain logins are restricted to; the
-# simulated directory presents it too, so it is set in development.
-export APP_STAFF_OIDC_HOSTED_DOMAIN=example.com
-# APP_STAFF_OIDC_GROUP_PREFIX names the Google Groups that carry roles: <prefix><role>@<domain>
-# assigns <role>. Read under the simulated directory too (APP_ROLES stand in for the groups),
-# so it is set in development.
-export APP_STAFF_OIDC_GROUP_PREFIX=staff-
-# APP_STAFF_OIDC_GROUP_LOOKUP is how far the groups lookup reaches: direct (the default when
-# unset) reads the groups the person is a direct member of; nested climbs from those to the
-# groups they are in, level by level, for a directory that nests its role groups. The lookup
-# runs with the person's own sign-in token. No effect under the simulated directory.
-# export APP_STAFF_OIDC_GROUP_LOOKUP=direct
+# export APP_STAFF_DIRECTORY_CLIENT_ID=
+# export APP_STAFF_DIRECTORY_CLIENT_SECRET=
+# APP_STAFF_DIRECTORY_REDIRECT_URL is the browser-facing callback of the surface that binds
+# to the staff auth, such as http://127.0.0.1:4300/api/user/directory/callback through the
+# dev proxy; a script following the callback (a curl walkthrough) uses the server's own host
+# and port.
+export APP_STAFF_DIRECTORY_REDIRECT_URL=http://127.0.0.1:4300/api/user/directory/callback
+# APP_STAFF_DIRECTORY_HOSTED_DOMAIN is the Google Workspace domain logins are restricted to;
+# the simulated directory presents it too, so it is set in development.
+export APP_STAFF_DIRECTORY_HOSTED_DOMAIN=example.com
+# APP_STAFF_DIRECTORY_GROUP_PREFIX names the Google Groups that carry roles:
+# <prefix><role>@<domain> assigns <role>. Read under the simulated directory too (APP_ROLES
+# stand in for the groups), so it is set in development.
+export APP_STAFF_DIRECTORY_GROUP_PREFIX=staff-
+# APP_STAFF_DIRECTORY_GROUP_LOOKUP is how far the groups lookup reaches: direct (the default
+# when unset) reads the groups the person is a direct member of; nested climbs from those to
+# the groups they are in, level by level, for a directory that nests its role groups. The
+# lookup runs with the person's own sign-in token. No effect under the simulated directory.
+# export APP_STAFF_DIRECTORY_GROUP_LOOKUP=direct
+
+# --- members auth: the directory registration the portal's people sign in through
+# (pkg/auth/members), beside their passwords ---
+# The simulated directory validates the tenant slot at registration, so it needs a
+# well-formed placeholder; the real tenant id goes in with the client credentials.
+export APP_MEMBERS_DIRECTORY_TENANT_ID=00000000-0000-0000-0000-000000000000
+# export APP_MEMBERS_DIRECTORY_CLIENT_ID=
+# export APP_MEMBERS_DIRECTORY_CLIENT_SECRET=
+export APP_MEMBERS_DIRECTORY_REDIRECT_URL=http://127.0.0.1:4300/portal/api/user/directory/callback

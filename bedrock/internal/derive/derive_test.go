@@ -40,6 +40,30 @@ func secretLine(s Secret) string {
 	return s.Variable.Name + " " + s.Name + " " + s.Variable.File + " " + s.Variable.Declaration()
 }
 
+// methodLine is what a sign-in method says about itself: the auth and the registration,
+// the kind, and for a directory method its authority, the outlet and routes, its
+// variables by field, and the role groups' defaults.
+func methodLine(a *Auth, m *Method) string {
+	line := a.Name + "/" + m.Name + " " + m.Kind
+	if !m.Directory() {
+		return line
+	}
+	line += " " + m.Authority + ": outlet " + m.Outlet + ", callback " + m.Callback.Method + " " + m.Callback.Path
+	if m.FrontChannelLogout() {
+		line += ", logout " + m.Logout.Method + " " + m.Logout.Path
+	}
+	var fields []string
+	for _, f := range m.Fields() {
+		fields = append(fields, f.Field+"="+f.Variable.Name)
+	}
+	line += "; " + strings.Join(fields, " ")
+	if m.GroupPrefixDefault != "" || m.GroupLookupDefault != "" {
+		line += "; groups " + m.GroupPrefixDefault + " " + m.GroupLookupDefault
+	}
+
+	return line
+}
+
 func TestDerive(t *testing.T) {
 	t.Parallel()
 
@@ -47,23 +71,21 @@ func TestDerive(t *testing.T) {
 		name    string
 		fixture string
 		// placement is the fixture's placement under testdata, placement.json when empty.
-		placement     string
-		wantErr       string
-		wantApp       string
-		wantSecrets   []string
-		wantCore      []string
-		wantData      []string
-		wantSite      []string
-		wantSiteLvls  []string
-		wantMigrate   []string
-		wantJobs      []string
-		wantOIDC      bool
-		wantCallback  Route
-		wantRedirect  string
+		placement    string
+		wantErr      string
+		wantApp      string
+		wantSecrets  []string
+		wantCore     []string
+		wantData     []string
+		wantSite     []string
+		wantSiteLvls []string
+		wantMigrate  []string
+		wantJobs     []string
+		// wantMethods are the auths' sign-in methods (methodLine), auths by name.
+		wantMethods   []string
 		wantSchema    Schema
 		wantHostnames map[string]string
 		wantSupplies  map[string]Supply
-		wantGroupPfx  string
 		// wantHooks are the stages with a script, wantProgram the hooks program's.
 		wantHooks   []hook.Stage
 		wantProgram []hook.Stage
@@ -92,57 +114,64 @@ func TestDerive(t *testing.T) {
 			wantApp: "harbor",
 			wantSecrets: []string{
 				"APP_COOKIE_KEY cookie-key pkg/config/data.go dataConfig.CookieKey",
-				"APP_STAFF_OIDC_CLIENT_SECRET staff-oidc-client-secret pkg/config/data.go dataConfig.StaffClientSecret",
+				"APP_STAFF_DIRECTORY_CLIENT_SECRET staff-directory-client-secret pkg/config/data.go dataConfig.StaffDirectoryClientSecret",
+				"APP_MEMBERS_DIRECTORY_CLIENT_SECRET members-directory-client-secret pkg/config/data.go dataConfig.MembersDirectoryClientSecret",
 			},
 			wantCore: []string{varVersion, varServiceName, varLoggingProject, varTraceSampling},
 			wantData: []string{
 				varDatabaseProject, varDatabaseInstance, varDatabaseName,
 				varFirestoreProject, varFirestoreDatabase, varFirebaseAPIKey, "FIRESTORE_EMULATOR_HOST",
 				"APP_DEFAULT_SESSION_TIMEOUT", "APP_COOKIE_KEY",
-				"APP_STAFF_OIDC_CLIENT_ID", "APP_STAFF_OIDC_CLIENT_SECRET", "APP_STAFF_OIDC_REDIRECT_URL", "APP_STAFF_OIDC_HOSTED_DOMAIN",
-				"APP_STAFF_OIDC_GROUP_PREFIX", "APP_STAFF_OIDC_GROUP_LOOKUP",
+				"APP_STAFF_DIRECTORY_CLIENT_ID", "APP_STAFF_DIRECTORY_CLIENT_SECRET", "APP_STAFF_DIRECTORY_REDIRECT_URL", "APP_STAFF_DIRECTORY_HOSTED_DOMAIN",
+				"APP_STAFF_DIRECTORY_GROUP_PREFIX", "APP_STAFF_DIRECTORY_GROUP_LOOKUP",
+				"APP_MEMBERS_DIRECTORY_TENANT_ID", "APP_MEMBERS_DIRECTORY_CLIENT_ID", "APP_MEMBERS_DIRECTORY_CLIENT_SECRET", "APP_MEMBERS_DIRECTORY_REDIRECT_URL",
 				varFileStore, varTasksQueue,
 			},
 			wantSite:     []string{varPort, "APP_CONSOLE_DIST", "APP_PORTAL_DIST", JobsTemplateVariable},
 			wantSiteLvls: []string{LevelCore, LevelData, LevelSite},
 			wantMigrate:  []string{LevelCore, LevelData},
 			wantJobs:     []string{LevelCore, LevelData},
-			wantOIDC:     true,
-			wantCallback: Route{Method: "GET", Path: "/api/user/callback", File: "pkg/router/zz_gen_router.go"},
-			wantRedirect: "APP_STAFF_OIDC_REDIRECT_URL",
-			wantSchema:   Schema{MigrationsDir: "schema/migrations", MigrateCall: "pkg/deploy MigrateSchema", GenerateDir: "cmd/generate", GeneratePackage: "generate"},
+			wantMethods: []string{
+				"members/directory azure application: outlet portal, callback GET /portal/api/user/directory/callback, logout GET /portal/api/user/directory/logout; TenantID=APP_MEMBERS_DIRECTORY_TENANT_ID ClientID=APP_MEMBERS_DIRECTORY_CLIENT_ID ClientSecret=APP_MEMBERS_DIRECTORY_CLIENT_SECRET RedirectURL=APP_MEMBERS_DIRECTORY_REDIRECT_URL",
+				"members/password password",
+				"staff/directory google directory: outlet default, callback GET /api/user/directory/callback; HostedDomain=APP_STAFF_DIRECTORY_HOSTED_DOMAIN ClientID=APP_STAFF_DIRECTORY_CLIENT_ID ClientSecret=APP_STAFF_DIRECTORY_CLIENT_SECRET RedirectURL=APP_STAFF_DIRECTORY_REDIRECT_URL GroupPrefix=APP_STAFF_DIRECTORY_GROUP_PREFIX GroupLookup=APP_STAFF_DIRECTORY_GROUP_LOOKUP; groups staff- direct",
+			},
+			wantSchema: Schema{MigrationsDir: "schema/migrations", MigrateCall: "pkg/deploy MigrateSchema", GenerateDir: "cmd/generate", GeneratePackage: "generate"},
 			wantHostnames: map[string]string{
 				"tst": "harbor-tst.impulseframework.dev",
 				"stg": "harbor-stg.impulseframework.dev",
 				"prd": "harbor.impulseframework.dev",
 			},
 			wantSupplies: map[string]Supply{
-				varVersion:                     SupplyImage,
-				varTraceSampling:               SupplyDerived,
-				varServiceName:                 SupplyDerived,
-				varDatabaseProject:             SupplyDerived,
-				"APP_DEFAULT_SESSION_TIMEOUT":  SupplyDefault,
-				"APP_COOKIE_KEY":               SupplySecret,
-				"APP_STAFF_OIDC_CLIENT_ID":     SupplyPlacement,
-				"APP_STAFF_OIDC_REDIRECT_URL":  SupplyDerived,
-				"APP_STAFF_OIDC_HOSTED_DOMAIN": SupplyPlacement,
-				varPort:                        SupplyPlatform,
-				"APP_CONSOLE_DIST":             SupplyImage,
-				"APP_PORTAL_DIST":              SupplyImage,
-				JobsTemplateVariable:           SupplyDerived,
-				varFileStore:                   SupplyDerived,
-				varTasksQueue:                  SupplyDerived,
-				varFirestoreProject:            SupplyDerived,
-				varFirestoreDatabase:           SupplyDerived,
-				varFirebaseAPIKey:              SupplyDerived,
+				varVersion:                            SupplyImage,
+				varTraceSampling:                      SupplyDerived,
+				varServiceName:                        SupplyDerived,
+				varDatabaseProject:                    SupplyDerived,
+				"APP_DEFAULT_SESSION_TIMEOUT":         SupplyDefault,
+				"APP_COOKIE_KEY":                      SupplySecret,
+				"APP_STAFF_DIRECTORY_CLIENT_ID":       SupplyPlacement,
+				"APP_STAFF_DIRECTORY_REDIRECT_URL":    SupplyDerived,
+				"APP_STAFF_DIRECTORY_HOSTED_DOMAIN":   SupplyPlacement,
+				"APP_STAFF_DIRECTORY_GROUP_LOOKUP":    SupplyPlacement,
+				"APP_MEMBERS_DIRECTORY_TENANT_ID":     SupplyPlacement,
+				"APP_MEMBERS_DIRECTORY_CLIENT_SECRET": SupplySecret,
+				"APP_MEMBERS_DIRECTORY_REDIRECT_URL":  SupplyDerived,
+				varPort:                               SupplyPlatform,
+				"APP_CONSOLE_DIST":                    SupplyImage,
+				"APP_PORTAL_DIST":                     SupplyImage,
+				JobsTemplateVariable:                  SupplyDerived,
+				varFileStore:                          SupplyDerived,
+				varTasksQueue:                         SupplyDerived,
+				varFirestoreProject:                   SupplyDerived,
+				varFirestoreDatabase:                  SupplyDerived,
+				varFirebaseAPIKey:                     SupplyDerived,
 			},
-			wantGroupPfx:   "staff-",
 			wantHooks:      []hook.Stage{hook.AfterMigrate, hook.BeforeTraffic, hook.AfterTraffic},
 			wantFirestore:  "schema/firestore: 3 index(es) subscriptions_resource_key_expiry, subscriptions_resource_domain_expiry, subscriptions_resource_expiry; 2 field(s) subscriptions_expiry (ttl), changes_expires (ttl); rules_version = '2';",
 			wantFileStores: []string{"APP_FILE_STORE data dataConfig.FileStore: default, files, files, google_storage_bucket.files[0]"},
 			wantScheduled:  []string{"send-daily-digest: POST /_scheduled/send-daily-digest at 0 7 * * 1-5 in America/New_York"},
 			wantFileRoutes: []string{"POST /api/attach-manifest: the @upload method AttachManifest", "GET /api/manifests/{id}/file: the @file column Manifest.Key"},
-			wantOutlets:    []string{"default /api"},
+			wantOutlets:    []string{"default /api", "portal /portal/api"},
 			wantSurfaces:   []string{"/_scheduled/send-daily-digest (route): logged always", "/api/ (prefix): sampled at 0.1", "/api/manifests/{id}/file (route): never logged"},
 			wantRequestLog: harborClause,
 		},
@@ -152,6 +181,7 @@ func TestDerive(t *testing.T) {
 			placement:   "placement-beacon.json",
 			wantApp:     "beacon",
 			wantOutlets: []string{"default /api"},
+			wantMethods: []string{"keepers/password password"},
 			wantSecrets: []string{
 				"APP_COOKIE_KEY cookie-key pkg/config/data.go dataConfig.CookieKey",
 			},
@@ -241,14 +271,14 @@ func TestDerive(t *testing.T) {
 			if (m.Jobs == nil) != (tt.wantJobs == nil) || (m.Jobs != nil && strings.Join(m.Jobs.Levels, ",") != strings.Join(tt.wantJobs, ",")) {
 				t.Errorf("Jobs = %+v, want levels %v", m.Jobs, tt.wantJobs)
 			}
-			if len(m.Auths) != 1 || m.Auths[0].OIDC() != tt.wantOIDC || m.Auths[0].Callback != tt.wantCallback {
-				t.Errorf("Auths = %+v, want one with OIDC %t and callback %+v", m.Auths, tt.wantOIDC, tt.wantCallback)
+			var methods []string
+			for i := range m.Auths {
+				for j := range m.Auths[i].Methods {
+					methods = append(methods, methodLine(&m.Auths[i], &m.Auths[i].Methods[j]))
+				}
 			}
-			if v := m.Auths[0].Variable(RoleRedirectURL); (v == nil) != (tt.wantRedirect == "") || (v != nil && v.Name != tt.wantRedirect) {
-				t.Errorf("redirect URL variable = %+v, want %q", v, tt.wantRedirect)
-			}
-			if m.Auths[0].GroupPrefixDefault != tt.wantGroupPfx {
-				t.Errorf("GroupPrefixDefault = %q, want %q", m.Auths[0].GroupPrefixDefault, tt.wantGroupPfx)
+			if got := strings.Join(methods, "\n"); got != strings.Join(tt.wantMethods, "\n") {
+				t.Errorf("methods =\n%s\nwant\n%s", got, strings.Join(tt.wantMethods, "\n"))
 			}
 			if m.Schema != tt.wantSchema {
 				t.Errorf("Schema = %+v, want %+v", m.Schema, tt.wantSchema)
@@ -596,23 +626,12 @@ func TestFileStoreName(t *testing.T) {
 	}
 }
 
-// variableNamed returns the variable by environment name, or nil.
-func (m *Model) variableNamed(name string) *Variable {
-	for i := range m.Variables {
-		if m.Variables[i].Name == name {
-			return &m.Variables[i]
-		}
-	}
-
-	return nil
-}
-
 func TestPlacementValidate(t *testing.T) {
 	t.Parallel()
 
 	valid := func() Placement {
 		return Placement{
-			Prefix: "imp", Environments: []string{"tst", "prd"}, Regions: []Region{{Name: "us-central1", Code: "uc1"}},
+			Prefix: "imp", Code: "harbor", Environments: []string{"tst", "prd"}, Regions: []Region{{Name: "us-central1", Code: "uc1"}},
 			AppsDomain: "lab.example.com", HostedDomain: "example.com", StateBucket: "b", PlaceholderImage: "i",
 			DefaultBranch: "main", Repository: "harbor", ReleaseApp: "acme-release", BedrockVersion: "v0.1.0", BedrockSHA256: "0000000000000000000000000000000000000000000000000000000000000000",
 		}
@@ -1307,7 +1326,7 @@ func TestDeriveJobsTemplate(t *testing.T) {
 					t.Fatal(err)
 				}
 			},
-			wantErr: dataFile + ":228: APP_JOBS_TEMPLATE (dataConfig.Template) is declared at the data level, which cmd/deployment/migrate and cmd/jobs construct as well as the served site (main.go), and the stack sets the variable on the service alone: a process other than the served site would start with the job driver's template unset; embed the job driver's settings (jobstarter.Settings, resource/jobs/cloudrun) in the served site's configuration level, the one no other process constructs",
+			wantErr: dataFile + ":254: APP_JOBS_TEMPLATE (dataConfig.Template) is declared at the data level, which cmd/deployment/migrate and cmd/jobs construct as well as the served site (main.go), and the stack sets the variable on the service alone: a process other than the served site would start with the job driver's template unset; embed the job driver's settings (jobstarter.Settings, resource/jobs/cloudrun) in the served site's configuration level, the one no other process constructs",
 		},
 	}
 	for _, tt := range tests {

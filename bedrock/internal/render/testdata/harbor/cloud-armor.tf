@@ -11,7 +11,7 @@
 # @upload method's route and every stored file's) and from placement.json
 # (cloudArmor.bypasses), allowed so that no rule below reads a body written for
 # text. Then the other rule sets, each scoped to the outlets' routes
-# (/api), where the input a rule can judge arrives; the scope
+# (/api and /portal/api), where the input a rule can judge arrives; the scope
 # comes first in the expression, so a request elsewhere short-circuits and the
 # set never runs on it. Every other request is allowed. Each rule's description
 # names what it comes from. A pull-request stack has no policy: the environment
@@ -109,44 +109,44 @@ resource "google_compute_security_policy" "app" {
     }
   }
 
-  # SQL injection (sqli-v33-stable, sensitivity 1) on /api; placement.json cloudArmor.ruleSets
+  # SQL injection (sqli-v33-stable, sensitivity 1) on /api and /portal/api; placement.json cloudArmor.ruleSets
   rule {
     priority    = 3000
     action      = "deny(403)"
-    description = "SQL injection (sqli-v33-stable, sensitivity 1) on /api; placement.json cloudArmor.ruleSets"
+    description = "SQL injection (sqli-v33-stable, sensitivity 1) on /api and /portal/api; placement.json cloudArmor.ruleSets"
     preview     = local.cloud_armor_preview
 
     match {
       expr {
-        expression = "request.path.startsWith('/api/') && evaluatePreconfiguredWaf('sqli-v33-stable', {'sensitivity': 1})"
+        expression = "(request.path.startsWith('/api/') || request.path.startsWith('/portal/api/')) && evaluatePreconfiguredWaf('sqli-v33-stable', {'sensitivity': 1})"
       }
     }
   }
 
-  # SQL injection in JSON bodies (json-sqli-canary, sensitivity 1) on /api; placement.json cloudArmor.ruleSets
+  # SQL injection in JSON bodies (json-sqli-canary, sensitivity 1) on /api and /portal/api; placement.json cloudArmor.ruleSets
   rule {
     priority    = 3010
     action      = "deny(403)"
-    description = "SQL injection in JSON bodies (json-sqli-canary, sensitivity 1) on /api; placement.json cloudArmor.ruleSets"
+    description = "SQL injection in JSON bodies (json-sqli-canary, sensitivity 1) on /api and /portal/api; placement.json cloudArmor.ruleSets"
     preview     = local.cloud_armor_preview
 
     match {
       expr {
-        expression = "request.path.startsWith('/api/') && evaluatePreconfiguredWaf('json-sqli-canary', {'sensitivity': 1})"
+        expression = "(request.path.startsWith('/api/') || request.path.startsWith('/portal/api/')) && evaluatePreconfiguredWaf('json-sqli-canary', {'sensitivity': 1})"
       }
     }
   }
 
-  # cross-site scripting (xss-v33-stable, sensitivity 2) on /api; placement.json cloudArmor.ruleSets
+  # cross-site scripting (xss-v33-stable, sensitivity 2) on /api and /portal/api; placement.json cloudArmor.ruleSets
   rule {
     priority    = 3020
     action      = "deny(403)"
-    description = "cross-site scripting (xss-v33-stable, sensitivity 2) on /api; placement.json cloudArmor.ruleSets"
+    description = "cross-site scripting (xss-v33-stable, sensitivity 2) on /api and /portal/api; placement.json cloudArmor.ruleSets"
     preview     = local.cloud_armor_preview
 
     match {
       expr {
-        expression = "request.path.startsWith('/api/') && evaluatePreconfiguredWaf('xss-v33-stable', {'sensitivity': 2})"
+        expression = "(request.path.startsWith('/api/') || request.path.startsWith('/portal/api/')) && evaluatePreconfiguredWaf('xss-v33-stable', {'sensitivity': 2})"
       }
     }
 
@@ -162,16 +162,16 @@ resource "google_compute_security_policy" "app" {
     }
   }
 
-  # protocol attacks (protocolattack-v33-stable, sensitivity 1) on /api; placement.json cloudArmor.ruleSets
+  # protocol attacks (protocolattack-v33-stable, sensitivity 1) on /api and /portal/api; placement.json cloudArmor.ruleSets
   rule {
     priority    = 3030
     action      = "deny(403)"
-    description = "protocol attacks (protocolattack-v33-stable, sensitivity 1) on /api; placement.json cloudArmor.ruleSets"
+    description = "protocol attacks (protocolattack-v33-stable, sensitivity 1) on /api and /portal/api; placement.json cloudArmor.ruleSets"
     preview     = local.cloud_armor_preview
 
     match {
       expr {
-        expression = "request.path.startsWith('/api/') && evaluatePreconfiguredWaf('protocolattack-v33-stable', {'sensitivity': 1})"
+        expression = "(request.path.startsWith('/api/') || request.path.startsWith('/portal/api/')) && evaluatePreconfiguredWaf('protocolattack-v33-stable', {'sensitivity': 1})"
       }
     }
   }

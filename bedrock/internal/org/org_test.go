@@ -74,7 +74,11 @@ func TestPlacementValidate(t *testing.T) {
 		{name: "one region", mutate: func(p *Placement) { p.Regions = p.Regions[:1] }, wantErr: "regions has 1"},
 		{name: "a long region code", mutate: func(p *Placement) { p.Regions[0].Code = "central" }, wantErr: "three-character code"},
 		{name: "a contact domain without @", mutate: func(p *Placement) { p.ContactDomains = []string{"example.com"} }, wantErr: "@<domain>"},
-		{name: "a long application", mutate: func(p *Placement) { p.Applications = []string{"lighthouse"} }, wantErr: `application "lighthouse"`},
+		{name: "a long application", mutate: func(p *Placement) { p.Applications = []Application{{Code: "lighthouse", Repository: "lighthouse"}} }, wantErr: `application code "lighthouse"`},
+		{name: "an application without a repository", mutate: func(p *Placement) { p.Applications = []Application{{Code: "quill"}} }, wantErr: `application quill's repository "" is not a GitHub repository name`},
+		{name: "a repository listed twice", mutate: func(p *Placement) {
+			p.Applications = []Application{{Code: "quill", Repository: "quill-service"}, {Code: "harbor", Repository: "Quill-Service"}}
+		}, wantErr: `repository "Quill-Service" is listed twice`},
 		{name: "a label without a value", mutate: func(p *Placement) { p.Labels = map[string]string{"team": ""} }, wantErr: "label"},
 		{name: "no spanner config", mutate: func(p *Placement) { p.Spanner.Config = "" }, wantErr: "spanner.config is empty"},
 		{name: "no release app", mutate: func(p *Placement) { p.GithubReleaseAppID = "" }, wantErr: "githubReleaseAppId is empty"},
@@ -1583,7 +1587,9 @@ func TestViewPhrases(t *testing.T) {
 		want      string
 	}{
 		{name: "no applications", placement: Placement{}, check: func(v *view) string { return v.ApplicationsList() + " " + v.ExampleApp() }, want: "[] app"},
-		{name: "two applications", placement: Placement{Applications: []string{"harbor", "beacon"}}, check: func(v *view) string { return v.ApplicationsList() + " " + v.ExampleApp() }, want: `["harbor", "beacon"] harbor`},
+		{name: "two applications", placement: Placement{Applications: []Application{{Code: "harbor", Repository: "harbor"}, {Code: "beacon", Repository: "beacon-service"}}}, check: func(v *view) string { return v.ApplicationsList() + " " + v.ExampleApp() }, want: `["harbor", "beacon"] harbor`},
+		{name: "no repositories", placement: Placement{}, check: func(v *view) string { return v.ApplicationRepositoriesHCL() }, want: emptyHCLMap},
+		{name: "two repositories, aligned", placement: Placement{Applications: []Application{{Code: "harbor", Repository: "harbor"}, {Code: "qu", Repository: "quill-service"}}}, check: func(v *view) string { return v.ApplicationRepositoriesHCL() }, want: "{\n  harbor = \"harbor\"\n  qu     = \"quill-service\"\n}"},
 		{name: "no contact domains", placement: Placement{OrganizationDomain: "acme.com"}, check: func(v *view) string { return v.ContactDomainsList() + " " + v.ContactDomainsProse() }, want: "[\"@acme.com\"] contact domain `@acme.com`"},
 		{name: "one contact domain", placement: Placement{OrganizationDomain: "acme.com", ContactDomains: []string{"@acme.org"}}, check: func(v *view) string { return v.ContactDomainsList() + " " + v.ContactDomainsProse() }, want: "[\"@acme.org\"] contact domain `@acme.org`"},
 		{name: "two contact domains", placement: Placement{ContactDomains: []string{"@acme.com", "@partner.example"}}, check: func(v *view) string { return v.ContactDomainsList() + " " + v.ContactDomainsProse() }, want: "[\"@acme.com\", \"@partner.example\"] contact domains `@acme.com` and `@partner.example`"},
@@ -1863,24 +1869,27 @@ func TestPlacementRegister(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name     string
-		existing []string
-		app      string
-		want     []string
-		wantErr  string
+		name       string
+		existing   []Application
+		app        string
+		repository string
+		want       []string
+		wantErr    string
 	}{
-		{name: "a new application is appended", existing: []string{"harbor"}, app: "beacon", want: []string{"harbor", "beacon"}},
-		{name: "the first application", app: "quill", want: []string{"quill"}},
-		{name: "a registered application is refused", existing: []string{"harbor"}, app: "harbor", wantErr: `application "harbor" is registered already`},
-		{name: "a code of the wrong shape is refused", app: "Harbor-1", wantErr: `application "Harbor-1" is not 1 to 6 lowercase alphanumeric characters`},
-		{name: "a code too long is refused", app: "sevench", wantErr: "is not 1 to 6"},
+		{name: "a new application is appended", existing: []Application{{Code: "harbor", Repository: "harbor"}}, app: "beacon", repository: "beacon-service", want: []string{"harbor:harbor", "beacon:beacon-service"}},
+		{name: "the first application", app: "quill", repository: "quill", want: []string{"quill:quill"}},
+		{name: "a registered application is refused", existing: []Application{{Code: "harbor", Repository: "harbor"}}, app: "harbor", repository: "harbor-service", wantErr: `application "harbor" is registered already`},
+		{name: "a repository another application has is refused", existing: []Application{{Code: "harbor", Repository: "Harbor-Service"}}, app: "beacon", repository: "harbor-service", wantErr: `repository "harbor-service" is harbor's already`},
+		{name: "a code of the wrong shape is refused", app: "Harbor-1", repository: "harbor", wantErr: `application code "Harbor-1" is not 1 to 6 lowercase letters and digits starting with a letter`},
+		{name: "a code too long is refused", app: "sevench", repository: "sevench", wantErr: "is not 1 to 6"},
+		{name: "a repository that is not a name is refused", app: "quill", repository: "acme/quill", wantErr: `repository "acme/quill" is not a GitHub repository name`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
 			p := Placement{Applications: tt.existing}
-			err := p.Register(tt.app)
+			err := p.Register(tt.app, tt.repository)
 			if tt.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 					t.Fatalf("Register() error = %v, wantErr %q", err, tt.wantErr)
@@ -1891,8 +1900,12 @@ func TestPlacementRegister(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Register() error = %v", err)
 			}
-			if strings.Join(p.Applications, ",") != strings.Join(tt.want, ",") {
-				t.Errorf("Applications = %v, want %v", p.Applications, tt.want)
+			var got []string
+			for _, a := range p.Applications {
+				got = append(got, a.Code+":"+a.Repository)
+			}
+			if strings.Join(got, ",") != strings.Join(tt.want, ",") {
+				t.Errorf("Applications = %v, want %v", got, tt.want)
 			}
 			if p.Step(tt.app) != RegistrationIdentities {
 				t.Errorf("Step(%s) = %q, want %q", tt.app, p.Step(tt.app), RegistrationIdentities)
@@ -1925,7 +1938,7 @@ func TestPlacementAdvance(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			p := Placement{Applications: []string{"harbor", "beacon"}, Registration: tt.registration}
+			p := Placement{Applications: []Application{{Code: "harbor", Repository: "harbor"}, {Code: "beacon", Repository: "beacon"}}, Registration: tt.registration}
 			step, err := p.Advance(tt.app)
 			if tt.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
@@ -2197,7 +2210,7 @@ func TestApplicationPlacement(t *testing.T) {
 
 			p := testPlacement(t)
 			tt.mutate(p)
-			got, err := p.ApplicationPlacement("quill", tt.version, tt.sha256)
+			got, err := p.ApplicationPlacement("quill", "quill-service", tt.version, tt.sha256)
 			if tt.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 					t.Fatalf("ApplicationPlacement() error = %v, wantErr %q", err, tt.wantErr)
@@ -2216,7 +2229,7 @@ func TestApplicationPlacement(t *testing.T) {
 				Prefix: "imp", Environments: []string{"tst", "stg", "prd"},
 				Regions:    []derive.Region{{Name: "us-central1", Code: "uc1"}, {Name: "us-west3", Code: "uw3"}},
 				AppsDomain: "apps.imp.example", HostedDomain: "imp.example", StateBucket: "imp-boot-gbl-state-a1b2",
-				PlaceholderImage: derive.PlaceholderImage, DefaultBranch: "master", Repository: "quill", ReleaseApp: "imp-release",
+				PlaceholderImage: derive.PlaceholderImage, DefaultBranch: "master", Code: "quill", Repository: "quill-service", ReleaseApp: "imp-release",
 				BedrockVersion: tt.version, BedrockSHA256: tt.sha256, Labels: labels, Seed: []string{"tst"},
 				Projects: map[string]derive.Project{
 					"tst": {ID: "imp-tst-gbl-core-1a2b", Number: "100000000002"},

@@ -269,6 +269,12 @@ const (
 	RoleHostedDomain Role = "hosted-domain"
 	RoleGroupPrefix  Role = "group-prefix"
 	RoleGroupLookup  Role = "group-lookup"
+	// The organization slot of a directory registration besides the hosted domain: the
+	// Entra tenant a Microsoft registration admits, by id, or its listed tenants; the
+	// listed Workspaces of a Google registration.
+	RoleTenantID   Role = "tenant-id"
+	RoleTenants    Role = "tenants"
+	RoleWorkspaces Role = "workspaces"
 )
 
 // defaultGroupLookup is how far a sign-in's groups read reaches when the development
@@ -288,7 +294,7 @@ func (r Role) Derived() bool {
 // Placed reports a role whose value is a placement variable.
 func (r Role) Placed() bool {
 	switch r {
-	case RoleClientID, RoleHostedDomain, RoleGroupPrefix, RoleGroupLookup:
+	case RoleClientID, RoleHostedDomain, RoleGroupPrefix, RoleGroupLookup, RoleTenantID, RoleTenants, RoleWorkspaces:
 		return true
 	default:
 		return false
@@ -301,11 +307,18 @@ func (r Role) PerEnvironment() bool {
 	return r == RoleClientID
 }
 
-// ConstructionTime reports a directory role the session library reads when the auth is
-// constructed, so every process that constructs the level needs it; the other directory
-// roles are read when someone signs in, which only the served site does.
+// ConstructionTime reports a directory role the session library reads when the method is
+// registered on the Auth, at construction (the organization slot it validates, the group
+// prefix role synchronization needs), so every process that constructs the level needs
+// it; the other directory roles are read when someone signs in, which only the served
+// site does.
 func (r Role) ConstructionTime() bool {
-	return r == RoleHostedDomain || r == RoleGroupPrefix
+	switch r {
+	case RoleHostedDomain, RoleGroupPrefix, RoleTenantID, RoleTenants, RoleWorkspaces:
+		return true
+	default:
+		return false
+	}
 }
 
 // The levels' names, as the skeleton's config package declares them.
@@ -502,16 +515,6 @@ func (s *FileStore) Default() bool {
 	return s.Name == ""
 }
 
-// directoryRoles maps the fields of an auth's Directory struct to their roles.
-var directoryRoles = map[string]Role{
-	"ClientID":     RoleClientID,
-	"ClientSecret": RoleClientSecret,
-	"RedirectURL":  RoleRedirectURL,
-	"HostedDomain": RoleHostedDomain,
-	"GroupPrefix":  RoleGroupPrefix,
-	"GroupLookup":  RoleGroupLookup,
-}
-
 // cookieKeyField is the data-level field that signs session cookies, by the skeleton's
 // name for it.
 const cookieKeyField = "CookieKey"
@@ -575,43 +578,133 @@ func (p *Process) Reads(level string) bool {
 	return slices.Contains(p.Levels, level)
 }
 
-// Auth is one auth: its login flavor and, for a directory sign-in, its registration and
-// its login callback. A password or preauth auth has neither.
+// Auth is one auth: the package, and the sign-in methods registered on the Auth it
+// constructs, in registration order.
 type Auth struct {
-	// Name is the auth's name.
+	// Name is the auth's name, the package's directory name.
 	Name string
 	// Dir is the auth package's root-relative directory.
 	Dir string
-	// Flavor is the login flavor as the reader reports it.
-	Flavor string
-	// Directory holds the registration's variables by role, for the roles the config
-	// package feeds from the environment.
-	Directory map[Role]*Variable
-	// Callback is the route the browser returns to after the directory sign-in.
+	// Methods are the sign-in methods registered on the Auth: the password method and the
+	// directory methods, each under its registration name.
+	Methods []Method
+}
+
+// Directory reports whether any method of the auth sends the browser to a directory:
+// the stack then carries the registration's variables, outputs and hand steps.
+func (a *Auth) Directory() bool {
+	for i := range a.Methods {
+		if a.Methods[i].Directory() {
+			return true
+		}
+	}
+
+	return false
+}
+
+// Method is one sign-in method registered on an Auth: the password method, which the
+// stack carries nothing for, or a directory method, with the registration's variables
+// found by the convention and the callback the generated router registers for it.
+type Method struct {
+	// Auth is the auth's name.
+	Auth string
+	// Name is the registration name: the segment of the method's routes
+	// (user/<name>/callback) and of its variables.
+	Name string
+	// Kind is the method: password, azure, or google.
+	Kind string
+	// Authority is who owns role membership for a directory method: directory or
+	// application (app.AuthorityDirectory, app.AuthorityApplication).
+	Authority string
+	// Variables are the registration's settings the data level reads from the
+	// environment, by field (FieldClientID), each under
+	// APP_<AUTH>_<REGISTRATION>_<FIELD>; nil for the password method.
+	Variables map[string]*Variable
+	// Outlet is the outlet the auth is bound to, whose routes the callback is among.
+	Outlet string
+	// Callback is the route the browser returns to after the directory sign-in; Logout
+	// the front-channel logout route of a Microsoft registration, which the app
+	// registration names too. Both empty for the password method.
 	Callback Route
+	Logout   Route
 	// GroupPrefixDefault is the group prefix the development environment template sets,
-	// or empty.
+	// or empty; GroupLookupDefault how far the groups read reaches, direct or nested:
+	// what the template sets, or direct. Both empty for a registration that reads no
+	// role groups.
 	GroupPrefixDefault string
-	// GroupLookupDefault is how far the sign-in's groups read reaches, direct or nested:
-	// what the development environment template sets, or direct.
 	GroupLookupDefault string
 }
 
-// OIDC reports whether the auth signs in through a directory (an OpenID Connect
-// flavor): it then has a registration and a callback route, and the stack carries the
-// variables and the hand steps for them.
-func (a *Auth) OIDC() bool {
-	return a.Flavor == app.FlavorOIDCAzure || a.Flavor == app.FlavorOIDCGoogle
+// Directory reports a method whose people sign in through a directory: every kind but
+// the password method.
+func (m *Method) Directory() bool {
+	return m.Kind != app.MethodPassword
 }
 
-// Variable returns the registration variable in the role, or nil.
-func (a *Auth) Variable(role Role) *Variable {
-	return a.Directory[role]
+// FrontChannelLogout reports a method whose registration names a front-channel logout
+// route: the Microsoft one.
+func (m *Method) FrontChannelLogout() bool {
+	return m.Kind == app.MethodAzure
 }
 
-// VariablePrefix is the stem the placement variables of the auth carry: <auth>_oidc.
-func (a *Auth) VariablePrefix() string {
-	return a.Name + "_oidc"
+// Variable returns the registration's variable for the field, or nil when the
+// registration reads none.
+func (m *Method) Variable(field string) *Variable {
+	return m.Variables[field]
+}
+
+// Stem is the stem of the method's placement variables and outputs in the stack:
+// <auth>_<registration>, with underscores for hyphens.
+func (m *Method) Stem() string {
+	return strings.ReplaceAll(m.Auth+"_"+m.Name, "-", "_")
+}
+
+// Provider names who the browser is sent to: Microsoft or Google.
+func (m *Method) Provider() string {
+	switch m.Kind {
+	case app.MethodAzure:
+		return "Microsoft"
+	case app.MethodGoogle:
+		return "Google"
+	default:
+		return ""
+	}
+}
+
+// Fields lists the registration's settings in the stack's order (registrationFields),
+// each with its variable: those the registration declares.
+func (m *Method) Fields() []RegistrationSetting {
+	var settings []RegistrationSetting
+	for i := range registrationFields {
+		if v := m.Variables[registrationFields[i].Field]; v != nil {
+			settings = append(settings, RegistrationSetting{Field: registrationFields[i].Field, Suffix: registrationFields[i].Suffix, Variable: v})
+		}
+	}
+
+	return settings
+}
+
+// RegistrationSetting is one setting of a directory method with the variable that
+// carries it.
+type RegistrationSetting struct {
+	Field    string
+	Suffix   string
+	Variable *Variable
+}
+
+// DirectoryMethods lists every directory method of every auth, auths by name, methods
+// in registration order.
+func (m *Model) DirectoryMethods() []*Method {
+	var methods []*Method
+	for i := range m.Auths {
+		for j := range m.Auths[i].Methods {
+			if m.Auths[i].Methods[j].Directory() {
+				methods = append(methods, &m.Auths[i].Methods[j])
+			}
+		}
+	}
+
+	return methods
 }
 
 // Route is one registered route.
@@ -661,19 +754,25 @@ const (
 // skeleton declares them: the browser workspace, dist, the bundle (web/dist/console).
 var BundleRE = regexp.MustCompile(`^([^/]+)/dist/([^/]+)$`)
 
-// appCodeRE is the shape of an application code: one to six lowercase letters, the
-// segment every resource name carries.
-var appCodeRE = regexp.MustCompile(`^[a-z]{1,6}$`)
+// ApplicationCodePattern is the shape of an application code, the one rule for it: one
+// to six lowercase letters and digits starting with a letter, the segment every
+// resource name of the application carries (the Terraform's validations are rendered
+// from it too). The code is the organization's naming decision, declared at
+// registration (bedrock org register) and recorded in the organization's placement and
+// the application's; the repository's name is the module path's and is bound by no
+// such rule.
+const ApplicationCodePattern = `^[a-z][a-z0-9]{0,5}$`
 
-// ApplicationCode is the application code the module path names: its last segment,
-// which must be one to six lowercase letters.
-func ApplicationCode(module string) (string, error) {
-	code := path.Base(module)
+var appCodeRE = regexp.MustCompile(ApplicationCodePattern)
+
+// ValidateApplicationCode refuses a code that is not one to six lowercase letters and
+// digits starting with a letter.
+func ValidateApplicationCode(code string) error {
 	if !appCodeRE.MatchString(code) {
-		return "", errors.Newf("application code %q (the module path's last segment) is not one to six lowercase letters", code)
+		return errors.Newf("application code %q is not 1 to 6 lowercase letters and digits starting with a letter", code)
 	}
 
-	return code, nil
+	return nil
 }
 
 // Derive reads the application's infrastructure model.
@@ -685,12 +784,8 @@ func Derive(a *app.App, p *Placement) (*Model, error) {
 		return nil, errors.New("the application's go.mod has no module directive")
 	}
 	module := a.GoMod.Module.Mod.Path
-	code, err := ApplicationCode(module)
-	if err != nil {
-		return nil, err
-	}
 
-	m := &Model{App: code, Module: module, Repository: repositoryURL(module), EnvTemplate: a.EnvTemplate, Placement: p, behindDrivers: resourceBeforeDrivers(a.GoMod)}
+	m := &Model{App: p.Code, Module: module, Repository: repositoryURL(module), EnvTemplate: a.EnvTemplate, Placement: p, behindDrivers: resourceBeforeDrivers(a.GoMod)}
 	cfg, err := readConfig(a)
 	if err != nil {
 		return nil, err
@@ -731,7 +826,7 @@ func Derive(a *app.App, p *Placement) (*Model, error) {
 	if err := m.armor(); err != nil {
 		return nil, err
 	}
-	m.Environments = p.environments(code)
+	m.Environments = p.environments(p.Code)
 
 	return m, nil
 }
@@ -755,14 +850,6 @@ func (m *Model) classify(cfg *config) error {
 			m.Secrets = append(m.Secrets, Secret{Variable: v, Name: secretName(v.Name), Generated: generated})
 		}
 	}
-	for role, field := range cfg.directory {
-		v := m.variable(field)
-		if v == nil {
-			return errors.Newf("the directory literal in %s assigns env.%s, which is not an env-tagged field", m.ConfigDir, field)
-		}
-		v.Role = role
-	}
-
 	m.Database = Database{
 		Project:  m.byRole(RoleDatabaseProject),
 		Instance: m.byRole(RoleDatabaseInstance),

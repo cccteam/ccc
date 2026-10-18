@@ -156,7 +156,7 @@ again does not, because its pull request is already labeled as tagged.
 ## The application's placement
 
 An application's `placement.json`, in its repository's `infrastructure` directory beside
-the stack, records what the code cannot know. `bedrock org register <app> <checkout>`
+the stack, records what the code cannot know. `bedrock org register <code> <checkout>`
 writes the first one from the organization's placement (`bedrock org`, below), and the
 application's team owns it from then on: `bedrock upgrade` moves the pin, and a person
 writes the optional fields. A field the file does not know is refused, and so is a value
@@ -165,6 +165,11 @@ and what its absence means:
 
 - `prefix`: the organization's naming prefix; every resource name starts with
   `<prefix>-<env>`. From the organization's `prefix`. Required.
+- `code`: the application's code, the segment every resource name of the application
+  carries: one to six lowercase letters and digits starting with a letter, the one rule
+  for it, declared to `org register` and the organization's naming decision. A placement
+  written before the code was recorded names none, and the repository's name stands in
+  for it, the two having coincided then; `bedrock upgrade` writes it in.
 - `environments`: the environments in promotion order; pull requests deploy to the first,
   and the last is production. The model's three, `tst`, `stg` and `prd`. Required.
 - `regions`: the Cloud Run regions, each a `name` and the `code` regional resources are
@@ -182,8 +187,9 @@ and what its absence means:
 - `defaultBranch`: the branch pull requests target and releases are cut on. From the
   organization's `githubDefaultBranch`. Required.
 - `repository`: the application repository's name, the `source_repo` label every
-  resource carries. The application's code, the name `1-org` gives its repository.
-  Required.
+  resource carries: the last segment of the application's module path (a module under
+  `github.com/<organization>` is its repository), the name `1-org` creates the repository
+  with. Bound by no length rule; the code is. Required.
 - `releaseApp`: the slug of the GitHub App release-please runs as; the pipeline accepts
   a release tag only from a GitHub Release that app authored. From the organization's
   `githubReleaseAppSlug`. Required.
@@ -2237,8 +2243,13 @@ project. It refuses a layer rendered by an earlier bedrock, which declares no `d
 variable, and ends with a line in `JOURNAL.md` and what starting over takes (the rendered
 `0-bootstrap/README.md`, "Destroying the organization").
 
-`org register <app>` adds an application: its code goes into `placement.json`'s
-applications, each layer's values are rendered from it (1-org's repositories, its
+`org register <code> <checkout>` adds an application: its code, the organization's naming
+decision under the one rule (one to six lowercase letters and digits starting with a
+letter, the segment every resource name carries), and its repository's name, read from
+the checkout's `go.mod` module path (a module under `github.com/<organization>` is its
+repository; a vanity import path, another organization's module or a module inside a
+repository is refused), go into `placement.json`'s applications, each layer's values are
+rendered from them (1-org's repositories, created by name and keyed by code, its
 `public-invokers.auto.tfvars` and its `applied_applications`, 2-env's list, 2-shr's
 repositories and its pushers and pullers, 2-spn's database admins, 2-net's hostnames with
 the wildcard for pull-request
@@ -2267,12 +2278,12 @@ placement, above), every field from the organization's placement and none asked 
 person, pinned to the bedrock running it: a release with its linux/amd64 binary's
 checksum, read from the release's `checksums.txt` as `bedrock upgrade` reads it, or a
 commit installed with `go install`; a build from a checkout or a `(devel)` build is
-nobody's pin, and register refuses to run on one. The optional second argument is the
+nobody's pin, and register refuses to run on one. The second argument is the
 application's checkout (`bedrock org register quill ../quill`, typically a sibling of the
-infrastructure repository's checkout): register writes the file there as
-`infrastructure/placement.json`, where `bedrock render` reads it, and refuses when one is
-there already, since a placement is never overwritten. Without it, register prints the
-file to be committed there. Register refuses, changing nothing, while the organization's
+infrastructure repository's checkout), whose `go.mod` names the repository: register
+writes the file there as `infrastructure/placement.json`, where `bedrock render` reads
+it, and refuses when one is there already, since a placement is never overwritten.
+Register refuses, changing nothing, while the organization's
 placement lacks the state bucket (`stateBucket`) or an environment project's id or number
 (`projects`, `projectNumbers`), which the application's placement names.
 

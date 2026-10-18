@@ -14,6 +14,7 @@ import (
 	"github.com/go-playground/errors/v5"
 
 	"github.com/cccteam/ccc/bedrock/internal/deploy"
+	"github.com/cccteam/ccc/bedrock/internal/derive"
 )
 
 // teardownTofu is tofu in the teardown tests: it records every command and answers the
@@ -58,15 +59,16 @@ func (f *teardownTofu) Output(_ context.Context, c deploy.Command, _ io.Writer) 
 }
 
 // teardownRepo is an application repository in the application layout, quill, with its
-// stack under infrastructure/ and the lab placement beside it.
+// stack under infrastructure/ and the lab placement beside it, naming quill.
 func teardownRepo(t *testing.T) string {
 	t.Helper()
 	dir := copyRepo(t, fixtureAppRepo)
-	data, err := os.ReadFile(placement)
+	p, err := derive.ReadPlacement(placement)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "infrastructure", placementFile), data, 0o600); err != nil {
+	p.Code, p.Repository = "quill", "quill"
+	if err := derive.WritePlacement(filepath.Join(dir, "infrastructure", placementFile), p); err != nil {
 		t.Fatal(err)
 	}
 

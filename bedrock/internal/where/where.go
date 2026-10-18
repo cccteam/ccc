@@ -25,7 +25,6 @@ import (
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/zclconf/go-cty/cty"
-	"golang.org/x/mod/modfile"
 
 	"github.com/cccteam/ccc/bedrock/internal/derive"
 	"github.com/cccteam/ccc/bedrock/internal/secret"
@@ -39,9 +38,6 @@ const (
 	// infrastructureDir is where a repository keeps its infrastructure when the root
 	// holds the application: the layers, or the application's stack itself.
 	infrastructureDir = "infrastructure"
-	// goModFile names the application's module at the repository root, in the
-	// application layout.
-	goModFile = "go.mod"
 	// orgLayer and appLayers are the two directories an infrastructure root holds in the
 	// organization layout: the organization layer, and the application layers, one
 	// directory per application.
@@ -163,11 +159,11 @@ func ApplicationDir(repoRoot, infraRoot string) string {
 
 // Applications lists the application layers under the infrastructure root: the
 // directories under 3-app holding a terraform.tfvars, sorted. When the root is an
-// application's stack itself, it is the one application, named by the module at the
-// repository root.
+// application's stack itself, it is the one application, by the code its placement
+// records.
 func Applications(infraRoot string) ([]string, error) {
 	if isApplicationLayer(infraRoot) {
-		application, err := moduleApplication(filepath.Dir(infraRoot))
+		application, err := placementApplication(infraRoot)
 		if err != nil {
 			return nil, err
 		}
@@ -215,31 +211,19 @@ func SingleApplication(infraRoot string) (string, error) {
 	}
 }
 
-// moduleApplication is the application the module at the repository root names: the
-// last segment of its go.mod module path, an application code.
-func moduleApplication(repoRoot string) (string, error) {
-	file := filepath.Join(repoRoot, goModFile)
-	data, err := os.ReadFile(file)
+// placementApplication is the application the stack's placement names: the code
+// bedrock org register recorded in it (an older placement names the repository, which
+// stood for the code then).
+func placementApplication(infraRoot string) (string, error) {
+	p, err := Placement(infraRoot)
 	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return "", errors.Newf("no %s: the application layout needs the module at the repository root, %s, to name the application", file, repoRoot)
-		}
-
-		return "", errors.Wrap(err, "os.ReadFile()")
+		return "", err
 	}
-	f, err := modfile.ParseLax(file, data, nil)
-	if err != nil {
-		return "", errors.Wrap(err, "modfile.ParseLax()")
-	}
-	if f.Module == nil {
-		return "", errors.Newf("%s has no module directive to name the application", file)
-	}
-	application, err := derive.ApplicationCode(f.Module.Mod.Path)
-	if err != nil {
-		return "", errors.Newf("%s: %s", file, errors.Cause(err))
+	if p == nil {
+		return "", errors.Newf("no %s under %s: the application layout needs the placement bedrock org register wrote, which names the application by its code", placementFile, infraRoot)
 	}
 
-	return application, nil
+	return p.Code, nil
 }
 
 // Layer is the application's layer relative to the infrastructure root: "." when the

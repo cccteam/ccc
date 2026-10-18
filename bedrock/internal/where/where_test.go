@@ -6,6 +6,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/cccteam/ccc/bedrock/internal/derive"
 )
 
 // The fixture repositories: flat holds the layers at its root, nested under
@@ -196,9 +198,10 @@ func TestApplications(t *testing.T) {
 		name    string
 		fixture string
 		infra   string
-		// goMod replaces the module file at the repository root; "" leaves the fixture's,
-		// and "-" removes it.
-		goMod      string
+		// placement is the stack's placement in the application layout: "" the
+		// fixture's, "code" one recording the code beside a longer repository name,
+		// "repository" an older one naming the repository alone, "none" none.
+		placement  string
 		want       []string
 		wantSingle string
 		// wantLayer is the single application's layer, relative to the infrastructure
@@ -210,24 +213,30 @@ func TestApplications(t *testing.T) {
 		{name: "one application, a directory without a placement skipped", fixture: flat, want: []string{"quill"}, wantSingle: "quill", wantLayer: filepath.Join(appLayers, "quill")},
 		{name: "two applications", fixture: nested, infra: "infrastructure", want: []string{"harbor", "quill"}, wantOneErr: "several application layers under"},
 		{name: "no 3-app", fixture: nested, wantErr: "no 3-app under"},
-		{name: "the application's stack itself, named by the module", fixture: apprepo, infra: "infrastructure", want: []string{"quill"}, wantSingle: "quill", wantLayer: "."},
-		{name: "a module whose last segment is not an application code", fixture: apprepo, infra: "infrastructure", goMod: "module example.com/acme/quill-app\n\ngo 1.26\n", wantErr: `application code "quill-app" (the module path's last segment) is not one to six lowercase letters`},
-		{name: "a module file without a module directive", fixture: apprepo, infra: "infrastructure", goMod: "go 1.26\n", wantErr: "has no module directive to name the application"},
-		{name: "no go.mod at the repository root", fixture: apprepo, infra: "infrastructure", goMod: "-", wantErr: "the application layout needs the module at the repository root"},
+		{name: "the application's stack itself, named by its placement's code", fixture: apprepo, infra: "infrastructure", placement: "code", want: []string{"quill"}, wantSingle: "quill", wantLayer: "."},
+		{name: "an older placement, the repository standing for the code", fixture: apprepo, infra: "infrastructure", placement: "repository", want: []string{"quill"}, wantSingle: "quill", wantLayer: "."},
+		{name: "no placement beside the stack", fixture: apprepo, infra: "infrastructure", placement: "none", wantErr: "no placement.json under"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
 			repo := copyRepo(t, tt.fixture)
-			switch tt.goMod {
-			case "":
-			case "-":
-				if err := os.Remove(filepath.Join(repo, goModFile)); err != nil {
+			if tt.placement == "none" {
+				if err := os.Remove(filepath.Join(repo, tt.infra, placementFile)); err != nil {
 					t.Fatal(err)
 				}
-			default:
-				if err := os.WriteFile(filepath.Join(repo, goModFile), []byte(tt.goMod), 0o600); err != nil {
+			}
+			if tt.placement == "code" || tt.placement == "repository" {
+				p, err := derive.ReadPlacement(harborPlacement)
+				if err != nil {
+					t.Fatal(err)
+				}
+				p.Code, p.Repository = "", "quill"
+				if tt.placement == "code" {
+					p.Code, p.Repository = "quill", "quill-service"
+				}
+				if err := derive.WritePlacement(filepath.Join(repo, tt.infra, placementFile), p); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -342,7 +351,7 @@ func TestVariables(t *testing.T) {
 	t.Parallel()
 
 	quillLocals := []string{"APP_COOKIE_KEY", "APP_MAIL_API_KEY"}
-	harborSecrets := []string{"APP_COOKIE_KEY", "APP_STAFF_OIDC_CLIENT_SECRET"}
+	harborSecrets := []string{"APP_COOKIE_KEY", "APP_STAFF_DIRECTORY_CLIENT_SECRET", "APP_MEMBERS_DIRECTORY_CLIENT_SECRET"}
 	tests := []struct {
 		name     string
 		appDir   string

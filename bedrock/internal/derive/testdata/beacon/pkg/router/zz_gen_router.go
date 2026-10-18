@@ -6,7 +6,7 @@
 //
 //	every request: hooks.Outermost, LoggerMiddleware, SecurityHeaders, httpio.WithParams
 //	default (/api), password sessions:
-//	  NoCaching, CompressionMiddleware, StartSession, SetXSRFToken: POST /api/user/login, GET /api/user/session, DELETE /api/user/session
+//	  NoCaching, CompressionMiddleware, StartSession, SetXSRFToken: GET /api/user/methods, GET /api/user/session, DELETE /api/user/session, GET /api/user/pending, POST /api/user/password/login
 //	  + ValidateSession, ValidateXSRFToken: hooks.Default, generatedRoutes
 //
 // hooks.Root's routes sit behind the every-request chain alone. Under an outlet's prefix
@@ -85,7 +85,7 @@ func New(h Handlers, hooks Hooks) *chi.Mux {
 		r.Use(h.StartSession)
 		r.Use(h.SetXSRFToken)
 
-		r.Post("/api/user/login", h.Login())
+		r.Post("/api/user/password/login", h.PasswordLogin())
 		r.Get("/api/user/session", h.Authenticated())
 		r.Delete("/api/user/session", h.Logout())
 

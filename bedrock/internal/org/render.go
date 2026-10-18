@@ -18,6 +18,7 @@ import (
 
 	"github.com/go-playground/errors/v5"
 
+	"github.com/cccteam/ccc/bedrock/internal/derive"
 	"github.com/cccteam/ccc/bedrock/internal/release"
 	"github.com/cccteam/ccc/bedrock/internal/render"
 	"github.com/cccteam/ccc/impulse/ci"
@@ -317,7 +318,7 @@ func (v *view) EnvironmentProjectNumbersHCL() string {
 		}
 	}
 	if len(lines) == 0 {
-		return "{}"
+		return emptyHCLMap
 	}
 
 	return "{\n" + strings.Join(lines, "\n") + "\n  }"
@@ -584,13 +585,42 @@ func hclList(items []string) string {
 	return `["` + strings.Join(items, `", "`) + `"]`
 }
 
-// ApplicationsList is the applications as an HCL list.
+// emptyHCLMap is an HCL map with nothing in it.
+const emptyHCLMap = "{}"
+
+// ApplicationsList is the applications' codes as an HCL list.
 func (v *view) ApplicationsList() string {
 	if len(v.Applications) == 0 {
 		return "[]"
 	}
 
-	return `["` + strings.Join(v.Applications, `", "`) + `"]`
+	return `["` + strings.Join(v.Codes(), `", "`) + `"]`
+}
+
+// ApplicationRepositoriesHCL is the applications' repository names by code as an HCL
+// map, the values in one column; {} with no application.
+func (v *view) ApplicationRepositoriesHCL() string {
+	if len(v.Applications) == 0 {
+		return emptyHCLMap
+	}
+	width := 0
+	for _, a := range v.Applications {
+		width = max(width, len(a.Code))
+	}
+	var b strings.Builder
+	b.WriteString("{\n")
+	for _, a := range v.Applications {
+		fmt.Fprintf(&b, "  %-*s = %q\n", width, a.Code, a.Repository)
+	}
+	b.WriteString("}")
+
+	return b.String()
+}
+
+// ApplicationCodePattern is the one rule for an application code, for the layers'
+// validations (derive.ApplicationCodePattern).
+func (*view) ApplicationCodePattern() string {
+	return derive.ApplicationCodePattern
 }
 
 // AppliedList is the applications registered in full (Served) as an HCL list: those whose
@@ -611,7 +641,7 @@ func (v *view) ExampleApp() string {
 		return "app"
 	}
 
-	return v.Applications[0]
+	return v.Applications[0].Code
 }
 
 // contactDomains are the domains Essential Contacts may belong to: the placement's, or

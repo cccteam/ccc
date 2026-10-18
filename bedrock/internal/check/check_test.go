@@ -148,7 +148,7 @@ func TestRun(t *testing.T) {
 				m.Scheduled = []derive.ScheduledRoute{{Path: "/_scheduled/send-daily-digest", Schedule: "0 6 * * 1-5", TimeZone: "America/New_York"}}
 			},
 			wantFindings: []Finding{
-				{Path: "README.md", Line: 266, Want: "  | `POST /_scheduled/send-daily-digest` | `0 6 * * 1-5` | America/New_York |", Got: "  | `POST /_scheduled/send-daily-digest` | `0 7 * * 1-5` | America/New_York |"},
+				{Path: "README.md", Line: 267, Want: "  | `POST /_scheduled/send-daily-digest` | `0 6 * * 1-5` | America/New_York |", Got: "  | `POST /_scheduled/send-daily-digest` | `0 7 * * 1-5` | America/New_York |"},
 				{Path: "scheduler.tf", Line: 29, Want: `      schedule  = "0 6 * * 1-5"`, Got: `      schedule  = "0 7 * * 1-5"`},
 			},
 			wantOutput: []string{"2 of 22 owned file(s) differ", "differs  scheduler.tf:29"},
@@ -160,7 +160,7 @@ func TestRun(t *testing.T) {
 				m.Scheduled = append([]derive.ScheduledRoute{{Path: "/_scheduled/close-stale-holds", Schedule: "*/15 * * * *", TimeZone: "UTC"}}, m.Scheduled...)
 			},
 			wantFindings: []Finding{
-				{Path: "README.md", Line: 266, Want: "  | `POST /_scheduled/close-stale-holds` | `*/15 * * * *` | UTC |", Got: "  | `POST /_scheduled/send-daily-digest` | `0 7 * * 1-5` | America/New_York |"},
+				{Path: "README.md", Line: 267, Want: "  | `POST /_scheduled/close-stale-holds` | `*/15 * * * *` | UTC |", Got: "  | `POST /_scheduled/send-daily-digest` | `0 7 * * 1-5` | America/New_York |"},
 				{Path: "scheduler.tf", Line: 27, Want: `    "close-stale-holds" = {`, Got: `    "send-daily-digest" = {`},
 			},
 			wantOutput: []string{"2 of 22 owned file(s) differ", "differs  scheduler.tf:27"},
@@ -568,24 +568,24 @@ func TestRunGenerated(t *testing.T) {
 		{
 			name:      "the word in every environment is what a generated secret needs",
 			generated: true,
-			versions:  "secret_versions = {\n  tst = { APP_COOKIE_KEY = \"generated\" }\n  stg = { APP_COOKIE_KEY = \"generated\", APP_STAFF_OIDC_CLIENT_SECRET = \"1\" }\n  prd = { APP_COOKIE_KEY = \"generated\", APP_STAFF_OIDC_CLIENT_SECRET = 2 }\n}\n",
+			versions:  "secret_versions = {\n  tst = { APP_COOKIE_KEY = \"generated\" }\n  stg = { APP_COOKIE_KEY = \"generated\", APP_STAFF_DIRECTORY_CLIENT_SECRET = \"1\" }\n  prd = { APP_COOKIE_KEY = \"generated\", APP_STAFF_DIRECTORY_CLIENT_SECRET = 2 }\n}\n",
 		},
 		{
 			name:      "a number, latest and no entry for a generated secret are refused, per environment in promotion order",
 			generated: true,
 			versions:  "secret_versions = {\n  tst = { APP_COOKIE_KEY = 3 }\n  stg = { APP_COOKIE_KEY = \"latest\" }\n  prd = {}\n}\n",
 			want: []GeneratedFinding{
-				{Environment: "tst", Variable: "APP_COOKIE_KEY", Problem: `APP_COOKIE_KEY is generated (secret:"generated" at pkg/config/data.go:236) and secret_versions.tst in terraform.tfvars pins "3" where the word generated belongs: write APP_COOKIE_KEY = "generated" there; its version is derived at each build, and bedrock secret rotate tst APP_COOKIE_KEY adds the next`},
-				{Environment: "stg", Variable: "APP_COOKIE_KEY", Problem: `APP_COOKIE_KEY is generated (secret:"generated" at pkg/config/data.go:236) and secret_versions.stg in terraform.tfvars pins "latest" where the word generated belongs: write APP_COOKIE_KEY = "generated" there; its version is derived at each build, and bedrock secret rotate stg APP_COOKIE_KEY adds the next`},
-				{Environment: "prd", Variable: "APP_COOKIE_KEY", Problem: `APP_COOKIE_KEY is generated (secret:"generated" at pkg/config/data.go:236) and secret_versions.prd in terraform.tfvars has no entry for it: write APP_COOKIE_KEY = "generated" there; its version is derived at each build`},
+				{Environment: "tst", Variable: "APP_COOKIE_KEY", Problem: `APP_COOKIE_KEY is generated (secret:"generated" at pkg/config/data.go:262) and secret_versions.tst in terraform.tfvars pins "3" where the word generated belongs: write APP_COOKIE_KEY = "generated" there; its version is derived at each build, and bedrock secret rotate tst APP_COOKIE_KEY adds the next`},
+				{Environment: "stg", Variable: "APP_COOKIE_KEY", Problem: `APP_COOKIE_KEY is generated (secret:"generated" at pkg/config/data.go:262) and secret_versions.stg in terraform.tfvars pins "latest" where the word generated belongs: write APP_COOKIE_KEY = "generated" there; its version is derived at each build, and bedrock secret rotate stg APP_COOKIE_KEY adds the next`},
+				{Environment: "prd", Variable: "APP_COOKIE_KEY", Problem: `APP_COOKIE_KEY is generated (secret:"generated" at pkg/config/data.go:262) and secret_versions.prd in terraform.tfvars has no entry for it: write APP_COOKIE_KEY = "generated" there; its version is derived at each build`},
 			},
-			wantOut: []string{"  refused  APP_COOKIE_KEY is generated (secret:\"generated\" at pkg/config/data.go:236) and secret_versions.tst in terraform.tfvars pins \"3\" where the word generated belongs"},
+			wantOut: []string{"  refused  APP_COOKIE_KEY is generated (secret:\"generated\" at pkg/config/data.go:262) and secret_versions.tst in terraform.tfvars pins \"3\" where the word generated belongs"},
 		},
 		{
 			name:     "the word on a secret someone puts in place is refused",
-			versions: "secret_versions = {\n  tst = { APP_STAFF_OIDC_CLIENT_SECRET = \"generated\" }\n  stg = {}\n  prd = {}\n}\n",
+			versions: "secret_versions = {\n  tst = { APP_STAFF_DIRECTORY_CLIENT_SECRET = \"generated\" }\n  stg = {}\n  prd = {}\n}\n",
 			want: []GeneratedFinding{
-				{Environment: "tst", Variable: "APP_STAFF_OIDC_CLIENT_SECRET", Problem: `APP_STAFF_OIDC_CLIENT_SECRET carries the word generated in secret_versions.tst in terraform.tfvars, and the code declares it secret:"true" (pkg/config/data.go:243): pin a version number (bedrock secret pin tst APP_STAFF_OIDC_CLIENT_SECRET <version>), or declare it secret:"generated" in the code`},
+				{Environment: "tst", Variable: "APP_STAFF_DIRECTORY_CLIENT_SECRET", Problem: `APP_STAFF_DIRECTORY_CLIENT_SECRET carries the word generated in secret_versions.tst in terraform.tfvars, and the code declares it secret:"true" (pkg/config/data.go:268): pin a version number (bedrock secret pin tst APP_STAFF_DIRECTORY_CLIENT_SECRET <version>), or declare it secret:"generated" in the code`},
 			},
 		},
 		{

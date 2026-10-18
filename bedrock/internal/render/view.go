@@ -130,16 +130,13 @@ type view struct {
 	RegionsSub  string
 	PrimaryCode string
 
-	// Auth is the auth the site binds to.
-	Auth *derive.Auth
-	// Directory reports a directory sign-in: the auth has a registration and a callback,
-	// and the stack the variables, the outputs and the hand steps for them. A password
-	// auth has none of that, and its stack carries the cookie key alone.
+	// Methods are the directory methods of every auth the application constructs, auths
+	// by name and methods in registration order, each with what the stack carries for
+	// its registration: the variables, the client secret, the outputs and the hand step.
+	// Directory reports there is any; an application whose auths register the password
+	// method alone has none of that, and its stack carries the cookie key alone.
+	Methods   []*methodView
 	Directory bool
-	// AuthVar is the stem of the auth's placement variables: <auth>_oidc.
-	AuthVar string
-	// RoutesDir is the directory of the file registering the callback, empty without one.
-	RoutesDir string
 	// The variables by role, for the templates that name them.
 	ServiceName    *derive.Variable
 	LoggingProject *derive.Variable
@@ -172,15 +169,8 @@ type view struct {
 	ScheduledPrefix string
 	ReleaseFileName string
 	Port            *derive.Variable
-	ClientID        *derive.Variable
-	ClientSecret    *derive.Variable
-	RedirectURL     *derive.Variable
-	HostedDomain    *derive.Variable
-	GroupPrefix     *derive.Variable
-	GroupLookup     *derive.Variable
-	// CookieKeySecret and ClientSecretSecret are the secrets by role.
-	CookieKeySecret    *derive.Secret
-	ClientSecretSecret *derive.Secret
+	// CookieKeySecret is the secret in the cookie-key role.
+	CookieKeySecret *derive.Secret
 	// The levels by name.
 	CoreLevel derive.Level
 	DataLevel derive.Level
@@ -204,14 +194,16 @@ type view struct {
 	GeneratedPairs       string
 	TfvarsSecretVersions string
 	// CookieKeyStep and PinStep number the README's hand steps (the directory
-	// registration first, where there is one); HandSteps reports there is any.
+	// registrations first, one step each); HandSteps reports there is any.
 	CookieKeyStep int
 	PinStep       int
 	HandSteps     bool
 	// DatabaseVariablesCell lists the database variables for the README table, the
 	// common prefix written once.
 	DatabaseVariablesCell string
-	// DatabaseEnv, DirectoryEnv are the aligned assignment blocks of locals.tf.
+	// DatabaseEnv and DirectoryEnv are the aligned assignment blocks of locals.tf: the
+	// database identity, and the registrations' settings the session library reads at
+	// construction, which every data-level process carries.
 	DatabaseEnv  string
 	DirectoryEnv string
 	// CodeDefaults are the data-level variables left to their code default.
@@ -856,9 +848,6 @@ func (v *view) HookSource(stage string) string {
 }
 
 func newView(m *derive.Model) (*view, error) {
-	if len(m.Auths) != 1 {
-		return nil, errors.Newf("the stack binds one auth; %s has %d", m.App, len(m.Auths))
-	}
 	p := m.Placement
 	v := &view{Model: m, P: p, Prefix: p.Prefix, Integration: p.Integration(), Production: p.Production()}
 	v.RepoFullName = repoFullName(m.Repository)
@@ -870,7 +859,6 @@ func newView(m *derive.Model) (*view, error) {
 	v.GoImage = goImage
 	v.GcloudImage, v.OpenTofuImage, v.DockerImage = gcloudImage, openTofuImage, dockerImage
 	v.NodeImage, v.ReleasePleaseVersion = nodeImage, release.PleaseVersion
-	v.Auth = &m.Auths[0]
 	v.MaintenanceVariable = derive.MaintenanceVariable
 	v.SchedulerVariable, v.ScheduledPrefix, v.ReleaseFileName = derive.SchedulerInvokerVariable, derive.ScheduledPrefix, derive.ReleaseFileName
 	v.JobsTemplateVariable = derive.JobsTemplateVariable
@@ -878,12 +866,10 @@ func newView(m *derive.Model) (*view, error) {
 		v.RequestLogClause = hclQuote(m.RequestLog.Clause)
 	}
 	v.ServerPackage = derive.ServerPackage
-	v.Directory = v.Auth.OIDC()
-	v.AuthVar = v.Auth.VariablePrefix()
-	if v.Directory {
-		v.RoutesDir = path.Dir(v.Auth.Callback.File)
-	}
 	if err := v.roles(); err != nil {
+		return nil, err
+	}
+	if err := v.methods(); err != nil {
 		return nil, err
 	}
 	v.environments()
@@ -906,8 +892,7 @@ func newView(m *derive.Model) (*view, error) {
 }
 
 // roles finds the variables and levels the templates name: the well-known ones always,
-// the directory registration's only for a directory sign-in, the job process's template
-// only with a job process.
+// the job process's template only with a job process.
 func (v *view) roles() error {
 	roles := []struct {
 		role derive.Role
@@ -917,19 +902,6 @@ func (v *view) roles() error {
 		{derive.RoleLoggingProject, &v.LoggingProject},
 		{derive.RoleVersion, &v.Version},
 		{derive.RolePort, &v.Port},
-	}
-	if v.Directory {
-		roles = append(roles, []struct {
-			role derive.Role
-			dst  **derive.Variable
-		}{
-			{derive.RoleClientID, &v.ClientID},
-			{derive.RoleClientSecret, &v.ClientSecret},
-			{derive.RoleRedirectURL, &v.RedirectURL},
-			{derive.RoleHostedDomain, &v.HostedDomain},
-			{derive.RoleGroupPrefix, &v.GroupPrefix},
-			{derive.RoleGroupLookup, &v.GroupLookup},
-		}...)
 	}
 	for _, r := range roles {
 		*r.dst = v.byRole(r.role)
@@ -945,19 +917,12 @@ func (v *view) roles() error {
 		}
 	}
 	for _, s := range v.Secrets {
-		switch s.Variable.Role {
-		case derive.RoleCookieKey:
+		if s.Variable.Role == derive.RoleCookieKey {
 			v.CookieKeySecret = ptr(s)
-		case derive.RoleClientSecret:
-			v.ClientSecretSecret = ptr(s)
-		default:
 		}
 	}
 	if v.CookieKeySecret == nil {
 		return errors.New("the stack needs the cookie key among the secrets")
-	}
-	if v.Directory && v.ClientSecretSecret == nil {
-		return errors.New("the stack needs the client secret among the secrets of a directory sign-in")
 	}
 	levels := []struct {
 		name string
@@ -977,6 +942,99 @@ func (v *view) roles() error {
 // ptr copies a secret onto the heap.
 func ptr(s derive.Secret) *derive.Secret {
 	return &s
+}
+
+// methodView is one directory method as the templates see it: the method, the stem of
+// its variables and outputs, its registration in prose, its client secret among the
+// stack's secrets, the settings only the served site reads as an aligned block, and
+// the number of its hand step.
+type methodView struct {
+	*derive.Method
+	// Stem is the stem of the method's placement variables and outputs:
+	// <auth>_<registration>.
+	Stem string
+	// Label names the registration: "the members auth's directory registration".
+	Label string
+	// Secret is the registration's client secret among the stack's secrets.
+	Secret *derive.Secret
+	// SiteEnv is the aligned assignment block of the settings only the served site
+	// reads (the client id, the redirect URL, the group lookup), for locals.tf.
+	SiteEnv string
+	// Step numbers the registration's hand step in the README; Last marks the last
+	// method of the list.
+	Step int
+	Last bool
+}
+
+// Var is the name of the method's placement variable for a setting, by the variable's
+// suffix: <stem>_<suffix in lower case> (members_directory_client_id).
+func (m *methodView) Var(suffix string) string {
+	return m.Stem + "_" + strings.ToLower(suffix)
+}
+
+// Slot is the registration's organization slot besides the hosted domain, as a setting:
+// the tenant id, the listed tenants or the listed Workspaces, or nil for a registration
+// that admits any organization or names its Workspace by the hosted domain.
+func (m *methodView) Slot() *derive.RegistrationSetting {
+	for _, f := range m.Fields() {
+		if f.Field == derive.FieldTenantID || f.Field == derive.FieldTenants || f.Field == derive.FieldWorkspaces {
+			return &f
+		}
+	}
+
+	return nil
+}
+
+// Setting is the registration's setting for the field, or nil.
+func (m *methodView) Setting(field string) *derive.RegistrationSetting {
+	for _, f := range m.Fields() {
+		if f.Field == field {
+			return &f
+		}
+	}
+
+	return nil
+}
+
+// Groups reports a registration that reads role groups: a Google registration under
+// the directory's authority.
+func (m *methodView) Groups() bool {
+	return m.Variable(derive.FieldGroupPrefix) != nil
+}
+
+// Microsoft reports a Microsoft registration, whose app registration also names the
+// front-channel logout URL.
+func (m *methodView) Microsoft() bool {
+	return m.FrontChannelLogout()
+}
+
+// methods prepares the directory methods: one view per registration, each with its
+// client secret found among the secrets by the registration's variable.
+func (v *view) methods() error {
+	for _, m := range v.DirectoryMethods() {
+		mv := &methodView{Method: m, Stem: m.Stem(), Label: "the " + m.Auth + " auth's " + m.Name + " registration", Step: len(v.Methods) + 1}
+		clientSecret := m.Variable(derive.FieldClientSecret)
+		for _, s := range v.Secrets {
+			if s.Variable == clientSecret {
+				mv.Secret = ptr(s)
+			}
+		}
+		if mv.Secret == nil {
+			return errors.Newf("the stack needs %s, %s's client secret, among the secrets", clientSecret.Name, mv.Label)
+		}
+		site := [][2]string{{m.Variable(derive.FieldClientID).Name, "var." + mv.Var("CLIENT_ID") + "[var.environment]"}, {m.Variable(derive.FieldRedirectURL).Name, "local." + mv.Var("REDIRECT_URL")}}
+		if lookup := m.Variable(derive.FieldGroupLookup); lookup != nil {
+			site = append(site, [2]string{lookup.Name, "var." + mv.Var("GROUP_LOOKUP")})
+		}
+		mv.SiteEnv = aligned("    ", site)
+		v.Methods = append(v.Methods, mv)
+	}
+	if len(v.Methods) > 0 {
+		v.Methods[len(v.Methods)-1].Last = true
+	}
+	v.Directory = len(v.Methods) > 0
+
+	return nil
 }
 
 // byRole returns the variable in the role, or nil.
@@ -1165,10 +1223,7 @@ func (v *view) secrets() {
 	}
 	v.TfvarsSecretVersions = aligned("  ", versions)
 	cookieGenerated := v.CookieKeySecret != nil && v.CookieKeySecret.Generated
-	v.CookieKeyStep = 1
-	if v.Directory {
-		v.CookieKeyStep = 2
-	}
+	v.CookieKeyStep = len(v.Methods) + 1
 	v.PinStep = v.CookieKeyStep
 	if !cookieGenerated {
 		v.PinStep++
@@ -1184,12 +1239,7 @@ func (v *view) blocks() {
 		{db.Instance.Name, "local.instance.name"},
 		{db.Name.Name, "local.database_name"},
 	})
-	if v.Directory {
-		v.DirectoryEnv = aligned("    ", [][2]string{
-			{v.HostedDomain.Name, "var." + v.AuthVar + "_hosted_domain"},
-			{v.GroupPrefix.Name, "var." + v.AuthVar + "_group_prefix"},
-		})
-	}
+	v.DirectoryEnv = v.constructionEnv()
 	prefix := commonPrefix(db.Project.Name, db.Instance.Name, db.Name.Name)
 	v.DatabaseVariablesCell = "`" + db.Project.Name + "`, `" + strings.TrimPrefix(db.Instance.Name, prefix) + "`, `" + strings.TrimPrefix(db.Name.Name, prefix) + "`"
 
@@ -1240,13 +1290,7 @@ func (v *view) blocks() {
 		{"hostnames", v.HostnamesSummary},
 		{"placeholder_image", v.P.PlaceholderImage},
 	}
-	if v.Directory {
-		restated = append(restated,
-			[2]string{v.AuthVar + "_group_lookup", `"` + v.Auth.GroupLookupDefault + `"`},
-			[2]string{v.AuthVar + "_group_prefix", `"` + v.Auth.GroupPrefixDefault + `"`},
-			[2]string{v.AuthVar + "_hosted_domain", `"` + v.P.HostedDomain + `"`},
-		)
-	}
+	restated = append(restated, v.registrationDefaults()...)
 	if v.Jobs != nil {
 		restated = append(restated,
 			[2]string{"jobs_timeout", `"` + jobsTimeout + `"`},
@@ -1261,6 +1305,44 @@ func (v *view) blocks() {
 		)
 	}
 	v.RestatedDefaults = aligned("#   ", restated, " = ")
+}
+
+// constructionEnv is the aligned block of the registrations' settings the session
+// library reads at construction, which every data-level process carries; empty without
+// a directory method.
+func (v *view) constructionEnv() string {
+	var construction [][2]string
+	for _, m := range v.Methods {
+		for _, f := range m.Fields() {
+			if f.Variable.Role.ConstructionTime() {
+				construction = append(construction, [2]string{f.Variable.Name, "var." + m.Var(f.Suffix)})
+			}
+		}
+	}
+	if len(construction) == 0 {
+		return ""
+	}
+
+	return aligned("    ", construction)
+}
+
+// registrationDefaults are the registrations' placement variables that take a default
+// (the group lookup, the group prefix, the hosted domain), restated in terraform.tfvars.
+func (v *view) registrationDefaults() [][2]string {
+	var restated [][2]string
+	for _, m := range v.Methods {
+		if m.Variable(derive.FieldGroupLookup) != nil {
+			restated = append(restated, [2]string{m.Var("GROUP_LOOKUP"), `"` + m.GroupLookupDefault + `"`})
+		}
+		if m.Variable(derive.FieldGroupPrefix) != nil {
+			restated = append(restated, [2]string{m.Var("GROUP_PREFIX"), `"` + m.GroupPrefixDefault + `"`})
+		}
+		if m.Variable(derive.FieldHostedDomain) != nil {
+			restated = append(restated, [2]string{m.Var("HOSTED_DOMAIN"), `"` + v.P.HostedDomain + `"`})
+		}
+	}
+
+	return restated
 }
 
 // declarations finds the resources the code declares by a well-known variable (the
@@ -1347,7 +1429,13 @@ func (v *view) Purpose(s *derive.Secret) string {
 	case derive.RoleCookieKey:
 		return "Signs session cookies and seals list cursors: Base64 of 32+ random bytes. Rotating it ends every session and cursor."
 	case derive.RoleClientSecret:
-		return "OAuth client secret of the application's registration with Google (pairs with " + v.ClientID.Name + ")."
+		for _, m := range v.Methods {
+			if m.Secret.Variable == s.Variable {
+				return "Client secret of " + m.Label + " with " + m.Provider() + " (pairs with " + m.Variable(derive.FieldClientID).Name + ")."
+			}
+		}
+
+		return "Client secret of a directory registration (pairs with its client id)."
 	default:
 		if s.Variable.Doc != "" {
 			return firstSentence(s.Variable.Doc)

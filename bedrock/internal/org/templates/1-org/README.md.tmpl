@@ -476,15 +476,16 @@ imported into the state before the first apply, so the apply changes it
 instead of making a second one. For each such application, in this directory,
 with `GITHUB_TOKEN` set (the ruleset ids come from
 `gh api repos/<org>/<app>/rulesets`, the deployment policy ids from
-`gh api repos/<org>/<app>/environments/<env>/deployment-branch-policies`):
+`gh api repos/<org>/<repository>/environments/<env>/deployment-branch-policies`), the
+resources keyed by the application's code and the imports naming its repository:
 
 ```bash
-tofu import 'github_repository.app["<app>"]' <app>
-tofu import 'github_repository_ruleset.release_tags["<app>"]' <app>:<id>
-tofu import 'github_repository_ruleset.branch["<app>:default"]' <app>:<id>
-tofu import 'github_repository_ruleset.branch["<app>:patch"]' <app>:<id>
-tofu import 'github_repository_environment.operations["<app>-<env>"]' <app>:<env>
-tofu import 'github_repository_environment_deployment_policy.default_branch["<app>-<env>"]' <app>:<env>:<id>
+tofu import 'github_repository.app["<app>"]' <repository>
+tofu import 'github_repository_ruleset.release_tags["<app>"]' <repository>:<id>
+tofu import 'github_repository_ruleset.branch["<app>:default"]' <repository>:<id>
+tofu import 'github_repository_ruleset.branch["<app>:patch"]' <repository>:<id>
+tofu import 'github_repository_environment.operations["<app>-<env>"]' <repository>:<env>
+tofu import 'github_repository_environment_deployment_policy.default_branch["<app>-<env>"]' <repository>:<env>:<id>
 ```
 
 The plan then shows what the declaration changes: the merge settings, the

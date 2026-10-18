@@ -96,7 +96,7 @@ resource "google_cloudbuildv2_repository" "app" {
   location          = local.region
   name              = "${local.name}-${local.region_code}-${each.key}-repo"
   parent_connection = google_cloudbuildv2_connection.github[0].id
-  remote_uri        = "https://github.com/${var.github_organization}/${each.key}.git"
+  remote_uri        = "https://github.com/${var.github_organization}/${var.application_repositories[each.key]}.git"
 }
 
 # ---------------------------------------------------------------------------
