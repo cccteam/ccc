@@ -111,6 +111,9 @@ type fakeSecrets struct {
 	// refused as PermissionDenied first, a fresh grant not yet in effect.
 	containers map[string]map[string]string
 	denied     int
+	// accessDenied is how many reads are refused as PermissionDenied first, a fresh
+	// accessor grant not yet in effect.
+	accessDenied int
 	// events are what the derivation did: create, grant and add lines.
 	events []string
 }
@@ -133,6 +136,11 @@ func (s *fakeSecrets) open(context.Context) (Secrets, error) {
 }
 
 func (s *fakeSecrets) Access(_ context.Context, version string) ([]byte, error) {
+	if s.accessDenied > 0 {
+		s.accessDenied--
+
+		return nil, errors.Wrap(status.Error(codes.PermissionDenied, "Permission 'secretmanager.versions.access' denied"), "secretmanager.Client.AccessSecretVersion()")
+	}
 	payload, ok := s.payloads[version]
 	if !ok {
 		return nil, errors.Newf("NotFound: %s", version)

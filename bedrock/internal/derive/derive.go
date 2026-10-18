@@ -280,6 +280,12 @@ const (
 	// seeds the administrator role membership under it while the auth's users table holds
 	// no rows, so the first person to sign in through the directory holds the role.
 	RoleAdministrator Role = "administrator"
+	// RoleAdministratorPassword is the generated password of an auth's first administrator
+	// (APP_<AUTH>_ADMINISTRATOR_PASSWORD, secret:"generated"): the deployment's migrate
+	// command seeds the administrator user with it while the auth's users table holds no
+	// rows, so the migrate command reads it, alone among the runtime secrets, and the stack
+	// grants the deploy identity accessor on its container and on no other.
+	RoleAdministratorPassword Role = "administrator-password"
 )
 
 // defaultGroupLookup is how far a sign-in's groups read reaches when the development
@@ -602,6 +608,12 @@ type Auth struct {
 	// password method seeds a user with a generated password instead, a secret like any
 	// other, and declares no sign-in name.
 	Administrator *Variable
+	// AdministratorPassword is the generated password of the auth's first administrator
+	// (APP_<AUTH>_ADMINISTRATOR_PASSWORD), which an auth with a password method declares as
+	// a generated secret: the migrate command seeds the administrator user with it while the
+	// users table holds no rows, so it is the one runtime secret the command reads. Nil for
+	// an auth that declares none.
+	AdministratorPassword *Variable
 }
 
 // Directory reports whether any method of the auth sends the browser to a directory:

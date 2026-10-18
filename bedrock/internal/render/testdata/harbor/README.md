@@ -116,8 +116,9 @@ from `2-env`'s state.
   (a member of the database's own policy, so no other database is reached;
   `spanner.tf`), `roles/monitoring.metricWriter` on the project for the Spanner
   client's metrics (`service-accounts.tf`), and `roles/datastore.user` on the Firestore
-  database under the condition naming it (`firestore.tf`). It holds no
-  accessor on a runtime secret, which a migration never reads. The Spanner
+  database under the condition naming it (`firestore.tf`). It holds
+  accessor on 
+  no other runtime secret, which a migration never reads. The Spanner
   client writes its client-side metrics (operation and attempt latency,
   counts) to the project that owns the instance and logs a denial at every
   export without `roles/monitoring.metricWriter` there: on tst's own instance

@@ -150,6 +150,9 @@ func (m *Model) auth(a *app.App, cfg *config, profile *app.Profile, pkg *app.Aut
 	if err := m.administrator(&auth); err != nil {
 		return Auth{}, err
 	}
+	if err := m.administratorPassword(&auth); err != nil {
+		return Auth{}, err
+	}
 
 	return auth, nil
 }
@@ -167,6 +170,29 @@ func (m *Model) administrator(auth *Auth) error {
 	}
 	v.Role = RoleAdministrator
 	auth.Administrator = v
+
+	return nil
+}
+
+// AdministratorPasswordVariable is the variable an auth's first-administrator password
+// goes under: APP_<AUTH>_ADMINISTRATOR_PASSWORD.
+func AdministratorPasswordVariable(auth string) string {
+	return AdministratorVariable(auth) + "_PASSWORD"
+}
+
+// administratorPassword finds the auth's first-administrator password by the convention
+// and gives it its role. One that is not a generated secret is refused: the password is a
+// value the stack makes and the migrate command seeds with, never one a person types.
+func (m *Model) administratorPassword(auth *Auth) error {
+	v := m.variableNamed(AdministratorPasswordVariable(auth.Name))
+	if v == nil {
+		return nil
+	}
+	if !v.Secret || !v.Generated {
+		return errors.Newf("%s:%d: %s is not tagged secret:\"generated\": the %s auth's first administrator's password is a value the stack generates and the migrate command seeds with, never one a person types; tag it", v.File, v.Line, v.Declaration(), auth.Name)
+	}
+	v.Role = RoleAdministratorPassword
+	auth.AdministratorPassword = v
 
 	return nil
 }

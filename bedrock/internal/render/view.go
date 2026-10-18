@@ -196,8 +196,13 @@ type view struct {
 	// operations workflow (VARIABLE=<container name segment>, space separated), and
 	// TfvarsSecretVersions is the seeded secret_versions block: the word generated for
 	// each generated secret in every environment, nothing else.
-	GeneratedSecrets     []derive.Secret
-	PinnedSecrets        []derive.Secret
+	GeneratedSecrets []derive.Secret
+	PinnedSecrets    []derive.Secret
+	// MigrateSecrets are the secrets the migrate command reads, alone among the runtime
+	// secrets: the generated password of each auth's first administrator, which the command
+	// seeds the administrator user with. The deploy identity holds accessor on their
+	// containers and on no other.
+	MigrateSecrets       []derive.Secret
 	GeneratedCell        string
 	GeneratedPairs       string
 	TfvarsSecretVersions string
@@ -1234,6 +1239,9 @@ func (v *view) secrets() {
 		}
 		cells = append(cells, "`"+s.Variable.Name+"`")
 		version := `"1"`
+		if s.Variable.Role == derive.RoleAdministratorPassword {
+			v.MigrateSecrets = append(v.MigrateSecrets, s)
+		}
 		if s.Generated {
 			version = `"` + secret.Generated + `"`
 			v.GeneratedSecrets = append(v.GeneratedSecrets, s)

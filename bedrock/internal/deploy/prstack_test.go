@@ -79,7 +79,7 @@ func TestPullRequestStack(t *testing.T) {
 		stateLine     = "tofu state list"
 		object        = "gs://records/quill/stacks/tst/pr7/c9.json"
 		written       = "The stack's outputs (%s) are at gs://records/quill/stacks/tst/pr7/c9.json for the preview build."
-		substitutions = `{"_SERVICES": "us-central1=quill-pr7", "_MIGRATE_ENV": "{\"APP_SERVICE_NAME\":\"quill-migrate\"}", "_MIGRATE_DATABASES": "[\"projects/p/instances/i/databases/quill-pr7-db\"]", "_JOBS_JOB": "us-central1=quill-pr7-jobs", "_HOSTNAME": "quill-pr7.example.dev", "_BUILD_ARG_FIREBASE_API_KEY": "AIzaPr7Key"}`
+		substitutions = `{"_SERVICES": "us-central1=quill-pr7", "_MIGRATE_ENV": "{\"APP_SERVICE_NAME\":\"quill-migrate\"}", "_MIGRATE_DATABASES": "[\"projects/p/instances/i/databases/quill-pr7-db\"]", "_MIGRATE_SECRETS": "{}", "_JOBS_JOB": "us-central1=quill-pr7-jobs", "_HOSTNAME": "quill-pr7.example.dev", "_BUILD_ARG_FIREBASE_API_KEY": "AIzaPr7Key"}`
 		withDatabase  = "google_service_account.app\ngoogle_spanner_database.quill[0]\n"
 		staleReason   = "the database applied schema/migrations/000003_Sites.up.sql (build b-0), which the tree no longer carries as applied: renumbered or changed since, so the database is recreated and the migrations apply afresh"
 	)
@@ -636,8 +636,8 @@ func TestStackFacts(t *testing.T) {
 	}{
 		{
 			name:   "the stack's output names what the steps after deploy, the migrate command's settings and the build arguments among them",
-			output: `{"_SERVICES": "us-central1=quill-pr7", "_MIGRATE_ENV": "{}", "_MIGRATE_DATABASES": "[]", "_JOBS_JOB": "us-central1=quill-pr7-jobs", "_HOSTNAME": "quill-pr7.example.dev", "_ENV": "tst", "_BUILD_ARG_SITE_HOST": "quill-pr7.example.dev"}`,
-			want:   map[string]string{services: "us-central1=quill-pr7", migrateEnvFact: "{}", migrateDatabasesFact: "[]", jobsJobFact: "us-central1=quill-pr7-jobs", prHostnameFact: "quill-pr7.example.dev", "_BUILD_ARG_SITE_HOST": "quill-pr7.example.dev"},
+			output: `{"_SERVICES": "us-central1=quill-pr7", "_MIGRATE_ENV": "{}", "_MIGRATE_DATABASES": "[]", "_MIGRATE_SECRETS": "{}", "_JOBS_JOB": "us-central1=quill-pr7-jobs", "_HOSTNAME": "quill-pr7.example.dev", "_ENV": "tst", "_BUILD_ARG_SITE_HOST": "quill-pr7.example.dev"}`,
+			want:   map[string]string{services: "us-central1=quill-pr7", migrateEnvFact: "{}", migrateDatabasesFact: "[]", migrateSecretsFact: "{}", jobsJobFact: "us-central1=quill-pr7-jobs", prHostnameFact: "quill-pr7.example.dev", "_BUILD_ARG_SITE_HOST": "quill-pr7.example.dev"},
 		},
 		{
 			name:   "a stack applied by an older bedrock names no settings for the migrate command, which the migrate step refuses later",

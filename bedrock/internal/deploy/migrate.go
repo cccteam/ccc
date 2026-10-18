@@ -17,6 +17,8 @@ import (
 	"time"
 
 	"github.com/go-playground/errors/v5"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 // The facts and substitutions the deploy steps read, beyond the earlier steps'. _SEED is
@@ -43,6 +45,12 @@ const (
 const (
 	migrateEnvSub  = "_MIGRATE_ENV"
 	migrateEnvFact = "MIGRATE_ENV"
+	// migrateSecretsSub is the stack's substitution naming the pinned version of each
+	// secret the migrate command reads (the generated password of each auth's first
+	// administrator), by variable, as a JSON object; migrateSecretsFact is the fact the
+	// stack steps write it to.
+	migrateSecretsSub  = "_MIGRATE_SECRETS"
+	migrateSecretsFact = "MIGRATE_SECRETS"
 	// _MIGRATE_DATABASES is the stack's too: the databases the migrate command reaches,
 	// by resource name, as a JSON list, read back into MIGRATE_DATABASES the same way;
 	// the step reads each as the deploy identity until its grant is in effect (grants.go).
@@ -240,10 +248,15 @@ func Migrate(ctx context.Context, clients *Clients, w Workspace, program, versio
 	if err != nil {
 		return err
 	}
-	vars, err := migrateSettings(env, versionVariable)
+	settings, err := migrateSettings(env, versionVariable)
 	if err != nil {
 		return err
 	}
+	secrets, err := migrateSecrets(ctx, clients, env, out)
+	if err != nil {
+		return err
+	}
+	vars := migrateCommandVars(settings, secrets)
 	if _, err := os.Stat(program); err != nil {
 		return errors.Newf("no migrate command at %s: the image build takes %s out of the image (deploy build-image), and the Dockerfile builds it (go build -o /build/migrate ./cmd/deployment/migrate)", program, migrateInImage)
 	}
@@ -263,12 +276,12 @@ func Migrate(ctx context.Context, clients *Clients, w Workspace, program, versio
 	return m.perform(ctx, w, action, env[seedFact] == trueValue)
 }
 
-// migrateSettings are the variables the migrate command runs with, NAME=value sorted by
-// name: the stack's (MIGRATE_ENV, which the stack steps read from the applied stack's
-// substitutions output, the levels the command constructs for this environment or pull
-// request) and the version variable, when the pipeline names one, set to the build's
-// version, which the image sets for the processes it runs and the worker does not.
-func migrateSettings(env map[string]string, versionVariable string) ([]string, error) {
+// migrateSettings are the settings the migrate command runs with, by variable: the
+// stack's (MIGRATE_ENV, which the stack steps read from the applied stack's substitutions
+// output, the levels the command constructs for this environment or pull request) and the
+// version variable, when the pipeline names one, set to the build's version, which the
+// image sets for the processes it runs and the worker does not.
+func migrateSettings(env map[string]string, versionVariable string) (map[string]string, error) {
 	raw := env[migrateEnvFact]
 	if raw == "" {
 		return nil, errors.Newf("%s names no settings for the migrate command (%s): the stack steps write them from the stack's substitutions output (%s)", EnvironmentFile, migrateEnvFact, migrateEnvSub)
@@ -280,12 +293,77 @@ func migrateSettings(env map[string]string, versionVariable string) ([]string, e
 	if versionVariable != "" {
 		settings[versionVariable] = env[versionFact]
 	}
-	vars := make([]string, 0, len(settings))
-	for _, name := range slices.Sorted(maps.Keys(settings)) {
-		vars = append(vars, name+"="+settings[name])
+
+	return settings, nil
+}
+
+// migrateCommandVars are the variables the migrate command runs with, NAME=value sorted by name:
+// the settings and the secrets it reads (migrateSecrets).
+func migrateCommandVars(settings, secrets map[string]string) []string {
+	all := maps.Clone(settings)
+	maps.Copy(all, secrets)
+	vars := make([]string, 0, len(all))
+	for _, name := range slices.Sorted(maps.Keys(all)) {
+		vars = append(vars, name+"="+all[name])
 	}
 
-	return vars, nil
+	return vars
+}
+
+// migrateSecrets reads the secrets the migrate command runs with (MIGRATE_SECRETS, from
+// _MIGRATE_SECRETS: the pinned version of each, by variable), each as the deploy
+// identity, which the stack grants accessor on those containers alone: the generated
+// password of each auth's first administrator, which the command seeds the administrator
+// user with. A grant the apply just made is waited for, as the databases' are. The values
+// are never printed; the variables are. No secrets (an empty object, or a secret with no
+// version yet) is said and run with.
+func migrateSecrets(ctx context.Context, clients *Clients, env map[string]string, out io.Writer) (map[string]string, error) {
+	raw := env[migrateSecretsFact]
+	if raw == "" {
+		return nil, errors.Newf("%s names no secrets for the migrate command (%s): the stack steps write them from the stack's substitutions output (%s)", EnvironmentFile, migrateSecretsFact, migrateSecretsSub)
+	}
+	var versions map[string]string
+	if err := json.Unmarshal([]byte(raw), &versions); err != nil {
+		return nil, errors.Wrapf(err, "json.Unmarshal(): %s", migrateSecretsFact)
+	}
+	if len(versions) == 0 {
+		fmt.Fprintln(out, "The migrate command reads no secret: the stack names none for it.")
+
+		return nil, nil
+	}
+	secrets, err := clients.Secrets(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer secrets.Close()
+	values := make(map[string]string, len(versions))
+	for _, name := range slices.Sorted(maps.Keys(versions)) {
+		payload, err := accessWhenGranted(ctx, clients, secrets, versions[name])
+		if err != nil {
+			return nil, errors.Wrapf(err, "%s: the migrate command's %s", versions[name], name)
+		}
+		values[name] = string(payload)
+	}
+	fmt.Fprintf(out, "The migrate command reads %d secret(s) as the deploy identity, which the stack grants accessor on their containers alone: %s (the values are not printed).\n", len(values), strings.Join(slices.Sorted(maps.Keys(values)), ", "))
+
+	return values, nil
+}
+
+// accessWhenGranted reads a version, waiting through the minutes a fresh accessor grant
+// (the stack apply this build made) takes to come into effect.
+func accessWhenGranted(ctx context.Context, clients *Clients, secrets Secrets, version string) ([]byte, error) {
+	for try := 1; ; try++ {
+		payload, err := secrets.Access(ctx, version)
+		if err == nil {
+			return payload, nil
+		}
+		if status.Code(errors.Cause(err)) != codes.PermissionDenied || try >= grantTries {
+			return nil, err
+		}
+		if err := clients.sleep()(ctx, grantWait); err != nil {
+			return nil, err
+		}
+	}
 }
 
 // migrateDatabases are the databases the migrate command reaches, by resource name: the

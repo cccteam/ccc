@@ -179,12 +179,13 @@ func TestDerive(t *testing.T) {
 			wantRequestLog:     harborClause,
 		},
 		{
-			name:        "beacon, a password auth: no registration, no callback",
-			fixture:     "beacon",
-			placement:   "placement-beacon.json",
-			wantApp:     "beacon",
-			wantOutlets: []string{"default /api"},
-			wantMethods: []string{"keepers/password password"},
+			name:               "beacon, a password auth: no registration, no callback",
+			fixture:            "beacon",
+			placement:          "placement-beacon.json",
+			wantApp:            "beacon",
+			wantOutlets:        []string{"default /api"},
+			wantMethods:        []string{"keepers/password password"},
+			wantAdministrators: []string{"keepers APP_KEEPERS_ADMINISTRATOR_PASSWORD administrator-password"},
 			wantSecrets: []string{
 				"APP_COOKIE_KEY cookie-key pkg/config/data.go dataConfig.CookieKey",
 				"APP_KEEPERS_ADMINISTRATOR_PASSWORD keepers-administrator-password pkg/config/data.go dataConfig.KeepersAdministratorPassword",
@@ -327,6 +328,9 @@ func TestDerive(t *testing.T) {
 			for i := range m.Auths {
 				if m.Auths[i].Administrator != nil {
 					administrators = append(administrators, m.Auths[i].Name+" "+m.Auths[i].Administrator.Name)
+				}
+				if p := m.Auths[i].AdministratorPassword; p != nil {
+					administrators = append(administrators, m.Auths[i].Name+" "+p.Name+" "+string(p.Role))
 				}
 			}
 			if !slices.Equal(administrators, tt.wantAdministrators) {

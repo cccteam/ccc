@@ -112,8 +112,10 @@ from `2-env`'s state.
   that identity `roles/spanner.databaseAdmin` on the database only, for DDL
   (a member of the database's own policy, so no other database is reached;
   `spanner.tf`), `roles/monitoring.metricWriter` on the project for the Spanner
-  client's metrics (`service-accounts.tf`). It holds no
-  accessor on a runtime secret, which a migration never reads. The Spanner
+  client's metrics (`service-accounts.tf`). It holds
+  accessor on the generated password of each auth's first administrator
+  (`APP_KEEPERS_ADMINISTRATOR_PASSWORD`), which the migration seeds the administrator user with, and on
+  no other runtime secret, which a migration never reads. The Spanner
   client writes its client-side metrics (operation and attempt latency,
   counts) to the project that owns the instance and logs a denial at every
   export without `roles/monitoring.metricWriter` there: on tst's own instance
