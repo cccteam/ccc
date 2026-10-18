@@ -190,12 +190,12 @@ var Steps = []Step{
 	{
 		Pins: pins(`
 			access v0.10.4-0.20261016170115-fff4d4c766f8
-			ccc v0.3.3
+			ccc v0.3.4
 			ccc/accesstypes v0.6.0
 			ccc/cloud v0.2.1
 			ccc/resource v0.14.3-0.20261018021050-53eb85683657
 			ccc/tracer v0.3.0
-			db-initiator v0.4.1
+			db-initiator v0.4.3
 			httpio v0.7.21
 			logger v0.1.30
 			session v0.12.4-0.20261018021757-8ab8730ef4b7
