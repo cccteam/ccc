@@ -13,68 +13,94 @@ import (
 	"github.com/go-playground/errors/v5"
 )
 
-// The session library and its storage package, whose constructors the scan reads.
+// The session library and the packages of it the scan reads: the Auth and the password
+// method (the root package), the storage, and the redirect methods, each its own package.
 const (
 	sessionImportPath        = "github.com/cccteam/session"
 	sessionStorageImportPath = "github.com/cccteam/session/sessionstorage"
+	sessionAzureImportPath   = "github.com/cccteam/session/azure"
+	sessionGoogleImportPath  = "github.com/cccteam/session/google"
+	sessionWorkOSImportPath  = "github.com/cccteam/session/workos"
+	sessionSignInImportPath  = "github.com/cccteam/session/signin"
 )
 
-// The login flavors.
+// The sign-in methods, as the session library names them: the password method of the
+// root package and the redirect methods of the azure, google and workos packages.
 const (
-	FlavorPassword   = "password"
-	FlavorOIDCAzure  = "oidc-azure"
-	FlavorOIDCGoogle = "oidc-google"
-	FlavorPreauth    = "preauth"
+	MethodPassword = "password"
+	MethodAzure    = "azure"
+	MethodGoogle   = "google"
+	MethodWorkOS   = "workos"
 )
 
-// The authorities for an OIDC auth's role membership, read from the constructor's
-// role-synchronization slot: RoleSync (or GoogleRoleSync) makes the directory's role
-// claims the authority, DisableRoleSync leaves membership to the application. A password
-// or preauth auth has no slot and is the application's by nature.
+// PasswordRegistration is the name the password method is always registered under.
+const PasswordRegistration = "password"
+
+// The authorities for a directory method's role membership, read from the registration's
+// RoleSync slot: signin.RoleSync or google.RoleSync makes the directory's role claims or
+// groups the authority, DisableRoleSync leaves membership to the application. The password
+// method has no slot and is the application's by nature.
 const (
 	AuthorityDirectory   = "directory"
 	AuthorityApplication = "application"
 )
 
-// defaultSessionTable is the session library's sessions table name for every flavor.
-const defaultSessionTable = "Sessions"
+// The session library's default table names for an Auth, which the library's schema sets
+// create under those names (schema/spanner/migrations and schema/spanner/auth/migrations).
+const (
+	DefaultSessionTable    = "Sessions"
+	DefaultUserTable       = "SessionUsers"
+	DefaultIdentitiesTable = "SessionIdentities"
+	DefaultPendingTable    = "SessionPendingSignIns"
+	// DefaultImpersonationTable is the session library's impersonation table name.
+	DefaultImpersonationTable = "SessionImpersonations"
+	// DefaultAuthEventsTable is the name the library's schema creates the auth events table
+	// under; the storage takes the name explicitly (NewAuthEventsTable).
+	DefaultAuthEventsTable = "SessionAuthEvents"
+)
 
-// authConstructors maps each session constructor to its flavor and the flavor's default
-// tables. The session library's schemas live under schema/spanner/<flavor>/migrations.
-var authConstructors = map[string]struct {
-	flavor       string
-	sessionTable string
-	userTable    string
-}{
-	"NewPasswordAuth": {FlavorPassword, defaultSessionTable, "SessionUsers"},
-	// The OIDC flavors' user anchor is opt-in (sessionstorage.WithOIDCUsers); the
-	// default names apply once it is enabled.
-	"NewOIDCAzure":  {FlavorOIDCAzure, defaultSessionTable, "OIDCUsers"},
-	"NewOIDCGoogle": {FlavorOIDCGoogle, defaultSessionTable, "GoogleOIDCUsers"},
-	"NewPreauth":    {FlavorPreauth, defaultSessionTable, ""},
+// authConstructor is the Auth's constructor in the session package.
+const authConstructor = "NewAuth"
+
+// methodConstructors maps each sign-in method's registration function, by the package
+// that exports it, to the method it registers. The password method is registered by the
+// session package itself; each redirect method by its own package.
+var methodConstructors = map[string]map[string]string{
+	sessionImportPath:       {"PasswordSignIn": MethodPassword},
+	sessionAzureImportPath:  {signInConstructor: MethodAzure},
+	sessionGoogleImportPath: {signInConstructor: MethodGoogle},
+	sessionWorkOSImportPath: {signInConstructor: MethodWorkOS},
 }
 
-// DefaultImpersonationTable is the session library's impersonation table name.
-const DefaultImpersonationTable = "SessionImpersonations"
+// signInConstructor is the name every directory method's package registers through.
+const signInConstructor = "SignIn"
 
-// parseAuths returns every session authenticator construction in the file.
-func parseAuths(rel string, src []byte) ([]Auth, error) {
+// parseAuths returns every session Auth construction in the file with the methods the
+// file registers on it, and the methods registered on an Auth the file does not
+// construct (attached at the package level).
+func parseAuths(rel string, src []byte) (auths []Auth, unattached []Method, err error) {
 	fset := token.NewFileSet()
 	f, err := parser.ParseFile(fset, rel, src, parser.SkipObjectResolution)
 	if err != nil {
-		return nil, errors.Wrap(err, "parser.ParseFile()")
+		return nil, nil, errors.Wrap(err, "parser.ParseFile()")
 	}
 	pkg := localImportName(f, sessionImportPath)
-	if pkg == "" {
-		return nil, nil
-	}
 	storage := localImportName(f, sessionStorageImportPath)
 	consts := fileConstStrings(f)
+	methodPkgs := map[string]string{} // local import name -> method constructors' package path
+	for importPath := range methodConstructors {
+		if local := localImportName(f, importPath); local != "" {
+			methodPkgs[local] = importPath
+		}
+	}
+	if pkg == "" && len(methodPkgs) == 0 {
+		return nil, nil, nil
+	}
 
-	var auths []Auth
+	var methods []Method
 	for _, decl := range f.Decls {
 		// The enclosing function's body is where an identifier handed to a storage option
-		// is defined; a package-level construction has none.
+		// or a registration is defined; a package-level construction has none.
 		var body *ast.BlockStmt
 		if fn, ok := decl.(*ast.FuncDecl); ok {
 			body = fn.Body
@@ -84,52 +110,253 @@ func parseAuths(rel string, src []byte) ([]Auth, error) {
 			if !ok {
 				return true
 			}
-			name, ok := qualifiedName(call.Fun, pkg)
+			sel, ok := selectorOf(call.Fun)
 			if !ok {
 				return true
 			}
-			spec, ok := authConstructors[name]
+			pkgIdent, ok := sel.X.(*ast.Ident)
 			if !ok {
 				return true
 			}
-			auth := Auth{
-				File: rel, Line: fset.Position(call.Pos()).Line, Flavor: spec.flavor,
-				SessionTable: spec.sessionTable, UserTable: spec.userTable,
-				OptionsForwarded: call.Ellipsis.IsValid(),
+			local, name := pkgIdent.Name, sel.Sel.Name
+			switch {
+			case pkg != "" && local == pkg && name == authConstructor:
+				auth := Auth{
+					File: rel, Line: fset.Position(call.Pos()).Line, Var: assignedName(call, body),
+					SessionTable: DefaultSessionTable, UserTable: DefaultUserTable,
+					IdentitiesTable: DefaultIdentitiesTable, PendingTable: DefaultPendingTable,
+					OptionsForwarded: call.Ellipsis.IsValid(),
+				}
+				for _, arg := range call.Args {
+					readAuthArg(&auth, arg, pkg, storage, consts, body)
+				}
+				auths = append(auths, auth)
+			case methodPkgs[local] != "" && methodConstructors[methodPkgs[local]][name] != "":
+				methods = append(methods, readMethodCall(call, methodConstructors[methodPkgs[local]][name], local, rel, fset, consts, body, f))
 			}
-			oidcUsers := false
-			for _, arg := range call.Args {
-				readAuthArg(&auth, &oidcUsers, arg, pkg, storage, consts, body)
-			}
-			if (spec.flavor == FlavorOIDCAzure || spec.flavor == FlavorOIDCGoogle) && !oidcUsers {
-				auth.UserTable = ""
-			}
-			auths = append(auths, auth)
 
 			return true
 		})
 	}
+	unattached = attachMethods(auths, methods)
 
-	return auths, nil
+	return auths, unattached, nil
+}
+
+// readMethodCall reads a registration: the method's kind, the Auth it is registered on
+// (the first argument's identifier), its registration name (the second argument, a
+// literal or a constant of the file; the password method is always "password") and, for
+// a directory method, its authority from the configuration (the fourth argument).
+func readMethodCall(call *ast.CallExpr, kind, local, rel string, fset *token.FileSet, consts map[string]string, body *ast.BlockStmt, f *ast.File) Method {
+	m := Method{File: rel, Line: fset.Position(call.Pos()).Line, Kind: kind, Name: PasswordRegistration}
+	if len(call.Args) > 0 {
+		if id, ok := call.Args[0].(*ast.Ident); ok {
+			m.AuthVar = id.Name
+		}
+	}
+	if kind == MethodPassword {
+		return m
+	}
+	if len(call.Args) > 1 {
+		m.Name = ""
+		if s, ok := constString(call.Args[1], consts); ok {
+			m.Name = s
+		}
+	}
+	if len(call.Args) > 3 {
+		m.Authority = readAuthority(call.Args[3], body, local, f)
+	}
+
+	return m
+}
+
+// attachMethods gives each method to the Auth its first argument names, and to the only
+// Auth of the set when the identifier does not resolve; it returns the methods left over.
+func attachMethods(auths []Auth, methods []Method) (unattached []Method) {
+	for _, m := range methods {
+		placed := false
+		for i := range auths {
+			if auths[i].Var != "" && auths[i].Var == m.AuthVar {
+				auths[i].Methods = append(auths[i].Methods, m)
+				placed = true
+
+				break
+			}
+		}
+		if !placed && len(auths) == 1 {
+			auths[0].Methods = append(auths[0].Methods, m)
+			placed = true
+		}
+		if !placed {
+			unattached = append(unattached, m)
+		}
+	}
+
+	return unattached
+}
+
+// attachPackageMethods gives the methods registered outside the file constructing their
+// Auth to the only Auth of their package directory; what is left over stays in
+// UnattachedMethods for the session-tables check to report.
+func (a *App) attachPackageMethods() {
+	var left []Method
+	for _, m := range a.unattached {
+		var same []int
+		for i := range a.Auths {
+			if path.Dir(a.Auths[i].File) == path.Dir(m.File) {
+				same = append(same, i)
+			}
+		}
+		if len(same) == 1 {
+			a.Auths[same[0]].Methods = append(a.Auths[same[0]].Methods, m)
+
+			continue
+		}
+		left = append(left, m)
+	}
+	a.UnattachedMethods = left
+}
+
+// selectorOf returns the pkg.Name selector a call is made through, looking through a
+// generic instantiation such as pkg.Name[T, U].
+func selectorOf(fun ast.Expr) (*ast.SelectorExpr, bool) {
+	switch e := fun.(type) {
+	case *ast.IndexExpr:
+		return selectorOf(e.X)
+	case *ast.IndexListExpr:
+		return selectorOf(e.X)
+	case *ast.SelectorExpr:
+		if _, ok := e.X.(*ast.Ident); ok {
+			return e, true
+		}
+	}
+
+	return nil, false
+}
+
+// assignedName returns the identifier a call's result is assigned to in the enclosing
+// body (x, err := pkg.New(...) or x = pkg.New(...)), or empty.
+func assignedName(call *ast.CallExpr, body *ast.BlockStmt) string {
+	if body == nil {
+		return ""
+	}
+	name := ""
+	ast.Inspect(body, func(n ast.Node) bool {
+		assign, ok := n.(*ast.AssignStmt)
+		if !ok || len(assign.Rhs) != 1 || assign.Rhs[0] != call {
+			return true
+		}
+		if id, ok := assign.Lhs[0].(*ast.Ident); ok {
+			name = id.Name
+		}
+
+		return false
+	})
+
+	return name
+}
+
+// readAuthority reads the RoleSync slot of a registration's configuration: the Config
+// literal's RoleSync field, in the call itself (&azure.Config{...}) or in the nearest
+// assignment of the identifier passed, as the application writes it to keep the call
+// short. signin.RoleSync or google.RoleSync is the directory's authority, DisableRoleSync
+// the application's; anything else is not read.
+func readAuthority(cfg ast.Expr, body *ast.BlockStmt, methodPkg string, f *ast.File) string {
+	lit := compositeOf(cfg, body)
+	if lit == nil {
+		return ""
+	}
+	signinPkg := localImportName(f, sessionSignInImportPath)
+	for _, elt := range lit.Elts {
+		kv, ok := elt.(*ast.KeyValueExpr)
+		if !ok {
+			continue
+		}
+		key, ok := kv.Key.(*ast.Ident)
+		if !ok || key.Name != "RoleSync" {
+			continue
+		}
+		call, ok := kv.Value.(*ast.CallExpr)
+		if !ok {
+			return ""
+		}
+		sel, ok := selectorOf(call.Fun)
+		if !ok {
+			return ""
+		}
+		pkgIdent, ok := sel.X.(*ast.Ident)
+		if !ok {
+			return ""
+		}
+		local := pkgIdent.Name
+		if local != methodPkg && (signinPkg == "" || local != signinPkg) {
+			return ""
+		}
+		switch sel.Sel.Name {
+		case "RoleSync":
+			return AuthorityDirectory
+		case "DisableRoleSync":
+			return AuthorityApplication
+		}
+
+		return ""
+	}
+
+	return ""
+}
+
+// compositeOf returns the composite literal an expression is, or the one the identifier
+// it names was last assigned before its use in the body (cfg := &azure.Config{...}), or
+// nil.
+func compositeOf(expr ast.Expr, body *ast.BlockStmt) *ast.CompositeLit {
+	switch e := expr.(type) {
+	case *ast.UnaryExpr:
+		return compositeOf(e.X, body)
+	case *ast.CompositeLit:
+		return e
+	case *ast.Ident:
+		value := assignedValue(e, body)
+		if value == nil {
+			return nil
+		}
+
+		return compositeOf(value, body)
+	default:
+		return nil
+	}
+}
+
+// assignedValue returns the value the identifier was last assigned before its use in the
+// body: x := <value> or x = <value>, with x the only name on the left or the first of
+// two (x, err := ...), or nil.
+func assignedValue(id *ast.Ident, body *ast.BlockStmt) ast.Expr {
+	if body == nil {
+		return nil
+	}
+	var value ast.Expr
+	ast.Inspect(body, func(n ast.Node) bool {
+		assign, ok := n.(*ast.AssignStmt)
+		if !ok || assign.Pos() >= id.Pos() || len(assign.Rhs) != 1 || (assign.Tok != token.DEFINE && assign.Tok != token.ASSIGN) {
+			return true
+		}
+		if l, ok := assign.Lhs[0].(*ast.Ident); ok && l.Name == id.Name {
+			// Statements are visited in source order, so the last one seen is nearest.
+			value = assign.Rhs[0]
+		}
+
+		return true
+	})
+
+	return value
 }
 
 // readAuthArg applies one constructor argument to the construction: a session option
-// naming a table or cookie, or a storage constructed with impersonation, the OIDC user
-// anchor, or custom data tables. body is the enclosing function's body, where an
-// identifier the storage's options take is defined.
-func readAuthArg(auth *Auth, oidcUsers *bool, arg ast.Expr, pkg, storage string, consts map[string]string, body *ast.BlockStmt) {
+// naming a table or cookie, or a storage constructed with impersonation, auth events, or
+// custom data tables. body is the enclosing function's body, where an identifier the
+// storage's options take is defined.
+func readAuthArg(auth *Auth, arg ast.Expr, pkg, storage string, consts map[string]string, body *ast.BlockStmt) {
 	call, ok := arg.(*ast.CallExpr)
 	if !ok {
-		return
-	}
-	switch name, _ := qualifiedName(call.Fun, pkg); name {
-	case "RoleSync", "GoogleRoleSync":
-		auth.Authority = AuthorityDirectory
-
-		return
-	case "DisableRoleSync":
-		auth.Authority = AuthorityApplication
-
 		return
 	}
 	if name, ok := qualifiedName(call.Fun, pkg); ok && len(call.Args) == 1 {
@@ -137,8 +364,12 @@ func readAuthArg(auth *Auth, oidcUsers *bool, arg ast.Expr, pkg, storage string,
 			switch name {
 			case "WithSessionTableName":
 				auth.SessionTable = s
-			case "WithUserTableName", "WithOIDCUserTableName":
+			case "WithUserTableName":
 				auth.UserTable = s
+			case "WithIdentitiesTableName":
+				auth.IdentitiesTable = s
+			case "WithPendingSignInsTableName":
+				auth.PendingTable = s
 			case "WithCookieName":
 				auth.CookieName = s
 			case "WithXSRFCookieName":
@@ -151,11 +382,11 @@ func readAuthArg(auth *Auth, oidcUsers *bool, arg ast.Expr, pkg, storage string,
 	if storage == "" {
 		return
 	}
-	readStorageArg(auth, oidcUsers, call, storage, consts, body)
+	readStorageArg(auth, call, storage, consts, body)
 }
 
 // readStorageArg looks inside a storage constructor for the options that attach tables.
-func readStorageArg(auth *Auth, oidcUsers *bool, call *ast.CallExpr, storage string, consts map[string]string, body *ast.BlockStmt) {
+func readStorageArg(auth *Auth, call *ast.CallExpr, storage string, consts map[string]string, body *ast.BlockStmt) {
 	ast.Inspect(call, func(n ast.Node) bool {
 		c, ok := n.(*ast.CallExpr)
 		if !ok {
@@ -165,7 +396,7 @@ func readStorageArg(auth *Auth, oidcUsers *bool, call *ast.CallExpr, storage str
 		switch name {
 		case "WithImpersonation":
 			auth.Impersonation = true
-			if s, ok := assignedImpersonationTable(c, body, storage, consts); ok {
+			if s, ok := assignedTable(c, body, storage, "NewImpersonationTable", consts); ok {
 				auth.ImpersonationTable = s
 			}
 		case "NewImpersonationTable":
@@ -174,9 +405,18 @@ func readStorageArg(auth *Auth, oidcUsers *bool, call *ast.CallExpr, storage str
 					auth.ImpersonationTable = s
 				}
 			}
-		case "WithOIDCUsers":
-			*oidcUsers = true
-		case "NewSpannerCustomSessionData", "NewPostgresCustomSessionData", "NewSpannerCustomUserData", "NewPostgresCustomUserData":
+		case "WithAuthEvents":
+			auth.AuthEvents = true
+			if s, ok := assignedTable(c, body, storage, "NewAuthEventsTable", consts); ok {
+				auth.AuthEventsTable = s
+			}
+		case "NewAuthEventsTable":
+			if len(c.Args) == 1 {
+				if s, ok := constString(c.Args[0], consts); ok {
+					auth.AuthEventsTable = s
+				}
+			}
+		case "NewCustomSessionData", "NewCustomUserData", "NewSpannerCustomSessionData", "NewPostgresCustomSessionData", "NewSpannerCustomUserData", "NewPostgresCustomUserData":
 			if len(c.Args) >= 1 {
 				if s, ok := constString(c.Args[0], consts); ok {
 					auth.ExtraTables = append(auth.ExtraTables, s)
@@ -188,40 +428,26 @@ func readStorageArg(auth *Auth, oidcUsers *bool, call *ast.CallExpr, storage str
 	})
 }
 
-// assignedImpersonationTable reads the table name behind WithImpersonation(x) when x is an
-// identifier rather than the NewImpersonationTable call itself, the way a caller writes it
-// to check the constructor's error. The definition is the nearest assignment before the
-// use in the enclosing function body, x := NewImpersonationTable(...) or
-// x, err := NewImpersonationTable(...), and the name is its argument when that is a
-// literal or a constant of the file. A name defined any other way does not read.
-func assignedImpersonationTable(with *ast.CallExpr, body *ast.BlockStmt, storage string, consts map[string]string) (string, bool) {
-	if body == nil || len(with.Args) != 1 {
+// assignedTable reads the table name behind an option taking an identifier
+// (WithImpersonation(x), WithAuthEvents(x)) rather than the table constructor itself,
+// the way a caller writes it to check the constructor's error: the definition is the
+// nearest assignment before the use in the enclosing function body,
+// x := NewImpersonationTable(...) or x, err := NewImpersonationTable(...), and the name
+// is its argument when that is a literal or a constant of the file. A name defined any
+// other way does not read.
+func assignedTable(with *ast.CallExpr, body *ast.BlockStmt, storage, constructor string, consts map[string]string) (string, bool) {
+	if len(with.Args) != 1 {
 		return "", false
 	}
 	id, ok := with.Args[0].(*ast.Ident)
 	if !ok {
 		return "", false
 	}
-	var value ast.Expr
-	ast.Inspect(body, func(n ast.Node) bool {
-		assign, ok := n.(*ast.AssignStmt)
-		if !ok || assign.Pos() >= id.Pos() || len(assign.Rhs) != 1 || (assign.Tok != token.DEFINE && assign.Tok != token.ASSIGN) {
-			return true
-		}
-		for _, lhs := range assign.Lhs {
-			if l, ok := lhs.(*ast.Ident); ok && l.Name == id.Name {
-				// Statements are visited in source order, so the last one seen is nearest.
-				value = assign.Rhs[0]
-			}
-		}
-
-		return true
-	})
-	call, ok := value.(*ast.CallExpr)
+	call, ok := assignedValue(id, body).(*ast.CallExpr)
 	if !ok || len(call.Args) != 1 {
 		return "", false
 	}
-	if name, _ := qualifiedName(call.Fun, storage); name != "NewImpersonationTable" {
+	if name, _ := qualifiedName(call.Fun, storage); name != constructor {
 		return "", false
 	}
 
@@ -231,18 +457,12 @@ func assignedImpersonationTable(with *ast.CallExpr, body *ast.BlockStmt, storage
 // qualifiedName returns the selector name of a pkg.Name call, looking through a generic
 // instantiation such as pkg.Name[T, U].
 func qualifiedName(fun ast.Expr, pkg string) (string, bool) {
-	switch e := fun.(type) {
-	case *ast.IndexExpr:
-		return qualifiedName(e.X, pkg)
-	case *ast.IndexListExpr:
-		return qualifiedName(e.X, pkg)
-	case *ast.SelectorExpr:
-		if isQualified(e, pkg, e.Sel.Name) {
-			return e.Sel.Name, true
-		}
+	sel, ok := selectorOf(fun)
+	if !ok || !isQualified(sel, pkg, sel.Sel.Name) {
+		return "", false
 	}
 
-	return "", false
+	return sel.Sel.Name, true
 }
 
 // fileConstStrings evaluates the file's package-level string constants: literals, other

@@ -33,7 +33,7 @@ func pngOf(t *testing.T, w, h int) string {
 func TestInstallable(t *testing.T) {
 	t.Parallel()
 
-	const staffAuth = `generation.Auth("example.com/harbor/pkg/auth/staff", generation.Password)`
+	const staffAuth = `generation.Auth("example.com/harbor/pkg/auth/staff", generation.PasswordMethod())`
 	consoleProgram := program("pkg/resources",
 		`generation.GenerateHandlers("app"),`,
 		`generation.GenerateRouter(),`,

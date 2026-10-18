@@ -90,12 +90,12 @@ func TestParseGeneratorProblems(t *testing.T) {
 			wantProblems: []string{`WithConsolidatedHandlers argument "yes" should be a bool literal`},
 		},
 		{
-			name:    "the router options with a flavor identifier",
-			options: `generation.GenerateRouter(), generation.GenerateRoutes("pkg/router", "api", generation.Auth("example.com/acme/pkg/auth/staff", generation.Password), generation.WebApp("/")), generation.WithRouterOutlet("machines", "machines", generation.APIKey()),`,
+			name:    "the router options with a method declaration",
+			options: `generation.GenerateRouter(), generation.GenerateRoutes("pkg/router", "api", generation.Auth("example.com/acme/pkg/auth/staff", generation.PasswordMethod()), generation.WebApp("/")), generation.WithRouterOutlet("machines", "machines", generation.APIKey()),`,
 		},
 		{
 			name:    "the oldest answered release as a string or as this release",
-			options: `generation.GenerateRouter(), generation.GenerateRoutes("pkg/router", "api", generation.Auth("example.com/acme/pkg/auth/staff", generation.Password), generation.WebApp("/"), generation.OldestAnswered("1.5.0")), generation.WithRouterOutlet("portal", "portal/api", generation.Auth("example.com/acme/pkg/auth/members", generation.OIDCAzure), generation.OldestAnswered(generation.ThisRelease)),`,
+			options: `generation.GenerateRouter(), generation.GenerateRoutes("pkg/router", "api", generation.Auth("example.com/acme/pkg/auth/staff", generation.PasswordMethod()), generation.WebApp("/"), generation.OldestAnswered("1.5.0")), generation.WithRouterOutlet("portal", "portal/api", generation.Auth("example.com/acme/pkg/auth/members", generation.AzureMethod("directory")), generation.OldestAnswered(generation.ThisRelease)),`,
 		},
 		{
 			name:         "an oldest answered release that is another identifier",
@@ -108,14 +108,14 @@ func TestParseGeneratorProblems(t *testing.T) {
 			wantProblems: []string{`OldestAnswered argument true should be a release string literal ("1.5.0") or generation.ThisRelease`},
 		},
 		{
-			name:         "an auth flavor that is not one of the generation package's",
+			name:         "a sign-in method that is not one of the generation package's",
 			options:      `generation.GenerateRoutes("pkg/router", "api", generation.Auth("example.com/acme/pkg/auth/staff", generation.LDAP)),`,
-			wantProblems: []string{"Auth argument generation.LDAP should be a generation.<Flavor> identifier (Password, OIDCGoogle, or OIDCAzure)"},
+			wantProblems: []string{"Auth argument generation.LDAP should be a sign-in method declaration (generation.PasswordMethod(), GoogleMethod(name), AzureMethod(name), or WorkOSMethod(name), with .Labeled(label) when chained)"},
 		},
 		{
-			name:         "an auth flavor written as a string",
+			name:         "a sign-in method written as a string",
 			options:      `generation.GenerateRoutes("pkg/router", "api", generation.Auth("example.com/acme/pkg/auth/staff", "password")),`,
-			wantProblems: []string{`Auth argument "password" should be a generation.<Flavor> identifier (Password, OIDCGoogle, or OIDCAzure)`},
+			wantProblems: []string{`Auth argument "password" should be a sign-in method declaration (generation.PasswordMethod(), GoogleMethod(name), AzureMethod(name), or WorkOSMethod(name), with .Labeled(label) when chained)`},
 		},
 		{
 			name:         "ts option at top level",

@@ -178,7 +178,7 @@ func seedIdentities(ctx context.Context, data *config.DataConfiguration) error {
 			Username: string(user.User),
 			Password: &user.Password,
 		}); err != nil {
-			return errors.Wrapf(err, "session.PasswordAuthAPI.CreateSessionUser(): user %s", user.User)
+			return errors.Wrapf(err, "session.AuthAPI.CreateSessionUser(): user %s", user.User)
 		}
 		fmt.Printf("Created login %s\n", user.User)
 

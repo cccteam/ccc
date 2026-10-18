@@ -28,9 +28,9 @@ func (b *browser) loginPortal(ctx context.Context, user string) (status int, loc
 		b.t.Fatal(err)
 	}
 
-	status, location = b.redirect(ctx, b.prefix+"/user/login?returnUrl="+url.QueryEscape(portalPage))
+	status, location = b.redirect(ctx, b.prefix+"/user/directory/login?returnUrl="+url.QueryEscape(portalPage))
 	if status != http.StatusFound {
-		b.t.Fatalf("GET %s/user/login: status %d, want %d to the directory", b.prefix, status, http.StatusFound)
+		b.t.Fatalf("GET %s/user/directory/login: status %d, want %d to the directory", b.prefix, status, http.StatusFound)
 	}
 
 	return b.redirect(ctx, location)

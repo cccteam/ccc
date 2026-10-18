@@ -116,6 +116,10 @@ func TestExecute(t *testing.T) {
 	// and opens the live service, required, over the Firestore emulator.
 	t.Setenv("APP_SERVICE_NAME", serviceName)
 	t.Setenv("FIRESTORE_EMULATOR_HOST", firestoreEmulator.Host())
+	// The data level constructs the members auth, whose directory method validates its
+	// organization slot at registration whether or not the directory is simulated, so the
+	// tenant id is a well-formed placeholder that is nobody's.
+	t.Setenv("APP_MEMBERS_DIRECTORY_TENANT_ID", "00000000-0000-0000-0000-000000000000")
 	last := lastMigration(t)
 
 	tests := []struct {

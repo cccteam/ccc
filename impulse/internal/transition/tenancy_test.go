@@ -358,7 +358,7 @@ func TestTenancyApply(t *testing.T) {
 	// auth package (*staff.Auth), not an *access.Client field.
 	authShape := tenancyFiles()
 	authShape["pkg/config/data.go"] = authConfig
-	authShape["pkg/auth/staff/staff.go"] = staffPackage(t)
+	authShape["pkg/auth/staff/staff.go"] = staffPackage(t, "staff.go")
 	tests = append(tests, struct {
 		name        string
 		files       map[string]string

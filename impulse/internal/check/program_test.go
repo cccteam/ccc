@@ -69,7 +69,7 @@ func NewGenerator(ctx context.Context) (generation.Generator, error) {
 		generation.GenerateHandlers("app"),
 		generation.GenerateRouter(),
 		generation.GenerateRoutes("pkg/router", "api",
-			generation.Auth("example.com/harbor/pkg/auth/staff", generation.Password),
+			generation.Auth("example.com/harbor/pkg/auth/staff", generation.PasswordMethod()),
 			generation.OutletRequestLog(generation.LogOnEvent().MinSeverity(logging.Warning)),
 			generation.OutletTraces(generation.TracesCapped(0.5)),
 		),

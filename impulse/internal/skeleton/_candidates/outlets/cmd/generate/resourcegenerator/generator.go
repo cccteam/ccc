@@ -24,7 +24,7 @@ func newGenerator(ctx context.Context) (generation.Generator, error) {
 		// the origin. The generated router sends the root alone to /console/.
 		generation.GenerateRouter(),
 		generation.GenerateRoutes("pkg/router", "console/api",
-			generation.Auth("github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/outlets/pkg/auth/staff", generation.Password),
+			generation.Auth("github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/outlets/pkg/auth/staff", generation.PasswordMethod()),
 			generation.WebApp("/console"),
 			// The oldest release of the console this outlet still answers. The console sends the
 			// release it was built from in X-Api-Version, and the server answers releases from
@@ -42,7 +42,7 @@ func newGenerator(ctx context.Context) (generation.Generator, error) {
 		// permission-digest and user-domains routes and the portal's browser application
 		// at /portal.
 		generation.WithRouterOutlet("portal", "portal/api",
-			generation.Auth("github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/outlets/pkg/auth/members", generation.OIDCAzure),
+			generation.Auth("github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/outlets/pkg/auth/members", generation.AzureMethod("directory")),
 			generation.WebApp("/portal"),
 			// The oldest release of the portal this outlet still answers. The portal sends the
 			// release it was built from in X-Api-Version, and the server answers releases from

@@ -78,7 +78,21 @@ const (
 	// Str holds the call without the package qualifier, as
 	// LogSampled(0.1).MinSeverity(logging.Warning).
 	ArgConstructor
+	// ArgAuthMethod is a sign-in method declaration, a call to one of the generation
+	// package's method constructors with its label when one is chained; Method holds it.
+	ArgAuthMethod
 )
+
+// AuthMethodArg is a sign-in method as an outlet's Auth option declares it.
+type AuthMethodArg struct {
+	// Kind is the method: password, google, azure, or workos.
+	Kind string
+	// Name is the registration name; password for the password method.
+	Name string
+	// Label is the label the declaration chains (.Labeled), or empty for the generation
+	// package's default.
+	Label string
+}
 
 // Arg is one literal argument of an option call.
 type Arg struct {
@@ -93,6 +107,8 @@ type Arg struct {
 	Map map[string]string
 	// Call is set for ArgCall: a nested option such as generation.GenerateEnums().
 	Call *Call
+	// Method is set for ArgAuthMethod: the sign-in method declared.
+	Method *AuthMethodArg
 	// Text is the source text of an argument the tool cannot interpret.
 	Text string
 }
@@ -416,11 +432,9 @@ func (r *reader) readArg(expr ast.Expr, option string, expect paramKind) Arg {
 		if _, ok := expr.(*ast.CompositeLit); ok {
 			return Arg{Kind: ArgComposite, Text: exprText(expr)}
 		}
-	case paramFlavor:
-		if sel, ok := expr.(*ast.SelectorExpr); ok && isQualified(expr, r.pkg, sel.Sel.Name) {
-			if _, known := authFlavorIdents[sel.Sel.Name]; known {
-				return Arg{Kind: ArgIdent, Str: sel.Sel.Name}
-			}
+	case paramAuthMethod:
+		if m, ok := r.readAuthMethod(expr); ok {
+			return Arg{Kind: ArgAuthMethod, Method: m}
 		}
 		r.problemf(expr, "%s argument %s should be a %s", option, exprText(expr), expect)
 
@@ -767,4 +781,66 @@ func exprText(expr ast.Expr) string {
 	default:
 		return fmt.Sprintf("%T", expr)
 	}
+}
+
+// readAuthMethod reads a sign-in method declaration: generation.PasswordMethod(), or
+// generation.GoogleMethod("name") and its kin with a string literal name, chained with
+// .Labeled("label") or not. Anything else is not a declaration.
+func (r *reader) readAuthMethod(expr ast.Expr) (*AuthMethodArg, bool) {
+	call, label := splitLabel(expr)
+	ce, ok := call.(*ast.CallExpr)
+	if !ok {
+		return nil, false
+	}
+	sel, ok := ce.Fun.(*ast.SelectorExpr)
+	if !ok || !isQualified(ce.Fun, r.pkg, sel.Sel.Name) {
+		return nil, false
+	}
+	kind, known := authMethodConstructors[sel.Sel.Name]
+	if !known {
+		return nil, false
+	}
+	m := &AuthMethodArg{Kind: kind, Name: PasswordRegistration}
+	switch {
+	case kind == MethodPassword && len(ce.Args) == 0:
+	case kind != MethodPassword && len(ce.Args) == 1:
+		name, ok := stringLit(ce.Args[0])
+		if !ok {
+			return nil, false
+		}
+		m.Name = name
+	default:
+		return nil, false
+	}
+	if label != nil {
+		if len(label.Args) != 1 {
+			return nil, false
+		}
+		text, ok := stringLit(label.Args[0])
+		if !ok {
+			return nil, false
+		}
+		m.Label = text
+	}
+
+	return m, true
+}
+
+// splitLabel separates a Labeled call chained onto a method declaration from the
+// declaration: generation.GoogleMethod("x").Labeled("y") returns the GoogleMethod call
+// and the Labeled call; anything else returns itself and nil.
+func splitLabel(expr ast.Expr) (declaration ast.Expr, label *ast.CallExpr) {
+	ce, ok := expr.(*ast.CallExpr)
+	if !ok {
+		return expr, nil
+	}
+	sel, ok := ce.Fun.(*ast.SelectorExpr)
+	if !ok || sel.Sel.Name != labeledMethod {
+		return expr, nil
+	}
+	if _, chained := sel.X.(*ast.CallExpr); !chained {
+		return expr, nil
+	}
+
+	return sel.X, ce
 }

@@ -239,15 +239,6 @@ func TestComposedOptions(t *testing.T) {
 			wantReference: transition_.SitesReference,
 		},
 		{
-			name: "a directory flavor for the first auth composes first, fresh", opts: composedOptions{authName: "staff", flavor: transition_.FlavorOIDCGoogle, authority: transition_.AuthorityDirectory, tenancy: true, tenantTable: "Tenants"},
-			want: []transition{
-				transition_.AuthFlavor{Name: "staff", Flavor: transition_.FlavorOIDCGoogle, Authority: transition_.AuthorityDirectory, Fresh: true},
-				transition_.Tenancy{Table: "Tenants"},
-			},
-			wantDescribe:  "the oidc-google flavor for the staff auth, role membership the directory's, tenancy (Tenants)",
-			wantReference: transition_.ReferenceCandidate,
-		},
-		{
 			name: "the file store composes after the outlets and before the sites", opts: composedOptions{files: true, apiOutlets: []string{"machines=machines"}, sites: []string{"console", "portal"}},
 			want: []transition{
 				transition_.Outlet{Name: "machines", Prefix: "machines"},

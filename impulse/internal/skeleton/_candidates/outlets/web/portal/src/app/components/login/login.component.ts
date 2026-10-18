@@ -48,7 +48,7 @@ export class LoginComponent {
 
   login(): void {
     const returnUrl = encodeURIComponent(this.getAndResetReturnUrl());
-    this.document.location.assign(`${this.apiUrl}/user/login?returnUrl=${returnUrl}`);
+    this.document.location.assign(`${this.apiUrl}/user/directory/login?returnUrl=${returnUrl}`);
   }
 
   /** The browser path the callback returns to: the page the guard turned away from, else the dashboard. */

@@ -13,6 +13,7 @@ import (
 
 	"github.com/cccteam/ccc/impulse/app"
 	"github.com/cccteam/ccc/impulse/ci"
+	"github.com/cccteam/ccc/impulse/internal/authpkg"
 	"github.com/cccteam/ccc/impulse/internal/check"
 	"github.com/cccteam/ccc/impulse/internal/handoff"
 	"github.com/cccteam/ccc/impulse/internal/ledger"
@@ -34,6 +35,7 @@ launches Claude Code on it and verifies the guardrails when it returns.`,
 	cmd.AddCommand(newAddOutlet())
 	cmd.AddCommand(newAddTenancy())
 	cmd.AddCommand(newAddAuth())
+	cmd.AddCommand(newAddMethod())
 	cmd.AddCommand(newAddSite())
 	cmd.AddCommand(newAddFeature())
 	cmd.AddCommand(newAddFiles())
@@ -345,99 +347,189 @@ failing checks as the obligations.`,
 
 func newAddAuth() *cobra.Command {
 	var (
-		f          transitionFlags
-		preauth    bool
-		oidcAzure  bool
-		oidcGoogle bool
-		authority  string
+		f         transitionFlags
+		methods   []string
+		authority string
 	)
 
 	cmd := &cobra.Command{
 		Use:   "auth <name>",
-		Short: "Add an auth: a population that signs in one way and holds roles in its own store",
-		Long: `auth adds an auth package, pkg/auth/<name>, copied from an auth the application already
-has with every name substituted, so the new population owns its own session and user
-tables, cookie, store prefix, and role file from the start. Its table migrations are
-copied under the new prefix, an empty role file is written in the package (the file its
-Roles() embeds and hands to the permission engine), and the data level constructs it
-beside the auth it was copied from. The default is a password
-auth; --preauth swaps the constructor to the preauth flavor (the application proves who
-someone is and asks the session library for a session).
+		Short: "Add an auth: a population that holds roles in its own store and signs in through the methods on its Auth",
+		Long: `auth adds an auth package, pkg/auth/<name>, rendered from the same source as the skeleton's
+auths, so the new population owns its own session, user, identity, auth event and pending
+sign-in tables, cookie, store prefix, and role file from the start, with one file per
+sign-in method. Its session tables are written as migrations under the new prefix and its
+access tables copied from an auth the application has; an empty role file is written in
+the package (the file its Roles() embeds and hands to the permission engine), and the data
+level constructs it beside that auth.
 
---oidc-azure and --oidc-google add an auth whose people sign in through the organization's
-directory over OpenID Connect. It is copied from an OIDC auth the application has, or from
-the reference skeleton's (rewritten for Google when that is the flavor: a hosted domain in
-place of an issuer, a subject-keyed user anchor, no front-channel logout), with the
-directory registration read from APP_<NAME>_OIDC_* variables, the Procfile built with the
-session library's skipAuth tag (the directory simulated from APP_USERNAME until the
-application is registered with one), and the role-membership authority set by
---authority, which is asked when it is not given: "directory" makes the directory's role
-claims the authority (session.RoleSync: every login reconciles the person's roles to them
-and removes what they do not name), "application" keeps role assignment in the application
-(session.DisableRoleSync). There is no default, because the wrong answer deletes
-hand-assigned roles at the next login. For Google the directory's authority is its Groups
-(session.GoogleRoleSync over the Cloud Identity Groups API, with the person's own sign-in
-token), read by a group prefix the registration names, as far as the group lookup it names
-reaches (direct, or nested); under skipAuth the lookup is simulated from APP_ROLES.
+--method names the sign-in methods the Auth starts with, repeatable: password (the
+default when none is given), azure:<registration> (Microsoft Entra over OpenID Connect) or
+google:<registration> (Google Workspace over OpenID Connect), the registration being the
+segment of the method's routes (user/<registration>/login). A directory method added here
+takes the default shape, one organization and members of the directory; impulse add method
+composes the other slots and account rules. Its settings are read from the environment
+under the registration's variables (APP_<NAME>_<REGISTRATION>_*), the Procfile builds with
+the session library's skipAuth tag (the directory simulated until the application is
+registered with one), and the role-membership authority is set by --authority, which is
+asked when it is not given: "directory" makes the directory's roles the authority (every
+sign-in reconciles the person's roles to them and removes what they do not name),
+"application" keeps role assignment in the application. There is no default, because the
+wrong answer deletes hand-assigned roles at the next sign-in.
 
 Binding a site or an outlet to the new auth, checking its roles in the deploy, its
 development identities, and the tests that prove its people are strangers to the other
 auths are handed to the agent.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			flavor := transition_.FlavorPassword
-			chosen := 0
-			for _, on := range []bool{preauth, oidcAzure, oidcGoogle} {
-				if on {
-					chosen++
+			specs, err := parseMethods(methods)
+			if err != nil {
+				return err
+			}
+			directory := false
+			for i := range specs {
+				if specs[i].Directory() {
+					directory = true
 				}
 			}
-			switch {
-			case chosen > 1:
-				return errors.New("--preauth, --oidc-azure, and --oidc-google are flavors; pick one")
-			case preauth:
-				flavor = transition_.FlavorPreauth
-			case oidcAzure, oidcGoogle:
-				flavor = transition_.FlavorOIDCAzure
-				if oidcGoogle {
-					flavor = transition_.FlavorOIDCGoogle
+			if directory && authority == "" {
+				answer, err := askAuthority(cmd)
+				if err != nil {
+					return err
 				}
-				if authority == "" {
-					answer, err := askAuthority(cmd)
-					if err != nil {
-						return err
-					}
-					authority = answer
+				authority = answer
+			}
+			if !directory && authority != "" {
+				return errors.New("--authority goes with a directory method (azure or google); the password method's role membership is the application's")
+			}
+			for i := range specs {
+				if specs[i].Directory() {
+					specs[i].Authority = authority
 				}
 			}
 
-			return runTransition(cmd, &f, transition_.Auth{Name: args[0], Flavor: flavor, Authority: authority}, transition_.ReferenceCandidate)
+			return runTransition(cmd, &f, transition_.Auth{Name: args[0], Methods: specs}, transition_.ReferenceCandidate)
 		},
 	}
 	f.bind(cmd)
-	cmd.Flags().BoolVar(&preauth, "preauth", false, "a preauth auth: the application proves the principal and the session library issues the session")
-	cmd.Flags().BoolVar(&oidcAzure, "oidc-azure", false, "an OIDC auth: its people sign in through the organization's Azure directory")
-	cmd.Flags().BoolVar(&oidcGoogle, "oidc-google", false, "an OIDC auth: its people sign in through the organization's Google Workspace directory")
-	cmd.Flags().StringVar(&authority, "authority", "", "who owns role membership for an OIDC auth: directory (role claims synchronized at every login) or application (roles assigned in the application); asked when not given")
+	cmd.Flags().StringArrayVar(&methods, "method", nil, "a sign-in method the auth starts with (repeatable): password, azure:<registration>, or google:<registration>; password when none is given")
+	cmd.Flags().StringVar(&authority, "authority", "", "who owns role membership for the directory methods: directory (roles synchronized at every sign-in) or application (roles assigned in the application); asked when not given")
+
+	return cmd
+}
+
+// parseMethods reads --method flags: password, or <kind>:<registration>.
+func parseMethods(flags []string) ([]authpkg.Method, error) {
+	if len(flags) == 0 {
+		return []authpkg.Method{{Kind: app.MethodPassword}}, nil
+	}
+	var specs []authpkg.Method
+	for _, flag := range flags {
+		kind, name, _ := strings.Cut(flag, ":")
+		switch kind {
+		case app.MethodPassword:
+			if name != "" {
+				return nil, errors.Newf("--method %s: the password method takes no registration name", flag)
+			}
+			specs = append(specs, authpkg.Method{Kind: app.MethodPassword})
+		case app.MethodAzure, app.MethodGoogle:
+			if name == "" {
+				name = kind
+			}
+			specs = append(specs, authpkg.Method{Kind: kind, Name: name})
+		default:
+			return nil, errors.Newf("--method %s: password, azure:<registration>, or google:<registration>", flag)
+		}
+	}
+
+	return specs, nil
+}
+
+func newAddMethod() *cobra.Command {
+	var (
+		f         transitionFlags
+		authority string
+		slot      string
+		accounts  string
+	)
+
+	cmd := &cobra.Command{
+		Use:   "method <auth> <kind> [<registration>]",
+		Short: "Add a sign-in method to an auth: a registration on its Auth, in a file of its own",
+		Long: `method adds a sign-in method to an auth the application has: password, azure (Microsoft
+Entra over OpenID Connect) or google (Google Workspace over OpenID Connect), under the
+registration name given (the segment of its routes, user/<registration>/login; the kind's
+name when none is given; the password method is always registered as password). The method
+gets a file of its own in the auth's package with its registration constant, its settings,
+its handlers and the registration New makes; the Auth file's Handlers and Settings gain it;
+the data level reads its settings from the environment under the registration's variables
+(APP_<AUTH>_<REGISTRATION>_*); every outlet bound to the auth declares it, so the generated
+router mounts its routes and the login page, which renders from the methods route, offers
+it; and for a directory method the Procfile builds with the session library's skipAuth
+tag, which simulates the directory until the application is registered with it.
+
+--slot is the organization slot of a directory method, which organizations' accounts it
+admits. For azure: one (one tenant, the default), listed (named tenants), any (any tenant),
+personal (Microsoft personal accounts alone), one-personal (one tenant and personal
+accounts), any-personal (any tenant and personal accounts). For google: one (one
+Workspace, the default), listed (named Workspaces), any-workspace (any Workspace), any
+(any Google account), mixed (one Workspace and any Google account).
+
+--accounts is the standard account rule for a first sign-in: members (members of the
+directory, the default: the person becomes a user under the name the directory presents),
+invited (invited users only: a user created beforehand is linked, anyone else refused) or
+open (open sign-up). The session library allows open only with any organization or
+personal accounts, and refuses members there, since every organization in the world is
+"the directory".
+
+--authority is who owns role membership for a directory method, asked when not given:
+directory (the directory's roles are synchronized at every sign-in, allowed with one
+organization only) or application (roles are assigned in the application).`,
+		Args: cobra.RangeArgs(2, 3),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			spec := authpkg.Method{Kind: args[1], Slot: slot, Accounts: accounts, Authority: authority}
+			if len(args) == 3 {
+				spec.Name = args[2]
+			} else if spec.Kind != app.MethodPassword {
+				spec.Name = spec.Kind
+			}
+			if spec.Kind == app.MethodPassword && (slot != "" || accounts != "" || authority != "") {
+				return errors.New("the password method takes no --slot, --accounts or --authority")
+			}
+			if spec.Directory() && authority == "" {
+				answer, err := askAuthority(cmd)
+				if err != nil {
+					return err
+				}
+				spec.Authority = answer
+			}
+
+			return runTransition(cmd, &f, &transition_.Method{Auth: args[0], Spec: spec}, transition_.ReferenceCandidate)
+		},
+	}
+	f.bind(cmd)
+	cmd.Flags().StringVar(&authority, "authority", "", "who owns role membership for a directory method: directory (roles synchronized at every sign-in, one organization only) or application (roles assigned in the application); asked when not given")
+	cmd.Flags().StringVar(&slot, "slot", "", "the organization slot of a directory method: azure one|listed|any|personal|one-personal|any-personal, google one|listed|any-workspace|any|mixed (default: one)")
+	cmd.Flags().StringVar(&accounts, "accounts", "", "the standard account rule for a first sign-in: members (default), invited, or open")
 
 	return cmd
 }
 
 // authorityQuestion is what a person at the terminal is asked when --authority is not
-// given for an OIDC auth.
-const authorityQuestion = `Who is the authority for this auth's role membership?
-  directory    the directory's role claims are synchronized at every login; roles it does
-               not name are removed, and a login naming no known role is refused
+// given for a directory method.
+const authorityQuestion = `Who is the authority for this method's role membership?
+  directory    the directory's roles are synchronized at every sign-in; roles it does
+               not name are removed, and a sign-in naming no known role is refused
   application  roles are assigned in the application: the bootstrap now, an
                administration surface later
 [directory/application]: `
 
 // askAuthority asks who owns role membership when the flag did not say and a person is at
 // the terminal. Without a terminal the flag is required: there is no default, because the
-// wrong answer deletes hand-assigned roles at the next login.
+// wrong answer deletes hand-assigned roles at the next sign-in.
 func askAuthority(cmd *cobra.Command) (string, error) {
 	if !stdinIsTerminal() {
-		return "", errors.New("--authority is required for an OIDC auth: directory (the directory's role claims are synchronized at every login and roles it does not name are removed) or application (roles are assigned in the application). It is asked because the wrong answer deletes hand-assigned roles at the next login")
+		return "", errors.New("--authority is required for a directory method: directory (the directory's roles are synchronized at every sign-in and roles it does not name are removed) or application (roles are assigned in the application). It is asked because the wrong answer deletes hand-assigned roles at the next sign-in")
 	}
 	fmt.Fprint(cmd.ErrOrStderr(), authorityQuestion)
 	line, err := bufio.NewReader(cmd.InOrStdin()).ReadString('\n')

@@ -177,7 +177,7 @@ func NewDataConfiguration(ctx context.Context) (*DataConfiguration, error) {
 	if err != nil {
 		return nil, err
 	}
-	staffAuth, err := staff.New(ctx, spannerClient, staff.Settings{Collection: collection, Signals: liveService, CookieKey: cookieKey, SessionTimeout: env.SessionTimeout})
+	staffAuth, err := staff.New(ctx, spannerClient, &staff.Settings{Collection: collection, Signals: liveService, CookieKey: cookieKey, SessionTimeout: env.SessionTimeout})
 	if err != nil {
 		return nil, errors.Wrap(err, "staff.New()")
 	}

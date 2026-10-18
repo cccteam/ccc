@@ -122,17 +122,35 @@ type Outlet struct {
 	Pos string
 }
 
-// OutletAuth is one Auth option: the auth package the outlet binds to and the flavor its
-// people sign in with, as the generation package names it (Password, OIDCGoogle,
-// OIDCAzure).
+// OutletAuth is one Auth option: the auth package the outlet binds to and the sign-in
+// methods it declares on it, in declaration order, as the generation package names them.
 type OutletAuth struct {
 	ImportPath string
-	Flavor     string
+	Methods    []AuthMethodArg
 }
 
-// LoginFlavor is the auth's flavor as the auth scan reports it (password, oidc-google,
-// oidc-azure).
-func (a OutletAuth) LoginFlavor() string { return authFlavorIdents[a.Flavor] }
+// Method returns the declared method registered under the name, or nil.
+func (a OutletAuth) Method(name string) *AuthMethodArg {
+	for i := range a.Methods {
+		if a.Methods[i].Name == name {
+			return &a.Methods[i]
+		}
+	}
+
+	return nil
+}
+
+// Directory reports whether any declared method sends the browser to a directory or an
+// identity provider: every method but the password method.
+func (a OutletAuth) Directory() bool {
+	for i := range a.Methods {
+		if a.Methods[i].Kind != MethodPassword {
+			return true
+		}
+	}
+
+	return false
+}
 
 // Tenanted reports whether the site's resource package declares a tenant record.
 func (s *Site) Tenanted() bool { return s.TenantRecord != nil }
@@ -213,8 +231,14 @@ func readOutletOptions(o *Outlet, args []Arg) {
 		case optServesSessions:
 			o.ServesSessions = true
 		case optAuth:
-			if len(c.Args) == 2 && c.Args[0].Kind == ArgString && c.Args[1].Kind == ArgIdent {
-				o.Auth = &OutletAuth{ImportPath: c.Args[0].Str, Flavor: c.Args[1].Str}
+			if len(c.Args) >= 1 && c.Args[0].Kind == ArgString {
+				auth := &OutletAuth{ImportPath: c.Args[0].Str}
+				for _, m := range c.Args[1:] {
+					if m.Kind == ArgAuthMethod && m.Method != nil {
+						auth.Methods = append(auth.Methods, *m.Method)
+					}
+				}
+				o.Auth = auth
 				o.ServesSessions = true
 			}
 		case optAPIKey:

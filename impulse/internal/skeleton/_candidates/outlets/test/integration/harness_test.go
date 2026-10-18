@@ -153,7 +153,7 @@ func newServed(ctx context.Context, t *testing.T) *served {
 	if err := roster.Start(ctx); err != nil {
 		t.Fatalf("resource.TenantRoster.Start() error = %v", err)
 	}
-	staffAuth, err := staff.New(ctx, db.Client, staff.Settings{Collection: router.Collection(), Signals: svc, CookieKey: testCookieKey, SessionTimeout: time.Minute})
+	staffAuth, err := staff.New(ctx, db.Client, &staff.Settings{Collection: router.Collection(), Signals: svc, CookieKey: testCookieKey, SessionTimeout: time.Minute})
 	if err != nil {
 		t.Fatalf("staff.New() error = %v", err)
 	}
@@ -168,15 +168,16 @@ func newServed(ctx context.Context, t *testing.T) *served {
 	t.Cleanup(server.Close)
 
 	// The members auth: under the skipAuth build tag the directory is simulated and the
-	// login returns straight to the callback, so the callback is the only registration
-	// detail that matters.
+	// login returns straight to the callback, so the callback is the registration detail
+	// that matters, beside a well-formed tenant id, which the method validates at
+	// registration whether or not the directory is simulated.
 	membersAuth, err := members.New(ctx, db.Client, &members.Settings{
 		Collection:     router.Collection(),
 		Signals:        svc,
 		CookieKey:      testCookieKey,
 		SessionTimeout: time.Minute,
 		LoginURL:       "/portal/login",
-		Directory:      members.Directory{RedirectURL: "http://" + server.Listener.Addr().String() + portalAPI + "/user/callback"},
+		Directory:      members.DirectorySettings{TenantID: "00000000-0000-0000-0000-000000000000", RedirectURL: "http://" + server.Listener.Addr().String() + portalAPI + "/user/directory/callback"},
 	})
 	if err != nil {
 		t.Fatalf("members.New() error = %v", err)
@@ -316,7 +317,7 @@ func (b *browser) login(ctx context.Context, user, password string) (status int,
 		b.t.Fatal(err)
 	}
 
-	return b.do(ctx, http.MethodPost, b.prefix+"/user/login", credentials)
+	return b.do(ctx, http.MethodPost, b.prefix+"/user/password/login", credentials)
 }
 
 // machine issues one request as a machine client carrying the bearer key (empty for an

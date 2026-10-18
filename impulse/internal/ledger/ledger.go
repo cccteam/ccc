@@ -187,6 +187,23 @@ var Steps = []Step{
 		Impulse: release("v0.4.0"),
 		Note:    "request log words and trace settings are declared per surface: WithRequestLog sets the application default, OutletRequestLog and OutletTraces an outlet's, WithMountedRoutes a prefix mounted by hand, and @rpc(log:), @rpc(trace:), @file and @schedule(log:) a route's own; the generated router applies them, the tracer samples by them, and the release file lists the surfaces; an application that declares nothing keeps its behavior, and regeneration carries the generated test",
 	},
+	{
+		Pins: pins(`
+			access v0.10.4-0.20261016170115-fff4d4c766f8
+			ccc v0.3.3
+			ccc/accesstypes v0.6.0
+			ccc/cloud v0.2.1
+			ccc/resource v0.14.3-0.20261018021050-53eb85683657
+			ccc/tracer v0.3.0
+			db-initiator v0.4.1
+			httpio v0.7.21
+			logger v0.1.30
+			session v0.12.4-0.20261018021757-8ab8730ef4b7
+		`),
+		Pending: true,
+		Impulse: release("v0.5.0"),
+		Note:    "an auth signs in through the methods registered on one session Auth (session.NewAuth): the skeletons' auth packages construct it over the sessions, users, identities, auth events and pending sign-ins tables and register each method in a file of its own; the generator's Auth option takes method declarations (generation.PasswordMethod(), AzureMethod(name), GoogleMethod(name)) and the router serves the methods, session and pending routes the login page renders from; no recipe moves an application off the single-method session types, which the library keeps under session/legacy: an application on them is re-created from the skeleton",
+	},
 }
 
 // validatePending holds a step's Pending mark to its pins: a pin at a pseudo-version

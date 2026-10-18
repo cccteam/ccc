@@ -44,7 +44,7 @@ export class LoginComponent {
     this.busy.set(true);
     this.failed.set(false);
 
-    this.http.post(`${this.apiUrl}/user/login`, { username: this.username, password: this.password }).subscribe({
+    this.http.post(`${this.apiUrl}/user/password/login`, { username: this.username, password: this.password }).subscribe({
       next: () => {
         this.auth.checkUserSession().subscribe({
           next: () => {

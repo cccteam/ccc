@@ -6,9 +6,7 @@ impulse add auth <name>
   --agent-command string (default claude)
   --app string (default .)
   --authority string
-  --oidc-azure bool
-  --oidc-google bool
-  --preauth bool
+  --method stringArray
   --skip-generate bool
 impulse add feature <name>
   --agent bool
@@ -30,6 +28,15 @@ impulse add job <name>
   --app string (default .)
   --schedule string
   --skip-generate bool
+impulse add method <auth> <kind> [<registration>]
+  --accounts string
+  --agent bool
+  --agent-arg stringArray
+  --agent-command string (default claude)
+  --app string (default .)
+  --authority string
+  --skip-generate bool
+  --slot string
 impulse add outlet <name>
   --agent bool
   --agent-arg stringArray
@@ -84,13 +91,10 @@ impulse new <dir>
   --agent-command string (default claude)
   --api-outlet stringArray
   --auth string
-  --authority string
   --dev-root string
   --files bool
   --module string (required)
   --name string
-  --oidc-azure bool
-  --oidc-google bool
   --outlet stringArray
   --site stringArray
   --skip-generate bool
@@ -120,17 +124,6 @@ impulse render [<candidate> <dir>]
   --dev-root string
   --module string
   --name string
-impulse swap
-impulse swap auth <name>
-  --agent bool
-  --agent-arg stringArray
-  --agent-command string (default claude)
-  --app string (default .)
-  --authority string
-  --carry-roles bool
-  --oidc-azure bool
-  --oidc-google bool
-  --skip-generate bool
 impulse upgrade
   --agent bool
   --agent-arg stringArray

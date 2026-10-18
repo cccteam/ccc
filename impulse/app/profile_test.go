@@ -24,8 +24,8 @@ func TestProfile(t *testing.T) {
 			wantLayout: LayoutFlat,
 			wantSites: []Site{{
 				Name: "lighthouse", Dir: ".", GeneratedRouter: true,
-				Default: Outlet{Name: DefaultOutletName, Prefix: "api", ServesSessions: true, Auth: &OutletAuth{ImportPath: "example.com/lighthouse/pkg/config", Flavor: "Password"}, WebApp: "/", Pos: "cmd/generate/resourcegenerator/main.go:25"},
-				Outlets: []Outlet{{Name: "portal", Prefix: "portal", ServesSessions: true, Auth: &OutletAuth{ImportPath: "example.com/lighthouse/pkg/config", Flavor: "Password"}, WebApp: "/portal", Pos: "cmd/generate/resourcegenerator/main.go:26"}},
+				Default: Outlet{Name: DefaultOutletName, Prefix: "api", ServesSessions: true, Auth: &OutletAuth{ImportPath: "example.com/lighthouse/pkg/config", Methods: []AuthMethodArg{{Kind: MethodPassword, Name: PasswordRegistration}}}, WebApp: "/", Pos: "cmd/generate/resourcegenerator/main.go:25"},
+				Outlets: []Outlet{{Name: "portal", Prefix: "portal", ServesSessions: true, Auth: &OutletAuth{ImportPath: "example.com/lighthouse/pkg/config", Methods: []AuthMethodArg{{Kind: MethodPassword, Name: PasswordRegistration}}}, WebApp: "/portal", Pos: "cmd/generate/resourcegenerator/main.go:26"}},
 			}},
 			wantOutlets: []string{"portal"},
 		},

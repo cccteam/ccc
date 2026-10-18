@@ -181,7 +181,7 @@ func TestFlatGeneratorDetails(t *testing.T) {
 		{name: "consolidated bool", got: mustOption(t, g, "WithConsolidatedHandlers").Args[1].Bool, want: true},
 		{name: "consolidated variadic", got: mustOption(t, g, "WithConsolidatedHandlers").Args[2].Str, want: "Beacon"},
 		{name: "outlet option nested", got: mustOption(t, g, "WithRouterOutlet").Args[2].Call.Name, want: "Auth"},
-		{name: "auth flavor identifier", got: mustOption(t, g, "WithRouterOutlet").Args[2].Call.Args[1], want: Arg{Kind: ArgIdent, Str: "Password"}},
+		{name: "auth method declaration", got: mustOption(t, g, "WithRouterOutlet").Args[2].Call.Args[1], want: Arg{Kind: ArgAuthMethod, Method: &AuthMethodArg{Kind: MethodPassword, Name: PasswordRegistration}}},
 		{name: "default outlet options ride GenerateRoutes", got: len(mustOption(t, g, "GenerateRoutes").Args), want: 4},
 	}
 
