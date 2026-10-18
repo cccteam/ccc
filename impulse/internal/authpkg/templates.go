@@ -210,11 +210,13 @@ func New(ctx context.Context, db *cloudspanner.Client, settings *Settings) (*Aut
 
 	handlers := &Handlers{Session: authSession}
 {{- range .Methods}}
-{{- if .Directory}}
+{{- if .Fallible}}
 	handlers.{{.Field}}, err = register{{.Pascal}}(authSession, accessClient, settings)
 	if err != nil {
 		return nil, err
 	}
+{{- else if .Directory}}
+	handlers.{{.Field}} = register{{.Pascal}}(authSession, accessClient, settings)
 {{- else}}
 	handlers.{{.Field}} = register{{.Pascal}}(authSession)
 {{- end}}
@@ -449,7 +451,10 @@ func (a *Auth) usersTableEmpty(ctx context.Context) (bool, error) {
 const azureTemplate = `package {{.Auth}}
 
 import (
-{{- range .Imports}}
+{{- range .StdImports}}
+	"{{.}}"
+{{- end}}
+{{ range .Imports}}
 	"{{.}}"
 {{- end}}
 )
@@ -509,7 +514,7 @@ func (h *Handlers) {{.Pascal}}FrontChannelLogout() http.HandlerFunc {
 // person's user principal name is linked and signed in, anyone else is refused
 // (not_invited){{else}}, open sign-up: anyone the slot admits becomes a user under their
 // user principal name{{end}}.
-func register{{.Pascal}}(authSession *Session, accessClient *access.Client, settings *Settings) (*azure.Method, error) {
+func register{{.Pascal}}(authSession *Session, accessClient *access.Client, settings *Settings) (*azure.Method{{if .Fallible}}, error{{end}}) {
 {{- if eq .SlotExpr "tenants"}}
 	tenants, err := parse{{.Pascal}}Tenants(settings.{{.Pascal}}.Tenants)
 	if err != nil {
@@ -526,7 +531,7 @@ func register{{.Pascal}}(authSession *Session, accessClient *access.Client, sett
 		RoleSync:     {{.RoleSyncExpr}},
 		Accounts:     {{.AccountsExpr}},
 		LoginURL:     settings.LoginURL,
-	}), nil
+	}){{if .Fallible}}, nil{{end}}
 }
 {{- if eq .SlotExpr "tenants"}}
 
@@ -559,7 +564,10 @@ func parse{{.Pascal}}Tenants(value string) (azure.TenantSet, error) {
 const googleTemplate = `package {{.Auth}}
 
 import (
-{{- range .Imports}}
+{{- range .StdImports}}
+	"{{.}}"
+{{- end}}
+{{ range .Imports}}
 	"{{.}}"
 {{- end}}
 )
@@ -615,7 +623,7 @@ func (h *Handlers) {{.Pascal}}Callback() http.HandlerFunc {
 // person's verified email is linked and signed in, anyone else is refused
 // (not_invited){{else}}, open sign-up: anyone the slot admits becomes a user under their
 // verified email{{end}}.
-func register{{.Pascal}}(authSession *Session, accessClient *access.Client, settings *Settings) (*google.Method, error) {
+func register{{.Pascal}}(authSession *Session, accessClient *access.Client, settings *Settings) (*google.Method{{if .Fallible}}, error{{end}}) {
 {{- if eq .SlotExpr "workspaces"}}
 	workspaces, err := parse{{.Pascal}}Workspaces(settings.{{.Pascal}}.Workspaces)
 	if err != nil {
@@ -638,7 +646,7 @@ func register{{.Pascal}}(authSession *Session, accessClient *access.Client, sett
 		RoleSync:     {{.RoleSyncExpr}},
 		Accounts:     {{.AccountsExpr}},
 		LoginURL:     settings.LoginURL,
-	}), nil
+	}){{if .Fallible}}, nil{{end}}
 }
 {{- if eq .SlotExpr "workspaces"}}
 

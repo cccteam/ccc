@@ -140,6 +140,7 @@ func (m *Method) Apply(ctx context.Context, a *app.App, exec check.Execer) (*Cha
 		if err := writeMethodEnv(a, m.Auth, spec, ch); err != nil {
 			return nil, err
 		}
+		slotHandoff(ch, m.Auth, spec)
 	}
 	generate(ctx, a, exec, ch, "go generate ./... failed; fix the cause and run it:", "ran go generate ./..., so the router mounts the method's routes and the login page offers it")
 
@@ -243,8 +244,16 @@ func (m *Method) editAuth(a *app.App, auth *app.Auth, spec *authpkg.Method, ch *
 		}
 	}
 	registration := fmt.Sprintf("\thandlers.%s = register%s(authSession)\n", field, spec.Pascal())
-	if spec.Directory() {
+	switch {
+	case spec.Fallible():
 		registration = fmt.Sprintf("\thandlers.%s, err = register%s(authSession, accessClient, settings)\n\tif err != nil {\n\t\treturn nil, err\n\t}\n", field, spec.Pascal())
+	case spec.Directory():
+		registration = fmt.Sprintf("\thandlers.%s = register%s(authSession, accessClient, settings)\n", field, spec.Pascal())
+	}
+	listed := ""
+	if here := hereRE.FindSubmatchIndex(edited); here != nil {
+		edited = append(edited[:here[3]:here[3]], append([]byte(", "+spec.Name), edited[here[3]:]...)...)
+		listed = ", and the package doc lists it"
 	}
 	loc := returnAuthRE.FindIndex(edited)
 	if loc == nil {
@@ -255,7 +264,7 @@ func (m *Method) editAuth(a *app.App, auth *app.Auth, spec *authpkg.Method, ch *
 	if err := os.WriteFile(a.Abs(rel), edited, mode); err != nil {
 		return errors.Wrap(err, "os.WriteFile()")
 	}
-	ch.didf("%s: Handlers holds the %s method (%s %s), New registers it (register%s)%s", rel, spec.Name, field, typ, spec.Pascal(), settingsNote(spec))
+	ch.didf("%s: Handlers holds the %s method (%s %s), New registers it (register%s)%s%s", rel, spec.Name, field, typ, spec.Pascal(), settingsNote(spec), listed)
 
 	return nil
 }
@@ -263,6 +272,10 @@ func (m *Method) editAuth(a *app.App, auth *app.Auth, spec *authpkg.Method, ch *
 // returnAuthRE matches the Auth file's final statement, before which a method's
 // registration goes.
 var returnAuthRE = regexp.MustCompile(`(?m)^\n?\treturn &Auth\{(?:db: db, )?access: accessClient, handlers: handlers\}, nil`)
+
+// hereRE matches the package doc's list of the methods registered on the Auth, which a
+// method added joins.
+var hereRE = regexp.MustCompile(`methods registered on it \(here ([^)]*)\)`)
 
 func settingsNote(spec *authpkg.Method) string {
 	if !spec.Directory() {
@@ -576,6 +589,23 @@ func writeMethodEnv(a *app.App, auth string, spec *authpkg.Method, ch *Change) e
 // method validates its organization slot at registration whether or not the directory
 // is simulated, so the development template names a tenant that is nobody's.
 const placeholderTenant = "00000000-0000-0000-0000-000000000000"
+
+// slotHandoff names the test wiring a method with an organization slot needs: the session
+// library validates the slot at registration whether or not the directory is simulated,
+// so every test that constructs the auth hands the registration a well-formed placeholder
+// that is nobody's, as the development template does.
+func slotHandoff(ch *Change, auth string, spec *authpkg.Method) {
+	fields := spec.Fields()
+	for i := range fields {
+		f := &fields[i]
+		switch f.Name {
+		case authpkg.FieldTenantID, authpkg.FieldTenants, authpkg.FieldHostedDomain, authpkg.FieldWorkspaces:
+		default:
+			continue
+		}
+		ch.skipf("test/integration/harness_test.go and cmd/deployment/migrate/main_test.go: the %s registration validates its organization slot at registration whether or not the directory is simulated, so give the %s auth's construction in the harness %s: %s.%s{%s: %q, RedirectURL: <the served callback>} and set %s=%s where the migrate run's environment is", spec.Name, auth, spec.Pascal(), auth, spec.SettingsType(), f.Name, devValue(f, auth), spec.Variable(auth, f), devValue(f, auth))
+	}
+}
 
 // devValue is what the development template sets for a field the simulated directory
 // reads: a placeholder that lets the simulation run.

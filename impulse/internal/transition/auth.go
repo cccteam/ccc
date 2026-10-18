@@ -212,6 +212,7 @@ func (au Auth) Apply(ctx context.Context, a *app.App, exec check.Execer) (*Chang
 				if err := writeMethodEnv(a, au.Name, &spec.Methods[i], ch); err != nil {
 					return nil, err
 				}
+				slotHandoff(ch, au.Name, &spec.Methods[i])
 			}
 		}
 	}

@@ -307,7 +307,7 @@ func TestAuthApply(t *testing.T) {
 					}
 				}
 				main := read(t, a, "pkg/auth/partners/partners.go")
-				for _, want := range []string{"\tdirectory *azure.Method\n", "handlers.directory, err = registerDirectory(authSession, accessClient, settings)", "\tLoginURL string\n", "\tDirectory DirectorySettings\n"} {
+				for _, want := range []string{"\tdirectory *azure.Method\n", "handlers.directory = registerDirectory(authSession, accessClient, settings)", "\tLoginURL string\n", "\tDirectory DirectorySettings\n"} {
 					if !strings.Contains(main, want) {
 						t.Errorf("partners.go lacks %q", want)
 					}
