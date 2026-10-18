@@ -5,37 +5,12 @@
       <mat-card-subtitle>Rescue and salvage operations console</mat-card-subtitle>
     </mat-card-header>
     <mat-card-content>
-      @if (passwordMethod(); as method) {
-        <form (ngSubmit)="login()">
-          <mat-form-field appearance="outline" class="full-width">
-            <mat-label>Login</mat-label>
-            <input matInput name="username" [(ngModel)]="username" autocomplete="username" required />
-          </mat-form-field>
-          <mat-form-field appearance="outline" class="full-width">
-            <mat-label>{{ method.label }}</mat-label>
-            <input
-              matInput
-              name="password"
-              type="password"
-              [(ngModel)]="password"
-              autocomplete="current-password"
-              required />
-          </mat-form-field>
-          <button mat-flat-button color="primary" type="submit" class="full-width" [disabled]="busy()">Sign in</button>
-        </form>
-      }
-      @for (method of redirectMethods(); track method.name) {
-        <button mat-stroked-button type="button" class="full-width redirect" (click)="signInThrough(method)">
-          Sign in with {{ method.label }}
-        </button>
-      }
-      @if (message()) {
-        <p class="error">{{ message() }}</p>
-      }
+      <ccc-login-methods home="/dashboard" (signedIn)="go($event)" />
       <p class="hint">
         Every persona shares the password <code>lodestar</code>. Pick a card from the crew manifest to fill the form,
-        then sign in. The sign-in buttons are what the server lists at <code>user/methods</code>, in the order the
-        generator program registered them; the page names no path of its own.
+        then sign in. The form and the buttons are the library's login component, rendered from what the server lists
+        at <code>user/methods</code>, in the order the generator program registered them; the page names no path of
+        its own.
       </p>
     </mat-card-content>
   </mat-card>
@@ -48,7 +23,7 @@
           <button
             type="button"
             class="persona"
-            [class.selected]="username === persona.login"
+            [class.selected]="selected() === persona.login"
             (click)="fillPersona(persona.login)">
             <span class="login">{{ persona.login }}</span>
             <span class="name">{{ persona.name }}</span>

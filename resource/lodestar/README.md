@@ -486,7 +486,14 @@ generated router tells each outlet's login page what its auth offers at
 `/<prefix>/user/methods`: the methods in the order the generator program declared them,
 each with its kind (a password form, or a redirect to a directory), its label and the
 path the router mounted it at, and the pending sign-in's routes, so the page renders from
-the server's list and names no path of its own.
+the server's list and names no path of its own. Both pages compose the library's login
+component (`<ccc-login-methods>` from `@cccteam/resource-angular`), which reads the list
+through the application's client, renders the form and the buttons, posts the password
+after reading the list again (the read refreshes the XSRF cookie the post needs), sends the
+browser to a directory with the page to return to, shows the sentence held for a refusal
+code, and renders the confirmation step for a sign-in that waits; each page keeps its
+manifest, its words for a method (the portal's "your company directory", a label override
+keyed by the registration's name) and where a sign-in lands.
 
 The crew sign in with passwords at `/console/api/user/password/login`, or through the
 fleet's Google directory at `/console/api/user/google/login`, two methods on one session:
