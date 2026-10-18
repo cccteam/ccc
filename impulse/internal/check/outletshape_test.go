@@ -15,8 +15,8 @@ func TestOutletShape(t *testing.T) {
 	t.Parallel()
 
 	const (
-		staffAuth   = `generation.Auth("example.com/harbor/pkg/auth/staff", generation.Password)`
-		membersAuth = `generation.Auth("example.com/harbor/pkg/auth/members", generation.OIDCAzure)`
+		staffAuth   = `generation.Auth("example.com/harbor/pkg/auth/staff", generation.PasswordMethod())`
+		membersAuth = `generation.Auth("example.com/harbor/pkg/auth/members", generation.AzureMethod("directory"))`
 	)
 
 	tests := []struct {

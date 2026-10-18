@@ -1,0 +1,11 @@
+DROP INDEX MembersSessionPendingSignInsByExpiresAt;
+DROP INDEX MembersSessionPendingSignInsByTokenHash;
+DROP TABLE MembersSessionPendingSignIns;
+DROP TABLE MembersSessionAuthEvents;
+DROP INDEX MembersSessionIdentitiesByUserId;
+DROP INDEX MembersSessionIdentitiesByKey;
+DROP TABLE MembersSessionIdentities;
+DROP INDEX MembersSessionsByProviderSessionId;
+DROP INDEX MembersSessionsByUserId;
+DROP INDEX MembersSessions_Expired_idx;
+DROP TABLE MembersSessions;

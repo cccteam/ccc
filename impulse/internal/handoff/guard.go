@@ -233,6 +233,8 @@ func renderArg(a *app.Arg) string {
 		return strconv.FormatInt(a.Int, 10)
 	case app.ArgIdent, app.ArgConstructor:
 		return a.Str
+	case app.ArgAuthMethod:
+		return strings.TrimPrefix(app.MethodDeclaration(a.Method.Kind, a.Method.Name, a.Method.Label), "generation.")
 	case app.ArgCall:
 		return renderCall(a.Call)
 	case app.ArgComposite, app.ArgOther:

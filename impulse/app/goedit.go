@@ -7,6 +7,7 @@ import (
 	"go/parser"
 	"go/token"
 	"slices"
+	"strings"
 
 	"github.com/go-playground/errors/v5"
 )
@@ -251,7 +252,7 @@ func (p *parsed) appendToBlock(rel string, fields *ast.FieldList, line string) (
 }
 
 // AddLiteralElement appends "key: value" to the first composite literal of the named
-// type inside the named function. An element whose key the literal sets already is not
+// type (an identifier, or package-qualified: members.Settings) inside the named function. An element whose key the literal sets already is not
 // added again: the source comes back unchanged.
 func AddLiteralElement(rel string, src []byte, funcName, typeName, element string) ([]byte, error) {
 	p, err := parseSource(rel, src)
@@ -301,6 +302,9 @@ func (p *parsed) appendElement(rel string, lit *ast.CompositeLit, element string
 	}
 	rbrace := p.offset(lit.Rbrace)
 	if p.fset.Position(lit.Lbrace).Line == p.fset.Position(lit.Rbrace).Line {
+		if strings.Contains(element, "\n") {
+			return p.expandLiteral(rel, lit, element)
+		}
 		text := element
 		if len(lit.Elts) > 0 {
 			text = ", " + element
@@ -314,6 +318,33 @@ func (p *parsed) appendElement(rel string, lit *ast.CompositeLit, element string
 	}
 
 	return p.splice(rel, rbrace, rbrace, text)
+}
+
+// expandLiteral rewrites a one-line literal as one element per line and appends the
+// element, for an element that spans lines (a nested literal), which a one-line literal
+// cannot hold.
+func (p *parsed) expandLiteral(rel string, lit *ast.CompositeLit, element string) ([]byte, error) {
+	indent := p.lineIndent(lit.Lbrace) + "\t"
+	var b strings.Builder
+	b.WriteString("\n")
+	for _, e := range lit.Elts {
+		b.WriteString(indent + string(p.src[p.offset(e.Pos()):p.offset(e.End())]) + ",\n")
+	}
+	b.WriteString(indent + strings.ReplaceAll(element, "\n", "\n"+indent) + ",\n")
+
+	return p.splice(rel, p.offset(lit.Lbrace)+1, p.offset(lit.Rbrace), b.String())
+}
+
+// lineIndent is the leading whitespace of the line a position is on.
+func (p *parsed) lineIndent(pos token.Pos) string {
+	off := p.offset(pos)
+	start := bytes.LastIndexByte(p.src[:off], '\n') + 1
+	end := start
+	for end < len(p.src) && (p.src[end] == '\t' || p.src[end] == ' ') {
+		end++
+	}
+
+	return string(p.src[start:end])
 }
 
 // elementKey is the key of a "key: value" element, or empty for an element without one.
@@ -357,12 +388,10 @@ func literalOf(root ast.Node, typeName string) *ast.CompositeLit {
 		if lit != nil {
 			return false
 		}
-		if cl, ok := n.(*ast.CompositeLit); ok {
-			if id, ok := cl.Type.(*ast.Ident); ok && id.Name == typeName {
-				lit = cl
+		if cl, ok := n.(*ast.CompositeLit); ok && exprName(cl.Type) == typeName {
+			lit = cl
 
-				return false
-			}
+			return false
 		}
 
 		return true

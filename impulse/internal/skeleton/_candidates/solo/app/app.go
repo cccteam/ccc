@@ -14,7 +14,6 @@ import (
 	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/ccc/resource/live"
 	"github.com/cccteam/logger"
-	"github.com/cccteam/session"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-playground/errors/v5"
 	"github.com/go-playground/validator/v10"
@@ -79,7 +78,7 @@ type Configurer interface {
 // suites compose router.NewTestRouter).
 type App struct {
 	access access.Controller
-	*session.PasswordAuth[session.NoCustomData, session.NoCustomData]
+	*staff.Handlers
 	resourceClient resource.Client
 	cursorKey      *resource.CursorKey
 	validate       *validator.Validate
@@ -122,7 +121,7 @@ func New(cfg Configurer) *App {
 	// The authorization suites bind no auth: they compose the API surface through the
 	// test router, and nothing on that path touches the session.
 	if auth := cfg.Staff(); auth != nil {
-		a.PasswordAuth = auth.Session()
+		a.Handlers = auth.Handlers()
 	}
 
 	return a

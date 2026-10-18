@@ -1,0 +1,11 @@
+DROP INDEX StaffSessionPendingSignInsByExpiresAt;
+DROP INDEX StaffSessionPendingSignInsByTokenHash;
+DROP TABLE StaffSessionPendingSignIns;
+DROP TABLE StaffSessionAuthEvents;
+DROP INDEX StaffSessionIdentitiesByUserId;
+DROP INDEX StaffSessionIdentitiesByKey;
+DROP TABLE StaffSessionIdentities;
+DROP INDEX StaffSessionsByProviderSessionId;
+DROP INDEX StaffSessionsByUserId;
+DROP INDEX StaffSessions_Expired_idx;
+DROP TABLE StaffSessions;

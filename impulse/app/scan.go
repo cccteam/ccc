@@ -66,6 +66,8 @@ func (a *App) scan() error {
 		g.ReadsWarnings = a.readsWarnings(g)
 	}
 
+	a.attachPackageMethods()
+
 	return a.authPackages()
 }
 
@@ -170,11 +172,12 @@ func (a *App) scanGoFile(abs, rel string) error {
 	}
 
 	if bytes.Contains(data, []byte(sessionImportPath)) {
-		auths, err := parseAuths(rel, data)
+		auths, unattached, err := parseAuths(rel, data)
 		if err != nil {
 			return err
 		}
 		a.Auths = append(a.Auths, auths...)
+		a.unattached = append(a.unattached, unattached...)
 	}
 
 	a.goFiles = append(a.goFiles, rel)

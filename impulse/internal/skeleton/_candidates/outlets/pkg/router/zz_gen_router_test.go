@@ -63,27 +63,37 @@ func routerChainFor(t *testing.T, url string) routerOutletChain {
 	return routerOutletChain{}
 }
 
-// routerSessionRoute is one session route: the outlet's login, callback, or session
-// handler, which answers behind the outlet's group and before its guards. suffix is the
-// path under the outlet's prefix.
+// routerSessionRoute is one session route: the outlet's method list, session, pending
+// or sign-in handler, which answers behind the outlet's group and before its session
+// guard; xsrf says it sits behind the outlet's XSRF guard, as a sign-in's POSTs do.
+// suffix is the path under the outlet's prefix.
 type routerSessionRoute struct {
 	url     string
 	suffix  string
 	method  string
 	handler string
+	xsrf    bool
 }
 
 // routerSessionRoutes lists every session outlet's routes.
 func routerSessionRoutes() []routerSessionRoute {
 	return []routerSessionRoute{
-		{url: "/console/api/user/login", suffix: "/user/login", method: http.MethodPost, handler: "Login"},
+		{url: "/console/api/user/methods", suffix: "/user/methods", method: http.MethodGet, handler: "Methods"},
 		{url: "/console/api/user/session", suffix: "/user/session", method: http.MethodGet, handler: "Authenticated"},
 		{url: "/console/api/user/session", suffix: "/user/session", method: http.MethodDelete, handler: "Logout"},
-		{url: "/portal/api/user/login", suffix: "/user/login", method: http.MethodGet, handler: "PortalLogin"},
-		{url: "/portal/api/user/callback", suffix: "/user/callback", method: http.MethodGet, handler: "PortalCallbackOIDC"},
+		{url: "/console/api/user/pending", suffix: "/user/pending", method: http.MethodGet, handler: "PendingStatus"},
+		{url: "/console/api/user/password/login", suffix: "/user/password/login", method: http.MethodPost, handler: "PasswordLogin", xsrf: true},
+		{url: "/console/api/user/pending/confirm", suffix: "/user/pending/confirm", method: http.MethodPost, handler: "PendingConfirmWithPassword", xsrf: true},
+		{url: "/console/api/user/pending/cancel", suffix: "/user/pending/cancel", method: http.MethodPost, handler: "PendingCancel", xsrf: true},
+		{url: "/portal/api/user/methods", suffix: "/user/methods", method: http.MethodGet, handler: "PortalMethods"},
 		{url: "/portal/api/user/session", suffix: "/user/session", method: http.MethodGet, handler: "PortalAuthenticated"},
 		{url: "/portal/api/user/session", suffix: "/user/session", method: http.MethodDelete, handler: "PortalLogout"},
-		{url: "/portal/api/user/logout", suffix: "/user/logout", method: http.MethodGet, handler: "PortalFrontChannelLogout"},
+		{url: "/portal/api/user/pending", suffix: "/user/pending", method: http.MethodGet, handler: "PortalPendingStatus"},
+		{url: "/portal/api/user/directory/login", suffix: "/user/directory/login", method: http.MethodGet, handler: "PortalDirectoryLogin"},
+		{url: "/portal/api/user/directory/callback", suffix: "/user/directory/callback", method: http.MethodGet, handler: "PortalDirectoryCallback"},
+		{url: "/portal/api/user/directory/logout", suffix: "/user/directory/logout", method: http.MethodGet, handler: "PortalDirectoryFrontChannelLogout"},
+		{url: "/portal/api/user/pending/confirm", suffix: "/user/pending/confirm", method: http.MethodPost, handler: "PortalPendingConfirmWithPassword", xsrf: true},
+		{url: "/portal/api/user/pending/cancel", suffix: "/user/pending/cancel", method: http.MethodPost, handler: "PortalPendingCancel", xsrf: true},
 	}
 }
 
@@ -147,9 +157,10 @@ func TestGeneratedRouter(t *testing.T) {
 	}
 }
 
-// TestGeneratedRouterSessionRoutes proves each session outlet's login, callback, and
-// session routes answer behind the outlet's group and before its guards: a browser
-// reaches them without a validated session.
+// TestGeneratedRouterSessionRoutes proves each session outlet's method list, session,
+// pending and sign-in routes answer behind the outlet's group and before its session
+// guard, a sign-in's POSTs behind the XSRF guard alone: a browser reaches them without
+// a validated session.
 func TestGeneratedRouterSessionRoutes(t *testing.T) {
 	t.Parallel()
 
@@ -170,7 +181,11 @@ func TestGeneratedRouterSessionRoutes(t *testing.T) {
 				t.Fatalf("handler %s, expected 1 call, got: %d", tt.handler, cnt)
 			}
 
-			want := slices.Concat(routerRootChain, routerChainFor(t, tt.url).group)
+			chain := routerChainFor(t, tt.url)
+			want := slices.Concat(routerRootChain, chain.group)
+			if tt.xsrf {
+				want = append(want, chain.guards[1])
+			}
 			if !slices.Equal(rec.chain, want) {
 				t.Errorf("middleware chain = %v, want %v", rec.chain, want)
 			}
@@ -774,96 +789,125 @@ func (rec *routerCallRecorder) Middleware(name string) func(http.Handler) http.H
 	}
 }
 
-// routerPasswordStub records the password session handlers and middleware of one outlet under
-// a name prefix, so a chain says whose session a request passed. The embedded interface
-// satisfies the rest of the flavor's surface, which the router never calls.
-type routerPasswordStub struct {
-	session.PasswordAuthHandlers
+// routerDefaultSessionStub records the default outlet's session surface under a name prefix, so a
+// chain says whose session a request passed.
+type routerDefaultSessionStub struct {
 	rec    *routerCallRecorder
 	prefix string
 }
 
-func (s *routerPasswordStub) Login() http.HandlerFunc {
-	return s.rec.RecordHandlerCall(s.prefix + "Login")
+func (s *routerDefaultSessionStub) Methods(*session.MethodList) http.HandlerFunc {
+	return s.rec.RecordHandlerCall(s.prefix + "Methods")
 }
 
-func (s *routerPasswordStub) Authenticated() http.HandlerFunc {
+func (s *routerDefaultSessionStub) Authenticated() http.HandlerFunc {
 	return s.rec.RecordHandlerCall(s.prefix + "Authenticated")
 }
 
-func (s *routerPasswordStub) Logout() http.HandlerFunc {
+func (s *routerDefaultSessionStub) Logout() http.HandlerFunc {
 	return s.rec.RecordHandlerCall(s.prefix + "Logout")
 }
 
-func (s *routerPasswordStub) StartSession(next http.Handler) http.Handler {
+func (s *routerDefaultSessionStub) PendingStatus() http.HandlerFunc {
+	return s.rec.RecordHandlerCall(s.prefix + "PendingStatus")
+}
+
+func (s *routerDefaultSessionStub) PasswordLogin() http.HandlerFunc {
+	return s.rec.RecordHandlerCall(s.prefix + "PasswordLogin")
+}
+
+func (s *routerDefaultSessionStub) PendingConfirmWithPassword() http.HandlerFunc {
+	return s.rec.RecordHandlerCall(s.prefix + "PendingConfirmWithPassword")
+}
+
+func (s *routerDefaultSessionStub) PendingCancel() http.HandlerFunc {
+	return s.rec.RecordHandlerCall(s.prefix + "PendingCancel")
+}
+
+func (s *routerDefaultSessionStub) StartSession(next http.Handler) http.Handler {
 	return s.rec.Middleware(s.prefix + "StartSession")(next)
 }
 
-func (s *routerPasswordStub) SetXSRFToken(next http.Handler) http.Handler {
+func (s *routerDefaultSessionStub) SetXSRFToken(next http.Handler) http.Handler {
 	return s.rec.Middleware(s.prefix + "SetXSRFToken")(next)
 }
 
-func (s *routerPasswordStub) ValidateSession(next http.Handler) http.Handler {
+func (s *routerDefaultSessionStub) ValidateSession(next http.Handler) http.Handler {
 	return s.rec.Middleware(s.prefix + "ValidateSession")(next)
 }
 
-func (s *routerPasswordStub) ValidateXSRFToken(next http.Handler) http.Handler {
+func (s *routerDefaultSessionStub) ValidateXSRFToken(next http.Handler) http.Handler {
 	return s.rec.Middleware(s.prefix + "ValidateXSRFToken")(next)
 }
 
-// routerOIDCAzureStub records the oidc-azure session handlers and middleware of one outlet under
-// a name prefix, so a chain says whose session a request passed. The embedded interface
-// satisfies the rest of the flavor's surface, which the router never calls.
-type routerOIDCAzureStub struct {
-	session.OIDCAzureHandlers
+// routerPortalSessionStub records the portal outlet's session surface under a name prefix, so a
+// chain says whose session a request passed.
+type routerPortalSessionStub struct {
 	rec    *routerCallRecorder
 	prefix string
 }
 
-func (s *routerOIDCAzureStub) Login() http.HandlerFunc {
-	return s.rec.RecordHandlerCall(s.prefix + "Login")
+func (s *routerPortalSessionStub) Methods(*session.MethodList) http.HandlerFunc {
+	return s.rec.RecordHandlerCall(s.prefix + "Methods")
 }
 
-func (s *routerOIDCAzureStub) CallbackOIDC() http.HandlerFunc {
-	return s.rec.RecordHandlerCall(s.prefix + "CallbackOIDC")
-}
-
-func (s *routerOIDCAzureStub) Authenticated() http.HandlerFunc {
+func (s *routerPortalSessionStub) Authenticated() http.HandlerFunc {
 	return s.rec.RecordHandlerCall(s.prefix + "Authenticated")
 }
 
-func (s *routerOIDCAzureStub) Logout() http.HandlerFunc {
+func (s *routerPortalSessionStub) Logout() http.HandlerFunc {
 	return s.rec.RecordHandlerCall(s.prefix + "Logout")
 }
 
-func (s *routerOIDCAzureStub) FrontChannelLogout() http.HandlerFunc {
-	return s.rec.RecordHandlerCall(s.prefix + "FrontChannelLogout")
+func (s *routerPortalSessionStub) PendingStatus() http.HandlerFunc {
+	return s.rec.RecordHandlerCall(s.prefix + "PendingStatus")
 }
 
-func (s *routerOIDCAzureStub) StartSession(next http.Handler) http.Handler {
+func (s *routerPortalSessionStub) DirectoryLogin() http.HandlerFunc {
+	return s.rec.RecordHandlerCall(s.prefix + "DirectoryLogin")
+}
+
+func (s *routerPortalSessionStub) DirectoryCallback() http.HandlerFunc {
+	return s.rec.RecordHandlerCall(s.prefix + "DirectoryCallback")
+}
+
+func (s *routerPortalSessionStub) DirectoryFrontChannelLogout() http.HandlerFunc {
+	return s.rec.RecordHandlerCall(s.prefix + "DirectoryFrontChannelLogout")
+}
+
+func (s *routerPortalSessionStub) PendingConfirmWithPassword() http.HandlerFunc {
+	return s.rec.RecordHandlerCall(s.prefix + "PendingConfirmWithPassword")
+}
+
+func (s *routerPortalSessionStub) PendingCancel() http.HandlerFunc {
+	return s.rec.RecordHandlerCall(s.prefix + "PendingCancel")
+}
+
+func (s *routerPortalSessionStub) StartSession(next http.Handler) http.Handler {
 	return s.rec.Middleware(s.prefix + "StartSession")(next)
 }
 
-func (s *routerOIDCAzureStub) SetXSRFToken(next http.Handler) http.Handler {
+func (s *routerPortalSessionStub) SetXSRFToken(next http.Handler) http.Handler {
 	return s.rec.Middleware(s.prefix + "SetXSRFToken")(next)
 }
 
-func (s *routerOIDCAzureStub) ValidateSession(next http.Handler) http.Handler {
+func (s *routerPortalSessionStub) ValidateSession(next http.Handler) http.Handler {
 	return s.rec.Middleware(s.prefix + "ValidateSession")(next)
 }
 
-func (s *routerOIDCAzureStub) ValidateXSRFToken(next http.Handler) http.Handler {
+func (s *routerPortalSessionStub) ValidateXSRFToken(next http.Handler) http.Handler {
 	return s.rec.Middleware(s.prefix + "ValidateXSRFToken")(next)
 }
 
 // routerHandlersStub satisfies Handlers for the router tests: the generated surface
-// through the routes test's stub, the session surfaces through the flavor stubs, and
-// every middleware and browser-application handler recording under its own name.
+// through the routes test's stub, the session surfaces through the outlets' session
+// stubs, and every middleware and browser-application handler recording under its own
+// name.
 type routerHandlersStub struct {
 	*generatedHandlersStub
-	*routerPasswordStub
+	*routerDefaultSessionStub
 	rec    *routerCallRecorder
-	portal *routerOIDCAzureStub
+	portal *routerPortalSessionStub
 	// serverVersion is the release the stub reports; empty, no release, so a case that
 	// sets none is never refused.
 	serverVersion string
@@ -878,14 +922,14 @@ func (s *routerHandlersStub) ServerVersion() string {
 
 func newRouterHandlersStub(rec *routerCallRecorder) *routerHandlersStub {
 	return &routerHandlersStub{
-		generatedHandlersStub: newGeneratedHandlersStub(rec.RecordHandlerCall),
-		routerPasswordStub:    &routerPasswordStub{rec: rec},
-		rec:                   rec,
-		portal:                &routerOIDCAzureStub{rec: rec, prefix: "Portal"},
+		generatedHandlersStub:    newGeneratedHandlersStub(rec.RecordHandlerCall),
+		routerDefaultSessionStub: &routerDefaultSessionStub{rec: rec},
+		rec:                      rec,
+		portal:                   &routerPortalSessionStub{rec: rec, prefix: "Portal"},
 	}
 }
 
-func (s *routerHandlersStub) Portal() session.OIDCAzureHandlers {
+func (s *routerHandlersStub) Portal() PortalSession {
 	return s.portal
 }
 

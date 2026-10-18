@@ -224,7 +224,7 @@ func TestSiteApplyPromotes(t *testing.T) {
 
 	// The union and the shared generator cover both sites.
 	data := read(t, a, "pkg/config/data.go")
-	for _, want := range []string{`consolerouter "example.com/acme/beacon/apps/console/pkg/router"`, `portalrouter "example.com/acme/beacon/apps/portal/pkg/router"`, "\tcollection, err := Collection()\n\tif err != nil {\n\t\treturn nil, err\n\t}\n\n\tstaffAuth, err := staff.New(ctx, spannerClient, staff.Settings{Collection: collection, CookieKey: cookieKey})", `"github.com/cccteam/access"`, `"github.com/go-playground/errors/v5"`, "access.UnionCollection(consolerouter.Collection(), portalrouter.Collection())"} {
+	for _, want := range []string{`consolerouter "example.com/acme/beacon/apps/console/pkg/router"`, `portalrouter "example.com/acme/beacon/apps/portal/pkg/router"`, "\tcollection, err := Collection()\n\tif err != nil {\n\t\treturn nil, err\n\t}\n\n\tstaffAuth, err := staff.New(ctx, spannerClient, &staff.Settings{Collection: collection, CookieKey: cookieKey})", `"github.com/cccteam/access"`, `"github.com/go-playground/errors/v5"`, "access.UnionCollection(consolerouter.Collection(), portalrouter.Collection())"} {
 		if !strings.Contains(data, want) {
 			t.Errorf("data.go lacks %q:\n%s", want, data)
 		}

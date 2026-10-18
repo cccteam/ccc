@@ -22,10 +22,10 @@ import (
 // authsWired verifies that every auth package is wired through the application: the data
 // level constructs it, the release hands its embedded role file to the permission engine
 // (access.WithDefaultRoles), and a surface binds to it, either an outlet declaring it
-// (Auth, under the generated router) in the flavor the package constructs, or a
-// hand-written surface taking its type, so a population the application declares can
-// sign in somewhere and holds roles. session-tables holds each authenticator to its
-// tables; this holds each auth to the application around it.
+// (Auth, under the generated router) with the sign-in methods the package registers, or
+// a hand-written surface taking its type, so a population the application declares can
+// sign in somewhere and holds roles. session-tables holds each Auth to its tables; this
+// holds each auth to the application around it.
 type authsWired struct{}
 
 // authsWiredName is the check's name.
@@ -34,7 +34,7 @@ const authsWiredName = "auths-wired"
 func (authsWired) Name() string { return authsWiredName }
 
 func (authsWired) Describe() string {
-	return "every auth package is constructed by the data level, embeds its role file and hands it to the permission engine (access.WithDefaultRoles), and is bound by a surface (an outlet's Auth declaration in the package's flavor, or a hand-written surface taking its type); no two auths share a session or XSRF cookie; a directory-run auth has no role writers in the application; and a role file handed to the engine is validated by a test (WARN)"
+	return "every auth package is constructed by the data level, embeds its role file and hands it to the permission engine (access.WithDefaultRoles), and is bound by a surface (an outlet's Auth declaration naming the methods the package registers, or a hand-written surface taking its type); no two auths share a session or XSRF cookie; an auth with a directory-run method has no role writers in the application; and a role file handed to the engine is validated by a test (WARN)"
 }
 
 // The identifiers an auth package exports that the wiring is read from.
@@ -48,10 +48,10 @@ func (c authsWired) Run(_ context.Context, env *Env) Result {
 	a := env.App
 	if len(a.AuthPackages) == 0 {
 		if len(a.Auths) == 0 {
-			return skip(c.Name(), "no session authenticator is constructed")
+			return skip(c.Name(), "no session Auth is constructed")
 		}
 
-		return warn(c.Name(), "no auth package: the authenticators are constructed outside pkg/auth/<name> packages, so the auths cannot be told apart", authFiles(a)...)
+		return warn(c.Name(), "no auth package: the Auths are constructed outside pkg/auth/<name> packages, so the auths cannot be told apart", authFiles(a)...)
 	}
 
 	profile := a.Profile()
@@ -107,19 +107,19 @@ func (authsWired) packageFindings(a *app.App, profile app.Profile, p *app.AuthPa
 	if len(bound) == 0 && len(declared) == 0 {
 		details = append(details, fmt.Sprintf("%s: no outlet declares Auth(%q, ...) and no surface takes *%s.Auth; nothing binds to the %s auth, so its people can sign in nowhere", p.Dir, p.Path, p.Name, p.Name))
 	}
-	if constructed := flavorOf(a, p); constructed != "" {
+	if auth := authOf(a, p); auth != nil {
 		for i := range declared {
-			o := &declared[i]
-			if o.Auth.LoginFlavor() != constructed {
-				details = append(details, fmt.Sprintf("%s: outlet %s binds to the %s auth as %s, but %s constructs a %s authenticator; the generated router would mount the wrong login routes", o.Pos, o.Name, p.Name, o.Auth.Flavor, p.Dir, constructed))
-			}
+			details = append(details, methodMismatches(&declared[i], p, auth)...)
 		}
-	}
-
-	if authorityOf(a, p) == app.AuthorityDirectory {
-		details = append(details, directoryWriters(a, p)...)
-		if flavorOf(a, p) == app.FlavorOIDCGoogle {
-			details = append(details, uppercaseRoles(a, p)...)
+		for j := range auth.Methods {
+			m := &auth.Methods[j]
+			if m.Authority != app.AuthorityDirectory {
+				continue
+			}
+			details = append(details, directoryWriters(a, p, m)...)
+			if m.Kind == app.MethodGoogle {
+				details = append(details, uppercaseRoles(a, p)...)
+			}
 		}
 	}
 
@@ -352,27 +352,47 @@ func unknownAuthBindings(a *app.App, profile app.Profile) []string {
 	return details
 }
 
-// flavorOf returns the login flavor of the auth package's constructor, or empty when the
-// package constructs none the scan reads.
-func flavorOf(a *app.App, p *app.AuthPackage) string {
+// authOf returns the Auth the package constructs, or nil when it constructs none the scan
+// reads.
+func authOf(a *app.App, p *app.AuthPackage) *app.Auth {
 	for i := range a.Auths {
 		if path.Dir(a.Auths[i].File) == p.Dir {
-			return a.Auths[i].Flavor
+			return &a.Auths[i]
 		}
 	}
 
-	return ""
+	return nil
 }
 
-// authorityOf returns the role-membership authority of the auth package's constructor.
-func authorityOf(a *app.App, p *app.AuthPackage) string {
-	for i := range a.Auths {
-		if path.Dir(a.Auths[i].File) == p.Dir {
-			return a.Auths[i].Authority
+// methodMismatches compares an outlet's declared methods with the methods the package
+// registers: a declaration the package does not register would mount routes to handlers
+// the App cannot supply, and a registration the outlet does not declare has routes
+// nowhere. The two must agree in name and method.
+func methodMismatches(o *app.Outlet, p *app.AuthPackage, auth *app.Auth) []string {
+	var details []string
+	registered := map[string]string{}
+	for i := range auth.Methods {
+		registered[auth.Methods[i].Name] = auth.Methods[i].Kind
+	}
+	declared := map[string]bool{}
+	for i := range o.Auth.Methods {
+		m := &o.Auth.Methods[i]
+		declared[m.Name] = true
+		switch kind, ok := registered[m.Name]; {
+		case !ok:
+			details = append(details, fmt.Sprintf("%s: outlet %s declares the %s method %s on the %s auth, but %s registers no such method; the generated router would mount routes to handlers the App cannot supply (register it, or drop the declaration)", o.Pos, o.Name, m.Kind, m.Name, p.Name, p.Dir))
+		case kind != m.Kind:
+			details = append(details, fmt.Sprintf("%s: outlet %s declares %s as a %s method on the %s auth, but %s registers it as %s; the generated router would mount the wrong routes", o.Pos, o.Name, m.Name, m.Kind, p.Name, p.Dir, kind))
+		}
+	}
+	for i := range auth.Methods {
+		m := &auth.Methods[i]
+		if !declared[m.Name] {
+			details = append(details, fmt.Sprintf("%s:%d: the %s auth registers the %s method %s, but outlet %s (%s) does not declare it, so its login route is mounted nowhere; declare generation.%s on the outlet's Auth option", m.File, m.Line, p.Name, m.Kind, m.Name, o.Name, o.Pos, strings.TrimPrefix(app.MethodDeclaration(m.Kind, m.Name, ""), "generation.")))
 		}
 	}
 
-	return ""
+	return details
 }
 
 // directoryWriters finds role assignments in the store of an auth whose membership is the
@@ -382,7 +402,7 @@ func authorityOf(a *app.App, p *app.AuthPackage) string {
 // auth's user manager, reached through the auth's accessor (<Name>()) or its variable
 // (<name>Auth), and for the user manager handed to a function of the same file that
 // calls a role writer.
-func directoryWriters(a *app.App, p *app.AuthPackage) []string {
+func directoryWriters(a *app.App, p *app.AuthPackage, m *app.Method) []string {
 	var details []string
 	for _, rel := range a.GoFiles() {
 		src, err := os.ReadFile(a.Abs(rel))
@@ -390,7 +410,7 @@ func directoryWriters(a *app.App, p *app.AuthPackage) []string {
 			continue
 		}
 		for _, line := range app.RoleWriters(rel, src, p.Name) {
-			details = append(details, fmt.Sprintf("%s:%d: the %s auth hands role membership to the directory (session.RoleSync), but this assigns roles in its store; the directory removes them at the next login. Assign the roles in the directory, or hand membership to the application (session.DisableRoleSync)", rel, line, p.Name))
+			details = append(details, fmt.Sprintf("%s:%d: the %s auth's %s method hands role membership to the directory (RoleSync), but this assigns roles in its store; the directory removes them at the next sign-in. Assign the roles in the directory, or hand membership to the application (DisableRoleSync)", rel, line, p.Name, m.Name))
 		}
 	}
 
@@ -403,12 +423,12 @@ func isTestFile(file string) bool { return strings.HasSuffix(file, "_test.go") }
 // rather than a surface that binds to one.
 func isDataLevel(file string) bool { return path.Base(path.Dir(file)) == "config" }
 
-// authFiles lists where authenticators are constructed, for the warning.
+// authFiles lists where Auths are constructed, for the warning.
 func authFiles(a *app.App) []string {
 	files := make([]string, 0, len(a.Auths))
 	for i := range a.Auths {
 		auth := &a.Auths[i]
-		files = append(files, fmt.Sprintf("%s:%d: %s", auth.File, auth.Line, auth.Flavor))
+		files = append(files, fmt.Sprintf("%s:%d: %s", auth.File, auth.Line, methodSummary(auth)))
 	}
 
 	return files

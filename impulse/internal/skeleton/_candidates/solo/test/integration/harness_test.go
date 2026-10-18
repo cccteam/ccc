@@ -104,7 +104,7 @@ func newServed(ctx context.Context, t *testing.T) *served {
 	// The live service the engine signals policy changes through and the App follows
 	// its feature flags from: in-memory in the suites.
 	svc := live.NewFake()
-	auth, err := staff.New(ctx, db.Client, staff.Settings{Collection: router.Collection(), Signals: svc, CookieKey: testCookieKey, SessionTimeout: time.Minute})
+	auth, err := staff.New(ctx, db.Client, &staff.Settings{Collection: router.Collection(), Signals: svc, CookieKey: testCookieKey, SessionTimeout: time.Minute})
 	if err != nil {
 		t.Fatalf("staff.New() error = %v", err)
 	}
@@ -168,7 +168,7 @@ func (b *browser) login(ctx context.Context, user, password string) (status int,
 		b.t.Fatal(err)
 	}
 
-	return b.do(ctx, http.MethodPost, "/api/user/login", credentials)
+	return b.do(ctx, http.MethodPost, "/api/user/password/login", credentials)
 }
 
 // do issues one request as this browser, carrying its cookies and XSRF token.

@@ -77,9 +77,13 @@ type App struct {
 	// OutletMembers are the structs the application's own code annotates @outlet: the
 	// resources attached to router outlets other than, or in addition to, the default.
 	OutletMembers []OutletMember
-	// Auths are the session authentication constructions outside tests: the auths'
-	// login flavors and the tables they read.
+	// Auths are the session Auth constructions outside tests: the tables each reads and
+	// the sign-in methods registered on it.
 	Auths []Auth
+	// UnattachedMethods are the sign-in methods registered on an Auth the scan cannot
+	// find: the first argument names no construction in the file, and the package
+	// constructs none or several.
+	UnattachedMethods []Method
 	// GoGenerate are the //go:generate directives in the tree.
 	GoGenerate []Directive
 	// CI is the application's //impulse:ci line, or nil without one: what its CI
@@ -89,7 +93,7 @@ type App struct {
 	// MainPackages are the root-relative directories holding a package main.
 	MainPackages []string
 	// AuthPackages are the auths: the packages under an auth directory constructing a
-	// session authenticator, with every reference to them, sorted by name.
+	// session Auth, with every reference to them, sorted by name.
 	AuthPackages []AuthPackage
 	// Engines are the permission engine constructions outside tests: every access.New
 	// call, with whether it hands the engine a change signal (access.WithChangeSignal).
@@ -97,6 +101,9 @@ type App struct {
 
 	// goFiles are the non-test Go files scanned, for the passes that follow the walk.
 	goFiles []string
+	// unattached are the methods the per-file scan could not attach, resolved per package
+	// after the walk.
+	unattached []Method
 }
 
 // GoFiles lists the non-test Go files of the application, root-relative.
@@ -104,27 +111,36 @@ func (a *App) GoFiles() []string {
 	return a.goFiles
 }
 
-// Auth is one construction of a session authenticator: session.NewPasswordAuth,
-// NewOIDCAzure, NewOIDCGoogle, or NewPreauth.
+// Auth is one construction of a session Auth (session.NewAuth): the users store it opens,
+// the tables it reads, its cookies, and the sign-in methods registered on it.
 type Auth struct {
 	File string
 	Line int
-	// Authority is who owns role membership for an OIDC flavor: AuthorityDirectory when
-	// the constructor's slot is RoleSync, AuthorityApplication for DisableRoleSync, and
-	// empty for the other flavors (the application's by nature) or a slot not read.
-	Authority string
-	// Flavor is the login flavor: password, oidc-azure, oidc-google, or preauth.
-	Flavor string
-	// SessionTable is the sessions table the authenticator reads: WithSessionTableName or
-	// the library default.
+	// Var is the identifier the construction is assigned to (x, err := session.NewAuth(...)),
+	// which the method registrations name as their first argument; empty when the
+	// construction is not assigned to one.
+	Var string
+	// SessionTable is the sessions table the Auth reads: WithSessionTableName or the
+	// library default.
 	SessionTable string
-	// UserTable is the users table: WithUserTableName or the default for password auth;
-	// for the OIDC flavors, the anchor table (WithOIDCUserTableName or the default) only
-	// when the storage enables it with sessionstorage.WithOIDCUsers; empty for preauth.
+	// UserTable is the users table: WithUserTableName or the library default.
 	UserTable string
+	// IdentitiesTable is the identity links table: WithIdentitiesTableName or the library
+	// default.
+	IdentitiesTable string
+	// PendingTable is the pending sign-ins table: WithPendingSignInsTableName or the
+	// library default.
+	PendingTable string
+	// AuthEventsTable is the auth events table the storage attaches
+	// (sessionstorage.WithAuthEvents over NewAuthEventsTable), when its name is a literal
+	// or a constant of the file; empty when the storage attaches none or the name does
+	// not read.
+	AuthEventsTable string
+	// AuthEvents reports a storage constructed with sessionstorage.WithAuthEvents.
+	AuthEvents bool
 	// ExtraTables are the custom session and user data tables the storage attaches
-	// (sessionstorage.NewSpannerCustomSessionData and NewSpannerCustomUserData), when
-	// their names are literals.
+	// (sessionstorage.NewCustomSessionData and NewCustomUserData), when their names are
+	// literals.
 	ExtraTables []string
 	// CookieName is the WithCookieName argument, or empty for the library default.
 	CookieName string
@@ -141,6 +157,36 @@ type Auth struct {
 	// the callers add are not visible here, so the tables are the defaults as far as
 	// this construction shows.
 	OptionsForwarded bool
+	// Methods are the sign-in methods registered on the Auth, in source order: the
+	// password method (session.PasswordSignIn) and the redirect methods (azure.SignIn,
+	// google.SignIn, workos.SignIn) whose first argument names this construction.
+	Methods []Method
+}
+
+// Method is one sign-in method registered on an Auth.
+type Method struct {
+	File string
+	Line int
+	// Kind is the method: password, azure, google, or workos.
+	Kind string
+	// Name is the registration name: the segment of the method's login and callback
+	// routes (user/<name>/login). The password method is always registered as password.
+	Name string
+	// Authority is who owns role membership for a directory method: AuthorityDirectory
+	// when the registration's RoleSync is signin.RoleSync or google.RoleSync,
+	// AuthorityApplication for DisableRoleSync, and empty for the password method or a
+	// slot the scan does not read.
+	Authority string
+	// AuthVar is the identifier the registration's first argument names: the Auth it is
+	// registered on. The scan attaches the method to that construction, or to the only
+	// Auth of its package when the identifier does not resolve.
+	AuthVar string
+}
+
+// Directory reports a method whose people sign in through a directory or an identity
+// provider the browser is sent to: every kind but the password method.
+func (m *Method) Directory() bool {
+	return m.Kind != MethodPassword
 }
 
 // Directive is one //go:generate directive.

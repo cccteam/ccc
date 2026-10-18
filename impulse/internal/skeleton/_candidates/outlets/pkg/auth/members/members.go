@@ -1,27 +1,24 @@
-// Package members is the members auth: the people who sign in through the organization's
-// directory (OpenID Connect against Azure) and hold their roles in the members permission
-// store. In this application they are the portal's people.
+// Package members is the members auth: the people who sign in through the organization's directory (OpenID Connect against Microsoft Entra), the portal's people, who hold their roles in the
+// members permission store.
 //
-// The directory proves who someone is; the application decides what they may do. Role
-// membership is the application's (session.DisableRoleSync): the bootstrap assigns the
-// development identities their roles, and a deployed application assigns them through its
-// administration surface. The directory-run alternative, session.RoleSync, makes the
-// directory's role claims the authority and removes every hand-assigned role at the next
-// login, so one auth is never both.
-//
-// An auth is a package. It owns its session manager, in its login flavor and with its own
-// session and user tables and cookie; its permission store, with its own table prefix,
-// whose engine signals policy changes to the application's other instances through the
-// live service; and its role file, embedded beside it, so the release's default roles
-// travel with the binary.
+// An auth is a package. It owns its session manager, one Auth session with the sign-in
+// methods registered on it (here directory), with its own session, user, identity, auth
+// event and pending sign-in tables and cookie; its permission store, with its own table
+// prefix, whose engine signals policy changes to the application's other instances
+// through the live service; and its role file, embedded beside it, so the release's
+// default roles travel with the binary. Each method is its own file in this package,
+// named for its registration.
 // A site or an outlet binds to an auth by composing its handlers, and two auths on one
-// database and one host never collide, because everything an auth names carries its name.
-// The same name in this auth and in another is two unrelated principals.
+// database and one host never collide, because everything an auth names carries its
+// name. The same name in this auth and in another is two unrelated principals. The
+// package is named for the population, never for how it signs in: the members can gain
+// or lose a sign-in method without the package moving.
 package members
 
 import (
 	"context"
-	_ "embed"
+	_ "embed" // the role file rides in the binary
+	"net/http"
 	"time"
 
 	cloudspanner "cloud.google.com/go/spanner"
@@ -29,6 +26,7 @@ import (
 	"github.com/cccteam/access/spannerstore"
 	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/session"
+	"github.com/cccteam/session/azure"
 	"github.com/cccteam/session/sessionstorage"
 	"github.com/go-playground/errors/v5"
 )
@@ -44,17 +42,23 @@ const (
 	// the X-XSRF-TOKEN header, so the web app that binds to this auth names the same cookie.
 	XSRFCookie = Name + "-xsrf"
 
-	// The auth's tables, which schema/migrations creates: the sessions, and the user
-	// anchor keyed by the directory's immutable (tenant, object) identifier pair, so a
-	// renamed account stays the same person.
-	sessionsTable = TablePrefix + "Sessions"
-	usersTable    = TablePrefix + "OIDCUsers"
+	// The auth's tables, which schema/migrations creates: the sessions and users of the
+	// Auth session (a person is one user whichever way they sign in; an identity the
+	// directory verifies links to its user through the identities table), the auth events
+	// each session records and the pending sign-ins that wait for a confirmation. The
+	// names are spelled out in full so the tool's session-tables check, which reads the
+	// literals, finds their migrations.
+	sessionsTable   = "MembersSessions"
+	usersTable      = "MembersSessionUsers"
+	identitiesTable = "MembersSessionIdentities"
+	eventsTable     = "MembersSessionAuthEvents"
+	pendingTable    = "MembersSessionPendingSignIns"
 )
 
 // roleFile is the auth's default roles: the role file beside this package, embedded in the
 // binary so the roles travel with the release. The file is the complete statement of the
 // default roles; the store holds only the custom roles and the memberships written at run
-// time, and a login holds what its memberships name. A global role is held in the global
+// time, and a sign-in holds what its memberships name. A global role is held in the global
 // partition and a domain role in every tenant domain, so nothing provisions the file per
 // tenant.
 //
@@ -68,7 +72,8 @@ func Roles() access.RoleFile {
 }
 
 // Settings are the auth's settings: the collection the role file validates against, the
-// live service the permission engine signals through, and the environment-derived values.
+// live service the permission engine signals through, and the environment-derived values,
+// the settings of each sign-in method among them.
 type Settings struct {
 	// Collection is the generated permission collection: the resources, permissions and
 	// fields the release declares, which the role file validates against when the engine
@@ -86,23 +91,14 @@ type Settings struct {
 	CookieKey string
 	// SessionTimeout is the idle timeout of a browser session.
 	SessionTimeout time.Duration
-	// LoginURL is the browser page a refused login returns to, with the reason as a code
-	// in the query (?code=, a sessioninfo.LoginRefusalCode, never text): the login page of
-	// the surface that binds to this auth, which holds the sentence for each code.
+	// LoginURL is the browser page a refused or waiting sign-in returns to, with the
+	// reason as a code in the query (?code=, a sessioninfo.LoginRefusalCode, never text, or
+	// ?pending= for a sign-in that waits): the login page of the surface that binds to
+	// this auth, which holds the sentence for each code.
 	LoginURL string
-	// Directory identifies the application to the directory that verifies its logins.
-	Directory Directory
-}
-
-// Directory is the application's OpenID Connect registration with the directory: the
-// issuer, the client credentials, and the callback the directory returns the browser to.
-// Under the session library's skipAuth build tag the directory is simulated, every login
-// is APP_USERNAME, and only RedirectURL is read: it is where the simulated login returns.
-type Directory struct {
-	IssuerURL    string
-	ClientID     string
-	ClientSecret string
-	RedirectURL  string
+	// Directory is the directory registration's settings: how the application is known to
+	// Microsoft, read from the environment (APP_MEMBERS_DIRECTORY_TENANT_ID, APP_MEMBERS_DIRECTORY_CLIENT_ID, APP_MEMBERS_DIRECTORY_CLIENT_SECRET, APP_MEMBERS_DIRECTORY_REDIRECT_URL).
+	Directory DirectorySettings
 }
 
 // Signals is the channel the auth's permission engine signals a policy change on and
@@ -114,17 +110,47 @@ type Signals interface {
 	resource.SignalSubscriber
 }
 
-// Auth is the members auth: its permission store and its session manager.
+// Session is the auth's session manager: one Auth session over the Spanner store, whose
+// hooks are typed to the store's transaction.
+type Session = session.Auth[session.NoCustomData, session.NoCustomData, *cloudspanner.ReadWriteTransaction]
+
+// Auth is the members auth: its permission store and its session manager with the
+// sign-in methods registered on it.
 type Auth struct {
-	access  *access.Client
-	session *session.OIDCAzure[session.NoCustomData, session.NoCustomData]
+	access   *access.Client
+	handlers *Handlers
 }
 
-// New opens the auth's permission store and session manager over the database. The
-// permission engine parses and validates the role file against the collection before it
-// opens, so a release whose default roles are wrong does not start, blocks until its
-// first policy snapshot is loaded, and signals its policy writes through the live service
-// (access.WithChangeSignal over the policy kind), which it refuses to open without.
+// Handlers is the auth's served surface, the shape the generated router names for the
+// outlet bound to it: the Auth's middleware and handlers, what the login page is told,
+// the pending sign-in handlers, and each method's handlers under its registration name
+// (in the method's own file).
+type Handlers struct {
+	*Session
+	directory *azure.Method
+}
+
+// PendingStatus reports the sign-in that waits for a password confirmation, if any.
+func (h *Handlers) PendingStatus() http.HandlerFunc {
+	return h.Pending().Status()
+}
+
+// PendingConfirmWithPassword completes a waiting sign-in with the user's password.
+func (h *Handlers) PendingConfirmWithPassword() http.HandlerFunc {
+	return h.Pending().ConfirmWithPassword()
+}
+
+// PendingCancel discards a waiting sign-in.
+func (h *Handlers) PendingCancel() http.HandlerFunc {
+	return h.Pending().Cancel()
+}
+
+// New opens the auth's permission store and session manager over the database and
+// registers the sign-in methods. The permission engine parses and validates the role file
+// against the collection before it opens, so a release whose default roles are wrong does
+// not start, blocks until its first policy snapshot is loaded, and signals its policy
+// writes through the live service (access.WithChangeSignal over the policy kind), which it
+// refuses to open without.
 func New(ctx context.Context, db *cloudspanner.Client, settings *Settings) (*Auth, error) {
 	if settings.Signals == nil {
 		return nil, errors.New("members.Settings.Signals is nil: the permission engine signals policy changes through the application's live service, which every application wires")
@@ -144,28 +170,35 @@ func New(ctx context.Context, db *cloudspanner.Client, settings *Settings) (*Aut
 		return nil, errors.Wrap(err, "access.Client.WaitReady()")
 	}
 
-	oidcAuth, err := session.NewOIDCAzure[session.NoCustomData, session.NoCustomData](
-		sessionstorage.NewSpannerOIDC(db, sessionstorage.WithOIDCUsers()),
-		// The application is the authority for role membership: a login neither reads
-		// nor changes the person's roles.
-		session.DisableRoleSync(),
+	events, err := sessionstorage.NewAuthEventsTable(eventsTable)
+	if err != nil {
+		return nil, errors.Wrap(err, "sessionstorage.NewAuthEventsTable()")
+	}
+
+	// One Auth session every method establishes: one cookie, one session table, one
+	// middleware chain. The methods are registered on it below, before the first request.
+	authSession, err := session.NewAuth[session.NoCustomData, session.NoCustomData](
+		sessionstorage.NewSpannerAuth(db, sessionstorage.WithAuthEvents(events)),
 		settings.CookieKey,
-		settings.Directory.IssuerURL,
-		settings.Directory.ClientID,
-		settings.Directory.ClientSecret,
-		settings.Directory.RedirectURL,
 		session.WithSessionTableName(sessionsTable),
-		session.WithOIDCUserTableName(usersTable),
+		session.WithUserTableName(usersTable),
+		session.WithIdentitiesTableName(identitiesTable),
+		session.WithPendingSignInsTableName(pendingTable),
 		session.WithCookieName(Name),
 		session.WithXSRFCookieName(XSRFCookie),
 		session.WithSessionTimeout(settings.SessionTimeout),
-		session.WithLoginURL(settings.LoginURL),
 	)
 	if err != nil {
-		return nil, errors.Wrap(err, "session.NewOIDCAzure()")
+		return nil, errors.Wrap(err, "session.NewAuth()")
 	}
 
-	return &Auth{access: accessClient, session: oidcAuth}, nil
+	handlers := &Handlers{Session: authSession}
+	handlers.directory, err = registerDirectory(authSession, accessClient, settings)
+	if err != nil {
+		return nil, err
+	}
+
+	return &Auth{access: accessClient, handlers: handlers}, nil
 }
 
 // Access returns the auth's permission engine: the handlers check against it, and its
@@ -175,8 +208,13 @@ func (a *Auth) Access() *access.Client {
 }
 
 // Session returns the auth's session manager.
-func (a *Auth) Session() *session.OIDCAzure[session.NoCustomData, session.NoCustomData] {
-	return a.session
+func (a *Auth) Session() *Session {
+	return a.handlers.Session
+}
+
+// Handlers returns the auth's served surface.
+func (a *Auth) Handlers() *Handlers {
+	return a.handlers
 }
 
 // Close releases the permission engine, which ends its subscription to the policy kind.

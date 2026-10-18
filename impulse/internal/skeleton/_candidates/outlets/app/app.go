@@ -15,11 +15,11 @@ import (
 	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/outlets/pkg/auth"
 	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/outlets/pkg/auth/members"
 	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/outlets/pkg/auth/staff"
+	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/outlets/pkg/router"
 	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/ccc/resource/live"
 	"github.com/cccteam/httpio"
 	"github.com/cccteam/logger"
-	"github.com/cccteam/session"
 	"github.com/cccteam/session/sessioninfo"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-playground/errors/v5"
@@ -112,8 +112,8 @@ type App struct {
 	// by name, for requests a session group bound to another auth.
 	access  access.Controller
 	engines map[string]access.Controller
-	*session.PasswordAuth[session.NoCustomData, session.NoCustomData]
-	portal         *session.OIDCAzure[session.NoCustomData, session.NoCustomData]
+	*staff.Handlers
+	portal         *members.Handlers
 	resourceClient resource.Client
 	cursorKey      *resource.CursorKey
 	tenants        *resource.TenantRoster
@@ -164,10 +164,10 @@ func New(cfg Configurer) *App {
 	// The authorization suites bind no auth: they compose the API surface through the
 	// test router, and nothing on that path touches the session.
 	if staffAuth := cfg.Staff(); staffAuth != nil {
-		a.PasswordAuth = staffAuth.Session()
+		a.Handlers = staffAuth.Handlers()
 	}
 	if membersAuth := cfg.Members(); membersAuth != nil {
-		a.portal = membersAuth.Session()
+		a.portal = membersAuth.Handlers()
 		a.engines[members.Name] = membersAuth.Access()
 	}
 
@@ -196,7 +196,7 @@ func (a *App) engine(ctx context.Context) access.Controller {
 
 // Portal returns the portal outlet's session handlers: the members auth's, so a portal
 // session opens nothing on the console and a console session nothing on the portal.
-func (a *App) Portal() session.OIDCAzureHandlers {
+func (a *App) Portal() router.PortalSession {
 	if a.portal == nil {
 		return nil
 	}

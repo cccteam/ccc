@@ -155,7 +155,7 @@ func TestRenderAuth(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer root.Close()
-	for _, rel := range []string{"pkg/auth/members/members.go", "pkg/auth/members/roles.json", "schema/migrations/000002_MembersAccess.up.sql", "schema/migrations/000003_MembersSessions.down.sql", "schema/migrations/000004_MembersSessionUsers.up.sql"} {
+	for _, rel := range []string{"pkg/auth/members/members.go", "pkg/auth/members/password.go", "pkg/auth/members/roles.json", "schema/migrations/000002_MembersAccess.up.sql", "schema/migrations/000003_MembersSessionUsers.up.sql", "schema/migrations/000004_MembersSessions.down.sql"} {
 		if _, err := root.Stat(filepath.FromSlash(rel)); err != nil {
 			t.Errorf("%s: %v", rel, err)
 		}
