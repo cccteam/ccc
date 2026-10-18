@@ -1,72 +1,42 @@
-import { HttpClient } from '@angular/common/http';
-import { Component, inject, signal } from '@angular/core';
-import { FormsModule } from '@angular/forms';
-import { MatButtonModule } from '@angular/material/button';
+import { Component, inject } from '@angular/core';
 import { MatCardModule } from '@angular/material/card';
-import { MatFormFieldModule } from '@angular/material/form-field';
-import { MatInputModule } from '@angular/material/input';
 import { Router } from '@angular/router';
+import { LoginMethodsComponent } from '@cccteam/resource-angular/auth-login-methods';
 import { AuthService } from '@cccteam/resource-angular/auth-service';
-import { API_URL } from '@cccteam/resource-angular/types';
 import { IdleService } from '@cccteam/resource-angular/ui-idle-service';
 
 /**
- * The login page posts the credentials to the session's login route, then loads the
- * session (and with it the permission digest) before entering the application.
+ * The login page composes the library's login component. The component asks the outlet's
+ * methods route what the auth offers, in the order the generator program registered the
+ * methods, and renders it: the password form for the password method, posted to the path
+ * the route names after the list is read again (the read refreshes the XSRF cookie the
+ * post needs), and a button for each directory method, a redirect it sends the browser to
+ * with the page to return to. A refused or waiting sign-in comes back here with the reason
+ * as a code in the query (?code=) or the step in ?pending=, never text; the component
+ * shows the sentence the library holds for the code, nothing for a code it does not know,
+ * and the confirmation form for a step that waits. The page keeps what is its own: the
+ * branding, the development notes, and where a sign-in lands.
  */
 @Component({
   selector: 'app-login',
   templateUrl: './login.component.html',
   styleUrls: ['./login.component.scss'],
-  imports: [FormsModule, MatButtonModule, MatCardModule, MatFormFieldModule, MatInputModule],
+  imports: [LoginMethodsComponent, MatCardModule],
 })
 export class LoginComponent {
-  private http = inject(HttpClient);
   private auth = inject(AuthService);
   private router = inject(Router);
   private idle = inject(IdleService);
-  private apiUrl = inject(API_URL);
 
-  username = '';
-  password = '';
-  busy = signal(false);
-  failed = signal(false);
-
+  /** The page ends whatever session the browser arrived with; the component's first request, the methods list, follows. */
   constructor() {
     this.auth.logout().subscribe();
     this.idle.stop();
   }
 
-  login(): void {
-    if (this.busy()) {
-      return;
-    }
-    this.busy.set(true);
-    this.failed.set(false);
-
-    this.http.post(`${this.apiUrl}/user/password/login`, { username: this.username, password: this.password }).subscribe({
-      next: () => {
-        this.auth.checkUserSession().subscribe({
-          next: () => {
-            this.idle.start();
-            this.router.navigateByUrl(this.getAndResetRedirectUrl());
-          },
-          complete: () => this.busy.set(false),
-        });
-      },
-      error: () => {
-        this.failed.set(true);
-        this.busy.set(false);
-      },
-    });
-  }
-
-  private getAndResetRedirectUrl(): string {
-    const redirectUrl = this.auth.redirectUrl();
-    this.auth.redirectUrl.set('');
-    if (redirectUrl === '' || redirectUrl.startsWith('/login')) {
-      return '/dashboard';
-    }
-    return redirectUrl;
+  /** Signed in and the session checked: the idle watch starts and the browser moves to the page the guard turned away from, else the dashboard. */
+  go(page: string): void {
+    this.idle.start();
+    void this.router.navigateByUrl(page);
   }
 }

@@ -52,8 +52,9 @@ templates, this README, and the tool's source.
   registration name that is the segment of its routes (`user/<registration>/login`):
   `password` (always registered as `password`), `azure` (Microsoft Entra over OpenID
   Connect) or `google` (Google Workspace over OpenID Connect). An auth may register
-  several, each in a file of its own in the package; the login page renders from the
-  methods route, so a method registered and declared is a button offered.
+  several, each in a file of its own in the package; the login page composes the
+  library's login component, which renders from the methods route, so a method
+  registered and declared is a button offered.
 - **Authority**: who owns role membership for a directory method: `directory` (the
   directory's roles are synchronized at every sign-in) or `application` (roles are
   assigned in the application).
