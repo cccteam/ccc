@@ -2,7 +2,6 @@ package check
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"go/ast"
 	"go/parser"
@@ -13,8 +12,6 @@ import (
 	"slices"
 	"sort"
 	"strings"
-
-	"github.com/go-playground/errors/v5"
 
 	"github.com/cccteam/ccc/impulse/app"
 )
@@ -117,62 +114,10 @@ func (authsWired) packageFindings(a *app.App, profile app.Profile, p *app.AuthPa
 				continue
 			}
 			details = append(details, directoryWriters(a, p, m)...)
-			if m.Kind == app.MethodGoogle {
-				details = append(details, uppercaseRoles(a, p)...)
-			}
 		}
 	}
 
 	return details, warnings
-}
-
-// uppercaseRoles finds the roles of a Google directory-run auth that no login can ever
-// hold: the directory's groups assign roles by name, a group email is lowercase by
-// nature, so session.GoogleRoleSync lowercases every derived name and the store compares
-// them verbatim; a role defined with an uppercase letter is therefore never assigned,
-// and a login in no role group is refused with no_roles.
-func uppercaseRoles(a *app.App, p *app.AuthPackage) []string {
-	rolesFile := rolesFileOf(p)
-	if _, err := os.Stat(a.Abs(rolesFile)); err != nil {
-		return nil // reported as missing already
-	}
-	names, err := roleNames(a.Abs(rolesFile))
-	if err != nil {
-		return []string{fmt.Sprintf("%s: %s: %v", p.Dir, rolesFile, err)}
-	}
-	var details []string
-	for _, name := range names {
-		if name != strings.ToLower(name) {
-			details = append(details, fmt.Sprintf("%s: role %s in %s can never be held: the directory's groups assign roles by lowercase name (session.GoogleRoleSync), so rename it %s in the role file and everywhere it is named (the bootstrap identities, APP_ROLES in the environment template, the tests)", p.Dir, name, rolesFile, strings.ToLower(name)))
-		}
-	}
-
-	return details
-}
-
-// roleNames reads the role names a role file defines, global and domain alike, in
-// file order.
-func roleNames(file string) ([]string, error) {
-	data, err := os.ReadFile(file)
-	if err != nil {
-		return nil, errors.Wrap(err, "os.ReadFile()")
-	}
-	var doc struct {
-		Roles map[string][]struct {
-			Name string `json:"name"`
-		} `json:"roles"`
-	}
-	if err := json.Unmarshal(data, &doc); err != nil {
-		return nil, errors.Wrap(err, "json.Unmarshal(): not a role file")
-	}
-	var names []string
-	for _, scope := range []string{"global", "domain"} {
-		for _, role := range doc.Roles[scope] {
-			names = append(names, role.Name)
-		}
-	}
-
-	return names, nil
 }
 
 // validated reports whether a test calls access.ValidateRoles while parsing the auth

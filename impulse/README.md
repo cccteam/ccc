@@ -379,12 +379,12 @@ follow the new impulse), then `go tool impulse check`. Run the check locally bef
 pushing; the pull request is the one gate. CodeQL and the rest of GitHub's Code Security
 are optional and not rendered.
 
-A Google method under the `directory` authority needs lowercase role names: the
-directory's groups assign roles by name and the session library lowercases every derived
-name, so a role file of such an auth with an uppercase role (the base's
-`Administrator_Global`) defines a role no sign-in can hold; `auths-wired` refuses it, and
-the rename reaches the role file, the bootstrap identities, the environment template and
-the tests.
+A Google method under the `directory` authority assigns roles from the directory's groups
+by name. A group's email is lowercase, so the names reach the store in lowercase; the store
+resolves a directory's name without regard to case and writes the membership in the role
+file's spelling, so the file keeps its names as they are (the base's `Administrator_Global`).
+Two roles differing only in case are refused when the engine opens, so a resolution is never
+a guess.
 
 ## impulse check
 
