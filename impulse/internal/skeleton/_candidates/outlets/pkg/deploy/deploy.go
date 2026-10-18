@@ -1,6 +1,8 @@
 // Package deploy holds the database steps a deployment runs and the development
-// bootstrap reuses: applying the schema migrations and checking the release's role policy
-// against what the permission engine's store holds.
+// bootstrap reuses: applying the schema migrations, checking the release's role policy
+// against what the permission engine's store holds, seeding each auth's first
+// administrator while its users table holds no rows, and bringing the feature flags to
+// the release's declarations.
 package deploy
 
 import (
@@ -10,6 +12,8 @@ import (
 	"strings"
 
 	"github.com/cccteam/access"
+	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/outlets/pkg/auth/members"
+	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/outlets/pkg/auth/staff"
 	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/outlets/pkg/config"
 	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/outlets/pkg/resources"
 	"github.com/cccteam/ccc/resource"
@@ -147,6 +151,44 @@ func CheckRoles(ctx context.Context, client *access.Client, name string) error {
 	}
 
 	return nil
+}
+
+// SeedAdministrators gives each auth its first administrator while its users table holds
+// no rows, the foothold a deployed environment starts from, and prints what it did. The
+// staff auth, whose people sign in with a password, gets the administrator user with the
+// password the stack generates (APP_STAFF_ADMINISTRATOR_PASSWORD); the members auth, whose
+// people the directory provisions and whose roles the application assigns, gets the
+// administrator role memberships under the sign-in name the placement names
+// (APP_MEMBERS_ADMINISTRATOR). It runs after the role check, so the memberships name roles
+// the release ships, and seeds nothing while a user exists: every user after the first
+// comes from the administration surface, and the development bootstrap creates its own
+// logins and members instead.
+func SeedAdministrators(ctx context.Context, data *config.DataConfiguration) error {
+	seeded, err := data.Staff().SeedAdministrator(ctx, data.StaffAdministratorPassword())
+	if err != nil {
+		return errors.Wrap(err, "staff.Auth.SeedAdministrator() with APP_STAFF_ADMINISTRATOR_PASSWORD")
+	}
+	global, everyDomain := staff.AdministratorRoles()
+	reportSeed(staff.Name, seeded, fmt.Sprintf("%s holding %v in the global partition and %v in every domain", staff.Administrator, global, everyDomain))
+
+	seeded, err = data.Members().SeedAdministrator(ctx, data.MembersAdministrator())
+	if err != nil {
+		return errors.Wrap(err, "members.Auth.SeedAdministrator() with APP_MEMBERS_ADMINISTRATOR")
+	}
+	_, everyDomain = members.AdministratorRoles()
+	reportSeed(members.Name, seeded, fmt.Sprintf("%v in every domain under %s, who holds them at the first sign-in", everyDomain, data.MembersAdministrator()))
+
+	return nil
+}
+
+// reportSeed prints what the seed did for one auth.
+func reportSeed(name string, seeded bool, what string) {
+	if seeded {
+		fmt.Printf("Seeded the %s auth's first administrator: %s\n", name, what)
+
+		return
+	}
+	fmt.Printf("The %s auth has users: no administrator seeded\n", name)
 }
 
 // MigrateFeatures brings the FeatureFlags table to the release's declarations

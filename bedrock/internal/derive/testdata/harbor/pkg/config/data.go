@@ -286,4 +286,11 @@ type dataConfig struct {
 	// TasksQueue is the Cloud Tasks queue the application enqueues its deferred work on,
 	// as the Cloud Tasks API names it (projects/<project>/locations/<region>/queues/<name>).
 	TasksQueue string `env:"APP_TASKS_QUEUE"`
+
+	// MembersAdministrator is the sign-in name of the members auth's first administrator,
+	// as the directory presents it (the user principal name): the migrate command seeds
+	// the administrator role membership under it while the auth's users table holds no
+	// rows, so the first person to sign in holds the role. Named per environment by the
+	// placement; the bootstrap seeds the development members instead.
+	MembersAdministrator string `env:"APP_MEMBERS_ADMINISTRATOR"`
 }

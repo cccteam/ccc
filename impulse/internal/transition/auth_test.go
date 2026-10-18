@@ -198,7 +198,7 @@ func TestAuthApply(t *testing.T) {
 		"\treturn &DataConfiguration{\n\t\tspannerClient: spannerClient,\n\t\tstaff:         staffAuth,\n\t}, nil\n",
 		"\treturn assemble(spannerClient, staffAuth), nil\n", 1)
 
-	const packageDid = "pkg/auth/partners: the partners auth package (partners.go, password.go), rendered from the skeleton's auth source: the Auth session over tables prefixed Partners, the partners permission store, and the methods password, each in its own file"
+	const packageDid = "pkg/auth/partners: the partners auth package (foothold.go, partners.go, password.go), rendered from the skeleton's auth source: the Auth session over tables prefixed Partners, the partners permission store, and the methods password, each in its own file"
 	const migrationsDid = "schema/migrations: 000005_PartnersAccess, 000006_PartnersSessionUsers, 000007_PartnersSessions, the partners auth's tables: the access tables copied from the staff auth's under the Partners prefix, and the Auth session tables (sessions, users, identities, auth events, pending sign-ins)"
 	const rolesDid = "pkg/auth/partners/roles.json: the partners auth's role file, empty: author its roles when its surfaces are bound"
 	const configDid = "pkg/config/data.go: the partners auth constructed on DataConfiguration beside the staff auth (field, construction, import); pkg/config/partners.go: its accessor Partners()"
@@ -212,10 +212,13 @@ func TestAuthApply(t *testing.T) {
 		check       func(t *testing.T, a *app.App)
 	}{
 		{
-			name:        "a password auth written beside staff",
-			auth:        Auth{Name: "partners"},
-			wantDid:     []string{packageDid, migrationsDid, rolesDid, configDid, "ran go generate ./..."},
-			wantSkipped: []string{"pkg/config/data.go: Close releases the staff auth only; release the partners auth too"},
+			name:    "a password auth written beside staff",
+			auth:    Auth{Name: "partners"},
+			wantDid: []string{packageDid, migrationsDid, rolesDid, configDid, "ran go generate ./..."},
+			wantSkipped: []string{
+				`pkg/auth/partners/foothold.go: the first administrator the migrate command seeds while the auth's users table holds no rows, a user named administrator with a generated password; author AdministratorRoles with the role file, declare the password in the data level (APP_PARTNERS_ADMINISTRATOR_PASSWORD, secret:"generated") and seed it from pkg/deploy SeedAdministrators`,
+				"pkg/config/data.go: Close releases the staff auth only; release the partners auth too",
+			},
 			check: func(t *testing.T, a *app.App) {
 				t.Helper()
 				pkg := read(t, a, "pkg/auth/partners/partners.go")
@@ -283,7 +286,7 @@ func TestAuthApply(t *testing.T) {
 			auth:  Auth{Name: "partners", Methods: []authpkg.Method{{Kind: app.MethodAzure, Name: "directory", Authority: AuthorityApplication}}},
 			extra: map[string]string{"pkg/config/data.go": authConfigEnv},
 			wantDid: []string{
-				"pkg/auth/partners: the partners auth package (directory.go, partners.go), rendered from the skeleton's auth source: the Auth session over tables prefixed Partners, the partners permission store, and the methods directory (azure, role membership the application's), each in its own file",
+				"pkg/auth/partners: the partners auth package (directory.go, foothold.go, partners.go), rendered from the skeleton's auth source: the Auth session over tables prefixed Partners, the partners permission store, and the methods directory (azure, role membership the application's), each in its own file",
 				migrationsDid, rolesDid,
 				"pkg/config/data.go: dataConfig reads the partners auth's directory registration from APP_PARTNERS_DIRECTORY_TENANT_ID, APP_PARTNERS_DIRECTORY_CLIENT_ID, APP_PARTNERS_DIRECTORY_CLIENT_SECRET, APP_PARTNERS_DIRECTORY_REDIRECT_URL",
 				configDid,
@@ -291,6 +294,7 @@ func TestAuthApply(t *testing.T) {
 				"ran go generate ./...",
 			},
 			wantSkipped: []string{
+				"pkg/auth/partners/foothold.go: the first administrator the migrate command seeds while the auth's users table holds no rows, the administrator role memberships under the sign-in name the placement names; author AdministratorRoles with the role file, declare the name in the data level (APP_PARTNERS_ADMINISTRATOR) and seed it from pkg/deploy SeedAdministrators",
 				"pkg/config/data.go: Close releases the staff auth only; release the partners auth too",
 				"no environment template (.envrc.template, .env.template, .env.example) to add the directory method's variables to (APP_PARTNERS_DIRECTORY_TENANT_ID, APP_PARTNERS_DIRECTORY_CLIENT_ID, APP_PARTNERS_DIRECTORY_CLIENT_SECRET, APP_PARTNERS_DIRECTORY_REDIRECT_URL)",
 			},

@@ -115,8 +115,10 @@ type Signals interface {
 type Session = session.Auth[session.NoCustomData, session.NoCustomData, *cloudspanner.ReadWriteTransaction]
 
 // Auth is the members auth: its permission store and its session manager with the
-// sign-in methods registered on it.
+// sign-in methods registered on it, and the database client it reads its own tables
+// through (the users table, when the deployment seeds the first administrator).
 type Auth struct {
+	db       *cloudspanner.Client
 	access   *access.Client
 	handlers *Handlers
 }
@@ -198,7 +200,7 @@ func New(ctx context.Context, db *cloudspanner.Client, settings *Settings) (*Aut
 		return nil, err
 	}
 
-	return &Auth{access: accessClient, handlers: handlers}, nil
+	return &Auth{db: db, access: accessClient, handlers: handlers}, nil
 }
 
 // Access returns the auth's permission engine: the handlers check against it, and its

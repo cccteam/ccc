@@ -395,6 +395,7 @@ above them.
 | `APP_STAFF_DIRECTORY_REDIRECT_URL` | data | `https://<first hostname>/api/user/directory/callback` | yes | | |
 | `APP_STAFF_DIRECTORY_GROUP_PREFIX` | data | `var.staff_directory_group_prefix` | yes | yes | yes |
 | `APP_STAFF_DIRECTORY_GROUP_LOOKUP` | data | `var.staff_directory_group_lookup` | yes | | |
+| `APP_MEMBERS_ADMINISTRATOR` | data | `var.members_administrator[env]` | yes | yes | yes |
 | `APP_JOBS_TEMPLATE` | site | the job process's template job, which the site's own build's job is named from (the job driver's settings, `siteConfig.Template`) | yes | | |
 | `APP_SCHEDULER_INVOKER` | none, the framework reads it | the scheduler's invoker identity, unset in a pull-request stack | yes | | |
 | `APP_COOKIE_KEY`, `APP_STAFF_DIRECTORY_CLIENT_SECRET`, `APP_MEMBERS_DIRECTORY_CLIENT_SECRET` | data | secret, at the pinned version | yes | | yes |
@@ -1027,9 +1028,15 @@ Per environment, after the first apply:
    members can view its member list (the infrastructure repository's README,
    "The role groups"). If the role groups
    are nested, set `staff_directory_group_lookup = "nested"` in `terraform.tfvars`.
-3. Generate a cookie key (`openssl rand -base64 32`) and add it as version 1
+3. Name the members auth's first administrator in `terraform.tfvars` (`members_administrator`), per
+   environment: the sign-in name the directory presents (the user principal name
+   on Entra, the email on Google). The migrate command of the first release in the
+   environment seeds the administrator role membership under it while the auth's
+   users table holds no rows, and refuses to seed while the name is empty; the
+   person then signs in through the directory and holds the role.
+4. Generate a cookie key (`openssl rand -base64 32`) and add it as version 1
    of `imp-<env>-gbl-harbor-cookie-key`.
-4. Pin the versions in `secret_versions` and apply.
+5. Pin the versions in `secret_versions` and apply.
 
 ## Inputs
 
@@ -1056,6 +1063,7 @@ Per environment, after the first apply:
 | `staff_directory_group_lookup` | How far the groups read of the staff auth's directory registration reaches: direct or nested. | `string` | `"direct"` | no |
 | `staff_directory_group_prefix` | Prefix of the role groups of the staff auth's directory registration. | `string` | `"staff-"` | no |
 | `staff_directory_hosted_domain` | Workspace domain the logins of the staff auth's directory registration are restricted to. | `string` | `"impulseframework.com"` | no |
+| `members_administrator` | Sign-in name of the members auth's first administrator, per environment. | `map(string)` | all empty | no |
 | `state_bucket` | State bucket, for the upstream layers' outputs. | `string` | n/a | yes |
 
 ## Outputs

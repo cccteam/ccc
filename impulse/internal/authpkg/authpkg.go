@@ -30,6 +30,10 @@ import (
 
 // Spec describes the auth package to render.
 type Spec struct {
+	// AdministratorRoles are the roles the auth's first administrator holds, by where
+	// they are held, which the foothold file names (AdministratorRoles); empty renders a
+	// foothold whose roles are left to author with the role file.
+	AdministratorRoles AdministratorRoles
 	// Module is the application's module path, which the package's imports of the
 	// application's own packages start with.
 	Module string
@@ -43,6 +47,13 @@ type Spec struct {
 	// Doc is a sentence for the package comment saying who the population is ("the
 	// people who sign in to the console"); empty for a generic one.
 	Doc string
+}
+
+// AdministratorRoles are role names by where a membership is held: the global partition
+// and every tenant domain.
+type AdministratorRoles struct {
+	Global      []string
+	EveryDomain []string
 }
 
 // Method is one sign-in method of the auth.
@@ -352,6 +363,13 @@ func Files(spec *Spec) (map[string][]byte, error) {
 		return nil, err
 	}
 	files[spec.Name+".go"] = main
+	if Foothold(spec) != "" {
+		foothold, err := render(footholdFile, footholdTemplate, newView(spec))
+		if err != nil {
+			return nil, err
+		}
+		files[footholdFile] = foothold
+	}
 	for i := range spec.Methods {
 		m := &spec.Methods[i]
 		var tmpl string
@@ -398,8 +416,11 @@ func MethodFile(spec *Spec, m *Method) ([]byte, error) {
 
 // FileNames lists the files Files renders, sorted.
 func FileNames(spec *Spec) []string {
-	files := make([]string, 0, 1+len(spec.Methods))
+	files := make([]string, 0, 2+len(spec.Methods))
 	files = append(files, spec.Name+".go")
+	if Foothold(spec) != "" {
+		files = append(files, footholdFile)
+	}
 	for i := range spec.Methods {
 		name := spec.Methods[i].Name
 		if spec.Methods[i].Kind == app.MethodPassword {

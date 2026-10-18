@@ -89,6 +89,12 @@ func RegistrationVariable(auth, registration, suffix string) string {
 	return appPrefix + upperSnake(auth) + "_" + upperSnake(registration) + "_" + suffix
 }
 
+// AdministratorVariable is the environment variable naming an auth's first
+// administrator under the convention: APP_<AUTH>_ADMINISTRATOR.
+func AdministratorVariable(auth string) string {
+	return appPrefix + upperSnake(auth) + "_ADMINISTRATOR"
+}
+
 // upperSnake is a name in upper case with underscores for its hyphens.
 func upperSnake(name string) string {
 	return strings.ToUpper(strings.ReplaceAll(name, "-", "_"))
@@ -141,8 +147,28 @@ func (m *Model) auth(a *app.App, cfg *config, profile *app.Profile, pkg *app.Aut
 		}
 		auth.Methods = append(auth.Methods, method)
 	}
+	if err := m.administrator(&auth); err != nil {
+		return Auth{}, err
+	}
 
 	return auth, nil
+}
+
+// administrator finds the auth's first-administrator variable by the convention and
+// gives it its role. One tagged as a secret is refused: a sign-in name is a setting the
+// placement names per environment, not a value Secret Manager holds.
+func (m *Model) administrator(auth *Auth) error {
+	v := m.variableNamed(AdministratorVariable(auth.Name))
+	if v == nil {
+		return nil
+	}
+	if v.Secret {
+		return errors.Newf("%s:%d: %s carries a secret tag: the %s auth's first administrator is a sign-in name the placement names per environment, a setting, not a secret; drop the tag", v.File, v.Line, v.Declaration(), auth.Name)
+	}
+	v.Role = RoleAdministrator
+	auth.Administrator = v
+
+	return nil
 }
 
 // boundOutlets lists the names and prefixes of the outlets bound to the auth package.

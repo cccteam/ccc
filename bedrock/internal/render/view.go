@@ -137,6 +137,14 @@ type view struct {
 	// method alone has none of that, and its stack carries the cookie key alone.
 	Methods   []*methodView
 	Directory bool
+	// Administrators are the auths whose code names a first administrator
+	// (derive.Auth.Administrator): the sign-in name the migrate command seeds the
+	// administrator role membership under while the auth's users table holds no rows, a
+	// stack variable per environment carried by every data-level process, with a hand
+	// step of its own after the registrations'. AdministratorEnv is their aligned
+	// assignment block of locals.tf.
+	Administrators   []*authView
+	AdministratorEnv string
 	// The variables by role, for the templates that name them.
 	ServiceName    *derive.Variable
 	LoggingProject *derive.Variable
@@ -872,6 +880,7 @@ func newView(m *derive.Model) (*view, error) {
 	if err := v.methods(); err != nil {
 		return nil, err
 	}
+	v.administrators()
 	v.environments()
 	v.regions()
 	v.secrets()
@@ -1035,6 +1044,36 @@ func (v *view) methods() error {
 	v.Directory = len(v.Methods) > 0
 
 	return nil
+}
+
+// authView is one auth whose first administrator the placement names: the auth, its
+// stack variable (<auth>_administrator), its label in prose, the variable the code
+// declares, and the number of its hand step.
+type authView struct {
+	Name     string
+	Var      string
+	Label    string
+	Variable *derive.Variable
+	Step     int
+}
+
+// administrators prepares the auths whose code names a first administrator, in the
+// model's order (auths by name), each with a hand step numbered after the directory
+// registrations', and their assignment block for locals.tf.
+func (v *view) administrators() {
+	var env [][2]string
+	for i := range v.Auths {
+		a := &v.Auths[i]
+		if a.Administrator == nil {
+			continue
+		}
+		av := &authView{Name: a.Name, Var: strings.ReplaceAll(a.Name, "-", "_") + "_administrator", Label: "the " + a.Name + " auth", Variable: a.Administrator, Step: len(v.Methods) + len(v.Administrators) + 1}
+		v.Administrators = append(v.Administrators, av)
+		env = append(env, [2]string{a.Administrator.Name, "var." + av.Var + "[var.environment]"})
+	}
+	if len(env) > 0 {
+		v.AdministratorEnv = aligned("    ", env)
+	}
 }
 
 // byRole returns the variable in the role, or nil.
@@ -1223,12 +1262,12 @@ func (v *view) secrets() {
 	}
 	v.TfvarsSecretVersions = aligned("  ", versions)
 	cookieGenerated := v.CookieKeySecret != nil && v.CookieKeySecret.Generated
-	v.CookieKeyStep = len(v.Methods) + 1
+	v.CookieKeyStep = len(v.Methods) + len(v.Administrators) + 1
 	v.PinStep = v.CookieKeyStep
 	if !cookieGenerated {
 		v.PinStep++
 	}
-	v.HandSteps = v.Directory || !cookieGenerated || len(v.PinnedSecrets) > 0
+	v.HandSteps = v.Directory || len(v.Administrators) > 0 || !cookieGenerated || len(v.PinnedSecrets) > 0
 }
 
 // blocks prepares the aligned blocks and the remaining phrases.

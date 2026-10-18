@@ -8,11 +8,15 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
 
 	"cloud.google.com/go/spanner"
+	"github.com/cccteam/ccc/accesstypes"
+	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/sites/pkg/auth/staff"
+	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/sites/pkg/config"
 	initiator "github.com/cccteam/db-initiator"
 )
 
@@ -31,6 +35,12 @@ const (
 // serviceName is the service name the migration run's core level reads
 // (APP_SERVICE_NAME); any name serves the emulators.
 const serviceName = "migrate-test"
+
+// The foothold's settings, as a deployment supplies them: the password the staff auth's
+// first administrator is seeded with, the stack's generated secret.
+const (
+	administratorPassword = "a-generated-password"
+)
 
 // The package's emulators: the Spanner container the cases create their databases on,
 // and the Firestore emulator the migration run's live service opens. The data level
@@ -116,6 +126,8 @@ func TestExecute(t *testing.T) {
 	// and opens the live service, required, over the Firestore emulator.
 	t.Setenv("APP_SERVICE_NAME", serviceName)
 	t.Setenv("FIRESTORE_EMULATOR_HOST", firestoreEmulator.Host())
+	// The foothold's settings, which a case may override.
+	t.Setenv("APP_STAFF_ADMINISTRATOR_PASSWORD", administratorPassword)
 	last := lastMigration(t)
 
 	tests := []struct {
@@ -132,11 +144,33 @@ func TestExecute(t *testing.T) {
 		wantErr string
 		// wantAfter is what -version reports once the case has run; empty skips the check.
 		wantAfter string
+		// env overrides the environment for the case, a variable at a time; an empty value
+		// is set, not unset.
+		env map[string]string
+		// after checks the database once the run has returned; nil checks nothing.
+		after func(t *testing.T)
 	}{
 		{
-			name:      "the migrations with the seed apply every schema and data migration",
+			name:      "the migrations with the seed apply every schema and data migration and seed the first administrator",
 			args:      []string{"-seed"},
 			wantAfter: fmt.Sprintf("schema: version %d\ndata: %s\n", last, seededData(t)),
+			after:     administratorSeeded,
+		},
+		{
+			name:    "a database with a user seeds no administrator",
+			prepare: withUser,
+			after:   administratorAbsent,
+		},
+		{
+			name:    "a database every user has left seeds the administrator again",
+			prepare: seededThenEmptied,
+			after:   administratorSeeded,
+		},
+		{
+			name:     "an empty users table with no administrator password is refused",
+			env:      map[string]string{"APP_STAFF_ADMINISTRATOR_PASSWORD": ""},
+			wantCode: exitFailed,
+			wantErr:  "no administrator password was given",
 		},
 		{
 			name:    "the report on a fresh database",
@@ -242,14 +276,18 @@ func TestExecute(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			name := "nothing-here"
+			var db *initiator.SpannerDB
 			if !tt.missing {
-				db := database(t)
-				if tt.prepare != nil {
-					tt.prepare(t, db)
-				}
+				db = database(t)
 				name = path.Base(db.DatabaseName())
 			}
 			t.Setenv("GOOGLE_CLOUD_SPANNER_DATABASE_NAME", name)
+			for k, v := range tt.env {
+				t.Setenv(k, v)
+			}
+			if tt.prepare != nil {
+				tt.prepare(t, db)
+			}
 
 			var stdout, stderr bytes.Buffer
 			code := execute(t.Context(), tt.args, &stdout, &stderr)
@@ -264,6 +302,9 @@ func TestExecute(t *testing.T) {
 			}
 			if tt.wantErr == "" && stderr.Len() != 0 {
 				t.Errorf("stderr = %q, want none", stderr.String())
+			}
+			if tt.after != nil {
+				tt.after(t)
 			}
 			if tt.wantAfter == "" {
 				return
@@ -318,6 +359,95 @@ func dirty(t *testing.T, db *initiator.SpannerDB) {
 	if _, err := db.Apply(t.Context(), []*spanner.Mutation{mutation}); err != nil {
 		t.Fatalf("spanner.Client.Apply() error = %v", err)
 	}
+}
+
+// withUser migrates the database and gives the staff auth one user, so the foothold has
+// nothing to do.
+func withUser(t *testing.T, db *initiator.SpannerDB) {
+	t.Helper()
+
+	migrated(t, db)
+	mutation := spanner.Insert("StaffSessionUsers", []string{"Id", "Username", "CreatedAt"}, []any{"00000000-0000-4000-8000-000000000001", "someone", spanner.CommitTimestamp})
+	if _, err := db.Apply(t.Context(), []*spanner.Mutation{mutation}); err != nil {
+		t.Fatalf("spanner.Client.Apply() error = %v", err)
+	}
+}
+
+// seededThenEmptied runs the migration once, which seeds the administrator, then deletes
+// the administrator: a users table every user has left.
+func seededThenEmptied(t *testing.T, _ *initiator.SpannerDB) {
+	t.Helper()
+
+	var stdout, stderr bytes.Buffer
+	if code := execute(t.Context(), nil, &stdout, &stderr); code != 0 {
+		t.Fatalf("execute() = %d; stderr:\n%s", code, stderr.String())
+	}
+	data := openData(t)
+	api := data.Staff().Session().API()
+	id, err := api.ValidateCredentials(t.Context(), staff.Administrator, administratorPassword)
+	if err != nil {
+		t.Fatalf("session.AuthAPI.ValidateCredentials(%s) error = %v", staff.Administrator, err)
+	}
+	if err := api.DeleteSessionUser(t.Context(), id); err != nil {
+		t.Fatalf("session.AuthAPI.DeleteSessionUser(%s) error = %v", staff.Administrator, err)
+	}
+}
+
+// openData opens the data level on the case's database, as the migration run does, and
+// closes it when the case ends.
+func openData(t *testing.T) *config.DataConfiguration {
+	t.Helper()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	data, err := config.NewDataConfiguration(ctx)
+	if err != nil {
+		cancel()
+		t.Fatalf("config.NewDataConfiguration() error = %v", err)
+	}
+	t.Cleanup(func() {
+		data.Close()
+		cancel()
+	})
+
+	return data
+}
+
+// administratorSeeded checks the foothold: the staff auth's administrator signs in with
+// the configured password and holds the administrator's roles.
+func administratorSeeded(t *testing.T) {
+	t.Helper()
+
+	data := openData(t)
+	ctx := t.Context()
+	if _, err := data.Staff().Session().API().ValidateCredentials(ctx, staff.Administrator, administratorPassword); err != nil {
+		t.Errorf("session.AuthAPI.ValidateCredentials(%s) error = %v", staff.Administrator, err)
+	}
+	roles, err := data.UserManager().UserRoles(ctx, staff.Administrator)
+	if err != nil {
+		t.Fatalf("access.UserManager.UserRoles(%s) error = %v", staff.Administrator, err)
+	}
+	global, everyDomain := staff.AdministratorRoles()
+	if got, want := sorted(roles[accesstypes.GlobalPolicyScope()]), sorted(global); !slices.Equal(got, want) {
+		t.Errorf("roles in the global partition = %v, want %v", got, want)
+	}
+	if got, want := sorted(roles[accesstypes.EveryDomainPolicyScope()]), sorted(everyDomain); !slices.Equal(got, want) {
+		t.Errorf("roles in every domain = %v, want %v", got, want)
+	}
+}
+
+// administratorAbsent checks nothing was seeded: no administrator signs in.
+func administratorAbsent(t *testing.T) {
+	t.Helper()
+
+	data := openData(t)
+	if _, err := data.Staff().Session().API().ValidateCredentials(t.Context(), staff.Administrator, administratorPassword); err == nil {
+		t.Errorf("session.AuthAPI.ValidateCredentials(%s) succeeded, want a refusal", staff.Administrator)
+	}
+}
+
+// sorted is a copy of the roles in order, for a comparison that ignores the store's.
+func sorted(roles []accesstypes.Role) []accesstypes.Role {
+	return slices.Sorted(slices.Values(roles))
 }
 
 // lastMigration is the highest version among the tree's schema migrations.

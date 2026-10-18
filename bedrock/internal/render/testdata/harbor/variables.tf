@@ -380,6 +380,24 @@ variable "staff_directory_hosted_domain" {
   default     = "impulseframework.com"
 }
 
+variable "members_administrator" {
+  description = <<-EOT
+    Per environment, the sign-in name of the members auth's first administrator
+    (APP_MEMBERS_ADMINISTRATOR, pkg/config/data.go dataConfig.MembersAdministrator): the name the
+    directory presents, the user principal name on Entra or the email on Google.
+    The migrate command seeds the administrator role membership under it while
+    the auth's users table holds no rows, so the first person to sign in holds
+    the role; empty until named, and the first release in an environment refuses
+    to seed without it (README, "Hand steps").
+  EOT
+  type        = map(string)
+  default = {
+    tst = ""
+    stg = ""
+    prd = ""
+  }
+}
+
 variable "state_bucket" {
   description = "(Required) State bucket 0-bootstrap seeded, read for the upstream layers' outputs. The same name is substituted into the backend block by hand."
   type        = string

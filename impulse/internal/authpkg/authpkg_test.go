@@ -45,7 +45,7 @@ func TestFiles(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Files(%s) error = %v", spec.Name, err)
 		}
-		if got, want := len(files), len(spec.Methods)+1; got != want {
+		if got, want := len(files), len(FileNames(spec)); got != want {
 			t.Errorf("Files(%s) wrote %d files, want %d", spec.Name, got, want)
 		}
 		for name, data := range files {

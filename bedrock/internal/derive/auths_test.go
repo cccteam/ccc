@@ -34,6 +34,88 @@ func TestRegistrationVariable(t *testing.T) {
 	}
 }
 
+// TestAdministratorVariable spells the variable naming an auth's first administrator:
+// APP_<AUTH>_ADMINISTRATOR.
+func TestAdministratorVariable(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		auth string
+		want string
+	}{
+		{name: "a one-word auth", auth: "members", want: "APP_MEMBERS_ADMINISTRATOR"},
+		{name: "a hyphenated auth", auth: "field-staff", want: "APP_FIELD_STAFF_ADMINISTRATOR"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := AdministratorVariable(tt.auth); got != tt.want {
+				t.Errorf("AdministratorVariable() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestAuthAdministrator finds an auth's first-administrator variable among the variables
+// by the convention and gives it the administrator role; an auth declaring none has none,
+// and one declaring it as a secret is refused.
+func TestAuthAdministrator(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		auth      string
+		variables []Variable
+		want      string
+		wantErr   string
+	}{
+		{
+			name:      "the auth's variable, by the convention",
+			auth:      "members",
+			variables: []Variable{{Name: "APP_COOKIE_KEY", Secret: true}, {Name: "APP_MEMBERS_ADMINISTRATOR", Struct: "dataConfig", Field: "MembersAdministrator"}},
+			want:      "APP_MEMBERS_ADMINISTRATOR",
+		},
+		{
+			name:      "an auth declaring none",
+			auth:      "staff",
+			variables: []Variable{{Name: "APP_MEMBERS_ADMINISTRATOR", Struct: "dataConfig", Field: "MembersAdministrator"}},
+		},
+		{
+			name:      "a sign-in name tagged as a secret is refused",
+			auth:      "members",
+			variables: []Variable{{Name: "APP_MEMBERS_ADMINISTRATOR", Struct: "dataConfig", Field: "MembersAdministrator", File: "pkg/config/data.go", Line: 12, Secret: true}},
+			wantErr:   "pkg/config/data.go:12: dataConfig.MembersAdministrator carries a secret tag: the members auth's first administrator is a sign-in name the placement names per environment, a setting, not a secret; drop the tag",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			m := &Model{Variables: tt.variables}
+			auth := Auth{Name: tt.auth}
+			err := m.administrator(&auth)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("administrator() error = %v, want %q", err, tt.wantErr)
+				}
+
+				return
+			}
+			if err != nil {
+				t.Fatalf("administrator() error = %v", err)
+			}
+			switch {
+			case tt.want == "" && auth.Administrator != nil:
+				t.Errorf("Administrator = %s, want none", auth.Administrator.Name)
+			case tt.want != "" && (auth.Administrator == nil || auth.Administrator.Name != tt.want):
+				t.Errorf("Administrator = %v, want %s", auth.Administrator, tt.want)
+			case tt.want != "" && auth.Administrator.Role != RoleAdministrator:
+				t.Errorf("Role = %q, want %q", auth.Administrator.Role, RoleAdministrator)
+			}
+		})
+	}
+}
+
 // TestRegistrationVariables finds a directory method's settings among the variables by
 // the convention and gives each its role: the slot the registration declares, the
 // client credentials and the callback, and for a Google registration under the

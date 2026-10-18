@@ -25,14 +25,25 @@ var candidateAuths = map[string][]authpkg.Spec{
 		Module: candidateModule("outlets"), AuthDir: "pkg/auth", Name: "members",
 		Doc:     "the people who sign in through the organization's directory (OpenID Connect against Microsoft Entra), the portal's people",
 		Methods: []authpkg.Method{{Kind: app.MethodAzure, Name: "directory", Authority: app.AuthorityApplication}},
+		// The development member's domain role (cmd/bootstrap/users.json), in every domain.
+		AdministratorRoles: authpkg.AdministratorRoles{EveryDomain: []string{"Administrator_Domain"}},
 	}},
 }
 
+// staffSpec is the staff auth of each candidate: a password auth whose first administrator
+// holds what the development administrator holds (cmd/bootstrap/users.json): the global
+// roles, and the domain role in every domain where the candidate has tenants.
 func staffSpec(candidate string) authpkg.Spec {
+	roles := authpkg.AdministratorRoles{Global: []string{"Administrator_Global", "FeatureAdministrator"}, EveryDomain: []string{"Administrator_Domain"}}
+	if candidate == Base {
+		roles.EveryDomain = nil
+	}
+
 	return authpkg.Spec{
 		Module: candidateModule(candidate), AuthDir: "pkg/auth", Name: PlaceholderAuth,
-		Doc:     "the people who sign in to the console with a password",
-		Methods: []authpkg.Method{{Kind: app.MethodPassword}},
+		Doc:                "the people who sign in to the console with a password",
+		Methods:            []authpkg.Method{{Kind: app.MethodPassword}},
+		AdministratorRoles: roles,
 	}
 }
 

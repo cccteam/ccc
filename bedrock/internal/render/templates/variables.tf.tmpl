@@ -400,6 +400,24 @@ variable "{{$m.Var "HOSTED_DOMAIN"}}" {
 
 {{end -}}
 {{end -}}
+{{range .Administrators -}}
+variable "{{.Var}}" {
+  description = <<-EOT
+    Per environment, the sign-in name of {{.Label}}'s first administrator
+    ({{.Variable.Name}}, {{.Variable.File}} {{.Variable.Declaration}}): the name the
+    directory presents, the user principal name on Entra or the email on Google.
+    The migrate command seeds the administrator role membership under it while
+    the auth's users table holds no rows, so the first person to sign in holds
+    the role; empty until named, and the first release in an environment refuses
+    to seed without it (README, "Hand steps").
+  EOT
+  type        = map(string)
+  default = {
+{{$.EmptyEnvStrings}}
+  }
+}
+
+{{end -}}
 variable "state_bucket" {
   description = "(Required) State bucket 0-bootstrap seeded, read for the upstream layers' outputs. The same name is substituted into the backend block by hand."
   type        = string

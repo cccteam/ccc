@@ -144,6 +144,7 @@ from `2-env`'s state.
   | Variable | Field | Container |
   |---|---|---|
   | `APP_COOKIE_KEY` | `dataConfig.CookieKey` | `...-cookie-key` |
+  | `APP_KEEPERS_ADMINISTRATOR_PASSWORD` | `dataConfig.KeepersAdministratorPassword` | `...-keepers-administrator-password` |
 
   The site's identity holds accessor. The migrate command
   constructs the same configuration level, but its work is known: the session
@@ -245,7 +246,7 @@ above them.
 | `APP_SERVICE_NAME` | core | `beacon` / `beacon-migrate` | yes | yes |
 | `GOOGLE_CLOUD_LOGGING_PROJECT` | core | the environment project | yes | yes |
 | `GOOGLE_CLOUD_SPANNER_PROJECT`, `_INSTANCE_ID`, `_DATABASE_NAME` | data | the database | yes | yes |
-| `APP_COOKIE_KEY` | data | secret, at the pinned version | yes | |
+| `APP_COOKIE_KEY`, `APP_KEEPERS_ADMINISTRATOR_PASSWORD` | data | secret, at the pinned version | yes | |
 
 Not set: `APP_VERSION` (the
 pipeline bakes it into the image, so a deploy never edits the template's
@@ -290,7 +291,7 @@ role for the time asked.
 
 ### Generated secrets
 
-A secret declared `secret:"generated"` in the code (`APP_COOKIE_KEY`) has a
+A secret declared `secret:"generated"` in the code (`APP_COOKIE_KEY`, `APP_KEEPERS_ADMINISTRATOR_PASSWORD`) has a
 value nobody types: 32 bytes of cryptographically secure random data, base64,
 made by the tooling. Its entry in `secret_versions` is the word `generated` in
 every environment (`bedrock render` seeds it; `bedrock check` refuses a

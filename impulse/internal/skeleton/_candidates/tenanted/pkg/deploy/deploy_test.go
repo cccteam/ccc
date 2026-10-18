@@ -5,9 +5,56 @@ import (
 	"testing"
 
 	"github.com/cccteam/access"
+	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/tenanted/pkg/auth/staff"
 	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/tenanted/pkg/router"
 )
+
+// TestAdministratorRoles_areInTheRoleFile holds the foothold to the role file: every role
+// the first administrator is seeded with is one the auth's file defines, at the scope the
+// membership is held in, so the seed names nothing the engine would refuse.
+func TestAdministratorRoles_areInTheRoleFile(t *testing.T) {
+	t.Parallel()
+
+	staffGlobal, staffEveryDomain := staff.AdministratorRoles()
+	tests := []struct {
+		name  string
+		roles access.RoleFile
+		// global and domain are the roles seeded in the global partition and in every
+		// domain.
+		global, domain []accesstypes.Role
+	}{
+		{name: "staff", roles: staff.Roles(), global: staffGlobal, domain: staffEveryDomain},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			parsed, err := tt.roles.Parse()
+			if err != nil {
+				t.Fatalf("access.RoleFile.Parse() error = %v", err)
+			}
+			defined := func(roles []*access.Role) map[accesstypes.Role]bool {
+				names := make(map[accesstypes.Role]bool, len(roles))
+				for _, r := range roles {
+					names[r.Name] = true
+				}
+
+				return names
+			}
+			global, domain := defined(parsed.Roles.Global), defined(parsed.Roles.Domain)
+			for _, r := range tt.global {
+				if !global[r] {
+					t.Errorf("%s is seeded in the global partition and the role file defines no global role by that name", r)
+				}
+			}
+			for _, r := range tt.domain {
+				if !domain[r] {
+					t.Errorf("%s is seeded in every domain and the role file defines no domain role by that name", r)
+				}
+			}
+		})
+	}
+}
 
 // TestRoles_validateAgainstTheCollection runs each auth's embedded role file through the
 // validation access.New performs before the engine opens (the grammar, every condition

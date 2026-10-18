@@ -1,9 +1,11 @@
 // Package members is the members auth: the portal's people, who sign in through the
-// organization's directory (OpenID Connect against Microsoft Entra) or with a password,
-// and hold their roles in the members permission store.
+// organization's directory (OpenID Connect against Microsoft Entra) and hold their roles
+// in the members permission store, which the application assigns: the directory proves
+// who someone is, and the deployment seeds the first administrator's membership under the
+// sign-in name the placement names (APP_MEMBERS_ADMINISTRATOR) while the auth has no users.
 //
 // An auth is a package. It owns its session manager, one Auth session with the sign-in
-// methods registered on it (here directory and password), with its own session, user,
+// methods registered on it (here directory), with its own session, user,
 // identity, auth event and pending sign-in tables and cookie; its permission store, with
 // its own table prefix; and its role configuration. Each method is its own file in this
 // package, named for its registration. The package is named for the population, never
@@ -81,7 +83,6 @@ type Auth struct {
 type Handlers struct {
 	*Session
 	directory *azure.Method
-	password  *session.PasswordMethod
 }
 
 // PendingStatus reports the sign-in that waits for a password confirmation, if any.
@@ -142,7 +143,6 @@ func New(ctx context.Context, db *cloudspanner.Client, settings *Settings) (*Aut
 	if err != nil {
 		return nil, err
 	}
-	handlers.password = registerPassword(authSession)
 
 	return &Auth{access: accessClient, handlers: handlers}, nil
 }

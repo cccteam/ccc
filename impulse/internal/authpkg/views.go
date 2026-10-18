@@ -24,6 +24,15 @@ type view struct {
 	Directory bool
 	// Methods are the methods with their rendering helpers.
 	Methods []*methodView
+	// Foothold is the form of the auth's first administrator the deployment seeds
+	// (Foothold), FootholdCreatesUser whether the membership form also creates the user
+	// row, AdministratorAuthored whether the spec names the roles, and
+	// AdministratorGlobal and AdministratorEveryDomain the role lists as Go literals.
+	Foothold                 string
+	FootholdCreatesUser      bool
+	AdministratorAuthored    bool
+	AdministratorGlobal      string
+	AdministratorEveryDomain string
 	// Imports are the import paths the Auth file needs beyond the fixed ones.
 	Imports []string
 }
@@ -68,6 +77,11 @@ func newView(spec *Spec) *view {
 			v.Directory = true
 		}
 	}
+	v.Foothold = Foothold(spec)
+	v.FootholdCreatesUser = v.Foothold == FootholdMembership && !provisions(spec)
+	v.AdministratorAuthored = len(spec.AdministratorRoles.Global)+len(spec.AdministratorRoles.EveryDomain) > 0
+	v.AdministratorGlobal = roleLiteral(spec.AdministratorRoles.Global)
+	v.AdministratorEveryDomain = roleLiteral(spec.AdministratorRoles.EveryDomain)
 	seen := map[string]bool{}
 	for _, mv := range v.Methods {
 		var imp string
@@ -84,6 +98,64 @@ func newView(spec *Spec) *view {
 	}
 
 	return v
+}
+
+// The forms of the first administrator the deployment seeds while the auth's users table
+// holds no rows: a user named administrator with the password the stack generates, for an
+// auth with a password method; the administrator role memberships under the sign-in name
+// the placement names, for an auth whose directory methods leave role membership to the
+// application. An auth whose directory methods all follow the directory's roles needs none.
+const (
+	FootholdPassword   = "password"
+	FootholdMembership = "membership"
+	footholdFile       = "foothold.go"
+)
+
+// Foothold is the form of the first administrator the deployment seeds for the auth, or
+// empty when the directory ranks its people.
+func Foothold(spec *Spec) string {
+	membership := false
+	for i := range spec.Methods {
+		m := &spec.Methods[i]
+		switch {
+		case m.Kind == app.MethodPassword:
+			return FootholdPassword
+		case m.Directory() && m.Authority == app.AuthorityApplication:
+			membership = true
+		}
+	}
+	if membership {
+		return FootholdMembership
+	}
+
+	return ""
+}
+
+// provisions reports whether any directory method creates a user at a first sign-in
+// (members of the directory, open sign-up); invited users only alone means the first
+// administrator's user row is created beforehand.
+func provisions(spec *Spec) bool {
+	for i := range spec.Methods {
+		m := &spec.Methods[i]
+		if m.Directory() && m.accounts() != AccountsInvited {
+			return true
+		}
+	}
+
+	return false
+}
+
+// roleLiteral is the roles as a Go slice literal, nil for none.
+func roleLiteral(roles []string) string {
+	if len(roles) == 0 {
+		return "nil"
+	}
+	quoted := make([]string, 0, len(roles))
+	for _, r := range roles {
+		quoted = append(quoted, `"`+r+`"`)
+	}
+
+	return "[]accesstypes.Role{" + strings.Join(quoted, ", ") + "}"
 }
 
 func newMethodView(spec *Spec, m *Method) *methodView {

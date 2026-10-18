@@ -27,7 +27,7 @@ func newGenerator(ctx context.Context) (generation.Generator, error) {
 			generation.WebApp("/"),
 		),
 		generation.WithRouterOutlet("portal", "portal/api",
-			generation.Auth("github.com/impulseframework/harbor/pkg/auth/members", generation.AzureMethod("directory"), generation.PasswordMethod()),
+			generation.Auth("github.com/impulseframework/harbor/pkg/auth/members", generation.AzureMethod("directory")),
 			generation.WebApp("/portal"),
 		),
 		generation.GenerateHandlerTests("test/authz"),

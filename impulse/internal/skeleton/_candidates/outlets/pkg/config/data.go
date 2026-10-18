@@ -218,6 +218,12 @@ func (c *DataConfiguration) StaffUserStores() (resource.UserAccounts, resource.U
 	return sessionusers.Accounts(c.staff.Session().API()), c.staff.Access().UserManager()
 }
 
+// StaffAdministratorPassword returns the password the staff auth's first administrator is
+// seeded with, the stack's generated secret; empty where the deployment carries none.
+func (c *DataConfiguration) StaffAdministratorPassword() string {
+	return c.env.StaffAdministratorPassword
+}
+
 // Members returns the members auth: the one the portal binds to.
 func (c *DataConfiguration) Members() *members.Auth {
 	return c.members
@@ -229,6 +235,12 @@ func (c *DataConfiguration) Members() *members.Auth {
 // announces to every instance.
 func (c *DataConfiguration) MembersUserStores() (resource.UserAccounts, resource.UserSeats) {
 	return sessionusers.Accounts(c.members.Session().API()), c.members.Access().UserManager()
+}
+
+// MembersAdministrator returns the sign-in name the members auth's first administrator is
+// seeded under, which the placement names; empty where the deployment names none.
+func (c *DataConfiguration) MembersAdministrator() string {
+	return c.env.MembersAdministrator
 }
 
 // Live returns the live service the generated handlers subscribe through and publish
@@ -305,6 +317,13 @@ type dataConfig struct {
 	// startup.
 	CookieKey string `env:"APP_COOKIE_KEY" secret:"generated"`
 
+	// StaffAdministratorPassword is the password of the staff auth's first administrator
+	// (staff.Administrator), which the migrate command seeds while the auth's users table
+	// holds no rows: a secret the stack generates, read like any other setting, that
+	// nobody types and the first sign-in changes. Unset in development, where the
+	// bootstrap creates the development logins instead.
+	StaffAdministratorPassword string `env:"APP_STAFF_ADMINISTRATOR_PASSWORD" secret:"generated"`
+
 	// The members auth's directory registration (pkg/auth/members, user/directory/login):
 	// the tenant whose accounts it admits, the app registration's client credentials, and
 	// the callback the directory returns the browser to, under the registration's
@@ -314,4 +333,11 @@ type dataConfig struct {
 	MembersDirectoryClientID     string `env:"APP_MEMBERS_DIRECTORY_CLIENT_ID"`
 	MembersDirectoryClientSecret string `env:"APP_MEMBERS_DIRECTORY_CLIENT_SECRET" secret:"true"`
 	MembersDirectoryRedirectURL  string `env:"APP_MEMBERS_DIRECTORY_REDIRECT_URL"`
+
+	// MembersAdministrator is the sign-in name of the members auth's first administrator,
+	// as the directory presents it (the user principal name): the migrate command seeds
+	// the administrator role memberships under it while the auth's users table holds no
+	// rows, so the first person to sign in holds them. Named per environment by the
+	// placement; unset in development, where the bootstrap seeds the development members.
+	MembersAdministrator string `env:"APP_MEMBERS_ADMINISTRATOR"`
 }

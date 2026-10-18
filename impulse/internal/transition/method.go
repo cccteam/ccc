@@ -248,7 +248,7 @@ func (m *Method) editAuth(a *app.App, auth *app.Auth, spec *authpkg.Method, ch *
 	}
 	loc := returnAuthRE.FindIndex(edited)
 	if loc == nil {
-		ch.skipf("%s: New does not end in `return &Auth{access: accessClient, handlers: handlers}, nil` as the skeleton's does, so the %s method is not registered; call register%s in New and set handlers.%s", rel, spec.Name, spec.Pascal(), field)
+		ch.skipf("%s: New does not end in `return &Auth{db: db, access: accessClient, handlers: handlers}, nil` as the skeleton's does (db: db where the auth carries a foothold), so the %s method is not registered; call register%s in New and set handlers.%s", rel, spec.Name, spec.Pascal(), field)
 	} else {
 		edited = append(edited[:loc[0]:loc[0]], append([]byte(registration), edited[loc[0]:]...)...)
 	}
@@ -262,7 +262,7 @@ func (m *Method) editAuth(a *app.App, auth *app.Auth, spec *authpkg.Method, ch *
 
 // returnAuthRE matches the Auth file's final statement, before which a method's
 // registration goes.
-var returnAuthRE = regexp.MustCompile(`(?m)^\n?\treturn &Auth\{access: accessClient, handlers: handlers\}, nil`)
+var returnAuthRE = regexp.MustCompile(`(?m)^\n?\treturn &Auth\{(?:db: db, )?access: accessClient, handlers: handlers\}, nil`)
 
 func settingsNote(spec *authpkg.Method) string {
 	if !spec.Directory() {

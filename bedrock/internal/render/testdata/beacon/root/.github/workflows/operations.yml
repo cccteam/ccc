@@ -70,7 +70,7 @@
 # deploys, traffic moves, and the record names the requester. The one door to production, where
 # the migrations' rerun does not reach; nobody runs a trigger by hand.
 #
-# rotate (tst, stg, or prd): a generated secret (secret:"generated" in the code: `APP_COOKIE_KEY`)
+# rotate (tst, stg, or prd): a generated secret (secret:"generated" in the code: `APP_COOKIE_KEY`, `APP_KEEPERS_ADMINISTRATOR_PASSWORD`)
 # gets a new version, 32 bytes of cryptographically secure random data, base64, made on the runner
 # and never printed, added by the job as the environment's operations identity (the stack grants it
 # the adding of versions on the generated containers alone), and the live release's build runs
@@ -630,7 +630,7 @@ jobs:
       APP: beacon
       PREFIX: imp
       # The generated secrets the code declares, VARIABLE=<container name segment>.
-      GENERATED: "APP_COOKIE_KEY=cookie-key"
+      GENERATED: "APP_COOKIE_KEY=cookie-key APP_KEEPERS_ADMINISTRATOR_PASSWORD=keepers-administrator-password"
     steps:
       # The variable is one the code declares generated, else nothing runs; then the
       # environment's values, from the placement's projects, and the secret's container.
