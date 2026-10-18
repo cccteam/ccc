@@ -74,8 +74,8 @@ github.com/cccteam/httpio v0.7.21 h1:3nIVTKhXQA9aDxgr1z3POGTggSkUBKbRYZW0rFcY8HA
 github.com/cccteam/httpio v0.7.21/go.mod h1:8YRWx9PKjuPo3umkEXH/lPg75WuWye89T+XwDoonOts=
 github.com/cccteam/logger v0.1.30 h1:qXTDpDg27gAlfTL5A6pMs8Tr1ZmHtlvjNeoHM+1kSDg=
 github.com/cccteam/logger v0.1.30/go.mod h1:iXUwTSSBsVV+3EprEzBaTVdBZKQmKsc3rT7dHtzuBew=
-github.com/cccteam/session v0.12.4-0.20261017212701-07ff7f68718a h1:R7mu+uFDTXqSc9nGOHwyow0OwZfCFTUpmxwEjds8QHg=
-github.com/cccteam/session v0.12.4-0.20261017212701-07ff7f68718a/go.mod h1:PMCEwdUXa0l6EPmuoqkMQwRaAYMejPZWpS4Zxl9Sgog=
+github.com/cccteam/session v0.12.4-0.20261018020817-536a7d7b34b1 h1:CtZwNRSUEXg6baEmsPVGUFHN6/fFY6z4iwg7pzj7hcE=
+github.com/cccteam/session v0.12.4-0.20261018020817-536a7d7b34b1/go.mod h1:PMCEwdUXa0l6EPmuoqkMQwRaAYMejPZWpS4Zxl9Sgog=
 github.com/cccteam/spxscan v0.0.17 h1:K7Js6L4gtwEttyDt6iP5W1tFBbopR/rrNu3Z3UHF5Mc=
 github.com/cccteam/spxscan v0.0.17/go.mod h1:pDMvFxoeWqOH+/VSv4dMpSbi0DrR/MkbYXpCj3dARV0=
 github.com/cenkalti/backoff/v4 v4.3.0 h1:MyRJ/UdXutAwSAT+s3wNd7MfTIcy71VQueUuFK343L8=
