@@ -11,6 +11,7 @@ import (
 	"io"
 	"maps"
 	"os"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -196,7 +197,7 @@ func (a *MigrateAction) String() string {
 // versionWord is the version a force sets, in words.
 func (a *MigrateAction) versionWord() string {
 	if a.Version < 0 {
-		return "no version"
+		return noVersion
 	}
 
 	return "version " + strconv.Itoa(a.Version)
@@ -271,6 +272,9 @@ func Migrate(ctx context.Context, clients *Clients, w Workspace, program, versio
 	}
 	if preflight {
 		return m.preflight(ctx)
+	}
+	if err := refuseFoldBelow(ctx, clients, w, build.Substitutions[migrationsSub], env, out); err != nil {
+		return err
 	}
 
 	return m.perform(ctx, w, action, env[seedFact] == trueValue)
@@ -525,4 +529,50 @@ func builtImage(env map[string]string) (string, error) {
 	}
 
 	return env[imageFact] + "@" + env[digestFact], nil
+}
+
+// refuseFoldBelow reads the database in front of a consolidation before the fold runs:
+// a schema directory holding the folded file alone (NNNNNN_Consolidated) applies the
+// whole committed sequence as one file, which a database at the index or above applies
+// nothing of and a fresh database applies whole, but a database below the index, one a
+// restore between the merge and this deploy put there, would apply over its tables. The
+// version is read as the deploy identity, which holds database admin on the database;
+// without a Versions client (tests of the command alone) nothing is read.
+func refuseFoldBelow(ctx context.Context, clients *Clients, w Workspace, dir string, env map[string]string, out io.Writer) error {
+	if clients.Versions == nil || dir == "" {
+		return nil
+	}
+	names, err := fileNames(filepath.Join(string(w), filepath.FromSlash(dir)))
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	index := consolidationShape(names)
+	if index == 0 {
+		return nil
+	}
+	database, _, err := spannerDatabase(env)
+	if err != nil {
+		return err
+	}
+	reader, err := clients.Versions(ctx)
+	if err != nil {
+		return err
+	}
+	version, err := reader.Version(ctx, database, "")
+	if err != nil {
+		return errors.Wrapf(err, "reading the migration version of %s before the consolidation", database)
+	}
+	switch {
+	case !version.Known:
+		fmt.Fprintf(out, "Consolidation: %s holds no version, so the fold at %06d applies whole, as a fresh database takes it.\n", database, index)
+	case version.Number < index:
+		return errors.Newf("%sthe release carries a consolidation at %06d and %s is at %s: a database below the fold would apply the whole fold over its tables (a restore between the merge and this deploy put it there). Run the release the database is at, or restore the database to %06d or above, and release again", rejected, index, database, version, index)
+	default:
+		fmt.Fprintf(out, "Consolidation: %s is at %s, at or above the fold's index %06d, so the fold applies nothing.\n", database, version, index)
+	}
+
+	return nil
 }

@@ -92,6 +92,15 @@ it is answered the list stays short. The application plan identity of the
 same environments is listed in `database_planners` and bound as
 `spannerPlanReader`, the organization's role of the reads a plan needs.
 
+The first environment's deploy identity of each application is listed in
+`migration_readers`, once per environment on this instance, and bound as
+`roles/spanner.fineGrainedAccessUser` on the application's own database in that
+environment and `roles/spanner.databaseRoleUser` on that database's
+`migrations_reader` role: a consolidation pull request's migration guard reads
+each environment's migration version through the role, which the application's
+first migration creates with select on the `SchemaMigrations` table alone, and
+reaches nothing else.
+
 Database level, the application layer: `roles/spanner.databaseUser` for each
 runtime identity on its database and `roles/spanner.databaseAdmin` for the
 deploy identity, which runs the migrations on the build worker, on its own

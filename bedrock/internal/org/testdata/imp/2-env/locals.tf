@@ -35,6 +35,14 @@ locals {
   # from tst's 2-env state; in tst they are this layer's own.
   tst_apply_members = local.is_tst ? { for app in var.applications : app => google_service_account.apply[app].member } : try({ for app, a in data.terraform_remote_state.tst_env[0].outputs.applications : app => a.apply_identity_member }, {})
 
+  # tst's deploy identities (by application): a consolidation pull request's build runs
+  # the migration guard as them, which reads this environment's migration version
+  # through the migrations_reader database role the application's first migration
+  # creates (select on the SchemaMigrations table alone), on this environment's database
+  # of the same application (identities.tf, migration_reader_*). Read from tst's 2-env
+  # state; in tst the guard reads its own database as database admin, so none here.
+  tst_deploy_members = local.is_tst ? {} : try({ for app, a in data.terraform_remote_state.tst_env[0].outputs.applications : app => a.deploy_identity_member if contains(var.applications, app) }, {})
+
   # The upstream states an application stack reads outputs from (its
   # initialize.tf): the foundation, every environment (the plan identities the
   # stack's check trigger impersonates, the previous environment's records

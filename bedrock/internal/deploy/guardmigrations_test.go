@@ -55,7 +55,10 @@ func TestGuardMigrations(t *testing.T) {
 		// unreleased removes the release tag: the repository is before its first release.
 		unreleased bool
 		// deployer registers the deployer app's key, so a refusal is posted as the app.
-		deployer    bool
+		deployer bool
+		// versions answers each environment's migration version on a consolidation; none
+		// reads nothing.
+		versions    *fakeVersions
 		wantOut     []string
 		wantNotOut  []string
 		wantErr     string
@@ -218,6 +221,73 @@ func TestGuardMigrations(t *testing.T) {
 			wantErr:     "Build REJECTED",
 			wantComment: "000004",
 		},
+		{
+			name: "a consolidation whose environments are at or above its index passes",
+			env:  env,
+			subs: consolidationSubs(),
+			files: map[string]string{
+				"schema/migrations/000001_Consolidated.up.sql":   "create a",
+				"schema/migrations/000001_Consolidated.down.sql": "drop a",
+			},
+			versions: &fakeVersions{versions: map[string]MigrationVersion{
+				tstDatabase:        {Number: 2, Known: true},
+				stgDatabase:        {Number: 1, Known: true},
+				stgDatabase + "-2": {Number: 2, Known: true},
+				prdDatabase:        {Number: 1, Known: true},
+			}},
+			wantOut: []string{
+				"Consolidation: schema/migrations folds the committed sequence into 000001_Consolidated (bedrock migration consolidate); the committed files are gone by design",
+				"schema/migrations: 2 migration(s), 000001 to 000002, read together with master.",
+				"tst: " + tstDatabase + " is at 2.",
+				"stg: " + stgDatabase + "-2 is at 2.",
+				"prd: " + prdDatabase + " is at 1.",
+				"Guard passed: the migrations form one sequence, a consolidation at 000001 every environment's database is at or above.",
+			},
+		},
+		{
+			name: "a consolidation is refused while an environment's database is below its index",
+			env:  env,
+			subs: consolidationSubs(),
+			files: map[string]string{
+				"schema/migrations/000002_Consolidated.up.sql": "create a; create b",
+			},
+			repoFiles: map[string]string{"t3:schema/migrations/000002_Master.up.sql": "create b"},
+			versions: &fakeVersions{versions: map[string]MigrationVersion{
+				tstDatabase: {Number: 2, Known: true},
+				stgDatabase: {Number: 1, Known: true},
+				prdDatabase: {Known: false},
+			}},
+			wantOut:     []string{"stg: " + stgDatabase + " is at 1, below the fold's index 000002", "Release the sequence as it stands to every environment first, so each database reaches 000002"},
+			wantErr:     "Build REJECTED: a consolidation is merged only when every environment's database is at or above the index it folds to",
+			wantComment: "below the fold's index 000002",
+		},
+		{
+			name: "a consolidation is refused while an environment's version cannot be read through the role",
+			env:  env,
+			subs: consolidationSubs(),
+			files: map[string]string{
+				"schema/migrations/000001_Consolidated.up.sql": "create a",
+			},
+			versions: &fakeVersions{
+				versions: map[string]MigrationVersion{tstDatabase: {Number: 1, Known: true}, stgDatabase: {Number: 1, Known: true}, prdDatabase: {Number: 1, Known: true}},
+				denied:   map[string]bool{prdDatabase: true},
+			},
+			wantOut:     []string{"prd: the migration version of " + prdDatabase + " could not be read through the migrations_reader role", "the migration that creates the role has not run there, or the grant is not in effect"},
+			wantErr:     "Build REJECTED: a consolidation is merged only when every environment's database is at or above",
+			wantComment: "could not be read through the migrations_reader role",
+		},
+		{
+			name: "a fold at an index the committed sequence did not end at is a removal",
+			env:  env,
+			subs: consolidationSubs(),
+			files: map[string]string{
+				"schema/migrations/000003_Consolidated.up.sql": "create a",
+			},
+			versions:    &fakeVersions{},
+			wantOut:     []string{"schema/migrations/000001_Init.up.sql: removed or renamed; a committed migration never changes"},
+			wantErr:     "Build REJECTED: the migrations are not one sequence",
+			wantComment: "removed or renamed",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -240,6 +310,9 @@ func TestGuardMigrations(t *testing.T) {
 			}
 			srv, gh := githubStandIn(t, repo)
 			clients := &Clients{GitHub: gh, Secrets: (&fakeSecrets{}).open}
+			if tt.versions != nil {
+				clients.Versions = tt.versions.open
+			}
 			if tt.deployer {
 				clients.Secrets = deployerSecrets(t).open
 			}
@@ -267,5 +340,22 @@ func TestGuardMigrations(t *testing.T) {
 			}
 			containsAll(t, strings.Join(srv.Calls, "\n"), tt.wantCalls...)
 		})
+	}
+}
+
+// The databases a consolidation's guard reads: this environment's (the trigger's
+// _MIGRATE_DATABASES) and every other's (_MIGRATION_DATABASES).
+const (
+	tstDatabase = "projects/acme-tst/instances/acme-tst-gbl-spanner/databases/acme-tst-gbl-quill-db"
+	stgDatabase = "projects/acme-spn/instances/acme-spn-gbl-spanner/databases/acme-stg-gbl-quill-db"
+	prdDatabase = "projects/acme-spn/instances/acme-spn-gbl-spanner/databases/acme-prd-gbl-quill-db"
+)
+
+// consolidationSubs are a pull-request build's substitutions with the databases named.
+func consolidationSubs() map[string]string {
+	return map[string]string{
+		migrationsSub: "schema/migrations", prNumberSub: "7", defaultBranchSub: "master", commitSub: "c9", repoFullNameSub: "acme/quill", envSub: "tst",
+		migrateDatabasesSub:   `["` + tstDatabase + `"]`,
+		migrationDatabasesSub: "stg=" + stgDatabase + ",prd=" + prdDatabase,
 	}
 }

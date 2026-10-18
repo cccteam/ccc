@@ -124,6 +124,46 @@ resource "google_spanner_instance_iam_member" "apply_database_admin" {
 # changed with spanner.backupSchedules.*, which databaseAdmin does not carry
 # (2-spn grants the same on the shared instance). Backups are named after the
 # database they are taken from.
+# tst's deploy identity of each application reads this environment's migration
+# version on a consolidation pull request, through the migrations_reader database
+# role the application's first migration creates (select on the SchemaMigrations
+# table alone): the two roles Spanner's fine-grained access control asks of a
+# principal that uses a database role, fineGrainedAccessUser on the database and
+# databaseRoleUser on the role, each bounded to the application's own database in
+# this environment and the roles under it. Nothing on the data: the role holds
+# select on the one table. On the shared instance the same grants are 2-spn's
+# (migration_readers). tst grants none: there the guard reads its own database
+# as the deploy identity, which holds database admin on it.
+resource "google_spanner_instance_iam_member" "migration_reader_access" {
+  for_each = { for app, member in local.tst_deploy_members : app => member if local.own_instance }
+
+  project  = local.instance_project
+  instance = local.instance_name
+  role     = "roles/spanner.fineGrainedAccessUser"
+  member   = each.value
+
+  condition {
+    title       = "${each.key} ${var.environment} migration reader"
+    description = "The application's own database in this environment, read through a database role."
+    expression  = "resource.name.startsWith(\"${local.instance_path}/databases/${local.name}-gbl-${each.key}-\")"
+  }
+}
+
+resource "google_spanner_instance_iam_member" "migration_reader_role" {
+  for_each = { for app, member in local.tst_deploy_members : app => member if local.own_instance }
+
+  project  = local.instance_project
+  instance = local.instance_name
+  role     = "roles/spanner.databaseRoleUser"
+  member   = each.value
+
+  condition {
+    title       = "${each.key} ${var.environment} migration reader role"
+    description = "The migrations_reader role of the application's own database in this environment, and no other role."
+    expression  = "resource.name.startsWith(\"${local.instance_path}/databases/${local.name}-gbl-${each.key}-\") && resource.name.endsWith(\"/databaseRoles/migrations_reader\")"
+  }
+}
+
 resource "google_spanner_instance_iam_member" "apply_backup_admin" {
   for_each = { for app in var.applications : app => app if local.own_instance }
 

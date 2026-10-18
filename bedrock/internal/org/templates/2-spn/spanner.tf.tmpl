@@ -94,6 +94,43 @@ resource "google_spanner_instance_iam_member" "database_admin" {
   }
 }
 
+# The first environment's deploy identity reads each environment's migration
+# version on a consolidation pull request, through the migrations_reader
+# database role the application's first migration creates (select on the
+# SchemaMigrations table alone): fineGrainedAccessUser on the application's own
+# database in that environment and databaseRoleUser on that database's
+# migrations_reader role, the two roles Spanner's fine-grained access control
+# asks of a principal that uses a database role. Nothing on the data.
+resource "google_spanner_instance_iam_member" "migration_reader_access" {
+  for_each = var.migration_readers
+
+  project  = local.project_id
+  instance = google_spanner_instance.shared.name
+  role     = "roles/spanner.fineGrainedAccessUser"
+  member   = each.value.member
+
+  condition {
+    title       = "${each.value.application} ${each.value.environment} migration reader"
+    description = "The application's own database in this environment, read through a database role."
+    expression  = "resource.name.startsWith(\"${local.instance_path}/databases/${local.prefix}-${each.value.environment}-gbl-${each.value.application}-\")"
+  }
+}
+
+resource "google_spanner_instance_iam_member" "migration_reader_role" {
+  for_each = var.migration_readers
+
+  project  = local.project_id
+  instance = google_spanner_instance.shared.name
+  role     = "roles/spanner.databaseRoleUser"
+  member   = each.value.member
+
+  condition {
+    title       = "${each.value.application} ${each.value.environment} migration reader role"
+    description = "The migrations_reader role of the application's own database in this environment, and no other role."
+    expression  = "resource.name.startsWith(\"${local.instance_path}/databases/${local.prefix}-${each.value.environment}-gbl-${each.value.application}-\") && resource.name.endsWith(\"/databaseRoles/migrations_reader\")"
+  }
+}
+
 # The backup schedules a production stack makes on its database are read and
 # changed with spanner.backupSchedules.*, which databaseAdmin does not carry:
 # the first tag build that planned a production stack as its apply identity

@@ -183,6 +183,7 @@ func All() []Check {
 		sitesWired{},
 		maintenanceSwitch{},
 		sessionTables{},
+		migrationsReader{},
 		authsWired{},
 		changeSignal{},
 		conditionsProven{},

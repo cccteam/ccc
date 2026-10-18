@@ -27,3 +27,15 @@ database_planners = [
   "serviceAccount:imp-stg-gbl-beacon-plan@imp-stg-gbl-core-3c4d.iam.gserviceaccount.com", # beacon's stg plan identity (2-env stg)
   "serviceAccount:imp-prd-gbl-beacon-plan@imp-prd-gbl-core-5e6f.iam.gserviceaccount.com", # beacon's prd plan identity (2-env prd)
 ]
+
+# The first environment's deploy identity of each application, once per environment on this
+# instance: a consolidation pull request's migration guard reads each environment's migration
+# version through the migrations_reader database role, with the two bounded roles that use of a
+# database role asks for. Listed once the registration is past its identities, as the database
+# admins.
+migration_readers = {
+  "stg/harbor" = { member = "serviceAccount:imp-tst-gbl-harbor-deploy@imp-tst-gbl-core-1a2b.iam.gserviceaccount.com", environment = "stg", application = "harbor" } # harbor's tst deploy identity (2-env tst) on its stg database
+  "prd/harbor" = { member = "serviceAccount:imp-tst-gbl-harbor-deploy@imp-tst-gbl-core-1a2b.iam.gserviceaccount.com", environment = "prd", application = "harbor" } # harbor's tst deploy identity (2-env tst) on its prd database
+  "stg/beacon" = { member = "serviceAccount:imp-tst-gbl-beacon-deploy@imp-tst-gbl-core-1a2b.iam.gserviceaccount.com", environment = "stg", application = "beacon" } # beacon's tst deploy identity (2-env tst) on its stg database
+  "prd/beacon" = { member = "serviceAccount:imp-tst-gbl-beacon-deploy@imp-tst-gbl-core-1a2b.iam.gserviceaccount.com", environment = "prd", application = "beacon" } # beacon's tst deploy identity (2-env tst) on its prd database
+}

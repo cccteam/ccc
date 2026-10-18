@@ -384,13 +384,31 @@ jobs:
             echo "schema/migrations: no release tag yet, so a committed migration may still change; the freeze starts at the first release"
             exit 0
           fi
-          changed="$(git diff --no-renames --diff-filter=MD --name-only "origin/$BASE_REF...HEAD" -- schema/migrations/)"
-          if [ -n "$changed" ]; then
-            echo "A committed migration is never modified or deleted; write a new migration instead. Modified or deleted against $BASE_REF:"
-            echo "$changed"
-            exit 1
+          base="$(git merge-base "origin/$BASE_REF" HEAD)"
+          changed="$(git diff --no-renames --diff-filter=MD --name-only "$base" HEAD -- schema/migrations/)"
+          if [ -z "$changed" ]; then
+            echo "schema/migrations: no committed migration is modified or deleted against $BASE_REF"
+            exit 0
           fi
-          echo "schema/migrations: no committed migration is modified or deleted against $BASE_REF"
+          # A consolidation (bedrock migration consolidate) is the one change that removes committed
+          # migrations: every file the branch started from is gone, none is modified, and the directory
+          # holds exactly the folded file at the index where the sequence ended (and its down file). The
+          # fold is a concatenation and is trusted as such; a fold gone wrong fails the fresh database the
+          # go job builds from it, or a test.
+          committed="$(git ls-tree -r --name-only "$base" -- schema/migrations/ | sort)"
+          deleted="$(git diff --no-renames --diff-filter=D --name-only "$base" HEAD -- schema/migrations/ | sort)"
+          modified="$(git diff --no-renames --diff-filter=M --name-only "$base" HEAD -- schema/migrations/)"
+          highest="$(printf '%s\n' "$committed" | sed -n 's|^schema/migrations/\([0-9]\{6\}\)_.*\.up\.sql$|\1|p' | sort | tail -n 1)"
+          present="$(find schema/migrations -maxdepth 1 -name '*.sql' | sort)"
+          folded_up="schema/migrations/${highest}_Consolidated.up.sql"
+          folded_down="schema/migrations/${highest}_Consolidated.down.sql"
+          if [ -z "$modified" ] && [ -n "$highest" ] && [ "$deleted" = "$committed" ] && { [ "$present" = "$folded_up" ] || [ "$present" = "$(printf '%s\n%s' "$folded_down" "$folded_up")" ]; }; then
+            echo "schema/migrations: a consolidation; the committed sequence through $highest is folded into ${highest}_Consolidated, and the fold is trusted as the concatenation it is"
+            exit 0
+          fi
+          echo "A committed migration is never modified or deleted; write a new migration instead (a consolidation, bedrock migration consolidate, is the one exception: every committed file folded into one at the last index). Modified or deleted against $BASE_REF:"
+          echo "$changed"
+          exit 1
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
           go-version-file: go.mod

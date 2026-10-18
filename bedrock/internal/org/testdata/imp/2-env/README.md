@@ -277,8 +277,13 @@ storage admin only under a condition naming the application's own buckets,
 so it writes a record once);
 `roles/secretmanager.secretAccessor` on the build-time secrets named in
 `var.build_time_secrets` (empty by default) and on the deployer GitHub App's key container in the boot project (`github-apps.tf`), and on no runtime secret; nothing on
-a Spanner instance (pull-request databases are the pull-request stack's, which
-runs as the apply identity). Three grants are made elsewhere from this identity's member:
+its own environment's Spanner instance (pull-request databases are the pull-request stack's, which
+runs as the apply identity). tst's deploy identity alone holds two bounded grants on the other
+environments' instances (there, or in `2-spn` for the shared instance): `roles/spanner.fineGrainedAccessUser` on
+the application's own database and `roles/spanner.databaseRoleUser` on that database's
+`migrations_reader` role, which the application's first migration creates with select on the
+`SchemaMigrations` table alone, so a consolidation pull request's migration guard reads each
+environment's migration version and nothing else. Three grants are made elsewhere from this identity's member:
 `roles/artifactregistry.writer` on the application's own repository by
 `2-shr` (`pushers`); `roles/iam.serviceAccountUser` on the application's
 runtime identities by the application stack, where those identities are
