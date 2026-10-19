@@ -282,7 +282,7 @@ func Test_servedRouter_fileStores(t *testing.T) {
 	t.Parallel()
 
 	structs := fixtureStructs(loadFixture(t, "filefixture"))
-	outlets := []routerOutlet{{name: "default", prefix: "api", servesSessions: true, auth: &outletAuth{importPath: "example.com/acme/beacon/pkg/config", methods: []AuthMethod{AzureMethod("azure")}}}}
+	outlets := []*routerOutlet{{name: "default", prefix: "api", servesSessions: true, auth: &outletAuth{importPath: "example.com/acme/beacon/pkg/config", methods: []AuthMethod{AzureMethod("azure")}}}}
 
 	tests := []struct {
 		name           string

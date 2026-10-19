@@ -46,6 +46,9 @@ func (r *resourceGenerator) runHandlerGeneration() error {
 	if err := r.generateFeatures(); err != nil {
 		return errors.Wrap(err, "generateFeatures()")
 	}
+	if err := r.generateUsers(); err != nil {
+		return errors.Wrap(err, "generateUsers()")
+	}
 
 	if err := forEachGo(r.resources, r.generateHandlers); err != nil {
 		return err
@@ -88,7 +91,7 @@ func (r *resourceGenerator) runHandlerGeneration() error {
 		if len(members) == 0 {
 			continue
 		}
-		if err := r.generateConsolidatedPatchHandler(&outlet, members); err != nil {
+		if err := r.generateConsolidatedPatchHandler(outlet, members); err != nil {
 			return errors.Wrap(err, "generateConsolidatedPatchHandler()")
 		}
 	}
@@ -344,7 +347,7 @@ func (r *resourceGenerator) generateLive() error {
 // generated route table the default outlet counts as serving them: the application's
 // own router mounts the handlers where it will.
 func (r *resourceGenerator) anyOutletServesSessions() bool {
-	return slices.ContainsFunc(r.allOutlets(), func(outlet routerOutlet) bool { return outlet.servesSessions })
+	return slices.ContainsFunc(r.allOutlets(), func(outlet *routerOutlet) bool { return outlet.servesSessions })
 }
 
 func (r *resourceGenerator) generateHandlers(res *resourceInfo) error {

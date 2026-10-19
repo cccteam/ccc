@@ -339,7 +339,6 @@ type UserSeats interface {
 	// Roles lists the roles that exist in scope: the default roles of the scope's kind
 	// and the custom roles held there.
 	Roles(ctx context.Context, scope accesstypes.PolicyScope) ([]accesstypes.Role, error)
-	RoleExists(ctx context.Context, scope accesstypes.PolicyScope, role accesstypes.Role) (bool, error)
 }
 
 // UserApp is the application surface the user handlers draw on: the decoder seam, the

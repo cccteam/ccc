@@ -24,6 +24,9 @@ type typescriptGenerator struct {
 	typescriptDestination string
 	rc                    *resource.GeneratedCollection
 	routerResources       []accesstypes.Resource
+	// userSurfaces are the user-management surfaces the router serves, filtered to the
+	// target outlet's by userSurfacesOn.
+	userSurfaces []*userSurface
 	// manualRegistrations are the declared registrations with no generated handler;
 	// each carries its own outlet membership for the outlet filter.
 	manualRegistrations []ManualRegistration
@@ -446,6 +449,7 @@ func (t *typescriptGenerator) generateResourceMetadata() error {
 		HasDomainScoped:   hasDomainScoped,
 		Workflows:         t.assembleWorkflows(),
 		FeatureFlags:      t.servesFeatureFlags(),
+		UserResources:     t.tsUserResourcesOn(),
 	})
 	if err != nil {
 		return errors.Wrap(err, "generateTemplateOutput()")
@@ -470,6 +474,7 @@ func (t *typescriptGenerator) generateMethodMetadata() error {
 		RPCMethods:   t.rpcMethods,
 		GenPrefix:    genPrefix,
 		FeatureFlags: t.servesFeatureFlags(),
+		UserMethods:  t.tsUserMethodsOn(),
 	})
 	if err != nil {
 		return errors.Wrap(err, "generateTemplateOutput()")
@@ -732,6 +737,18 @@ func (t *typescriptGenerator) generateAPIClient() error {
 	return nil
 }
 
+// The client descriptor's operation names and sort directions.
+const (
+	opList   = "list"
+	opRead   = "read"
+	opCreate = "create"
+	opPatch  = "patch"
+	opRemove = "remove"
+
+	sortAsc  = "asc"
+	sortDesc = "desc"
+)
+
 // apiClientData assembles the client template's payload from the parsed resources,
 // computed resources, and RPC methods on the target outlet.
 func (t *typescriptGenerator) apiClientData() *tsAPIData {
@@ -783,6 +800,14 @@ func (t *typescriptGenerator) apiClientData() *tsAPIData {
 		data.Resources = append(data.Resources, featureFlagsAPIResource())
 		data.Methods = append(data.Methods, setFeatureAPIMethod())
 	}
+	// The user-management surfaces the outlet serves, carried as the generated
+	// resources and methods are.
+	for _, res := range t.tsUserResourcesOn() {
+		data.Resources = append(data.Resources, res.apiResource())
+	}
+	for _, method := range t.tsUserMethodsOn() {
+		data.Methods = append(data.Methods, method.apiMethod())
+	}
 
 	for _, res := range data.Resources {
 		if res.Consolidated {
@@ -826,10 +851,10 @@ func (t *typescriptGenerator) apiResource(res *resourceInfo) *tsAPIResource {
 	}
 
 	if !res.ListHandlerDisabled() {
-		out.Operations = append(out.Operations, "list")
+		out.Operations = append(out.Operations, opList)
 	}
 	if !res.ReadHandlerDisabled() {
-		out.Operations = append(out.Operations, "read")
+		out.Operations = append(out.Operations, opRead)
 	}
 	// A virtual resource is a read-only view: the router registers no PATCH for it.
 	if res.IsVirtual {
@@ -837,7 +862,7 @@ func (t *typescriptGenerator) apiResource(res *resourceInfo) *tsAPIResource {
 	}
 
 	if !res.CreateHandlerDisabled() {
-		out.Operations = append(out.Operations, "create")
+		out.Operations = append(out.Operations, opCreate)
 		out.HasCreate = true
 		for _, field := range res.Fields {
 			switch {
@@ -854,7 +879,7 @@ func (t *typescriptGenerator) apiResource(res *resourceInfo) *tsAPIResource {
 		}
 	}
 	if !res.UpdateHandlerDisabled() {
-		out.Operations = append(out.Operations, "patch")
+		out.Operations = append(out.Operations, opPatch)
 		out.HasPatch = true
 		for _, field := range res.Fields {
 			if field.IsPrimaryKey || field.IsOutputOnly() || field.IsImmutable() {
@@ -864,7 +889,7 @@ func (t *typescriptGenerator) apiResource(res *resourceInfo) *tsAPIResource {
 		}
 	}
 	if !res.DeleteHandlerDisabled() {
-		out.Operations = append(out.Operations, "remove")
+		out.Operations = append(out.Operations, opRemove)
 	}
 	if res.IsConsolidated && (out.HasCreate || out.HasPatch || !res.DeleteHandlerDisabled()) {
 		out.Operations = append(out.Operations, "batch")
@@ -887,9 +912,9 @@ func apiOrder(declared []resource.SortField) []*tsAPISort {
 
 	order := make([]*tsAPISort, 0, len(declared))
 	for _, sf := range declared {
-		direction := "asc"
+		direction := sortAsc
 		if sf.Direction == resource.SortDescending {
-			direction = "desc"
+			direction = sortDesc
 		}
 		order = append(order, &tsAPISort{Field: strcase.ToCamel(sf.Field), Direction: direction})
 	}
@@ -924,10 +949,10 @@ func (t *typescriptGenerator) apiComputedResource(res *computedResource) *tsAPIR
 		out.Keys = append(out.Keys, &tsAPIField{Name: strcase.ToCamel(field.Name()), Type: field.TypescriptDataType()})
 	}
 	if !res.SuppressListHandler {
-		out.Operations = append(out.Operations, "list")
+		out.Operations = append(out.Operations, opList)
 	}
 	if !res.ReadHandlerDisabled() {
-		out.Operations = append(out.Operations, "read")
+		out.Operations = append(out.Operations, opRead)
 	}
 
 	return out

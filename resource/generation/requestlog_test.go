@@ -555,7 +555,7 @@ func Test_surfacesOf(t *testing.T) {
 		requestLog:    LogOnEvent().MinSeverity(logging.Info),
 		mountedRoutes: []mountedRoutes{{prefix: "/beacons/", requestLog: LogOnEvent(), traces: TracesOff()}},
 	}
-	outlets := []routerOutlet{
+	outlets := []*routerOutlet{
 		{name: "default", prefix: "api"},
 		{name: "droids", prefix: "droids", apiKey: true, requestLog: LogSampled(0.01), traces: TracesCapped(0.1)},
 		{name: "portal", prefix: "portal/api", traces: TracesOff()},
@@ -580,7 +580,7 @@ func Test_surfacesOf(t *testing.T) {
 	if diff := cmp.Diff(want, r.surfacesOf(outlets, worded, scheduled)); diff != "" {
 		t.Errorf("surfacesOf() mismatch (-want +got):\n%s", diff)
 	}
-	if got := (&resourceGenerator{}).surfacesOf([]routerOutlet{{name: "default", prefix: "api"}}, nil, nil); len(got) != 0 {
+	if got := (&resourceGenerator{}).surfacesOf([]*routerOutlet{{name: "default", prefix: "api"}}, nil, nil); len(got) != 0 {
 		t.Errorf("surfacesOf() with nothing declared = %+v, want none", got)
 	}
 }

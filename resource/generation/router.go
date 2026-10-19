@@ -35,7 +35,7 @@ func (r *resourceGenerator) runRouteGeneration() error {
 			ConsolidatedHandlerFunc: fmt.Sprintf("Patch%sResources", outlet.suffix()),
 			ConsolidatedPath:        fmt.Sprintf("/%s/%s", outlet.prefix, r.ConsolidatedRoute),
 		}
-		outletRoutes[i].AuthName, outletRoutes[i].AuthParam, outletRoutes[i].TestRouterParam = authBinding(&outlets[i])
+		outletRoutes[i].AuthName, outletRoutes[i].AuthParam, outletRoutes[i].TestRouterParam = authBinding(outlets[i])
 	}
 	authImports, testRouterParams, testRouterArgs := authBindings(outlets, outletRoutes)
 
@@ -55,6 +55,14 @@ func (r *resourceGenerator) runRouteGeneration() error {
 	// The feature flag routes: the features route on every outlet, the FeatureFlags
 	// routes and SetFeature on the session-serving ones.
 	routerTestRoutes = append(routerTestRoutes, accumulateFeatureRoutes(outlets, outletRoutes)...)
+
+	// The user-management surfaces: each Auth's resources and methods on its outlet
+	// and on the outlets that manage it.
+	userRoutes, err := r.accumulateUserRoutes(outlets, outletRoutes)
+	if err != nil {
+		return err
+	}
+	routerTestRoutes = append(routerTestRoutes, userRoutes...)
 
 	stubDomainGuard, stubFeatureGuard := false, false
 	routeRequestLogs, routeMinSeverities := false, false
@@ -94,6 +102,10 @@ func (r *resourceGenerator) runRouteGeneration() error {
 	if err != nil {
 		return err
 	}
+	userRouteParams, err := r.userRouteParams()
+	if err != nil {
+		return err
+	}
 
 	data := routerFileData{
 		Source:                 r.resource.Dir(),
@@ -102,6 +114,7 @@ func (r *resourceGenerator) runRouteGeneration() error {
 		RoutesMap:              defaultOutlet.RoutesMap,
 		ConstResources:         constResources,
 		ConstComputedResources: constComputedResources,
+		UserRouteParams:        userRouteParams,
 		RouterTestRoutes:       routerTestRoutes,
 		HasConsolidatedHandler: defaultOutlet.HasConsolidatedHandler,
 		HasBoundedRoutes:       defaultOutlet.HasBoundedRoutes,
@@ -150,6 +163,11 @@ func (r *resourceGenerator) runRouteGeneration() error {
 		}
 	}
 
+	// The user-management surfaces' marker types and constructors, beside the router.
+	if err := r.generateUserSurfaces(); err != nil {
+		return errors.Wrap(err, "generateUserSurfaces()")
+	}
+
 	return nil
 }
 
@@ -181,7 +199,7 @@ func authBinding(o *routerOutlet) (name string, param bool, testParam string) {
 // authBindings gathers the routes file's side of the session outlets' auth bindings:
 // the declared auth packages it imports, sorted and once each, and NewTestRouter's auth
 // parameters with the names the generated router test passes for them.
-func authBindings(outlets []routerOutlet, outletRoutes []*outletRouteData) (imports, testParams, testArgs []string) {
+func authBindings(outlets []*routerOutlet, outletRoutes []*outletRouteData) (imports, testParams, testArgs []string) {
 	for i, outlet := range outlets {
 		switch {
 		case outletRoutes[i].AuthParam:
@@ -242,7 +260,7 @@ func wordedRoutesByOutlet(outletRoutes []*outletRouteData) map[string][]*generat
 // accumulateResourceRoutes builds every routed resource's routes into each member
 // outlet's RoutesMap, returning the read-handler resources (for the param consts) and
 // the dispatch-test routes.
-func (r *resourceGenerator) accumulateResourceRoutes(outlets []routerOutlet, outletRoutes []*outletRouteData) (constResources []*resourceInfo, routerTestRoutes []*generatedRoute, err error) {
+func (r *resourceGenerator) accumulateResourceRoutes(outlets []*routerOutlet, outletRoutes []*outletRouteData) (constResources []*resourceInfo, routerTestRoutes []*generatedRoute, err error) {
 	constResources = make([]*resourceInfo, 0, len(r.resources))
 	routerTestRoutes = make([]*generatedRoute, 0, len(r.resources))
 	for _, res := range r.resources {
@@ -335,7 +353,7 @@ func (r *resourceGenerator) computedFileRoutes(res *computedResource, routePrefi
 // accumulateComputedRoutes builds every routed computed resource's routes into each
 // member outlet's RoutesMap, returning the read-handler resources (for the param
 // consts) and the dispatch-test routes.
-func (r *resourceGenerator) accumulateComputedRoutes(outlets []routerOutlet, outletRoutes []*outletRouteData) (constComputedResources []*computedResource, routerTestRoutes []*generatedRoute, err error) {
+func (r *resourceGenerator) accumulateComputedRoutes(outlets []*routerOutlet, outletRoutes []*outletRouteData) (constComputedResources []*computedResource, routerTestRoutes []*generatedRoute, err error) {
 	constComputedResources = make([]*computedResource, 0, len(r.computedResources))
 	routerTestRoutes = make([]*generatedRoute, 0, len(r.computedResources))
 	for _, res := range r.computedResources {
@@ -374,7 +392,7 @@ func (r *resourceGenerator) accumulateComputedRoutes(outlets []routerOutlet, out
 // former route the dispatch test proves reaches the same handler. Every other RPC
 // route carries no dispatch-test entry (the dispatch test covers resource and
 // computed routes).
-func (r *resourceGenerator) accumulateRPCRoutes(outlets []routerOutlet, outletRoutes []*outletRouteData) []*generatedRoute {
+func (r *resourceGenerator) accumulateRPCRoutes(outlets []*routerOutlet, outletRoutes []*outletRouteData) []*generatedRoute {
 	if !r.genRPCMethods {
 		return nil
 	}
@@ -579,14 +597,14 @@ func extraStubHandlerFuncs(defaultOutlet *outletRouteData, extraOutlets []*outle
 // under each outlet it is NOT attached to, which the generated test requires to fall
 // through to 404 with no handler dispatched. Empty without extra outlets — one outlet
 // has nothing to be isolated from.
-func (r *resourceGenerator) negativeRouterTests(outlets []routerOutlet) ([]negativeRouterTest, error) {
+func (r *resourceGenerator) negativeRouterTests(outlets []*routerOutlet) ([]negativeRouterTest, error) {
 	if len(outlets) < 2 {
 		return nil, nil
 	}
 
 	var tests []negativeRouterTest
 	for _, outlet := range outlets {
-		outletTests, err := r.negativeTestsForOutlet(&outlet)
+		outletTests, err := r.negativeTestsForOutlet(outlet)
 		if err != nil {
 			return nil, err
 		}
@@ -599,24 +617,88 @@ func (r *resourceGenerator) negativeRouterTests(outlets []routerOutlet) ([]negat
 // negativeTestsForOutlet builds one outlet's isolation cases: the URLs of everything
 // routed that is NOT attached to the outlet, addressed under the outlet's prefix —
 // including the permission routes for an outlet that does not serve sessions.
-func (r *resourceGenerator) negativeTestsForOutlet(outlet *routerOutlet) ([]negativeRouterTest, error) {
+// sessionlessNegativeTests are the 404 cases of an outlet serving no sessions: the
+// permission, live and feature-flag routes under its prefix.
+func sessionlessNegativeTests(outlet *routerOutlet) []negativeRouterTest {
+	if outlet.servesSessions {
+		return nil
+	}
+	features := featureNegativeTests(outlet)
+	tests := make([]negativeRouterTest, 0, 5+len(features))
+	tests = append(tests,
+		negativeRouterTest{Method: httpMethodConstant(http.MethodGet), URL: fmt.Sprintf("/%s/permission-digest", outlet.prefix)},
+		negativeRouterTest{Method: httpMethodConstant(http.MethodGet), URL: fmt.Sprintf("/%s/user-domains", outlet.prefix)},
+		negativeRouterTest{Method: httpMethodConstant(http.MethodPost), URL: fmt.Sprintf("/%s/%s", outlet.prefix, live.RenewRoute)},
+		negativeRouterTest{Method: httpMethodConstant(http.MethodPost), URL: fmt.Sprintf("/%s/%s", outlet.prefix, live.UnsubscribeRoute)},
+		negativeRouterTest{Method: httpMethodConstant(http.MethodGet), URL: fmt.Sprintf("/%s/%s", outlet.prefix, live.TokenRoute)},
+	)
+
+	return append(tests, features...)
+}
+
+// routeNegativeTests are one route's 404 cases, one per method the dispatch test sends.
+func routeNegativeTests(route *generatedRoute) []negativeRouterTest {
+	methods := route.TestMethods()
+	tests := make([]negativeRouterTest, 0, len(methods))
+	for _, method := range methods {
+		tests = append(tests, negativeRouterTest{Method: method, URL: route.TestURL})
+	}
+
+	return tests
+}
+
+// computedNegativeTests are the 404 cases of the computed resources off the outlet,
+// their routes and their file routes.
+func (r *resourceGenerator) computedNegativeTests(outlet *routerOutlet) ([]negativeRouterTest, error) {
 	var tests []negativeRouterTest
-	addRoute := func(route *generatedRoute) {
-		for _, method := range route.TestMethods() {
-			tests = append(tests, negativeRouterTest{Method: method, URL: route.TestURL})
+	for _, res := range r.computedResources {
+		if res.RoutingDisabled() || res.OnOutlet(outlet.name) {
+			continue
+		}
+		routes, err := r.computedResourceRoutes(res, outlet.prefix)
+		if err != nil {
+			return nil, err
+		}
+		files, err := r.computedFileRoutes(res, outlet.prefix)
+		if err != nil {
+			return nil, err
+		}
+		for _, route := range slices.Concat(routes, files) {
+			tests = append(tests, routeNegativeTests(route)...)
 		}
 	}
 
-	if !outlet.servesSessions {
-		tests = append(tests,
-			negativeRouterTest{Method: httpMethodConstant(http.MethodGet), URL: fmt.Sprintf("/%s/permission-digest", outlet.prefix)},
-			negativeRouterTest{Method: httpMethodConstant(http.MethodGet), URL: fmt.Sprintf("/%s/user-domains", outlet.prefix)},
-			negativeRouterTest{Method: httpMethodConstant(http.MethodPost), URL: fmt.Sprintf("/%s/%s", outlet.prefix, live.RenewRoute)},
-			negativeRouterTest{Method: httpMethodConstant(http.MethodPost), URL: fmt.Sprintf("/%s/%s", outlet.prefix, live.UnsubscribeRoute)},
-			negativeRouterTest{Method: httpMethodConstant(http.MethodGet), URL: fmt.Sprintf("/%s/%s", outlet.prefix, live.TokenRoute)},
-		)
-		tests = append(tests, featureNegativeTests(outlet)...)
+	return tests, nil
+}
+
+// rpcNegativeTests are the 404 cases of the RPC methods off the outlet, a renamed
+// method's former route among them.
+func (r *resourceGenerator) rpcNegativeTests(outlet *routerOutlet) []negativeRouterTest {
+	if !r.genRPCMethods {
+		return nil
 	}
+	var tests []negativeRouterTest
+	for _, rpcStruct := range r.rpcMethods {
+		if rpcStruct.SuppressHandler || rpcStruct.OnOutlet(outlet.name) {
+			continue
+		}
+		route := r.rpcRoute(rpcStruct, outlet.prefix)
+		tests = append(tests, routeNegativeTests(route)...)
+		if route.FormerTestURL != "" {
+			tests = append(tests, negativeRouterTest{Method: httpMethodConstant(route.Method), URL: route.FormerTestURL})
+		}
+	}
+
+	return tests
+}
+
+func (r *resourceGenerator) negativeTestsForOutlet(outlet *routerOutlet) ([]negativeRouterTest, error) {
+	tests := sessionlessNegativeTests(outlet)
+	userTests, err := r.userNegativeTests(outlet)
+	if err != nil {
+		return nil, err
+	}
+	tests = append(tests, userTests...)
 
 	anyConsolidated, outletHasConsolidated := false, false
 	for _, res := range r.resources {
@@ -637,46 +719,23 @@ func (r *resourceGenerator) negativeTestsForOutlet(outlet *routerOutlet) ([]nega
 			if err != nil {
 				return nil, err
 			}
-			addRoute(route)
+			tests = append(tests, routeNegativeTests(route)...)
 		}
 		files, err := r.resourceFileRoutes(res, outlet.prefix)
 		if err != nil {
 			return nil, err
 		}
 		for _, route := range files {
-			addRoute(route)
+			tests = append(tests, routeNegativeTests(route)...)
 		}
 	}
 
-	for _, res := range r.computedResources {
-		if res.RoutingDisabled() || res.OnOutlet(outlet.name) {
-			continue
-		}
-		routes, err := r.computedResourceRoutes(res, outlet.prefix)
-		if err != nil {
-			return nil, err
-		}
-		files, err := r.computedFileRoutes(res, outlet.prefix)
-		if err != nil {
-			return nil, err
-		}
-		for _, route := range slices.Concat(routes, files) {
-			addRoute(route)
-		}
+	computed, err := r.computedNegativeTests(outlet)
+	if err != nil {
+		return nil, err
 	}
-
-	if r.genRPCMethods {
-		for _, rpcStruct := range r.rpcMethods {
-			if rpcStruct.SuppressHandler || rpcStruct.OnOutlet(outlet.name) {
-				continue
-			}
-			route := r.rpcRoute(rpcStruct, outlet.prefix)
-			addRoute(route)
-			if route.FormerTestURL != "" {
-				tests = append(tests, negativeRouterTest{Method: httpMethodConstant(route.Method), URL: route.FormerTestURL})
-			}
-		}
-	}
+	tests = append(tests, computed...)
+	tests = append(tests, r.rpcNegativeTests(outlet)...)
 
 	if anyConsolidated && !outletHasConsolidated {
 		tests = append(tests, negativeRouterTest{

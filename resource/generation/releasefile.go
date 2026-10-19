@@ -24,7 +24,7 @@ import (
 // by outlet name), from which the stack renders the cloud's own request-log exclusion.
 // It is written only with the router, and the stale sweep removes it when the router
 // goes.
-func (r *resourceGenerator) runReleaseFileGeneration(outlets []routerOutlet, fileRoutes, wordedRoutes map[string][]*generatedRoute) error {
+func (r *resourceGenerator) runReleaseFileGeneration(outlets []*routerOutlet, fileRoutes, wordedRoutes map[string][]*generatedRoute) error {
 	begin := time.Now()
 	scheduledRoutes := scheduledRoutesOf(r.scheduledMethods)
 	file := releaseFileOf(outlets, scheduledRoutes, r.fileRoutesOf(outlets, fileRoutes), r.surfacesOf(outlets, wordedRoutes, scheduledRoutes))
@@ -45,7 +45,7 @@ func (r *resourceGenerator) runReleaseFileGeneration(outlets []routerOutlet, fil
 // fileRoutesOf lists the routes that carry a file rather than JSON, in path order: each
 // served @upload method's route on every outlet it is on, and each outlet's stored-file
 // routes (fileRoutes, by outlet name), each naming its declaration.
-func (r *resourceGenerator) fileRoutesOf(outlets []routerOutlet, fileRoutes map[string][]*generatedRoute) []resource.FileRoute {
+func (r *resourceGenerator) fileRoutesOf(outlets []*routerOutlet, fileRoutes map[string][]*generatedRoute) []resource.FileRoute {
 	var routes []resource.FileRoute
 	for _, o := range outlets {
 		for _, method := range r.rpcMethods {
@@ -75,7 +75,7 @@ func (r *resourceGenerator) fileRoutesOf(outlets []routerOutlet, fileRoutes map[
 // hand-mounted prefix, each worded route at the path it is mounted at, and each
 // scheduled route with a word. Each carries its kind as the router matches it: the
 // default, an outlet and a hand-mounted prefix are prefixes, a route is a route.
-func (r *resourceGenerator) surfacesOf(outlets []routerOutlet, wordedRoutes map[string][]*generatedRoute, scheduledRoutes []*scheduledRoute) []resource.Surface {
+func (r *resourceGenerator) surfacesOf(outlets []*routerOutlet, wordedRoutes map[string][]*generatedRoute, scheduledRoutes []*scheduledRoute) []resource.Surface {
 	var surfaces []surface
 	if r.requestLog.Declared() {
 		surfaces = append(surfaces, surface{Prefix: "/", Kind: resource.SurfacePrefix, RequestLog: r.requestLog})
@@ -109,7 +109,7 @@ func (r *resourceGenerator) surfacesOf(outlets []routerOutlet, wordedRoutes map[
 
 // releaseFileOf builds the release file from the validated outlet declarations, the
 // scheduled routes, the file routes and the surfaces, the routes in path order.
-func releaseFileOf(outlets []routerOutlet, scheduledRoutes []*scheduledRoute, fileRoutes []resource.FileRoute, surfaces []resource.Surface) resource.ReleaseFile {
+func releaseFileOf(outlets []*routerOutlet, scheduledRoutes []*scheduledRoute, fileRoutes []resource.FileRoute, surfaces []resource.Surface) resource.ReleaseFile {
 	file := resource.ReleaseFile{Outlets: make(map[string]resource.ReleaseOutlet, len(outlets)), FileRoutes: fileRoutes, Surfaces: surfaces}
 	for _, o := range outlets {
 		if o.apiKey {

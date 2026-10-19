@@ -20,7 +20,7 @@ func Test_renderReleaseFile(t *testing.T) {
 
 	tests := []struct {
 		name       string
-		outlets    []routerOutlet
+		outlets    []*routerOutlet
 		scheduled  []*scheduledRoute
 		fileRoutes []resource.FileRoute
 		surfaces   []resource.Surface
@@ -29,7 +29,7 @@ func Test_renderReleaseFile(t *testing.T) {
 	}{
 		{
 			name:    "the surfaces: the default, an outlet, a hand-mounted prefix and a route",
-			outlets: []routerOutlet{{name: "default", prefix: "api", servesSessions: true, auth: crew}},
+			outlets: []*routerOutlet{{name: "default", prefix: "api", servesSessions: true, auth: crew}},
 			surfaces: []resource.Surface{
 				{Prefix: "/", Kind: resource.SurfacePrefix, Log: resource.RequestLogOnEvent},
 				{Prefix: "/api/widgets/{widgetID}/content", Kind: resource.SurfaceRoute, Log: resource.RequestLogNever, Traces: resource.TracesOff},
@@ -82,7 +82,7 @@ func Test_renderReleaseFile(t *testing.T) {
 		},
 		{
 			name: "a release, a machine outlet, no declaration and this release",
-			outlets: []routerOutlet{
+			outlets: []*routerOutlet{
 				{name: "default", prefix: "api", servesSessions: true, auth: crew, oldestAnswered: "1.5.0", declaredOldest: true},
 				{name: "droids", prefix: "droids", apiKey: true},
 				{name: "kiosk", prefix: "kiosk/api", servesSessions: true, auth: crew},
@@ -114,7 +114,7 @@ func Test_renderReleaseFile(t *testing.T) {
 		},
 		{
 			name:    "a machine outlet alone",
-			outlets: []routerOutlet{{name: "default", prefix: "api", apiKey: true}},
+			outlets: []*routerOutlet{{name: "default", prefix: "api", apiKey: true}},
 			want: `{
   "outlets": {
     "default": {
@@ -127,7 +127,7 @@ func Test_renderReleaseFile(t *testing.T) {
 		},
 		{
 			name: "the outlets render in name order whatever the declaration order",
-			outlets: []routerOutlet{
+			outlets: []*routerOutlet{
 				{name: "default", prefix: "api", servesSessions: true, auth: crew},
 				{name: "beacons", prefix: "beacons", apiKey: true},
 			},
@@ -146,7 +146,7 @@ func Test_renderReleaseFile(t *testing.T) {
 		},
 		{
 			name:    "the scheduled routes render in path order with their schedules",
-			outlets: []routerOutlet{{name: "default", prefix: "api", servesSessions: true, auth: crew}},
+			outlets: []*routerOutlet{{name: "default", prefix: "api", servesSessions: true, auth: crew}},
 			scheduled: []*scheduledRoute{
 				{Path: "/_scheduled/send-digest", HandlerFunc: "SendDigest", Cron: "0 6 * * MON-FRI", Zone: "UTC"},
 				{Path: "/_scheduled/prune-droid-reports", HandlerFunc: "PruneDroidReports", Cron: "30 3 * * *", Zone: "America/Denver"},
@@ -181,7 +181,7 @@ func Test_renderReleaseFile(t *testing.T) {
 		},
 		{
 			name:    "file routes, an upload and a stored file",
-			outlets: []routerOutlet{{name: "default", prefix: "api", servesSessions: true, auth: crew}},
+			outlets: []*routerOutlet{{name: "default", prefix: "api", servesSessions: true, auth: crew}},
 			fileRoutes: []resource.FileRoute{
 				{Kind: resource.FileRouteUpload, Method: "POST", Path: "/api/attach-photo", Source: "AttachPhoto"},
 				{Kind: resource.FileRouteStored, Method: "GET", Path: "/api/photos/{id}/file", Source: "Photo.Key"},
@@ -267,7 +267,7 @@ func Test_fileRoutesOf(t *testing.T) {
 
 	structs := fixtureStructs(loadFixture(t, "rpcform"))
 	upload := &rpcUpload{MaxBytes: 1}
-	outlets := []routerOutlet{{name: "default", prefix: "api"}, {name: "portal", prefix: "portal/api"}}
+	outlets := []*routerOutlet{{name: "default", prefix: "api"}, {name: "portal", prefix: "portal/api"}}
 	tests := []struct {
 		name       string
 		methods    []*rpcMethodInfo
@@ -331,14 +331,14 @@ func Test_runServedRouterGeneration_writesReleaseFile(t *testing.T) {
 
 	tests := []struct {
 		name    string
-		outlets []routerOutlet
+		outlets []*routerOutlet
 		// declare sets what the generator options declare beyond the outlets.
 		declare func(r *resourceGenerator)
 		want    resource.ReleaseFile
 	}{
 		{
 			name: "words at the root, on an outlet and on a hand-mounted prefix",
-			outlets: []routerOutlet{
+			outlets: []*routerOutlet{
 				{name: "default", prefix: "api", servesSessions: true, auth: crew, requestLog: LogNever(), traces: TracesOff()},
 				{name: "droids", prefix: "droids", apiKey: true},
 			},
@@ -357,7 +357,7 @@ func Test_runServedRouterGeneration_writesReleaseFile(t *testing.T) {
 		},
 		{
 			name: "a release, a machine outlet, no declaration and this release",
-			outlets: []routerOutlet{
+			outlets: []*routerOutlet{
 				{name: "default", prefix: "api", servesSessions: true, auth: crew, oldestAnswered: "1.5.0", declaredOldest: true},
 				{name: "droids", prefix: "droids", apiKey: true},
 				{name: "kiosk", prefix: "kiosk/api", servesSessions: true, auth: crew},
@@ -372,7 +372,7 @@ func Test_runServedRouterGeneration_writesReleaseFile(t *testing.T) {
 		},
 		{
 			name:    "one session outlet with no declaration",
-			outlets: []routerOutlet{{name: "default", prefix: "api", servesSessions: true, auth: crew}},
+			outlets: []*routerOutlet{{name: "default", prefix: "api", servesSessions: true, auth: crew}},
 			want:    resource.ReleaseFile{Outlets: map[string]resource.ReleaseOutlet{"default": {}}},
 		},
 	}

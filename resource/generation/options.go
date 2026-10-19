@@ -191,6 +191,9 @@ type routerOutlet struct {
 	// undeclared when the outlet takes the application's.
 	requestLog RequestLog
 	traces     Traces
+	// manages are the import paths of the other Auths whose user-management surfaces
+	// this outlet serves beside its own (Manages), in declaration order.
+	manages []string
 }
 
 // outletAuth is one Auth declaration: the auth package a session outlet binds to and the
@@ -320,6 +323,11 @@ type AuthMethod struct {
 	kind  authMethodKind
 	name  string
 	label string
+	// invited marks a registration admitting invited users only (InvitedUsers), and
+	// syncsRoles one that writes its users' roles from the directory (SyncsRoles); both
+	// shape the Auth's user-management surface.
+	invited    bool
+	syncsRoles bool
 }
 
 // PasswordMethod is the username and password method, registered as "password" with
@@ -354,6 +362,27 @@ func (m AuthMethod) Labeled(label string) AuthMethod {
 	return m
 }
 
+// InvitedUsers declares that the registration admits invited users only (the session
+// library's invited-users account rule): a person signs in through the directory once
+// an operator has created their account, so the Auth's user-management surface creates
+// users for it, without a password. Not for the password method, whose users are
+// always created here.
+func (m AuthMethod) InvitedUsers() AuthMethod {
+	m.invited = true
+
+	return m
+}
+
+// SyncsRoles declares that the registration writes its users' roles from the
+// directory at every sign-in (the method's RoleSync): the Auth's user-management
+// surface shows those users' seats and never writes them, since a seat made by hand
+// would not survive the next sign-in. Not for the password method.
+func (m AuthMethod) SyncsRoles() AuthMethod {
+	m.syncsRoles = true
+
+	return m
+}
+
 // Name is the name the method is registered under on the Auth.
 func (m AuthMethod) Name() string {
 	return m.name
@@ -370,7 +399,15 @@ func (m AuthMethod) String() string {
 	case methodPassword:
 		return "PasswordMethod()"
 	case methodGoogle, methodAzure, methodWorkOS:
-		return fmt.Sprintf("%sMethod(%q)", caser.ToPascal(string(m.kind)), m.name)
+		spelled := fmt.Sprintf("%sMethod(%q)", caser.ToPascal(string(m.kind)), m.name)
+		if m.invited {
+			spelled += ".InvitedUsers()"
+		}
+		if m.syncsRoles {
+			spelled += ".SyncsRoles()"
+		}
+
+		return spelled
 	default:
 		return string(m.kind)
 	}
@@ -406,6 +443,8 @@ func validateAuthMethods(importPath string, methods []AuthMethod) error {
 			return errors.Newf("Auth(%q, %s) registers %q twice: each registration has its own name", importPath, m, m.name)
 		case m.label == "":
 			return errors.Newf("Auth(%q, %s) has an empty label: Labeled takes the words the login page shows", importPath, m)
+		case m.kind == methodPassword && (m.invited || m.syncsRoles):
+			return errors.Newf("Auth(%q, %s) declares InvitedUsers or SyncsRoles on the password method: they describe a registration's directory", importPath, m)
 		}
 		seen[m.name] = true
 	}
@@ -441,6 +480,28 @@ func Auth(importPath string, methods ...AuthMethod) OutletOption {
 		}
 		o.auth = &outletAuth{importPath: importPath, methods: slices.Clone(methods)}
 		o.servesSessions = true
+
+		return nil
+	})
+}
+
+// Manages declares that the outlet also serves the user-management surface of another
+// Auth, named by its import path: the staff console managing the members a portal
+// outlet signs in. The managed Auth must be declared with Auth on some outlet. The
+// managed Auth's resources mount under this outlet's prefix exactly as under their own,
+// served through the managed Auth's stores and checked in the caller's engine against
+// the caller's role file; the collection is shared, so either role file may grant them,
+// and an application that wants only staff to manage members leaves the resources out
+// of the members' file.
+func Manages(importPath string) OutletOption {
+	return outletOption(func(o *routerOutlet) error {
+		if importPath == "" || strings.ContainsAny(importPath, " \t\n\"") || strings.Trim(importPath, "/") != importPath {
+			return errors.Newf("Manages(%q) requires an import path: the managed auth package, such as \"github.com/acme/beacon/pkg/auth/members\"", importPath)
+		}
+		if slices.Contains(o.manages, importPath) {
+			return errors.Newf("Manages(%q) is declared twice on the outlet", importPath)
+		}
+		o.manages = append(o.manages, importPath)
 
 		return nil
 	})

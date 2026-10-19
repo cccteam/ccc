@@ -8,7 +8,7 @@ import (
 // The condition vocabulary of the user surface: the attributes a grant's condition may
 // name on each resource, with the comparison types deploy validation checks literals
 // against, and the application-wide subject bindings the caller's own row gives
-// (subject.organization, subject.roles). The names are the rows' wire names.
+// (subject.ownOrganization, subject.ownRoles). The names are the rows' wire names.
 const (
 	userAttrUsername               = "username"
 	userAttrDisabled               = "disabled"
@@ -29,11 +29,13 @@ const (
 	roleAttrKind = "kind"
 
 	// UserSubjectOrganization and UserSubjectRoles are the subject bindings the surface
-	// declares once per application: the caller's own organization (subject.organization)
-	// and the roles the caller holds in the partition (subject.roles), read off the
-	// caller's row in the Auth whose surface serves the request.
-	UserSubjectOrganization = "organization"
-	UserSubjectRoles        = "roles"
+	// declares once per application: the caller's own organization
+	// (subject.ownOrganization) and the roles the caller holds in the partition
+	// (subject.ownRoles), read off the caller's row in the Auth whose surface serves the
+	// request. A resource's attributes and subject bindings share one namespace, so the
+	// caller's facts are named apart from the row's (organization = subject.ownOrganization).
+	UserSubjectOrganization = "ownOrganization"
+	UserSubjectRoles        = "ownRoles"
 )
 
 // column names an attribute of a composed row: a binding with no path, so a condition
@@ -138,7 +140,7 @@ func registerUserPartition(b *CollectionBuilder, scope accesstypes.PermissionSco
 	if err := registerUserResource(b, scope, n.Roles, readRoles, nil, nil, []accesstypes.Tag{roleAttrName}, roleBindings(n.Tenanted)); err != nil {
 		return err
 	}
-	for _, method := range n.servedMethods(shape) {
+	for _, method := range n.ServedMethods(shape) {
 		if err := b.AddMethodResource(scope, accesstypes.Execute, method); err != nil {
 			return errors.Wrapf(err, "registering %s", method)
 		}
@@ -180,10 +182,10 @@ func registerUserResource(b *CollectionBuilder, scope accesstypes.PermissionScop
 	return nil
 }
 
-// servedMethods lists the methods the shape serves in the partition: the password
+// ServedMethods lists the methods the shape serves in the partition: the password
 // reset where the Auth has a password method, the unlinking where it has registrations
 // to link identities through.
-func (n *UserPartitionNames) servedMethods(shape UserSurfaceShape) []accesstypes.Resource {
+func (n *UserPartitionNames) ServedMethods(shape UserSurfaceShape) []accesstypes.Resource {
 	var methods []accesstypes.Resource
 	if shape.Password {
 		methods = append(methods, n.SetPassword)

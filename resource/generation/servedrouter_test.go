@@ -361,13 +361,13 @@ func Test_servedRouterData(t *testing.T) {
 
 	tests := []struct {
 		name       string
-		outlets    []routerOutlet
+		outlets    []*routerOutlet
 		fileRoutes map[string][]*generatedRoute
 		check      func(t *testing.T, data *servedRouterData)
 	}{
 		{
 			name:    "one session auth binds nothing and imports nothing",
-			outlets: []routerOutlet{{name: "default", prefix: "api", servesSessions: true, auth: members, webApp: "/"}},
+			outlets: []*routerOutlet{{name: "default", prefix: "api", servesSessions: true, auth: members, webApp: "/"}},
 			check: func(t *testing.T, data *servedRouterData) {
 				t.Helper()
 				if data.MultiAuth || len(data.AuthImports) != 0 {
@@ -416,7 +416,7 @@ func Test_servedRouterData(t *testing.T) {
 		},
 		{
 			name: "two session auths and an API key",
-			outlets: []routerOutlet{
+			outlets: []*routerOutlet{
 				{name: "default", prefix: "api", servesSessions: true, auth: crew, webApp: "/console"},
 				{name: "droids", prefix: "droids", apiKey: true},
 				{name: "portal", prefix: "portal/api", servesSessions: true, auth: members, webApp: "/portal"},
@@ -437,7 +437,7 @@ func Test_servedRouterData(t *testing.T) {
 				for _, route := range data.Outlets[0].Routes {
 					crewRoutes = append(crewRoutes, route.Method+" "+route.Path)
 				}
-				if want := "GET /api/user/methods,GET /api/user/session,DELETE /api/user/session,GET /api/user/pending,POST /api/user/password/login,POST /api/user/pending/confirm,POST /api/user/pending/cancel"; strings.Join(crewRoutes, ",") != want {
+				if want := "GET /api/user/methods,GET /api/user/session,DELETE /api/user/session,GET /api/user/pending,POST /api/user/password/login,POST /api/user/password/change,POST /api/user/pending/confirm,POST /api/user/pending/cancel"; strings.Join(crewRoutes, ",") != want {
 					t.Errorf("crew routes = %v, want %s", crewRoutes, want)
 				}
 				droids := data.Outlets[1]
@@ -460,7 +460,7 @@ func Test_servedRouterData(t *testing.T) {
 		},
 		{
 			name: "a default outlet without a browser application redirects the root to the first outlet that serves one",
-			outlets: []routerOutlet{
+			outlets: []*routerOutlet{
 				{name: "default", prefix: "api", servesSessions: true, auth: crew},
 				{name: "kiosk", prefix: "kiosk/api", servesSessions: true, auth: crew, webApp: "/kiosk"},
 				{name: "portal", prefix: "portal/api", servesSessions: true, auth: members, webApp: "/portal"},
@@ -474,7 +474,7 @@ func Test_servedRouterData(t *testing.T) {
 		},
 		{
 			name: "two outlets on one auth stay a single auth",
-			outlets: []routerOutlet{
+			outlets: []*routerOutlet{
 				{name: "default", prefix: "api", servesSessions: true, auth: crew},
 				{name: "kiosk", prefix: "kiosk/api", servesSessions: true, auth: crew},
 			},
@@ -493,7 +493,7 @@ func Test_servedRouterData(t *testing.T) {
 		},
 		{
 			name: "the version checks: a release, this release, and the stored-file routes by outlet",
-			outlets: []routerOutlet{
+			outlets: []*routerOutlet{
 				{name: "default", prefix: "api", servesSessions: true, auth: crew, oldestAnswered: "1.5.0", declaredOldest: true},
 				{name: "droids", prefix: "droids", apiKey: true},
 				{name: "portal", prefix: "portal/api", servesSessions: true, auth: members, oldestAnswered: ThisRelease, declaredOldest: true},
@@ -587,7 +587,7 @@ func Test_servedRouterTemplates(t *testing.T) {
 
 	tests := []struct {
 		name                string
-		outlets             []routerOutlet
+		outlets             []*routerOutlet
 		fileRoutes          map[string][]*generatedRoute
 		wantRouter          []string
 		wantNotRouter       []string
@@ -598,7 +598,7 @@ func Test_servedRouterTemplates(t *testing.T) {
 	}{
 		{
 			name:    "one Azure outlet with a browser application",
-			outlets: []routerOutlet{{name: "default", prefix: "api", servesSessions: true, auth: &outletAuth{importPath: "example.com/acme/beacon/pkg/config", methods: []AuthMethod{AzureMethod("azure")}}, webApp: "/"}},
+			outlets: []*routerOutlet{{name: "default", prefix: "api", servesSessions: true, auth: &outletAuth{importPath: "example.com/acme/beacon/pkg/config", methods: []AuthMethod{AzureMethod("azure")}}, webApp: "/"}},
 			wantRouter: []string{
 				"// Package router serves the application.",
 				"//\tevery request: tracing, hooks.Outermost, request logging, SecurityHeaders, httpio.WithParams",
@@ -649,7 +649,7 @@ func Test_servedRouterTemplates(t *testing.T) {
 		},
 		{
 			name: "oldest answered on the default outlet with a stored-file route",
-			outlets: []routerOutlet{
+			outlets: []*routerOutlet{
 				{name: "default", prefix: "api", servesSessions: true, auth: crew, webApp: "/", oldestAnswered: "1.5.0", declaredOldest: true},
 			},
 			fileRoutes: map[string][]*generatedRoute{
@@ -673,7 +673,7 @@ func Test_servedRouterTemplates(t *testing.T) {
 		},
 		{
 			name: "oldest answered on an additional session outlet and this release on another",
-			outlets: []routerOutlet{
+			outlets: []*routerOutlet{
 				{name: "default", prefix: "api", servesSessions: true, auth: crew},
 				{name: "droids", prefix: "droids", apiKey: true},
 				{name: "portal", prefix: "portal/api", servesSessions: true, auth: members, oldestAnswered: "3.2.0", declaredOldest: true},
@@ -699,7 +699,7 @@ func Test_servedRouterTemplates(t *testing.T) {
 		},
 		{
 			name: "two session auths and an API-key outlet",
-			outlets: []routerOutlet{
+			outlets: []*routerOutlet{
 				{name: "default", prefix: "api", servesSessions: true, auth: crew, webApp: "/console"},
 				{name: "droids", prefix: "droids", apiKey: true},
 				{name: "portal", prefix: "portal/api", servesSessions: true, auth: members, webApp: "/portal"},
@@ -707,15 +707,17 @@ func Test_servedRouterTemplates(t *testing.T) {
 			wantRouter: []string{
 				"//\tdefault (/api), sessions of the crew auth (password):",
 				"//\t  BindAuth(crew.Name), NoCaching, CompressionMiddleware, StartSession, SetXSRFToken: GET /api/user/methods, GET /api/user/session, DELETE /api/user/session, GET /api/user/pending",
-				"//\t  + ValidateXSRFToken: POST /api/user/password/login, POST /api/user/pending/confirm, POST /api/user/pending/cancel",
+				"//\t  + ValidateXSRFToken: POST /api/user/password/login, POST /api/user/password/change, POST /api/user/pending/confirm, POST /api/user/pending/cancel",
 				"//\tportal (/portal/api), sessions of the members auth (google):",
 				"//\tdroids (/droids), API key:\n//\t  NoCaching, CompressionMiddleware, DroidsAuth: hooks.Droids, generatedDroidsRoutes",
 				"\tGeneratedHandlers\n\tGeneratedDroidsHandlers\n\tGeneratedPortalHandlers\n",
 				"\t// Portal returns the portal outlet's session surface: the members auth's.\n\tPortal() PortalSession\n",
 				"type PortalSession interface {",
 				"\t// The google registration's login and callback (google.Method).\n\tGoogleLogin() http.HandlerFunc\n\tGoogleCallback() http.HandlerFunc\n}",
-				"\t// The password method's login (session.PasswordMethod).\n\tPasswordLogin() http.HandlerFunc\n}",
+				"\t// The password method's login and password change (session.PasswordMethod); the change validates the session itself, outside ValidateSession.\n\tPasswordLogin() http.HandlerFunc\n\tPasswordChange() http.HandlerFunc\n}",
 				"\t\tguarded.Post(\"/api/user/password/login\", h.PasswordLogin())",
+				"\t\tguarded.Post(\"/api/user/password/change\", h.PasswordChange())",
+				"\t\t\tChangePassword: \"/api/user/password/change\",",
 				"\t\t\t\t{Name: \"google\", Label: \"Google\", Path: \"/portal/api/user/google/login\"},",
 				"\tBindAuth(name string) func(http.Handler) http.Handler\n",
 				"\tDroidsAuth(next http.Handler) http.Handler\n",
@@ -741,12 +743,14 @@ func Test_servedRouterTemplates(t *testing.T) {
 				"type routerDefaultSessionStub struct {",
 				"type routerPortalSessionStub struct {",
 				"func (s *routerDefaultSessionStub) PasswordLogin() http.HandlerFunc {",
+				"func (s *routerDefaultSessionStub) PasswordChange() http.HandlerFunc {",
 				"func (s *routerPortalSessionStub) GoogleCallback() http.HandlerFunc {",
 				"\tportal *routerPortalSessionStub\n",
 				"\t\tportal:                   &routerPortalSessionStub{rec: rec, prefix: \"Portal\"},",
 				"func (s *routerHandlersStub) Portal() PortalSession {\n\treturn s.portal\n}",
 				"\t\t{url: \"/portal/api/user/google/callback\", suffix: \"/user/google/callback\", method: http.MethodGet, handler: \"PortalGoogleCallback\"},",
 				"\t\t{url: \"/api/user/password/login\", suffix: \"/user/password/login\", method: http.MethodPost, handler: \"PasswordLogin\", xsrf: true},",
+				"\t\t{url: \"/api/user/password/change\", suffix: \"/user/password/change\", method: http.MethodPost, handler: \"PasswordChange\", xsrf: true},",
 				"func (s *routerHandlersStub) DroidsAuth(next http.Handler) http.Handler {",
 				"func (s *routerHandlersStub) BindAuth(name string) func(http.Handler) http.Handler {",
 				"\t\t\tDroids: func(r chi.Router, generated func(chi.Router)) {",
@@ -760,7 +764,7 @@ func Test_servedRouterTemplates(t *testing.T) {
 		},
 		{
 			name: "a default outlet without a browser application redirects the root to the first outlet that serves one",
-			outlets: []routerOutlet{
+			outlets: []*routerOutlet{
 				{name: "default", prefix: "api", servesSessions: true, auth: crew},
 				{name: "portal", prefix: "portal/api", servesSessions: true, auth: crew, webApp: "/portal"},
 			},
@@ -776,7 +780,7 @@ func Test_servedRouterTemplates(t *testing.T) {
 		},
 		{
 			name:    "an API-key default outlet alone imports no session package",
-			outlets: []routerOutlet{{name: "default", prefix: "api", apiKey: true}},
+			outlets: []*routerOutlet{{name: "default", prefix: "api", apiKey: true}},
 			wantRouter: []string{
 				"//\tdefault (/api), API key:",
 				"\tDefaultAuth(next http.Handler) http.Handler\n",
@@ -911,7 +915,7 @@ func Test_generateRoutesOutletOptions(t *testing.T) {
 // the droids outlet with a word and a setting, the portal outlet with a setting alone,
 // a stored-file route with both and a droids route with a sampled word, and a scheduled
 // method with a word.
-func wordedRouterShape(t *testing.T) (r *resourceGenerator, outlets []routerOutlet, fileRoutes, wordedRoutes map[string][]*generatedRoute) {
+func wordedRouterShape(t *testing.T) (r *resourceGenerator, outlets []*routerOutlet, fileRoutes, wordedRoutes map[string][]*generatedRoute) {
 	t.Helper()
 
 	crew := &outletAuth{importPath: "example.com/acme/beacon/pkg/auth/crew", methods: []AuthMethod{PasswordMethod()}}
@@ -930,7 +934,7 @@ func wordedRouterShape(t *testing.T) (r *resourceGenerator, outlets []routerOutl
 	}
 	r.router = packageDir("pkg/router")
 	r.resource = packageDir("pkg/resources")
-	outlets = []routerOutlet{
+	outlets = []*routerOutlet{
 		{name: "default", prefix: "api", servesSessions: true, auth: crew, webApp: "/console"},
 		{name: "droids", prefix: "droids", apiKey: true, requestLog: LogOnEvent(), traces: TracesOff()},
 		{name: "portal", prefix: "portal/api", servesSessions: true, auth: members, webApp: "/portal", traces: TracesCapped(0.1)},
@@ -1087,7 +1091,7 @@ func Test_servedRouterData_wordsUndeclared(t *testing.T) {
 	r := &resourceGenerator{client: &client{}}
 	r.router = packageDir("pkg/router")
 	r.resource = packageDir("pkg/resources")
-	data := r.servedRouterData([]routerOutlet{{name: "default", prefix: "api", servesSessions: true, auth: crew}, {name: "droids", prefix: "droids", apiKey: true}}, nil, nil, nil)
+	data := r.servedRouterData([]*routerOutlet{{name: "default", prefix: "api", servesSessions: true, auth: crew}, {name: "droids", prefix: "droids", apiKey: true}}, nil, nil, nil)
 
 	if data.DeclaresWords || data.UsesLogging || data.UsesStrings || len(data.Surfaces) != 0 || len(data.MountedRoutes) != 0 || len(data.WordedNotFound) != 0 {
 		t.Errorf("payload with nothing declared = %+v", data)
@@ -1117,7 +1121,7 @@ func Test_servedRouterTemplates_words(t *testing.T) {
 	t.Parallel()
 
 	r, outlets, fileRoutes, wordedRoutes := wordedRouterShape(t)
-	alone := []routerOutlet{
+	alone := []*routerOutlet{
 		{name: "default", prefix: "api", servesSessions: true, auth: &outletAuth{importPath: "example.com/acme/beacon/pkg/auth/crew", methods: []AuthMethod{PasswordMethod()}}, requestLog: LogOnEvent()},
 	}
 	plain := &resourceGenerator{client: &client{}}
@@ -1127,7 +1131,7 @@ func Test_servedRouterTemplates_words(t *testing.T) {
 	tests := []struct {
 		name              string
 		r                 *resourceGenerator
-		outlets           []routerOutlet
+		outlets           []*routerOutlet
 		fileRoutes        map[string][]*generatedRoute
 		wordedRoutes      map[string][]*generatedRoute
 		wantRouter        []string

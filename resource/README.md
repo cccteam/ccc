@@ -426,15 +426,20 @@ stays for applications that keep a hand-written router. Lodestar's program:
 ```go
 generation.GenerateRouter(),
 generation.GenerateRoutes("pkg/router", "api",
-	generation.Auth("github.com/cccteam/ccc/resource/lodestar/pkg/auth/crew", generation.PasswordMethod(), generation.GoogleMethod("google")),
+	generation.Auth("github.com/cccteam/ccc/resource/lodestar/pkg/auth/crew", generation.PasswordMethod(), generation.GoogleMethod("google").SyncsRoles()),
+	generation.Manages("github.com/cccteam/ccc/resource/lodestar/pkg/auth/members"),
 	generation.WebApp("/console"),
 ),
 generation.WithRouterOutlet("droids", "droids", generation.APIKey()),
 generation.WithRouterOutlet("portal", "portal/api",
-	generation.Auth("github.com/cccteam/ccc/resource/lodestar/pkg/auth/members", generation.GoogleMethod("directory").Labeled("Company directory")),
+	generation.Auth("github.com/cccteam/ccc/resource/lodestar/pkg/auth/members", generation.GoogleMethod("directory").Labeled("Company directory").SyncsRoles()),
 	generation.WebApp("/portal"),
 ),
 ```
+
+A registration's `.InvitedUsers()` and `.SyncsRoles()`, and an outlet's `Manages(importPath)`,
+describe the Auth's user-management surface (section 21): what a directory admits, whose
+seats it writes, and which other Auth's users the outlet manages.
 
 Under `GenerateRouter` every outlet says how it authenticates, one way: an outlet with
 neither `Auth` nor `APIKey`, or with both, fails generation, as do a machine outlet with
@@ -513,9 +518,14 @@ declaration); `GET user/session` and `DELETE user/session`; `GET user/pending`; 
 external method under its registration name, `GET user/<name>/login` and `GET
 user/<name>/callback` (`GET user/<name>/logout` too for Azure, the directory's
 front-channel logout). The sign-in's POSTs sit behind the outlet's XSRF guard alone, as
-the session library wires them: `POST user/password/login`, `POST user/pending/confirm`,
-`POST user/pending/cancel`; a browser reaches them with the XSRF cookie its first request
-was issued, echoed in the header. An API-key outlet's group is `NoCaching`,
+the session library wires them: `POST user/password/login`, `POST user/password/change`,
+`POST user/pending/confirm`, `POST user/pending/cancel`; a browser reaches them with the
+XSRF cookie its first request was issued, echoed in the header. The password change
+(`PasswordChange`, the password method's `ChangeUserPassword`) validates the session
+itself, so it sits outside `ValidateSession`: a person whose operator-set password must
+change before anything else is served reaches it, and the methods route tells the login
+page where (`changePassword`), which renders the change form before the signed-in page
+(section 21). An API-key outlet's group is `NoCaching`,
 `CompressionMiddleware`, `<Outlet>Auth`, then the hook and the routes: no session
 handling and no XSRF guard.
 
@@ -1975,3 +1985,142 @@ permission engine open on until the PostgreSQL client lands (cccteam/ccc#852); t
 level names that seam in one comment. Lodestar
 ([data.go](lodestar/pkg/config/data.go), [site.go](lodestar/pkg/config/site.go)) and
 the skeleton candidates are the examples.
+
+## 21. User management
+
+Every Auth the generated router binds gets a user-management surface: its users, their
+seats and the roles a seat may take, served as resources beside the application's own,
+with the same grants, conditions, capability envelope and client handles. Nothing is
+configured by hand: the Auth's sign-in methods decide what the surface does, the tenant
+record decides whether it has a tenant partition, and the role file decides who may do
+what, in the grammar every other resource uses.
+
+**The routes**, for an Auth in the package `crew` with a tenant record `Sector`, under the
+outlet's prefix (the global partition) and under the domain pair (the tenant partition):
+
+```
+GET   <prefix>/crew-users                            the users, sort=username            List on CrewUsers
+GET   <prefix>/crew-users/{crewUserID}               one user                            Read on CrewUsers
+PATCH <prefix>/crew-users                            operations body: add /, replace     Create, Update (username, disabled), Delete on CrewUsers
+                                                     and remove /{id} → {"iDs":[...]}
+GET   <prefix>/crew-seats, …/crew-seats/{user}/{role} the seats, sort=username,role       List, Read on CrewSeats
+PATCH <prefix>/crew-seats                            add /{user}/{role} {}, remove       Create, Delete on CrewSeats (a seat is never updated)
+GET   <prefix>/crew-roles, …/crew-roles/{crewRoleName} the roles a seat may take          List, Read on CrewRoles (read-only)
+POST  <prefix>/set-crew-user-password                {"user","password"}                 Execute on SetCrewUserPassword, targeting CrewUsers
+POST  <prefix>/unlink-crew-user-identity             {"user","identity"}                 Execute on UnlinkCrewUserIdentity, targeting CrewUsers
+GET/PATCH <prefix>/sectors/{sectorID}/crew-sector-users, -seats, -roles,                 the same on CrewSectorUsers, CrewSectorSeats,
+POST  <prefix>/sectors/{sectorID}/set-crew-sector-user-password, unlink-crew-sector-user-identity   CrewSectorRoles and their methods (domain scope)
+```
+
+The resource names are the Auth's package name in PascalCase, the tenant record's name
+for the tenant partition, and `Users`, `Seats`, `Roles`; the methods `Set<…>UserPassword`
+and `Unlink<…>UserIdentity`. The global partition is every user of the Auth with the
+seats held in the global scope and in every domain; the tenant partition is the users
+seated in the route's tenant or everywhere, with their seats there. A create in the
+tenant partition takes a `role` beside `username`, `password` and `disabled`: the seat is
+what makes the person the tenant's user. Account-level actions from a tenant route (a
+rename, a disable, a delete, a password reset, an unlink) are refused with 409 for a user
+also seated outside the tenant; those belong to the global partition. Every PATCH honors
+`X-Dry-Run`. A struct, a computed resource, an RPC method or a manual registration that
+would take one of these names is refused at generation.
+
+**The row.** A user row carries `id`, `username`, `disabled`, `hasPassword`,
+`passwordChangeRequired`, `createdAt`, `lastSignInAt`, `organization` (the tenant key the
+person's directory links carry, when they agree), `identities` (each link: `id`, `method`,
+`connection`, `subject`, `organization`, `email`, `linkedAt`, `lastUsedAt`), `roles` (the
+seats held in the partition's scope), `everywhereRoles` (the seats held in every domain)
+and `rolesSynced` (the seats are a directory's, see below). A seat row carries `user`,
+`role`, `username` and `everyDomain` (`everywhere` in the tenant partition); a role row
+`name` and, in the global partition, `kind` (`global` or `domain`). The rows are composed
+in Go from the Auth's account store (the session library's users and identities) and its
+engine's memberships, so a condition on a grant is judged over the composed row, and the
+capability envelope (`capabilities=Update,Delete,Execute`) answers from the grants and the
+rules below.
+
+**What the shape derives.** The password method (`PasswordMethod()`) gives create with an
+optional password, the set-password method and the forced change: a password an operator
+sets marks the account, and the person changes it before anything else is served (section
+8 lists the change route the router mounts). A registration declaring `InvitedUsers()`
+gives create without a password: the directory admits only people the application created
+first. A registration declaring `SyncsRoles()` writes the roles of the people who sign in
+through it at every sign-in, so the surface leaves their seats to the directory: seating
+or unseating such a user by hand is refused with 409, and their row says `rolesSynced`.
+An Auth with no password method and no invited-users registration creates nobody; its
+Unlink method exists once it has any registration. Several Auths give one surface each.
+
+```go
+generation.GenerateRoutes("pkg/router", "console/api",
+	generation.Auth("…/pkg/auth/crew", generation.PasswordMethod(), generation.GoogleMethod("google").SyncsRoles()),
+	generation.Manages("…/pkg/auth/members"),
+	generation.WebApp("/console"),
+),
+generation.WithRouterOutlet("portal", "portal/api",
+	generation.Auth("…/pkg/auth/members", generation.GoogleMethod("directory").Labeled("Company directory").SyncsRoles()),
+	generation.WebApp("/portal"),
+),
+```
+
+`Manages(importPath)` makes an outlet serve another Auth's surface beside its own: the
+members' users, seats and roles under `/console/api` too, read and written through the
+members Auth's stores and checked in the console's engine against the console's role
+file. The collection is shared, so either role file may grant them; an application that
+wants only staff to manage members leaves the resources out of the members' file. The
+option must name a declared Auth other than the outlet's own.
+
+**What the application supplies.** The generator writes `zz_gen_user_surfaces.go` into
+the router package, a marker type per Auth (`router.CrewAuth`) carrying the declaration it
+derived, and `New<Auth>UserSurface(accounts, seats)`; and `zz_gen_users.go` into the
+handler package, every handler as a delegation to the surface the application returns
+from `<Auth>UserSurface()`, which the file asserts at compile time. The accounts are the
+session library's, adapted by `sessionusers.Accounts(auth.API())`; the seats are the
+engine's `UserManager()`:
+
+```go
+func (c *DataConfiguration) CrewUserSurface() *resource.UserSurface[router.CrewAuth] {
+	return router.NewCrewUserSurface(sessionusers.Accounts(c.crew.Session().API()), c.crew.Access().UserManager())
+}
+```
+
+A test harness hands the constructor `resource.NewMemUserStore()` for both: the
+generated authorization matrix drives the surface's routes like every other, so every
+Auth needs a surface there, and the in-memory store answers an empty list to a granted
+case and is never read by a denied one.
+
+**The role file.** The surface's resources are granted like any other, fields included
+(a user's non-key fields for List and Read, `username`, `password`, `disabled` and, in the
+tenant partition, `role` for Create, `username` and `disabled` for Update; a seat's `user`
+and `role` for Create). A condition may use the row's attributes (`username`, `disabled`,
+`hasPassword`, `passwordChangeRequired`, `createdAt`, `lastSignInAt`, `organization`,
+`rolesSynced` on a user; `user`, `username`, `role`, `everyDomain`/`everywhere` on a
+seat; `name` and `kind` on a role) and two subject bindings the first Auth declares for
+the application: `subject.ownOrganization`, the caller's own organization, and
+`subject.ownRoles`, the roles the caller holds in the partition. Lodestar's marshal seats
+crew in the sector in every role but the marshal's own:
+
+```json
+"Create": [{ "resource": "CrewSectorSeats", "fields": ["user", "role"], "condition": "new.role != 'SectorMarshal'" }],
+"Delete": [{ "resource": "CrewSectorSeats", "condition": "role != 'SectorMarshal'" }]
+```
+
+A seat is a resource rather than a method because a Create grant's condition may read the
+row being written (`new.role`) and an Execute grant's cannot.
+
+**The rules the library keeps** whatever the role file says: nobody disables, deletes or
+unseats themselves (403); a user whose only way in is the identity being unlinked keeps it
+(409); a tenant seat needs the user already seated in the tenant, from the global surface
+(400); a password is set through the set-password method, never through an update (400);
+a username rename moves the person's seats to the new name. Grants are checked before any
+store is read, so a denied caller learns nothing, and every refusal is one the client
+library's error hook already renders.
+
+**Tests.** The generated authorization matrix carries the lists and reads as query pairs
+and the patches and methods as denied-only cases, each method with its dry run, on every
+outlet serving the surface; the dispatch tests drive every route, and an outlet that does
+not serve a surface answers its routes 404.
+
+**The names the client library mirrors**: the resources and methods above with their
+routes, keys (`id`; `user`, `role`; `name`), operations, patchable fields and order in the
+descriptor; the row interfaces and the shared `UserIdentity` interface in the resources
+file; the method bodies (`SetCrewUserPassword`, `UnlinkCrewUserIdentity`) in the methods
+file. The user-management pages of `@cccteam/resource-angular` read the surface through
+these handles.

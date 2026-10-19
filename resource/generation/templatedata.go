@@ -197,6 +197,10 @@ type routerFileData struct {
 	RoutesMap              map[string][]*generatedRoute
 	ConstResources         []*resourceInfo
 	ConstComputedResources []*computedResource
+	// UserRouteParams are the read parameters of the user-management surfaces' routes
+	// (crewUserID, crewSeatUser, crewSeatRole, crewRoleName and the tenant partition's),
+	// which the test stubs record beside the resources' key parameters.
+	UserRouteParams        []string
 	RouterTestRoutes       []*generatedRoute
 	HasConsolidatedHandler bool
 	// HasDomainScoped emits the Domain route-parameter const, which generated
@@ -598,6 +602,9 @@ type tsResourcesData struct {
 	// FeatureFlags emits the library's FeatureFlags resource: its interface, its
 	// metadata and its scope, which every application that generates routes serves.
 	FeatureFlags bool
+	// UserResources are the user-management surfaces' resources the target outlet
+	// serves: their interfaces, metadata and scopes.
+	UserResources []*tsUserResource
 }
 
 type tsMethodsData struct {
@@ -607,6 +614,9 @@ type tsMethodsData struct {
 	// FeatureFlags emits the library's SetFeature method: its body and result
 	// interfaces and its metadata.
 	FeatureFlags bool
+	// UserMethods are the user-management surfaces' methods the target outlet serves:
+	// their body interfaces and metadata.
+	UserMethods []*tsUserMethod
 }
 
 type tsEnumsData struct {

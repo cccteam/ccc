@@ -71,7 +71,7 @@ func Test_servedRouter_generatedTestRuns(t *testing.T) {
 	// and the default outlet serves one stored file, answered at any release and with a
 	// word and a setting of its own. The droids outlet writes its request log on event
 	// with a prefix mounted by hand beneath it that never does; the portal caps its spans.
-	outlets := []routerOutlet{
+	outlets := []*routerOutlet{
 		{name: "default", prefix: "api", servesSessions: true, auth: &outletAuth{importPath: fixturePath + "/crew", methods: []AuthMethod{PasswordMethod()}}, webApp: "/console", oldestAnswered: "1.5.0", declaredOldest: true},
 		{name: "droids", prefix: "droids", apiKey: true, requestLog: LogOnEvent(), traces: TracesOff()},
 		{name: "portal", prefix: "portal/api", servesSessions: true, auth: &outletAuth{importPath: fixturePath + "/members", methods: []AuthMethod{GoogleMethod("google")}}, webApp: "/portal", oldestAnswered: ThisRelease, declaredOldest: true, traces: TracesCapped(0.1)},

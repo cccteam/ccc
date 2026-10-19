@@ -209,10 +209,6 @@ func (f *fakeSeats) Roles(_ context.Context, scope accesstypes.PolicyScope) ([]a
 	return slices.Clone(f.roles[scope]), nil
 }
 
-func (f *fakeSeats) RoleExists(_ context.Context, scope accesstypes.PolicyScope, role accesstypes.Role) (bool, error) {
-	return slices.Contains(f.roles[scope], role), nil
-}
-
 // scriptedPermissions answers each permission from a table of decisions; a resource off
 // the table is Denied.
 type scriptedPermissions struct {
@@ -495,10 +491,10 @@ func TestUserSurface_lists(t *testing.T) {
 			},
 		},
 		{
-			name:   "subject.organization resolves to the caller's own organization",
+			name:   "subject.ownOrganization resolves to the caller's own organization",
 			caller: "pilot",
 			grant: func(p *scriptedPermissions) {
-				p.when(accesstypes.List, "CrewUsers", "organization = subject.organization").grant(accesstypes.List, "CrewUsers.username")
+				p.when(accesstypes.List, "CrewUsers", "organization = subject.ownOrganization").grant(accesstypes.List, "CrewUsers.username")
 			},
 			target:    "/crew-users",
 			wantCode:  http.StatusOK,
@@ -507,7 +503,7 @@ func TestUserSurface_lists(t *testing.T) {
 		{
 			name: "a caller with no organization sees nothing under the same condition",
 			grant: func(p *scriptedPermissions) {
-				p.when(accesstypes.List, "CrewUsers", "organization = subject.organization").grant(accesstypes.List, "CrewUsers.username")
+				p.when(accesstypes.List, "CrewUsers", "organization = subject.ownOrganization").grant(accesstypes.List, "CrewUsers.username")
 			},
 			target:    "/crew-users",
 			wantCode:  http.StatusOK,
@@ -1038,8 +1034,8 @@ func TestUserSurface_seatWrites(t *testing.T) {
 			wantCode: http.StatusOK,
 		},
 		{
-			name:   "a delegate hands out only the roles they hold: new.role IN subject.roles",
-			grant:  func(p *scriptedPermissions) { p.when(accesstypes.Create, "CrewSeats", "new.role IN subject.roles") },
+			name:   "a delegate hands out only the roles they hold: new.role IN subject.ownRoles",
+			grant:  func(p *scriptedPermissions) { p.when(accesstypes.Create, "CrewSeats", "new.role IN subject.ownRoles") },
 			target: "/crew-seats",
 			body: func(f *userFixture) string {
 				return fmt.Sprintf(`[{"op":"add","path":"/%s/Marshal","value":{}}]`, f.user(t, "clerk").ID)
@@ -1048,7 +1044,7 @@ func TestUserSurface_seatWrites(t *testing.T) {
 		},
 		{
 			name:   "the same grant permits a role the caller holds",
-			grant:  func(p *scriptedPermissions) { p.when(accesstypes.Create, "CrewSeats", "new.role IN subject.roles") },
+			grant:  func(p *scriptedPermissions) { p.when(accesstypes.Create, "CrewSeats", "new.role IN subject.ownRoles") },
 			target: "/crew-seats",
 			body: func(f *userFixture) string {
 				return fmt.Sprintf(`[{"op":"add","path":"/%s/Administrator","value":{}}]`, f.user(t, "clerk").ID)
@@ -1282,5 +1278,45 @@ func TestUserSurfaceDeclaration_Names(t *testing.T) {
 	}
 	if diff := cmp.Diff(want, names); diff != "" {
 		t.Errorf("names mismatch (-want +got):\n%s", diff)
+	}
+}
+
+// TestRegisterUserSurface_collection pins that the registered surfaces pass the
+// collection's own validation: the attributes and subject bindings of a resource share
+// one namespace, the subject vocabulary is declared once, and a second Auth's surface
+// registers beside the first without a name in common.
+func TestRegisterUserSurface_collection(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		decls []UserSurfaceDeclaration
+	}{
+		{
+			name:  "one auth with a password and a directory, tenanted",
+			decls: []UserSurfaceDeclaration{{Auth: "Crew", Tenant: "Sector", DomainParam: "sectorID", Shape: UserSurfaceShape{Password: true, Registrations: []UserRegistration{{Name: "google", Kind: "google", Label: "Google", SyncsRoles: true}}}}},
+		},
+		{
+			name: "two auths, the second with a directory alone, no tenancy",
+			decls: []UserSurfaceDeclaration{
+				{Auth: "Crew", Shape: UserSurfaceShape{Password: true}},
+				{Auth: "Members", Shape: UserSurfaceShape{Registrations: []UserRegistration{{Name: "directory", Kind: "google", Label: "Company directory", Invited: true}}}},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			b := NewCollectionBuilder()
+			for i := range tt.decls {
+				if err := RegisterUserSurface(b, &tt.decls[i], i == 0); err != nil {
+					t.Fatalf("RegisterUserSurface(%s) error = %v", tt.decls[i].Auth, err)
+				}
+			}
+			if _, err := NewGeneratedCollection(b.Data()); err != nil {
+				t.Fatalf("NewGeneratedCollection() error = %v", err)
+			}
+		})
 	}
 }

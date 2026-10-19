@@ -127,6 +127,11 @@ func (r *resourceGenerator) authzMatrixCases() ([]authzCase, error) {
 	cases = append(cases, consolidated...)
 	cases = append(cases, r.rpcAuthzCases()...)
 	cases = append(cases, r.featureAuthzCases()...)
+	userCases, err := r.userAuthzCases()
+	if err != nil {
+		return nil, err
+	}
+	cases = append(cases, userCases...)
 
 	if r.concealedDomains {
 		// Concealed domains answer a caller with no grants as if the domain
@@ -262,7 +267,7 @@ func (r *resourceGenerator) resourceAuthzCases() (cases []authzCase, err error) 
 					return nil, err
 				}
 				if ht == PatchHandler {
-					opCases, err := patchOpCases(authzCaseName(route.HandlerFunc, &outlet), route.TestURL, "", res, pkTypes)
+					opCases, err := patchOpCases(authzCaseName(route.HandlerFunc, outlet), route.TestURL, "", res, pkTypes)
 					if err != nil {
 						return nil, err
 					}
@@ -275,7 +280,7 @@ func (r *resourceGenerator) resourceAuthzCases() (cases []authzCase, err error) 
 					return nil, err
 				}
 				if ok {
-					c.Name = authzCaseName(c.Name, &outlet)
+					c.Name = authzCaseName(c.Name, outlet)
 					cases = append(cases, c)
 				}
 			}
@@ -288,7 +293,7 @@ func (r *resourceGenerator) resourceAuthzCases() (cases []authzCase, err error) 
 				if err != nil {
 					return nil, err
 				}
-				c.Name = authzCaseName(c.Name, &outlet)
+				c.Name = authzCaseName(c.Name, outlet)
 				cases = append(cases, c)
 			}
 		}
@@ -322,7 +327,7 @@ func (r *resourceGenerator) computedAuthzCases() (cases []authzCase, err error) 
 					return nil, err
 				}
 				if ok {
-					c.Name = authzCaseName(c.Name, &outlet)
+					c.Name = authzCaseName(c.Name, outlet)
 					cases = append(cases, c)
 				}
 			}
@@ -409,7 +414,7 @@ func (r *resourceGenerator) rpcAuthzCases() (cases []authzCase) {
 		for _, outlet := range r.memberOutlets(&rpcStruct.outletMembership) {
 			route := r.rpcRoute(rpcStruct, outlet.prefix)
 			cases = append(cases, authzCase{
-				Name:       authzCaseName(route.HandlerFunc, &outlet),
+				Name:       authzCaseName(route.HandlerFunc, outlet),
 				Method:     httpMethodConst(route.Method),
 				URL:        route.TestURL,
 				Body:       body,
@@ -420,7 +425,7 @@ func (r *resourceGenerator) rpcAuthzCases() (cases []authzCase) {
 			// call does: the header changes what commits, never what is checked.
 			if rpcStruct.IsTxnForm() {
 				cases = append(cases, authzCase{
-					Name:       authzCaseName(route.HandlerFunc, &outlet) + " dry run",
+					Name:       authzCaseName(route.HandlerFunc, outlet) + " dry run",
 					Method:     httpMethodConst(route.Method),
 					URL:        route.TestURL,
 					Body:       body,

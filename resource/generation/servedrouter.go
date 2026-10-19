@@ -123,7 +123,7 @@ func (r *resourceGenerator) validateRouterConfig() error {
 		case o.apiKey && o.declaredOldest:
 			return errors.Newf("outlet %q declares APIKey and OldestAnswered(%q): a machine outlet's clients carry no release, so nothing is checked against one; the option belongs on a session outlet", o.name, o.oldestAnswered)
 		}
-		if err := validateReservedNames(&o); err != nil {
+		if err := validateReservedNames(o); err != nil {
 			return err
 		}
 	}
@@ -137,7 +137,7 @@ func (r *resourceGenerator) validateRouterConfig() error {
 // validateMountedPrefixes checks the hand-mounted prefixes against the router's own
 // paths: none sits at or under the scheduled prefix, which the router reserves, and none
 // is an outlet's prefix itself, whose words are the outlet's to declare.
-func validateMountedPrefixes(outlets []routerOutlet, mounted []mountedRoutes) error {
+func validateMountedPrefixes(outlets []*routerOutlet, mounted []mountedRoutes) error {
 	for _, m := range mounted {
 		if underScheduledPrefix(strings.TrimSuffix(m.prefix, "/")) {
 			return errors.Newf("WithMountedRoutes(%q) sits under %s, which the generated router reserves for the scheduled routes (@%s); a scheduled method declares its word on @%s", m.prefix, scheduled.Prefix, scheduleKeyword, scheduleKeyword)
@@ -186,7 +186,7 @@ func underScheduledPrefix(p string) bool {
 // own install prompt, and its notifications and links would be attributed to the
 // application at /. With several applications none is mounted at /, and the generated
 // router redirects the root to the default outlet's.
-func validateWebAppMounts(outlets []routerOutlet) error {
+func validateWebAppMounts(outlets []*routerOutlet) error {
 	mounts := make(map[string]string, len(outlets))
 	for _, o := range outlets {
 		if o.webApp == "" {
@@ -417,6 +417,9 @@ type servedOutlet struct {
 	Methods     []servedMethod
 	MethodsPath string
 	Pending     servedPending
+	// ChangePassword is where the password change is mounted, told to the login page
+	// beside the methods; empty without a password method.
+	ChangePassword string
 	// Routes are the session routes under the prefix, in mount order: OpenRoutes, the
 	// ones outside the XSRF guard, then GuardedRoutes, the POSTs behind it.
 	Routes        []servedRoute
@@ -575,7 +578,7 @@ type servedWebApp struct {
 // session outlets' version checks exempt; wordedRoutes are each outlet's routes with a
 // request log word or a trace setting of their own, which the chain comment names, the
 // surface table carries and the release file lists.
-func (r *resourceGenerator) runServedRouterGeneration(outlets []routerOutlet, negativeTests []negativeRouterTest, fileRoutes, wordedRoutes map[string][]*generatedRoute) error {
+func (r *resourceGenerator) runServedRouterGeneration(outlets []*routerOutlet, negativeTests []negativeRouterTest, fileRoutes, wordedRoutes map[string][]*generatedRoute) error {
 	begin := time.Now()
 	data := r.servedRouterData(outlets, negativeTests, fileRoutes, wordedRoutes)
 
@@ -597,7 +600,7 @@ func (r *resourceGenerator) runServedRouterGeneration(outlets []routerOutlet, ne
 
 // servedRouterData builds the template payload from the validated outlet declarations,
 // each outlet's stored-file routes and each outlet's worded routes, both by outlet name.
-func (r *resourceGenerator) servedRouterData(outlets []routerOutlet, negativeTests []negativeRouterTest, fileRoutes, wordedRoutes map[string][]*generatedRoute) *servedRouterData {
+func (r *resourceGenerator) servedRouterData(outlets []*routerOutlet, negativeTests []negativeRouterTest, fileRoutes, wordedRoutes map[string][]*generatedRoute) *servedRouterData {
 	authPaths := make(map[string]struct{})
 	for _, o := range outlets {
 		if o.auth != nil {
@@ -623,8 +626,7 @@ func (r *resourceGenerator) servedRouterData(outlets []routerOutlet, negativeTes
 		sort.Strings(data.AuthImports)
 	}
 
-	for i := range outlets {
-		o := &outlets[i]
+	for _, o := range outlets {
 		so := servedOutletOf(o, multiAuth)
 		if so.WebApp != nil {
 			data.WebApps = append(data.WebApps, so.WebApp)
@@ -794,9 +796,13 @@ func servedSessionOf(so *servedOutlet, o *routerOutlet) {
 		switch m.kind {
 		case methodPassword:
 			sm.LoginPath = prefix + base + "/login"
-			sm.Handlers = []string{sm.Accessor + "Login"}
-			sm.Description = "The password method's login (session.PasswordMethod)"
-			guarded = append(guarded, route(http.MethodPost, base+"/login", sm.Accessor+"Login", true))
+			sm.Handlers = []string{sm.Accessor + "Login", sm.Accessor + "Change"}
+			sm.Description = "The password method's login and password change (session.PasswordMethod); the change validates the session itself, outside ValidateSession"
+			guarded = append(guarded,
+				route(http.MethodPost, base+"/login", sm.Accessor+"Login", true),
+				route(http.MethodPost, base+"/change", sm.Accessor+"Change", true),
+			)
+			so.ChangePassword = prefix + base + "/change"
 		case methodGoogle, methodWorkOS, methodAzure:
 			sm.LoginPath = prefix + base + "/login"
 			sm.Handlers = []string{sm.Accessor + "Login", sm.Accessor + "Callback"}
@@ -1300,6 +1306,9 @@ func New(h Handlers, hooks Hooks) *chi.Mux {
 {{- end }}
 			},
 			Pending: session.PendingRoutes{Status: "{{ $outlet.Pending.Status }}", Confirm: "{{ $outlet.Pending.Confirm }}", Cancel: "{{ $outlet.Pending.Cancel }}"},
+{{- if $outlet.ChangePassword }}
+			ChangePassword: "{{ $outlet.ChangePassword }}",
+{{- end }}
 		}))
 {{- else }}
 		{{ if .XSRF }}guarded{{ else }}bounded{{ end }}.{{ Pascal .Method }}("{{ .Path }}", {{ $outlet.Receiver }}.{{ .Handler }}())

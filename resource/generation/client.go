@@ -974,7 +974,7 @@ func sanitizeEnumIdentifier(name string) string {
 
 func typescriptMethodImports(t *typescriptGenerator) string {
 	pkgs := make([]string, 0, 2)
-	if t.hasRPCMethods() || t.servesFeatureFlags() {
+	if t.hasRPCMethods() || t.servesFeatureFlags() || len(t.tsUserMethodsOn()) > 0 {
 		pkgs = append(pkgs, "Methods")
 	}
 	if t.hasRPCMethodWithEnumeratedResource() || t.hasRPCMethodWithTransition() {
@@ -989,7 +989,7 @@ func typescriptConsImports(t *typescriptGenerator, d *resource.TypescriptData) s
 	if len(d.ResourceTags) > 0 || len(t.rpcMethods) > 0 {
 		pkgs = append(pkgs, "FieldName")
 	}
-	if len(t.rpcMethods) > 0 || t.servesFeatureFlags() {
+	if len(t.rpcMethods) > 0 || t.servesFeatureFlags() || len(t.tsUserMethodsOn()) > 0 {
 		pkgs = append(pkgs, "Method")
 	}
 	if len(d.Permissions) > 0 {

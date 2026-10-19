@@ -196,7 +196,7 @@ func userItems[Row Resourcer](ctx context.Context, rc *readContext, typed func(*
 // tenant has no account-level affordance.
 func userCapabilities[A UserAuth, Row Resourcer](s *UserSurface[A], rc *readContext, asked []accesstypes.Permission, users []*composedUser, items []*composedItem[Row]) (capabilityAnswer[Row], error) {
 	n := rc.partition.names
-	methods := n.servedMethods(s.decl.Shape)
+	methods := n.ServedMethods(s.decl.Shape)
 	decisions, err := capabilityDecisions(context.Background(), rc.perms, rc.partition.scope, asked, n.Users, userEditableFields, methods)
 	if err != nil {
 		return nil, err
