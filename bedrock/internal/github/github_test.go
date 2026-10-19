@@ -97,6 +97,22 @@ func TestClient(t *testing.T) {
 			want: "v0.1.0@c1,v0.1.1@c2,v0.2.0@c3",
 		},
 		{
+			name: "the workflows list every workflow GitHub lists, by path",
+			call: func(ctx context.Context, c *github.Client) (string, error) {
+				workflows, err := c.Workflows(ctx, "acme", "quill")
+				if err != nil {
+					return "", err
+				}
+				var out []string
+				for _, w := range workflows {
+					out = append(out, w.Name+"="+w.Path+":"+w.State)
+				}
+
+				return strings.Join(out, ","), nil
+			},
+			want: "ci=.github/workflows/ci.yml:active,operations=.github/workflows/operations.yml:active",
+		},
+		{
 			name: "file contents at a ref",
 			call: func(ctx context.Context, c *github.Client) (string, error) {
 				data, err := c.Contents(ctx, "acme", "quill", ".release-please-manifest.json", "c1")
@@ -134,6 +150,7 @@ func TestClient(t *testing.T) {
 				Ancestry:   map[string][]string{"c1": {"c1"}, "c2": {"c2", "c1"}, "c3": {"c3", "c2", "c1"}},
 				Trees:      map[string]string{"c1": "tree1"},
 				Files:      map[string]string{"tree1:.release-please-manifest.json": `{".": "0.1.0"}` + "\n"},
+				Workflows:  []string{".github/workflows/ci.yml", ".github/workflows/operations.yml"},
 			})
 			_ = repo
 			got, err := tt.call(t.Context(), server.Client())

@@ -2277,7 +2277,16 @@ by hand (each environment grants the next environment's deploy identity read on 
 bucket, from state the first pass did not have), then 1-org's public-invoker grants with
 2-shr and 2-spn (grants on identities that exist now), then the application's own stack per
 environment, then 2-net with 1-org's required check (the stack's check trigger, which the
-first apply made; until then the application's pull requests merge on the CI jobs alone). The
+first apply made; until then the application's pull requests merge on the CI jobs alone). How
+the stack's first apply starts is printed when `org register <app> --next` moves the
+registration to its grants, read from GitHub's workflow list for the repository: the
+operations workflow's `apply` action when GitHub lists the workflow, else the stack trigger
+2-env made in each environment started as the workflow would start it (`gcloud builds
+triggers run <prefix>-<env>-<region>-<code>-stack` on the default branch, as the operator),
+since GitHub lists a workflow once a push of at most twenty commits adds or changes its file
+on the default branch or once it runs, and a first push of more lists none until a pull
+request changes the file; a list that cannot be read moves nothing. The output names the
+application by its repository and keeps the code to the commands. The
 placement records how far the registration has gone
 (`registration`: the application's step, `identities` while its repository and identities
 are declared and nothing else is rendered for it yet, `grants` while the grants on its

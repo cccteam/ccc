@@ -41,7 +41,15 @@ branch as the apply identity (`bedrock deploy stack first`: the plan with the
 environment and the generated secrets' pins derived from their containers,
 nothing while a container has no version, which the first release adds).
 Nobody holds a cloud role for it: repository write and the Environment's
-approval are what the action takes, and the audit log names who asked. Every
+approval are what the action takes, and the audit log names who asked. GitHub
+lists a workflow once a push of at most twenty commits adds or changes its file
+on the default branch, or once it runs, so a repository whose first push carried
+more lists none of its workflows until a pull request changes the file, and the
+`apply` action cannot be started; until then the stack trigger is started as the
+action would start it, by the operator in a terminal (`gcloud builds triggers
+run imp-<env>-<region>-beacon-stack` on the default branch, in the
+environment's project), the command `bedrock org register beacon --next`
+prints at the grants step. Every
 later apply is the pipeline's, and a release run again (the `run` action)
 applies the stack again. After a teardown (`bedrock teardown`), which
 destroyed the triggers a release's build would run in, the same `apply`

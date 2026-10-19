@@ -57,6 +57,9 @@ type Repo struct {
 	Deployments []*Deployment
 	// Dispatches is the workflow_dispatch events started, oldest first.
 	Dispatches []Dispatch
+	// Workflows are the paths of the workflows GitHub lists for the repository
+	// (.github/workflows/ci.yml), in listing order.
+	Workflows []string
 }
 
 // Dispatch is one workflow_dispatch event: the workflow file, the ref and the inputs.
@@ -118,6 +121,7 @@ var (
 	tokensRE    = regexp.MustCompile(`^/app/installations/(\d+)/access_tokens$`)
 	userRE      = regexp.MustCompile(`^/user$`)
 	dispatchRE  = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/actions/workflows/([^/]+)/dispatches$`)
+	workflowsRE = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/actions/workflows$`)
 	idMin       = int64(1000)
 )
 
@@ -205,6 +209,9 @@ var routes = []route{
 	}},
 	{compareRE, func(s *Server, w http.ResponseWriter, _ *http.Request, m []string) {
 		s.compare(w, m[1]+"/"+m[2], m[3], m[4])
+	}},
+	{workflowsRE, func(s *Server, w http.ResponseWriter, _ *http.Request, m []string) {
+		s.workflows(w, m[1]+"/"+m[2])
 	}},
 	{tagsRE, func(s *Server, w http.ResponseWriter, _ *http.Request, m []string) {
 		s.tags(w, m[1]+"/"+m[2])
@@ -448,6 +455,20 @@ func (s *Server) compare(w http.ResponseWriter, key, base, head string) {
 }
 
 // tags lists the tags with their commits, annotated ones resolved.
+// workflows lists the repository's workflows as the API does: each path with an id, the
+// file's name and the active state.
+func (s *Server) workflows(w http.ResponseWriter, key string) {
+	repo, ok := s.repo(w, key)
+	if !ok {
+		return
+	}
+	workflows := make([]github.Workflow, 0, len(repo.Workflows))
+	for i, path := range repo.Workflows {
+		workflows = append(workflows, github.Workflow{ID: idMin + int64(i), Name: strings.TrimSuffix(path[strings.LastIndex(path, "/")+1:], ".yml"), Path: path, State: "active"})
+	}
+	reply(w, http.StatusOK, map[string]any{"total_count": len(workflows), "workflows": workflows})
+}
+
 func (s *Server) tags(w http.ResponseWriter, key string) {
 	repo, ok := s.repo(w, key)
 	if !ok {

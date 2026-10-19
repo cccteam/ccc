@@ -1867,6 +1867,32 @@ func TestWriteKeepsSeeded(t *testing.T) {
 	}
 }
 
+// TestPlacementNames: the repository an application is known by and the stack trigger
+// 2-env names for it in an environment.
+func TestPlacementNames(t *testing.T) {
+	t.Parallel()
+
+	p := Placement{Prefix: "imp", Regions: []Region{{Name: "us-central1", Code: "uc1"}, {Name: "us-west3", Code: "uw3"}}, Applications: []Application{{Code: "quill", Repository: "quill-portal"}}}
+	tests := []struct {
+		name string
+		got  string
+		want string
+	}{
+		{name: "a registered application's repository", got: p.Repository("quill"), want: "quill-portal"},
+		{name: "an application the placement does not list is named by its code", got: p.Repository("nobody"), want: "nobody"},
+		{name: "the stack trigger in an environment", got: p.StackTriggerName("tst", "quill"), want: "imp-tst-uc1-quill-stack"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if tt.got != tt.want {
+				t.Errorf("got %q, want %q", tt.got, tt.want)
+			}
+		})
+	}
+}
+
 func TestPlacementRegister(t *testing.T) {
 	t.Parallel()
 
