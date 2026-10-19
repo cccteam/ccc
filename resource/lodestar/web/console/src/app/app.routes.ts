@@ -4,6 +4,7 @@ import { LoginAuthenticationGuard } from '@cccteam/resource-angular/auth-authent
 import { resourceRoutes } from '@cccteam/resource-angular/resource-route-generator';
 import { sectorRoute } from '@components/sector/sector.routes';
 import { UiComponent } from '@components/ui/ui.component';
+import { usersRoute } from '@components/ui/users/users.routes';
 import { clientsConfig } from './configs/clients.config';
 import { commendationsConfig } from './configs/commendations.config';
 import { distressCallsConfig } from './configs/distressCalls.config';
@@ -64,6 +65,10 @@ export const routes: Routes = [
       // an object) and the write-only transcript, beside the hand-written call log.
       resourceRoutes(missionDocumentsConfig, resourceMeta),
       resourceRoutes(distressCallsConfig, resourceMeta),
+      // The Users page composes the library's user-management component over the
+      // surfaces the console serves; it joins the Headquarters group the config-driven
+      // pages above registered.
+      usersRoute(),
       sectorRoute(),
       { path: '**', redirectTo: 'dashboard' },
     ],

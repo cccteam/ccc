@@ -525,7 +525,13 @@ partition and the `crew-sector-…` routes under a sector) lists, creates, seats
 crew ([one channel](#one-channel-between-instances)), and the console serves the members'
 surface beside it (`members-users`, …; the generator program's `Manages`), so headquarters
 administers both populations; a directory-signed member's seats are the directory's,
-reconciled at every login, and the surface refuses to write them by hand.
+reconciled at every login, and the surface refuses to write them by hand. The console's
+Users page (Headquarters menu) is the library's user-management component composed three
+times over the generated descriptor, the crew's global partition, the crew's partition in
+the selected sector and the members' global partition, each drawn where the digest grants
+its List; nothing on the page names a user, a role or a route. A crew login an operator
+creates or resets carries the forced password change, which the login page serves before
+anything else.
 
 ## The personas
 

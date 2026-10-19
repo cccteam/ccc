@@ -28,7 +28,8 @@ import (
 )
 
 // declarationFiles are the file kinds a Demonstrates paragraph may live in: Go, the
-// browser sources, the README's persona rows, the walkthrough, and the role files' doc.
+// browser sources (a .spec.ts counts as a test), the README's persona rows, the
+// walkthrough, and the role files' doc.
 var declarationFiles = []string{".go", ".ts", ".html", ".md", ".sh", ".json"}
 
 // skippedDirs are never walked.
@@ -93,8 +94,9 @@ func scanDeclarations(t *testing.T, root string) []declaration {
 					keys = append(keys, key)
 				}
 			}
-			// The walkthrough is a proof run by hand against a fresh stack: a test.
-			test := strings.HasSuffix(rel, "_test.go") || strings.HasPrefix(rel, "test/") || filepath.Ext(rel) == ".sh"
+			// The walkthrough is a proof run by hand against a fresh stack: a test. A browser
+			// spec is a test of the browser side, where a column or a page is proven.
+			test := strings.HasSuffix(rel, "_test.go") || strings.HasPrefix(rel, "test/") || filepath.Ext(rel) == ".sh" || strings.HasSuffix(rel, ".spec.ts")
 			out = append(out, declaration{file: rel, keys: keys, test: test})
 		}
 
