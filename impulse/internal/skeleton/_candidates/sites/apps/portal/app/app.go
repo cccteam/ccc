@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/cccteam/access"
+	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/sites/apps/portal/pkg/router"
 	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/sites/pkg/auth/staff"
 	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/ccc/resource/live"
@@ -68,6 +69,11 @@ type Configurer interface {
 	// Staff returns the auth this surface binds to: the staff auth, whose session manager
 	// the App composes its login and session handlers from.
 	Staff() *staff.Auth
+	// StaffUserStores are the stores the staff auth's user-management surface serves over:
+	// the staff session's accounts and the staff engine's seats. New builds the surface
+	// with the generated constructor (router.NewStaffUserSurface); the generated handlers
+	// of the staff users, seats and roles delegate to it.
+	StaffUserStores() (resource.UserAccounts, resource.UserSeats)
 	// Live is the live service the generated handlers subscribe through and publish to
 	// (LiveService) and the feature flags follow (Start): the Firestore service over the
 	// database or the emulator the data level opened, required in every application. The
@@ -92,6 +98,7 @@ type Configurer interface {
 type App struct {
 	access access.Controller
 	*staff.Handlers
+	staffUsers     *resource.UserSurface[router.StaffAuth]
 	resourceClient resource.Client
 	cursorKey      *resource.CursorKey
 	tenants        *resource.TenantRoster
@@ -116,6 +123,7 @@ func New(cfg Configurer) *App {
 	a := &App{
 		access:         cfg.Access(),
 		resourceClient: cfg.ResourceClient(),
+		staffUsers:     router.NewStaffUserSurface(cfg.StaffUserStores()),
 		cursorKey:      cfg.CursorKey(),
 		tenants:        cfg.TenantRoster(),
 		validate:       cfg.Validator(),

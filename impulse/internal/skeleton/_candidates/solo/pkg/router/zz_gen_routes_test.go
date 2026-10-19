@@ -138,6 +138,10 @@ type generatedRouterTest struct {
 func generatedRouteParameters() []string {
 	keys := []string{
 		"featureFlagName",
+		"staffUserID",
+		"staffSeatUser",
+		"staffSeatRole",
+		"staffRoleName",
 	}
 
 	return keys
@@ -198,6 +202,81 @@ func generatedRouterTests() []*generatedRouterTest {
 			handlerFunc: "SetFeature",
 			parameters:  map[string]string{},
 		},
+		{
+			url: "/api/staff-users", method: http.MethodGet,
+			handlerFunc: "StaffUsers",
+			parameters:  map[string]string{},
+		},
+		{
+			url: "/api/staff-users", method: http.MethodPost,
+			handlerFunc: "StaffUsers",
+			parameters:  map[string]string{},
+		},
+		{
+			url: "/api/staff-users/testStaffUserID", method: http.MethodGet,
+			handlerFunc: "StaffUser",
+			parameters:  map[string]string{"staffUserID": "testStaffUserID"},
+		},
+		{
+			url: "/api/staff-users/testStaffUserID", method: http.MethodPost,
+			handlerFunc: "StaffUser",
+			parameters:  map[string]string{"staffUserID": "testStaffUserID"},
+		},
+		{
+			url: "/api/staff-users", method: http.MethodPatch,
+			handlerFunc: "PatchStaffUsers",
+			parameters:  map[string]string{},
+		},
+		{
+			url: "/api/staff-seats", method: http.MethodGet,
+			handlerFunc: "StaffSeats",
+			parameters:  map[string]string{},
+		},
+		{
+			url: "/api/staff-seats", method: http.MethodPost,
+			handlerFunc: "StaffSeats",
+			parameters:  map[string]string{},
+		},
+		{
+			url: "/api/staff-seats/testStaffSeatUser/testStaffSeatRole", method: http.MethodGet,
+			handlerFunc: "StaffSeat",
+			parameters:  map[string]string{"staffSeatUser": "testStaffSeatUser", "staffSeatRole": "testStaffSeatRole"},
+		},
+		{
+			url: "/api/staff-seats/testStaffSeatUser/testStaffSeatRole", method: http.MethodPost,
+			handlerFunc: "StaffSeat",
+			parameters:  map[string]string{"staffSeatUser": "testStaffSeatUser", "staffSeatRole": "testStaffSeatRole"},
+		},
+		{
+			url: "/api/staff-seats", method: http.MethodPatch,
+			handlerFunc: "PatchStaffSeats",
+			parameters:  map[string]string{},
+		},
+		{
+			url: "/api/staff-roles", method: http.MethodGet,
+			handlerFunc: "StaffRoles",
+			parameters:  map[string]string{},
+		},
+		{
+			url: "/api/staff-roles", method: http.MethodPost,
+			handlerFunc: "StaffRoles",
+			parameters:  map[string]string{},
+		},
+		{
+			url: "/api/staff-roles/testStaffRoleName", method: http.MethodGet,
+			handlerFunc: "StaffRole",
+			parameters:  map[string]string{"staffRoleName": "testStaffRoleName"},
+		},
+		{
+			url: "/api/staff-roles/testStaffRoleName", method: http.MethodPost,
+			handlerFunc: "StaffRole",
+			parameters:  map[string]string{"staffRoleName": "testStaffRoleName"},
+		},
+		{
+			url: "/api/set-staff-user-password", method: http.MethodPost,
+			handlerFunc: "SetStaffUserPassword",
+			parameters:  map[string]string{},
+		},
 	}
 
 	return routerTests
@@ -248,4 +327,40 @@ func (s *generatedHandlersStub) Features() http.HandlerFunc {
 
 func (s *generatedHandlersStub) SetFeature() http.HandlerFunc {
 	return s.record("SetFeature")
+}
+
+func (s *generatedHandlersStub) SetStaffUserPassword() http.HandlerFunc {
+	return s.record("SetStaffUserPassword")
+}
+
+func (s *generatedHandlersStub) StaffRoles() http.HandlerFunc {
+	return s.record("StaffRoles")
+}
+
+func (s *generatedHandlersStub) StaffRole() http.HandlerFunc {
+	return s.record("StaffRole")
+}
+
+func (s *generatedHandlersStub) StaffSeats() http.HandlerFunc {
+	return s.record("StaffSeats")
+}
+
+func (s *generatedHandlersStub) StaffSeat() http.HandlerFunc {
+	return s.record("StaffSeat")
+}
+
+func (s *generatedHandlersStub) PatchStaffSeats() http.HandlerFunc {
+	return s.record("PatchStaffSeats")
+}
+
+func (s *generatedHandlersStub) StaffUsers() http.HandlerFunc {
+	return s.record("StaffUsers")
+}
+
+func (s *generatedHandlersStub) StaffUser() http.HandlerFunc {
+	return s.record("StaffUser")
+}
+
+func (s *generatedHandlersStub) PatchStaffUsers() http.HandlerFunc {
+	return s.record("PatchStaffUsers")
 }

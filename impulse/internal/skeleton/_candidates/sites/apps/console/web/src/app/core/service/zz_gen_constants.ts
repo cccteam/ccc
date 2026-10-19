@@ -20,11 +20,19 @@ export const PermissionScopes = {
 export const Resources = {
   Announcements: 'Announcements' as Resource,
   FeatureFlags: 'FeatureFlags' as Resource,
+  StaffRoles: 'StaffRoles' as Resource,
+  StaffSeats: 'StaffSeats' as Resource,
+  StaffTenantRoles: 'StaffTenantRoles' as Resource,
+  StaffTenantSeats: 'StaffTenantSeats' as Resource,
+  StaffTenantUsers: 'StaffTenantUsers' as Resource,
+  StaffUsers: 'StaffUsers' as Resource,
   Tenants: 'Tenants' as Resource,
 };
 
 export const Methods = {
   SetFeature: 'SetFeature' as Method,
+  SetStaffTenantUserPassword: 'SetStaffTenantUserPassword' as Method,
+  SetStaffUserPassword: 'SetStaffUserPassword' as Method,
 };
 
 export namespace Announcements {
@@ -58,6 +66,124 @@ export namespace FeatureFlags {
     name: 'FeatureFlags.name' as Resource,
     updatedAt: 'FeatureFlags.updatedAt' as Resource,
     updatedBy: 'FeatureFlags.updatedBy' as Resource,
+  };
+}
+
+export namespace StaffRoles {
+  export const fieldName = {
+    kind: 'kind' as FieldName,
+    name: 'name' as FieldName,
+  };
+  export const resourceName = {
+    kind: 'StaffRoles.kind' as Resource,
+    name: 'StaffRoles.name' as Resource,
+  };
+}
+
+export namespace StaffSeats {
+  export const fieldName = {
+    everyDomain: 'everyDomain' as FieldName,
+    role: 'role' as FieldName,
+    user: 'user' as FieldName,
+    username: 'username' as FieldName,
+  };
+  export const resourceName = {
+    everyDomain: 'StaffSeats.everyDomain' as Resource,
+    role: 'StaffSeats.role' as Resource,
+    user: 'StaffSeats.user' as Resource,
+    username: 'StaffSeats.username' as Resource,
+  };
+}
+
+export namespace StaffTenantRoles {
+  export const fieldName = {
+    name: 'name' as FieldName,
+  };
+  export const resourceName = {
+    name: 'StaffTenantRoles.name' as Resource,
+  };
+}
+
+export namespace StaffTenantSeats {
+  export const fieldName = {
+    everywhere: 'everywhere' as FieldName,
+    role: 'role' as FieldName,
+    user: 'user' as FieldName,
+    username: 'username' as FieldName,
+  };
+  export const resourceName = {
+    everywhere: 'StaffTenantSeats.everywhere' as Resource,
+    role: 'StaffTenantSeats.role' as Resource,
+    user: 'StaffTenantSeats.user' as Resource,
+    username: 'StaffTenantSeats.username' as Resource,
+  };
+}
+
+export namespace StaffTenantUsers {
+  export const fieldName = {
+    createdAt: 'createdAt' as FieldName,
+    disabled: 'disabled' as FieldName,
+    everywhereRoles: 'everywhereRoles' as FieldName,
+    hasPassword: 'hasPassword' as FieldName,
+    id: 'id' as FieldName,
+    identities: 'identities' as FieldName,
+    lastSignInAt: 'lastSignInAt' as FieldName,
+    organization: 'organization' as FieldName,
+    password: 'password' as FieldName,
+    passwordChangeRequired: 'passwordChangeRequired' as FieldName,
+    role: 'role' as FieldName,
+    roles: 'roles' as FieldName,
+    rolesSynced: 'rolesSynced' as FieldName,
+    username: 'username' as FieldName,
+  };
+  export const resourceName = {
+    createdAt: 'StaffTenantUsers.createdAt' as Resource,
+    disabled: 'StaffTenantUsers.disabled' as Resource,
+    everywhereRoles: 'StaffTenantUsers.everywhereRoles' as Resource,
+    hasPassword: 'StaffTenantUsers.hasPassword' as Resource,
+    id: 'StaffTenantUsers.id' as Resource,
+    identities: 'StaffTenantUsers.identities' as Resource,
+    lastSignInAt: 'StaffTenantUsers.lastSignInAt' as Resource,
+    organization: 'StaffTenantUsers.organization' as Resource,
+    password: 'StaffTenantUsers.password' as Resource,
+    passwordChangeRequired: 'StaffTenantUsers.passwordChangeRequired' as Resource,
+    role: 'StaffTenantUsers.role' as Resource,
+    roles: 'StaffTenantUsers.roles' as Resource,
+    rolesSynced: 'StaffTenantUsers.rolesSynced' as Resource,
+    username: 'StaffTenantUsers.username' as Resource,
+  };
+}
+
+export namespace StaffUsers {
+  export const fieldName = {
+    createdAt: 'createdAt' as FieldName,
+    disabled: 'disabled' as FieldName,
+    everywhereRoles: 'everywhereRoles' as FieldName,
+    hasPassword: 'hasPassword' as FieldName,
+    id: 'id' as FieldName,
+    identities: 'identities' as FieldName,
+    lastSignInAt: 'lastSignInAt' as FieldName,
+    organization: 'organization' as FieldName,
+    password: 'password' as FieldName,
+    passwordChangeRequired: 'passwordChangeRequired' as FieldName,
+    roles: 'roles' as FieldName,
+    rolesSynced: 'rolesSynced' as FieldName,
+    username: 'username' as FieldName,
+  };
+  export const resourceName = {
+    createdAt: 'StaffUsers.createdAt' as Resource,
+    disabled: 'StaffUsers.disabled' as Resource,
+    everywhereRoles: 'StaffUsers.everywhereRoles' as Resource,
+    hasPassword: 'StaffUsers.hasPassword' as Resource,
+    id: 'StaffUsers.id' as Resource,
+    identities: 'StaffUsers.identities' as Resource,
+    lastSignInAt: 'StaffUsers.lastSignInAt' as Resource,
+    organization: 'StaffUsers.organization' as Resource,
+    password: 'StaffUsers.password' as Resource,
+    passwordChangeRequired: 'StaffUsers.passwordChangeRequired' as Resource,
+    roles: 'StaffUsers.roles' as Resource,
+    rolesSynced: 'StaffUsers.rolesSynced' as Resource,
+    username: 'StaffUsers.username' as Resource,
   };
 }
 

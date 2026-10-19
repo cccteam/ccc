@@ -75,9 +75,19 @@ type Configurer interface {
 	// Staff returns the auth the console binds to: the staff auth, whose session manager
 	// the App composes the console's login and session handlers from.
 	Staff() *staff.Auth
+	// StaffUserStores are the stores the staff auth's user-management surface serves over:
+	// the staff session's accounts and the staff engine's seats. New builds the surface
+	// with the generated constructor (router.NewStaffUserSurface); the generated handlers
+	// of the staff users, seats and roles delegate to it.
+	StaffUserStores() (resource.UserAccounts, resource.UserSeats)
 	// Members returns the auth the portal outlet binds to: the members auth, whose
 	// session manager the App hands the router for the portal's session group.
 	Members() *members.Auth
+	// MembersUserStores are the stores the members auth's user-management surface serves over:
+	// the members session's accounts and the members engine's seats. New builds the surface
+	// with the generated constructor (router.NewMembersUserSurface); the generated handlers
+	// of the members users, seats and roles delegate to it.
+	MembersUserStores() (resource.UserAccounts, resource.UserSeats)
 	// Live is the live service the generated handlers subscribe through and publish to
 	// (LiveService) and the feature flags follow (Start): the Firestore service over the
 	// database or the emulator the data level opened, required in every application. One
@@ -113,7 +123,9 @@ type App struct {
 	access  access.Controller
 	engines map[string]access.Controller
 	*staff.Handlers
+	staffUsers     *resource.UserSurface[router.StaffAuth]
 	portal         *members.Handlers
+	membersUsers   *resource.UserSurface[router.MembersAuth]
 	resourceClient resource.Client
 	cursorKey      *resource.CursorKey
 	tenants        *resource.TenantRoster
@@ -142,6 +154,8 @@ func New(cfg Configurer) *App {
 		access:         cfg.Access(),
 		engines:        map[string]access.Controller{},
 		resourceClient: cfg.ResourceClient(),
+		staffUsers:     router.NewStaffUserSurface(cfg.StaffUserStores()),
+		membersUsers:   router.NewMembersUserSurface(cfg.MembersUserStores()),
 		cursorKey:      cfg.CursorKey(),
 		tenants:        cfg.TenantRoster(),
 		validate:       cfg.Validator(),

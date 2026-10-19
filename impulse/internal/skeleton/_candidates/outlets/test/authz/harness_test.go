@@ -105,7 +105,25 @@ func (c *testConfigurer) Access() access.Controller {
 
 func (c *testConfigurer) Staff() *staff.Auth { return nil }
 
+// StaffUserStores are empty in-memory stores: the generated matrix drives the staff users,
+// seats and roles routes as it drives every other, a denied case answered before any
+// store is read and a granted list or read answered from the empty store.
+func (c *testConfigurer) StaffUserStores() (resource.UserAccounts, resource.UserSeats) {
+	store := resource.NewMemUserStore()
+
+	return store, store
+}
+
 func (c *testConfigurer) Members() *members.Auth { return nil }
+
+// MembersUserStores are empty in-memory stores: the generated matrix drives the members users,
+// seats and roles routes as it drives every other, a denied case answered before any
+// store is read and a granted list or read answered from the empty store.
+func (c *testConfigurer) MembersUserStores() (resource.UserAccounts, resource.UserSeats) {
+	store := resource.NewMemUserStore()
+
+	return store, store
+}
 
 func (c *testConfigurer) Validator() *validator.Validate {
 	return validator.New()

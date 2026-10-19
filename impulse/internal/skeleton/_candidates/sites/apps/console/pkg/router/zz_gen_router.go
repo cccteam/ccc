@@ -7,7 +7,7 @@
 //	every request: tracing, hooks.Outermost, request logging, SecurityHeaders, httpio.WithParams
 //	default (/api), sessions (password):
 //	  NoCaching, CompressionMiddleware, StartSession, SetXSRFToken: GET /api/user/methods, GET /api/user/session, DELETE /api/user/session, GET /api/user/pending
-//	  + ValidateXSRFToken: POST /api/user/password/login, POST /api/user/pending/confirm, POST /api/user/pending/cancel
+//	  + ValidateXSRFToken: POST /api/user/password/login, POST /api/user/password/change, POST /api/user/pending/confirm, POST /api/user/pending/cancel
 //	  + ValidateSession, ValidateXSRFToken, CheckAPIVersion (oldest answered 0.0.1): hooks.Default, generatedRoutes
 //
 // hooks.Root's routes sit behind the every-request chain alone. Under an outlet's prefix
@@ -71,8 +71,9 @@ type DefaultSession interface {
 	PendingStatus() http.HandlerFunc
 	PendingConfirmWithPassword() http.HandlerFunc
 	PendingCancel() http.HandlerFunc
-	// The password method's login (session.PasswordMethod).
+	// The password method's login and password change (session.PasswordMethod); the change validates the session itself, outside ValidateSession.
 	PasswordLogin() http.HandlerFunc
+	PasswordChange() http.HandlerFunc
 }
 
 // Hooks are the application's additions to the generated router. They compose inward
@@ -132,12 +133,14 @@ func New(h Handlers, hooks Hooks) *chi.Mux {
 			Methods: []session.AdvertisedMethod{
 				{Name: "password", Label: "Password", Path: "/api/user/password/login"},
 			},
-			Pending: session.PendingRoutes{Status: "/api/user/pending", Confirm: "/api/user/pending/confirm", Cancel: "/api/user/pending/cancel"},
+			Pending:        session.PendingRoutes{Status: "/api/user/pending", Confirm: "/api/user/pending/confirm", Cancel: "/api/user/pending/cancel"},
+			ChangePassword: "/api/user/password/change",
 		}))
 		bounded.Get("/api/user/session", h.Authenticated())
 		bounded.Delete("/api/user/session", h.Logout())
 		bounded.Get("/api/user/pending", h.PendingStatus())
 		guarded.Post("/api/user/password/login", h.PasswordLogin())
+		guarded.Post("/api/user/password/change", h.PasswordChange())
 		guarded.Post("/api/user/pending/confirm", h.PendingConfirmWithPassword())
 		guarded.Post("/api/user/pending/cancel", h.PendingCancel())
 

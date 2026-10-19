@@ -74,6 +74,7 @@ func routerSessionRoutes() []routerSessionRoute {
 		{url: "/api/user/session", suffix: "/user/session", method: http.MethodDelete, handler: "Logout"},
 		{url: "/api/user/pending", suffix: "/user/pending", method: http.MethodGet, handler: "PendingStatus"},
 		{url: "/api/user/password/login", suffix: "/user/password/login", method: http.MethodPost, handler: "PasswordLogin", xsrf: true},
+		{url: "/api/user/password/change", suffix: "/user/password/change", method: http.MethodPost, handler: "PasswordChange", xsrf: true},
 		{url: "/api/user/pending/confirm", suffix: "/user/pending/confirm", method: http.MethodPost, handler: "PendingConfirmWithPassword", xsrf: true},
 		{url: "/api/user/pending/cancel", suffix: "/user/pending/cancel", method: http.MethodPost, handler: "PendingCancel", xsrf: true},
 	}
@@ -687,6 +688,10 @@ func (s *routerDefaultSessionStub) PendingStatus() http.HandlerFunc {
 
 func (s *routerDefaultSessionStub) PasswordLogin() http.HandlerFunc {
 	return s.rec.RecordHandlerCall(s.prefix + "PasswordLogin")
+}
+
+func (s *routerDefaultSessionStub) PasswordChange() http.HandlerFunc {
+	return s.rec.RecordHandlerCall(s.prefix + "PasswordChange")
 }
 
 func (s *routerDefaultSessionStub) PendingConfirmWithPassword() http.HandlerFunc {

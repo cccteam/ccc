@@ -7,7 +7,7 @@
 //	every request: tracing, hooks.Outermost, request logging, SecurityHeaders, httpio.WithParams
 //	default (/console/api), sessions of the staff auth (password):
 //	  BindAuth(staff.Name), NoCaching, CompressionMiddleware, StartSession, SetXSRFToken: GET /console/api/user/methods, GET /console/api/user/session, DELETE /console/api/user/session, GET /console/api/user/pending
-//	  + ValidateXSRFToken: POST /console/api/user/password/login, POST /console/api/user/pending/confirm, POST /console/api/user/pending/cancel
+//	  + ValidateXSRFToken: POST /console/api/user/password/login, POST /console/api/user/password/change, POST /console/api/user/pending/confirm, POST /console/api/user/pending/cancel
 //	  + ValidateSession, ValidateXSRFToken, CheckAPIVersion (oldest answered 0.0.1): hooks.Default, generatedRoutes
 //	portal (/portal/api), sessions of the members auth (directory):
 //	  BindAuth(members.Name), NoCaching, CompressionMiddleware, StartSession, SetXSRFToken: GET /portal/api/user/methods, GET /portal/api/user/session, DELETE /portal/api/user/session, GET /portal/api/user/pending, GET /portal/api/user/directory/login, GET /portal/api/user/directory/callback, GET /portal/api/user/directory/logout
@@ -95,8 +95,9 @@ type DefaultSession interface {
 	PendingStatus() http.HandlerFunc
 	PendingConfirmWithPassword() http.HandlerFunc
 	PendingCancel() http.HandlerFunc
-	// The password method's login (session.PasswordMethod).
+	// The password method's login and password change (session.PasswordMethod); the change validates the session itself, outside ValidateSession.
 	PasswordLogin() http.HandlerFunc
+	PasswordChange() http.HandlerFunc
 }
 
 // PortalSession is the portal outlet's session surface: the Auth's middleware and
@@ -190,12 +191,14 @@ func New(h Handlers, hooks Hooks) *chi.Mux {
 			Methods: []session.AdvertisedMethod{
 				{Name: "password", Label: "Password", Path: "/console/api/user/password/login"},
 			},
-			Pending: session.PendingRoutes{Status: "/console/api/user/pending", Confirm: "/console/api/user/pending/confirm", Cancel: "/console/api/user/pending/cancel"},
+			Pending:        session.PendingRoutes{Status: "/console/api/user/pending", Confirm: "/console/api/user/pending/confirm", Cancel: "/console/api/user/pending/cancel"},
+			ChangePassword: "/console/api/user/password/change",
 		}))
 		bounded.Get("/console/api/user/session", h.Authenticated())
 		bounded.Delete("/console/api/user/session", h.Logout())
 		bounded.Get("/console/api/user/pending", h.PendingStatus())
 		guarded.Post("/console/api/user/password/login", h.PasswordLogin())
+		guarded.Post("/console/api/user/password/change", h.PasswordChange())
 		guarded.Post("/console/api/user/pending/confirm", h.PendingConfirmWithPassword())
 		guarded.Post("/console/api/user/pending/cancel", h.PendingCancel())
 

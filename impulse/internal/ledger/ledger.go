@@ -189,20 +189,20 @@ var Steps = []Step{
 	},
 	{
 		Pins: pins(`
-			access v0.10.4-0.20261016170115-fff4d4c766f8
-			ccc v0.3.4
-			ccc/accesstypes v0.6.0
+			access v0.11.1
+			ccc v0.3.5
+			ccc/accesstypes v0.6.2-0.20261019011714-fbbdfe29c065
 			ccc/cloud v0.2.1
-			ccc/resource v0.14.3-0.20261018021050-53eb85683657
+			ccc/resource v0.14.3-0.20261019190309-770c2462b1b1
 			ccc/tracer v0.3.0
 			db-initiator v0.4.3
-			httpio v0.7.21
+			httpio v0.7.22
 			logger v0.1.30
-			session v0.12.4-0.20261018021757-8ab8730ef4b7
+			session v0.13.0
 		`),
 		Pending: true,
 		Impulse: release("v0.5.0"),
-		Note:    "an auth signs in through the methods registered on one session Auth (session.NewAuth): the skeletons' auth packages construct it over the sessions, users, identities, auth events and pending sign-ins tables and register each method in a file of its own; the generator's Auth option takes method declarations (generation.PasswordMethod(), AzureMethod(name), GoogleMethod(name)) and the router serves the methods, session and pending routes the login page renders from; no recipe moves an application off the single-method session types, which the library keeps under session/legacy: an application on them is re-created from the skeleton",
+		Note:    "an auth signs in through the methods registered on one session Auth (session.NewAuth): the skeletons' auth packages construct it over the sessions, users, identities, auth events and pending sign-ins tables and register each method in a file of its own; the generator's Auth option takes method declarations (generation.PasswordMethod(), AzureMethod(name), GoogleMethod(name)) and the router serves the methods, session and pending routes the login page renders from; no recipe moves an application off the single-method session types, which the library keeps under session/legacy: an application on them is re-created from the skeleton; the generator serves each auth's users, seats and roles as resources (resource.UserSurface), and the skeletons' configurer hands the App the stores each surface serves over (StaffUserStores) for the generated constructor",
 	},
 }
 

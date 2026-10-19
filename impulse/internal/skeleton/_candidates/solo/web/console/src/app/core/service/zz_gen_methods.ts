@@ -22,6 +22,16 @@ export interface SetFeatureResult {
   updatedAt: Date;
 }
 
+/** The body SetStaffUserPassword takes. */
+export interface SetStaffUserPasswordConfig {
+  user: string | FieldPointer;
+  password: string | FieldPointer;
+}
+export interface SetStaffUserPassword {
+  user: string;
+  password: string;
+}
+
 export interface RPCFieldMeta {
   fieldName: string;
   displayType: ValidRPCTypes;
@@ -61,6 +71,13 @@ const methodMap: MethodMap = {
     fields: [
       { fieldName: 'name', displayType: 'string' },
       { fieldName: 'enabled', displayType: 'boolean' },
+    ],
+  },
+  [Methods.SetStaffUserPassword]: {
+    route: 'set-staff-user-password',
+    fields: [
+      { fieldName: 'user', displayType: 'uuid' },
+      { fieldName: 'password', displayType: 'string' },
     ],
   },
 };

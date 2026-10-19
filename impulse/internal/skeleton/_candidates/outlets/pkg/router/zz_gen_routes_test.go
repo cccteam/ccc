@@ -93,10 +93,70 @@ func TestGeneratedRouteOutletIsolation(t *testing.T) {
 		url    string
 		method string
 	}{
+		{url: "/console/api/members-users", method: http.MethodGet},
+		{url: "/console/api/members-users", method: http.MethodPost},
+		{url: "/console/api/members-users/testMembersUserID", method: http.MethodGet},
+		{url: "/console/api/members-users/testMembersUserID", method: http.MethodPost},
+		{url: "/console/api/members-users", method: http.MethodPatch},
+		{url: "/console/api/members-seats", method: http.MethodGet},
+		{url: "/console/api/members-seats", method: http.MethodPost},
+		{url: "/console/api/members-seats/testMembersSeatUser/testMembersSeatRole", method: http.MethodGet},
+		{url: "/console/api/members-seats/testMembersSeatUser/testMembersSeatRole", method: http.MethodPost},
+		{url: "/console/api/members-seats", method: http.MethodPatch},
+		{url: "/console/api/members-roles", method: http.MethodGet},
+		{url: "/console/api/members-roles", method: http.MethodPost},
+		{url: "/console/api/members-roles/testMembersRoleName", method: http.MethodGet},
+		{url: "/console/api/members-roles/testMembersRoleName", method: http.MethodPost},
+		{url: "/console/api/unlink-members-user-identity", method: http.MethodPost},
+		{url: "/console/api/tenants/testDomain/members-tenant-users", method: http.MethodGet},
+		{url: "/console/api/tenants/testDomain/members-tenant-users", method: http.MethodPost},
+		{url: "/console/api/tenants/testDomain/members-tenant-users/testMembersTenantUserID", method: http.MethodGet},
+		{url: "/console/api/tenants/testDomain/members-tenant-users/testMembersTenantUserID", method: http.MethodPost},
+		{url: "/console/api/tenants/testDomain/members-tenant-users", method: http.MethodPatch},
+		{url: "/console/api/tenants/testDomain/members-tenant-seats", method: http.MethodGet},
+		{url: "/console/api/tenants/testDomain/members-tenant-seats", method: http.MethodPost},
+		{url: "/console/api/tenants/testDomain/members-tenant-seats/testMembersTenantSeatUser/testMembersTenantSeatRole", method: http.MethodGet},
+		{url: "/console/api/tenants/testDomain/members-tenant-seats/testMembersTenantSeatUser/testMembersTenantSeatRole", method: http.MethodPost},
+		{url: "/console/api/tenants/testDomain/members-tenant-seats", method: http.MethodPatch},
+		{url: "/console/api/tenants/testDomain/members-tenant-roles", method: http.MethodGet},
+		{url: "/console/api/tenants/testDomain/members-tenant-roles", method: http.MethodPost},
+		{url: "/console/api/tenants/testDomain/members-tenant-roles/testMembersTenantRoleName", method: http.MethodGet},
+		{url: "/console/api/tenants/testDomain/members-tenant-roles/testMembersTenantRoleName", method: http.MethodPost},
+		{url: "/console/api/tenants/testDomain/unlink-members-tenant-user-identity", method: http.MethodPost},
 		{url: "/console/api/tenants/testDomain/readings", method: http.MethodGet},
 		{url: "/console/api/tenants/testDomain/readings", method: http.MethodPost},
 		{url: "/console/api/tenants/testDomain/readings/testReadingID", method: http.MethodGet},
 		{url: "/console/api/tenants/testDomain/readings/testReadingID", method: http.MethodPost},
+		{url: "/portal/api/staff-users", method: http.MethodGet},
+		{url: "/portal/api/staff-users", method: http.MethodPost},
+		{url: "/portal/api/staff-users/testStaffUserID", method: http.MethodGet},
+		{url: "/portal/api/staff-users/testStaffUserID", method: http.MethodPost},
+		{url: "/portal/api/staff-users", method: http.MethodPatch},
+		{url: "/portal/api/staff-seats", method: http.MethodGet},
+		{url: "/portal/api/staff-seats", method: http.MethodPost},
+		{url: "/portal/api/staff-seats/testStaffSeatUser/testStaffSeatRole", method: http.MethodGet},
+		{url: "/portal/api/staff-seats/testStaffSeatUser/testStaffSeatRole", method: http.MethodPost},
+		{url: "/portal/api/staff-seats", method: http.MethodPatch},
+		{url: "/portal/api/staff-roles", method: http.MethodGet},
+		{url: "/portal/api/staff-roles", method: http.MethodPost},
+		{url: "/portal/api/staff-roles/testStaffRoleName", method: http.MethodGet},
+		{url: "/portal/api/staff-roles/testStaffRoleName", method: http.MethodPost},
+		{url: "/portal/api/set-staff-user-password", method: http.MethodPost},
+		{url: "/portal/api/tenants/testDomain/staff-tenant-users", method: http.MethodGet},
+		{url: "/portal/api/tenants/testDomain/staff-tenant-users", method: http.MethodPost},
+		{url: "/portal/api/tenants/testDomain/staff-tenant-users/testStaffTenantUserID", method: http.MethodGet},
+		{url: "/portal/api/tenants/testDomain/staff-tenant-users/testStaffTenantUserID", method: http.MethodPost},
+		{url: "/portal/api/tenants/testDomain/staff-tenant-users", method: http.MethodPatch},
+		{url: "/portal/api/tenants/testDomain/staff-tenant-seats", method: http.MethodGet},
+		{url: "/portal/api/tenants/testDomain/staff-tenant-seats", method: http.MethodPost},
+		{url: "/portal/api/tenants/testDomain/staff-tenant-seats/testStaffTenantSeatUser/testStaffTenantSeatRole", method: http.MethodGet},
+		{url: "/portal/api/tenants/testDomain/staff-tenant-seats/testStaffTenantSeatUser/testStaffTenantSeatRole", method: http.MethodPost},
+		{url: "/portal/api/tenants/testDomain/staff-tenant-seats", method: http.MethodPatch},
+		{url: "/portal/api/tenants/testDomain/staff-tenant-roles", method: http.MethodGet},
+		{url: "/portal/api/tenants/testDomain/staff-tenant-roles", method: http.MethodPost},
+		{url: "/portal/api/tenants/testDomain/staff-tenant-roles/testStaffTenantRoleName", method: http.MethodGet},
+		{url: "/portal/api/tenants/testDomain/staff-tenant-roles/testStaffTenantRoleName", method: http.MethodPost},
+		{url: "/portal/api/tenants/testDomain/set-staff-tenant-user-password", method: http.MethodPost},
 		{url: "/portal/api/tenants/testDomain/readings", method: http.MethodGet},
 		{url: "/portal/api/tenants/testDomain/readings", method: http.MethodPost},
 		{url: "/portal/api/tenants/testDomain/readings/testReadingID", method: http.MethodGet},
@@ -115,6 +175,66 @@ func TestGeneratedRouteOutletIsolation(t *testing.T) {
 		{url: "/machines/feature-flags/testFeatureFlagName", method: http.MethodGet},
 		{url: "/machines/feature-flags/testFeatureFlagName", method: http.MethodPost},
 		{url: "/machines/set-feature", method: http.MethodPost},
+		{url: "/machines/staff-users", method: http.MethodGet},
+		{url: "/machines/staff-users", method: http.MethodPost},
+		{url: "/machines/staff-users/testStaffUserID", method: http.MethodGet},
+		{url: "/machines/staff-users/testStaffUserID", method: http.MethodPost},
+		{url: "/machines/staff-users", method: http.MethodPatch},
+		{url: "/machines/staff-seats", method: http.MethodGet},
+		{url: "/machines/staff-seats", method: http.MethodPost},
+		{url: "/machines/staff-seats/testStaffSeatUser/testStaffSeatRole", method: http.MethodGet},
+		{url: "/machines/staff-seats/testStaffSeatUser/testStaffSeatRole", method: http.MethodPost},
+		{url: "/machines/staff-seats", method: http.MethodPatch},
+		{url: "/machines/staff-roles", method: http.MethodGet},
+		{url: "/machines/staff-roles", method: http.MethodPost},
+		{url: "/machines/staff-roles/testStaffRoleName", method: http.MethodGet},
+		{url: "/machines/staff-roles/testStaffRoleName", method: http.MethodPost},
+		{url: "/machines/set-staff-user-password", method: http.MethodPost},
+		{url: "/machines/tenants/testDomain/staff-tenant-users", method: http.MethodGet},
+		{url: "/machines/tenants/testDomain/staff-tenant-users", method: http.MethodPost},
+		{url: "/machines/tenants/testDomain/staff-tenant-users/testStaffTenantUserID", method: http.MethodGet},
+		{url: "/machines/tenants/testDomain/staff-tenant-users/testStaffTenantUserID", method: http.MethodPost},
+		{url: "/machines/tenants/testDomain/staff-tenant-users", method: http.MethodPatch},
+		{url: "/machines/tenants/testDomain/staff-tenant-seats", method: http.MethodGet},
+		{url: "/machines/tenants/testDomain/staff-tenant-seats", method: http.MethodPost},
+		{url: "/machines/tenants/testDomain/staff-tenant-seats/testStaffTenantSeatUser/testStaffTenantSeatRole", method: http.MethodGet},
+		{url: "/machines/tenants/testDomain/staff-tenant-seats/testStaffTenantSeatUser/testStaffTenantSeatRole", method: http.MethodPost},
+		{url: "/machines/tenants/testDomain/staff-tenant-seats", method: http.MethodPatch},
+		{url: "/machines/tenants/testDomain/staff-tenant-roles", method: http.MethodGet},
+		{url: "/machines/tenants/testDomain/staff-tenant-roles", method: http.MethodPost},
+		{url: "/machines/tenants/testDomain/staff-tenant-roles/testStaffTenantRoleName", method: http.MethodGet},
+		{url: "/machines/tenants/testDomain/staff-tenant-roles/testStaffTenantRoleName", method: http.MethodPost},
+		{url: "/machines/tenants/testDomain/set-staff-tenant-user-password", method: http.MethodPost},
+		{url: "/machines/members-users", method: http.MethodGet},
+		{url: "/machines/members-users", method: http.MethodPost},
+		{url: "/machines/members-users/testMembersUserID", method: http.MethodGet},
+		{url: "/machines/members-users/testMembersUserID", method: http.MethodPost},
+		{url: "/machines/members-users", method: http.MethodPatch},
+		{url: "/machines/members-seats", method: http.MethodGet},
+		{url: "/machines/members-seats", method: http.MethodPost},
+		{url: "/machines/members-seats/testMembersSeatUser/testMembersSeatRole", method: http.MethodGet},
+		{url: "/machines/members-seats/testMembersSeatUser/testMembersSeatRole", method: http.MethodPost},
+		{url: "/machines/members-seats", method: http.MethodPatch},
+		{url: "/machines/members-roles", method: http.MethodGet},
+		{url: "/machines/members-roles", method: http.MethodPost},
+		{url: "/machines/members-roles/testMembersRoleName", method: http.MethodGet},
+		{url: "/machines/members-roles/testMembersRoleName", method: http.MethodPost},
+		{url: "/machines/unlink-members-user-identity", method: http.MethodPost},
+		{url: "/machines/tenants/testDomain/members-tenant-users", method: http.MethodGet},
+		{url: "/machines/tenants/testDomain/members-tenant-users", method: http.MethodPost},
+		{url: "/machines/tenants/testDomain/members-tenant-users/testMembersTenantUserID", method: http.MethodGet},
+		{url: "/machines/tenants/testDomain/members-tenant-users/testMembersTenantUserID", method: http.MethodPost},
+		{url: "/machines/tenants/testDomain/members-tenant-users", method: http.MethodPatch},
+		{url: "/machines/tenants/testDomain/members-tenant-seats", method: http.MethodGet},
+		{url: "/machines/tenants/testDomain/members-tenant-seats", method: http.MethodPost},
+		{url: "/machines/tenants/testDomain/members-tenant-seats/testMembersTenantSeatUser/testMembersTenantSeatRole", method: http.MethodGet},
+		{url: "/machines/tenants/testDomain/members-tenant-seats/testMembersTenantSeatUser/testMembersTenantSeatRole", method: http.MethodPost},
+		{url: "/machines/tenants/testDomain/members-tenant-seats", method: http.MethodPatch},
+		{url: "/machines/tenants/testDomain/members-tenant-roles", method: http.MethodGet},
+		{url: "/machines/tenants/testDomain/members-tenant-roles", method: http.MethodPost},
+		{url: "/machines/tenants/testDomain/members-tenant-roles/testMembersTenantRoleName", method: http.MethodGet},
+		{url: "/machines/tenants/testDomain/members-tenant-roles/testMembersTenantRoleName", method: http.MethodPost},
+		{url: "/machines/tenants/testDomain/unlink-members-tenant-user-identity", method: http.MethodPost},
 		{url: "/machines/tenants/testDomain/announcements", method: http.MethodGet},
 		{url: "/machines/tenants/testDomain/announcements", method: http.MethodPost},
 		{url: "/machines/tenants/testDomain/announcements/testAnnouncementID", method: http.MethodGet},
@@ -237,6 +357,22 @@ func generatedRouteParameters() []string {
 		"announcementID",
 		"readingID",
 		"tenantID",
+		"staffUserID",
+		"staffSeatUser",
+		"staffSeatRole",
+		"staffRoleName",
+		"staffTenantUserID",
+		"staffTenantSeatUser",
+		"staffTenantSeatRole",
+		"staffTenantRoleName",
+		"membersUserID",
+		"membersSeatUser",
+		"membersSeatRole",
+		"membersRoleName",
+		"membersTenantUserID",
+		"membersTenantSeatUser",
+		"membersTenantSeatRole",
+		"membersTenantRoleName",
 	}
 
 	return keys
@@ -413,6 +549,306 @@ func generatedRouterTests() []*generatedRouterTest {
 			parameters:  map[string]string{},
 		},
 		{
+			url: "/console/api/staff-users", method: http.MethodGet,
+			handlerFunc: "StaffUsers",
+			parameters:  map[string]string{},
+		},
+		{
+			url: "/console/api/staff-users", method: http.MethodPost,
+			handlerFunc: "StaffUsers",
+			parameters:  map[string]string{},
+		},
+		{
+			url: "/console/api/staff-users/testStaffUserID", method: http.MethodGet,
+			handlerFunc: "StaffUser",
+			parameters:  map[string]string{"staffUserID": "testStaffUserID"},
+		},
+		{
+			url: "/console/api/staff-users/testStaffUserID", method: http.MethodPost,
+			handlerFunc: "StaffUser",
+			parameters:  map[string]string{"staffUserID": "testStaffUserID"},
+		},
+		{
+			url: "/console/api/staff-users", method: http.MethodPatch,
+			handlerFunc: "PatchStaffUsers",
+			parameters:  map[string]string{},
+		},
+		{
+			url: "/console/api/staff-seats", method: http.MethodGet,
+			handlerFunc: "StaffSeats",
+			parameters:  map[string]string{},
+		},
+		{
+			url: "/console/api/staff-seats", method: http.MethodPost,
+			handlerFunc: "StaffSeats",
+			parameters:  map[string]string{},
+		},
+		{
+			url: "/console/api/staff-seats/testStaffSeatUser/testStaffSeatRole", method: http.MethodGet,
+			handlerFunc: "StaffSeat",
+			parameters:  map[string]string{"staffSeatUser": "testStaffSeatUser", "staffSeatRole": "testStaffSeatRole"},
+		},
+		{
+			url: "/console/api/staff-seats/testStaffSeatUser/testStaffSeatRole", method: http.MethodPost,
+			handlerFunc: "StaffSeat",
+			parameters:  map[string]string{"staffSeatUser": "testStaffSeatUser", "staffSeatRole": "testStaffSeatRole"},
+		},
+		{
+			url: "/console/api/staff-seats", method: http.MethodPatch,
+			handlerFunc: "PatchStaffSeats",
+			parameters:  map[string]string{},
+		},
+		{
+			url: "/console/api/staff-roles", method: http.MethodGet,
+			handlerFunc: "StaffRoles",
+			parameters:  map[string]string{},
+		},
+		{
+			url: "/console/api/staff-roles", method: http.MethodPost,
+			handlerFunc: "StaffRoles",
+			parameters:  map[string]string{},
+		},
+		{
+			url: "/console/api/staff-roles/testStaffRoleName", method: http.MethodGet,
+			handlerFunc: "StaffRole",
+			parameters:  map[string]string{"staffRoleName": "testStaffRoleName"},
+		},
+		{
+			url: "/console/api/staff-roles/testStaffRoleName", method: http.MethodPost,
+			handlerFunc: "StaffRole",
+			parameters:  map[string]string{"staffRoleName": "testStaffRoleName"},
+		},
+		{
+			url: "/console/api/set-staff-user-password", method: http.MethodPost,
+			handlerFunc: "SetStaffUserPassword",
+			parameters:  map[string]string{},
+		},
+		{
+			url: "/console/api/tenants/testDomain/staff-tenant-users", method: http.MethodGet,
+			handlerFunc: "StaffTenantUsers",
+			parameters:  map[string]string{"tenantID": "testDomain"},
+		},
+		{
+			url: "/console/api/tenants/testDomain/staff-tenant-users", method: http.MethodPost,
+			handlerFunc: "StaffTenantUsers",
+			parameters:  map[string]string{"tenantID": "testDomain"},
+		},
+		{
+			url: "/console/api/tenants/testDomain/staff-tenant-users/testStaffTenantUserID", method: http.MethodGet,
+			handlerFunc: "StaffTenantUser",
+			parameters:  map[string]string{"tenantID": "testDomain", "staffTenantUserID": "testStaffTenantUserID"},
+		},
+		{
+			url: "/console/api/tenants/testDomain/staff-tenant-users/testStaffTenantUserID", method: http.MethodPost,
+			handlerFunc: "StaffTenantUser",
+			parameters:  map[string]string{"tenantID": "testDomain", "staffTenantUserID": "testStaffTenantUserID"},
+		},
+		{
+			url: "/console/api/tenants/testDomain/staff-tenant-users", method: http.MethodPatch,
+			handlerFunc: "PatchStaffTenantUsers",
+			parameters:  map[string]string{"tenantID": "testDomain"},
+		},
+		{
+			url: "/console/api/tenants/testDomain/staff-tenant-seats", method: http.MethodGet,
+			handlerFunc: "StaffTenantSeats",
+			parameters:  map[string]string{"tenantID": "testDomain"},
+		},
+		{
+			url: "/console/api/tenants/testDomain/staff-tenant-seats", method: http.MethodPost,
+			handlerFunc: "StaffTenantSeats",
+			parameters:  map[string]string{"tenantID": "testDomain"},
+		},
+		{
+			url: "/console/api/tenants/testDomain/staff-tenant-seats/testStaffTenantSeatUser/testStaffTenantSeatRole", method: http.MethodGet,
+			handlerFunc: "StaffTenantSeat",
+			parameters:  map[string]string{"tenantID": "testDomain", "staffTenantSeatUser": "testStaffTenantSeatUser", "staffTenantSeatRole": "testStaffTenantSeatRole"},
+		},
+		{
+			url: "/console/api/tenants/testDomain/staff-tenant-seats/testStaffTenantSeatUser/testStaffTenantSeatRole", method: http.MethodPost,
+			handlerFunc: "StaffTenantSeat",
+			parameters:  map[string]string{"tenantID": "testDomain", "staffTenantSeatUser": "testStaffTenantSeatUser", "staffTenantSeatRole": "testStaffTenantSeatRole"},
+		},
+		{
+			url: "/console/api/tenants/testDomain/staff-tenant-seats", method: http.MethodPatch,
+			handlerFunc: "PatchStaffTenantSeats",
+			parameters:  map[string]string{"tenantID": "testDomain"},
+		},
+		{
+			url: "/console/api/tenants/testDomain/staff-tenant-roles", method: http.MethodGet,
+			handlerFunc: "StaffTenantRoles",
+			parameters:  map[string]string{"tenantID": "testDomain"},
+		},
+		{
+			url: "/console/api/tenants/testDomain/staff-tenant-roles", method: http.MethodPost,
+			handlerFunc: "StaffTenantRoles",
+			parameters:  map[string]string{"tenantID": "testDomain"},
+		},
+		{
+			url: "/console/api/tenants/testDomain/staff-tenant-roles/testStaffTenantRoleName", method: http.MethodGet,
+			handlerFunc: "StaffTenantRole",
+			parameters:  map[string]string{"tenantID": "testDomain", "staffTenantRoleName": "testStaffTenantRoleName"},
+		},
+		{
+			url: "/console/api/tenants/testDomain/staff-tenant-roles/testStaffTenantRoleName", method: http.MethodPost,
+			handlerFunc: "StaffTenantRole",
+			parameters:  map[string]string{"tenantID": "testDomain", "staffTenantRoleName": "testStaffTenantRoleName"},
+		},
+		{
+			url: "/console/api/tenants/testDomain/set-staff-tenant-user-password", method: http.MethodPost,
+			handlerFunc: "SetStaffTenantUserPassword",
+			parameters:  map[string]string{"tenantID": "testDomain"},
+		},
+		{
+			url: "/portal/api/members-users", method: http.MethodGet,
+			handlerFunc: "MembersUsers",
+			parameters:  map[string]string{},
+		},
+		{
+			url: "/portal/api/members-users", method: http.MethodPost,
+			handlerFunc: "MembersUsers",
+			parameters:  map[string]string{},
+		},
+		{
+			url: "/portal/api/members-users/testMembersUserID", method: http.MethodGet,
+			handlerFunc: "MembersUser",
+			parameters:  map[string]string{"membersUserID": "testMembersUserID"},
+		},
+		{
+			url: "/portal/api/members-users/testMembersUserID", method: http.MethodPost,
+			handlerFunc: "MembersUser",
+			parameters:  map[string]string{"membersUserID": "testMembersUserID"},
+		},
+		{
+			url: "/portal/api/members-users", method: http.MethodPatch,
+			handlerFunc: "PatchMembersUsers",
+			parameters:  map[string]string{},
+		},
+		{
+			url: "/portal/api/members-seats", method: http.MethodGet,
+			handlerFunc: "MembersSeats",
+			parameters:  map[string]string{},
+		},
+		{
+			url: "/portal/api/members-seats", method: http.MethodPost,
+			handlerFunc: "MembersSeats",
+			parameters:  map[string]string{},
+		},
+		{
+			url: "/portal/api/members-seats/testMembersSeatUser/testMembersSeatRole", method: http.MethodGet,
+			handlerFunc: "MembersSeat",
+			parameters:  map[string]string{"membersSeatUser": "testMembersSeatUser", "membersSeatRole": "testMembersSeatRole"},
+		},
+		{
+			url: "/portal/api/members-seats/testMembersSeatUser/testMembersSeatRole", method: http.MethodPost,
+			handlerFunc: "MembersSeat",
+			parameters:  map[string]string{"membersSeatUser": "testMembersSeatUser", "membersSeatRole": "testMembersSeatRole"},
+		},
+		{
+			url: "/portal/api/members-seats", method: http.MethodPatch,
+			handlerFunc: "PatchMembersSeats",
+			parameters:  map[string]string{},
+		},
+		{
+			url: "/portal/api/members-roles", method: http.MethodGet,
+			handlerFunc: "MembersRoles",
+			parameters:  map[string]string{},
+		},
+		{
+			url: "/portal/api/members-roles", method: http.MethodPost,
+			handlerFunc: "MembersRoles",
+			parameters:  map[string]string{},
+		},
+		{
+			url: "/portal/api/members-roles/testMembersRoleName", method: http.MethodGet,
+			handlerFunc: "MembersRole",
+			parameters:  map[string]string{"membersRoleName": "testMembersRoleName"},
+		},
+		{
+			url: "/portal/api/members-roles/testMembersRoleName", method: http.MethodPost,
+			handlerFunc: "MembersRole",
+			parameters:  map[string]string{"membersRoleName": "testMembersRoleName"},
+		},
+		{
+			url: "/portal/api/unlink-members-user-identity", method: http.MethodPost,
+			handlerFunc: "UnlinkMembersUserIdentity",
+			parameters:  map[string]string{},
+		},
+		{
+			url: "/portal/api/tenants/testDomain/members-tenant-users", method: http.MethodGet,
+			handlerFunc: "MembersTenantUsers",
+			parameters:  map[string]string{"tenantID": "testDomain"},
+		},
+		{
+			url: "/portal/api/tenants/testDomain/members-tenant-users", method: http.MethodPost,
+			handlerFunc: "MembersTenantUsers",
+			parameters:  map[string]string{"tenantID": "testDomain"},
+		},
+		{
+			url: "/portal/api/tenants/testDomain/members-tenant-users/testMembersTenantUserID", method: http.MethodGet,
+			handlerFunc: "MembersTenantUser",
+			parameters:  map[string]string{"tenantID": "testDomain", "membersTenantUserID": "testMembersTenantUserID"},
+		},
+		{
+			url: "/portal/api/tenants/testDomain/members-tenant-users/testMembersTenantUserID", method: http.MethodPost,
+			handlerFunc: "MembersTenantUser",
+			parameters:  map[string]string{"tenantID": "testDomain", "membersTenantUserID": "testMembersTenantUserID"},
+		},
+		{
+			url: "/portal/api/tenants/testDomain/members-tenant-users", method: http.MethodPatch,
+			handlerFunc: "PatchMembersTenantUsers",
+			parameters:  map[string]string{"tenantID": "testDomain"},
+		},
+		{
+			url: "/portal/api/tenants/testDomain/members-tenant-seats", method: http.MethodGet,
+			handlerFunc: "MembersTenantSeats",
+			parameters:  map[string]string{"tenantID": "testDomain"},
+		},
+		{
+			url: "/portal/api/tenants/testDomain/members-tenant-seats", method: http.MethodPost,
+			handlerFunc: "MembersTenantSeats",
+			parameters:  map[string]string{"tenantID": "testDomain"},
+		},
+		{
+			url: "/portal/api/tenants/testDomain/members-tenant-seats/testMembersTenantSeatUser/testMembersTenantSeatRole", method: http.MethodGet,
+			handlerFunc: "MembersTenantSeat",
+			parameters:  map[string]string{"tenantID": "testDomain", "membersTenantSeatUser": "testMembersTenantSeatUser", "membersTenantSeatRole": "testMembersTenantSeatRole"},
+		},
+		{
+			url: "/portal/api/tenants/testDomain/members-tenant-seats/testMembersTenantSeatUser/testMembersTenantSeatRole", method: http.MethodPost,
+			handlerFunc: "MembersTenantSeat",
+			parameters:  map[string]string{"tenantID": "testDomain", "membersTenantSeatUser": "testMembersTenantSeatUser", "membersTenantSeatRole": "testMembersTenantSeatRole"},
+		},
+		{
+			url: "/portal/api/tenants/testDomain/members-tenant-seats", method: http.MethodPatch,
+			handlerFunc: "PatchMembersTenantSeats",
+			parameters:  map[string]string{"tenantID": "testDomain"},
+		},
+		{
+			url: "/portal/api/tenants/testDomain/members-tenant-roles", method: http.MethodGet,
+			handlerFunc: "MembersTenantRoles",
+			parameters:  map[string]string{"tenantID": "testDomain"},
+		},
+		{
+			url: "/portal/api/tenants/testDomain/members-tenant-roles", method: http.MethodPost,
+			handlerFunc: "MembersTenantRoles",
+			parameters:  map[string]string{"tenantID": "testDomain"},
+		},
+		{
+			url: "/portal/api/tenants/testDomain/members-tenant-roles/testMembersTenantRoleName", method: http.MethodGet,
+			handlerFunc: "MembersTenantRole",
+			parameters:  map[string]string{"tenantID": "testDomain", "membersTenantRoleName": "testMembersTenantRoleName"},
+		},
+		{
+			url: "/portal/api/tenants/testDomain/members-tenant-roles/testMembersTenantRoleName", method: http.MethodPost,
+			handlerFunc: "MembersTenantRole",
+			parameters:  map[string]string{"tenantID": "testDomain", "membersTenantRoleName": "testMembersTenantRoleName"},
+		},
+		{
+			url: "/portal/api/tenants/testDomain/unlink-members-tenant-user-identity", method: http.MethodPost,
+			handlerFunc: "UnlinkMembersTenantUserIdentity",
+			parameters:  map[string]string{"tenantID": "testDomain"},
+		},
+		{
 			url: "/console/api/resources", method: http.MethodPatch,
 			handlerFunc: "PatchResources",
 		},
@@ -513,6 +949,78 @@ func (s *generatedHandlersStub) SetFeature() http.HandlerFunc {
 	return s.record("SetFeature")
 }
 
+func (s *generatedHandlersStub) SetStaffTenantUserPassword() http.HandlerFunc {
+	return s.record("SetStaffTenantUserPassword")
+}
+
+func (s *generatedHandlersStub) SetStaffUserPassword() http.HandlerFunc {
+	return s.record("SetStaffUserPassword")
+}
+
+func (s *generatedHandlersStub) StaffRoles() http.HandlerFunc {
+	return s.record("StaffRoles")
+}
+
+func (s *generatedHandlersStub) StaffRole() http.HandlerFunc {
+	return s.record("StaffRole")
+}
+
+func (s *generatedHandlersStub) StaffSeats() http.HandlerFunc {
+	return s.record("StaffSeats")
+}
+
+func (s *generatedHandlersStub) StaffSeat() http.HandlerFunc {
+	return s.record("StaffSeat")
+}
+
+func (s *generatedHandlersStub) PatchStaffSeats() http.HandlerFunc {
+	return s.record("PatchStaffSeats")
+}
+
+func (s *generatedHandlersStub) StaffTenantRoles() http.HandlerFunc {
+	return s.record("StaffTenantRoles")
+}
+
+func (s *generatedHandlersStub) StaffTenantRole() http.HandlerFunc {
+	return s.record("StaffTenantRole")
+}
+
+func (s *generatedHandlersStub) StaffTenantSeats() http.HandlerFunc {
+	return s.record("StaffTenantSeats")
+}
+
+func (s *generatedHandlersStub) StaffTenantSeat() http.HandlerFunc {
+	return s.record("StaffTenantSeat")
+}
+
+func (s *generatedHandlersStub) PatchStaffTenantSeats() http.HandlerFunc {
+	return s.record("PatchStaffTenantSeats")
+}
+
+func (s *generatedHandlersStub) StaffTenantUsers() http.HandlerFunc {
+	return s.record("StaffTenantUsers")
+}
+
+func (s *generatedHandlersStub) StaffTenantUser() http.HandlerFunc {
+	return s.record("StaffTenantUser")
+}
+
+func (s *generatedHandlersStub) PatchStaffTenantUsers() http.HandlerFunc {
+	return s.record("PatchStaffTenantUsers")
+}
+
+func (s *generatedHandlersStub) StaffUsers() http.HandlerFunc {
+	return s.record("StaffUsers")
+}
+
+func (s *generatedHandlersStub) StaffUser() http.HandlerFunc {
+	return s.record("StaffUser")
+}
+
+func (s *generatedHandlersStub) PatchStaffUsers() http.HandlerFunc {
+	return s.record("PatchStaffUsers")
+}
+
 func (s *generatedHandlersStub) Tenants() http.HandlerFunc {
 	return s.record("Tenants")
 }
@@ -525,8 +1033,72 @@ func (s *generatedHandlersStub) PatchResources() http.HandlerFunc {
 	return s.record("PatchResources")
 }
 
+func (s *generatedHandlersStub) MembersRole() http.HandlerFunc {
+	return s.record("MembersRole")
+}
+
+func (s *generatedHandlersStub) MembersRoles() http.HandlerFunc {
+	return s.record("MembersRoles")
+}
+
+func (s *generatedHandlersStub) MembersSeat() http.HandlerFunc {
+	return s.record("MembersSeat")
+}
+
+func (s *generatedHandlersStub) MembersSeats() http.HandlerFunc {
+	return s.record("MembersSeats")
+}
+
+func (s *generatedHandlersStub) MembersTenantRole() http.HandlerFunc {
+	return s.record("MembersTenantRole")
+}
+
+func (s *generatedHandlersStub) MembersTenantRoles() http.HandlerFunc {
+	return s.record("MembersTenantRoles")
+}
+
+func (s *generatedHandlersStub) MembersTenantSeat() http.HandlerFunc {
+	return s.record("MembersTenantSeat")
+}
+
+func (s *generatedHandlersStub) MembersTenantSeats() http.HandlerFunc {
+	return s.record("MembersTenantSeats")
+}
+
+func (s *generatedHandlersStub) MembersTenantUser() http.HandlerFunc {
+	return s.record("MembersTenantUser")
+}
+
+func (s *generatedHandlersStub) MembersTenantUsers() http.HandlerFunc {
+	return s.record("MembersTenantUsers")
+}
+
+func (s *generatedHandlersStub) MembersUser() http.HandlerFunc {
+	return s.record("MembersUser")
+}
+
+func (s *generatedHandlersStub) MembersUsers() http.HandlerFunc {
+	return s.record("MembersUsers")
+}
+
 func (s *generatedHandlersStub) PatchMachinesResources() http.HandlerFunc {
 	return s.record("PatchMachinesResources")
+}
+
+func (s *generatedHandlersStub) PatchMembersSeats() http.HandlerFunc {
+	return s.record("PatchMembersSeats")
+}
+
+func (s *generatedHandlersStub) PatchMembersTenantSeats() http.HandlerFunc {
+	return s.record("PatchMembersTenantSeats")
+}
+
+func (s *generatedHandlersStub) PatchMembersTenantUsers() http.HandlerFunc {
+	return s.record("PatchMembersTenantUsers")
+}
+
+func (s *generatedHandlersStub) PatchMembersUsers() http.HandlerFunc {
+	return s.record("PatchMembersUsers")
 }
 
 func (s *generatedHandlersStub) PatchPortalResources() http.HandlerFunc {
@@ -539,4 +1111,12 @@ func (s *generatedHandlersStub) Reading() http.HandlerFunc {
 
 func (s *generatedHandlersStub) Readings() http.HandlerFunc {
 	return s.record("Readings")
+}
+
+func (s *generatedHandlersStub) UnlinkMembersTenantUserIdentity() http.HandlerFunc {
+	return s.record("UnlinkMembersTenantUserIdentity")
+}
+
+func (s *generatedHandlersStub) UnlinkMembersUserIdentity() http.HandlerFunc {
+	return s.record("UnlinkMembersUserIdentity")
 }

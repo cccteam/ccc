@@ -11,6 +11,45 @@ export interface FeatureFlags {
   updatedBy?: string;
 }
 
+/** One external identity linked to a user: how they sign in through a registration. */
+export interface UserIdentity {
+  id: string;
+  method: string;
+  connection: string;
+  subject: string;
+  organization: string | null;
+  email: string | null;
+  linkedAt: Date;
+  lastUsedAt: Date;
+}
+/** A user of the Staff auth in the global partition: the account, its sign-in means and its seats. */
+export interface StaffUsers {
+  id: string;
+  username?: string;
+  disabled?: boolean;
+  hasPassword?: boolean;
+  passwordChangeRequired?: boolean;
+  createdAt?: Date;
+  lastSignInAt?: Date | null;
+  organization?: string | null;
+  identities?: UserIdentity[];
+  roles?: string[];
+  everywhereRoles?: string[];
+  rolesSynced?: boolean;
+}
+/** A seat of the Staff auth in the global partition: a user holding a role. */
+export interface StaffSeats {
+  user: string;
+  role: string;
+  username?: string;
+  everyDomain?: boolean;
+}
+/** A role a seat of the Staff auth in the global partition may take. */
+export interface StaffRoles {
+  name: string;
+  kind?: 'global' | 'domain';
+}
+
 /**
  * Keeps the literal types of the metadata while letting a client that predates a field
  * ignore it: TypeScript checks the literal against the fields ResourceMap declares and no
@@ -36,6 +75,43 @@ const resourceMap = defineResourceMap({
       { fieldName: 'updatedBy', displayType: 'string', required: true, isIndex: false },
     ],
   },
+  [Resources.StaffUsers]: {
+    route: 'staff-users',
+    fields: [
+      { fieldName: 'id', primaryKey: { ordinalPosition: 1 }, displayType: 'uuid', required: true, isIndex: true },
+      { fieldName: 'username', displayType: 'string', required: true, isIndex: false },
+      { fieldName: 'disabled', displayType: 'boolean', required: true, isIndex: false },
+      { fieldName: 'hasPassword', displayType: 'boolean', required: true, isIndex: false },
+      { fieldName: 'passwordChangeRequired', displayType: 'boolean', required: true, isIndex: false },
+      { fieldName: 'createdAt', displayType: 'date', required: true, isIndex: false },
+      { fieldName: 'lastSignInAt', displayType: 'date', required: false, isIndex: false },
+      { fieldName: 'organization', displayType: 'string', required: false, isIndex: false },
+      { fieldName: 'identities', displayType: 'object[]', required: true, isIndex: false },
+      { fieldName: 'roles', displayType: 'string[]', required: true, isIndex: false },
+      { fieldName: 'everywhereRoles', displayType: 'string[]', required: true, isIndex: false },
+      { fieldName: 'rolesSynced', displayType: 'boolean', required: true, isIndex: false },
+    ],
+  },
+  [Resources.StaffSeats]: {
+    route: 'staff-seats',
+    updateDisabled: true,
+    fields: [
+      { fieldName: 'user', primaryKey: { ordinalPosition: 1 }, displayType: 'uuid', required: true, isIndex: true },
+      { fieldName: 'role', primaryKey: { ordinalPosition: 2 }, displayType: 'string', required: true, isIndex: true },
+      { fieldName: 'username', displayType: 'string', required: true, isIndex: false },
+      { fieldName: 'everyDomain', displayType: 'boolean', required: true, isIndex: false },
+    ],
+  },
+  [Resources.StaffRoles]: {
+    route: 'staff-roles',
+    createDisabled: true,
+    updateDisabled: true,
+    deleteDisabled: true,
+    fields: [
+      { fieldName: 'name', primaryKey: { ordinalPosition: 1 }, displayType: 'string', required: true, isIndex: true },
+      { fieldName: 'kind', displayType: 'string', required: true, isIndex: false },
+    ],
+  },
 });
 
 export function resourceMeta(resource: Resource): ResourceMeta {
@@ -49,4 +125,7 @@ export function resourceMeta(resource: Resource): ResourceMeta {
 
 export const ResourceScopes: Record<Resource, PermissionScope> = {
   [Resources.FeatureFlags]: PermissionScopes.global,
+  [Resources.StaffUsers]: PermissionScopes.global,
+  [Resources.StaffSeats]: PermissionScopes.global,
+  [Resources.StaffRoles]: PermissionScopes.global,
 };

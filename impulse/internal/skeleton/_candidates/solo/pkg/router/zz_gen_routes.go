@@ -46,6 +46,19 @@ type GeneratedHandlers interface {
 	Features() http.HandlerFunc
 
 	SetFeature() http.HandlerFunc
+
+	SetStaffUserPassword() http.HandlerFunc
+
+	StaffRoles() http.HandlerFunc
+	StaffRole() http.HandlerFunc
+
+	StaffSeats() http.HandlerFunc
+	StaffSeat() http.HandlerFunc
+	PatchStaffSeats() http.HandlerFunc
+
+	StaffUsers() http.HandlerFunc
+	StaffUser() http.HandlerFunc
+	PatchStaffUsers() http.HandlerFunc
 }
 
 func generatedRoutes(r chi.Router, h GeneratedHandlers) {
@@ -75,6 +88,36 @@ func generatedRoutes(r chi.Router, h GeneratedHandlers) {
 	bounded.Get("/api/features", h.Features())
 
 	bounded.Post("/api/set-feature", h.SetFeature())
+
+	bounded.Post("/api/set-staff-user-password", h.SetStaffUserPassword())
+
+	staffRolesHandler := h.StaffRoles()
+	bounded.Get("/api/staff-roles", staffRolesHandler)
+	bounded.Post("/api/staff-roles", staffRolesHandler)
+
+	staffRoleHandler := h.StaffRole()
+	bounded.Get("/api/staff-roles/{staffRoleName}", staffRoleHandler)
+	bounded.Post("/api/staff-roles/{staffRoleName}", staffRoleHandler)
+
+	staffSeatsHandler := h.StaffSeats()
+	bounded.Get("/api/staff-seats", staffSeatsHandler)
+	bounded.Post("/api/staff-seats", staffSeatsHandler)
+
+	staffSeatHandler := h.StaffSeat()
+	bounded.Get("/api/staff-seats/{staffSeatUser}/{staffSeatRole}", staffSeatHandler)
+	bounded.Post("/api/staff-seats/{staffSeatUser}/{staffSeatRole}", staffSeatHandler)
+
+	bounded.Patch("/api/staff-seats", h.PatchStaffSeats())
+
+	staffUsersHandler := h.StaffUsers()
+	bounded.Get("/api/staff-users", staffUsersHandler)
+	bounded.Post("/api/staff-users", staffUsersHandler)
+
+	staffUserHandler := h.StaffUser()
+	bounded.Get("/api/staff-users/{staffUserID}", staffUserHandler)
+	bounded.Post("/api/staff-users/{staffUserID}", staffUserHandler)
+
+	bounded.Patch("/api/staff-users", h.PatchStaffUsers())
 }
 
 // NewTestRouter serves the generated API routes bare, for test composition only: no

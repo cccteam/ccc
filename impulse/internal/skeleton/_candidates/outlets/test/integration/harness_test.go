@@ -22,6 +22,7 @@ import (
 	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/outlets/pkg/router"
 	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/ccc/resource/live"
+	"github.com/cccteam/ccc/resource/sessionusers"
 	initiator "github.com/cccteam/db-initiator"
 	"github.com/cccteam/logger"
 	"github.com/cccteam/session"
@@ -94,7 +95,19 @@ func (c *servedConfigurer) Access() access.Controller { return c.auth.Access() }
 
 func (c *servedConfigurer) Staff() *staff.Auth { return c.auth }
 
+// StaffUserStores are the real stores: the test staff auth's session accounts and its
+// engine's memberships, so the suites drive the user surface as the served application does.
+func (c *servedConfigurer) StaffUserStores() (resource.UserAccounts, resource.UserSeats) {
+	return sessionusers.Accounts(c.auth.Session().API()), c.auth.Access().UserManager()
+}
+
 func (c *servedConfigurer) Members() *members.Auth { return c.members }
+
+// MembersUserStores are the real stores: the test members auth's session accounts and its
+// engine's memberships, so the suites drive the user surface as the served application does.
+func (c *servedConfigurer) MembersUserStores() (resource.UserAccounts, resource.UserSeats) {
+	return sessionusers.Accounts(c.members.Session().API()), c.members.Access().UserManager()
+}
 
 func (c *servedConfigurer) Validator() *validator.Validate { return validator.New() }
 

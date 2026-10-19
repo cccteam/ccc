@@ -60,6 +60,32 @@ type GeneratedHandlers interface {
 
 	SetFeature() http.HandlerFunc
 
+	SetStaffTenantUserPassword() http.HandlerFunc
+
+	SetStaffUserPassword() http.HandlerFunc
+
+	StaffRoles() http.HandlerFunc
+	StaffRole() http.HandlerFunc
+
+	StaffSeats() http.HandlerFunc
+	StaffSeat() http.HandlerFunc
+	PatchStaffSeats() http.HandlerFunc
+
+	StaffTenantRoles() http.HandlerFunc
+	StaffTenantRole() http.HandlerFunc
+
+	StaffTenantSeats() http.HandlerFunc
+	StaffTenantSeat() http.HandlerFunc
+	PatchStaffTenantSeats() http.HandlerFunc
+
+	StaffTenantUsers() http.HandlerFunc
+	StaffTenantUser() http.HandlerFunc
+	PatchStaffTenantUsers() http.HandlerFunc
+
+	StaffUsers() http.HandlerFunc
+	StaffUser() http.HandlerFunc
+	PatchStaffUsers() http.HandlerFunc
+
 	PatchResources() http.HandlerFunc
 }
 
@@ -100,6 +126,66 @@ func generatedRoutes(r chi.Router, h GeneratedHandlers) {
 	bounded.Get("/api/features", h.Features())
 
 	bounded.Post("/api/set-feature", h.SetFeature())
+
+	bounded.Post("/api/tenants/{tenantID}/set-staff-tenant-user-password", domainGuard(h.SetStaffTenantUserPassword()))
+
+	bounded.Post("/api/set-staff-user-password", h.SetStaffUserPassword())
+
+	staffRolesHandler := h.StaffRoles()
+	bounded.Get("/api/staff-roles", staffRolesHandler)
+	bounded.Post("/api/staff-roles", staffRolesHandler)
+
+	staffRoleHandler := h.StaffRole()
+	bounded.Get("/api/staff-roles/{staffRoleName}", staffRoleHandler)
+	bounded.Post("/api/staff-roles/{staffRoleName}", staffRoleHandler)
+
+	staffSeatsHandler := h.StaffSeats()
+	bounded.Get("/api/staff-seats", staffSeatsHandler)
+	bounded.Post("/api/staff-seats", staffSeatsHandler)
+
+	staffSeatHandler := h.StaffSeat()
+	bounded.Get("/api/staff-seats/{staffSeatUser}/{staffSeatRole}", staffSeatHandler)
+	bounded.Post("/api/staff-seats/{staffSeatUser}/{staffSeatRole}", staffSeatHandler)
+
+	bounded.Patch("/api/staff-seats", h.PatchStaffSeats())
+
+	staffTenantRolesHandler := domainGuard(h.StaffTenantRoles())
+	bounded.Get("/api/tenants/{tenantID}/staff-tenant-roles", staffTenantRolesHandler)
+	bounded.Post("/api/tenants/{tenantID}/staff-tenant-roles", staffTenantRolesHandler)
+
+	staffTenantRoleHandler := domainGuard(h.StaffTenantRole())
+	bounded.Get("/api/tenants/{tenantID}/staff-tenant-roles/{staffTenantRoleName}", staffTenantRoleHandler)
+	bounded.Post("/api/tenants/{tenantID}/staff-tenant-roles/{staffTenantRoleName}", staffTenantRoleHandler)
+
+	staffTenantSeatsHandler := domainGuard(h.StaffTenantSeats())
+	bounded.Get("/api/tenants/{tenantID}/staff-tenant-seats", staffTenantSeatsHandler)
+	bounded.Post("/api/tenants/{tenantID}/staff-tenant-seats", staffTenantSeatsHandler)
+
+	staffTenantSeatHandler := domainGuard(h.StaffTenantSeat())
+	bounded.Get("/api/tenants/{tenantID}/staff-tenant-seats/{staffTenantSeatUser}/{staffTenantSeatRole}", staffTenantSeatHandler)
+	bounded.Post("/api/tenants/{tenantID}/staff-tenant-seats/{staffTenantSeatUser}/{staffTenantSeatRole}", staffTenantSeatHandler)
+
+	bounded.Patch("/api/tenants/{tenantID}/staff-tenant-seats", domainGuard(h.PatchStaffTenantSeats()))
+
+	staffTenantUsersHandler := domainGuard(h.StaffTenantUsers())
+	bounded.Get("/api/tenants/{tenantID}/staff-tenant-users", staffTenantUsersHandler)
+	bounded.Post("/api/tenants/{tenantID}/staff-tenant-users", staffTenantUsersHandler)
+
+	staffTenantUserHandler := domainGuard(h.StaffTenantUser())
+	bounded.Get("/api/tenants/{tenantID}/staff-tenant-users/{staffTenantUserID}", staffTenantUserHandler)
+	bounded.Post("/api/tenants/{tenantID}/staff-tenant-users/{staffTenantUserID}", staffTenantUserHandler)
+
+	bounded.Patch("/api/tenants/{tenantID}/staff-tenant-users", domainGuard(h.PatchStaffTenantUsers()))
+
+	staffUsersHandler := h.StaffUsers()
+	bounded.Get("/api/staff-users", staffUsersHandler)
+	bounded.Post("/api/staff-users", staffUsersHandler)
+
+	staffUserHandler := h.StaffUser()
+	bounded.Get("/api/staff-users/{staffUserID}", staffUserHandler)
+	bounded.Post("/api/staff-users/{staffUserID}", staffUserHandler)
+
+	bounded.Patch("/api/staff-users", h.PatchStaffUsers())
 
 	bounded.Patch("/api/resources", h.PatchResources())
 }
