@@ -209,25 +209,34 @@ func (j *userJudge) self(username string) bool {
 	return sameUser(string(j.user), username)
 }
 
-// checkWrite checks one write against the decisions: Denied is Forbidden naming the
-// resources, and a Conditional decision on the resource or on a field is judged over
-// the write's pre- and post-image.
-func (j *userJudge) checkWrite(ctx context.Context, userPermissions UserPermissions, scope accesstypes.Scope, perm accesstypes.Permission, res accesstypes.Resource, fields []accesstypes.Resource, pre, post map[string]any) error {
-	resources := append([]accesstypes.Resource{res}, fields...)
+// checkWriteGrants is the first half of a write's check: Denied is Forbidden naming the
+// resources, before any store is read, so a caller without the grant learns nothing of
+// the rows. The decisions come back for judgeWrite once the row is composed.
+func checkWriteGrants(ctx context.Context, userPermissions UserPermissions, scope accesstypes.Scope, perm accesstypes.Permission, res accesstypes.Resource, fields []accesstypes.Resource) (accesstypes.Decisions, error) {
+	resources := make([]accesstypes.Resource, 0, 1+len(fields))
+	resources = append(resources, res)
+	resources = append(resources, fields...)
 	decisions, err := userPermissions.Check(ctx, RequestEnvironment(), scope, perm, resources...)
 	if err != nil {
-		return errors.Wrap(err, "resource.UserPermissions.Check()")
+		return nil, errors.Wrap(err, "resource.UserPermissions.Check()")
 	}
 	if denied := decisions.DeniedResources(); len(denied) > 0 {
-		return httpio.NewForbiddenMessagef("scope (%s), user (%s) does not have (%s) on %s", scope, userPermissions.User(), perm, denied)
+		return nil, httpio.NewForbiddenMessagef("scope (%s), user (%s) does not have (%s) on %s", scope, userPermissions.User(), perm, denied)
 	}
-	for _, checked := range resources {
-		ok, err := j.permits(ctx, decisions[checked], pre, post)
+
+	return decisions, nil
+}
+
+// judgeWrite is the second half: every Conditional decision on the resource or a field
+// is judged over the write's pre- and post-image.
+func (j *userJudge) judgeWrite(ctx context.Context, decisions accesstypes.Decisions, scope accesstypes.Scope, perm accesstypes.Permission, pre, post map[string]any) error {
+	for checked, decision := range decisions {
+		ok, err := j.permits(ctx, decision, pre, post)
 		if err != nil {
 			return err
 		}
 		if !ok {
-			return httpio.NewForbiddenMessagef("scope (%s), user (%s): the condition on (%s) on %s does not permit this row", scope, userPermissions.User(), perm, checked)
+			return httpio.NewForbiddenMessagef("scope (%s), user (%s): the condition on (%s) on %s does not permit this row", scope, j.user, perm, checked)
 		}
 	}
 

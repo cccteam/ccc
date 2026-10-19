@@ -36,13 +36,29 @@ const (
 )
 
 // writeContext is what one write knows: the request's partition and caller, the
-// snapshot it judges against, and whether it applies anything.
+// snapshot it judges against, composed after the grants are checked and never for a
+// caller without them, and whether it applies anything.
 type writeContext struct {
 	partition *userPartition
-	snap      *userSnapshot
-	judge     *userJudge
 	perms     UserPermissions
 	dryRun    bool
+	load      func(ctx context.Context) (*userSnapshot, error)
+	snap      *userSnapshot
+	judge     *userJudge
+}
+
+// ensure composes the snapshot once.
+func (wc *writeContext) ensure(ctx context.Context) error {
+	if wc.snap != nil {
+		return nil
+	}
+	snap, err := wc.load(ctx)
+	if err != nil {
+		return err
+	}
+	wc.snap, wc.judge = snap, newUserJudge(snap, wc.perms)
+
+	return nil
 }
 
 // usersPatch is the users patch handler of a partition.
@@ -58,10 +74,7 @@ func (s *UserSurface[A]) usersPatch(a UserApp, tenanted bool) http.HandlerFunc {
 		ctx, span := tracer.Start(r.Context())
 		defer span.End()
 
-		wc, err := s.writeContext(ctx, r, a, tenanted)
-		if err != nil {
-			return httpio.NewEncoder(w).ClientMessage(ctx, err)
-		}
+		wc := s.writeContext(r, a, tenanted)
 		resp := userWriteResponse{IDs: []ccc.UUID{}}
 		for op, err := range Operations(r, userOperationPath) {
 			if err != nil {
@@ -79,11 +92,11 @@ func (s *UserSurface[A]) usersPatch(a UserApp, tenanted bool) http.HandlerFunc {
 				}
 				resp.IDs = append(resp.IDs, id)
 			case OperationUpdate:
-				if err := s.updateUser(ctx, wc, httpio.Param[ccc.UUID](op.Req, "id"), write); err != nil {
+				if err := s.updateUser(ctx, wc, op, write); err != nil {
 					return httpio.NewEncoder(w).ClientMessage(ctx, err)
 				}
 			case OperationDelete:
-				if err := s.deleteUser(ctx, wc, httpio.Param[ccc.UUID](op.Req, "id")); err != nil {
+				if err := s.deleteUser(ctx, wc, op); err != nil {
 					return httpio.NewEncoder(w).ClientMessage(ctx, err)
 				}
 			}
@@ -97,15 +110,15 @@ func (s *UserSurface[A]) usersPatch(a UserApp, tenanted bool) http.HandlerFunc {
 }
 
 // writeContext composes what the writes of one request share.
-func (s *UserSurface[A]) writeContext(ctx context.Context, r *http.Request, a UserApp, tenanted bool) (*writeContext, error) {
+func (s *UserSurface[A]) writeContext(r *http.Request, a UserApp, tenanted bool) *writeContext {
 	partition := s.partitionOf(r, tenanted)
-	snap, err := s.snapshot(ctx, partition)
-	if err != nil {
-		return nil, err
-	}
-	perms := a.UserPermissions(r)
 
-	return &writeContext{partition: partition, snap: snap, judge: newUserJudge(snap, perms), perms: perms, dryRun: IsDryRun(r)}, nil
+	return &writeContext{
+		partition: partition,
+		perms:     a.UserPermissions(r),
+		dryRun:    IsDryRun(r),
+		load:      func(ctx context.Context) (*userSnapshot, error) { return s.snapshot(ctx, partition) },
+	}
 }
 
 // userWrite is one decoded user operation: the fields it sets and their values.
@@ -171,41 +184,32 @@ func (d *typedUserWriteDecoder[Row, Request]) decode(op *Operation) (*userWrite,
 // proposed row.
 func (s *UserSurface[A]) createUser(ctx context.Context, wc *writeContext, write *userWrite) (ccc.UUID, error) {
 	n := wc.partition.names
-	if !s.decl.Shape.CreatesUsers() {
-		return ccc.NilUUID, httpio.NewBadRequestMessagef("the %s auth creates no users: its people are created by their first sign-in through the directory", s.decl.Auth)
+	fields := make([]accesstypes.Resource, 0, len(write.fields))
+	for _, field := range write.fields {
+		fields = append(fields, fieldResource(n.Users, wireNameOf(field)))
 	}
-	username := strings.TrimSpace(write.username)
-	if username == "" {
-		return ccc.NilUUID, httpio.NewBadRequestMessage("a username is required")
+	decisions, err := checkWriteGrants(ctx, wc.perms, wc.partition.scope, accesstypes.Create, n.Users, fields)
+	if err != nil {
+		return ccc.NilUUID, err
 	}
-	switch s.decl.Shape.passwordOnCreate() {
-	case passwordRequired:
-		if write.password == nil || *write.password == "" {
-			return ccc.NilUUID, httpio.NewBadRequestMessage("a password is required: the password is the way in")
-		}
-	case passwordRefused:
-		if write.password != nil {
-			return ccc.NilUUID, httpio.NewBadRequestMessagef("the %s auth has no password method: a user is created without a password and signs in through the directory", s.decl.Auth)
-		}
-	case passwordOptional:
-		if write.password != nil && *write.password == "" {
-			return ccc.NilUUID, httpio.NewBadRequestMessage("an empty password is not a password: leave it out for a user who signs in through the directory")
+	var seatDecisions accesstypes.Decisions
+	if n.Tenanted {
+		if seatDecisions, err = checkWriteGrants(ctx, wc.perms, wc.partition.scope, accesstypes.Create, n.Seats, nil); err != nil {
+			return ccc.NilUUID, err
 		}
 	}
-	if wc.snap.byUsername(username) != nil {
-		return ccc.NilUUID, httpio.NewConflictMessagef("a user named %q already exists", username)
+	if err := wc.ensure(ctx); err != nil {
+		return ccc.NilUUID, err
 	}
-
+	username, err := s.validateCreate(wc, write)
+	if err != nil {
+		return ccc.NilUUID, err
+	}
 	var seatScope accesstypes.PolicyScope
-	if wc.partition.names.Tenanted {
-		if strings.TrimSpace(write.role) == "" {
-			return ccc.NilUUID, httpio.NewBadRequestMessage("a role is required: the seat is what makes the user the tenant's")
+	if n.Tenanted {
+		if seatScope, err = s.validateTenantRole(wc, write); err != nil {
+			return ccc.NilUUID, err
 		}
-		scope, ok := wc.snap.roleScope(accesstypes.Role(write.role))
-		if !ok {
-			return ccc.NilUUID, httpio.NewBadRequestMessagef("role %q does not exist in %s", write.role, wc.partition.scope)
-		}
-		seatScope = scope
 	}
 
 	hasPassword := write.password != nil
@@ -219,16 +223,12 @@ func (s *UserSurface[A]) createUser(ctx context.Context, wc *writeContext, write
 		userAttrOrganization:           nil,
 		userAttrRolesSynced:            false,
 	}
-	fields := make([]accesstypes.Resource, 0, len(write.fields))
-	for _, field := range write.fields {
-		fields = append(fields, fieldResource(n.Users, wireNameOf(field)))
-	}
-	if err := wc.judge.checkWrite(ctx, wc.perms, wc.partition.scope, accesstypes.Create, n.Users, fields, nil, post); err != nil {
+	if err := wc.judge.judgeWrite(ctx, decisions, wc.partition.scope, accesstypes.Create, nil, post); err != nil {
 		return ccc.NilUUID, err
 	}
-	if wc.partition.names.Tenanted {
+	if n.Tenanted {
 		seatPost := map[string]any{seatAttrUser: nil, seatAttrUsername: username, seatAttrRole: write.role, seatAttrEverywhere: false}
-		if err := wc.judge.checkWrite(ctx, wc.perms, wc.partition.scope, accesstypes.Create, n.Seats, nil, nil, seatPost); err != nil {
+		if err := wc.judge.judgeWrite(ctx, seatDecisions, wc.partition.scope, accesstypes.Create, nil, seatPost); err != nil {
 			return ccc.NilUUID, err
 		}
 	}
@@ -240,13 +240,59 @@ func (s *UserSurface[A]) createUser(ctx context.Context, wc *writeContext, write
 	if err != nil {
 		return ccc.NilUUID, errors.Wrap(err, "resource.UserAccounts.CreateUser()")
 	}
-	if wc.partition.names.Tenanted {
+	if n.Tenanted {
 		if err := s.seats.AddUserRoles(ctx, seatScope, userKey(username), accesstypes.Role(write.role)); err != nil {
 			return ccc.NilUUID, errors.Wrap(err, "resource.UserSeats.AddUserRoles()")
 		}
 	}
 
 	return id, nil
+}
+
+// validateCreate applies the shape to a create: whether users are created here, the
+// username, the password rule, and a name already in use. It returns the username as
+// the account takes it.
+func (s *UserSurface[A]) validateCreate(wc *writeContext, write *userWrite) (string, error) {
+	if !s.decl.Shape.CreatesUsers() {
+		return "", httpio.NewBadRequestMessagef("the %s auth creates no users: its people are created by their first sign-in through the directory", s.decl.Auth)
+	}
+	username := strings.TrimSpace(write.username)
+	if username == "" {
+		return "", httpio.NewBadRequestMessage("a username is required")
+	}
+	switch s.decl.Shape.passwordOnCreate() {
+	case passwordRequired:
+		if write.password == nil || *write.password == "" {
+			return "", httpio.NewBadRequestMessage("a password is required: the password is the way in")
+		}
+	case passwordRefused:
+		if write.password != nil {
+			return "", httpio.NewBadRequestMessagef("the %s auth has no password method: a user is created without a password and signs in through the directory", s.decl.Auth)
+		}
+	case passwordOptional:
+		if write.password != nil && *write.password == "" {
+			return "", httpio.NewBadRequestMessage("an empty password is not a password: leave it out for a user who signs in through the directory")
+		}
+	}
+	if wc.snap.byUsername(username) != nil {
+		return "", httpio.NewConflictMessagef("a user named %q already exists", username)
+	}
+
+	return username, nil
+}
+
+// validateTenantRole reads the seat a tenant create gives the new user: a role that
+// exists in the tenant.
+func (s *UserSurface[A]) validateTenantRole(wc *writeContext, write *userWrite) (accesstypes.PolicyScope, error) {
+	if strings.TrimSpace(write.role) == "" {
+		return accesstypes.PolicyScope{}, httpio.NewBadRequestMessage("a role is required: the seat is what makes the user the tenant's")
+	}
+	scope, ok := wc.snap.roleScope(accesstypes.Role(write.role))
+	if !ok {
+		return accesstypes.PolicyScope{}, httpio.NewBadRequestMessagef("role %q does not exist in %s", write.role, wc.partition.scope)
+	}
+
+	return scope, nil
 }
 
 // wireNameOf is a write field's wire name.
@@ -265,14 +311,26 @@ func wireNameOf(field accesstypes.Field) string {
 	}
 }
 
+// operationUUID reads a UUID the operation's path addresses; a malformed one is a bad
+// request, never a panic.
+func operationUUID(op *Operation, param httpio.ParamType) (ccc.UUID, error) {
+	raw := httpio.Param[string](op.Req, param)
+	id, err := ccc.UUIDFromString(raw)
+	if err != nil {
+		return ccc.NilUUID, httpio.NewBadRequestMessagef("%q is not an id", raw)
+	}
+
+	return id, nil
+}
+
 // locateUser finds the user a write addresses in the partition: NotFound where there is
 // none, or the user is outside the tenant partition.
-func (s *UserSurface[A]) locateUser(wc *writeContext, id ccc.UUID) (*composedUser, error) {
+func (s *UserSurface[A]) locateUser(ctx context.Context, wc *writeContext, id ccc.UUID) (*composedUser, error) {
 	account, ok := wc.snap.byID[id]
 	if !ok || !wc.snap.inPartition(account.Username) {
 		return nil, httpio.NewNotFoundMessagef("user %s does not exist", id)
 	}
-	user, err := wc.snap.userRowOf(context.Background(), account)
+	user, err := wc.snap.userRowOf(ctx, account)
 	if err != nil {
 		return nil, err
 	}
@@ -319,20 +377,29 @@ func (s *UserSurface[A]) accountLevel(ctx context.Context, wc *writeContext, use
 // here (Set<Auth>UserPassword sets a temporary one), nobody deactivates themselves, and
 // a tenant partition manages only its own users' accounts. A renamed user's seats move
 // with the name, since the membership store keys them by it.
-func (s *UserSurface[A]) updateUser(ctx context.Context, wc *writeContext, id ccc.UUID, write *userWrite) error {
+func (s *UserSurface[A]) updateUser(ctx context.Context, wc *writeContext, op *Operation, write *userWrite) error {
 	n := wc.partition.names
-	user, err := s.locateUser(wc, id)
+	if err := refuseUpdateShape(&n, write); err != nil {
+		return err
+	}
+	fields := make([]accesstypes.Resource, 0, len(write.fields))
+	for _, field := range write.fields {
+		fields = append(fields, fieldResource(n.Users, wireNameOf(field)))
+	}
+	decisions, err := checkWriteGrants(ctx, wc.perms, wc.partition.scope, accesstypes.Update, n.Users, fields)
 	if err != nil {
 		return err
 	}
-	if write.sets(userFieldPassword) {
-		return httpio.NewBadRequestMessagef("the password is not updated here: %s sets a temporary one the user changes at their next sign-in", n.SetPassword)
+	if err := wc.ensure(ctx); err != nil {
+		return err
 	}
-	if write.sets(userFieldRole) {
-		return httpio.NewBadRequestMessagef("a role is not updated on the user: seat and unseat through %s", n.Seats)
+	id, err := operationUUID(op, "id")
+	if err != nil {
+		return err
 	}
-	if len(write.fields) == 0 {
-		return httpio.NewBadRequestMessage("the update sets nothing")
+	user, err := s.locateUser(ctx, wc, id)
+	if err != nil {
+		return err
 	}
 	username := user.account.Username
 	if write.sets(userFieldUsername) {
@@ -352,30 +419,47 @@ func (s *UserSurface[A]) updateUser(ctx context.Context, wc *writeContext, id cc
 	}
 
 	post := map[string]any{}
-	fields := make([]accesstypes.Resource, 0, len(write.fields))
-	for _, field := range write.fields {
-		fields = append(fields, fieldResource(n.Users, wireNameOf(field)))
-		switch field {
-		case userFieldUsername:
-			post[userAttrUsername] = username
-		case userFieldDisabled:
-			post[userAttrDisabled] = write.disabled
-		}
+	if write.sets(userFieldUsername) {
+		post[userAttrUsername] = username
 	}
-	if err := wc.judge.checkWrite(ctx, wc.perms, wc.partition.scope, accesstypes.Update, n.Users, fields, user.image(), post); err != nil {
+	if write.sets(userFieldDisabled) {
+		post[userAttrDisabled] = write.disabled
+	}
+	if err := wc.judge.judgeWrite(ctx, decisions, wc.partition.scope, accesstypes.Update, user.image(), post); err != nil {
 		return err
 	}
 	if wc.dryRun {
 		return nil
 	}
 
+	return s.applyUserUpdate(ctx, user, write, username)
+}
+
+// refuseUpdateShape refuses what an update never sets: the password, a role, or
+// nothing at all.
+func refuseUpdateShape(n *UserPartitionNames, write *userWrite) error {
+	switch {
+	case write.sets(userFieldPassword):
+		return httpio.NewBadRequestMessagef("the password is not updated here: %s sets a temporary one the user changes at their next sign-in", n.SetPassword)
+	case write.sets(userFieldRole):
+		return httpio.NewBadRequestMessagef("a role is not updated on the user: seat and unseat through %s", n.Seats)
+	case len(write.fields) == 0:
+		return httpio.NewBadRequestMessage("the update sets nothing")
+	default:
+		return nil
+	}
+}
+
+// applyUserUpdate writes a checked update to the stores: the flag, then the rename
+// with its seats.
+func (s *UserSurface[A]) applyUserUpdate(ctx context.Context, user *composedUser, write *userWrite, username string) error {
 	if write.sets(userFieldDisabled) && write.disabled != user.account.Disabled {
-		if err := s.accounts.SetUserDisabled(ctx, id, write.disabled); err != nil {
+		if err := s.accounts.SetUserDisabled(ctx, user.account.ID, write.disabled); err != nil {
 			return errors.Wrap(err, "resource.UserAccounts.SetUserDisabled()")
 		}
 	}
 	if write.sets(userFieldUsername) && username != user.account.Username {
-		if err := s.accounts.RenameUser(ctx, id, username); err != nil {
+		if err := s.accounts.RenameUser(ctx, user.account.ID, username); err != nil {
 			return errors.Wrap(err, "resource.UserAccounts.RenameUser()")
 		}
 		if err := s.moveSeats(ctx, user.account.Username, username); err != nil {
@@ -415,9 +499,20 @@ func (s *UserSurface[A]) moveSeats(ctx context.Context, from, to string) error {
 
 // deleteUser removes a user with every seat they hold. Nobody deletes themselves, and a
 // tenant partition deletes only its own users.
-func (s *UserSurface[A]) deleteUser(ctx context.Context, wc *writeContext, id ccc.UUID) error {
+func (s *UserSurface[A]) deleteUser(ctx context.Context, wc *writeContext, op *Operation) error {
 	n := wc.partition.names
-	user, err := s.locateUser(wc, id)
+	decisions, err := checkWriteGrants(ctx, wc.perms, wc.partition.scope, accesstypes.Delete, n.Users, nil)
+	if err != nil {
+		return err
+	}
+	if err := wc.ensure(ctx); err != nil {
+		return err
+	}
+	id, err := operationUUID(op, "id")
+	if err != nil {
+		return err
+	}
+	user, err := s.locateUser(ctx, wc, id)
 	if err != nil {
 		return err
 	}
@@ -427,7 +522,7 @@ func (s *UserSurface[A]) deleteUser(ctx context.Context, wc *writeContext, id cc
 	if err := s.accountLevel(ctx, wc, user, "the delete"); err != nil {
 		return err
 	}
-	if err := wc.judge.checkWrite(ctx, wc.perms, wc.partition.scope, accesstypes.Delete, n.Users, nil, user.image(), nil); err != nil {
+	if err := wc.judge.judgeWrite(ctx, decisions, wc.partition.scope, accesstypes.Delete, user.image(), nil); err != nil {
 		return err
 	}
 	if wc.dryRun {
@@ -460,25 +555,20 @@ func (s *UserSurface[A]) seatsPatch(a UserApp, tenanted bool) http.HandlerFunc {
 		ctx, span := tracer.Start(r.Context())
 		defer span.End()
 
-		wc, err := s.writeContext(ctx, r, a, tenanted)
-		if err != nil {
-			return httpio.NewEncoder(w).ClientMessage(ctx, err)
-		}
+		wc := s.writeContext(r, a, tenanted)
 		for op, err := range Operations(r, seatOperationPath, RequireCreatePath()) {
 			if err != nil {
 				return httpio.NewEncoder(w).ClientMessage(ctx, errors.Wrap(err, "resource.Operations()"))
 			}
-			user := httpio.Param[ccc.UUID](op.Req, "id1")
-			role := accesstypes.Role(httpio.Param[string](op.Req, "id2"))
 			switch op.Type {
 			case OperationCreate:
-				if err := s.createSeat(ctx, wc, user, role); err != nil {
+				if err := s.createSeat(ctx, wc, op); err != nil {
 					return httpio.NewEncoder(w).ClientMessage(ctx, err)
 				}
 			case OperationUpdate:
 				return httpio.NewEncoder(w).ClientMessage(ctx, httpio.NewBadRequestMessage("a seat is not updated: unseat and seat"))
 			case OperationDelete:
-				if err := s.deleteSeat(ctx, wc, user, role); err != nil {
+				if err := s.deleteSeat(ctx, wc, op); err != nil {
 					return httpio.NewEncoder(w).ClientMessage(ctx, err)
 				}
 			}
@@ -492,8 +582,20 @@ func (s *UserSurface[A]) seatsPatch(a UserApp, tenanted bool) http.HandlerFunc {
 // (globally or in every tenant for the global partition, in the tenant for the tenant
 // partition), the user must be the partition's, and a user whose roles a directory
 // writes is not seated by hand.
-func (s *UserSurface[A]) createSeat(ctx context.Context, wc *writeContext, id ccc.UUID, role accesstypes.Role) error {
+func (s *UserSurface[A]) createSeat(ctx context.Context, wc *writeContext, op *Operation) error {
 	n := wc.partition.names
+	decisions, err := checkWriteGrants(ctx, wc.perms, wc.partition.scope, accesstypes.Create, n.Seats, nil)
+	if err != nil {
+		return err
+	}
+	if err := wc.ensure(ctx); err != nil {
+		return err
+	}
+	id, err := operationUUID(op, "id1")
+	if err != nil {
+		return err
+	}
+	role := accesstypes.Role(httpio.Param[string](op.Req, "id2"))
 	account, ok := wc.snap.byID[id]
 	if !ok {
 		return httpio.NewBadRequestMessagef("user %s does not exist", id)
@@ -516,7 +618,7 @@ func (s *UserSurface[A]) createSeat(ctx context.Context, wc *writeContext, id cc
 		return httpio.NewConflictMessagef("the roles of %q are written by their directory at every sign-in; a seat made here would not last", account.Username)
 	}
 	seat := &composedSeat{user: account, role: role, scope: scope}
-	if err := wc.judge.checkWrite(ctx, wc.perms, wc.partition.scope, accesstypes.Create, n.Seats, nil, nil, seat.image(n.Tenanted)); err != nil {
+	if err := wc.judge.judgeWrite(ctx, decisions, wc.partition.scope, accesstypes.Create, nil, seat.image(n.Tenanted)); err != nil {
 		return err
 	}
 	if wc.dryRun {
@@ -532,8 +634,20 @@ func (s *UserSurface[A]) createSeat(ctx context.Context, wc *writeContext, id cc
 // deleteSeat unseats a user from a role. Nobody unseats themselves, a directory's seats
 // are not removed by hand, and a seat held everywhere is removed from the global
 // partition alone.
-func (s *UserSurface[A]) deleteSeat(ctx context.Context, wc *writeContext, id ccc.UUID, role accesstypes.Role) error {
+func (s *UserSurface[A]) deleteSeat(ctx context.Context, wc *writeContext, op *Operation) error {
 	n := wc.partition.names
+	decisions, err := checkWriteGrants(ctx, wc.perms, wc.partition.scope, accesstypes.Delete, n.Seats, nil)
+	if err != nil {
+		return err
+	}
+	if err := wc.ensure(ctx); err != nil {
+		return err
+	}
+	id, err := operationUUID(op, "id1")
+	if err != nil {
+		return err
+	}
+	role := accesstypes.Role(httpio.Param[string](op.Req, "id2"))
 	account, ok := wc.snap.byID[id]
 	var seat *composedSeat
 	if ok {
@@ -555,7 +669,7 @@ func (s *UserSurface[A]) deleteSeat(ctx context.Context, wc *writeContext, id cc
 	if n.Tenanted && seat.everywhere() {
 		return httpio.NewConflictMessagef("%q holds %s in every %s; unseat them from the global surface", account.Username, role, strings.ToLower(s.decl.Tenant))
 	}
-	if err := wc.judge.checkWrite(ctx, wc.perms, wc.partition.scope, accesstypes.Delete, n.Seats, nil, seat.image(n.Tenanted), nil); err != nil {
+	if err := wc.judge.judgeWrite(ctx, decisions, wc.partition.scope, accesstypes.Delete, seat.image(n.Tenanted), nil); err != nil {
 		return err
 	}
 	if wc.dryRun {

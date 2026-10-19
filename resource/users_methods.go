@@ -32,10 +32,7 @@ type UnlinkUserIdentityRequest struct {
 // methodContext decodes a method's body and checks Execute on it, then locates the
 // target user in the partition and judges the grant's condition over their row.
 func (s *UserSurface[A]) methodTarget(ctx context.Context, r *http.Request, a UserApp, tenanted bool, method accesstypes.Resource, user ccc.UUID) (*writeContext, *composedUser, error) {
-	wc, err := s.writeContext(ctx, r, a, tenanted)
-	if err != nil {
-		return nil, nil, err
-	}
+	wc := s.writeContext(r, a, tenanted)
 	decisions, err := wc.perms.Check(ctx, RequestEnvironment(), wc.partition.scope, accesstypes.Execute, method)
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "resource.UserPermissions.Check()")
@@ -43,7 +40,10 @@ func (s *UserSurface[A]) methodTarget(ctx context.Context, r *http.Request, a Us
 	if denied := decisions.DeniedResources(); len(denied) > 0 {
 		return nil, nil, httpio.NewForbiddenMessagef("user %s, scope %s, does not have %s on %s", wc.perms.User(), wc.partition.scope, accesstypes.Execute, denied)
 	}
-	target, err := s.locateUser(wc, user)
+	if err := wc.ensure(ctx); err != nil {
+		return nil, nil, err
+	}
+	target, err := s.locateUser(ctx, wc, user)
 	if err != nil {
 		return nil, nil, err
 	}

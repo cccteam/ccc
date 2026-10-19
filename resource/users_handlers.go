@@ -160,13 +160,12 @@ type readContext struct {
 	perms     UserPermissions
 }
 
-func (s *UserSurface[A]) readContext(ctx context.Context, r *http.Request, a UserApp, tenanted bool) (*readContext, error) {
-	partition := s.partitionOf(r, tenanted)
+// readContext composes the partition once the request's grants are checked.
+func (s *UserSurface[A]) readContext(ctx context.Context, partition *userPartition, perms UserPermissions) (*readContext, error) {
 	snap, err := s.snapshot(ctx, partition)
 	if err != nil {
 		return nil, err
 	}
-	perms := a.UserPermissions(r)
 
 	return &readContext{partition: partition, snap: snap, judge: newUserJudge(snap, perms), perms: perms}, nil
 }
@@ -212,7 +211,7 @@ func userCapabilities[A UserAuth, Row Resourcer](s *UserSurface[A], rc *readCont
 		self := rc.judge.self(user.account.Username)
 		outside := false
 		if n.Tenanted {
-			wc := &writeContext{partition: rc.partition, snap: rc.snap, judge: rc.judge, perms: rc.perms}
+			wc := &writeContext{partition: rc.partition, perms: rc.perms, snap: rc.snap, judge: rc.judge}
 			if outside, err = s.seatedOutside(ctx, wc, user.account.Username); err != nil {
 				return nil, err
 			}
@@ -236,11 +235,12 @@ func listUsers[A UserAuth, Row Resourcer](s *UserSurface[A], a UserApp, collecti
 		ctx, span := tracer.Start(r.Context())
 		defer span.End()
 
-		rc, err := s.readContext(ctx, r, a, tenanted)
+		partition, perms := s.partitionOf(r, tenanted), a.UserPermissions(r)
+		cq, err := decodeComposed(decoder, r, perms, partition.scope, a.ResourceClient().DBType())
 		if err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
-		cq, err := decodeComposed(decoder, r, rc.perms, rc.partition.scope, a.ResourceClient().DBType())
+		rc, err := s.readContext(ctx, partition, perms)
 		if err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
@@ -278,11 +278,12 @@ func readUser[A UserAuth, Row Resourcer](s *UserSurface[A], a UserApp, collectio
 		defer span.End()
 
 		id := httpio.Param[ccc.UUID](r, param)
-		rc, err := s.readContext(ctx, r, a, tenanted)
+		partition, perms := s.partitionOf(r, tenanted), a.UserPermissions(r)
+		cq, err := decodeComposed(decoder, r, perms, partition.scope, a.ResourceClient().DBType())
 		if err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
-		cq, err := decodeComposed(decoder, r, rc.perms, rc.partition.scope, a.ResourceClient().DBType())
+		rc, err := s.readContext(ctx, partition, perms)
 		if err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
@@ -372,16 +373,18 @@ func listSeats[A UserAuth, Row Resourcer](s *UserSurface[A], a UserApp, collecti
 		ctx, span := tracer.Start(r.Context())
 		defer span.End()
 
-		rc, err := s.readContext(ctx, r, a, tenanted)
+		partition, perms := s.partitionOf(r, tenanted), a.UserPermissions(r)
+		var cq *composedQuery[Row]
+		var err error
+		if tenanted {
+			cq, err = decodeComposed(tenantDecoder, r, perms, partition.scope, a.ResourceClient().DBType())
+		} else {
+			cq, err = decodeComposed(decoder, r, perms, partition.scope, a.ResourceClient().DBType())
+		}
 		if err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
-		var cq *composedQuery[Row]
-		if tenanted {
-			cq, err = decodeComposed(tenantDecoder, r, rc.perms, rc.partition.scope, a.ResourceClient().DBType())
-		} else {
-			cq, err = decodeComposed(decoder, r, rc.perms, rc.partition.scope, a.ResourceClient().DBType())
-		}
+		rc, err := s.readContext(ctx, partition, perms)
 		if err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
@@ -421,16 +424,18 @@ func readSeat[A UserAuth, Row Resourcer](s *UserSurface[A], a UserApp, collectio
 
 		user := httpio.Param[ccc.UUID](r, names.SeatUserParam)
 		role := accesstypes.Role(httpio.Param[string](r, names.SeatRoleParam))
-		rc, err := s.readContext(ctx, r, a, tenanted)
+		partition, perms := s.partitionOf(r, tenanted), a.UserPermissions(r)
+		var cq *composedQuery[Row]
+		var err error
+		if tenanted {
+			cq, err = decodeComposed(tenantDecoder, r, perms, partition.scope, a.ResourceClient().DBType())
+		} else {
+			cq, err = decodeComposed(decoder, r, perms, partition.scope, a.ResourceClient().DBType())
+		}
 		if err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
-		var cq *composedQuery[Row]
-		if tenanted {
-			cq, err = decodeComposed(tenantDecoder, r, rc.perms, rc.partition.scope, a.ResourceClient().DBType())
-		} else {
-			cq, err = decodeComposed(decoder, r, rc.perms, rc.partition.scope, a.ResourceClient().DBType())
-		}
+		rc, err := s.readContext(ctx, partition, perms)
 		if err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
@@ -506,16 +511,18 @@ func listRoles[A UserAuth, Row Resourcer](s *UserSurface[A], a UserApp, collecti
 		ctx, span := tracer.Start(r.Context())
 		defer span.End()
 
-		rc, err := s.readContext(ctx, r, a, tenanted)
+		partition, perms := s.partitionOf(r, tenanted), a.UserPermissions(r)
+		var cq *composedQuery[Row]
+		var err error
+		if tenanted {
+			cq, err = decodeComposed(tenantDecoder, r, perms, partition.scope, a.ResourceClient().DBType())
+		} else {
+			cq, err = decodeComposed(decoder, r, perms, partition.scope, a.ResourceClient().DBType())
+		}
 		if err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
-		var cq *composedQuery[Row]
-		if tenanted {
-			cq, err = decodeComposed(tenantDecoder, r, rc.perms, rc.partition.scope, a.ResourceClient().DBType())
-		} else {
-			cq, err = decodeComposed(decoder, r, rc.perms, rc.partition.scope, a.ResourceClient().DBType())
-		}
+		rc, err := s.readContext(ctx, partition, perms)
 		if err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
@@ -549,16 +556,18 @@ func readRole[A UserAuth, Row Resourcer](s *UserSurface[A], a UserApp, collectio
 		defer span.End()
 
 		name := accesstypes.Role(httpio.Param[string](r, names.RoleParam))
-		rc, err := s.readContext(ctx, r, a, tenanted)
+		partition, perms := s.partitionOf(r, tenanted), a.UserPermissions(r)
+		var cq *composedQuery[Row]
+		var err error
+		if tenanted {
+			cq, err = decodeComposed(tenantDecoder, r, perms, partition.scope, a.ResourceClient().DBType())
+		} else {
+			cq, err = decodeComposed(decoder, r, perms, partition.scope, a.ResourceClient().DBType())
+		}
 		if err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
-		var cq *composedQuery[Row]
-		if tenanted {
-			cq, err = decodeComposed(tenantDecoder, r, rc.perms, rc.partition.scope, a.ResourceClient().DBType())
-		} else {
-			cq, err = decodeComposed(decoder, r, rc.perms, rc.partition.scope, a.ResourceClient().DBType())
-		}
+		rc, err := s.readContext(ctx, partition, perms)
 		if err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
