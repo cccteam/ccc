@@ -40,7 +40,8 @@ const (
 	// paramAuthMethod is a sign-in method declaration: a call to one of the generation
 	// package's method constructors (generation.PasswordMethod(),
 	// generation.GoogleMethod("directory")), with its label when one is chained
-	// (.Labeled("Company directory")).
+	// (.Labeled("Company directory")) and the registration's flags when they are
+	// (.InvitedUsers(), .SyncsRoles()).
 	paramAuthMethod
 	// paramRelease is a release: a semantic version string literal, or the generation
 	// package's ThisRelease identifier for the server's own release.
@@ -78,7 +79,7 @@ func (k paramKind) String() string {
 	case paramOutletOption:
 		return "OutletOption"
 	case paramAuthMethod:
-		return "sign-in method declaration (generation.PasswordMethod(), GoogleMethod(name), AzureMethod(name), or WorkOSMethod(name), with .Labeled(label) when chained)"
+		return "sign-in method declaration (generation.PasswordMethod(), GoogleMethod(name), AzureMethod(name), or WorkOSMethod(name), with .Labeled(label), .InvitedUsers() or .SyncsRoles() when chained)"
 	case paramRelease:
 		return "release string literal (\"1.5.0\") or generation." + ThisReleaseIdent
 	case paramInt:
@@ -147,6 +148,7 @@ const (
 	optAuth               = "Auth"
 	optAPIKey             = "APIKey"
 	optWebApp             = "WebApp"
+	optManages            = "Manages"
 	optOldestAnswered     = "OldestAnswered"
 	optWithRequestLog     = "WithRequestLog"
 	optWithMountedRoutes  = "WithMountedRoutes"
@@ -166,8 +168,15 @@ var authMethodConstructors = map[string]string{
 }
 
 // labeledMethod is the method that chains a label onto a declaration
-// (generation.GoogleMethod("directory").Labeled("Company directory")).
-const labeledMethod = "Labeled"
+// (generation.GoogleMethod("directory").Labeled("Company directory"));
+// invitedUsersMethod and syncsRolesMethod chain the registration's flags: the directory
+// admits only users an operator created, and the directory's groups write the user's
+// roles at every sign-in. They mirror generation.AuthMethod's methods.
+const (
+	labeledMethod      = "Labeled"
+	invitedUsersMethod = "InvitedUsers"
+	syncsRolesMethod   = "SyncsRoles"
+)
 
 // MethodConstructor returns the generation package's constructor for a sign-in method
 // (PasswordMethod for password, GoogleMethod for google), or empty for a method the
@@ -182,21 +191,36 @@ func MethodConstructor(kind string) string {
 	return ""
 }
 
-// MethodDeclaration writes a sign-in method's declaration as a generator program carries
-// it, package-qualified: generation.PasswordMethod(), or
-// generation.GoogleMethod("directory"), with .Labeled(label) when the label is set.
+// MethodDeclaration writes a new sign-in method's declaration as a generator program
+// carries it, package-qualified: generation.PasswordMethod(), or
+// generation.GoogleMethod("directory"), with .Labeled(label) when the label is set. A
+// declaration read from a program is written back by AuthMethodArg.Declaration, which
+// keeps the flags chained on it.
 func MethodDeclaration(kind, name, label string) string {
-	ctor := MethodConstructor(kind)
+	return (&AuthMethodArg{Kind: kind, Name: name, Label: label}).Declaration()
+}
+
+// Declaration writes the declaration as a generator program carries it, package-qualified:
+// the constructor with its registration name, then .Labeled(label), .InvitedUsers() and
+// .SyncsRoles() for what is set. Empty for a method the generated router does not compose.
+func (m *AuthMethodArg) Declaration() string {
+	ctor := MethodConstructor(m.Kind)
 	if ctor == "" {
 		return ""
 	}
 	text := "generation." + ctor + "("
-	if kind != MethodPassword {
-		text += strconv.Quote(name)
+	if m.Kind != MethodPassword {
+		text += strconv.Quote(m.Name)
 	}
 	text += ")"
-	if label != "" {
-		text += "." + labeledMethod + "(" + strconv.Quote(label) + ")"
+	if m.Label != "" {
+		text += "." + labeledMethod + "(" + strconv.Quote(m.Label) + ")"
+	}
+	if m.InvitedUsers {
+		text += "." + invitedUsersMethod + "()"
+	}
+	if m.SyncsRoles {
+		text += "." + syncsRolesMethod + "()"
 	}
 
 	return text
@@ -293,6 +317,7 @@ var knownOptions = map[string]optionSpec{
 	optAuth:             {kind: kindOutletOption, params: []paramKind{paramString}, variadic: paramAuthMethod},
 	optAPIKey:           {kind: kindOutletOption},
 	optWebApp:           {kind: kindOutletOption, params: []paramKind{paramString}},
+	optManages:          {kind: kindOutletOption, params: []paramKind{paramString}},
 	optOldestAnswered:   {kind: kindOutletOption, params: []paramKind{paramRelease}},
 	optOutletRequestLog: {kind: kindOutletOption, params: []paramKind{paramRequestLog}},
 	optOutletTraces:     {kind: kindOutletOption, params: []paramKind{paramTraces}},

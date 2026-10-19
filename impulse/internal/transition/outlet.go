@@ -967,8 +967,7 @@ func authDeclaration(auth *app.OutletAuth) string {
 	parts := make([]string, 0, 1+len(auth.Methods))
 	parts = append(parts, fmt.Sprintf("%q", auth.ImportPath))
 	for i := range auth.Methods {
-		m := &auth.Methods[i]
-		parts = append(parts, app.MethodDeclaration(m.Kind, m.Name, m.Label))
+		parts = append(parts, auth.Methods[i].Declaration())
 	}
 
 	return "generation.Auth(" + strings.Join(parts, ", ") + ")"

@@ -234,7 +234,7 @@ func renderArg(a *app.Arg) string {
 	case app.ArgIdent, app.ArgConstructor:
 		return a.Str
 	case app.ArgAuthMethod:
-		return strings.TrimPrefix(app.MethodDeclaration(a.Method.Kind, a.Method.Name, a.Method.Label), "generation.")
+		return strings.TrimPrefix(a.Method.Declaration(), "generation.")
 	case app.ArgCall:
 		return renderCall(a.Call)
 	case app.ArgComposite, app.ArgOther:
