@@ -31,6 +31,7 @@ import (
 	"github.com/cccteam/ccc/resource/lodestar/pkg/resources"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/router"
 	"github.com/cccteam/ccc/resource/scheduled"
+	"github.com/cccteam/ccc/resource/sessionusers"
 	initiator "github.com/cccteam/db-initiator"
 	"github.com/cccteam/httpio"
 	"github.com/cccteam/logger"
@@ -235,8 +236,13 @@ type testConfigurer struct {
 	membersAuth   *members.Auth
 	stores        *testStores
 	live          live.Service
-	management    access.Handlers
-	tenants       *resource.TenantRoster
+	// crewUsers and membersUsers are the two auths' user-management surfaces: the
+	// served stack's over the real sessions and engines, the policy-signal suite's over
+	// an in-memory account store and the instance's engine; nil builds one over empty
+	// in-memory stores, for the suites that never drive the user routes.
+	crewUsers    *resource.UserSurface[router.CrewAuth]
+	membersUsers *resource.UserSurface[router.MembersAuth]
+	tenants      *resource.TenantRoster
 	// version is the release the served stack reports as its own (AppVersion); empty
 	// is dev, under which the version check answers every release.
 	version string
@@ -367,10 +373,27 @@ func (c *testConfigurer) Live() live.Service {
 // carries no security headers.
 func (c *testConfigurer) LiveOrigins() []string { return nil }
 
-// UserManagement is the crew engine's user-management handlers where a suite mounts the
-// role-membership routes (the served stack and the policy-signal suite); nil elsewhere,
-// since the test router never mounts them.
-func (c *testConfigurer) UserManagement() access.Handlers { return c.management }
+// CrewUserSurface is the crew auth's user-management surface the suite supplied, or one
+// over empty in-memory stores.
+func (c *testConfigurer) CrewUserSurface() *resource.UserSurface[router.CrewAuth] {
+	if c.crewUsers != nil {
+		return c.crewUsers
+	}
+	store := resource.NewMemUserStore()
+
+	return router.NewCrewUserSurface(store, store)
+}
+
+// MembersUserSurface is the members auth's surface the suite supplied, or one over empty
+// in-memory stores.
+func (c *testConfigurer) MembersUserSurface() *resource.UserSurface[router.MembersAuth] {
+	if c.membersUsers != nil {
+		return c.membersUsers
+	}
+	store := resource.NewMemUserStore()
+
+	return router.NewMembersUserSurface(store, store)
+}
 
 // newTestApp builds the application with the given permission table backing every
 // request, served through the generated test router.
@@ -777,7 +800,8 @@ func newServedAt(ctx context.Context, t *testing.T, version string) *served {
 		membersAuth:   membersAuth,
 		stores:        stores,
 		live:          fake,
-		management:    crewAuth.Access().Handlers(httpio.Log),
+		crewUsers:     router.NewCrewUserSurface(sessionusers.Accounts(crewAuth.Session().API()), crewAuth.Access().UserManager()),
+		membersUsers:  router.NewMembersUserSurface(sessionusers.Accounts(membersAuth.Session().API()), membersAuth.Access().UserManager()),
 		version:       version,
 		scheduler:     scheduled.NewGuard(schedulerInvoker, keys),
 		jobs:          starter,

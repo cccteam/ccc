@@ -8,7 +8,7 @@
 //	  by hand under /beacons/: request log on event, traces off
 //	default (/console/api), sessions of the crew auth (password, google):
 //	  BindAuth(crew.Name), NoCaching, CompressionMiddleware, StartSession, SetXSRFToken: GET /console/api/user/methods, GET /console/api/user/session, DELETE /console/api/user/session, GET /console/api/user/pending, GET /console/api/user/google/login, GET /console/api/user/google/callback
-//	  + ValidateXSRFToken: POST /console/api/user/password/login, POST /console/api/user/pending/confirm, POST /console/api/user/pending/cancel
+//	  + ValidateXSRFToken: POST /console/api/user/password/login, POST /console/api/user/password/change, POST /console/api/user/pending/confirm, POST /console/api/user/pending/cancel
 //	  + ValidateSession, ValidateXSRFToken, CheckAPIVersion (oldest answered 0.1.0): hooks.Default, generatedRoutes
 //	droids (/droids), API key:
 //	  NoCaching, CompressionMiddleware, DroidsAuth: hooks.Droids, generatedDroidsRoutes
@@ -116,8 +116,9 @@ type DefaultSession interface {
 	PendingStatus() http.HandlerFunc
 	PendingConfirmWithPassword() http.HandlerFunc
 	PendingCancel() http.HandlerFunc
-	// The password method's login (session.PasswordMethod).
+	// The password method's login and password change (session.PasswordMethod); the change validates the session itself, outside ValidateSession.
 	PasswordLogin() http.HandlerFunc
+	PasswordChange() http.HandlerFunc
 	// The google registration's login and callback (google.Method).
 	GoogleLogin() http.HandlerFunc
 	GoogleCallback() http.HandlerFunc
@@ -233,7 +234,8 @@ func New(h Handlers, hooks Hooks) *chi.Mux {
 				{Name: "password", Label: "Password", Path: "/console/api/user/password/login"},
 				{Name: "google", Label: "Google", Path: "/console/api/user/google/login"},
 			},
-			Pending: session.PendingRoutes{Status: "/console/api/user/pending", Confirm: "/console/api/user/pending/confirm", Cancel: "/console/api/user/pending/cancel"},
+			Pending:        session.PendingRoutes{Status: "/console/api/user/pending", Confirm: "/console/api/user/pending/confirm", Cancel: "/console/api/user/pending/cancel"},
+			ChangePassword: "/console/api/user/password/change",
 		}))
 		bounded.Get("/console/api/user/session", h.Authenticated())
 		bounded.Delete("/console/api/user/session", h.Logout())
@@ -241,6 +243,7 @@ func New(h Handlers, hooks Hooks) *chi.Mux {
 		bounded.Get("/console/api/user/google/login", h.GoogleLogin())
 		bounded.Get("/console/api/user/google/callback", h.GoogleCallback())
 		guarded.Post("/console/api/user/password/login", h.PasswordLogin())
+		guarded.Post("/console/api/user/password/change", h.PasswordChange())
 		guarded.Post("/console/api/user/pending/confirm", h.PendingConfirmWithPassword())
 		guarded.Post("/console/api/user/pending/cancel", h.PendingCancel())
 

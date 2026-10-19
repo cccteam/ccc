@@ -2,8 +2,8 @@
 import { ApiDescriptor, Client, ClientOptions, createClient, MethodHandle, ResourceHandle } from '@cccteam/resource';
 import { Point } from 'geojson';
 import { Methods, Resources } from './zz_gen_constants';
-import { ClientContacts, ClientRosters, DistressCalls, Missions, MissionDocuments, BriefingTemplates, FeatureFlags } from './zz_gen_resources';
-import { StandDownMission, SetFeature, SetFeatureResult } from './zz_gen_methods';
+import { ClientContacts, ClientRosters, DistressCalls, Missions, MissionDocuments, BriefingTemplates, FeatureFlags, MembersUsers, MembersSeats, MembersRoles, MembersSectorUsers, MembersSectorSeats, MembersSectorRoles } from './zz_gen_resources';
+import { StandDownMission, SetFeature, SetFeatureResult, UnlinkMembersUserIdentity, UnlinkMembersSectorUserIdentity } from './zz_gen_methods';
 
 /** The feature flags the application declares, by name: what a route, a field or a method is gated behind. */
 export type Feature = 'commendations';
@@ -111,6 +111,44 @@ export type BriefingTemplatesKey = [id: string];
 /** The primary key of FeatureFlags, in route order. */
 export type FeatureFlagsKey = [name: string];
 
+/** The fields a client may change on MembersUsers. Keys, server-owned, and immutable fields are absent. */
+export interface MembersUsersPatch {
+  username?: string;
+  disabled?: boolean;
+}
+/** The primary key of MembersUsers, in route order. */
+export type MembersUsersKey = [id: string];
+
+/**
+ * The fields a client may set when creating MembersSeats. Server-owned fields are
+ * absent; a server-generated key is absent, a client-assigned key is required.
+ */
+export type MembersSeatsCreate = Record<never, never>;
+/** The primary key of MembersSeats, in route order. */
+export type MembersSeatsKey = [user: string, role: string];
+
+/** The primary key of MembersRoles, in route order. */
+export type MembersRolesKey = [name: string];
+
+/** The fields a client may change on MembersSectorUsers. Keys, server-owned, and immutable fields are absent. */
+export interface MembersSectorUsersPatch {
+  username?: string;
+  disabled?: boolean;
+}
+/** The primary key of MembersSectorUsers, in route order. */
+export type MembersSectorUsersKey = [id: string];
+
+/**
+ * The fields a client may set when creating MembersSectorSeats. Server-owned fields are
+ * absent; a server-generated key is absent, a client-assigned key is required.
+ */
+export type MembersSectorSeatsCreate = Record<never, never>;
+/** The primary key of MembersSectorSeats, in route order. */
+export type MembersSectorSeatsKey = [user: string, role: string];
+
+/** The primary key of MembersSectorRoles, in route order. */
+export type MembersSectorRolesKey = [name: string];
+
 /**
  * Keeps the literal types of the descriptor while letting a client that predates a field
  * ignore it: TypeScript checks the literal against the fields ApiDescriptor declares and
@@ -211,10 +249,80 @@ export const apiDescriptor = defineApiDescriptor({
       page: { default: 50 },
       order: [{ field: 'name', direction: 'asc' }],
     },
+    [Resources.MembersUsers]: {
+      resource: Resources.MembersUsers,
+      property: 'membersUsers',
+      route: 'members-users',
+      scope: 'global',
+      consolidated: false,
+      keys: ['id'],
+      operations: ['list', 'read', 'patch', 'remove'],
+      page: { default: 50 },
+      order: [{ field: 'username', direction: 'asc' }],
+      patchable: ['username', 'disabled'],
+    },
+    [Resources.MembersSeats]: {
+      resource: Resources.MembersSeats,
+      property: 'membersSeats',
+      route: 'members-seats',
+      scope: 'global',
+      consolidated: false,
+      keys: ['user', 'role'],
+      operations: ['list', 'read', 'create', 'remove'],
+      page: { default: 50 },
+      order: [{ field: 'username', direction: 'asc' }, { field: 'role', direction: 'asc' }],
+    },
+    [Resources.MembersRoles]: {
+      resource: Resources.MembersRoles,
+      property: 'membersRoles',
+      route: 'members-roles',
+      scope: 'global',
+      consolidated: false,
+      keys: ['name'],
+      operations: ['list', 'read'],
+      page: { default: 50 },
+      order: [{ field: 'name', direction: 'asc' }],
+    },
+    [Resources.MembersSectorUsers]: {
+      resource: Resources.MembersSectorUsers,
+      property: 'membersSectorUsers',
+      route: 'members-sector-users',
+      scope: 'domain',
+      consolidated: false,
+      keys: ['id'],
+      operations: ['list', 'read', 'patch', 'remove'],
+      page: { default: 50 },
+      order: [{ field: 'username', direction: 'asc' }],
+      patchable: ['username', 'disabled'],
+    },
+    [Resources.MembersSectorSeats]: {
+      resource: Resources.MembersSectorSeats,
+      property: 'membersSectorSeats',
+      route: 'members-sector-seats',
+      scope: 'domain',
+      consolidated: false,
+      keys: ['user', 'role'],
+      operations: ['list', 'read', 'create', 'remove'],
+      page: { default: 50 },
+      order: [{ field: 'username', direction: 'asc' }, { field: 'role', direction: 'asc' }],
+    },
+    [Resources.MembersSectorRoles]: {
+      resource: Resources.MembersSectorRoles,
+      property: 'membersSectorRoles',
+      route: 'members-sector-roles',
+      scope: 'domain',
+      consolidated: false,
+      keys: ['name'],
+      operations: ['list', 'read'],
+      page: { default: 50 },
+      order: [{ field: 'name', direction: 'asc' }],
+    },
   },
   methods: {
     [Methods.StandDownMission]: { method: Methods.StandDownMission, property: 'standDownMission', route: 'stand-down-mission', scope: 'domain' },
     [Methods.SetFeature]: { method: Methods.SetFeature, property: 'setFeature', route: 'set-feature', scope: 'global', answers: true },
+    [Methods.UnlinkMembersUserIdentity]: { method: Methods.UnlinkMembersUserIdentity, property: 'unlinkMembersUserIdentity', route: 'unlink-members-user-identity', scope: 'global' },
+    [Methods.UnlinkMembersSectorUserIdentity]: { method: Methods.UnlinkMembersSectorUserIdentity, property: 'unlinkMembersSectorUserIdentity', route: 'unlink-members-sector-user-identity', scope: 'domain' },
   },
 });
 
@@ -223,7 +331,11 @@ export interface GlobalApi {
   clientContacts: ResourceHandle<ClientContacts, ClientContactsKey, 'list' | 'read' | 'create' | 'patch' | 'remove' | 'batch', ClientContactsCreate, ClientContactsPatch>;
   briefingTemplates: ResourceHandle<BriefingTemplates, BriefingTemplatesKey, 'list'>;
   featureFlags: ResourceHandle<FeatureFlags, FeatureFlagsKey, 'list' | 'read'>;
+  membersUsers: ResourceHandle<MembersUsers, MembersUsersKey, 'list' | 'read' | 'patch' | 'remove', never, MembersUsersPatch>;
+  membersSeats: ResourceHandle<MembersSeats, MembersSeatsKey, 'list' | 'read' | 'create' | 'remove', MembersSeatsCreate>;
+  membersRoles: ResourceHandle<MembersRoles, MembersRolesKey, 'list' | 'read'>;
   setFeature: MethodHandle<SetFeature, SetFeatureResult>;
+  unlinkMembersUserIdentity: MethodHandle<UnlinkMembersUserIdentity>;
 }
 
 /** Handles for one tenant partition, available on client.domain(...). */
@@ -232,7 +344,11 @@ export interface DomainApi {
   distressCalls: ResourceHandle<DistressCalls, DistressCallsKey, 'list' | 'read' | 'create' | 'patch' | 'remove' | 'batch', DistressCallsCreate, DistressCallsPatch>;
   missions: ResourceHandle<Missions, MissionsKey, 'list' | 'read' | 'create' | 'patch' | 'remove' | 'batch', MissionsCreate, MissionsPatch>;
   missionDocuments: ResourceHandle<MissionDocuments, MissionDocumentsKey, 'list' | 'read' | 'patch' | 'remove' | 'batch', never, MissionDocumentsPatch>;
+  membersSectorUsers: ResourceHandle<MembersSectorUsers, MembersSectorUsersKey, 'list' | 'read' | 'patch' | 'remove', never, MembersSectorUsersPatch>;
+  membersSectorSeats: ResourceHandle<MembersSectorSeats, MembersSectorSeatsKey, 'list' | 'read' | 'create' | 'remove', MembersSectorSeatsCreate>;
+  membersSectorRoles: ResourceHandle<MembersSectorRoles, MembersSectorRolesKey, 'list' | 'read'>;
   standDownMission: MethodHandle<StandDownMission>;
+  unlinkMembersSectorUserIdentity: MethodHandle<UnlinkMembersSectorUserIdentity>;
 }
 
 export type Api = Client<GlobalApi, DomainApi>;

@@ -249,6 +249,66 @@ export interface SetFeatureResult {
   updatedAt: Date;
 }
 
+/** The body SetCrewUserPassword takes. */
+export interface SetCrewUserPasswordConfig {
+  user: string | FieldPointer;
+  password: string | FieldPointer;
+}
+export interface SetCrewUserPassword {
+  user: string;
+  password: string;
+}
+
+/** The body UnlinkCrewUserIdentity takes. */
+export interface UnlinkCrewUserIdentityConfig {
+  user: string | FieldPointer;
+  identity: string | FieldPointer;
+}
+export interface UnlinkCrewUserIdentity {
+  user: string;
+  identity: string;
+}
+
+/** The body SetCrewSectorUserPassword takes. */
+export interface SetCrewSectorUserPasswordConfig {
+  user: string | FieldPointer;
+  password: string | FieldPointer;
+}
+export interface SetCrewSectorUserPassword {
+  user: string;
+  password: string;
+}
+
+/** The body UnlinkCrewSectorUserIdentity takes. */
+export interface UnlinkCrewSectorUserIdentityConfig {
+  user: string | FieldPointer;
+  identity: string | FieldPointer;
+}
+export interface UnlinkCrewSectorUserIdentity {
+  user: string;
+  identity: string;
+}
+
+/** The body UnlinkMembersUserIdentity takes. */
+export interface UnlinkMembersUserIdentityConfig {
+  user: string | FieldPointer;
+  identity: string | FieldPointer;
+}
+export interface UnlinkMembersUserIdentity {
+  user: string;
+  identity: string;
+}
+
+/** The body UnlinkMembersSectorUserIdentity takes. */
+export interface UnlinkMembersSectorUserIdentityConfig {
+  user: string | FieldPointer;
+  identity: string | FieldPointer;
+}
+export interface UnlinkMembersSectorUserIdentity {
+  user: string;
+  identity: string;
+}
+
 export interface RPCFieldMeta {
   fieldName: string;
   displayType: ValidRPCTypes;
@@ -439,6 +499,48 @@ const methodMap: MethodMap = {
     fields: [
       { fieldName: 'name', displayType: 'string' },
       { fieldName: 'enabled', displayType: 'boolean' },
+    ],
+  },
+  [Methods.SetCrewUserPassword]: {
+    route: 'set-crew-user-password',
+    fields: [
+      { fieldName: 'user', displayType: 'uuid' },
+      { fieldName: 'password', displayType: 'string' },
+    ],
+  },
+  [Methods.UnlinkCrewUserIdentity]: {
+    route: 'unlink-crew-user-identity',
+    fields: [
+      { fieldName: 'user', displayType: 'uuid' },
+      { fieldName: 'identity', displayType: 'uuid' },
+    ],
+  },
+  [Methods.SetCrewSectorUserPassword]: {
+    route: 'set-crew-sector-user-password',
+    fields: [
+      { fieldName: 'user', displayType: 'uuid' },
+      { fieldName: 'password', displayType: 'string' },
+    ],
+  },
+  [Methods.UnlinkCrewSectorUserIdentity]: {
+    route: 'unlink-crew-sector-user-identity',
+    fields: [
+      { fieldName: 'user', displayType: 'uuid' },
+      { fieldName: 'identity', displayType: 'uuid' },
+    ],
+  },
+  [Methods.UnlinkMembersUserIdentity]: {
+    route: 'unlink-members-user-identity',
+    fields: [
+      { fieldName: 'user', displayType: 'uuid' },
+      { fieldName: 'identity', displayType: 'uuid' },
+    ],
+  },
+  [Methods.UnlinkMembersSectorUserIdentity]: {
+    route: 'unlink-members-sector-user-identity',
+    fields: [
+      { fieldName: 'user', displayType: 'uuid' },
+      { fieldName: 'identity', displayType: 'uuid' },
     ],
   },
 };

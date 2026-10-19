@@ -31,11 +31,22 @@ func NewGenerator(ctx context.Context) (generation.Generator, error) {
 			// The crew auth's methods, in the order the login page offers them: the
 			// password, and the Google directory under the registration name the auth
 			// package gives it (crew.GoogleRegistration), which the router mounts at
-			// /console/api/user/google/login and tells the login page about.
+			// /console/api/user/google/login and tells the login page about. The
+			// directory writes a Google sign-in's roles at every sign-in (crew.go's
+			// RoleSync), so the registration declares SyncsRoles: the user-management
+			// surface the generator serves for the crew leaves such a user's seats to
+			// the directory.
 			//
-			// Demonstrates: auth.multi-method.
-			generation.Auth("github.com/cccteam/ccc/resource/lodestar/pkg/auth/crew", generation.PasswordMethod(), generation.GoogleMethod("google")),
+			// Demonstrates: auth.multi-method, auth.user-management.
+			generation.Auth("github.com/cccteam/ccc/resource/lodestar/pkg/auth/crew", generation.PasswordMethod(), generation.GoogleMethod("google").SyncsRoles()),
 			generation.WebApp("/console"),
+			// The console also manages the members: the members auth's users, seats and
+			// roles are served under /console/api beside the crew's, through the members
+			// auth's stores and checked against the crew role file, so headquarters
+			// administers both populations from one place.
+			//
+			// Demonstrates: auth.user-management.
+			generation.Manages("github.com/cccteam/ccc/resource/lodestar/pkg/auth/members"),
 			// The oldest release of the console the server still answers. A console build
 			// sends the release it was built from in X-Api-Version, and the generated router
 			// answers releases from this one up to the server's own (APP_VERSION through
@@ -59,7 +70,7 @@ func NewGenerator(ctx context.Context) (generation.Generator, error) {
 		// permission-digest and user-domains routes, and the portal's browser
 		// application at /portal.
 		generation.WithRouterOutlet("portal", "portal/api",
-			generation.Auth("github.com/cccteam/ccc/resource/lodestar/pkg/auth/members", generation.GoogleMethod("directory").Labeled("Company directory")),
+			generation.Auth("github.com/cccteam/ccc/resource/lodestar/pkg/auth/members", generation.GoogleMethod("directory").Labeled("Company directory").SyncsRoles()),
 			generation.WebApp("/portal"),
 		),
 		// Sector-scoped resources and methods are served under /console/api/sectors/{sectorID}/,

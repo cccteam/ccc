@@ -101,11 +101,12 @@ type Configurer interface {
 	// content security policy names in connect-src: the Firestore emulator in
 	// development, Firebase's hosts in production.
 	LiveOrigins() []string
-	// UserManagement is the crew engine's user-management handlers (access.Handlers),
-	// which the console's role-membership routes delegate to behind the App's own
-	// permission checks; nil where those routes are never mounted (the test router's
-	// suites), since mounting them draws on it.
-	UserManagement() access.Handlers
+	// CrewUserSurface and MembersUserSurface are the two auths' user-management
+	// surfaces (resource.UserSurface), each built with the generated constructor over
+	// the auth's account store and its engine's user manager; the generated handlers
+	// of the crew's and the members' users, seats and roles delegate to them.
+	CrewUserSurface() *resource.UserSurface[router.CrewAuth]
+	MembersUserSurface() *resource.UserSurface[router.MembersAuth]
 	// Scheduler is the guard the scheduled routes sit behind (resource/scheduled): the
 	// invoker identity the stack names in APP_SCHEDULER_INVOKER, whose Google-signed
 	// tokens alone are admitted. A guard with no invoker, or none at all, refuses every
@@ -180,7 +181,8 @@ type App struct {
 	rpcClient      *rpc.Client
 	computedClient *computedresources.Client
 	live           live.Service
-	management     access.Handlers
+	crewUsers      *resource.UserSurface[router.CrewAuth]
+	membersUsers   *resource.UserSurface[router.MembersAuth]
 	// features is the application's copy of its feature flags, read through the
 	// configuration's database client when the App is built; featuresErr is why it
 	// could not be, which Start reports.
@@ -217,7 +219,8 @@ func New(cfg Configurer) *App {
 		rpcClient:      rpc.NewClient(func(role accesstypes.Role) resource.RolePermissions { return engine.ForRole(role) }, resourceClient.FileStore(resource.StoreNameFor[resources.Documents]()), cfg.Jobs()),
 		computedClient: computedresources.NewClient(),
 		live:           cfg.Live(),
-		management:     cfg.UserManagement(),
+		crewUsers:      cfg.CrewUserSurface(),
+		membersUsers:   cfg.MembersUserSurface(),
 		csp:            cspPolicy(cfg.LiveOrigins()),
 	}
 	// The feature flags: the application's copy of the FeatureFlags table, read as the

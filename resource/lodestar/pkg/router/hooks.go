@@ -32,13 +32,6 @@ type AppHandlers interface {
 	ActiveImpersonations() http.HandlerFunc
 	RevokeImpersonation() http.HandlerFunc
 
-	// The console's role-membership routes: who holds a role in a sector, seating and
-	// unseating, the access library's user-management handlers behind the App's own
-	// checks on RoleMemberships (app/role_memberships.go).
-	RoleUsers() http.HandlerFunc
-	AddRoleUsers() http.HandlerFunc
-	DeleteRoleUsers() http.HandlerFunc
-
 	// The portal's hand-written route: a company's statement over the change log
 	// (registered through @manualAddResource(List, domain) with @outlet(portal)).
 	ClientStatements() http.HandlerFunc
@@ -58,10 +51,6 @@ const ImpersonationRoute = consoleAPI + "/impersonations/{impersonationID}"
 
 // ShipsLogEntriesRoute is the console's ship's log route under the sector segment.
 const ShipsLogEntriesRoute = consoleAPI + "/sectors/{sectorID}/ships-log-entries"
-
-// RoleMembershipsRoute is the console's role-membership route under the sector segment:
-// the users holding {role} in the sector, listed, seated and unseated.
-const RoleMembershipsRoute = consoleAPI + "/sectors/{sectorID}/roles/{role}/users"
 
 // ClientStatementsRoute is the portal's statement route under the sector segment.
 const ClientStatementsRoute = "/portal/api/sectors/{sectorID}/client-statements"
@@ -107,9 +96,6 @@ func AppHooks(h AppHandlers) Hooks {
 				r.Use(h.EnforceReadOnlyMask)
 
 				r.Get(ShipsLogEntriesRoute, h.DomainGuard()(h.ShipsLogEntries()))
-				r.Get(RoleMembershipsRoute, h.DomainGuard()(h.RoleUsers()))
-				r.Post(RoleMembershipsRoute, h.DomainGuard()(h.AddRoleUsers()))
-				r.Delete(RoleMembershipsRoute, h.DomainGuard()(h.DeleteRoleUsers()))
 				r.Post(consoleAPI+"/impersonate", h.Impersonate())
 				r.Get(consoleAPI+"/impersonations", h.ActiveImpersonations())
 				r.Delete(ImpersonationRoute, h.RevokeImpersonation())

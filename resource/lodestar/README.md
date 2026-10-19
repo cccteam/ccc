@@ -366,16 +366,17 @@ How it is wired:
   engine's context ends. `pkg/config/data.go` builds it once over the live service and
   hands it to both auths (`crew.Settings.ChangeSignal` and `members.Settings.ChangeSignal`,
   both required), so the crew store and the members store ride one listener.
-- The route. The console's role-membership routes
-  (`/console/api/sectors/{sector}/roles/{role}/users`: `GET` lists who holds the role,
-  `POST` seats, `DELETE` unseats) are the access library's user-management handlers
-  mounted in `pkg/router/hooks.go` behind the application's own checks in
-  [`app/role_memberships.go`](app/role_memberships.go): List, Create and Delete on
-  `RoleMemberships` in the sector, declared through `@manualAddResource` on
-  `resources.RoleMemberships` ([`pkg/resources/manual.go`](pkg/resources/manual.go)) and
-  held by `SectorMarshal`. The crew's roles are the application's (a password auth), so
-  seating crew is the application's to serve; the members' are the directory's, and no
-  route writes them.
+- The route. The console's seats route of the crew's sector partition
+  (`/console/api/sectors/{sector}/crew-sector-seats`: `GET` lists the sector's seats,
+  `PATCH` seats and unseats through an operations body, the seat's user and role in the
+  operation's path) is the generated user-management surface's, served by the library
+  over the crew session's accounts and the crew engine's memberships
+  ([`app/users.go`](app/users.go), `pkg/config/data.go`): Create and Delete on
+  `CrewSectorSeats` in the sector, held by `SectorMarshal` under the condition
+  `new.role != 'SectorMarshal'`, so a marshal seats crew in every role but its own. A
+  crew member who signs in through the Google directory has their seats written by the
+  directory at every sign-in (the registration's `SyncsRoles`), so the surface refuses
+  to seat or unseat them by hand; the members' seats are the directory's the same way.
 - The checks. The walkthrough's "one channel" section seats and unseats the cadet
   against the second server process over the Firestore emulator;
   [`policy_signal_test.go`](test/integration/policy_signal_test.go) pins it over two
@@ -518,10 +519,13 @@ names Google groups carry. The deploy's migrate step and the bootstrap print wha
 holds that the release cannot use. Each auth is a package (`pkg/auth/crew`,
 `pkg/auth/members`) with its own session tables, permission store, role file, and XSRF
 cookie (`crew-xsrf`, `members-xsrf`), and each outlet binds to one. The crew's memberships
-are also the application's to change at run time: the console's role-membership routes
-seat and unseat crew in a sector through the access library's user-management handlers
-([one channel](#one-channel-between-instances)); the members' are reconciled by the
-directory at every login, and no route writes them.
+are also the application's to change at run time: the console's generated
+user-management surface (`crew-users`, `crew-seats`, `crew-roles` in the global
+partition and the `crew-sector-…` routes under a sector) lists, creates, seats and unseats
+crew ([one channel](#one-channel-between-instances)), and the console serves the members'
+surface beside it (`members-users`, …; the generator program's `Manages`), so headquarters
+administers both populations; a directory-signed member's seats are the directory's,
+reconciled at every login, and the surface refuses to write them by hand.
 
 ## The personas
 
@@ -575,8 +579,8 @@ manifest: pick a card, sign in, switch, never more than two clicks.
   into it and the beacon pulse mounted outside every outlet under the prefix the
   generator program declares quiet ([`generation.request-log`](cmd/generate/generator.go));
   `app/`: wiring, middleware, the ship's log, the client statement, the
-  impersonation mint route, the watch desk, the role-membership routes and the beacon
-  pulse. The mission document download is
+  impersonation mint route, the watch desk, the user-management surfaces the generated
+  user handlers serve through (`users.go`) and the beacon pulse. The mission document download is
   generated from `MissionDocument.StoreKey`'s `@file`
   ([`@file.stored`](pkg/resources/mission_documents.go)), and the purser's expense
   manifest is a computed resource whose struct-scope `@file` renders a CSV sheet on

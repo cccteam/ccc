@@ -18,7 +18,7 @@ import (
 	"github.com/cccteam/ccc/resource/lodestar/pkg/auth/crew"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/auth/members"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/router"
-	"github.com/cccteam/httpio"
+	"github.com/cccteam/ccc/resource/sessionusers"
 	"github.com/go-playground/errors/v5"
 	"github.com/sethvargo/go-envconfig"
 )
@@ -307,12 +307,19 @@ func (c *DataConfiguration) Crew() *crew.Auth {
 	return c.crew
 }
 
-// UserManagement returns the crew engine's user-management handlers (access.Handlers),
-// which the console's role-membership routes delegate to behind their own permission
-// checks: the crew's roles are the application's, so seating crew in a sector is the
-// application's to serve.
-func (c *DataConfiguration) UserManagement() access.Handlers {
-	return c.crew.Access().Handlers(httpio.Log)
+// CrewUserSurface returns the crew auth's user-management surface: the crew session's
+// accounts (sessionusers.Accounts over its API) and the crew engine's memberships, which
+// the generated crew user handlers serve through. A seat written here is a policy write
+// the engine announces to every instance through the live service.
+func (c *DataConfiguration) CrewUserSurface() *resource.UserSurface[router.CrewAuth] {
+	return router.NewCrewUserSurface(sessionusers.Accounts(c.crew.Session().API()), c.crew.Access().UserManager())
+}
+
+// MembersUserSurface returns the members auth's surface over the members session's
+// accounts and the members engine's memberships, served on the portal and, by the
+// generator program's Manages, on the console.
+func (c *DataConfiguration) MembersUserSurface() *resource.UserSurface[router.MembersAuth] {
+	return router.NewMembersUserSurface(sessionusers.Accounts(c.members.Session().API()), c.members.Access().UserManager())
 }
 
 // TenantRoster returns the tenant roster: the sectors this instance serves, loaded when

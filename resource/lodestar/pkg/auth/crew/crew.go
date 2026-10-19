@@ -140,6 +140,14 @@ func (h *Handlers) PasswordLogin() http.HandlerFunc {
 	return h.password.Login()
 }
 
+// PasswordChange is the password method's change: {"currentPassword", "newPassword"} in
+// from a signed-in person, who may be one whose operator-set password must change before
+// anything else is served. It validates the session itself, so the generated router
+// mounts it outside ValidateSession, behind the XSRF guard.
+func (h *Handlers) PasswordChange() http.HandlerFunc {
+	return h.password.ChangeUserPassword()
+}
+
 // GoogleLogin sends the browser to the fleet's Google directory.
 func (h *Handlers) GoogleLogin() http.HandlerFunc {
 	return h.google.Login()

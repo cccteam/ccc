@@ -29,6 +29,26 @@ export interface SetFeatureResult {
   updatedAt: Date;
 }
 
+/** The body UnlinkMembersUserIdentity takes. */
+export interface UnlinkMembersUserIdentityConfig {
+  user: string | FieldPointer;
+  identity: string | FieldPointer;
+}
+export interface UnlinkMembersUserIdentity {
+  user: string;
+  identity: string;
+}
+
+/** The body UnlinkMembersSectorUserIdentity takes. */
+export interface UnlinkMembersSectorUserIdentityConfig {
+  user: string | FieldPointer;
+  identity: string | FieldPointer;
+}
+export interface UnlinkMembersSectorUserIdentity {
+  user: string;
+  identity: string;
+}
+
 export interface RPCFieldMeta {
   fieldName: string;
   displayType: ValidRPCTypes;
@@ -75,6 +95,20 @@ const methodMap: MethodMap = {
     fields: [
       { fieldName: 'name', displayType: 'string' },
       { fieldName: 'enabled', displayType: 'boolean' },
+    ],
+  },
+  [Methods.UnlinkMembersUserIdentity]: {
+    route: 'unlink-members-user-identity',
+    fields: [
+      { fieldName: 'user', displayType: 'uuid' },
+      { fieldName: 'identity', displayType: 'uuid' },
+    ],
+  },
+  [Methods.UnlinkMembersSectorUserIdentity]: {
+    route: 'unlink-members-sector-user-identity',
+    fields: [
+      { fieldName: 'user', displayType: 'uuid' },
+      { fieldName: 'identity', displayType: 'uuid' },
     ],
   },
 };
