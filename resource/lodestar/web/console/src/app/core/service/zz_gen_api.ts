@@ -1101,6 +1101,28 @@ export const apiDescriptor = defineApiDescriptor({
     [Methods.UnlinkMembersUserIdentity]: { method: Methods.UnlinkMembersUserIdentity, property: 'unlinkMembersUserIdentity', route: 'unlink-members-user-identity', scope: 'global' },
     [Methods.UnlinkMembersSectorUserIdentity]: { method: Methods.UnlinkMembersSectorUserIdentity, property: 'unlinkMembersSectorUserIdentity', route: 'unlink-members-sector-user-identity', scope: 'domain' },
   },
+  userSurfaces: [
+    {
+      auth: 'Crew',
+      label: 'Crew',
+      password: true,
+      registrations: [{ name: 'google', kind: 'google', label: 'Google', invited: false, syncsRoles: true }],
+      partitions: [
+        { scope: 'global', users: Resources.CrewUsers, seats: Resources.CrewSeats, roles: Resources.CrewRoles, setPassword: Methods.SetCrewUserPassword, unlinkIdentity: Methods.UnlinkCrewUserIdentity },
+        { scope: 'domain', users: Resources.CrewSectorUsers, seats: Resources.CrewSectorSeats, roles: Resources.CrewSectorRoles, setPassword: Methods.SetCrewSectorUserPassword, unlinkIdentity: Methods.UnlinkCrewSectorUserIdentity },
+      ],
+    },
+    {
+      auth: 'Members',
+      label: 'Members',
+      password: false,
+      registrations: [{ name: 'directory', kind: 'google', label: 'Company directory', invited: false, syncsRoles: true }],
+      partitions: [
+        { scope: 'global', users: Resources.MembersUsers, seats: Resources.MembersSeats, roles: Resources.MembersRoles, unlinkIdentity: Methods.UnlinkMembersUserIdentity },
+        { scope: 'domain', users: Resources.MembersSectorUsers, seats: Resources.MembersSectorSeats, roles: Resources.MembersSectorRoles, unlinkIdentity: Methods.UnlinkMembersSectorUserIdentity },
+      ],
+    },
+  ],
 });
 
 /** Handles for the global scope, available on the client root. */

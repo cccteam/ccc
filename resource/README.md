@@ -2122,5 +2122,9 @@ not serve a surface answers its routes 404.
 routes, keys (`id`; `user`, `role`; `name`), operations, patchable fields and order in the
 descriptor; the row interfaces and the shared `UserIdentity` interface in the resources
 file; the method bodies (`SetCrewUserPassword`, `UnlinkCrewUserIdentity`) in the methods
-file. The user-management pages of `@cccteam/resource-angular` read the surface through
-these handles.
+file. The descriptor also carries a `userSurfaces` block, one entry per Auth the outlet
+serves: the Auth's name and label, whether it has a password method, its registrations
+(name, kind, label, invited, syncsRoles) and its partitions, each naming its three
+resources and the methods the Auth's shape gives it. The user-management component of
+`@cccteam/resource-angular` configures itself from that block and reads the surface
+through the handles.

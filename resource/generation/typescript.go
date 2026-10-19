@@ -808,6 +808,9 @@ func (t *typescriptGenerator) apiClientData() *tsAPIData {
 	for _, method := range t.tsUserMethodsOn() {
 		data.Methods = append(data.Methods, method.apiMethod())
 	}
+	for _, s := range t.userSurfacesOn() {
+		data.UserSurfaces = append(data.UserSurfaces, s.apiSurface())
+	}
 
 	for _, res := range data.Resources {
 		if res.Consolidated {

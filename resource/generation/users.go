@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/resource"
@@ -765,6 +766,81 @@ func tsUserMethods(s *userSurface) []*tsUserMethod {
 	}
 
 	return out
+}
+
+// apiSurface is the surface as the descriptor's userSurfaces block carries it: the
+// Auth, its label, its shape, and each partition's resource and method names.
+func (s *userSurface) apiSurface() *tsAPISurface {
+	out := &tsAPISurface{Auth: s.decl.Auth, Label: authLabel(s.decl.Auth), Password: s.decl.Shape.Password}
+	for _, reg := range s.decl.Shape.Registrations {
+		out.Registrations = append(out.Registrations, &tsAPIRegistration{
+			Name:       reg.Name,
+			Kind:       reg.Kind,
+			Label:      reg.Label,
+			Invited:    reg.Invited,
+			SyncsRoles: reg.SyncsRoles,
+		})
+	}
+	for _, p := range s.partitions() {
+		partition := &tsAPIPartition{
+			Scope: string(accesstypes.GlobalPermissionScope),
+			Users: string(p.Users),
+			Seats: string(p.Seats),
+			Roles: string(p.Roles),
+		}
+		if p.Tenanted {
+			partition.Scope = string(accesstypes.DomainPermissionScope)
+		}
+		for _, method := range p.ServedMethods(s.decl.Shape) {
+			if method == p.SetPassword {
+				partition.SetPassword = string(method)
+			} else {
+				partition.UnlinkIdentity = string(method)
+			}
+		}
+		out.Partitions = append(out.Partitions, partition)
+	}
+
+	return out
+}
+
+// authLabel is the words a page shows for an Auth: its PascalCase name split into
+// words, the first kept as written, the rest lowercased unless they are initialisms
+// (FleetStaff gives "Fleet staff", HQStaff gives "HQ staff").
+func authLabel(auth string) string {
+	runes := []rune(auth)
+	var words []string
+	start := 0
+	for i := 1; i < len(runes); i++ {
+		afterLower := unicode.IsUpper(runes[i]) && !unicode.IsUpper(runes[i-1])
+		beforeLower := unicode.IsUpper(runes[i]) && unicode.IsUpper(runes[i-1]) && i+1 < len(runes) && unicode.IsLower(runes[i+1])
+		if afterLower || beforeLower {
+			words = append(words, string(runes[start:i]))
+			start = i
+		}
+	}
+	words = append(words, string(runes[start:]))
+	for i := 1; i < len(words); i++ {
+		if !isInitialism(words[i]) {
+			words[i] = strings.ToLower(words[i])
+		}
+	}
+
+	return strings.Join(words, " ")
+}
+
+// isInitialism reports whether the word is two or more capitals and nothing else.
+func isInitialism(word string) bool {
+	if len(word) < 2 {
+		return false
+	}
+	for _, r := range word {
+		if !unicode.IsUpper(r) {
+			return false
+		}
+	}
+
+	return true
 }
 
 // apiResource is the resource as the descriptor carries it.

@@ -2777,6 +2777,23 @@ export const apiDescriptor = defineApiDescriptor({
     [Methods.{{ $m.Name }}]: { method: Methods.{{ $m.Name }}, property: '{{ $m.Property }}', route: '{{ $m.Route }}', scope: '{{ $m.ScopeKind }}'{{ if $m.Answers }}, answers: true{{ end }}{{ if $m.Statuses }}, statuses: {{ $m.StatusArray }}{{ end }}{{ if $m.UploadMaxBytes }}, upload: { maxBytes: {{ $m.UploadMaxBytes }} }{{ end }}{{ if $m.Feature }}, feature: '{{ $m.Feature }}'{{ end }} },
 {{- end }}
   },
+{{- if .UserSurfaces }}
+  userSurfaces: [
+{{- range $s := .UserSurfaces }}
+    {
+      auth: '{{ $s.Auth }}',
+      label: '{{ $s.Label }}',
+      password: {{ $s.Password }},
+      registrations: [{{ range $i, $g := $s.Registrations }}{{ if $i }}, {{ end }}{ name: '{{ $g.Name }}', kind: '{{ $g.Kind }}', label: '{{ $g.Label }}', invited: {{ $g.Invited }}, syncsRoles: {{ $g.SyncsRoles }} }{{ end }}],
+      partitions: [
+{{- range $p := $s.Partitions }}
+        { scope: '{{ $p.Scope }}', users: Resources.{{ $p.Users }}, seats: Resources.{{ $p.Seats }}, roles: Resources.{{ $p.Roles }}{{ if $p.SetPassword }}, setPassword: Methods.{{ $p.SetPassword }}{{ end }}{{ if $p.UnlinkIdentity }}, unlinkIdentity: Methods.{{ $p.UnlinkIdentity }}{{ end }} },
+{{- end }}
+      ],
+    },
+{{- end }}
+  ],
+{{- end }}
 });
 
 /** Handles for the global scope, available on the client root. */

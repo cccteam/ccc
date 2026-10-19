@@ -738,19 +738,20 @@ func Test_apiClientData_users(t *testing.T) {
 				"crewRoles: ResourceHandle<CrewRoles, CrewRolesKey, 'list' | 'read'>;",
 				"crewShipUsers: ResourceHandle<CrewShipUsers, CrewShipUsersKey, 'list' | 'read' | 'create' | 'patch' | 'remove', CrewShipUsersCreate, CrewShipUsersPatch>;",
 				"setCrewUserPassword: MethodHandle<SetCrewUserPassword>;",
+				"  userSurfaces: [\n    {\n      auth: 'Crew',\n      label: 'Crew',\n      password: true,\n      registrations: [{ name: 'google', kind: 'google', label: 'Fleet directory', invited: false, syncsRoles: true }],\n      partitions: [\n        { scope: 'global', users: Resources.CrewUsers, seats: Resources.CrewSeats, roles: Resources.CrewRoles, setPassword: Methods.SetCrewUserPassword, unlinkIdentity: Methods.UnlinkCrewUserIdentity },\n        { scope: 'domain', users: Resources.CrewShipUsers, seats: Resources.CrewShipSeats, roles: Resources.CrewShipRoles, setPassword: Methods.SetCrewShipUserPassword, unlinkIdentity: Methods.UnlinkCrewShipUserIdentity },\n      ],\n    },\n    {\n      auth: 'Members',\n      label: 'Members',\n      password: false,\n      registrations: [{ name: 'directory', kind: 'azure', label: 'Company directory', invited: true, syncsRoles: false }],\n      partitions: [\n        { scope: 'global', users: Resources.MembersUsers, seats: Resources.MembersSeats, roles: Resources.MembersRoles, unlinkIdentity: Methods.UnlinkMembersUserIdentity },\n        { scope: 'domain', users: Resources.MembersShipUsers, seats: Resources.MembersShipSeats, roles: Resources.MembersShipRoles, unlinkIdentity: Methods.UnlinkMembersShipUserIdentity },\n      ],\n    },\n  ],\n});",
 			},
 			wantNotContains: []string{"SetMembersUserPassword"},
 		},
 		{
 			name:            "the portal: the members surface alone",
 			outlet:          "portal",
-			wantContains:    []string{"property: 'membersUsers',", "property: 'membersShipSeats',", "[Methods.UnlinkMembersShipUserIdentity]:"},
-			wantNotContains: []string{"CrewUsers", "SetCrewUserPassword", "SetMembersUserPassword"},
+			wantContains:    []string{"property: 'membersUsers',", "property: 'membersShipSeats',", "[Methods.UnlinkMembersShipUserIdentity]:", "  userSurfaces: [\n    {\n      auth: 'Members',"},
+			wantNotContains: []string{"CrewUsers", "SetCrewUserPassword", "SetMembersUserPassword", "auth: 'Crew'"},
 		},
 		{
 			name:            "an outlet serving no surface",
 			outlet:          "droids",
-			wantNotContains: []string{"CrewUsers", "MembersUsers", "UserIdentity"},
+			wantNotContains: []string{"CrewUsers", "MembersUsers", "UserIdentity", "userSurfaces"},
 		},
 	}
 	for _, tt := range tests {
@@ -871,4 +872,29 @@ func surfaceOf(t *testing.T, r *resourceGenerator, importPath string) *userSurfa
 	t.Fatalf("no surface for %s among %d", importPath, len(surfaces))
 
 	return nil
+}
+
+func Test_authLabel(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		auth string
+		want string
+	}{
+		{name: "one word", auth: "Crew", want: "Crew"},
+		{name: "two words", auth: "FleetStaff", want: "Fleet staff"},
+		{name: "an initialism stays together", auth: "HQStaff", want: "HQ staff"},
+		{name: "a trailing initialism stays together", auth: "StaffHQ", want: "Staff HQ"},
+		{name: "empty", auth: "", want: ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := authLabel(tt.auth); got != tt.want {
+				t.Errorf("authLabel(%q) = %q, want %q", tt.auth, got, tt.want)
+			}
+		})
+	}
 }
