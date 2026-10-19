@@ -333,6 +333,10 @@ func renderComposed[Row Resourcer](ctx context.Context, cq *composedQuery[Row], 
 				continue
 			}
 		}
+		// The field name comes from the query set the decoder built over the resource's
+		// own declared fields, never from the request as the caller typed it: a name the
+		// resource does not declare was refused at decoding.
+		// nosemgrep: go.lang.security.audit.unsafe-reflect-by-name.unsafe-reflect-by-name
 		sf, ok := value.Type().FieldByName(string(field))
 		if !ok {
 			continue

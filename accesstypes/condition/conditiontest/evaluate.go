@@ -25,12 +25,8 @@ type Date = condition.Date
 // Image is condition.Image: everything one evaluation reads.
 type Image = condition.Image
 
-// ParseDate parses the language's date literal form, YYYY-MM-DD.
-func ParseDate(text string) (Date, error) {
-	return condition.ParseDate(text)
-}
+// ParseDate is condition.ParseDate: the language's date literal form, YYYY-MM-DD.
+var ParseDate = condition.ParseDate
 
-// Evaluate returns the expression's three-valued truth over the image.
-func Evaluate(expr condition.Expr, image *Image) (Truth3, error) {
-	return condition.Evaluate(expr, image)
-}
+// Evaluate is condition.Evaluate: the expression's three-valued truth over the image.
+var Evaluate = condition.Evaluate

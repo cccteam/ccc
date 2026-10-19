@@ -6,7 +6,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
 )
 
 // The evaluator implements the condition language's stated meaning (this
@@ -71,9 +70,9 @@ func (t Truth3) Permits() bool {
 func (t Truth3) String() string {
 	switch t {
 	case True:
-		return "TRUE"
+		return kwTrue
 	case False:
-		return "FALSE"
+		return kwFalse
 	default:
 		return "UNKNOWN"
 	}
@@ -158,7 +157,7 @@ type Image struct {
 // errors on a malformed literal, a comparison between values of different
 // types, a temporal zone it cannot resolve, and a value of a type outside the
 // storage vocabulary — each a misuse deploy validation refuses, so an error
-// here means the harness or the generator is wrong, never the 
+// here means the harness or the generator is wrong, never the row or the requester.
 func Evaluate(expr Expr, image *Image) (Truth3, error) {
 	switch n := expr.(type) {
 	case And:
