@@ -10,18 +10,18 @@ replace github.com/cccteam/ccc/resource => ../
 require (
 	cloud.google.com/go v0.123.0
 	cloud.google.com/go/spanner v1.96.1
-	github.com/cccteam/access v0.10.4-0.20261016170115-fff4d4c766f8
-	github.com/cccteam/ccc v0.3.4
+	github.com/cccteam/access v0.11.1
+	github.com/cccteam/ccc v0.3.5
 	github.com/cccteam/ccc/accesstypes v0.6.2-0.20261019011714-fbbdfe29c065
 	github.com/cccteam/ccc/cloud v0.2.1
 	github.com/cccteam/ccc/resource v0.14.0
 	github.com/cccteam/ccc/tracer v0.3.0
 	github.com/cccteam/db-initiator v0.4.3
-	github.com/cccteam/httpio v0.7.21
+	github.com/cccteam/httpio v0.7.22
 	github.com/cccteam/logger v0.1.30
-	github.com/cccteam/session v0.12.4-0.20261019004810-39bf617aaa21
+	github.com/cccteam/session v0.13.0
 	github.com/cccteam/spxscan v0.0.17
-	github.com/go-chi/chi/v5 v5.3.2
+	github.com/go-chi/chi/v5 v5.4.0
 	github.com/go-playground/errors/v5 v5.4.0
 	github.com/go-playground/validator/v10 v10.30.5
 	github.com/google/go-cmp v0.7.0
@@ -55,7 +55,7 @@ require (
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/cccteam/ccc/cache v0.2.1 // indirect
 	github.com/cccteam/ccc/pkg v0.1.6 // indirect
-	github.com/cccteam/ccc/securehash v0.0.15 // indirect
+	github.com/cccteam/ccc/securehash v0.0.17 // indirect
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
@@ -145,13 +145,13 @@ require (
 	go.opentelemetry.io/proto/otlp v1.11.1 // indirect
 	go.uber.org/mock v0.6.0 // indirect
 	go.yaml.in/yaml/v3 v3.0.5 // indirect
-	golang.org/x/crypto v0.57.0 // indirect
+	golang.org/x/crypto v0.58.0 // indirect
 	golang.org/x/mod v0.41.0 // indirect
 	golang.org/x/net v0.60.0 // indirect
 	golang.org/x/oauth2 v0.37.0 // indirect
 	golang.org/x/sync v0.24.0 // indirect
-	golang.org/x/sys v0.48.0 // indirect
-	golang.org/x/text v0.42.0 // indirect
+	golang.org/x/sys v0.49.0 // indirect
+	golang.org/x/text v0.43.0 // indirect
 	golang.org/x/time v0.16.0 // indirect
 	golang.org/x/tools v0.51.0 // indirect
 	google.golang.org/appengine/v2 v2.0.6 // indirect
