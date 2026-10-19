@@ -884,6 +884,8 @@ func TestDeployProjectRoles(t *testing.T) {
 				"    \"roles/serviceusage.serviceUsageConsumer\",\n" +
 				"    \"roles/run.developer\",\n" +
 				"    \"roles/logging.logWriter\",\n" +
+				"    \"roles/cloudtrace.agent\",\n" +
+				"    \"roles/telemetry.tracesWriter\",\n" +
 				"    \"roles/monitoring.viewer\",\n" +
 				"    local.org.run_job_policy_admin_role,\n" +
 				"    local.org.cloud_build_build_reader_role,\n" +

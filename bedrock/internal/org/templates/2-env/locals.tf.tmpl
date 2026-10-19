@@ -184,11 +184,18 @@ locals {
   # writer on its
   # image repository is 2-shr's grant (var.pushers there), and Service Account
   # User on the runtime identities is granted where they are created, in the
-  # application stack.
+  # application stack. The migrate command runs on the build worker as this
+  # identity with the application's own tracer, so it writes traces the way the
+  # application's processes do: through the Telemetry API (telemetry.tracesWriter;
+  # tracer 0.2 and later) or the Cloud Trace API (cloudtrace.agent; tracer before
+  # 0.2), both granted, as the application stack grants them to the runtime
+  # identities.
   deploy_project_roles = [
     "roles/serviceusage.serviceUsageConsumer",
     "roles/run.developer",
     "roles/logging.logWriter",
+    "roles/cloudtrace.agent",
+    "roles/telemetry.tracesWriter",
     "roles/monitoring.viewer",
     local.org.run_job_policy_admin_role,
     local.org.cloud_build_build_reader_role,
