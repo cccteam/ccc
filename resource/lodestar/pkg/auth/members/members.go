@@ -3,20 +3,21 @@
 // store.
 //
 // The directory proves who someone is and says what they may do. Role membership is the
-// directory's (session.GoogleRoleSync): every login reconciles the person's roles to the
+// directory's (google.RoleSync): every sign-in reconciles the person's roles to the
 // Google Groups the directory places them in and removes any it does not name, so nothing
 // in the application assigns roles in this store and the bootstrap seeds none. A global
 // role is held in the global partition and a domain role in every sector, so one
 // membership reaches every sector, the ones seeded today and the ones created later. The
-// application-run alternative, session.DisableRoleSync, leaves role membership to the
-// application, so one auth is never both.
+// application-run alternative, google.DisableRoleSync, leaves role membership to the
+// application, so one registration is never both.
 //
-// An auth is a package. It owns its session manager, in its login flavor and with its own
-// session and user tables and cookie; its permission store, with its own table prefix; and
-// its role configuration. A site or an outlet binds to an auth by composing its handlers,
-// and two auths on one database and one host never collide, because everything an auth
-// names carries its name. The same name in this auth and in another is two unrelated
-// principals.
+// An auth is a package. It owns its session manager, one Auth session with the sign-in
+// methods registered on it, here the directory alone, with its own session, user,
+// identity, auth event and pending sign-in tables and cookie; its permission store, with
+// its own table prefix; and its role configuration. A site or an outlet binds to an auth
+// by composing its handlers, and two auths on one database and one host never collide,
+// because everything an auth names carries its name. The same name in this auth and in
+// another is two unrelated principals.
 //
 // Demonstrates: auth.directory-roles, auth.two-populations, auth.skipauth-directory, auth.login-refusal-code.
 package members
@@ -24,12 +25,15 @@ package members
 import (
 	"context"
 	_ "embed" // the role file rides in the binary
+	"net/http"
 	"time"
 
 	cloudspanner "cloud.google.com/go/spanner"
 	"github.com/cccteam/access"
 	"github.com/cccteam/access/spannerstore"
+	"github.com/cccteam/ccc/resource/lodestar/pkg/auth"
 	"github.com/cccteam/session"
+	"github.com/cccteam/session/google"
 	"github.com/cccteam/session/sessionstorage"
 	"github.com/go-playground/errors/v5"
 )
@@ -45,11 +49,23 @@ const (
 	// the X-XSRF-TOKEN header, so the web app that binds to this auth names the same cookie.
 	XSRFCookie = Name + "-xsrf"
 
-	// The auth's tables, which schema/migrations creates: the sessions, and the user
-	// anchor keyed by the directory's immutable subject identifier, so a renamed account
-	// stays the same person.
-	sessionsTable = TablePrefix + "Sessions"
-	usersTable    = TablePrefix + "OIDCUsers"
+	// DirectoryRegistration is the name the directory is registered under on the Auth:
+	// the segment of its login and callback routes (user/directory/login). In
+	// development the simulated person is the shared APP_USERNAME, since the
+	// registration sets no pair of its own.
+	DirectoryRegistration = "directory"
+
+	// The auth's tables, which schema/migrations creates: the sessions and users of the
+	// Auth session (a user keyed by the directory's immutable subject through the
+	// identities table, so a renamed account stays the same person), the auth events
+	// each session records and the pending sign-ins that wait for a confirmation or an
+	// MFA step. The names are spelled out in full so the tool's session-tables check,
+	// which reads the literals, finds their migrations.
+	sessionsTable   = "MembersSessions"
+	usersTable      = "MembersSessionUsers"
+	identitiesTable = "MembersSessionIdentities"
+	eventsTable     = "MembersSessionAuthEvents"
+	pendingTable    = "MembersSessionPendingSignIns"
 )
 
 // rolesFile is the auth's default roles: what a client may do, in the lowercase names the
@@ -77,7 +93,7 @@ type Settings struct {
 	// the surface that binds to this auth, which holds the sentence for each code.
 	LoginURL string
 	// Directory identifies the application to the directory that verifies its logins.
-	Directory Directory
+	Directory auth.Directory
 	// Collection is the generated permission collection the role file validates against:
 	// the resources, fields and conditions the release declares. The router package
 	// generates it and imports this one, so the configuration passes it in.
@@ -89,32 +105,51 @@ type Settings struct {
 	ChangeSignal access.ChangeSignal
 }
 
-// Directory is the application's OpenID Connect registration with Google: the client
-// credentials, the callback the directory returns the browser to, the Workspace domain
-// (hosted domain) logins are restricted to, and the groups lookup that carries role
-// membership. Under the session library's skipAuth build tag the directory is simulated,
-// every login is APP_USERNAME in the groups APP_ROLES names, and only RedirectURL,
-// HostedDomain, and GroupPrefix are read.
-type Directory struct {
-	ClientID     string
-	ClientSecret string
-	RedirectURL  string
-	HostedDomain string
-	// GroupPrefix is the local-part prefix of the Google Groups that carry roles: a group
-	// <GroupPrefix><role>@<domain> assigns <role>. It is never empty, since it is the only
-	// filter between role groups and the rest of the directory.
-	GroupPrefix string
-	// GroupLookup is how far the groups lookup reaches: "direct" (the default when empty)
-	// reads the groups the person is a direct member of, and "nested" climbs from those to
-	// the groups they are in, level by level, for a directory that nests its role groups.
-	// It has no effect under the skipAuth build tag, where the lookup is simulated.
-	GroupLookup string
+// Session is the auth's session manager: one Auth session over the Spanner store, whose
+// hooks are typed to the store's transaction.
+type Session = session.Auth[session.NoCustomData, session.NoCustomData, *cloudspanner.ReadWriteTransaction]
+
+// Auth is the members auth: its permission store and its session manager with the
+// directory registered on it.
+type Auth struct {
+	access   *access.Client
+	handlers *Handlers
 }
 
-// Auth is the members auth: its permission store and its session manager.
-type Auth struct {
-	access  *access.Client
-	session *session.OIDCGoogle[session.NoCustomData, session.NoCustomData]
+// Handlers is the auth's served surface, the shape the generated router names for the
+// portal outlet (router.PortalSession): the Auth's middleware and handlers, what the
+// login page is told, the pending sign-in handlers, and the directory's handlers under
+// its registration name.
+type Handlers struct {
+	*Session
+	directory *google.Method
+}
+
+// DirectoryLogin sends the browser to the company's directory.
+func (h *Handlers) DirectoryLogin() http.HandlerFunc {
+	return h.directory.Login()
+}
+
+// DirectoryCallback receives the browser back from the directory, provisions or finds
+// the person, reconciles their roles and starts the session.
+func (h *Handlers) DirectoryCallback() http.HandlerFunc {
+	return h.directory.Callback()
+}
+
+// PendingStatus reports the sign-in that waits for a password confirmation or an MFA
+// step, if any; a member has no password, so none waits today.
+func (h *Handlers) PendingStatus() http.HandlerFunc {
+	return h.Pending().Status()
+}
+
+// PendingConfirmWithPassword completes a waiting sign-in with the user's password.
+func (h *Handlers) PendingConfirmWithPassword() http.HandlerFunc {
+	return h.Pending().ConfirmWithPassword()
+}
+
+// PendingCancel discards a waiting sign-in.
+func (h *Handlers) PendingCancel() http.HandlerFunc {
+	return h.Pending().Cancel()
 }
 
 // New opens the auth's permission store and session manager over the database. The
@@ -138,42 +173,63 @@ func New(ctx context.Context, db *cloudspanner.Client, settings *Settings) (*Aut
 		return nil, errors.Wrap(err, "access.Client.WaitReady()")
 	}
 
+	events, err := sessionstorage.NewAuthEventsTable(eventsTable)
+	if err != nil {
+		return nil, errors.Wrap(err, "sessionstorage.NewAuthEventsTable()")
+	}
+
+	// One Auth session the directory establishes. The members have no sign-in policy of
+	// their own: every verified sign-in the Workspace admits goes ahead on the library's
+	// checks, and the directory's groups then decide what the person may do.
+	membersSession, err := session.NewAuth[session.NoCustomData, session.NoCustomData](
+		sessionstorage.NewSpannerAuth(db, sessionstorage.WithAuthEvents(events)),
+		settings.CookieKey,
+		session.WithSessionTableName(sessionsTable),
+		session.WithUserTableName(usersTable),
+		session.WithIdentitiesTableName(identitiesTable),
+		session.WithPendingSignInsTableName(pendingTable),
+		session.WithCookieName(Name),
+		session.WithXSRFCookieName(XSRFCookie),
+		session.WithSessionTimeout(settings.SessionTimeout),
+	)
+	if err != nil {
+		return nil, errors.Wrap(err, "session.NewAuth()")
+	}
+
 	// The directory's groups are the source of role membership, read through the Cloud
 	// Identity Groups API with the person's own sign-in token, as far as the configured
 	// lookup reaches: the groups they are a direct member of, or with the nested lookup
 	// the groups above those too, level by level. Under the session library's skipAuth
-	// build tag the lookup is simulated: every login is in the groups APP_ROLES names.
-	lookup, err := session.ParseGroupLookup(settings.Directory.GroupLookup)
+	// build tag the lookup is simulated: every sign-in is in the groups APP_ROLES names.
+	lookup, err := google.ParseGroupLookup(settings.Directory.GroupLookup)
 	if err != nil {
-		return nil, errors.Wrap(err, "session.ParseGroupLookup()")
+		return nil, errors.Wrap(err, "google.ParseGroupLookup()")
 	}
 
-	oidcAuth, err := session.NewOIDCGoogle[session.NoCustomData, session.NoCustomData](
-		sessionstorage.NewSpannerGoogleOIDC(db, sessionstorage.WithOIDCUsers()),
-		// The directory is the authority for role membership: every login reconciles the
-		// person's roles to the Google Groups the directory places them in (those named
-		// by the group prefix), removing any it does not name, and a login naming no known
-		// role is refused. A global role is written in the global partition and a domain
-		// role in every sector, so the sync keeps no list of sectors. Hand-assigned roles
-		// do not survive it, so nothing in the application assigns roles in this store.
-		session.GoogleRoleSync(accessClient.UserManager(), settings.Directory.GroupPrefix, lookup),
-		settings.CookieKey,
-		settings.Directory.ClientID,
-		settings.Directory.ClientSecret,
-		settings.Directory.RedirectURL,
-		settings.Directory.HostedDomain,
-		session.WithSessionTableName(sessionsTable),
-		session.WithOIDCUserTableName(usersTable),
-		session.WithCookieName(Name),
-		session.WithXSRFCookieName(XSRFCookie),
-		session.WithSessionTimeout(settings.SessionTimeout),
-		session.WithLoginURL(settings.LoginURL),
-	)
-	if err != nil {
-		return nil, errors.Wrap(err, "session.NewOIDCGoogle()")
-	}
+	// The directory, registered before the first request. The directory is the authority
+	// for role membership: every sign-in reconciles the person's roles to the Google
+	// Groups the directory places them in (those named by the group prefix), removing
+	// any it does not name, and a sign-in naming no known role is refused. A global role
+	// is written in the global partition and a domain role in every sector, so the sync
+	// keeps no list of sectors. Hand-assigned roles do not survive it, so nothing in the
+	// application assigns roles in this store.
+	// The organization slot is the members' one Workspace, named by the connection
+	// setting (the name every link carries) and checked against the hosted domain. The
+	// account rule is the library's standard one, members of the directory: an identity
+	// the directory verifies for the first time becomes a member under the verified
+	// email, with no password (the directory is their only way in), linked by the
+	// directory's immutable subject so a renamed account stays the same person at the
+	// next sign-in.
+	directory := google.SignIn(membersSession, DirectoryRegistration, nil, &google.Config{
+		ClientID:     settings.Directory.ClientID,
+		ClientSecret: settings.Directory.ClientSecret,
+		RedirectURL:  settings.Directory.RedirectURL,
+		Workspaces:   google.Workspace(settings.Directory.Connection, settings.Directory.HostedDomain),
+		RoleSync:     google.RoleSync(accessClient.UserManager(), settings.Directory.GroupPrefix, lookup),
+		LoginURL:     settings.LoginURL,
+	})
 
-	return &Auth{access: accessClient, session: oidcAuth}, nil
+	return &Auth{access: accessClient, handlers: &Handlers{Session: membersSession, directory: directory}}, nil
 }
 
 // Access returns the auth's permission engine: the handlers check against it, and its
@@ -183,8 +239,13 @@ func (a *Auth) Access() *access.Client {
 }
 
 // Session returns the auth's session manager.
-func (a *Auth) Session() *session.OIDCGoogle[session.NoCustomData, session.NoCustomData] {
-	return a.session
+func (a *Auth) Session() *Session {
+	return a.handlers.Session
+}
+
+// Handlers returns the auth's served surface.
+func (a *Auth) Handlers() *Handlers {
+	return a.handlers
 }
 
 // Close releases the permission engine.

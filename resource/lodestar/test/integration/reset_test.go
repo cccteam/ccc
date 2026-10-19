@@ -34,7 +34,13 @@ func TestResetDevelopmentData(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	crewAuth, err := crew.New(ctx, db.Client, crew.Settings{CookieKey: testCookieKey, SessionTimeout: time.Minute, Collection: router.Collection(), ChangeSignal: auth.PolicySignal(live.NewFake())})
+	crewAuth, err := crew.New(ctx, db.Client, &crew.Settings{
+		CookieKey:      testCookieKey,
+		SessionTimeout: time.Minute,
+		Collection:     router.Collection(),
+		Directory:      auth.Directory{Connection: "example", HostedDomain: "example.com", GroupPrefix: "crew-"},
+		ChangeSignal:   auth.PolicySignal(live.NewFake()),
+	})
 	if err != nil {
 		t.Fatalf("crew.New() error = %v", err)
 	}

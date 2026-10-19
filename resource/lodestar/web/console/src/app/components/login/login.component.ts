@@ -1,15 +1,10 @@
-/** Demonstrates: login-manifest, auth.password. */
-import { HttpClient } from '@angular/common/http';
-import { Component, inject, signal } from '@angular/core';
-import { FormsModule } from '@angular/forms';
-import { MatButtonModule } from '@angular/material/button';
+/** Demonstrates: login-manifest, auth.password, auth.multi-method, auth.login-methods, auth.login-refusal-code, client.login-component. */
+import { Component, inject, viewChild } from '@angular/core';
 import { MatCardModule } from '@angular/material/card';
-import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
-import { MatInputModule } from '@angular/material/input';
 import { Router } from '@angular/router';
+import { LoginMethodsComponent } from '@cccteam/resource-angular/auth-login-methods';
 import { AuthService } from '@cccteam/resource-angular/auth-service';
-import { API_URL } from '@cccteam/resource-angular/types';
 import { IdleService } from '@cccteam/resource-angular/ui-idle-service';
 
 /** One card on the crew manifest: the login is the job word, the name alliterates. */
@@ -57,66 +52,78 @@ export const CREW_MANIFEST: Persona[] = [
   { login: 'surveyor', name: 'Surveyor Shen', deck: 'Headquarters', proves: 'Charts new sectors: a sector she creates is served at once, on every instance, with no restart, migration or new login.' },
 ];
 
+/**
+ * The crew's second way in. Navigator Nova is on no manifest and has no password: the
+ * fleet's Google directory signs her in, provisions her under her verified email at the
+ * first sign-in, and her roles are the directory's groups (crew-pilot names Pilot). In
+ * development the session library's skipAuth build simulates the directory from
+ * APP_GOOGLE_USERNAME and APP_GOOGLE_ROLES in .envrc.
+ */
+export const DIRECTORY_PERSONA = {
+  login: 'navigator',
+  name: 'Navigator Nova',
+  proves: 'Signs in through the fleet’s directory, no password: provisioned at her first sign-in, seated by her groups at every one.',
+};
+
+/**
+ * The console's login page composes the library's login component around the crew manifest.
+ * The component asks the outlet's methods route what the crew auth offers, in the order the
+ * generator program registered the methods, and renders it: the password form for the
+ * password method, posted to the path the route names after the list is read again (the
+ * read refreshes the XSRF cookie the post needs), and a button for the Google directory,
+ * a redirect it sends the browser to with the page to return to. A refused or waiting
+ * redirect sign-in comes back here with the reason as a code in the query (?code=) or the
+ * step in ?pending=, never text; the component shows the sentence the library holds for
+ * the code, nothing for a code it does not know, and the confirmation form for a step that
+ * waits. The page keeps what is its own: the manifest that prefills the form, the
+ * development notes, and where a sign-in lands.
+ */
 @Component({
   selector: 'app-login',
   templateUrl: './login.component.html',
   styleUrls: ['./login.component.scss'],
-  imports: [FormsModule, MatButtonModule, MatCardModule, MatFormFieldModule, MatIconModule, MatInputModule],
+  imports: [LoginMethodsComponent, MatCardModule, MatIconModule],
 })
 export class LoginComponent {
-  private http = inject(HttpClient);
   private auth = inject(AuthService);
   private router = inject(Router);
   private idle = inject(IdleService);
-  private apiUrl = inject(API_URL);
 
-  username = '';
-  password = '';
-  busy = signal(false);
+  /** The library's login component, whose form the manifest prefills. */
+  readonly methods = viewChild.required(LoginMethodsComponent);
 
   readonly manifest = CREW_MANIFEST;
+  readonly directoryPersona = DIRECTORY_PERSONA;
   readonly decks = [...new Set(CREW_MANIFEST.map((p) => p.deck))];
 
   personasOn(deck: string): Persona[] {
     return this.manifest.filter((p) => p.deck === deck);
   }
 
+  /** Prefills the component's form with the persona; signing in stays an explicit click. */
   fillPersona(login: string): void {
-    this.username = login;
-    this.password = DEMO_PASSWORD;
+    const methods = this.methods();
+    methods.username = login;
+    methods.password = DEMO_PASSWORD;
   }
 
+  /** The login the form holds, for the manifest's selected card. */
+  selected(): string {
+    return this.methods().username;
+  }
+
+  /**
+   * The page ends whatever session the browser arrived with; the component's first request,
+   * the methods list, then primes the XSRF cookie the sign-in's post needs.
+   */
   constructor() {
     this.auth.logout().subscribe();
     this.idle.stop();
   }
 
-  login(): void {
-    if (this.busy()) {
-      return;
-    }
-    this.busy.set(true);
-
-    this.http.post(`${this.apiUrl}/user/login`, { username: this.username, password: this.password }).subscribe({
-      next: () => {
-        this.auth.checkUserSession().subscribe({
-          next: () => {
-            this.idle.start();
-            this.router.navigateByUrl(this.getAndResetRedirectUrl());
-          },
-          complete: () => this.busy.set(false),
-        });
-      },
-      error: () => this.busy.set(false),
-    });
-  }
-
-  private getAndResetRedirectUrl(): string {
-    const redirectUrl = this.auth.redirectUrl();
-    this.auth.redirectUrl.set('');
-    if (redirectUrl === '' || redirectUrl.startsWith('/login')) {
-      return '/dashboard';
-    }
-    return redirectUrl;
+  /** Signed in and the session checked: the idle watch starts and the browser moves to the page the guard turned away from, else the dashboard. */
+  go(page: string): void {
+    this.idle.start();
+    void this.router.navigateByUrl(page);
   }
 }

@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -190,13 +191,16 @@ type routerOutlet struct {
 	// undeclared when the outlet takes the application's.
 	requestLog RequestLog
 	traces     Traces
+	// manages are the import paths of the other Auths whose user-management surfaces
+	// this outlet serves beside its own (Manages), in declaration order.
+	manages []string
 }
 
 // outletAuth is one Auth declaration: the auth package a session outlet binds to and the
-// flavor its people sign in with.
+// sign-in methods registered on its Auth, in declaration order.
 type outletAuth struct {
 	importPath string
-	flavor     AuthFlavor
+	methods    []AuthMethod
 }
 
 // packageName is the auth package's name as the generated router imports it, assumed
@@ -288,32 +292,174 @@ func ServesSessions() OutletOption {
 	})
 }
 
-// AuthFlavor is how a session outlet's people sign in: the session library flavor whose
-// handlers the generated router mounts under the outlet's prefix.
-type AuthFlavor string
+// authMethodKind is a sign-in method the session library offers: the package the
+// application registers it from.
+type authMethodKind string
 
-// The auth flavors the generated router composes.
+// The sign-in methods the generated router mounts.
 const (
-	// Password signs in with a username and password (session.PasswordAuthHandlers):
-	// POST user/login, then GET and DELETE user/session.
-	Password AuthFlavor = "password"
-	// OIDCGoogle signs in through a Google Workspace directory
-	// (session.OIDCGoogleHandlers): GET user/login sends the browser to the directory,
-	// GET user/callback receives it back, then GET and DELETE user/session.
-	OIDCGoogle AuthFlavor = "oidc-google"
-	// OIDCAzure signs in through an Azure directory (session.OIDCAzureHandlers):
-	// Google's routes plus GET user/logout, the directory's front-channel logout.
-	OIDCAzure AuthFlavor = "oidc-azure"
+	// methodPassword is username and password sign-in (session.PasswordSignIn): a
+	// form posting to user/password/login.
+	methodPassword authMethodKind = "password"
+	// methodGoogle is Google Workspace sign-in (google.SignIn): user/<name>/login
+	// sends the browser to the directory and user/<name>/callback receives it back.
+	methodGoogle authMethodKind = "google"
+	// methodAzure is Microsoft Entra ID sign-in (azure.SignIn): Google's routes plus
+	// user/<name>/logout, the directory's front-channel logout.
+	methodAzure authMethodKind = "azure"
+	// methodWorkOS is WorkOS single sign-on (workos.SignIn): Google's routes.
+	methodWorkOS authMethodKind = "workos"
 )
+
+// passwordMethodName is the name the session library registers the password method
+// under; no external registration may take it.
+const passwordMethodName = "password"
+
+// AuthMethod is one sign-in method registered on a session outlet's Auth, as the
+// generated router mounts it: the method, the name it is registered under, and the
+// label the login page shows for it. Build one with PasswordMethod, GoogleMethod,
+// AzureMethod or WorkOSMethod, and reword its label with Labeled.
+type AuthMethod struct {
+	kind  authMethodKind
+	name  string
+	label string
+	// invited marks a registration admitting invited users only (InvitedUsers), and
+	// syncsRoles one that writes its users' roles from the directory (SyncsRoles); both
+	// shape the Auth's user-management surface.
+	invited    bool
+	syncsRoles bool
+}
+
+// PasswordMethod is the username and password method, registered as "password" with
+// the label "Password".
+func PasswordMethod() AuthMethod {
+	return AuthMethod{kind: methodPassword, name: passwordMethodName, label: "Password"}
+}
+
+// GoogleMethod is the Google Workspace method registered under name, with the label
+// "Google".
+func GoogleMethod(name string) AuthMethod {
+	return AuthMethod{kind: methodGoogle, name: name, label: "Google"}
+}
+
+// AzureMethod is the Microsoft Entra ID method registered under name, with the label
+// "Microsoft".
+func AzureMethod(name string) AuthMethod {
+	return AuthMethod{kind: methodAzure, name: name, label: "Microsoft"}
+}
+
+// WorkOSMethod is the WorkOS single sign-on method registered under name, with the
+// label "Single sign-on".
+func WorkOSMethod(name string) AuthMethod {
+	return AuthMethod{kind: methodWorkOS, name: name, label: "Single sign-on"}
+}
+
+// Labeled gives the method the label the login page shows for it, in the
+// application's words ("Company directory").
+func (m AuthMethod) Labeled(label string) AuthMethod {
+	m.label = label
+
+	return m
+}
+
+// InvitedUsers declares that the registration admits invited users only (the session
+// library's invited-users account rule): a person signs in through the directory once
+// an operator has created their account, so the Auth's user-management surface creates
+// users for it, without a password. Not for the password method, whose users are
+// always created here.
+func (m AuthMethod) InvitedUsers() AuthMethod {
+	m.invited = true
+
+	return m
+}
+
+// SyncsRoles declares that the registration writes its users' roles from the
+// directory at every sign-in (the method's RoleSync): the Auth's user-management
+// surface shows those users' seats and never writes them, since a seat made by hand
+// would not survive the next sign-in. Not for the password method.
+func (m AuthMethod) SyncsRoles() AuthMethod {
+	m.syncsRoles = true
+
+	return m
+}
+
+// Name is the name the method is registered under on the Auth.
+func (m AuthMethod) Name() string {
+	return m.name
+}
+
+// Label is what the login page shows for the method.
+func (m AuthMethod) Label() string {
+	return m.label
+}
+
+// String spells the method the way the generator program declares it.
+func (m AuthMethod) String() string {
+	switch m.kind {
+	case methodPassword:
+		return "PasswordMethod()"
+	case methodGoogle, methodAzure, methodWorkOS:
+		spelled := fmt.Sprintf("%sMethod(%q)", caser.ToPascal(string(m.kind)), m.name)
+		if m.invited {
+			spelled += ".InvitedUsers()"
+		}
+		if m.syncsRoles {
+			spelled += ".SyncsRoles()"
+		}
+
+		return spelled
+	default:
+		return string(m.kind)
+	}
+}
+
+// accessor is the Pascal-cased registration name the generated Handlers interface
+// prefixes the method's handlers with: PasswordLogin, GoogleCallback.
+func (m AuthMethod) accessor() string {
+	return caser.ToPascal(m.name)
+}
+
+// registrationName is the shape of a registration's name: a path segment of lowercase
+// letters, digits and hyphens, starting with a letter, which is also what the session
+// library names registrations (azure, lakeside-entra).
+var registrationName = regexp.MustCompile(`^[a-z][a-z0-9-]*$`)
+
+// validateAuthMethods checks an outlet's methods: at least one, each with a well-formed
+// name no other method takes, the password method's name the library's, and a label.
+func validateAuthMethods(importPath string, methods []AuthMethod) error {
+	if len(methods) == 0 {
+		return errors.Newf("Auth(%q) declares no sign-in method: name at least one, such as PasswordMethod() or GoogleMethod(\"google\")", importPath)
+	}
+	seen := make(map[string]bool, len(methods))
+	for _, m := range methods {
+		switch {
+		case m.kind == "":
+			return errors.Newf("Auth(%q) is given a zero AuthMethod: build each with PasswordMethod, GoogleMethod, AzureMethod or WorkOSMethod", importPath)
+		case !registrationName.MatchString(m.name):
+			return errors.Newf("Auth(%q, %s) names the registration %q; a registration name is lowercase letters, digits and hyphens, starting with a letter", importPath, m, m.name)
+		case m.kind != methodPassword && m.name == passwordMethodName:
+			return errors.Newf("Auth(%q, %s) names an external registration %q, the name the library keeps for the password method", importPath, m, m.name)
+		case seen[m.name]:
+			return errors.Newf("Auth(%q, %s) registers %q twice: each registration has its own name", importPath, m, m.name)
+		case m.label == "":
+			return errors.Newf("Auth(%q, %s) has an empty label: Labeled takes the words the login page shows", importPath, m)
+		case m.kind == methodPassword && (m.invited || m.syncsRoles):
+			return errors.Newf("Auth(%q, %s) declares InvitedUsers or SyncsRoles on the password method: they describe a registration's directory", importPath, m)
+		}
+		seen[m.name] = true
+	}
+
+	return nil
+}
 
 // Auth declares the auth a session outlet binds to, for the generated router
 // (GenerateRouter). importPath is the auth package: the package exporting Name whose
-// session handlers serve the outlet (the default outlet's are embedded in Handlers,
-// an additional outlet's come from a getter named after it), and flavor is how its
-// people sign in, which decides the login routes the router mounts under the outlet's
-// prefix. The default outlet declares it on GenerateRoutes, an additional outlet on
-// WithRouterOutlet. A session flavor makes the outlet serve sessions exactly as
-// ServesSessions does.
+// session surface serves the outlet (the default outlet's is embedded in Handlers, an
+// additional outlet's comes from a getter named after it), and methods are the sign-in
+// methods registered on its Auth, which decide the login routes the router mounts
+// under the outlet's prefix and what the outlet's login page is offered. The default
+// outlet declares it on GenerateRoutes, an additional outlet on WithRouterOutlet. An
+// Auth makes the outlet serve sessions exactly as ServesSessions does.
 //
 // When more than one session auth is declared the generated router binds every request
 // in the outlet's group to its auth, BindAuth(<pkg>.Name), so a misspelled or removed
@@ -321,19 +467,41 @@ const (
 // the package. The route tables import it whatever the count: the outlet's routes bind
 // its Name for the live pages (live.Subscribing(<pkg>.Name)), which key each person's
 // subscriptions and change set by it.
-func Auth(importPath string, flavor AuthFlavor) OutletOption {
+func Auth(importPath string, methods ...AuthMethod) OutletOption {
 	return outletOption(func(o *routerOutlet) error {
 		if importPath == "" || strings.ContainsAny(importPath, " \t\n\"") || strings.Trim(importPath, "/") != importPath {
 			return errors.Newf("Auth(%q) requires an import path: the auth package, such as \"github.com/acme/beacon/pkg/auth/staff\"", importPath)
 		}
-		if _, ok := authFlavors[flavor]; !ok {
-			return errors.Newf("Auth(%q, %q) names an unknown flavor; the flavors are Password, OIDCGoogle, and OIDCAzure", importPath, flavor)
+		if err := validateAuthMethods(importPath, methods); err != nil {
+			return err
 		}
 		if o.auth != nil {
-			return errors.Newf("Auth(%q, %q) redeclares the outlet's auth (%q, %q): an outlet binds to one auth", importPath, flavor, o.auth.importPath, o.auth.flavor)
+			return errors.Newf("Auth(%q) redeclares the outlet's auth (%q): an outlet binds to one auth", importPath, o.auth.importPath)
 		}
-		o.auth = &outletAuth{importPath: importPath, flavor: flavor}
+		o.auth = &outletAuth{importPath: importPath, methods: slices.Clone(methods)}
 		o.servesSessions = true
+
+		return nil
+	})
+}
+
+// Manages declares that the outlet also serves the user-management surface of another
+// Auth, named by its import path: the staff console managing the members a portal
+// outlet signs in. The managed Auth must be declared with Auth on some outlet. The
+// managed Auth's resources mount under this outlet's prefix exactly as under their own,
+// served through the managed Auth's stores and checked in the caller's engine against
+// the caller's role file; the collection is shared, so either role file may grant them,
+// and an application that wants only staff to manage members leaves the resources out
+// of the members' file.
+func Manages(importPath string) OutletOption {
+	return outletOption(func(o *routerOutlet) error {
+		if importPath == "" || strings.ContainsAny(importPath, " \t\n\"") || strings.Trim(importPath, "/") != importPath {
+			return errors.Newf("Manages(%q) requires an import path: the managed auth package, such as \"github.com/acme/beacon/pkg/auth/members\"", importPath)
+		}
+		if slices.Contains(o.manages, importPath) {
+			return errors.Newf("Manages(%q) is declared twice on the outlet", importPath)
+		}
+		o.manages = append(o.manages, importPath)
 
 		return nil
 	})

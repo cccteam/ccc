@@ -11,7 +11,12 @@ import { field, listViewConfig, nullBooleanConfig, rootConfig, section } from '@
 // form renders the three-way picker, with the null state labelled in the story's word;
 // the required Trusted checkbox beside it is the two-state contrast.
 //
-// Demonstrates: nullboolean.
+// Trusted is also the list's icon column: a verified badge for a trusted outfit, a caution
+// for one not yet trusted, each with a sentence naming the client as its tooltip and its
+// accessible name. The map is declared here and the data drives it; the ClientBrowser
+// persona, who lists trusted clients alone, sees nothing but badges.
+//
+// Demonstrates: nullboolean, column.icon.
 export const clientsConfig = rootConfig({
   nav: { navItem: { label: 'Clients' }, group: 'Headquarters' },
   parentConfig: listViewConfig({
@@ -21,7 +26,14 @@ export const clientsConfig = rootConfig({
     listColumns: [
       { id: Clients.fieldName.name },
       { id: Clients.piiFieldName.contactName },
-      { id: Clients.fieldName.trusted },
+      {
+        id: Clients.fieldName.trusted,
+        header: 'Trust',
+        iconConfig: {
+          icons: { true: 'verified', false: 'gpp_maybe' },
+          tooltips: { true: '{name} is a trusted client', false: '{name} is not yet trusted' },
+        },
+      },
     ],
     elements: [
       section({

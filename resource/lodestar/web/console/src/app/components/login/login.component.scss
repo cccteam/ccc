@@ -17,15 +17,6 @@
   mat-card-header {
     margin-bottom: 16px;
   }
-
-  form {
-    display: flex;
-    flex-direction: column;
-  }
-}
-
-.full-width {
-  width: 100%;
 }
 
 .hint {
@@ -68,6 +59,11 @@
   &.selected {
     border-color: #a5640a;
     box-shadow: 0 0 0 2px rgba(165, 100, 10, 0.25);
+  }
+
+  &.directory {
+    cursor: default;
+    border-style: dashed;
   }
 
   .login {

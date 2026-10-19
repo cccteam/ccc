@@ -189,8 +189,8 @@ func Test_singleKeyRouteTestParam(t *testing.T) {
 func Test_authBindings(t *testing.T) {
 	t.Parallel()
 
-	crew := &outletAuth{importPath: "example.com/app/pkg/auth/crew", flavor: Password}
-	members := &outletAuth{importPath: "example.com/app/pkg/auth/members", flavor: OIDCGoogle}
+	crew := &outletAuth{importPath: "example.com/app/pkg/auth/crew", methods: []AuthMethod{PasswordMethod()}}
+	members := &outletAuth{importPath: "example.com/app/pkg/auth/members", methods: []AuthMethod{GoogleMethod("google")}}
 
 	type binding struct {
 		name, testParam string
@@ -198,7 +198,7 @@ func Test_authBindings(t *testing.T) {
 	}
 	tests := []struct {
 		name           string
-		outlets        []routerOutlet
+		outlets        []*routerOutlet
 		wantBindings   []binding
 		wantImports    []string
 		wantTestParams []string
@@ -206,7 +206,7 @@ func Test_authBindings(t *testing.T) {
 	}{
 		{
 			name: "declared auths bind their packages' Name, each imported once",
-			outlets: []routerOutlet{
+			outlets: []*routerOutlet{
 				{name: "default", prefix: "api", servesSessions: true, auth: members},
 				{name: "kiosk", prefix: "kiosk/api", servesSessions: true, auth: crew},
 				{name: "portal", prefix: "portal/api", servesSessions: true, auth: members},
@@ -217,7 +217,7 @@ func Test_authBindings(t *testing.T) {
 		},
 		{
 			name: "under the application's own router each session outlet takes its auth's name",
-			outlets: []routerOutlet{
+			outlets: []*routerOutlet{
 				{name: "default", prefix: "api", servesSessions: true},
 				{name: "field-portal", prefix: "portal/api", servesSessions: true, declaredSessions: true},
 				{name: "automation", prefix: "automation"},
@@ -232,7 +232,7 @@ func Test_authBindings(t *testing.T) {
 		},
 		{
 			name:         "an API-key default outlet binds nothing: it serves no sessions",
-			outlets:      []routerOutlet{{name: "default", prefix: "api", apiKey: true}},
+			outlets:      []*routerOutlet{{name: "default", prefix: "api", apiKey: true}},
 			wantBindings: []binding{{}},
 		},
 	}
@@ -245,7 +245,7 @@ func Test_authBindings(t *testing.T) {
 			got := make([]binding, len(tt.outlets))
 			for i := range tt.outlets {
 				routes[i] = &outletRouteData{Name: tt.outlets[i].name}
-				routes[i].AuthName, routes[i].AuthParam, routes[i].TestRouterParam = authBinding(&tt.outlets[i])
+				routes[i].AuthName, routes[i].AuthParam, routes[i].TestRouterParam = authBinding(tt.outlets[i])
 				got[i] = binding{name: routes[i].AuthName, param: routes[i].AuthParam, testParam: routes[i].TestRouterParam}
 			}
 			if diff := cmp.Diff(tt.wantBindings, got, cmp.AllowUnexported(binding{})); diff != "" {
@@ -275,7 +275,7 @@ func Test_authBindings(t *testing.T) {
 func Test_allOutlets_defaultServesSessions(t *testing.T) {
 	t.Parallel()
 
-	staff := &outletAuth{importPath: "example.com/app/pkg/auth/staff", flavor: Password}
+	staff := &outletAuth{importPath: "example.com/app/pkg/auth/staff", methods: []AuthMethod{PasswordMethod()}}
 	tests := []struct {
 		name          string
 		defaultOutlet routerOutlet

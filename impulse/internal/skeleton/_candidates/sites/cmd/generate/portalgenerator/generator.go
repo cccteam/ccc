@@ -22,7 +22,7 @@ func newGenerator(ctx context.Context) (generation.Generator, error) {
 		// application at /.
 		generation.GenerateRouter(),
 		generation.GenerateRoutes("apps/portal/pkg/router", "api",
-			generation.Auth("github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/sites/pkg/auth/staff", generation.Password),
+			generation.Auth("github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/sites/pkg/auth/staff", generation.PasswordMethod()),
 			generation.WebApp("/"),
 			// The oldest release of the portal this outlet still answers. The portal sends the
 			// release it was built from in X-Api-Version, and the server answers releases from

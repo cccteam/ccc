@@ -16,6 +16,7 @@ import (
 	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/ccc/resource/live"
 	livefirestore "github.com/cccteam/ccc/resource/live/firestore"
+	"github.com/cccteam/ccc/resource/sessionusers"
 	"github.com/go-playground/errors/v5"
 	"github.com/sethvargo/go-envconfig"
 )
@@ -171,7 +172,7 @@ func NewDataConfiguration(ctx context.Context) (*DataConfiguration, error) {
 
 	// The auth's default roles validate against the generated collection when its engine
 	// opens; the collection is passed in here, since the auth package imports no router.
-	staffAuth, err := staff.New(ctx, spannerClient, staff.Settings{Collection: router.Collection(), Signals: liveService, CookieKey: cookieKey, SessionTimeout: env.SessionTimeout})
+	staffAuth, err := staff.New(ctx, spannerClient, &staff.Settings{Collection: router.Collection(), Signals: liveService, CookieKey: cookieKey, SessionTimeout: env.SessionTimeout})
 	if err != nil {
 		return nil, errors.Wrap(err, "staff.New()")
 	}
@@ -253,6 +254,14 @@ func (c *DataConfiguration) UserManager() access.UserManager {
 // Staff returns the staff auth: the one the console binds to.
 func (c *DataConfiguration) Staff() *staff.Auth {
 	return c.staff
+}
+
+// StaffUserStores returns the stores the staff auth's user-management surface serves over:
+// the staff session's accounts (sessionusers.Accounts over its API) and the staff
+// engine's memberships. A seat written through the surface is a policy write the engine
+// announces to every instance.
+func (c *DataConfiguration) StaffUserStores() (resource.UserAccounts, resource.UserSeats) {
+	return sessionusers.Accounts(c.staff.Session().API()), c.staff.Access().UserManager()
 }
 
 // Live returns the live service the generated handlers subscribe through and publish

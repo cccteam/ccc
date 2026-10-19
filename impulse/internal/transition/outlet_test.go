@@ -482,7 +482,7 @@ func TestOutletApply(t *testing.T) {
 // is the default outlet on the staff auth with its browser application at /.
 var beaconRouterProgram = strings.Replace(beaconProgram,
 	"\t\tgeneration.GenerateRoutes(\"pkg/router\", \"api\"),\n",
-	"\t\tgeneration.GenerateRouter(),\n\t\tgeneration.GenerateRoutes(\"pkg/router\", \"api\",\n\t\t\tgeneration.Auth(\"example.com/acme/beacon/pkg/auth/staff\", generation.Password),\n\t\t\tgeneration.WebApp(\"/\"),\n\t\t),\n", 1)
+	"\t\tgeneration.GenerateRouter(),\n\t\tgeneration.GenerateRoutes(\"pkg/router\", \"api\",\n\t\t\tgeneration.Auth(\"example.com/acme/beacon/pkg/auth/staff\", generation.PasswordMethod()),\n\t\t\tgeneration.WebApp(\"/\"),\n\t\t),\n", 1)
 
 // TestOutletApplyGeneratedRouter pins the declaration add outlet writes under the
 // generated router: a session outlet binds to the auth --auth names (the console's when
@@ -492,9 +492,9 @@ func TestOutletApplyGeneratedRouter(t *testing.T) {
 	t.Parallel()
 
 	// movedConsole is the GenerateRoutes a console that left the root reads afterwards.
-	const movedConsole = "\t\tgeneration.GenerateRoutes(\"pkg/router\", \"console/api\",\n\t\t\tgeneration.Auth(\"example.com/acme/beacon/pkg/auth/staff\", generation.Password),\n\t\t\tgeneration.WebApp(\"/console\"),\n\t\t),\n"
+	const movedConsole = "\t\tgeneration.GenerateRoutes(\"pkg/router\", \"console/api\",\n\t\t\tgeneration.Auth(\"example.com/acme/beacon/pkg/auth/staff\", generation.PasswordMethod()),\n\t\t\tgeneration.WebApp(\"/console\"),\n\t\t),\n"
 	// rootConsole is the console's GenerateRoutes as the fixture declares it.
-	const rootConsole = "\t\tgeneration.GenerateRoutes(\"pkg/router\", \"api\",\n\t\t\tgeneration.Auth(\"example.com/acme/beacon/pkg/auth/staff\", generation.Password),\n\t\t\tgeneration.WebApp(\"/\"),\n\t\t),\n"
+	const rootConsole = "\t\tgeneration.GenerateRoutes(\"pkg/router\", \"api\",\n\t\t\tgeneration.Auth(\"example.com/acme/beacon/pkg/auth/staff\", generation.PasswordMethod()),\n\t\t\tgeneration.WebApp(\"/\"),\n\t\t),\n"
 	moveDid := []string{
 		`cmd/generate/resourcegenerator/main.go: with two browser applications none is mounted at /, so the default outlet's application moves to /console and its API to /console/api: GenerateRoutes("pkg/router", "console/api", ..., WebApp("/console")) in place of "api" and WebApp("/"); the regenerated router answers the root alone with a redirect to /console/`,
 		"web/console: the console project serves under /console/ with its API at /console/api (angular.json baseHref and servePath, the proxy, the environments, the base element)",
@@ -524,12 +524,12 @@ func TestOutletApplyGeneratedRouter(t *testing.T) {
 			name:        "a session outlet on the console's auth",
 			outlet:      Outlet{Name: "portal", Prefix: "portal/api", Sessions: true},
 			wantCommand: "impulse add outlet portal --prefix portal/api --auth staff",
-			wantDid:     `cmd/generate/resourcegenerator/main.go: added WithRouterOutlet("portal", "portal/api", generation.Auth("example.com/acme/beacon/pkg/auth/staff", generation.Password), generation.WebApp("/portal"))`,
+			wantDid:     `cmd/generate/resourcegenerator/main.go: added WithRouterOutlet("portal", "portal/api", generation.Auth("example.com/acme/beacon/pkg/auth/staff", generation.PasswordMethod()), generation.WebApp("/portal"))`,
 			wantMoved:   true,
 			wantProgram: []string{
 				"\t\tgeneration.GenerateRouter(),\n",
 				movedConsole,
-				"\t\tgeneration.WithRouterOutlet(\"portal\", \"portal/api\",\n\t\t\tgeneration.Auth(\"example.com/acme/beacon/pkg/auth/staff\", generation.Password),\n\t\t\tgeneration.WebApp(\"/portal\"),\n\t\t),\n",
+				"\t\tgeneration.WithRouterOutlet(\"portal\", \"portal/api\",\n\t\t\tgeneration.Auth(\"example.com/acme/beacon/pkg/auth/staff\", generation.PasswordMethod()),\n\t\t\tgeneration.WebApp(\"/portal\"),\n\t\t),\n",
 			},
 			wantAbsent: []string{"ServesSessions", rootConsole},
 			wantCookie: "cookieName: 'staff-xsrf'",
@@ -538,11 +538,11 @@ func TestOutletApplyGeneratedRouter(t *testing.T) {
 			name:        "a session outlet bound to a named auth",
 			outlet:      Outlet{Name: "portal", Prefix: "portal/api", Sessions: true, Auth: "members"},
 			wantCommand: "impulse add outlet portal --prefix portal/api --auth members",
-			wantDid:     `cmd/generate/resourcegenerator/main.go: added WithRouterOutlet("portal", "portal/api", generation.Auth("example.com/acme/beacon/pkg/auth/members", generation.Password), generation.WebApp("/portal"))`,
+			wantDid:     `cmd/generate/resourcegenerator/main.go: added WithRouterOutlet("portal", "portal/api", generation.Auth("example.com/acme/beacon/pkg/auth/members", generation.PasswordMethod()), generation.WebApp("/portal"))`,
 			wantMoved:   true,
 			wantProgram: []string{
 				movedConsole,
-				"\t\tgeneration.WithRouterOutlet(\"portal\", \"portal/api\",\n\t\t\tgeneration.Auth(\"example.com/acme/beacon/pkg/auth/members\", generation.Password),\n\t\t\tgeneration.WebApp(\"/portal\"),\n\t\t),\n",
+				"\t\tgeneration.WithRouterOutlet(\"portal\", \"portal/api\",\n\t\t\tgeneration.Auth(\"example.com/acme/beacon/pkg/auth/members\", generation.PasswordMethod()),\n\t\t\tgeneration.WebApp(\"/portal\"),\n\t\t),\n",
 			},
 			wantAbsent: []string{"ServesSessions", rootConsole},
 			wantCookie: "cookieName: 'members-xsrf'",
@@ -569,6 +569,7 @@ func TestOutletApplyGeneratedRouter(t *testing.T) {
 			files := authFiles(t)
 			files["cmd/generate/resourcegenerator/main.go"] = beaconRouterProgram
 			files["pkg/auth/members/members.go"] = strings.ReplaceAll(strings.ReplaceAll(files["pkg/auth/staff/staff.go"], "staff", "members"), "Staff", "Members")
+			files["pkg/auth/members/password.go"] = strings.ReplaceAll(strings.ReplaceAll(files["pkg/auth/staff/password.go"], "staff", "members"), "Staff", "Members")
 			files["web/console/src/app/app.config.ts"] = "provideHttpClient(withXsrfConfiguration({ cookieName: 'staff-xsrf' }));\n"
 			// What a move leaves for the agent: the App's bundle served at the root (the
 			// resource package's served browser app, as the skeletons build it), a login page,
@@ -719,9 +720,9 @@ func TestOutletApplyConsoleUnderPath(t *testing.T) {
 	t.Parallel()
 
 	program := strings.Replace(beaconRouterProgram,
-		"\t\tgeneration.GenerateRoutes(\"pkg/router\", \"api\",\n\t\t\tgeneration.Auth(\"example.com/acme/beacon/pkg/auth/staff\", generation.Password),\n\t\t\tgeneration.WebApp(\"/\"),\n\t\t),\n",
-		"\t\tgeneration.GenerateRoutes(\"pkg/router\", \"console/api\",\n\t\t\tgeneration.Auth(\"example.com/acme/beacon/pkg/auth/staff\", generation.Password),\n\t\t\tgeneration.WebApp(\"/console\"),\n\t\t),\n"+
-			"\t\tgeneration.WithRouterOutlet(\"portal\", \"portal/api\",\n\t\t\tgeneration.Auth(\"example.com/acme/beacon/pkg/auth/staff\", generation.Password),\n\t\t\tgeneration.WebApp(\"/portal\"),\n\t\t),\n", 1)
+		"\t\tgeneration.GenerateRoutes(\"pkg/router\", \"api\",\n\t\t\tgeneration.Auth(\"example.com/acme/beacon/pkg/auth/staff\", generation.PasswordMethod()),\n\t\t\tgeneration.WebApp(\"/\"),\n\t\t),\n",
+		"\t\tgeneration.GenerateRoutes(\"pkg/router\", \"console/api\",\n\t\t\tgeneration.Auth(\"example.com/acme/beacon/pkg/auth/staff\", generation.PasswordMethod()),\n\t\t\tgeneration.WebApp(\"/console\"),\n\t\t),\n"+
+			"\t\tgeneration.WithRouterOutlet(\"portal\", \"portal/api\",\n\t\t\tgeneration.Auth(\"example.com/acme/beacon/pkg/auth/staff\", generation.PasswordMethod()),\n\t\t\tgeneration.WebApp(\"/portal\"),\n\t\t),\n", 1)
 	files := authFiles(t)
 	files["cmd/generate/resourcegenerator/main.go"] = program
 	files["web/angular.json"] = strings.Replace(strings.Replace(beaconAngular, `"servePath": "/",`, `"servePath": "/console",`, 1), "\"scripts\": []\n", "\"scripts\": [],\n            \"baseHref\": \"/console/\"\n", 1)
@@ -737,7 +738,7 @@ func TestOutletApplyConsoleUnderPath(t *testing.T) {
 		t.Fatalf("Apply() error = %v", err)
 	}
 	wantDid := []string{
-		`cmd/generate/resourcegenerator/main.go: added WithRouterOutlet("kiosk", "kiosk/api", generation.Auth("example.com/acme/beacon/pkg/auth/staff", generation.Password), generation.WebApp("/kiosk"))`,
+		`cmd/generate/resourcegenerator/main.go: added WithRouterOutlet("kiosk", "kiosk/api", generation.Auth("example.com/acme/beacon/pkg/auth/staff", generation.PasswordMethod()), generation.WebApp("/kiosk"))`,
 		`cmd/generate/resourcegenerator/main.go: added GenerateTypescript("web/kiosk/src/app/core/service", ForOutlet("kiosk"), ...) with the default target's options`,
 		"copied the console browser project to web/kiosk, rewriting its API prefix (/console/api to /kiosk/api), base path (/kiosk/), and output paths; its titles still say console",
 		"web/angular.json: added the kiosk project as a copy of console, serving under /kiosk on port 4301",

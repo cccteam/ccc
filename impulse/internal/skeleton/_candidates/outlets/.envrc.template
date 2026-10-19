@@ -36,17 +36,21 @@ export GOOGLE_CLOUD_SPANNER_DATABASE_NAME=outlets
 # export APP_FIRESTORE_DATABASE=
 # export APP_FIREBASE_API_KEY=
 # export GOOGLE_CLOUD_FIRESTORE_PROJECT=
-# The members auth (pkg/auth/members) signs the portal's people in through a directory
-# (OpenID Connect against Azure). The Procfile builds with the session library's skipAuth
-# tag, which simulates the directory: every login is APP_USERNAME (the role claims in
-# APP_ROLES are ignored, since the application assigns members their roles), and only the
-# redirect URL is read. Register the application in a directory and drop the tag to use one.
+# The members auth (pkg/auth/members) signs the portal's people in through the directory
+# registration (OpenID Connect against Microsoft Entra, user/directory/login). The
+# Procfile builds with the session library's skipAuth tag, which simulates the directory:
+# every sign-in through it is APP_DIRECTORY_USERNAME, or APP_USERNAME when that is unset
+# (the roles in APP_ROLES are ignored, since the application assigns members their roles),
+# and only the tenant id and the redirect URL are read: the tenant below is a placeholder
+# that is nobody's, since the method validates its organization slot at registration
+# whether or not the directory is simulated. Register the application with a tenant, fill
+# the registration's variables in (APP_<AUTH>_<REGISTRATION>_*), and drop the tag to use it.
 export APP_USERNAME=client
 export APP_ROLES=
-# export APP_MEMBERS_OIDC_ISSUER_URL=
-# export APP_MEMBERS_OIDC_CLIENT_ID=
-# export APP_MEMBERS_OIDC_CLIENT_SECRET=
-export APP_MEMBERS_OIDC_REDIRECT_URL=http://127.0.0.1:4303/portal/api/user/callback
+export APP_MEMBERS_DIRECTORY_TENANT_ID=00000000-0000-0000-0000-000000000000
+# export APP_MEMBERS_DIRECTORY_CLIENT_ID=
+# export APP_MEMBERS_DIRECTORY_CLIENT_SECRET=
+export APP_MEMBERS_DIRECTORY_REDIRECT_URL=http://127.0.0.1:4303/portal/api/user/directory/callback
 
 # --- site: the served site ---
 export PORT=8093

@@ -11,10 +11,10 @@ import (
 
 	"github.com/cccteam/access"
 	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/solo/pkg/auth/staff"
+	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/solo/pkg/router"
 	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/ccc/resource/live"
 	"github.com/cccteam/logger"
-	"github.com/cccteam/session"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-playground/errors/v5"
 	"github.com/go-playground/validator/v10"
@@ -57,6 +57,11 @@ type Configurer interface {
 	// Staff returns the auth this surface binds to: the staff auth, whose session manager
 	// the App composes its login and session handlers from.
 	Staff() *staff.Auth
+	// StaffUserStores are the stores the staff auth's user-management surface serves over:
+	// the staff session's accounts and the staff engine's seats. New builds the surface
+	// with the generated constructor (router.NewStaffUserSurface); the generated handlers
+	// of the staff users, seats and roles delegate to it.
+	StaffUserStores() (resource.UserAccounts, resource.UserSeats)
 	// Live is the live service the generated handlers subscribe through and publish to
 	// (LiveService) and the feature flags follow (Start): the Firestore service over the
 	// database or the emulator the data level opened, required in every application.
@@ -79,7 +84,8 @@ type Configurer interface {
 // suites compose router.NewTestRouter).
 type App struct {
 	access access.Controller
-	*session.PasswordAuth[session.NoCustomData, session.NoCustomData]
+	*staff.Handlers
+	staffUsers     *resource.UserSurface[router.StaffAuth]
 	resourceClient resource.Client
 	cursorKey      *resource.CursorKey
 	validate       *validator.Validate
@@ -103,6 +109,7 @@ func New(cfg Configurer) *App {
 	a := &App{
 		access:         cfg.Access(),
 		resourceClient: cfg.ResourceClient(),
+		staffUsers:     router.NewStaffUserSurface(cfg.StaffUserStores()),
 		cursorKey:      cfg.CursorKey(),
 		validate:       cfg.Validator(),
 		logExporter:    cfg.LogExporter(),
@@ -122,7 +129,7 @@ func New(cfg Configurer) *App {
 	// The authorization suites bind no auth: they compose the API surface through the
 	// test router, and nothing on that path touches the session.
 	if auth := cfg.Staff(); auth != nil {
-		a.PasswordAuth = auth.Session()
+		a.Handlers = auth.Handlers()
 	}
 
 	return a

@@ -183,7 +183,7 @@ func TestRemoveOptions(t *testing.T) {
 	}
 }
 
-func TestRewriteAuthFlavor(t *testing.T) {
+func TestAddAuthMethod(t *testing.T) {
 	t.Parallel()
 
 	src := `package main
@@ -193,49 +193,46 @@ import gen "github.com/cccteam/ccc/resource/generation"
 func run() {
 	_, _ = gen.NewResourceGenerator(nil, "pkg/resources", nil,
 		gen.GenerateRouter(),
-		gen.GenerateRoutes("pkg/router", "api", gen.Auth("example.com/acme/pkg/auth/staff", gen.Password), gen.WebApp("/")),
-		gen.WithRouterOutlet("portal", "portal/api", gen.Auth("example.com/acme/pkg/auth/members", gen.OIDCGoogle)),
-		gen.WithRouterOutlet("kiosk", "kiosk", gen.Auth("example.com/acme/pkg/auth/staff", gen.Password)),
+		gen.GenerateRoutes("pkg/router", "api", gen.Auth("example.com/acme/pkg/auth/staff", gen.PasswordMethod()), gen.WebApp("/")),
+		gen.WithRouterOutlet("portal", "portal/api", gen.Auth("example.com/acme/pkg/auth/members", gen.GoogleMethod("directory").Labeled("Company directory"))),
+		gen.WithRouterOutlet("kiosk", "kiosk", gen.Auth("example.com/acme/pkg/auth/staff", gen.PasswordMethod())),
 	)
 }
 `
 	tests := []struct {
 		name        string
 		importPath  string
-		flavor      string
+		method      string
+		declaration string
 		wantCount   int
 		wantContain []string
-		wantAbsent  []string
 	}{
 		{
-			name: "every outlet bound to the package", importPath: "example.com/acme/pkg/auth/staff", flavor: "OIDCAzure", wantCount: 2,
-			wantContain: []string{`gen.Auth("example.com/acme/pkg/auth/staff", gen.OIDCAzure), gen.WebApp("/")`, `gen.WithRouterOutlet("kiosk", "kiosk", gen.Auth("example.com/acme/pkg/auth/staff", gen.OIDCAzure))`, `gen.Auth("example.com/acme/pkg/auth/members", gen.OIDCGoogle)`},
-			wantAbsent:  []string{"gen.Password"},
+			name: "every outlet bound to the package", importPath: "example.com/acme/pkg/auth/staff", method: "entra", declaration: `generation.AzureMethod("entra")`, wantCount: 2,
+			wantContain: []string{`gen.Auth("example.com/acme/pkg/auth/staff", gen.PasswordMethod(), gen.AzureMethod("entra")), gen.WebApp("/")`, `gen.WithRouterOutlet("kiosk", "kiosk", gen.Auth("example.com/acme/pkg/auth/staff", gen.PasswordMethod(), gen.AzureMethod("entra")))`, `gen.Auth("example.com/acme/pkg/auth/members", gen.GoogleMethod("directory").Labeled("Company directory"))`},
 		},
 		{
-			name: "a package no outlet binds to", importPath: "example.com/acme/pkg/auth/partners", flavor: "OIDCAzure", wantCount: 0,
-			wantContain: []string{"gen.Password"},
+			name: "a method the outlet declares already", importPath: "example.com/acme/pkg/auth/members", method: "directory", declaration: `generation.GoogleMethod("directory")`, wantCount: 0,
+			wantContain: []string{`gen.GoogleMethod("directory").Labeled("Company directory"))`},
+		},
+		{
+			name: "a package no outlet binds to", importPath: "example.com/acme/pkg/auth/partners", method: "entra", declaration: `generation.AzureMethod("entra")`, wantCount: 0,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			out, n, err := RewriteAuthFlavor("main.go", []byte(src), tt.importPath, tt.flavor)
+			out, n, err := AddAuthMethod("main.go", []byte(src), tt.importPath, tt.method, tt.declaration)
 			if err != nil {
-				t.Fatalf("RewriteAuthFlavor() error = %v", err)
+				t.Fatalf("AddAuthMethod() error = %v", err)
 			}
 			if n != tt.wantCount {
-				t.Errorf("rewritten = %d, want %d", n, tt.wantCount)
+				t.Errorf("edited = %d, want %d", n, tt.wantCount)
 			}
 			for _, want := range tt.wantContain {
 				if !strings.Contains(string(out), want) {
 					t.Errorf("output lacks %q:\n%s", want, out)
-				}
-			}
-			for _, absent := range tt.wantAbsent {
-				if strings.Contains(string(out), absent) {
-					t.Errorf("output has %q:\n%s", absent, out)
 				}
 			}
 		})
@@ -253,10 +250,10 @@ func run() {
 	_, _ = gen.NewResourceGenerator(nil, "pkg/resources", nil,
 		gen.GenerateRouter(),
 		gen.GenerateRoutes("pkg/router", "api",
-			gen.Auth("example.com/acme/pkg/auth/staff", gen.Password),
+			gen.Auth("example.com/acme/pkg/auth/staff", gen.PasswordMethod()),
 			gen.WebApp("/"),
 		),
-		gen.WithRouterOutlet("portal", "portal/api", gen.Auth("example.com/acme/pkg/auth/members", gen.OIDCGoogle), gen.WebApp("/portal")),
+		gen.WithRouterOutlet("portal", "portal/api", gen.Auth("example.com/acme/pkg/auth/members", gen.GoogleMethod("directory")), gen.WebApp("/portal")),
 	)
 }
 `
@@ -291,8 +288,8 @@ func run() {
 			name: "the prefix and the mount path move together",
 			src:  rooted,
 			wantContain: []string{
-				"\t\tgen.GenerateRoutes(\"pkg/router\", \"console/api\",\n\t\t\tgen.Auth(\"example.com/acme/pkg/auth/staff\", gen.Password),\n\t\t\tgen.WebApp(\"/console\"),\n\t\t),\n",
-				`gen.WithRouterOutlet("portal", "portal/api", gen.Auth("example.com/acme/pkg/auth/members", gen.OIDCGoogle), gen.WebApp("/portal"))`,
+				"\t\tgen.GenerateRoutes(\"pkg/router\", \"console/api\",\n\t\t\tgen.Auth(\"example.com/acme/pkg/auth/staff\", gen.PasswordMethod()),\n\t\t\tgen.WebApp(\"/console\"),\n\t\t),\n",
+				`gen.WithRouterOutlet("portal", "portal/api", gen.Auth("example.com/acme/pkg/auth/members", gen.GoogleMethod("directory")), gen.WebApp("/portal"))`,
 			},
 			wantAbsent: []string{`"api",`, `gen.WebApp("/")`},
 		},

@@ -411,7 +411,7 @@ func setFeatureRoute(routePrefix string) *generatedRoute {
 // accumulateFeatureRoutes adds the feature flag routes to every outlet: the features
 // route on each, the FeatureFlags routes and SetFeature on the session-serving ones.
 // Every route joins the dispatch test.
-func accumulateFeatureRoutes(outlets []routerOutlet, outletRoutes []*outletRouteData) (routerTestRoutes []*generatedRoute) {
+func accumulateFeatureRoutes(outlets []*routerOutlet, outletRoutes []*outletRouteData) (routerTestRoutes []*generatedRoute) {
 	for i, outlet := range outlets {
 		features := featuresRoute(outlet.prefix)
 		outletRoutes[i].RoutesMap[featuresHandlerFunc] = []*generatedRoute{features}
@@ -456,7 +456,7 @@ func (r *resourceGenerator) featureAuthzCases() []authzCase {
 	for _, outlet := range r.allOutlets() {
 		features := featuresRoute(outlet.prefix)
 		cases = append(cases, authzCase{
-			Name:   authzCaseName(features.HandlerFunc, &outlet),
+			Name:   authzCaseName(features.HandlerFunc, outlet),
 			Method: httpMethodConst(features.Method),
 			URL:    features.TestURL,
 			Open:   true,
@@ -466,13 +466,13 @@ func (r *resourceGenerator) featureAuthzCases() []authzCase {
 		}
 		flags := featureFlagRoutes(outlet.prefix)
 		cases = append(cases,
-			authzCase{Name: authzCaseName(flags[0].HandlerFunc, &outlet), Method: httpMethodConst(flags[0].Method), URL: flags[0].TestURL, Permission: string(accesstypes.List)},
-			authzCase{Name: authzCaseName(flags[1].HandlerFunc, &outlet), Method: httpMethodConst(flags[1].Method), URL: strings.Replace(flags[1].Path, "{"+string(resource.FeatureFlagNameParam)+"}", "authz-test-key", 1), Permission: string(accesstypes.Read)},
+			authzCase{Name: authzCaseName(flags[0].HandlerFunc, outlet), Method: httpMethodConst(flags[0].Method), URL: flags[0].TestURL, Permission: string(accesstypes.List)},
+			authzCase{Name: authzCaseName(flags[1].HandlerFunc, outlet), Method: httpMethodConst(flags[1].Method), URL: strings.Replace(flags[1].Path, "{"+string(resource.FeatureFlagNameParam)+"}", "authz-test-key", 1), Permission: string(accesstypes.Read)},
 		)
 		setFeature := setFeatureRoute(outlet.prefix)
 		cases = append(cases,
-			authzCase{Name: authzCaseName(setFeature.HandlerFunc, &outlet), Method: httpMethodConst(setFeature.Method), URL: setFeature.TestURL, Body: emptyObjectBody, DeniedOnly: true},
-			authzCase{Name: authzCaseName(setFeature.HandlerFunc, &outlet) + " dry run", Method: httpMethodConst(setFeature.Method), URL: setFeature.TestURL, Body: emptyObjectBody, Headers: []authzHeader{{Name: resource.DryRunHeader, Value: jsonTrueLiteral}}, DeniedOnly: true},
+			authzCase{Name: authzCaseName(setFeature.HandlerFunc, outlet), Method: httpMethodConst(setFeature.Method), URL: setFeature.TestURL, Body: emptyObjectBody, DeniedOnly: true},
+			authzCase{Name: authzCaseName(setFeature.HandlerFunc, outlet) + " dry run", Method: httpMethodConst(setFeature.Method), URL: setFeature.TestURL, Body: emptyObjectBody, Headers: []authzHeader{{Name: resource.DryRunHeader, Value: jsonTrueLiteral}}, DeniedOnly: true},
 		)
 	}
 
@@ -553,7 +553,7 @@ func (r *resourceGenerator) featureTests() (*featureTestsData, error) {
 			continue
 		}
 		for _, outlet := range r.memberOutlets(&res.outletMembership) {
-			if err := r.resourceFeatureTests(data, res, &outlet); err != nil {
+			if err := r.resourceFeatureTests(data, res, outlet); err != nil {
 				return nil, err
 			}
 		}
@@ -563,7 +563,7 @@ func (r *resourceGenerator) featureTests() (*featureTestsData, error) {
 			continue
 		}
 		for _, outlet := range r.memberOutlets(&res.outletMembership) {
-			if err := r.computedFeatureTests(data, res, &outlet); err != nil {
+			if err := r.computedFeatureTests(data, res, outlet); err != nil {
 				return nil, err
 			}
 		}
@@ -659,7 +659,7 @@ func (r *resourceGenerator) methodFeatureTests(data *featureTestsData) {
 		for _, outlet := range r.memberOutlets(&method.outletMembership) {
 			route := r.rpcRoute(method, outlet.prefix)
 			data.Routes = append(data.Routes, featureGateTest{
-				Name:     authzCaseName(route.HandlerFunc, &outlet),
+				Name:     authzCaseName(route.HandlerFunc, outlet),
 				Method:   httpMethodConst(route.Method),
 				URL:      route.TestURL,
 				Body:     emptyObjectBody,
@@ -733,9 +733,9 @@ func featureFlagsAPIResource() *tsAPIResource {
 		Route:       resource.FeatureFlagsRoute,
 		Scope:       accesstypes.GlobalPermissionScope,
 		Keys:        []*tsAPIField{{Name: featureFlagNameField, Type: string(displayTypeString)}},
-		Operations:  []string{"list", "read"},
+		Operations:  []string{opList, opRead},
 		PageDefault: resource.DefaultPageSize,
-		Order:       []*tsAPISort{{Field: featureFlagNameField, Direction: "asc"}},
+		Order:       []*tsAPISort{{Field: featureFlagNameField, Direction: sortAsc}},
 	}
 }
 

@@ -305,6 +305,124 @@ export interface FeatureFlags {
   updatedBy?: string;
 }
 
+/** One external identity linked to a user: how they sign in through a registration. */
+export interface UserIdentity {
+  id: string;
+  method: string;
+  connection: string;
+  subject: string;
+  organization: string | null;
+  email: string | null;
+  linkedAt: Date;
+  lastUsedAt: Date;
+}
+/** A user of the Crew auth in the global partition: the account, its sign-in means and its seats. */
+export interface CrewUsers {
+  id: string;
+  username?: string;
+  disabled?: boolean;
+  hasPassword?: boolean;
+  passwordChangeRequired?: boolean;
+  createdAt?: Date;
+  lastSignInAt?: Date | null;
+  organization?: string | null;
+  identities?: UserIdentity[];
+  roles?: string[];
+  everywhereRoles?: string[];
+  rolesSynced?: boolean;
+}
+/** A seat of the Crew auth in the global partition: a user holding a role. */
+export interface CrewSeats {
+  user: string;
+  role: string;
+  username?: string;
+  everyDomain?: boolean;
+}
+/** A role a seat of the Crew auth in the global partition may take. */
+export interface CrewRoles {
+  name: string;
+  kind?: 'global' | 'domain';
+}
+/** A user of the Crew auth in one sector: the account, its sign-in means and its seats. */
+export interface CrewSectorUsers {
+  id: string;
+  username?: string;
+  disabled?: boolean;
+  hasPassword?: boolean;
+  passwordChangeRequired?: boolean;
+  createdAt?: Date;
+  lastSignInAt?: Date | null;
+  organization?: string | null;
+  identities?: UserIdentity[];
+  roles?: string[];
+  everywhereRoles?: string[];
+  rolesSynced?: boolean;
+}
+/** A seat of the Crew auth in one sector: a user holding a role. */
+export interface CrewSectorSeats {
+  user: string;
+  role: string;
+  username?: string;
+  everywhere?: boolean;
+}
+/** A role a seat of the Crew auth in one sector may take. */
+export interface CrewSectorRoles {
+  name: string;
+}
+/** A user of the Members auth in the global partition: the account, its sign-in means and its seats. */
+export interface MembersUsers {
+  id: string;
+  username?: string;
+  disabled?: boolean;
+  hasPassword?: boolean;
+  passwordChangeRequired?: boolean;
+  createdAt?: Date;
+  lastSignInAt?: Date | null;
+  organization?: string | null;
+  identities?: UserIdentity[];
+  roles?: string[];
+  everywhereRoles?: string[];
+  rolesSynced?: boolean;
+}
+/** A seat of the Members auth in the global partition: a user holding a role. */
+export interface MembersSeats {
+  user: string;
+  role: string;
+  username?: string;
+  everyDomain?: boolean;
+}
+/** A role a seat of the Members auth in the global partition may take. */
+export interface MembersRoles {
+  name: string;
+  kind?: 'global' | 'domain';
+}
+/** A user of the Members auth in one sector: the account, its sign-in means and its seats. */
+export interface MembersSectorUsers {
+  id: string;
+  username?: string;
+  disabled?: boolean;
+  hasPassword?: boolean;
+  passwordChangeRequired?: boolean;
+  createdAt?: Date;
+  lastSignInAt?: Date | null;
+  organization?: string | null;
+  identities?: UserIdentity[];
+  roles?: string[];
+  everywhereRoles?: string[];
+  rolesSynced?: boolean;
+}
+/** A seat of the Members auth in one sector: a user holding a role. */
+export interface MembersSectorSeats {
+  user: string;
+  role: string;
+  username?: string;
+  everywhere?: boolean;
+}
+/** A role a seat of the Members auth in one sector may take. */
+export interface MembersSectorRoles {
+  name: string;
+}
+
 /**
  * Keeps the literal types of the metadata while letting a client that predates a field
  * ignore it: TypeScript checks the literal against the fields ResourceMap declares and no
@@ -720,6 +838,154 @@ const resourceMap = defineResourceMap({
       { fieldName: 'updatedBy', displayType: 'string', required: true, isIndex: false },
     ],
   },
+  [Resources.CrewUsers]: {
+    route: 'crew-users',
+    fields: [
+      { fieldName: 'id', primaryKey: { ordinalPosition: 1 }, displayType: 'uuid', required: true, isIndex: true },
+      { fieldName: 'username', displayType: 'string', required: true, isIndex: false },
+      { fieldName: 'disabled', displayType: 'boolean', required: true, isIndex: false },
+      { fieldName: 'hasPassword', displayType: 'boolean', required: true, isIndex: false },
+      { fieldName: 'passwordChangeRequired', displayType: 'boolean', required: true, isIndex: false },
+      { fieldName: 'createdAt', displayType: 'date', required: true, isIndex: false },
+      { fieldName: 'lastSignInAt', displayType: 'date', required: false, isIndex: false },
+      { fieldName: 'organization', displayType: 'string', required: false, isIndex: false },
+      { fieldName: 'identities', displayType: 'object[]', required: true, isIndex: false },
+      { fieldName: 'roles', displayType: 'string[]', required: true, isIndex: false },
+      { fieldName: 'everywhereRoles', displayType: 'string[]', required: true, isIndex: false },
+      { fieldName: 'rolesSynced', displayType: 'boolean', required: true, isIndex: false },
+    ],
+  },
+  [Resources.CrewSeats]: {
+    route: 'crew-seats',
+    updateDisabled: true,
+    fields: [
+      { fieldName: 'user', primaryKey: { ordinalPosition: 1 }, displayType: 'uuid', required: true, isIndex: true },
+      { fieldName: 'role', primaryKey: { ordinalPosition: 2 }, displayType: 'string', required: true, isIndex: true },
+      { fieldName: 'username', displayType: 'string', required: true, isIndex: false },
+      { fieldName: 'everyDomain', displayType: 'boolean', required: true, isIndex: false },
+    ],
+  },
+  [Resources.CrewRoles]: {
+    route: 'crew-roles',
+    createDisabled: true,
+    updateDisabled: true,
+    deleteDisabled: true,
+    fields: [
+      { fieldName: 'name', primaryKey: { ordinalPosition: 1 }, displayType: 'string', required: true, isIndex: true },
+      { fieldName: 'kind', displayType: 'string', required: true, isIndex: false },
+    ],
+  },
+  [Resources.CrewSectorUsers]: {
+    route: 'sectors/{sectorID}/crew-sector-users',
+    fields: [
+      { fieldName: 'id', primaryKey: { ordinalPosition: 1 }, displayType: 'uuid', required: true, isIndex: true },
+      { fieldName: 'username', displayType: 'string', required: true, isIndex: false },
+      { fieldName: 'disabled', displayType: 'boolean', required: true, isIndex: false },
+      { fieldName: 'hasPassword', displayType: 'boolean', required: true, isIndex: false },
+      { fieldName: 'passwordChangeRequired', displayType: 'boolean', required: true, isIndex: false },
+      { fieldName: 'createdAt', displayType: 'date', required: true, isIndex: false },
+      { fieldName: 'lastSignInAt', displayType: 'date', required: false, isIndex: false },
+      { fieldName: 'organization', displayType: 'string', required: false, isIndex: false },
+      { fieldName: 'identities', displayType: 'object[]', required: true, isIndex: false },
+      { fieldName: 'roles', displayType: 'string[]', required: true, isIndex: false },
+      { fieldName: 'everywhereRoles', displayType: 'string[]', required: true, isIndex: false },
+      { fieldName: 'rolesSynced', displayType: 'boolean', required: true, isIndex: false },
+    ],
+  },
+  [Resources.CrewSectorSeats]: {
+    route: 'sectors/{sectorID}/crew-sector-seats',
+    updateDisabled: true,
+    fields: [
+      { fieldName: 'user', primaryKey: { ordinalPosition: 1 }, displayType: 'uuid', required: true, isIndex: true },
+      { fieldName: 'role', primaryKey: { ordinalPosition: 2 }, displayType: 'string', required: true, isIndex: true },
+      { fieldName: 'username', displayType: 'string', required: true, isIndex: false },
+      { fieldName: 'everywhere', displayType: 'boolean', required: true, isIndex: false },
+    ],
+  },
+  [Resources.CrewSectorRoles]: {
+    route: 'sectors/{sectorID}/crew-sector-roles',
+    createDisabled: true,
+    updateDisabled: true,
+    deleteDisabled: true,
+    fields: [
+      { fieldName: 'name', primaryKey: { ordinalPosition: 1 }, displayType: 'string', required: true, isIndex: true },
+    ],
+  },
+  [Resources.MembersUsers]: {
+    route: 'members-users',
+    createDisabled: true,
+    fields: [
+      { fieldName: 'id', primaryKey: { ordinalPosition: 1 }, displayType: 'uuid', required: true, isIndex: true },
+      { fieldName: 'username', displayType: 'string', required: true, isIndex: false },
+      { fieldName: 'disabled', displayType: 'boolean', required: true, isIndex: false },
+      { fieldName: 'hasPassword', displayType: 'boolean', required: true, isIndex: false },
+      { fieldName: 'passwordChangeRequired', displayType: 'boolean', required: true, isIndex: false },
+      { fieldName: 'createdAt', displayType: 'date', required: true, isIndex: false },
+      { fieldName: 'lastSignInAt', displayType: 'date', required: false, isIndex: false },
+      { fieldName: 'organization', displayType: 'string', required: false, isIndex: false },
+      { fieldName: 'identities', displayType: 'object[]', required: true, isIndex: false },
+      { fieldName: 'roles', displayType: 'string[]', required: true, isIndex: false },
+      { fieldName: 'everywhereRoles', displayType: 'string[]', required: true, isIndex: false },
+      { fieldName: 'rolesSynced', displayType: 'boolean', required: true, isIndex: false },
+    ],
+  },
+  [Resources.MembersSeats]: {
+    route: 'members-seats',
+    updateDisabled: true,
+    fields: [
+      { fieldName: 'user', primaryKey: { ordinalPosition: 1 }, displayType: 'uuid', required: true, isIndex: true },
+      { fieldName: 'role', primaryKey: { ordinalPosition: 2 }, displayType: 'string', required: true, isIndex: true },
+      { fieldName: 'username', displayType: 'string', required: true, isIndex: false },
+      { fieldName: 'everyDomain', displayType: 'boolean', required: true, isIndex: false },
+    ],
+  },
+  [Resources.MembersRoles]: {
+    route: 'members-roles',
+    createDisabled: true,
+    updateDisabled: true,
+    deleteDisabled: true,
+    fields: [
+      { fieldName: 'name', primaryKey: { ordinalPosition: 1 }, displayType: 'string', required: true, isIndex: true },
+      { fieldName: 'kind', displayType: 'string', required: true, isIndex: false },
+    ],
+  },
+  [Resources.MembersSectorUsers]: {
+    route: 'sectors/{sectorID}/members-sector-users',
+    createDisabled: true,
+    fields: [
+      { fieldName: 'id', primaryKey: { ordinalPosition: 1 }, displayType: 'uuid', required: true, isIndex: true },
+      { fieldName: 'username', displayType: 'string', required: true, isIndex: false },
+      { fieldName: 'disabled', displayType: 'boolean', required: true, isIndex: false },
+      { fieldName: 'hasPassword', displayType: 'boolean', required: true, isIndex: false },
+      { fieldName: 'passwordChangeRequired', displayType: 'boolean', required: true, isIndex: false },
+      { fieldName: 'createdAt', displayType: 'date', required: true, isIndex: false },
+      { fieldName: 'lastSignInAt', displayType: 'date', required: false, isIndex: false },
+      { fieldName: 'organization', displayType: 'string', required: false, isIndex: false },
+      { fieldName: 'identities', displayType: 'object[]', required: true, isIndex: false },
+      { fieldName: 'roles', displayType: 'string[]', required: true, isIndex: false },
+      { fieldName: 'everywhereRoles', displayType: 'string[]', required: true, isIndex: false },
+      { fieldName: 'rolesSynced', displayType: 'boolean', required: true, isIndex: false },
+    ],
+  },
+  [Resources.MembersSectorSeats]: {
+    route: 'sectors/{sectorID}/members-sector-seats',
+    updateDisabled: true,
+    fields: [
+      { fieldName: 'user', primaryKey: { ordinalPosition: 1 }, displayType: 'uuid', required: true, isIndex: true },
+      { fieldName: 'role', primaryKey: { ordinalPosition: 2 }, displayType: 'string', required: true, isIndex: true },
+      { fieldName: 'username', displayType: 'string', required: true, isIndex: false },
+      { fieldName: 'everywhere', displayType: 'boolean', required: true, isIndex: false },
+    ],
+  },
+  [Resources.MembersSectorRoles]: {
+    route: 'sectors/{sectorID}/members-sector-roles',
+    createDisabled: true,
+    updateDisabled: true,
+    deleteDisabled: true,
+    fields: [
+      { fieldName: 'name', primaryKey: { ordinalPosition: 1 }, displayType: 'string', required: true, isIndex: true },
+    ],
+  },
 });
 
 export function resourceMeta(resource: Resource): ResourceMeta {
@@ -767,6 +1033,18 @@ export const ResourceScopes: Record<Resource, PermissionScope> = {
   [Resources.ServiceLedgers]: PermissionScopes.global,
   [Resources.StandingOrders]: PermissionScopes.global,
   [Resources.FeatureFlags]: PermissionScopes.global,
+  [Resources.CrewUsers]: PermissionScopes.global,
+  [Resources.CrewSeats]: PermissionScopes.global,
+  [Resources.CrewRoles]: PermissionScopes.global,
+  [Resources.CrewSectorUsers]: PermissionScopes.domain,
+  [Resources.CrewSectorSeats]: PermissionScopes.domain,
+  [Resources.CrewSectorRoles]: PermissionScopes.domain,
+  [Resources.MembersUsers]: PermissionScopes.global,
+  [Resources.MembersSeats]: PermissionScopes.global,
+  [Resources.MembersRoles]: PermissionScopes.global,
+  [Resources.MembersSectorUsers]: PermissionScopes.domain,
+  [Resources.MembersSectorSeats]: PermissionScopes.domain,
+  [Resources.MembersSectorRoles]: PermissionScopes.domain,
 };
 
 /** One workflow member: the resource, the member or root its hop lands on, and the anchoring foreign-key field. */

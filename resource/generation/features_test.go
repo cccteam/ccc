@@ -577,7 +577,7 @@ func Test_routerTestTemplate_featureGuard(t *testing.T) {
 func Test_accumulateFeatureRoutes(t *testing.T) {
 	t.Parallel()
 
-	outlets := []routerOutlet{{name: "default", prefix: "api", servesSessions: true}, {name: "droids", prefix: "droids"}}
+	outlets := []*routerOutlet{{name: "default", prefix: "api", servesSessions: true}, {name: "droids", prefix: "droids"}}
 	outletRoutes := []*outletRouteData{{RoutesMap: map[string][]*generatedRoute{}}, {RoutesMap: map[string][]*generatedRoute{}}}
 
 	routes := accumulateFeatureRoutes(outlets, outletRoutes)

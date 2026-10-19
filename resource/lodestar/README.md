@@ -44,11 +44,13 @@ seeds it again without touching the schema), serves the application on :8090, an
 `ng serve` for both browser apps:
 the crew console on :4300 (`/console/api` proxied) and the client portal on :4301
 (`/portal/api` proxied). Browse http://127.0.0.1:4300/console/ and sign in as any persona
-on the crew manifest; browse http://127.0.0.1:4301/portal/ and sign in through the
-simulated directory as `client`. Both Go processes build with the session library's `skipAuth` tag: the portal's
-Google directory is simulated from `APP_USERNAME` and `APP_ROLES` in `.envrc`, so no
-tenant is contacted and the persona quick-fill still works. `APP_DROIDS_API_KEY` opens the
-droid channel.
+on the crew manifest, or through the fleet's Google directory as the navigator; browse
+http://127.0.0.1:4301/portal/ and sign in through the simulated directory as `client`.
+Both Go processes build with the session library's `skipAuth` tag, which simulates every
+Google directory from `.envrc`: the portal's from `APP_USERNAME` and `APP_ROLES`, the
+console's from `APP_GOOGLE_USERNAME` and `APP_GOOGLE_ROLES` (the registration's own pair),
+so no tenant is contacted and the persona quick-fill still works. `APP_DROIDS_API_KEY`
+opens the droid channel.
 
 To work on ccc-lib itself, attach the workspace to the local checkout beside this one
 (`(cd web && ./ccclib.sh local)`, which rewrites the pins to `file:.yalc/` specs, never
@@ -364,16 +366,17 @@ How it is wired:
   engine's context ends. `pkg/config/data.go` builds it once over the live service and
   hands it to both auths (`crew.Settings.ChangeSignal` and `members.Settings.ChangeSignal`,
   both required), so the crew store and the members store ride one listener.
-- The route. The console's role-membership routes
-  (`/console/api/sectors/{sector}/roles/{role}/users`: `GET` lists who holds the role,
-  `POST` seats, `DELETE` unseats) are the access library's user-management handlers
-  mounted in `pkg/router/hooks.go` behind the application's own checks in
-  [`app/role_memberships.go`](app/role_memberships.go): List, Create and Delete on
-  `RoleMemberships` in the sector, declared through `@manualAddResource` on
-  `resources.RoleMemberships` ([`pkg/resources/manual.go`](pkg/resources/manual.go)) and
-  held by `SectorMarshal`. The crew's roles are the application's (a password auth), so
-  seating crew is the application's to serve; the members' are the directory's, and no
-  route writes them.
+- The route. The console's seats route of the crew's sector partition
+  (`/console/api/sectors/{sector}/crew-sector-seats`: `GET` lists the sector's seats,
+  `PATCH` seats and unseats through an operations body, the seat's user and role in the
+  operation's path) is the generated user-management surface's, served by the library
+  over the crew session's accounts and the crew engine's memberships
+  ([`app/users.go`](app/users.go), `pkg/config/data.go`): Create and Delete on
+  `CrewSectorSeats` in the sector, held by `SectorMarshal` under the condition
+  `new.role != 'SectorMarshal'`, so a marshal seats crew in every role but its own. A
+  crew member who signs in through the Google directory has their seats written by the
+  directory at every sign-in (the registration's `SyncsRoles`), so the surface refuses
+  to seat or unseat them by hand; the members' seats are the directory's the same way.
 - The checks. The walkthrough's "one channel" section seats and unseats the cadet
   against the second server process over the Firestore emulator;
   [`policy_signal_test.go`](test/integration/policy_signal_test.go) pins it over two
@@ -479,23 +482,56 @@ has a second page.
 
 ## Two populations, two auths
 
-The crew sign in with passwords at `/console/api/user/login`; their roles are the application's
+Each auth is one `session.Auth` with its sign-in methods registered on it, and the
+generated router tells each outlet's login page what its auth offers at
+`/<prefix>/user/methods`: the methods in the order the generator program declared them,
+each with its kind (a password form, or a redirect to a directory), its label and the
+path the router mounted it at, and the pending sign-in's routes, so the page renders from
+the server's list and names no path of its own. Both pages compose the library's login
+component (`<ccc-login-methods>` from `@cccteam/resource-angular`), which reads the list
+through the application's client, renders the form and the buttons, posts the password
+after reading the list again (the read refreshes the XSRF cookie the post needs), sends the
+browser to a directory with the page to return to, shows the sentence held for a refusal
+code, and renders the confirmation step for a sign-in that waits; each page keeps its
+manifest, its words for a method (the portal's "your company directory", a label override
+keyed by the registration's name) and where a sign-in lands.
+
+The crew sign in with passwords at `/console/api/user/password/login`, or through the
+fleet's Google directory at `/console/api/user/google/login`, two methods on one session:
+whichever way a crew member signs in, the session is a crew session in the same table
+under the same cookie. A password persona's roles are the application's
 (`pkg/auth/crew/roles.json`, embedded in the binary and validated against the generated
 permission collection when the auth opens, so a release whose roles are wrong does not
 start; the store holds no row for them, and the bootstrap assigns the memberships from
-`cmd/bootstrap/users.json`, a role held in every sector as one membership). The clients
-sign in through their company's Google directory at `/portal/api/user/login`; their roles
-are the directory's groups (`RoleSync`), reconciled at every login and never assigned in
-the application, a global role held in the global partition and a domain role in every
-sector; `pkg/auth/members/roles.json` only says what a role may do, in the lowercase names
-Google groups carry. The deploy's migrate step and the bootstrap print what each store
+`cmd/bootstrap/users.json`, a role held in every sector as one membership). A person the
+directory admits is provisioned under the verified email at their first sign-in, a login
+on no manifest (a verified email that is a password persona's login links the identity to
+that persona once their password confirms it), and their roles are the directory's groups,
+reconciled at every sign-in;
+a Google group is an email address, so the names the groups carry are lowercase, and the
+sync resolves each at the store without regard to case and writes the role file's
+spelling (`crew-pilot@` names `Pilot`). The clients sign in through their company's
+Google directory at `/portal/api/user/directory/login`; their roles are the directory's
+groups (`google.RoleSync`), reconciled at every login and never assigned in the
+application, a global role held in the global partition and a domain role in every
+sector; `pkg/auth/members/roles.json` only says what a role may do, in the lowercase
+names Google groups carry. The deploy's migrate step and the bootstrap print what each store
 holds that the release cannot use. Each auth is a package (`pkg/auth/crew`,
 `pkg/auth/members`) with its own session tables, permission store, role file, and XSRF
 cookie (`crew-xsrf`, `members-xsrf`), and each outlet binds to one. The crew's memberships
-are also the application's to change at run time: the console's role-membership routes
-seat and unseat crew in a sector through the access library's user-management handlers
-([one channel](#one-channel-between-instances)); the members' are reconciled by the
-directory at every login, and no route writes them.
+are also the application's to change at run time: the console's generated
+user-management surface (`crew-users`, `crew-seats`, `crew-roles` in the global
+partition and the `crew-sector-…` routes under a sector) lists, creates, seats and unseats
+crew ([one channel](#one-channel-between-instances)), and the console serves the members'
+surface beside it (`members-users`, …; the generator program's `Manages`), so headquarters
+administers both populations; a directory-signed member's seats are the directory's,
+reconciled at every login, and the surface refuses to write them by hand. The console's
+Users page (Headquarters menu) is the library's user-management component composed three
+times over the generated descriptor, the crew's global partition, the crew's partition in
+the selected sector and the members' global partition, each drawn where the digest grants
+its List; nothing on the page names a user, a role or a route. A crew login an operator
+creates or resets carries the forced password change, which the login page serves before
+anything else.
 
 ## The personas
 
@@ -549,8 +585,8 @@ manifest: pick a card, sign in, switch, never more than two clicks.
   into it and the beacon pulse mounted outside every outlet under the prefix the
   generator program declares quiet ([`generation.request-log`](cmd/generate/generator.go));
   `app/`: wiring, middleware, the ship's log, the client statement, the
-  impersonation mint route, the watch desk, the role-membership routes and the beacon
-  pulse. The mission document download is
+  impersonation mint route, the watch desk, the user-management surfaces the generated
+  user handlers serve through (`users.go`) and the beacon pulse. The mission document download is
   generated from `MissionDocument.StoreKey`'s `@file`
   ([`@file.stored`](pkg/resources/mission_documents.go)), and the purser's expense
   manifest is a computed resource whose struct-scope `@file` renders a CSV sheet on

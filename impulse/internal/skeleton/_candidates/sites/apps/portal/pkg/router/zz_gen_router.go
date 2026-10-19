@@ -5,8 +5,9 @@
 // outermost first, one line per group, each chain followed by what it stands in front of:
 //
 //	every request: tracing, hooks.Outermost, request logging, SecurityHeaders, httpio.WithParams
-//	default (/api), password sessions:
-//	  NoCaching, CompressionMiddleware, StartSession, SetXSRFToken: POST /api/user/login, GET /api/user/session, DELETE /api/user/session
+//	default (/api), sessions (password):
+//	  NoCaching, CompressionMiddleware, StartSession, SetXSRFToken: GET /api/user/methods, GET /api/user/session, DELETE /api/user/session, GET /api/user/pending
+//	  + ValidateXSRFToken: POST /api/user/password/login, POST /api/user/password/change, POST /api/user/pending/confirm, POST /api/user/pending/cancel
 //	  + ValidateSession, ValidateXSRFToken, CheckAPIVersion (oldest answered 0.0.1): hooks.Default, generatedRoutes
 //
 // hooks.Root's routes sit behind the every-request chain alone. Under an outlet's prefix
@@ -29,8 +30,8 @@ import (
 // Handlers is the full surface New composes: every outlet's generated handlers, each session outlet's session handlers, the middleware every request and every outlet passes, and the browser applications' handlers.
 type Handlers interface {
 	GeneratedHandlers
-	// The default outlet's session handlers.
-	session.PasswordAuthHandlers
+	// The default outlet's session surface.
+	DefaultSession
 	// ServerVersion is the release this server was built from, the configuration's
 	// APP_VERSION: what each session outlet checks a browser application's
 	// X-Api-Version against (resource.CheckAPIVersion). A value that is not a release,
@@ -49,6 +50,30 @@ type Handlers interface {
 	// the entry document, Assets serves the built bundle.
 	DeepLink(next http.Handler) http.Handler
 	Assets() http.HandlerFunc
+}
+
+// DefaultSession is the default outlet's session surface: the Auth's middleware and
+// handlers, what the login page is told, the pending sign-in handlers, and the handlers
+// of the sign-in methods registered on the Auth, each under its registration name.
+type DefaultSession interface {
+	StartSession(next http.Handler) http.Handler
+	SetXSRFToken(next http.Handler) http.Handler
+	ValidateSession(next http.Handler) http.Handler
+	ValidateXSRFToken(next http.Handler) http.Handler
+	// The session's own routes (session.Auth): read and ended.
+	Authenticated() http.HandlerFunc
+	Logout() http.HandlerFunc
+	// Methods tells the login page what the outlet offers (session.Auth.Methods): the
+	// router hands it the methods below at the paths it mounts them.
+	Methods(list *session.MethodList) http.HandlerFunc
+	// The pending sign-in (session.PendingHandlers): a sign-in that waits for a
+	// password confirmation or the application's MFA step.
+	PendingStatus() http.HandlerFunc
+	PendingConfirmWithPassword() http.HandlerFunc
+	PendingCancel() http.HandlerFunc
+	// The password method's login and password change (session.PasswordMethod); the change validates the session itself, outside ValidateSession.
+	PasswordLogin() http.HandlerFunc
+	PasswordChange() http.HandlerFunc
 }
 
 // Hooks are the application's additions to the generated router. They compose inward
@@ -92,18 +117,32 @@ func New(h Handlers, hooks Hooks) *chi.Mux {
 		})
 	}
 
-	// The default outlet (/api): password sessions.
+	// The default outlet (/api): sessions (password).
 	r.Group(func(r chi.Router) {
 		r.Use(h.NoCaching)
 		r.Use(h.CompressionMiddleware())
 		r.Use(h.StartSession)
 		r.Use(h.SetXSRFToken)
 
-		// The session routes are bounded at BodyLimit, as the generated routes are.
+		// The session routes are bounded at BodyLimit, as the generated routes are. The
+		// login page reads what the outlet offers from the method list, at the paths
+		// mounted below; the sign-in's POSTs sit behind the XSRF guard.
 		bounded := r.With(resource.BodyLimit(BodyLimit))
-		bounded.Post("/api/user/login", h.Login())
+		guarded := bounded.With(h.ValidateXSRFToken)
+		bounded.Get("/api/user/methods", h.Methods(&session.MethodList{
+			Methods: []session.AdvertisedMethod{
+				{Name: "password", Label: "Password", Path: "/api/user/password/login"},
+			},
+			Pending:        session.PendingRoutes{Status: "/api/user/pending", Confirm: "/api/user/pending/confirm", Cancel: "/api/user/pending/cancel"},
+			ChangePassword: "/api/user/password/change",
+		}))
 		bounded.Get("/api/user/session", h.Authenticated())
 		bounded.Delete("/api/user/session", h.Logout())
+		bounded.Get("/api/user/pending", h.PendingStatus())
+		guarded.Post("/api/user/password/login", h.PasswordLogin())
+		guarded.Post("/api/user/password/change", h.PasswordChange())
+		guarded.Post("/api/user/pending/confirm", h.PendingConfirmWithPassword())
+		guarded.Post("/api/user/pending/cancel", h.PendingCancel())
 
 		r.Group(func(r chi.Router) {
 			r.Use(h.ValidateSession)

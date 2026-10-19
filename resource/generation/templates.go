@@ -2254,7 +2254,7 @@ import { Resource, ResourceMap, ResourceMeta{{ if .File.HasNullBoolean }}, NullB
 {{- range $import := .File.ResourceTypeImports }}
 import { {{ $import.NameList }} } from '{{ $import.From }}';
 {{- end }}
-import { PermissionScope{{ if or .Resources .ComputedResources .FeatureFlags }}, PermissionScopes, Resources{{ end }} } from './{{ .GenPrefix }}_constants';
+import { PermissionScope{{ if or .Resources .ComputedResources .FeatureFlags .UserResources }}, PermissionScopes, Resources{{ end }} } from './{{ .GenPrefix }}_constants';
 {{ range $resource := .Resources }}
 export interface {{ Pluralize $resource.Name }} {
 {{- range $field := $resource.Fields }}
@@ -2282,6 +2282,27 @@ export interface FeatureFlags {
   updatedAt?: Date;
   updatedBy?: string;
 }
+{{ end }}
+{{- if .UserResources }}
+/** One external identity linked to a user: how they sign in through a registration. */
+export interface UserIdentity {
+  id: string;
+  method: string;
+  connection: string;
+  subject: string;
+  organization: string | null;
+  email: string | null;
+  linkedAt: Date;
+  lastUsedAt: Date;
+}
+{{- range $r := .UserResources }}
+/** {{ $r.Doc }} */
+export interface {{ $r.Name }} {
+{{- range $f := $r.Fields }}
+  {{ $f.Name }}{{ if not $f.Key }}?{{ end }}: {{ $f.TsType }};
+{{- end }}
+}
+{{- end }}
 {{ end }}
 {{ $consolidatedRoute := .ConsolidatedRoute -}}
 /**
@@ -2384,6 +2405,25 @@ const resourceMap = defineResourceMap({
     ],
   },
   {{- end }}
+  {{- range $r := .UserResources }}
+  [Resources.{{ $r.Name }}]: {
+    route: '{{ if eq $r.ScopeKind "domain" }}{{ $.DomainRoutePrefix }}/{{ end }}{{ $r.Route }}',
+    {{- if not $r.Creates }}
+    createDisabled: true,
+    {{- end }}
+    {{- if not $r.Updates }}
+    updateDisabled: true,
+    {{- end }}
+    {{- if not $r.Deletes }}
+    deleteDisabled: true,
+    {{- end }}
+    fields: [
+      {{- range $f := $r.Fields }}
+      { fieldName: '{{ $f.Name }}',{{ if $f.Key }} primaryKey: { ordinalPosition: {{ $f.Key }} },{{ end }} displayType: '{{ $f.DisplayType }}', required: {{ $f.Required }}, isIndex: {{ if $f.Key }}true{{ else }}false{{ end }} },
+      {{- end }}
+    ],
+  },
+  {{- end }}
 });
 
 export function resourceMeta(resource: Resource): ResourceMeta {
@@ -2406,6 +2446,9 @@ export const ResourceScopes: Record<Resource, PermissionScope> = {
   {{- end }}
   {{- if .FeatureFlags }}
   [Resources.FeatureFlags]: PermissionScopes.global,
+  {{- end }}
+  {{- range $r := .UserResources }}
+  [Resources.{{ $r.Name }}]: PermissionScopes.{{ $r.ScopeKind }},
   {{- end }}
 };
 {{ if .Workflows }}
@@ -2514,6 +2557,19 @@ export interface SetFeatureResult {
   updatedAt: Date;
 }
 {{ end }}
+{{- range $m := .UserMethods }}
+/** The body {{ $m.Name }} takes. */
+export interface {{ $m.Name }}Config {
+{{- range $f := $m.Fields }}
+  {{ $f.Name }}: {{ $f.TsType }} | FieldPointer;
+{{- end }}
+}
+export interface {{ $m.Name }} {
+{{- range $f := $m.Fields }}
+  {{ $f.Name }}: {{ $f.TsType }};
+{{- end }}
+}
+{{ end }}
 export interface RPCFieldMeta {
   fieldName: string;
   displayType: ValidRPCTypes;
@@ -2586,6 +2642,16 @@ const methodMap: MethodMap = {
     fields: [
       { fieldName: 'name', displayType: 'string' },
       { fieldName: 'enabled', displayType: 'boolean' },
+    ],
+  },
+  {{- end }}
+  {{- range $m := .UserMethods }}
+  [Methods.{{ $m.Name }}]: {
+    route: '{{ $m.Route }}',
+    fields: [
+      {{- range $f := $m.Fields }}
+      { fieldName: '{{ $f.Name }}', displayType: '{{ $f.DisplayType }}' },
+      {{- end }}
     ],
   },
   {{- end }}
@@ -2711,6 +2777,23 @@ export const apiDescriptor = defineApiDescriptor({
     [Methods.{{ $m.Name }}]: { method: Methods.{{ $m.Name }}, property: '{{ $m.Property }}', route: '{{ $m.Route }}', scope: '{{ $m.ScopeKind }}'{{ if $m.Answers }}, answers: true{{ end }}{{ if $m.Statuses }}, statuses: {{ $m.StatusArray }}{{ end }}{{ if $m.UploadMaxBytes }}, upload: { maxBytes: {{ $m.UploadMaxBytes }} }{{ end }}{{ if $m.Feature }}, feature: '{{ $m.Feature }}'{{ end }} },
 {{- end }}
   },
+{{- if .UserSurfaces }}
+  userSurfaces: [
+{{- range $s := .UserSurfaces }}
+    {
+      auth: '{{ $s.Auth }}',
+      label: '{{ $s.Label }}',
+      password: {{ $s.Password }},
+      registrations: [{{ range $i, $g := $s.Registrations }}{{ if $i }}, {{ end }}{ name: '{{ $g.Name }}', kind: '{{ $g.Kind }}', label: '{{ $g.Label }}', invited: {{ $g.Invited }}, syncsRoles: {{ $g.SyncsRoles }} }{{ end }}],
+      partitions: [
+{{- range $p := $s.Partitions }}
+        { scope: '{{ $p.Scope }}', users: Resources.{{ $p.Users }}, seats: Resources.{{ $p.Seats }}, roles: Resources.{{ $p.Roles }}{{ if $p.SetPassword }}, setPassword: Methods.{{ $p.SetPassword }}{{ end }}{{ if $p.UnlinkIdentity }}, unlinkIdentity: Methods.{{ $p.UnlinkIdentity }}{{ end }} },
+{{- end }}
+      ],
+    },
+{{- end }}
+  ],
+{{- end }}
 });
 
 /** Handles for the global scope, available on the client root. */
@@ -3403,6 +3486,9 @@ func generatedRouteParameters() []string {
 	{{- else if $resource.PrimaryKey }}
 		"{{ GoCamelConcat $resource.Name $resource.PrimaryKey.Name }}",
 	{{- end }}
+	{{- end }}
+	{{- range $param := .UserRouteParams }}
+		"{{ $param }}",
 	{{- end }}
 	}
 

@@ -11,11 +11,13 @@ import (
 	"github.com/cccteam/ccc/impulse/app"
 )
 
-// authFile renders a config file constructing the given session authenticators.
+// authFile renders a config file constructing session Auths with methods registered on
+// them: each construction is one statement, its registrations the statements after it,
+// and constructions are separated by a blank line. The first statement is on line 12.
 func authFile(constructions ...string) string {
 	body := ""
 	for i, c := range constructions {
-		body += "\t_, _ = " + c + "\n"
+		body += "\t" + c + "\n"
 		if i < len(constructions)-1 {
 			body += "\n"
 		}
@@ -25,33 +27,35 @@ func authFile(constructions ...string) string {
 
 import (
 	"github.com/cccteam/session"
+	"github.com/cccteam/session/azure"
+	"github.com/cccteam/session/google"
 	"github.com/cccteam/session/sessionstorage"
+	"github.com/cccteam/session/signin"
 )
 
-func newSessions(client any, key string, opts ...session.PasswordOption) {
+func newSessions(client any, key string, opts ...session.AuthOption) {
 ` + body + `}
 `
 }
 
 const (
-	passwordDefault = `session.NewPasswordAuth[session.NoCustomData, session.NoCustomData](sessionstorage.NewSpannerPasswordAuth(client), key)`
-	passwordCustom  = `session.NewPasswordAuth[session.NoCustomData, session.NoCustomData](
-		sessionstorage.NewSpannerPasswordAuth(client, sessionstorage.WithImpersonation(sessionstorage.NewImpersonationTable("Impersonations"))),
-		key,
-		session.WithSessionTableName("PartnerSessions"),
-		session.WithUserTableName("PartnerUsers"),
-		session.WithCookieName("partner"),
-	)`
-	preauthCustom  = `session.NewPreauth[session.NoCustomData](sessionstorage.NewSpannerPreauth(client), key, session.WithSessionTableName("PreauthSessions"), session.WithCookieName("enrollment"))`
-	preauthDefault = `session.NewPreauth[session.NoCustomData](sessionstorage.NewSpannerPreauth(client), key)`
-	googleAnchored = `session.NewOIDCGoogle[session.NoCustomData, session.NoCustomData](
-		sessionstorage.NewSpannerGoogleOIDC(client, sessionstorage.WithOIDCUsers(), sessionstorage.WithSpannerCustomSessionData(sessionstorage.NewSpannerCustomSessionData("StaffSessionData", nil))),
-		nil, key, "id", "secret", "http://localhost/callback", "example.com",
-		session.WithSessionTableName("StaffSessions"),
-	)`
-	azureAnchorless = `session.NewOIDCAzure[session.NoCustomData, session.NoCustomData](sessionstorage.NewSpannerOIDC(client), nil, key, "issuer", "id", "secret", "http://localhost/callback", session.WithOIDCUserTableName("Ignored"))`
-	azureDirectory  = `session.NewOIDCAzure[session.NoCustomData, session.NoCustomData](sessionstorage.NewSpannerOIDC(client, sessionstorage.WithOIDCUsers()), session.RoleSync(nil), key, "issuer", "id", "secret", "http://localhost/callback", session.WithSessionTableName("MembersSessions"), session.WithOIDCUserTableName("MembersOIDCUsers"), session.WithCookieName("members"))`
-	forwarded       = `session.NewPasswordAuth[session.NoCustomData, session.NoCustomData](sessionstorage.NewSpannerPasswordAuth(client), key, opts...)`
+	defaultAuth = `authA, _ := session.NewAuth[session.NoCustomData, session.NoCustomData](sessionstorage.NewSpannerAuth(client), key)
+	_ = session.PasswordSignIn(authA)`
+	customAuth = `partners, _ := session.NewAuth[session.NoCustomData, session.NoCustomData](sessionstorage.NewSpannerAuth(client, sessionstorage.WithImpersonation(sessionstorage.NewImpersonationTable("Impersonations"))), key, session.WithSessionTableName("PartnerSessions"), session.WithUserTableName("PartnerUsers"), session.WithIdentitiesTableName("PartnerIdentities"), session.WithPendingSignInsTableName("PartnerPending"), session.WithCookieName("partner"))
+	_ = session.PasswordSignIn(partners)`
+	googleDirectory = `staff, _ := session.NewAuth[session.NoCustomData, session.NoCustomData](sessionstorage.NewSpannerAuth(client, sessionstorage.WithAuthEvents(sessionstorage.NewAuthEventsTable("StaffEvents")), sessionstorage.WithSpannerCustomSessionData(sessionstorage.NewSpannerCustomSessionData("StaffSessionData", nil))), key, session.WithSessionTableName("StaffSessions"), session.WithUserTableName("StaffUsers"), session.WithIdentitiesTableName("StaffIdentities"), session.WithPendingSignInsTableName("StaffPending"))
+	_, _ = google.SignIn(staff, "workspace", signin.MembersOfDirectory, &google.Config{Workspaces: google.Workspace("workspace", "example.com"), RoleSync: google.RoleSync(nil, "", nil)})`
+	partnersShared = `partners, _ := session.NewAuth[session.NoCustomData, session.NoCustomData](sessionstorage.NewSpannerAuth(client), key, session.WithUserTableName("PartnerUsers"), session.WithIdentitiesTableName("PartnerIdentities"), session.WithPendingSignInsTableName("PartnerPending"))
+	_ = session.PasswordSignIn(partners)`
+	forwarded = `authA, _ := session.NewAuth[session.NoCustomData, session.NoCustomData](sessionstorage.NewSpannerAuth(client), key, opts...)
+	_ = session.PasswordSignIn(authA)`
+	noMethods      = `_, _ = session.NewAuth[session.NoCustomData, session.NoCustomData](sessionstorage.NewSpannerAuth(client), key)`
+	unreadableName = `authA, _ := session.NewAuth[session.NoCustomData, session.NoCustomData](sessionstorage.NewSpannerAuth(client), key)
+	_, _ = azure.SignIn(authA, registration(), signin.MembersOfDirectory, &azure.Config{Tenants: azure.AnyTenant()})`
+	registeredTwice = `authA, _ := session.NewAuth[session.NoCustomData, session.NoCustomData](sessionstorage.NewSpannerAuth(client), key)
+	_, _ = azure.SignIn(authA, "directory", signin.MembersOfDirectory, &azure.Config{Tenants: azure.AnyTenant()})
+	_, _ = google.SignIn(authA, "directory", signin.MembersOfDirectory, &google.Config{Workspaces: google.AnyWorkspace()})`
+	unattached = `_ = session.PasswordSignIn(other)`
 )
 
 func tables(names ...string) string {
@@ -63,8 +67,8 @@ func tables(names ...string) string {
 	return sql
 }
 
-// constNamed constructs a password auth whose table and cookie names are package
-// constants, as an auth package writes them.
+// constNamed constructs an Auth whose table and cookie names are package constants and
+// registers its method in a function of its own, as an auth package writes them.
 const constNamed = `package staff
 
 import (
@@ -81,24 +85,40 @@ const (
 
 	XSRFCookie = Name + "-xsrf"
 
-	sessionsTable = TablePrefix + "Sessions"
-	usersTable    = TablePrefix + "SessionUsers"
+	sessionsTable   = TablePrefix + "Sessions"
+	usersTable      = TablePrefix + "SessionUsers"
+	identitiesTable = TablePrefix + "SessionIdentities"
+	pendingTable    = TablePrefix + "SessionPendingSignIns"
 )
 
-func New(ctx context.Context, db *cloudspanner.Client, key string) (*session.PasswordAuth[session.NoCustomData, session.NoCustomData], error) {
-	return session.NewPasswordAuth[session.NoCustomData, session.NoCustomData](
-		sessionstorage.NewSpannerPasswordAuth(db), key,
+type Session = session.Auth[session.NoCustomData, session.NoCustomData, *cloudspanner.ReadWriteTransaction]
+
+func New(ctx context.Context, db *cloudspanner.Client, key string) (*Session, error) {
+	authSession, err := session.NewAuth[session.NoCustomData, session.NoCustomData](
+		sessionstorage.NewSpannerAuth(db), key,
 		session.WithSessionTableName(sessionsTable),
 		session.WithUserTableName(usersTable),
+		session.WithIdentitiesTableName(identitiesTable),
+		session.WithPendingSignInsTableName(pendingTable),
 		session.WithCookieName(Name),
 		session.WithXSRFCookieName(XSRFCookie),
 	)
+	if err != nil {
+		return nil, err
+	}
+	registerPassword(authSession)
+
+	return authSession, nil
+}
+
+func registerPassword(authSession *Session) *session.PasswordMethod {
+	return session.PasswordSignIn(authSession)
 }
 `
 
-// impersonationNamed constructs a password auth in an auth package whose impersonation
-// table is defined by the given statements and handed to the storage by name, the way a
-// caller writes it to check NewImpersonationTable's error.
+// impersonationNamed constructs an Auth in an auth package whose impersonation table is
+// defined by the given statements and handed to the storage by name, the way a caller
+// writes it to check NewImpersonationTable's error.
 func impersonationNamed(definition string) string {
 	return `package crew
 
@@ -112,25 +132,33 @@ import (
 
 const impersonationTable = "CrewSessionImpersonations"
 
-func New(ctx context.Context, db *cloudspanner.Client, key string) (*session.PasswordAuth[session.NoCustomData, session.NoCustomData], error) {
+func New(ctx context.Context, db *cloudspanner.Client, key string) (*session.PasswordMethod, error) {
 	` + definition + `
 
-	return session.NewPasswordAuth[session.NoCustomData, session.NoCustomData](
-		sessionstorage.NewSpannerPasswordAuth(db, sessionstorage.WithImpersonation(impersonation)), key,
+	authSession, err := session.NewAuth[session.NoCustomData, session.NoCustomData](
+		sessionstorage.NewSpannerAuth(db, sessionstorage.WithImpersonation(impersonation)), key,
 		session.WithSessionTableName("CrewSessions"),
 		session.WithUserTableName("CrewSessionUsers"),
+		session.WithIdentitiesTableName("CrewSessionIdentities"),
+		session.WithPendingSignInsTableName("CrewSessionPendingSignIns"),
 	)
+	if err != nil {
+		return nil, err
+	}
+
+	return session.PasswordSignIn(authSession), nil
 }
 `
 }
 
-func TestAuthWired(t *testing.T) {
+func TestSessionTables(t *testing.T) {
 	t.Parallel()
 
 	site := program("pkg/resources",
 		`generation.GenerateHandlers("app"),`,
 		`generation.GenerateRoutes("pkg/router", "api"),`,
 	)
+	const crewTables = "CrewSessions, CrewSessionUsers, CrewSessionIdentities, CrewSessionPendingSignIns, CrewSessionImpersonations"
 
 	tests := []struct {
 		name        string
@@ -140,70 +168,102 @@ func TestAuthWired(t *testing.T) {
 		wantDetails []string
 	}{
 		{
-			name: "three pools over their tables",
+			name: "two Auths over their tables",
 			files: map[string]string{
 				"cmd/generate/main.go":                     site,
-				"pkg/config/session.go":                    authFile(passwordCustom, preauthCustom, googleAnchored),
-				"schema/migrations/000003_Sessions.up.sql": tables("PartnerSessions", "PartnerUsers", "Impersonations", "PreauthSessions", "StaffSessions", "GoogleOIDCUsers", "StaffSessionData"),
+				"pkg/config/session.go":                    authFile(customAuth, googleDirectory),
+				"schema/migrations/000003_Sessions.up.sql": tables("PartnerSessions", "PartnerUsers", "PartnerIdentities", "PartnerPending", "Impersonations", "StaffSessions", "StaffUsers", "StaffIdentities", "StaffPending", "StaffEvents", "StaffSessionData"),
 			},
 			wantStatus:  Pass,
-			wantSummary: "3 auth(s): oidc-google (StaffSessions, GoogleOIDCUsers, StaffSessionData); password (PartnerSessions, PartnerUsers, Impersonations, cookie partner); preauth (PreauthSessions, cookie enrollment)",
+			wantSummary: "2 auth(s): methods password; tables PartnerSessions, PartnerUsers, PartnerIdentities, PartnerPending, Impersonations, cookie partner; methods workspace (google, directory authority); tables StaffSessions, StaffUsers, StaffIdentities, StaffPending, StaffEvents, StaffSessionData",
 		},
 		{
 			name: "an auth package naming its tables through constants",
 			files: map[string]string{
-				"cmd/generate/main.go":                  program("pkg/resources", `generation.GenerateHandlers("app"),`, `generation.GenerateRoutes("pkg/router", "api"),`),
+				"cmd/generate/main.go":                  site,
 				"pkg/auth/staff/staff.go":               constNamed,
-				"schema/migrations/000002_Staff.up.sql": "CREATE TABLE StaffSessions (Id STRING(36) NOT NULL) PRIMARY KEY (Id);\nCREATE TABLE StaffSessionUsers (Id STRING(36) NOT NULL) PRIMARY KEY (Id);\n",
+				"schema/migrations/000002_Staff.up.sql": tables("StaffSessions", "StaffSessionUsers", "StaffSessionIdentities", "StaffSessionPendingSignIns"),
 			},
 			wantStatus:  Pass,
-			wantSummary: "1 auth(s): staff: password (StaffSessions, StaffSessionUsers, cookie staff, xsrf cookie staff-xsrf)",
+			wantSummary: "1 auth(s): staff: methods password; tables StaffSessions, StaffSessionUsers, StaffSessionIdentities, StaffSessionPendingSignIns, cookie staff, xsrf cookie staff-xsrf",
 		},
 		{
-			name: "one pool with forwarded options",
+			name: "one Auth with forwarded options",
 			files: map[string]string{
 				"cmd/generate/main.go":                     site,
 				"pkg/config/session.go":                    authFile(forwarded),
-				"schema/migrations/000003_Sessions.up.sql": tables("Sessions", "SessionUsers"),
+				"schema/migrations/000003_Sessions.up.sql": tables("Sessions", "SessionUsers", "SessionIdentities", "SessionPendingSignIns"),
 			},
 			wantStatus:  Pass,
-			wantSummary: "1 auth(s): password (Sessions, SessionUsers)",
+			wantSummary: "1 auth(s): methods password; tables Sessions, SessionUsers, SessionIdentities, SessionPendingSignIns",
 			wantDetails: []string{
-				"pkg/config/session.go:9: options are forwarded from the caller (opts...); tables and cookie beyond the defaults are not visible here",
+				"pkg/config/session.go:12: options are forwarded from the caller (opts...); tables and cookies beyond the defaults are not visible here",
 			},
 		},
 		{
-			name: "azure without the user anchor reads only its sessions table",
+			name: "a missing table and a shared sessions table",
 			files: map[string]string{
 				"cmd/generate/main.go":                     site,
-				"pkg/config/session.go":                    authFile(azureAnchorless),
-				"schema/migrations/000003_Sessions.up.sql": tables("Sessions"),
-			},
-			wantStatus:  Pass,
-			wantSummary: "1 auth(s): oidc-azure (Sessions)",
-		},
-		{
-			name: "a directory-run azure auth names its authority",
-			files: map[string]string{
-				"cmd/generate/main.go":                     site,
-				"pkg/config/session.go":                    authFile(azureDirectory),
-				"schema/migrations/000003_Sessions.up.sql": tables("MembersSessions", "MembersOIDCUsers"),
-			},
-			wantStatus:  Pass,
-			wantSummary: "1 auth(s): oidc-azure (MembersSessions, MembersOIDCUsers, cookie members, directory authority)",
-		},
-		{
-			name: "missing tables and a shared sessions table",
-			files: map[string]string{
-				"cmd/generate/main.go":                     site,
-				"pkg/config/session.go":                    authFile(passwordDefault, preauthDefault),
-				"schema/migrations/000003_Sessions.up.sql": tables("Sessions"),
+				"pkg/config/session.go":                    authFile(defaultAuth, partnersShared),
+				"schema/migrations/000003_Sessions.up.sql": tables("Sessions", "SessionUsers", "SessionIdentities", "PartnerUsers", "PartnerIdentities", "PartnerPending"),
 			},
 			wantStatus:  Fail,
 			wantSummary: "2 auth wiring problem(s)",
 			wantDetails: []string{
-				"pkg/config/session.go:9: password auth reads table SessionUsers, which no migration creates (the session library's schema is under schema/spanner/migrations)",
-				"pkg/config/session.go:11: preauth auth shares sessions table Sessions with password auth; each flavor needs its own (WithSessionTableName)",
+				"pkg/config/session.go:12: the Auth at pkg/config/session.go:12 reads table SessionPendingSignIns, which no migration creates (the session library's schema is under " + schemaSets + ")",
+				"pkg/config/session.go:15: the Auth at pkg/config/session.go:15 shares table Sessions with the Auth at pkg/config/session.go:12; each Auth needs its own tables (the With*TableName options and the storage's table constructors)",
+			},
+		},
+		{
+			name: "an Auth with no method registered",
+			files: map[string]string{
+				"cmd/generate/main.go":                     site,
+				"pkg/config/session.go":                    authFile(noMethods),
+				"schema/migrations/000003_Sessions.up.sql": tables("Sessions", "SessionUsers", "SessionIdentities", "SessionPendingSignIns"),
+			},
+			wantStatus:  Fail,
+			wantSummary: "1 auth wiring problem(s)",
+			wantDetails: []string{
+				"pkg/config/session.go:12: the Auth at pkg/config/session.go:12 registers no sign-in method, so nobody can sign in to it; register session.PasswordSignIn, azure.SignIn, or google.SignIn on it",
+			},
+		},
+		{
+			name: "a registration name the scan cannot read",
+			files: map[string]string{
+				"cmd/generate/main.go":                     site,
+				"pkg/config/session.go":                    authFile(unreadableName),
+				"schema/migrations/000003_Sessions.up.sql": tables("Sessions", "SessionUsers", "SessionIdentities", "SessionPendingSignIns"),
+			},
+			wantStatus:  Fail,
+			wantSummary: "1 auth wiring problem(s)",
+			wantDetails: []string{
+				"pkg/config/session.go:13: the azure method's registration name is not a literal or a constant of the file, so the routes it serves cannot be read",
+			},
+		},
+		{
+			name: "a registration name given twice",
+			files: map[string]string{
+				"cmd/generate/main.go":                     site,
+				"pkg/config/session.go":                    authFile(registeredTwice),
+				"schema/migrations/000003_Sessions.up.sql": tables("Sessions", "SessionUsers", "SessionIdentities", "SessionPendingSignIns"),
+			},
+			wantStatus:  Fail,
+			wantSummary: "1 auth wiring problem(s)",
+			wantDetails: []string{
+				"pkg/config/session.go:14: the Auth at pkg/config/session.go:12 registers directory twice; a registration name is unique on an Auth",
+			},
+		},
+		{
+			name: "a method registered on an Auth the scan cannot see",
+			files: map[string]string{
+				"cmd/generate/main.go":                     site,
+				"pkg/config/session.go":                    authFile(customAuth, googleDirectory, unattached),
+				"schema/migrations/000003_Sessions.up.sql": tables("PartnerSessions", "PartnerUsers", "PartnerIdentities", "PartnerPending", "Impersonations", "StaffSessions", "StaffUsers", "StaffIdentities", "StaffPending", "StaffEvents", "StaffSessionData"),
+			},
+			wantStatus:  Fail,
+			wantSummary: "1 auth wiring problem(s)",
+			wantDetails: []string{
+				`pkg/config/session.go:18: the password method (password) is registered on "other", which names no session.NewAuth construction the scan can see; register methods in the package that constructs the Auth, on the identifier its construction is assigned to`,
 			},
 		},
 		{
@@ -211,32 +271,32 @@ func TestAuthWired(t *testing.T) {
 			files: map[string]string{
 				"cmd/generate/main.go":                 site,
 				"pkg/auth/crew/crew.go":                impersonationNamed("impersonation, err := sessionstorage.NewImpersonationTable(\"CrewSessionImpersonations\")\n\tif err != nil {\n\t\treturn nil, err\n\t}"),
-				"schema/migrations/000002_Crew.up.sql": tables("CrewSessions", "CrewSessionUsers", "CrewSessionImpersonations"),
+				"schema/migrations/000002_Crew.up.sql": tables("CrewSessions", "CrewSessionUsers", "CrewSessionIdentities", "CrewSessionPendingSignIns", "CrewSessionImpersonations"),
 			},
 			wantStatus:  Pass,
-			wantSummary: "1 auth(s): crew: password (CrewSessions, CrewSessionUsers, CrewSessionImpersonations)",
+			wantSummary: "1 auth(s): crew: methods password; tables " + crewTables,
 		},
 		{
 			name: "an impersonation table assigned from a constant and passed by name",
 			files: map[string]string{
 				"cmd/generate/main.go":                 site,
 				"pkg/auth/crew/crew.go":                impersonationNamed("impersonation := sessionstorage.NewImpersonationTable(impersonationTable)"),
-				"schema/migrations/000002_Crew.up.sql": tables("CrewSessions", "CrewSessionUsers", "CrewSessionImpersonations"),
+				"schema/migrations/000002_Crew.up.sql": tables("CrewSessions", "CrewSessionUsers", "CrewSessionIdentities", "CrewSessionPendingSignIns", "CrewSessionImpersonations"),
 			},
 			wantStatus:  Pass,
-			wantSummary: "1 auth(s): crew: password (CrewSessions, CrewSessionUsers, CrewSessionImpersonations)",
+			wantSummary: "1 auth(s): crew: methods password; tables " + crewTables,
 		},
 		{
 			name: "an impersonation table passed by a name NewImpersonationTable did not define",
 			files: map[string]string{
 				"cmd/generate/main.go":                 site,
 				"pkg/auth/crew/crew.go":                impersonationNamed("impersonation := newImpersonation()"),
-				"schema/migrations/000002_Crew.up.sql": tables("CrewSessions", "CrewSessionUsers", "CrewSessionImpersonations"),
+				"schema/migrations/000002_Crew.up.sql": tables("CrewSessions", "CrewSessionUsers", "CrewSessionIdentities", "CrewSessionPendingSignIns", "CrewSessionImpersonations"),
 			},
 			wantStatus:  Fail,
 			wantSummary: "1 auth wiring problem(s)",
 			wantDetails: []string{
-				"pkg/auth/crew/crew.go:16: password auth reads table SessionImpersonations, which no migration creates (the session library's schema is under schema/spanner/migrations)",
+				"pkg/auth/crew/crew.go:16: the crew auth reads table SessionImpersonations, which no migration creates (the session library's schema is under " + schemaSets + ")",
 			},
 		},
 	}

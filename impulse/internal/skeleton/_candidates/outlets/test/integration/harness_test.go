@@ -22,6 +22,7 @@ import (
 	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/outlets/pkg/router"
 	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/ccc/resource/live"
+	"github.com/cccteam/ccc/resource/sessionusers"
 	initiator "github.com/cccteam/db-initiator"
 	"github.com/cccteam/logger"
 	"github.com/cccteam/session"
@@ -94,7 +95,19 @@ func (c *servedConfigurer) Access() access.Controller { return c.auth.Access() }
 
 func (c *servedConfigurer) Staff() *staff.Auth { return c.auth }
 
+// StaffUserStores are the real stores: the test staff auth's session accounts and its
+// engine's memberships, so the suites drive the user surface as the served application does.
+func (c *servedConfigurer) StaffUserStores() (resource.UserAccounts, resource.UserSeats) {
+	return sessionusers.Accounts(c.auth.Session().API()), c.auth.Access().UserManager()
+}
+
 func (c *servedConfigurer) Members() *members.Auth { return c.members }
+
+// MembersUserStores are the real stores: the test members auth's session accounts and its
+// engine's memberships, so the suites drive the user surface as the served application does.
+func (c *servedConfigurer) MembersUserStores() (resource.UserAccounts, resource.UserSeats) {
+	return sessionusers.Accounts(c.members.Session().API()), c.members.Access().UserManager()
+}
 
 func (c *servedConfigurer) Validator() *validator.Validate { return validator.New() }
 
@@ -153,7 +166,7 @@ func newServed(ctx context.Context, t *testing.T) *served {
 	if err := roster.Start(ctx); err != nil {
 		t.Fatalf("resource.TenantRoster.Start() error = %v", err)
 	}
-	staffAuth, err := staff.New(ctx, db.Client, staff.Settings{Collection: router.Collection(), Signals: svc, CookieKey: testCookieKey, SessionTimeout: time.Minute})
+	staffAuth, err := staff.New(ctx, db.Client, &staff.Settings{Collection: router.Collection(), Signals: svc, CookieKey: testCookieKey, SessionTimeout: time.Minute})
 	if err != nil {
 		t.Fatalf("staff.New() error = %v", err)
 	}
@@ -168,15 +181,16 @@ func newServed(ctx context.Context, t *testing.T) *served {
 	t.Cleanup(server.Close)
 
 	// The members auth: under the skipAuth build tag the directory is simulated and the
-	// login returns straight to the callback, so the callback is the only registration
-	// detail that matters.
+	// login returns straight to the callback, so the callback is the registration detail
+	// that matters, beside a well-formed tenant id, which the method validates at
+	// registration whether or not the directory is simulated.
 	membersAuth, err := members.New(ctx, db.Client, &members.Settings{
 		Collection:     router.Collection(),
 		Signals:        svc,
 		CookieKey:      testCookieKey,
 		SessionTimeout: time.Minute,
 		LoginURL:       "/portal/login",
-		Directory:      members.Directory{RedirectURL: "http://" + server.Listener.Addr().String() + portalAPI + "/user/callback"},
+		Directory:      members.DirectorySettings{TenantID: "00000000-0000-0000-0000-000000000000", RedirectURL: "http://" + server.Listener.Addr().String() + portalAPI + "/user/directory/callback"},
 	})
 	if err != nil {
 		t.Fatalf("members.New() error = %v", err)
@@ -316,7 +330,7 @@ func (b *browser) login(ctx context.Context, user, password string) (status int,
 		b.t.Fatal(err)
 	}
 
-	return b.do(ctx, http.MethodPost, b.prefix+"/user/login", credentials)
+	return b.do(ctx, http.MethodPost, b.prefix+"/user/password/login", credentials)
 }
 
 // machine issues one request as a machine client carrying the bearer key (empty for an

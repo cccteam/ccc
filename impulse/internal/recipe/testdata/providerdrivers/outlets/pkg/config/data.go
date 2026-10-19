@@ -18,6 +18,7 @@ import (
 	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/ccc/resource/live"
 	livefirestore "github.com/cccteam/ccc/resource/live/firestore"
+	"github.com/cccteam/ccc/resource/sessionusers"
 	"github.com/go-playground/errors/v5"
 	"github.com/sethvargo/go-envconfig"
 )
@@ -177,7 +178,7 @@ func NewDataConfiguration(ctx context.Context) (*DataConfiguration, error) {
 
 	// The auth's default roles validate against the generated collection when its engine
 	// opens; the collection is passed in here, since the auth package imports no router.
-	staffAuth, err := staff.New(ctx, spannerClient, staff.Settings{Collection: router.Collection(), Signals: liveService, CookieKey: cookieKey, SessionTimeout: env.SessionTimeout})
+	staffAuth, err := staff.New(ctx, spannerClient, &staff.Settings{Collection: router.Collection(), Signals: liveService, CookieKey: cookieKey, SessionTimeout: env.SessionTimeout})
 	if err != nil {
 		return nil, errors.Wrap(err, "staff.New()")
 	}
@@ -190,11 +191,11 @@ func NewDataConfiguration(ctx context.Context) (*DataConfiguration, error) {
 		CookieKey:      cookieKey,
 		SessionTimeout: env.SessionTimeout,
 		LoginURL:       "/portal/login",
-		Directory: members.Directory{
-			IssuerURL:    env.MembersIssuerURL,
-			ClientID:     env.MembersClientID,
-			ClientSecret: env.MembersClientSecret,
-			RedirectURL:  env.MembersRedirectURL,
+		Directory: members.DirectorySettings{
+			TenantID:     env.MembersDirectoryTenantID,
+			ClientID:     env.MembersDirectoryClientID,
+			ClientSecret: env.MembersDirectoryClientSecret,
+			RedirectURL:  env.MembersDirectoryRedirectURL,
 		},
 	})
 	if err != nil {
@@ -291,9 +292,25 @@ func (c *DataConfiguration) Staff() *staff.Auth {
 	return c.staff
 }
 
+// StaffUserStores returns the stores the staff auth's user-management surface serves over:
+// the staff session's accounts (sessionusers.Accounts over its API) and the staff
+// engine's memberships. A seat written through the surface is a policy write the engine
+// announces to every instance.
+func (c *DataConfiguration) StaffUserStores() (resource.UserAccounts, resource.UserSeats) {
+	return sessionusers.Accounts(c.staff.Session().API()), c.staff.Access().UserManager()
+}
+
 // Members returns the members auth: the one the portal binds to.
 func (c *DataConfiguration) Members() *members.Auth {
 	return c.members
+}
+
+// MembersUserStores returns the stores the members auth's user-management surface serves over:
+// the members session's accounts (sessionusers.Accounts over its API) and the members
+// engine's memberships. A seat written through the surface is a policy write the engine
+// announces to every instance.
+func (c *DataConfiguration) MembersUserStores() (resource.UserAccounts, resource.UserSeats) {
+	return sessionusers.Accounts(c.members.Session().API()), c.members.Access().UserManager()
 }
 
 // Live returns the live service the generated handlers subscribe through and publish
@@ -370,12 +387,13 @@ type dataConfig struct {
 	// startup.
 	CookieKey string `env:"APP_COOKIE_KEY" secret:"generated"`
 
-	// The members auth's directory registration (pkg/auth/members): the OpenID Connect
-	// issuer, the application's client credentials, and the callback the directory
-	// returns the browser to. Under the session library's skipAuth build tag the
-	// directory is simulated and only the redirect URL is read.
-	MembersIssuerURL    string `env:"APP_MEMBERS_OIDC_ISSUER_URL"`
-	MembersClientID     string `env:"APP_MEMBERS_OIDC_CLIENT_ID"`
-	MembersClientSecret string `env:"APP_MEMBERS_OIDC_CLIENT_SECRET" secret:"true"`
-	MembersRedirectURL  string `env:"APP_MEMBERS_OIDC_REDIRECT_URL"`
+	// The members auth's directory registration (pkg/auth/members, user/directory/login):
+	// the tenant whose accounts it admits, the app registration's client credentials, and
+	// the callback the directory returns the browser to, under the registration's
+	// variables (APP_<AUTH>_<REGISTRATION>_*). Under the session library's skipAuth build
+	// tag the directory is simulated and only the redirect URL is read.
+	MembersDirectoryTenantID     string `env:"APP_MEMBERS_DIRECTORY_TENANT_ID"`
+	MembersDirectoryClientID     string `env:"APP_MEMBERS_DIRECTORY_CLIENT_ID"`
+	MembersDirectoryClientSecret string `env:"APP_MEMBERS_DIRECTORY_CLIENT_SECRET" secret:"true"`
+	MembersDirectoryRedirectURL  string `env:"APP_MEMBERS_DIRECTORY_REDIRECT_URL"`
 }

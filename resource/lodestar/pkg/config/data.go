@@ -18,7 +18,7 @@ import (
 	"github.com/cccteam/ccc/resource/lodestar/pkg/auth/crew"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/auth/members"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/router"
-	"github.com/cccteam/httpio"
+	"github.com/cccteam/ccc/resource/sessionusers"
 	"github.com/go-playground/errors/v5"
 	"github.com/sethvargo/go-envconfig"
 )
@@ -153,14 +153,25 @@ func NewDataConfiguration(ctx context.Context) (*DataConfiguration, error) {
 
 	// The crew auth: the console's people, whose default roles ride in the binary and
 	// validate against the generated collection, which the router package generates and
-	// the auth package cannot import. The auth opens its stores on the driver's Spanner
-	// client: the one vendor-specific seam left in the level, pending the PostgreSQL client
-	// (cccteam/ccc#852).
-	crewAuth, err := crew.New(ctx, db.SpannerClient, crew.Settings{
+	// the auth package cannot import. They sign in with a password or through the
+	// fleet's Google directory, whose refused logins return to the console's login page.
+	// The auth opens its stores on the driver's Spanner client: the one vendor-specific
+	// seam left in the level, pending the PostgreSQL client (cccteam/ccc#852).
+	crewAuth, err := crew.New(ctx, db.SpannerClient, &crew.Settings{
 		CookieKey:      cookieKey,
 		SessionTimeout: env.SessionTimeout,
+		LoginURL:       "/console/login",
 		Collection:     router.Collection(),
-		ChangeSignal:   policySignal,
+		Directory: auth.Directory{
+			ClientID:     env.CrewClientID,
+			ClientSecret: env.CrewClientSecret,
+			RedirectURL:  env.CrewRedirectURL,
+			Connection:   env.CrewConnection,
+			HostedDomain: env.CrewHostedDomain,
+			GroupPrefix:  env.CrewGroupPrefix,
+			GroupLookup:  env.CrewGroupLookup,
+		},
+		ChangeSignal: policySignal,
 	})
 	if err != nil {
 		return nil, errors.Wrap(err, "crew.New()")
@@ -204,10 +215,11 @@ func NewDataConfiguration(ctx context.Context) (*DataConfiguration, error) {
 		SessionTimeout: env.SessionTimeout,
 		LoginURL:       "/portal/login",
 		Collection:     router.Collection(),
-		Directory: members.Directory{
+		Directory: auth.Directory{
 			ClientID:     env.MembersClientID,
 			ClientSecret: env.MembersClientSecret,
 			RedirectURL:  env.MembersRedirectURL,
+			Connection:   env.MembersConnection,
 			HostedDomain: env.MembersHostedDomain,
 			GroupPrefix:  env.MembersGroupPrefix,
 			GroupLookup:  env.MembersGroupLookup,
@@ -295,12 +307,19 @@ func (c *DataConfiguration) Crew() *crew.Auth {
 	return c.crew
 }
 
-// UserManagement returns the crew engine's user-management handlers (access.Handlers),
-// which the console's role-membership routes delegate to behind their own permission
-// checks: the crew's roles are the application's, so seating crew in a sector is the
-// application's to serve.
-func (c *DataConfiguration) UserManagement() access.Handlers {
-	return c.crew.Access().Handlers(httpio.Log)
+// CrewUserSurface returns the crew auth's user-management surface: the crew session's
+// accounts (sessionusers.Accounts over its API) and the crew engine's memberships, which
+// the generated crew user handlers serve through. A seat written here is a policy write
+// the engine announces to every instance through the live service.
+func (c *DataConfiguration) CrewUserSurface() *resource.UserSurface[router.CrewAuth] {
+	return router.NewCrewUserSurface(sessionusers.Accounts(c.crew.Session().API()), c.crew.Access().UserManager())
+}
+
+// MembersUserSurface returns the members auth's surface over the members session's
+// accounts and the members engine's memberships, served on the portal and, by the
+// generator program's Manages, on the console.
+func (c *DataConfiguration) MembersUserSurface() *resource.UserSurface[router.MembersAuth] {
+	return router.NewMembersUserSurface(sessionusers.Accounts(c.members.Session().API()), c.members.Access().UserManager())
 }
 
 // TenantRoster returns the tenant roster: the sectors this instance serves, loaded when
@@ -343,14 +362,23 @@ type dataConfig struct {
 	// cryptographically secure random data. Unset, an ephemeral key is generated at
 	// startup.
 	CookieKey string `env:"APP_COOKIE_KEY"`
-	// The members auth's directory registration (pkg/auth/members): the application's client
-	// credentials, the callback Google returns the browser to, the Workspace domain logins are
-	// restricted to, the prefix of the Google Groups that carry roles, and how far the groups
-	// lookup reaches: direct (the default), or nested for a directory that nests its role groups.
-	// Under the session library's skipAuth build tag only the redirect URL, the hosted domain, and the group prefix are read.
+	// Each auth's Google registration (pkg/auth/crew, pkg/auth/members): the application's
+	// client credentials, the callback Google returns the browser to, the Workspace domain
+	// logins are restricted to, the prefix of the Google Groups that carry roles, and how
+	// far the groups lookup reaches: direct (the default), or nested for a directory that
+	// nests its role groups. Under the session library's skipAuth build tag only the
+	// redirect URL, the connection, the hosted domain, and the group prefix are read.
+	CrewClientID        string `env:"APP_CREW_OIDC_CLIENT_ID"`
+	CrewClientSecret    string `env:"APP_CREW_OIDC_CLIENT_SECRET"`
+	CrewRedirectURL     string `env:"APP_CREW_OIDC_REDIRECT_URL"`
+	CrewConnection      string `env:"APP_CREW_OIDC_CONNECTION"`
+	CrewHostedDomain    string `env:"APP_CREW_OIDC_HOSTED_DOMAIN"`
+	CrewGroupPrefix     string `env:"APP_CREW_OIDC_GROUP_PREFIX"`
+	CrewGroupLookup     string `env:"APP_CREW_OIDC_GROUP_LOOKUP"`
 	MembersClientID     string `env:"APP_MEMBERS_OIDC_CLIENT_ID"`
 	MembersClientSecret string `env:"APP_MEMBERS_OIDC_CLIENT_SECRET"`
 	MembersRedirectURL  string `env:"APP_MEMBERS_OIDC_REDIRECT_URL"`
+	MembersConnection   string `env:"APP_MEMBERS_OIDC_CONNECTION"`
 	MembersHostedDomain string `env:"APP_MEMBERS_OIDC_HOSTED_DOMAIN"`
 	MembersGroupPrefix  string `env:"APP_MEMBERS_OIDC_GROUP_PREFIX"`
 	MembersGroupLookup  string `env:"APP_MEMBERS_OIDC_GROUP_LOOKUP"`

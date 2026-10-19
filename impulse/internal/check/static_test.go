@@ -141,15 +141,17 @@ func TestStaticChecksOnFixtures(t *testing.T) {
 		},
 		{
 			name: "session-tables tables missing", fixture: "flat", check: sessionTables{},
-			wantStatus: Fail, wantSummary: "2 auth wiring problem(s)",
+			wantStatus: Fail, wantSummary: "4 auth wiring problem(s)",
 			wantDetails: []string{
-				"pkg/config/session.go:11: password auth reads table LighthouseSessions, which no migration creates (the session library's schema is under schema/spanner/migrations)",
-				"pkg/config/session.go:11: password auth reads table SessionUsers, which no migration creates (the session library's schema is under schema/spanner/migrations)",
+				"pkg/config/session.go:11: the Auth at pkg/config/session.go:11 reads table LighthouseSessions, which no migration creates (the session library's schema is under " + schemaSets + ")",
+				"pkg/config/session.go:11: the Auth at pkg/config/session.go:11 reads table SessionUsers, which no migration creates (the session library's schema is under " + schemaSets + ")",
+				"pkg/config/session.go:11: the Auth at pkg/config/session.go:11 reads table SessionIdentities, which no migration creates (the session library's schema is under " + schemaSets + ")",
+				"pkg/config/session.go:11: the Auth at pkg/config/session.go:11 reads table SessionPendingSignIns, which no migration creates (the session library's schema is under " + schemaSets + ")",
 			},
 		},
 		{
 			name: "session-tables no authenticator", fixture: "sites", check: sessionTables{},
-			wantStatus: Fail, wantSummary: "no session authenticator is constructed outside tests (session.NewPasswordAuth, NewOIDCAzure, NewOIDCGoogle, or NewPreauth)",
+			wantStatus: Fail, wantSummary: "no session Auth is constructed outside tests (session.NewAuth)",
 		},
 		{
 			name: "session-tables no site", fixture: "badprogram", check: sessionTables{},

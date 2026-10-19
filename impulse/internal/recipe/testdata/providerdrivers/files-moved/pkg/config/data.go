@@ -131,7 +131,7 @@ func NewDataConfiguration(ctx context.Context) (*DataConfiguration, error) {
 	// opens; the collection is passed in here, since the auth package imports no router.
 	// The auth opens its stores on the driver's Spanner client: the one vendor-specific
 	// seam left in the level, pending the PostgreSQL client (cccteam/ccc#852).
-	staffAuth, err := staff.New(ctx, db.SpannerClient, staff.Settings{Collection: router.Collection(), Signals: liveService, CookieKey: cookieKey, SessionTimeout: env.SessionTimeout})
+	staffAuth, err := staff.New(ctx, db.SpannerClient, &staff.Settings{Collection: router.Collection(), Signals: liveService, CookieKey: cookieKey, SessionTimeout: env.SessionTimeout})
 	if err != nil {
 		return nil, errors.Wrap(err, "staff.New()")
 	}

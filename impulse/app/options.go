@@ -1,5 +1,7 @@
 package app
 
+import "strconv"
+
 // optionKind is the option interface an option constructor returns.
 type optionKind int
 
@@ -35,9 +37,12 @@ const (
 	paramComposite
 	paramTSOption
 	paramOutletOption
-	// paramFlavor is an auth flavor: one of the generation package's AuthFlavor
-	// constants, written as generation.<Flavor>.
-	paramFlavor
+	// paramAuthMethod is a sign-in method declaration: a call to one of the generation
+	// package's method constructors (generation.PasswordMethod(),
+	// generation.GoogleMethod("directory")), with its label when one is chained
+	// (.Labeled("Company directory")) and the registration's flags when they are
+	// (.InvitedUsers(), .SyncsRoles()).
+	paramAuthMethod
 	// paramRelease is a release: a semantic version string literal, or the generation
 	// package's ThisRelease identifier for the server's own release.
 	paramRelease
@@ -73,8 +78,8 @@ func (k paramKind) String() string {
 		return "TSOption"
 	case paramOutletOption:
 		return "OutletOption"
-	case paramFlavor:
-		return "generation.<Flavor> identifier (Password, OIDCGoogle, or OIDCAzure)"
+	case paramAuthMethod:
+		return "sign-in method declaration (generation.PasswordMethod(), GoogleMethod(name), AzureMethod(name), or WorkOSMethod(name), with .Labeled(label), .InvitedUsers() or .SyncsRoles() when chained)"
 	case paramRelease:
 		return "release string literal (\"1.5.0\") or generation." + ThisReleaseIdent
 	case paramInt:
@@ -104,8 +109,8 @@ func (k paramKind) argKind() ArgKind {
 		return ArgComposite
 	case paramTSOption, paramOutletOption:
 		return ArgCall
-	case paramFlavor:
-		return ArgIdent
+	case paramAuthMethod:
+		return ArgAuthMethod
 	case paramRelease:
 		return ArgString
 	case paramInt:
@@ -125,7 +130,7 @@ func (k paramKind) optionKind() optionKind {
 		return kindTSOption
 	case paramOutletOption:
 		return kindOutletOption
-	case paramNone, paramAny, paramString, paramBool, paramStringMap, paramBoolMap, paramComposite, paramFlavor, paramRelease, paramInt, paramRequestLog, paramTraces:
+	case paramNone, paramAny, paramString, paramBool, paramStringMap, paramBoolMap, paramComposite, paramAuthMethod, paramRelease, paramInt, paramRequestLog, paramTraces:
 		return 0
 	default:
 		return 0
@@ -143,6 +148,7 @@ const (
 	optAuth               = "Auth"
 	optAPIKey             = "APIKey"
 	optWebApp             = "WebApp"
+	optManages            = "Manages"
 	optOldestAnswered     = "OldestAnswered"
 	optWithRequestLog     = "WithRequestLog"
 	optWithMountedRoutes  = "WithMountedRoutes"
@@ -150,32 +156,74 @@ const (
 	optOutletTraces       = "OutletTraces"
 )
 
-// The generation package's AuthFlavor identifiers, as a program writes them
-// (generation.Password).
-const (
-	FlavorIdentPassword   = "Password"
-	FlavorIdentOIDCGoogle = "OIDCGoogle"
-	FlavorIdentOIDCAzure  = "OIDCAzure"
-)
-
-// authFlavorIdents maps each AuthFlavor identifier to the login flavor it names (as the
-// auth scan reports it).
-var authFlavorIdents = map[string]string{
-	FlavorIdentPassword:   FlavorPassword,
-	FlavorIdentOIDCGoogle: FlavorOIDCGoogle,
-	FlavorIdentOIDCAzure:  FlavorOIDCAzure,
+// The generation package's sign-in method constructors, as a program writes them
+// (generation.GoogleMethod("directory")), by the method each declares. The password
+// method takes no name, since it is always registered as password; the others take the
+// registration name. They mirror github.com/cccteam/ccc/resource/generation (options.go).
+var authMethodConstructors = map[string]string{
+	"PasswordMethod": MethodPassword,
+	"GoogleMethod":   MethodGoogle,
+	"AzureMethod":    MethodAzure,
+	"WorkOSMethod":   MethodWorkOS,
 }
 
-// FlavorIdent returns the generation package's AuthFlavor identifier for a login flavor,
-// or empty for a flavor the generated router does not compose (preauth).
-func FlavorIdent(flavor string) string {
-	for ident, f := range authFlavorIdents {
-		if f == flavor {
+// labeledMethod is the method that chains a label onto a declaration
+// (generation.GoogleMethod("directory").Labeled("Company directory"));
+// invitedUsersMethod and syncsRolesMethod chain the registration's flags: the directory
+// admits only users an operator created, and the directory's groups write the user's
+// roles at every sign-in. They mirror generation.AuthMethod's methods.
+const (
+	labeledMethod      = "Labeled"
+	invitedUsersMethod = "InvitedUsers"
+	syncsRolesMethod   = "SyncsRoles"
+)
+
+// MethodConstructor returns the generation package's constructor for a sign-in method
+// (PasswordMethod for password, GoogleMethod for google), or empty for a method the
+// generated router does not compose.
+func MethodConstructor(kind string) string {
+	for ident, k := range authMethodConstructors {
+		if k == kind {
 			return ident
 		}
 	}
 
 	return ""
+}
+
+// MethodDeclaration writes a new sign-in method's declaration as a generator program
+// carries it, package-qualified: generation.PasswordMethod(), or
+// generation.GoogleMethod("directory"), with .Labeled(label) when the label is set. A
+// declaration read from a program is written back by AuthMethodArg.Declaration, which
+// keeps the flags chained on it.
+func MethodDeclaration(kind, name, label string) string {
+	return (&AuthMethodArg{Kind: kind, Name: name, Label: label}).Declaration()
+}
+
+// Declaration writes the declaration as a generator program carries it, package-qualified:
+// the constructor with its registration name, then .Labeled(label), .InvitedUsers() and
+// .SyncsRoles() for what is set. Empty for a method the generated router does not compose.
+func (m *AuthMethodArg) Declaration() string {
+	ctor := MethodConstructor(m.Kind)
+	if ctor == "" {
+		return ""
+	}
+	text := "generation." + ctor + "("
+	if m.Kind != MethodPassword {
+		text += strconv.Quote(m.Name)
+	}
+	text += ")"
+	if m.Label != "" {
+		text += "." + labeledMethod + "(" + strconv.Quote(m.Label) + ")"
+	}
+	if m.InvitedUsers {
+		text += "." + invitedUsersMethod + "()"
+	}
+	if m.SyncsRoles {
+		text += "." + syncsRolesMethod + "()"
+	}
+
+	return text
 }
 
 // constructorSpec describes one constructor of a declared value, a request log word or a
@@ -266,9 +314,10 @@ var knownOptions = map[string]optionSpec{
 	optWithMountedRoutes:         {kind: kindResourceOption, params: []paramKind{paramString, paramRequestLog, paramTraces}},
 
 	optServesSessions:   {kind: kindOutletOption},
-	optAuth:             {kind: kindOutletOption, params: []paramKind{paramString, paramFlavor}},
+	optAuth:             {kind: kindOutletOption, params: []paramKind{paramString}, variadic: paramAuthMethod},
 	optAPIKey:           {kind: kindOutletOption},
 	optWebApp:           {kind: kindOutletOption, params: []paramKind{paramString}},
+	optManages:          {kind: kindOutletOption, params: []paramKind{paramString}},
 	optOldestAnswered:   {kind: kindOutletOption, params: []paramKind{paramRelease}},
 	optOutletRequestLog: {kind: kindOutletOption, params: []paramKind{paramRequestLog}},
 	optOutletTraces:     {kind: kindOutletOption, params: []paramKind{paramTraces}},

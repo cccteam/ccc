@@ -27,25 +27,36 @@ DROIDS=$B/droids
 KEY=${APP_DROIDS_API_KEY:-}
 fails=0
 
-login() { # login <persona>: the crew's password login under the console prefix
+login() { # login <persona>: the crew's password method under the console prefix
   local p=$1
   rm -f "$S/$p.jar"
-  # -L: the XSRF handshake answers a 307 set-and-retry; -c saves the jar.
-  curl -s -L -c "$S/$p.jar" -b "$S/$p.jar" -o /dev/null -H 'Content-Type: application/json' \
-    -d "{\"username\":\"$p\",\"password\":\"lodestar\"}" "$API/user/login"
+  # The sign-in's POST sits behind the XSRF guard like every POST: the session read primes
+  # the auth's XSRF cookie (-L follows its 307 set-and-retry; -c saves the jar), and the
+  # POST echoes the token in the header, as the browser does.
+  curl -s -L -c "$S/$p.jar" -b "$S/$p.jar" -o /dev/null "$API/user/session"
+  curl -s -c "$S/$p.jar" -b "$S/$p.jar" -o /dev/null -H "X-XSRF-TOKEN: $(xsrf "$p")" -H 'Content-Type: application/json' \
+    -d "{\"username\":\"$p\",\"password\":\"lodestar\"}" "$API/user/password/login"
 }
 
-login_portal() { # login_portal <persona>: the directory login, simulated under skipAuth (APP_USERNAME on the server)
-  local p=$1
+login_through() { # login_through <persona> <login url> <session url>: a redirect sign-in, simulated under skipAuth
+  local p=$1 login=$2 session=$3
   rm -f "$S/$p.jar"
   # The login route sends the browser to the directory, which returns it to the registered
   # callback (the dev proxy's host in .envrc); the walkthrough talks to the server directly,
   # so it follows the callback on the server's own host.
   local location
-  location=$(curl -s -D - -o /dev/null -c "$S/$p.jar" -b "$S/$p.jar" "$PORTAL/user/login?returnUrl=/portal/tracker" | awk 'tolower($1)=="location:" {print $2}' | tr -d '\r')
+  location=$(curl -s -D - -o /dev/null -c "$S/$p.jar" -b "$S/$p.jar" "$login" | awk 'tolower($1)=="location:" {print $2}' | tr -d '\r')
   location="$B/${location#*://*/}"
   curl -s -L -c "$S/$p.jar" -b "$S/$p.jar" -o /dev/null "$location"
-  curl -s -L -c "$S/$p.jar" -b "$S/$p.jar" -o /dev/null "$PORTAL/user/session"
+  curl -s -L -c "$S/$p.jar" -b "$S/$p.jar" -o /dev/null "$session"
+}
+
+login_portal() { # login_portal <persona>: the members auth's directory, whose simulated person is APP_USERNAME on the server
+  login_through "$1" "$PORTAL/user/directory/login?returnUrl=/portal/tracker" "$PORTAL/user/session"
+}
+
+login_google() { # login_google <persona>: the crew auth's Google method, whose simulated person is APP_GOOGLE_USERNAME on the server
+  login_through "$1" "$API/user/google/login?returnUrl=/console/dashboard" "$API/user/session"
 }
 
 xsrf() { # xsrf <persona>: the auth's own XSRF cookie, crew-xsrf for the crew, members-xsrf for the client
@@ -142,10 +153,21 @@ for p in governor marshal cadet pilot veteran lead dispatcher overseer booking w
   login "$p"
 done
 login_portal client
-echo "--- personas logged in (crew by password, the client through the simulated directory) ---"
+login_google navigator
+echo "--- personas logged in (crew by password, the navigator through the fleet's directory, the client through the company directory; both directories simulated) ---"
 
-# ---- the two auths ----
+# ---- what each login page is told ----
+# Each outlet's methods route lists the sign-in methods its auth offers, in the order the
+# generator program registered them, each at the path the router mounted it: the login
+# pages render from the list and name no path of their own.
+r=$(curl -s -w '\n%{http_code}' "$API/user/methods"); check "the console tells its login page what the crew auth offers" 200 "$r"
+assert_py "two methods: the password form, then the Google directory, each at its own path, and the pending sign-in's routes" "$r" "[(m['name'],m['kind'],m['path']) for m in rows['methods']]==[('password','password','/console/api/user/password/login'),('google','redirect','/console/api/user/google/login')] and rows['pending']['confirm']=='/console/api/user/pending/confirm'"
+r=$(curl -s -w '\n%{http_code}' "$PORTAL/user/methods"); assert_py "the portal tells its login page the company directory alone" "$r" "[(m['name'],m['method'],m['kind'],m['label']) for m in rows['methods']]==[('directory','google','redirect','Company directory')]"
+
+# ---- the two auths, and the crew's two ways in ----
 r=$(req client GET "$PORTAL/user/session"); assert_py "cleo is signed in through the directory" "$r" "rows['authenticated'] and rows['username']=='client'"
+r=$(req navigator GET "$API/user/session"); assert_py "the navigator is signed in on the console through the fleet's directory: a crew session like the password personas'" "$r" "rows['authenticated'] and rows['username']=='navigator'"
+r=$(req navigator GET "$API/user-domains"); assert_py "the directory's pilot group seats the navigator in every sector (Pilot is held in every sector), spelled the role file's way" "$r" "rows==['anvil','bastion','cinder']"
 r=$(req client GET "$ANVIL/missions"); check "a client's session is a stranger to the console" 401 "$r"
 r=$(req marshal GET "$PORTAL/user-domains"); check "a crew session is a stranger to the portal" 401 "$r"
 
@@ -479,8 +501,9 @@ fi
 login_second() { # login_second <persona>: the persona signed in on the second instance, its jar kept apart (the instances share no cookie key)
   local p=$1
   rm -f "$S/$p.2.jar"
-  curl -s -L -c "$S/$p.2.jar" -b "$S/$p.2.jar" -o /dev/null -H 'Content-Type: application/json' \
-    -d "{\"username\":\"$p\",\"password\":\"lodestar\"}" "$API2/user/login"
+  curl -s -L -c "$S/$p.2.jar" -b "$S/$p.2.jar" -o /dev/null "$API2/user/session"
+  curl -s -c "$S/$p.2.jar" -b "$S/$p.2.jar" -o /dev/null -H "X-XSRF-TOKEN: $(awk '$6=="crew-xsrf" {print $7}' "$S/$p.2.jar" | tail -1)" -H 'Content-Type: application/json' \
+    -d "{\"username\":\"$p\",\"password\":\"lodestar\"}" "$API2/user/password/login"
 }
 login adjutant
 r=$(req adjutant GET "$API/features"); check "the features route answers anyone signed in: nothing is on" 200 "$r"
@@ -536,30 +559,35 @@ fi
 
 # ---- one channel: a seat change reaches the second process ----
 # The signals document that carried the flip carries the permission policy too. The marshal
-# seats the cadet as a harbormaster at Anvil through the console's role-membership route (the
-# access library's user-management handlers behind Create on RoleMemberships in the sector,
-# held by SectorMarshal): the crew engine that wrote announces the policy kind, the second
-# process's engine rereads its policy on the signal, and the cadet's next request there is
-# served with no restart and without the engine's one-minute heartbeat; unseated, both refuse
-# again. On the way the border holds: the cadet cannot seat herself, and Bastion does not
-# exist for the marshal. Demonstrates: live.signals, auth.user-management.
+# seats the cadet as a harbormaster at Anvil through the console's seats route of the crew's
+# sector partition (the generated user-management surface: Create on CrewSectorSeats in the
+# sector, held by SectorMarshal for every role but its own): the crew engine that wrote
+# announces the policy kind, the second process's engine rereads its policy on the signal, and
+# the cadet's next request there is served with no restart and without the engine's one-minute
+# heartbeat; unseated, both refuse again. On the way the border holds: the cadet cannot seat
+# herself, the marshal cannot mint a marshal, and Bastion does not exist for the marshal.
+# Demonstrates: live.signals, auth.user-management.
+seat() { echo "[{\"op\":\"add\",\"path\":\"/$1/$2\",\"value\":{}}]"; }
+unseat() { echo "[{\"op\":\"remove\",\"path\":\"/$1/$2\"}]"; }
 r=$(req cadet GET "$ANVIL/ships"); check "the cadet holds no List on Ships" 403 "$r"
-r=$(req marshal GET "$ANVIL/roles/Harbormaster/users"); check "the marshal lists who holds Harbormaster at Anvil (List on RoleMemberships)" 200 "$r"
-assert_py "Hollis alone" "$r" "rows==['harbormaster']"
-r=$(req cadet POST "$ANVIL/roles/Harbormaster/users" '{"users":["cadet"]}'); check "the cadet cannot seat herself: no Create on RoleMemberships" 403 "$r"
-r=$(req marshal POST "$API/sectors/bastion/roles/Harbormaster/users" '{"users":["cadet"]}'); check "Bastion does not exist for the marshal: the concealed-sector guard" 404 "$r"
+r=$(req marshal GET "$ANVIL/crew-sector-users"); check "the marshal lists the sector's crew (List on CrewSectorUsers)" 200 "$r"
+assert_py "Hollis holds Harbormaster, the cadet does not" "$r" "[u['roles'] for u in rows if u['username']=='harbormaster']==[['Harbormaster']] and 'Harbormaster' not in [u for u in rows if u['username']=='cadet'][0]['roles']"
+CADET_ID=$(body "$r" | py "print([u for u in rows if u['username']=='cadet'][0]['id'])")
+r=$(req cadet PATCH "$ANVIL/crew-sector-seats" "$(seat "$CADET_ID" Harbormaster)"); check "the cadet cannot seat herself: no Create on CrewSectorSeats" 403 "$r"
+r=$(req marshal PATCH "$ANVIL/crew-sector-seats" "$(seat "$CADET_ID" SectorMarshal)"); check "the marshal cannot mint a marshal: the grant's condition new.role != 'SectorMarshal'" 403 "$r"
+r=$(req marshal PATCH "$API/sectors/bastion/crew-sector-seats" "$(seat "$CADET_ID" Harbormaster)"); check "Bastion does not exist for the marshal: the concealed-sector guard" 404 "$r"
 if [ -n "$SECOND_PID" ]; then
   login_second cadet
   r=$(req cadet.2 GET "$API2/sectors/anvil/ships"); check "nor on the second instance" 403 "$r"
 fi
-r=$(req marshal POST "$ANVIL/roles/Harbormaster/users" '{"users":["cadet"]}'); check "the marshal seats the cadet as a harbormaster at Anvil" 200 "$r"
-r=$(req marshal GET "$ANVIL/roles/Harbormaster/users"); assert_py "the role's roster carries her" "$r" "sorted(rows)==['cadet','harbormaster']"
+r=$(req marshal PATCH "$ANVIL/crew-sector-seats" "$(seat "$CADET_ID" Harbormaster)"); check "the marshal seats the cadet as a harbormaster at Anvil" 200 "$r"
+r=$(req marshal GET "$ANVIL/crew-sector-users"); assert_py "her row carries the seat" "$r" "'Harbormaster' in [u for u in rows if u['username']=='cadet'][0]['roles']"
 r=$(req cadet GET "$ANVIL/ships"); check "the instance that wrote serves her the fleet board at once" 200 "$r"
 if [ -n "$SECOND_PID" ]; then
   tries=0; for i in $(seq 1 40); do tries=$i; r=$(req cadet.2 GET "$API2/sectors/anvil/ships"); [ "${r##*$'\n'}" = 200 ] && break; sleep 0.25; done
   check "the second instance serves her the fleet board at its next request: the policy kind's signal, not the one-minute heartbeat (answered on try $tries)" 200 "$r"
 fi
-r=$(req marshal DELETE "$ANVIL/roles/Harbormaster/users" '{"users":["cadet"]}'); check "the marshal unseats her" 200 "$r"
+r=$(req marshal PATCH "$ANVIL/crew-sector-seats" "$(unseat "$CADET_ID" Harbormaster)"); check "the marshal unseats her" 200 "$r"
 r=$(req cadet GET "$ANVIL/ships"); check "refused again on the instance that wrote" 403 "$r"
 if [ -n "$SECOND_PID" ]; then
   tries=0; for i in $(seq 1 40); do tries=$i; r=$(req cadet.2 GET "$API2/sectors/anvil/ships"); [ "${r##*$'\n'}" = 403 ] && break; sleep 0.25; done

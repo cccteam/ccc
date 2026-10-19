@@ -19,10 +19,14 @@ export const PermissionScopes = {
 
 export const Resources = {
   FeatureFlags: 'FeatureFlags' as Resource,
+  StaffRoles: 'StaffRoles' as Resource,
+  StaffSeats: 'StaffSeats' as Resource,
+  StaffUsers: 'StaffUsers' as Resource,
 };
 
 export const Methods = {
   SetFeature: 'SetFeature' as Method,
+  SetStaffUserPassword: 'SetStaffUserPassword' as Method,
 };
 
 export namespace FeatureFlags {
@@ -39,6 +43,65 @@ export namespace FeatureFlags {
     name: 'FeatureFlags.name' as Resource,
     updatedAt: 'FeatureFlags.updatedAt' as Resource,
     updatedBy: 'FeatureFlags.updatedBy' as Resource,
+  };
+}
+
+export namespace StaffRoles {
+  export const fieldName = {
+    kind: 'kind' as FieldName,
+    name: 'name' as FieldName,
+  };
+  export const resourceName = {
+    kind: 'StaffRoles.kind' as Resource,
+    name: 'StaffRoles.name' as Resource,
+  };
+}
+
+export namespace StaffSeats {
+  export const fieldName = {
+    everyDomain: 'everyDomain' as FieldName,
+    role: 'role' as FieldName,
+    user: 'user' as FieldName,
+    username: 'username' as FieldName,
+  };
+  export const resourceName = {
+    everyDomain: 'StaffSeats.everyDomain' as Resource,
+    role: 'StaffSeats.role' as Resource,
+    user: 'StaffSeats.user' as Resource,
+    username: 'StaffSeats.username' as Resource,
+  };
+}
+
+export namespace StaffUsers {
+  export const fieldName = {
+    createdAt: 'createdAt' as FieldName,
+    disabled: 'disabled' as FieldName,
+    everywhereRoles: 'everywhereRoles' as FieldName,
+    hasPassword: 'hasPassword' as FieldName,
+    id: 'id' as FieldName,
+    identities: 'identities' as FieldName,
+    lastSignInAt: 'lastSignInAt' as FieldName,
+    organization: 'organization' as FieldName,
+    password: 'password' as FieldName,
+    passwordChangeRequired: 'passwordChangeRequired' as FieldName,
+    roles: 'roles' as FieldName,
+    rolesSynced: 'rolesSynced' as FieldName,
+    username: 'username' as FieldName,
+  };
+  export const resourceName = {
+    createdAt: 'StaffUsers.createdAt' as Resource,
+    disabled: 'StaffUsers.disabled' as Resource,
+    everywhereRoles: 'StaffUsers.everywhereRoles' as Resource,
+    hasPassword: 'StaffUsers.hasPassword' as Resource,
+    id: 'StaffUsers.id' as Resource,
+    identities: 'StaffUsers.identities' as Resource,
+    lastSignInAt: 'StaffUsers.lastSignInAt' as Resource,
+    organization: 'StaffUsers.organization' as Resource,
+    password: 'StaffUsers.password' as Resource,
+    passwordChangeRequired: 'StaffUsers.passwordChangeRequired' as Resource,
+    roles: 'StaffUsers.roles' as Resource,
+    rolesSynced: 'StaffUsers.rolesSynced' as Resource,
+    username: 'StaffUsers.username' as Resource,
   };
 }
 

@@ -66,8 +66,11 @@ func TestImpersonationOperator(t *testing.T) {
 		if found.Actor != "marshal" || found.Principal != "cadet" || found.Kind != "user" {
 			t.Errorf("entry = %+v, want marshal viewing as cadet", found)
 		}
-		if lifetime := found.ExpiresAt.Sub(found.StartedAt); lifetime != 2*time.Hour {
-			t.Errorf("lifetime = %v, want the two-hour cap the mint route sets", lifetime)
+		// StartedAt is the database's commit time and ExpiresAt the mint route's own
+		// deadline, two hours from its clock a moment before the commit, so the
+		// lifetime falls short of the cap by the commit's latency and never exceeds it.
+		if lifetime := found.ExpiresAt.Sub(found.StartedAt); lifetime > 2*time.Hour || lifetime < 2*time.Hour-5*time.Second {
+			t.Errorf("lifetime = %v, want the two-hour cap the mint route sets, less the commit's latency", lifetime)
 		}
 	})
 

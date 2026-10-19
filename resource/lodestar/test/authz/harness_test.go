@@ -159,9 +159,21 @@ func (c *testConfigurer) Live() live.Service {
 // LiveOrigins names no change feed origin: the matrix serves no live pages.
 func (c *testConfigurer) LiveOrigins() []string { return nil }
 
-// UserManagement serves no role-membership routes: the matrix drives the bare test
-// router, which never mounts them.
-func (c *testConfigurer) UserManagement() access.Handlers { return nil }
+// CrewUserSurface and MembersUserSurface are the two auths' user-management surfaces
+// over empty in-memory stores: the generated matrix drives their routes as it drives
+// every other, a denied case answered before any store is read and a granted list or
+// read answered from the empty store.
+func (c *testConfigurer) CrewUserSurface() *resource.UserSurface[router.CrewAuth] {
+	store := resource.NewMemUserStore()
+
+	return router.NewCrewUserSurface(store, store)
+}
+
+func (c *testConfigurer) MembersUserSurface() *resource.UserSurface[router.MembersAuth] {
+	store := resource.NewMemUserStore()
+
+	return router.NewMembersUserSurface(store, store)
+}
 
 // TenantRoster is the matrix's roster: the generated constructor over the test client,
 // holding the one domain the generated matrix addresses, added by newTestHandler. The

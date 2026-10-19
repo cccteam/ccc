@@ -42,7 +42,7 @@ func TestSkipAuth(t *testing.T) {
 		},
 		{
 			name: "confined", files: with("Procfile", "server: go run -tags skipAuth .\n"),
-			wantStatus: Pass, wantSummary: "1 directory auth(s); the simulated directory is confined to development and tests",
+			wantStatus: Pass, wantSummary: "1 directory method(s); the simulated directory is confined to development and tests",
 		},
 		{
 			name: "application code reads the simulated variable", files: with("app/login.go", "package app\n\nimport \"os\"\n\nvar dev = os.Getenv(\"APP_USERNAME\")\n"),
@@ -51,7 +51,7 @@ func TestSkipAuth(t *testing.T) {
 		},
 		{
 			name: "a test may read it", files: with("test/integration/login_test.go", "package integration\n\nimport \"os\"\n\nvar dev = os.Getenv(\"APP_USERNAME\")\n"),
-			wantStatus: Pass, wantSummary: "1 directory auth(s); the simulated directory is confined to development and tests",
+			wantStatus: Pass, wantSummary: "1 directory method(s); the simulated directory is confined to development and tests",
 		},
 		{
 			name: "a deployable build carries the tag", files: with("deploy/Dockerfile", "FROM golang\nRUN go build -tags skipAuth -o app .\n"),
@@ -60,7 +60,7 @@ func TestSkipAuth(t *testing.T) {
 		},
 		{
 			name: "a comment in the Dockerfile that mentions the tag", files: with("Dockerfile", "FROM golang\n# never build with -tags skipAuth here: the tag belongs to the Procfile\nRUN go build -o app . # not skipAuth\n"),
-			wantStatus: Pass, wantSummary: "1 directory auth(s); the simulated directory is confined to development and tests",
+			wantStatus: Pass, wantSummary: "1 directory method(s); the simulated directory is confined to development and tests",
 		},
 		{
 			name: "a comment beside a build that carries the tag does not hide it", files: with("cloudbuild.yaml", "steps:\n  - args: [go, build, -tags, skipAuth] # the comment\n"),
@@ -69,7 +69,7 @@ func TestSkipAuth(t *testing.T) {
 		},
 		{
 			name: "build files under node_modules are not read", files: with("web/node_modules/left/Dockerfile", "RUN go build -tags skipAuth\n"),
-			wantStatus: Pass, wantSummary: "1 directory auth(s); the simulated directory is confined to development and tests",
+			wantStatus: Pass, wantSummary: "1 directory method(s); the simulated directory is confined to development and tests",
 		},
 	}
 	for _, tt := range tests {

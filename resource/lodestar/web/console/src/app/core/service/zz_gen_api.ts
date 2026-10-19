@@ -2,8 +2,8 @@
 import { ApiDescriptor, Client, ClientOptions, createClient, MethodHandle, NullBoolean, ResourceHandle, UploadMethodHandle } from '@cccteam/resource';
 import { Point } from 'geojson';
 import { Methods, Resources } from './zz_gen_constants';
-import { Clients, ClientContacts, ClientRosters, Commendations, Consignments, DistressCalls, FeeByKinds, Hangars, Missions, MissionBoards, MissionDocuments, OpenMissionsBySquadrons, Pilots, PilotAssignments, PilotCertifications, Refits, RefitTasks, Sectors, Ships, ShipClasses, Sorties, SortieExpenses, Squadrons, SquadronMemberships, SquadronRosters, Wings, BriefingTemplates, ExpenseManifests, PilotCards, SectorHazardBoards, ServiceLedgers, StandingOrders, FeatureFlags } from './zz_gen_resources';
-import { AttachMissionDocument, AttachMissionDocumentResult, AttachRefitPhoto, BeginRefit, ClaimMission, CompileBriefing, CompileBriefingResult, CompleteMission, CompleteMissionAnswer, FailFlightTest, FailMission, HailShip, HoldMission, InspectShip, InspectShipResult, IssueBulletin, LaunchMission, PassFlightTest, ReleaseConsignment, ReleaseConsignmentResult, ReplaceMissionDocument, ResumeMission, ScrapShip, StandDownMission, StartFlightTest, SetFeature, SetFeatureResult } from './zz_gen_methods';
+import { Clients, ClientContacts, ClientRosters, Commendations, Consignments, DistressCalls, FeeByKinds, Hangars, Missions, MissionBoards, MissionDocuments, OpenMissionsBySquadrons, Pilots, PilotAssignments, PilotCertifications, Refits, RefitTasks, Sectors, Ships, ShipClasses, Sorties, SortieExpenses, Squadrons, SquadronMemberships, SquadronRosters, Wings, BriefingTemplates, ExpenseManifests, PilotCards, SectorHazardBoards, ServiceLedgers, StandingOrders, FeatureFlags, CrewUsers, CrewSeats, CrewRoles, CrewSectorUsers, CrewSectorSeats, CrewSectorRoles, MembersUsers, MembersSeats, MembersRoles, MembersSectorUsers, MembersSectorSeats, MembersSectorRoles } from './zz_gen_resources';
+import { AttachMissionDocument, AttachMissionDocumentResult, AttachRefitPhoto, BeginRefit, ClaimMission, CompileBriefing, CompileBriefingResult, CompleteMission, CompleteMissionAnswer, FailFlightTest, FailMission, HailShip, HoldMission, InspectShip, InspectShipResult, IssueBulletin, LaunchMission, PassFlightTest, ReleaseConsignment, ReleaseConsignmentResult, ReplaceMissionDocument, ResumeMission, ScrapShip, StandDownMission, StartFlightTest, SetFeature, SetFeatureResult, SetCrewUserPassword, UnlinkCrewUserIdentity, SetCrewSectorUserPassword, UnlinkCrewSectorUserIdentity, UnlinkMembersUserIdentity, UnlinkMembersSectorUserIdentity } from './zz_gen_methods';
 
 /** The feature flags the application declares, by name: what a route, a field or a method is gated behind. */
 export type Feature = 'commendations';
@@ -438,6 +438,101 @@ export type StandingOrdersKey = [];
 export type FeatureFlagsKey = [name: string];
 
 /**
+ * The fields a client may set when creating CrewUsers. Server-owned fields are
+ * absent; a server-generated key is absent, a client-assigned key is required.
+ */
+export interface CrewUsersCreate {
+  username: string;
+  password?: string;
+  disabled?: boolean;
+}
+/** The fields a client may change on CrewUsers. Keys, server-owned, and immutable fields are absent. */
+export interface CrewUsersPatch {
+  username?: string;
+  disabled?: boolean;
+}
+/** The primary key of CrewUsers, in route order. */
+export type CrewUsersKey = [id: string];
+
+/**
+ * The fields a client may set when creating CrewSeats. Server-owned fields are
+ * absent; a server-generated key is absent, a client-assigned key is required.
+ */
+export type CrewSeatsCreate = Record<never, never>;
+/** The primary key of CrewSeats, in route order. */
+export type CrewSeatsKey = [user: string, role: string];
+
+/** The primary key of CrewRoles, in route order. */
+export type CrewRolesKey = [name: string];
+
+/**
+ * The fields a client may set when creating CrewSectorUsers. Server-owned fields are
+ * absent; a server-generated key is absent, a client-assigned key is required.
+ */
+export interface CrewSectorUsersCreate {
+  username: string;
+  password?: string;
+  disabled?: boolean;
+  role: string;
+}
+/** The fields a client may change on CrewSectorUsers. Keys, server-owned, and immutable fields are absent. */
+export interface CrewSectorUsersPatch {
+  username?: string;
+  disabled?: boolean;
+}
+/** The primary key of CrewSectorUsers, in route order. */
+export type CrewSectorUsersKey = [id: string];
+
+/**
+ * The fields a client may set when creating CrewSectorSeats. Server-owned fields are
+ * absent; a server-generated key is absent, a client-assigned key is required.
+ */
+export type CrewSectorSeatsCreate = Record<never, never>;
+/** The primary key of CrewSectorSeats, in route order. */
+export type CrewSectorSeatsKey = [user: string, role: string];
+
+/** The primary key of CrewSectorRoles, in route order. */
+export type CrewSectorRolesKey = [name: string];
+
+/** The fields a client may change on MembersUsers. Keys, server-owned, and immutable fields are absent. */
+export interface MembersUsersPatch {
+  username?: string;
+  disabled?: boolean;
+}
+/** The primary key of MembersUsers, in route order. */
+export type MembersUsersKey = [id: string];
+
+/**
+ * The fields a client may set when creating MembersSeats. Server-owned fields are
+ * absent; a server-generated key is absent, a client-assigned key is required.
+ */
+export type MembersSeatsCreate = Record<never, never>;
+/** The primary key of MembersSeats, in route order. */
+export type MembersSeatsKey = [user: string, role: string];
+
+/** The primary key of MembersRoles, in route order. */
+export type MembersRolesKey = [name: string];
+
+/** The fields a client may change on MembersSectorUsers. Keys, server-owned, and immutable fields are absent. */
+export interface MembersSectorUsersPatch {
+  username?: string;
+  disabled?: boolean;
+}
+/** The primary key of MembersSectorUsers, in route order. */
+export type MembersSectorUsersKey = [id: string];
+
+/**
+ * The fields a client may set when creating MembersSectorSeats. Server-owned fields are
+ * absent; a server-generated key is absent, a client-assigned key is required.
+ */
+export type MembersSectorSeatsCreate = Record<never, never>;
+/** The primary key of MembersSectorSeats, in route order. */
+export type MembersSectorSeatsKey = [user: string, role: string];
+
+/** The primary key of MembersSectorRoles, in route order. */
+export type MembersSectorRolesKey = [name: string];
+
+/**
  * Keeps the literal types of the descriptor while letting a client that predates a field
  * ignore it: TypeScript checks the literal against the fields ApiDescriptor declares and
  * no others, so this file compiles against a client package released before a block it
@@ -840,6 +935,142 @@ export const apiDescriptor = defineApiDescriptor({
       page: { default: 50 },
       order: [{ field: 'name', direction: 'asc' }],
     },
+    [Resources.CrewUsers]: {
+      resource: Resources.CrewUsers,
+      property: 'crewUsers',
+      route: 'crew-users',
+      scope: 'global',
+      consolidated: false,
+      keys: ['id'],
+      operations: ['list', 'read', 'create', 'patch', 'remove'],
+      page: { default: 50 },
+      order: [{ field: 'username', direction: 'asc' }],
+      patchable: ['username', 'disabled'],
+    },
+    [Resources.CrewSeats]: {
+      resource: Resources.CrewSeats,
+      property: 'crewSeats',
+      route: 'crew-seats',
+      scope: 'global',
+      consolidated: false,
+      keys: ['user', 'role'],
+      operations: ['list', 'read', 'create', 'remove'],
+      page: { default: 50 },
+      order: [{ field: 'username', direction: 'asc' }, { field: 'role', direction: 'asc' }],
+    },
+    [Resources.CrewRoles]: {
+      resource: Resources.CrewRoles,
+      property: 'crewRoles',
+      route: 'crew-roles',
+      scope: 'global',
+      consolidated: false,
+      keys: ['name'],
+      operations: ['list', 'read'],
+      page: { default: 50 },
+      order: [{ field: 'name', direction: 'asc' }],
+    },
+    [Resources.CrewSectorUsers]: {
+      resource: Resources.CrewSectorUsers,
+      property: 'crewSectorUsers',
+      route: 'crew-sector-users',
+      scope: 'domain',
+      consolidated: false,
+      keys: ['id'],
+      operations: ['list', 'read', 'create', 'patch', 'remove'],
+      page: { default: 50 },
+      order: [{ field: 'username', direction: 'asc' }],
+      patchable: ['username', 'disabled'],
+    },
+    [Resources.CrewSectorSeats]: {
+      resource: Resources.CrewSectorSeats,
+      property: 'crewSectorSeats',
+      route: 'crew-sector-seats',
+      scope: 'domain',
+      consolidated: false,
+      keys: ['user', 'role'],
+      operations: ['list', 'read', 'create', 'remove'],
+      page: { default: 50 },
+      order: [{ field: 'username', direction: 'asc' }, { field: 'role', direction: 'asc' }],
+    },
+    [Resources.CrewSectorRoles]: {
+      resource: Resources.CrewSectorRoles,
+      property: 'crewSectorRoles',
+      route: 'crew-sector-roles',
+      scope: 'domain',
+      consolidated: false,
+      keys: ['name'],
+      operations: ['list', 'read'],
+      page: { default: 50 },
+      order: [{ field: 'name', direction: 'asc' }],
+    },
+    [Resources.MembersUsers]: {
+      resource: Resources.MembersUsers,
+      property: 'membersUsers',
+      route: 'members-users',
+      scope: 'global',
+      consolidated: false,
+      keys: ['id'],
+      operations: ['list', 'read', 'patch', 'remove'],
+      page: { default: 50 },
+      order: [{ field: 'username', direction: 'asc' }],
+      patchable: ['username', 'disabled'],
+    },
+    [Resources.MembersSeats]: {
+      resource: Resources.MembersSeats,
+      property: 'membersSeats',
+      route: 'members-seats',
+      scope: 'global',
+      consolidated: false,
+      keys: ['user', 'role'],
+      operations: ['list', 'read', 'create', 'remove'],
+      page: { default: 50 },
+      order: [{ field: 'username', direction: 'asc' }, { field: 'role', direction: 'asc' }],
+    },
+    [Resources.MembersRoles]: {
+      resource: Resources.MembersRoles,
+      property: 'membersRoles',
+      route: 'members-roles',
+      scope: 'global',
+      consolidated: false,
+      keys: ['name'],
+      operations: ['list', 'read'],
+      page: { default: 50 },
+      order: [{ field: 'name', direction: 'asc' }],
+    },
+    [Resources.MembersSectorUsers]: {
+      resource: Resources.MembersSectorUsers,
+      property: 'membersSectorUsers',
+      route: 'members-sector-users',
+      scope: 'domain',
+      consolidated: false,
+      keys: ['id'],
+      operations: ['list', 'read', 'patch', 'remove'],
+      page: { default: 50 },
+      order: [{ field: 'username', direction: 'asc' }],
+      patchable: ['username', 'disabled'],
+    },
+    [Resources.MembersSectorSeats]: {
+      resource: Resources.MembersSectorSeats,
+      property: 'membersSectorSeats',
+      route: 'members-sector-seats',
+      scope: 'domain',
+      consolidated: false,
+      keys: ['user', 'role'],
+      operations: ['list', 'read', 'create', 'remove'],
+      page: { default: 50 },
+      order: [{ field: 'username', direction: 'asc' }, { field: 'role', direction: 'asc' }],
+    },
+    [Resources.MembersSectorRoles]: {
+      resource: Resources.MembersSectorRoles,
+      property: 'membersSectorRoles',
+      route: 'members-sector-roles',
+      scope: 'domain',
+      consolidated: false,
+      keys: ['name'],
+      operations: ['list', 'read'],
+      page: { default: 50 },
+      order: [{ field: 'name', direction: 'asc' }],
+    },
   },
   methods: {
     [Methods.AttachMissionDocument]: { method: Methods.AttachMissionDocument, property: 'attachMissionDocument', route: 'attach-mission-document', scope: 'domain', answers: true, upload: { maxBytes: 5242880 } },
@@ -863,7 +1094,35 @@ export const apiDescriptor = defineApiDescriptor({
     [Methods.StandDownMission]: { method: Methods.StandDownMission, property: 'standDownMission', route: 'stand-down-mission', scope: 'domain' },
     [Methods.StartFlightTest]: { method: Methods.StartFlightTest, property: 'startFlightTest', route: 'start-flight-test', scope: 'domain' },
     [Methods.SetFeature]: { method: Methods.SetFeature, property: 'setFeature', route: 'set-feature', scope: 'global', answers: true },
+    [Methods.SetCrewUserPassword]: { method: Methods.SetCrewUserPassword, property: 'setCrewUserPassword', route: 'set-crew-user-password', scope: 'global' },
+    [Methods.UnlinkCrewUserIdentity]: { method: Methods.UnlinkCrewUserIdentity, property: 'unlinkCrewUserIdentity', route: 'unlink-crew-user-identity', scope: 'global' },
+    [Methods.SetCrewSectorUserPassword]: { method: Methods.SetCrewSectorUserPassword, property: 'setCrewSectorUserPassword', route: 'set-crew-sector-user-password', scope: 'domain' },
+    [Methods.UnlinkCrewSectorUserIdentity]: { method: Methods.UnlinkCrewSectorUserIdentity, property: 'unlinkCrewSectorUserIdentity', route: 'unlink-crew-sector-user-identity', scope: 'domain' },
+    [Methods.UnlinkMembersUserIdentity]: { method: Methods.UnlinkMembersUserIdentity, property: 'unlinkMembersUserIdentity', route: 'unlink-members-user-identity', scope: 'global' },
+    [Methods.UnlinkMembersSectorUserIdentity]: { method: Methods.UnlinkMembersSectorUserIdentity, property: 'unlinkMembersSectorUserIdentity', route: 'unlink-members-sector-user-identity', scope: 'domain' },
   },
+  userSurfaces: [
+    {
+      auth: 'Crew',
+      label: 'Crew',
+      password: true,
+      registrations: [{ name: 'google', kind: 'google', label: 'Google', invited: false, syncsRoles: true }],
+      partitions: [
+        { scope: 'global', users: Resources.CrewUsers, seats: Resources.CrewSeats, roles: Resources.CrewRoles, setPassword: Methods.SetCrewUserPassword, unlinkIdentity: Methods.UnlinkCrewUserIdentity },
+        { scope: 'domain', users: Resources.CrewSectorUsers, seats: Resources.CrewSectorSeats, roles: Resources.CrewSectorRoles, setPassword: Methods.SetCrewSectorUserPassword, unlinkIdentity: Methods.UnlinkCrewSectorUserIdentity },
+      ],
+    },
+    {
+      auth: 'Members',
+      label: 'Members',
+      password: false,
+      registrations: [{ name: 'directory', kind: 'google', label: 'Company directory', invited: false, syncsRoles: true }],
+      partitions: [
+        { scope: 'global', users: Resources.MembersUsers, seats: Resources.MembersSeats, roles: Resources.MembersRoles, unlinkIdentity: Methods.UnlinkMembersUserIdentity },
+        { scope: 'domain', users: Resources.MembersSectorUsers, seats: Resources.MembersSectorSeats, roles: Resources.MembersSectorRoles, unlinkIdentity: Methods.UnlinkMembersSectorUserIdentity },
+      ],
+    },
+  ],
 });
 
 /** Handles for the global scope, available on the client root. */
@@ -881,8 +1140,17 @@ export interface GlobalApi {
   serviceLedgers: ResourceHandle<ServiceLedgers, ServiceLedgersKey, 'list'>;
   standingOrders: ResourceHandle<StandingOrders, StandingOrdersKey, 'list'>;
   featureFlags: ResourceHandle<FeatureFlags, FeatureFlagsKey, 'list' | 'read'>;
+  crewUsers: ResourceHandle<CrewUsers, CrewUsersKey, 'list' | 'read' | 'create' | 'patch' | 'remove', CrewUsersCreate, CrewUsersPatch>;
+  crewSeats: ResourceHandle<CrewSeats, CrewSeatsKey, 'list' | 'read' | 'create' | 'remove', CrewSeatsCreate>;
+  crewRoles: ResourceHandle<CrewRoles, CrewRolesKey, 'list' | 'read'>;
+  membersUsers: ResourceHandle<MembersUsers, MembersUsersKey, 'list' | 'read' | 'patch' | 'remove', never, MembersUsersPatch>;
+  membersSeats: ResourceHandle<MembersSeats, MembersSeatsKey, 'list' | 'read' | 'create' | 'remove', MembersSeatsCreate>;
+  membersRoles: ResourceHandle<MembersRoles, MembersRolesKey, 'list' | 'read'>;
   issueBulletin: MethodHandle<IssueBulletin>;
   setFeature: MethodHandle<SetFeature, SetFeatureResult>;
+  setCrewUserPassword: MethodHandle<SetCrewUserPassword>;
+  unlinkCrewUserIdentity: MethodHandle<UnlinkCrewUserIdentity>;
+  unlinkMembersUserIdentity: MethodHandle<UnlinkMembersUserIdentity>;
 }
 
 /** Handles for one tenant partition, available on client.domain(...). */
@@ -907,6 +1175,12 @@ export interface DomainApi {
   wings: ResourceHandle<Wings, WingsKey, 'list' | 'read' | 'create' | 'patch' | 'remove' | 'batch', WingsCreate, WingsPatch>;
   expenseManifests: ResourceHandle<ExpenseManifests, ExpenseManifestsKey, 'list' | 'read'>;
   sectorHazardBoards: ResourceHandle<SectorHazardBoards, SectorHazardBoardsKey, 'list' | 'read'>;
+  crewSectorUsers: ResourceHandle<CrewSectorUsers, CrewSectorUsersKey, 'list' | 'read' | 'create' | 'patch' | 'remove', CrewSectorUsersCreate, CrewSectorUsersPatch>;
+  crewSectorSeats: ResourceHandle<CrewSectorSeats, CrewSectorSeatsKey, 'list' | 'read' | 'create' | 'remove', CrewSectorSeatsCreate>;
+  crewSectorRoles: ResourceHandle<CrewSectorRoles, CrewSectorRolesKey, 'list' | 'read'>;
+  membersSectorUsers: ResourceHandle<MembersSectorUsers, MembersSectorUsersKey, 'list' | 'read' | 'patch' | 'remove', never, MembersSectorUsersPatch>;
+  membersSectorSeats: ResourceHandle<MembersSectorSeats, MembersSectorSeatsKey, 'list' | 'read' | 'create' | 'remove', MembersSectorSeatsCreate>;
+  membersSectorRoles: ResourceHandle<MembersSectorRoles, MembersSectorRolesKey, 'list' | 'read'>;
   attachMissionDocument: UploadMethodHandle<AttachMissionDocument, AttachMissionDocumentResult>;
   attachRefitPhoto: UploadMethodHandle<AttachRefitPhoto>;
   beginRefit: MethodHandle<BeginRefit>;
@@ -926,6 +1200,9 @@ export interface DomainApi {
   scrapShip: MethodHandle<ScrapShip>;
   standDownMission: MethodHandle<StandDownMission>;
   startFlightTest: MethodHandle<StartFlightTest>;
+  setCrewSectorUserPassword: MethodHandle<SetCrewSectorUserPassword>;
+  unlinkCrewSectorUserIdentity: MethodHandle<UnlinkCrewSectorUserIdentity>;
+  unlinkMembersSectorUserIdentity: MethodHandle<UnlinkMembersSectorUserIdentity>;
 }
 
 export type Api = Client<GlobalApi, DomainApi>;

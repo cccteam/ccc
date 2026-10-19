@@ -207,11 +207,14 @@ func RemoveOptions(rel string, src []byte, name, first string) (out []byte, remo
 	return out, len(spans), nil
 }
 
-// RewriteAuthFlavor returns the program's source with every Auth option naming importPath
-// (on GenerateRoutes or a WithRouterOutlet) rewritten to the flavor identifier, and how
-// many were rewritten. The edit is textual, so the rest of the file's comments and layout
-// survive; the result is formatted.
-func RewriteAuthFlavor(rel string, src []byte, importPath, flavorIdent string) (out []byte, rewritten int, err error) {
+// AddAuthMethod returns the program's source with a sign-in method declaration appended
+// to every Auth option naming importPath (on GenerateRoutes or a WithRouterOutlet), and
+// how many were edited. declaration is the method as a program writes it
+// (generation.GoogleMethod("directory").Labeled("Company directory"), see
+// MethodDeclaration). An Auth option already declaring a method of that registration
+// name is left alone and not counted. The edit is textual, so the rest of the file's
+// comments and layout survive; the result is formatted.
+func AddAuthMethod(rel string, src []byte, importPath, name, declaration string) (out []byte, edited int, err error) {
 	fset := token.NewFileSet()
 	f, err := parser.ParseFile(fset, rel, src, parser.ParseComments)
 	if err != nil {
@@ -225,40 +228,82 @@ func RewriteAuthFlavor(rel string, src []byte, importPath, flavorIdent string) (
 	if call == nil {
 		return nil, 0, errors.Newf("%s makes no %s.NewResourceGenerator call", rel, pkg)
 	}
+	text := declaration
+	if pkg != "generation" {
+		text = pkg + strings.TrimPrefix(declaration, "generation")
+	}
 
-	type span struct{ start, end int }
-	var spans []span
+	var inserts []int // the offset of each Auth call's closing parenthesis
 	ast.Inspect(call, func(n ast.Node) bool {
 		ce, ok := n.(*ast.CallExpr)
-		if !ok || !isQualified(ce.Fun, pkg, optAuth) || len(ce.Args) != 2 {
+		if !ok || !isQualified(ce.Fun, pkg, optAuth) || len(ce.Args) < 1 {
 			return true
 		}
 		if s, ok := stringLit(ce.Args[0]); !ok || s != importPath {
 			return true
 		}
-		spans = append(spans, span{fset.Position(ce.Args[1].Pos()).Offset, fset.Position(ce.Args[1].End()).Offset})
+		for _, arg := range ce.Args[1:] {
+			if declaresMethod(arg, pkg, name) {
+				return true
+			}
+		}
+		inserts = append(inserts, fset.Position(ce.Rparen).Offset)
 
 		return true
 	})
-	if len(spans) == 0 {
+	if len(inserts) == 0 {
 		return src, 0, nil
 	}
 
 	var b bytes.Buffer
 	at := 0
-	for _, s := range spans {
-		b.Write(src[at:s.start])
-		b.WriteString(pkg + "." + flavorIdent)
-		at = s.end
+	for _, offset := range inserts {
+		b.Write(src[at:offset])
+		if offset > 0 && src[offset-1] != '(' {
+			b.WriteString(", ")
+		}
+		b.WriteString(text)
+		at = offset
 	}
 	b.Write(src[at:])
 
 	out, err = format.Source(b.Bytes())
 	if err != nil {
-		return nil, 0, errors.Wrapf(err, "format.Source(): %s after rewriting the auth flavor", rel)
+		return nil, 0, errors.Wrapf(err, "format.Source(): %s after adding the %s method", rel, name)
 	}
 
-	return out, len(spans), nil
+	return out, len(inserts), nil
+}
+
+// declaresMethod reports whether an Auth option's argument declares the registration
+// name: a method constructor taking it as its name, or PasswordMethod() for password.
+func declaresMethod(arg ast.Expr, pkg, name string) bool {
+	ce, ok := arg.(*ast.CallExpr)
+	if !ok {
+		return false
+	}
+	if sel, ok := ce.Fun.(*ast.SelectorExpr); ok && sel.Sel.Name == labeledMethod {
+		if inner, ok := sel.X.(*ast.CallExpr); ok {
+			ce = inner
+		}
+	}
+	sel, ok := ce.Fun.(*ast.SelectorExpr)
+	if !ok || !isQualified(ce.Fun, pkg, sel.Sel.Name) {
+		return false
+	}
+	kind, known := authMethodConstructors[sel.Sel.Name]
+	if !known {
+		return false
+	}
+	if kind == MethodPassword {
+		return name == PasswordRegistration
+	}
+	if len(ce.Args) != 1 {
+		return false
+	}
+	s, ok := stringLit(ce.Args[0])
+
+	return ok && s == name
 }
 
 // MoveDefaultOutlet returns the program's source with the default outlet's declaration

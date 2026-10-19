@@ -1255,7 +1255,7 @@ func (s Site) copyWorkspace(a *app.App, from, to string, ch *Change) (project st
 // it. The application is read again first, since the workspaces moved or appeared on disk
 // after it was read. A tree the workflows cannot be written in is the agent's, and the
 // ci-workflow check names it. The other transitions (add outlet, remove outlet, add auth,
-// swap auth, add tenancy) change no workspace, so they do not call it; the command flow
+// add method, add tenancy) change no workspace, so they do not call it; the command flow
 // writes the owned files once more before the check either way.
 func writeCI(a *app.App, ch *Change, note string) {
 	fresh, err := rediscover(a)

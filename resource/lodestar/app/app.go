@@ -23,11 +23,11 @@ import (
 	"github.com/cccteam/ccc/resource/lodestar/pkg/auth/members"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/computedresources"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/resources"
+	"github.com/cccteam/ccc/resource/lodestar/pkg/router"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/rpc"
 	"github.com/cccteam/ccc/resource/scheduled"
 	"github.com/cccteam/httpio"
 	"github.com/cccteam/logger"
-	"github.com/cccteam/session"
 	"github.com/cccteam/session/sessioninfo"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-playground/errors/v5"
@@ -101,11 +101,12 @@ type Configurer interface {
 	// content security policy names in connect-src: the Firestore emulator in
 	// development, Firebase's hosts in production.
 	LiveOrigins() []string
-	// UserManagement is the crew engine's user-management handlers (access.Handlers),
-	// which the console's role-membership routes delegate to behind the App's own
-	// permission checks; nil where those routes are never mounted (the test router's
-	// suites), since mounting them draws on it.
-	UserManagement() access.Handlers
+	// CrewUserSurface and MembersUserSurface are the two auths' user-management
+	// surfaces (resource.UserSurface), each built with the generated constructor over
+	// the auth's account store and its engine's user manager; the generated handlers
+	// of the crew's and the members' users, seats and roles delegate to them.
+	CrewUserSurface() *resource.UserSurface[router.CrewAuth]
+	MembersUserSurface() *resource.UserSurface[router.MembersAuth]
 	// Scheduler is the guard the scheduled routes sit behind (resource/scheduled): the
 	// invoker identity the stack names in APP_SCHEDULER_INVOKER, whose Google-signed
 	// tokens alone are admitted. A guard with no invoker, or none at all, refuses every
@@ -156,8 +157,12 @@ type App struct {
 	// name, for requests a session group bound to another auth.
 	access  access.Controller
 	engines map[string]access.Controller
-	*session.PasswordAuth[session.NoCustomData, session.NoCustomData]
-	portal         *session.OIDCGoogle[session.NoCustomData, session.NoCustomData]
+	// The console outlet's session surface (router.DefaultSession), embedded: the crew
+	// auth's Auth session with the password and the Google methods registered on it, so
+	// the App's own routes reach the session middleware and the impersonation API
+	// directly. portal is the portal outlet's: the members auth's, with the directory.
+	*crew.Handlers
+	portal         *members.Handlers
 	resourceClient resource.Client
 	cursorKey      *resource.CursorKey
 	validate       *validator.Validate
@@ -176,7 +181,8 @@ type App struct {
 	rpcClient      *rpc.Client
 	computedClient *computedresources.Client
 	live           live.Service
-	management     access.Handlers
+	crewUsers      *resource.UserSurface[router.CrewAuth]
+	membersUsers   *resource.UserSurface[router.MembersAuth]
 	// features is the application's copy of its feature flags, read through the
 	// configuration's database client when the App is built; featuresErr is why it
 	// could not be, which Start reports.
@@ -213,7 +219,8 @@ func New(cfg Configurer) *App {
 		rpcClient:      rpc.NewClient(func(role accesstypes.Role) resource.RolePermissions { return engine.ForRole(role) }, resourceClient.FileStore(resource.StoreNameFor[resources.Documents]()), cfg.Jobs()),
 		computedClient: computedresources.NewClient(),
 		live:           cfg.Live(),
-		management:     cfg.UserManagement(),
+		crewUsers:      cfg.CrewUserSurface(),
+		membersUsers:   cfg.MembersUserSurface(),
 		csp:            cspPolicy(cfg.LiveOrigins()),
 	}
 	// The feature flags: the application's copy of the FeatureFlags table, read as the
@@ -227,10 +234,10 @@ func New(cfg Configurer) *App {
 	// The authorization suites bind no auth: they compose the API surface through the
 	// test router, and nothing on that path touches the session.
 	if crewAuth := cfg.Crew(); crewAuth != nil {
-		a.PasswordAuth = crewAuth.Session()
+		a.Handlers = crewAuth.Handlers()
 	}
 	if membersAuth := cfg.Members(); membersAuth != nil {
-		a.portal = membersAuth.Session()
+		a.portal = membersAuth.Handlers()
 	}
 	if membersEngine := cfg.MembersAccess(); membersEngine != nil {
 		a.engines[members.Name] = membersEngine
@@ -261,11 +268,11 @@ func (a *App) engine(ctx context.Context) access.Controller {
 	return a.access
 }
 
-// Portal returns the portal outlet's session handlers: the members auth's, so a portal
+// Portal returns the portal outlet's session surface: the members auth's, so a portal
 // session opens nothing on the console and a console session nothing on the portal.
 //
 // Demonstrates: auth.directory-roles.
-func (a *App) Portal() session.OIDCGoogleHandlers {
+func (a *App) Portal() router.PortalSession {
 	if a.portal == nil {
 		return nil
 	}

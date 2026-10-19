@@ -44,15 +44,19 @@ templates, this README, and the tool's source.
   to the default outlet's application (`/console/`). The `outlets` skeleton carries the
   shape: the console at `/console` on `/console/api`, the portal at `/portal` on
   `/portal/api`.
-- **Auth**: a population that signs in one way and holds roles in its own permission
-  store. It is a package, `pkg/auth/<name>`, whose name prefixes its tables and cookies
-  and whose role file (`roles.json`, embedded in the package) holds the
-  release's default roles for it.
-- **Flavor**: how an auth's people sign in: `password`, `oidc-azure`, `oidc-google`, or
-  `preauth`.
-- **Authority**: who owns an OIDC auth's role membership: `directory` (the directory's
-  role claims are synchronized at every login) or `application` (roles are assigned in the
-  application).
+- **Auth**: a population that holds roles in its own permission store and signs in
+  through the methods registered on its Auth session. It is a package, `pkg/auth/<name>`,
+  whose name prefixes its tables and cookies and whose role file (`roles.json`, embedded
+  in the package) holds the release's default roles for it.
+- **Method**: one way an auth's people sign in, registered on the Auth under a
+  registration name that is the segment of its routes (`user/<registration>/login`):
+  `password` (always registered as `password`), `azure` (Microsoft Entra over OpenID
+  Connect) or `google` (Google Workspace over OpenID Connect). An auth may register
+  several, each in a file of its own in the package; the login page renders from the
+  methods route, so a method registered and declared is a button offered.
+- **Authority**: who owns role membership for a directory method: `directory` (the
+  directory's roles are synchronized at every sign-in) or `application` (roles are
+  assigned in the application).
 - **Domain** and **tenancy**: a domain is the scope a permission is granted in. Tenancy
   makes a table the domain universe: its resource struct is the tenant record (`@tenant`),
   from which the generator derives the tenant segment tenant-scoped resources live under
@@ -196,13 +200,11 @@ runs, on the fresh tree in order, tenancy first, the file store after the outlet
 sites last, and end in one check and one handoff brief carrying every obligation, so the agent wires the whole shape in one sitting (`--agent` launches it). The
 first commit is the base alone, so the composed options are one reviewable diff on top of
 it; the brief's reference is the `sites` skeleton when sites are composed, `outlets` when
-an outlet or a directory flavor is, else `tenanted`.
+an outlet is, else `tenanted`.
 
-The first auth signs in with a password unless `--oidc-azure` or `--oidc-google` says its
-people sign in through the organization's directory, with `--authority` (directory or
-application, asked when not given) saying who owns role membership; the flavor is composed
-first and the auth is born in the directory's shape, its session migrations written in that
-shape rather than moved to it later.
+The first auth signs in with a password; a directory method joins it afterwards with
+`impulse add method` (section add auth), registered beside the password method on the
+same Auth, so nothing about the auth's tables moves.
 
 ```sh
 impulse new ./harbor --module example.com/harbor --auth staff --tenancy --outlet portal=portal/api --agent
@@ -241,7 +243,7 @@ so the gate covers every job:
 - `go-build`, `go-test`, `go-test-skipauth`, `go-lint`, `go-lint-skipauth`, `go-vuln`,
   `go-semgrep` and `go-check`, the Go legs, run at once and each reports on its own: the
   module builds and vets without tags and with `skipAuth` (the tag that simulates the
-  directory an OIDC auth signs in through); its tests run under the race detector, one leg
+  directory a directory method signs in through); its tests run under the race detector, one leg
   per tag; golangci-lint runs at the version the skeleton's `.golangci.yml` is written
   for, one leg per tag; govulncheck; Semgrep over the findings the pull request introduces
   (its baseline is the pull request's base branch, so a patch release-line pull request diffs
@@ -377,12 +379,12 @@ follow the new impulse), then `go tool impulse check`. Run the check locally bef
 pushing; the pull request is the one gate. CodeQL and the rest of GitHub's Code Security
 are optional and not rendered.
 
-A directory-flavored first auth under the `directory` authority with Google is born with
-lowercase role names: the directory's groups assign roles by name and
-`session.GoogleRoleSync` lowercases every derived name, so the base's `Administrator_Global`
-becomes `administrator_global` in the role file, the bootstrap identities, the environment
-template and the tests, and every new role is named in lowercase; `auths-wired` refuses one
-that is not.
+A Google method under the `directory` authority needs lowercase role names: the
+directory's groups assign roles by name and the session library lowercases every derived
+name, so a role file of such an auth with an uppercase role (the base's
+`Administrator_Global`) defines a role no sign-in can hold; `auths-wired` refuses it, and
+the rename reaches the role file, the bootstrap identities, the environment template and
+the tests.
 
 ## impulse check
 
@@ -405,11 +407,11 @@ impulse check --list
 | `outlet-shape` | Every session outlet serving a browser application (`WebApp`) has its API prefix under the application's mount path: `<mount>/api`, `api` for an application at `/`. That is the one shape the skeletons carry, so each application's scope covers its own API, login, and callback routes; an outlet shaped otherwise works and the generator accepts it, so the check warns, naming the outlet, its prefix, and its mount path. The mount rule itself is the generator's: a browser application at `/` beside another is refused at generation, since an installed application's scope is every URL under its start. |
 | `sites-wired` | In the sites layout, every site has a main package under `apps/<site>/`, a process in the Procfile or process-compose file running it on its own `PORT`, and every site's router is imported by some package passing a collection to `access.WithDefaultRoles` (the data level, or the callers of an auth package that makes the call itself), so the collection the permission engine validates the roles against (the union, or one per auth) knows the site's resources. |
 | `maintenance-switch` | Every site's main checks `maintenance.Requested()` before it builds the site configuration (`config.NewSiteConfiguration`), and serves `maintenance.Serve(ctx)` when it is set: the deploy pipeline starts a maintenance revision of the application's own image with `APP_MAINTENANCE` set before a release that replaces or interrupts the database, and that revision must open no database, session store or secret. A main that builds the configuration first, or checks the switch after it, fails; a main that builds no site configuration is a warning, since the check cannot tell where the switch belongs. |
-| `session-tables` | Every session authenticator constructed outside tests (`session.NewPasswordAuth`, `NewOIDCAzure`, `NewOIDCGoogle`, `NewPreauth`) reads tables a migration creates: its sessions table, its users table, and the impersonation table when the storage attaches one. Two flavors never share a sessions table. The report lists the auths, one per distinct flavor and table set, each named by its package when it lives in one (`pkg/auth/<name>`), with its session and XSRF cookies when named, and an OIDC auth's role-membership authority (directory for `RoleSync`, application for `DisableRoleSync`). |
-| `auths-wired` | Every auth package (`pkg/auth/<name>`, constructing a session authenticator) is constructed by the data level (`<name>.New` called outside tests), carries its role file (`pkg/auth/<name>/roles.json`, embedded by a `//go:embed roles.json` directive, exported as `<name>.Roles()`, and handed to the permission engine by an `access.WithDefaultRoles` call outside tests, in the package or on the data level; the file exists), and bound by a surface: an outlet declaring `Auth("<module>/pkg/auth/<name>", <flavor>)` in the flavor the package constructs (the generated router mounts that flavor's login routes, so a disagreement is a finding), or a package outside `config` and `cmd/` taking `*<name>.Auth`. An outlet bound to a package that is no auth package is a finding. No two auth packages issue the same cookie, session or XSRF, a name left unset being the session library's default (`auth`, `XSRF-TOKEN`); the browser keeps one cookie of a name per host, so a login to one auth would overwrite the other's. An auth that hands role membership to its directory (`session.RoleSync`) has no role writer in the application reaching its store, since the directory removes those roles at the next login. A role file handed to the engine that no test validates warns: a `_test.go` calling `access.ValidateRoles` while parsing the auth's `Roles()` is where the warnings the deploy prints are pinned as typed values, so without it a warning is accepted nowhere in code. Authenticators outside auth packages warn. |
+| `session-tables` | Every session Auth constructed outside tests (`session.NewAuth`) reads tables a migration creates: its sessions, users, identities and pending sign-ins tables, and the auth events, impersonation and custom data tables when the storage attaches them. Two Auths never share a table. Every Auth registers at least one sign-in method (`session.PasswordSignIn`, `azure.SignIn`, `google.SignIn`), each under a registration name the scan can read, once; a method registered on an identifier that names no construction the scan sees is a finding. The report lists the auths, each named by its package when it lives in one (`pkg/auth/<name>`), with its methods (the registration name, the method behind it when the two differ, and a directory method's role-membership authority: directory for `RoleSync`, application for `DisableRoleSync`), its tables, and its session and XSRF cookies when named. |
+| `auths-wired` | Every auth package (`pkg/auth/<name>`, constructing a session Auth) is constructed by the data level (`<name>.New` called outside tests), carries its role file (`pkg/auth/<name>/roles.json`, embedded by a `//go:embed roles.json` directive, exported as `<name>.Roles()`, and handed to the permission engine by an `access.WithDefaultRoles` call outside tests, in the package or on the data level; the file exists), and bound by a surface: an outlet declaring `Auth("<module>/pkg/auth/<name>", <methods>)` naming the methods the package registers (the generated router mounts the login routes of the methods declared, so a method declared but not registered, registered but not declared, or declared as another kind is a finding), or a package outside `config` and `cmd/` taking `*<name>.Auth`. An outlet bound to a package that is no auth package is a finding. No two auth packages issue the same cookie, session or XSRF, a name left unset being the session library's default (`auth`, `XSRF-TOKEN`); the browser keeps one cookie of a name per host, so a login to one auth would overwrite the other's. A directory method that hands role membership to its directory (`RoleSync`) has no role writer in the application reaching its auth's store, since the directory removes those roles at the next sign-in. A role file handed to the engine that no test validates warns: a `_test.go` calling `access.ValidateRoles` while parsing the auth's `Roles()` is where the warnings the deploy prints are pinned as typed values, so without it a warning is accepted nowhere in code. Auths outside auth packages warn. |
 | `change-signal` | Every permission engine constructed outside tests (`access.New`) is handed a change signal: an `access.WithChangeSignal` option among the call's arguments, the skeletons' being `access.ChangeSignalFunc(announcePolicy(signals), watchPolicy(signals))` over the live service's `policy` kind. Without it a role, grant or membership written on one instance reaches the others at the engine's next heartbeat alone. A package constructing an engine without the option fails on its own line, naming each construction by file and line; a call forwarding its options (`opts...`) fails too, since the signal cannot be read there. Skipped when the application constructs no engine. |
 | `conditions-proven` | Every conditional grant in a role file the release hands to the permission engine (`pkg/auth/<auth>/roles.json`, the `<auth>.Roles()` an `access.WithDefaultRoles` call takes) is named by a test case calling the harness helper `provesGrant(t, <auth>.Roles(), role, permission, resource, condition)` with literal coordinates. The generated authorization matrix runs a fake engine with unconditional grants and the deploy-time validation reads the grammar, so whether a condition does what its author meant on real rows is proven only by a case over seeded rows: a row the condition admits answers, a row it refuses is refused. The check reads the call; the helper, in `test/integration/harness_test.go`, parses the role file when the test runs and fails when the grant is gone or its condition reads differently, so the case and the file hold each other from both sides. A grant no case names fails the check on its own line; a call naming a grant the file does not carry, or one the check cannot read, is a finding too; a file with no conditional grant reads "0 conditional grants". Unconditional grants need no case: the generic test `test/integration/grants_test.go` parses the auths' role files and proves the engine serves every one of them. When the check fails under `impulse handoff`, the brief carries the pattern a case follows. |
-| `skipauth` | When an auth signs in through a directory (the OIDC flavors), the simulated directory stays in development and tests: no application code reads `APP_USERNAME` or `APP_ROLES` (only the session library's `skipAuth` build does), and no build description (Dockerfile, cloudbuild, Makefile) carries the tag, which would let a deployed build accept any name as a login. |
+| `skipauth` | When an auth registers a directory method (azure, google), the simulated directory stays in development and tests: no application code reads `APP_USERNAME`, `APP_ROLES` or a registration's `APP_<REGISTRATION>_USERNAME` and `_ROLES` (only the session library's `skipAuth` build does), and no build description (Dockerfile, cloudbuild, Makefile) carries the tag, which would let a deployed build accept any name as a login. |
 | `emulator-version` | The generator option, the process files' image tags, and the test harnesses name one Spanner emulator version; the process files and test harnesses that start the Firestore emulator (the Cloud SDK emulators image, `google-cloud-cli:<version>-emulators`, or db-initiator's `NewFirestoreContainer`, which takes the same version) name one version of it. The summary states both; an application whose process files and test harnesses name no Firestore emulator fails, since development cannot start without it: the data level refuses to start with neither `APP_FIRESTORE_DATABASE` nor `FIRESTORE_EMULATOR_HOST` set. |
 | `prettier-ignore` | Each browser app's `.prettierignore` excludes the generated TypeScript. Prettier reflowing generated files breaks generate idempotence. `--fix` adds the entry. |
 | `eslint-ignore` | Each browser app receiving generated TypeScript ignores it in its eslint flat config (`ignores: ['**/zz_gen_*.ts']`) or `.eslintignore`. Generated shapes trip stylistic rules, and the output is not the developer's to change. |
@@ -686,7 +688,7 @@ impulse add outlet machines --prefix machines --api-key
 
 `add outlet` adds a router outlet to a flat application. A session outlet binds to an
 auth, and `--auth <name>` says which: the generator program gains `WithRouterOutlet(name,
-prefix, Auth(<pkg/auth/name>, <its flavor>), WebApp("/<name>"))` after `GenerateRoutes`
+prefix, Auth(<pkg/auth/name>, <its methods>), WebApp("/<name>"))` after `GenerateRoutes`
 and a `GenerateTypescript` target for the outlet copied from the default target's, and the
 console's browser project is copied to `web/<name>` with its API prefix, base path, and
 compiler output rewritten (and its XSRF cookie, when the auth is not the console's) and
@@ -732,74 +734,88 @@ impulse add tenancy --agent
 impulse add tenancy --tenant-table Organizations
 ```
 
-`add auth` adds an auth: a population that signs in one way and holds roles in its own
-permission store. An auth is a package, `pkg/auth/<name>`, and the base has one, `staff`.
-The new package is a copy of an existing auth's with every name substituted, so it owns
-`<Name>Sessions`, `<Name>SessionUsers` (password only), the `<Name>` store prefix, the
-`<name>` and `<name>-xsrf` cookies, and `pkg/auth/<name>/roles.json` (empty, embedded by the package) from the start; its table migrations are
-copied under the new prefix; and the data level constructs it beside the auth it came
-from, with an accessor in a new file. The copy carries the engine's change signal over
-the live service as the auth it came from does (`access.WithChangeSignal`, built from
-the `Settings.Signals` the copied construction passes), so the `change-signal` check
-passes for the new package. `--preauth` swaps the constructor to the preauth
-flavor. Binding a surface to it, checking its roles in the deploy, its development identities, and
-the stranger tests are the agent's.
+`add auth` adds an auth: a population that holds roles in its own permission store and
+signs in through the methods on its Auth. An auth is a package, `pkg/auth/<name>`, and
+the base has one, `staff`. The new package is rendered from the same source as the
+skeletons' auths, so it owns `<Name>Sessions`, `<Name>SessionUsers`,
+`<Name>SessionIdentities`, `<Name>SessionAuthEvents` and `<Name>SessionPendingSignIns`,
+the `<Name>` store prefix, the `<name>` and `<name>-xsrf` cookies, and
+`pkg/auth/<name>/roles.json` (empty, embedded by the package) from the start, with one
+file per method; its session tables are written as migrations under the new prefix and
+its access tables copied from an auth the application has; and the data level constructs
+it beside that auth, with an accessor in a new file. The package carries the engine's
+change signal over the live service as the skeletons' auths do (`access.WithChangeSignal`
+from `Settings.Signals`), so the `change-signal` check passes for it. Binding a surface to
+it, checking its roles in the deploy, its development identities, and the stranger tests
+are the agent's.
 
-`--oidc-azure` adds an auth whose people sign in through the organization's directory over
-OpenID Connect. It is copied from an OIDC auth the application already has, or else from
-the reference: the `outlets` skeleton's `members` auth, bound to its portal outlet, with
-every request in a session group bound to its auth (`pkg/auth.Bind`) so permission checks
-and tenant visibility answer from that auth's store. The copy owns `<Name>Sessions` and
-`<Name>OIDCUsers` (the user anchor keyed by the directory's immutable identifiers), the
-data level reads its directory registration from `APP_<NAME>_OIDC_ISSUER_URL`,
-`_CLIENT_ID`, `_CLIENT_SECRET`, and `_REDIRECT_URL` (the secret's field carries
-`secret:"true"` beside its env tag: the marker bedrock reads to serve a variable from
-Secret Manager; `secret:"generated"` marks one whose value bedrock makes and nobody
-types), and the Procfile builds with the
-session library's `skipAuth` tag, which simulates the directory from `APP_USERNAME` until
-the application is registered with one; the tests run under the same tag. `--authority`
-says who owns role membership and is asked when not given, never defaulted, because the
-wrong answer deletes hand-assigned roles at the next login: `directory` writes
-`session.RoleSync` (the directory's role claims are reconciled at every login and roles
-they do not name are removed; the bootstrap seeds no roles), `application` writes
-`session.DisableRoleSync` (roles are assigned in the application). The OIDC session group
-(login redirect, callback, front-channel logout), the login button, the harness login
-helper, and the stranger tests are the agent's, with the reference showing each.
-
-`--oidc-google` is the same auth against Google Workspace. When the application has no
-Google auth to copy, the Azure reference is rewritten for it: `session.NewOIDCGoogle` over
-`sessionstorage.NewSpannerGoogleOIDC`, a hosted domain (the Workspace domain logins are
-restricted to) in place of the issuer, so the registration is `APP_<NAME>_OIDC_CLIENT_ID`,
-`_CLIENT_SECRET`, `_REDIRECT_URL`, and `_HOSTED_DOMAIN`; a user anchor keyed by the
-subject claim (`Sub`, `Hd`) in place of Azure's tenant and object identifiers; and no
-front-channel logout, since Google has no directory-initiated logout. The rewrite is
-textual, so the brief says to read the package over. With `--authority directory` the
-directory's authority is its Google Groups: a group named `<prefix><role>@<domain>`
-assigns `<role>`. The groups are read through Google's Cloud Identity Groups API with the
-signing-in person's own access token, so the sign-in asks for one extra OAuth scope, the
-groups read-only scope, beside the identity scopes. No service account, key, domain-wide
-delegation, or administrator role is involved. The Cloud Identity API must be enabled in
-the Google Cloud project that owns the OAuth client (the one `_CLIENT_ID` names), or every
-sign-in fails. The package parses the lookup setting with
-`session.ParseGroupLookup(settings.Directory.GroupLookup)` and hands
-`session.GoogleRoleSync` the group prefix and that lookup. The registration gains
-`_GROUP_PREFIX` (the `<prefix>`) and `_GROUP_LOOKUP`. `_GROUP_LOOKUP` is how far the
-lookup reaches: `direct` (the default when unset) reads the groups the person is a direct
-member of; `nested` climbs from those to the groups they are in, level by level, for a
-directory that nests its role groups (a team group made a member of a role group). Google
-leaves out a group whose member list the person may not view, so that one membership does
-not count, and under `nested` the climb cannot go through it. That is not an error: the
-sign-in goes on with the groups Google does return. Under the session library's `skipAuth`
-tag the lookup is simulated: every login is in the groups `APP_ROLES` names and
-`_GROUP_LOOKUP` has no effect, but the group prefix is still set from the start, since
-`session.NewOIDCGoogle` refuses an empty one.
+`--method` names the methods the Auth starts with, repeatable: `password` (the default
+when none is given), `azure:<registration>` or `google:<registration>`, the registration
+being the segment of the method's routes (`user/<registration>/login`). A directory method
+added here takes the default shape, one organization and members of the directory;
+`add method` composes the other slots and account rules. `--authority` says who owns role
+membership for a directory method and is asked when not given, never defaulted, because
+the wrong answer deletes hand-assigned roles at the next sign-in: `directory` writes
+`RoleSync` (the directory's roles are reconciled at every sign-in and roles they do not
+name are removed; the bootstrap seeds no roles), `application` writes `DisableRoleSync`
+(roles are assigned in the application).
 
 ```sh
 impulse add auth partners --agent
-impulse add auth devices --preauth
-impulse add auth members --oidc-azure --authority application --agent
-impulse add auth staff2 --oidc-azure            # asks: directory or application?
-impulse add auth alumni --oidc-google --authority application
+impulse add auth members --method azure:directory --authority application --agent
+impulse add auth members --method password --method google:workspace --authority directory
+```
+
+`add method` adds a sign-in method to an auth the application has: `password`, `azure`
+(Microsoft Entra over OpenID Connect) or `google` (Google Workspace over OpenID Connect),
+under the registration name given (the kind's name when none is given; the password
+method is always `password`). The method is a file of its own in the auth's package,
+`pkg/auth/<auth>/<registration>.go`, holding its registration constant, its settings, its
+handlers and the `register<Registration>` call New makes before the first request; the
+Auth file's `Handlers` and `Settings` gain it; the data level reads a directory method's
+settings from the environment under the registration's variables,
+`APP_<AUTH>_<REGISTRATION>_TENANT_ID`, `_CLIENT_ID`, `_CLIENT_SECRET` and `_REDIRECT_URL`
+for azure (`_TENANTS` for the listed slot), `_CLIENT_ID`, `_CLIENT_SECRET`,
+`_REDIRECT_URL` and `_HOSTED_DOMAIN` for google (`_WORKSPACES` for the listed slot,
+`_GROUP_PREFIX` and `_GROUP_LOOKUP` under the directory authority), the secret's field
+carrying `secret:"true"` beside its env tag (the marker bedrock reads to serve a variable
+from Secret Manager; `secret:"generated"` marks one whose value bedrock makes and nobody
+types); every outlet bound to the auth declares it (`generation.AzureMethod("directory")`
+on the outlet's `Auth` option), so the generated router mounts its routes and the login
+page, which renders from the methods route, offers it; and for a directory method the
+Procfile builds with the session library's `skipAuth` tag, which simulates the directory
+until the application is registered with it (every sign-in through the registration is
+`APP_<REGISTRATION>_USERNAME`, or `APP_USERNAME` when that is unset, with the roles of
+`APP_<REGISTRATION>_ROLES` or `APP_ROLES`), and the environment template gains the
+registration's variables.
+
+`--slot` is the organization slot of a directory method, which organizations' accounts it
+admits. For azure: `one` (one tenant, the default), `listed` (named tenants), `any` (any
+tenant), `personal` (Microsoft personal accounts alone), `one-personal` (one tenant and
+personal accounts), `any-personal` (any tenant and personal accounts). For google: `one`
+(one Workspace, the default), `listed` (named Workspaces), `any-workspace` (any
+Workspace), `any` (any Google account), `mixed` (one Workspace and any Google account).
+`--accounts` is the account rule for a first sign-in: `members` (members of the directory,
+the default: the person becomes a user under the name the directory presents), `invited`
+(a user created beforehand is linked, anyone else refused) or `open` (open sign-up). The
+session library allows `open` only with any organization or personal accounts, and refuses
+`members` there, since every organization in the world is "the directory". `--authority`
+is as for `add auth`, and the directory authority is allowed with one organization only.
+
+Under the `directory` authority with google, the directory's groups assign roles by name:
+a group named `<prefix><role>@<domain>` assigns `<role>`, read through Google's Cloud
+Identity Groups API with the signing-in person's own access token (one extra OAuth scope,
+the groups read-only scope, and the Cloud Identity API enabled in the Google Cloud project
+that owns the OAuth client). `_GROUP_LOOKUP` is how far the lookup reaches: `direct` (the
+default when unset) reads the groups the person is a direct member of; `nested` climbs
+from those to the groups they are in. A group whose member list the person may not view is
+left out, which is not an error. Under `skipAuth` the lookup is simulated: every sign-in
+is in the groups the roles variable names.
+
+```sh
+impulse add method members azure directory --authority application --agent
+impulse add method members google workspace --slot listed --accounts invited --authority application
+impulse add method partners password
 ```
 
 ### add site
@@ -954,34 +970,6 @@ empty job.
 ```sh
 impulse add job prune-reports --schedule "0 3 * * *" --agent
 impulse add job reports/materialize
-```
-
-### swap auth
-
-`swap auth <name>` moves an existing auth to a directory: `--oidc-azure` or `--oidc-google`,
-with `--authority` asked as for `add auth`. The auth keeps its name, its permission store,
-its role file, and the surfaces bound to it. Its package file is rewritten from the
-reference OIDC auth under its own name (what the file carried beyond the base's shape is in
-git to re-apply); one migration drops its session tables and creates them in the new shape,
-with a down that recreates the old tables from their own migrations; the data level's
-construction gains the login page and the directory registration; the Procfile builds with
-`skipAuth`; every outlet bound to the auth in the generator program (`Auth(<package>,
-<flavor>)`) is rewritten to the new flavor, so regeneration mounts the directory's login
-routes; and where the App (and a hand-written router) stand in the base's shape, the
-handler types (`session.PasswordAuthHandlers`, the embedded `*session.PasswordAuth`) and,
-in a hand-written router, the password login route are swapped for the directory's.
-Everyone in the auth signs in again. Its role
-assignments are dropped by recreating the assignment table, since they were keyed by
-password usernames the directory need not present; `--carry-roles` keeps them when the
-usernames were already the directory's. The bootstrap (identities without passwords, no
-account creation), the login page (a button to the login route), the harness login helper
-(the `skipAuth` twin), and the removal of password user management are the agent's, so the
-tree does not build until the bootstrap follows; the brief says so and names the model for
-each.
-
-```sh
-impulse swap auth staff --oidc-azure --authority application --agent
-impulse swap auth staff --oidc-google --authority application --carry-roles
 ```
 
 ## impulse remove

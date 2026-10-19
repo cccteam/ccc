@@ -21,15 +21,32 @@ func NewGenerator(ctx context.Context) (generation.Generator, error) {
 		[]string{"file://schema/migrations"},
 		generation.GenerateHandlers("app"),
 		// The router is generated: the default outlet is the console, the crew auth's
-		// password sessions under /console/api with the console's browser application
-		// at /console. No application is mounted at /: an installed browser application
+		// sessions under /console/api, opened with a password or through the fleet's
+		// Google directory, with the console's browser application at /console. No application is mounted at /: an installed browser application
 		// owns every URL under its start, so beside the portal the console sits under
 		// its own path, and the generated router answers the root alone with a redirect
 		// to it. Every session outlet's API sits under its application's mount path.
 		generation.GenerateRouter(),
 		generation.GenerateRoutes("pkg/router", "console/api",
-			generation.Auth("github.com/cccteam/ccc/resource/lodestar/pkg/auth/crew", generation.Password),
+			// The crew auth's methods, in the order the login page offers them: the
+			// password, and the Google directory under the registration name the auth
+			// package gives it (crew.GoogleRegistration), which the router mounts at
+			// /console/api/user/google/login and tells the login page about. The
+			// directory writes a Google sign-in's roles at every sign-in (crew.go's
+			// RoleSync), so the registration declares SyncsRoles: the user-management
+			// surface the generator serves for the crew leaves such a user's seats to
+			// the directory.
+			//
+			// Demonstrates: auth.multi-method, auth.user-management.
+			generation.Auth("github.com/cccteam/ccc/resource/lodestar/pkg/auth/crew", generation.PasswordMethod(), generation.GoogleMethod("google").SyncsRoles()),
 			generation.WebApp("/console"),
+			// The console also manages the members: the members auth's users, seats and
+			// roles are served under /console/api beside the crew's, through the members
+			// auth's stores and checked against the crew role file, so headquarters
+			// administers both populations from one place.
+			//
+			// Demonstrates: auth.user-management.
+			generation.Manages("github.com/cccteam/ccc/resource/lodestar/pkg/auth/members"),
 			// The oldest release of the console the server still answers. A console build
 			// sends the release it was built from in X-Api-Version, and the generated router
 			// answers releases from this one up to the server's own (APP_VERSION through
@@ -53,7 +70,7 @@ func NewGenerator(ctx context.Context) (generation.Generator, error) {
 		// permission-digest and user-domains routes, and the portal's browser
 		// application at /portal.
 		generation.WithRouterOutlet("portal", "portal/api",
-			generation.Auth("github.com/cccteam/ccc/resource/lodestar/pkg/auth/members", generation.OIDCGoogle),
+			generation.Auth("github.com/cccteam/ccc/resource/lodestar/pkg/auth/members", generation.GoogleMethod("directory").Labeled("Company directory").SyncsRoles()),
 			generation.WebApp("/portal"),
 		),
 		// Sector-scoped resources and methods are served under /console/api/sectors/{sectorID}/,

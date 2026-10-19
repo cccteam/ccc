@@ -14,12 +14,13 @@ import (
 	"github.com/cccteam/ccc/impulse/app"
 )
 
-// skipAuth verifies that the simulated directory stays where it belongs. An auth whose
-// people sign in through a directory (the OIDC flavors) is signed in to in development and
-// in the tests under the session library's skipAuth build tag, which fabricates the login
-// from APP_USERNAME and APP_ROLES. Only the library reads those variables, and only a
-// development or test build carries the tag: a deployable build that did would accept any
-// name as a login.
+// skipAuth verifies that the simulated directory stays where it belongs. An auth with a
+// method whose people sign in through a directory or an identity provider (azure, google,
+// workos) is signed in to in development and in the tests under the session library's
+// skipAuth build tag, which fabricates the sign-in from APP_USERNAME and APP_ROLES (or
+// the registration's own APP_<NAME>_USERNAME and APP_<NAME>_ROLES). Only the library reads
+// those variables, and only a development or test build carries the tag: a deployable
+// build that did would accept any name as a sign-in.
 type skipAuth struct{}
 
 // skipAuthName is the check's name.
@@ -32,7 +33,7 @@ func (skipAuth) Describe() string {
 }
 
 // simulatedVarRE matches the simulated directory's variables in Go source.
-var simulatedVarRE = regexp.MustCompile(`"APP_(?:USERNAME|ROLES)"`)
+var simulatedVarRE = regexp.MustCompile(`"APP_(?:[A-Z0-9_]+_)?(?:USERNAME|ROLES)"`)
 
 // buildFileRE matches the files a deployable build is described in.
 var buildFileRE = regexp.MustCompile(`^(?:Dockerfile.*|.*\.Dockerfile|cloudbuild.*\.ya?ml|Makefile|Taskfile.*\.ya?ml|skaffold.*\.ya?ml)$`)
@@ -45,13 +46,15 @@ const distDir = "dist"
 
 func (c skipAuth) Run(_ context.Context, env *Env) Result {
 	a := env.App
-	oidc := 0
+	directory := 0
 	for i := range a.Auths {
-		if a.Auths[i].Flavor == app.FlavorOIDCAzure || a.Auths[i].Flavor == app.FlavorOIDCGoogle {
-			oidc++
+		for j := range a.Auths[i].Methods {
+			if a.Auths[i].Methods[j].Directory() {
+				directory++
+			}
 		}
 	}
-	if oidc == 0 {
+	if directory == 0 {
 		return skip(c.Name(), "no auth signs in through a directory")
 	}
 
@@ -84,7 +87,7 @@ func (c skipAuth) Run(_ context.Context, env *Env) Result {
 		return fail(c.Name(), fmt.Sprintf("%d simulated-directory problem(s)", len(details)), details...)
 	}
 
-	return pass(c.Name(), fmt.Sprintf("%d directory auth(s); the simulated directory is confined to development and tests", oidc))
+	return pass(c.Name(), fmt.Sprintf("%d directory method(s); the simulated directory is confined to development and tests", directory))
 }
 
 // buildFiles lists the build descriptions in the tree.

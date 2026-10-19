@@ -16,72 +16,52 @@ import (
 	"golang.org/x/mod/semver"
 )
 
-// Names the flavor table and the generated code share.
+// Names the session surface and the generated code share.
 const (
-	userSessionSuffix    = "/user/session"
-	passwordHandlersType = "session.PasswordAuthHandlers"
-	azureStubType        = "routerOIDCAzureStub"
-	bindAuthMethod       = "BindAuth"
+	// The session's own routes under an outlet's prefix: the session (read and ended),
+	// the method list the login page renders from, and the pending sign-in.
+	userSessionSuffix = "/user/session"
+	userMethodsSuffix = "/user/methods"
+	userPendingSuffix = "/user/pending"
+	bindAuthMethod    = "BindAuth"
 	// schedulerAuthMethod is the Handlers method that admits Cloud Scheduler's calls to
 	// the scheduled routes.
 	schedulerAuthMethod = "SchedulerAuth"
+	// The pending sign-in handlers on a session outlet's surface (session.PendingHandlers).
+	pendingStatusHandler  = "PendingStatus"
+	pendingConfirmHandler = "PendingConfirmWithPassword"
+	pendingCancelHandler  = "PendingCancel"
+	// methodsHandler tells the login page what the outlet offers (session.Auth.Methods).
+	methodsHandler = "Methods"
 )
 
-// flavorRoute is one route a session flavor mounts under its outlet's prefix.
-type flavorRoute struct {
-	// Method is the HTTP method name (http.MethodPost).
-	Method string
-	// Suffix is the path under the outlet prefix.
-	Suffix string
-	// Handler is the session handler method serving it.
-	Handler string
+// servedMethod is one sign-in method of a session outlet as the router mounts it and
+// the login page is told of it.
+type servedMethod struct {
+	// Name is the registration's name on the Auth, Label what the login page shows,
+	// Kind the method behind the registration (password, google, azure, workos).
+	Name  string
+	Label string
+	Kind  string
+	// Accessor is the Pascal-cased name the outlet's session surface prefixes the
+	// method's handlers with (Password, Google, LakesideEntra).
+	Accessor string
+	// LoginPath is where the method's login is mounted: what the page is told.
+	LoginPath string
+	// Handlers are the method's handlers on the session surface, in order:
+	// <Accessor>Login, and for a redirect method <Accessor>Callback, and for Entra
+	// <Accessor>FrontChannelLogout.
+	Handlers []string
+	// Description says what the handlers are, for the surface's doc comment.
+	Description string
 }
 
-// authFlavorSpec is what the generated router knows about one auth flavor: the session
-// library's handler interface, how the chain comment names it, the routes it mounts, and
-// the recording stub the generated test builds for it.
-type authFlavorSpec struct {
-	handlers string
-	label    string
-	stub     string
-	routes   []flavorRoute
-}
-
-// oidcRoutes are the routes every directory flavor mounts: the login redirect, the
-// directory's callback, and the session routes.
-var oidcRoutes = []flavorRoute{
-	{Method: http.MethodGet, Suffix: "/user/login", Handler: "Login"},
-	{Method: http.MethodGet, Suffix: "/user/callback", Handler: "CallbackOIDC"},
-	{Method: http.MethodGet, Suffix: userSessionSuffix, Handler: "Authenticated"},
-	{Method: http.MethodDelete, Suffix: userSessionSuffix, Handler: "Logout"},
-}
-
-// authFlavors is the flavor table, keyed by the option constants.
-var authFlavors = map[AuthFlavor]authFlavorSpec{
-	Password: {
-		handlers: passwordHandlersType,
-		label:    "password sessions",
-		stub:     "routerPasswordStub",
-		routes: []flavorRoute{
-			{Method: http.MethodPost, Suffix: "/user/login", Handler: "Login"},
-			{Method: http.MethodGet, Suffix: userSessionSuffix, Handler: "Authenticated"},
-			{Method: http.MethodDelete, Suffix: userSessionSuffix, Handler: "Logout"},
-		},
-	},
-	OIDCGoogle: {
-		handlers: "session.OIDCGoogleHandlers",
-		label:    "Google directory sessions",
-		stub:     "routerOIDCGoogleStub",
-		routes:   oidcRoutes,
-	},
-	OIDCAzure: {
-		handlers: "session.OIDCAzureHandlers",
-		label:    "Azure directory sessions",
-		stub:     azureStubType,
-		routes: append(slices.Clone(oidcRoutes),
-			flavorRoute{Method: http.MethodGet, Suffix: "/user/logout", Handler: "FrontChannelLogout"},
-		),
-	},
+// servedPending are the pending sign-in routes of a session outlet: what the login
+// page is told beside the methods.
+type servedPending struct {
+	Status  string
+	Confirm string
+	Cancel  string
 }
 
 // Hook fields the generated Hooks struct carries beside the per-outlet fields; an outlet
@@ -143,7 +123,7 @@ func (r *resourceGenerator) validateRouterConfig() error {
 		case o.apiKey && o.declaredOldest:
 			return errors.Newf("outlet %q declares APIKey and OldestAnswered(%q): a machine outlet's clients carry no release, so nothing is checked against one; the option belongs on a session outlet", o.name, o.oldestAnswered)
 		}
-		if err := validateReservedNames(&o); err != nil {
+		if err := validateReservedNames(o); err != nil {
 			return err
 		}
 	}
@@ -157,7 +137,7 @@ func (r *resourceGenerator) validateRouterConfig() error {
 // validateMountedPrefixes checks the hand-mounted prefixes against the router's own
 // paths: none sits at or under the scheduled prefix, which the router reserves, and none
 // is an outlet's prefix itself, whose words are the outlet's to declare.
-func validateMountedPrefixes(outlets []routerOutlet, mounted []mountedRoutes) error {
+func validateMountedPrefixes(outlets []*routerOutlet, mounted []mountedRoutes) error {
 	for _, m := range mounted {
 		if underScheduledPrefix(strings.TrimSuffix(m.prefix, "/")) {
 			return errors.Newf("WithMountedRoutes(%q) sits under %s, which the generated router reserves for the scheduled routes (@%s); a scheduled method declares its word on @%s", m.prefix, scheduled.Prefix, scheduleKeyword, scheduleKeyword)
@@ -206,7 +186,7 @@ func underScheduledPrefix(p string) bool {
 // own install prompt, and its notifications and links would be attributed to the
 // application at /. With several applications none is mounted at /, and the generated
 // router redirects the root to the default outlet's.
-func validateWebAppMounts(outlets []routerOutlet) error {
+func validateWebAppMounts(outlets []*routerOutlet) error {
 	mounts := make(map[string]string, len(outlets))
 	for _, o := range outlets {
 		if o.webApp == "" {
@@ -271,8 +251,6 @@ type servedRouterData struct {
 	// NotFoundPrefixes are the outlet prefixes as mounted paths ("/api/"), each given
 	// a not-found handler so an unknown API path never falls to a browser application.
 	NotFoundPrefixes []string
-	// Flavors are the distinct session flavors in use, for the test's recording stubs.
-	Flavors []*servedFlavor
 	// HandlersSummary lists what the Handlers interface carries, for its doc comment.
 	HandlersSummary string
 	// NegativeRouterTests are the outlet-isolation cases the routes test proves over
@@ -414,27 +392,40 @@ type servedOutlet struct {
 	// APIKey marks a machine outlet; AuthMiddleware is then its <Outlet>Auth method.
 	APIKey         bool
 	AuthMiddleware string
-	// The session outlet's flavor, its handler interface, how the chain comment names
-	// it, and the package it binds to (empty when the auth is not imported).
-	Flavor          AuthFlavor
-	FlavorLabel     string
-	SessionHandlers string
-	AuthPackage     string
-	// Getter returns the outlet's session handlers on Handlers for an additional
-	// session outlet; the default outlet's are embedded. Receiver is the expression the
-	// router reads the session handlers from: h for the default outlet, a local
+	// The session outlet's auth: how the chain comment names it (AuthLabel), the
+	// generated interface its session surface satisfies (SessionInterface,
+	// <HookField>Session), and the package it binds to (empty when the auth is not
+	// imported).
+	AuthLabel        string
+	SessionInterface string
+	AuthPackage      string
+	// Getter returns the outlet's session surface on Handlers for an additional
+	// session outlet; the default outlet's is embedded. Receiver is the expression the
+	// router reads the session surface from: h for the default outlet, a local
 	// variable for a getter outlet.
 	Getter   string
 	Receiver string
-	// StubType is the recording stub the generated test builds for the flavor, StubField
-	// its field on the test's Handlers stub (empty for the embedded default), and
-	// StubPrefix the name prefix it records under.
+	// StubType is the recording stub the generated test builds for the outlet's session
+	// surface, StubField its field on the test's Handlers stub (empty for the embedded
+	// default), and StubPrefix the name prefix it records under.
 	StubType   string
 	StubField  string
 	StubPrefix string
-	// Routes are the flavor's routes under the prefix.
-	Routes []servedRoute
-	WebApp *servedWebApp
+	// Methods are the sign-in methods registered on the outlet's Auth, in declaration
+	// order, and MethodsPath where the login page reads them; Pending are the pending
+	// sign-in routes the page is told beside them.
+	Methods     []servedMethod
+	MethodsPath string
+	Pending     servedPending
+	// ChangePassword is where the password change is mounted, told to the login page
+	// beside the methods; empty without a password method.
+	ChangePassword string
+	// Routes are the session routes under the prefix, in mount order: OpenRoutes, the
+	// ones outside the XSRF guard, then GuardedRoutes, the POSTs behind it.
+	Routes        []servedRoute
+	OpenRoutes    []servedRoute
+	GuardedRoutes []servedRoute
+	WebApp        *servedWebApp
 	// The session outlet's version check. OldestAnswered is the declaration as written
 	// ("" for none, ThisRelease, or a release); OldestAnsweredExpr the Go expression
 	// the router passes, empty for none; OldestAnsweredNote the chain comment's
@@ -564,9 +555,13 @@ type servedRoute struct {
 	Method      string
 	MethodConst string
 	// Path is the mounted path, Suffix the part under the outlet prefix.
-	Path    string
-	Suffix  string
+	Path   string
+	Suffix string
+	// Handler is the session surface's method serving the route (PasswordLogin,
+	// Authenticated); XSRF says the route sits behind the outlet's XSRF guard, as the
+	// POSTs of a sign-in do.
 	Handler string
+	XSRF    bool
 }
 
 // servedWebApp is one browser application the router serves.
@@ -577,22 +572,13 @@ type servedWebApp struct {
 	Assets   string
 }
 
-// servedFlavor is one session flavor in use: the recording stub the generated test
-// declares for it, the interface it embeds, and the handlers it overrides.
-type servedFlavor struct {
-	Flavor   AuthFlavor
-	StubType string
-	Handlers string
-	Routes   []flavorRoute
-}
-
 // runServedRouterGeneration renders the served router and its test (GenerateRouter)
 // beside the route tables, then the release file naming each outlet's oldest answered
 // release. fileRoutes are each outlet's stored-file routes by outlet name, which the
 // session outlets' version checks exempt; wordedRoutes are each outlet's routes with a
 // request log word or a trace setting of their own, which the chain comment names, the
 // surface table carries and the release file lists.
-func (r *resourceGenerator) runServedRouterGeneration(outlets []routerOutlet, negativeTests []negativeRouterTest, fileRoutes, wordedRoutes map[string][]*generatedRoute) error {
+func (r *resourceGenerator) runServedRouterGeneration(outlets []*routerOutlet, negativeTests []negativeRouterTest, fileRoutes, wordedRoutes map[string][]*generatedRoute) error {
 	begin := time.Now()
 	data := r.servedRouterData(outlets, negativeTests, fileRoutes, wordedRoutes)
 
@@ -614,7 +600,7 @@ func (r *resourceGenerator) runServedRouterGeneration(outlets []routerOutlet, ne
 
 // servedRouterData builds the template payload from the validated outlet declarations,
 // each outlet's stored-file routes and each outlet's worded routes, both by outlet name.
-func (r *resourceGenerator) servedRouterData(outlets []routerOutlet, negativeTests []negativeRouterTest, fileRoutes, wordedRoutes map[string][]*generatedRoute) *servedRouterData {
+func (r *resourceGenerator) servedRouterData(outlets []*routerOutlet, negativeTests []negativeRouterTest, fileRoutes, wordedRoutes map[string][]*generatedRoute) *servedRouterData {
 	authPaths := make(map[string]struct{})
 	for _, o := range outlets {
 		if o.auth != nil {
@@ -640,9 +626,7 @@ func (r *resourceGenerator) servedRouterData(outlets []routerOutlet, negativeTes
 		sort.Strings(data.AuthImports)
 	}
 
-	flavors := make(map[AuthFlavor]*servedFlavor)
-	for i := range outlets {
-		o := &outlets[i]
+	for _, o := range outlets {
 		so := servedOutletOf(o, multiAuth)
 		if so.WebApp != nil {
 			data.WebApps = append(data.WebApps, so.WebApp)
@@ -651,10 +635,6 @@ func (r *resourceGenerator) servedRouterData(outlets []routerOutlet, negativeTes
 		case so.APIKey:
 			data.APIKeyOutlets = append(data.APIKeyOutlets, so)
 		case o.auth != nil:
-			if _, ok := flavors[o.auth.flavor]; !ok {
-				spec := authFlavors[o.auth.flavor]
-				flavors[o.auth.flavor] = &servedFlavor{Flavor: o.auth.flavor, StubType: spec.stub, Handlers: spec.handlers, Routes: spec.routes}
-			}
 			so.FileRoutes = servedFileRoutesOf(fileRoutes[o.name])
 			data.SessionOutlets = append(data.SessionOutlets, so)
 		}
@@ -680,11 +660,6 @@ func (r *resourceGenerator) servedRouterData(outlets []routerOutlet, negativeTes
 	})
 	data.HasRootWebApp = slices.ContainsFunc(data.WebApps, func(w *servedWebApp) bool { return w.Mount == "/" })
 	data.RootRedirect, data.RootRedirectOutlet = rootRedirectOf(data)
-	for _, flavor := range []AuthFlavor{Password, OIDCGoogle, OIDCAzure} {
-		if f, ok := flavors[flavor]; ok {
-			data.Flavors = append(data.Flavors, f)
-		}
-	}
 	data.HandlersSummary = handlersSummary(data)
 
 	return data
@@ -775,11 +750,8 @@ func servedOutletOf(o *routerOutlet, multiAuth bool) *servedOutlet {
 		so.APIKey = true
 		so.AuthMiddleware = so.HookField + "Auth"
 	case o.auth != nil:
-		spec := authFlavors[o.auth.flavor]
-		so.Flavor = o.auth.flavor
-		so.FlavorLabel = spec.label
-		so.SessionHandlers = spec.handlers
-		so.StubType = spec.stub
+		so.SessionInterface = so.HookField + "Session"
+		so.StubType = "router" + so.HookField + "SessionStub"
 		if multiAuth {
 			so.AuthPackage = o.auth.packageName()
 		}
@@ -793,19 +765,72 @@ func servedOutletOf(o *routerOutlet, multiAuth bool) *servedOutlet {
 		so.OldestAnswered = o.oldestAnswered
 		so.OldestAnsweredExpr, so.OldestAnsweredNote, so.AnswersSentence = versionCheckOf(o.oldestAnswered)
 		so.Probes = versionProbesFor(o.oldestAnswered)
-		so.Routes = make([]servedRoute, 0, len(spec.routes))
-		for _, route := range spec.routes {
-			so.Routes = append(so.Routes, servedRoute{
-				Method:      route.Method,
-				MethodConst: httpMethodConstant(route.Method),
-				Path:        "/" + o.prefix + route.Suffix,
-				Suffix:      route.Suffix,
-				Handler:     route.Handler,
-			})
-		}
+		servedSessionOf(so, o)
 	}
 
 	return so
+}
+
+// servedSessionOf fills a session outlet's methods and routes from its auth's methods:
+// the session's own routes, then each method's login (and callback and front-channel
+// logout) under the registration's name, the ones outside the XSRF guard first and the
+// POSTs behind it, and the paths the login page is told.
+func servedSessionOf(so *servedOutlet, o *routerOutlet) {
+	prefix := "/" + o.prefix
+	route := func(method, suffix, handler string, xsrf bool) servedRoute {
+		return servedRoute{Method: method, MethodConst: httpMethodConstant(method), Path: prefix + suffix, Suffix: suffix, Handler: handler, XSRF: xsrf}
+	}
+	so.MethodsPath = prefix + userMethodsSuffix
+	so.Pending = servedPending{Status: prefix + userPendingSuffix, Confirm: prefix + userPendingSuffix + "/confirm", Cancel: prefix + userPendingSuffix + "/cancel"}
+	open := []servedRoute{
+		route(http.MethodGet, userMethodsSuffix, methodsHandler, false),
+		route(http.MethodGet, userSessionSuffix, "Authenticated", false),
+		route(http.MethodDelete, userSessionSuffix, "Logout", false),
+		route(http.MethodGet, userPendingSuffix, pendingStatusHandler, false),
+	}
+	var guarded []servedRoute
+	kinds := make([]string, 0, len(o.auth.methods))
+	for _, m := range o.auth.methods {
+		sm := servedMethod{Name: m.name, Label: m.label, Kind: string(m.kind), Accessor: m.accessor()}
+		base := "/user/" + m.name
+		switch m.kind {
+		case methodPassword:
+			sm.LoginPath = prefix + base + "/login"
+			sm.Handlers = []string{sm.Accessor + "Login", sm.Accessor + "Change"}
+			sm.Description = "The password method's login and password change (session.PasswordMethod); the change validates the session itself, outside ValidateSession"
+			guarded = append(guarded,
+				route(http.MethodPost, base+"/login", sm.Accessor+"Login", true),
+				route(http.MethodPost, base+"/change", sm.Accessor+"Change", true),
+			)
+			so.ChangePassword = prefix + base + "/change"
+		case methodGoogle, methodWorkOS, methodAzure:
+			sm.LoginPath = prefix + base + "/login"
+			sm.Handlers = []string{sm.Accessor + "Login", sm.Accessor + "Callback"}
+			sm.Description = fmt.Sprintf("The %s registration's login and callback (%s.Method)", m.name, m.kind)
+			open = append(open,
+				route(http.MethodGet, base+"/login", sm.Accessor+"Login", false),
+				route(http.MethodGet, base+"/callback", sm.Accessor+"Callback", false),
+			)
+			if m.kind == methodAzure {
+				sm.Handlers = append(sm.Handlers, sm.Accessor+"FrontChannelLogout")
+				sm.Description = fmt.Sprintf("The %s registration's login, callback and front-channel logout (azure.Method)", m.name)
+				open = append(open, route(http.MethodGet, base+"/logout", sm.Accessor+"FrontChannelLogout", false))
+			}
+		}
+		so.Methods = append(so.Methods, sm)
+		kinds = append(kinds, m.name)
+	}
+	guarded = append(guarded,
+		route(http.MethodPost, userPendingSuffix+"/confirm", pendingConfirmHandler, true),
+		route(http.MethodPost, userPendingSuffix+"/cancel", pendingCancelHandler, true),
+	)
+	so.OpenRoutes, so.GuardedRoutes = open, guarded
+	so.Routes = slices.Concat(open, guarded)
+	so.AuthLabel = "sessions"
+	if so.AuthPackage != "" {
+		so.AuthLabel += " of the " + so.AuthPackage + " auth"
+	}
+	so.AuthLabel += " (" + strings.Join(kinds, ", ") + ")"
 }
 
 // handlersSummary lists what the Handlers interface carries, for its doc comment.
@@ -984,8 +1009,9 @@ var (
 //	{{ .Name }} (/{{ .Prefix }}), API key{{ with .Words }}, {{ . }}{{ end }}:
 //	  NoCaching, CompressionMiddleware, {{ .AuthMiddleware }}: hooks.{{ .HookField }}, {{ .RoutesFunc }}
 {{- else }}
-//	{{ .Name }} (/{{ .Prefix }}), {{ .FlavorLabel }}{{ if .AuthPackage }} of the {{ .AuthPackage }} auth{{ end }}{{ with .Words }}, {{ . }}{{ end }}:
-//	  {{ if .AuthPackage }}BindAuth({{ .AuthPackage }}.Name), {{ end }}NoCaching, CompressionMiddleware, StartSession, SetXSRFToken: {{ range $i, $route := .Routes }}{{ if $i }}, {{ end }}{{ $route.Method }} {{ $route.Path }}{{ end }}
+//	{{ .Name }} (/{{ .Prefix }}), {{ .AuthLabel }}{{ with .Words }}, {{ . }}{{ end }}:
+//	  {{ if .AuthPackage }}BindAuth({{ .AuthPackage }}.Name), {{ end }}NoCaching, CompressionMiddleware, StartSession, SetXSRFToken: {{ range $i, $route := .OpenRoutes }}{{ if $i }}, {{ end }}{{ $route.Method }} {{ $route.Path }}{{ end }}
+//	  + ValidateXSRFToken: {{ range $i, $route := .GuardedRoutes }}{{ if $i }}, {{ end }}{{ $route.Method }} {{ $route.Path }}{{ end }}
 //	  + ValidateSession, ValidateXSRFToken, CheckAPIVersion{{ .OldestAnsweredNote }}: hooks.{{ .HookField }}, {{ .RoutesFunc }}
 {{- end }}
 {{- range .MountedBeneath }}
@@ -1062,11 +1088,11 @@ type Handlers interface {
 {{- end }}
 {{- range .SessionOutlets }}
 {{- if .Getter }}
-	// {{ .Getter }} returns the {{ .Name }} outlet's session handlers{{ if .AuthPackage }}: the {{ .AuthPackage }} auth's{{ end }}.
-	{{ .Getter }}() {{ .SessionHandlers }}
+	// {{ .Getter }} returns the {{ .Name }} outlet's session surface{{ if .AuthPackage }}: the {{ .AuthPackage }} auth's{{ end }}.
+	{{ .Getter }}() {{ .SessionInterface }}
 {{- else }}
-	// The default outlet's session handlers{{ if .AuthPackage }}: the {{ .AuthPackage }} auth's{{ end }}.
-	{{ .SessionHandlers }}
+	// The default outlet's session surface{{ if .AuthPackage }}: the {{ .AuthPackage }} auth's{{ end }}.
+	{{ .SessionInterface }}
 {{- end }}
 {{- end }}
 {{- if .MultiAuth }}
@@ -1107,6 +1133,36 @@ type Handlers interface {
 	{{ .Assets }}() http.HandlerFunc
 {{- end }}
 }
+
+{{- range .SessionOutlets }}
+
+// {{ .SessionInterface }} is the {{ .Name }} outlet's session surface: the Auth's middleware and
+// handlers, what the login page is told, the pending sign-in handlers, and the handlers
+// of the sign-in methods registered on the Auth, each under its registration name.
+type {{ .SessionInterface }} interface {
+	StartSession(next http.Handler) http.Handler
+	SetXSRFToken(next http.Handler) http.Handler
+	ValidateSession(next http.Handler) http.Handler
+	ValidateXSRFToken(next http.Handler) http.Handler
+	// The session's own routes (session.Auth): read and ended.
+	Authenticated() http.HandlerFunc
+	Logout() http.HandlerFunc
+	// Methods tells the login page what the outlet offers (session.Auth.Methods): the
+	// router hands it the methods below at the paths it mounts them.
+	Methods(list *session.MethodList) http.HandlerFunc
+	// The pending sign-in (session.PendingHandlers): a sign-in that waits for a
+	// password confirmation or the application's MFA step.
+	PendingStatus() http.HandlerFunc
+	PendingConfirmWithPassword() http.HandlerFunc
+	PendingCancel() http.HandlerFunc
+{{- range .Methods }}
+	// {{ .Description }}.
+{{- range .Handlers }}
+	{{ . }}() http.HandlerFunc
+{{- end }}
+{{- end }}
+}
+{{- end }}
 
 // Hooks are the application's additions to the generated router. They compose inward
 // only: a hook adds middleware and routes under the guards it is handed and never sees
@@ -1222,7 +1278,7 @@ func New(h Handlers, hooks Hooks) *chi.Mux {
 		})
 	})
 {{- else }}
-	// The {{ .Name }} outlet (/{{ .Prefix }}): {{ .FlavorLabel }}{{ if .AuthPackage }} of the {{ .AuthPackage }} auth{{ end }}.
+	// The {{ .Name }} outlet (/{{ .Prefix }}): {{ .AuthLabel }}.
 {{- if .Getter }}
 	{{ .Receiver }} := h.{{ .Getter }}()
 {{- end }}
@@ -1236,12 +1292,27 @@ func New(h Handlers, hooks Hooks) *chi.Mux {
 		r.Use({{ .Receiver }}.StartSession)
 		r.Use({{ .Receiver }}.SetXSRFToken)
 {{ $outlet := . }}
-{{- if .Routes }}
-		// The session routes are bounded at BodyLimit, as the generated routes are.
+		// The session routes are bounded at BodyLimit, as the generated routes are. The
+		// login page reads what the outlet offers from the method list, at the paths
+		// mounted below; the sign-in's POSTs sit behind the XSRF guard.
 		bounded := r.With(resource.BodyLimit(BodyLimit))
-{{- end }}
+		guarded := bounded.With({{ .Receiver }}.ValidateXSRFToken)
 {{- range .Routes }}
-		bounded.{{ Pascal .Method }}("{{ .Path }}", {{ $outlet.Receiver }}.{{ .Handler }}())
+{{- if eq .Handler "Methods" }}
+		{{ if .XSRF }}guarded{{ else }}bounded{{ end }}.{{ Pascal .Method }}("{{ .Path }}", {{ $outlet.Receiver }}.Methods(&session.MethodList{
+			Methods: []session.AdvertisedMethod{
+{{- range $outlet.Methods }}
+				{Name: "{{ .Name }}", Label: "{{ .Label }}", Path: "{{ .LoginPath }}"},
+{{- end }}
+			},
+			Pending: session.PendingRoutes{Status: "{{ $outlet.Pending.Status }}", Confirm: "{{ $outlet.Pending.Confirm }}", Cancel: "{{ $outlet.Pending.Cancel }}"},
+{{- if $outlet.ChangePassword }}
+			ChangePassword: "{{ $outlet.ChangePassword }}",
+{{- end }}
+		}))
+{{- else }}
+		{{ if .XSRF }}guarded{{ else }}bounded{{ end }}.{{ Pascal .Method }}("{{ .Path }}", {{ $outlet.Receiver }}.{{ .Handler }}())
+{{- end }}
 {{- end }}
 
 		r.Group(func(r chi.Router) {
@@ -1460,14 +1531,16 @@ func routerChainFor(t *testing.T, url string) routerOutletChain {
 	return routerOutletChain{}
 }
 
-// routerSessionRoute is one session route: the outlet's login, callback, or session
-// handler, which answers behind the outlet's group and before its guards. suffix is the
-// path under the outlet's prefix.
+// routerSessionRoute is one session route: the outlet's method list, session, pending
+// or sign-in handler, which answers behind the outlet's group and before its session
+// guard; xsrf says it sits behind the outlet's XSRF guard, as a sign-in's POSTs do.
+// suffix is the path under the outlet's prefix.
 type routerSessionRoute struct {
 	url     string
 	suffix  string
 	method  string
 	handler string
+	xsrf    bool
 }
 
 // routerSessionRoutes lists every session outlet's routes.
@@ -1476,7 +1549,7 @@ func routerSessionRoutes() []routerSessionRoute {
 {{- range .SessionOutlets }}
 {{- $outlet := . }}
 {{- range .Routes }}
-		{url: "{{ .Path }}", suffix: "{{ .Suffix }}", method: {{ .MethodConst }}, handler: "{{ $outlet.StubPrefix }}{{ .Handler }}"},
+		{url: "{{ .Path }}", suffix: "{{ .Suffix }}", method: {{ .MethodConst }}, handler: "{{ $outlet.StubPrefix }}{{ .Handler }}"{{ if .XSRF }}, xsrf: true{{ end }}},
 {{- end }}
 {{- end }}
 	}
@@ -1543,9 +1616,10 @@ func TestGeneratedRouter(t *testing.T) {
 }
 
 {{ if .SessionOutlets -}}
-// TestGeneratedRouterSessionRoutes proves each session outlet's login, callback, and
-// session routes answer behind the outlet's group and before its guards: a browser
-// reaches them without a validated session.
+// TestGeneratedRouterSessionRoutes proves each session outlet's method list, session,
+// pending and sign-in routes answer behind the outlet's group and before its session
+// guard, a sign-in's POSTs behind the XSRF guard alone: a browser reaches them without
+// a validated session.
 func TestGeneratedRouterSessionRoutes(t *testing.T) {
 	t.Parallel()
 
@@ -1566,7 +1640,11 @@ func TestGeneratedRouterSessionRoutes(t *testing.T) {
 				t.Fatalf("handler %s, expected 1 call, got: %d", tt.handler, cnt)
 			}
 
-			want := slices.Concat(routerRootChain, routerChainFor(t, tt.url).group)
+			chain := routerChainFor(t, tt.url)
+			want := slices.Concat(routerRootChain, chain.group)
+			if tt.xsrf {
+				want = append(want, chain.guards[1])
+			}
 			if !slices.Equal(rec.chain, want) {
 				t.Errorf("middleware chain = %v, want %v", rec.chain, want)
 			}
@@ -2193,21 +2271,25 @@ func (rec *routerCallRecorder) Middleware(name string) func(http.Handler) http.H
 		})
 	}
 }
-{{ range .Flavors }}
-// {{ .StubType }} records the {{ .Flavor }} session handlers and middleware of one outlet under
-// a name prefix, so a chain says whose session a request passed. The embedded interface
-// satisfies the rest of the flavor's surface, which the router never calls.
+{{ range .SessionOutlets }}
+// {{ .StubType }} records the {{ .Name }} outlet's session surface under a name prefix, so a
+// chain says whose session a request passed.
 type {{ .StubType }} struct {
-	{{ .Handlers }}
 	rec    *routerCallRecorder
 	prefix string
 }
 {{ $stub := .StubType }}
 {{- range .Routes }}
+{{- if eq .Handler "Methods" }}
+func (s *{{ $stub }}) Methods(*session.MethodList) http.HandlerFunc {
+	return s.rec.RecordHandlerCall(s.prefix + "Methods")
+}
+{{ else }}
 func (s *{{ $stub }}) {{ .Handler }}() http.HandlerFunc {
 	return s.rec.RecordHandlerCall(s.prefix + "{{ .Handler }}")
 }
 {{ end }}
+{{- end }}
 func (s *{{ $stub }}) StartSession(next http.Handler) http.Handler {
 	return s.rec.Middleware(s.prefix + "StartSession")(next)
 }
@@ -2225,8 +2307,9 @@ func (s *{{ $stub }}) ValidateXSRFToken(next http.Handler) http.Handler {
 }
 {{ end }}
 // routerHandlersStub satisfies Handlers for the router tests: the generated surface
-// through the routes test's stub, the session surfaces through the flavor stubs, and
-// every middleware and browser-application handler recording under its own name.
+// through the routes test's stub, the session surfaces through the outlets' session
+// stubs, and every middleware and browser-application handler recording under its own
+// name.
 type routerHandlersStub struct {
 	*generatedHandlersStub
 {{- range .SessionOutlets }}
@@ -2293,7 +2376,7 @@ func newRouterHandlersStub(rec *routerCallRecorder) *routerHandlersStub {
 }
 {{ range .SessionOutlets }}
 {{- if .Getter }}
-func (s *routerHandlersStub) {{ .Getter }}() {{ .SessionHandlers }} {
+func (s *routerHandlersStub) {{ .Getter }}() {{ .SessionInterface }} {
 	return s.{{ .StubField }}
 }
 {{ end }}

@@ -98,18 +98,21 @@ func (r *resourceGenerator) registerDeclarations(resourcesPkg *parser.Package) e
 // followed by the WithRouterOutlet declarations in option order. The default
 // outlet serves browser sessions unless it declares APIKey; extra outlets opt in
 // (ServesSessions, or a session Auth).
-func (r *resourceGenerator) allOutlets() []routerOutlet {
-	outlets := make([]routerOutlet, 0, len(r.extraOutlets)+1)
+func (r *resourceGenerator) allOutlets() []*routerOutlet {
+	outlets := make([]*routerOutlet, 0, len(r.extraOutlets)+1)
 	defaultOutlet := r.defaultOutlet
 	defaultOutlet.name, defaultOutlet.prefix, defaultOutlet.servesSessions = defaultOutletName, r.routePrefix, !defaultOutlet.apiKey
-	outlets = append(outlets, defaultOutlet)
+	outlets = append(outlets, &defaultOutlet)
+	for i := range r.extraOutlets {
+		outlets = append(outlets, &r.extraOutlets[i])
+	}
 
-	return append(outlets, r.extraOutlets...)
+	return outlets
 }
 
 // memberOutlets returns the declared outlets the membership joins, in declaration order.
-func (r *resourceGenerator) memberOutlets(m *outletMembership) []routerOutlet {
-	var outlets []routerOutlet
+func (r *resourceGenerator) memberOutlets(m *outletMembership) []*routerOutlet {
+	var outlets []*routerOutlet
 	for _, outlet := range r.allOutlets() {
 		if m.OnOutlet(outlet.name) {
 			outlets = append(outlets, outlet)
@@ -257,7 +260,7 @@ func (r *resourceGenerator) validateTypescriptOutletTargets() error {
 			return err
 		}
 
-		i := slices.IndexFunc(outlets, func(outlet routerOutlet) bool { return outlet.name == t.outletName })
+		i := slices.IndexFunc(outlets, func(outlet *routerOutlet) bool { return outlet.name == t.outletName })
 		if i < 0 {
 			declared := make([]string, 0, len(outlets))
 			for _, outlet := range outlets {
@@ -616,6 +619,11 @@ func (r *resourceGenerator) buildUnifiedTypescriptGenerator(gc *resource.Generat
 	t.client = r.client
 	t.rc = gc
 	t.routerResources = routerResources
+	surfaces, err := r.userSurfaces()
+	if err != nil {
+		return nil, err
+	}
+	t.userSurfaces = surfaces
 	t.manualRegistrations = r.manualRegistrations
 	t.domainRouteSegment = r.domainRouteSegment
 	t.domainRouteParam = r.domainRouteParam

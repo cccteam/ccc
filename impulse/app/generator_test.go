@@ -90,12 +90,12 @@ func TestParseGeneratorProblems(t *testing.T) {
 			wantProblems: []string{`WithConsolidatedHandlers argument "yes" should be a bool literal`},
 		},
 		{
-			name:    "the router options with a flavor identifier",
-			options: `generation.GenerateRouter(), generation.GenerateRoutes("pkg/router", "api", generation.Auth("example.com/acme/pkg/auth/staff", generation.Password), generation.WebApp("/")), generation.WithRouterOutlet("machines", "machines", generation.APIKey()),`,
+			name:    "the router options with a method declaration",
+			options: `generation.GenerateRouter(), generation.GenerateRoutes("pkg/router", "api", generation.Auth("example.com/acme/pkg/auth/staff", generation.PasswordMethod()), generation.WebApp("/")), generation.WithRouterOutlet("machines", "machines", generation.APIKey()),`,
 		},
 		{
 			name:    "the oldest answered release as a string or as this release",
-			options: `generation.GenerateRouter(), generation.GenerateRoutes("pkg/router", "api", generation.Auth("example.com/acme/pkg/auth/staff", generation.Password), generation.WebApp("/"), generation.OldestAnswered("1.5.0")), generation.WithRouterOutlet("portal", "portal/api", generation.Auth("example.com/acme/pkg/auth/members", generation.OIDCAzure), generation.OldestAnswered(generation.ThisRelease)),`,
+			options: `generation.GenerateRouter(), generation.GenerateRoutes("pkg/router", "api", generation.Auth("example.com/acme/pkg/auth/staff", generation.PasswordMethod()), generation.WebApp("/"), generation.OldestAnswered("1.5.0")), generation.WithRouterOutlet("portal", "portal/api", generation.Auth("example.com/acme/pkg/auth/members", generation.AzureMethod("directory")), generation.OldestAnswered(generation.ThisRelease)),`,
 		},
 		{
 			name:         "an oldest answered release that is another identifier",
@@ -108,14 +108,23 @@ func TestParseGeneratorProblems(t *testing.T) {
 			wantProblems: []string{`OldestAnswered argument true should be a release string literal ("1.5.0") or generation.ThisRelease`},
 		},
 		{
-			name:         "an auth flavor that is not one of the generation package's",
+			name:         "a sign-in method that is not one of the generation package's",
 			options:      `generation.GenerateRoutes("pkg/router", "api", generation.Auth("example.com/acme/pkg/auth/staff", generation.LDAP)),`,
-			wantProblems: []string{"Auth argument generation.LDAP should be a generation.<Flavor> identifier (Password, OIDCGoogle, or OIDCAzure)"},
+			wantProblems: []string{"Auth argument generation.LDAP should be a sign-in method declaration (generation.PasswordMethod(), GoogleMethod(name), AzureMethod(name), or WorkOSMethod(name), with .Labeled(label), .InvitedUsers() or .SyncsRoles() when chained)"},
 		},
 		{
-			name:         "an auth flavor written as a string",
+			name:         "a sign-in method written as a string",
 			options:      `generation.GenerateRoutes("pkg/router", "api", generation.Auth("example.com/acme/pkg/auth/staff", "password")),`,
-			wantProblems: []string{`Auth argument "password" should be a generation.<Flavor> identifier (Password, OIDCGoogle, or OIDCAzure)`},
+			wantProblems: []string{`Auth argument "password" should be a sign-in method declaration (generation.PasswordMethod(), GoogleMethod(name), AzureMethod(name), or WorkOSMethod(name), with .Labeled(label), .InvitedUsers() or .SyncsRoles() when chained)`},
+		},
+		{
+			name:         "a registration flag chained with an argument is not a declaration",
+			options:      `generation.GenerateRoutes("pkg/router", "api", generation.Auth("example.com/acme/pkg/auth/staff", generation.GoogleMethod("directory").SyncsRoles("x"))),`,
+			wantProblems: []string{"Auth argument generation.GoogleMethod(...).SyncsRoles(...) should be a sign-in method declaration (generation.PasswordMethod(), GoogleMethod(name), AzureMethod(name), or WorkOSMethod(name), with .Labeled(label), .InvitedUsers() or .SyncsRoles() when chained)"},
+		},
+		{
+			name:    "a method's label and flags chained in any order, and the outlet managing another auth",
+			options: `generation.GenerateRoutes("pkg/router", "api", generation.Auth("example.com/acme/pkg/auth/staff", generation.PasswordMethod(), generation.GoogleMethod("google").SyncsRoles().Labeled("Workspace")), generation.Manages("example.com/acme/pkg/auth/members")),`,
 		},
 		{
 			name:         "ts option at top level",
@@ -315,6 +324,20 @@ func TestParseGeneratorRecordsDeclarations(t *testing.T) {
 			name:   "a mounted prefix with a whole-number rate and an exponent fraction",
 			option: `generation.WithMountedRoutes("/beacons/", generation.LogSampled(1e-2), generation.TracesCapped(1)),`,
 			want:   []Arg{{Kind: ArgString, Str: "/beacons/"}, {Kind: ArgConstructor, Str: "LogSampled(0.01)"}, {Kind: ArgConstructor, Str: "TracesCapped(1)"}},
+		},
+		{
+			name:   "a method's label and flags are recorded, and Manages names the auth the outlet manages",
+			option: `generation.WithRouterOutlet("portal", "portal/api", generation.Auth("example.com/acme/pkg/auth/members", generation.GoogleMethod("directory").Labeled("Company directory").SyncsRoles(), generation.AzureMethod("entra").InvitedUsers()), generation.Manages("example.com/acme/pkg/auth/staff")),`,
+			want: []Arg{
+				{Kind: ArgString, Str: "portal"},
+				{Kind: ArgString, Str: "portal/api"},
+				{Kind: ArgCall, Call: &Call{Name: "Auth", Pos: "main.go:14", Args: []Arg{
+					{Kind: ArgString, Str: "example.com/acme/pkg/auth/members"},
+					{Kind: ArgAuthMethod, Method: &AuthMethodArg{Kind: MethodGoogle, Name: "directory", Label: "Company directory", SyncsRoles: true}},
+					{Kind: ArgAuthMethod, Method: &AuthMethodArg{Kind: MethodAzure, Name: "entra", InvitedUsers: true}},
+				}}},
+				{Kind: ArgCall, Call: &Call{Name: "Manages", Pos: "main.go:14", Args: []Arg{{Kind: ArgString, Str: "example.com/acme/pkg/auth/staff"}}}},
+			},
 		},
 		{
 			name:   "an outlet's word and setting nest in the outlet options",
@@ -579,6 +602,42 @@ func TestParseEnvTag(t *testing.T) {
 			got, ok := parseEnvTag(tt.value)
 			if ok != tt.wantOK || got != tt.want {
 				t.Errorf("parseEnvTag(%q) = (%+v, %v), want (%+v, %v)", tt.value, got, ok, tt.want, tt.wantOK)
+			}
+		})
+	}
+}
+
+// TestAuthMethodArgDeclaration writes a declaration back as a program carries it: the
+// constructor with its registration name, then the label and the flags that are set, so a
+// transition that re-renders an outlet's Auth keeps what the program declared.
+func TestAuthMethodArgDeclaration(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		method AuthMethodArg
+		want   string
+	}{
+		{name: "the password method", method: AuthMethodArg{Kind: MethodPassword, Name: PasswordRegistration}, want: `generation.PasswordMethod()`},
+		{name: "a directory under its registration name", method: AuthMethodArg{Kind: MethodGoogle, Name: "google"}, want: `generation.GoogleMethod("google")`},
+		{name: "a label", method: AuthMethodArg{Kind: MethodAzure, Name: "directory", Label: "Company directory"}, want: `generation.AzureMethod("directory").Labeled("Company directory")`},
+		{name: "the flags after the label", method: AuthMethodArg{Kind: MethodGoogle, Name: "google", Label: "Workspace", InvitedUsers: true, SyncsRoles: true}, want: `generation.GoogleMethod("google").Labeled("Workspace").InvitedUsers().SyncsRoles()`},
+		{name: "a flag alone", method: AuthMethodArg{Kind: MethodWorkOS, Name: "sso", SyncsRoles: true}, want: `generation.WorkOSMethod("sso").SyncsRoles()`},
+		{name: "a method the router does not compose", method: AuthMethodArg{Kind: "ldap", Name: "ldap"}, want: ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := tt.method.Declaration(); got != tt.want {
+				t.Errorf("Declaration() = %q, want %q", got, tt.want)
+			}
+			if got := MethodDeclaration(tt.method.Kind, tt.method.Name, tt.method.Label); tt.method.InvitedUsers || tt.method.SyncsRoles {
+				if got == tt.want {
+					t.Errorf("MethodDeclaration() = %q carries the flags, which only Declaration() writes", got)
+				}
+			} else if got != tt.want {
+				t.Errorf("MethodDeclaration() = %q, want %q", got, tt.want)
 			}
 		})
 	}

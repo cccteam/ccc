@@ -38,24 +38,27 @@ var roleFile access.RoleFile
 // Roles is the release's default roles for the staff auth.
 func Roles() access.RoleFile { return roleFile }
 
+type Session = session.Auth[session.NoCustomData, session.NoCustomData, *cloudspanner.ReadWriteTransaction]
+
 type Auth struct {
-	session *session.PasswordAuth[session.NoCustomData, session.NoCustomData]
+	session *Session
 }
 
 func New(ctx context.Context, db *cloudspanner.Client, key string, collection access.PermissionCollection) (*Auth, error) {
 	if _, err := access.New(nil, access.WithDefaultRoles(collection, Roles())); err != nil {
 		return nil, err
 	}
-	s, err := session.NewPasswordAuth[session.NoCustomData, session.NoCustomData](sessionstorage.NewSpannerPasswordAuth(db), key,
+	s, err := session.NewAuth[session.NoCustomData, session.NoCustomData](sessionstorage.NewSpannerAuth(db), key,
 		session.WithSessionTableName(TablePrefix+"Sessions"), session.WithUserTableName(TablePrefix+"SessionUsers"))
 	if err != nil {
 		return nil, err
 	}
+	session.PasswordSignIn(s)
 
 	return &Auth{session: s}, nil
 }
 
-func (a *Auth) Session() *session.PasswordAuth[session.NoCustomData, session.NoCustomData] { return a.session }
+func (a *Auth) Session() *Session { return a.session }
 `
 
 // The staff auth package in other shapes: handing its role file to nobody, exporting no
@@ -207,7 +210,8 @@ func TestRoles(t *testing.T) {
 `
 )
 
-// membersAuth is an OIDC auth package with the role-synchronization slot left to fill in.
+// membersAuth is a directory auth package with the role-synchronization slot left to
+// fill in.
 const membersAuth = `package members
 
 import (
@@ -217,7 +221,9 @@ import (
 	cloudspanner "cloud.google.com/go/spanner"
 	"github.com/cccteam/access"
 	"github.com/cccteam/session"
+	"github.com/cccteam/session/azure"
 	"github.com/cccteam/session/sessionstorage"
+	"github.com/cccteam/session/signin"
 )
 
 const (
@@ -230,24 +236,29 @@ var roleFile access.RoleFile
 
 func Roles() access.RoleFile { return roleFile }
 
+type Session = session.Auth[session.NoCustomData, session.NoCustomData, *cloudspanner.ReadWriteTransaction]
+
 type Auth struct {
-	session *session.OIDCAzure[session.NoCustomData, session.NoCustomData]
+	session *Session
 }
 
 func New(ctx context.Context, db *cloudspanner.Client, key string, collection access.PermissionCollection) (*Auth, error) {
 	if _, err := access.New(nil, access.WithDefaultRoles(collection, Roles())); err != nil {
 		return nil, err
 	}
-	s, err := session.NewOIDCAzure[session.NoCustomData, session.NoCustomData](sessionstorage.NewSpannerOIDC(db, sessionstorage.WithOIDCUsers()), %s, key, "", "", "", "",
-		session.WithSessionTableName(TablePrefix+"Sessions"), session.WithOIDCUserTableName(TablePrefix+"OIDCUsers"))
+	s, err := session.NewAuth[session.NoCustomData, session.NoCustomData](sessionstorage.NewSpannerAuth(db), key,
+		session.WithSessionTableName(TablePrefix+"Sessions"), session.WithUserTableName(TablePrefix+"SessionUsers"))
 	if err != nil {
+		return nil, err
+	}
+	if _, err := azure.SignIn(s, "directory", signin.MembersOfDirectory, &azure.Config{Tenants: azure.Tenant(""), RoleSync: %s}); err != nil {
 		return nil, err
 	}
 
 	return &Auth{session: s}, nil
 }
 
-func (a *Auth) Session() *session.OIDCAzure[session.NoCustomData, session.NoCustomData] { return a.session }
+func (a *Auth) Session() *Session { return a.session }
 `
 
 const (
@@ -424,7 +435,7 @@ func TestAuthsWired(t *testing.T) {
 		{
 			name: "an application-run directory auth assigns roles in the bootstrap",
 			files: map[string]string{
-				"pkg/auth/members/members.go": fmt.Sprintf(membersAuth, "session.DisableRoleSync()"),
+				"pkg/auth/members/members.go": fmt.Sprintf(membersAuth, "signin.DisableRoleSync()"),
 				"pkg/auth/members/roles.json": rolesJSON,
 				"pkg/config/data.go":          membersConfig,
 				"pkg/deploy/deploy.go":        staffDeploy,
@@ -437,7 +448,7 @@ func TestAuthsWired(t *testing.T) {
 		{
 			name: "a directory-run auth with a role writer in the bootstrap",
 			files: map[string]string{
-				"pkg/auth/members/members.go": fmt.Sprintf(membersAuth, "session.RoleSync(nil)"),
+				"pkg/auth/members/members.go": fmt.Sprintf(membersAuth, "signin.RoleSync(nil)"),
 				"pkg/auth/members/roles.json": rolesJSON,
 				"pkg/config/data.go":          membersConfig,
 				"pkg/deploy/deploy.go":        staffDeploy,
@@ -446,11 +457,11 @@ func TestAuthsWired(t *testing.T) {
 				"pkg/deploy/deploy_test.go":   membersValidation,
 			},
 			wantStatus: Fail, wantSummary: "1 auth wiring problem(s)",
-			wantDetails: []string{"cmd/bootstrap/main.go:16: the members auth hands role membership to the directory (session.RoleSync), but this assigns roles in its store; the directory removes them at the next login. Assign the roles in the directory, or hand membership to the application (session.DisableRoleSync)"},
+			wantDetails: []string{"cmd/bootstrap/main.go:16: the members auth's directory method hands role membership to the directory (RoleSync), but this assigns roles in its store; the directory removes them at the next sign-in. Assign the roles in the directory, or hand membership to the application (DisableRoleSync)"},
 		},
 		{
 			name:       "two auths leave their cookies at the library defaults",
-			files:      with(with(without(), "pkg/auth/members/members.go", fmt.Sprintf(membersAuth, "session.DisableRoleSync()")), "pkg/auth/members/roles.json", rolesJSON),
+			files:      with(with(without(), "pkg/auth/members/members.go", fmt.Sprintf(membersAuth, "signin.DisableRoleSync()")), "pkg/auth/members/roles.json", rolesJSON),
 			wantStatus: Fail, wantSummary: "4 auth wiring problem(s)",
 			wantDetails: []string{
 				"pkg/auth/members: nothing outside tests calls members.New; the members auth is never constructed",
@@ -465,39 +476,42 @@ func TestAuthsWired(t *testing.T) {
 			files: with(without("app/app.go"), "cmd/generate/main.go", program("pkg/resources",
 				`generation.GenerateHandlers("app"),`,
 				`generation.GenerateRouter(),`,
-				`generation.GenerateRoutes("pkg/router", "api", generation.Auth("example.com/harbor/pkg/auth/staff", generation.Password), generation.WebApp("/")),`,
+				`generation.GenerateRoutes("pkg/router", "api", generation.Auth("example.com/harbor/pkg/auth/staff", generation.PasswordMethod()), generation.WebApp("/")),`,
 			)),
 			wantStatus: Pass, wantSummary: "1 auth(s) constructed, roles handed to the engine, and bound: staff",
 		},
 		{
-			name: "the program's flavor disagrees with the package",
+			name: "the program declares a method the package does not register",
 			files: with(without(), "cmd/generate/main.go", program("pkg/resources",
 				`generation.GenerateHandlers("app"),`,
 				`generation.GenerateRouter(),`,
-				`generation.GenerateRoutes("pkg/router", "api", generation.Auth("example.com/harbor/pkg/auth/staff", generation.OIDCAzure)),`,
+				`generation.GenerateRoutes("pkg/router", "api", generation.Auth("example.com/harbor/pkg/auth/staff", generation.AzureMethod("directory"))),`,
 			)),
-			wantStatus: Fail, wantSummary: "1 auth wiring problem(s)",
-			wantDetails: []string{"cmd/generate/main.go:15: outlet default binds to the staff auth as OIDCAzure, but pkg/auth/staff constructs a password authenticator; the generated router would mount the wrong login routes"},
+			wantStatus: Fail, wantSummary: "2 auth wiring problem(s)",
+			wantDetails: []string{
+				"cmd/generate/main.go:15: outlet default declares the azure method directory on the staff auth, but pkg/auth/staff registers no such method; the generated router would mount routes to handlers the App cannot supply (register it, or drop the declaration)",
+				"pkg/auth/staff/staff.go:39: the staff auth registers the password method password, but outlet default (cmd/generate/main.go:15) does not declare it, so its login route is mounted nowhere; declare generation.PasswordMethod() on the outlet's Auth option",
+			},
 		},
 		{
 			name: "an outlet bound to a package that is no auth",
 			files: with(without(), "cmd/generate/main.go", program("pkg/resources",
 				`generation.GenerateHandlers("app"),`,
 				`generation.GenerateRouter(),`,
-				`generation.GenerateRoutes("pkg/router", "api", generation.Auth("example.com/harbor/pkg/auth/staff", generation.Password)),`,
-				`generation.WithRouterOutlet("portal", "portal/api", generation.Auth("example.com/harbor/pkg/config", generation.Password)),`,
+				`generation.GenerateRoutes("pkg/router", "api", generation.Auth("example.com/harbor/pkg/auth/staff", generation.PasswordMethod())),`,
+				`generation.WithRouterOutlet("portal", "portal/api", generation.Auth("example.com/harbor/pkg/config", generation.PasswordMethod())),`,
 			)),
 			wantStatus: Fail, wantSummary: "1 auth wiring problem(s)",
 			wantDetails: []string{`cmd/generate/main.go:16: outlet portal binds to Auth("example.com/harbor/pkg/config", ...), which is not one of the application's auth packages (example.com/harbor/pkg/auth/staff)`},
 		},
 		{
-			name: "an authenticator outside an auth package", files: map[string]string{"pkg/config/session.go": authFile(passwordDefault)},
-			wantStatus: Warn, wantSummary: "no auth package: the authenticators are constructed outside pkg/auth/<name> packages, so the auths cannot be told apart",
-			wantDetails: []string{"pkg/config/session.go:9: password"},
+			name: "an Auth outside an auth package", files: map[string]string{"pkg/config/session.go": authFile(defaultAuth)},
+			wantStatus: Warn, wantSummary: "no auth package: the Auths are constructed outside pkg/auth/<name> packages, so the auths cannot be told apart",
+			wantDetails: []string{"pkg/config/session.go:12: methods password"},
 		},
 		{
-			name: "no authenticator", files: map[string]string{"pkg/config/doc.go": "package config\n"},
-			wantStatus: Skip, wantSummary: "no session authenticator is constructed",
+			name: "no Auth", files: map[string]string{"pkg/config/doc.go": "package config\n"},
+			wantStatus: Skip, wantSummary: "no session Auth is constructed",
 		},
 	}
 	for _, tt := range tests {

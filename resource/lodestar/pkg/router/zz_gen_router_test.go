@@ -64,26 +64,39 @@ func routerChainFor(t *testing.T, url string) routerOutletChain {
 	return routerOutletChain{}
 }
 
-// routerSessionRoute is one session route: the outlet's login, callback, or session
-// handler, which answers behind the outlet's group and before its guards. suffix is the
-// path under the outlet's prefix.
+// routerSessionRoute is one session route: the outlet's method list, session, pending
+// or sign-in handler, which answers behind the outlet's group and before its session
+// guard; xsrf says it sits behind the outlet's XSRF guard, as a sign-in's POSTs do.
+// suffix is the path under the outlet's prefix.
 type routerSessionRoute struct {
 	url     string
 	suffix  string
 	method  string
 	handler string
+	xsrf    bool
 }
 
 // routerSessionRoutes lists every session outlet's routes.
 func routerSessionRoutes() []routerSessionRoute {
 	return []routerSessionRoute{
-		{url: "/console/api/user/login", suffix: "/user/login", method: http.MethodPost, handler: "Login"},
+		{url: "/console/api/user/methods", suffix: "/user/methods", method: http.MethodGet, handler: "Methods"},
 		{url: "/console/api/user/session", suffix: "/user/session", method: http.MethodGet, handler: "Authenticated"},
 		{url: "/console/api/user/session", suffix: "/user/session", method: http.MethodDelete, handler: "Logout"},
-		{url: "/portal/api/user/login", suffix: "/user/login", method: http.MethodGet, handler: "PortalLogin"},
-		{url: "/portal/api/user/callback", suffix: "/user/callback", method: http.MethodGet, handler: "PortalCallbackOIDC"},
+		{url: "/console/api/user/pending", suffix: "/user/pending", method: http.MethodGet, handler: "PendingStatus"},
+		{url: "/console/api/user/google/login", suffix: "/user/google/login", method: http.MethodGet, handler: "GoogleLogin"},
+		{url: "/console/api/user/google/callback", suffix: "/user/google/callback", method: http.MethodGet, handler: "GoogleCallback"},
+		{url: "/console/api/user/password/login", suffix: "/user/password/login", method: http.MethodPost, handler: "PasswordLogin", xsrf: true},
+		{url: "/console/api/user/password/change", suffix: "/user/password/change", method: http.MethodPost, handler: "PasswordChange", xsrf: true},
+		{url: "/console/api/user/pending/confirm", suffix: "/user/pending/confirm", method: http.MethodPost, handler: "PendingConfirmWithPassword", xsrf: true},
+		{url: "/console/api/user/pending/cancel", suffix: "/user/pending/cancel", method: http.MethodPost, handler: "PendingCancel", xsrf: true},
+		{url: "/portal/api/user/methods", suffix: "/user/methods", method: http.MethodGet, handler: "PortalMethods"},
 		{url: "/portal/api/user/session", suffix: "/user/session", method: http.MethodGet, handler: "PortalAuthenticated"},
 		{url: "/portal/api/user/session", suffix: "/user/session", method: http.MethodDelete, handler: "PortalLogout"},
+		{url: "/portal/api/user/pending", suffix: "/user/pending", method: http.MethodGet, handler: "PortalPendingStatus"},
+		{url: "/portal/api/user/directory/login", suffix: "/user/directory/login", method: http.MethodGet, handler: "PortalDirectoryLogin"},
+		{url: "/portal/api/user/directory/callback", suffix: "/user/directory/callback", method: http.MethodGet, handler: "PortalDirectoryCallback"},
+		{url: "/portal/api/user/pending/confirm", suffix: "/user/pending/confirm", method: http.MethodPost, handler: "PortalPendingConfirmWithPassword", xsrf: true},
+		{url: "/portal/api/user/pending/cancel", suffix: "/user/pending/cancel", method: http.MethodPost, handler: "PortalPendingCancel", xsrf: true},
 	}
 }
 
@@ -147,9 +160,10 @@ func TestGeneratedRouter(t *testing.T) {
 	}
 }
 
-// TestGeneratedRouterSessionRoutes proves each session outlet's login, callback, and
-// session routes answer behind the outlet's group and before its guards: a browser
-// reaches them without a validated session.
+// TestGeneratedRouterSessionRoutes proves each session outlet's method list, session,
+// pending and sign-in routes answer behind the outlet's group and before its session
+// guard, a sign-in's POSTs behind the XSRF guard alone: a browser reaches them without
+// a validated session.
 func TestGeneratedRouterSessionRoutes(t *testing.T) {
 	t.Parallel()
 
@@ -170,7 +184,11 @@ func TestGeneratedRouterSessionRoutes(t *testing.T) {
 				t.Fatalf("handler %s, expected 1 call, got: %d", tt.handler, cnt)
 			}
 
-			want := slices.Concat(routerRootChain, routerChainFor(t, tt.url).group)
+			chain := routerChainFor(t, tt.url)
+			want := slices.Concat(routerRootChain, chain.group)
+			if tt.xsrf {
+				want = append(want, chain.guards[1])
+			}
 			if !slices.Equal(rec.chain, want) {
 				t.Errorf("middleware chain = %v, want %v", rec.chain, want)
 			}
@@ -230,6 +248,68 @@ func TestGeneratedRouterNotFound(t *testing.T) {
 		foreign{url: "/droids/feature-flags/testFeatureFlagName", method: http.MethodGet},
 		foreign{url: "/droids/feature-flags/testFeatureFlagName", method: http.MethodPost},
 		foreign{url: "/droids/set-feature", method: http.MethodPost},
+		foreign{url: "/droids/crew-users", method: http.MethodGet},
+		foreign{url: "/droids/crew-users", method: http.MethodPost},
+		foreign{url: "/droids/crew-users/testCrewUserID", method: http.MethodGet},
+		foreign{url: "/droids/crew-users/testCrewUserID", method: http.MethodPost},
+		foreign{url: "/droids/crew-users", method: http.MethodPatch},
+		foreign{url: "/droids/crew-seats", method: http.MethodGet},
+		foreign{url: "/droids/crew-seats", method: http.MethodPost},
+		foreign{url: "/droids/crew-seats/testCrewSeatUser/testCrewSeatRole", method: http.MethodGet},
+		foreign{url: "/droids/crew-seats/testCrewSeatUser/testCrewSeatRole", method: http.MethodPost},
+		foreign{url: "/droids/crew-seats", method: http.MethodPatch},
+		foreign{url: "/droids/crew-roles", method: http.MethodGet},
+		foreign{url: "/droids/crew-roles", method: http.MethodPost},
+		foreign{url: "/droids/crew-roles/testCrewRoleName", method: http.MethodGet},
+		foreign{url: "/droids/crew-roles/testCrewRoleName", method: http.MethodPost},
+		foreign{url: "/droids/set-crew-user-password", method: http.MethodPost},
+		foreign{url: "/droids/unlink-crew-user-identity", method: http.MethodPost},
+		foreign{url: "/droids/sectors/testDomain/crew-sector-users", method: http.MethodGet},
+		foreign{url: "/droids/sectors/testDomain/crew-sector-users", method: http.MethodPost},
+		foreign{url: "/droids/sectors/testDomain/crew-sector-users/testCrewSectorUserID", method: http.MethodGet},
+		foreign{url: "/droids/sectors/testDomain/crew-sector-users/testCrewSectorUserID", method: http.MethodPost},
+		foreign{url: "/droids/sectors/testDomain/crew-sector-users", method: http.MethodPatch},
+		foreign{url: "/droids/sectors/testDomain/crew-sector-seats", method: http.MethodGet},
+		foreign{url: "/droids/sectors/testDomain/crew-sector-seats", method: http.MethodPost},
+		foreign{url: "/droids/sectors/testDomain/crew-sector-seats/testCrewSectorSeatUser/testCrewSectorSeatRole", method: http.MethodGet},
+		foreign{url: "/droids/sectors/testDomain/crew-sector-seats/testCrewSectorSeatUser/testCrewSectorSeatRole", method: http.MethodPost},
+		foreign{url: "/droids/sectors/testDomain/crew-sector-seats", method: http.MethodPatch},
+		foreign{url: "/droids/sectors/testDomain/crew-sector-roles", method: http.MethodGet},
+		foreign{url: "/droids/sectors/testDomain/crew-sector-roles", method: http.MethodPost},
+		foreign{url: "/droids/sectors/testDomain/crew-sector-roles/testCrewSectorRoleName", method: http.MethodGet},
+		foreign{url: "/droids/sectors/testDomain/crew-sector-roles/testCrewSectorRoleName", method: http.MethodPost},
+		foreign{url: "/droids/sectors/testDomain/set-crew-sector-user-password", method: http.MethodPost},
+		foreign{url: "/droids/sectors/testDomain/unlink-crew-sector-user-identity", method: http.MethodPost},
+		foreign{url: "/droids/members-users", method: http.MethodGet},
+		foreign{url: "/droids/members-users", method: http.MethodPost},
+		foreign{url: "/droids/members-users/testMembersUserID", method: http.MethodGet},
+		foreign{url: "/droids/members-users/testMembersUserID", method: http.MethodPost},
+		foreign{url: "/droids/members-users", method: http.MethodPatch},
+		foreign{url: "/droids/members-seats", method: http.MethodGet},
+		foreign{url: "/droids/members-seats", method: http.MethodPost},
+		foreign{url: "/droids/members-seats/testMembersSeatUser/testMembersSeatRole", method: http.MethodGet},
+		foreign{url: "/droids/members-seats/testMembersSeatUser/testMembersSeatRole", method: http.MethodPost},
+		foreign{url: "/droids/members-seats", method: http.MethodPatch},
+		foreign{url: "/droids/members-roles", method: http.MethodGet},
+		foreign{url: "/droids/members-roles", method: http.MethodPost},
+		foreign{url: "/droids/members-roles/testMembersRoleName", method: http.MethodGet},
+		foreign{url: "/droids/members-roles/testMembersRoleName", method: http.MethodPost},
+		foreign{url: "/droids/unlink-members-user-identity", method: http.MethodPost},
+		foreign{url: "/droids/sectors/testDomain/members-sector-users", method: http.MethodGet},
+		foreign{url: "/droids/sectors/testDomain/members-sector-users", method: http.MethodPost},
+		foreign{url: "/droids/sectors/testDomain/members-sector-users/testMembersSectorUserID", method: http.MethodGet},
+		foreign{url: "/droids/sectors/testDomain/members-sector-users/testMembersSectorUserID", method: http.MethodPost},
+		foreign{url: "/droids/sectors/testDomain/members-sector-users", method: http.MethodPatch},
+		foreign{url: "/droids/sectors/testDomain/members-sector-seats", method: http.MethodGet},
+		foreign{url: "/droids/sectors/testDomain/members-sector-seats", method: http.MethodPost},
+		foreign{url: "/droids/sectors/testDomain/members-sector-seats/testMembersSectorSeatUser/testMembersSectorSeatRole", method: http.MethodGet},
+		foreign{url: "/droids/sectors/testDomain/members-sector-seats/testMembersSectorSeatUser/testMembersSectorSeatRole", method: http.MethodPost},
+		foreign{url: "/droids/sectors/testDomain/members-sector-seats", method: http.MethodPatch},
+		foreign{url: "/droids/sectors/testDomain/members-sector-roles", method: http.MethodGet},
+		foreign{url: "/droids/sectors/testDomain/members-sector-roles", method: http.MethodPost},
+		foreign{url: "/droids/sectors/testDomain/members-sector-roles/testMembersSectorRoleName", method: http.MethodGet},
+		foreign{url: "/droids/sectors/testDomain/members-sector-roles/testMembersSectorRoleName", method: http.MethodPost},
+		foreign{url: "/droids/sectors/testDomain/unlink-members-sector-user-identity", method: http.MethodPost},
 		foreign{url: "/droids/clients", method: http.MethodGet},
 		foreign{url: "/droids/clients", method: http.MethodPost},
 		foreign{url: "/droids/clients/testClientID", method: http.MethodGet},
@@ -370,6 +450,38 @@ func TestGeneratedRouterNotFound(t *testing.T) {
 		foreign{url: "/droids/sectors/testDomain/scrap-ship", method: http.MethodPost},
 		foreign{url: "/droids/sectors/testDomain/stand-down-mission", method: http.MethodPost},
 		foreign{url: "/droids/sectors/testDomain/start-flight-test", method: http.MethodPost},
+		foreign{url: "/portal/api/crew-users", method: http.MethodGet},
+		foreign{url: "/portal/api/crew-users", method: http.MethodPost},
+		foreign{url: "/portal/api/crew-users/testCrewUserID", method: http.MethodGet},
+		foreign{url: "/portal/api/crew-users/testCrewUserID", method: http.MethodPost},
+		foreign{url: "/portal/api/crew-users", method: http.MethodPatch},
+		foreign{url: "/portal/api/crew-seats", method: http.MethodGet},
+		foreign{url: "/portal/api/crew-seats", method: http.MethodPost},
+		foreign{url: "/portal/api/crew-seats/testCrewSeatUser/testCrewSeatRole", method: http.MethodGet},
+		foreign{url: "/portal/api/crew-seats/testCrewSeatUser/testCrewSeatRole", method: http.MethodPost},
+		foreign{url: "/portal/api/crew-seats", method: http.MethodPatch},
+		foreign{url: "/portal/api/crew-roles", method: http.MethodGet},
+		foreign{url: "/portal/api/crew-roles", method: http.MethodPost},
+		foreign{url: "/portal/api/crew-roles/testCrewRoleName", method: http.MethodGet},
+		foreign{url: "/portal/api/crew-roles/testCrewRoleName", method: http.MethodPost},
+		foreign{url: "/portal/api/set-crew-user-password", method: http.MethodPost},
+		foreign{url: "/portal/api/unlink-crew-user-identity", method: http.MethodPost},
+		foreign{url: "/portal/api/sectors/testDomain/crew-sector-users", method: http.MethodGet},
+		foreign{url: "/portal/api/sectors/testDomain/crew-sector-users", method: http.MethodPost},
+		foreign{url: "/portal/api/sectors/testDomain/crew-sector-users/testCrewSectorUserID", method: http.MethodGet},
+		foreign{url: "/portal/api/sectors/testDomain/crew-sector-users/testCrewSectorUserID", method: http.MethodPost},
+		foreign{url: "/portal/api/sectors/testDomain/crew-sector-users", method: http.MethodPatch},
+		foreign{url: "/portal/api/sectors/testDomain/crew-sector-seats", method: http.MethodGet},
+		foreign{url: "/portal/api/sectors/testDomain/crew-sector-seats", method: http.MethodPost},
+		foreign{url: "/portal/api/sectors/testDomain/crew-sector-seats/testCrewSectorSeatUser/testCrewSectorSeatRole", method: http.MethodGet},
+		foreign{url: "/portal/api/sectors/testDomain/crew-sector-seats/testCrewSectorSeatUser/testCrewSectorSeatRole", method: http.MethodPost},
+		foreign{url: "/portal/api/sectors/testDomain/crew-sector-seats", method: http.MethodPatch},
+		foreign{url: "/portal/api/sectors/testDomain/crew-sector-roles", method: http.MethodGet},
+		foreign{url: "/portal/api/sectors/testDomain/crew-sector-roles", method: http.MethodPost},
+		foreign{url: "/portal/api/sectors/testDomain/crew-sector-roles/testCrewSectorRoleName", method: http.MethodGet},
+		foreign{url: "/portal/api/sectors/testDomain/crew-sector-roles/testCrewSectorRoleName", method: http.MethodPost},
+		foreign{url: "/portal/api/sectors/testDomain/set-crew-sector-user-password", method: http.MethodPost},
+		foreign{url: "/portal/api/sectors/testDomain/unlink-crew-sector-user-identity", method: http.MethodPost},
 		foreign{url: "/portal/api/clients", method: http.MethodGet},
 		foreign{url: "/portal/api/clients", method: http.MethodPost},
 		foreign{url: "/portal/api/clients/testClientID", method: http.MethodGet},
@@ -1083,92 +1195,133 @@ func (rec *routerCallRecorder) Middleware(name string) func(http.Handler) http.H
 	}
 }
 
-// routerPasswordStub records the password session handlers and middleware of one outlet under
-// a name prefix, so a chain says whose session a request passed. The embedded interface
-// satisfies the rest of the flavor's surface, which the router never calls.
-type routerPasswordStub struct {
-	session.PasswordAuthHandlers
+// routerDefaultSessionStub records the default outlet's session surface under a name prefix, so a
+// chain says whose session a request passed.
+type routerDefaultSessionStub struct {
 	rec    *routerCallRecorder
 	prefix string
 }
 
-func (s *routerPasswordStub) Login() http.HandlerFunc {
-	return s.rec.RecordHandlerCall(s.prefix + "Login")
+func (s *routerDefaultSessionStub) Methods(*session.MethodList) http.HandlerFunc {
+	return s.rec.RecordHandlerCall(s.prefix + "Methods")
 }
 
-func (s *routerPasswordStub) Authenticated() http.HandlerFunc {
+func (s *routerDefaultSessionStub) Authenticated() http.HandlerFunc {
 	return s.rec.RecordHandlerCall(s.prefix + "Authenticated")
 }
 
-func (s *routerPasswordStub) Logout() http.HandlerFunc {
+func (s *routerDefaultSessionStub) Logout() http.HandlerFunc {
 	return s.rec.RecordHandlerCall(s.prefix + "Logout")
 }
 
-func (s *routerPasswordStub) StartSession(next http.Handler) http.Handler {
+func (s *routerDefaultSessionStub) PendingStatus() http.HandlerFunc {
+	return s.rec.RecordHandlerCall(s.prefix + "PendingStatus")
+}
+
+func (s *routerDefaultSessionStub) GoogleLogin() http.HandlerFunc {
+	return s.rec.RecordHandlerCall(s.prefix + "GoogleLogin")
+}
+
+func (s *routerDefaultSessionStub) GoogleCallback() http.HandlerFunc {
+	return s.rec.RecordHandlerCall(s.prefix + "GoogleCallback")
+}
+
+func (s *routerDefaultSessionStub) PasswordLogin() http.HandlerFunc {
+	return s.rec.RecordHandlerCall(s.prefix + "PasswordLogin")
+}
+
+func (s *routerDefaultSessionStub) PasswordChange() http.HandlerFunc {
+	return s.rec.RecordHandlerCall(s.prefix + "PasswordChange")
+}
+
+func (s *routerDefaultSessionStub) PendingConfirmWithPassword() http.HandlerFunc {
+	return s.rec.RecordHandlerCall(s.prefix + "PendingConfirmWithPassword")
+}
+
+func (s *routerDefaultSessionStub) PendingCancel() http.HandlerFunc {
+	return s.rec.RecordHandlerCall(s.prefix + "PendingCancel")
+}
+
+func (s *routerDefaultSessionStub) StartSession(next http.Handler) http.Handler {
 	return s.rec.Middleware(s.prefix + "StartSession")(next)
 }
 
-func (s *routerPasswordStub) SetXSRFToken(next http.Handler) http.Handler {
+func (s *routerDefaultSessionStub) SetXSRFToken(next http.Handler) http.Handler {
 	return s.rec.Middleware(s.prefix + "SetXSRFToken")(next)
 }
 
-func (s *routerPasswordStub) ValidateSession(next http.Handler) http.Handler {
+func (s *routerDefaultSessionStub) ValidateSession(next http.Handler) http.Handler {
 	return s.rec.Middleware(s.prefix + "ValidateSession")(next)
 }
 
-func (s *routerPasswordStub) ValidateXSRFToken(next http.Handler) http.Handler {
+func (s *routerDefaultSessionStub) ValidateXSRFToken(next http.Handler) http.Handler {
 	return s.rec.Middleware(s.prefix + "ValidateXSRFToken")(next)
 }
 
-// routerOIDCGoogleStub records the oidc-google session handlers and middleware of one outlet under
-// a name prefix, so a chain says whose session a request passed. The embedded interface
-// satisfies the rest of the flavor's surface, which the router never calls.
-type routerOIDCGoogleStub struct {
-	session.OIDCGoogleHandlers
+// routerPortalSessionStub records the portal outlet's session surface under a name prefix, so a
+// chain says whose session a request passed.
+type routerPortalSessionStub struct {
 	rec    *routerCallRecorder
 	prefix string
 }
 
-func (s *routerOIDCGoogleStub) Login() http.HandlerFunc {
-	return s.rec.RecordHandlerCall(s.prefix + "Login")
+func (s *routerPortalSessionStub) Methods(*session.MethodList) http.HandlerFunc {
+	return s.rec.RecordHandlerCall(s.prefix + "Methods")
 }
 
-func (s *routerOIDCGoogleStub) CallbackOIDC() http.HandlerFunc {
-	return s.rec.RecordHandlerCall(s.prefix + "CallbackOIDC")
-}
-
-func (s *routerOIDCGoogleStub) Authenticated() http.HandlerFunc {
+func (s *routerPortalSessionStub) Authenticated() http.HandlerFunc {
 	return s.rec.RecordHandlerCall(s.prefix + "Authenticated")
 }
 
-func (s *routerOIDCGoogleStub) Logout() http.HandlerFunc {
+func (s *routerPortalSessionStub) Logout() http.HandlerFunc {
 	return s.rec.RecordHandlerCall(s.prefix + "Logout")
 }
 
-func (s *routerOIDCGoogleStub) StartSession(next http.Handler) http.Handler {
+func (s *routerPortalSessionStub) PendingStatus() http.HandlerFunc {
+	return s.rec.RecordHandlerCall(s.prefix + "PendingStatus")
+}
+
+func (s *routerPortalSessionStub) DirectoryLogin() http.HandlerFunc {
+	return s.rec.RecordHandlerCall(s.prefix + "DirectoryLogin")
+}
+
+func (s *routerPortalSessionStub) DirectoryCallback() http.HandlerFunc {
+	return s.rec.RecordHandlerCall(s.prefix + "DirectoryCallback")
+}
+
+func (s *routerPortalSessionStub) PendingConfirmWithPassword() http.HandlerFunc {
+	return s.rec.RecordHandlerCall(s.prefix + "PendingConfirmWithPassword")
+}
+
+func (s *routerPortalSessionStub) PendingCancel() http.HandlerFunc {
+	return s.rec.RecordHandlerCall(s.prefix + "PendingCancel")
+}
+
+func (s *routerPortalSessionStub) StartSession(next http.Handler) http.Handler {
 	return s.rec.Middleware(s.prefix + "StartSession")(next)
 }
 
-func (s *routerOIDCGoogleStub) SetXSRFToken(next http.Handler) http.Handler {
+func (s *routerPortalSessionStub) SetXSRFToken(next http.Handler) http.Handler {
 	return s.rec.Middleware(s.prefix + "SetXSRFToken")(next)
 }
 
-func (s *routerOIDCGoogleStub) ValidateSession(next http.Handler) http.Handler {
+func (s *routerPortalSessionStub) ValidateSession(next http.Handler) http.Handler {
 	return s.rec.Middleware(s.prefix + "ValidateSession")(next)
 }
 
-func (s *routerOIDCGoogleStub) ValidateXSRFToken(next http.Handler) http.Handler {
+func (s *routerPortalSessionStub) ValidateXSRFToken(next http.Handler) http.Handler {
 	return s.rec.Middleware(s.prefix + "ValidateXSRFToken")(next)
 }
 
 // routerHandlersStub satisfies Handlers for the router tests: the generated surface
-// through the routes test's stub, the session surfaces through the flavor stubs, and
-// every middleware and browser-application handler recording under its own name.
+// through the routes test's stub, the session surfaces through the outlets' session
+// stubs, and every middleware and browser-application handler recording under its own
+// name.
 type routerHandlersStub struct {
 	*generatedHandlersStub
-	*routerPasswordStub
+	*routerDefaultSessionStub
 	rec    *routerCallRecorder
-	portal *routerOIDCGoogleStub
+	portal *routerPortalSessionStub
 	// serverVersion is the release the stub reports; empty, no release, so a case that
 	// sets none is never refused.
 	serverVersion string
@@ -1204,14 +1357,14 @@ func (stubFileStore) Open(context.Context, string) (*resource.Content, error) {
 
 func newRouterHandlersStub(rec *routerCallRecorder) *routerHandlersStub {
 	return &routerHandlersStub{
-		generatedHandlersStub: newGeneratedHandlersStub(rec.RecordHandlerCall),
-		routerPasswordStub:    &routerPasswordStub{rec: rec},
-		rec:                   rec,
-		portal:                &routerOIDCGoogleStub{rec: rec, prefix: "Portal"},
+		generatedHandlersStub:    newGeneratedHandlersStub(rec.RecordHandlerCall),
+		routerDefaultSessionStub: &routerDefaultSessionStub{rec: rec},
+		rec:                      rec,
+		portal:                   &routerPortalSessionStub{rec: rec, prefix: "Portal"},
 	}
 }
 
-func (s *routerHandlersStub) Portal() session.OIDCGoogleHandlers {
+func (s *routerHandlersStub) Portal() PortalSession {
 	return s.portal
 }
 

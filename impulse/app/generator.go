@@ -78,7 +78,27 @@ const (
 	// Str holds the call without the package qualifier, as
 	// LogSampled(0.1).MinSeverity(logging.Warning).
 	ArgConstructor
+	// ArgAuthMethod is a sign-in method declaration, a call to one of the generation
+	// package's method constructors with its label when one is chained; Method holds it.
+	ArgAuthMethod
 )
+
+// AuthMethodArg is a sign-in method as an outlet's Auth option declares it.
+type AuthMethodArg struct {
+	// Kind is the method: password, google, azure, or workos.
+	Kind string
+	// Name is the registration name; password for the password method.
+	Name string
+	// Label is the label the declaration chains (.Labeled), or empty for the generation
+	// package's default.
+	Label string
+	// InvitedUsers is set when the declaration chains .InvitedUsers(): the directory
+	// admits only users an operator created.
+	InvitedUsers bool
+	// SyncsRoles is set when the declaration chains .SyncsRoles(): the directory's groups
+	// write the user's roles at every sign-in.
+	SyncsRoles bool
+}
 
 // Arg is one literal argument of an option call.
 type Arg struct {
@@ -93,6 +113,8 @@ type Arg struct {
 	Map map[string]string
 	// Call is set for ArgCall: a nested option such as generation.GenerateEnums().
 	Call *Call
+	// Method is set for ArgAuthMethod: the sign-in method declared.
+	Method *AuthMethodArg
 	// Text is the source text of an argument the tool cannot interpret.
 	Text string
 }
@@ -416,11 +438,9 @@ func (r *reader) readArg(expr ast.Expr, option string, expect paramKind) Arg {
 		if _, ok := expr.(*ast.CompositeLit); ok {
 			return Arg{Kind: ArgComposite, Text: exprText(expr)}
 		}
-	case paramFlavor:
-		if sel, ok := expr.(*ast.SelectorExpr); ok && isQualified(expr, r.pkg, sel.Sel.Name) {
-			if _, known := authFlavorIdents[sel.Sel.Name]; known {
-				return Arg{Kind: ArgIdent, Str: sel.Sel.Name}
-			}
+	case paramAuthMethod:
+		if m, ok := r.readAuthMethod(expr); ok {
+			return Arg{Kind: ArgAuthMethod, Method: m}
 		}
 		r.problemf(expr, "%s argument %s should be a %s", option, exprText(expr), expect)
 
@@ -766,5 +786,88 @@ func exprText(expr ast.Expr) string {
 		return "map[" + exprText(e.Key) + "]" + exprText(e.Value)
 	default:
 		return fmt.Sprintf("%T", expr)
+	}
+}
+
+// readAuthMethod reads a sign-in method declaration: generation.PasswordMethod(), or
+// generation.GoogleMethod("name") and its kin with a string literal name, chained with
+// .Labeled("label"), .InvitedUsers() and .SyncsRoles() or not. Anything else is not a
+// declaration.
+func (r *reader) readAuthMethod(expr ast.Expr) (*AuthMethodArg, bool) {
+	call, label, flags, ok := splitChain(expr)
+	if !ok {
+		return nil, false
+	}
+	ce, ok := call.(*ast.CallExpr)
+	if !ok {
+		return nil, false
+	}
+	sel, ok := ce.Fun.(*ast.SelectorExpr)
+	if !ok || !isQualified(ce.Fun, r.pkg, sel.Sel.Name) {
+		return nil, false
+	}
+	kind, known := authMethodConstructors[sel.Sel.Name]
+	if !known {
+		return nil, false
+	}
+	m := &AuthMethodArg{Kind: kind, Name: PasswordRegistration}
+	switch {
+	case kind == MethodPassword && len(ce.Args) == 0:
+	case kind != MethodPassword && len(ce.Args) == 1:
+		name, ok := stringLit(ce.Args[0])
+		if !ok {
+			return nil, false
+		}
+		m.Name = name
+	default:
+		return nil, false
+	}
+	if label != nil {
+		if len(label.Args) != 1 {
+			return nil, false
+		}
+		text, ok := stringLit(label.Args[0])
+		if !ok {
+			return nil, false
+		}
+		m.Label = text
+	}
+	m.InvitedUsers = flags[invitedUsersMethod]
+	m.SyncsRoles = flags[syncsRolesMethod]
+
+	return m, true
+}
+
+// splitChain separates the calls chained onto a method declaration from the declaration:
+// generation.GoogleMethod("x").Labeled("y").SyncsRoles() returns the GoogleMethod call,
+// the Labeled call and the flags chained (InvitedUsers, SyncsRoles), in any order. An
+// expression with nothing chained returns itself; a flag chained with arguments is not a
+// declaration.
+func splitChain(expr ast.Expr) (declaration ast.Expr, label *ast.CallExpr, flags map[string]bool, ok bool) {
+	flags = map[string]bool{}
+	for {
+		ce, isCall := expr.(*ast.CallExpr)
+		if !isCall {
+			return expr, label, flags, true
+		}
+		sel, isSel := ce.Fun.(*ast.SelectorExpr)
+		if !isSel {
+			return expr, label, flags, true
+		}
+		if _, chained := sel.X.(*ast.CallExpr); !chained {
+			return expr, label, flags, true
+		}
+		switch sel.Sel.Name {
+		case labeledMethod:
+			label = ce
+		case invitedUsersMethod, syncsRolesMethod:
+			if len(ce.Args) != 0 {
+				return nil, nil, nil, false
+			}
+			flags[sel.Sel.Name] = true
+		default:
+			return expr, label, flags, true
+		}
+		expr = sel.X
 	}
 }

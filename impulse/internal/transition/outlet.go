@@ -40,6 +40,9 @@ type Outlet struct {
 // ReferenceCandidate is the embedded skeleton with both outlet kinds wired.
 const ReferenceCandidate = "outlets"
 
+// readmeFile is the application's README, prose a transition edits where it names routes.
+const readmeFile = "README.md"
+
 var outletNameRE = regexp.MustCompile(`^[a-z][A-Za-z0-9]*$`)
 
 // Command is the impulse command line for the transition.
@@ -90,15 +93,15 @@ func (o Outlet) Validate(a *app.App) error {
 	return nil
 }
 
-// binding resolves the auth a session outlet binds to: the package --auth names, in the
-// flavor its constructor declares, or the auth the default outlet declares when none is
+// binding resolves the auth a session outlet binds to: the package --auth names, with
+// the methods its Auth registers, or the auth the default outlet declares when none is
 // named. Under a hand-written router that declares no Auth there is nothing to bind to in
 // the program, and both results are empty.
 func (o Outlet) binding(a *app.App, site *app.Site) (name string, auth *app.OutletAuth, err error) {
 	if o.Auth == "" {
 		if site.Default.Auth == nil {
 			if site.GeneratedRouter {
-				return "", nil, errors.Newf("%s: the default outlet declares no Auth to bind the %s outlet to; under GenerateRouter the console's GenerateRoutes carries Auth(<package>, <flavor>), or --auth names the auth", site.Generator.File, o.Name)
+				return "", nil, errors.Newf("%s: the default outlet declares no Auth to bind the %s outlet to; under GenerateRouter the console's GenerateRoutes carries Auth(<package>, <methods>), or --auth names the auth", site.Generator.File, o.Name)
 			}
 
 			return "", nil, nil
@@ -111,20 +114,27 @@ func (o Outlet) binding(a *app.App, site *app.Site) (name string, auth *app.Outl
 		if p.Name != o.Auth {
 			continue
 		}
-		flavor := ""
+		var registered *app.Auth
 		for j := range a.Auths {
 			if path.Dir(a.Auths[j].File) == p.Dir {
-				flavor = a.Auths[j].Flavor
+				registered = &a.Auths[j]
 
 				break
 			}
 		}
-		ident := app.FlavorIdent(flavor)
-		if ident == "" {
-			return "", nil, errors.Newf("%s: the %s auth constructs a %s authenticator, which the generated router does not compose; an outlet binds to a password, oidc-azure, or oidc-google auth", p.Dir, o.Auth, flavor)
+		if registered == nil || len(registered.Methods) == 0 {
+			return "", nil, errors.Newf("%s: the %s auth registers no sign-in method the scan reads (session.PasswordSignIn, azure.SignIn, google.SignIn), so an outlet cannot declare its methods", p.Dir, o.Auth)
+		}
+		auth := &app.OutletAuth{ImportPath: p.Path}
+		for j := range registered.Methods {
+			m := &registered.Methods[j]
+			if app.MethodConstructor(m.Kind) == "" {
+				return "", nil, errors.Newf("%s:%d: the %s auth registers a %s method, which the generated router does not compose", m.File, m.Line, o.Auth, m.Kind)
+			}
+			auth.Methods = append(auth.Methods, app.AuthMethodArg{Kind: m.Kind, Name: m.Name})
 		}
 
-		return p.Name, &app.OutletAuth{ImportPath: p.Path, Flavor: ident}, nil
+		return p.Name, auth, nil
 	}
 
 	return "", nil, errors.Newf("no auth package pkg/auth/%s to bind the %s outlet to; the auths are %s (impulse add auth adds one)", o.Auth, o.Name, authNames(a))
@@ -226,7 +236,7 @@ func (o Outlet) editProgram(a *app.App, site *app.Site, auth *app.OutletAuth, ch
 	summary := option
 	switch {
 	case site.GeneratedRouter && o.Sessions:
-		authText := fmt.Sprintf("generation.Auth(%q, generation.%s)", auth.ImportPath, auth.Flavor)
+		authText := authDeclaration(auth)
 		webApp := fmt.Sprintf("generation.WebApp(%q)", "/"+o.Name)
 		option = fmt.Sprintf("generation.WithRouterOutlet(%q, %q,\n\t\t\t%s,\n\t\t\t%s,\n\t\t)", o.Name, o.Prefix, authText, webApp)
 		summary = fmt.Sprintf("generation.WithRouterOutlet(%q, %q, %s, %s)", o.Name, o.Prefix, authText, webApp)
@@ -949,4 +959,16 @@ func readFile(a *app.App, rel string) (data []byte, mode os.FileMode, err error)
 	}
 
 	return data, info.Mode().Perm(), nil
+}
+
+// authDeclaration writes an outlet's Auth option as a generator program carries it: the
+// auth's import path and one declaration per method.
+func authDeclaration(auth *app.OutletAuth) string {
+	parts := make([]string, 0, 1+len(auth.Methods))
+	parts = append(parts, fmt.Sprintf("%q", auth.ImportPath))
+	for i := range auth.Methods {
+		parts = append(parts, auth.Methods[i].Declaration())
+	}
+
+	return "generation.Auth(" + strings.Join(parts, ", ") + ")"
 }

@@ -2,6 +2,7 @@ package transition
 
 import (
 	"go/format"
+	"io/fs"
 	"regexp"
 	"strings"
 	"testing"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/cccteam/ccc/cloud"
 	"github.com/cccteam/ccc/impulse/app"
+	"github.com/cccteam/ccc/impulse/internal/skeleton"
 	cloudrundeclaration "github.com/cccteam/ccc/resource/jobs/cloudrun/declaration"
 )
 
@@ -52,6 +54,22 @@ const skeletonModule = "github.com/cccteam/ccc/impulse/internal/skeleton/_candid
 // skeletonFiles stages the base skeleton's files the files transition edits, under
 // beacon's module path: the data and site levels, the app, the bootstrap, the two test
 // configurers, and the environment files.
+// skeletonFile reads one file of the base skeleton.
+func skeletonFile(t *testing.T, rel string) string {
+	t.Helper()
+
+	sub, err := skeleton.FS(skeleton.Base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := fs.ReadFile(sub, rel)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return string(data)
+}
+
 func skeletonFiles(t *testing.T) map[string]string {
 	t.Helper()
 

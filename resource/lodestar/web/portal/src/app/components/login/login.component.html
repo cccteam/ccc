@@ -6,10 +6,7 @@
     </mat-card-header>
     <mat-card-content>
       <p>Sign in with your company account. The directory says who you are and which groups you hold; the groups are your roles here.</p>
-      <button mat-flat-button color="primary" class="full-width" (click)="login()">Sign in through your company directory</button>
-      @if (message()) {
-        <p class="error">{{ message() }}</p>
-      }
+      <ccc-login-methods home="/tracker" [labels]="labels" (signedIn)="go($event)" />
       <div class="manifest">
         @for (persona of manifest; track persona.login) {
           <div class="persona">
@@ -22,7 +19,9 @@
       <p class="hint">
         Development: the server runs with the session library's <code>skipAuth</code> tag, which simulates the
         directory, so every login is <code>APP_USERNAME</code> from <code>.envrc</code> (<code>client</code>) in the groups
-        <code>APP_ROLES</code> names. No Google tenant is contacted.
+        <code>APP_ROLES</code> names. No Google tenant is contacted. The button is the library's login component,
+        rendered from what the server lists at <code>user/methods</code>; the page names no path of its own, only its
+        own words for the directory.
       </p>
     </mat-card-content>
   </mat-card>

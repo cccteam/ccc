@@ -45,9 +45,6 @@ func (nf *newFlags) bind(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&nf.authName, "auth", "", "the first auth's name: "+names.Guidance+" (asked when not given; no default)")
 	cmd.Flags().StringVar(&nf.devRoot, "dev-root", "", "directory of cccteam checkouts to build against instead of the pins")
 	cmd.Flags().BoolVar(&nf.skipGit, "skip-git", false, "do not initialize a git repository and make the first commit")
-	cmd.Flags().BoolVar(&nf.oidcAzure, "oidc-azure", false, "the first auth's people sign in through the organization's Azure directory")
-	cmd.Flags().BoolVar(&nf.oidcGoogle, "oidc-google", false, "the first auth's people sign in through the organization's Google Workspace directory")
-	cmd.Flags().StringVar(&nf.authority, "authority", "", "who owns role membership for a directory-flavored first auth: directory (role claims synchronized at every login) or application (roles assigned in the application); asked when not given")
 	cmd.Flags().BoolVar(&nf.opts.tenancy, "tenancy", false, "compose the tenancy option: tenant-scoped resources under a tenant segment, roles per tenant")
 	cmd.Flags().StringVar(&nf.opts.tenantTable, "tenant-table", "Tenants", "the tenant-record table when --tenancy is given, PascalCase and plural")
 	cmd.Flags().StringArrayVar(&nf.opts.outlets, "outlet", nil, "compose a session outlet, <name>=<prefix> (repeatable), such as portal=portal/api")
@@ -103,11 +100,8 @@ and the sites last, and end in one check and one handoff brief carrying every ob
 so the agent wires the whole shape in one sitting. The first commit is the base alone, so the composed options are
 one reviewable diff on top of it.
 
-The first auth signs in with a password unless --oidc-azure or --oidc-google says its people
-sign in through the organization's directory; --authority then says who owns role
-membership (directory or application) and is asked when not given, as for impulse add auth.
-The flavor is composed the same way, first, and the auth is born in the directory's shape:
-its session migrations are written in that shape rather than moved to it later.
+The first auth signs in with a password; a directory method joins it afterwards with
+impulse add method, registered beside the password method on the same Auth.
 
 The application's go.mod pins its impulse tool (the tool directive CI's go tool impulse
 check runs) at the impulse running new: a release's version, or the pseudo-version of the
@@ -136,10 +130,6 @@ refuses it before writing anything. With --dev-root the template's pin stands.`,
 				return err
 			}
 			nf.opts.authName = nf.authName
-			nf.opts.flavor, nf.opts.authority, err = firstAuthFlavor(cmd, nf.oidcAzure, nf.oidcGoogle, nf.authority)
-			if err != nil {
-				return err
-			}
 			appName, err := appName(nf.name, nf.modulePath)
 			if err != nil {
 				return err
@@ -149,7 +139,7 @@ refuses it before writing anything. With --dev-root the template's pin stands.`,
 				return err
 			}
 			if len(transitions) > 0 && nf.skipGit {
-				return errors.New("composed options need the first commit to build on; drop --skip-git, or add them afterwards with impulse add (impulse swap auth for the flavor)")
+				return errors.New("composed options need the first commit to build on; drop --skip-git, or add them afterwards with impulse add")
 			}
 
 			dir := args[0]
@@ -334,39 +324,10 @@ func composeOptions(cmd *cobra.Command, f *transitionFlags, dir string, opts *co
 	return runTransitions(cmd, f, repo, transitions, opts.reference())
 }
 
-// firstAuthFlavor resolves the first auth's directory flavor from the flags: at most one
-// flavor, and for a flavor the authority, asked when not given, as impulse add auth asks
-// it. Without a flavor the base's password auth stands and --authority has no meaning.
-func firstAuthFlavor(cmd *cobra.Command, oidcAzure, oidcGoogle bool, authority string) (flavor, resolvedAuthority string, err error) {
-	switch {
-	case oidcAzure && oidcGoogle:
-		return "", "", errors.New("--oidc-azure and --oidc-google are two flavors; pick one")
-	case oidcAzure:
-		flavor = transition_.FlavorOIDCAzure
-	case oidcGoogle:
-		flavor = transition_.FlavorOIDCGoogle
-	case authority != "":
-		return "", "", errors.New("--authority goes with --oidc-azure or --oidc-google; a password auth's role membership is the application's")
-	default:
-		return "", "", nil
-	}
-	if authority == "" {
-		authority, err = askAuthority(cmd)
-		if err != nil {
-			return "", "", err
-		}
-	}
-
-	return flavor, authority, nil
-}
-
 // composedOptions are the options impulse new composes into the creation.
 type composedOptions struct {
-	// authName, flavor, and authority describe the first auth when a directory flavor is
-	// composed; flavor empty means the base's password auth stands.
+	// authName names the first auth, the base's password auth.
 	authName    string
-	flavor      string
-	authority   string
 	tenancy     bool
 	tenantTable string
 	outlets     []string
@@ -376,15 +337,11 @@ type composedOptions struct {
 }
 
 // transitions returns the transitions the options ask for, in the order add would run
-// them: the first auth's flavor first, since it swaps the base's handler seams where they
-// stand, then tenancy, since an outlet's members may be tenant-scoped, then the outlets,
+// them: tenancy first, since an outlet's members may be tenant-scoped, then the outlets,
 // then the file store, which is wired into the flat tree, then the sites, since promotion
 // moves what the others laid in.
 func (o *composedOptions) transitions() ([]transition, error) {
 	var ts []transition
-	if o.flavor != "" {
-		ts = append(ts, transition_.AuthFlavor{Name: o.authName, Flavor: o.flavor, Authority: o.authority, Fresh: true})
-	}
 	if o.tenancy {
 		ts = append(ts, transition_.Tenancy{Table: o.tenantTable})
 	}
@@ -424,9 +381,6 @@ func (o *composedOptions) transitions() ([]transition, error) {
 // describe names the composed options for the report.
 func (o *composedOptions) describe() string {
 	var parts []string
-	if o.flavor != "" {
-		parts = append(parts, "the "+o.flavor+" flavor for the "+o.authName+" auth, role membership the "+o.authority+"'s")
-	}
 	if o.tenancy {
 		parts = append(parts, "tenancy ("+o.tenantTable+")")
 	}
@@ -452,7 +406,7 @@ func (o *composedOptions) reference() string {
 	switch {
 	case len(o.sites) > 1:
 		return transition_.SitesReference
-	case len(o.outlets)+len(o.apiOutlets) > 0 || o.flavor != "":
+	case len(o.outlets)+len(o.apiOutlets) > 0:
 		// The outlets candidate also holds the reference directory auth.
 		return transition_.ReferenceCandidate
 	default:

@@ -197,6 +197,10 @@ type routerFileData struct {
 	RoutesMap              map[string][]*generatedRoute
 	ConstResources         []*resourceInfo
 	ConstComputedResources []*computedResource
+	// UserRouteParams are the read parameters of the user-management surfaces' routes
+	// (crewUserID, crewSeatUser, crewSeatRole, crewRoleName and the tenant partition's),
+	// which the test stubs record beside the resources' key parameters.
+	UserRouteParams        []string
 	RouterTestRoutes       []*generatedRoute
 	HasConsolidatedHandler bool
 	// HasDomainScoped emits the Domain route-parameter const, which generated
@@ -598,6 +602,9 @@ type tsResourcesData struct {
 	// FeatureFlags emits the library's FeatureFlags resource: its interface, its
 	// metadata and its scope, which every application that generates routes serves.
 	FeatureFlags bool
+	// UserResources are the user-management surfaces' resources the target outlet
+	// serves: their interfaces, metadata and scopes.
+	UserResources []*tsUserResource
 }
 
 type tsMethodsData struct {
@@ -607,6 +614,9 @@ type tsMethodsData struct {
 	// FeatureFlags emits the library's SetFeature method: its body and result
 	// interfaces and its metadata.
 	FeatureFlags bool
+	// UserMethods are the user-management surfaces' methods the target outlet serves:
+	// their body interfaces and metadata.
+	UserMethods []*tsUserMethod
 }
 
 type tsEnumsData struct {
@@ -675,6 +685,40 @@ type tsAPIData struct {
 	// Features are the declared flags in constant order: the Feature union and the
 	// Feature constants the client file declares. Empty, neither is declared.
 	Features []resource.FeatureDeclaration
+	// UserSurfaces are the user-management surfaces the outlet serves, in the
+	// descriptor's userSurfaces block: what a user-management page configures
+	// itself from. Empty, the block is left out.
+	UserSurfaces []*tsAPISurface
+}
+
+// tsAPISurface is one Auth's user-management surface as the descriptor carries it.
+type tsAPISurface struct {
+	Auth          string
+	Label         string
+	Password      bool
+	Registrations []*tsAPIRegistration
+	Partitions    []*tsAPIPartition
+}
+
+// tsAPIRegistration is one external registration of the Auth in the descriptor.
+type tsAPIRegistration struct {
+	Name       string
+	Kind       string
+	Label      string
+	Invited    bool
+	SyncsRoles bool
+}
+
+// tsAPIPartition is one partition of a surface in the descriptor: its scope, the
+// three resources' names and the two methods' names, each method empty where the
+// Auth's methods give none.
+type tsAPIPartition struct {
+	Scope          string
+	Users          string
+	Seats          string
+	Roles          string
+	SetPassword    string
+	UnlinkIdentity string
 }
 
 // HasUpload reports whether any method on this outlet is an @upload, so the client

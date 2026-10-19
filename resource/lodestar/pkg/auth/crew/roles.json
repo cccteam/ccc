@@ -120,6 +120,64 @@
                 "totalFee",
                 "topFee"
               ]
+            },
+            {
+              "resource": "CrewUsers",
+              "fields": [
+                "username",
+                "disabled",
+                "hasPassword",
+                "passwordChangeRequired",
+                "createdAt",
+                "lastSignInAt",
+                "organization",
+                "identities",
+                "roles",
+                "everywhereRoles",
+                "rolesSynced"
+              ]
+            },
+            {
+              "resource": "CrewSeats",
+              "fields": [
+                "username",
+                "everyDomain"
+              ]
+            },
+            {
+              "resource": "CrewRoles",
+              "fields": [
+                "kind"
+              ]
+            },
+            {
+              "resource": "MembersUsers",
+              "fields": [
+                "username",
+                "disabled",
+                "hasPassword",
+                "passwordChangeRequired",
+                "createdAt",
+                "lastSignInAt",
+                "organization",
+                "identities",
+                "roles",
+                "everywhereRoles",
+                "rolesSynced"
+              ]
+            },
+            {
+              "resource": "MembersSeats",
+              "fields": [
+                "username",
+                "everyDomain"
+              ]
+            },
+            {
+              "resource": "MembersRoles",
+              "fields": [
+                "kind"
+              ]
             }
           ],
           "Read": [
@@ -139,6 +197,64 @@
                 "userId",
                 "clientId",
                 "displayName"
+              ]
+            },
+            {
+              "resource": "CrewUsers",
+              "fields": [
+                "username",
+                "disabled",
+                "hasPassword",
+                "passwordChangeRequired",
+                "createdAt",
+                "lastSignInAt",
+                "organization",
+                "identities",
+                "roles",
+                "everywhereRoles",
+                "rolesSynced"
+              ]
+            },
+            {
+              "resource": "CrewSeats",
+              "fields": [
+                "username",
+                "everyDomain"
+              ]
+            },
+            {
+              "resource": "CrewRoles",
+              "fields": [
+                "kind"
+              ]
+            },
+            {
+              "resource": "MembersUsers",
+              "fields": [
+                "username",
+                "disabled",
+                "hasPassword",
+                "passwordChangeRequired",
+                "createdAt",
+                "lastSignInAt",
+                "organization",
+                "identities",
+                "roles",
+                "everywhereRoles",
+                "rolesSynced"
+              ]
+            },
+            {
+              "resource": "MembersSeats",
+              "fields": [
+                "username",
+                "everyDomain"
+              ]
+            },
+            {
+              "resource": "MembersRoles",
+              "fields": [
+                "kind"
               ]
             }
           ],
@@ -190,6 +306,28 @@
                 "clientId",
                 "displayName"
               ]
+            },
+            {
+              "resource": "CrewUsers",
+              "fields": [
+                "username",
+                "password",
+                "disabled"
+              ]
+            },
+            {
+              "resource": "CrewSeats",
+              "fields": [
+                "user",
+                "role"
+              ]
+            },
+            {
+              "resource": "MembersSeats",
+              "fields": [
+                "user",
+                "role"
+              ]
             }
           ],
           "Update": [
@@ -235,6 +373,20 @@
                 "clientId",
                 "displayName"
               ]
+            },
+            {
+              "resource": "CrewUsers",
+              "fields": [
+                "username",
+                "disabled"
+              ]
+            },
+            {
+              "resource": "MembersUsers",
+              "fields": [
+                "username",
+                "disabled"
+              ]
             }
           ],
           "Delete": [
@@ -252,11 +404,32 @@
             },
             {
               "resource": "ClientContacts"
+            },
+            {
+              "resource": "CrewUsers"
+            },
+            {
+              "resource": "CrewSeats"
+            },
+            {
+              "resource": "MembersUsers"
+            },
+            {
+              "resource": "MembersSeats"
             }
           ],
           "Execute": [
             {
               "resource": "IssueBulletin"
+            },
+            {
+              "resource": "SetCrewUserPassword"
+            },
+            {
+              "resource": "UnlinkCrewUserIdentity"
+            },
+            {
+              "resource": "UnlinkMembersUserIdentity"
             }
           ]
         }
@@ -638,7 +811,30 @@
               ]
             },
             {
-              "resource": "RoleMemberships"
+              "resource": "CrewSectorUsers",
+              "fields": [
+                "username",
+                "disabled",
+                "hasPassword",
+                "passwordChangeRequired",
+                "createdAt",
+                "lastSignInAt",
+                "organization",
+                "identities",
+                "roles",
+                "everywhereRoles",
+                "rolesSynced"
+              ]
+            },
+            {
+              "resource": "CrewSectorSeats",
+              "fields": [
+                "username",
+                "everywhere"
+              ]
+            },
+            {
+              "resource": "CrewSectorRoles"
             }
           ],
           "Read": [
@@ -797,6 +993,32 @@
                 "recordedAt",
                 "recent"
               ]
+            },
+            {
+              "resource": "CrewSectorUsers",
+              "fields": [
+                "username",
+                "disabled",
+                "hasPassword",
+                "passwordChangeRequired",
+                "createdAt",
+                "lastSignInAt",
+                "organization",
+                "identities",
+                "roles",
+                "everywhereRoles",
+                "rolesSynced"
+              ]
+            },
+            {
+              "resource": "CrewSectorSeats",
+              "fields": [
+                "username",
+                "everywhere"
+              ]
+            },
+            {
+              "resource": "CrewSectorRoles"
             }
           ],
           "Create": [
@@ -904,7 +1126,21 @@
               ]
             },
             {
-              "resource": "RoleMemberships"
+              "resource": "CrewSectorUsers",
+              "fields": [
+                "username",
+                "password",
+                "disabled",
+                "role"
+              ]
+            },
+            {
+              "resource": "CrewSectorSeats",
+              "fields": [
+                "user",
+                "role"
+              ],
+              "condition": "new.role != 'SectorMarshal'"
             }
           ],
           "Update": [
@@ -1003,6 +1239,13 @@
                 "transcript",
                 "position"
               ]
+            },
+            {
+              "resource": "CrewSectorUsers",
+              "fields": [
+                "username",
+                "disabled"
+              ]
             }
           ],
           "Delete": [
@@ -1043,7 +1286,11 @@
               "resource": "DistressCalls"
             },
             {
-              "resource": "RoleMemberships"
+              "resource": "CrewSectorUsers"
+            },
+            {
+              "resource": "CrewSectorSeats",
+              "condition": "role != 'SectorMarshal'"
             }
           ],
           "Execute": [
@@ -1097,6 +1344,12 @@
             },
             {
               "resource": "CompileBriefing"
+            },
+            {
+              "resource": "SetCrewSectorUserPassword"
+            },
+            {
+              "resource": "UnlinkCrewSectorUserIdentity"
             }
           ]
         }

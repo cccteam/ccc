@@ -31,6 +31,7 @@ import (
 	"github.com/cccteam/ccc/resource/lodestar/pkg/resources"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/router"
 	"github.com/cccteam/ccc/resource/scheduled"
+	"github.com/cccteam/ccc/resource/sessionusers"
 	initiator "github.com/cccteam/db-initiator"
 	"github.com/cccteam/httpio"
 	"github.com/cccteam/logger"
@@ -52,6 +53,12 @@ const (
 	consoleAPI = "/console/api"
 	portalAPI  = "/portal/api"
 
+	// The browser applications' login pages, where a refused or waiting redirect
+	// sign-in returns with its code or step in the query, and the page a console
+	// login returns to.
+	consoleLogin = "/console/login"
+	consolePage  = "/console/dashboard"
+
 	// The droids outlet's API key in the suites.
 	droidsAPIKey = "integration-droids-key"
 
@@ -61,7 +68,11 @@ const (
 	// The portal's client: a member of the members auth who signs in through the
 	// simulated directory; its roles are the groups the directory names (APP_ROLES).
 	clientUser = "client"
-	droidUser  = "droid-r7"
+	// The console's Google sign-in: a crew member the fleet's directory admits who is on
+	// no manifest, so the password personas and the directory's people stay apart;
+	// its roles are the groups the simulated directory names (APP_GOOGLE_ROLES).
+	navigatorUser = "navigator"
+	droidUser     = "droid-r7"
 
 	// The served world's idle session timeout, the application's default. A test signs in
 	// in its body and reads in parallel subtests, which start when a slot frees; on a loaded
@@ -225,8 +236,13 @@ type testConfigurer struct {
 	membersAuth   *members.Auth
 	stores        *testStores
 	live          live.Service
-	management    access.Handlers
-	tenants       *resource.TenantRoster
+	// crewUsers and membersUsers are the two auths' user-management surfaces: the
+	// served stack's over the real sessions and engines, the policy-signal suite's over
+	// an in-memory account store and the instance's engine; nil builds one over empty
+	// in-memory stores, for the suites that never drive the user routes.
+	crewUsers    *resource.UserSurface[router.CrewAuth]
+	membersUsers *resource.UserSurface[router.MembersAuth]
+	tenants      *resource.TenantRoster
 	// version is the release the served stack reports as its own (AppVersion); empty
 	// is dev, under which the version check answers every release.
 	version string
@@ -357,10 +373,27 @@ func (c *testConfigurer) Live() live.Service {
 // carries no security headers.
 func (c *testConfigurer) LiveOrigins() []string { return nil }
 
-// UserManagement is the crew engine's user-management handlers where a suite mounts the
-// role-membership routes (the served stack and the policy-signal suite); nil elsewhere,
-// since the test router never mounts them.
-func (c *testConfigurer) UserManagement() access.Handlers { return c.management }
+// CrewUserSurface is the crew auth's user-management surface the suite supplied, or one
+// over empty in-memory stores.
+func (c *testConfigurer) CrewUserSurface() *resource.UserSurface[router.CrewAuth] {
+	if c.crewUsers != nil {
+		return c.crewUsers
+	}
+	store := resource.NewMemUserStore()
+
+	return router.NewCrewUserSurface(store, store)
+}
+
+// MembersUserSurface is the members auth's surface the suite supplied, or one over empty
+// in-memory stores.
+func (c *testConfigurer) MembersUserSurface() *resource.UserSurface[router.MembersAuth] {
+	if c.membersUsers != nil {
+		return c.membersUsers
+	}
+	store := resource.NewMemUserStore()
+
+	return router.NewMembersUserSurface(store, store)
+}
 
 // newTestApp builds the application with the given permission table backing every
 // request, served through the generated test router.
@@ -695,11 +728,24 @@ func newServedAt(ctx context.Context, t *testing.T, version string) *served {
 	// policy kind through it, and the App subscribes and publishes through it.
 	fake := live.NewFake()
 	policySignal := auth.PolicySignal(fake)
-	crewAuth, err := crew.New(ctx, db.Client, crew.Settings{
+
+	// The server is allocated before the auths so each directory's callback can name
+	// the server's own address.
+	server := httptest.NewUnstartedServer(nil)
+	t.Cleanup(server.Close)
+
+	crewAuth, err := crew.New(ctx, db.Client, &crew.Settings{
 		CookieKey:      testCookieKey,
 		SessionTimeout: servedSessionTimeout,
+		LoginURL:       consoleLogin,
 		Collection:     router.Collection(),
-		ChangeSignal:   policySignal,
+		Directory: auth.Directory{
+			RedirectURL:  "http://" + server.Listener.Addr().String() + consoleAPI + "/user/google/callback",
+			Connection:   "example",
+			HostedDomain: "example.com",
+			GroupPrefix:  "crew-",
+		},
+		ChangeSignal: policySignal,
 	})
 	if err != nil {
 		t.Fatalf("crew.New() error = %v", err)
@@ -710,18 +756,14 @@ func newServedAt(ctx context.Context, t *testing.T, version string) *served {
 		}
 	})
 
-	// The server is allocated before the members auth so the auth's directory callback
-	// can name the server's own address.
-	server := httptest.NewUnstartedServer(nil)
-	t.Cleanup(server.Close)
-
 	membersAuth, err := members.New(ctx, db.Client, &members.Settings{
 		CookieKey:      testCookieKey,
 		SessionTimeout: servedSessionTimeout,
-		LoginURL:       "/portal/login",
+		LoginURL:       portalLogin,
 		Collection:     router.Collection(),
-		Directory: members.Directory{
-			RedirectURL:  "http://" + server.Listener.Addr().String() + portalAPI + "/user/callback",
+		Directory: auth.Directory{
+			RedirectURL:  "http://" + server.Listener.Addr().String() + portalAPI + "/user/directory/callback",
+			Connection:   "example",
 			HostedDomain: "example.com",
 			GroupPrefix:  "members-",
 		},
@@ -758,7 +800,8 @@ func newServedAt(ctx context.Context, t *testing.T, version string) *served {
 		membersAuth:   membersAuth,
 		stores:        stores,
 		live:          fake,
-		management:    crewAuth.Access().Handlers(httpio.Log),
+		crewUsers:     router.NewCrewUserSurface(sessionusers.Accounts(crewAuth.Session().API()), crewAuth.Access().UserManager()),
+		membersUsers:  router.NewMembersUserSurface(sessionusers.Accounts(membersAuth.Session().API()), membersAuth.Access().UserManager()),
 		version:       version,
 		scheduler:     scheduled.NewGuard(schedulerInvoker, keys),
 		jobs:          starter,
@@ -806,7 +849,7 @@ func newBrowser(t *testing.T, s *served, prefix string) *browser {
 	return &browser{t: t, base: s.server.URL, prefix: prefix, xsrf: xsrf, client: &http.Client{Jar: jar}}
 }
 
-// login posts the credentials to the outlet's login route and returns the status.
+// login posts the credentials to the outlet's password login route and returns the status.
 func (b *browser) login(ctx context.Context, user, password string) (status int, body []byte) {
 	b.t.Helper()
 
@@ -815,7 +858,7 @@ func (b *browser) login(ctx context.Context, user, password string) (status int,
 		b.t.Fatal(err)
 	}
 
-	return b.do(ctx, http.MethodPost, b.prefix+"/user/login", credentials)
+	return b.do(ctx, http.MethodPost, b.prefix+"/user/password/login", credentials)
 }
 
 // signIn primes the XSRF handshake and signs a persona in on the console, failing the

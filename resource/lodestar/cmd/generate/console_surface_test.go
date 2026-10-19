@@ -118,13 +118,14 @@ func TestConsoleCarriesLibrarySurface(t *testing.T) {
 // keeps the XSRF echo and the release header alone (apiVersionInterceptor, the library's
 // one functional interceptor, which judges nothing), no provider after it re-provides
 // ErrorHandler (the BrowserAnimationsModule import that did is the standalone
-// provideAnimationsAsync), each login page reads AuthService.redirectUrl once and clears
-// it, and the flight deck reports its refusals in place (the declared 409 answer, the 403
-// on an edit) so they reach no notice. Lodestar has no browser specs, so the committed
-// sources are the proof the wiring is present; the redirect and the notice are driven in
-// the browser (README, "Running it"). Needs no emulator.
+// provideAnimationsAsync), each login page composes the library's login component, which
+// reads AuthService.redirectUrl once and clears it, names no path of its own and posts
+// nothing through HttpClient, and the flight deck reports its refusals in place (the
+// declared 409 answer, the 403 on an edit) so they reach no notice. The committed
+// sources are the proof the wiring is present; the redirect, the notice and the login
+// pages are driven in the browser (README, "Running it"). Needs no emulator.
 //
-// Demonstrates: client.login-redirect, client.uncaught-notice.
+// Demonstrates: client.login-redirect, client.uncaught-notice, client.login-component.
 func TestConsoleHandsTheClientItsHooks(t *testing.T) {
 	t.Parallel()
 
@@ -169,14 +170,39 @@ func TestConsoleHandsTheClientItsHooks(t *testing.T) {
 			absent: noInterceptor,
 		},
 		{
-			name: "the console's login page returns to the URL the hook kept, read once and cleared",
+			name: "the console's login page composes the library's login component and names no path of its own",
 			file: "console/src/app/components/login/login.component.ts",
-			want: []string{"const redirectUrl = this.auth.redirectUrl();", "this.auth.redirectUrl.set('');"},
+			want: []string{
+				"import { LoginMethodsComponent } from '@cccteam/resource-angular/auth-login-methods';",
+				"imports: [LoginMethodsComponent, MatCardModule, MatIconModule],",
+				"this.auth.logout().subscribe();",
+				"this.idle.start();",
+				"void this.router.navigateByUrl(page);",
+			},
+			absent: []string{"HttpClient", "/user/", "user/methods", "redirectUrl", "location.assign"},
 		},
 		{
-			name: "the portal's login page the same, through the directory's return URL",
+			name:   "the console's page hands the component where a sign-in lands and takes the page it emits",
+			file:   "console/src/app/components/login/login.component.html",
+			want:   []string{`<ccc-login-methods home="/dashboard" (signedIn)="go($event)" />`},
+			absent: []string{"<form", "ngSubmit", "/user/", "returnUrl"},
+		},
+		{
+			name: "the portal's login page the same, with its own words for the directory",
 			file: "portal/src/app/components/login/login.component.ts",
-			want: []string{"const redirectUrl = this.auth.redirectUrl();", "this.auth.redirectUrl.set('');"},
+			want: []string{
+				"import { LoginMethodsComponent } from '@cccteam/resource-angular/auth-login-methods';",
+				"export const METHOD_LABELS: Readonly<Record<string, string>> = { directory: 'your company directory' };",
+				"this.auth.logout().subscribe();",
+				"void this.router.navigateByUrl(page);",
+			},
+			absent: []string{"HttpClient", "/user/", "user/methods", "redirectUrl", "location.assign"},
+		},
+		{
+			name:   "the portal's page hands the component the tracker and its labels",
+			file:   "portal/src/app/components/login/login.component.html",
+			want:   []string{`<ccc-login-methods home="/tracker" [labels]="labels" (signedIn)="go($event)" />`},
+			absent: []string{"<form", "/user/", "returnUrl"},
 		},
 		{
 			name: "the flight deck reports the declared answer and the edit refusal in place",

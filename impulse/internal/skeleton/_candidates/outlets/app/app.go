@@ -15,11 +15,11 @@ import (
 	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/outlets/pkg/auth"
 	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/outlets/pkg/auth/members"
 	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/outlets/pkg/auth/staff"
+	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/outlets/pkg/router"
 	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/ccc/resource/live"
 	"github.com/cccteam/httpio"
 	"github.com/cccteam/logger"
-	"github.com/cccteam/session"
 	"github.com/cccteam/session/sessioninfo"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-playground/errors/v5"
@@ -75,9 +75,19 @@ type Configurer interface {
 	// Staff returns the auth the console binds to: the staff auth, whose session manager
 	// the App composes the console's login and session handlers from.
 	Staff() *staff.Auth
+	// StaffUserStores are the stores the staff auth's user-management surface serves over:
+	// the staff session's accounts and the staff engine's seats. New builds the surface
+	// with the generated constructor (router.NewStaffUserSurface); the generated handlers
+	// of the staff users, seats and roles delegate to it.
+	StaffUserStores() (resource.UserAccounts, resource.UserSeats)
 	// Members returns the auth the portal outlet binds to: the members auth, whose
 	// session manager the App hands the router for the portal's session group.
 	Members() *members.Auth
+	// MembersUserStores are the stores the members auth's user-management surface serves over:
+	// the members session's accounts and the members engine's seats. New builds the surface
+	// with the generated constructor (router.NewMembersUserSurface); the generated handlers
+	// of the members users, seats and roles delegate to it.
+	MembersUserStores() (resource.UserAccounts, resource.UserSeats)
 	// Live is the live service the generated handlers subscribe through and publish to
 	// (LiveService) and the feature flags follow (Start): the Firestore service over the
 	// database or the emulator the data level opened, required in every application. One
@@ -112,8 +122,10 @@ type App struct {
 	// by name, for requests a session group bound to another auth.
 	access  access.Controller
 	engines map[string]access.Controller
-	*session.PasswordAuth[session.NoCustomData, session.NoCustomData]
-	portal         *session.OIDCAzure[session.NoCustomData, session.NoCustomData]
+	*staff.Handlers
+	staffUsers     *resource.UserSurface[router.StaffAuth]
+	portal         *members.Handlers
+	membersUsers   *resource.UserSurface[router.MembersAuth]
 	resourceClient resource.Client
 	cursorKey      *resource.CursorKey
 	tenants        *resource.TenantRoster
@@ -142,6 +154,8 @@ func New(cfg Configurer) *App {
 		access:         cfg.Access(),
 		engines:        map[string]access.Controller{},
 		resourceClient: cfg.ResourceClient(),
+		staffUsers:     router.NewStaffUserSurface(cfg.StaffUserStores()),
+		membersUsers:   router.NewMembersUserSurface(cfg.MembersUserStores()),
 		cursorKey:      cfg.CursorKey(),
 		tenants:        cfg.TenantRoster(),
 		validate:       cfg.Validator(),
@@ -164,10 +178,10 @@ func New(cfg Configurer) *App {
 	// The authorization suites bind no auth: they compose the API surface through the
 	// test router, and nothing on that path touches the session.
 	if staffAuth := cfg.Staff(); staffAuth != nil {
-		a.PasswordAuth = staffAuth.Session()
+		a.Handlers = staffAuth.Handlers()
 	}
 	if membersAuth := cfg.Members(); membersAuth != nil {
-		a.portal = membersAuth.Session()
+		a.portal = membersAuth.Handlers()
 		a.engines[members.Name] = membersAuth.Access()
 	}
 
@@ -196,7 +210,7 @@ func (a *App) engine(ctx context.Context) access.Controller {
 
 // Portal returns the portal outlet's session handlers: the members auth's, so a portal
 // session opens nothing on the console and a console session nothing on the portal.
-func (a *App) Portal() session.OIDCAzureHandlers {
+func (a *App) Portal() router.PortalSession {
 	if a.portal == nil {
 		return nil
 	}
