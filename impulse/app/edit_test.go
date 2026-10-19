@@ -239,6 +239,83 @@ func run() {
 	}
 }
 
+func TestBindOutletAuth(t *testing.T) {
+	t.Parallel()
+
+	const src = `package main
+
+import gen "github.com/cccteam/ccc/resource/generation"
+
+func run() {
+	_, _ = gen.NewResourceGenerator(nil, "pkg/resources", nil,
+		gen.GenerateRouter(),
+		gen.GenerateRoutes("pkg/router", "console/api",
+			gen.Auth("example.com/acme/pkg/auth/staff", gen.PasswordMethod()),
+			gen.WebApp("/console"),
+		),
+		gen.WithRouterOutlet("portal", "portal/api", gen.Auth("example.com/acme/pkg/auth/staff", gen.PasswordMethod()), gen.WebApp("/portal")),
+		gen.WithRouterOutlet("kiosk", "kiosk/api",
+			gen.WebApp("/kiosk"),
+		),
+		gen.WithRouterOutlet("machines", "machines", gen.APIKey()),
+		gen.WithRouterOutlet("bare", "bare"),
+	)
+}
+`
+	const declaration = `generation.Auth("example.com/acme/pkg/auth/members", generation.GoogleMethod("google"))`
+	tests := []struct {
+		name         string
+		outlet       string
+		wantReplaced bool
+		wantContain  string
+		wantErr      string
+	}{
+		{
+			name: "an outlet declaring an auth on one line", outlet: "portal", wantReplaced: true,
+			wantContain: `gen.WithRouterOutlet("portal", "portal/api", gen.Auth("example.com/acme/pkg/auth/members", gen.GoogleMethod("google")), gen.WebApp("/portal")),`,
+		},
+		{
+			name: "the default outlet, its options one per line", outlet: DefaultOutletName, wantReplaced: true,
+			wantContain: "\t\tgen.GenerateRoutes(\"pkg/router\", \"console/api\",\n\t\t\tgen.Auth(\"example.com/acme/pkg/auth/members\", gen.GoogleMethod(\"google\")),\n\t\t\tgen.WebApp(\"/console\"),\n\t\t),",
+		},
+		{
+			name: "an outlet declaring no auth, its options one per line", outlet: "kiosk",
+			wantContain: "\t\tgen.WithRouterOutlet(\"kiosk\", \"kiosk/api\",\n\t\t\tgen.Auth(\"example.com/acme/pkg/auth/members\", gen.GoogleMethod(\"google\")),\n\t\t\tgen.WebApp(\"/kiosk\"),\n\t\t),",
+		},
+		{
+			name: "an outlet declaring nothing", outlet: "bare",
+			wantContain: `gen.WithRouterOutlet("bare", "bare", gen.Auth("example.com/acme/pkg/auth/members", gen.GoogleMethod("google"))),`,
+		},
+		{name: "an outlet the program does not declare", outlet: "shop", wantErr: "declares no shop outlet"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			out, replaced, err := BindOutletAuth("main.go", []byte(src), tt.outlet, declaration)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("BindOutletAuth() error = %v, want %q", err, tt.wantErr)
+				}
+
+				return
+			}
+			if err != nil {
+				t.Fatalf("BindOutletAuth() error = %v", err)
+			}
+			if replaced != tt.wantReplaced {
+				t.Errorf("replaced = %t, want %t", replaced, tt.wantReplaced)
+			}
+			if !strings.Contains(string(out), tt.wantContain) {
+				t.Errorf("output lacks %q:\n%s", tt.wantContain, out)
+			}
+			if strings.Count(string(out), "pkg/auth/members") != 1 {
+				t.Errorf("the members auth is declared %d times, want once:\n%s", strings.Count(string(out), "pkg/auth/members"), out)
+			}
+		})
+	}
+}
+
 func TestMoveDefaultOutlet(t *testing.T) {
 	t.Parallel()
 

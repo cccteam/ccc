@@ -750,9 +750,12 @@ file per method; its session tables are written as migrations under the new pref
 its access tables copied from an auth the application has; and the data level constructs
 it beside that auth, with an accessor in a new file. The package carries the engine's
 change signal over the live service as the skeletons' auths do (`access.WithChangeSignal`
-from `Settings.Signals`), so the `change-signal` check passes for it. Binding a surface to
-it, checking its roles in the deploy, its development identities, and the stranger tests
-are the agent's.
+from `Settings.Signals`), so the `change-signal` check passes for it. The outlet the auth
+serves is pointed at it: its declaration in the generator program gains
+`generation.Auth("<module>/pkg/auth/<name>", <methods>)` in place of the one it carried,
+so the regenerated router mounts the auth's session group under the outlet's prefix.
+Checking its roles in the deploy, the App's handlers the generated router now requires for
+the outlet, its development identities, and the stranger tests are the agent's.
 
 `--method` names the methods the Auth starts with, repeatable: `password` (the default
 when none is given), `azure:<registration>` or `google:<registration>`, the registration
@@ -763,12 +766,21 @@ membership for a directory method and is asked when not given, never defaulted, 
 the wrong answer deletes hand-assigned roles at the next sign-in: `directory` writes
 `RoleSync` (the directory's roles are reconciled at every sign-in and roles they do not
 name are removed; the bootstrap seeds no roles), `application` writes `DisableRoleSync`
-(roles are assigned in the application).
+(roles are assigned in the application). `--outlet` names the outlet the new auth serves
+and is asked when not given, listing the application's outlets: `default` for the one
+`GenerateRoutes` declares (the console's), or a `WithRouterOutlet` name such as `portal`;
+in the sites layout the site's name for its default outlet. The outlet must exist
+(`add outlet` adds one, bound to an auth the application has, and `add auth` moves it to
+the new auth), and an API-key outlet is refused, since a machine surface has no sign-in.
+There is no default, because an auth is reachable only through the outlet bound to it.
+Under a hand-written router the program declares no Auth to point, and the brief says to
+mount the auth's session group in the router.
 
 ```sh
-impulse add auth partners --agent
-impulse add auth members --method azure:directory --authority application --agent
-impulse add auth members --method password --method google:workspace --authority directory
+impulse add outlet partners --prefix partners/api --auth staff
+impulse add auth partners --outlet partners --agent
+impulse add auth members --method azure:directory --authority application --outlet portal --agent
+impulse add auth members --method password --method google:workspace --authority directory --outlet portal
 ```
 
 `add method` adds a sign-in method to an auth the application has: `password`, `azure`

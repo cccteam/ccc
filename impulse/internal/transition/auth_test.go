@@ -114,6 +114,61 @@ type dataConfig struct {
 }
 `
 
+// authRouterProgram is a generator program under the generated router: the console on
+// the default outlet, a portal outlet, both bound to the staff auth, and an API-key
+// outlet.
+const authRouterProgram = `// Package main is the beacon resource generator program.
+package main
+
+import (
+	"context"
+	"log"
+
+	"github.com/cccteam/ccc/resource/generation"
+)
+
+func main() {
+	if err := run(context.Background()); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func run(ctx context.Context) error {
+	generator, err := generation.NewResourceGenerator(
+		ctx,
+		"pkg/resources",
+		[]string{"file://schema/migrations"},
+		generation.GenerateHandlers("app"),
+		generation.GenerateRouter(),
+		generation.GenerateRoutes("pkg/router", "console/api",
+			generation.Auth("example.com/acme/beacon/pkg/auth/staff", generation.PasswordMethod()),
+			generation.WebApp("/console"),
+		),
+		generation.WithRouterOutlet("machines", "machines", generation.APIKey()),
+		generation.WithRouterOutlet("portal", "portal/api",
+			generation.Auth("example.com/acme/beacon/pkg/auth/staff", generation.PasswordMethod()),
+			generation.WebApp("/portal"),
+		),
+		generation.GenerateHandlerTests("test/authz"),
+		generation.WithSpannerEmulatorVersion("1.5.56"),
+		generation.GenerateTypescript("web/console/src/app/core/service",
+			generation.GenerateMetadata(),
+			generation.GeneratePermissions(),
+			generation.GenerateEnums(),
+		),
+	)
+	if err != nil {
+		return err
+	}
+	defer generator.Close()
+
+	return generator.Generate()
+}
+`
+
+// programFile is the generator program's path in the beacon fixture.
+const programFile = "cmd/generate/resourcegenerator/main.go"
+
 func authFiles(t *testing.T) map[string]string {
 	t.Helper()
 
@@ -135,24 +190,31 @@ func authFiles(t *testing.T) map[string]string {
 func TestAuthValidate(t *testing.T) {
 	t.Parallel()
 
+	routed := map[string]string{programFile: authRouterProgram}
 	tests := []struct {
 		name    string
 		auth    Auth
 		bare    bool
+		extra   map[string]string
 		wantErr string
 	}{
-		{name: "a password auth", auth: Auth{Name: "partners"}},
-		{name: "a password auth, said so", auth: Auth{Name: "partners", Methods: []authpkg.Method{{Kind: app.MethodPassword}}}},
-		{name: "a bad name", auth: Auth{Name: "Partners"}, wantErr: `auth name "Partners"`},
-		{name: "a directory auth with the directory as authority", auth: Auth{Name: "partners", Methods: []authpkg.Method{{Kind: app.MethodAzure, Name: "directory", Authority: AuthorityDirectory}}}},
-		{name: "a directory auth with the application as authority", auth: Auth{Name: "partners", Methods: []authpkg.Method{{Kind: app.MethodAzure, Name: "directory", Authority: AuthorityApplication}}}},
-		{name: "a directory auth without an authority", auth: Auth{Name: "partners", Methods: []authpkg.Method{{Kind: app.MethodAzure, Name: "directory"}}}, wantErr: "the directory method needs --authority"},
-		{name: "a directory auth with a made-up authority", auth: Auth{Name: "partners", Methods: []authpkg.Method{{Kind: app.MethodAzure, Name: "directory", Authority: "nobody"}}}, wantErr: `authority "nobody"`},
-		{name: "two methods", auth: Auth{Name: "partners", Methods: []authpkg.Method{{Kind: app.MethodPassword}, {Kind: app.MethodGoogle, Name: "google", Authority: AuthorityApplication}}}},
-		{name: "a registration given twice", auth: Auth{Name: "partners", Methods: []authpkg.Method{{Kind: app.MethodAzure, Name: "directory", Authority: AuthorityApplication}, {Kind: app.MethodGoogle, Name: "directory", Authority: AuthorityApplication}}}, wantErr: "given twice"},
-		{name: "an unknown method", auth: Auth{Name: "partners", Methods: []authpkg.Method{{Kind: "ldap", Name: "ldap", Authority: AuthorityApplication}}}, wantErr: `"ldap" is not a sign-in method`},
-		{name: "the auth exists", auth: Auth{Name: "staff"}, wantErr: "the staff auth already exists"},
-		{name: "no auth package to write beside", auth: Auth{Name: "partners"}, bare: true, wantErr: "no auth package to write beside"},
+		{name: "a password auth", auth: Auth{Name: "partners", Outlet: "default"}},
+		{name: "a password auth, said so", auth: Auth{Name: "partners", Methods: []authpkg.Method{{Kind: app.MethodPassword}}, Outlet: "default"}},
+		{name: "a bad name", auth: Auth{Name: "Partners", Outlet: "default"}, wantErr: `auth name "Partners"`},
+		{name: "a directory auth with the directory as authority", auth: Auth{Name: "partners", Methods: []authpkg.Method{{Kind: app.MethodAzure, Name: "directory", Authority: AuthorityDirectory}}, Outlet: "default"}},
+		{name: "a directory auth with the application as authority", auth: Auth{Name: "partners", Methods: []authpkg.Method{{Kind: app.MethodAzure, Name: "directory", Authority: AuthorityApplication}}, Outlet: "default"}},
+		{name: "a directory auth without an authority", auth: Auth{Name: "partners", Methods: []authpkg.Method{{Kind: app.MethodAzure, Name: "directory"}}, Outlet: "default"}, wantErr: "the directory method needs --authority"},
+		{name: "a directory auth with a made-up authority", auth: Auth{Name: "partners", Methods: []authpkg.Method{{Kind: app.MethodAzure, Name: "directory", Authority: "nobody"}}, Outlet: "default"}, wantErr: `authority "nobody"`},
+		{name: "two methods", auth: Auth{Name: "partners", Methods: []authpkg.Method{{Kind: app.MethodPassword}, {Kind: app.MethodGoogle, Name: "google", Authority: AuthorityApplication}}, Outlet: "default"}},
+		{name: "a registration given twice", auth: Auth{Name: "partners", Methods: []authpkg.Method{{Kind: app.MethodAzure, Name: "directory", Authority: AuthorityApplication}, {Kind: app.MethodGoogle, Name: "directory", Authority: AuthorityApplication}}, Outlet: "default"}, wantErr: "given twice"},
+		{name: "an unknown method", auth: Auth{Name: "partners", Methods: []authpkg.Method{{Kind: "ldap", Name: "ldap", Authority: AuthorityApplication}}, Outlet: "default"}, wantErr: `"ldap" is not a sign-in method`},
+		{name: "the auth exists", auth: Auth{Name: "staff", Outlet: "default"}, wantErr: "the staff auth already exists"},
+		{name: "no auth package to write beside", auth: Auth{Name: "partners", Outlet: "default"}, bare: true, wantErr: "no auth package to write beside"},
+		{name: "no outlet", auth: Auth{Name: "partners"}, extra: routed, wantErr: "--outlet is required: the outlet the partners auth serves, whose declaration is pointed at the auth; the outlets are default, portal (impulse add outlet adds one)"},
+		{name: "an outlet the program does not declare", auth: Auth{Name: "partners", Outlet: "kiosk"}, extra: routed, wantErr: "no kiosk outlet for the partners auth to serve; the outlets are default, portal (impulse add outlet adds one)"},
+		{name: "an API-key outlet", auth: Auth{Name: "partners", Outlet: "machines"}, extra: routed, wantErr: "the machines outlet is an API-key outlet (APIKey()), a machine surface with no sign-in; an auth serves a session outlet, and the outlets are default, portal"},
+		{name: "a session outlet under the generated router", auth: Auth{Name: "partners", Outlet: "portal"}, extra: routed},
+		{name: "the default outlet under the generated router", auth: Auth{Name: "partners", Outlet: "default"}, extra: routed},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -161,6 +223,9 @@ func TestAuthValidate(t *testing.T) {
 			var files map[string]string
 			if !tt.bare {
 				files = authFiles(t)
+				for rel, content := range tt.extra {
+					files[rel] = content
+				}
 			}
 			err := tt.auth.Validate(beacon(t, files))
 			if tt.wantErr == "" {
@@ -203,6 +268,7 @@ func TestAuthApply(t *testing.T) {
 	const rolesDid = "pkg/auth/partners/roles.json: the partners auth's role file, empty: author its roles when its surfaces are bound"
 	const configDid = "pkg/config/data.go: the partners auth constructed on DataConfiguration beside the staff auth (field, construction, import); pkg/config/partners.go: its accessor Partners()"
 
+	routed := map[string]string{programFile: authRouterProgram}
 	tests := []struct {
 		name        string
 		auth        Auth
@@ -213,11 +279,12 @@ func TestAuthApply(t *testing.T) {
 	}{
 		{
 			name:    "a password auth written beside staff",
-			auth:    Auth{Name: "partners"},
+			auth:    Auth{Name: "partners", Outlet: "default"},
 			wantDid: []string{packageDid, migrationsDid, rolesDid, configDid, "ran go generate ./..."},
 			wantSkipped: []string{
 				`pkg/auth/partners/foothold.go: the first administrator the migrate command seeds while the auth's users table holds no rows, a user named administrator with a generated password; author AdministratorRoles with the role file, declare the password in the data level (APP_PARTNERS_ADMINISTRATOR_PASSWORD, secret:"generated") and seed it from pkg/deploy SeedAdministrators`,
 				"pkg/config/data.go: Close releases the staff auth only; release the partners auth too",
+				programFile + ": the default outlet is served by a hand-written router, so its declaration carries no Auth to point at the partners auth; mount the auth's session group under /api in the router",
 			},
 			check: func(t *testing.T, a *app.App) {
 				t.Helper()
@@ -252,7 +319,7 @@ func TestAuthApply(t *testing.T) {
 		},
 		{
 			name:        "a password auth added after tenancy is constructed before the assigned literal",
-			auth:        Auth{Name: "partners"},
+			auth:        Auth{Name: "partners", Outlet: "default"},
 			extra:       map[string]string{"pkg/config/data.go": tenantedConfig},
 			wantDid:     []string{packageDid, migrationsDid, rolesDid, configDid, "ran go generate ./..."},
 			wantSkipped: []string{"pkg/config/data.go: Close releases the staff auth only; release the partners auth too"},
@@ -266,7 +333,7 @@ func TestAuthApply(t *testing.T) {
 		},
 		{
 			name:    "a constructor that builds no literal keeps the file and its earlier edits",
-			auth:    Auth{Name: "partners"},
+			auth:    Auth{Name: "partners", Outlet: "default"},
 			extra:   map[string]string{"pkg/config/data.go": builtElsewhereConfig},
 			wantDid: []string{packageDid, migrationsDid, rolesDid, configDid, "ran go generate ./..."},
 			wantSkipped: []string{
@@ -283,7 +350,7 @@ func TestAuthApply(t *testing.T) {
 		},
 		{
 			name:  "a directory auth, the application its authority, read from the environment struct",
-			auth:  Auth{Name: "partners", Methods: []authpkg.Method{{Kind: app.MethodAzure, Name: "directory", Authority: AuthorityApplication}}},
+			auth:  Auth{Name: "partners", Methods: []authpkg.Method{{Kind: app.MethodAzure, Name: "directory", Authority: AuthorityApplication}}, Outlet: "default"},
 			extra: map[string]string{"pkg/config/data.go": authConfigEnv},
 			wantDid: []string{
 				"pkg/auth/partners: the partners auth package (directory.go, foothold.go, partners.go), rendered from the skeleton's auth source: the Auth session over tables prefixed Partners, the partners permission store, and the methods directory (azure, role membership the application's), each in its own file",
@@ -328,10 +395,12 @@ func TestAuthApply(t *testing.T) {
 			},
 		},
 		{
-			name: "a Google directory auth with the directory as authority reads roles from the groups",
-			auth: Auth{Name: "partners", Methods: []authpkg.Method{{Kind: app.MethodGoogle, Name: "workspace", Authority: AuthorityDirectory}}},
+			name:  "a Google directory auth with the directory as authority reads roles from the groups, served by the portal outlet",
+			auth:  Auth{Name: "partners", Methods: []authpkg.Method{{Kind: app.MethodGoogle, Name: "workspace", Authority: AuthorityDirectory}}, Outlet: "portal"},
+			extra: routed,
 			wantDid: []string{
 				"pkg/auth/partners: the partners auth package (partners.go, workspace.go), rendered from the skeleton's auth source: the Auth session over tables prefixed Partners, the partners permission store, and the methods workspace (google, role membership the directory's), each in its own file",
+				programFile + `: the portal outlet's declaration names the partners auth with its methods, generation.Auth("example.com/acme/beacon/pkg/auth/partners", generation.GoogleMethod("workspace")), in place of the staff auth's, so the regenerated router mounts the auth's session group under /portal/api: one login route per method, the methods route its login page renders from, and the pending sign-in routes`,
 			},
 			wantSkipped: []string{
 				"pkg/config/data.go: no environment struct (env := &T{}) to add the partners auth's registration variables to; read them and pass them in partners.Settings",
@@ -346,6 +415,31 @@ func TestAuthApply(t *testing.T) {
 				}
 				if got := read(t, a, "pkg/config/data.go"); !strings.Contains(got, "partnersAuth, err := partners.New(ctx, spannerClient, &partners.Settings{\n\t\tCookieKey: cookieKey,\n\t\tLoginURL:  \"/login\",\n\t})") {
 					t.Errorf("data.go construction = %q", got)
+				}
+				program := read(t, a, programFile)
+				if want := "\t\tgeneration.WithRouterOutlet(\"portal\", \"portal/api\",\n\t\t\tgeneration.Auth(\"example.com/acme/beacon/pkg/auth/partners\", generation.GoogleMethod(\"workspace\")),\n\t\t\tgeneration.WebApp(\"/portal\"),\n\t\t),"; !strings.Contains(program, want) {
+					t.Errorf("program lacks %q:\n%s", want, program)
+				}
+				if want := "\t\tgeneration.GenerateRoutes(\"pkg/router\", \"console/api\",\n\t\t\tgeneration.Auth(\"example.com/acme/beacon/pkg/auth/staff\", generation.PasswordMethod()),"; !strings.Contains(program, want) {
+					t.Errorf("the console's declaration moved:\n%s", program)
+				}
+			},
+		},
+		{
+			name:  "a password auth served by the default outlet under the generated router",
+			auth:  Auth{Name: "partners", Outlet: "default"},
+			extra: routed,
+			wantDid: []string{
+				programFile + `: the default outlet's declaration names the partners auth with its methods, generation.Auth("example.com/acme/beacon/pkg/auth/partners", generation.PasswordMethod()), in place of the staff auth's, so the regenerated router mounts the auth's session group under /console/api: one login route per method, the methods route its login page renders from, and the pending sign-in routes`,
+			},
+			check: func(t *testing.T, a *app.App) {
+				t.Helper()
+				program := read(t, a, programFile)
+				if want := "\t\tgeneration.GenerateRoutes(\"pkg/router\", \"console/api\",\n\t\t\tgeneration.Auth(\"example.com/acme/beacon/pkg/auth/partners\", generation.PasswordMethod()),\n\t\t\tgeneration.WebApp(\"/console\"),\n\t\t),"; !strings.Contains(program, want) {
+					t.Errorf("program lacks %q:\n%s", want, program)
+				}
+				if strings.Count(program, "pkg/auth/staff") != 1 {
+					t.Errorf("the staff auth is declared %d times, want once (the portal's):\n%s", strings.Count(program, "pkg/auth/staff"), program)
 				}
 			},
 		},

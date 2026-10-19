@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"strings"
 
 	"github.com/go-playground/errors/v5"
@@ -350,6 +351,7 @@ func newAddAuth() *cobra.Command {
 		f         transitionFlags
 		methods   []string
 		authority string
+		outlet    string
 	)
 
 	cmd := &cobra.Command{
@@ -382,9 +384,21 @@ sign-in reconciles the person's roles to them and removes what they do not name)
 "application" keeps role assignment in the application. There is no default, because the
 wrong answer deletes hand-assigned roles at the next sign-in.
 
-Binding a site or an outlet to the new auth, checking its roles in the deploy, its
-development identities, and the tests that prove its people are strangers to the other
-auths are handed to the agent.`,
+--outlet names the outlet the new auth serves, asked when it is not given: default for the
+one GenerateRoutes declares (the console's), or a WithRouterOutlet name such as portal; in
+the sites layout the site's name for its default outlet. The outlet must exist (impulse
+add outlet adds one, bound to an auth the application has), and an API-key outlet is
+refused, since a machine surface has no sign-in. The outlet's declaration in the generator
+program is pointed at the new auth with its methods, in place of the auth it declared, so
+the regenerated router mounts the auth's session group under the outlet's prefix: its
+login routes, the methods route its login page renders from, and the pending sign-in
+routes. There is no default, because an auth is reachable only through the outlet bound
+to it. Under a hand-written router the program declares no Auth to point, and the brief
+says to mount the group in the router.
+
+Checking the auth's roles in the deploy, the App's handlers the generated router now
+requires for the outlet, its development identities, and the tests that prove its people
+are strangers to the other auths are handed to the agent.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			specs, err := parseMethods(methods)
@@ -412,15 +426,90 @@ auths are handed to the agent.`,
 					specs[i].Authority = authority
 				}
 			}
+			if outlet == "" {
+				answer, err := askOutlet(cmd, f.appDir, args[0])
+				if err != nil {
+					return err
+				}
+				outlet = answer
+			}
 
-			return runTransition(cmd, &f, transition_.Auth{Name: args[0], Methods: specs}, transition_.ReferenceCandidate)
+			return runTransition(cmd, &f, transition_.Auth{Name: args[0], Methods: specs, Outlet: outlet}, transition_.ReferenceCandidate)
 		},
 	}
 	f.bind(cmd)
 	cmd.Flags().StringArrayVar(&methods, "method", nil, "a sign-in method the auth starts with (repeatable): password, azure:<registration>, or google:<registration>; password when none is given")
 	cmd.Flags().StringVar(&authority, "authority", "", "who owns role membership for the directory methods: directory (roles synchronized at every sign-in) or application (roles assigned in the application); asked when not given")
+	cmd.Flags().StringVar(&outlet, "outlet", "", "the outlet the auth serves, whose declaration is pointed at it: default for the console's, or a WithRouterOutlet name; asked when not given")
 
 	return cmd
+}
+
+// outletQuestion opens what a person at the terminal is asked when --outlet is not given;
+// the application's outlets follow it, one per line.
+const outletQuestion = `Which outlet does the %s auth serve? Its declaration in the generator program is
+pointed at the auth, so the generated router mounts the auth's login routes under the
+outlet's prefix.
+`
+
+// askOutlet asks which outlet the auth serves when the flag did not say and a person is
+// at the terminal, listing the application's outlets. Without a terminal the flag is
+// required: there is no default, because an auth is reachable only through the outlet
+// bound to it, and the tool cannot know which population an outlet is for.
+func askOutlet(cmd *cobra.Command, appDir, auth string) (string, error) {
+	a, err := app.Discover(appDir)
+	if err != nil {
+		return "", err
+	}
+	choices := transition_.OutletChoices(a)
+	var keys []string
+	for i := range choices {
+		if !choices[i].Outlet.APIKey {
+			keys = append(keys, choices[i].Key)
+		}
+	}
+	if len(keys) == 0 {
+		return "", errors.New("no outlet for the auth to serve: the generator programs declare no session outlet (GenerateRoutes, WithRouterOutlet with Auth); impulse add outlet adds one")
+	}
+	if !stdinIsTerminal() {
+		return "", errors.Newf("--outlet is required: the outlet the %s auth serves, one of %s; its declaration is pointed at the auth, and there is no default because an auth is reachable only through the outlet bound to it", auth, strings.Join(keys, ", "))
+	}
+	w := cmd.ErrOrStderr()
+	fmt.Fprintf(w, outletQuestion, auth)
+	width := 0
+	for i := range choices {
+		width = max(width, len(choices[i].Key))
+	}
+	for i := range choices {
+		fmt.Fprintf(w, "  %-*s  %s\n", width, choices[i].Key, outletDescription(&choices[i]))
+	}
+	fmt.Fprint(w, "[outlet]: ")
+	line, err := bufio.NewReader(cmd.InOrStdin()).ReadString('\n')
+	if err != nil && line == "" {
+		return "", errors.Wrap(err, "reading the answer")
+	}
+	answer := strings.TrimSpace(line)
+	for i := range choices {
+		if choices[i].Key == answer {
+			return answer, nil
+		}
+	}
+
+	return "", errors.Newf("%q is not an outlet: %s", answer, strings.Join(keys, ", "))
+}
+
+// outletDescription says what an outlet is for the question: its prefix and the auth it
+// binds to, or that it is a machine surface.
+func outletDescription(c *transition_.OutletChoice) string {
+	o := &c.Outlet
+	switch {
+	case o.APIKey:
+		return fmt.Sprintf("/%s, an API-key outlet: a machine surface with no sign-in", o.Prefix)
+	case o.Auth != nil:
+		return fmt.Sprintf("/%s, bound to the %s auth", o.Prefix, path.Base(o.Auth.ImportPath))
+	default:
+		return fmt.Sprintf("/%s, no auth declared", o.Prefix)
+	}
 }
 
 // parseMethods reads --method flags: password, or <kind>:<registration>.

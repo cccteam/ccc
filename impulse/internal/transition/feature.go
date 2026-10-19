@@ -310,16 +310,13 @@ func (r RemoveFeature) Validate(a *app.App) error {
 
 // featureNames lists the application's flags by name, or says there are none.
 func featureNames(a *app.App) string {
-	if len(a.Features) == 0 {
-		return "none"
-	}
 	names := make([]string, 0, len(a.Features))
 	for _, flag := range a.Features {
 		names = append(names, flag.Name)
 	}
 	sort.Strings(names)
 
-	return strings.Join(names, ", ")
+	return listed(names)
 }
 
 // usesNote is the sentence the brief carries over the hand-written uses a removal leaves.

@@ -152,6 +152,7 @@ const (
 	optOldestAnswered     = "OldestAnswered"
 	optWithRequestLog     = "WithRequestLog"
 	optWithMountedRoutes  = "WithMountedRoutes"
+	optWithRouterOutlet   = "WithRouterOutlet"
 	optOutletRequestLog   = "OutletRequestLog"
 	optOutletTraces       = "OutletTraces"
 )
