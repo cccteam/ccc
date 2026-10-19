@@ -187,6 +187,12 @@ linters:
           - gosec
         path: _test\.go
         text: G404
+      # G101 reads a route literal assigned in a test (set-crew-user-password, the user
+      # surface's password reset route) as a hardcoded credential: it is a path.
+      - linters:
+          - gosec
+        path: _test\.go
+        text: G101
       - linters:
           - paralleltest
         path: options_test\.go

@@ -10,7 +10,7 @@ require (
 	cloud.google.com/go/storage v1.69.0
 	firebase.google.com/go/v4 v4.22.0
 	github.com/cccteam/ccc v0.3.4
-	github.com/cccteam/ccc/accesstypes v0.6.0
+	github.com/cccteam/ccc/accesstypes v0.6.2-0.20261019011714-fbbdfe29c065
 	github.com/cccteam/ccc/cache v0.2.1
 	github.com/cccteam/ccc/cloud v0.2.1
 	github.com/cccteam/ccc/pkg v0.1.6
@@ -19,7 +19,7 @@ require (
 	github.com/cccteam/db-initiator v0.4.3
 	github.com/cccteam/httpio v0.7.21
 	github.com/cccteam/logger v0.1.30
-	github.com/cccteam/session v0.12.4-0.20261018020817-536a7d7b34b1
+	github.com/cccteam/session v0.12.4-0.20261019004810-39bf617aaa21
 	github.com/cccteam/spxscan v0.0.17
 	github.com/cloudspannerecosystem/memefish v0.8.1
 	github.com/ettle/strcase v0.2.0
@@ -42,9 +42,11 @@ require (
 	github.com/GoogleCloudPlatform/opentelemetry-operations-go/exporter/metric v0.62.0 // indirect
 	github.com/MicahParks/keyfunc v1.9.0 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
+	github.com/georgysavva/scany/v2 v2.1.4 // indirect
 	github.com/golang-jwt/jwt/v4 v4.5.2 // indirect
 	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.31.0 // indirect
+	github.com/jackc/pgerrcode v0.0.0-20250907135507-afb5586c32a6 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.47.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.47.0 // indirect
 	go.opentelemetry.io/otel/log v1.47.0 // indirect
