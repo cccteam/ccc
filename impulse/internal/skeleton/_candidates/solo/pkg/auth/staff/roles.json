@@ -3,7 +3,109 @@
     "global": [
       {
         "name": "Administrator_Global",
-        "permissions": {}
+        "permissions": {
+          "Create": [
+            {
+              "resource": "StaffUsers",
+              "fields": [
+                "username",
+                "password",
+                "disabled"
+              ]
+            },
+            {
+              "resource": "StaffSeats",
+              "fields": [
+                "user",
+                "role"
+              ]
+            }
+          ],
+          "Delete": [
+            {
+              "resource": "StaffUsers"
+            },
+            {
+              "resource": "StaffSeats"
+            }
+          ],
+          "Execute": [
+            {
+              "resource": "SetStaffUserPassword"
+            }
+          ],
+          "List": [
+            {
+              "resource": "StaffUsers",
+              "fields": [
+                "username",
+                "disabled",
+                "hasPassword",
+                "passwordChangeRequired",
+                "createdAt",
+                "lastSignInAt",
+                "organization",
+                "identities",
+                "roles",
+                "everywhereRoles",
+                "rolesSynced"
+              ]
+            },
+            {
+              "resource": "StaffSeats",
+              "fields": [
+                "username",
+                "everyDomain"
+              ]
+            },
+            {
+              "resource": "StaffRoles",
+              "fields": [
+                "kind"
+              ]
+            }
+          ],
+          "Read": [
+            {
+              "resource": "StaffUsers",
+              "fields": [
+                "username",
+                "disabled",
+                "hasPassword",
+                "passwordChangeRequired",
+                "createdAt",
+                "lastSignInAt",
+                "organization",
+                "identities",
+                "roles",
+                "everywhereRoles",
+                "rolesSynced"
+              ]
+            },
+            {
+              "resource": "StaffSeats",
+              "fields": [
+                "username",
+                "everyDomain"
+              ]
+            },
+            {
+              "resource": "StaffRoles",
+              "fields": [
+                "kind"
+              ]
+            }
+          ],
+          "Update": [
+            {
+              "resource": "StaffUsers",
+              "fields": [
+                "username",
+                "disabled"
+              ]
+            }
+          ]
+        }
       },
       {
         "name": "FeatureAdministrator",

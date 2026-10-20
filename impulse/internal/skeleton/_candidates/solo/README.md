@@ -18,9 +18,10 @@ what they hold.
   the tables they describe; `pkg/auth/staff/roles.json` the staff auth's role file: the
   default roles the release ships, embedded in the binary and validated against the
   generated collection when the engine opens, so a release whose roles are wrong does not
-  start. It authors `Administrator_Global`, the development login's role, with no grants
-  yet: a new resource stays invisible to every login until a role in this file is granted
-  it. Every grant in it is proven live by `test/integration/grants_test.go`, which opens
+  start. It authors `Administrator_Global`, the development login's role, over the staff
+  auth's user-management surface alone (`StaffUsers`, `StaffSeats`, `StaffRoles` and
+  `SetStaffUserPassword`, the resources the generator declares for the auth): a new
+  resource stays invisible to every login until a role in this file is granted it. Every grant in it is proven live by `test/integration/grants_test.go`, which opens
   the auth the way the deployment does and asks the engine about each unconditional
   grant; a conditional grant is proven by a test case that names it through
   `provesGrant`, and `impulse check` fails on one no case names.

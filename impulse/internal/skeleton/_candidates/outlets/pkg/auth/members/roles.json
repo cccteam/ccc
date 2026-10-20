@@ -12,11 +12,29 @@
                 "body",
                 "title"
               ]
+            },
+            {
+              "resource": "MembersTenantSeats",
+              "fields": [
+                "user",
+                "role"
+              ]
             }
           ],
           "Delete": [
             {
               "resource": "Announcements"
+            },
+            {
+              "resource": "MembersTenantUsers"
+            },
+            {
+              "resource": "MembersTenantSeats"
+            }
+          ],
+          "Execute": [
+            {
+              "resource": "UnlinkMembersTenantUserIdentity"
             }
           ],
           "List": [
@@ -27,6 +45,32 @@
                 "tenantId",
                 "title"
               ]
+            },
+            {
+              "resource": "MembersTenantUsers",
+              "fields": [
+                "username",
+                "disabled",
+                "hasPassword",
+                "passwordChangeRequired",
+                "createdAt",
+                "lastSignInAt",
+                "organization",
+                "identities",
+                "roles",
+                "everywhereRoles",
+                "rolesSynced"
+              ]
+            },
+            {
+              "resource": "MembersTenantSeats",
+              "fields": [
+                "username",
+                "everywhere"
+              ]
+            },
+            {
+              "resource": "MembersTenantRoles"
             }
           ],
           "Read": [
@@ -37,6 +81,32 @@
                 "tenantId",
                 "title"
               ]
+            },
+            {
+              "resource": "MembersTenantUsers",
+              "fields": [
+                "username",
+                "disabled",
+                "hasPassword",
+                "passwordChangeRequired",
+                "createdAt",
+                "lastSignInAt",
+                "organization",
+                "identities",
+                "roles",
+                "everywhereRoles",
+                "rolesSynced"
+              ]
+            },
+            {
+              "resource": "MembersTenantSeats",
+              "fields": [
+                "username",
+                "everywhere"
+              ]
+            },
+            {
+              "resource": "MembersTenantRoles"
             }
           ],
           "Update": [
@@ -45,6 +115,13 @@
               "fields": [
                 "body",
                 "title"
+              ]
+            },
+            {
+              "resource": "MembersTenantUsers",
+              "fields": [
+                "username",
+                "disabled"
               ]
             }
           ]

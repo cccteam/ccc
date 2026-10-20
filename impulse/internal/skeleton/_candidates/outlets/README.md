@@ -46,10 +46,13 @@ is signed in, the tenants they can pick, and the digest for the selected tenant.
   auth's role file: the default roles the release ships, embedded in the binary and
   validated against the generated collection when the auth's engine opens. A domain role
   is held in every tenant domain, so nothing provisions a file per tenant. The staff file
-  authors `Administrator_Global` over the tenant record, `Administrator_Domain` over the
-  console's announcements, and `Machines_Domain`, the service account's role, over the
-  readings; the members file authors `Administrator_Domain` over the portal's
-  announcements. A new resource stays invisible until a role in its auth's file is granted
+  authors `Administrator_Global` over the tenant record and the global partition of the
+  staff auth's user-management surface (`StaffUsers`, `StaffSeats`, `StaffRoles`,
+  `SetStaffUserPassword`), `Administrator_Domain` over the console's announcements and the
+  surface's tenant partition (`StaffTenantUsers` and its siblings), and `Machines_Domain`,
+  the service account's role, over the readings; the members file authors
+  `Administrator_Domain` over the portal's announcements and the members auth's tenant
+  partition (`MembersTenantUsers` and its siblings). A new resource stays invisible until a role in its auth's file is granted
   it. Every grant in either file is proven live by `test/integration/grants_test.go`, which
   opens each auth the way the deployment does and asks its engine about each
   unconditional grant; a conditional grant is proven by a test case that names it through
