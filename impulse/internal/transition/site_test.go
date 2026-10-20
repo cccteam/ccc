@@ -1,6 +1,7 @@
 package transition
 
 import (
+	"go/format"
 	"os"
 	"slices"
 	"strings"
@@ -10,7 +11,10 @@ import (
 	"github.com/cccteam/ccc/impulse/internal/names"
 )
 
-// The flat site's hand-written files in the base's shape, minimal.
+// The flat site's hand-written files in the base's shape, minimal. The main package
+// imports pkg/config beside pkg/router: the promotion moves the router under
+// apps/console/pkg/router, which sorts before pkg/config, so the import block's order
+// flips under the rewrite.
 const (
 	siteMain = `// main serves beacon.
 package main
@@ -202,6 +206,18 @@ func TestSiteApplyPromotes(t *testing.T) {
 			t.Errorf("apps/console/main.go lacks %q:\n%s", want, main)
 		}
 	}
+	// Every Go file the promotion rewrote is written as gofmt leaves it: the moved
+	// packages' imports now sort elsewhere in their blocks.
+	if want := "import (\n\t\"example.com/acme/beacon/apps/console/app\"\n\t\"example.com/acme/beacon/apps/console/pkg/router\"\n\t\"example.com/acme/beacon/pkg/config\"\n)\n"; !strings.Contains(main, want) {
+		t.Errorf("apps/console/main.go's import block is not sorted:\n%s", main)
+	}
+	for _, rel := range []string{
+		"apps/console/main.go", "apps/console/app/app.go", "apps/console/pkg/router/router.go", "apps/console/test/authz/harness_test.go",
+		"apps/portal/main.go", "apps/portal/app/app.go", "apps/portal/pkg/router/router.go", "apps/portal/test/authz/harness_test.go",
+		"cmd/generate/consolegenerator/main.go", "pkg/config/data.go", "pkg/deploy/deploy.go",
+	} {
+		assertFormatted(t, a, rel)
+	}
 	if got := read(t, a, "apps/console/web/go.mod"); !strings.Contains(got, "module example.com/acme/beacon/apps/console/web\n") {
 		t.Errorf("web boundary module = %q", got)
 	}
@@ -337,6 +353,20 @@ func TestSiteApplyPromotes(t *testing.T) {
 	}
 	if len(exec.calls) != 1 || exec.calls[0] != "go generate ./..." {
 		t.Errorf("exec calls = %q", exec.calls)
+	}
+}
+
+// assertFormatted fails when gofmt would change the file.
+func assertFormatted(t *testing.T, a *app.App, rel string) {
+	t.Helper()
+
+	text := read(t, a, rel)
+	formatted, err := format.Source([]byte(text))
+	if err != nil {
+		t.Fatalf("%s: format.Source() error = %v", rel, err)
+	}
+	if string(formatted) != text {
+		t.Errorf("%s: gofmt would change it after the promotion:\n%s", rel, text)
 	}
 }
 

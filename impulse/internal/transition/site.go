@@ -360,7 +360,11 @@ func rewriteGoFiles(a *app.App, rewrites []rewrite) (int, error) {
 		if err != nil {
 			return errors.Wrap(err, "fs.DirEntry.Info()")
 		}
-		if err := root.WriteFile(name, []byte(edited), info.Mode()); err != nil {
+		formatted, err := formatRewritten(p, edited)
+		if err != nil {
+			return err
+		}
+		if err := root.WriteFile(name, formatted, info.Mode()); err != nil {
 			return errors.Wrap(err, "os.Root.WriteFile()")
 		}
 		changed++
@@ -372,6 +376,19 @@ func rewriteGoFiles(a *app.App, rewrites []rewrite) (int, error) {
 	}
 
 	return changed, nil
+}
+
+// formatRewritten formats a Go file whose import paths were rewritten textually, so it
+// is written as gofmt leaves it: a rewrite that changes where an import sorts (pkg/router
+// to apps/console/pkg/router, now before pkg/config) leaves the block out of order
+// otherwise, and gofmt and the lint refuse the promoted tree.
+func formatRewritten(rel, text string) ([]byte, error) {
+	formatted, err := format.Source([]byte(text))
+	if err != nil {
+		return nil, errors.Wrapf(err, "%s: format.Source()", rel)
+	}
+
+	return formatted, nil
 }
 
 // exists reports whether a root-relative path is there.
@@ -424,7 +441,11 @@ func (s Site) moveGenerator(a *app.App, g *app.Generator, base string, dirs []st
 		text = strings.ReplaceAll(text, `"`+dir+`"`, `"`+path.Join(base, dir)+`"`)
 		text = strings.ReplaceAll(text, `"`+dir+`/`, `"`+path.Join(base, dir)+`/`)
 	}
-	if err := os.WriteFile(a.Abs(file), []byte(text), mode); err != nil {
+	formatted, err := formatRewritten(file, text)
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(a.Abs(file), formatted, mode); err != nil {
 		return errors.Wrap(err, "os.WriteFile()")
 	}
 	ch.didf("%s: the %s site's generator (was %s), reading and writing under %s", file, s.Existing, g.File, base)
@@ -1209,7 +1230,11 @@ func copyGoFiles(a *app.App, from, to string, rewrites []rewrite) (int, error) {
 		for _, r := range rewrites {
 			text = strings.ReplaceAll(text, r.old, r.new)
 		}
-		if err := writeNew(a, path.Join(to, name), text); err != nil {
+		formatted, err := formatRewritten(path.Join(to, name), text)
+		if err != nil {
+			return 0, err
+		}
+		if err := writeNew(a, path.Join(to, name), string(formatted)); err != nil {
 			return 0, err
 		}
 		n++
