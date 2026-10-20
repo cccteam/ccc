@@ -12,17 +12,8 @@ import (
 // the domain's.
 const checkCommand = "check"
 
-func newCheck(d deps) *cobra.Command {
-	var (
-		appFlag   string
-		dirFlag   string
-		placement string
-	)
-
-	cmd := &cobra.Command{
-		Use:   checkCommand + " [--app <dir>] [--dir <dir>]",
-		Short: "Compare a committed stack with what the code declares",
-		Long: `check renders the application stack afresh and compares every owned file with the one in
+// checkLong is the check command's help text: what it compares and what it refuses.
+const checkLong = `check renders the application stack afresh and compares every owned file with the one in
 the stack directory, and the files it owns at the application root (cloudbuild.yaml,
 cloudbuild-sweep.yaml, the release and operations workflows, and the generate-time step
 cmd/generate/bedrock.go) with the ones there. It exits 1 when any differs or is missing,
@@ -53,6 +44,16 @@ terraform.tfvars, or a release that passed the earlier environments fails in the
 build of the one that lacks it; the check refuses a required mount naming the
 environments without it. An optional mount passes with nothing said.
 
+The image's start: in the sites layout each site's Cloud Run service passes its own binary
+as the container's arguments (cloud-run.tf), which replace the image's default command and
+follow an entrypoint, so the image sets no ENTRYPOINT and names the first site's binary as
+its CMD, in the exec form, as the seeded Dockerfile does. The check refuses a sites-layout
+Dockerfile whose last stage sets an ENTRYPOINT, no CMD, or a CMD that is not one site's
+binary alone, printing the lines to end the image with: under an entrypoint every site's
+service would run it with its own binary as an argument and serve the first site. A flat
+image keeps /app as its entrypoint, which its service runs as written; the check says how
+either image starts and never refuses a flat one.
+
 The maintenance windows: it warns, without failing, while production has no maintenance
 setting in placement.json (a breaking release to production is refused at the start of its
 run until one is written; "anytime" is a setting), when the router package holds no release
@@ -79,8 +80,20 @@ application repository's infrastructure directory, or the one application layer 
 3-app of an infrastructure root (the repository root, or its infrastructure directory);
 --dir overrides. The application is read from the repository root when the stack is in its
 infrastructure directory, else from the working directory; --app overrides. The placement
-is read from --placement, or from placement.json in the stack directory.`,
-		Args: cobra.NoArgs,
+is read from --placement, or from placement.json in the stack directory.`
+
+func newCheck(d deps) *cobra.Command {
+	var (
+		appFlag   string
+		dirFlag   string
+		placement string
+	)
+
+	cmd := &cobra.Command{
+		Use:   checkCommand + " [--app <dir>] [--dir <dir>]",
+		Short: "Compare a committed stack with what the code declares",
+		Long:  checkLong,
+		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			appDir, dir, err := d.stack(appFlag, dirFlag)
 			if err != nil {

@@ -74,6 +74,7 @@ func TestRun(t *testing.T) {
 			wantClean: true,
 			wantOutput: []string{
 				"22 owned file(s) match the code",
+				"image    Dockerfile starts the site with ENTRYPOINT [\"/app\"], which its service runs as written (no command or arguments of its own)",
 				"warning  prd has no maintenance setting (placement.json \"maintenance\": {\"prd\": ...}): a breaking release to prd is refused at the start of its run until one is written; \"anytime\" is a setting, and so are the client's windows",
 				"warning  no release file at pkg/router/zz_gen_release.json: no outlet declares an oldest answered release, so no release is breaking and the maintenance window never holds a run; the resource generator writes it beside the generated router (go generate ./...)",
 			},

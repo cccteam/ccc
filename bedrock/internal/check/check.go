@@ -92,6 +92,13 @@ type Report struct {
 	// browser bundles whose variable it does not set.
 	Binaries []BinaryFinding
 	Bundles  []BundleFinding
+	// Start is how the image starts, read from the Dockerfile's ENTRYPOINT and CMD: a
+	// line of the report when it follows the layout's contract, and refused when a
+	// sites-layout image sets an entrypoint or no default command naming a site's
+	// binary (Start.Problem), since each site's service passes its binary as the
+	// container's arguments, which replace only a default command. Nil without a
+	// Dockerfile, and for a flat image that sets neither instruction.
+	Start *ImageStart
 	// Stages are the instructions the Dockerfile's reserved stages hold beyond their
 	// install, which the image build would export to the registry's cache for every
 	// environment; MissingStages are the reserved stages the Dockerfile lacks, whose
@@ -166,12 +173,18 @@ type MaintenanceFinding struct {
 }
 
 // Clean reports no drift, no refused resource, a sound migration sequence, every
-// required build secret declared, every job's binary built, reserved stages holding
-// their install alone, every declared build argument declared by the Dockerfile, release
-// lines that a feature release opens, a changelog section for every accepted title type,
-// release-please's files in place, and no Cloud Armor policy removed in one step.
+// required build secret declared, every job's binary built, an image that starts as the
+// layout's contract says, reserved stages holding their install alone, every declared
+// build argument declared by the Dockerfile, release lines that a feature release opens,
+// a changelog section for every accepted title type, release-please's files in place, and
+// no Cloud Armor policy removed in one step.
 func (r *Report) Clean() bool {
-	return len(r.Findings) == 0 && len(r.Authoritative) == 0 && len(r.Migrations) == 0 && len(r.BuildSecrets) == 0 && len(r.Generated) == 0 && len(r.Binaries) == 0 && len(r.Bundles) == 0 && len(r.Stages) == 0 && len(r.BuildArguments) == 0 && len(r.ReleaseLines) == 0 && len(r.ReleaseSections) == 0 && len(r.ReleaseFiles) == 0 && len(r.CloudArmor) == 0 && len(r.Retired) == 0
+	return len(r.Findings) == 0 && len(r.Authoritative) == 0 && len(r.Migrations) == 0 && len(r.BuildSecrets) == 0 && len(r.Generated) == 0 && len(r.Binaries) == 0 && len(r.Bundles) == 0 && r.startClean() && len(r.Stages) == 0 && len(r.BuildArguments) == 0 && len(r.ReleaseLines) == 0 && len(r.ReleaseSections) == 0 && len(r.ReleaseFiles) == 0 && len(r.CloudArmor) == 0 && len(r.Retired) == 0
+}
+
+// startClean reports an image whose start follows the layout's contract, or none read.
+func (r *Report) startClean() bool {
+	return r.Start == nil || r.Start.Problem == ""
 }
 
 // Run renders the model and compares the owned files with the directory's, and the
@@ -344,8 +357,8 @@ func scanLatest(dir string, envs []string) ([]LatestSecret, error) {
 }
 
 // scanImage reads the Dockerfile against the stack: the binaries its jobs run, the
-// bundles its site serves, the job name it carries, its reserved stages, and the build
-// arguments the placement declares.
+// bundles its site serves, the job name it carries, how it starts, its reserved stages,
+// and the build arguments the placement declares.
 func (r *Report) scanImage(appDir string, m *derive.Model) error {
 	binaries, err := scanBinaries(appDir, m)
 	if err != nil {
@@ -353,6 +366,11 @@ func (r *Report) scanImage(appDir string, m *derive.Model) error {
 	}
 	r.Binaries = binaries
 	r.Bundles = scanBundles(m)
+	start, err := ScanStart(appDir, m)
+	if err != nil {
+		return err
+	}
+	r.Start = start
 	stages, missing, err := scanReservedStages(appDir)
 	if err != nil {
 		return err
@@ -561,6 +579,9 @@ func (r *Report) Write(w io.Writer) {
 	for _, l := range r.Latest {
 		fmt.Fprintf(w, "  latest   %s tracks latest in %s (secret_versions.%s in terraform.tfvars): the environment runs whatever version is added next, with no release; pinning a version number is the default, and latest the exception for a secret that has to follow its source\n", l.Variable, l.Environment, l.Environment)
 	}
+	if r.Start != nil && r.Start.Problem == "" {
+		fmt.Fprintf(w, "  image    %s\n", r.Start.Passed())
+	}
 	for _, a := range r.Authoritative {
 		fmt.Fprintf(w, "  refused  %s:%d %s: an authoritative IAM resource replaces every member on each apply; declare a *_iam_member per member instead (a file store's bucket policy, storage.tf's, is the one admitted)\n", a.Path, a.Line, a.Address)
 	}
@@ -573,21 +594,7 @@ func (r *Report) Write(w io.Writer) {
 	for _, g := range r.Generated {
 		fmt.Fprintf(w, "  refused  %s\n", g.Problem)
 	}
-	for _, bs := range r.BuildSecrets {
-		fmt.Fprintf(w, "  refused  Dockerfile mounts build secret %s as required; %s declare%s no such secret (terraform.tfvars build_secrets)\n", bs.ID, joinEnvironments(bs.Missing), pluralS(len(bs.Missing)))
-	}
-	for _, b := range r.Binaries {
-		fmt.Fprintf(w, "  refused  Dockerfile builds no %s, the command %s: go build -o /build%s ./%s in the Go stage, with /build copied into the runtime image\n", b.Binary, b.Runs, b.Binary, b.Dir)
-	}
-	for _, b := range r.Bundles {
-		fmt.Fprintf(w, "  refused  Dockerfile sets no %s: the bundle %s is built in a browser stage of its workspace, copied under the working directory and named by an ENV %s=<path>, as the seeded Dockerfile does\n", b.Var, b.Path, b.Var)
-	}
-	for _, s := range r.Stages {
-		fmt.Fprintf(w, "  refused  Dockerfile:%d stage %s %s (%q): the image build exports this stage's layers to the registry's cache, which every environment's build reads, so the stage holds its install and nothing else\n", s.Line, s.Stage, s.Problem, s.Instruction)
-	}
-	for _, ba := range r.BuildArguments {
-		fmt.Fprintf(w, "  refused  placement.json declares build argument %s (%s), which the Dockerfile does not declare: add the line \"ARG %s\" to the stage that builds with it (a browser build stage, before its build), since a build argument reaches only the stages that declare it\n", ba.Name, ba.Value, ba.Name)
-	}
+	r.writeImage(w)
 	for _, rl := range r.ReleaseLines {
 		fmt.Fprintf(w, "  refused  %s: %s\n", rl.Path, rl.Problem)
 	}
@@ -605,6 +612,38 @@ func (r *Report) Write(w io.Writer) {
 	}
 	for _, mf := range r.Maintenance {
 		fmt.Fprintf(w, "  warning  %s\n", mf.Problem)
+	}
+}
+
+// writeImage prints the refusals the Dockerfile earns: the build secrets no environment
+// declares, the binaries and bundles it does not build or set, a start the stack's
+// services cannot start (its refused line, with the lines to write under it), the
+// reserved stages holding more than their install, and the build arguments it does not
+// declare.
+func (r *Report) writeImage(w io.Writer) {
+	for _, bs := range r.BuildSecrets {
+		fmt.Fprintf(w, "  refused  Dockerfile mounts build secret %s as required; %s declare%s no such secret (terraform.tfvars build_secrets)\n", bs.ID, joinEnvironments(bs.Missing), pluralS(len(bs.Missing)))
+	}
+	for _, b := range r.Binaries {
+		fmt.Fprintf(w, "  refused  Dockerfile builds no %s, the command %s: go build -o /build%s ./%s in the Go stage, with /build copied into the runtime image\n", b.Binary, b.Runs, b.Binary, b.Dir)
+	}
+	for _, b := range r.Bundles {
+		fmt.Fprintf(w, "  refused  Dockerfile sets no %s: the bundle %s is built in a browser stage of its workspace, copied under the working directory and named by an ENV %s=<path>, as the seeded Dockerfile does\n", b.Var, b.Path, b.Var)
+	}
+	if r.Start != nil && r.Start.Problem != "" {
+		for i, line := range r.Start.Refusal(dockerfileName) {
+			label := "           "
+			if i == 0 {
+				label = "  refused  "
+			}
+			fmt.Fprintf(w, "%s%s\n", label, line)
+		}
+	}
+	for _, s := range r.Stages {
+		fmt.Fprintf(w, "  refused  Dockerfile:%d stage %s %s (%q): the image build exports this stage's layers to the registry's cache, which every environment's build reads, so the stage holds its install and nothing else\n", s.Line, s.Stage, s.Problem, s.Instruction)
+	}
+	for _, ba := range r.BuildArguments {
+		fmt.Fprintf(w, "  refused  placement.json declares build argument %s (%s), which the Dockerfile does not declare: add the line \"ARG %s\" to the stage that builds with it (a browser build stage, before its build), since a build argument reaches only the stages that declare it\n", ba.Name, ba.Value, ba.Name)
 	}
 }
 

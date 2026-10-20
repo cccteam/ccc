@@ -879,7 +879,11 @@ bounds). What an application adds is declared in files of its own:
   directory) and then yours: extra stages, build arguments, private assets.
   `bedrock check` refuses a Dockerfile that builds no binary the pipeline
   runs or deploys (`/<site>`, each site's service's; `/migrate`, taken out of the image for the migration
-  steps).
+  steps). It also refuses an image that sets an
+  `ENTRYPOINT`, or no `CMD` naming one site's binary: each site's service passes
+  its binary as the container's arguments (`cloud-run.tf`), which replace a
+  default command and follow an entrypoint, so under an entrypoint every service
+  would serve the first site. The refusal prints the lines to end the image with.
 
 Anything beyond that is a new hook point or a new `bedrock deploy` command,
 never an edit to the rendered file.
