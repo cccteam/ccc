@@ -21,7 +21,11 @@
 # the old steps; the one rule is that a bedrock release works under the
 # previous release's steps. Both triggers pass _BEDROCK_STEPS, the shape of
 # these steps and the kind of pin they were rendered for, and the commands say
-# when they run under another.
+# when they run under another. The one move the lag does not cover is a pin
+# that changes kind: this layer is applied by hand, never by a trigger, and
+# the release shape's fetch step refuses a commit pin, since no step follows
+# to build it. bedrock upgrade applies this layer itself when it moves the
+# pin across kinds, after yes typed back, before the pull request is opened.
 #
 # The connection and the repository link exist once placement.json records
 # the Cloud Build GitHub authorization (cloudBuildInstallationId,
@@ -322,8 +326,10 @@ locals {
   # of the repository reaches (a commits-only clone of its branches, with git).
   # The steps follow the pin's kind at render time, as the application
   # pipeline's do: a release pin renders FetchBedrock alone, and a commit pin
-  # adds BuildBedrock, which builds it in the Go image. bedrock upgrade renders
-  # this layer with the pin it moves, and the next apply updates the triggers.
+  # adds BuildBedrock, which builds it in the Go image. The step reads the
+  # shape it runs in from BEDROCK_STEPS, and in the release shape it refuses a
+  # commit pin, which no step would build. bedrock upgrade renders this layer
+  # with the pin it moves, and applies it when the pin changes kind.
   fetch_bedrock = <<-EOT
     import hashlib
     import json
@@ -337,6 +343,7 @@ locals {
 
     home, host, repository = sys.argv[1], sys.argv[2], sys.argv[3]
     placement_path = sys.argv[4] if len(sys.argv) > 4 else "placement.json"
+    steps = os.environ.get("BEDROCK_STEPS", "")
     with open(placement_path, encoding="utf-8") as f:
         placement = json.load(f)
     version = placement.get("bedrockVersion", "")
@@ -344,6 +351,8 @@ locals {
     if not version:
         sys.exit(placement_path + " pins no bedrock (bedrockVersion): run bedrock upgrade in this repository, which records the pin and renders, and commit what it changed")
     if re.search(r"[-.][0-9]{14}-[0-9a-f]{12}\Z", version):
+        if steps.endswith("-release"):
+            sys.exit(placement_path + " pins bedrock " + version + ", a commit pin, and this trigger's steps are in the release shape (" + steps + "): this step downloads a release, and no step follows to build a commit. A commit pin needs the commit shape, which bedrock upgrade applies to 0-bootstrap when it moves the pin from a release to a commit; when the pin was moved without that apply, apply 0-bootstrap from this branch by hand (in 0-bootstrap: tofu init, then tofu apply, as the bootstrap administrator) before this pull request's plan, or the merge's apply, can run")
         commit = version[-12:]
         branches = tempfile.mkdtemp(prefix="bedrock-branches-")
         cloned = subprocess.run(["git", "clone", "--quiet", "--bare", "--no-tags", "--filter=tree:0", repository, branches], capture_output=True, text=True, check=False)
@@ -391,7 +400,7 @@ locals {
       name       = "gcr.io/cloud-builders/gcloud"
       entrypoint = "python3"
       args       = ["-c", local.fetch_bedrock, "/builder/home", "https://github.com", "https://github.com/cccteam/ccc.git"]
-      env        = []
+      env        = ["BEDROCK_STEPS=2-release"]
       timeout    = "300s"
     },
     {

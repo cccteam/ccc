@@ -17,7 +17,9 @@ import (
 	"github.com/go-playground/errors/v5"
 	"github.com/spf13/cobra"
 
+	"github.com/cccteam/ccc/bedrock/internal/deploy"
 	"github.com/cccteam/ccc/bedrock/internal/derive"
+	"github.com/cccteam/ccc/bedrock/internal/layers"
 	"github.com/cccteam/ccc/bedrock/internal/org"
 	"github.com/cccteam/ccc/bedrock/internal/release"
 )
@@ -30,6 +32,8 @@ const (
 	dirOption       = "--dir"
 	outOption       = "--out"
 	placementOption = "--placement"
+	// yesTyped is the word typed back before upgrade applies 0-bootstrap.
+	yesTyped = "yes"
 )
 
 func newUpgrade(d deps) *cobra.Command {
@@ -37,6 +41,7 @@ func newUpgrade(d deps) *cobra.Command {
 		appFlag   string
 		dirFlag   string
 		placement string
+		yes       bool
 	)
 
 	cmd := &cobra.Command{
@@ -72,6 +77,16 @@ commit the pipeline's first step and the stack's triggers get the pinned bedrock
 bedrock deploy step runs it. The pin is the one place a bedrock version appears in the
 application.
 
+In the organization's repository a move that changes the pin's kind, a release to a commit or a
+commit to a release, changes the shape of the Cloud Build triggers' steps (0-bootstrap/cloud-build.tf:
+a release pin renders the fetch step alone, a commit pin adds the step that builds it), and
+0-bootstrap is the one layer no trigger applies: the triggers as applied stay in the old shape,
+and in the release shape the fetch step refuses a commit pin. So upgrade says so, asks for yes
+typed back (--yes stands in for it where there is no terminal; without either the run is refused
+and nothing is moved), and after the render applies 0-bootstrap as you, with your sign-in, the way
+the bootstrap administrator applies the layer by hand: the plan updates the two triggers in place.
+A move that keeps the kind applies nothing.
+
 Upgrade impulse first, then bedrock, and land both in one change: bedrock's checks read what
 impulse's walk writes (the drivers' settings the configuration embeds, the release file, the
 processes), and the walk reads nothing bedrock renders. An application behind impulse's
@@ -96,7 +111,7 @@ is the repository root.`,
 					placement = filepath.Join(root, orgPlacementFile)
 				}
 
-				return d.upgrade(cmd, args, orgTarget(p, root, placement))
+				return d.upgrade(cmd, args, orgTarget(p, root, placement), yes)
 			}
 			appDir, dir, err := d.stack(appFlag, dirFlag)
 			if err != nil {
@@ -110,13 +125,14 @@ is the repository root.`,
 				return err
 			}
 
-			return d.upgrade(cmd, args, t)
+			return d.upgrade(cmd, args, t, yes)
 		},
 	}
 
 	cmd.Flags().StringVar(&appFlag, "app", "", "application root, the directory holding go.mod (default: the repository root when the stack is in its infrastructure directory, else the working directory)")
 	cmd.Flags().StringVar(&dirFlag, "dir", "", "the stack directory (default: the application's stack, found from the working directory)")
 	cmd.Flags().StringVar(&placement, "placement", "", "placement file (default: placement.json in the stack directory)")
+	cmd.Flags().BoolVar(&yes, confirmFlag, false, "in the organization's repository, when the pin changes kind: apply 0-bootstrap without yes typed back, where there is no terminal to type it at")
 	_ = cmd.MarkFlagDirname("app")
 	_ = cmd.MarkFlagDirname("dir")
 
@@ -135,6 +151,10 @@ type upgradeTarget struct {
 	// runner is who runs the pin from the commit; builds says who builds a commit pin.
 	runner string
 	builds string
+	// root is the organization repository's root, whose 0-bootstrap upgrade applies when
+	// the pin changes kind; empty for an application, whose pin changes no trigger's
+	// steps (its stack trigger always carries the build step).
+	root string
 }
 
 // appTarget is an application's placement: the stack is rendered with the pinned
@@ -171,11 +191,60 @@ func orgTarget(p *org.Placement, root, placement string) *upgradeTarget {
 		render: []string{orgCommand, renderCommand, dirOption, root, placementOption, placement},
 		runner: "the Cloud Build triggers' runs",
 		builds: "the triggers' runs build it",
+		root:   root,
 	}
 }
 
+// shapeChange is the change of kind the move to version makes to the organization's
+// pin, release to commit or commit to release, which changes the shape of the Cloud
+// Build triggers' steps; nil when the kind stays, for an application, and for a first
+// pin, before the triggers exist.
+func (t *upgradeTarget) shapeChange(version string) *shapeChange {
+	if t.root == "" || t.version == "" {
+		return nil
+	}
+	from, to := org.PinKind(t.version), org.PinKind(version)
+	if from == to {
+		return nil
+	}
+
+	return &shapeChange{from: from, to: to}
+}
+
+// shapeChange is a move of the organization's pin across kinds (org.PinKind), which
+// changes the shape of the Cloud Build triggers' steps: 0-bootstrap, the one layer no
+// trigger applies, is applied here after the render.
+type shapeChange struct {
+	from string
+	to   string
+}
+
+// announcement says what the move does to the triggers: the kinds, the shapes, what
+// the triggers as applied do with the new pin, and that 0-bootstrap is applied here.
+func (c *shapeChange) announcement() string {
+	const applies = "bedrock upgrade applies 0-bootstrap after the render%s, as you, with your sign-in, the way the bootstrap administrator applies the layer by hand (in 0-bootstrap: tofu init, plan and apply, at its backend)%s; the plan updates the two triggers in place."
+	if c.to == org.CommitKind {
+		return "The pin moves from a release to a commit, and the Cloud Build triggers' steps change shape with it (0-bootstrap/cloud-build.tf): a release pin renders the fetch step alone, a commit pin adds the step that builds it with go install. The triggers are applied in the release shape, whose fetch step refuses a commit pin, so no pull request with this pin can be planned until 0-bootstrap is applied in the commit shape. " +
+			fmt.Sprintf(applies, "", "")
+	}
+
+	return "The pin moves from a commit to a release, and the Cloud Build triggers' steps change shape with it (0-bootstrap/cloud-build.tf): a commit pin renders the fetch step and the step that builds it with go install, a release pin the fetch step alone. The triggers are applied in the commit shape, whose steps run a release pin too (the build step has nothing to do), so the pull request's plan runs either way. " +
+		fmt.Sprintf(applies, " all the same", ", so the triggers and the repository are in one shape")
+}
+
+// pinMove is one move of the pin, ready to be made once the bedrock to render with is in
+// hand: the version and the checksum to write (none for a commit), that bedrock, and the
+// two lines that say what moved and what to commit.
+type pinMove struct {
+	version string
+	sum     string
+	bin     string
+	moved   string
+	closing string
+}
+
 // upgrade moves the pin in the placement and renders with the bedrock it names.
-func (d deps) upgrade(cmd *cobra.Command, args []string, t *upgradeTarget) error {
+func (d deps) upgrade(cmd *cobra.Command, args []string, t *upgradeTarget, yes bool) error {
 	ctx := cmd.Context()
 	src := d.releases()
 	version, err := targetVersion(ctx, src, args)
@@ -183,17 +252,16 @@ func (d deps) upgrade(cmd *cobra.Command, args []string, t *upgradeTarget) error
 		return err
 	}
 	if release.IsCommitPin(version) {
-		return d.upgradeToCommit(cmd, t, version)
+		return d.upgradeToCommit(cmd, t, version, yes)
 	}
 
-	return d.upgradeToRelease(cmd, src, t, version)
+	return d.upgradeToRelease(cmd, src, t, version, yes)
 }
 
 // upgradeToRelease moves the pin to a release: its version and its pipeline binary's
 // checksum, rendering with its binary for this machine.
-func (d deps) upgradeToRelease(cmd *cobra.Command, src *release.Source, t *upgradeTarget, version string) error {
+func (d deps) upgradeToRelease(cmd *cobra.Command, src *release.Source, t *upgradeTarget, version string, yes bool) error {
 	ctx := cmd.Context()
-	out := cmd.OutOrStdout()
 	sums, pipelineSum, err := releaseChecksums(ctx, src, version)
 	if err != nil {
 		return err
@@ -204,23 +272,95 @@ func (d deps) upgradeToRelease(cmd *cobra.Command, src *release.Source, t *upgra
 		return errors.Newf("bedrock %s publishes no binary for %s/%s (%s): upgrade runs on a platform the release covers", version, runtime.GOOS, runtime.GOARCH, asset)
 	}
 	if t.version == version && t.sum == pipelineSum {
-		fmt.Fprintf(out, "%s already pins bedrock %s.\n", t.placement, version)
+		fmt.Fprintf(cmd.OutOrStdout(), "%s already pins bedrock %s.\n", t.placement, version)
 
 		return nil
+	}
+	change, ok, err := d.confirmShapeChange(cmd, t, version, yes)
+	if err != nil || !ok {
+		return err
 	}
 	bin, err := d.fetched(ctx, src, version, asset, sum)
 	if err != nil {
 		return err
 	}
-	was := pinName(t.version)
-	if err := t.write(version, pipelineSum); err != nil {
+
+	return d.move(cmd, t, &pinMove{
+		version: version, sum: pipelineSum, bin: bin,
+		moved:   fmt.Sprintf("Moved %s from %s to bedrock %s (%s %s).", t.placement, pinName(t.version), version, release.PipelineAsset(), pipelineSum),
+		closing: fmt.Sprintf("Commit %s with the rendered files: from that commit %s run bedrock %s.", t.placement, t.runner, version),
+	}, change)
+}
+
+// move makes the move once it is confirmed and the bedrock to render with is in hand:
+// the pin written and announced, the render with that bedrock, the apply of 0-bootstrap
+// when the triggers' shape changes, and the closing line.
+func (d deps) move(cmd *cobra.Command, t *upgradeTarget, m *pinMove, change *shapeChange) error {
+	out := cmd.OutOrStdout()
+	if err := t.write(m.version, m.sum); err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "Moved %s from %s to bedrock %s (%s %s).\n", t.placement, was, version, release.PipelineAsset(), pipelineSum)
-	if err := renderWith(cmd, bin, version, t.render); err != nil {
+	fmt.Fprintln(out, m.moved)
+	if err := renderWith(cmd, m.bin, m.version, t.render); err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "Commit %s with the rendered files: from that commit %s run bedrock %s.\n", t.placement, t.runner, version)
+	if change != nil {
+		if err := d.applyShapeChange(cmd, t, change); err != nil {
+			return err
+		}
+	}
+	fmt.Fprintln(out, m.closing)
+
+	return nil
+}
+
+// confirmShapeChange is the change of the triggers' shape the move to version makes,
+// confirmed before anything is fetched, installed or written: when there is one, it is
+// printed and yes is asked for at the terminal; --yes stands in for it, and a run with
+// no terminal and no --yes is refused, with nothing moved. ok is false when something
+// else was typed, which stops the move. No change asks nothing.
+func (d deps) confirmShapeChange(cmd *cobra.Command, t *upgradeTarget, version string, yes bool) (change *shapeChange, ok bool, err error) {
+	change = t.shapeChange(version)
+	if change == nil {
+		return nil, true, nil
+	}
+	out := cmd.OutOrStdout()
+	fmt.Fprintln(out, change.announcement())
+	if yes {
+		return change, true, nil
+	}
+	if !d.interactive() {
+		return nil, false, errors.Newf("bedrock %s applies %s when the pin changes kind, after yes typed back at the terminal, and this run has none: run it again with --%s, which stands in for it; nothing was moved", upgradeCommand, layers.BootstrapLayer, confirmFlag)
+	}
+	typed, err := d.asker(cmd).Line(fmt.Sprintf("Apply %s after the render, as you? Type %s to go on; anything else stops:", layers.BootstrapLayer, yesTyped))
+	if err != nil {
+		return nil, false, err
+	}
+	if typed != yesTyped {
+		fmt.Fprintln(out, "Stopped: nothing was moved.")
+
+		return nil, false, nil
+	}
+
+	return change, true, nil
+}
+
+// applyShapeChange applies 0-bootstrap in the repository as the person running the
+// command, once the render has put the layer in the new shape, and says what the plan
+// and the apply did.
+func (d deps) applyShapeChange(cmd *cobra.Command, t *upgradeTarget, change *shapeChange) error {
+	out := cmd.OutOrStdout()
+	layer := layers.BootstrapLayer
+	fmt.Fprintf(out, "Applying %s as you, with your sign-in (in %s: tofu init, plan and apply):\n", layer, filepath.Join(t.root, layer))
+	var runner deploy.Runner
+	if d.deploy != nil {
+		runner = d.deploy.Exec
+	}
+	applied, err := layers.ApplyByHand(cmd.Context(), runner, t.root, layer, out)
+	if err != nil {
+		return errors.Newf("the apply of %s failed (%v): %s and the rendered files are in place, so fix what failed and apply %s by hand (in %s: tofu init, then tofu apply) before this change's pull request can be planned", layer, errors.Cause(err), t.placement, layer, layer)
+	}
+	fmt.Fprintf(out, "Planned %s: %s\nApplied %s: %s The triggers are in the %s shape.\n", layer, applied.PlanSummary, layer, applied.ApplySummary, change.to)
 
 	return nil
 }
@@ -243,29 +383,28 @@ func releaseChecksums(ctx context.Context, src *release.Source, version string) 
 
 // upgradeToCommit moves the pin to a commit: its pseudo-version and no checksum, which also
 // clears the checksum a release pin left. The commit is installed before the placement is
-// written, so a failed install leaves the placement as it was.
-func (d deps) upgradeToCommit(cmd *cobra.Command, t *upgradeTarget, version string) error {
-	out := cmd.OutOrStdout()
+// written, so a failed install leaves the placement as it was, and after the move is
+// confirmed, so a refused one installs nothing.
+func (d deps) upgradeToCommit(cmd *cobra.Command, t *upgradeTarget, version string, yes bool) error {
 	if t.version == version && t.sum == "" {
-		fmt.Fprintf(out, "%s already pins bedrock %s.\n", t.placement, version)
+		fmt.Fprintf(cmd.OutOrStdout(), "%s already pins bedrock %s.\n", t.placement, version)
 
 		return nil
+	}
+	change, ok, err := d.confirmShapeChange(cmd, t, version, yes)
+	if err != nil || !ok {
+		return err
 	}
 	bin, err := d.installed(cmd.Context(), version)
 	if err != nil {
 		return err
 	}
-	was := pinName(t.version)
-	if err := t.write(version, ""); err != nil {
-		return err
-	}
-	fmt.Fprintf(out, "Moved %s from %s to bedrock %s, a commit pin: %s with go install and Go's checksum database verifies it.\n", t.placement, was, version, t.builds)
-	if err := renderWith(cmd, bin, version, t.render); err != nil {
-		return err
-	}
-	fmt.Fprintf(out, "Commit %s with the rendered files: from that commit %s build bedrock %s with go install and run it.\n", t.placement, t.runner, version)
 
-	return nil
+	return d.move(cmd, t, &pinMove{
+		version: version, sum: "", bin: bin,
+		moved:   fmt.Sprintf("Moved %s from %s to bedrock %s, a commit pin: %s with go install and Go's checksum database verifies it.", t.placement, pinName(t.version), version, t.builds),
+		closing: fmt.Sprintf("Commit %s with the rendered files: from that commit %s build bedrock %s with go install and run it.", t.placement, t.runner, version),
+	}, change)
 }
 
 // pinName names the placement's pin before a move, for the message that says what moved.

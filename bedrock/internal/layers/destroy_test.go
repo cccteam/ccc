@@ -200,7 +200,7 @@ func TestDestroy(t *testing.T) {
 			token:           fixedToken,
 			runs: map[string]*handRun{
 				orgLayer:       {stateList: orgState},
-				bootstrapLayer: {stateList: bootState, statePull: pulledState},
+				BootstrapLayer: {stateList: bootState, statePull: pulledState},
 			},
 			wantRan: []string{
 				"1-org: tofu init -input=false -no-color -reconfigure [data 1-org.data]",
@@ -226,7 +226,7 @@ func TestDestroy(t *testing.T) {
 			token:           fixedToken,
 			runs: map[string]*handRun{
 				orgLayer:       {stateList: orgState},
-				bootstrapLayer: {stateList: bootState, statePull: pulledState},
+				BootstrapLayer: {stateList: bootState, statePull: pulledState},
 			},
 			wantRan: []string{
 				"1-org: tofu init -input=false -no-color -reconfigure [data 1-org.data]",
@@ -251,7 +251,7 @@ func TestDestroy(t *testing.T) {
 			token:           noToken,
 			runs: map[string]*handRun{
 				orgLayer:       {},
-				bootstrapLayer: {statePull: pulledState},
+				BootstrapLayer: {statePull: pulledState},
 			},
 			wantRan: []string{
 				"1-org: tofu init -input=false -no-color -reconfigure [data 1-org.data]",
@@ -270,7 +270,7 @@ func TestDestroy(t *testing.T) {
 			token:           fixedToken,
 			runs: map[string]*handRun{
 				orgLayer:       {stateList: orgState[3:], destroyFailures: 2},
-				bootstrapLayer: {statePull: pulledState},
+				BootstrapLayer: {statePull: pulledState},
 			},
 			wantRan: []string{
 				"1-org: tofu init -input=false -no-color -reconfigure [data 1-org.data]",

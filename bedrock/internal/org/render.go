@@ -204,20 +204,41 @@ func (v *view) InfrastructureRepository() string {
 	return v.GithubOrganization + "/" + v.SourceRepo
 }
 
-// StepsShape is what the triggers pass as _BEDROCK_STEPS: StepsVersion and the kind of
-// pin the steps were rendered for (2-release, 2-commit), since a release pin renders
-// the fetch step alone and a commit pin the fetch and build steps.
-func StepsShape(p *Placement) string {
-	if release.IsCommitPin(p.BedrockVersion) {
-		return StepsVersion + "-commit"
+// The two kinds of pin, which the shape of the triggers' steps follows: a release pin
+// renders the fetch step alone, a commit pin the fetch and build steps.
+const (
+	ReleaseKind = "release"
+	CommitKind  = "commit"
+)
+
+// PinKind is the kind of the pin, release or commit: the suffix of StepsShape, and what
+// bedrock upgrade compares across a move, since a pin that changes kind changes the
+// shape of the triggers' steps. No pin is the release kind, as the steps render for it.
+func PinKind(version string) string {
+	if release.IsCommitPin(version) {
+		return CommitKind
 	}
 
-	return StepsVersion + "-release"
+	return ReleaseKind
+}
+
+// StepsShape is what the triggers pass as _BEDROCK_STEPS, and set as BEDROCK_STEPS in
+// the fetch step's environment: StepsVersion and the kind of pin the steps were rendered
+// for (2-release, 2-commit).
+func StepsShape(p *Placement) string {
+	return StepsVersion + "-" + PinKind(p.BedrockVersion)
 }
 
 // StepsVersion is the shape of the triggers' steps, passed as _BEDROCK_STEPS.
 func (v *view) StepsVersion() string {
 	return StepsShape(v.Placement)
+}
+
+// StepsEnv is the variable the fetch step reads the steps' shape from, which
+// 0-bootstrap's triggers set in the step's environment: in the release shape the step
+// refuses a commit pin, since no step follows to build it.
+func (*view) StepsEnv() string {
+	return stepsEnv
 }
 
 // CommitPin reports a commit pin, which the triggers' second step builds with go
