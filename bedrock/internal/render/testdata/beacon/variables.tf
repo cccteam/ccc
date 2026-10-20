@@ -81,7 +81,10 @@ variable "hostnames" {
     Hostnames the site answers on, per environment, in 2-net's convention:
     app.domain for prd, app-stg.domain and app-tst.domain below it, all one
     label under the apps domain because that is what its wildcard certificate
-    covers (beacon.tst.<domain> would not be). The first one is the canonical
+    covers (beacon.tst.<domain> would not be). The label is the one
+    placement.json declares for the site (hostnames: beacon), the code by
+    default; the organization records the hostnames the stack serves and refuses
+    one another application has. The first one is the canonical
     host. Every hostname here is registered with the
     load balancer by an entry in 2-net's hosts; output net_hosts is that entry.
   EOT

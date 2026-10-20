@@ -16,7 +16,8 @@ There is no VPC in this project. See "Cross-project backends" for why.
   map with an entry for each of the two hostnames, no PRIMARY entry. The
   wildcard covers every hostname the naming convention produces:
   `harbor.apps.imp.example`, `harbor-stg.`, `harbor-tst.`, and
-  `pr12-harbor-tst.`.
+  `harbor-pr12.`, the first label being the one the application's placement
+  declares for its site (its code by default).
 - A Cloud DNS public zone for `apps_domain`, DNSSEC on, with A records for
   the apex and the wildcard pointing at the address, the authorization CNAME
   copied from the DNS authorization, and whatever `extra_records` lists. The
@@ -131,7 +132,7 @@ backend service does not exist, or whose project
 has not made the grant, fails the apply here with a permission or not-found
 error on the URL map.
 
-Pull-request environments (`pr<N>-harbor-tst.apps.imp.example`) follow
+Pull-request environments (`harbor-pr<N>.apps.imp.example`) follow
 the same path, which means an entry here per open pull request. That is a
 cost of keeping the URL map in one place; the alternative, letting the tst
 environment write host rules into this URL map, would hand a pull-request

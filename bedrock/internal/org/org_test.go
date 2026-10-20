@@ -80,6 +80,30 @@ func TestPlacementValidate(t *testing.T) {
 			p.Applications = []Application{{Code: "quill", Repository: "quill-service"}, {Code: "harbor", Repository: "Quill-Service"}}
 		}, wantErr: `repository "Quill-Service" is listed twice`},
 		{name: "a label without a value", mutate: func(p *Placement) { p.Labels = map[string]string{"team": ""} }, wantErr: "label"},
+		{name: "recorded hostnames", mutate: func(p *Placement) {
+			p.Hostnames = map[string]map[string][]string{"harbor": {"tst": {"lighthouse-tst.apps.imp.example"}, "stg": {"lighthouse-stg.apps.imp.example"}, "prd": {"lighthouse.apps.imp.example"}}}
+		}},
+		{name: "recorded hostnames of an application not registered", mutate: func(p *Placement) {
+			p.Hostnames = map[string]map[string][]string{"quill": {"tst": {"quill-tst.apps.imp.example"}}}
+		}, wantErr: `hostnames names "quill", which applications does not list`},
+		{name: "a recorded hostname in an unknown environment", mutate: func(p *Placement) {
+			p.Hostnames = map[string]map[string][]string{"harbor": {"qa": {"harbor-qa.apps.imp.example"}}}
+		}, wantErr: `hostnames.harbor names "qa", which is not one of tst, stg, prd`},
+		{name: "a recorded hostname off the apps domain", mutate: func(p *Placement) {
+			p.Hostnames = map[string]map[string][]string{"harbor": {"tst": {"harbor-tst.example.com"}}}
+		}, wantErr: `hostnames.harbor.tst "harbor-tst.example.com" is not under the apps domain apps.imp.example`},
+		{name: "a recorded hostname two labels deep", mutate: func(p *Placement) {
+			p.Hostnames = map[string]map[string][]string{"harbor": {"tst": {"tst.harbor.apps.imp.example"}}}
+		}, wantErr: `hostnames.harbor.tst "tst.harbor.apps.imp.example" is not one label under the apps domain apps.imp.example: the wildcard certificate covers exactly one level`},
+		{name: "a recorded hostname whose label breaks the rule", mutate: func(p *Placement) {
+			p.Hostnames = map[string]map[string][]string{"harbor": {"tst": {"Harbor-tst.apps.imp.example"}}}
+		}, wantErr: `hostnames.harbor.tst: hostname label "Harbor-tst"`},
+		{name: "a recorded hostname another application serves by default", mutate: func(p *Placement) {
+			p.Hostnames = map[string]map[string][]string{"harbor": {"tst": {"beacon-tst.apps.imp.example"}}}
+		}, wantErr: "hostname beacon-tst.apps.imp.example in tst is harbor's and beacon's: each hostname of an environment belongs to one application"},
+		{name: "a recorded hostname that is another application's next host", mutate: func(p *Placement) {
+			p.Hostnames = map[string]map[string][]string{"harbor": {"prd": {"beacon-next.apps.imp.example"}}}
+		}, wantErr: "hostname beacon-next.apps.imp.example in prd is harbor's and beacon's"},
 		{name: "no spanner config", mutate: func(p *Placement) { p.Spanner.Config = "" }, wantErr: "spanner.config is empty"},
 		{name: "no release app", mutate: func(p *Placement) { p.GithubReleaseAppID = "" }, wantErr: "githubReleaseAppId is empty"},
 		{name: "a release app named by slug", mutate: func(p *Placement) { p.GithubReleaseAppID = "imp-release" }, wantErr: "githubReleaseAppId \"imp-release\" is not an App ID"},
@@ -3610,5 +3634,61 @@ func TestOutOfServiceChanges(t *testing.T) {
 				t.Errorf("Validate() after the change = %v", err)
 			}
 		})
+	}
+}
+
+// TestHostRowsRecorded: 2-net's hosts render from the recorded hostnames where an
+// application has them, each with its -next twin, and from the default rule where it has
+// none; RecordHostnames keeps the placement valid and says whether the record changed.
+func TestHostRowsRecorded(t *testing.T) {
+	t.Parallel()
+
+	p, err := ReadPlacement(filepath.Join(fixture, "placement.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	record := map[string][]string{"tst": {"lighthouse-tst.apps.imp.example"}, "stg": {"lighthouse-stg.apps.imp.example"}, "prd": {"lighthouse.apps.imp.example"}}
+	changed, err := p.RecordHostnames("harbor", record)
+	if err != nil || !changed {
+		t.Fatalf("RecordHostnames() = %v, %v, want changed and no error", changed, err)
+	}
+	if changed, err = p.RecordHostnames("harbor", record); err != nil || changed {
+		t.Fatalf("RecordHostnames() again = %v, %v, want unchanged and no error", changed, err)
+	}
+	if _, err := p.RecordHostnames("harbor", map[string][]string{"tst": {"lighthouse-tst.apps.imp.example"}}); err == nil || !strings.Contains(err.Error(), "serves no hostname in stg") {
+		t.Fatalf("RecordHostnames() with an environment missing = %v, want a refusal naming stg", err)
+	}
+	if _, err := p.RecordHostnames("beacon", map[string][]string{"tst": {"lighthouse-tst.apps.imp.example"}, "stg": {"beacon-stg.apps.imp.example"}, "prd": {"beacon.apps.imp.example"}}); err == nil || !strings.Contains(err.Error(), "is harbor's and beacon's") {
+		t.Fatalf("RecordHostnames() of a hostname harbor serves = %v, want a refusal", err)
+	}
+	if got := p.Hostnames["beacon"]; got != nil {
+		t.Errorf("a refused record stayed: %v", got)
+	}
+	if _, err := p.RecordHostnames("quill", record); err == nil || !strings.Contains(err.Error(), `application "quill" is not registered`) {
+		t.Fatalf("RecordHostnames() of an unregistered application = %v, want a refusal", err)
+	}
+
+	v := &view{Placement: p}
+	var keys []string
+	for _, row := range v.HostRows() {
+		keys = append(keys, strings.TrimSpace(row.Key))
+	}
+	want := []string{
+		`"lighthouse-tst.apps.imp.example"`, `"lighthouse-tst-next.apps.imp.example"`,
+		`"lighthouse-stg.apps.imp.example"`, `"lighthouse-stg-next.apps.imp.example"`,
+		`"lighthouse.apps.imp.example"`, `"lighthouse-next.apps.imp.example"`,
+		`"beacon-tst.apps.imp.example"`, `"beacon-tst-next.apps.imp.example"`,
+		`"beacon-stg.apps.imp.example"`, `"beacon-stg-next.apps.imp.example"`,
+		`"beacon.apps.imp.example"`, `"beacon-next.apps.imp.example"`,
+		`"*.apps.imp.example"`,
+	}
+	if strings.Join(keys, "\n") != strings.Join(want, "\n") {
+		t.Errorf("HostRows() keys =\n%s\nwant\n%s", strings.Join(keys, "\n"), strings.Join(want, "\n"))
+	}
+	if got := v.Host("prd", "harbor"); got != "lighthouse.apps.imp.example" {
+		t.Errorf("Host(prd, harbor) = %q", got)
+	}
+	if got := v.NextHost("tst", "beacon"); got != "beacon-tst-next.apps.imp.example" {
+		t.Errorf("NextHost(tst, beacon) = %q", got)
 	}
 }

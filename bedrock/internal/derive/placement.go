@@ -34,6 +34,17 @@ type Placement struct {
 	// recorded names none: the repository's name stands in for it, the two having
 	// coincided then, and bedrock upgrade writes it.
 	Code string `json:"code,omitempty"`
+	// Hostnames are the labels the application's sites answer on under the apps domain,
+	// by site name (the directory under apps/ in impulse's sites layout, the module path's
+	// last element in the flat layout), each one DNS label (HostnameLabelPattern):
+	// <label>-<env> under the apps domain below production, the bare <label> in
+	// production, <label>-next for the next revision and <label>-pr<N> for a pull-request
+	// stack, whose Cloud Run service carries the same name. A site left out keeps the
+	// default, the code (in the sites layout the code, a hyphen and the site's name), so
+	// the code is in a URL by default alone and stays the identifier every resource name
+	// carries. The organization records the hostnames the stack serves and refuses one
+	// another application has (bedrock org register --next, bedrock org hostnames).
+	Hostnames map[string]string `json:"hostnames,omitempty"`
 	// Environments are the environments in promotion order; the first is where pull
 	// requests deploy and the last is production.
 	Environments []string `json:"environments"`
@@ -248,6 +259,9 @@ func (p *Placement) Validate() error {
 		return errors.Newf("prefix %q: a lowercase word of at most eight characters", p.Prefix)
 	}
 	if err := ValidateApplicationCode(p.Code); err != nil {
+		return err
+	}
+	if err := p.validateHostnames(); err != nil {
 		return err
 	}
 	if len(p.Environments) == 0 {
@@ -626,14 +640,75 @@ func (p *Placement) Primary() Region {
 	return p.Regions[0]
 }
 
-// environments lists the environments with the hostnames the application serves in
-// each: <app>.<domain> in production, <app>-<env>.<domain> below it.
-func (p *Placement) environments(app string) []Environment {
+// HostnameLabelPattern is the one rule for a site's hostname label: a DNS label of
+// lowercase letters, digits and hyphens, starting with a letter and ending with a letter or
+// digit, of at most 41 characters, so that a pull-request stack's service name,
+// <label>-pr<N>, fits Cloud Run's 49 with a five-digit pull request number.
+const HostnameLabelPattern = `^[a-z]([a-z0-9-]{0,39}[a-z0-9])?$`
+
+// HostnameLabelRule says the rule in words, for the refusals that name it.
+const HostnameLabelRule = "a DNS label of at most 41 lowercase letters, digits and hyphens, starting with a letter and ending with a letter or digit"
+
+var hostnameLabelRE = regexp.MustCompile(HostnameLabelPattern)
+
+// HostnameLabelOK reports whether a site's hostname label follows the one rule.
+func HostnameLabelOK(label string) bool {
+	return hostnameLabelRE.MatchString(label)
+}
+
+// ValidateHostnameLabel holds a site's hostname label to the one rule.
+func ValidateHostnameLabel(label string) error {
+	if !HostnameLabelOK(label) {
+		return errors.Newf("hostname label %q is not %s", label, HostnameLabelRule)
+	}
+
+	return nil
+}
+
+// validateHostnames refuses a declared label that breaks the one rule or names no site.
+// Whether the site named exists is the model's to check, with the code in hand.
+func (p *Placement) validateHostnames() error {
+	for site, label := range p.Hostnames {
+		if strings.TrimSpace(site) == "" {
+			return errors.Newf("hostnames names a site %q: the key is the site's name, the directory under apps/ in the sites layout or the module path's last element", site)
+		}
+		if !HostnameLabelOK(label) {
+			return errors.Newf("hostnames.%s: hostname label %q is not %s", site, label, HostnameLabelRule)
+		}
+	}
+
+	return nil
+}
+
+// DefaultLabel is a site's hostname label when the placement declares none: the code for
+// the site at the module root (the flat layout), and the code, a hyphen and the site's
+// name for a site under apps/ (the sites layout).
+func (p *Placement) DefaultLabel(site, dir string) string {
+	if dir == "" || dir == "." {
+		return p.Code
+	}
+
+	return p.Code + "-" + site
+}
+
+// Label is the site's hostname label under the apps domain: the one the placement
+// declares for it (Hostnames), else the default.
+func (p *Placement) Label(site, dir string) string {
+	if label, ok := p.Hostnames[site]; ok {
+		return label
+	}
+
+	return p.DefaultLabel(site, dir)
+}
+
+// environments lists the environments with the hostnames the site serves in each, from
+// its label: <label>.<domain> in production, <label>-<env>.<domain> below it.
+func (p *Placement) environments(label string) []Environment {
 	envs := make([]Environment, 0, len(p.Environments))
 	for _, env := range p.Environments {
-		host := app + "-" + env + "." + p.AppsDomain
+		host := label + "-" + env + "." + p.AppsDomain
 		if env == p.Production() {
-			host = app + "." + p.AppsDomain
+			host = label + "." + p.AppsDomain
 		}
 		envs = append(envs, Environment{Name: env, Hostnames: []string{host}})
 	}

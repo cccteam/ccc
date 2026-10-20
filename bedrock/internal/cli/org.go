@@ -49,7 +49,7 @@ root, the way an application's stack is rendered from its code; the two commands
 triggers run (plan, apply); and the check, before the seed, that the bootstrap administrator
 holds the roles the seed and the first applies need (preflight).`,
 	}
-	cmd.AddCommand(newOrgNew(d), newOrgPreflight(d), newOrgRender(d), newOrgCheck(d), newOrgRegister(d), newOrgPlan(d), newOrgApply(d), newOrgTeardown(d), newOrgServe(d), newOrgDestroy(d))
+	cmd.AddCommand(newOrgNew(d), newOrgPreflight(d), newOrgRender(d), newOrgCheck(d), newOrgRegister(d), newOrgPlan(d), newOrgApply(d), newOrgTeardown(d), newOrgServe(d), newOrgHostnames(d), newOrgDestroy(d))
 
 	return cmd
 }
@@ -745,6 +745,14 @@ func (d deps) registerNext(ctx context.Context, out io.Writer, p *org.Placement,
 	if err != nil {
 		return err
 	}
+	if step == "" {
+		// The completion records the hostnames the stack serves in every environment,
+		// read from its state, so 2-net's hosts render from what is served and never
+		// from a rule; a hostname another application serves refuses the step.
+		if _, err := d.recordHostnames(ctx, p, app, repository); err != nil {
+			return err
+		}
+	}
 	if err := p.Write(placement); err != nil {
 		return err
 	}
@@ -766,12 +774,14 @@ applied for the first time in each environment%s`, repository, firstApplyInstruc
 
 		return nil
 	}
-	fmt.Fprintf(out, "Completed %s's registration in %s; rendered %d owned file(s).\n", repository, placement, written.Owned)
+	fmt.Fprintf(out, "Completed %s's registration in %s, its hostnames recorded from its stack's state (%s); rendered %d owned file(s).\n", repository, placement, hostnamesSummary(p, app), written.Owned)
 	fmt.Fprint(out, `
 The pull request now carries 2-net/applications.auto.tfvars and 1-org/applications.auto.tfvars:
 the hostnames, onto the backends the stack created, and the stack's check trigger as a
 required check of the repository, which the first apply made. After its merge and apply:
-bedrock domain check, which passes when the apps domain resolves to its zone.
+bedrock domain check, which passes when the apps domain resolves to its zone. A label the
+application changes later in its placement (hostnames) is recorded again with bedrock org
+hostnames <app>.
 `)
 
 	return nil
@@ -915,6 +925,64 @@ func identitiesInState(ctx context.Context, store deploy.Store, bucket, env, app
 	}
 
 	return nil
+}
+
+// recordHostnames reads the hostnames the application's stack serves in every environment
+// from its state (the hostnames output) and records them in the placement, answering
+// whether the record changed. A state without the output, or with none, refuses: the
+// organization records what is served and invents nothing.
+func (d deps) recordHostnames(ctx context.Context, p *org.Placement, app, repository string) (bool, error) {
+	store, err := d.deploy.Storage(ctx)
+	if err != nil {
+		return false, err
+	}
+	defer func() { _ = store.Close() }()
+	byEnv := make(map[string][]string, len(org.Environments))
+	for _, env := range org.Environments {
+		hosts, err := stackHostnames(ctx, store, p.StateBucket, env, app, repository)
+		if err != nil {
+			return false, err
+		}
+		byEnv[env] = hosts
+	}
+
+	return p.RecordHostnames(app, byEnv)
+}
+
+// hostnamesOutput is the stack's output listing the hostnames it serves in the
+// environment, the first canonical.
+const hostnamesOutput = "hostnames"
+
+// stackHostnames reads the hostnames the application's stack serves in the environment
+// from its state's hostnames output.
+func stackHostnames(ctx context.Context, store deploy.Store, bucket, env, app, repository string) ([]string, error) {
+	state, err := readTofuState(ctx, store, bucket, appStatePrefix+app+"/"+env+"/"+stateObject)
+	if err != nil {
+		return nil, err
+	}
+	raw, ok := state.Outputs[hostnamesOutput]
+	if !ok {
+		return nil, errors.Newf("%s's stack state in %s (%s%s/%s) has no %s output: apply the stack there (the operations workflow's apply action) before recording its hostnames", repository, env, appStatePrefix, app, env, hostnamesOutput)
+	}
+	var hosts []string
+	if err := json.Unmarshal(raw.Value, &hosts); err != nil {
+		return nil, errors.Wrapf(err, "json.Unmarshal(): %s's %s output in %s", repository, hostnamesOutput, env)
+	}
+	if len(hosts) == 0 {
+		return nil, errors.Newf("%s's stack serves no hostname in %s: its state's %s output is empty", repository, env, hostnamesOutput)
+	}
+
+	return hosts, nil
+}
+
+// hostnamesSummary restates the recorded hostnames in one line, env: hosts.
+func hostnamesSummary(p *org.Placement, app string) string {
+	parts := make([]string, 0, len(org.Environments))
+	for _, env := range org.Environments {
+		parts = append(parts, env+": "+strings.Join(p.Hostnames[app][env], ", "))
+	}
+
+	return strings.Join(parts, "; ")
 }
 
 // stackInState refuses while the application's stack has no state with outputs in the

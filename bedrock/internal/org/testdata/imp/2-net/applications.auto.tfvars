@@ -4,15 +4,20 @@
 # terraform.tfvars, which keeps the values a person decides.
 
 # One entry per hostname the load balancer serves, each with the backend service the
-# application's layer creates in that environment (its net_hosts output): <app>-<env>
-# under the apps domain, and the bare <app> in production, each with its -next twin,
-# which serves the revision the pipeline deployed and has not yet moved traffic to (the
-# revision tag next), for the hook before traffic. The wildcard routes every pull-request
-# environment, <app>-pr<N>, to the first environment's pull-request backend, which picks
-# the Cloud Run service by the hostname's first label; exact hostnames win. An
-# application's hostnames are listed once its registration is complete (placement.json's
-# registration, moved by bedrock org register <app> --next after its stack's first apply in
-# every environment has created the backends), and left out for an environment the
+# application's layer creates in that environment (its net_hosts output): the hostnames
+# recorded from the stack's state (placement.json's hostnames), <label>-<env> under the
+# apps domain and the bare <label> in production, the label being the one the
+# application's placement declares for its site (its code by default), each with its
+# -next twin, which serves the revision the pipeline deployed and has not yet moved
+# traffic to (the revision tag next), for the hook before traffic. An application
+# recorded before hostnames were renders by the default rule, its code. The wildcard
+# routes every pull-request environment, <label>-pr<N>, to the first environment's
+# pull-request backend, which picks the Cloud Run service by the hostname's first label;
+# exact hostnames win. An application's hostnames are listed once its registration is
+# complete (placement.json's registration, moved by bedrock org register <app> --next
+# after its stack's first apply in every environment has created the backends, which
+# records them), recorded again by bedrock org hostnames <app> after a label change, and
+# left out for an environment the
 # application is out of service in (placement.json's outOfService: bedrock org teardown
 # <app> [<env>...] takes an application's hostnames out ahead of its stack's teardown,
 # while the listeners and every other application's hosts stay; bedrock org serve <app>

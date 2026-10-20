@@ -706,7 +706,15 @@ substitutions and this stack's outputs:
 
 `var.hostnames` gives each environment its hostnames, in `2-net`'s
 convention of one label under the apps domain (its wildcard certificate
-covers exactly that): {{.HostnamesProse}}. The first is
+covers exactly that): {{.HostnamesProse}}. The label is the one
+`placement.json` declares for the site under `hostnames` (`{{.Label}}`
+here){{if ne .Label .App}}, in place of the default, the application code{{else}}, the application code by
+default{{end}}: the code names every resource and is in a URL by default alone, and a
+label changed in the placement moves the hostnames on the next apply, nothing
+else in the stack. The organization records the hostnames the stack serves
+when the registration completes (`bedrock org register <app> --next`) and
+after a label change (`bedrock org hostnames <app>`), and refuses a hostname
+another application has. The first is
 canonical{{if .Directory}} and forms the directory registrations' redirect URLs{{end}}. `2-net` routes a
 hostname from an entry in its `hosts` variable, hostname to backend service
 URI, in its `terraform.tfvars`; this stack's `net_hosts` output is exactly
@@ -776,9 +784,9 @@ Fields the rule sets leave alone (`placement.json`, `cloudArmor.fieldExclusions`
 The same stack, applied in {{.Integration}} with `pull_request` set to the pull request's
 number, is that pull request's environment: its own state
 (`3-app/{{.App}}/{{.Integration}}/pr<N>`), its own database on {{.Integration}}'s instance and its
-own runtime identities, short names throughout (`{{.App}}-pr<N>` for the service in
+own runtime identities, short names throughout (`{{.Label}}-pr<N>` for the service in
 each region, `{{.App}}-pr<N>-app`, `{{.App}}-pr<N>-db`), and the
-hostname `{{.App}}-pr<N>.{{.P.AppsDomain}}`, which the wildcard backend 2-env creates once
+hostname `{{.Label}}-pr<N>.{{.P.AppsDomain}}`, which the wildcard backend 2-env creates once
 in {{.Integration}} serves by picking the Cloud Run service named by the hostname's
 first label (2-net's `*.{{.P.AppsDomain}}` host rule points at it). It reads
 {{.Integration}}'s secret containers at {{.Integration}}'s pinned versions and creates no

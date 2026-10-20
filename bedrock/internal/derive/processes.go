@@ -41,6 +41,12 @@ func (m *Model) processes(a *app.App, cfg *config) error {
 	if !slices.Contains(a.MainPackages, siteDir) {
 		return errors.Newf("no main package at %s, the site's directory", siteDir)
 	}
+	for site := range m.Placement.Hostnames {
+		if site != profile.Sites[0].Name {
+			return errors.Newf("placement.json's hostnames names %q, which is not a site of the application: its site is %s", site, profile.Sites[0].Name)
+		}
+	}
+	m.Label = m.Placement.Label(profile.Sites[0].Name, siteDir)
 	outlets := profile.Sites[0].AllOutlets()
 	for i := range outlets {
 		m.Outlets = append(m.Outlets, Outlet{Name: outlets[i].Name, Prefix: outlets[i].Prefix})

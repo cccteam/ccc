@@ -241,7 +241,12 @@ application has reached (`identities`, then `grants`; none once complete),
 the layers render what that step may apply, and `bedrock org register <app>
 --next` moves to the next step once the apply before it has happened. Every
 pull request of the sequence carries every rendered file, and `bedrock org
-check` passes on each.
+check` passes on each. The completion records the hostnames the stack serves,
+read from its state in every environment (`placement.json`'s `hostnames`):
+the application declares each site's label in its own placement (its code by
+default), `2-net`'s host rules render from the record, and a hostname another
+application serves is refused. After a label change, `bedrock org hostnames
+<app>` records them again.
 
 Each layer's `terraform.tfvars` is committed. It holds IDs, not secrets, and
 the values a layer runs with belong in the repository.

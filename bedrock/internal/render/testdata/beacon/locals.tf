@@ -3,6 +3,11 @@ locals {
   # the identities and the repository link under, and the segment every name
   # below carries.
   app = "beacon"
+  # The site's hostname label under the apps domain, the first label of every hostname
+  # and of a pull-request stack's service: the one placement.json declares for the site
+  # (hostnames), the code by default. The code names every resource; the label names
+  # the site on the network.
+  label = "beacon"
 
   org = data.terraform_remote_state.org.outputs
   env = data.terraform_remote_state.env.outputs
@@ -39,6 +44,9 @@ locals {
   # shares tst's secret containers, identity registration and registry.
   is_pr   = var.pull_request != 0
   pr_name = "${local.app}-pr${var.pull_request}"
+  # The pull-request stack's hostname label and Cloud Run service name, the same word:
+  # 2-env's pull-request backend picks the service by the hostname's first label.
+  pr_host = "${local.label}-pr${var.pull_request}"
 
   # The runtime accounts' IDs: by the convention, or the short name. The
   # migration has none: the pipeline runs the migrate command on the build
@@ -78,7 +86,7 @@ locals {
   # pipeline appends /<image>:<tag>. Null until 2-shr knows the application.
   registry = try(data.terraform_remote_state.shr.outputs.image_paths[local.app], null)
 
-  hostnames = local.is_pr ? ["${local.pr_name}.impulseframework.dev"] : var.hostnames[var.environment]
+  hostnames = local.is_pr ? ["${local.pr_host}.impulseframework.dev"] : var.hostnames[var.environment]
   # The next revision's hostnames, the first label with -next: what the hook before
   # traffic calls while the old revision still serves. None for a pull-request stack.
   next_hostnames = local.is_pr ? [] : [for host in local.hostnames : replace(host, "/^([^.]+)\\./", "$1-next.")]
