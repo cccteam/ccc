@@ -697,6 +697,15 @@ func TestPlacementValidate(t *testing.T) {
 		},
 		{name: "a checksum that is not a SHA-256", mutate: func(p *Placement) { p.BedrockSHA256 = "abc" }, wantErr: `bedrockSha256 "abc"`},
 		{name: "prefix with a hyphen", mutate: func(p *Placement) { p.Prefix = "im-p" }, wantErr: "prefix"},
+		{name: "a declared hostname label", mutate: func(p *Placement) { p.Hostnames = map[string]string{"harbor": "lighthouse"} }},
+		{name: "a label with a hyphen inside", mutate: func(p *Placement) { p.Hostnames = map[string]string{"harbor": "light-house"} }},
+		{name: "a label of 41 characters", mutate: func(p *Placement) { p.Hostnames = map[string]string{"harbor": "l" + strings.Repeat("a", 40)} }},
+		{name: "a label of 42 characters", mutate: func(p *Placement) { p.Hostnames = map[string]string{"harbor": "l" + strings.Repeat("a", 41)} }, wantErr: `hostnames.harbor: hostname label "laaaa`},
+		{name: "a label in capitals", mutate: func(p *Placement) { p.Hostnames = map[string]string{"harbor": "Lighthouse"} }, wantErr: `hostname label "Lighthouse" is not a DNS label`},
+		{name: "a label ending with a hyphen", mutate: func(p *Placement) { p.Hostnames = map[string]string{"harbor": "light-"} }, wantErr: `hostname label "light-"`},
+		{name: "a label starting with a digit", mutate: func(p *Placement) { p.Hostnames = map[string]string{"harbor": "1light"} }, wantErr: `hostname label "1light"`},
+		{name: "a label with a dot", mutate: func(p *Placement) { p.Hostnames = map[string]string{"harbor": "light.house"} }, wantErr: `hostname label "light.house"`},
+		{name: "a label for no site", mutate: func(p *Placement) { p.Hostnames = map[string]string{" ": "light"} }, wantErr: "hostnames names a site"},
 		{name: "no environments", mutate: func(p *Placement) { p.Environments = nil }, wantErr: "environment"},
 		{name: "an uppercase environment", mutate: func(p *Placement) { p.Environments = []string{"TST"} }, wantErr: `environment "TST"`},
 		{name: "no regions", mutate: func(p *Placement) { p.Regions = nil }, wantErr: "region"},
@@ -1750,6 +1759,73 @@ func TestSiteH2C(t *testing.T) {
 			}
 			if m.Site.H2C != tt.want {
 				t.Errorf("Site.H2C = %v, want %v", m.Site.H2C, tt.want)
+			}
+		})
+	}
+}
+
+// TestDeriveHostnameLabel: the site's hostname label is the one the placement declares,
+// the code by default, and every hostname and the pull-request stack's names follow it;
+// a label for a site the application does not have is refused.
+func TestDeriveHostnameLabel(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name          string
+		hostnames     map[string]string
+		wantLabel     string
+		wantHostnames map[string]string
+		wantErr       string
+	}{
+		{
+			name:      "no label declared: the code",
+			wantLabel: "harbor",
+			wantHostnames: map[string]string{
+				"tst": "harbor-tst.impulseframework.dev", "stg": "harbor-stg.impulseframework.dev", "prd": "harbor.impulseframework.dev",
+			},
+		},
+		{
+			name:      "a label declared for the site, by its name",
+			hostnames: map[string]string{"harbor": "lighthouse"},
+			wantLabel: "lighthouse",
+			wantHostnames: map[string]string{
+				"tst": "lighthouse-tst.impulseframework.dev", "stg": "lighthouse-stg.impulseframework.dev", "prd": "lighthouse.impulseframework.dev",
+			},
+		},
+		{
+			name:      "a label for a site the application does not have",
+			hostnames: map[string]string{"portal": "lighthouse"},
+			wantErr:   `placement.json's hostnames names "portal", which is not a site of the application: its site is harbor`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			a, err := app.Discover(filepath.Join("testdata", "harbor"))
+			if err != nil {
+				t.Fatalf("app.Discover() error = %v", err)
+			}
+			p := fixturePlacement(t, "placement.json")
+			p.Hostnames = tt.hostnames
+			m, err := Derive(a, p)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("Derive() error = %v, want one containing %q", err, tt.wantErr)
+				}
+
+				return
+			}
+			if err != nil {
+				t.Fatalf("Derive() error = %v", err)
+			}
+			if m.Label != tt.wantLabel {
+				t.Errorf("Label = %q, want %q", m.Label, tt.wantLabel)
+			}
+			for _, e := range m.Environments {
+				if want := tt.wantHostnames[e.Name]; len(e.Hostnames) != 1 || e.Hostnames[0] != want {
+					t.Errorf("Environment %s hostnames = %v, want %s", e.Name, e.Hostnames, want)
+				}
 			}
 		})
 	}

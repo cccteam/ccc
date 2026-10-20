@@ -81,7 +81,10 @@ variable "hostnames" {
     Hostnames the site answers on, per environment, in 2-net's convention:
     app.domain for prd, app-stg.domain and app-tst.domain below it, all one
     label under the apps domain because that is what its wildcard certificate
-    covers (harbor.tst.<domain> would not be). The first one is the canonical
+    covers (harbor.tst.<domain> would not be). The label is the one
+    placement.json declares for the site (hostnames: harbor), the code by
+    default; the organization records the hostnames the stack serves and refuses
+    one another application has. The first one is the canonical
     host: each directory registration's redirect URL is built from it, the
     callback the generated router (pkg/router) registers for it:
     https://<host>/portal/api/user/directory/callback for the members auth's directory registration (APP_MEMBERS_DIRECTORY_REDIRECT_URL),

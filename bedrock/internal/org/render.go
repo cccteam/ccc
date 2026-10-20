@@ -158,14 +158,11 @@ func (v *view) PullRequestBackend() string {
 	return "projects/" + v.Project(Environments[0]) + "/global/backendServices/" + v.Prefix + "-" + Environments[0] + "-gbl-pr-backend"
 }
 
-// Host is the application's hostname in the environment: <app>-<env> under the apps
-// domain, and the bare <app> in production.
+// Host is the application's first hostname in the environment: the recorded one
+// (Placement.Hostnames), else the default rule's, <app>-<env> under the apps domain and
+// the bare <app> in production.
 func (v *view) Host(env, app string) string {
-	if env == Environments[len(Environments)-1] {
-		return app + "." + v.AppsDomain
-	}
-
-	return app + "-" + env + "." + v.AppsDomain
+	return v.ApplicationHostnames(app, env)[0]
 }
 
 // HostRow is one entry of 2-net's hosts map: the quoted hostname, padded so the
@@ -187,10 +184,12 @@ func (v *view) HostRows() []HostRow {
 			if !v.Routed(app, env) {
 				continue
 			}
-			rows = append(rows,
-				HostRow{Key: `"` + v.Host(env, app) + `"`, Value: v.Backend(env, app)},
-				HostRow{Key: `"` + v.NextHost(env, app) + `"`, Value: v.NextBackend(env, app)},
-			)
+			for _, host := range v.ApplicationHostnames(app, env) {
+				rows = append(rows,
+					HostRow{Key: `"` + host + `"`, Value: v.Backend(env, app)},
+					HostRow{Key: `"` + NextHostname(host) + `"`, Value: v.NextBackend(env, app)},
+				)
+			}
 		}
 	}
 	rows = append(rows, HostRow{Key: `"*.` + v.AppsDomain + `"`, Value: v.PullRequestBackend()})
@@ -207,12 +206,9 @@ func (v *view) HostRows() []HostRow {
 }
 
 // NextHost is the hostname of the application's next revision in the environment, the
-// one the pipeline checks before traffic moves: the hostname's first label with -next.
+// one the pipeline checks before traffic moves: the first hostname's label with -next.
 func (v *view) NextHost(env, app string) string {
-	host := v.Host(env, app)
-	label, rest, _ := strings.Cut(host, ".")
-
-	return label + "-next." + rest
+	return NextHostname(v.Host(env, app))
 }
 
 // NextBackend is the backend service serving the application's next revision in the

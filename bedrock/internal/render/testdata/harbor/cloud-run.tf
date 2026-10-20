@@ -22,7 +22,7 @@ resource "google_cloud_run_v2_service" "app" {
 
   project  = local.project_id
   location = each.value
-  name     = local.is_pr ? local.pr_name : "${local.name}-${each.key}-${local.app}-app"
+  name     = local.is_pr ? local.pr_host : "${local.name}-${each.key}-${local.app}-app"
 
   # Reachable only through the load balancer in the net project (and from
   # inside the VPC); the org policy run.allowedIngress pins this value.

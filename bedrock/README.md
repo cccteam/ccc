@@ -174,8 +174,24 @@ and what its absence means:
   and the last is production. The model's three, `tst`, `stg` and `prd`. Required.
 - `regions`: the Cloud Run regions, each a `name` and the `code` regional resources are
   named by; the first is the primary. From the organization's `regions`. Required.
-- `appsDomain`: the domain the application's hostnames are under: `<app>-<env>.<domain>`,
-  and `<app>.<domain>` in production. From the organization's `appsDomain`. Required.
+- `appsDomain`: the domain the application's hostnames are under: `<label>-<env>.<domain>`,
+  and `<label>.<domain>` in production, the label being the site's (`hostnames`, below; the
+  code by default). From the organization's `appsDomain`. Required.
+- `hostnames`: the hostname label of each site under the apps domain, by site name (the
+  directory under `apps/` in impulse's sites layout, the module path's last element in the
+  flat layout), one DNS label of lowercase letters, digits and hyphens starting with a
+  letter and ending with a letter or digit, at most 41 characters (so a pull-request
+  stack's service, `<label>-pr<N>`, fits Cloud Run's name): the stack serves
+  `<label>-<env>` under the apps domain, the bare `<label>` in production, `<label>-next`
+  for the next revision and `<label>-pr<N>` for a pull-request stack, whose Cloud Run
+  service carries the same name. A site left out keeps the default, the code (in the sites
+  layout the code, a hyphen and the site's name), so the code is in a URL by default alone
+  and stays the identifier every resource name carries. A label names a site the
+  application has, and one label under the apps domain only: the organization's wildcard
+  certificate covers exactly one level. Changing a label is an ordinary configuration
+  change: the stack re-renders and the next apply moves the hostnames, nothing else; then
+  `bedrock org hostnames <app>` records them in the organization, which refuses a hostname
+  another application serves. Optional.
 - `hostedDomain`: the Google Workspace domain a directory sign-in limits logins to. From
   the organization's `organizationDomain`. Required.
 - `stateBucket`: the Cloud Storage bucket holding every layer's state, which the stack's
@@ -1988,6 +2004,7 @@ bedrock org apply                                               # what the apply
 bedrock org teardown                                            # the applications out of service: 2-net's hosts and listeners, then every application torn down
 bedrock org teardown <app> [<env>...]                            # one application's hostnames out of 2-net ahead of bedrock teardown from its checkout
 bedrock org serve [<app> [<env>...]]                             # the way back: the hostnames (or the listeners and every host) return to 2-net on a pull request
+bedrock org hostnames <app>                                     # the hostnames the application's stacks serve, read from their states and recorded for 2-net after a label change
 bedrock org destroy                                             # every project of the organization deleted, by hand, after the prefix typed back
 ```
 
@@ -2241,6 +2258,17 @@ application, `bedrock teardown` or `bedrock destroy` runs from its checkout. `or
 <app> [<env>...]` is its way back after the `apply` action and the rerun: it refuses an
 environment whose stack is still torn down (no release run since its teardown), removes
 the entry, renders the hostnames back and leaves the pull request the same way.
+`org hostnames <app>` records the hostnames an application's stacks serve now, after the
+application changed a site's label in its placement and its stacks were applied again: it
+reads the `hostnames` output of the stack's state in every environment, records them
+(`hostnames` in `placement.json`), refuses one another application serves or one that is
+not one label under the apps domain, renders 2-net with the host rules moved, writes the
+journal line and leaves the working tree for a pull request; its merge has the apply
+trigger move the rules, and until then the old hostnames answer and the new ones do not.
+An application still in its registration is refused: the completion records its
+hostnames the first time. `org check` holds the record on every pull request, so a label
+two applications declare is refused where it is recorded, never applied.
+
 `org destroy` deletes every project of the organization, by a person at their own computer
 with their own sign-in (an owner of the GCP organization; `GITHUB_TOKEN`, or gh's token, for
 1-org's GitHub provider: the infrastructure GitHub App's installation token, or an
@@ -2294,7 +2322,14 @@ identities are declared too and its hostnames are not, and no entry once complet
 layers render what that step may apply, and `org register <app> --next` moves to the next
 step: to `grants` once 2-env's state in every environment holds the application's
 identities, to complete once its stack has a state in every environment, each read from
-the state bucket and refused before. So every pull request of the sequence carries every
+the state bucket and refused before. The completion records the hostnames the stack serves
+in every environment, read from its state's `hostnames` output, under the placement's
+`hostnames` (by code and environment): 2-net's host rules render from the record, each with
+its `-next` twin, so the organization never invents a hostname; the application declares
+each site's label in its own placement (`hostnames`, "The application's placement"), the
+code by default, and a hostname another application serves refuses the step. An
+application registered before hostnames were recorded has no entry and renders by the
+default rule, its code under the apps domain. So every pull request of the sequence carries every
 rendered file, and `org check` passes on each. Register refuses the first application
 while the placement does not record the Cloud Build GitHub authorization, since the
 applications' triggers exist once 2-env holds the connection.

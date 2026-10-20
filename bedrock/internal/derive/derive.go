@@ -24,6 +24,10 @@ import (
 type Model struct {
 	// App is the application code: the segment every resource name carries.
 	App string
+	// Label is the served site's hostname label under the apps domain, the first label of
+	// every hostname and of a pull-request stack's service name: the one the placement
+	// declares for the site (Placement.Hostnames), else the code.
+	Label string
 	// Module is the application's module path.
 	Module string
 	// Repository is the application's repository URL, or empty when the module path does
@@ -852,7 +856,7 @@ func Derive(a *app.App, p *Placement) (*Model, error) {
 	if err := m.armor(); err != nil {
 		return nil, err
 	}
-	m.Environments = p.environments(p.Code)
+	m.Environments = p.environments(m.Label)
 
 	return m, nil
 }

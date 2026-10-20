@@ -660,7 +660,15 @@ substitutions and this stack's outputs:
 `var.hostnames` gives each environment its hostnames, in `2-net`'s
 convention of one label under the apps domain (its wildcard certificate
 covers exactly that): `harbor-tst.impulseframework.dev`,
-`harbor-stg.impulseframework.dev`, `harbor.impulseframework.dev`. The first is
+`harbor-stg.impulseframework.dev`, `harbor.impulseframework.dev`. The label is the one
+`placement.json` declares for the site under `hostnames` (`harbor`
+here), the application code by
+default: the code names every resource and is in a URL by default alone, and a
+label changed in the placement moves the hostnames on the next apply, nothing
+else in the stack. The organization records the hostnames the stack serves
+when the registration completes (`bedrock org register <app> --next`) and
+after a label change (`bedrock org hostnames <app>`), and refuses a hostname
+another application has. The first is
 canonical and forms the directory registrations' redirect URLs. `2-net` routes a
 hostname from an entry in its `hosts` variable, hostname to backend service
 URI, in its `terraform.tfvars`; this stack's `net_hosts` output is exactly

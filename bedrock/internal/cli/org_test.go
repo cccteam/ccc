@@ -1210,11 +1210,20 @@ func TestOrgRegisterNext(t *testing.T) {
 
 		return `{"outputs": {"applications": {"value": {` + strings.Join(entries, ", ") + `}}}}`
 	}
+	// stackState is the stack's state in an environment: the hostnames it serves (the
+	// completion records them) and its net_hosts entries.
+	stackState := func(env string) string {
+		host := "quill-" + env + ".apps.imp.example"
+		if env == "prd" {
+			host = "quill.apps.imp.example"
+		}
+
+		return fmt.Sprintf(`{"outputs": {"hostnames": {"value": [%q]}, "net_hosts": {"value": {%q: "projects/p/global/backendServices/b"}}}}`, host, host)
+	}
 	const (
-		stackState = `{"outputs": {"net_hosts": {"value": {"quill-tst.apps.imp.example": "projects/p/global/backendServices/b"}}}}`
-		bucket     = "imp-boot-gbl-state-a1b2"
-		host       = `"quill-tst.apps.imp.example"`
-		invoker    = `"serviceAccount:imp-tst-gbl-quill-tofu@imp-tst-gbl-core-1a2b.iam.gserviceaccount.com",`
+		bucket  = "imp-boot-gbl-state-a1b2"
+		host    = `"quill-tst.apps.imp.example"`
+		invoker = `"serviceAccount:imp-tst-gbl-quill-tofu@imp-tst-gbl-core-1a2b.iam.gserviceaccount.com",`
 	)
 	type step struct {
 		// objects are added to the store before the run.
@@ -1269,15 +1278,22 @@ func TestOrgRegisterNext(t *testing.T) {
 					wantOut: []string{"quill-portal's stack has no state in tst yet (3-app/quill/tst): its first apply there comes first (the sequence's step 4, as the grants step's output said) before moving on"},
 				},
 				{
-					objects: map[string]string{"3-app/quill/tst/default.tfstate": stackState, "3-app/quill/stg/default.tfstate": stackState, "3-app/quill/prd/default.tfstate": `{"outputs": {}}`},
+					objects: map[string]string{"3-app/quill/tst/default.tfstate": stackState("tst"), "3-app/quill/stg/default.tfstate": stackState("stg"), "3-app/quill/prd/default.tfstate": `{"outputs": {}}`},
 					args:    []string{"org", "register", "quill", "--next"}, wantCode: 1,
 					wantOut: []string{"quill-portal's stack has no state in prd yet"},
 				},
 				{
-					objects:    map[string]string{"3-app/quill/prd/default.tfstate": stackState},
+					// A stack whose state carries no hostnames output cannot complete: the
+					// organization records what is served and invents nothing.
+					objects: map[string]string{"3-app/quill/prd/default.tfstate": `{"outputs": {"net_hosts": {"value": {}}}}`},
+					args:    []string{"org", "register", "quill", "--next"}, wantCode: 1,
+					wantOut: []string{"quill-portal's stack state in prd (3-app/quill/prd) has no hostnames output: apply the stack there (the operations workflow's apply action) before recording its hostnames"},
+				},
+				{
+					objects:    map[string]string{"3-app/quill/prd/default.tfstate": stackState("prd")},
 					args:       []string{"org", "register", "quill", "--next"},
-					wantOut:    []string{"Completed quill-portal's registration in", "The pull request now carries 2-net/applications.auto.tfvars and 1-org/applications.auto.tfvars:\nthe hostnames"},
-					wantFiles:  map[string][]string{"2-net/applications.auto.tfvars": {host}, "1-org/public-invokers.auto.tfvars": {invoker}},
+					wantOut:    []string{"Completed quill-portal's registration in", "its hostnames recorded from its stack's state (tst: quill-tst.apps.imp.example; stg: quill-stg.apps.imp.example; prd: quill.apps.imp.example)", "The pull request now carries 2-net/applications.auto.tfvars and 1-org/applications.auto.tfvars:\nthe hostnames"},
+					wantFiles:  map[string][]string{"2-net/applications.auto.tfvars": {host, `"quill-next.apps.imp.example"`}, "1-org/public-invokers.auto.tfvars": {invoker}, "placement.json": {`"hostnames": {`, `"quill-stg.apps.imp.example"`}},
 					wantAbsent: map[string][]string{"placement.json": {"registration"}},
 				},
 				{

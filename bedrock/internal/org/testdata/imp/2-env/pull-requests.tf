@@ -2,13 +2,15 @@
 # The pull-request backend, tst only
 #
 # Every pull-request environment of every application answers on
-# <app>-pr<N>.<apps domain>. Rather than a backend per pull request, one
+# <label>-pr<N>.<apps domain>, the label being the one the application's
+# placement declares for its site (its code by default). Rather than a
+# backend per pull request, one
 # serverless network endpoint group per region carries a URL mask,
 # <service>.<apps domain>, that picks the Cloud Run service named by the
 # hostname's first label at request time, and one backend service over the
 # two takes 2-net's wildcard host rule (*.<apps domain>, hosts in its
 # variables). An application's pull-request stack then names its service
-# <app>-pr<N> and is reachable with nothing added here or in 2-net; the
+# <label>-pr<N> and is reachable with nothing added here or in 2-net; the
 # environment's own hostnames keep their exact host rules, which win over
 # the wildcard. Same outlier detection and logging as an application's
 # backend (3-app).
