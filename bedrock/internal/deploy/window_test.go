@@ -430,7 +430,7 @@ func TestReadOldest(t *testing.T) {
 			}
 			w := workspaceFiles(t, files)
 			var out strings.Builder
-			got, err := readOldest(w, tt.routerDir, &out)
+			got, err := readOldest(w, routerDirsOf(tt.routerDir), &out)
 			if tt.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 					t.Fatalf("readOldest() error = %v, want %q", err, tt.wantErr)

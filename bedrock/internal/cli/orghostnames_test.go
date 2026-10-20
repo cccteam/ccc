@@ -16,12 +16,13 @@ import (
 func TestOrgHostnames(t *testing.T) {
 	t.Parallel()
 
-	// stackState is a stack's state with the hostnames it serves in the environment.
-	stackState := func(t *testing.T, hosts ...string) string {
+	// stackState is a stack's state with the hosts it serves in the environment: the
+	// hostname and its -next twin, each on its backend.
+	stackState := func(t *testing.T, env, host string) string {
 		t.Helper()
 		data, err := json.Marshal(map[string]any{"outputs": map[string]any{
-			"hostnames": map[string]any{"value": hosts},
-			"net_hosts": map[string]any{"value": map[string]string{hosts[0]: "projects/p/global/backendServices/b"}},
+			"hostnames": map[string]any{"value": []string{host}},
+			"net_hosts": map[string]any{"value": hostsOf(env, host)},
 		}})
 		if err != nil {
 			t.Fatal(err)
@@ -37,7 +38,7 @@ func TestOrgHostnames(t *testing.T) {
 			if env == "prd" {
 				host = "lighthouse.apps.imp.example"
 			}
-			store.objects["gs://imp-boot-gbl-state-a1b2/3-app/harbor/"+env+"/default.tfstate"] = stackState(t, host)
+			store.objects["gs://imp-boot-gbl-state-a1b2/3-app/harbor/"+env+"/default.tfstate"] = stackState(t, env, host)
 		}
 	}
 	tests := []struct {
@@ -47,7 +48,7 @@ func TestOrgHostnames(t *testing.T) {
 		args        []string
 		wantErr     string
 		wantOut     []string
-		wantRecord  map[string][]string
+		wantRecord  map[string]map[string]string
 		wantHosts   []string
 		wantNoHosts []string
 		wantJournal string
@@ -66,7 +67,7 @@ func TestOrgHostnames(t *testing.T) {
 		{
 			name:    "a state without the hostnames output is refused",
 			args:    []string{"harbor"},
-			wantErr: "harbor's stack state in tst (3-app/harbor/tst) has no hostnames output: apply the stack there (the operations workflow's apply action) before recording its hostnames",
+			wantErr: "harbor's stack state in tst (3-app/harbor/tst) has no net_hosts output: apply the stack there (the operations workflow's apply action) before recording its hostnames",
 		},
 		{
 			name:  "a changed label is recorded and 2-net follows",
@@ -76,7 +77,7 @@ func TestOrgHostnames(t *testing.T) {
 				"Recorded harbor's hostnames in", "(tst: lighthouse-tst.apps.imp.example; stg: lighthouse-stg.apps.imp.example; prd: lighthouse.apps.imp.example)",
 				"2-net's applications.auto.tfvars routes them.", "Next: commit placement.json,",
 			},
-			wantRecord:  map[string][]string{"tst": {"lighthouse-tst.apps.imp.example"}, "stg": {"lighthouse-stg.apps.imp.example"}, "prd": {"lighthouse.apps.imp.example"}},
+			wantRecord:  lighthouseRecord(),
 			wantHosts:   []string{`"lighthouse-tst.apps.imp.example"`, `"lighthouse-tst-next.apps.imp.example"`, `"lighthouse.apps.imp.example"`, `"beacon-tst.apps.imp.example"`},
 			wantNoHosts: []string{`"harbor-tst.apps.imp.example"`, `"harbor.apps.imp.example"`},
 			wantJournal: "bedrock org hostnames harbor: harbor's hostnames recorded from its stacks' states (tst: lighthouse-tst.apps.imp.example; stg: lighthouse-stg.apps.imp.example; prd: lighthouse.apps.imp.example); 2-net's host rules follow on this pull request.",
@@ -84,12 +85,12 @@ func TestOrgHostnames(t *testing.T) {
 		{
 			name: "a record that is current changes nothing",
 			edit: func(p *org.Placement) {
-				p.Hostnames = map[string]map[string][]string{"harbor": {"tst": {"lighthouse-tst.apps.imp.example"}, "stg": {"lighthouse-stg.apps.imp.example"}, "prd": {"lighthouse.apps.imp.example"}}}
+				p.Hostnames = map[string]map[string]map[string]string{"harbor": lighthouseRecord()}
 			},
 			store:      lighthouse,
 			args:       []string{"harbor"},
 			wantOut:    []string{"harbor's hostnames are recorded as its stacks serve them (tst: lighthouse-tst.apps.imp.example; stg: lighthouse-stg.apps.imp.example; prd: lighthouse.apps.imp.example); nothing to change."},
-			wantRecord: map[string][]string{"tst": {"lighthouse-tst.apps.imp.example"}, "stg": {"lighthouse-stg.apps.imp.example"}, "prd": {"lighthouse.apps.imp.example"}},
+			wantRecord: lighthouseRecord(),
 		},
 		{
 			name: "a hostname another application serves is refused",
@@ -100,7 +101,7 @@ func TestOrgHostnames(t *testing.T) {
 					if env == "prd" {
 						host = "beacon.apps.imp.example"
 					}
-					store.objects["gs://imp-boot-gbl-state-a1b2/3-app/harbor/"+env+"/default.tfstate"] = stackState(t, host)
+					store.objects["gs://imp-boot-gbl-state-a1b2/3-app/harbor/"+env+"/default.tfstate"] = stackState(t, env, host)
 				}
 			},
 			args:    []string{"harbor"},
@@ -147,5 +148,22 @@ func TestOrgHostnames(t *testing.T) {
 				t.Errorf("journal lacks %q:\n%s", tt.wantJournal, r.journal)
 			}
 		})
+	}
+}
+
+// hostsOf are the entries a stack's net_hosts output carries for a hostname in an
+// environment: the hostname and its -next twin, each on harbor's backend there.
+func hostsOf(env, host string) map[string]string {
+	stem := "projects/imp-" + env + "-gbl-core-0000/global/backendServices/imp-" + env + "-gbl-harbor"
+
+	return map[string]string{host: stem + "-backend", org.NextHostname(host): stem + "-next-backend"}
+}
+
+// lighthouseRecord is harbor's record serving the label lighthouse in every environment.
+func lighthouseRecord() map[string]map[string]string {
+	return map[string]map[string]string{
+		"tst": hostsOf("tst", "lighthouse-tst.apps.imp.example"),
+		"stg": hostsOf("stg", "lighthouse-stg.apps.imp.example"),
+		"prd": hostsOf("prd", "lighthouse.apps.imp.example"),
 	}
 }

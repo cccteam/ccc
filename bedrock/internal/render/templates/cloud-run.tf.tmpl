@@ -1,9 +1,9 @@
 # ---------------------------------------------------------------------------
 # Cloud Run
 #
-# The site ({{.Site.Main}}) as a service in the organization's two
+# {{if .MultiSite}}Each site ({{.ServedSites}}) as a service of its own{{else}}The site ({{(index .Sites 0).Main}}) as a service{{end}} in the organization's two
 # regions{{if .Jobs}}, and the job process ({{.Jobs.Dir}}) as a job in the primary
-# region{{end}}. {{if .Jobs}}All are{{else}}Both are{{end}} created
+# region{{end}}. {{if or .Jobs .MultiSite}}All are{{else}}Both are{{end}} created
 # with a placeholder image: the pipeline owns the image from the first deploy
 # on, so the image and the labels and annotations a deploy stamps are ignored
 # here, and everything else about the revision template (identity, scaling,
@@ -18,11 +18,19 @@
 # ---------------------------------------------------------------------------
 
 resource "google_cloud_run_v2_service" "app" {
+{{- if .MultiSite}}
+  for_each = local.services
+
+  project  = local.project_id
+  location = each.value.region
+  name     = local.is_pr ? local.site_pr_hosts[each.value.site] : "${local.name}-${each.value.code}-${local.app}-${each.value.site}-app"
+{{- else}}
   for_each = local.regions
 
   project  = local.project_id
   location = each.value
   name     = local.is_pr ? local.pr_host : "${local.name}-${each.key}-${local.app}-app"
+{{- end}}
 
   # Reachable only through the load balancer in the net project (and from
   # inside the VPC); the org policy run.allowedIngress pins this value.
@@ -59,10 +67,23 @@ resource "google_cloud_run_v2_service" "app" {
 
     containers {
       image = var.placeholder_image
+{{- if .MultiSite}}
+      # The site's binary: the image builds one per site and its entrypoint is the
+      # first site's, so each service names its own (locals.tf, site_settings).
+      command = [local.site_settings[each.value.site].command]
+{{- end}}
 
 
       ports {
-{{- if .Site.H2C}}
+{{- if .MultiSite}}
+        # h2c, for a site whose main package imports the framework's server
+        # ({{.ServerPackage}}), which speaks HTTP/1.1 and unencrypted HTTP/2 on
+        # one listener, so Cloud Run talks HTTP/2 to the container and the 32 MiB
+        # bounds of HTTP/1 request and response bodies no longer apply. The
+        # maintenance revision runs the same image, so it speaks it too. A site on
+        # another server keeps an HTTP/1 port (locals.tf, site_settings).
+        name           = local.site_settings[each.value.site].h2c ? "h2c" : null
+{{- else if (index .Sites 0).H2C}}
         # h2c: the site's main package imports the framework's server
         # ({{.ServerPackage}}), which speaks HTTP/1.1 and unencrypted HTTP/2 on
         # one listener, so Cloud Run talks HTTP/2 to the container and the 32 MiB
@@ -99,7 +120,7 @@ resource "google_cloud_run_v2_service" "app" {
       }
 
       dynamic "env" {
-        for_each = local.service_env
+        for_each = {{if .MultiSite}}merge(local.service_env, local.site_settings[each.value.site].env){{else}}local.service_env{{end}}
         content {
           name  = env.key
           value = env.value

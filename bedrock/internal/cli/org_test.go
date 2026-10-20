@@ -1218,7 +1218,9 @@ func TestOrgRegisterNext(t *testing.T) {
 			host = "quill.apps.imp.example"
 		}
 
-		return fmt.Sprintf(`{"outputs": {"hostnames": {"value": [%q]}, "net_hosts": {"value": {%q: "projects/p/global/backendServices/b"}}}}`, host, host)
+		stem := "projects/imp-" + env + "-gbl-core-0000/global/backendServices/imp-" + env + "-gbl-quill"
+
+		return fmt.Sprintf(`{"outputs": {"hostnames": {"value": [%q]}, "net_hosts": {"value": {%q: %q, %q: %q}}}}`, host, host, stem+"-backend", org.NextHostname(host), stem+"-next-backend")
 	}
 	const (
 		bucket  = "imp-boot-gbl-state-a1b2"
@@ -1283,11 +1285,11 @@ func TestOrgRegisterNext(t *testing.T) {
 					wantOut: []string{"quill-portal's stack has no state in prd yet"},
 				},
 				{
-					// A stack whose state carries no hostnames output cannot complete: the
+					// A stack whose state carries no net_hosts output cannot complete: the
 					// organization records what is served and invents nothing.
-					objects: map[string]string{"3-app/quill/prd/default.tfstate": `{"outputs": {"net_hosts": {"value": {}}}}`},
+					objects: map[string]string{"3-app/quill/prd/default.tfstate": `{"outputs": {"hostnames": {"value": ["quill.apps.imp.example"]}}}`},
 					args:    []string{"org", "register", "quill", "--next"}, wantCode: 1,
-					wantOut: []string{"quill-portal's stack state in prd (3-app/quill/prd) has no hostnames output: apply the stack there (the operations workflow's apply action) before recording its hostnames"},
+					wantOut: []string{"quill-portal's stack state in prd (3-app/quill/prd) has no net_hosts output: apply the stack there (the operations workflow's apply action) before recording its hostnames"},
 				},
 				{
 					objects:    map[string]string{"3-app/quill/prd/default.tfstate": stackState("prd")},

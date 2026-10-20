@@ -148,21 +148,10 @@ func (v *view) PlanIdentity(env, app string) string {
 	return "serviceAccount:" + v.Prefix + "-" + env + "-gbl-" + app + "-plan@" + v.Project(env) + ".iam.gserviceaccount.com"
 }
 
-// Backend is the application's backend service in the environment, as the load
-// balancer names it; PullRequestBackend the wildcard one in the first environment.
-func (v *view) Backend(env, app string) string {
-	return "projects/" + v.Project(env) + "/global/backendServices/" + v.Prefix + "-" + env + "-gbl-" + app + "-backend"
-}
-
+// PullRequestBackend is the wildcard backend in the first environment, which serves
+// every pull-request stack's services by the hostname's first label.
 func (v *view) PullRequestBackend() string {
 	return "projects/" + v.Project(Environments[0]) + "/global/backendServices/" + v.Prefix + "-" + Environments[0] + "-gbl-pr-backend"
-}
-
-// Host is the application's first hostname in the environment: the recorded one
-// (Placement.Hostnames), else the default rule's, <app>-<env> under the apps domain and
-// the bare <app> in production.
-func (v *view) Host(env, app string) string {
-	return v.ApplicationHostnames(app, env)[0]
 }
 
 // HostRow is one entry of 2-net's hosts map: the quoted hostname, padded so the
@@ -173,9 +162,10 @@ type HostRow struct {
 }
 
 // HostRows is every hostname the load balancer serves with its backend service, one
-// row per application and environment in that order, an environment out of service
-// (Placement.OutOfService) left out, and the pull-request wildcard last, the keys
-// padded to the longest so the rendered map is tofu fmt clean.
+// row per application and environment in that order (the recorded entries in name
+// order, else the default rule's hostname and its -next twin), an environment out of
+// service (Placement.OutOfService) left out, and the pull-request wildcard last, the
+// keys padded to the longest so the rendered map is tofu fmt clean.
 func (v *view) HostRows() []HostRow {
 	served := v.Served()
 	rows := make([]HostRow, 0, 2*len(served)*len(Environments)+1)
@@ -184,11 +174,9 @@ func (v *view) HostRows() []HostRow {
 			if !v.Routed(app, env) {
 				continue
 			}
-			for _, host := range v.ApplicationHostnames(app, env) {
-				rows = append(rows,
-					HostRow{Key: `"` + host + `"`, Value: v.Backend(env, app)},
-					HostRow{Key: `"` + NextHostname(host) + `"`, Value: v.NextBackend(env, app)},
-				)
+			hosts := v.ApplicationHosts(app, env)
+			for _, host := range SortedHosts(hosts) {
+				rows = append(rows, HostRow{Key: `"` + host + `"`, Value: hosts[host]})
 			}
 		}
 	}
@@ -203,18 +191,6 @@ func (v *view) HostRows() []HostRow {
 	}
 
 	return rows
-}
-
-// NextHost is the hostname of the application's next revision in the environment, the
-// one the pipeline checks before traffic moves: the first hostname's label with -next.
-func (v *view) NextHost(env, app string) string {
-	return NextHostname(v.Host(env, app))
-}
-
-// NextBackend is the backend service serving the application's next revision in the
-// environment (the revision tag next), as the application's stack names it.
-func (v *view) NextBackend(env, app string) string {
-	return "projects/" + v.Project(env) + "/global/backendServices/" + v.Prefix + "-" + env + "-gbl-" + app + "-next-backend"
 }
 
 // Prd is the production environment, the last.

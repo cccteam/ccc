@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 
@@ -166,6 +167,9 @@ const SchedulerInvokerVariable = "APP_SCHEDULER_INVOKER"
 // ScheduledRoute is a method the code declares with @schedule: Cloud Scheduler calls it
 // with POST on its schedule, a cron expression read in the time zone.
 type ScheduledRoute struct {
+	// Site is the site whose router declares the route, set when the file is read: the
+	// job calls the route on that site's hostname. Not in the file.
+	Site string `json:"-"`
 	// Path is the route, ScheduledPrefix/<name>.
 	Path string `json:"path"`
 	// Schedule is the cron expression, five fields (minute, hour, day of the month,
@@ -377,27 +381,44 @@ func validateScheduled(name string, routes []ScheduledRoute) error {
 	return nil
 }
 
-// releaseFile reads the scheduled routes, the file routes and the surfaces from the
-// release file beside the generated router, and derives the request log's exclusion
-// from the surfaces. An application with no router, or whose router has no release file
-// yet, has none of them; a release file that does not read is refused, since the stack
-// cannot say which jobs the code declares, which routes carry files, or which entries
-// the code means to keep.
-func (m *Model) releaseFile(a *app.App) error {
-	if m.RouterDir == "" {
-		return nil
+// releaseFiles reads each site's scheduled routes, file routes and surfaces from the
+// release file beside its generated router, derives each site's request log exclusion
+// from its surfaces, and gathers the model's: every site's scheduled routes, each
+// naming its site, every site's file routes with a route listed once, and the first
+// site's surfaces and exclusion. A site with no router, or whose router has no release
+// file yet, has none of them; a release file that does not read is refused, since the
+// stack cannot say which jobs the code declares, which routes carry files, or which
+// entries the code means to keep.
+func (m *Model) releaseFiles(a *app.App) error {
+	for i := range m.Sites {
+		s := &m.Sites[i]
+		if s.RouterDir == "" {
+			continue
+		}
+		f, err := ReadReleaseFile(a.Abs(s.RouterDir))
+		switch {
+		case errors.Is(err, os.ErrNotExist):
+			continue
+		case err != nil:
+			return errors.Wrapf(err, "the %s site", s.Name)
+		}
+		s.Scheduled = f.Scheduled
+		for j := range s.Scheduled {
+			s.Scheduled[j].Site = s.Name
+		}
+		s.FileRoutes = f.FileRoutes
+		s.Surfaces = f.Surfaces
+		s.RequestLog = NewRequestLogExclusion(f.Surfaces)
+		m.Scheduled = append(m.Scheduled, s.Scheduled...)
+		for _, r := range s.FileRoutes {
+			if !slices.ContainsFunc(m.FileRoutes, func(have FileRoute) bool { return have.Method == r.Method && have.Path == r.Path }) {
+				m.FileRoutes = append(m.FileRoutes, r)
+			}
+		}
 	}
-	f, err := ReadReleaseFile(a.Abs(m.RouterDir))
-	switch {
-	case errors.Is(err, os.ErrNotExist):
-		return nil
-	case err != nil:
-		return err
+	if len(m.Sites) > 0 {
+		m.Surfaces, m.RequestLog = m.Sites[0].Surfaces, m.Sites[0].RequestLog
 	}
-	m.Scheduled = f.Scheduled
-	m.FileRoutes = f.FileRoutes
-	m.Surfaces = f.Surfaces
-	m.RequestLog = NewRequestLogExclusion(f.Surfaces)
 
 	return nil
 }
@@ -430,6 +451,12 @@ func (f *ReleaseFile) OldestAnswered() (OldestAnswered, bool) {
 	}
 
 	return newest, found
+}
+
+// Newer reports whether o answers a newer release at the oldest than b: across the
+// sites of an application, the newest decides whether a release is breaking.
+func (o OldestAnswered) Newer(b OldestAnswered) bool {
+	return newer(o, b)
 }
 
 // newer reports whether a answers a newer release at the oldest than b.

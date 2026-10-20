@@ -97,17 +97,30 @@ func Deploy(ctx context.Context, clients *Clients, w Workspace, out io.Writer) e
 	if err := w.WriteRevisions(revisions); err != nil {
 		return err
 	}
-	// What the hook before traffic calls: the next revision's public URL through the load
-	// balancer (none for a pull request, whose environment is its own), and the tagged
-	// run.app URL per region, which the services' ingress answers from inside alone.
+
+	return nextFacts(w, env, build, urls, out)
+}
+
+// nextFacts leaves what the hook before traffic calls: the next revision's public URL
+// through the load balancer (none for a pull request, whose environment is its own),
+// the tagged run.app URL per region, which the services' ingress answers from inside
+// alone, and each site's next URL when the stack names the sites' hostnames.
+func nextFacts(w Workspace, env map[string]string, build *Build, urls []string, out io.Writer) error {
 	facts := map[string]string{
 		nextURLFact:      nextURL(canonicalHostname(env, build), build.Substitutions[prNumberSub]),
 		revisionURLsFact: strings.Join(urls, ","),
 	}
+	if sites := canonicalHostnames(env, build); sites != "" {
+		facts[nextURLsFact] = nextURLs(sites, build.Substitutions[prNumberSub])
+	}
 	if err := w.Append(facts); err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "%s=%s %s=%s\n", nextURLFact, facts[nextURLFact], revisionURLsFact, facts[revisionURLsFact])
+	fmt.Fprintf(out, "%s=%s %s=%s", nextURLFact, facts[nextURLFact], revisionURLsFact, facts[revisionURLsFact])
+	if facts[nextURLsFact] != "" {
+		fmt.Fprintf(out, " %s=%s", nextURLsFact, facts[nextURLsFact])
+	}
+	fmt.Fprintln(out)
 
 	return nil
 }
@@ -123,6 +136,13 @@ const (
 	// build applied names it (deploy stack apply reads it back), where the trigger's
 	// _HOSTNAME is its stack's last apply.
 	canonicalHostnameFact = "CANONICAL_HOSTNAME"
+	// A sites-layout application's stack names each site's canonical hostname too
+	// (_HOSTNAMES, site=hostname per site, read back as CANONICAL_HOSTNAMES), and the
+	// deploy leaves each site's next URL for the hook (NEXT_URLS, site=url per site);
+	// NEXT_URL stays the first site's. A flat-layout stack names neither.
+	nextURLsFact           = "NEXT_URLS"
+	hostnamesSub           = "_HOSTNAMES"
+	canonicalHostnamesFact = "CANONICAL_HOSTNAMES"
 )
 
 // canonicalHostname is the environment's hostname the next revision's URL is named by: the
@@ -134,6 +154,35 @@ func canonicalHostname(env map[string]string, build *Build) string {
 	}
 
 	return build.Substitutions[hostnameSub]
+}
+
+// canonicalHostnames is each site's canonical hostname (site=hostname, comma-separated)
+// the next URLs are named by, the way canonicalHostname is the first site's: the stack's
+// as this build applied it, else the trigger's; empty for a flat-layout stack.
+func canonicalHostnames(env map[string]string, build *Build) string {
+	if sites := env[canonicalHostnamesFact]; sites != "" {
+		return sites
+	}
+
+	return build.Substitutions[hostnamesSub]
+}
+
+// nextURLs is each site's next revision's public URL (site=url, comma-separated), from
+// each site's canonical hostname the way nextURL names one; a site without one is left
+// out, and a pull-request build has none.
+func nextURLs(sites, pullRequest string) string {
+	var urls []string
+	for _, pair := range strings.Split(sites, ",") {
+		site, hostname, ok := strings.Cut(pair, "=")
+		if !ok {
+			continue
+		}
+		if url := nextURL(hostname, pullRequest); url != "" {
+			urls = append(urls, site+"="+url)
+		}
+	}
+
+	return strings.Join(urls, ",")
 }
 
 // taggedURL is the revision's own URL under its tag: the service's run.app URL with the

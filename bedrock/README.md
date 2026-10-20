@@ -85,7 +85,11 @@ again does not, because its pull request is already labeled as tagged.
   unencrypted HTTP/2 on one listener, so bodies over Cloud Run's 32 MiB HTTP/1 bound
   pass; HTTP/1 otherwise), the database, the secret
   containers, the backend service, the triggers, the sweep schedule and the scheduled
-  routes' jobs, per environment.
+  routes' jobs, per environment. An application in impulse's sites layout gets a Cloud
+  Run service per site and region and a backend service per site, with the site's own
+  hostnames, behind one image (a binary and a bundle per site), one runtime identity and
+  one database; a site's name is one word of lowercase letters and digits, short enough
+  for every name the site is in to fit Cloud Run's.
   Rendered by `bedrock render` from the code and the application's placement.
 - **Placement**: `placement.json` beside the stack. For an application it records the
   organization's facts the stack needs, the bedrock the pipeline runs
@@ -2260,11 +2264,13 @@ environment whose stack is still torn down (no release run since its teardown), 
 the entry, renders the hostnames back and leaves the pull request the same way.
 `org hostnames <app>` records the hostnames an application's stacks serve now, after the
 application changed a site's label in its placement and its stacks were applied again: it
-reads the `hostnames` output of the stack's state in every environment, records them
-(`hostnames` in `placement.json`), refuses one another application serves or one that is
-not one label under the apps domain, renders 2-net with the host rules moved, writes the
-journal line and leaves the working tree for a pull request; its merge has the apply
-trigger move the rules, and until then the old hostnames answer and the new ones do not.
+reads the `net_hosts` output of the stack's state in every environment (every site's
+hostnames and their `-next` twins, each with the backend service that serves it), records
+them as they are (`hostnames` in `placement.json`), refuses one another application serves
+or one that is not one label under the apps domain, renders 2-net with the host rules
+moved, writes the journal line and leaves the working tree for a pull request; its merge
+has the apply trigger move the rules, and until then the old hostnames answer and the new
+ones do not.
 An application still in its registration is refused: the completion records its
 hostnames the first time. `org check` holds the record on every pull request, so a label
 two applications declare is refused where it is recorded, never applied.
@@ -2323,9 +2329,10 @@ layers render what that step may apply, and `org register <app> --next` moves to
 step: to `grants` once 2-env's state in every environment holds the application's
 identities, to complete once its stack has a state in every environment, each read from
 the state bucket and refused before. The completion records the hostnames the stack serves
-in every environment, read from its state's `hostnames` output, under the placement's
-`hostnames` (by code and environment): 2-net's host rules render from the record, each with
-its `-next` twin, so the organization never invents a hostname; the application declares
+in every environment, read from its state's `net_hosts` output, under the placement's
+`hostnames` (by code and environment, each hostname with the backend service that serves
+it, every site's and their `-next` twins): 2-net's host rules render from the record as it
+is, so the organization never invents a hostname; the application declares
 each site's label in its own placement (`hostnames`, "The application's placement"), the
 code by default, and a hostname another application serves refuses the step. An
 application registered before hostnames were recorded has no entry and renders by the

@@ -22,11 +22,15 @@
 # ---------------------------------------------------------------------------
 
 locals {
-  # From {{.RouterDir}}/{{.ReleaseFileName}}, by the route's name: the method's
-  # name in kebab case, which names its job.
+  # From {{if .MultiSite}}each site's router's {{.ReleaseFileName}}{{else}}{{.RouterDir}}/{{.ReleaseFileName}}{{end}}, by the route's name: the method's
+  # name in kebab case, which names its job{{if .MultiSite}}, behind the site's name, which also
+  # names the hostname the job calls{{end}}.
   scheduled_routes = {
 {{- range .Scheduled}}
-    "{{.Name}}" = {
+    "{{if $.MultiSite}}{{.Site}}-{{end}}{{.Name}}" = {
+{{- if $.MultiSite}}
+      site      = "{{.Site}}"
+{{- end}}
       path      = "{{.Path}}"
       schedule  = "{{.Schedule}}"
       time_zone = "{{.TimeZone}}"
@@ -50,17 +54,17 @@ resource "google_cloud_scheduler_job" "scheduled" {
   project     = local.project_id
   region      = local.primary_region
   name        = "${local.name}-${local.primary_region_code}-${local.app}-sched-${each.key}"
-  description = "Calls ${each.value.path} on {{.App}} on its schedule (@schedule)."
+  description = "Calls ${each.value.path} on {{.App}}{{if .MultiSite}}'s ${each.value.site} site{{end}} on its schedule (@schedule)."
   schedule    = each.value.schedule
   time_zone   = each.value.time_zone
 
   http_target {
     http_method = "POST"
-    uri         = "https://${local.hostnames[0]}${each.value.path}"
+    uri         = "https://${local.{{if .MultiSite}}site_hostnames[each.value.site]{{else}}hostnames{{end}}[0]}${each.value.path}"
 
     oidc_token {
       service_account_email = local.scheduler_email
-      audience              = "https://${local.hostnames[0]}${each.value.path}"
+      audience              = "https://${local.{{if .MultiSite}}site_hostnames[each.value.site]{{else}}hostnames{{end}}[0]}${each.value.path}"
     }
   }
 

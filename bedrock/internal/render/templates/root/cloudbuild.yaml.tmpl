@@ -93,7 +93,7 @@ steps:
   - id: ValidateRelease
     name: {{.GcloudImage}}
     entrypoint: /builder/home/bedrock
-    args: [deploy, validate-release{{if .RouterDir}}, --router-dir, {{.RouterDir}}{{end}}]
+    args: [deploy, validate-release{{range .Sites}}{{if .RouterDir}}, --router-dir, {{.RouterDir}}{{end}}{{end}}]
     timeout: 300s
 
   # The schema migrations and the seed are each one contiguous sequence, and in a

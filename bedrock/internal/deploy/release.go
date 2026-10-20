@@ -99,13 +99,13 @@ func splitRepo(fullName string) (owner, repo string, err error) {
 // environment holds a live deployment record of it, which its record step writes once
 // traffic has shifted there. Last the maintenance window (windowCheck): whether the
 // release turns away the one this environment runs, read from the release file in the
-// checkout's router package (routerDir) and the environment's newest live record, and
+// checkout's router packages (routerDirs, one per site) and the environment's newest live record, and
 // whether the run can wait for the window; what can never proceed is refused here,
 // before anything is built. A pull-request build has no release to validate, and says
 // so; its previews are the check-and-plan job's. A tag build first says which bedrock runs it (bedrock, the
 // running version), and whether that is a commit pin: a release may be deployed by a
 // bedrock built from an unreleased commit, and the log says so rather than refusing it.
-func ValidateRelease(ctx context.Context, clients *Clients, w Workspace, bedrock, routerDir string, out io.Writer) error {
+func ValidateRelease(ctx context.Context, clients *Clients, w Workspace, bedrock string, routerDirs []string, out io.Writer) error {
 	env, err := w.Environment()
 	if err != nil {
 		return err
@@ -162,7 +162,7 @@ func ValidateRelease(ctx context.Context, clients *Clients, w Workspace, bedrock
 		}
 	}
 
-	return windowCheck(ctx, clients, w, build, env, routerDir, out)
+	return windowCheck(ctx, clients, w, build, env, routerDirs, out)
 }
 
 // patchLine is what the tag check learned of a patch release: its tag and its release line.

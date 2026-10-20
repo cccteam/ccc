@@ -1,0 +1,192 @@
+# ---------------------------------------------------------------------------
+# Cloud Run
+#
+# Each site (apps/console and apps/portal) as a service of its own in the organization's two
+# regions. All are created
+# with a placeholder image: the pipeline owns the image from the first deploy
+# on, so the image and the labels and annotations a deploy stamps are ignored
+# here, and everything else about the revision template (identity, scaling,
+# variables, secrets) stays this stack's. The migration (cmd/deployment/migrate) is
+# no Cloud Run resource: the pipeline takes the migrate command out of the
+# release's image and runs it on the build worker as the deploy identity, with
+# the variables locals.tf derives for it (migrate_env).
+#
+# Modeled on CCC's reference deployment, without the VPC egress (no
+# connector and no NAT: the organization's network layer creates no network,
+# and Cloud Run needs none) and without IAP.
+# ---------------------------------------------------------------------------
+
+resource "google_cloud_run_v2_service" "app" {
+  for_each = local.services
+
+  project  = local.project_id
+  location = each.value.region
+  name     = local.is_pr ? local.site_pr_hosts[each.value.site] : "${local.name}-${each.value.code}-${local.app}-${each.value.site}-app"
+
+  # Reachable only through the load balancer in the net project (and from
+  # inside the VPC); the org policy run.allowedIngress pins this value.
+  ingress = "INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER"
+
+  # prd resists deletion; the other environments can be rebuilt by a
+  # pipeline. bedrock teardown and bedrock destroy lift it there, with an apply
+  # before their destroy (var.teardown, var.destroy).
+  deletion_protection = local.is_prd && !var.teardown && !var.destroy
+
+  labels = local.labels
+
+  template {
+    service_account       = google_service_account.app.email
+    execution_environment = "EXECUTION_ENVIRONMENT_GEN2"
+    timeout               = "300s"
+    labels                = local.labels
+
+    # Scale to zero, and to at most local.max_instances per region: the
+    # placement's cap for this environment (maxInstances), or Cloud Run's
+    # default where it sets none.
+    scaling {
+      min_instance_count = 0
+      max_instance_count = local.max_instances
+    }
+
+    containers {
+      image = var.placeholder_image
+      # The site's binary: the image builds one per site and its entrypoint is the
+      # first site's, so each service names its own (locals.tf, site_settings).
+      command = [local.site_settings[each.value.site].command]
+
+
+      ports {
+        # h2c, for a site whose main package imports the framework's server
+        # (github.com/cccteam/ccc/resource/server), which speaks HTTP/1.1 and unencrypted HTTP/2 on
+        # one listener, so Cloud Run talks HTTP/2 to the container and the 32 MiB
+        # bounds of HTTP/1 request and response bodies no longer apply. The
+        # maintenance revision runs the same image, so it speaks it too. A site on
+        # another server keeps an HTTP/1 port (locals.tf, site_settings).
+        name           = local.site_settings[each.value.site].h2c ? "h2c" : null
+        container_port = 8080
+      }
+
+      resources {
+        # CPU only while a request is in flight: no always-on allocation.
+        cpu_idle          = true
+        startup_cpu_boost = true
+        limits = {
+          cpu    = "1"
+          memory = "512Mi"
+        }
+      }
+
+      # The maintenance switch: empty, except on a maintenance revision (a
+      # restore run, a breaking release), which the pipeline deploys with it
+      # set to 1 and whose process then serves the maintenance page and opens
+      # no database. The stack declares it so that it and the pipeline agree on
+      # the variable's presence, and the pipeline passes its live value as
+      # var.maintenance to the plan it makes while the application is in
+      # maintenance, so that the apply leaves the service alone (an env entry
+      # cannot be ignored on its own: the block is a set). The release's own
+      # revision is deployed with it empty again.
+      env {
+        name  = "APP_MAINTENANCE"
+        value = var.maintenance
+      }
+
+      dynamic "env" {
+        for_each = merge(local.service_env, local.site_settings[each.value.site].env)
+        content {
+          name  = env.key
+          value = env.value
+        }
+      }
+
+      # Secrets by reference, at the version var.secret_versions pins. A secret
+      # with no pin is not mounted: the process starts without it.
+      dynamic "env" {
+        for_each = local.mounted_secrets
+        content {
+          name = env.key
+          value_source {
+            secret_key_ref {
+              secret  = local.secret_ids[env.key]
+              version = env.value.version
+            }
+          }
+        }
+      }
+    }
+  }
+
+  lifecycle {
+    # The pipeline deploys the image and stamps the revision with its own
+    # labels and annotations (commit, build, trigger, client). Those are its.
+    ignore_changes = [
+      template[0].containers[0].image,
+      template[0].labels,
+      template[0].annotations,
+      labels,
+      annotations,
+      client,
+      client_version,
+    ]
+
+    precondition {
+      condition     = alltrue([for key in keys(local.declared_versions) : contains(keys(local.secrets), key)])
+      error_message = "secret_versions for ${var.environment} names a variable no secret in pkg/config declares. Known: ${join(", ", keys(local.secrets))}."
+    }
+
+    # A generated secret's entry is the word generated, never a number: its
+    # version is derived at each build. The word on any other secret pins nothing.
+    precondition {
+      condition     = alltrue([for key in keys(local.generated_secrets) : lookup(local.declared_versions, key, "generated") == "generated"])
+      error_message = "secret_versions for ${var.environment} pins a version number for a generated secret (${join(", ", [for key in keys(local.generated_secrets) : key if lookup(local.declared_versions, key, "generated") != "generated"])}), whose version the pipeline derives at each build: write generated there."
+    }
+
+    precondition {
+      condition     = alltrue([for key, v in local.declared_versions : v != "generated" || contains(keys(local.generated_secrets), key)])
+      error_message = "secret_versions for ${var.environment} says generated for a secret the code does not declare secret:\"generated\" (${join(", ", [for key, v in local.declared_versions : key if v == "generated" && !contains(keys(local.generated_secrets), key)])}): pin a version number, or declare it generated in the code."
+    }
+  }
+
+  # The grants the first revision needs before it starts: a grant takes minutes
+  # to take effect, and the file store's readiness probe runs at start.
+  depends_on = [
+    google_secret_manager_secret_iam_member.app_accessor,
+    google_spanner_database_iam_member.app_user,
+  ]
+}
+
+# The load balancer forwards to the service with no identity of its own, so
+# invocation is open to all callers; ingress above keeps those callers to the
+# load balancer and the VPC. CCC's reference deployment runs the same pair. The
+# organization's domain policy refuses allUsers unless the service carries the
+# public-invoker tag (1-org tags.tf), so the tag is bound first.
+resource "google_tags_location_tag_binding" "public_invoker" {
+  for_each = google_cloud_run_v2_service.app
+
+  parent    = "//run.googleapis.com/projects/${local.env.project_number}/locations/${each.value.location}/services/${each.value.name}"
+  tag_value = local.org.public_invoker_tag_value
+  location  = each.value.location
+}
+
+# A tag binding takes minutes to reach the policy evaluation, and an invoker
+# grant made before then is refused ("do not belong to a permitted customer").
+# Both first applies were refused, and so were two pull-request stacks after a
+# pause of 120 seconds, so the pause is five minutes. It is paid once, when a
+# stack's services are created; a refusal costs a whole rerun of the build.
+resource "time_sleep" "public_invoker_tag" {
+  depends_on = [google_tags_location_tag_binding.public_invoker]
+
+  create_duration = "300s"
+}
+
+resource "google_cloud_run_v2_service_iam_member" "invoker" {
+  # checkov:skip=CKV_GCP_102: ingress is INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER; allUsers reaches the service only through the load balancer.
+  for_each = google_cloud_run_v2_service.app
+
+  project  = each.value.project
+  location = each.value.location
+  name     = each.value.name
+  role     = "roles/run.invoker"
+  member   = "allUsers"
+
+  depends_on = [time_sleep.public_invoker_tag]
+}

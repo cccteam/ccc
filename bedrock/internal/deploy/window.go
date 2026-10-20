@@ -121,34 +121,41 @@ func checkoutPlacement(w Workspace, written string) (*derive.Placement, error) {
 	return p, nil
 }
 
-// readOldest reads the release file from the checkout's router package and answers
-// what the outlets declare at the oldest, nil when none does: no router directory
-// (the pipeline names none), no file (the application predates it), or no outlet with
-// the option. Each case is said on out; a file of the wrong shape is an error.
-func readOldest(w Workspace, routerDir string, out io.Writer) (*derive.OldestAnswered, error) {
-	if routerDir == "" {
+// readOldest reads the release file from each of the checkout's router packages (one
+// per site) and answers what the outlets declare at the oldest, the newest across the
+// sites, nil when none does: no router directory (the pipeline names none), no file
+// (the application predates it), or no outlet with the option. Each case is said on
+// out; a file of the wrong shape is an error.
+func readOldest(w Workspace, routerDirs []string, out io.Writer) (*derive.OldestAnswered, error) {
+	if len(routerDirs) == 0 {
 		fmt.Fprintln(out, "No release file to read: the pipeline names no router directory (the application declares no GenerateRoutes), so no outlet declares an oldest answered release.")
 
 		return nil, nil
 	}
-	f, err := derive.ReadReleaseFile(filepath.Join(string(w), filepath.FromSlash(routerDir)))
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			fmt.Fprintf(out, "Warning: no release file at %s in the checkout, so no outlet declares an oldest answered release and no release is breaking; the resource generator writes it beside the router.\n", filepath.ToSlash(filepath.Join(routerDir, derive.ReleaseFileName)))
+	var newest *derive.OldestAnswered
+	for _, routerDir := range routerDirs {
+		f, err := derive.ReadReleaseFile(filepath.Join(string(w), filepath.FromSlash(routerDir)))
+		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				fmt.Fprintf(out, "Warning: no release file at %s in the checkout, so no outlet declares an oldest answered release and no release is breaking; the resource generator writes it beside the router.\n", filepath.ToSlash(filepath.Join(routerDir, derive.ReleaseFileName)))
 
-			return nil, nil
+				continue
+			}
+
+			return nil, err
 		}
+		oldest, ok := f.OldestAnswered()
+		if !ok {
+			fmt.Fprintf(out, "The release file %s declares no oldest answered release on any outlet: every release that sends its version is answered.\n", filepath.ToSlash(filepath.Join(routerDir, derive.ReleaseFileName)))
 
-		return nil, err
+			continue
+		}
+		if newest == nil || oldest.Newer(*newest) {
+			newest = &oldest
+		}
 	}
-	oldest, ok := f.OldestAnswered()
-	if !ok {
-		fmt.Fprintf(out, "The release file %s declares no oldest answered release on any outlet: every release that sends its version is answered.\n", filepath.ToSlash(filepath.Join(routerDir, derive.ReleaseFileName)))
 
-		return nil, nil
-	}
-
-	return &oldest, nil
+	return newest, nil
 }
 
 // windowCheck is the release check's part on the maintenance window, the run's first
@@ -158,14 +165,14 @@ func readOldest(w Workspace, routerDir string, out io.Writer) (*derive.OldestAns
 // is breaking, a window whose next opening is further away than the build can wait, and
 // a window with no opening ahead. A restore run and an environment in maintenance from an
 // earlier run pass: the gate counts the window as open.
-func windowCheck(ctx context.Context, clients *Clients, w Workspace, build *Build, env map[string]string, routerDir string, out io.Writer) error {
+func windowCheck(ctx context.Context, clients *Clients, w Workspace, build *Build, env map[string]string, routerDirs []string, out io.Writer) error {
 	subs := build.Substitutions
 	tag, environment := subs[tagSub], subs[envSub]
 	placement, err := checkoutPlacement(w, "the maintenance windows are written")
 	if err != nil {
 		return err
 	}
-	oldest, err := readOldest(w, routerDir, out)
+	oldest, err := readOldest(w, routerDirs, out)
 	if err != nil {
 		return err
 	}
@@ -476,9 +483,9 @@ func serviceInMaintenance(ctx context.Context, clients *Clients, build *Build) (
 // from the checkout's release file and each environment's live deployment record as
 // that environment's plan identity, and which environments will hold it for their
 // window. It warns and never refuses.
-func windowPreview(ctx context.Context, open StoreAsFunc, w Workspace, subs map[string]string, routerDir string, out io.Writer) error {
+func windowPreview(ctx context.Context, open StoreAsFunc, w Workspace, subs map[string]string, routerDirs []string, out io.Writer) error {
 	fmt.Fprintln(out, "Window preview: whether the release this pull request becomes part of turns away the release each environment runs, and which environments hold it for their maintenance window:")
-	oldest, err := readOldest(w, routerDir, out)
+	oldest, err := readOldest(w, routerDirs, out)
 	if err != nil {
 		return err
 	}

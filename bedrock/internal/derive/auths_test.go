@@ -266,7 +266,7 @@ func TestMethodRoutes(t *testing.T) {
 	tests := []struct {
 		name         string
 		method       Method
-		outlets      []app.Outlet
+		outlets      []boundOutlet
 		wantOutlet   string
 		wantCallback string
 		wantLogout   string
@@ -275,14 +275,14 @@ func TestMethodRoutes(t *testing.T) {
 		{
 			name:         "a Google registration on the default outlet",
 			method:       Method{Auth: "staff", Name: "directory", Kind: app.MethodGoogle},
-			outlets:      []app.Outlet{{Name: "default", Prefix: "api"}},
+			outlets:      []boundOutlet{{site: "harbor", outlet: app.Outlet{Name: "default", Prefix: "api"}}},
 			wantOutlet:   "default",
 			wantCallback: "/api/user/directory/callback",
 		},
 		{
 			name:         "a Microsoft registration on a second outlet, with its front-channel logout",
 			method:       Method{Auth: "members", Name: "directory", Kind: app.MethodAzure},
-			outlets:      []app.Outlet{{Name: "portal", Prefix: "portal/api"}},
+			outlets:      []boundOutlet{{site: "harbor", outlet: app.Outlet{Name: "portal", Prefix: "portal/api"}}},
 			wantOutlet:   "portal",
 			wantCallback: "/portal/api/user/directory/callback",
 			wantLogout:   "/portal/api/user/directory/logout",
@@ -295,7 +295,7 @@ func TestMethodRoutes(t *testing.T) {
 		{
 			name:    "two outlets bound",
 			method:  Method{Auth: "members", Name: "directory", Kind: app.MethodAzure},
-			outlets: []app.Outlet{{Name: "default", Prefix: "api"}, {Name: "portal", Prefix: "portal/api"}},
+			outlets: []boundOutlet{{site: "harbor", outlet: app.Outlet{Name: "default", Prefix: "api"}}, {site: "harbor", outlet: app.Outlet{Name: "portal", Prefix: "portal/api"}}},
 			wantErr: "the members auth registers the directory method (azure) and 2 outlets bind to it (default, portal): a directory registration has one callback",
 		},
 	}

@@ -73,7 +73,7 @@ resource "google_project_iam_member" "operations_reads_migrate_logs" {
     expression  = "resource.name == \"${local.migrate_logs_view}\""
   }
 }
-{{- if .RequestLog}}
+{{- if .RequestLogAny}}
 
 # ---------------------------------------------------------------------------
 # The request log's exclusion
@@ -82,7 +82,7 @@ resource "google_project_iam_member" "operations_reads_migrate_logs" {
 # service answers, whatever the application's own logger decides. The code
 # declares per surface which requests get an entry, with the request log
 # words the generated router applies to the application's entries and lists
-# in {{.RouterDir}}/{{.ReleaseFileName}} (surfaces); this exclusion holds the
+# in {{if .MultiSite}}each site's router's {{.ReleaseFileName}}{{else}}{{.RouterDir}}/{{.ReleaseFileName}}{{end}} (surfaces); this exclusion holds the
 # cloud's own entries to the same words, so a surface logged on event alone
 # costs no entry for its quiet requests anywhere. Its scope is the service,
 # Cloud Run's entries by the regional services' names and the load
@@ -100,9 +100,18 @@ resource "google_project_iam_member" "operations_reads_migrate_logs" {
 # ---------------------------------------------------------------------------
 
 locals {
+{{- if .MultiSite}}
+  # Per site, the surfaces whose word excludes an entry, from the site's router's
+  # {{.ReleaseFileName}}; a site none of whose surfaces excludes has no clause and keeps
+  # every entry:
+{{- range .Sites}}{{if .RequestLogClause}}
+  #   {{.Name}}:{{range .RequestLog.Surfaces}} {{.Prefix}}, {{.Policy}};{{end}}
+{{- end}}{{end}}
+{{- else}}
   # The surfaces whose word excludes an entry, from {{.RouterDir}}/{{.ReleaseFileName}}:
 {{- range .RequestLog.Surfaces}}
   #   {{.Prefix}}, {{.Policy}}
+{{- end}}
 {{- end}}
   # A surface logged always has no clause. On event drops the entry of a
   # request that answered below 400 and keeps every failure, since the edge
@@ -112,7 +121,17 @@ locals {
   # beneath its surface, whatever their words, since the nearest declaration
   # decides a request's entry: an entry under a child is the child's own
   # clause's to drop, and kept whole when the child is logged always.
+{{- if .MultiSite}}
+  # Each site's clause is scoped to the site's own services and backend, since two
+  # sites may mount the same path on different hosts.
+  request_log_clauses = {
+{{- range .Sites}}{{if .RequestLogClause}}
+    {{.Name}} = {{.RequestLogClause}}
+{{- end}}{{end}}
+  }
+{{- else}}
   request_log_clause = {{.RequestLogClause}}
+{{- end}}
 }
 
 resource "google_logging_project_exclusion" "request_log" {
@@ -120,11 +139,17 @@ resource "google_logging_project_exclusion" "request_log" {
 
   project     = local.project_id
   name        = "${local.name}-gbl-${local.app}-log-excl"
-  description = "Holds the request log entries Cloud Run and the load balancer write for {{.App}} in ${var.environment} to the request log words its code declares per surface ({{.RouterDir}}/{{.ReleaseFileName}})."
+  description = "Holds the request log entries Cloud Run and the load balancer write for {{.App}} in ${var.environment} to the request log words its code declares per surface ({{if .MultiSite}}each site's router's {{.ReleaseFileName}}{{else}}{{.RouterDir}}/{{.ReleaseFileName}}{{end}})."
+{{- if .MultiSite}}
+  filter = join(" OR ", [
+    for site, clause in local.request_log_clauses : "(((resource.type=\"cloud_run_revision\" AND (${join(" OR ", [for key, service in google_cloud_run_v2_service.app : "resource.labels.service_name=\"${service.name}\"" if local.services[key].site == site])})) OR (resource.type=\"http_load_balancer\" AND resource.labels.backend_service_name=\"${google_compute_backend_service.app[site].name}\")) AND ${clause})"
+  ])
+{{- else}}
   filter = join(" AND ", [
     "((resource.type=\"cloud_run_revision\" AND (${join(" OR ", [for service in google_cloud_run_v2_service.app : "resource.labels.service_name=\"${service.name}\""])})) OR (resource.type=\"http_load_balancer\" AND resource.labels.backend_service_name=\"${google_compute_backend_service.app[0].name}\"))",
     local.request_log_clause,
   ])
+{{- end}}
 }
 {{- else}}
 

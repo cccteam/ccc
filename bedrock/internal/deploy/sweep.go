@@ -181,11 +181,18 @@ func pullRequestEnvironments(ctx context.Context, clients *Clients, subs map[str
 		return nil, err
 	}
 	found := map[string]bool{}
+	regions := map[string]bool{}
 	for _, pair := range strings.Split(subs["_SERVICES"], ",") {
 		region, _, err := target("_SERVICES", pair)
 		if err != nil {
 			return nil, err
 		}
+		// A sites-layout stack names a service per site in each region; a region is
+		// listed once.
+		if regions[region] {
+			continue
+		}
+		regions[region] = true
 		list, err := run.Services(ctx, subs["_PROJECT"], region)
 		if err != nil {
 			return nil, err

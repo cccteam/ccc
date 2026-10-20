@@ -274,15 +274,17 @@ type Placement struct {
 	// in full; each environment is one of the model's, listed once, in promotion order.
 	OutOfService map[string][]string `json:"outOfService,omitempty"`
 	// Hostnames are the hostnames each application's stack serves, by code and by
-	// environment, as read from the stack's state (its hostnames output) when the
-	// registration completed (bedrock org register <app> --next) or when bedrock org
-	// hostnames <app> recorded them again after the application changed a site's label
-	// in its placement. 2-net's hosts render from them, each with its -next twin; an
-	// application recorded before hostnames were (no entry) renders by the default rule,
-	// its code under the apps domain. The organization never invents a hostname: it
-	// records what the stack serves and refuses one that is not one label under the apps
+	// environment, each with the backend service that serves it, as read from the
+	// stack's state (its net_hosts output: every site's hostnames and their -next twins,
+	// each mapped to its site's backend) when the registration completed (bedrock org
+	// register <app> --next) or when bedrock org hostnames <app> recorded them again
+	// after the application changed a site's label in its placement. 2-net's hosts
+	// render from them verbatim; an application recorded before hostnames were (no
+	// entry) renders by the default rule, its code under the apps domain with one
+	// backend. The organization never invents a hostname or a backend: it records what
+	// the stack serves and refuses a hostname that is not one label under the apps
 	// domain or that another application serves too.
-	Hostnames map[string]map[string][]string `json:"hostnames,omitempty"`
+	Hostnames map[string]map[string]map[string]string `json:"hostnames,omitempty"`
 	// Projects are the projects by key: boot, the project the seed chose, and shr, net,
 	// spn, tst, stg and prd, the ids 1-org's apply chose (its project_ids output). The
 	// environment projects are what the applications' identities and backends are named
@@ -1187,18 +1189,68 @@ func (p *Placement) validateOutOfService() error {
 	return nil
 }
 
-// ApplicationHostnames are the hostnames the application serves in the environment: the
-// recorded ones (Hostnames), else the default rule's, the code under the apps domain
-// with the environment's suffix below production.
+// ApplicationHostnames are the hostnames the application serves in the environment, in
+// name order: the recorded ones (Hostnames) less the next revision's twins, else the
+// default rule's, the code under the apps domain with the environment's suffix below
+// production.
 func (p *Placement) ApplicationHostnames(app, env string) []string {
 	if hosts := p.Hostnames[app][env]; len(hosts) > 0 {
-		return slices.Clone(hosts)
-	}
-	if env == Environments[len(Environments)-1] {
-		return []string{app + "." + p.AppsDomain}
+		var served []string
+		for _, host := range SortedHosts(hosts) {
+			if !strings.HasSuffix(hosts[host], nextBackendSuffix) {
+				served = append(served, host)
+			}
+		}
+
+		return served
 	}
 
-	return []string{app + "-" + env + "." + p.AppsDomain}
+	return []string{DefaultHostname(p.AppsDomain, app, env)}
+}
+
+// DefaultHostname is the default rule's hostname of an application in an environment:
+// the code under the apps domain, with the environment's suffix below production.
+func DefaultHostname(appsDomain, app, env string) string {
+	if env == Environments[len(Environments)-1] {
+		return app + "." + appsDomain
+	}
+
+	return app + "-" + env + "." + appsDomain
+}
+
+// nextBackendSuffix ends the name of a backend serving the next revision, as the
+// application's stack names it: what tells a next hostname's entry from a served one.
+const nextBackendSuffix = "-next-backend"
+
+// SortedHosts lists the entries' hostnames in name order, each served hostname followed
+// by its -next twin: the order 2-net's hosts are rendered in.
+func SortedHosts(hosts map[string]string) []string {
+	names := slices.Sorted(maps.Keys(hosts))
+	sort.SliceStable(names, func(i, j int) bool {
+		a, aNext := strings.CutSuffix(strings.SplitN(names[i], ".", 2)[0], "-next")
+		b, bNext := strings.CutSuffix(strings.SplitN(names[j], ".", 2)[0], "-next")
+		if a != b {
+			return a < b
+		}
+
+		return !aNext && bNext
+	})
+
+	return names
+}
+
+// ApplicationHosts are the entries 2-net's hosts take for the application in the
+// environment, hostname to backend service: the recorded ones verbatim, else the
+// default rule's, the code's hostname and its -next twin on the application's backends
+// in the environment's project.
+func (p *Placement) ApplicationHosts(app, env string) map[string]string {
+	if hosts := p.Hostnames[app][env]; len(hosts) > 0 {
+		return maps.Clone(hosts)
+	}
+	host := DefaultHostname(p.AppsDomain, app, env)
+	stem := "projects/" + p.Project(env) + "/global/backendServices/" + p.Prefix + "-" + env + "-gbl-" + app
+
+	return map[string]string{host: stem + "-backend", NextHostname(host): stem + nextBackendSuffix}
 }
 
 // NextHostname is the hostname of the next revision behind a hostname: its first label
@@ -1209,26 +1261,27 @@ func NextHostname(host string) string {
 	return label + "-next." + rest
 }
 
-// RecordHostnames records the hostnames the application's stack serves, by environment,
-// as read from its state, and reports whether the record changed. Every environment of
-// the model is recorded, each with at least one hostname; what is recorded is held to
-// the same rules as the placement is (Validate), so a hostname another application
-// serves is refused here, before the placement is written.
-func (p *Placement) RecordHostnames(app string, byEnv map[string][]string) (bool, error) {
+// RecordHostnames records the hosts the application's stack serves, by environment
+// (hostname to backend service, every site's and the next revision's twins, as the
+// stack's net_hosts output lists them), as read from its state, and reports whether the
+// record changed. Every environment of the model is recorded, each with at least one
+// entry; what is recorded is held to the same rules as the placement is (Validate), so a
+// hostname another application serves is refused here, before the placement is written.
+func (p *Placement) RecordHostnames(app string, byEnv map[string]map[string]string) (bool, error) {
 	if !p.Registered(app) {
 		return false, errors.Newf("application %q is not registered (bedrock org register %s)", app, app)
 	}
-	record := make(map[string][]string, len(Environments))
+	record := make(map[string]map[string]string, len(Environments))
 	for _, env := range Environments {
 		hosts := byEnv[env]
 		if len(hosts) == 0 {
-			return false, errors.Newf("%s's stack serves no hostname in %s: its state's hostnames output is empty", p.Repository(app), env)
+			return false, errors.Newf("%s's stack serves no hostname in %s: its state's net_hosts output is empty", p.Repository(app), env)
 		}
-		record[env] = slices.Clone(hosts)
+		record[env] = maps.Clone(hosts)
 	}
 	previous := p.Hostnames[app]
 	if p.Hostnames == nil {
-		p.Hostnames = map[string]map[string][]string{}
+		p.Hostnames = map[string]map[string]map[string]string{}
 	}
 	p.Hostnames[app] = record
 	if err := p.validateHostnames(); err != nil {
@@ -1244,14 +1297,15 @@ func (p *Placement) RecordHostnames(app string, byEnv map[string][]string) (bool
 		return false, err
 	}
 
-	return !maps.EqualFunc(previous, record, slices.Equal), nil
+	return !maps.EqualFunc(previous, record, maps.Equal), nil
 }
 
 // validateHostnames refuses a recorded hostname of an application the placement does not
 // register, of an environment the model lacks, one that is not one label under the apps
 // domain (the wildcard certificate covers exactly one level), one whose label breaks the
-// label rule, and one two applications serve in the same environment, the default rule's
-// hostnames of the applications without a record and every -next twin counted.
+// label rule, one with no backend, and one two applications serve in the same
+// environment, the default rule's hostnames of the applications without a record and
+// their -next twins counted.
 func (p *Placement) validateHostnames() error {
 	for app, byEnv := range p.Hostnames {
 		if !p.Registered(app) {
@@ -1264,7 +1318,7 @@ func (p *Placement) validateHostnames() error {
 			if len(hosts) == 0 {
 				return errors.Newf("hostnames.%s.%s lists no hostname", app, env)
 			}
-			for _, host := range hosts {
+			for _, host := range slices.Sorted(maps.Keys(hosts)) {
 				label, ok := strings.CutSuffix(host, "."+p.AppsDomain)
 				if !ok || label == "" {
 					return errors.Newf("hostnames.%s.%s %q is not under the apps domain %s", app, env, host, p.AppsDomain)
@@ -1275,19 +1329,20 @@ func (p *Placement) validateHostnames() error {
 				if !derive.HostnameLabelOK(label) {
 					return errors.Newf("hostnames.%s.%s: hostname label %q is not %s", app, env, label, derive.HostnameLabelRule)
 				}
+				if hosts[host] == "" {
+					return errors.Newf("hostnames.%s.%s %q names no backend service: the stack's net_hosts output maps each hostname to the backend serving it", app, env, host)
+				}
 			}
 		}
 	}
 	for _, env := range Environments {
 		owners := map[string]string{}
 		for _, app := range p.Codes() {
-			for _, host := range p.ApplicationHostnames(app, env) {
-				for _, h := range []string{host, NextHostname(host)} {
-					if other, taken := owners[h]; taken && other != app {
-						return errors.Newf("hostname %s in %s is %s's and %s's: each hostname of an environment belongs to one application; declare another label in one of the two placements (hostnames) and record it (bedrock org hostnames <app>)", h, env, other, app)
-					}
-					owners[h] = app
+			for _, h := range SortedHosts(p.ApplicationHosts(app, env)) {
+				if other, taken := owners[h]; taken && other != app {
+					return errors.Newf("hostname %s in %s is %s's and %s's: each hostname of an environment belongs to one application; declare another label in one of the two placements (hostnames) and record it (bedrock org hostnames <app>)", h, env, other, app)
 				}
+				owners[h] = app
 			}
 		}
 	}

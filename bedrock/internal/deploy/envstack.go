@@ -607,6 +607,12 @@ func (s *stack) appliedFacts(ctx context.Context, w Workspace, subs map[string]s
 			fmt.Fprintf(s.out, "The environment's hostname is read from the stack as applied (%s): %s, where the trigger (its stack's last apply) says %q.\n", hostnameSub, hostname, said)
 		}
 	}
+	if sites := facts[prHostnamesFact]; sites != "" {
+		read[canonicalHostnamesFact] = sites
+		if said := subs[hostnamesSub]; said != sites {
+			fmt.Fprintf(s.out, "The sites' hostnames are read from the stack as applied (%s): %s, where the trigger (its stack's last apply) says %q.\n", hostnamesSub, sites, said)
+		}
+	}
 	settings := facts[migrateEnvFact]
 	if settings == "" {
 		return errors.Newf("the stack's substitutions output names no %s, the migrate command's settings: the stack is rendered by an older bedrock than the pipeline's, which bedrock check refuses", migrateEnvSub)
@@ -733,7 +739,7 @@ func previews(ctx context.Context, clients *Clients, w Workspace, subs map[strin
 		}
 	}
 
-	return windowPreview(ctx, clients.StorageAs, w, subs, m.RouterDir, out)
+	return windowPreview(ctx, clients.StorageAs, w, subs, m.RouterDirs(), out)
 }
 
 // planEnvironment plans one environment's stack for the pull request as the environment's

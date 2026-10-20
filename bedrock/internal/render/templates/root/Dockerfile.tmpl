@@ -1,4 +1,4 @@
-# {{.App}}'s container image: one image that serves the site (/app, the entrypoint) and carries
+# {{.App}}'s container image: one image that serves the site{{if .Image.Multi}}s ({{range $i, $s := .Image.Sites}}{{if $i}}, {{end}}{{$s.Binary}}{{end}}, one binary each, the first the entrypoint; each site's Cloud Run service runs its own){{else}} (/app, the entrypoint){{end}} and carries
 # the deployment's migrate command (/migrate, which the pipeline takes out of it and runs on the
 # build worker){{if .Image.JobsPkg}} and the job process (/jobs, the command its Cloud Run job is deployed with){{end}}{{if .Image.HooksPkg}}; it
 # also carries the hooks program (/hooks), taken out and run on the build worker the same way{{end}}.
@@ -80,7 +80,7 @@ RUN bun install --frozen-lockfile
 {{- end}}
 {{- end}}
 
-# ---- Go: the server{{if .Image.JobsPkg}}, the migrate command and the job process{{else}} and the migrate command{{end}}, built fresh in every environment ----
+# ---- Go: the server{{if .Image.Multi}}s{{end}}{{if .Image.JobsPkg}}, the migrate command and the job process{{else}} and the migrate command{{end}}, built fresh in every environment ----
 # The compile reads the module cache from go-modules, at the go image's default place (the
 # image runs as root with no GOPATH set, so $HOME/go), and the sources by name. GOPROXY=off:
 # a module the cache lacks fails the compile rather than being downloaded, so the layer
@@ -118,8 +118,9 @@ COPY {{.}}/ {{.}}/
 # -trimpath keeps the build directory out of the binaries; -s -w drop the symbol table and
 # the debug information, which nothing in a deployed image reads. No build tags: the
 # session library's skipAuth tag (Procfile) simulates the directory and never ships.
-RUN go build -trimpath -ldflags="-s -w" -o /build/app {{.Image.SitePkg}} && \
-    go build -trimpath -ldflags="-s -w" -o /build/migrate {{.Image.MigratePkg}}{{if .Image.JobsPkg}} && \
+RUN {{if .Image.Multi}}{{range .Image.Sites}}go build -trimpath -ldflags="-s -w" -o /build{{.Binary}} {{.Pkg}} && \
+    {{end}}{{else}}go build -trimpath -ldflags="-s -w" -o /build/app {{.Image.SitePkg}} && \
+    {{end}}go build -trimpath -ldflags="-s -w" -o /build/migrate {{.Image.MigratePkg}}{{if .Image.JobsPkg}} && \
     go build -trimpath -ldflags="-s -w" -o /build/jobs {{.Image.JobsPkg}}{{end}}{{if .Image.HooksPkg}} && \
     go build -trimpath -ldflags="-s -w" -o /build/hooks {{.Image.HooksPkg}}{{end}}
 {{- if .Image.Workspaces}}
@@ -155,12 +156,12 @@ COPY --from=web-packages /src/{{.Dir}}/node_modules ./node_modules
 COPY {{.Dir}}/ ./
 
 # `bun run build` builds every browser app of the workspace ({{.Dir}}/package.json), whose
-# default configuration is production; it writes {{range $i, $b := .Bundles}}{{if $i}} and {{end}}{{$b.Path}}{{end}}.
+# default configuration is production; it writes {{range $i, $b := .Bundles}}{{if $i}} and {{end}}{{$b.Path}}{{end}}{{if $.Image.Multi}}, the {{(index .Bundles 0).Site}} site's bundle{{end}}.
 RUN bun run build
 {{- end}}
 {{- end}}
 
-# ---- Runtime: a static image with the {{if .Image.JobsPkg}}three{{else}}two{{end}} binaries{{if .Image.Workspaces}}, the bundles,{{end}} and the schema -----------
+# ---- Runtime: a static image with the {{if .Image.Multi}}binaries{{else}}{{if .Image.JobsPkg}}three{{else}}two{{end}} binaries{{end}}{{if .Image.Workspaces}}, the bundles,{{end}} and the schema -----------
 FROM cgr.dev/chainguard/static@sha256:1fe35025bd06652914560fd01af12a705c645c5566a8d40766b2a4769f33a824
 
 ARG VERSION
@@ -173,8 +174,9 @@ LABEL org.opencontainers.image.title="{{.App}}" \
 COPY --from=build-env /build /
 
 # The migrate command reads {{.Image.SchemaDir}} (the migrations, the seed) relative to its
-# working directory{{if .Image.Workspaces}}, and the server serves each bundle from the directory its variable
-# names{{end}}, so everything sits under the working directory set below.
+# working directory{{if .Image.Workspaces}}, and {{if .Image.Multi}}each site serves its bundle from the directory the stack
+# names to its service{{else}}the server serves each bundle from the directory its variable
+# names{{end}}{{end}}, so everything sits under the working directory set below.
 {{- range .Image.Bundles}}
 COPY --from={{.Stage}} /src/{{.Workspace}}/{{.Path}} /home/nonroot/{{.Workspace}}/{{.Path}}
 {{- end}}
@@ -182,12 +184,13 @@ COPY {{.Image.SchemaDir}} /home/nonroot/{{.Image.SchemaDir}}
 
 # {{if .Image.VersionVar}}{{.Image.VersionVar}} is the configuration's version input: the image carries its own release, so
 # no deploy step repeats it. {{end}}PORT is Cloud Run's; the configuration's default, 8080, is what the
-# image declares.
-ENV {{if .Image.VersionVar}}{{.Image.VersionVar}}="${VERSION}"{{end}}{{range .Image.Bundles}} \
-    {{.Var}}=/home/nonroot/{{.Workspace}}/{{.Path}}{{end}}
+# image declares.{{if .Image.Multi}} Each site's bundle variable is its service's (the stack sets it to the
+# directory copied above), since one image holds every site's bundle.{{end}}
+ENV {{if .Image.VersionVar}}{{.Image.VersionVar}}="${VERSION}"{{end}}{{range .Image.Bundles}}{{if .Var}} \
+    {{.Var}}=/home/nonroot/{{.Workspace}}/{{.Path}}{{end}}{{end}}
 
 WORKDIR /home/nonroot
 USER nonroot
 EXPOSE 8080
 
-ENTRYPOINT ["/app"]
+ENTRYPOINT ["{{if .Image.Multi}}{{(index .Image.Sites 0).Binary}}{{else}}/app{{end}}"]

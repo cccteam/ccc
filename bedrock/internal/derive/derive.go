@@ -24,9 +24,10 @@ import (
 type Model struct {
 	// App is the application code: the segment every resource name carries.
 	App string
-	// Label is the served site's hostname label under the apps domain, the first label of
-	// every hostname and of a pull-request stack's service name: the one the placement
-	// declares for the site (Placement.Hostnames), else the code.
+	// Label is the first site's hostname label under the apps domain (Site.Label), the
+	// first label of every hostname and of a pull-request stack's service name: the one
+	// the placement declares for the site (Placement.Hostnames), else the code. The
+	// other sites of the sites layout carry their own.
 	Label string
 	// Module is the application's module path.
 	Module string
@@ -47,8 +48,10 @@ type Model struct {
 	Secrets []Secret
 	// Database is the struct that identifies the database and its three variables.
 	Database Database
-	// Site is the served site's process.
-	Site Process
+	// Sites are the served sites in the generators' order: one in the flat layout, one
+	// per directory under apps/ in the sites layout, each a Cloud Run service of its own
+	// behind the shared image (Site). MultiSite reports more than one.
+	Sites []Site
 	// Migrate is the migration process, or nil when the application has no migrate
 	// command.
 	Migrate *Process
@@ -65,28 +68,33 @@ type Model struct {
 	Auths []Auth
 	// Schema is what the migration owns.
 	Schema Schema
-	// RouterDir is the root-relative directory of the generated router's package
-	// (GenerateRoutes), where the resource generator writes the release file the deploy
+	// RouterDir is the first site's generated router package directory (Site.RouterDir),
+	// root-relative: where the resource generator writes the release file the deploy
 	// reads for the maintenance window; empty when the site generator declares none.
 	RouterDir string
-	// Scheduled are the routes the code declares with @schedule, read from that release
-	// file in path order: the stack gives each a Cloud Scheduler job per environment
-	// (scheduler.tf). None when the code declares none.
+	// Scheduled are the routes the code declares with @schedule, read from every site's
+	// release file in site then path order, each naming its site: the stack gives each
+	// a Cloud Scheduler job per environment on its site's hostname (scheduler.tf). None
+	// when the code declares none.
 	Scheduled []ScheduledRoute
-	// FileRoutes are the routes that carry a file rather than JSON, read from the same
-	// file in path order: each @upload method's route and each stored file's read
-	// route. Cloud Armor, where an environment turns it on, matches each ahead of its
-	// rules (cloud-armor.tf). None when the code declares neither.
+	// FileRoutes are the routes that carry a file rather than JSON, read from every
+	// site's release file in site then path order, a route listed once: each @upload
+	// method's route and each stored file's read route. Cloud Armor, where an
+	// environment turns it on, matches each ahead of its rules (cloud-armor.tf). None
+	// when the code declares neither.
 	FileRoutes []FileRoute
-	// Surfaces are the surfaces the code declares a request log word or a trace setting
-	// for, read from the same file in prefix order, and RequestLog the request log's
+	// Surfaces are the first site's surfaces, the ones the code declares a request log
+	// word or a trace setting for, in prefix order, and RequestLog the request log's
 	// exclusion the stack renders from their words (logging.tf): nil when no surface's
-	// word excludes an entry, and then the stack renders none.
+	// word excludes an entry, and then the stack renders none. A sites-layout
+	// application's other sites carry their own (Site.Surfaces, Site.RequestLog), each
+	// scoped to its services and backend.
 	Surfaces   []Surface
 	RequestLog *RequestLogExclusion
-	// Outlets are the site's router outlets as the generator program declares them, the
-	// default first: the URL spaces the routes carrying JSON input live under, which
-	// Cloud Armor's rule sets are scoped to.
+	// Outlets are the sites' router outlets as the generator programs declare them, the
+	// first site's first and the default of each first, a prefix listed once: the URL
+	// spaces the routes carrying JSON input live under, which Cloud Armor's rule sets
+	// are scoped to.
 	Outlets []Outlet
 	// Firestore is what the application's Firestore database carries beyond the
 	// database itself (the composite indexes, the time-to-live policies and the security
@@ -100,7 +108,9 @@ type Model struct {
 	// ImageInputs is what the seeded Dockerfile copies into its build stages by name:
 	// the Go package directories and each browser workspace's install files.
 	ImageInputs ImageInputs
-	// Environments are the placement's environments, with the hostnames each serves.
+	// Environments are the placement's environments, with the hostnames every site
+	// serves in each, the first site's first and each site's canonical first
+	// (Site.Environments has one site's).
 	Environments []Environment
 	// Placement is the placement the model was derived for.
 	Placement *Placement
@@ -265,6 +275,10 @@ const (
 	// it on the service alone, and jobsTemplate holds it to the job process and its
 	// level to the served site.
 	RoleJobsTemplate Role = "jobs-template"
+	// RoleSiteBundle is the sites layout's bundle variable (SiteBundleVariable): the
+	// directory of the site's built browser bundle, which differs per site, so the stack
+	// sets it per service to where the image holds the site's bundle.
+	RoleSiteBundle Role = "site-bundle"
 	// The directory registration of an OIDC auth, keyed as the auth package's Directory
 	// struct names them.
 	RoleClientID     Role = "client-id"
@@ -299,7 +313,7 @@ const defaultGroupLookup = "direct"
 // Derived reports a role whose value the stack derives from a fact of its own.
 func (r Role) Derived() bool {
 	switch r {
-	case RoleServiceName, RoleLoggingProject, RoleDatabaseProject, RoleDatabaseInstance, RoleDatabaseName, RoleRedirectURL, RoleFileStore, RoleTasksQueue, RoleFirestoreProject, RoleFirestoreDatabase, RoleFirebaseAPIKey, RoleTraceSampling, RoleJobsTemplate:
+	case RoleServiceName, RoleLoggingProject, RoleDatabaseProject, RoleDatabaseInstance, RoleDatabaseName, RoleRedirectURL, RoleFileStore, RoleTasksQueue, RoleFirestoreProject, RoleFirestoreDatabase, RoleFirebaseAPIKey, RoleTraceSampling, RoleJobsTemplate, RoleSiteBundle:
 		return true
 	default:
 		return false
@@ -650,8 +664,10 @@ type Method struct {
 	// environment, by field (FieldClientID), each under
 	// APP_<AUTH>_<REGISTRATION>_<FIELD>; nil for the password method.
 	Variables map[string]*Variable
-	// Outlet is the outlet the auth is bound to, whose routes the callback is among.
+	// Outlet is the outlet the auth is bound to, whose routes the callback is among, and
+	// Site the site serving that outlet, whose hostname the redirect URL is built on.
 	Outlet string
+	Site   string
 	// Callback is the route the browser returns to after the directory sign-in; Logout
 	// the front-channel logout route of a Microsoft registration, which the app
 	// registration names too. Both empty for the password method.
@@ -767,9 +783,14 @@ type Environment struct {
 	Hostnames []string
 }
 
+// SiteProcessName is the served site's process name in the flat layout (its binary is
+// /app) and the runtime identity's name in both layouts: one identity serves every
+// site. A sites-layout site's process is named after the site.
+const SiteProcessName = "app"
+
 // The process names.
 const (
-	siteProcess    = "app"
+	siteProcess    = SiteProcessName
 	migrateProcess = "migrate"
 	jobsProcess    = "jobs"
 	// migrateDir is where the skeleton keeps the migrate command; jobsDir is where an
@@ -849,14 +870,12 @@ func Derive(a *app.App, p *Placement) (*Model, error) {
 	if err := m.imageInputs(a); err != nil {
 		return nil, err
 	}
-	m.router(a)
-	if err := m.releaseFile(a); err != nil {
+	if err := m.releaseFiles(a); err != nil {
 		return nil, err
 	}
 	if err := m.armor(); err != nil {
 		return nil, err
 	}
-	m.Environments = p.environments(m.Label)
 
 	return m, nil
 }

@@ -66,6 +66,7 @@ func TestRenderGolden(t *testing.T) {
 	}{
 		{name: "harbor, a Google directory auth", fixture: "harbor", placement: "placement.json", golden: "harbor"},
 		{name: "beacon, a password auth", fixture: "beacon", placement: "placement-beacon.json", golden: "beacon"},
+		{name: "lantern, two sites behind one image", fixture: "lantern", placement: "placement-lantern.json", golden: "lantern"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -193,6 +194,8 @@ func TestPipelineFlowItems(t *testing.T) {
 		{name: "harbor's sweep", file: "testdata/harbor/root/cloudbuild-sweep.yaml"},
 		{name: "beacon's pipeline", file: "testdata/beacon/root/cloudbuild.yaml"},
 		{name: "beacon's sweep", file: "testdata/beacon/root/cloudbuild-sweep.yaml"},
+		{name: "lantern's pipeline", file: "testdata/lantern/root/cloudbuild.yaml"},
+		{name: "lantern's sweep", file: "testdata/lantern/root/cloudbuild-sweep.yaml"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -231,9 +234,13 @@ func TestPipelineOrder(t *testing.T) {
 		file  string
 		jobs  bool
 		order []string
+		// routers is how the release check is told the router directories: one, or one
+		// per site.
+		routers string
 	}{
-		{name: "harbor's pipeline, whose image takes the pull request's own build arguments", file: "testdata/harbor/root/cloudbuild.yaml", jobs: true, order: append([]string{"ValidateRelease", "CheckRelease", "ReadPullRequestStack", "BuildImage"}, after...)},
-		{name: "beacon's pipeline, whose image takes none", file: "testdata/beacon/root/cloudbuild.yaml", order: append([]string{"ValidateRelease", "CheckRelease", "BuildImage", "ReadPullRequestStack"}, after...)},
+		{name: "harbor's pipeline, whose image takes the pull request's own build arguments", file: "testdata/harbor/root/cloudbuild.yaml", jobs: true, order: append([]string{"ValidateRelease", "CheckRelease", "ReadPullRequestStack", "BuildImage"}, after...), routers: "--router-dir, pkg/router"},
+		{name: "beacon's pipeline, whose image takes none", file: "testdata/beacon/root/cloudbuild.yaml", order: append([]string{"ValidateRelease", "CheckRelease", "BuildImage", "ReadPullRequestStack"}, after...), routers: "--router-dir, pkg/router"},
+		{name: "lantern's pipeline, two sites behind one image", file: "testdata/lantern/root/cloudbuild.yaml", order: append([]string{"ValidateRelease", "CheckRelease", "BuildImage", "ReadPullRequestStack"}, after...), routers: "--router-dir, apps/console/pkg/router, --router-dir, apps/portal/pkg/router"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -287,8 +294,8 @@ func TestPipelineOrder(t *testing.T) {
 					t.Errorf("step %s has timeout %q, want %q", id, seen[id], want)
 				}
 			}
-			if !strings.Contains(string(content), "args: [deploy, validate-release, --router-dir, pkg/router]") {
-				t.Errorf("the release check is not told the router directory:\n%s", content)
+			if !strings.Contains(string(content), "args: [deploy, validate-release, "+tt.routers+"]") {
+				t.Errorf("the release check is not told the router directories (%s):\n%s", tt.routers, content)
 			}
 			if !strings.Contains(string(content), "\ntimeout: 86400s\n") {
 				t.Errorf("the whole-build timeout is not the 24-hour ceiling:\n%s", content)

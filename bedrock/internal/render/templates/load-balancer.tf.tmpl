@@ -1,8 +1,9 @@
 # ---------------------------------------------------------------------------
 # Load balancer backend
 #
-# A serverless network endpoint group per regional service and one global
-# backend service over both, in the environment project. The URL map that
+# {{if .MultiSite}}Per site, a serverless network endpoint group per regional service and one
+# global backend service over its regions{{else}}A serverless network endpoint group per regional service and one global
+# backend service over both{{end}}, in the environment project. The URL map that
 # routes this environment's hostnames to it lives in the net project (2-net)
 # and references the backend across projects; 2-env granted the net project's
 # principals compute.loadBalancerServiceUser here for that. Outlier detection
@@ -16,12 +17,20 @@
 
 resource "google_compute_region_network_endpoint_group" "app" {
   # A pull-request stack has no backend of its own: 2-env's wildcard backend in
-  # {{.Integration}} reaches its service by name from the hostname.
+  # {{.Integration}} reaches its service{{if .MultiSite}}s{{end}} by name from the hostname.
+{{- if .MultiSite}}
+  for_each = local.is_pr ? {} : local.services
+
+  project               = local.project_id
+  region                = each.value.region
+  name                  = "${local.name}-${each.value.code}-${local.app}-${each.value.site}-neg"
+{{- else}}
   for_each = local.is_pr ? {} : local.regions
 
   project               = local.project_id
   region                = each.value
   name                  = "${local.name}-${each.key}-${local.app}-neg"
+{{- end}}
   network_endpoint_type = "SERVERLESS"
 
   cloud_run {
@@ -30,18 +39,26 @@ resource "google_compute_region_network_endpoint_group" "app" {
 }
 
 resource "google_compute_backend_service" "app" {
+{{- if .MultiSite}}
+  for_each = local.is_pr ? toset([]) : toset(local.sites)
+
+  project     = local.project_id
+  name        = "${local.name}-gbl-${local.app}-${each.key}-backend"
+  description = "{{.App}}'s ${each.key} site in ${var.environment}: ${join(", ", local.site_hostnames[each.key])}"
+{{- else}}
   count = local.is_pr ? 0 : 1
 
   project     = local.project_id
   name        = "${local.name}-gbl-${local.app}-backend"
   description = "{{.App}} site in ${var.environment}: ${join(", ", local.hostnames)}"
+{{- end}}
 
   load_balancing_scheme = "EXTERNAL_MANAGED"
   protocol              = "HTTPS"
   security_policy       = local.cloud_armor_on ? google_compute_security_policy.app[0].self_link : null
 
   dynamic "backend" {
-    for_each = google_compute_region_network_endpoint_group.app
+    for_each = {{if .MultiSite}}{ for key, neg in google_compute_region_network_endpoint_group.app : key => neg if local.services[key].site == each.key }{{else}}google_compute_region_network_endpoint_group.app{{end}}
     content {
       group = backend.value.id
     }
@@ -86,11 +103,19 @@ resource "google_compute_backend_service" "app" {
 # services' ingress admits the load balancer alone, so the revision's own
 # tagged run.app URL answers nothing from outside.
 resource "google_compute_region_network_endpoint_group" "next" {
+{{- if .MultiSite}}
+  for_each = local.is_pr ? {} : local.services
+
+  project               = local.project_id
+  region                = each.value.region
+  name                  = "${local.name}-${each.value.code}-${local.app}-${each.value.site}-next-neg"
+{{- else}}
   for_each = local.is_pr ? {} : local.regions
 
   project               = local.project_id
   region                = each.value
   name                  = "${local.name}-${each.key}-${local.app}-next-neg"
+{{- end}}
   network_endpoint_type = "SERVERLESS"
 
   cloud_run {
@@ -100,18 +125,26 @@ resource "google_compute_region_network_endpoint_group" "next" {
 }
 
 resource "google_compute_backend_service" "next" {
+{{- if .MultiSite}}
+  for_each = local.is_pr ? toset([]) : toset(local.sites)
+
+  project     = local.project_id
+  name        = "${local.name}-gbl-${local.app}-${each.key}-next-backend"
+  description = "{{.App}}'s ${each.key} site in ${var.environment}, the next revision before traffic: ${join(", ", local.site_next_hostnames[each.key])}"
+{{- else}}
   count = local.is_pr ? 0 : 1
 
   project     = local.project_id
   name        = "${local.name}-gbl-${local.app}-next-backend"
   description = "{{.App}} site in ${var.environment}, the next revision before traffic: ${join(", ", local.next_hostnames)}"
+{{- end}}
 
   load_balancing_scheme = "EXTERNAL_MANAGED"
   protocol              = "HTTPS"
   security_policy       = local.cloud_armor_on ? google_compute_security_policy.app[0].self_link : null
 
   dynamic "backend" {
-    for_each = google_compute_region_network_endpoint_group.next
+    for_each = {{if .MultiSite}}{ for key, neg in google_compute_region_network_endpoint_group.next : key => neg if local.services[key].site == each.key }{{else}}google_compute_region_network_endpoint_group.next{{end}}
     content {
       group = backend.value.id
     }

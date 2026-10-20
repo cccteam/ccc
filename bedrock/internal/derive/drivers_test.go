@@ -93,7 +93,7 @@ func TestDriverRemedy(t *testing.T) {
 		{
 			name: "a job process without the job driver's settings",
 			refuse: func(_ *testing.T, behind string) error {
-				m := Model{Site: site, Jobs: jobs, Variables: []Variable{{Name: "APP_OTHER", Level: LevelSite}}, behindDrivers: behind}
+				m := Model{Sites: []Site{{Name: "harbor", Dir: ".", Process: site}}, Jobs: jobs, Variables: []Variable{{Name: "APP_OTHER", Level: LevelSite}}, behindDrivers: behind}
 
 				return m.jobsTemplate()
 			},

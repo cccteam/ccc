@@ -640,7 +640,7 @@ func TestValidateRelease(t *testing.T) {
 				bedrock = "v0.4.0"
 			}
 			var out strings.Builder
-			err := ValidateRelease(t.Context(), clients, w, bedrock, tt.routerDir, &out)
+			err := ValidateRelease(t.Context(), clients, w, bedrock, routerDirsOf(tt.routerDir), &out)
 			if tt.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 					t.Fatalf("ValidateRelease() error = %v, wantErr %q; output:\n%s", err, tt.wantErr, out.String())
@@ -678,4 +678,13 @@ func TestValidateRelease(t *testing.T) {
 			}
 		})
 	}
+}
+
+// routerDirsOf is the router directories a test names: none for the empty string.
+func routerDirsOf(dir string) []string {
+	if dir == "" {
+		return nil
+	}
+
+	return []string{dir}
 }

@@ -72,6 +72,7 @@ type StackOutputs struct {
 	Services         string            `json:"services,omitempty"`
 	JobsJob          string            `json:"jobsJob,omitempty"`
 	Hostname         string            `json:"hostname,omitempty"`
+	Hostnames        string            `json:"hostnames,omitempty"`
 	MigrateEnv       string            `json:"migrateEnv,omitempty"`
 	MigrateDatabases string            `json:"migrateDatabases,omitempty"`
 	BuildArguments   map[string]string `json:"buildArguments,omitempty"`
@@ -98,7 +99,7 @@ func newStackOutputs(build *Build) *StackOutputs {
 // the job's instruction.
 func (o *StackOutputs) applied(f *Facts, facts map[string]string) {
 	o.Status = StackApplied
-	o.Services, o.JobsJob, o.Hostname = facts[services], facts[jobsJobFact], facts[prHostnameFact]
+	o.Services, o.JobsJob, o.Hostname, o.Hostnames = facts[services], facts[jobsJobFact], facts[prHostnameFact], facts[prHostnamesFact]
 	o.MigrateEnv, o.MigrateDatabases = facts[migrateEnvFact], facts[migrateDatabasesFact]
 	for _, name := range stackArgumentNames(facts) {
 		if o.BuildArguments == nil {
@@ -122,7 +123,7 @@ func (o *StackOutputs) facts() map[string]string {
 		services: o.Services, prHostnameFact: o.Hostname,
 		sharedDBFact: flag(o.SharedDatabase), reloadDBFact: flag(o.DatabaseRecreated != ""), reloadReasonFact: o.DatabaseRecreated,
 	}
-	for fact, value := range map[string]string{jobsJobFact: o.JobsJob, migrateEnvFact: o.MigrateEnv, migrateDatabasesFact: o.MigrateDatabases} {
+	for fact, value := range map[string]string{jobsJobFact: o.JobsJob, prHostnamesFact: o.Hostnames, migrateEnvFact: o.MigrateEnv, migrateDatabasesFact: o.MigrateDatabases} {
 		if value != "" {
 			facts[fact] = value
 		}

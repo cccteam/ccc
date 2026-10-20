@@ -8,6 +8,12 @@ output "file_stores" {
 }
 
 {{end -}}
+{{if .MultiSite -}}
+output "backend_service_ids" {
+  description = "Backend service URI per site, in the form 2-net's hosts variable takes: projects/<project>/global/backendServices/<name>; empty for a pull-request stack."
+  value       = { for site, backend in google_compute_backend_service.app : site => backend.id }
+}
+{{- else -}}
 output "backend_service_id" {
   description = "Backend service URI in the form 2-net's hosts variable takes: projects/<project>/global/backendServices/<name>; null for a pull-request stack."
   value       = try(google_compute_backend_service.app[0].id, null)
@@ -17,6 +23,7 @@ output "backend_service_self_link" {
   description = "Full self link of the backend service the net project's URL map routes this environment's hostnames to (cross-project reference); null for a pull-request stack."
   value       = try(google_compute_backend_service.app[0].self_link, null)
 }
+{{- end}}
 
 output "database" {
   description = "The Spanner database the site opens: its project, instance, and name; for a pull-request stack in shared mode, {{.Integration}}'s."
@@ -35,7 +42,7 @@ output "firestore_database" {
 
 {{end -}}
 output "hostnames" {
-  description = "Hostnames this environment's site answers on; 2-net registers them with the load balancer and the certificate."
+  description = "Hostnames this environment's site{{if .MultiSite}}s answer on, the first site's first and each site's canonical first (sites has each site's){{else}} answers on{{end}}; 2-net registers them with the load balancer and the certificate."
   value       = local.hostnames
 }
 
@@ -62,10 +69,17 @@ output "jobs_job" {
 
 output "net_hosts" {
   description = "The entries to add to 2-net's hosts variable for this environment: each hostname mapped to the backend service URI, and each next hostname (<app>-<env>-next) to the next revision's backend. Empty for a pull-request stack, whose hostname the wildcard rule serves."
+{{- if .MultiSite}}
+  value = local.is_pr ? {} : merge([for site in local.sites : merge(
+    { for host in local.site_hostnames[site] : host => google_compute_backend_service.app[site].id },
+    { for host in local.site_next_hostnames[site] : host => google_compute_backend_service.next[site].id },
+  )]...)
+{{- else}}
   value = local.is_pr ? {} : merge(
     { for host in local.hostnames : host => google_compute_backend_service.app[0].id },
     { for host in local.next_hostnames : host => google_compute_backend_service.next[0].id },
   )
+{{- end}}
 }
 
 output "registry" {
@@ -84,7 +98,7 @@ output "secrets" {
 }
 
 output "services" {
-  description = "Cloud Run service by region code: name, region, and the run.app URI (not the public one; that is the hostname through the load balancer)."
+  description = "Cloud Run service by {{if .MultiSite}}<site>-<region code>{{else}}region code{{end}}: name, region, and the run.app URI (not the public one; that is the hostname through the load balancer)."
   value = {
     for code, svc in google_cloud_run_v2_service.app : code => {
       name   = svc.name
@@ -93,6 +107,27 @@ output "services" {
     }
   }
 }
+{{- if .MultiSite}}
+
+output "sites" {
+  description = "Each site: its hostnames in this environment (the canonical first), the next revision's, its backend services (null for a pull-request stack) and its services by region code."
+  value = {
+    for site in local.sites : site => {
+      hostnames               = local.site_hostnames[site]
+      next_hostnames          = local.site_next_hostnames[site]
+      backend_service_id      = try(google_compute_backend_service.app[site].id, null)
+      next_backend_service_id = try(google_compute_backend_service.next[site].id, null)
+      services = {
+        for key, svc in google_cloud_run_v2_service.app : local.services[key].code => {
+          name   = svc.name
+          region = svc.location
+          uri    = svc.uri
+        } if local.services[key].site == site
+      }
+    }
+  }
+}
+{{- end}}
 
 {{range .Methods -}}
 output "{{.Var "REDIRECT_URL"}}" {

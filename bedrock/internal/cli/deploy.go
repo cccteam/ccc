@@ -132,7 +132,8 @@ and build.json (the build as Cloud Build describes it) to the workspace.`,
 
 // newDeployValidateRelease is deploy validate-release.
 func newDeployValidateRelease(d deps) *cobra.Command {
-	var workspace, routerDir string
+	var workspace string
+	var routerDirs []string
 	cmd := &cobra.Command{
 		Use:   "validate-release",
 		Short: "Refuse a tag that may not deploy here",
@@ -151,7 +152,8 @@ environment is restored to the patch release first (a restore run replaces the d
 check); in prd the patch release must also be on the line production runs. Last the maintenance window:
 the release is breaking when the oldest release its session outlets still answer, read from the
 release file the resource generator writes beside the generated router (--router-dir names the
-router package; zz_gen_release.json), is newer than the release this environment runs live (its
+router package, once per site of a sites-layout application, and the newest across them decides;
+zz_gen_release.json), is newer than the release this environment runs live (its
 newest live deployment record), or when an outlet answers its own release alone ("this"); a
 breaking release deploys behind the maintenance page inside the environment's maintenance window
 (placement.json, "maintenance"), and under "releases": "all" every release waits for the window.
@@ -168,11 +170,11 @@ reads environment.sh and build.json from the workspace, and the migration files,
 (infrastructure/placement.json) and the release file from the checkout.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return deploy.ValidateRelease(cmd.Context(), d.deploy, deploy.Workspace(workspace), d.running().version, routerDir, cmd.OutOrStdout())
+			return deploy.ValidateRelease(cmd.Context(), d.deploy, deploy.Workspace(workspace), d.running().version, routerDirs, cmd.OutOrStdout())
 		},
 	}
 	cmd.Flags().StringVar(&workspace, "workspace", "/workspace", "the directory the build's steps share")
-	cmd.Flags().StringVar(&routerDir, "router-dir", "", "the generated router's package directory in the checkout, root-relative, where the resource generator writes the release file (zz_gen_release.json); empty when the application generates no router")
+	cmd.Flags().StringSliceVar(&routerDirs, "router-dir", nil, "the generated router's package directory in the checkout, root-relative, where the resource generator writes the release file (zz_gen_release.json); empty when the application generates no router; repeated for a sites-layout application, once per site")
 
 	return cmd
 }
@@ -521,7 +523,8 @@ func newDeployStackOutputs(d deps) *cobra.Command {
 the stack's pull-request stack trigger runs deploy pr-stack on the same /gcbrun comment as the apply
 identity and writes what it applied to the records bucket, <app>/stacks/<env>/pr<N>/<commit>.json,
 and this step reads the object written for this build's comment (COMMENT_ID, from resolve) and
-appends its facts to environment.sh for the steps after: SERVICES, JOBS_JOB, PR_HOSTNAME,
+appends its facts to environment.sh for the steps after: SERVICES, JOBS_JOB, PR_HOSTNAME (and
+PR_HOSTNAMES, site=hostname per site of a sites-layout application),
 MIGRATE_ENV, MIGRATE_DATABASES, the database mode (SHARED_DB, RELOAD_DB, RELOAD_DB_REASON) and
 the build arguments the placement declares (_BUILD_ARG_<NAME>, the pull request's own values). The
 job usually finishes before the image build does, so the wait is normally nothing; an object not yet
@@ -622,7 +625,8 @@ func newDeployEnvStackApply(d deps) *cobra.Command {
 what it did; a plan with no change applies nothing. It then reads back, from the stack's
 substitutions output as the stack now stands, the migrate command's settings and databases
 (MIGRATE_ENV, MIGRATE_DATABASES) and the environment's hostname (CANONICAL_HOSTNAME, which deploy
-service names the next revision's URL by), so a release that changes them deploys with its own,
+service names the next revision's URL by, and CANONICAL_HOSTNAMES, site=hostname per site of a
+sites-layout application), so a release that changes them deploys with its own,
 where the trigger carries the last apply's. In a restore run it then deletes every document
 of the environment's Firestore database (the stack's firestore_database output), as the apply
 identity, since they refer to rows the restore replaced; what it cleared is appended

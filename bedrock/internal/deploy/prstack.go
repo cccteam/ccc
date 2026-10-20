@@ -45,8 +45,10 @@ const (
 	// replaceDatabaseFact says the plan replaces the pull request's database, which the
 	// apply then tells the pull request about.
 	replaceDatabaseFact = "REPLACE_DATABASE"
-	// prHostnameFact is the pull request's hostname, from its stack's output.
-	prHostnameFact = "PR_HOSTNAME"
+	// prHostnameFact is the pull request's hostname, from its stack's output, and
+	// prHostnamesFact each site's (site=hostname) for a sites-layout application.
+	prHostnameFact  = "PR_HOSTNAME"
+	prHostnamesFact = "PR_HOSTNAMES"
 	// tagBuildNotice is a pull-request step's answer in a tag build, whose environment's
 	// stack the stack steps plan and apply after the image build.
 	tagBuildNotice = "Tag build: no pull-request stack; the environment's stack is planned and applied after the image build (deploy stack)."
@@ -501,6 +503,9 @@ func stackFacts(data []byte) (map[string]string, error) {
 	facts := map[string]string{services: subs["_SERVICES"], prHostnameFact: subs["_HOSTNAME"]}
 	if facts[services] == "" {
 		return nil, errors.New("the stack named no services (its substitutions output has no _SERVICES)")
+	}
+	if sites := subs[hostnamesSub]; sites != "" {
+		facts[prHostnamesFact] = sites
 	}
 	if job, ok := subs["_JOBS_JOB"]; ok {
 		if job == "" {

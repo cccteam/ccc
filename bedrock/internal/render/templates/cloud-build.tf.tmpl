@@ -134,6 +134,9 @@ locals {
     _MIGRATIONS_DIR = "{{.Schema.MigrationsDir}}"
     _REPO_FULL_NAME = "{{.RepoFullName}}"
     _HOSTNAME       = local.hostnames[0]
+{{- if .MultiSite}}
+    _HOSTNAMES      = join(",", [for site in local.sites : "${site}=${local.site_hostnames[site][0]}"]) # site=canonical hostname per site; _HOSTNAME is the first site's
+{{- end}}
     _SEED           = contains({{.SeedList}}, var.environment) ? "true" : "false"
     # The build-time secrets the image build reads (var.build_secrets), as
     # NAME=<secret version resource name>, comma-separated; empty when none.

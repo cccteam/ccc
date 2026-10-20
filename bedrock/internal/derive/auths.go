@@ -197,14 +197,20 @@ func (m *Model) administratorPassword(auth *Auth) error {
 	return nil
 }
 
-// boundOutlets lists the names and prefixes of the outlets bound to the auth package.
-func boundOutlets(profile *app.Profile, importPath string) []app.Outlet {
-	var bound []app.Outlet
+// boundOutlet is an outlet bound to an auth package, with the site serving it.
+type boundOutlet struct {
+	site   string
+	outlet app.Outlet
+}
+
+// boundOutlets lists the outlets bound to the auth package, each with its site.
+func boundOutlets(profile *app.Profile, importPath string) []boundOutlet {
+	var bound []boundOutlet
 	for i := range profile.Sites {
 		outlets := profile.Sites[i].AllOutlets()
 		for j := range outlets {
 			if outlets[j].Auth != nil && outlets[j].Auth.ImportPath == importPath {
-				bound = append(bound, outlets[j])
+				bound = append(bound, boundOutlet{site: profile.Sites[i].Name, outlet: outlets[j]})
 			}
 		}
 	}
@@ -272,7 +278,7 @@ func (m *Model) variableNamed(name string) *Variable {
 // registration under the one outlet the auth is bound to, /<prefix>/user/<name>/callback
 // and /logout. A directory method has one redirect URL, so an auth with one is bound to
 // one outlet exactly.
-func (m *Method) routes(outlets []app.Outlet) error {
+func (m *Method) routes(outlets []boundOutlet) error {
 	switch len(outlets) {
 	case 1:
 	case 0:
@@ -280,13 +286,13 @@ func (m *Method) routes(outlets []app.Outlet) error {
 	default:
 		names := make([]string, 0, len(outlets))
 		for i := range outlets {
-			names = append(names, outlets[i].Name)
+			names = append(names, outlets[i].outlet.Name)
 		}
 
 		return errors.Newf("the %s auth registers the %s method (%s) and %d outlets bind to it (%s): a directory registration has one callback, so its auth is bound to one outlet", m.Auth, m.Name, m.Kind, len(outlets), strings.Join(names, ", "))
 	}
-	m.Outlet = outlets[0].Name
-	base := "/" + strings.Trim(outlets[0].Prefix, "/") + "/user/" + m.Name
+	m.Outlet, m.Site = outlets[0].outlet.Name, outlets[0].site
+	base := "/" + strings.Trim(outlets[0].outlet.Prefix, "/") + "/user/" + m.Name
 	m.Callback = Route{Method: http.MethodGet, Path: base + "/callback"}
 	if m.FrontChannelLogout() {
 		m.Logout = Route{Method: http.MethodGet, Path: base + "/logout"}
