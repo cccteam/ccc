@@ -113,12 +113,13 @@ func stackPlan(data []byte) (*StackPlan, error) {
 // PlanEnvironmentStack plans the environment's stack in a tag build, as the apply identity,
 // after the image build and before the migrations: tofu init on the environment's state
 // prefix, the release's own test of the secret pins (testPins, before the plan, so that a
-// refused release changes nothing), tofu plan saved to the workspace with its JSON beside
-// it, the summary printed and appended (STACK_PLAN), then the plan's tests. A failing plan
-// or test stops the build with the stack unapplied. The plan is this build's own: the plan
-// a reviewer approved on the pull request was bound to the state of that moment, and a
-// release bundles several pull requests. A pull-request build plans every environment
-// earlier instead.
+// refused release changes nothing), the Cloud Run services and jobs a failed apply left
+// tainted untainted (untaintCloudRun: they exist, and the plan updates them in place),
+// tofu plan saved to the workspace with its JSON beside it, the summary printed and
+// appended (STACK_PLAN), then the plan's tests. A failing plan or test stops the build
+// with the stack unapplied. The plan is this build's own: the plan a reviewer approved on
+// the pull request was bound to the state of that moment, and a release bundles several
+// pull requests. A pull-request build plans every environment earlier instead.
 func PlanEnvironmentStack(ctx context.Context, clients *Clients, w Workspace, out io.Writer) error {
 	subs, ok, err := tagBuildStep(w, out)
 	if err != nil || !ok {
@@ -156,6 +157,9 @@ func PlanEnvironmentStack(ctx context.Context, clients *Clients, w Workspace, ou
 	}
 	args, err := s.planArguments(ctx, clients, w, subs, env, plan, generation, pins, out)
 	if err != nil {
+		return err
+	}
+	if err := s.untaintCloudRun(ctx, out); err != nil {
 		return err
 	}
 	if err := s.tofu(ctx, args...); err != nil {
