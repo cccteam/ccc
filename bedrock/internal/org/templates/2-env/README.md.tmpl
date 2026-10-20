@@ -250,7 +250,10 @@ stack as it; nothing else may.
 
 Runs every build and deploy; never writes infrastructure. On the environment
 project: `roles/serviceusage.serviceUsageConsumer`, `roles/run.developer`,
-`roles/logging.logWriter`, `roles/monitoring.viewer` (reads the metrics a
+`roles/logging.logWriter`, `roles/cloudtrace.agent` and
+`roles/telemetry.tracesWriter` (the migrate command runs on the build worker as
+this identity with the application's own tracer, so it writes its traces the way
+the application's processes do, through either trace API), `roles/monitoring.viewer` (reads the metrics a
 maintenance step waits on: the old revision's active instances before the
 database is replaced or migrated), `runJobPolicyAdmin` (`1-org`'s custom role:
 reads and sets the IAM policy of Cloud Run jobs, so `bedrock deploy jobs` can
