@@ -113,6 +113,33 @@ func TestClient(t *testing.T) {
 			want: "ci=.github/workflows/ci.yml:active,operations=.github/workflows/operations.yml:active",
 		},
 		{
+			name: "a repository with a branch is not empty",
+			call: func(ctx context.Context, c *github.Client) (string, error) {
+				empty, err := c.Empty(ctx, "acme", "quill")
+
+				return fmt.Sprint(empty), err
+			},
+			want: "false",
+		},
+		{
+			name: "a repository nothing is pushed to is empty",
+			call: func(ctx context.Context, c *github.Client) (string, error) {
+				empty, err := c.Empty(ctx, "acme", "blank")
+
+				return fmt.Sprint(empty), err
+			},
+			want: "true",
+		},
+		{
+			name: "the emptiness of a repository GitHub does not know is not found",
+			call: func(ctx context.Context, c *github.Client) (string, error) {
+				_, err := c.Empty(ctx, "acme", "nowhere")
+
+				return "", err
+			},
+			wantErr: "answered 404: Not Found", notFound: true,
+		},
+		{
 			name: "file contents at a ref",
 			call: func(ctx context.Context, c *github.Client) (string, error) {
 				data, err := c.Contents(ctx, "acme", "quill", ".release-please-manifest.json", "c1")
@@ -153,6 +180,8 @@ func TestClient(t *testing.T) {
 				Workflows:  []string{".github/workflows/ci.yml", ".github/workflows/operations.yml"},
 			})
 			_ = repo
+			// blank is a repository nothing has been pushed to: no ref, no workflow.
+			server.AddRepo("acme", "blank", &githubtest.Repo{})
 			got, err := tt.call(t.Context(), server.Client())
 			if tt.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
