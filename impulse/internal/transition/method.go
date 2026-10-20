@@ -593,18 +593,37 @@ const placeholderTenant = "00000000-0000-0000-0000-000000000000"
 // slotHandoff names the test wiring a method with an organization slot needs: the session
 // library validates the slot at registration whether or not the directory is simulated,
 // so every test that constructs the auth hands the registration a well-formed placeholder
-// that is nobody's, as the development template does.
+// that is nobody's, as the development template does. A Google method under the
+// directory's authority validates its role groups' prefix the same way
+// (google.RoleSync refuses an empty prefix, the only filter separating role groups from
+// the rest of the directory), so the obligation names the prefix beside the slot; the
+// group lookup needs no naming, since an empty setting is the direct lookup. The Entra
+// method's role synchronization validates nothing the harness does not already pass
+// (signin.RoleSync takes the user manager alone).
 func slotHandoff(ch *Change, auth string, spec *authpkg.Method) {
 	fields := spec.Fields()
+	var slot, prefix *authpkg.Field
 	for i := range fields {
 		f := &fields[i]
 		switch f.Name {
 		case authpkg.FieldTenantID, authpkg.FieldTenants, authpkg.FieldHostedDomain, authpkg.FieldWorkspaces:
-		default:
-			continue
+			slot = f
+		case authpkg.FieldGroupPrefix:
+			prefix = f
 		}
-		ch.skipf("test/integration/harness_test.go and cmd/deployment/migrate/main_test.go: the %s registration validates its organization slot at registration whether or not the directory is simulated, so give the %s auth's construction in the harness %s: %s.%s{%s: %q, RedirectURL: <the served callback>} and set %s=%s where the migrate run's environment is", spec.Name, auth, spec.Pascal(), auth, spec.SettingsType(), f.Name, devValue(f, auth), spec.Variable(auth, f), devValue(f, auth))
 	}
+	if slot == nil {
+		return
+	}
+	validated := "its organization slot"
+	literal := fmt.Sprintf("%s: %q, RedirectURL: <the served callback>", slot.Name, devValue(slot, auth))
+	variables := fmt.Sprintf("%s=%s", spec.Variable(auth, slot), devValue(slot, auth))
+	if prefix != nil {
+		validated = "its organization slot and its role groups' prefix"
+		literal += fmt.Sprintf(", %s: %q", prefix.Name, devValue(prefix, auth))
+		variables += fmt.Sprintf(" and %s=%s", spec.Variable(auth, prefix), devValue(prefix, auth))
+	}
+	ch.skipf("test/integration/harness_test.go and cmd/deployment/migrate/main_test.go: the %s registration validates %s at registration whether or not the directory is simulated, so give the %s auth's construction in the harness %s: %s.%s{%s} and set %s where the migrate run's environment is", spec.Name, validated, auth, spec.Pascal(), auth, spec.SettingsType(), literal, variables)
 }
 
 // devValue is what the development template sets for a field the simulated directory
