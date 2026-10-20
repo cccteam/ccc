@@ -95,10 +95,17 @@ locals {
   # traffic calls while the old revision still serves. None for a pull-request stack.
   next_hostnames = local.is_pr ? [] : [for host in local.hostnames : replace(host, "/^([^.]+)\\./", "$1-next.")]
 
-  # From .envrc.template: APP_STAFF_OIDC_REDIRECT_URL is the browser-facing
-  # callback, the route pkg/router/zz_gen_router.go registers as
-  # GET /api/user/callback, on the environment's canonical host.
-  redirect_url = "https://${local.hostnames[0]}/api/user/callback"
+  # From .envrc.template: APP_MEMBERS_DIRECTORY_REDIRECT_URL is the browser-facing
+  # callback of the members auth's directory registration, the route the generated router (pkg/router)
+  # registers as GET /portal/api/user/directory/callback, on the environment's canonical host.
+  members_directory_redirect_url = "https://${local.hostnames[0]}/portal/api/user/directory/callback"
+  # The front-channel logout the app registration names, GET /portal/api/user/directory/logout.
+  members_directory_logout_url = "https://${local.hostnames[0]}/portal/api/user/directory/logout"
+
+  # From .envrc.template: APP_STAFF_DIRECTORY_REDIRECT_URL is the browser-facing
+  # callback of the staff auth's directory registration, the route the generated router (pkg/router)
+  # registers as GET /api/user/directory/callback, on the environment's canonical host.
+  staff_directory_redirect_url = "https://${local.hostnames[0]}/api/user/directory/callback"
 
   # The database the site opens: the environment's own, a pull request's own,
   # or in shared mode (var.shared_database) tst's, which the pull-request
@@ -188,11 +195,19 @@ locals {
       # generated: the tooling makes the value (secret:"generated"); nobody types it.
       generated = false
     }
-    APP_STAFF_OIDC_CLIENT_SECRET = {
-      name    = "staff-oidc-client-secret"
+    APP_STAFF_DIRECTORY_CLIENT_SECRET = {
+      name    = "staff-directory-client-secret"
       level   = "data"
-      source  = "pkg/config/data.go dataConfig.StaffClientSecret"
-      purpose = "OAuth client secret of the application's registration with Google (pairs with APP_STAFF_OIDC_CLIENT_ID)."
+      source  = "pkg/config/data.go dataConfig.StaffDirectoryClientSecret"
+      purpose = "Client secret of the staff auth's directory registration with Google (pairs with APP_STAFF_DIRECTORY_CLIENT_ID)."
+      # generated: the tooling makes the value (secret:"generated"); nobody types it.
+      generated = false
+    }
+    APP_MEMBERS_DIRECTORY_CLIENT_SECRET = {
+      name    = "members-directory-client-secret"
+      level   = "data"
+      source  = "pkg/config/data.go dataConfig.MembersDirectoryClientSecret"
+      purpose = "Client secret of the members auth's directory registration with Microsoft (pairs with APP_MEMBERS_DIRECTORY_CLIENT_ID)."
       # generated: the tooling makes the value (secret:"generated"); nobody types it.
       generated = false
     }
@@ -258,23 +273,29 @@ locals {
     GOOGLE_CLOUD_SPANNER_PROJECT       = local.instance.project
     GOOGLE_CLOUD_SPANNER_INSTANCE_ID   = local.instance.name
     GOOGLE_CLOUD_SPANNER_DATABASE_NAME = local.database_name
-    # dataConfig.StaffHostedDomain and StaffGroupPrefix: the session library
-    # refuses to construct without them, so every data-level process gets both.
-    APP_STAFF_OIDC_HOSTED_DOMAIN = var.staff_oidc_hosted_domain
-    APP_STAFF_OIDC_GROUP_PREFIX  = var.staff_oidc_group_prefix
+    # The directory registrations' settings the session library reads when it makes
+    # each registration, at construction, so every data-level process gets them.
+    APP_MEMBERS_DIRECTORY_TENANT_ID   = var.members_directory_tenant_id
+    APP_STAFF_DIRECTORY_HOSTED_DOMAIN = var.staff_directory_hosted_domain
+    APP_STAFF_DIRECTORY_GROUP_PREFIX  = var.staff_directory_group_prefix
     # dataConfig.SessionTimeout is left to its code default (10m).
   }
 
-  # The directory registration the served site needs and a migration does not.
-  # They live at the data level in the code, but a process that never signs
-  # anyone in has no use for them, so the migrate command goes without.
+  # The directory registrations' settings the served site needs and a migration
+  # does not. They live at the data level in the code, but a process that never
+  # signs anyone in has no use for them, so the migrate command goes without.
   site_directory_env = {
-    # dataConfig.StaffClientID: public half of the OAuth client.
-    APP_STAFF_OIDC_CLIENT_ID = var.staff_oidc_client_id[var.environment]
-    # dataConfig.StaffRedirectURL: built from the canonical hostname.
-    APP_STAFF_OIDC_REDIRECT_URL = local.redirect_url
-    # dataConfig.StaffGroupLookup: how far the groups read reaches, direct or nested.
-    APP_STAFF_OIDC_GROUP_LOOKUP = var.staff_oidc_group_lookup
+    # The members auth's directory registration: the client id, public half of the
+    # registration, per environment; the redirect URL, built from the canonical
+    # hostname.
+    APP_MEMBERS_DIRECTORY_CLIENT_ID    = var.members_directory_client_id[var.environment]
+    APP_MEMBERS_DIRECTORY_REDIRECT_URL = local.members_directory_redirect_url
+    # The staff auth's directory registration: the client id, public half of the
+    # registration, per environment; the redirect URL, built from the canonical
+    # hostname; how far the groups read reaches, direct or nested.
+    APP_STAFF_DIRECTORY_CLIENT_ID    = var.staff_directory_client_id[var.environment]
+    APP_STAFF_DIRECTORY_REDIRECT_URL = local.staff_directory_redirect_url
+    APP_STAFF_DIRECTORY_GROUP_LOOKUP = var.staff_directory_group_lookup
   }
 
   # siteConfig.Template: the job process's template job (cloud-run.tf), which

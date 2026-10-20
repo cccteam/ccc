@@ -80,7 +80,7 @@ resource "google_service_account_iam_member" "operations_workflow" {
 
   service_account_id = google_service_account.operations[each.key].name
   role               = "roles/iam.workloadIdentityUser"
-  member             = "principalSet://iam.googleapis.com/${google_iam_workload_identity_pool.github.name}/attribute.repository/${var.github_organization}/${each.key}"
+  member             = "principalSet://iam.googleapis.com/${google_iam_workload_identity_pool.github.name}/attribute.repository/${var.github_organization}/${var.application_repositories[each.key]}"
 }
 
 resource "google_project_iam_member" "operations_trigger_runner" {

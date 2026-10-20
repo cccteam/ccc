@@ -37,9 +37,11 @@ const (
 )
 
 var (
-	prefixRE        = regexp.MustCompile(`^[a-z][a-z0-9]{1,3}$`)
-	regionCodeRE    = regexp.MustCompile(`^[a-z][a-z0-9]{2}$`)
-	applicationRE   = regexp.MustCompile(`^[a-z][a-z0-9]{0,5}$`)
+	prefixRE     = regexp.MustCompile(`^[a-z][a-z0-9]{1,3}$`)
+	regionCodeRE = regexp.MustCompile(`^[a-z][a-z0-9]{2}$`)
+	// repositoryRE is a GitHub repository name: letters, digits, hyphens, underscores
+	// and periods, up to a hundred of them.
+	repositoryRE    = regexp.MustCompile(`^[A-Za-z0-9_.-]{1,100}$`)
 	labelRE         = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,62}$`)
 	projectNumberRE = regexp.MustCompile(`^\d+$`)
 	// groupAddressRE is a group's address as the Workspace Admin console names it: a
@@ -242,10 +244,11 @@ type Placement struct {
 	// ContactDomains are the domains Essential Contacts may belong to, each with its
 	// leading @.
 	ContactDomains []string `json:"contactDomains"`
-	// Applications are the application codes registered in every environment, in the
-	// order they were added; empty for an organization with none yet. bedrock org
-	// register adds one; the layers' applications.auto.tfvars are rendered from it.
-	Applications []string `json:"applications"`
+	// Applications are the applications registered in every environment, in the order
+	// they were added, each by its code and its repository's name; empty for an
+	// organization with none yet. bedrock org register adds one; the layers'
+	// applications.auto.tfvars are rendered from it.
+	Applications []Application `json:"applications"`
 	// Registration is how far each application's registration has gone, by code, for
 	// the applications whose registration is under way: RegistrationIdentities, then
 	// RegistrationGrants; an application absent from the map is registered in full. The
@@ -905,12 +908,12 @@ func (p *Placement) ApplicationProjects() (block string, missing []string) {
 // environments, the regions, the domains, the state bucket, the default branch, the
 // release app's slug, the labels, the outlier detection thresholds and the environment
 // projects' ids and numbers, with Cloud Run's sample image to create the services with,
-// the application's code as its repository's name, and the first environment's database
+// the application's code and its repository's name, and the first environment's database
 // seeded. Approvals, the
 // maintenance windows, the build machine and the instance caps are left to their
 // defaults, the team's to write. It is refused while this placement records no state
 // bucket or lacks an environment project's id or number, which 1-org's outputs give.
-func (p *Placement) ApplicationPlacement(app, bedrockVersion, bedrockSHA256 string) (*derive.Placement, error) {
+func (p *Placement) ApplicationPlacement(app, repository, bedrockVersion, bedrockSHA256 string) (*derive.Placement, error) {
 	if p.StateBucket == "" {
 		return nil, errors.New("placement.json records no stateBucket yet: the seed's state bucket goes there (step 2 of the hand steps, 0-bootstrap/README.md) before an application's placement can name it")
 	}
@@ -938,7 +941,8 @@ func (p *Placement) ApplicationPlacement(app, bedrockVersion, bedrockSHA256 stri
 		StateBucket:      p.StateBucket,
 		PlaceholderImage: derive.PlaceholderImage,
 		DefaultBranch:    p.GithubDefaultBranch,
-		Repository:       app,
+		Code:             app,
+		Repository:       repository,
 		ReleaseApp:       p.GithubReleaseAppSlug,
 		BedrockVersion:   bedrockVersion,
 		BedrockSHA256:    bedrockSHA256,
@@ -964,21 +968,73 @@ const (
 	RegistrationGrants     = "grants"
 )
 
+// Application is one registered application: its code, the segment every resource name
+// of the application carries, one to six lowercase letters and digits starting with a
+// letter (derive.ApplicationCodePattern), and its repository's name under the GitHub
+// organization, the last segment of its module path. 1-org creates the repository by
+// its name and names everything else by the code.
+type Application struct {
+	Code       string `json:"code"`
+	Repository string `json:"repository"`
+}
+
+// UnmarshalJSON reads an entry as written, or as a placement before the repository was
+// recorded wrote it: the code alone, which named the repository too.
+func (a *Application) UnmarshalJSON(data []byte) error {
+	var code string
+	if err := json.Unmarshal(data, &code); err == nil {
+		a.Code, a.Repository = code, code
+
+		return nil
+	}
+	type plain Application
+	var entry plain
+	if err := json.Unmarshal(data, &entry); err != nil {
+		return errors.Wrap(err, "json.Unmarshal()")
+	}
+	*a = Application(entry)
+
+	return nil
+}
+
+// Codes lists the registered applications' codes, in registration order.
+func (p *Placement) Codes() []string {
+	codes := make([]string, 0, len(p.Applications))
+	for _, a := range p.Applications {
+		codes = append(codes, a.Code)
+	}
+
+	return codes
+}
+
+// Registered reports whether an application is registered under the code.
+func (p *Placement) Registered(code string) bool {
+	return slices.Contains(p.Codes(), code)
+}
+
 // Register adds an application to the placement, at the first step of its registration:
-// a code of one to six lowercase alphanumeric characters starting with a letter, not
-// registered yet.
-func (p *Placement) Register(app string) error {
-	if !applicationRE.MatchString(app) {
-		return errors.Newf("application %q is not 1 to 6 lowercase alphanumeric characters starting with a letter", app)
+// a code under the one rule (derive.ValidateApplicationCode) not registered yet, and a
+// repository name no other application has.
+func (p *Placement) Register(code, repository string) error {
+	if err := derive.ValidateApplicationCode(code); err != nil {
+		return err
 	}
-	if slices.Contains(p.Applications, app) {
-		return errors.Newf("application %q is registered already", app)
+	if !repositoryRE.MatchString(repository) {
+		return errors.Newf("repository %q is not a GitHub repository name", repository)
 	}
-	p.Applications = append(p.Applications, app)
+	for _, a := range p.Applications {
+		if a.Code == code {
+			return errors.Newf("application %q is registered already", code)
+		}
+		if strings.EqualFold(a.Repository, repository) {
+			return errors.Newf("repository %q is %s's already", repository, a.Code)
+		}
+	}
+	p.Applications = append(p.Applications, Application{Code: code, Repository: repository})
 	if p.Registration == nil {
 		p.Registration = map[string]string{}
 	}
-	p.Registration[app] = RegistrationIdentities
+	p.Registration[code] = RegistrationIdentities
 
 	return nil
 }
@@ -993,7 +1049,7 @@ func (p *Placement) Step(app string) string {
 // identities to grants, grants to complete (""). An application the placement does not
 // list and one registered in full are refused.
 func (p *Placement) Advance(app string) (string, error) {
-	if !slices.Contains(p.Applications, app) {
+	if !p.Registered(app) {
 		return "", errors.Newf("application %q is not registered (bedrock org register %s)", app, app)
 	}
 	switch p.Registration[app] {
@@ -1018,7 +1074,7 @@ func (p *Placement) Advance(app string) (string, error) {
 // databases), since their identities exist.
 func (p *Placement) Granted() []string {
 	apps := make([]string, 0, len(p.Applications))
-	for _, app := range p.Applications {
+	for _, app := range p.Codes() {
 		if p.Registration[app] != RegistrationIdentities {
 			apps = append(apps, app)
 		}
@@ -1031,7 +1087,7 @@ func (p *Placement) Granted() []string {
 // hostnames 2-net serves, since their stacks' backends exist.
 func (p *Placement) Served() []string {
 	apps := make([]string, 0, len(p.Applications))
-	for _, app := range p.Applications {
+	for _, app := range p.Codes() {
 		if p.Registration[app] == "" {
 			apps = append(apps, app)
 		}
@@ -1040,17 +1096,30 @@ func (p *Placement) Served() []string {
 	return apps
 }
 
-// validateApplications refuses an application code that is not one to six lowercase
-// alphanumeric characters starting with a letter, and a registration step naming an
-// application the placement does not list or a step that is not one of the two.
+// validateApplications refuses an application whose code breaks the one rule or whose
+// repository is not named, a code or a repository listed twice, and a registration step
+// naming an application the placement does not list or a step that is not one of the
+// two.
 func (p *Placement) validateApplications() error {
+	codes := map[string]bool{}
+	repositories := map[string]bool{}
 	for _, a := range p.Applications {
-		if !applicationRE.MatchString(a) {
-			return errors.Newf("application %q is not 1 to 6 lowercase alphanumeric characters starting with a letter", a)
+		if err := derive.ValidateApplicationCode(a.Code); err != nil {
+			return err
 		}
+		if !repositoryRE.MatchString(a.Repository) {
+			return errors.Newf("application %s's repository %q is not a GitHub repository name", a.Code, a.Repository)
+		}
+		if codes[a.Code] {
+			return errors.Newf("application %q is listed twice", a.Code)
+		}
+		if repositories[strings.ToLower(a.Repository)] {
+			return errors.Newf("repository %q is listed twice", a.Repository)
+		}
+		codes[a.Code], repositories[strings.ToLower(a.Repository)] = true, true
 	}
 	for app, step := range p.Registration {
-		if !slices.Contains(p.Applications, app) {
+		if !p.Registered(app) {
 			return errors.Newf("registration names %q, which applications does not list", app)
 		}
 		if step != RegistrationIdentities && step != RegistrationGrants {
@@ -1156,7 +1225,7 @@ func (p *Placement) PutInService(app string, envs []string) ([]string, error) {
 // change names: the application registered in full, each environment one of the model's;
 // none given means every environment.
 func (p *Placement) serviceEnvironments(app string, envs []string) ([]string, error) {
-	if !slices.Contains(p.Applications, app) {
+	if !p.Registered(app) {
 		return nil, errors.Newf("application %q is not registered (bedrock org register %s)", app, app)
 	}
 	if !slices.Contains(p.Served(), app) {

@@ -94,12 +94,19 @@ output "services" {
   }
 }
 
-{{if .Directory -}}
-output "{{.AuthVar}}_redirect_url" {
-  description = "Redirect URI to register on the OAuth client in the environment project ({{.RedirectURL.Name}})."
-  value       = local.redirect_url
+{{range .Methods -}}
+output "{{.Var "REDIRECT_URL"}}" {
+  description = "Redirect URI to register on {{.Label}} with {{.Provider}} ({{(.Variable "RedirectURL").Name}})."
+  value       = local.{{.Var "REDIRECT_URL"}}
 }
 
+{{if .Microsoft -}}
+output "{{.Var "LOGOUT_URL"}}" {
+  description = "Front-channel logout URL to register on {{.Label}} with Microsoft."
+  value       = local.{{.Var "LOGOUT_URL"}}
+}
+
+{{end -}}
 {{end -}}
 {{if .TasksQueue -}}
 output "tasks_queue" {

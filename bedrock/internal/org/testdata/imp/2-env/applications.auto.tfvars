@@ -4,5 +4,12 @@
 # terraform.tfvars, which keeps the values a person decides.
 
 # The applications deployed into every environment, beside each other in the same
-# projects, each with its own identities, repository link and stack.
+# projects, each with its own identities, repository link and stack, by code.
 applications = ["harbor", "beacon"]
+
+# Each application's repository under the GitHub organization, by code: what the
+# repository link and the operations workflow's identity binding name.
+application_repositories = {
+  harbor = "harbor"
+  beacon = "beacon"
+}

@@ -86,9 +86,19 @@ output "services" {
   }
 }
 
-output "staff_oidc_redirect_url" {
-  description = "Redirect URI to register on the OAuth client in the environment project (APP_STAFF_OIDC_REDIRECT_URL)."
-  value       = local.redirect_url
+output "members_directory_redirect_url" {
+  description = "Redirect URI to register on the members auth's directory registration with Microsoft (APP_MEMBERS_DIRECTORY_REDIRECT_URL)."
+  value       = local.members_directory_redirect_url
+}
+
+output "members_directory_logout_url" {
+  description = "Front-channel logout URL to register on the members auth's directory registration with Microsoft."
+  value       = local.members_directory_logout_url
+}
+
+output "staff_directory_redirect_url" {
+  description = "Redirect URI to register on the staff auth's directory registration with Google (APP_STAFF_DIRECTORY_REDIRECT_URL)."
+  value       = local.staff_directory_redirect_url
 }
 
 output "tasks_queue" {

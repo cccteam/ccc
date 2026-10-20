@@ -33,7 +33,7 @@ func TestMaintenanceValidate(t *testing.T) {
 
 	valid := func() Placement {
 		return Placement{
-			Prefix: "imp", Environments: []string{"tst", "stg", "prd"}, Regions: []Region{{Name: "us-central1", Code: "uc1"}},
+			Prefix: "imp", Code: "harbor", Environments: []string{"tst", "stg", "prd"}, Regions: []Region{{Name: "us-central1", Code: "uc1"}},
 			AppsDomain: "lab.example.com", HostedDomain: "example.com", StateBucket: "b", PlaceholderImage: "i",
 			DefaultBranch: "main", Repository: "harbor", ReleaseApp: "acme-release",
 		}

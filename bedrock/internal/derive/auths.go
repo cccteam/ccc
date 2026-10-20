@@ -1,62 +1,111 @@
-// auths.go reads the auths: each auth package's login flavor and, for a directory
-// sign-in, its registration by role and the callback route the generated router
-// registers for it.
+// auths.go reads the auths: every Auth the application constructs, with the sign-in
+// methods registered on it, and for each directory method the registration's variables,
+// found by the naming convention impulse writes and bedrock reads, and the callback the
+// generated router registers for it under the outlet the auth is bound to.
 
 package derive
 
 import (
-	"os"
+	"net/http"
 	"path"
-	"regexp"
 	"sort"
+	"strings"
 
 	"github.com/go-playground/errors/v5"
 
 	"github.com/cccteam/ccc/impulse/app"
 )
 
-// callbackRE matches the generated router's registration of the OIDC callback: a chi
-// registration, Get or Post, of a quoted path with h.CallbackOIDC() as its handler, on
-// a receiver of any Go identifier. Two shapes exist. The router generated before the
-// body-limit step registers the session routes on the group itself,
-// r.Get("/api/user/callback", h.CallbackOIDC()); since the body-limit step (resource
-// v0.13.0) it registers them on the bounded group, bounded := r.With(resource.BodyLimit(
-// BodyLimit)) and then bounded.Get("/api/user/callback", h.CallbackOIDC()). The
-// submatches are the method and the path.
-var callbackRE = regexp.MustCompile(`[\p{L}_][\p{L}\p{Nd}_]*\.(Get|Post)\("([^"]+)",\s*h\.CallbackOIDC\(\)\)`)
+// The settings a directory method reads from the environment, by the field of the
+// method's settings struct as impulse renders it (the suffix of the variable under the
+// convention APP_<AUTH>_<REGISTRATION>_<FIELD>).
+const (
+	FieldTenantID     = "TenantID"
+	FieldTenants      = "Tenants"
+	FieldHostedDomain = "HostedDomain"
+	FieldWorkspaces   = "Workspaces"
+	FieldClientID     = "ClientID"
+	FieldClientSecret = "ClientSecret"
+	FieldRedirectURL  = "RedirectURL"
+	FieldGroupPrefix  = "GroupPrefix"
+	FieldGroupLookup  = "GroupLookup"
+)
 
-// auths settles the auths and, for the directory-flavored ones, their callbacks.
+// registrationField is one setting of a directory method under the convention: the
+// field, the variable's suffix, the role the variable takes, which method kinds read it,
+// whether the registration must declare it, and whether it is a secret.
+type registrationField struct {
+	Field    string
+	Suffix   string
+	Role     Role
+	Kinds    []string
+	Required bool
+	Secret   bool
+	// DirectoryAuthority marks a setting only a registration under the directory's
+	// authority for role membership reads.
+	DirectoryAuthority bool
+}
+
+// registrationFields lists the settings in the order the stack carries them: the
+// organization slot first (one of two shapes per kind, or none for a registration that
+// admits any organization), then the client credentials and the callback every
+// directory method reads, then the role groups of a Google registration under the
+// directory's authority.
+var registrationFields = []registrationField{
+	{Field: FieldTenantID, Suffix: "TENANT_ID", Role: RoleTenantID, Kinds: []string{app.MethodAzure}},
+	{Field: FieldTenants, Suffix: "TENANTS", Role: RoleTenants, Kinds: []string{app.MethodAzure}},
+	{Field: FieldHostedDomain, Suffix: "HOSTED_DOMAIN", Role: RoleHostedDomain, Kinds: []string{app.MethodGoogle}},
+	{Field: FieldWorkspaces, Suffix: "WORKSPACES", Role: RoleWorkspaces, Kinds: []string{app.MethodGoogle}},
+	{Field: FieldClientID, Suffix: "CLIENT_ID", Role: RoleClientID, Kinds: []string{app.MethodAzure, app.MethodGoogle}, Required: true},
+	{Field: FieldClientSecret, Suffix: "CLIENT_SECRET", Role: RoleClientSecret, Kinds: []string{app.MethodAzure, app.MethodGoogle}, Required: true, Secret: true},
+	{Field: FieldRedirectURL, Suffix: "REDIRECT_URL", Role: RoleRedirectURL, Kinds: []string{app.MethodAzure, app.MethodGoogle}, Required: true},
+	{Field: FieldGroupPrefix, Suffix: "GROUP_PREFIX", Role: RoleGroupPrefix, Kinds: []string{app.MethodGoogle}, Required: true, DirectoryAuthority: true},
+	{Field: FieldGroupLookup, Suffix: "GROUP_LOOKUP", Role: RoleGroupLookup, Kinds: []string{app.MethodGoogle}, DirectoryAuthority: true},
+}
+
+// slotPairs are the two shapes of a kind's organization slot, which a registration
+// declares one of at most: one tenant or listed tenants, one Workspace or listed
+// Workspaces.
+var slotPairs = [][2]string{{FieldTenantID, FieldTenants}, {FieldHostedDomain, FieldWorkspaces}}
+
+// reads reports whether a method of the kind, under the authority, reads the setting.
+func (f *registrationField) reads(kind, authority string) bool {
+	if f.DirectoryAuthority && authority != app.AuthorityDirectory {
+		return false
+	}
+	for _, k := range f.Kinds {
+		if k == kind {
+			return true
+		}
+	}
+
+	return false
+}
+
+// RegistrationVariable is the environment variable of a directory method's setting
+// under the convention: APP_<AUTH>_<REGISTRATION>_<SUFFIX>, the auth's name and the
+// registration's name in upper case with underscores for hyphens.
+func RegistrationVariable(auth, registration, suffix string) string {
+	return appPrefix + upperSnake(auth) + "_" + upperSnake(registration) + "_" + suffix
+}
+
+// upperSnake is a name in upper case with underscores for its hyphens.
+func upperSnake(name string) string {
+	return strings.ToUpper(strings.ReplaceAll(name, "-", "_"))
+}
+
+// auths settles the auths: one per auth package, with the methods registered on the
+// Auth the package constructs, each directory method's variables and callback among them.
 func (m *Model) auths(a *app.App, cfg *config) error {
 	if len(a.AuthPackages) == 0 {
 		return errors.New("the application constructs no auth")
 	}
-	routesDir := a.SiteGenerators()[0].RoutesDir()
+	profile := a.Profile()
 	for i := range a.AuthPackages {
 		pkg := &a.AuthPackages[i]
-		auth := Auth{Name: pkg.Name, Dir: pkg.Dir, Directory: map[Role]*Variable{}}
-		for j := range a.Auths {
-			if path.Dir(a.Auths[j].File) == pkg.Dir {
-				auth.Flavor = a.Auths[j].Flavor
-			}
-		}
-		if auth.OIDC() {
-			for _, role := range directoryRoles {
-				if v := m.byRole(role); v != nil {
-					auth.Directory[role] = v
-				}
-			}
-			if prefix := auth.Variable(RoleGroupPrefix); prefix != nil {
-				auth.GroupPrefixDefault = cfg.envTemplate[prefix.Name]
-			}
-			auth.GroupLookupDefault = defaultGroupLookup
-			if lookup := auth.Variable(RoleGroupLookup); lookup != nil && cfg.envTemplate[lookup.Name] != "" {
-				auth.GroupLookupDefault = cfg.envTemplate[lookup.Name]
-			}
-			route, err := callbackRoute(a, routesDir)
-			if err != nil {
-				return err
-			}
-			auth.Callback = route
+		auth, err := m.auth(a, cfg, &profile, pkg)
+		if err != nil {
+			return err
 		}
 		m.Auths = append(m.Auths, auth)
 	}
@@ -67,40 +116,129 @@ func (m *Model) auths(a *app.App, cfg *config) error {
 	return nil
 }
 
-// callbackRoute finds the OIDC callback the generated router under dir registers.
-func callbackRoute(a *app.App, dir string) (Route, error) {
-	if dir == "" {
-		return Route{}, errors.New("the site generator declares no routes directory (GenerateRoutes)")
+// auth reads one auth package: the Auth it constructs and the methods on it.
+func (m *Model) auth(a *app.App, cfg *config, profile *app.Profile, pkg *app.AuthPackage) (Auth, error) {
+	auth := Auth{Name: pkg.Name, Dir: pkg.Dir}
+	var constructions []*app.Auth
+	for j := range a.Auths {
+		if path.Dir(a.Auths[j].File) == pkg.Dir {
+			constructions = append(constructions, &a.Auths[j])
+		}
 	}
-	entries, err := os.ReadDir(a.Abs(dir))
-	if err != nil {
-		return Route{}, errors.Wrapf(err, "os.ReadDir(): %s", dir)
+	if len(constructions) != 1 {
+		return Auth{}, errors.Newf("the %s auth package (%s) constructs %d session Auths; an auth constructs one (session.NewAuth) and registers its sign-in methods on it", pkg.Name, pkg.Dir, len(constructions))
 	}
-	for _, entry := range entries {
-		if entry.IsDir() || path.Ext(entry.Name()) != ".go" {
-			continue
+	outlets := boundOutlets(profile, pkg.Path)
+	for _, registration := range constructions[0].Methods {
+		method := Method{Auth: pkg.Name, Name: registration.Name, Kind: registration.Kind, Authority: registration.Authority}
+		if method.Directory() {
+			if err := m.registrationVariables(cfg, &method); err != nil {
+				return Auth{}, err
+			}
+			if err := method.routes(outlets); err != nil {
+				return Auth{}, err
+			}
 		}
-		rel := path.Join(dir, entry.Name())
-		src, err := os.ReadFile(a.Abs(rel))
-		if err != nil {
-			return Route{}, errors.Wrapf(err, "os.ReadFile(): %s", rel)
-		}
-		if match := callbackRE.FindSubmatch(src); match != nil {
-			return Route{Method: routeMethod(string(match[1])), Path: string(match[2]), File: rel}, nil
-		}
+		auth.Methods = append(auth.Methods, method)
 	}
 
-	return Route{}, errors.Newf("no file under %s registers the OIDC callback (h.CallbackOIDC)", dir)
+	return auth, nil
 }
 
-// routeMethod is the HTTP method a chi registration name stands for.
-func routeMethod(name string) string {
-	switch name {
-	case "Get":
-		return "GET"
-	case "Post":
-		return "POST"
-	default:
-		return name
+// boundOutlets lists the names and prefixes of the outlets bound to the auth package.
+func boundOutlets(profile *app.Profile, importPath string) []app.Outlet {
+	var bound []app.Outlet
+	for i := range profile.Sites {
+		outlets := profile.Sites[i].AllOutlets()
+		for j := range outlets {
+			if outlets[j].Auth != nil && outlets[j].Auth.ImportPath == importPath {
+				bound = append(bound, outlets[j])
+			}
+		}
 	}
+
+	return bound
+}
+
+// registrationVariables finds the directory method's settings among the variables, by
+// the convention, gives each its role, and refuses a registration that declares a
+// required setting under no variable, both shapes of its organization slot, or its
+// client secret without the secret tag.
+func (m *Model) registrationVariables(cfg *config, method *Method) error {
+	method.Variables = map[string]*Variable{}
+	for i := range registrationFields {
+		f := &registrationFields[i]
+		if !f.reads(method.Kind, method.Authority) {
+			continue
+		}
+		name := RegistrationVariable(method.Auth, method.Name, f.Suffix)
+		v := m.variableNamed(name)
+		if v == nil {
+			if f.Required {
+				return errors.Newf("the %s auth's %s registration (%s) declares no %s variable: the data level reads a %s method's settings from the environment as %s and the rest of %s (impulse add method writes them)", method.Auth, method.Name, method.Kind, name, method.Kind, name, RegistrationVariable(method.Auth, method.Name, "<FIELD>"))
+			}
+
+			continue
+		}
+		if f.Secret && !v.Secret {
+			return errors.Newf("%s (%s) is the %s registration's client secret and carries no secret:\"true\" tag: the stack serves it from Secret Manager, never from a plain variable", v.Name, v.Declaration(), method.Name)
+		}
+		v.Role = f.Role
+		method.Variables[f.Field] = v
+	}
+	for _, pair := range slotPairs {
+		if method.Variables[pair[0]] != nil && method.Variables[pair[1]] != nil {
+			return errors.Newf("the %s auth's %s registration declares both %s and %s: a registration admits one organization or a listed set, not both", method.Auth, method.Name, method.Variables[pair[0]].Name, method.Variables[pair[1]].Name)
+		}
+	}
+	if prefix := method.Variable(FieldGroupPrefix); prefix != nil {
+		method.GroupPrefixDefault = cfg.envTemplate[prefix.Name]
+	}
+	if lookup := method.Variable(FieldGroupLookup); lookup != nil {
+		method.GroupLookupDefault = defaultGroupLookup
+		if cfg.envTemplate[lookup.Name] != "" {
+			method.GroupLookupDefault = cfg.envTemplate[lookup.Name]
+		}
+	}
+
+	return nil
+}
+
+// variableNamed returns the variable by its name, or nil.
+func (m *Model) variableNamed(name string) *Variable {
+	for i := range m.Variables {
+		if m.Variables[i].Name == name {
+			return &m.Variables[i]
+		}
+	}
+
+	return nil
+}
+
+// routes settles the directory method's callback, and its front-channel logout for a
+// Microsoft registration: the routes the generated router registers for the
+// registration under the one outlet the auth is bound to, /<prefix>/user/<name>/callback
+// and /logout. A directory method has one redirect URL, so an auth with one is bound to
+// one outlet exactly.
+func (m *Method) routes(outlets []app.Outlet) error {
+	switch len(outlets) {
+	case 1:
+	case 0:
+		return errors.Newf("the %s auth registers the %s method (%s) and no outlet binds to it: the registration's callback is a route of the outlet the auth is bound to (generation.Auth on the outlet)", m.Auth, m.Name, m.Kind)
+	default:
+		names := make([]string, 0, len(outlets))
+		for i := range outlets {
+			names = append(names, outlets[i].Name)
+		}
+
+		return errors.Newf("the %s auth registers the %s method (%s) and %d outlets bind to it (%s): a directory registration has one callback, so its auth is bound to one outlet", m.Auth, m.Name, m.Kind, len(outlets), strings.Join(names, ", "))
+	}
+	m.Outlet = outlets[0].Name
+	base := "/" + strings.Trim(outlets[0].Prefix, "/") + "/user/" + m.Name
+	m.Callback = Route{Method: http.MethodGet, Path: base + "/callback"}
+	if m.FrontChannelLogout() {
+		m.Logout = Route{Method: http.MethodGet, Path: base + "/logout"}
+	}
+
+	return nil
 }

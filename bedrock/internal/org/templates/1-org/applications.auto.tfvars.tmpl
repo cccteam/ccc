@@ -3,9 +3,13 @@
 # placement.json (bedrock org register <app>), never here. OpenTofu reads *.auto.tfvars after
 # terraform.tfvars, which keeps the values a person decides.
 
-# The applications whose GitHub repositories this layer configures (github.tf), one
-# repository per application, named after it under the organization.
+# The applications whose GitHub repositories this layer configures (github.tf), by
+# code: the segment every resource name of the application carries.
 applications = {{.ApplicationsList}}
+
+# Each application's repository under the organization, by code: the name 1-org
+# creates the repository with (its module path's last segment).
+application_repositories = {{.ApplicationRepositoriesHCL}}
 
 # The applications whose stacks have had their first apply in every environment: those
 # registered in full (placement.json's registration names them no more, which bedrock org

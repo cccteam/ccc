@@ -11,8 +11,8 @@ variable "applications" {
   default     = ["harbor", "beacon"]
 
   validation {
-    condition     = alltrue([for a in var.applications : can(regex("^[a-z][a-z0-9-]{0,30}$", a))])
-    error_message = "Application names must be 1-31 lowercase alphanumeric characters or hyphens, starting with a letter; they are embedded in repository IDs."
+    condition     = alltrue([for a in var.applications : can(regex("^[a-z][a-z0-9]{0,5}$", a))])
+    error_message = "Every application code must be 1-6 lowercase letters and digits starting with a letter."
   }
 
   validation {

@@ -16,6 +16,7 @@ import (
 
 	"github.com/go-playground/errors/v5"
 	"github.com/spf13/cobra"
+	"golang.org/x/mod/modfile"
 
 	"github.com/cccteam/ccc/bedrock/internal/deploy"
 	"github.com/cccteam/ccc/bedrock/internal/derive"
@@ -584,14 +585,17 @@ func newOrgRegister(d deps) *cobra.Command {
 	)
 
 	cmd := &cobra.Command{
-		Use:   "register <app> [<application checkout>]",
+		Use:   "register <code> <application checkout>",
 		Short: "Register an application in the foundation and write its first placement",
-		Long: `register adds an application to the organization: its code goes into placement.json's
-applications, the layers' values are rendered from it (1-org's repositories and its
-public-invoker grants, 2-env's list, 2-shr's repository and its pushers and pullers, 2-spn's
-database admins, 2-net's hostnames), and the pull requests the registration takes through
-the Cloud Build triggers are printed, since one pass in layer order does not follow the
-order the grants need: first 1-org and 2-env (the repository, then the identities under it),
+		Long: `register adds an application to the organization: its code, the organization's naming
+decision, and its repository's name, read from the checkout's go.mod module path (a module
+under github.com/<organization> is its repository; a vanity import path is refused), go into
+placement.json's applications, the layers' values are rendered from them (1-org's
+repositories and its public-invoker grants, 2-env's list, 2-shr's repository and its pushers
+and pullers, 2-spn's database admins, 2-net's hostnames), and the pull requests the
+registration takes through the Cloud Build triggers are printed, since one pass in layer
+order does not follow the order the grants need: first 1-org and 2-env (the repository, then
+the identities under it),
 then 2-env again by starting the apply trigger by hand (each environment grants the next
 environment's deploy identity read on its records bucket, from state the first pass did not
 have), then 1-org's public-invoker grants with 2-shr and 2-spn (the grants, on identities
@@ -602,23 +606,24 @@ render what that step may apply, and register <app> --next moves to the next ste
 grants once 2-env's state in every environment holds the application's identities, to
 complete once its stack has a state in every environment, each read from the state bucket,
 and refused before. So every pull request of the sequence carries every rendered file, and
-bedrock org check passes on each. An application code is 1 to 6 lowercase alphanumeric
-characters starting with a letter, registered once. Run from the repository root, or name
-it with --dir.
+bedrock org check passes on each. An application code is 1 to 6 lowercase letters and
+digits starting with a letter, the segment every resource name of the application carries,
+registered once; the repository's name is bound by no such rule. Run from the repository
+root, or name it with --dir.
 
 It also makes the application's first placement.json, the file bedrock render reads in the
 application's repository (infrastructure/placement.json), from this placement and nothing
 asked: the prefix, the environments, the regions, the domains, the state bucket, the default
 branch, the release app's slug, the labels and the environment projects' ids and numbers,
-with Cloud Run's sample image to create the services with, the application's code as its
+with Cloud Run's sample image to create the services with, the application's code and its
 repository's name, the first environment's database seeded, and the bedrock running
 register as the pin (a release with its pipeline binary's checksum from the release's
 checksums.txt, or a commit installed with go install; a build from a checkout is nobody's
-pin and is refused). Given the application's checkout as the second argument (typically a
-sibling of this repository), register writes the file there and refuses to overwrite one
-that exists; without it, register prints the file. The approvals, the maintenance windows,
-the build machine and the instance caps take their defaults; production's maintenance
-window is the team's to write before its first breaking release.
+pin and is refused). The second argument is the application's checkout (typically a sibling
+of this repository), whose go.mod names the repository: register writes the file there and
+refuses to overwrite one that exists. The approvals, the maintenance windows, the build
+machine and the instance caps take their defaults; production's maintenance window is the
+team's to write before its first breaking release.
 
 The placement must record 1-org's project ids and numbers for every environment (projects,
 projectNumbers) and the seed's state bucket, which the application's placement names. The
@@ -647,6 +652,9 @@ before them. A refusal changes nothing.`,
 
 				return d.registerNext(cmd.Context(), cmd.OutOrStdout(), p, placement, dir, app)
 			}
+			if len(args) != 2 {
+				return errors.Newf("register %s needs the application's checkout as its second argument: its go.mod names the repository, and its first placement is written there", app)
+			}
 
 			return d.registerFirst(cmd.Context(), cmd.OutOrStdout(), p, placement, dir, args)
 		},
@@ -660,24 +668,29 @@ before them. A refusal changes nothing.`,
 
 // registerFirst registers the application at its identities: the placement written and
 // rendered, the sequence printed, and the application's first placement written into
-// the checkout named second or printed.
+// the checkout named second, whose module path names the repository.
 func (d deps) registerFirst(ctx context.Context, out io.Writer, p *org.Placement, placement, dir string, args []string) error {
 	app := args[0]
-	if err := p.Register(app); err != nil {
+	if err := derive.ValidateApplicationCode(app); err != nil {
+		return err
+	}
+	repository, err := checkoutRepository(args[1], p.GithubOrganization)
+	if err != nil {
+		return err
+	}
+	if err := p.Register(app, repository); err != nil {
 		return err
 	}
 	if unset := p.ConnectionUnset(); len(unset) > 0 {
 		return errors.Newf("placement.json leaves %s unset: the Cloud Build GitHub App's browser authorization in the boot project comes before the first application (0-bootstrap/README.md, \"The Cloud Build GitHub authorization\"); record both and register again", strings.Join(unset, " and "))
 	}
-	first, err := d.firstPlacement(ctx, p, app)
+	first, err := d.firstPlacement(ctx, p, app, repository)
 	if err != nil {
 		return err
 	}
-	target := ""
-	if len(args) == 2 {
-		if target, err = firstPlacementFile(args[1]); err != nil {
-			return err
-		}
+	target, err := firstPlacementFile(args[1])
+	if err != nil {
+		return err
 	}
 	if err := p.Write(placement); err != nil {
 		return err
@@ -761,7 +774,7 @@ bedrock domain check, which passes when the apps domain resolves to its zone.
 // placement does not list or has registered in full is refused by Advance.
 func (d deps) registrationReady(ctx context.Context, p *org.Placement, app string) error {
 	step := p.Step(app)
-	if step == "" || !slices.Contains(p.Applications, app) {
+	if step == "" || !p.Registered(app) {
 		return nil
 	}
 	store, err := d.deploy.Storage(ctx)
@@ -846,13 +859,47 @@ func stackInState(ctx context.Context, store deploy.Store, bucket, env, app stri
 
 // firstPlacement is the application's first placement: every field from the
 // organization's placement, the pin the bedrock running register.
-func (d deps) firstPlacement(ctx context.Context, p *org.Placement, app string) (*derive.Placement, error) {
+func (d deps) firstPlacement(ctx context.Context, p *org.Placement, app, repository string) (*derive.Placement, error) {
 	version, sum, err := d.firstPin(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	return p.ApplicationPlacement(app, version, sum)
+	return p.ApplicationPlacement(app, repository, version, sum)
+}
+
+// checkoutRepository is the application's repository name, read from the module path
+// of the go.mod at the checkout's root: a module under github.com/<organization> is its
+// repository, github.com/<organization>/<repository>, and a module anywhere else (a
+// vanity import path, another organization, a directory inside a repository) is refused.
+func checkoutRepository(checkout, organization string) (string, error) {
+	info, err := os.Stat(checkout)
+	if err != nil || !info.IsDir() {
+		return "", errors.Newf("no directory at %s: the second argument is the application's checkout, whose go.mod names its repository and where register writes its first placement (infrastructure/placement.json)", checkout)
+	}
+	file := filepath.Join(checkout, "go.mod")
+	data, err := os.ReadFile(file)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return "", errors.Newf("no go.mod at %s: the application's module at the checkout's root names its repository", checkout)
+		}
+
+		return "", errors.Wrap(err, "os.ReadFile()")
+	}
+	f, err := modfile.ParseLax(file, data, nil)
+	if err != nil {
+		return "", errors.Wrap(err, "modfile.ParseLax()")
+	}
+	if f.Module == nil {
+		return "", errors.Newf("%s has no module directive to name the repository", file)
+	}
+	module := f.Module.Mod.Path
+	parts := strings.Split(module, "/")
+	if len(parts) != 3 || parts[0] != "github.com" || !strings.EqualFold(parts[1], organization) {
+		return "", errors.Newf("the module path %q (%s) is not a repository of the %s GitHub organization (github.com/%s/<repository>): a vanity import path is not supported", module, file, organization, organization)
+	}
+
+	return parts[2], nil
 }
 
 // firstPin is the bedrock pin an application's first placement carries: the bedrock
@@ -887,7 +934,7 @@ func firstPlacementFile(checkout string) (string, error) {
 	file := where.PlacementFile(checkout)
 	switch _, err := os.Stat(file); {
 	case err == nil:
-		return "", errors.Newf("%s exists: register writes an application's first placement and never overwrites one; leave the checkout out to print the file instead", file)
+		return "", errors.Newf("%s exists: register writes an application's first placement and never overwrites one", file)
 	case !errors.Is(err, os.ErrNotExist):
 		return "", errors.Wrap(err, "os.Stat()")
 	}

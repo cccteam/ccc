@@ -1,6 +1,5 @@
 // config.go reads the config package: the level structs, the fields under each with
-// their env tags, the level constructors, and the auth's directory literal that says
-// which field feeds which part of the registration.
+// their env tags, and the level constructors.
 
 package derive
 
@@ -36,8 +35,6 @@ type config struct {
 	levels []Level
 	// variables are the env-tagged fields placed at a level, in the reader's order.
 	variables []Variable
-	// directory maps a directory role to the config field the literal feeds it from.
-	directory map[Role]string
 	// image are the variables the Dockerfile sets.
 	image map[string]bool
 	// funcs are the package's top-level function names.
@@ -109,13 +106,12 @@ func readConfig(a *app.App) (*config, error) {
 		}
 	}
 
-	cfg := &config{dir: dir, funcs: map[string]bool{}, structs: map[string]*structDecl{}, directory: map[Role]string{}}
-	authLocals := authImportNames(a)
+	cfg := &config{dir: dir, funcs: map[string]bool{}, structs: map[string]*structDecl{}}
 	for _, rel := range a.GoFiles() {
 		if path.Dir(rel) != dir {
 			continue
 		}
-		if err := cfg.readFile(a, rel, authLocals); err != nil {
+		if err := cfg.readFile(a, rel); err != nil {
 			return nil, err
 		}
 	}
@@ -144,19 +140,8 @@ func readConfig(a *app.App) (*config, error) {
 	return cfg, nil
 }
 
-// authImportNames maps each auth package's import path to the set of auths, so a file
-// importing one can be read for its Directory literal.
-func authImportNames(a *app.App) map[string]string {
-	paths := map[string]string{}
-	for _, p := range a.AuthPackages {
-		paths[p.Path] = p.Name
-	}
-
-	return paths
-}
-
-// readFile records one file's structs, functions, and directory literal.
-func (c *config) readFile(a *app.App, rel string, authPaths map[string]string) error {
+// readFile records one file's structs and functions.
+func (c *config) readFile(a *app.App, rel string) error {
 	src, err := os.ReadFile(a.Abs(rel))
 	if err != nil {
 		return errors.Wrap(err, "os.ReadFile()")
@@ -178,16 +163,6 @@ func (c *config) readFile(a *app.App, rel string, authPaths map[string]string) e
 		case *ast.GenDecl:
 			c.readStructs(fset, rel, d, imports)
 		}
-	}
-
-	locals := map[string]bool{}
-	for local, p := range imports {
-		if _, isAuth := authPaths[p]; isAuth {
-			locals[local] = true
-		}
-	}
-	if len(locals) > 0 {
-		c.readDirectory(f, locals)
 	}
 
 	return nil
@@ -308,43 +283,6 @@ func typeString(expr ast.Expr) string {
 	default:
 		return ""
 	}
-}
-
-// readDirectory records the auth's Directory literal: each key it assigns from a field of
-// the environment (env.<Field>) feeds the role the key names.
-func (c *config) readDirectory(f *ast.File, authLocals map[string]bool) {
-	ast.Inspect(f, func(n ast.Node) bool {
-		lit, ok := n.(*ast.CompositeLit)
-		if !ok {
-			return true
-		}
-		sel, ok := lit.Type.(*ast.SelectorExpr)
-		if !ok || sel.Sel.Name != "Directory" {
-			return true
-		}
-		if pkg, ok := sel.X.(*ast.Ident); !ok || !authLocals[pkg.Name] {
-			return true
-		}
-		for _, elt := range lit.Elts {
-			kv, ok := elt.(*ast.KeyValueExpr)
-			if !ok {
-				continue
-			}
-			key, ok := kv.Key.(*ast.Ident)
-			if !ok {
-				continue
-			}
-			value, ok := kv.Value.(*ast.SelectorExpr)
-			if !ok {
-				continue
-			}
-			if role, known := directoryRoles[key.Name]; known {
-				c.directory[role] = value.Sel.Name
-			}
-		}
-
-		return true
-	})
 }
 
 // placeLevels finds the level structs and their constructors.

@@ -39,7 +39,9 @@ func TestValidateApp(t *testing.T) {
 		{name: "a word", app: "quill"},
 		{name: "one character", app: "q"},
 		{name: "six characters", app: "quills"},
-		{name: "digits and an inner hyphen", app: "q1-2"},
+		{name: "digits", app: "q12"},
+		{name: "an inner hyphen", app: "q1-2", wantErr: true},
+		{name: "a leading digit", app: "1quill", wantErr: true},
 		{name: "seven characters", app: "quilled", wantErr: true},
 		{name: "uppercase", app: "Quill", wantErr: true},
 		{name: "a leading hyphen", app: "-quill", wantErr: true},
@@ -364,7 +366,7 @@ func TestPin(t *testing.T) {
 		{
 			name:    "an app of the wrong shape is refused",
 			req:     Request{App: "Quill", Env: "tst", Variable: "APP_COOKIE_KEY", Version: "3"},
-			wantErr: `app "Quill": lowercase letters, digits and inner hyphens, 1 to 6 characters`,
+			wantErr: `application code "Quill" is not 1 to 6 lowercase letters and digits starting with a letter`,
 		},
 		{
 			name:    "an environment of the wrong shape is refused",

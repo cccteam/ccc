@@ -7,17 +7,23 @@ state_bucket = "{{.P.StateBucket}}"
 # Placement per environment, filled as each environment is set up. Every map
 # is keyed by environment so one file serves all {{.EnvCountWord}} applies.
 
-{{if .Directory -}}
-# OAuth client IDs, from each environment project's console (README).
-{{.AuthVar}}_client_id = {
-{{.TfvarsEnvStrings}}
+{{range .Methods -}}
+# The {{.Auth}} auth's {{.Name}} registration with {{.Provider}} (README, "Hand
+# steps"): the client id of each environment's registration{{if .Slot}}, and
+{{- if eq .Slot.Field "TenantID"}} the tenant whose
+# accounts it admits, by its tenant id (the directory (tenant) ID on the app
+# registration's overview page), once for the organization
+{{- else if eq .Slot.Field "Tenants"}} the tenants it admits,
+# each named: <name>=<tenant id>, comma-separated, once for the organization
+{{- else}} the Workspaces it admits, each
+# named with its domains: <name>=<domain>[+<domain>], comma-separated, once for
+# the organization
+{{- end}}{{end}}.
+{{.Var "CLIENT_ID"}} = {
+{{$.TfvarsEnvStrings}}
 }
-
-# The Workspace administrator the groups read impersonates.
-{{.AuthVar}}_admin_subject = {
-{{.TfvarsEnvStrings}}
-}
-
+{{if .Slot}}{{.Var .Slot.Suffix}} = ""
+{{end}}
 {{end -}}
 # The version of each secret an environment runs. Empty means "not yet": the
 # container exists, nothing is mounted; {{.Integration}} alone runs that way,

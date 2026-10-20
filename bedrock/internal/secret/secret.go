@@ -27,6 +27,8 @@ import (
 	"google.golang.org/api/option"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	"github.com/cccteam/ccc/bedrock/internal/derive"
 )
 
 const (
@@ -59,10 +61,6 @@ const (
 // Environments are the environments a placement is keyed by, in promotion order.
 var Environments = []string{tst, stg, prd}
 
-// appRE matches an application name: lowercase letters, digits and inner hyphens, 1 to 6
-// characters, as the stack's resource names allow.
-var appRE = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,4}[a-z0-9])?$`)
-
 // variableRE matches an environment variable in upper snake case under the APP_ prefix.
 var variableRE = regexp.MustCompile(`^APP_[A-Z0-9]+(_[A-Z0-9]+)*$`)
 
@@ -70,11 +68,11 @@ var variableRE = regexp.MustCompile(`^APP_[A-Z0-9]+(_[A-Z0-9]+)*$`)
 // secret_versions variable validates.
 var versionRE = regexp.MustCompile(`^([1-9]\d*|latest)$`)
 
-// ValidateApp checks that app is an application name: lowercase letters, digits and inner
-// hyphens, 1 to 6 characters.
+// ValidateApp checks that app is an application code, under the one rule every
+// resource name follows (derive.ApplicationCodePattern).
 func ValidateApp(app string) error {
-	if !appRE.MatchString(app) {
-		return errors.Newf("app %q: lowercase letters, digits and inner hyphens, 1 to 6 characters, such as quill", app)
+	if err := derive.ValidateApplicationCode(app); err != nil {
+		return err
 	}
 
 	return nil

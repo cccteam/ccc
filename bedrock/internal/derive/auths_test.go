@@ -1,109 +1,247 @@
 package derive
 
 import (
-	"net/http"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/cccteam/ccc/impulse/app"
 )
 
-// TestCallbackRoute finds the OIDC callback in the generated router whichever receiver
-// registers it: the router generated before the body-limit step registers the session
-// routes on the group itself (r.Get), and the router generated since registers them on
-// the bounded group (bounded.Get, or bounded.Post for a POST callback). A router that
-// registers no callback, as a password auth's does, is refused.
-func TestCallbackRoute(t *testing.T) {
+// TestRegistrationVariable spells a directory method's variables under the convention
+// impulse writes and bedrock reads: APP_<AUTH>_<REGISTRATION>_<FIELD>, the names in
+// upper case with underscores for hyphens.
+func TestRegistrationVariable(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name    string
-		source  string
-		want    Route
-		wantErr string
+		name         string
+		auth         string
+		registration string
+		suffix       string
+		want         string
+	}{
+		{name: "a one-word registration", auth: "members", registration: "directory", suffix: "CLIENT_ID", want: "APP_MEMBERS_DIRECTORY_CLIENT_ID"},
+		{name: "a hyphenated registration", auth: "staff", registration: "lab-a", suffix: "TENANTS", want: "APP_STAFF_LAB_A_TENANTS"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := RegistrationVariable(tt.auth, tt.registration, tt.suffix); got != tt.want {
+				t.Errorf("RegistrationVariable() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestRegistrationVariables finds a directory method's settings among the variables by
+// the convention and gives each its role: the slot the registration declares, the
+// client credentials and the callback, and for a Google registration under the
+// directory's authority the role groups, with the development template's defaults. A
+// registration declaring no variable for a required setting, both shapes of its slot, or
+// its client secret without the secret tag is refused.
+func TestRegistrationVariables(t *testing.T) {
+	t.Parallel()
+
+	variable := func(name string, secret bool) Variable {
+		return Variable{Name: name, Struct: "dataConfig", Field: strings.ToLower(name), Secret: secret}
+	}
+	tests := []struct {
+		name      string
+		method    Method
+		variables []Variable
+		template  map[string]string
+		// wantRoles are the roles given, by variable; wantFields the fields found in the
+		// stack's order; wantPrefix and wantLookup the defaults.
+		wantRoles  map[string]Role
+		wantFields []string
+		wantPrefix string
+		wantLookup string
+		wantErr    string
 	}{
 		{
-			name: "the session routes on the group itself, before the body-limit step",
-			source: `package router
-
-func routes(r chi.Router, h *session.Handlers) {
-	r.Get("/api/user/login", h.Login())
-	r.Get("/api/user/callback", h.CallbackOIDC())
-	r.Get("/api/user/session", h.Authenticated())
-	r.Delete("/api/user/session", h.Logout())
-}
-`,
-			want: Route{Method: http.MethodGet, Path: "/api/user/callback", File: "pkg/router/zz_gen_router.go"},
+			name:   "a Microsoft registration admitting one tenant",
+			method: Method{Auth: "members", Name: "directory", Kind: app.MethodAzure, Authority: app.AuthorityApplication},
+			variables: []Variable{
+				variable("APP_MEMBERS_DIRECTORY_TENANT_ID", false), variable("APP_MEMBERS_DIRECTORY_CLIENT_ID", false),
+				variable("APP_MEMBERS_DIRECTORY_CLIENT_SECRET", true), variable("APP_MEMBERS_DIRECTORY_REDIRECT_URL", false),
+				variable("APP_COOKIE_KEY", true),
+			},
+			wantRoles:  map[string]Role{"APP_MEMBERS_DIRECTORY_TENANT_ID": RoleTenantID, "APP_MEMBERS_DIRECTORY_CLIENT_ID": RoleClientID, "APP_MEMBERS_DIRECTORY_CLIENT_SECRET": RoleClientSecret, "APP_MEMBERS_DIRECTORY_REDIRECT_URL": RoleRedirectURL, "APP_COOKIE_KEY": RoleNone},
+			wantFields: []string{FieldTenantID, FieldClientID, FieldClientSecret, FieldRedirectURL},
 		},
 		{
-			name: "the session routes on the bounded group, since the body-limit step",
-			source: `package router
-
-func routes(r chi.Router, h *session.Handlers) {
-	// The session routes are bounded at BodyLimit, as the generated routes are.
-	bounded := r.With(resource.BodyLimit(BodyLimit))
-	bounded.Get("/api/user/login", h.Login())
-	bounded.Get("/api/user/callback", h.CallbackOIDC())
-	bounded.Get("/api/user/session", h.Authenticated())
-	bounded.Delete("/api/user/session", h.Logout())
-}
-`,
-			want: Route{Method: http.MethodGet, Path: "/api/user/callback", File: "pkg/router/zz_gen_router.go"},
+			name:   "a Microsoft registration admitting any tenant declares no slot",
+			method: Method{Auth: "members", Name: "any", Kind: app.MethodAzure, Authority: app.AuthorityApplication},
+			variables: []Variable{
+				variable("APP_MEMBERS_ANY_CLIENT_ID", false), variable("APP_MEMBERS_ANY_CLIENT_SECRET", true), variable("APP_MEMBERS_ANY_REDIRECT_URL", false),
+			},
+			wantFields: []string{FieldClientID, FieldClientSecret, FieldRedirectURL},
 		},
 		{
-			name: "a POST callback on the bounded group",
-			source: `package router
-
-func routes(r chi.Router, h *session.Handlers) {
-	bounded := r.With(resource.BodyLimit(BodyLimit))
-	bounded.Get("/api/user/login", h.Login())
-	bounded.Post("/api/user/callback", h.CallbackOIDC())
-	bounded.Get("/api/user/session", h.Authenticated())
-}
-`,
-			want: Route{Method: http.MethodPost, Path: "/api/user/callback", File: "pkg/router/zz_gen_router.go"},
+			name:   "a Google registration under the directory's authority, with the template's defaults",
+			method: Method{Auth: "staff", Name: "directory", Kind: app.MethodGoogle, Authority: app.AuthorityDirectory},
+			variables: []Variable{
+				variable("APP_STAFF_DIRECTORY_CLIENT_ID", false), variable("APP_STAFF_DIRECTORY_CLIENT_SECRET", true), variable("APP_STAFF_DIRECTORY_REDIRECT_URL", false),
+				variable("APP_STAFF_DIRECTORY_HOSTED_DOMAIN", false), variable("APP_STAFF_DIRECTORY_GROUP_PREFIX", false), variable("APP_STAFF_DIRECTORY_GROUP_LOOKUP", false),
+			},
+			template:   map[string]string{"APP_STAFF_DIRECTORY_GROUP_PREFIX": "staff-", "APP_STAFF_DIRECTORY_GROUP_LOOKUP": "nested"},
+			wantRoles:  map[string]Role{"APP_STAFF_DIRECTORY_HOSTED_DOMAIN": RoleHostedDomain, "APP_STAFF_DIRECTORY_GROUP_PREFIX": RoleGroupPrefix, "APP_STAFF_DIRECTORY_GROUP_LOOKUP": RoleGroupLookup},
+			wantFields: []string{FieldHostedDomain, FieldClientID, FieldClientSecret, FieldRedirectURL, FieldGroupPrefix, FieldGroupLookup},
+			wantPrefix: "staff-",
+			wantLookup: "nested",
 		},
 		{
-			name: "no callback registered, a password auth's router",
-			source: `package router
-
-func routes(r chi.Router, h *session.Handlers) {
-	bounded := r.With(resource.BodyLimit(BodyLimit))
-	bounded.Post("/api/user/login", h.Login())
-	bounded.Get("/api/user/session", h.Authenticated())
-	bounded.Delete("/api/user/session", h.Logout())
-}
-`,
-			wantErr: "no file under pkg/router registers the OIDC callback (h.CallbackOIDC)",
+			name:   "a Google registration under the application's authority reads no role groups",
+			method: Method{Auth: "staff", Name: "directory", Kind: app.MethodGoogle, Authority: app.AuthorityApplication},
+			variables: []Variable{
+				variable("APP_STAFF_DIRECTORY_CLIENT_ID", false), variable("APP_STAFF_DIRECTORY_CLIENT_SECRET", true), variable("APP_STAFF_DIRECTORY_REDIRECT_URL", false),
+				variable("APP_STAFF_DIRECTORY_WORKSPACES", false), variable("APP_STAFF_DIRECTORY_GROUP_PREFIX", false),
+			},
+			wantRoles:  map[string]Role{"APP_STAFF_DIRECTORY_WORKSPACES": RoleWorkspaces, "APP_STAFF_DIRECTORY_GROUP_PREFIX": RoleNone},
+			wantFields: []string{FieldWorkspaces, FieldClientID, FieldClientSecret, FieldRedirectURL},
+		},
+		{
+			name:   "the group lookup left to the library's default",
+			method: Method{Auth: "staff", Name: "directory", Kind: app.MethodGoogle, Authority: app.AuthorityDirectory},
+			variables: []Variable{
+				variable("APP_STAFF_DIRECTORY_CLIENT_ID", false), variable("APP_STAFF_DIRECTORY_CLIENT_SECRET", true), variable("APP_STAFF_DIRECTORY_REDIRECT_URL", false),
+				variable("APP_STAFF_DIRECTORY_GROUP_PREFIX", false), variable("APP_STAFF_DIRECTORY_GROUP_LOOKUP", false),
+			},
+			wantFields: []string{FieldClientID, FieldClientSecret, FieldRedirectURL, FieldGroupPrefix, FieldGroupLookup},
+			wantLookup: "direct",
+		},
+		{
+			name:      "a required setting under no variable",
+			method:    Method{Auth: "members", Name: "directory", Kind: app.MethodAzure, Authority: app.AuthorityApplication},
+			variables: []Variable{variable("APP_MEMBERS_DIRECTORY_CLIENT_ID", false), variable("APP_MEMBERS_DIRECTORY_REDIRECT_URL", false)},
+			wantErr:   "the members auth's directory registration (azure) declares no APP_MEMBERS_DIRECTORY_CLIENT_SECRET variable: the data level reads a azure method's settings from the environment as APP_MEMBERS_DIRECTORY_CLIENT_SECRET and the rest of APP_MEMBERS_DIRECTORY_<FIELD>",
+		},
+		{
+			name:   "both shapes of the slot",
+			method: Method{Auth: "members", Name: "directory", Kind: app.MethodAzure, Authority: app.AuthorityApplication},
+			variables: []Variable{
+				variable("APP_MEMBERS_DIRECTORY_TENANT_ID", false), variable("APP_MEMBERS_DIRECTORY_TENANTS", false), variable("APP_MEMBERS_DIRECTORY_CLIENT_ID", false),
+				variable("APP_MEMBERS_DIRECTORY_CLIENT_SECRET", true), variable("APP_MEMBERS_DIRECTORY_REDIRECT_URL", false),
+			},
+			wantErr: "declares both APP_MEMBERS_DIRECTORY_TENANT_ID and APP_MEMBERS_DIRECTORY_TENANTS: a registration admits one organization or a listed set, not both",
+		},
+		{
+			name:   "the client secret without the secret tag",
+			method: Method{Auth: "members", Name: "directory", Kind: app.MethodAzure, Authority: app.AuthorityApplication},
+			variables: []Variable{
+				variable("APP_MEMBERS_DIRECTORY_CLIENT_ID", false), variable("APP_MEMBERS_DIRECTORY_CLIENT_SECRET", false), variable("APP_MEMBERS_DIRECTORY_REDIRECT_URL", false),
+			},
+			wantErr: `APP_MEMBERS_DIRECTORY_CLIENT_SECRET (dataConfig.app_members_directory_client_secret) is the directory registration's client secret and carries no secret:"true" tag`,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			dir := t.TempDir()
-			routerDir := filepath.Join(dir, "pkg", "router")
-			if err := os.MkdirAll(routerDir, 0o750); err != nil {
-				t.Fatal(err)
-			}
-			if err := os.WriteFile(filepath.Join(routerDir, "zz_gen_router.go"), []byte(tt.source), 0o600); err != nil {
-				t.Fatal(err)
-			}
-			got, err := callbackRoute(&app.App{Root: dir}, "pkg/router")
+			m := &Model{Variables: tt.variables}
+			method := tt.method
+			err := m.registrationVariables(&config{envTemplate: tt.template}, &method)
 			if tt.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
-					t.Fatalf("callbackRoute() error = %v, wantErr %q", err, tt.wantErr)
+					t.Fatalf("registrationVariables() error = %v, wantErr %q", err, tt.wantErr)
 				}
 
 				return
 			}
 			if err != nil {
-				t.Fatalf("callbackRoute() error = %v", err)
+				t.Fatalf("registrationVariables() error = %v", err)
 			}
-			if got != tt.want {
-				t.Errorf("callbackRoute() = %+v, want %+v", got, tt.want)
+			for name, want := range tt.wantRoles {
+				if got := m.variableNamed(name).Role; got != want {
+					t.Errorf("%s's role = %q, want %q", name, got, want)
+				}
+			}
+			var fields []string
+			for _, f := range method.Fields() {
+				fields = append(fields, f.Field)
+				if f.Variable != method.Variable(f.Field) {
+					t.Errorf("Fields() carries %s with %v, Variable() answers %v", f.Field, f.Variable, method.Variable(f.Field))
+				}
+			}
+			if strings.Join(fields, ",") != strings.Join(tt.wantFields, ",") {
+				t.Errorf("Fields() = %v, want %v", fields, tt.wantFields)
+			}
+			if method.GroupPrefixDefault != tt.wantPrefix || method.GroupLookupDefault != tt.wantLookup {
+				t.Errorf("defaults = %q, %q; want %q, %q", method.GroupPrefixDefault, method.GroupLookupDefault, tt.wantPrefix, tt.wantLookup)
+			}
+		})
+	}
+}
+
+// TestMethodRoutes settles a directory method's routes from the outlet its auth is bound
+// to: the callback under the outlet's prefix, and the front-channel logout for a
+// Microsoft registration. An auth bound to no outlet or to two is refused, since a
+// registration has one callback.
+func TestMethodRoutes(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		method       Method
+		outlets      []app.Outlet
+		wantOutlet   string
+		wantCallback string
+		wantLogout   string
+		wantErr      string
+	}{
+		{
+			name:         "a Google registration on the default outlet",
+			method:       Method{Auth: "staff", Name: "directory", Kind: app.MethodGoogle},
+			outlets:      []app.Outlet{{Name: "default", Prefix: "api"}},
+			wantOutlet:   "default",
+			wantCallback: "/api/user/directory/callback",
+		},
+		{
+			name:         "a Microsoft registration on a second outlet, with its front-channel logout",
+			method:       Method{Auth: "members", Name: "directory", Kind: app.MethodAzure},
+			outlets:      []app.Outlet{{Name: "portal", Prefix: "portal/api"}},
+			wantOutlet:   "portal",
+			wantCallback: "/portal/api/user/directory/callback",
+			wantLogout:   "/portal/api/user/directory/logout",
+		},
+		{
+			name:    "no outlet bound",
+			method:  Method{Auth: "members", Name: "directory", Kind: app.MethodAzure},
+			wantErr: "the members auth registers the directory method (azure) and no outlet binds to it",
+		},
+		{
+			name:    "two outlets bound",
+			method:  Method{Auth: "members", Name: "directory", Kind: app.MethodAzure},
+			outlets: []app.Outlet{{Name: "default", Prefix: "api"}, {Name: "portal", Prefix: "portal/api"}},
+			wantErr: "the members auth registers the directory method (azure) and 2 outlets bind to it (default, portal): a directory registration has one callback",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			method := tt.method
+			err := method.routes(tt.outlets)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("routes() error = %v, wantErr %q", err, tt.wantErr)
+				}
+
+				return
+			}
+			if err != nil {
+				t.Fatalf("routes() error = %v", err)
+			}
+			if method.Outlet != tt.wantOutlet || method.Callback != (Route{Method: "GET", Path: tt.wantCallback}) {
+				t.Errorf("outlet %q, callback %+v; want %q, GET %s", method.Outlet, method.Callback, tt.wantOutlet, tt.wantCallback)
+			}
+			wantLogout := Route{}
+			if tt.wantLogout != "" {
+				wantLogout = Route{Method: "GET", Path: tt.wantLogout}
+			}
+			if method.Logout != wantLogout {
+				t.Errorf("logout = %+v, want %+v", method.Logout, wantLogout)
 			}
 		})
 	}

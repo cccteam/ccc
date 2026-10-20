@@ -82,9 +82,11 @@ variable "hostnames" {
     app.domain for prd, app-stg.domain and app-tst.domain below it, all one
     label under the apps domain because that is what its wildcard certificate
     covers (harbor.tst.<domain> would not be). The first one is the canonical
-    host: the staff sign-in's redirect URL is built from it
-    (https://<host>/api/user/callback, the route pkg/router registers for
-    APP_STAFF_OIDC_REDIRECT_URL). Every hostname here is registered with the
+    host: each directory registration's redirect URL is built from it, the
+    callback the generated router (pkg/router) registers for it:
+    https://<host>/portal/api/user/directory/callback for the members auth's directory registration (APP_MEMBERS_DIRECTORY_REDIRECT_URL),
+    https://<host>/api/user/directory/callback for the staff auth's directory registration (APP_STAFF_DIRECTORY_REDIRECT_URL).
+    Every hostname here is registered with the
     load balancer by an entry in 2-net's hosts; output net_hosts is that entry.
   EOT
   type        = map(list(string))
@@ -234,7 +236,7 @@ variable "secret_versions" {
     and bedrock check refuses one there and the word on any other secret.
 
       secret_versions = {
-        tst = { APP_COOKIE_KEY = "1", APP_STAFF_OIDC_CLIENT_SECRET = "1" }
+        tst = { APP_COOKIE_KEY = "1", APP_STAFF_DIRECTORY_CLIENT_SECRET = "1" }
       }
   EOT
   type        = map(map(string))
@@ -302,14 +304,15 @@ variable "destroy" {
   default     = false
 }
 
-variable "staff_oidc_client_id" {
+variable "members_directory_client_id" {
   description = <<-EOT
-    Per environment, the OAuth client ID of the application's registration with
-    Google (APP_STAFF_OIDC_CLIENT_ID, pkg/config/data.go
-    dataConfig.StaffClientID). Created by hand in the environment project's
-    console (APIs & Services > Credentials > OAuth client ID, Web application)
-    with the redirect URI this stack outputs as staff_oidc_redirect_url. The
-    client ID is public; its secret goes into the staff-oidc-client-secret
+    Per environment, the client ID of the members auth's directory registration with Microsoft
+    (APP_MEMBERS_DIRECTORY_CLIENT_ID, pkg/config/data.go dataConfig.MembersDirectoryClientID).
+    Created by hand in the Microsoft Entra admin center (App registrations), one
+    per environment, with the redirect URI this stack outputs as
+    members_directory_redirect_url and the front-channel logout URL it outputs as
+    members_directory_logout_url.
+    The client ID is public; its secret goes into the members-directory-client-secret
     container. Empty until registered.
   EOT
   type        = map(string)
@@ -320,30 +323,59 @@ variable "staff_oidc_client_id" {
   }
 }
 
-variable "staff_oidc_group_lookup" {
-  description = "How far the staff sign-in's groups read reaches (APP_STAFF_OIDC_GROUP_LOOKUP, dataConfig.StaffGroupLookup): direct reads the Google Groups the person is a direct member of; nested climbs from those to the groups they are in, level by level, for a directory that nests its role groups. The read runs with the person's own sign-in token through the Cloud Identity Groups API, which 1-org enables in the environment project."
+variable "members_directory_tenant_id" {
+  description = "The Microsoft Entra tenant whose accounts the members auth's directory registration admits, by its tenant id, a GUID (APP_MEMBERS_DIRECTORY_TENANT_ID, dataConfig.MembersDirectoryTenantID): the directory (tenant) ID on the app registration's overview page. The session library validates it when the registration is made, at construction, so every data-level process carries it and the first release in an environment waits on it (README, \"Hand steps\")."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.members_directory_tenant_id == "" || can(regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$", var.members_directory_tenant_id))
+    error_message = "members_directory_tenant_id is a tenant id: a GUID, or empty before the registration."
+  }
+}
+
+variable "staff_directory_client_id" {
+  description = <<-EOT
+    Per environment, the client ID of the staff auth's directory registration with Google
+    (APP_STAFF_DIRECTORY_CLIENT_ID, pkg/config/data.go dataConfig.StaffDirectoryClientID).
+    Created by hand in the environment project's console (APIs & Services >
+    Credentials > OAuth client ID, Web application) with the redirect URI this
+    stack outputs as staff_directory_redirect_url.
+    The client ID is public; its secret goes into the staff-directory-client-secret
+    container. Empty until registered.
+  EOT
+  type        = map(string)
+  default = {
+    tst = ""
+    stg = ""
+    prd = ""
+  }
+}
+
+variable "staff_directory_group_lookup" {
+  description = "How far the groups read of the staff auth's directory registration reaches (APP_STAFF_DIRECTORY_GROUP_LOOKUP, dataConfig.StaffDirectoryGroupLookup): direct reads the Google Groups the person is a direct member of; nested climbs from those to the groups they are in, level by level, for a directory that nests its role groups. The read runs with the person's own sign-in token through the Cloud Identity Groups API, which 1-org enables in the environment project."
   type        = string
   default     = "direct"
 
   validation {
-    condition     = contains(["direct", "nested"], var.staff_oidc_group_lookup)
-    error_message = "staff_oidc_group_lookup is direct or nested."
+    condition     = contains(["direct", "nested"], var.staff_directory_group_lookup)
+    error_message = "staff_directory_group_lookup is direct or nested."
   }
 }
 
-variable "staff_oidc_group_prefix" {
-  description = "Local-part prefix of the Google Groups that carry staff roles: <prefix><role>@<domain> assigns <role> (APP_STAFF_OIDC_GROUP_PREFIX, dataConfig.StaffGroupPrefix). Required non-empty by the session library at construction, so the migrate command carries it too."
+variable "staff_directory_group_prefix" {
+  description = "Local-part prefix of the Google Groups that carry staff roles through the staff auth's directory registration: <prefix><role>@<domain> assigns <role> (APP_STAFF_DIRECTORY_GROUP_PREFIX, dataConfig.StaffDirectoryGroupPrefix). Required non-empty by the session library at construction, so the migrate command carries it too."
   type        = string
   default     = "staff-"
 
   validation {
-    condition     = length(var.staff_oidc_group_prefix) > 0
-    error_message = "staff_oidc_group_prefix must not be empty: it is the only filter between role groups and the rest of the directory."
+    condition     = length(var.staff_directory_group_prefix) > 0
+    error_message = "staff_directory_group_prefix must not be empty: it is the only filter between role groups and the rest of the directory."
   }
 }
 
-variable "staff_oidc_hosted_domain" {
-  description = "Google Workspace domain staff logins are restricted to (APP_STAFF_OIDC_HOSTED_DOMAIN, dataConfig.StaffHostedDomain). Required non-empty by the session library at construction, so the migrate command carries it too."
+variable "staff_directory_hosted_domain" {
+  description = "Google Workspace domain the logins of the staff auth's directory registration are restricted to (APP_STAFF_DIRECTORY_HOSTED_DOMAIN, dataConfig.StaffDirectoryHostedDomain). Required non-empty by the session library at construction, so the migrate command carries it too."
   type        = string
   default     = "impulseframework.com"
 }

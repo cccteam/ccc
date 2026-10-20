@@ -27,6 +27,13 @@ type Placement struct {
 	// Prefix is the organization's naming prefix: every resource name starts with
 	// <prefix>-<env>.
 	Prefix string `json:"prefix"`
+	// Code is the application's code: the segment every resource name of the
+	// application carries, one to six lowercase letters and digits starting with a
+	// letter (ApplicationCodePattern), declared at registration (bedrock org register)
+	// and the organization's naming decision. A placement written before the code was
+	// recorded names none: the repository's name stands in for it, the two having
+	// coincided then, and bedrock upgrade writes it.
+	Code string `json:"code,omitempty"`
 	// Environments are the environments in promotion order; the first is where pull
 	// requests deploy and the last is production.
 	Environments []string `json:"environments"`
@@ -43,7 +50,8 @@ type Placement struct {
 	PlaceholderImage string `json:"placeholderImage"`
 	// DefaultBranch is the branch pull requests target.
 	DefaultBranch string `json:"defaultBranch"`
-	// Repository is the application repository's name, for the source_repo label.
+	// Repository is the application repository's name, the module path's last segment
+	// (a module under github.com is its repository), for the source_repo label.
 	Repository string `json:"repository"`
 	// ReleaseApp is the slug of the GitHub App that cuts the releases (release-please
 	// runs as it): the pipeline accepts a release tag only from a GitHub Release it
@@ -221,6 +229,9 @@ func ReadPlacement(file string) (*Placement, error) {
 	if err := dec.Decode(p); err != nil {
 		return nil, errors.Wrapf(err, "placement %s", file)
 	}
+	if p.Code == "" {
+		p.Code = p.Repository
+	}
 	if err := p.Validate(); err != nil {
 		return nil, errors.Wrapf(err, "placement %s", file)
 	}
@@ -235,6 +246,9 @@ func (p *Placement) Validate() error {
 	}
 	if !prefixRE.MatchString(p.Prefix) {
 		return errors.Newf("prefix %q: a lowercase word of at most eight characters", p.Prefix)
+	}
+	if err := ValidateApplicationCode(p.Code); err != nil {
+		return err
 	}
 	if len(p.Environments) == 0 {
 		return errors.New("at least one environment")

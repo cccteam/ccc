@@ -7,15 +7,20 @@ state_bucket = "imp-boot-gbl-state-REPLACEME"
 # Placement per environment, filled as each environment is set up. Every map
 # is keyed by environment so one file serves all three applies.
 
-# OAuth client IDs, from each environment project's console (README).
-staff_oidc_client_id = {
+# The members auth's directory registration with Microsoft (README, "Hand
+# steps"): the client id of each environment's registration, and the tenant whose
+# accounts it admits, by its tenant id (the directory (tenant) ID on the app
+# registration's overview page), once for the organization.
+members_directory_client_id = {
   tst = ""
   stg = ""
   prd = ""
 }
+members_directory_tenant_id = ""
 
-# The Workspace administrator the groups read impersonates.
-staff_oidc_admin_subject = {
+# The staff auth's directory registration with Google (README, "Hand
+# steps"): the client id of each environment's registration.
+staff_directory_client_id = {
   tst = ""
   stg = ""
   prd = ""
@@ -60,13 +65,13 @@ cloud_armor = {
 }
 
 # Defaults that are decisions, restated so they are visible here:
-#   hostnames                = harbor-tst. / harbor-stg. / harbor.impulseframework.dev
-#   placeholder_image        = us-docker.pkg.dev/cloudrun/container/hello
-#   staff_oidc_group_lookup  = "direct"
-#   staff_oidc_group_prefix  = "staff-"
-#   staff_oidc_hosted_domain = "impulseframework.com"
-#   jobs_timeout             = "1800s"
-#   jobs_retries             = 0
-#   jobs_resources           = cpu 1, memory 512Mi
-#   tasks_max_concurrent     = 10
-#   tasks_max_attempts       = 5
+#   hostnames                     = harbor-tst. / harbor-stg. / harbor.impulseframework.dev
+#   placeholder_image             = us-docker.pkg.dev/cloudrun/container/hello
+#   staff_directory_group_lookup  = "direct"
+#   staff_directory_group_prefix  = "staff-"
+#   staff_directory_hosted_domain = "impulseframework.com"
+#   jobs_timeout                  = "1800s"
+#   jobs_retries                  = 0
+#   jobs_resources                = cpu 1, memory 512Mi
+#   tasks_max_concurrent          = 10
+#   tasks_max_attempts            = 5

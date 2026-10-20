@@ -33,9 +33,9 @@ func TestUnpinnedSecrets(t *testing.T) {
 		want    []string
 		wantErr string
 	}{
-		{name: "every declared secret pinned leaves none", tfvars: pinnedTfvars("", allPinned, ""), model: declaring("APP_COOKIE_KEY", "APP_STAFF_OIDC_CLIENT_SECRET"), env: stgEnvironment},
-		{name: "the declared secrets the environment pins no version for, in declaration order", tfvars: pinnedTfvars("", `APP_STAFF_OIDC_CLIENT_SECRET = "1"`, ""), model: declaring("APP_MAIL_KEY", "APP_STAFF_OIDC_CLIENT_SECRET", "APP_COOKIE_KEY"), env: stgEnvironment, want: []string{"APP_MAIL_KEY", "APP_COOKIE_KEY"}},
-		{name: "a bare number and latest pin", tfvars: pinnedTfvars(`APP_COOKIE_KEY = 3, APP_STAFF_OIDC_CLIENT_SECRET = "latest"`, "", ""), model: declaring("APP_COOKIE_KEY", "APP_STAFF_OIDC_CLIENT_SECRET"), env: tstEnvironment},
+		{name: "every declared secret pinned leaves none", tfvars: pinnedTfvars("", allPinned, ""), model: declaring("APP_COOKIE_KEY", "APP_STAFF_DIRECTORY_CLIENT_SECRET"), env: stgEnvironment},
+		{name: "the declared secrets the environment pins no version for, in declaration order", tfvars: pinnedTfvars("", `APP_STAFF_DIRECTORY_CLIENT_SECRET = "1"`, ""), model: declaring("APP_MAIL_KEY", "APP_STAFF_DIRECTORY_CLIENT_SECRET", "APP_COOKIE_KEY"), env: stgEnvironment, want: []string{"APP_MAIL_KEY", "APP_COOKIE_KEY"}},
+		{name: "a bare number and latest pin", tfvars: pinnedTfvars(`APP_COOKIE_KEY = 3, APP_STAFF_DIRECTORY_CLIENT_SECRET = "latest"`, "", ""), model: declaring("APP_COOKIE_KEY", "APP_STAFF_DIRECTORY_CLIENT_SECRET"), env: tstEnvironment},
 		{name: "a pin for a variable the code does not declare counts for nothing", tfvars: pinnedTfvars("", `APP_OLD_KEY = "1"`, ""), model: declaring("APP_COOKIE_KEY"), env: stgEnvironment, want: []string{"APP_COOKIE_KEY"}},
 		{name: "another environment's pins do not count", tfvars: pinnedTfvars(allPinned, "", allPinned), model: declaring("APP_COOKIE_KEY"), env: stgEnvironment, want: []string{"APP_COOKIE_KEY"}},
 		{name: "a code that declares no secret has none unpinned", tfvars: pinnedTfvars("", "", ""), model: declaring(), env: stgEnvironment},

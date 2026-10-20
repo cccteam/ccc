@@ -18,12 +18,17 @@ func newGenerator(ctx context.Context) (generation.Generator, error) {
 		[]string{"file://schema/migrations"},
 		generation.GenerateHandlers("app"),
 		// The router is generated from the outlet declarations: the console is the default
-		// outlet, the staff auth's password sessions under /api with its browser application
-		// at /.
+		// outlet, the staff auth's directory sessions under /api with its browser application
+		// at /; the portal is a second outlet, the members auth's directory and password
+		// sessions under /portal/api with its browser application at /portal.
 		generation.GenerateRouter(),
 		generation.GenerateRoutes("pkg/router", "api",
-			generation.Auth("github.com/impulseframework/harbor/pkg/auth/staff", generation.OIDCGoogle),
+			generation.Auth("github.com/impulseframework/harbor/pkg/auth/staff", generation.GoogleMethod("directory")),
 			generation.WebApp("/"),
+		),
+		generation.WithRouterOutlet("portal", "portal/api",
+			generation.Auth("github.com/impulseframework/harbor/pkg/auth/members", generation.AzureMethod("directory"), generation.PasswordMethod()),
+			generation.WebApp("/portal"),
 		),
 		generation.GenerateHandlerTests("test/authz"),
 		generation.WithConsolidatedHandlers("resources", true),

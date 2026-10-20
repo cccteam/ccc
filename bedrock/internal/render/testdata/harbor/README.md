@@ -201,7 +201,8 @@ from `2-env`'s state.
   | Variable | Field | Container |
   |---|---|---|
   | `APP_COOKIE_KEY` | `dataConfig.CookieKey` | `...-cookie-key` |
-  | `APP_STAFF_OIDC_CLIENT_SECRET` | `dataConfig.StaffClientSecret` | `...-staff-oidc-client-secret` |
+  | `APP_STAFF_DIRECTORY_CLIENT_SECRET` | `dataConfig.StaffDirectoryClientSecret` | `...-staff-directory-client-secret` |
+  | `APP_MEMBERS_DIRECTORY_CLIENT_SECRET` | `dataConfig.MembersDirectoryClientSecret` | `...-members-directory-client-secret` |
 
   The site's identity holds accessor, and so does the job process's, on
   the secrets at the levels it constructs: it runs the application's own
@@ -386,17 +387,20 @@ above them.
 | `GOOGLE_CLOUD_FIRESTORE_PROJECT` | data | the environment project (the Firestore database's) | yes | yes | yes |
 | `APP_FIRESTORE_DATABASE` | data | the Firestore database | yes | yes | yes |
 | `APP_FIREBASE_API_KEY` | data | the Firebase web API key | yes | yes | yes |
-| `APP_STAFF_OIDC_HOSTED_DOMAIN` | data | `var.staff_oidc_hosted_domain` | yes | yes | yes |
-| `APP_STAFF_OIDC_GROUP_PREFIX` | data | `var.staff_oidc_group_prefix` | yes | yes | yes |
-| `APP_STAFF_OIDC_CLIENT_ID` | data | `var.staff_oidc_client_id[env]` | yes | | |
-| `APP_STAFF_OIDC_REDIRECT_URL` | data | `https://<first hostname>/api/user/callback` | yes | | |
-| `APP_STAFF_OIDC_GROUP_LOOKUP` | data | `var.staff_oidc_group_lookup` | yes | | |
+| `APP_MEMBERS_DIRECTORY_TENANT_ID` | data | `var.members_directory_tenant_id` | yes | yes | yes |
+| `APP_MEMBERS_DIRECTORY_CLIENT_ID` | data | `var.members_directory_client_id[env]` | yes | | |
+| `APP_MEMBERS_DIRECTORY_REDIRECT_URL` | data | `https://<first hostname>/portal/api/user/directory/callback` | yes | | |
+| `APP_STAFF_DIRECTORY_HOSTED_DOMAIN` | data | `var.staff_directory_hosted_domain` | yes | yes | yes |
+| `APP_STAFF_DIRECTORY_CLIENT_ID` | data | `var.staff_directory_client_id[env]` | yes | | |
+| `APP_STAFF_DIRECTORY_REDIRECT_URL` | data | `https://<first hostname>/api/user/directory/callback` | yes | | |
+| `APP_STAFF_DIRECTORY_GROUP_PREFIX` | data | `var.staff_directory_group_prefix` | yes | yes | yes |
+| `APP_STAFF_DIRECTORY_GROUP_LOOKUP` | data | `var.staff_directory_group_lookup` | yes | | |
 | `APP_JOBS_TEMPLATE` | site | the job process's template job, which the site's own build's job is named from (the job driver's settings, `siteConfig.Template`) | yes | | |
 | `APP_SCHEDULER_INVOKER` | none, the framework reads it | the scheduler's invoker identity, unset in a pull-request stack | yes | | |
-| `APP_COOKIE_KEY`, `APP_STAFF_OIDC_CLIENT_SECRET` | data | secret, at the pinned version | yes | | yes |
+| `APP_COOKIE_KEY`, `APP_STAFF_DIRECTORY_CLIENT_SECRET`, `APP_MEMBERS_DIRECTORY_CLIENT_SECRET` | data | secret, at the pinned version | yes | | yes |
 
-The migrate command and the job process carry the hosted domain and group prefix because the session
-library refuses to construct without them. The migrate command carries the Firestore
+The migrate command and the job process carry the registrations' organization slots and group prefixes because the session
+library validates them when it makes each registration, at construction. The migrate command carries the Firestore
 database because the data level opens its live service when it is constructed, and
 the release's role migration signals the running instances through it; the web
 API key rides beside it, a public value. Not set: `APP_VERSION` (the
@@ -647,7 +651,7 @@ substitutions and this stack's outputs:
 convention of one label under the apps domain (its wildcard certificate
 covers exactly that): `harbor-tst.impulseframework.dev`,
 `harbor-stg.impulseframework.dev`, `harbor.impulseframework.dev`. The first is
-canonical and forms the staff sign-in's redirect URL. `2-net` routes a
+canonical and forms the directory registrations' redirect URLs. `2-net` routes a
 hostname from an entry in its `hosts` variable, hostname to backend service
 URI, in its `terraform.tfvars`; this stack's `net_hosts` output is exactly
 those entries for the environment:
@@ -691,7 +695,7 @@ that no rule below reads it: the generated router's upload and stored-file
 routes (`pkg/router/zz_gen_release.json`, `fileRoutes`) and the placement's
 (`cloudArmor.bypasses`, a webhook under the Root hook whose sender signs its
 body, a media stream). Then the other sets, each scoped to the outlets' routes
-(/api), where the input a rule can judge arrives. Every other
+(/api and /portal/api), where the input a rule can judge arrives. Every other
 request is allowed. Each rule's description names its source.
 
 | Priority | Action | Rule | Source |
@@ -701,10 +705,10 @@ request is allowed. Each rule's description names its source.
 | 2001 | allow | GET /api/manifests/{id}/file | the @file column Manifest.Key, pkg/router/zz_gen_release.json; its answer is the stored object |
 | 2002 | allow | POST /hooks/registry | placement.json cloudArmor.bypasses; the registry's webhook body is signed by the registry, which the Root hook verifies |
 | 2003 | allow | /streams/* | placement.json cloudArmor.bypasses; the manifest stream is bytes, not JSON |
-| 3000 | deny | SQL injection (sqli-v33-stable, sensitivity 1) on /api | placement.json cloudArmor.ruleSets |
-| 3010 | deny | SQL injection in JSON bodies (json-sqli-canary, sensitivity 1) on /api | placement.json cloudArmor.ruleSets |
-| 3020 | deny | cross-site scripting (xss-v33-stable, sensitivity 2) on /api | placement.json cloudArmor.ruleSets |
-| 3030 | deny | protocol attacks (protocolattack-v33-stable, sensitivity 1) on /api | placement.json cloudArmor.ruleSets |
+| 3000 | deny | SQL injection (sqli-v33-stable, sensitivity 1) on /api and /portal/api | placement.json cloudArmor.ruleSets |
+| 3010 | deny | SQL injection in JSON bodies (json-sqli-canary, sensitivity 1) on /api and /portal/api | placement.json cloudArmor.ruleSets |
+| 3020 | deny | cross-site scripting (xss-v33-stable, sensitivity 2) on /api and /portal/api | placement.json cloudArmor.ruleSets |
+| 3030 | deny | protocol attacks (protocolattack-v33-stable, sensitivity 1) on /api and /portal/api | placement.json cloudArmor.ruleSets |
 | 2147483647 | allow | every other request | the default rule |
 
 Fields the rule sets leave alone (`placement.json`, `cloudArmor.fieldExclusions`):
@@ -986,18 +990,34 @@ pull request's.
 
 Per environment, after the first apply:
 
-1. In the Google Cloud console, in the environment project: first the
-   project's consent screen, if the organization has not configured it there
-   yet (APIs & Services > OAuth consent screen, audience **Internal**, so only
-   the organization's own users sign in; one per project, shared by every
-   application's client in it). Then APIs & Services > Credentials > Create
-   credentials > OAuth client ID, type Web application, authorized redirect
-   URI = output `staff_oidc_redirect_url`. Put the client
-   ID in `terraform.tfvars` (`staff_oidc_client_id`) and add the client secret
-   as version 1 of `imp-<env>-gbl-harbor-staff-oidc-client-secret`.
+1. In the Microsoft Entra admin center, for the members auth's directory registration: one app
+   registration per environment (Identity > Applications > App registrations >
+   New registration), accounts in this organizational directory only, platform
+   Web with the redirect URI = output `members_directory_redirect_url` and the
+   front-channel logout URL = output `members_directory_logout_url`; then Certificates &
+   secrets > New client secret. Put the application (client) ID in
+   `terraform.tfvars` (`members_directory_client_id`), the directory (tenant) ID in
+   `members_directory_tenant_id` (once for the
+   organization; the session library validates it at construction, so the first
+   release in an environment waits on it), and add the client secret as
+   version 1 of `imp-<env>-gbl-harbor-members-directory-client-secret`.
+   In tst, each pull request's environment signs in through the same
+   registration: add its callback,
+   `https://harbor-pr<N>.impulseframework.dev/portal/api/user/directory/callback`, to the
+   registration's redirect URIs before signing in there, until the organization
+   runs a test identity gateway.
+2. In the Google Cloud console, in the environment project, for the staff auth's directory registration:
+   first the project's consent screen, if the organization has not configured
+   it there yet (APIs & Services > OAuth consent screen, audience **Internal**,
+   so only the organization's own users sign in; one per project, shared by
+   every application's client in it). Then APIs & Services > Credentials >
+   Create credentials > OAuth client ID, type Web application, authorized
+   redirect URI = output `staff_directory_redirect_url`. Put the client ID in
+   `terraform.tfvars` (`staff_directory_client_id`), and add the client secret as version 1 of
+   `imp-<env>-gbl-harbor-staff-directory-client-secret`.
    In tst, each pull request's environment signs in through the same
    client: add its callback,
-   `https://harbor-pr<N>.impulseframework.dev/api/user/callback`, to the client's
+   `https://harbor-pr<N>.impulseframework.dev/api/user/directory/callback`, to the client's
    authorized redirect URIs before signing in there, until the organization
    runs a test identity gateway.
    The role-groups read needs no step of its own: the sign-in reads a person's
@@ -1006,10 +1026,10 @@ Per environment, after the first apply:
    themselves are made in the Workspace Admin console, each set so that its
    members can view its member list (the infrastructure repository's README,
    "The role groups"). If the role groups
-   are nested, set `staff_oidc_group_lookup = "nested"` in `terraform.tfvars`.
-2. Generate a cookie key (`openssl rand -base64 32`) and add it as version 1
+   are nested, set `staff_directory_group_lookup = "nested"` in `terraform.tfvars`.
+3. Generate a cookie key (`openssl rand -base64 32`) and add it as version 1
    of `imp-<env>-gbl-harbor-cookie-key`.
-3. Pin the versions in `secret_versions` and apply.
+4. Pin the versions in `secret_versions` and apply.
 
 ## Inputs
 
@@ -1030,10 +1050,12 @@ Per environment, after the first apply:
 | `tasks_max_attempts` | Attempts per task of the queue. | `number` | `5` | no |
 | `tasks_max_concurrent` | Tasks of the queue in flight at once. | `number` | `10` | no |
 | `teardown` | Set by `bedrock teardown` alone: the services' deletion protection lifted at the apply before its destroy. | `bool` | `false` | no |
-| `staff_oidc_client_id` | OAuth client ID, per environment. | `map(string)` | all empty | no |
-| `staff_oidc_group_lookup` | How far the groups read reaches: direct or nested. | `string` | `"direct"` | no |
-| `staff_oidc_group_prefix` | Prefix of the role groups. | `string` | `"staff-"` | no |
-| `staff_oidc_hosted_domain` | Workspace domain logins are restricted to. | `string` | `"impulseframework.com"` | no |
+| `members_directory_client_id` | Client ID of the members auth's directory registration, per environment. | `map(string)` | all empty | no |
+| `members_directory_tenant_id` | Tenant id of the Entra tenant the members auth's directory registration admits. | `string` | `""` | no |
+| `staff_directory_client_id` | Client ID of the staff auth's directory registration, per environment. | `map(string)` | all empty | no |
+| `staff_directory_group_lookup` | How far the groups read of the staff auth's directory registration reaches: direct or nested. | `string` | `"direct"` | no |
+| `staff_directory_group_prefix` | Prefix of the role groups of the staff auth's directory registration. | `string` | `"staff-"` | no |
+| `staff_directory_hosted_domain` | Workspace domain the logins of the staff auth's directory registration are restricted to. | `string` | `"impulseframework.com"` | no |
 | `state_bucket` | State bucket, for the upstream layers' outputs. | `string` | n/a | yes |
 
 ## Outputs
@@ -1053,7 +1075,9 @@ Per environment, after the first apply:
 | `services` | Per region code: `name`, `region`, `uri`. |
 | `stack_id` | The stack's id (four hex characters): the suffix of the names Google keeps after a delete, and the prefix of the stack's deployment records. |
 | `tasks_queue` | The task queue's resource name. |
-| `staff_oidc_redirect_url` | The redirect URI to register on the OAuth client. |
+| `members_directory_redirect_url` | The redirect URI to register on the members auth's directory registration. |
+| `members_directory_logout_url` | The front-channel logout URL to register on the members auth's directory registration. |
+| `staff_directory_redirect_url` | The redirect URI to register on the staff auth's directory registration. |
 | `substitutions` | What the triggers pass to `cloudbuild.yaml`. |
 | `triggers` | `{ version, pr }` trigger IDs (`pr` null outside tst). |
 

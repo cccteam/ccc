@@ -12,6 +12,7 @@ import (
 	"github.com/cccteam/access"
 	"github.com/cccteam/ccc/resource"
 	"github.com/go-playground/errors/v5"
+	"github.com/impulseframework/harbor/pkg/auth/members"
 	"github.com/impulseframework/harbor/pkg/auth/staff"
 	"github.com/sethvargo/go-envconfig"
 )
@@ -95,6 +96,7 @@ type DataConfiguration struct {
 	resourceClient   *resource.SpannerClient
 	cursorKey        *resource.CursorKey
 	staff            *staff.Auth
+	members          *members.Auth
 	firestoreProject string
 }
 
@@ -137,17 +139,32 @@ func NewDataConfiguration(ctx context.Context) (*DataConfiguration, error) {
 		CookieKey:      cookieKey,
 		SessionTimeout: env.SessionTimeout,
 		LoginURL:       "/login",
-		Directory: staff.Directory{
-			ClientID:     env.StaffClientID,
-			ClientSecret: env.StaffClientSecret,
-			RedirectURL:  env.StaffRedirectURL,
-			HostedDomain: env.StaffHostedDomain,
-			GroupPrefix:  env.StaffGroupPrefix,
-			GroupLookup:  env.StaffGroupLookup,
+		Directory: staff.DirectorySettings{
+			ClientID:     env.StaffDirectoryClientID,
+			ClientSecret: env.StaffDirectoryClientSecret,
+			RedirectURL:  env.StaffDirectoryRedirectURL,
+			HostedDomain: env.StaffDirectoryHostedDomain,
+			GroupPrefix:  env.StaffDirectoryGroupPrefix,
+			GroupLookup:  env.StaffDirectoryGroupLookup,
 		},
 	})
 	if err != nil {
 		return nil, errors.Wrap(err, "staff.New()")
+	}
+
+	membersAuth, err := members.New(ctx, spannerClient, &members.Settings{
+		CookieKey:      cookieKey,
+		SessionTimeout: env.SessionTimeout,
+		LoginURL:       "/portal/login",
+		Directory: members.DirectorySettings{
+			TenantID:     env.MembersDirectoryTenantID,
+			ClientID:     env.MembersDirectoryClientID,
+			ClientSecret: env.MembersDirectoryClientSecret,
+			RedirectURL:  env.MembersDirectoryRedirectURL,
+		},
+	})
+	if err != nil {
+		return nil, errors.Wrap(err, "members.New()")
 	}
 
 	return &DataConfiguration{
@@ -157,6 +174,7 @@ func NewDataConfiguration(ctx context.Context) (*DataConfiguration, error) {
 		resourceClient:    resource.NewSpannerClient(spannerClient),
 		cursorKey:         cursorKey,
 		staff:             staffAuth,
+		members:           membersAuth,
 		firestoreProject:  firestoreProject,
 	}, nil
 }
@@ -165,6 +183,9 @@ func NewDataConfiguration(ctx context.Context) (*DataConfiguration, error) {
 func (c *DataConfiguration) Close() {
 	if err := c.staff.Close(); err != nil {
 		log.Print(errors.Wrap(err, "staff.Auth.Close()"))
+	}
+	if err := c.members.Close(); err != nil {
+		log.Print(errors.Wrap(err, "members.Auth.Close()"))
 	}
 	c.spannerClient.Close()
 	c.coreConfiguration.Close()
@@ -202,6 +223,11 @@ func (c *DataConfiguration) Staff() *staff.Auth {
 	return c.staff
 }
 
+// Members returns the members auth: the one the portal binds to.
+func (c *DataConfiguration) Members() *members.Auth {
+	return c.members
+}
+
 // FirestoreProject returns the project the Firestore database is opened in.
 func (c *DataConfiguration) FirestoreProject() string {
 	return c.firestoreProject
@@ -234,17 +260,24 @@ type dataConfig struct {
 	// cryptographically secure random data. Unset, an ephemeral key is generated at
 	// startup.
 	CookieKey string `env:"APP_COOKIE_KEY" secret:"true"`
-	// The staff auth's directory registration (pkg/auth/staff): the application's client
-	// credentials, the callback Google returns the browser to, the Workspace domain logins are
-	// restricted to, the prefix of the Google Groups that carry roles, and how far the groups
-	// lookup reaches: direct (the default), or nested for a directory that nests its role groups.
-	// Under the session library's skipAuth build tag only the redirect URL, the hosted domain, and the group prefix are read.
-	StaffClientID     string `env:"APP_STAFF_OIDC_CLIENT_ID"`
-	StaffClientSecret string `env:"APP_STAFF_OIDC_CLIENT_SECRET" secret:"true"`
-	StaffRedirectURL  string `env:"APP_STAFF_OIDC_REDIRECT_URL"`
-	StaffHostedDomain string `env:"APP_STAFF_OIDC_HOSTED_DOMAIN"`
-	StaffGroupPrefix  string `env:"APP_STAFF_OIDC_GROUP_PREFIX"`
-	StaffGroupLookup  string `env:"APP_STAFF_OIDC_GROUP_LOOKUP"`
+	// The staff auth's directory registration (pkg/auth/staff/directory.go): how the
+	// application is known to Google, under the registration's variables. Under the
+	// session library's skipAuth build tag only the redirect URL, the hosted domain and the
+	// group prefix are read.
+	StaffDirectoryClientID     string `env:"APP_STAFF_DIRECTORY_CLIENT_ID"`
+	StaffDirectoryClientSecret string `env:"APP_STAFF_DIRECTORY_CLIENT_SECRET" secret:"true"`
+	StaffDirectoryRedirectURL  string `env:"APP_STAFF_DIRECTORY_REDIRECT_URL"`
+	StaffDirectoryHostedDomain string `env:"APP_STAFF_DIRECTORY_HOSTED_DOMAIN"`
+	StaffDirectoryGroupPrefix  string `env:"APP_STAFF_DIRECTORY_GROUP_PREFIX"`
+	StaffDirectoryGroupLookup  string `env:"APP_STAFF_DIRECTORY_GROUP_LOOKUP"`
+
+	// The members auth's directory registration (pkg/auth/members/directory.go): how the
+	// application is known to Microsoft, under the registration's variables. Under the
+	// skipAuth build tag only the tenant id and the redirect URL are read.
+	MembersDirectoryTenantID     string `env:"APP_MEMBERS_DIRECTORY_TENANT_ID"`
+	MembersDirectoryClientID     string `env:"APP_MEMBERS_DIRECTORY_CLIENT_ID"`
+	MembersDirectoryClientSecret string `env:"APP_MEMBERS_DIRECTORY_CLIENT_SECRET" secret:"true"`
+	MembersDirectoryRedirectURL  string `env:"APP_MEMBERS_DIRECTORY_REDIRECT_URL"`
 
 	// FileStore is the application's default file store: the Cloud Storage bucket its
 	// files live in, as a gs:// URL.

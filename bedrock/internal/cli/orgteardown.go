@@ -238,7 +238,7 @@ func (d deps) teardownOrgLayers(cmd *cobra.Command, dir string, p *org.Placement
 	}()
 	var prepared []*deploy.ApplicationTeardown
 	var summary strings.Builder
-	for _, app := range p.Applications {
+	for _, app := range p.Codes() {
 		layerDir := where.LayerDir(dir, app)
 		ap, err := where.Placement(layerDir)
 		if err != nil {
@@ -283,7 +283,7 @@ func (d deps) teardownOrgLayers(cmd *cobra.Command, dir string, p *org.Placement
 // finishes the teardown once none does.
 func (d deps) teardownOrgAccount(ctx context.Context, dir string, p *org.Placement, out io.Writer) error {
 	standing := 0
-	for _, app := range p.Applications {
+	for _, app := range p.Codes() {
 		standings, err := deploy.ApplicationStanding(ctx, d.deploy, p.StateBucket, app, org.Environments)
 		if err != nil {
 			return err
@@ -333,7 +333,7 @@ func applicationsList(p *org.Placement) string {
 		return "none registered"
 	}
 
-	return strings.Join(p.Applications, ", ")
+	return strings.Join(p.Codes(), ", ")
 }
 
 // sortedKeys are the map's keys, sorted.
