@@ -57,8 +57,11 @@ type methodView struct {
 	Fields []Field
 	// Variables are the fields' environment variables, in order.
 	Variables []string
-	// Imports are the method file's imports.
+	// Imports are the method file's imports beyond the standard library's, which
+	// StdImports holds, rendered as their own group.
 	Imports []string
+	// StdImports are the standard library packages the method file imports.
+	StdImports []string
 	// Simulated are the names the simulated directory signs the registration in with:
 	// APP_<REGISTRATION>_USERNAME and _ROLES.
 	SimulatedUsername, SimulatedRoles string
@@ -191,8 +194,23 @@ func newMethodView(spec *Spec, m *Method) *methodView {
 	default:
 		mv.AccountsExpr = "signin.MembersOfDirectory"
 	}
+	mv.StdImports, mv.Imports = splitImports(mv.Imports)
 
 	return mv
+}
+
+// splitImports separates the standard library's packages from the rest, so the file
+// renders them as gofumpt groups them: the standard library first, then everything else.
+func splitImports(imports []string) (std, other []string) {
+	for _, imp := range imports {
+		if first, _, _ := strings.Cut(imp, "/"); strings.Contains(first, ".") {
+			other = append(other, imp)
+		} else {
+			std = append(std, imp)
+		}
+	}
+
+	return std, other
 }
 
 // netHTTP is the import every method's handlers need.

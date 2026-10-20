@@ -81,7 +81,7 @@ func TestMethodApply(t *testing.T) {
 			method: Method{Auth: "staff", Spec: authpkg.Method{Kind: app.MethodGoogle, Name: "workspace", Authority: AuthorityApplication}},
 			wantDid: []string{
 				"pkg/auth/staff/workspace.go: the workspace method (google, one Workspace, members of the directory, role membership the application's): its registration constant, its settings, its handlers (WorkspaceLogin and the rest), and registerWorkspace, which registers it on the Auth",
-				"pkg/auth/staff/staff.go: Handlers holds the workspace method (workspace *google.Method), New registers it (registerWorkspace), and Settings carries its WorkspaceSettings and the LoginURL",
+				"pkg/auth/staff/staff.go: Handlers holds the workspace method (workspace *google.Method), New registers it (registerWorkspace), and Settings carries its WorkspaceSettings and the LoginURL, and the package doc lists it",
 				`cmd/generate/resourcegenerator/main.go: generation.GoogleMethod("workspace") declared on 1 outlet Auth option(s) bound to the staff auth, so the generated router mounts user/workspace/login and the callback and the methods route offers it`,
 				"Procfile: 2 go run command(s) build with -tags skipAuth, so the staff auth's directory is simulated in development",
 				"ran go generate ./..., so the router mounts the method's routes and the login page offers it",
@@ -93,13 +93,13 @@ func TestMethodApply(t *testing.T) {
 			check: func(t *testing.T, a *app.App) {
 				t.Helper()
 				file := read(t, a, "pkg/auth/staff/workspace.go")
-				for _, want := range []string{"package staff", `const WorkspaceRegistration = "workspace"`, "type WorkspaceSettings struct", "func (h *Handlers) WorkspaceLogin() http.HandlerFunc", "func (h *Handlers) WorkspaceCallback() http.HandlerFunc", "func registerWorkspace(authSession *Session, accessClient *access.Client, settings *Settings) (*google.Method, error)", "google.Workspace(WorkspaceRegistration, settings.Workspace.HostedDomain)", "signin.MembersOfDirectory", "google.DisableRoleSync()"} {
+				for _, want := range []string{"package staff", `const WorkspaceRegistration = "workspace"`, "type WorkspaceSettings struct", "func (h *Handlers) WorkspaceLogin() http.HandlerFunc", "func (h *Handlers) WorkspaceCallback() http.HandlerFunc", "func registerWorkspace(authSession *Session, accessClient *access.Client, settings *Settings) *google.Method", "google.Workspace(WorkspaceRegistration, settings.Workspace.HostedDomain)", "signin.MembersOfDirectory", "google.DisableRoleSync()"} {
 					if !strings.Contains(file, want) {
 						t.Errorf("workspace.go lacks %q:\n%s", want, file)
 					}
 				}
 				main := read(t, a, "pkg/auth/staff/staff.go")
-				for _, want := range []string{"\tpassword  *session.PasswordMethod\n\tworkspace *google.Method\n", "\thandlers.password = registerPassword(authSession)\n\thandlers.workspace, err = registerWorkspace(authSession, accessClient, settings)\n\tif err != nil {\n\t\treturn nil, err\n\t}\n\n\treturn &Auth{db: db, access: accessClient, handlers: handlers}, nil", "\tWorkspace WorkspaceSettings\n", "\tLoginURL string\n", "\t\"github.com/cccteam/session/google\"\n"} {
+				for _, want := range []string{"\tpassword  *session.PasswordMethod\n\tworkspace *google.Method\n", "\thandlers.password = registerPassword(authSession)\n\thandlers.workspace = registerWorkspace(authSession, accessClient, settings)\n\n\treturn &Auth{db: db, access: accessClient, handlers: handlers}, nil", "\tWorkspace WorkspaceSettings\n", "\tLoginURL string\n", "\t\"github.com/cccteam/session/google\"\n"} {
 					if !strings.Contains(main, want) {
 						t.Errorf("staff.go lacks %q:\n%s", want, main)
 					}

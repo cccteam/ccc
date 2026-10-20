@@ -1,10 +1,11 @@
 package members
 
 import (
+	"net/http"
+
 	"github.com/cccteam/access"
 	"github.com/cccteam/session/azure"
 	"github.com/cccteam/session/signin"
-	"net/http"
 )
 
 // DirectoryRegistration is the name the directory registration goes under on the Auth: the
@@ -56,7 +57,7 @@ func (h *Handlers) DirectoryFrontChannelLogout() http.HandlerFunc {
 // library's standard one, members of the directory: the person becomes a user under their
 // user principal name, with no password, linked by the directory's immutable tenant and
 // object ids so a renamed account stays the same person.
-func registerDirectory(authSession *Session, accessClient *access.Client, settings *Settings) (*azure.Method, error) {
+func registerDirectory(authSession *Session, accessClient *access.Client, settings *Settings) *azure.Method {
 	_ = accessClient
 
 	return azure.SignIn(authSession, DirectoryRegistration, nil, &azure.Config{
@@ -67,5 +68,5 @@ func registerDirectory(authSession *Session, accessClient *access.Client, settin
 		RoleSync:     signin.DisableRoleSync(),
 		Accounts:     signin.MembersOfDirectory,
 		LoginURL:     settings.LoginURL,
-	}), nil
+	})
 }

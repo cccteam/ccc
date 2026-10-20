@@ -234,6 +234,22 @@ func (m *Method) Upper() string {
 // Directory reports a method whose people are sent to a directory or identity provider.
 func (m *Method) Directory() bool { return m.Kind != app.MethodPassword }
 
+// Fallible reports whether registering the method can fail before the session library
+// validates it: a listed slot parses its tenants or Workspaces from their setting, and a
+// Google method under the directory authority parses its group lookup. Every other
+// registration hands the library its settings as they are, so its register function
+// returns the method alone.
+func (m *Method) Fallible() bool {
+	if !m.Directory() {
+		return false
+	}
+	if m.slot() == SlotListed {
+		return true
+	}
+
+	return m.Kind == app.MethodGoogle && m.Authority == app.AuthorityDirectory
+}
+
 // Field is one setting a method reads from the environment.
 type Field struct {
 	// Name is the field on the method's settings struct (ClientID).

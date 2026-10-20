@@ -195,10 +195,7 @@ func New(ctx context.Context, db *cloudspanner.Client, settings *Settings) (*Aut
 	}
 
 	handlers := &Handlers{Session: authSession}
-	handlers.directory, err = registerDirectory(authSession, accessClient, settings)
-	if err != nil {
-		return nil, err
-	}
+	handlers.directory = registerDirectory(authSession, accessClient, settings)
 
 	return &Auth{db: db, access: accessClient, handlers: handlers}, nil
 }
