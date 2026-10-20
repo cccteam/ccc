@@ -185,6 +185,12 @@ func (c *DataConfiguration) StaffUserStores() (resource.UserAccounts, resource.U
 	return sessionusers.Accounts(c.staff.Session().API()), c.staff.Access().UserManager()
 }
 
+// StaffAdministratorPassword returns the password the staff auth's first administrator is
+// seeded with, the stack's generated secret; empty where the deployment carries none.
+func (c *DataConfiguration) StaffAdministratorPassword() string {
+	return c.env.StaffAdministratorPassword
+}
+
 // Live returns the live service the generated handlers subscribe through and publish
 // to, and the application's instances signal each other through: the Firestore service
 // over the database the deployment names or the emulator, never nil, since the live
@@ -227,4 +233,11 @@ type dataConfig struct {
 	// cryptographically secure random data. Unset, an ephemeral key is generated at
 	// startup.
 	CookieKey string `env:"APP_COOKIE_KEY" secret:"generated"`
+
+	// StaffAdministratorPassword is the password of the staff auth's first administrator
+	// (staff.Administrator), which the migrate command seeds while the auth's users table
+	// holds no rows: a secret the stack generates, read like any other setting, that
+	// nobody types and the first sign-in changes. Unset in development, where the
+	// bootstrap creates the development logins instead.
+	StaffAdministratorPassword string `env:"APP_STAFF_ADMINISTRATOR_PASSWORD" secret:"generated"`
 }

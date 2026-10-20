@@ -256,8 +256,19 @@ func (au Auth) writePackage(a *app.App, src *authSource, spec *authpkg.Spec, ch 
 		described = append(described, desc)
 	}
 	ch.didf("%s: the %s auth package (%s), rendered from the skeleton's auth source: the Auth session over tables prefixed %s, the %s permission store, and the methods %s, each in its own file", dir, au.Name, strings.Join(authpkg.FileNames(spec), ", "), au.Pascal(), au.Name, strings.Join(described, ", "))
+	switch authpkg.Foothold(spec) {
+	case authpkg.FootholdPassword:
+		ch.skipf("%s/foothold.go: the first administrator the migrate command seeds while the auth's users table holds no rows, a user named administrator with a generated password; author AdministratorRoles with the role file, declare the password in the data level (%s, secret:\"generated\") and seed it from pkg/deploy SeedAdministrators", dir, au.variable("ADMINISTRATOR_PASSWORD"))
+	case authpkg.FootholdMembership:
+		ch.skipf("%s/foothold.go: the first administrator the migrate command seeds while the auth's users table holds no rows, the administrator role memberships under the sign-in name the placement names; author AdministratorRoles with the role file, declare the name in the data level (%s) and seed it from pkg/deploy SeedAdministrators", dir, au.variable("ADMINISTRATOR"))
+	}
 
 	return nil
+}
+
+// variable is a setting of the auth under the convention APP_<AUTH>_<SUFFIX>.
+func (au Auth) variable(suffix string) string {
+	return "APP_" + strings.ToUpper(strings.ReplaceAll(au.Name, "-", "_")) + "_" + suffix
 }
 
 // writeMigrations writes the auth's tables: the Auth session tables rendered under the

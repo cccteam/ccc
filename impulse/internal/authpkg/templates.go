@@ -125,8 +125,12 @@ type Signals interface {
 type Session = session.Auth[session.NoCustomData, session.NoCustomData, *cloudspanner.ReadWriteTransaction]
 
 // Auth is the {{.Name}} auth: its permission store and its session manager with the
-// sign-in methods registered on it.
+// sign-in methods registered on it{{if .Foothold}}, and the database client it reads its own tables
+// through (the users table, when the deployment seeds the first administrator){{end}}.
 type Auth struct {
+{{- if .Foothold}}
+	db       *cloudspanner.Client
+{{- end}}
 	access   *access.Client
 	handlers *Handlers
 }
@@ -216,7 +220,7 @@ func New(ctx context.Context, db *cloudspanner.Client, settings *Settings) (*Aut
 {{- end}}
 {{- end}}
 
-	return &Auth{access: accessClient, handlers: handlers}, nil
+	return &Auth{ {{- if .Foothold}}db: db, {{end}}access: accessClient, handlers: handlers}, nil
 }
 
 // Access returns the auth's permission engine: the handlers check against it, and its
@@ -288,8 +292,9 @@ import (
 // {{.Registration}} is the name the password method is registered under on the Auth,
 // always password: the segment of its login route (user/password/login). A password
 // sign-in is checked against the user's hash in the users table; the bootstrap creates
-// the development logins with their passwords, and a deployed environment's come from
-// its administration surface.
+// the development logins with their passwords, and a deployed environment starts from the
+// administrator the migrate command seeds (foothold.go), the rest coming from its
+// administration surface.
 const {{.Registration}} = "password"
 
 // PasswordLogin checks a username and password and starts the session.
@@ -305,6 +310,138 @@ func (h *Handlers) PasswordChange() http.HandlerFunc {
 // register{{.Pascal}} registers the password method on the Auth, before the first request.
 func register{{.Pascal}}(authSession *Session) *session.PasswordMethod {
 	return session.PasswordSignIn(authSession)
+}
+`
+
+// footholdTemplate renders the foothold file: the first administrator the deployment
+// seeds while the auth's users table holds no rows, in the form the auth's sign-in allows.
+const footholdTemplate = `package {{.Name}}
+
+import (
+	"context"
+
+	cloudspanner "cloud.google.com/go/spanner"
+	"github.com/cccteam/ccc/accesstypes"
+{{- if or (eq .Foothold "password") .FootholdCreatesUser}}
+	"github.com/cccteam/session"
+{{- end}}
+	"github.com/go-playground/errors/v5"
+)
+{{if eq .Foothold "password"}}
+// Administrator is the username of the auth's first administrator: the foothold a deployed
+// environment starts from. The migrate command seeds it while the auth's users table holds
+// no rows, with the password the stack generates for it (a generated secret the data level
+// declares), and never again while a user exists; the first sign-in changes the password,
+// and every user after the first comes from the administration surface. The development
+// bootstrap creates its own logins instead (cmd/bootstrap/users.json).
+const Administrator = "administrator"
+{{end}}
+// AdministratorRoles are the roles the first administrator holds, by where they are held:
+{{- if .AdministratorAuthored}}
+// what the development identities hold (cmd/bootstrap/users.json), a domain role in every
+// tenant domain, so the foothold can do what the development logins can.
+{{- else}}
+// none until they are authored with the role file (roles.json), since the seed names
+// nothing the file does not define, and the first administrator holds nothing until then.
+{{- end}}
+func AdministratorRoles() (global, everyDomain []accesstypes.Role) {
+	return {{.AdministratorGlobal}}, {{.AdministratorEveryDomain}}
+}
+{{if eq .Foothold "password"}}
+// SeedAdministrator creates the first administrator when the auth's users table holds no
+// rows and reports whether it did. The memberships are written first, since writing one
+// that exists is a no-op, then the user: a run that fails between the two leaves the table
+// empty, so the next deploy finishes the job. An empty password is refused while the table
+// is empty: a deployment carries the generated one, and nothing seeds a user without a
+// password.
+func (a *Auth) SeedAdministrator(ctx context.Context, password string) (bool, error) {
+	empty, err := a.usersTableEmpty(ctx)
+	if err != nil {
+		return false, err
+	}
+	if !empty {
+		return false, nil
+	}
+	if password == "" {
+		return false, errors.Newf("the %s auth's users table holds no rows and no administrator password was given: a deployment generates one as a secret, and the migrate command seeds nothing without it", Name)
+	}
+	if err := a.assignAdministrator(ctx, Administrator); err != nil {
+		return false, err
+	}
+	if _, err := a.handlers.API().CreateSessionUser(ctx, &session.CreateUserRequest{Username: Administrator, Password: &password}); err != nil {
+		return false, errors.Wrapf(err, "session.AuthAPI.CreateSessionUser(): %s", Administrator)
+	}
+
+	return true, nil
+}
+{{else}}
+// SeedAdministrator writes the administrator role memberships under signInName when the
+// auth's users table holds no rows and reports whether it did: the foothold a deployed
+// environment starts from. The directory proves who someone is and the application assigns
+// the roles (signin.DisableRoleSync), so until a membership exists the first person in holds
+// nothing; the memberships wait for them under the sign-in name the directory presents (the
+// user principal name on Entra, the email on Google), which the placement names per
+// environment.{{if .FootholdCreatesUser}} The directory provisions nobody (invited users only), so the user row is
+// created too, password-less, for the first sign-in to link.{{else}} The directory provisions the person at their first sign-in, which finds the
+// roles.{{end}} Writing a membership that exists is a no-op, so a deploy before anyone has signed
+// in writes them again harmlessly, and once a user exists nothing is seeded: every user
+// after the first comes from the administration surface. An empty name is refused while the
+// table is empty. The development bootstrap seeds the development identities instead.
+func (a *Auth) SeedAdministrator(ctx context.Context, signInName string) (bool, error) {
+	empty, err := a.usersTableEmpty(ctx)
+	if err != nil {
+		return false, err
+	}
+	if !empty {
+		return false, nil
+	}
+	if signInName == "" {
+		return false, errors.Newf("the %s auth's users table holds no rows and no first administrator is named: a deployment names one per environment, and the migrate command seeds nothing without it", Name)
+	}
+	if err := a.assignAdministrator(ctx, signInName); err != nil {
+		return false, err
+	}
+{{- if .FootholdCreatesUser}}
+	if _, err := a.handlers.API().CreateSessionUser(ctx, &session.CreateUserRequest{Username: signInName}); err != nil {
+		return false, errors.Wrapf(err, "session.AuthAPI.CreateSessionUser(): %s", signInName)
+	}
+{{- end}}
+
+	return true, nil
+}
+{{end}}
+// assignAdministrator writes the first administrator's memberships under username, each
+// where its roles are held; a membership that exists is left as it is.
+func (a *Auth) assignAdministrator(ctx context.Context, username string) error {
+	global, everyDomain := AdministratorRoles()
+	manager := a.access.UserManager()
+	if len(global) > 0 {
+		if err := manager.AddUserRoles(ctx, accesstypes.GlobalPolicyScope(), accesstypes.User(username), global...); err != nil {
+			return errors.Wrapf(err, "access.UserManager.AddUserRoles(): %s in the global partition", username)
+		}
+	}
+	if len(everyDomain) > 0 {
+		if err := manager.AddUserRoles(ctx, accesstypes.EveryDomainPolicyScope(), accesstypes.User(username), everyDomain...); err != nil {
+			return errors.Wrapf(err, "access.UserManager.AddUserRoles(): %s in every domain", username)
+		}
+	}
+
+	return nil
+}
+
+// usersTableEmpty reads one row of the users table, any row, and reports there is none.
+func (a *Auth) usersTableEmpty(ctx context.Context) (bool, error) {
+	rows := 0
+	iter := a.db.Single().ReadWithOptions(ctx, usersTable, cloudspanner.AllKeys(), []string{"Id"}, &cloudspanner.ReadOptions{Limit: 1})
+	if err := iter.Do(func(*cloudspanner.Row) error {
+		rows++
+
+		return nil
+	}); err != nil {
+		return false, errors.Wrapf(err, "spanner.RowIterator.Do(): %s", usersTable)
+	}
+
+	return rows == 0, nil
 }
 `
 

@@ -120,6 +120,14 @@ locals {
       # generated: the tooling makes the value (secret:"generated"); nobody types it.
       generated = true
     }
+    APP_KEEPERS_ADMINISTRATOR_PASSWORD = {
+      name    = "keepers-administrator-password"
+      level   = "data"
+      source  = "pkg/config/data.go dataConfig.KeepersAdministratorPassword"
+      purpose = "KeepersAdministratorPassword is the password of the keepers auth's first administrator, administrator, which the migrate command seeds while the auth's users table holds no rows."
+      # generated: the tooling makes the value (secret:"generated"); nobody types it.
+      generated = true
+    }
   }
 
   # The container each secret lives in, by the naming convention: this

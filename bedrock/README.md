@@ -365,6 +365,11 @@ local, `max_instances` in `locals.tf`, so one rendered stack serves every enviro
 What the stack carries comes from declarations in the code: a config variable tagged as
 a secret becomes a Secret Manager container mounted at a pinned version; a directory auth
 becomes the registration variables, the redirect output and the hand steps in the README;
+an auth's first-administrator variable (`APP_<AUTH>_ADMINISTRATOR`, the sign-in name the
+migrate command seeds the administrator role membership under while the auth has no users)
+becomes a stack variable per environment, carried by every data-level process, and a hand
+step; a first administrator's generated password (`secret:"generated"`) is a secret like
+any other;
 a main package under `cmd/deployment/migrate` becomes the migrate command, which the
 pipeline takes out of each build's image and runs on the build worker as the deploy
 identity, granted database admin on the application's own database by the stack; a main package

@@ -165,4 +165,10 @@ type dataConfig struct {
 	// cryptographically secure random data. Unset, an ephemeral key is generated at
 	// startup.
 	CookieKey string `env:"APP_COOKIE_KEY" secret:"generated"`
+
+	// KeepersAdministratorPassword is the password of the keepers auth's first
+	// administrator, administrator, which the migrate command seeds while the auth's users
+	// table holds no rows. The stack generates it and nobody types it; the first sign-in
+	// changes it.
+	KeepersAdministratorPassword string `env:"APP_KEEPERS_ADMINISTRATOR_PASSWORD" secret:"generated"`
 }

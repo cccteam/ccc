@@ -57,7 +57,15 @@ is signed in, the tenants they can pick, and the digest for the selected tenant.
 - `pkg/deploy` holds the database steps a deployment runs: the schema migrations, then
   each auth's role policy check (`CheckRoles`), which prints what its store holds that
   this release cannot use as written. Then `MigrateFeatures` brings the `FeatureFlags` table
-  to the flags the release declares (section Feature flags). `cmd/deployment/migrate` is the deploy step;
+  to the flags the release declares (section Feature flags). Between the two, `SeedAdministrators` gives each auth its first
+  administrator while its users table holds no rows, the foothold a deployed environment
+  starts from: the staff auth's `administrator`, with the password the stack generates
+  (`APP_STAFF_ADMINISTRATOR_PASSWORD`, a generated secret), holding the development
+  administrator's roles; the members auth's administrator role memberships in every domain under the
+  sign-in name the placement names (`APP_MEMBERS_ADMINISTRATOR`), which the first person
+  to sign in holds. A user that exists stops the seed; the administration surface
+  creates every user after the first, and the bootstrap creates the development logins
+  instead. `cmd/deployment/migrate` is the deploy step;
   `cmd/bootstrap` reuses it to stand up an emulator database, seeds the development
   tenants (tenancy is data), and adds the development logins, the development member, and
   the machines service account from `cmd/bootstrap/users.json`, each with its
@@ -148,9 +156,9 @@ compiles and bootstraps before it listens; wait for "Starting Server" in the ser
 
 The server builds with the session library's `skipAuth` tag (see the Procfile), which
 simulates the portal's directory: every portal login is `APP_USERNAME` from `.envrc`
-(`client`), no directory is contacted, and only `APP_MEMBERS_OIDC_REDIRECT_URL` is read.
+(`client`), no directory is contacted, and only `APP_MEMBERS_DIRECTORY_REDIRECT_URL` is read.
 To sign in through a real directory, register the application there, fill in the
-`APP_MEMBERS_OIDC_*` variables, and drop the tag. A deployed build never carries it.
+`APP_MEMBERS_DIRECTORY_*` variables, and drop the tag. A deployed build never carries it.
 
 ### Browser apps
 

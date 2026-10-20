@@ -26,6 +26,15 @@ staff_directory_client_id = {
   prd = ""
 }
 
+# The members auth's first administrator, per environment (README, "Hand steps"):
+# the sign-in name the directory presents, which the migrate command seeds the
+# administrator role membership under while the auth has no users.
+members_administrator = {
+  tst = ""
+  stg = ""
+  prd = ""
+}
+
 # The version of each secret an environment runs. Empty means "not yet": the
 # container exists, nothing is mounted; tst alone runs that way,
 # and a release to any other environment is refused until every secret the

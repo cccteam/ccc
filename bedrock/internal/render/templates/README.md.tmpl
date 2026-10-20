@@ -433,6 +433,9 @@ above them.
 {{- end}}
 {{- end}}
 {{- end}}
+{{- range .Administrators}}
+| `{{.Variable.Name}}` | {{.Variable.Level}} | `var.{{.Var}}[env]` | yes | yes |{{if $.Jobs}} {{if $.JobsReadsData}}yes{{end}} |{{end}}
+{{- end}}
 {{- if .Jobs}}
 | `{{.JobsTemplateVariable}}` | {{.JobsTemplate.Level}} | the job process's template job, which the site's own build's job is named from (the job driver's settings, `{{.JobsTemplate.Declaration}}`) | yes | | |
 {{- end}}
@@ -1083,6 +1086,14 @@ Per environment, after the first apply:
 {{- end}}
 {{end -}}
 {{end -}}
+{{range .Administrators -}}
+{{.Step}}. Name {{.Label}}'s first administrator in `terraform.tfvars` (`{{.Var}}`), per
+   environment: the sign-in name the directory presents (the user principal name
+   on Entra, the email on Google). The migrate command of the first release in the
+   environment seeds the administrator role membership under it while the auth's
+   users table holds no rows, and refuses to seed while the name is empty; the
+   person then signs in through the directory and holds the role.
+{{end -}}
 {{if not .CookieKeySecret.Generated -}}
 {{.CookieKeyStep}}. Generate a cookie key (`openssl rand -base64 32`) and add it as version 1
    of `{{.Prefix}}-<env>-gbl-{{.App}}-{{.CookieKeySecret.Name}}`.
@@ -1139,6 +1150,9 @@ none yet), and the sign-in needs no registration.
 {{- with .Setting "HostedDomain"}}
 | `{{$m.Var "HOSTED_DOMAIN"}}` | Workspace domain the logins of {{$m.Label}} are restricted to. | `string` | `"{{$.P.HostedDomain}}"` | no |
 {{- end}}
+{{- end}}
+{{- range .Administrators}}
+| `{{.Var}}` | Sign-in name of {{.Label}}'s first administrator, per environment. | `map(string)` | all empty | no |
 {{- end}}
 | `state_bucket` | State bucket, for the upstream layers' outputs. | `string` | n/a | yes |
 

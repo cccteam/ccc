@@ -27,7 +27,13 @@ hold nothing there.
 - `pkg/deploy` holds the database steps a deployment runs: the schema migrations, then
   the role policy check (`CheckRoles`), which prints what the store holds that this
   release cannot use as written. Then `MigrateFeatures` brings the `FeatureFlags` table to the
-  flags the release declares (section Feature flags). The staff auth's role file validates against the union
+  flags the release declares (section Feature flags). Between the two, `SeedAdministrators` gives each auth its first
+  administrator while its users table holds no rows, the foothold a deployed environment
+  starts from: the staff auth's `administrator`, with the password the stack generates
+  (`APP_STAFF_ADMINISTRATOR_PASSWORD`, a generated secret), holding the development
+  administrator's roles. A user that exists stops the seed; the administration surface
+  creates every user after the first, and the bootstrap creates the development logins
+  instead. The staff auth's role file validates against the union
   of the sites' generated collections (`config.Collection`) when its engine opens: one
   policy store, one role file, one identity across sites.
   `cmd/deployment/migrate` is the deploy step; `cmd/bootstrap` reuses it for the emulator

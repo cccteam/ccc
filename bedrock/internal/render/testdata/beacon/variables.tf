@@ -196,7 +196,7 @@ variable "secret_versions" {
     and bedrock check refuses one there and the word on any other secret.
 
       secret_versions = {
-        tst = { APP_COOKIE_KEY = "generated" }
+        tst = { APP_COOKIE_KEY = "generated", APP_KEEPERS_ADMINISTRATOR_PASSWORD = "generated" }
       }
   EOT
   type        = map(map(string))

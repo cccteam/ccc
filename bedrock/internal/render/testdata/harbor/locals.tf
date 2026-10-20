@@ -278,6 +278,10 @@ locals {
     APP_MEMBERS_DIRECTORY_TENANT_ID   = var.members_directory_tenant_id
     APP_STAFF_DIRECTORY_HOSTED_DOMAIN = var.staff_directory_hosted_domain
     APP_STAFF_DIRECTORY_GROUP_PREFIX  = var.staff_directory_group_prefix
+    # The first administrator of each auth whose roles the application assigns: the
+    # sign-in name the migrate command seeds the administrator role membership under
+    # while the auth's users table holds no rows.
+    APP_MEMBERS_ADMINISTRATOR = var.members_administrator[var.environment]
     # dataConfig.SessionTimeout is left to its code default (10m).
   }
 

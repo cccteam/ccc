@@ -361,7 +361,12 @@ sign-in tables, cookie, store prefix, and role file from the start, with one fil
 sign-in method. Its session tables are written as migrations under the new prefix and its
 access tables copied from an auth the application has; an empty role file is written in
 the package (the file its Roles() embeds and hands to the permission engine), and the data
-level constructs it beside that auth.
+level constructs it beside that auth. The package carries a foothold (foothold.go): the
+first administrator the migrate command seeds while the auth's users table holds no rows,
+a user named administrator with the password the stack generates for a password auth, or
+the administrator role memberships under a sign-in name the placement names for an auth
+whose roles the application assigns; its roles, its setting in the data level and its
+seeding from pkg/deploy are handed to the agent.
 
 --method names the sign-in methods the Auth starts with, repeatable: password (the
 default when none is given), azure:<registration> (Microsoft Entra over OpenID Connect) or

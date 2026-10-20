@@ -68,3 +68,8 @@ export APP_MEMBERS_DIRECTORY_TENANT_ID=00000000-0000-0000-0000-000000000000
 # export APP_MEMBERS_DIRECTORY_CLIENT_ID=
 # export APP_MEMBERS_DIRECTORY_CLIENT_SECRET=
 export APP_MEMBERS_DIRECTORY_REDIRECT_URL=http://127.0.0.1:4300/portal/api/user/directory/callback
+# APP_MEMBERS_ADMINISTRATOR is the sign-in name of the members auth's first administrator,
+# which the migrate command seeds the administrator role membership under while the auth
+# has no users; a deployment names it per environment, the bootstrap seeds the development
+# members instead.
+# export APP_MEMBERS_ADMINISTRATOR=

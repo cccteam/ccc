@@ -16,9 +16,9 @@ state_bucket = "imp-boot-gbl-state-REPLACEME"
 # the pipeline makes its value and derives its version at each build, so the
 # word stays, and bedrock secret rotate adds the next version.
 secret_versions = {
-  tst = { APP_COOKIE_KEY = "generated" }
-  stg = { APP_COOKIE_KEY = "generated" }
-  prd = { APP_COOKIE_KEY = "generated" }
+  tst = { APP_COOKIE_KEY = "generated", APP_KEEPERS_ADMINISTRATOR_PASSWORD = "generated" }
+  stg = { APP_COOKIE_KEY = "generated", APP_KEEPERS_ADMINISTRATOR_PASSWORD = "generated" }
+  prd = { APP_COOKIE_KEY = "generated", APP_KEEPERS_ADMINISTRATOR_PASSWORD = "generated" }
 }
 
 # Extra trigger substitutions for the application's hooks and its image build,

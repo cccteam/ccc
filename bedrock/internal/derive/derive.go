@@ -275,6 +275,11 @@ const (
 	RoleTenantID   Role = "tenant-id"
 	RoleTenants    Role = "tenants"
 	RoleWorkspaces Role = "workspaces"
+	// RoleAdministrator is the sign-in name of an auth's first administrator
+	// (APP_<AUTH>_ADMINISTRATOR), placed per environment: the deployment's migrate command
+	// seeds the administrator role membership under it while the auth's users table holds
+	// no rows, so the first person to sign in through the directory holds the role.
+	RoleAdministrator Role = "administrator"
 )
 
 // defaultGroupLookup is how far a sign-in's groups read reaches when the development
@@ -294,7 +299,7 @@ func (r Role) Derived() bool {
 // Placed reports a role whose value is a placement variable.
 func (r Role) Placed() bool {
 	switch r {
-	case RoleClientID, RoleHostedDomain, RoleGroupPrefix, RoleGroupLookup, RoleTenantID, RoleTenants, RoleWorkspaces:
+	case RoleClientID, RoleHostedDomain, RoleGroupPrefix, RoleGroupLookup, RoleTenantID, RoleTenants, RoleWorkspaces, RoleAdministrator:
 		return true
 	default:
 		return false
@@ -302,9 +307,10 @@ func (r Role) Placed() bool {
 }
 
 // PerEnvironment reports a placed role whose value differs per environment (a
-// registration in the environment's project) rather than once per organization.
+// registration in the environment's project, the person who administers the environment
+// first) rather than once per organization.
 func (r Role) PerEnvironment() bool {
-	return r == RoleClientID
+	return r == RoleClientID || r == RoleAdministrator
 }
 
 // ConstructionTime reports a directory role the session library reads when the method is
@@ -588,6 +594,14 @@ type Auth struct {
 	// Methods are the sign-in methods registered on the Auth: the password method and the
 	// directory methods, each under its registration name.
 	Methods []Method
+	// Administrator is the variable naming the auth's first administrator
+	// (APP_<AUTH>_ADMINISTRATOR, RoleAdministrator), nil when the code declares none: an
+	// auth whose people hold roles the application assigns has nobody who may do anything
+	// until a membership exists, so its deployment seeds the administrator role membership
+	// under this sign-in name while the auth's users table holds no rows. An auth with a
+	// password method seeds a user with a generated password instead, a secret like any
+	// other, and declares no sign-in name.
+	Administrator *Variable
 }
 
 // Directory reports whether any method of the auth sends the browser to a directory:

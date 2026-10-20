@@ -102,6 +102,9 @@ func TestDerive(t *testing.T) {
 		// declares no upload and no stored file; wantOutlets the outlets, name and prefix.
 		wantFileRoutes []string
 		wantOutlets    []string
+		// wantAdministrators are the auths whose code names a first administrator, with
+		// the variable (derive.Auth.Administrator), auths by name.
+		wantAdministrators []string
 		// wantSurfaces are the surfaces (surfaceLine), none for an application that
 		// declares no request log word and no trace setting; wantRequestLog the request
 		// log exclusion's clause, empty when no surface's word excludes an entry.
@@ -125,7 +128,7 @@ func TestDerive(t *testing.T) {
 				"APP_STAFF_DIRECTORY_CLIENT_ID", "APP_STAFF_DIRECTORY_CLIENT_SECRET", "APP_STAFF_DIRECTORY_REDIRECT_URL", "APP_STAFF_DIRECTORY_HOSTED_DOMAIN",
 				"APP_STAFF_DIRECTORY_GROUP_PREFIX", "APP_STAFF_DIRECTORY_GROUP_LOOKUP",
 				"APP_MEMBERS_DIRECTORY_TENANT_ID", "APP_MEMBERS_DIRECTORY_CLIENT_ID", "APP_MEMBERS_DIRECTORY_CLIENT_SECRET", "APP_MEMBERS_DIRECTORY_REDIRECT_URL",
-				varFileStore, varTasksQueue,
+				varFileStore, varTasksQueue, "APP_MEMBERS_ADMINISTRATOR",
 			},
 			wantSite:     []string{varPort, "APP_CONSOLE_DIST", "APP_PORTAL_DIST", JobsTemplateVariable},
 			wantSiteLvls: []string{LevelCore, LevelData, LevelSite},
@@ -133,7 +136,6 @@ func TestDerive(t *testing.T) {
 			wantJobs:     []string{LevelCore, LevelData},
 			wantMethods: []string{
 				"members/directory azure application: outlet portal, callback GET /portal/api/user/directory/callback, logout GET /portal/api/user/directory/logout; TenantID=APP_MEMBERS_DIRECTORY_TENANT_ID ClientID=APP_MEMBERS_DIRECTORY_CLIENT_ID ClientSecret=APP_MEMBERS_DIRECTORY_CLIENT_SECRET RedirectURL=APP_MEMBERS_DIRECTORY_REDIRECT_URL",
-				"members/password password",
 				"staff/directory google directory: outlet default, callback GET /api/user/directory/callback; HostedDomain=APP_STAFF_DIRECTORY_HOSTED_DOMAIN ClientID=APP_STAFF_DIRECTORY_CLIENT_ID ClientSecret=APP_STAFF_DIRECTORY_CLIENT_SECRET RedirectURL=APP_STAFF_DIRECTORY_REDIRECT_URL GroupPrefix=APP_STAFF_DIRECTORY_GROUP_PREFIX GroupLookup=APP_STAFF_DIRECTORY_GROUP_LOOKUP; groups staff- direct",
 			},
 			wantSchema: Schema{MigrationsDir: "schema/migrations", MigrateCall: "pkg/deploy MigrateSchema", GenerateDir: "cmd/generate", GeneratePackage: "generate"},
@@ -166,14 +168,15 @@ func TestDerive(t *testing.T) {
 				varFirestoreDatabase:                  SupplyDerived,
 				varFirebaseAPIKey:                     SupplyDerived,
 			},
-			wantHooks:      []hook.Stage{hook.AfterMigrate, hook.BeforeTraffic, hook.AfterTraffic},
-			wantFirestore:  "schema/firestore: 3 index(es) subscriptions_resource_key_expiry, subscriptions_resource_domain_expiry, subscriptions_resource_expiry; 2 field(s) subscriptions_expiry (ttl), changes_expires (ttl); rules_version = '2';",
-			wantFileStores: []string{"APP_FILE_STORE data dataConfig.FileStore: default, files, files, google_storage_bucket.files[0]"},
-			wantScheduled:  []string{"send-daily-digest: POST /_scheduled/send-daily-digest at 0 7 * * 1-5 in America/New_York"},
-			wantFileRoutes: []string{"POST /api/attach-manifest: the @upload method AttachManifest", "GET /api/manifests/{id}/file: the @file column Manifest.Key"},
-			wantOutlets:    []string{"default /api", "portal /portal/api"},
-			wantSurfaces:   []string{"/_scheduled/send-daily-digest (route): logged always", "/api/ (prefix): sampled at 0.1", "/api/manifests/{id}/file (route): never logged"},
-			wantRequestLog: harborClause,
+			wantHooks:          []hook.Stage{hook.AfterMigrate, hook.BeforeTraffic, hook.AfterTraffic},
+			wantFirestore:      "schema/firestore: 3 index(es) subscriptions_resource_key_expiry, subscriptions_resource_domain_expiry, subscriptions_resource_expiry; 2 field(s) subscriptions_expiry (ttl), changes_expires (ttl); rules_version = '2';",
+			wantFileStores:     []string{"APP_FILE_STORE data dataConfig.FileStore: default, files, files, google_storage_bucket.files[0]"},
+			wantScheduled:      []string{"send-daily-digest: POST /_scheduled/send-daily-digest at 0 7 * * 1-5 in America/New_York"},
+			wantFileRoutes:     []string{"POST /api/attach-manifest: the @upload method AttachManifest", "GET /api/manifests/{id}/file: the @file column Manifest.Key"},
+			wantOutlets:        []string{"default /api", "portal /portal/api"},
+			wantAdministrators: []string{"members APP_MEMBERS_ADMINISTRATOR"},
+			wantSurfaces:       []string{"/_scheduled/send-daily-digest (route): logged always", "/api/ (prefix): sampled at 0.1", "/api/manifests/{id}/file (route): never logged"},
+			wantRequestLog:     harborClause,
 		},
 		{
 			name:        "beacon, a password auth: no registration, no callback",
@@ -184,11 +187,12 @@ func TestDerive(t *testing.T) {
 			wantMethods: []string{"keepers/password password"},
 			wantSecrets: []string{
 				"APP_COOKIE_KEY cookie-key pkg/config/data.go dataConfig.CookieKey",
+				"APP_KEEPERS_ADMINISTRATOR_PASSWORD keepers-administrator-password pkg/config/data.go dataConfig.KeepersAdministratorPassword",
 			},
 			wantCore: []string{varVersion, varServiceName, varLoggingProject},
 			wantData: []string{
 				varDatabaseProject, varDatabaseInstance, varDatabaseName,
-				"APP_DEFAULT_SESSION_TIMEOUT", "APP_COOKIE_KEY",
+				"APP_DEFAULT_SESSION_TIMEOUT", "APP_COOKIE_KEY", "APP_KEEPERS_ADMINISTRATOR_PASSWORD",
 			},
 			wantSite:     []string{varPort, "APP_CONSOLE_DIST"},
 			wantSiteLvls: []string{LevelCore, LevelData, LevelSite},
@@ -318,6 +322,15 @@ func TestDerive(t *testing.T) {
 			}
 			if !slices.Equal(outlets, tt.wantOutlets) {
 				t.Errorf("Outlets = %v, want %v", outlets, tt.wantOutlets)
+			}
+			var administrators []string
+			for i := range m.Auths {
+				if m.Auths[i].Administrator != nil {
+					administrators = append(administrators, m.Auths[i].Name+" "+m.Auths[i].Administrator.Name)
+				}
+			}
+			if !slices.Equal(administrators, tt.wantAdministrators) {
+				t.Errorf("Administrators = %v, want %v", administrators, tt.wantAdministrators)
 			}
 			var surfaces []string
 			for i := range m.Surfaces {
