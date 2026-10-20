@@ -54,7 +54,11 @@ templates, this README, and the tool's source.
   Connect) or `google` (Google Workspace over OpenID Connect). An auth may register
   several, each in a file of its own in the package; the login page composes the
   library's login component, which renders from the methods route, so a method
-  registered and declared is a button offered.
+  registered and declared is a button offered. The console's Users page composes
+  the library's user-management component over the auth's user surface (its users,
+  seats and roles, served as resources), drawn where the permission digest grants
+  List on the users resource; the tenanted console draws the selected tenant's
+  partition beside the global one.
 - **Authority**: who owns role membership for a directory method: `directory` (the
   directory's roles are synchronized at every sign-in) or `application` (roles are
   assigned in the application).
