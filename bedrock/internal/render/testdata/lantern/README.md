@@ -192,9 +192,12 @@ from `2-env`'s state.
   (ingress internal and load balancer, CPU only during requests, `allUsers`
   invoker so the load balancer can forward), created with a
   placeholder image. Each scales from zero to at most 2 instances per region in tst and stg, 4 in prd, the placement's caps (`maxInstances`).
-  Every service runs the one image: a site's service starts the site's binary
-  (`/<site>`; the image's entrypoint is the first site's) and carries the path
-  of the site's bundle as `APP_DIST`, so one release moves every site at once.
+  Every service runs the one image: a site's service names the site's binary
+  (`/<site>`) as its container's arguments, which replace the image's default
+  command (the first site's; the image sets no entrypoint, so the placeholder
+  image the services are created with starts on its own entrypoint before the
+  first deploy), and carries the path of the site's bundle as `APP_DIST`,
+  so one release moves every site at once.
   The migration (`cmd/deployment/migrate`) is no Cloud
   Run resource: the pipeline takes the migrate command out of the release's
   image and runs it on the build worker as the deploy identity, with the

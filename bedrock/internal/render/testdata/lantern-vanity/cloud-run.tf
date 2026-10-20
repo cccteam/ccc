@@ -50,9 +50,14 @@ resource "google_cloud_run_v2_service" "app" {
 
     containers {
       image = var.placeholder_image
-      # The site's binary: the image builds one per site and its entrypoint is the
-      # first site's, so each service names its own (locals.tf, site_settings).
-      command = [local.site_settings[each.value.site].command]
+      # The site's binary, as the container's arguments: the image builds one per
+      # site, sets no entrypoint, and its default command is the first site's, so
+      # each service's arguments replace that default with its own (locals.tf,
+      # site_settings; Dockerfile). Arguments and not the command, so that the
+      # placeholder image the services are created with keeps its own entrypoint
+      # (/server, which ignores its arguments) and starts: the first apply succeeds
+      # before the pipeline's first deploy owns the image.
+      args = [local.site_settings[each.value.site].binary]
 
 
       ports {

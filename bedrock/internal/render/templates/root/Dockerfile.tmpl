@@ -1,4 +1,4 @@
-# {{.App}}'s container image: one image that serves the site{{if .Image.Multi}}s ({{range $i, $s := .Image.Sites}}{{if $i}}, {{end}}{{$s.Binary}}{{end}}, one binary each, the first the entrypoint; each site's Cloud Run service runs its own){{else}} (/app, the entrypoint){{end}} and carries
+# {{.App}}'s container image: one image that serves the site{{if .Image.Multi}}s ({{range $i, $s := .Image.Sites}}{{if $i}}, {{end}}{{$s.Binary}}{{end}}, one binary each, the first the default command; each site's Cloud Run service names its own as its container's arguments){{else}} (/app, the entrypoint){{end}} and carries
 # the deployment's migrate command (/migrate, which the pipeline takes out of it and runs on the
 # build worker){{if .Image.JobsPkg}} and the job process (/jobs, the command its Cloud Run job is deployed with){{end}}{{if .Image.HooksPkg}}; it
 # also carries the hooks program (/hooks), taken out and run on the build worker the same way{{end}}.
@@ -192,5 +192,14 @@ ENV {{if .Image.VersionVar}}{{.Image.VersionVar}}="${VERSION}"{{end}}{{range .Im
 WORKDIR /home/nonroot
 USER nonroot
 EXPOSE 8080
+{{- if .Image.Multi}}
 
-ENTRYPOINT ["{{if .Image.Multi}}{{(index .Image.Sites 0).Binary}}{{else}}/app{{end}}"]
+# No ENTRYPOINT: the default command is the first site's binary, and each site's Cloud Run
+# service names its own binary as the container's arguments, which replace it (cloud-run.tf).
+# The placeholder image the stack creates the services with keeps its own entrypoint, so
+# the first apply's revisions start before the pipeline's first deploy.
+CMD ["{{(index .Image.Sites 0).Binary}}"]
+{{- else}}
+
+ENTRYPOINT ["/app"]
+{{- end}}

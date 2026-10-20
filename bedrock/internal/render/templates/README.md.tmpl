@@ -233,9 +233,12 @@ from `2-env`'s state.
   invoker so the load balancer can forward){{if not .Jobs}}, created with a
   placeholder image{{end}}. {{if .MultiSite}}Each{{else}}It{{end}} scales {{.InstancesProse}}.
 {{- if .MultiSite}}
-  Every service runs the one image: a site's service starts the site's binary
-  (`/<site>`; the image's entrypoint is the first site's) and carries the path
-  of the site's bundle as `{{.SiteBundleVariable}}`, so one release moves every site at once.
+  Every service runs the one image: a site's service names the site's binary
+  (`/<site>`) as its container's arguments, which replace the image's default
+  command (the first site's; the image sets no entrypoint, so the placeholder
+  image the services are created with starts on its own entrypoint before the
+  first deploy), and carries the path of the site's bundle as `{{.SiteBundleVariable}}`,
+  so one release moves every site at once.
 {{- end}}
   The migration (`{{.Migrate.Dir}}`) is no Cloud
   Run resource: the pipeline takes the migrate command out of the release's

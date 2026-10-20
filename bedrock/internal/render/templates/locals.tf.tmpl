@@ -7,7 +7,8 @@ locals {
   # The sites, in the generators' order, and what the stack knows of each: its hostname
   # label under the apps domain (the one placement.json declares for the site under
   # hostnames, <code>-<site> by default), the binary its service runs (the image builds
-  # one per site; the entrypoint is the first site's), whether its main package speaks
+  # one per site and starts the first by default; each service names its own as the
+  # container's arguments, cloud-run.tf), whether its main package speaks
   # h2c ({{.ServerPackage}}), and the variables its service alone carries (the bundle the
   # image holds for the site). The code names what the sites share; the site's name is
   # the second segment of every per-site resource name.
@@ -15,10 +16,10 @@ locals {
   site_settings = {
 {{- range .Sites}}
     {{.Name}} = {
-      label   = "{{.Label}}"
-      command = "{{.Command}}"
-      h2c     = {{.H2C}}
-      env     = {{if .Bundle}}{ {{.Bundle.Name}} = "{{.BundlePath}}" }{{else}}{}{{end}}
+      label  = "{{.Label}}"
+      binary = "{{.Binary}}"
+      h2c    = {{.H2C}}
+      env    = {{if .Bundle}}{ {{.Bundle.Name}} = "{{.BundlePath}}" }{{else}}{}{{end}}
     }
 {{- end}}
   }
