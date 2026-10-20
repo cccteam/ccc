@@ -158,7 +158,7 @@ func TestJobApply(t *testing.T) {
 	files := skeletonFiles(t)
 	files[".golangci.yml"] = replaceOnce(t, files[".golangci.yml"], "            - github.com/spf13/cobra\n", "")
 	a := beacon(t, files)
-	exec := &fakeExec{}
+	exec := &fakeExec{tidy: tidied(a, beaconGoMod+"\nrequire github.com/spf13/cobra v1.10.2\n")}
 	change, err := Job{Name: "prune-reports"}.Apply(t.Context(), a, exec)
 	if err != nil {
 		t.Fatalf("Apply() error = %v", err)
@@ -169,7 +169,7 @@ func TestJobApply(t *testing.T) {
 		"cmd/jobs/prunereports/prunereports.go: the prune-reports command, Run over the data level",
 		"cmd/jobs/main.go: prunereports.Command(data) registered on the root",
 		".golangci.yml: github.com/spf13/cobra in the depguard allow list, the command tree's library",
-		"go.mod: github.com/spf13/cobra, the command tree's library, required directly (go mod tidy)",
+		"go.mod: requires github.com/spf13/cobra v1.10.2, the command tree's library (go mod tidy)",
 	}
 	if diff := cmp.Diff(wantDid, change.Did); diff != "" {
 		t.Errorf("Did mismatch (-want +got):\n%s", diff)
@@ -235,6 +235,8 @@ func TestJobApply(t *testing.T) {
 	// A second job registers on the root the first wrote; the allowance holds; the
 	// first job's name is refused.
 	a = rediscovered(t, a)
+	// go.mod has required cobra since the first job, so this tidy changes nothing and no
+	// did line reports it.
 	exec = &fakeExec{}
 	change, err = Job{Name: "send-digests"}.Apply(t.Context(), a, exec)
 	if err != nil {
@@ -244,7 +246,6 @@ func TestJobApply(t *testing.T) {
 		"pkg/jobs/send_digests.go: SendDigestsCommand (send-digests) and SendDigests, the work, empty until it is written",
 		"cmd/jobs/senddigests/senddigests.go: the send-digests command, Run over the data level",
 		"cmd/jobs/main.go: senddigests.Command(data) registered on the root",
-		"go.mod: github.com/spf13/cobra, the command tree's library, required directly (go mod tidy)",
 	}
 	if diff := cmp.Diff(wantDid, change.Did); diff != "" {
 		t.Errorf("second Did mismatch (-want +got):\n%s", diff)
@@ -269,7 +270,8 @@ func TestJobApplyGrouped(t *testing.T) {
 	t.Parallel()
 
 	a := beacon(t, skeletonFiles(t))
-	change, err := Job{Name: "reports/materialize"}.Apply(t.Context(), a, &fakeExec{})
+	exec := &fakeExec{tidy: tidied(a, beaconGoMod+"\nrequire github.com/spf13/cobra v1.10.2\n")}
+	change, err := Job{Name: "reports/materialize"}.Apply(t.Context(), a, exec)
 	if err != nil {
 		t.Fatalf("Apply() error = %v", err)
 	}
@@ -281,7 +283,7 @@ func TestJobApplyGrouped(t *testing.T) {
 		"cmd/jobs/main.go: reports.Command(data) registered on the root",
 		"cmd/jobs/reports/materialize/materialize.go: the reports materialize command, Run over the data level",
 		"cmd/jobs/reports/reports.go: materialize.Command(data) registered on the reports group",
-		"go.mod: github.com/spf13/cobra, the command tree's library, required directly (go mod tidy)",
+		"go.mod: requires github.com/spf13/cobra v1.10.2, the command tree's library (go mod tidy)",
 	}
 	if diff := cmp.Diff(wantDid, change.Did); diff != "" {
 		t.Errorf("Did mismatch (-want +got):\n%s", diff)
@@ -415,8 +417,8 @@ func TestJobApplyAfterFiles(t *testing.T) {
 	if len(change.Skipped) != 0 {
 		t.Errorf("Skipped = %q, want none: the cleanup's wiring carries the starter", change.Skipped)
 	}
-	if diff := cmp.Diff([]string{"go generate ./..."}, exec.calls); diff != "" {
-		t.Errorf("exec calls mismatch (-want +got): cobra is required already:\n%s", diff)
+	if diff := cmp.Diff(regenerated, exec.calls); diff != "" {
+		t.Errorf("exec calls mismatch (-want +got): the tidy before every regeneration, which changes nothing here:\n%s", diff)
 	}
 	root := read(t, a, "cmd/jobs/main.go")
 	if !strings.Contains(root, "\troot.AddCommand(\n\t\tcleanupfiles.Command(data),\n\t\tprunereports.Command(data),\n\t)\n") {

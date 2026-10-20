@@ -107,7 +107,9 @@ func (r RemoveSite) Apply(ctx context.Context, a *app.App, exec check.Execer) (*
 		return nil, err
 	}
 
-	generate(ctx, a, exec, ch, "go generate ./... failed; fix the cause and run it:", fmt.Sprintf("ran go generate ./...: every remaining site's generated code at its place, without the %s site's", r.Name))
+	if err := generate(ctx, a, exec, ch, "go generate ./... failed; fix the cause and run it:", fmt.Sprintf("ran go generate ./...: every remaining site's generated code at its place, without the %s site's", r.Name)); err != nil {
+		return nil, err
+	}
 	remaining := make([]string, 0, len(p.Sites)-1)
 	for i := range p.Sites {
 		if p.Sites[i].Name != r.Name {

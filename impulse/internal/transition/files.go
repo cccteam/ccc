@@ -155,7 +155,7 @@ func (f Files) Apply(ctx context.Context, a *app.App, exec check.Execer) (*Chang
 	case err != nil:
 		ch.skipf("the cleanup command was not written (%v); write it as a command of the job process: the data level, then filestore.Cleanup over resource.DefaultStore with the generated FileHolders(), --window and --dry-run", err)
 	default:
-		if err := s.write(ctx, a, exec, ch); err != nil {
+		if err := s.write(a, ch); err != nil {
 			return nil, err
 		}
 	}
@@ -164,9 +164,11 @@ func (f Files) Apply(ctx context.Context, a *app.App, exec check.Execer) (*Chang
 		return nil, err
 	}
 
-	generate(ctx, a, exec, ch,
+	if err := generate(ctx, a, exec, ch,
 		"go generate ./... failed, so the scheduled route and the method's handler are not generated yet; fix the cause and run it:",
-		"ran go generate ./..., which emitted the CleanUpFiles handler, its scheduled route under /_scheduled, and the router's SchedulerAuth requirement")
+		"ran go generate ./..., which emitted the CleanUpFiles handler, its scheduled route under /_scheduled, and the router's SchedulerAuth requirement"); err != nil {
+		return nil, err
+	}
 
 	return ch, nil
 }

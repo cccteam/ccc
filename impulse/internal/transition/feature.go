@@ -134,7 +134,9 @@ func (f AddFeature) Apply(ctx context.Context, a *app.App, exec check.Execer) (*
 		return nil, err
 	}
 
-	generate(ctx, a, exec, ch, fmt.Sprintf("go generate ./... failed, so Features() does not list %s yet; fix the cause and run it:", f.Constant()), fmt.Sprintf("ran go generate ./..., which listed %s in Features() and added %q to the browser's Feature union", f.Constant(), f.Name))
+	if err := generate(ctx, a, exec, ch, fmt.Sprintf("go generate ./... failed, so Features() does not list %s yet; fix the cause and run it:", f.Constant()), fmt.Sprintf("ran go generate ./..., which listed %s in Features() and added %q to the browser's Feature union", f.Constant(), f.Name)); err != nil {
+		return nil, err
+	}
 
 	return ch, nil
 }
@@ -358,7 +360,9 @@ func (r RemoveFeature) Apply(ctx context.Context, a *app.App, exec check.Execer)
 		return nil, err
 	}
 
-	generate(ctx, a, exec, ch, fmt.Sprintf("go generate ./... failed, so Features() still lists %q; fix the cause and run it:", r.Name), fmt.Sprintf("ran go generate ./..., which dropped %q from Features() and from the browser's Feature union", r.Name))
+	if err := generate(ctx, a, exec, ch, fmt.Sprintf("go generate ./... failed, so Features() still lists %q; fix the cause and run it:", r.Name), fmt.Sprintf("ran go generate ./..., which dropped %q from Features() and from the browser's Feature union", r.Name)); err != nil {
+		return nil, err
+	}
 
 	return ch, nil
 }

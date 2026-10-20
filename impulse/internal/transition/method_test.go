@@ -1,8 +1,11 @@
 package transition
 
 import (
+	"errors"
 	"strings"
 	"testing"
+
+	"github.com/google/go-cmp/cmp"
 
 	"github.com/cccteam/ccc/impulse/app"
 	"github.com/cccteam/ccc/impulse/internal/authpkg"
@@ -78,6 +81,11 @@ func TestMethodApply(t *testing.T) {
 		// not have.
 		wantNotSkipped []string
 		check          func(t *testing.T, a *app.App)
+		// tidiedGoMod is the go.mod the tidy script leaves; empty leaves go.mod as it is.
+		tidiedGoMod string
+		tidyErr     error
+		generateErr error
+		wantErr     string
 	}{
 		{
 			name:   "a Google method under the application authority",
@@ -192,6 +200,27 @@ func TestMethodApply(t *testing.T) {
 				}
 			},
 		},
+		{
+			name:        "a directory method on a module that never required the OIDC library",
+			method:      Method{Auth: "staff", Spec: authpkg.Method{Kind: app.MethodGoogle, Name: "workspace", Authority: AuthorityApplication}},
+			tidiedGoMod: beaconGoMod + "\nrequire github.com/coreos/go-oidc/v3 v3.21.0 // indirect\n",
+			wantDid: []string{
+				"go.mod: requires github.com/coreos/go-oidc/v3 v3.21.0, the OIDC library the session library's directory methods sign in through (go mod tidy)",
+				"ran go generate ./..., so the router mounts the method's routes and the login page offers it",
+			},
+		},
+		{
+			name:    "tidy fails",
+			method:  Method{Auth: "staff", Spec: authpkg.Method{Kind: app.MethodGoogle, Name: "workspace", Authority: AuthorityApplication}},
+			tidyErr: errors.New("exit status 1"),
+			wantErr: "go mod tidy failed, so go.mod does not require what the change imports; fix the cause and run it, then go generate ./...:\ngo: tidy: boom",
+		},
+		{
+			name:        "generation fails",
+			method:      Method{Auth: "staff", Spec: authpkg.Method{Kind: app.MethodGoogle, Name: "workspace", Authority: AuthorityApplication}},
+			generateErr: errors.New("exit status 1"),
+			wantErr:     "go generate ./... failed; fix the cause and run it:\ngeneration: boom",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -203,8 +232,31 @@ func TestMethodApply(t *testing.T) {
 				files[rel] = content
 			}
 			a := beacon(t, files)
-			exec := &fakeExec{}
+			exec := &fakeExec{err: tt.generateErr}
+			switch {
+			case tt.tidyErr != nil:
+				exec.tidy = func() error {
+					return tt.tidyErr
+				}
+			case tt.tidiedGoMod != "":
+				exec.tidy = tidied(a, tt.tidiedGoMod)
+			}
 			ch, err := tt.method.Apply(t.Context(), a, exec)
+			wantCalls := regenerated
+			if tt.tidyErr != nil {
+				// A failed tidy refuses before the regeneration.
+				wantCalls = regenerated[:1]
+			}
+			if diff := cmp.Diff(wantCalls, exec.calls); diff != "" {
+				t.Errorf("exec calls mismatch (-want +got):\n%s", diff)
+			}
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("Apply() error = %v, want %q", err, tt.wantErr)
+				}
+
+				return
+			}
 			if err != nil {
 				t.Fatalf("Apply() error = %v", err)
 			}
@@ -223,8 +275,8 @@ func TestMethodApply(t *testing.T) {
 					t.Errorf("Skipped carries %q; got:\n%s", unwanted, skipped)
 				}
 			}
-			if len(exec.calls) != 1 || !strings.HasPrefix(exec.calls[0], "go generate") {
-				t.Errorf("exec calls = %v, want one go generate", exec.calls)
+			if tt.tidiedGoMod == "" {
+				noGoModLine(t, ch.Did)
 			}
 			if tt.check != nil {
 				tt.check(t, a)

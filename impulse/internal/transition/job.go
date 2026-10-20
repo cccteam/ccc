@@ -347,7 +347,9 @@ func validateSchedule(schedule string) error {
 }
 
 // Apply makes the deterministic half of the transition: the work, the command, the
-// root, the registration, and with a schedule the method and the starter's wiring.
+// root, the registration, and with a schedule the method and the starter's wiring. The
+// module is made whole either way: the regeneration a schedule ends in runs go mod tidy
+// first, and without a schedule the tidy runs alone.
 func (j Job) Apply(ctx context.Context, a *app.App, exec check.Execer) (*Change, error) {
 	if err := j.Validate(a); err != nil {
 		return nil, err
@@ -357,22 +359,35 @@ func (j Job) Apply(ctx context.Context, a *app.App, exec check.Execer) (*Change,
 	if err != nil {
 		return nil, err
 	}
-	if err := s.write(ctx, a, exec, ch); err != nil {
+	if err := s.write(a, ch); err != nil {
 		return nil, err
 	}
-	if j.Schedule != "" {
-		g := a.Profile().Sites[0].Generator
-		w := starterWiring{method: s.names.method, command: jobsCmdDir + " " + s.names.commandPath()}
-		if err := w.wire(a, s, g, ch); err != nil {
+	if j.Schedule == "" {
+		// No regeneration follows, so the module is made whole here: the command tree's
+		// library the job process imports becomes a requirement of go.mod.
+		if err := tidy(ctx, a, exec, ch); err != nil {
 			return nil, err
 		}
-		generate(ctx, a, exec, ch,
-			fmt.Sprintf("go generate ./... failed, so %s's handler and scheduled route are not generated yet; fix the cause and run it:", s.names.method),
-			fmt.Sprintf("ran go generate ./..., which emitted the %s handler, its scheduled route under /_scheduled, and the router's SchedulerAuth requirement", s.names.method))
+	} else if err := j.wireSchedule(ctx, a, exec, s, ch); err != nil {
+		return nil, err
 	}
 	j.leave(ch, s)
 
 	return ch, nil
+}
+
+// wireSchedule wires the starter and the method that starts the job on its schedule, and
+// regenerates, which emits the method's handler and its scheduled route.
+func (Job) wireSchedule(ctx context.Context, a *app.App, exec check.Execer, s *scaffold, ch *Change) error {
+	g := a.Profile().Sites[0].Generator
+	w := starterWiring{method: s.names.method, command: jobsCmdDir + " " + s.names.commandPath()}
+	if err := w.wire(a, s, g, ch); err != nil {
+		return err
+	}
+
+	return generate(ctx, a, exec, ch,
+		fmt.Sprintf("go generate ./... failed, so %s's handler and scheduled route are not generated yet; fix the cause and run it:", s.names.method),
+		fmt.Sprintf("ran go generate ./..., which emitted the %s handler, its scheduled route under /_scheduled, and the router's SchedulerAuth requirement", s.names.method))
 }
 
 // scaffold reads the job's place in the application.
@@ -408,9 +423,9 @@ func (j Job) scaffold(a *app.App) (*scaffold, error) {
 
 // write lays the job in: its work, the root when the application has none, its group
 // when the name carries one and the application has none, its command, the
-// registration, the lint configuration's allowance of the command tree's library, and
-// the library as a direct requirement.
-func (s *scaffold) write(ctx context.Context, a *app.App, exec check.Execer, ch *Change) error {
+// registration, and the lint configuration's allowance of the command tree's library.
+// The library's requirement in go.mod is the tidy the transition runs afterwards.
+func (s *scaffold) write(a *app.App, ch *Change) error {
 	n := &s.names
 	first := !exists(a, jobsPkgDir)
 	if err := writeGo(a, n.workFile, s.kind.work(s, first)); err != nil {
@@ -450,12 +465,8 @@ func (s *scaffold) write(ctx context.Context, a *app.App, exec check.Execer, ch 
 	if err := s.register(a, ch, ownerFile, ownerFunc, ownerVar, s.modulePath+"/"+n.pkgDir, n.pkg+"."+jobsGroupFunc+"("+jobsDataVar+")", owner); err != nil {
 		return err
 	}
-	if err := allowImport(a, ch, cobraImportPath, "the command tree's library"); err != nil {
-		return err
-	}
-	s.requireCobra(ctx, a, exec, ch)
 
-	return nil
+	return allowImport(a, ch, cobraImportPath, "the command tree's library")
 }
 
 // register adds a command's constructor to the AddCommand call of a root or a group,
@@ -484,24 +495,6 @@ func (*scaffold) register(a *app.App, ch *Change, rel, funcName, variable, impor
 	ch.didf("%s: %s registered on the %s", rel, argument, owner)
 
 	return nil
-}
-
-// requireCobra makes the command tree's library a direct requirement of the module, with
-// go mod tidy, where go.mod does not require it so yet; a failed tidy is recorded as the
-// agent's, as a failed regeneration is.
-func (*scaffold) requireCobra(ctx context.Context, a *app.App, exec check.Execer, ch *Change) {
-	for _, r := range a.GoMod.Require {
-		if r.Mod.Path == cobraImportPath && !r.Indirect {
-			return
-		}
-	}
-	out, err := exec.Run(ctx, a.Root, nil, "go", "mod", "tidy")
-	if err != nil {
-		ch.skipf("go mod tidy failed, so go.mod does not require %s directly yet; fix the cause and run it:\n%s", cobraImportPath, strings.TrimSpace(string(out)))
-
-		return
-	}
-	ch.didf("go.mod: %s, the command tree's library, required directly (go mod tidy)", cobraImportPath)
 }
 
 // leave hands the agent what the scaffold cannot write: the work and its suite, and the

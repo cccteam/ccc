@@ -204,7 +204,9 @@ func (o Outlet) Apply(ctx context.Context, a *app.App, exec check.Execer) (*Chan
 		}
 	}
 
-	generate(ctx, a, exec, ch, "go generate ./... failed, so the outlet's routes, handlers, and client are not generated yet; fix the cause and run it:", fmt.Sprintf("ran go generate ./..., which emitted the %s outlet's routes and handlers%s", o.Name, o.clientNote()))
+	if err := generate(ctx, a, exec, ch, "go generate ./... failed, so the outlet's routes, handlers, and client are not generated yet; fix the cause and run it:", fmt.Sprintf("ran go generate ./..., which emitted the %s outlet's routes and handlers%s", o.Name, o.clientNote())); err != nil {
+		return nil, err
+	}
 
 	return ch, nil
 }

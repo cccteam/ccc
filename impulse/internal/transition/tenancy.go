@@ -120,7 +120,9 @@ func (tn Tenancy) Apply(ctx context.Context, a *app.App, exec check.Execer) (*Ch
 		return nil, err
 	}
 
-	generate(ctx, a, exec, ch, "go generate ./... failed, so the tenant routes are not generated yet; fix the cause and run it:", fmt.Sprintf("ran go generate ./..., which emitted the %s resource, the tenant segment pair under /%s/{%sID}, and the roster constructor New%sRoster", tn.Record(), tn.Segment(), strcase.ToCamel(tn.Record()), tn.Record()))
+	if err := generate(ctx, a, exec, ch, "go generate ./... failed, so the tenant routes are not generated yet; fix the cause and run it:", fmt.Sprintf("ran go generate ./..., which emitted the %s resource, the tenant segment pair under /%s/{%sID}, and the roster constructor New%sRoster", tn.Record(), tn.Segment(), strcase.ToCamel(tn.Record()), tn.Record())); err != nil {
+		return nil, err
+	}
 
 	return ch, nil
 }

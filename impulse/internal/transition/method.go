@@ -142,7 +142,9 @@ func (m *Method) Apply(ctx context.Context, a *app.App, exec check.Execer) (*Cha
 		}
 		slotHandoff(ch, m.Auth, spec)
 	}
-	generate(ctx, a, exec, ch, "go generate ./... failed; fix the cause and run it:", "ran go generate ./..., so the router mounts the method's routes and the login page offers it")
+	if err := generate(ctx, a, exec, ch, "go generate ./... failed; fix the cause and run it:", "ran go generate ./..., so the router mounts the method's routes and the login page offers it"); err != nil {
+		return nil, err
+	}
 
 	return ch, nil
 }

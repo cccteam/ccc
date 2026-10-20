@@ -133,8 +133,8 @@ func TestRemoveOutletApply(t *testing.T) {
 			if diff := cmp.Diff(beaconProgram, read(t, a, "cmd/generate/resourcegenerator/main.go")); diff != "" {
 				t.Errorf("the program is not back to what it was (-want +got):\n%s", diff)
 			}
-			if len(exec.calls) != 1 || exec.calls[0] != "go generate ./..." {
-				t.Errorf("exec calls = %q", exec.calls)
+			if diff := cmp.Diff(regenerated, exec.calls); diff != "" {
+				t.Errorf("exec calls mismatch (-want +got):\n%s", diff)
 			}
 			p := mustDiscover(t, a.Root).Profile()
 			if len(p.OutletNames()) != 0 {
