@@ -20,6 +20,17 @@ locals {
   # app-tst.domain, prN-app-tst.domain.
   wildcard = "*.${var.apps_domain}"
 
+  # The vanity domains (var.vanity_domains), each served like the apps domain by a
+  # zone and a certificate of its own (dns.tf, certificate-manager.tf), and their
+  # address records, name to domain: the apex and the wildcard of each, at the
+  # load balancer, so a hostname an application declares on one (the domain
+  # itself, console.<domain>) needs no DNS change.
+  vanity_domains = toset(var.vanity_domains)
+  vanity_records = merge(
+    { for d in var.vanity_domains : d => d },
+    { for d in var.vanity_domains : "*.${d}" => d },
+  )
+
   # One path matcher per host in the URL map, named after the host: dots and
   # the wildcard character are not allowed in a path matcher name, hyphens
   # are. The keys of var.hosts are validated to keep the result inside

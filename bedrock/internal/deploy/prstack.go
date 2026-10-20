@@ -507,6 +507,11 @@ func stackFacts(data []byte) (map[string]string, error) {
 	if sites := subs[hostnamesSub]; sites != "" {
 		facts[prHostnamesFact] = sites
 	}
+	for sub, fact := range map[string]string{nextHostnameSub: nextHostnameFact, nextHostnamesSub: nextHostnamesFact} {
+		if next := subs[sub]; next != "" {
+			facts[fact] = next
+		}
+	}
 	if job, ok := subs["_JOBS_JOB"]; ok {
 		if job == "" {
 			return nil, errors.New("the stack names an empty _JOBS_JOB")

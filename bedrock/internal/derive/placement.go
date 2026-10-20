@@ -34,17 +34,22 @@ type Placement struct {
 	// recorded names none: the repository's name stands in for it, the two having
 	// coincided then, and bedrock upgrade writes it.
 	Code string `json:"code,omitempty"`
-	// Hostnames are the labels the application's sites answer on under the apps domain,
-	// by site name (the directory under apps/ in impulse's sites layout, the module path's
-	// last element in the flat layout), each one DNS label (HostnameLabelPattern):
-	// <label>-<env> under the apps domain below production, the bare <label> in
-	// production, <label>-next for the next revision and <label>-pr<N> for a pull-request
-	// stack, whose Cloud Run service carries the same name. A site left out keeps the
-	// default, the code (in the sites layout the code, a hyphen and the site's name), so
-	// the code is in a URL by default alone and stays the identifier every resource name
-	// carries. The organization records the hostnames the stack serves and refuses one
-	// another application has (bedrock org register --next, bedrock org hostnames).
-	Hostnames map[string]string `json:"hostnames,omitempty"`
+	// Hostnames are what the application's sites answer on, by site name (the directory
+	// under apps/ in impulse's sites layout, the module path's last element in the flat
+	// layout): the site's label under the apps domain, one DNS label
+	// (HostnameLabelPattern) the stack serves as <label>-<env> below production, the bare
+	// <label> in production, <label>-next for the next revision and <label>-pr<N> for a
+	// pull-request stack, whose Cloud Run service carries the same name; and, per
+	// environment, the hostnames the site answers on besides, on a vanity domain the
+	// organization delegates whole to its network project (SiteHostnames.Vanity). Written
+	// as the label alone ("console": "pp-console") or as an object with the label and the
+	// vanity hostnames. A site left out keeps the default label, the code (in the sites
+	// layout the code, a hyphen and the site's name), so the code is in a URL by default
+	// alone and stays the identifier every resource name carries. The organization
+	// records the hostnames the stack serves and refuses one another application has or
+	// one under no domain it declares (bedrock org register --next, bedrock org
+	// hostnames).
+	Hostnames map[string]SiteHostnames `json:"hostnames,omitempty"`
 	// Environments are the environments in promotion order; the first is where pull
 	// requests deploy and the last is production.
 	Environments []string `json:"environments"`
@@ -172,6 +177,68 @@ type Region struct {
 type Project struct {
 	ID     string `json:"id"`
 	Number string `json:"number"`
+}
+
+// SiteHostnames is what one site answers on: its hostname label under the apps domain,
+// empty for the default, and the vanity hostnames it serves per environment, on a
+// vanity domain the organization declares (vanityDomains in its placement) and 2-net
+// serves with a zone and a certificate of its own: the domain itself for one site of
+// the application, a label of it (console.<domain>) for the others. In an environment
+// that names them, the first declared is the site's canonical hostname there (the
+// sign-in callbacks, the build argument hostname, the scheduler's calls and the
+// pipeline's _HOSTNAME derive from it), and the apps-domain hostname follows and keeps
+// answering; the next revision's -next twin and a pull-request stack's hostname stay
+// on the apps domain, where the wildcard certificate is. Any environment may declare
+// them; in practice production does.
+type SiteHostnames struct {
+	Label  string              `json:"label,omitempty"`
+	Vanity map[string][]string `json:"vanity,omitempty"`
+}
+
+// UnmarshalJSON reads a site's entry as the label alone, a string, or as the object.
+func (h *SiteHostnames) UnmarshalJSON(data []byte) error {
+	var label string
+	if err := json.Unmarshal(data, &label); err == nil {
+		*h = SiteHostnames{Label: label}
+
+		return nil
+	}
+	type plain SiteHostnames
+	var p plain
+	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&p); err != nil {
+		return errors.Wrap(err, "a site's hostnames entry is its label, or an object with label and vanity")
+	}
+	*h = SiteHostnames(p)
+
+	return nil
+}
+
+// MarshalJSON writes a site's entry as the label alone when it declares no vanity
+// hostname, so a placement written before vanity hostnames existed reads back as it was.
+func (h SiteHostnames) MarshalJSON() ([]byte, error) {
+	if len(h.Vanity) == 0 {
+		data, err := json.Marshal(h.Label)
+		if err != nil {
+			return nil, errors.Wrap(err, "json.Marshal()")
+		}
+
+		return data, nil
+	}
+	type plain SiteHostnames
+	data, err := json.Marshal(plain(h))
+	if err != nil {
+		return nil, errors.Wrap(err, "json.Marshal()")
+	}
+
+	return data, nil
+}
+
+// VanityHostnames are the site's vanity hostnames in the environment, in the order
+// declared; none when the site declares none there.
+func (h SiteHostnames) VanityHostnames(env string) []string {
+	return h.Vanity[env]
 }
 
 // Machine is one of the machines Cloud Build's default pool runs a build on, by the
@@ -665,19 +732,69 @@ func ValidateHostnameLabel(label string) error {
 	return nil
 }
 
-// validateHostnames refuses a declared label that breaks the one rule or names no site.
-// Whether the site named exists is the model's to check, with the code in hand.
+// hostnameRE is a hostname as 2-net's hosts take one, and a domain as its zones take
+// one: lowercase labels of letters, digits and inner hyphens, each at most 63
+// characters, under a top-level domain of letters.
+var hostnameRE = regexp.MustCompile(`^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$`)
+
+// HostnameOK reports whether the name is a lowercase hostname or domain, such as
+// example.com or console.example.com: what a vanity hostname and a vanity domain are
+// held to.
+func HostnameOK(name string) bool {
+	return hostnameRE.MatchString(name)
+}
+
+// validateHostnames refuses a declared label that breaks the one rule or names no site,
+// and a vanity hostname in an environment the placement lacks, one that is not a
+// lowercase hostname, one under the apps domain (the label is the hostname there), an
+// environment declaring none, and one declared twice. Whether the site named exists is
+// the model's to check, with the code in hand; whether the hostname is under a vanity
+// domain the organization declares is the organization's, when it records what the
+// stack serves.
 func (p *Placement) validateHostnames() error {
-	for site, label := range p.Hostnames {
+	declared := map[string]string{}
+	for _, site := range slices.Sorted(maps.Keys(p.Hostnames)) {
+		h := p.Hostnames[site]
 		if strings.TrimSpace(site) == "" {
 			return errors.Newf("hostnames names a site %q: the key is the site's name, the directory under apps/ in the sites layout or the module path's last element", site)
 		}
-		if !HostnameLabelOK(label) {
-			return errors.Newf("hostnames.%s: hostname label %q is not %s", site, label, HostnameLabelRule)
+		if h.Label != "" && !HostnameLabelOK(h.Label) {
+			return errors.Newf("hostnames.%s: hostname label %q is not %s", site, h.Label, HostnameLabelRule)
+		}
+		for _, env := range slices.Sorted(maps.Keys(h.Vanity)) {
+			if !slices.Contains(p.Environments, env) {
+				return errors.Newf("hostnames.%s.vanity names %q, which is not one of the environments (%s)", site, env, strings.Join(p.Environments, ", "))
+			}
+			if len(h.Vanity[env]) == 0 {
+				return errors.Newf("hostnames.%s.vanity.%s lists no hostname: leave the environment out for the apps-domain hostname alone", site, env)
+			}
+			for _, host := range h.Vanity[env] {
+				if !HostnameOK(host) {
+					return errors.Newf("hostnames.%s.vanity.%s %q is not a lowercase hostname, such as example.com or console.example.com", site, env, host)
+				}
+				if host == p.AppsDomain || strings.HasSuffix(host, "."+p.AppsDomain) {
+					return errors.Newf("hostnames.%s.vanity.%s %q is under the apps domain %s: a hostname there is the site's label (hostnames.%s), and a vanity hostname is on a domain the organization delegates whole", site, env, host, p.AppsDomain, site)
+				}
+				if where, twice := declared[host]; twice {
+					return errors.Newf("hostnames.%s.vanity.%s %q is declared twice (%s): a vanity hostname names one site in one environment", site, env, host, where)
+				}
+				declared[host] = "hostnames." + site + ".vanity." + env
+			}
 		}
 	}
 
 	return nil
+}
+
+// VanityDeclared reports whether any site declares a vanity hostname in any environment.
+func (p *Placement) VanityDeclared() bool {
+	for _, h := range p.Hostnames {
+		if len(h.Vanity) > 0 {
+			return true
+		}
+	}
+
+	return false
 }
 
 // DefaultLabel is a site's hostname label when the placement declares none: the code for
@@ -694,23 +811,27 @@ func (p *Placement) DefaultLabel(site, dir string) string {
 // Label is the site's hostname label under the apps domain: the one the placement
 // declares for it (Hostnames), else the default.
 func (p *Placement) Label(site, dir string) string {
-	if label, ok := p.Hostnames[site]; ok {
-		return label
+	if h, ok := p.Hostnames[site]; ok && h.Label != "" {
+		return h.Label
 	}
 
 	return p.DefaultLabel(site, dir)
 }
 
-// environments lists the environments with the hostnames the site serves in each, from
-// its label: <label>.<domain> in production, <label>-<env>.<domain> below it.
-func (p *Placement) environments(label string) []Environment {
+// environments lists the environments with the hostnames the site serves in each, the
+// canonical first: the vanity hostnames the placement declares for the site there, in
+// their order, then the one from its label, <label>.<domain> in production and
+// <label>-<env>.<domain> below it, which is canonical where no vanity hostname is
+// declared and keeps answering where one is.
+func (p *Placement) environments(site, label string) []Environment {
 	envs := make([]Environment, 0, len(p.Environments))
 	for _, env := range p.Environments {
 		host := label + "-" + env + "." + p.AppsDomain
 		if env == p.Production() {
 			host = label + "." + p.AppsDomain
 		}
-		envs = append(envs, Environment{Name: env, Hostnames: []string{host}})
+		hosts := append(slices.Clone(p.Hostnames[site].VanityHostnames(env)), host)
+		envs = append(envs, Environment{Name: env, Hostnames: hosts})
 	}
 
 	return envs

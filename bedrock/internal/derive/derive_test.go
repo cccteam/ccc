@@ -1,6 +1,7 @@
 package derive
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -761,15 +762,49 @@ func TestPlacementValidate(t *testing.T) {
 		},
 		{name: "a checksum that is not a SHA-256", mutate: func(p *Placement) { p.BedrockSHA256 = "abc" }, wantErr: `bedrockSha256 "abc"`},
 		{name: "prefix with a hyphen", mutate: func(p *Placement) { p.Prefix = "im-p" }, wantErr: "prefix"},
-		{name: "a declared hostname label", mutate: func(p *Placement) { p.Hostnames = map[string]string{"harbor": "lighthouse"} }},
-		{name: "a label with a hyphen inside", mutate: func(p *Placement) { p.Hostnames = map[string]string{"harbor": "light-house"} }},
-		{name: "a label of 41 characters", mutate: func(p *Placement) { p.Hostnames = map[string]string{"harbor": "l" + strings.Repeat("a", 40)} }},
-		{name: "a label of 42 characters", mutate: func(p *Placement) { p.Hostnames = map[string]string{"harbor": "l" + strings.Repeat("a", 41)} }, wantErr: `hostnames.harbor: hostname label "laaaa`},
-		{name: "a label in capitals", mutate: func(p *Placement) { p.Hostnames = map[string]string{"harbor": "Lighthouse"} }, wantErr: `hostname label "Lighthouse" is not a DNS label`},
-		{name: "a label ending with a hyphen", mutate: func(p *Placement) { p.Hostnames = map[string]string{"harbor": "light-"} }, wantErr: `hostname label "light-"`},
-		{name: "a label starting with a digit", mutate: func(p *Placement) { p.Hostnames = map[string]string{"harbor": "1light"} }, wantErr: `hostname label "1light"`},
-		{name: "a label with a dot", mutate: func(p *Placement) { p.Hostnames = map[string]string{"harbor": "light.house"} }, wantErr: `hostname label "light.house"`},
-		{name: "a label for no site", mutate: func(p *Placement) { p.Hostnames = map[string]string{" ": "light"} }, wantErr: "hostnames names a site"},
+		{name: "a declared hostname label", mutate: func(p *Placement) { p.Hostnames = map[string]SiteHostnames{"harbor": {Label: "lighthouse"}} }},
+		{name: "a label with a hyphen inside", mutate: func(p *Placement) { p.Hostnames = map[string]SiteHostnames{"harbor": {Label: "light-house"}} }},
+		{name: "a label of 41 characters", mutate: func(p *Placement) {
+			p.Hostnames = map[string]SiteHostnames{"harbor": {Label: "l" + strings.Repeat("a", 40)}}
+		}},
+		{name: "a label of 42 characters", mutate: func(p *Placement) {
+			p.Hostnames = map[string]SiteHostnames{"harbor": {Label: "l" + strings.Repeat("a", 41)}}
+		}, wantErr: `hostnames.harbor: hostname label "laaaa`},
+		{name: "a label in capitals", mutate: func(p *Placement) { p.Hostnames = map[string]SiteHostnames{"harbor": {Label: "Lighthouse"}} }, wantErr: `hostname label "Lighthouse" is not a DNS label`},
+		{name: "a label ending with a hyphen", mutate: func(p *Placement) { p.Hostnames = map[string]SiteHostnames{"harbor": {Label: "light-"}} }, wantErr: `hostname label "light-"`},
+		{name: "a label starting with a digit", mutate: func(p *Placement) { p.Hostnames = map[string]SiteHostnames{"harbor": {Label: "1light"}} }, wantErr: `hostname label "1light"`},
+		{name: "a label with a dot", mutate: func(p *Placement) { p.Hostnames = map[string]SiteHostnames{"harbor": {Label: "light.house"}} }, wantErr: `hostname label "light.house"`},
+		{name: "a label for no site", mutate: func(p *Placement) { p.Hostnames = map[string]SiteHostnames{" ": {Label: "light"}} }, wantErr: "hostnames names a site"},
+		{name: "a vanity hostname in production, the label kept by default", mutate: func(p *Placement) {
+			p.Hostnames = map[string]SiteHostnames{"harbor": {Vanity: map[string][]string{"prd": {"harborlights.example"}}}}
+		}},
+		{name: "a vanity hostname beside a declared label, and two in an environment", mutate: func(p *Placement) {
+			p.Hostnames = map[string]SiteHostnames{"harbor": {Label: "lighthouse", Vanity: map[string][]string{"prd": {"harborlights.example", "www.harborlights.example"}, "tst": {"harborlights-test.example"}}}}
+		}},
+		{name: "a vanity hostname in an unknown environment", mutate: func(p *Placement) {
+			p.Hostnames = map[string]SiteHostnames{"harbor": {Vanity: map[string][]string{"stg": {"harborlights.example"}}}}
+		}, wantErr: `hostnames.harbor.vanity names "stg", which is not one of the environments (tst, prd)`},
+		{name: "a vanity environment with no hostname", mutate: func(p *Placement) {
+			p.Hostnames = map[string]SiteHostnames{"harbor": {Vanity: map[string][]string{"prd": {}}}}
+		}, wantErr: "hostnames.harbor.vanity.prd lists no hostname: leave the environment out for the apps-domain hostname alone"},
+		{name: "a vanity hostname in capitals", mutate: func(p *Placement) {
+			p.Hostnames = map[string]SiteHostnames{"harbor": {Vanity: map[string][]string{"prd": {"HarborLights.example"}}}}
+		}, wantErr: `hostnames.harbor.vanity.prd "HarborLights.example" is not a lowercase hostname, such as example.com or console.example.com`},
+		{name: "a vanity hostname with a trailing dot", mutate: func(p *Placement) {
+			p.Hostnames = map[string]SiteHostnames{"harbor": {Vanity: map[string][]string{"prd": {"harborlights.example."}}}}
+		}, wantErr: `hostnames.harbor.vanity.prd "harborlights.example." is not a lowercase hostname`},
+		{name: "a vanity hostname under the apps domain", mutate: func(p *Placement) {
+			p.Hostnames = map[string]SiteHostnames{"harbor": {Vanity: map[string][]string{"prd": {"lights.lab.example.com"}}}}
+		}, wantErr: `hostnames.harbor.vanity.prd "lights.lab.example.com" is under the apps domain lab.example.com: a hostname there is the site's label (hostnames.harbor), and a vanity hostname is on a domain the organization delegates whole`},
+		{name: "the apps domain itself as a vanity hostname", mutate: func(p *Placement) {
+			p.Hostnames = map[string]SiteHostnames{"harbor": {Vanity: map[string][]string{"prd": {"lab.example.com"}}}}
+		}, wantErr: `hostnames.harbor.vanity.prd "lab.example.com" is under the apps domain lab.example.com`},
+		{name: "a vanity hostname declared in two environments", mutate: func(p *Placement) {
+			p.Hostnames = map[string]SiteHostnames{"harbor": {Vanity: map[string][]string{"prd": {"harborlights.example"}, "tst": {"harborlights.example"}}}}
+		}, wantErr: `hostnames.harbor.vanity.tst "harborlights.example" is declared twice (hostnames.harbor.vanity.prd): a vanity hostname names one site in one environment`},
+		{name: "a vanity hostname declared for two sites", mutate: func(p *Placement) {
+			p.Hostnames = map[string]SiteHostnames{"harbor": {Vanity: map[string][]string{"prd": {"harborlights.example"}}}, "portal": {Vanity: map[string][]string{"prd": {"harborlights.example"}}}}
+		}, wantErr: `hostnames.portal.vanity.prd "harborlights.example" is declared twice (hostnames.harbor.vanity.prd)`},
 		{name: "no environments", mutate: func(p *Placement) { p.Environments = nil }, wantErr: "environment"},
 		{name: "an uppercase environment", mutate: func(p *Placement) { p.Environments = []string{"TST"} }, wantErr: `environment "TST"`},
 		{name: "no regions", mutate: func(p *Placement) { p.Regions = nil }, wantErr: "region"},
@@ -1835,10 +1870,12 @@ func TestDeriveHostnameLabel(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name          string
-		hostnames     map[string]string
-		wantLabel     string
+		name      string
+		hostnames map[string]SiteHostnames
+		wantLabel string
+		// wantHostnames are each environment's hostnames, the canonical first.
 		wantHostnames map[string]string
+		wantVanity    bool
 		wantErr       string
 	}{
 		{
@@ -1850,15 +1887,33 @@ func TestDeriveHostnameLabel(t *testing.T) {
 		},
 		{
 			name:      "a label declared for the site, by its name",
-			hostnames: map[string]string{"harbor": "lighthouse"},
+			hostnames: map[string]SiteHostnames{"harbor": {Label: "lighthouse"}},
 			wantLabel: "lighthouse",
 			wantHostnames: map[string]string{
 				"tst": "lighthouse-tst.impulseframework.dev", "stg": "lighthouse-stg.impulseframework.dev", "prd": "lighthouse.impulseframework.dev",
 			},
 		},
 		{
+			name:      "vanity hostnames in production come first, the first canonical, the apps-domain hostname after them; the label by default",
+			hostnames: map[string]SiteHostnames{"harbor": {Vanity: map[string][]string{"prd": {"harborlights.example", "www.harborlights.example"}}}},
+			wantLabel: "harbor",
+			wantHostnames: map[string]string{
+				"tst": "harbor-tst.impulseframework.dev", "stg": "harbor-stg.impulseframework.dev", "prd": "harborlights.example, www.harborlights.example, harbor.impulseframework.dev",
+			},
+			wantVanity: true,
+		},
+		{
+			name:      "a vanity hostname below production beside a declared label",
+			hostnames: map[string]SiteHostnames{"harbor": {Label: "lighthouse", Vanity: map[string][]string{"stg": {"staging.harborlights.example"}}}},
+			wantLabel: "lighthouse",
+			wantHostnames: map[string]string{
+				"tst": "lighthouse-tst.impulseframework.dev", "stg": "staging.harborlights.example, lighthouse-stg.impulseframework.dev", "prd": "lighthouse.impulseframework.dev",
+			},
+			wantVanity: true,
+		},
+		{
 			name:      "a label for a site the application does not have",
-			hostnames: map[string]string{"portal": "lighthouse"},
+			hostnames: map[string]SiteHostnames{"portal": {Label: "lighthouse"}},
 			wantErr:   `placement.json's hostnames names "portal", which is not a site of the application: its site is harbor`,
 		},
 	}
@@ -1887,9 +1942,64 @@ func TestDeriveHostnameLabel(t *testing.T) {
 				t.Errorf("Label = %q, want %q", m.Label, tt.wantLabel)
 			}
 			for _, e := range m.Environments {
-				if want := tt.wantHostnames[e.Name]; len(e.Hostnames) != 1 || e.Hostnames[0] != want {
-					t.Errorf("Environment %s hostnames = %v, want %s", e.Name, e.Hostnames, want)
+				if got, want := strings.Join(e.Hostnames, ", "), tt.wantHostnames[e.Name]; got != want {
+					t.Errorf("Environment %s hostnames = %q, want %q", e.Name, got, want)
 				}
+			}
+			if got := m.Placement.VanityDeclared(); got != tt.wantVanity {
+				t.Errorf("VanityDeclared() = %v, want %v", got, tt.wantVanity)
+			}
+		})
+	}
+}
+
+// TestSiteHostnamesJSON holds a site's hostnames entry to its two written forms: the
+// label alone as a string, which a placement written before vanity hostnames reads back
+// as it was, and the object with the label and the vanity hostnames.
+func TestSiteHostnamesJSON(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		json    string
+		want    SiteHostnames
+		wantOut string
+		wantErr string
+	}{
+		{name: "the label alone", json: `"lighthouse"`, want: SiteHostnames{Label: "lighthouse"}, wantOut: `"lighthouse"`},
+		{name: "the object with the label and a vanity hostname", json: `{"label": "lighthouse", "vanity": {"prd": ["harborlights.example"]}}`, want: SiteHostnames{Label: "lighthouse", Vanity: map[string][]string{"prd": {"harborlights.example"}}}, wantOut: `{"label":"lighthouse","vanity":{"prd":["harborlights.example"]}}`},
+		{name: "the object with the vanity hostnames alone: the default label", json: `{"vanity": {"prd": ["harborlights.example"]}}`, want: SiteHostnames{Vanity: map[string][]string{"prd": {"harborlights.example"}}}, wantOut: `{"vanity":{"prd":["harborlights.example"]}}`},
+		{name: "the object with the label alone writes back as the string", json: `{"label": "lighthouse"}`, want: SiteHostnames{Label: "lighthouse"}, wantOut: `"lighthouse"`},
+		{name: "a list is neither", json: `["lighthouse"]`, wantErr: "a site's hostnames entry is its label, or an object with label and vanity"},
+		{name: "an unknown field", json: `{"labels": "lighthouse"}`, wantErr: "a site's hostnames entry is its label, or an object with label and vanity"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			var got SiteHostnames
+			dec := json.NewDecoder(strings.NewReader(tt.json))
+			dec.DisallowUnknownFields()
+			err := dec.Decode(&got)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("Decode() error = %v, want one containing %q", err, tt.wantErr)
+				}
+
+				return
+			}
+			if err != nil {
+				t.Fatalf("Decode() error = %v", err)
+			}
+			if fmt.Sprint(got) != fmt.Sprint(tt.want) {
+				t.Errorf("Decode() = %v, want %v", got, tt.want)
+			}
+			out, err := json.Marshal(got)
+			if err != nil {
+				t.Fatalf("Marshal() error = %v", err)
+			}
+			if string(out) != tt.wantOut {
+				t.Errorf("Marshal() = %s, want %s", out, tt.wantOut)
 			}
 		})
 	}

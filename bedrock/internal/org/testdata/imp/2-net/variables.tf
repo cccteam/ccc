@@ -9,6 +9,36 @@ variable "apps_domain" {
   }
 }
 
+variable "vanity_domains" {
+  description = <<-EOT
+    Domains delegated whole to this project beside the apps domain, each a
+    client's own domain an application serves on (its brand domain, in
+    production): this layer serves each with a zone, a DNS authorization, a
+    managed certificate for the domain and one label below it, and the
+    certificate map's entries, as it serves the apps domain, and the host
+    rules come from hosts as for any hostname. Rendered from placement.json
+    (vanityDomains): an application declares the hostnames it serves on one in
+    its own placement (hostnames.<site>.vanity, the domain itself or one label
+    under it), and the organization records them with the others. A domain
+    that carries other DNS (mail, a website) is never one; bedrock domain
+    check refuses it and names a label of it to declare instead. A vanity
+    domain may be registered here too (registrations), as the apps domain may;
+    the registration then points at the domain's zone.
+  EOT
+  type        = list(string)
+  default     = ["harborlights.example"]
+
+  validation {
+    condition     = alltrue([for d in var.vanity_domains : can(regex("^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,}$", d))])
+    error_message = "Every vanity domain must be a bare lowercase domain such as example.com, without a trailing dot."
+  }
+
+  validation {
+    condition     = !contains(var.vanity_domains, var.apps_domain)
+    error_message = "The apps domain has its own zone and certificate; a vanity domain is another domain."
+  }
+}
+
 variable "extra_records" {
   description = <<-EOT
     Further records in the apps domain zone, beyond the load balancer A

@@ -242,7 +242,7 @@ plan identities and posts the plans on it, the merge applies them as their apply
 identities, in layer order. The shared layers, 2-env per environment and the applications'
 registrations go through them; a person applies by hand for recovery alone
 (0-bootstrap/README.md, "Recovery, by hand").
-After the first apply of 2-net: bedrock domain check prints what the apps domain still needs, and where.
+After the first apply of 2-net: bedrock domain check prints what the apps domain, and each vanity domain, still needs, and where.
 `, p.OrganizationDomain, p.GithubMachineAccount, p.GithubDefaultBranch, p.Operator, roles.String(), p.OrganizationID, p.Prefix, p.Prefix, p.Prefix,
 		p.Operator, p.GithubMachineAccount, p.ConnectionName(), p.Primary().Name, p.BillingAccount, p.PlanTriggerName(), p.ApplyTriggerName())
 }
@@ -779,9 +779,9 @@ applied for the first time in each environment%s`, repository, firstApplyInstruc
 The pull request now carries 2-net/applications.auto.tfvars and 1-org/applications.auto.tfvars:
 the hostnames, onto the backends the stack created, and the stack's check trigger as a
 required check of the repository, which the first apply made. After its merge and apply:
-bedrock domain check, which passes when the apps domain resolves to its zone. A label the
-application changes later in its placement (hostnames) is recorded again with bedrock org
-hostnames <app>.
+bedrock domain check, which passes when the apps domain and each vanity domain resolve to
+their zones. A label or a vanity hostname the application changes later in its placement
+(hostnames) is recorded again with bedrock org hostnames <app>.
 `)
 
 	return nil
@@ -1155,7 +1155,7 @@ every rendered file:
      hostnames (2-net), onto the backends the stack created, and the stack's check trigger
      as a required check of the repository (1-org), which the first apply made; until then
      the repository's pull requests merge on the CI jobs alone.
-  6. After 2-net's apply: bedrock domain check, which passes when the apps domain resolves to its zone.
+  6. After 2-net's apply: bedrock domain check, which passes when the apps domain and each vanity domain resolve to their zones.
 `, p.GithubDefaultBranch, app, triggerRun(p, ""), repository)
 }
 
@@ -1283,7 +1283,7 @@ var projectContents = map[string]string{
 	"boot": "the layer identities, the state bucket with every layer's and every application's state and records, the Cloud Build connection and triggers, the GitHub Apps' keys",
 	"shr":  "the image registry with every application's images",
 	"spn":  "the shared Spanner instance with every application's stg and prd databases",
-	netKey: "the load balancer, its address and certificate, the apps domain's zone",
+	netKey: "the load balancer, its address and certificates, the apps domain's zone and the vanity domains' zones",
 	"log":  "the audit logs",
 }
 

@@ -1,8 +1,8 @@
 # 2-net
 
 The shared network project: the one global external Application Load
-Balancer every application is served through, its address, certificate, and
-the public DNS zone of the apps domain. Applied by the apply trigger's run as
+Balancer every application is served through, its address, certificates, and
+the public DNS zones of the apps domain and of each vanity domain. Applied by the apply trigger's run as
 `imp-net-gbl-tofu`, planned on a pull request as `imp-net-gbl-plan`.
 
 There is no VPC in this project. See "Cross-project backends" for why.
@@ -24,6 +24,12 @@ There is no VPC in this project. See "Cross-project backends" for why.
   zone carries `prevent_destroy`, as every zone a registration here points at
   does, so neither a plan nor a stray destroy can make it again on other name
   servers ("Making a zone again").
+- Per vanity domain (`vanity_domains`, from `placement.json`'s
+  `vanityDomains`: `harborlights.example`): the same, a DNS authorization, a managed
+  certificate for the domain and `*.<domain>`, two entries in the one map, and
+  a public zone with the apex and the wildcard at the address and the
+  authorization CNAME, named as a parked zone of the domain is ("Vanity
+  domains").
 - The load balancer: an HTTPS URL map whose host rules come from `hosts`, an
   HTTP URL map that only redirects to HTTPS, the two target proxies (the HTTPS
   one holds the certificate map and the SSL policy), and the two
@@ -215,13 +221,55 @@ and the records are recreated for it; every host in `hosts` changes with it.
 The zone's recreation is the deliberate change "Making a zone again"
 describes.
 
+## Vanity domains
+
+An application in production often serves on a domain of its own, the
+client's brand domain, rather than under the apps domain. Such a domain is a
+vanity domain: declared in `placement.json` (`vanityDomains`) and delegated
+whole to this project, the apex-delegation shape above applied to the
+application's domain. This layer serves it as it serves the apps domain, with
+a zone of its own (the apex and the wildcard at the address, the
+authorization CNAME), a DNS authorization, a managed certificate for the
+domain and one label below it, and the certificate map's two entries; the
+hostnames on it come through `hosts` from the organization's record, like
+every other. The application declares them in its own placement, per site and
+environment (`hostnames.<site>.vanity`): the domain itself for one site, a
+label of it (`console.<domain>`) for the others of a multi-site application.
+The first declared is the site's canonical hostname in that environment; the
+site's apps-domain hostname keeps answering beside them, and the next
+revision's `-next` twin and the pull-request environments stay on the apps
+domain, where the wildcard certificate is. The organization records the
+vanity hostnames with the others (`bedrock org register <app> --next`,
+`bedrock org hostnames <app>`) and refuses one under no domain
+`vanityDomains` declares.
+
+The steps by hand are the apps domain's, for each vanity domain: a domain
+registered elsewhere is pointed at its zone's name servers at the registrar
+where it is registered (the second step above), once; a domain bought
+through `bedrock domain add` is registered here and pointed at its zone by
+the apply, with the registrant's mailbox step. `bedrock domain check` checks
+each vanity domain after the apps domain, the same way, and prints the step
+that is missing with the zone's name servers. A domain that carries other DNS
+(mail, a website at the apex that is not the load balancer's) is refused
+there, as the apps domain would be: such a domain is never delegated whole,
+and the check names a label of it to declare as the vanity domain instead
+(`app.<domain>`, delegated at the client's DNS provider with one NS record
+set, the third step above), the application's hostnames then on that label.
+The `vanity_domains` output carries each zone's name servers and
+authorization record.
+
+A domain bought here before it was declared a vanity domain had a parked
+zone (`domains.tf`); declaring it moves that zone, under the same name, to
+`dns.tf`'s vanity zones (a `moved` block per declared domain), so the
+registration keeps pointing at it and nothing is delegated again.
+
 ## Making a zone again
 
 Cloud DNS gives a zone its name servers when it creates the zone, and a zone
 made again can land on a different set. Whatever pointed at the old set then
 points at servers that no longer answer for the domain, and the applications'
-names stop resolving until each is pointed again. So the apps zone
-(`dns.tf`) and every parked zone (`domains.tf`) carry `prevent_destroy`, as
+names stop resolving until each is pointed again. So the apps zone and every
+vanity zone (`dns.tf`) and every parked zone (`domains.tf`) carry `prevent_destroy`, as
 the Spanner instance does in `2-spn`: no plan and no stray destroy removes
 one, and making a zone again (a new `apps_domain`, or a replacement asked
 for by hand) is a deliberate change of three renders and one hand step. The
@@ -230,8 +278,9 @@ editing the files, which are bedrock's; each render goes in a pull request of
 its own, merged and applied:
 
 1. In the infrastructure repository: set `"zoneReplacement": true` in
-   `placement.json` and run `bedrock org render`. The apps zone and every
-   parked zone are written without `prevent_destroy`; nothing else changes.
+   `placement.json` and run `bedrock org render`. The apps zone, every vanity
+   zone and every parked zone are written without `prevent_destroy`; nothing
+   else changes.
    While the value is set, `bedrock org check` names it and what is left to
    do.
 2. In the infrastructure repository: make the change that recreates the
@@ -240,11 +289,11 @@ its own, merged and applied:
    created. A replacement asked for by hand is applied in this step instead.
 3. By hand, where each step happens: point everything that pointed at the
    old set at the new one (below). `bedrock domain check` prints each step
-   for the apps domain with the zone's new name servers, and, once the
-   domain points at the new zone, says that the value can be cleared. The
-   check reads the apps domain alone: a parked domain made again is pointed
-   at its zone in Cloud Domains by hand ("The registration's name servers",
-   below).
+   for the apps domain and for each vanity domain with the zone's new name
+   servers, and, once every domain points at its zone, says that the value
+   can be cleared. The check reads those domains alone: a parked domain made
+   again is pointed at its zone in Cloud Domains by hand ("The registration's
+   name servers", below).
 4. In the infrastructure repository: remove `zoneReplacement` from
    `placement.json` (or set it to `false`) and run `bedrock org render`. The
    rule is written back.
@@ -332,6 +381,7 @@ tofu apply
 | `hosts` | Hostname to backend service URI, one entry per served host; an environment an application is out of service in (`bedrock org teardown <app>`) is left out. | `map(string)` | `{}` | no |
 | `serving` | Whether the listeners stand and hosts route; `bedrock org teardown` renders it false. | `bool` | `true` | no |
 | `ssl_policy_profile` | Cipher profile of the SSL policy. | `string` | `"MODERN"` | no |
+| `vanity_domains` | Domains delegated whole beside the apps domain, each with a zone and a certificate of its own; rendered from `placement.json`. | `list(string)` | `["harborlights.example"]` | no |
 
 Project ID and number, the layer identity, the boot project, and the prefix
 are read from `1-org`'s state rather than declared.
@@ -355,3 +405,4 @@ Read by the environment and application layers through
 | `project_id` | Shared network project. |
 | `shared_vpc_id` | Always `null`; no VPC is created. |
 | `url_map_id`, `url_map_name` | The HTTPS URL map. |
+| `vanity_domains` | Per vanity domain: `dns_zone_name`, `dns_zone_name_servers` and `dns_authorization_record`. |

@@ -189,7 +189,7 @@ func (m *Model) sites(a *app.App, cfg *config, profile *app.Profile) error {
 		if s.Generator != nil {
 			site.RouterDir = s.Generator.RoutesDir()
 		}
-		site.Environments = m.Placement.environments(site.Label)
+		site.Environments = m.Placement.environments(s.Name, site.Label)
 		m.Sites = append(m.Sites, site)
 	}
 	m.Label = m.Sites[0].Label

@@ -60,8 +60,9 @@ func TestRenderedOrganizationParsesAsHCL(t *testing.T) {
 
 // TestZonePreventDestroy holds 2-net's zones to prevent_destroy unless the placement sets
 // zoneReplacement: Cloud DNS assigns a zone its name servers when it creates the zone, and
-// a zone made again can land on a different set, so the apps zone and every parked zone a
-// registration points at refuse a recreation unless the value lifts the rule for one.
+// a zone made again can land on a different set, so the apps zone, every vanity zone and
+// every parked zone a registration points at refuse a recreation unless the value lifts
+// the rule for one.
 // The registration keeps its own rule and keeps ignoring its DNS and contact settings,
 // which the provider cannot change in place, in both renders.
 func TestZonePreventDestroy(t *testing.T) {
@@ -79,9 +80,11 @@ func TestZonePreventDestroy(t *testing.T) {
 		wantIgnored []string
 	}{
 		{name: "the apps zone, by default", path: "2-net/dns.tf", address: "google_dns_managed_zone.apps", wantRule: true},
+		{name: "every vanity zone, by default", path: "2-net/dns.tf", address: "google_dns_managed_zone.vanity", wantRule: true},
 		{name: "every parked zone, by default", path: "2-net/domains.tf", address: "google_dns_managed_zone.parked", wantRule: true},
 		{name: "the registration, by default", path: "2-net/domains.tf", address: registration, wantRule: true, wantIgnored: []string{"contact_settings", "dns_settings", "labels"}},
 		{name: "the apps zone, zoneReplacement set", zoneReplacement: true, path: "2-net/dns.tf", address: "google_dns_managed_zone.apps"},
+		{name: "every vanity zone, zoneReplacement set", zoneReplacement: true, path: "2-net/dns.tf", address: "google_dns_managed_zone.vanity"},
 		{name: "every parked zone, zoneReplacement set", zoneReplacement: true, path: "2-net/domains.tf", address: "google_dns_managed_zone.parked"},
 		{name: "the registration, zoneReplacement set", zoneReplacement: true, path: "2-net/domains.tf", address: registration, wantRule: true, wantIgnored: []string{"contact_settings", "dns_settings", "labels"}},
 	}

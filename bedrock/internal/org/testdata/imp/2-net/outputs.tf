@@ -77,6 +77,17 @@ output "url_map_name" {
   value       = one(google_compute_url_map.lb[*].name)
 }
 
+output "vanity_domains" {
+  description = "Each vanity domain (var.vanity_domains): its zone's name and name servers, which the domain's registrar is pointed at (bedrock domain check prints the step), and the authorization CNAME its certificate waits on, already in the zone."
+  value = {
+    for d in var.vanity_domains : d => {
+      dns_zone_name            = google_dns_managed_zone.vanity[d].name
+      dns_zone_name_servers    = google_dns_managed_zone.vanity[d].name_servers
+      dns_authorization_record = google_certificate_manager_dns_authorization.vanity[d].dns_resource_record[0]
+    }
+  }
+}
+
 output "registrations" {
   description = "Registered domains: state, expiry and any issue the registrar reports (an unverified registrant mailbox is one)."
   value = {

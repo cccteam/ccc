@@ -1,0 +1,17 @@
+rules_version = '2';
+
+// The live pages' change sets: a signed-in user reads their own, nobody writes one from
+// a client, and nothing else in the database is reachable by a client. The subscription
+// record is server-owned: the Admin SDK and the server's service account bypass these
+// rules; a browser never reads it.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /users/{uid}/changes/{doc} {
+      allow read: if request.auth != null && request.auth.uid == uid;
+      allow write: if false;
+    }
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -163,22 +163,40 @@ locals {
 
 {{- if .MultiSite}}
 
-  # Each site's hostnames in this environment, the canonical first (var.hostnames), or
+  # Each site's hostnames in this environment, the canonical first (var.hostnames{{if .Vanity}}: the
+  # first vanity hostname placement.json declares for the site there, else its apps-domain
+  # hostname, which follows the vanity ones{{end}}), or
   # the pull-request stack's one per site; hostnames is every site's, the first site's
   # first: what the stack serves as a whole.
   site_hostnames = local.is_pr ? { for site, host in local.site_pr_hosts : site => ["${host}.{{.P.AppsDomain}}"] } : var.hostnames[var.environment]
   hostnames      = flatten([for site in local.sites : local.site_hostnames[site]])
+{{- if .Vanity}}
+  # The next revision's hostnames, per site and as a whole, the first label with -next:
+  # what the hook before traffic calls while the old revision still serves. None for a
+  # pull-request stack, and none on a vanity domain: the next revision's check stays on
+  # the apps domain, where the wildcard certificate is.
+  site_next_hostnames = { for site in local.sites : site => local.is_pr ? [] : [for host in local.site_hostnames[site] : replace(host, "/^([^.]+)\\./", "$1-next.") if endswith(host, ".{{.P.AppsDomain}}")] }
+{{- else}}
   # The next revision's hostnames, per site and as a whole, the first label with -next:
   # what the hook before traffic calls while the old revision still serves. None for a
   # pull-request stack.
   site_next_hostnames = { for site in local.sites : site => local.is_pr ? [] : [for host in local.site_hostnames[site] : replace(host, "/^([^.]+)\\./", "$1-next.")] }
+{{- end}}
   next_hostnames      = flatten([for site in local.sites : local.site_next_hostnames[site]])
 {{- else}}
 
   hostnames = local.is_pr ? ["${local.pr_host}.{{.P.AppsDomain}}"] : var.hostnames[var.environment]
+{{- if .Vanity}}
+  # The next revision's hostnames, the first label with -next: what the hook before
+  # traffic calls while the old revision still serves. None for a pull-request stack,
+  # and none on a vanity domain: the next revision's check stays on the apps domain,
+  # where the wildcard certificate is.
+  next_hostnames = local.is_pr ? [] : [for host in local.hostnames : replace(host, "/^([^.]+)\\./", "$1-next.") if endswith(host, ".{{.P.AppsDomain}}")]
+{{- else}}
   # The next revision's hostnames, the first label with -next: what the hook before
   # traffic calls while the old revision still serves. None for a pull-request stack.
   next_hostnames = local.is_pr ? [] : [for host in local.hostnames : replace(host, "/^([^.]+)\\./", "$1-next.")]
+{{- end}}
 {{- end}}
 {{- range .Methods}}
 

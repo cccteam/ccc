@@ -36,6 +36,14 @@ func deriveFixture(t *testing.T, name, placement string) *derive.Model {
 	if err != nil {
 		t.Fatalf("derive.ReadPlacement() error = %v", err)
 	}
+
+	return deriveWith(t, name, p)
+}
+
+// deriveWith derives the named fixture application under the placement given.
+func deriveWith(t *testing.T, name string, p *derive.Placement) *derive.Model {
+	t.Helper()
+
 	a, err := app.Discover(filepath.Join(fixtures, name))
 	if err != nil {
 		t.Fatalf("app.Discover() error = %v", err)
@@ -67,6 +75,7 @@ func TestRenderGolden(t *testing.T) {
 		{name: "harbor, a Google directory auth", fixture: "harbor", placement: "placement.json", golden: "harbor"},
 		{name: "beacon, a password auth", fixture: "beacon", placement: "placement-beacon.json", golden: "beacon"},
 		{name: "lantern, two sites behind one image", fixture: "lantern", placement: "placement-lantern.json", golden: "lantern"},
+		{name: "lantern on a vanity domain: the apex for one site, a label of it for the other", fixture: "lantern", placement: "placement-lantern-vanity.json", golden: "lantern-vanity"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1424,6 +1433,91 @@ func TestMaxInstances(t *testing.T) {
 			}
 			for _, a := range tt.absent {
 				for _, path := range []string{"cloud-run.tf", "locals.tf"} {
+					if strings.Contains(text[path], a) {
+						t.Errorf("%s carries %q", path, a)
+					}
+				}
+			}
+		})
+	}
+}
+
+// TestVanityHostnames pins the flat layout's stack with a vanity hostname declared
+// (the sites layout is the lantern-vanity golden): the vanity hostnames follow the
+// apps-domain one in var.hostnames, the next revision's twins are derived from the
+// apps-domain hostnames alone, and the README says so; a placement declaring none
+// renders the stack as before, with nothing said of vanity domains.
+func TestVanityHostnames(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		vanity map[string][]string
+		want   map[string][]string
+		absent map[string][]string
+	}{
+		{
+			name:   "a vanity apex and a label of it in production",
+			vanity: map[string][]string{"prd": {"harborlights.example", "www.harborlights.example"}},
+			want: map[string][]string{
+				"variables.tf": {
+					"    prd = [\"harborlights.example\", \"www.harborlights.example\", \"harbor.impulseframework.dev\"]\n",
+					"    tst = [\"harbor-tst.impulseframework.dev\"]\n",
+					"    host there: harborlights.example and www.harborlights.example in prd.\n",
+				},
+				"cloud-build.tf": {"    _NEXT_HOSTNAME = try(local.next_hostnames[0], \"\")\n"},
+				"locals.tf": {
+					"  # traffic calls while the old revision still serves. None for a pull-request stack,\n  # and none on a vanity domain: the next revision's check stays on the apps domain,\n  # where the wildcard certificate is.\n",
+					"  next_hostnames = local.is_pr ? [] : [for host in local.hostnames : replace(host, \"/^([^.]+)\\\\./\", \"$1-next.\") if endswith(host, \".impulseframework.dev\")]\n",
+				},
+				"outputs.tf": {"each hostname, the vanity hostnames too, mapped to the backend service URI, and each next hostname (<app>-<env>-next, on the apps domain alone)"},
+				"README.md":  {"`harborlights.example` and `www.harborlights.example` in `prd`. A vanity domain is the organization's", "| `hostnames` | Hostnames per environment; the first is canonical: the first vanity hostname where declared, else the apps-domain one, which follows. |", "as `_NEXT_HOSTNAME`, so the next URL stays"},
+			},
+		},
+		{
+			name: "no vanity hostname: the stack as before",
+			want: map[string][]string{
+				"variables.tf": {"    prd = [\"harbor.impulseframework.dev\"]\n"},
+				"locals.tf":    {"  next_hostnames = local.is_pr ? [] : [for host in local.hostnames : replace(host, \"/^([^.]+)\\\\./\", \"$1-next.\")]\n"},
+			},
+			absent: map[string][]string{
+				"variables.tf":   {"vanity"},
+				"locals.tf":      {"vanity", "endswith"},
+				"outputs.tf":     {"vanity"},
+				"cloud-build.tf": {"_NEXT_HOSTNAME"},
+				"README.md":      {"vanity", "_NEXT_HOSTNAME"},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			m := deriveFixture(t, "harbor", "placement.json")
+			if tt.vanity != nil {
+				m.Placement.Hostnames = map[string]derive.SiteHostnames{"harbor": {Vanity: tt.vanity}}
+				// The model's environments are derived from the placement; derive again.
+				m = deriveWith(t, "harbor", m.Placement)
+			}
+			files, err := Render(m)
+			if err != nil {
+				t.Fatalf("Render() error = %v", err)
+			}
+			text := map[string]string{}
+			for _, f := range files {
+				if !f.Root {
+					text[f.Path] = string(f.Content)
+				}
+			}
+			for path, wants := range tt.want {
+				for _, w := range wants {
+					if !strings.Contains(text[path], w) {
+						t.Errorf("%s lacks:\n%s\nin:\n%s", path, w, text[path])
+					}
+				}
+			}
+			for path, absents := range tt.absent {
+				for _, a := range absents {
 					if strings.Contains(text[path], a) {
 						t.Errorf("%s carries %q", path, a)
 					}

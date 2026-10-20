@@ -4,6 +4,7 @@
   "organizationId": "123456789012",
   "billingAccount": "012345-6789AB-CDEF01",
   "appsDomain": "apps.imp.example",
+  "vanityDomains": ["harborlights.example"],
   "githubOrganization": "imp-example",
   "githubMachineAccount": "imp-machine",
   "githubReleaseAppId": "5080645",

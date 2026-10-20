@@ -73,7 +73,8 @@ again does not, because its pull request is already labeled as tagged.
   root each, that every application deploys into: `0-bootstrap` (the state bucket and the
   boot identity), `1-org` (the folders, the environment projects and the organization
   policies), `2-shr` (the shared project: the registries), `2-spn` (the
-  Spanner instances), `2-net` (the load balancer, the certificates and the hostnames) and
+  Spanner instances), `2-net` (the load balancer, the certificates, the zones of the apps
+  domain and the vanity domains, and the hostnames) and
   `2-env` (per environment: the application identities and their grants, the records
   bucket, the repository links, the team group's release approval and entitlements).
   Rendered by `bedrock org` from the organization's placement into the organization's
@@ -181,9 +182,12 @@ and what its absence means:
 - `appsDomain`: the domain the application's hostnames are under: `<label>-<env>.<domain>`,
   and `<label>.<domain>` in production, the label being the site's (`hostnames`, below; the
   code by default). From the organization's `appsDomain`. Required.
-- `hostnames`: the hostname label of each site under the apps domain, by site name (the
-  directory under `apps/` in impulse's sites layout, the module path's last element in the
-  flat layout), one DNS label of lowercase letters, digits and hyphens starting with a
+- `hostnames`: what each site answers on, by site name (the directory under `apps/` in
+  impulse's sites layout, the module path's last element in the flat layout). Written as
+  the site's hostname label alone (`"portal": "lanterns"`) or as an object with the label
+  and the site's vanity hostnames (`"portal": {"label": "lanterns", "vanity": {"prd":
+  ["lanterns.example"]}}`); the label may be left out of the object for the default.
+  The label is one DNS label of lowercase letters, digits and hyphens starting with a
   letter and ending with a letter or digit, at most 41 characters (so a pull-request
   stack's service, `<label>-pr<N>`, fits Cloud Run's name): the stack serves
   `<label>-<env>` under the apps domain, the bare `<label>` in production, `<label>-next`
@@ -192,10 +196,25 @@ and what its absence means:
   layout the code, a hyphen and the site's name), so the code is in a URL by default alone
   and stays the identifier every resource name carries. A label names a site the
   application has, and one label under the apps domain only: the organization's wildcard
-  certificate covers exactly one level. Changing a label is an ordinary configuration
-  change: the stack re-renders and the next apply moves the hostnames, nothing else; then
-  `bedrock org hostnames <app>` records them in the organization, which refuses a hostname
-  another application serves. Optional.
+  certificate covers exactly one level. `vanity`, per environment, lists the hostnames
+  the site answers on besides, on a vanity domain the organization declares in its
+  placement (`vanityDomains`, bedrock domain below) and delegates whole to its network
+  project: the domain itself for one site of the application (`lanterns.example`), a
+  label of it for the others of a multi-site application (`console.lanterns.example`),
+  each a lowercase hostname not under the apps domain and declared once. Any environment
+  may declare them; in practice production does, and the other environments stay under
+  the apps domain. In an environment that declares them they come first in the stack's
+  `var.hostnames`, and the first declared is the site's canonical hostname there: the
+  directory sign-in callbacks, the hostname build argument, the scheduled routes' calls
+  and the pipeline's `_HOSTNAME` derive from it. The apps-domain hostname follows and
+  keeps answering; `net_hosts` lists them all. The next revision's `-next` twin and a
+  pull-request stack's hostname stay on the apps domain, where the wildcard certificate
+  is, and the stack hands the pipeline the next revision's hostname (`_NEXT_HOSTNAME`,
+  per site `_NEXT_HOSTNAMES`) so the next-revision check stays there. Changing a
+  label or a vanity hostname is an ordinary configuration change: the stack re-renders
+  and the next apply moves the hostnames, nothing else; then `bedrock org hostnames
+  <app>` records them in the organization, which refuses a hostname another application
+  serves or one under no domain it declares. Optional.
 - `hostedDomain`: the Google Workspace domain a directory sign-in limits logins to. From
   the organization's `organizationDomain`. Required.
 - `stateBucket`: the Cloud Storage bucket holding every layer's state, which the stack's
@@ -1903,8 +1922,8 @@ of its own. Nothing of either command is undone by bedrock.
 
 `domain add <domain>` puts a domain registration into the network layer's placement,
 where the layer's `domains.tf` registers it through Cloud Domains. `domain check` says
-whether the apps domain resolves to the network layer's zone and, where it does not,
-prints what is missing and where to add it.
+whether the apps domain, and each vanity domain, resolves to its zone in the network layer
+and, where it does not, prints what is missing and where to add it.
 
 ```sh
 bedrock domain add example.dev   # the default for a new domain: 2-net registers it
@@ -1932,11 +1951,42 @@ application and environment would need its own records at that domain's DNS prov
 Pointing a label at the load balancer with static records, instead of delegating it, is
 not supported.
 
+A production application often serves on a domain of its own, the client's brand domain,
+beside its hostname under the apps domain. Such a domain is a vanity domain: the
+organization's placement lists it (`vanityDomains`, bare lowercase domains, none the apps
+domain or the organization's domain, whose mail is on it, nor under or above either or
+one another; at most 38 characters, so the names 2-net derives fit), and it is delegated
+whole to the network project, the apex-delegation shape above applied to the application's
+domain, with the same hand step at the registrar, once. 2-net serves each with a zone of
+its own (the apex and the wildcard at the load balancer's address, the certificate's
+authorization record), a DNS authorization, a managed certificate for the domain and one
+label below it, and two entries in the one certificate map; the host rules come from the
+organization's record of what the stack serves, as for any hostname. The application
+declares the hostnames it serves on the domain in its own placement, per site and
+environment (`hostnames.<site>.vanity`, The application's placement: the domain itself for
+one site, a label of it such as `console.<domain>` for the others), in practice in
+production; the first declared is the site's canonical hostname there, its apps-domain
+hostname keeps answering, and the next revision's `-next` twin and the pull-request
+environments stay on the apps domain, where the wildcard certificate is. The
+organization records the vanity hostnames with the others
+(`bedrock org register <app> --next`, `bedrock org hostnames <app>`) and refuses one that
+is neither one label under the apps domain nor a declared vanity domain or one label
+under it. A vanity domain may also be bought through Cloud Domains in 2-net, as the apps
+domain may (`bedrock domain add`): the registration then points at the domain's zone, and
+a domain bought before it was declared keeps the zone it had while parked, moved under
+the same name. A domain that carries other DNS (mail, a website at the apex that is not
+the load balancer's) is never a vanity domain: `domain check` refuses it, as it refuses
+such an apps domain, and names a label of it (`app.<domain>`) to declare as the vanity
+domain instead, delegated at the client's DNS provider with one NS record set, the
+application's hostnames then on that label.
+
 `domain check` runs from the infrastructure repository's root (or `--dir`) once 2-net is
-applied. It reads the zone in the network project (`projects.net` in `placement.json`)
-through the Cloud DNS API with the run's Google credentials (`gcloud auth
-application-default login`, reading the project's zones), and resolves the domain as the
-world sees it. When the domain answers the zone's name servers, it passes. Otherwise it
+applied. It reads each domain's zone in the network project (`projects.net` in
+`placement.json`) through the Cloud DNS API with the run's Google credentials (`gcloud
+auth application-default login`, reading the project's zones), and resolves the domain as
+the world sees it: the apps domain first, then each vanity domain the same way, each
+report after a blank line, and it exits 1 when any domain is missing something. When the
+domain answers the zone's name servers, it passes. Otherwise it
 prints the step and the place, each record on its own line as it is pasted: for a domain
 2-net registers and whose registration is not active yet, the registrant's verification
 mail, followed within fifteen days or the domain is suspended; for a domain 2-net registers
@@ -1956,9 +2006,10 @@ domain, the type, and the value without the trailing dot a zone file writes
 character), as is the authorization record when it is to be added at a provider
 (`_acme-challenge.apps CNAME ...`); a record the zone itself holds is shown as the
 zone-file line it is. An apex that is not delegated and answers records that are not
-the zone's is refused, with a label of it named instead. The check also resolves the
-record that proves the domain to Certificate Manager and says when the certificate is
-still waiting on it. It exits 1 when anything is missing or refused.
+the zone's is refused, with a label of it named instead: as the apps domain for the apps
+domain, declared as the vanity domain in its place for a vanity domain. The check also
+resolves the record that proves the domain to Certificate Manager and says when the
+certificate is still waiting on it. It exits 1 when anything is missing or refused.
 
 A domain 2-net registers has a registrant contact (`registrant_contact` in
 `2-net/terraform.tfvars`) that is the client's, never that of a contractor who builds or
@@ -1982,8 +2033,9 @@ out:
 
 Cloud DNS gives a zone its name servers when it creates the zone, and a zone made again can
 land on a different set, which the registration, the certificate's authorization record and
-any delegation made by hand would no longer point at. So 2-net's apps zone and every zone a
-registration points at carry `prevent_destroy`: a recreation is refused by default and is a
+any delegation made by hand would no longer point at. So 2-net's apps zone, its vanity
+zones and every zone a registration points at carry `prevent_destroy`: a recreation is
+refused by default and is a
 deliberate change of three renders and one hand step, which 2-net's README describes under
 "Making a zone again". The organization's placement takes `"zoneReplacement": true` and
 `bedrock org render` writes the zones without the rule; the change that recreates the zone
@@ -1991,7 +2043,8 @@ is rendered with the value still set; by hand, everything that pointed at the ol
 servers is pointed at the new ones, `bedrock domain check` printing each step; and the
 value is cleared and rendered, which writes the rule back. The files are never edited by
 hand. While the value is set, `bedrock org check` names it and what is left to do, and a
-`bedrock domain check` that passes says it can be cleared now; neither fails on it.
+`bedrock domain check` that passes on every domain says it can be cleared now; neither
+fails on it.
 
 ## bedrock org
 
@@ -2265,9 +2318,10 @@ the entry, renders the hostnames back and leaves the pull request the same way.
 `org hostnames <app>` records the hostnames an application's stacks serve now, after the
 application changed a site's label in its placement and its stacks were applied again: it
 reads the `net_hosts` output of the stack's state in every environment (every site's
-hostnames and their `-next` twins, each with the backend service that serves it), records
-them as they are (`hostnames` in `placement.json`), refuses one another application serves
-or one that is not one label under the apps domain, renders 2-net with the host rules
+hostnames, their `-next` twins and the vanity hostnames, each with the backend service that
+serves it), records them as they are (`hostnames` in `placement.json`), refuses one another
+application serves or one that is neither one label under the apps domain nor a declared
+vanity domain (`vanityDomains`) or one label under it, renders 2-net with the host rules
 moved, writes the journal line and leaves the working tree for a pull request; its merge
 has the apply trigger move the rules, and until then the old hostnames answer and the new
 ones do not.
@@ -2331,10 +2385,12 @@ identities, to complete once its stack has a state in every environment, each re
 the state bucket and refused before. The completion records the hostnames the stack serves
 in every environment, read from its state's `net_hosts` output, under the placement's
 `hostnames` (by code and environment, each hostname with the backend service that serves
-it, every site's and their `-next` twins): 2-net's host rules render from the record as it
-is, so the organization never invents a hostname; the application declares
-each site's label in its own placement (`hostnames`, "The application's placement"), the
-code by default, and a hostname another application serves refuses the step. An
+it, every site's, their `-next` twins and the vanity hostnames): 2-net's host rules render
+from the record as it is, so the organization never invents a hostname; the application
+declares each site's label and vanity hostnames in its own placement (`hostnames`, "The
+application's placement"), the code by default, and a hostname another application serves,
+or one under no domain the placement declares (`appsDomain`, `vanityDomains`), refuses the
+step. An
 application registered before hostnames were recorded has no entry and renders by the
 default rule, its code under the apps domain. So every pull request of the sequence carries every
 rendered file, and `org check` passes on each. Register refuses the first application

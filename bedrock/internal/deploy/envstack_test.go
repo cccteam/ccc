@@ -974,10 +974,12 @@ func TestApplyEnvironmentStack(t *testing.T) {
 		wantTofu []string
 		// wantSettings are the migrate command's settings the step left (MIGRATE_ENV);
 		// wantCleared is the Firestore database whose documents a restore run deleted;
-		// wantHostname the hostname read back (CANONICAL_HOSTNAME).
+		// wantHostname the hostname read back (CANONICAL_HOSTNAME), wantNext the next
+		// revision's hostname read back (NEXT_HOSTNAME) when the stack names one.
 		wantSettings string
 		wantCleared  string
 		wantHostname string
+		wantNext     string
 		// wantServices, wantJobsJob and wantArguments are the services, the job process's
 		// template job and the build arguments read back from the applied stack, when a
 		// case checks them.
@@ -1036,6 +1038,17 @@ func TestApplyEnvironmentStack(t *testing.T) {
 			wantTofu:     []string{"tofu apply -input=false -no-color WS/stack.plan", readSubstitutions},
 			wantSettings: `{"APP_SERVICE_NAME":"quill-migrate"}`,
 			wantHostname: "quill-stg.example.dev",
+		},
+		{
+			name:         "the next revision's hostname a stack names is read back beside the canonical one",
+			subs:         withSub(withSub(tagSubs(), hostnameSub, "quill-stg.example.dev"), nextHostnameSub, "quill-stg-next.example.dev"),
+			planJSON:     stackPlanJSON,
+			outputs:      map[string]string{readSubstitutions: `{"substitutions": {"value": ` + strings.Replace(substitutionsOutput, "{", `{"_HOSTNAME": "staging.quill.example", "_NEXT_HOSTNAME": "quill-stg-next.example.dev", `, 1) + `}}`},
+			wantOut:      []string{"The environment's hostname is read from the stack as applied (_HOSTNAME): staging.quill.example, where the trigger (its stack's last apply) says \"quill-stg.example.dev\".", settingsRead},
+			wantTofu:     []string{"tofu apply -input=false -no-color WS/stack.plan", readSubstitutions},
+			wantSettings: `{"APP_SERVICE_NAME":"quill-migrate"}`,
+			wantHostname: "staging.quill.example",
+			wantNext:     "quill-stg-next.example.dev",
 		},
 		{
 			name:          "the services, the job process's template job and a build argument the trigger lacks are read from the applied stack",
@@ -1144,6 +1157,9 @@ func TestApplyEnvironmentStack(t *testing.T) {
 			}
 			if env[canonicalHostnameFact] != tt.wantHostname {
 				t.Errorf("%s = %q, want %q", canonicalHostnameFact, env[canonicalHostnameFact], tt.wantHostname)
+			}
+			if env[nextHostnameFact] != tt.wantNext {
+				t.Errorf("%s = %q, want %q", nextHostnameFact, env[nextHostnameFact], tt.wantNext)
 			}
 			if tt.wantHostname == tt.subs[hostnameSub] && strings.Contains(out.String(), "The environment's hostname is read") {
 				t.Errorf("a hostname the trigger names alike is said:\n%s", out.String())

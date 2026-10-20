@@ -64,3 +64,63 @@ resource "google_certificate_manager_certificate_map_entry" "wildcard" {
   certificates = [google_certificate_manager_certificate.apps.id]
   labels       = local.labels
 }
+
+# ---------------------------------------------------------------------------
+# Vanity domains: a DNS authorization and a managed certificate per domain
+# (var.vanity_domains), for the domain and one label below it as for the apps
+# domain, proven by the record dns.tf copies into the domain's zone, and two
+# entries each in the one map, the apex and the wildcard, so a client
+# presenting a hostname on a vanity domain gets that domain's certificate. The
+# certificate stays in PROVISIONING until the domain is delegated to its zone
+# (README.md, "Vanity domains").
+# ---------------------------------------------------------------------------
+
+resource "google_certificate_manager_dns_authorization" "vanity" {
+  for_each = local.vanity_domains
+
+  project     = local.project_id
+  name        = "${local.name_prefix}-dnsauth-${replace(each.key, ".", "-")}"
+  description = "DNS authorization for ${each.key} and *.${each.key}"
+  domain      = each.key
+  labels      = local.labels
+}
+
+resource "google_certificate_manager_certificate" "vanity" {
+  for_each = local.vanity_domains
+
+  project     = local.project_id
+  name        = "${local.name_prefix}-cert-${replace(each.key, ".", "-")}"
+  description = "Managed certificate for ${each.key} and *.${each.key}"
+  labels      = local.labels
+
+  managed {
+    domains            = [each.key, "*.${each.key}"]
+    dns_authorizations = [google_certificate_manager_dns_authorization.vanity[each.key].id]
+  }
+
+  depends_on = [google_dns_record_set.vanity_authorization]
+}
+
+resource "google_certificate_manager_certificate_map_entry" "vanity_apex" {
+  for_each = local.vanity_domains
+
+  project      = local.project_id
+  name         = "${local.name_prefix}-cme-${replace(each.key, ".", "-")}"
+  description  = "${each.key} itself"
+  map          = google_certificate_manager_certificate_map.apps.name
+  hostname     = each.key
+  certificates = [google_certificate_manager_certificate.vanity[each.key].id]
+  labels       = local.labels
+}
+
+resource "google_certificate_manager_certificate_map_entry" "vanity_wildcard" {
+  for_each = local.vanity_domains
+
+  project      = local.project_id
+  name         = "${local.name_prefix}-cme-${replace(each.key, ".", "-")}-wildcard"
+  description  = "Every hostname one level below ${each.key}"
+  map          = google_certificate_manager_certificate_map.apps.name
+  hostname     = "*.${each.key}"
+  certificates = [google_certificate_manager_certificate.vanity[each.key].id]
+  labels       = local.labels
+}

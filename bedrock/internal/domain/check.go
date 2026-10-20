@@ -1,10 +1,11 @@
-// check.go is domain check: whether the apps domain resolves to the network layer's zone,
-// and, where it does not, the records to add and the place to add them. What the zone
-// holds comes from Cloud DNS; what the world sees comes from the resolver. Which shape the
-// domain has (registered by the network layer, delegated at its apex from a registrar
-// elsewhere, or delegated as a label of a domain served elsewhere) is not configured: it
-// is what the answers show. A registered domain's name servers are read from the answers
-// too, never trusted from the registration: after its zone is made again, a registration
+// check.go is domain check: whether a domain of the organization's, the apps domain or
+// a vanity domain, resolves to its zone in the network layer, and, where it does not,
+// the records to add and the place to add them. What the zone holds comes from Cloud
+// DNS; what the world sees comes from the resolver. Which shape the domain has
+// (registered by the network layer, delegated at its apex from a registrar elsewhere,
+// or delegated as a label of a domain served elsewhere) is not configured: it is what
+// the answers show. A registered domain's name servers are read from the answers too,
+// never trusted from the registration: after its zone is made again, a registration
 // still names the old set until it is pointed at the zone in Cloud Domains.
 
 package domain
@@ -184,21 +185,25 @@ func (*cloudDNS) Close() error {
 	return nil
 }
 
-// CheckRequest is what domain check was asked to check.
+// CheckRequest is what domain check was asked to check: one domain of the
+// organization's, the apps domain or a vanity domain.
 type CheckRequest struct {
-	// Domain is the apps domain, as the organization's placement names it.
+	// Domain is the domain, as the organization's placement names it (appsDomain, or
+	// one of vanityDomains).
 	Domain string
 	// Project is the network project, and Zone the name the network layer gives the
-	// apps domain's zone there.
+	// domain's zone there.
 	Project string
 	Zone    string
 	// Dir is the infrastructure repository's root, whose network layer placement lists
 	// the domains the layer registers.
 	Dir string
-	// ZoneReplacement reports zoneReplacement set in the organization's placement: the
-	// zones rendered without prevent_destroy for a recreation, which the check says can
-	// be cleared once the domain points at the zone.
-	ZoneReplacement bool
+	// Vanity marks a vanity domain (vanityDomains in the organization's placement): a
+	// client's own domain an application serves on, delegated whole to its zone as the
+	// apps domain is. The check is the same; what it says to do instead of delegating
+	// a domain that carries other DNS differs (a label of it declared as the vanity
+	// domain, not a new apps domain).
+	Vanity bool
 }
 
 // Delegation is what the answers show about the apps domain.
@@ -229,10 +234,12 @@ const (
 
 // Report is what the check found.
 type Report struct {
-	// Domain is the apps domain; Project and Zone are where its zone is.
+	// Domain is the domain checked; Project and Zone are where its zone is; Vanity marks
+	// a vanity domain.
 	Domain  string
 	Project string
 	Zone    string
+	Vanity  bool
 	// ZoneName is the domain as the zone spells it (fully qualified), and NameServers
 	// the zone's name servers.
 	ZoneName    string
@@ -254,8 +261,6 @@ type Report struct {
 	// whether the world sees it.
 	Authorization         Record
 	AuthorizationResolves bool
-	// ZoneReplacement reports zoneReplacement set in the organization's placement.
-	ZoneReplacement bool
 }
 
 // appsZone is what the zone holds that the check compares against.
@@ -265,7 +270,7 @@ type appsZone struct {
 	authorization Record
 }
 
-// Check reads the apps domain's zone through Cloud DNS, resolves the domain's delegation
+// Check reads the domain's zone through Cloud DNS, resolves the domain's delegation
 // and the authorization record, and reports what is in place and what is missing. It is
 // refused when the domain is not a bare lowercase name, when the zone does not exist or
 // serves another domain, and when the zone lacks a record the network layer's apply
@@ -286,9 +291,8 @@ func Check(ctx context.Context, l *Lookups, req CheckRequest) (*Report, error) {
 		return nil, err
 	}
 	r := &Report{
-		Domain: req.Domain, Project: req.Project, Zone: req.Zone,
+		Domain: req.Domain, Project: req.Project, Zone: req.Zone, Vanity: req.Vanity,
 		ZoneName: z.zone.DNSName, NameServers: z.zone.NameServers, Authorization: z.authorization,
-		ZoneReplacement: req.ZoneReplacement,
 	}
 	r.Answered, err = nameServers(ctx, l.Resolver, req.Domain)
 	r.Lame = registered && serverFailure(err)
@@ -366,6 +370,10 @@ func readZone(ctx context.Context, open ZoneReaderFunc, req CheckRequest) (*apps
 		return nil, errors.Newf("no zone %s in %s: the apply of %s creates it; apply %s, then check again", req.Zone, req.Project, DefaultLayer, DefaultLayer)
 	}
 	if !sameName(zone.DNSName, req.Domain) {
+		if req.Vanity {
+			return nil, errors.Newf("the zone %s in %s serves %s, not the vanity domain %s: %s names a vanity domain's zone after the domain (vanityDomains in placement.json, bedrock org render); apply %s as rendered, then check again", req.Zone, req.Project, zone.DNSName, req.Domain, DefaultLayer, DefaultLayer)
+		}
+
 		return nil, errors.Newf("the zone %s in %s serves %s, not the apps domain %s: set apps_domain in %s to appsDomain in placement.json and apply %s, then check again", req.Zone, req.Project, zone.DNSName, req.Domain, netValues, DefaultLayer)
 	}
 	records, err := reader.RecordSets(ctx, req.Project, req.Zone)
@@ -517,13 +525,12 @@ func (r *Report) Passed() bool {
 }
 
 // Write prints what the check found and, for what is missing, the place to act and the
-// records to add there, and, when zoneReplacement is set and nothing is missing, that it
-// can be cleared; each record on its own line exactly as it is pasted where it goes: the
-// name servers for a registrar as bare host names, and a record for a DNS provider's
-// form as the form takes it (the host relative to the domain the provider serves, the
-// value without the trailing dot), since a registrar and a provider's form take host
-// names and the trailing dot is a zone file's convention; a record the zone itself
-// holds is shown as the zone-file line it is.
+// records to add there; each record on its own line exactly as it is pasted where it
+// goes: the name servers for a registrar as bare host names, and a record for a DNS
+// provider's form as the form takes it (the host relative to the domain the provider
+// serves, the value without the trailing dot), since a registrar and a provider's form
+// take host names and the trailing dot is a zone file's convention; a record the zone
+// itself holds is shown as the zone-file line it is.
 func (r *Report) Write(w io.Writer) {
 	switch r.Delegation {
 	case Delegated:
@@ -557,21 +564,19 @@ func (r *Report) Write(w io.Writer) {
 		for _, f := range r.Foreign {
 			fmt.Fprintln(w, f)
 		}
+		if r.Vanity {
+			fmt.Fprintln(w, "Refused: a domain that carries other DNS (a website, mail) is never delegated whole, and a site's hostnames directly on it would each need their own records at its DNS provider.")
+			fmt.Fprintf(w, "Declare a label of it as the vanity domain instead, such as app.%s: set it in place of %s in vanityDomains in placement.json and put the site's hostnames on it in the application's placement (hostnames.<site>.vanity), run bedrock org render, apply %s, and run bedrock domain check again for the NS records to add at the DNS provider that serves %s.\n", r.Domain, r.Domain, DefaultLayer, r.Domain)
+
+			return
+		}
 		fmt.Fprintln(w, "Refused: a domain that carries other DNS (a website, mail) is never delegated whole, and application hostnames directly under it would each need their own records at its DNS provider, with a wildcard on it for the pull-request environments.")
 		fmt.Fprintf(w, "Serve the applications under a label of it instead, such as apps.%s: set appsDomain in placement.json and apps_domain in %s to that name, run bedrock org render, apply %s, and run bedrock domain check again for the NS records to add at the DNS provider that serves %s.\n", r.Domain, netValues, DefaultLayer, r.Domain)
 
 		return
 	}
 	r.writeAuthorization(w)
-	if r.ZoneReplacement && r.Passed() {
-		fmt.Fprintln(w, ZoneReplacementCleared)
-	}
 }
-
-// ZoneReplacementCleared is what the check says when zoneReplacement is set in the
-// organization's placement and the domain passes: the recreation the value was set for
-// is done, and the rule that refuses the next one is to be written back.
-const ZoneReplacementCleared = "zoneReplacement is set in placement.json and the domain points at this zone: clear it and run bedrock org render."
 
 // writeAuthorization says whether the certificate is waiting on the authorization record
 // and, when it is, prints the record.

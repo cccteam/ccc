@@ -29,6 +29,8 @@ func TestRenderedStackParsesAsHCL(t *testing.T) {
 	}{
 		{name: "beacon", dir: filepath.Join("testdata", "beacon")},
 		{name: "harbor", dir: filepath.Join("testdata", "harbor")},
+		{name: "lantern", dir: filepath.Join("testdata", "lantern")},
+		{name: "lantern on a vanity domain", dir: filepath.Join("testdata", "lantern-vanity")},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
