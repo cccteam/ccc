@@ -92,6 +92,12 @@ type Report struct {
 	// browser bundles whose variable it does not set.
 	Binaries []BinaryFinding
 	Bundles  []BundleFinding
+	// SiteBundles are the sites' bundles in the sites layout, each held to one directory
+	// across development and the stack: a line of the report when the Procfile's
+	// directory is the one the workspace's build writes, refused when the Procfile sets
+	// none or one the build does not write (SiteBundle.Problem). Empty in the flat
+	// layout.
+	SiteBundles []SiteBundle
 	// Start is how the image starts, read from the Dockerfile's ENTRYPOINT and CMD: a
 	// line of the report when it follows the layout's contract, and refused when a
 	// sites-layout image sets an entrypoint or no default command naming a site's
@@ -179,7 +185,7 @@ type MaintenanceFinding struct {
 // a changelog section for every accepted title type, release-please's files in place, and
 // no Cloud Armor policy removed in one step.
 func (r *Report) Clean() bool {
-	return len(r.Findings) == 0 && len(r.Authoritative) == 0 && len(r.Migrations) == 0 && len(r.BuildSecrets) == 0 && len(r.Generated) == 0 && len(r.Binaries) == 0 && len(r.Bundles) == 0 && r.startClean() && len(r.Stages) == 0 && len(r.BuildArguments) == 0 && len(r.ReleaseLines) == 0 && len(r.ReleaseSections) == 0 && len(r.ReleaseFiles) == 0 && len(r.CloudArmor) == 0 && len(r.Retired) == 0
+	return len(r.Findings) == 0 && len(r.Authoritative) == 0 && len(r.Migrations) == 0 && len(r.BuildSecrets) == 0 && len(r.Generated) == 0 && len(r.Binaries) == 0 && len(r.Bundles) == 0 && r.startClean() && r.siteBundlesClean() && len(r.Stages) == 0 && len(r.BuildArguments) == 0 && len(r.ReleaseLines) == 0 && len(r.ReleaseSections) == 0 && len(r.ReleaseFiles) == 0 && len(r.CloudArmor) == 0 && len(r.Retired) == 0
 }
 
 // startClean reports an image whose start follows the layout's contract, or none read.
@@ -366,6 +372,7 @@ func (r *Report) scanImage(appDir string, m *derive.Model) error {
 	}
 	r.Binaries = binaries
 	r.Bundles = scanBundles(m)
+	r.SiteBundles = scanSiteBundles(m)
 	start, err := ScanStart(appDir, m)
 	if err != nil {
 		return err
@@ -582,6 +589,11 @@ func (r *Report) Write(w io.Writer) {
 	if r.Start != nil && r.Start.Problem == "" {
 		fmt.Fprintf(w, "  image    %s\n", r.Start.Passed())
 	}
+	for i := range r.SiteBundles {
+		if b := &r.SiteBundles[i]; b.Problem == "" {
+			fmt.Fprintf(w, "  bundle   %s\n", b.Passed())
+		}
+	}
 	for _, a := range r.Authoritative {
 		fmt.Fprintf(w, "  refused  %s:%d %s: an authoritative IAM resource replaces every member on each apply; declare a *_iam_member per member instead (a file store's bucket policy, storage.tf's, is the one admitted)\n", a.Path, a.Line, a.Address)
 	}
@@ -629,6 +641,11 @@ func (r *Report) writeImage(w io.Writer) {
 	}
 	for _, b := range r.Bundles {
 		fmt.Fprintf(w, "  refused  Dockerfile sets no %s: the bundle %s is built in a browser stage of its workspace, copied under the working directory and named by an ENV %s=<path>, as the seeded Dockerfile does\n", b.Var, b.Path, b.Var)
+	}
+	for i := range r.SiteBundles {
+		if b := &r.SiteBundles[i]; b.Problem != "" {
+			fmt.Fprintf(w, "  refused  %s\n", b.Problem)
+		}
 	}
 	if r.Start != nil && r.Start.Problem != "" {
 		for i, line := range r.Start.Refusal(dockerfileName) {

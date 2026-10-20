@@ -353,7 +353,8 @@ the release's role migration signals the running instances through it; the web
 API key rides beside it, a public value. Not set: `APP_VERSION` (the
 pipeline bakes it into the image, so a deploy never edits the template's
 variables), `APP_DEFAULT_SESSION_TIMEOUT` (code default), `PORT` (Cloud Run
-sets it), `` (where the image put the bundle).
+sets it), `APP_DIST` (the stack sets it per service, to where the image put the
+site's bundle).
 
 ### Secret versions
 

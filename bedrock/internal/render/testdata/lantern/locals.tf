@@ -17,13 +17,13 @@ locals {
       label  = "lantrn-console"
       binary = "/console"
       h2c    = true
-      env    = { APP_DIST = "/home/nonroot/apps/console/web/dist" }
+      env    = { APP_DIST = "/home/nonroot/apps/console/web/dist/console" }
     }
     portal = {
       label  = "lanterns"
       binary = "/portal"
       h2c    = true
-      env    = { APP_DIST = "/home/nonroot/apps/portal/web/dist" }
+      env    = { APP_DIST = "/home/nonroot/apps/portal/web/dist/portal" }
     }
   }
   # The first site's label: what names the stack's things that take one hostname (the

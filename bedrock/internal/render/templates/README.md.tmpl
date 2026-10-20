@@ -482,7 +482,8 @@ the release's role migration signals the running instances through it{{if .Fireb
 API key rides beside it, a public value{{end}}. {{end}}Not set: `{{.Version.Name}}` (the
 pipeline bakes it into the image, so a deploy never edits the template's
 variables), {{.CodeDefaultsCell}}, `{{.Port.Name}}` (Cloud Run
-sets it), `{{.SiteImageVars}}` (where the image put the bundle).
+sets it), {{if .MultiSite}}`{{.SiteBundleVariable}}` (the stack sets it per service, to where the image put the
+site's bundle){{else}}`{{.SiteImageVars}}` (where the image put the bundle){{end}}.
 
 ### Secret versions
 

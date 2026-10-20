@@ -252,8 +252,8 @@ func TestDerive(t *testing.T) {
 			wantSurfaces:       []string{"/_scheduled/close-stale-holds (route): logged always", "/api/ (prefix): logged on event"},
 			wantRequestLog:     `((httpRequest.requestUrl =~ "^https://[^/]+/api/" AND httpRequest.status < 400))`,
 			wantSites: []string{
-				"console apps/console (lantrn-console): process console, h2c, router apps/console/pkg/router, bundle APP_DIST=apps/console/web/dist, 1 scheduled, 1 file route(s), 2 surface(s)",
-				"portal apps/portal (lanterns): process portal, h2c, router apps/portal/pkg/router, bundle APP_DIST=apps/portal/web/dist, 1 scheduled, 0 file route(s), 1 surface(s)",
+				"console apps/console (lantrn-console): process console, h2c, router apps/console/pkg/router, bundle APP_DIST=apps/console/web/dist/console, 1 scheduled, 1 file route(s), 2 surface(s)",
+				"portal apps/portal (lanterns): process portal, h2c, router apps/portal/pkg/router, bundle APP_DIST=apps/portal/web/dist/portal, 1 scheduled, 0 file route(s), 1 surface(s)",
 			},
 		},
 		{

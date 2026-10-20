@@ -188,7 +188,11 @@ func TestRenderKeptDockerfile(t *testing.T) {
 			wantNote:      []string{"Kept Dockerfile as it was.\n"},
 			wantNoNote:    true,
 			wantCheckCode: 0,
-			wantCheckOut:  []string{"image    Dockerfile sets no ENTRYPOINT, and its default command is /console, the console site's binary: each site's service passes its own binary as the container's arguments (cloud-run.tf), which replace it"},
+			wantCheckOut: []string{
+				"image    Dockerfile sets no ENTRYPOINT, and its default command is /console, the console site's binary: each site's service passes its own binary as the container's arguments (cloud-run.tf), which replace it",
+				"bundle   the console site's service serves its bundle from /home/nonroot/apps/console/web/dist/console (APP_DIST), the directory its process line in the Procfile sets and its workspace's build writes",
+				"bundle   the portal site's service serves its bundle from /home/nonroot/apps/portal/web/dist/portal (APP_DIST), the directory its process line in the Procfile sets and its workspace's build writes",
+			},
 		},
 	}
 	for _, tt := range tests {
