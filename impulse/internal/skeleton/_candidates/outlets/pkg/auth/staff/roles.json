@@ -10,11 +10,37 @@
               "fields": [
                 "name"
               ]
+            },
+            {
+              "resource": "StaffUsers",
+              "fields": [
+                "username",
+                "password",
+                "disabled"
+              ]
+            },
+            {
+              "resource": "StaffSeats",
+              "fields": [
+                "user",
+                "role"
+              ]
             }
           ],
           "Delete": [
             {
               "resource": "Tenants"
+            },
+            {
+              "resource": "StaffUsers"
+            },
+            {
+              "resource": "StaffSeats"
+            }
+          ],
+          "Execute": [
+            {
+              "resource": "SetStaffUserPassword"
             }
           ],
           "List": [
@@ -22,6 +48,35 @@
               "resource": "Tenants",
               "fields": [
                 "name"
+              ]
+            },
+            {
+              "resource": "StaffUsers",
+              "fields": [
+                "username",
+                "disabled",
+                "hasPassword",
+                "passwordChangeRequired",
+                "createdAt",
+                "lastSignInAt",
+                "organization",
+                "identities",
+                "roles",
+                "everywhereRoles",
+                "rolesSynced"
+              ]
+            },
+            {
+              "resource": "StaffSeats",
+              "fields": [
+                "username",
+                "everyDomain"
+              ]
+            },
+            {
+              "resource": "StaffRoles",
+              "fields": [
+                "kind"
               ]
             }
           ],
@@ -31,6 +86,35 @@
               "fields": [
                 "name"
               ]
+            },
+            {
+              "resource": "StaffUsers",
+              "fields": [
+                "username",
+                "disabled",
+                "hasPassword",
+                "passwordChangeRequired",
+                "createdAt",
+                "lastSignInAt",
+                "organization",
+                "identities",
+                "roles",
+                "everywhereRoles",
+                "rolesSynced"
+              ]
+            },
+            {
+              "resource": "StaffSeats",
+              "fields": [
+                "username",
+                "everyDomain"
+              ]
+            },
+            {
+              "resource": "StaffRoles",
+              "fields": [
+                "kind"
+              ]
             }
           ],
           "Update": [
@@ -38,6 +122,13 @@
               "resource": "Tenants",
               "fields": [
                 "name"
+              ]
+            },
+            {
+              "resource": "StaffUsers",
+              "fields": [
+                "username",
+                "disabled"
               ]
             }
           ]
@@ -87,11 +178,38 @@
                 "body",
                 "title"
               ]
+            },
+            {
+              "resource": "StaffTenantUsers",
+              "fields": [
+                "username",
+                "password",
+                "disabled",
+                "role"
+              ]
+            },
+            {
+              "resource": "StaffTenantSeats",
+              "fields": [
+                "user",
+                "role"
+              ]
             }
           ],
           "Delete": [
             {
               "resource": "Announcements"
+            },
+            {
+              "resource": "StaffTenantUsers"
+            },
+            {
+              "resource": "StaffTenantSeats"
+            }
+          ],
+          "Execute": [
+            {
+              "resource": "SetStaffTenantUserPassword"
             }
           ],
           "List": [
@@ -102,6 +220,32 @@
                 "tenantId",
                 "title"
               ]
+            },
+            {
+              "resource": "StaffTenantUsers",
+              "fields": [
+                "username",
+                "disabled",
+                "hasPassword",
+                "passwordChangeRequired",
+                "createdAt",
+                "lastSignInAt",
+                "organization",
+                "identities",
+                "roles",
+                "everywhereRoles",
+                "rolesSynced"
+              ]
+            },
+            {
+              "resource": "StaffTenantSeats",
+              "fields": [
+                "username",
+                "everywhere"
+              ]
+            },
+            {
+              "resource": "StaffTenantRoles"
             }
           ],
           "Read": [
@@ -112,6 +256,32 @@
                 "tenantId",
                 "title"
               ]
+            },
+            {
+              "resource": "StaffTenantUsers",
+              "fields": [
+                "username",
+                "disabled",
+                "hasPassword",
+                "passwordChangeRequired",
+                "createdAt",
+                "lastSignInAt",
+                "organization",
+                "identities",
+                "roles",
+                "everywhereRoles",
+                "rolesSynced"
+              ]
+            },
+            {
+              "resource": "StaffTenantSeats",
+              "fields": [
+                "username",
+                "everywhere"
+              ]
+            },
+            {
+              "resource": "StaffTenantRoles"
             }
           ],
           "Update": [
@@ -120,6 +290,13 @@
               "fields": [
                 "body",
                 "title"
+              ]
+            },
+            {
+              "resource": "StaffTenantUsers",
+              "fields": [
+                "username",
+                "disabled"
               ]
             }
           ]

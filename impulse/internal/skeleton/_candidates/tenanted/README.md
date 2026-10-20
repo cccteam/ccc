@@ -26,8 +26,11 @@ the digest for the selected tenant.
   development tenants; `pkg/auth/staff/roles.json` the staff auth's role file: the
   default roles the release ships, embedded in the binary and validated against the
   generated collection when the engine opens. It authors the development logins' roles,
-  `Administrator_Global` over the tenant record and `Administrator_Domain` over every
-  tenant-scoped resource; a domain role is held in every tenant domain, the seeded ones
+  `Administrator_Global` over the tenant record and the global partition of the staff
+  auth's user-management surface (`StaffUsers`, `StaffSeats`, `StaffRoles`,
+  `SetStaffUserPassword`), `Administrator_Domain` over every tenant-scoped resource and
+  the surface's tenant partition (`StaffTenantUsers` and its siblings); a domain role is
+  held in every tenant domain, the seeded ones
   and those created later, so nothing provisions the file per tenant. A new resource
   stays invisible to every login until a role in this file is granted it. Every grant in
   it is proven live by `test/integration/grants_test.go`, which opens the auth the way
