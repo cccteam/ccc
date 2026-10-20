@@ -1246,15 +1246,18 @@ func TestOrgRegisterNext(t *testing.T) {
 		"  gcloud builds triggers run imp-prd-uc1-quill-stack --branch=master --region=us-central1 --project=imp-prd-gbl-core-5e6f\n"
 	tests := []struct {
 		name string
-		// workflows are the paths GitHub lists for the repository; noRepo leaves the
-		// repository off the stand-in, so the list is not found.
+		// workflows are the paths GitHub lists for the repository; pushed gives it a
+		// default branch, so it is not empty; noRepo leaves the repository off the
+		// stand-in, so the list is not found.
 		workflows []string
+		pushed    bool
 		noRepo    bool
 		steps     []step
 	}{
 		{
 			name:      "the grants wait for the identities, the completion for the stacks",
 			workflows: []string{".github/workflows/ci.yml", ".github/workflows/operations.yml"},
+			pushed:    true,
 			steps: []step{
 				{
 					args: []string{"org", "register", "quill", "--next"}, wantCode: 1,
@@ -1307,12 +1310,26 @@ func TestOrgRegisterNext(t *testing.T) {
 		{
 			name:      "the stack trigger by hand while GitHub lists no operations workflow",
 			workflows: []string{".github/workflows/ci.yml"},
+			pushed:    true,
 			steps: []step{{
 				objects: map[string]string{"2-env/tst/default.tfstate": envState("quill"), "2-env/stg/default.tfstate": envState("quill"), "2-env/prd/default.tfstate": envState("quill")},
 				args:    []string{"org", "register", "quill", "--next"},
 				wantOut: []string{
 					"Moved quill-portal's registration to its grants in",
 					"After its merge and apply: quill-portal's own stack,\napplied for the first time in each environment. GitHub does not list its operations workflow yet: a\nworkflow is listed once a push of at most twenty commits adds or changes its file on the\ndefault branch, or once it runs, and the repository's first push carried more, so the\nworkflow's apply action cannot start the stack trigger for this apply. Start the trigger as\nthe workflow would, in a terminal, as the operator, tst, stg, prd in that order; in stg and prd, whose\nbuilds wait for an approval, approve the build in Cloud Build:\n" + stackTriggers +
+						"A pull request that changes .github/workflows/operations.yml lists the workflow for every apply after this one. Then\nbedrock org register quill --next.\n",
+				},
+				wantFiles: map[string][]string{"placement.json": {"\"quill\": \"grants\""}},
+			}},
+		},
+		{
+			name: "the first push comes first while the repository is empty",
+			steps: []step{{
+				objects: map[string]string{"2-env/tst/default.tfstate": envState("quill"), "2-env/stg/default.tfstate": envState("quill"), "2-env/prd/default.tfstate": envState("quill")},
+				args:    []string{"org", "register", "quill", "--next"},
+				wantOut: []string{
+					"Moved quill-portal's registration to its grants in",
+					"After its merge and apply: quill-portal's own stack,\napplied for the first time in each environment. The repository is empty: the application's first push comes first, to master, the default\nbranch the stack trigger builds, with its stack rendered there (bedrock render) from its\nfirst placement.json. A first push of at most twenty commits lists the operations workflow\n(GitHub lists a workflow once a push of at most twenty commits adds or changes its file on\nthe default branch, or once it runs), and the stack's first apply then starts through the\nworkflow's apply action: Actions,\noperations, Run workflow, with the action apply and the environment, tst, stg, prd in that order (or\ngh workflow run operations.yml --repo imp-example/quill-portal -f action=apply -f environment=<env>; its\ninfrastructure/README.md, Applying). A first push of more lists no workflow until a pull request\nchanges its file, so the workflow's apply action cannot start the stack trigger for this\napply: start the trigger as the workflow would, in a terminal, as the operator,\ntst, stg, prd in that order; in stg and prd, whose\nbuilds wait for an approval, approve the build in Cloud Build:\n" + stackTriggers +
 						"A pull request that changes .github/workflows/operations.yml lists the workflow for every apply after this one. Then\nbedrock org register quill --next.\n",
 				},
 				wantFiles: map[string][]string{"placement.json": {"\"quill\": \"grants\""}},
@@ -1357,7 +1374,11 @@ func TestOrgRegisterNext(t *testing.T) {
 			store := &memoryStore{objects: map[string]string{}}
 			server := githubtest.New(t)
 			if !tt.noRepo {
-				server.AddRepo(orgOrganization, "quill-portal", &githubtest.Repo{Workflows: tt.workflows})
+				repo := &githubtest.Repo{Workflows: tt.workflows}
+				if tt.pushed {
+					repo.Refs = map[string]github.Object{"refs/heads/master": {Type: "commit", SHA: "c1"}}
+				}
+				server.AddRepo(orgOrganization, "quill-portal", repo)
 			}
 			d := orgDeps(dir)
 			d.deploy = &deploy.Clients{Storage: store.open}

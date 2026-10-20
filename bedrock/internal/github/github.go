@@ -1,6 +1,6 @@
 // Package github is the small GitHub REST client bedrock needs: the organization's
 // installed apps, a repository's rulesets, its refs, tags, comparisons and directory
-// listings, its workflows, its pull requests with their comments and deployments, and a
+// listings, whether it is empty, its workflows, its pull requests with their comments and deployments, and a
 // GitHub App's installation token. It speaks to one API host with one token and translates the API's
 // refusals into errors that carry the status and the message.
 package github
@@ -291,6 +291,24 @@ func (c *Client) Workflows(ctx context.Context, owner, repo string) ([]Workflow,
 			return all, nil
 		}
 	}
+}
+
+// Branch is one of the repository's branches with the commit it points at.
+type Branch struct {
+	Name   string `json:"name"`
+	Commit Object `json:"commit"`
+}
+
+// Empty reports whether the repository has no branch: nothing has been pushed to it yet.
+// GitHub lists no branch for such a repository (and answers its commits with 409, Git
+// Repository is empty), so the first branch alone is asked for.
+func (c *Client) Empty(ctx context.Context, owner, repo string) (bool, error) {
+	var branches []Branch
+	if err := c.do(ctx, http.MethodGet, "/repos/"+owner+"/"+repo+"/branches?per_page=1", nil, &branches); err != nil {
+		return false, err
+	}
+
+	return len(branches) == 0, nil
 }
 
 // Commit is a commit's tree, which a new tree is built from.

@@ -25,7 +25,8 @@ import (
 
 // Repo is one repository's state.
 type Repo struct {
-	// Refs by full name (refs/heads/master, refs/tags/v0.1.0) to the object they point at.
+	// Refs by full name (refs/heads/master, refs/tags/v0.1.0) to the object they point at;
+	// the branches listing is the refs/heads entries, none for an empty repository.
 	Refs map[string]github.Object
 	// TagObjects by SHA: the commit each annotated tag object names.
 	TagObjects map[string]string
@@ -104,6 +105,7 @@ var (
 	tagObjectRE = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/git/tags/([^/]+)$`)
 	compareRE   = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/compare/(.+)\.{3}(.+)$`)
 	tagsRE      = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/tags$`)
+	branchesRE  = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/branches$`)
 	commitRE    = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/git/commits/([^/]+)$`)
 	commitsRE   = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/git/commits$`)
 	blobsRE     = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/git/blobs$`)
@@ -215,6 +217,9 @@ var routes = []route{
 	}},
 	{tagsRE, func(s *Server, w http.ResponseWriter, _ *http.Request, m []string) {
 		s.tags(w, m[1]+"/"+m[2])
+	}},
+	{branchesRE, func(s *Server, w http.ResponseWriter, _ *http.Request, m []string) {
+		s.branches(w, m[1]+"/"+m[2])
 	}},
 	{commitRE, func(s *Server, w http.ResponseWriter, _ *http.Request, m []string) {
 		s.commit(w, m[1]+"/"+m[2], m[3])
@@ -489,6 +494,26 @@ func (s *Server) tags(w http.ResponseWriter, key string) {
 		return tags[i].Name < tags[j].Name
 	})
 	reply(w, http.StatusOK, tags)
+}
+
+// branches lists the branches with their commits, by name, as the API does: an empty list
+// for a repository nothing has been pushed to.
+func (s *Server) branches(w http.ResponseWriter, key string) {
+	repo, ok := s.repo(w, key)
+	if !ok {
+		return
+	}
+	branches := make([]github.Branch, 0)
+	for ref, obj := range repo.Refs {
+		if !strings.HasPrefix(ref, "refs/heads/") {
+			continue
+		}
+		branches = append(branches, github.Branch{Name: strings.TrimPrefix(ref, "refs/heads/"), Commit: github.Object{Type: typeCommit, SHA: obj.SHA}})
+	}
+	sort.Slice(branches, func(i, j int) bool {
+		return branches[i].Name < branches[j].Name
+	})
+	reply(w, http.StatusOK, branches)
 }
 
 func (s *Server) commit(w http.ResponseWriter, key, sha string) {
