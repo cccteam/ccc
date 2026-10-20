@@ -153,7 +153,19 @@ func TestFirestoreProjectEnv(t *testing.T) {
 func parseBody(t *testing.T, file string) *hclsyntax.Body {
 	t.Helper()
 
-	f, diags := hclparse.NewParser().ParseHCLFile(file)
+	src, err := os.ReadFile(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return parseSource(t, file, src)
+}
+
+// parseSource parses the source of one rendered .tf file, named for its messages.
+func parseSource(t *testing.T, file string, src []byte) *hclsyntax.Body {
+	t.Helper()
+
+	f, diags := hclparse.NewParser().ParseHCL(src, file)
 	if diags.HasErrors() {
 		t.Fatalf("%s: %s", file, diags.Error())
 	}

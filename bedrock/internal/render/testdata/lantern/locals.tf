@@ -6,23 +6,24 @@ locals {
   # The sites, in the generators' order, and what the stack knows of each: its hostname
   # label under the apps domain (the one placement.json declares for the site under
   # hostnames, <code>-<site> by default), the binary its service runs (the image builds
-  # one per site; the entrypoint is the first site's), whether its main package speaks
+  # one per site and starts the first by default; each service names its own as the
+  # container's arguments, cloud-run.tf), whether its main package speaks
   # h2c (github.com/cccteam/ccc/resource/server), and the variables its service alone carries (the bundle the
   # image holds for the site). The code names what the sites share; the site's name is
   # the second segment of every per-site resource name.
   sites = ["console", "portal"]
   site_settings = {
     console = {
-      label   = "lantrn-console"
-      command = "/console"
-      h2c     = true
-      env     = { APP_DIST = "/home/nonroot/apps/console/web/dist" }
+      label  = "lantrn-console"
+      binary = "/console"
+      h2c    = true
+      env    = { APP_DIST = "/home/nonroot/apps/console/web/dist" }
     }
     portal = {
-      label   = "lanterns"
-      command = "/portal"
-      h2c     = true
-      env     = { APP_DIST = "/home/nonroot/apps/portal/web/dist" }
+      label  = "lanterns"
+      binary = "/portal"
+      h2c    = true
+      env    = { APP_DIST = "/home/nonroot/apps/portal/web/dist" }
     }
   }
   # The first site's label: what names the stack's things that take one hostname (the

@@ -1699,6 +1699,107 @@ func TestBuildArguments(t *testing.T) {
 	}
 }
 
+// TestSiteBinary pins how a service starts the site's binary. In the sites layout the
+// image sets no entrypoint and its default command is the first site's binary, so each
+// service names its own binary as the container's arguments and never as its command:
+// the placeholder image the services are created with keeps its own entrypoint, which
+// ignores its arguments, and starts, so the first apply succeeds before the pipeline's
+// first deploy (as the command, the placeholder would run a binary it does not hold and
+// every service's first revision would fail to start). The flat image keeps /app as its
+// entrypoint, and its service sets neither.
+func TestSiteBinary(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		fixture   string
+		placement string
+		// wantArgs is the service container's args expression as the stack writes it,
+		// empty when the container sets none; the container never sets command.
+		wantArgs string
+		// wantEntrypoint and wantCmd are the Dockerfile's instruction lines, empty when the
+		// image sets none.
+		wantEntrypoint string
+		wantCmd        string
+	}{
+		{
+			name:      "lantern, two sites: the args name the site's binary, the default command is the first site's",
+			fixture:   "lantern",
+			placement: "placement-lantern.json",
+			wantArgs:  "[local.site_settings[each.value.site].binary]",
+			wantCmd:   `CMD ["/console"]`,
+		},
+		{
+			name:      "lantern on a vanity domain, the same",
+			fixture:   "lantern",
+			placement: "placement-lantern-vanity.json",
+			wantArgs:  "[local.site_settings[each.value.site].binary]",
+			wantCmd:   `CMD ["/console"]`,
+		},
+		{
+			name:           "harbor, one site: no args, /app the entrypoint",
+			fixture:        "harbor",
+			placement:      "placement.json",
+			wantEntrypoint: `ENTRYPOINT ["/app"]`,
+		},
+		{
+			name:           "beacon, one site, the same",
+			fixture:        "beacon",
+			placement:      "placement-beacon.json",
+			wantEntrypoint: `ENTRYPOINT ["/app"]`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			files, err := Render(deriveFixture(t, tt.fixture, tt.placement))
+			if err != nil {
+				t.Fatalf("Render() error = %v", err)
+			}
+			var stack, dockerfile []byte
+			for _, f := range files {
+				switch {
+				case f.Root && f.Path == "Dockerfile":
+					dockerfile = f.Content
+				case !f.Root && f.Path == "cloud-run.tf":
+					stack = f.Content
+				}
+			}
+			service := resourceBody(t, parseSource(t, "cloud-run.tf", stack), "google_cloud_run_v2_service.app")
+			container := nestedBlock(t, nestedBlock(t, service, "template"), "containers")
+			if _, ok := container.Attributes["command"]; ok {
+				t.Errorf("the service's container sets command: the placeholder image's own entrypoint must run")
+			}
+			args := ""
+			if attr, ok := container.Attributes["args"]; ok {
+				args = string(attr.Expr.Range().SliceBytes(stack))
+			}
+			if args != tt.wantArgs {
+				t.Errorf("the service's container args = %q, want %q", args, tt.wantArgs)
+			}
+			if got := dockerInstruction(dockerfile, "ENTRYPOINT"); got != tt.wantEntrypoint {
+				t.Errorf("Dockerfile ENTRYPOINT = %q, want %q", got, tt.wantEntrypoint)
+			}
+			if got := dockerInstruction(dockerfile, "CMD"); got != tt.wantCmd {
+				t.Errorf("Dockerfile CMD = %q, want %q", got, tt.wantCmd)
+			}
+		})
+	}
+}
+
+// dockerInstruction is the Dockerfile's line of the instruction, or empty when no line
+// (a comment naming it aside) carries one.
+func dockerInstruction(dockerfile []byte, instruction string) string {
+	for _, line := range strings.Split(string(dockerfile), "\n") {
+		if strings.HasPrefix(line, instruction+" ") {
+			return line
+		}
+	}
+
+	return ""
+}
+
 // TestBuildValueExprs holds the stack's expressions to the catalog: every value a
 // placement may name has the expression the stack reads it from, and nothing else does.
 func TestBuildValueExprs(t *testing.T) {

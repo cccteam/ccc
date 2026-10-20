@@ -228,8 +228,8 @@ resource "google_cloud_run_v2_job" "jobs" {
 
       containers {
         image = var.placeholder_image
-        # The image's entrypoint is the site; the job runs the jobs binary
-        # beside it (Dockerfile: /jobs).
+        # The image starts the site by default; the job's command runs the jobs
+        # binary beside it instead (Dockerfile: /jobs).
         command = ["/jobs"]
 
         resources {

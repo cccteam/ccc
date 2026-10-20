@@ -443,7 +443,7 @@ type imageView struct {
 	// SitePkg and MigratePkg are the packages go build compiles, as go names them from
 	// the root: "." for the site at the root, "./cmd/deployment/migrate"; JobsPkg is
 	// the job process's, empty without one. Sites are the sites layout's, one binary
-	// each (/<site>), the first the image's entrypoint; Multi reports more than one.
+	// each (/<site>), the first the image's default command; Multi reports more than one.
 	SitePkg    string
 	MigratePkg string
 	JobsPkg    string
@@ -1022,9 +1022,10 @@ func ptr(s derive.Secret) *derive.Secret {
 // list.
 type siteView struct {
 	*derive.Site
-	// Command is the binary the site's service runs: /app in the flat layout, /<name>
-	// in the sites layout, where the image's entrypoint is the first site's.
-	Command string
+	// Binary is the one the site's service runs: /app in the flat layout, /<name> in the
+	// sites layout, where the image's default command is the first site's and each
+	// service names its own as the container's arguments.
+	Binary string
 	// BundlePath is where the image holds the site's built bundle, the value the stack
 	// sets the site's bundle variable to per service; empty without one.
 	BundlePath string
@@ -1045,7 +1046,7 @@ func (v *view) sites() {
 	mains := make([]string, 0, len(v.Model.Sites))
 	for i := range v.Model.Sites {
 		s := &v.Model.Sites[i]
-		sv := &siteView{Site: s, Command: "/" + s.Process.Name}
+		sv := &siteView{Site: s, Binary: "/" + s.Process.Name}
 		if s.BundleDir != "" {
 			sv.BundlePath = imageHome + "/" + s.BundleDir
 		}

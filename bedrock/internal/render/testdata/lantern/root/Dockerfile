@@ -1,4 +1,4 @@
-# lantrn's container image: one image that serves the sites (/console, /portal, one binary each, the first the entrypoint; each site's Cloud Run service runs its own) and carries
+# lantrn's container image: one image that serves the sites (/console, /portal, one binary each, the first the default command; each site's Cloud Run service names its own as its container's arguments) and carries
 # the deployment's migrate command (/migrate, which the pipeline takes out of it and runs on the
 # build worker).
 # Seeded by bedrock from the code's shape and then yours: bedrock render writes it once and
@@ -183,4 +183,8 @@ WORKDIR /home/nonroot
 USER nonroot
 EXPOSE 8080
 
-ENTRYPOINT ["/console"]
+# No ENTRYPOINT: the default command is the first site's binary, and each site's Cloud Run
+# service names its own binary as the container's arguments, which replace it (cloud-run.tf).
+# The placeholder image the stack creates the services with keeps its own entrypoint, so
+# the first apply's revisions start before the pipeline's first deploy.
+CMD ["/console"]
