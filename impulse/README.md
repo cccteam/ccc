@@ -690,6 +690,16 @@ the failing checks to an agent exactly as `impulse handoff` does, with two addit
 the brief: what the tool changed (and what it could not), and what the option means in
 this framework, alongside a rendered reference application with the option wired.
 
+Every option ends in the one regeneration. `go mod tidy` runs first, so `go.mod` requires
+what the option's new code imports (a directory method's file imports the session
+library's `google` or `azure` package, which signs in through `github.com/coreos/go-oidc/v3`,
+a module an application with password methods alone never required), and each requirement
+it adds, moves or drops is reported among the changes; then `go generate ./...` runs. A
+tidy or regeneration that fails refuses the command with the failing command's output,
+rather than leaving a note for the agent: an application whose router, user surfaces and
+browser client were not regenerated is half-bound, still describing the application before
+the option. The edits already made stay on disk, to fix the cause and regenerate by hand.
+
 ```sh
 impulse add outlet portal --prefix portal/api --auth staff --agent
 impulse add outlet kiosk --prefix kiosk/api --auth members

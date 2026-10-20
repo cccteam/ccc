@@ -351,8 +351,8 @@ func TestSiteApplyPromotes(t *testing.T) {
 	if p.Layout != app.LayoutSites || len(p.Sites) != 2 || p.Sites[0].Name != "console" || p.Sites[1].Name != "portal" || len(p.Shared) != 1 {
 		t.Errorf("profile = %+v", p)
 	}
-	if len(exec.calls) != 1 || exec.calls[0] != "go generate ./..." {
-		t.Errorf("exec calls = %q", exec.calls)
+	if !slices.Equal(regenerated, exec.calls) {
+		t.Errorf("exec calls = %q, want %q", exec.calls, regenerated)
 	}
 }
 

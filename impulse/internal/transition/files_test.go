@@ -179,7 +179,7 @@ func TestFilesApply(t *testing.T) {
 	t.Parallel()
 
 	a := beacon(t, skeletonFiles(t))
-	exec := &fakeExec{}
+	exec := &fakeExec{tidy: tidied(a, beaconGoMod+"\nrequire github.com/spf13/cobra v1.10.2\n")}
 	change, err := Files{}.Apply(t.Context(), a, exec)
 	if err != nil {
 		t.Fatalf("Apply() error = %v", err)
@@ -193,12 +193,12 @@ func TestFilesApply(t *testing.T) {
 		"cmd/jobs/main.go: the job process, a cobra root that opens the data level once and registers the commands",
 		"cmd/jobs/cleanupfiles/cleanupfiles.go: the cleanup-files command, with --window and --dry-run",
 		"cmd/jobs/main.go: cleanupfiles.Command(data) registered on the root",
-		"go.mod: github.com/spf13/cobra, the command tree's library, required directly (go mod tidy)",
 		`pkg/rpc: the rpc package, its Client carrying the job process's starter (Jobs()), and CleanUpFiles (@rpc, @schedule("0 9 * * *")), which starts cmd/jobs cleanup-files through it`,
 		"pkg/config/site.go: SiteConfiguration gained the fields, built from the environment; pkg/config/scheduled.go: Scheduler() and Jobs(), which the app's Configurer asks for, and Close(), which releases the driver with the level",
 		"app/app.go: App gained Scheduler() and Jobs() on Configurer, the scheduler field, its construction, and the RPC client built over the starter; app/scheduled.go: SchedulerAuth, the middleware the generated router mounts the scheduled routes behind, and RPCClient(), the dependencies of the RPC methods",
 		"the test configurers gained a nil guard, a fake starter and a memory file store: test/authz/harness_test.go (testConfigurer: Scheduler(), Jobs(), and the files field); test/integration/harness_test.go (servedConfigurer: Scheduler(), Jobs(), and the files field)",
 		`cmd/generate/resourcegenerator/main.go: WithRPC("pkg/rpc"), so the generator reads the rpc package`,
+		"go.mod: requires github.com/spf13/cobra v1.10.2, the command tree's library (go mod tidy)",
 		"ran go generate ./..., which emitted the CleanUpFiles handler, its scheduled route under /_scheduled, and the router's SchedulerAuth requirement",
 	}
 	if diff := cmp.Diff(wantDid, change.Did); diff != "" {

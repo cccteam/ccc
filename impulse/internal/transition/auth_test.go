@@ -1,6 +1,7 @@
 package transition
 
 import (
+	"errors"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -351,6 +352,10 @@ func TestAuthApply(t *testing.T) {
 		// neverDid are words no did line carries.
 		neverDid []string
 		check    func(t *testing.T, a *app.App)
+		// tidiedGoMod is the go.mod the tidy script leaves; empty leaves go.mod as it is.
+		tidiedGoMod string
+		generateErr error
+		wantErr     string
 	}{
 		{
 			name:    "a password auth written beside staff",
@@ -547,6 +552,23 @@ func TestAuthApply(t *testing.T) {
 				}
 			},
 		},
+		{
+			name:        "a directory auth on a module that never required the OIDC library",
+			auth:        Auth{Name: "partners", Methods: []authpkg.Method{{Kind: app.MethodGoogle, Name: "workspace", Authority: AuthorityApplication}}, Outlet: "portal"},
+			extra:       routed,
+			tidiedGoMod: beaconGoMod + "\nrequire github.com/coreos/go-oidc/v3 v3.21.0 // indirect\n",
+			wantDid: []string{
+				"go.mod: requires github.com/coreos/go-oidc/v3 v3.21.0, the OIDC library the session library's directory methods sign in through (go mod tidy)",
+				"ran go generate ./...",
+			},
+		},
+		{
+			name:        "generation fails",
+			auth:        Auth{Name: "partners", Methods: []authpkg.Method{{Kind: app.MethodGoogle, Name: "workspace", Authority: AuthorityApplication}}, Outlet: "portal"},
+			extra:       routed,
+			generateErr: errors.New("exit status 1"),
+			wantErr:     "go generate ./... failed, so the outlet's routes for the auth are not generated yet; fix the cause and run it:\ngeneration: boom",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -557,8 +579,21 @@ func TestAuthApply(t *testing.T) {
 				files[rel] = content
 			}
 			a := beacon(t, files)
-			exec := &fakeExec{}
+			exec := &fakeExec{err: tt.generateErr}
+			if tt.tidiedGoMod != "" {
+				exec.tidy = tidied(a, tt.tidiedGoMod)
+			}
 			ch, err := tt.auth.Apply(t.Context(), a, exec)
+			if diff := cmp.Diff(regenerated, exec.calls); diff != "" {
+				t.Errorf("exec calls mismatch (-want +got):\n%s", diff)
+			}
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("Apply() error = %v, want %q", err, tt.wantErr)
+				}
+
+				return
+			}
 			if err != nil {
 				t.Fatalf("Apply() error = %v", err)
 			}
@@ -579,8 +614,8 @@ func TestAuthApply(t *testing.T) {
 					}
 				}
 			}
-			if len(exec.calls) != 1 || !strings.HasPrefix(exec.calls[0], "go generate") {
-				t.Errorf("exec calls = %v, want one go generate", exec.calls)
+			if tt.tidiedGoMod == "" {
+				noGoModLine(t, ch.Did)
 			}
 			if tt.check != nil {
 				tt.check(t, a)

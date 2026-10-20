@@ -127,7 +127,7 @@ func TestAddFeatureApply(t *testing.T) {
 			if len(change.Skipped) != 0 {
 				t.Errorf("Skipped = %v, want none", change.Skipped)
 			}
-			if diff := cmp.Diff([]string{"go generate ./..."}, exec.calls); diff != "" {
+			if diff := cmp.Diff(regenerated, exec.calls); diff != "" {
 				t.Errorf("commands mismatch (-want +got):\n%s", diff)
 			}
 			for rel, want := range tt.wantFiles {

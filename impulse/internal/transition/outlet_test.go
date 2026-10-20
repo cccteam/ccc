@@ -147,6 +147,10 @@ server: bash -c 'go run ./cmd/bootstrap && go run .'
 console: bash -c 'cd web && bun install && bun run start:console'
 `
 
+// beaconGoMod is the fixture's go.mod: a module requiring nothing, so a tidy script
+// shows what a change made it require.
+const beaconGoMod = "module example.com/acme/beacon\n\ngo 1.26\n"
+
 // beacon writes a flat application with one console project, plus any extra files, and
 // discovers it.
 func beacon(t *testing.T, extra map[string]string) *app.App {
@@ -154,7 +158,7 @@ func beacon(t *testing.T, extra map[string]string) *app.App {
 
 	root := t.TempDir()
 	files := map[string]string{
-		"go.mod":                                         "module example.com/acme/beacon\n\ngo 1.26\n",
+		"go.mod":                                         beaconGoMod,
 		"cmd/generate/generate.go":                       "package generate\n\n//go:generate go run ./resourcegenerator\n",
 		"cmd/generate/resourcegenerator/main.go":         beaconProgram,
 		"pkg/resources/doc.go":                           "package resources\n",
@@ -193,20 +197,57 @@ func beacon(t *testing.T, extra map[string]string) *app.App {
 	return a
 }
 
-// fakeExec answers go generate: its output, and its failure when err is set.
+// fakeExec answers the go commands a transition runs. go mod tidy edits go.mod as its
+// script says (nothing, without one) or fails as the script does; go generate prints
+// out, or fails with err and its output.
 type fakeExec struct {
 	calls []string
 	out   string
 	err   error
+	// tidy stands in for go mod tidy's edit of go.mod, or its failure.
+	tidy func() error
 }
 
 func (f *fakeExec) Run(_ context.Context, _ string, _ []string, name string, args ...string) ([]byte, error) {
-	f.calls = append(f.calls, name+" "+strings.Join(args, " "))
+	call := name + " " + strings.Join(args, " ")
+	f.calls = append(f.calls, call)
+	if call == "go mod tidy" {
+		if f.tidy != nil {
+			if err := f.tidy(); err != nil {
+				return []byte("go: tidy: boom\n"), err
+			}
+		}
+
+		return []byte{}, nil
+	}
 	if f.err != nil {
 		return []byte("generation: boom\n"), f.err
 	}
 
 	return []byte(f.out), nil
+}
+
+// tidied is a tidy script that leaves go.mod as go mod tidy would: goMod.
+func tidied(a *app.App, goMod string) func() error {
+	return func() error {
+		return os.WriteFile(a.Abs("go.mod"), []byte(goMod), 0o644)
+	}
+}
+
+// regenerated is the command sequence a transition that regenerates runs: the module is
+// made whole, then the programs run.
+var regenerated = []string{"go mod tidy", "go generate ./..."}
+
+// noGoModLine fails the test when a did line reports a go.mod change, for a change whose
+// tidy changed nothing.
+func noGoModLine(t *testing.T, did []string) {
+	t.Helper()
+
+	for _, d := range did {
+		if strings.HasPrefix(d, "go.mod:") {
+			t.Errorf("Did reports a go.mod change the tidy did not make: %q", d)
+		}
+	}
 }
 
 func read(t *testing.T, a *app.App, rel string) string {
@@ -278,6 +319,7 @@ func TestOutletApply(t *testing.T) {
 		name         string
 		outlet       Outlet
 		generateErr  error
+		wantErr      string
 		generateOut  string
 		wantWarnings []string
 		wantProgram  string
@@ -439,8 +481,7 @@ func TestOutletApply(t *testing.T) {
 			outlet:      Outlet{Name: "machines", Prefix: "machines"},
 			generateErr: errors.New("exit status 1"),
 			wantProgram: machinesProgram,
-			wantDid:     []string{`cmd/generate/resourcegenerator/main.go: added WithRouterOutlet("machines", "machines")`},
-			wantSkipped: []string{"go generate ./... failed, so the outlet's routes, handlers, and client are not generated yet; fix the cause and run it:\ngeneration: boom"},
+			wantErr:     "go generate ./... failed, so the outlet's routes, handlers, and client are not generated yet; fix the cause and run it:\ngeneration: boom",
 		},
 	}
 	for _, tt := range tests {
@@ -450,11 +491,22 @@ func TestOutletApply(t *testing.T) {
 			a := beacon(t, nil)
 			exec := &fakeExec{err: tt.generateErr, out: tt.generateOut}
 			ch, err := tt.outlet.Apply(t.Context(), a, exec)
+			if diff := cmp.Diff(regenerated, exec.calls); diff != "" {
+				t.Errorf("commands mismatch (-want +got):\n%s", diff)
+			}
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("Apply() error = %v, want %q", err, tt.wantErr)
+				}
+				// The refusal leaves the edits on disk for the author to build on.
+				if diff := cmp.Diff(tt.wantProgram, read(t, a, program)); diff != "" {
+					t.Errorf("program mismatch (-want +got):\n%s", diff)
+				}
+
+				return
+			}
 			if err != nil {
 				t.Fatalf("Apply() error = %v", err)
-			}
-			if diff := cmp.Diff([]string{"go generate ./..."}, exec.calls); diff != "" {
-				t.Errorf("commands mismatch (-want +got):\n%s", diff)
 			}
 			if diff := cmp.Diff(tt.wantWarnings, ch.Warnings); diff != "" {
 				t.Errorf("Warnings mismatch (-want +got):\n%s", diff)

@@ -179,7 +179,9 @@ func (s Site) Apply(ctx context.Context, a *app.App, exec check.Execer) (*Change
 		return nil, err
 	}
 	writeCI(a, ch, fmt.Sprintf("an angular-%s job for %s", s.Name, path.Join(sitesDir, s.Name, "web")))
-	generate(ctx, a, exec, ch, "go generate ./... failed; fix the cause and run it:", fmt.Sprintf("ran go generate ./...: the %s site's generated code, and every site's at its place", s.Name))
+	if err := generate(ctx, a, exec, ch, "go generate ./... failed; fix the cause and run it:", fmt.Sprintf("ran go generate ./...: the %s site's generated code, and every site's at its place", s.Name)); err != nil {
+		return nil, err
+	}
 	ch.skipf("test/integration serves the %s site only; serve the %s site beside it over the same database, as the reference's harness does, and prove that a login on one site opens the other only where the auth is shared", first.Name, s.Name)
 	ch.skipf("deployment configuration outside the repository (Cloud Build path filters, Cloud Run source directories) now has %s/%s to build and a host for the %s site to serve", sitesDir, s.Name, s.Name)
 

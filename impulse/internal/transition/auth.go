@@ -343,7 +343,9 @@ func (au Auth) Apply(ctx context.Context, a *app.App, exec check.Execer) (*Chang
 			}
 		}
 	}
-	generate(ctx, a, exec, ch, "go generate ./... failed, so the outlet's routes for the auth are not generated yet; fix the cause and run it:", "ran go generate ./...")
+	if err := generate(ctx, a, exec, ch, "go generate ./... failed, so the outlet's routes for the auth are not generated yet; fix the cause and run it:", "ran go generate ./..."); err != nil {
+		return nil, err
+	}
 
 	return ch, nil
 }
