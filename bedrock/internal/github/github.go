@@ -1,7 +1,7 @@
 // Package github is the small GitHub REST client bedrock needs: the organization's
 // installed apps, a repository's rulesets, its refs, tags, comparisons and directory
-// listings, its pull requests with their comments and deployments, and a GitHub App's
-// installation token. It speaks to one API host with one token and translates the API's
+// listings, its workflows, its pull requests with their comments and deployments, and a
+// GitHub App's installation token. It speaks to one API host with one token and translates the API's
 // refusals into errors that carry the status and the message.
 package github
 
@@ -260,6 +260,34 @@ func (c *Client) Tags(ctx context.Context, owner, repo string) ([]Tag, error) {
 		}
 		all = append(all, tags...)
 		if len(tags) < 100 {
+			return all, nil
+		}
+	}
+}
+
+// Workflow is one of the repository's Actions workflows. GitHub lists a workflow once a
+// push of at most twenty commits adds or changes its file on the default branch (the
+// push event's commit list is capped there), or once it runs; a first push of more
+// commits lists none of them until then.
+type Workflow struct {
+	ID    int64  `json:"id"`
+	Name  string `json:"name"`
+	Path  string `json:"path"`
+	State string `json:"state"`
+}
+
+// Workflows lists the repository's workflows, every page of them.
+func (c *Client) Workflows(ctx context.Context, owner, repo string) ([]Workflow, error) {
+	var all []Workflow
+	for page := 1; ; page++ {
+		var answer struct {
+			Workflows []Workflow `json:"workflows"`
+		}
+		if err := c.do(ctx, http.MethodGet, fmt.Sprintf("/repos/%s/%s/actions/workflows?per_page=%d&page=%d", owner, repo, perPage, page), nil, &answer); err != nil {
+			return nil, err
+		}
+		all = append(all, answer.Workflows...)
+		if len(answer.Workflows) < perPage {
 			return all, nil
 		}
 	}

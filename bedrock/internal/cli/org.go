@@ -24,6 +24,7 @@ import (
 	"github.com/cccteam/ccc/bedrock/internal/layers"
 	"github.com/cccteam/ccc/bedrock/internal/org"
 	"github.com/cccteam/ccc/bedrock/internal/release"
+	"github.com/cccteam/ccc/bedrock/internal/render"
 	"github.com/cccteam/ccc/bedrock/internal/where"
 )
 
@@ -703,11 +704,11 @@ func (d deps) registerFirst(ctx context.Context, out io.Writer, p *org.Placement
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "Registered %s in %s at its identities; rendered %d owned file(s), the five applications.auto.tfvars and 1-org/public-invokers.auto.tfvars among them.\n", app, placement, written.Owned)
+	fmt.Fprintf(out, "Registered %s under the code %s in %s at its identities; rendered %d owned file(s), the five applications.auto.tfvars and 1-org/public-invokers.auto.tfvars among them.\n", repository, app, placement, written.Owned)
 	fmt.Fprint(out, triggerNotice(p))
-	fmt.Fprint(out, applySequence(p, app))
+	fmt.Fprint(out, applySequence(p, app, repository))
 
-	return writeFirstPlacement(out, first, app, target)
+	return writeFirstPlacement(out, first, app, repository, target)
 }
 
 // The state objects register --next reads from the state bucket before it moves a
@@ -723,10 +724,22 @@ const (
 
 // registerNext moves the application's registration to its next step, once the state the
 // step needs is there, writes the placement, renders, and prints what the pull request
-// carries and what follows its apply.
+// carries and what follows its apply. The move to the grants reads GitHub's workflow
+// list for the repository first, since what follows that pull request is the stack's
+// first apply, and how it starts depends on whether GitHub lists the operations workflow
+// yet; a list that cannot be read moves nothing. The output names the application by its
+// repository and keeps the code to the commands.
 func (d deps) registerNext(ctx context.Context, out io.Writer, p *org.Placement, placement, dir, app string) error {
-	if err := d.registrationReady(ctx, p, app); err != nil {
+	repository := p.Repository(app)
+	if err := d.registrationReady(ctx, p, app, repository); err != nil {
 		return err
+	}
+	listed := false
+	if p.Step(app) == org.RegistrationIdentities {
+		var err error
+		if listed, err = d.operationsWorkflowListed(ctx, p.GithubOrganization, repository); err != nil {
+			return err
+		}
 	}
 	step, err := p.Advance(app)
 	if err != nil {
@@ -744,19 +757,16 @@ func (d deps) registerNext(ctx context.Context, out io.Writer, p *org.Placement,
 		return err
 	}
 	if step == org.RegistrationGrants {
-		fmt.Fprintf(out, "Moved %s's registration to its grants in %s; rendered %d owned file(s).\n", app, placement, written.Owned)
+		fmt.Fprintf(out, "Moved %s's registration to its grants in %s; rendered %d owned file(s).\n", repository, placement, written.Owned)
 		fmt.Fprintf(out, `
 The pull request now carries 1-org/public-invokers.auto.tfvars, 2-shr/applications.auto.tfvars
 and 2-spn/applications.auto.tfvars: the public-invoker tag, the registry grants and the
 database admins, on identities that exist now. After its merge and apply: %s's own stack,
-applied for the first time in each environment through its operations workflow (Actions,
-operations, apply; its infrastructure/README.md, Applying), then
-bedrock org register %s --next.
-`, app, app)
+applied for the first time in each environment%s`, repository, firstApplyInstruction(p, app, repository, listed))
 
 		return nil
 	}
-	fmt.Fprintf(out, "Completed %s's registration in %s; rendered %d owned file(s).\n", app, placement, written.Owned)
+	fmt.Fprintf(out, "Completed %s's registration in %s; rendered %d owned file(s).\n", repository, placement, written.Owned)
 	fmt.Fprint(out, `
 The pull request now carries 2-net/applications.auto.tfvars and 1-org/applications.auto.tfvars:
 the hostnames, onto the backends the stack created, and the stack's check trigger as a
@@ -767,12 +777,76 @@ bedrock domain check, which passes when the apps domain resolves to its zone.
 	return nil
 }
 
+// operationsWorkflowPath is the operations workflow's path in the repository, as
+// GitHub's workflow list names it.
+const operationsWorkflowPath = ".github/workflows/" + render.OperationsWorkflow
+
+// operationsWorkflowListed reports whether GitHub lists the repository's operations
+// workflow, which decides how the stack's first apply starts: the workflow's apply action
+// when it does, the stack trigger started by hand while it does not. GitHub lists a
+// workflow once a push of at most twenty commits adds or changes its file on the default
+// branch, or once it runs, so a repository whose first push carried more lists none. A
+// list that cannot be read is a refusal, so the instruction printed is never a guess.
+func (d deps) operationsWorkflowListed(ctx context.Context, owner, repository string) (bool, error) {
+	client, err := d.github(ctx)
+	if err != nil {
+		return false, err
+	}
+	workflows, err := client.Workflows(ctx, owner, repository)
+	if err != nil {
+		return false, errors.Wrapf(err, "reading %s/%s's workflows, which decide how the stack's first apply starts; nothing moved", owner, repository)
+	}
+	for i := range workflows {
+		if workflows[i].Path == operationsWorkflowPath {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
+// firstApplyInstruction says how the application's stack is applied for the first time in
+// each environment, continuing the sentence "applied for the first time in each
+// environment": through the operations workflow's apply action when GitHub lists the
+// workflow, else by starting the stack trigger 2-env made in each environment as the
+// workflow would, with the cause. It ends with the register --next that follows.
+func firstApplyInstruction(p *org.Placement, app, repository string, listed bool) string {
+	var b strings.Builder
+	envs := strings.Join(org.Environments, ", ")
+	if listed {
+		fmt.Fprintf(&b, ` through its operations workflow, which GitHub lists: Actions,
+operations, Run workflow, with the action apply and the environment, %s in that order (or
+gh workflow run %s --repo %s/%s -f action=apply -f environment=<env>; its
+infrastructure/README.md, Applying). Then
+bedrock org register %s --next.
+`, envs, render.OperationsWorkflow, p.GithubOrganization, repository, app)
+
+		return b.String()
+	}
+	fmt.Fprintf(&b, `. GitHub does not list its operations workflow yet: a
+workflow is listed once a push of at most twenty commits adds or changes its file on the
+default branch, or once it runs, and the repository's first push carried more, so the
+workflow's apply action cannot start the stack trigger for this apply. Start the trigger as
+the workflow would, in a terminal, as the operator, %s in that order; in %s, whose
+builds wait for an approval, approve the build in Cloud Build:
+`, envs, strings.Join(p.ApprovalEnvironments(), " and "))
+	for _, env := range org.Environments {
+		fmt.Fprintf(&b, "  gcloud builds triggers run %s --branch=%s --region=%s --project=%s\n", p.StackTriggerName(env, app), p.GithubDefaultBranch, p.Primary().Name, p.Project(env))
+	}
+	fmt.Fprintf(&b, `A pull request that changes %s lists the workflow for every apply after this one. Then
+bedrock org register %s --next.
+`, operationsWorkflowPath, app)
+
+	return b.String()
+}
+
 // registrationReady refuses the registration's next step while the state it needs is not
 // there: the grants need the application's identities in 2-env's state in every
 // environment (the apply run after the first pull request), and the completion needs the
-// stack's state in every environment (its first applies by hand). An application the
-// placement does not list or has registered in full is refused by Advance.
-func (d deps) registrationReady(ctx context.Context, p *org.Placement, app string) error {
+// stack's state in every environment (its first applies, as the grants step's output
+// said). An application the placement does not list or has registered in full is
+// refused by Advance. The refusals name the application by its repository.
+func (d deps) registrationReady(ctx context.Context, p *org.Placement, app, repository string) error {
 	step := p.Step(app)
 	if step == "" || !p.Registered(app) {
 		return nil
@@ -785,11 +859,11 @@ func (d deps) registrationReady(ctx context.Context, p *org.Placement, app strin
 	for _, env := range org.Environments {
 		switch step {
 		case org.RegistrationIdentities:
-			if err := identitiesInState(ctx, store, p.StateBucket, env, app); err != nil {
+			if err := identitiesInState(ctx, store, p.StateBucket, env, app, repository); err != nil {
 				return err
 			}
 		case org.RegistrationGrants:
-			if err := stackInState(ctx, store, p.StateBucket, env, app); err != nil {
+			if err := stackInState(ctx, store, p.StateBucket, env, app, repository); err != nil {
 				return err
 			}
 		}
@@ -825,7 +899,7 @@ func readTofuState(ctx context.Context, store deploy.Store, bucket, object strin
 
 // identitiesInState refuses while 2-env's state in the environment lacks the
 // application's identities.
-func identitiesInState(ctx context.Context, store deploy.Store, bucket, env, app string) error {
+func identitiesInState(ctx context.Context, store deploy.Store, bucket, env, app, repository string) error {
 	state, err := readTofuState(ctx, store, bucket, envStatePrefix+env+"/"+stateObject)
 	if err != nil {
 		return err
@@ -837,7 +911,7 @@ func identitiesInState(ctx context.Context, store deploy.Store, bucket, env, app
 		}
 	}
 	if _, ok := applications[app]; !ok {
-		return errors.Newf("%s's identities are not in 2-env %s's state yet: merge the registration's pull request and start the apply trigger with 2-env (the sequence's step 2) before moving on", app, env)
+		return errors.Newf("%s's identities are not in 2-env %s's state yet: merge the registration's pull request and start the apply trigger with 2-env (the sequence's step 2) before moving on", repository, env)
 	}
 
 	return nil
@@ -845,13 +919,13 @@ func identitiesInState(ctx context.Context, store deploy.Store, bucket, env, app
 
 // stackInState refuses while the application's stack has no state with outputs in the
 // environment.
-func stackInState(ctx context.Context, store deploy.Store, bucket, env, app string) error {
+func stackInState(ctx context.Context, store deploy.Store, bucket, env, app, repository string) error {
 	state, err := readTofuState(ctx, store, bucket, appStatePrefix+app+"/"+env+"/"+stateObject)
 	if err != nil {
 		return err
 	}
 	if len(state.Outputs) == 0 {
-		return errors.Newf("%s's stack has no state in %s yet (%s%s/%s): its first apply there is by hand (the sequence's step 4) before moving on", app, env, appStatePrefix, app, env)
+		return errors.Newf("%s's stack has no state in %s yet (%s%s/%s): its first apply there comes first (the sequence's step 4, as the grants step's output said) before moving on", repository, env, appStatePrefix, app, env)
 	}
 
 	return nil
@@ -944,13 +1018,13 @@ func firstPlacementFile(checkout string) (string, error) {
 
 // writeFirstPlacement writes the application's first placement to the file, or prints it
 // when there is none, last, so it is copied whole.
-func writeFirstPlacement(out io.Writer, first *derive.Placement, app, file string) error {
+func writeFirstPlacement(out io.Writer, first *derive.Placement, app, repository, file string) error {
 	defaults := "Approvals, maintenance windows, the build machine and instance caps are left to their defaults; production's maintenance window is the team's to write before its first breaking release."
 	if file != "" {
 		if err := derive.CreatePlacement(file, first); err != nil {
 			return err
 		}
-		fmt.Fprintf(out, "\nWrote %s, %s's first placement, pinned to bedrock %s: commit it in the application's repository, where bedrock render writes the stack beside it and refuses a migrations directory that breaks the sequence rule, so a generator's mistake never reaches the default branch. %s\n", file, app, first.BedrockVersion, defaults)
+		fmt.Fprintf(out, "\nWrote %s, %s's first placement, pinned to bedrock %s: commit it in the application's repository, where bedrock render writes the stack beside it and refuses a migrations directory that breaks the sequence rule, so a generator's mistake never reaches the default branch. %s\n", file, repository, first.BedrockVersion, defaults)
 
 		return nil
 	}
@@ -958,7 +1032,7 @@ func writeFirstPlacement(out io.Writer, first *derive.Placement, app, file strin
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "\n%s's first placement, pinned to bedrock %s: commit it in the application's repository as infrastructure/placement.json, where bedrock render reads it (bedrock org register %s <checkout> writes it there instead). %s\n%s", app, first.BedrockVersion, app, defaults, data)
+	fmt.Fprintf(out, "\n%s's first placement, pinned to bedrock %s: commit it in the application's repository as infrastructure/placement.json, where bedrock render reads it (bedrock org register %s <checkout> writes it there instead). %s\n%s", repository, first.BedrockVersion, app, defaults, data)
 
 	return nil
 }
@@ -981,35 +1055,39 @@ func applicationProjects(p *org.Placement, app string) string {
 }
 
 // applySequence says how a registered application reaches the layers through the Cloud
-// Build triggers: the pull requests, in order, and the one run of the apply trigger by hand.
-func applySequence(p *org.Placement, app string) string {
+// Build triggers: the pull requests, in order, and the one run of the apply trigger by
+// hand. It names the application by its repository and keeps the code to the commands.
+func applySequence(p *org.Placement, app, repository string) string {
 	return fmt.Sprintf(`
-Register through the Cloud Build triggers, as pull requests into %s (each merge applies the
+Register through the Cloud Build triggers, as pull requests into %[1]s (each merge applies the
 layers it touches, in layer order). placement.json records how far the registration has gone
 (registration), the layers render what that step may apply, and every pull request carries
 every rendered file:
-  1. This render, %s at its identities: its repository (private, squash the only merge,
+  1. This render, %[4]s at its identities: its repository (private, squash the only merge,
      its rulesets and Environments; a repository made before this is imported first,
      1-org/README.md) and its registry repository, then, in tst, stg and prd, its
      identities, database, repository link and triggers.
   2. The apply trigger by hand with 2-env, in a terminal:
-     %s
+     %[3]s
      tst and stg grant the next environment's deploy identity read on their records
      bucket, from state the first pass did not have.
-  3. bedrock org register %s --next, then the pull request it renders: the public-invoker
+  3. bedrock org register %[2]s --next, then the pull request it renders: the public-invoker
      tag (1-org), the registry grants (2-shr) and the database admins (2-spn), on
-     identities that exist now.
-  4. %s's own stack, rendered in its repository (bedrock render) from its first
-     placement.json (below), applied for the first time in each environment through its
+     identities that exist now. Its output says how step 4 starts.
+  4. %[4]s's own stack, rendered in its repository (bedrock render) from its first
+     placement.json (below), applied for the first time in each environment: through its
      operations workflow (Actions, operations, apply, with the environment: the stack
-     trigger 2-env made there applies it as the apply identity); every later apply is
-     its pipeline's, with each release.
-  5. bedrock org register %s --next once more, then the pull request it renders: the
+     trigger 2-env made there applies it as the apply identity) once GitHub lists the
+     workflow, else by starting that trigger as the workflow would, since a first push
+     of more than twenty commits lists no workflow until a pull request changes its
+     file; step 3 prints the one that works. Every later apply is its pipeline's, with
+     each release.
+  5. bedrock org register %[2]s --next once more, then the pull request it renders: the
      hostnames (2-net), onto the backends the stack created, and the stack's check trigger
      as a required check of the repository (1-org), which the first apply made; until then
      the repository's pull requests merge on the CI jobs alone.
   6. After 2-net's apply: bedrock domain check, which passes when the apps domain resolves to its zone.
-`, p.GithubDefaultBranch, app, triggerRun(p, ""), app, app, app)
+`, p.GithubDefaultBranch, app, triggerRun(p, ""), repository)
 }
 
 // triggerUnrendered says, while the placement records no Cloud Build authorization, that

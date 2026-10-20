@@ -806,6 +806,13 @@ func (p *Placement) ApplyTriggerName() string {
 	return p.Prefix + "-boot-" + p.Primary().Code + "-layers-apply"
 }
 
+// StackTriggerName is an application's stack trigger in an environment, as 2-env names
+// it (cloud-build.tf): the trigger the application's operations workflow starts for its
+// apply action, in the environment's project and the primary region.
+func (p *Placement) StackTriggerName(env, code string) string {
+	return p.Prefix + "-" + env + "-" + p.Primary().Code + "-" + code + "-stack"
+}
+
 // PlannerIdentity is the email of the plan trigger's runner identity, in the boot
 // project.
 func (p *Placement) PlannerIdentity() string {
@@ -1005,6 +1012,19 @@ func (p *Placement) Codes() []string {
 	}
 
 	return codes
+}
+
+// Repository is the repository of the application registered under the code, the name
+// a person knows the application by; the code itself for an application the placement
+// does not list.
+func (p *Placement) Repository(code string) string {
+	for _, a := range p.Applications {
+		if a.Code == code {
+			return a.Repository
+		}
+	}
+
+	return code
 }
 
 // Registered reports whether an application is registered under the code.

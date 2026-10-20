@@ -18,6 +18,8 @@ import (
 	"github.com/cccteam/ccc/bedrock/internal/deploy"
 	"github.com/cccteam/ccc/bedrock/internal/derive"
 	"github.com/cccteam/ccc/bedrock/internal/domain"
+	"github.com/cccteam/ccc/bedrock/internal/github"
+	"github.com/cccteam/ccc/bedrock/internal/github/githubtest"
 	"github.com/cccteam/ccc/bedrock/internal/org"
 	"github.com/cccteam/ccc/bedrock/internal/release"
 )
@@ -701,8 +703,8 @@ func TestOrgCommands(t *testing.T) {
 				return code, out
 			},
 			wantOut: []string{
-				"Registered quill in", "at its identities; rendered", "1-org/public-invokers.auto.tfvars among them", "Register through the Cloud Build triggers, as pull requests into master",
-				"1. This render, quill at its identities: its repository",
+				"Registered quill-service under the code quill in", "at its identities; rendered", "1-org/public-invokers.auto.tfvars among them", "Register through the Cloud Build triggers, as pull requests into master",
+				"1. This render, quill-service at its identities: its repository",
 				"2. The apply trigger by hand with 2-env, in a terminal:\n     gcloud builds triggers run imp-boot-uc1-layers-apply --region=us-central1 --project=imp-boot-gbl-core-a1b2 --branch=master --substitutions=_LAYER=2-env\n     tst and stg grant the next environment's deploy identity read on their records\n     bucket, from state the first pass did not have.",
 				"3. bedrock org register quill --next, then the pull request it renders: the public-invoker\n     tag (1-org), the registry grants (2-shr) and the database admins (2-spn)",
 				"5. bedrock org register quill --next once more, then the pull request it renders: the\n     hostnames (2-net)",
@@ -898,14 +900,14 @@ func TestOrgRegisterPlacement(t *testing.T) {
 			running:  build{version: headVersion, kind: buildInstalled},
 			checkout: "new",
 			wantPin:  [2]string{headVersion, ""},
-			wantOut:  []string{"Wrote ", "quill's first placement, pinned to bedrock " + headVersion + ": commit it in the application's repository"},
+			wantOut:  []string{"Wrote ", "quill-service's first placement, pinned to bedrock " + headVersion + ": commit it in the application's repository"},
 		},
 		{
 			name:     "written into the checkout, pinned to a release with its checksum",
 			running:  build{version: "v0.4.0", kind: buildStamped},
 			checkout: "new",
 			wantPin:  [2]string{"v0.4.0", sum},
-			wantOut:  []string{"Wrote ", "quill's first placement, pinned to bedrock v0.4.0: commit it in the application's repository"},
+			wantOut:  []string{"Wrote ", "quill-service's first placement, pinned to bedrock v0.4.0: commit it in the application's repository"},
 		},
 		{
 			name:     "no checkout",
@@ -1225,45 +1227,56 @@ func TestOrgRegisterNext(t *testing.T) {
 		wantFiles  map[string][]string
 		wantAbsent map[string][]string
 	}
+	// stackTriggers are the commands the grants step prints while GitHub lists no
+	// operations workflow: the stack trigger 2-env made in each environment, started as
+	// the workflow would start it.
+	const stackTriggers = "  gcloud builds triggers run imp-tst-uc1-quill-stack --branch=master --region=us-central1 --project=imp-tst-gbl-core-1a2b\n" +
+		"  gcloud builds triggers run imp-stg-uc1-quill-stack --branch=master --region=us-central1 --project=imp-stg-gbl-core-3c4d\n" +
+		"  gcloud builds triggers run imp-prd-uc1-quill-stack --branch=master --region=us-central1 --project=imp-prd-gbl-core-5e6f\n"
 	tests := []struct {
-		name  string
-		steps []step
+		name string
+		// workflows are the paths GitHub lists for the repository; noRepo leaves the
+		// repository off the stand-in, so the list is not found.
+		workflows []string
+		noRepo    bool
+		steps     []step
 	}{
 		{
-			name: "the grants wait for the identities, the completion for the stacks",
+			name:      "the grants wait for the identities, the completion for the stacks",
+			workflows: []string{".github/workflows/ci.yml", ".github/workflows/operations.yml"},
 			steps: []step{
 				{
 					args: []string{"org", "register", "quill", "--next"}, wantCode: 1,
-					wantOut: []string{"quill's identities are not in 2-env tst's state yet: merge the registration's pull request and start the apply trigger with 2-env (the sequence's step 2) before moving on"},
+					wantOut: []string{"quill-portal's identities are not in 2-env tst's state yet: merge the registration's pull request and start the apply trigger with 2-env (the sequence's step 2) before moving on"},
 				},
 				{
 					objects: map[string]string{"2-env/tst/default.tfstate": envState("harbor", "quill"), "2-env/stg/default.tfstate": envState("quill")},
 					args:    []string{"org", "register", "quill", "--next"}, wantCode: 1,
-					wantOut: []string{"quill's identities are not in 2-env prd's state yet"},
+					wantOut: []string{"quill-portal's identities are not in 2-env prd's state yet"},
 				},
 				{
 					objects: map[string]string{"2-env/prd/default.tfstate": envState("quill")},
 					args:    []string{"org", "register", "quill", "--next"},
 					wantOut: []string{
-						"Moved quill's registration to its grants in", "The pull request now carries 1-org/public-invokers.auto.tfvars, 2-shr/applications.auto.tfvars\nand 2-spn/applications.auto.tfvars",
-						"then\nbedrock org register quill --next.\n",
+						"Moved quill-portal's registration to its grants in", "The pull request now carries 1-org/public-invokers.auto.tfvars, 2-shr/applications.auto.tfvars\nand 2-spn/applications.auto.tfvars",
+						"After its merge and apply: quill-portal's own stack,\napplied for the first time in each environment through its operations workflow, which GitHub lists: Actions,\noperations, Run workflow, with the action apply and the environment, tst, stg, prd in that order (or\ngh workflow run operations.yml --repo imp-example/quill-portal -f action=apply -f environment=<env>; its\ninfrastructure/README.md, Applying). Then\nbedrock org register quill --next.\n",
 					},
 					wantFiles:  map[string][]string{"1-org/public-invokers.auto.tfvars": {invoker}, "placement.json": {"\"quill\": \"grants\""}},
 					wantAbsent: map[string][]string{"2-net/applications.auto.tfvars": {host}},
 				},
 				{
 					args: []string{"org", "register", "quill", "--next"}, wantCode: 1,
-					wantOut: []string{"quill's stack has no state in tst yet (3-app/quill/tst): its first apply there is by hand (the sequence's step 4) before moving on"},
+					wantOut: []string{"quill-portal's stack has no state in tst yet (3-app/quill/tst): its first apply there comes first (the sequence's step 4, as the grants step's output said) before moving on"},
 				},
 				{
 					objects: map[string]string{"3-app/quill/tst/default.tfstate": stackState, "3-app/quill/stg/default.tfstate": stackState, "3-app/quill/prd/default.tfstate": `{"outputs": {}}`},
 					args:    []string{"org", "register", "quill", "--next"}, wantCode: 1,
-					wantOut: []string{"quill's stack has no state in prd yet"},
+					wantOut: []string{"quill-portal's stack has no state in prd yet"},
 				},
 				{
 					objects:    map[string]string{"3-app/quill/prd/default.tfstate": stackState},
 					args:       []string{"org", "register", "quill", "--next"},
-					wantOut:    []string{"Completed quill's registration in", "The pull request now carries 2-net/applications.auto.tfvars and 1-org/applications.auto.tfvars:\nthe hostnames"},
+					wantOut:    []string{"Completed quill-portal's registration in", "The pull request now carries 2-net/applications.auto.tfvars and 1-org/applications.auto.tfvars:\nthe hostnames"},
 					wantFiles:  map[string][]string{"2-net/applications.auto.tfvars": {host}, "1-org/public-invokers.auto.tfvars": {invoker}},
 					wantAbsent: map[string][]string{"placement.json": {"registration"}},
 				},
@@ -1272,6 +1285,30 @@ func TestOrgRegisterNext(t *testing.T) {
 					wantOut: []string{`application "quill" is registered in full: there is no step left`},
 				},
 			},
+		},
+		{
+			name:      "the stack trigger by hand while GitHub lists no operations workflow",
+			workflows: []string{".github/workflows/ci.yml"},
+			steps: []step{{
+				objects: map[string]string{"2-env/tst/default.tfstate": envState("quill"), "2-env/stg/default.tfstate": envState("quill"), "2-env/prd/default.tfstate": envState("quill")},
+				args:    []string{"org", "register", "quill", "--next"},
+				wantOut: []string{
+					"Moved quill-portal's registration to its grants in",
+					"After its merge and apply: quill-portal's own stack,\napplied for the first time in each environment. GitHub does not list its operations workflow yet: a\nworkflow is listed once a push of at most twenty commits adds or changes its file on the\ndefault branch, or once it runs, and the repository's first push carried more, so the\nworkflow's apply action cannot start the stack trigger for this apply. Start the trigger as\nthe workflow would, in a terminal, as the operator, tst, stg, prd in that order; in stg and prd, whose\nbuilds wait for an approval, approve the build in Cloud Build:\n" + stackTriggers +
+						"A pull request that changes .github/workflows/operations.yml lists the workflow for every apply after this one. Then\nbedrock org register quill --next.\n",
+				},
+				wantFiles: map[string][]string{"placement.json": {"\"quill\": \"grants\""}},
+			}},
+		},
+		{
+			name:   "a workflow list that cannot be read moves nothing",
+			noRepo: true,
+			steps: []step{{
+				objects: map[string]string{"2-env/tst/default.tfstate": envState("quill"), "2-env/stg/default.tfstate": envState("quill"), "2-env/prd/default.tfstate": envState("quill")},
+				args:    []string{"org", "register", "quill", "--next"}, wantCode: 1,
+				wantOut:   []string{"reading imp-example/quill-portal's workflows, which decide how the stack's first apply starts; nothing moved", "answered 404: Not Found"},
+				wantFiles: map[string][]string{"placement.json": {"\"quill\": \"identities\""}},
+			}},
 		},
 		{
 			name: "a checkout with --next is refused",
@@ -1296,12 +1333,19 @@ func TestOrgRegisterNext(t *testing.T) {
 			if code, out := runOrg(t, "org", "new", dir); code != 0 {
 				t.Fatalf("org new: %d %s", code, out)
 			}
-			if code, out := runOrg(t, "org", "register", "quill", "--dir", dir, appCheckout(t, "github.com/"+orgOrganization+"/quill")); code != 0 {
+			if code, out := runOrg(t, "org", "register", "quill", "--dir", dir, appCheckout(t, "github.com/"+orgOrganization+"/quill-portal")); code != 0 {
 				t.Fatalf("org register: %d %s", code, out)
 			}
 			store := &memoryStore{objects: map[string]string{}}
+			server := githubtest.New(t)
+			if !tt.noRepo {
+				server.AddRepo(orgOrganization, "quill-portal", &githubtest.Repo{Workflows: tt.workflows})
+			}
 			d := orgDeps(dir)
 			d.deploy = &deploy.Clients{Storage: store.open}
+			d.github = func(context.Context) (*github.Client, error) {
+				return server.Client(), nil
+			}
 			for i, st := range tt.steps {
 				for object, data := range st.objects {
 					store.objects["gs://"+bucket+"/"+object] = data
