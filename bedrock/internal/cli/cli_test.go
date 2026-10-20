@@ -141,6 +141,90 @@ func TestRenderThenCheck(t *testing.T) {
 	}
 }
 
+// TestRenderKeptDockerfile: a render that keeps a sites-layout Dockerfile (lantern's,
+// two sites behind one image) whose image still sets an ENTRYPOINT notes, after the Kept
+// line, the lines to end the image with, and check then refuses the image; a kept
+// Dockerfile that follows the contract draws no note, and check says how the image
+// starts. bedrock upgrade prints the same note, since it runs this render with the
+// pinned bedrock.
+func TestRenderKeptDockerfile(t *testing.T) {
+	t.Parallel()
+
+	const (
+		lanternApp       = "../derive/testdata/lantern"
+		lanternPlacement = "../derive/testdata/placement-lantern.json"
+		lanternImage     = "../render/testdata/lantern/root/Dockerfile"
+	)
+	seeded, err := os.ReadFile(lanternImage)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tests := []struct {
+		name string
+		// edit changes the seeded Dockerfile into the one the application keeps.
+		edit          func(seeded string) string
+		wantNote      []string
+		wantNoNote    bool
+		wantCheckCode int
+		wantCheckOut  []string
+	}{
+		{
+			name: "an entrypoint from before the contract is noted, and check refuses the image",
+			edit: func(seeded string) string {
+				return strings.Replace(seeded, "CMD [\"/console\"]", "ENTRYPOINT [\"/console\"]", 1)
+			},
+			wantNote: []string{
+				"Kept Dockerfile as it was.\nThe kept ",
+				"/Dockerfile sets ENTRYPOINT [\"/console\"]: an entrypoint runs with the container's arguments after it, so each site's service would start /console with its own binary as an argument, never its own binary. The stack's services pass each site's binary as the container's arguments (cloud-run.tf), which replace a default command and follow an entrypoint, so the image sets no ENTRYPOINT and names the first site's binary as its CMD; end the image with these lines in place of what it sets, as the seeded Dockerfile has them:\n    # No ENTRYPOINT: the default command is the first site's binary, and each site's Cloud Run\n    # service names its own binary as the container's arguments, which replace it (cloud-run.tf).\n    # The placeholder image the stack creates the services with keeps its own entrypoint, so\n    # the first apply's revisions start before the pipeline's first deploy.\n    CMD [\"/console\"]\nbedrock check refuses the image until then, and the stack's check trigger runs it on every push to a pull request.\n",
+			},
+			wantCheckCode: 1,
+			wantCheckOut:  []string{"refused  Dockerfile sets ENTRYPOINT [\"/console\"]: an entrypoint runs with the container's arguments after it", "           CMD [\"/console\"]\n"},
+		},
+		{
+			name: "a kept Dockerfile that follows the contract draws no note, and check says how the image starts",
+			edit: func(seeded string) string {
+				return seeded
+			},
+			wantNote:      []string{"Kept Dockerfile as it was.\n"},
+			wantNoNote:    true,
+			wantCheckCode: 0,
+			wantCheckOut:  []string{"image    Dockerfile sets no ENTRYPOINT, and its default command is /console, the console site's binary: each site's service passes its own binary as the container's arguments (cloud-run.tf), which replace it"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			dir := filepath.Join(t.TempDir(), "stack")
+			app := copyRepo(t, lanternApp)
+			if err := os.WriteFile(filepath.Join(app, "Dockerfile"), []byte(tt.edit(string(seeded))), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			code, out := run(t, "render", "--app", app, "--out", dir, "--placement", lanternPlacement)
+			if code != 0 || !strings.Contains(out, "Rendered the lantrn stack") {
+				t.Fatalf("render exit = %d, output:\n%s", code, out)
+			}
+			for _, want := range tt.wantNote {
+				if !strings.Contains(out, want) {
+					t.Errorf("render output lacks %q:\n%s", want, out)
+				}
+			}
+			if tt.wantNoNote && strings.Contains(out, "The kept ") {
+				t.Errorf("render output notes the kept Dockerfile, which follows the contract:\n%s", out)
+			}
+			code, out = run(t, "check", "--app", app, "--dir", dir, "--placement", lanternPlacement)
+			if code != tt.wantCheckCode {
+				t.Errorf("check exit = %d, want %d; output:\n%s", code, tt.wantCheckCode, out)
+			}
+			for _, want := range tt.wantCheckOut {
+				if !strings.Contains(out, want) {
+					t.Errorf("check output lacks %q:\n%s", want, out)
+				}
+			}
+		})
+	}
+}
+
 // appRepo builds an application-layout repository in a temporary directory: the harbor
 // fixture as the application at its root, marked a repository, with the placement in its
 // infrastructure directory and nothing else there yet, as before the first render.
