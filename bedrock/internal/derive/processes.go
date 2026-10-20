@@ -1,5 +1,6 @@
-// processes.go reads the deployed processes: the served site and the migration, the
-// configuration levels each constructs, and the schema the migration applies.
+// processes.go reads the deployed processes: the served sites (sites.go), the migration
+// and the job process, the configuration levels each constructs, and the schema the
+// migration applies.
 
 package derive
 
@@ -31,32 +32,12 @@ const (
 	fileScheme        = "file://"
 )
 
-// processes settles the site and the migration.
+// processes settles the sites, the migration and the job process.
 func (m *Model) processes(a *app.App, cfg *config) error {
 	profile := a.Profile()
-	if len(profile.Sites) != 1 {
-		return errors.Newf("the application has %d sites; the stack serves one", len(profile.Sites))
-	}
-	siteDir := profile.Sites[0].Dir
-	if !slices.Contains(a.MainPackages, siteDir) {
-		return errors.Newf("no main package at %s, the site's directory", siteDir)
-	}
-	for site := range m.Placement.Hostnames {
-		if site != profile.Sites[0].Name {
-			return errors.Newf("placement.json's hostnames names %q, which is not a site of the application: its site is %s", site, profile.Sites[0].Name)
-		}
-	}
-	m.Label = m.Placement.Label(profile.Sites[0].Name, siteDir)
-	outlets := profile.Sites[0].AllOutlets()
-	for i := range outlets {
-		m.Outlets = append(m.Outlets, Outlet{Name: outlets[i].Name, Prefix: outlets[i].Prefix})
-	}
-	site, err := m.process(a, cfg, siteProcess, siteDir)
-	if err != nil {
+	if err := m.sites(a, cfg, &profile); err != nil {
 		return err
 	}
-	m.Site = site
-
 	if slices.Contains(a.MainPackages, migrateDir) {
 		migrate, err := m.process(a, cfg, migrateProcess, migrateDir)
 		if err != nil {
@@ -154,14 +135,25 @@ func (m *Model) jobsTemplateLevel(v *Variable) error {
 		construct = "construct"
 	}
 
-	return errors.Newf("%s:%d: %s (%s) is declared at the %s level, which %s %s as well as the served site (%s), and the stack sets the variable on the service alone: a process other than the served site would start with the job driver's template unset; %s", v.File, v.Line, v.Name, v.Declaration(), v.Level, strings.Join(others, " and "), construct, m.Site.Main, jobDriver.handEdit(siteConfiguration+" level, the one no other process constructs"))
+	return errors.Newf("%s:%d: %s (%s) is declared at the %s level, which %s %s as well as the served site%s (%s), and the stack sets the variable on the service alone: a process other than the served site would start with the job driver's template unset; %s", v.File, v.Line, v.Name, v.Declaration(), v.Level, strings.Join(others, " and "), construct, plural(len(m.Sites)), m.servedSites(), jobDriver.handEdit(siteConfiguration+" level, the one no other process constructs"))
 }
 
 // siteConfiguration is where a remedy over the job driver's settings places them: the
 // served site's configuration, the level the stack sets the template on.
 const siteConfiguration = "the served site's configuration"
 
-// otherProcesses are the deployed processes other than the served site, those the
+// servedSites names the served sites as the stack names them (Process.Main), the
+// several with "and".
+func (m *Model) servedSites() string {
+	mains := make([]string, 0, len(m.Sites))
+	for i := range m.Sites {
+		mains = append(mains, m.Sites[i].Main)
+	}
+
+	return joinSites(mains)
+}
+
+// otherProcesses are the deployed processes other than the served sites, those the
 // application has: the migration, then the job process.
 func (m *Model) otherProcesses() []*Process {
 	var others []*Process

@@ -3,11 +3,35 @@ locals {
   # the identities and the repository link under, and the segment every name
   # below carries.
   app = "{{.App}}"
+{{- if .MultiSite}}
+  # The sites, in the generators' order, and what the stack knows of each: its hostname
+  # label under the apps domain (the one placement.json declares for the site under
+  # hostnames, <code>-<site> by default), the binary its service runs (the image builds
+  # one per site; the entrypoint is the first site's), whether its main package speaks
+  # h2c ({{.ServerPackage}}), and the variables its service alone carries (the bundle the
+  # image holds for the site). The code names what the sites share; the site's name is
+  # the second segment of every per-site resource name.
+  sites = [{{range $i, $s := .Sites}}{{if $i}}, {{end}}"{{$s.Name}}"{{end}}]
+  site_settings = {
+{{- range .Sites}}
+    {{.Name}} = {
+      label   = "{{.Label}}"
+      command = "{{.Command}}"
+      h2c     = {{.H2C}}
+      env     = {{if .Bundle}}{ {{.Bundle.Name}} = "{{.BundlePath}}" }{{else}}{}{{end}}
+    }
+{{- end}}
+  }
+  # The first site's label: what names the stack's things that take one hostname (the
+  # build argument hostname, the pipeline's _HOSTNAME).
+  label = local.site_settings[local.sites[0]].label
+{{- else}}
   # The site's hostname label under the apps domain, the first label of every hostname
   # and of a pull-request stack's service: the one placement.json declares for the site
   # (hostnames), the code by default. The code names every resource; the label names
   # the site on the network.
   label = "{{.Label}}"
+{{- end}}
 
   org = data.terraform_remote_state.org.outputs
   env = data.terraform_remote_state.env.outputs
@@ -44,9 +68,16 @@ locals {
   # shares {{.Integration}}'s secret containers, identity registration and registry.
   is_pr   = var.pull_request != 0
   pr_name = "${local.app}-pr${var.pull_request}"
+{{- if .MultiSite}}
+  # Each site's pull-request hostname label and Cloud Run service name, the same word:
+  # 2-env's pull-request backend picks the service by the hostname's first label.
+  site_pr_hosts = { for site, s in local.site_settings : site => "${s.label}-pr${var.pull_request}" }
+  pr_host       = local.site_pr_hosts[local.sites[0]]
+{{- else}}
   # The pull-request stack's hostname label and Cloud Run service name, the same word:
   # 2-env's pull-request backend picks the service by the hostname's first label.
   pr_host = "${local.label}-pr${var.pull_request}"
+{{- end}}
 {{- if .TraceSampling}}
 
   # Which spans the processes record: every one in a pull-request stack and in
@@ -100,6 +131,18 @@ locals {
   }
   primary_region_code = local.env.region_code
   primary_region      = local.env.region
+{{- if .MultiSite}}
+
+  # Each site's service per region, keyed <site>-<region code>: what the Cloud Run
+  # services, the endpoint groups and the pipeline's _SERVICES are made from.
+  services = {
+    for pair in setproduct(local.sites, keys(local.regions)) : "${pair[0]}-${pair[1]}" => {
+      site   = pair[0]
+      code   = pair[1]
+      region = local.regions[pair[1]]
+    }
+  }
+{{- end}}
 {{- if .MaxInstancesMap}}
 
   # The most instances the service runs per region in this environment: the
@@ -118,19 +161,34 @@ locals {
   # pipeline appends /<image>:<tag>. Null until 2-shr knows the application.
   registry = try(data.terraform_remote_state.shr.outputs.image_paths[local.app], null)
 
+{{- if .MultiSite}}
+
+  # Each site's hostnames in this environment, the canonical first (var.hostnames), or
+  # the pull-request stack's one per site; hostnames is every site's, the first site's
+  # first: what the stack serves as a whole.
+  site_hostnames = local.is_pr ? { for site, host in local.site_pr_hosts : site => ["${host}.{{.P.AppsDomain}}"] } : var.hostnames[var.environment]
+  hostnames      = flatten([for site in local.sites : local.site_hostnames[site]])
+  # The next revision's hostnames, per site and as a whole, the first label with -next:
+  # what the hook before traffic calls while the old revision still serves. None for a
+  # pull-request stack.
+  site_next_hostnames = { for site in local.sites : site => local.is_pr ? [] : [for host in local.site_hostnames[site] : replace(host, "/^([^.]+)\\./", "$1-next.")] }
+  next_hostnames      = flatten([for site in local.sites : local.site_next_hostnames[site]])
+{{- else}}
+
   hostnames = local.is_pr ? ["${local.pr_host}.{{.P.AppsDomain}}"] : var.hostnames[var.environment]
   # The next revision's hostnames, the first label with -next: what the hook before
   # traffic calls while the old revision still serves. None for a pull-request stack.
   next_hostnames = local.is_pr ? [] : [for host in local.hostnames : replace(host, "/^([^.]+)\\./", "$1-next.")]
+{{- end}}
 {{- range .Methods}}
 
   # From {{$.EnvTemplate}}: {{(.Variable "RedirectURL").Name}} is the browser-facing
   # callback of {{.Label}}, the route the generated router ({{$.RouterDir}})
-  # registers as {{.Callback.Method}} {{.Callback.Path}}, on the environment's canonical host.
-  {{.Var "REDIRECT_URL"}} = "https://${local.hostnames[0]}{{.Callback.Path}}"
+  # registers as {{.Callback.Method}} {{.Callback.Path}}, on the {{if $.MultiSite}}{{.Site}} site's{{else}}environment's{{end}} canonical host.
+  {{.Var "REDIRECT_URL"}} = "https://${local.{{if $.MultiSite}}site_hostnames["{{.Site}}"]{{else}}hostnames{{end}}[0]}{{.Callback.Path}}"
 {{- if .Microsoft}}
   # The front-channel logout the app registration names, {{.Logout.Method}} {{.Logout.Path}}.
-  {{.Var "LOGOUT_URL"}} = "https://${local.hostnames[0]}{{.Logout.Path}}"
+  {{.Var "LOGOUT_URL"}} = "https://${local.{{if $.MultiSite}}site_hostnames["{{.Site}}"]{{else}}hostnames{{end}}[0]}{{.Logout.Path}}"
 {{- end}}
 {{- end}}
 
@@ -412,8 +470,10 @@ locals {
 {{- end}}
 
   # {{.SiteLevel.FileBase}}: {{.Port.Name}} is set by Cloud Run itself (reserved; setting it is an
-  # error) and {{.SiteImageVars}} is where the image put the bundle, a build
-  # detail the Dockerfile owns. Neither is set here.
+  # error){{if .SiteImageVars}} and {{.SiteImageVars}} is where the image put the bundle, a build
+  # detail the Dockerfile owns. Neither is set here.{{else if .MultiSite}}; each site's bundle variable is its service's alone
+  # (site_settings, cloud-run.tf), since the image holds one bundle per site. Neither
+  # is set here.{{else}}. It is not set here.{{end}}
   service_env = merge(local.core_env, local.data_env{{if .Directory}}, local.site_directory_env{{end}}{{if .FileStores}}, local.files_env{{end}}{{if .TasksQueue}}, local.tasks_env{{end}}{{if .FirestoreDatabase}}, local.firestore_env{{end}}{{if .Scheduled}}, local.scheduler_env{{end}}{{if .Jobs}}, local.jobs_template_env{{end}})
 
   # {{.Migrate.Dir}} reads {{.MigrateLevels}} and nothing above them: what the pipeline

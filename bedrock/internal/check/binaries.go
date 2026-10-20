@@ -60,9 +60,10 @@ func scanBundles(m *derive.Model) []BundleFinding {
 
 // scanBinaries reads the Dockerfile at the application root for the binary each job of
 // the stack runs, /<process> (the seeded Dockerfile builds it with go build -o
-// /build/<process> and copies /build into the runtime image), and reports every job
-// whose binary no instruction names. A comment is not an instruction. An application
-// without a Dockerfile has nothing to scan: the unseeded finding covers it.
+// /build/<process> and copies /build into the runtime image), and each site's in the
+// sites layout (/<site>, which the site's service runs), and reports every one whose
+// binary no instruction names. A comment is not an instruction. An application without
+// a Dockerfile has nothing to scan: the unseeded finding covers it.
 func scanBinaries(appDir string, m *derive.Model) ([]BinaryFinding, error) {
 	src, err := os.ReadFile(filepath.Join(appDir, dockerfileName))
 	if err != nil {
@@ -76,6 +77,12 @@ func scanBinaries(appDir string, m *derive.Model) ([]BinaryFinding, error) {
 	var findings []BinaryFinding
 	type binary struct{ name, dir, runs string }
 	var want []binary
+	if m.MultiSite() {
+		for i := range m.Sites {
+			s := &m.Sites[i]
+			want = append(want, binary{name: s.Process.Name, dir: s.Dir, runs: "the " + s.Name + " site's service runs"})
+		}
+	}
 	if m.Migrate != nil {
 		want = append(want, binary{name: m.Migrate.Name, dir: m.Migrate.Dir, runs: "the pipeline's migration steps run"})
 	}

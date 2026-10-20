@@ -1,0 +1,7 @@
+{
+  "name": "portal",
+  "private": true,
+  "scripts": {
+    "build": "ng build"
+  }
+}

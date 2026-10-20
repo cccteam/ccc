@@ -928,7 +928,7 @@ func identitiesInState(ctx context.Context, store deploy.Store, bucket, env, app
 }
 
 // recordHostnames reads the hostnames the application's stack serves in every environment
-// from its state (the hostnames output) and records them in the placement, answering
+// from its state (the net_hosts output) and records them in the placement, answering
 // whether the record changed. A state without the output, or with none, refuses: the
 // organization records what is served and invents nothing.
 func (d deps) recordHostnames(ctx context.Context, p *org.Placement, app, repository string) (bool, error) {
@@ -937,9 +937,9 @@ func (d deps) recordHostnames(ctx context.Context, p *org.Placement, app, reposi
 		return false, err
 	}
 	defer func() { _ = store.Close() }()
-	byEnv := make(map[string][]string, len(org.Environments))
+	byEnv := make(map[string]map[string]string, len(org.Environments))
 	for _, env := range org.Environments {
-		hosts, err := stackHostnames(ctx, store, p.StateBucket, env, app, repository)
+		hosts, err := stackHosts(ctx, store, p.StateBucket, env, app, repository)
 		if err != nil {
 			return false, err
 		}
@@ -949,27 +949,28 @@ func (d deps) recordHostnames(ctx context.Context, p *org.Placement, app, reposi
 	return p.RecordHostnames(app, byEnv)
 }
 
-// hostnamesOutput is the stack's output listing the hostnames it serves in the
-// environment, the first canonical.
-const hostnamesOutput = "hostnames"
+// hostsOutput is the stack's output listing the entries 2-net's hosts take for the
+// environment: every site's hostnames and their -next twins, each mapped to the backend
+// service serving it.
+const hostsOutput = "net_hosts"
 
-// stackHostnames reads the hostnames the application's stack serves in the environment
-// from its state's hostnames output.
-func stackHostnames(ctx context.Context, store deploy.Store, bucket, env, app, repository string) ([]string, error) {
+// stackHosts reads the hosts the application's stack serves in the environment from its
+// state's net_hosts output.
+func stackHosts(ctx context.Context, store deploy.Store, bucket, env, app, repository string) (map[string]string, error) {
 	state, err := readTofuState(ctx, store, bucket, appStatePrefix+app+"/"+env+"/"+stateObject)
 	if err != nil {
 		return nil, err
 	}
-	raw, ok := state.Outputs[hostnamesOutput]
+	raw, ok := state.Outputs[hostsOutput]
 	if !ok {
-		return nil, errors.Newf("%s's stack state in %s (%s%s/%s) has no %s output: apply the stack there (the operations workflow's apply action) before recording its hostnames", repository, env, appStatePrefix, app, env, hostnamesOutput)
+		return nil, errors.Newf("%s's stack state in %s (%s%s/%s) has no %s output: apply the stack there (the operations workflow's apply action) before recording its hostnames", repository, env, appStatePrefix, app, env, hostsOutput)
 	}
-	var hosts []string
+	var hosts map[string]string
 	if err := json.Unmarshal(raw.Value, &hosts); err != nil {
-		return nil, errors.Wrapf(err, "json.Unmarshal(): %s's %s output in %s", repository, hostnamesOutput, env)
+		return nil, errors.Wrapf(err, "json.Unmarshal(): %s's %s output in %s", repository, hostsOutput, env)
 	}
 	if len(hosts) == 0 {
-		return nil, errors.Newf("%s's stack serves no hostname in %s: its state's %s output is empty", repository, env, hostnamesOutput)
+		return nil, errors.Newf("%s's stack serves no hostname in %s: its state's %s output is empty", repository, env, hostsOutput)
 	}
 
 	return hosts, nil
@@ -979,7 +980,7 @@ func stackHostnames(ctx context.Context, store deploy.Store, bucket, env, app, r
 func hostnamesSummary(p *org.Placement, app string) string {
 	parts := make([]string, 0, len(org.Environments))
 	for _, env := range org.Environments {
-		parts = append(parts, env+": "+strings.Join(p.Hostnames[app][env], ", "))
+		parts = append(parts, env+": "+strings.Join(p.ApplicationHostnames(app, env), ", "))
 	}
 
 	return strings.Join(parts, "; ")

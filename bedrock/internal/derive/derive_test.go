@@ -110,6 +110,9 @@ func TestDerive(t *testing.T) {
 		// log exclusion's clause, empty when no surface's word excludes an entry.
 		wantSurfaces   []string
 		wantRequestLog string
+		// wantSites are the served sites (siteLine), the one site of a flat-layout
+		// application left unchecked when empty.
+		wantSites []string
 	}{
 		{
 			name:    "harbor",
@@ -216,6 +219,43 @@ func TestDerive(t *testing.T) {
 			wantProgram: []hook.Stage{hook.BeforeMigrate, hook.AfterTraffic},
 		},
 		{
+			name:      "lantern, two sites behind one image",
+			fixture:   "lantern",
+			placement: "placement-lantern.json",
+			wantApp:   "lantrn",
+			wantSecrets: []string{
+				"APP_COOKIE_KEY cookie-key pkg/config/data.go dataConfig.CookieKey",
+				"APP_STAFF_ADMINISTRATOR_PASSWORD staff-administrator-password pkg/config/data.go dataConfig.StaffAdministratorPassword",
+			},
+			wantCore:     []string{varVersion, varServiceName, varLoggingProject, varTraceSampling},
+			wantData:     []string{varDatabaseProject, varDatabaseInstance, varDatabaseName, "SPANNER_EMULATOR_HOST", varFirestoreProject, varFirestoreDatabase, varFirebaseAPIKey, "FIRESTORE_EMULATOR_HOST", "APP_DEFAULT_SESSION_TIMEOUT", "APP_COOKIE_KEY", "APP_STAFF_ADMINISTRATOR_PASSWORD"},
+			wantSite:     []string{varPort, SiteBundleVariable},
+			wantSiteLvls: []string{LevelCore, LevelData, LevelSite},
+			wantMigrate:  []string{LevelCore, LevelData},
+			wantMethods:  []string{"staff/password password"},
+			wantSchema:   Schema{MigrationsDir: "schema/migrations", MigrateCall: "pkg/deploy MigrateSchema", GenerateDir: "cmd/generate", GeneratePackage: "generate"},
+			wantHostnames: map[string]string{
+				"tst": "lantrn-console-tst.impulseframework.dev, lanterns-tst.impulseframework.dev",
+				"stg": "lantrn-console-stg.impulseframework.dev, lanterns-stg.impulseframework.dev",
+				"prd": "lantrn-console.impulseframework.dev, lanterns.impulseframework.dev",
+			},
+			wantSupplies: map[string]Supply{
+				SiteBundleVariable: SupplyDerived,
+				varPort:            SupplyPlatform,
+			},
+			wantFirestore:      "schema/firestore: 3 index(es) subscriptions_resource_key_expiry, subscriptions_resource_domain_expiry, subscriptions_resource_expiry; 2 field(s) subscriptions_expiry (ttl), changes_expires (ttl); rules_version = '2';",
+			wantAdministrators: []string{"staff APP_STAFF_ADMINISTRATOR_PASSWORD administrator-password"},
+			wantScheduled:      []string{"close-stale-holds: POST /_scheduled/close-stale-holds at */15 * * * * in UTC", "send-weekly-letter: POST /_scheduled/send-weekly-letter at 0 9 * * 1 in Europe/London"},
+			wantFileRoutes:     []string{"GET /api/notices/{id}/file: the @file column Notice.Key"},
+			wantOutlets:        []string{"default /api"},
+			wantSurfaces:       []string{"/_scheduled/close-stale-holds (route): logged always", "/api/ (prefix): logged on event"},
+			wantRequestLog:     `((httpRequest.requestUrl =~ "^https://[^/]+/api/" AND httpRequest.status < 400))`,
+			wantSites: []string{
+				"console apps/console (lantrn-console): process console, h2c, router apps/console/pkg/router, bundle APP_DIST=apps/console/web/dist, 1 scheduled, 1 file route(s), 2 surface(s)",
+				"portal apps/portal (lanterns): process portal, h2c, router apps/portal/pkg/router, bundle APP_DIST=apps/portal/web/dist, 1 scheduled, 0 file route(s), 1 surface(s)",
+			},
+		},
+		{
 			name:    "no go.mod",
 			fixture: ".",
 			wantErr: "no go.mod",
@@ -267,8 +307,8 @@ func TestDerive(t *testing.T) {
 					t.Errorf("ByLevel(%s) = %v, want %v", level, got, want)
 				}
 			}
-			if strings.Join(m.Site.Levels, ",") != strings.Join(tt.wantSiteLvls, ",") {
-				t.Errorf("Site.Levels = %v, want %v", m.Site.Levels, tt.wantSiteLvls)
+			if strings.Join(m.Sites[0].Levels, ",") != strings.Join(tt.wantSiteLvls, ",") {
+				t.Errorf("Site.Levels = %v, want %v", m.Sites[0].Levels, tt.wantSiteLvls)
 			}
 			if m.Migrate == nil || strings.Join(m.Migrate.Levels, ",") != strings.Join(tt.wantMigrate, ",") {
 				t.Errorf("Migrate = %+v, want levels %v", m.Migrate, tt.wantMigrate)
@@ -287,6 +327,15 @@ func TestDerive(t *testing.T) {
 			}
 			if m.Schema != tt.wantSchema {
 				t.Errorf("Schema = %+v, want %+v", m.Schema, tt.wantSchema)
+			}
+			if tt.wantSites != nil {
+				var sites []string
+				for i := range m.Sites {
+					sites = append(sites, siteLine(&m.Sites[i]))
+				}
+				if got := strings.Join(sites, "\n"); got != strings.Join(tt.wantSites, "\n") {
+					t.Errorf("Sites =\n%s\nwant\n%s", got, strings.Join(tt.wantSites, "\n"))
+				}
 			}
 			if !slices.Equal(m.Hooks, tt.wantHooks) {
 				t.Errorf("Hooks = %v, want %v", m.Hooks, tt.wantHooks)
@@ -351,8 +400,8 @@ func TestDerive(t *testing.T) {
 				t.Errorf("RequestLog.Clause = %q, want %q", clause, tt.wantRequestLog)
 			}
 			for _, e := range m.Environments {
-				if want := tt.wantHostnames[e.Name]; len(e.Hostnames) != 1 || e.Hostnames[0] != want {
-					t.Errorf("Environment %s hostnames = %v, want %s", e.Name, e.Hostnames, want)
+				if got, want := strings.Join(e.Hostnames, ", "), tt.wantHostnames[e.Name]; got != want {
+					t.Errorf("Environment %s hostnames = %q, want %q", e.Name, got, want)
 				}
 			}
 			for name, want := range tt.wantSupplies {
@@ -479,6 +528,21 @@ func TestDeriveScheduled(t *testing.T) {
 // the call Cloud Scheduler makes and when.
 func scheduledLine(r *ScheduledRoute) string {
 	return fmt.Sprintf("%s: POST %s at %s in %s", r.Name(), r.Path, r.Schedule, r.TimeZone)
+}
+
+// siteLine spells a site: its name, directory and label, its process, whether it speaks
+// h2c, its router, its bundle, and what its release file declares.
+func siteLine(s *Site) string {
+	h2c := "http/1"
+	if s.H2C {
+		h2c = "h2c"
+	}
+	bundle := "no bundle"
+	if s.Bundle != nil {
+		bundle = "bundle " + s.Bundle.Name + "=" + s.BundleDir
+	}
+
+	return fmt.Sprintf("%s %s (%s): process %s, %s, router %s, %s, %d scheduled, %d file route(s), %d surface(s)", s.Name, s.Dir, s.Label, s.Process.Name, h2c, s.RouterDir, bundle, len(s.Scheduled), len(s.FileRoutes), len(s.Surfaces))
 }
 
 // fileRouteLine spells a file route: its method and path, and its declaration.
@@ -1226,35 +1290,35 @@ func TestJobsTemplate(t *testing.T) {
 		wantErr string
 	}{
 		{name: "no variable, no process: nothing to hold together", model: Model{}},
-		{name: "the variable declared at the served site's level and the job process there agree", model: Model{Site: site, Migrate: migrate, Jobs: jobs, Variables: []Variable{template}}},
+		{name: "the variable declared at the served site's level and the job process there agree", model: Model{Sites: []Site{{Name: "harbor", Dir: ".", Process: site}}, Migrate: migrate, Jobs: jobs, Variables: []Variable{template}}},
 		{
 			name:    "the variable declared without a job process is refused at its declaration",
-			model:   Model{Site: site, Variables: []Variable{template}},
+			model:   Model{Sites: []Site{{Name: "harbor", Dir: ".", Process: site}}, Variables: []Variable{template}},
 			wantErr: "pkg/config/site.go:64: APP_JOBS_TEMPLATE (siteConfig.Template) reads the job process's template job, and the application has no job process (no main package at cmd/jobs): the stack has no job to name; add the job process, or drop the job driver's settings from the configuration",
 		},
 		{
 			name:    "a job process without the variable is refused, naming the process and the hand edit by the driver's alias",
-			model:   Model{Site: site, Jobs: jobs, Variables: []Variable{{Name: "APP_OTHER", Level: LevelSite}}},
+			model:   Model{Sites: []Site{{Name: "harbor", Dir: ".", Process: site}}, Jobs: jobs, Variables: []Variable{{Name: "APP_OTHER", Level: LevelSite}}},
 			wantErr: "cmd/jobs is the job process, and no configuration level declares APP_JOBS_TEMPLATE, which the stack sets on the service to the job process's template job: the service reads no template, so the framework's job driver (resource/jobs/cloudrun) would refuse every start; embed the job driver's settings (jobstarter.Settings, resource/jobs/cloudrun) in the served site's configuration",
 		},
 		{
 			name:    "a job process without the variable in an application behind the drivers' release is sent to impulse upgrade first",
-			model:   Model{Site: site, Jobs: jobs, Variables: []Variable{{Name: "APP_OTHER", Level: LevelSite}}, behindDrivers: "v0.13.0"},
+			model:   Model{Sites: []Site{{Name: "harbor", Dir: ".", Process: site}}, Jobs: jobs, Variables: []Variable{{Name: "APP_OTHER", Level: LevelSite}}, behindDrivers: "v0.13.0"},
 			wantErr: "cmd/jobs is the job process, and no configuration level declares APP_JOBS_TEMPLATE, which the stack sets on the service to the job process's template job: the service reads no template, so the framework's job driver (resource/jobs/cloudrun) would refuse every start; run impulse upgrade first (go.mod requires resource v0.13.0, before v0.14.0, the release with the drivers): its provider-drivers step embeds the driver settings in the configuration; then bedrock upgrade",
 		},
 		{
 			name:    "the variable at a level the job process constructs too is refused, naming the process",
-			model:   Model{Site: site, Jobs: jobs, Variables: []Variable{dataTemplate}},
+			model:   Model{Sites: []Site{{Name: "harbor", Dir: ".", Process: site}}, Jobs: jobs, Variables: []Variable{dataTemplate}},
 			wantErr: "pkg/config/data.go:228: APP_JOBS_TEMPLATE (dataConfig.Template) is declared at the data level, which cmd/jobs constructs as well as the served site (main.go), and the stack sets the variable on the service alone: a process other than the served site would start with the job driver's template unset; embed the job driver's settings (jobstarter.Settings, resource/jobs/cloudrun) in the served site's configuration level, the one no other process constructs",
 		},
 		{
 			name:    "the variable at a level two other processes construct is refused, naming both",
-			model:   Model{Site: site, Migrate: migrate, Jobs: jobs, Variables: []Variable{dataTemplate}},
+			model:   Model{Sites: []Site{{Name: "harbor", Dir: ".", Process: site}}, Migrate: migrate, Jobs: jobs, Variables: []Variable{dataTemplate}},
 			wantErr: "pkg/config/data.go:228: APP_JOBS_TEMPLATE (dataConfig.Template) is declared at the data level, which cmd/deployment/migrate and cmd/jobs construct as well as the served site (main.go), and the stack sets the variable on the service alone: a process other than the served site would start with the job driver's template unset; embed the job driver's settings (jobstarter.Settings, resource/jobs/cloudrun) in the served site's configuration level, the one no other process constructs",
 		},
 		{
 			name:    "the variable at another level is a hand edit whatever go.mod says, since the step moves no embedding",
-			model:   Model{Site: site, Jobs: jobs, Variables: []Variable{dataTemplate}, behindDrivers: "v0.13.0"},
+			model:   Model{Sites: []Site{{Name: "harbor", Dir: ".", Process: site}}, Jobs: jobs, Variables: []Variable{dataTemplate}, behindDrivers: "v0.13.0"},
 			wantErr: "a process other than the served site would start with the job driver's template unset; embed the job driver's settings (jobstarter.Settings, resource/jobs/cloudrun) in the served site's configuration level, the one no other process constructs",
 		},
 	}
@@ -1757,8 +1821,8 @@ func TestSiteH2C(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Derive() = %v", err)
 			}
-			if m.Site.H2C != tt.want {
-				t.Errorf("Site.H2C = %v, want %v", m.Site.H2C, tt.want)
+			if m.Sites[0].H2C != tt.want {
+				t.Errorf("Site.H2C = %v, want %v", m.Sites[0].H2C, tt.want)
 			}
 		})
 	}

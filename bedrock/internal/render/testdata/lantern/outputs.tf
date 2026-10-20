@@ -1,0 +1,104 @@
+# What the pipeline reads, and what 2-net reads to route this environment's
+# hostnames. Readable by anything that can read the state bucket; no secrets.
+
+output "backend_service_ids" {
+  description = "Backend service URI per site, in the form 2-net's hosts variable takes: projects/<project>/global/backendServices/<name>; empty for a pull-request stack."
+  value       = { for site, backend in google_compute_backend_service.app : site => backend.id }
+}
+
+output "database" {
+  description = "The Spanner database the site opens: its project, instance, and name; for a pull-request stack in shared mode, tst's."
+  value = {
+    project  = local.instance.project
+    instance = local.instance.name
+    name     = local.database_name
+  }
+}
+
+output "firestore_database" {
+  description = "The Firestore database the site and the migrate command read and write, as APP_FIRESTORE_DATABASE names it to them."
+  value       = google_firestore_database.firestore.name
+}
+
+output "hostnames" {
+  description = "Hostnames this environment's sites answer on, the first site's first and each site's canonical first (sites has each site's); 2-net registers them with the load balancer and the certificate."
+  value       = local.hostnames
+}
+
+output "identities" {
+  description = "Runtime identities by process: app (the site). The migration runs on the build worker as the deploy identity, 2-env's."
+  value = {
+    app = google_service_account.app.email
+  }
+}
+
+output "net_hosts" {
+  description = "The entries to add to 2-net's hosts variable for this environment: each hostname mapped to the backend service URI, and each next hostname (<app>-<env>-next) to the next revision's backend. Empty for a pull-request stack, whose hostname the wildcard rule serves."
+  value = local.is_pr ? {} : merge([for site in local.sites : merge(
+    { for host in local.site_hostnames[site] : host => google_compute_backend_service.app[site].id },
+    { for host in local.site_next_hostnames[site] : host => google_compute_backend_service.next[site].id },
+  )]...)
+}
+
+output "registry" {
+  description = "Image repository the pipeline pushes to, as <hostname>/<project>/<repository>; null until 2-shr registers the application."
+  value       = local.registry
+}
+
+output "secrets" {
+  description = "Secret container ID by the environment variable it feeds, and the version this environment runs (null when not pinned yet)."
+  value = {
+    for key, s in local.secrets : key => {
+      secret_id = local.secret_ids[key]
+      version   = lookup(local.secret_versions, key, null)
+    }
+  }
+}
+
+output "services" {
+  description = "Cloud Run service by <site>-<region code>: name, region, and the run.app URI (not the public one; that is the hostname through the load balancer)."
+  value = {
+    for code, svc in google_cloud_run_v2_service.app : code => {
+      name   = svc.name
+      region = svc.location
+      uri    = svc.uri
+    }
+  }
+}
+
+output "sites" {
+  description = "Each site: its hostnames in this environment (the canonical first), the next revision's, its backend services (null for a pull-request stack) and its services by region code."
+  value = {
+    for site in local.sites : site => {
+      hostnames               = local.site_hostnames[site]
+      next_hostnames          = local.site_next_hostnames[site]
+      backend_service_id      = try(google_compute_backend_service.app[site].id, null)
+      next_backend_service_id = try(google_compute_backend_service.next[site].id, null)
+      services = {
+        for key, svc in google_cloud_run_v2_service.app : local.services[key].code => {
+          name   = svc.name
+          region = svc.location
+          uri    = svc.uri
+        } if local.services[key].site == site
+      }
+    }
+  }
+}
+
+output "stack_id" {
+  description = "The stack's id (initialize.tf): the suffix of the names Google holds after a delete, and the prefix of this stack's deployment records in the records bucket, <app>/<env>/<id>/."
+  value       = random_id.stack.hex
+}
+
+output "substitutions" {
+  description = "The substitutions the version trigger passes to cloudbuild.yaml (_PR_NUMBER empty: no pull request); a pull-request build reads its own stack's copy from the state for the facts the deploy steps need. The pull-request trigger passes the same without _PR_NUMBER, which its event supplies."
+  value       = merge(local.substitutions, local.custom_substitutions, { _PR_NUMBER = "" })
+}
+
+output "triggers" {
+  description = "Cloud Build trigger IDs: version in every environment, pr in tst; null until 2-env holds the GitHub connection."
+  value = {
+    version = try(google_cloudbuild_trigger.version[0].id, null)
+    pr      = try(google_cloudbuild_trigger.pr[0].id, null)
+  }
+}

@@ -137,6 +137,24 @@ type view struct {
 	// method alone has none of that, and its stack carries the cookie key alone.
 	Methods   []*methodView
 	Directory bool
+	// Sites are the served sites as the templates see them, in the generators' order;
+	// ServedSites names them as the stack does (Process.Main), the several with "and".
+	Sites       []*siteView
+	ServedSites string
+	// What the README says of several sites: their names, each site's hostname label
+	// and pull-request name, in backticks and joined with "and"; the sites whose
+	// services speak h2c and the ones whose services speak HTTP/1; and the variable a
+	// site's service carries its bundle's path in. Empty in the flat layout.
+	SiteNamesProse     string
+	SiteLabelsProse    string
+	SitePRNamesProse   string
+	H2CSites           string
+	HTTP1Sites         string
+	SiteBundleVariable string
+	// RequestLogAny reports a site whose surfaces exclude an entry: the stack renders
+	// the request log's exclusion (logging.tf), the first site's clause in the flat
+	// layout and one clause per such site in the sites layout.
+	RequestLogAny bool
 	// Administrators are the auths whose code names a first administrator
 	// (derive.Auth.Administrator): the sign-in name the migrate command seeds the
 	// administrator role membership under while the auth's users table holds no rows, a
@@ -417,10 +435,13 @@ var numberWords = map[int]string{1: "one", 2: "two", 3: "three", 4: "four", 5: "
 type imageView struct {
 	// SitePkg and MigratePkg are the packages go build compiles, as go names them from
 	// the root: "." for the site at the root, "./cmd/deployment/migrate"; JobsPkg is
-	// the job process's, empty without one.
+	// the job process's, empty without one. Sites are the sites layout's, one binary
+	// each (/<site>), the first the image's entrypoint; Multi reports more than one.
 	SitePkg    string
 	MigratePkg string
 	JobsPkg    string
+	Sites      []imageSite
+	Multi      bool
 	// HooksPkg is the hooks program's package, empty without one.
 	HooksPkg string
 	// SchemaDir is the directory the migrate command reads relative to its working
@@ -464,12 +485,23 @@ var workspaceIgnores = []string{"node_modules", ".angular", "dist"}
 
 // bundle is one built browser bundle: the variable naming its directory to the server
 // (APP_CONSOLE_DIST), its path under the workspace (dist/console), and the workspace and
-// build stage it comes from.
+// build stage it comes from. A sites-layout site's bundle names no variable: the stack
+// sets the site's bundle variable per service to where the image holds it (Site).
 type bundle struct {
 	Var       string
 	Path      string
 	Workspace string
 	Stage     string
+	Site      string
+}
+
+// imageSite is one site as the Dockerfile builds it: its name, the package go build
+// compiles (./apps/console) and the binary it writes (/console), which the site's
+// service runs.
+type imageSite struct {
+	Name   string
+	Pkg    string
+	Binary string
 }
 
 // stageName names the build stage of a workspace after its directory: web-build-env
@@ -489,7 +521,11 @@ func pkgPath(dir string) string {
 
 // newImageView reads the image facts off the model.
 func newImageView(m *derive.Model, siteLevel string) imageView {
-	iv := imageView{SitePkg: pkgPath(m.Site.Dir), SchemaDir: path.Dir(m.Schema.MigrationsDir)}
+	iv := imageView{SitePkg: pkgPath(m.Sites[0].Dir), SchemaDir: path.Dir(m.Schema.MigrationsDir), Multi: m.MultiSite()}
+	for i := range m.Sites {
+		s := &m.Sites[i]
+		iv.Sites = append(iv.Sites, imageSite{Name: s.Name, Pkg: pkgPath(s.Dir), Binary: "/" + s.Process.Name})
+	}
 	if m.Migrate != nil {
 		iv.MigratePkg = pkgPath(m.Migrate.Dir)
 	}
@@ -524,6 +560,20 @@ func newImageView(m *derive.Model, siteLevel string) imageView {
 			at = len(iv.Workspaces) - 1
 		}
 		iv.Workspaces[at].Bundles = append(iv.Workspaces[at].Bundles, b)
+	}
+	if iv.Multi {
+		// Each site's bundle, built from the workspace under the site's directory: no
+		// variable of the image's, since the stack sets the site's per service.
+		for i := range m.Sites {
+			s := &m.Sites[i]
+			if s.BundleDir == "" {
+				continue
+			}
+			dir := path.Dir(s.BundleDir)
+			b := bundle{Path: path.Base(s.BundleDir), Workspace: dir, Stage: stageName(dir), Site: s.Name}
+			iv.Bundles = append(iv.Bundles, b)
+			iv.Workspaces = append(iv.Workspaces, workspace{Dir: dir, Stage: b.Stage, Bundles: []bundle{b}, Install: strings.Join(m.ImageInputs.WorkspaceInputs(dir), " ")})
+		}
 	}
 	iv.RootGo, iv.GoDirs = m.ImageInputs.RootGo, m.ImageInputs.GoDirs
 	for _, name := range ignoredPaths {
@@ -882,6 +932,7 @@ func newView(m *derive.Model) (*view, error) {
 	if err := v.roles(); err != nil {
 		return nil, err
 	}
+	v.sites()
 	if err := v.methods(); err != nil {
 		return nil, err
 	}
@@ -956,6 +1007,102 @@ func (v *view) roles() error {
 // ptr copies a secret onto the heap.
 func ptr(s derive.Secret) *derive.Secret {
 	return &s
+}
+
+// siteView is one served site as the templates see it: the site, the binary its service
+// runs, where the image holds its bundle, its request log clause and its place in the
+// list.
+type siteView struct {
+	*derive.Site
+	// Command is the binary the site's service runs: /app in the flat layout, /<name>
+	// in the sites layout, where the image's entrypoint is the first site's.
+	Command string
+	// BundlePath is where the image holds the site's built bundle, the value the stack
+	// sets the site's bundle variable to per service; empty without one.
+	BundlePath string
+	// RequestLogClause is the site's request log clause, HCL-quoted; empty when no
+	// surface of the site excludes an entry.
+	RequestLogClause string
+	// HostnameDefaults is the site's aligned default block of var.hostnames, one line
+	// per environment.
+	HostnameDefaults string
+	// IntegrationHost is the site's canonical hostname in the integration environment.
+	IntegrationHost string
+	// Last marks the last site.
+	Last bool
+}
+
+// sites prepares the served sites.
+func (v *view) sites() {
+	mains := make([]string, 0, len(v.Model.Sites))
+	for i := range v.Model.Sites {
+		s := &v.Model.Sites[i]
+		sv := &siteView{Site: s, Command: "/" + s.Process.Name}
+		if s.BundleDir != "" {
+			sv.BundlePath = imageHome + "/" + s.BundleDir
+		}
+		if s.RequestLog != nil {
+			sv.RequestLogClause = hclQuote(s.RequestLog.Clause)
+			if v.MultiSite() {
+				v.RequestLogAny = true
+			}
+		}
+		hosts := make([][2]string, 0, len(s.Environments))
+		for _, e := range s.Environments {
+			hosts = append(hosts, [2]string{e.Name, `["` + strings.Join(e.Hostnames, `", "`) + `"]`})
+		}
+		sv.HostnameDefaults = aligned("      ", hosts)
+		sv.IntegrationHost = s.Environments[0].Hostnames[0]
+		v.Sites = append(v.Sites, sv)
+		mains = append(mains, s.Main)
+	}
+	v.Sites[len(v.Sites)-1].Last = true
+	v.ServedSites = joinAnd(mains)
+	if !v.MultiSite() {
+		// The flat layout renders the model's exclusion, the one site's.
+		v.RequestLogAny = v.RequestLog != nil
+
+		return
+	}
+	v.siteProse()
+}
+
+// siteProse spells the sites for the README of a multi-site stack.
+func (v *view) siteProse() {
+	names := make([]string, 0, len(v.Sites))
+	labels := make([]string, 0, len(v.Sites))
+	prs := make([]string, 0, len(v.Sites))
+	var h2c, http1 []string
+	for _, s := range v.Sites {
+		name := "`" + s.Name + "`"
+		names = append(names, name)
+		labels = append(labels, "`"+s.Label+"` for "+name)
+		prs = append(prs, "`"+s.Label+"-pr<N>` for "+name)
+		if s.H2C {
+			h2c = append(h2c, name)
+		} else {
+			http1 = append(http1, name)
+		}
+	}
+	v.SiteNamesProse = joinAnd(names)
+	v.SiteLabelsProse = joinAnd(labels)
+	v.SitePRNamesProse = joinAnd(prs)
+	v.H2CSites = joinAnd(h2c)
+	v.HTTP1Sites = joinAnd(http1)
+	v.SiteBundleVariable = derive.SiteBundleVariable
+}
+
+// imageHome is the working directory of the runtime image, where the bundles and the
+// schema sit (Dockerfile).
+const imageHome = "/home/nonroot"
+
+// plural is the s of a count other than one.
+func plural(n int) string {
+	if n == 1 {
+		return ""
+	}
+
+	return "s"
 }
 
 // methodView is one directory method as the templates see it: the method, the stem of
@@ -1137,6 +1284,9 @@ func (v *view) environments() {
 	v.TfvarsEnvStrings = aligned("  ", strs)
 	v.TfvarsEnvMaps = aligned("  ", maps)
 	v.HostnameDefaults = aligned("    ", hosts)
+	if v.MultiSite() {
+		v.HostnameDefaults = v.siteHostnameDefaults()
+	}
 	v.HostnamesSummary = strings.Join(summary, " / ")
 	// Named from the one nearest production down.
 	slices.Reverse(below)
@@ -1146,7 +1296,40 @@ func (v *view) environments() {
 		all = append(all, "`"+e.Hostnames[0]+"`")
 	}
 	v.HostnamesProse = all[0] + ",\n" + strings.Join(all[1:], ", ")
+	if v.MultiSite() {
+		v.HostnamesProse = v.siteHostnamesProse()
+	}
 	v.IntegrationHost = v.Environments[0].Hostnames[0]
+}
+
+// siteHostnamesProse lists each site's canonical hostnames for the README of a
+// multi-site stack: the site's hostnames in the environments' order, then the site.
+func (v *view) siteHostnamesProse() string {
+	sites := make([]string, 0, len(v.Sites))
+	for _, s := range v.Sites {
+		hosts := make([]string, 0, len(s.Environments))
+		for _, e := range s.Environments {
+			hosts = append(hosts, "`"+e.Hostnames[0]+"`")
+		}
+		sites = append(sites, strings.Join(hosts, ", ")+" for `"+s.Name+"`")
+	}
+
+	return strings.Join(sites, ";\n")
+}
+
+// siteHostnameDefaults spells var.hostnames' default for a multi-site stack: one map
+// per environment, a site's hostnames each.
+func (v *view) siteHostnameDefaults() string {
+	lines := make([]string, 0, len(v.Environments))
+	for i, e := range v.Environments {
+		sites := make([][2]string, 0, len(v.Sites))
+		for _, s := range v.Sites {
+			sites = append(sites, [2]string{s.Name, `["` + strings.Join(s.Environments[i].Hostnames, `", "`) + `"]`})
+		}
+		lines = append(lines, "    "+e.Name+" = {"+"\n"+aligned("      ", sites)+"\n"+"    }")
+	}
+
+	return strings.Join(lines, "\n")
 }
 
 // operationsEnv is one environment as the operations workflow addresses it: its
@@ -1309,7 +1492,7 @@ func (v *view) blocks() {
 
 	stem := v.Prefix + "-<env>-gbl-" + v.App + "-"
 	identities := [][2]string{
-		{stem + v.Site.Name, v.Site.Main + ", the served site (Cloud Run service)"},
+		{stem + derive.SiteProcessName, v.ServedSites + ", the served site" + plural(len(v.Sites)) + " (Cloud Run service" + plural(len(v.Sites)) + ")"},
 	}
 	if v.Jobs != nil {
 		v.JobsLevels = joinAnd(v.Jobs.Levels)

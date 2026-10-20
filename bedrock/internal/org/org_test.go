@@ -81,28 +81,28 @@ func TestPlacementValidate(t *testing.T) {
 		}, wantErr: `repository "Quill-Service" is listed twice`},
 		{name: "a label without a value", mutate: func(p *Placement) { p.Labels = map[string]string{"team": ""} }, wantErr: "label"},
 		{name: "recorded hostnames", mutate: func(p *Placement) {
-			p.Hostnames = map[string]map[string][]string{"harbor": {"tst": {"lighthouse-tst.apps.imp.example"}, "stg": {"lighthouse-stg.apps.imp.example"}, "prd": {"lighthouse.apps.imp.example"}}}
+			p.Hostnames = map[string]map[string]map[string]string{"harbor": {"tst": {"lighthouse-tst.apps.imp.example": "projects/p/global/backendServices/b"}, "stg": {"lighthouse-stg.apps.imp.example": "projects/p/global/backendServices/b"}, "prd": {"lighthouse.apps.imp.example": "projects/p/global/backendServices/b"}}}
 		}},
 		{name: "recorded hostnames of an application not registered", mutate: func(p *Placement) {
-			p.Hostnames = map[string]map[string][]string{"quill": {"tst": {"quill-tst.apps.imp.example"}}}
+			p.Hostnames = map[string]map[string]map[string]string{"quill": {"tst": {"quill-tst.apps.imp.example": "projects/p/global/backendServices/b"}}}
 		}, wantErr: `hostnames names "quill", which applications does not list`},
 		{name: "a recorded hostname in an unknown environment", mutate: func(p *Placement) {
-			p.Hostnames = map[string]map[string][]string{"harbor": {"qa": {"harbor-qa.apps.imp.example"}}}
+			p.Hostnames = map[string]map[string]map[string]string{"harbor": {"qa": {"harbor-qa.apps.imp.example": "projects/p/global/backendServices/b"}}}
 		}, wantErr: `hostnames.harbor names "qa", which is not one of tst, stg, prd`},
 		{name: "a recorded hostname off the apps domain", mutate: func(p *Placement) {
-			p.Hostnames = map[string]map[string][]string{"harbor": {"tst": {"harbor-tst.example.com"}}}
+			p.Hostnames = map[string]map[string]map[string]string{"harbor": {"tst": {"harbor-tst.example.com": "projects/p/global/backendServices/b"}}}
 		}, wantErr: `hostnames.harbor.tst "harbor-tst.example.com" is not under the apps domain apps.imp.example`},
 		{name: "a recorded hostname two labels deep", mutate: func(p *Placement) {
-			p.Hostnames = map[string]map[string][]string{"harbor": {"tst": {"tst.harbor.apps.imp.example"}}}
+			p.Hostnames = map[string]map[string]map[string]string{"harbor": {"tst": {"tst.harbor.apps.imp.example": "projects/p/global/backendServices/b"}}}
 		}, wantErr: `hostnames.harbor.tst "tst.harbor.apps.imp.example" is not one label under the apps domain apps.imp.example: the wildcard certificate covers exactly one level`},
 		{name: "a recorded hostname whose label breaks the rule", mutate: func(p *Placement) {
-			p.Hostnames = map[string]map[string][]string{"harbor": {"tst": {"Harbor-tst.apps.imp.example"}}}
+			p.Hostnames = map[string]map[string]map[string]string{"harbor": {"tst": {"Harbor-tst.apps.imp.example": "projects/p/global/backendServices/b"}}}
 		}, wantErr: `hostnames.harbor.tst: hostname label "Harbor-tst"`},
 		{name: "a recorded hostname another application serves by default", mutate: func(p *Placement) {
-			p.Hostnames = map[string]map[string][]string{"harbor": {"tst": {"beacon-tst.apps.imp.example"}}}
+			p.Hostnames = map[string]map[string]map[string]string{"harbor": {"tst": {"beacon-tst.apps.imp.example": "projects/p/global/backendServices/b"}}}
 		}, wantErr: "hostname beacon-tst.apps.imp.example in tst is harbor's and beacon's: each hostname of an environment belongs to one application"},
 		{name: "a recorded hostname that is another application's next host", mutate: func(p *Placement) {
-			p.Hostnames = map[string]map[string][]string{"harbor": {"prd": {"beacon-next.apps.imp.example"}}}
+			p.Hostnames = map[string]map[string]map[string]string{"harbor": {"prd": {"beacon-next.apps.imp.example": "projects/p/global/backendServices/b"}}}
 		}, wantErr: "hostname beacon-next.apps.imp.example in prd is harbor's and beacon's"},
 		{name: "no spanner config", mutate: func(p *Placement) { p.Spanner.Config = "" }, wantErr: "spanner.config is empty"},
 		{name: "no release app", mutate: func(p *Placement) { p.GithubReleaseAppID = "" }, wantErr: "githubReleaseAppId is empty"},
@@ -1685,7 +1685,7 @@ func TestViewPhrases(t *testing.T) {
 			name:      "identities, backends and hosts under the recorded projects, REPLACEME for the rest",
 			placement: Placement{Prefix: "acme", AppsDomain: "acme.dev", Projects: map[string]string{"tst": "acme-tst-gbl-core-1a2b"}},
 			check: func(v *view) string {
-				return v.DeployIdentity("tst", "quill") + " " + v.ApplyIdentity("stg", "quill") + " " + v.Backend("tst", "quill") + " " + v.Host("tst", "quill") + " " + v.Host("prd", "quill") + " " + v.PullRequestBackend()
+				return v.DeployIdentity("tst", "quill") + " " + v.ApplyIdentity("stg", "quill") + " " + v.ApplicationHosts("quill", "tst")["quill-tst.acme.dev"] + " " + v.ApplicationHostnames("quill", "tst")[0] + " " + v.ApplicationHostnames("quill", "prd")[0] + " " + v.PullRequestBackend()
 			},
 			want: "serviceAccount:acme-tst-gbl-quill-deploy@acme-tst-gbl-core-1a2b.iam.gserviceaccount.com serviceAccount:acme-stg-gbl-quill-tofu@acme-stg-gbl-core-REPLACEME.iam.gserviceaccount.com projects/acme-tst-gbl-core-1a2b/global/backendServices/acme-tst-gbl-quill-backend quill-tst.acme.dev quill.acme.dev projects/acme-tst-gbl-core-1a2b/global/backendServices/acme-tst-gbl-pr-backend",
 		},
@@ -3647,7 +3647,12 @@ func TestHostRowsRecorded(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	record := map[string][]string{"tst": {"lighthouse-tst.apps.imp.example"}, "stg": {"lighthouse-stg.apps.imp.example"}, "prd": {"lighthouse.apps.imp.example"}}
+	served := func(env, host string) map[string]string {
+		stem := "projects/imp-" + env + "-gbl-core-0000/global/backendServices/imp-" + env + "-gbl-harbor"
+
+		return map[string]string{host: stem + "-backend", NextHostname(host): stem + "-next-backend"}
+	}
+	record := map[string]map[string]string{"tst": served("tst", "lighthouse-tst.apps.imp.example"), "stg": served("stg", "lighthouse-stg.apps.imp.example"), "prd": served("prd", "lighthouse.apps.imp.example")}
 	changed, err := p.RecordHostnames("harbor", record)
 	if err != nil || !changed {
 		t.Fatalf("RecordHostnames() = %v, %v, want changed and no error", changed, err)
@@ -3655,10 +3660,10 @@ func TestHostRowsRecorded(t *testing.T) {
 	if changed, err = p.RecordHostnames("harbor", record); err != nil || changed {
 		t.Fatalf("RecordHostnames() again = %v, %v, want unchanged and no error", changed, err)
 	}
-	if _, err := p.RecordHostnames("harbor", map[string][]string{"tst": {"lighthouse-tst.apps.imp.example"}}); err == nil || !strings.Contains(err.Error(), "serves no hostname in stg") {
+	if _, err := p.RecordHostnames("harbor", map[string]map[string]string{"tst": served("tst", "lighthouse-tst.apps.imp.example")}); err == nil || !strings.Contains(err.Error(), "serves no hostname in stg") {
 		t.Fatalf("RecordHostnames() with an environment missing = %v, want a refusal naming stg", err)
 	}
-	if _, err := p.RecordHostnames("beacon", map[string][]string{"tst": {"lighthouse-tst.apps.imp.example"}, "stg": {"beacon-stg.apps.imp.example"}, "prd": {"beacon.apps.imp.example"}}); err == nil || !strings.Contains(err.Error(), "is harbor's and beacon's") {
+	if _, err := p.RecordHostnames("beacon", map[string]map[string]string{"tst": served("tst", "lighthouse-tst.apps.imp.example"), "stg": served("stg", "beacon-stg.apps.imp.example"), "prd": served("prd", "beacon.apps.imp.example")}); err == nil || !strings.Contains(err.Error(), "is harbor's and beacon's") {
 		t.Fatalf("RecordHostnames() of a hostname harbor serves = %v, want a refusal", err)
 	}
 	if got := p.Hostnames["beacon"]; got != nil {
@@ -3685,10 +3690,10 @@ func TestHostRowsRecorded(t *testing.T) {
 	if strings.Join(keys, "\n") != strings.Join(want, "\n") {
 		t.Errorf("HostRows() keys =\n%s\nwant\n%s", strings.Join(keys, "\n"), strings.Join(want, "\n"))
 	}
-	if got := v.Host("prd", "harbor"); got != "lighthouse.apps.imp.example" {
-		t.Errorf("Host(prd, harbor) = %q", got)
+	if got := p.ApplicationHostnames("harbor", "prd"); strings.Join(got, ",") != "lighthouse.apps.imp.example" {
+		t.Errorf("ApplicationHostnames(harbor, prd) = %q, want the served hostname alone", got)
 	}
-	if got := v.NextHost("tst", "beacon"); got != "beacon-tst-next.apps.imp.example" {
-		t.Errorf("NextHost(tst, beacon) = %q", got)
+	if got := v.HostRows()[0].Value; got != "projects/imp-tst-gbl-core-0000/global/backendServices/imp-tst-gbl-harbor-backend" {
+		t.Errorf("the recorded backend is not rendered verbatim: %q", got)
 	}
 }

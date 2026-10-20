@@ -110,7 +110,8 @@ from `2-env`'s state.
 ## What it creates
 
 - **Runtime identities**, one per deployed process:
-  `{{.Prefix}}-<env>-gbl-{{.App}}-app` for the site (`{{.Site.Main}}`) with
+  `{{.Prefix}}-<env>-gbl-{{.App}}-app` for the site{{if .MultiSite}}s{{end}} (`{{.ServedSites}}`{{if .MultiSite}}, one identity
+  serving every site, since their grants are the same{{end}}) with
   `roles/logging.logWriter`, `roles/cloudtrace.agent`, `roles/telemetry.tracesWriter`,
   `roles/monitoring.metricWriter` on the project, `roles/spanner.databaseUser`
   on the database, and accessor on the secrets{{if .Jobs}}; `{{.Prefix}}-<env>-gbl-{{.App}}-jobs` for the job process
@@ -226,10 +227,16 @@ from `2-env`'s state.
   library reads these values only when someone signs in (the cookie key falls
   back to an ephemeral one), which a migration never does, so the deploy
   identity that runs it holds no accessor, and the command runs without them.
-- **Cloud Run**: the service `{{.Prefix}}-<env>-<region>-{{.App}}-app` in both regions (`{{.RegionCodes}}`)
+- **Cloud Run**: {{if .MultiSite}}a service per site, `{{.Prefix}}-<env>-<region>-{{.App}}-<site>-app`
+  ({{.SiteNamesProse}}),{{else}}the service `{{.Prefix}}-<env>-<region>-{{.App}}-app`{{end}} in both regions (`{{.RegionCodes}}`)
   (ingress internal and load balancer, CPU only during requests, `allUsers`
   invoker so the load balancer can forward){{if not .Jobs}}, created with a
-  placeholder image{{end}}. It scales {{.InstancesProse}}.
+  placeholder image{{end}}. {{if .MultiSite}}Each{{else}}It{{end}} scales {{.InstancesProse}}.
+{{- if .MultiSite}}
+  Every service runs the one image: a site's service starts the site's binary
+  (`/<site>`; the image's entrypoint is the first site's) and carries the path
+  of the site's bundle as `{{.SiteBundleVariable}}`, so one release moves every site at once.
+{{- end}}
   The migration (`{{.Migrate.Dir}}`) is no Cloud
   Run resource: the pipeline takes the migrate command out of the release's
   image and runs it on the build worker as the deploy identity, with the
@@ -269,7 +276,14 @@ from `2-env`'s state.
   and the labels and annotations a deploy stamps are the pipeline's
   (`ignore_changes`); identity, scaling, variables, and secret mounts stay
   this stack's.
-{{- if .Scheduled}}{{if .Site.H2C}} The service's port is named `h2c`: the site's main package imports the
+{{- if .Scheduled}}{{if .MultiSite}} A service's port is named `h2c` when its site's main package imports the
+  framework's server (`{{.ServerPackage}}`), which speaks HTTP/1.1 and unencrypted
+  HTTP/2 on one listener, so Cloud Run talks HTTP/2 to the container and the 32 MiB
+  bounds of HTTP/1 request and response bodies no longer apply{{if .H2CSites}} ({{.H2CSites}}){{end}}; the
+  maintenance revision runs the same image and speaks it too. Otherwise the port is
+  HTTP/1, which bounds a request body, and an unchunked response, to 32 MiB at
+  Cloud Run{{if .HTTP1Sites}} ({{.HTTP1Sites}}){{end}}. `bedrock check` refuses a port that does not match the
+  code, as any owned file.{{else if (index .Sites 0).H2C}} The service's port is named `h2c`: the site's main package imports the
   framework's server (`{{.ServerPackage}}`), which speaks HTTP/1.1 and unencrypted
   HTTP/2 on one listener, so Cloud Run talks HTTP/2 to the container and the 32 MiB
   bounds of HTTP/1 request and response bodies no longer apply; the maintenance
@@ -281,17 +295,17 @@ from `2-env`'s state.
   and loses both bounds.{{end}}
 - **Cloud Scheduler jobs**, one per scheduled route: a method the code marks
   `@schedule`, which the generated router serves under `{{.ScheduledPrefix}}` and lists
-  in `{{.RouterDir}}/{{.ReleaseFileName}}`. In every environment, never in a
+  in {{if .MultiSite}}each site's router's `{{.ReleaseFileName}}`{{else}}`{{.RouterDir}}/{{.ReleaseFileName}}`{{end}}. In every environment, never in a
   pull-request stack, in the primary region, named
-  `{{.Prefix}}-<env>-{{.PrimaryCode}}-{{.App}}-sched-<route>` (`scheduler.tf`):
+  `{{.Prefix}}-<env>-{{.PrimaryCode}}-{{.App}}-sched-{{if .MultiSite}}<site>-{{end}}<route>` (`scheduler.tf`):
 
-  | Route | Schedule | Time zone |
-  |---|---|---|
+  | {{if .MultiSite}}Site | {{end}}Route | Schedule | Time zone |
+  |{{if .MultiSite}}---|{{end}}---|---|---|
 {{- range .Scheduled}}
-  | `POST {{.Path}}` | `{{.Schedule}}` | {{.TimeZone}} |
+  | {{if $.MultiSite}}`{{.Site}}` | {{end}}`POST {{.Path}}` | `{{.Schedule}}` | {{.TimeZone}} |
 {{- end}}
 
-  Each job calls `https://<first hostname><route>` with an OIDC token (an
+  Each job calls {{if .MultiSite}}`https://<the site's first hostname><route>`{{else}}`https://<first hostname><route>`{{end}} with an OIDC token (an
   identity token Google signs) of the invoker identity
   `{{.Prefix}}-<env>-gbl-{{.App}}-sched`, with the same URL as the token's audience.
   The service is open to the load balancer, so Cloud Run does not check the
@@ -301,21 +315,24 @@ from `2-env`'s state.
   invoker holds no role. A pull-request stack leaves the variable unset, and
   its scheduled routes refuse every call.
 {{- end}}
-{{- if .RequestLog}}
+{{- if .RequestLogAny}}
 - **The request log's exclusion** `{{.Prefix}}-<env>-gbl-{{.App}}-log-excl`
   (`logging.tf`), in every environment and never in a pull-request stack.
   Cloud Run and the load balancer each write an entry for every request the
   service answers, and the code declares per surface which requests get one;
   the exclusion holds the cloud's own entries to the same words, scoped to
-  this service's entries alone (Cloud Run's by the regional services' names,
-  the load balancer's by the backend's), since the project holds several
-  applications. The words, from `{{.RouterDir}}/{{.ReleaseFileName}}`:
+  {{if .MultiSite}}each site's entries alone (Cloud Run's by the site's regional services'
+  names, the load balancer's by the site's backend's){{else}}this service's entries alone (Cloud Run's by the regional services' names,
+  the load balancer's by the backend's){{end}}, since the project holds several
+  applications. The words, from {{if .MultiSite}}each site's router's `{{.ReleaseFileName}}`{{else}}`{{.RouterDir}}/{{.ReleaseFileName}}`{{end}}:
 
-  | Surface | Request log |
-  |---|---|
+  | {{if .MultiSite}}Site | {{end}}Surface | Request log |
+  |{{if .MultiSite}}---|{{end}}---|---|
+{{- range $s := .Sites}}
 {{- range .Surfaces}}
 {{- if .Log}}
-  | `{{.Prefix}}` | {{.Policy}} |
+  | {{if $.MultiSite}}`{{$s.Name}}` | {{end}}`{{.Prefix}}` | {{.Policy}} |
+{{- end}}
 {{- end}}
 {{- end}}
 
@@ -329,13 +346,14 @@ from `2-env`'s state.
   child's own clause's to drop, and kept whole when the child is logged
   always.
 {{- end}}
-- **Load balancer backend**: a serverless NEG per region and one global
-  backend service `{{.Prefix}}-<env>-gbl-{{.App}}-backend` over both, external managed,
+- **Load balancer backend**: {{if .MultiSite}}per site, a serverless NEG per region and one global
+  backend service `{{.Prefix}}-<env>-gbl-{{.App}}-<site>-backend` over both{{else}}a serverless NEG per region and one global
+  backend service `{{.Prefix}}-<env>-gbl-{{.App}}-backend` over both{{end}}, external managed,
   outlier detection on ({{.P.Outlier.ConsecutiveErrors}} consecutive errors in a {{.P.Outlier.IntervalSeconds}}-second interval eject a
   backend for {{.P.Outlier.BaseEjectionSeconds}} seconds, at most {{.P.Outlier.MaxEjectionPercent}}% ejected, enforced at {{.P.Outlier.EnforcingConsecutiveErrors}}), request
   logging at full sample rate, and Cloud Armor's policy attached where
   `terraform.tfvars` turns it on (Cloud Armor, below). The URL map in the net
-  project routes this environment's hostnames to it across projects (below).
+  project routes {{if .MultiSite}}each site's hostnames to the site's backend{{else}}this environment's hostnames to it{{end}} across projects (below).
 - **Cloud Build triggers** on the repository link `2-env` registered. Two run
   `cloudbuild.yaml` as the deploy identity: `{{.Prefix}}-<env>-{{.PrimaryCode}}-{{.App}}-version` on a
   tag `^v\d+\.\d+\.\d+$` in every environment, with Cloud Build approval
@@ -560,7 +578,8 @@ hook fetching a shared configuration) is granted in 2-env
 What `cloudbuild.yaml` in the {{.App}} repository can rely on, from the trigger
 substitutions and this stack's outputs:
 
-- `_ENV`, `_APP`, `_PROJECT`; `_SERVICES` as `<region>=<service>` per region,
+- `_ENV`, `_APP`, `_PROJECT`; `_SERVICES` as `<region>=<service>` per {{if .MultiSite}}service
+  (each site's in each region){{else}}region{{end}},
   comma-separated; `_MIGRATE_ENV`, the variables the migrate command runs
   with on the build worker, as a JSON object (`locals.tf`, `migrate_env`;
   the pipeline reads it back from the `substitutions` output after it
@@ -607,10 +626,12 @@ substitutions and this stack's outputs:
   who asked); `_MIGRATIONS_DIR`, the
   schema migrations directory, which decides whether `/gcbrun shared-db` is
   allowed; `_REPO_FULL_NAME`, the repository as GitHub names it, for the sweep;
-  `_HOSTNAME`, the environment's canonical hostname (a pull-request stack's
+  `_HOSTNAME`, the environment's canonical hostname{{if .MultiSite}}, the first site's{{end}} (a pull-request stack's
   own, which the pipeline talks back with; a release build reads it back from
   the `substitutions` output after it applies the stack, so a release that
-  changes the hostnames names its next revision's URL by its own);
+  changes the hostnames names its next revision's URL by its own){{if .MultiSite}};
+  `_HOSTNAMES`, each site's canonical hostname as `<site>=<hostname>`,
+  comma-separated, read back the same way as `CANONICAL_HOSTNAMES`{{end}};
   `_DEPLOYER_APP_ID` and
   `_DEPLOYER_KEY_SECRET`, the deployer GitHub App the pipeline talks back on a
   pull request as and the pinned secret version of its key, empty until 2-env
@@ -704,30 +725,37 @@ substitutions and this stack's outputs:
 
 ## Hostnames and the net layer
 
-`var.hostnames` gives each environment its hostnames, in `2-net`'s
+`var.hostnames` gives each environment its hostnames{{if .MultiSite}}, a site's each{{end}}, in `2-net`'s
 convention of one label under the apps domain (its wildcard certificate
-covers exactly that): {{.HostnamesProse}}. The label is the one
+covers exactly that): {{.HostnamesProse}}. {{if .MultiSite}}Each site's label is the one
+`placement.json` declares for it under `hostnames` ({{.SiteLabelsProse}}),
+`{{.App}}-<site>` by default{{else}}The label is the one
 `placement.json` declares for the site under `hostnames` (`{{.Label}}`
 here){{if ne .Label .App}}, in place of the default, the application code{{else}}, the application code by
-default{{end}}: the code names every resource and is in a URL by default alone, and a
+default{{end}}{{end}}: the code names every resource and is in a URL by default alone, and a
 label changed in the placement moves the hostnames on the next apply, nothing
 else in the stack. The organization records the hostnames the stack serves
 when the registration completes (`bedrock org register <app> --next`) and
 after a label change (`bedrock org hostnames <app>`), and refuses a hostname
-another application has. The first is
-canonical{{if .Directory}} and forms the directory registrations' redirect URLs{{end}}. `2-net` routes a
+another application has. The first{{if .MultiSite}} of each site{{end}} is
+canonical{{if .Directory}} and forms the directory registrations' redirect URLs{{if .MultiSite}}, each
+method's on its site{{end}}{{end}}. `2-net` routes a
 hostname from an entry in its `hosts` variable, hostname to backend service
 URI, in its `terraform.tfvars`; this stack's `net_hosts` output is exactly
 those entries for the environment:
 
 ```
 hosts = {
+{{- if .MultiSite}}{{range .Sites}}
+  "{{.IntegrationHost}}" = "projects/<the {{$.Integration}} project>/global/backendServices/{{$.Prefix}}-{{$.Integration}}-gbl-{{$.App}}-{{.Name}}-backend"{{end}}
+{{- else}}
   "{{.IntegrationHost}}" = "projects/<the {{.Integration}} project>/global/backendServices/{{.Prefix}}-{{.Integration}}-gbl-{{.App}}-backend"
+{{- end}}
 }
 ```
 
-DNS (the wildcard A record) and the certificate already cover the hostname;
-adding the entry and applying `2-net` is the whole registration.
+DNS (the wildcard A record) and the certificate already cover the hostname{{if .MultiSite}}s{{end}};
+adding the entr{{if .MultiSite}}ies{{else}}y{{end}} and applying `2-net` is the whole registration.
 
 ## Cloud Armor
 
@@ -784,9 +812,10 @@ Fields the rule sets leave alone (`placement.json`, `cloudArmor.fieldExclusions`
 The same stack, applied in {{.Integration}} with `pull_request` set to the pull request's
 number, is that pull request's environment: its own state
 (`3-app/{{.App}}/{{.Integration}}/pr<N>`), its own database on {{.Integration}}'s instance and its
-own runtime identities, short names throughout (`{{.Label}}-pr<N>` for the service in
-each region, `{{.App}}-pr<N>-app`, `{{.App}}-pr<N>-db`), and the
-hostname `{{.Label}}-pr<N>.{{.P.AppsDomain}}`, which the wildcard backend 2-env creates once
+own runtime identities, short names throughout ({{if .MultiSite}}{{.SitePRNamesProse}}, the
+sites' services in each region{{else}}`{{.Label}}-pr<N>` for the service in
+each region{{end}}, `{{.App}}-pr<N>-app`, `{{.App}}-pr<N>-db`), and the
+hostname{{if .MultiSite}}s `<label>-pr<N>.{{.P.AppsDomain}}`, a site's each{{else}} `{{.Label}}-pr<N>.{{.P.AppsDomain}}`{{end}}, which the wildcard backend 2-env creates once
 in {{.Integration}} serves by picking the Cloud Run service named by the hostname's
 first label (2-net's `*.{{.P.AppsDomain}}` host rule points at it). It reads
 {{.Integration}}'s secret containers at {{.Integration}}'s pinned versions and creates no
@@ -795,7 +824,7 @@ trigger applies it as the {{.Integration}} apply identity on the same `/gcbrun` 
 that starts the preview build, from steps the pull request cannot edit, and
 destroys it on `/gcbrun down`; the sweep destroys it when the pull request
 closes. The preview build reads what the job applied from the records bucket
-(the services, the hostname, the job, the migrate command's settings, the
+(the services, the hostname{{if .MultiSite}}s{{end}}, the job, the migrate command's settings, the
 build arguments, the database mode; "The pipeline's contract" has the object)
 and deploys into it. A push to the pull request applies the stack again from
 the check trigger while a preview stands, so the preview's infrastructure
@@ -931,8 +960,9 @@ bounds). What an application adds is declared in files of its own:
   data the running service starts), `before-traffic`
   (the new revision is deployed in every region and the old one still
   serves: `NEXT_URL` is the new revision's public URL through the load
-  balancer, `https://{{.App}}-<env>-next.<domain>/`, empty in a pull-request
-  build, and `REVISION_URLS` the tagged run.app URL per region; a failure
+  balancer, `https://{{if .MultiSite}}<label>{{else}}{{.App}}{{end}}-<env>-next.<domain>/`, empty in a pull-request
+  build,{{if .MultiSite}} `NEXT_URLS` each site's as `<site>=<url>` (`NEXT_URL` is the
+  first site's),{{end}} and `REVISION_URLS` the tagged run.app URL per {{if .MultiSite}}service{{else}}region{{end}}; a failure
   here stops the build with the old revision serving), `after-traffic` (a
   smoke test, a cache warm; a failure here stops the build before the
   deployment record, so the record gate never sees a release the hook
@@ -971,11 +1001,11 @@ bounds). What an application adds is declared in files of its own:
   {{.BuildArgumentsProse}}.{{else}}This application declares none.{{end}} The
   values a build argument may take:
 {{.BuildValueItems}}
-- **The Dockerfile.** Seeded from the code's shape (the site and the migrate
-  command{{if .Jobs}}, the job process{{end}}, the browser workspace and its bundles, the schema
+- **The Dockerfile.** Seeded from the code's shape (the site{{if .MultiSite}}s{{end}} and the migrate
+  command{{if .Jobs}}, the job process{{end}}, the browser workspace{{if .MultiSite}}s{{end}} and {{if .MultiSite}}their{{else}}its{{end}} bundles, the schema
   directory) and then yours: extra stages, build arguments, private assets.
   `bedrock check` refuses a Dockerfile that builds no binary the pipeline
-  runs or deploys (`/migrate`, taken out of the image for the migration
+  runs or deploys ({{if .MultiSite}}`/<site>`, each site's service's; {{end}}`/migrate`, taken out of the image for the migration
   steps{{if .Jobs}}; `/jobs`, the job process's{{end}}).
 
 Anything beyond that is a new hook point or a new `bedrock deploy` command,
@@ -1133,7 +1163,7 @@ none yet), and the sign-in needs no registration.
 | `destroy` | Set by `bedrock destroy` alone: every protection lifted at the apply before its destroy. | `bool` | `false` | no |
 | `environment` | {{.EnvsBacktickOr}}; passed as `-var` on every run. | `string` | n/a | yes |
 | `generated_secret_versions` | The generated secrets' versions, derived and passed by the pipeline's plan step; never written here. | `map(string)` | `{}` | no |
-| `hostnames` | Hostnames per environment; the first is canonical. | `map(list(string))` | the {{.EnvCountWord}} above | no |
+| `hostnames` | Hostnames per environment{{if .MultiSite}} and site; the first of each site{{else}}; the first{{end}} is canonical. | {{if .MultiSite}}`map(map(list(string)))`{{else}}`map(list(string))`{{end}} | the {{.EnvCountWord}} above | no |
 {{- if .Jobs}}
 | `jobs_resources` | CPU and memory of one run of the job process. | `object({ cpu, memory })` | `1`, `512Mi` | no |
 | `jobs_retries` | Retries of a failed run of the job process. | `number` | `0` | no |
@@ -1181,20 +1211,27 @@ none yet), and the sign-in needs no registration.
 {{- if .FileStores}}
 | `file_stores` | The file stores' bucket URLs, by variable. |
 {{- end}}
+{{- if .MultiSite}}
+| `backend_service_ids` | Each site's backend service, as a `projects/.../global/backendServices/...` URI. |
+{{- else}}
 | `backend_service_id`, `backend_service_self_link` | The backend service, as a `projects/.../global/backendServices/...` URI and as a full self link. |
+{{- end}}
 | `database` | `{ project, instance, name }`. |
 {{- if .FirestoreDatabase}}
 | `firestore_database` | The Firestore database's id. |
 {{- end}}
-| `hostnames` | For `2-net`'s host rules, certificate, and DNS. |
+| `hostnames` | For `2-net`'s host rules, certificate, and DNS{{if .MultiSite}}; every site's, the first site's first{{end}}. |
 | `identities` | `{ app{{if .Jobs}}, jobs{{end}} }` runtime identity emails. |
 {{- if .Jobs}}
 | `jobs_job` | `{ name, region, resource }` of the job process's Cloud Run job. |
 {{- end}}
-| `net_hosts` | The `hosts` entries for `2-net`: each hostname mapped to the backend service URI. |
+| `net_hosts` | The `hosts` entries for `2-net`: each hostname mapped to {{if .MultiSite}}its site's{{else}}the{{end}} backend service URI. |
 | `registry` | `<hostname>/<project>/<repository>`; null until `2-shr` registers {{.App}}. |
 | `secrets` | Per variable: `secret_id` and the pinned `version` (null when unpinned). |
-| `services` | Per region code: `name`, `region`, `uri`. |
+| `services` | Per {{if .MultiSite}}`<site>-<region code>`{{else}}region code{{end}}: `name`, `region`, `uri`. |
+{{- if .MultiSite}}
+| `sites` | Per site: its `hostnames` and `next_hostnames`, its `backend_service_id` and `next_backend_service_id` (null in a pull-request stack), and its `services` by region code. |
+{{- end}}
 | `stack_id` | The stack's id (four hex characters): the suffix of the names Google keeps after a delete, and the prefix of the stack's deployment records. |
 {{- if .TasksQueue}}
 | `tasks_queue` | The task queue's resource name. |

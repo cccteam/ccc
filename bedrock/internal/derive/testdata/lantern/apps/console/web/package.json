@@ -1,0 +1,7 @@
+{
+  "name": "console",
+  "private": true,
+  "scripts": {
+    "build": "ng build"
+  }
+}
