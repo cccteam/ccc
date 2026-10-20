@@ -193,6 +193,22 @@ func (m *Method) accounts() string {
 	return m.Accounts
 }
 
+// Arg is the method as a generator program declares it on an Auth option: its kind and
+// registration name, with .InvitedUsers() chained under the invited-users rule, so the
+// users surface the generator emits creates the invitations the method file's
+// signin.InvitedUsersOnly admits. The declaration and the method file read the same rule.
+func (m *Method) Arg() app.AuthMethodArg {
+	return app.AuthMethodArg{Kind: m.Kind, Name: m.Name, InvitedUsers: m.accounts() == AccountsInvited}
+}
+
+// Declaration writes the method as a generator program carries it, package-qualified
+// (generation.GoogleMethod("workspace").InvitedUsers()).
+func (m *Method) Declaration() string {
+	arg := m.Arg()
+
+	return arg.Declaration()
+}
+
 // openSlot reports a slot that admits the world: any organization or personal accounts.
 func (m *Method) openSlot() bool {
 	switch m.slot() {

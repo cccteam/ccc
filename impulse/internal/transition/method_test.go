@@ -136,6 +136,28 @@ func TestMethodApply(t *testing.T) {
 			},
 		},
 		{
+			name:   "a Google method admitting invited users only declares .InvitedUsers() and writes the rule to its file",
+			method: Method{Auth: "staff", Spec: authpkg.Method{Kind: app.MethodGoogle, Name: "workspace", Authority: AuthorityApplication, Accounts: authpkg.AccountsInvited}},
+			wantDid: []string{
+				"pkg/auth/staff/workspace.go: the workspace method (google, one Workspace, invited users only, role membership the application's): its registration constant, its settings, its handlers (WorkspaceLogin and the rest), and registerWorkspace, which registers it on the Auth",
+				`cmd/generate/resourcegenerator/main.go: generation.GoogleMethod("workspace").InvitedUsers() declared on 1 outlet Auth option(s) bound to the staff auth, so the generated router mounts user/workspace/login and the callback and the methods route offers it`,
+			},
+			check: func(t *testing.T, a *app.App) {
+				t.Helper()
+				file := read(t, a, "pkg/auth/staff/workspace.go")
+				if !strings.Contains(file, "signin.InvitedUsersOnly") || strings.Contains(file, "signin.MembersOfDirectory") {
+					t.Errorf("workspace.go's account rule:\n%s", file)
+				}
+				if program := read(t, a, "cmd/generate/resourcegenerator/main.go"); !strings.Contains(program, `generation.Auth("example.com/acme/beacon/pkg/auth/staff", generation.PasswordMethod(), generation.GoogleMethod("workspace").InvitedUsers())`) {
+					t.Errorf("program = %s", program)
+				}
+				meaning := (&Method{Auth: "staff", Spec: authpkg.Method{Kind: app.MethodGoogle, Name: "workspace", Authority: AuthorityApplication, Accounts: authpkg.AccountsInvited}}).Meaning()
+				if !strings.Contains(meaning, "grant Create on `StaffUsers` to the role that invites in the role file") {
+					t.Errorf("Meaning() lacks the Create grant:\n%s", meaning)
+				}
+			},
+		},
+		{
 			name:   "an Entra method under the directory authority, read from the environment struct",
 			method: Method{Auth: "staff", Spec: authpkg.Method{Kind: app.MethodAzure, Name: "directory", Authority: AuthorityDirectory}},
 			extra:  map[string]string{"pkg/config/data.go": authConfigEnv},

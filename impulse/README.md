@@ -764,8 +764,11 @@ the outlet, its development identities, and the stranger tests are the agent's.
 `--method` names the methods the Auth starts with, repeatable: `password` (the default
 when none is given), `azure:<registration>` or `google:<registration>`, the registration
 being the segment of the method's routes (`user/<registration>/login`). A directory method
-added here takes the default shape, one organization and members of the directory;
-`add method` composes the other slots and account rules. `--authority` says who owns role
+added here takes one organization, and `--accounts` its account rule for a first sign-in as
+`add method` takes it (`members`, the default, or `invited`; `open` is refused with one
+organization), written to the method file and, for `invited`, as `.InvitedUsers()` on the
+method's declaration, so the generated users surface creates the invitations; `add method`
+composes the other slots. `--authority` says who owns role
 membership for a directory method and is asked when not given, never defaulted, because
 the wrong answer deletes hand-assigned roles at the next sign-in: `directory` writes
 `RoleSync` (the directory's roles are reconciled at every sign-in and roles they do not
@@ -785,6 +788,7 @@ impulse add outlet partners --prefix partners/api --auth staff
 impulse add auth partners --outlet partners --agent
 impulse add auth members --method azure:directory --authority application --outlet portal --agent
 impulse add auth members --method password --method google:workspace --authority directory --outlet portal
+impulse add auth members --method google:google --authority application --accounts invited --outlet portal
 ```
 
 `add method` adds a sign-in method to an auth the application has: `password`, `azure`
