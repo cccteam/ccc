@@ -168,8 +168,9 @@ func authForm(label string) string {
 	return host + " CNAME " + strings.TrimSuffix(authData, ".")
 }
 
-// TestCheck classifies the apps domain over a fake Cloud DNS and a fake resolver, and
-// holds every record line the check prints, byte for byte, to the fakes' values.
+// TestCheck classifies the apps domain, and a vanity domain the same way, over a fake
+// Cloud DNS and a fake resolver, and holds every record line the check prints, byte for
+// byte, to the fakes' values.
 func TestCheck(t *testing.T) {
 	t.Parallel()
 
@@ -178,34 +179,15 @@ func TestCheck(t *testing.T) {
 		domain   string
 		zones    *fakeZones
 		resolver *fakeResolver
-		// zoneReplacement is zoneReplacement set in the organization's placement.
-		zoneReplacement bool
-		want            Delegation
-		wantPassed      bool
-		wantLines       []string
+		// vanity marks the domain a vanity domain of the placement's.
+		vanity     bool
+		want       Delegation
+		wantPassed bool
+		wantLines  []string
 		// wantAbsent are texts no line may hold.
 		wantAbsent []string
 		wantErr    string
 	}{
-		{
-			name:            "a domain that passes while zoneReplacement is set: the value can be cleared",
-			domain:          "example.dev",
-			zones:           zoneFor("example.dev"),
-			resolver:        resolved("example.dev"),
-			zoneReplacement: true,
-			want:            Delegated,
-			wantPassed:      true,
-			wantLines:       []string{ZoneReplacementCleared},
-		},
-		{
-			name:            "a domain that does not pass yet while zoneReplacement is set: nothing said of it",
-			domain:          "example.app",
-			zones:           zoneFor("example.app"),
-			resolver:        &fakeResolver{ns: map[string][]string{"example.app": movedServers}},
-			zoneReplacement: true,
-			want:            Repoint,
-			wantAbsent:      []string{"zoneReplacement"},
-		},
 		{
 			name:       "an apex registered here or delegated: the zone's name servers answer",
 			domain:     "example.dev",
@@ -217,7 +199,64 @@ func TestCheck(t *testing.T) {
 				"example.dev is delegated to the zone ex-net-gbl-dns-apps in ex-net-gbl-core-1a2b: it answers the zone's name servers (" + strings.Join(zoneServers, ", ") + ").",
 				"The authorization record resolves: the certificate for example.dev and *.example.dev is not waiting on it.",
 			},
-			wantAbsent: []string{"zoneReplacement"},
+		},
+		{
+			name:       "a vanity domain delegated whole: the zone's name servers answer",
+			domain:     "harborlights.example",
+			zones:      zoneFor("harborlights.example"),
+			resolver:   resolved("harborlights.example"),
+			vanity:     true,
+			want:       Delegated,
+			wantPassed: true,
+			wantLines: []string{
+				"harborlights.example is delegated to the zone ex-net-gbl-dns-apps in ex-net-gbl-core-1a2b: it answers the zone's name servers (" + strings.Join(zoneServers, ", ") + ").",
+				"The authorization record resolves: the certificate for harborlights.example and *.harborlights.example is not waiting on it.",
+			},
+		},
+		{
+			name:   "a vanity domain not delegated, with nothing else on it: the registrar step",
+			domain: "harborlights.example",
+			zones:  zoneFor("harborlights.example"),
+			resolver: &fakeResolver{
+				ns: map[string][]string{"harborlights.example": {"ns1.registrar.example.", "ns2.registrar.example."}},
+			},
+			vanity: true,
+			want:   ApexUndelegated,
+			wantLines: append(append([]string{
+				"harborlights.example does not answer the zone's name servers (it answers ns1.registrar.example., ns2.registrar.example.).",
+				"At the registrar where harborlights.example is registered: set its name servers to the zone's 4 below, in place of the ones it has. " + squarespacePath,
+			}, bare()...),
+				"The certificate is still waiting on the authorization record below, which resolves once the delegation is in place. To have the certificate issued sooner, add it now at the DNS provider that serves harborlights.example, as its form takes it (host, type, value):",
+				authForm(""),
+			),
+		},
+		{
+			name:   "a vanity domain that carries mail and a website is refused, with a label of it to declare instead",
+			domain: "harborlights.example",
+			zones:  zoneFor("harborlights.example"),
+			resolver: &fakeResolver{
+				ns:    map[string][]string{"harborlights.example": {"ns1.example.net.", "ns2.example.net."}},
+				hosts: map[string][]string{"harborlights.example": {"192.0.2.80"}},
+				mx:    map[string][]*net.MX{"harborlights.example": {{Host: "mail.example.net.", Pref: 10}}},
+			},
+			vanity: true,
+			want:   Refused,
+			wantLines: []string{
+				"harborlights.example does not answer the zone's name servers (it answers ns1.example.net., ns2.example.net.), and it answers records that are not the zone's:",
+				"A 192.0.2.80",
+				"MX 10 mail.example.net.",
+				"Refused: a domain that carries other DNS (a website, mail) is never delegated whole, and a site's hostnames directly on it would each need their own records at its DNS provider.",
+				"Declare a label of it as the vanity domain instead, such as app.harborlights.example: set it in place of harborlights.example in vanityDomains in placement.json and put the site's hostnames on it in the application's placement (hostnames.<site>.vanity), run bedrock org render, apply 2-net, and run bedrock domain check again for the NS records to add at the DNS provider that serves harborlights.example.",
+			},
+			wantAbsent: []string{"appsDomain", "apps_domain"},
+		},
+		{
+			name:     "a vanity domain whose zone serves another domain",
+			domain:   "harborlights.example",
+			zones:    zoneFor("example.org"),
+			resolver: resolved("harborlights.example"),
+			vanity:   true,
+			wantErr:  "the zone ex-net-gbl-dns-apps in ex-net-gbl-core-1a2b serves example.org., not the vanity domain harborlights.example: 2-net names a vanity domain's zone after the domain (vanityDomains in placement.json, bedrock org render); apply 2-net as rendered, then check again",
 		},
 		{
 			name:       "a label delegated at its parent's DNS provider",
@@ -427,7 +466,7 @@ func TestCheck(t *testing.T) {
 				},
 				Resolver: tt.resolver,
 			}
-			r, err := Check(context.Background(), lookups, CheckRequest{Domain: tt.domain, Project: checkProject, Zone: checkZone, Dir: repo, ZoneReplacement: tt.zoneReplacement})
+			r, err := Check(context.Background(), lookups, CheckRequest{Domain: tt.domain, Project: checkProject, Zone: checkZone, Dir: repo, Vanity: tt.vanity})
 			if tt.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 					t.Fatalf("Check() error = %v, wantErr %q", err, tt.wantErr)

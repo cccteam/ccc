@@ -4,6 +4,9 @@
 
 apps_domain = "apps.imp.example"
 
+# The vanity domains delegated whole beside it, each with a zone and a certificate
+# of its own, are placement.json's (vanityDomains), rendered into variables.tf.
+
 # Domains this layer registers through Cloud Domains, keyed by name, each with
 # the yearly price Cloud Domains quoted and the notices it asked to acknowledge
 # (bedrock domain add fills an entry in). Empty means no registration is

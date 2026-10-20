@@ -107,11 +107,11 @@ func Deploy(ctx context.Context, clients *Clients, w Workspace, out io.Writer) e
 // alone, and each site's next URL when the stack names the sites' hostnames.
 func nextFacts(w Workspace, env map[string]string, build *Build, urls []string, out io.Writer) error {
 	facts := map[string]string{
-		nextURLFact:      nextURL(canonicalHostname(env, build), build.Substitutions[prNumberSub]),
+		nextURLFact:      nextRevisionURL(canonicalHostname(env, build), nextHostname(env, build), build.Substitutions[prNumberSub]),
 		revisionURLsFact: strings.Join(urls, ","),
 	}
 	if sites := canonicalHostnames(env, build); sites != "" {
-		facts[nextURLsFact] = nextURLs(sites, build.Substitutions[prNumberSub])
+		facts[nextURLsFact] = nextURLs(sites, nextHostnames(env, build), build.Substitutions[prNumberSub])
 	}
 	if err := w.Append(facts); err != nil {
 		return err
@@ -143,6 +143,16 @@ const (
 	nextURLsFact           = "NEXT_URLS"
 	hostnamesSub           = "_HOSTNAMES"
 	canonicalHostnamesFact = "CANONICAL_HOSTNAMES"
+	// A stack whose canonical hostname is on a vanity domain names the next revision's
+	// hostname itself (_NEXT_HOSTNAME, on the apps domain, where the next backend's
+	// twin and the wildcard certificate are; read back as NEXT_HOSTNAME), and each
+	// site's in the sites layout (_NEXT_HOSTNAMES, site=hostname, read back as
+	// NEXT_HOSTNAMES). A stack naming none has the next hostname derived from the
+	// canonical one.
+	nextHostnameSub   = "_NEXT_HOSTNAME"
+	nextHostnameFact  = "NEXT_HOSTNAME"
+	nextHostnamesSub  = "_NEXT_HOSTNAMES"
+	nextHostnamesFact = "NEXT_HOSTNAMES"
 )
 
 // canonicalHostname is the environment's hostname the next revision's URL is named by: the
@@ -167,22 +177,62 @@ func canonicalHostnames(env map[string]string, build *Build) string {
 	return build.Substitutions[hostnamesSub]
 }
 
+// nextHostname is the next revision's hostname the stack names, when it names one: the
+// stack's as this build applied it, else the trigger's; empty for a stack whose next
+// hostname is derived from the canonical one.
+func nextHostname(env map[string]string, build *Build) string {
+	if hostname := env[nextHostnameFact]; hostname != "" {
+		return hostname
+	}
+
+	return build.Substitutions[nextHostnameSub]
+}
+
+// nextHostnames is each site's next revision's hostname the stack names (site=hostname,
+// comma-separated), the way nextHostname is the first site's; empty when it names none.
+func nextHostnames(env map[string]string, build *Build) string {
+	if sites := env[nextHostnamesFact]; sites != "" {
+		return sites
+	}
+
+	return build.Substitutions[nextHostnamesSub]
+}
+
 // nextURLs is each site's next revision's public URL (site=url, comma-separated), from
-// each site's canonical hostname the way nextURL names one; a site without one is left
-// out, and a pull-request build has none.
-func nextURLs(sites, pullRequest string) string {
+// the next hostname the stack names for the site, else from the site's canonical
+// hostname the way nextURL names one; a site without one is left out, and a
+// pull-request build has none.
+func nextURLs(sites, nextSites, pullRequest string) string {
+	next := map[string]string{}
+	for _, pair := range strings.Split(nextSites, ",") {
+		if site, hostname, ok := strings.Cut(pair, "="); ok {
+			next[site] = hostname
+		}
+	}
 	var urls []string
 	for _, pair := range strings.Split(sites, ",") {
 		site, hostname, ok := strings.Cut(pair, "=")
 		if !ok {
 			continue
 		}
-		if url := nextURL(hostname, pullRequest); url != "" {
+		if url := nextRevisionURL(hostname, next[site], pullRequest); url != "" {
 			urls = append(urls, site+"="+url)
 		}
 	}
 
 	return strings.Join(urls, ",")
+}
+
+// nextRevisionURL is the next revision's public URL: the next hostname the stack names,
+// when it names one (its canonical hostname is on a vanity domain, and the next revision
+// stays on the apps domain), else the canonical hostname with -next on its first label
+// (nextURL). Empty for a pull-request build.
+func nextRevisionURL(canonical, next, pullRequest string) string {
+	if next == "" || pullRequest != "" {
+		return nextURL(canonical, pullRequest)
+	}
+
+	return "https://" + next + "/"
 }
 
 // taggedURL is the revision's own URL under its tag: the service's run.app URL with the

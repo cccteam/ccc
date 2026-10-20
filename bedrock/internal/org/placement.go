@@ -105,6 +105,19 @@ type Placement struct {
 	// AppsDomain is the domain the applications' hostnames hang under, never the
 	// identity domain.
 	AppsDomain string `json:"appsDomain"`
+	// VanityDomains are the domains delegated whole to the network project beside the
+	// apps domain, each a client's own domain an application serves on (its brand
+	// domain, in production): 2-net serves each with a zone, a DNS authorization, a
+	// managed certificate for the domain and one label below it, and the certificate
+	// map's entries, as it serves the apps domain, and bedrock domain check verifies
+	// each one's delegation. An application declares the hostnames it serves on one
+	// (hostnames.<site>.vanity in its placement, the domain itself or a label of it),
+	// and the organization records them with the others and refuses a hostname under no
+	// domain declared here. A domain that carries other DNS (mail, a website) is never
+	// one: it is refused at the check, with a label of it to declare instead. A vanity
+	// domain may be registered here too (registrations in 2-net/terraform.tfvars, bedrock
+	// domain add), as the apps domain may; the registration then points at its zone.
+	VanityDomains []string `json:"vanityDomains,omitempty"`
 	// ZoneReplacement, while true, renders 2-net's apps zone and its parked zones without
 	// prevent_destroy, so the change that makes a zone again (a new appsDomain, a
 	// replacement) can be planned and applied; false, the default, renders the rule that
@@ -393,7 +406,7 @@ func (p *Placement) Validate() error {
 	for _, validate := range []func() error{
 		p.validateGithubApps, p.validateApprovingReviews, p.validateCloudBuild, p.validateBedrockPin,
 		p.validateCiLargeRunner, p.validateProjects, p.validateTeamGroups, p.validateEntitlementDurations,
-		p.validateApplications, p.validateOutOfService, p.validateHostnames,
+		p.validateApplications, p.validateOutOfService, p.validateVanityDomains, p.validateHostnames,
 	} {
 		if err := validate(); err != nil {
 			return err
@@ -720,6 +733,78 @@ func (p *Placement) BootProject() string {
 // the zone, <prefix>-net-gbl-dns-apps.
 func (p *Placement) AppsZone() (project, zone string) {
 	return p.Projects[netProject], p.Prefix + "-" + netProject + "-gbl-dns-apps"
+}
+
+// VanityZone is where a vanity domain's zone is: the network project, as AppsZone, and
+// the name 2-net's dns.tf gives the zone, <prefix>-net-gbl-dns-<the domain with hyphens
+// for its dots>, the name a parked zone of the same domain has (domains.tf), so a domain
+// registered here before it was declared keeps its zone.
+func (p *Placement) VanityZone(domain string) (project, zone string) {
+	return p.Projects[netProject], p.Prefix + "-" + netProject + "-gbl-dns-" + strings.ReplaceAll(domain, ".", "-")
+}
+
+// resourceNameLimit is the most characters Cloud DNS takes in a managed zone's name and
+// Certificate Manager in a certificate's or a map entry's: 63. The longest name 2-net
+// derives from a vanity domain is its wildcard map entry's,
+// <prefix>-net-gbl-cme-<domain>-wildcard, which VanityNames bounds.
+const resourceNameLimit = 63
+
+// VanityNames is the longest name 2-net derives from a vanity domain, the wildcard
+// certificate map entry's, which bounds the domain's length: the prefix, -net-gbl-cme-,
+// the domain with hyphens for its dots, and -wildcard.
+func (p *Placement) VanityNames(domain string) string {
+	return p.Prefix + "-" + netProject + "-gbl-cme-" + strings.ReplaceAll(domain, ".", "-") + "-wildcard"
+}
+
+// validateVanityDomains refuses a vanity domain that is not a bare lowercase domain, the
+// apps domain or the organization's domain (whose mail is on it) or a name under or
+// above either, one listed twice or under another listed (one zone serves a domain and
+// everything under it), and one whose names in 2-net would not fit.
+func (p *Placement) validateVanityDomains() error {
+	for i, d := range p.VanityDomains {
+		if !derive.HostnameOK(d) {
+			return errors.Newf("vanityDomains names %q, which is not a bare lowercase domain such as example.com", d)
+		}
+		for _, other := range []struct{ name, what string }{{p.AppsDomain, "the apps domain"}, {p.OrganizationDomain, "the organization's domain, whose mail is on it"}} {
+			switch {
+			case d == other.name:
+				return errors.Newf("vanityDomains names %q, which is %s: a vanity domain is a client's own domain, delegated whole to the network project beside it", d, other.what)
+			case strings.HasSuffix(d, "."+other.name):
+				return errors.Newf("vanityDomains names %q, which is under %s %s: its zone already serves every name under it", d, other.what, other.name)
+			case strings.HasSuffix(other.name, "."+d):
+				return errors.Newf("vanityDomains names %q, which is above %s %s: one zone would serve both", d, other.what, other.name)
+			}
+		}
+		for _, earlier := range p.VanityDomains[:i] {
+			switch {
+			case d == earlier:
+				return errors.Newf("vanityDomains lists %q twice", d)
+			case strings.HasSuffix(d, "."+earlier), strings.HasSuffix(earlier, "."+d):
+				return errors.Newf("vanityDomains lists %q and %q, one under the other: the zone of a vanity domain serves everything under it, so the one above is enough", earlier, d)
+			}
+		}
+		if name := p.VanityNames(d); len(name) > resourceNameLimit {
+			return errors.Newf("vanityDomains names %q, whose certificate map entry %s would be %d characters; Certificate Manager and Cloud DNS take at most %d in a name, so a vanity domain is at most %d characters", d, name, len(name), resourceNameLimit, resourceNameLimit-(len(name)-len(d)))
+		}
+	}
+
+	return nil
+}
+
+// VanityDomainOf is the declared vanity domain a hostname is on, the domain itself or
+// one label below it, and the label (empty for the domain itself); none when the
+// hostname is on no declared vanity domain.
+func (p *Placement) VanityDomainOf(host string) (domain, label string, ok bool) {
+	for _, d := range p.VanityDomains {
+		if host == d {
+			return d, "", true
+		}
+		if rest, under := strings.CutSuffix(host, "."+d); under && rest != "" && !strings.Contains(rest, ".") {
+			return d, rest, true
+		}
+	}
+
+	return "", "", false
 }
 
 // UnrecordedProjects names the projects the placement does not record yet, as the keys
@@ -1301,11 +1386,12 @@ func (p *Placement) RecordHostnames(app string, byEnv map[string]map[string]stri
 }
 
 // validateHostnames refuses a recorded hostname of an application the placement does not
-// register, of an environment the model lacks, one that is not one label under the apps
-// domain (the wildcard certificate covers exactly one level), one whose label breaks the
-// label rule, one with no backend, and one two applications serve in the same
-// environment, the default rule's hostnames of the applications without a record and
-// their -next twins counted.
+// register, of an environment the model lacks, one that is neither one label under the
+// apps domain (the wildcard certificate covers exactly one level) nor a declared vanity
+// domain or one label under it (its certificate covers the same), one whose label
+// breaks the label rule, one with no backend, and one two applications serve in the
+// same environment, the default rule's hostnames of the applications without a record
+// and their -next twins counted.
 func (p *Placement) validateHostnames() error {
 	for app, byEnv := range p.Hostnames {
 		if !p.Registered(app) {
@@ -1319,15 +1405,8 @@ func (p *Placement) validateHostnames() error {
 				return errors.Newf("hostnames.%s.%s lists no hostname", app, env)
 			}
 			for _, host := range slices.Sorted(maps.Keys(hosts)) {
-				label, ok := strings.CutSuffix(host, "."+p.AppsDomain)
-				if !ok || label == "" {
-					return errors.Newf("hostnames.%s.%s %q is not under the apps domain %s", app, env, host, p.AppsDomain)
-				}
-				if strings.Contains(label, ".") {
-					return errors.Newf("hostnames.%s.%s %q is not one label under the apps domain %s: the wildcard certificate covers exactly one level", app, env, host, p.AppsDomain)
-				}
-				if !derive.HostnameLabelOK(label) {
-					return errors.Newf("hostnames.%s.%s: hostname label %q is not %s", app, env, label, derive.HostnameLabelRule)
+				if err := p.validateRecordedHostname(app, env, host); err != nil {
+					return err
 				}
 				if hosts[host] == "" {
 					return errors.Newf("hostnames.%s.%s %q names no backend service: the stack's net_hosts output maps each hostname to the backend serving it", app, env, host)
@@ -1345,6 +1424,36 @@ func (p *Placement) validateHostnames() error {
 				owners[h] = app
 			}
 		}
+	}
+
+	return nil
+}
+
+// validateRecordedHostname holds one recorded hostname to the domains the placement
+// declares: one label under the apps domain, or a vanity domain or one label under it,
+// the label following the label rule either way.
+func (p *Placement) validateRecordedHostname(app, env, host string) error {
+	label, underApps := strings.CutSuffix(host, "."+p.AppsDomain)
+	if !underApps || label == "" {
+		vanity, vanityLabel, onVanity := p.VanityDomainOf(host)
+		switch {
+		case onVanity && vanityLabel == "":
+			return nil
+		case onVanity && !derive.HostnameLabelOK(vanityLabel):
+			return errors.Newf("hostnames.%s.%s: hostname label %q under the vanity domain %s is not %s", app, env, vanityLabel, vanity, derive.HostnameLabelRule)
+		case onVanity:
+			return nil
+		case len(p.VanityDomains) == 0:
+			return errors.Newf("hostnames.%s.%s %q is not under the apps domain %s, and the placement declares no vanity domain (vanityDomains)", app, env, host, p.AppsDomain)
+		default:
+			return errors.Newf("hostnames.%s.%s %q is under neither the apps domain %s nor a declared vanity domain (%s) as the domain itself or one label under it: declare the domain in vanityDomains, or serve the site under a label of a declared one", app, env, host, p.AppsDomain, strings.Join(p.VanityDomains, ", "))
+		}
+	}
+	if strings.Contains(label, ".") {
+		return errors.Newf("hostnames.%s.%s %q is not one label under the apps domain %s: the wildcard certificate covers exactly one level", app, env, host, p.AppsDomain)
+	}
+	if !derive.HostnameLabelOK(label) {
+		return errors.Newf("hostnames.%s.%s: hostname label %q is not %s", app, env, label, derive.HostnameLabelRule)
 	}
 
 	return nil

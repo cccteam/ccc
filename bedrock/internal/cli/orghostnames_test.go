@@ -93,6 +93,52 @@ func TestOrgHostnames(t *testing.T) {
 			wantRecord: lighthouseRecord(),
 		},
 		{
+			name: "a vanity hostname the stack serves in production is recorded and 2-net routes it",
+			store: func(t *testing.T, store *memoryStore) {
+				t.Helper()
+				lighthouse(t, store)
+				hosts := hostsOf("prd", "lighthouse.apps.imp.example")
+				hosts["harborlights.example"] = "projects/imp-prd-gbl-core-0000/global/backendServices/imp-prd-gbl-harbor-backend"
+				data, err := json.Marshal(map[string]any{"outputs": map[string]any{
+					"hostnames": map[string]any{"value": []string{"lighthouse.apps.imp.example", "harborlights.example"}},
+					"net_hosts": map[string]any{"value": hosts},
+				}})
+				if err != nil {
+					t.Fatal(err)
+				}
+				store.objects["gs://imp-boot-gbl-state-a1b2/3-app/harbor/prd/default.tfstate"] = string(data)
+			},
+			args:    []string{"harbor"},
+			wantOut: []string{"(tst: lighthouse-tst.apps.imp.example; stg: lighthouse-stg.apps.imp.example; prd: harborlights.example, lighthouse.apps.imp.example)"},
+			wantRecord: func() map[string]map[string]string {
+				record := lighthouseRecord()
+				record["prd"]["harborlights.example"] = "projects/imp-prd-gbl-core-0000/global/backendServices/imp-prd-gbl-harbor-backend"
+
+				return record
+			}(),
+			wantHosts:   []string{`"harborlights.example"`, `= "projects/imp-prd-gbl-core-0000/global/backendServices/imp-prd-gbl-harbor-backend"`, `"lighthouse-next.apps.imp.example"`},
+			wantNoHosts: []string{`"harborlights-next.example"`},
+		},
+		{
+			name: "a hostname under a domain the placement does not declare is refused",
+			store: func(t *testing.T, store *memoryStore) {
+				t.Helper()
+				lighthouse(t, store)
+				hosts := hostsOf("prd", "lighthouse.apps.imp.example")
+				hosts["lighthouse.example"] = "projects/imp-prd-gbl-core-0000/global/backendServices/imp-prd-gbl-harbor-backend"
+				data, err := json.Marshal(map[string]any{"outputs": map[string]any{
+					"hostnames": map[string]any{"value": []string{"lighthouse.apps.imp.example", "lighthouse.example"}},
+					"net_hosts": map[string]any{"value": hosts},
+				}})
+				if err != nil {
+					t.Fatal(err)
+				}
+				store.objects["gs://imp-boot-gbl-state-a1b2/3-app/harbor/prd/default.tfstate"] = string(data)
+			},
+			args:    []string{"harbor"},
+			wantErr: `hostnames.harbor.prd "lighthouse.example" is under neither the apps domain apps.imp.example nor a declared vanity domain (harborlights.example) as the domain itself or one label under it: declare the domain in vanityDomains, or serve the site under a label of a declared one`,
+		},
+		{
 			name: "a hostname another application serves is refused",
 			store: func(t *testing.T, store *memoryStore) {
 				t.Helper()

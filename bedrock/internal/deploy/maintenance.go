@@ -156,7 +156,7 @@ func MaintenanceOn(ctx context.Context, clients *Clients, w Workspace, window bo
 	if err != nil {
 		return err
 	}
-	if err := m.probe(ctx, nextURL(subs[hostnameSub], subs[prNumberSub])); err != nil {
+	if err := m.probe(ctx, nextRevisionURL(subs[hostnameSub], subs[nextHostnameSub], subs[prNumberSub])); err != nil {
 		return err
 	}
 	moved := time.Now()

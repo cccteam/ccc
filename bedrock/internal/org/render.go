@@ -557,13 +557,16 @@ func hclList(items []string) string {
 	return `["` + strings.Join(items, `", "`) + `"]`
 }
 
-// emptyHCLMap is an HCL map with nothing in it.
-const emptyHCLMap = "{}"
+// emptyHCLMap is an HCL map with nothing in it, and emptyHCLList a list.
+const (
+	emptyHCLMap  = "{}"
+	emptyHCLList = "[]"
+)
 
 // ApplicationsList is the applications' codes as an HCL list.
 func (v *view) ApplicationsList() string {
 	if len(v.Applications) == 0 {
-		return "[]"
+		return emptyHCLList
 	}
 
 	return `["` + strings.Join(v.Codes(), `", "`) + `"]`
@@ -601,7 +604,7 @@ func (*view) ApplicationCodePattern() string {
 func (v *view) AppliedList() string {
 	served := v.Served()
 	if len(served) == 0 {
-		return "[]"
+		return emptyHCLList
 	}
 
 	return `["` + strings.Join(served, `", "`) + `"]`
@@ -641,6 +644,21 @@ func (v *view) ContactDomainsProse() string {
 	}
 
 	return noun + prose(backticked(domains))
+}
+
+// VanityDomainsList is the vanity domains as an HCL list, empty when none is declared.
+func (v *view) VanityDomainsList() string {
+	if len(v.VanityDomains) == 0 {
+		return emptyHCLList
+	}
+
+	return hclList(v.VanityDomains)
+}
+
+// VanityDomainsProse names the vanity domains for a README, each in backticks, joined
+// with "and"; empty when none is declared.
+func (v *view) VanityDomainsProse() string {
+	return prose(backticked(v.VanityDomains))
 }
 
 // ExtraLabels reports whether the placement adds labels of its own.

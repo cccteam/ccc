@@ -10,7 +10,9 @@
 # application's placement declares for its site (its code by default), each with its
 # -next twin, which serves the revision the pipeline deployed and has not yet moved
 # traffic to (the revision tag next), for the hook before traffic. An application
-# recorded before hostnames were renders by the default rule, its code. The wildcard
+# recorded before hostnames were renders by the default rule, its code. A hostname an
+# application serves on a vanity domain (var.vanity_domains, from placement.json's
+# vanityDomains) is recorded and listed the same way, with no -next twin. The wildcard
 # routes every pull-request environment, <label>-pr<N>, to the first environment's
 # pull-request backend, which picks the Cloud Run service by the hostname's first label;
 # exact hostnames win. An application's hostnames are listed once its registration is

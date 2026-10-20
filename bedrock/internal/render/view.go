@@ -306,6 +306,13 @@ type view struct {
 	HostnamesProse string
 	// IntegrationHost is the integration environment's canonical hostname.
 	IntegrationHost string
+	// Vanity reports a vanity hostname declared for any site in any environment
+	// (Placement.VanityDeclared). VanityProse lists them for the README, each site's by
+	// environment, one site per line; VanityLine the same on one line without the
+	// backticks, for the variable's description.
+	Vanity      bool
+	VanityProse string
+	VanityLine  string
 	// BuildArguments are the build arguments the placement declares (buildArguments), in
 	// name order: each a value the stack makes, carried on the triggers as
 	// _BUILD_ARG_<NAME>; none when it declares none. BuildArgumentLines is their block of
@@ -938,6 +945,7 @@ func newView(m *derive.Model) (*view, error) {
 	}
 	v.administrators()
 	v.environments()
+	v.vanity()
 	v.regions()
 	v.secrets()
 	v.Armor = newArmorView(m)
@@ -1300,6 +1308,47 @@ func (v *view) environments() {
 		v.HostnamesProse = v.siteHostnamesProse()
 	}
 	v.IntegrationHost = v.Environments[0].Hostnames[0]
+}
+
+// vanity spells the vanity hostnames, when any site declares one.
+func (v *view) vanity() {
+	v.Vanity = v.P.VanityDeclared()
+	if v.Vanity {
+		v.VanityProse = strings.Join(v.vanityItems("`"), ";\n")
+		v.VanityLine = strings.Join(v.vanityItems(""), "; ")
+	}
+}
+
+// vanityItems lists the vanity hostnames each site answers on, by environment, in the
+// sites' and the environments' order, one item per site: "lanterns.example and
+// www.lanterns.example in prd for portal" (without the site in the flat layout), each
+// name and environment between the quote given.
+func (v *view) vanityItems(quote string) []string {
+	var sites []string
+	for _, s := range v.Sites {
+		var envs []string
+		for _, e := range s.Environments {
+			hosts := v.P.Hostnames[s.Name].VanityHostnames(e.Name)
+			if len(hosts) == 0 {
+				continue
+			}
+			quoted := make([]string, 0, len(hosts))
+			for _, h := range hosts {
+				quoted = append(quoted, quote+h+quote)
+			}
+			envs = append(envs, joinAnd(quoted)+" in "+quote+e.Name+quote)
+		}
+		if len(envs) == 0 {
+			continue
+		}
+		item := strings.Join(envs, ", ")
+		if v.MultiSite() {
+			item += " for " + quote + s.Name + quote
+		}
+		sites = append(sites, item)
+	}
+
+	return sites
 }
 
 // siteHostnamesProse lists each site's canonical hostnames for the README of a

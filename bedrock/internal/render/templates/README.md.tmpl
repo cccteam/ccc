@@ -631,7 +631,11 @@ substitutions and this stack's outputs:
   the `substitutions` output after it applies the stack, so a release that
   changes the hostnames names its next revision's URL by its own){{if .MultiSite}};
   `_HOSTNAMES`, each site's canonical hostname as `<site>=<hostname>`,
-  comma-separated, read back the same way as `CANONICAL_HOSTNAMES`{{end}};
+  comma-separated, read back the same way as `CANONICAL_HOSTNAMES`{{end}}{{if .Vanity}};
+  `_NEXT_HOSTNAME`, the next revision's hostname on the apps domain, which the
+  pipeline names the next URL by where the canonical hostname is on a vanity
+  domain, read back the same way as `NEXT_HOSTNAME`{{if .MultiSite}} (each site's as
+  `_NEXT_HOSTNAMES`, read back as `NEXT_HOSTNAMES`){{end}}{{end}};
   `_DEPLOYER_APP_ID` and
   `_DEPLOYER_KEY_SECRET`, the deployer GitHub App the pipeline talks back on a
   pull request as and the pinned secret version of its key, empty until 2-env
@@ -756,6 +760,26 @@ hosts = {
 
 DNS (the wildcard A record) and the certificate already cover the hostname{{if .MultiSite}}s{{end}};
 adding the entr{{if .MultiSite}}ies{{else}}y{{end}} and applying `2-net` is the whole registration.
+{{- if .Vanity}}
+
+Beside its apps-domain hostname, a site answers on a vanity domain where
+`placement.json` declares it (`hostnames.<site>.vanity`, per environment):
+{{.VanityProse}}. A vanity domain is the organization's, declared in its
+placement (`vanityDomains`) and delegated whole to the network project, where
+`2-net` serves it with a zone and a certificate of its own, for the domain and
+one label below it, and `bedrock domain check` verifies the delegation. In an
+environment that declares them, the vanity hostnames come first in
+`var.hostnames`, and the first declared is the canonical hostname there: the
+directory registrations' redirect URLs, the hostname build argument, the
+scheduled routes' calls and the pipeline's `_HOSTNAME` derive from it. The
+apps-domain hostname follows and keeps answering; `net_hosts` lists them all,
+so `2-net` routes them the same way once the organization records them, and it
+refuses one under no domain it declares. The next revision's `-next` twin and
+a pull-request stack's hostname stay on the apps domain, where the wildcard
+certificate is, and the stack hands the pipeline the next revision's hostname
+as `_NEXT_HOSTNAME`{{if .MultiSite}} (each site's as `_NEXT_HOSTNAMES`){{end}}, so the next URL stays
+there whatever the canonical hostname is.
+{{- end}}
 
 ## Cloud Armor
 
@@ -1163,7 +1187,7 @@ none yet), and the sign-in needs no registration.
 | `destroy` | Set by `bedrock destroy` alone: every protection lifted at the apply before its destroy. | `bool` | `false` | no |
 | `environment` | {{.EnvsBacktickOr}}; passed as `-var` on every run. | `string` | n/a | yes |
 | `generated_secret_versions` | The generated secrets' versions, derived and passed by the pipeline's plan step; never written here. | `map(string)` | `{}` | no |
-| `hostnames` | Hostnames per environment{{if .MultiSite}} and site; the first of each site{{else}}; the first{{end}} is canonical. | {{if .MultiSite}}`map(map(list(string)))`{{else}}`map(list(string))`{{end}} | the {{.EnvCountWord}} above | no |
+| `hostnames` | Hostnames per environment{{if .MultiSite}} and site; the first of each site{{else}}; the first{{end}} is canonical{{if .Vanity}}: the first vanity hostname where declared, else the apps-domain one, which follows{{end}}. | {{if .MultiSite}}`map(map(list(string)))`{{else}}`map(list(string))`{{end}} | the {{.EnvCountWord}} above | no |
 {{- if .Jobs}}
 | `jobs_resources` | CPU and memory of one run of the job process. | `object({ cpu, memory })` | `1`, `512Mi` | no |
 | `jobs_retries` | Retries of a failed run of the job process. | `number` | `0` | no |
@@ -1225,7 +1249,7 @@ none yet), and the sign-in needs no registration.
 {{- if .Jobs}}
 | `jobs_job` | `{ name, region, resource }` of the job process's Cloud Run job. |
 {{- end}}
-| `net_hosts` | The `hosts` entries for `2-net`: each hostname mapped to {{if .MultiSite}}its site's{{else}}the{{end}} backend service URI. |
+| `net_hosts` | The `hosts` entries for `2-net`: each hostname{{if .Vanity}}, the vanity ones too,{{end}} mapped to {{if .MultiSite}}its site's{{else}}the{{end}} backend service URI{{if .Vanity}}; the `-next` twins on the apps domain alone{{end}}. |
 | `registry` | `<hostname>/<project>/<repository>`; null until `2-shr` registers {{.App}}. |
 | `secrets` | Per variable: `secret_id` and the pinned `version` (null when unpinned). |
 | `services` | Per {{if .MultiSite}}`<site>-<region code>`{{else}}region code{{end}}: `name`, `region`, `uri`. |

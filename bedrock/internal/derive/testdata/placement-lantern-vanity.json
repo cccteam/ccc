@@ -1,0 +1,54 @@
+{
+  "prefix": "imp",
+  "environments": [
+    "tst",
+    "stg",
+    "prd"
+  ],
+  "regions": [
+    {
+      "name": "us-central1",
+      "code": "uc1"
+    },
+    {
+      "name": "us-west3",
+      "code": "uw3"
+    }
+  ],
+  "appsDomain": "impulseframework.dev",
+  "hostedDomain": "impulseframework.com",
+  "stateBucket": "imp-boot-gbl-state-REPLACEME",
+  "placeholderImage": "us-docker.pkg.dev/cloudrun/container/hello",
+  "defaultBranch": "master",
+  "repository": "lantern",
+  "releaseApp": "impulseframework-release",
+  "bedrockVersion": "v0.1.0",
+  "bedrockSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "labels": {
+    "bedrock-lab": "true"
+  },
+  "hostnames": {
+    "portal": {
+      "label": "lanterns",
+      "vanity": {
+        "prd": [
+          "lanterns.example",
+          "www.lanterns.example"
+        ]
+      }
+    },
+    "console": {
+      "vanity": {
+        "prd": [
+          "console.lanterns.example"
+        ]
+      }
+    }
+  },
+  "maxInstances": {
+    "tst": 2,
+    "stg": 2,
+    "prd": 4
+  },
+  "code": "lantrn"
+}

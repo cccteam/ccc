@@ -89,9 +89,49 @@ func TestPlacementValidate(t *testing.T) {
 		{name: "a recorded hostname in an unknown environment", mutate: func(p *Placement) {
 			p.Hostnames = map[string]map[string]map[string]string{"harbor": {"qa": {"harbor-qa.apps.imp.example": "projects/p/global/backendServices/b"}}}
 		}, wantErr: `hostnames.harbor names "qa", which is not one of tst, stg, prd`},
-		{name: "a recorded hostname off the apps domain", mutate: func(p *Placement) {
+		{name: "a recorded hostname off the apps domain and off the vanity domain", mutate: func(p *Placement) {
 			p.Hostnames = map[string]map[string]map[string]string{"harbor": {"tst": {"harbor-tst.example.com": "projects/p/global/backendServices/b"}}}
-		}, wantErr: `hostnames.harbor.tst "harbor-tst.example.com" is not under the apps domain apps.imp.example`},
+		}, wantErr: `hostnames.harbor.tst "harbor-tst.example.com" is under neither the apps domain apps.imp.example nor a declared vanity domain (harborlights.example) as the domain itself or one label under it: declare the domain in vanityDomains, or serve the site under a label of a declared one`},
+		{name: "a recorded hostname off the apps domain, no vanity domain declared", mutate: func(p *Placement) {
+			p.VanityDomains = nil
+			p.Hostnames = map[string]map[string]map[string]string{"harbor": {"tst": {"harbor-tst.example.com": "projects/p/global/backendServices/b"}}}
+		}, wantErr: `hostnames.harbor.tst "harbor-tst.example.com" is not under the apps domain apps.imp.example, and the placement declares no vanity domain (vanityDomains)`},
+		{name: "a recorded vanity hostname, the domain itself", mutate: func(p *Placement) {
+			p.Hostnames = map[string]map[string]map[string]string{"harbor": {"prd": {"harbor.apps.imp.example": "projects/p/global/backendServices/b", "harborlights.example": "projects/p/global/backendServices/b"}}}
+		}},
+		{name: "a recorded vanity hostname one label under the domain", mutate: func(p *Placement) {
+			p.Hostnames = map[string]map[string]map[string]string{"harbor": {"prd": {"www.harborlights.example": "projects/p/global/backendServices/b"}}}
+		}},
+		{name: "a recorded vanity hostname two labels under the domain", mutate: func(p *Placement) {
+			p.Hostnames = map[string]map[string]map[string]string{"harbor": {"prd": {"www.console.harborlights.example": "projects/p/global/backendServices/b"}}}
+		}, wantErr: `hostnames.harbor.prd "www.console.harborlights.example" is under neither the apps domain apps.imp.example nor a declared vanity domain (harborlights.example) as the domain itself or one label under it`},
+		{name: "a recorded vanity hostname whose label breaks the rule", mutate: func(p *Placement) {
+			p.Hostnames = map[string]map[string]map[string]string{"harbor": {"prd": {"console-.harborlights.example": "projects/p/global/backendServices/b"}}}
+		}, wantErr: `hostnames.harbor.prd: hostname label "console-" under the vanity domain harborlights.example is not a DNS label`},
+		{name: "a recorded vanity hostname two applications serve", mutate: func(p *Placement) {
+			p.Hostnames = map[string]map[string]map[string]string{
+				"harbor": {"prd": {"harborlights.example": "projects/p/global/backendServices/b"}},
+				"beacon": {"prd": {"harborlights.example": "projects/p/global/backendServices/c"}},
+			}
+		}, wantErr: "hostname harborlights.example in prd is harbor's and beacon's: each hostname of an environment belongs to one application"},
+		{name: "no vanity domain", mutate: func(p *Placement) { p.VanityDomains = nil }},
+		{name: "two vanity domains", mutate: func(p *Placement) { p.VanityDomains = []string{"harborlights.example", "beacon.example"} }},
+		{name: "a vanity domain that is a label of another domain", mutate: func(p *Placement) { p.VanityDomains = []string{"app.client.example"} }},
+		{name: "a vanity domain in capitals", mutate: func(p *Placement) { p.VanityDomains = []string{"HarborLights.example"} }, wantErr: `vanityDomains names "HarborLights.example", which is not a bare lowercase domain such as example.com`},
+		{name: "a vanity domain with a trailing dot", mutate: func(p *Placement) { p.VanityDomains = []string{"harborlights.example."} }, wantErr: `vanityDomains names "harborlights.example.", which is not a bare lowercase domain`},
+		{name: "the apps domain as a vanity domain", mutate: func(p *Placement) { p.VanityDomains = []string{"apps.imp.example"} }, wantErr: `vanityDomains names "apps.imp.example", which is the apps domain: a vanity domain is a client's own domain, delegated whole to the network project beside it`},
+		{name: "a vanity domain under the apps domain", mutate: func(p *Placement) { p.VanityDomains = []string{"lights.apps.imp.example"} }, wantErr: `vanityDomains names "lights.apps.imp.example", which is under the apps domain apps.imp.example: its zone already serves every name under it`},
+		{name: "a vanity domain above the apps domain", mutate: func(p *Placement) { p.VanityDomains = []string{"imp.example"} }, wantErr: `vanityDomains names "imp.example", which is above the apps domain apps.imp.example: one zone would serve both`},
+		{name: "a vanity domain under the organization's domain", mutate: func(p *Placement) { p.VanityDomains = []string{"mail.imp.example"} }, wantErr: `vanityDomains names "mail.imp.example", which is under the organization's domain, whose mail is on it imp.example`},
+		{name: "a vanity domain listed twice", mutate: func(p *Placement) { p.VanityDomains = []string{"harborlights.example", "harborlights.example"} }, wantErr: `vanityDomains lists "harborlights.example" twice`},
+		{name: "a vanity domain under another listed", mutate: func(p *Placement) { p.VanityDomains = []string{"harborlights.example", "www.harborlights.example"} }, wantErr: `vanityDomains lists "harborlights.example" and "www.harborlights.example", one under the other: the zone of a vanity domain serves everything under it, so the one above is enough`},
+		{name: "a vanity domain above another listed", mutate: func(p *Placement) { p.VanityDomains = []string{"www.harborlights.example", "harborlights.example"} }, wantErr: `vanityDomains lists "www.harborlights.example" and "harborlights.example", one under the other`},
+		{name: "a vanity domain of 38 characters, the most the names fit", mutate: func(p *Placement) {
+			p.VanityDomains = []string{strings.Repeat("a", 30) + ".example"}
+		}},
+		{name: "a vanity domain of 39 characters", mutate: func(p *Placement) {
+			p.VanityDomains = []string{strings.Repeat("a", 31) + ".example"}
+		}, wantErr: `vanityDomains names "` + strings.Repeat("a", 31) + `.example", whose certificate map entry imp-net-gbl-cme-` + strings.Repeat("a", 31) + `-example-wildcard would be 64 characters; Certificate Manager and Cloud DNS take at most 63 in a name, so a vanity domain is at most 38 characters`},
 		{name: "a recorded hostname two labels deep", mutate: func(p *Placement) {
 			p.Hostnames = map[string]map[string]map[string]string{"harbor": {"tst": {"tst.harbor.apps.imp.example": "projects/p/global/backendServices/b"}}}
 		}, wantErr: `hostnames.harbor.tst "tst.harbor.apps.imp.example" is not one label under the apps domain apps.imp.example: the wildcard certificate covers exactly one level`},
@@ -3695,5 +3735,53 @@ func TestHostRowsRecorded(t *testing.T) {
 	}
 	if got := v.HostRows()[0].Value; got != "projects/imp-tst-gbl-core-0000/global/backendServices/imp-tst-gbl-harbor-backend" {
 		t.Errorf("the recorded backend is not rendered verbatim: %q", got)
+	}
+}
+
+// TestHostRowsVanity: a vanity hostname the stack serves (its net_hosts output, under a
+// domain the placement declares) is recorded with the others and rendered into 2-net's
+// hosts verbatim, with no -next twin, and is among the application's served hostnames;
+// one under a domain the placement does not declare refuses the record, which stays as
+// it was.
+func TestHostRowsVanity(t *testing.T) {
+	t.Parallel()
+
+	p, err := ReadPlacement(filepath.Join(fixture, "placement.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	stem := func(env string) string {
+		return "projects/imp-" + env + "-gbl-core-0000/global/backendServices/imp-" + env + "-gbl-harbor"
+	}
+	served := func(env, host string) map[string]string {
+		return map[string]string{host: stem(env) + "-backend", NextHostname(host): stem(env) + "-next-backend"}
+	}
+	prd := served("prd", "harbor.apps.imp.example")
+	prd["harborlights.example"] = stem("prd") + "-backend"
+	prd["www.harborlights.example"] = stem("prd") + "-backend"
+	record := map[string]map[string]string{"tst": served("tst", "harbor-tst.apps.imp.example"), "stg": served("stg", "harbor-stg.apps.imp.example"), "prd": prd}
+	if changed, err := p.RecordHostnames("harbor", record); err != nil || !changed {
+		t.Fatalf("RecordHostnames() = %v, %v, want changed and no error", changed, err)
+	}
+	v := &view{Placement: p}
+	var keys []string
+	for _, row := range v.HostRows() {
+		if strings.Contains(row.Value, "-prd-gbl-harbor") {
+			keys = append(keys, strings.TrimSpace(row.Key))
+		}
+	}
+	want := []string{`"harbor.apps.imp.example"`, `"harbor-next.apps.imp.example"`, `"harborlights.example"`, `"www.harborlights.example"`}
+	if strings.Join(keys, "\n") != strings.Join(want, "\n") {
+		t.Errorf("HostRows() keys in prd =\n%s\nwant\n%s", strings.Join(keys, "\n"), strings.Join(want, "\n"))
+	}
+	if got := strings.Join(p.ApplicationHostnames("harbor", "prd"), ", "); got != "harbor.apps.imp.example, harborlights.example, www.harborlights.example" {
+		t.Errorf("ApplicationHostnames(harbor, prd) = %q, want the served hostnames, the vanity ones too", got)
+	}
+	undeclared := map[string]map[string]string{"tst": record["tst"], "stg": record["stg"], "prd": {"harbor.apps.imp.example": stem("prd") + "-backend", "harbor.example": stem("prd") + "-backend"}}
+	if _, err := p.RecordHostnames("harbor", undeclared); err == nil || !strings.Contains(err.Error(), `hostnames.harbor.prd "harbor.example" is under neither the apps domain apps.imp.example nor a declared vanity domain (harborlights.example)`) {
+		t.Fatalf("RecordHostnames() under an undeclared domain = %v, want a refusal naming the declared domains", err)
+	}
+	if got := p.Hostnames["harbor"]["prd"]["harborlights.example"]; got == "" {
+		t.Error("a refused record replaced the one before it")
 	}
 }

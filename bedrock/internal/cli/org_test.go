@@ -643,7 +643,7 @@ func TestOrgCommands(t *testing.T) {
 				"7. In each environment project's Google Cloud console, before the first application's\n     OAuth client is made there: the consent screen (APIs & Services, OAuth consent\n     screen), with the audience Internal",
 				"From then on the two Cloud Build triggers in the boot project (imp-boot-uc1-layers-plan and imp-boot-uc1-layers-apply)\napply every layer, these two included: a pull request plans the layers it touches as their\nplan identities and posts the plans on it, the merge applies them as their apply\nidentities, in layer order.",
 				"Pinned bedrock " + headVersion + " in ",
-				"\nAfter the first apply of 2-net: bedrock domain check prints what the apps domain still needs, and where.\n",
+				"\nAfter the first apply of 2-net: bedrock domain check prints what the apps domain, and each vanity domain, still needs, and where.\n",
 			},
 		},
 		{
@@ -708,7 +708,7 @@ func TestOrgCommands(t *testing.T) {
 				"2. The apply trigger by hand with 2-env, in a terminal:\n     gcloud builds triggers run imp-boot-uc1-layers-apply --region=us-central1 --project=imp-boot-gbl-core-a1b2 --branch=master --substitutions=_LAYER=2-env\n     tst and stg grant the next environment's deploy identity read on their records\n     bucket, from state the first pass did not have.",
 				"3. bedrock org register quill --next, then the pull request it renders: the public-invoker\n     tag (1-org), the registry grants (2-shr) and the database admins (2-spn)",
 				"5. bedrock org register quill --next once more, then the pull request it renders: the\n     hostnames (2-net)",
-				"\n  6. After 2-net's apply: bedrock domain check, which passes when the apps domain resolves to its zone.\n",
+				"\n  6. After 2-net's apply: bedrock domain check, which passes when the apps domain and each vanity domain resolve to their zones.\n",
 			},
 		},
 		{

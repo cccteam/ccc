@@ -28,9 +28,10 @@
 # ---------------------------------------------------------------------------
 
 locals {
-  # Every registered domain other than the apps domain gets a parked zone:
-  # registered, resolvable, serving nothing until a layer gives it records.
-  parked_domains = { for d, r in var.registrations : d => r if d != var.apps_domain }
+  # Every registered domain other than the apps domain and the vanity domains
+  # gets a parked zone: registered, resolvable, serving nothing until a layer
+  # gives it records. A vanity domain's zone is in dns.tf, with its records.
+  parked_domains = { for d, r in var.registrations : d => r if d != var.apps_domain && !contains(var.vanity_domains, d) }
 
   contact = {
     email        = var.registrant_contact.email
@@ -89,10 +90,11 @@ resource "google_clouddomains_registration" "this" {
   contact_notices = var.registrant_contact.public ? ["PUBLIC_CONTACT_DATA_ACKNOWLEDGEMENT"] : []
 
   # The registration's name servers are the zone's: the apps zone for the
-  # apps domain, a parked zone for any other. No registrar step, ever.
+  # apps domain, a vanity domain's zone for a vanity domain, a parked zone for
+  # any other. No registrar step, ever.
   dns_settings {
     custom_dns {
-      name_servers = each.key == var.apps_domain ? google_dns_managed_zone.apps.name_servers : google_dns_managed_zone.parked[each.key].name_servers
+      name_servers = each.key == var.apps_domain ? google_dns_managed_zone.apps.name_servers : contains(var.vanity_domains, each.key) ? google_dns_managed_zone.vanity[each.key].name_servers : google_dns_managed_zone.parked[each.key].name_servers
     }
   }
 
@@ -164,8 +166,17 @@ resource "google_clouddomains_registration" "this" {
     prevent_destroy = true
 
     precondition {
-      condition     = each.key == var.apps_domain || contains(keys(local.parked_domains), each.key)
-      error_message = "Every registered domain is either the apps domain or parked."
+      condition     = each.key == var.apps_domain || contains(var.vanity_domains, each.key) || contains(keys(local.parked_domains), each.key)
+      error_message = "Every registered domain is the apps domain, a vanity domain or parked."
     }
   }
+}
+
+# A vanity domain (placement.json's vanityDomains) registered here before it
+# was declared had a parked zone: it moves to the domain's vanity zone (dns.tf),
+# which carries the same name, so the registration keeps pointing at it.
+# Nothing moves when there was no parked zone.
+moved {
+  from = google_dns_managed_zone.parked["harborlights.example"]
+  to   = google_dns_managed_zone.vanity["harborlights.example"]
 }

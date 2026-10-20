@@ -573,10 +573,11 @@ func (s *stack) generation(ctx context.Context, open StoreFunc, subs map[string]
 // trigger names none yet); and the build arguments the stack makes (_BUILD_ARG_<NAME>,
 // for the hooks after the image build, which passed what the trigger carried). The
 // environment's canonical hostname is read back the same way (_HOSTNAME, left as
-// CANONICAL_HOSTNAME for deploy service, which names the next revision's URL by it): the
-// stack takes it from the placement's apps domain, or from terraform.tfvars where
-// hostnames names it, so a release that changes it is deployed under its own. Each value
-// the trigger says otherwise is said in the log.
+// CANONICAL_HOSTNAME for deploy service, which names the next revision's URL by it,
+// and _NEXT_HOSTNAME, left as NEXT_HOSTNAME, where the stack names the next revision's
+// hostname itself): the stack takes it from the placement's apps domain, or from
+// terraform.tfvars where hostnames names it, so a release that changes it is deployed
+// under its own. Each value the trigger says otherwise is said in the log.
 func (s *stack) appliedFacts(ctx context.Context, w Workspace, subs map[string]string) error {
 	facts, err := s.facts(ctx)
 	if err != nil {
@@ -611,6 +612,19 @@ func (s *stack) appliedFacts(ctx context.Context, w Workspace, subs map[string]s
 		read[canonicalHostnamesFact] = sites
 		if said := subs[hostnamesSub]; said != sites {
 			fmt.Fprintf(s.out, "The sites' hostnames are read from the stack as applied (%s): %s, where the trigger (its stack's last apply) says %q.\n", hostnamesSub, sites, said)
+		}
+	}
+	// The next revision's hostname a stack names (its canonical hostname on a vanity
+	// domain) is read back the same way, for deploy service to name the next URL by.
+	for _, f := range [][3]string{{nextHostnameFact, nextHostnameSub, "The next revision's hostname is"}, {nextHostnamesFact, nextHostnamesSub, "The sites' next hostnames are"}} {
+		fact, sub, what := f[0], f[1], f[2]
+		next := facts[fact]
+		if next == "" {
+			continue
+		}
+		read[fact] = next
+		if said := subs[sub]; said != next {
+			fmt.Fprintf(s.out, "%s read from the stack as applied (%s): %s, where the trigger (its stack's last apply) says %q.\n", what, sub, next, said)
 		}
 	}
 	settings := facts[migrateEnvFact]

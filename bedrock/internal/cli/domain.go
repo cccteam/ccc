@@ -1,9 +1,12 @@
 // domain.go is the domain command: the registrations a stack makes through its placement,
-// and the check that the apps domain resolves to the network layer's zone.
+// and the check that the apps domain and each vanity domain resolve to their zones in the
+// network layer.
 
 package cli
 
 import (
+	"fmt"
+
 	"github.com/go-playground/errors/v5"
 	"github.com/spf13/cobra"
 
@@ -14,10 +17,10 @@ import (
 func newDomain(d deps) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "domain",
-		Short: "Register domains through the placement, and check the apps domain's delegation",
+		Short: "Register domains through the placement, and check the apps domain's and the vanity domains' delegation",
 		Long: `domain holds the commands that put a domain registration into the network layer's
 placement, where the layer's domains.tf registers it through Cloud Domains, and the check
-that the apps domain resolves to the network layer's zone.`,
+that the apps domain and each vanity domain resolve to their zones in the network layer.`,
 	}
 	cmd.AddCommand(newDomainAdd(d), newDomainCheck(d))
 
@@ -32,13 +35,15 @@ func newDomainCheck(d deps) *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   checkCommand,
-		Short: "Check that the apps domain resolves to the network layer's zone",
-		Long: `check reads the apps domain's zone in the network project (2-net's dns.tf: its name servers,
-the apex and wildcard addresses, and the record that proves the domain to Certificate
-Manager) through the Cloud DNS API, resolves the domain's delegation as the world sees it,
-and says what is in place and what is missing, naming where to act. It runs from the
-infrastructure repository's root, or names it with --dir, and reads the organization's
-placement (appsDomain, and projects.net, which 1-org's project_ids fill in).
+		Short: "Check that the apps domain and each vanity domain resolve to their zones in the network layer",
+		Long: `check reads each domain's zone in the network project (2-net's dns.tf: its name servers, the
+apex and wildcard addresses, and the record that proves the domain to Certificate Manager)
+through the Cloud DNS API, resolves the domain's delegation as the world sees it, and says
+what is in place and what is missing, naming where to act: the apps domain first, then each
+vanity domain (a client's own domain an application serves on, delegated whole to a zone of
+its own), checked the same way. It runs from the infrastructure repository's root, or names
+it with --dir, and reads the organization's placement (appsDomain, vanityDomains, and
+projects.net, which 1-org's project_ids fill in).
 
 The shape of the domain is found, not configured. When the domain answers the zone's name
 servers it is delegated, whether 2-net registered it or a registrar elsewhere points at the
@@ -52,15 +57,17 @@ that can be registered (example.com) gets the registrar step, with the zone's na
 to set there; a label of a domain served elsewhere (apps.example.com) gets the NS records to
 add at the DNS provider that serves that domain. A registrable domain that is not delegated
 and already answers records that are not the zone's (a website, mail) is refused: such a
-domain is never delegated whole, and the check names a label of it to use instead. The
-check also resolves the authorization record and says when the certificate is still waiting
-on it. Every record is printed on its own line, as it is pasted. While zoneReplacement is set
-in placement.json (2-net's zones rendered without prevent_destroy, for making a zone again),
-a check that passes says the value can be cleared now, and bedrock org render written.
+domain is never delegated whole, and the check names a label of it to use instead: as the
+apps domain for the apps domain, declared as the vanity domain in its place for a vanity
+domain. The check also resolves the authorization record and says when the certificate is
+still waiting on it. Every record is printed on its own line, as it is pasted. While
+zoneReplacement is set in placement.json (2-net's zones rendered without prevent_destroy,
+for making a zone again), a check that passes on every domain says the value can be cleared
+now, and bedrock org render written.
 
-The zone is read with the run's Google credentials (gcloud auth application-default login),
+The zones are read with the run's Google credentials (gcloud auth application-default login),
 which need to read the network project's zones (roles/dns.reader). It exits 1 when anything
-is missing or refused.`,
+is missing or refused on any domain.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			p, err := orgPlacement(dir, placement)
@@ -71,12 +78,28 @@ is missing or refused.`,
 			if project == "" {
 				return errors.New("placement.json records no network project (projects.net): record 1-org's project_ids in placement.json (projects), then check again")
 			}
-			r, err := domain.Check(cmd.Context(), d.lookups, domain.CheckRequest{Domain: p.AppsDomain, Project: project, Zone: zone, Dir: dir, ZoneReplacement: p.ZoneReplacement})
-			if err != nil {
-				return err
+			requests := []domain.CheckRequest{{Domain: p.AppsDomain, Project: project, Zone: zone, Dir: dir}}
+			for _, vanity := range p.VanityDomains {
+				_, zone := p.VanityZone(vanity)
+				requests = append(requests, domain.CheckRequest{Domain: vanity, Project: project, Zone: zone, Dir: dir, Vanity: true})
 			}
-			r.Write(cmd.OutOrStdout())
-			if !r.Passed() {
+			out := cmd.OutOrStdout()
+			passed := true
+			for i, req := range requests {
+				r, err := domain.Check(cmd.Context(), d.lookups, req)
+				if err != nil {
+					return err
+				}
+				if i > 0 {
+					fmt.Fprintln(out)
+				}
+				r.Write(out)
+				passed = passed && r.Passed()
+			}
+			if p.ZoneReplacement && passed {
+				fmt.Fprintln(out, zoneReplacementCleared)
+			}
+			if !passed {
 				return exitError{code: 1}
 			}
 
@@ -88,6 +111,11 @@ is missing or refused.`,
 
 	return cmd
 }
+
+// zoneReplacementCleared is what the check says when zoneReplacement is set in the
+// organization's placement and every domain passes: the recreation the value was set for
+// is done, and the rule that refuses the next one is to be written back.
+const zoneReplacementCleared = "zoneReplacement is set in placement.json and every domain points at its zone: clear it and run bedrock org render."
 
 func newDomainAdd(d deps) *cobra.Command {
 	var (
