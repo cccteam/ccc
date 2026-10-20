@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/cccteam/ccc/impulse/app"
+	"github.com/cccteam/ccc/impulse/internal/names"
 )
 
 // The flat site's hand-written files in the base's shape, minimal.
@@ -142,9 +143,14 @@ func TestSiteValidate(t *testing.T) {
 		wantErr string
 	}{
 		{name: "promotion", site: Site{Name: "portal", Existing: "console"}},
+		{name: "the longest name allowed", site: Site{Name: strings.Repeat("s", 25), Existing: "console"}},
 		{name: "promotion without --existing", site: Site{Name: "portal"}, wantErr: "--existing is required"},
-		{name: "a bad name", site: Site{Name: "Portal", Existing: "console"}, wantErr: `site name "Portal"`},
-		{name: "a bad existing name", site: Site{Name: "portal", Existing: "Console"}, wantErr: `existing site name "Console"`},
+		{name: "a bad name", site: Site{Name: "Portal", Existing: "console"}, wantErr: `site name "Portal": ` + names.SiteGuidance},
+		{name: "a bad name is refused before --existing is missed", site: Site{Name: "Portal"}, wantErr: `site name "Portal": ` + names.SiteGuidance},
+		{name: "a hyphenated name", site: Site{Name: "my-site", Existing: "console"}, wantErr: `site name "my-site": ` + names.SiteGuidance},
+		{name: "a name over the cap", site: Site{Name: strings.Repeat("s", 26), Existing: "console"}, wantErr: "is 26 characters, and 25 is the most a site name may take"},
+		{name: "a bad existing name", site: Site{Name: "portal", Existing: "Console"}, wantErr: `site name "Console": ` + names.SiteGuidance},
+		{name: "an existing name over the cap", site: Site{Name: "portal", Existing: strings.Repeat("c", 26)}, wantErr: "is 26 characters, and 25 is the most a site name may take"},
 		{name: "the same name twice", site: Site{Name: "portal", Existing: "portal"}, wantErr: "names the new site too"},
 	}
 	for _, tt := range tests {
@@ -388,9 +394,9 @@ func TestSiteApplyAddsToSites(t *testing.T) {
 		t.Errorf("Did lacks the workflow rewrite: %q", ch.Did)
 	}
 	p := (mustDiscover(t, a.Root)).Profile()
-	names := siteNames(p)
-	if len(p.Sites) != 3 || !strings.Contains(names, "kiosk") {
-		t.Errorf("profile sites = %s", names)
+	sites := siteNames(p)
+	if len(p.Sites) != 3 || !strings.Contains(sites, "kiosk") {
+		t.Errorf("profile sites = %s", sites)
 	}
 }
 

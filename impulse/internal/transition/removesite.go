@@ -27,6 +27,11 @@ type RemoveSite struct {
 	Name string
 }
 
+// siteDirRE is the shape of a site's directory name under apps/, which is the site's
+// name. Removing a site asks only that the name be one, since the directory already
+// exists; adding one holds the name to the full rule (names.ValidateSite).
+var siteDirRE = regexp.MustCompile(`^[a-z][a-z0-9]*$`)
+
 // Command is the impulse command line for the transition.
 func (r RemoveSite) Command() string {
 	return "impulse remove site " + r.Name
@@ -34,7 +39,7 @@ func (r RemoveSite) Command() string {
 
 // Validate checks the site against the application before anything is changed.
 func (r RemoveSite) Validate(a *app.App) error {
-	if !siteNameRE.MatchString(r.Name) {
+	if !siteDirRE.MatchString(r.Name) {
 		return errors.Newf("site name %q: name the site in lowercase letters and digits, as its directory under %s/ is", r.Name, sitesDir)
 	}
 	p := a.Profile()

@@ -55,8 +55,6 @@ const (
 	SitesReference = "sites"
 )
 
-var siteNameRE = regexp.MustCompile(`^[a-z][a-z0-9]*$`)
-
 // Command is the impulse command line for the transition.
 func (s Site) Command() string {
 	cmd := "impulse add site " + s.Name
@@ -68,9 +66,17 @@ func (s Site) Command() string {
 }
 
 // Validate checks the transition against the application before anything is changed.
+// The names come first: the new site's and, on a promotion, the existing site's, since
+// each becomes the second segment of every per-site resource name bedrock renders
+// (names.ValidateSite).
 func (s Site) Validate(a *app.App) error {
-	if !siteNameRE.MatchString(s.Name) {
-		return errors.Newf("site name %q: name the site in lowercase letters and digits, such as portal", s.Name)
+	if err := names.ValidateSite(s.Name); err != nil {
+		return err
+	}
+	if s.Existing != "" {
+		if err := names.ValidateSite(s.Existing); err != nil {
+			return errors.Wrap(err, "--existing")
+		}
 	}
 	p := a.Profile()
 	if len(p.Sites) == 0 {
@@ -91,9 +97,6 @@ func (s Site) Validate(a *app.App) error {
 		}
 		if s.Existing == "" {
 			return errors.New("--existing is required on a flat application: the existing site moves under apps/<existing>/ and the name is its directory for good, so it is asked rather than defaulted (the console it serves is a natural answer)")
-		}
-		if !siteNameRE.MatchString(s.Existing) {
-			return errors.Newf("existing site name %q: name it in lowercase letters and digits", s.Existing)
 		}
 		if s.Existing == s.Name {
 			return errors.Newf("--existing %s names the new site too; the existing site and the new one are two sites", s.Existing)
