@@ -846,9 +846,15 @@ impulse add method partners password
 authorization suite, and browser workspace, copied from the first site with the imports
 renamed; its generator program and directive; its serve and browser processes on the next
 ports; its TypeScript target in the shared generator; and its router collection in the union
-the roles are reconciled against. On a flat application the first site added promotes the
-layout to sites, the one non-additive transition: the existing site moves under
-`apps/<existing>/` and every import of its packages follows, its generator becomes
+the roles are reconciled against. The name is one word of lowercase letters and digits
+starting with a letter, at most 25 characters, and a name outside the rule is refused
+(`--existing`'s too): it is the second segment of every per-site resource name bedrock
+renders and of the site's default hostname label (`<code>-<site>`), and the tightest of
+those names, the Cloud Run service's `<prefix>-<env>-<region code>-<code>-<site>-app`,
+fits Cloud Run's 49 characters with 25 left for the site at the organization's longest
+prefix, environment, region code and application code. On a flat application the first
+site added promotes the layout to sites, the one non-additive transition: the existing
+site moves under `apps/<existing>/` and every import of its packages follows, its generator becomes
 `cmd/generate/<existing>generator`, the site level's bundle variable becomes `APP_DIST` (set
 per site process, inline in the Procfile, as `PORT` is), the deployment's collection
 becomes the union of the sites' router collections (`access.UnionCollection`, which

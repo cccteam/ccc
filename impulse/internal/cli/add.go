@@ -168,7 +168,12 @@ handlers, router, resources (empty to start), authorization suite, and browser w
 under apps/<name>/, copied from the first site with the imports renamed; its generator
 program and directive; its serve and browser processes on the next ports; its TypeScript
 target in the shared generator; and its router collection in the union the roles are
-reconciled against.
+reconciled against. The name is one word of lowercase letters and digits starting with a
+letter, at most 25 characters, since it is the second segment of every per-site resource
+name bedrock renders and of the site's default hostname label (<code>-<site>): the Cloud
+Run service name <prefix>-<env>-<region code>-<code>-<site>-app fits 49 characters with 25
+left for the site at the organization's longest prefix, environment, region code and
+application code. A name outside the rule is refused, --existing's too.
 
 On a flat application the first site added promotes the layout to sites, the one
 non-additive transition: the existing site moves under apps/<existing>/ (every import of
