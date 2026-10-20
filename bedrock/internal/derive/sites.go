@@ -51,13 +51,28 @@ type Site struct {
 	// Environments are the placement's environments with the hostnames the site serves
 	// in each, the canonical first.
 	Environments []Environment
-	// Bundle is the site-level variable the stack sets per service to the site's built
-	// browser bundle in the sites layout (RoleSiteBundle), with BundleDir the
-	// root-relative directory the image holds it at (apps/console/web/dist). Both empty
-	// in the flat layout, where the image sets the bundle variables itself, and for a
-	// site without a browser workspace.
-	Bundle    *Variable
+	// Bundle is the site-level variable the stack sets per service to the directory the
+	// site serves its built browser bundle from in the sites layout (RoleSiteBundle).
+	// Nil in the flat layout, where the image sets the bundle variables itself, and for
+	// a site without a browser workspace; the directories below are empty with it.
+	Bundle *Variable
+	// Workspace is the root-relative browser workspace under the site's directory
+	// (apps/console/web), the directory holding angular.json and package.json: where
+	// the image installs and builds.
+	Workspace string
+	// BundleDir is the root-relative directory the site serves its bundle from, which
+	// the stack sets Bundle to under the image's working directory
+	// (apps/console/web/dist/console): the one the site's process line in the Procfile
+	// sets (ProcfileBundleDir), else the one the workspace's build writes (OutputDir).
+	// Always under Workspace, since the image copies it out of the workspace's build.
 	BundleDir string
+	// ProcfileBundleDir is the directory the site's process line in the Procfile sets
+	// Bundle to for development, as written; empty when no line sets it.
+	ProcfileBundleDir string
+	// OutputDir is the root-relative directory the workspace's build writes the site's
+	// bundle to, read from angular.json's outputPath (bundleOutput); empty when
+	// angular.json names no single application project.
+	OutputDir string
 }
 
 // MultiSite reports a sites-layout application with more than one site: every per-site
@@ -235,11 +250,12 @@ func (m *Model) allEnvironments() []Environment {
 }
 
 // siteBundles settles each site's browser bundle in the sites layout: the site-level
-// variable SiteBundleVariable, which the stack sets per service to the bundle the image
-// holds for the site, built from the browser workspace under the site's directory
-// (apps/<site>/web, whose build writes dist). The variable takes the role; a site
-// without a workspace serves no bundle, which the variable's requirement refuses at
-// start, so it is refused here.
+// variable SiteBundleVariable, which the stack sets per service to the directory the
+// site serves its bundle from, built in the browser workspace under the site's directory
+// (apps/<site>/web) and copied out of it by the image. The variable takes the role; a
+// site without a workspace serves no bundle, which the variable's requirement refuses at
+// start, so it is refused here; the directory itself is the Procfile's, else the
+// build's (bundleDir).
 func (m *Model) siteBundles(a *app.App) error {
 	v := m.variableNamed(SiteBundleVariable)
 	if v == nil {
@@ -252,26 +268,83 @@ func (m *Model) siteBundles(a *app.App) error {
 		return errors.Newf("%s:%d: %s (%s) has a default (%s); in the sites layout each site's bundle differs, so the variable is required with no default, set per process by the Procfile and per service by the stack", v.File, v.Line, v.Name, v.Declaration(), v.Default)
 	}
 	v.Role = RoleSiteBundle
+	processes, err := readProcfile(a)
+	if err != nil {
+		return err
+	}
 	for i := range m.Sites {
 		s := &m.Sites[i]
-		var dirs []string
-		for _, w := range a.WebApps {
-			if strings.HasPrefix(w.Dir, s.Dir+"/") {
-				dirs = append(dirs, w.Dir)
-			}
+		workspace, err := siteWorkspace(a, s, v)
+		if err != nil {
+			return err
 		}
-		sort.Strings(dirs)
-		switch len(dirs) {
-		case 1:
-			s.Bundle, s.BundleDir = v, path.Join(dirs[0], "dist")
-		case 0:
-			return errors.Newf("the %s site (%s) has no browser workspace (no angular.json under %s), and the site level requires %s (%s), the bundle the site serves: add the workspace, or make the variable optional", s.Name, s.Dir, s.Dir, v.Name, v.Declaration())
-		default:
-			return errors.Newf("the %s site (%s) has %d browser workspaces (%s), and %s (%s) names one bundle: a site serves one workspace's", s.Name, s.Dir, len(dirs), strings.Join(dirs, ", "), v.Name, v.Declaration())
+		s.Bundle, s.Workspace = v, workspace
+		if err := s.bundleDir(a, processes); err != nil {
+			return err
 		}
 	}
 
 	return nil
+}
+
+// siteWorkspace is the one browser workspace under the site's directory, the one whose
+// bundle the site serves: none and several are refused.
+func siteWorkspace(a *app.App, s *Site, v *Variable) (string, error) {
+	var dirs []string
+	for _, w := range a.WebApps {
+		if strings.HasPrefix(w.Dir, s.Dir+"/") {
+			dirs = append(dirs, w.Dir)
+		}
+	}
+	sort.Strings(dirs)
+	switch len(dirs) {
+	case 1:
+		return dirs[0], nil
+	case 0:
+		return "", errors.Newf("the %s site (%s) has no browser workspace (no angular.json under %s), and the site level requires %s (%s), the bundle the site serves: add the workspace, or make the variable optional", s.Name, s.Dir, s.Dir, v.Name, v.Declaration())
+	default:
+		return "", errors.Newf("the %s site (%s) has %d browser workspaces (%s), and %s (%s) names one bundle: a site serves one workspace's", s.Name, s.Dir, len(dirs), strings.Join(dirs, ", "), v.Name, v.Declaration())
+	}
+}
+
+// bundleDir settles the directory the site serves its bundle from: the one its process
+// line in the Procfile sets the bundle variable to, the value development runs with,
+// else the one the workspace's build writes (bundleOutput), and with neither nothing
+// points the service anywhere, so the site is refused. The Procfile's directory is held
+// under the workspace, since the image copies it out of the workspace's build stage;
+// whether it is the directory the build writes is bedrock check's finding, not a refusal
+// here. The build's directory is read either way, for the check.
+func (s *Site) bundleDir(a *app.App, processes procfile) error {
+	output, err := bundleOutput(a, s.Workspace)
+	if err != nil {
+		return err
+	}
+	s.OutputDir = output
+	s.ProcfileBundleDir = processes.env(s.Process.Name, s.Bundle.Name)
+	switch {
+	case s.ProcfileBundleDir != "":
+		dir := path.Clean(s.ProcfileBundleDir)
+		if !strings.HasPrefix(dir, s.Workspace+"/") {
+			return errors.Newf("%s: the %s process sets %s=%s, which is not under the %s site's browser workspace %s, where the image builds the bundle: the stack would point the site's service at a directory the image does not hold; set it to the directory under %s the build writes (%s)", ProcfileName, s.Process.Name, s.Bundle.Name, s.ProcfileBundleDir, s.Name, s.Workspace, s.Workspace, s.outputOrDist())
+		}
+		s.BundleDir = dir
+	case s.OutputDir != "":
+		s.BundleDir = s.OutputDir
+	default:
+		return errors.Newf("the %s site (%s) names no bundle directory: its %s process line in the %s sets no %s, and %s/%s has no application project to read the build's output directory from; set %s=<directory> on the process line, the directory under %s the build writes", s.Name, s.Dir, s.Process.Name, ProcfileName, s.Bundle.Name, s.Workspace, angularJSONName, s.Bundle.Name, s.Workspace)
+	}
+
+	return nil
+}
+
+// outputOrDist names the directory the build writes, or the workspace's dist when
+// angular.json does not say.
+func (s *Site) outputOrDist() string {
+	if s.OutputDir != "" {
+		return s.OutputDir
+	}
+
+	return path.Join(s.Workspace, angularDist)
 }
 
 // plural is the s of a count other than one.

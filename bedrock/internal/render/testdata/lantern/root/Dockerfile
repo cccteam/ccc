@@ -130,7 +130,7 @@ COPY --from=web-packages /src/apps/console/web/node_modules ./node_modules
 COPY apps/console/web/ ./
 
 # `bun run build` builds every browser app of the workspace (apps/console/web/package.json), whose
-# default configuration is production; it writes dist, the console site's bundle.
+# default configuration is production; it writes dist/console, the console site's bundle.
 RUN bun run build
 
 FROM docker.io/library/node@sha256:392e1e23f34da768d8d1f4e502b64f200d3be3465934d4b7930f57d7e2fc1989 AS apps-portal-web-build-env
@@ -151,7 +151,7 @@ COPY --from=web-packages /src/apps/portal/web/node_modules ./node_modules
 COPY apps/portal/web/ ./
 
 # `bun run build` builds every browser app of the workspace (apps/portal/web/package.json), whose
-# default configuration is production; it writes dist, the portal site's bundle.
+# default configuration is production; it writes dist/portal, the portal site's bundle.
 RUN bun run build
 
 # ---- Runtime: a static image with the binaries, the bundles, and the schema -----------
@@ -169,8 +169,8 @@ COPY --from=build-env /build /
 # The migrate command reads schema (the migrations, the seed) relative to its
 # working directory, and each site serves its bundle from the directory the stack
 # names to its service, so everything sits under the working directory set below.
-COPY --from=apps-console-web-build-env /src/apps/console/web/dist /home/nonroot/apps/console/web/dist
-COPY --from=apps-portal-web-build-env /src/apps/portal/web/dist /home/nonroot/apps/portal/web/dist
+COPY --from=apps-console-web-build-env /src/apps/console/web/dist/console /home/nonroot/apps/console/web/dist/console
+COPY --from=apps-portal-web-build-env /src/apps/portal/web/dist/portal /home/nonroot/apps/portal/web/dist/portal
 COPY schema /home/nonroot/schema
 
 # APP_VERSION is the configuration's version input: the image carries its own release, so

@@ -569,17 +569,18 @@ func newImageView(m *derive.Model, siteLevel string) imageView {
 		iv.Workspaces[at].Bundles = append(iv.Workspaces[at].Bundles, b)
 	}
 	if iv.Multi {
-		// Each site's bundle, built from the workspace under the site's directory: no
-		// variable of the image's, since the stack sets the site's per service.
+		// Each site's bundle, built in the workspace under the site's directory and copied
+		// out of it at the directory the site serves it from (dist/console under the
+		// workspace, as the Procfile or the build names it): no variable of the image's,
+		// since the stack sets the site's per service to the same directory.
 		for i := range m.Sites {
 			s := &m.Sites[i]
 			if s.BundleDir == "" {
 				continue
 			}
-			dir := path.Dir(s.BundleDir)
-			b := bundle{Path: path.Base(s.BundleDir), Workspace: dir, Stage: stageName(dir), Site: s.Name}
+			b := bundle{Path: strings.TrimPrefix(s.BundleDir, s.Workspace+"/"), Workspace: s.Workspace, Stage: stageName(s.Workspace), Site: s.Name}
 			iv.Bundles = append(iv.Bundles, b)
-			iv.Workspaces = append(iv.Workspaces, workspace{Dir: dir, Stage: b.Stage, Bundles: []bundle{b}, Install: strings.Join(m.ImageInputs.WorkspaceInputs(dir), " ")})
+			iv.Workspaces = append(iv.Workspaces, workspace{Dir: s.Workspace, Stage: b.Stage, Bundles: []bundle{b}, Install: strings.Join(m.ImageInputs.WorkspaceInputs(s.Workspace), " ")})
 		}
 	}
 	iv.RootGo, iv.GoDirs = m.ImageInputs.RootGo, m.ImageInputs.GoDirs
@@ -1048,7 +1049,7 @@ func (v *view) sites() {
 		s := &v.Model.Sites[i]
 		sv := &siteView{Site: s, Binary: "/" + s.Process.Name}
 		if s.BundleDir != "" {
-			sv.BundlePath = imageHome + "/" + s.BundleDir
+			sv.BundlePath = ImageHome + "/" + s.BundleDir
 		}
 		if s.RequestLog != nil {
 			sv.RequestLogClause = hclQuote(s.RequestLog.Clause)
@@ -1101,9 +1102,11 @@ func (v *view) siteProse() {
 	v.SiteBundleVariable = derive.SiteBundleVariable
 }
 
-// imageHome is the working directory of the runtime image, where the bundles and the
-// schema sit (Dockerfile).
-const imageHome = "/home/nonroot"
+// ImageHome is the working directory of the runtime image, where the bundles and the
+// schema sit (Dockerfile): each site's bundle variable names its directory under it, the
+// stack's per service in the sites layout (bedrock check holds it to the Procfile's) and
+// the image's ENV in the flat layout.
+const ImageHome = "/home/nonroot"
 
 // plural is the s of a count other than one.
 func plural(n int) string {

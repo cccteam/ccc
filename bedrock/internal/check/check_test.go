@@ -23,11 +23,18 @@ const (
 func harborModel(t *testing.T) *derive.Model {
 	t.Helper()
 
-	p, err := derive.ReadPlacement(filepath.Join(fixtures, "placement.json"))
+	return fixtureModel(t, "harbor", "placement.json")
+}
+
+// fixtureModel derives the named fixture application under the named placement.
+func fixtureModel(t *testing.T, name, placement string) *derive.Model {
+	t.Helper()
+
+	p, err := derive.ReadPlacement(filepath.Join(fixtures, placement))
 	if err != nil {
 		t.Fatalf("derive.ReadPlacement() error = %v", err)
 	}
-	a, err := app.Discover(filepath.Join(fixtures, "harbor"))
+	a, err := app.Discover(filepath.Join(fixtures, name))
 	if err != nil {
 		t.Fatalf("app.Discover() error = %v", err)
 	}

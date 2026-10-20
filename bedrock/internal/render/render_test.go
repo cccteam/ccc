@@ -2075,3 +2075,149 @@ func TestReleaseBackupsAndRetention(t *testing.T) {
 		})
 	}
 }
+
+// TestSiteBundlePath pins the directory each site's service serves its bundle from. In
+// the sites layout the stack sets the site's bundle variable per service to the
+// directory the Procfile sets for development, under the image's working directory and
+// with the project segment Angular writes the bundle under (dist/console, not the
+// workspace's dist, which holds no index.html), and the image copies that same
+// directory out of the workspace's build; the image sets no bundle variable of its own.
+// The flat layout is as it was: the image copies each bundle at its variable's default
+// and sets the variable itself, and the stack sets none.
+func TestSiteBundlePath(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		fixture   string
+		placement string
+		// wantSettings is each site's env in locals.tf's site_settings, by site, then by
+		// variable; nil in the flat layout, whose locals.tf declares no site_settings.
+		wantSettings map[string]map[string]string
+		// wantCopies are the Dockerfile's COPY lines of the bundles, in full, and
+		// wantImageEnv the bundle variables the Dockerfile's ENV sets, in full.
+		wantCopies   []string
+		wantImageEnv []string
+	}{
+		{
+			name:      "lantern, two sites: each service serves the directory Angular writes, which the image copies",
+			fixture:   "lantern",
+			placement: "placement-lantern.json",
+			wantSettings: map[string]map[string]string{
+				"console": {"APP_DIST": "/home/nonroot/apps/console/web/dist/console"},
+				"portal":  {"APP_DIST": "/home/nonroot/apps/portal/web/dist/portal"},
+			},
+			wantCopies: []string{
+				"COPY --from=apps-console-web-build-env /src/apps/console/web/dist/console /home/nonroot/apps/console/web/dist/console",
+				"COPY --from=apps-portal-web-build-env /src/apps/portal/web/dist/portal /home/nonroot/apps/portal/web/dist/portal",
+			},
+		},
+		{
+			name:      "lantern on a vanity domain, the same",
+			fixture:   "lantern",
+			placement: "placement-lantern-vanity.json",
+			wantSettings: map[string]map[string]string{
+				"console": {"APP_DIST": "/home/nonroot/apps/console/web/dist/console"},
+				"portal":  {"APP_DIST": "/home/nonroot/apps/portal/web/dist/portal"},
+			},
+			wantCopies: []string{
+				"COPY --from=apps-console-web-build-env /src/apps/console/web/dist/console /home/nonroot/apps/console/web/dist/console",
+				"COPY --from=apps-portal-web-build-env /src/apps/portal/web/dist/portal /home/nonroot/apps/portal/web/dist/portal",
+			},
+		},
+		{
+			name:      "harbor, one site with two bundles: the image sets each variable, the stack none",
+			fixture:   "harbor",
+			placement: "placement.json",
+			wantCopies: []string{
+				"COPY --from=web-build-env /src/web/dist/console /home/nonroot/web/dist/console",
+				"COPY --from=portal-build-env /src/portal/dist/portal /home/nonroot/portal/dist/portal",
+			},
+			wantImageEnv: []string{"APP_CONSOLE_DIST=/home/nonroot/web/dist/console", "APP_PORTAL_DIST=/home/nonroot/portal/dist/portal"},
+		},
+		{
+			name:      "beacon, one site with one bundle, the same",
+			fixture:   "beacon",
+			placement: "placement-beacon.json",
+			wantCopies: []string{
+				"COPY --from=web-build-env /src/web/dist/console /home/nonroot/web/dist/console",
+			},
+			wantImageEnv: []string{"APP_CONSOLE_DIST=/home/nonroot/web/dist/console"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			files, err := Render(deriveFixture(t, tt.fixture, tt.placement))
+			if err != nil {
+				t.Fatalf("Render() error = %v", err)
+			}
+			var locals, dockerfile []byte
+			for _, f := range files {
+				switch {
+				case f.Root && f.Path == "Dockerfile":
+					dockerfile = f.Content
+				case !f.Root && f.Path == "locals.tf":
+					locals = f.Content
+				}
+			}
+			settings, ok := localsOf(t, parseSource(t, "locals.tf", locals))["site_settings"]
+			if ok != (tt.wantSettings != nil) {
+				t.Fatalf("locals.tf declares site_settings = %v, want %v", ok, tt.wantSettings != nil)
+			}
+			if ok {
+				if got := siteEnv(t, settings); !maps.EqualFunc(got, tt.wantSettings, maps.Equal) {
+					t.Errorf("site_settings env = %v, want %v", got, tt.wantSettings)
+				}
+			}
+			if got := dockerLines(dockerfile, "COPY --from=", "/dist"); !slices.Equal(got, tt.wantCopies) {
+				t.Errorf("Dockerfile bundle copies = %q, want %q", got, tt.wantCopies)
+			}
+			if got := dockerLines(dockerfile, "", "_DIST=/home/nonroot/"); !slices.Equal(got, tt.wantImageEnv) {
+				t.Errorf("Dockerfile ENV bundle variables = %q, want %q", got, tt.wantImageEnv)
+			}
+			if tt.wantSettings != nil && strings.Contains(string(dockerfile), derive.SiteBundleVariable+"=") {
+				t.Errorf("the sites-layout Dockerfile sets %s, which the stack sets per service", derive.SiteBundleVariable)
+			}
+		})
+	}
+}
+
+// siteEnv reads the env of each site out of site_settings, a literal object of objects:
+// site, then variable, then its value.
+func siteEnv(t *testing.T, settings *hclsyntax.Attribute) map[string]map[string]string {
+	t.Helper()
+
+	val, diags := settings.Expr.Value(nil)
+	if diags.HasErrors() {
+		t.Fatalf("site_settings does not evaluate as a literal: %s", diags.Error())
+	}
+	got := map[string]map[string]string{}
+	for sites := val.ElementIterator(); sites.Next(); {
+		site, setting := sites.Element()
+		env := map[string]string{}
+		for vars := setting.GetAttr("env").ElementIterator(); vars.Next(); {
+			name, value := vars.Element()
+			env[name.AsString()] = value.AsString()
+		}
+		got[site.AsString()] = env
+	}
+
+	return got
+}
+
+// dockerLines are the Dockerfile's instruction lines (a comment aside) that start with
+// the prefix and carry the word, trimmed and without a continuation's backslash.
+func dockerLines(dockerfile []byte, prefix, word string) []string {
+	var lines []string
+	for _, line := range strings.Split(string(dockerfile), "\n") {
+		line = strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(line), "\\"))
+		if strings.HasPrefix(line, "#") || !strings.HasPrefix(line, prefix) || !strings.Contains(line, word) {
+			continue
+		}
+		lines = append(lines, strings.TrimPrefix(line, "ENV "))
+	}
+
+	return lines
+}
