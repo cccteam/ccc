@@ -485,8 +485,11 @@ var (
 	portOnLineRE = regexp.MustCompile(`\bPORT=(\d+)`)
 	// cdWebRE is a process line's change into the browser workspace.
 	cdWebRE = regexp.MustCompile(`\bcd ([A-Za-z0-9_./-]+) && `)
-	// serverProcessRE is the base's serve process name.
+	// serverProcessRE is the base's serve process name, and webProcessRE its browser
+	// process's: on a promotion the first becomes the existing site's name and the second
+	// that name with -web, as every later site's browser process is named.
 	serverProcessRE = regexp.MustCompile(`(?m)^server:`)
+	webProcessRE    = regexp.MustCompile(`(?m)^console:`)
 	// distAssignRE and startScriptRE are what a copied process line carries of the first site.
 	distAssignRE  = regexp.MustCompile(`APP_DIST=[^ ]+`)
 	startScriptRE = regexp.MustCompile(`start:\w+`)
@@ -511,6 +514,9 @@ func (s Site) promoteProcfile(a *app.App, base, webDir string, ch *Change) {
 		dist = path.Join(base, webDir, "dist", s.webProject(a, base, webDir))
 	}
 	edited := goRunRootRE.ReplaceAllString(text, fmt.Sprintf("APP_SERVICE_NAME=%s PORT=%d APP_DIST=%s ${1}./%s${2}", s.Existing, port, dist, base))
+	// The browser process is renamed before the serve process takes the site's name, so
+	// an existing site called console does not rename both lines twice.
+	edited = webProcessRE.ReplaceAllString(edited, s.Existing+"-web:")
 	edited = serverProcessRE.ReplaceAllString(edited, s.Existing+":")
 	if webDir != "" {
 		edited = cdWebRE.ReplaceAllStringFunc(edited, func(m string) string {
@@ -534,7 +540,7 @@ func (s Site) promoteProcfile(a *app.App, base, webDir string, ch *Change) {
 
 		return
 	}
-	ch.didf("Procfile: the %s process runs ./%s with PORT=%d, APP_DIST=%s, and APP_SERVICE_NAME=%s inline; the browser process changes into %s", s.Existing, base, port, dist, s.Existing, path.Join(base, webDir))
+	ch.didf("Procfile: the %s process runs ./%s with PORT=%d, APP_DIST=%s, and APP_SERVICE_NAME=%s inline; the browser process, %s-web, changes into %s", s.Existing, base, port, dist, s.Existing, s.Existing, path.Join(base, webDir))
 }
 
 // templatePort reads the flat PORT from the environment template, or the base's default.

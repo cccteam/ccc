@@ -71,6 +71,14 @@ portal: bash -c 'PORT=8095 APP_DIST=apps/portal/web/dist go run ./apps/portal'
 	onePort = `console: bash -c 'PORT=8094 go run --tags=dev ./apps/console/'
 portal: bash -c 'PORT=8094 go run ./apps/portal/main.go'
 `
+	// taggedPorts is what a directory method leaves: the site processes build with the
+	// skipAuth tag, the tag's value a word of its own, and the browser processes beside them.
+	taggedPorts = `spanner: podman run --rm gcr.io/cloud-spanner-emulator/emulator:1.5.56
+console: bash -c 'go run -tags skipAuth ./cmd/bootstrap && APP_SERVICE_NAME=console PORT=8094 APP_DIST=apps/console/web/dist go run -tags skipAuth ./apps/console'
+portal: bash -c 'APP_SERVICE_NAME=portal PORT=8095 APP_DIST=apps/portal/web/dist go run -race -tags skipAuth ./apps/portal'
+console-web: bash -c 'cd apps/console/web && bun install && PORT=8094 bun run start:console'
+portal-web: bash -c 'cd apps/portal/web && bun install && PORT=8095 bun run start:portal'
+`
 )
 
 func TestSitesWired(t *testing.T) {
@@ -93,6 +101,21 @@ func TestSitesWired(t *testing.T) {
 				"apps/console/pkg/router/r.go": "package router\n",
 				"apps/portal/pkg/router/r.go":  "package router\n",
 				"Procfile":                     twoPorts,
+				"pkg/config/data.go":           unionConfig("console", "portal"),
+			},
+			wantStatus:  Pass,
+			wantSummary: "2 site(s) wired: console (:8094), portal (:8095); every site's router is in a collection handed to the permission engine",
+		},
+		{
+			name: "sites served by builds carrying the skipAuth tag",
+			files: map[string]string{
+				"cmd/generate/console/main.go": siteProgram("console"),
+				"cmd/generate/portal/main.go":  siteProgram("portal"),
+				"apps/console/main.go":         mainPackage,
+				"apps/portal/main.go":          mainPackage,
+				"apps/console/pkg/router/r.go": "package router\n",
+				"apps/portal/pkg/router/r.go":  "package router\n",
+				"Procfile":                     taggedPorts,
 				"pkg/config/data.go":           unionConfig("console", "portal"),
 			},
 			wantStatus:  Pass,
