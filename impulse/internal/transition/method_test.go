@@ -74,7 +74,10 @@ func TestMethodApply(t *testing.T) {
 		extra       map[string]string
 		wantDid     []string
 		wantSkipped []string
-		check       func(t *testing.T, a *app.App)
+		// wantNotSkipped are words no skipped line carries: an obligation the shape does
+		// not have.
+		wantNotSkipped []string
+		check          func(t *testing.T, a *app.App)
 	}{
 		{
 			name:   "a Google method under the application authority",
@@ -89,7 +92,9 @@ func TestMethodApply(t *testing.T) {
 			wantSkipped: []string{
 				"pkg/config/data.go: no environment struct (env := &T{}) to add the workspace method's variables to; read APP_STAFF_WORKSPACE_HOSTED_DOMAIN, APP_STAFF_WORKSPACE_CLIENT_ID, APP_STAFF_WORKSPACE_CLIENT_SECRET, APP_STAFF_WORKSPACE_REDIRECT_URL and pass them in staff.Settings.Workspace",
 				"no environment template (.envrc.template, .env.template, .env.example) to add the workspace method's variables to (APP_STAFF_WORKSPACE_HOSTED_DOMAIN, APP_STAFF_WORKSPACE_CLIENT_ID, APP_STAFF_WORKSPACE_CLIENT_SECRET, APP_STAFF_WORKSPACE_REDIRECT_URL)",
+				`test/integration/harness_test.go and cmd/deployment/migrate/main_test.go: the workspace registration validates its organization slot at registration whether or not the directory is simulated, so give the staff auth's construction in the harness Workspace: staff.WorkspaceSettings{HostedDomain: "example.com", RedirectURL: <the served callback>} and set APP_STAFF_WORKSPACE_HOSTED_DOMAIN=example.com where the migrate run's environment is`,
 			},
+			wantNotSkipped: []string{"GroupPrefix", "GROUP_PREFIX", "role groups' prefix"},
 			check: func(t *testing.T, a *app.App) {
 				t.Helper()
 				file := read(t, a, "pkg/auth/staff/workspace.go")
@@ -110,6 +115,27 @@ func TestMethodApply(t *testing.T) {
 			},
 		},
 		{
+			name:   "a Google method under the directory authority names the role groups' prefix the registration validates",
+			method: Method{Auth: "staff", Spec: authpkg.Method{Kind: app.MethodGoogle, Name: "workspace", Authority: AuthorityDirectory}},
+			wantDid: []string{
+				"pkg/auth/staff/workspace.go: the workspace method (google, one Workspace, members of the directory, role membership the directory's): its registration constant, its settings, its handlers (WorkspaceLogin and the rest), and registerWorkspace, which registers it on the Auth",
+			},
+			wantSkipped: []string{
+				"pkg/config/data.go: no environment struct (env := &T{}) to add the workspace method's variables to; read APP_STAFF_WORKSPACE_HOSTED_DOMAIN, APP_STAFF_WORKSPACE_CLIENT_ID, APP_STAFF_WORKSPACE_CLIENT_SECRET, APP_STAFF_WORKSPACE_REDIRECT_URL, APP_STAFF_WORKSPACE_GROUP_PREFIX, APP_STAFF_WORKSPACE_GROUP_LOOKUP and pass them in staff.Settings.Workspace",
+				`test/integration/harness_test.go and cmd/deployment/migrate/main_test.go: the workspace registration validates its organization slot and its role groups' prefix at registration whether or not the directory is simulated, so give the staff auth's construction in the harness Workspace: staff.WorkspaceSettings{HostedDomain: "example.com", RedirectURL: <the served callback>, GroupPrefix: "staff-"} and set APP_STAFF_WORKSPACE_HOSTED_DOMAIN=example.com and APP_STAFF_WORKSPACE_GROUP_PREFIX=staff- where the migrate run's environment is`,
+			},
+			wantNotSkipped: []string{"GroupLookup", "GROUP_LOOKUP=", "RedirectURL: <the served callback>}"},
+			check: func(t *testing.T, a *app.App) {
+				t.Helper()
+				file := read(t, a, "pkg/auth/staff/workspace.go")
+				for _, want := range []string{"google.Workspace(WorkspaceRegistration, settings.Workspace.HostedDomain)", "google.RoleSync(accessClient.UserManager(), settings.Workspace.GroupPrefix, lookup)", "google.ParseGroupLookup(settings.Workspace.GroupLookup)"} {
+					if !strings.Contains(file, want) {
+						t.Errorf("workspace.go lacks %q:\n%s", want, file)
+					}
+				}
+			},
+		},
+		{
 			name:   "an Entra method under the directory authority, read from the environment struct",
 			method: Method{Auth: "staff", Spec: authpkg.Method{Kind: app.MethodAzure, Name: "directory", Authority: AuthorityDirectory}},
 			extra:  map[string]string{"pkg/config/data.go": authConfigEnv},
@@ -120,7 +146,9 @@ func TestMethodApply(t *testing.T) {
 			},
 			wantSkipped: []string{
 				"pkg/config/data.go: LoginURL is set to /login when the construction had none; make it the login page of the surface bound to the staff auth",
+				`test/integration/harness_test.go and cmd/deployment/migrate/main_test.go: the directory registration validates its organization slot at registration whether or not the directory is simulated, so give the staff auth's construction in the harness Directory: staff.DirectorySettings{TenantID: "00000000-0000-0000-0000-000000000000", RedirectURL: <the served callback>} and set APP_STAFF_DIRECTORY_TENANT_ID=00000000-0000-0000-0000-000000000000 where the migrate run's environment is`,
 			},
+			wantNotSkipped: []string{"GroupPrefix", "GROUP_PREFIX", "role groups' prefix"},
 			check: func(t *testing.T, a *app.App) {
 				t.Helper()
 				file := read(t, a, "pkg/auth/staff/directory.go")
@@ -166,6 +194,11 @@ func TestMethodApply(t *testing.T) {
 			for _, want := range tt.wantSkipped {
 				if !containsLine(ch.Skipped, want) {
 					t.Errorf("Skipped lacks %q; got:\n%s", want, strings.Join(ch.Skipped, "\n"))
+				}
+			}
+			for _, unwanted := range tt.wantNotSkipped {
+				if skipped := strings.Join(ch.Skipped, "\n"); strings.Contains(skipped, unwanted) {
+					t.Errorf("Skipped carries %q; got:\n%s", unwanted, skipped)
 				}
 			}
 			if len(exec.calls) != 1 || !strings.HasPrefix(exec.calls[0], "go generate") {
