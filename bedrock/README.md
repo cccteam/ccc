@@ -699,6 +699,24 @@ remedy.
   step makes the same check with git before building a commit pin, so a pin edited into
   the placement by hand is refused there too.
 
+In the organization's repository, a move that changes the pin's kind, a release to a
+commit or a commit to a release, changes the shape of the Cloud Build triggers' steps
+(`0-bootstrap/cloud-build.tf`: a release pin renders the fetch step alone, a commit pin
+adds the step that builds it with `go install`), and 0-bootstrap is the one layer no
+trigger applies, so the triggers stay in the old shape until someone applies it. In the
+release shape the fetch step refuses a commit pin, since no step follows to build it: a
+pull request that moved the pin from a release to a commit could not be planned. So
+`upgrade` says so before it moves anything, asks for `yes` typed back (`--yes` stands in
+for it where there is no terminal; without either the run is refused and nothing is
+moved), and after the render applies 0-bootstrap as the person running it, with their
+sign-in, the way the bootstrap administrator applies the layer by hand (`tofu init`,
+`plan` and `apply` in `0-bootstrap`, at its backend). It prints the plan's summary line
+(the two triggers updated in place) and the apply's, then the usual closing line. A move
+that keeps the kind applies nothing and reads as before. A pull request that reaches the
+plan trigger with a commit pin while the triggers are in the release shape fails at the
+fetch step with a message that says what applies the commit shape: `bedrock upgrade` when
+it moves the pin, else 0-bootstrap applied from that branch by hand.
+
 Push the commit before pinning it: the proxy knows only pushed commits, and when it is
 asked about one too soon it remembers for about 30 minutes that it did not know it.
 `upgrade` then says to push first and retry.
@@ -2216,7 +2234,11 @@ pin is read at run time a pull request that moves it already runs the new bedroc
 old steps, so the one rule bedrock keeps is that a release works under the previous
 release's steps. Both triggers pass `_BEDROCK_STEPS`, the shape of their steps and the
 kind of pin they were rendered for, and the two commands say in the run's log when they
-run under another shape. No key exists
+run under another shape. The one move the lag does not cover is a pin that changes kind:
+0-bootstrap is applied by hand, never by a trigger, and the release shape's fetch step
+refuses a commit pin, since no step follows to build it, so `bedrock upgrade` applies
+0-bootstrap itself when it moves the pin across kinds, after `yes` typed back, before the
+pull request is opened ("bedrock upgrade"). No key exists
 anywhere: each trigger runs as a runner identity in the boot project (`<prefix>-org-gbl-
 planner`, `<prefix>-org-gbl-applier`) that holds no layer's roles and impersonates the
 layer identities of its kind (`roles/iam.serviceAccountTokenCreator`, granted by

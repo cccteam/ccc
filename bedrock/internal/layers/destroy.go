@@ -20,7 +20,7 @@ import (
 
 // What the destroy runs and sets, and what it keeps.
 const (
-	bootstrapLayer = "0-bootstrap"
+	BootstrapLayer = "0-bootstrap"
 	destroyCommand = "destroy"
 	// autoApprove is the flag the destroy's two tofu runs take: the prefix typed back
 	// at the command is the approval.
@@ -91,7 +91,7 @@ func Destroy(ctx context.Context, exec deploy.Runner, req *DestroyRequest, out i
 	if exec == nil {
 		return errors.New("no program runner is wired")
 	}
-	for _, layer := range []string{orgLayer, bootstrapLayer} {
+	for _, layer := range []string{orgLayer, BootstrapLayer} {
 		if err := checkDestroyVariable(req.Dir, layer); err != nil {
 			return err
 		}
@@ -168,20 +168,20 @@ func destroyOrgLayer(ctx context.Context, exec deploy.Runner, req *DestroyReques
 // local copy of its state, pulled from the bucket first: the bucket is in the boot project
 // and goes with it.
 func destroyBootstrapLayer(ctx context.Context, exec deploy.Runner, req *DestroyRequest, work string, out io.Writer) error {
-	fmt.Fprintf(out, "=== destroy of %s ===\n", bootstrapLayer)
-	bucket := &handTofu{exec: exec, layer: bootstrapLayer, dir: filepath.Join(req.Dir, bootstrapLayer), data: filepath.Join(work, bootstrapLayer+".data"), out: out}
+	fmt.Fprintf(out, "=== destroy of %s ===\n", BootstrapLayer)
+	bucket := &handTofu{exec: exec, layer: BootstrapLayer, dir: filepath.Join(req.Dir, BootstrapLayer), data: filepath.Join(work, BootstrapLayer+".data"), out: out}
 	if err := bucket.init(ctx); err != nil {
 		return err
 	}
 	state, err := bucket.output(ctx, "state", "pull")
 	if err != nil {
-		return errors.Wrapf(err, "pulling %s's state failed; the log says why", bootstrapLayer)
+		return errors.Wrapf(err, "pulling %s's state failed; the log says why", BootstrapLayer)
 	}
-	local := &handTofu{exec: exec, layer: bootstrapLayer, dir: filepath.Join(work, bootstrapLayer), out: out}
-	if err := copyLayer(req.Dir, bootstrapLayer, local.dir, state); err != nil {
+	local := &handTofu{exec: exec, layer: BootstrapLayer, dir: filepath.Join(work, BootstrapLayer), out: out}
+	if err := copyLayer(req.Dir, BootstrapLayer, local.dir, state); err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "Copied %s's state and files to %s: the state bucket goes with the boot project, so the destroy runs on the copy.\n", bootstrapLayer, local.dir)
+	fmt.Fprintf(out, "Copied %s's state and files to %s: the state bucket goes with the boot project, so the destroy runs on the copy.\n", BootstrapLayer, local.dir)
 	if err := local.init(ctx); err != nil {
 		return err
 	}
@@ -190,7 +190,7 @@ func destroyBootstrapLayer(ctx context.Context, exec deploy.Runner, req *Destroy
 		return err
 	}
 	if len(addresses) == 0 {
-		fmt.Fprintf(out, "%s's state holds nothing: nothing to destroy there.\n", bootstrapLayer)
+		fmt.Fprintf(out, "%s's state holds nothing: nothing to destroy there.\n", BootstrapLayer)
 
 		return nil
 	}
@@ -292,65 +292,6 @@ func resourceType(address string) string {
 	typ, _, _ := strings.Cut(address, ".")
 
 	return typ
-}
-
-// handTofu drives tofu in one layer's directory as the person running the command: no
-// identity is impersonated, the data directory is under the command's working files so
-// that the checkout's own init stays as it was (empty for a copy, which keeps its own),
-// and the environment carries the GitHub token for 1-org.
-type handTofu struct {
-	exec  deploy.Runner
-	layer string
-	dir   string
-	data  string
-	env   []string
-	out   io.Writer
-}
-
-// command is one tofu command in the layer's directory.
-func (h *handTofu) command(args ...string) deploy.Command {
-	env := slices.Clone(h.env)
-	if h.data != "" {
-		env = append(env, dataDirEnv+"="+h.data)
-	}
-
-	return deploy.Command{Dir: h.dir, Env: env, Name: "tofu", Args: args}
-}
-
-// run runs one tofu command with its output on the command's.
-func (h *handTofu) run(ctx context.Context, args ...string) error {
-	return h.exec.Run(ctx, h.command(args...), h.out)
-}
-
-// output runs one tofu command and answers what it printed.
-func (h *handTofu) output(ctx context.Context, args ...string) ([]byte, error) {
-	return h.exec.Output(ctx, h.command(args...), h.out)
-}
-
-// init initializes the layer at its own backend, again when the data directory holds an
-// earlier init of another shape.
-func (h *handTofu) init(ctx context.Context) error {
-	if err := h.run(ctx, "init", noInput, noColor, "-reconfigure"); err != nil {
-		return errors.Wrapf(err, "the init of %s failed; the log says why", h.layer)
-	}
-
-	return nil
-}
-
-// stateList is every address in the layer's state.
-func (h *handTofu) stateList(ctx context.Context) ([]string, error) {
-	printed, err := h.output(ctx, "state", "list")
-	if err != nil {
-		return nil, errors.Wrapf(err, "listing %s's state failed; the log says why", h.layer)
-	}
-	var addresses []string
-	for _, line := range strings.Split(string(printed), "\n") {
-		if line = strings.TrimSpace(line); line != "" {
-			addresses = append(addresses, line)
-		}
-	}
-
-	return addresses, nil
 }
 
 // unprotect applies destroy=true to every project, every project service and every

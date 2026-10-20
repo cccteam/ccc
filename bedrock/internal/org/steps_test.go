@@ -63,7 +63,10 @@ func TestStepsMatchPipeline(t *testing.T) {
 // nothing else; a commit only a tag reaches, one the repository does not hold, a
 // repository that cannot be read, no pin, a pin without its checksum and a download that
 // does not match are refused, each saying what records the pin or what was not read, and
-// a refusal leaves no note and no binary.
+// a refusal leaves no note and no binary. Under steps in the release shape (BEDROCK_STEPS
+// set by 0-bootstrap's triggers) a commit pin is refused before the branches are read,
+// naming what applies the commit shape; under the commit shape, or with the variable
+// unset (2-env's stack trigger), it goes on as before.
 func TestFetchBedrockScript(t *testing.T) {
 	t.Parallel()
 
@@ -92,10 +95,14 @@ func TestFetchBedrockScript(t *testing.T) {
 		name       string
 		placement  string
 		repository string
-		wantOut    string
-		wantErr    string
-		wantNote   string
-		wantRun    bool
+		// env is the step's environment beyond the process's: BEDROCK_STEPS, the shape
+		// of the steps, which 0-bootstrap's triggers set and 2-env's stack trigger
+		// leaves unset.
+		env      []string
+		wantOut  string
+		wantErr  string
+		wantNote string
+		wantRun  bool
 	}{
 		{
 			name:      "a release pin: downloaded, verified and run",
@@ -104,10 +111,31 @@ func TestFetchBedrockScript(t *testing.T) {
 			wantRun:   true,
 		},
 		{
+			name:      "a release pin under the release shape: downloaded, verified and run",
+			placement: `{"bedrockVersion": "v0.5.0", "bedrockSha256": "` + sum + `"}`,
+			env:       []string{stepsEnv + "=" + StepsVersion + "-release"},
+			wantOut:   "bedrock v0.5.0 (a stand-in binary)\n",
+			wantRun:   true,
+		},
+		{
 			name:      "a commit pin on a branch: the note for the build step, with its branch",
 			placement: `{"bedrockVersion": "` + stamp + onBranch[:12] + `"}`,
 			wantOut:   "bedrock " + stamp + onBranch[:12] + " is a commit pin on main: the next step builds it with go install\n",
 			wantNote:  stamp + onBranch[:12],
+		},
+		{
+			name:      "a commit pin under the commit shape: the note for the build step",
+			placement: `{"bedrockVersion": "` + stamp + onBranch[:12] + `"}`,
+			env:       []string{stepsEnv + "=" + StepsVersion + "-commit"},
+			wantOut:   "bedrock " + stamp + onBranch[:12] + " is a commit pin on main: the next step builds it with go install\n",
+			wantNote:  stamp + onBranch[:12],
+		},
+		{
+			name:       "a commit pin under the release shape: refused before the branches are read, naming what applies the commit shape",
+			placement:  `{"bedrockVersion": "` + stamp + onBranch[:12] + `"}`,
+			repository: "file://" + filepath.Join(t.TempDir(), "missing"),
+			env:        []string{stepsEnv + "=" + StepsVersion + "-release"},
+			wantErr:    "placement.json pins bedrock " + stamp + onBranch[:12] + ", a commit pin, and this trigger's steps are in the release shape (" + StepsVersion + "-release): this step downloads a release, and no step follows to build a commit. A commit pin needs the commit shape, which bedrock upgrade applies to 0-bootstrap when it moves the pin from a release to a commit; when the pin was moved without that apply, apply 0-bootstrap from this branch by hand (in 0-bootstrap: tofu init, then tofu apply, as the bootstrap administrator) before this pull request's plan, or the merge's apply, can run",
 		},
 		{
 			name:      "a commit pin only a tag reaches",
@@ -155,7 +183,7 @@ func TestFetchBedrockScript(t *testing.T) {
 			}
 			cmd := exec.CommandContext(t.Context(), python, "-I", "-c", fetchBedrockScript, home, srv.URL, repo)
 			cmd.Dir = checkout
-			cmd.Env = append(os.Environ(), "TMPDIR="+t.TempDir())
+			cmd.Env = append(append(os.Environ(), "TMPDIR="+t.TempDir()), tt.env...)
 			out, err := cmd.CombinedOutput()
 			if tt.wantErr != "" {
 				if err == nil || !strings.Contains(string(out), tt.wantErr) {
