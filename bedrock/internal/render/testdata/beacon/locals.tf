@@ -23,6 +23,16 @@ locals {
   # environment's plan identity, to say where the patch release will be refused.
   records_buckets = join(",", [for env in local.environments : "${env}=${try(data.terraform_remote_state.envs[env].outputs.records_bucket, "")}"])
 
+  # The application's database in every other environment, env=resource name, under the
+  # first generation's name (a restore puts a database into the next generation, -2, -3,
+  # which the reader probes). The migration guard reads each environment's migration
+  # version from it on a consolidation pull request, through the migrations_reader
+  # database role the application's first migration creates, which 2-env (an
+  # environment's own instance) and 2-spn (the shared instance) grant tst's
+  # deploy identity on the application's databases; the tag build's migrate step reads
+  # its own environment's the same way, as database admin.
+  migration_databases = join(",", [for env in local.environments : "${env}=projects/${try(data.terraform_remote_state.envs[env].outputs.spanner_instance.project, "")}/instances/${try(data.terraform_remote_state.envs[env].outputs.spanner_instance.name, "")}/databases/${local.prefix}-${env}-gbl-${local.app}-db" if env != var.environment])
+
   # A pull-request stack: this code in tst with var.pull_request set, into
   # its own state. Its resources carry the short name beacon-pr<N> (2-env's wildcard
   # backend picks the Cloud Run service by that name from the hostname), and it

@@ -83,9 +83,16 @@ func GuardMigrations(ctx context.Context, clients *Clients, w Workspace, out io.
 			return err
 		}
 	}
+	if g.folded != nil && len(g.problems) == 0 {
+		if err := g.environmentsAtIndex(ctx, clients, subs, out); err != nil {
+			return err
+		}
+	}
 	if len(g.problems) == 0 {
 		against := ""
 		switch {
+		case g.folded != nil:
+			against = fmt.Sprintf(", a consolidation at %06d every environment's database is at or above", g.folded.Index)
 		case g.base != "" && g.released:
 			against = ", the committed schema migrations unchanged against " + g.branch
 		case g.base != "":
@@ -111,6 +118,13 @@ type migrationGuard struct {
 	base        string
 	released    bool
 	problems    []string
+	// folded is the consolidation the schema directory holds, when it does: the
+	// committed files gone by design, and each environment's version read before the
+	// merge.
+	folded *consolidation
+	// below is set when an environment's database is below the fold's index, or could
+	// not be read, which picks the refusal's rule and fix.
+	below bool
 }
 
 // The guard's refusal, and its fix, as the log and the pull request read them: one pair
@@ -125,19 +139,86 @@ const (
 // rule is the guard's refusal, and fix its fix, for the repository's side of the first
 // release.
 func (g *migrationGuard) rule() string {
-	if g.released {
+	switch {
+	case g.below:
+		return consolidationRule
+	case g.released:
 		return sequenceRule
+	default:
+		return unreleasedRule
 	}
-
-	return unreleasedRule
 }
 
 func (g *migrationGuard) fix() string {
-	if g.released {
+	switch {
+	case g.below:
+		return fmt.Sprintf(consolidationFixFmt, g.folded.Index)
+	case g.released:
 		return fmt.Sprintf(renumberFixFmt, g.branch)
+	default:
+		return fmt.Sprintf(unreleasedFixFmt, g.branch)
+	}
+}
+
+// The consolidation's refusal and fix: an environment's database below the fold's index,
+// or one the guard could not read.
+const (
+	consolidationRule   = "a consolidation is merged only when every environment's database is at or above the index it folds to, read from each database through the migrations_reader role"
+	consolidationFixFmt = "Release the sequence as it stands to every environment first, so each database reaches %06d (a database below the fold would apply the whole fold over its tables); an environment the guard could not read lacks the migration that creates the migrations_reader role (impulse upgrade adds it; the next release there runs it) or the grant of the role (2-env, 2-spn), and the read is retried on the next build."
+)
+
+// environmentsAtIndex reads each environment's live database on a consolidation and
+// refuses while any is below the fold's index or cannot be read: this environment's
+// (the trigger's _MIGRATE_DATABASES, read as the deploy identity, which holds database
+// admin on it) and every other's (_MIGRATION_DATABASES, env=database, read through the
+// migrations_reader role, which 2-env and 2-spn grant this identity there). Without a
+// Versions client (tests of the command alone) nothing is read.
+func (g *migrationGuard) environmentsAtIndex(ctx context.Context, clients *Clients, subs map[string]string, out io.Writer) error {
+	if clients.Versions == nil {
+		return nil
+	}
+	reader, err := clients.Versions(ctx)
+	if err != nil {
+		return err
+	}
+	type read struct{ env, database, role string }
+	var reads []read
+	if own, _, err := spannerDatabase(map[string]string{migrateDatabasesFact: subs[migrateDatabasesSub]}); err == nil {
+		reads = append(reads, read{env: subs[envSub], database: own})
+	}
+	others := pairs(subs[migrationDatabasesSub])
+	for _, env := range pairsSorted(others) {
+		if others[env] != "" {
+			reads = append(reads, read{env: env, database: others[env], role: migrationsReaderRole})
+		}
+	}
+	for _, r := range reads {
+		version, live, err := environmentVersion(ctx, reader, r.database, r.role)
+		switch {
+		case err != nil && notYet(err):
+			g.below = true
+			g.problems = append(g.problems, fmt.Sprintf("%s: the migration version of %s could not be read through the %s role (%v): the migration that creates the role has not run there, or the grant is not in effect", r.env, r.database, migrationsReaderRole, errors.Cause(err)))
+		case err != nil:
+			return errors.Wrapf(err, "reading %s's migration version", r.env)
+		case version.Known && version.Number < g.folded.Index:
+			g.below = true
+			g.problems = append(g.problems, fmt.Sprintf("%s: %s is at %s, below the fold's index %06d", r.env, live, version, g.folded.Index))
+		default:
+			fmt.Fprintf(out, "%s: %s is at %s.\n", r.env, live, version)
+		}
 	}
 
-	return fmt.Sprintf(unreleasedFixFmt, g.branch)
+	return nil
+}
+
+// entryNames lists a listing's file names.
+func entryNames(entries []github.DirEntry) []string {
+	names := make([]string, 0, len(entries))
+	for _, e := range entries {
+		names = append(names, e.Name)
+	}
+
+	return names
 }
 
 // branchedFrom finds the commit the pull request branched from, and whether the
@@ -198,30 +279,9 @@ func (g *migrationGuard) guard(ctx context.Context, dir string, editable bool, o
 		entries = append(entries, migration.Entry{Name: name})
 	}
 	if g.base != "" {
-		if !editable {
-			if err := g.unchanged(ctx, dir, local); err != nil {
-				return err
-			}
-		}
-		committed, err := g.listing(ctx, dir, g.branch)
+		entries, err = g.withBase(ctx, dir, local, names, entries, editable, out)
 		if err != nil {
 			return err
-		}
-		removed := map[string]bool{}
-		if editable {
-			atBase, err := g.listing(ctx, dir, g.base)
-			if err != nil {
-				return err
-			}
-			for _, e := range atBase {
-				removed[e.Name] = !slices.Contains(names, e.Name)
-			}
-		}
-		for _, e := range committed {
-			if slices.Contains(names, e.Name) || removed[e.Name] {
-				continue
-			}
-			entries = append(entries, migration.Entry{Name: e.Name, Note: "on " + g.branch + ", not in this pull request"})
 		}
 	}
 	problems, span := migration.Sequence(entries)
@@ -247,13 +307,46 @@ func (g *migrationGuard) guard(ctx context.Context, dir string, editable bool, o
 	return nil
 }
 
+// withBase reads a pull request's directory against the branch it merges into: the
+// committed schema migrations still there unchanged, or the one shape that removes
+// them, a consolidation; then the default branch's names the pull request lacks join
+// the sequence, less the ones it removed where it may (editable) or a fold did.
+func (g *migrationGuard) withBase(ctx context.Context, dir, local string, names []string, entries []migration.Entry, editable bool, out io.Writer) ([]migration.Entry, error) {
+	atBase, err := g.listing(ctx, dir, g.base)
+	if err != nil {
+		return nil, err
+	}
+	if !editable {
+		if folded := consolidationOf(dir, entryNames(atBase), names); folded != nil {
+			g.folded = folded
+			fmt.Fprintf(out, "Consolidation: %s folds the committed sequence into %06d_%s (bedrock migration consolidate); the committed files are gone by design, and the fold is trusted as the concatenation it is.\n", dir, folded.Index, migration.ConsolidatedName)
+		} else if err := g.unchanged(ctx, dir, local, atBase); err != nil {
+			return nil, err
+		}
+	}
+	committed, err := g.listing(ctx, dir, g.branch)
+	if err != nil {
+		return nil, err
+	}
+	removed := map[string]bool{}
+	if editable || g.folded != nil && g.folded.Dir == dir {
+		for _, e := range atBase {
+			removed[e.Name] = !slices.Contains(names, e.Name)
+		}
+	}
+	for _, e := range committed {
+		if slices.Contains(names, e.Name) || removed[e.Name] {
+			continue
+		}
+		entries = append(entries, migration.Entry{Name: e.Name, Note: "on " + g.branch + ", not in this pull request"})
+	}
+
+	return entries, nil
+}
+
 // unchanged holds every schema migration the pull request branched from against the
 // tree: still there, and the same content (by git's blob name, which the API lists).
-func (g *migrationGuard) unchanged(ctx context.Context, dir, local string) error {
-	committed, err := g.listing(ctx, dir, g.base)
-	if err != nil {
-		return err
-	}
+func (g *migrationGuard) unchanged(_ context.Context, dir, local string, committed []github.DirEntry) error {
 	for _, e := range committed {
 		data, err := os.ReadFile(filepath.Join(local, e.Name))
 		switch {

@@ -181,6 +181,10 @@ type Clients struct {
 	// Grants reads the application's databases as the worker, for the migrate step's wait
 	// on the deploy identity's grants.
 	Grants GrantsFunc
+	// Versions reads a database's schema migration version as the worker: the migration
+	// guard's read of each environment's on a consolidation pull request, and the migrate
+	// step's of the database in front of a consolidation.
+	Versions VersionsFunc
 	// Exec runs the programs a step drives: tofu, docker, the migrate command, a hook's
 	// script.
 	Exec Runner
@@ -190,7 +194,7 @@ type Clients struct {
 func DefaultClients() *Clients {
 	return &Clients{
 		Storage: NewStorage, StorageAs: NewStorageAs, StorageAsWriter: NewStorageAsWriter, Builds: NewCloudBuild, Comments: GitHubComments, GitHub: PublicGitHub,
-		Registry: NewArtifactRegistry, Run: NewCloudRun, Secrets: NewSecretManager, Exec: OSRunner{}, Grants: NewGrants,
+		Registry: NewArtifactRegistry, Run: NewCloudRun, Secrets: NewSecretManager, Exec: OSRunner{}, Grants: NewGrants, Versions: NewVersions,
 		SecretsAs: NewSecretManagerAs, Tasks: NewCloudTasks, Metrics: NewCloudMonitoring, HTTP: &http.Client{Timeout: 30 * time.Second}, FirestoreAs: NewFirestoreAs, SpannerAs: NewSpannerAs,
 	}
 }

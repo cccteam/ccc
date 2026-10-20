@@ -41,6 +41,33 @@ variable "database_admins" {
   }
 }
 
+variable "migration_readers" {
+  description = <<-EOT
+    The first environment's deploy identity of each application, once per
+    environment on this instance whose database of that application it reads: a
+    consolidation pull request's build runs the migration guard as it, which reads
+    each environment's migration version through the migrations_reader database
+    role the application's first migration creates (select on the SchemaMigrations
+    table alone). Each entry (keyed "<environment>/<application>") holds
+    roles/spanner.fineGrainedAccessUser on the application's own database in that
+    environment and roles/spanner.databaseRoleUser on that database's
+    migrations_reader role, the two roles Spanner's fine-grained access control
+    asks of a principal that uses a database role, and nothing on the data.
+    Rendered into applications.auto.tfvars from placement.json, like the admins.
+  EOT
+  type = map(object({
+    member      = string
+    environment = string
+    application = string
+  }))
+  default = {}
+
+  validation {
+    condition     = alltrue([for v in values(var.migration_readers) : can(regex("^(serviceAccount|user|group|principal|principalSet):", v.member))])
+    error_message = "Every migration reader's member must be a full IAM member, such as serviceAccount:name@project.iam.gserviceaccount.com."
+  }
+}
+
 variable "database_planners" {
   description = <<-EOT
     IAM members granted the organization's spannerPlanReader role on the

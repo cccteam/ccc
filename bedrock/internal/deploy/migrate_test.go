@@ -284,6 +284,11 @@ func TestMigrate(t *testing.T) {
 		noProgram       bool
 		// grants is the reader of the databases as the deploy identity; none skips the wait.
 		grants *fakeGrants
+		// files are files of the workspace beside the environment and the build: a schema
+		// directory holding a consolidation. versions answers the database's migration
+		// version before a consolidation runs; none reads nothing.
+		files    map[string]string
+		versions *fakeVersions
 		// secrets is Secret Manager as the deploy identity, for the secrets the stack
 		// names; none answers nothing, which a stack naming none never asks.
 		secrets *fakeSecrets
@@ -555,12 +560,54 @@ func TestMigrate(t *testing.T) {
 			noProgram: true,
 			wantErr:   "no migrate command at",
 		},
+		{
+			name:     "a consolidation over a database below its index is refused before it runs",
+			env:      migrateEnvironment,
+			build:    build("false", "", map[string]string{migrationsSub: "schema/migrations"}),
+			files:    map[string]string{"schema/migrations/000005_Consolidated.up.sql": "create a; create b"},
+			grants:   &fakeGrants{},
+			versions: &fakeVersions{versions: map[string]MigrationVersion{"projects/tst-project/instances/tst-spanner/databases/imp-tst-gbl-harbor-db": {Number: 3, Known: true}}},
+			wantErr:  "Build REJECTED: the release carries a consolidation at 000005 and projects/tst-project/instances/tst-spanner/databases/imp-tst-gbl-harbor-db is at 3: a database below the fold would apply the whole fold over its tables",
+		},
+		{
+			name:     "a consolidation over a database at its index applies nothing and the command runs",
+			env:      migrateEnvironment,
+			build:    build("false", "", map[string]string{migrationsSub: "schema/migrations"}),
+			files:    map[string]string{"schema/migrations/000005_Consolidated.up.sql": "create a; create b", "schema/migrations/000005_Consolidated.down.sql": "drop b; drop a"},
+			grants:   &fakeGrants{},
+			versions: &fakeVersions{versions: map[string]MigrationVersion{"projects/tst-project/instances/tst-spanner/databases/imp-tst-gbl-harbor-db": {Number: 5, Known: true}}},
+			wantOut:  []string{"Consolidation: projects/tst-project/instances/tst-spanner/databases/imp-tst-gbl-harbor-db is at 5, at or above the fold's index 000005, so the fold applies nothing."},
+			wantRuns: [][]string{{}},
+		},
+		{
+			name:     "a consolidation over a fresh database applies whole",
+			env:      migrateEnvironment,
+			build:    build("false", "", map[string]string{migrationsSub: "schema/migrations"}),
+			files:    map[string]string{"schema/migrations/000005_Consolidated.up.sql": "create a; create b"},
+			grants:   &fakeGrants{},
+			versions: &fakeVersions{versions: map[string]MigrationVersion{"projects/tst-project/instances/tst-spanner/databases/imp-tst-gbl-harbor-db": {}}},
+			wantOut:  []string{"Consolidation: projects/tst-project/instances/tst-spanner/databases/imp-tst-gbl-harbor-db holds no version, so the fold at 000005 applies whole, as a fresh database takes it."},
+			wantRuns: [][]string{{}},
+		},
+		{
+			name:     "an ordinary sequence reads no version",
+			env:      migrateEnvironment,
+			build:    build("false", "", map[string]string{migrationsSub: "schema/migrations"}),
+			files:    map[string]string{"schema/migrations/000001_Init.up.sql": "create a", "schema/migrations/000002_Next.up.sql": "create b"},
+			grants:   &fakeGrants{},
+			versions: &fakeVersions{},
+			wantRuns: [][]string{{}},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			w := workspaceFiles(t, map[string]string{EnvironmentFile: tt.env, BuildFile: tt.build})
+			files := map[string]string{EnvironmentFile: tt.env, BuildFile: tt.build}
+			for name, content := range tt.files {
+				files[name] = content
+			}
+			w := workspaceFiles(t, files)
 			program := migrateProgramFile(t)
 			if tt.noProgram {
 				program = filepath.Join(t.TempDir(), "absent")
@@ -580,6 +627,9 @@ func TestMigrate(t *testing.T) {
 			clients := &Clients{Exec: run, Sleep: func(context.Context, time.Duration) error { return nil }}
 			if tt.grants != nil {
 				clients.Grants = func(context.Context) (Grants, error) { return tt.grants, nil }
+			}
+			if tt.versions != nil {
+				clients.Versions = tt.versions.open
 			}
 			if tt.secrets != nil {
 				clients.Secrets = tt.secrets.open

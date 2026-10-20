@@ -33,3 +33,18 @@ database_planners = [
 {{- end}}
 {{- end}}
 ]
+
+# The first environment's deploy identity of each application, once per environment on this
+# instance: a consolidation pull request's migration guard reads each environment's migration
+# version through the migrations_reader database role, with the two bounded roles that use of a
+# database role asks for. Listed once the registration is past its identities, as the database
+# admins.
+migration_readers = {
+{{- range $app := .Granted}}
+{{- range $env := $.Environments}}
+{{- if ne $env (index $.Environments 0)}}
+  "{{$env}}/{{$app}}" = { member = "{{$.DeployIdentity (index $.Environments 0) $app}}", environment = "{{$env}}", application = "{{$app}}" } # {{$app}}'s {{index $.Environments 0}} deploy identity (2-env {{index $.Environments 0}}) on its {{$env}} database
+{{- end}}
+{{- end}}
+{{- end}}
+}

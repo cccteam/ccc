@@ -141,6 +141,7 @@ checks:
   sites-wired
   maintenance-switch
   session-tables
+  migrations-reader
   auths-wired
   change-signal
   conditions-proven

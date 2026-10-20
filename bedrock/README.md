@@ -1274,7 +1274,9 @@ branch took since the branch was cut. The tags are the checkout's, so fetch them
 clone has them; CI checks out with the whole history). The pull-request workflow's
 `migrations` job and the pipeline's migration guard hold the same line: before the first
 release a pull request may rename, rewrite or remove a committed migration while the
-sequence stays whole, and from the first release on a committed migration never changes. `go generate ./...` runs it before the
+sequence stays whole, and from the first release on a committed migration never changes,
+a consolidation (`bedrock migration consolidate`, below) being the one change that
+removes committed files. `go generate ./...` runs it before the
 application's own generators through the owned `cmd/generate/bedrock.go`, whose directive
 is `go run <module>@<pinned version> migration renumber`: the Go toolchain builds the
 pinned bedrock from the module proxy the first time and caches it, so neither a developer
@@ -1336,19 +1338,29 @@ sequence of one file alone. A branch cut from a patch line folds the line's sequ
 instead; a consolidation never travels a patch line, since it changes nothing visible.
 The seed directory is not folded.
 
-What accepts the pull request is not built yet: the pull-request workflow's `migrations`
-job and the pipeline's migration guard read the folded files as committed migrations
-deleted and refuse it today. The design (cccteam's register, the consolidation item):
-both read a schema directory holding exactly one file, numbered where the base branch's
-sequence ended, as a consolidation and verify it the same way, the base branch's
-sequence and the folded file applied to two fresh emulator databases, information schema
-and rows compared as values (the migrate runner's parity check); the guard also reads
-each environment's migration number from its database, through a database role the
-migrate runner creates with select on the migrations table alone, which the environment
-layer grants the test environment's deploy identity on the application's databases in
-the other environments, and refuses while any environment is below the latest index; and
-the migrate step refuses a consolidation when the database in front of it is below the
-index, so a restore between merge and deploy is caught where it happens.
+What accepts the pull request: the pull-request workflow's `migrations` job and the
+pipeline's migration guard both read a schema directory holding exactly the folded file
+(and its down file) at the index where the committed sequence ended, with every
+committed file gone and none modified, as a consolidation, the one change that removes
+committed migrations. The fold is a concatenation and is trusted as such: a fold gone
+wrong fails the fresh database the pull request's `go` job builds from it, or a test, and
+production never executes a fold (a database at the index applies nothing). The guard
+then reads each environment's migration version from its live database (the first
+generation's name, then the generations a restore made) and refuses while any is below
+the index, since a database below the fold would apply the whole fold over its tables:
+this environment's as the deploy identity, which holds database admin on it, and every
+other's (`_MIGRATION_DATABASES`, which the stack renders from the environments' states)
+through the `migrations_reader` database role, which the application's first migration
+creates with select on the `SchemaMigrations` table alone (`impulse check`
+`migrations-reader` holds every application to it; `impulse upgrade` adds the migration
+to a sequence that predates it) and which `2-env` (an environment's own instance) and
+`2-spn` (the shared instance) grant the first environment's deploy identity on the
+application's databases, bounded to each. An environment the guard cannot read through
+the role lacks the migration or the grant, and the refusal says so; the read is retried
+on the next build. Last, the migrate step reads the database in front of it before a
+fold runs and refuses one below the index, so a restore between the merge and the deploy
+is caught where it happens; a fresh database applies the fold whole, and one at the
+index or above applies nothing.
 
 ## bedrock migration version, rerun and force
 
@@ -2409,8 +2421,10 @@ works under the previous release's steps and a command says when it runs under o
 
 The guards run before anything deploys: the migration guard (the sequence, one up file
 each, no gaps; a committed schema migration never changes once the repository has a
-release tag, before the first release it may; a seed file may; against the default branch
-for a pull request; a refusal names `bedrock migration renumber` as the fix), and the
+release tag, before the first release it may; a seed file may; a consolidation is
+accepted by its shape and held until every environment's database is at or above its
+index; against the default branch for a pull request; a refusal names `bedrock migration
+renumber` as the fix), and the
 plan guard (a pull-request stack may only create and change what carries
 its own number), which holds because it runs in the pr-stack trigger, from steps the pull
 request cannot edit.
