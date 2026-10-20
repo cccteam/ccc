@@ -2,6 +2,8 @@ package transition
 
 import (
 	"io/fs"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -346,7 +348,9 @@ func TestAuthApply(t *testing.T) {
 		extra       map[string]string
 		wantDid     []string
 		wantSkipped []string
-		check       func(t *testing.T, a *app.App)
+		// neverDid are words no did line carries.
+		neverDid []string
+		check    func(t *testing.T, a *app.App)
 	}{
 		{
 			name:    "a password auth written beside staff",
@@ -473,6 +477,9 @@ func TestAuthApply(t *testing.T) {
 				"pkg/auth/partners: the partners auth package (partners.go, workspace.go), rendered from the skeleton's auth source: the Auth session over tables prefixed Partners, the partners permission store, and the methods workspace (google, members of the directory, role membership the directory's), each in its own file",
 				programFile + `: the portal outlet's declaration names the partners auth with its methods, generation.Auth("example.com/acme/beacon/pkg/auth/partners", generation.GoogleMethod("workspace")), in place of the staff auth's, so the regenerated router mounts the auth's session group under /portal/api: one login route per method, the methods route its login page renders from, and the pending sign-in routes`,
 			},
+			// The flat layout's browser projects are left as they were: rebinding the
+			// portal's is the agent's, as the brief says.
+			neverDid: []string{"users page", "XSRF cookie"},
 			wantSkipped: []string{
 				"pkg/config/data.go: no environment struct (env := &T{}) to add the partners auth's registration variables to; read them and pass them in partners.Settings",
 				`test/integration/harness_test.go and cmd/deployment/migrate/main_test.go: the workspace registration validates its organization slot and its role groups' prefix at registration whether or not the directory is simulated, so give the partners auth's construction in the harness Workspace: partners.WorkspaceSettings{HostedDomain: "example.com", RedirectURL: <the served callback>, GroupPrefix: "partners-"} and set APP_PARTNERS_WORKSPACE_HOSTED_DOMAIN=example.com and APP_PARTNERS_WORKSPACE_GROUP_PREFIX=partners- where the migrate run's environment is`,
@@ -565,11 +572,277 @@ func TestAuthApply(t *testing.T) {
 					t.Errorf("Skipped lacks %q; got:\n%s", want, strings.Join(ch.Skipped, "\n"))
 				}
 			}
+			for _, never := range tt.neverDid {
+				for _, did := range ch.Did {
+					if strings.Contains(did, never) {
+						t.Errorf("Did carries %q: %s", never, did)
+					}
+				}
+			}
 			if len(exec.calls) != 1 || !strings.HasPrefix(exec.calls[0], "go generate") {
 				t.Errorf("exec calls = %v, want one go generate", exec.calls)
 			}
 			if tt.check != nil {
 				tt.check(t, a)
+			}
+		})
+	}
+}
+
+// siteRouterProgram is a site's generator program in the sites layout: the generated
+// router, the site's default outlet bound to the staff auth and serving its browser
+// application at the root, and the generated client in the site's workspace.
+func siteRouterProgram(site string) string {
+	return strings.ReplaceAll(`// Package main is the <site> site's resource generator program.
+package main
+
+import (
+	"context"
+	"log"
+
+	"github.com/cccteam/ccc/resource/generation"
+)
+
+func main() {
+	if err := run(context.Background()); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func run(ctx context.Context) error {
+	generator, err := generation.NewResourceGenerator(
+		ctx,
+		"apps/<site>/pkg/resources",
+		[]string{"file://schema/migrations"},
+		generation.GenerateHandlers("apps/<site>/app"),
+		generation.GenerateRouter(),
+		generation.GenerateRoutes("apps/<site>/pkg/router", "api",
+			generation.Auth("example.com/acme/beacon/pkg/auth/staff", generation.PasswordMethod()),
+			generation.WebApp("/"),
+		),
+		generation.GenerateHandlerTests("apps/<site>/test/authz"),
+		generation.WithSpannerEmulatorVersion("1.5.56"),
+		generation.GenerateTypescript("apps/<site>/web/<site>/src/app/core/service",
+			generation.GenerateMetadata(),
+			generation.GeneratePermissions(),
+			generation.GenerateEnums(),
+		),
+	)
+	if err != nil {
+		return err
+	}
+	defer generator.Close()
+
+	return generator.Generate()
+}
+`, "<site>", site)
+}
+
+// The browser files bound to an auth, by their path under a project's source root: what
+// the promotion copies from the console into a site's browser application.
+var boundWebFiles = []string{
+	"app/app.config.ts",
+	"app/components/ui/users/users.component.ts",
+	"app/components/ui/users/users.component.html",
+	"app/components/ui/users/users.component.spec.ts",
+	"app/components/ui/users/users.routes.ts",
+}
+
+// skeletonWeb reads one file of the base skeleton's console project by its path under
+// the project's source root, as the skeleton renders it for the staff auth.
+func skeletonWeb(t *testing.T, rel string) string {
+	t.Helper()
+
+	sub, err := skeleton.FS(skeleton.Base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := fs.ReadFile(sub, "web/console/src/"+rel)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return string(data)
+}
+
+// sitesApp writes an application in the sites layout, the console and the portal, each
+// with its generator program bound to the staff auth, its browser workspace with the
+// project named for the site, and the skeleton's users page and application configuration
+// as the promotion copies them from the console; plus the staff auth's files, and with
+// the edits applied to the named files. Then it discovers the application.
+func sitesApp(t *testing.T, edits map[string]func(text string) string) *app.App {
+	t.Helper()
+
+	files := authFiles(t)
+	files["go.mod"] = "module example.com/acme/beacon\n\ngo 1.26\n"
+	for _, site := range []string{"console", "portal"} {
+		files["cmd/generate/"+site+"generator/main.go"] = siteRouterProgram(site)
+		files["apps/"+site+"/pkg/resources/doc.go"] = "package resources\n"
+		files["apps/"+site+"/app/doc.go"] = "package app\n"
+		files["apps/"+site+"/pkg/router/router.go"] = "package router\n"
+		files["apps/"+site+"/web/angular.json"] = strings.ReplaceAll(beaconAngular, "console", site)
+		files["apps/"+site+"/web/package.json"] = strings.ReplaceAll(beaconPackage, "console", site)
+		source := "apps/" + site + "/web/" + site + "/src/"
+		files[source+"app/core/service/zz_gen_api.ts"] = "// generated\n"
+		for _, rel := range boundWebFiles {
+			files[source+rel] = skeletonWeb(t, rel)
+		}
+	}
+	for rel, edit := range edits {
+		files[rel] = edit(files[rel])
+	}
+	root := t.TempDir()
+	for rel, content := range files {
+		abs := filepath.Join(root, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(abs, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	a, err := app.Discover(root)
+	if err != nil {
+		t.Fatalf("app.Discover() error = %v", err)
+	}
+
+	return a
+}
+
+func TestAuthApplyRebindsSiteWeb(t *testing.T) {
+	t.Parallel()
+
+	const (
+		portalSource  = "apps/portal/web/portal/src/"
+		portalUsers   = portalSource + "app/components/ui/users"
+		portalConfig  = portalSource + "app/app.config.ts"
+		consoleSource = "apps/console/web/console/src/"
+		consoleUsers  = consoleSource + "app/components/ui/users"
+		consoleConfig = consoleSource + "app/app.config.ts"
+	)
+	members := Auth{Name: "members", Methods: []authpkg.Method{{Kind: app.MethodGoogle, Name: "google", Authority: AuthorityApplication, Accounts: authpkg.AccountsInvited}}, Outlet: "portal"}
+	const renderedPage = portalUsers + `: the users page (users.component.ts, users.component.html, users.component.spec.ts, users.routes.ts) rendered again from the skeleton's for the members auth, in place of the staff auth's: Resources.MembersUsers and Resources.MembersRoles, <ccc-user-management auth="Members" />, and the spec's members-users and members-roles routes`
+	const renderedConfig = portalConfig + ": rendered again from the skeleton's: its HttpClient names the members auth's XSRF cookie (members-xsrf) in place of the staff auth's"
+	// A note the site's developer left in the users page, and a provider of the site's
+	// own in its application configuration: the files are no longer the skeleton's.
+	note := func(text string) string {
+		return strings.Replace(text, "export class UsersComponent {\n", "// The portal's people are its members.\nexport class UsersComponent {\n", 1)
+	}
+	provider := func(text string) string {
+		return strings.Replace(text, "    provideNativeDateAdapter(),\n", "    provideNativeDateAdapter(),\n    providePortalTheme(),\n", 1)
+	}
+
+	tests := []struct {
+		name        string
+		auth        Auth
+		edits       map[string]func(text string) string
+		wantDid     []string
+		wantSkipped []string
+		// wantText and neverText are the substrings each file carries and lacks after
+		// the change.
+		wantText  map[string][]string
+		neverText map[string][]string
+	}{
+		{
+			name:    "the portal's copy of the console's browser application is rebound to the auth",
+			auth:    members,
+			wantDid: []string{renderedPage, renderedConfig},
+			wantText: map[string][]string{
+				portalUsers + "/users.component.ts":      {"Resources.MembersUsers", "readonly membersScope", "over the members auth's"},
+				portalUsers + "/users.component.html":    {`class="users-members" *cccHasPermission="membersScope"`, `<ccc-user-management auth="Members" />`},
+				portalUsers + "/users.component.spec.ts": {"MembersUsers: { List: 'granted' }, MembersRoles: { List: 'granted' }", "`${environment.apiUrl}/members-users`", "`${environment.apiUrl}/members-roles`", "['Members users']", "const members = ["},
+				portalUsers + "/users.routes.ts":         {"Resources.MembersUsers", "the members surface's"},
+				portalConfig:                             {"withXsrfConfiguration({ cookieName: 'members-xsrf' })", "the members auth's (pkg/auth/members, XSRFCookie)"},
+				consoleUsers + "/users.component.ts":     {"Resources.StaffUsers", "readonly staffScope"},
+				consoleUsers + "/users.component.html":   {`<ccc-user-management auth="Staff" />`},
+				consoleConfig:                            {"cookieName: 'staff-xsrf'"},
+			},
+			neverText: map[string][]string{
+				portalUsers + "/users.component.ts":      {"Staff", "staff"},
+				portalUsers + "/users.component.html":    {"Staff", "staff"},
+				portalUsers + "/users.component.spec.ts": {"Staff", "staff"},
+				portalUsers + "/users.routes.ts":         {"Staff", "staff"},
+				portalConfig:                             {"staff"},
+			},
+		},
+		{
+			name:  "a users page edited since the skeleton rendered it is rewritten in place",
+			auth:  members,
+			edits: map[string]func(string) string{portalUsers + "/users.component.ts": note},
+			wantDid: []string{
+				portalUsers + `: the users page (users.component.html, users.component.spec.ts, users.routes.ts) rendered again from the skeleton's for the members auth, in place of the staff auth's: Resources.MembersUsers and Resources.MembersRoles, <ccc-user-management auth="Members" />, and the spec's members-users and members-roles routes`,
+				portalUsers + ": the users page (users.component.ts), edited since the skeleton rendered it, rewritten in place: every name of the staff auth is the members auth's (StaffUsers to MembersUsers, staff-users to members-users, Staff to Members)",
+				renderedConfig,
+			},
+			wantText:  map[string][]string{portalUsers + "/users.component.ts": {"// The portal's people are its members.", "Resources.MembersUsers", "readonly membersScope"}},
+			neverText: map[string][]string{portalUsers + "/users.component.ts": {"Staff", "staff"}},
+		},
+		{
+			name:    "an application configuration with providers of its own keeps them and names the auth's cookie",
+			auth:    members,
+			edits:   map[string]func(string) string{portalConfig: provider},
+			wantDid: []string{renderedPage, portalConfig + ": its HttpClient names the members auth's XSRF cookie (members-xsrf) in place of the staff auth's; the rest of the file, edited since the skeleton rendered it, is as it was"},
+			wantText: map[string][]string{
+				portalConfig: {"    providePortalTheme(),\n", "withXsrfConfiguration({ cookieName: 'members-xsrf' })", "the members auth's (pkg/auth/members, XSRFCookie)"},
+			},
+			neverText: map[string][]string{portalConfig: {"staff"}},
+		},
+		{
+			name:        "an application configuration naming no cookie of the auth is left to the agent",
+			auth:        members,
+			edits:       map[string]func(string) string{portalConfig: func(string) string { return "export const appConfig = { providers: [] };\n" }},
+			wantDid:     []string{renderedPage},
+			wantSkipped: []string{portalConfig + ": names no XSRF cookie of the staff auth, so nothing was rewritten; name the members auth's (members-xsrf) in withXsrfConfiguration, since the browser echoes that cookie in X-XSRF-TOKEN and the server verifies the echo"},
+		},
+		{
+			name: "the console's outlet rebound rewrites the console's browser application and leaves the portal's",
+			auth: Auth{Name: "partners", Outlet: "console"},
+			wantDid: []string{
+				consoleUsers + `: the users page (users.component.ts, users.component.html, users.component.spec.ts, users.routes.ts) rendered again from the skeleton's for the partners auth, in place of the staff auth's: Resources.PartnersUsers and Resources.PartnersRoles, <ccc-user-management auth="Partners" />, and the spec's partners-users and partners-roles routes`,
+				consoleConfig + ": rendered again from the skeleton's: its HttpClient names the partners auth's XSRF cookie (partners-xsrf) in place of the staff auth's",
+			},
+			wantText: map[string][]string{
+				consoleUsers + "/users.component.ts": {"Resources.PartnersUsers"},
+				consoleConfig:                        {"cookieName: 'partners-xsrf'"},
+				portalUsers + "/users.component.ts":  {"Resources.StaffUsers"},
+				portalConfig:                         {"cookieName: 'staff-xsrf'"},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			a := sitesApp(t, tt.edits)
+			ch, err := tt.auth.Apply(t.Context(), a, &fakeExec{})
+			if err != nil {
+				t.Fatalf("Apply() error = %v", err)
+			}
+			for _, want := range tt.wantDid {
+				if !slices.Contains(ch.Did, want) {
+					t.Errorf("Did lacks %q; got:\n%s", want, strings.Join(ch.Did, "\n"))
+				}
+			}
+			for _, want := range tt.wantSkipped {
+				if !slices.Contains(ch.Skipped, want) {
+					t.Errorf("Skipped lacks %q; got:\n%s", want, strings.Join(ch.Skipped, "\n"))
+				}
+			}
+			for rel, wants := range tt.wantText {
+				text := read(t, a, rel)
+				for _, want := range wants {
+					if !strings.Contains(text, want) {
+						t.Errorf("%s lacks %q:\n%s", rel, want, text)
+					}
+				}
+			}
+			for rel, nevers := range tt.neverText {
+				text := read(t, a, rel)
+				for _, never := range nevers {
+					if strings.Contains(text, never) {
+						t.Errorf("%s still carries %q:\n%s", rel, never, text)
+					}
+				}
 			}
 		})
 	}
