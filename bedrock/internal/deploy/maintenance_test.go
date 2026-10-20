@@ -496,7 +496,7 @@ func TestEndLeftMaintenance(t *testing.T) {
 			t.Parallel()
 			subs := map[string]string{"_PROJECT": "tst-project", "_ENV": "tst", "_TASKS_QUEUE": queue, "_REQUESTER": "octocat"}
 			if tt.database != nil {
-				subs["_MIGRATE_DATABASES"], subs["_APPLY_IDENTITY"] = `["`+database+`"]`, "apply@tst-project.iam.gserviceaccount.com"
+				subs["_MIGRATE_DATABASES"], subs["_MIGRATE_SECRETS"], subs["_APPLY_IDENTITY"] = `["`+database+`"]`, "{}", "apply@tst-project.iam.gserviceaccount.com"
 			}
 			w := workspaceFiles(t, map[string]string{EnvironmentFile: env, BuildFile: buildFor(t, subs)})
 			tasks := &fakeTasks{state: tt.state}

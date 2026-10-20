@@ -102,15 +102,15 @@ locals {
   # pipeline adds the first version and derives the pin at each build
   # (var.generated_secret_versions; secret-manager.tf, "Generated secrets").
   #
-  # readers: which runtime identity mounts it. Only the service: the migrate
-  # command also constructs the data level, but the session library reads the
-  # cookie key (falling back to an ephemeral one), the client secret, and the
-  # admin credentials only when a browser signs in, which a migration never
-  # does. So the deploy identity, which runs the migrate command, holds no
-  # accessor grant on a runtime secret, and the command runs with none. The
-  # design brief's rule of thumb ("every process that constructs the level")
-  # would grant it; this is the narrower reading, and a fork for the
-  # derivation to settle.
+  # readers: which runtime identity mounts it. The service; and the migrate
+  # command, which also constructs the data level, reads the generated password
+  # of each auth's first administrator (migrate_secrets, below), which it seeds
+  # the administrator user with while the auth's users table holds no rows. So
+  # the deploy identity, which runs the migrate command, holds accessor on
+  # those containers alone and on no other runtime secret: the session library
+  # reads the cookie key (falling back to an ephemeral one), the client secrets
+  # and the people's credentials only when a browser signs in, which a
+  # migration never does.
   secrets = {
     APP_COOKIE_KEY = {
       name    = "cookie-key"
@@ -138,6 +138,13 @@ locals {
   # var.secret_versions is the word generated, and their version the number the
   # pipeline's plan step derived and passed as var.generated_secret_versions.
   generated_secrets = { for key, s in local.secrets : key => s if s.generated }
+
+  # The secrets the migrate command reads (readers, above): the generated
+  # password of each auth's first administrator, by variable, and the pinned
+  # version of each the command runs with, read back by the pipeline from the
+  # applied stack (cloud-build.tf, _MIGRATE_SECRETS). A secret with no version
+  # yet (a plan by hand) is left out, and the command runs without it.
+  migrate_secrets = toset(["APP_KEEPERS_ADMINISTRATOR_PASSWORD"])
 
   # The versions this environment runs: the placement's pins (a number, or
   # latest) for the secrets someone puts in place, and the derived numbers for

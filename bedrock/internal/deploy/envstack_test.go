@@ -956,11 +956,11 @@ func TestApplyEnvironmentStack(t *testing.T) {
 	// The stack's substitutions output, which the step reads for the migrate command's
 	// settings, and the two reads by their command lines.
 	const (
-		substitutionsOutput = `{"_SERVICES": "us-central1=quill-app", "_MIGRATE_ENV": "{\"APP_SERVICE_NAME\":\"quill-migrate\"}", "_MIGRATE_DATABASES": "[\"projects/p-stg/instances/i/databases/quill-db\"]"}`
+		substitutionsOutput = `{"_SERVICES": "us-central1=quill-app", "_MIGRATE_ENV": "{\"APP_SERVICE_NAME\":\"quill-migrate\"}", "_MIGRATE_DATABASES": "[\"projects/p-stg/instances/i/databases/quill-db\"]", "_MIGRATE_SECRETS": "{}"}`
 		readSubstitutions   = "tofu output -json"
 		readFirestore       = "tofu output -raw firestore_database"
 	)
-	settingsRead := "The migrate command's settings and databases are read from the stack as applied (_MIGRATE_ENV, _MIGRATE_DATABASES)."
+	settingsRead := "The migrate command's settings, secrets and databases are read from the stack as applied (_MIGRATE_ENV, _MIGRATE_SECRETS, _MIGRATE_DATABASES)."
 	tests := []struct {
 		name     string
 		subs     map[string]string

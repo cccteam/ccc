@@ -203,10 +203,17 @@ func (r *fakeRun) SetIamPolicy(_ context.Context, name string, policy map[string
 const (
 	migrateSettingsJSON = `{"APP_SERVICE_NAME":"harbor-migrate","GOOGLE_CLOUD_SPANNER_DATABASE_NAME":"imp-tst-gbl-harbor-db","GOOGLE_CLOUD_SPANNER_PROJECT":"tst-project"}`
 	versionVariable     = "APP_VERSION"
+	// migratePinnedVersion is the pinned version of the secret the migrate command
+	// reads in secretsEnvironment, and its payload what the fake answers for it.
+	migratePinnedVersion = "projects/tst-project/secrets/imp-tst-gbl-harbor-staff-administrator-password/versions/1"
+	migratePinnedValue   = "a-generated-password"
 )
 
 var (
-	migrateEnvironment = "export SKIP_DEPLOY=\"\"\nexport RUN_MIGRATIONS=\"true\"\nexport VERSION=\"v1.2.3\"\nexport MIGRATE_ENV=" + doubleQuote(migrateSettingsJSON) + "\nexport MIGRATE_DATABASES=" + doubleQuote(migrateDatabasesJSON) + "\n"
+	migrateEnvironment = "export SKIP_DEPLOY=\"\"\nexport RUN_MIGRATIONS=\"true\"\nexport VERSION=\"v1.2.3\"\nexport MIGRATE_ENV=" + doubleQuote(migrateSettingsJSON) + "\nexport MIGRATE_DATABASES=" + doubleQuote(migrateDatabasesJSON) + "\nexport MIGRATE_SECRETS=\"{}\"\n"
+	// secretsEnvironment is that environment where the stack names a secret the migrate
+	// command reads: the staff auth's first-administrator password, pinned at version 1.
+	secretsEnvironment = "export SKIP_DEPLOY=\"\"\nexport RUN_MIGRATIONS=\"true\"\nexport VERSION=\"v1.2.3\"\nexport MIGRATE_ENV=" + doubleQuote(migrateSettingsJSON) + "\nexport MIGRATE_DATABASES=" + doubleQuote(migrateDatabasesJSON) + "\nexport MIGRATE_SECRETS=" + doubleQuote(`{"APP_STAFF_ADMINISTRATOR_PASSWORD":"`+migratePinnedVersion+`"}`) + "\n"
 	// seededEnvironment is that environment file where resolve decided the build seeds
 	// (SEED): every pull request, and a release where the checkout's placement says so.
 	seededEnvironment = migrateEnvironment + "export SEED=\"true\"\n"
@@ -277,6 +284,9 @@ func TestMigrate(t *testing.T) {
 		noProgram       bool
 		// grants is the reader of the databases as the deploy identity; none skips the wait.
 		grants *fakeGrants
+		// secrets is Secret Manager as the deploy identity, for the secrets the stack
+		// names; none answers nothing, which a stack naming none never asks.
+		secrets *fakeSecrets
 		// wantOut are lines the output carries, in this order, whether or not the step failed.
 		wantOut []string
 		// wantRuns are the command's runs, each its arguments, in order; wantVars the
@@ -292,8 +302,35 @@ func TestMigrate(t *testing.T) {
 			env:      migrateEnvironment,
 			build:    build("false", "", nil),
 			grants:   &fakeGrants{},
-			wantOut:  []string{"The deploy identity reads projects/tst-project/instances/tst-spanner/databases/imp-tst-gbl-harbor-db, projects/tst-project/databases/imp-tst-gbl-harbor-fs."},
+			wantOut:  []string{"The migrate command reads no secret: the stack names none for it.", "The deploy identity reads projects/tst-project/instances/tst-spanner/databases/imp-tst-gbl-harbor-db, projects/tst-project/databases/imp-tst-gbl-harbor-fs."},
 			wantRuns: [][]string{{}},
+		},
+		{
+			name:     "a secret the stack names is read as the deploy identity and passed, its value unprinted",
+			env:      secretsEnvironment,
+			build:    build("false", "", nil),
+			grants:   &fakeGrants{},
+			secrets:  &fakeSecrets{payloads: map[string]string{migratePinnedVersion: migratePinnedValue}},
+			wantOut:  []string{"The migrate command reads 1 secret(s) as the deploy identity, which the stack grants accessor on their containers alone: APP_STAFF_ADMINISTRATOR_PASSWORD (the values are not printed).", "runs on this worker as the deploy identity with 4 variables from the stack."},
+			wantRuns: [][]string{{}},
+			wantVars: []string{"APP_SERVICE_NAME=harbor-migrate", "APP_STAFF_ADMINISTRATOR_PASSWORD=" + migratePinnedValue, "GOOGLE_CLOUD_SPANNER_DATABASE_NAME=imp-tst-gbl-harbor-db", "GOOGLE_CLOUD_SPANNER_PROJECT=tst-project"},
+		},
+		{
+			name:     "a secret's accessor grant the apply just made is waited for",
+			env:      secretsEnvironment,
+			build:    build("false", "", nil),
+			grants:   &fakeGrants{},
+			secrets:  &fakeSecrets{payloads: map[string]string{migratePinnedVersion: migratePinnedValue}, accessDenied: 2},
+			wantRuns: [][]string{{}},
+			wantVars: []string{"APP_SERVICE_NAME=harbor-migrate", "APP_STAFF_ADMINISTRATOR_PASSWORD=" + migratePinnedValue, "GOOGLE_CLOUD_SPANNER_DATABASE_NAME=imp-tst-gbl-harbor-db", "GOOGLE_CLOUD_SPANNER_PROJECT=tst-project"},
+		},
+		{
+			name:    "a secret the deploy identity cannot read fails the step",
+			env:     secretsEnvironment,
+			build:   build("false", "", nil),
+			grants:  &fakeGrants{},
+			secrets: &fakeSecrets{},
+			wantErr: "projects/tst-project/secrets/imp-tst-gbl-harbor-staff-administrator-password/versions/1: the migrate command's APP_STAFF_ADMINISTRATOR_PASSWORD",
 		},
 		{
 			name:   "a grant the apply just made is waited for, and said",
@@ -543,6 +580,9 @@ func TestMigrate(t *testing.T) {
 			clients := &Clients{Exec: run, Sleep: func(context.Context, time.Duration) error { return nil }}
 			if tt.grants != nil {
 				clients.Grants = func(context.Context) (Grants, error) { return tt.grants, nil }
+			}
+			if tt.secrets != nil {
+				clients.Secrets = tt.secrets.open
 			}
 			err := Migrate(t.Context(), clients, w, program, tt.versionVariable, false, &out)
 			at := 0

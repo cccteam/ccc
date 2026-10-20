@@ -615,8 +615,12 @@ func (s *stack) appliedFacts(ctx context.Context, w Workspace, subs map[string]s
 	if databases == "" {
 		return errors.Newf("the stack's substitutions output names no %s, the databases the migrate command reaches: the stack is rendered by an older bedrock than the pipeline's, which bedrock check refuses", migrateDatabasesSub)
 	}
-	fmt.Fprintf(s.out, "The migrate command's settings and databases are read from the stack as applied (%s, %s).\n", migrateEnvSub, migrateDatabasesSub)
-	read[migrateEnvFact], read[migrateDatabasesFact] = settings, databases
+	secrets := facts[migrateSecretsFact]
+	if secrets == "" {
+		return errors.Newf("the stack's substitutions output names no %s, the secrets the migrate command reads: the stack is rendered by an older bedrock than the pipeline's, which bedrock check refuses", migrateSecretsSub)
+	}
+	fmt.Fprintf(s.out, "The migrate command's settings, secrets and databases are read from the stack as applied (%s, %s, %s).\n", migrateEnvSub, migrateSecretsSub, migrateDatabasesSub)
+	read[migrateEnvFact], read[migrateDatabasesFact], read[migrateSecretsFact] = settings, databases, secrets
 
 	return w.Append(read)
 }

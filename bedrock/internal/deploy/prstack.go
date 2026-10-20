@@ -487,9 +487,10 @@ func (s *stack) facts(ctx context.Context) (map[string]string, error) {
 // stackFacts reads the stack's substitutions output (a map of the trigger's
 // substitutions as the stack now stands) into the facts the deploy steps read: the
 // services, the job process's job when the application has one, the hostname, the
-// variables the migrate command runs with (MIGRATE_ENV, from _MIGRATE_ENV) and the
-// databases it reaches (MIGRATE_DATABASES, from _MIGRATE_DATABASES), which the migrate
-// step requires and a stack applied by an older bedrock lacks, and the build arguments
+// variables the migrate command runs with (MIGRATE_ENV, from _MIGRATE_ENV), the secrets
+// it reads (MIGRATE_SECRETS, from _MIGRATE_SECRETS) and the databases it reaches
+// (MIGRATE_DATABASES, from _MIGRATE_DATABASES), which the migrate step requires and a
+// stack applied by an older bedrock lacks, and the build arguments
 // the placement declares (_BUILD_ARG_<NAME>, by their substitutions' names), which a
 // pull-request build's image build reads as the pull request's own.
 func stackFacts(data []byte) (map[string]string, error) {
@@ -512,6 +513,9 @@ func stackFacts(data []byte) (map[string]string, error) {
 	}
 	if databases := subs[migrateDatabasesSub]; databases != "" {
 		facts[migrateDatabasesFact] = databases
+	}
+	if secrets := subs[migrateSecretsSub]; secrets != "" {
+		facts[migrateSecretsFact] = secrets
 	}
 	for name, value := range subs {
 		if strings.HasPrefix(name, derive.BuildArgumentPrefix) {
