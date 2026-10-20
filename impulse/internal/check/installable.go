@@ -110,7 +110,7 @@ func (c installable) Run(_ context.Context, env *Env) Result {
 				continue
 			}
 			for _, t := range targetsFor(g, o) {
-				project, ok, err := c.projectOf(a, t)
+				project, ok, err := boundProjectOf(a, t)
 				if err != nil {
 					return fail(c.Name(), err.Error())
 				}
@@ -154,9 +154,9 @@ type boundProject struct {
 	WebDir string
 }
 
-// projectOf finds the browser project receiving a generated client: the workspace whose
-// directory contains the target's, and the project whose root does.
-func (installable) projectOf(a *app.App, t app.TSTarget) (boundProject, bool, error) {
+// boundProjectOf finds the browser project receiving a generated client: the workspace
+// whose directory contains the target's, and the project whose root does.
+func boundProjectOf(a *app.App, t app.TSTarget) (boundProject, bool, error) {
 	w, ok := a.WebAppFor(t.Dir)
 	if !ok {
 		return boundProject{}, false, nil

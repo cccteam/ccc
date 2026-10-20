@@ -140,6 +140,22 @@ func TestStaticChecksOnFixtures(t *testing.T) {
 			wantStatus: Skip, wantSummary: "no site generator",
 		},
 		{
+			// The fixture's console has no generated client and names no cookie: nothing
+			// contradicts the binding, and the line says what was read.
+			name: "web-wired flat", fixture: "flat", check: webWired{},
+			wantStatus: Pass, wantSummary: "1 browser application(s) bound to their outlets' auths",
+			wantDetails: []string{"lighthouse: web/console/src names 0 resource(s), with the client not generated yet and no XSRF cookie"},
+		},
+		{
+			name: "web-wired sites", fixture: "sites", check: webWired{},
+			wantStatus: Pass, wantSummary: "1 browser application(s) bound to their outlets' auths",
+			wantDetails: []string{"pilots: apps/pilots/gui/src names 0 resource(s), with the client not generated yet and no XSRF cookie"},
+		},
+		{
+			name: "web-wired no site", fixture: "badprogram", check: webWired{},
+			wantStatus: Skip, wantSummary: "no site generator",
+		},
+		{
 			name: "session-tables tables missing", fixture: "flat", check: sessionTables{},
 			wantStatus: Fail, wantSummary: "4 auth wiring problem(s)",
 			wantDetails: []string{
