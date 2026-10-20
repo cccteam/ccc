@@ -306,6 +306,102 @@ func declaresMethod(arg ast.Expr, pkg, name string) bool {
 	return ok && s == name
 }
 
+// BindOutletAuth returns the program's source with the outlet's Auth option set to
+// declaration (generation.Auth("<import path>", generation.PasswordMethod()), as a program
+// writes it), and whether an Auth option was there to replace: the one the outlet
+// declared is replaced, or the declaration is added after the outlet's prefix when it
+// declared none. outlet is the outlet's name: the reserved default names the
+// GenerateRoutes declaration, any other a WithRouterOutlet. The edit is textual, so the
+// rest of the file's comments and layout survive; the result is formatted.
+func BindOutletAuth(rel string, src []byte, outlet, declaration string) (out []byte, replaced bool, err error) {
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, rel, src, parser.ParseComments)
+	if err != nil {
+		return nil, false, errors.Wrap(err, "parser.ParseFile()")
+	}
+	pkg := generationLocalName(f)
+	if pkg == "" {
+		return nil, false, errors.Newf("%s does not import %s", rel, generationImportPath)
+	}
+	call := findGeneratorCall(f, pkg)
+	if call == nil {
+		return nil, false, errors.Newf("%s makes no %s.NewResourceGenerator call", rel, pkg)
+	}
+	decl := findOutletCall(call, pkg, outlet)
+	if decl == nil {
+		return nil, false, errors.Newf("%s declares no %s outlet", rel, outlet)
+	}
+	text := qualify(declaration, pkg)
+	var b bytes.Buffer
+	for _, arg := range decl.Args[outletPositionalArgs:] {
+		ce, ok := arg.(*ast.CallExpr)
+		if !ok || !isQualified(ce.Fun, pkg, optAuth) {
+			continue
+		}
+		b.Write(src[:fset.Position(ce.Pos()).Offset])
+		b.WriteString(text)
+		b.Write(src[fset.Position(ce.End()).Offset:])
+		out, err = format.Source(b.Bytes())
+		if err != nil {
+			return nil, false, errors.Wrapf(err, "format.Source(): %s after binding the %s outlet", rel, outlet)
+		}
+
+		return out, true, nil
+	}
+	// No Auth option: the declaration follows the prefix, on a line of its own when the
+	// outlet's options are one per line.
+	end := fset.Position(decl.Args[outletPositionalArgs-1].End()).Offset
+	b.Write(src[:end])
+	rest := src[end:]
+	trimmed := bytes.TrimLeft(rest, " \t")
+	if len(trimmed) > 1 && trimmed[0] == ',' && (trimmed[1] == '\n' || trimmed[1] == '\r') {
+		comma := len(rest) - len(trimmed) + 1
+		b.Write(rest[:comma])
+		b.WriteString("\n" + text + ",")
+		b.Write(rest[comma:])
+	} else {
+		b.WriteString(", " + text)
+		b.Write(rest)
+	}
+	out, err = format.Source(b.Bytes())
+	if err != nil {
+		return nil, false, errors.Wrapf(err, "format.Source(): %s after binding the %s outlet", rel, outlet)
+	}
+
+	return out, false, nil
+}
+
+// outletPositionalArgs is the number of arguments an outlet declaration takes before its
+// options: GenerateRoutes(targetDir, prefix, ...) and WithRouterOutlet(name, prefix, ...).
+const outletPositionalArgs = 2
+
+// findOutletCall returns the outlet's declaration among the generator call's options: the
+// GenerateRoutes call for the default outlet, the WithRouterOutlet call naming any other;
+// nil when the program declares no such outlet.
+func findOutletCall(call *ast.CallExpr, pkg, outlet string) *ast.CallExpr {
+	if len(call.Args) < positionalArgs {
+		return nil
+	}
+	for _, a := range call.Args[positionalArgs:] {
+		ce, ok := a.(*ast.CallExpr)
+		if !ok || len(ce.Args) < outletPositionalArgs {
+			continue
+		}
+		if outlet == DefaultOutletName {
+			if isQualified(ce.Fun, pkg, optGenerateRoutes) {
+				return ce
+			}
+
+			continue
+		}
+		if s, ok := stringLit(ce.Args[0]); ok && s == outlet && isQualified(ce.Fun, pkg, optWithRouterOutlet) {
+			return ce
+		}
+	}
+
+	return nil
+}
+
 // MoveDefaultOutlet returns the program's source with the default outlet's declaration
 // moved: GenerateRoutes' prefix becomes prefix, and the mount path of its WebApp option,
 // when it declares one, becomes mount. The edit is textual, so the rest of the file's

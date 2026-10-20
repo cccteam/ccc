@@ -24,9 +24,11 @@ import (
 // from the start, with one file per sign-in method. Its session tables are written as
 // migrations under its prefix, its access tables copied from an auth the application has,
 // and the data level constructs it beside that auth, reading each directory method's
-// settings from the environment. Binding a site or an outlet to it, the users it starts
-// with, and the tests that prove its people are strangers to the other auths are the
-// agent's.
+// settings from the environment. The outlet the auth serves is pointed at it: its
+// declaration in the generator program names the new auth with its methods, so the
+// regenerated router mounts the auth's session group under the outlet's prefix. The App's
+// handlers that router then requires, the users the auth starts with, and the tests that
+// prove its people are strangers to the other auths are the agent's.
 type Auth struct {
 	// Name is the auth's lowercase name, the population it serves: partners, learners.
 	Name string
@@ -34,6 +36,12 @@ type Auth struct {
 	// method when none is given. A directory method here takes the default shape, one
 	// organization and members of the directory; impulse add method composes the others.
 	Methods []authpkg.Method
+	// Outlet is the outlet the auth serves, by the key OutletChoices gives it: the
+	// outlet's name in the flat layout (default for the one GenerateRoutes declares), the
+	// site's name for a site's default outlet in the sites layout. Required: an auth is
+	// reachable only through the outlet bound to it, and the tool cannot know which
+	// population an outlet is for.
+	Outlet string
 }
 
 // The authorities for a directory method's role membership.
@@ -53,6 +61,9 @@ func (au Auth) Command() string {
 	}
 	if authority := au.authority(); authority != "" {
 		cmd += " --authority " + authority
+	}
+	if au.Outlet != "" {
+		cmd += " --outlet " + au.Outlet
 	}
 
 	return cmd
@@ -136,8 +147,86 @@ func (au Auth) Validate(a *app.App) error {
 	if _, err := au.source(a); err != nil {
 		return err
 	}
+	if _, err := au.target(a); err != nil {
+		return err
+	}
 
 	return nil
+}
+
+// OutletChoice is one outlet of the application, by the key --outlet takes.
+type OutletChoice struct {
+	// Key is what --outlet takes: the outlet's name in the flat layout (default for the
+	// one GenerateRoutes declares), the site's name for a site's default outlet in the
+	// sites layout and <site>/<outlet> for another outlet of that site.
+	Key string
+	// Site is the site declaring the outlet.
+	Site app.Site
+	// Outlet is the declaration as the profile reads it. An API-key outlet is listed so
+	// a person sees why it is not a choice: a machine surface has no sign-in.
+	Outlet app.Outlet
+}
+
+// OutletChoices lists the application's outlets in declaration order, by the key
+// --outlet takes, the ones an auth may serve and the API-key outlets it may not.
+func OutletChoices(a *app.App) []OutletChoice {
+	p := a.Profile()
+	var choices []OutletChoice
+	for i := range p.Sites {
+		site := &p.Sites[i]
+		outlets := site.AllOutlets()
+		for j := range outlets {
+			o := &outlets[j]
+			if o.Name == "" {
+				continue
+			}
+			key := o.Name
+			if p.Layout == app.LayoutSites {
+				key = site.Name
+				if o.Name != app.DefaultOutletName {
+					key += "/" + o.Name
+				}
+			}
+			choices = append(choices, OutletChoice{Key: key, Site: *site, Outlet: *o})
+		}
+	}
+
+	return choices
+}
+
+// sessionOutletKeys lists the keys of the outlets an auth may serve, or says there are
+// none.
+func sessionOutletKeys(choices []OutletChoice) string {
+	var keys []string
+	for i := range choices {
+		if !choices[i].Outlet.APIKey {
+			keys = append(keys, choices[i].Key)
+		}
+	}
+
+	return listed(keys)
+}
+
+// target finds the outlet the auth serves: a session outlet of the application, by its
+// key.
+func (au Auth) target(a *app.App) (*OutletChoice, error) {
+	choices := OutletChoices(a)
+	if au.Outlet == "" {
+		return nil, errors.Newf("--outlet is required: the outlet the %s auth serves, whose declaration is pointed at the auth; the outlets are %s (impulse add outlet adds one)", au.Name, sessionOutletKeys(choices))
+	}
+	for i := range choices {
+		c := &choices[i]
+		if c.Key != au.Outlet {
+			continue
+		}
+		if c.Outlet.APIKey {
+			return nil, errors.Newf("%s: the %s outlet is an API-key outlet (APIKey()), a machine surface with no sign-in; an auth serves a session outlet, and the outlets are %s", c.Outlet.Pos, au.Outlet, sessionOutletKeys(choices))
+		}
+
+		return c, nil
+	}
+
+	return nil, errors.Newf("no %s outlet for the %s auth to serve; the outlets are %s (impulse add outlet adds one)", au.Outlet, au.Name, sessionOutletKeys(choices))
 }
 
 // source finds the auth the new one is written beside: the first auth package by name.
@@ -189,6 +278,10 @@ func (au Auth) Apply(ctx context.Context, a *app.App, exec check.Execer) (*Chang
 	if err != nil {
 		return nil, err
 	}
+	outlet, err := au.target(a)
+	if err != nil {
+		return nil, err
+	}
 	ch := &Change{Command: au.Command()}
 	spec := &authpkg.Spec{Module: modulePath(a), AuthDir: src.AuthDir, Name: au.Name, Methods: au.methods()}
 	if err := au.writePackage(a, src, spec, ch); err != nil {
@@ -201,6 +294,9 @@ func (au Auth) Apply(ctx context.Context, a *app.App, exec check.Execer) (*Chang
 		return nil, err
 	}
 	if err := au.editConfig(a, src, spec, ch); err != nil {
+		return nil, err
+	}
+	if err := au.bindOutlet(a, outlet, spec, ch); err != nil {
 		return nil, err
 	}
 	if au.directory() {
@@ -216,11 +312,54 @@ func (au Auth) Apply(ctx context.Context, a *app.App, exec check.Execer) (*Chang
 			}
 		}
 	}
-	// Nothing here changes what the generator reads, but a regeneration proves the
-	// tree still generates.
-	generate(ctx, a, exec, ch, "go generate ./... failed; fix the cause and run it:", "ran go generate ./...")
+	generate(ctx, a, exec, ch, "go generate ./... failed, so the outlet's routes for the auth are not generated yet; fix the cause and run it:", "ran go generate ./...")
 
 	return ch, nil
+}
+
+// bindOutlet points the outlet's declaration at the new auth: its Auth option names the
+// package and the methods the Auth starts with, in place of the auth it declared, so the
+// regenerated router mounts the auth's session group under the outlet's prefix. Under a
+// hand-written router the program declares no Auth to point, and mounting the group is
+// the agent's.
+func (au Auth) bindOutlet(a *app.App, choice *OutletChoice, spec *authpkg.Spec, ch *Change) error {
+	site := &choice.Site
+	file := site.Generator.File
+	prefix := "/" + choice.Outlet.Prefix
+	if !site.GeneratedRouter {
+		ch.skipf("%s: the %s outlet is served by a hand-written router, so its declaration carries no Auth to point at the %s auth; mount the auth's session group under %s in the router", file, choice.Key, au.Name, prefix)
+
+		return nil
+	}
+	if spec.Module == "" {
+		ch.skipf("%s: no module path in go.mod, so the %s outlet's Auth declaration cannot name the %s auth's package; point it at the package", file, choice.Key, au.Name)
+
+		return nil
+	}
+	auth := &app.OutletAuth{ImportPath: path.Join(spec.Module, spec.AuthDir, au.Name)}
+	for i := range spec.Methods {
+		m := &spec.Methods[i]
+		auth.Methods = append(auth.Methods, app.AuthMethodArg{Kind: m.Kind, Name: m.Name})
+	}
+	declaration := authDeclaration(auth)
+	src, mode, err := readFile(a, file)
+	if err != nil {
+		return err
+	}
+	out, _, err := app.BindOutletAuth(file, src, choice.Outlet.Name, declaration)
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(a.Abs(file), out, mode); err != nil {
+		return errors.Wrap(err, "os.WriteFile()")
+	}
+	was := "which declared no auth before"
+	if choice.Outlet.Auth != nil {
+		was = fmt.Sprintf("in place of the %s auth's", authName(a, choice.Outlet.Auth.ImportPath))
+	}
+	ch.didf("%s: the %s outlet's declaration names the %s auth with its methods, %s, %s, so the regenerated router mounts the auth's session group under %s: one login route per method, the methods route its login page renders from, and the pending sign-in routes", file, choice.Key, au.Name, declaration, was, prefix)
+
+	return nil
 }
 
 // modulePath is the application's module path, or empty.
@@ -536,11 +675,11 @@ func (au Auth) Meaning() string {
 	fmt.Fprintf(&b, "An auth is a population that holds roles in its own permission store and signs in through the methods registered on its Auth session, and it is a package: `pkg/auth/%[1]s` owns the %[1]s session manager (one `session.Auth` over the tables `%[2]sSessions`, `%[2]sSessionUsers`, `%[2]sSessionIdentities`, `%[2]sSessionAuthEvents` and `%[2]sSessionPendingSignIns`; cookie `%[1]s`), the %[1]s permission store (tables prefixed `%[2]s`), and the role file `pkg/auth/%[1]s/roles.json`, embedded in the package and handed to the permission engine as the release's default roles (`access.WithDefaultRoles`). The engine signals its policy writes to the application's other instances through the live service (`access.WithChangeSignal` over `resource.KindPolicy`, built by the package's `announcePolicy` and `watchPolicy` from the `Settings.Signals` the data level passes), which the `change-signal` check holds every engine to. Its methods, each in its own file named for the registration: %[3]s. A person in two auths is two unrelated principals. The data level now constructs it beside the other auths%[4]s.\n\n", au.Name, au.Pascal(), strings.Join(listed, "; "), au.registrationNote())
 	b.WriteString("Left to wire:\n\n")
 	items := []string{
-		fmt.Sprintf("Bind a surface to it. Decide which outlet serves the %[1]s population and point its declaration at the auth with its methods: `generation.Auth(\"<module>/pkg/auth/%[1]s\", %[2]s)` on that outlet's `WithRouterOutlet` (or on `GenerateRoutes` for the console), adding the outlet first with `impulse add outlet` when the population has none; then run `go generate ./...`. The generated router mounts the %[1]s auth's session group under the outlet's prefix with one login route per method (`user/<registration>/login`, the callback and front-channel logout of a directory method, the password method's `user/password/login`), the methods route the login page renders from (`user/methods`) and the pending sign-in routes, and with two auths declared binds the group's requests to the auth (`BindAuth(%[1]s.Name)`, which the App implements over `pkg/auth.Bind` as the reference's does) so permission checks and tenant visibility answer from the %[1]s store. Give the App what the generated `Handlers` then requires: for an additional outlet a `<Outlet>()` method returning the %[1]s auth's `*%[1]s.Handlers`; the default outlet's session surface is the App's embedded `*<auth>.Handlers`. The surface's web app names the auth's XSRF cookie, `%[1]s.XSRFCookie` (`%[1]s-xsrf`), in its HttpClient configuration (`withXsrfConfiguration`), since the browser echoes that cookie in the X-XSRF-TOKEN header, and its login page renders from the methods route.", au.Name, strings.Join(declarations, ", ")),
+		fmt.Sprintf("Serve it from the %[3]s outlet. The outlet's declaration now names the auth with its methods (`generation.Auth(\"<module>/pkg/auth/%[1]s\", %[2]s)` on its `WithRouterOutlet`, or on `GenerateRoutes` for the default outlet), so the regenerated router mounts the %[1]s auth's session group under the outlet's prefix with one login route per method (`user/<registration>/login`, the callback and front-channel logout of a directory method, the password method's `user/password/login`), the methods route the login page renders from (`user/methods`) and the pending sign-in routes, and with two auths declared binds the group's requests to the auth (`BindAuth(%[1]s.Name)`, which the App implements over `pkg/auth.Bind` as the reference's does) so permission checks and tenant visibility answer from the %[1]s store. Give the App what the generated `Handlers` now requires: for an additional outlet a `<Outlet>()` method returning the %[1]s auth's `*%[1]s.Handlers`, in place of the one returning the auth the outlet served before; the default outlet's session surface is the App's embedded `*<auth>.Handlers`. The outlet's web app names the auth's XSRF cookie, `%[1]s.XSRFCookie` (`%[1]s-xsrf`), in its HttpClient configuration (`withXsrfConfiguration`), since the browser echoes that cookie in the X-XSRF-TOKEN header, and its login page renders from the methods route. Under a hand-written router the declaration carries no Auth to point, and the skipped list above says to mount the group in the router.", au.Name, strings.Join(declarations, ", "), au.Outlet),
 		fmt.Sprintf("Check its roles. The package hands its role file to the engine when the data level constructs it; call `deploy.CheckRoles` for the %[1]s auth in the bootstrap and the deployment's migrate step, so a deploy prints what the store holds that the release cannot use as written.%[2]s Add the %[1]s auth's row to the roles validation test in `pkg/deploy` (`access.ValidateRoles` over the collection, parsing `%[1]s.Roles()`), its expected warnings empty, so a warning the deploy would print is accepted in code or fixed in the role; `impulse check` warns while the row is missing.", au.Name, au.identitiesNote()),
 	}
 	if au.directory() {
-		items = append(items, fmt.Sprintf("Register it. The environment template now carries each directory method's variables (`APP_%s_<REGISTRATION>_*`): set the redirect URL to the browser-facing callback of the surface it binds to (through the dev proxy in development), and fill the rest in when the application is registered with its directory. Until then the Procfile builds with the session library's `skipAuth` tag, which simulates the directory: every sign-in through a registration is `APP_<REGISTRATION>_USERNAME`, or `APP_USERNAME` when that is unset.", strings.ToUpper(au.Name)))
+		items = append(items, fmt.Sprintf("Register it. The environment template now carries each directory method's variables (`APP_%s_<REGISTRATION>_*`): set the redirect URL to the browser-facing callback under the %s outlet's prefix (through the dev proxy in development), and fill the rest in when the application is registered with its directory. Until then the Procfile builds with the session library's `skipAuth` tag, which simulates the directory: every sign-in through a registration is `APP_<REGISTRATION>_USERNAME`, or `APP_USERNAME` when that is unset.", strings.ToUpper(au.Name), au.Outlet))
 	}
 	items = append(items,
 		fmt.Sprintf("Release it. Close the %s auth where the data level closes the others.", au.Name),

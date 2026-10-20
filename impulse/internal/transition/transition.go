@@ -72,6 +72,15 @@ func (c *Change) Text() string {
 	return b.String()
 }
 
+// listed joins names for a message, or says there are none.
+func listed(names []string) string {
+	if len(names) == 0 {
+		return "none"
+	}
+
+	return strings.Join(names, ", ")
+}
+
 // WarningPrefix is how a generate program prints one schema warning.
 const WarningPrefix = "Warning: "
 

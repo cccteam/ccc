@@ -154,15 +154,12 @@ func authName(a *app.App, importPath string) string {
 
 // authNames lists the application's auths, or says there are none.
 func authNames(a *app.App) string {
-	if len(a.AuthPackages) == 0 {
-		return "none"
-	}
 	names := make([]string, 0, len(a.AuthPackages))
 	for i := range a.AuthPackages {
 		names = append(names, a.AuthPackages[i].Name)
 	}
 
-	return strings.Join(names, ", ")
+	return listed(names)
 }
 
 // Apply makes the deterministic half of the transition: the generator program gains the

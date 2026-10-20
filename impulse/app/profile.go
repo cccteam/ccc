@@ -208,7 +208,7 @@ func (a *App) site(g *Generator) Site {
 			readOutletOptions(&s.Default, c.Args[2:])
 		}
 	}
-	for _, c := range g.OptionsNamed("WithRouterOutlet") {
+	for _, c := range g.OptionsNamed(optWithRouterOutlet) {
 		if len(c.Args) < 2 || c.Args[0].Kind != ArgString || c.Args[1].Kind != ArgString {
 			continue
 		}
