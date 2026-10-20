@@ -623,3 +623,134 @@ func TestAppendCallArgument(t *testing.T) {
 		})
 	}
 }
+
+// settingsSource is a data level building an auth's settings in a method of its
+// environment struct, as the skeleton's does.
+const settingsSource = `package config
+
+import (
+	"example.com/acme/beacon/pkg/auth/staff"
+)
+
+// dataConfig holds the environment every database-opening process reads.
+type dataConfig struct {
+	SessionTimeout time.Duration
+}
+
+// staffSettings builds the staff auth's settings: the collection, the signals, the
+// cookie key and the session timeout.
+func (env *dataConfig) staffSettings(collection access.PermissionCollection, signals staff.Signals, cookieKey string) *staff.Settings {
+	return &staff.Settings{Collection: collection, Signals: signals, CookieKey: cookieKey, SessionTimeout: env.SessionTimeout}
+}
+
+func (env dataConfig) timeout() time.Duration { return env.SessionTimeout }
+`
+
+func TestAddMethodLiteralElement(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		recvType string
+		funcName string
+		typeName string
+		element  string
+		want     string
+		wantErr  string
+	}{
+		{
+			name: "a one-line literal in a pointer-receiver method gains the element", recvType: "dataConfig", funcName: "staffSettings", typeName: "staff.Settings", element: `LoginURL: "/login"`,
+			want: strings.Replace(settingsSource, "SessionTimeout: env.SessionTimeout}", "SessionTimeout: env.SessionTimeout, LoginURL: \"/login\"}", 1),
+		},
+		{
+			name: "a nested literal spreads the literal over lines", recvType: "dataConfig", funcName: "staffSettings", typeName: "staff.Settings", element: "Directory: staff.DirectorySettings{\n\tTenantID: env.StaffDirectoryTenantID,\n}",
+			want: strings.Replace(settingsSource, "\treturn &staff.Settings{Collection: collection, Signals: signals, CookieKey: cookieKey, SessionTimeout: env.SessionTimeout}\n",
+				"\treturn &staff.Settings{\n\t\tCollection:     collection,\n\t\tSignals:        signals,\n\t\tCookieKey:      cookieKey,\n\t\tSessionTimeout: env.SessionTimeout,\n\t\tDirectory: staff.DirectorySettings{\n\t\t\tTenantID: env.StaffDirectoryTenantID,\n\t\t},\n\t}\n", 1),
+		},
+		{
+			name: "an element the literal sets already", recvType: "dataConfig", funcName: "staffSettings", typeName: "staff.Settings", element: "CookieKey: key",
+			want: settingsSource,
+		},
+		{
+			name: "a method of another type", recvType: "DataConfiguration", funcName: "staffSettings", typeName: "staff.Settings", element: "x: 1",
+			wantErr: "declares no method staffSettings of DataConfiguration",
+		},
+		{
+			name: "a literal the method does not build", recvType: "dataConfig", funcName: "timeout", typeName: "staff.Settings", element: "x: 1",
+			wantErr: "method timeout of dataConfig builds no staff.Settings literal",
+		},
+		{
+			name: "a function the file lacks", recvType: "", funcName: "staffSettings", typeName: "staff.Settings", element: "x: 1",
+			wantErr: "declares no function staffSettings",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := AddMethodLiteralElement("data.go", []byte(settingsSource), tt.recvType, tt.funcName, tt.typeName, tt.element)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) || !errors.Is(err, ErrNoAnchor) {
+					t.Fatalf("AddMethodLiteralElement() error = %v, want ErrNoAnchor with %q", err, tt.wantErr)
+				}
+
+				return
+			}
+			if err != nil {
+				t.Fatalf("AddMethodLiteralElement() error = %v", err)
+			}
+			if diff := cmp.Diff(tt.want, string(got)); diff != "" {
+				t.Errorf("mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+func TestCopyMethod(t *testing.T) {
+	t.Parallel()
+
+	rename := func(text string) string {
+		return strings.ReplaceAll(strings.ReplaceAll(text, "staff", "partners"), "Staff", "Partners")
+	}
+	tests := []struct {
+		name     string
+		recvType string
+		method   string
+		want     string
+		wantErr  string
+	}{
+		{
+			name: "a documented method is copied after itself under the new name", recvType: "dataConfig", method: "staffSettings",
+			want: strings.Replace(settingsSource, "SessionTimeout: env.SessionTimeout}\n}\n",
+				"SessionTimeout: env.SessionTimeout}\n}\n\n// partnersSettings builds the partners auth's settings: the collection, the signals, the\n// cookie key and the session timeout.\nfunc (env *dataConfig) partnersSettings(collection access.PermissionCollection, signals partners.Signals, cookieKey string) *partners.Settings {\n\treturn &partners.Settings{Collection: collection, Signals: signals, CookieKey: cookieKey, SessionTimeout: env.SessionTimeout}\n}\n", 1),
+		},
+		{
+			name: "a value-receiver method without a doc comment", recvType: "dataConfig", method: "timeout",
+			want: settingsSource + "\nfunc (env dataConfig) timeout() time.Duration { return env.SessionTimeout }\n",
+		},
+		{
+			name: "a method the type lacks", recvType: "dataConfig", method: "membersSettings",
+			wantErr: "declares no method membersSettings of dataConfig",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := CopyMethod("data.go", []byte(settingsSource), tt.recvType, tt.method, rename)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) || !errors.Is(err, ErrNoAnchor) {
+					t.Fatalf("CopyMethod() error = %v, want ErrNoAnchor with %q", err, tt.wantErr)
+				}
+
+				return
+			}
+			if err != nil {
+				t.Fatalf("CopyMethod() error = %v", err)
+			}
+			if diff := cmp.Diff(tt.want, string(got)); diff != "" {
+				t.Errorf("mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}

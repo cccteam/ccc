@@ -6,6 +6,7 @@ import (
 	"os"
 	"path"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/go-playground/errors/v5"
@@ -320,8 +321,11 @@ func lowerFirst(s string) string {
 }
 
 // editConfig reads the method's settings from the environment on the data level: the
-// environment struct gains the registration's variables, and the auth's Settings literal
-// gains the method's settings and, when it has none yet, the login page.
+// environment struct gains the registration's variables, and the auth's Settings
+// literal gains the method's settings and, when it has none yet, the login page. The
+// literal is in the auth's settings function on the environment struct
+// (<auth>Settings, the skeleton's shape), or inline in NewDataConfiguration in an
+// application composed before the function; the did line says which.
 func (m *Method) editConfig(a *app.App, spec *authpkg.Method, ch *Change) error {
 	rel, data, mode, err := findDeclaringFile(a, "DataConfiguration")
 	if err != nil {
@@ -343,24 +347,26 @@ func (m *Method) editConfig(a *app.App, spec *authpkg.Method, ch *Change) error 
 	if err != nil {
 		return err
 	}
-	settingsType := m.Auth + ".Settings"
-	edited, err = app.AddLiteralElement(rel, edited, "NewDataConfiguration", settingsType, `LoginURL: "/login"`)
+	place := settingsPlace(rel, edited, structName, m.Auth)
+	passed, err := place.add(edited, `LoginURL: "/login"`)
+	reads := fmt.Sprintf("%s: %s reads the %s auth's %s registration from %s", rel, structName, m.Auth, spec.Name, strings.Join(methodVariables(m.Auth, spec), ", "))
 	switch {
 	case errors.Is(err, app.ErrNoAnchor):
-		ch.skipf("%s: NewDataConfiguration builds no %s{...} literal, so the %s method's settings are read into %s but not passed; set %s.Settings.%s from them", rel, settingsType, spec.Name, structName, m.Auth, spec.Pascal())
+		ch.didf("%s", reads)
+		ch.skipf("%s: %s has no %sSettings method and NewDataConfiguration builds no %s.Settings{...} literal, so the %s method's settings are read into %s but not passed; set %s.Settings.%s from them", rel, structName, m.Auth, m.Auth, spec.Name, structName, m.Auth, spec.Pascal())
 	case err != nil:
 		return err
 	default:
-		edited, err = app.AddLiteralElement(rel, edited, "NewDataConfiguration", settingsType, spec.Pascal()+": "+m.Auth+"."+literal)
+		edited, err = place.add(passed, spec.Pascal()+": "+m.Auth+"."+literal)
 		if err != nil {
 			return err
 		}
+		ch.didf("%s, and %s passes them", reads, place.name)
+		ch.skipf("%s: LoginURL is set to /login when the construction had none; make it the login page of the surface bound to the %s auth", rel, m.Auth)
 	}
 	if err := os.WriteFile(a.Abs(rel), edited, mode); err != nil {
 		return errors.Wrap(err, "os.WriteFile()")
 	}
-	ch.didf("%s: %s reads the %s auth's %s registration from %s, and the %s.Settings literal passes them", rel, structName, m.Auth, spec.Name, strings.Join(methodVariables(m.Auth, spec), ", "), m.Auth)
-	ch.skipf("%s: LoginURL is set to /login when the construction had none; make it the login page of the surface bound to the %s auth", rel, m.Auth)
 
 	return nil
 }
@@ -654,5 +660,37 @@ func devValue(f *authpkg.Field, auth string) string {
 		return auth + "-"
 	default:
 		return ""
+	}
+}
+
+// literalPlace is where an auth's Settings literal is built on the data level: add
+// appends an element to it, and name is how a did line names it.
+type literalPlace struct {
+	name string
+	add  func(src []byte, element string) ([]byte, error)
+}
+
+// settingsPlace finds where the auth's Settings literal is built: the auth's settings
+// function on the environment struct (<auth>Settings, the shape the skeleton carries) when
+// the struct has one, the literal inline in NewDataConfiguration otherwise (an
+// application composed before the function). A level with neither has add fail with
+// app.ErrNoAnchor.
+func settingsPlace(rel string, src []byte, structName, auth string) literalPlace {
+	settingsType := auth + ".Settings"
+	method := auth + "Settings"
+	if methods, err := app.MethodNames(rel, src, structName); err == nil && slices.Contains(methods, method) {
+		return literalPlace{
+			name: fmt.Sprintf("%s.%s", structName, method),
+			add: func(src []byte, element string) ([]byte, error) {
+				return app.AddMethodLiteralElement(rel, src, structName, method, settingsType, element)
+			},
+		}
+	}
+
+	return literalPlace{
+		name: "the " + settingsType + " literal in NewDataConfiguration (an application composed before the " + method + " method)",
+		add: func(src []byte, element string) ([]byte, error) {
+			return app.AddLiteralElement(rel, src, "NewDataConfiguration", settingsType, element)
+		},
 	}
 }

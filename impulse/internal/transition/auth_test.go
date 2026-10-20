@@ -117,6 +117,58 @@ type dataConfig struct {
 }
 `
 
+// authConfigSettings is a data level building the staff auth's settings in a method of
+// its environment struct, as the base does.
+const authConfigSettings = `package config
+
+import (
+	"context"
+	"time"
+
+	cloudspanner "cloud.google.com/go/spanner"
+	"github.com/go-playground/errors/v5"
+
+	"example.com/acme/beacon/pkg/auth/staff"
+)
+
+// DataConfiguration is the second level.
+type DataConfiguration struct {
+	spannerClient *cloudspanner.Client
+	staff         *staff.Auth
+}
+
+// NewDataConfiguration opens the clients.
+func NewDataConfiguration(ctx context.Context) (*DataConfiguration, error) {
+	env := &dataConfig{}
+	spannerClient, cookieKey, err := open(ctx, env)
+	if err != nil {
+		return nil, errors.Wrap(err, "open()")
+	}
+
+	staffAuth, err := staff.New(ctx, spannerClient, env.staffSettings(cookieKey))
+	if err != nil {
+		return nil, errors.Wrap(err, "staff.New()")
+	}
+
+	return &DataConfiguration{
+		spannerClient: spannerClient,
+		staff:         staffAuth,
+	}, nil
+}
+
+// dataConfig holds the environment every database-opening process reads.
+type dataConfig struct {
+	// SessionTimeout is the idle timeout of a browser session.
+	SessionTimeout time.Duration ` + "`" + `env:"APP_DEFAULT_SESSION_TIMEOUT,default=10m"` + "`" + `
+}
+
+// staffSettings builds the staff auth's settings: the cookie key and the session
+// timeout. A directory registration's settings join the literal here.
+func (env *dataConfig) staffSettings(cookieKey string) *staff.Settings {
+	return &staff.Settings{CookieKey: cookieKey, SessionTimeout: env.SessionTimeout}
+}
+`
+
 // authRouterProgram is a generator program under the generated router: the console on
 // the default outlet, a portal outlet, both bound to the staff auth, and an API-key
 // outlet.
@@ -340,7 +392,21 @@ func TestAuthApply(t *testing.T) {
 	const packageDid = "pkg/auth/partners: the partners auth package (foothold.go, partners.go, password.go), rendered from the skeleton's auth source: the Auth session over tables prefixed Partners, the partners permission store, and the methods password, each in its own file"
 	const migrationsDid = "schema/migrations: 000005_PartnersAccess, 000006_PartnersSessionUsers, 000007_PartnersSessions, the partners auth's tables: the access tables copied from the staff auth's under the Partners prefix, and the Auth session tables (sessions, users, identities, auth events, pending sign-ins)"
 	const rolesDid = "pkg/auth/partners/roles.json: the partners auth's role file, empty: author its roles when its surfaces are bound"
-	const configDid = "pkg/config/data.go: the partners auth constructed on DataConfiguration beside the staff auth (field, construction, import); pkg/config/partners.go: its accessor Partners()"
+	const configDid = "pkg/config/data.go: the partners auth constructed on DataConfiguration beside the staff auth (field, construction, import), its settings in the construction's literal as the staff auth's are (an application composed before the staffSettings method); pkg/config/partners.go: its accessor Partners()"
+	const configSettingsDid = "pkg/config/data.go: the partners auth constructed on DataConfiguration beside the staff auth (field, construction, import), its settings built by dataConfig.partnersSettings, copied from staffSettings; pkg/config/partners.go: its accessor Partners()"
+
+	// The data level in the skeleton's shape after add auth: the construction copied with
+	// its settings call renamed, and the settings function copied under the new name.
+	wantSettingsConfig := strings.Replace(authConfigSettings, "\t\"example.com/acme/beacon/pkg/auth/staff\"\n", "\t\"example.com/acme/beacon/pkg/auth/partners\"\n\t\"example.com/acme/beacon/pkg/auth/staff\"\n", 1)
+	wantSettingsConfig = strings.Replace(wantSettingsConfig, "\tstaff         *staff.Auth\n}", "\tstaff         *staff.Auth\n\tpartners      *partners.Auth\n}", 1)
+	wantSettingsConfig = strings.Replace(wantSettingsConfig,
+		"\treturn &DataConfiguration{\n\t\tspannerClient: spannerClient,\n\t\tstaff:         staffAuth,\n\t}, nil\n",
+		"\tpartnersAuth, err := partners.New(ctx, spannerClient, env.partnersSettings(cookieKey))\n\tif err != nil {\n\t\treturn nil, errors.Wrap(err, \"partners.New()\")\n\t}\n\n\treturn &DataConfiguration{\n\t\tspannerClient: spannerClient,\n\t\tstaff:         staffAuth,\n\t\tpartners:      partnersAuth,\n\t}, nil\n", 1)
+	wantSettingsConfig += "\n// partnersSettings builds the partners auth's settings: the cookie key and the session\n// timeout. A directory registration's settings join the literal here.\nfunc (env *dataConfig) partnersSettings(cookieKey string) *partners.Settings {\n\treturn &partners.Settings{CookieKey: cookieKey, SessionTimeout: env.SessionTimeout}\n}\n"
+
+	// A settings call whose receiver the level never builds with env := &T{}: the struct
+	// the function is declared on is unknown, so the copy is the agent's.
+	unnamedSettingsConfig := strings.Replace(authConfigSettings, "\tenv := &dataConfig{}\n\tspannerClient, cookieKey, err := open(ctx, env)\n", "\tenv, spannerClient, cookieKey, err := open(ctx)\n", 1)
 
 	routed := map[string]string{programFile: authRouterProgram}
 	tests := []struct {
@@ -394,6 +460,64 @@ func TestAuthApply(t *testing.T) {
 				}
 				if got := read(t, a, "pkg/config/partners.go"); !strings.Contains(got, "func (c *DataConfiguration) Partners() *partners.Auth") {
 					t.Errorf("accessor = %q", got)
+				}
+			},
+		},
+		{
+			name:    "a password auth written beside staff copies the staff settings function",
+			auth:    Auth{Name: "partners", Outlet: "default"},
+			extra:   map[string]string{"pkg/config/data.go": authConfigSettings},
+			wantDid: []string{packageDid, migrationsDid, rolesDid, configSettingsDid, "ran go generate ./..."},
+			wantSkipped: []string{
+				"pkg/config/data.go: Close releases the staff auth only; release the partners auth too",
+			},
+			check: func(t *testing.T, a *app.App) {
+				t.Helper()
+				if diff := cmp.Diff(wantSettingsConfig, read(t, a, "pkg/config/data.go")); diff != "" {
+					t.Errorf("data.go mismatch (-want +got):\n%s", diff)
+				}
+			},
+		},
+		{
+			name:  "a directory auth's registration joins the copied settings function",
+			auth:  Auth{Name: "partners", Methods: []authpkg.Method{{Kind: app.MethodAzure, Name: "directory", Authority: AuthorityApplication}}, Outlet: "default"},
+			extra: map[string]string{"pkg/config/data.go": authConfigSettings},
+			wantDid: []string{
+				"pkg/config/data.go: dataConfig reads the partners auth's directory registration from APP_PARTNERS_DIRECTORY_TENANT_ID, APP_PARTNERS_DIRECTORY_CLIENT_ID, APP_PARTNERS_DIRECTORY_CLIENT_SECRET, APP_PARTNERS_DIRECTORY_REDIRECT_URL",
+				configSettingsDid,
+			},
+			check: func(t *testing.T, a *app.App) {
+				t.Helper()
+				got := read(t, a, "pkg/config/data.go")
+				for _, want := range []string{
+					"\tpartnersAuth, err := partners.New(ctx, spannerClient, env.partnersSettings(cookieKey))\n",
+					"\tPartnersDirectoryTenantID     string `env:\"APP_PARTNERS_DIRECTORY_TENANT_ID\"`\n",
+					"\tPartnersDirectoryClientSecret string `env:\"APP_PARTNERS_DIRECTORY_CLIENT_SECRET\" secret:\"true\"`\n",
+					"// partnersSettings builds the partners auth's settings: the cookie key and the session\n// timeout. A directory registration's settings join the literal here.\nfunc (env *dataConfig) partnersSettings(cookieKey string) *partners.Settings {\n\treturn &partners.Settings{\n\t\tCookieKey:      cookieKey,\n\t\tSessionTimeout: env.SessionTimeout,\n\t\tLoginURL:       \"/login\",\n\t\tDirectory: partners.DirectorySettings{\n\t\t\tTenantID:     env.PartnersDirectoryTenantID,\n\t\t\tClientID:     env.PartnersDirectoryClientID,\n\t\t\tClientSecret: env.PartnersDirectoryClientSecret,\n\t\t\tRedirectURL:  env.PartnersDirectoryRedirectURL,\n\t\t},\n\t}\n}\n",
+				} {
+					if !strings.Contains(got, want) {
+						t.Errorf("data.go lacks %q:\n%s", want, got)
+					}
+				}
+				// The staff auth's function is as it was: one line, no registration.
+				if !strings.Contains(got, "func (env *dataConfig) staffSettings(cookieKey string) *staff.Settings {\n\treturn &staff.Settings{CookieKey: cookieKey, SessionTimeout: env.SessionTimeout}\n}\n") {
+					t.Errorf("the staff settings function changed:\n%s", got)
+				}
+			},
+		},
+		{
+			name:    "a settings call whose struct the level does not name leaves the copy to the agent",
+			auth:    Auth{Name: "partners", Outlet: "default"},
+			extra:   map[string]string{"pkg/config/data.go": unnamedSettingsConfig},
+			wantDid: []string{"pkg/config/data.go: the partners auth constructed on DataConfiguration beside the staff auth (field, construction, import); pkg/config/partners.go: its accessor Partners()"},
+			wantSkipped: []string{
+				"pkg/config/data.go: the construction reads the staff auth's settings from env.staffSettings(...), but no env := &T{} names the struct the method is declared on, so partnersSettings was not copied; write it for the partners auth beside staffSettings, and pass the partners auth's directory registrations in it",
+			},
+			check: func(t *testing.T, a *app.App) {
+				t.Helper()
+				got := read(t, a, "pkg/config/data.go")
+				if !strings.Contains(got, "\tpartnersAuth, err := partners.New(ctx, spannerClient, env.partnersSettings(cookieKey))\n") || strings.Contains(got, "func (env *dataConfig) partnersSettings") {
+					t.Errorf("data.go = %q", got)
 				}
 			},
 		},

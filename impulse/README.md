@@ -763,7 +763,9 @@ the `<Name>` store prefix, the `<name>` and `<name>-xsrf` cookies, and
 `pkg/auth/<name>/roles.json` (empty, embedded by the package) from the start, with one
 file per method; its session tables are written as migrations under the new prefix and
 its access tables copied from an auth the application has; and the data level constructs
-it beside that auth, with an accessor in a new file. The package carries the engine's
+it beside that auth, its settings built by a function of its own on the environment
+struct (`<name>Settings`, copied from the auth it is written beside, so the constructor
+stays one call per auth), with an accessor in a new file. The package carries the engine's
 change signal over the live service as the skeletons' auths do (`access.WithChangeSignal`
 from `Settings.Signals`), so the `change-signal` check passes for it. The outlet the auth
 serves is pointed at it: its declaration in the generator program gains
@@ -816,7 +818,11 @@ for azure (`_TENANTS` for the listed slot), `_CLIENT_ID`, `_CLIENT_SECRET`,
 `_GROUP_PREFIX` and `_GROUP_LOOKUP` under the directory authority), the secret's field
 carrying `secret:"true"` beside its env tag (the marker bedrock reads to serve a variable
 from Secret Manager; `secret:"generated"` marks one whose value bedrock makes and nobody
-types); every outlet bound to the auth declares it (`generation.AzureMethod("directory")`
+types), and passes them in the auth's settings function (`<auth>Settings` on the
+environment struct, which grows by the registration while `NewDataConfiguration` stays
+one call per auth; in an application composed before the function, the `Settings`
+literal in `NewDataConfiguration`, which the did line says); every outlet bound to the
+auth declares it (`generation.AzureMethod("directory")`
 on the outlet's `Auth` option), so the generated router mounts its routes and the login
 page, which renders from the methods route, offers it; and for a directory method the
 Procfile builds with the session library's `skipAuth` tag, which simulates the directory

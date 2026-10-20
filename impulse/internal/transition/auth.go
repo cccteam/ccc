@@ -569,11 +569,12 @@ func (au Auth) editConfig(a *app.App, src *authSource, spec *authpkg.Spec, ch *C
 		return err
 	}
 	srcVar, ok := constructionVar(string(data), src.Name)
+	settings := ""
 	if !ok {
 		ch.skipf("%s: NewDataConfiguration constructs no %s.New(...) to copy, so the %s auth is declared on DataConfiguration but not constructed; construct it beside the %s auth and set the field", rel, src.Name, au.Name, src.Name)
 	} else {
 		statements := strings.ReplaceAll(strings.ReplaceAll(srcVar.statement, src.Name+".", au.Name+"."), srcVar.name, au.Name+"Auth")
-		statements, edited, err = au.methodSettings(rel, edited, statements, spec, ch)
+		statements, settings, edited, err = au.copySettings(rel, edited, src, statements, spec, ch)
 		if err != nil {
 			return err
 		}
@@ -612,7 +613,7 @@ func (c *DataConfiguration) %[3]s() *%[4]s.Auth {
 `, pkg, pkgPath, au.Pascal(), au.Name)); err != nil {
 		return err
 	}
-	ch.didf("%s: the %s auth constructed on DataConfiguration beside the %s auth (field, construction, import); %s: its accessor %s()", rel, au.Name, src.Name, accessor, au.Pascal())
+	ch.didf("%s: the %s auth constructed on DataConfiguration beside the %s auth (field, construction, import)%s; %s: its accessor %s()", rel, au.Name, src.Name, settings, accessor, au.Pascal())
 	ch.skipf("%s: Close releases the %s auth only; release the %s auth too", rel, src.Name, au.Name)
 
 	return nil
@@ -625,10 +626,58 @@ var settingsLiteralRE = regexp.MustCompile(`&?(\w+)\.Settings\{([^{}]*)\}`)
 // envVarRE finds the data level's environment struct: the variable envconfig fills.
 var envVarRE = regexp.MustCompile(`(?m)^\s*env := &(\w+)\{\}`)
 
-// methodSettings extends the copied construction with the directory methods' settings:
-// the Settings literal gains the login page and one settings literal per directory
-// method, and the environment struct gains each method's variables. Without an
-// environment struct to read them from, the registrations are left to the agent.
+// copySettings gives the copied construction the new auth's settings. A construction
+// reading the source auth's settings from its settings function on the environment
+// struct (env.<src>Settings(...), the skeleton's shape) has the call renamed, and the
+// function copied for the new auth after the source auth's, under the new auth's name;
+// a construction carrying the Settings literal inline (an application composed before
+// the function) keeps the literal in the copy. The directory methods' settings then go
+// where the literal is. It returns the construction, the words the did line names the
+// settings by, and the file.
+func (au Auth) copySettings(rel string, edited []byte, src *authSource, statements string, spec *authpkg.Spec, ch *Change) (construction, settings string, file []byte, err error) {
+	call := regexp.MustCompile(`\b(\w+)\.` + regexp.QuoteMeta(src.Name) + `Settings\(`).FindStringSubmatch(statements)
+	if call == nil {
+		statements, edited, err = au.methodSettings(rel, edited, statements, spec, ch)
+		if err != nil {
+			return "", "", nil, err
+		}
+
+		return statements, ", its settings in the construction's literal as the " + src.Name + " auth's are (an application composed before the " + src.Name + "Settings method)", edited, nil
+	}
+	srcMethod, method := src.Name+"Settings", au.Name+"Settings"
+	statements = strings.Replace(statements, call[0], call[1]+"."+method+"(", 1)
+	env := regexp.MustCompile(`(?m)^\s*` + regexp.QuoteMeta(call[1]) + ` := &(\w+)\{\}`).FindSubmatch(edited)
+	if env == nil {
+		ch.skipf("%s: the construction reads the %s auth's settings from %s.%s(...), but no %s := &T{} names the struct the method is declared on, so %s was not copied; write it for the %s auth beside %s, and pass the %s auth's directory registrations in it", rel, src.Name, call[1], srcMethod, call[1], method, au.Name, srcMethod, au.Name)
+
+		return statements, "", edited, nil
+	}
+	structName := string(env[1])
+	edited, err = app.CopyMethod(rel, edited, structName, srcMethod, func(text string) string {
+		return names.Rename(text, src.Name, au.Name)
+	})
+	if err != nil {
+		return "", "", nil, err
+	}
+	fields, edited, err := au.directoryFields(rel, edited, structName, spec, ch)
+	if err != nil {
+		return "", "", nil, err
+	}
+	for _, field := range fields {
+		edited, err = app.AddMethodLiteralElement(rel, edited, structName, method, au.Name+".Settings", field)
+		if err != nil {
+			return "", "", nil, err
+		}
+	}
+
+	return statements, fmt.Sprintf(", its settings built by %s.%s, copied from %s", structName, method, srcMethod), edited, nil
+}
+
+// methodSettings extends a copied construction carrying its Settings literal inline with
+// the directory methods' settings: the literal gains the login page and one settings
+// literal per directory method, and the environment struct gains each method's
+// variables. Without an environment struct to read them from, the registrations are
+// left to the agent.
 func (au Auth) methodSettings(rel string, edited []byte, statements string, spec *authpkg.Spec, ch *Change) (extended string, file []byte, err error) {
 	if !au.directory() {
 		return statements, edited, nil
@@ -645,31 +694,50 @@ func (au Auth) methodSettings(rel string, edited []byte, statements string, spec
 			fields = append(fields, f)
 		}
 	}
-	fields = append(fields, `LoginURL: "/login"`)
-	env := envVarRE.FindSubmatch(edited)
-	if env == nil {
+	structName := ""
+	if env := envVarRE.FindSubmatch(edited); env != nil {
+		structName = string(env[1])
+	} else {
 		ch.skipf("%s: no environment struct (env := &T{}) to add the %s auth's registration variables to; read them and pass them in %s.Settings", rel, au.Name, au.Name)
+	}
+	added, edited, err := au.directoryFields(rel, edited, structName, spec, ch)
+	if err != nil {
+		return "", nil, err
+	}
+	fields = append(fields, added...)
+	literal := "&" + au.Name + ".Settings{\n\t" + strings.Join(fields, ",\n\t") + ",\n}"
+
+	return strings.Replace(statements, m[0], literal, 1), edited, nil
+}
+
+// directoryFields reads the auth's directory methods' settings from the environment:
+// the environment struct gains each method's variables, and the returned elements are
+// the login page and one settings literal per method, for the auth's Settings literal.
+// An auth with no directory method takes none; without an environment struct
+// (structName empty) the login page alone.
+func (au Auth) directoryFields(rel string, edited []byte, structName string, spec *authpkg.Spec, ch *Change) (fields []string, file []byte, err error) {
+	if !au.directory() {
+		return nil, edited, nil
+	}
+	fields = []string{`LoginURL: "/login"`}
+	if structName == "" {
+		return fields, edited, nil
 	}
 	for i := range spec.Methods {
 		method := &spec.Methods[i]
 		if !method.Directory() {
 			continue
 		}
-		if env == nil {
-			continue
-		}
-		structName := string(env[1])
 		literal, edited2, err := addMethodEnv(rel, edited, structName, au.Name, method)
 		if err != nil {
-			return "", nil, err
+			return nil, nil, err
 		}
 		edited = edited2
 		fields = append(fields, method.Pascal()+": "+au.Name+"."+literal)
 		ch.didf("%s: %s reads the %s auth's %s registration from %s", rel, structName, au.Name, method.Name, strings.Join(methodVariables(au.Name, method), ", "))
 	}
-	literal := "&" + au.Name + ".Settings{\n\t" + strings.Join(fields, ",\n\t") + ",\n}"
 
-	return strings.Replace(statements, m[0], literal, 1), edited, nil
+	return fields, edited, nil
 }
 
 // construction is a "<var>, err := <pkg>.New(...)" statement with its error check.

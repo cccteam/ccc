@@ -175,7 +175,7 @@ func NewDataConfiguration(ctx context.Context) (*DataConfiguration, error) {
 
 	// The auth's default roles validate against the generated collection when its engine
 	// opens; the collection is passed in here, since the auth package imports no router.
-	staffAuth, err := staff.New(ctx, spannerClient, &staff.Settings{Collection: router.Collection(), Signals: liveService, CookieKey: cookieKey, SessionTimeout: env.SessionTimeout})
+	staffAuth, err := staff.New(ctx, spannerClient, env.staffSettings(router.Collection(), liveService, cookieKey))
 	if err != nil {
 		return nil, errors.Wrap(err, "staff.New()")
 	}
@@ -322,4 +322,14 @@ type dataConfig struct {
 
 	// FileStores are the file stores' URLs (files.go).
 	FileStores FileStoreSettings
+}
+
+// staffSettings builds the staff auth's settings: the generated collection its default
+// roles validate against, the live service its engine signals policy changes through,
+// the cookie key its sessions are signed with, and the session timeout. A directory
+// registration's settings join the literal here (impulse add method), read from the
+// environment under the registration's variables, so the constructor stays one call
+// per auth.
+func (env *dataConfig) staffSettings(collection access.PermissionCollection, signals staff.Signals, cookieKey string) *staff.Settings {
+	return &staff.Settings{Collection: collection, Signals: signals, CookieKey: cookieKey, SessionTimeout: env.SessionTimeout}
 }
