@@ -299,7 +299,7 @@ func TestSiteApplyPromotes(t *testing.T) {
 	procfile := read(t, a, "Procfile")
 	for _, want := range []string{
 		"console: bash -c 'for i in {1..300}; do (echo > /dev/tcp/127.0.0.1/${SPANNER_EMULATOR_PORT}) >/dev/null 2>&1 && break || sleep 0.1; done; go run ./cmd/bootstrap && APP_SERVICE_NAME=console PORT=8090 APP_DIST=apps/console/web/dist/console go run ./apps/console'\n",
-		"console: bash -c 'for i in {1..600}; do (echo > /dev/tcp/127.0.0.1/8090) >/dev/null 2>&1 && break || sleep 0.5; done; cd apps/console/web && bun install && PORT=8090 bun run start:console'\n",
+		"console-web: bash -c 'for i in {1..600}; do (echo > /dev/tcp/127.0.0.1/8090) >/dev/null 2>&1 && break || sleep 0.5; done; cd apps/console/web && bun install && PORT=8090 bun run start:console'\n",
 		"portal: bash -c 'for i in {1..300}; do (echo > /dev/tcp/127.0.0.1/8090) >/dev/null 2>&1 && break || sleep 0.1; done; APP_SERVICE_NAME=portal PORT=8091 APP_DIST=apps/portal/web/dist/portal go run ./apps/portal'\n",
 		"portal-web: bash -c 'for i in {1..600}; do (echo > /dev/tcp/127.0.0.1/8091) >/dev/null 2>&1 && break || sleep 0.5; done; cd apps/portal/web && bun install && PORT=8091 bun run start:portal'\n",
 	} {

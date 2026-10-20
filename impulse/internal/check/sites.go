@@ -209,7 +209,8 @@ func serving(lines []processLine, siteDir string) (processLine, bool) {
 }
 
 // goRunTargets returns the root-relative directories a line's `go run` invocations
-// target, for relative targets.
+// target, for relative targets. The build flags between `go run` and the target are
+// stepped over, a flag that takes its value as the next word (-tags skipAuth) with it.
 func goRunTargets(text string) []string {
 	var targets []string
 	fields := strings.Fields(text)
@@ -219,9 +220,12 @@ func goRunTargets(text string) []string {
 		}
 		j := i + 2
 		for j < len(fields) && strings.HasPrefix(fields[j], "-") {
-			j++ // build flags such as --tags=...
+			if valueFlags[strings.TrimLeft(fields[j], "-")] {
+				j++ // the flag's value is the next word (-tags skipAuth)
+			}
+			j++ // the flag itself (-race, --tags=dev)
 		}
-		if j == len(fields) {
+		if j >= len(fields) {
 			break
 		}
 		target := strings.Trim(fields[j], `'";&|)`)
@@ -234,6 +238,15 @@ func goRunTargets(text string) []string {
 	}
 
 	return targets
+}
+
+// valueFlags are the go build flags that take their value as the next word when written
+// without =: `go run -tags skipAuth ./apps/console` names the site, not skipAuth.
+var valueFlags = map[string]bool{
+	"C": true, "asmflags": true, "buildmode": true, "compiler": true, "covermode": true, "coverpkg": true,
+	"exec": true, "gccgoflags": true, "gcflags": true, "installsuffix": true, "ldflags": true, "mod": true,
+	"modfile": true, "o": true, "overlay": true, "p": true, "pgo": true, "pkgdir": true, "tags": true,
+	"toolexec": true,
 }
 
 // packageImports returns the import paths of the non-test Go files in a root-relative
