@@ -425,7 +425,7 @@ func methodVariables(auth string, spec *authpkg.Method) []string {
 // generator programs, so the generated router mounts its routes and the methods route
 // offers it.
 func (m *Method) declare(a *app.App, pkg *app.AuthPackage, spec *authpkg.Method, ch *Change) error {
-	declaration := app.MethodDeclaration(spec.Kind, spec.Name, "")
+	declaration := spec.Declaration()
 	edited := 0
 	var files []string
 	for _, g := range a.SiteGenerators() {
@@ -493,6 +493,9 @@ func (m *Method) Meaning() string {
 		if spec.Authority == AuthorityDirectory {
 			items = append(items, "Seed no roles for people who sign in this way; define the roles in the role file and assign them in the directory.")
 		}
+		if spec.Accounts == authpkg.AccountsInvited {
+			items = append(items, invitationsItem(m.Auth, []string{spec.Name}))
+		}
 	} else {
 		items = append(items, fmt.Sprintf("Give the %s auth its development logins with passwords in the bootstrap identities, and the test harness a login that posts to `user/password/login`.", m.Auth))
 	}
@@ -502,6 +505,13 @@ func (m *Method) Meaning() string {
 	b.WriteString("\nData consequence: none. An existing person who signs in through the new method is linked to their user when the standard account rule finds them under the name the directory presents (or confirms the link with their password), and a newcomer is provisioned or refused as the account rule says.\n")
 
 	return b.String()
+}
+
+// invitationsItem is the brief's item for registrations admitting invited users only:
+// the users surface the generator emits for the declaration's .InvitedUsers() creates the
+// invitations, behind Create on the auth's users resource.
+func invitationsItem(auth string, registrations []string) string {
+	return fmt.Sprintf("Invite its people. The %s registration(s) admit invited users only (`signin.InvitedUsersOnly`, and `.InvitedUsers()` on the declaration), so a person signs in once a user exists under the name the directory presents: the generated users surface of the %s auth creates them, so grant Create on `%sUsers` to the role that invites in the role file.", strings.Join(registrations, ", "), auth, names.Pascal(auth))
 }
 
 func passwordFormNote(spec *authpkg.Method) string {

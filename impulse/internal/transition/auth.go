@@ -33,8 +33,9 @@ type Auth struct {
 	// Name is the auth's lowercase name, the population it serves: partners, learners.
 	Name string
 	// Methods are the sign-in methods the Auth starts with, at least one; the password
-	// method when none is given. A directory method here takes the default shape, one
-	// organization and members of the directory; impulse add method composes the others.
+	// method when none is given. A directory method here takes one organization, with the
+	// authority and the account rule add auth takes once for all of them; impulse add
+	// method composes the other slots.
 	Methods []authpkg.Method
 	// Outlet is the outlet the auth serves, by the key OutletChoices gives it: the
 	// outlet's name in the flat layout (default for the one GenerateRoutes declares), the
@@ -61,6 +62,9 @@ func (au Auth) Command() string {
 	}
 	if authority := au.authority(); authority != "" {
 		cmd += " --authority " + authority
+	}
+	if accounts := au.accounts(); accounts != "" {
+		cmd += " --accounts " + accounts
 	}
 	if au.Outlet != "" {
 		cmd += " --outlet " + au.Outlet
@@ -89,6 +93,30 @@ func (au Auth) authority() string {
 	}
 
 	return ""
+}
+
+// accounts is the directory methods' account rule, which add auth takes once for all of
+// them, or empty without a directory method or under the default rule.
+func (au Auth) accounts() string {
+	for i := range au.Methods {
+		if au.Methods[i].Directory() {
+			return au.Methods[i].Accounts
+		}
+	}
+
+	return ""
+}
+
+// invited lists the directory methods admitting invited users only.
+func (au Auth) invited() []string {
+	var registrations []string
+	for _, m := range au.methods() {
+		if m.Directory() && m.Accounts == authpkg.AccountsInvited {
+			registrations = append(registrations, m.Name)
+		}
+	}
+
+	return registrations
 }
 
 // Pascal is the auth's table prefix and accessor name.
@@ -339,7 +367,7 @@ func (au Auth) bindOutlet(a *app.App, choice *OutletChoice, spec *authpkg.Spec, 
 	auth := &app.OutletAuth{ImportPath: path.Join(spec.Module, spec.AuthDir, au.Name)}
 	for i := range spec.Methods {
 		m := &spec.Methods[i]
-		auth.Methods = append(auth.Methods, app.AuthMethodArg{Kind: m.Kind, Name: m.Name})
+		auth.Methods = append(auth.Methods, m.Arg())
 	}
 	declaration := authDeclaration(auth)
 	src, mode, err := readFile(a, file)
@@ -391,7 +419,7 @@ func (au Auth) writePackage(a *app.App, src *authSource, spec *authpkg.Spec, ch 
 		m := &spec.Methods[i]
 		desc := m.Name
 		if m.Directory() {
-			desc += " (" + m.Kind + ", role membership the " + m.Authority + "'s)"
+			desc += " (" + m.Kind + ", " + accountsSentence(m) + ", role membership the " + m.Authority + "'s)"
 		}
 		described = append(described, desc)
 	}
@@ -670,13 +698,16 @@ func (au Auth) Meaning() string {
 	for i := range methods {
 		m := &methods[i]
 		listed = append(listed, methodSentence(m))
-		declarations = append(declarations, app.MethodDeclaration(m.Kind, m.Name, ""))
+		declarations = append(declarations, m.Declaration())
 	}
 	fmt.Fprintf(&b, "An auth is a population that holds roles in its own permission store and signs in through the methods registered on its Auth session, and it is a package: `pkg/auth/%[1]s` owns the %[1]s session manager (one `session.Auth` over the tables `%[2]sSessions`, `%[2]sSessionUsers`, `%[2]sSessionIdentities`, `%[2]sSessionAuthEvents` and `%[2]sSessionPendingSignIns`; cookie `%[1]s`), the %[1]s permission store (tables prefixed `%[2]s`), and the role file `pkg/auth/%[1]s/roles.json`, embedded in the package and handed to the permission engine as the release's default roles (`access.WithDefaultRoles`). The engine signals its policy writes to the application's other instances through the live service (`access.WithChangeSignal` over `resource.KindPolicy`, built by the package's `announcePolicy` and `watchPolicy` from the `Settings.Signals` the data level passes), which the `change-signal` check holds every engine to. Its methods, each in its own file named for the registration: %[3]s. A person in two auths is two unrelated principals. The data level now constructs it beside the other auths%[4]s.\n\n", au.Name, au.Pascal(), strings.Join(listed, "; "), au.registrationNote())
 	b.WriteString("Left to wire:\n\n")
 	items := []string{
 		fmt.Sprintf("Serve it from the %[3]s outlet. The outlet's declaration now names the auth with its methods (`generation.Auth(\"<module>/pkg/auth/%[1]s\", %[2]s)` on its `WithRouterOutlet`, or on `GenerateRoutes` for the default outlet), so the regenerated router mounts the %[1]s auth's session group under the outlet's prefix with one login route per method (`user/<registration>/login`, the callback and front-channel logout of a directory method, the password method's `user/password/login`), the methods route the login page renders from (`user/methods`) and the pending sign-in routes, and with two auths declared binds the group's requests to the auth (`BindAuth(%[1]s.Name)`, which the App implements over `pkg/auth.Bind` as the reference's does) so permission checks and tenant visibility answer from the %[1]s store. Give the App what the generated `Handlers` now requires: for an additional outlet a `<Outlet>()` method returning the %[1]s auth's `*%[1]s.Handlers`, in place of the one returning the auth the outlet served before; the default outlet's session surface is the App's embedded `*<auth>.Handlers`. The outlet's web app names the auth's XSRF cookie, `%[1]s.XSRFCookie` (`%[1]s-xsrf`), in its HttpClient configuration (`withXsrfConfiguration`), since the browser echoes that cookie in the X-XSRF-TOKEN header, and its login page renders from the methods route. Under a hand-written router the declaration carries no Auth to point, and the skipped list above says to mount the group in the router.", au.Name, strings.Join(declarations, ", "), au.Outlet),
 		fmt.Sprintf("Check its roles. The package hands its role file to the engine when the data level constructs it; call `deploy.CheckRoles` for the %[1]s auth in the bootstrap and the deployment's migrate step, so a deploy prints what the store holds that the release cannot use as written.%[2]s Add the %[1]s auth's row to the roles validation test in `pkg/deploy` (`access.ValidateRoles` over the collection, parsing `%[1]s.Roles()`), its expected warnings empty, so a warning the deploy would print is accepted in code or fixed in the role; `impulse check` warns while the row is missing.", au.Name, au.identitiesNote()),
+	}
+	if invited := au.invited(); len(invited) > 0 {
+		items = append(items, invitationsItem(au.Name, invited))
 	}
 	if au.directory() {
 		items = append(items, fmt.Sprintf("Register it. The environment template now carries each directory method's variables (`APP_%s_<REGISTRATION>_*`): set the redirect URL to the browser-facing callback under the %s outlet's prefix (through the dev proxy in development), and fill the rest in when the application is registered with its directory. Until then the Procfile builds with the session library's `skipAuth` tag, which simulates the directory: every sign-in through a registration is `APP_<REGISTRATION>_USERNAME`, or `APP_USERNAME` when that is unset.", strings.ToUpper(au.Name), au.Outlet))
@@ -699,9 +730,9 @@ func methodSentence(m *authpkg.Method) string {
 	case app.MethodPassword:
 		return "`password`, a username and password checked against the users table"
 	case app.MethodAzure:
-		return fmt.Sprintf("`%s`, Microsoft Entra over OpenID Connect (`azure.SignIn`), role membership the %s's", m.Name, m.Authority)
+		return fmt.Sprintf("`%s`, Microsoft Entra over OpenID Connect (`azure.SignIn`), %s, role membership the %s's", m.Name, accountsSentence(m), m.Authority)
 	case app.MethodGoogle:
-		return fmt.Sprintf("`%s`, Google Workspace over OpenID Connect (`google.SignIn`), role membership the %s's", m.Name, m.Authority)
+		return fmt.Sprintf("`%s`, Google Workspace over OpenID Connect (`google.SignIn`), %s, role membership the %s's", m.Name, accountsSentence(m), m.Authority)
 	default:
 		return "`" + m.Name + "`"
 	}

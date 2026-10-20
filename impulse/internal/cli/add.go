@@ -356,6 +356,7 @@ func newAddAuth() *cobra.Command {
 		f         transitionFlags
 		methods   []string
 		authority string
+		accounts  string
 		outlet    string
 	)
 
@@ -375,19 +376,26 @@ the administrator role memberships under a sign-in name the placement names for 
 whose roles the application assigns; its roles, its setting in the data level and its
 seeding from pkg/deploy are handed to the agent.
 
---method names the sign-in methods the Auth starts with, repeatable: password (the
-default when none is given), azure:<registration> (Microsoft Entra over OpenID Connect) or
+--method names the sign-in methods the Auth starts with, repeatable: password (the default
+when none is given), azure:<registration> (Microsoft Entra over OpenID Connect) or
 google:<registration> (Google Workspace over OpenID Connect), the registration being the
 segment of the method's routes (user/<registration>/login). A directory method added here
-takes the default shape, one organization and members of the directory; impulse add method
-composes the other slots and account rules. Its settings are read from the environment
-under the registration's variables (APP_<NAME>_<REGISTRATION>_*), the Procfile builds with
-the session library's skipAuth tag (the directory simulated until the application is
-registered with one), and the role-membership authority is set by --authority, which is
-asked when it is not given: "directory" makes the directory's roles the authority (every
-sign-in reconciles the person's roles to them and removes what they do not name),
-"application" keeps role assignment in the application. There is no default, because the
-wrong answer deletes hand-assigned roles at the next sign-in.
+takes one organization, and --accounts its standard account rule for a first sign-in, one
+rule for every directory method given: members (members of the directory, the default: the
+person becomes a user under the name the directory presents), invited (invited users only:
+a user created beforehand is linked, anyone else refused) or open (open sign-up, which the
+session library allows with any organization or personal accounts alone, so it is refused
+with the one organization taken here); impulse add method composes the other slots. The
+rule is written to the method file (Accounts) and, for invited, as .InvitedUsers() on the
+method's declaration, so the generated users surface creates the invitations; --accounts
+is refused with the password method alone, as add method refuses it. Its settings are read
+from the environment under the registration's variables (APP_<NAME>_<REGISTRATION>_*), the
+Procfile builds with the session library's skipAuth tag (the directory simulated until the
+application is registered with one), and the role-membership authority is set by
+--authority, which is asked when it is not given: "directory" makes the directory's roles
+the authority (every sign-in reconciles the person's roles to them and removes what they
+do not name), "application" keeps role assignment in the application. There is no default,
+because the wrong answer deletes hand-assigned roles at the next sign-in.
 
 --outlet names the outlet the new auth serves, asked when it is not given: default for the
 one GenerateRoutes declares (the console's), or a WithRouterOutlet name such as portal; in
@@ -406,30 +414,9 @@ requires for the outlet, its development identities, and the tests that prove it
 are strangers to the other auths are handed to the agent.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			specs, err := parseMethods(methods)
+			specs, err := authMethods(cmd, methods, authority, accounts)
 			if err != nil {
 				return err
-			}
-			directory := false
-			for i := range specs {
-				if specs[i].Directory() {
-					directory = true
-				}
-			}
-			if directory && authority == "" {
-				answer, err := askAuthority(cmd)
-				if err != nil {
-					return err
-				}
-				authority = answer
-			}
-			if !directory && authority != "" {
-				return errors.New("--authority goes with a directory method (azure or google); the password method's role membership is the application's")
-			}
-			for i := range specs {
-				if specs[i].Directory() {
-					specs[i].Authority = authority
-				}
 			}
 			if outlet == "" {
 				answer, err := askOutlet(cmd, f.appDir, args[0])
@@ -445,9 +432,48 @@ are strangers to the other auths are handed to the agent.`,
 	f.bind(cmd)
 	cmd.Flags().StringArrayVar(&methods, "method", nil, "a sign-in method the auth starts with (repeatable): password, azure:<registration>, or google:<registration>; password when none is given")
 	cmd.Flags().StringVar(&authority, "authority", "", "who owns role membership for the directory methods: directory (roles synchronized at every sign-in) or application (roles assigned in the application); asked when not given")
+	cmd.Flags().StringVar(&accounts, "accounts", "", "the standard account rule for a first sign-in: members (default), invited, or open")
 	cmd.Flags().StringVar(&outlet, "outlet", "", "the outlet the auth serves, whose declaration is pointed at it: default for the console's, or a WithRouterOutlet name; asked when not given")
 
 	return cmd
+}
+
+// authMethods reads add auth's --method flags and settles the directory methods' authority
+// and account rule, which the command takes once for all of them: the authority is asked
+// when a directory method is given without it, and either flag is refused with the
+// password method alone.
+func authMethods(cmd *cobra.Command, methods []string, authority, accounts string) ([]authpkg.Method, error) {
+	specs, err := parseMethods(methods)
+	if err != nil {
+		return nil, err
+	}
+	directory := false
+	for i := range specs {
+		if specs[i].Directory() {
+			directory = true
+		}
+	}
+	if directory && authority == "" {
+		answer, err := askAuthority(cmd)
+		if err != nil {
+			return nil, err
+		}
+		authority = answer
+	}
+	if !directory && authority != "" {
+		return nil, errors.New("--authority goes with a directory method (azure or google); the password method's role membership is the application's")
+	}
+	if !directory && accounts != "" {
+		return nil, errors.New("--accounts goes with a directory method (azure or google); the password method's users are always created in the application")
+	}
+	for i := range specs {
+		if specs[i].Directory() {
+			specs[i].Authority = authority
+			specs[i].Accounts = accounts
+		}
+	}
+
+	return specs, nil
 }
 
 // outletQuestion opens what a person at the terminal is asked when --outlet is not given;

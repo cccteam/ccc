@@ -1,6 +1,7 @@
 impulse
 impulse add
 impulse add auth <name>
+  --accounts string
   --agent bool
   --agent-arg stringArray
   --agent-command string (default claude)
