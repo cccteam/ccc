@@ -483,7 +483,7 @@ func (m *Method) Meaning() string {
 	}
 	b.WriteString("Every outlet bound to the auth declares the method on its `Auth` option, so the generated router mounts its routes and the methods route the login page renders from offers it; a person is one user whichever way they sign in, linked to the identity the directory verifies.\n\nLeft to wire:\n\n")
 	items := []string{
-		fmt.Sprintf("Look at the login page. The surface bound to the %s auth renders its sign-in methods from `GET <prefix>/user/methods`; a page that lists the methods itself gains the %s button (`<prefix>/user/%s/login?returnUrl=<page>`)%s.", m.Auth, spec.Name, spec.Name, passwordFormNote(spec)),
+		fmt.Sprintf("Look at the login page. The surface bound to the %s auth renders its sign-in methods from `GET <prefix>/user/methods`; a page on the library's login component (the skeleton's) offers %s by itself, and a page that lists the methods itself gains the %s button (`<prefix>/user/%s/login?returnUrl=<page>`)%s.", m.Auth, spec.Name, spec.Name, spec.Name, passwordFormNote(spec)),
 	}
 	if spec.Directory() {
 		items = append(items,

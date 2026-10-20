@@ -5,15 +5,16 @@
       <mat-card-subtitle>The portal: a second browser application on the same site</mat-card-subtitle>
     </mat-card-header>
     <mat-card-content>
-      <p>Sign in with your organization account. The directory verifies who you are; the portal decides what you may do.</p>
-      <button mat-flat-button color="primary" class="full-width" (click)="login()">Sign in with your organization</button>
-      @if (message()) {
-        <p class="error">{{ message() }}</p>
-      }
+      <p>
+        Sign in with your organization account. The directory verifies who you are; the portal decides what you may do.
+      </p>
+      <ccc-login-methods home="/dashboard" [labels]="labels" (signedIn)="go($event)" />
       <p class="hint">
         Development: the server runs with the session library's <code>skipAuth</code> tag, which simulates the
         directory, so every login is <code>APP_USERNAME</code> from <code>.envrc</code> (<code>client</code>, a member
-        of north). Its roles come from <code>cmd/bootstrap/users.json</code>.
+        of north). Its roles come from <code>cmd/bootstrap/users.json</code>. The button is the library's login
+        component, rendered from what the server lists at <code>user/methods</code>; the page names no path of its own,
+        only its own words for the directory.
       </p>
     </mat-card-content>
   </mat-card>
