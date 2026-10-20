@@ -27,10 +27,12 @@ const teardownRecordName = "teardown.json"
 // build (the stack trigger carries the application, the environment, the apply identity
 // and the records bucket), refuses a live stack (one a release has run on and no teardown
 // has taken down since), points tofu at the environment's state prefix as the apply
-// identity, plans with the environment and the generated secrets' pins derived the way a
-// pull request's plan derives them (each container's newest enabled version; nothing
-// while a container has none, since the first release adds it), prints the plan's summary
-// and applies it.
+// identity, untaints the Cloud Run services and jobs a failed apply left tainted (they
+// exist; the plan updates them in place, where a replacement would meet production's
+// deletion protection), plans with the environment and the generated secrets' pins
+// derived the way a pull request's plan derives them (each container's newest enabled
+// version; nothing while a container has none, since the first release adds it), prints
+// the plan's summary and applies it.
 func FirstApply(ctx context.Context, clients *Clients, w Workspace, req *BuildRequest, out io.Writer) error {
 	build, _, err := readBuild(ctx, clients, req)
 	if err != nil {
@@ -61,6 +63,9 @@ func FirstApply(ctx context.Context, clients *Clients, w Workspace, req *BuildRe
 	}
 	pins, err := generatedPins(ctx, clients, identity, m, app, env, identityProject(identity), false, out)
 	if err != nil {
+		return err
+	}
+	if err := s.untaintCloudRun(ctx, out); err != nil {
 		return err
 	}
 	plan := filepath.Join(string(w), StackPlanFile)

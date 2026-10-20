@@ -9,8 +9,9 @@ import (
 // TestFirstApply: the stack trigger's step inits the environment's state prefix as the
 // apply identity (impersonated when the build runs as the deploy identity, as itself
 // otherwise), plans with the environment and the generated secrets' pins derived from
-// their containers (nothing while a container has no version), applies the saved plan and
-// says what it did; a plan with no change applies nothing; a live stack (a release's,
+// their containers (nothing while a container has no version), untaints the Cloud Run
+// services and jobs a failed apply left tainted and no other kind, applies the saved plan
+// and says what it did; a plan with no change applies nothing; a live stack (a release's,
 // which its deployment records say, with no teardown since) is refused before tofu runs,
 // a torn-down one (a teardown record for this stack newer than its newest live release)
 // is applied again, and a build whose trigger carries less than the step needs is refused.
@@ -24,6 +25,7 @@ func TestFirstApply(t *testing.T) {
 		initLine    = "tofu init -input=false -no-color -backend-config=prefix=3-app/quill/tst"
 		planLine    = "tofu plan -input=false -no-color -out=WS/stack.plan -var environment=tst"
 		showLine    = "tofu show -json WS/stack.plan"
+		stateLine   = "tofu show -json"
 		applyLine   = "tofu apply -input=false -no-color WS/stack.plan"
 	)
 	const (
@@ -41,9 +43,12 @@ func TestFirstApply(t *testing.T) {
 		// secret versions that exist.
 		generated bool
 		pins      map[string]string
-		// shown is what tofu show answers for the saved plan.
+		// shown is what tofu show answers for the saved plan; tainted the state tofu show
+		// -json answers before the plan, the empty state when empty.
 		shown      string
+		tainted    string
 		wantOut    []string
+		wantNotOut []string
 		wantTofu   string
 		wantEnv    string
 		wantNoTofu bool
@@ -54,7 +59,7 @@ func TestFirstApply(t *testing.T) {
 			build:    deployBuild,
 			shown:    stackPlanJSON,
 			wantOut:  []string{"=== tst's stack at 3-app/quill/tst as quill-apply@p-stg.iam.gserviceaccount.com ===", "Applied tst's stack for the first time: 2 added, 1 changed, 1 destroyed. A release's build applies it from here on."},
-			wantTofu: initLine + " -backend-config=impersonate_service_account=quill-apply@p-stg.iam.gserviceaccount.com\n" + planLine + "\n" + showLine + "\n" + applyLine,
+			wantTofu: initLine + " -backend-config=impersonate_service_account=quill-apply@p-stg.iam.gserviceaccount.com\n" + stateLine + "\n" + planLine + "\n" + showLine + "\n" + applyLine,
 			wantEnv:  "GOOGLE_IMPERSONATE_SERVICE_ACCOUNT=quill-apply@p-stg.iam.gserviceaccount.com",
 		},
 		{
@@ -62,14 +67,14 @@ func TestFirstApply(t *testing.T) {
 			build:    applyBuild,
 			shown:    stackPlanJSON,
 			wantOut:  []string{"Applied tst's stack for the first time"},
-			wantTofu: initLine + "\n" + planLine + "\n" + showLine + "\n" + applyLine,
+			wantTofu: initLine + "\n" + stateLine + "\n" + planLine + "\n" + showLine + "\n" + applyLine,
 		},
 		{
 			name:     "a plan with no change applies nothing",
 			build:    deployBuild,
 			shown:    `{"resource_changes": []}`,
 			wantOut:  []string{"Nothing to apply: tst's stack matches the code already."},
-			wantTofu: initLine + " -backend-config=impersonate_service_account=quill-apply@p-stg.iam.gserviceaccount.com\n" + planLine + "\n" + showLine,
+			wantTofu: initLine + " -backend-config=impersonate_service_account=quill-apply@p-stg.iam.gserviceaccount.com\n" + stateLine + "\n" + planLine + "\n" + showLine,
 			wantEnv:  "GOOGLE_IMPERSONATE_SERVICE_ACCOUNT=quill-apply@p-stg.iam.gserviceaccount.com",
 		},
 		{
@@ -78,7 +83,7 @@ func TestFirstApply(t *testing.T) {
 			objects:  map[string]string{"gs://records/quill/stacks/tst/stack.json": `{"id": "ab12"}`},
 			shown:    stackPlanJSON,
 			wantOut:  []string{"Applied tst's stack for the first time"},
-			wantTofu: initLine + " -backend-config=impersonate_service_account=quill-apply@p-stg.iam.gserviceaccount.com\n" + planLine + "\n" + showLine + "\n" + applyLine,
+			wantTofu: initLine + " -backend-config=impersonate_service_account=quill-apply@p-stg.iam.gserviceaccount.com\n" + stateLine + "\n" + planLine + "\n" + showLine + "\n" + applyLine,
 			wantEnv:  "GOOGLE_IMPERSONATE_SERVICE_ACCOUNT=quill-apply@p-stg.iam.gserviceaccount.com",
 		},
 		{
@@ -100,7 +105,7 @@ func TestFirstApply(t *testing.T) {
 				"APP_COOKIE_KEY: version 2 of imp-tst-gbl-quill-cookie-key, its newest enabled, is the pin (a generated secret: its version is derived at each plan).",
 				"Applied tst's stack again after its teardown: 2 added, 1 changed, 1 destroyed. Its triggers are back; the operations workflow's run action runs the release it ran, and a release's build applies it from here on.",
 			},
-			wantTofu: initLine + " -backend-config=impersonate_service_account=quill-apply@p-stg.iam.gserviceaccount.com\n" + planLine + ` -var generated_secret_versions={APP_COOKIE_KEY="2"}` + "\n" + showLine + "\n" + applyLine,
+			wantTofu: initLine + " -backend-config=impersonate_service_account=quill-apply@p-stg.iam.gserviceaccount.com\n" + stateLine + "\n" + planLine + ` -var generated_secret_versions={APP_COOKIE_KEY="2"}` + "\n" + showLine + "\n" + applyLine,
 			wantEnv:  "GOOGLE_IMPERSONATE_SERVICE_ACCOUNT=quill-apply@p-stg.iam.gserviceaccount.com",
 		},
 		{
@@ -123,8 +128,27 @@ func TestFirstApply(t *testing.T) {
 			generated: true,
 			shown:     stackPlanJSON,
 			wantOut:   []string{"APP_COOKIE_KEY: imp-tst-gbl-quill-cookie-key has no enabled version yet (a generated secret, whose first version tst's next release build adds): the plan mounts nothing for it.", "Applied tst's stack for the first time"},
-			wantTofu:  initLine + " -backend-config=impersonate_service_account=quill-apply@p-stg.iam.gserviceaccount.com\n" + planLine + "\n" + showLine + "\n" + applyLine,
+			wantTofu:  initLine + " -backend-config=impersonate_service_account=quill-apply@p-stg.iam.gserviceaccount.com\n" + stateLine + "\n" + planLine + "\n" + showLine + "\n" + applyLine,
 			wantEnv:   "GOOGLE_IMPERSONATE_SERVICE_ACCOUNT=quill-apply@p-stg.iam.gserviceaccount.com",
+		},
+		{
+			name:     "a tainted service and job, whose create failed, are untainted before the plan: they exist, and the apply creates a new revision in place of the one whose start failed",
+			build:    deployBuild,
+			tainted:  taintedStateJSON,
+			shown:    stackPlanJSON,
+			wantOut:  []string{untaintedServiceLine, untaintedJobLine, "Applied tst's stack for the first time"},
+			wantTofu: initLine + " -backend-config=impersonate_service_account=quill-apply@p-stg.iam.gserviceaccount.com\n" + stateLine + "\n" + `tofu untaint -no-color google_cloud_run_v2_service.app["console-uc1"]` + "\ntofu untaint -no-color google_cloud_run_v2_job.jobs\n" + planLine + "\n" + showLine + "\n" + applyLine,
+			wantEnv:  "GOOGLE_IMPERSONATE_SERVICE_ACCOUNT=quill-apply@p-stg.iam.gserviceaccount.com",
+		},
+		{
+			name:       "a tainted resource of another kind keeps its taint: a half-created bucket is replaced",
+			build:      deployBuild,
+			tainted:    bucketTaintedStateJSON,
+			shown:      stackPlanJSON,
+			wantOut:    []string{"Applied tst's stack for the first time"},
+			wantNotOut: []string{"is tainted"},
+			wantTofu:   initLine + " -backend-config=impersonate_service_account=quill-apply@p-stg.iam.gserviceaccount.com\n" + stateLine + "\n" + planLine + "\n" + showLine + "\n" + applyLine,
+			wantEnv:    "GOOGLE_IMPERSONATE_SERVICE_ACCOUNT=quill-apply@p-stg.iam.gserviceaccount.com",
 		},
 		{
 			name:       "a trigger that carries less than the step needs is refused",
@@ -149,7 +173,11 @@ func TestFirstApply(t *testing.T) {
 			store := &memoryStore{objects: objects}
 			builds := &fakeBuilds{build: tt.build}
 			secrets := &fakeSecrets{states: tt.pins}
-			run := &fakeRunner{outputs: map[string]string{"tofu show": tt.shown}}
+			tainted := tt.tainted
+			if tainted == "" {
+				tainted = emptyStateJSON
+			}
+			run := &fakeRunner{outputs: map[string]string{"tofu show": tt.shown, "tofu show -json": tainted}}
 			var out bytes.Buffer
 			err := FirstApply(t.Context(), &Clients{Builds: builds.open, Exec: run, Storage: store.open, SecretsAs: secrets.openAs}, w, &BuildRequest{BuildID: "b", Project: "p", Location: "l"}, &out)
 			if tt.wantErr != "" {
@@ -162,6 +190,11 @@ func TestFirstApply(t *testing.T) {
 			for _, want := range tt.wantOut {
 				if !strings.Contains(out.String(), want) {
 					t.Errorf("output lacks %q:\n%s", want, out.String())
+				}
+			}
+			for _, unwanted := range tt.wantNotOut {
+				if strings.Contains(out.String(), unwanted) {
+					t.Errorf("output has %q:\n%s", unwanted, out.String())
 				}
 			}
 			lines := strings.ReplaceAll(strings.Join(run.lines(), "\n"), string(w), "WS")
