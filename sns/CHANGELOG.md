@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.16](https://github.com/cccteam/ccc/compare/sns/v0.2.15...sns/v0.2.16) (2026-10-21)
+
+
+### Code Upgrade
+
+* **deps:** Go 1.26.10; crypto/x509 GO-2026-6809 fixed ([#1018](https://github.com/cccteam/ccc/issues/1018)) ([25dc507](https://github.com/cccteam/ccc/commit/25dc507e6226ed8d39fd49960a87ec04d8a04f5a))
+
 ## [0.2.15](https://github.com/cccteam/ccc/compare/sns/v0.2.14...sns/v0.2.15) (2026-10-09)
 
 
