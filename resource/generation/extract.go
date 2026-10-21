@@ -94,8 +94,12 @@ func (c *client) structsToResources(structs []*parser.Struct, validators ...stru
 		return nil, errors.Wrapf(errors.Join(resourceErrors...), "encountered %d errors converting structs to resources", len(resourceErrors))
 	}
 
-	// One tenant record per package: known only once every struct is extracted.
+	// One tenant record per package, and one directories record: known only once
+	// every struct is extracted.
 	if err := rejectSecondTenant(resources); err != nil {
+		return nil, err
+	}
+	if err := rejectSecondTenantDirectory(resources); err != nil {
 		return nil, err
 	}
 
@@ -268,6 +272,10 @@ func resolveResourceAnnotations(res *resourceInfo, annotations genlang.StructAnn
 // read-only (deriveEnumerationResource).
 func (c *client) resolveStructAnnotations(res *resourceInfo, pStruct *parser.Struct, annotations genlang.StructAnnotations) error {
 	if err := resolveResourceAnnotations(res, annotations); err != nil {
+		return err
+	}
+	// The declaration's rules read the tenant record, so they resolve after it.
+	if err := resolveTenantDeclaration(res, pStruct, annotations); err != nil {
 		return err
 	}
 	if typeName, ok := c.enumerationOf(c.pluralize(pStruct.Name())); ok {

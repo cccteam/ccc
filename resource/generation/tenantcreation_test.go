@@ -271,10 +271,10 @@ func Test_tenantCreationTemplate(t *testing.T) {
 		"patch.SetOpened(req.Opened)",
 		"resource.SeatFirstAdministrator(ctx, seats, userPermissions, domain, roles)",
 		"resources.NewStationDeletePatch(req.ID).Apply(ctx, a.ResourceClient(), eventSource)",
-		"a.TenantRoster().Add(domain)",
+		"if err := a.TenantRoster().Reload(ctx); err != nil {",
 		"a.LiveService().Signal(ctx, resource.KindTenants)",
 		"return httpio.NewEncoder(w).Ok(response{ID: req.ID})",
-	}, []string{"Derived", "SetID", "SetDerived"})
+	}, []string{"Derived", "SetID", "SetDerived", "sessioninfo", "EstablishedBy"})
 
 	// The gate before the body, the commit before the seat, the seat before the
 	// roster, the roster before the signal, the signal before the answer.
@@ -283,7 +283,7 @@ func Test_tenantCreationTemplate(t *testing.T) {
 	decode := strings.Index(s, "req, err := decoder.Decode(r)")
 	commit := strings.Index(s, "}); err != nil {")
 	seat := strings.Index(s, "resource.SeatFirstAdministrator(")
-	roster := strings.Index(s, "a.TenantRoster().Add(domain)")
+	roster := strings.Index(s, "a.TenantRoster().Reload(ctx)")
 	signal := strings.Index(s, "Signal(ctx, resource.KindTenants)")
 	answer := strings.Index(s, "return httpio.NewEncoder(w).Ok(")
 	if gate >= decode || decode >= commit || commit >= seat || seat >= roster || roster >= signal || signal >= answer {

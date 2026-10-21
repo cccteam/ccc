@@ -112,9 +112,9 @@ type consolidatedPatchData struct {
 	GlobalCases []consolidatedCaseData
 	DomainCases []consolidatedCaseData
 	SegmentCase *consolidatedCaseData
-	// HasTenant says the tenant record is among the cases: the dispatcher then collects
-	// the tenants its transaction creates and deletes, hands them to the roster after
-	// the commit, and signals the tenants kind.
+	// HasTenant says the tenant record or the directories record is among the cases:
+	// the dispatcher then reloads the roster after a commit that wrote either, and
+	// signals the tenants kind.
 	HasTenant           bool
 	DomainRouteSegment  string
 	DomainPatternPrefix string // "/stations/{stationID}" — the chi pattern the descent case prefix-matches

@@ -1190,6 +1190,22 @@ type resourceInfo struct {
 	// TenantCreation is the tenant record's creation shape (@tenant(creation: ...)):
 	// who may create a tenant. The zero value is the default, an administrator alone.
 	TenantCreation tenantCreation
+	// DirectoryOnlyField is the tenant record's @directoryOnly column, the BOOL saying
+	// the tenant's people enter through its directories only; nil when the record
+	// declares none, and every tenant admits a password.
+	DirectoryOnlyField *resourceField
+	// IsTenantDirectory marks the directories record (@tenantDirectory): the
+	// tenant-scoped resource whose rows are the directories a tenant admits its people
+	// through, one per declaration, with DirectoryMethodField (@directoryMethod) and
+	// DirectoryConnectionField (@directoryConnection) as its two columns. Its generated
+	// write paths keep every instance's tenant roster current, as the record's do.
+	IsTenantDirectory        bool
+	DirectoryMethodField     *resourceField
+	DirectoryConnectionField *resourceField
+	// declaration is the tenant record's declaration of who may enter a tenant, set
+	// once the directories record is known to belong to it (validateTenantDeclaration);
+	// nil on every other resource and on a record whose package declares none.
+	declaration *tenantDeclaration
 }
 
 // IsDomainScoped reports whether the resource's @permissionScope resolves to the
@@ -2105,6 +2121,10 @@ const (
 	fileKeyword                 string = "file"                 // Declares a file served under the resource's read route: on the store-key field, @file[(segment[, name: Field, type: Field, log: word, trace: setting])]; on a keyed @computed struct, @file[(segment[, log: word, trace: setting])] rendered by <Name><Segment>
 	featureKeyword              string = "feature"              // Gates a resource, a field or an RPC method behind a feature flag, by the flag's constant: @feature(Debriefs)
 	tenantKeyword               string = "tenant"               // Declares the tenant record: the global, table-backed @resource whose rows are the tenants and whose key is the domain in every tenant-scoped URL
+	directoryOnlyKeyword        string = "directoryOnly"        // Marks the tenant record's BOOL column saying the tenant's people enter through its directories only, so a password does not reach it
+	tenantDirectoryKeyword      string = "tenantDirectory"      // Declares the directories record: the tenant-scoped @resource whose rows are the directories a tenant admits its people through, one per declaration
+	directoryMethodKeyword      string = "directoryMethod"      // Marks the directories record's string column holding the sign-in method a directory is reached through (google, azure, workos)
+	directoryConnectionKeyword  string = "directoryConnection"  // Marks the directories record's string column holding the connection a directory's identities carry (a Google Workspace by its domain, a Microsoft Entra tenant by its tenant id)
 	formerlyKeyword             string = "formerly"             // Declares a field's or a method's former name, answered beside the current one while older applications still send it: @formerly(Title)
 	scheduleKeyword             string = "schedule"             // Declares an RPC method a scheduled route Cloud Scheduler calls: @schedule("0 3 * * *"[, zone: "America/Denver", log: onEvent])
 )
@@ -2143,6 +2163,10 @@ func resourceKeywords() map[string]genlang.KeywordOpts {
 		fileKeyword:                 {genlang.ScanField: genlang.Exclusive, genlang.ScanStruct: genlang.Exclusive},
 		featureKeyword:              {genlang.ScanStruct: genlang.ArgsRequired | genlang.Exclusive, genlang.ScanField: genlang.ArgsRequired | genlang.Exclusive},
 		tenantKeyword:               {genlang.ScanStruct: genlang.Exclusive},
+		directoryOnlyKeyword:        {genlang.ScanField: genlang.NoArgs | genlang.Exclusive},
+		tenantDirectoryKeyword:      {genlang.ScanStruct: genlang.NoArgs | genlang.Exclusive},
+		directoryMethodKeyword:      {genlang.ScanField: genlang.NoArgs | genlang.Exclusive},
+		directoryConnectionKeyword:  {genlang.ScanField: genlang.NoArgs | genlang.Exclusive},
 		formerlyKeyword:             {genlang.ScanStruct: genlang.ArgsRequired | genlang.Exclusive, genlang.ScanField: genlang.ArgsRequired | genlang.Exclusive},
 		scheduleKeyword:             {genlang.ScanStruct: genlang.ArgsRequired | genlang.Exclusive},
 	}

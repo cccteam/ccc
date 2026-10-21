@@ -11,6 +11,8 @@ import (
 	"cloud.google.com/go/spanner"
 	"github.com/cccteam/ccc/accesstypes"
 	initiator "github.com/cccteam/db-initiator"
+	"github.com/cccteam/session/sessioninfo"
+	"github.com/cccteam/session/signin"
 	"github.com/cccteam/spxscan/spxapi"
 	"github.com/google/go-cmp/cmp"
 )
@@ -486,5 +488,176 @@ func TestTenantRoster_stopsWithContext(t *testing.T) {
 	}
 	if !r.Has("alpha") {
 		t.Error("Has(alpha) = false after the context ended; the last set stays")
+	}
+}
+
+// stationColumns names the declaration the roster tests' fixture carries: the
+// directory-only flag on Stations and the StationDirectories rows.
+var stationColumns = &TenantDeclarationColumns{
+	DirectoryOnly:    "DirectoryOnly",
+	DirectoriesTable: "StationDirectories",
+	TenantColumn:     "StationId",
+	MethodColumn:     "Method",
+	ConnectionColumn: "Connection",
+}
+
+// declareStation writes a station's declaration the way the records' write paths commit
+// it: the flag on the row and one StationDirectories row per directory.
+func declareStation(t *testing.T, db *initiator.SpannerDB, id accesstypes.Domain, directoryOnly bool, directories ...signin.Directory) {
+	t.Helper()
+
+	mutations := make([]*spanner.Mutation, 0, 1+len(directories))
+	mutations = append(mutations, spanner.Update(stationsTable, []string{stationsKey, "DirectoryOnly"}, []any{string(id), directoryOnly}))
+	for i, d := range directories {
+		mutations = append(mutations, spanner.Insert("StationDirectories", []string{"Id", "StationId", "Method", "Connection"}, []any{string(id) + "-" + strconv.Itoa(i), string(id), string(d.Method), d.Connection}))
+	}
+	if _, err := db.Apply(t.Context(), mutations); err != nil {
+		t.Fatalf("spanner.Client.Apply() error = %v", err)
+	}
+}
+
+// TestTenantRoster_declarations pins the declaration half of the copy over the
+// emulator: a roster built with WithTenantDeclarations reads each station's flag and
+// directories in the snapshot of its keys, answers Declarations from the copy (a
+// station declaring nothing answers an empty declaration, one the set does not hold
+// nil), and a roster built without the option answers nil for every station; after a
+// write, Reload brings the copy current at once, as the records' generated write paths
+// call it.
+func TestTenantRoster_declarations(t *testing.T) {
+	t.Parallel()
+
+	workspace := signin.Directory{Method: sessioninfo.MethodGoogle, Connection: "frontier.example"}
+	entra := signin.Directory{Method: sessioninfo.MethodAzure, Connection: "6f2c1b7e-0000-4000-8000-000000000001"}
+
+	tests := []struct {
+		name     string
+		declared bool
+		// declare writes the declarations before Start; redeclare after it, before Reload.
+		declare   func(t *testing.T, db *initiator.SpannerDB)
+		redeclare func(t *testing.T, db *initiator.SpannerDB)
+		want      map[accesstypes.Domain]*signin.TenantDeclaration
+	}{
+		{
+			name:     "each station's flag and directories, ordered by method and connection",
+			declared: true,
+			declare: func(t *testing.T, db *initiator.SpannerDB) {
+				declareStation(t, db, "alpha", true, workspace, entra)
+				declareStation(t, db, "beta", false, workspace)
+			},
+			want: map[accesstypes.Domain]*signin.TenantDeclaration{
+				"alpha": {DirectoryOnly: true, Directories: []signin.Directory{entra, workspace}},
+				"beta":  {Directories: []signin.Directory{workspace}},
+				"gamma": {},
+				"delta": nil,
+			},
+		},
+		{
+			name:     "a roster built without the option declares nothing for every station",
+			declared: false,
+			declare: func(t *testing.T, db *initiator.SpannerDB) {
+				declareStation(t, db, "alpha", true, workspace)
+			},
+			want: map[accesstypes.Domain]*signin.TenantDeclaration{"alpha": nil, "beta": nil, "gamma": nil, "delta": nil},
+		},
+		{
+			name:     "Reload after a write brings the copy current",
+			declared: true,
+			declare: func(t *testing.T, db *initiator.SpannerDB) {
+				declareStation(t, db, "alpha", false, workspace)
+			},
+			redeclare: func(t *testing.T, db *initiator.SpannerDB) {
+				declareStation(t, db, "alpha", true)
+				declareStation(t, db, "gamma", false, entra)
+			},
+			want: map[accesstypes.Domain]*signin.TenantDeclaration{
+				"alpha": {DirectoryOnly: true, Directories: []signin.Directory{workspace}},
+				"beta":  {},
+				"gamma": {Directories: []signin.Directory{entra}},
+				"delta": nil,
+			},
+		},
+	}
+
+	for i, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			db, client := tenantDatabase(t, "roster-declarations-"+strconv.Itoa(i), "alpha", "beta", "gamma")
+			tt.declare(t, db)
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+
+			var opts []TenantRosterOption
+			if tt.declared {
+				opts = append(opts, WithTenantDeclarations(stationColumns))
+			}
+			r := NewTenantRoster(client, stationsTable, stationsKey, opts...)
+			if err := r.Start(ctx); err != nil {
+				t.Fatalf("Start() error = %v", err)
+			}
+			if tt.redeclare != nil {
+				tt.redeclare(t, db)
+				if err := r.Reload(ctx); err != nil {
+					t.Fatalf("Reload() error = %v", err)
+				}
+			}
+			for domain, want := range tt.want {
+				got, err := r.Declarations(ctx, domain)
+				if err != nil {
+					t.Fatalf("Declarations(%q) error = %v", domain, err)
+				}
+				if diff := cmp.Diff(want, got); diff != "" {
+					t.Errorf("Declarations(%q) mismatch (-want +got):\n%s", domain, diff)
+				}
+			}
+		})
+	}
+}
+
+// TestNewTenantDeclarationReader pins the sign-in policy's reader over the emulator: it
+// reads one station's declaration through the read-write transaction it is handed, the
+// sign-in's own, answering the flag and the directories as the roster's copy does, an
+// empty declaration for a station declaring nothing, and nil for a station the table
+// does not hold or an empty tenant.
+func TestNewTenantDeclarationReader(t *testing.T) {
+	t.Parallel()
+
+	workspace := signin.Directory{Method: sessioninfo.MethodGoogle, Connection: "frontier.example"}
+	entra := signin.Directory{Method: sessioninfo.MethodAzure, Connection: "6f2c1b7e-0000-4000-8000-000000000001"}
+	db, _ := tenantDatabase(t, "declaration-reader", "alpha", "beta")
+	declareStation(t, db, "alpha", true, workspace, entra)
+	reader := NewTenantDeclarationReader(stationsTable, stationsKey, stationColumns)
+
+	tests := []struct {
+		name   string
+		tenant accesstypes.Domain
+		want   *signin.TenantDeclaration
+	}{
+		{name: "a declared station: its flag and its directories", tenant: "alpha", want: &signin.TenantDeclaration{DirectoryOnly: true, Directories: []signin.Directory{entra, workspace}}},
+		{name: "a station declaring nothing: an empty declaration", tenant: "beta", want: &signin.TenantDeclaration{}},
+		{name: "a station the table does not hold: nil", tenant: "nowhere", want: nil},
+		{name: "an empty tenant: nil, with no read", tenant: "", want: nil},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			var got *signin.TenantDeclaration
+			if _, err := db.ReadWriteTransaction(t.Context(), func(ctx context.Context, txn *spanner.ReadWriteTransaction) error {
+				declaration, err := reader(ctx, txn, tt.tenant)
+				if err != nil {
+					return err
+				}
+				got = declaration
+
+				return nil
+			}); err != nil {
+				t.Fatalf("reader() error = %v", err)
+			}
+			if diff := cmp.Diff(tt.want, got); diff != "" {
+				t.Errorf("reader(%q) mismatch (-want +got):\n%s", tt.tenant, diff)
+			}
+		})
 	}
 }

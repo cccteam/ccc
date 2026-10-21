@@ -446,7 +446,7 @@ func (r *resourceGenerator) generateConsolidatedPatchHandler(outlet *routerOutle
 		GlobalCases:         globalCases,
 		DomainCases:         domainCases,
 		SegmentCase:         segmentCase,
-		HasTenant:           slices.ContainsFunc(resources, func(res *resourceInfo) bool { return res.IsTenant }),
+		HasTenant:           slices.ContainsFunc(resources, func(res *resourceInfo) bool { return res.SignalsTenants() }),
 		DomainRouteSegment:  r.domainRouteSegment,
 		DomainPatternPrefix: domainPatternPrefix,
 		Package:             r.handler.Package(),

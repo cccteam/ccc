@@ -681,21 +681,19 @@ const (
 	// closed with 403 instead of the guard's 404.
 	domainParamLine = `domain := httpio.Param[accesstypes.Domain](r, router.Domain)`
 
-	// tenantsCommitted is spliced into the tenant record's write paths (the standalone
-	// patch handler and the consolidated dispatcher) after the commit and before the
-	// answer: the tenants the transaction created and deleted reach this instance's
-	// roster at once, never inside the transaction, and the tenants signal goes out on
-	// the application's live service so every other instance reloads. A publish
-	// failure is logged and never fails the request: the other instances reload at
-	// their backstop. The live service is required in every application, so there is
-	// no nil check.
-	tenantsCommitted = `for _, domain := range tenantsAdded {
-			{{ .ReceiverName }}.TenantRoster().Add(domain)
-		}
-		for _, domain := range tenantsRemoved {
-			{{ .ReceiverName }}.TenantRoster().Remove(domain)
-		}
-		if len(tenantsAdded)+len(tenantsRemoved) > 0 {
+	// tenantsCommitted is spliced into the write paths of the tenant record and of the
+	// directories record (the standalone patch handler and the consolidated dispatcher)
+	// after the commit and before the answer: this instance's roster rereads the tenants
+	// and what each declares, never inside the transaction, so the next request here
+	// sees a tenant created, deleted or redeclared, and the tenants signal goes out on
+	// the application's live service so every other instance reloads. A reread or
+	// publish failure is logged and never fails the request: the instance reloads on
+	// its own signal subscription or at its backstop. The live service is required in
+	// every application, so there is no nil check.
+	tenantsCommitted = `if tenantsWritten {
+			if err := {{ .ReceiverName }}.TenantRoster().Reload(ctx); err != nil {
+				logger.FromCtx(ctx).Errorf("tenants: rereading the roster after the commit failed; this instance reloads on the tenants signal or at its backstop: %v", err)
+			}
 			if err := {{ .ReceiverName }}.LiveService().Signal(ctx, resource.KindTenants); err != nil {
 				logger.FromCtx(ctx).Errorf("tenants: signaling the tenants kind failed; the other instances reload at their backstop: %v", err)
 			}
@@ -1141,19 +1139,60 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) DomainGuard() func(http.Handl
 package {{ .Package }}
 
 import (
+{{- if .Declaration }}
+	"cloud.google.com/go/spanner"
+{{- end }}
 	"github.com/cccteam/ccc/resource"
+{{- if .Declaration }}
+	"github.com/cccteam/session/signin"
+{{- end }}
 )
+{{- if .Declaration }}
+
+// {{ GoCamel .Name }}Declaration names where the {{ .Name }} record keeps its declaration of who
+// may enter a {{ .RecordLower }} (@directoryOnly on the record, the {{ .Directories }} record's columns): what
+// the roster reads beside the keys and the sign-in policy's reader reads in its own
+// transaction.
+var {{ GoCamel .Name }}Declaration = resource.TenantDeclarationColumns{
+	DirectoryOnly:    {{ printf "%q" .Declaration.DirectoryOnly }},
+	DirectoriesTable: {{ printf "%q" .Declaration.DirectoriesTable }},
+	TenantColumn:     {{ printf "%q" .Declaration.TenantColumn }},
+	MethodColumn:     {{ printf "%q" .Declaration.MethodColumn }},
+	ConnectionColumn: {{ printf "%q" .Declaration.ConnectionColumn }},
+}
+{{- end }}
 
 // New{{ .Name }}Roster builds the application's tenant roster over the {{ .Name }} record
 // (@tenant): the {{ .KeyColumn }} column of {{ .Table }}, read once at Start and kept
 // current until the context ends. The generated DomainGuard and the consolidated
 // dispatcher ask the roster before a tenant-scoped request runs, and the generated
-// {{ .Name }} write paths add and remove tenants after their commit and publish the
+// {{ .Name }} write paths reload it after their commit and publish the
 // tenants signal, so every instance reloads. The application exposes the roster as
 // TenantRoster(); resource.WithTenantSignals wires the live service the roster reloads on.
+{{- if .Declaration }}
+// The roster reads what each {{ .RecordLower }} declares about who may enter it beside its key
+// ({{ .Name }}.DirectoryOnly and the {{ .Directories }} rows), so its Declarations is what the
+// application hands resource.SessionPermissions as the tenant declarations, and the
+// generated {{ .Directories }} write paths reload it too.
+{{- end }}
 func New{{ .Name }}Roster(client resource.Client, opts ...resource.TenantRosterOption) *resource.TenantRoster {
+	{{- if .Declaration }}
+	opts = append([]resource.TenantRosterOption{resource.WithTenantDeclarations(&{{ GoCamel .Name }}Declaration)}, opts...)
+	{{- end }}
+
 	return resource.NewTenantRoster(client, {{ printf "%q" .Table }}, {{ printf "%q" .KeyColumn }}, opts...)
 }
+{{- if .Declaration }}
+
+// New{{ .Name }}DeclarationReader builds the sign-in policy's reader of what a {{ .RecordLower }} declares
+// about who may enter it (signin.TenantPolicy, through signin.DeclarationReader): it
+// reads the {{ .Name }} row and its {{ .Directories }} rows in the sign-in's own transaction.
+// The application hands it to the auth whose people enter {{ .RecordLower }}s, through the auth's
+// settings; a {{ .RecordLower }} the table does not hold declares nothing.
+func New{{ .Name }}DeclarationReader() signin.DeclarationReader[*spanner.ReadWriteTransaction] {
+	return resource.NewTenantDeclarationReader({{ printf "%q" .Table }}, {{ printf "%q" .KeyColumn }}, &{{ GoCamel .Name }}Declaration)
+}
+{{- end }}
 `
 
 	// tenantCreationTemplate emits the create-your-tenant handler of a tenant record
@@ -1175,6 +1214,9 @@ import (
 	"github.com/cccteam/ccc/tracer"
 	"github.com/cccteam/httpio"
 	"github.com/cccteam/logger"
+	{{- if .Directory }}
+	"github.com/cccteam/session/sessioninfo"
+	{{- end }}
 	"github.com/go-playground/errors/v5"
 )
 
@@ -1197,8 +1239,15 @@ var _ interface {
 // the commit, since the permission store writes memberships outside the row's
 // transaction, and a seat that cannot be written takes the row with it; the answer
 // waits until the permission engine answers the new membership, so the person's next
-// request sees the {{ .RecordLower }}; the roster learns the {{ .RecordLower }} after that and the tenants kind
+// request sees the {{ .RecordLower }}; the roster reloads after that and the tenants kind
 // is signaled, so every instance serves it at once.
+{{- if .Directory }}
+// The {{ .RecordLower }}'s first directory is the one its creator came through: a person who
+// signed in through a directory (Google, Microsoft Entra, WorkOS) has it declared on the
+// new {{ .RecordLower }} in the row's transaction ({{ .Directory.Record }}), so the {{ .RecordLower }} admits
+// them at once, one domain, one directory; a person who signed in by password declares
+// none, and the {{ .RecordLower }} admits passwords as every {{ .RecordLower }} declaring nothing does.
+{{- end }}
 func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .HandlerFunc }}() http.HandlerFunc {
 	type request struct {
 		{{- range $field := .Fields }}
@@ -1246,6 +1295,18 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .HandlerFunc }}() http.Han
 			if err := patch.Buffer(ctx, txn, eventSource); err != nil {
 				return errors.Wrap(err, "{{ .ResourcePackage }}.{{ .Record }}CreatePatch.Buffer()")
 			}
+			{{- if .Directory }}
+			if established, ok := sessioninfo.DataFromCtx(ctx).EstablishedBy(); ok && established.Method.ThroughDirectory() {
+				directory, err := {{ .ResourcePackage }}.New{{ .Directory.Record }}CreatePatch()
+				if err != nil {
+					return errors.Wrap(err, "{{ .ResourcePackage }}.New{{ .Directory.Record }}CreatePatch()")
+				}
+				directory.Set{{ .Directory.TenantField }}(req.{{ .Key.Name }}).Set{{ .Directory.MethodField }}(string(established.Method)).Set{{ .Directory.ConnectionField }}(established.Connection)
+				if err := directory.Buffer(ctx, txn, eventSource); err != nil {
+					return errors.Wrap(err, "{{ .ResourcePackage }}.{{ .Directory.Record }}CreatePatch.Buffer()")
+				}
+			}
+			{{- end }}
 
 			return nil
 		}); err != nil {
@@ -1265,7 +1326,9 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .HandlerFunc }}() http.Han
 
 		// The roster learns the {{ .RecordLower }} once it has its administrator, and every
 		// instance reloads on the tenants kind.
-		{{ .ReceiverName }}.TenantRoster().Add(domain)
+		if err := {{ .ReceiverName }}.TenantRoster().Reload(ctx); err != nil {
+			logger.FromCtx(ctx).Errorf("tenants: rereading the roster after the commit failed; this instance reloads on the tenants signal or at its backstop: %v", err)
+		}
 		if err := {{ .ReceiverName }}.LiveService().Signal(ctx, resource.KindTenants); err != nil {
 			logger.FromCtx(ctx).Errorf("tenants: signaling the tenants kind failed; the other instances reload at their backstop: %v", err)
 		}
@@ -1891,11 +1954,11 @@ import (
 		var resp response
 		{{- end }}
 		eventSource := resource.UserEvent(ctx)
-		{{- if .Resource.IsTenant }}
+		{{- if .Resource.SignalsTenants }}
 
-		// The roster follows the commit: the tenants this transaction creates and
-		// deletes reach it once the commit lands, never inside the transaction.
-		var tenantsAdded, tenantsRemoved []accesstypes.Domain
+		// The roster follows the commit: a {{ .Resource.Name }} this transaction writes
+		// reaches it once the commit lands, never inside the transaction.
+		tenantsWritten := false
 		{{- end }}
 
 		// The rows the transaction writes are collected for the live pages, published
@@ -1905,8 +1968,8 @@ import (
 			{{- if $PrimaryKeyIsGeneratedUUID }}
 			resp = response{}
 			{{- end }}
-			{{- if .Resource.IsTenant }}
-			tenantsAdded, tenantsRemoved = nil, nil
+			{{- if .Resource.SignalsTenants }}
+			tenantsWritten = false
 			{{- end }}
 			r, err := resource.CloneRequest(r)
 			if err != nil {
@@ -1930,6 +1993,9 @@ import (
 				if err != nil {
 					return errors.Wrap(err, "decoder.DecodeOperation()")
 				}
+				{{- if .Resource.SignalsTenants }}
+				tenantsWritten = true
+				{{- end }}
 
 				switch op.Type {
 				case resource.OperationCreate:
@@ -1954,9 +2020,6 @@ import (
 					if err := {{ .ResourcePackage }}.New{{ .Resource.Name }}CreatePatchFromPatchSet(id, patchSet).Buffer(ctx, txn, eventSource); err != nil {
 						return errors.Wrap(err, "{{ .ResourcePackage }}.{{ .Resource.Name }}CreatePatch.Buffer()")
 					}
-					{{- if .Resource.IsTenant }}
-					tenantsAdded = append(tenantsAdded, accesstypes.Domain(id))
-					{{- end }}
 				{{- end }}
 				case resource.OperationUpdate:
 				{{- if .Resource.HasCompoundPrimaryKey }}
@@ -1985,9 +2048,6 @@ import (
 					if err := {{ .ResourcePackage }}.New{{ .Resource.Name }}DeletePatchFromPatchSet(id, patchSet).Buffer(ctx, txn, eventSource); err != nil {
 						return errors.Wrap(err, "{{ .ResourcePackage }}.{{ .Resource.Name }}DeletePatch.Buffer()")
 					}
-					{{- if .Resource.IsTenant }}
-					tenantsRemoved = append(tenantsRemoved, accesstypes.Domain(id))
-					{{- end }}
 				{{- end }}
 				}
 			}
@@ -1997,7 +2057,7 @@ import (
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
 		live.Publish(ctx, {{ .ReceiverName }}.LiveService(), {{ if .Resource.IsDomainScoped }}domain{{ else }}""{{ end }}, touched)
-		{{- if .Resource.IsTenant }}
+		{{- if .Resource.SignalsTenants }}
 		` + tenantsCommitted + `
 		{{- end }}
 
@@ -2053,9 +2113,9 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .HandlerName }}() http.Han
 		userPermissions := {{ .ReceiverName }}.UserPermissions(r)
 		{{- if .HasTenant }}
 
-		// The roster follows the commit: the tenants this transaction creates and
-		// deletes reach it once the commit lands, never inside the transaction.
-		var tenantsAdded, tenantsRemoved []accesstypes.Domain
+		// The roster follows the commit: a tenant or a declaration this transaction
+		// writes reaches it once the commit lands, never inside the transaction.
+		tenantsWritten := false
 		{{- end }}
 
 		// The rows the transaction writes are collected for the live pages, published
@@ -2065,7 +2125,7 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .HandlerName }}() http.Han
 		if err := {{ .ReceiverName }}.ResourceClient().ExecuteFunc(ctx, func(ctx context.Context, txn resource.ReadWriteTransaction) error {
 			resp = response{}
 			{{- if .HasTenant }}
-			tenantsAdded, tenantsRemoved = nil, nil
+			tenantsWritten = false
 			{{- end }}
 			r, err := resource.CloneRequest(r)
 			if err != nil {
@@ -2162,6 +2222,9 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .HandlerName }}() http.Han
 						if err != nil {
 							return errors.Wrap(err, "{{ GoCamel .Name}}Decoder.DecodeOperation()")
 						}
+						{{- if .SignalsTenants }}
+						tenantsWritten = true
+						{{- end }}
 
 						req, err := op.ReqWithPattern("{{ .DomainPatternPrefix }}/{resource}{{ .OperationPathPattern }}"{{ if not .PrimaryKeyIsGeneratedUUID }}, resource.RequireCreatePath(){{ end }})
 						if err != nil {
@@ -2191,9 +2254,6 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .HandlerName }}() http.Han
 							if err := {{ .ResourcePackage }}.New{{ .Name }}CreatePatchFromPatchSet(id, patchSet).Buffer(ctx, txn, eventSource); err != nil {
 								return errors.Wrap(err, "{{ .ResourcePackage }}.{{ .Name }}CreatePatch.Buffer()")
 							}
-							{{- if .IsTenant }}
-							tenantsAdded = append(tenantsAdded, accesstypes.Domain(id))
-							{{- end }}
 						{{- end }}
 						case resource.OperationUpdate:
 							{{- if .HasCompoundPrimaryKey }}
@@ -2222,9 +2282,6 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .HandlerName }}() http.Han
 							if err := {{ .ResourcePackage }}.New{{ .Name }}DeletePatchFromPatchSet(id, patchSet).Buffer(ctx, txn, eventSource); err != nil {
 								return errors.Wrap(err, "{{ .ResourcePackage }}.{{ .Name }}DeletePatch.Buffer()")
 							}
-							{{- if .IsTenant }}
-							tenantsRemoved = append(tenantsRemoved, accesstypes.Domain(id))
-							{{- end }}
 							{{- end }}
 						}
 {{- end }}`

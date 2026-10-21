@@ -218,9 +218,9 @@ func (a *App) PatchResources() http.HandlerFunc {
 		)
 		userPermissions := a.UserPermissions(r)
 
-		// The roster follows the commit: the tenants this transaction creates and
-		// deletes reach it once the commit lands, never inside the transaction.
-		var tenantsAdded, tenantsRemoved []accesstypes.Domain
+		// The roster follows the commit: a tenant or a declaration this transaction
+		// writes reaches it once the commit lands, never inside the transaction.
+		tenantsWritten := false
 
 		// The rows the transaction writes are collected for the live pages, published
 		// once the commit lands and before the answer, each under the domain its
@@ -228,7 +228,7 @@ func (a *App) PatchResources() http.HandlerFunc {
 		ctx, touched := resource.CollectTouchedRows(ctx)
 		if err := a.ResourceClient().ExecuteFunc(ctx, func(ctx context.Context, txn resource.ReadWriteTransaction) error {
 			resp = response{}
-			tenantsAdded, tenantsRemoved = nil, nil
+			tenantsWritten = false
 			r, err := resource.CloneRequest(r)
 			if err != nil {
 				return errors.Wrap(err, "resource.CloneRequest()")
@@ -410,6 +410,7 @@ func (a *App) PatchResources() http.HandlerFunc {
 						if err != nil {
 							return errors.Wrap(err, "sectorDecoder.DecodeOperation()")
 						}
+						tenantsWritten = true
 
 						req, err := op.ReqWithPattern("/{resource}/{id}", resource.RequireCreatePath())
 						if err != nil {
@@ -422,7 +423,6 @@ func (a *App) PatchResources() http.HandlerFunc {
 							if err := resources.NewSectorCreatePatchFromPatchSet(id, patchSet).Buffer(ctx, txn, eventSource); err != nil {
 								return errors.Wrap(err, "resources.SectorCreatePatch.Buffer()")
 							}
-							tenantsAdded = append(tenantsAdded, accesstypes.Domain(id))
 						case resource.OperationUpdate:
 							id := httpio.Param[string](req, "id")
 							if err := resources.NewSectorUpdatePatchFromPatchSet(id, patchSet).Buffer(ctx, txn, eventSource); err != nil {
@@ -433,7 +433,6 @@ func (a *App) PatchResources() http.HandlerFunc {
 							if err := resources.NewSectorDeletePatchFromPatchSet(id, patchSet).Buffer(ctx, txn, eventSource); err != nil {
 								return errors.Wrap(err, "resources.SectorDeletePatch.Buffer()")
 							}
-							tenantsRemoved = append(tenantsRemoved, accesstypes.Domain(id))
 						}
 
 						continue
@@ -860,13 +859,10 @@ func (a *App) PatchResources() http.HandlerFunc {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
 		live.Publish(ctx, a.LiveService(), "", touched)
-		for _, domain := range tenantsAdded {
-			a.TenantRoster().Add(domain)
-		}
-		for _, domain := range tenantsRemoved {
-			a.TenantRoster().Remove(domain)
-		}
-		if len(tenantsAdded)+len(tenantsRemoved) > 0 {
+		if tenantsWritten {
+			if err := a.TenantRoster().Reload(ctx); err != nil {
+				logger.FromCtx(ctx).Errorf("tenants: rereading the roster after the commit failed; this instance reloads on the tenants signal or at its backstop: %v", err)
+			}
 			if err := a.LiveService().Signal(ctx, resource.KindTenants); err != nil {
 				logger.FromCtx(ctx).Errorf("tenants: signaling the tenants kind failed; the other instances reload at their backstop: %v", err)
 			}
