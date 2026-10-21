@@ -331,7 +331,9 @@ took since the branch was cut (the branch's migration moves up), a gap (the bran
 moves down), and a removed seed file (the seed files after it move down). Run it from anywhere
 inside the repository, by hand or through go generate: the rendered cmd/generate/bedrock.go runs
 it before the application's generators, so they read the migrations as the pipeline will.
-Nothing to do prints nothing.
+Nothing to do prints nothing. A consolidation, the committed sequence folded into one file at
+its highest index (consolidate, below), is left alone with a note: it carries the index the
+environments' databases already hold.
 
 The stack directory and the application are found the way check finds them; --app, --dir and
 --placement override. The placement names the default branch; a branch cut from a patch line

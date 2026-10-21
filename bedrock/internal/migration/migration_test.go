@@ -246,6 +246,29 @@ func TestRenumber(t *testing.T) {
 			wantFiles: map[string][]string{migrations: {"000002_Widgets.down.sql", "000002_Widgets.up.sql", "000003_Sites.down.sql", "000003_Sites.up.sql"}},
 		},
 		{
+			name: "a consolidation at the committed sequence's highest index is left alone",
+			setup: func(r *repo) {
+				masterWithTwo(r)
+				r.git("rm", "-q", migrations+"/000001_Init.up.sql", migrations+"/000001_Init.down.sql", migrations+"/000002_Widgets.up.sql", migrations+"/000002_Widgets.down.sql")
+				r.write(pair(migrations, "000002_Consolidated")...)
+			},
+			wantNotes: []string{migrations + ": 000002_Consolidated is the committed sequence folded at its highest index (bedrock migration consolidate), left alone"},
+			wantFiles: map[string][]string{migrations: {"000002_Consolidated.down.sql", "000002_Consolidated.up.sql"}},
+		},
+		{
+			name: "a fold beside another own migration is not a consolidation: both follow the committed sequence",
+			setup: func(r *repo) {
+				masterWithTwo(r)
+				r.git("rm", "-q", migrations+"/000001_Init.up.sql", migrations+"/000001_Init.down.sql", migrations+"/000002_Widgets.up.sql", migrations+"/000002_Widgets.down.sql")
+				r.write(join(pair(migrations, "000002_Consolidated"), pair(migrations, "000003_Extra"))...)
+			},
+			wantRenames: []Rename{
+				{Dir: migrations, From: "000002_Consolidated", To: "000003_Consolidated", Files: []string{"up", "down"}},
+				{Dir: migrations, From: "000003_Extra", To: "000004_Extra", Files: []string{"up", "down"}},
+			},
+			wantFiles: map[string][]string{migrations: {"000003_Consolidated.down.sql", "000003_Consolidated.up.sql", "000004_Extra.down.sql", "000004_Extra.up.sql"}},
+		},
+		{
 			name: "no release tag: the whole schema sequence is packed from 000001, committed migrations included",
 			setup: func(r *repo) {
 				r.commit("a hole the generator left", join(pair(migrations, "000001_Init"), pair(migrations, "000002_Audit"), pair(migrations, "000003_Sites"), pair(migrations, "000005_Zones"))...)
