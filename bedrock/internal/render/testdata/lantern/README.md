@@ -679,9 +679,9 @@ throttled: the directory holds the credential.
 | 3010 | deny | SQL injection in JSON bodies (json-sqli-canary, sensitivity 1) on /api | bedrock's default rule sets |
 | 3020 | deny | cross-site scripting (xss-v33-stable, sensitivity 1) on /api | bedrock's default rule sets |
 | 3030 | deny | protocol attacks (protocolattack-v33-stable, sensitivity 1) on /api | bedrock's default rule sets |
-| 4000 | throttle | POST /api/user/password/login, throttled by client address | the default outlet's password login, the generated router; past cloud_armor_sign_in_count POSTs in cloud_armor_sign_in_interval seconds (terraform.tfvars) an address answers 429 until the interval passes |
-| 4001 | throttle | POST /api/user/pending/confirm, throttled by client address | the default outlet's pending sign-in confirmation, the generated router; past cloud_armor_sign_in_count POSTs in cloud_armor_sign_in_interval seconds (terraform.tfvars) an address answers 429 until the interval passes |
-| 4002 | throttle | POST /api/user/pending/cancel, throttled by client address | the default outlet's pending sign-in cancel, the generated router; past cloud_armor_sign_in_count POSTs in cloud_armor_sign_in_interval seconds (terraform.tfvars) an address answers 429 until the interval passes |
+| 4000 | throttle | POST /api/user/password/login, throttled by client address | the default outlet's password login, the generated router; past the sign-in count in its interval (terraform.tfvars) an address answers 429 |
+| 4001 | throttle | POST /api/user/pending/confirm, throttled by client address | the default outlet's pending sign-in confirmation, the generated router; past the sign-in count in its interval (terraform.tfvars) an address answers 429 |
+| 4002 | throttle | POST /api/user/pending/cancel, throttled by client address | the default outlet's pending sign-in cancel, the generated router; past the sign-in count in its interval (terraform.tfvars) an address answers 429 |
 | 2147483647 | allow | every other request | the default rule |
 
 ## Pull-request environments

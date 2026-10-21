@@ -148,15 +148,32 @@ func TestArmorView(t *testing.T) {
 				{Priority: 2002, Action: "allow", Verb: "allow", Text: "POST /hooks/registry; placement.json cloudArmor.bypasses; signed by the registry", Expression: `"request.method == 'POST' && request.path.matches('^/hooks/registry$')"`},
 				{Priority: 2003, Action: "allow", Verb: "allow", Text: "/streams/*; placement.json cloudArmor.bypasses; bytes", Expression: `"request.path.matches('^/streams/.*$')"`},
 				{Priority: 3000, Action: "deny(403)", Verb: "deny", Deny: true, Text: "cross-site scripting (xss-v33-stable, sensitivity 2) on /api, /droids, and /portal/api; placement.json cloudArmor.ruleSets", Expression: `"(request.path.startsWith('/api/') || request.path.startsWith('/droids/') || request.path.startsWith('/portal/api/')) && evaluatePreconfiguredWaf('xss-v33-stable', {'sensitivity': 2})"`, Exclusions: 2},
-				{Priority: 4000, Action: "throttle", Verb: "throttle", Throttle: true, Text: "POST /api/user/password/login, throttled by client address; the default outlet's password login, the generated router; past cloud_armor_sign_in_count POSTs in cloud_armor_sign_in_interval seconds (terraform.tfvars) an address answers 429 until the interval passes", Expression: `"request.method == 'POST' && request.path.matches('^/api/user/password/login$')"`},
-				{Priority: 4001, Action: "throttle", Verb: "throttle", Throttle: true, Text: "POST /api/user/pending/confirm, throttled by client address; the default outlet's pending sign-in confirmation, the generated router; past cloud_armor_sign_in_count POSTs in cloud_armor_sign_in_interval seconds (terraform.tfvars) an address answers 429 until the interval passes", Expression: `"request.method == 'POST' && request.path.matches('^/api/user/pending/confirm$')"`},
-				{Priority: 4002, Action: "throttle", Verb: "throttle", Throttle: true, Text: "POST /portal/api/user/pending/cancel, throttled by client address; the portal outlet's pending sign-in cancel, the generated router; past cloud_armor_sign_in_count POSTs in cloud_armor_sign_in_interval seconds (terraform.tfvars) an address answers 429 until the interval passes", Expression: `"request.method == 'POST' && request.path.matches('^/portal/api/user/pending/cancel$')"`},
+				{Priority: 4000, Action: "throttle", Verb: "throttle", Throttle: true, Text: "POST /api/user/password/login, throttled by client address; the default outlet's password login, the generated router; past the sign-in count in its interval (terraform.tfvars) an address answers 429", Expression: `"request.method == 'POST' && request.path.matches('^/api/user/password/login$')"`},
+				{Priority: 4001, Action: "throttle", Verb: "throttle", Throttle: true, Text: "POST /api/user/pending/confirm, throttled by client address; the default outlet's pending sign-in confirmation, the generated router; past the sign-in count in its interval (terraform.tfvars) an address answers 429", Expression: `"request.method == 'POST' && request.path.matches('^/api/user/pending/confirm$')"`},
+				{Priority: 4002, Action: "throttle", Verb: "throttle", Throttle: true, Text: "POST /portal/api/user/pending/cancel, throttled by client address; the portal outlet's pending sign-in cancel, the generated router; past the sign-in count in its interval (terraform.tfvars) an address answers 429", Expression: `"request.method == 'POST' && request.path.matches('^/portal/api/user/pending/cancel$')"`},
 			},
 			wantSignIn: "`POST /api/user/password/login`, `POST /api/user/pending/confirm`, and `POST /portal/api/user/pending/cancel`",
 			wantExcl: []string{
 				"xss-v33-stable request_cookie EQUALS \"harbor_session\" [] the cookie `harbor_session` under every rule of the set",
 				"xss-v33-stable request_query_param EQUALS_ANY  [\"owasp-crs-v030301-id941100-xss\", \"owasp-crs-v030301-id941110-xss\"] every query parameter under `owasp-crs-v030301-id941100-xss` and `owasp-crs-v030301-id941110-xss`",
 			},
+		},
+		{
+			name: "a long outlet declaration: the throttle's description is cut at a word boundary within the limit, the text whole",
+			m: &derive.Model{
+				Placement: &derive.Placement{CloudArmor: &derive.CloudArmor{RuleSets: []derive.RuleSet{{Name: derive.RuleSetSQLi, Sensitivity: 1}}}},
+				Outlets:   []derive.Outlet{{Name: "the-partner-portal-for-the-regional-distributors-and-their-field-technicians", Prefix: "partner-portal-for-the-regional-distributors-and-their-field-technicians/api"}},
+				SignInRoutes: []derive.SignInRoute{
+					{Outlet: "the-partner-portal-for-the-regional-distributors-and-their-field-technicians", Method: http.MethodPost, Path: "/partner-portal-for-the-regional-distributors-and-their-field-technicians/api/user/pending/confirm", Kind: derive.SignInConfirm},
+				},
+			},
+			wantScope: "request.path.startsWith('/partner-portal-for-the-regional-distributors-and-their-field-technicians/api/')",
+			wantProse: "/partner-portal-for-the-regional-distributors-and-their-field-technicians/api",
+			wantRules: []rule{
+				{Priority: 3000, Action: "deny(403)", Verb: "deny", Deny: true, Text: "SQL injection (sqli-v33-stable, sensitivity 1) on /partner-portal-for-the-regional-distributors-and-their-field-technicians/api; placement.json cloudArmor.ruleSets", Expression: `"request.path.startsWith('/partner-portal-for-the-regional-distributors-and-their-field-technicians/api/') && evaluatePreconfiguredWaf('sqli-v33-stable', {'sensitivity': 1})"`},
+				{Priority: 4000, Action: "throttle", Verb: "throttle", Throttle: true, Text: "POST /partner-portal-for-the-regional-distributors-and-their-field-technicians/api/user/pending/confirm, throttled by client address; the the-partner-portal-for-the-regional-distributors-and-their-field-technicians outlet's pending sign-in confirmation, the generated router; past the sign-in count in its interval (terraform.tfvars) an address answers 429", Expression: `"request.method == 'POST' && request.path.matches('^/partner-portal-for-the-regional-distributors-and-their-field-technicians/api/user/pending/confirm$')"`},
+			},
+			wantSignIn: "`POST /partner-portal-for-the-regional-distributors-and-their-field-technicians/api/user/pending/confirm`",
 		},
 		{
 			name: "no outlet prefix: the trailing sets run on every path",
@@ -200,9 +217,41 @@ func TestArmorView(t *testing.T) {
 				t.Errorf("Exclusions mismatch (-want +got):\n%s", diff)
 			}
 			for _, r := range v.Rules {
-				if r.Description != hclQuote(r.Text) {
-					t.Errorf("rule %d: Description = %s, want the text quoted", r.Priority, r.Description)
+				if r.Description != hclQuote(fitDescription(r.Text)) {
+					t.Errorf("rule %d: Description = %s, want the text within the limit, quoted", r.Priority, r.Description)
 				}
+				if n := len(fitDescription(r.Text)); n > armorDescriptionLimit {
+					t.Errorf("rule %d: description is %d characters, over Google's limit of %d", r.Priority, n, armorDescriptionLimit)
+				}
+			}
+		})
+	}
+}
+
+func TestFitDescription(t *testing.T) {
+	t.Parallel()
+
+	long := strings.Repeat("word ", 60) + "end"
+	tests := []struct {
+		name string
+		text string
+		want string
+	}{
+		{name: "a text within the limit is itself", text: "POST /api/user/password/login, throttled by client address; the default outlet's password login", want: "POST /api/user/password/login, throttled by client address; the default outlet's password login"},
+		{name: "a text of exactly the limit is itself", text: strings.Repeat("x", 256), want: strings.Repeat("x", 256)},
+		{name: "a long text is cut at a word boundary with the ending", text: long, want: strings.TrimSuffix(long[:253][:strings.LastIndex(long[:253], " ")], " ") + "..."},
+		{name: "a long text without a space is cut hard", text: strings.Repeat("y", 300), want: strings.Repeat("y", 253) + "..."},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := fitDescription(tt.text)
+			if got != tt.want {
+				t.Errorf("fitDescription() = %q, want %q", got, tt.want)
+			}
+			if len(got) > armorDescriptionLimit {
+				t.Errorf("len = %d, over %d", len(got), armorDescriptionLimit)
 			}
 		})
 	}
