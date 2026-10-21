@@ -250,7 +250,7 @@ func TestTenancyApply(t *testing.T) {
 				"cmd/generate/resourcegenerator/main.go: added WithConcealedDomains(); the tenant segment /tenants derives from the Tenant record",
 				"schema/migrations/000003_Tenants.up.sql and .down.sql: the Tenants table (a slug primary key, a unique Name, and DirectoryOnly) and the TenantDirectories table (the tenant's declared directories)",
 				"schema/devseed/000001_dev_tenants.up.sql and .down.sql: the development tenants north and south, a data migration for the bootstrap to apply before the logins",
-				"pkg/resources/tenants.go: the Tenant resource struct, global, keyed by slug, with its declaration's flag (DirectoryOnly) and change tracking",
+				"pkg/resources/tenants.go: the Tenant resource struct, global, keyed by slug, listed in name order (@order(Name asc)), with its declaration's flag (DirectoryOnly) and change tracking",
 				"pkg/resources/tenant_directories.go: the TenantDirectory resource struct, the tenant's declared directories, tenant-scoped under /tenants/{tenantID}/tenant-directories",
 				"pkg/config/tenancy.go: the tenant roster (startTenants builds it with app.NewTenantRoster and starts it), TenantRoster() and TenantDeclarations() on DataConfiguration; pkg/config/data.go gained the field and the start",
 				"app/tenancy.go: TenancyConfigurer (embedded in Configurer, asking TenantRoster() and TenantDeclarations()) and App.TenantRoster(); app/app.go gained the fields and their assignments",
@@ -291,7 +291,7 @@ func TestTenancyApply(t *testing.T) {
 					}
 				}
 				resources := read(t, a, "pkg/resources/tenants.go")
-				for _, want := range []string{"\t// @resource\n\t// @tenant\n\tTenant struct {", "\t\t// @directoryOnly\n\t\tDirectoryOnly bool `spanner:\"DirectoryOnly\"`\n", "func (Tenant) Config() resource.Config {\n\treturn resource.Config{TrackChanges: true}\n}"} {
+				for _, want := range []string{"\t// @resource\n\t// @tenant\n\t// @order(Name asc)\n\tTenant struct {", "\t\t// @directoryOnly\n\t\tDirectoryOnly bool `spanner:\"DirectoryOnly\"`\n", "func (Tenant) Config() resource.Config {\n\treturn resource.Config{TrackChanges: true}\n}"} {
 					if !strings.Contains(resources, want) {
 						t.Errorf("tenants.go lacks %q:\n%s", want, resources)
 					}
@@ -317,7 +317,7 @@ func TestTenancyApply(t *testing.T) {
 				"cmd/generate/resourcegenerator/main.go: added WithConcealedDomains(); the tenant segment /tenants derives from the Tenant record",
 				"schema/migrations/000003_Tenants.up.sql and .down.sql: the Tenants table (a slug primary key, a unique Name, and DirectoryOnly) and the TenantDirectories table (the tenant's declared directories)",
 				"schema/devseed/000001_dev_tenants.up.sql and .down.sql: the development tenants north and south, a data migration for the bootstrap to apply before the logins",
-				"pkg/resources/tenants.go: the Tenant resource struct, global, keyed by slug, with its declaration's flag (DirectoryOnly) and change tracking",
+				"pkg/resources/tenants.go: the Tenant resource struct, global, keyed by slug, listed in name order (@order(Name asc)), with its declaration's flag (DirectoryOnly) and change tracking",
 				"pkg/resources/tenant_directories.go: the TenantDirectory resource struct, the tenant's declared directories, tenant-scoped under /tenants/{tenantID}/tenant-directories",
 				"pkg/config/tenancy.go: the tenant roster (startTenants builds it with app.NewTenantRoster and starts it), TenantRoster() and TenantDeclarations() on DataConfiguration; pkg/config/data.go gained the field and the start",
 				"app/tenancy.go: TenancyConfigurer (embedded in Configurer, asking TenantRoster() and TenantDeclarations()) and App.TenantRoster(); app/app.go gained the fields and their assignments",
@@ -356,7 +356,7 @@ func TestTenancyApply(t *testing.T) {
 			wantDid: []string{
 				"cmd/generate/resourcegenerator/main.go: added WithConcealedDomains(); the tenant segment /tenants derives from the Tenant record",
 				"schema/migrations/000002_Tenants.up.sql and .down.sql: the Tenants table (a slug primary key, a unique Name, and DirectoryOnly) and the TenantDirectories table (the tenant's declared directories)",
-				"pkg/resources/tenants.go: the Tenant resource struct, global, keyed by slug, with its declaration's flag (DirectoryOnly) and change tracking",
+				"pkg/resources/tenants.go: the Tenant resource struct, global, keyed by slug, listed in name order (@order(Name asc)), with its declaration's flag (DirectoryOnly) and change tracking",
 				"pkg/resources/tenant_directories.go: the TenantDirectory resource struct, the tenant's declared directories, tenant-scoped under /tenants/{tenantID}/tenant-directories",
 				"ran go generate ./..., which emitted the Tenant and TenantDirectory resources, the tenant segment pair under /tenants/{tenantID}, the roster constructor NewTenantRoster and the declaration reader NewTenantDeclarationReader",
 			},

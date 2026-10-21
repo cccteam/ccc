@@ -99,6 +99,7 @@ func TestRenameApp(t *testing.T) {
 		{name: "the root README heading", rel: "README.md", text: "# solo\n\nAn application. Runs solo.\n", want: "# beacon\n\nAn application. Runs solo.\n"},
 		{name: "the page title", rel: "web/console/src/index.html", text: "<title>Solo</title>\n", want: "<title>Beacon</title>\n"},
 		{name: "the component's title field", rel: "web/console/src/app/app.component.ts", text: "  title = 'Solo';\n", want: "  title = 'Beacon';\n"},
+		{name: "the footer's name field", rel: "web/console/src/app/components/shared/footer/footer.component.ts", text: "  name = 'Solo';\n", want: "  name = 'Beacon';\n"},
 		{name: "the login card's heading", rel: "web/console/src/app/components/login/login.component.html", text: "      <mat-card-title>Solo</mat-card-title>\n", want: "      <mat-card-title>Beacon</mat-card-title>\n"},
 		{name: "a word that only starts with the name is not the title", rel: "web/console/src/index.html", text: "<title>Solomon</title> 'Solo'", want: "<title>Solomon</title> 'Beacon'"},
 		{name: "the manifest's name and short name", rel: "web/console/public/manifest.webmanifest", text: "{\n  \"name\": \"Solo\",\n  \"short_name\": \"Solo\",\n  \"id\": \"/\",\n  \"icons\": [{ \"src\": \"icons/icon-192.png\", \"sizes\": \"192x192\" }]\n}\n", want: "{\n  \"name\": \"Beacon\",\n  \"short_name\": \"Beacon\",\n  \"id\": \"/\",\n  \"icons\": [{ \"src\": \"icons/icon-192.png\", \"sizes\": \"192x192\" }]\n}\n"},

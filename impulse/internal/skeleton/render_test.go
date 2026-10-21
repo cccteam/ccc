@@ -505,13 +505,16 @@ func TestRenderName(t *testing.T) {
 		},
 	}
 	// The web app manifest names the installed application in display form, the
-	// portal's with its suffix.
+	// portal's with its suffix; the console's footer opens with the name, held in its
+	// component's field.
 	consoleManifest := []string{`"name": "Beacon"`, `"short_name": "Beacon"`}
 	portalManifest := []string{`"name": "Beacon Portal"`, `"short_name": "Beacon Portal"`}
+	consoleFooter := []string{"  name = 'Beacon';\n"}
 	oneWorkspace := map[string][]string{
 		"web/package.json": {`"name": "beacon-web"`},
 		"web/bun.lock":     {`"name": "beacon-web"`},
-		"web/console/public/manifest.webmanifest": consoleManifest,
+		"web/console/public/manifest.webmanifest":                          consoleManifest,
+		"web/console/src/app/components/shared/footer/footer.component.ts": consoleFooter,
 	}
 	tests := []struct {
 		name      string
@@ -523,16 +526,18 @@ func TestRenderName(t *testing.T) {
 		{name: "outlets", candidate: "outlets", slots: map[string][]string{
 			"web/package.json": {`"name": "beacon-web"`},
 			"web/bun.lock":     {`"name": "beacon-web"`},
-			"web/console/public/manifest.webmanifest": consoleManifest,
-			"web/portal/public/manifest.webmanifest":  portalManifest,
+			"web/console/public/manifest.webmanifest":                          consoleManifest,
+			"web/portal/public/manifest.webmanifest":                           portalManifest,
+			"web/console/src/app/components/shared/footer/footer.component.ts": consoleFooter,
 		}},
 		{name: "sites", candidate: "sites", slots: map[string][]string{
-			"apps/console/web/package.json":                {`"name": "beacon-console-web"`},
-			"apps/console/web/bun.lock":                    {`"name": "beacon-console-web"`},
-			"apps/console/web/public/manifest.webmanifest": consoleManifest,
-			"apps/portal/web/package.json":                 {`"name": "beacon-portal-web"`},
-			"apps/portal/web/bun.lock":                     {`"name": "beacon-portal-web"`},
-			"apps/portal/web/public/manifest.webmanifest":  portalManifest,
+			"apps/console/web/package.json":                                         {`"name": "beacon-console-web"`},
+			"apps/console/web/bun.lock":                                             {`"name": "beacon-console-web"`},
+			"apps/console/web/public/manifest.webmanifest":                          consoleManifest,
+			"apps/console/web/src/app/components/shared/footer/footer.component.ts": consoleFooter,
+			"apps/portal/web/package.json":                                          {`"name": "beacon-portal-web"`},
+			"apps/portal/web/bun.lock":                                              {`"name": "beacon-portal-web"`},
+			"apps/portal/web/public/manifest.webmanifest":                           portalManifest,
 		}},
 	}
 	for _, tt := range tests {

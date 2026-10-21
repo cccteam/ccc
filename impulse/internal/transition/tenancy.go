@@ -245,7 +245,7 @@ func (tn Tenancy) writeSeed(a *app.App, dir string, ch *Change) error {
 func (tn Tenancy) writeRecord(a *app.App, resourceDir string, ch *Change) error {
 	rel := path.Join(resourceDir, strings.ToLower(tn.Table)+".go")
 	if _, err := os.Stat(a.Abs(rel)); err == nil {
-		ch.skipf("%s already exists, so the %s resource struct was not written; make sure it is a global @resource annotated @tenant, with a slug Id and a Name", rel, tn.Record())
+		ch.skipf("%s already exists, so the %s resource struct was not written; make sure it is a global @resource annotated @tenant and @order, with a slug Id and a Name", rel, tn.Record())
 
 		return nil
 	}
@@ -269,7 +269,8 @@ type (
 	// shape with a CHECK constraint. Creating a tenant therefore supplies its key.
 	//
 	// %[2]s itself is a GLOBAL resource: administering the tenant list is a global
-	// concern.
+	// concern. Its list comes in name order (@order) when the request names no sort,
+	// since a paged request with neither is refused.
 	//
 	// Who may enter a tenant is the record's declaration, data of the application
 	// rather than deploy configuration: the directories the tenant admits its people
@@ -283,6 +284,7 @@ type (
 	//
 	// @resource
 	// @tenant
+	// @order(Name asc)
 	%[2]s struct {
 		ID   string `+"`spanner:\"Id\"`"+`
 		Name string `+"`spanner:\"Name\"`"+`
@@ -303,7 +305,7 @@ func (%[2]s) Config() resource.Config {
 	if err := writeNew(a, rel, src); err != nil {
 		return err
 	}
-	ch.didf("%s: the %s resource struct, global, keyed by slug, with its declaration's flag (DirectoryOnly) and change tracking", rel, tn.Record())
+	ch.didf("%s: the %s resource struct, global, keyed by slug, listed in name order (@order(Name asc)), with its declaration's flag (DirectoryOnly) and change tracking", rel, tn.Record())
 
 	return nil
 }
