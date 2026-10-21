@@ -1,5 +1,39 @@
 # Changelog
 
+## [0.15.0](https://github.com/cccteam/ccc/compare/resource/v0.14.2...resource/v0.15.0) (2026-10-21)
+
+
+### ⚠ BREAKING CHANGES
+
+* **resource:** the generator's single-method declarations (Password, OIDCGoogle, OIDCAzure) and the v0.12 handler type names are gone; a program declares generation.Auth(importPath, methods...) with PasswordMethod(), GoogleMethod(name), AzureMethod(name) or WorkOSMethod(name). resource requires session v0.13.0 and access v0.11.1.
+
+### Features
+
+* a consolidation passes the migrations job and the guard, which reads every environment's migration version ([#987](https://github.com/cccteam/ccc/issues/987)) ([289e80c](https://github.com/cccteam/ccc/commit/289e80c743a255529a17edf027963fabd4b5a6e9))
+* a tenant record declares who creates tenants: an administrator alone, self-service, or both ([#1017](https://github.com/cccteam/ccc/issues/1017)) ([e33366e](https://github.com/cccteam/ccc/commit/e33366e0a3beac104a6c6db33ff46063e8359037))
+* **accesstypes:** the condition evaluator judges composed rows from accesstypes/condition ([#989](https://github.com/cccteam/ccc/issues/989)) ([e4d201d](https://github.com/cccteam/ccc/commit/e4d201d8725b03b84f4128b57a7172094cec18f9))
+* every tenant-scoped console page carries the tenant in its URL, settled by a guard on the tenant segment ([#1016](https://github.com/cccteam/ccc/issues/1016)) ([d342ce9](https://github.com/cccteam/ccc/commit/d342ce9923ef224e32e50a83d87c7b311504219d))
+* **impulse:** an auth is one Auth with registered sign-in methods, added with impulse add method, and the skeletons hand each auth's user-management surface the stores it serves over ([#980](https://github.com/cccteam/ccc/issues/980)) ([e4d201d](https://github.com/cccteam/ccc/commit/e4d201d8725b03b84f4128b57a7172094cec18f9))
+* **impulse:** the tenanted skeletons carry the tenant directories record, the sign-in page under the tenant's routes and the tenant policy on every auth; add tenancy and add auth wire the declaration reader, and a Google registration admitting any account names any Workspace beside it ([#1032](https://github.com/cccteam/ccc/issues/1032)) ([1db2dfb](https://github.com/cccteam/ccc/commit/1db2dfbc16f0babe16d097109e979aa974e631de))
+* **lodestar:** sectors declare the example Workspace and Bastion is directory-only; the rigger and the bosun show the declaration deciding a sign-in and a session's sector list ([#1032](https://github.com/cccteam/ccc/issues/1032)) ([1db2dfb](https://github.com/cccteam/ccc/commit/1db2dfbc16f0babe16d097109e979aa974e631de))
+* **resource:** a tenant is offered only when the session may enter it; SessionPermissions takes the application's tenant declarations beside its roster, UserPermissions gains Reaches, and the generated domain guard, the consolidated dispatcher and the user-domains endpoint refuse or omit a tenant whose declaration does not admit the way the session was established ([#1032](https://github.com/cccteam/ccc/issues/1032)) ([1db2dfb](https://github.com/cccteam/ccc/commit/1db2dfbc16f0babe16d097109e979aa974e631de))
+* **resource:** each Auth's users, seats and roles are served as resources, with grant conditions judged over the composed rows, and the generated descriptor carries a userSurfaces block the user-management page configures itself from ([#989](https://github.com/cccteam/ccc/issues/989)) ([e4d201d](https://github.com/cccteam/ccc/commit/e4d201d8725b03b84f4128b57a7172094cec18f9))
+* **resource:** session outlets declare their Auth's sign-in methods, and the generated router serves the methods, session, pending and password-change routes the login page renders from, on session v0.13 ([#958](https://github.com/cccteam/ccc/issues/958)) ([e4d201d](https://github.com/cccteam/ccc/commit/e4d201d8725b03b84f4128b57a7172094cec18f9))
+* **resource:** the tenant record declares who may enter it, its directories and whether they are the only way in, as a tenant-scoped directories record and a directory-only column read by the roster at request time and by the session library's tenant policy at sign-in; SignInRoles reads memberships outside the sign-in's transaction, and a self-service tenant declares its creator's directory ([#1032](https://github.com/cccteam/ccc/issues/1032)) ([1db2dfb](https://github.com/cccteam/ccc/commit/1db2dfbc16f0babe16d097109e979aa974e631de))
+
+
+### Bug Fixes
+
+* resource and Lodestar pin accesstypes at its v0.7.0 release, ahead of the resource release ([#1034](https://github.com/cccteam/ccc/issues/1034)) ([f23f9b0](https://github.com/cccteam/ccc/commit/f23f9b0699a08d769ddf1517ba56d9fe544231ee))
+* the skeleton and Lodestar take their fonts from the library, so the service worker's loads render Material text and icons ([#971](https://github.com/cccteam/ccc/issues/971)) ([4649033](https://github.com/cccteam/ccc/commit/4649033f6e594079c13b60ee71b318b1d23cd28b))
+* the skeletons and Lodestar move to @cccteam/resource-angular 0.0.9; Lodestar's row-link bridge retires ([#1033](https://github.com/cccteam/ccc/issues/1033)) ([d0a0e6a](https://github.com/cccteam/ccc/commit/d0a0e6a0d519eccbcd9b44fb3c62a354f7ca0167))
+
+
+### Code Upgrade
+
+* **deps:** Go 1.26.10; crypto/x509 GO-2026-6809 fixed ([#1018](https://github.com/cccteam/ccc/issues/1018)) ([25dc507](https://github.com/cccteam/ccc/commit/25dc507e6226ed8d39fd49960a87ec04d8a04f5a))
+* **deps:** the root, middleware and resource modules take dependabot's three dependency groups in one change ([#975](https://github.com/cccteam/ccc/issues/975)) ([bbecfa2](https://github.com/cccteam/ccc/commit/bbecfa25ec8141797c85dcabc6def7e7e722547c))
+
 ## [0.14.2](https://github.com/cccteam/ccc/compare/resource/v0.14.1...resource/v0.14.2) (2026-10-15)
 
 
