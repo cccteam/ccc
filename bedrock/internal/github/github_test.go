@@ -3,14 +3,21 @@ package github_test
 import (
 	"context"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/google/go-cmp/cmp"
 
 	"github.com/cccteam/ccc/bedrock/internal/github"
 	"github.com/cccteam/ccc/bedrock/internal/github/githubtest"
 )
+
+// cut is the answer a test server gives by closing the connection before any answer.
+const cut = -1
 
 func TestClient(t *testing.T) {
 	t.Parallel()
@@ -262,6 +269,138 @@ func TestIssueComments(t *testing.T) {
 			}
 			if diff := cmp.Diff(tt.wantCalls, srv.Calls); diff != "" {
 				t.Errorf("calls mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+func TestRetries(t *testing.T) {
+	t.Parallel()
+
+	ref := `{"ref":"refs/heads/main","object":{"type":"commit","sha":"c3"}}`
+	tests := []struct {
+		name string
+		// answers is what the server does with each request to the path, in order; the
+		// last one repeats. "cut" closes the connection before any answer.
+		answers []int
+		// write sends a POST instead of a GET.
+		write     bool
+		want      string
+		wantErr   string
+		wantCalls int
+		wantWaits []time.Duration
+	}{
+		{
+			name:      "a read GitHub answers 503 once succeeds on the retry",
+			answers:   []int{http.StatusServiceUnavailable, http.StatusOK},
+			want:      "c3",
+			wantCalls: 2,
+			wantWaits: []time.Duration{2 * time.Second},
+		},
+		{
+			name:      "a read cut off before an answer is sent again",
+			answers:   []int{cut, http.StatusOK},
+			want:      "c3",
+			wantCalls: 2,
+			wantWaits: []time.Duration{2 * time.Second},
+		},
+		{
+			name:      "a read that fails every time gives up with the last error after the waits double",
+			answers:   []int{http.StatusBadGateway, http.StatusGatewayTimeout, http.StatusServiceUnavailable},
+			wantErr:   "answered 503",
+			wantCalls: 3,
+			wantWaits: []time.Duration{2 * time.Second, 4 * time.Second},
+		},
+		{
+			name:      "a read refused outright is not sent again",
+			answers:   []int{http.StatusForbidden, http.StatusOK},
+			wantErr:   "answered 403",
+			wantCalls: 1,
+		},
+		{
+			name:      "a write that fails once is not sent again",
+			answers:   []int{http.StatusServiceUnavailable, http.StatusOK},
+			write:     true,
+			wantErr:   "answered 503",
+			wantCalls: 1,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			var mu sync.Mutex
+			calls := 0
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				mu.Lock()
+				answer := tt.answers[min(calls, len(tt.answers)-1)]
+				calls++
+				mu.Unlock()
+				switch answer {
+				case cut:
+					hijacker, ok := w.(http.Hijacker)
+					if !ok {
+						t.Error("the test server cannot hijack the connection")
+
+						return
+					}
+					conn, _, err := hijacker.Hijack()
+					if err != nil {
+						t.Errorf("Hijack() = %v", err)
+
+						return
+					}
+					if err := conn.Close(); err != nil {
+						t.Errorf("Close() = %v", err)
+					}
+				case http.StatusOK:
+					w.Header().Set("Content-Type", "application/json")
+					// A test server answering a fixed JSON literal to the client under test; nothing of the request reaches the answer.
+					// nosemgrep: go.lang.security.audit.xss.no-fprintf-to-responsewriter.no-fprintf-to-responsewriter
+					fmt.Fprint(w, ref)
+				default:
+					w.Header().Set("Content-Type", "application/json")
+					w.WriteHeader(answer)
+					// The same: the status the case scripted, formatted into a fixed JSON shape.
+					// nosemgrep: go.lang.security.audit.xss.no-fprintf-to-responsewriter.no-fprintf-to-responsewriter
+					fmt.Fprintf(w, `{"message":"status %d"}`, answer)
+				}
+			}))
+			t.Cleanup(server.Close)
+			client := github.New(server.URL, "test-token")
+			var waits []time.Duration
+			client.SetWait(func(_ context.Context, d time.Duration) error {
+				waits = append(waits, d)
+
+				return nil
+			})
+			var got string
+			var err error
+			if tt.write {
+				err = client.CreateRef(t.Context(), "acme", "quill", "refs/heads/next", "c3")
+			} else {
+				var r *github.Ref
+				if r, err = client.Ref(t.Context(), "acme", "quill", "heads/main"); err == nil {
+					got = r.Object.SHA
+				}
+			}
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("error = %v, wantErr %q", err, tt.wantErr)
+				}
+			} else if err != nil {
+				t.Fatalf("error = %v", err)
+			}
+			if got != tt.want {
+				t.Errorf("got %q, want %q", got, tt.want)
+			}
+			mu.Lock()
+			defer mu.Unlock()
+			if calls != tt.wantCalls {
+				t.Errorf("requests = %d, want %d", calls, tt.wantCalls)
+			}
+			if diff := cmp.Diff(tt.wantWaits, waits); diff != "" {
+				t.Errorf("waits mismatch (-want +got):\n%s", diff)
 			}
 		})
 	}
