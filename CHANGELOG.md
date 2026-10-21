@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.6](https://github.com/cccteam/ccc/compare/v0.3.5...v0.3.6) (2026-10-21)
+
+
+### Code Upgrade
+
+* **deps:** Go 1.26.10; crypto/x509 GO-2026-6809 fixed ([#1018](https://github.com/cccteam/ccc/issues/1018)) ([25dc507](https://github.com/cccteam/ccc/commit/25dc507e6226ed8d39fd49960a87ec04d8a04f5a))
+* **deps:** the root, middleware and resource modules take dependabot's three dependency groups in one change ([#975](https://github.com/cccteam/ccc/issues/975)) ([bbecfa2](https://github.com/cccteam/ccc/commit/bbecfa25ec8141797c85dcabc6def7e7e722547c))
+
 ## [0.3.5](https://github.com/cccteam/ccc/compare/v0.3.4...v0.3.5) (2026-10-09)
 
 
