@@ -137,12 +137,21 @@ func (a *App) PatchResources() http.HandlerFunc {
 	refitTaskDecoder := NewDecoder[resources.RefitTask, refitTaskRequest](a, accesstypes.Create, accesstypes.Update, accesstypes.Delete)
 
 	type sectorRequest struct {
-		ID          string     `json:"-"`
-		Name        string     `json:"name"`
-		Region      string     `json:"region"`
-		Established civil.Date `json:"established"`
+		ID            string     `json:"-"`
+		Name          string     `json:"name"`
+		Region        string     `json:"region"`
+		Established   civil.Date `json:"established"`
+		DirectoryOnly bool       `json:"directoryOnly"`
 	}
 	sectorDecoder := NewDecoder[resources.Sector, sectorRequest](a, accesstypes.Create, accesstypes.Update, accesstypes.Delete)
+
+	type sectorDirectoryRequest struct {
+		ID         ccc.UUID `json:"-"`
+		SectorID   string   `json:"-"`
+		Method     string   `json:"method"     sqltype:"STRING(16)"`
+		Connection string   `json:"connection"`
+	}
+	sectorDirectoryDecoder := NewDecoder[resources.SectorDirectory, sectorDirectoryRequest](a, accesstypes.Create, accesstypes.Update, accesstypes.Delete)
 
 	type shipRequest struct {
 		ID          ccc.UUID   `json:"-"`
@@ -653,6 +662,39 @@ func (a *App) PatchResources() http.HandlerFunc {
 							id2 := httpio.Param[int64](req, "id2")
 							if err := resources.NewRefitTaskDeletePatchFromPatchSet(id1, id2, patchSet).Buffer(ctx, txn, eventSource); err != nil {
 								return errors.Wrap(err, "resources.RefitTaskDeletePatch.Buffer()")
+							}
+						}
+					case "sector-directories":
+						patchSet, err := sectorDirectoryDecoder.DecodeOperation(op, userPermissions, accesstypes.DomainScope(domain))
+						if err != nil {
+							return errors.Wrap(err, "sectorDirectoryDecoder.DecodeOperation()")
+						}
+						tenantsWritten = true
+
+						req, err := op.ReqWithPattern("/sectors/{sectorID}/{resource}/{id}")
+						if err != nil {
+							return errors.Wrap(err, "op.ReqWithPattern()")
+						}
+
+						switch op.Type {
+						case resource.OperationCreate:
+							patch, err := resources.NewSectorDirectoryCreatePatchFromPatchSet(patchSet)
+							if err != nil {
+								return errors.Wrap(err, "sectorDirectoryCreatePatchFromPatchSet()")
+							}
+							if err := patch.Buffer(ctx, txn, eventSource); err != nil {
+								return errors.Wrap(err, "resources.SectorDirectoryCreatePatch.Buffer()")
+							}
+							resp["sectorDirectories"] = append(resp["sectorDirectories"], patch.ID())
+						case resource.OperationUpdate:
+							id := httpio.Param[ccc.UUID](req, "id")
+							if err := resources.NewSectorDirectoryUpdatePatchFromPatchSet(id, patchSet).Buffer(ctx, txn, eventSource); err != nil {
+								return errors.Wrap(err, "resources.SectorDirectoryUpdatePatch.Buffer()")
+							}
+						case resource.OperationDelete:
+							id := httpio.Param[ccc.UUID](req, "id")
+							if err := resources.NewSectorDirectoryDeletePatchFromPatchSet(id, patchSet).Buffer(ctx, txn, eventSource); err != nil {
+								return errors.Wrap(err, "resources.SectorDirectoryDeletePatch.Buffer()")
 							}
 						}
 					case "ships":

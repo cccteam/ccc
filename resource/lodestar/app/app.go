@@ -130,8 +130,9 @@ type Configurer interface {
 	// TenantDeclarations reads what a sector declares about who may enter it
 	// (resource.TenantDeclarations): a sector is offered to a session only when the
 	// session may enter it, and the sector's declaration decides against the way the
-	// session was established. No sector declares anything yet, so the configuration
-	// answers nil and every sector admits every session; a test harness scripts one.
+	// session was established. The configuration answers the roster's copy, reloaded
+	// on every write of the Sector record or its directories; a test harness scripts
+	// one, or answers nil, under which every sector admits every session.
 	TenantDeclarations() resource.TenantDeclarations
 }
 

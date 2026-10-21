@@ -25,10 +25,11 @@ func (Sector) DefaultConfig() resource.Config {
 // and read, so a query armed with Enforce meets the field permissions the routes
 // enforce; sectorReadSets holds one Set per read operation.
 type sectorRead struct {
-	ID          string     `json:"id"          perm:"-"`
-	Name        string     `json:"name"`
-	Region      string     `json:"region"`
-	Established civil.Date `json:"established"`
+	ID            string     `json:"id"            perm:"-"`
+	Name          string     `json:"name"`
+	Region        string     `json:"region"`
+	Established   civil.Date `json:"established"`
+	DirectoryOnly bool       `json:"directoryOnly"`
 }
 
 var sectorReadSets resource.SetCache[Sector, sectorRead]
@@ -37,10 +38,11 @@ var sectorReadSets resource.SetCache[Sector, sectorRead]
 // accept on a mutation, so a patch armed with Enforce meets the field permissions the
 // routes enforce; sectorWriteSets holds one Set per mutation.
 type sectorWrite struct {
-	ID          string     `json:"-"`
-	Name        string     `json:"name"`
-	Region      string     `json:"region"`
-	Established civil.Date `json:"established"`
+	ID            string     `json:"-"`
+	Name          string     `json:"name"`
+	Region        string     `json:"region"`
+	Established   civil.Date `json:"established"`
+	DirectoryOnly bool       `json:"directoryOnly"`
 }
 
 var sectorWriteSets resource.SetCache[Sector, sectorWrite]
@@ -165,6 +167,7 @@ func (c *SectorColumns) All() *SectorColumns {
 		"Name",
 		"Region",
 		"Established",
+		"DirectoryOnly",
 	}
 
 	return c
@@ -190,6 +193,12 @@ func (c *SectorColumns) Region() *SectorColumns {
 
 func (c *SectorColumns) Established() *SectorColumns {
 	c.fields = append(c.fields, "Established")
+
+	return c
+}
+
+func (c *SectorColumns) DirectoryOnly() *SectorColumns {
+	c.fields = append(c.fields, "DirectoryOnly")
 
 	return c
 }
@@ -294,6 +303,10 @@ func (c *sectorSort) Region() *SectorSort {
 
 func (c *sectorSort) Established() *SectorSort {
 	return c.addField("Established")
+}
+
+func (c *sectorSort) DirectoryOnly() *SectorSort {
+	return c.addField("DirectoryOnly")
 }
 
 type SectorSort struct {
@@ -421,6 +434,22 @@ func (p *SectorCreatePatch) EstablishedIsSet() bool {
 	return p.patchSet.IsSet("Established")
 }
 
+func (p *SectorCreatePatch) SetDirectoryOnly(v bool) *SectorCreatePatch {
+	p.patchSet.Set("DirectoryOnly", v)
+
+	return p
+}
+
+func (p *SectorCreatePatch) DirectoryOnly() bool {
+	v, _ := p.patchSet.Get("DirectoryOnly").(bool)
+
+	return v
+}
+
+func (p *SectorCreatePatch) DirectoryOnlyIsSet() bool {
+	return p.patchSet.IsSet("DirectoryOnly")
+}
+
 // Diff is intended for unit testing, and reports the differences between two values using github.com/google/go-cmp/cmp
 func (p *SectorCreatePatch) Diff(got *SectorCreatePatch, opts ...cmp.Option) string {
 	return resource.PatchSetDiff(opts...)(p.patchSet, got.patchSet)
@@ -535,6 +564,22 @@ func (p *SectorUpdatePatch) Established() civil.Date {
 
 func (p *SectorUpdatePatch) EstablishedIsSet() bool {
 	return p.patchSet.IsSet("Established")
+}
+
+func (p *SectorUpdatePatch) SetDirectoryOnly(v bool) *SectorUpdatePatch {
+	p.patchSet.Set("DirectoryOnly", v)
+
+	return p
+}
+
+func (p *SectorUpdatePatch) DirectoryOnly() bool {
+	v, _ := p.patchSet.Get("DirectoryOnly").(bool)
+
+	return v
+}
+
+func (p *SectorUpdatePatch) DirectoryOnlyIsSet() bool {
+	return p.patchSet.IsSet("DirectoryOnly")
 }
 
 // Diff is intended for unit testing, and reports the differences between two values using github.com/google/go-cmp/cmp

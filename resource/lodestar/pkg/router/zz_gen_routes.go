@@ -50,6 +50,7 @@ const (
 	RefitTaskRefitID                  httpio.ParamType = "refitTaskRefitID"
 	RefitTaskTaskNumber               httpio.ParamType = "refitTaskTaskNumber"
 	SectorID                          httpio.ParamType = "sectorID"
+	SectorDirectoryID                 httpio.ParamType = "sectorDirectoryID"
 	ShipID                            httpio.ParamType = "shipID"
 	ShipClassID                       httpio.ParamType = "shipClassID"
 	SortieID                          httpio.ParamType = "sortieID"
@@ -242,6 +243,9 @@ type GeneratedHandlers interface {
 
 	Sectors() http.HandlerFunc
 	Sector() http.HandlerFunc
+
+	SectorDirectories() http.HandlerFunc
+	SectorDirectory() http.HandlerFunc
 
 	SectorHazardBoards() http.HandlerFunc
 	SectorHazardBoard() http.HandlerFunc
@@ -644,6 +648,14 @@ func generatedRoutes(r chi.Router, h GeneratedHandlers) {
 	sectorHandler := h.Sector()
 	bounded.Get("/console/api/sectors/{sectorID}", sectorHandler)
 	bounded.Post("/console/api/sectors/{sectorID}", sectorHandler)
+
+	sectorDirectoriesHandler := domainGuard(h.SectorDirectories())
+	bounded.Get("/console/api/sectors/{sectorID}/sector-directories", sectorDirectoriesHandler)
+	bounded.Post("/console/api/sectors/{sectorID}/sector-directories", sectorDirectoriesHandler)
+
+	sectorDirectoryHandler := domainGuard(h.SectorDirectory())
+	bounded.Get("/console/api/sectors/{sectorID}/sector-directories/{sectorDirectoryID}", sectorDirectoryHandler)
+	bounded.Post("/console/api/sectors/{sectorID}/sector-directories/{sectorDirectoryID}", sectorDirectoryHandler)
 
 	sectorHazardBoardsHandler := domainGuard(h.SectorHazardBoards())
 	bounded.Get("/console/api/sectors/{sectorID}/sector-hazard-boards", sectorHazardBoardsHandler)

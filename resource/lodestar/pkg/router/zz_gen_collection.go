@@ -519,6 +519,20 @@ func Collection() *resource.GeneratedCollection {
 				Target:      "Refits",
 			},
 			{
+				Name:        "SectorDirectories",
+				Scope:       accesstypes.DomainPermissionScope,
+				Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.Delete, accesstypes.List, accesstypes.Read, accesstypes.Update},
+				Tags: []resource.TagData{
+					{Name: "connection", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
+					{Name: "id"},
+					{Name: "method", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
+					{Name: "sectorId", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
+				},
+				Domain:    &resource.DomainBindingData{Column: "SectorId"},
+				Order:     []accesstypes.Tag{"method", "connection"},
+				QueryKeys: []accesstypes.Tag{"sectorId", "method"},
+			},
+			{
 				Name:        "SectorHazardBoards",
 				Scope:       accesstypes.DomainPermissionScope,
 				Computed:    true,
@@ -978,6 +992,7 @@ func Collection() *resource.GeneratedCollection {
 				Scope:       accesstypes.GlobalPermissionScope,
 				Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.Delete, accesstypes.List, accesstypes.Read, accesstypes.Update},
 				Tags: []resource.TagData{
+					{Name: "directoryOnly", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
 					{Name: "established", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
 					{Name: "id"},
 					{Name: "name", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},

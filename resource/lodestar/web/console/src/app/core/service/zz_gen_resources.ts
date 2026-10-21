@@ -175,6 +175,14 @@ export interface Sectors {
   name?: string;
   region?: string;
   established?: Date;
+  directoryOnly?: boolean;
+}
+
+export interface SectorDirectories {
+  id: string;
+  sectorId?: string;
+  method?: string;
+  connection?: string;
 }
 
 export interface Ships {
@@ -652,6 +660,17 @@ const resourceMap = defineResourceMap({
       { fieldName: 'name', displayType: 'string', required: true, isIndex: true, filterable: 'always' },
       { fieldName: 'region', displayType: 'string', required: true, isIndex: false },
       { fieldName: 'established', displayType: 'civildate', required: true, isIndex: false },
+      { fieldName: 'directoryOnly', displayType: 'boolean', required: false, isIndex: false },
+    ],
+  },
+  [Resources.SectorDirectories]: {
+    route: 'sectors/{sectorID}/sector-directories',
+    consolidatedRoute: 'resources',
+    fields: [
+      { fieldName: 'id', primaryKey: { ordinalPosition: 0 }, displayType: 'uuid', required: false, isIndex: true, filterable: 'always' },
+      { fieldName: 'sectorId', displayType: 'enumerated', required: true, isIndex: true, filterable: 'always', enumeratedResource: Resources.Sectors, readOnly: true },
+      { fieldName: 'method', displayType: 'string', required: true, isIndex: true, filterable: 'always', maxLength: 16 },
+      { fieldName: 'connection', displayType: 'string', required: true, isIndex: false },
     ],
   },
   [Resources.Ships]: {
@@ -1024,6 +1043,7 @@ export const ResourceScopes: Record<Resource, PermissionScope> = {
   [Resources.Refits]: PermissionScopes.domain,
   [Resources.RefitTasks]: PermissionScopes.domain,
   [Resources.Sectors]: PermissionScopes.global,
+  [Resources.SectorDirectories]: PermissionScopes.domain,
   [Resources.Ships]: PermissionScopes.domain,
   [Resources.ShipClasses]: PermissionScopes.global,
   [Resources.Sorties]: PermissionScopes.domain,

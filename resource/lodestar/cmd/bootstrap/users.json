@@ -414,6 +414,31 @@
           "SectorCrew"
         ]
       }
+    },
+    {
+      "user": "rigger",
+      "password": "lodestar",
+      "roles": {
+        "domains": {
+          "anvil": [
+            "SectorCrew"
+          ],
+          "bastion": [
+            "SectorCrew"
+          ]
+        }
+      }
+    },
+    {
+      "user": "bosun",
+      "password": "lodestar",
+      "roles": {
+        "domains": {
+          "bastion": [
+            "SectorCrew"
+          ]
+        }
+      }
     }
   ],
   "serviceAccounts": [

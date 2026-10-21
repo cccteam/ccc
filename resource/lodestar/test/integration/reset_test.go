@@ -17,6 +17,7 @@ import (
 	"cloud.google.com/go/spanner"
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/resource/live"
+	"github.com/cccteam/ccc/resource/lodestar/app"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/auth"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/auth/crew"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/deploy"
@@ -40,6 +41,8 @@ func TestResetDevelopmentData(t *testing.T) {
 		Collection:     router.Collection(),
 		Directory:      auth.Directory{Connection: "example", HostedDomain: "example.com", GroupPrefix: "crew-"},
 		ChangeSignal:   auth.PolicySignal(live.NewFake()),
+		// Required by the auth, though this suite signs nobody in.
+		TenantDeclarations: app.NewSectorDeclarationReader(),
 	})
 	if err != nil {
 		t.Fatalf("crew.New() error = %v", err)
