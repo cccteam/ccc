@@ -56,8 +56,8 @@ github.com/cccteam/access v0.11.1 h1:J6QesqdoKF7g3/B8NVwCyF3pjl96GQNtQKBhumga78s
 github.com/cccteam/access v0.11.1/go.mod h1:mlTjz31rDrLE1aNEHf0CnVllOlmk3UiIShNEWYZrxDI=
 github.com/cccteam/ccc v0.3.5 h1:EthL/yJ9Hs/PRqO0fa5mTbfE2EVj2p2isPFpQVKAZSo=
 github.com/cccteam/ccc v0.3.5/go.mod h1:9X9ZE38KPlaVBZr0oUHmulsQndH7w+4neZnXFckp9ms=
-github.com/cccteam/ccc/accesstypes v0.6.2-0.20261019011714-fbbdfe29c065 h1:FHh9Utd5dQlxEJKP5wMrXRrRPOAiowfsoiM3k/hTkh8=
-github.com/cccteam/ccc/accesstypes v0.6.2-0.20261019011714-fbbdfe29c065/go.mod h1:fWTTa+YWnTtjIS3X6ERGsnk1jR0BLlKCVNf9xJ1yYWU=
+github.com/cccteam/ccc/accesstypes v0.7.0 h1:GEeOzOdIR3PAkeQD0QbAVyhvxV6kdh1TQrQGNVA8fKM=
+github.com/cccteam/ccc/accesstypes v0.7.0/go.mod h1:IFhJA2d4cIs2oY8oqDMs/oncFxFjPWGCQDUM9+9xJLQ=
 github.com/cccteam/ccc/cache v0.2.1 h1:vhD0suDUH4scWGN76mkRYK/57Km5tchhFcUH+hynNTo=
 github.com/cccteam/ccc/cache v0.2.1/go.mod h1:AUQO57gvZAf4uFjCbuWoQXiY7OgVHgKq4t503IIczFs=
 github.com/cccteam/ccc/cloud v0.2.1 h1:W1vL3cyGSwGY/HaOJIS9Kn/EU9ai+YvH0W9JraMnoII=

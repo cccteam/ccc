@@ -12,7 +12,7 @@ require (
 	cloud.google.com/go/spanner v1.96.1
 	github.com/cccteam/access v0.11.1
 	github.com/cccteam/ccc v0.3.5
-	github.com/cccteam/ccc/accesstypes v0.6.2-0.20261019011714-fbbdfe29c065
+	github.com/cccteam/ccc/accesstypes v0.7.0
 	github.com/cccteam/ccc/cloud v0.2.1
 	github.com/cccteam/ccc/resource v0.14.0
 	github.com/cccteam/ccc/tracer v0.3.0
