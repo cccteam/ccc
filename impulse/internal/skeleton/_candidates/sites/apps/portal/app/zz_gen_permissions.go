@@ -22,10 +22,12 @@ func (a *App) PermissionDigest() http.HandlerFunc {
 	return resource.PermissionDigestHandler(a.UserPermissions, resource.WithFeatureGates(resources.FeatureGates(), a.FeatureSet()), resource.WithFormerNames(router.Collection()))
 }
 
-// UserDomains serves the session user's domain membership — the sorted list of
-// domains where they hold at least one grant, the tenant picker's question. The
-// predicate is concealed tenancy's own foothold test, so the picker and the
-// domain guard can never disagree. The generated router registers it at
+// UserDomains serves the session's tenant list — the sorted list of domains where
+// the user holds at least one grant and that the session reaches, the tenant picker's
+// question: a tenant is offered only when the session may enter it, and the
+// application's tenant declaration decides. The predicate is concealed tenancy's own
+// foothold test over the session's admission, so the picker and the domain guard can
+// never disagree. The generated router registers it at
 // GET /api/user-domains.
 func (a *App) UserDomains() http.HandlerFunc {
 	return resource.UserDomainsHandler(a.UserPermissions)

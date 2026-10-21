@@ -1,6 +1,6 @@
 module github.com/cccteam/ccc/resource/lodestar
 
-go 1.26.9
+go 1.26.10
 
 // lodestar is committed in the same repo (and same commits) as the resource module it
 // exercises, so it must build against the local source rather than a published version
@@ -19,7 +19,7 @@ require (
 	github.com/cccteam/db-initiator v0.4.3
 	github.com/cccteam/httpio v0.7.22
 	github.com/cccteam/logger v0.1.30
-	github.com/cccteam/session v0.13.0
+	github.com/cccteam/session v0.13.1-0.20261021020700-57e765eca9ab
 	github.com/cccteam/spxscan v0.0.17
 	github.com/go-chi/chi/v5 v5.4.0
 	github.com/go-playground/errors/v5 v5.4.0

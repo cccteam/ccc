@@ -265,6 +265,10 @@ func (*scriptedPermissions) Domains(context.Context) ([]accesstypes.Domain, erro
 	return []accesstypes.Domain{}, nil
 }
 
+func (*scriptedPermissions) Reaches(context.Context, accesstypes.Domain) (bool, error) {
+	return true, nil
+}
+
 func (p *scriptedPermissions) User() accesstypes.User { return p.user }
 
 // userTestApp is the application seam: no validator, the scripted permissions, a cursor

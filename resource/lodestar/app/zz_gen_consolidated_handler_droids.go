@@ -84,6 +84,11 @@ func (a *App) PatchDroidsResources() http.HandlerFunc {
 					if !a.TenantRoster().Has(domain) {
 						return httpio.NewBadRequestMessagef("unknown domain %q in operation path", domain)
 					}
+					if reaches, err := userPermissions.Reaches(ctx, domain); err != nil {
+						return errors.Wrap(err, "resource.UserPermissions.Reaches()")
+					} else if !reaches {
+						return httpio.NewBadRequestMessagef("unknown domain %q in operation path", domain)
+					}
 					if ok, err := userPermissions.HasGrants(ctx, accesstypes.DomainScope(domain)); err != nil {
 						return errors.Wrap(err, "resource.UserPermissions.HasGrants()")
 					} else if !ok {

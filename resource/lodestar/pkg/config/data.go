@@ -329,6 +329,12 @@ func (c *DataConfiguration) TenantRoster() *resource.TenantRoster {
 	return c.tenants
 }
 
+// TenantDeclarations returns the reader of what a sector declares about who may enter
+// it: nil, since no sector declares anything yet, so every sector admits every session.
+func (c *DataConfiguration) TenantDeclarations() resource.TenantDeclarations {
+	return nil
+}
+
 // cookieKey returns the configured session cookie key, or an ephemeral one when none is
 // configured. An ephemeral key means sessions do not survive a restart.
 func cookieKey(configured string) (string, error) {

@@ -621,8 +621,8 @@ func constructionOf(fd *ast.FuncDecl, typeName string) ast.Stmt {
 }
 
 // ReplaceNilArgument rewrites, inside the named method or function, the first call to
-// a function or method named callee whose last argument is the identifier nil, so that
-// argument reads replacement. The result is formatted.
+// a function or method named callee that passes the identifier nil as an argument, so
+// that the first such argument reads replacement. The result is formatted.
 func ReplaceNilArgument(rel string, src []byte, funcName, callee, replacement string) ([]byte, error) {
 	p, err := parseSource(rel, src)
 	if err != nil {
@@ -648,16 +648,18 @@ func ReplaceNilArgument(rel string, src []byte, funcName, callee, replacement st
 		if !ok || len(call.Args) == 0 || calleeName(call.Fun) != callee {
 			return true
 		}
-		if id, ok := call.Args[len(call.Args)-1].(*ast.Ident); ok && id.Name == "nil" {
-			arg = id
+		for _, candidate := range call.Args {
+			if id, ok := candidate.(*ast.Ident); ok && id.Name == "nil" {
+				arg = id
 
-			return false
+				return false
+			}
 		}
 
 		return true
 	})
 	if arg == nil {
-		return nil, errors.Wrapf(ErrNoAnchor, "%s: %s makes no %s call whose last argument is nil", rel, funcName, callee)
+		return nil, errors.Wrapf(ErrNoAnchor, "%s: %s makes no %s call with a nil argument", rel, funcName, callee)
 	}
 
 	return p.splice(rel, p.offset(arg.Pos()), p.offset(arg.End()), replacement)
