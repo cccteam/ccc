@@ -56,8 +56,8 @@ github.com/cccteam/access v0.11.1 h1:J6QesqdoKF7g3/B8NVwCyF3pjl96GQNtQKBhumga78s
 github.com/cccteam/access v0.11.1/go.mod h1:mlTjz31rDrLE1aNEHf0CnVllOlmk3UiIShNEWYZrxDI=
 github.com/cccteam/ccc v0.3.5 h1:EthL/yJ9Hs/PRqO0fa5mTbfE2EVj2p2isPFpQVKAZSo=
 github.com/cccteam/ccc v0.3.5/go.mod h1:9X9ZE38KPlaVBZr0oUHmulsQndH7w+4neZnXFckp9ms=
-github.com/cccteam/ccc/accesstypes v0.6.2-0.20261019011714-fbbdfe29c065 h1:FHh9Utd5dQlxEJKP5wMrXRrRPOAiowfsoiM3k/hTkh8=
-github.com/cccteam/ccc/accesstypes v0.6.2-0.20261019011714-fbbdfe29c065/go.mod h1:fWTTa+YWnTtjIS3X6ERGsnk1jR0BLlKCVNf9xJ1yYWU=
+github.com/cccteam/ccc/accesstypes v0.7.0 h1:GEeOzOdIR3PAkeQD0QbAVyhvxV6kdh1TQrQGNVA8fKM=
+github.com/cccteam/ccc/accesstypes v0.7.0/go.mod h1:IFhJA2d4cIs2oY8oqDMs/oncFxFjPWGCQDUM9+9xJLQ=
 github.com/cccteam/ccc/cache v0.2.1 h1:vhD0suDUH4scWGN76mkRYK/57Km5tchhFcUH+hynNTo=
 github.com/cccteam/ccc/cache v0.2.1/go.mod h1:AUQO57gvZAf4uFjCbuWoQXiY7OgVHgKq4t503IIczFs=
 github.com/cccteam/ccc/cloud v0.2.1 h1:W1vL3cyGSwGY/HaOJIS9Kn/EU9ai+YvH0W9JraMnoII=
@@ -66,8 +66,8 @@ github.com/cccteam/ccc/impulse v0.0.0-20261002140325-0702ef849363 h1:VEbj1GuIApo
 github.com/cccteam/ccc/impulse v0.0.0-20261002140325-0702ef849363/go.mod h1:WGcS75SP04O5Gn2TsTGqgp8+RdNK09LUoz14Ku9wwgQ=
 github.com/cccteam/ccc/pkg v0.1.6 h1:jbOvNLYJTMvNNdm7uLDaU+rhxJE2/9zrjMGXpTCAkhs=
 github.com/cccteam/ccc/pkg v0.1.6/go.mod h1:XJaBKLmdSxAiGmvCpVDogp+4X48fMnW+gz/Nq2FNS18=
-github.com/cccteam/ccc/resource v0.14.3-0.20261021153758-994ed504274c h1:YI240a75LkK2o9WL6Z+bWop5bDSUapBSrlRb7DgU1no=
-github.com/cccteam/ccc/resource v0.14.3-0.20261021153758-994ed504274c/go.mod h1:m23bWDr2FEY/k3qiVUNMpVvhQvA6ejpAPE9rDsM9mSw=
+github.com/cccteam/ccc/resource v0.15.0 h1:S2WUjRZV3Uz61QhYnQ5OHUAl0syXEgJRt25W6edWT8Q=
+github.com/cccteam/ccc/resource v0.15.0/go.mod h1:WPCsSgSd/L1RpZfILGdfUoLEs/YPNWg9HzP8VgihyCo=
 github.com/cccteam/ccc/securehash v0.0.17 h1:1G4yvrZ73j1QPkv6HT/H5OQ2C3kev66TQWbOaIsJL1Q=
 github.com/cccteam/ccc/securehash v0.0.17/go.mod h1:gOM3Nu+PGzBfNz0qsM+UyOGNK3HHaH0Nqd7Fis0ntmA=
 github.com/cccteam/ccc/tracer v0.3.0 h1:8oM3zGSsvNuyTy0OWVrc46Z6nqI7r86Z0cNN3bw7CuU=

@@ -191,9 +191,9 @@ var Steps = []Step{
 		Pins: pins(`
 			access v0.11.1
 			ccc v0.3.5
-			ccc/accesstypes v0.6.2-0.20261019011714-fbbdfe29c065
+			ccc/accesstypes v0.7.0
 			ccc/cloud v0.2.1
-			ccc/resource v0.14.3-0.20261021144015-d1ca77f392a8
+			ccc/resource v0.15.0
 			ccc/tracer v0.3.0
 			db-initiator v0.4.3
 			httpio v0.7.22
@@ -201,7 +201,6 @@ var Steps = []Step{
 			session v0.13.0
 		`),
 		Recipes: []Recipe{recipe.MigrationsReader{}},
-		Pending: true,
 		Impulse: release("v0.5.0"),
 		Note:    "the skeletons' login pages compose the library's login component (ccc-login-methods from @cccteam/resource-angular 0.0.7), which renders every method the outlet registers from the methods route and owns the sign-in, so a page names no path and adds a method's button by itself (an application's own page moves to it by hand, the skeleton's page being the pattern); the skeletons' consoles compose the library's user-management component (ccc-user-management from @cccteam/resource-angular 0.0.8) on a Users page over the auth's user surface, drawn where the digest grants List on its users resource and listed in the navigation behind the same grant (the tenanted console draws the selected tenant's partition beside the global one, the outlets portal its members'); an application's own console adds the page by hand, the skeleton's being the pattern; the schema sequence creates the migrations_reader database role, which the pipeline's migration guard reads each environment's migration version through (a migration added at the sequence's next free index where none does); an auth signs in through the methods registered on one session Auth (session.NewAuth): the skeletons' auth packages construct it over the sessions, users, identities, auth events and pending sign-ins tables and register each method in a file of its own; the generator's Auth option takes method declarations (generation.PasswordMethod(), AzureMethod(name), GoogleMethod(name)) and the router serves the methods, session and pending routes the login page renders from; no recipe moves an application off the single-method session types, which the library keeps under session/legacy: an application on them is re-created from the skeleton; the generator serves each auth's users, seats and roles as resources (resource.UserSurface), and the skeletons' configurer hands the App the stores each surface serves over (StaffUserStores) for the generated constructor; a deployed environment's first administrator is seeded by the migrate command (pkg/deploy SeedAdministrators) while an auth's users table holds no rows: a password auth gets administrator with the password the stack generates (APP_<AUTH>_ADMINISTRATOR_PASSWORD, secret:\"generated\"), an auth whose roles the application assigns gets the administrator role memberships under the sign-in name the placement names (APP_<AUTH>_ADMINISTRATOR), both the data level's to declare; an application adds foothold.go to each auth package and the step to its migrate command by hand; every tenant-scoped page of a tenanted console lives under the tenant segment in the URL (`tenants/:tenantID`, which the generated client exports as DomainRoutePath beside DomainRouteParam, whenever anything is served under the tenant), mirroring the API, with a guard on the segment as the one writer of the tenant service's current (from the URL, checked against the session's tenant list), the header's picker opening the same page under the chosen tenant, a refusal page under the tenant's URL for a tenant the session cannot reach, and the user surface's tenant partition served as the tenant's own Users page with the route's tenant as the component's domain; add tenancy copies the guard and the refusal page beside the service, and an application's own console takes the shape by hand, the skeleton's being the pattern; the tenant record declares who creates tenants, apart from who enters one: @tenant alone keeps it to an administrator through the record's create path (the default, unchanged), @tenant(creation: self-service) lets a person who signed in holding no tenant create their own through the generated create-<record> route and become its administrator, and @tenant(creation: both) keeps both ways; self-service needs a registration admitting open sign-up on the outlet's Auth (GoogleMethod(name).OpenSignUp() or AzureMethod(name).OpenSignUp(), which impulse add method --accounts open declares) and the App's <Record>AdministratorRoles(), and an application that wants it annotates the record, declares the registration, names the roles and adds the create-your-tenant page to its console by hand, the tenanted skeleton's being the pattern; the skeletons' web pins move to @cccteam/resource 0.0.8, @cccteam/resource-angular 0.0.9 and @cccteam/resource-firestore 0.0.6 (the login page's sentences for the attempt limit with its wait and for the tenant refusals, and the config-driven pages' row links and after-create navigation under the page's tenant)",
 	},
@@ -209,16 +208,15 @@ var Steps = []Step{
 		Pins: pins(`
 			access v0.11.1
 			ccc v0.3.5
-			ccc/accesstypes v0.6.2-0.20261019011714-fbbdfe29c065
+			ccc/accesstypes v0.7.0
 			ccc/cloud v0.2.1
-			ccc/resource v0.14.3-0.20261021153758-994ed504274c
+			ccc/resource v0.15.0
 			ccc/tracer v0.3.0
 			db-initiator v0.4.3
 			httpio v0.7.22
 			logger v0.1.30
 			session v0.13.1
 		`),
-		Pending: true,
 		Impulse: release("v0.5.0"),
 		Note:    "resource.SessionPermissions takes the application's tenant declarations beside its roster (resource.TenantDeclarations: what a tenant declares about who may enter it, read by domain; nil while the application keeps none, and every tenant admits every session), so a tenant is offered to a session only when the session may enter it and the generated domain guard and consolidated dispatcher ask the session's reach (resource.UserPermissions.Reaches) before the foothold; the skeletons pass nil, and an application adds the argument to its SessionPermissions call by hand; the tenant record declares who may enter a tenant, as data on the record: the directories the tenant admits its people through (a child record annotated @tenantDirectory, one row per directory with a bare @domain column, a @directoryMethod column and a @directoryConnection column, edited under its own grants with the change events as the audit) and whether they are the only way in (a boolean column annotated @directoryOnly on the record); the generator emits New<Record>DeclarationReader, the reader of a tenant's declaration in the sign-in's transaction, and the roster keeps every tenant's declaration beside its key (Declarations, reloaded by the records' generated write paths and handed to SessionPermissions in place of nil); every auth's New sets the library's sign-in rule over the reader its settings carry (signin.TenantPolicy with the memberships read through resource.SignInRoles, and signin.AdmitWithoutTenant() where the record is created by its own people), and the console lists, declares and withdraws a tenant's directories and sets directory-only on a Sign-in page under the tenant's routes; a Google registration admitting any Google account names any Workspace beside it (google.Workspaces(google.AnyWorkspace(), google.AnyGoogleAccount())) so a Workspace account's link carries its domain, what a declaration names a Google directory by; an application adds the directories record, the column, the migration, the reader in each auth's settings, the rule in each auth's New, the Declarations argument and the page by hand, the tenanted skeleton's being the pattern, and declares each directory method it registers on its development tenants in the seed, or the people who sign in through it reach no tenant",
 	},
