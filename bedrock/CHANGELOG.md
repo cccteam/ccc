@@ -1,5 +1,40 @@
 # Changelog
 
+## [0.3.4](https://github.com/cccteam/ccc/compare/bedrock/v0.3.3...bedrock/v0.3.4) (2026-10-21)
+
+
+### Features
+
+* a consolidation passes the migrations job and the guard, which reads every environment's migration version ([#987](https://github.com/cccteam/ccc/issues/987)) ([289e80c](https://github.com/cccteam/ccc/commit/289e80c743a255529a17edf027963fabd4b5a6e9))
+* a site serves on a vanity domain delegated whole to the network project, verified by bedrock domain check ([#1002](https://github.com/cccteam/ccc/issues/1002)) ([ec872be](https://github.com/cccteam/ccc/commit/ec872bee6a86ea6fa9514cc4cb4037cf16983691))
+* bedrock carries every Auth's registrations, and the application code parts from the repository name ([#981](https://github.com/cccteam/ccc/issues/981)) ([a5f247a](https://github.com/cccteam/ccc/commit/a5f247af65b9c4fa0c75f124da9dac0ffd7d2b9a))
+* bedrock renders a sites-layout application's stack with a service and a backend per site ([#1000](https://github.com/cccteam/ccc/issues/1000)) ([39134e6](https://github.com/cccteam/ccc/commit/39134e62cb656f3b604d083c08f1b14f38f74b4c))
+* bedrock upgrade applies 0-bootstrap when the pin changes kind; the release shape's fetch refuses a commit pin ([#1013](https://github.com/cccteam/ccc/issues/1013)) ([2039435](https://github.com/cccteam/ccc/commit/2039435ba2bcce8954c3a1eff43e59cd2b7c8662))
+* each site declares its hostname label in the placement; the organization records the hostnames its stack serves and refuses a collision ([#998](https://github.com/cccteam/ccc/issues/998)) ([2f6728b](https://github.com/cccteam/ccc/commit/2f6728b6415a7ac5dbdb636512ec28f6ecb09ac0))
+* the Cloud Armor policy throttles each outlet's sign-in routes by client address, at a threshold tfvars sets ([#1031](https://github.com/cccteam/ccc/issues/1031)) ([f831635](https://github.com/cccteam/ccc/commit/f8316353af6ecef32fa4bb08a6b2be0241dc3d52))
+* the migrate command seeds each auth's first administrator while its users table is empty ([#982](https://github.com/cccteam/ccc/issues/982)) ([7e82fc3](https://github.com/cccteam/ccc/commit/7e82fc3a44983e18adede47e63ef0c63ab505bd1))
+
+
+### Bug Fixes
+
+* a multi-site service passes its binary as args, not command, so the placeholder image starts on the first apply ([#1008](https://github.com/cccteam/ccc/issues/1008)) ([aba21eb](https://github.com/cccteam/ccc/commit/aba21eb85b5deb02aac145fa4fa3f047e48104a4))
+* a sites-layout service serves its bundle from the directory the Procfile names, with the project segment ([#1014](https://github.com/cccteam/ccc/issues/1014)) ([3622145](https://github.com/cccteam/ccc/commit/3622145306a0acb7ce485b5d8110764650f2c727))
+* bedrock check refuses a multi-site image that keeps an ENTRYPOINT; render notes the lines a kept Dockerfile needs ([#1009](https://github.com/cccteam/ccc/issues/1009)) ([f928eb0](https://github.com/cccteam/ccc/commit/f928eb0d250311db9c4bd4b96e1260bcac994abd))
+* bedrock migration consolidate says the pull-request job and the guard accept a consolidation by its shape ([#1031](https://github.com/cccteam/ccc/issues/1031)) ([f831635](https://github.com/cccteam/ccc/commit/f8316353af6ecef32fa4bb08a6b2be0241dc3d52))
+* bedrock migration renumber leaves a consolidation at the committed sequence's highest index alone ([#1031](https://github.com/cccteam/ccc/issues/1031)) ([f831635](https://github.com/cccteam/ccc/commit/f8316353af6ecef32fa4bb08a6b2be0241dc3d52))
+* bedrock org register --next prints the first stack apply that works, read from GitHub's workflow list ([#993](https://github.com/cccteam/ccc/issues/993)) ([a0bfd35](https://github.com/cccteam/ccc/commit/a0bfd3521b6df3aff5cabf6507f8327bbea6aabf))
+* bedrock pins impulse at its v0.5.0 release, ahead of the bedrock release ([#1036](https://github.com/cccteam/ccc/issues/1036)) ([dba9b4f](https://github.com/cccteam/ccc/commit/dba9b4f6d56dd72cead7ed3899e9ee07cf2f68e6))
+* org register --next at the grants step says the first push comes first while the repository is empty ([#1007](https://github.com/cccteam/ccc/issues/1007)) ([2370ee5](https://github.com/cccteam/ccc/commit/2370ee5d37db8b9fa1e3b90e3c2540501b75180c))
+* the consolidation guard reads a 403 on the generation after the live database as the end of the generations ([#1031](https://github.com/cccteam/ccc/issues/1031)) ([f831635](https://github.com/cccteam/ccc/commit/f8316353af6ecef32fa4bb08a6b2be0241dc3d52))
+* the deploy identity writes traces: the migrate command runs on the build worker with the application's tracer ([#991](https://github.com/cccteam/ccc/issues/991)) ([91ca4aa](https://github.com/cccteam/ccc/commit/91ca4aad274783ca9fd5ad74831a01748fe0861b))
+* the migrate command reads the first administrator's generated password, which the deploy identity alone may access ([#984](https://github.com/cccteam/ccc/issues/984)) ([dae45e8](https://github.com/cccteam/ccc/commit/dae45e8c259fca244335b659d4ec517b0f92bc23))
+* the stack's plan untaints a Cloud Run service or job whose create failed, so the apply updates it in place ([#1011](https://github.com/cccteam/ccc/issues/1011)) ([ec7a052](https://github.com/cccteam/ccc/commit/ec7a052f65bd966208b34575eeb153e6c4fd56b0))
+
+
+### Code Upgrade
+
+* **deps:** Go 1.26.10; crypto/x509 GO-2026-6809 fixed ([#1018](https://github.com/cccteam/ccc/issues/1018)) ([25dc507](https://github.com/cccteam/ccc/commit/25dc507e6226ed8d39fd49960a87ec04d8a04f5a))
+
 ## [0.3.3](https://github.com/cccteam/ccc/compare/bedrock/v0.3.2...bedrock/v0.3.3) (2026-10-17)
 
 
