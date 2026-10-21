@@ -126,7 +126,7 @@ type consolidatedPatchData struct {
 	// outlet, Patch<Suffix>Resources on an extra outlet's dispatcher.
 	HandlerName string
 	// ConcealedDomains adds the caller's foothold (HasGrants) to the descent's
-	// question after the roster (WithConcealedDomains).
+	// question after the roster and the session's reach (WithConcealedDomains).
 	ConcealedDomains bool
 }
 
@@ -418,8 +418,8 @@ type domainGuardData struct {
 	ApplicationName     string
 	ReceiverName        string
 	// ConcealedDomains adds the caller's foothold (HasGrants) to the guard's question
-	// after the roster, collapsing "unauthorized" into "nonexistent"
-	// (WithConcealedDomains).
+	// after the roster and the session's reach, collapsing "unauthorized" into
+	// "nonexistent" (WithConcealedDomains).
 	ConcealedDomains bool
 }
 
@@ -461,8 +461,8 @@ type appContractData struct {
 	HasRPC          bool
 	HasComputed     bool
 	// ConcealedDomains says the domain-scoped surface asks the caller's foothold after
-	// the roster (WithConcealedDomains); the contract's methods are the same either way,
-	// and the comment says which question the guard asks.
+	// the roster and the session's reach (WithConcealedDomains); the contract's methods
+	// are the same either way, and the comment says which questions the guard asks.
 	ConcealedDomains bool
 }
 

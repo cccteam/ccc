@@ -650,6 +650,10 @@ func (*semanticPermissions) Domains(context.Context) ([]accesstypes.Domain, erro
 	return nil, nil
 }
 
+func (*semanticPermissions) Reaches(context.Context, accesstypes.Domain) (bool, error) {
+	return true, nil
+}
+
 func (s *semanticPermissions) User() accesstypes.User {
 	return s.user
 }

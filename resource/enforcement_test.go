@@ -156,6 +156,10 @@ func (f *fakeUserPermissions) Domains(context.Context) ([]accesstypes.Domain, er
 	return []accesstypes.Domain{}, nil
 }
 
+func (f *fakeUserPermissions) Reaches(context.Context, accesstypes.Domain) (bool, error) {
+	return true, nil
+}
+
 func (f *fakeUserPermissions) User() accesstypes.User { return "testUser" }
 
 var _ ReadWriteTransaction = (*recordingTxn)(nil)

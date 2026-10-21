@@ -87,7 +87,7 @@ type Ship struct { ... }
 | `@manualAddResource` | `accesstypes.Resource` constant | `permission[, scope]` | Registers the permission on the resource in the generated Collection for a hand-written route with no generated handler. Repeatable. Scope is `global` or `domain`; omitted means the global default. An `@outlet` annotation on the same constant names the outlets the hand-written route is mounted under, so an outlet-filtered TypeScript target (`ForOutlet`) carries the registration only when it names that outlet; omitted means the default outlet. The constant's value is the resource name and must not contain `:` (reserved for access-defined markers like `accesstypes.GlobalResource`); generation rejects it. The registration reaches the TypeScript constants like a generated one: an `Execute` registration joins `Methods`, any other permission joins `Resources`. |
 | `@manualAddResourceSet` | `@resource` struct | comma list of `listHandler`, `readHandler`, `patchHandler`, or `allHandlers` | Declares that hand-written handlers register this resource's permission Sets for the given handler types; validated against the set of generated handlers. |
 | `@outlet` | `@resource`, `@virtual`, `@computed`, or `@rpc` struct; `accesstypes.Resource` constant carrying `@manualAddResource` | comma list of outlet names | Names the router outlets the struct's routes — or the constant's hand-written route — are registered under. Outlets are independent registration surfaces with their own route prefixes — the generator emits a `Generated<Name>Handlers` interface and `generated<Name>Routes` function per outlet, so the application composes different authentication and middleware around each (a browser app on one, a machine REST API on another). The default outlet is declared by `generation.GenerateRoutes` and carries the reserved name `default`; additional outlets are declared with `generation.WithRouterOutlet(name, routePrefix)`, and referencing an undeclared name is a generation error. An outlet serving browser sessions declares it (`WithRouterOutlet(name, prefix, Auth(pkg, flavor))` under the generated router, `ServesSessions()` under a hand-written one; section 8): the generated route tables register the permission-digest and user-domains routes under its prefix, and only a session-serving outlet may be the target of a `GenerateTypescript` call (`ForOutlet(name)`), which filters every emitted TypeScript file to that outlet's members — a client for a session-less outlet would have no permission channels and fail closed on every page, so it is a generation error. Without the annotation a struct is on the default outlet only; naming outlets replaces that default, so `@outlet(default, automation)` serves both while `@outlet(automation)` serves the automation outlet only. Consolidated resources get one consolidated patch dispatcher per outlet (`PatchResources`, `Patch<Name>Resources`), each bundling exactly that outlet's members. The generated router tests cover every outlet's routes and additionally prove isolation: a route's path under an outlet it is not attached to must 404. Example: [Consignment](lodestar/pkg/resources/consignments.go). |
-| `@permissionScope` | `@resource`, `@virtual`, `@computed`, or `@rpc` struct | `global` or `domain` | Sets the permission scope used by all of the resource's registrations. Default: `global`. It also selects the domain the generated handlers evaluate permissions in: global-scoped handlers pass `accesstypes.GlobalDomain`, while domain-scoped handlers read it from a required `/<tenants>/{<tenant>ID}/` route segment pair between the route prefix and the resource path (pair-style, so domain values can never collide with resource or method route names). Both names derive from the package's `@tenant` record: the segment is the record's route name and the parameter its key's route parameter (`Sector` keyed by `ID` gives `/sectors/{sectorID}/`), and a tenant-scoped resource in a package with no `@tenant` record is refused. Domain-scoped routes are wrapped in the generated `DomainGuard`, which asks the application's tenant roster (`TenantRoster().Has`, section 16) and answers 404 for a domain the roster does not hold before the handler runs. With `generation.WithConcealedDomains()` the guard asks the caller's foothold next (`UserPermissions.HasGrants` in the domain): a domain where the requesting user holds zero grants answers identically to a domain that does not exist (404 on routes, 400 in consolidated op paths), so refusals never confirm a tenant; any grant in the domain restores ordinary 403s (`access.Client.UserHasGrants` answers the foothold question from the in-memory snapshot, so the check stays legal inside the consolidated mutation transaction). Tenant identifiers must be a single URL-safe path segment and must never contain `:` (the character is reserved for access-defined markers; `accesstypes.GlobalDomain` is `access:global`); a URL domain is pure data, and `accesstypes.DomainScope` routes it to a tenant partition by construction, so no value can address the global partition. In the consolidated patch handler, a domain-scoped resource's operations carry the domain in the path exactly as the URL grammar does (`{"op":"patch","path":"/sectors/sector-alpha/berths/…"}`); global operations stay domainless, an unknown domain in an operation path is a 400, and cross-domain batches are legal (each operation is checked in its own partition; the batch is one transaction). Example: [Sector](lodestar/pkg/resources/sectors.go). |
+| `@permissionScope` | `@resource`, `@virtual`, `@computed`, or `@rpc` struct | `global` or `domain` | Sets the permission scope used by all of the resource's registrations. Default: `global`. It also selects the domain the generated handlers evaluate permissions in: global-scoped handlers pass `accesstypes.GlobalDomain`, while domain-scoped handlers read it from a required `/<tenants>/{<tenant>ID}/` route segment pair between the route prefix and the resource path (pair-style, so domain values can never collide with resource or method route names). Both names derive from the package's `@tenant` record: the segment is the record's route name and the parameter its key's route parameter (`Sector` keyed by `ID` gives `/sectors/{sectorID}/`), and a tenant-scoped resource in a package with no `@tenant` record is refused. Domain-scoped routes are wrapped in the generated `DomainGuard`, which asks the application's tenant roster (`TenantRoster().Has`, section 16) and answers 404 for a domain the roster does not hold before the handler runs, and the same 404 for a tenant the session does not reach (`UserPermissions.Reaches`: the tenant's declaration does not admit the way the session was established, section 6). With `generation.WithConcealedDomains()` the guard asks the caller's foothold next (`UserPermissions.HasGrants` in the domain): a domain where the requesting user holds zero grants answers identically to a domain that does not exist (404 on routes, 400 in consolidated op paths), so refusals never confirm a tenant; any grant in the domain restores ordinary 403s (`access.Client.UserHasGrants` answers the foothold question from the in-memory snapshot, so the check stays legal inside the consolidated mutation transaction). Tenant identifiers must be a single URL-safe path segment and must never contain `:` (the character is reserved for access-defined markers; `accesstypes.GlobalDomain` is `access:global`); a URL domain is pure data, and `accesstypes.DomainScope` routes it to a tenant partition by construction, so no value can address the global partition. In the consolidated patch handler, a domain-scoped resource's operations carry the domain in the path exactly as the URL grammar does (`{"op":"patch","path":"/sectors/sector-alpha/berths/…"}`); global operations stay domainless, an unknown domain in an operation path is a 400, and cross-domain batches are legal (each operation is checked in its own partition; the batch is one transaction). Example: [Sector](lodestar/pkg/resources/sectors.go). |
 | `@tenant` | `@resource` struct | none | The struct is the tenant record: the table whose rows are the tenants, one per package. Its route name is the segment tenant-scoped routes are served under and its key's route parameter is the domain parameter (`Sector` keyed by `ID` gives `/sectors/{sectorID}/…`); the generator emits `New<Record>Roster(client, opts...)` into the handler package, which builds the `resource.TenantRoster` the generated `DomainGuard` and the consolidated dispatcher ask (section 16); and the record's generated create and delete paths add and remove the tenant in the roster after their commit and signal the tenants kind, so a tenant created at run time is served by every instance without a restart or a release. The record must be global, table-backed, and keyed by one string column (the slug in every tenant-scoped URL): `@tenant` on a `@permissionScope(domain)` struct, on a compound key, on a key that is not a string, on a `@virtual`, `@computed` or `@rpc` struct, or on a second struct is refused naming the rule, and a tenant-scoped resource, view, computed resource or method in a package with no `@tenant` record is refused (`a tenant-scoped resource needs a tenant record; annotate it @tenant`). A key cannot change on update. Example: [Sector](lodestar/pkg/resources/sectors.go). |
 | `@page` | `@resource`, `@virtual`, or `@computed` struct | `default: N` and/or `max: M` | Declares the list's page sizes: the page a request without `limit` receives, and the largest page a request may ask for. Both are positive integers; the default never exceeds the maximum, and a maximum alone must be at least the generator-wide default of 50. Undeclared, the list serves pages of 50 with no maximum. A request over the maximum is refused with a 400 naming it, never clamped, and a resource with a maximum refuses `limit=all`. The maximum is also the switch a picker reads: a resource with none is small enough to load whole, read in one request with `limit=all` and sort optional; a resource with a maximum is paged, one server page at a time, so its list needs an order (`@order`, or `sort` on the request) and a picker over it reads the chosen row by key, which is why a bounded picker source may not suppress its read (`@enumerate`). Declaring the maximum is the deliberate choice; nothing decides at runtime from an observed size. Refused on a `@computed` or `@virtual` struct with no `@primarykey`, naming the struct and the two ways out (declare the key, or drop `@page`): without a key the resource is a whole read-only list, with no read route and no paging, so a page size on it is a contradiction. The generated TypeScript descriptor carries both numbers. Example: [Mission](lodestar/pkg/resources/missions.go). |
 | `@order` | `@resource`, `@virtual`, or `@computed` struct | comma list of `Field [asc\|desc]` | Declares the order a list takes when the request carries no `sort`, naming Go fields of the struct; the direction defaults to `asc`. The primary key is appended at runtime so the order is total, and a request's `sort` replaces the declared order for that request. The declaration is optional, and every paged request needs an order from somewhere: a resource that declares none serves a request without `sort` only as the whole list (`limit=all`), which is not sorted — its table or view statement carries no `ORDER BY` and the rows arrive in the database's own order, a computed list keeps the order its body yielded — and refuses a bare GET or a `limit` with a 400 naming the resource and the way out (section 4). A nullable column renders as the plain direction and sorts in its database's own `NULL` placement, so an index on the column serves the order: Spanner places `NULL` first ascending and last descending, PostgreSQL last ascending and first descending. A computed resource follows the same placement: its handler sorts and pages the body's rows where the application's database would. On a computed resource only a leaf field may be named (a nested field is opaque). The generated TypeScript descriptor carries the declared order (`order: [{ field, direction }]`, JSON names), so a browser client knows a request without a `sort` is already ordered and pages by cursor; to a resource that declares none it sends a `sort` of its own or asks `limit=all`. On a table-backed resource with a bare `@domain`, generation warns when no index leads with the tenant column and then these columns in this order and direction, naming the index it wants (section 9). Example: [Mission](lodestar/pkg/resources/missions.go). |
@@ -304,14 +304,16 @@ domain digests to `{}`, so the endpoint never confirms tenant existence under
 `PermissionDigestState` types (and `RowCapabilities` for the capability envelope).
 
 **User domains.** The payload is the sorted list of domains where the user holds at
-least one grant — the tenant picker's membership question, answered by the library so
-no application hand-writes it. The predicate is concealed tenancy's own foothold test
-(`access.Client.UserHasGrants`), so a domain listed here is exactly a domain whose
-routes answer the user with ordinary 403s rather than a concealing 404: the picker and
-the domain guard can never disagree. The global scope is never a domain. The answer
-reports grants, not tenants — a domain the application has since removed still lists
-while grants in it remain; existence is the tenant roster's (`@tenant`, section 16). An
-empty membership is `[]`, never `null`.
+least one grant and that the session reaches — the tenant picker's question, answered by
+the library so no application hand-writes it. The predicate is concealed tenancy's own
+foothold test (`access.Client.UserHasGrants`) over the session's admission
+(`UserPermissions.Reaches`), so a domain listed here is exactly a domain whose routes
+answer the user with ordinary 403s rather than a concealing 404: the picker and the
+domain guard can never disagree. A tenant is offered only when the session may enter it,
+and the application's tenant declaration decides (section 6). The global scope is never
+a domain. The answer reports grants, not tenants — a domain the application has since
+removed still lists while grants in it remain; existence is the tenant roster's
+(`@tenant`, section 16). An empty membership is `[]`, never `null`.
 
 ## 6. Impersonated sessions
 
@@ -320,11 +322,12 @@ on behalf of an authenticated actor, optionally attenuated by an
 `accesstypes.PermissionMask`. Such a session is an ordinary session to every consumer;
 this package supplies the two pieces that must know about it:
 
-- **`SessionPermissions(ctx, forUser, forRole)`** composes the request's
-  `UserPermissions` from the session: `forUser` (typically `access.Client.ForUser`) for a
-  user principal — an ordinary session or an impersonated user — and `forRole`
-  (typically `access.Client.ForRole`) for a role principal, then applies the session's
-  mask. A role checker satisfies `RolePermissions` — `UserPermissions` without `User()`,
+- **`SessionPermissions(ctx, forUser, forRole, roster, declarations)`** composes the
+  request's `UserPermissions` from the session: `forUser` (typically
+  `access.Client.ForUser`) for a user principal — an ordinary session or an impersonated
+  user — and `forRole` (typically `access.Client.ForRole`) for a role principal, admits
+  the session into the application's tenants, lists its domains from the roster, then
+  applies the session's mask. A role checker satisfies `RolePermissions` — `UserPermissions` without `User()`,
   because a role is not anyone — and the composition supplies `User()` itself: the
   session's effective identity, which for a role principal is the actor who established
   it, so a row condition's `subject` binds to the real person and nobody's identity is
@@ -335,6 +338,27 @@ this package supplies the two pieces that must know about it:
   resource before policy is consulted and dropped from the permission digest, so the
   frontend's digest agrees with what `Check` enforces. Forgetting the mask fails *open*,
   which is why the composition is here rather than hand-rolled per application.
+- **The tenant list and the admission.** `roster` is the application's tenant roster
+  (`DomainRoster`, the `TenantRoster`'s `Domains`; nil in an application without
+  tenants), and `declarations` is the application's reader of what a tenant declares
+  about who may enter it (`TenantDeclarations`: a `signin.TenantDeclaration` by domain —
+  the directories the tenant admits its people through, and whether through those only;
+  nil when the application keeps none, and every tenant admits every session). A tenant
+  is offered only when the session may enter it, and the tenant's declaration decides:
+  `UserPermissions.Reaches(domain)` is true when the declaration admits the way the
+  session was established — its sign-in's method and connection, the session's first auth
+  event (`sessioninfo.SessionData.EstablishedBy`; `signin.TenantDeclaration.Admits` is the
+  decision, the same one the sign-in policy makes over every tenant of the person) — or
+  when the session's actor holds a grant in the global partition, the application's staff,
+  who reach every tenant as the sign-in policy admits them. A tenant that declares nothing
+  admits a password and refuses a sign-in through a directory. An impersonated session is
+  established by its impersonation event, so a directory-only tenant refuses it unless the
+  actor, the real person behind it, is staff. In a tenant the session does not reach it
+  holds nothing — every `Check` Denied, an empty digest, no foothold — so `Domains`, the
+  picker's list, is the roster filtered by the grant and the admission, the generated
+  `DomainGuard` refuses a direct request for the tenant exactly as it refuses a domain
+  that is not a tenant, and the two can never disagree. One composed value reads a
+  tenant's declaration once, whatever is asked about the tenant after.
 - **`UserEvent(ctx)`** — the event source every generated write handler stamps onto
   `DataChangeEvents` — names the actor first for an impersonated session:
   `alice impersonating bob (session id)` and `alice as role PartnerViewer (session id)`,
@@ -1764,11 +1788,15 @@ tenant, so an application that wires none fails closed on every tenant-scoped ro
 
 **The guard.** The generated `DomainGuard` and the consolidated dispatcher's descent ask
 the roster first (`TenantRoster().Has(domain)`) and answer an unknown domain with the guard's
-404 or the dispatcher's 400; under `WithConcealedDomains` they ask the caller's foothold
-next (`UserPermissions.HasGrants` in the domain) and answer a caller without one the same
-way. Without concealment the roster alone answers. The record's own routes stay
-unguarded: they terminate at the segment's value and are global. The application
-hand-writes no existence seam; the generated contract asks for the roster alone.
+404 or the dispatcher's 400; then the session's reach (`UserPermissions.Reaches`: whether
+the tenant's declaration admits the way the session was established, section 6) and answer
+a tenant the session may not enter the same way, in every mode; under
+`WithConcealedDomains` they ask the caller's foothold last (`UserPermissions.HasGrants` in
+the domain) and answer a caller without one the same way. Without concealment the roster
+and the reach answer. The record's own routes stay unguarded: they terminate at the
+segment's value and are global. The application hand-writes no existence seam; the
+generated contract asks for the roster alone, and the reach is the composed session
+permissions' answer.
 
 **Keeping up.** The record's generated create and delete paths, the standalone PATCH
 handler and the consolidated dispatcher's case for the record, call `Add` and `Remove`

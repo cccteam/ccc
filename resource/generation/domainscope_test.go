@@ -512,9 +512,11 @@ func Test_routesTemplate_domainGuard(t *testing.T) {
 
 // Test_domainGuardTemplate pins the generated DomainGuard middleware body: resolve the
 // domain route parameter, answer 404 when the application's tenant roster does not
-// hold it, then, under concealment alone, answer the same 404 when the caller holds no
-// grant in it, and only then run the wrapped handler. The roster is asked first in
-// both modes, and the application's own seam (DomainExists, DomainVisible) is gone.
+// hold it, the same 404 when the session does not reach the tenant (Reaches: the
+// tenant's declaration against the session's establishment), then, under concealment
+// alone, the same 404 when the caller holds no grant in it, and only then run the
+// wrapped handler. The roster is asked first and the reach second in both modes, and
+// the application's own seam (DomainExists, DomainVisible) is gone.
 func Test_domainGuardTemplate(t *testing.T) {
 	t.Parallel()
 
@@ -525,22 +527,26 @@ func Test_domainGuardTemplate(t *testing.T) {
 		wantNotContains []string
 	}{
 		{
-			name: "the roster alone answers",
+			name: "the roster and the session's reach answer",
 			wantContains: []string{
 				"func (a *App) DomainGuard() func(http.HandlerFunc) http.HandlerFunc {",
 				"domain := httpio.Param[accesstypes.Domain](r, router.Domain)",
 				"if !a.TenantRoster().Has(domain) {",
+				"userPermissions := a.UserPermissions(r)",
+				"if reaches, err := userPermissions.Reaches(ctx, domain); err != nil {",
+				"} else if !reaches {",
 				`httpio.NewNotFoundMessagef("unknown domain %q", domain)`,
 				"next.ServeHTTP(w, r)",
 			},
 			wantNotContains: []string{"HasGrants", "DomainExists", "DomainVisible"},
 		},
 		{
-			name:      "concealed domains ask the roster, then the caller's foothold",
+			name:      "concealed domains ask the roster, the session's reach, then the caller's foothold",
 			concealed: true,
 			wantContains: []string{
 				"if !a.TenantRoster().Has(domain) {",
-				"if ok, err := a.UserPermissions(r).HasGrants(ctx, accesstypes.DomainScope(domain)); err != nil {",
+				"if reaches, err := userPermissions.Reaches(ctx, domain); err != nil {",
+				"if ok, err := userPermissions.HasGrants(ctx, accesstypes.DomainScope(domain)); err != nil {",
 				`httpio.NewNotFoundMessagef("unknown domain %q", domain)`,
 			},
 			wantNotContains: []string{"DomainExists", "DomainVisible"},
@@ -576,11 +582,15 @@ func Test_domainGuardTemplate(t *testing.T) {
 					t.Errorf("domainGuardTemplate output must not contain %q:\n%s", notWant, out)
 				}
 			}
+			s := string(out)
+			roster, reach := strings.Index(s, "a.TenantRoster().Has(domain)"), strings.Index(s, "Reaches(ctx, domain)")
+			if roster < 0 || reach < 0 || roster > reach {
+				t.Errorf("the guard must ask the roster before the reach (roster at %d, reach at %d):\n%s", roster, reach, out)
+			}
 			if tt.concealed {
-				s := string(out)
-				roster, foothold := strings.Index(s, "a.TenantRoster().Has(domain)"), strings.Index(s, "HasGrants(ctx")
-				if roster < 0 || foothold < 0 || roster > foothold {
-					t.Errorf("the guard must ask the roster before the foothold (roster at %d, foothold at %d):\n%s", roster, foothold, out)
+				foothold := strings.Index(s, "HasGrants(ctx")
+				if foothold < 0 || reach > foothold {
+					t.Errorf("the guard must ask the reach before the foothold (reach at %d, foothold at %d):\n%s", reach, foothold, out)
 				}
 			}
 		})
@@ -639,6 +649,8 @@ func Test_consolidatedTemplate_domainDispatch(t *testing.T) {
 				`op, err := op.WithPrefixPattern("/stations/{stationID}/{resource}")`,
 				`domain := httpio.Param[accesstypes.Domain](op.Req, router.Domain)`,
 				`if !a.TenantRoster().Has(domain) {`,
+				`if reaches, err := userPermissions.Reaches(ctx, domain); err != nil {`,
+				`} else if !reaches {`,
 				`httpio.NewBadRequestMessagef("unknown domain %q in operation path", domain)`,
 				`fossilDecoder.DecodeOperation(op, userPermissions, accesstypes.GlobalScope())`,
 				`vaultDecoder.DecodeOperation(op, userPermissions, accesstypes.DomainScope(domain))`,
@@ -684,7 +696,7 @@ func Test_consolidatedTemplate_domainDispatch(t *testing.T) {
 			},
 		},
 		{
-			name: "concealed domains ask the roster, then the caller's foothold",
+			name: "concealed domains ask the roster, the session's reach, then the caller's foothold",
 			data: consolidatedPatchData{
 				Resources:           []*resourceInfo{globalCase.resourceInfo, domainCase.resourceInfo},
 				GlobalCases:         []consolidatedCaseData{globalCase},
@@ -700,6 +712,7 @@ func Test_consolidatedTemplate_domainDispatch(t *testing.T) {
 			},
 			wantContains: []string{
 				`if !a.TenantRoster().Has(domain) {`,
+				`if reaches, err := userPermissions.Reaches(ctx, domain); err != nil {`,
 				`if ok, err := userPermissions.HasGrants(ctx, accesstypes.DomainScope(domain)); err != nil {`,
 				`httpio.NewBadRequestMessagef("unknown domain %q in operation path", domain)`,
 			},

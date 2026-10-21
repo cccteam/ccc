@@ -5,26 +5,43 @@ import (
 	"iter"
 
 	"github.com/cccteam/ccc/accesstypes"
+	"github.com/cccteam/session/signin"
 	"github.com/cccteam/spxscan/spxapi"
 )
 
 // UserPermissions is the permission surface a request's decoders consume: the
-// checks, the frontend's advisory enumerations, and the identity a row
-// condition's subject binds to. SessionPermissions composes it per request
-// from the session's principal, the application's checker for that principal
-// and the application's tenant roster; applications hand the composed value
-// to the PatchSet and QuerySet types, which enforce permissions through it.
+// checks, the frontend's advisory enumerations, the identity a row
+// condition's subject binds to, and the session's reach into the
+// application's tenants. SessionPermissions composes it per request from the
+// session's principal, the application's checker for that principal, the
+// application's tenant roster and its tenant declarations; applications hand
+// the composed value to the PatchSet and QuerySet types, which enforce
+// permissions through it.
 type UserPermissions interface {
 	UserPermissionChecker
 
-	// Domains lists the domains where the user holds at least one grant,
-	// sorted — the payload the generated user-domains endpoint serves and
-	// the tenant picker's membership question: the application's tenant
-	// roster filtered by HasGrants, so a domain listed here is exactly a
-	// domain whose routes answer the user with ordinary 403s rather than
-	// concealed tenancy's 404; the picker and the guard can never disagree.
-	// Never nil: an application without tenants lists none.
+	// Domains lists the domains where the user holds at least one grant and
+	// that the session reaches, sorted — the payload the generated
+	// user-domains endpoint serves and the tenant picker's question: the
+	// application's tenant roster filtered by HasGrants and by Reaches, so a
+	// domain listed here is exactly a domain whose routes answer the user
+	// with ordinary 403s rather than concealed tenancy's 404; the picker and
+	// the guard can never disagree. Never nil: an application without
+	// tenants lists none.
 	Domains(ctx context.Context) ([]accesstypes.Domain, error)
+
+	// Reaches reports whether the session may enter domain: the tenant's
+	// declaration (TenantDeclarations) admits the way the session was
+	// established, its sign-in's method and connection, or the session's
+	// actor is the application's staff, who hold a grant in the global
+	// partition and reach every tenant. It is the generated domain guard's
+	// question before the foothold, and the attenuation behind every other
+	// answer: in a tenant the session does not reach it holds nothing —
+	// every check Denied, an empty digest, no foothold. Whether domain is a
+	// tenant at all is the roster's question (TenantRoster.Has), which the
+	// guard asks first. A session composed without declarations reaches
+	// every domain.
+	Reaches(ctx context.Context, domain accesstypes.Domain) (bool, error)
 }
 
 // UserPermissionChecker is what an application's per-request accessor for a
@@ -101,6 +118,16 @@ type RolePermissions interface {
 // application without tenants passes nil to SessionPermissions, and its
 // sessions list no domain.
 type DomainRoster func(ctx context.Context) ([]accesstypes.Domain, error)
+
+// TenantDeclarations reads what a tenant declares about who may enter it: the
+// tenant's declaration (signin.TenantDeclaration) by domain, as the
+// application keeps it, which SessionPermissions applies to each tenant the
+// session holds a grant in. It answers nil for a tenant that declares
+// nothing, which admits a password and refuses a sign-in through a directory,
+// as the sign-in policy does (signin.TenantPolicy). An application that keeps
+// no declarations passes nil to SessionPermissions, and every tenant admits
+// every session.
+type TenantDeclarations func(ctx context.Context, domain accesstypes.Domain) (*signin.TenantDeclaration, error)
 
 // Client is an interface for the supported database Client's to implement. It is not intended
 // for mocking since each database requires an implementation in this package.
