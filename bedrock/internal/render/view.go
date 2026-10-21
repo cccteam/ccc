@@ -1587,6 +1587,12 @@ func (v *view) blocks() {
 			[2]string{"tasks_max_attempts", tasksMaxAttempts},
 		)
 	}
+	if v.Armor.Throttled {
+		restated = append(restated,
+			[2]string{SignInCountVariable, v.Armor.SignInCount},
+			[2]string{SignInIntervalVariable, v.Armor.SignInInterval},
+		)
+	}
 	v.RestatedDefaults = aligned("#   ", restated, " = ")
 }
 

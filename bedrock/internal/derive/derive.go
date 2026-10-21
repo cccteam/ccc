@@ -96,6 +96,13 @@ type Model struct {
 	// spaces the routes carrying JSON input live under, which Cloud Armor's rule sets
 	// are scoped to.
 	Outlets []Outlet
+	// SignInRoutes are the generated router's routes that take a sign-in credential by
+	// POST, read from every site's outlets in site then outlet order, a route listed
+	// once (signin.go): each session outlet's password login, where its auth registers
+	// the password method, and its pending sign-in's confirmation and cancel. Cloud
+	// Armor, where an environment turns it on, throttles each by client address
+	// (cloud-armor.tf). None when no outlet binds an auth.
+	SignInRoutes []SignInRoute
 	// Firestore is what the application's Firestore database carries beyond the
 	// database itself (the composite indexes, the time-to-live policies and the security
 	// rules the files beside the schema migrations declare), or nil when the code

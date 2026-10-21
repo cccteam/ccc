@@ -69,7 +69,10 @@ build_secrets = {
 
 # Cloud Armor per environment (README, "Cloud Armor"): "preview" evaluates the
 # policy and logs what each rule would have done, "enforce" applies it. Off for
-# an environment left out. Preview first, read the logs, then enforce.
+# an environment left out. Preview first, read the logs, then enforce. The
+# policy throttles the sign-in routes by client address, at the
+# cloud_armor_sign_in_count and cloud_armor_sign_in_interval restated below;
+# write either here to change it.
 cloud_armor = {
 }
 
@@ -84,3 +87,5 @@ cloud_armor = {
 #   jobs_resources                = cpu 1, memory 512Mi
 #   tasks_max_concurrent          = 10
 #   tasks_max_attempts            = 5
+#   cloud_armor_sign_in_count     = 30
+#   cloud_armor_sign_in_interval  = 60

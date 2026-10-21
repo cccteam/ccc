@@ -1,10 +1,14 @@
 // armor.go reads the stack's terraform.tfvars for a Cloud Armor policy the working tree
-// removes in one step. The policy of an environment is on while cloud_armor names the
-// environment with "preview" or "enforce", attached to the backend services; removing
-// the entry detaches it and destroys it in one apply, which fails while the policy is
-// attached. So an environment on at the default branch is set to "off" first (the policy
-// kept, detached), applied, and then removed; the check refuses the one-step removal, the
-// only form of the change the apply refuses, where the pull request is.
+// removes in one step, and for a sign-in throttle threshold the policy could not take.
+// The policy of an environment is on while cloud_armor names the environment with
+// "preview" or "enforce", attached to the backend services; removing the entry detaches
+// it and destroys it in one apply, which fails while the policy is attached. So an
+// environment on at the default branch is set to "off" first (the policy kept,
+// detached), applied, and then removed; the check refuses the one-step removal, the
+// only form of the change the apply refuses, where the pull request is. The throttle's
+// count and interval (cloud_armor_sign_in_count, cloud_armor_sign_in_interval) are
+// positive whole numbers; the check refuses any other where the pull request is, as the
+// stack's own validation does at plan.
 
 package check
 
@@ -20,6 +24,7 @@ import (
 	"github.com/zclconf/go-cty/cty"
 
 	"github.com/cccteam/ccc/bedrock/internal/gitcmd"
+	"github.com/cccteam/ccc/bedrock/internal/render"
 	"github.com/cccteam/ccc/bedrock/internal/secret"
 )
 
@@ -93,6 +98,86 @@ func defaultBranchRef(ctx context.Context, dir, branch string) (string, bool) {
 	return ref, err == nil
 }
 
+// SignInThresholdFinding is one sign-in throttle variable in terraform.tfvars whose value
+// the policy could not take: not a number, not whole, or not above zero.
+type SignInThresholdFinding struct {
+	// Variable is the variable, cloud_armor_sign_in_count or cloud_armor_sign_in_interval.
+	Variable string
+	// Value is the value as the file writes it, for the message.
+	Value string
+}
+
+// Problem says what the variable is and what a value of it is.
+func (f *SignInThresholdFinding) Problem() string {
+	if f.Variable == render.SignInCountVariable {
+		return f.Variable + " in " + tfvarsFile + " is " + f.Value + "; the sign-in throttle's count is a positive whole number: the POSTs one client address may make to a sign-in route in the interval before its further ones answer 429"
+	}
+
+	return f.Variable + " in " + tfvarsFile + " is " + f.Value + "; the sign-in throttle's interval is a positive whole number of seconds: how long the count is taken over"
+}
+
+// scanSignInThreshold reads the working tree's terraform.tfvars for the sign-in
+// throttle's variables: a value that is not a number, not whole, or not above zero is a
+// finding, the count's first. A variable left out takes the stack's default, and there
+// is nothing to refuse; no file holds neither.
+func scanSignInThreshold(dir string) ([]SignInThresholdFinding, error) {
+	file := filepath.Join(dir, tfvarsFile)
+	src, err := os.ReadFile(file)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, nil
+		}
+
+		return nil, errors.Wrap(err, "os.ReadFile()")
+	}
+	body, err := parseTfvars(src, file)
+	if err != nil {
+		return nil, err
+	}
+	var findings []SignInThresholdFinding
+	for _, name := range []string{render.SignInCountVariable, render.SignInIntervalVariable} {
+		attr, ok := body.Attributes[name]
+		if !ok {
+			continue
+		}
+		v, diags := attr.Expr.Value(nil)
+		if diags.HasErrors() {
+			return nil, errors.Wrapf(diags, "%s in %s", name, file)
+		}
+		if ok, written := positiveWhole(v, src, attr.Expr.Range()); !ok {
+			findings = append(findings, SignInThresholdFinding{Variable: name, Value: written})
+		}
+	}
+
+	return findings, nil
+}
+
+// positiveWhole reports a value that is a number, whole and above zero, with the value as
+// the source writes it, for a message when it is not.
+func positiveWhole(v cty.Value, src []byte, at hcl.Range) (ok bool, written string) {
+	written = string(at.SliceBytes(src))
+	if v.IsNull() || !v.Type().Equals(cty.Number) {
+		return false, written
+	}
+	n := v.AsBigFloat()
+
+	return n.Sign() > 0 && n.IsInt(), written
+}
+
+// parseTfvars reads the placement source as native HCL, named for a message by file.
+func parseTfvars(src []byte, file string) (*hclsyntax.Body, error) {
+	f, diags := hclsyntax.ParseConfig(src, file, hcl.InitialPos)
+	if diags.HasErrors() {
+		return nil, errors.Wrap(diags, "hclsyntax.ParseConfig()")
+	}
+	body, ok := f.Body.(*hclsyntax.Body)
+	if !ok {
+		return nil, errors.Newf("%s: not native HCL syntax", file)
+	}
+
+	return body, nil
+}
+
 // cloudArmor is a cloud_armor map: each environment's mode, and the environments in the
 // file's order.
 type cloudArmor struct {
@@ -119,13 +204,9 @@ func cloudArmorModes(dir string) (*cloudArmor, error) {
 // file. A map that is not written out ({ ... }), a key that is not a string and a value
 // that is not a literal string are refused.
 func parseCloudArmor(src []byte, file string) (*cloudArmor, error) {
-	f, diags := hclsyntax.ParseConfig(src, file, hcl.InitialPos)
-	if diags.HasErrors() {
-		return nil, errors.Wrap(diags, "hclsyntax.ParseConfig()")
-	}
-	body, ok := f.Body.(*hclsyntax.Body)
-	if !ok {
-		return nil, errors.Newf("%s: not native HCL syntax", file)
+	body, err := parseTfvars(src, file)
+	if err != nil {
+		return nil, err
 	}
 	c := &cloudArmor{modes: map[string]string{}}
 	attr, ok := body.Attributes[cloudArmorKey]

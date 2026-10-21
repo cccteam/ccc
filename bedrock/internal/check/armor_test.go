@@ -254,3 +254,108 @@ func TestRunCloudArmor(t *testing.T) {
 		t.Errorf("Write() output lacks %q:\n%s", want, out.String())
 	}
 }
+
+// TestScanSignInThreshold reads the sign-in throttle's variables: a count or an interval
+// that is not a number, not whole, or not above zero is refused naming the variable and
+// the value as written, the count's first; a variable left out, and no file, pass.
+func TestScanSignInThreshold(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		// working is what follows the secret_versions map in terraform.tfvars; noFile
+		// writes no file at all.
+		working string
+		noFile  bool
+		want    []SignInThresholdFinding
+		wantErr string
+	}{
+		{name: "neither variable written passes"},
+		{name: "no file passes", noFile: true},
+		{name: "positive whole numbers pass", working: "cloud_armor_sign_in_count    = 10\ncloud_armor_sign_in_interval = 300\n"},
+		{name: "a count of zero is refused", working: "cloud_armor_sign_in_count = 0\n", want: []SignInThresholdFinding{{Variable: "cloud_armor_sign_in_count", Value: "0"}}},
+		{name: "a negative interval is refused", working: "cloud_armor_sign_in_interval = -60\n", want: []SignInThresholdFinding{{Variable: "cloud_armor_sign_in_interval", Value: "-60"}}},
+		{name: "a fraction is refused", working: "cloud_armor_sign_in_count = 2.5\n", want: []SignInThresholdFinding{{Variable: "cloud_armor_sign_in_count", Value: "2.5"}}},
+		{name: "a string is refused", working: "cloud_armor_sign_in_interval = \"60\"\n", want: []SignInThresholdFinding{{Variable: "cloud_armor_sign_in_interval", Value: "\"60\""}}},
+		{
+			name:    "both refused, the count first",
+			working: "cloud_armor_sign_in_interval = 0\ncloud_armor_sign_in_count    = -1\n",
+			want:    []SignInThresholdFinding{{Variable: "cloud_armor_sign_in_count", Value: "-1"}, {Variable: "cloud_armor_sign_in_interval", Value: "0"}},
+		},
+		{name: "a value that is not a literal is an error", working: "cloud_armor_sign_in_count = var.n\n", wantErr: "cloud_armor_sign_in_count in"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			r := &armorRepo{t: t, root: t.TempDir()}
+			if !tt.noFile {
+				r.write(tt.working)
+			}
+			got, err := scanSignInThreshold(r.stack())
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("scanSignInThreshold() error = %v, wantErr %q", err, tt.wantErr)
+				}
+
+				return
+			}
+			if err != nil {
+				t.Fatalf("scanSignInThreshold() error = %v", err)
+			}
+			if diff := cmp.Diff(tt.want, got); diff != "" {
+				t.Errorf("scanSignInThreshold() mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+// TestRunSignInThreshold: a threshold the policy could not take fails the check, and its
+// line names the variable, the value and what a value of it is.
+func TestRunSignInThreshold(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		extra string
+		want  string
+	}{
+		{
+			name:  "a count of zero",
+			extra: "\ncloud_armor_sign_in_count = 0\n",
+			want:  "refused  cloud_armor_sign_in_count in terraform.tfvars is 0; the sign-in throttle's count is a positive whole number: the POSTs one client address may make to a sign-in route in the interval before its further ones answer 429",
+		},
+		{
+			name:  "an interval of a fraction",
+			extra: "\ncloud_armor_sign_in_interval = 0.5\n",
+			want:  "refused  cloud_armor_sign_in_interval in terraform.tfvars is 0.5; the sign-in throttle's interval is a positive whole number of seconds: how long the count is taken over",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			dir := copyGolden(t)
+			path := filepath.Join(dir, tfvarsFile)
+			data, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(path, append(data, []byte(tt.extra)...), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			report, err := Run(t.Context(), harborModel(t), dir, filepath.Join(dir, "root"))
+			if err != nil {
+				t.Fatalf("Run() error = %v", err)
+			}
+			if report.Clean() {
+				t.Error("Clean() = true, want false: a threshold the policy could not take is refused")
+			}
+			var out bytes.Buffer
+			report.Write(&out)
+			if !strings.Contains(out.String(), tt.want) {
+				t.Errorf("Write() output lacks %q:\n%s", tt.want, out.String())
+			}
+		})
+	}
+}

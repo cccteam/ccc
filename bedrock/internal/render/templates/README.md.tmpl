@@ -818,13 +818,33 @@ that no rule below reads it: the generated router's upload and stored-file
 routes (`{{.RouterDir}}/{{.ReleaseFileName}}`, `fileRoutes`) and the placement's
 (`cloudArmor.bypasses`, a webhook under the Root hook whose sender signs its
 body, a media stream). Then the other sets, each scoped to the outlets' routes
-({{if .Armor.Scope}}{{.Armor.ScopeProse}}{{else}}every path, the site declaring no outlet prefix{{end}}), where the input a rule can judge arrives. Every other
-request is allowed. Each rule's description names its source.
+({{if .Armor.Scope}}{{.Armor.ScopeProse}}{{else}}every path, the site declaring no outlet prefix{{end}}), where the input a rule can judge arrives.{{if .Armor.Throttled}} Then the
+sign-in throttles.{{end}} Every other request is allowed. Each rule's description names
+its source.
+{{- if .Armor.Throttled}}
+
+The sign-in routes are throttled by client address: the generated router's
+routes that take a credential by POST (each session outlet's password login
+and its pending sign-in's confirmation and cancel), each counted on its own;
+here {{.Armor.SignInProse}}.
+An address past `cloud_armor_sign_in_count` POSTs to one of them in
+`cloud_armor_sign_in_interval` seconds (`terraform.tfvars`; {{.Armor.SignInCount}} in {{.Armor.SignInInterval}}
+by default) is answered 429 on that route until the interval passes. The
+default is chosen for a login page: a person types a handful of attempts in a
+minute and an office behind one address a few dozen at its busiest, so neither
+meets it, while a password guessed from one address is held to the count. The
+throttles run after the rule sets, so a sign-in POST is still read by them,
+and follow the environment's mode: in preview,
+`jsonPayload.previewSecurityPolicy` names the throttle an address would have
+met, which says whether the default fits the application's addresses before
+the environment is enforced. A directory method's login and callback are not
+throttled: the directory holds the credential.
+{{- end}}
 
 | Priority | Action | Rule | Source |
 |---|---|---|---|
 {{- range .Armor.Rules}}
-| {{.Priority}} | {{if .Deny}}deny{{else}}allow{{end}} | {{.What}} | {{.Source}} |
+| {{.Priority}} | {{.Verb}} | {{.What}} | {{.Source}} |
 {{- end}}
 | {{.Armor.DefaultPriority}} | allow | every other request | the default rule |
 {{- if .Armor.Exclusions}}
@@ -1192,6 +1212,10 @@ none yet), and the sign-in needs no registration.
 |---|---|---|---|:---:|
 | `build_secrets` | Build-time secrets per environment, NAME = pinned version; each reaches the image build as a BuildKit secret. | `map(map(string))` | `{}` | no |
 | `cloud_armor` | Cloud Armor per environment: `"preview"`, `"enforce"` or `"off"` (the policy kept, detached); an environment left out has no policy. Off before removed. | `map(string)` | `{}` | no |
+{{- if .Armor.Throttled}}
+| `cloud_armor_sign_in_count` | Sign-in POSTs one client address may make to a sign-in route in the interval before its further ones answer 429. | `number` | `{{.Armor.SignInCount}}` | no |
+| `cloud_armor_sign_in_interval` | Seconds the sign-in count is taken over. | `number` | `{{.Armor.SignInInterval}}` | no |
+{{- end}}
 | `destroy` | Set by `bedrock destroy` alone: every protection lifted at the apply before its destroy. | `bool` | `false` | no |
 | `environment` | {{.EnvsBacktickOr}}; passed as `-var` on every run. | `string` | n/a | yes |
 | `generated_secret_versions` | The generated secrets' versions, derived and passed by the pipeline's plan step; never written here. | `map(string)` | `{}` | no |
