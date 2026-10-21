@@ -1,6 +1,6 @@
 module github.com/cccteam/ccc/resource/lodestar
 
-go 1.26.9
+go 1.26.10
 
 // lodestar is committed in the same repo (and same commits) as the resource module it
 // exercises, so it must build against the local source rather than a published version
