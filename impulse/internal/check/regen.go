@@ -41,7 +41,7 @@ func (c regen) Run(ctx context.Context, env *Env) Result {
 	env.notef("running go generate ./... (needs the Spanner emulator)")
 	out, err := env.Exec.Run(ctx, env.App.Root, nil, "go", "generate", "./...")
 	if err != nil {
-		return fail(c.Name(), "go generate ./... failed", outputLines(out, 40)...)
+		return GenerateFailed(out)
 	}
 
 	after, err := hashGenerated(env.App.Root)
@@ -67,6 +67,13 @@ func (c regen) Run(ctx context.Context, env *Env) Result {
 
 // regenClean is the summary of a regeneration that changed nothing.
 const regenClean = "regeneration reproduces the generated files on disk"
+
+// GenerateFailed is the regen check's result for a go generate ./... that failed, the
+// output's last lines its details, for a caller that ran the generation itself (impulse
+// upgrade's step) and hands the failure off as the check would.
+func GenerateFailed(out []byte) Result {
+	return fail(regen{}.Name(), "go generate ./... failed", outputLines(out, 40)...)
+}
 
 // warningLines returns the schema warnings in a generation's output, prefix included, in
 // the order the programs printed them.

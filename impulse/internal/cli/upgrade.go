@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
 	"path"
+	"slices"
 	"strings"
 
 	"github.com/go-playground/errors/v5"
@@ -27,6 +29,8 @@ const (
 	gitCommand       = "git"
 	impulseTool      = "impulse"
 	upgradeCommitTyp = "upgrade"
+	// generateCommand is the regeneration as the walk names it.
+	generateCommand = "go generate ./..."
 )
 
 // subjectLimit is the longest commit subject a step writes, in characters: one that still
@@ -58,20 +62,27 @@ read from the framework pins in its go.mod (the resource, access, session and ac
 versions it builds against), never from a file of its own: the latest step whose pins they
 reach is the position, and every step after it is pending. Each pending step is one commit:
 its recipes run (each detects the old form in the application and edits only where it finds
-it, so running twice is safe), the pins it moves move to its set (go get; a pin already at
-or beyond the step's stays), the impulse tool pin moves to the release that added the step
-(go get -tool; the tool directive puts that impulse's requirements into the build list, so
-the pin moves with its step and never ahead of one), the owned files are rendered again,
-go generate runs, impulse check runs (the pinned impulse renders and checks, through go
-tool impulse, when it is not the running one), and everything is committed under
+it, so running twice is safe), the pins it moves move to its set in one go get (a pin
+already at or beyond the step's stays; a set no build list holds is refused by go in its
+own words, where one go get per pin would move an earlier pin off the step to meet a later
+one), the impulse tool pin moves to the release that added the step (go get -tool; the tool
+directive puts that impulse's requirements into the build list, so the pin moves with its
+step and never ahead of one), go mod tidy runs and go.mod is read back (a moved pin below
+the step's version, or dropped, refuses the step, naming what go.mod holds), the owned
+files are rendered again, go generate runs, impulse check runs (the pinned impulse renders
+and checks, through go tool impulse, when it is not the running one), and everything is
+committed under
 "` + upgradeCommitTyp + `: <the pins moved>". Last, when the running impulse is a release the
 pin is still behind (one that added no step), the pin moves to it, the owned files are
 rendered again, go generate and impulse check run, and the result is committed as
 "` + upgradeCommitTyp + `: impulse <version>"; an impulse built from a checkout makes no such
 move, and one older than the pin refuses, since the pinned one is the impulse to run. Run
 the impulse to upgrade to without pinning it first (go run github.com/cccteam/ccc/impulse@<version>
-upgrade): go get -tool would drag the framework pins ahead of the steps. A failing check
-stops the walk with the step's changes staged and the handoff brief written (` + handoff.File + `).
+upgrade): go get -tool would drag the framework pins ahead of the steps. A failing check,
+or a go generate that fails after the move, stops the walk with the step's changes staged
+and the handoff brief written (` + handoff.File + `); for a failed generation the brief quotes the
+generation's last lines and says what the step moved, so the author learns what the step
+needs of the generator program.
 At a step checked by the pinned impulse, that impulse writes the brief from the staged
 tree and, with --agent, runs the agent and verifies its work, through go tool impulse
 handoff --staged, from impulse ` + handoffStagedSince + ` on; a pinned release before it leaves the
@@ -347,7 +358,7 @@ func (u *upgrader) moveTool(ctx context.Context, f *transitionFlags, repo handof
 	if err := u.tidy(ctx, a); err != nil {
 		return err
 	}
-	commit := &commit{label: "the impulse " + release + " tool pin step", subject: upgradeCommitTyp + ": impulse " + release, body: toolPinNote}
+	commit := &commit{label: "the impulse " + release + " tool pin step", subject: upgradeCommitTyp + ": impulse " + release, body: toolPinNote, moved: []string{toolPinLabel(release)}, note: toolPinNote}
 
 	return u.finish(ctx, f, repo, commit)
 }
@@ -387,7 +398,7 @@ func (u *upgrader) step(ctx context.Context, f *transitionFlags, repo handoff.Re
 		subject = upgradeCommitTyp + ": " + strings.Join(modulesOf(moves), ", ") + suffix
 		body += "\n\nPins moved: " + moved + "."
 	}
-	commit := &commit{label: fmt.Sprintf("step %d (%s)", number, moved), subject: subject, body: body, changes: changes, meanings: meanings, release: s.Impulse}
+	commit := &commit{label: fmt.Sprintf("step %d (%s)", number, moved), subject: subject, body: body, changes: changes, meanings: meanings, release: s.Impulse, moved: moves, note: s.Note}
 
 	return u.finish(ctx, f, repo, commit)
 }
@@ -415,12 +426,43 @@ type commit struct {
 	// When it is set and go.mod's pin is not the running release, the pinned impulse
 	// renders the owned files and checks the step, through go tool impulse.
 	release string
+	// moved are the pins the step moved ("ccc/resource v0.15.0", "ccc/impulse v0.5.1")
+	// and note what the step changes, for the brief when go generate fails after the
+	// move.
+	moved []string
+	note  string
+}
+
+// afterGenerateFailed is the commit's account for the brief when go generate ./... failed
+// after the move: what the step moved and that the generation, not the check, is what
+// failed, added to the recipes' changes, and what the step changes added to their
+// meanings, so the application's author learns what the step needs of the generator
+// program and of what it generates from.
+func (c *commit) afterGenerateFailed() *commit {
+	after := *c
+	did := "ran the step's edits, with no pin to move,"
+	if len(c.moved) > 0 {
+		did = "moved " + strings.Join(c.moved, ", ")
+	}
+	after.changes = append(slices.Clone(c.changes), fmt.Sprintf("`impulse upgrade` %s and staged the step; then `%s` failed, so `%s` did not run. The generation's last lines are under \"The failing checks\". The generator program, and what it generates from, build against the moved pins, so what they declare may need the form the step brings, described under \"What it means\".", did, generateCommand, handoff.CheckCommand))
+	after.meanings = append(slices.Clone(c.meanings), "What the step changes for the application: "+c.note+".")
+
+	return &after
+}
+
+// outcome is how a step's render, regeneration and check ended: the results, whether they
+// failed, and whether the regeneration is what failed, so the check never ran and the
+// results hold the generation's failure as the regen check reports it.
+type outcome struct {
+	results  []check.Result
+	failed   bool
+	generate bool
 }
 
 // finish ends a step after its edits: the application is read again, the owned files are
 // rendered, go generate runs, the checks run (by the pinned impulse when the step is not
 // the running release's), everything is staged, and a clean check is committed; a failing
-// one is handed off and stops the walk.
+// one, or a generation that failed before it, is handed off and stops the walk.
 func (u *upgrader) finish(ctx context.Context, f *transitionFlags, repo handoff.Repo, c *commit) error {
 	a, err := app.Discover(f.appDir)
 	if err != nil {
@@ -430,15 +472,11 @@ func (u *upgrader) finish(ctx context.Context, f *transitionFlags, repo handoff.
 	if pin := goModImpulsePin(a.GoMod); c.release != "" && pin != u.release() {
 		pinned = pin
 	}
-	var (
-		results []check.Result
-		failed  bool
-	)
+	var o *outcome
 	if pinned != "" {
-		results, failed, err = u.checkPinned(ctx, f, a, pinned)
+		o, err = u.checkPinned(ctx, f, a, pinned)
 	} else {
-		results, err = u.check(ctx, f, a)
-		failed = check.Failed(results)
+		o, err = u.check(ctx, f, a)
 	}
 	if err != nil {
 		return err
@@ -446,8 +484,8 @@ func (u *upgrader) finish(ctx context.Context, f *transitionFlags, repo handoff.
 	if err := repo.StageAll(ctx); err != nil {
 		return err
 	}
-	if failed {
-		return u.handoff(ctx, f, repo, a, c, results, pinned)
+	if o.failed {
+		return u.handoff(ctx, f, repo, a, c, o, pinned)
 	}
 	if out, err := u.exec.Run(ctx, a.Root, nil, gitCommand, "commit", "-q", "-m", c.subject, "-m", c.body); err != nil {
 		return errors.Wrapf(err, "git commit: %s", lastLine(out))
@@ -458,8 +496,9 @@ func (u *upgrader) finish(ctx context.Context, f *transitionFlags, repo handoff.
 }
 
 // check renders the owned files, regenerates, and runs the checks in process, by the
-// running impulse, and reports them.
-func (u *upgrader) check(ctx context.Context, f *transitionFlags, a *app.App) ([]check.Result, error) {
+// running impulse, and reports them; a generation that failed is the outcome, reported as
+// the regen check reports it, and the checks do not run.
+func (u *upgrader) check(ctx context.Context, f *transitionFlags, a *app.App) (*outcome, error) {
 	written, err := u.owned(a)
 	if err != nil {
 		return nil, err
@@ -468,35 +507,37 @@ func (u *upgrader) check(ctx context.Context, f *transitionFlags, a *app.App) ([
 		fmt.Fprintf(u.out, "Rewrote %s from the code.\n", ci.List(written))
 	}
 	if !f.skipGenerate {
-		if err := u.regenerate(ctx, a); err != nil {
-			return nil, err
+		o, err := u.regenerate(ctx, a)
+		if err != nil || o != nil {
+			return o, err
 		}
 	}
 	results := u.verify(ctx, u.env(f, a))
 	check.Report(u.out, results)
 
-	return results, nil
+	return &outcome{results: results, failed: check.Failed(results)}, nil
 }
 
 // checkPinned renders the owned files and runs the check through the impulse go.mod pins
 // (go tool impulse), so a step is rendered and checked by the release that added it, and
-// reports whether the check failed. The regeneration is the application's own generator
-// program, built against its pins, and runs as always. A pinned release that writes its
-// own brief (handoffStaged) says how its check ended by its exit status, failedExit for
-// a failing check, and its report is printed and not read, since the brief comes from
-// that release's own check; an earlier release's report is read back into results for
-// the brief the walk writes. A check the pinned impulse could not run at all is an error,
-// not a failure.
-func (u *upgrader) checkPinned(ctx context.Context, f *transitionFlags, a *app.App, pinned string) ([]check.Result, bool, error) {
+// reports how it ended. The regeneration is the application's own generator program,
+// built against its pins, and runs as always; one that failed is the outcome, and the
+// check does not run. A pinned release that writes its own brief (handoffStaged) says how
+// its check ended by its exit status, failedExit for a failing check, and its report is
+// printed and not read, since the brief comes from that release's own check; an earlier
+// release's report is read back into results for the brief the walk writes. A check the
+// pinned impulse could not run at all is an error, not a failure.
+func (u *upgrader) checkPinned(ctx context.Context, f *transitionFlags, a *app.App, pinned string) (*outcome, error) {
 	fmt.Fprintf(u.out, "The pinned impulse %s renders the owned files and checks the step.\n", pinned)
 	out, err := u.exec.Run(ctx, a.Root, nil, goCommand, "tool", impulseTool, "render")
 	if err != nil {
-		return nil, false, errors.Wrapf(err, "go tool impulse render: %s", lastLine(out))
+		return nil, errors.Wrapf(err, "go tool impulse render: %s", lastLine(out))
 	}
 	fmt.Fprint(u.out, string(out))
 	if !f.skipGenerate {
-		if err := u.regenerate(ctx, a); err != nil {
-			return nil, false, err
+		o, err := u.regenerate(ctx, a)
+		if err != nil || o != nil {
+			return o, err
 		}
 	}
 	args := []string{"tool", impulseTool, "check", "--fix"}
@@ -515,11 +556,11 @@ func (u *upgrader) checkPinned(ctx context.Context, f *transitionFlags, a *app.A
 		failed = check.Failed(results)
 	}
 	if err != nil && !failed {
-		return nil, false, errors.Wrapf(err, "go tool impulse check: %s", lastLine(out))
+		return nil, errors.Wrapf(err, "go tool impulse check: %s", lastLine(out))
 	}
 	fmt.Fprint(u.out, string(out))
 
-	return results, failed, nil
+	return &outcome{results: results, failed: failed}, nil
 }
 
 // handoffStaged reports whether the pinned impulse writes the brief for the walk's staged
@@ -546,31 +587,37 @@ func (u *upgrader) env(f *transitionFlags, a *app.App) *check.Env {
 }
 
 // handoff stops the step with its changes staged and the brief written for the failing
-// check. At a step checked in process the brief is written from the results, and the
-// agent is launched when asked (--agent). At a step checked by a pinned impulse that
-// writes its own brief (handoffStaged), that impulse does it all from the staged tree,
-// through go tool impulse handoff --staged: the brief, the agent and the verification
-// after it are the release that added the step's. An earlier pinned release's brief is
-// written here from its report, and the agent is left to the user, since the
+// check, or for the generation that failed before it, when the brief says so and names
+// what the step moved. At a step checked in process the brief is written from the
+// results, and the agent is launched when asked (--agent). At a step checked by a pinned
+// impulse that writes its own brief (handoffStaged), that impulse does it all from the
+// staged tree, through go tool impulse handoff --staged: the brief, the agent and the
+// verification after it are the release that added the step's (its check runs the
+// generation again, so its brief quotes the failure). An earlier pinned release's brief
+// is written here from its report, and the agent is left to the user, since the
 // verification after it would be the running impulse's.
-func (u *upgrader) handoff(ctx context.Context, f *transitionFlags, repo handoff.Repo, a *app.App, c *commit, results []check.Result, pinned string) error {
+func (u *upgrader) handoff(ctx context.Context, f *transitionFlags, repo handoff.Repo, a *app.App, c *commit, o *outcome, pinned string) error {
+	left := "the check"
+	if o.generate {
+		c, left = c.afterGenerateFailed(), generateCommand
+	}
 	var err error
 	switch {
 	case pinned == "":
-		err = u.handoffInProcess(ctx, f, repo, a, c, results, f.agent)
+		err = u.handoffInProcess(ctx, f, repo, a, c, o.results, f.agent)
 	case handoffStaged(pinned):
 		err = u.handoffPinned(ctx, f, a, c, pinned)
 	default:
 		if f.agent {
 			fmt.Fprintf(u.out, "The agent is not launched at a step checked by the pinned impulse %s, a release before %s; run it on the brief by hand.\n", pinned, handoffStagedSince)
 		}
-		err = u.handoffInProcess(ctx, f, repo, a, c, results, false)
+		err = u.handoffInProcess(ctx, f, repo, a, c, o.results, false)
 	}
 	if err != nil {
 		return err
 	}
 
-	return errors.Newf("%s left the check failing; its changes are staged and the brief is at %s. When the check is clean, commit and run impulse upgrade again: it resumes from go.mod", c.label, handoff.File)
+	return errors.Newf("%s left %s failing; its changes are staged and the brief is at %s. When the check is clean, commit and run impulse upgrade again: it resumes from go.mod", c.label, left, handoff.File)
 }
 
 // handoffInProcess writes the brief from the results, with the staged paths as the
@@ -657,13 +704,19 @@ func (u *upgrader) recipes(ctx context.Context, appDir string, s *ledger.Step, n
 	return changes, meanings, nil
 }
 
-// bumpPins moves the framework pins the step moves to its set (a pin already at or beyond
-// it stays), then the tool pin to the release that added the step, when it names one and
-// the pin is behind it, then tidies the module. The tool pin moves after the framework
-// pins and never ahead of a step: the tool directive puts impulse's requirements into the
-// build list, and moved early it would carry the framework pins past the steps between.
+// bumpPins moves the framework pins the step moves to its set in one go get (a pin already
+// at or beyond it stays), then the tool pin to the release that added the step, when it
+// names one and the pin is behind it, then tidies the module and reads go.mod back
+// (holdPins). One go get for the set, because go resolves each request against the whole
+// list: asked for the pins one at a time, a request below what an earlier one requires
+// reads as a downgrade, and go moves the earlier module off the step to meet it, without a
+// word; asked for the set at once, go refuses a set no build list holds, in its own words.
+// The tool pin moves after the framework pins and never ahead of a step: the tool
+// directive puts impulse's requirements into the build list, and moved early it would
+// carry the framework pins past the steps between.
 func (u *upgrader) bumpPins(ctx context.Context, a *app.App, s *ledger.Step) error {
 	pins := ledger.AppPins(a.GoMod)
+	var moved, requests []string
 	for _, name := range s.PinNames() {
 		if have, ok := pins[name]; ok && semver.Compare(have, s.Pins[name]) >= 0 {
 			fmt.Fprintf(u.out, "%s is at %s already.\n", name, have)
@@ -671,8 +724,12 @@ func (u *upgrader) bumpPins(ctx context.Context, a *app.App, s *ledger.Step) err
 			continue
 		}
 		fmt.Fprintf(u.out, "Pin %s to %s.\n", name, s.Pins[name])
-		if out, err := u.exec.Run(ctx, a.Root, nil, goCommand, "get", name+"@"+s.Pins[name]); err != nil {
-			return errors.Wrapf(err, "go get %s@%s: %s", name, s.Pins[name], lastLine(out))
+		moved = append(moved, name)
+		requests = append(requests, name+"@"+s.Pins[name])
+	}
+	if len(requests) > 0 {
+		if out, err := u.exec.Run(ctx, a.Root, nil, goCommand, append([]string{"get"}, requests...)...); err != nil {
+			return errors.Wrapf(err, "go get %s: %s", strings.Join(requests, " "), lastLine(out))
 		}
 	}
 	if s.Impulse != "" {
@@ -682,8 +739,45 @@ func (u *upgrader) bumpPins(ctx context.Context, a *app.App, s *ledger.Step) err
 			return err
 		}
 	}
+	if err := u.tidy(ctx, a); err != nil {
+		return err
+	}
 
-	return u.tidy(ctx, a)
+	return u.holdPins(a, s, moved)
+}
+
+// holdPins reads go.mod after the step's move and holds every pin the step moved to the
+// step's version. One below it was moved off the step by another requirement (a set the
+// step's own pins cannot hold together, which one go get refuses before this, or a
+// requirement of the application's own holding the pin back), and one missing was dropped
+// by the tidy, so nothing in the application needs the module; either is refused, naming
+// the module, what go.mod holds and what the step pins, since committed, the walk would
+// announce the version it asked for and read a position the application never reached. A
+// moved pin beyond the step's version is carried by another requirement and stays, noted,
+// as a pin bumped by hand ahead of its step does.
+func (u *upgrader) holdPins(a *app.App, s *ledger.Step, moved []string) error {
+	data, err := os.ReadFile(a.Abs("go.mod"))
+	if err != nil {
+		return errors.Wrap(err, "os.ReadFile()")
+	}
+	mod, err := modfile.Parse("go.mod", data, nil)
+	if err != nil {
+		return errors.Wrap(err, "modfile.Parse()")
+	}
+	pins := ledger.AppPins(mod)
+	for _, name := range moved {
+		have, ok := pins[name]
+		switch {
+		case !ok:
+			return errors.Newf("the step pins %s at %s but go.mod holds no requirement for it after the move: go mod tidy dropped it, so nothing in the application needs the module, and the step cannot be read from the pins", name, s.Pins[name])
+		case semver.Compare(have, s.Pins[name]) < 0:
+			return errors.Newf("the step pins %s at %s but go.mod holds %s after the move: the step's pins cannot be satisfied together, or another requirement holds a pin back", name, s.Pins[name], have)
+		case semver.Compare(have, s.Pins[name]) > 0:
+			fmt.Fprintf(u.out, "%s moved to %s, beyond the step's %s: another requirement carries it.\n", name, have, s.Pins[name])
+		}
+	}
+
+	return nil
 }
 
 // pinTool moves the impulse tool pin to the version.
@@ -705,12 +799,21 @@ func (u *upgrader) tidy(ctx context.Context, a *app.App) error {
 	return nil
 }
 
-// regenerate runs go generate and prints the schema warnings it raised.
-func (u *upgrader) regenerate(ctx context.Context, a *app.App) error {
-	fmt.Fprintf(u.out, "Running go generate ./...\n")
+// regenerate runs go generate and prints the schema warnings it raised; nil when it
+// succeeded. A generation that ran and failed is the step's outcome, reported as the regen
+// check reports it (the failing result, with the output's last lines), for the handoff;
+// one that could not run at all is an error.
+func (u *upgrader) regenerate(ctx context.Context, a *app.App) (*outcome, error) {
+	fmt.Fprintf(u.out, "Running %s\n", generateCommand)
 	out, err := u.exec.Run(ctx, a.Root, nil, goCommand, "generate", "./...")
 	if err != nil {
-		return errors.Wrapf(err, "go generate ./...: %s", lastLine(out))
+		if exitCode(err) < 0 {
+			return nil, errors.Wrapf(err, "%s: %s", generateCommand, lastLine(out))
+		}
+		results := []check.Result{check.GenerateFailed(out)}
+		check.Report(u.out, results)
+
+		return &outcome{results: results, failed: true, generate: true}, nil
 	}
 	for line := range strings.Lines(string(out)) {
 		if strings.HasPrefix(line, transition_.WarningPrefix) {
@@ -718,7 +821,7 @@ func (u *upgrader) regenerate(ctx context.Context, a *app.App) error {
 		}
 	}
 
-	return nil
+	return nil, nil
 }
 
 // lastLine is the last non-empty line of a command's output, for an error.

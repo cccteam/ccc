@@ -68,22 +68,28 @@ func (markerRecipe) Apply(_ context.Context, a *app.App, _ check.Execer) (*trans
 func (markerRecipe) Meaning() string { return "The marker names the form the step expects." }
 
 // upgradeExec records the commands of a walk and answers git as a clean repository, with
-// go get moving the pins in go.mod as the real one would: a framework pin to the version
-// asked, and the tool pin too, carrying the framework pins the impulse at that version
-// requires (drags) up to them, as the tool directive does through the build list. At each
-// commit it reads where go.mod stands (the step its pins reach and the impulse it pins), so
-// a test holds every commit to its step. The pinned impulse's check answers with report,
-// and fails as the command would when the report has a failing line, with the failing
-// check's exit status; a command named by fail could not run, and exits as such.
+// go get moving the pins in go.mod as the real one would: every framework pin asked for to
+// its version (or to where holds says the module lands whatever is asked, as go lands a
+// module another requirement decides), and the tool pin too, carrying the framework pins
+// the impulse at that version requires (drags) up to them, as the tool directive does
+// through the build list; refusal is what go get answers, exiting 1, when it refuses the
+// set. At each commit it reads where go.mod stands (the step its pins reach and the impulse
+// it pins), so a test holds every commit to its step. go generate answers a schema warning,
+// or fails with generate as its output when it is set. The pinned impulse's check answers
+// with report, and fails as the command would when the report has a failing line, with the
+// failing check's exit status; a command named by fail could not run, and exits as such.
 type upgradeExec struct {
-	root    string
-	steps   []ledger.Step
-	drags   map[string]map[string]string
-	report  string
-	calls   []string
-	commits []string
-	dirty   string
-	fail    string
+	root     string
+	steps    []ledger.Step
+	drags    map[string]map[string]string
+	holds    map[string]string
+	refusal  string
+	generate string
+	report   string
+	calls    []string
+	commits  []string
+	dirty    string
+	fail     string
 }
 
 // exitStatus is the error a fake command exits non-zero with, carrying the status as the
@@ -125,10 +131,25 @@ func (f *upgradeExec) Run(_ context.Context, _ string, _ []string, name string, 
 
 		return nil, nil
 	case strings.HasPrefix(line, "go get "):
-		module, version, _ := strings.Cut(args[len(args)-1], "@")
+		if f.refusal != "" {
+			return []byte(f.refusal + "\n"), exitStatus{code: 1, line: line}
+		}
+		for _, request := range args[1:] {
+			module, version, _ := strings.Cut(request, "@")
+			if held, ok := f.holds[module]; ok {
+				version = held
+			}
+			if err := f.pin(module, version, false); err != nil {
+				return nil, err
+			}
+		}
 
-		return nil, f.pin(module, version, false)
+		return nil, nil
 	case line == "go generate ./...":
+		if f.generate != "" {
+			return []byte(f.generate), exitStatus{code: 1, line: line}
+		}
+
 		return []byte("Warning: Sortie resolves its tenant through MissionId\n"), nil
 	case strings.HasPrefix(line, "go tool impulse check"):
 		if check.Failed(check.ParseReport([]byte(f.report))) {
@@ -266,9 +287,9 @@ func passing(context.Context, *check.Env) []check.Result {
 	return []check.Result{{Name: "pins", Status: check.Pass, Summary: "ok"}}
 }
 
-// The commands a walk runs, by step: a step moves its framework pins, then the tool pin
-// to the release that added it, and the pinned impulse renders and checks it; the
-// tool-only move to the running release comes last and is checked in process.
+// The commands a walk runs, by step: a step moves its framework pins in one go get, then
+// the tool pin to the release that added it, and the pinned impulse renders and checks it;
+// the tool-only move to the running release comes last and is checked in process.
 var (
 	markerStepCalls = []string{
 		"go get github.com/cccteam/ccc/resource@v0.2.0", "go get -tool github.com/cccteam/ccc/impulse@v0.2.0", "go mod tidy",
@@ -276,7 +297,7 @@ var (
 		"git commit -q -m upgrade: ccc/resource v0.2.0, ccc/impulse v0.2.0 (recipe marker) -m the marker moves to its new form\n\nRecipes applied by impulse upgrade: marker.",
 	}
 	lastStepCalls = []string{
-		"go get github.com/cccteam/access@v0.2.0", "go get github.com/cccteam/ccc/resource@v0.3.0", "go get -tool github.com/cccteam/ccc/impulse@v0.3.0", "go mod tidy",
+		"go get github.com/cccteam/access@v0.2.0 github.com/cccteam/ccc/resource@v0.3.0", "go get -tool github.com/cccteam/ccc/impulse@v0.3.0", "go mod tidy",
 		"go tool impulse render", "go generate ./...", "go tool impulse check --fix", "git add -A",
 		"git commit -q -m upgrade: access v0.2.0, ccc/resource v0.3.0, ccc/impulse v0.3.0 -m no code change is needed",
 	}
@@ -292,14 +313,24 @@ var (
 // added checked in process, a pin already ahead left alone, the recipe idempotent, a
 // checkout build making no tool-only move, a failing check stopping with the brief and
 // the step staged (by the pinned release through handoff --staged, with the agent when
-// asked, from the release that has the flag; from the pinned check's report before it),
-// and the refusals (a dirty tree, a tool pin newer than the running impulse, a pin bump go
-// refuses, a pinned render, check or handoff that could not run).
+// asked, from the release that has the flag; from the pinned check's report before it), a
+// failing go generate stopping the same way with a brief that quotes the generation and
+// names what the step moved (in process, by the pinned release, and on the tool-only
+// move), the pins of a step moved in one go get (a set go refuses stops the step with go's
+// words; a moved pin below the step's version after the move is refused, naming what
+// go.mod holds; one carried beyond it stays), and the refusals (a dirty tree, a tool pin
+// newer than the running impulse, a pin bump go refuses, a pinned render, check or
+// handoff that could not run).
 func TestUpgrade(t *testing.T) {
 	t.Parallel()
 
 	failingReport := "FAIL  paging  1 offset\n      pkg/x.go:3: Offset\n"
 	markerChange := "`impulse upgrade (recipe marker, step 2)` made these changes and staged them:\n\n- moved the marker to its new form\n"
+	generateOut := "pkg/generate/main.go:12:5: undefined: generation.PasswordMethod\nexit status 1\ngenerate.go:3: running \"go\": exit status 1\n"
+	generateReport := "FAIL  regen  go generate ./... failed\n      pkg/generate/main.go:12:5: undefined: generation.PasswordMethod\n      exit status 1\n      generate.go:3: running \"go\": exit status 1\n"
+	generateChange := func(moved string) string {
+		return "`impulse upgrade` moved " + moved + " and staged the step; then `go generate ./...` failed, so `impulse check` did not run. The generation's last lines are under \"The failing checks\". The generator program, and what it generates from, build against the moved pins, so what they declare may need the form the step brings, described under \"What it means\"."
+	}
 	tests := []struct {
 		name         string
 		goMod        string
@@ -312,6 +343,9 @@ func TestUpgrade(t *testing.T) {
 		agentArgs    []string
 		dirty        string
 		fail         string
+		holds        map[string]string
+		refusal      string
+		generate     string
 		report       string
 		verify       func(context.Context, *check.Env) []check.Result
 		// wantOut are fragments of the output in order, wantNoOut fragments it must not
@@ -447,7 +481,7 @@ func TestUpgrade(t *testing.T) {
 			verify:  passing,
 			wantOut: []string{"Committed: upgrade: access, ccc/resource."},
 			wantCalls: []string{
-				"go get github.com/cccteam/access@v0.2.1-0.20261008034601-9d76e3c2d0b8", "go get github.com/cccteam/ccc/resource@v0.3.1-0.20261008035330-fb5dde92d6da", "go mod tidy", "go generate ./...", "git add -A",
+				"go get github.com/cccteam/access@v0.2.1-0.20261008034601-9d76e3c2d0b8 github.com/cccteam/ccc/resource@v0.3.1-0.20261008035330-fb5dde92d6da", "go mod tidy", "go generate ./...", "git add -A",
 				"git commit -q -m upgrade: access, ccc/resource -m no code change is needed\n\nPins moved: access v0.2.1-0.20261008034601-9d76e3c2d0b8, ccc/resource v0.3.1-0.20261008035330-fb5dde92d6da.",
 			},
 		},
@@ -459,7 +493,7 @@ func TestUpgrade(t *testing.T) {
 			skipGenerate: true,
 			verify:       passing,
 			wantCalls: []string{
-				"go get github.com/cccteam/access@v0.2.0", "go get github.com/cccteam/ccc/resource@v0.3.0", "go get -tool github.com/cccteam/ccc/impulse@v0.3.0", "go mod tidy",
+				"go get github.com/cccteam/access@v0.2.0 github.com/cccteam/ccc/resource@v0.3.0", "go get -tool github.com/cccteam/ccc/impulse@v0.3.0", "go mod tidy",
 				"go tool impulse render", "go tool impulse check --fix --skip-generate", "git add -A",
 				"git commit -q -m upgrade: access v0.2.0, ccc/resource v0.3.0, ccc/impulse v0.3.0 -m no code change is needed",
 				"go get -tool github.com/cccteam/ccc/impulse@v0.3.1", "go mod tidy", "git add -A",
@@ -531,7 +565,7 @@ func TestUpgrade(t *testing.T) {
 			report:       failingReport,
 			wantOut:      []string{"The pinned impulse " + stagedLater(t) + " writes the brief, through go tool impulse handoff --staged."},
 			wantCalls: []string{
-				"go get github.com/cccteam/access@v0.2.0", "go get github.com/cccteam/ccc/resource@v0.3.0", "go get -tool github.com/cccteam/ccc/impulse@" + stagedLater(t), "go mod tidy",
+				"go get github.com/cccteam/access@v0.2.0 github.com/cccteam/ccc/resource@v0.3.0", "go get -tool github.com/cccteam/ccc/impulse@" + stagedLater(t), "go mod tidy",
 				"go tool impulse render", "go tool impulse check --fix --skip-generate", "git add -A",
 				"go tool impulse handoff --staged --skip-generate",
 			},
@@ -549,6 +583,90 @@ func TestUpgrade(t *testing.T) {
 			wantBrief:   true,
 			wantInBrief: "## What changed\n\nThe change under review is staged in the index, 1 path(s):\n\n- go.mod\n\n## The failing checks",
 			wantErr:     "the impulse v0.3.0 tool pin step left the check failing",
+		},
+		{
+			name:     "a failing go generate at a step checked in process stops the walk with the brief quoting the generation and naming what the step moved, and the step staged",
+			goMod:    upgradeGoMod("v0.1.0", "v0.1.0", "v0.1.0"),
+			marker:   "old\n",
+			steps:    upgradeLedger()[:2],
+			running:  check.Build{Version: "v0.2.0", FromModule: true},
+			generate: generateOut,
+			wantOut: []string{
+				"Pin github.com/cccteam/ccc/resource to v0.2.0.\nPin the impulse tool to v0.2.0.\nRunning go generate ./...\n" + generateReport,
+				"Wrote the brief to .impulse-handoff.md: 3 obligation(s) under 1 failing check(s).",
+			},
+			wantCalls:   []string{"go get github.com/cccteam/ccc/resource@v0.2.0", "go get -tool github.com/cccteam/ccc/impulse@v0.2.0", "go mod tidy", "go generate ./...", "git add -A"},
+			wantMarker:  "new\n",
+			wantBrief:   true,
+			wantInBrief: "## What changed\n\n" + markerChange + "\n" + generateChange("ccc/resource v0.2.0, ccc/impulse v0.2.0") + "\n\nThe change under review is staged in the index, 1 path(s):\n\n- go.mod\n\n## What it means\n\nThe marker names the form the step expects.\n\nWhat the step changes for the application: the marker moves to its new form.\n\n## The failing checks\n\nThis is the output of `impulse check`, failing checks only. Each line under a check is one obligation.\n\n```\n" + generateReport + "```",
+			wantErr:     "step 2 (ccc/resource v0.2.0, ccc/impulse v0.2.0) left go generate ./... failing; its changes are staged and the brief is at .impulse-handoff.md. When the check is clean, commit and run impulse upgrade again: it resumes from go.mod",
+		},
+		{
+			name:     "a failing go generate at a step checked by a pinned release with handoff --staged hands the staged step to it, what the step moved passed through as a change; no brief is written here",
+			goMod:    upgradeGoMod("v0.1.0", "v0.1.0", "v0.1.0"),
+			marker:   "old\n",
+			steps:    stagedLedger(t),
+			running:  check.Build{Version: "(devel)"},
+			generate: generateOut,
+			wantOut: []string{
+				"The pinned impulse " + handoffStagedSince + " renders the owned files and checks the step.",
+				generateReport,
+				"The pinned impulse " + handoffStagedSince + " writes the brief, through go tool impulse handoff --staged.",
+			},
+			wantNoOut: []string{"Wrote the brief"},
+			wantCalls: []string{
+				"go get github.com/cccteam/ccc/resource@v0.2.0", "go get -tool github.com/cccteam/ccc/impulse@" + handoffStagedSince, "go mod tidy", "go tool impulse render", "go generate ./...", "git add -A",
+				"go tool impulse handoff --staged --change " + markerChange + " --change " + generateChange("ccc/resource v0.2.0, ccc/impulse "+handoffStagedSince) + " --meaning The marker names the form the step expects. --meaning What the step changes for the application: the marker moves to its new form.",
+			},
+			wantMarker: "new\n",
+			wantErr:    "step 2 (ccc/resource v0.2.0, ccc/impulse " + handoffStagedSince + ") left go generate ./... failing; its changes are staged and the brief is at .impulse-handoff.md",
+		},
+		{
+			name:        "a failing go generate on the tool-only move writes the brief with the tool pin as what moved",
+			goMod:       upgradeGoMod("v0.3.0", "v0.2.0", "v0.1.0"),
+			steps:       upgradeLedger(),
+			running:     check.Build{Version: "v0.3.1", FromModule: true},
+			generate:    generateOut,
+			wantCalls:   []string{"go get -tool github.com/cccteam/ccc/impulse@v0.3.1", "go mod tidy", "go generate ./...", "git add -A"},
+			wantBrief:   true,
+			wantInBrief: "## What changed\n\n" + generateChange("ccc/impulse v0.3.1") + "\n\nThe change under review is staged in the index, 1 path(s):\n\n- go.mod\n\n## What it means\n\nWhat the step changes for the application: " + toolPinNote + ".\n\n## The failing checks",
+			wantErr:     "the impulse v0.3.1 tool pin step left go generate ./... failing; its changes are staged and the brief is at .impulse-handoff.md",
+		},
+		{
+			name:      "a set go refuses stops the step with go's words, before the tool pin moves",
+			goMod:     upgradeGoMod("v0.2.0", "v0.1.0", "v0.2.0"),
+			steps:     upgradeLedger(),
+			running:   check.Build{Version: "v0.3.0", FromModule: true},
+			refusal:   "go: github.com/cccteam/ccc/resource@v0.3.0 requires github.com/cccteam/access@v0.2.1, not github.com/cccteam/access@v0.2.0",
+			wantOut:   []string{"Pin github.com/cccteam/access to v0.2.0.\nPin github.com/cccteam/ccc/resource to v0.3.0."},
+			wantCalls: []string{"go get github.com/cccteam/access@v0.2.0 github.com/cccteam/ccc/resource@v0.3.0"},
+			wantErr:   "go get github.com/cccteam/access@v0.2.0 github.com/cccteam/ccc/resource@v0.3.0: go: github.com/cccteam/ccc/resource@v0.3.0 requires github.com/cccteam/access@v0.2.1, not github.com/cccteam/access@v0.2.0",
+		},
+		{
+			name:      "a moved pin below the step's version after the move is refused, naming what go.mod holds; nothing is committed",
+			goMod:     upgradeGoMod("v0.2.0", "v0.1.0", "v0.2.0"),
+			steps:     upgradeLedger(),
+			running:   check.Build{Version: "v0.3.0", FromModule: true},
+			holds:     map[string]string{upgradeAccess: "v0.1.5"},
+			wantCalls: []string{"go get github.com/cccteam/access@v0.2.0 github.com/cccteam/ccc/resource@v0.3.0", "go get -tool github.com/cccteam/ccc/impulse@v0.3.0", "go mod tidy"},
+			wantErr:   "the step pins github.com/cccteam/access at v0.2.0 but go.mod holds v0.1.5 after the move: the step's pins cannot be satisfied together, or another requirement holds a pin back",
+		},
+		{
+			name:    "a moved pin carried beyond the step's version by another requirement stays, noted",
+			goMod:   upgradeGoMod("v0.2.0", "v0.1.0", "v0.2.0"),
+			steps:   upgradeLedger(),
+			running: check.Build{Version: "v0.3.0", FromModule: true},
+			holds:   map[string]string{upgradeAccess: "v0.2.1"},
+			verify:  passing,
+			wantOut: []string{
+				"Pin github.com/cccteam/access to v0.2.0.\nPin github.com/cccteam/ccc/resource to v0.3.0.\nPin the impulse tool to v0.3.0.\ngithub.com/cccteam/access moved to v0.2.1, beyond the step's v0.2.0: another requirement carries it.",
+				"Committed: upgrade: access v0.2.0, ccc/resource v0.3.0, ccc/impulse v0.3.0.",
+			},
+			wantCalls: []string{
+				"go get github.com/cccteam/access@v0.2.0 github.com/cccteam/ccc/resource@v0.3.0", "go get -tool github.com/cccteam/ccc/impulse@v0.3.0", "go mod tidy", "go generate ./...", "git add -A",
+				"git commit -q -m upgrade: access v0.2.0, ccc/resource v0.3.0, ccc/impulse v0.3.0 -m no code change is needed",
+			},
+			wantCommits: []string{"step 3, impulse v0.3.0"},
 		},
 		{
 			name:    "a dirty tree is refused",
@@ -642,7 +760,7 @@ func TestUpgrade(t *testing.T) {
 			if report == "" {
 				report = cleanReport
 			}
-			exec := &upgradeExec{root: root, steps: tt.steps, drags: upgradeDrags(t), report: report, dirty: tt.dirty, fail: tt.fail}
+			exec := &upgradeExec{root: root, steps: tt.steps, drags: upgradeDrags(t), holds: tt.holds, refusal: tt.refusal, generate: tt.generate, report: report, dirty: tt.dirty, fail: tt.fail}
 			var out, errOut strings.Builder
 			u := &upgrader{
 				exec: exec, steps: tt.steps, running: tt.running, verify: tt.verify,
