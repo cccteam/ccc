@@ -16,27 +16,17 @@ import { refusedSegment, SectorService } from './sector.service';
  * list is asked of the server once more, since on a deep link the list may still be
  * loading, and a seat granted since sign-in is not on it yet; a sector still absent is
  * refused: the browser is sent to the refusal page under the sector's own URL, which shows
- * the server's answer. It is never switched to another sector.
- *
- * The one URL the guard rewrites names no sector at all: the library's config-driven pages
- * build their row links and their after-create navigation from the page's route as
- * written, `sectors/:sectorID/missions`, parameter and all, so a row opened from such a
- * page arrives here with the parameter's name where the sector should be. That link was
- * drawn on a deck in the open sector, so the guard sends it to the same page under that
- * sector; with no sector open it is refused like any other sector the session cannot
- * reach.
+ * the server's answer. It is never switched to another sector, and no URL is rewritten:
+ * the library's config-driven pages build their row links and after-create navigation
+ * under the page's sector, so every link that arrives here names the sector it is for.
  *
  * Demonstrates: tenancy.concealed, tenancy.user-domains.
  */
-export const sectorGuard: CanActivateFn = async (route, state) => {
+export const sectorGuard: CanActivateFn = async (route) => {
   const sectors = inject(SectorService);
   const auth = inject(AuthService);
   const router = inject(Router);
   const sector = route.paramMap.get(DomainRouteParam) ?? '';
-  const parameter = `:${DomainRouteParam}`;
-  if (sector === parameter && sectors.current()) {
-    return new RedirectCommand(router.parseUrl(state.url.replace(parameter, sectors.current())));
-  }
   if (!auth.domains().includes(sector as Domain)) {
     await firstValueFrom(auth.loadDomains());
   }
@@ -50,8 +40,7 @@ export const sectorGuard: CanActivateFn = async (route, state) => {
 /**
  * sectorLeave clears the sector when the URL leaves the sector segment: a global page has
  * no sector. Moving from one sector's deck to another's stays under the segment, and the
- * guard writes the new sector; the one between is never cleared, so a link the deck drew
- * still knows the sector it was drawn in.
+ * guard writes the new sector; nothing is cleared in between.
  */
 export const sectorLeave: CanDeactivateFn<unknown> = (_component, _route, _state, next) => {
   const router = inject(Router);

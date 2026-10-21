@@ -654,12 +654,10 @@ manifest: pick a card, sign in, switch, never more than two clicks.
   [refusal page](web/console/src/app/components/sector/sector-refused/sector-refused.component.ts)
   under that sector's URL (`/sectors/cinder/refused`), which asks the server what a deck
   there would have asked and shows the answer in the server's words, the concealing 404,
-  and never switches to another sector. One URL the guard rewrites names no sector: the
-  library's config-driven pages build their row links and after-create navigation from
-  the page's route as written, parameter and all (`/sectors/:sectorID/missions/…`), so the
-  guard sends such a link to the same page under the sector it was drawn in, and refuses
-  it when none is open; the library building those links under the page's sector would
-  retire that. Two consumers page on the server: the
+  and never switches to another sector. The guard rewrites no URL: the library's
+  config-driven pages build their row links and after-create navigation under the page's
+  sector (`/sectors/anvil/missions/…`), so a row link is the row's real URL and opens in a
+  new tab where it points. Two consumers page on the server: the
   hand-written flight deck, and the library's config-driven list on the
   [Missions page](web/console/src/app/configs/missions.config.ts)
   ([`list.server-paged`](web/console/src/app/configs/missions.config.ts)), which asks for
