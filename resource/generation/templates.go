@@ -2436,6 +2436,12 @@ export function resourceMeta(resource: Resource): ResourceMeta {
 }
 {{ if .HasDomainScoped }}
 export const DomainRouteParam = '{{ .DomainRouteParam }}';
+
+/**
+ * The tenant segment as the router matches it: the route every tenant-scoped page lives
+ * under, mirroring the API's, with the parameter the tenant guard reads the tenant from.
+ */
+export const DomainRoutePath = '{{ .DomainRoutePath }}';
 {{ end }}
 export const ResourceScopes: Record<Resource, PermissionScope> = {
   {{- range $resource := $.Resources }}

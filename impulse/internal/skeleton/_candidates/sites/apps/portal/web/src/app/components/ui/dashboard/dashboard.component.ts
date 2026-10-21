@@ -15,8 +15,9 @@ interface PermissionRow {
 
 /**
  * The dashboard shows who is signed in and what the session holds: per generated
- * resource, the digest state of each permission — in the selected tenant for
- * tenant-scoped resources, globally for global ones.
+ * resource, the digest state of each permission — in the tenant the page is open in for
+ * tenant-scoped resources, globally for global ones. It lives outside the tenant segment
+ * and under it: the landing for a session that has picked no tenant, and the tenant's.
  */
 @Component({
   selector: 'app-dashboard',

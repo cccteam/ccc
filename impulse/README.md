@@ -57,8 +57,9 @@ templates, this README, and the tool's source.
   registered and declared is a button offered. The console's Users page composes
   the library's user-management component over the auth's user surface (its users,
   seats and roles, served as resources), drawn where the permission digest grants
-  List on the users resource; the tenanted console draws the selected tenant's
-  partition beside the global one.
+  List on the users resource; a tenanted console serves the tenant partition as the
+  tenant's own Users page, under the tenant's URL, with the route's tenant as the
+  component's domain.
 - **Authority**: who owns role membership for a directory method: `directory` (the
   directory's roles are synchronized at every sign-in) or `application` (roles are
   assigned in the application).
@@ -68,6 +69,16 @@ templates, this README, and the tool's source.
   and emits the constructor of the tenant roster, the tenants as the running application
   knows them, reloaded on the `tenants` signal so a tenant created on any instance is
   usable at once, without a restart; a role held in every domain reaches every tenant.
+  The browser application mirrors the API: every tenant-scoped page's URL names the
+  tenant, under the same segment (`/tenants/acme/users` beside
+  `/api/tenants/acme/staff-tenant-users`; the generated client exports the segment as
+  `DomainRoutePath`), so a link to a tenant's page can be shared and a bookmark lands
+  where it points, and global pages keep their routes. The tenant a page works in is a
+  consequence of its URL, never a choice: a guard on the tenant segment sets it before
+  the page loads, from the session's tenant list, and nothing else writes it. The
+  header's picker lists that same list and navigates to the same page under the chosen
+  tenant; a URL naming a tenant the session cannot reach lands on a refusal page that
+  shows the server's answer, never on another tenant.
 - **Levels**: the configuration chain in `pkg/config`, one level per kind of process, each
   embedding the one below it: **core** (every process), **data** (every process that opens
   the database), and **site** (one served site: its port and its built bundle). The site
@@ -743,11 +754,11 @@ the live service's tenants signal and started where the configuration is built (
 created on any instance is usable at once, without a restart; the app exposes the roster to
 the generated code as `TenantRoster()` and hands its `Domains` to the session permissions
 (a new `tenancy.go` plus the `Configurer`, `App` and `UserPermissions` edits); and the
-reference's tenant service is copied into the browser app. Every edit
-whose anchor the application lacks is recorded in the brief as the agent's. Which
-resources become tenant-scoped and how their rows are assigned, the bootstrap order, the
-harnesses, the tests, and the tenant picker are the agent's, and `tenancy-wired` holds it
-to them.
+reference's tenant service, tenant guard and refusal page are copied into the browser
+app. Every edit whose anchor the application lacks is recorded in the brief as the
+agent's. Which resources become tenant-scoped and how their rows are assigned, the
+bootstrap order, the harnesses, the tests, the tenant segment in the routes and the
+tenant picker are the agent's, and `tenancy-wired` holds it to them.
 
 ```sh
 impulse add tenancy --agent

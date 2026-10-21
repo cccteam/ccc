@@ -7,6 +7,7 @@ import { provideResourceTesting } from '@cccteam/resource-angular/testing';
 import { ScriptedTransport, scriptedTransport } from '@cccteam/resource/testing';
 import { environment } from '@env';
 import { firstValueFrom } from 'rxjs';
+import { TenantService } from '@app/tenant/tenant.service';
 import { DashboardComponent } from './dashboard.component';
 
 /** What the server answers for one session: its tenants, the global digest, and each tenant's digest. */
@@ -62,8 +63,9 @@ describe('DashboardComponent', () => {
    * application's generated one over the scripted transport, so the component reads the
    * digests exactly as it does in the browser: checkUserSession is what a login runs once
    * it is accepted (the session, the global digest, the domains, the enabled feature flags),
-   * and the tenant service loads the selected tenant's digest, here loaded ahead so the card
-   * renders from it at once.
+   * and entering a tenant loads its digest, here loaded ahead so the card renders from it
+   * at once. The tenant is entered as the tenant guard does for a page under it; a session
+   * with no tenant renders the dashboard outside one.
    */
   async function render(grants: Grants): Promise<ComponentFixture<DashboardComponent>> {
     transport = scriptedTransport(server(grants));
@@ -77,6 +79,10 @@ describe('DashboardComponent', () => {
     for (const domain of grants.domains) {
       await TestBed.inject<ClientBase>(RESOURCE_CLIENT).permissions.loadDigest(domain as Domain);
     }
+    const tenant = grants.domains[0];
+    if (tenant) {
+      TestBed.inject(TenantService).enter(tenant);
+    }
     const fixture = TestBed.createComponent(DashboardComponent);
     fixture.detectChanges();
     return fixture;
@@ -89,7 +95,7 @@ describe('DashboardComponent', () => {
     );
   }
 
-  it('renders who is signed in and the digest per resource, tenant-scoped ones in the selected tenant', async () => {
+  it('renders who is signed in and the digest per resource, tenant-scoped ones in the open tenant', async () => {
     const fixture = await render(member);
     const element: HTMLElement = fixture.nativeElement;
 

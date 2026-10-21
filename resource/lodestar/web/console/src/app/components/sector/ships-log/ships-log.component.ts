@@ -31,8 +31,9 @@ export class ShipsLogComponent {
   columns = ['eventTime', 'tableName', 'rowId', 'eventSource', 'changeSet'];
 
   entries = resource({
-    params: () => ({ sector: this.sectors.current(), allowed: this.canList() || this.sectors.dark() }),
-    loader: ({ params }) => (params.sector && params.allowed ? this.sectors.shipsLog(params.sector).list() : Promise.resolve([])),
+    params: () => ({ sector: this.sectors.current(), allowed: this.canList() }),
+    loader: ({ params }) =>
+      params.sector && params.allowed ? this.sectors.shipsLog(params.sector).list() : Promise.resolve([]),
     defaultValue: [] as ShipsLogEntry[],
   });
 

@@ -1,7 +1,8 @@
 import { DistressCalls, Resources } from '@app/service/zz_gen_constants';
+import { DomainRoutePath } from '@app/service/zz_gen_resources';
 import { field, listViewConfig, rootConfig, section } from '@cccteam/resource-angular/types';
 
-// Calls is the config-driven page over the distress calls in the selected sector, beside
+// Calls is the config-driven page over the distress calls in the open sector, beside
 // the hand-written call log over the same rows. It carries the write-only field and an
 // imported object type. Transcript is input_only on the struct, writeOnly in the
 // metadata: the server accepts it on create and update and never returns it, so the row
@@ -21,7 +22,7 @@ import { field, listViewConfig, rootConfig, section } from '@cccteam/resource-an
 // Demonstrates: field.object, field.write-only.
 export const distressCallsConfig = rootConfig({
   nav: { navItem: { label: 'Calls (config page)' }, group: 'Sector Ops' },
-  routeData: { route: 'sector/calls' },
+  routeData: { route: `${DomainRoutePath}/calls` },
   parentConfig: listViewConfig({
     title: 'Distress calls',
     createTitle: 'Distress call',
