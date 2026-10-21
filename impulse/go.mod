@@ -1,6 +1,6 @@
 module github.com/cccteam/ccc/impulse
 
-go 1.26.9
+go 1.26.10
 
 require (
 	github.com/cccteam/ccc/cloud v0.2.1

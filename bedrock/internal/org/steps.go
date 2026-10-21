@@ -16,7 +16,7 @@ import "strings"
 // OpenTofu image the check and the commands run in.
 const (
 	gcloudImage   = "gcr.io/cloud-builders/gcloud"
-	goImage       = "cgr.dev/chainguard/go@sha256:2c20827746d752c1f18989847956637a0dc979c42507f4059e1d9559ee7733af"
+	goImage       = "cgr.dev/chainguard/go@sha256:0c664830ca01dbc9fb797ec3b815ac73ba0a3c9faa42dfe5ad55ab7dc48e66a4"
 	openTofuImage = "ghcr.io/opentofu/opentofu:1.12.6"
 )
 
