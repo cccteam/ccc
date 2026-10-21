@@ -33,6 +33,11 @@ const (
 	// armorDenyVerb is a deny as the README's table says it; allow and throttle read as
 	// their actions.
 	armorDenyVerb = "deny"
+	// armorDescriptionLimit is the most characters Google accepts in a security policy
+	// rule's description; the README's rule table carries the whole text.
+	armorDescriptionLimit = 256
+	// armorDescriptionCut ends a description the limit shortened.
+	armorDescriptionCut = "..."
 )
 
 // The sign-in throttle's threshold, as terraform.tfvars sets it: the POSTs one client
@@ -159,13 +164,14 @@ func (v *armorView) throttles(routes []derive.SignInRoute) {
 	prose := make([]string, 0, len(routes))
 	for i := range routes {
 		r := &routes[i]
-		v.add(armorThrottleBase+i, armorThrottle, r.Method+" "+r.Path+", throttled by client address", r.Declaration()+", the generated router; past "+SignInCountVariable+" POSTs in "+SignInIntervalVariable+" seconds (terraform.tfvars) an address answers 429 until the interval passes", routeExpression(r.Method, r.Path), nil)
+		v.add(armorThrottleBase+i, armorThrottle, r.Method+" "+r.Path+", throttled by client address", r.Declaration()+", the generated router; past the sign-in count in its interval (terraform.tfvars) an address answers 429", routeExpression(r.Method, r.Path), nil)
 		prose = append(prose, "`"+r.Method+" "+r.Path+"`")
 	}
 	v.SignInProse = joinAnd(prose)
 }
 
-// add appends a rule.
+// add appends a rule. Its description is the text within Google's limit
+// (fitDescription); the README's table and the template's comment carry the whole text.
 func (v *armorView) add(priority int, action, what, source, expression string, exclusions []armorExclusion) {
 	text := what + "; " + source
 	v.Rules = append(v.Rules, armorRule{
@@ -177,10 +183,26 @@ func (v *armorView) add(priority int, action, what, source, expression string, e
 		What:        what,
 		Source:      source,
 		Text:        text,
-		Description: hclQuote(text),
+		Description: hclQuote(fitDescription(text)),
 		Expression:  hclQuote(expression),
 		Exclusions:  exclusions,
 	})
+}
+
+// fitDescription is the rule's text within Google's limit on a rule description: the
+// text itself when it fits, else its head cut at the last word boundary that leaves
+// room for the ending, with the ending.
+func fitDescription(text string) string {
+	if len(text) <= armorDescriptionLimit {
+		return text
+	}
+	room := armorDescriptionLimit - len(armorDescriptionCut)
+	head := text[:room]
+	if i := strings.LastIndex(head, " "); i > 0 {
+		head = head[:i]
+	}
+
+	return head + armorDescriptionCut
 }
 
 // verbOf is the action as the README's table says it: allow, deny or throttle.

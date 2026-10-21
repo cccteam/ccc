@@ -123,11 +123,11 @@ resource "google_compute_security_policy" "app" {
     }
   }
 
-  # POST /api/user/password/login, throttled by client address; the default outlet's password login, the generated router; past cloud_armor_sign_in_count POSTs in cloud_armor_sign_in_interval seconds (terraform.tfvars) an address answers 429 until the interval passes
+  # POST /api/user/password/login, throttled by client address; the default outlet's password login, the generated router; past the sign-in count in its interval (terraform.tfvars) an address answers 429
   rule {
     priority    = 4000
     action      = "throttle"
-    description = "POST /api/user/password/login, throttled by client address; the default outlet's password login, the generated router; past cloud_armor_sign_in_count POSTs in cloud_armor_sign_in_interval seconds (terraform.tfvars) an address answers 429 until the interval passes"
+    description = "POST /api/user/password/login, throttled by client address; the default outlet's password login, the generated router; past the sign-in count in its interval (terraform.tfvars) an address answers 429"
     preview     = local.cloud_armor_preview
 
     match {
@@ -148,11 +148,11 @@ resource "google_compute_security_policy" "app" {
     }
   }
 
-  # POST /api/user/pending/confirm, throttled by client address; the default outlet's pending sign-in confirmation, the generated router; past cloud_armor_sign_in_count POSTs in cloud_armor_sign_in_interval seconds (terraform.tfvars) an address answers 429 until the interval passes
+  # POST /api/user/pending/confirm, throttled by client address; the default outlet's pending sign-in confirmation, the generated router; past the sign-in count in its interval (terraform.tfvars) an address answers 429
   rule {
     priority    = 4001
     action      = "throttle"
-    description = "POST /api/user/pending/confirm, throttled by client address; the default outlet's pending sign-in confirmation, the generated router; past cloud_armor_sign_in_count POSTs in cloud_armor_sign_in_interval seconds (terraform.tfvars) an address answers 429 until the interval passes"
+    description = "POST /api/user/pending/confirm, throttled by client address; the default outlet's pending sign-in confirmation, the generated router; past the sign-in count in its interval (terraform.tfvars) an address answers 429"
     preview     = local.cloud_armor_preview
 
     match {
@@ -173,11 +173,11 @@ resource "google_compute_security_policy" "app" {
     }
   }
 
-  # POST /api/user/pending/cancel, throttled by client address; the default outlet's pending sign-in cancel, the generated router; past cloud_armor_sign_in_count POSTs in cloud_armor_sign_in_interval seconds (terraform.tfvars) an address answers 429 until the interval passes
+  # POST /api/user/pending/cancel, throttled by client address; the default outlet's pending sign-in cancel, the generated router; past the sign-in count in its interval (terraform.tfvars) an address answers 429
   rule {
     priority    = 4002
     action      = "throttle"
-    description = "POST /api/user/pending/cancel, throttled by client address; the default outlet's pending sign-in cancel, the generated router; past cloud_armor_sign_in_count POSTs in cloud_armor_sign_in_interval seconds (terraform.tfvars) an address answers 429 until the interval passes"
+    description = "POST /api/user/pending/cancel, throttled by client address; the default outlet's pending sign-in cancel, the generated router; past the sign-in count in its interval (terraform.tfvars) an address answers 429"
     preview     = local.cloud_armor_preview
 
     match {
