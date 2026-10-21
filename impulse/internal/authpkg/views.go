@@ -99,6 +99,9 @@ func newView(spec *Spec) *view {
 			v.Imports = append(v.Imports, imp)
 		}
 	}
+	if spec.TenantPolicy != nil {
+		v.Imports = append(v.Imports, "github.com/cccteam/session/signin")
+	}
 
 	return v
 }
@@ -258,7 +261,10 @@ func googleView(mv *methodView, m *Method, settings string) {
 	case SlotAnyWorkspace:
 		mv.SlotExpr = "google.AnyWorkspace()"
 	case SlotAny:
-		mv.SlotExpr = "google.AnyGoogleAccount()"
+		// Any Google account, with any Workspace named beside it so a Workspace account's
+		// link carries its domain as its connection (what a tenant's declaration names a
+		// Google directory by) rather than the provider itself.
+		mv.SlotExpr = "google.Workspaces(google.AnyWorkspace(), google.AnyGoogleAccount())"
 	case SlotMixed:
 		mv.SlotExpr = "google.Workspaces(" + workspace + ", google.AnyGoogleAccount())"
 	}

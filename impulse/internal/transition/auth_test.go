@@ -383,6 +383,12 @@ func TestAuthApply(t *testing.T) {
 		"\treturn &DataConfiguration{\n\t\tspannerClient: spannerClient,\n\t\tstaff:         staffAuth,\n\t}, nil\n",
 		"\tconf := &DataConfiguration{\n\t\tspannerClient: spannerClient,\n\t\tstaff:         staffAuth,\n\t}\n\tif err := conf.loadTenants(ctx); err != nil {\n\t\treturn nil, errors.Wrap(err, \"loadTenants()\")\n\t}\n\n\treturn conf, nil\n", 1)
 
+	// The data level of a tenanted application: the staff auth's settings literal carries
+	// the generated reader of the tenant record's declaration, which the copy keeps.
+	declaredConfig := strings.Replace(authConfig, "&staff.Settings{CookieKey: cookieKey}", "&staff.Settings{CookieKey: cookieKey, TenantDeclarations: app.NewTenantDeclarationReader()}", 1)
+	declaredConfig = strings.Replace(declaredConfig, "\t\"example.com/acme/beacon/pkg/auth/staff\"\n", "\t\"example.com/acme/beacon/app\"\n\t\"example.com/acme/beacon/pkg/auth/staff\"\n", 1)
+	const tenantRecord = "package resources\n\ntype (\n\t// Tenant is the tenant record.\n\t//\n\t// @resource\n\t// @tenant(creation: both)\n\tTenant struct {\n\t\tID string `spanner:\"Id\"`\n\t}\n)\n"
+
 	// A data level whose constructor builds no literal at all: the auth can be declared
 	// and imported, but not constructed.
 	builtElsewhereConfig := strings.Replace(authConfig,
@@ -531,6 +537,32 @@ func TestAuthApply(t *testing.T) {
 				t.Helper()
 				got := read(t, a, "pkg/config/data.go")
 				if !strings.Contains(got, "\tpartnersAuth, err := partners.New(ctx, spannerClient, &partners.Settings{CookieKey: cookieKey})\n\tif err != nil {\n\t\treturn nil, errors.Wrap(err, \"partners.New()\")\n\t}\n\n\tconf := &DataConfiguration{\n\t\tspannerClient: spannerClient,\n\t\tstaff:         staffAuth,\n\t\tpartners:      partnersAuth,\n\t}\n") {
+					t.Errorf("data.go = %q", got)
+				}
+			},
+		},
+		{
+			name:  "a password auth serving a tenanted site sets the sign-in rule over the record's declaration",
+			auth:  Auth{Name: "partners", Outlet: "default"},
+			extra: map[string]string{"pkg/config/data.go": declaredConfig, "pkg/resources/tenants.go": tenantRecord},
+			wantDid: []string{
+				packageDid + ", and the sign-in rule over the Tenant record's declaration (signin.TenantPolicy through the reader its settings carry, app.NewTenantDeclarationReader), admitting a person who holds no tenant yet (signin.AdmitWithoutTenant), since the record is created by its own people",
+				migrationsDid, rolesDid, configDid, "ran go generate ./...",
+			},
+			check: func(t *testing.T, a *app.App) {
+				t.Helper()
+				pkg := read(t, a, "pkg/auth/partners/partners.go")
+				for _, want := range []string{
+					"\tTenantDeclarations signin.DeclarationReader[*cloudspanner.ReadWriteTransaction]\n}",
+					"\tif settings.TenantDeclarations == nil {\n\t\treturn nil, errors.New(\"partners.Settings.TenantDeclarations is nil: the sign-in rule reads what each tenant declares about who may enter it through the generated reader (app.NewTenantDeclarationReader), which the data level hands in\")\n\t}\n\tstore, err := spannerstore.New(",
+					"\tauthSession.SetSignInPolicy(signin.TenantPolicy(resource.SignInRoles(accessClient.UserManager()), settings.TenantDeclarations, signin.AdmitWithoutTenant()))\n\n\treturn &Auth{db: db, access: accessClient, handlers: handlers}, nil\n",
+					"\t\"github.com/cccteam/session/signin\"\n",
+				} {
+					if !strings.Contains(pkg, want) {
+						t.Errorf("partners.go lacks %q:\n%s", want, pkg)
+					}
+				}
+				if got := read(t, a, "pkg/config/data.go"); !strings.Contains(got, "\tpartnersAuth, err := partners.New(ctx, spannerClient, &partners.Settings{CookieKey: cookieKey, TenantDeclarations: app.NewTenantDeclarationReader()})\n") {
 					t.Errorf("data.go = %q", got)
 				}
 			},

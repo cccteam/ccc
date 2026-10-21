@@ -47,6 +47,7 @@
             {
               "resource": "Tenants",
               "fields": [
+                "directoryOnly",
                 "name"
               ]
             },
@@ -84,6 +85,7 @@
             {
               "resource": "Tenants",
               "fields": [
+                "directoryOnly",
                 "name"
               ]
             },
@@ -121,6 +123,7 @@
             {
               "resource": "Tenants",
               "fields": [
+                "directoryOnly",
                 "name"
               ]
             },
@@ -173,6 +176,13 @@
         "permissions": {
           "Create": [
             {
+              "resource": "TenantDirectories",
+              "fields": [
+                "connection",
+                "method"
+              ]
+            },
+            {
               "resource": "Announcements",
               "fields": [
                 "body",
@@ -198,6 +208,9 @@
           ],
           "Delete": [
             {
+              "resource": "TenantDirectories"
+            },
+            {
               "resource": "Announcements"
             },
             {
@@ -213,6 +226,14 @@
             }
           ],
           "List": [
+            {
+              "resource": "TenantDirectories",
+              "fields": [
+                "connection",
+                "method",
+                "tenantId"
+              ]
+            },
             {
               "resource": "Announcements",
               "fields": [
@@ -249,6 +270,14 @@
             }
           ],
           "Read": [
+            {
+              "resource": "TenantDirectories",
+              "fields": [
+                "connection",
+                "method",
+                "tenantId"
+              ]
+            },
             {
               "resource": "Announcements",
               "fields": [

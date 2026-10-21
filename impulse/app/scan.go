@@ -237,8 +237,12 @@ func (a *App) scanAnnotations(rel string, data []byte) error {
 			if domainScopeRE.MatchString(d.Doc) {
 				a.DomainResources = append(a.DomainResources, DomainResource{File: rel, Line: d.Line, Name: d.Name})
 			}
-			if tenantRE.MatchString(d.Doc) {
-				a.TenantRecords = append(a.TenantRecords, TenantRecord{File: rel, Line: d.Line, Name: d.Name})
+			if m := tenantRE.FindStringSubmatch(d.Doc); m != nil {
+				record := TenantRecord{File: rel, Line: d.Line, Name: d.Name}
+				if shape := tenantCreationRE.FindStringSubmatch(m[1]); shape != nil {
+					record.Creation = shape[1]
+				}
+				a.TenantRecords = append(a.TenantRecords, record)
 			}
 			for _, m := range outletRE.FindAllStringSubmatch(d.Doc, -1) {
 				member := OutletMember{File: rel, Line: d.Line, Name: d.Name}
@@ -717,11 +721,13 @@ const (
 
 // domainScopeRE matches the @permissionScope(domain) struct annotation; outletRE
 // captures the names an @outlet(...) annotation lists; tenantRE matches the @tenant
-// struct annotation, a line of its own in the doc comment.
+// struct annotation, a line of its own in the doc comment, capturing its arguments;
+// tenantCreationRE captures the creation shape among them (creation: self-service).
 var (
-	domainScopeRE = regexp.MustCompile(`@` + permissionScopeKeyword + `\(\s*domain\s*\)`)
-	outletRE      = regexp.MustCompile(`@` + outletKeyword + `\(([^)]*)\)`)
-	tenantRE      = regexp.MustCompile(`(?m)^\s*@` + tenantKeyword + `\s*(?:\([^)]*\))?\s*$`)
+	domainScopeRE    = regexp.MustCompile(`@` + permissionScopeKeyword + `\(\s*domain\s*\)`)
+	outletRE         = regexp.MustCompile(`@` + outletKeyword + `\(([^)]*)\)`)
+	tenantRE         = regexp.MustCompile(`(?m)^\s*@` + tenantKeyword + `\s*(?:\(([^)]*)\))?\s*$`)
+	tenantCreationRE = regexp.MustCompile(`\b` + TenantCreationArg + `\s*:\s*([A-Za-z-]+)`)
 )
 
 // structDoc is one struct type declaration with its doc comment.

@@ -207,10 +207,26 @@ type tenantCreationData struct {
 	Setters []string
 	// Refusal is the sentence a person who already holds a tenant is answered with.
 	Refusal string
+	// Directory is the directories record the route declares the creator's directory
+	// on, nil where the package declares none.
+	Directory *tenantCreationDirectory
 
 	// record is the tenant record the file is rendered from; it scopes import
 	// resolution to the types its fields name and is not referenced by the template.
 	record *resourceInfo
+}
+
+// tenantCreationDirectory is the directories record as the create-your-tenant route
+// writes the creator's directory on the new tenant: the record's struct name, the
+// setters of its tenant, method and connection columns, and the written row's key as
+// the route's undo reads it off the create patch (`directory.ID()`, every key column of
+// a compound key in order), the arguments of the record's delete patch constructor.
+type tenantCreationDirectory struct {
+	Record          string
+	TenantField     string
+	MethodField     string
+	ConnectionField string
+	Keys            string
 }
 
 func (d *tenantCreationData) typeImports() []fixerImport {
@@ -227,15 +243,17 @@ type tenantCreationField struct {
 
 // tenantCreationFields are the record's fields as the create-your-tenant request
 // carries them: the key, required, then every field the wire may write at create,
-// required where the column is.
+// required where the column is. The directory-only flag is not among them: a new
+// tenant declares nothing beyond its creator's directory, and whoever holds the
+// record's Update grant sets the flag after.
 func tenantCreationFields(record *resourceInfo) (key *tenantCreationField, fields []*tenantCreationField, setters []string) {
 	for _, field := range record.Fields {
 		switch {
 		case field.IsPrimaryKey:
 			key = &tenantCreationField{Name: field.Name(), Type: field.Type(), Wire: field.WireName(), Tags: field.JSONTag() + ` validate:"required"`}
 			fields = append(fields, key)
-		case field.IsOutputOnly():
-			// Server-owned: the wire cannot write it.
+		case field.IsOutputOnly(), field == record.DirectoryOnlyField:
+			// Server-owned, or the declaration's flag: the wire cannot write it here.
 		default:
 			tags := []string{field.JSONTag()}
 			for _, tag := range []string{field.SqltypeTag(), field.NullableTag()} {
@@ -305,7 +323,29 @@ func (r *resourceGenerator) tenantCreationData(record *resourceInfo, outlet *rou
 		Fields:              fields,
 		Setters:             setters,
 		Refusal:             tenantCreationRefusal(record.Name()),
+		Directory:           tenantCreationDirectoryData(record),
 		record:              record,
+	}
+}
+
+// tenantCreationDirectoryData is the directories record as the route writes the
+// creator's directory, nil where the record declares none.
+func tenantCreationDirectoryData(record *resourceInfo) *tenantCreationDirectory {
+	if !record.HasDeclaration() {
+		return nil
+	}
+	directories := record.declaration.Directories
+	keys := make([]string, 0, directories.keyCount())
+	for _, key := range directories.PrimaryKeys() {
+		keys = append(keys, "directory."+key.Name()+"()")
+	}
+
+	return &tenantCreationDirectory{
+		Record:          directories.Name(),
+		TenantField:     directories.DomainBinding.Anchor.Name(),
+		MethodField:     directories.DirectoryMethodField.Name(),
+		ConnectionField: directories.DirectoryConnectionField.Name(),
+		Keys:            strings.Join(keys, ", "),
 	}
 }
 
@@ -408,8 +448,8 @@ func (t *typescriptGenerator) tenantCreationClientData() *tsTenantCreation {
 		switch {
 		case field.IsPrimaryKey:
 			out.Fields = append(out.Fields, newTSAPIField(field, true))
-		case field.IsOutputOnly():
-			// Server-owned: the wire cannot write it.
+		case field.IsOutputOnly(), field == record.DirectoryOnlyField:
+			// Server-owned, or the declaration's flag: the wire cannot write it here.
 		default:
 			out.Fields = append(out.Fields, newTSAPIField(field, field.IsRequired()))
 		}

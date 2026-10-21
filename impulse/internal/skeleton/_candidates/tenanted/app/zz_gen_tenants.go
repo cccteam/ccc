@@ -7,9 +7,9 @@ import (
 	"net/http"
 	"slices"
 
+	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/tenanted/pkg/resources"
 	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/tenanted/pkg/router"
-	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/ccc/resource/live"
 	"github.com/cccteam/ccc/tracer"
@@ -18,8 +18,9 @@ import (
 
 func (a *App) Tenants() http.HandlerFunc {
 	type tenant struct {
-		ID   string `json:"id"   index:"true" perm:"-"`
-		Name string `json:"name" index:"true"`
+		ID            string `json:"id"            index:"true" perm:"-"`
+		Name          string `json:"name"          index:"true"`
+		DirectoryOnly bool   `json:"directoryOnly"`
 	}
 
 	type response []map[string]any
@@ -69,6 +70,10 @@ func (a *App) Tenants() http.HandlerFunc {
 					if !row.Masked("name") {
 						rmap["name"] = rec.Name
 					}
+				case "DirectoryOnly":
+					if !row.Masked("directoryOnly") {
+						rmap["directoryOnly"] = rec.DirectoryOnly
+					}
 				}
 			}
 			if capabilities := row.Capabilities(); capabilities != nil {
@@ -92,8 +97,9 @@ func (a *App) Tenants() http.HandlerFunc {
 
 func (a *App) Tenant() http.HandlerFunc {
 	type response struct {
-		ID   string `json:"id"   index:"true" perm:"-"`
-		Name string `json:"name" index:"true"`
+		ID            string `json:"id"            index:"true" perm:"-"`
+		Name          string `json:"name"          index:"true"`
+		DirectoryOnly bool   `json:"directoryOnly"`
 	}
 
 	decoder := NewQueryDecoder[resources.Tenant, response](a, accesstypes.Read)
@@ -130,6 +136,10 @@ func (a *App) Tenant() http.HandlerFunc {
 			case "Name":
 				if !row.Masked("name") {
 					rmap["name"] = rec.Name
+				}
+			case "DirectoryOnly":
+				if !row.Masked("directoryOnly") {
+					rmap["directoryOnly"] = rec.DirectoryOnly
 				}
 			}
 		}

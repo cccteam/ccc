@@ -243,6 +243,9 @@ type testConfigurer struct {
 	crewUsers    *resource.UserSurface[router.CrewAuth]
 	membersUsers *resource.UserSurface[router.MembersAuth]
 	tenants      *resource.TenantRoster
+	// declarations scripts what each sector declares about who may enter it; nil, the
+	// served stack's answer, lets every sector admit every session.
+	declarations resource.TenantDeclarations
 	// version is the release the served stack reports as its own (AppVersion); empty
 	// is dev, under which the version check answers every release.
 	version string
@@ -269,6 +272,13 @@ func (c *testConfigurer) TenantRoster() *resource.TenantRoster {
 	}
 
 	return c.tenants
+}
+
+// TenantDeclarations is the reader the suite scripted, or none: a sector then admits
+// every session, as production's DataConfiguration answers while no sector declares
+// anything.
+func (c *testConfigurer) TenantDeclarations() resource.TenantDeclarations {
+	return c.declarations
 }
 
 // Stores are the two memory stores the App is wired over, the default store (the refit
@@ -469,6 +479,13 @@ func deadline(days int) string {
 // on the objects the upload frame writes.
 func newAppWithStores(db *initiator.SpannerDB, controller access.Controller, stores *testStores) *app.App {
 	return newApp(db, controller, stores)
+}
+
+// newAppWithDeclarations builds the App over the real engines with the scripted sector
+// declarations, which production's configuration answers nil for while no sector
+// declares anything; the roster holds the seeded sectors by Add.
+func newAppWithDeclarations(db *initiator.SpannerDB, crewEngine, membersEngine access.Controller, declarations resource.TenantDeclarations) *app.App {
+	return app.New(&testConfigurer{db: db, access: crewEngine, membersAccess: membersEngine, declarations: declarations})
 }
 
 // portalUsers are the identities that reach the application through the portal's session
@@ -728,6 +745,14 @@ func newServedAt(ctx context.Context, t *testing.T, version string) *served {
 	// policy kind through it, and the App subscribes and publishes through it.
 	fake := live.NewFake()
 	policySignal := auth.PolicySignal(fake)
+	// The tenant roster as production's data level starts it, over the seeded sectors
+	// and what each declares about who may enter it; the App's chart is filtered by its
+	// copy of the declarations, and a sector or a declaration written through the API
+	// reaches it after the commit.
+	roster := app.NewSectorRoster(resource.NewSpannerClient(db.Client), resource.WithTenantSignals(fake))
+	if err := roster.Start(ctx); err != nil {
+		t.Fatalf("resource.TenantRoster.Start() error = %v", err)
+	}
 
 	// The server is allocated before the auths so each directory's callback can name
 	// the server's own address.
@@ -745,8 +770,9 @@ func newServedAt(ctx context.Context, t *testing.T, version string) *served {
 			HostedDomain: "example.com",
 			GroupPrefix:  "crew-",
 		},
-		SignUpRedirectURL: "http://" + server.Listener.Addr().String() + consoleAPI + "/user/" + crew.SignUpRegistration + "/callback",
-		ChangeSignal:      policySignal,
+		SignUpRedirectURL:  "http://" + server.Listener.Addr().String() + consoleAPI + "/user/" + crew.SignUpRegistration + "/callback",
+		ChangeSignal:       policySignal,
+		TenantDeclarations: app.NewSectorDeclarationReader(),
 	})
 	if err != nil {
 		t.Fatalf("crew.New() error = %v", err)
@@ -768,7 +794,8 @@ func newServedAt(ctx context.Context, t *testing.T, version string) *served {
 			HostedDomain: "example.com",
 			GroupPrefix:  "members-",
 		},
-		ChangeSignal: policySignal,
+		ChangeSignal:       policySignal,
+		TenantDeclarations: app.NewSectorDeclarationReader(),
 	})
 	if err != nil {
 		t.Fatalf("members.New() error = %v", err)
@@ -806,6 +833,8 @@ func newServedAt(ctx context.Context, t *testing.T, version string) *served {
 		version:       version,
 		scheduler:     scheduled.NewGuard(schedulerInvoker, keys),
 		jobs:          starter,
+		tenants:       roster,
+		declarations:  roster.Declarations,
 	})
 	server.Config.Handler = router.New(a, router.AppHooks(a))
 	server.Start()

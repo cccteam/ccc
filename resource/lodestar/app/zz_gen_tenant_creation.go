@@ -16,6 +16,7 @@ import (
 	"github.com/cccteam/ccc/tracer"
 	"github.com/cccteam/httpio"
 	"github.com/cccteam/logger"
+	"github.com/cccteam/session/sessioninfo"
 	"github.com/go-playground/errors/v5"
 )
 
@@ -34,12 +35,21 @@ var _ interface {
 // group holds it to, and must hold a grant in no sector: a person creates one sector,
 // and the member or administrator of one is refused (403). The row is written first, in
 // its own transaction, which is the claim on the key (a key already taken answers 409);
-// the person's administrator membership is seated through the Crew auth's seats after
+// this instance's roster rereads its table, so it lists the new sector; the
+// person's administrator membership is seated through the Crew auth's seats after
 // the commit, since the permission store writes memberships outside the row's
 // transaction, and a seat that cannot be written takes the row with it; the answer
-// waits until the permission engine answers the new membership, so the person's next
-// request sees the sector; the roster learns the sector after that and the tenants kind
-// is signaled, so every instance serves it at once.
+// waits until the permission engine answers the new membership as a foothold the
+// session reaches, so the person's next request stands in the sector; the tenants
+// kind is signaled last, so every instance serves it at once.
+// The sector's first directory is the one its creator came through: a person who
+// signed in through a directory (Google, Microsoft Entra, WorkOS) has it declared on the
+// new sector in the row's transaction (SectorDirectory), so the sector admits
+// them at once, one domain, one directory; a person who signed in by password declares
+// none, and the sector admits passwords as every sector declaring nothing does.
+// The roster must list the sector and its declaration before the seat is probed:
+// the probe asks what the next request asks, and a sector the roster does not know
+// admits nobody who came through a directory.
 func (a *App) CreateSector() http.HandlerFunc {
 	type request struct {
 		ID          string     `json:"id"          validate:"required"`
@@ -80,6 +90,9 @@ func (a *App) CreateSector() http.HandlerFunc {
 
 		// The row, in its own transaction: the key is the claim.
 		ctx, touched := resource.CollectTouchedRows(ctx)
+		// The creator's directory, written with the row; nil for a creator who came by
+		// password. Spanner may run the transaction again, so it is set inside it.
+		var directory *resources.SectorDirectoryCreatePatch
 		if err := a.ResourceClient().ExecuteFunc(ctx, func(ctx context.Context, txn resource.ReadWriteTransaction) error {
 			patch := resources.NewSectorCreatePatch(req.ID)
 			patch.SetName(req.Name)
@@ -88,6 +101,18 @@ func (a *App) CreateSector() http.HandlerFunc {
 			if err := patch.Buffer(ctx, txn, eventSource); err != nil {
 				return errors.Wrap(err, "resources.SectorCreatePatch.Buffer()")
 			}
+			directory = nil
+			if established, ok := sessioninfo.DataFromCtx(ctx).EstablishedBy(); ok && established.Method.ThroughDirectory() {
+				created, err := resources.NewSectorDirectoryCreatePatch()
+				if err != nil {
+					return errors.Wrap(err, "resources.NewSectorDirectoryCreatePatch()")
+				}
+				created.SetSectorID(req.ID).SetMethod(string(established.Method)).SetConnection(established.Connection)
+				if err := created.Buffer(ctx, txn, eventSource); err != nil {
+					return errors.Wrap(err, "resources.SectorDirectoryCreatePatch.Buffer()")
+				}
+				directory = created
+			}
 
 			return nil
 		}); err != nil {
@@ -95,19 +120,38 @@ func (a *App) CreateSector() http.HandlerFunc {
 		}
 		live.Publish(ctx, a.LiveService(), "", touched)
 
+		// This instance's roster learns the sector before its administrator is seated:
+		// the seat is probed as the person's next request is answered, a foothold in a
+		// sector the roster lists whose declaration admits the session.
+		if err := a.TenantRoster().Reload(ctx); err != nil {
+			logger.FromCtx(ctx).Errorf("tenants: rereading the roster after the commit failed; this instance reloads on the tenants signal or at its backstop: %v", err)
+		}
+
 		// The first administrator, seated after the commit; a seat that cannot be
-		// written takes the row with it.
+		// written takes the row with it, and the creator's directory.
 		if err := resource.SeatFirstAdministrator(ctx, seats, userPermissions, domain, roles); err != nil {
-			if undo := resources.NewSectorDeletePatch(req.ID).Apply(ctx, a.ResourceClient(), eventSource); undo != nil {
+			if undo := a.ResourceClient().ExecuteFunc(ctx, func(ctx context.Context, txn resource.ReadWriteTransaction) error {
+				if directory != nil {
+					if err := resources.NewSectorDirectoryDeletePatch(directory.ID()).Buffer(ctx, txn, eventSource); err != nil {
+						return errors.Wrap(err, "resources.SectorDirectoryDeletePatch.Buffer()")
+					}
+				}
+				if err := resources.NewSectorDeletePatch(req.ID).Buffer(ctx, txn, eventSource); err != nil {
+					return errors.Wrap(err, "resources.SectorDeletePatch.Buffer()")
+				}
+
+				return nil
+			}); undo != nil {
 				logger.FromCtx(ctx).Errorf("sector %s: its administrator could not be seated, and the row could not be removed either: %v", domain, undo)
+			}
+			if err := a.TenantRoster().Reload(ctx); err != nil {
+				logger.FromCtx(ctx).Errorf("tenants: rereading the roster after the row was removed failed; this instance reloads on the tenants signal or at its backstop: %v", err)
 			}
 
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
 
-		// The roster learns the sector once it has its administrator, and every
-		// instance reloads on the tenants kind.
-		a.TenantRoster().Add(domain)
+		// Every instance reloads on the tenants kind.
 		if err := a.LiveService().Signal(ctx, resource.KindTenants); err != nil {
 			logger.FromCtx(ctx).Errorf("tenants: signaling the tenants kind failed; the other instances reload at their backstop: %v", err)
 		}

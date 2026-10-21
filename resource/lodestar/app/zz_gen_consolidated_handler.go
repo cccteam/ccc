@@ -137,12 +137,21 @@ func (a *App) PatchResources() http.HandlerFunc {
 	refitTaskDecoder := NewDecoder[resources.RefitTask, refitTaskRequest](a, accesstypes.Create, accesstypes.Update, accesstypes.Delete)
 
 	type sectorRequest struct {
-		ID          string     `json:"-"`
-		Name        string     `json:"name"`
-		Region      string     `json:"region"`
-		Established civil.Date `json:"established"`
+		ID            string     `json:"-"`
+		Name          string     `json:"name"`
+		Region        string     `json:"region"`
+		Established   civil.Date `json:"established"`
+		DirectoryOnly bool       `json:"directoryOnly"`
 	}
 	sectorDecoder := NewDecoder[resources.Sector, sectorRequest](a, accesstypes.Create, accesstypes.Update, accesstypes.Delete)
+
+	type sectorDirectoryRequest struct {
+		ID         ccc.UUID `json:"-"`
+		SectorID   string   `json:"-"`
+		Method     string   `json:"method"     sqltype:"STRING(16)"`
+		Connection string   `json:"connection"`
+	}
+	sectorDirectoryDecoder := NewDecoder[resources.SectorDirectory, sectorDirectoryRequest](a, accesstypes.Create, accesstypes.Update, accesstypes.Delete)
 
 	type shipRequest struct {
 		ID          ccc.UUID   `json:"-"`
@@ -218,9 +227,9 @@ func (a *App) PatchResources() http.HandlerFunc {
 		)
 		userPermissions := a.UserPermissions(r)
 
-		// The roster follows the commit: the tenants this transaction creates and
-		// deletes reach it once the commit lands, never inside the transaction.
-		var tenantsAdded, tenantsRemoved []accesstypes.Domain
+		// The roster follows the commit: a tenant or a declaration this transaction
+		// writes reaches it once the commit lands, never inside the transaction.
+		tenantsWritten := false
 
 		// The rows the transaction writes are collected for the live pages, published
 		// once the commit lands and before the answer, each under the domain its
@@ -228,7 +237,7 @@ func (a *App) PatchResources() http.HandlerFunc {
 		ctx, touched := resource.CollectTouchedRows(ctx)
 		if err := a.ResourceClient().ExecuteFunc(ctx, func(ctx context.Context, txn resource.ReadWriteTransaction) error {
 			resp = response{}
-			tenantsAdded, tenantsRemoved = nil, nil
+			tenantsWritten = false
 			r, err := resource.CloneRequest(r)
 			if err != nil {
 				return errors.Wrap(err, "resource.CloneRequest()")
@@ -410,6 +419,7 @@ func (a *App) PatchResources() http.HandlerFunc {
 						if err != nil {
 							return errors.Wrap(err, "sectorDecoder.DecodeOperation()")
 						}
+						tenantsWritten = true
 
 						req, err := op.ReqWithPattern("/{resource}/{id}", resource.RequireCreatePath())
 						if err != nil {
@@ -422,7 +432,6 @@ func (a *App) PatchResources() http.HandlerFunc {
 							if err := resources.NewSectorCreatePatchFromPatchSet(id, patchSet).Buffer(ctx, txn, eventSource); err != nil {
 								return errors.Wrap(err, "resources.SectorCreatePatch.Buffer()")
 							}
-							tenantsAdded = append(tenantsAdded, accesstypes.Domain(id))
 						case resource.OperationUpdate:
 							id := httpio.Param[string](req, "id")
 							if err := resources.NewSectorUpdatePatchFromPatchSet(id, patchSet).Buffer(ctx, txn, eventSource); err != nil {
@@ -433,7 +442,6 @@ func (a *App) PatchResources() http.HandlerFunc {
 							if err := resources.NewSectorDeletePatchFromPatchSet(id, patchSet).Buffer(ctx, txn, eventSource); err != nil {
 								return errors.Wrap(err, "resources.SectorDeletePatch.Buffer()")
 							}
-							tenantsRemoved = append(tenantsRemoved, accesstypes.Domain(id))
 						}
 
 						continue
@@ -445,6 +453,11 @@ func (a *App) PatchResources() http.HandlerFunc {
 
 					domain := httpio.Param[accesstypes.Domain](op.Req, router.Domain)
 					if !a.TenantRoster().Has(domain) {
+						return httpio.NewBadRequestMessagef("unknown domain %q in operation path", domain)
+					}
+					if reaches, err := userPermissions.Reaches(ctx, domain); err != nil {
+						return errors.Wrap(err, "resource.UserPermissions.Reaches()")
+					} else if !reaches {
 						return httpio.NewBadRequestMessagef("unknown domain %q in operation path", domain)
 					}
 					if ok, err := userPermissions.HasGrants(ctx, accesstypes.DomainScope(domain)); err != nil {
@@ -651,6 +664,39 @@ func (a *App) PatchResources() http.HandlerFunc {
 								return errors.Wrap(err, "resources.RefitTaskDeletePatch.Buffer()")
 							}
 						}
+					case "sector-directories":
+						patchSet, err := sectorDirectoryDecoder.DecodeOperation(op, userPermissions, accesstypes.DomainScope(domain))
+						if err != nil {
+							return errors.Wrap(err, "sectorDirectoryDecoder.DecodeOperation()")
+						}
+						tenantsWritten = true
+
+						req, err := op.ReqWithPattern("/sectors/{sectorID}/{resource}/{id}")
+						if err != nil {
+							return errors.Wrap(err, "op.ReqWithPattern()")
+						}
+
+						switch op.Type {
+						case resource.OperationCreate:
+							patch, err := resources.NewSectorDirectoryCreatePatchFromPatchSet(patchSet)
+							if err != nil {
+								return errors.Wrap(err, "sectorDirectoryCreatePatchFromPatchSet()")
+							}
+							if err := patch.Buffer(ctx, txn, eventSource); err != nil {
+								return errors.Wrap(err, "resources.SectorDirectoryCreatePatch.Buffer()")
+							}
+							resp["sectorDirectories"] = append(resp["sectorDirectories"], patch.ID())
+						case resource.OperationUpdate:
+							id := httpio.Param[ccc.UUID](req, "id")
+							if err := resources.NewSectorDirectoryUpdatePatchFromPatchSet(id, patchSet).Buffer(ctx, txn, eventSource); err != nil {
+								return errors.Wrap(err, "resources.SectorDirectoryUpdatePatch.Buffer()")
+							}
+						case resource.OperationDelete:
+							id := httpio.Param[ccc.UUID](req, "id")
+							if err := resources.NewSectorDirectoryDeletePatchFromPatchSet(id, patchSet).Buffer(ctx, txn, eventSource); err != nil {
+								return errors.Wrap(err, "resources.SectorDirectoryDeletePatch.Buffer()")
+							}
+						}
 					case "ships":
 						patchSet, err := shipDecoder.DecodeOperation(op, userPermissions, accesstypes.DomainScope(domain))
 						if err != nil {
@@ -855,13 +901,10 @@ func (a *App) PatchResources() http.HandlerFunc {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
 		live.Publish(ctx, a.LiveService(), "", touched)
-		for _, domain := range tenantsAdded {
-			a.TenantRoster().Add(domain)
-		}
-		for _, domain := range tenantsRemoved {
-			a.TenantRoster().Remove(domain)
-		}
-		if len(tenantsAdded)+len(tenantsRemoved) > 0 {
+		if tenantsWritten {
+			if err := a.TenantRoster().Reload(ctx); err != nil {
+				logger.FromCtx(ctx).Errorf("tenants: rereading the roster after the commit failed; this instance reloads on the tenants signal or at its backstop: %v", err)
+			}
 			if err := a.LiveService().Signal(ctx, resource.KindTenants); err != nil {
 				logger.FromCtx(ctx).Errorf("tenants: signaling the tenants kind failed; the other instances reload at their backstop: %v", err)
 			}

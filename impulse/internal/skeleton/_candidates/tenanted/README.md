@@ -39,6 +39,32 @@ the generator program), which the self-service shape requires, since a stranger 
 way to sign in before holding anything. `@tenant` alone keeps creation to an
 administrator, and `@tenant(creation: self-service)` to the person alone.
 
+Who may enter a tenant is the record's declaration, data of the application rather than
+deploy configuration: the directories the tenant admits its people through
+(`TenantDirectory`, one row each under `/api/tenants/{tenantID}/tenant-directories`: a
+sign-in method and the connection its identities carry, a Google Workspace by its domain
+or a Microsoft Entra tenant by its tenant id) and whether its people enter through them
+only (`Tenant.DirectoryOnly`, which closes passwords). The staff auth's sign-in rule is
+the library's tenant policy over it (`signin.TenantPolicy`, handed the generated
+`app.NewTenantDeclarationReader`, which reads the declaration in the sign-in's own
+transaction): a sign-in through a directory is admitted when one of the person's tenants
+declares that directory, a password unless every one of their tenants is directory only,
+staff (a global role) on the library's checks, and a person holding no tenant too, since
+the record lets a stranger sign in first and create their own. Which tenants the session
+then reaches is decided again per tenant where its tenant list is computed: the data
+level's roster keeps every tenant's declaration beside its key
+(`resource.TenantRoster.Declarations`, handed to `resource.SessionPermissions`), the
+records' generated write paths reload it after their commit and signal every instance,
+so a declaration edited anywhere decides the next request everywhere, and a tenant the
+session may not enter is not listed and answers as one that does not exist. The
+console's Sign-in page under the tenant (`/tenants/{tenantID}/sign-in`) lists, declares
+and withdraws directories under the tenant's own grants (`Administrator_Domain`) and
+flips directory only under the global record's Update grant (`Administrator_Global`);
+both records write change events, the audit of every edit. A self-service tenant's
+first directory is the one its creator came through, written by the create-your-tenant
+route; the staff auth's google registration admits any Workspace account (its domain is
+the connection a tenant declares) beside any Google account.
+
 ## Layout
 
 - `main.go` serves the API and the console's built bundle.

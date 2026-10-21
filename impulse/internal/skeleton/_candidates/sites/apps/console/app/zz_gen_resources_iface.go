@@ -10,5 +10,5 @@ import (
 
 type Resourcer interface {
 	resource.Resourcer
-	resources.Announcement | resources.Tenant
+	resources.Announcement | resources.Tenant | resources.TenantDirectory
 }

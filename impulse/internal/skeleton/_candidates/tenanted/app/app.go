@@ -66,6 +66,12 @@ type Configurer interface {
 	// list is its Domains filtered by where the principal holds a grant, since the
 	// permission engine holds no tenant list.
 	TenantRoster() *resource.TenantRoster
+	// TenantDeclarations reads what a tenant declares about who may enter it, as the
+	// running application knows it: the roster's copy, which every write of the Tenant
+	// record or its directories reloads. The session's tenant list is filtered by it, so
+	// a tenant declaring a directory is offered to a session that came through that
+	// directory, and a directory-only tenant to no password session.
+	TenantDeclarations() resource.TenantDeclarations
 	// Staff returns the auth this surface binds to: the staff auth, whose session manager
 	// the App composes its login and session handlers from.
 	Staff() *staff.Auth
@@ -101,6 +107,7 @@ type App struct {
 	resourceClient resource.Client
 	cursorKey      *resource.CursorKey
 	tenants        *resource.TenantRoster
+	declarations   resource.TenantDeclarations
 	validate       *validator.Validate
 	logExporter    logger.Exporter
 	version        string
@@ -125,6 +132,7 @@ func New(cfg Configurer) *App {
 		staffUsers:     router.NewStaffUserSurface(cfg.StaffUserStores()),
 		cursorKey:      cfg.CursorKey(),
 		tenants:        cfg.TenantRoster(),
+		declarations:   cfg.TenantDeclarations(),
 		validate:       cfg.Validator(),
 		logExporter:    cfg.LogExporter(),
 		version:        cfg.AppVersion(),
@@ -209,9 +217,13 @@ func (a *App) Assets() http.HandlerFunc {
 // session's principal: the access engine bound to the user for an ordinary or
 // impersonated-user session, bound to the role for a session established as a role,
 // listing the tenants of the application's roster where the principal holds a grant,
-// and attenuated by the session's permission mask.
+// and attenuated by the session's permission mask. A tenant is offered only when the
+// session may enter it: the tenant's declaration, read from the roster's copy, admits
+// the session's first sign-in (a directory the tenant declares, or a password where
+// the tenant is not directory only), and staff, who hold a grant in the global
+// partition, reach every tenant.
 func (a *App) UserPermissions(r *http.Request) resource.UserPermissions {
-	return resource.SessionPermissions(r.Context(), a.access.ForUser, a.access.ForRole, a.tenants.Domains)
+	return resource.SessionPermissions(r.Context(), a.access.ForUser, a.access.ForRole, a.tenants.Domains, a.declarations)
 }
 
 // TenantRoster returns the application's tenant roster, the generated contract's

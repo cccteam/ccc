@@ -41,8 +41,10 @@ var _ validatorApp = (*App)(nil)
 // is the application's tenant roster (resource.TenantRoster, built by the generated
 // New<Record>Roster constructor and started by the application): whether a domain is a
 // known tenant, never whether any particular row exists. The generated DomainGuard and
-// the consolidated dispatcher ask it first, and, since domains are concealed
-// (generation.WithConcealedDomains), the caller's foothold next, so "unauthorized" is
+// the consolidated dispatcher ask it first, then whether the session reaches the tenant
+// (resource.UserPermissions.Reaches: the tenant's declaration admits the way the session
+// was established), and, since domains are concealed
+// (generation.WithConcealedDomains), the caller's foothold last, so "unauthorized" is
 // indistinguishable from "nonexistent". DomainGuard is generated
 // (zz_gen_domain_guard.go) and asserted here to complete the middleware surface the
 // generated route registration wires.

@@ -15,6 +15,7 @@ import (
 
 	"github.com/go-playground/errors/v5"
 	"github.com/google/go-cmp/cmp"
+	"golang.org/x/mod/modfile"
 
 	"github.com/cccteam/ccc/impulse/app"
 	"github.com/cccteam/ccc/impulse/internal/check"
@@ -399,7 +400,15 @@ func TestRenderDevWorkspace(t *testing.T) {
 			if diff := cmp.Diff(wantUses, uses); diff != "" {
 				t.Errorf("go.work use lines mismatch (-want +got):\n%s", diff)
 			}
-			if !strings.Contains(string(work), "go 1.26.10\n") {
+			goMod, err := os.ReadFile(filepath.Join(dir, "go.mod"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			mod, err := modfile.Parse("go.mod", goMod, nil)
+			if err != nil {
+				t.Fatalf("modfile.Parse() error = %v", err)
+			}
+			if mod.Go == nil || !strings.Contains(string(work), "go "+mod.Go.Version+"\n") {
 				t.Errorf("go.work carries no go directive from go.mod:\n%s", work)
 			}
 		})

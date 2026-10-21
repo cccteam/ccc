@@ -127,6 +127,13 @@ type Configurer interface {
 	// in it after their commit, and a session's sector list is this roster filtered by
 	// where the session holds a grant. A test harness builds one with Add alone.
 	TenantRoster() *resource.TenantRoster
+	// TenantDeclarations reads what a sector declares about who may enter it
+	// (resource.TenantDeclarations): a sector is offered to a session only when the
+	// session may enter it, and the sector's declaration decides against the way the
+	// session was established. The configuration answers the roster's copy, reloaded
+	// on every write of the Sector record or its directories; a test harness scripts
+	// one, or answers nil, under which every sector admits every session.
+	TenantDeclarations() resource.TenantDeclarations
 }
 
 // operationsClock is the zone the bare word local resolves to in temporal grant
@@ -178,6 +185,7 @@ type App struct {
 	droidsAPIKey   string
 	scheduler      *scheduled.Guard
 	tenants        *resource.TenantRoster
+	declarations   resource.TenantDeclarations
 	rpcClient      *rpc.Client
 	computedClient *computedresources.Client
 	live           live.Service
@@ -216,6 +224,7 @@ func New(cfg Configurer) *App {
 		droidsAPIKey:   cfg.DroidsAPIKey(),
 		scheduler:      cfg.Scheduler(),
 		tenants:        cfg.TenantRoster(),
+		declarations:   cfg.TenantDeclarations(),
 		rpcClient:      rpc.NewClient(func(role accesstypes.Role) resource.RolePermissions { return engine.ForRole(role) }, resourceClient.FileStore(resource.StoreNameFor[resources.Documents]()), cfg.Jobs()),
 		computedClient: computedresources.NewClient(),
 		live:           cfg.Live(),
@@ -398,15 +407,16 @@ func (a *App) SchedulerAuth(next http.Handler) http.Handler {
 // session's principal: the engine of the auth the request came through, bound to the
 // user for an ordinary or impersonated-user session, bound to the role for a session
 // established as a role, and attenuated by the session's permission mask. The sectors
-// the session lists are the tenant roster filtered by where the checker holds a grant,
-// so the star chart and the sector guard can never disagree, and a sector charted a
-// moment ago lights for everyone whose role is held in every sector.
+// the session lists are the tenant roster filtered by where the checker holds a grant
+// and by what each sector declares about who may enter it (the configuration's
+// TenantDeclarations), so the star chart and the sector guard can never disagree, and a
+// sector charted a moment ago lights for everyone whose role is held in every sector.
 //
 // Demonstrates: impersonation.session-permissions.
 func (a *App) UserPermissions(r *http.Request) resource.UserPermissions {
 	engine := a.engine(r.Context())
 
-	return resource.SessionPermissions(r.Context(), engine.ForUser, engine.ForRole, a.tenants.Domains)
+	return resource.SessionPermissions(r.Context(), engine.ForUser, engine.ForRole, a.tenants.Domains, a.declarations)
 }
 
 // TenantRoster is the application's tenant roster (resource.TenantRoster): the sectors

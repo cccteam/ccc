@@ -662,11 +662,54 @@ assert_py "answered its key" "$r" "rows['id']=='ember'"
 r=$(req pioneer GET "$API/user-domains"); assert_py "her chart lights Ember at once: seated as its marshal before the route answered" "$r" "rows == ['ember']"
 r=$(req pioneer GET "$EMBER/missions"); check "Ember's flight deck answers her, empty" 200 "$r"
 assert_py "an empty flight deck: Ember is charted, not yet flown" "$r" "rows == []"
+r=$(req pioneer GET "$EMBER/sector-directories"); assert_py "Ember declares the directory she came through, written with the row: her Google session is admitted by it (tenancy.creator-directory)" "$r" "len(rows)==1 and rows[0]['method']=='google' and rows[0]['connection']"
 r=$(req pioneer POST "$API/create-sector" '{"id":"ember-two","name":"Ember Two","region":"Near frontier","established":"2226-10-21"}'); check "a second sector is refused her: one sector per person" 403 "$r"
 r=$(req surveyor GET "$API/sectors"); assert_py "the sector list carries Ember, in name order" "$r" "[s['name'] for s in rows]==['Anvil','Bastion','Cinder','Dawn','Ember']"
 r=$(req marshal GET "$EMBER/missions"); check "Ember's routes answer the marshal 404: a sector that does not exist for her" 404 "$r"
 r=$(req governor GET "$API/user-domains"); assert_py "the governor sees Ember with nothing written for him" "$r" "rows == ['anvil','bastion','cinder','dawn','ember']"
 r=$(req client GET "$PORTAL/user-domains"); assert_py "cleo's portal lists Ember at once" "$r" "rows == ['anvil','bastion','cinder','dawn','ember']"
+
+# ---- who may enter a sector: the declaration ----
+# Who may enter a sector is the record's declaration, data of the application: the
+# directories the sector admits its people through (SectorDirectories, one row each: a
+# sign-in method and the connection its identities carry) and whether its people enter
+# through them only (Sectors.directoryOnly, which closes passwords). The seed declares the
+# fleet's Google Workspace (google, example) on every sector and makes Bastion directory
+# only. The sign-in rule (signin.TenantPolicy, on both auths) reads the declaration in the
+# sign-in's transaction, and the chart reads the roster's copy, reloaded after every write,
+# so a declaration decides the next request. The rigger, by password, holding SectorCrew in
+# Anvil and Bastion and no global role, charts Anvil alone; the bosun, whose only sector is
+# Bastion, is refused at sign-in naming the rule; the navigator, through the fleet's
+# directory in a role held in every sector, charts all three, Bastion included; the
+# governor withdraws Anvil's directory and the navigator's next request stands outside
+# Anvil; headquarters opens Bastion to passwords and the rigger's chart lights it and the
+# bosun signs in. The staff, a global role, keep every sector throughout.
+# Demonstrates: tenancy.declaration, tenancy.directory-only.
+login rigger
+r=$(req rigger GET "$API/user-domains"); assert_py "the rigger's chart lights Anvil alone: Bastion admits its people through its directory only, and she came by password" "$r" "rows == ['anvil']"
+r=$(req rigger GET "$API/sectors/bastion/wings"); check "Bastion answers her as a sector that does not exist" 404 "$r"
+r=$(req rigger GET "$ANVIL/wings"); check "Anvil's wings answer her" 200 "$r"
+rm -f "$S/bosun.jar"; curl -s -L -c "$S/bosun.jar" -b "$S/bosun.jar" -o /dev/null "$API/user/session"
+r=$(curl -s -c "$S/bosun.jar" -b "$S/bosun.jar" -H "X-XSRF-TOKEN: $(xsrf bosun)" -H 'Content-Type: application/json' -d '{"username":"bosun","password":"lodestar"}' -w '\n%{http_code}' "$API/user/password/login")
+check "the bosun, whose only sector is Bastion, is refused at sign-in" 401 "$r"
+assert_py "naming the rule: directory_only" "$r" "rows['code']=='directory_only'"
+r=$(req navigator GET "$API/user-domains"); assert_py "the navigator, through the fleet's directory, which every sector declares, charts all three: Bastion admits him" "$r" "rows == ['anvil','bastion','cinder']"
+r=$(req governor GET "$ANVIL/sector-directories"); assert_py "Anvil declares one directory: the fleet's Google Workspace, example" "$r" "[(d['method'],d['connection']) for d in rows]==[('google','example')]"
+ANVIL_DIRECTORY=$(body "$r" | py "print(rows[0]['id'])")
+r=$(req rigger PATCH "$API/resources" "[{\"op\":\"remove\",\"path\":\"/sectors/anvil/sector-directories/$ANVIL_DIRECTORY\"}]"); check "the rigger holds no Delete on SectorDirectories" 403 "$r"
+r=$(req governor PATCH "$API/resources" "[{\"op\":\"remove\",\"path\":\"/sectors/anvil/sector-directories/$ANVIL_DIRECTORY\"}]"); check "the governor, marshal in every sector, withdraws Anvil's directory" 200 "$r"
+r=$(req navigator GET "$API/user-domains"); assert_py "the navigator's chart loses Anvil at once: no sector of his declares the directory he came through there" "$r" "rows == ['bastion','cinder']"
+r=$(req navigator GET "$ANVIL/wings"); check "Anvil answers him as a sector that does not exist" 404 "$r"
+r=$(req governor GET "$API/user-domains"); assert_py "the governor keeps every sector: a global role" "$r" "rows == ['anvil','bastion','cinder','dawn','ember']"
+r=$(req governor PATCH "$API/resources" '[{"op":"add","path":"/sectors/anvil/sector-directories","value":{"method":"google","connection":"example"}}]'); check "the governor declares the directory on Anvil again" 200 "$r"
+r=$(req navigator GET "$API/user-domains"); assert_py "and the navigator's chart lights Anvil again" "$r" "rows == ['anvil','bastion','cinder']"
+r=$(req governor PATCH "$API/resources" '[{"op":"add","path":"/sectors/anvil/sector-directories","value":{"method":"google","connection":"example"}}]'); check "the same declaration twice is a conflict: one row per directory" 409 "$r"
+r=$(req governor PATCH "$API/resources" '[{"op":"patch","path":"/sectors/bastion","value":{"directoryOnly":false}}]'); check "headquarters opens Bastion to passwords (Update on Sectors, directoryOnly)" 200 "$r"
+r=$(req rigger GET "$API/user-domains"); assert_py "the rigger's chart lights Bastion at once" "$r" "rows == ['anvil','bastion']"
+r=$(curl -s -c "$S/bosun.jar" -b "$S/bosun.jar" -H "X-XSRF-TOKEN: $(xsrf bosun)" -H 'Content-Type: application/json' -d '{"username":"bosun","password":"lodestar"}' -w '\n%{http_code}' "$API/user/password/login")
+check "and the bosun signs in" 200 "$r"
+r=$(req governor PATCH "$API/resources" '[{"op":"patch","path":"/sectors/bastion","value":{"directoryOnly":true}}]'); check "headquarters closes Bastion again" 200 "$r"
+r=$(req bosun GET "$API/user-domains"); assert_py "the bosun's chart goes dark: the session stands, and reaches no sector" "$r" "rows == []"
 
 # ---- squadrons config page: the array config's request ----
 # The Squadrons page's "Other squadrons in this sector" is an arrayConfig over the same resource, its listFilter excluding the page's row by the indexed key; Squadrons declares a maximum, so the library asks one server page (the key column alone, with the count) and draws each row by the iterated config. Demonstrates: config.array.

@@ -1,5 +1,7 @@
 package resources
 
+import "github.com/cccteam/ccc/resource"
+
 type (
 	// Tenant is the tenant record (@tenant): the global resource whose rows are the
 	// tenants. Its route name is the segment the tenant-scoped routes are served under,
@@ -33,11 +35,33 @@ type (
 	// their next request stands in it. A person who already holds a tenant is refused:
 	// one tenant per person, and an administrator of one never creates another.
 	//
+	// Who may enter a tenant is the record's declaration, data of the application
+	// rather than deploy configuration: the directories the tenant admits its people
+	// through (TenantDirectory, one row each) and whether its people enter through them
+	// only (DirectoryOnly). The sign-in policy reads it in the sign-in's own transaction
+	// (NewTenantDeclarationReader, handed to the staff auth) and every instance's roster
+	// keeps a copy beside the keys (NewTenantRoster, Declarations), which the record's
+	// and the directories' generated write paths reload after their commit; a tenant is
+	// offered to a session only when the session may enter it. The record's change
+	// events (DataChangeEvents, Config) are the audit of every edit.
+	//
 	// @resource
 	// @tenant(creation: both)
 	// @order(Name asc)
 	Tenant struct {
 		ID   string `spanner:"Id"`
 		Name string `spanner:"Name"`
+		// DirectoryOnly says the tenant's people enter through its directories only: a
+		// password does not reach the tenant. Set by whoever holds the record's Update
+		// grant on the column (Administrator_Global), never at creation: a new tenant
+		// declares nothing beyond its creator's directory.
+		// @directoryOnly
+		DirectoryOnly bool `spanner:"DirectoryOnly"`
 	}
 )
+
+// Config enables change tracking: Tenant mutations write DataChangeEvents rows in the
+// same transaction, the audit of every change to what a tenant declares.
+func (Tenant) Config() resource.Config {
+	return defaultConfig().SetTrackChanges(true)
+}

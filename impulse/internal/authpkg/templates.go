@@ -109,6 +109,13 @@ type Settings struct {
 	// {{.Provider}}, read from the environment ({{join .Variables ", "}}).
 	{{.Pascal}} {{.SettingsType}}
 {{- end}}{{end}}
+{{- if .TenantPolicy}}
+	// TenantDeclarations reads what a tenant declares about who may enter it, in the
+	// sign-in's transaction, which the sign-in rule decides with: the generated reader
+	// over the {{.TenantPolicy.Record}} record and its directories ({{.TenantPolicy.Reader}}).
+	// Required; New refuses nil.
+	TenantDeclarations signin.DeclarationReader[*cloudspanner.ReadWriteTransaction]
+{{- end}}
 }
 
 // Signals is the channel the auth's permission engine signals a policy change on and
@@ -171,6 +178,11 @@ func New(ctx context.Context, db *cloudspanner.Client, settings *Settings) (*Aut
 	if settings.Signals == nil {
 		return nil, errors.New("{{.Name}}.Settings.Signals is nil: the permission engine signals policy changes through the application's live service, which every application wires")
 	}
+{{- if .TenantPolicy}}
+	if settings.TenantDeclarations == nil {
+		return nil, errors.New("{{.Name}}.Settings.TenantDeclarations is nil: the sign-in rule reads what each tenant declares about who may enter it through the generated reader ({{.TenantPolicy.Reader}}), which the data level hands in")
+	}
+{{- end}}
 	store, err := spannerstore.New(db, spannerstore.WithPrefix(TablePrefix))
 	if err != nil {
 		return nil, errors.Wrap(err, "spannerstore.New()")
@@ -220,6 +232,31 @@ func New(ctx context.Context, db *cloudspanner.Client, settings *Settings) (*Aut
 {{- else}}
 	handlers.{{.Field}} = register{{.Pascal}}(authSession)
 {{- end}}
+{{- end}}
+{{- if .TenantPolicy}}
+
+	// The sign-in rule: the library's tenant policy. A person's tenants are where they
+	// hold a role (the engine's memberships), and what each tenant admits is its
+	// declaration, read in the sign-in's transaction: a password is admitted unless
+	// every one of the person's tenants admits its people through directories only, a
+	// sign-in through a directory when one of their tenants declares it (its method and
+	// the connection its identities carry); the application's own staff (a global role,
+	// or one held in every tenant) are admitted on the library's checks.
+{{- if .TenantPolicy.AdmitWithoutTenant}}
+	// A person who holds no tenant is admitted too (signin.AdmitWithoutTenant), since
+	// the {{.TenantPolicy.Record}} record's creation shape lets a stranger sign in first and create
+	// their own; an application whose administrator alone creates tenants drops the
+	// option, and such a person is refused (no_tenant).
+{{- else}}
+	// A person who holds no tenant is refused (no_tenant), since the administrator
+	// creates tenants here; a record created by its own people (@tenant(creation:
+	// self-service) or both) adds signin.AdmitWithoutTenant().
+{{- end}}
+	// Which tenants the session then reaches is decided again, tenant by tenant, where
+	// its tenant list is computed (UserPermissions). The memberships are read outside
+	// the sign-in's transaction (resource.SignInRoles): the Spanner client refuses the
+	// engine's read under the transaction's context as a nested transaction.
+	authSession.SetSignInPolicy(signin.TenantPolicy(resource.SignInRoles(accessClient.UserManager()), settings.TenantDeclarations{{if .TenantPolicy.AdmitWithoutTenant}}, signin.AdmitWithoutTenant(){{end}}))
 {{- end}}
 
 	return &Auth{ {{- if .Foothold}}db: db, {{end}}access: accessClient, handlers: handlers}, nil
@@ -623,6 +660,12 @@ func (h *Handlers) {{.Pascal}}Callback() http.HandlerFunc {
 // person's verified email is linked and signed in, anyone else is refused
 // (not_invited){{else}}, open sign-up: anyone the slot admits becomes a user under their
 // verified email{{end}}.
+{{- if eq .Slot "any"}}
+// The slot admits any Google account, with any Workspace named beside it: a Workspace
+// account's identity then carries its Workspace's domain as its connection, which is
+// what a tenant's declaration names a Google directory by, and an account outside a
+// Workspace carries the provider itself (google.AnyAccountConnection).
+{{- end}}
 func register{{.Pascal}}(authSession *Session, accessClient *access.Client, settings *Settings) (*google.Method{{if .Fallible}}, error{{end}}) {
 {{- if eq .SlotExpr "workspaces"}}
 	workspaces, err := parse{{.Pascal}}Workspaces(settings.{{.Pascal}}.Workspaces)

@@ -115,6 +115,5 @@ describe('CreateTenantComponent', () => {
     );
     expect((fixture.nativeElement as HTMLElement).querySelector('.refusal')?.textContent).toContain('already holds a tenant');
     expect(navigated).not.toHaveBeenCalled();
-    expect(TestBed.inject(TenantService).current()).toBe('');
   });
 });

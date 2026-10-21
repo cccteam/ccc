@@ -185,6 +185,12 @@ func (c *testConfigurer) TenantRoster() *resource.TenantRoster {
 	return c.tenants
 }
 
+// TenantDeclarations is nil: no sector declares anything, so the matrix's cases are
+// decided by the roster and the scripted engine alone.
+func (c *testConfigurer) TenantDeclarations() resource.TenantDeclarations {
+	return nil
+}
+
 // newTestHandler composes the pipeline under test: the application's generated
 // handlers served through the generated test router, behind an identity-seeding
 // wrapper that stands in for the session middleware.

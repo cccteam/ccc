@@ -2,7 +2,7 @@
 import { ApiDescriptor, Client, ClientOptions, createClient, MethodHandle, NullBoolean, ResourceHandle, UploadMethodHandle } from '@cccteam/resource';
 import { Point } from 'geojson';
 import { Methods, Resources } from './zz_gen_constants';
-import { Clients, ClientContacts, ClientRosters, Commendations, Consignments, DistressCalls, FeeByKinds, Hangars, Missions, MissionBoards, MissionDocuments, OpenMissionsBySquadrons, Pilots, PilotAssignments, PilotCertifications, Refits, RefitTasks, Sectors, Ships, ShipClasses, Sorties, SortieExpenses, Squadrons, SquadronMemberships, SquadronRosters, Wings, BriefingTemplates, ExpenseManifests, PilotCards, SectorHazardBoards, ServiceLedgers, StandingOrders, FeatureFlags, CrewUsers, CrewSeats, CrewRoles, CrewSectorUsers, CrewSectorSeats, CrewSectorRoles, MembersUsers, MembersSeats, MembersRoles, MembersSectorUsers, MembersSectorSeats, MembersSectorRoles } from './zz_gen_resources';
+import { Clients, ClientContacts, ClientRosters, Commendations, Consignments, DistressCalls, FeeByKinds, Hangars, Missions, MissionBoards, MissionDocuments, OpenMissionsBySquadrons, Pilots, PilotAssignments, PilotCertifications, Refits, RefitTasks, Sectors, SectorDirectories, Ships, ShipClasses, Sorties, SortieExpenses, Squadrons, SquadronMemberships, SquadronRosters, Wings, BriefingTemplates, ExpenseManifests, PilotCards, SectorHazardBoards, ServiceLedgers, StandingOrders, FeatureFlags, CrewUsers, CrewSeats, CrewRoles, CrewSectorUsers, CrewSectorSeats, CrewSectorRoles, MembersUsers, MembersSeats, MembersRoles, MembersSectorUsers, MembersSectorSeats, MembersSectorRoles } from './zz_gen_resources';
 import { AttachMissionDocument, AttachMissionDocumentResult, AttachRefitPhoto, BeginRefit, ClaimMission, CompileBriefing, CompileBriefingResult, CompleteMission, CompleteMissionAnswer, FailFlightTest, FailMission, HailShip, HoldMission, InspectShip, InspectShipResult, IssueBulletin, LaunchMission, PassFlightTest, ReleaseConsignment, ReleaseConsignmentResult, ReplaceMissionDocument, ResumeMission, ScrapShip, StandDownMission, StartFlightTest, SetFeature, SetFeatureResult, SetCrewUserPassword, UnlinkCrewUserIdentity, SetCrewSectorUserPassword, UnlinkCrewSectorUserIdentity, UnlinkMembersUserIdentity, UnlinkMembersSectorUserIdentity } from './zz_gen_methods';
 
 /** The feature flags the application declares, by name: what a route, a field or a method is gated behind. */
@@ -274,15 +274,33 @@ export interface SectorsCreate {
   name: string;
   region: string;
   established: Date;
+  directoryOnly?: boolean;
 }
 /** The fields a client may change on Sectors. Keys, server-owned, and immutable fields are absent. */
 export interface SectorsPatch {
   name?: string;
   region?: string;
   established?: Date;
+  directoryOnly?: boolean;
 }
 /** The primary key of Sectors, in route order. */
 export type SectorsKey = [id: string];
+
+/**
+ * The fields a client may set when creating SectorDirectories. Server-owned fields are
+ * absent; a server-generated key is absent, a client-assigned key is required.
+ */
+export interface SectorDirectoriesCreate {
+  method: string;
+  connection: string;
+}
+/** The fields a client may change on SectorDirectories. Keys, server-owned, and immutable fields are absent. */
+export interface SectorDirectoriesPatch {
+  method?: string;
+  connection?: string;
+}
+/** The primary key of SectorDirectories, in route order. */
+export type SectorDirectoriesKey = [id: string];
 
 /**
  * The fields a client may set when creating Ships. Server-owned fields are
@@ -763,7 +781,19 @@ export const apiDescriptor = defineApiDescriptor({
       operations: ['list', 'read', 'create', 'patch', 'remove', 'batch'],
       page: { default: 25, max: 200 },
       order: [{ field: 'name', direction: 'asc' }],
-      patchable: ['name', 'region', 'established'],
+      patchable: ['name', 'region', 'established', 'directoryOnly'],
+    },
+    [Resources.SectorDirectories]: {
+      resource: Resources.SectorDirectories,
+      property: 'sectorDirectories',
+      route: 'sector-directories',
+      scope: 'domain',
+      consolidated: true,
+      keys: ['id'],
+      operations: ['list', 'read', 'create', 'patch', 'remove', 'batch'],
+      page: { default: 50 },
+      order: [{ field: 'method', direction: 'asc' }, { field: 'connection', direction: 'asc' }],
+      patchable: ['method', 'connection'],
     },
     [Resources.Ships]: {
       resource: Resources.Ships,
@@ -1181,6 +1211,7 @@ export interface DomainApi {
   pilotAssignments: ResourceHandle<PilotAssignments, PilotAssignmentsKey, 'list' | 'read'>;
   refits: ResourceHandle<Refits, RefitsKey, 'list' | 'read' | 'create' | 'patch' | 'remove' | 'batch', RefitsCreate, RefitsPatch>;
   refitTasks: ResourceHandle<RefitTasks, RefitTasksKey, 'list' | 'read' | 'create' | 'patch' | 'remove' | 'batch', RefitTasksCreate, RefitTasksPatch>;
+  sectorDirectories: ResourceHandle<SectorDirectories, SectorDirectoriesKey, 'list' | 'read' | 'create' | 'patch' | 'remove' | 'batch', SectorDirectoriesCreate, SectorDirectoriesPatch>;
   ships: ResourceHandle<Ships, ShipsKey, 'list' | 'read' | 'create' | 'patch' | 'remove' | 'batch', ShipsCreate, ShipsPatch>;
   sorties: ResourceHandle<Sorties, SortiesKey, 'list' | 'read' | 'create' | 'patch' | 'remove' | 'batch', SortiesCreate, SortiesPatch>;
   sortieExpenses: ResourceHandle<SortieExpenses, SortieExpensesKey, 'list' | 'read' | 'create' | 'patch' | 'remove' | 'batch', SortieExpensesCreate, SortieExpensesPatch>;

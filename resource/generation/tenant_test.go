@@ -30,6 +30,17 @@ func tenantFixtureTables() map[string]*tableMetadata {
 		"Outlands":  {PkCount: 1, Columns: map[string]columnMeta{"Id": pk}},
 		"Provinces": {PkCount: 1, Columns: map[string]columnMeta{"Id": pk}},
 		"Bastions":  {PkCount: 1, Columns: map[string]columnMeta{"Id": pk}},
+		// The declaration's shapes: the record with its flag, the directories record,
+		// and each shape the annotations refuse.
+		"Harbors":           {PkCount: 1, Columns: map[string]columnMeta{"Id": pk, "Name": plain, "DirectoryOnly": plain}},
+		"HarborDirectories": {PkCount: 1, Columns: map[string]columnMeta{"Id": pk, "HarborId": plain, "Method": plain, "Connection": plain}},
+		"Piers":             {PkCount: 1, Columns: map[string]columnMeta{"Id": pk, "Closed": plain}},
+		"Quays":             {PkCount: 1, Columns: map[string]columnMeta{"Id": pk, "Mode": plain}},
+		"Beacons":           {PkCount: 1, Columns: map[string]columnMeta{"Id": pk, "Method": plain, "Connection": plain}},
+		"Buoys":             {PkCount: 1, Columns: map[string]columnMeta{"Id": pk, "HarborId": plain, "Method": plain}},
+		"Moorings":          {PkCount: 1, Columns: map[string]columnMeta{"Id": pk, "HarborId": plain, "Method": plain, "Connection": plain}},
+		"Jetties":           {PkCount: 1, Columns: map[string]columnMeta{"Id": pk, "HarborId": plain, "Method": plain, "Kind": plain, "Connection": plain}},
+		"Anchorages":        {PkCount: 1, Columns: map[string]columnMeta{"Id": pk, "BerthId": {IsForeignKey: true, ReferencedTable: "Berths", ReferencedColumn: "Id"}, "Method": plain, "Connection": plain}},
 	}
 }
 
@@ -339,11 +350,10 @@ func Test_tenantsTemplate(t *testing.T) {
 	}
 }
 
-// Test_patchTemplate_tenant pins the tenant record's standalone patch handler: the
-// tenants its transaction creates and deletes are collected inside the transaction,
-// handed to the roster after the commit, and the tenants kind is signaled after
-// the roster and before the answer; a resource that is not the record carries none of
-// it.
+// Test_patchTemplate_tenant pins the standalone patch handler of the tenant record and
+// of the directories record: a write of either marks the transaction, the roster is
+// reloaded after the commit, and the tenants kind is signaled after the roster and
+// before the answer; a resource that is neither carries none of it.
 func Test_patchTemplate_tenant(t *testing.T) {
 	t.Parallel()
 
@@ -352,20 +362,20 @@ func Test_patchTemplate_tenant(t *testing.T) {
 	tests := []struct {
 		name            string
 		tenant          bool
+		directory       bool
 		creation        tenantCreation
 		wantContains    []string
 		wantNotContains []string
 	}{
 		{
-			name:   "the record feeds the roster after the commit and signals",
+			name:   "the record reloads the roster after the commit and signals",
 			tenant: true,
 			wantContains: []string{
-				"var tenantsAdded, tenantsRemoved []accesstypes.Domain",
-				"tenantsAdded, tenantsRemoved = nil, nil",
-				"tenantsAdded = append(tenantsAdded, accesstypes.Domain(id))",
-				"tenantsRemoved = append(tenantsRemoved, accesstypes.Domain(id))",
-				"a.TenantRoster().Add(domain)",
-				"a.TenantRoster().Remove(domain)",
+				"tenantsWritten := false",
+				"tenantsWritten = false",
+				"tenantsWritten = true",
+				"if tenantsWritten {",
+				"if err := a.TenantRoster().Reload(ctx); err != nil {",
 				"if err := a.LiveService().Signal(ctx, resource.KindTenants); err != nil {",
 				"logger.FromCtx(ctx).Errorf(",
 			},
@@ -376,12 +386,21 @@ func Test_patchTemplate_tenant(t *testing.T) {
 			creation: tenantCreationSelfService,
 			wantContains: []string{
 				`return httpio.NewBadRequestMessage("a Sector is created by the person who becomes its administrator, through the create-sector route (@tenant(creation: self-service)); no administrator creates one")`,
-				"a.TenantRoster().Remove(domain)",
+				"if err := a.TenantRoster().Reload(ctx); err != nil {",
+			},
+		},
+		{
+			name:      "the directories record reloads the roster after the commit and signals, as the record does",
+			directory: true,
+			wantContains: []string{
+				"tenantsWritten := false",
+				"if err := a.TenantRoster().Reload(ctx); err != nil {",
+				"if err := a.LiveService().Signal(ctx, resource.KindTenants); err != nil {",
 			},
 		},
 		{
 			name:            "another resource carries none of it",
-			wantNotContains: []string{"tenantsAdded", "tenantsRemoved", "TenantRoster()", "KindTenants"},
+			wantNotContains: []string{"tenantsWritten", "TenantRoster()", "KindTenants"},
 		},
 	}
 
@@ -389,7 +408,9 @@ func Test_patchTemplate_tenant(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			res := fixtureResource(t, structs, "Sector", func(res *resourceInfo) { res.IsTenant, res.TenantCreation = tt.tenant, tt.creation })
+			res := fixtureResource(t, structs, "Sector", func(res *resourceInfo) {
+				res.IsTenant, res.IsTenantDirectory, res.TenantCreation = tt.tenant, tt.directory, tt.creation
+			})
 			r := &resourceGenerator{client: &client{resource: "testdata/tenantfixture"}, applicationName: "App", receiverName: "a"}
 			out, err := r.handlerContent(PatchHandler, res)
 			if err != nil {
@@ -409,7 +430,7 @@ func Test_patchTemplate_tenant(t *testing.T) {
 					t.Errorf("patch handler must not contain %q:\n%s", notWant, out)
 				}
 			}
-			if !tt.tenant || tt.creation.SelfService() {
+			if (!tt.tenant && !tt.directory) || tt.creation.SelfService() {
 				return
 			}
 
@@ -417,11 +438,11 @@ func Test_patchTemplate_tenant(t *testing.T) {
 			// signal, the signal before the answer.
 			s := string(out)
 			commit := strings.Index(s, "}); err != nil {")
-			add := strings.Index(s, "a.TenantRoster().Add(domain)")
+			reload := strings.Index(s, "a.TenantRoster().Reload(ctx)")
 			signal := strings.Index(s, "Signal(ctx, resource.KindTenants)")
 			answer := strings.Index(s, "return httpio.NewEncoder(w).Ok(")
-			if commit >= add || add >= signal || signal >= answer {
-				t.Errorf("order: commit %d, roster %d, signal %d, answer %d; want ascending:\n%s", commit, add, signal, answer, out)
+			if commit >= reload || reload >= signal || signal >= answer {
+				t.Errorf("order: commit %d, roster %d, signal %d, answer %d; want ascending:\n%s", commit, reload, signal, answer, out)
 			}
 		})
 	}

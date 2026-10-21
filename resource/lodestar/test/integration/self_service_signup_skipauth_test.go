@@ -4,6 +4,7 @@ package integration
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"os"
 	"slices"
@@ -19,7 +20,10 @@ import (
 // skipAuth tag as APP_SIGN_UP_USERNAME), and then names her own sector through the
 // generated create-sector route, standing in it at once.
 //
-// Demonstrates: tenancy.self-service, auth.open-sign-up, auth.skipauth-directory.
+// Ember's first directory is the one she came through, written by the route in the
+// row's transaction, so Ember admits her Google session at once.
+//
+// Demonstrates: tenancy.self-service, tenancy.creator-directory, auth.open-sign-up, auth.skipauth-directory.
 func TestSelfServiceSignUp_signInFirstThenChart(t *testing.T) {
 	t.Parallel()
 
@@ -52,6 +56,22 @@ func TestSelfServiceSignUp_signInFirstThenChart(t *testing.T) {
 	}
 	if status, body := b.do(ctx, http.MethodGet, consoleAPI+"/sectors/"+ember+"/missions", nil); status != http.StatusOK {
 		t.Errorf("GET Ember's flight deck: status %d, want 200: %s", status, body)
+	}
+	// Ember declares the directory she came through, and nothing else: her Google
+	// session is admitted by it, which is why her chart lights Ember at all.
+	status, body := b.do(ctx, http.MethodGet, consoleAPI+"/sectors/"+ember+"/sector-directories", nil)
+	if status != http.StatusOK {
+		t.Fatalf("GET Ember's directories: status %d: %s", status, body)
+	}
+	var declared []struct {
+		Method     string `json:"method"`
+		Connection string `json:"connection"`
+	}
+	if err := json.Unmarshal(body, &declared); err != nil {
+		t.Fatalf("Ember's directories are not a list: %v: %s", err, body)
+	}
+	if len(declared) != 1 || declared[0].Method != "google" || declared[0].Connection == "" {
+		t.Errorf("Ember's directories = %+v, want the one Google directory the pioneer came through", declared)
 	}
 	// One sector per person: a second is refused.
 	if status, body := b.do(ctx, http.MethodPost, createSectorRoute, []byte(chartEmberAgain)); status != http.StatusForbidden {

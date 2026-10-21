@@ -160,4 +160,121 @@ type (
 	Bastion struct {
 		ID string `spanner:"Id"`
 	}
+
+	// Harbor is a tenant record that declares who may enter a harbor: its people enter
+	// through its directories only when DirectoryOnly says so (@directoryOnly), and
+	// HarborDirectory holds the directories.
+	//
+	// @resource
+	// @tenant(creation: both)
+	Harbor struct {
+		ID   string `spanner:"Id"`
+		Name string `spanner:"Name"`
+		// @directoryOnly
+		DirectoryOnly bool `spanner:"DirectoryOnly"`
+	}
+
+	// HarborDirectory is the well-formed directories record: tenant-scoped through the
+	// bare @domain column, with its method and connection columns.
+	//
+	// @resource
+	// @permissionScope(domain)
+	// @tenantDirectory
+	HarborDirectory struct {
+		ID ccc.UUID `spanner:"Id"`
+		// @domain
+		HarborID string `spanner:"HarborId"`
+		// @directoryMethod
+		Method string `spanner:"Method"`
+		// @directoryConnection
+		Connection string `spanner:"Connection"`
+	}
+
+	// Pier declares @directoryOnly on a resource that is not the tenant record.
+	//
+	// @resource
+	Pier struct {
+		ID ccc.UUID `spanner:"Id"`
+		// @directoryOnly
+		Closed bool `spanner:"Closed"`
+	}
+
+	// Quay declares @directoryOnly on a string column of a tenant record.
+	//
+	// @resource
+	// @tenant
+	Quay struct {
+		ID string `spanner:"Id"`
+		// @directoryOnly
+		Mode string `spanner:"Mode"`
+	}
+
+	// Beacon declares @tenantDirectory on a global resource.
+	//
+	// @resource
+	// @tenantDirectory
+	Beacon struct {
+		ID         ccc.UUID `spanner:"Id"`
+		Method     string   `spanner:"Method"`
+		Connection string   `spanner:"Connection"`
+	}
+
+	// Buoy declares @directoryMethod on a resource that is not the directories record.
+	//
+	// @resource
+	// @permissionScope(domain)
+	Buoy struct {
+		ID ccc.UUID `spanner:"Id"`
+		// @domain
+		HarborID string `spanner:"HarborId"`
+		// @directoryMethod
+		Method string `spanner:"Method"`
+	}
+
+	// Mooring is a directories record with no connection column.
+	//
+	// @resource
+	// @permissionScope(domain)
+	// @tenantDirectory
+	Mooring struct {
+		ID ccc.UUID `spanner:"Id"`
+		// @domain
+		HarborID string `spanner:"HarborId"`
+		// @directoryMethod
+		Method     string `spanner:"Method"`
+		Connection string `spanner:"Connection"`
+	}
+
+	// Jetty declares @directoryMethod on two columns.
+	//
+	// @resource
+	// @permissionScope(domain)
+	// @tenantDirectory
+	Jetty struct {
+		ID ccc.UUID `spanner:"Id"`
+		// @domain
+		HarborID string `spanner:"HarborId"`
+		// @directoryMethod
+		Method string `spanner:"Method"`
+		// @directoryMethod
+		Kind string `spanner:"Kind"`
+		// @directoryConnection
+		Connection string `spanner:"Connection"`
+	}
+
+	// Anchorage is a directories record whose tenant is resolved through a join path,
+	// through Berth's own hop.
+	//
+	// @resource
+	// @permissionScope(domain)
+	// @tenantDirectory
+	Anchorage struct {
+		ID ccc.UUID `spanner:"Id"`
+		// @domain(via: SectorID)
+		BerthID ccc.UUID `spanner:"BerthId"`
+		// @directoryMethod
+		Method string `spanner:"Method"`
+		// @directoryConnection
+		Connection string `spanner:"Connection"`
+	}
 )

@@ -47,6 +47,7 @@
             {
               "resource": "Tenants",
               "fields": [
+                "directoryOnly",
                 "name"
               ]
             },
@@ -84,6 +85,7 @@
             {
               "resource": "Tenants",
               "fields": [
+                "directoryOnly",
                 "name"
               ]
             },
@@ -121,6 +123,7 @@
             {
               "resource": "Tenants",
               "fields": [
+                "directoryOnly",
                 "name"
               ]
             },
@@ -180,6 +183,13 @@
               ]
             },
             {
+              "resource": "TenantDirectories",
+              "fields": [
+                "connection",
+                "method"
+              ]
+            },
+            {
               "resource": "StaffTenantUsers",
               "fields": [
                 "username",
@@ -201,6 +211,9 @@
               "resource": "Announcements"
             },
             {
+              "resource": "TenantDirectories"
+            },
+            {
               "resource": "StaffTenantUsers"
             },
             {
@@ -219,6 +232,14 @@
                 "body",
                 "tenantId",
                 "title"
+              ]
+            },
+            {
+              "resource": "TenantDirectories",
+              "fields": [
+                "connection",
+                "method",
+                "tenantId"
               ]
             },
             {
@@ -255,6 +276,14 @@
                 "body",
                 "tenantId",
                 "title"
+              ]
+            },
+            {
+              "resource": "TenantDirectories",
+              "fields": [
+                "connection",
+                "method",
+                "tenantId"
               ]
             },
             {

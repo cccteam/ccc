@@ -24,8 +24,9 @@ func (Tenant) DefaultConfig() resource.Config {
 // and read, so a query armed with Enforce meets the field permissions the routes
 // enforce; tenantReadSets holds one Set per read operation.
 type tenantRead struct {
-	ID   string `json:"id"   perm:"-"`
-	Name string `json:"name"`
+	ID            string `json:"id"            perm:"-"`
+	Name          string `json:"name"`
+	DirectoryOnly bool   `json:"directoryOnly"`
 }
 
 var tenantReadSets resource.SetCache[Tenant, tenantRead]
@@ -34,8 +35,9 @@ var tenantReadSets resource.SetCache[Tenant, tenantRead]
 // accept on a mutation, so a patch armed with Enforce meets the field permissions the
 // routes enforce; tenantWriteSets holds one Set per mutation.
 type tenantWrite struct {
-	ID   string `json:"-"`
-	Name string `json:"name"`
+	ID            string `json:"-"`
+	Name          string `json:"name"`
+	DirectoryOnly bool   `json:"directoryOnly"`
 }
 
 var tenantWriteSets resource.SetCache[Tenant, tenantWrite]
@@ -158,6 +160,7 @@ func (c *TenantColumns) All() *TenantColumns {
 	c.fields = []accesstypes.Field{
 		"ID",
 		"Name",
+		"DirectoryOnly",
 	}
 
 	return c
@@ -171,6 +174,12 @@ func (c *TenantColumns) ID() *TenantColumns {
 
 func (c *TenantColumns) Name() *TenantColumns {
 	c.fields = append(c.fields, "Name")
+
+	return c
+}
+
+func (c *TenantColumns) DirectoryOnly() *TenantColumns {
+	c.fields = append(c.fields, "DirectoryOnly")
 
 	return c
 }
@@ -269,6 +278,10 @@ func (c *tenantSort) Name() *TenantSort {
 	return c.addField("Name")
 }
 
+func (c *tenantSort) DirectoryOnly() *TenantSort {
+	return c.addField("DirectoryOnly")
+}
+
 type TenantSort struct {
 	*tenantSort
 }
@@ -362,6 +375,22 @@ func (p *TenantCreatePatch) NameIsSet() bool {
 	return p.patchSet.IsSet("Name")
 }
 
+func (p *TenantCreatePatch) SetDirectoryOnly(v bool) *TenantCreatePatch {
+	p.patchSet.Set("DirectoryOnly", v)
+
+	return p
+}
+
+func (p *TenantCreatePatch) DirectoryOnly() bool {
+	v, _ := p.patchSet.Get("DirectoryOnly").(bool)
+
+	return v
+}
+
+func (p *TenantCreatePatch) DirectoryOnlyIsSet() bool {
+	return p.patchSet.IsSet("DirectoryOnly")
+}
+
 // Diff is intended for unit testing, and reports the differences between two values using github.com/google/go-cmp/cmp
 func (p *TenantCreatePatch) Diff(got *TenantCreatePatch, opts ...cmp.Option) string {
 	return resource.PatchSetDiff(opts...)(p.patchSet, got.patchSet)
@@ -444,6 +473,22 @@ func (p *TenantUpdatePatch) Name() string {
 
 func (p *TenantUpdatePatch) NameIsSet() bool {
 	return p.patchSet.IsSet("Name")
+}
+
+func (p *TenantUpdatePatch) SetDirectoryOnly(v bool) *TenantUpdatePatch {
+	p.patchSet.Set("DirectoryOnly", v)
+
+	return p
+}
+
+func (p *TenantUpdatePatch) DirectoryOnly() bool {
+	v, _ := p.patchSet.Get("DirectoryOnly").(bool)
+
+	return v
+}
+
+func (p *TenantUpdatePatch) DirectoryOnlyIsSet() bool {
+	return p.patchSet.IsSet("DirectoryOnly")
 }
 
 // Diff is intended for unit testing, and reports the differences between two values using github.com/google/go-cmp/cmp

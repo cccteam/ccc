@@ -1,0 +1,115 @@
+<h1>Who may enter {{ sector.value()?.name || sectorID() }}</h1>
+<p>
+  A sector declares who may enter it. A <strong>directory</strong> is a place people sign in from, outside this
+  application: a Google Workspace, named by its domain (<code>example</code>, the fleet's), or a Microsoft Entra tenant, named
+  by its sector id. A person who signs in through a directory enters this sector only when the sector declares that
+  directory here; one domain is one directory, and a second directory is a second declaration. Passwords are this
+  application's own way in, and every sector admits them unless it is <strong>directory only</strong>: then its people
+  enter through its directories alone, and a password does not reach it. A person whose every sector is directory only
+  cannot sign in with a password at all.
+</p>
+
+@if (error()) {
+  <p class="refusal" role="alert">{{ error() }}</p>
+}
+
+<mat-card appearance="outlined" class="declaration-card">
+  <mat-card-header>
+    <mat-card-title>Directories</mat-card-title>
+    <mat-card-subtitle>The directories this sector admits its people through.</mat-card-subtitle>
+  </mat-card-header>
+  <mat-card-content>
+    @if (!canList()) {
+      <p class="empty">Your role in this sector does not cover its directories.</p>
+    } @else {
+      <table mat-table [dataSource]="directories.value()" class="directories">
+        <ng-container matColumnDef="method">
+          <th mat-header-cell *matHeaderCellDef>Directory</th>
+          <td mat-cell *matCellDef="let directory">{{ labelOf(directory.method) }}</td>
+        </ng-container>
+        <ng-container matColumnDef="connection">
+          <th mat-header-cell *matHeaderCellDef>Connection</th>
+          <td mat-cell *matCellDef="let directory">
+            <code>{{ directory.connection }}</code>
+          </td>
+        </ng-container>
+        <ng-container matColumnDef="withdraw">
+          <th mat-header-cell *matHeaderCellDef></th>
+          <td mat-cell *matCellDef="let directory">
+            @if (canWithdraw()) {
+              <button mat-button type="button" [disabled]="busy()" (click)="withdraw(directory)">Withdraw</button>
+            }
+          </td>
+        </ng-container>
+        <tr mat-header-row *matHeaderRowDef="columns"></tr>
+        <tr mat-row *matRowDef="let row; columns: columns"></tr>
+      </table>
+      @if (!directories.value().length) {
+        <p class="empty">
+          No directory is declared: this sector admits its people by password, and nobody who signs in through a
+          directory reaches it.
+        </p>
+      }
+    }
+  </mat-card-content>
+</mat-card>
+
+@if (canDeclare()) {
+  <mat-card appearance="outlined" class="declaration-card">
+    <mat-card-header>
+      <mat-card-title>Declare a directory</mat-card-title>
+      <mat-card-subtitle>
+        A person who signs in through it enters this sector, provided they hold a role here.
+      </mat-card-subtitle>
+    </mat-card-header>
+    <mat-card-content>
+      <form [formGroup]="form" (ngSubmit)="declare()" class="declare-form">
+        <mat-form-field appearance="outline" class="method">
+          <mat-label>Directory</mat-label>
+          <mat-select formControlName="method">
+            @for (method of methods; track method.value) {
+              <mat-option [value]="method.value">{{ method.label }}</mat-option>
+            }
+          </mat-select>
+        </mat-form-field>
+        <mat-form-field appearance="outline" class="connection">
+          <mat-label>Connection</mat-label>
+          <input matInput formControlName="connection" name="connection" autocomplete="off" [placeholder]="chosen().example" />
+          <mat-hint>{{ chosen().label }}: {{ chosen().connection }}, such as {{ chosen().example }}.</mat-hint>
+        </mat-form-field>
+        <button mat-flat-button type="submit" [disabled]="form.invalid || busy()">Declare</button>
+      </form>
+    </mat-card-content>
+  </mat-card>
+}
+
+<mat-card appearance="outlined" class="declaration-card">
+  <mat-card-header>
+    <mat-card-title>Directory only</mat-card-title>
+    <mat-card-subtitle>Whether passwords reach this sector.</mat-card-subtitle>
+  </mat-card-header>
+  <mat-card-content>
+    @if (sector.value(); as row) {
+      <mat-slide-toggle
+        class="directory-only"
+        [checked]="row.directoryOnly"
+        [disabled]="!canClose() || busy()"
+        (change)="close($event.checked)"
+      >
+        @if (row.directoryOnly) {
+          Directory only: people enter through the declared directories alone, and a password does not reach this
+          sector.
+        } @else {
+          Passwords admitted: people enter by password as well as through the declared directories.
+        }
+      </mat-slide-toggle>
+      @if (!canClose()) {
+        <p class="empty">Headquarters sets this, on the sector record.</p>
+      } @else if (!directories.value().length) {
+        <p class="empty">Declare a directory first: directory only with no directory admits nobody but staff.</p>
+      }
+    } @else {
+      <p class="empty">Your role does not cover the sector record, which carries this setting.</p>
+    }
+  </mat-card-content>
+</mat-card>

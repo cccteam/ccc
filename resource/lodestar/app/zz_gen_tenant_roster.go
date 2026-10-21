@@ -3,15 +3,46 @@
 
 package app
 
-import "github.com/cccteam/ccc/resource"
+import (
+	"cloud.google.com/go/spanner"
+	"github.com/cccteam/ccc/resource"
+	"github.com/cccteam/session/signin"
+)
+
+// sectorDeclaration names where the Sector record keeps its declaration of who
+// may enter a sector (@directoryOnly on the record, the SectorDirectory record's columns): what
+// the roster reads beside the keys and the sign-in policy's reader reads in its own
+// transaction.
+var sectorDeclaration = resource.TenantDeclarationColumns{
+	DirectoryOnly:    "DirectoryOnly",
+	DirectoriesTable: "SectorDirectories",
+	TenantColumn:     "SectorId",
+	MethodColumn:     "Method",
+	ConnectionColumn: "Connection",
+}
 
 // NewSectorRoster builds the application's tenant roster over the Sector record
 // (@tenant): the Id column of Sectors, read once at Start and kept
 // current until the context ends. The generated DomainGuard and the consolidated
 // dispatcher ask the roster before a tenant-scoped request runs, and the generated
-// Sector write paths add and remove tenants after their commit and publish the
+// Sector write paths reload it after their commit and publish the
 // tenants signal, so every instance reloads. The application exposes the roster as
 // TenantRoster(); resource.WithTenantSignals wires the live service the roster reloads on.
+// The roster reads what each sector declares about who may enter it beside its key
+// (Sector.DirectoryOnly and the SectorDirectory rows), so its Declarations is what the
+// application hands resource.SessionPermissions as the tenant declarations, and the
+// generated SectorDirectory write paths reload it too.
 func NewSectorRoster(client resource.Client, opts ...resource.TenantRosterOption) *resource.TenantRoster {
+	opts = append([]resource.TenantRosterOption{resource.WithTenantDeclarations(&sectorDeclaration)}, opts...)
+
 	return resource.NewTenantRoster(client, "Sectors", "Id", opts...)
+}
+
+// NewSectorDeclarationReader builds the sign-in policy's reader of what a sector declares
+// about who may enter it (signin.TenantPolicy, through signin.DeclarationReader): it
+// reads the Sector row and its SectorDirectory rows in the sign-in's own transaction.
+// The application hands it to the auth whose people enter sectors, through the auth's
+// settings; a sector the table does not hold declares nothing.
+func NewSectorDeclarationReader() signin.DeclarationReader[*spanner.ReadWriteTransaction] {
+	return resource.NewTenantDeclarationReader("Sectors", "Id", &sectorDeclaration)
 }
