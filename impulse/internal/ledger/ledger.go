@@ -211,7 +211,7 @@ var Steps = []Step{
 			ccc v0.3.5
 			ccc/accesstypes v0.6.2-0.20261019011714-fbbdfe29c065
 			ccc/cloud v0.2.1
-			ccc/resource v0.14.3-0.20261021034019-d490c1085803
+			ccc/resource v0.14.3-0.20261021150318-7434b3d0960b
 			ccc/tracer v0.3.0
 			db-initiator v0.4.3
 			httpio v0.7.22
@@ -220,7 +220,7 @@ var Steps = []Step{
 		`),
 		Pending: true,
 		Impulse: release("v0.5.0"),
-		Note:    "resource.SessionPermissions takes the application's tenant declarations beside its roster (resource.TenantDeclarations: what a tenant declares about who may enter it, read by domain; nil while the application keeps none, and every tenant admits every session), so a tenant is offered to a session only when the session may enter it and the generated domain guard and consolidated dispatcher ask the session's reach (resource.UserPermissions.Reaches) before the foothold; the skeletons pass nil, and an application adds the argument to its SessionPermissions call by hand",
+		Note:    "resource.SessionPermissions takes the application's tenant declarations beside its roster (resource.TenantDeclarations: what a tenant declares about who may enter it, read by domain; nil while the application keeps none, and every tenant admits every session), so a tenant is offered to a session only when the session may enter it and the generated domain guard and consolidated dispatcher ask the session's reach (resource.UserPermissions.Reaches) before the foothold; the skeletons pass nil, and an application adds the argument to its SessionPermissions call by hand; the tenant record declares who may enter a tenant, as data on the record: the directories the tenant admits its people through (a child record annotated @tenantDirectory, one row per directory with a bare @domain column, a @directoryMethod column and a @directoryConnection column, edited under its own grants with the change events as the audit) and whether they are the only way in (a boolean column annotated @directoryOnly on the record); the generator emits New<Record>DeclarationReader, the reader of a tenant's declaration in the sign-in's transaction, and the roster keeps every tenant's declaration beside its key (Declarations, reloaded by the records' generated write paths and handed to SessionPermissions in place of nil); every auth's New sets the library's sign-in rule over the reader its settings carry (signin.TenantPolicy with the memberships read through resource.SignInRoles, and signin.AdmitWithoutTenant() where the record is created by its own people), and the console lists, declares and withdraws a tenant's directories and sets directory-only on a Sign-in page under the tenant's routes; a Google registration admitting any Google account names any Workspace beside it (google.Workspaces(google.AnyWorkspace(), google.AnyGoogleAccount())) so a Workspace account's link carries its domain, what a declaration names a Google directory by; an application adds the directories record, the column, the migration, the reader in each auth's settings, the rule in each auth's New, the Declarations argument and the page by hand, the tenanted skeleton's being the pattern, and declares each directory method it registers on its development tenants in the seed, or the people who sign in through it reach no tenant",
 	},
 }
 
