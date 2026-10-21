@@ -205,6 +205,23 @@ var Steps = []Step{
 		Impulse: release("v0.5.0"),
 		Note:    "the skeletons' login pages compose the library's login component (ccc-login-methods from @cccteam/resource-angular 0.0.7), which renders every method the outlet registers from the methods route and owns the sign-in, so a page names no path and adds a method's button by itself (an application's own page moves to it by hand, the skeleton's page being the pattern); the skeletons' consoles compose the library's user-management component (ccc-user-management from @cccteam/resource-angular 0.0.8) on a Users page over the auth's user surface, drawn where the digest grants List on its users resource and listed in the navigation behind the same grant (the tenanted console draws the selected tenant's partition beside the global one, the outlets portal its members'); an application's own console adds the page by hand, the skeleton's being the pattern; the schema sequence creates the migrations_reader database role, which the pipeline's migration guard reads each environment's migration version through (a migration added at the sequence's next free index where none does); an auth signs in through the methods registered on one session Auth (session.NewAuth): the skeletons' auth packages construct it over the sessions, users, identities, auth events and pending sign-ins tables and register each method in a file of its own; the generator's Auth option takes method declarations (generation.PasswordMethod(), AzureMethod(name), GoogleMethod(name)) and the router serves the methods, session and pending routes the login page renders from; no recipe moves an application off the single-method session types, which the library keeps under session/legacy: an application on them is re-created from the skeleton; the generator serves each auth's users, seats and roles as resources (resource.UserSurface), and the skeletons' configurer hands the App the stores each surface serves over (StaffUserStores) for the generated constructor; a deployed environment's first administrator is seeded by the migrate command (pkg/deploy SeedAdministrators) while an auth's users table holds no rows: a password auth gets administrator with the password the stack generates (APP_<AUTH>_ADMINISTRATOR_PASSWORD, secret:\"generated\"), an auth whose roles the application assigns gets the administrator role memberships under the sign-in name the placement names (APP_<AUTH>_ADMINISTRATOR), both the data level's to declare; an application adds foothold.go to each auth package and the step to its migrate command by hand",
 	},
+	{
+		Pins: pins(`
+			access v0.11.1
+			ccc v0.3.5
+			ccc/accesstypes v0.6.2-0.20261019011714-fbbdfe29c065
+			ccc/cloud v0.2.1
+			ccc/resource v0.14.3-0.20261021034019-d490c1085803
+			ccc/tracer v0.3.0
+			db-initiator v0.4.3
+			httpio v0.7.22
+			logger v0.1.30
+			session v0.13.1-0.20261021020700-57e765eca9ab
+		`),
+		Pending: true,
+		Impulse: release("v0.5.0"),
+		Note:    "resource.SessionPermissions takes the application's tenant declarations beside its roster (resource.TenantDeclarations: what a tenant declares about who may enter it, read by domain; nil while the application keeps none, and every tenant admits every session), so a tenant is offered to a session only when the session may enter it and the generated domain guard and consolidated dispatcher ask the session's reach (resource.UserPermissions.Reaches) before the foothold; the skeletons pass nil, and an application adds the argument to its SessionPermissions call by hand",
+	},
 }
 
 // validatePending holds a step's Pending mark to its pins: a pin at a pseudo-version
