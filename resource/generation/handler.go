@@ -27,6 +27,10 @@ func (r *resourceGenerator) runHandlerGeneration() error {
 		return errors.Wrap(err, "generateTenants()")
 	}
 
+	if err := r.generateTenantCreation(); err != nil {
+		return errors.Wrap(err, "generateTenantCreation()")
+	}
+
 	if err := r.generateDecoders(); err != nil {
 		return errors.Wrap(err, "generateDecoders()")
 	}

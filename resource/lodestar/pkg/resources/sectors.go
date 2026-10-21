@@ -24,10 +24,22 @@ type (
 	// Sector itself is a GLOBAL resource: administering the sector list is a global
 	// concern. The star chart's dark sectors are the ones a login holds no grant in.
 	//
-	// Demonstrates: tenancy.tenant-record, tenancy.run-time-tenant, tenancy.concealed, @order, @page.
+	// Who may chart a sector is declared here, apart from who may enter one
+	// (@tenant(creation: ...)), and the record declares both ways: the surveyor's, Create
+	// on Sectors under a global role, through the create path above; and the pioneer's,
+	// self-service, one generated route (POST /console/api/create-sector) for a person
+	// who signed in holding no sector, through the crew auth's sign-up registration (any
+	// Google account, open sign-up), and names their own. The route writes the row, seats
+	// the person with the roles the App names (SectorAdministratorRoles: SectorMarshal)
+	// and hands the sector to the roster, so their next request stands in it; a person
+	// who already holds a sector is refused, the governor included, since an
+	// administrator of one sector never creates another there. @tenant alone would keep
+	// charting to the surveyor; @tenant(creation: self-service) to the pioneer alone.
+	//
+	// Demonstrates: tenancy.tenant-record, tenancy.run-time-tenant, tenancy.concealed, tenancy.self-service, @order, @page.
 	//
 	// @resource
-	// @tenant
+	// @tenant(creation: both)
 	// @order(Name asc)
 	// @page(default: 25, max: 200)
 	Sector struct {

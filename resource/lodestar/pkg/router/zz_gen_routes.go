@@ -120,6 +120,8 @@ type GeneratedHandlers interface {
 	Consignments() http.HandlerFunc
 	Consignment() http.HandlerFunc
 
+	CreateSector() http.HandlerFunc
+
 	CrewRoles() http.HandlerFunc
 	CrewRole() http.HandlerFunc
 
@@ -370,6 +372,8 @@ func generatedRoutes(r chi.Router, h GeneratedHandlers) {
 	consignmentHandler := domainGuard(h.Consignment())
 	bounded.Get("/console/api/sectors/{sectorID}/consignments/{consignmentID}", consignmentHandler)
 	bounded.Post("/console/api/sectors/{sectorID}/consignments/{consignmentID}", consignmentHandler)
+
+	bounded.Post("/console/api/create-sector", h.CreateSector())
 
 	crewRolesHandler := h.CrewRoles()
 	bounded.Get("/console/api/crew-roles", crewRolesHandler)

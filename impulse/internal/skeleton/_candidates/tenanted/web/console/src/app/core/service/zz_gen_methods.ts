@@ -32,6 +32,16 @@ export interface SetStaffUserPassword {
   password: string;
 }
 
+/** The body UnlinkStaffUserIdentity takes. */
+export interface UnlinkStaffUserIdentityConfig {
+  user: string | FieldPointer;
+  identity: string | FieldPointer;
+}
+export interface UnlinkStaffUserIdentity {
+  user: string;
+  identity: string;
+}
+
 /** The body SetStaffTenantUserPassword takes. */
 export interface SetStaffTenantUserPasswordConfig {
   user: string | FieldPointer;
@@ -40,6 +50,16 @@ export interface SetStaffTenantUserPasswordConfig {
 export interface SetStaffTenantUserPassword {
   user: string;
   password: string;
+}
+
+/** The body UnlinkStaffTenantUserIdentity takes. */
+export interface UnlinkStaffTenantUserIdentityConfig {
+  user: string | FieldPointer;
+  identity: string | FieldPointer;
+}
+export interface UnlinkStaffTenantUserIdentity {
+  user: string;
+  identity: string;
 }
 
 export interface RPCFieldMeta {
@@ -90,11 +110,25 @@ const methodMap: MethodMap = {
       { fieldName: 'password', displayType: 'string' },
     ],
   },
+  [Methods.UnlinkStaffUserIdentity]: {
+    route: 'unlink-staff-user-identity',
+    fields: [
+      { fieldName: 'user', displayType: 'uuid' },
+      { fieldName: 'identity', displayType: 'uuid' },
+    ],
+  },
   [Methods.SetStaffTenantUserPassword]: {
     route: 'set-staff-tenant-user-password',
     fields: [
       { fieldName: 'user', displayType: 'uuid' },
       { fieldName: 'password', displayType: 'string' },
+    ],
+  },
+  [Methods.UnlinkStaffTenantUserIdentity]: {
+    route: 'unlink-staff-tenant-user-identity',
+    fields: [
+      { fieldName: 'user', displayType: 'uuid' },
+      { fieldName: 'identity', displayType: 'uuid' },
     ],
   },
 };

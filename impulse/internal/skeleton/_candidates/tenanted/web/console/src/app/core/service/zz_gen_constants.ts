@@ -33,6 +33,8 @@ export const Methods = {
   SetFeature: 'SetFeature' as Method,
   SetStaffTenantUserPassword: 'SetStaffTenantUserPassword' as Method,
   SetStaffUserPassword: 'SetStaffUserPassword' as Method,
+  UnlinkStaffTenantUserIdentity: 'UnlinkStaffTenantUserIdentity' as Method,
+  UnlinkStaffUserIdentity: 'UnlinkStaffUserIdentity' as Method,
 };
 
 export namespace Announcements {

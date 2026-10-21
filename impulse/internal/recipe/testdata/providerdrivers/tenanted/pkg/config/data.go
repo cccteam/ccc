@@ -348,14 +348,31 @@ type dataConfig struct {
 	// nobody types and the first sign-in changes. Unset in development, where the
 	// bootstrap creates the development logins instead.
 	StaffAdministratorPassword string `env:"APP_STAFF_ADMINISTRATOR_PASSWORD" secret:"generated"`
+	// The staff auth's google registration: how the application is known to Google. Under
+	// the session library's skipAuth build tag (the Procfile's) Google is simulated and
+	// only the redirect URL is read.
+	StaffGoogleClientID     string `env:"APP_STAFF_GOOGLE_CLIENT_ID"`
+	StaffGoogleClientSecret string `env:"APP_STAFF_GOOGLE_CLIENT_SECRET" secret:"true"`
+	StaffGoogleRedirectURL  string `env:"APP_STAFF_GOOGLE_REDIRECT_URL"`
 }
 
 // staffSettings builds the staff auth's settings: the generated collection its default
 // roles validate against, the live service its engine signals policy changes through,
-// the cookie key its sessions are signed with, and the session timeout. A directory
-// registration's settings join the literal here (impulse add method), read from the
-// environment under the registration's variables, so the constructor stays one call
-// per auth.
+// the cookie key its sessions are signed with, the session timeout, the console's login
+// page, where a refused or waiting directory sign-in returns to, and the google
+// registration's settings, read from the environment under the registration's
+// variables, so the constructor stays one call per auth.
 func (env *dataConfig) staffSettings(collection access.PermissionCollection, signals staff.Signals, cookieKey string) *staff.Settings {
-	return &staff.Settings{Collection: collection, Signals: signals, CookieKey: cookieKey, SessionTimeout: env.SessionTimeout}
+	return &staff.Settings{
+		Collection:     collection,
+		Signals:        signals,
+		CookieKey:      cookieKey,
+		SessionTimeout: env.SessionTimeout,
+		LoginURL:       "/login",
+		Google: staff.GoogleSettings{
+			ClientID:     env.StaffGoogleClientID,
+			ClientSecret: env.StaffGoogleClientSecret,
+			RedirectURL:  env.StaffGoogleRedirectURL,
+		},
+	}
 }

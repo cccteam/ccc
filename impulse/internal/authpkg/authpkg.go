@@ -196,9 +196,11 @@ func (m *Method) accounts() string {
 // Arg is the method as a generator program declares it on an Auth option: its kind and
 // registration name, with .InvitedUsers() chained under the invited-users rule, so the
 // users surface the generator emits creates the invitations the method file's
-// signin.InvitedUsersOnly admits. The declaration and the method file read the same rule.
+// signin.InvitedUsersOnly admits, and .OpenSignUp() under the open sign-up rule, the
+// registration a self-service tenant record needs (the method file's signin.OpenSignUp).
+// The declaration and the method file read the same rule.
 func (m *Method) Arg() app.AuthMethodArg {
-	return app.AuthMethodArg{Kind: m.Kind, Name: m.Name, InvitedUsers: m.accounts() == AccountsInvited}
+	return app.AuthMethodArg{Kind: m.Kind, Name: m.Name, InvitedUsers: m.accounts() == AccountsInvited, OpenSignUp: m.accounts() == AccountsOpen}
 }
 
 // Declaration writes the method as a generator program carries it, package-qualified

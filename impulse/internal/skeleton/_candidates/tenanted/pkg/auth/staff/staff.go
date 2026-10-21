@@ -1,8 +1,8 @@
-// Package staff is the staff auth: the people who sign in to the console with a password, who hold their roles in the
+// Package staff is the staff auth: the people who sign in to the console with a password, or with any Google account to create their own tenant, who hold their roles in the
 // staff permission store.
 //
 // An auth is a package. It owns its session manager, one Auth session with the sign-in
-// methods registered on it (here password), with its own session, user, identity, auth
+// methods registered on it (here password, google), with its own session, user, identity, auth
 // event and pending sign-in tables and cookie; its permission store, with its own table
 // prefix, whose engine signals policy changes to the application's other instances
 // through the live service; and its role file, embedded beside it, so the release's
@@ -26,6 +26,7 @@ import (
 	"github.com/cccteam/access/spannerstore"
 	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/session"
+	"github.com/cccteam/session/google"
 	"github.com/cccteam/session/sessionstorage"
 	"github.com/go-playground/errors/v5"
 )
@@ -90,6 +91,14 @@ type Settings struct {
 	CookieKey string
 	// SessionTimeout is the idle timeout of a browser session.
 	SessionTimeout time.Duration
+	// LoginURL is the browser page a refused or waiting sign-in returns to, with the
+	// reason as a code in the query (?code=, a sessioninfo.LoginRefusalCode, never text, or
+	// ?pending= for a sign-in that waits): the login page of the surface that binds to
+	// this auth, which holds the sentence for each code.
+	LoginURL string
+	// Google is the google registration's settings: how the application is known to
+	// Google, read from the environment (APP_STAFF_GOOGLE_CLIENT_ID, APP_STAFF_GOOGLE_CLIENT_SECRET, APP_STAFF_GOOGLE_REDIRECT_URL).
+	Google GoogleSettings
 }
 
 // Signals is the channel the auth's permission engine signals a policy change on and
@@ -121,6 +130,7 @@ type Auth struct {
 type Handlers struct {
 	*Session
 	password *session.PasswordMethod
+	google   *google.Method
 }
 
 // PendingStatus reports the sign-in that waits for a password confirmation, if any.
@@ -187,6 +197,7 @@ func New(ctx context.Context, db *cloudspanner.Client, settings *Settings) (*Aut
 
 	handlers := &Handlers{Session: authSession}
 	handlers.password = registerPassword(authSession)
+	handlers.google = registerGoogle(authSession, accessClient, settings)
 
 	return &Auth{db: db, access: accessClient, handlers: handlers}, nil
 }

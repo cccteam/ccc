@@ -44,7 +44,8 @@ seeds it again without touching the schema), serves the application on :8090, an
 `ng serve` for both browser apps:
 the crew console on :4300 (`/console/api` proxied) and the client portal on :4301
 (`/portal/api` proxied). Browse http://127.0.0.1:4300/console/ and sign in as any persona
-on the crew manifest, or through the fleet's Google directory as the navigator; browse
+on the crew manifest, through the fleet's Google directory as the navigator, or with
+"Sign up with Google" as the pioneer, who holds nothing and charts her own sector; browse
 http://127.0.0.1:4301/portal/ and sign in through the simulated directory as `client`.
 Both Go processes build with the session library's `skipAuth` tag, which simulates every
 Google directory from `.envrc`: the portal's from `APP_USERNAME` and `APP_ROLES`, the
@@ -498,8 +499,9 @@ keyed by the registration's name) and where a sign-in lands.
 
 The crew sign in with passwords at `/console/api/user/password/login`, or through the
 fleet's Google directory at `/console/api/user/google/login`, two methods on one session:
-whichever way a crew member signs in, the session is a crew session in the same table
-under the same cookie. A password persona's roles are the application's
+or sign up with any Google account at `/console/api/user/sign-up/login`, three methods
+on one session: whichever way a crew member signs in, the session is a crew session in
+the same table under the same cookie. A password persona's roles are the application's
 (`pkg/auth/crew/roles.json`, embedded in the binary and validated against the generated
 permission collection when the auth opens, so a release whose roles are wrong does not
 start; the store holds no row for them, and the bootstrap assigns the memberships from
@@ -566,6 +568,7 @@ manifest: pick a card, sign in, switch, never more than two clicks.
 | `harbormaster` | Harbormaster Hollis, Anvil | List and Read on Ships, nothing else of her own: the live fleet board. Her list and the ship she has open are subscribed when they are read, the engineer's refit (or a hail) lands on both without a reload, a board left and reopened inside five minutes is the browser's own, and the pilot watching Bastion's fleet and the cadet, who holds no List on Ships, receive nothing. Demonstrates: live.pages. |
 | `adjutant` | Adjutant Alba, headquarters | The commendations desk, the one resource behind a feature flag, and the key that turns it: `FeatureAdministrator` (List and Read on `FeatureFlags`, Execute on `SetFeature`, global) beside `Adjutant` (List, Read and Create on `Commendations`). Off, the desk's routes answer the router's own 404, the digest leaves the desk and the card's `commendations` field out, and the field named in a request is unknown; she turns the flag on through `SetFeature`, the desk answers, Pax's card counts his citations, and a second server process serves the desk at its next request with no restart; off again, both refuse. Demonstrates: @feature, @feature.field. |
 | `surveyor` | Surveyor Shen, headquarters | Charts new sectors: `Surveyor` (Create and Update on `Sectors`, global) beside `SectorCrew` held in every sector. `Sectors` is the tenant record (`@tenant`) and every instance holds a roster of it: when she charts Dawn through the consolidated patch, the instance that wrote adds Dawn to its roster after the commit and signals the tenants kind, so her star chart lights Dawn and Dawn's wings answer her at once, with no restart, no migrate job and no new login; the marshal's chart stays dark and Dawn answers her as a sector that does not exist; the client's portal, the governor and the archivist, all held in every sector, see Dawn with nothing written for them; and a second server process serves Dawn at its next request. Demonstrates: tenancy.run-time-tenant. |
+| `pioneer` | Pioneer Pia, on no manifest | Signs up with any Google account (the crew auth's `sign-up` registration: open sign-up, no roles, the application the authority), a crew login holding nothing, and charts her own sector through the generated `create-sector` route: `Sectors` declares who may chart one apart from who may enter one (`@tenant(creation: both)`), so the route writes Ember, seats her as its marshal (`SectorMarshal`, the roles `SectorAdministratorRoles` names) and hands it to the roster in one call, and her chart lights Ember at once; a second sector is refused her, as the route is refused the marshal and the governor, who hold sectors already. Sign in first, then name the sector. Demonstrates: tenancy.self-service, auth.open-sign-up. |
 | `client` | Client Cleo, portal only | Signs in through her company's directory, whose groups are her roles; the second browser app over the second TypeScript target; `client = subject.client` from the ClientContact anchor; a conditional Execute fired from a portal session; a PII field an external user writes; the portal-only client statement. Demonstrates: auth.directory-roles, auth.skipauth-directory, typescript.second-target, outlet.session, @subjectValue.second-anchor, @manualAddResource.outlet. |
 | `droid-r7` | R7, service account, no login | The API-keyed droids outlet: telemetry with no human route, one reading per call, each carrying the firmware's raw frame, a type declared in the droid link's own package whose generated methods the generator writes there (`WithTypes`); releases through the shared method under its own read grant. Demonstrates: outlet.api-key, outlet.exclusive, machine-identity, rpc.row-free, typescript.types-package. |
 

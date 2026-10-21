@@ -1493,6 +1493,11 @@ func generatedRouterTests() []*generatedRouterTest {
 			parameters:  map[string]string{},
 		},
 		{
+			url: "/console/api/create-sector", method: http.MethodPost,
+			handlerFunc: "CreateSector",
+			parameters:  map[string]string{},
+		},
+		{
 			url: "/console/api/crew-users", method: http.MethodGet,
 			handlerFunc: "CrewUsers",
 			parameters:  map[string]string{},
@@ -2107,6 +2112,10 @@ func (s *generatedHandlersStub) Consignments() http.HandlerFunc {
 
 func (s *generatedHandlersStub) Consignment() http.HandlerFunc {
 	return s.record("Consignment")
+}
+
+func (s *generatedHandlersStub) CreateSector() http.HandlerFunc {
+	return s.record("CreateSector")
 }
 
 func (s *generatedHandlersStub) CrewRoles() http.HandlerFunc {

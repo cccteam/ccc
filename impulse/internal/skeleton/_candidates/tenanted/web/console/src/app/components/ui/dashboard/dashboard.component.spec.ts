@@ -117,12 +117,20 @@ describe('DashboardComponent', () => {
     ]);
   });
 
-  it('says so when the session holds nothing', async () => {
+  it('says so when the session holds nothing, and offers the create-your-tenant page', async () => {
     const fixture = await render(stranger);
     const element: HTMLElement = fixture.nativeElement;
 
     expect(element.querySelector('p strong')?.textContent).toBe('no tenant');
     expect(element.querySelectorAll('tbody tr')).toHaveLength(1);
     expect(element.querySelector('td.empty')?.textContent).toContain('You hold nothing here');
+    const offer = element.querySelector<HTMLAnchorElement>('.create-tenant-card a');
+    expect(offer?.textContent).toContain('Create your tenant');
+    expect(offer?.getAttribute('href')).toBe('/create-tenant');
+  });
+
+  it('offers no create-your-tenant page to a session holding a tenant', async () => {
+    const fixture = await render(member);
+    expect((fixture.nativeElement as HTMLElement).querySelector('.create-tenant-card')).toBeNull();
   });
 });

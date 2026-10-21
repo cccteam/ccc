@@ -119,6 +119,18 @@ func (au Auth) invited() []string {
 	return registrations
 }
 
+// openSignUp lists the registrations admitting anyone the directory verifies.
+func (au Auth) openSignUp() []string {
+	var registrations []string
+	for _, m := range au.methods() {
+		if m.Directory() && m.Accounts == authpkg.AccountsOpen {
+			registrations = append(registrations, m.Name)
+		}
+	}
+
+	return registrations
+}
+
 // Pascal is the auth's table prefix and accessor name.
 func (au Auth) Pascal() string { return names.Pascal(au.Name) }
 
@@ -781,6 +793,9 @@ func (au Auth) Meaning() string {
 	}
 	if invited := au.invited(); len(invited) > 0 {
 		items = append(items, invitationsItem(au.Name, invited))
+	}
+	if open := au.openSignUp(); len(open) > 0 {
+		items = append(items, openSignUpItem(open))
 	}
 	if au.directory() {
 		items = append(items, fmt.Sprintf("Register it. The environment template now carries each directory method's variables (`APP_%s_<REGISTRATION>_*`): set the redirect URL to the browser-facing callback under the %s outlet's prefix (through the dev proxy in development), and fill the rest in when the application is registered with its directory. Until then the Procfile builds with the session library's `skipAuth` tag, which simulates the directory: every sign-in through a registration is `APP_<REGISTRATION>_USERNAME`, or `APP_USERNAME` when that is unset.", strings.ToUpper(au.Name), au.Outlet))

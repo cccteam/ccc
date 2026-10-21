@@ -56,6 +56,10 @@ func (r *resourceGenerator) runRouteGeneration() error {
 	// routes and SetFeature on the session-serving ones.
 	routerTestRoutes = append(routerTestRoutes, accumulateFeatureRoutes(outlets, outletRoutes)...)
 
+	// The create-your-tenant route, on the session outlets serving a tenant record
+	// whose creation shape admits self-service.
+	routerTestRoutes = append(routerTestRoutes, r.accumulateTenantCreationRoute(outlets, outletRoutes)...)
+
 	// The user-management surfaces: each Auth's resources and methods on its outlet
 	// and on the outlets that manage it.
 	userRoutes, err := r.accumulateUserRoutes(outlets, outletRoutes)

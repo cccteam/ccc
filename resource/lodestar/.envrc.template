@@ -135,3 +135,11 @@ export APP_CREW_OIDC_HOSTED_DOMAIN=example.com
 # assigns <role>, in the names pkg/auth/crew/roles.json holds.
 export APP_CREW_OIDC_GROUP_PREFIX=crew-
 # export APP_CREW_OIDC_GROUP_LOOKUP=direct
+#
+# The crew auth's sign-up registration, the third way into the console: any Google account,
+# open sign-up, no roles (the application is the authority), for a person on no manifest and
+# in no directory, whose one way to a sector is to chart their own (Sectors declares
+# @tenant(creation: both)). Every simulated login through it is APP_SIGN_UP_USERNAME, a
+# name on no manifest; the client is the directory's and the callback is its own.
+export APP_SIGN_UP_USERNAME=pioneer
+export APP_CREW_SIGN_UP_REDIRECT_URL=http://127.0.0.1:4300/console/api/user/sign-up/callback

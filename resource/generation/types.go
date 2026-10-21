@@ -225,7 +225,11 @@ const (
 	// tenantRosterOutputName names the handler package's file carrying the tenant
 	// record's roster constructor (New<Record>Roster): a singular stem, since every
 	// resource's handler file takes the plural of its name.
-	tenantRosterOutputName        = "tenant_roster"
+	tenantRosterOutputName = "tenant_roster"
+	// tenantCreationOutputName names the handler package's file carrying the tenant
+	// record's create-your-tenant handler (Create<Record>), written where the record's
+	// creation shape admits self-service; a singular stem like the roster's.
+	tenantCreationOutputName      = "tenant_creation"
 	permissionsOutputName         = "permissions"
 	liveOutputName                = "live"
 	decodersOutputName            = "decoders"
@@ -268,6 +272,7 @@ var reservedOutputStems = map[string]reservedOutput{
 	resourceEnumsFileName:         {file: generatedGoFileName(resourceEnumsFileName), carries: "the enumerations"},
 	domainGuardOutputName:         {file: generatedGoFileName(domainGuardOutputName), carries: "the domain guard"},
 	tenantRosterOutputName:        {file: generatedGoFileName(tenantRosterOutputName), carries: "the tenant roster constructor"},
+	tenantCreationOutputName:      {file: generatedGoFileName(tenantCreationOutputName), carries: "the create-your-tenant handler"},
 	permissionsOutputName:         {file: generatedGoFileName(permissionsOutputName), carries: "the permission endpoints"},
 	liveOutputName:                {file: generatedGoFileName(liveOutputName), carries: "the live handlers"},
 	decodersOutputName:            {file: generatedGoFileName(decodersOutputName), carries: "the decoders"},
@@ -1182,6 +1187,9 @@ type resourceInfo struct {
 	// route parameter the domain route parameter, and its generated write paths keep
 	// the application's TenantRoster current after their commit.
 	IsTenant bool
+	// TenantCreation is the tenant record's creation shape (@tenant(creation: ...)):
+	// who may create a tenant. The zero value is the default, an administrator alone.
+	TenantCreation tenantCreation
 }
 
 // IsDomainScoped reports whether the resource's @permissionScope resolves to the
@@ -1249,11 +1257,17 @@ func (r *resourceInfo) CreateHandlerDisabled() bool {
 	return slices.Contains(r.SuppressedHandlers, PatchHandler) || r.CreateDisabled()
 }
 
-// CreateDisabled reports whether the resource carries a @file whose key column is NOT
-// NULL: a row is added by the @upload method that stores its file, so Create is not
-// registered and the patch handlers refuse a create op naming that way in. A nullable
-// key leaves Create ordinary: a row may exist before its file does.
+// CreateDisabled reports whether the resource's rows come in some other way than a
+// create under a Create grant: a @file whose key column is NOT NULL (a row is added by
+// the @upload method that stores its file), or a tenant record whose creation shape is
+// self-service alone (a tenant is created through the generated create-your-tenant
+// route by the person who becomes its administrator). Create is then not registered
+// and the patch handlers refuse a create op naming the way in (CreateRefusal). A
+// nullable @file key leaves Create ordinary: a row may exist before its file does.
 func (r *resourceInfo) CreateDisabled() bool {
+	if r.IsTenant && !r.TenantCreation.AdministratorCreates() {
+		return true
+	}
 	for _, file := range r.Files {
 		if file.Key != nil && !file.Key.Nullable {
 			return true
@@ -1261,6 +1275,16 @@ func (r *resourceInfo) CreateDisabled() bool {
 	}
 
 	return false
+}
+
+// CreateRefusal is the sentence the patch handlers answer a create op with where
+// CreateDisabled: the way a row of the resource comes in instead.
+func (r *resourceInfo) CreateRefusal() string {
+	if r.IsTenant && !r.TenantCreation.AdministratorCreates() {
+		return fmt.Sprintf("a %s is created by the person who becomes its administrator, through the %s route (@tenant(creation: self-service)); no administrator creates one", r.Name(), tenantCreationRoute(r.Name()))
+	}
+
+	return fmt.Sprintf("a %s row is added by the @upload method that stores its file; a create cannot supply the file's key", r.Name())
 }
 
 // PatchPermissions are the permissions the patch handler registers and its decoder
@@ -2118,7 +2142,7 @@ func resourceKeywords() map[string]genlang.KeywordOpts {
 		typescriptKeyword:           {genlang.ScanNamedType: genlang.ArgsRequired | genlang.Exclusive, genlang.ScanStruct: genlang.ArgsRequired | genlang.Exclusive},
 		fileKeyword:                 {genlang.ScanField: genlang.Exclusive, genlang.ScanStruct: genlang.Exclusive},
 		featureKeyword:              {genlang.ScanStruct: genlang.ArgsRequired | genlang.Exclusive, genlang.ScanField: genlang.ArgsRequired | genlang.Exclusive},
-		tenantKeyword:               {genlang.ScanStruct: genlang.NoArgs | genlang.Exclusive},
+		tenantKeyword:               {genlang.ScanStruct: genlang.Exclusive},
 		formerlyKeyword:             {genlang.ScanStruct: genlang.ArgsRequired | genlang.Exclusive, genlang.ScanField: genlang.ArgsRequired | genlang.Exclusive},
 		scheduleKeyword:             {genlang.ScanStruct: genlang.ArgsRequired | genlang.Exclusive},
 	}

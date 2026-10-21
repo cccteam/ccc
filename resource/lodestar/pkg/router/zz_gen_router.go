@@ -6,8 +6,8 @@
 //
 //	every request: tracing, hooks.Outermost, request logging, SecurityHeaders, httpio.WithParams
 //	  by hand under /beacons/: request log on event, traces off
-//	default (/console/api), sessions of the crew auth (password, google):
-//	  BindAuth(crew.Name), NoCaching, CompressionMiddleware, StartSession, SetXSRFToken: GET /console/api/user/methods, GET /console/api/user/session, DELETE /console/api/user/session, GET /console/api/user/pending, GET /console/api/user/google/login, GET /console/api/user/google/callback
+//	default (/console/api), sessions of the crew auth (password, google, sign-up):
+//	  BindAuth(crew.Name), NoCaching, CompressionMiddleware, StartSession, SetXSRFToken: GET /console/api/user/methods, GET /console/api/user/session, DELETE /console/api/user/session, GET /console/api/user/pending, GET /console/api/user/google/login, GET /console/api/user/google/callback, GET /console/api/user/sign-up/login, GET /console/api/user/sign-up/callback
 //	  + ValidateXSRFToken: POST /console/api/user/password/login, POST /console/api/user/password/change, POST /console/api/user/pending/confirm, POST /console/api/user/pending/cancel
 //	  + ValidateSession, ValidateXSRFToken, CheckAPIVersion (oldest answered 0.1.0): hooks.Default, generatedRoutes
 //	droids (/droids), API key:
@@ -122,6 +122,9 @@ type DefaultSession interface {
 	// The google registration's login and callback (google.Method).
 	GoogleLogin() http.HandlerFunc
 	GoogleCallback() http.HandlerFunc
+	// The sign-up registration's login and callback (google.Method).
+	SignUpLogin() http.HandlerFunc
+	SignUpCallback() http.HandlerFunc
 }
 
 // PortalSession is the portal outlet's session surface: the Auth's middleware and
@@ -216,7 +219,7 @@ func New(h Handlers, hooks Hooks) *chi.Mux {
 		})
 	}
 
-	// The default outlet (/console/api): sessions of the crew auth (password, google).
+	// The default outlet (/console/api): sessions of the crew auth (password, google, sign-up).
 	r.Group(func(r chi.Router) {
 		r.Use(h.BindAuth(crew.Name))
 		r.Use(h.NoCaching)
@@ -233,6 +236,7 @@ func New(h Handlers, hooks Hooks) *chi.Mux {
 			Methods: []session.AdvertisedMethod{
 				{Name: "password", Label: "Password", Path: "/console/api/user/password/login"},
 				{Name: "google", Label: "Google", Path: "/console/api/user/google/login"},
+				{Name: "sign-up", Label: "Sign up with Google", Path: "/console/api/user/sign-up/login"},
 			},
 			Pending:        session.PendingRoutes{Status: "/console/api/user/pending", Confirm: "/console/api/user/pending/confirm", Cancel: "/console/api/user/pending/cancel"},
 			ChangePassword: "/console/api/user/password/change",
@@ -242,6 +246,8 @@ func New(h Handlers, hooks Hooks) *chi.Mux {
 		bounded.Get("/console/api/user/pending", h.PendingStatus())
 		bounded.Get("/console/api/user/google/login", h.GoogleLogin())
 		bounded.Get("/console/api/user/google/callback", h.GoogleCallback())
+		bounded.Get("/console/api/user/sign-up/login", h.SignUpLogin())
+		bounded.Get("/console/api/user/sign-up/callback", h.SignUpCallback())
 		guarded.Post("/console/api/user/password/login", h.PasswordLogin())
 		guarded.Post("/console/api/user/password/change", h.PasswordChange())
 		guarded.Post("/console/api/user/pending/confirm", h.PendingConfirmWithPassword())
