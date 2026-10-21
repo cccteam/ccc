@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.7.0](https://github.com/cccteam/ccc/compare/accesstypes/v0.6.1...accesstypes/v0.7.0) (2026-10-21)
+
+
+### ⚠ BREAKING CHANGES
+
+* **resource:** the generator's single-method declarations (Password, OIDCGoogle, OIDCAzure) and the v0.12 handler type names are gone; a program declares generation.Auth(importPath, methods...) with PasswordMethod(), GoogleMethod(name), AzureMethod(name) or WorkOSMethod(name). resource requires session v0.13.0 and access v0.11.1.
+
+### Features
+
+* **accesstypes:** the condition evaluator judges composed rows from accesstypes/condition ([#989](https://github.com/cccteam/ccc/issues/989)) ([e4d201d](https://github.com/cccteam/ccc/commit/e4d201d8725b03b84f4128b57a7172094cec18f9))
+* **impulse:** an auth is one Auth with registered sign-in methods, added with impulse add method, and the skeletons hand each auth's user-management surface the stores it serves over ([#980](https://github.com/cccteam/ccc/issues/980)) ([e4d201d](https://github.com/cccteam/ccc/commit/e4d201d8725b03b84f4128b57a7172094cec18f9))
+* **resource:** each Auth's users, seats and roles are served as resources, with grant conditions judged over the composed rows, and the generated descriptor carries a userSurfaces block the user-management page configures itself from ([#989](https://github.com/cccteam/ccc/issues/989)) ([e4d201d](https://github.com/cccteam/ccc/commit/e4d201d8725b03b84f4128b57a7172094cec18f9))
+* **resource:** session outlets declare their Auth's sign-in methods, and the generated router serves the methods, session, pending and password-change routes the login page renders from, on session v0.13 ([#958](https://github.com/cccteam/ccc/issues/958)) ([e4d201d](https://github.com/cccteam/ccc/commit/e4d201d8725b03b84f4128b57a7172094cec18f9))
+
+
+### Code Upgrade
+
+* **deps:** Go 1.26.10; crypto/x509 GO-2026-6809 fixed ([#1018](https://github.com/cccteam/ccc/issues/1018)) ([25dc507](https://github.com/cccteam/ccc/commit/25dc507e6226ed8d39fd49960a87ec04d8a04f5a))
+
 ## [0.6.1](https://github.com/cccteam/ccc/compare/accesstypes/v0.6.0...accesstypes/v0.6.1) (2026-10-09)
 
 
