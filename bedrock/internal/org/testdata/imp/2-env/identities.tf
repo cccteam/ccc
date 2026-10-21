@@ -207,8 +207,12 @@ resource "google_spanner_instance_iam_member" "apply_restore_admin" {
 # number>" (the stack's locals.tf), so storage admin is held under a condition
 # admitting every bucket whose name starts with the application's segment
 # under either location name, with the objects in it: nothing of another
-# application's buckets, and nothing of the records bucket, whose policy
-# (records.tf) names no apply identity.
+# application's buckets, and nothing of the records bucket through this
+# grant. What the apply identity holds there is the bucket's policy's
+# (records.tf): a read of the deployment records, since the stack's pr-stack
+# and check triggers run as it and the pull request's stack job reads the
+# pull request's newest record before its plan, and the writes under
+# <app>/stacks/.
 # Creating a bucket is checked on the project (storage.buckets.create: the
 # bucket does not exist yet), as is listing the project's buckets, so no
 # bucket's name can admit them: the organization's storageBucketCreator role

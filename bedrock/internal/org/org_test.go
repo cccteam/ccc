@@ -760,7 +760,7 @@ func TestRecordsBucketPolicy(t *testing.T) {
 			want: []string{
 				"  records_deploy_members = [for app in var.applications : google_service_account.deploy[app].member]\n  records_plan_members   = [for app in var.applications : google_service_account.plan[app].member]\n",
 				"      { role = \"roles/storage.objectCreator\", members = local.records_deploy_members, condition = local.records_creator_condition },\n",
-				"      { role = \"roles/storage.objectViewer\", members = concat(local.records_deploy_members, local.records_plan_members, local.records_ops_members, local.records_lower_ops_members, local.records_rehearsal_members, values(local.next_deploy_members), [local.team_group]), condition = null },\n",
+				"      { role = \"roles/storage.objectViewer\", members = concat(local.records_deploy_members, local.records_apply_members, local.records_plan_members, local.records_ops_members, local.records_lower_ops_members, local.records_rehearsal_members, values(local.next_deploy_members), [local.team_group]), condition = null },\n",
 				// What a stack writes itself (its id object, and in tst the stack jobs'
 				// outputs) is the apply identity's to write, under its prefix alone, which
 				// the deploy identities' creator binding excludes; the team group writes
@@ -782,6 +782,21 @@ func TestRecordsBucketPolicy(t *testing.T) {
 			absent: []string{"resource \"google_storage_bucket_iam_member\"", "builder role"},
 		},
 		{
+			// The apply identities read the records, as the deploy identities do: the
+			// stack's pr-stack and check triggers run as the apply identity, and the pull
+			// request's stack job reads the pull request's newest record before its plan.
+			// A list is a request on the bucket, so the read is a viewer binding of the
+			// bucket, beside the deploy identities', and not a grant under <app>/stacks/.
+			name: "the apply identities read the records beside the deploy identities",
+			path: "2-env/records.tf",
+			want: []string{
+				"  records_apply_members = [for app in var.applications : google_service_account.apply[app].member]\n",
+				"members = concat(local.records_deploy_members, local.records_apply_members, ",
+				"# is a binding of the bucket, as the deploy identities' is.\n",
+			},
+			absent: []string{"records_apply_members, condition = {", "resource \"google_storage_bucket_iam_member\" \"apply_records\""},
+		},
+		{
 			name:   "no member resource on the bucket beside the policy",
 			path:   "2-env/identities.tf",
 			want:   []string{"bindings of the records\n# bucket's policy (records.tf)", "resource \"google_storage_bucket_iam_member\" \"apply_state_net\" {\n  for_each = local.apps\n\n  bucket = var.state_bucket\n  role   = \"roles/storage.objectViewer\"\n  member = google_service_account.apply[each.key].member\n", "objects/2-net/\\\")\"\n"},
@@ -794,6 +809,8 @@ func TestRecordsBucketPolicy(t *testing.T) {
 				"the environment's team group (a person on\n  the team reads a record through the group) and the project's basic roles,\n  which keep Cloud Storage's default grants: an Owner of the project or the\n  organization reads and changes the records the way an Owner reaches\n  everything",
 				"in production the lower\n  environments' operations identities too (a restore from production's\n  backup reads production's live release)",
 				"A grant\n  added on the bucket by hand, for a day's debugging, is removed by this\n  layer's next apply; a grant added on the project is not",
+				"the environment's application apply identities (the stack's pr-stack and\n  check triggers run as the apply identity, and the pull request's stack job\n  reads the pull request's newest record before its plan: the stale-database\n  check",
+				"`roles/storage.objectViewer` on the bucket, since the stack's pr-stack and\ncheck triggers run as this identity and the pull request's stack job reads\nthe pull request's newest deployment record before its plan",
 			},
 		},
 	}
@@ -899,7 +916,7 @@ func TestStorageAdminBounds(t *testing.T) {
 		{
 			name: "the 2-env README says which buckets the condition admits",
 			path: "2-env/README.md",
-			want: []string{"`imp-<env>-<location>-<app>-`, where the location is where the\ndatabase is", "which is the application's file stores", "Without the condition, any application's\napply identity, and so its pipeline and its pull-request builds, would read\nand delete every other application's files and every record."},
+			want: []string{"`imp-<env>-<location>-<app>-`, where the location is where the\ndatabase is", "which is the application's file stores", "Without the condition, any application's\napply identity, and so its pipeline and its pull-request builds, would read\nand delete every other application's files, and delete every record."},
 		},
 	}
 	for _, tt := range tests {
@@ -1308,7 +1325,7 @@ func TestSpannerGrants(t *testing.T) {
 			path: "2-env/records.tf",
 			want: []string{
 				`records_ops_members = [for app in var.applications : google_service_account.operations[app].member]`,
-				`concat(local.records_deploy_members, local.records_plan_members, local.records_ops_members, local.records_lower_ops_members, local.records_rehearsal_members, values(local.next_deploy_members), [local.team_group])`,
+				`concat(local.records_deploy_members, local.records_apply_members, local.records_plan_members, local.records_ops_members, local.records_lower_ops_members, local.records_rehearsal_members, values(local.next_deploy_members), [local.team_group])`,
 			},
 		},
 		{

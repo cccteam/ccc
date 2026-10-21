@@ -141,7 +141,10 @@ again does not, because its pull request is already labeled as tagged.
   `after-traffic`, `after-down`. No file, nothing runs.
 - **Deploy identity** and **apply identity**: per application and environment, the
   service account the pipeline runs as (`<prefix>-<env>-gbl-<app>-deploy`) and the one
-  that applies the stack (`<prefix>-<env>-gbl-<app>-tofu`), both created by `2-env`.
+  that applies the stack (`<prefix>-<env>-gbl-<app>-tofu`), both created by `2-env`. Both
+  read the environment's deployment records through `2-env`'s bindings on the records
+  bucket: the pipeline as the deploy identity, and the pull request's stack job, which
+  the pr-stack and check triggers run as the apply identity, before its plan.
 - **Deployment record**: what a build deployed, written to the environment's records
   bucket as `<app>/<env>/<release>/<build id>.json`; the next environment's gate reads
   it, and the pipeline reads the newest one to tell a stale pull-request database.
@@ -889,7 +892,9 @@ thing one step hands the next. In order:
   state prefix: the plan is saved, the guard lets only the pull request's own resources
   through, the apply applies exactly that plan (a destroy on `/gcbrun down`; the
   database replaced on `/gcbrun reload-db`, or when the migrations its last build applied
-  are no longer in the tree as applied). What the stack now says (the services, the job,
+  are no longer in the tree as applied, read from the pull request's newest deployment
+  record as the apply identity, which `2-env` binds to the records bucket as a viewer for
+  this read). What the stack now says (the services, the job,
   the hostname, the migrate command's settings, the build arguments the placement
   declares, the database mode) goes to the records bucket as
   `<app>/stacks/<env>/pr<N>/<commit>.json`, which the preview build reads; a destroy and
