@@ -138,7 +138,7 @@ func (m *Method) Apply(ctx context.Context, a *app.App, exec check.Execer) (*Cha
 		if err := tagProcfile(a, m.Auth, ch); err != nil {
 			return nil, err
 		}
-		if err := writeMethodEnv(a, m.Auth, spec, ch); err != nil {
+		if err := writeMethodEnv(a, m.Auth, spec, m.callback(a, pkg, spec), ch); err != nil {
 			return nil, err
 		}
 		slotHandoff(ch, m.Auth, spec)
@@ -573,9 +573,79 @@ func tagProcfile(a *app.App, auth string, ch *Change) error {
 
 var goRunRE = regexp.MustCompile(`\bgo run `)
 
+// devCallback is the development address of a directory method's callback: the dev
+// server of the browser project that serves the outlet bound to the auth, which proxies
+// the outlet's prefix to the server, so the directory (simulated or real) returns the
+// browser to a page the project serves.
+type devCallback struct {
+	// URL is the callback as the browser reaches it in development:
+	// http://127.0.0.1:<development port>/<outlet prefix>/user/<method>/callback.
+	URL string
+	// Project is the browser project whose dev server answers it, as angular.json names
+	// it (console).
+	Project string
+}
+
+// outletCallback is the development callback of a method registered on the auth the
+// outlet binds to: the outlet's browser project (the GenerateTypescript target the
+// outlet declares, the default outlet's being the one without ForOutlet) and the port of
+// its development serve configuration in angular.json, with the callback under the
+// outlet's prefix, which the project's dev server proxies to the server. nil when the
+// outlet has no browser project with a development port.
+func outletCallback(a *app.App, site *app.Site, outlet *app.Outlet, method string) *devCallback {
+	for _, t := range site.Generator.TypescriptTargets() {
+		target := t.Outlet
+		if target == "" {
+			target = app.DefaultOutletName
+		}
+		if target != outlet.Name {
+			continue
+		}
+		w, ok := a.WebAppFor(t.Dir)
+		if !ok {
+			continue
+		}
+		projects, err := a.ReadAngular(w.Dir)
+		if err != nil {
+			continue
+		}
+		rel := strings.TrimPrefix(strings.TrimPrefix(t.Dir, w.Dir), "/")
+		p, ok := app.ProjectFor(projects, rel)
+		if !ok || p.DevPort == 0 {
+			continue
+		}
+
+		return &devCallback{URL: fmt.Sprintf("http://127.0.0.1:%d%s", p.DevPort, path.Join("/", outlet.Prefix, "user", method, "callback")), Project: p.Name}
+	}
+
+	return nil
+}
+
+// callback is the method's development callback on the first outlet bound to the auth
+// with a browser project in development, the default outlet first, or nil when none has
+// one.
+func (m *Method) callback(a *app.App, pkg *app.AuthPackage, spec *authpkg.Method) *devCallback {
+	sites := a.Profile().Sites
+	for i := range sites {
+		outlets := sites[i].AllOutlets()
+		for j := range outlets {
+			if outlets[j].Auth == nil || outlets[j].Auth.ImportPath != pkg.Path {
+				continue
+			}
+			if cb := outletCallback(a, &sites[i], &outlets[j], spec.Name); cb != nil {
+				return cb
+			}
+		}
+	}
+
+	return nil
+}
+
 // writeMethodEnv adds a directory method's variables to the development environment
-// template, with the simulated directory's shared pair when the template has none.
-func writeMethodEnv(a *app.App, auth string, spec *authpkg.Method, ch *Change) error {
+// template, with the simulated directory's shared pair when the template has none. The
+// callback variable is set to the development callback when the surface bound to the
+// auth has one, and left to fill in otherwise.
+func writeMethodEnv(a *app.App, auth string, spec *authpkg.Method, callback *devCallback, ch *Change) error {
 	if a.EnvTemplate == "" {
 		ch.skipf("no environment template (.envrc.template, .env.template, .env.example) to add the %s method's variables to (%s)", spec.Name, strings.Join(methodVariables(auth, spec), ", "))
 
@@ -591,11 +661,15 @@ func writeMethodEnv(a *app.App, auth string, spec *authpkg.Method, ch *Change) e
 	if !strings.Contains(string(data), "APP_USERNAME=") {
 		fmt.Fprintf(&b, "export APP_USERNAME=%s-dev\nexport APP_ROLES=\n", auth)
 	}
+	callbackNote := ""
 	fields := spec.Fields()
 	for i := range fields {
 		f := &fields[i]
 		variable := spec.Variable(auth, f)
 		switch {
+		case f.Name == authpkg.FieldRedirectURL && callback != nil:
+			fmt.Fprintf(&b, "# %s is the browser-facing callback of the surface that binds to the %s auth: in\n# development the %s project's dev server (its development port in angular.json), which\n# proxies the callback's path to the server; a deployment sets the served address. Read\n# under the simulated directory too, since it is where the simulated sign-in returns.\nexport %s=%s\n", variable, auth, callback.Project, variable, callback.URL)
+			callbackNote = fmt.Sprintf("; %s is set to the %s project's development callback, %s", variable, callback.Project, callback.URL)
 		case f.Name == authpkg.FieldRedirectURL:
 			fmt.Fprintf(&b, "# %s is the browser-facing callback of the surface that binds to the %s auth, such as\n# http://127.0.0.1:4300/api/user/%s/callback through the dev proxy; read under the\n# simulated directory too, since it is where the simulated sign-in returns.\nexport %s=\n", variable, auth, spec.Name, variable)
 		case f.Simulated:
@@ -608,7 +682,7 @@ func writeMethodEnv(a *app.App, auth string, spec *authpkg.Method, ch *Change) e
 	if err := os.WriteFile(a.Abs(a.EnvTemplate), []byte(text), mode); err != nil {
 		return errors.Wrap(err, "os.WriteFile()")
 	}
-	ch.didf("%s: the %s method's variables (%s), to fill in", a.EnvTemplate, spec.Name, strings.Join(methodVariables(auth, spec), ", "))
+	ch.didf("%s: the %s method's variables (%s), to fill in%s", a.EnvTemplate, spec.Name, strings.Join(methodVariables(auth, spec), ", "), callbackNote)
 
 	return nil
 }

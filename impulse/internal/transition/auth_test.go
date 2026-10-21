@@ -631,6 +631,20 @@ func TestAuthApply(t *testing.T) {
 			},
 		},
 		{
+			name:  "a directory auth served by the default outlet gets its callback as the console's development address",
+			auth:  Auth{Name: "partners", Methods: []authpkg.Method{{Kind: app.MethodAzure, Name: "directory", Authority: AuthorityApplication}}, Outlet: "default"},
+			extra: map[string]string{programFile: authRouterProgram, ".envrc.template": "export PORT=8090\n"},
+			wantDid: []string{
+				".envrc.template: the directory method's variables (APP_PARTNERS_DIRECTORY_TENANT_ID, APP_PARTNERS_DIRECTORY_CLIENT_ID, APP_PARTNERS_DIRECTORY_CLIENT_SECRET, APP_PARTNERS_DIRECTORY_REDIRECT_URL), to fill in; APP_PARTNERS_DIRECTORY_REDIRECT_URL is set to the console project's development callback, http://127.0.0.1:4300/console/api/user/directory/callback",
+			},
+			check: func(t *testing.T, a *app.App) {
+				t.Helper()
+				if env := read(t, a, ".envrc.template"); !strings.Contains(env, "export APP_PARTNERS_DIRECTORY_REDIRECT_URL=http://127.0.0.1:4300/console/api/user/directory/callback\n") {
+					t.Errorf(".envrc.template lacks the callback:\n%s", env)
+				}
+			},
+		},
+		{
 			name:  "a Google directory auth with the directory as authority reads roles from the groups, served by the portal outlet",
 			auth:  Auth{Name: "partners", Methods: []authpkg.Method{{Kind: app.MethodGoogle, Name: "workspace", Authority: AuthorityDirectory}}, Outlet: "portal"},
 			extra: routed,

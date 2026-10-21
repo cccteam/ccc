@@ -348,7 +348,7 @@ func (au Auth) Apply(ctx context.Context, a *app.App, exec check.Execer) (*Chang
 		}
 		for i := range spec.Methods {
 			if spec.Methods[i].Directory() {
-				if err := writeMethodEnv(a, au.Name, &spec.Methods[i], ch); err != nil {
+				if err := writeMethodEnv(a, au.Name, &spec.Methods[i], outletCallback(a, &outlet.Site, &outlet.Outlet, spec.Methods[i].Name), ch); err != nil {
 					return nil, err
 				}
 				slotHandoff(ch, au.Name, &spec.Methods[i])

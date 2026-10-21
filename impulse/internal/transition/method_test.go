@@ -289,6 +289,40 @@ func TestMethodApply(t *testing.T) {
 			},
 		},
 		{
+			name:   "a directory method's callback is the bound console's development address",
+			method: Method{Auth: "staff", Spec: authpkg.Method{Kind: app.MethodGoogle, Name: "google", Authority: AuthorityApplication, Slot: authpkg.SlotAny, Accounts: authpkg.AccountsInvited}},
+			extra:  map[string]string{".envrc.template": "export PORT=8090\n"},
+			wantDid: []string{
+				".envrc.template: the google method's variables (APP_STAFF_GOOGLE_CLIENT_ID, APP_STAFF_GOOGLE_CLIENT_SECRET, APP_STAFF_GOOGLE_REDIRECT_URL), to fill in; APP_STAFF_GOOGLE_REDIRECT_URL is set to the console project's development callback, http://127.0.0.1:4300/api/user/google/callback",
+			},
+			check: func(t *testing.T, a *app.App) {
+				t.Helper()
+				env := read(t, a, ".envrc.template")
+				for _, want := range []string{
+					"# development the console project's dev server (its development port in angular.json), which\n",
+					"export APP_STAFF_GOOGLE_REDIRECT_URL=http://127.0.0.1:4300/api/user/google/callback\n",
+				} {
+					if !strings.Contains(env, want) {
+						t.Errorf(".envrc.template lacks %q:\n%s", want, env)
+					}
+				}
+			},
+		},
+		{
+			name:   "a directory method's callback is left to fill in where the console has no development port",
+			method: Method{Auth: "staff", Spec: authpkg.Method{Kind: app.MethodGoogle, Name: "google", Authority: AuthorityApplication, Slot: authpkg.SlotAny, Accounts: authpkg.AccountsInvited}},
+			extra:  map[string]string{".envrc.template": "export PORT=8090\n", "web/angular.json": strings.Replace(beaconAngular, "              \"port\": 4300,\n", "", 1)},
+			wantDid: []string{
+				".envrc.template: the google method's variables (APP_STAFF_GOOGLE_CLIENT_ID, APP_STAFF_GOOGLE_CLIENT_SECRET, APP_STAFF_GOOGLE_REDIRECT_URL), to fill in",
+			},
+			check: func(t *testing.T, a *app.App) {
+				t.Helper()
+				if env := read(t, a, ".envrc.template"); !strings.Contains(env, "such as\n# http://127.0.0.1:4300/api/user/google/callback through the dev proxy; read under the\n# simulated directory too, since it is where the simulated sign-in returns.\nexport APP_STAFF_GOOGLE_REDIRECT_URL=\n") {
+					t.Errorf(".envrc.template does not leave the callback to fill in:\n%s", env)
+				}
+			},
+		},
+		{
 			name:    "tidy fails",
 			method:  Method{Auth: "staff", Spec: authpkg.Method{Kind: app.MethodGoogle, Name: "workspace", Authority: AuthorityApplication}},
 			tidyErr: errors.New("exit status 1"),
