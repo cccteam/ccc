@@ -323,7 +323,7 @@ func (au Auth) Apply(ctx context.Context, a *app.App, exec check.Execer) (*Chang
 		return nil, err
 	}
 	ch := &Change{Command: au.Command()}
-	spec := &authpkg.Spec{Module: modulePath(a), AuthDir: src.AuthDir, Name: au.Name, Methods: au.methods()}
+	spec := &authpkg.Spec{Module: modulePath(a), AuthDir: src.AuthDir, Name: au.Name, Methods: au.methods(), TenantPolicy: tenantPolicy(a, &outlet.Site)}
 	if err := au.writePackage(a, src, spec, ch); err != nil {
 		return nil, err
 	}
@@ -417,6 +417,24 @@ func modulePath(a *app.App) string {
 }
 
 // writePackage renders the auth package: the Auth file and one file per method.
+// tenantPolicy is the sign-in rule of an auth serving a tenanted site: the library's
+// tenant policy over the site's tenant record's declaration, read through the generated
+// reader the data level hands in (the settings copied from the source auth carry it),
+// admitting a person who holds no tenant where the record is created by its own people.
+// Nil for a site without tenants.
+func tenantPolicy(a *app.App, site *app.Site) *authpkg.TenantPolicy {
+	if !site.Tenanted() {
+		return nil
+	}
+	record := site.TenantRecord.Name
+
+	return &authpkg.TenantPolicy{
+		Record:             record,
+		Reader:             packageNameOf(a, site.Generator.HandlersDir()) + ".New" + record + "DeclarationReader",
+		AdmitWithoutTenant: site.TenantRecord.SelfService(),
+	}
+}
+
 func (au Auth) writePackage(a *app.App, src *authSource, spec *authpkg.Spec, ch *Change) error {
 	dir := path.Join(src.AuthDir, au.Name)
 	if _, err := os.Stat(a.Abs(dir)); err == nil {
@@ -440,7 +458,14 @@ func (au Auth) writePackage(a *app.App, src *authSource, spec *authpkg.Spec, ch 
 		}
 		described = append(described, desc)
 	}
-	ch.didf("%s: the %s auth package (%s), rendered from the skeleton's auth source: the Auth session over tables prefixed %s, the %s permission store, and the methods %s, each in its own file", dir, au.Name, strings.Join(authpkg.FileNames(spec), ", "), au.Pascal(), au.Name, strings.Join(described, ", "))
+	rule := ""
+	if spec.TenantPolicy != nil {
+		rule = fmt.Sprintf(", and the sign-in rule over the %s record's declaration (signin.TenantPolicy through the reader its settings carry, %s)", spec.TenantPolicy.Record, spec.TenantPolicy.Reader)
+		if spec.TenantPolicy.AdmitWithoutTenant {
+			rule += ", admitting a person who holds no tenant yet (signin.AdmitWithoutTenant), since the record is created by its own people"
+		}
+	}
+	ch.didf("%s: the %s auth package (%s), rendered from the skeleton's auth source: the Auth session over tables prefixed %s, the %s permission store, and the methods %s, each in its own file%s", dir, au.Name, strings.Join(authpkg.FileNames(spec), ", "), au.Pascal(), au.Name, strings.Join(described, ", "), rule)
 	switch authpkg.Foothold(spec) {
 	case authpkg.FootholdPassword:
 		ch.skipf("%s/foothold.go: the first administrator the migrate command seeds while the auth's users table holds no rows, a user named administrator with a generated password; author AdministratorRoles with the role file, declare the password in the data level (%s, secret:\"generated\") and seed it from pkg/deploy SeedAdministrators", dir, au.variable("ADMINISTRATOR_PASSWORD"))

@@ -1,0 +1,37 @@
+.declaration-card {
+  margin-top: 16px;
+  max-width: 720px;
+}
+
+.directories {
+  width: 100%;
+}
+
+.declare-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: flex-start;
+
+  .method {
+    min-width: 200px;
+  }
+
+  .connection {
+    flex: 1 1 280px;
+  }
+}
+
+.directory-only {
+  margin: 8px 0;
+}
+
+.empty {
+  color: rgba(0, 0, 0, 0.5);
+  margin: 8px 0 0;
+}
+
+.refusal {
+  margin: 8px 0;
+  color: var(--mat-sys-error, #b3261e);
+}

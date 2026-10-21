@@ -74,8 +74,14 @@ templates, this README, and the tool's source.
   (what the tenant declares about who may enter it, its directories and whether it
   admits its people through them only) decides against the way the session was
   established, so the picker never offers a tenant the session cannot enter and a direct
-  request for one is refused as a tenant that does not exist. The skeleton keeps no
-  declarations yet, so every tenant admits every session.
+  request for one is refused as a tenant that does not exist. The declaration is two
+  things on the tenant record: the directories the tenant admits its people through (a
+  child record, `@tenantDirectory`, one row per directory: a sign-in method and the
+  connection its identities carry) and whether its people enter through them only (a
+  column, `@directoryOnly`, which closes passwords); each auth's sign-in rule
+  (`signin.TenantPolicy` over the generated `New<Record>DeclarationReader`) reads it at
+  sign-in, the roster keeps a copy for every request, and the records' change events are
+  the audit. The skeletons' consoles carry it on the tenant's Sign-in page.
   The browser application mirrors the API: every tenant-scoped page's URL names the
   tenant, under the same segment (`/tenants/acme/users` beside
   `/api/tenants/acme/staff-tenant-users`; the generated client exports the segment as
@@ -764,18 +770,28 @@ tenants, through the record's create path, unless the record says otherwise. The
 next schema migration, with two development tenants as a data migration under
 `schema/devseed`; the tenant-record struct joins the resource package as a global resource
 annotated `@tenant`, from which the generator derives the tenant segment and emits
-`New<Record>Roster`, the constructor of the tenant roster; the generator program gains
-`WithConcealedDomains`; the data level gains the roster, built with that constructor over
-the live service's tenants signal and started where the configuration is built (a new
-`tenancy.go` plus a field and the start inserted into `DataConfiguration`), so a tenant
-created on any instance is usable at once, without a restart; the app exposes the roster to
-the generated code as `TenantRoster()` and hands its `Domains` to the session permissions
-(a new `tenancy.go` plus the `Configurer`, `App` and `UserPermissions` edits); and the
-reference's tenant service, tenant guard and refusal page are copied into the browser
-app. Every edit whose anchor the application lacks is recorded in the brief as the
-agent's. Which resources become tenant-scoped and how their rows are assigned, the
-bootstrap order, the harnesses, the tests, the tenant segment in the routes and the
-tenant picker are the agent's, and `tenancy-wired` holds it to them.
+`New<Record>Roster`, the constructor of the tenant roster, and
+`New<Record>DeclarationReader`, the reader of a tenant's declaration; the generator
+program gains `WithConcealedDomains`; the data level gains the roster, built with that
+constructor over the live service's tenants signal and started where the configuration
+is built (a new `tenancy.go` plus a field and the start inserted into
+`DataConfiguration`), so a tenant created on any instance is usable at once, without a
+restart; the app exposes the roster and the roster's copy of the declarations to the
+generated code as `TenantRoster()` and `TenantDeclarations()` and hands the roster's
+`Domains` and the declarations to the session permissions (a new `tenancy.go` plus the
+`Configurer`, `App` and `UserPermissions` edits); and the reference's tenant service,
+tenant guard, refusal page and the tenant's sign-in page are copied into the browser
+app. The declaration rides along: the tenant table carries `DirectoryOnly` and a
+`<Record>Directories` table beside it, the directories record joins the resource package
+(`@tenantDirectory`, tenant-scoped), both records track changes, each auth's `Settings`
+carry the reader and its `New` sets the library's sign-in rule over it
+(`signin.TenantPolicy`, the memberships read through `resource.SignInRoles`), and the
+data level's settings literal passes the reader in. Every edit whose anchor the
+application lacks is recorded in the brief as the agent's. Which resources become
+tenant-scoped and how their rows are assigned, the bootstrap order, the harnesses, the
+tests, the tenant segment in the routes, the tenant picker, the declaration's grants and
+the directories the development seed declares are the agent's, and `tenancy-wired`
+holds it to them.
 
 ```sh
 impulse add tenancy --agent
@@ -841,7 +857,12 @@ in the sites layout the site's name for its default outlet. The outlet must exis
 the new auth), and an API-key outlet is refused, since a machine surface has no sign-in.
 There is no default, because an auth is reachable only through the outlet bound to it.
 Under a hand-written router the program declares no Auth to point, and the brief says to
-mount the auth's session group in the router.
+mount the auth's session group in the router. In a tenanted application the new auth's
+`New` sets the sign-in rule over the tenant record's declaration, as the staff auth's does
+(`signin.TenantPolicy` through the reader its settings carry, `TenantDeclarations`, which
+the settings copied from the source auth pass in); a record created by its own people
+(`@tenant(creation: self-service)` or `both`) has the rule admit a person who holds no
+tenant yet (`signin.AdmitWithoutTenant`).
 
 ```sh
 impulse add outlet partners --prefix partners/api --auth staff
@@ -883,7 +904,9 @@ admits. For azure: `one` (one tenant, the default), `listed` (named tenants), `a
 tenant), `personal` (Microsoft personal accounts alone), `one-personal` (one tenant and
 personal accounts), `any-personal` (any tenant and personal accounts). For google: `one`
 (one Workspace, the default), `listed` (named Workspaces), `any-workspace` (any
-Workspace), `any` (any Google account), `mixed` (one Workspace and any Google account).
+Workspace), `any` (any Google account, with any Workspace named beside it, so a Workspace
+account's link carries its domain as its connection, what a tenant's declaration names a
+Google directory by), `mixed` (one Workspace and any Google account).
 `--accounts` is the account rule for a first sign-in: `members` (members of the directory,
 the default: the person becomes a user under the name the directory presents), `invited`
 (a user created beforehand is linked, anyone else refused) or `open` (open sign-up: anyone

@@ -12,6 +12,14 @@ export interface Announcements {
 export interface Tenants {
   id: string;
   name?: string;
+  directoryOnly?: boolean;
+}
+
+export interface TenantDirectories {
+  id: string;
+  tenantId?: string;
+  method?: string;
+  connection?: string;
 }
 
 /** A feature flag: one declared flag's row, as the feature flags dialog lists it. */
@@ -116,6 +124,17 @@ const resourceMap = defineResourceMap({
     fields: [
       { fieldName: 'id', primaryKey: { ordinalPosition: 0 }, displayType: 'string', required: true, isIndex: true, filterable: 'always' },
       { fieldName: 'name', displayType: 'string', required: true, isIndex: true, filterable: 'always' },
+      { fieldName: 'directoryOnly', displayType: 'boolean', required: false, isIndex: false },
+    ],
+  },
+  [Resources.TenantDirectories]: {
+    route: 'tenants/{tenantID}/tenant-directories',
+    consolidatedRoute: 'resources',
+    fields: [
+      { fieldName: 'id', primaryKey: { ordinalPosition: 0 }, displayType: 'uuid', required: false, isIndex: true, filterable: 'always' },
+      { fieldName: 'tenantId', displayType: 'enumerated', required: true, isIndex: true, filterable: 'always', enumeratedResource: Resources.Tenants, readOnly: true },
+      { fieldName: 'method', displayType: 'string', required: true, isIndex: true, filterable: 'always', maxLength: 16 },
+      { fieldName: 'connection', displayType: 'string', required: true, isIndex: false },
     ],
   },
   [Resources.FeatureFlags]: {
@@ -226,6 +245,7 @@ export const DomainRoutePath = 'tenants/:tenantID';
 export const ResourceScopes: Record<Resource, PermissionScope> = {
   [Resources.Announcements]: PermissionScopes.domain,
   [Resources.Tenants]: PermissionScopes.global,
+  [Resources.TenantDirectories]: PermissionScopes.domain,
   [Resources.FeatureFlags]: PermissionScopes.global,
   [Resources.StaffUsers]: PermissionScopes.global,
   [Resources.StaffSeats]: PermissionScopes.global,

@@ -22,6 +22,27 @@ dashboard lives outside a tenant and under it; the console's Users page is split
 way, the staff surface's global partition at `/users` and the tenant's partition at
 `/tenants/{tenantID}/users` with the route's tenant as the component's domain.
 
+Who may enter a tenant is the record's declaration, data of the application rather than
+deploy configuration: the directories the tenant admits its people through
+(`TenantDirectory`, the console site's, one row each under
+`/api/tenants/{tenantID}/tenant-directories`: a sign-in method and the connection its
+identities carry, a Google Workspace by its domain or a Microsoft Entra tenant by its
+tenant id) and whether its people enter through them only (`Tenant.DirectoryOnly`, which
+closes passwords). The staff auth's sign-in rule, one for both sites, is the library's
+tenant policy over it (`signin.TenantPolicy`, handed the console site's generated
+`NewTenantDeclarationReader`, which reads the declaration in the sign-in's own
+transaction): a sign-in through a directory is admitted when one of the person's tenants
+declares that directory, a password unless every one of their tenants is directory only,
+staff (a global role) on the library's checks, and a person holding no tenant is refused.
+Which tenants the session then reaches is decided again per tenant where its tenant list
+is computed, on either site: the shared roster keeps every tenant's declaration beside
+its key (`resource.TenantRoster.Declarations`, handed to `resource.SessionPermissions` by
+both Apps), the console's write paths reload it after their commit and signal the other
+instances, so a declaration decides the next request on both sites, and the records'
+change events are the audit of every edit. The console's tenant pages carry the
+declaration at `/tenants/{tenantID}/sign-in`: the tenant's administrator declares and
+withdraws directories there, the application's administrator sets directory only.
+
 ## Layout
 
 - `apps/<site>/` is one site: `main.go`, `app` (its handlers), `pkg/router`, `pkg/resources`

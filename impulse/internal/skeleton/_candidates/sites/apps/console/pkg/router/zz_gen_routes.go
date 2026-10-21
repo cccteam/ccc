@@ -25,9 +25,10 @@ const BodyLimit int64 = 4194304
 
 const (
 	// Domain is the route parameter carrying the permission domain for domain-scoped routes.
-	Domain         httpio.ParamType = "tenantID"
-	AnnouncementID httpio.ParamType = "announcementID"
-	TenantID       httpio.ParamType = "tenantID"
+	Domain            httpio.ParamType = "tenantID"
+	AnnouncementID    httpio.ParamType = "announcementID"
+	TenantID          httpio.ParamType = "tenantID"
+	TenantDirectoryID httpio.ParamType = "tenantDirectoryID"
 )
 
 type GeneratedHandlers interface {
@@ -89,6 +90,9 @@ type GeneratedHandlers interface {
 
 	Tenants() http.HandlerFunc
 	Tenant() http.HandlerFunc
+
+	TenantDirectories() http.HandlerFunc
+	TenantDirectory() http.HandlerFunc
 
 	PatchResources() http.HandlerFunc
 }
@@ -198,6 +202,14 @@ func generatedRoutes(r chi.Router, h GeneratedHandlers) {
 	tenantHandler := h.Tenant()
 	bounded.Get("/api/tenants/{tenantID}", tenantHandler)
 	bounded.Post("/api/tenants/{tenantID}", tenantHandler)
+
+	tenantDirectoriesHandler := domainGuard(h.TenantDirectories())
+	bounded.Get("/api/tenants/{tenantID}/tenant-directories", tenantDirectoriesHandler)
+	bounded.Post("/api/tenants/{tenantID}/tenant-directories", tenantDirectoriesHandler)
+
+	tenantDirectoryHandler := domainGuard(h.TenantDirectory())
+	bounded.Get("/api/tenants/{tenantID}/tenant-directories/{tenantDirectoryID}", tenantDirectoryHandler)
+	bounded.Post("/api/tenants/{tenantID}/tenant-directories/{tenantDirectoryID}", tenantDirectoryHandler)
 
 	bounded.Patch("/api/resources", h.PatchResources())
 }

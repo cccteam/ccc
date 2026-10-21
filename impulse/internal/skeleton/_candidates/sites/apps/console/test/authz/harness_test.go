@@ -152,6 +152,12 @@ func (c *testConfigurer) TenantRoster() *resource.TenantRoster {
 	return c.tenants
 }
 
+// TenantDeclarations is nil in the suites: the matrix asks the engine's answers, and
+// with no declarations every tenant admits every session.
+func (c *testConfigurer) TenantDeclarations() resource.TenantDeclarations {
+	return nil
+}
+
 // newTestHandler composes the pipeline under test: the application's generated
 // handlers served through the generated test router, behind an identity-seeding
 // wrapper that stands in for the session middleware.

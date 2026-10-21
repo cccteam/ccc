@@ -66,6 +66,12 @@ func (c *servedConfigurer) TenantRoster() *resource.TenantRoster {
 	return c.tenants
 }
 
+// TenantDeclarations is the shared roster's copy of what each tenant declares about who
+// may enter it, as both sites' served stacks read it.
+func (c *servedConfigurer) TenantDeclarations() resource.TenantDeclarations {
+	return c.tenants.Declarations
+}
+
 func (c *servedConfigurer) ResourceClient() resource.Client {
 	return resource.NewSpannerClient(c.db.Client)
 }
@@ -119,6 +125,8 @@ type served struct {
 	console *httptest.Server
 	portal  *httptest.Server
 	access  *access.Client
+	// db is the test database, for the suites that read a table directly.
+	db *initiator.SpannerDB
 }
 
 // newServed provisions the database the way the deployment does (the schema and the
@@ -148,7 +156,13 @@ func newServed(ctx context.Context, t *testing.T) *served {
 	if err := roster.Start(ctx); err != nil {
 		t.Fatalf("resource.TenantRoster.Start() error = %v", err)
 	}
-	auth, err := staff.New(ctx, db.Client, &staff.Settings{Collection: collection, Signals: svc, CookieKey: testCookieKey, SessionTimeout: time.Minute})
+	auth, err := staff.New(ctx, db.Client, &staff.Settings{
+		Collection:         collection,
+		Signals:            svc,
+		CookieKey:          testCookieKey,
+		SessionTimeout:     time.Minute,
+		TenantDeclarations: consoleapp.NewTenantDeclarationReader(),
+	})
 	if err != nil {
 		t.Fatalf("staff.New() error = %v", err)
 	}
@@ -203,7 +217,7 @@ func newServed(ctx context.Context, t *testing.T) *served {
 	portal := httptest.NewServer(portalrouter.New(portalApp, portalrouter.Hooks{}))
 	t.Cleanup(portal.Close)
 
-	return &served{console: console, portal: portal, access: accessClient}
+	return &served{console: console, portal: portal, access: accessClient, db: db}
 }
 
 // waitForDomains blocks until the engine's snapshot reports the user's footholds in

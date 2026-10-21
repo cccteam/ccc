@@ -48,6 +48,10 @@ func (h *Handlers) GoogleCallback() http.HandlerFunc {
 // The account rule for an identity Google verifies for the first time is the library's
 // standard one, open sign-up: anyone the slot admits becomes a user under their
 // verified email.
+// The slot admits any Google account, with any Workspace named beside it: a Workspace
+// account's identity then carries its Workspace's domain as its connection, which is
+// what a tenant's declaration names a Google directory by, and an account outside a
+// Workspace carries the provider itself (google.AnyAccountConnection).
 func registerGoogle(authSession *Session, accessClient *access.Client, settings *Settings) *google.Method {
 	_ = accessClient
 
@@ -55,7 +59,7 @@ func registerGoogle(authSession *Session, accessClient *access.Client, settings 
 		ClientID:     settings.Google.ClientID,
 		ClientSecret: settings.Google.ClientSecret,
 		RedirectURL:  settings.Google.RedirectURL,
-		Workspaces:   google.AnyGoogleAccount(),
+		Workspaces:   google.Workspaces(google.AnyWorkspace(), google.AnyGoogleAccount()),
 		RoleSync:     google.DisableRoleSync(),
 		Accounts:     signin.OpenSignUp,
 		LoginURL:     settings.LoginURL,

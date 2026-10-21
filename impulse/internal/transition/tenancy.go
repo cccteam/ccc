@@ -55,6 +55,11 @@ const TenancyReferenceCandidate = "tenanted"
 // lands on. The tenant segment in the routes, the header's picker, and the pages under the
 // segment are the agent's.
 var tenantWebFiles = []string{
+	"app/components/ui/sign-in/sign-in.routes.ts",
+	"app/components/ui/sign-in/tenant-sign-in.component.ts",
+	"app/components/ui/sign-in/tenant-sign-in.component.html",
+	"app/components/ui/sign-in/tenant-sign-in.component.scss",
+	"app/components/ui/sign-in/tenant-sign-in.component.spec.ts",
 	tenantServicePath,
 	"app/core/tenant/tenant.guard.ts",
 	"app/components/ui/tenant-refused/tenant-refused.component.ts",
@@ -124,7 +129,13 @@ func (tn Tenancy) Apply(ctx context.Context, a *app.App, exec check.Execer) (*Ch
 	if err := tn.writeRecord(a, g.ResourcePackageDir, ch); err != nil {
 		return nil, err
 	}
+	if err := tn.writeDirectoryRecord(a, g.ResourcePackageDir, ch); err != nil {
+		return nil, err
+	}
 	if err := tn.editConfig(a, g, ch); err != nil {
+		return nil, err
+	}
+	if err := tn.editAuths(a, g, ch); err != nil {
 		return nil, err
 	}
 	if err := tn.editApp(a, ch); err != nil {
@@ -134,7 +145,7 @@ func (tn Tenancy) Apply(ctx context.Context, a *app.App, exec check.Execer) (*Ch
 		return nil, err
 	}
 
-	if err := generate(ctx, a, exec, ch, "go generate ./... failed, so the tenant routes are not generated yet; fix the cause and run it:", fmt.Sprintf("ran go generate ./..., which emitted the %s resource, the tenant segment pair under /%s/{%sID}, and the roster constructor New%sRoster", tn.Record(), tn.Segment(), strcase.ToCamel(tn.Record()), tn.Record())); err != nil {
+	if err := generate(ctx, a, exec, ch, "go generate ./... failed, so the tenant routes are not generated yet; fix the cause and run it:", fmt.Sprintf("ran go generate ./..., which emitted the %s and %s resources, the tenant segment pair under /%s/{%sID}, the roster constructor New%sRoster and the declaration reader %s", tn.Record(), tn.DirectoryRecord(), tn.Segment(), strcase.ToCamel(tn.Record()), tn.Record(), tn.DeclarationReader())); err != nil {
 		return nil, err
 	}
 
@@ -170,20 +181,41 @@ func (tn Tenancy) writeMigration(a *app.App, dir string, ch *Change) error {
 	up := fmt.Sprintf(`CREATE TABLE %[1]s (
   Id STRING(64) NOT NULL,
   Name STRING(MAX) NOT NULL,
+  -- The tenant's people enter through its directories only: a password does not
+  -- reach a tenant whose flag is true. Half of what the tenant declares about who may
+  -- enter it; the other half is %[2]s.
+  DirectoryOnly BOOL NOT NULL DEFAULT (FALSE),
 
   CONSTRAINT CK_%[1]s_Id CHECK (REGEXP_CONTAINS(Id, r'^[a-z][a-z0-9-]{1,62}$')),
 ) PRIMARY KEY (Id);
 
 CREATE UNIQUE INDEX %[1]sByName ON %[1]s(Name);
-`, tn.Table)
-	down := fmt.Sprintf("DROP INDEX %[1]sByName;\nDROP TABLE %[1]s;\n", tn.Table)
+
+-- The directories a tenant admits its people through, one row per declaration: the
+-- sign-in method (google, azure, workos) and the connection the method's identities
+-- carry (a Google Workspace by its domain, a Microsoft Entra tenant by its tenant id).
+-- One domain, one directory by default; a second directory is a second row.
+CREATE TABLE %[2]s (
+  Id STRING(36) NOT NULL,
+  %[3]sId STRING(64) NOT NULL,
+  Method STRING(16) NOT NULL,
+  Connection STRING(MAX) NOT NULL,
+
+  CONSTRAINT CK_%[2]s_Id CHECK (REGEXP_CONTAINS(Id, r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')),
+  CONSTRAINT CK_%[2]s_Method CHECK (Method IN ('google', 'azure', 'workos')),
+  CONSTRAINT FK_%[2]s_%[3]sId FOREIGN KEY (%[3]sId) REFERENCES %[1]s(Id),
+) PRIMARY KEY (Id);
+
+CREATE UNIQUE INDEX %[2]sBy%[3]sIdMethodConnection ON %[2]s(%[3]sId, Method, Connection);
+`, tn.Table, tn.DirectoryTable(), tn.Record())
+	down := fmt.Sprintf("DROP INDEX %[2]sBy%[3]sIdMethodConnection;\nDROP TABLE %[2]s;\nDROP INDEX %[1]sByName;\nDROP TABLE %[1]s;\n", tn.Table, tn.DirectoryTable(), tn.Record())
 	if err := writeNew(a, path.Join(dir, base+".up.sql"), up); err != nil {
 		return err
 	}
 	if err := writeNew(a, path.Join(dir, base+".down.sql"), down); err != nil {
 		return err
 	}
-	ch.didf("%s/%s.up.sql and .down.sql: the %s table (a slug primary key and a unique Name)", dir, base, tn.Table)
+	ch.didf("%s/%s.up.sql and .down.sql: the %s table (a slug primary key, a unique Name, and DirectoryOnly) and the %s table (the tenant's declared directories)", dir, base, tn.Table, tn.DirectoryTable())
 
 	return nil
 }
@@ -220,6 +252,8 @@ func (tn Tenancy) writeRecord(a *app.App, resourceDir string, ch *Change) error 
 	pkg := packageNameOf(a, resourceDir)
 	src := fmt.Sprintf(`package %s
 
+import "github.com/cccteam/ccc/resource"
+
 type (
 	// %[2]s is the tenant record (@tenant): the global resource whose rows are the
 	// tenants. Its route name is the segment the tenant-scoped routes are served under,
@@ -237,18 +271,39 @@ type (
 	// %[2]s itself is a GLOBAL resource: administering the tenant list is a global
 	// concern.
 	//
+	// Who may enter a tenant is the record's declaration, data of the application
+	// rather than deploy configuration: the directories the tenant admits its people
+	// through (%[5]s, one row each) and whether its people enter through them only
+	// (DirectoryOnly). The sign-in rule reads it in the sign-in's own transaction
+	// (%[6]s, handed to each auth) and every instance's roster keeps a copy beside the
+	// keys (New%[2]sRoster, Declarations), which the record's and the directories'
+	// generated write paths reload after their commit; a tenant is offered to a session
+	// only when the session may enter it. The record's change events (DataChangeEvents,
+	// Config) are the audit of every edit.
+	//
 	// @resource
 	// @tenant
 	%[2]s struct {
 		ID   string `+"`spanner:\"Id\"`"+`
 		Name string `+"`spanner:\"Name\"`"+`
+		// DirectoryOnly says the tenant's people enter through its directories only: a
+		// password does not reach the tenant. Set under the record's Update grant on the
+		// column, never at creation: a new tenant declares nothing.
+		// @directoryOnly
+		DirectoryOnly bool `+"`spanner:\"DirectoryOnly\"`"+`
 	}
 )
-`, pkg, tn.Record(), tn.Segment(), strcase.ToCamel(tn.Record()))
+
+// Config enables change tracking: %[2]s mutations write DataChangeEvents rows in the
+// same transaction, the audit of every change to what a tenant declares.
+func (%[2]s) Config() resource.Config {
+	return %[7]s
+}
+`, pkg, tn.Record(), tn.Segment(), strcase.ToCamel(tn.Record()), tn.DirectoryRecord(), tn.DeclarationReader(), trackingConfig(a, resourceDir))
 	if err := writeNew(a, rel, src); err != nil {
 		return err
 	}
-	ch.didf("%s: the %s resource struct, global, keyed by slug", rel, tn.Record())
+	ch.didf("%s: the %s resource struct, global, keyed by slug, with its declaration's flag (DirectoryOnly) and change tracking", rel, tn.Record())
 
 	return nil
 }
@@ -302,7 +357,7 @@ func (tn Tenancy) editConfig(a *app.App, g *app.Generator, ch *Change) error {
 	if liveField == "" {
 		ch.skipf("%s: DataConfiguration holds no *firestore.Service field (resource/live/firestore), so the roster is built without resource.WithTenantSignals and reloads at its backstop alone; pass the live service the level opens, so a tenant created on another instance reaches this one at once", tenancyFile)
 	}
-	ch.didf("%s: the tenant roster (%s builds it with %s and starts it) and %s() on DataConfiguration; %s gained %s", tenancyFile, rosterStart, constructor, rosterAccessor, rel, gained)
+	ch.didf("%s: the tenant roster (%s builds it with %s and starts it), %s() and %s() on DataConfiguration; %s gained %s", tenancyFile, rosterStart, constructor, rosterAccessor, declarationsAccessor, rel, gained)
 
 	return nil
 }
@@ -420,7 +475,16 @@ func (c *DataConfiguration) startTenants(ctx context.Context) error {
 func (c *DataConfiguration) TenantRoster() *resource.TenantRoster {
 	return c.tenants
 }
-`, pkg, alias, handlersPath, tn.Record(), tn.Table, construction)
+
+// TenantDeclarations reads what a tenant declares about who may enter it from the
+// roster's copy, reloaded on every write of the %[4]s record or its directories: the
+// request-time half of the declaration, which filters a session's tenant list. The
+// sign-in half reads the same declaration in the sign-in's transaction, through the
+// generated reader each auth's settings carry (%[7]s).
+func (c *DataConfiguration) TenantDeclarations() resource.TenantDeclarations {
+	return c.tenants.Declarations
+}
+`, pkg, alias, handlersPath, tn.Record(), tn.Table, construction, tn.DeclarationReader())
 	formatted, err := format.Source([]byte(src))
 	if err != nil {
 		return "", errors.Wrap(err, "format.Source()")
@@ -453,16 +517,22 @@ func (tn Tenancy) editApp(a *app.App, ch *Change) error {
 	}
 	edited, err = app.AddStructField(rel, edited, "App", "tenants *resource.TenantRoster")
 	if errors.Is(err, app.ErrNoAnchor) {
-		ch.skipf("%s: no App struct to carry the roster; give the handlers a %s method answering the configurer's", rel, rosterAccessor)
+		ch.skipf("%s: no App struct to carry the roster; give the handlers a %s method answering the configurer's, and hand the configurer's %s() to resource.SessionPermissions", rel, rosterAccessor, declarationsAccessor)
 		edited = nil
 	} else if err != nil {
 		return err
 	}
 	if edited != nil {
+		edited, err = app.AddStructField(rel, edited, "App", "declarations resource.TenantDeclarations")
+		if err != nil {
+			return err
+		}
 		edited, err = app.AddLiteralElement(rel, edited, "New", "App", "tenants: cfg."+rosterAccessor+"()")
 		if errors.Is(err, app.ErrNoAnchor) {
-			ch.skipf("%s: New builds no App literal; set tenants from the configurer's %s() where the App is constructed", rel, rosterAccessor)
+			ch.skipf("%s: New builds no App literal; set tenants and declarations from the configurer's %s() and %s() where the App is constructed", rel, rosterAccessor, declarationsAccessor)
 		} else if err != nil {
+			return err
+		} else if edited, err = app.AddLiteralElement(rel, edited, "New", "App", "declarations: cfg."+declarationsAccessor+"()"); err != nil {
 			return err
 		}
 	}
@@ -479,7 +549,7 @@ func (tn Tenancy) editApp(a *app.App, ch *Change) error {
 	if err := writeNew(a, tenancyFile, tn.appSource(pkg)); err != nil {
 		return err
 	}
-	ch.didf("%s: TenancyConfigurer (embedded in Configurer) and App.%s(); %s gained the field and its assignment", tenancyFile, rosterAccessor, rel)
+	ch.didf("%s: TenancyConfigurer (embedded in Configurer, asking %s() and %s()) and App.%s(); %s gained the fields and their assignments", tenancyFile, rosterAccessor, declarationsAccessor, rosterAccessor, rel)
 	if edited != nil {
 		if err := tn.editPermissions(a, rel, ch); err != nil {
 			return err
@@ -489,11 +559,11 @@ func (tn Tenancy) editApp(a *app.App, ch *Change) error {
 	return nil
 }
 
-// editPermissions hands the roster's Domains to the session permissions: the
-// resource.SessionPermissions call of the App's UserPermissions passed nil where an
-// untenanted application lists no domain, and a login's tenant list is the roster
-// filtered by the principal's footholds. The tenant declarations argument after it
-// stays nil: the application keeps none yet, so every tenant admits every session.
+// editPermissions hands the roster's Domains and the declarations to the session
+// permissions: the resource.SessionPermissions call of the App's UserPermissions passed
+// nil for both where an untenanted application lists no domain, and a login's tenant
+// list is the roster filtered by the principal's footholds and by what each tenant
+// declares about who may enter it.
 func (Tenancy) editPermissions(a *app.App, rel string, ch *Change) error {
 	src, mode, err := readFile(a, rel)
 	if err != nil {
@@ -502,16 +572,27 @@ func (Tenancy) editPermissions(a *app.App, rel string, ch *Change) error {
 	edited, err := app.ReplaceNilArgument(rel, src, "UserPermissions", "SessionPermissions", "a.tenants.Domains")
 	switch {
 	case errors.Is(err, app.ErrNoAnchor):
-		ch.skipf("%s: UserPermissions passes no nil roster to resource.SessionPermissions, so the roster's Domains were not handed to it; pass a.tenants.Domains where the session permissions are composed, so a login's tenant list is the roster filtered by its footholds", rel)
+		ch.skipf("%s: UserPermissions passes no nil roster to resource.SessionPermissions, so the roster's Domains and the declarations were not handed to it; pass a.tenants.Domains and a.declarations where the session permissions are composed, so a login's tenant list is the roster filtered by its footholds and by what each tenant declares", rel)
 
 		return nil
 	case err != nil:
 		return err
 	}
+	handed := "the roster's Domains"
+	withDeclarations, err := app.ReplaceNilArgument(rel, edited, "UserPermissions", "SessionPermissions", "a.declarations")
+	switch {
+	case errors.Is(err, app.ErrNoAnchor):
+		ch.skipf("%s: UserPermissions passes no nil declarations to resource.SessionPermissions after the roster, so the declarations were not handed to it; pass a.declarations as its fifth argument, so a tenant is offered only to a session it admits", rel)
+	case err != nil:
+		return err
+	default:
+		edited = withDeclarations
+		handed = "the roster's Domains and the declarations"
+	}
 	if err := os.WriteFile(a.Abs(rel), edited, mode); err != nil {
 		return errors.Wrap(err, "os.WriteFile()")
 	}
-	ch.didf("%s: UserPermissions passes the roster's Domains to resource.SessionPermissions", rel)
+	ch.didf("%s: UserPermissions passes %s to resource.SessionPermissions", rel, handed)
 
 	return nil
 }
@@ -522,12 +603,20 @@ func (tn Tenancy) appSource(pkg string) string {
 import "github.com/cccteam/ccc/resource"
 
 // TenancyConfigurer is what the configuration provides for tenancy: the tenant roster the
-// data level built with the generated constructor and started. The generated DomainGuard
-// and the consolidated dispatcher ask it whether a domain is a tenant, and since tenant
+// data level built with the generated constructor and started, and the roster's copy of
+// what each tenant declares about who may enter it. The generated DomainGuard and the
+// consolidated dispatcher ask the roster whether a domain is a tenant, the session's
+// permissions ask the declarations whether the session may enter it, and since tenant
 // existence is concealed (generation.WithConcealedDomains) they ask the caller's foothold
 // next, so a prober cannot confirm a tenant exists from the rejection shape.
 type TenancyConfigurer interface {
 	%[2]s() *resource.TenantRoster
+	// %[3]s reads what a tenant declares about who may enter it, as the running
+	// application knows it: the roster's copy, reloaded on every write of the tenant
+	// record or its directories. UserPermissions hands it to resource.SessionPermissions,
+	// so a tenant declaring a directory is offered to a session that came through that
+	// directory, and a directory-only tenant to no password session.
+	%[3]s() resource.TenantDeclarations
 }
 
 // %[2]s returns the application's tenant roster, the generated contract's accessor
@@ -536,7 +625,7 @@ type TenancyConfigurer interface {
 func (a *App) %[2]s() *resource.TenantRoster {
 	return a.tenants
 }
-`, pkg, rosterAccessor)
+`, pkg, rosterAccessor, declarationsAccessor)
 }
 
 // packageNameOf is the package clause of the non-test Go files under a root-relative
@@ -604,7 +693,7 @@ func (tn Tenancy) copyTenantService(a *app.App, g *app.Generator, ch *Change) er
 			return err
 		}
 	}
-	ch.didf("%s, tenant.guard.ts and components/ui/tenant-refused/: the tenant service (the tenant the URL names, the session's tenant list, and the digest scoped to it), the tenant guard on the tenant segment, and the refusal page from the reference; the tenant segment in the routes, the header's tenant picker, and the pages under the segment are yours", dst)
+	ch.didf("%s, tenant.guard.ts, components/ui/tenant-refused/ and components/ui/sign-in/: the tenant service (the tenant the URL names, the session's tenant list, and the digest scoped to it), the tenant guard on the tenant segment, the refusal page and the tenant's sign-in page (who may enter the tenant: its declared directories and whether they are the only way in, with its route and navigation item in sign-in.routes.ts) from the reference; the tenant segment in the routes, the header's tenant picker, and the pages under the segment, the sign-in page's route among them, are yours", dst)
 
 	return nil
 }
@@ -722,7 +811,8 @@ func singular(table string) string {
 func (tn Tenancy) Meaning() string {
 	var b strings.Builder
 	seg, rec := tn.Segment(), tn.Record()
-	fmt.Fprintf(&b, "Tenancy is data. The %[1]s table is the domain universe, a permission domain per row, and `%[2]s`, the global resource over it, is the tenant record (`@tenant`): the generator derives the tenant segment from it, so every struct annotated `@permissionScope(domain)` is served under `/%[3]s/{%[4]sID}/...` with the tenant as its permission domain, and emits `New%[2]sRoster`, the constructor of the tenant roster. The data level builds the roster with it over the database client and the live service's tenants signal and starts it; the roster reads the table once, rereads when the record's generated write paths publish the tenants signal (a tenant created or deleted on any instance) and at its backstop, so a new tenant is usable at once, without a restart. The generated DomainGuard asks the roster whether a domain is a tenant, then whether the session may enter it (a tenant is offered only when the session may enter it, and the tenant's declaration decides; the application keeps no declarations yet, so every tenant admits every session) and, since tenant existence is concealed (`WithConcealedDomains`), the caller's foothold next, so a login with no foothold gets the same not-found an unknown tenant gets. A login's tenant list (`user-domains`) is the roster filtered by the tenants where it holds a grant and that admit it, and a grant needs a tenant-scoped resource to land on.\n\n", tn.Table, rec, seg, strcase.ToCamel(rec))
+	fmt.Fprintf(&b, "Tenancy is data. The %[1]s table is the domain universe, a permission domain per row, and `%[2]s`, the global resource over it, is the tenant record (`@tenant`): the generator derives the tenant segment from it, so every struct annotated `@permissionScope(domain)` is served under `/%[3]s/{%[4]sID}/...` with the tenant as its permission domain, and emits `New%[2]sRoster`, the constructor of the tenant roster. The data level builds the roster with it over the database client and the live service's tenants signal and starts it; the roster reads the table once, rereads when the record's generated write paths publish the tenants signal (a tenant created or deleted on any instance) and at its backstop, so a new tenant is usable at once, without a restart. The generated DomainGuard asks the roster whether a domain is a tenant, then whether the session may enter it and, since tenant existence is concealed (`WithConcealedDomains`), the caller's foothold next, so a login with no foothold gets the same not-found an unknown tenant gets. A login's tenant list (`user-domains`) is the roster filtered by the tenants where it holds a grant and that admit it, and a grant needs a tenant-scoped resource to land on.\n\n", tn.Table, rec, seg, strcase.ToCamel(rec))
+	fmt.Fprintf(&b, "Who may enter a tenant is the record's declaration, data of the application rather than deploy configuration: the directories the tenant admits its people through (`%[1]s`, one row each under `/%[2]s/{%[3]sID}/%[4]s`: a sign-in method and the connection its identities carry, a Google Workspace by its domain or a Microsoft Entra tenant by its tenant id) and whether its people enter through them only (`%[5]s.DirectoryOnly`, which closes passwords). The generator emits `%[6]s`, the reader of a tenant's declaration in the sign-in's transaction, and each auth's `New` sets the library's sign-in rule over it (`signin.TenantPolicy`, with the memberships read through `resource.SignInRoles`): a sign-in through a directory is admitted when one of the person's tenants declares that directory, a password unless every one of their tenants is directory only, the application's own staff (a global role, or one held in every tenant) on the library's checks, and a person holding no tenant is refused (`no_tenant`). Which tenants the session then reaches is decided again per tenant where its tenant list is computed: the roster keeps every tenant's declaration beside its key (`Declarations`, the data level's `%[7]s()`, handed to `resource.SessionPermissions`), the records' write paths reload it after their commit and signal the other instances, and the records' change events are the audit of every edit. A tenant that declares nothing admits its people by password and through no directory.\n\n", tn.DirectoryRecord(), seg, strcase.ToCamel(rec), tn.DirectorySegment(), rec, tn.DeclarationReader(), declarationsAccessor)
 	b.WriteString("Left to wire, in this order:\n\n")
 	items := []string{
 		"The bootstrap and the deployment. Seed the development tenants (`schema/devseed`, a data migration applied with the migrator's data step) BEFORE the logins and before the data level opens, since the roster's start reads the table; the App's `UserPermissions` passes the roster's `Domains` (`a.tenants.Domains`) to `resource.SessionPermissions` so a login's tenant list is read from it. The roles need no provisioning per tenant, since a membership held in every domain (`EveryDomainPolicyScope`) reaches every tenant the roster names. Give the development logins roles in the tenants (the bootstrap identities file): the administrator under `everyDomain`, and add a member login that holds a role in one tenant only under `domains`, so concealment is observable.",
@@ -730,6 +820,7 @@ func (tn Tenancy) Meaning() string {
 		fmt.Sprintf("The test harnesses. The authorization suite's configurer builds the roster with `New%[1]sRoster` over the test client and adds the generated matrix's domain to it (`Add(\"testDomain\")`; the empty test schema holds no tenant row, and `Start` is not needed), and answers it as `%[2]s()`; the integration harness builds it over the test database with `live.NewFake()` as its signals and starts it once the dev seed is applied beside the schema, gives the member its assignments in its tenant (`DomainPolicyScope`), and waits for the engine's snapshot to show them.", rec, rosterAccessor),
 		"Integration tests: the administrator lists both tenants and reads a tenant's digest; the member lists one and gets not-found in the other and in an unknown tenant; the tenant list is global; a tenant created through the API is readable at once, without a restart.",
 		"The browser app mirrors the API's shape: the tenant segment (`tenants/:tenantID`, the generated `DomainRoutePath`) in the routes with the copied tenant guard on it (`canActivate`, and its leave hook on `canDeactivate`) and the refusal page ahead of it at `tenants/:tenantID/refused`, the dashboard and every tenant-scoped page under the segment, a tenant picker in the header that opens the same page under the chosen tenant (`TenantService.open`), and the pages reading permissions through the service, so the digest follows the tenant the URL names; the guard is the one writer of the tenant, and a URL naming a tenant the session cannot reach lands on the refusal page, in the server's words.",
+		fmt.Sprintf("The declaration. Grants: the tenant's administrator role (a domain role) gets Create (`method`, `connection`), Delete, List and Read on `%[1]s`, and the global administrator role's List, Read and Update on `%[2]s` gain `directoryOnly`, so the people who may change the declaration are the ones who hold it. The seed: a directory method the auth already has (a Google Workspace, a Microsoft Entra tenant) admits people only where a tenant declares it, so declare it on the development tenants in `schema/devseed` (`%[1]s` rows: the method's name and the connection its identities carry) or the people who sign in through it reach no tenant. The page: the copied sign-in page (`components/ui/sign-in`, `tenantSignInRoute()`) goes under the tenant segment beside the tenant's Users page; the login page's sentences for the rule's refusal codes (`no_tenant`, `connection_not_in_tenant`, `directory_only`) are the library's, in `@cccteam/resource-angular`'s `LOGIN_MESSAGES`. A record created by its own people (`@tenant(creation: self-service)` or `both`) adds `signin.AdmitWithoutTenant()` to the policy, since a stranger signs in before holding a tenant, and the generated create route declares the creator's directory on the new tenant.", tn.DirectoryTable(), tn.Table),
 	}
 	for i, item := range items {
 		fmt.Fprintf(&b, "%d. %s\n", i+1, item)

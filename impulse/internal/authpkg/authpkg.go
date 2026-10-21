@@ -47,6 +47,26 @@ type Spec struct {
 	// Doc is a sentence for the package comment saying who the population is ("the
 	// people who sign in to the console"); empty for a generic one.
 	Doc string
+	// TenantPolicy is the auth's sign-in rule in an application with a tenant record:
+	// the library's tenant policy over the record's declaration (signin.TenantPolicy),
+	// which the auth's Settings carry as the generated reader and New refuses to open
+	// without. Nil in an application without tenants.
+	TenantPolicy *TenantPolicy
+}
+
+// TenantPolicy is the sign-in rule over the tenant record's declaration: who may enter
+// a tenant, as the record declares it (the directories it admits its people through,
+// and whether they are the only way in).
+type TenantPolicy struct {
+	// Record is the tenant record's struct name (Tenant).
+	Record string
+	// Reader is the generated reader's constructor as the data level qualifies it
+	// (app.NewTenantDeclarationReader), which the package's comments name.
+	Reader string
+	// AdmitWithoutTenant admits a person who holds no tenant (signin.AdmitWithoutTenant):
+	// the record's creation shape lets a stranger sign in first and create their own
+	// (@tenant(creation: self-service) or both).
+	AdmitWithoutTenant bool
 }
 
 // AdministratorRoles are role names by where a membership is held: the global partition

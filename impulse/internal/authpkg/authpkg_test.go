@@ -31,6 +31,13 @@ func smokeSpecs() []*Spec {
 			{Kind: app.MethodGoogle, Name: "google-any", Slot: SlotAny, Accounts: AccountsInvited, Authority: app.AuthorityApplication},
 			{Kind: app.MethodGoogle, Name: "google-mixed", Slot: SlotMixed, Accounts: AccountsOpen, Authority: app.AuthorityApplication},
 		}},
+		{Module: "example.com/beacon", AuthDir: "pkg/auth", Name: "tenants", Doc: "the people of the tenants", Methods: []Method{
+			{Kind: app.MethodPassword},
+			{Kind: app.MethodGoogle, Name: "google", Slot: SlotAny, Accounts: AccountsOpen, Authority: app.AuthorityApplication},
+		}, TenantPolicy: &TenantPolicy{Record: "Tenant", Reader: "app.NewTenantDeclarationReader", AdmitWithoutTenant: true}},
+		{Module: "example.com/beacon", AuthDir: "pkg/auth", Name: "closed", Methods: []Method{
+			{Kind: app.MethodAzure, Name: "directory", Authority: app.AuthorityApplication},
+		}, TenantPolicy: &TenantPolicy{Record: "Tenant", Reader: "app.NewTenantDeclarationReader"}},
 	}
 }
 
