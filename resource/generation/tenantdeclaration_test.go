@@ -245,7 +245,7 @@ func Test_tenantCreationTemplate_declaration(t *testing.T) {
 		t.Errorf("fields = %v, key = %v; want the key and the name", fields, key)
 	}
 	directory := tenantCreationDirectoryData(record)
-	if diff := cmp.Diff(&tenantCreationDirectory{Record: "HarborDirectory", TenantField: "HarborID", MethodField: "Method", ConnectionField: "Connection"}, directory); diff != "" {
+	if diff := cmp.Diff(&tenantCreationDirectory{Record: "HarborDirectory", TenantField: "HarborID", MethodField: "Method", ConnectionField: "Connection", Keys: "directory.ID()"}, directory); diff != "" {
 		t.Errorf("Directory mismatch (-want +got):\n%s", diff)
 	}
 	out, err := r.generateTemplateOutput("tenantCreationTemplate", tenantCreationTemplate, &tenantCreationData{
@@ -280,21 +280,30 @@ func Test_tenantCreationTemplate_declaration(t *testing.T) {
 	}
 	assertContains(t, "tenantCreationTemplate", string(out), []string{
 		`"github.com/cccteam/session/sessioninfo"`,
+		"var directory *resources.HarborDirectoryCreatePatch",
 		"if established, ok := sessioninfo.DataFromCtx(ctx).EstablishedBy(); ok && established.Method.ThroughDirectory() {",
-		"directory, err := resources.NewHarborDirectoryCreatePatch()",
-		"directory.SetHarborID(req.ID).SetMethod(string(established.Method)).SetConnection(established.Connection)",
+		"created, err := resources.NewHarborDirectoryCreatePatch()",
+		"created.SetHarborID(req.ID).SetMethod(string(established.Method)).SetConnection(established.Connection)",
 		`return errors.Wrap(err, "resources.HarborDirectoryCreatePatch.Buffer()")`,
+		"directory = created",
 		"if err := a.TenantRoster().Reload(ctx); err != nil {",
+		"if err := resources.NewHarborDirectoryDeletePatch(directory.ID()).Buffer(ctx, txn, eventSource); err != nil {",
+		"if err := resources.NewHarborDeletePatch(req.ID).Buffer(ctx, txn, eventSource); err != nil {",
 	}, []string{"DirectoryOnly", "SetDirectoryOnly"})
 
 	// The directory is written in the row's transaction: after the row, before the
-	// commit.
+	// commit; the roster reloads before the seat, and the undo removes the directory
+	// before the row.
 	s := string(out)
 	row := strings.Index(s, "patch.Buffer(ctx, txn, eventSource)")
-	written := strings.Index(s, "directory.Buffer(ctx, txn, eventSource)")
+	written := strings.Index(s, "created.Buffer(ctx, txn, eventSource)")
 	commit := strings.Index(s, "}); err != nil {")
-	if row >= written || written >= commit {
-		t.Errorf("order: row %d, directory %d, commit %d; want ascending:\n%s", row, written, commit, out)
+	roster := strings.Index(s, "a.TenantRoster().Reload(ctx)")
+	seat := strings.Index(s, "resource.SeatFirstAdministrator(")
+	undoDirectory := strings.Index(s, "resources.NewHarborDirectoryDeletePatch(directory.ID())")
+	undoRow := strings.Index(s, "resources.NewHarborDeletePatch(req.ID)")
+	if row >= written || written >= commit || commit >= roster || roster >= seat || seat >= undoDirectory || undoDirectory >= undoRow {
+		t.Errorf("order: row %d, directory %d, commit %d, roster %d, seat %d, undo directory %d, undo row %d; want ascending:\n%s", row, written, commit, roster, seat, undoDirectory, undoRow, out)
 	}
 }
 

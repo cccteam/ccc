@@ -270,24 +270,24 @@ func Test_tenantCreationTemplate(t *testing.T) {
 		"patch.SetMotto(req.Motto)",
 		"patch.SetOpened(req.Opened)",
 		"resource.SeatFirstAdministrator(ctx, seats, userPermissions, domain, roles)",
-		"resources.NewStationDeletePatch(req.ID).Apply(ctx, a.ResourceClient(), eventSource)",
+		"if err := resources.NewStationDeletePatch(req.ID).Buffer(ctx, txn, eventSource); err != nil {",
 		"if err := a.TenantRoster().Reload(ctx); err != nil {",
 		"a.LiveService().Signal(ctx, resource.KindTenants)",
 		"return httpio.NewEncoder(w).Ok(response{ID: req.ID})",
 	}, []string{"Derived", "SetID", "SetDerived", "sessioninfo", "EstablishedBy"})
 
-	// The gate before the body, the commit before the seat, the seat before the
-	// roster, the roster before the signal, the signal before the answer.
+	// The gate before the body, the commit before the roster, the roster before the
+	// seat, the seat before the signal, the signal before the answer.
 	s := string(out)
 	gate := strings.Index(s, "if len(held) > 0 {")
 	decode := strings.Index(s, "req, err := decoder.Decode(r)")
 	commit := strings.Index(s, "}); err != nil {")
-	seat := strings.Index(s, "resource.SeatFirstAdministrator(")
 	roster := strings.Index(s, "a.TenantRoster().Reload(ctx)")
+	seat := strings.Index(s, "resource.SeatFirstAdministrator(")
 	signal := strings.Index(s, "Signal(ctx, resource.KindTenants)")
 	answer := strings.Index(s, "return httpio.NewEncoder(w).Ok(")
-	if gate >= decode || decode >= commit || commit >= seat || seat >= roster || roster >= signal || signal >= answer {
-		t.Errorf("order: gate %d, decode %d, commit %d, seat %d, roster %d, signal %d, answer %d; want ascending:\n%s", gate, decode, commit, seat, roster, signal, answer, out)
+	if gate >= decode || decode >= commit || commit >= roster || roster >= seat || seat >= signal || signal >= answer {
+		t.Errorf("order: gate %d, decode %d, commit %d, roster %d, seat %d, signal %d, answer %d; want ascending:\n%s", gate, decode, commit, roster, seat, signal, answer, out)
 	}
 }
 

@@ -14,6 +14,7 @@ import (
 	"github.com/cccteam/session/sessioninfo"
 	"github.com/cccteam/session/signin"
 	"github.com/cccteam/spxscan/spxapi"
+	"github.com/go-playground/errors/v5"
 	"github.com/google/go-cmp/cmp"
 )
 
@@ -657,6 +658,64 @@ func TestNewTenantDeclarationReader(t *testing.T) {
 			}
 			if diff := cmp.Diff(tt.want, got); diff != "" {
 				t.Errorf("reader(%q) mismatch (-want +got):\n%s", tt.tenant, diff)
+			}
+		})
+	}
+}
+
+// spannerRoleManager is a signin.UserRoleManager whose read goes through the Spanner
+// client's single-use read, as the access library's store does.
+type spannerRoleManager struct {
+	signin.UserRoleManager
+	db *spanner.Client
+}
+
+func (m *spannerRoleManager) UserRoles(ctx context.Context, _ accesstypes.User, _ ...accesstypes.PolicyScope) (accesstypes.RoleCollection, error) {
+	iter := m.db.Single().Query(ctx, spanner.Statement{SQL: "SELECT 1"})
+	defer iter.Stop()
+	if _, err := iter.Next(); err != nil {
+		return nil, errors.Wrap(err, "spanner.RowIterator.Next()")
+	}
+
+	return accesstypes.RoleCollection{accesstypes.DomainPolicyScope("north"): {"Reader"}}, nil
+}
+
+// TestSignInRoles_spanner shows the condition SignInRoles exists for, on the emulator:
+// the store's read with the sign-in transaction's context is refused as a nested
+// transaction, and the adapter's read is not.
+func TestSignInRoles_spanner(t *testing.T) {
+	t.Parallel()
+
+	db, _ := tenantDatabase(t, "signinroles")
+	store := &spannerRoleManager{db: db.Client}
+
+	tests := []struct {
+		name    string
+		manager signin.UserRoleManager
+		wantErr bool
+	}{
+		{name: "the store read in the sign-in's transaction is a nested transaction", manager: store, wantErr: true},
+		{name: "SignInRoles reads outside the transaction", manager: SignInRoles(store)},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			var held accesstypes.RoleCollection
+			_, err := db.ReadWriteTransaction(t.Context(), func(ctx context.Context, _ *spanner.ReadWriteTransaction) error {
+				var err error
+				held, err = tt.manager.UserRoles(ctx, "someone")
+				if err != nil {
+					return errors.Wrap(err, "signin.UserRoleManager.UserRoles()")
+				}
+
+				return nil
+			})
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("UserRoles() in the transaction error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if !tt.wantErr && len(held) != 1 {
+				t.Errorf("UserRoles() = %v, want the one membership", held)
 			}
 		})
 	}
