@@ -10,7 +10,7 @@ require (
 	cloud.google.com/go/storage v1.69.0
 	firebase.google.com/go/v4 v4.22.0
 	github.com/cccteam/ccc v0.3.5
-	github.com/cccteam/ccc/accesstypes v0.6.2-0.20261019011714-fbbdfe29c065
+	github.com/cccteam/ccc/accesstypes v0.7.0
 	github.com/cccteam/ccc/cache v0.2.1
 	github.com/cccteam/ccc/cloud v0.2.1
 	github.com/cccteam/ccc/pkg v0.1.6
