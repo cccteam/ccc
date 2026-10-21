@@ -21,7 +21,8 @@
               "fields": [
                 "name",
                 "region",
-                "established"
+                "established",
+                "directoryOnly"
               ]
             },
             {
@@ -53,7 +54,8 @@
               "fields": [
                 "name",
                 "region",
-                "established"
+                "established",
+                "directoryOnly"
               ]
             },
             {
@@ -363,7 +365,8 @@
               "fields": [
                 "name",
                 "region",
-                "established"
+                "established",
+                "directoryOnly"
               ]
             },
             {
@@ -835,6 +838,14 @@
             },
             {
               "resource": "CrewSectorRoles"
+            },
+            {
+              "resource": "SectorDirectories",
+              "fields": [
+                "sectorId",
+                "method",
+                "connection"
+              ]
             }
           ],
           "Read": [
@@ -1019,6 +1030,14 @@
             },
             {
               "resource": "CrewSectorRoles"
+            },
+            {
+              "resource": "SectorDirectories",
+              "fields": [
+                "sectorId",
+                "method",
+                "connection"
+              ]
             }
           ],
           "Create": [
@@ -1141,6 +1160,13 @@
                 "role"
               ],
               "condition": "new.role != 'SectorMarshal'"
+            },
+            {
+              "resource": "SectorDirectories",
+              "fields": [
+                "method",
+                "connection"
+              ]
             }
           ],
           "Update": [
@@ -1291,6 +1317,9 @@
             {
               "resource": "CrewSectorSeats",
               "condition": "role != 'SectorMarshal'"
+            },
+            {
+              "resource": "SectorDirectories"
             }
           ],
           "Execute": [

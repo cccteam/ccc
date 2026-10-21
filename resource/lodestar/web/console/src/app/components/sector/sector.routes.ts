@@ -13,6 +13,7 @@ import { HazardBoardComponent } from './hazard-board/hazard-board.component';
 import { RosterComponent } from './roster/roster.component';
 import { SalvageHoldComponent } from './salvage-hold/salvage-hold.component';
 import { sectorGuard, sectorLeave } from './sector.guard';
+import { SectorSignInComponent } from './sector-sign-in/sector-sign-in.component';
 import { SectorUsersComponent } from './sector-users/sector-users.component';
 import { ShipsLogComponent } from './ships-log/ships-log.component';
 import { WatchDeskComponent } from './watch-desk/watch-desk.component';
@@ -25,7 +26,8 @@ let cachedSectorRoute: Route | undefined;
  * shared and a bookmark lands where it points. The guard settles the sector from the URL
  * before any page here loads and clears it on the way out; nothing else writes it. Under
  * it: the dashboard in the sector, the hand-written decks (see SectorService for why they
- * are hand-written), the sector's crew page, and the config-driven pages the caller hands
+ * are hand-written), the sector's crew page, the sector's sign-in page (who may enter it:
+ * its declared directories and whether they are the only way in), and the config-driven pages the caller hands
  * in, which resourceRoutes registered at the route their configs name
  * (`sectors/:sectorID/missions`) in the navigation and as where their rows open, and
  * which are mounted here by that route's last part. The decks are listed in the generated
@@ -87,6 +89,11 @@ export const sectorRoute = (pages: Route[]): Route => {
       label: 'Sector Crew',
       route: [DomainRoutePath, 'users'],
       permission: { resource: Resources.CrewSectorUsers, permission: list },
+    },
+    {
+      label: 'Sign-in',
+      route: [DomainRoutePath, 'sign-in'],
+      permission: { resource: Resources.SectorDirectories, permission: list },
     },
     {
       label: 'Watch Desk',
@@ -154,6 +161,12 @@ export const sectorRoute = (pages: Route[]): Route => {
         path: 'users',
         loadComponent: (): Promise<Type<SectorUsersComponent>> =>
           import('./sector-users/sector-users.component').then((comp) => comp.SectorUsersComponent),
+      },
+      // Who may enter the sector: its directories and whether they are the only way in.
+      {
+        path: 'sign-in',
+        loadComponent: (): Promise<Type<SectorSignInComponent>> =>
+          import('./sector-sign-in/sector-sign-in.component').then((comp) => comp.SectorSignInComponent),
       },
       { path: '**', redirectTo: 'dashboard' },
     ],

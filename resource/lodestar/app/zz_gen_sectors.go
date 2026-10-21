@@ -19,10 +19,11 @@ import (
 
 func (a *App) Sectors() http.HandlerFunc {
 	type sector struct {
-		ID          string     `json:"id"          index:"true" perm:"-"`
-		Name        string     `json:"name"        index:"true"`
-		Region      string     `json:"region"`
-		Established civil.Date `json:"established"`
+		ID            string     `json:"id"            index:"true" perm:"-"`
+		Name          string     `json:"name"          index:"true"`
+		Region        string     `json:"region"`
+		Established   civil.Date `json:"established"`
+		DirectoryOnly bool       `json:"directoryOnly"`
 	}
 
 	type response []map[string]any
@@ -80,6 +81,10 @@ func (a *App) Sectors() http.HandlerFunc {
 					if !row.Masked("established") {
 						rmap["established"] = rec.Established
 					}
+				case "DirectoryOnly":
+					if !row.Masked("directoryOnly") {
+						rmap["directoryOnly"] = rec.DirectoryOnly
+					}
 				}
 			}
 			if capabilities := row.Capabilities(); capabilities != nil {
@@ -103,10 +108,11 @@ func (a *App) Sectors() http.HandlerFunc {
 
 func (a *App) Sector() http.HandlerFunc {
 	type response struct {
-		ID          string     `json:"id"          index:"true" perm:"-"`
-		Name        string     `json:"name"        index:"true"`
-		Region      string     `json:"region"`
-		Established civil.Date `json:"established"`
+		ID            string     `json:"id"            index:"true" perm:"-"`
+		Name          string     `json:"name"          index:"true"`
+		Region        string     `json:"region"`
+		Established   civil.Date `json:"established"`
+		DirectoryOnly bool       `json:"directoryOnly"`
 	}
 
 	decoder := NewQueryDecoder[resources.Sector, response](a, accesstypes.Read)
@@ -151,6 +157,10 @@ func (a *App) Sector() http.HandlerFunc {
 			case "Established":
 				if !row.Masked("established") {
 					rmap["established"] = rec.Established
+				}
+			case "DirectoryOnly":
+				if !row.Masked("directoryOnly") {
+					rmap["directoryOnly"] = rec.DirectoryOnly
 				}
 			}
 		}

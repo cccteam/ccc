@@ -31,10 +31,12 @@ import (
 	cloudspanner "cloud.google.com/go/spanner"
 	"github.com/cccteam/access"
 	"github.com/cccteam/access/spannerstore"
+	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/auth"
 	"github.com/cccteam/session"
 	"github.com/cccteam/session/google"
 	"github.com/cccteam/session/sessionstorage"
+	"github.com/cccteam/session/signin"
 	"github.com/go-playground/errors/v5"
 )
 
@@ -103,6 +105,11 @@ type Settings struct {
 	// every policy write it makes (the directory sync's at login) and rereads on every
 	// hint it receives, the heartbeat left as the backstop. Required.
 	ChangeSignal access.ChangeSignal
+	// TenantDeclarations reads what a sector declares about who may enter it, in the
+	// sign-in's transaction: the generated reader over the Sector record and its
+	// directories (app.NewSectorDeclarationReader), which the sign-in rule decides with.
+	// Required; New refuses nil.
+	TenantDeclarations signin.DeclarationReader[*cloudspanner.ReadWriteTransaction]
 }
 
 // Session is the auth's session manager: one Auth session over the Spanner store, whose
@@ -160,6 +167,9 @@ func (h *Handlers) PendingCancel() http.HandlerFunc {
 func New(ctx context.Context, db *cloudspanner.Client, settings *Settings) (*Auth, error) {
 	if settings.ChangeSignal == nil {
 		return nil, errors.New("members.Settings.ChangeSignal is required: the engine announces and watches policy changes through it")
+	}
+	if settings.TenantDeclarations == nil {
+		return nil, errors.New("members.Settings.TenantDeclarations is required: the sign-in rule reads what each sector declares about who may enter it through the generated reader (app.NewSectorDeclarationReader)")
 	}
 	store, err := spannerstore.New(db, spannerstore.WithPrefix(TablePrefix))
 	if err != nil {
@@ -228,6 +238,17 @@ func New(ctx context.Context, db *cloudspanner.Client, settings *Settings) (*Aut
 		RoleSync:     google.RoleSync(accessClient.UserManager(), settings.Directory.GroupPrefix, lookup),
 		LoginURL:     settings.LoginURL,
 	})
+
+	// The sign-in rule: the library's tenant policy, the same rule the crew auth sets,
+	// so the two populations are admitted alike. A client's sign-in names their roles
+	// (the directory's groups), which the rule admits on the library's checks; the rule
+	// decides a sign-in the directory names no roles for by the client's sectors'
+	// declarations, as the crew's. Which sectors the session then reaches is decided
+	// again where its chart is computed (app.UserPermissions): the seed declares the
+	// company directory on every sector. The memberships are read outside the sign-in's
+	// transaction (resource.SignInRoles): the Spanner client refuses the engine's read
+	// under the transaction's context as a nested transaction.
+	membersSession.SetSignInPolicy(signin.TenantPolicy(resource.SignInRoles(accessClient.UserManager()), settings.TenantDeclarations))
 
 	return &Auth{access: accessClient, handlers: &Handlers{Session: membersSession, directory: directory}}, nil
 }

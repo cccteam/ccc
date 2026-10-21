@@ -173,6 +173,9 @@ func NewDataConfiguration(ctx context.Context) (*DataConfiguration, error) {
 		},
 		SignUpRedirectURL: env.CrewSignUpRedirectURL,
 		ChangeSignal:      policySignal,
+		// The sign-in rule reads what each sector declares about who may enter it in
+		// the sign-in's transaction, through the generated reader.
+		TenantDeclarations: app.NewSectorDeclarationReader(),
 	})
 	if err != nil {
 		return nil, errors.Wrap(err, "crew.New()")
@@ -225,7 +228,8 @@ func NewDataConfiguration(ctx context.Context) (*DataConfiguration, error) {
 			GroupPrefix:  env.MembersGroupPrefix,
 			GroupLookup:  env.MembersGroupLookup,
 		},
-		ChangeSignal: policySignal,
+		ChangeSignal:       policySignal,
+		TenantDeclarations: app.NewSectorDeclarationReader(),
 	})
 	if err != nil {
 		return nil, errors.Wrap(err, "members.New()")
@@ -329,10 +333,15 @@ func (c *DataConfiguration) TenantRoster() *resource.TenantRoster {
 	return c.tenants
 }
 
-// TenantDeclarations returns the reader of what a sector declares about who may enter
-// it: nil, since no sector declares anything yet, so every sector admits every session.
+// TenantDeclarations reads what a sector declares about who may enter it from the
+// roster's copy, reloaded on every write of the Sector record or its directories: the
+// request-time half of the declaration, which filters a session's chart. The sign-in
+// half reads the same declaration in the sign-in's transaction, through the generated
+// reader each auth's settings carry.
+//
+// Demonstrates: tenancy.declaration.
 func (c *DataConfiguration) TenantDeclarations() resource.TenantDeclarations {
-	return nil
+	return c.tenants.Declarations
 }
 
 // cookieKey returns the configured session cookie key, or an ephemeral one when none is

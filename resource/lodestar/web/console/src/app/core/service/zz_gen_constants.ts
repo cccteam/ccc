@@ -51,6 +51,7 @@ export const Resources = {
   Pilots: 'Pilots' as Resource,
   RefitTasks: 'RefitTasks' as Resource,
   Refits: 'Refits' as Resource,
+  SectorDirectories: 'SectorDirectories' as Resource,
   SectorHazardBoards: 'SectorHazardBoards' as Resource,
   Sectors: 'Sectors' as Resource,
   ServiceLedgers: 'ServiceLedgers' as Resource,
@@ -747,6 +748,21 @@ export namespace Refits {
   };
 }
 
+export namespace SectorDirectories {
+  export const fieldName = {
+    connection: 'connection' as FieldName,
+    id: 'id' as FieldName,
+    method: 'method' as FieldName,
+    sectorId: 'sectorId' as FieldName,
+  };
+  export const resourceName = {
+    connection: 'SectorDirectories.connection' as Resource,
+    id: 'SectorDirectories.id' as Resource,
+    method: 'SectorDirectories.method' as Resource,
+    sectorId: 'SectorDirectories.sectorId' as Resource,
+  };
+}
+
 export namespace SectorHazardBoards {
   export const fieldName = {
     recent: 'recent' as FieldName,
@@ -770,12 +786,14 @@ export namespace SectorHazardBoards {
 
 export namespace Sectors {
   export const fieldName = {
+    directoryOnly: 'directoryOnly' as FieldName,
     established: 'established' as FieldName,
     id: 'id' as FieldName,
     name: 'name' as FieldName,
     region: 'region' as FieldName,
   };
   export const resourceName = {
+    directoryOnly: 'Sectors.directoryOnly' as Resource,
     established: 'Sectors.established' as Resource,
     id: 'Sectors.id' as Resource,
     name: 'Sectors.name' as Resource,

@@ -35,6 +35,7 @@ import (
 	cloudspanner "cloud.google.com/go/spanner"
 	"github.com/cccteam/access"
 	"github.com/cccteam/access/spannerstore"
+	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/auth"
 	"github.com/cccteam/session"
 	"github.com/cccteam/session/google"
@@ -125,6 +126,11 @@ type Settings struct {
 	// every policy write it makes and rereads on every hint it receives, the heartbeat
 	// left as the backstop. Required.
 	ChangeSignal access.ChangeSignal
+	// TenantDeclarations reads what a sector declares about who may enter it, in the
+	// sign-in's transaction: the generated reader over the Sector record and its
+	// directories (app.NewSectorDeclarationReader), which the sign-in rule decides with.
+	// Required; New refuses nil.
+	TenantDeclarations signin.DeclarationReader[*cloudspanner.ReadWriteTransaction]
 }
 
 // Session is the auth's session manager: one Auth session over the Spanner store, whose
@@ -210,6 +216,9 @@ func (h *Handlers) PendingCancel() http.HandlerFunc {
 func New(ctx context.Context, db *cloudspanner.Client, settings *Settings) (*Auth, error) {
 	if settings.ChangeSignal == nil {
 		return nil, errors.New("crew.Settings.ChangeSignal is required: the engine announces and watches policy changes through it")
+	}
+	if settings.TenantDeclarations == nil {
+		return nil, errors.New("crew.Settings.TenantDeclarations is required: the sign-in rule reads what each sector declares about who may enter it through the generated reader (app.NewSectorDeclarationReader)")
 	}
 	store, err := spannerstore.New(db, spannerstore.WithPrefix(TablePrefix))
 	if err != nil {
@@ -301,6 +310,24 @@ func New(ctx context.Context, db *cloudspanner.Client, settings *Settings) (*Aut
 		Accounts:     signin.OpenSignUp,
 		LoginURL:     settings.LoginURL,
 	})
+
+	// The sign-in rule: the library's tenant policy. A person's sectors are where they
+	// hold a role (the engine's memberships), and what each sector admits is its
+	// declaration, read in the sign-in's transaction: a password is admitted unless
+	// every one of the person's sectors admits its people through directories only
+	// (the bosun, whose only sector is Bastion, is refused directory_only), a sign-in
+	// through a directory when one of their sectors declares it; the fleet's own staff
+	// (a global role, or one held in every sector) and a sign-in whose directory names
+	// the roles (the navigator's, the client's) are admitted on the library's checks;
+	// a person who holds no sector is admitted too (signin.AdmitWithoutTenant), since
+	// the pioneer signs up first and charts her sector after. Which sectors the session
+	// then reaches is decided again, sector by sector, where its chart is computed
+	// (app.UserPermissions). The memberships are read outside the sign-in's transaction
+	// (resource.SignInRoles): the Spanner client refuses the engine's read under the
+	// transaction's context as a nested transaction.
+	//
+	// Demonstrates: tenancy.declaration, tenancy.directory-only.
+	crewSession.SetSignInPolicy(signin.TenantPolicy(resource.SignInRoles(accessClient.UserManager()), settings.TenantDeclarations, signin.AdmitWithoutTenant()))
 
 	return &Auth{access: accessClient, handlers: &Handlers{Session: crewSession, password: password, google: googleMethod, signUp: signUpMethod}}, nil
 }

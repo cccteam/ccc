@@ -1,6 +1,9 @@
 package resources
 
-import "cloud.google.com/go/civil"
+import (
+	"cloud.google.com/go/civil"
+	"github.com/cccteam/ccc/resource"
+)
 
 type (
 	// Sector is the tenant record (@tenant): the table whose rows are the sectors, the
@@ -36,7 +39,23 @@ type (
 	// administrator of one sector never creates another there. @tenant alone would keep
 	// charting to the surveyor; @tenant(creation: self-service) to the pioneer alone.
 	//
-	// Demonstrates: tenancy.tenant-record, tenancy.run-time-tenant, tenancy.concealed, tenancy.self-service, @order, @page.
+	// Who may enter a sector is the record's declaration, data of the application rather
+	// than deploy configuration: the directories the sector admits its people through
+	// (SectorDirectory, one row each) and whether its people enter through them only
+	// (DirectoryOnly). The crew and the members auths' sign-in rule reads it in the
+	// sign-in's own transaction (NewSectorDeclarationReader) and every instance's roster
+	// keeps a copy beside the keys (NewSectorRoster, Declarations), which this record's
+	// and the directories' generated write paths reload after their commit, so a sector
+	// is offered to a session only when the session may enter it: the navigator, through
+	// the fleet's directory, reaches the sectors that declare it (the seed declares it on
+	// all three); the rigger, by password, reaches Anvil and not Bastion, which admits
+	// its people through its directory only; the bosun, whose only sector is Bastion, is
+	// refused at sign-in. The pioneer's Ember declares the directory she came through,
+	// written by the create-sector route in the row's transaction, so it admits her at
+	// once. The record's change events (DataChangeEvents, Config) are the audit of every
+	// edit.
+	//
+	// Demonstrates: tenancy.tenant-record, tenancy.run-time-tenant, tenancy.concealed, tenancy.self-service, tenancy.declaration, tenancy.directory-only, tenancy.creator-directory, @order, @page.
 	//
 	// @resource
 	// @tenant(creation: both)
@@ -47,5 +66,17 @@ type (
 		Name        string     `spanner:"Name"`
 		Region      string     `spanner:"Region"`
 		Established civil.Date `spanner:"Established"`
+		// DirectoryOnly says the sector's people enter through its directories only: a
+		// password does not reach the sector. Set by whoever holds the record's Update
+		// grant on the column (Headquarters), never at charting: a new sector declares
+		// nothing beyond its creator's directory.
+		// @directoryOnly
+		DirectoryOnly bool `spanner:"DirectoryOnly"`
 	}
 )
+
+// Config enables change tracking: Sector mutations write DataChangeEvents rows in the
+// same transaction, the audit of every change to what a sector declares.
+func (Sector) Config() resource.Config {
+	return defaultConfig().SetTrackChanges(true)
+}

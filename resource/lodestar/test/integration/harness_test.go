@@ -745,6 +745,14 @@ func newServedAt(ctx context.Context, t *testing.T, version string) *served {
 	// policy kind through it, and the App subscribes and publishes through it.
 	fake := live.NewFake()
 	policySignal := auth.PolicySignal(fake)
+	// The tenant roster as production's data level starts it, over the seeded sectors
+	// and what each declares about who may enter it; the App's chart is filtered by its
+	// copy of the declarations, and a sector or a declaration written through the API
+	// reaches it after the commit.
+	roster := app.NewSectorRoster(resource.NewSpannerClient(db.Client), resource.WithTenantSignals(fake))
+	if err := roster.Start(ctx); err != nil {
+		t.Fatalf("resource.TenantRoster.Start() error = %v", err)
+	}
 
 	// The server is allocated before the auths so each directory's callback can name
 	// the server's own address.
@@ -762,8 +770,9 @@ func newServedAt(ctx context.Context, t *testing.T, version string) *served {
 			HostedDomain: "example.com",
 			GroupPrefix:  "crew-",
 		},
-		SignUpRedirectURL: "http://" + server.Listener.Addr().String() + consoleAPI + "/user/" + crew.SignUpRegistration + "/callback",
-		ChangeSignal:      policySignal,
+		SignUpRedirectURL:  "http://" + server.Listener.Addr().String() + consoleAPI + "/user/" + crew.SignUpRegistration + "/callback",
+		ChangeSignal:       policySignal,
+		TenantDeclarations: app.NewSectorDeclarationReader(),
 	})
 	if err != nil {
 		t.Fatalf("crew.New() error = %v", err)
@@ -785,7 +794,8 @@ func newServedAt(ctx context.Context, t *testing.T, version string) *served {
 			HostedDomain: "example.com",
 			GroupPrefix:  "members-",
 		},
-		ChangeSignal: policySignal,
+		ChangeSignal:       policySignal,
+		TenantDeclarations: app.NewSectorDeclarationReader(),
 	})
 	if err != nil {
 		t.Fatalf("members.New() error = %v", err)
@@ -823,6 +833,8 @@ func newServedAt(ctx context.Context, t *testing.T, version string) *served {
 		version:       version,
 		scheduler:     scheduled.NewGuard(schedulerInvoker, keys),
 		jobs:          starter,
+		tenants:       roster,
+		declarations:  roster.Declarations,
 	})
 	server.Config.Handler = router.New(a, router.AppHooks(a))
 	server.Start()

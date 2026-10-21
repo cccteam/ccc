@@ -241,6 +241,10 @@ func TestGeneratedRouteOutletIsolation(t *testing.T) {
 		{url: "/droids/sectors", method: http.MethodPost},
 		{url: "/droids/sectors/testSectorID", method: http.MethodGet},
 		{url: "/droids/sectors/testSectorID", method: http.MethodPost},
+		{url: "/droids/sectors/testDomain/sector-directories", method: http.MethodGet},
+		{url: "/droids/sectors/testDomain/sector-directories", method: http.MethodPost},
+		{url: "/droids/sectors/testDomain/sector-directories/testSectorDirectoryID", method: http.MethodGet},
+		{url: "/droids/sectors/testDomain/sector-directories/testSectorDirectoryID", method: http.MethodPost},
 		{url: "/droids/sectors/testDomain/ships", method: http.MethodGet},
 		{url: "/droids/sectors/testDomain/ships", method: http.MethodPost},
 		{url: "/droids/sectors/testDomain/ships/testShipID", method: http.MethodGet},
@@ -398,6 +402,10 @@ func TestGeneratedRouteOutletIsolation(t *testing.T) {
 		{url: "/portal/api/sectors", method: http.MethodPost},
 		{url: "/portal/api/sectors/testSectorID", method: http.MethodGet},
 		{url: "/portal/api/sectors/testSectorID", method: http.MethodPost},
+		{url: "/portal/api/sectors/testDomain/sector-directories", method: http.MethodGet},
+		{url: "/portal/api/sectors/testDomain/sector-directories", method: http.MethodPost},
+		{url: "/portal/api/sectors/testDomain/sector-directories/testSectorDirectoryID", method: http.MethodGet},
+		{url: "/portal/api/sectors/testDomain/sector-directories/testSectorDirectoryID", method: http.MethodPost},
 		{url: "/portal/api/sectors/testDomain/ships", method: http.MethodGet},
 		{url: "/portal/api/sectors/testDomain/ships", method: http.MethodPost},
 		{url: "/portal/api/sectors/testDomain/ships/testShipID", method: http.MethodGet},
@@ -598,6 +606,7 @@ func generatedRouteParameters() []string {
 		"refitTaskRefitID",
 		"refitTaskTaskNumber",
 		"sectorID",
+		"sectorDirectoryID",
 		"shipID",
 		"shipClassID",
 		"sortieID",
@@ -1171,6 +1180,26 @@ func generatedRouterTests() []*generatedRouterTest {
 			url: "/console/api/sectors/testSectorID", method: http.MethodPost,
 			handlerFunc: "Sector",
 			parameters:  map[string]string{"sectorID": "testSectorID"},
+		},
+		{
+			url: "/console/api/sectors/testDomain/sector-directories", method: http.MethodGet,
+			handlerFunc: "SectorDirectories",
+			parameters:  map[string]string{"sectorID": "testDomain"},
+		},
+		{
+			url: "/console/api/sectors/testDomain/sector-directories", method: http.MethodPost,
+			handlerFunc: "SectorDirectories",
+			parameters:  map[string]string{"sectorID": "testDomain"},
+		},
+		{
+			url: "/console/api/sectors/testDomain/sector-directories/testSectorDirectoryID", method: http.MethodGet,
+			handlerFunc: "SectorDirectory",
+			parameters:  map[string]string{"sectorID": "testDomain", "sectorDirectoryID": "testSectorDirectoryID"},
+		},
+		{
+			url: "/console/api/sectors/testDomain/sector-directories/testSectorDirectoryID", method: http.MethodPost,
+			handlerFunc: "SectorDirectory",
+			parameters:  map[string]string{"sectorID": "testDomain", "sectorDirectoryID": "testSectorDirectoryID"},
 		},
 		{
 			url: "/console/api/sectors/testDomain/ships", method: http.MethodGet,
@@ -2436,6 +2465,14 @@ func (s *generatedHandlersStub) Sectors() http.HandlerFunc {
 
 func (s *generatedHandlersStub) Sector() http.HandlerFunc {
 	return s.record("Sector")
+}
+
+func (s *generatedHandlersStub) SectorDirectories() http.HandlerFunc {
+	return s.record("SectorDirectories")
+}
+
+func (s *generatedHandlersStub) SectorDirectory() http.HandlerFunc {
+	return s.record("SectorDirectory")
 }
 
 func (s *generatedHandlersStub) SectorHazardBoards() http.HandlerFunc {
