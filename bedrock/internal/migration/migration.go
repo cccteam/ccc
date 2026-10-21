@@ -186,6 +186,11 @@ func (n *renumbering) dir(ctx context.Context, dir string, editable bool) error 
 			return err
 		}
 	default:
+		if key, ok := consolidationOf(entries, committed, own); ok {
+			n.result.Notes = append(n.result.Notes, fmt.Sprintf("%s: %s is the committed sequence folded at its highest index (bedrock migration consolidate), left alone", dir, key))
+
+			return nil
+		}
 		if stems := ordered(withUp(own)); len(stems) > 0 {
 			first := stems[0].idx
 			if highest, found := highestIndex(committed); found {
@@ -203,6 +208,35 @@ func (n *renumbering) dir(ctx context.Context, dir string, editable bool) error 
 	}
 
 	return n.result.apply(ctx, n.root, abs, tracked, pending)
+}
+
+// consolidationOf reads a directory as the committed sequence folded into one file
+// (bedrock migration consolidate): every committed file gone from the tree, and the
+// branch's own files exactly the folded pair, Consolidated at the committed sequence's
+// highest index. Such a directory is left alone: the fold carries the index the
+// environments' databases already hold, and moving it would make every one of them
+// apply the whole fold over its tables. It answers the folded stem.
+func consolidationOf(entries []os.DirEntry, committed map[string]bool, own map[string]*stem) (string, bool) {
+	highest, found := highestIndex(committed)
+	if !found {
+		return "", false
+	}
+	for _, e := range entries {
+		if committed[e.Name()] {
+			return "", false
+		}
+	}
+	ups := withUp(own)
+	if len(ups) != 1 {
+		return "", false
+	}
+	for key, s := range ups {
+		if s.idx == highest && s.name == ConsolidatedName {
+			return key, true
+		}
+	}
+
+	return "", false
 }
 
 // packRenames is a packed directory's renames: every file the tree holds, in its order,
