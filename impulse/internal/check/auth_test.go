@@ -41,11 +41,15 @@ func newSessions(client any, key string, opts ...session.AuthOption) {
 const (
 	defaultAuth = `authA, _ := session.NewAuth[session.NoCustomData, session.NoCustomData](sessionstorage.NewSpannerAuth(client), key)
 	_ = session.PasswordSignIn(authA)`
-	customAuth = `partners, _ := session.NewAuth[session.NoCustomData, session.NoCustomData](sessionstorage.NewSpannerAuth(client, sessionstorage.WithImpersonation(sessionstorage.NewImpersonationTable("Impersonations"))), key, session.WithSessionTableName("PartnerSessions"), session.WithUserTableName("PartnerUsers"), session.WithIdentitiesTableName("PartnerIdentities"), session.WithPendingSignInsTableName("PartnerPending"), session.WithCookieName("partner"))
+	customAuth = `partners, _ := session.NewAuth[session.NoCustomData, session.NoCustomData](sessionstorage.NewSpannerAuth(client, sessionstorage.WithImpersonation(sessionstorage.NewImpersonationTable("Impersonations"))), key, session.WithSessionTableName("PartnerSessions"), session.WithUserTableName("PartnerUsers"), session.WithIdentitiesTableName("PartnerIdentities"), session.WithPendingSignInsTableName("PartnerPending"), session.WithSignInAttemptsTableName("PartnerAttempts"), session.WithCookieName("partner"))
 	_ = session.PasswordSignIn(partners)`
-	googleDirectory = `staff, _ := session.NewAuth[session.NoCustomData, session.NoCustomData](sessionstorage.NewSpannerAuth(client, sessionstorage.WithAuthEvents(sessionstorage.NewAuthEventsTable("StaffEvents")), sessionstorage.WithSpannerCustomSessionData(sessionstorage.NewSpannerCustomSessionData("StaffSessionData", nil))), key, session.WithSessionTableName("StaffSessions"), session.WithUserTableName("StaffUsers"), session.WithIdentitiesTableName("StaffIdentities"), session.WithPendingSignInsTableName("StaffPending"))
+	googleDirectory = `staff, _ := session.NewAuth[session.NoCustomData, session.NoCustomData](sessionstorage.NewSpannerAuth(client, sessionstorage.WithAuthEvents(sessionstorage.NewAuthEventsTable("StaffEvents")), sessionstorage.WithSpannerCustomSessionData(sessionstorage.NewSpannerCustomSessionData("StaffSessionData", nil))), key, session.WithSessionTableName("StaffSessions"), session.WithUserTableName("StaffUsers"), session.WithIdentitiesTableName("StaffIdentities"), session.WithPendingSignInsTableName("StaffPending"), session.WithSignInAttemptsTableName("StaffAttempts"))
 	_, _ = google.SignIn(staff, "workspace", signin.MembersOfDirectory, &google.Config{Workspaces: google.Workspace("workspace", "example.com"), RoleSync: google.RoleSync(nil, "", nil)})`
-	partnersShared = `partners, _ := session.NewAuth[session.NoCustomData, session.NoCustomData](sessionstorage.NewSpannerAuth(client), key, session.WithUserTableName("PartnerUsers"), session.WithIdentitiesTableName("PartnerIdentities"), session.WithPendingSignInsTableName("PartnerPending"))
+	partnersShared = `partners, _ := session.NewAuth[session.NoCustomData, session.NoCustomData](sessionstorage.NewSpannerAuth(client), key, session.WithUserTableName("PartnerUsers"), session.WithIdentitiesTableName("PartnerIdentities"), session.WithPendingSignInsTableName("PartnerPending"), session.WithSignInAttemptsTableName("PartnerAttempts"))
+	_ = session.PasswordSignIn(partners)`
+	// defaultAttempts names every table but the sign-in attempts table, which the library
+	// then reads under its default name, the way an auth written before the limiter does.
+	defaultAttempts = `partners, _ := session.NewAuth[session.NoCustomData, session.NoCustomData](sessionstorage.NewSpannerAuth(client), key, session.WithSessionTableName("PartnerSessions"), session.WithUserTableName("PartnerUsers"), session.WithIdentitiesTableName("PartnerIdentities"), session.WithPendingSignInsTableName("PartnerPending"))
 	_ = session.PasswordSignIn(partners)`
 	forwarded = `authA, _ := session.NewAuth[session.NoCustomData, session.NoCustomData](sessionstorage.NewSpannerAuth(client), key, opts...)
 	_ = session.PasswordSignIn(authA)`
@@ -89,6 +93,7 @@ const (
 	usersTable      = TablePrefix + "SessionUsers"
 	identitiesTable = TablePrefix + "SessionIdentities"
 	pendingTable    = TablePrefix + "SessionPendingSignIns"
+	attemptsTable   = TablePrefix + "SessionSignInAttempts"
 )
 
 type Session = session.Auth[session.NoCustomData, session.NoCustomData, *cloudspanner.ReadWriteTransaction]
@@ -100,6 +105,7 @@ func New(ctx context.Context, db *cloudspanner.Client, key string) (*Session, er
 		session.WithUserTableName(usersTable),
 		session.WithIdentitiesTableName(identitiesTable),
 		session.WithPendingSignInsTableName(pendingTable),
+		session.WithSignInAttemptsTableName(attemptsTable),
 		session.WithCookieName(Name),
 		session.WithXSRFCookieName(XSRFCookie),
 	)
@@ -141,6 +147,7 @@ func New(ctx context.Context, db *cloudspanner.Client, key string) (*session.Pas
 		session.WithUserTableName("CrewSessionUsers"),
 		session.WithIdentitiesTableName("CrewSessionIdentities"),
 		session.WithPendingSignInsTableName("CrewSessionPendingSignIns"),
+		session.WithSignInAttemptsTableName("CrewSessionSignInAttempts"),
 	)
 	if err != nil {
 		return nil, err
@@ -158,7 +165,7 @@ func TestSessionTables(t *testing.T) {
 		`generation.GenerateHandlers("app"),`,
 		`generation.GenerateRoutes("pkg/router", "api"),`,
 	)
-	const crewTables = "CrewSessions, CrewSessionUsers, CrewSessionIdentities, CrewSessionPendingSignIns, CrewSessionImpersonations"
+	const crewTables = "CrewSessions, CrewSessionUsers, CrewSessionIdentities, CrewSessionPendingSignIns, CrewSessionSignInAttempts, CrewSessionImpersonations"
 
 	tests := []struct {
 		name        string
@@ -172,30 +179,30 @@ func TestSessionTables(t *testing.T) {
 			files: map[string]string{
 				"cmd/generate/main.go":                     site,
 				"pkg/config/session.go":                    authFile(customAuth, googleDirectory),
-				"schema/migrations/000003_Sessions.up.sql": tables("PartnerSessions", "PartnerUsers", "PartnerIdentities", "PartnerPending", "Impersonations", "StaffSessions", "StaffUsers", "StaffIdentities", "StaffPending", "StaffEvents", "StaffSessionData"),
+				"schema/migrations/000003_Sessions.up.sql": tables("PartnerSessions", "PartnerUsers", "PartnerIdentities", "PartnerPending", "PartnerAttempts", "Impersonations", "StaffSessions", "StaffUsers", "StaffIdentities", "StaffPending", "StaffAttempts", "StaffEvents", "StaffSessionData"),
 			},
 			wantStatus:  Pass,
-			wantSummary: "2 auth(s): methods password; tables PartnerSessions, PartnerUsers, PartnerIdentities, PartnerPending, Impersonations, cookie partner; methods workspace (google, directory authority); tables StaffSessions, StaffUsers, StaffIdentities, StaffPending, StaffEvents, StaffSessionData",
+			wantSummary: "2 auth(s): methods password; tables PartnerSessions, PartnerUsers, PartnerIdentities, PartnerPending, PartnerAttempts, Impersonations, cookie partner; methods workspace (google, directory authority); tables StaffSessions, StaffUsers, StaffIdentities, StaffPending, StaffAttempts, StaffEvents, StaffSessionData",
 		},
 		{
 			name: "an auth package naming its tables through constants",
 			files: map[string]string{
 				"cmd/generate/main.go":                  site,
 				"pkg/auth/staff/staff.go":               constNamed,
-				"schema/migrations/000002_Staff.up.sql": tables("StaffSessions", "StaffSessionUsers", "StaffSessionIdentities", "StaffSessionPendingSignIns"),
+				"schema/migrations/000002_Staff.up.sql": tables("StaffSessions", "StaffSessionUsers", "StaffSessionIdentities", "StaffSessionPendingSignIns", "StaffSessionSignInAttempts"),
 			},
 			wantStatus:  Pass,
-			wantSummary: "1 auth(s): staff: methods password; tables StaffSessions, StaffSessionUsers, StaffSessionIdentities, StaffSessionPendingSignIns, cookie staff, xsrf cookie staff-xsrf",
+			wantSummary: "1 auth(s): staff: methods password; tables StaffSessions, StaffSessionUsers, StaffSessionIdentities, StaffSessionPendingSignIns, StaffSessionSignInAttempts, cookie staff, xsrf cookie staff-xsrf",
 		},
 		{
 			name: "one Auth with forwarded options",
 			files: map[string]string{
 				"cmd/generate/main.go":                     site,
 				"pkg/config/session.go":                    authFile(forwarded),
-				"schema/migrations/000003_Sessions.up.sql": tables("Sessions", "SessionUsers", "SessionIdentities", "SessionPendingSignIns"),
+				"schema/migrations/000003_Sessions.up.sql": tables("Sessions", "SessionUsers", "SessionIdentities", "SessionPendingSignIns", "SessionSignInAttempts"),
 			},
 			wantStatus:  Pass,
-			wantSummary: "1 auth(s): methods password; tables Sessions, SessionUsers, SessionIdentities, SessionPendingSignIns",
+			wantSummary: "1 auth(s): methods password; tables Sessions, SessionUsers, SessionIdentities, SessionPendingSignIns, SessionSignInAttempts",
 			wantDetails: []string{
 				"pkg/config/session.go:12: options are forwarded from the caller (opts...); tables and cookies beyond the defaults are not visible here",
 			},
@@ -205,7 +212,7 @@ func TestSessionTables(t *testing.T) {
 			files: map[string]string{
 				"cmd/generate/main.go":                     site,
 				"pkg/config/session.go":                    authFile(defaultAuth, partnersShared),
-				"schema/migrations/000003_Sessions.up.sql": tables("Sessions", "SessionUsers", "SessionIdentities", "PartnerUsers", "PartnerIdentities", "PartnerPending"),
+				"schema/migrations/000003_Sessions.up.sql": tables("Sessions", "SessionUsers", "SessionIdentities", "SessionSignInAttempts", "PartnerUsers", "PartnerIdentities", "PartnerPending", "PartnerAttempts"),
 			},
 			wantStatus:  Fail,
 			wantSummary: "2 auth wiring problem(s)",
@@ -215,11 +222,37 @@ func TestSessionTables(t *testing.T) {
 			},
 		},
 		{
+			name: "a missing sign-in attempts table",
+			files: map[string]string{
+				"cmd/generate/main.go":                     site,
+				"pkg/config/session.go":                    authFile(defaultAuth),
+				"schema/migrations/000003_Sessions.up.sql": tables("Sessions", "SessionUsers", "SessionIdentities", "SessionPendingSignIns"),
+			},
+			wantStatus:  Fail,
+			wantSummary: "1 auth wiring problem(s)",
+			wantDetails: []string{
+				"pkg/config/session.go:12: the Auth at pkg/config/session.go:12 reads table SessionSignInAttempts, which no migration creates (the session library's schema is under " + schemaSets + ")",
+			},
+		},
+		{
+			name: "two Auths counting sign-in attempts in the library's default table",
+			files: map[string]string{
+				"cmd/generate/main.go":                     site,
+				"pkg/config/session.go":                    authFile(defaultAuth, defaultAttempts),
+				"schema/migrations/000003_Sessions.up.sql": tables("Sessions", "SessionUsers", "SessionIdentities", "SessionPendingSignIns", "SessionSignInAttempts", "PartnerSessions", "PartnerUsers", "PartnerIdentities", "PartnerPending"),
+			},
+			wantStatus:  Fail,
+			wantSummary: "1 auth wiring problem(s)",
+			wantDetails: []string{
+				"pkg/config/session.go:15: the Auth at pkg/config/session.go:15 shares table SessionSignInAttempts with the Auth at pkg/config/session.go:12; each Auth needs its own tables (the With*TableName options and the storage's table constructors)",
+			},
+		},
+		{
 			name: "an Auth with no method registered",
 			files: map[string]string{
 				"cmd/generate/main.go":                     site,
 				"pkg/config/session.go":                    authFile(noMethods),
-				"schema/migrations/000003_Sessions.up.sql": tables("Sessions", "SessionUsers", "SessionIdentities", "SessionPendingSignIns"),
+				"schema/migrations/000003_Sessions.up.sql": tables("Sessions", "SessionUsers", "SessionIdentities", "SessionPendingSignIns", "SessionSignInAttempts"),
 			},
 			wantStatus:  Fail,
 			wantSummary: "1 auth wiring problem(s)",
@@ -232,7 +265,7 @@ func TestSessionTables(t *testing.T) {
 			files: map[string]string{
 				"cmd/generate/main.go":                     site,
 				"pkg/config/session.go":                    authFile(unreadableName),
-				"schema/migrations/000003_Sessions.up.sql": tables("Sessions", "SessionUsers", "SessionIdentities", "SessionPendingSignIns"),
+				"schema/migrations/000003_Sessions.up.sql": tables("Sessions", "SessionUsers", "SessionIdentities", "SessionPendingSignIns", "SessionSignInAttempts"),
 			},
 			wantStatus:  Fail,
 			wantSummary: "1 auth wiring problem(s)",
@@ -245,7 +278,7 @@ func TestSessionTables(t *testing.T) {
 			files: map[string]string{
 				"cmd/generate/main.go":                     site,
 				"pkg/config/session.go":                    authFile(registeredTwice),
-				"schema/migrations/000003_Sessions.up.sql": tables("Sessions", "SessionUsers", "SessionIdentities", "SessionPendingSignIns"),
+				"schema/migrations/000003_Sessions.up.sql": tables("Sessions", "SessionUsers", "SessionIdentities", "SessionPendingSignIns", "SessionSignInAttempts"),
 			},
 			wantStatus:  Fail,
 			wantSummary: "1 auth wiring problem(s)",
@@ -258,7 +291,7 @@ func TestSessionTables(t *testing.T) {
 			files: map[string]string{
 				"cmd/generate/main.go":                     site,
 				"pkg/config/session.go":                    authFile(customAuth, googleDirectory, unattached),
-				"schema/migrations/000003_Sessions.up.sql": tables("PartnerSessions", "PartnerUsers", "PartnerIdentities", "PartnerPending", "Impersonations", "StaffSessions", "StaffUsers", "StaffIdentities", "StaffPending", "StaffEvents", "StaffSessionData"),
+				"schema/migrations/000003_Sessions.up.sql": tables("PartnerSessions", "PartnerUsers", "PartnerIdentities", "PartnerPending", "PartnerAttempts", "Impersonations", "StaffSessions", "StaffUsers", "StaffIdentities", "StaffPending", "StaffAttempts", "StaffEvents", "StaffSessionData"),
 			},
 			wantStatus:  Fail,
 			wantSummary: "1 auth wiring problem(s)",
@@ -271,7 +304,7 @@ func TestSessionTables(t *testing.T) {
 			files: map[string]string{
 				"cmd/generate/main.go":                 site,
 				"pkg/auth/crew/crew.go":                impersonationNamed("impersonation, err := sessionstorage.NewImpersonationTable(\"CrewSessionImpersonations\")\n\tif err != nil {\n\t\treturn nil, err\n\t}"),
-				"schema/migrations/000002_Crew.up.sql": tables("CrewSessions", "CrewSessionUsers", "CrewSessionIdentities", "CrewSessionPendingSignIns", "CrewSessionImpersonations"),
+				"schema/migrations/000002_Crew.up.sql": tables("CrewSessions", "CrewSessionUsers", "CrewSessionIdentities", "CrewSessionPendingSignIns", "CrewSessionSignInAttempts", "CrewSessionImpersonations"),
 			},
 			wantStatus:  Pass,
 			wantSummary: "1 auth(s): crew: methods password; tables " + crewTables,
@@ -281,7 +314,7 @@ func TestSessionTables(t *testing.T) {
 			files: map[string]string{
 				"cmd/generate/main.go":                 site,
 				"pkg/auth/crew/crew.go":                impersonationNamed("impersonation := sessionstorage.NewImpersonationTable(impersonationTable)"),
-				"schema/migrations/000002_Crew.up.sql": tables("CrewSessions", "CrewSessionUsers", "CrewSessionIdentities", "CrewSessionPendingSignIns", "CrewSessionImpersonations"),
+				"schema/migrations/000002_Crew.up.sql": tables("CrewSessions", "CrewSessionUsers", "CrewSessionIdentities", "CrewSessionPendingSignIns", "CrewSessionSignInAttempts", "CrewSessionImpersonations"),
 			},
 			wantStatus:  Pass,
 			wantSummary: "1 auth(s): crew: methods password; tables " + crewTables,
@@ -291,7 +324,7 @@ func TestSessionTables(t *testing.T) {
 			files: map[string]string{
 				"cmd/generate/main.go":                 site,
 				"pkg/auth/crew/crew.go":                impersonationNamed("impersonation := newImpersonation()"),
-				"schema/migrations/000002_Crew.up.sql": tables("CrewSessions", "CrewSessionUsers", "CrewSessionIdentities", "CrewSessionPendingSignIns", "CrewSessionImpersonations"),
+				"schema/migrations/000002_Crew.up.sql": tables("CrewSessions", "CrewSessionUsers", "CrewSessionIdentities", "CrewSessionPendingSignIns", "CrewSessionSignInAttempts", "CrewSessionImpersonations"),
 			},
 			wantStatus:  Fail,
 			wantSummary: "1 auth wiring problem(s)",

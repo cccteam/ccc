@@ -131,6 +131,9 @@ type Auth struct {
 	// PendingTable is the pending sign-ins table: WithPendingSignInsTableName or the
 	// library default.
 	PendingTable string
+	// AttemptsTable is the sign-in attempts table the password method's attempt limiter
+	// counts in: WithSignInAttemptsTableName or the library default.
+	AttemptsTable string
 	// AuthEventsTable is the auth events table the storage attaches
 	// (sessionstorage.WithAuthEvents over NewAuthEventsTable), when its name is a literal
 	// or a constant of the file; empty when the storage attaches none or the name does

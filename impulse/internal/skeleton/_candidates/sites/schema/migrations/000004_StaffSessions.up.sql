@@ -100,3 +100,16 @@ CREATE TABLE StaffSessionPendingSignIns (
 CREATE UNIQUE INDEX StaffSessionPendingSignInsByTokenHash ON StaffSessionPendingSignIns(TokenHash);
 
 CREATE INDEX StaffSessionPendingSignInsByExpiresAt ON StaffSessionPendingSignIns(ExpiresAt);
+
+-- The sign-in attempts: the attempt limiter's count of failed password attempts per
+-- sign-in name, known or not, within a window, and the lock those failures earned. The
+-- row is keyed by the submitted name, never by the user row, so an unknown name is
+-- counted exactly as a known one; a success, an MFA completion or a password change
+-- deletes it. WindowEndsAt and LockedUntil are deadlines, written as given.
+CREATE TABLE StaffSessionSignInAttempts (
+    Name         STRING(MAX) NOT NULL,
+    Failures     INT64 NOT NULL,
+    WindowEndsAt TIMESTAMP NOT NULL,
+    LockedUntil  TIMESTAMP,
+    UpdatedAt    TIMESTAMP NOT NULL OPTIONS (allow_commit_timestamp = true),
+) PRIMARY KEY (Name);

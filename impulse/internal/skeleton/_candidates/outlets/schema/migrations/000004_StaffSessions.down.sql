@@ -1,3 +1,4 @@
+DROP TABLE StaffSessionSignInAttempts;
 DROP INDEX StaffSessionPendingSignInsByExpiresAt;
 DROP INDEX StaffSessionPendingSignInsByTokenHash;
 DROP TABLE StaffSessionPendingSignIns;

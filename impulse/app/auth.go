@@ -52,6 +52,7 @@ const (
 	DefaultUserTable       = "SessionUsers"
 	DefaultIdentitiesTable = "SessionIdentities"
 	DefaultPendingTable    = "SessionPendingSignIns"
+	DefaultAttemptsTable   = "SessionSignInAttempts"
 	// DefaultImpersonationTable is the session library's impersonation table name.
 	DefaultImpersonationTable = "SessionImpersonations"
 	// DefaultAuthEventsTable is the name the library's schema creates the auth events table
@@ -125,7 +126,7 @@ func parseAuths(rel string, src []byte) (auths []Auth, unattached []Method, err 
 					File: rel, Line: fset.Position(call.Pos()).Line, Var: assignedName(call, body),
 					SessionTable: DefaultSessionTable, UserTable: DefaultUserTable,
 					IdentitiesTable: DefaultIdentitiesTable, PendingTable: DefaultPendingTable,
-					OptionsForwarded: call.Ellipsis.IsValid(),
+					AttemptsTable: DefaultAttemptsTable, OptionsForwarded: call.Ellipsis.IsValid(),
 				}
 				for _, arg := range call.Args {
 					readAuthArg(&auth, arg, pkg, storage, consts, body)
@@ -370,6 +371,8 @@ func readAuthArg(auth *Auth, arg ast.Expr, pkg, storage string, consts map[strin
 				auth.IdentitiesTable = s
 			case "WithPendingSignInsTableName":
 				auth.PendingTable = s
+			case "WithSignInAttemptsTableName":
+				auth.AttemptsTable = s
 			case "WithCookieName":
 				auth.CookieName = s
 			case "WithXSRFCookieName":
