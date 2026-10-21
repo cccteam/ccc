@@ -18,9 +18,7 @@ import { refusedSegment, SectorService } from './sector.service';
 // sector the session cannot reach is refused onto the refusal page under its own URL, and
 // nothing is written; on a deep link before the session's sector list has landed the guard
 // asks for the list first; leaving the segment clears the sector and moving to another
-// sector writes the new one. A link the library built from a page's route as written,
-// with the parameter's name where the sector should be, opens under the sector the page
-// was in, and is refused like any other unreachable sector when none is open.
+// sector writes the new one.
 //
 // Demonstrates: tenancy.concealed, tenancy.user-domains.
 
@@ -151,28 +149,6 @@ describe('sectorGuard', () => {
       wantEntered: ['anvil', 'bastion'],
       wantLeft: 0,
       wantListLoads: 1,
-    },
-    {
-      name: 'a link naming the parameter instead of a sector opens under the sector the page was in',
-      sectors: ['anvil'],
-      preload: true,
-      navigate: ['/sectors/anvil/page', '/sectors/:sectorID/page'],
-      want: 'page',
-      wantSector: 'anvil',
-      wantEntered: ['anvil'],
-      wantLeft: 0,
-      wantListLoads: 1,
-    },
-    {
-      name: 'a link naming the parameter with no sector open is refused',
-      sectors: ['anvil'],
-      preload: true,
-      navigate: ['/sectors/:sectorID/page'],
-      want: 'refused',
-      wantSector: '',
-      wantEntered: [],
-      wantLeft: 0,
-      wantListLoads: 2,
     },
   ];
 

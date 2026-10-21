@@ -2,7 +2,7 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { Router } from '@angular/router';
-import { createApi, createTenantRoute } from '@app/service/zz_gen_api';
+import { apiDescriptor, createApi, createTenantRoute } from '@app/service/zz_gen_api';
 import { TenantService } from '@app/tenant/tenant.service';
 import { AuthService } from '@cccteam/resource-angular/auth-service';
 import { provideResourceTesting } from '@cccteam/resource-angular/testing';
@@ -76,7 +76,7 @@ describe('CreateTenantComponent', () => {
     expect(submit?.disabled).toBe(false);
   });
 
-  it('posts the record to the generated route, reloads what the session holds, selects the tenant and moves to the dashboard', async () => {
+  it('posts the record to the generated route, reloads what the session holds and opens the dashboard under the new tenant', async () => {
     const navigated = vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
     fixture.componentInstance.form.setValue({ id: 'west', name: 'West' });
     const pending = fixture.componentInstance.create();
@@ -90,8 +90,9 @@ describe('CreateTenantComponent', () => {
     await pending;
 
     expect(TestBed.inject(AuthService).domains()).toEqual(['west']);
-    expect(TestBed.inject(TenantService).current()).toBe('west');
-    expect(navigated).toHaveBeenCalledWith(['/dashboard']);
+    // The guard on the tenant segment is the tenant's one writer: the page only navigates there.
+    expect(TestBed.inject(TenantService).current()).toBe('');
+    expect(navigated).toHaveBeenCalledWith(['/', apiDescriptor.domainRoute.segment, 'west', 'dashboard']);
     expect(fixture.componentInstance.error()).toBe('');
   });
 
