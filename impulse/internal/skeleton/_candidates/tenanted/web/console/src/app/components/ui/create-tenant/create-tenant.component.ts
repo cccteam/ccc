@@ -6,8 +6,7 @@ import { MatCardModule } from '@angular/material/card';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { Router } from '@angular/router';
-import { CreateTenant, createTenantRoute } from '@app/service/zz_gen_api';
-import { TenantService } from '@app/tenant/tenant.service';
+import { CreateTenant, apiDescriptor, createTenantRoute } from '@app/service/zz_gen_api';
 import { AuthService } from '@cccteam/resource-angular/auth-service';
 import { environment } from '@env';
 import { firstValueFrom } from 'rxjs';
@@ -27,7 +26,9 @@ interface Created {
  * refused by the server, which the page reports in place. The route is no resource or
  * method of the client, so the page posts with the application's HttpClient, and once the
  * server answers it reloads what the session holds (the domains and every cached digest)
- * and selects the new tenant, so the header's picker and the dashboard show it at once.
+ * and opens the new tenant's dashboard under the tenant's own URL, where the guard on the
+ * tenant segment settles the tenant, so the header's picker and the dashboard show it at
+ * once.
  */
 @Component({
   selector: 'app-create-tenant',
@@ -39,7 +40,6 @@ export class CreateTenantComponent {
   private http = inject(HttpClient);
   private auth = inject(AuthService);
   private router = inject(Router);
-  private tenants = inject(TenantService);
 
   /** The record's fields: the key, a slug the tenant-scoped URLs carry, and the name. */
   readonly form = new FormGroup({
@@ -65,8 +65,7 @@ export class CreateTenantComponent {
     try {
       const created = await firstValueFrom(this.http.post<Created>(`${environment.apiUrl}/${createTenantRoute}`, body));
       await firstValueFrom(this.auth.refreshPermissions());
-      this.tenants.select(created.id);
-      await this.router.navigate(['/dashboard']);
+      await this.router.navigate(['/', apiDescriptor.domainRoute.segment, created.id, 'dashboard']);
     } catch (failure) {
       this.error.set(refusal(failure));
     } finally {

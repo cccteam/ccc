@@ -27,12 +27,14 @@ var candidateAuths = map[string][]authpkg.Spec{
 		Methods: []authpkg.Method{{Kind: app.MethodAzure, Name: "directory", Authority: app.AuthorityApplication}},
 		// The development member's domain role (cmd/bootstrap/users.json), in every domain.
 		AdministratorRoles: authpkg.AdministratorRoles{EveryDomain: []string{"Administrator_Domain"}},
+		TenantPolicy:       tenantPolicy("outlets"),
 	}},
 }
 
 // staffSpec is the staff auth of each candidate: a password auth whose first administrator
 // holds what the development administrator holds (cmd/bootstrap/users.json): the global
-// roles, and the domain role in every domain where the candidate has tenants.
+// roles, and the domain role in every domain where the candidate has tenants, with the
+// sign-in rule over the tenant record's declaration where the candidate has one.
 func staffSpec(candidate string) authpkg.Spec {
 	roles := authpkg.AdministratorRoles{Global: []string{"Administrator_Global", "FeatureAdministrator"}, EveryDomain: []string{"Administrator_Domain"}}
 	if candidate == Base {
@@ -44,6 +46,26 @@ func staffSpec(candidate string) authpkg.Spec {
 		Doc:                "the people who sign in to the console with a password",
 		Methods:            []authpkg.Method{{Kind: app.MethodPassword}},
 		AdministratorRoles: roles,
+		TenantPolicy:       tenantPolicy(candidate),
+	}
+}
+
+// tenantPolicy is the sign-in rule of a tenanted candidate's auths: the library's
+// tenant policy over the Tenant record's declaration, read through the generated reader
+// the data level hands in (the console site's, in the sites candidate, where the data
+// level imports its handlers package as consoleapp). The tenanted candidate's record is
+// created by its own people (@tenant(creation: both)), so its rule admits a person who
+// holds no tenant yet; nil for the base, which has no tenants.
+func tenantPolicy(candidate string) *authpkg.TenantPolicy {
+	switch candidate {
+	case Base:
+		return nil
+	case "tenanted":
+		return &authpkg.TenantPolicy{Record: "Tenant", Reader: "app.NewTenantDeclarationReader", AdmitWithoutTenant: true}
+	case "sites":
+		return &authpkg.TenantPolicy{Record: "Tenant", Reader: "consoleapp.NewTenantDeclarationReader"}
+	default:
+		return &authpkg.TenantPolicy{Record: "Tenant", Reader: "app.NewTenantDeclarationReader"}
 	}
 }
 

@@ -77,6 +77,12 @@ func (c *servedConfigurer) TenantRoster() *resource.TenantRoster {
 	return c.tenants
 }
 
+// TenantDeclarations is the roster's copy of what each tenant declares about who may
+// enter it, as the served application reads it.
+func (c *servedConfigurer) TenantDeclarations() resource.TenantDeclarations {
+	return c.tenants.Declarations
+}
+
 func (c *servedConfigurer) ResourceClient() resource.Client {
 	return resource.NewSpannerClient(c.db.Client)
 }
@@ -142,6 +148,8 @@ type served struct {
 	// access is the staff auth's engine, members the members auth's.
 	access  *access.Client
 	members *access.Client
+	// db is the test database, for the suites that read a table directly.
+	db *initiator.SpannerDB
 }
 
 // newServed provisions the database the way the deployment does (the schema and the
@@ -166,7 +174,13 @@ func newServed(ctx context.Context, t *testing.T) *served {
 	if err := roster.Start(ctx); err != nil {
 		t.Fatalf("resource.TenantRoster.Start() error = %v", err)
 	}
-	staffAuth, err := staff.New(ctx, db.Client, &staff.Settings{Collection: router.Collection(), Signals: svc, CookieKey: testCookieKey, SessionTimeout: time.Minute})
+	staffAuth, err := staff.New(ctx, db.Client, &staff.Settings{
+		Collection:         router.Collection(),
+		Signals:            svc,
+		CookieKey:          testCookieKey,
+		SessionTimeout:     time.Minute,
+		TenantDeclarations: app.NewTenantDeclarationReader(),
+	})
 	if err != nil {
 		t.Fatalf("staff.New() error = %v", err)
 	}
@@ -191,6 +205,9 @@ func newServed(ctx context.Context, t *testing.T) *served {
 		SessionTimeout: time.Minute,
 		LoginURL:       "/portal/login",
 		Directory:      members.DirectorySettings{TenantID: "00000000-0000-0000-0000-000000000000", RedirectURL: "http://" + server.Listener.Addr().String() + portalAPI + "/user/directory/callback"},
+		// The declaration reader the sign-in rule reads with; the development seed
+		// declares the directory above on both tenants.
+		TenantDeclarations: app.NewTenantDeclarationReader(),
 	})
 	if err != nil {
 		t.Fatalf("members.New() error = %v", err)
@@ -246,7 +263,7 @@ func newServed(ctx context.Context, t *testing.T) *served {
 	server.Config.Handler = router.New(a, router.Hooks{})
 	server.Start()
 
-	return &served{server: server, access: accessClient, members: membersAccess}
+	return &served{server: server, access: accessClient, members: membersAccess, db: db}
 }
 
 // waitForDomains blocks until the engine's snapshot reports the user's footholds in

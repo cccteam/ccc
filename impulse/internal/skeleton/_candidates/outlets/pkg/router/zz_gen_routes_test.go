@@ -165,6 +165,10 @@ func TestGeneratedRouteOutletIsolation(t *testing.T) {
 		{url: "/portal/api/tenants", method: http.MethodPost},
 		{url: "/portal/api/tenants/testTenantID", method: http.MethodGet},
 		{url: "/portal/api/tenants/testTenantID", method: http.MethodPost},
+		{url: "/portal/api/tenants/testDomain/tenant-directories", method: http.MethodGet},
+		{url: "/portal/api/tenants/testDomain/tenant-directories", method: http.MethodPost},
+		{url: "/portal/api/tenants/testDomain/tenant-directories/testTenantDirectoryID", method: http.MethodGet},
+		{url: "/portal/api/tenants/testDomain/tenant-directories/testTenantDirectoryID", method: http.MethodPost},
 		{url: "/machines/permission-digest", method: http.MethodGet},
 		{url: "/machines/user-domains", method: http.MethodGet},
 		{url: "/machines/live/renew", method: http.MethodPost},
@@ -243,6 +247,10 @@ func TestGeneratedRouteOutletIsolation(t *testing.T) {
 		{url: "/machines/tenants", method: http.MethodPost},
 		{url: "/machines/tenants/testTenantID", method: http.MethodGet},
 		{url: "/machines/tenants/testTenantID", method: http.MethodPost},
+		{url: "/machines/tenants/testDomain/tenant-directories", method: http.MethodGet},
+		{url: "/machines/tenants/testDomain/tenant-directories", method: http.MethodPost},
+		{url: "/machines/tenants/testDomain/tenant-directories/testTenantDirectoryID", method: http.MethodGet},
+		{url: "/machines/tenants/testDomain/tenant-directories/testTenantDirectoryID", method: http.MethodPost},
 	}
 
 	for _, tt := range tests {
@@ -357,6 +365,7 @@ func generatedRouteParameters() []string {
 		"announcementID",
 		"readingID",
 		"tenantID",
+		"tenantDirectoryID",
 		"staffUserID",
 		"staffSeatUser",
 		"staffSeatRole",
@@ -482,6 +491,26 @@ func generatedRouterTests() []*generatedRouterTest {
 			url: "/console/api/tenants/testTenantID", method: http.MethodPost,
 			handlerFunc: "Tenant",
 			parameters:  map[string]string{"tenantID": "testTenantID"},
+		},
+		{
+			url: "/console/api/tenants/testDomain/tenant-directories", method: http.MethodGet,
+			handlerFunc: "TenantDirectories",
+			parameters:  map[string]string{"tenantID": "testDomain"},
+		},
+		{
+			url: "/console/api/tenants/testDomain/tenant-directories", method: http.MethodPost,
+			handlerFunc: "TenantDirectories",
+			parameters:  map[string]string{"tenantID": "testDomain"},
+		},
+		{
+			url: "/console/api/tenants/testDomain/tenant-directories/testTenantDirectoryID", method: http.MethodGet,
+			handlerFunc: "TenantDirectory",
+			parameters:  map[string]string{"tenantID": "testDomain", "tenantDirectoryID": "testTenantDirectoryID"},
+		},
+		{
+			url: "/console/api/tenants/testDomain/tenant-directories/testTenantDirectoryID", method: http.MethodPost,
+			handlerFunc: "TenantDirectory",
+			parameters:  map[string]string{"tenantID": "testDomain", "tenantDirectoryID": "testTenantDirectoryID"},
 		},
 		{
 			url: "/console/api/features", method: http.MethodGet,
@@ -1027,6 +1056,14 @@ func (s *generatedHandlersStub) Tenants() http.HandlerFunc {
 
 func (s *generatedHandlersStub) Tenant() http.HandlerFunc {
 	return s.record("Tenant")
+}
+
+func (s *generatedHandlersStub) TenantDirectories() http.HandlerFunc {
+	return s.record("TenantDirectories")
+}
+
+func (s *generatedHandlersStub) TenantDirectory() http.HandlerFunc {
+	return s.record("TenantDirectory")
 }
 
 func (s *generatedHandlersStub) PatchResources() http.HandlerFunc {

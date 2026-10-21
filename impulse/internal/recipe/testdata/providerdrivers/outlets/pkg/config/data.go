@@ -351,6 +351,15 @@ func (c *DataConfiguration) TenantRoster() *resource.TenantRoster {
 	return c.tenants
 }
 
+// TenantDeclarations reads what a tenant declares about who may enter it from the
+// roster's copy, reloaded on every write of the Tenant record or its directories: the
+// request-time half of the declaration, which filters a session's tenant list. The
+// sign-in half reads the same declaration in the sign-in's transaction, through the
+// generated reader each auth's settings carry.
+func (c *DataConfiguration) TenantDeclarations() resource.TenantDeclarations {
+	return c.tenants.Declarations
+}
+
 // cookieKey returns the configured session cookie key, or an ephemeral one when none is
 // configured. An ephemeral key means sessions do not survive a restart.
 func cookieKey(configured string) (string, error) {
@@ -412,12 +421,19 @@ type dataConfig struct {
 
 // staffSettings builds the staff auth's settings: the generated collection its default
 // roles validate against, the live service its engine signals policy changes through,
-// the cookie key its sessions are signed with, and the session timeout. A directory
-// registration's settings join the literal here (impulse add method), read from the
-// environment under the registration's variables, so the constructor stays one call
-// per auth.
+// the cookie key its sessions are signed with, the session timeout, and the generated
+// reader of a tenant's declaration, which the sign-in rule reads in the sign-in's
+// transaction. A directory registration's settings join the literal here (impulse add
+// method), read from the environment under the registration's variables, so the
+// constructor stays one call per auth.
 func (env *dataConfig) staffSettings(collection access.PermissionCollection, signals staff.Signals, cookieKey string) *staff.Settings {
-	return &staff.Settings{Collection: collection, Signals: signals, CookieKey: cookieKey, SessionTimeout: env.SessionTimeout}
+	return &staff.Settings{
+		Collection:         collection,
+		Signals:            signals,
+		CookieKey:          cookieKey,
+		SessionTimeout:     env.SessionTimeout,
+		TenantDeclarations: app.NewTenantDeclarationReader(),
+	}
 }
 
 // membersSettings builds the members auth's settings: the generated collection, the live
@@ -439,5 +455,6 @@ func (env *dataConfig) membersSettings(collection access.PermissionCollection, s
 			ClientSecret: env.MembersDirectoryClientSecret,
 			RedirectURL:  env.MembersDirectoryRedirectURL,
 		},
+		TenantDeclarations: app.NewTenantDeclarationReader(),
 	}
 }

@@ -246,6 +246,28 @@ type TenantRecord struct {
 	File string
 	Line int
 	Name string
+	// Creation is the record's creation shape as the annotation names it
+	// (@tenant(creation: self-service)): TenantCreationAdministrator (the default, an
+	// administrator alone creates tenants), TenantCreationSelfService (the person who
+	// becomes a tenant's administrator creates it) or TenantCreationBoth; empty when
+	// the annotation names none.
+	Creation string
+}
+
+// The creation shapes a tenant record declares (@tenant(creation: ...)), as the
+// resource generator spells them, and the argument's key.
+const (
+	TenantCreationArg           = "creation"
+	TenantCreationAdministrator = "administrator"
+	TenantCreationSelfService   = "self-service"
+	TenantCreationBoth          = "both"
+)
+
+// SelfService reports a record whose tenants are created by their own people
+// (self-service or both): a person signs in before holding a tenant, so the auths'
+// sign-in rule admits a person who holds none (signin.AdmitWithoutTenant).
+func (r *TenantRecord) SelfService() bool {
+	return r.Creation == TenantCreationSelfService || r.Creation == TenantCreationBoth
 }
 
 // RosterConstruction is one call outside tests to a generated tenant roster constructor

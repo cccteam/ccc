@@ -104,6 +104,10 @@ func (c *testConfigurer) Access() access.Controller {
 
 func (c *testConfigurer) Staff() *staff.Auth { return nil }
 
+// TenantDeclarations is nil: the generated matrix drives every route with its own
+// grants, and a nil reader lets every tenant admit every session.
+func (c *testConfigurer) TenantDeclarations() resource.TenantDeclarations { return nil }
+
 // StaffUserStores are empty in-memory stores: the generated matrix drives the staff users,
 // seats and roles routes as it drives every other, a denied case answered before any
 // store is read and a granted list or read answered from the empty store.

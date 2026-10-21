@@ -304,6 +304,10 @@ func TestGeneratedRouterNotFound(t *testing.T) {
 		foreign{url: "/portal/api/tenants", method: http.MethodPost},
 		foreign{url: "/portal/api/tenants/testTenantID", method: http.MethodGet},
 		foreign{url: "/portal/api/tenants/testTenantID", method: http.MethodPost},
+		foreign{url: "/portal/api/tenants/testDomain/tenant-directories", method: http.MethodGet},
+		foreign{url: "/portal/api/tenants/testDomain/tenant-directories", method: http.MethodPost},
+		foreign{url: "/portal/api/tenants/testDomain/tenant-directories/testTenantDirectoryID", method: http.MethodGet},
+		foreign{url: "/portal/api/tenants/testDomain/tenant-directories/testTenantDirectoryID", method: http.MethodPost},
 		foreign{url: "/machines/permission-digest", method: http.MethodGet},
 		foreign{url: "/machines/user-domains", method: http.MethodGet},
 		foreign{url: "/machines/live/renew", method: http.MethodPost},
@@ -382,6 +386,10 @@ func TestGeneratedRouterNotFound(t *testing.T) {
 		foreign{url: "/machines/tenants", method: http.MethodPost},
 		foreign{url: "/machines/tenants/testTenantID", method: http.MethodGet},
 		foreign{url: "/machines/tenants/testTenantID", method: http.MethodPost},
+		foreign{url: "/machines/tenants/testDomain/tenant-directories", method: http.MethodGet},
+		foreign{url: "/machines/tenants/testDomain/tenant-directories", method: http.MethodPost},
+		foreign{url: "/machines/tenants/testDomain/tenant-directories/testTenantDirectoryID", method: http.MethodGet},
+		foreign{url: "/machines/tenants/testDomain/tenant-directories/testTenantDirectoryID", method: http.MethodPost},
 	)
 	// Every session route addressed under every other outlet's prefix, unless that
 	// outlet mounts the same route itself.

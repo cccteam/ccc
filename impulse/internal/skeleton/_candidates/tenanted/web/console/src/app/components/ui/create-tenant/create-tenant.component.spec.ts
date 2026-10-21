@@ -3,7 +3,6 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { Router } from '@angular/router';
 import { createApi, createTenantRoute } from '@app/service/zz_gen_api';
-import { TenantService } from '@app/tenant/tenant.service';
 import { AuthService } from '@cccteam/resource-angular/auth-service';
 import { provideResourceTesting } from '@cccteam/resource-angular/testing';
 import { TransportRequest, TransportResponse } from '@cccteam/resource';
@@ -76,7 +75,7 @@ describe('CreateTenantComponent', () => {
     expect(submit?.disabled).toBe(false);
   });
 
-  it('posts the record to the generated route, reloads what the session holds, selects the tenant and moves to the dashboard', async () => {
+  it("posts the record to the generated route, reloads what the session holds and opens the tenant's dashboard", async () => {
     const navigated = vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
     fixture.componentInstance.form.setValue({ id: 'west', name: 'West' });
     const pending = fixture.componentInstance.create();
@@ -90,8 +89,8 @@ describe('CreateTenantComponent', () => {
     await pending;
 
     expect(TestBed.inject(AuthService).domains()).toEqual(['west']);
-    expect(TestBed.inject(TenantService).current()).toBe('west');
-    expect(navigated).toHaveBeenCalledWith(['/dashboard']);
+    // The tenant's URL, where the guard on the segment settles the tenant.
+    expect(navigated).toHaveBeenCalledWith(['/', 'tenants', 'west', 'dashboard']);
     expect(fixture.componentInstance.error()).toBe('');
   });
 
@@ -114,6 +113,5 @@ describe('CreateTenantComponent', () => {
     );
     expect((fixture.nativeElement as HTMLElement).querySelector('.refusal')?.textContent).toContain('already holds a tenant');
     expect(navigated).not.toHaveBeenCalled();
-    expect(TestBed.inject(TenantService).current()).toBe('');
   });
 });

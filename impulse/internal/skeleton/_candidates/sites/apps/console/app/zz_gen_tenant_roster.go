@@ -3,15 +3,46 @@
 
 package app
 
-import "github.com/cccteam/ccc/resource"
+import (
+	"cloud.google.com/go/spanner"
+	"github.com/cccteam/ccc/resource"
+	"github.com/cccteam/session/signin"
+)
+
+// tenantDeclaration names where the Tenant record keeps its declaration of who
+// may enter a tenant (@directoryOnly on the record, the TenantDirectory record's columns): what
+// the roster reads beside the keys and the sign-in policy's reader reads in its own
+// transaction.
+var tenantDeclaration = resource.TenantDeclarationColumns{
+	DirectoryOnly:    "DirectoryOnly",
+	DirectoriesTable: "TenantDirectories",
+	TenantColumn:     "TenantId",
+	MethodColumn:     "Method",
+	ConnectionColumn: "Connection",
+}
 
 // NewTenantRoster builds the application's tenant roster over the Tenant record
 // (@tenant): the Id column of Tenants, read once at Start and kept
 // current until the context ends. The generated DomainGuard and the consolidated
 // dispatcher ask the roster before a tenant-scoped request runs, and the generated
-// Tenant write paths add and remove tenants after their commit and publish the
+// Tenant write paths reload it after their commit and publish the
 // tenants signal, so every instance reloads. The application exposes the roster as
 // TenantRoster(); resource.WithTenantSignals wires the live service the roster reloads on.
+// The roster reads what each tenant declares about who may enter it beside its key
+// (Tenant.DirectoryOnly and the TenantDirectory rows), so its Declarations is what the
+// application hands resource.SessionPermissions as the tenant declarations, and the
+// generated TenantDirectory write paths reload it too.
 func NewTenantRoster(client resource.Client, opts ...resource.TenantRosterOption) *resource.TenantRoster {
+	opts = append([]resource.TenantRosterOption{resource.WithTenantDeclarations(&tenantDeclaration)}, opts...)
+
 	return resource.NewTenantRoster(client, "Tenants", "Id", opts...)
+}
+
+// NewTenantDeclarationReader builds the sign-in policy's reader of what a tenant declares
+// about who may enter it (signin.TenantPolicy, through signin.DeclarationReader): it
+// reads the Tenant row and its TenantDirectory rows in the sign-in's own transaction.
+// The application hands it to the auth whose people enter tenants, through the auth's
+// settings; a tenant the table does not hold declares nothing.
+func NewTenantDeclarationReader() signin.DeclarationReader[*spanner.ReadWriteTransaction] {
+	return resource.NewTenantDeclarationReader("Tenants", "Id", &tenantDeclaration)
 }

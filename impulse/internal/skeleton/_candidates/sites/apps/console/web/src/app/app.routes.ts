@@ -3,6 +3,7 @@ import { DomainRoutePath } from '@app/service/zz_gen_resources';
 import { tenantGuard, tenantLeave } from '@app/tenant/tenant.guard';
 import { refusedSegment } from '@app/tenant/tenant.service';
 import { LoginAuthenticationGuard } from '@cccteam/resource-angular/auth-authentication-guard';
+import { tenantSignInRoute } from '@components/ui/sign-in/sign-in.routes';
 import { UiComponent } from '@components/ui/ui.component';
 import { tenantUsersRoute, usersRoute } from '@components/ui/users/users.routes';
 
@@ -47,6 +48,8 @@ export const routes: Routes = [
           dashboardRoute(),
           // The tenant's partition of the user surface, with the route's tenant as its domain.
           tenantUsersRoute(),
+          // Who may enter the tenant: its directories and whether they are the only way in.
+          tenantSignInRoute(),
           { path: '**', redirectTo: 'dashboard' },
         ],
       },

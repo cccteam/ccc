@@ -141,6 +141,7 @@ func generatedRouteParameters() []string {
 		"tenantID",
 		"announcementID",
 		"tenantID",
+		"tenantDirectoryID",
 		"staffUserID",
 		"staffSeatUser",
 		"staffSeatRole",
@@ -218,6 +219,26 @@ func generatedRouterTests() []*generatedRouterTest {
 			url: "/api/tenants/testTenantID", method: http.MethodPost,
 			handlerFunc: "Tenant",
 			parameters:  map[string]string{"tenantID": "testTenantID"},
+		},
+		{
+			url: "/api/tenants/testDomain/tenant-directories", method: http.MethodGet,
+			handlerFunc: "TenantDirectories",
+			parameters:  map[string]string{"tenantID": "testDomain"},
+		},
+		{
+			url: "/api/tenants/testDomain/tenant-directories", method: http.MethodPost,
+			handlerFunc: "TenantDirectories",
+			parameters:  map[string]string{"tenantID": "testDomain"},
+		},
+		{
+			url: "/api/tenants/testDomain/tenant-directories/testTenantDirectoryID", method: http.MethodGet,
+			handlerFunc: "TenantDirectory",
+			parameters:  map[string]string{"tenantID": "testDomain", "tenantDirectoryID": "testTenantDirectoryID"},
+		},
+		{
+			url: "/api/tenants/testDomain/tenant-directories/testTenantDirectoryID", method: http.MethodPost,
+			handlerFunc: "TenantDirectory",
+			parameters:  map[string]string{"tenantID": "testDomain", "tenantDirectoryID": "testTenantDirectoryID"},
 		},
 		{
 			url: "/api/features", method: http.MethodGet,
@@ -566,6 +587,14 @@ func (s *generatedHandlersStub) Tenants() http.HandlerFunc {
 
 func (s *generatedHandlersStub) Tenant() http.HandlerFunc {
 	return s.record("Tenant")
+}
+
+func (s *generatedHandlersStub) TenantDirectories() http.HandlerFunc {
+	return s.record("TenantDirectories")
+}
+
+func (s *generatedHandlersStub) TenantDirectory() http.HandlerFunc {
+	return s.record("TenantDirectory")
 }
 
 func (s *generatedHandlersStub) UnlinkStaffTenantUserIdentity() http.HandlerFunc {

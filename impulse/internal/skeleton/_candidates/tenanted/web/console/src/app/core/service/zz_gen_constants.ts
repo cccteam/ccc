@@ -26,6 +26,7 @@ export const Resources = {
   StaffTenantSeats: 'StaffTenantSeats' as Resource,
   StaffTenantUsers: 'StaffTenantUsers' as Resource,
   StaffUsers: 'StaffUsers' as Resource,
+  TenantDirectories: 'TenantDirectories' as Resource,
   Tenants: 'Tenants' as Resource,
 };
 
@@ -187,12 +188,29 @@ export namespace StaffUsers {
   };
 }
 
+export namespace TenantDirectories {
+  export const fieldName = {
+    connection: 'connection' as FieldName,
+    id: 'id' as FieldName,
+    method: 'method' as FieldName,
+    tenantId: 'tenantId' as FieldName,
+  };
+  export const resourceName = {
+    connection: 'TenantDirectories.connection' as Resource,
+    id: 'TenantDirectories.id' as Resource,
+    method: 'TenantDirectories.method' as Resource,
+    tenantId: 'TenantDirectories.tenantId' as Resource,
+  };
+}
+
 export namespace Tenants {
   export const fieldName = {
+    directoryOnly: 'directoryOnly' as FieldName,
     id: 'id' as FieldName,
     name: 'name' as FieldName,
   };
   export const resourceName = {
+    directoryOnly: 'Tenants.directoryOnly' as Resource,
     id: 'Tenants.id' as Resource,
     name: 'Tenants.name' as Resource,
   };

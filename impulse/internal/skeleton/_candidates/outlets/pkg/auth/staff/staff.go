@@ -27,6 +27,7 @@ import (
 	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/session"
 	"github.com/cccteam/session/sessionstorage"
+	"github.com/cccteam/session/signin"
 	"github.com/go-playground/errors/v5"
 )
 
@@ -90,6 +91,11 @@ type Settings struct {
 	CookieKey string
 	// SessionTimeout is the idle timeout of a browser session.
 	SessionTimeout time.Duration
+	// TenantDeclarations reads what a tenant declares about who may enter it, in the
+	// sign-in's transaction, which the sign-in rule decides with: the generated reader
+	// over the Tenant record and its directories (app.NewTenantDeclarationReader).
+	// Required; New refuses nil.
+	TenantDeclarations signin.DeclarationReader[*cloudspanner.ReadWriteTransaction]
 }
 
 // Signals is the channel the auth's permission engine signals a policy change on and
@@ -148,6 +154,9 @@ func New(ctx context.Context, db *cloudspanner.Client, settings *Settings) (*Aut
 	if settings.Signals == nil {
 		return nil, errors.New("staff.Settings.Signals is nil: the permission engine signals policy changes through the application's live service, which every application wires")
 	}
+	if settings.TenantDeclarations == nil {
+		return nil, errors.New("staff.Settings.TenantDeclarations is nil: the sign-in rule reads what each tenant declares about who may enter it through the generated reader (app.NewTenantDeclarationReader), which the data level hands in")
+	}
 	store, err := spannerstore.New(db, spannerstore.WithPrefix(TablePrefix))
 	if err != nil {
 		return nil, errors.Wrap(err, "spannerstore.New()")
@@ -187,6 +196,22 @@ func New(ctx context.Context, db *cloudspanner.Client, settings *Settings) (*Aut
 
 	handlers := &Handlers{Session: authSession}
 	handlers.password = registerPassword(authSession)
+
+	// The sign-in rule: the library's tenant policy. A person's tenants are where they
+	// hold a role (the engine's memberships), and what each tenant admits is its
+	// declaration, read in the sign-in's transaction: a password is admitted unless
+	// every one of the person's tenants admits its people through directories only, a
+	// sign-in through a directory when one of their tenants declares it (its method and
+	// the connection its identities carry); the application's own staff (a global role,
+	// or one held in every tenant) are admitted on the library's checks.
+	// A person who holds no tenant is refused (no_tenant), since the administrator
+	// creates tenants here; a record created by its own people (@tenant(creation:
+	// self-service) or both) adds signin.AdmitWithoutTenant().
+	// Which tenants the session then reaches is decided again, tenant by tenant, where
+	// its tenant list is computed (UserPermissions). The memberships are read outside
+	// the sign-in's transaction (resource.SignInRoles): the Spanner client refuses the
+	// engine's read under the transaction's context as a nested transaction.
+	authSession.SetSignInPolicy(signin.TenantPolicy(resource.SignInRoles(accessClient.UserManager()), settings.TenantDeclarations))
 
 	return &Auth{db: db, access: accessClient, handlers: handlers}, nil
 }
