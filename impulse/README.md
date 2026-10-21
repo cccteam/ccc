@@ -624,9 +624,14 @@ the drag the walk avoids. Each pending step is one commit. Its recipes run first
 detects the old form in the application (the generator program, the annotations, the known
 seams) and edits only where it finds it, so running it twice is safe, and so is running it
 on an application whose pins were bumped by hand ahead of its code. Then the pins the step
-moves move to its set (`go get`; a pin already at or beyond the step's stays), the impulse
-tool pin moves to the release that added the step (`go get -tool`; a pin at or beyond it
-stays), and `go mod tidy` runs. Then the step is rendered and checked by that release: the
+moves move to its set in one `go get` (a pin already at or beyond the step's stays; a set no
+build list holds is refused by go in its own words, where one `go get` per pin would read a
+later request as a downgrade and move an earlier pin off the step to meet it, silently), the
+impulse tool pin moves to the release that added the step (`go get -tool`; a pin at or
+beyond it stays), `go mod tidy` runs, and `go.mod` is read back: a moved pin below the
+step's version, or dropped by the tidy, refuses the step, naming the module, what `go.mod`
+holds and what the step pins; one carried beyond it by another requirement stays, noted.
+Then the step is rendered and checked by that release: the
 owned files are rendered again (`go tool impulse render`), `go generate ./...` runs (the
 application's own generator program, built against its pins), and `go tool impulse check`
 runs, so every commit the walk makes builds against the pins it names and is checked by the
@@ -641,7 +646,10 @@ moves to it (`go get -tool`, then `go mod tidy`), the owned files are rendered a
 `go generate ./...` and `impulse check` run, and a clean check is committed as `upgrade:
 impulse <version>`; an impulse built from a checkout makes no such move, and one older than
 the pin refuses, since the pinned one is the impulse to run. A failing check stops the walk
-with the step's changes staged and the handoff brief written (`impulse handoff`, below). At
+with the step's changes staged and the handoff brief written (`impulse handoff`, below), and
+so does a `go generate ./...` that fails after the move: its brief quotes the generation's
+last lines as the obligations, says what the step moved, and carries the step's note under
+"What it means", so the author learns what the step needs of the generator program. At
 a step checked by the pinned impulse, that impulse writes the brief from the staged tree
 and, with `--agent`, runs the agent and verifies its work, through `go tool impulse handoff
 --staged` with each recipe's change and meaning passed through, so the brief, the agent and
@@ -663,7 +671,13 @@ last step (no framework module the step pins is required beyond its pin), so a r
 whose tool directive would carry an application past the ledger fails the build until its
 step is recorded; and holds every step to its shape (a pin set of framework modules none of
 which moves backward, a note, a pin moved or a recipe named, no recipe named twice, and the
-release named once the step before names one, never behind it). A breaking change in
+release named once the step before names one, never behind it); and holds every step's pins
+together: no module a step pins requires a sibling the step pins beyond the step's pin for
+it, read from each pinned release's own `go.mod` in the module cache (or downloaded into it;
+a module neither answers for is a warning, never a failure), since Go builds one list and
+a step asking for less of a sibling than a module it pins requires has no list that holds
+it. Two pull requests released together record one step, not two whose first cannot be
+built. A breaking change in
 resource, access, session or accesstypes is not done until the step that carries it records
 its recipe, or says that no code change is needed. Applications that predate the first
 release are adopted once by hand, not upgraded. A step whose pins name pushed commits,
