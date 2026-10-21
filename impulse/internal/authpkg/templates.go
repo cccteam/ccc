@@ -7,11 +7,11 @@ const authTemplate = `// Package {{.Name}} is the {{.Name}} auth: {{.Doc}}, who 
 //
 // An auth is a package. It owns its session manager, one Auth session with the sign-in
 // methods registered on it (here {{range $i, $m := .Methods}}{{if $i}}, {{end}}{{$m.Name}}{{end}}), with its own session, user, identity, auth
-// event and pending sign-in tables and cookie; its permission store, with its own table
-// prefix, whose engine signals policy changes to the application's other instances
-// through the live service; and its role file, embedded beside it, so the release's
-// default roles travel with the binary. Each method is its own file in this package,
-// named for its registration.
+// event, pending sign-in and sign-in attempt tables and cookie; its permission store,
+// with its own table prefix, whose engine signals policy changes to the application's
+// other instances through the live service; and its role file, embedded beside it, so
+// the release's default roles travel with the binary. Each method is its own file in
+// this package, named for its registration.
 // A site or an outlet binds to an auth by composing its handlers, and two auths on one
 // database and one host never collide, because everything an auth names carries its
 // name. The same name in this auth and in another is two unrelated principals. The
@@ -51,7 +51,8 @@ const (
 	// The auth's tables, which schema/migrations creates: the sessions and users of the
 	// Auth session (a person is one user whichever way they sign in; an identity the
 	// directory verifies links to its user through the identities table), the auth events
-	// each session records and the pending sign-ins that wait for a confirmation. The
+	// each session records, the pending sign-ins that wait for a confirmation and the
+	// sign-in attempts the password method's attempt limiter counts per sign-in name. The
 	// names are spelled out in full so the tool's session-tables check, which reads the
 	// literals, finds their migrations.
 	sessionsTable   = "{{.Pascal}}Sessions"
@@ -59,6 +60,7 @@ const (
 	identitiesTable = "{{.Pascal}}SessionIdentities"
 	eventsTable     = "{{.Pascal}}SessionAuthEvents"
 	pendingTable    = "{{.Pascal}}SessionPendingSignIns"
+	attemptsTable   = "{{.Pascal}}SessionSignInAttempts"
 )
 
 // roleFile is the auth's default roles: the role file beside this package, embedded in the
@@ -212,6 +214,7 @@ func New(ctx context.Context, db *cloudspanner.Client, settings *Settings) (*Aut
 		session.WithUserTableName(usersTable),
 		session.WithIdentitiesTableName(identitiesTable),
 		session.WithPendingSignInsTableName(pendingTable),
+		session.WithSignInAttemptsTableName(attemptsTable),
 		session.WithCookieName(Name),
 		session.WithXSRFCookieName(XSRFCookie),
 		session.WithSessionTimeout(settings.SessionTimeout),

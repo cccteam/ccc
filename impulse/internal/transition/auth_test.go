@@ -396,7 +396,7 @@ func TestAuthApply(t *testing.T) {
 		"\treturn assemble(spannerClient, staffAuth), nil\n", 1)
 
 	const packageDid = "pkg/auth/partners: the partners auth package (foothold.go, partners.go, password.go), rendered from the skeleton's auth source: the Auth session over tables prefixed Partners, the partners permission store, and the methods password, each in its own file"
-	const migrationsDid = "schema/migrations: 000005_PartnersAccess, 000006_PartnersSessionUsers, 000007_PartnersSessions, the partners auth's tables: the access tables copied from the staff auth's under the Partners prefix, and the Auth session tables (sessions, users, identities, auth events, pending sign-ins)"
+	const migrationsDid = "schema/migrations: 000005_PartnersAccess, 000006_PartnersSessionUsers, 000007_PartnersSessions, the partners auth's tables: the access tables copied from the staff auth's under the Partners prefix, and the Auth session tables (sessions, users, identities, auth events, pending sign-ins, sign-in attempts)"
 	const rolesDid = "pkg/auth/partners/roles.json: the partners auth's role file, empty: author its roles when its surfaces are bound"
 	const configDid = "pkg/config/data.go: the partners auth constructed on DataConfiguration beside the staff auth (field, construction, import), its settings in the construction's literal as the staff auth's are (an application composed before the staffSettings method); pkg/config/partners.go: its accessor Partners()"
 	const configSettingsDid = "pkg/config/data.go: the partners auth constructed on DataConfiguration beside the staff auth (field, construction, import), its settings built by dataConfig.partnersSettings, copied from staffSettings; pkg/config/partners.go: its accessor Partners()"
@@ -455,7 +455,7 @@ func TestAuthApply(t *testing.T) {
 				if diff := cmp.Diff(wantConfig, read(t, a, "pkg/config/data.go")); diff != "" {
 					t.Errorf("data.go mismatch (-want +got):\n%s", diff)
 				}
-				if got := read(t, a, "schema/migrations/000007_PartnersSessions.up.sql"); !strings.Contains(got, "CREATE TABLE PartnersSessions") || !strings.Contains(got, "CREATE TABLE PartnersSessionPendingSignIns") {
+				if got := read(t, a, "schema/migrations/000007_PartnersSessions.up.sql"); !strings.Contains(got, "CREATE TABLE PartnersSessions") || !strings.Contains(got, "CREATE TABLE PartnersSessionPendingSignIns") || !strings.Contains(got, "CREATE TABLE PartnersSessionSignInAttempts") {
 					t.Errorf("sessions migration = %q", got)
 				}
 				if got := read(t, a, "schema/migrations/000006_PartnersSessionUsers.down.sql"); !strings.Contains(got, "DROP TABLE PartnersSessionUsers;") {

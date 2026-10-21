@@ -18,10 +18,11 @@ const guidCheck = `r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{1
 
 // Migrations renders the Auth session tables of an auth under its table prefix, for
 // Spanner, in the order they apply: the users first, since the sessions reference them,
-// then the sessions with the identities, auth events and pending sign-ins in one
-// migration, since a session set is one thing. The DDL is the session library's base and
-// auth schema sets (schema/spanner/migrations, schema/spanner/auth/migrations) with the
-// commit-timestamp options written inline. who names the population for the comments.
+// then the sessions with the identities, auth events, pending sign-ins and sign-in
+// attempts in one migration, since a session set is one thing. The DDL is the session
+// library's base and auth schema sets (schema/spanner/migrations,
+// schema/spanner/auth/migrations) with the commit-timestamp options written inline. who
+// names the population for the comments.
 func Migrations(prefix, who string) []Migration {
 	return []Migration{
 		{Stem: prefix + "SessionUsers", Up: usersUp(prefix, who), Down: usersDown(prefix)},
@@ -113,8 +114,8 @@ CREATE INDEX %[1]sSessionIdentitiesByUserId ON %[1]sSessionIdentities(UserId);
 `, p, who, guidCheck) + eventsUp(p, who)
 }
 
-// eventsUp creates the auth events and pending sign-ins tables, the second half of the
-// sessions migration.
+// eventsUp creates the auth events, pending sign-ins and sign-in attempts tables, the
+// second half of the sessions migration.
 func eventsUp(p, who string) string {
 	return fmt.Sprintf(`CREATE TABLE %[1]sSessionAuthEvents (
     SessionId  STRING(36) NOT NULL,
@@ -165,11 +166,25 @@ CREATE TABLE %[1]sSessionPendingSignIns (
 CREATE UNIQUE INDEX %[1]sSessionPendingSignInsByTokenHash ON %[1]sSessionPendingSignIns(TokenHash);
 
 CREATE INDEX %[1]sSessionPendingSignInsByExpiresAt ON %[1]sSessionPendingSignIns(ExpiresAt);
+
+-- The sign-in attempts: the attempt limiter's count of failed password attempts per
+-- sign-in name, known or not, within a window, and the lock those failures earned. The
+-- row is keyed by the submitted name, never by the user row, so an unknown name is
+-- counted exactly as a known one; a success, an MFA completion or a password change
+-- deletes it. WindowEndsAt and LockedUntil are deadlines, written as given.
+CREATE TABLE %[1]sSessionSignInAttempts (
+    Name         STRING(MAX) NOT NULL,
+    Failures     INT64 NOT NULL,
+    WindowEndsAt TIMESTAMP NOT NULL,
+    LockedUntil  TIMESTAMP,
+    UpdatedAt    TIMESTAMP NOT NULL OPTIONS (allow_commit_timestamp = true),
+) PRIMARY KEY (Name);
 `, p, who, guidCheck)
 }
 
 func sessionsDown(p string) string {
 	lines := []string{
+		"DROP TABLE %[1]sSessionSignInAttempts;",
 		"DROP INDEX %[1]sSessionPendingSignInsByExpiresAt;",
 		"DROP INDEX %[1]sSessionPendingSignInsByTokenHash;",
 		"DROP TABLE %[1]sSessionPendingSignIns;",

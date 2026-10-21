@@ -10,8 +10,9 @@ import (
 )
 
 // sessionTables verifies that every session Auth the application constructs has its
-// tables in the schema (sessions, users, identities, pending sign-ins, and the auth
-// events, impersonation and custom data tables where the storage attaches them), that
+// tables in the schema (sessions, users, identities, pending sign-ins, sign-in attempts,
+// and the auth events, impersonation and custom data tables where the storage attaches
+// them), that
 // two Auths never share a table, that every Auth has at least one sign-in method
 // registered on it and every registration an Auth it reaches, and reports the auths
 // that result with their methods. A construction of a session type v0.13.0 retired (the
@@ -90,7 +91,7 @@ const schemaSets = "schema/spanner/migrations and schema/spanner/auth/migrations
 
 // authTables lists the tables one construction reads.
 func authTables(auth *app.Auth) []string {
-	tables := []string{auth.SessionTable, auth.UserTable, auth.IdentitiesTable, auth.PendingTable}
+	tables := []string{auth.SessionTable, auth.UserTable, auth.IdentitiesTable, auth.PendingTable, auth.AttemptsTable}
 	if auth.AuthEvents {
 		table := auth.AuthEventsTable
 		if table == "" {

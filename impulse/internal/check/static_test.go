@@ -157,12 +157,13 @@ func TestStaticChecksOnFixtures(t *testing.T) {
 		},
 		{
 			name: "session-tables tables missing", fixture: "flat", check: sessionTables{},
-			wantStatus: Fail, wantSummary: "4 auth wiring problem(s)",
+			wantStatus: Fail, wantSummary: "5 auth wiring problem(s)",
 			wantDetails: []string{
 				"pkg/config/session.go:11: the Auth at pkg/config/session.go:11 reads table LighthouseSessions, which no migration creates (the session library's schema is under " + schemaSets + ")",
 				"pkg/config/session.go:11: the Auth at pkg/config/session.go:11 reads table SessionUsers, which no migration creates (the session library's schema is under " + schemaSets + ")",
 				"pkg/config/session.go:11: the Auth at pkg/config/session.go:11 reads table SessionIdentities, which no migration creates (the session library's schema is under " + schemaSets + ")",
 				"pkg/config/session.go:11: the Auth at pkg/config/session.go:11 reads table SessionPendingSignIns, which no migration creates (the session library's schema is under " + schemaSets + ")",
+				"pkg/config/session.go:11: the Auth at pkg/config/session.go:11 reads table SessionSignInAttempts, which no migration creates (the session library's schema is under " + schemaSets + ")",
 			},
 		},
 		{
