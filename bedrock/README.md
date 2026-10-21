@@ -606,9 +606,11 @@ It also refuses:
   check reads the default branch's `terraform.tfvars` (origin's copy, or the local branch)
   and refuses an
   environment on there whose entry the working tree removes: set it to `"off"` first
-  (the policy kept, detached), merge and apply, then remove the entry. Outside a git
-  working tree, or without the default branch to read (the check trigger's checkout holds
-  the pull request's commit alone), nothing is compared.
+  (the policy kept, detached), merge and apply, then remove the entry. By hand the check
+  compares nothing outside a git working tree or without the default branch to read; in
+  the pipeline the check trigger's plan step (`deploy plan-environments`, below) reads
+  the base branch's copy through GitHub and refuses the same change, so the required
+  check holds it.
 - a sign-in throttle threshold the Cloud Armor policy could not take:
   `cloud_armor_sign_in_count` or `cloud_armor_sign_in_interval` in `terraform.tfvars`
   that is not a positive whole number (zero, negative, a fraction, or not a number),
@@ -866,7 +868,11 @@ thing one step hands the next. In order:
 - `deploy plan-environments`: the stack's check trigger's step after `bedrock check`, on
   every push to a pull request, as the apply identity, from a step the pull request
   cannot edit. It reads its build through the Cloud Build API (`BUILD_ID`, `PROJECT_ID`
-  and `LOCATION`, which the step passes), plans the stack for every
+  and `LOCATION`, which the step passes), reads the base branch's
+  `infrastructure/terraform.tfvars` through GitHub and refuses a Cloud Armor policy
+  removed in one step (the rule `bedrock check` applies by hand, which the trigger's
+  checkout of the pull request's commit alone cannot compare; the refusal is said on
+  the pull request), then plans the stack for every
   environment of the promotion order, each against that environment's state prefix as
   its plan identity (a reader, without the state lock, so the job can change no
   environment; the apply identity may act as each), and runs the tests a tag build runs

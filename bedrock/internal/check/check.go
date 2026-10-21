@@ -624,8 +624,8 @@ func (r *Report) Write(w io.Writer) {
 	for _, rs := range r.ReleaseSections {
 		fmt.Fprintf(w, "  refused  %s: %s\n", rs.Path, rs.Problem())
 	}
-	for _, ca := range r.CloudArmor {
-		fmt.Fprintf(w, "  refused  cloud_armor in terraform.tfvars removes %s in one step: at %s the environment is %q, and removing the entry detaches the policy from the backend services and destroys it in one apply, which fails while the policy is attached; set it to \"off\" first (the policy kept, detached), merge and apply, then remove the entry\n", ca.Environment, ca.Ref, ca.Mode)
+	for i := range r.CloudArmor {
+		fmt.Fprintf(w, "  refused  %s\n", r.CloudArmor[i].Problem())
 	}
 	for i := range r.SignInThreshold {
 		fmt.Fprintf(w, "  refused  %s\n", r.SignInThreshold[i].Problem())
