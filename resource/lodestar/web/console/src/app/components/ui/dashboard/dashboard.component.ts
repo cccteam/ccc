@@ -23,7 +23,7 @@ const READ_WRITE: Permission[] = [Permissions.List, Permissions.Read, Permission
 
 /**
  * The dashboard is the service card: a badge listing, per resource, what you hold in
- * the selected sector — granted, conditional ("terms apply"), or absent. It is the
+ * the open sector — granted, conditional ("terms apply"), or absent. It is the
  * permission digest rendered as an object in the world; every deck consults the same
  * digest before issuing a request. Under a masked "view as" session the write column
  * carries a stripe: Masked drops those permissions from the digest itself.
@@ -52,7 +52,7 @@ export class DashboardComponent {
   sector = this.sectors.current;
 
   // The card's rows: every resource the descriptor knows, sector-scoped ones asked in
-  // the selected sector. Absent everywhere means the row still renders, greyed — the
+  // the open sector. Absent everywhere means the row still renders, greyed — the
   // badge shows what you do NOT hold as plainly as what you do.
   rows = computed<CardRow[]>(() => {
     const resources = Object.values(Resources) as Resource[];
@@ -66,7 +66,7 @@ export class DashboardComponent {
       .filter((row) => row.scope === 'domain' || Object.values(row.states).some((s) => s !== undefined));
   });
 
-  // Execute grants: the methods lit in the selected sector (transitions and plain
+  // Execute grants: the methods lit in the open sector (transitions and plain
   // targets) plus the global ones.
   methods = computed(() =>
     (Object.values(Methods) as Method[])

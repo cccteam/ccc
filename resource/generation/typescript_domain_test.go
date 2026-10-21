@@ -33,6 +33,7 @@ func Test_typescriptResourcesTemplate_domain(t *testing.T) {
 			wantContains: []string{
 				"route: 'stations/{stationID}/widgets',",
 				"export const DomainRouteParam = 'stationID';",
+				"export const DomainRoutePath = 'stations/:stationID';",
 				"[Resources.Widgets]: PermissionScopes.domain,",
 				"export const ResourceScopes: Record<Resource, PermissionScope> = {",
 				"import { PermissionScope, PermissionScopes, Resources } from './zz_gen_constants';",
@@ -48,6 +49,7 @@ func Test_typescriptResourcesTemplate_domain(t *testing.T) {
 			},
 			wantNotContains: []string{
 				"DomainRouteParam",
+				"DomainRoutePath",
 				"stations/{stationID}",
 			},
 		},
@@ -106,6 +108,7 @@ func Test_typescriptResourcesTemplate_domain(t *testing.T) {
 				GenPrefix:         "zz_gen",
 				DomainRoutePrefix: "stations/{stationID}",
 				DomainRouteParam:  "stationID",
+				DomainRoutePath:   "stations/:stationID",
 				HasDomainScoped:   tt.hasDomainScoped,
 			})
 			if err != nil {
@@ -157,5 +160,66 @@ func Test_typescriptConstantsTemplate_permissionScopes(t *testing.T) {
 		if strings.Contains(string(out), notWant) {
 			t.Errorf("typescriptConstantsTemplate output must not contain %q:\n%s", notWant, out)
 		}
+	}
+}
+
+// Test_domainRoutePath pins the tenant segment as the browser's router matches it: the
+// API's pair with the parameter written for the router, for the derived names and for
+// the defaults alike.
+func Test_domainRoutePath(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		segment string
+		param   string
+		want    string
+	}{
+		{name: "the names derived from a tenant record", segment: "stations", param: "stationID", want: "stations/:stationID"},
+		{name: "the default names", segment: "domains", param: "domain", want: "domains/:domain"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := domainRoutePath(tt.segment, tt.param); got != tt.want {
+				t.Errorf("domainRoutePath(%q, %q) = %q, want %q", tt.segment, tt.param, got, tt.want)
+			}
+		})
+	}
+}
+
+// Test_anyDomainScoped pins when the metadata's domain route exports are emitted: for a
+// resource under the tenant segment, a computed one, or a user surface's tenant partition,
+// and not for a metadata that serves nothing under it.
+func Test_anyDomainScoped(t *testing.T) {
+	t.Parallel()
+
+	structs := fixtureStructs(loadCollectionFixture(t))
+	domain := fixtureResource(t, structs, "Widget", func(res *resourceInfo) { res.PermissionScope = accesstypes.DomainPermissionScope })
+	global := fixtureResource(t, structs, "Widget", func(res *resourceInfo) { res.PermissionScope = "" })
+
+	tests := []struct {
+		name      string
+		resources []*resourceInfo
+		computed  []*computedResource
+		users     []*tsUserResource
+		want      bool
+	}{
+		{name: "nothing under the segment", resources: []*resourceInfo{global}, users: []*tsUserResource{{Scope: accesstypes.GlobalPermissionScope}}, want: false},
+		{name: "a resource under the segment", resources: []*resourceInfo{global, domain}, want: true},
+		{name: "a computed resource under the segment", computed: []*computedResource{{PermissionScope: accesstypes.DomainPermissionScope}}, want: true},
+		{name: "a user surface's tenant partition", resources: []*resourceInfo{global}, users: []*tsUserResource{{Scope: accesstypes.GlobalPermissionScope}, {Scope: accesstypes.DomainPermissionScope}}, want: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := anyDomainScoped(tt.resources, tt.computed, tt.users); got != tt.want {
+				t.Errorf("anyDomainScoped() = %v, want %v", got, tt.want)
+			}
+		})
 	}
 }

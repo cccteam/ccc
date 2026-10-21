@@ -1,4 +1,5 @@
 import { Hangars, Resources, ShipClasses, Ships } from '@app/service/zz_gen_constants';
+import { DomainRoutePath } from '@app/service/zz_gen_resources';
 import {
   enumeratedConfig,
   field,
@@ -8,7 +9,7 @@ import {
   section,
 } from '@cccteam/resource-angular/types';
 
-// Ships is the fleet page in the selected sector: the library's two picker read modes
+// Ships is the fleet page in the open sector: the library's two picker read modes
 // side by side on one form, and the two ways a list column shows a referenced resource,
 // every one decided by the maximum page size the generated descriptor carries and never
 // by a literal here. The hangar picker lists Hangars, which declares a maximum (@page
@@ -41,7 +42,7 @@ import {
 // Demonstrates: picker.paged, picker.whole, column.referenced-in, field.array, live.pages.
 export const shipsConfig = rootConfig({
   nav: { navItem: { label: 'Ships (config page)' }, group: 'Sector Ops' },
-  routeData: { route: 'sector/ships' },
+  routeData: { route: `${DomainRoutePath}/ships` },
   parentConfig: listViewConfig({
     title: 'Ships',
     createTitle: 'Ship',
@@ -59,7 +60,9 @@ export const shipsConfig = rootConfig({
       multiColumnConfig({
         id: Ships.fieldName.classId,
         header: 'Class',
-        additionalIds: [{ id: ShipClasses.fieldName.id, resource: Resources.ShipClasses, field: ShipClasses.fieldName.designation }],
+        additionalIds: [
+          { id: ShipClasses.fieldName.id, resource: Resources.ShipClasses, field: ShipClasses.fieldName.designation },
+        ],
         concatFn: 'hyphen-concat',
       }),
       { id: Ships.fieldName.lastRefitAt, header: 'Last refit' },

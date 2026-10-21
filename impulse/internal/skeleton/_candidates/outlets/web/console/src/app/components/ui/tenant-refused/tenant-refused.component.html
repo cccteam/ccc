@@ -1,0 +1,21 @@
+<div class="refused">
+  <h1>Tenant {{ tenantID() }}</h1>
+  @if (answer.hasValue()) {
+    @if (answer.value().served) {
+      <p class="served">
+        The server serves this tenant to you now.
+        <a [routerLink]="['/', segment, tenantID(), 'dashboard']">Open it</a>.
+      </p>
+    } @else {
+      <p class="refusal">
+        The server answered: <code>{{ answer.value().message }}</code>
+      </p>
+      <p class="note">
+        A tenant you hold no seat in answers like one that does not exist. Pick a tenant in the header to open this page
+        there, or ask an administrator for a seat.
+      </p>
+    }
+  } @else if (answer.isLoading()) {
+    <p class="asking">Asking the server…</p>
+  }
+</div>

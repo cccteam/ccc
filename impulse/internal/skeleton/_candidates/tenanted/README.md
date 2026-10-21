@@ -8,8 +8,21 @@ tenant roster keeps the tenants current on every instance (a tenant created thro
 API is usable at once, without a restart), and tenant existence is concealed from logins
 that hold nothing there. `Announcement` is the first tenant-scoped resource — a login's tenant list
 is where it holds a grant, and a grant needs a tenant-scoped resource to land on, so the
-application ships one. The console shows who is signed in, the tenants they can pick, and
-the digest for the selected tenant.
+application ships one. The console mirrors the API's shape: every tenant-scoped page lives
+under the tenant segment, `/tenants/{tenantID}/...` (the generated `DomainRoutePath`), so
+a link to a tenant's page can be shared and a bookmark lands where it points; the global
+pages keep their routes. The tenant a page works in is a consequence of its URL: the
+tenant guard on the segment (`core/tenant/tenant.guard.ts`) sets the tenant service's
+`current` from the URL before the page loads, checked against the session's tenant list
+(the generated user-domains answer, the server's own foothold test), and nothing else
+writes it. The header's picker lists that list and opens the same page under the chosen
+tenant; a URL naming a tenant the session cannot reach lands on the refusal page under
+that tenant's URL (`/tenants/{tenantID}/refused`), which shows the server's answer — with
+concealed domains, the 404 every route under the tenant gives — and never switches to
+another tenant. The dashboard lives in both places, the global digest outside a tenant and
+the tenant's under it, and the Users page is split the same way: the staff surface's
+global partition at `/users`, the tenant's partition at `/tenants/{tenantID}/users` with
+the route's tenant as the component's domain.
 
 ## Layout
 
@@ -183,8 +196,12 @@ form the Checks section and CI use; `bun ng test console` watches. The specs bes
 skeleton's components are the pattern for the application's own: the dashboard renders a
 permission digest over a scripted client from `@cccteam/resource-angular/testing`
 (`provideResourceTesting` puts the generated client on a transport that records every
-request and answers from the test), and the login page, header, top bar, footer, and shell
-have creation specs with the same providers.
+request and answers from the test); the tenant guard is driven through the router
+(`RouterTestingHarness`: a tenant the session holds opens and is written once, one it
+cannot reach is refused, a deep link loads the list first, leaving clears); the picker's
+navigation, the refusal page's answer, the two Users pages and the top bar's links have
+specs of their own; and the login page, header, footer, and shell have creation specs
+with the same providers.
 
 ## Live pages
 

@@ -526,12 +526,13 @@ crew ([one channel](#one-channel-between-instances)), and the console serves the
 surface beside it (`members-users`, …; the generator program's `Manages`), so headquarters
 administers both populations; a directory-signed member's seats are the directory's,
 reconciled at every login, and the surface refuses to write them by hand. The console's
-Users page (Headquarters menu) is the library's user-management component composed three
-times over the generated descriptor, the crew's global partition, the crew's partition in
-the selected sector and the members' global partition, each drawn where the digest grants
-its List; nothing on the page names a user, a role or a route. A crew login an operator
-creates or resets carries the forced password change, which the login page serves before
-anything else.
+Users page (Headquarters menu) is the library's user-management component composed over
+the generated descriptor's global partitions, the crew's and the members', and the Sector
+Crew page (Sector Ops menu, under the sector's URL) over the crew's partition in the
+sector the URL names, with the route's sector as the component's domain; each is drawn
+where the digest grants its List, and nothing on either page names a user, a role or a
+route. A crew login an operator creates or resets carries the forced password change,
+which the login page serves before anything else.
 
 ## The personas
 
@@ -634,9 +635,28 @@ manifest: pick a card, sign in, switch, never more than two clicks.
   Vitest under jsdom, no browser, the wiring the
   Impulse skeleton carries (the console's dashboard, login, header, top bar, footer, and
   shell, the portal's login and tracker, over a scripted client from
-  `@cccteam/resource-angular/testing`). The console's
-  [`star-chart`](web/console/src/app/components/sector/sector.service.ts) carries the one
-  labeled bypass of the digest-first rule. Two consumers page on the server: the
+  `@cccteam/resource-angular/testing`). The console mirrors the API's shape: every
+  sector-scoped page lives under the sector segment, `/sectors/{sectorID}/...` (the
+  generated `DomainRoutePath`; the decks at `/sectors/anvil/flight-deck`, the config-driven
+  pages at `/sectors/anvil/missions`, the sector's crew at `/sectors/anvil/users`), so a
+  link to a deck can be shared and a bookmark lands where it points, and the global pages
+  keep their routes. The sector a deck works in is a consequence of its URL: the
+  [sector guard](web/console/src/app/components/sector/sector.guard.ts) on the segment
+  sets `SectorService.current` from the URL before the deck loads, checked against the
+  session's sector list (user-domains, the server's own foothold test), and nothing else
+  writes it; the [star chart](web/console/src/app/components/sector/star-chart/star-chart.component.ts)
+  sets no sector either, it opens the page it is on under the chosen sector's URL. A URL
+  naming a sector the session cannot reach — a dark star opened with "chart every sector"
+  on, or a pasted link — lands on the
+  [refusal page](web/console/src/app/components/sector/sector-refused/sector-refused.component.ts)
+  under that sector's URL (`/sectors/cinder/refused`), which asks the server what a deck
+  there would have asked and shows the answer in the server's words, the concealing 404,
+  and never switches to another sector. One URL the guard rewrites names no sector: the
+  library's config-driven pages build their row links and after-create navigation from
+  the page's route as written, parameter and all (`/sectors/:sectorID/missions/…`), so the
+  guard sends such a link to the same page under the sector it was drawn in, and refuses
+  it when none is open; the library building those links under the page's sector would
+  retire that. Two consumers page on the server: the
   hand-written flight deck, and the library's config-driven list on the
   [Missions page](web/console/src/app/configs/missions.config.ts)
   ([`list.server-paged`](web/console/src/app/configs/missions.config.ts)), which asks for

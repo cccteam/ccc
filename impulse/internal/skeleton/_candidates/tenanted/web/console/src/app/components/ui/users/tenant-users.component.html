@@ -1,0 +1,5 @@
+<div class="users-page">
+  <section class="users-tenant" *cccHasPermission="scope()">
+    <ccc-user-management auth="Staff" [domain]="tenant()" />
+  </section>
+</div>

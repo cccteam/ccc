@@ -10,9 +10,8 @@
 @if (sectors.refusalOf(refits); as refusal) {
   <mat-card appearance="outlined" class="table-card refusal-slot">
     <p class="refusal"><b>Refused by the server:</b> {{ refusal }}</p>
-    <p class="empty">The star chart's dark-sector bypass sent this request on purpose; the concealed-sector guard answered.</p>
   </mat-card>
-} @else if (!canList() && !sectors.dark()) {
+} @else if (!canList()) {
   <mat-card appearance="outlined" class="table-card">
     <p class="empty">Your posting in {{ sector() || 'this sector' }} does not cover the hangar deck right now.</p>
   </mat-card>
@@ -33,7 +32,9 @@
             (dragstart)="onDragStart(refit)"
             (click)="select(refit)">
             <span class="name">{{ shipName(refit.shipId) }}</span>
-            <span class="meta">{{ refit.estimate !== undefined && refit.estimate !== null ? refit.estimate + ' cr' : 'no estimate' }}</span>
+            <span class="meta">{{
+              refit.estimate !== undefined && refit.estimate !== null ? refit.estimate + ' cr' : 'no estimate'
+            }}</span>
           </button>
         }
       </div>
@@ -142,8 +143,8 @@
     <mat-card-header>
       <mat-card-title>Ships in {{ sector() }}</mat-card-title>
       <mat-card-subtitle>
-        Hail is the first-class Touch: every field stays as it was, the timestamp bumps, and the ship's log records
-        who hailed. The Pilot's grant excludes quarantined ships.
+        Hail is the first-class Touch: every field stays as it was, the timestamp bumps, and the ship's log records who
+        hailed. The Pilot's grant excludes quarantined ships.
       </mat-card-subtitle>
     </mat-card-header>
     <mat-card-content>
@@ -151,7 +152,10 @@
         @for (ship of ships.value(); track ship.id) {
           <div class="ship-card">
             <b>{{ ship.name }}</b>
-            <span class="meta">{{ ship.registry }} · last refit {{ ship.lastRefitAt ? (ship.lastRefitAt | date: 'mediumDate') : 'never' }}</span>
+            <span class="meta"
+              >{{ ship.registry }} · last refit
+              {{ ship.lastRefitAt ? (ship.lastRefitAt | date: 'mediumDate') : 'never' }}</span
+            >
             <span class="meta">updated {{ ship.updatedAt ? (ship.updatedAt | date: 'medium') : 'never' }}</span>
             @if (canHail(ship)) {
               <button mat-stroked-button (click)="hail(ship)">Hail</button>

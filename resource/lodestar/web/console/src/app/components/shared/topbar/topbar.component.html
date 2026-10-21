@@ -13,14 +13,16 @@
       <button mat-button [matMenuTriggerFor]="groupMenu">{{ item.label }} ▾</button>
       <mat-menu #groupMenu="matMenu">
         @for (child of item.children; track child.label) {
-          <ng-container *cccFeature="child.feature">
-            <a mat-menu-item *cccHasPermission="scopeFor(child)" [routerLink]="child.route">{{ child.label }}</a>
-          </ng-container>
+          @if (linkFor(child); as link) {
+            <ng-container *cccFeature="child.feature">
+              <a mat-menu-item *cccHasPermission="scopeFor(child)" [routerLink]="link">{{ child.label }}</a>
+            </ng-container>
+          }
         }
       </mat-menu>
-    } @else {
+    } @else if (linkFor(item); as link) {
       <ng-container *cccFeature="item.feature">
-        <a mat-button *cccHasPermission="scopeFor(item)" [routerLink]="item.route">{{ item.label }}</a>
+        <a mat-button *cccHasPermission="scopeFor(item)" [routerLink]="link">{{ item.label }}</a>
       </ng-container>
     }
   }

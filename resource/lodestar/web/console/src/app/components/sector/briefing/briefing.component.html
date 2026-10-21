@@ -7,7 +7,7 @@
 
 <app-star-chart></app-star-chart>
 
-@if (!canCompile() && !sectors.dark()) {
+@if (!canCompile()) {
   <mat-card appearance="outlined" class="table-card">
     <p class="empty">Your posting in {{ sector() || 'this sector' }} does not include compiling a briefing.</p>
   </mat-card>
@@ -23,9 +23,15 @@
             }
           </mat-select>
         </mat-form-field>
-        <mat-slide-toggle [checked]="includeHazards()" (change)="includeHazards.set($event.checked)">Include the hazard board</mat-slide-toggle>
+        <mat-slide-toggle [checked]="includeHazards()" (change)="includeHazards.set($event.checked)"
+          >Include the hazard board</mat-slide-toggle
+        >
         <button mat-flat-button type="button" (click)="compile()">Compile briefing</button>
-        <button mat-stroked-button type="button" (click)="tryDryRun()" title="A client-form method refuses a dry run: there is no transaction to roll back.">
+        <button
+          mat-stroked-button
+          type="button"
+          (click)="tryDryRun()"
+          title="A client-form method refuses a dry run: there is no transaction to roll back.">
           Dry-run (refused by design)
         </button>
       </div>
@@ -54,7 +60,9 @@
             <dd>{{ sheet.overdue.length }} mission(s)</dd>
           </dl>
           @if (sheet.hazardWithheld) {
-            <p class="empty">The hazard board was withheld: your grants do not include it, and the body asked before folding it in.</p>
+            <p class="empty">
+              The hazard board was withheld: your grants do not include it, and the body asked before folding it in.
+            </p>
           } @else if (sheet.hazardBoard.length) {
             <h3>Hazard board</h3>
             <ul>
