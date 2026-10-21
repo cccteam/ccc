@@ -110,17 +110,17 @@ func TestParseGeneratorProblems(t *testing.T) {
 		{
 			name:         "a sign-in method that is not one of the generation package's",
 			options:      `generation.GenerateRoutes("pkg/router", "api", generation.Auth("example.com/acme/pkg/auth/staff", generation.LDAP)),`,
-			wantProblems: []string{"Auth argument generation.LDAP should be a sign-in method declaration (generation.PasswordMethod(), GoogleMethod(name), AzureMethod(name), or WorkOSMethod(name), with .Labeled(label), .InvitedUsers() or .SyncsRoles() when chained)"},
+			wantProblems: []string{"Auth argument generation.LDAP should be a sign-in method declaration (generation.PasswordMethod(), GoogleMethod(name), AzureMethod(name), or WorkOSMethod(name), with .Labeled(label), .InvitedUsers(), .SyncsRoles() or .OpenSignUp() when chained)"},
 		},
 		{
 			name:         "a sign-in method written as a string",
 			options:      `generation.GenerateRoutes("pkg/router", "api", generation.Auth("example.com/acme/pkg/auth/staff", "password")),`,
-			wantProblems: []string{`Auth argument "password" should be a sign-in method declaration (generation.PasswordMethod(), GoogleMethod(name), AzureMethod(name), or WorkOSMethod(name), with .Labeled(label), .InvitedUsers() or .SyncsRoles() when chained)`},
+			wantProblems: []string{`Auth argument "password" should be a sign-in method declaration (generation.PasswordMethod(), GoogleMethod(name), AzureMethod(name), or WorkOSMethod(name), with .Labeled(label), .InvitedUsers(), .SyncsRoles() or .OpenSignUp() when chained)`},
 		},
 		{
 			name:         "a registration flag chained with an argument is not a declaration",
 			options:      `generation.GenerateRoutes("pkg/router", "api", generation.Auth("example.com/acme/pkg/auth/staff", generation.GoogleMethod("directory").SyncsRoles("x"))),`,
-			wantProblems: []string{"Auth argument generation.GoogleMethod(...).SyncsRoles(...) should be a sign-in method declaration (generation.PasswordMethod(), GoogleMethod(name), AzureMethod(name), or WorkOSMethod(name), with .Labeled(label), .InvitedUsers() or .SyncsRoles() when chained)"},
+			wantProblems: []string{"Auth argument generation.GoogleMethod(...).SyncsRoles(...) should be a sign-in method declaration (generation.PasswordMethod(), GoogleMethod(name), AzureMethod(name), or WorkOSMethod(name), with .Labeled(label), .InvitedUsers(), .SyncsRoles() or .OpenSignUp() when chained)"},
 		},
 		{
 			name:    "a method's label and flags chained in any order, and the outlet managing another auth",
@@ -327,7 +327,7 @@ func TestParseGeneratorRecordsDeclarations(t *testing.T) {
 		},
 		{
 			name:   "a method's label and flags are recorded, and Manages names the auth the outlet manages",
-			option: `generation.WithRouterOutlet("portal", "portal/api", generation.Auth("example.com/acme/pkg/auth/members", generation.GoogleMethod("directory").Labeled("Company directory").SyncsRoles(), generation.AzureMethod("entra").InvitedUsers()), generation.Manages("example.com/acme/pkg/auth/staff")),`,
+			option: `generation.WithRouterOutlet("portal", "portal/api", generation.Auth("example.com/acme/pkg/auth/members", generation.GoogleMethod("directory").Labeled("Company directory").SyncsRoles(), generation.AzureMethod("entra").InvitedUsers(), generation.GoogleMethod("sign-up").OpenSignUp()), generation.Manages("example.com/acme/pkg/auth/staff")),`,
 			want: []Arg{
 				{Kind: ArgString, Str: "portal"},
 				{Kind: ArgString, Str: "portal/api"},
@@ -335,6 +335,7 @@ func TestParseGeneratorRecordsDeclarations(t *testing.T) {
 					{Kind: ArgString, Str: "example.com/acme/pkg/auth/members"},
 					{Kind: ArgAuthMethod, Method: &AuthMethodArg{Kind: MethodGoogle, Name: "directory", Label: "Company directory", SyncsRoles: true}},
 					{Kind: ArgAuthMethod, Method: &AuthMethodArg{Kind: MethodAzure, Name: "entra", InvitedUsers: true}},
+					{Kind: ArgAuthMethod, Method: &AuthMethodArg{Kind: MethodGoogle, Name: "sign-up", OpenSignUp: true}},
 				}}},
 				{Kind: ArgCall, Call: &Call{Name: "Manages", Pos: "main.go:14", Args: []Arg{{Kind: ArgString, Str: "example.com/acme/pkg/auth/staff"}}}},
 			},
@@ -623,6 +624,7 @@ func TestAuthMethodArgDeclaration(t *testing.T) {
 		{name: "a label", method: AuthMethodArg{Kind: MethodAzure, Name: "directory", Label: "Company directory"}, want: `generation.AzureMethod("directory").Labeled("Company directory")`},
 		{name: "the flags after the label", method: AuthMethodArg{Kind: MethodGoogle, Name: "google", Label: "Workspace", InvitedUsers: true, SyncsRoles: true}, want: `generation.GoogleMethod("google").Labeled("Workspace").InvitedUsers().SyncsRoles()`},
 		{name: "a flag alone", method: AuthMethodArg{Kind: MethodWorkOS, Name: "sso", SyncsRoles: true}, want: `generation.WorkOSMethod("sso").SyncsRoles()`},
+		{name: "open sign-up after the others", method: AuthMethodArg{Kind: MethodGoogle, Name: "sign-up", SyncsRoles: true, OpenSignUp: true}, want: `generation.GoogleMethod("sign-up").SyncsRoles().OpenSignUp()`},
 		{name: "a method the router does not compose", method: AuthMethodArg{Kind: "ldap", Name: "ldap"}, want: ""},
 	}
 	for _, tt := range tests {
@@ -632,7 +634,7 @@ func TestAuthMethodArgDeclaration(t *testing.T) {
 			if got := tt.method.Declaration(); got != tt.want {
 				t.Errorf("Declaration() = %q, want %q", got, tt.want)
 			}
-			if got := MethodDeclaration(tt.method.Kind, tt.method.Name, tt.method.Label); tt.method.InvitedUsers || tt.method.SyncsRoles {
+			if got := MethodDeclaration(tt.method.Kind, tt.method.Name, tt.method.Label); tt.method.InvitedUsers || tt.method.SyncsRoles || tt.method.OpenSignUp {
 				if got == tt.want {
 					t.Errorf("MethodDeclaration() = %q carries the flags, which only Declaration() writes", got)
 				}

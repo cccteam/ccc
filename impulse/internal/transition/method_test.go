@@ -166,6 +166,30 @@ func TestMethodApply(t *testing.T) {
 			},
 		},
 		{
+			name:   "a Google method admitting open sign-up declares .OpenSignUp() and briefs the tenant record's creation shape",
+			method: Method{Auth: "staff", Spec: authpkg.Method{Kind: app.MethodGoogle, Name: "sign-up", Slot: authpkg.SlotAny, Authority: AuthorityApplication, Accounts: authpkg.AccountsOpen}},
+			wantDid: []string{
+				"pkg/auth/staff/sign-up.go: the sign-up method (google, any Google account, open sign-up, role membership the application's): its registration constant, its settings, its handlers (SignUpLogin and the rest), and registerSignUp, which registers it on the Auth",
+				`cmd/generate/resourcegenerator/main.go: generation.GoogleMethod("sign-up").OpenSignUp() declared on 1 outlet Auth option(s) bound to the staff auth, so the generated router mounts user/sign-up/login and the callback and the methods route offers it`,
+			},
+			check: func(t *testing.T, a *app.App) {
+				t.Helper()
+				file := read(t, a, "pkg/auth/staff/sign-up.go")
+				if !strings.Contains(file, "signin.OpenSignUp") || strings.Contains(file, "signin.MembersOfDirectory") {
+					t.Errorf("sign-up.go's account rule:\n%s", file)
+				}
+				if program := read(t, a, "cmd/generate/resourcegenerator/main.go"); !strings.Contains(program, `generation.Auth("example.com/acme/beacon/pkg/auth/staff", generation.PasswordMethod(), generation.GoogleMethod("sign-up").OpenSignUp())`) {
+					t.Errorf("program = %s", program)
+				}
+				meaning := (&Method{Auth: "staff", Spec: authpkg.Method{Kind: app.MethodGoogle, Name: "sign-up", Slot: authpkg.SlotAny, Authority: AuthorityApplication, Accounts: authpkg.AccountsOpen}}).Meaning()
+				for _, want := range []string{"Decide who may create a tenant. The sign-up registration(s) admit anyone the directory verifies (`signin.OpenSignUp`, and `.OpenSignUp()` on the declaration)", "`@tenant(creation: self-service)`", "`@tenant(creation: both)`", "`<Record>AdministratorRoles()`"} {
+					if !strings.Contains(meaning, want) {
+						t.Errorf("Meaning() lacks %q:\n%s", want, meaning)
+					}
+				}
+			},
+		},
+		{
 			name:   "an Entra method under the directory authority, read from the environment struct",
 			method: Method{Auth: "staff", Spec: authpkg.Method{Kind: app.MethodAzure, Name: "directory", Authority: AuthorityDirectory}},
 			extra:  map[string]string{"pkg/config/data.go": authConfigEnv},

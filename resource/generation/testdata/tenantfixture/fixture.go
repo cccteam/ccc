@@ -4,7 +4,11 @@
 // (tenantFixtureTables in the tests); Docks is keyed twice there.
 package tenantfixture
 
-import "github.com/cccteam/ccc"
+import (
+	"cloud.google.com/go/civil"
+
+	"github.com/cccteam/ccc"
+)
 
 // Struct-level annotations only parse from a TypeSpec doc comment, so the structs sit
 // in a grouped type block like real project sources do.
@@ -91,5 +95,69 @@ type (
 	// @tenant
 	Reindex struct {
 		Input string
+	}
+
+	// Station declares the self-service creation shape: the person who becomes its
+	// administrator creates it, through the generated route, and no administrator does.
+	// Beside the key it carries a plain column, a nullable one, a column of a type from
+	// another package and a server-owned one.
+	//
+	// @resource
+	// @tenant(creation: self-service)
+	Station struct {
+		ID      string     `spanner:"Id"`
+		Name    string     `spanner:"Name"`
+		Motto   *string    `spanner:"Motto"`
+		Opened  civil.Date `spanner:"Opened"`
+		Derived string     `spanner:"Derived" conditions:"output_only"`
+	}
+
+	// Colony declares both creation shapes.
+	//
+	// @resource
+	// @tenant(creation: both)
+	Colony struct {
+		ID   string `spanner:"Id"`
+		Name string `spanner:"Name"`
+	}
+
+	// Enclave spells the default shape out.
+	//
+	// @resource
+	// @tenant(creation: administrator)
+	Enclave struct {
+		ID string `spanner:"Id"`
+	}
+
+	// Outland names a creation shape the generator does not know.
+	//
+	// @resource
+	// @tenant(creation: nowhere)
+	Outland struct {
+		ID string `spanner:"Id"`
+	}
+
+	// Province passes the shape without its key.
+	//
+	// @resource
+	// @tenant(self-service)
+	Province struct {
+		ID string `spanner:"Id"`
+	}
+
+	// CreateStation is a method named as the Station record's create-your-station
+	// handler would be.
+	//
+	// @rpc
+	CreateStation struct {
+		Input string
+	}
+
+	// Bastion names an argument @tenant does not take.
+	//
+	// @resource
+	// @tenant(shape: both)
+	Bastion struct {
+		ID string `spanner:"Id"`
 	}
 )

@@ -22,8 +22,19 @@ type (
 	// Tenant itself is a GLOBAL resource — administering the tenant list is a global
 	// concern. Its list comes in name order (@order) when the request names no sort.
 	//
+	// Who may create a tenant is declared here, apart from who may enter one
+	// (@tenant(creation: ...)): an administrator alone (@tenant, the default: the create
+	// path above under the Administrator_Global role's Create grant), the person who
+	// becomes its administrator (self-service), or both, as here. Self-service is one
+	// generated route, POST /api/create-tenant: a stranger signs in first, through the
+	// staff auth's google registration (any Google account, open sign-up), holds no
+	// tenant, and names theirs; the route writes the row, seats the person with the
+	// roles TenantAdministratorRoles names (app) and hands the tenant to the roster, so
+	// their next request stands in it. A person who already holds a tenant is refused:
+	// one tenant per person, and an administrator of one never creates another.
+	//
 	// @resource
-	// @tenant
+	// @tenant(creation: both)
 	// @order(Name asc)
 	Tenant struct {
 		ID   string `spanner:"Id"`

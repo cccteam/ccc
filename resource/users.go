@@ -387,6 +387,14 @@ func (s *UserSurface[A]) Names() UserResourceNames {
 	return s.names
 }
 
+// SeatStore returns the membership store the surface seats and unseats through: the
+// Auth's engine's user manager. The generated create-your-tenant route seats a tenant's
+// first administrator through it, the one membership written outside the surface's
+// handlers.
+func (s *UserSurface[A]) SeatStore() UserSeats {
+	return s.seats
+}
+
 // namesOf is the Auth's names, for the row types' Resource methods.
 func namesOf[A UserAuth]() UserResourceNames {
 	var a A

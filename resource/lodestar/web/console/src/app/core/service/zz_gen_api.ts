@@ -1106,7 +1106,7 @@ export const apiDescriptor = defineApiDescriptor({
       auth: 'Crew',
       label: 'Crew',
       password: true,
-      registrations: [{ name: 'google', kind: 'google', label: 'Google', invited: false, syncsRoles: true }],
+      registrations: [{ name: 'google', kind: 'google', label: 'Google', invited: false, syncsRoles: true }, { name: 'sign-up', kind: 'google', label: 'Sign up with Google', invited: false, syncsRoles: false }],
       partitions: [
         { scope: 'global', users: Resources.CrewUsers, seats: Resources.CrewSeats, roles: Resources.CrewRoles, setPassword: Methods.SetCrewUserPassword, unlinkIdentity: Methods.UnlinkCrewUserIdentity },
         { scope: 'domain', users: Resources.CrewSectorUsers, seats: Resources.CrewSectorSeats, roles: Resources.CrewSectorRoles, setPassword: Methods.SetCrewSectorUserPassword, unlinkIdentity: Methods.UnlinkCrewSectorUserIdentity },
@@ -1124,6 +1124,21 @@ export const apiDescriptor = defineApiDescriptor({
     },
   ],
 });
+
+/**
+ * The create-your-sector route (@tenant(creation: both)): POST create-sector under the API
+ * prefix, with the body below, through the application's HTTP client. A signed-in person who holds
+ * no sector creates one and becomes its administrator; a person who already holds one is
+ * refused (403). The answer carries the new sector's key.
+ */
+export const createSectorRoute = 'create-sector';
+/** The body the create-your-sector route takes: the Sector record's fields with its key. */
+export interface CreateSector {
+  id: string;
+  name: string;
+  region: string;
+  established: Date;
+}
 
 /** Handles for the global scope, available on the client root. */
 export interface GlobalApi {

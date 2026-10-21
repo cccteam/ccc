@@ -98,6 +98,12 @@ func Collection() *resource.GeneratedCollection {
 				Order: []accesstypes.Tag{"username"},
 			},
 			{
+				Name:        "UnlinkStaffTenantUserIdentity",
+				Scope:       accesstypes.DomainPermissionScope,
+				Permissions: []accesstypes.Permission{accesstypes.Execute},
+				Target:      "StaffTenantUsers",
+			},
+			{
 				Name:        "FeatureFlags",
 				Scope:       accesstypes.GlobalPermissionScope,
 				Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read},
@@ -201,6 +207,12 @@ func Collection() *resource.GeneratedCollection {
 				},
 				Order:     []accesstypes.Tag{"name"},
 				QueryKeys: []accesstypes.Tag{"name"},
+			},
+			{
+				Name:        "UnlinkStaffUserIdentity",
+				Scope:       accesstypes.GlobalPermissionScope,
+				Permissions: []accesstypes.Permission{accesstypes.Execute},
+				Target:      "StaffUsers",
 			},
 		},
 	})

@@ -15,14 +15,21 @@ func tenantFixtureTables() map[string]*tableMetadata {
 	pk := columnMeta{IsPrimaryKey: true, IsIndex: true, IsUniqueIndex: true}
 	compositeKey := columnMeta{IsPrimaryKey: true, IsIndex: true}
 	plain := columnMeta{}
+	nullable := columnMeta{IsNullable: true}
 
 	return map[string]*tableMetadata{
-		"Sectors":  {PkCount: 1, Columns: map[string]columnMeta{"Id": pk, "Name": plain}},
-		"Berths":   {PkCount: 1, Columns: map[string]columnMeta{"Id": pk, "SectorId": plain, "Name": plain}},
-		"Outposts": {PkCount: 1, Columns: map[string]columnMeta{"Id": pk, "SectorId": plain}},
-		"Docks":    {PkCount: 2, Columns: map[string]columnMeta{"SectorId": compositeKey, "Number": compositeKey}},
-		"Hangars":  {PkCount: 1, Columns: map[string]columnMeta{"Id": pk, "Name": plain}},
-		"Regions":  {PkCount: 1, Columns: map[string]columnMeta{"Id": pk}},
+		"Sectors":   {PkCount: 1, Columns: map[string]columnMeta{"Id": pk, "Name": plain}},
+		"Berths":    {PkCount: 1, Columns: map[string]columnMeta{"Id": pk, "SectorId": plain, "Name": plain}},
+		"Outposts":  {PkCount: 1, Columns: map[string]columnMeta{"Id": pk, "SectorId": plain}},
+		"Docks":     {PkCount: 2, Columns: map[string]columnMeta{"SectorId": compositeKey, "Number": compositeKey}},
+		"Hangars":   {PkCount: 1, Columns: map[string]columnMeta{"Id": pk, "Name": plain}},
+		"Regions":   {PkCount: 1, Columns: map[string]columnMeta{"Id": pk}},
+		"Stations":  {PkCount: 1, Columns: map[string]columnMeta{"Id": pk, "Name": plain, "Motto": nullable, "Opened": plain, "Derived": plain}},
+		"Colonies":  {PkCount: 1, Columns: map[string]columnMeta{"Id": pk, "Name": plain}},
+		"Enclaves":  {PkCount: 1, Columns: map[string]columnMeta{"Id": pk}},
+		"Outlands":  {PkCount: 1, Columns: map[string]columnMeta{"Id": pk}},
+		"Provinces": {PkCount: 1, Columns: map[string]columnMeta{"Id": pk}},
+		"Bastions":  {PkCount: 1, Columns: map[string]columnMeta{"Id": pk}},
 	}
 }
 
@@ -53,12 +60,47 @@ func Test_resolveTenant(t *testing.T) {
 		name       string
 		structs    []string
 		wantTenant string
+		wantShape  tenantCreation
 		wantErr    string
 	}{
 		{
 			name:       "the global, single string-keyed record is the tenant record",
 			structs:    []string{"Sector", "Berth"},
 			wantTenant: "Sector",
+			wantShape:  tenantCreationAdministrator,
+		},
+		{
+			name:       "creation: self-service is the self-service shape",
+			structs:    []string{"Station"},
+			wantTenant: "Station",
+			wantShape:  tenantCreationSelfService,
+		},
+		{
+			name:       "creation: both is both shapes",
+			structs:    []string{"Colony"},
+			wantTenant: "Colony",
+			wantShape:  tenantCreationBoth,
+		},
+		{
+			name:       "creation: administrator spells the default out",
+			structs:    []string{"Enclave"},
+			wantTenant: "Enclave",
+			wantShape:  tenantCreationAdministrator,
+		},
+		{
+			name:    "a creation shape the generator does not know is refused naming the three",
+			structs: []string{"Outland"},
+			wantErr: "struct Outland: @tenant(creation: nowhere) names no creation shape; the shapes are administrator (an administrator alone, the default), self-service (the person who becomes its administrator) and both",
+		},
+		{
+			name:    "the shape without its key is refused",
+			structs: []string{"Province"},
+			wantErr: `expected 0 positional argument(s), found 1 in "self-service"`,
+		},
+		{
+			name:    "an argument @tenant does not take is refused",
+			structs: []string{"Bastion"},
+			wantErr: `unknown argument "shape" in "shape: both" (accepted: creation)`,
 		},
 		{
 			name:    "@tenant on a tenant-scoped resource is refused",
@@ -101,6 +143,9 @@ func Test_resolveTenant(t *testing.T) {
 			for _, res := range resources {
 				if got, want := res.IsTenant, res.Name() == tt.wantTenant; got != want {
 					t.Errorf("%s.IsTenant = %v, want %v", res.Name(), got, want)
+				}
+				if res.IsTenant && res.TenantCreation != tt.wantShape {
+					t.Errorf("%s.TenantCreation = %q, want %q", res.Name(), res.TenantCreation, tt.wantShape)
 				}
 			}
 		})
@@ -307,6 +352,7 @@ func Test_patchTemplate_tenant(t *testing.T) {
 	tests := []struct {
 		name            string
 		tenant          bool
+		creation        tenantCreation
 		wantContains    []string
 		wantNotContains []string
 	}{
@@ -325,6 +371,15 @@ func Test_patchTemplate_tenant(t *testing.T) {
 			},
 		},
 		{
+			name:     "a self-service record refuses the create path naming the route",
+			tenant:   true,
+			creation: tenantCreationSelfService,
+			wantContains: []string{
+				`return httpio.NewBadRequestMessage("a Sector is created by the person who becomes its administrator, through the create-sector route (@tenant(creation: self-service)); no administrator creates one")`,
+				"a.TenantRoster().Remove(domain)",
+			},
+		},
+		{
 			name:            "another resource carries none of it",
 			wantNotContains: []string{"tenantsAdded", "tenantsRemoved", "TenantRoster()", "KindTenants"},
 		},
@@ -334,7 +389,7 @@ func Test_patchTemplate_tenant(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			res := fixtureResource(t, structs, "Sector", func(res *resourceInfo) { res.IsTenant = tt.tenant })
+			res := fixtureResource(t, structs, "Sector", func(res *resourceInfo) { res.IsTenant, res.TenantCreation = tt.tenant, tt.creation })
 			r := &resourceGenerator{client: &client{resource: "testdata/tenantfixture"}, applicationName: "App", receiverName: "a"}
 			out, err := r.handlerContent(PatchHandler, res)
 			if err != nil {
@@ -354,7 +409,7 @@ func Test_patchTemplate_tenant(t *testing.T) {
 					t.Errorf("patch handler must not contain %q:\n%s", notWant, out)
 				}
 			}
-			if !tt.tenant {
+			if !tt.tenant || tt.creation.SelfService() {
 				return
 			}
 

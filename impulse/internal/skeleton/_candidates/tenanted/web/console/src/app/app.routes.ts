@@ -24,6 +24,14 @@ export const routes: Routes = [
     canActivate: [LoginAuthenticationGuard],
     children: [
       dashboardRoute(),
+      // The create-your-tenant page: the self-service half of the Tenant record's creation
+      // shape, offered by the dashboard to a session holding no tenant. It lives outside
+      // the tenant segment: the person has none yet.
+      {
+        path: 'create-tenant',
+        loadComponent: () =>
+          import('./components/ui/create-tenant/create-tenant.component').then((comp) => comp.CreateTenantComponent),
+      },
       // The Users page composes the library's user-management component over the global
       // partition of the auth's user surface, behind the List grant on its users resource.
       usersRoute(),

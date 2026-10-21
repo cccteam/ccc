@@ -250,6 +250,11 @@ func generatedRouterTests() []*generatedRouterTest {
 			parameters:  map[string]string{},
 		},
 		{
+			url: "/api/create-tenant", method: http.MethodPost,
+			handlerFunc: "CreateTenant",
+			parameters:  map[string]string{},
+		},
+		{
 			url: "/api/staff-users", method: http.MethodGet,
 			handlerFunc: "StaffUsers",
 			parameters:  map[string]string{},
@@ -322,6 +327,11 @@ func generatedRouterTests() []*generatedRouterTest {
 		{
 			url: "/api/set-staff-user-password", method: http.MethodPost,
 			handlerFunc: "SetStaffUserPassword",
+			parameters:  map[string]string{},
+		},
+		{
+			url: "/api/unlink-staff-user-identity", method: http.MethodPost,
+			handlerFunc: "UnlinkStaffUserIdentity",
 			parameters:  map[string]string{},
 		},
 		{
@@ -400,6 +410,11 @@ func generatedRouterTests() []*generatedRouterTest {
 			parameters:  map[string]string{"tenantID": "testDomain"},
 		},
 		{
+			url: "/api/tenants/testDomain/unlink-staff-tenant-user-identity", method: http.MethodPost,
+			handlerFunc: "UnlinkStaffTenantUserIdentity",
+			parameters:  map[string]string{"tenantID": "testDomain"},
+		},
+		{
 			url: "/api/resources", method: http.MethodPatch,
 			handlerFunc: "PatchResources",
 		},
@@ -451,6 +466,10 @@ func (s *generatedHandlersStub) Announcements() http.HandlerFunc {
 
 func (s *generatedHandlersStub) Announcement() http.HandlerFunc {
 	return s.record("Announcement")
+}
+
+func (s *generatedHandlersStub) CreateTenant() http.HandlerFunc {
+	return s.record("CreateTenant")
 }
 
 func (s *generatedHandlersStub) FeatureFlags() http.HandlerFunc {
@@ -547,6 +566,14 @@ func (s *generatedHandlersStub) Tenants() http.HandlerFunc {
 
 func (s *generatedHandlersStub) Tenant() http.HandlerFunc {
 	return s.record("Tenant")
+}
+
+func (s *generatedHandlersStub) UnlinkStaffTenantUserIdentity() http.HandlerFunc {
+	return s.record("UnlinkStaffTenantUserIdentity")
+}
+
+func (s *generatedHandlersStub) UnlinkStaffUserIdentity() http.HandlerFunc {
+	return s.record("UnlinkStaffUserIdentity")
 }
 
 func (s *generatedHandlersStub) PatchResources() http.HandlerFunc {

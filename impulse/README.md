@@ -79,6 +79,15 @@ templates, this README, and the tool's source.
   header's picker lists that same list and navigates to the same page under the chosen
   tenant; a URL naming a tenant the session cannot reach lands on a refusal page that
   shows the server's answer, never on another tenant.
+
+  Who may create a tenant is declared on the record, apart from who may enter one:
+  `@tenant` alone keeps it to an administrator (the record's create path under a Create
+  grant), `@tenant(creation: self-service)` lets a person who signed in holding no tenant
+  create their own through the generated create-your-tenant route and become its
+  administrator, and `@tenant(creation: both)` keeps both ways. The order is sign in
+  first, then name the tenant, so self-service needs a registration admitting open
+  sign-up on the outlet's auth (`.OpenSignUp()` on the method declaration), which the
+  generator holds it to.
 - **Levels**: the configuration chain in `pkg/config`, one level per kind of process, each
   embedding the one below it: **core** (every process), **data** (every process that opens
   the database), and **site** (one served site: its port and its built bundle). The site
@@ -743,7 +752,8 @@ not-found handler, and its browser application. The App's handlers the generated
 `<Outlet>Auth` middleware), the configuration, the members (`@outlet`), and the tests are
 the agent's, and the compiler, `outlet-wired`, and `outlet-shape` hold it to them.
 
-`add tenancy` makes a flat, untenanted application tenanted. The tenant table becomes the
+`add tenancy` makes a flat, untenanted application tenanted. An administrator alone creates
+tenants, through the record's create path, unless the record says otherwise. The tenant table becomes the
 next schema migration, with two development tenants as a data migration under
 `schema/devseed`; the tenant-record struct joins the resource package as a global resource
 annotated `@tenant`, from which the generator derives the tenant segment and emits
@@ -764,6 +774,24 @@ tenant picker are the agent's, and `tenancy-wired` holds it to them.
 impulse add tenancy --agent
 impulse add tenancy --tenant-table Organizations
 ```
+
+Who may create a tenant is the record's declaration, separate from who may enter one, and
+the application chooses it by annotating the record. `@tenant` is an administrator alone:
+the record's create path under the Create grant on it, and no route a stranger could reach.
+`@tenant(creation: self-service)` is the person who becomes the tenant's administrator: a
+stranger signs in first, through a registration admitting open sign-up (`add method
+<auth> google <name> --slot any --accounts open`, which declares `.OpenSignUp()` on the
+method), holds no tenant, and the application offers one page, create your tenant; the
+generated route (`POST <prefix>/create-<record>`, no grant needed) writes the row, seats the
+person with the domain roles the App names in `<Record>AdministratorRoles()` and hands the
+tenant to the roster, so their next request stands in it, and a person who already holds a
+tenant is refused, an administrator of one tenant never creating another. The generated
+client exports the route and the body's shape (`create<Record>Route`, `Create<Record>`) for
+the page, which the tenanted skeleton's console offers from its dashboard to a session
+without a tenant. `@tenant(creation: both)` keeps both ways. The generator refuses
+self-service on an outlet whose auth has no open sign-up registration, naming the record
+and the fix, and refuses a shape it does not know; the default stays an administrator
+alone, so no application ships self-service by omission.
 
 `add auth` adds an auth: a population that holds roles in its own permission store and
 signs in through the methods on its Auth. An auth is a package, `pkg/auth/<name>`, and
@@ -791,7 +819,8 @@ being the segment of the method's routes (`user/<registration>/login`). A direct
 added here takes one organization, and `--accounts` its account rule for a first sign-in as
 `add method` takes it (`members`, the default, or `invited`; `open` is refused with one
 organization), written to the method file and, for `invited`, as `.InvitedUsers()` on the
-method's declaration, so the generated users surface creates the invitations; `add method`
+method's declaration, so the generated users surface creates the invitations, and for
+`open`, as `.OpenSignUp()`, the rule a self-service tenant record needs; `add method`
 composes the other slots. `--authority` says who owns role
 membership for a directory method and is asked when not given, never defaulted, because
 the wrong answer deletes hand-assigned roles at the next sign-in: `directory` writes
@@ -850,7 +879,9 @@ personal accounts), `any-personal` (any tenant and personal accounts). For googl
 Workspace), `any` (any Google account), `mixed` (one Workspace and any Google account).
 `--accounts` is the account rule for a first sign-in: `members` (members of the directory,
 the default: the person becomes a user under the name the directory presents), `invited`
-(a user created beforehand is linked, anyone else refused) or `open` (open sign-up). The
+(a user created beforehand is linked, anyone else refused) or `open` (open sign-up: anyone
+the directory verifies becomes a user holding nothing, declared `.OpenSignUp()` on the
+method, the registration a self-service tenant record needs). The
 session library allows `open` only with any organization or personal accounts, and refuses
 `members` there, since every organization in the world is "the directory". `--authority`
 is as for `add auth`, and the directory authority is allowed with one organization only.

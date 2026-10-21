@@ -421,6 +421,17 @@ func (a *App) TenantRoster() *resource.TenantRoster {
 	return a.tenants
 }
 
+// SectorAdministratorRoles names the domain roles the person who charts a sector through
+// the generated create-sector route holds in it from then on: SectorMarshal, the full
+// authority in a sector the marshal holds at Anvil, so the pioneer can crew her own
+// sector, seat and unseat its people, and fly it. The route seats the person through the
+// crew auth's user-management surface after the row commits.
+//
+// Demonstrates: tenancy.self-service.
+func (a *App) SectorAdministratorRoles() []accesstypes.Role {
+	return []accesstypes.Role{"SectorMarshal"}
+}
+
 // Validator returns the request validator the generated decoder constructors draw on.
 func (a *App) Validator() resource.ValidatorFunc {
 	return a.validate

@@ -721,7 +721,7 @@ const (
 var (
 	domainScopeRE = regexp.MustCompile(`@` + permissionScopeKeyword + `\(\s*domain\s*\)`)
 	outletRE      = regexp.MustCompile(`@` + outletKeyword + `\(([^)]*)\)`)
-	tenantRE      = regexp.MustCompile(`(?m)^\s*@` + tenantKeyword + `\s*$`)
+	tenantRE      = regexp.MustCompile(`(?m)^\s*@` + tenantKeyword + `\s*(?:\([^)]*\))?\s*$`)
 )
 
 // structDoc is one struct type declaration with its doc comment.

@@ -85,6 +85,8 @@ func routerSessionRoutes() []routerSessionRoute {
 		{url: "/console/api/user/pending", suffix: "/user/pending", method: http.MethodGet, handler: "PendingStatus"},
 		{url: "/console/api/user/google/login", suffix: "/user/google/login", method: http.MethodGet, handler: "GoogleLogin"},
 		{url: "/console/api/user/google/callback", suffix: "/user/google/callback", method: http.MethodGet, handler: "GoogleCallback"},
+		{url: "/console/api/user/sign-up/login", suffix: "/user/sign-up/login", method: http.MethodGet, handler: "SignUpLogin"},
+		{url: "/console/api/user/sign-up/callback", suffix: "/user/sign-up/callback", method: http.MethodGet, handler: "SignUpCallback"},
 		{url: "/console/api/user/password/login", suffix: "/user/password/login", method: http.MethodPost, handler: "PasswordLogin", xsrf: true},
 		{url: "/console/api/user/password/change", suffix: "/user/password/change", method: http.MethodPost, handler: "PasswordChange", xsrf: true},
 		{url: "/console/api/user/pending/confirm", suffix: "/user/pending/confirm", method: http.MethodPost, handler: "PendingConfirmWithPassword", xsrf: true},
@@ -1224,6 +1226,14 @@ func (s *routerDefaultSessionStub) GoogleLogin() http.HandlerFunc {
 
 func (s *routerDefaultSessionStub) GoogleCallback() http.HandlerFunc {
 	return s.rec.RecordHandlerCall(s.prefix + "GoogleCallback")
+}
+
+func (s *routerDefaultSessionStub) SignUpLogin() http.HandlerFunc {
+	return s.rec.RecordHandlerCall(s.prefix + "SignUpLogin")
+}
+
+func (s *routerDefaultSessionStub) SignUpCallback() http.HandlerFunc {
+	return s.rec.RecordHandlerCall(s.prefix + "SignUpCallback")
 }
 
 func (s *routerDefaultSessionStub) PasswordLogin() http.HandlerFunc {

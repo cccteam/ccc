@@ -5,8 +5,8 @@
 // outermost first, one line per group, each chain followed by what it stands in front of:
 //
 //	every request: tracing, hooks.Outermost, request logging, SecurityHeaders, httpio.WithParams
-//	default (/api), sessions (password):
-//	  NoCaching, CompressionMiddleware, StartSession, SetXSRFToken: GET /api/user/methods, GET /api/user/session, DELETE /api/user/session, GET /api/user/pending
+//	default (/api), sessions (password, google):
+//	  NoCaching, CompressionMiddleware, StartSession, SetXSRFToken: GET /api/user/methods, GET /api/user/session, DELETE /api/user/session, GET /api/user/pending, GET /api/user/google/login, GET /api/user/google/callback
 //	  + ValidateXSRFToken: POST /api/user/password/login, POST /api/user/password/change, POST /api/user/pending/confirm, POST /api/user/pending/cancel
 //	  + ValidateSession, ValidateXSRFToken, CheckAPIVersion (oldest answered 0.0.1): hooks.Default, generatedRoutes
 //
@@ -74,6 +74,9 @@ type DefaultSession interface {
 	// The password method's login and password change (session.PasswordMethod); the change validates the session itself, outside ValidateSession.
 	PasswordLogin() http.HandlerFunc
 	PasswordChange() http.HandlerFunc
+	// The google registration's login and callback (google.Method).
+	GoogleLogin() http.HandlerFunc
+	GoogleCallback() http.HandlerFunc
 }
 
 // Hooks are the application's additions to the generated router. They compose inward
@@ -117,7 +120,7 @@ func New(h Handlers, hooks Hooks) *chi.Mux {
 		})
 	}
 
-	// The default outlet (/api): sessions (password).
+	// The default outlet (/api): sessions (password, google).
 	r.Group(func(r chi.Router) {
 		r.Use(h.NoCaching)
 		r.Use(h.CompressionMiddleware())
@@ -132,6 +135,7 @@ func New(h Handlers, hooks Hooks) *chi.Mux {
 		bounded.Get("/api/user/methods", h.Methods(&session.MethodList{
 			Methods: []session.AdvertisedMethod{
 				{Name: "password", Label: "Password", Path: "/api/user/password/login"},
+				{Name: "google", Label: "Google", Path: "/api/user/google/login"},
 			},
 			Pending:        session.PendingRoutes{Status: "/api/user/pending", Confirm: "/api/user/pending/confirm", Cancel: "/api/user/pending/cancel"},
 			ChangePassword: "/api/user/password/change",
@@ -139,6 +143,8 @@ func New(h Handlers, hooks Hooks) *chi.Mux {
 		bounded.Get("/api/user/session", h.Authenticated())
 		bounded.Delete("/api/user/session", h.Logout())
 		bounded.Get("/api/user/pending", h.PendingStatus())
+		bounded.Get("/api/user/google/login", h.GoogleLogin())
+		bounded.Get("/api/user/google/callback", h.GoogleCallback())
 		guarded.Post("/api/user/password/login", h.PasswordLogin())
 		guarded.Post("/api/user/password/change", h.PasswordChange())
 		guarded.Post("/api/user/pending/confirm", h.PendingConfirmWithPassword())
