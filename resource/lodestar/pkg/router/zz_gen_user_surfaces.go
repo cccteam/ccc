@@ -21,6 +21,7 @@ func (CrewAuth) UserSurfaceDeclaration() resource.UserSurfaceDeclaration {
 			Password: true,
 			Registrations: []resource.UserRegistration{
 				{Name: "google", Kind: "google", Label: "Google", Invited: false, SyncsRoles: true},
+				{Name: "sign-up", Kind: "google", Label: "Sign up with Google", Invited: false, SyncsRoles: false},
 			},
 		},
 	}

@@ -505,6 +505,11 @@ type authzCase struct {
 	// Open marks a route anyone signed in may call: the case carries no grant and
 	// expects 200 alone (the features route).
 	Open bool
+	// NoGrant marks the create-your-tenant route, the opposite of a permission gate:
+	// a caller holding a grant anywhere holds a tenant and is refused (403), and a
+	// caller holding none is admitted past the gate, where the minimal body meets its
+	// validation (400). The case renders both halves.
+	NoGrant bool
 }
 
 // authzHeader is one request header a generated authorization case sends.
@@ -693,6 +698,10 @@ type tsAPIData struct {
 	// descriptor's userSurfaces block: what a user-management page configures
 	// itself from. Empty, the block is left out.
 	UserSurfaces []*tsAPISurface
+	// TenantCreation is the create-your-tenant route the outlet serves, where the
+	// tenant record's creation shape admits self-service: the route's segment and
+	// the body's shape, exported beside the descriptor. Nil, nothing is written.
+	TenantCreation *tsTenantCreation
 }
 
 // tsAPISurface is one Auth's user-management surface as the descriptor carries it.

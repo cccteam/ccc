@@ -745,7 +745,8 @@ func newServedAt(ctx context.Context, t *testing.T, version string) *served {
 			HostedDomain: "example.com",
 			GroupPrefix:  "crew-",
 		},
-		ChangeSignal: policySignal,
+		SignUpRedirectURL: "http://" + server.Listener.Addr().String() + consoleAPI + "/user/" + crew.SignUpRegistration + "/callback",
+		ChangeSignal:      policySignal,
 	})
 	if err != nil {
 		t.Fatalf("crew.New() error = %v", err)

@@ -39,7 +39,12 @@ func resolveTenant(res *resourceInfo, annotations genlang.StructAnnotations) err
 	if !isStringKinded(key.GoType()) {
 		return errors.Newf("struct %s: @%s on a resource whose key %s is %s; the tenant record's key is a string, the domain in every tenant-scoped URL", res.Name(), tenantKeyword, key.Name(), key.Type())
 	}
+	creation, err := parseTenantCreation(res.Name(), annotations.Struct.Get(tenantKeyword))
+	if err != nil {
+		return err
+	}
 	res.IsTenant = true
+	res.TenantCreation = creation
 
 	return nil
 }
@@ -149,10 +154,11 @@ func (r *resourceGenerator) resolveTenantRecord() error {
 
 // requireTenantRecordForMethods is resolveTenantRecord's rule for the RPC methods, which
 // are extracted after the record resolved: a tenant-scoped method in a package with no
-// tenant record is refused naming it.
+// tenant record is refused naming it. With a record, its creation shape is held to the
+// outlets and the methods here, the one place both are known (validateTenantCreation).
 func (r *resourceGenerator) requireTenantRecordForMethods() error {
 	if r.tenantRecord() != nil {
-		return nil
+		return r.validateTenantCreation()
 	}
 	var errs []error
 	for _, method := range r.rpcMethods {

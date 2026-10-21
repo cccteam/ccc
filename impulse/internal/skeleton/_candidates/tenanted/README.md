@@ -24,6 +24,21 @@ the tenant's under it, and the Users page is split the same way: the staff surfa
 global partition at `/users`, the tenant's partition at `/tenants/{tenantID}/users` with
 the route's tenant as the component's domain.
 
+Who may create a tenant is declared on the record, apart from who may enter one. The
+record declares both ways (`@tenant(creation: both)`): an administrator creates tenants
+through the record's create path, under the `Administrator_Global` role's Create grant,
+and a person who signs in holding no tenant creates their own through the generated
+create-your-tenant route (`POST /api/create-tenant`), which writes the row, seats them
+with the roles the App names in `TenantAdministratorRoles` (`Administrator_Domain`) and
+hands the tenant to the roster, so their next request stands in it; a person who already
+holds a tenant is refused, an administrator of one tenant never creates another, and the
+console's dashboard offers the page to a session without a tenant. The order is sign in
+first, then name the tenant: the staff auth carries a Google registration admitting
+anyone (`pkg/auth/staff/google.go`, open sign-up, `.OpenSignUp()` on its declaration in
+the generator program), which the self-service shape requires, since a stranger needs a
+way to sign in before holding anything. `@tenant` alone keeps creation to an
+administrator, and `@tenant(creation: self-service)` to the person alone.
+
 ## Layout
 
 - `main.go` serves the API and the console's built bundle.
@@ -144,9 +159,18 @@ generated handler applies the rest.
     overmind start -l spanner,firestore,server
 
 That starts fresh Spanner and Firestore emulators, bootstraps the database (schema, the `north` and `south` tenants,
-roles, the `admin` and `member` logins with password `password`), and serves the API on
+roles, the `admin`, `member` and `newcomer` logins with password `password`; `newcomer`
+holds no tenant and creates one from the dashboard), and serves the API on
 `$PORT` (:8092). The first run compiles and bootstraps before it listens; wait for
 "Starting Server" in the server pane.
+
+The server builds with the session library's `skipAuth` tag (see the Procfile), which
+simulates the staff auth's Google registration: every sign-in through the Google button is
+`APP_GOOGLE_USERNAME` from `.envrc` (`newcomer`, or `APP_USERNAME` when that is unset), a
+person the auth has never seen becomes a user under that name (open sign-up), no directory
+is contacted, and only `APP_STAFF_GOOGLE_REDIRECT_URL` is read. To sign in through Google
+for real, register the application there, fill in the `APP_STAFF_GOOGLE_*` variables, and
+drop the tag. A deployed build never carries it.
 
 ### Browser apps
 
@@ -249,7 +273,8 @@ The resource package's README describes the design (section 14, "Live pages").
 
     go generate ./...           # regenerate; cmd/generate's test fails on drift, and each
                                 # program prints its schema warnings as Warning: lines
-    go test ./...               # needs podman for the emulator
+    go test -tags skipAuth ./...  # needs podman for the emulator; the tag simulates the
+                                  # Google registration, and the sign-up test skips without it
     golangci-lint-v2 run
     cd web && bun run build && bun run lint && bun run test
 

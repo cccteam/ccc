@@ -26,6 +26,15 @@
           ]
         }
       }
+    },
+    {
+      "user": "newcomer",
+      "password": "password",
+      "roles": {
+        "global": [],
+        "everyDomain": [],
+        "domains": {}
+      }
     }
   ]
 }

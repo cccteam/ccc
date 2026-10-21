@@ -19,7 +19,7 @@ import (
 // from the templates after changing either.
 var candidateAuths = map[string][]authpkg.Spec{
 	"solo":     {staffSpec("solo")},
-	"tenanted": {staffSpec("tenanted")},
+	"tenanted": {tenantedStaffSpec()},
 	"sites":    {staffSpec("sites")},
 	"outlets": {staffSpec("outlets"), {
 		Module: candidateModule("outlets"), AuthDir: "pkg/auth", Name: "members",
@@ -45,6 +45,18 @@ func staffSpec(candidate string) authpkg.Spec {
 		Methods:            []authpkg.Method{{Kind: app.MethodPassword}},
 		AdministratorRoles: roles,
 	}
+}
+
+// tenantedStaffSpec is the tenanted candidate's staff auth: the password auth with a
+// Google registration admitting anyone (open sign-up), the registration the tenant
+// record's self-service creation shape needs: a stranger signs in through it, holds no
+// tenant, and creates one through the generated route.
+func tenantedStaffSpec() authpkg.Spec {
+	spec := staffSpec("tenanted")
+	spec.Doc = "the people who sign in to the console with a password, or with any Google account to create their own tenant"
+	spec.Methods = append(spec.Methods, authpkg.Method{Kind: app.MethodGoogle, Name: "google", Slot: authpkg.SlotAny, Accounts: authpkg.AccountsOpen, Authority: app.AuthorityApplication})
+
+	return spec
 }
 
 func candidateModule(candidate string) string {

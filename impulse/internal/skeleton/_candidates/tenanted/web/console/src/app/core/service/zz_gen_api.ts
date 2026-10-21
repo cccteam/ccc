@@ -2,7 +2,7 @@
 import { ApiDescriptor, Client, ClientOptions, createClient, MethodHandle, ResourceHandle } from '@cccteam/resource';
 import { Methods, Resources } from './zz_gen_constants';
 import { Announcements, Tenants, FeatureFlags, StaffUsers, StaffSeats, StaffRoles, StaffTenantUsers, StaffTenantSeats, StaffTenantRoles } from './zz_gen_resources';
-import { SetFeature, SetFeatureResult, SetStaffUserPassword, SetStaffTenantUserPassword } from './zz_gen_methods';
+import { SetFeature, SetFeatureResult, SetStaffUserPassword, UnlinkStaffUserIdentity, SetStaffTenantUserPassword, UnlinkStaffTenantUserIdentity } from './zz_gen_methods';
 
 /**
  * The fields a client may set when creating Announcements. Server-owned fields are
@@ -221,21 +221,36 @@ export const apiDescriptor = defineApiDescriptor({
   methods: {
     [Methods.SetFeature]: { method: Methods.SetFeature, property: 'setFeature', route: 'set-feature', scope: 'global', answers: true },
     [Methods.SetStaffUserPassword]: { method: Methods.SetStaffUserPassword, property: 'setStaffUserPassword', route: 'set-staff-user-password', scope: 'global' },
+    [Methods.UnlinkStaffUserIdentity]: { method: Methods.UnlinkStaffUserIdentity, property: 'unlinkStaffUserIdentity', route: 'unlink-staff-user-identity', scope: 'global' },
     [Methods.SetStaffTenantUserPassword]: { method: Methods.SetStaffTenantUserPassword, property: 'setStaffTenantUserPassword', route: 'set-staff-tenant-user-password', scope: 'domain' },
+    [Methods.UnlinkStaffTenantUserIdentity]: { method: Methods.UnlinkStaffTenantUserIdentity, property: 'unlinkStaffTenantUserIdentity', route: 'unlink-staff-tenant-user-identity', scope: 'domain' },
   },
   userSurfaces: [
     {
       auth: 'Staff',
       label: 'Staff',
       password: true,
-      registrations: [],
+      registrations: [{ name: 'google', kind: 'google', label: 'Google', invited: false, syncsRoles: false }],
       partitions: [
-        { scope: 'global', users: Resources.StaffUsers, seats: Resources.StaffSeats, roles: Resources.StaffRoles, setPassword: Methods.SetStaffUserPassword },
-        { scope: 'domain', users: Resources.StaffTenantUsers, seats: Resources.StaffTenantSeats, roles: Resources.StaffTenantRoles, setPassword: Methods.SetStaffTenantUserPassword },
+        { scope: 'global', users: Resources.StaffUsers, seats: Resources.StaffSeats, roles: Resources.StaffRoles, setPassword: Methods.SetStaffUserPassword, unlinkIdentity: Methods.UnlinkStaffUserIdentity },
+        { scope: 'domain', users: Resources.StaffTenantUsers, seats: Resources.StaffTenantSeats, roles: Resources.StaffTenantRoles, setPassword: Methods.SetStaffTenantUserPassword, unlinkIdentity: Methods.UnlinkStaffTenantUserIdentity },
       ],
     },
   ],
 });
+
+/**
+ * The create-your-tenant route (@tenant(creation: both)): POST create-tenant under the API
+ * prefix, with the body below, through the application's HTTP client. A signed-in person who holds
+ * no tenant creates one and becomes its administrator; a person who already holds one is
+ * refused (403). The answer carries the new tenant's key.
+ */
+export const createTenantRoute = 'create-tenant';
+/** The body the create-your-tenant route takes: the Tenant record's fields with its key. */
+export interface CreateTenant {
+  id: string;
+  name: string;
+}
 
 /** Handles for the global scope, available on the client root. */
 export interface GlobalApi {
@@ -246,6 +261,7 @@ export interface GlobalApi {
   staffRoles: ResourceHandle<StaffRoles, StaffRolesKey, 'list' | 'read'>;
   setFeature: MethodHandle<SetFeature, SetFeatureResult>;
   setStaffUserPassword: MethodHandle<SetStaffUserPassword>;
+  unlinkStaffUserIdentity: MethodHandle<UnlinkStaffUserIdentity>;
 }
 
 /** Handles for one tenant partition, available on client.domain(...). */
@@ -255,6 +271,7 @@ export interface DomainApi {
   staffTenantSeats: ResourceHandle<StaffTenantSeats, StaffTenantSeatsKey, 'list' | 'read' | 'create' | 'remove', StaffTenantSeatsCreate>;
   staffTenantRoles: ResourceHandle<StaffTenantRoles, StaffTenantRolesKey, 'list' | 'read'>;
   setStaffTenantUserPassword: MethodHandle<SetStaffTenantUserPassword>;
+  unlinkStaffTenantUserIdentity: MethodHandle<UnlinkStaffTenantUserIdentity>;
 }
 
 export type Api = Client<GlobalApi, DomainApi>;

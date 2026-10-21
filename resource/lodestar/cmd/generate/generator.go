@@ -37,8 +37,14 @@ func NewGenerator(ctx context.Context) (generation.Generator, error) {
 			// surface the generator serves for the crew leaves such a user's seats to
 			// the directory.
 			//
-			// Demonstrates: auth.multi-method, auth.user-management.
-			generation.Auth("github.com/cccteam/ccc/resource/lodestar/pkg/auth/crew", generation.PasswordMethod(), generation.GoogleMethod("google").SyncsRoles()),
+			// The third method is the sign-up registration (crew.SignUpRegistration):
+			// any Google account under the open sign-up rule, declared OpenSignUp, which
+			// the Sector record's self-service creation shape needs, since a stranger
+			// signs in before charting a sector of their own; the router mounts it at
+			// /console/api/user/sign-up/login and the login page offers it under its label.
+			//
+			// Demonstrates: auth.multi-method, auth.user-management, auth.open-sign-up.
+			generation.Auth("github.com/cccteam/ccc/resource/lodestar/pkg/auth/crew", generation.PasswordMethod(), generation.GoogleMethod("google").SyncsRoles(), generation.GoogleMethod("sign-up").Labeled("Sign up with Google").OpenSignUp()),
 			generation.WebApp("/console"),
 			// The console also manages the members: the members auth's users, seats and
 			// roles are served under /console/api beside the crew's, through the members

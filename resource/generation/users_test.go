@@ -781,8 +781,12 @@ func Test_AuthMethod_directoryDeclarations(t *testing.T) {
 	}{
 		{name: "a registration declaring both", methods: []AuthMethod{AzureMethod("directory").InvitedUsers().SyncsRoles()}, wantString: `AzureMethod("directory").InvitedUsers().SyncsRoles()`},
 		{name: "a registration declaring neither", methods: []AuthMethod{GoogleMethod("google")}, wantString: `GoogleMethod("google")`},
-		{name: "InvitedUsers on the password method", methods: []AuthMethod{PasswordMethod().InvitedUsers()}, wantErr: "declares InvitedUsers or SyncsRoles on the password method"},
-		{name: "SyncsRoles on the password method", methods: []AuthMethod{PasswordMethod().SyncsRoles()}, wantErr: "declares InvitedUsers or SyncsRoles on the password method"},
+		{name: "a registration admitting open sign-up", methods: []AuthMethod{GoogleMethod("sign-up").OpenSignUp()}, wantString: `GoogleMethod("sign-up").OpenSignUp()`},
+		{name: "open sign-up beside role synchronization", methods: []AuthMethod{AzureMethod("anyone").SyncsRoles().OpenSignUp()}, wantString: `AzureMethod("anyone").SyncsRoles().OpenSignUp()`},
+		{name: "InvitedUsers on the password method", methods: []AuthMethod{PasswordMethod().InvitedUsers()}, wantErr: "declares InvitedUsers, SyncsRoles or OpenSignUp on the password method"},
+		{name: "SyncsRoles on the password method", methods: []AuthMethod{PasswordMethod().SyncsRoles()}, wantErr: "declares InvitedUsers, SyncsRoles or OpenSignUp on the password method"},
+		{name: "OpenSignUp on the password method", methods: []AuthMethod{PasswordMethod().OpenSignUp()}, wantErr: "declares InvitedUsers, SyncsRoles or OpenSignUp on the password method"},
+		{name: "InvitedUsers beside OpenSignUp", methods: []AuthMethod{GoogleMethod("google").InvitedUsers().OpenSignUp()}, wantErr: "declares both InvitedUsers and OpenSignUp: a registration admits invited users only or anyone, not both"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -214,6 +214,24 @@ func TestGeneratedAuthorizationMatrix(t *testing.T) {
 			wantStatuses: []int{http.StatusForbidden},
 		},
 		{
+			// A caller holding a grant anywhere holds a tenant: refused before the body.
+			name:         "CreateTenant refused to a caller holding a tenant",
+			grants:       grants{accesstypes.List: true},
+			method:       http.MethodPost,
+			target:       "/api/create-tenant",
+			body:         `{}`,
+			wantStatuses: []int{http.StatusForbidden},
+		},
+		{
+			// A caller holding no grant is admitted past the gate: the minimal body
+			// meets its validation, not a permission check.
+			name:         "CreateTenant admits a caller holding no grant",
+			method:       http.MethodPost,
+			target:       "/api/create-tenant",
+			body:         `{}`,
+			wantStatuses: []int{http.StatusBadRequest},
+		},
+		{
 			name:         "StaffUsers denied",
 			method:       http.MethodGet,
 			target:       "/api/staff-users",
@@ -321,6 +339,21 @@ func TestGeneratedAuthorizationMatrix(t *testing.T) {
 			wantStatuses: []int{http.StatusForbidden},
 		},
 		{
+			name:         "UnlinkStaffUserIdentity denied",
+			method:       http.MethodPost,
+			target:       "/api/unlink-staff-user-identity",
+			body:         `{}`,
+			wantStatuses: []int{http.StatusForbidden},
+		},
+		{
+			name:         "UnlinkStaffUserIdentity dry run denied",
+			method:       http.MethodPost,
+			target:       "/api/unlink-staff-user-identity",
+			body:         `{}`,
+			headers:      map[string]string{"X-Dry-Run": "true"},
+			wantStatuses: []int{http.StatusForbidden},
+		},
+		{
 			name:         "StaffTenantUsers denied",
 			method:       http.MethodGet,
 			target:       "/api/tenants/testDomain/staff-tenant-users",
@@ -423,6 +456,21 @@ func TestGeneratedAuthorizationMatrix(t *testing.T) {
 			name:         "SetStaffTenantUserPassword dry run denied",
 			method:       http.MethodPost,
 			target:       "/api/tenants/testDomain/set-staff-tenant-user-password",
+			body:         `{}`,
+			headers:      map[string]string{"X-Dry-Run": "true"},
+			wantStatuses: []int{http.StatusNotFound},
+		},
+		{
+			name:         "UnlinkStaffTenantUserIdentity denied",
+			method:       http.MethodPost,
+			target:       "/api/tenants/testDomain/unlink-staff-tenant-user-identity",
+			body:         `{}`,
+			wantStatuses: []int{http.StatusNotFound},
+		},
+		{
+			name:         "UnlinkStaffTenantUserIdentity dry run denied",
+			method:       http.MethodPost,
+			target:       "/api/tenants/testDomain/unlink-staff-tenant-user-identity",
 			body:         `{}`,
 			headers:      map[string]string{"X-Dry-Run": "true"},
 			wantStatuses: []int{http.StatusNotFound},

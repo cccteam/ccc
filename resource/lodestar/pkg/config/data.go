@@ -171,7 +171,8 @@ func NewDataConfiguration(ctx context.Context) (*DataConfiguration, error) {
 			GroupPrefix:  env.CrewGroupPrefix,
 			GroupLookup:  env.CrewGroupLookup,
 		},
-		ChangeSignal: policySignal,
+		SignUpRedirectURL: env.CrewSignUpRedirectURL,
+		ChangeSignal:      policySignal,
 	})
 	if err != nil {
 		return nil, errors.Wrap(err, "crew.New()")
@@ -368,20 +369,25 @@ type dataConfig struct {
 	// far the groups lookup reaches: direct (the default), or nested for a directory that
 	// nests its role groups. Under the session library's skipAuth build tag only the
 	// redirect URL, the connection, the hosted domain, and the group prefix are read.
-	CrewClientID        string `env:"APP_CREW_OIDC_CLIENT_ID"`
-	CrewClientSecret    string `env:"APP_CREW_OIDC_CLIENT_SECRET"`
-	CrewRedirectURL     string `env:"APP_CREW_OIDC_REDIRECT_URL"`
-	CrewConnection      string `env:"APP_CREW_OIDC_CONNECTION"`
-	CrewHostedDomain    string `env:"APP_CREW_OIDC_HOSTED_DOMAIN"`
-	CrewGroupPrefix     string `env:"APP_CREW_OIDC_GROUP_PREFIX"`
-	CrewGroupLookup     string `env:"APP_CREW_OIDC_GROUP_LOOKUP"`
-	MembersClientID     string `env:"APP_MEMBERS_OIDC_CLIENT_ID"`
-	MembersClientSecret string `env:"APP_MEMBERS_OIDC_CLIENT_SECRET"`
-	MembersRedirectURL  string `env:"APP_MEMBERS_OIDC_REDIRECT_URL"`
-	MembersConnection   string `env:"APP_MEMBERS_OIDC_CONNECTION"`
-	MembersHostedDomain string `env:"APP_MEMBERS_OIDC_HOSTED_DOMAIN"`
-	MembersGroupPrefix  string `env:"APP_MEMBERS_OIDC_GROUP_PREFIX"`
-	MembersGroupLookup  string `env:"APP_MEMBERS_OIDC_GROUP_LOOKUP"`
+	CrewClientID     string `env:"APP_CREW_OIDC_CLIENT_ID"`
+	CrewClientSecret string `env:"APP_CREW_OIDC_CLIENT_SECRET"`
+	CrewRedirectURL  string `env:"APP_CREW_OIDC_REDIRECT_URL"`
+	CrewConnection   string `env:"APP_CREW_OIDC_CONNECTION"`
+	CrewHostedDomain string `env:"APP_CREW_OIDC_HOSTED_DOMAIN"`
+	CrewGroupPrefix  string `env:"APP_CREW_OIDC_GROUP_PREFIX"`
+	CrewGroupLookup  string `env:"APP_CREW_OIDC_GROUP_LOOKUP"`
+	// The crew auth's sign-up registration (any Google account, open sign-up): its own
+	// callback under the console's API, beside the directory's; the client is the
+	// directory's. Under the skipAuth tag the registration's simulated person is
+	// APP_SIGN_UP_USERNAME.
+	CrewSignUpRedirectURL string `env:"APP_CREW_SIGN_UP_REDIRECT_URL"`
+	MembersClientID       string `env:"APP_MEMBERS_OIDC_CLIENT_ID"`
+	MembersClientSecret   string `env:"APP_MEMBERS_OIDC_CLIENT_SECRET"`
+	MembersRedirectURL    string `env:"APP_MEMBERS_OIDC_REDIRECT_URL"`
+	MembersConnection     string `env:"APP_MEMBERS_OIDC_CONNECTION"`
+	MembersHostedDomain   string `env:"APP_MEMBERS_OIDC_HOSTED_DOMAIN"`
+	MembersGroupPrefix    string `env:"APP_MEMBERS_OIDC_GROUP_PREFIX"`
+	MembersGroupLookup    string `env:"APP_MEMBERS_OIDC_GROUP_LOOKUP"`
 
 	// FileStores are the file stores' URLs.
 	FileStores FileStoreSettings

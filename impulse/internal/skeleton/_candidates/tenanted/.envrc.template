@@ -27,6 +27,17 @@ export GOOGLE_CLOUD_SPANNER_DATABASE_NAME=tenanted
 # table holds no rows; a deployment generates it as a secret, and the bootstrap creates the
 # development logins instead, so it stays unset here.
 # export APP_STAFF_ADMINISTRATOR_PASSWORD=
+# The staff auth's google registration (pkg/auth/staff/google.go): any Google account, open
+# sign-up, so a stranger signs in and creates their own tenant (the Tenant record's
+# @tenant(creation: both)). The server builds with the session library's skipAuth tag (the
+# Procfile), which simulates Google: every sign-in through the registration is
+# APP_GOOGLE_USERNAME, or APP_USERNAME when that is unset, no directory is contacted, and
+# only the redirect URL is read. To sign in through Google for real, register the
+# application there, fill in the client id and secret, and drop the tag.
+export APP_GOOGLE_USERNAME=newcomer
+# export APP_STAFF_GOOGLE_CLIENT_ID=
+# export APP_STAFF_GOOGLE_CLIENT_SECRET=
+export APP_STAFF_GOOGLE_REDIRECT_URL=http://127.0.0.1:4301/api/user/google/callback
 # The Firestore database the live service runs on, beside the Spanner database (the live
 # driver's settings, embedded in pkg/config): the subscriptions the server registers, the change sets the browser
 # listens to, and the signals document the application's instances tell each other through.

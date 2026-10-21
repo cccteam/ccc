@@ -98,6 +98,9 @@ type AuthMethodArg struct {
 	// SyncsRoles is set when the declaration chains .SyncsRoles(): the directory's groups
 	// write the user's roles at every sign-in.
 	SyncsRoles bool
+	// OpenSignUp is set when the declaration chains .OpenSignUp(): the directory admits
+	// anyone it verifies, the rule a self-service tenant record needs.
+	OpenSignUp bool
 }
 
 // Arg is one literal argument of an option call.
@@ -791,8 +794,8 @@ func exprText(expr ast.Expr) string {
 
 // readAuthMethod reads a sign-in method declaration: generation.PasswordMethod(), or
 // generation.GoogleMethod("name") and its kin with a string literal name, chained with
-// .Labeled("label"), .InvitedUsers() and .SyncsRoles() or not. Anything else is not a
-// declaration.
+// .Labeled("label"), .InvitedUsers(), .SyncsRoles() and .OpenSignUp() or not. Anything
+// else is not a declaration.
 func (r *reader) readAuthMethod(expr ast.Expr) (*AuthMethodArg, bool) {
 	call, label, flags, ok := splitChain(expr)
 	if !ok {
@@ -834,13 +837,15 @@ func (r *reader) readAuthMethod(expr ast.Expr) (*AuthMethodArg, bool) {
 	}
 	m.InvitedUsers = flags[invitedUsersMethod]
 	m.SyncsRoles = flags[syncsRolesMethod]
+	m.OpenSignUp = flags[openSignUpMethod]
 
 	return m, true
 }
 
 // splitChain separates the calls chained onto a method declaration from the declaration:
 // generation.GoogleMethod("x").Labeled("y").SyncsRoles() returns the GoogleMethod call,
-// the Labeled call and the flags chained (InvitedUsers, SyncsRoles), in any order. An
+// the Labeled call and the flags chained (InvitedUsers, SyncsRoles, OpenSignUp), in any
+// order. An
 // expression with nothing chained returns itself; a flag chained with arguments is not a
 // declaration.
 func splitChain(expr ast.Expr) (declaration ast.Expr, label *ast.CallExpr, flags map[string]bool, ok bool) {
@@ -860,7 +865,7 @@ func splitChain(expr ast.Expr) (declaration ast.Expr, label *ast.CallExpr, flags
 		switch sel.Sel.Name {
 		case labeledMethod:
 			label = ce
-		case invitedUsersMethod, syncsRolesMethod:
+		case invitedUsersMethod, syncsRolesMethod, openSignUpMethod:
 			if len(ce.Args) != 0 {
 				return nil, nil, nil, false
 			}

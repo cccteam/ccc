@@ -1,0 +1,28 @@
+<h1>Create your tenant</h1>
+<p>
+  You are signed in and hold no tenant. Name yours: you become its administrator the moment it exists, and it is
+  yours to invite people into.
+</p>
+
+<mat-card appearance="outlined" class="create-card">
+  <mat-card-content>
+    <form [formGroup]="form" (ngSubmit)="create()">
+      <mat-form-field appearance="outline" class="field">
+        <mat-label>Identifier</mat-label>
+        <input matInput formControlName="id" name="id" autocomplete="off" placeholder="west" />
+        <mat-hint>Lowercase letters, digits and hyphens: the segment of every URL in the tenant.</mat-hint>
+        @if (form.controls.id.hasError('pattern')) {
+          <mat-error>Lowercase letters, digits and single hyphens only.</mat-error>
+        }
+      </mat-form-field>
+      <mat-form-field appearance="outline" class="field">
+        <mat-label>Name</mat-label>
+        <input matInput formControlName="name" name="name" autocomplete="organization" placeholder="West" />
+      </mat-form-field>
+      @if (error()) {
+        <p class="refusal" role="alert">{{ error() }}</p>
+      }
+      <button mat-flat-button type="submit" [disabled]="form.invalid || busy()">Create tenant</button>
+    </form>
+  </mat-card-content>
+</mat-card>

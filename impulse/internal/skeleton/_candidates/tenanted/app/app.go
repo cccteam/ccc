@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/cccteam/access"
+	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/tenanted/pkg/auth/staff"
 	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/tenanted/pkg/router"
 	"github.com/cccteam/ccc/resource"
@@ -219,6 +220,17 @@ func (a *App) UserPermissions(r *http.Request) resource.UserPermissions {
 // generated write paths add and remove tenants in it after their commit.
 func (a *App) TenantRoster() *resource.TenantRoster {
 	return a.tenants
+}
+
+// TenantAdministratorRoles names the domain roles the person who creates a tenant
+// through the generated create-your-tenant route holds in it from then on: the staff
+// auth's administrator role in a tenant, the one the development administrator holds in
+// every tenant (pkg/auth/staff, AdministratorRoles), so the first person in a tenant can
+// do there what an administrator can, invite its people included.
+func (a *App) TenantAdministratorRoles() []accesstypes.Role {
+	_, everyDomain := staff.AdministratorRoles()
+
+	return everyDomain
 }
 
 // Validator returns the request validator the generated decoder constructors draw on.

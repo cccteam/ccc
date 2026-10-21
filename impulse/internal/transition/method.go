@@ -504,6 +504,9 @@ func (m *Method) Meaning() string {
 		if spec.Accounts == authpkg.AccountsInvited {
 			items = append(items, invitationsItem(m.Auth, []string{spec.Name}))
 		}
+		if spec.Accounts == authpkg.AccountsOpen {
+			items = append(items, openSignUpItem([]string{spec.Name}))
+		}
 	} else {
 		items = append(items, fmt.Sprintf("Give the %s auth its development logins with passwords in the bootstrap identities, and the test harness a login that posts to `user/password/login`.", m.Auth))
 	}
@@ -520,6 +523,13 @@ func (m *Method) Meaning() string {
 // invitations, behind Create on the auth's users resource.
 func invitationsItem(auth string, registrations []string) string {
 	return fmt.Sprintf("Invite its people. The %s registration(s) admit invited users only (`signin.InvitedUsersOnly`, and `.InvitedUsers()` on the declaration), so a person signs in once a user exists under the name the directory presents: the generated users surface of the %s auth creates them, so grant Create on `%sUsers` to the role that invites in the role file.", strings.Join(registrations, ", "), auth, names.Pascal(auth))
+}
+
+// openSignUpItem is the brief's item for registrations admitting anyone the directory
+// verifies: a stranger signs in and holds nothing, and the tenant record's creation shape
+// is what lets that person create a tenant.
+func openSignUpItem(registrations []string) string {
+	return fmt.Sprintf("Decide who may create a tenant. The %s registration(s) admit anyone the directory verifies (`signin.OpenSignUp`, and `.OpenSignUp()` on the declaration), so a stranger signs in and holds no role and no tenant. In a tenanted application the tenant record declares who creates one: `@tenant` alone keeps it to an administrator holding Create on the record, `@tenant(creation: self-service)` lets a signed-in person holding no tenant create one through the generated create-your-tenant route and become its administrator, and `@tenant(creation: both)` keeps both ways; a self-service shape has the App name the administrator roles (`<Record>AdministratorRoles()`) and the console offer the page to a session without a tenant. Without a self-service shape, a stranger signs in to nothing.", strings.Join(registrations, ", "))
 }
 
 func passwordFormNote(spec *authpkg.Method) string {

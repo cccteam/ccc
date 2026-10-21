@@ -325,9 +325,12 @@ type AuthMethod struct {
 	label string
 	// invited marks a registration admitting invited users only (InvitedUsers), and
 	// syncsRoles one that writes its users' roles from the directory (SyncsRoles); both
-	// shape the Auth's user-management surface.
+	// shape the Auth's user-management surface. openSignUp marks a registration
+	// admitting anyone (OpenSignUp): what a tenant record's self-service creation
+	// shape needs on the outlet serving it.
 	invited    bool
 	syncsRoles bool
+	openSignUp bool
 }
 
 // PasswordMethod is the username and password method, registered as "password" with
@@ -383,6 +386,19 @@ func (m AuthMethod) SyncsRoles() AuthMethod {
 	return m
 }
 
+// OpenSignUp declares that the registration admits anyone the directory verifies (the
+// session library's open sign-up account rule, signin.OpenSignUp on the registration's
+// Accounts): a stranger signs in and becomes a user holding nothing. A tenant record
+// declaring self-service creation (@tenant(creation: self-service) or both) needs one
+// such registration on the outlet serving it, since the person creates their tenant
+// after signing in. Not for the password method, whose users are always created here,
+// and not beside InvitedUsers, which admits the opposite.
+func (m AuthMethod) OpenSignUp() AuthMethod {
+	m.openSignUp = true
+
+	return m
+}
+
 // Name is the name the method is registered under on the Auth.
 func (m AuthMethod) Name() string {
 	return m.name
@@ -405,6 +421,9 @@ func (m AuthMethod) String() string {
 		}
 		if m.syncsRoles {
 			spelled += ".SyncsRoles()"
+		}
+		if m.openSignUp {
+			spelled += ".OpenSignUp()"
 		}
 
 		return spelled
@@ -443,8 +462,10 @@ func validateAuthMethods(importPath string, methods []AuthMethod) error {
 			return errors.Newf("Auth(%q, %s) registers %q twice: each registration has its own name", importPath, m, m.name)
 		case m.label == "":
 			return errors.Newf("Auth(%q, %s) has an empty label: Labeled takes the words the login page shows", importPath, m)
-		case m.kind == methodPassword && (m.invited || m.syncsRoles):
-			return errors.Newf("Auth(%q, %s) declares InvitedUsers or SyncsRoles on the password method: they describe a registration's directory", importPath, m)
+		case m.kind == methodPassword && (m.invited || m.syncsRoles || m.openSignUp):
+			return errors.Newf("Auth(%q, %s) declares InvitedUsers, SyncsRoles or OpenSignUp on the password method: they describe a registration's directory", importPath, m)
+		case m.invited && m.openSignUp:
+			return errors.Newf("Auth(%q, %s) declares both InvitedUsers and OpenSignUp: a registration admits invited users only or anyone, not both", importPath, m)
 		}
 		seen[m.name] = true
 	}
