@@ -17,6 +17,18 @@
 # names what it comes from. A pull-request stack has no policy: the environment
 # layer serves previews from one backend service, and a policy attaches to a
 # backend service.
+{{- if .Armor.Throttled}}
+#
+# The sign-in throttles come after the rule sets and before the default rule:
+# one per route of the generated router that takes a credential by POST (each
+# session outlet's password login and its pending sign-in's confirmation and
+# cancel), keyed by client address, so that past var.cloud_armor_sign_in_count
+# POSTs to the route in var.cloud_armor_sign_in_interval seconds (both set in
+# terraform.tfvars) an address answers 429 on it until the interval passes.
+# After the rule sets so that a sign-in POST is still read by them: a rule
+# that matches decides, and a throttle under its threshold allows. Preview
+# logs what a throttle would have done, as it does for the rule sets.
+{{- end}}
 #
 # "off" keeps the policy and detaches it from the backend services; removing
 # the environment's entry deletes it. The two are separate applies on purpose:
@@ -49,7 +61,7 @@ resource "google_compute_security_policy" "app" {
     priority    = {{.Priority}}
     action      = "{{.Action}}"
     description = {{.Description}}
-{{- if .Deny}}
+{{- if or .Deny .Throttle}}
     preview     = local.cloud_armor_preview
 {{- end}}
 
@@ -58,6 +70,19 @@ resource "google_compute_security_policy" "app" {
         expression = {{.Expression}}
       }
     }
+{{- if .Throttle}}
+
+    rate_limit_options {
+      conform_action = "allow"
+      exceed_action  = "deny(429)"
+      enforce_on_key = "IP"
+
+      rate_limit_threshold {
+        count        = var.cloud_armor_sign_in_count
+        interval_sec = var.cloud_armor_sign_in_interval
+      }
+    }
+{{- end}}
 {{- if .Exclusions}}
 
     preconfigured_waf_config {

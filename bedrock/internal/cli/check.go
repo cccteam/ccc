@@ -67,7 +67,11 @@ entry detaches the policy and destroys it in one apply, which fails while the po
 attached. The check reads the default branch's terraform.tfvars (origin's copy, or the local
 branch) and refuses an environment on there whose entry the working tree removes: set it to
 "off" first (the policy kept, detached), merge and apply, then remove the entry. Outside a
-git working tree, or without the default branch to read, nothing is compared.
+git working tree, or without the default branch to read, nothing is compared. The policy
+throttles the sign-in routes by client address at the count and interval terraform.tfvars
+sets (cloud_armor_sign_in_count, cloud_armor_sign_in_interval); the check refuses either
+that is not a positive whole number, naming the variable, as the stack's own validation
+does at plan.
 
 The secrets that track latest: it names each secret whose version in an environment's
 secret_versions in terraform.tfvars is the word latest in place of a version number, one

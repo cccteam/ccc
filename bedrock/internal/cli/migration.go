@@ -331,7 +331,9 @@ took since the branch was cut (the branch's migration moves up), a gap (the bran
 moves down), and a removed seed file (the seed files after it move down). Run it from anywhere
 inside the repository, by hand or through go generate: the rendered cmd/generate/bedrock.go runs
 it before the application's generators, so they read the migrations as the pipeline will.
-Nothing to do prints nothing.
+Nothing to do prints nothing. A consolidation, the committed sequence folded into one file at
+its highest index (consolidate, below), is left alone with a note: it carries the index the
+environments' databases already hold.
 
 The stack directory and the application are found the way check finds them; --app, --dir and
 --placement override. The placement names the default branch; a branch cut from a patch line
@@ -413,12 +415,13 @@ change under the directory and a migration of the branch's own, and leaves a seq
 alone. A branch cut from a patch line folds the line's sequence instead; a consolidation never
 travels a patch line, since it changes nothing visible. The seed directory is not folded.
 
-The pull-request workflow's migrations job and the pipeline's migration guard read the folded files
-as committed migrations deleted and refuse the pull request today; what accepts a consolidation is
-its verification, the default branch's sequence and the folded file applied to two fresh emulator
-databases and compared, which is not built yet, and a consolidation is refused until every
-environment's database is at the latest index. The stack directory and the application are found
-the way check finds them; --app, --dir and --placement override.`,
+The pull-request workflow's migrations job and the pipeline's migration guard accept a
+consolidation by its shape: every committed file at the merge base gone, none modified, and the
+tree exactly the one up file and its down file at the base's highest index. The guard reads each
+environment's migration version from its live database, the others' through the reader role, and
+refuses the consolidation until every environment's database is at the latest index. The stack
+directory and the application are found the way check finds them; --app, --dir and --placement
+override.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			appDir, stackDir, err := d.stack(appFlag, dirFlag)
@@ -467,7 +470,7 @@ the way check finds them; --app, --dir and --placement override.`,
 				fmt.Fprintf(out, "  %s had no down file; the down file reverses the others.\n", s)
 			}
 			fmt.Fprintf(out, "Consolidated %d migration(s) of %s at %s into %s: the up files in order, each under a comment naming it and closed with a semicolon, and the down files in reverse order. The folded files are removed and the change is staged; review the diff.\n", len(c.Folded), c.Ref, c.Commit, path.Join(dir, c.Up))
-			fmt.Fprintln(out, "The pull-request workflow's migrations job and the pipeline's guard read the folded files as committed migrations deleted and refuse the pull request today; the consolidation's verification (the sequence and the folded file applied to two emulator databases and compared) is what accepts it, and is not built yet.")
+			fmt.Fprintln(out, "The pull-request workflow's migrations job and the pipeline's guard accept the consolidation by its shape, and the guard refuses it until every environment's database is at the latest index.")
 
 			return nil
 		},

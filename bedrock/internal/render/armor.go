@@ -1,6 +1,7 @@
 // armor.go prepares the Cloud Armor policy for cloud-armor.tf and the README: the rules
 // in priority order, each with its expression and a description naming its source, from
-// the placement's policy (derive.Armor) and the file routes the generated router lists.
+// the placement's policy (derive.Armor), the file routes the generated router lists and
+// the sign-in routes it mounts, which the policy throttles by client address.
 
 package render
 
@@ -14,16 +15,38 @@ import (
 )
 
 // The rules' priorities: the leading rule sets, then the bypasses, then the trailing rule
-// sets, with room between the groups; the default rule's is the lowest Cloud Armor has.
+// sets, then the sign-in throttles, with room between the groups; the default rule's is
+// the lowest Cloud Armor has. The throttles come after the rule sets so that a sign-in
+// POST is still read by them: a rule that matches decides, and a throttle under its
+// threshold allows.
 const (
 	armorLeadingBase  = 1000
 	armorBypassBase   = 2000
 	armorTrailingBase = 3000
+	armorThrottleBase = 4000
 	armorSetStep      = 10
 	armorDefaultRule  = 2147483647
 
-	armorAllow = "allow"
-	armorDeny  = "deny(403)"
+	armorAllow    = "allow"
+	armorDeny     = "deny(403)"
+	armorThrottle = "throttle"
+	// armorDenyVerb is a deny as the README's table says it; allow and throttle read as
+	// their actions.
+	armorDenyVerb = "deny"
+)
+
+// The sign-in throttle's threshold, as terraform.tfvars sets it: the POSTs one client
+// address may make to a sign-in route in the interval before its further ones answer
+// 429, and the interval in seconds. The defaults are chosen for a login page: a person
+// types a handful of attempts in a minute and an office behind one address a few dozen
+// at its busiest, so neither meets thirty, while a password guessed from one address is
+// held to thirty tries a minute; a minute holds a guessing script to the count and keeps
+// a person who met it waiting little.
+const (
+	SignInCountVariable    = "cloud_armor_sign_in_count"
+	SignInIntervalVariable = "cloud_armor_sign_in_interval"
+	signInCount            = "30"
+	signInInterval         = "60"
 )
 
 // armorView is the policy as cloud-armor.tf and the README read it.
@@ -42,15 +65,26 @@ type armorView struct {
 	Exclusions []armorExclusion
 	// DefaultPriority is the default rule's priority.
 	DefaultPriority int
+	// Throttled reports a policy with sign-in throttles: the application has a sign-in
+	// route. SignInProse names the routes, each in backticks; SignInCount and
+	// SignInInterval are the threshold's defaults, as variables.tf writes them.
+	Throttled      bool
+	SignInProse    string
+	SignInCount    string
+	SignInInterval string
 }
 
 // armorRule is one rule of the policy.
 type armorRule struct {
 	Priority int
-	// Action is allow or deny(403); Deny reports the latter, which the mode's preview
-	// turns into a log line.
-	Action string
-	Deny   bool
+	// Action is allow, deny(403) or throttle; Verb is the same as the README's table
+	// says it (allow, deny, throttle). Deny reports a deny and Throttle a throttle,
+	// whose rate limit the template writes; the mode's preview turns either into a log
+	// line.
+	Action   string
+	Verb     string
+	Deny     bool
+	Throttle bool
 	// What says what the rule matches and Source where it comes from; Text is both, the
 	// rule's description, and Description the same HCL-quoted.
 	What        string
@@ -78,10 +112,11 @@ type armorExclusion struct {
 }
 
 // newArmorView prepares the policy: the leading sets on every path, the bypasses from
-// the generated router and the placement, the trailing sets on the outlets' routes.
+// the generated router and the placement, the trailing sets on the outlets' routes, and
+// the sign-in throttles on the routes the generated router takes a credential at.
 func newArmorView(m *derive.Model) *armorView {
 	policy := m.Placement.Armor()
-	v := &armorView{Default: m.Placement.CloudArmor == nil || len(m.Placement.CloudArmor.RuleSets) == 0, DefaultPriority: armorDefaultRule}
+	v := &armorView{Default: m.Placement.CloudArmor == nil || len(m.Placement.CloudArmor.RuleSets) == 0, DefaultPriority: armorDefaultRule, SignInCount: signInCount, SignInInterval: signInInterval}
 	v.scope(m.Outlets)
 	for i := range policy.FieldExclusions {
 		v.Exclusions = append(v.Exclusions, newArmorExclusion(&policy.FieldExclusions[i]))
@@ -96,12 +131,12 @@ func newArmorView(m *derive.Model) *armorView {
 	priority := armorBypassBase
 	for i := range m.FileRoutes {
 		r := &m.FileRoutes[i]
-		v.add(priority, armorAllow, r.Method+" "+r.Path, r.Declaration()+", "+path.Join(m.RouterDir, derive.ReleaseFileName)+"; "+fileRouteReason(r), bypassExpression(r.Method, r.Path), nil)
+		v.add(priority, armorAllow, r.Method+" "+r.Path, r.Declaration()+", "+path.Join(m.RouterDir, derive.ReleaseFileName)+"; "+fileRouteReason(r), routeExpression(r.Method, r.Path), nil)
 		priority++
 	}
 	for i := range policy.Bypasses {
 		b := &policy.Bypasses[i]
-		v.add(priority, armorAllow, b.Route(), "placement.json cloudArmor.bypasses; "+b.Reason, bypassExpression(b.Method, b.Path), nil)
+		v.add(priority, armorAllow, b.Route(), "placement.json cloudArmor.bypasses; "+b.Reason, routeExpression(b.Method, b.Path), nil)
 		priority++
 	}
 	for i, s := range policy.Trailing {
@@ -111,8 +146,23 @@ func newArmorView(m *derive.Model) *armorView {
 		}
 		v.add(armorTrailingBase+i*armorSetStep, armorDeny, fmt.Sprintf("%s (%s, sensitivity %d) %s", s.Detects(), s.Name, s.Sensitivity, where), source, wafExpression(s, v.Scope), v.exclusionsOf(s.Name))
 	}
+	v.throttles(m.SignInRoutes)
 
 	return v
+}
+
+// throttles adds one throttle per sign-in route, keyed by client address, after the
+// rule sets: past the threshold's count of POSTs to the route in its interval, an
+// address answers 429 on it until the interval passes.
+func (v *armorView) throttles(routes []derive.SignInRoute) {
+	v.Throttled = len(routes) > 0
+	prose := make([]string, 0, len(routes))
+	for i := range routes {
+		r := &routes[i]
+		v.add(armorThrottleBase+i, armorThrottle, r.Method+" "+r.Path+", throttled by client address", r.Declaration()+", the generated router; past "+SignInCountVariable+" POSTs in "+SignInIntervalVariable+" seconds (terraform.tfvars) an address answers 429 until the interval passes", routeExpression(r.Method, r.Path), nil)
+		prose = append(prose, "`"+r.Method+" "+r.Path+"`")
+	}
+	v.SignInProse = joinAnd(prose)
 }
 
 // add appends a rule.
@@ -121,7 +171,9 @@ func (v *armorView) add(priority int, action, what, source, expression string, e
 	v.Rules = append(v.Rules, armorRule{
 		Priority:    priority,
 		Action:      action,
+		Verb:        verbOf(action),
 		Deny:        action == armorDeny,
+		Throttle:    action == armorThrottle,
 		What:        what,
 		Source:      source,
 		Text:        text,
@@ -129,6 +181,15 @@ func (v *armorView) add(priority int, action, what, source, expression string, e
 		Expression:  hclQuote(expression),
 		Exclusions:  exclusions,
 	})
+}
+
+// verbOf is the action as the README's table says it: allow, deny or throttle.
+func verbOf(action string) string {
+	if action == armorDeny {
+		return armorDenyVerb
+	}
+
+	return action
 }
 
 // scope builds the expression that limits a trailing rule set to the outlets' routes,
@@ -209,10 +270,10 @@ func wafExpression(s derive.RuleSet, scope string) string {
 	return scope + " && " + expr
 }
 
-// bypassExpression matches the route: its path as a regular expression
+// routeExpression matches the route: its path as a regular expression
 // (derive.PathRegex, the same the request log's exclusion matches a surface with), under
 // its method where one is given.
-func bypassExpression(method, route string) string {
+func routeExpression(method, route string) string {
 	expr := fmt.Sprintf("request.path.matches('^%s$')", derive.PathRegex(route))
 	if method == "" {
 		return expr

@@ -713,8 +713,26 @@ that no rule below reads it: the generated router's upload and stored-file
 routes (`pkg/router/zz_gen_release.json`, `fileRoutes`) and the placement's
 (`cloudArmor.bypasses`, a webhook under the Root hook whose sender signs its
 body, a media stream). Then the other sets, each scoped to the outlets' routes
-(/api and /portal/api), where the input a rule can judge arrives. Every other
-request is allowed. Each rule's description names its source.
+(/api and /portal/api), where the input a rule can judge arrives. Then the
+sign-in throttles. Every other request is allowed. Each rule's description names
+its source.
+
+The sign-in routes are throttled by client address: the generated router's
+routes that take a credential by POST (each session outlet's password login
+and its pending sign-in's confirmation and cancel), each counted on its own;
+here `POST /api/user/pending/confirm`, `POST /api/user/pending/cancel`, `POST /portal/api/user/pending/confirm`, and `POST /portal/api/user/pending/cancel`.
+An address past `cloud_armor_sign_in_count` POSTs to one of them in
+`cloud_armor_sign_in_interval` seconds (`terraform.tfvars`; 30 in 60
+by default) is answered 429 on that route until the interval passes. The
+default is chosen for a login page: a person types a handful of attempts in a
+minute and an office behind one address a few dozen at its busiest, so neither
+meets it, while a password guessed from one address is held to the count. The
+throttles run after the rule sets, so a sign-in POST is still read by them,
+and follow the environment's mode: in preview,
+`jsonPayload.previewSecurityPolicy` names the throttle an address would have
+met, which says whether the default fits the application's addresses before
+the environment is enforced. A directory method's login and callback are not
+throttled: the directory holds the credential.
 
 | Priority | Action | Rule | Source |
 |---|---|---|---|
@@ -727,6 +745,10 @@ request is allowed. Each rule's description names its source.
 | 3010 | deny | SQL injection in JSON bodies (json-sqli-canary, sensitivity 1) on /api and /portal/api | placement.json cloudArmor.ruleSets |
 | 3020 | deny | cross-site scripting (xss-v33-stable, sensitivity 2) on /api and /portal/api | placement.json cloudArmor.ruleSets |
 | 3030 | deny | protocol attacks (protocolattack-v33-stable, sensitivity 1) on /api and /portal/api | placement.json cloudArmor.ruleSets |
+| 4000 | throttle | POST /api/user/pending/confirm, throttled by client address | the default outlet's pending sign-in confirmation, the generated router; past cloud_armor_sign_in_count POSTs in cloud_armor_sign_in_interval seconds (terraform.tfvars) an address answers 429 until the interval passes |
+| 4001 | throttle | POST /api/user/pending/cancel, throttled by client address | the default outlet's pending sign-in cancel, the generated router; past cloud_armor_sign_in_count POSTs in cloud_armor_sign_in_interval seconds (terraform.tfvars) an address answers 429 until the interval passes |
+| 4002 | throttle | POST /portal/api/user/pending/confirm, throttled by client address | the portal outlet's pending sign-in confirmation, the generated router; past cloud_armor_sign_in_count POSTs in cloud_armor_sign_in_interval seconds (terraform.tfvars) an address answers 429 until the interval passes |
+| 4003 | throttle | POST /portal/api/user/pending/cancel, throttled by client address | the portal outlet's pending sign-in cancel, the generated router; past cloud_armor_sign_in_count POSTs in cloud_armor_sign_in_interval seconds (terraform.tfvars) an address answers 429 until the interval passes |
 | 2147483647 | allow | every other request | the default rule |
 
 Fields the rule sets leave alone (`placement.json`, `cloudArmor.fieldExclusions`):
@@ -1061,6 +1083,8 @@ Per environment, after the first apply:
 |---|---|---|---|:---:|
 | `build_secrets` | Build-time secrets per environment, NAME = pinned version; each reaches the image build as a BuildKit secret. | `map(map(string))` | `{}` | no |
 | `cloud_armor` | Cloud Armor per environment: `"preview"`, `"enforce"` or `"off"` (the policy kept, detached); an environment left out has no policy. Off before removed. | `map(string)` | `{}` | no |
+| `cloud_armor_sign_in_count` | Sign-in POSTs one client address may make to a sign-in route in the interval before its further ones answer 429. | `number` | `30` | no |
+| `cloud_armor_sign_in_interval` | Seconds the sign-in count is taken over. | `number` | `60` | no |
 | `destroy` | Set by `bedrock destroy` alone: every protection lifted at the apply before its destroy. | `bool` | `false` | no |
 | `environment` | `tst`, `stg`, or `prd`; passed as `-var` on every run. | `string` | n/a | yes |
 | `generated_secret_versions` | The generated secrets' versions, derived and passed by the pipeline's plan step; never written here. | `map(string)` | `{}` | no |

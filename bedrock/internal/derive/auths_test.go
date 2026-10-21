@@ -1,6 +1,7 @@
 package derive
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -324,6 +325,54 @@ func TestMethodRoutes(t *testing.T) {
 			}
 			if method.Logout != wantLogout {
 				t.Errorf("logout = %+v, want %+v", method.Logout, wantLogout)
+			}
+		})
+	}
+}
+
+// TestSignInRoutes lists one outlet's sign-in routes from its declaration: the password
+// login for a password method, the pending sign-in's confirmation and cancel for every
+// outlet that binds an auth, none for one that binds none, and a prefix of several
+// segments or none kept as the router mounts it.
+func TestSignInRoutes(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		outlet app.Outlet
+		want   []string
+	}{
+		{
+			name:   "a password method on the default outlet",
+			outlet: app.Outlet{Name: "default", Prefix: "api", Auth: &app.OutletAuth{ImportPath: "example.com/beacon/pkg/auth/keepers", Methods: []app.AuthMethodArg{{Kind: app.MethodPassword, Name: "password"}}}},
+			want:   []string{"POST /api/user/password/login: the default outlet's password login", "POST /api/user/pending/confirm: the default outlet's pending sign-in confirmation", "POST /api/user/pending/cancel: the default outlet's pending sign-in cancel"},
+		},
+		{
+			name:   "a directory method alone leaves the pending routes",
+			outlet: app.Outlet{Name: "portal", Prefix: "portal/api", Auth: &app.OutletAuth{ImportPath: "example.com/harbor/pkg/auth/members", Methods: []app.AuthMethodArg{{Kind: app.MethodAzure, Name: "directory"}}}},
+			want:   []string{"POST /portal/api/user/pending/confirm: the portal outlet's pending sign-in confirmation", "POST /portal/api/user/pending/cancel: the portal outlet's pending sign-in cancel"},
+		},
+		{
+			name:   "a password method beside a directory method, under no prefix",
+			outlet: app.Outlet{Name: "default", Auth: &app.OutletAuth{ImportPath: "example.com/lantern/pkg/auth/staff", Methods: []app.AuthMethodArg{{Kind: app.MethodGoogle, Name: "directory"}, {Kind: app.MethodPassword, Name: "password"}}}},
+			want:   []string{"POST /user/password/login: the default outlet's password login", "POST /user/pending/confirm: the default outlet's pending sign-in confirmation", "POST /user/pending/cancel: the default outlet's pending sign-in cancel"},
+		},
+		{name: "an API-key outlet", outlet: app.Outlet{Name: "machines", Prefix: "machines", APIKey: true}},
+		{name: "an outlet declaring no auth", outlet: app.Outlet{Name: "default", Prefix: "api", ServesSessions: true}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			var got []string
+			for _, r := range signInRoutes("site", &tt.outlet) {
+				if r.Site != "site" || r.Outlet != tt.outlet.Name {
+					t.Errorf("route %s names site %q, outlet %q", r.Path, r.Site, r.Outlet)
+				}
+				got = append(got, signInLine(&r))
+			}
+			if !slices.Equal(got, tt.want) {
+				t.Errorf("signInRoutes() = %v, want %v", got, tt.want)
 			}
 		})
 	}

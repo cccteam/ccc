@@ -281,7 +281,7 @@ func TestMigrationConsolidate(t *testing.T) {
 				"  000002_Audit had no down file; the down file reverses the others.",
 				"Consolidated 3 migration(s) of refs/heads/master at ",
 				" into schema/migrations/000003_Consolidated.up.sql: the up files in order, each under a comment naming it and closed with a semicolon, and the down files in reverse order. The folded files are removed and the change is staged; review the diff.",
-				"The pull-request workflow's migrations job and the pipeline's guard read the folded files as committed migrations deleted and refuse the pull request today",
+				"The pull-request workflow's migrations job and the pipeline's guard accept the consolidation by its shape, and the guard refuses it until every environment's database is at the latest index.",
 			},
 			wantFiles: []string{"schema/migrations/000003_Consolidated.down.sql", "schema/migrations/000003_Consolidated.up.sql"},
 		},

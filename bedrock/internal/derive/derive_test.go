@@ -100,9 +100,11 @@ func TestDerive(t *testing.T) {
 		// that declares none.
 		wantScheduled []string
 		// wantFileRoutes are the file routes (fileRouteLine), none for an application that
-		// declares no upload and no stored file; wantOutlets the outlets, name and prefix.
+		// declares no upload and no stored file; wantOutlets the outlets, name and prefix;
+		// wantSignIn the sign-in routes (signInLine), a route listed once over the sites.
 		wantFileRoutes []string
 		wantOutlets    []string
+		wantSignIn     []string
 		// wantAdministrators are the auths whose code names a first administrator, with
 		// the variable (derive.Auth.Administrator), auths by name.
 		wantAdministrators []string
@@ -178,6 +180,7 @@ func TestDerive(t *testing.T) {
 			wantScheduled:      []string{"send-daily-digest: POST /_scheduled/send-daily-digest at 0 7 * * 1-5 in America/New_York"},
 			wantFileRoutes:     []string{"POST /api/attach-manifest: the @upload method AttachManifest", "GET /api/manifests/{id}/file: the @file column Manifest.Key"},
 			wantOutlets:        []string{"default /api", "portal /portal/api"},
+			wantSignIn:         []string{"POST /api/user/pending/confirm: the default outlet's pending sign-in confirmation", "POST /api/user/pending/cancel: the default outlet's pending sign-in cancel", "POST /portal/api/user/pending/confirm: the portal outlet's pending sign-in confirmation", "POST /portal/api/user/pending/cancel: the portal outlet's pending sign-in cancel"},
 			wantAdministrators: []string{"members APP_MEMBERS_ADMINISTRATOR"},
 			wantSurfaces:       []string{"/_scheduled/send-daily-digest (route): logged always", "/api/ (prefix): sampled at 0.1", "/api/manifests/{id}/file (route): never logged"},
 			wantRequestLog:     harborClause,
@@ -188,6 +191,7 @@ func TestDerive(t *testing.T) {
 			placement:          "placement-beacon.json",
 			wantApp:            "beacon",
 			wantOutlets:        []string{"default /api"},
+			wantSignIn:         []string{"POST /api/user/password/login: the default outlet's password login", "POST /api/user/pending/confirm: the default outlet's pending sign-in confirmation", "POST /api/user/pending/cancel: the default outlet's pending sign-in cancel"},
 			wantMethods:        []string{"keepers/password password"},
 			wantAdministrators: []string{"keepers APP_KEEPERS_ADMINISTRATOR_PASSWORD administrator-password"},
 			wantSecrets: []string{
@@ -249,6 +253,7 @@ func TestDerive(t *testing.T) {
 			wantScheduled:      []string{"close-stale-holds: POST /_scheduled/close-stale-holds at */15 * * * * in UTC", "send-weekly-letter: POST /_scheduled/send-weekly-letter at 0 9 * * 1 in Europe/London"},
 			wantFileRoutes:     []string{"GET /api/notices/{id}/file: the @file column Notice.Key"},
 			wantOutlets:        []string{"default /api"},
+			wantSignIn:         []string{"POST /api/user/password/login: the default outlet's password login", "POST /api/user/pending/confirm: the default outlet's pending sign-in confirmation", "POST /api/user/pending/cancel: the default outlet's pending sign-in cancel"},
 			wantSurfaces:       []string{"/_scheduled/close-stale-holds (route): logged always", "/api/ (prefix): logged on event"},
 			wantRequestLog:     `((httpRequest.requestUrl =~ "^https://[^/]+/api/" AND httpRequest.status < 400))`,
 			wantSites: []string{
@@ -373,6 +378,13 @@ func TestDerive(t *testing.T) {
 			}
 			if !slices.Equal(outlets, tt.wantOutlets) {
 				t.Errorf("Outlets = %v, want %v", outlets, tt.wantOutlets)
+			}
+			var signIn []string
+			for i := range m.SignInRoutes {
+				signIn = append(signIn, signInLine(&m.SignInRoutes[i]))
+			}
+			if !slices.Equal(signIn, tt.wantSignIn) {
+				t.Errorf("SignInRoutes = %v, want %v", signIn, tt.wantSignIn)
 			}
 			var administrators []string
 			for i := range m.Auths {
@@ -548,6 +560,11 @@ func siteLine(s *Site) string {
 
 // fileRouteLine spells a file route: its method and path, and its declaration.
 func fileRouteLine(r *FileRoute) string {
+	return fmt.Sprintf("%s %s: %s", r.Method, r.Path, r.Declaration())
+}
+
+// signInLine spells a sign-in route: its method, its path and what it is.
+func signInLine(r *SignInRoute) string {
 	return fmt.Sprintf("%s %s: %s", r.Method, r.Path, r.Declaration())
 }
 

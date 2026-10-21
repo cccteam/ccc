@@ -18,6 +18,16 @@
 # layer serves previews from one backend service, and a policy attaches to a
 # backend service.
 #
+# The sign-in throttles come after the rule sets and before the default rule:
+# one per route of the generated router that takes a credential by POST (each
+# session outlet's password login and its pending sign-in's confirmation and
+# cancel), keyed by client address, so that past var.cloud_armor_sign_in_count
+# POSTs to the route in var.cloud_armor_sign_in_interval seconds (both set in
+# terraform.tfvars) an address answers 429 on it until the interval passes.
+# After the rule sets so that a sign-in POST is still read by them: a rule
+# that matches decides, and a throttle under its threshold allows. Preview
+# logs what a throttle would have done, as it does for the rule sets.
+#
 # "off" keeps the policy and detaches it from the backend services; removing
 # the environment's entry deletes it. The two are separate applies on purpose:
 # an apply that deletes the policy while the backend services still name it
@@ -172,6 +182,106 @@ resource "google_compute_security_policy" "app" {
     match {
       expr {
         expression = "(request.path.startsWith('/api/') || request.path.startsWith('/portal/api/')) && evaluatePreconfiguredWaf('protocolattack-v33-stable', {'sensitivity': 1})"
+      }
+    }
+  }
+
+  # POST /api/user/pending/confirm, throttled by client address; the default outlet's pending sign-in confirmation, the generated router; past cloud_armor_sign_in_count POSTs in cloud_armor_sign_in_interval seconds (terraform.tfvars) an address answers 429 until the interval passes
+  rule {
+    priority    = 4000
+    action      = "throttle"
+    description = "POST /api/user/pending/confirm, throttled by client address; the default outlet's pending sign-in confirmation, the generated router; past cloud_armor_sign_in_count POSTs in cloud_armor_sign_in_interval seconds (terraform.tfvars) an address answers 429 until the interval passes"
+    preview     = local.cloud_armor_preview
+
+    match {
+      expr {
+        expression = "request.method == 'POST' && request.path.matches('^/api/user/pending/confirm$')"
+      }
+    }
+
+    rate_limit_options {
+      conform_action = "allow"
+      exceed_action  = "deny(429)"
+      enforce_on_key = "IP"
+
+      rate_limit_threshold {
+        count        = var.cloud_armor_sign_in_count
+        interval_sec = var.cloud_armor_sign_in_interval
+      }
+    }
+  }
+
+  # POST /api/user/pending/cancel, throttled by client address; the default outlet's pending sign-in cancel, the generated router; past cloud_armor_sign_in_count POSTs in cloud_armor_sign_in_interval seconds (terraform.tfvars) an address answers 429 until the interval passes
+  rule {
+    priority    = 4001
+    action      = "throttle"
+    description = "POST /api/user/pending/cancel, throttled by client address; the default outlet's pending sign-in cancel, the generated router; past cloud_armor_sign_in_count POSTs in cloud_armor_sign_in_interval seconds (terraform.tfvars) an address answers 429 until the interval passes"
+    preview     = local.cloud_armor_preview
+
+    match {
+      expr {
+        expression = "request.method == 'POST' && request.path.matches('^/api/user/pending/cancel$')"
+      }
+    }
+
+    rate_limit_options {
+      conform_action = "allow"
+      exceed_action  = "deny(429)"
+      enforce_on_key = "IP"
+
+      rate_limit_threshold {
+        count        = var.cloud_armor_sign_in_count
+        interval_sec = var.cloud_armor_sign_in_interval
+      }
+    }
+  }
+
+  # POST /portal/api/user/pending/confirm, throttled by client address; the portal outlet's pending sign-in confirmation, the generated router; past cloud_armor_sign_in_count POSTs in cloud_armor_sign_in_interval seconds (terraform.tfvars) an address answers 429 until the interval passes
+  rule {
+    priority    = 4002
+    action      = "throttle"
+    description = "POST /portal/api/user/pending/confirm, throttled by client address; the portal outlet's pending sign-in confirmation, the generated router; past cloud_armor_sign_in_count POSTs in cloud_armor_sign_in_interval seconds (terraform.tfvars) an address answers 429 until the interval passes"
+    preview     = local.cloud_armor_preview
+
+    match {
+      expr {
+        expression = "request.method == 'POST' && request.path.matches('^/portal/api/user/pending/confirm$')"
+      }
+    }
+
+    rate_limit_options {
+      conform_action = "allow"
+      exceed_action  = "deny(429)"
+      enforce_on_key = "IP"
+
+      rate_limit_threshold {
+        count        = var.cloud_armor_sign_in_count
+        interval_sec = var.cloud_armor_sign_in_interval
+      }
+    }
+  }
+
+  # POST /portal/api/user/pending/cancel, throttled by client address; the portal outlet's pending sign-in cancel, the generated router; past cloud_armor_sign_in_count POSTs in cloud_armor_sign_in_interval seconds (terraform.tfvars) an address answers 429 until the interval passes
+  rule {
+    priority    = 4003
+    action      = "throttle"
+    description = "POST /portal/api/user/pending/cancel, throttled by client address; the portal outlet's pending sign-in cancel, the generated router; past cloud_armor_sign_in_count POSTs in cloud_armor_sign_in_interval seconds (terraform.tfvars) an address answers 429 until the interval passes"
+    preview     = local.cloud_armor_preview
+
+    match {
+      expr {
+        expression = "request.method == 'POST' && request.path.matches('^/portal/api/user/pending/cancel$')"
+      }
+    }
+
+    rate_limit_options {
+      conform_action = "allow"
+      exceed_action  = "deny(429)"
+      enforce_on_key = "IP"
+
+      rate_limit_threshold {
+        count        = var.cloud_armor_sign_in_count
+        interval_sec = var.cloud_armor_sign_in_interval
       }
     }
   }
