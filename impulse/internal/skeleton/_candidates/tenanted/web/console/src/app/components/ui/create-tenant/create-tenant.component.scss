@@ -1,0 +1,19 @@
+.create-card {
+  max-width: 480px;
+  margin-top: 16px;
+}
+
+form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.field {
+  width: 100%;
+}
+
+.refusal {
+  margin: 0 0 8px;
+  color: var(--mat-sys-error, #b3261e);
+}

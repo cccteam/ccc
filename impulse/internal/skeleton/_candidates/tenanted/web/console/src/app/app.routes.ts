@@ -18,6 +18,13 @@ export const routes: Routes = [
         loadComponent: () =>
           import('./components/ui/dashboard/dashboard.component').then((comp) => comp.DashboardComponent),
       },
+      // The create-your-tenant page: the self-service half of the Tenant record's creation
+      // shape, offered by the dashboard to a session holding no tenant.
+      {
+        path: 'create-tenant',
+        loadComponent: () =>
+          import('./components/ui/create-tenant/create-tenant.component').then((comp) => comp.CreateTenantComponent),
+      },
       // The Users page composes the library's user-management component over the auth's
       // user surface, behind the List grant on its users resource.
       usersRoute(),

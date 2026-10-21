@@ -2083,6 +2083,24 @@ Content-Type: application/json
 			wantStatuses: []int{http.StatusForbidden},
 		},
 		{
+			// A caller holding a grant anywhere holds a tenant: refused before the body.
+			name:         "CreateSector refused to a caller holding a tenant",
+			grants:       grants{accesstypes.List: true},
+			method:       http.MethodPost,
+			target:       "/console/api/create-sector",
+			body:         `{}`,
+			wantStatuses: []int{http.StatusForbidden},
+		},
+		{
+			// A caller holding no grant is admitted past the gate: the minimal body
+			// meets its validation, not a permission check.
+			name:         "CreateSector admits a caller holding no grant",
+			method:       http.MethodPost,
+			target:       "/console/api/create-sector",
+			body:         `{}`,
+			wantStatuses: []int{http.StatusBadRequest},
+		},
+		{
 			name:         "CrewUsers denied",
 			method:       http.MethodGet,
 			target:       "/console/api/crew-users",

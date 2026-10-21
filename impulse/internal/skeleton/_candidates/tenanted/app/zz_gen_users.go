@@ -62,6 +62,11 @@ func (a *App) SetStaffUserPassword() http.HandlerFunc {
 	return a.StaffUserSurface().SetUserPassword(a, router.Collection())
 }
 
+// UnlinkStaffUserIdentity unlinks an identity from a user of the global partition: Execute on UnlinkStaffUserIdentity, targeting StaffUsers.
+func (a *App) UnlinkStaffUserIdentity() http.HandlerFunc {
+	return a.StaffUserSurface().UnlinkUserIdentity(a, router.Collection())
+}
+
 // StaffTenantUsers serves the users of the route's tenant: List on StaffTenantUsers.
 func (a *App) StaffTenantUsers() http.HandlerFunc {
 	return a.StaffUserSurface().TenantUsers(a, router.Collection())
@@ -105,4 +110,9 @@ func (a *App) StaffTenantRole() http.HandlerFunc {
 // SetStaffTenantUserPassword sets a temporary password on a user of the route's tenant: Execute on SetStaffTenantUserPassword, targeting StaffTenantUsers.
 func (a *App) SetStaffTenantUserPassword() http.HandlerFunc {
 	return a.StaffUserSurface().SetTenantUserPassword(a, router.Collection())
+}
+
+// UnlinkStaffTenantUserIdentity unlinks an identity from a user of the route's tenant: Execute on UnlinkStaffTenantUserIdentity, targeting StaffTenantUsers.
+func (a *App) UnlinkStaffTenantUserIdentity() http.HandlerFunc {
+	return a.StaffUserSurface().UnlinkTenantUserIdentity(a, router.Collection())
 }

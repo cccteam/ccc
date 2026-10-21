@@ -18,8 +18,10 @@ func (StaffAuth) UserSurfaceDeclaration() resource.UserSurfaceDeclaration {
 		Tenant:      "Tenant",
 		DomainParam: "tenantID",
 		Shape: resource.UserSurfaceShape{
-			Password:      true,
-			Registrations: []resource.UserRegistration{},
+			Password: true,
+			Registrations: []resource.UserRegistration{
+				{Name: "google", Kind: "google", Label: "Google", Invited: false, SyncsRoles: false},
+			},
 		},
 	}
 }

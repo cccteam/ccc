@@ -127,6 +127,7 @@ func (r *resourceGenerator) authzMatrixCases() ([]authzCase, error) {
 	cases = append(cases, consolidated...)
 	cases = append(cases, r.rpcAuthzCases()...)
 	cases = append(cases, r.featureAuthzCases()...)
+	cases = append(cases, r.tenantCreationAuthzCases()...)
 	userCases, err := r.userAuthzCases()
 	if err != nil {
 		return nil, err

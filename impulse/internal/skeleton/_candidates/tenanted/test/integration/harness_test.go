@@ -10,6 +10,7 @@ import (
 	"net/http/cookiejar"
 	"net/http/httptest"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -113,6 +114,9 @@ func (c *servedConfigurer) LiveOrigins() []string {
 type served struct {
 	server *httptest.Server
 	access *access.Client
+	// auth is the staff auth the instance binds to, for a suite that creates a login of
+	// its own beside the development ones.
+	auth *staff.Auth
 }
 
 // newServed provisions the database the way the deployment does (the schema and the
@@ -135,7 +139,18 @@ func newServed(ctx context.Context, t *testing.T) *served {
 	if err := roster.Start(ctx); err != nil {
 		t.Fatalf("resource.TenantRoster.Start() error = %v", err)
 	}
-	auth, err := staff.New(ctx, db.Client, &staff.Settings{Collection: router.Collection(), Signals: svc, CookieKey: testCookieKey, SessionTimeout: time.Minute})
+	// The server is made before the auth so the google registration's redirect URL can
+	// name its callback, the one setting of the registration the simulated directory
+	// reads (the suites build with the skipAuth tag); it starts once the router exists.
+	server := httptest.NewUnstartedServer(nil)
+	auth, err := staff.New(ctx, db.Client, &staff.Settings{
+		Collection:     router.Collection(),
+		Signals:        svc,
+		CookieKey:      testCookieKey,
+		SessionTimeout: time.Minute,
+		LoginURL:       "/login",
+		Google:         staff.GoogleSettings{RedirectURL: "http://" + server.Listener.Addr().String() + "/api/user/google/callback"},
+	})
 	if err != nil {
 		t.Fatalf("staff.New() error = %v", err)
 	}
@@ -180,11 +195,11 @@ func newServed(ctx context.Context, t *testing.T) *served {
 	if err := a.Start(ctx); err != nil {
 		t.Fatalf("app.Start() error = %v", err)
 	}
-	handler := router.New(a, router.Hooks{})
-	server := httptest.NewServer(handler)
+	server.Config.Handler = router.New(a, router.Hooks{})
+	server.Start()
 	t.Cleanup(server.Close)
 
-	return &served{server: server, access: accessClient}
+	return &served{server: server, access: accessClient, auth: auth}
 }
 
 // waitForDomains blocks until the engine's snapshot reports the user's footholds in
@@ -282,6 +297,34 @@ func (b *browser) do(ctx context.Context, method, path string, body []byte) (sta
 	}
 
 	return resp.StatusCode, respBody
+}
+
+// redirect issues one GET as this browser without following the redirect it answers
+// with, and returns the status and where it points: the way a directory sign-in is
+// followed one step at a time.
+func (b *browser) redirect(ctx context.Context, target string) (status int, location string) {
+	b.t.Helper()
+
+	if !strings.HasPrefix(target, "http") {
+		target = b.base + target
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target, http.NoBody)
+	if err != nil {
+		b.t.Fatal(err)
+	}
+	client := &http.Client{Jar: b.client.Jar, CheckRedirect: func(*http.Request, []*http.Request) error {
+		return http.ErrUseLastResponse
+	}}
+	resp, err := client.Do(req)
+	if err != nil {
+		b.t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if _, err := io.Copy(io.Discard, resp.Body); err != nil {
+		b.t.Fatal(err)
+	}
+
+	return resp.StatusCode, resp.Header.Get("Location")
 }
 
 // xsrfToken returns the XSRF cookie the session middleware issued, or empty before the

@@ -59,6 +59,10 @@ login_google() { # login_google <persona>: the crew auth's Google method, whose 
   login_through "$1" "$API/user/google/login?returnUrl=/console/dashboard" "$API/user/session"
 }
 
+login_sign_up() { # login_sign_up <persona>: the crew auth's sign-up registration (any Google account, open sign-up), whose simulated person is APP_SIGN_UP_USERNAME on the server
+  login_through "$1" "$API/user/sign-up/login?returnUrl=/console/dashboard" "$API/user/session"
+}
+
 xsrf() { # xsrf <persona>: the auth's own XSRF cookie, crew-xsrf for the crew, members-xsrf for the client
   local name=crew-xsrf
   [ "$1" = client ] && name=members-xsrf
@@ -154,14 +158,15 @@ for p in governor marshal cadet pilot veteran lead dispatcher overseer booking w
 done
 login_portal client
 login_google navigator
-echo "--- personas logged in (crew by password, the navigator through the fleet's directory, the client through the company directory; both directories simulated) ---"
+login_sign_up pioneer
+echo "--- personas logged in (crew by password, the navigator through the fleet's directory, the pioneer by signing up with any Google account, the client through the company directory; every directory simulated) ---"
 
 # ---- what each login page is told ----
 # Each outlet's methods route lists the sign-in methods its auth offers, in the order the
 # generator program registered them, each at the path the router mounted it: the login
 # pages render from the list and name no path of their own.
 r=$(curl -s -w '\n%{http_code}' "$API/user/methods"); check "the console tells its login page what the crew auth offers" 200 "$r"
-assert_py "two methods: the password form, then the Google directory, each at its own path, and the pending sign-in's routes" "$r" "[(m['name'],m['kind'],m['path']) for m in rows['methods']]==[('password','password','/console/api/user/password/login'),('google','redirect','/console/api/user/google/login')] and rows['pending']['confirm']=='/console/api/user/pending/confirm'"
+assert_py "three methods: the password form, the Google directory, then the sign-up registration under its label, each at its own path, and the pending sign-in's routes" "$r" "[(m['name'],m['kind'],m['path']) for m in rows['methods']]==[('password','password','/console/api/user/password/login'),('google','redirect','/console/api/user/google/login'),('sign-up','redirect','/console/api/user/sign-up/login')] and [m['label'] for m in rows['methods']][2]=='Sign up with Google' and rows['pending']['confirm']=='/console/api/user/pending/confirm'"
 r=$(curl -s -w '\n%{http_code}' "$PORTAL/user/methods"); assert_py "the portal tells its login page the company directory alone" "$r" "[(m['name'],m['method'],m['kind'],m['label']) for m in rows['methods']]==[('directory','google','redirect','Company directory')]"
 
 # ---- the two auths, and the crew's two ways in ----
@@ -633,6 +638,35 @@ if [ -n "$SECOND_PID" ]; then
   r=$(req surveyor.2 GET "$API2/user-domains"); assert_py "and her chart there lights Dawn" "$r" "rows == ['anvil','bastion','cinder','dawn']"
   kill "$SECOND_PID" 2>/dev/null; wait "$SECOND_PID" 2>/dev/null; SECOND_PID=
 fi
+
+# ---- a sector of one's own: self-service creation ----
+# Who may chart a sector is declared on the record, apart from who may enter one: Sectors
+# declares both ways (@tenant(creation: both)). The surveyor's is above. The pioneer's is
+# self-service: she signed in through the crew auth's sign-up registration (any Google
+# account, open sign-up: a person the auth has never seen becomes a crew login holding no
+# role and no sector) and names her own sector through the generated create-sector route,
+# which writes the row, seats her as its marshal (SectorMarshal, the roles the App names)
+# and hands the sector to the roster, so her next request stands in it; whoever holds a
+# sector already is refused, the governor included, since an administrator of one sector
+# never creates another here. Sign in first, then name the sector.
+# Demonstrates: tenancy.self-service, auth.open-sign-up.
+EMBER=$API/sectors/ember
+r=$(req pioneer GET "$API/user/session"); assert_py "the pioneer is signed in through the sign-up registration: a crew session on no manifest" "$r" "rows['authenticated'] and rows['username']=='pioneer'"
+r=$(req pioneer GET "$API/user-domains"); assert_py "her chart is dark: a crew login holding nothing" "$r" "rows == []"
+r=$(req pioneer GET "$EMBER/missions"); check "Ember does not exist" 404 "$r"
+r=$(req marshal POST "$API/create-sector" '{"id":"ember","name":"Ember","region":"Near frontier","established":"2226-10-20"}'); check "the marshal holds Anvil and is refused: only a person holding no sector charts one here" 403 "$r"
+r=$(req governor POST "$API/create-sector" '{"id":"ember","name":"Ember","region":"Near frontier","established":"2226-10-20"}'); check "the governor, marshal in every sector, is refused too: an administrator of one sector never creates another here" 403 "$r"
+r=$(req pioneer POST "$API/create-sector" '{"id":"ember","region":"Near frontier","established":"2226-10-20"}'); check "a body without the name is refused her" 400 "$r"
+r=$(req pioneer POST "$API/create-sector" '{"id":"ember","name":"Ember","region":"Near frontier","established":"2226-10-20"}'); check "the pioneer charts sector Ember: the row, her marshal's seat and the roster in one call" 200 "$r"
+assert_py "answered its key" "$r" "rows['id']=='ember'"
+r=$(req pioneer GET "$API/user-domains"); assert_py "her chart lights Ember at once: seated as its marshal before the route answered" "$r" "rows == ['ember']"
+r=$(req pioneer GET "$EMBER/missions"); check "Ember's flight deck answers her, empty" 200 "$r"
+assert_py "an empty flight deck: Ember is charted, not yet flown" "$r" "rows == []"
+r=$(req pioneer POST "$API/create-sector" '{"id":"ember-two","name":"Ember Two","region":"Near frontier","established":"2226-10-21"}'); check "a second sector is refused her: one sector per person" 403 "$r"
+r=$(req surveyor GET "$API/sectors"); assert_py "the sector list carries Ember, in name order" "$r" "[s['name'] for s in rows]==['Anvil','Bastion','Cinder','Dawn','Ember']"
+r=$(req marshal GET "$EMBER/missions"); check "Ember's routes answer the marshal 404: a sector that does not exist for her" 404 "$r"
+r=$(req governor GET "$API/user-domains"); assert_py "the governor sees Ember with nothing written for him" "$r" "rows == ['anvil','bastion','cinder','dawn','ember']"
+r=$(req client GET "$PORTAL/user-domains"); assert_py "cleo's portal lists Ember at once" "$r" "rows == ['anvil','bastion','cinder','dawn','ember']"
 
 # ---- squadrons config page: the array config's request ----
 # The Squadrons page's "Other squadrons in this sector" is an arrayConfig over the same resource, its listFilter excluding the page's row by the indexed key; Squadrons declares a maximum, so the library asks one server page (the key column alone, with the count) and draws each row by the iterated config. Demonstrates: config.array.

@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -112,6 +113,17 @@ func TestTenancyWired(t *testing.T) {
 				"cmd/generate/main.go":           site,
 				"pkg/resources/announcements.go": tenantScopedResource,
 				"pkg/resources/tenants.go":       tenantRecord,
+				"pkg/config/data.go":             wiredConfig,
+			},
+			wantStatus:  Pass,
+			wantSummary: "tenant record Tenant; 1 tenant-scoped resource(s); roster built by NewTenantRoster at pkg/config/data.go:15",
+		},
+		{
+			name: "tenanted and wired, the record declaring its creation shape",
+			files: map[string]string{
+				"cmd/generate/main.go":           site,
+				"pkg/resources/announcements.go": tenantScopedResource,
+				"pkg/resources/tenants.go":       strings.Replace(tenantRecord, "// @tenant\n", "// @tenant(creation: both)\n", 1),
 				"pkg/config/data.go":             wiredConfig,
 			},
 			wantStatus:  Pass,

@@ -10,15 +10,20 @@
 // carries its name. The package is named for the population, never for the method: the
 // crew gained a directory sign-in beside the password without the package moving.
 //
-// Two ways in, one population. The password method checks a persona's password, and the
+// Three ways in, one population. The password method checks a persona's password, and the
 // personas' roles are the bootstrap's (cmd/bootstrap/users.json). The Google method
 // provisions whoever the directory verifies under the verified email and reconciles that
 // person's roles to the directory's groups at every sign-in (google.RoleSync): the two
 // methods meet in one users table, one session table and one cookie, so a session opened
 // either way is a crew session. In development the directory is simulated and
-// APP_GOOGLE_USERNAME and APP_GOOGLE_ROLES in .envrc say who the Google sign-in is.
+// APP_GOOGLE_USERNAME and APP_GOOGLE_ROLES in .envrc say who the Google sign-in is. The
+// sign-up registration is the third way, for a person on no manifest and in no directory:
+// any Google account, open sign-up, so the first sign-in makes a crew login holding no
+// role and no sector, and the roles stay the application's (google.DisableRoleSync). Such
+// a person's one way to a sector is to chart their own, the Sector record's self-service
+// creation shape; in development APP_SIGN_UP_USERNAME says who the simulated sign-up is.
 //
-// Demonstrates: auth.password, auth.two-populations, auth.multi-method, auth.directory-roles.
+// Demonstrates: auth.password, auth.two-populations, auth.multi-method, auth.directory-roles, auth.open-sign-up.
 package crew
 
 import (
@@ -34,6 +39,7 @@ import (
 	"github.com/cccteam/session"
 	"github.com/cccteam/session/google"
 	"github.com/cccteam/session/sessionstorage"
+	"github.com/cccteam/session/signin"
 	"github.com/go-playground/errors/v5"
 )
 
@@ -52,6 +58,10 @@ const (
 	// the segment of its login and callback routes (user/google/login) and, in
 	// development, the registration whose simulated person APP_GOOGLE_USERNAME names.
 	GoogleRegistration = "google"
+	// SignUpRegistration is the name the open sign-up method is registered under: any
+	// Google account, through user/sign-up/login, and in development the registration
+	// whose simulated person APP_SIGN_UP_USERNAME names.
+	SignUpRegistration = "sign-up"
 
 	// The auth's tables, which schema/migrations creates: the sessions and users of the
 	// Auth session, the identity links of its Google sign-ins, the auth events each
@@ -102,6 +112,10 @@ type Settings struct {
 	// Directory identifies the application to the fleet's Google directory, the crew's
 	// second way in.
 	Directory auth.Directory
+	// SignUpRedirectURL is the browser-facing callback of the sign-up registration, the
+	// crew's third way in: any Google account, under the same client as the directory,
+	// returned to its own callback (user/sign-up/callback).
+	SignUpRedirectURL string
 	// Collection is the generated permission collection the role file validates against:
 	// the resources, fields and conditions the release declares. The router package
 	// generates it and imports this one, so the configuration passes it in.
@@ -132,6 +146,7 @@ type Handlers struct {
 	*Session
 	password *session.PasswordMethod
 	google   *google.Method
+	signUp   *google.Method
 }
 
 // PasswordLogin is the password method's login: {"username", "password"} in, the session
@@ -157,6 +172,18 @@ func (h *Handlers) GoogleLogin() http.HandlerFunc {
 // person, reconciles their roles and starts the session.
 func (h *Handlers) GoogleCallback() http.HandlerFunc {
 	return h.google.Callback()
+}
+
+// SignUpLogin sends the browser to Google to sign up with any Google account: the
+// crew's third way in, for a person the manifest and the directory do not know.
+func (h *Handlers) SignUpLogin() http.HandlerFunc {
+	return h.signUp.Login()
+}
+
+// SignUpCallback receives the browser back from Google, makes a crew login of a person
+// it has never seen (open sign-up) holding no role, and starts the session.
+func (h *Handlers) SignUpCallback() http.HandlerFunc {
+	return h.signUp.Callback()
 }
 
 // PendingStatus reports the sign-in that waits for a password confirmation or an MFA
@@ -258,8 +285,24 @@ func New(ctx context.Context, db *cloudspanner.Client, settings *Settings) (*Aut
 		RoleSync:     google.RoleSync(accessClient.UserManager(), settings.Directory.GroupPrefix, lookup),
 		LoginURL:     settings.LoginURL,
 	})
+	// The sign-up registration, under SignUpRegistration: any Google account
+	// (google.AnyGoogleAccount), the open sign-up rule (signin.OpenSignUp: a person the
+	// auth has never seen becomes a crew login under the verified email), and the
+	// application as the authority for roles (google.DisableRoleSync: the sign-in neither
+	// reads nor writes roles, so the person holds nothing until they chart a sector of
+	// their own or an operator seats them). It shares the directory's client; only the
+	// callback is its own.
+	signUpMethod := google.SignIn(crewSession, SignUpRegistration, nil, &google.Config{
+		ClientID:     settings.Directory.ClientID,
+		ClientSecret: settings.Directory.ClientSecret,
+		RedirectURL:  settings.SignUpRedirectURL,
+		Workspaces:   google.AnyGoogleAccount(),
+		RoleSync:     google.DisableRoleSync(),
+		Accounts:     signin.OpenSignUp,
+		LoginURL:     settings.LoginURL,
+	})
 
-	return &Auth{access: accessClient, handlers: &Handlers{Session: crewSession, password: password, google: googleMethod}}, nil
+	return &Auth{access: accessClient, handlers: &Handlers{Session: crewSession, password: password, google: googleMethod, signUp: signUpMethod}}, nil
 }
 
 // Access returns the auth's permission engine: the handlers check against it, and its

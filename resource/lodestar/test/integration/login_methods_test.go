@@ -25,9 +25,10 @@ type loginMethods struct {
 }
 
 // TestLoginMethods reads each outlet's methods route the way its login page does, before
-// any sign-in: the console offers the password and the fleet's Google directory, the
-// portal the company directory alone, each method at the path the generated router
-// mounted it, and every path is under the outlet's own prefix.
+// any sign-in: the console offers the password, the fleet's Google directory and the
+// sign-up registration under its label, the portal the company directory alone, each
+// method at the path the generated router mounted it, and every path is under the
+// outlet's own prefix.
 //
 // Demonstrates: auth.multi-method, auth.login-methods.
 func TestLoginMethods(t *testing.T) {
@@ -42,11 +43,12 @@ func TestLoginMethods(t *testing.T) {
 		want   string
 	}{
 		{
-			name:   "the console offers the password and the directory",
+			name:   "the console offers the password, the directory and the sign-up",
 			prefix: consoleAPI,
 			want: `{"methods":[` +
 				`{"name":"password","method":"password","kind":"password","label":"Password","path":"/console/api/user/password/login"},` +
-				`{"name":"google","method":"google","kind":"redirect","label":"Google","path":"/console/api/user/google/login"}],` +
+				`{"name":"google","method":"google","kind":"redirect","label":"Google","path":"/console/api/user/google/login"},` +
+				`{"name":"sign-up","method":"google","kind":"redirect","label":"Sign up with Google","path":"/console/api/user/sign-up/login"}],` +
 				`"pending":{"status":"/console/api/user/pending","confirm":"/console/api/user/pending/confirm","cancel":"/console/api/user/pending/cancel"}}`,
 		},
 		{
