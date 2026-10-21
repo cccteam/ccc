@@ -552,7 +552,10 @@ func newDeployPlanEnvironments(d deps) *cobra.Command {
 		Long: `plan-environments is the check-and-plan trigger's step after bedrock check (infrastructure/
 cloud-build.tf), run on every push to a pull request as the apply identity, from a step the pull
 request cannot edit. It reads its build through the Cloud Build API (BUILD_ID, PROJECT_ID and
-LOCATION, which the step passes) and runs tofu init and tofu plan in the checkout's infrastructure
+LOCATION, which the step passes), reads the base branch's infrastructure/terraform.tfvars through
+GitHub and refuses a Cloud Armor policy removed in one step (the rule bedrock check applies by hand,
+which the checkout of the pull request's commit alone cannot compare; said on the pull request),
+then runs tofu init and tofu plan in the checkout's infrastructure
 directory once per environment of the promotion order (_ENVIRONMENTS), against that environment's
 state prefix (3-app/<app>/<env>) as its plan identity (_PLAN_IDENTITIES: a reader, which the apply
 identity may act as, so the plan runs without the state lock and the job can change no environment).

@@ -18,7 +18,6 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 
-	"github.com/cccteam/ccc/bedrock/internal/github/githubtest"
 	"github.com/cccteam/ccc/bedrock/internal/render"
 	"github.com/cccteam/ccc/bedrock/internal/secret"
 )
@@ -1423,9 +1422,12 @@ func TestPlanEnvironments(t *testing.T) {
 		badRequest bool
 		// tfvars is the stack's placement values in the checkout; every secret pinned in
 		// every environment when empty. generated declares the cookie key generated in the
-		// checkout's code.
+		// checkout's code. baseTfvars is the base branch's copy, as the GitHub stand-in
+		// serves it on master; none when empty, and the Cloud Armor guard has nothing to
+		// compare.
 		tfvars      string
 		generated   bool
+		baseTfvars  string
 		wantOut     []string
 		wantNotOut  []string
 		wantTofu    []string
@@ -1522,11 +1524,29 @@ func TestPlanEnvironments(t *testing.T) {
 			wantErr:     "iam.tf:1 google_storage_bucket_iam_policy.records",
 		},
 		{
+			name:        "a Cloud Armor policy removed in one step is refused before any plan, against the base branch read through GitHub, and said on the pull request",
+			subs:        prSubs(),
+			pins:        enabledPins(),
+			baseTfvars:  armorTfvars(`prd = "enforce"`),
+			wantOut:     []string{`Build REJECTED: cloud_armor in terraform.tfvars removes prd in one step: at master the environment is "enforce"`, "Posted on pull request 7."},
+			wantComment: []string{`The pull-request build stopped before the stack's plans (build b-1): Build REJECTED: cloud_armor in terraform.tfvars removes prd in one step: at master the environment is "enforce", and removing the entry detaches the policy from the backend services and destroys it in one apply, which fails while the policy is attached; set it to "off" first (the policy kept, detached), merge and apply, then remove the entry`},
+			wantErr:     "Build REJECTED: cloud_armor in terraform.tfvars removes prd in one step",
+		},
+		{
+			name:       "a Cloud Armor entry at off on the base branch may go, and the plans run",
+			subs:       prSubs(),
+			pins:       enabledPins(),
+			baseTfvars: armorTfvars(`prd = "off"`),
+			wantOut:    []string{"Cloud Armor guard passed: no policy removed in one step against master.", "prd: Plan: 2 to add, 1 to change, 1 to destroy."},
+			wantTofu:   every,
+		},
+		{
 			name:     "every environment is planned as its plan identity, then the window previewed as the same identities, the summaries said on the pull request",
 			subs:     prSubs(),
 			pins:     enabledPins(),
 			deployer: true,
 			wantOut: []string{
+				"Cloud Armor guard: master has no infrastructure/terraform.tfvars, so no policy was on there; nothing to compare.",
 				"=== tst's stack at 3-app/quill/tst as quill-plan@p-tst.iam.gserviceaccount.com ===", "stg: Plan: 2 to add, 1 to change, 1 to destroy.", "=== prd's stack at 3-app/quill/prd as quill-plan@p-prd.iam.gserviceaccount.com ===",
 				windowPreview, noOldest, "  tst: " + unnamed, "  prd: " + unnamed,
 			},
@@ -1594,7 +1614,7 @@ func TestPlanEnvironments(t *testing.T) {
 			pins:        map[string]string{cookieVersion: "DESTROYED", dbVersion: enabledState},
 			deployer:    true,
 			mintErr:     errors.New("denied"),
-			wantOut:     []string{"Notice: the repository's token could not be minted from connection \"conn\" (denied); a refusal is said through the deployer app alone."},
+			wantOut:     []string{"Notice: the repository's token could not be minted from connection \"conn\" (denied); a refusal is said through the deployer app alone.", "Cloud Armor guard: without the repository's token the copy of infrastructure/terraform.tfvars on master is not read, and nothing is compared."},
 			wantTofu:    []string{initOf("tst", "p-tst"), planOf("tst"), showOf("tst")},
 			wantComment: []string{"The plan of tst's stack failed a test (build b-1)"},
 			wantErr:     "which is DESTROYED",
@@ -1644,7 +1664,7 @@ func TestPlanEnvironments(t *testing.T) {
 			}
 			run := &fakeRunner{outputs: map[string]string{"tofu show": stackPlanJSON}, fail: map[string]error{"tofu plan": tt.planErr}}
 			builds := &fakeBuilds{build: jobBuild(t, subs, applyIdentityID, steps), token: "test-token", mintErr: tt.mintErr}
-			repo := &githubtest.Repo{}
+			repo := armorRepo(tt.baseTfvars)
 			_, gh := githubStandIn(t, repo)
 			// Every environment's stack has been applied (its state object exists) but the
 			// one the case names.

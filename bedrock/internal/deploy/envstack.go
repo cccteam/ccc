@@ -686,10 +686,14 @@ func (s *stack) clearFirestore(ctx context.Context, subs map[string]string, w Wo
 // summary says it, with the pin to make, since the release's own plan refuses it there
 // (testPins). After the plans come the pull request's looks ahead, read as the same
 // identities: the patch preview when the pull request is against a patch line, and the
-// window preview. A tag build plans its own environment later instead (deploy stack
-// plan). Triggers that carry no promotion order (a stack not yet applied with a bedrock
-// that writes it, which the first release on it does) plan nothing, with a notice: the
-// pull request that moves an application here builds.
+// window preview. Before the plans, the Cloud Armor guard reads the base branch's
+// terraform.tfvars through GitHub and refuses a policy removed in one step
+// (guardCloudArmor): the rule bedrock check applies by hand and cannot in the job's
+// checkout, which holds the pull request's commit alone and gives it nothing to compare
+// with. A tag build plans its own environment later instead (deploy stack plan). Triggers
+// that carry no promotion order (a stack not yet applied with a bedrock that writes it,
+// which the first release on it does) plan nothing, with a notice: the pull request that
+// moves an application here builds.
 func PlanEnvironments(ctx context.Context, clients *Clients, w Workspace, req *BuildRequest, out io.Writer) error {
 	build, builds, err := readBuild(ctx, clients, req)
 	if err != nil {
@@ -721,6 +725,9 @@ func PlanEnvironments(ctx context.Context, clients *Clients, w Workspace, req *B
 	}
 	m, err := checkoutModel(w, p)
 	if err != nil {
+		return err
+	}
+	if err := guardCloudArmor(ctx, clients, w, build, env, out); err != nil {
 		return err
 	}
 	var summaries []string

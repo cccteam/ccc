@@ -208,6 +208,116 @@ func TestScanCloudArmorOrigin(t *testing.T) {
 	}
 }
 
+// TestCompareCloudArmor compares the two copies of terraform.tfvars the check reads by
+// hand and the pipeline guard reads through GitHub: an environment on in the committed
+// copy and absent in the tree is a finding naming the environment, its mode and where
+// the copy was read; one kept, one at off, and no map on either side are none; a copy
+// that does not parse is an error naming where it was read.
+func TestCompareCloudArmor(t *testing.T) {
+	t.Parallel()
+
+	const (
+		on  = "cloud_armor = {\n  stg = \"preview\"\n  prd = \"enforce\"\n}\n"
+		off = "cloud_armor = {\n  stg = \"preview\"\n  prd = \"off\"\n}\n"
+		stg = "cloud_armor = {\n  stg = \"preview\"\n}\n"
+	)
+	tests := []struct {
+		name string
+		// now and committed are the maps in the two copies, after the secret_versions
+		// map; none when empty. noCopy compares with no committed copy at all.
+		now, committed string
+		noCopy         bool
+		want           []CloudArmorFinding
+		wantErr        string
+	}{
+		{name: "an entry kept passes", now: on, committed: on},
+		{
+			name:      "an entry removed while on is a finding with the environment, the mode and where the copy was read",
+			now:       stg,
+			committed: on,
+			want:      []CloudArmorFinding{{Environment: "prd", Mode: "enforce", Ref: "master"}},
+		},
+		{
+			name:      "every entry removed names each environment that was on, in the committed copy's order",
+			committed: on,
+			want:      []CloudArmorFinding{{Environment: "stg", Mode: "preview", Ref: "master"}, {Environment: "prd", Mode: "enforce", Ref: "master"}},
+		},
+		{name: "an entry removed while off passes", now: stg, committed: off},
+		{name: "an entry added passes", now: on, committed: stg},
+		{name: "no map on either side passes"},
+		{name: "no committed copy to compare with passes", now: on, noCopy: true},
+		{name: "a committed map that is not written out is an error naming where it was read", now: stg, committed: "cloud_armor = var.armor\n", wantErr: "cloud_armor in terraform.tfvars at master is not a map written out"},
+		{name: "a working tree mode that is not a string is an error naming the file", now: "cloud_armor = {\n  prd = 1\n}\n", committed: on, wantErr: "cloud_armor.prd in infrastructure/terraform.tfvars is not a string"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			committed := tfvarsSource(tt.committed)
+			if tt.noCopy {
+				committed = nil
+			}
+			got, err := CompareCloudArmor(tfvarsSource(tt.now), committed, "infrastructure/terraform.tfvars", "master")
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("CompareCloudArmor() error = %v, wantErr %q", err, tt.wantErr)
+				}
+
+				return
+			}
+			if err != nil {
+				t.Fatalf("CompareCloudArmor() error = %v", err)
+			}
+			if diff := cmp.Diff(tt.want, got); diff != "" {
+				t.Errorf("CompareCloudArmor() mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+// tfvarsSource is a terraform.tfvars with the secret_versions map and the cloud_armor map
+// given, or no cloud_armor map when empty.
+func tfvarsSource(armor string) []byte {
+	src := "secret_versions = {\n  prd = {}\n}\n"
+	if armor != "" {
+		src += "\n" + armor
+	}
+
+	return []byte(src)
+}
+
+// TestCloudArmorFindingProblem: the sentence names the environment, where the branch's
+// copy was read, the mode there, and the two steps that take the entry out.
+func TestCloudArmorFindingProblem(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		finding CloudArmorFinding
+		want    string
+	}{
+		{
+			name:    "by hand, at the default branch's ref",
+			finding: CloudArmorFinding{Environment: "prd", Mode: "preview", Ref: "refs/remotes/origin/master"},
+			want:    `cloud_armor in terraform.tfvars removes prd in one step: at refs/remotes/origin/master the environment is "preview", and removing the entry detaches the policy from the backend services and destroys it in one apply, which fails while the policy is attached; set it to "off" first (the policy kept, detached), merge and apply, then remove the entry`,
+		},
+		{
+			name:    "in the pipeline, at the base branch",
+			finding: CloudArmorFinding{Environment: "stg", Mode: "enforce", Ref: "patch/0.1.x"},
+			want:    `cloud_armor in terraform.tfvars removes stg in one step: at patch/0.1.x the environment is "enforce", and removing the entry detaches the policy from the backend services and destroys it in one apply, which fails while the policy is attached; set it to "off" first (the policy kept, detached), merge and apply, then remove the entry`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := tt.finding.Problem(); got != tt.want {
+				t.Errorf("Problem() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 // TestRunCloudArmor: the finding fails the check and its line names the environment,
 // the ref, the mode and the two steps.
 func TestRunCloudArmor(t *testing.T) {
