@@ -178,26 +178,12 @@ func NewDataConfiguration(ctx context.Context) (*DataConfiguration, error) {
 
 	// The auth's default roles validate against the generated collection when its engine
 	// opens; the collection is passed in here, since the auth package imports no router.
-	staffAuth, err := staff.New(ctx, spannerClient, &staff.Settings{Collection: router.Collection(), Signals: liveService, CookieKey: cookieKey, SessionTimeout: env.SessionTimeout})
+	staffAuth, err := staff.New(ctx, spannerClient, env.staffSettings(router.Collection(), liveService, cookieKey))
 	if err != nil {
 		return nil, errors.Wrap(err, "staff.New()")
 	}
 
-	// The portal's login page is where a refused directory login returns to; the data
-	// level knows it because the auth's error redirects are configured here.
-	membersAuth, err := members.New(ctx, spannerClient, &members.Settings{
-		Collection:     router.Collection(),
-		Signals:        liveService,
-		CookieKey:      cookieKey,
-		SessionTimeout: env.SessionTimeout,
-		LoginURL:       "/portal/login",
-		Directory: members.DirectorySettings{
-			TenantID:     env.MembersDirectoryTenantID,
-			ClientID:     env.MembersDirectoryClientID,
-			ClientSecret: env.MembersDirectoryClientSecret,
-			RedirectURL:  env.MembersDirectoryRedirectURL,
-		},
-	})
+	membersAuth, err := members.New(ctx, spannerClient, env.membersSettings(router.Collection(), liveService, cookieKey))
 	if err != nil {
 		return nil, errors.Wrap(err, "members.New()")
 	}
@@ -422,4 +408,36 @@ type dataConfig struct {
 	// rows, so the first person to sign in holds them. Named per environment by the
 	// placement; unset in development, where the bootstrap seeds the development members.
 	MembersAdministrator string `env:"APP_MEMBERS_ADMINISTRATOR"`
+}
+
+// staffSettings builds the staff auth's settings: the generated collection its default
+// roles validate against, the live service its engine signals policy changes through,
+// the cookie key its sessions are signed with, and the session timeout. A directory
+// registration's settings join the literal here (impulse add method), read from the
+// environment under the registration's variables, so the constructor stays one call
+// per auth.
+func (env *dataConfig) staffSettings(collection access.PermissionCollection, signals staff.Signals, cookieKey string) *staff.Settings {
+	return &staff.Settings{Collection: collection, Signals: signals, CookieKey: cookieKey, SessionTimeout: env.SessionTimeout}
+}
+
+// membersSettings builds the members auth's settings: the generated collection, the live
+// service, the cookie key and the session timeout as the staff auth's, the portal's
+// login page, where a refused directory sign-in returns to (the data level knows it
+// because the auth's error redirects are configured here), and the directory
+// registration's settings, read from the environment under the registration's
+// variables.
+func (env *dataConfig) membersSettings(collection access.PermissionCollection, signals members.Signals, cookieKey string) *members.Settings {
+	return &members.Settings{
+		Collection:     collection,
+		Signals:        signals,
+		CookieKey:      cookieKey,
+		SessionTimeout: env.SessionTimeout,
+		LoginURL:       "/portal/login",
+		Directory: members.DirectorySettings{
+			TenantID:     env.MembersDirectoryTenantID,
+			ClientID:     env.MembersDirectoryClientID,
+			ClientSecret: env.MembersDirectoryClientSecret,
+			RedirectURL:  env.MembersDirectoryRedirectURL,
+		},
+	}
 }

@@ -255,17 +255,25 @@ func (p *parsed) appendToBlock(rel string, fields *ast.FieldList, line string) (
 // type (an identifier, or package-qualified: members.Settings) inside the named function. An element whose key the literal sets already is not
 // added again: the source comes back unchanged.
 func AddLiteralElement(rel string, src []byte, funcName, typeName, element string) ([]byte, error) {
+	return AddMethodLiteralElement(rel, src, "", funcName, typeName, element)
+}
+
+// AddMethodLiteralElement appends "key: value" to the first composite literal of the
+// named type inside the named method of recvType (a pointer or a value receiver), or
+// inside the named function when recvType is empty. An element whose key the literal
+// sets already is not added again: the source comes back unchanged.
+func AddMethodLiteralElement(rel string, src []byte, recvType, funcName, typeName, element string) ([]byte, error) {
 	p, err := parseSource(rel, src)
 	if err != nil {
 		return nil, err
 	}
-	fd := p.funcDecl(funcName)
+	fd := p.methodDecl(recvType, funcName)
 	if fd == nil {
-		return nil, errors.Wrapf(ErrNoAnchor, "%s declares no function %s", rel, funcName)
+		return nil, errors.Wrapf(ErrNoAnchor, "%s declares no %s", rel, qualifiedFunc(recvType, funcName))
 	}
 	lit := literalOf(fd.Body, typeName)
 	if lit == nil {
-		return nil, errors.Wrapf(ErrNoAnchor, "%s: %s builds no %s literal", rel, funcName, typeName)
+		return nil, errors.Wrapf(ErrNoAnchor, "%s: %s builds no %s literal", rel, qualifiedFunc(recvType, funcName), typeName)
 	}
 
 	return p.appendElement(rel, lit, element)
@@ -729,6 +737,28 @@ func MethodNames(rel string, src []byte, typeName string) ([]string, error) {
 	}
 
 	return names, nil
+}
+
+// CopyMethod writes a copy of the named method of recvType (a pointer or a value
+// receiver) after it, its doc comment included, as rename renders the copy's text: a
+// method written for one auth, copied for another under the other's name. The result
+// is formatted.
+func CopyMethod(rel string, src []byte, recvType, name string, rename func(text string) string) ([]byte, error) {
+	p, err := parseSource(rel, src)
+	if err != nil {
+		return nil, err
+	}
+	fd := p.methodDecl(recvType, name)
+	if fd == nil {
+		return nil, errors.Wrapf(ErrNoAnchor, "%s declares no %s", rel, qualifiedFunc(recvType, name))
+	}
+	start := p.offset(fd.Pos())
+	if fd.Doc != nil {
+		start = p.offset(fd.Doc.Pos())
+	}
+	end := p.offset(fd.End())
+
+	return p.splice(rel, end, end, "\n\n"+rename(string(p.src[start:end])))
 }
 
 // ExtendCall appends arguments to the first call to callee, a dotted name as the source
