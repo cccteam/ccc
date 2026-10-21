@@ -9,9 +9,10 @@ import "github.com/cccteam/ccc/resource"
 // (@tenant): the Id column of Sectors, read once at Start and kept
 // current until the context ends. The generated DomainGuard and the consolidated
 // dispatcher ask the roster before a tenant-scoped request runs, and the generated
-// Sector write paths add and remove tenants after their commit and publish the
+// Sector write paths reload it after their commit and publish the
 // tenants signal, so every instance reloads. The application exposes the roster as
 // TenantRoster(); resource.WithTenantSignals wires the live service the roster reloads on.
 func NewSectorRoster(client resource.Client, opts ...resource.TenantRosterOption) *resource.TenantRoster {
+
 	return resource.NewTenantRoster(client, "Sectors", "Id", opts...)
 }

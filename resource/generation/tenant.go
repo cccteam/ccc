@@ -4,6 +4,7 @@ import (
 	"go/types"
 	"log"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/cccteam/ccc/resource/generation/parser"
@@ -149,7 +150,7 @@ func (r *resourceGenerator) resolveTenantRecord() error {
 	r.domainRouteSegment = strcase.ToKebab(r.pluralize(tenant.Name()))
 	r.domainRouteParam = strcase.ToGoCamel(tenant.Name() + tenant.PrimaryKey().Name())
 
-	return nil
+	return r.validateTenantDeclaration()
 }
 
 // requireTenantRecordForMethods is resolveTenantRecord's rule for the RPC methods, which
@@ -173,7 +174,9 @@ func (r *resourceGenerator) requireTenantRecordForMethods() error {
 	return nil
 }
 
-// tenantsData feeds the handler package's tenants file: the record's roster constructor.
+// tenantsData feeds the handler package's tenants file: the record's roster constructor
+// and, where the record declares who may enter a tenant, the declaration's columns and
+// the sign-in policy's reader constructor.
 type tenantsData struct {
 	Source  string
 	Package string
@@ -182,10 +185,18 @@ type tenantsData struct {
 	Name      string
 	Table     string
 	KeyColumn string
+	// RecordLower is the word for one of the record's rows in prose.
+	RecordLower string
+	// Declaration is the declaration's columns (resource.TenantDeclarationColumns), nil
+	// where the record declares none; Directories names the directories record.
+	Declaration *tenantDeclarationColumns
+	Directories string
 }
 
 // generateTenants emits the tenant record's roster constructor, New<Record>Roster, into
-// the handler package whenever the package declares a tenant record.
+// the handler package whenever the package declares a tenant record, and beside it,
+// when the record declares who may enter a tenant, New<Record>DeclarationReader, the
+// sign-in policy's reader of the declaration.
 func (r *resourceGenerator) generateTenants() error {
 	tenant := r.tenantRecord()
 	if tenant == nil {
@@ -196,13 +207,19 @@ func (r *resourceGenerator) generateTenants() error {
 	destinationFilePath := filepath.Join(r.handler.Dir(), generatedGoFileName(tenantRosterOutputName))
 
 	keyColumn, _ := tenant.PrimaryKey().LookupTag(spannerTagKey)
-	if err := r.writeFormattedGoFile(destinationFilePath, "tenantsTemplate", tenantsTemplate, &tenantsData{
-		Source:    r.resource.Dir(),
-		Package:   r.handler.Package(),
-		Name:      tenant.Name(),
-		Table:     r.pluralize(tenant.Name()),
-		KeyColumn: keyColumn,
-	}); err != nil {
+	data := &tenantsData{
+		Source:      r.resource.Dir(),
+		Package:     r.handler.Package(),
+		Name:        tenant.Name(),
+		Table:       r.pluralize(tenant.Name()),
+		KeyColumn:   keyColumn,
+		RecordLower: strings.ToLower(strcase.ToCase(tenant.Name(), strcase.LowerCase, ' ')),
+		Declaration: r.declarationColumns(tenant),
+	}
+	if tenant.HasDeclaration() {
+		data.Directories = tenant.declaration.Directories.Name()
+	}
+	if err := r.writeFormattedGoFile(destinationFilePath, "tenantsTemplate", tenantsTemplate, data); err != nil {
 		return errors.Wrap(err, "writeFormattedGoFile()")
 	}
 	log.Printf("Generated tenants file in %s: %s", time.Since(begin), destinationFilePath)

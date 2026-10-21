@@ -38,7 +38,7 @@ var _ interface {
 // the commit, since the permission store writes memberships outside the row's
 // transaction, and a seat that cannot be written takes the row with it; the answer
 // waits until the permission engine answers the new membership, so the person's next
-// request sees the sector; the roster learns the sector after that and the tenants kind
+// request sees the sector; the roster reloads after that and the tenants kind
 // is signaled, so every instance serves it at once.
 func (a *App) CreateSector() http.HandlerFunc {
 	type request struct {
@@ -107,7 +107,9 @@ func (a *App) CreateSector() http.HandlerFunc {
 
 		// The roster learns the sector once it has its administrator, and every
 		// instance reloads on the tenants kind.
-		a.TenantRoster().Add(domain)
+		if err := a.TenantRoster().Reload(ctx); err != nil {
+			logger.FromCtx(ctx).Errorf("tenants: rereading the roster after the commit failed; this instance reloads on the tenants signal or at its backstop: %v", err)
+		}
 		if err := a.LiveService().Signal(ctx, resource.KindTenants); err != nil {
 			logger.FromCtx(ctx).Errorf("tenants: signaling the tenants kind failed; the other instances reload at their backstop: %v", err)
 		}
