@@ -100,6 +100,11 @@ null.
   permission list is set whole by this layer (`records.tf`), one binding per
   role: `roles/storage.objectCreator` for the environment's deploy
   identities, and `roles/storage.objectViewer` for those deploy identities,
+  the environment's application apply identities (the stack's pr-stack and
+  check triggers run as the apply identity, and the pull request's stack job
+  reads the pull request's newest record before its plan: the stale-database
+  check; a list is a request on the bucket, which a grant under
+  `<app>/stacks/` alone does not admit),
   the environment's application plan identities (the patch preview reads
   the live record), `roles/storage.objectUser` for each application's
   apply identity and the environment's team group under `<app>/stacks/`
@@ -174,13 +179,14 @@ database is (the region's code, or the multi-region configuration's name;
 them, which is the application's file stores
 (`{{.Prefix}}-<env>-<location>-<app>-files-<project number>`, `files-<name>` for a
 named store) and its pull-request stacks' (`{{.Prefix}}-<env>-<location>-<app>-pr<N>-files-<project number>`)
-with their objects, and nothing of another application's buckets or of the
-records bucket; and the organization's `storageBucketCreator` role without
+with their objects, and nothing of another application's buckets, nor of the
+records bucket through that grant (what it holds there is the bucket's
+policy's, below); and the organization's `storageBucketCreator` role without
 condition, since creating a bucket (`storage.buckets.create`) and listing the
 project's buckets (`storage.buckets.list`) are checked on the project, where
 no bucket's name can admit them. Without the condition, any application's
 apply identity, and so its pipeline and its pull-request builds, would read
-and delete every other application's files and every record. `roles/compute.networkUser` on the environment
+and delete every other application's files, and delete every record. `roles/compute.networkUser` on the environment
 project only when `2-net` publishes a shared VPC (it publishes null). In tst,
 on the tst instance: the organization's `spannerDatabaseCreator` role
 (creating a database and listing what the instance holds are checked on the
@@ -210,8 +216,13 @@ sweep), so there it also holds `roles/iam.serviceAccountTokenCreator` on
 every environment's plan identity (granted where that identity lives, from
 tst's `2-env` state), `roles/cloudbuild.readTokenAccessor` on the Cloud Build
 connection and `roles/secretmanager.secretAccessor` on the deployer GitHub
-App's key container in the boot project. In every environment it holds
-`roles/storage.objectUser` under `<app>/stacks/` in the records bucket: the
+App's key container in the boot project. In every environment it holds two
+bindings of the records bucket's policy (`records.tf`):
+`roles/storage.objectViewer` on the bucket, since the stack's pr-stack and
+check triggers run as this identity and the pull request's stack job reads
+the pull request's newest deployment record before its plan (the
+stale-database check; a list is a request on the bucket, so no grant under a
+prefix admits it), and `roles/storage.objectUser` under `<app>/stacks/`: the
 stack writes the object naming its id there (`<app>/stacks/<env>/stack.json`),
 and in tst the stack jobs write their outputs.
 

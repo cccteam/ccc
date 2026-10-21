@@ -11,12 +11,15 @@
 # exactly what this layer names and nothing a project role implies: the
 # environment's deploy identities create and read objects (a record is
 # written once and never rewritten, and versioning keeps the history if one
-# ever is), its application plan identities read them (a pull-request build
-# against a patch line previews each environment's release check from its
-# live record), the next environment's deploy identities read them (the
-# record gate), and the environment's team group reads them (a person on the
-# team reads a record through the group; an owner through the project's basic
-# roles, kept below). The application
+# ever is), its application apply identities read them (the stack's pr-stack
+# and check triggers run as the apply identity, and the pull request's stack
+# job reads the pull request's newest record before its plan: the
+# stale-database check), its application plan identities read them (a
+# pull-request build against a patch line previews each environment's release
+# check from its live record), the next environment's deploy identities read
+# them (the record gate), and the environment's team group reads them (a
+# person on the team reads a record through the group; an owner through the
+# project's basic roles, kept below). The application
 # stacks write what is theirs under <app>/stacks/ as the applications' apply
 # identities (objectUser, under a condition on the prefix): the object naming
 # the stack's id (<app>/stacks/<env>/stack.json, which the pipeline reads
@@ -34,8 +37,9 @@
 # grant added on the bucket by hand is removed by the next apply; a grant
 # added on the project is not. This layer's own identity reaches the bucket
 # through its storage admin, which 1-org bounds to this bucket's name; the
-# applications' apply identities, bounded to their own buckets
-# (identities.tf), reach it under <app>/stacks/ alone.
+# applications' apply identities, whose storage admin is bounded to their own
+# buckets (identities.tf), reach it through this policy alone: a read of the
+# records, and the writes under <app>/stacks/.
 #
 # The name carries a random four-hex suffix because bucket names are global
 # and permanent, as with the state bucket. US multi-region, since nothing
@@ -70,6 +74,14 @@ resource "google_storage_bucket" "records" {
 locals {
   records_deploy_members = [for app in var.applications : google_service_account.deploy[app].member]
   records_plan_members   = [for app in var.applications : google_service_account.plan[app].member]
+  # The apply identities read the records too: the stack's pr-stack and check
+  # triggers run as the application's apply identity, and the pull request's
+  # stack job reads the pull request's newest record before its plan (the
+  # stale-database check: whether the migrations its last build applied are
+  # still in the tree as applied). A list is a request on the bucket, which the
+  # objectUser binding under <app>/stacks/ (below) does not admit, so the read
+  # is a binding of the bucket, as the deploy identities' is.
+  records_apply_members = [for app in var.applications : google_service_account.apply[app].member]
   # The operations identities read the records too: a rollback asked for with
   # no release or backup named takes the live release's predecessor and the live
   # release's pre-release backup from them (operations.tf, the workflow). In
@@ -132,7 +144,7 @@ locals {
   records_bindings = concat(local.records_basic_bindings, [
     for b in [
       { role = "roles/storage.objectCreator", members = local.records_deploy_members, condition = local.records_creator_condition },
-      { role = "roles/storage.objectViewer", members = concat(local.records_deploy_members, local.records_plan_members, local.records_ops_members, local.records_lower_ops_members, local.records_rehearsal_members, values(local.next_deploy_members), [local.team_group]), condition = null },
+      { role = "roles/storage.objectViewer", members = concat(local.records_deploy_members, local.records_apply_members, local.records_plan_members, local.records_ops_members, local.records_lower_ops_members, local.records_rehearsal_members, values(local.next_deploy_members), [local.team_group]), condition = null },
     ] : b if length(b.members) > 0
   ], local.records_stack_bindings)
 }
