@@ -1,0 +1,21 @@
+<div class="refused">
+  <h1>Sector {{ sectorID() }}</h1>
+  @if (answer.hasValue()) {
+    @if (answer.value().served) {
+      <p class="served">
+        The server serves this sector to you now.
+        <a [routerLink]="['/', segment, sectorID(), 'dashboard']">Open it</a>.
+      </p>
+    } @else {
+      <p class="refusal">
+        The server answered: <code>{{ answer.value().message }}</code>
+      </p>
+      <p class="note">
+        A sector you hold no seat in answers like one that does not exist: the concealed-sector guard conceals both
+        alike. Pick a lit star on the chart to open this page there, or ask headquarters for a posting.
+      </p>
+    }
+  } @else if (answer.isLoading()) {
+    <p class="asking">Hailing the sector…</p>
+  }
+</div>

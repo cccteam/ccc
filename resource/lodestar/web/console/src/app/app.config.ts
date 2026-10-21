@@ -39,9 +39,10 @@ export const appConfig: ApplicationConfig = {
     { provide: SESSION_PATH, useValue: 'user/session' },
     { provide: RESOURCE_META, useValue: resourceMeta },
     { provide: METHOD_META, useValue: methodMeta },
-    // The selected sector is the tenant the library's config-driven pages work in: the
-    // Missions page and its pickers ask the sector's digest and bind their requests to
-    // it, exactly as the hand-written decks do through SectorService. The service is
+    // The open sector, the one the URL names, is the tenant the library's config-driven
+    // pages work in: the Missions page and its pickers ask the sector's digest and bind
+    // their requests to it, exactly as the hand-written decks do through SectorService.
+    // The sector guard writes it before the library's own guard asks. The service is
     // resolved when the signal is first read, not when the token is built: the
     // library's AuthService injects the token, and SectorService injects AuthService.
     {
@@ -58,8 +59,9 @@ export const appConfig: ApplicationConfig = {
     // server session before the service moves to the login page, so the sign-out is real
     // and not a stale cookie; a session the server already ended answers 401 there, which
     // is the same outcome. LOGOUT_ACTION, the hook the auth service runs after every
-    // logout, forgets the selected sector and the chart-all bypass, so the next session
-    // starts from its own constellation. Both hooks resolve their service when they run,
+    // logout, forgets the chart-all toggle, so the next session starts from its own
+    // constellation (the sector itself is the URL's, and the login page is outside the
+    // sector segment). Both hooks resolve their service when they run,
     // not when the token is built: AuthService injects LOGOUT_ACTION, and SectorService
     // injects AuthService.
     //
@@ -85,9 +87,7 @@ export const appConfig: ApplicationConfig = {
       useFactory: (): (() => void) => {
         const injector = inject(Injector);
         return (): void => {
-          const sectors = injector.get(SectorService);
-          sectors.select('');
-          sectors.setChartAll(false);
+          injector.get(SectorService).setChartAll(false);
         };
       },
     },

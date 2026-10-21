@@ -7,6 +7,7 @@ import { AuthService } from '@cccteam/resource-angular/auth-service';
 import { RESOURCE_CLIENT } from '@cccteam/resource-angular/resource-client';
 import { provideResourceTesting } from '@cccteam/resource-angular/testing';
 import { ScriptedTransport, scriptedTransport } from '@cccteam/resource/testing';
+import { SectorService } from '@components/sector/sector.service';
 import { environment } from '@env';
 import { firstValueFrom } from 'rxjs';
 import { DashboardComponent } from './dashboard.component';
@@ -54,8 +55,10 @@ describe('DashboardComponent', () => {
     }).compileComponents();
 
     // Signing in loads the session, the global digest, and the domains: what the login page
-    // runs. Selecting the one lit sector loads its digest, as SectorService does on selection.
+    // runs. Entering the one lit sector, as the sector guard does for a page under it, loads
+    // its digest.
     await firstValueFrom(TestBed.inject(AuthService).checkUserSession());
+    TestBed.inject(SectorService).enter('anvil');
     await TestBed.inject<ClientBase>(RESOURCE_CLIENT).permissions.loadDigest('anvil' as Domain);
 
     fixture = TestBed.createComponent(DashboardComponent);

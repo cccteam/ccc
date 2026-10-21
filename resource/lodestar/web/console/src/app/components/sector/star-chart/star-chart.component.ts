@@ -6,12 +6,15 @@ import { SectorService } from '../sector.service';
 
 /**
  * The star chart is the sector picker drawn as a small constellation: lit sectors are
- * the answer from the generated user-domains endpoint, the rest are dark. The "chart
- * every sector" toggle adds the full roster from the permission-checked Sectors
- * resource so you can click a dark one and watch every deck refuse fail-closed: the
- * labelled bypass of the digest-first rule (SectorService.dark). The shift clock beside
- * it says which of the two hangar-deck shifts is on watch now on the fleet's operations
- * clock (America/Denver), and why.
+ * the answer from the generated user-domains endpoint, the rest are dark. Clicking a star
+ * sets no sector: it opens the page the chart is on under that sector's URL
+ * (SectorService.open), and the sector guard settles the sector from the URL, so the
+ * chart on a deck moves the deck between sectors and a link to the result can be shared.
+ * The "chart every sector" toggle adds the full roster from the permission-checked
+ * Sectors resource so you can open a dark one and land on the refusal page, in the words
+ * the concealed-sector guard answers. The shift clock beside it says which of the two
+ * hangar-deck shifts is on watch now on the fleet's operations clock (America/Denver),
+ * and why.
  *
  * Demonstrates: star-chart, tenancy.concealed, tenancy.user-domains, condition.time-of-day.
  */
@@ -45,7 +48,9 @@ export class StarChartComponent {
   // 18:00–06:00 is Night Watch Nadia's — the wall-clock windows on their grants.
   shift = computed(() => {
     const hour = Number(
-      new Intl.DateTimeFormat('en-US', { hour: 'numeric', hour12: false, timeZone: 'America/Denver' }).format(new Date()),
+      new Intl.DateTimeFormat('en-US', { hour: 'numeric', hour12: false, timeZone: 'America/Denver' }).format(
+        new Date(),
+      ),
     );
     const day = hour >= 6 && hour < 18;
     return {

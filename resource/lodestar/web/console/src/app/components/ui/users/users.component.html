@@ -2,13 +2,6 @@
   <section class="users-crew" *cccHasPermission="crewScope">
     <ccc-user-management />
   </section>
-  @if (sectorScope(); as scope) {
-    <section class="users-sector" *cccHasPermission="scope">
-      <ccc-user-management [domain]="sector()" />
-    </section>
-  } @else {
-    <p class="users-note">Select a sector in the header to manage the crew seated there.</p>
-  }
   <section class="users-members" *cccHasPermission="membersScope">
     <ccc-user-management auth="Members" />
   </section>

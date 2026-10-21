@@ -15,8 +15,19 @@ outlet's prefix), the data level's tenant roster keeps the tenants current on ev
 instance (a tenant created through the API is usable at once, without a restart), and
 tenant existence is concealed from logins that hold nothing there. `Announcement` is the first tenant-scoped resource — a login's tenant list
 is where it holds a grant, and a grant needs a tenant-scoped resource to land on, so the
-application ships one. `Reading` is machines-only. The console and the portal each show who
-is signed in, the tenants they can pick, and the digest for the selected tenant.
+application ships one. `Reading` is machines-only. The console and the portal each mirror
+the API's shape: every tenant-scoped page lives under the tenant segment,
+`/tenants/{tenantID}/...` (the generated `DomainRoutePath`), so a link to a tenant's page
+can be shared and a bookmark lands where it points, and the global pages keep their routes.
+The tenant a page works in is a consequence of its URL: the tenant guard on the segment
+(`core/tenant/tenant.guard.ts`) sets the tenant service's `current` from the URL before
+the page loads, checked against the session's tenant list, and nothing else writes it; the
+header's picker opens the same page under the chosen tenant, and a URL naming a tenant the
+session cannot reach lands on the refusal page (`/tenants/{tenantID}/refused`), which shows
+the server's answer. The dashboard lives outside a tenant and under it, and each
+application's Users page is split the same way: the auth's global partition at `/users`,
+the tenant's partition at `/tenants/{tenantID}/users` with the route's tenant as the
+component's domain.
 
 ## Layout
 
