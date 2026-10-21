@@ -1235,18 +1235,22 @@ var _ interface {
 // group holds it to, and must hold a grant in no {{ .RecordLower }}: a person creates one {{ .RecordLower }},
 // and the member or administrator of one is refused (403). The row is written first, in
 // its own transaction, which is the claim on the key (a key already taken answers 409);
-// the person's administrator membership is seated through the {{ .Auth }} auth's seats after
+// this instance's roster rereads its table, so it lists the new {{ .RecordLower }}; the
+// person's administrator membership is seated through the {{ .Auth }} auth's seats after
 // the commit, since the permission store writes memberships outside the row's
 // transaction, and a seat that cannot be written takes the row with it; the answer
-// waits until the permission engine answers the new membership, so the person's next
-// request sees the {{ .RecordLower }}; the roster reloads after that and the tenants kind
-// is signaled, so every instance serves it at once.
+// waits until the permission engine answers the new membership as a foothold the
+// session reaches, so the person's next request stands in the {{ .RecordLower }}; the tenants
+// kind is signaled last, so every instance serves it at once.
 {{- if .Directory }}
 // The {{ .RecordLower }}'s first directory is the one its creator came through: a person who
 // signed in through a directory (Google, Microsoft Entra, WorkOS) has it declared on the
 // new {{ .RecordLower }} in the row's transaction ({{ .Directory.Record }}), so the {{ .RecordLower }} admits
 // them at once, one domain, one directory; a person who signed in by password declares
 // none, and the {{ .RecordLower }} admits passwords as every {{ .RecordLower }} declaring nothing does.
+// The roster must list the {{ .RecordLower }} and its declaration before the seat is probed:
+// the probe asks what the next request asks, and a {{ .RecordLower }} the roster does not know
+// admits nobody who came through a directory.
 {{- end }}
 func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .HandlerFunc }}() http.HandlerFunc {
 	type request struct {
@@ -1287,6 +1291,11 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .HandlerFunc }}() http.Han
 
 		// The row, in its own transaction: the key is the claim.
 		ctx, touched := resource.CollectTouchedRows(ctx)
+		{{- if .Directory }}
+		// The creator's directory, written with the row; nil for a creator who came by
+		// password. Spanner may run the transaction again, so it is set inside it.
+		var directory *{{ .ResourcePackage }}.{{ .Directory.Record }}CreatePatch
+		{{- end }}
 		if err := {{ .ReceiverName }}.ResourceClient().ExecuteFunc(ctx, func(ctx context.Context, txn resource.ReadWriteTransaction) error {
 			patch := {{ .ResourcePackage }}.New{{ .Record }}CreatePatch(req.{{ .Key.Name }})
 			{{- range $field := .Setters }}
@@ -1296,15 +1305,17 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .HandlerFunc }}() http.Han
 				return errors.Wrap(err, "{{ .ResourcePackage }}.{{ .Record }}CreatePatch.Buffer()")
 			}
 			{{- if .Directory }}
+			directory = nil
 			if established, ok := sessioninfo.DataFromCtx(ctx).EstablishedBy(); ok && established.Method.ThroughDirectory() {
-				directory, err := {{ .ResourcePackage }}.New{{ .Directory.Record }}CreatePatch()
+				created, err := {{ .ResourcePackage }}.New{{ .Directory.Record }}CreatePatch()
 				if err != nil {
 					return errors.Wrap(err, "{{ .ResourcePackage }}.New{{ .Directory.Record }}CreatePatch()")
 				}
-				directory.Set{{ .Directory.TenantField }}(req.{{ .Key.Name }}).Set{{ .Directory.MethodField }}(string(established.Method)).Set{{ .Directory.ConnectionField }}(established.Connection)
-				if err := directory.Buffer(ctx, txn, eventSource); err != nil {
+				created.Set{{ .Directory.TenantField }}(req.{{ .Key.Name }}).Set{{ .Directory.MethodField }}(string(established.Method)).Set{{ .Directory.ConnectionField }}(established.Connection)
+				if err := created.Buffer(ctx, txn, eventSource); err != nil {
 					return errors.Wrap(err, "{{ .ResourcePackage }}.{{ .Directory.Record }}CreatePatch.Buffer()")
 				}
+				directory = created
 			}
 			{{- end }}
 
@@ -1314,21 +1325,40 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .HandlerFunc }}() http.Han
 		}
 		live.Publish(ctx, {{ .ReceiverName }}.LiveService(), "", touched)
 
+		// This instance's roster learns the {{ .RecordLower }} before its administrator is seated:
+		// the seat is probed as the person's next request is answered, a foothold in a
+		// {{ .RecordLower }} the roster lists{{ if .Directory }} whose declaration admits the session{{ end }}.
+		if err := {{ .ReceiverName }}.TenantRoster().Reload(ctx); err != nil {
+			logger.FromCtx(ctx).Errorf("tenants: rereading the roster after the commit failed; this instance reloads on the tenants signal or at its backstop: %v", err)
+		}
+
 		// The first administrator, seated after the commit; a seat that cannot be
-		// written takes the row with it.
+		// written takes the row with it{{ if .Directory }}, and the creator's directory{{ end }}.
 		if err := resource.SeatFirstAdministrator(ctx, seats, userPermissions, domain, roles); err != nil {
-			if undo := {{ .ResourcePackage }}.New{{ .Record }}DeletePatch(req.{{ .Key.Name }}).Apply(ctx, {{ .ReceiverName }}.ResourceClient(), eventSource); undo != nil {
+			if undo := {{ .ReceiverName }}.ResourceClient().ExecuteFunc(ctx, func(ctx context.Context, txn resource.ReadWriteTransaction) error {
+				{{- if .Directory }}
+				if directory != nil {
+					if err := {{ .ResourcePackage }}.New{{ .Directory.Record }}DeletePatch({{ .Directory.Keys }}).Buffer(ctx, txn, eventSource); err != nil {
+						return errors.Wrap(err, "{{ .ResourcePackage }}.{{ .Directory.Record }}DeletePatch.Buffer()")
+					}
+				}
+				{{- end }}
+				if err := {{ .ResourcePackage }}.New{{ .Record }}DeletePatch(req.{{ .Key.Name }}).Buffer(ctx, txn, eventSource); err != nil {
+					return errors.Wrap(err, "{{ .ResourcePackage }}.{{ .Record }}DeletePatch.Buffer()")
+				}
+
+				return nil
+			}); undo != nil {
 				logger.FromCtx(ctx).Errorf("{{ .RecordLower }} %s: its administrator could not be seated, and the row could not be removed either: %v", domain, undo)
+			}
+			if err := {{ .ReceiverName }}.TenantRoster().Reload(ctx); err != nil {
+				logger.FromCtx(ctx).Errorf("tenants: rereading the roster after the row was removed failed; this instance reloads on the tenants signal or at its backstop: %v", err)
 			}
 
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
 
-		// The roster learns the {{ .RecordLower }} once it has its administrator, and every
-		// instance reloads on the tenants kind.
-		if err := {{ .ReceiverName }}.TenantRoster().Reload(ctx); err != nil {
-			logger.FromCtx(ctx).Errorf("tenants: rereading the roster after the commit failed; this instance reloads on the tenants signal or at its backstop: %v", err)
-		}
+		// Every instance reloads on the tenants kind.
 		if err := {{ .ReceiverName }}.LiveService().Signal(ctx, resource.KindTenants); err != nil {
 			logger.FromCtx(ctx).Errorf("tenants: signaling the tenants kind failed; the other instances reload at their backstop: %v", err)
 		}

@@ -1802,20 +1802,56 @@ segment's value and are global. The application hand-writes no existence seam; t
 generated contract asks for the roster alone, and the reach is the composed session
 permissions' answer.
 
-**Keeping up.** The record's generated create and delete paths, the standalone PATCH
-handler and the consolidated dispatcher's case for the record, call `Add` and `Remove`
-after the commit, never inside it, so the instance that wrote the tenant serves it at
-once; a key cannot change on update. The same path then signals the tenants kind
-(`resource.KindTenants`) through the live service's `Signal`, the application's one
-signals document, after the commit and before the response, as a feature flip signals
-the features kind; a failure to signal is logged and never fails the request. Every
-instance's roster reloads on the signal: `Start` subscribes to the application's one watch when
-`resource.WithTenantSignals(liveService)` is passed, and never opens a listener of its
-own. Behind the push, a backstop reread (`resource.WithTenantBackstop`, five minutes by
-default) is the correctness guard, so an instance that missed a signal is at most that
-far behind; a failed reread is logged and the set stays as it was until the next. Nothing
-is written to the permission store when a tenant is created: a role held in every tenant
-domain reaches the new tenant with nothing written for it.
+**Keeping up.** The record's generated write paths, the standalone PATCH handler and the
+consolidated dispatcher's case for the record and for its directories (below), call
+`Reload` after the commit, never inside it, so the instance that wrote the tenant, or
+its declaration, serves it at once; a key cannot change on update. The same path then
+signals the tenants kind (`resource.KindTenants`) through the live service's `Signal`,
+the application's one signals document, after the commit and before the response, as a
+feature flip signals the features kind; a failure to reload or to signal is logged and
+never fails the request. Every instance's roster reloads on the signal: `Start`
+subscribes to the application's one watch when `resource.WithTenantSignals(liveService)`
+is passed, and never opens a listener of its own. Behind the push, a backstop reread
+(`resource.WithTenantBackstop`, five minutes by default) is the correctness guard, so an
+instance that missed a signal is at most that far behind; a failed reread is logged and
+the set stays as it was until the next. Nothing is written to the permission store when
+a tenant is created: a role held in every tenant domain reaches the new tenant with
+nothing written for it. `Add` stays for a test harness that seeds a roster without a
+table; the generated paths never call it.
+
+**The declaration.** Who may enter a tenant is data on the tenant record, read in two
+places. The record declares it with two annotations (section 1): `@directoryOnly` on a
+bool column, which says the tenant's people enter through its directories only (a
+password does not reach it), and `@tenantDirectory` on a second, tenant-scoped resource
+whose rows are the directories the tenant admits its people through, one row each, with
+`@directoryMethod` on its sign-in method column (`google`, `azure`, `workos`, as the
+session library spells them) and `@directoryConnection` on the column carrying the
+connection the method's identities record (a Google Workspace by its domain or by the
+name the registration gives it, a Microsoft Entra tenant by its tenant id); the
+directories record binds to the tenant with the bare `@domain` on the row, never through
+a join path, and a second directories record is refused naming the first. Both columns
+are the record's own, edited under its grants, so the people who may change the
+declaration are the ones who hold them; with `TrackChanges` on the two records, every
+edit leaves a change event, and no second audit is needed. The generator then emits, in
+the handler package, `New<Record>DeclarationReader()`, a
+`signin.DeclarationReader[*spanner.ReadWriteTransaction]` that reads one tenant's
+declaration in the sign-in's own transaction: the application hands it to each auth,
+whose `New` sets the library's sign-in rule over it
+(`signin.TenantPolicy(resource.SignInRoles(engine.UserManager()), reader)`; a record
+created by its own people adds `signin.AdmitWithoutTenant()`), and `resource.SignInRoles`
+reads the person's memberships outside the transaction, since the Spanner client refuses
+the engine's read under the transaction's context as a nested transaction. The roster
+keeps the request-time copy: `New<Record>Roster` is built with
+`resource.WithTenantDeclarations` naming the columns, `Reload` reads the keys and the
+declarations in one read, and `Declarations(ctx, domain)` answers from the copy, nil for
+a tenant the roster does not hold, which is what `SessionPermissions` takes as its fifth
+argument (section 6): a tenant is offered to a session only when its declaration admits
+the way the session was established, or the session's actor holds a grant in the global
+partition. A tenant that declares nothing admits its people by password and through no
+directory. A self-service record's create route (`@tenant(creation: ...)`) declares the
+creator's directory on the new tenant in the row's transaction, when the creator came
+through one, reloads the roster before it seats the creator, so the seat's probe asks
+what the next request asks, and removes the directory with the row when the seat fails.
 
 **Tests.** The generated authorization matrix drives domain-scoped routes with the domain
 value `testDomain`, and the application's `newTestHandler` adds it to the test

@@ -217,13 +217,16 @@ type tenantCreationData struct {
 }
 
 // tenantCreationDirectory is the directories record as the create-your-tenant route
-// writes the creator's directory on the new tenant: the record's struct name and the
-// setters of its tenant, method and connection columns.
+// writes the creator's directory on the new tenant: the record's struct name, the
+// setters of its tenant, method and connection columns, and the written row's key as
+// the route's undo reads it off the create patch (`directory.ID()`, every key column of
+// a compound key in order), the arguments of the record's delete patch constructor.
 type tenantCreationDirectory struct {
 	Record          string
 	TenantField     string
 	MethodField     string
 	ConnectionField string
+	Keys            string
 }
 
 func (d *tenantCreationData) typeImports() []fixerImport {
@@ -332,12 +335,17 @@ func tenantCreationDirectoryData(record *resourceInfo) *tenantCreationDirectory 
 		return nil
 	}
 	directories := record.declaration.Directories
+	keys := make([]string, 0, directories.keyCount())
+	for _, key := range directories.PrimaryKeys() {
+		keys = append(keys, "directory."+key.Name()+"()")
+	}
 
 	return &tenantCreationDirectory{
 		Record:          directories.Name(),
 		TenantField:     directories.DomainBinding.Anchor.Name(),
 		MethodField:     directories.DirectoryMethodField.Name(),
 		ConnectionField: directories.DirectoryConnectionField.Name(),
+		Keys:            strings.Join(keys, ", "),
 	}
 }
 
