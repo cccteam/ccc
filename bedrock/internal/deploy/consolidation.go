@@ -109,6 +109,11 @@ func environmentVersion(ctx context.Context, reader Versions, database, role str
 		switch {
 		case isNotFound(err) && live != "":
 			return version, live, nil
+		case isForbidden(err) && live != "":
+			// Spanner answers a database name the caller holds no grant on with 403, a
+			// name no database has included, and the stack grants the identity on every
+			// generation it makes: a denial past a readable generation names no database.
+			return version, live, nil
 		case isNotFound(err):
 			return MigrationVersion{}, "", errors.Wrapf(err, "no database %s", database)
 		case err != nil:

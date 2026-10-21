@@ -94,6 +94,13 @@ func isNotFound(err error) bool {
 	return errors.As(err, &e) && e.status == http.StatusNotFound
 }
 
+// isForbidden reports an error that is the API answering 403.
+func isForbidden(err error) bool {
+	var e *apiError
+
+	return errors.As(err, &e) && e.status == http.StatusForbidden
+}
+
 // RunFunc opens Run.
 type RunFunc func(ctx context.Context) (Run, error)
 
