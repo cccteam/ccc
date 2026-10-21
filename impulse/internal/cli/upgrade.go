@@ -205,6 +205,9 @@ func (u *upgrader) run(ctx context.Context, f *transitionFlags, dryRun bool) err
 	if err != nil {
 		return err
 	}
+	if err := refuseLegacyAuth(a); err != nil {
+		return err
+	}
 	p, err := u.plan(a)
 	if err != nil {
 		return err
@@ -258,6 +261,22 @@ func (u *upgrader) run(ctx context.Context, f *transitionFlags, dryRun bool) err
 		}
 	}
 	fmt.Fprintf(u.out, "%s stands at step %d of %d and pins impulse %s. Review the commits and open the pull request.\n", appLabel(a), len(u.steps), len(u.steps), p.end())
+
+	return nil
+}
+
+// refuseLegacyAuth refuses the walk, before anything moves, for an application whose
+// generator program declares an auth with the single-method session types' identifier
+// (generation.Password and its kin, the types the library keeps under session/legacy):
+// no recipe moves an application off them, so a step would only break its generator
+// program and leave a brief nothing in the rules can satisfy. The sentence says what to
+// do instead.
+func refuseLegacyAuth(a *app.App) error {
+	for _, g := range a.Generators {
+		for _, l := range g.LegacyAuths() {
+			return errors.Newf("%s declares the auth %s with %s (%s), the single-method session types the library keeps under session/legacy: no recipe moves an application off them. Re-create the application from the skeleton (impulse new, then impulse add for its options) and bring its resources over; nothing moved", appLabel(a), l.Package, l.Text, l.Pos)
+		}
+	}
 
 	return nil
 }

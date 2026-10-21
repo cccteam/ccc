@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -34,6 +35,30 @@ const (
 // at the versions given.
 func upgradeGoMod(resource, access, impulse string) string {
 	return "module example.com/acme/beacon\n\ngo 1.26.6\n\nrequire (\n\t" + upgradeResource + " " + resource + "\n\t" + upgradeAccess + " " + access + "\n)\n\nrequire github.com/cccteam/ccc/impulse " + impulse + " // indirect\n\ntool github.com/cccteam/ccc/impulse\n"
+}
+
+// upgradeGenerator is a generator program declaring one auth as given, at line 15.
+func upgradeGenerator(auth string) string {
+	return `package main
+
+import (
+	"context"
+
+	"github.com/cccteam/ccc/resource/generation"
+)
+
+func newGenerator(ctx context.Context) (*generation.ResourceGenerator, error) {
+	return generation.NewResourceGenerator(
+		ctx,
+		"pkg/resources",
+		[]string{"file://schema/migrations"},
+		generation.GenerateRoutes("pkg/router", "api",
+			` + auth + `,
+			generation.WebApp("/"),
+		),
+	)
+}
+`
 }
 
 // markerRecipe moves the marker file from "old" to "new": the old form is the word old.
@@ -332,9 +357,11 @@ func TestUpgrade(t *testing.T) {
 		return "`impulse upgrade` moved " + moved + " and staged the step; then `go generate ./...` failed, so `impulse check` did not run. The generation's last lines are under \"The failing checks\". The generator program, and what it generates from, build against the moved pins, so what they declare may need the form the step brings, described under \"What it means\"."
 	}
 	tests := []struct {
-		name         string
-		goMod        string
-		marker       string
+		name   string
+		goMod  string
+		marker string
+		// files are further files of the application, by path.
+		files        map[string]string
 		steps        []ledger.Step
 		running      check.Build
 		dryRun       bool
@@ -362,6 +389,31 @@ func TestUpgrade(t *testing.T) {
 		wantInBrief string
 		wantErr     string
 	}{
+		{
+			name:    "an application on the single-method session types is refused before anything moves, a dry run too",
+			goMod:   upgradeGoMod("v0.1.0", "v0.1.0", "v0.1.0"),
+			files:   map[string]string{"cmd/generate/resourcegenerator/generator.go": upgradeGenerator(`generation.Auth("example.com/acme/beacon/pkg/auth/members", generation.Password)`)},
+			steps:   upgradeLedger(),
+			running: check.Build{Version: "v0.3.1", FromModule: true},
+			dryRun:  true,
+			wantErr: "beacon declares the auth example.com/acme/beacon/pkg/auth/members with generation.Password (cmd/generate/resourcegenerator/generator.go:15), the single-method session types the library keeps under session/legacy: no recipe moves an application off them. Re-create the application from the skeleton (impulse new, then impulse add for its options) and bring its resources over; nothing moved",
+		},
+		{
+			name:    "an application on the single-method session types is refused with no command run",
+			goMod:   upgradeGoMod("v0.1.0", "v0.1.0", "v0.1.0"),
+			files:   map[string]string{"cmd/generate/resourcegenerator/generator.go": upgradeGenerator(`generation.Auth("example.com/acme/beacon/pkg/auth/members", generation.Password)`)},
+			steps:   upgradeLedger(),
+			running: check.Build{Version: "v0.3.1", FromModule: true},
+			wantErr: "no recipe moves an application off them",
+		},
+		{
+			name:    "an application declaring its methods walks as before",
+			goMod:   upgradeGoMod("v0.3.0", "v0.2.0", "v0.3.0"),
+			files:   map[string]string{"cmd/generate/resourcegenerator/generator.go": upgradeGenerator(`generation.Auth("example.com/acme/beacon/pkg/auth/staff", generation.PasswordMethod())`)},
+			steps:   upgradeLedger(),
+			running: check.Build{Version: "v0.3.0", FromModule: true},
+			wantOut: []string{"beacon stands at step 3 of 3, the ledger's last, and pins impulse v0.3.0, the running impulse: nothing to do."},
+		},
 		{
 			name:    "at the last step and the running impulse: nothing to do",
 			goMod:   upgradeGoMod("v0.3.0", "v0.2.0", "v0.3.0"),
@@ -748,6 +800,7 @@ func TestUpgrade(t *testing.T) {
 			if tt.marker != "" {
 				files[markerFile] = tt.marker
 			}
+			maps.Copy(files, tt.files)
 			for rel, content := range files {
 				if err := os.MkdirAll(filepath.Dir(filepath.Join(root, rel)), 0o750); err != nil {
 					t.Fatal(err)
