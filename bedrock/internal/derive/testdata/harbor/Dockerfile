@@ -23,7 +23,7 @@ ARG COMMIT=unknown
 # declares (go1.27.2, published 2026-10-08), found the way the header says. GOTOOLCHAIN=local
 # makes a go.mod that outruns the image fail the build instead of downloading a toolchain:
 # the fix is a new digest here, never a download.
-FROM cgr.dev/chainguard/go@sha256:2c20827746d752c1f18989847956637a0dc979c42507f4059e1d9559ee7733af AS build-env
+FROM cgr.dev/chainguard/go@sha256:0c664830ca01dbc9fb797ec3b815ac73ba0a3c9faa42dfe5ad55ab7dc48e66a4 AS build-env
 
 ENV CGO_ENABLED=0 \
     GOTOOLCHAIN=local
