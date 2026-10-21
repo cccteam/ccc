@@ -426,17 +426,8 @@ func (t *typescriptGenerator) generateTypescriptMetadata() error {
 func (t *typescriptGenerator) generateResourceMetadata() error {
 	begin := time.Now()
 	log.Println("Starting resource metadata generation...")
-	hasDomainScoped := false
-	for _, res := range t.resources {
-		if res.IsDomainScoped() {
-			hasDomainScoped = true
-		}
-	}
-	for _, res := range t.computedResources {
-		if res.IsDomainScoped() {
-			hasDomainScoped = true
-		}
-	}
+	userResources := t.tsUserResourcesOn()
+	hasDomainScoped := anyDomainScoped(t.resources, t.computedResources, userResources)
 
 	output, err := t.generateTemplateOutput(typescriptResourcesTemplate, typescriptResourcesTemplate, tsResourcesData{
 		File:              t,
@@ -446,10 +437,11 @@ func (t *typescriptGenerator) generateResourceMetadata() error {
 		GenPrefix:         genPrefix,
 		DomainRoutePrefix: fmt.Sprintf("%s/{%s}", t.domainRouteSegment, t.domainRouteParam),
 		DomainRouteParam:  t.domainRouteParam,
+		DomainRoutePath:   domainRoutePath(t.domainRouteSegment, t.domainRouteParam),
 		HasDomainScoped:   hasDomainScoped,
 		Workflows:         t.assembleWorkflows(),
 		FeatureFlags:      t.servesFeatureFlags(),
-		UserResources:     t.tsUserResourcesOn(),
+		UserResources:     userResources,
 	})
 	if err != nil {
 		return errors.Wrap(err, "generateTemplateOutput()")
@@ -463,6 +455,38 @@ func (t *typescriptGenerator) generateResourceMetadata() error {
 	log.Printf("Generated resource metadata in %s: %s\n", time.Since(begin), destinationFilePath)
 
 	return nil
+}
+
+// anyDomainScoped says whether the metadata serves anything under the tenant segment: a
+// table, virtual or computed resource annotated @permissionScope(domain), or a user
+// surface's tenant partition. The domain route exports (DomainRouteParam, DomainRoutePath)
+// are emitted exactly then, as the client's domainRoute is.
+func anyDomainScoped(resources []*resourceInfo, computed []*computedResource, users []*tsUserResource) bool {
+	for _, res := range resources {
+		if res.IsDomainScoped() {
+			return true
+		}
+	}
+	for _, res := range computed {
+		if res.IsDomainScoped() {
+			return true
+		}
+	}
+	for _, res := range users {
+		if res.Scope == accesstypes.DomainPermissionScope {
+			return true
+		}
+	}
+
+	return false
+}
+
+// domainRoutePath is the tenant segment pair as the browser's router matches it
+// ("stations/:stationID"): the route every tenant-scoped page of the console lives
+// under, with the parameter the console's tenant guard reads the tenant from. The
+// API's pair writes the parameter in braces; the router writes it with a colon.
+func domainRoutePath(segment, param string) string {
+	return fmt.Sprintf("%s/:%s", segment, param)
 }
 
 func (t *typescriptGenerator) generateMethodMetadata() error {

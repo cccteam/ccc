@@ -2,11 +2,4 @@
   <section class="users-staff" *cccHasPermission="staffScope">
     <ccc-user-management auth="Staff" />
   </section>
-  @if (tenantScope(); as scope) {
-    <section class="users-tenant" *cccHasPermission="scope">
-      <ccc-user-management auth="Staff" [domain]="tenant()" />
-    </section>
-  } @else {
-    <p class="users-note">Select a tenant in the header to manage the staff seated there.</p>
-  }
 </div>

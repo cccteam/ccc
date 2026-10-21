@@ -1,7 +1,8 @@
 import { MissionDocuments, Missions, Resources } from '@app/service/zz_gen_constants';
+import { DomainRoutePath } from '@app/service/zz_gen_resources';
 import { enumeratedConfig, field, listViewConfig, rootConfig, section } from '@cccteam/resource-angular/types';
 
-// Documents is the config-driven page over the mission documents in the selected sector,
+// Documents is the config-driven page over the mission documents in the open sector,
 // the register the marshal fills through the @upload method and the registrar keeps. It
 // carries the two field shapes a form never types. Digest is the SHA-256 of the stored
 // bytes, a BYTES(32) column: the list's cell shows its size (32 B), never the base64, and
@@ -16,7 +17,7 @@ import { enumeratedConfig, field, listViewConfig, rootConfig, section } from '@c
 // Demonstrates: field.bytes, field.object.
 export const missionDocumentsConfig = rootConfig({
   nav: { navItem: { label: 'Documents (config page)' }, group: 'Sector Ops' },
-  routeData: { route: 'sector/documents' },
+  routeData: { route: `${DomainRoutePath}/documents` },
   parentConfig: listViewConfig({
     title: 'Documents',
     primaryResource: Resources.MissionDocuments,

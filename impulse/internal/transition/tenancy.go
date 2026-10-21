@@ -26,7 +26,7 @@ import (
 // concealed, and emits the constructor of the tenant roster; the data level builds the
 // roster and starts it, and the app exposes it to the generated code. Which resources
 // become tenant-scoped, how existing rows are assigned, the bootstrap order, the tests,
-// and the tenant picker are the agent's.
+// the tenant segment in the browser's routes, and the tenant picker are the agent's.
 type Tenancy struct {
 	// Table is the tenant-record table, PascalCase and plural: Tenants. The domain route
 	// segment is its kebab-case form (tenants), and the resource struct its singular.
@@ -47,6 +47,20 @@ const (
 
 // TenancyReferenceCandidate is the embedded skeleton with tenancy wired.
 const TenancyReferenceCandidate = "tenanted"
+
+// tenantWebFiles are the reference candidate's tenant pieces, laid into the default browser
+// project beside the generated client: the service (the tenant the URL names, the session's
+// tenant list, and the digest scoped to it), the guard on the tenant segment that is the one
+// writer of the tenant, and the refusal page a URL naming a tenant the session cannot reach
+// lands on. The tenant segment in the routes, the header's picker, and the pages under the
+// segment are the agent's.
+var tenantWebFiles = []string{
+	tenantServicePath,
+	"app/core/tenant/tenant.guard.ts",
+	"app/components/ui/tenant-refused/tenant-refused.component.ts",
+	"app/components/ui/tenant-refused/tenant-refused.component.html",
+	"app/components/ui/tenant-refused/tenant-refused.component.scss",
+}
 
 // tenantServicePath is the tenant service inside the reference candidate's console,
 // relative to the project's source root.
@@ -547,8 +561,9 @@ func packageNameOf(a *app.App, dir string) string {
 	return path.Base(dir)
 }
 
-// copyTenantService lays the reference candidate's tenant service into the default
-// browser project, beside the generated client.
+// copyTenantService lays the reference candidate's tenant service, tenant guard and
+// refusal page (tenantWebFiles) into the default browser project, beside the generated
+// client.
 func (tn Tenancy) copyTenantService(a *app.App, g *app.Generator, ch *Change) error {
 	target := defaultTarget(g)
 	if target == nil {
@@ -565,7 +580,7 @@ func (tn Tenancy) copyTenantService(a *app.App, g *app.Generator, ch *Change) er
 	rel := strings.TrimPrefix(strings.TrimPrefix(target.Dir, w.Dir), "/")
 	project, ok := app.ProjectFor(projects, rel)
 	if !ok || project.SourceRoot == "" {
-		ch.skipf("%s/angular.json has no project rooted over %s, so the tenant service was not copied in; a browser app needs a selected tenant to scope its requests and digest by", w.Dir, rel)
+		ch.skipf("%s/angular.json has no project rooted over %s, so the tenant service was not copied in; a browser app needs the tenant the URL names to scope its requests and digest by", w.Dir, rel)
 
 		return nil
 	}
@@ -579,14 +594,16 @@ func (tn Tenancy) copyTenantService(a *app.App, g *app.Generator, ch *Change) er
 	if err != nil {
 		return err
 	}
-	src, err := fs.ReadFile(reference, "web/console/src/"+tenantServicePath)
-	if err != nil {
-		return errors.Wrap(err, "fs.ReadFile()")
+	for _, rel := range tenantWebFiles {
+		src, err := fs.ReadFile(reference, "web/console/src/"+rel)
+		if err != nil {
+			return errors.Wrap(err, "fs.ReadFile()")
+		}
+		if err := writeNew(a, path.Join(w.Dir, project.SourceRoot, rel), string(src)); err != nil {
+			return err
+		}
 	}
-	if err := writeNew(a, dst, string(src)); err != nil {
-		return err
-	}
-	ch.didf("%s: the tenant service (the selected tenant, the session's tenant list, and the digest scoped to it) from the reference; the header's tenant picker and the pages that read it are yours", dst)
+	ch.didf("%s, tenant.guard.ts and components/ui/tenant-refused/: the tenant service (the tenant the URL names, the session's tenant list, and the digest scoped to it), the tenant guard on the tenant segment, and the refusal page from the reference; the tenant segment in the routes, the header's tenant picker, and the pages under the segment are yours", dst)
 
 	return nil
 }
@@ -711,7 +728,7 @@ func (tn Tenancy) Meaning() string {
 		"Tenant-scoped resources. Decide which existing resources belong to a tenant: give each a `TenantId` column referencing the tenant table (a migration, with a data step assigning existing rows to a tenant), annotate the struct `@permissionScope(domain)` and the column `// @domain`, then run `go generate ./...`. If none of the application's resources is tenant-scoped yet, add a first one so the option is observable from the first sign-in; the reference has one. `tenancy-wired` requires at least one.",
 		fmt.Sprintf("The test harnesses. The authorization suite's configurer builds the roster with `New%[1]sRoster` over the test client and adds the generated matrix's domain to it (`Add(\"testDomain\")`; the empty test schema holds no tenant row, and `Start` is not needed), and answers it as `%[2]s()`; the integration harness builds it over the test database with `live.NewFake()` as its signals and starts it once the dev seed is applied beside the schema, gives the member its assignments in its tenant (`DomainPolicyScope`), and waits for the engine's snapshot to show them.", rec, rosterAccessor),
 		"Integration tests: the administrator lists both tenants and reads a tenant's digest; the member lists one and gets not-found in the other and in an unknown tenant; the tenant list is global; a tenant created through the API is readable at once, without a restart.",
-		"The browser app: a tenant picker in the header bound to the tenant service (its tenants, current, and select), and the pages reading permissions through it, so the digest follows the selected tenant.",
+		"The browser app mirrors the API's shape: the tenant segment (`tenants/:tenantID`, the generated `DomainRoutePath`) in the routes with the copied tenant guard on it (`canActivate`, and its leave hook on `canDeactivate`) and the refusal page ahead of it at `tenants/:tenantID/refused`, the dashboard and every tenant-scoped page under the segment, a tenant picker in the header that opens the same page under the chosen tenant (`TenantService.open`), and the pages reading permissions through the service, so the digest follows the tenant the URL names; the guard is the one writer of the tenant, and a URL naming a tenant the session cannot reach lands on the refusal page, in the server's words.",
 	}
 	for i, item := range items {
 		fmt.Fprintf(&b, "%d. %s\n", i+1, item)

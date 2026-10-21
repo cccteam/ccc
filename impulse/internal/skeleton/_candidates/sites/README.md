@@ -9,7 +9,18 @@ portal's declaration has its handlers and routes suppressed), tenant-scoped rout
 under `/api/tenants/{tenantID}/`, the shared data level's tenant roster keeps the tenants
 current on every instance of both sites (a tenant created through the console's API is
 usable at once, without a restart), and tenant existence is concealed from logins that
-hold nothing there.
+hold nothing there. Each site's browser application mirrors the API's shape: every
+tenant-scoped page lives under the tenant segment, `/tenants/{tenantID}/...` (the
+generated `DomainRoutePath`), so a link to a tenant's page can be shared and a bookmark
+lands where it points, and the global pages keep their routes. The tenant a page works in
+is a consequence of its URL: the tenant guard on the segment (`core/tenant/tenant.guard.ts`)
+sets the tenant service's `current` from the URL before the page loads, checked against
+the session's tenant list, and nothing else writes it; the header's picker opens the same
+page under the chosen tenant, and a URL naming a tenant the session cannot reach lands on
+the refusal page (`/tenants/{tenantID}/refused`), which shows the server's answer. The
+dashboard lives outside a tenant and under it; the console's Users page is split the same
+way, the staff surface's global partition at `/users` and the tenant's partition at
+`/tenants/{tenantID}/users` with the route's tenant as the component's domain.
 
 ## Layout
 

@@ -1,9 +1,10 @@
 import { BriefingTemplates, ClientRosters, MissionBoards, Missions, Resources } from '@app/service/zz_gen_constants';
+import { DomainRoutePath } from '@app/service/zz_gen_resources';
 import { enumeratedConfig, field, listViewConfig, rootConfig, section } from '@cccteam/resource-angular/types';
 
-// Missions is the config-driven page in the selected sector: the library's list, form,
-// and pickers over a domain-scoped resource (RESOURCE_DOMAIN is the sector the topbar
-// selects), where the flight deck is the hand-written deck over the same rows. The list
+// Missions is the config-driven page in the open sector: the library's list, form,
+// and pickers over a domain-scoped resource (RESOURCE_DOMAIN is the sector the URL
+// names), where the flight deck is the hand-written deck over the same rows. The list
 // is the MissionBoards view, which carries what Missions lacks: the client's name, the
 // squadron's name, and the days left, computed in the SQL. The view declares its
 // backing table, a create goes into the table, and the new row shows up in the view on
@@ -40,7 +41,7 @@ import { enumeratedConfig, field, listViewConfig, rootConfig, section } from '@c
 // Demonstrates: picker.config-driven, picker.paged, picker.whole, @enumerate.plain-column, @enumerate.key-view, picker.read-disabled, @rowsOf.same-row, list.server-paged, metadata.filterable.
 export const missionsConfig = rootConfig({
   nav: { navItem: { label: 'Missions (config page)' }, group: 'Sector Ops' },
-  routeData: { route: 'sector/missions' },
+  routeData: { route: `${DomainRoutePath}/missions` },
   parentConfig: listViewConfig({
     title: 'Missions',
     createTitle: 'Mission',

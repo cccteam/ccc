@@ -353,6 +353,12 @@ export function resourceMeta(resource: Resource): ResourceMeta {
 
 export const DomainRouteParam = 'sectorID';
 
+/**
+ * The tenant segment as the router matches it: the route every tenant-scoped page lives
+ * under, mirroring the API's, with the parameter the tenant guard reads the tenant from.
+ */
+export const DomainRoutePath = 'sectors/:sectorID';
+
 export const ResourceScopes: Record<Resource, PermissionScope> = {
   [Resources.ClientContacts]: PermissionScopes.global,
   [Resources.ClientRosters]: PermissionScopes.domain,

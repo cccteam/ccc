@@ -593,7 +593,11 @@ type tsResourcesData struct {
 	// interpolate the parameter token.
 	DomainRoutePrefix string
 	DomainRouteParam  string
-	HasDomainScoped   bool
+	// DomainRoutePath is the tenant segment as the browser's router matches it
+	// ("stations/:stationID"): the route a tenant-scoped page lives under, with the
+	// parameter the console's tenant guard reads.
+	DomainRoutePath string
+	HasDomainScoped bool
 	// Workflows carries each stateful root's assembled graph — the same facts
 	// the DOT files draw (minus context references) — so a frontend can render
 	// the workflow itself. Empty for applications without workflows, which then

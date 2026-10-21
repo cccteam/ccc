@@ -251,7 +251,7 @@ func TestTenancyApply(t *testing.T) {
 				"pkg/resources/tenants.go: the Tenant resource struct, global, keyed by slug",
 				"pkg/config/tenancy.go: the tenant roster (startTenants builds it with app.NewTenantRoster and starts it) and TenantRoster() on DataConfiguration; pkg/config/data.go gained the field and the start",
 				"app/tenancy.go: TenancyConfigurer (embedded in Configurer) and App.TenantRoster(); app/app.go gained the field and its assignment",
-				"web/console/src/app/core/tenant/tenant.service.ts: the tenant service (the selected tenant, the session's tenant list, and the digest scoped to it) from the reference; the header's tenant picker and the pages that read it are yours",
+				"web/console/src/app/core/tenant/tenant.service.ts, tenant.guard.ts and components/ui/tenant-refused/: the tenant service (the tenant the URL names, the session's tenant list, and the digest scoped to it), the tenant guard on the tenant segment, and the refusal page from the reference; the tenant segment in the routes, the header's tenant picker, and the pages under the segment are yours",
 				"ran go generate ./..., which emitted the Tenant resource, the tenant segment pair under /tenants/{tenantID}, and the roster constructor NewTenantRoster",
 			},
 			wantSkipped: []string{noSignals, noPermissions},
@@ -264,13 +264,15 @@ func TestTenancyApply(t *testing.T) {
 					t.Errorf("app.go mismatch (-want +got):\n%s", diff)
 				}
 				for rel, want := range map[string]string{
-					"schema/migrations/000003_Tenants.up.sql":           "CREATE TABLE Tenants (",
-					"schema/migrations/000003_Tenants.down.sql":         "DROP TABLE Tenants;",
-					"schema/devseed/000001_dev_tenants.up.sql":          "INSERT INTO Tenants (Id, Name) VALUES ('north', 'North');",
-					"pkg/resources/tenants.go":                          "package resources\n\ntype (\n\t// Tenant is the tenant record (@tenant)",
-					"pkg/config/tenancy.go":                             "package config\n",
-					"app/tenancy.go":                                    "package app\n",
-					"web/console/src/app/core/tenant/tenant.service.ts": "export class TenantService",
+					"schema/migrations/000003_Tenants.up.sql":                                      "CREATE TABLE Tenants (",
+					"schema/migrations/000003_Tenants.down.sql":                                    "DROP TABLE Tenants;",
+					"schema/devseed/000001_dev_tenants.up.sql":                                     "INSERT INTO Tenants (Id, Name) VALUES ('north', 'North');",
+					"pkg/resources/tenants.go":                                                     "package resources\n\ntype (\n\t// Tenant is the tenant record (@tenant)",
+					"pkg/config/tenancy.go":                                                        "package config\n",
+					"app/tenancy.go":                                                               "package app\n",
+					"web/console/src/app/core/tenant/tenant.service.ts":                            "export class TenantService",
+					"web/console/src/app/core/tenant/tenant.guard.ts":                              "export const tenantGuard: CanActivateFn",
+					"web/console/src/app/components/ui/tenant-refused/tenant-refused.component.ts": "export class TenantRefusedComponent",
 				} {
 					if got := read(t, a, rel); !strings.Contains(got, want) {
 						t.Errorf("%s lacks %q:\n%s", rel, want, got)
@@ -304,7 +306,7 @@ func TestTenancyApply(t *testing.T) {
 				"pkg/config/tenancy.go: the tenant roster (startTenants builds it with app.NewTenantRoster and starts it) and TenantRoster() on DataConfiguration; pkg/config/data.go gained the field and the start",
 				"app/tenancy.go: TenancyConfigurer (embedded in Configurer) and App.TenantRoster(); app/app.go gained the field and its assignment",
 				"app/app.go: UserPermissions passes the roster's Domains to resource.SessionPermissions",
-				"web/console/src/app/core/tenant/tenant.service.ts: the tenant service (the selected tenant, the session's tenant list, and the digest scoped to it) from the reference; the header's tenant picker and the pages that read it are yours",
+				"web/console/src/app/core/tenant/tenant.service.ts, tenant.guard.ts and components/ui/tenant-refused/: the tenant service (the tenant the URL names, the session's tenant list, and the digest scoped to it), the tenant guard on the tenant segment, and the refusal page from the reference; the tenant segment in the routes, the header's tenant picker, and the pages under the segment are yours",
 				"ran go generate ./..., which emitted the Tenant resource, the tenant segment pair under /tenants/{tenantID}, and the roster constructor NewTenantRoster",
 			},
 			check: func(t *testing.T, a *app.App) {
@@ -344,7 +346,7 @@ func TestTenancyApply(t *testing.T) {
 				"schema/devseed already exists, so no development tenants were seeded; add two to it",
 				"no file declares a DataConfiguration struct, so the tenant roster was not added to the data level; build it where the database is opened with app.NewTenantRoster(client, resource.WithTenantSignals(<the live service>)), start it (Start) and fail the start on its error, and expose it as TenantRoster()",
 				"no file declares a Configurer interface, so the tenant roster was not exposed on the app; the generated code needs TenantRoster() *resource.TenantRoster on the handlers, answering the roster the data level built",
-				"web/angular.json has no project rooted over console/src/app/core/service, so the tenant service was not copied in; a browser app needs a selected tenant to scope its requests and digest by",
+				"web/angular.json has no project rooted over console/src/app/core/service, so the tenant service was not copied in; a browser app needs the tenant the URL names to scope its requests and digest by",
 			},
 			check: func(t *testing.T, a *app.App) {
 				t.Helper()

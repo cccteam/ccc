@@ -4,11 +4,13 @@
       <button mat-button [matMenuTriggerFor]="groupMenu">{{ item.label }} ▾</button>
       <mat-menu #groupMenu="matMenu">
         @for (child of item.children; track child.label) {
-          <a mat-menu-item *cccHasPermission="scopeFor(child)" [routerLink]="child.route">{{ child.label }}</a>
+          @if (linkFor(child); as link) {
+            <a mat-menu-item *cccHasPermission="scopeFor(child)" [routerLink]="link">{{ child.label }}</a>
+          }
         }
       </mat-menu>
-    } @else {
-      <a mat-button *cccHasPermission="scopeFor(item)" [routerLink]="item.route">{{ item.label }}</a>
+    } @else if (linkFor(item); as link) {
+      <a mat-button *cccHasPermission="scopeFor(item)" [routerLink]="link">{{ item.label }}</a>
     }
   }
 </nav>

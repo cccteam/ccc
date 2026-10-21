@@ -2,10 +2,14 @@
   <a class="brand" [routerLink]="['']">Tenanted</a>
   <app-topbar></app-topbar>
   <div class="session">
-    <!-- The tenant picker: the tenants where the session holds a grant (user-domains). -->
+    <!--
+      The tenant picker: the tenants where the session holds a grant (user-domains). It
+      shows the tenant the page is open in and sets none itself: choosing one opens the
+      same page under that tenant's URL, and the guard on the tenant segment settles it.
+    -->
     <mat-form-field appearance="outline" class="tenant" subscriptSizing="dynamic">
       <mat-label>Tenant</mat-label>
-      <mat-select [value]="tenants.current()" (selectionChange)="tenants.select($event.value)">
+      <mat-select [value]="tenants.current()" (selectionChange)="tenants.open($event.value)">
         @for (tenant of tenants.tenants(); track tenant) {
           <mat-option [value]="tenant">{{ tenant }}</mat-option>
         }

@@ -1,5 +1,5 @@
 import { Resources, SquadronMemberships, SquadronRosters, Squadrons, Wings } from '@app/service/zz_gen_constants';
-import { Squadrons as SquadronRow } from '@app/service/zz_gen_resources';
+import { DomainRoutePath, Squadrons as SquadronRow } from '@app/service/zz_gen_resources';
 import {
   arrayConfig,
   componentConfig,
@@ -12,7 +12,7 @@ import {
 } from '@cccteam/resource-angular/types';
 import { SquadronChannelComponent } from '@components/sector/squadron-channel/squadron-channel.component';
 
-// Squadrons is a config-driven page in the selected sector whose row page carries the
+// Squadrons is a config-driven page in the open sector whose row page carries the
 // squadron's roster: the SquadronRosters view over SquadronMemberships, one row per
 // membership with the pilot's display name from the personnel registry. The view
 // declares its backing table, a create goes into the table, and the new row shows up in
@@ -36,12 +36,16 @@ import { SquadronChannelComponent } from '@components/sector/squadron-channel/sq
 // Demonstrates: @rowsOf.association, list.row-route, config.component, config.array, field.array.
 export const squadronsConfig = rootConfig({
   nav: { navItem: { label: 'Squadrons (config page)' }, group: 'Sector Ops' },
-  routeData: { route: 'sector/squadrons' },
+  routeData: { route: `${DomainRoutePath}/squadrons` },
   parentConfig: listViewConfig({
     title: 'Squadrons',
     createTitle: 'Squadron',
     primaryResource: Resources.Squadrons,
-    listColumns: [{ id: Squadrons.fieldName.name }, { id: Squadrons.fieldName.wingId }, { id: Squadrons.fieldName.callsigns }],
+    listColumns: [
+      { id: Squadrons.fieldName.name },
+      { id: Squadrons.fieldName.wingId },
+      { id: Squadrons.fieldName.callsigns },
+    ],
     elements: [
       section({
         label: 'Squadron',

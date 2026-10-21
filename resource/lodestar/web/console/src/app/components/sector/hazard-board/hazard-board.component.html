@@ -1,9 +1,9 @@
 <h1>Hazard Board</h1>
 <p>
-  The worst reading per ship and subsystem, folded server-side from droid telemetry. The droids post readings over
-  their own API-keyed channel and no login persona can address the readings directly — this computed board is the
-  human window. It goes dark when the analyst's certification lapses. The recent readings behind each worst one
-  ride along as a nested field: one opaque unit the board selects whole and never filters on.
+  The worst reading per ship and subsystem, folded server-side from droid telemetry. The droids post readings over their
+  own API-keyed channel and no login persona can address the readings directly — this computed board is the human
+  window. It goes dark when the analyst's certification lapses. The recent readings behind each worst one ride along as
+  a nested field: one opaque unit the board selects whole and never filters on.
 </p>
 
 <app-star-chart></app-star-chart>
@@ -11,9 +11,8 @@
 @if (sectors.refusalOf(rows); as refusal) {
   <mat-card appearance="outlined" class="table-card refusal-slot">
     <p class="refusal"><b>Refused by the server:</b> {{ refusal }}</p>
-    <p class="empty">The star chart's dark-sector bypass sent this request on purpose; the concealed-sector guard answered.</p>
   </mat-card>
-} @else if (!canList() && !sectors.dark()) {
+} @else if (!canList()) {
   <mat-card appearance="outlined" class="table-card">
     <p class="empty">Your posting in {{ sector() || 'this sector' }} does not cover the hazard board.</p>
   </mat-card>
