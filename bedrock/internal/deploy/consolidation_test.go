@@ -120,6 +120,13 @@ func TestEnvironmentVersion(t *testing.T) {
 			denied:   map[string]bool{base: true},
 			wantErr:  "denied",
 		},
+		{
+			name:     "a denial past a readable generation ends the generations: the readable one is live",
+			versions: map[string]MigrationVersion{base: {Number: 4, Known: true}},
+			denied:   map[string]bool{base + "-2": true},
+			wantLive: base, wantVer: MigrationVersion{Number: 4, Known: true},
+			wantRead: []string{base + " as migrations_reader", base + "-2 as migrations_reader"},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
