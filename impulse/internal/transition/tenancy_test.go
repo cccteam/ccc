@@ -133,7 +133,7 @@ func New(cfg Configurer) *App {
 
 // UserPermissions returns the permission checker for a request.
 func (a *App) UserPermissions(r *http.Request) resource.UserPermissions {
-	return resource.SessionPermissions(r.Context(), a.access.ForUser, a.access.ForRole, nil)
+	return resource.SessionPermissions(r.Context(), a.access.ForUser, a.access.ForRole, nil, nil)
 }
 `
 
@@ -320,7 +320,7 @@ func TestTenancyApply(t *testing.T) {
 					}
 				}
 				application := read(t, a, "app/app.go")
-				for _, want := range []string{"\tTenancyConfigurer\n}", "\ttenants     *resource.TenantRoster\n", "\t\ttenants:     cfg.TenantRoster(),\n", "resource.SessionPermissions(r.Context(), a.access.ForUser, a.access.ForRole, a.tenants.Domains)"} {
+				for _, want := range []string{"\tTenancyConfigurer\n}", "\ttenants     *resource.TenantRoster\n", "\t\ttenants:     cfg.TenantRoster(),\n", "resource.SessionPermissions(r.Context(), a.access.ForUser, a.access.ForRole, a.tenants.Domains, nil)"} {
 					if !strings.Contains(application, want) {
 						t.Errorf("app.go lacks %q:\n%s", want, application)
 					}

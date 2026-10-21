@@ -672,10 +672,12 @@ const defaultApplicationName = "App"
 
 // WithConcealedDomains makes "unauthorized" indistinguishable from "nonexistent" on
 // every surface that names a domain (ABAC design plan §06, the existence oracle): after
-// the tenant roster, the generated DomainGuard and the consolidated dispatcher ask the
-// caller's foothold in the domain (HasGrants) and answer a caller without one exactly
-// as an unknown domain is answered. A caller with any foothold in the domain still
-// receives ordinary 403s for the specific permissions they lack. Off by default: most
+// the tenant roster and the session's reach (UserPermissions.Reaches, which answers a
+// tenant that does not admit the session as an unknown domain in every mode), the
+// generated DomainGuard and the consolidated dispatcher ask the caller's foothold in
+// the domain (HasGrants) and answer a caller without one exactly as an unknown domain
+// is answered. A caller with any foothold in the domain still receives ordinary 403s
+// for the specific permissions they lack. Off by default: most
 // applications' tenant lists are not secret, and the distinct errors are better DX; opt
 // in when tenant existence is itself sensitive (e.g. a client list).
 func WithConcealedDomains() ResourceOption {

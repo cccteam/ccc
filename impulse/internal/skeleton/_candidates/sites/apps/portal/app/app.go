@@ -210,9 +210,11 @@ func (a *App) Assets() http.HandlerFunc {
 // session's principal: the access engine bound to the user for an ordinary or
 // impersonated-user session, bound to the role for a session established as a role,
 // listing the tenants of the application's roster where the principal holds a grant,
-// and attenuated by the session's permission mask.
+// and attenuated by the session's permission mask. A tenant is offered only when the
+// session may enter it, and the tenant's declaration decides; the application keeps
+// no declarations yet (nil), so every tenant admits every session.
 func (a *App) UserPermissions(r *http.Request) resource.UserPermissions {
-	return resource.SessionPermissions(r.Context(), a.access.ForUser, a.access.ForRole, a.tenants.Domains)
+	return resource.SessionPermissions(r.Context(), a.access.ForUser, a.access.ForRole, a.tenants.Domains, nil)
 }
 
 // TenantRoster returns the application's tenant roster, the generated contract's

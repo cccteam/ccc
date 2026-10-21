@@ -67,7 +67,14 @@ templates, this README, and the tool's source.
   from which the generator derives the tenant segment tenant-scoped resources live under
   and emits the constructor of the tenant roster, the tenants as the running application
   knows them, reloaded on the `tenants` signal so a tenant created on any instance is
-  usable at once, without a restart; a role held in every domain reaches every tenant.
+  usable at once, without a restart; a role held in every domain reaches every tenant. A
+  session's tenant list is the roster filtered by where it holds a grant, and a tenant
+  is offered only when the session may enter it: the application's tenant declaration
+  (what the tenant declares about who may enter it, its directories and whether it
+  admits its people through them only) decides against the way the session was
+  established, so the picker never offers a tenant the session cannot enter and a direct
+  request for one is refused as a tenant that does not exist. The skeleton keeps no
+  declarations yet, so every tenant admits every session.
 - **Levels**: the configuration chain in `pkg/config`, one level per kind of process, each
   embedding the one below it: **core** (every process), **data** (every process that opens
   the database), and **site** (one served site: its port and its built bundle). The site

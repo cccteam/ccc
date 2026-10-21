@@ -7,10 +7,10 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/sites/apps/portal/pkg/resources"
-	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/sites/apps/portal/pkg/router"
 	"github.com/cccteam/ccc"
 	"github.com/cccteam/ccc/accesstypes"
+	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/sites/apps/portal/pkg/resources"
+	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/sites/apps/portal/pkg/router"
 	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/ccc/resource/live"
 	"github.com/cccteam/ccc/tracer"
@@ -65,6 +65,11 @@ func (a *App) PatchResources() http.HandlerFunc {
 
 					domain := httpio.Param[accesstypes.Domain](op.Req, router.Domain)
 					if !a.TenantRoster().Has(domain) {
+						return httpio.NewBadRequestMessagef("unknown domain %q in operation path", domain)
+					}
+					if reaches, err := userPermissions.Reaches(ctx, domain); err != nil {
+						return errors.Wrap(err, "resource.UserPermissions.Reaches()")
+					} else if !reaches {
 						return httpio.NewBadRequestMessagef("unknown domain %q in operation path", domain)
 					}
 					if ok, err := userPermissions.HasGrants(ctx, accesstypes.DomainScope(domain)); err != nil {

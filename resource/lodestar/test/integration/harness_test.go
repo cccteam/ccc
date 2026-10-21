@@ -243,6 +243,9 @@ type testConfigurer struct {
 	crewUsers    *resource.UserSurface[router.CrewAuth]
 	membersUsers *resource.UserSurface[router.MembersAuth]
 	tenants      *resource.TenantRoster
+	// declarations scripts what each sector declares about who may enter it; nil, the
+	// served stack's answer, lets every sector admit every session.
+	declarations resource.TenantDeclarations
 	// version is the release the served stack reports as its own (AppVersion); empty
 	// is dev, under which the version check answers every release.
 	version string
@@ -269,6 +272,13 @@ func (c *testConfigurer) TenantRoster() *resource.TenantRoster {
 	}
 
 	return c.tenants
+}
+
+// TenantDeclarations is the reader the suite scripted, or none: a sector then admits
+// every session, as production's DataConfiguration answers while no sector declares
+// anything.
+func (c *testConfigurer) TenantDeclarations() resource.TenantDeclarations {
+	return c.declarations
 }
 
 // Stores are the two memory stores the App is wired over, the default store (the refit
@@ -469,6 +479,13 @@ func deadline(days int) string {
 // on the objects the upload frame writes.
 func newAppWithStores(db *initiator.SpannerDB, controller access.Controller, stores *testStores) *app.App {
 	return newApp(db, controller, stores)
+}
+
+// newAppWithDeclarations builds the App over the real engines with the scripted sector
+// declarations, which production's configuration answers nil for while no sector
+// declares anything; the roster holds the seeded sectors by Add.
+func newAppWithDeclarations(db *initiator.SpannerDB, crewEngine, membersEngine access.Controller, declarations resource.TenantDeclarations) *app.App {
+	return app.New(&testConfigurer{db: db, access: crewEngine, membersAccess: membersEngine, declarations: declarations})
 }
 
 // portalUsers are the identities that reach the application through the portal's session
