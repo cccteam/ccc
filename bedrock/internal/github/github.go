@@ -1,8 +1,9 @@
 // Package github is the small GitHub REST client bedrock needs: the organization's
 // installed apps, a repository's rulesets, its refs, tags, comparisons and directory
 // listings, whether it is empty, its workflows, its pull requests with their comments and deployments, and a
-// GitHub App's installation token. It speaks to one API host with one token and translates the API's
-// refusals into errors that carry the status and the message.
+// GitHub App's installation token. It speaks to one API host with one token, sends a read again
+// when GitHub stalls or answers a gateway error, and translates the API's refusals into errors
+// that carry the status and the message.
 package github
 
 import (
@@ -13,6 +14,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"strings"
@@ -34,6 +36,13 @@ const (
 	// comments a read is sure to hold.
 	perPage       = 100
 	commentWindow = 5
+	// requestTimeout bounds one request, from sending it to the last byte of its answer.
+	requestTimeout = 30 * time.Second
+	// retries is how many times a read that failed before an answer, or that GitHub
+	// answered 502, 503 or 504, is sent again; retryWait is the wait before the first of
+	// them, doubled before each one after.
+	retries   = 2
+	retryWait = 2 * time.Second
 )
 
 // Client speaks to one GitHub API host with one token.
@@ -41,7 +50,12 @@ type Client struct {
 	base  string
 	token string
 	http  *http.Client
+	wait  WaitFunc
 }
+
+// WaitFunc waits for d, or returns the context's error; a test substitutes one that does
+// not wait.
+type WaitFunc func(ctx context.Context, d time.Duration) error
 
 // ClientFunc opens the client: the CLI wires Open, tests a client over a test server.
 type ClientFunc func(ctx context.Context) (*Client, error)
@@ -57,7 +71,19 @@ func New(base, token string) *Client {
 		own = transport.Clone()
 	}
 
-	return &Client{base: strings.TrimRight(base, "/"), token: token, http: &http.Client{Timeout: 30 * time.Second, Transport: own}}
+	return &Client{base: strings.TrimRight(base, "/"), token: token, http: &http.Client{Timeout: requestTimeout, Transport: own}, wait: waitFor}
+}
+
+// waitFor waits for d.
+func waitFor(ctx context.Context, d time.Duration) error {
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return errors.Wrap(ctx.Err(), "waiting")
+	case <-timer.C:
+		return nil
+	}
 }
 
 // Open finds a token and returns a client over the public API: GITHUB_TOKEN when set,
@@ -111,15 +137,40 @@ func NotFound(err error) bool {
 	return false
 }
 
-// do sends one request with the JSON body in (nil for none) and decodes the answer into
-// out (nil to discard it). A status outside 2xx is an *Error.
+// do sends the request with the JSON body in (nil for none) and decodes the answer into
+// out (nil to discard it). A status outside 2xx is an *Error. A read (GET) that fails
+// before an answer (a timeout, a reset connection) or that GitHub answers 502, 503 or 504
+// is sent again, up to retries times after a wait, and the last error is the one
+// returned; a write is sent once, since a repeated write could duplicate what it makes.
 func (c *Client) do(ctx context.Context, method, path string, in, out any) error {
-	var body io.Reader
+	var data []byte
 	if in != nil {
-		data, err := json.Marshal(in)
-		if err != nil {
+		var err error
+		if data, err = json.Marshal(in); err != nil {
 			return errors.Wrap(err, "json.Marshal()")
 		}
+	}
+	attempts := 1
+	if method == http.MethodGet {
+		attempts += retries
+	}
+	wait := retryWait
+	for attempt := 1; ; attempt++ {
+		err := c.send(ctx, method, path, data, in != nil, out)
+		if err == nil || attempt == attempts || !transient(err) {
+			return err
+		}
+		if werr := c.wait(ctx, wait); werr != nil {
+			return errors.Wrapf(werr, "before sending %s %s again after: %s", method, path, err)
+		}
+		wait *= 2
+	}
+}
+
+// send sends one request and decodes its answer.
+func (c *Client) send(ctx context.Context, method, path string, data []byte, hasBody bool, out any) error {
+	var body io.Reader
+	if hasBody {
 		body = bytes.NewReader(data)
 	}
 	req, err := http.NewRequestWithContext(ctx, method, c.base+path, body)
@@ -129,7 +180,7 @@ func (c *Client) do(ctx context.Context, method, path string, in, out any) error
 	req.Header.Set("Authorization", "Bearer "+c.token)
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("X-GitHub-Api-Version", apiVersion)
-	if in != nil {
+	if hasBody {
 		req.Header.Set("Content-Type", "application/json")
 	}
 	resp, err := c.http.Do(req)
@@ -137,20 +188,33 @@ func (c *Client) do(ctx context.Context, method, path string, in, out any) error
 		return errors.Wrap(err, "http.Client.Do()")
 	}
 	defer resp.Body.Close()
-	data, err := io.ReadAll(io.LimitReader(resp.Body, maxBody))
+	answer, err := io.ReadAll(io.LimitReader(resp.Body, maxBody))
 	if err != nil {
 		return errors.Wrap(err, "io.ReadAll()")
 	}
 	if resp.StatusCode < http.StatusOK || resp.StatusCode > 299 {
-		return errors.Wrap(&Error{Status: resp.StatusCode, Message: message(data), Method: method, Path: path}, "github")
+		return errors.Wrap(&Error{Status: resp.StatusCode, Message: message(answer), Method: method, Path: path}, "github")
 	}
-	if out != nil && len(data) > 0 {
-		if err := json.Unmarshal(data, out); err != nil {
+	if out != nil && len(answer) > 0 {
+		if err := json.Unmarshal(answer, out); err != nil {
 			return errors.Wrap(err, "json.Unmarshal()")
 		}
 	}
 
 	return nil
+}
+
+// transient reports whether the error is one a retry may cure: the request failed before
+// an answer (http.Client.Do's error: a timeout, a reset connection), or GitHub answered
+// 502, 503 or 504.
+func transient(err error) bool {
+	var apiErr *Error
+	if errors.As(err, &apiErr) {
+		return apiErr.Status == http.StatusBadGateway || apiErr.Status == http.StatusServiceUnavailable || apiErr.Status == http.StatusGatewayTimeout
+	}
+	var urlErr *url.Error
+
+	return errors.As(err, &urlErr)
 }
 
 // message is the API's message field, or the raw answer when there is none.
