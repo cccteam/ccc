@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.1](https://github.com/cccteam/ccc/compare/impulse/v0.5.0...impulse/v0.5.1) (2026-10-21)
+
+
+### Bug Fixes
+
+* impulse upgrade moves a step's pins in one go get, holds them to the step, and briefs a failed go generate ([#1037](https://github.com/cccteam/ccc/issues/1037)) ([710176e](https://github.com/cccteam/ccc/commit/710176e7cf3cc08f8813a145a5300745bbafba33))
+
 ## [0.5.0](https://github.com/cccteam/ccc/compare/impulse/v0.4.5...impulse/v0.5.0) (2026-10-21)
 
 
