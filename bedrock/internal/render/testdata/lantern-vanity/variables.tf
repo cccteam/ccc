@@ -135,6 +135,28 @@ variable "cloud_armor" {
   }
 }
 
+variable "cloud_armor_sign_in_count" {
+  description = "The sign-in POSTs one client address may make to a sign-in route in cloud_armor_sign_in_interval seconds before Cloud Armor's policy answers its further ones 429 (cloud-armor.tf: each session outlet's password login and its pending sign-in's confirmation and cancel, each counted on its own), in every environment whose policy is on. 30 by default, chosen for a login page: a person types a handful of attempts in a minute and an office behind one address a few dozen at its busiest, so neither meets it, while a password guessed from one address is held to the count. Preview first: the request log names the throttle an address would have met."
+  type        = number
+  default     = 30
+
+  validation {
+    condition     = var.cloud_armor_sign_in_count > 0 && floor(var.cloud_armor_sign_in_count) == var.cloud_armor_sign_in_count
+    error_message = "cloud_armor_sign_in_count is a positive whole number of requests."
+  }
+}
+
+variable "cloud_armor_sign_in_interval" {
+  description = "The seconds cloud_armor_sign_in_count is counted over, after which an address that met it signs in again. 60 by default: a minute holds a guessing script to the count and keeps a person who met it waiting little."
+  type        = number
+  default     = 60
+
+  validation {
+    condition     = var.cloud_armor_sign_in_interval > 0 && floor(var.cloud_armor_sign_in_interval) == var.cloud_armor_sign_in_interval
+    error_message = "cloud_armor_sign_in_interval is a positive whole number of seconds."
+  }
+}
+
 variable "maintenance" {
   description = "Value of the service's APP_MAINTENANCE variable: empty, the application serving. The pipeline passes 1 to the plan it makes while the application is in maintenance (a restore run), the value its maintenance revision carries, so that the apply leaves the service alone; nothing else sets it."
   type        = string

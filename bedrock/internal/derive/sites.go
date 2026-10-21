@@ -39,6 +39,10 @@ type Site struct {
 	// Outlets are the site's router outlets, the default first: the URL spaces its
 	// routes carrying JSON input live under.
 	Outlets []Outlet
+	// SignInRoutes are the site's sign-in routes, the ones under its session outlets
+	// that take a credential by POST (signin.go), in outlet order: each session
+	// outlet's password login and its pending sign-in's completion routes.
+	SignInRoutes []SignInRoute
 	// RouterDir is the root-relative directory of the site's generated router package,
 	// where the release file is; empty when its generator declares none.
 	RouterDir string
@@ -200,6 +204,7 @@ func (m *Model) sites(a *app.App, cfg *config, profile *app.Profile) error {
 		outlets := s.AllOutlets()
 		for i := range outlets {
 			site.Outlets = append(site.Outlets, Outlet{Name: outlets[i].Name, Prefix: outlets[i].Prefix})
+			site.SignInRoutes = append(site.SignInRoutes, signInRoutes(s.Name, &outlets[i])...)
 		}
 		if s.Generator != nil {
 			site.RouterDir = s.Generator.RoutesDir()
@@ -210,6 +215,7 @@ func (m *Model) sites(a *app.App, cfg *config, profile *app.Profile) error {
 	m.Label = m.Sites[0].Label
 	m.RouterDir = m.Sites[0].RouterDir
 	m.Outlets = m.allOutlets()
+	m.SignInRoutes = m.allSignInRoutes()
 	m.Environments = m.allEnvironments()
 	if multi {
 		return m.siteBundles(a)

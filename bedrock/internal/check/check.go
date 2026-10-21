@@ -139,6 +139,11 @@ type Report struct {
 	// "enforce"): removing the entry detaches the policy and destroys it in one apply,
 	// which fails while the policy is attached, so the entry goes to "off" first.
 	CloudArmor []CloudArmorFinding
+	// SignInThreshold are the sign-in throttle's variables in terraform.tfvars
+	// (cloud_armor_sign_in_count, cloud_armor_sign_in_interval) whose value is not a
+	// positive whole number: the policy could not take it, and the stack's own
+	// validation refuses the same at plan.
+	SignInThreshold []SignInThresholdFinding
 	// Latest are the secrets an environment's secret_versions in terraform.tfvars lets
 	// track the newest version (the word latest in place of a version number), in
 	// promotion order and then by name. Information, not drift: pinning is the default and
@@ -182,10 +187,11 @@ type MaintenanceFinding struct {
 // required build secret declared, every job's binary built, an image that starts as the
 // layout's contract says, reserved stages holding their install alone, every declared
 // build argument declared by the Dockerfile, release lines that a feature release opens,
-// a changelog section for every accepted title type, release-please's files in place, and
-// no Cloud Armor policy removed in one step.
+// a changelog section for every accepted title type, release-please's files in place, no
+// Cloud Armor policy removed in one step, and a sign-in throttle threshold the policy
+// can take.
 func (r *Report) Clean() bool {
-	return len(r.Findings) == 0 && len(r.Authoritative) == 0 && len(r.Migrations) == 0 && len(r.BuildSecrets) == 0 && len(r.Generated) == 0 && len(r.Binaries) == 0 && len(r.Bundles) == 0 && r.startClean() && r.siteBundlesClean() && len(r.Stages) == 0 && len(r.BuildArguments) == 0 && len(r.ReleaseLines) == 0 && len(r.ReleaseSections) == 0 && len(r.ReleaseFiles) == 0 && len(r.CloudArmor) == 0 && len(r.Retired) == 0
+	return len(r.Findings) == 0 && len(r.Authoritative) == 0 && len(r.Migrations) == 0 && len(r.BuildSecrets) == 0 && len(r.Generated) == 0 && len(r.Binaries) == 0 && len(r.Bundles) == 0 && r.startClean() && r.siteBundlesClean() && len(r.Stages) == 0 && len(r.BuildArguments) == 0 && len(r.ReleaseLines) == 0 && len(r.ReleaseSections) == 0 && len(r.ReleaseFiles) == 0 && len(r.CloudArmor) == 0 && len(r.SignInThreshold) == 0 && len(r.Retired) == 0
 }
 
 // startClean reports an image whose start follows the layout's contract, or none read.
@@ -271,14 +277,19 @@ func Run(ctx context.Context, m *derive.Model, dir, appDir string) (*Report, err
 }
 
 // scanPlacement reads the stack's terraform.tfvars for a Cloud Armor policy the tree
-// removes in one step (against the default branch's copy) and for the secrets that track
-// latest.
+// removes in one step (against the default branch's copy), for a sign-in throttle
+// threshold the policy could not take, and for the secrets that track latest.
 func (r *Report) scanPlacement(ctx context.Context, m *derive.Model, dir string) error {
 	armor, err := scanCloudArmor(ctx, dir, m.Placement.DefaultBranch)
 	if err != nil {
 		return err
 	}
 	r.CloudArmor = armor
+	threshold, err := scanSignInThreshold(dir)
+	if err != nil {
+		return err
+	}
+	r.SignInThreshold = threshold
 	latest, err := scanLatest(dir, m.Placement.Environments)
 	if err != nil {
 		return err
@@ -615,6 +626,9 @@ func (r *Report) Write(w io.Writer) {
 	}
 	for _, ca := range r.CloudArmor {
 		fmt.Fprintf(w, "  refused  cloud_armor in terraform.tfvars removes %s in one step: at %s the environment is %q, and removing the entry detaches the policy from the backend services and destroys it in one apply, which fails while the policy is attached; set it to \"off\" first (the policy kept, detached), merge and apply, then remove the entry\n", ca.Environment, ca.Ref, ca.Mode)
+	}
+	for i := range r.SignInThreshold {
+		fmt.Fprintf(w, "  refused  %s\n", r.SignInThreshold[i].Problem())
 	}
 	for _, path := range r.ReleaseFiles {
 		fmt.Fprintf(w, "  refused  %s is missing at the application root: the release workflow reads it, and without it no release is cut and nothing reaches an environment; bedrock render seeds it when absent\n", path)

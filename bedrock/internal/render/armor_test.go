@@ -10,8 +10,8 @@ import (
 	"github.com/cccteam/ccc/bedrock/internal/derive"
 )
 
-// TestBypassExpression matches a route under its method, or under any.
-func TestBypassExpression(t *testing.T) {
+// TestRouteExpression matches a route under its method, or under any.
+func TestRouteExpression(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -27,8 +27,8 @@ func TestBypassExpression(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			if got := bypassExpression(tt.method, tt.path); got != tt.want {
-				t.Errorf("bypassExpression() = %q, want %q", got, tt.want)
+			if got := routeExpression(tt.method, tt.path); got != tt.want {
+				t.Errorf("routeExpression() = %q, want %q", got, tt.want)
 			}
 		})
 	}
@@ -63,16 +63,19 @@ func TestHclQuote(t *testing.T) {
 
 // TestArmorView builds the policy's rules in order from a model: the leading sets on
 // every path, the router's file routes and then the placement's bypasses allowed, the
-// trailing sets scoped to the outlets' prefixes with their exclusions, each naming its
-// source; a site with no outlet prefix scopes nothing; and a placement writing nothing is
-// the defaults.
+// trailing sets scoped to the outlets' prefixes with their exclusions, the sign-in
+// routes throttled by client address after them, each naming its source; a site with no
+// outlet prefix scopes nothing; a model with no sign-in route throttles nothing; and a
+// placement writing nothing is the defaults.
 func TestArmorView(t *testing.T) {
 	t.Parallel()
 
 	type rule struct {
 		Priority   int
 		Action     string
+		Verb       string
 		Deny       bool
+		Throttle   bool
 		Text       string
 		Expression string
 		Exclusions int
@@ -80,7 +83,7 @@ func TestArmorView(t *testing.T) {
 	summarize := func(v *armorView) []rule {
 		rules := make([]rule, 0, len(v.Rules))
 		for _, r := range v.Rules {
-			rules = append(rules, rule{Priority: r.Priority, Action: r.Action, Deny: r.Deny, Text: r.Text, Expression: r.Expression, Exclusions: len(r.Exclusions)})
+			rules = append(rules, rule{Priority: r.Priority, Action: r.Action, Verb: r.Verb, Deny: r.Deny, Throttle: r.Throttle, Text: r.Text, Expression: r.Expression, Exclusions: len(r.Exclusions)})
 		}
 
 		return rules
@@ -93,6 +96,7 @@ func TestArmorView(t *testing.T) {
 		wantDefault bool
 		wantRules   []rule
 		wantExcl    []string
+		wantSignIn  string
 	}{
 		{
 			name: "nothing written: the defaults on one outlet",
@@ -105,11 +109,11 @@ func TestArmorView(t *testing.T) {
 			wantProse:   "/api",
 			wantDefault: true,
 			wantRules: []rule{
-				{Priority: 1000, Action: "deny(403)", Deny: true, Text: "scanner detection (scannerdetection-v33-stable, sensitivity 1) on every path; bedrock's default rule sets", Expression: `"evaluatePreconfiguredWaf('scannerdetection-v33-stable', {'sensitivity': 1})"`},
-				{Priority: 3000, Action: "deny(403)", Deny: true, Text: "SQL injection (sqli-v33-stable, sensitivity 1) on /api; bedrock's default rule sets", Expression: `"request.path.startsWith('/api/') && evaluatePreconfiguredWaf('sqli-v33-stable', {'sensitivity': 1})"`},
-				{Priority: 3010, Action: "deny(403)", Deny: true, Text: "SQL injection in JSON bodies (json-sqli-canary, sensitivity 1) on /api; bedrock's default rule sets", Expression: `"request.path.startsWith('/api/') && evaluatePreconfiguredWaf('json-sqli-canary', {'sensitivity': 1})"`},
-				{Priority: 3020, Action: "deny(403)", Deny: true, Text: "cross-site scripting (xss-v33-stable, sensitivity 1) on /api; bedrock's default rule sets", Expression: `"request.path.startsWith('/api/') && evaluatePreconfiguredWaf('xss-v33-stable', {'sensitivity': 1})"`},
-				{Priority: 3030, Action: "deny(403)", Deny: true, Text: "protocol attacks (protocolattack-v33-stable, sensitivity 1) on /api; bedrock's default rule sets", Expression: `"request.path.startsWith('/api/') && evaluatePreconfiguredWaf('protocolattack-v33-stable', {'sensitivity': 1})"`},
+				{Priority: 1000, Action: "deny(403)", Verb: "deny", Deny: true, Text: "scanner detection (scannerdetection-v33-stable, sensitivity 1) on every path; bedrock's default rule sets", Expression: `"evaluatePreconfiguredWaf('scannerdetection-v33-stable', {'sensitivity': 1})"`},
+				{Priority: 3000, Action: "deny(403)", Verb: "deny", Deny: true, Text: "SQL injection (sqli-v33-stable, sensitivity 1) on /api; bedrock's default rule sets", Expression: `"request.path.startsWith('/api/') && evaluatePreconfiguredWaf('sqli-v33-stable', {'sensitivity': 1})"`},
+				{Priority: 3010, Action: "deny(403)", Verb: "deny", Deny: true, Text: "SQL injection in JSON bodies (json-sqli-canary, sensitivity 1) on /api; bedrock's default rule sets", Expression: `"request.path.startsWith('/api/') && evaluatePreconfiguredWaf('json-sqli-canary', {'sensitivity': 1})"`},
+				{Priority: 3020, Action: "deny(403)", Verb: "deny", Deny: true, Text: "cross-site scripting (xss-v33-stable, sensitivity 1) on /api; bedrock's default rule sets", Expression: `"request.path.startsWith('/api/') && evaluatePreconfiguredWaf('xss-v33-stable', {'sensitivity': 1})"`},
+				{Priority: 3030, Action: "deny(403)", Verb: "deny", Deny: true, Text: "protocol attacks (protocolattack-v33-stable, sensitivity 1) on /api; bedrock's default rule sets", Expression: `"request.path.startsWith('/api/') && evaluatePreconfiguredWaf('protocolattack-v33-stable', {'sensitivity': 1})"`},
 			},
 		},
 		{
@@ -129,17 +133,26 @@ func TestArmorView(t *testing.T) {
 					{Kind: derive.FileRouteUpload, Method: http.MethodPost, Path: "/api/attach-manifest", Source: "AttachManifest"},
 					{Kind: derive.FileRouteStored, Method: http.MethodGet, Path: "/portal/api/manifests/{id}/file", Source: "Manifest.Key"},
 				},
+				SignInRoutes: []derive.SignInRoute{
+					{Outlet: "default", Method: http.MethodPost, Path: "/api/user/password/login", Kind: derive.SignInPassword},
+					{Outlet: "default", Method: http.MethodPost, Path: "/api/user/pending/confirm", Kind: derive.SignInConfirm},
+					{Outlet: "portal", Method: http.MethodPost, Path: "/portal/api/user/pending/cancel", Kind: derive.SignInCancel},
+				},
 			},
 			wantScope: "(request.path.startsWith('/api/') || request.path.startsWith('/droids/') || request.path.startsWith('/portal/api/'))",
 			wantProse: "/api, /droids, and /portal/api",
 			wantRules: []rule{
-				{Priority: 1000, Action: "deny(403)", Deny: true, Text: "scanner detection (scannerdetection-v33-stable, sensitivity 1) on every path; placement.json cloudArmor.ruleSets", Expression: `"evaluatePreconfiguredWaf('scannerdetection-v33-stable', {'sensitivity': 1})"`},
-				{Priority: 2000, Action: "allow", Text: "POST /api/attach-manifest; the @upload method AttachManifest, pkg/router/zz_gen_release.json; its body is a file, not JSON", Expression: `"request.method == 'POST' && request.path.matches('^/api/attach-manifest$')"`},
-				{Priority: 2001, Action: "allow", Text: "GET /portal/api/manifests/{id}/file; the @file column Manifest.Key, pkg/router/zz_gen_release.json; its answer is the stored object", Expression: `"request.method == 'GET' && request.path.matches('^/portal/api/manifests/[^/]+/file$')"`},
-				{Priority: 2002, Action: "allow", Text: "POST /hooks/registry; placement.json cloudArmor.bypasses; signed by the registry", Expression: `"request.method == 'POST' && request.path.matches('^/hooks/registry$')"`},
-				{Priority: 2003, Action: "allow", Text: "/streams/*; placement.json cloudArmor.bypasses; bytes", Expression: `"request.path.matches('^/streams/.*$')"`},
-				{Priority: 3000, Action: "deny(403)", Deny: true, Text: "cross-site scripting (xss-v33-stable, sensitivity 2) on /api, /droids, and /portal/api; placement.json cloudArmor.ruleSets", Expression: `"(request.path.startsWith('/api/') || request.path.startsWith('/droids/') || request.path.startsWith('/portal/api/')) && evaluatePreconfiguredWaf('xss-v33-stable', {'sensitivity': 2})"`, Exclusions: 2},
+				{Priority: 1000, Action: "deny(403)", Verb: "deny", Deny: true, Text: "scanner detection (scannerdetection-v33-stable, sensitivity 1) on every path; placement.json cloudArmor.ruleSets", Expression: `"evaluatePreconfiguredWaf('scannerdetection-v33-stable', {'sensitivity': 1})"`},
+				{Priority: 2000, Action: "allow", Verb: "allow", Text: "POST /api/attach-manifest; the @upload method AttachManifest, pkg/router/zz_gen_release.json; its body is a file, not JSON", Expression: `"request.method == 'POST' && request.path.matches('^/api/attach-manifest$')"`},
+				{Priority: 2001, Action: "allow", Verb: "allow", Text: "GET /portal/api/manifests/{id}/file; the @file column Manifest.Key, pkg/router/zz_gen_release.json; its answer is the stored object", Expression: `"request.method == 'GET' && request.path.matches('^/portal/api/manifests/[^/]+/file$')"`},
+				{Priority: 2002, Action: "allow", Verb: "allow", Text: "POST /hooks/registry; placement.json cloudArmor.bypasses; signed by the registry", Expression: `"request.method == 'POST' && request.path.matches('^/hooks/registry$')"`},
+				{Priority: 2003, Action: "allow", Verb: "allow", Text: "/streams/*; placement.json cloudArmor.bypasses; bytes", Expression: `"request.path.matches('^/streams/.*$')"`},
+				{Priority: 3000, Action: "deny(403)", Verb: "deny", Deny: true, Text: "cross-site scripting (xss-v33-stable, sensitivity 2) on /api, /droids, and /portal/api; placement.json cloudArmor.ruleSets", Expression: `"(request.path.startsWith('/api/') || request.path.startsWith('/droids/') || request.path.startsWith('/portal/api/')) && evaluatePreconfiguredWaf('xss-v33-stable', {'sensitivity': 2})"`, Exclusions: 2},
+				{Priority: 4000, Action: "throttle", Verb: "throttle", Throttle: true, Text: "POST /api/user/password/login, throttled by client address; the default outlet's password login, the generated router; past cloud_armor_sign_in_count POSTs in cloud_armor_sign_in_interval seconds (terraform.tfvars) an address answers 429 until the interval passes", Expression: `"request.method == 'POST' && request.path.matches('^/api/user/password/login$')"`},
+				{Priority: 4001, Action: "throttle", Verb: "throttle", Throttle: true, Text: "POST /api/user/pending/confirm, throttled by client address; the default outlet's pending sign-in confirmation, the generated router; past cloud_armor_sign_in_count POSTs in cloud_armor_sign_in_interval seconds (terraform.tfvars) an address answers 429 until the interval passes", Expression: `"request.method == 'POST' && request.path.matches('^/api/user/pending/confirm$')"`},
+				{Priority: 4002, Action: "throttle", Verb: "throttle", Throttle: true, Text: "POST /portal/api/user/pending/cancel, throttled by client address; the portal outlet's pending sign-in cancel, the generated router; past cloud_armor_sign_in_count POSTs in cloud_armor_sign_in_interval seconds (terraform.tfvars) an address answers 429 until the interval passes", Expression: `"request.method == 'POST' && request.path.matches('^/portal/api/user/pending/cancel$')"`},
 			},
+			wantSignIn: "`POST /api/user/password/login`, `POST /api/user/pending/confirm`, and `POST /portal/api/user/pending/cancel`",
 			wantExcl: []string{
 				"xss-v33-stable request_cookie EQUALS \"harbor_session\" [] the cookie `harbor_session` under every rule of the set",
 				"xss-v33-stable request_query_param EQUALS_ANY  [\"owasp-crs-v030301-id941100-xss\", \"owasp-crs-v030301-id941110-xss\"] every query parameter under `owasp-crs-v030301-id941100-xss` and `owasp-crs-v030301-id941110-xss`",
@@ -152,7 +165,7 @@ func TestArmorView(t *testing.T) {
 				Outlets:   []derive.Outlet{{Name: "default"}},
 			},
 			wantRules: []rule{
-				{Priority: 3000, Action: "deny(403)", Deny: true, Text: "SQL injection (sqli-v33-stable, sensitivity 1) on every path; placement.json cloudArmor.ruleSets", Expression: `"evaluatePreconfiguredWaf('sqli-v33-stable', {'sensitivity': 1})"`},
+				{Priority: 3000, Action: "deny(403)", Verb: "deny", Deny: true, Text: "SQL injection (sqli-v33-stable, sensitivity 1) on every path; placement.json cloudArmor.ruleSets", Expression: `"evaluatePreconfiguredWaf('sqli-v33-stable', {'sensitivity': 1})"`},
 			},
 		},
 	}
@@ -169,6 +182,12 @@ func TestArmorView(t *testing.T) {
 			}
 			if v.DefaultPriority != 2147483647 {
 				t.Errorf("DefaultPriority = %d", v.DefaultPriority)
+			}
+			if v.Throttled != (tt.wantSignIn != "") || v.SignInProse != tt.wantSignIn {
+				t.Errorf("Throttled = %v, SignInProse = %q; want %v, %q", v.Throttled, v.SignInProse, tt.wantSignIn != "", tt.wantSignIn)
+			}
+			if v.SignInCount != "30" || v.SignInInterval != "60" {
+				t.Errorf("SignInCount, SignInInterval = %q, %q; want the defaults 30, 60", v.SignInCount, v.SignInInterval)
 			}
 			if diff := cmp.Diff(tt.wantRules, summarize(v)); diff != "" {
 				t.Errorf("Rules mismatch (-want +got):\n%s", diff)

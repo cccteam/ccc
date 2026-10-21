@@ -41,10 +41,15 @@ build_secrets = {
 
 # Cloud Armor per environment (README, "Cloud Armor"): "preview" evaluates the
 # policy and logs what each rule would have done, "enforce" applies it. Off for
-# an environment left out. Preview first, read the logs, then enforce.
+# an environment left out. Preview first, read the logs, then enforce. The
+# policy throttles the sign-in routes by client address, at the
+# cloud_armor_sign_in_count and cloud_armor_sign_in_interval restated below;
+# write either here to change it.
 cloud_armor = {
 }
 
 # Defaults that are decisions, restated so they are visible here:
-#   hostnames         = lantrn-console-tst. / lantrn-console-stg. / lantrn-console.impulseframework.dev
-#   placeholder_image = us-docker.pkg.dev/cloudrun/container/hello
+#   hostnames                    = lantrn-console-tst. / lantrn-console-stg. / lantrn-console.impulseframework.dev
+#   placeholder_image            = us-docker.pkg.dev/cloudrun/container/hello
+#   cloud_armor_sign_in_count    = 30
+#   cloud_armor_sign_in_interval = 60

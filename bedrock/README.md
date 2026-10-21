@@ -304,9 +304,30 @@ and what its absence means:
   each a route whose body is a file or a third party's rather than the application's
   JSON, allowed so that no rule below reads it, the generated router's upload and
   stored-file routes (the release file's `fileRoutes`) and the placement's; then the
-  other rule sets, each scoped to the outlets' routes; and every other request allowed.
-  Each rule's description names its source. From the organization's `cloudArmor`, when it
-  sets one. Absent, or for a field it leaves out, the default:
+  other rule sets, each scoped to the outlets' routes; then the sign-in throttles; and
+  every other request allowed. Each rule's description names its source.
+
+  The sign-in routes are throttled by client address: one rule per route of the
+  generated router that takes a credential by POST, each session outlet's password login
+  (`/<prefix>/user/password/login`, where the outlet's auth registers the password
+  method) and its pending sign-in's confirmation and cancel
+  (`/<prefix>/user/pending/confirm`, `/cancel`), read from the outlets' `Auth`
+  declarations as the directory callbacks are; a directory method's login and callback
+  are not throttled, since the directory holds the credential. An address past
+  `cloud_armor_sign_in_count` POSTs to one of them in `cloud_armor_sign_in_interval`
+  seconds (the stack's `terraform.tfvars`; 30 in 60 by default, chosen for a login page:
+  a person types a handful of attempts in a minute and an office behind one address a
+  few dozen at its busiest, so neither meets it, while a password guessed from one
+  address is held to the count) is answered 429 on that route until the interval passes.
+  The throttles run after the rule sets, so a sign-in POST is still read by them, and
+  follow the environment's mode: preview logs the throttle an address would have met
+  (`jsonPayload.previewSecurityPolicy`), which says whether the default fits the
+  application's addresses before the environment is enforced; off leaves the policy
+  detached. `bedrock check` refuses a count or an interval that is not a positive whole
+  number, naming the variable, and the stack's own validation refuses the same at plan.
+
+  The policy is from the organization's `cloudArmor`, when it sets one. Absent, or for a
+  field it leaves out, the default:
   - `ruleSets`: the preconfigured rule sets the policy evaluates, in order, each a `name`
     Cloud Armor gives the set (`sqli-v33-stable`, `xss-v33-stable`, `lfi-v33-stable`,
     `rfi-v33-stable`, `rce-v33-stable`, `methodenforcement-v33-stable`,
@@ -585,6 +606,12 @@ It also refuses:
   (the policy kept, detached), merge and apply, then remove the entry. Outside a git
   working tree, or without the default branch to read (the check trigger's checkout holds
   the pull request's commit alone), nothing is compared.
+- a sign-in throttle threshold the Cloud Armor policy could not take:
+  `cloud_armor_sign_in_count` or `cloud_armor_sign_in_interval` in `terraform.tfvars`
+  that is not a positive whole number (zero, negative, a fraction, or not a number),
+  naming the variable and the value as written. A variable left out takes the stack's
+  default. The stack's own validation refuses the same at plan; the check refuses it where
+  the pull request is.
 - an authoritative IAM resource (`*_iam_binding`, `*_iam_policy`) anywhere in the stack:
   such a resource replaces every member of its role on each apply, so a pull-request stack
   applying one would remove the environment's members. A `*_iam_member` adds one member.
