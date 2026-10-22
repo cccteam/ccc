@@ -240,7 +240,7 @@ jobs:
       - name: golangci-lint
         uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
-          version: v2.12.2
+          version: v2.14.0
           args: --timeout 5m
 
   # golangci-lint with skipAuth.
@@ -258,7 +258,7 @@ jobs:
       - name: golangci-lint (skipAuth)
         uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
-          version: v2.12.2
+          version: v2.14.0
           args: --timeout 5m --build-tags skipAuth
 
   # govulncheck over the module, without tags and with skipAuth; it reads vuln.go.dev when the job runs. It restores go-build's Go caches, which hold what its compile shares with the build, and saves nothing.

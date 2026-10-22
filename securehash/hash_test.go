@@ -117,7 +117,7 @@ func TestHash_UnmarshalText(t *testing.T) {
 				t.Errorf("Hash.UnmarshalText() error = %v, wantErr %v", err, tt.wantErr)
 			}
 
-			if diff := (cmp.Diff(tt.want.underlying, h.underlying, cmp.AllowUnexported(argon2Key{}, Argon2Options{}, bcryptHash{}, BcryptOptions{}))); diff != "" {
+			if diff := cmp.Diff(tt.want.underlying, h.underlying, cmp.AllowUnexported(argon2Key{}, Argon2Options{}, bcryptHash{}, BcryptOptions{})); diff != "" {
 				t.Errorf("UnmarshalText() mismatch (-want +got): underlying object does not match\n%s", diff)
 			}
 		})
@@ -233,7 +233,7 @@ func TestHash_DecodeSpanner(t *testing.T) {
 				t.Errorf("Hash.DecodeSpanner() error = %v, wantErr %v", err, tt.wantErr)
 			}
 
-			if diff := (cmp.Diff(tt.want.underlying, h.underlying, cmp.AllowUnexported(argon2Key{}, Argon2Options{}, bcryptHash{}, BcryptOptions{}))); diff != "" {
+			if diff := cmp.Diff(tt.want.underlying, h.underlying, cmp.AllowUnexported(argon2Key{}, Argon2Options{}, bcryptHash{}, BcryptOptions{})); diff != "" {
 				t.Errorf("DecodeSpanner() mismatch (-want +got): underlying object does not match\n%s", diff)
 			}
 		})
@@ -363,7 +363,7 @@ func TestHash_Scan(t *testing.T) {
 			}
 
 			if !tt.wantErr {
-				if diff := (cmp.Diff(tt.want.underlying, h.underlying, cmp.AllowUnexported(argon2Key{}, Argon2Options{}, bcryptHash{}, BcryptOptions{}))); diff != "" {
+				if diff := cmp.Diff(tt.want.underlying, h.underlying, cmp.AllowUnexported(argon2Key{}, Argon2Options{}, bcryptHash{}, BcryptOptions{})); diff != "" {
 					t.Errorf("Scan() mismatch (-want +got): underlying object does not match\n%s", diff)
 				}
 			}

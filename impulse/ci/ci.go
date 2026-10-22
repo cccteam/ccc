@@ -77,7 +77,7 @@ const ScanIssueTitle = "Security scan: a vulnerability check or an image scan fa
 // template, so a bump is one edit and an impulse release.
 const (
 	// GolangciLint is the golangci-lint release the skeleton's .golangci.yml is written for.
-	GolangciLint = "v2.12.2"
+	GolangciLint = "v2.14.0"
 	// Bun is the Bun that wrote the skeleton's bun.lock, so CI installs with the same one.
 	Bun = "1.4.0"
 	// Govulncheck is the govulncheck release run over the module.

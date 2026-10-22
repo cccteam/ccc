@@ -1,6 +1,6 @@
 module github.com/cccteam/ccc/bedrock
 
-go 1.26.10
+go 1.27.3
 
 require (
 	cloud.google.com/go/domains v0.17.0

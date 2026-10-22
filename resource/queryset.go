@@ -587,7 +587,7 @@ func (q *QuerySet[Resource]) orderColumn(dbType DBType, rendered *renderedReadCo
 	var quoted string
 	switch dbType {
 	case SpannerDBType:
-		quoted = fmt.Sprintf("`%s`", dbField.ColumnName)
+		quoted = fmt.Sprintf("%#q", dbField.ColumnName)
 	case PostgresDBType:
 		quoted = fmt.Sprintf(`"%s"`, dbField.ColumnName)
 	default:

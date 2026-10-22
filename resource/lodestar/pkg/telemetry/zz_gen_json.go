@@ -3,15 +3,18 @@
 
 package telemetry
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"encoding/json/jsontext"
+)
 
-// MarshalJSON writes Frame as json.RawMessage, the type it is declared over,
+// MarshalJSON writes Frame as jsontext.Value, the type it is declared over,
 // writes itself.
 func (v Frame) MarshalJSON() ([]byte, error) {
-	return json.Marshal(json.RawMessage(v))
+	return json.Marshal(jsontext.Value(v))
 }
 
-// UnmarshalJSON reads Frame as json.RawMessage reads itself.
+// UnmarshalJSON reads Frame as jsontext.Value reads itself.
 func (v *Frame) UnmarshalJSON(b []byte) error {
-	return json.Unmarshal(b, (*json.RawMessage)(v))
+	return json.Unmarshal(b, (*jsontext.Value)(v))
 }
