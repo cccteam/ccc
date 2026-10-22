@@ -395,7 +395,12 @@ registrations with the run's Google credentials (gcloud auth application-default
 roles/domains.viewer on the network project); without any, or when Cloud Domains cannot be
 reached, it says so, and it never fails the check. While zoneReplacement is set in the
 placement (2-net's zones rendered without prevent_destroy, for making a zone again), it says
-so and what is left to do, also without failing the check. It then lists each person (a user: member) holding
+so and what is left to do, also without failing the check. While the placement declares
+more databases on the shared Spanner instance than it holds (the registered applications,
+one each in every environment on the shared instance, against ten for every hundred
+processing units 2-spn declares), it says so, without failing the check: an application
+bedrock destroy took down still stands in the placement, and the check gates every plan
+and apply; bedrock org register refuses the registration that would exceed it. It then lists each person (a user: member) holding
 roles/owner on an environment project the placement records: the grant a project's creator
 receives, which the first apply of 1-org by hand leaves the bootstrap administrator with on
 every project it creates, temporary by design and removed by hand once the apply trigger
@@ -422,6 +427,7 @@ and never fails the check either.`,
 			}
 			registrationReport(cmd.Context(), d, p, dir, cmd.OutOrStdout())
 			fmt.Fprint(cmd.OutOrStdout(), zoneReplacementNotice(p))
+			fmt.Fprint(cmd.OutOrStdout(), capacityNotice(p, dir))
 			for _, f := range r.Findings {
 				switch {
 				case f.Reason != "":
@@ -451,6 +457,24 @@ and never fails the check either.`,
 	cmd.Flags().StringVar(&placement, "placement", "", "placement file (default: placement.json in the repository root)")
 
 	return cmd
+}
+
+// capacityNotice says, while the placement declares more databases on the shared Spanner
+// instance than it holds (org.SharedCapacity), what is declared and what the instance
+// holds; nothing while it fits, and the reading's error when a seeded values file does
+// not parse. It is information: an application bedrock destroy took down still stands in
+// the placement and counts, and the check gates every plan and apply, so the check does
+// not fail on it; bedrock org register refuses the registration that would exceed it.
+func capacityNotice(p *org.Placement, dir string) string {
+	c, err := p.SharedCapacity(dir)
+	if err != nil {
+		return "Spanner capacity not counted: " + err.Error() + "\n"
+	}
+	if !c.Exceeded() {
+		return ""
+	}
+
+	return "Spanner capacity: " + c.Problem() + "\n"
 }
 
 // zoneReplacementNotice says, while zoneReplacement is set in the placement, that 2-net's
@@ -633,7 +657,13 @@ Cloud Build GitHub App's browser authorization comes before the first applicatio
 refuses while placement.json leaves cloudBuildInstallationId or cloudBuildTokenSecretVersion
 unset (0-bootstrap/README.md, "The Cloud Build GitHub authorization"), since the
 applications' triggers exist once 2-env holds the connection and nothing is built by hand
-before them. A refusal changes nothing.`,
+before them. It also refuses a registration past the shared Spanner instance: the
+registered applications, one database each in every environment on the shared instance
+(2-env/terraform.tfvars, spanner_instances; stg and prd by default), counted against the
+databases the instance holds at its size (2-spn/terraform.tfvars, processing_units; ten
+for every hundred below a node, Google's rule), with the sentence naming the setting that
+grows it and bedrock destroy of an application no longer needed, which frees its
+databases. A refusal changes nothing.`,
 		Args: cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			app := args[0]
@@ -685,6 +715,13 @@ func (d deps) registerFirst(ctx context.Context, out io.Writer, p *org.Placement
 	}
 	if unset := p.ConnectionUnset(); len(unset) > 0 {
 		return errors.Newf("placement.json leaves %s unset: the Cloud Build GitHub App's browser authorization in the boot project comes before the first application (0-bootstrap/README.md, \"The Cloud Build GitHub authorization\"); record both and register again", strings.Join(unset, " and "))
+	}
+	capacity, err := p.SharedCapacity(dir)
+	if err != nil {
+		return err
+	}
+	if capacity.Exceeded() {
+		return errors.Newf("register %s: %s", app, capacity.Problem())
 	}
 	first, err := d.firstPlacement(ctx, p, app, repository)
 	if err != nil {

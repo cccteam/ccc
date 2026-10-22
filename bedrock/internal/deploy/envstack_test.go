@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"net/http"
 	"os"
 	"path"
 	"path/filepath"
@@ -1225,6 +1226,12 @@ type fakeSpanner struct {
 	restored string
 	created  []string
 	refuse   string
+	// databases are the instance's, by resource name, and units its processing units,
+	// for the capacity guard; an instance never asked about answers none. denied answers
+	// both reads with 403, an identity without the instance's reader role.
+	databases []string
+	units     int
+	denied    bool
 	// creating is how many reads of the backup (listed, or by name) answer CREATING before
 	// READY; pending how many starts Spanner refuses first because it is taking another
 	// backup.
@@ -1290,6 +1297,22 @@ func (f *fakeSpanner) Database(_ context.Context, name string) (*Database, error
 	}
 
 	return f.database, nil
+}
+
+func (f *fakeSpanner) Databases(_ context.Context, instance string) ([]string, error) {
+	if f.denied {
+		return nil, &apiError{service: serviceSpanner, status: http.StatusForbidden, method: http.MethodGet, path: "/v1/" + instance + "/databases", message: "Caller is missing IAM permission spanner.databases.list on resource " + instance}
+	}
+
+	return f.databases, nil
+}
+
+func (f *fakeSpanner) ProcessingUnits(_ context.Context, instance string) (int, error) {
+	if f.denied {
+		return 0, &apiError{service: serviceSpanner, status: http.StatusForbidden, method: http.MethodGet, path: "/v1/" + instance, message: "Caller is missing IAM permission spanner.instances.get on resource " + instance}
+	}
+
+	return f.units, nil
 }
 
 func (f *fakeSpanner) Backup(_ context.Context, name string) (*Backup, error) {

@@ -62,7 +62,11 @@ const (
 	DatabaseReadyOptimizing = "READY_OPTIMIZING"
 )
 
-// Spanner drops and restores databases and lists backups: the v1 API, or a fake in tests.
+// unitsPerNode is a Spanner node in processing units.
+const unitsPerNode = 1000
+
+// Spanner drops and restores databases, lists backups and counts an instance's databases:
+// the v1 API, or a fake in tests.
 type Spanner interface {
 	// LatestBackup is the most recently created backup of the database
 	// (projects/<p>/instances/<i>/databases/<d>) on its instance, READY or still CREATING
@@ -85,6 +89,11 @@ type Spanner interface {
 	// its state and, for one a restore made, the backup it was restored from; nil when
 	// there is none.
 	Database(ctx context.Context, name string) (*Database, error)
+	// Databases names the databases on the instance (projects/<p>/instances/<i>), each by
+	// its resource name, for the count against what the instance holds.
+	Databases(ctx context.Context, instance string) ([]string, error)
+	// ProcessingUnits is the instance's compute capacity, a thousand to a node.
+	ProcessingUnits(ctx context.Context, instance string) (int, error)
 }
 
 // SpannerAsFunc opens Spanner as an impersonated identity: the apply identity, which holds
@@ -167,6 +176,37 @@ func (s *spanner) Backup(ctx context.Context, name string) (*Backup, error) {
 	}
 
 	return &Backup{Name: text(b, keyName), VersionTime: text(b, "versionTime"), CreateTime: text(b, "createTime"), Database: text(b, keyDatabase), State: text(b, "state"), ExpireTime: text(b, "expireTime")}, nil
+}
+
+func (s *spanner) Databases(ctx context.Context, instance string) ([]string, error) {
+	items, err := s.list(ctx, "/v1/"+instance+"/databases", "databases")
+	if err != nil {
+		return nil, err
+	}
+	names := make([]string, 0, len(items))
+	for _, item := range items {
+		if name, _ := item["name"].(string); name != "" {
+			names = append(names, name)
+		}
+	}
+
+	return names, nil
+}
+
+// ProcessingUnits reads the instance; an instance described by its node count alone
+// (one the API answers without processingUnits) is a thousand a node.
+func (s *spanner) ProcessingUnits(ctx context.Context, instance string) (int, error) {
+	i, err := s.call(ctx, http.MethodGet, "/v1/"+instance, nil)
+	if err != nil {
+		return 0, err
+	}
+	units, _ := i["processingUnits"].(float64)
+	if units == 0 {
+		nodes, _ := i["nodeCount"].(float64)
+		units = nodes * unitsPerNode
+	}
+
+	return int(units), nil
 }
 
 func (s *spanner) Database(ctx context.Context, name string) (*Database, error) {

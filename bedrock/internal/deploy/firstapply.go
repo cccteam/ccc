@@ -61,6 +61,9 @@ func FirstApply(ctx context.Context, clients *Clients, w Workspace, req *BuildRe
 	if err := s.initEnvironment(ctx, app, env, identity); err != nil {
 		return err
 	}
+	if err := guardCapacity(ctx, clients, identity, p, app, env, out); err != nil {
+		return err
+	}
 	pins, err := generatedPins(ctx, clients, identity, m, app, env, identityProject(identity), false, out)
 	if err != nil {
 		return err
