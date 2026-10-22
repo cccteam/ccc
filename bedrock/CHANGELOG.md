@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.7](https://github.com/cccteam/ccc/compare/bedrock/v0.3.6...bedrock/v0.3.7) (2026-10-22)
+
+
+### Bug Fixes
+
+* a pull request's services carry its name, and the plan guard passes a creation named only at the apply ([#1051](https://github.com/cccteam/ccc/issues/1051)) ([18b20ca](https://github.com/cccteam/ccc/commit/18b20ca883ce9953ed10ed9569f480d0869256a3))
+
 ## [0.3.6](https://github.com/cccteam/ccc/compare/bedrock/v0.3.5...bedrock/v0.3.6) (2026-10-22)
 
 
