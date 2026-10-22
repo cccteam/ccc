@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.5.2](https://github.com/cccteam/ccc/compare/impulse/v0.5.1...impulse/v0.5.2) (2026-10-22)
+
+
+### Bug Fixes
+
+* add tenancy orders the tenant record by name, the footer names the application, add method writes the dev callback ([#1045](https://github.com/cccteam/ccc/issues/1045)) ([e8ce838](https://github.com/cccteam/ccc/commit/e8ce8386b0ddec6bb927da8d1faf60aed9579b6d))
+* impulse upgrade refuses an application on the single-method session types up front, with the re-create sentence ([#1043](https://github.com/cccteam/ccc/issues/1043)) ([986ba91](https://github.com/cccteam/ccc/commit/986ba910ff1d8fd148ce02b3f8b6bf679733f38a))
+* the auth package names and creates its sign-in attempts table, and the session-tables check requires it ([#1046](https://github.com/cccteam/ccc/issues/1046)) ([845efaa](https://github.com/cccteam/ccc/commit/845efaa1e7b45149aac39b60452dad24ffc462ef))
+
 ## [0.5.1](https://github.com/cccteam/ccc/compare/impulse/v0.5.0...impulse/v0.5.1) (2026-10-21)
 
 
