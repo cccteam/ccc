@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.8](https://github.com/cccteam/ccc/compare/bedrock/v0.3.7...bedrock/v0.3.8) (2026-10-22)
+
+
+### Bug Fixes
+
+* a pull request's stack plan and apply wait for the state lock instead of failing when another build holds it ([#1054](https://github.com/cccteam/ccc/issues/1054)) ([60a3264](https://github.com/cccteam/ccc/commit/60a3264c52fd2136fb381f6420c5fdd4b0e86593))
+* the pull-request stack's stored outputs carry the migrate command's secrets, so the preview build's migrations run ([#1053](https://github.com/cccteam/ccc/issues/1053)) ([f4a0db1](https://github.com/cccteam/ccc/commit/f4a0db1c81f21256b704669171f47c90733c16d1))
+
 ## [0.3.7](https://github.com/cccteam/ccc/compare/bedrock/v0.3.6...bedrock/v0.3.7) (2026-10-22)
 
 
