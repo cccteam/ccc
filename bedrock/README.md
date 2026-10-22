@@ -919,7 +919,7 @@ thing one step hands the next. In order:
   are no longer in the tree as applied, read from the pull request's newest deployment
   record as the apply identity, which `2-env` binds to the records bucket as a viewer for
   this read). What the stack now says (the services, the job,
-  the hostname, the migrate command's settings, the build arguments the placement
+  the hostname, the migrate command's settings and secrets, the build arguments the placement
   declares, the database mode) goes to the records bucket as
   `<app>/stacks/<env>/pr<N>/<commit>.json`, which the preview build reads; a destroy and
   a failure, with its reason, are written the same way. With `--if-exists` (the check

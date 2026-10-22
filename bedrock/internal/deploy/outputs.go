@@ -67,13 +67,15 @@ type StackOutputs struct {
 	Timestamp string `json:"timestamp"`
 	// What the applied stack says, as the deploy steps read it: the services
 	// (region=service per region), the job process's template job, the hostname, the
-	// migrate command's settings and databases, and the build arguments the placement
+	// migrate command's settings, secrets (their pinned versions, never values) and
+	// databases, and the build arguments the placement
 	// declares, by the argument's name.
 	Services         string            `json:"services,omitempty"`
 	JobsJob          string            `json:"jobsJob,omitempty"`
 	Hostname         string            `json:"hostname,omitempty"`
 	Hostnames        string            `json:"hostnames,omitempty"`
 	MigrateEnv       string            `json:"migrateEnv,omitempty"`
+	MigrateSecrets   string            `json:"migrateSecrets,omitempty"`
 	MigrateDatabases string            `json:"migrateDatabases,omitempty"`
 	BuildArguments   map[string]string `json:"buildArguments,omitempty"`
 	// SharedDatabase says the stack has no database of its own (/gcbrun shared-db);
@@ -100,7 +102,7 @@ func newStackOutputs(build *Build) *StackOutputs {
 func (o *StackOutputs) applied(f *Facts, facts map[string]string) {
 	o.Status = StackApplied
 	o.Services, o.JobsJob, o.Hostname, o.Hostnames = facts[services], facts[jobsJobFact], facts[prHostnameFact], facts[prHostnamesFact]
-	o.MigrateEnv, o.MigrateDatabases = facts[migrateEnvFact], facts[migrateDatabasesFact]
+	o.MigrateEnv, o.MigrateSecrets, o.MigrateDatabases = facts[migrateEnvFact], facts[migrateSecretsFact], facts[migrateDatabasesFact]
 	for _, name := range stackArgumentNames(facts) {
 		if o.BuildArguments == nil {
 			o.BuildArguments = map[string]string{}
@@ -116,14 +118,14 @@ func (o *StackOutputs) fail(err error) {
 }
 
 // facts are what the preview build's steps read of an applied stack, by the facts'
-// names: the services, the hostname, the job, the migrate command's settings, the
-// database mode and the build arguments as their substitutions.
+// names: the services, the hostname, the job, the migrate command's settings, secrets
+// and databases, the database mode and the build arguments as their substitutions.
 func (o *StackOutputs) facts() map[string]string {
 	facts := map[string]string{
 		services: o.Services, prHostnameFact: o.Hostname,
 		sharedDBFact: flag(o.SharedDatabase), reloadDBFact: flag(o.DatabaseRecreated != ""), reloadReasonFact: o.DatabaseRecreated,
 	}
-	for fact, value := range map[string]string{jobsJobFact: o.JobsJob, prHostnamesFact: o.Hostnames, migrateEnvFact: o.MigrateEnv, migrateDatabasesFact: o.MigrateDatabases} {
+	for fact, value := range map[string]string{jobsJobFact: o.JobsJob, prHostnamesFact: o.Hostnames, migrateEnvFact: o.MigrateEnv, migrateSecretsFact: o.MigrateSecrets, migrateDatabasesFact: o.MigrateDatabases} {
 		if value != "" {
 			facts[fact] = value
 		}
@@ -201,7 +203,7 @@ func ReadStackOutputs(ctx context.Context, clients *Clients, w Workspace, out io
 	if o.JobsJob != "" {
 		fmt.Fprintf(out, " %s=%s", jobsJobFact, o.JobsJob)
 	}
-	fmt.Fprintf(out, " %s=%s, and the migrate command's settings (%s); the site runs against %s.\n", prHostnameFact, o.Hostname, migrateEnvFact, databaseMode(facts, subs[envSub]))
+	fmt.Fprintf(out, " %s=%s, and the migrate command's settings and secrets (%s, %s); the site runs against %s.\n", prHostnameFact, o.Hostname, migrateEnvFact, migrateSecretsFact, databaseMode(facts, subs[envSub]))
 	if names := slices.Sorted(maps.Keys(o.BuildArguments)); len(names) > 0 {
 		fmt.Fprintf(out, "The image build passes the pull request's own build arguments: %s.\n", strings.Join(names, ", "))
 	}

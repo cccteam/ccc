@@ -454,7 +454,7 @@ func (s *stack) apply(ctx context.Context, build *Build, env map[string]string) 
 	if facts[jobsJobFact] != "" {
 		fmt.Fprintf(s.out, " %s=%s", jobsJobFact, facts[jobsJobFact])
 	}
-	fmt.Fprintf(s.out, " %s=%s, and the migrate command's settings (%s).\n", prHostnameFact, facts[prHostnameFact], migrateEnvFact)
+	fmt.Fprintf(s.out, " %s=%s, and the migrate command's settings and secrets (%s, %s).\n", prHostnameFact, facts[prHostnameFact], migrateEnvFact, migrateSecretsFact)
 	if names := stackArgumentNames(facts); len(names) > 0 {
 		fmt.Fprintf(s.out, "The image build passes the pull request's own build arguments: %s.\n", strings.Join(names, ", "))
 	}
