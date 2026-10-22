@@ -15,6 +15,14 @@ const (
 	decimalDecimalType     = "github.com/shopspring/decimal.Decimal"
 	decimalNullDecimalType = "github.com/shopspring/decimal.NullDecimal"
 	jsonRawMessageType     = "encoding/json.RawMessage"
+	// jsontextValueType is what json.RawMessage is from Go 1.27 on: an alias of
+	// encoding/json/jsontext.Value, which aliases read through resolve to. A type is
+	// the JSON value type under either name (isJSONValueType).
+	jsontextValueType = "encoding/json/jsontext.Value"
+	// The two as a type is spelled by package name (typeStringer, reflect): the keys the
+	// built-in TypeScript table holds for the JSON value type.
+	jsonRawMessageName = "json.RawMessage"
+	jsontextValueName  = "jsontext.Value"
 )
 
 // valueKindOf classifies a source field's Go type the way the resource package
@@ -51,7 +59,7 @@ func scalarValueKind(t types.Type) resource.ValueKind {
 			return resource.ValueKindString
 		case decimalDecimalType, decimalNullDecimalType, spannerNullNumericType:
 			return resource.ValueKindDecimal
-		case jsonRawMessageType:
+		case jsonRawMessageType, jsontextValueType:
 			return resource.ValueKindOther
 		}
 	}
@@ -75,6 +83,16 @@ func isByte(t types.Type) bool {
 	b, ok := types.Unalias(t).Underlying().(*types.Basic)
 
 	return ok && b.Kind() == types.Uint8
+}
+
+// isJSONValueType reports whether the named type is the JSON value type under either of
+// its names: encoding/json.RawMessage before Go 1.27, and encoding/json/jsontext.Value,
+// which json.RawMessage is an alias of from Go 1.27 on and which aliases read through
+// resolve to.
+func isJSONValueType(named *types.Named) bool {
+	name := qualifiedTypeName(named)
+
+	return name == jsonRawMessageType || name == jsontextValueType
 }
 
 // qualifiedTypeName is a named type's import path and name, "pkg/path.Name".

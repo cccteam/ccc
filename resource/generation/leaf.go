@@ -109,11 +109,13 @@ const validField = "Valid"
 // writes the type on JSON columns (the open request it cites).
 const rawMessageColumnRefusal = "the Spanner client stores json.RawMessage as BYTES, so a JSON column cannot be read or written through it (googleapis/google-cloud-go#10720); type the column spanner.NullJSON, or declare a type over json.RawMessage with @typescript(...), whose JSON and Spanner methods the generator writes"
 
-// isRawMessage reports whether t, aliases read through, is encoding/json's RawMessage.
+// isRawMessage reports whether t, aliases read through, is encoding/json's RawMessage:
+// the named type before Go 1.27, and jsontext.Value, which it is an alias of from Go
+// 1.27 on (isJSONValueType).
 func isRawMessage(t types.Type) bool {
 	named, ok := types.Unalias(t).(*types.Named)
 
-	return ok && qualifiedTypeName(named) == jsonRawMessageType
+	return ok && isJSONValueType(named)
 }
 
 // refuseRawMessageColumn refuses json.RawMessage on a table or view column, one pointer
@@ -254,29 +256,38 @@ func newLeafResolver(declFor func(*types.Named) (*tsImport, error), rhsFor func(
 // (jsonmethods.go), making it that type's JSON on the wire. Nil for every other type,
 // and for a declaration the reader cannot see.
 func (r *leafResolver) jsonRHS(named *types.Named) (*types.Named, error) {
+	_, over, err := r.jsonRHSType(named)
+
+	return over, err
+}
+
+// jsonRHSType is jsonRHS with the right-hand side as declared too, an alias kept as the
+// source spelled it (json.RawMessage, an alias of jsontext.Value from Go 1.27 on), for
+// what is written after it: the generated pair's declaration and its imports.
+func (r *leafResolver) jsonRHSType(named *types.Named) (rhs types.Type, over *types.Named, err error) {
 	if r.rhsFor == nil {
-		return nil, nil
+		return nil, nil, nil
 	}
-	rhs, err := r.rhsFor(named)
+	rhs, err = r.rhsFor(named)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if rhs == nil {
-		return nil, nil
+		return nil, nil, nil
 	}
 	over, ok := types.Unalias(rhs).(*types.Named)
 	if !ok {
-		return nil, nil
+		return nil, nil, nil
 	}
 	writes, err := r.writesJSON(over)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if !writes {
-		return nil, nil
+		return nil, nil, nil
 	}
 
-	return over, nil
+	return rhs, over, nil
 }
 
 // writesJSON reports whether the type's JSON form is its own, so its fields say nothing
@@ -336,7 +347,7 @@ func (r *leafResolver) refusePointerToSlice(t types.Type, columnType string, cla
 		msg = fmt.Sprintf("%s (type **%s cannot be used for decoding %s)", msg, reflectSpelling(elem), spannerDecodeSpelling(columnType))
 	}
 
-	return &ownFixRefusal{msg: fmt.Sprintf("%s; type the column with the plain slice %s, which reads NULL as nil", msg, typeStringer(elem))}
+	return &ownFixRefusal{msg: fmt.Sprintf("%s; type the column with the plain slice %s, which reads NULL as nil", msg, typeStringer(p.Elem()))}
 }
 
 // resolve resolves t, with no pointer around it and no slice but a byte slice, to a
@@ -467,8 +478,12 @@ type columnClass struct {
 // caller adds the field's path and the fix.
 func (r *leafResolver) classifyColumn(t types.Type) (columnClass, error) {
 	var class columnClass
+	// declared is the type as the source spelled it (any, json.RawMessage), one pointer
+	// read through, for the refusal; t reads aliases through for the classification.
+	declared := t
 	t = types.Unalias(t)
 	if p, ok := t.(*types.Pointer); ok {
+		declared = p.Elem()
 		t = types.Unalias(p.Elem())
 		if _, ok := t.(*types.Pointer); ok {
 			return columnClass{}, errors.New("a pointer to a pointer has no TypeScript type")
@@ -509,20 +524,23 @@ func (r *leafResolver) classifyColumn(t types.Type) (columnClass, error) {
 	elem, isSlice := sliceElem(t)
 	if isSlice {
 		class.Slice = true
+		declared = elem
 		t = types.Unalias(elem)
 		if p, ok := t.(*types.Pointer); ok {
+			declared = p.Elem()
 			t = types.Unalias(p.Elem())
 		}
 	}
 
-	return r.classifyColumnElement(t, class, isSlice)
+	return r.classifyColumnElement(t, declared, class, isSlice)
 }
 
 // classifyColumnElement reads the type left once classifyColumn stripped the pointer and
 // the slice: the element as a whole first, as the field's type was (a declared type over
 // a slice is what it declares, and a named type writing its own JSON is refused before
-// its shape is read), a struct for derivation, then the leaf.
-func (r *leafResolver) classifyColumnElement(t types.Type, class columnClass, isSlice bool) (columnClass, error) {
+// its shape is read), a struct for derivation, then the leaf. declared is the element as
+// the source spelled it, for the refusal of a type that reaches no leaf.
+func (r *leafResolver) classifyColumnElement(t, declared types.Type, class columnClass, isSlice bool) (columnClass, error) {
 	if named, ok := t.(*types.Named); ok {
 		class.Named = named
 		leaf, ok, err := r.resolveNamed(named)
@@ -560,7 +578,7 @@ func (r *leafResolver) classifyColumnElement(t types.Type, class columnClass, is
 		return class, nil
 	}
 
-	return columnClass{}, errors.Newf("%s has no TypeScript type", typeStringer(t))
+	return columnClass{}, errors.Newf("%s has no TypeScript type", typeStringer(declared))
 }
 
 // refuseOwnJSON refuses, on the column path, a named type that reaches no leaf and

@@ -59,7 +59,7 @@ func (r *resourceGenerator) resolveJSONMethods() (map[packageDir][]jsonPair, err
 	pairs := make(map[packageDir][]jsonPair)
 	var errs []error
 	for _, use := range r.fieldTypes() {
-		over, err := r.leaves().jsonRHS(use.named)
+		rhs, over, err := r.leaves().jsonRHSType(use.named)
 		if err != nil {
 			// The TypeScript pass reports the type; the pair has nothing to add.
 			continue
@@ -85,8 +85,8 @@ func (r *resourceGenerator) resolveJSONMethods() (map[packageDir][]jsonPair, err
 		}
 		pair := jsonPair{
 			Name:    use.named.Obj().Name(),
-			Over:    types.TypeString(over, qualifierOutside(pkg)),
-			imports: packageImports(over, pkg),
+			Over:    types.TypeString(rhs, qualifierOutside(pkg)),
+			imports: packageImports(rhs, pkg),
 		}
 		if !slices.ContainsFunc(pairs[dir], func(p jsonPair) bool {
 			return p.Name == pair.Name
@@ -124,7 +124,19 @@ func packageImports(t types.Type, pkg *types.Package) []fixerImport {
 	var imports []fixerImport
 	var walk func(types.Type)
 	walk = func(t types.Type) {
-		named, ok := types.Unalias(t).(*types.Named)
+		if alias, ok := t.(*types.Alias); ok {
+			// An alias is spelled as the source spelled it (json.RawMessage, not the
+			// jsontext.Value it reads through to), so its own package is the import.
+			if p := alias.Obj().Pkg(); p != nil && p != pkg {
+				imports = append(imports, fixerImport{name: p.Name(), path: p.Path()})
+			}
+			for i := range alias.TypeArgs().Len() {
+				walk(alias.TypeArgs().At(i))
+			}
+
+			return
+		}
+		named, ok := t.(*types.Named)
 		if !ok {
 			return
 		}
