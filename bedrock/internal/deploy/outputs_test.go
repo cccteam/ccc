@@ -14,6 +14,9 @@ func TestReadStackOutputs(t *testing.T) {
 	const (
 		object = "gs://records/quill/stacks/tst/pr7/c9.json"
 		named  = "gs://records/quill/stacks/tst/pr7/c9.json"
+		// pinnedVersions is the migrate command's secrets as the stack names them: the
+		// pinned version of each, by variable, never a value.
+		pinnedVersions = `{"APP_ADMINISTRATOR_PASSWORD":"projects/p/secrets/quill-administrator-password/versions/3"}`
 	)
 	// outputs is the stack job's object, as the job wrote it: applied for the comment
 	// given, with the mode and the status a case sets.
@@ -21,7 +24,7 @@ func TestReadStackOutputs(t *testing.T) {
 		o := StackOutputs{
 			App: "quill", Env: tstEnvironment, PullRequest: "7", Commit: "c9", Build: "b-9", Comment: comment, Status: StackApplied,
 			Services: "us-central1=quill-pr7", JobsJob: "us-central1=quill-pr7-jobs", Hostname: "quill-pr7.example.dev",
-			MigrateEnv: `{"APP_SERVICE_NAME":"quill-migrate"}`, MigrateDatabases: `["projects/p/instances/i/databases/quill-pr7-db"]`,
+			MigrateEnv: `{"APP_SERVICE_NAME":"quill-migrate"}`, MigrateDatabases: `["projects/p/instances/i/databases/quill-pr7-db"]`, MigrateSecrets: pinnedVersions,
 			BuildArguments: map[string]string{"FIREBASE_API_KEY": "AIzaPr7Key"}, Timestamp: "2026-10-12T10:00:00Z",
 		}
 		if change != nil {
@@ -62,9 +65,9 @@ func TestReadStackOutputs(t *testing.T) {
 		{
 			name:      "the object is there: its facts go to the environment file for the steps after, the build arguments' values kept out of the log",
 			object:    outputs(1, nil),
-			wantFacts: map[string]string{services: "us-central1=quill-pr7", jobsJobFact: "us-central1=quill-pr7-jobs", prHostnameFact: "quill-pr7.example.dev", migrateEnvFact: `{"APP_SERVICE_NAME":"quill-migrate"}`, migrateDatabasesFact: `["projects/p/instances/i/databases/quill-pr7-db"]`, sharedDBFact: "", reloadDBFact: "", reloadReasonFact: "", "_BUILD_ARG_FIREBASE_API_KEY": "AIzaPr7Key"},
+			wantFacts: map[string]string{services: "us-central1=quill-pr7", jobsJobFact: "us-central1=quill-pr7-jobs", prHostnameFact: "quill-pr7.example.dev", migrateEnvFact: `{"APP_SERVICE_NAME":"quill-migrate"}`, migrateDatabasesFact: `["projects/p/instances/i/databases/quill-pr7-db"]`, migrateSecretsFact: pinnedVersions, sharedDBFact: "", reloadDBFact: "", reloadReasonFact: "", "_BUILD_ARG_FIREBASE_API_KEY": "AIzaPr7Key"},
 			wantOut: []string{
-				"The pull request's stack (job b-9) names SERVICES=us-central1=quill-pr7 JOBS_JOB=us-central1=quill-pr7-jobs PR_HOSTNAME=quill-pr7.example.dev, and the migrate command's settings (MIGRATE_ENV); the site runs against its own database.",
+				"The pull request's stack (job b-9) names SERVICES=us-central1=quill-pr7 JOBS_JOB=us-central1=quill-pr7-jobs PR_HOSTNAME=quill-pr7.example.dev, and the migrate command's settings and secrets (MIGRATE_ENV, MIGRATE_SECRETS); the site runs against its own database.",
 				"The image build passes the pull request's own build arguments: FIREBASE_API_KEY.",
 			},
 			wantNotOut: []string{"AIzaPr7Key", "Waiting"},

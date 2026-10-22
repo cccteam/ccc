@@ -89,6 +89,7 @@ func TestPullRequestStack(t *testing.T) {
 			App: "quill", Env: tstEnvironment, PullRequest: "7", Commit: "c9", Build: "b-1", Comment: comment, Status: StackApplied,
 			Services: "us-central1=quill-pr7", JobsJob: "us-central1=quill-pr7-jobs", Hostname: "quill-pr7.example.dev",
 			MigrateEnv: `{"APP_SERVICE_NAME":"quill-migrate"}`, MigrateDatabases: `["projects/p/instances/i/databases/quill-pr7-db"]`,
+			MigrateSecrets: "{}",
 			BuildArguments: map[string]string{"FIREBASE_API_KEY": "AIzaPr7Key"}, Timestamp: "2026-10-12T10:00:00Z",
 		}
 	}
@@ -137,7 +138,7 @@ func TestPullRequestStack(t *testing.T) {
 				"COMMENT_BODY=/gcbrun",
 				"=== Pull request 7: stack at 3-app/quill/tst/pr7 as quill-apply@p.iam.gserviceaccount.com ===",
 				"Guard passed: 1 planned change(s), all pull request 7's.",
-				"The pull request's stack names SERVICES=us-central1=quill-pr7 JOBS_JOB=us-central1=quill-pr7-jobs PR_HOSTNAME=quill-pr7.example.dev, and the migrate command's settings (MIGRATE_ENV).",
+				"The pull request's stack names SERVICES=us-central1=quill-pr7 JOBS_JOB=us-central1=quill-pr7-jobs PR_HOSTNAME=quill-pr7.example.dev, and the migrate command's settings and secrets (MIGRATE_ENV, MIGRATE_SECRETS).",
 				"The image build passes the pull request's own build arguments: FIREBASE_API_KEY.",
 				strings.Replace(written, "%s", "applied", 1),
 			},
