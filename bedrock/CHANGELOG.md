@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.3.5](https://github.com/cccteam/ccc/compare/bedrock/v0.3.4...bedrock/v0.3.5) (2026-10-22)
+
+
+### Bug Fixes
+
+* a Cloud Armor rule's description fits Google's 256-character limit, so a stack with the sign-in throttles applies ([#1042](https://github.com/cccteam/ccc/issues/1042)) ([e904570](https://github.com/cccteam/ccc/commit/e904570d502b5c708b8623159df468656b39b662))
+* bedrock counts a Spanner instance's databases against its size before a registration or a stack's plan adds one ([#1048](https://github.com/cccteam/ccc/issues/1048)) ([a1b4f00](https://github.com/cccteam/ccc/commit/a1b4f0091f029db012b6010d3a7f534f935eb5fc))
+* the apply identity reads the records bucket, which the pull request's stack job lists before its plan ([#1039](https://github.com/cccteam/ccc/issues/1039)) ([9434124](https://github.com/cccteam/ccc/commit/94341246c650cc133d56f755ccd33e09b329c6b6))
+* the check trigger refuses a Cloud Armor entry removed in one step, reading the base branch through GitHub ([#1044](https://github.com/cccteam/ccc/issues/1044)) ([5012302](https://github.com/cccteam/ccc/commit/50123027c86306adb1f08058cd0f0c59ab1d0ebc))
+* the GitHub client retries a stalled or gateway-failed read; one slow answer no longer fails the release trigger ([#1041](https://github.com/cccteam/ccc/issues/1041)) ([29c6096](https://github.com/cccteam/ccc/commit/29c6096e92595015e6cb71614369ade33d5325ae))
+
 ## [0.3.4](https://github.com/cccteam/ccc/compare/bedrock/v0.3.3...bedrock/v0.3.4) (2026-10-21)
 
 
