@@ -7,7 +7,7 @@
   "cache": "0.2.3",
   "securehash": "0.0.18",
   "tracer": "0.3.1",
-  "middleware": "0.0.12",
+  "middleware": "0.0.13",
   "impulse": "0.5.2",
   "bedrock": "0.3.9",
   "cloud": "0.2.2"
