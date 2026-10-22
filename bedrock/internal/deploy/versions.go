@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/go-playground/errors/v5"
 	"golang.org/x/oauth2/google"
@@ -26,8 +27,9 @@ const (
 )
 
 // MigrationVersion is what the schema migrations table says about a database: the
-// version applied (Known false when the table holds no row, a database nothing has run
-// on), and whether a file is in progress.
+// version applied (Known false when the table holds no row, or does not exist yet: a
+// database nothing has run on, which the migrate command's first file gives the table),
+// and whether a file is in progress.
 type MigrationVersion struct {
 	Number int
 	Known  bool
@@ -92,11 +94,24 @@ func (v *versions) Version(ctx context.Context, database, role string) (Migratio
 		_, _ = v.spanner.call(context.WithoutCancel(ctx), http.MethodDelete, "/v1/"+name, nil)
 	}()
 	answer, err := v.spanner.call(ctx, http.MethodPost, "/v1/"+name+":executeSql", map[string]any{"sql": "SELECT Version, Dirty FROM " + schemaMigrationsTable + " LIMIT 1"})
-	if err != nil {
+	switch {
+	case tableNotFound(err):
+		return MigrationVersion{}, nil
+	case err != nil:
 		return MigrationVersion{}, err
 	}
 
 	return versionRow(answer)
+}
+
+// tableNotFound reports Spanner answering that the schema migrations table does not
+// exist: a database nothing has run on (a pull request's, fresh from its stack), which
+// reads as no version, as a table with no row does. The migrate command's first file
+// creates the table.
+func tableNotFound(err error) bool {
+	var e *apiError
+
+	return errors.As(err, &e) && e.status == http.StatusBadRequest && strings.Contains(e.message, "Table not found: "+schemaMigrationsTable)
 }
 
 // versionRow reads the version from an executeSql answer: no rows is no version; a row

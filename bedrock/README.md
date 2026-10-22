@@ -1482,8 +1482,10 @@ application's databases, bounded to each. An environment the guard cannot read t
 the role lacks the migration or the grant, and the refusal says so; the read is retried
 on the next build. Last, the migrate step reads the database in front of it before a
 fold runs and refuses one below the index, so a restore between the merge and the deploy
-is caught where it happens; a fresh database applies the fold whole, and one at the
-index or above applies nothing.
+is caught where it happens; a fresh database applies the fold whole (one the migrate
+command has never run on has no `SchemaMigrations` table yet, which reads as no version,
+as a pull request's does on its first preview build), and one at the index or above
+applies nothing.
 
 ## bedrock migration version, rerun and force
 
