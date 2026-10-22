@@ -72,9 +72,9 @@ func TestPullRequestStack(t *testing.T) {
 
 	const (
 		initLine      = "tofu init -input=false -no-color -backend-config=prefix=3-app/quill/tst/pr7"
-		planLine      = "tofu plan -input=false -no-color -out=WS/pr.plan -var environment=tst -var pull_request=7"
+		planLine      = "tofu plan -input=false -no-color -lock-timeout=30m -out=WS/pr.plan -var environment=tst -var pull_request=7"
 		showLine      = "tofu show -json WS/pr.plan"
-		applyLine     = "tofu apply -input=false -no-color WS/pr.plan"
+		applyLine     = "tofu apply -input=false -no-color -lock-timeout=30m WS/pr.plan"
 		outputLine    = "tofu output -json"
 		stateLine     = "tofu state list"
 		object        = "gs://records/quill/stacks/tst/pr7/c9.json"
