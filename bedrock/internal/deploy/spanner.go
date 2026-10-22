@@ -16,6 +16,7 @@ import (
 
 	"github.com/go-playground/errors/v5"
 	"golang.org/x/oauth2"
+	"golang.org/x/oauth2/google"
 	"google.golang.org/api/impersonate"
 )
 
@@ -99,6 +100,20 @@ type Spanner interface {
 // SpannerAsFunc opens Spanner as an impersonated identity: the apply identity, which holds
 // database admin on the environment's instance.
 type SpannerAsFunc func(ctx context.Context, identity string) (Spanner, error)
+
+// SpannerFunc opens Spanner with the process's own credentials: the build's identity,
+// for a step that runs as the identity it reads as.
+type SpannerFunc func(ctx context.Context) (Spanner, error)
+
+// NewSpanner opens the Spanner v1 REST API with the process's default credentials.
+func NewSpanner(ctx context.Context) (Spanner, error) {
+	client, err := google.DefaultClient(ctx, cloudPlatformScope)
+	if err != nil {
+		return nil, errors.Wrap(err, "google.DefaultClient()")
+	}
+
+	return &spanner{cloudRun: &cloudRun{http: client, base: spannerAPI, poll: 10 * time.Second, service: serviceSpanner}}, nil
+}
 
 // NewSpannerAs opens the Spanner v1 REST API as the identity.
 func NewSpannerAs(ctx context.Context, identity string) (Spanner, error) {

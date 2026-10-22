@@ -149,14 +149,14 @@ func PlanEnvironmentStack(ctx context.Context, clients *Clients, w Workspace, ou
 	if err != nil {
 		return err
 	}
-	if err := guardCapacity(ctx, clients, identity, m.Placement, subs[appSub], subs[envSub], out); err != nil {
+	if err := guardCapacity(ctx, clients, identity, s.impersonate, m.Placement, subs[appSub], subs[envSub], out); err != nil {
 		return err
 	}
 	generation, err := s.planGeneration(ctx, clients, subs, env, w)
 	if err != nil {
 		return err
 	}
-	pins, err := generatedPins(ctx, clients, identity, m, subs[appSub], subs[envSub], subs[projectSub], true, out)
+	pins, err := generatedPins(ctx, clients, identity, s.impersonate, m, subs[appSub], subs[envSub], subs[projectSub], true, out)
 	if err != nil {
 		return err
 	}
@@ -792,7 +792,7 @@ func planEnvironment(ctx context.Context, clients *Clients, w Workspace, build *
 	if err := s.initEnvironment(ctx, subs[appSub], e, identity); err != nil {
 		return "", err
 	}
-	refusal, err := guardSpannerCapacity(ctx, clients, environmentTarget(identity, m.Placement, subs[appSub], e), out)
+	refusal, err := guardSpannerCapacity(ctx, clients, environmentTarget(identity, s.impersonate, m.Placement, subs[appSub], e), out)
 	if err != nil {
 		return "", err
 	}
@@ -805,7 +805,7 @@ func planEnvironment(ctx context.Context, clients *Clients, w Workspace, build *
 	if err != nil {
 		return "", err
 	}
-	pins, err := generatedPins(ctx, clients, identity, m, subs[appSub], e, identityProject(identity), false, out)
+	pins, err := generatedPins(ctx, clients, identity, s.impersonate, m, subs[appSub], e, identityProject(identity), false, out)
 	if err != nil {
 		return "", err
 	}

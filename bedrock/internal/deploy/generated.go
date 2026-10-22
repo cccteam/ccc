@@ -56,8 +56,11 @@ const (
 // version added (seedGenerated): the tag build's plan step, as the apply identity. Without
 // seed (a pull request's plans, as the plan identity of each environment or tst's apply
 // identity), such a secret is left out and said. Nothing is opened when the code declares
-// no generated secret.
-func generatedPins(ctx context.Context, clients *Clients, identity string, m *derive.Model, app, env, project string, seed bool, out io.Writer) (map[string]string, error) {
+// no generated secret. Secret Manager is opened as the identity when impersonate says
+// the build is not that identity (the deploy identity reading as the apply identity, the
+// apply identity as a plan identity), and directly when the build runs as it (the
+// pull-request stack job): a service account is granted no token for itself.
+func generatedPins(ctx context.Context, clients *Clients, identity string, impersonate bool, m *derive.Model, app, env, project string, seed bool, out io.Writer) (map[string]string, error) {
 	var generated []derive.Secret
 	for _, s := range m.Secrets {
 		if s.Generated {
@@ -67,7 +70,7 @@ func generatedPins(ctx context.Context, clients *Clients, identity string, m *de
 	if len(generated) == 0 {
 		return nil, nil
 	}
-	secrets, err := clients.SecretsAs(ctx, identity)
+	secrets, err := openSecrets(ctx, clients, identity, impersonate)
 	if err != nil {
 		return nil, err
 	}
@@ -191,4 +194,13 @@ func identityProject(email string) string {
 	_, domain, _ := strings.Cut(email, "@")
 
 	return strings.TrimSuffix(domain, identityDomain)
+}
+
+// openSecrets opens Secret Manager as the identity, or directly when the build runs as it.
+func openSecrets(ctx context.Context, clients *Clients, identity string, impersonate bool) (Secrets, error) {
+	if impersonate {
+		return clients.SecretsAs(ctx, identity)
+	}
+
+	return clients.Secrets(ctx)
 }

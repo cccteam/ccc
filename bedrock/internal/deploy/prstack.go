@@ -261,7 +261,7 @@ func (j *stackJob) run(ctx context.Context, outputs *StackOutputs) (bool, error)
 		return false, err
 	}
 	if !f.SharedDB {
-		refusal, err := guardSpannerCapacity(ctx, j.clients, pullRequestTarget(s.identity, p, subs[appSub], subs[envSub], subs[prNumberSub]), j.out)
+		refusal, err := guardSpannerCapacity(ctx, j.clients, pullRequestTarget(s.identity, s.impersonate, p, subs[appSub], subs[envSub], subs[prNumberSub]), j.out)
 		if err != nil {
 			return false, err
 		}
@@ -269,7 +269,7 @@ func (j *stackJob) run(ctx context.Context, outputs *StackOutputs) (bool, error)
 			return false, refuse(ctx, j.clients, j.build, env, fmt.Sprintf("The pull request's stack stopped before its plan (build %s): %s", j.build.ID, refusal), errors.New(refusal), j.out)
 		}
 	}
-	pins, err := generatedPins(ctx, j.clients, s.identity, m, subs[appSub], subs[envSub], subs[projectSub], false, j.out)
+	pins, err := generatedPins(ctx, j.clients, s.identity, s.impersonate, m, subs[appSub], subs[envSub], subs[projectSub], false, j.out)
 	if err != nil {
 		return false, err
 	}

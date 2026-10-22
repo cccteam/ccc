@@ -909,7 +909,9 @@ thing one step hands the next. In order:
   state prefix: the capacity guard counts the databases on the integration environment's
   instance when the pull request's own database is not there yet (a stack on
   `/gcbrun shared-db` makes none) and refuses the job while the instance is full, naming
-  the pull requests whose stacks are up as the first way out; the plan is saved, the
+  the pull requests whose stacks are up as the first way out (the job runs as the apply
+  identity and reads with its own credentials, as its tofu runs; the generated pins read
+  the same way, since a service account is granted no token for itself); the plan is saved, the
   guard lets only the pull request's own resources
   through, the apply applies exactly that plan (a destroy on `/gcbrun down`; the
   database replaced on `/gcbrun reload-db`, or when the migrations its last build applied
