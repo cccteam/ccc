@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.7](https://github.com/cccteam/ccc/compare/v0.3.6...v0.3.7) (2026-10-22)
+
+
+### Code Upgrade
+
+* **deps:** Go 1.27.3; the Go image moves to go1.27.3, so built images carry crypto/x509 GO-2026-6809's fix ([#1059](https://github.com/cccteam/ccc/issues/1059)) ([24d17c1](https://github.com/cccteam/ccc/commit/24d17c14405fd51e065a2ee7af018b637ed58ec4))
+
 ## [0.3.6](https://github.com/cccteam/ccc/compare/v0.3.5...v0.3.6) (2026-10-21)
 
 
