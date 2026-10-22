@@ -925,7 +925,10 @@ thing one step hands the next. In order:
   a failure, with its reason, are written the same way. With `--if-exists` (the check
   trigger's last step, on every push) the stack is applied again only when the pull
   request has a preview standing, so the preview's infrastructure follows the pushes; a
-  `reload-db` in the latest comment is that build's and is not repeated.
+  `reload-db` in the latest comment is that build's and is not repeated. The plan and the
+  apply wait up to thirty minutes for the state lock, so a refresh on a push and a
+  `/gcbrun` build on a comment that land together take turns on the stack instead of the
+  second failing on the lock.
 - `deploy pr-outputs`: the preview build's read of what the pull request's stack job
   applied, the object above matched to this build's `/gcbrun` comment, whose facts go to
   `environment.sh` for the steps after. Before the image build when the placement

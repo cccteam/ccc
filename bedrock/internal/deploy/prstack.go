@@ -80,6 +80,12 @@ const (
 	varFlag     = "-var"
 	noInputFlag = "-input=false"
 	noColorFlag = "-no-color"
+	// lockTimeoutFlag is how long the pull request's plan and apply wait for the state
+	// lock. Two builds work the same stack, the check's refresh on a push and the /gcbrun
+	// build on a comment, and the second takes its turn after the first instead of
+	// failing on the lock, which tofu gives up on at once by default. Two thirds of the
+	// stack step's 45 minutes, leaving the plan and apply their own time.
+	lockTimeoutFlag = "-lock-timeout=30m"
 )
 
 // newStack is the pull request's stack as the apply identity: impersonated when the
@@ -365,11 +371,12 @@ func (j *stackJob) previewStanding(ctx context.Context, s *stack) (bool, error) 
 // else the stack, without a database of its own on shared-db, and with the pull
 // request's database replaced when the job decided it is recreated and it exists, and
 // with the extra arguments (the generated secrets' pins). The plan and its JSON are left
-// in the workspace for the guard and the apply.
+// in the workspace for the guard and the apply. The plan waits for the state lock, as
+// the apply does (lockTimeoutFlag): another build of the same stack finishes first.
 func (s *stack) plan(ctx context.Context, env, subs map[string]string, extra []string) error {
 	w := Workspace(filepath.Dir(s.dir))
 	plan := filepath.Join(string(w), PlanFile)
-	args := []string{planCommand, noInputFlag, noColorFlag, "-out=" + plan, varFlag, "environment=" + subs[envSub], varFlag, "pull_request=" + subs[prNumberSub]}
+	args := []string{planCommand, noInputFlag, noColorFlag, lockTimeoutFlag, "-out=" + plan, varFlag, "environment=" + subs[envSub], varFlag, "pull_request=" + subs[prNumberSub]}
 	args = append(args, extra...)
 	switch {
 	case env[downFact] == trueValue:
@@ -438,7 +445,7 @@ func (s *stack) apply(ctx context.Context, build *Build, env map[string]string) 
 	}
 	if len(p.Changes) == 0 {
 		fmt.Fprintln(s.out, "Nothing to apply: the pull request's stack matches the code.")
-	} else if err := s.tofu(ctx, "apply", noInputFlag, noColorFlag, filepath.Join(string(w), PlanFile)); err != nil {
+	} else if err := s.tofu(ctx, "apply", noInputFlag, noColorFlag, lockTimeoutFlag, filepath.Join(string(w), PlanFile)); err != nil {
 		return nil, err
 	}
 	if env[downFact] == trueValue {
