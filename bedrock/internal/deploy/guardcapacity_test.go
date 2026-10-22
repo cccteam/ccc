@@ -48,7 +48,7 @@ func TestGuardSpannerCapacity(t *testing.T) {
 		wantRefusal string
 	}{
 		{
-			name:        "a pull request's database on the integration environment's full instance is refused, with the pull requests up named first",
+			name:        "a pull request's database on the integration environment's full instance is refused, with the pull requests up named first; the job runs as the identity and reads directly",
 			target:      &capacityTarget{identity: "harbor-apply@p-tst.iam.gserviceaccount.com", bucket: bucket, env: "tst", database: "harbor-pr7-db"},
 			state:       `{"outputs": {"spanner_instance": {"value": {"project": "p-tst", "name": "imp-tst-gbl-spanner", "config": "regional-us-central1"}}}}`,
 			spanner:     &fakeSpanner{databases: tstFull, units: 100},
@@ -124,7 +124,11 @@ func TestGuardSpannerCapacity(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			target := capacityTarget{identity: identity, bucket: bucket, env: "stg", database: "imp-stg-gbl-harbor-db"}
+			// The environment stacks' guard runs as the deploy identity impersonating the
+			// apply identity (or the apply identity a plan identity); a pull request's runs
+			// as the apply identity itself and reads directly, so the openers it is given are
+			// the direct ones alone and an impersonation would find none.
+			target := capacityTarget{identity: identity, impersonate: true, bucket: bucket, env: "stg", database: "imp-stg-gbl-harbor-db"}
 			if tt.target != nil {
 				target = *tt.target
 			}
@@ -133,8 +137,14 @@ func TestGuardSpannerCapacity(t *testing.T) {
 				store.objects["gs://"+bucket+"/2-env/"+target.env+"/default.tfstate"] = tt.state
 			}
 			clients := &Clients{StorageAs: store.openAs}
-			if tt.spanner != nil {
+			if !target.impersonate {
+				clients = &Clients{Storage: store.open}
+			}
+			if tt.spanner != nil && target.impersonate {
 				clients.SpannerAs = tt.spanner.open
+			}
+			if tt.spanner != nil && !target.impersonate {
+				clients.Spanner = tt.spanner.openDirect
 			}
 			var out strings.Builder
 			refusal, err := guardSpannerCapacity(t.Context(), clients, target, &out)

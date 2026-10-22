@@ -171,8 +171,10 @@ type Clients struct {
 	// deletes.
 	FirestoreAs FirestoreAsFunc
 	// SpannerAs opens Spanner as the apply identity, for the restore from production's
-	// backup.
+	// backup; Spanner opens it as the build's own identity, for the capacity guard of a
+	// step that runs as the identity it reads as.
 	SpannerAs SpannerAsFunc
+	Spanner   SpannerFunc
 	// Secrets opens Secret Manager, for the build secrets and the deployer app's key.
 	Secrets SecretsFunc
 	// SecretsAs opens Secret Manager as an impersonated identity, for the tests of a
@@ -195,7 +197,7 @@ func DefaultClients() *Clients {
 	return &Clients{
 		Storage: NewStorage, StorageAs: NewStorageAs, StorageAsWriter: NewStorageAsWriter, Builds: NewCloudBuild, Comments: GitHubComments, GitHub: PublicGitHub,
 		Registry: NewArtifactRegistry, Run: NewCloudRun, Secrets: NewSecretManager, Exec: OSRunner{}, Grants: NewGrants, Versions: NewVersions,
-		SecretsAs: NewSecretManagerAs, Tasks: NewCloudTasks, Metrics: NewCloudMonitoring, HTTP: &http.Client{Timeout: 30 * time.Second}, FirestoreAs: NewFirestoreAs, SpannerAs: NewSpannerAs,
+		SecretsAs: NewSecretManagerAs, Tasks: NewCloudTasks, Metrics: NewCloudMonitoring, HTTP: &http.Client{Timeout: 30 * time.Second}, FirestoreAs: NewFirestoreAs, SpannerAs: NewSpannerAs, Spanner: NewSpanner,
 	}
 }
 

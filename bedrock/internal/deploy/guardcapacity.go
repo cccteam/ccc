@@ -38,6 +38,10 @@ var pullRequestDatabaseRE = regexp.MustCompile(`-pr\d+-db(-\d+)?$`)
 // identity.
 type capacityTarget struct {
 	identity, bucket, env, database string
+	// impersonate says the build is not the identity and reads as it; false reads with
+	// the build's own credentials, which are the identity's (a service account is granted
+	// no token for itself).
+	impersonate bool
 }
 
 // spannerInstance is 2-env's spanner_instance output: the project and name of the instance
@@ -48,7 +52,8 @@ type spannerInstance struct {
 }
 
 // guardSpannerCapacity counts the databases on the environment's instance (2-env's
-// spanner_instance output, read from the layer's state as the identity) when the stack's
+// spanner_instance output, read from the layer's state as the identity, or directly when
+// the build runs as the identity: a service account is granted no token for itself) when the stack's
 // database, in any generation, is not among them, against the databases the instance
 // holds at its processing units (derive.SpannerDatabaseCapacity), and answers the refusal
 // when it is full: the database, the instance, its count (and how many of them are
@@ -62,16 +67,16 @@ type spannerInstance struct {
 // an older bedrock rendered), nothing is counted, said in the log: the guard meets the
 // limit early where it can and never stands in for Google's own refusal.
 func guardSpannerCapacity(ctx context.Context, clients *Clients, t capacityTarget, out io.Writer) (refusal string, err error) {
-	if clients.SpannerAs == nil || clients.StorageAs == nil {
+	if t.impersonate && (clients.SpannerAs == nil || clients.StorageAs == nil) || !t.impersonate && (clients.Spanner == nil || clients.Storage == nil) {
 		return "", nil
 	}
 	identity, env, database := t.identity, t.env, t.database
-	instance, ok, err := environmentInstance(ctx, clients, identity, t.bucket, env, out)
+	instance, ok, err := environmentInstance(ctx, clients, t, out)
 	if err != nil || !ok {
 		return "", err
 	}
 	name := "projects/" + instance.Project + "/instances/" + instance.Name
-	s, err := clients.SpannerAs(ctx, identity)
+	s, err := openSpanner(ctx, clients, t)
 	if err != nil {
 		return "", err
 	}
@@ -146,21 +151,21 @@ func pullRequestWayOut(databases []string) string {
 }
 
 // environmentTarget is an environment stack's database on the environment's instance.
-func environmentTarget(identity string, p *derive.Placement, app, env string) capacityTarget {
-	return capacityTarget{identity: identity, bucket: p.StateBucket, env: env, database: p.Prefix + "-" + env + "-gbl-" + app + "-db"}
+func environmentTarget(identity string, impersonate bool, p *derive.Placement, app, env string) capacityTarget {
+	return capacityTarget{identity: identity, impersonate: impersonate, bucket: p.StateBucket, env: env, database: p.Prefix + "-" + env + "-gbl-" + app + "-db"}
 }
 
 // pullRequestTarget is a pull request's own database, on the integration environment's
 // instance.
-func pullRequestTarget(identity string, p *derive.Placement, app, env, number string) capacityTarget {
-	return capacityTarget{identity: identity, bucket: p.StateBucket, env: env, database: app + "-pr" + number + "-db"}
+func pullRequestTarget(identity string, impersonate bool, p *derive.Placement, app, env, number string) capacityTarget {
+	return capacityTarget{identity: identity, impersonate: impersonate, bucket: p.StateBucket, env: env, database: app + "-pr" + number + "-db"}
 }
 
 // guardCapacity runs the Spanner capacity guard for a build with no pull request to
 // answer, the stack trigger's first apply and a tag build's plan: a refusal is the error
 // that stops the build.
-func guardCapacity(ctx context.Context, clients *Clients, identity string, p *derive.Placement, app, env string, out io.Writer) error {
-	refusal, err := guardSpannerCapacity(ctx, clients, environmentTarget(identity, p, app, env), out)
+func guardCapacity(ctx context.Context, clients *Clients, identity string, impersonate bool, p *derive.Placement, app, env string, out io.Writer) error {
+	refusal, err := guardSpannerCapacity(ctx, clients, environmentTarget(identity, impersonate, p, app, env), out)
 	if err != nil {
 		return err
 	}
@@ -171,11 +176,30 @@ func guardCapacity(ctx context.Context, clients *Clients, identity string, p *de
 	return nil
 }
 
+// openStore opens Cloud Storage as the target's identity, or directly when the build runs
+// as it; openSpanner the same for Spanner.
+func openStore(ctx context.Context, clients *Clients, t capacityTarget) (Store, error) {
+	if t.impersonate {
+		return clients.StorageAs(ctx, t.identity)
+	}
+
+	return clients.Storage(ctx)
+}
+
+func openSpanner(ctx context.Context, clients *Clients, t capacityTarget) (Spanner, error) {
+	if t.impersonate {
+		return clients.SpannerAs(ctx, t.identity)
+	}
+
+	return clients.Spanner(ctx)
+}
+
 // environmentInstance reads the instance the environment's databases live on from 2-env's
-// state in the bucket as the identity; false, said in the log, when the layer has no
-// state there or its state names no instance.
-func environmentInstance(ctx context.Context, clients *Clients, identity, bucket, env string, out io.Writer) (spannerInstance, bool, error) {
-	store, err := clients.StorageAs(ctx, identity)
+// state in the bucket as the identity, or directly when the build runs as it; false, said
+// in the log, when the layer has no state there or its state names no instance.
+func environmentInstance(ctx context.Context, clients *Clients, t capacityTarget, out io.Writer) (spannerInstance, bool, error) {
+	bucket, env := t.bucket, t.env
+	store, err := openStore(ctx, clients, t)
 	if err != nil {
 		return spannerInstance{}, false, err
 	}

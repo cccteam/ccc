@@ -1246,6 +1246,11 @@ func (f *fakeSpanner) open(context.Context, string) (Spanner, error) {
 	return f, nil
 }
 
+// openDirect is the fake as the build's own identity opens it.
+func (f *fakeSpanner) openDirect(context.Context) (Spanner, error) {
+	return f, nil
+}
+
 func (f *fakeSpanner) LatestBackup(_ context.Context, _, database string) (*Backup, error) {
 	if f.backup == nil || !strings.HasSuffix(f.backup.Name, "/backups/"+path.Base(database)+"-20261001") {
 		return nil, nil
