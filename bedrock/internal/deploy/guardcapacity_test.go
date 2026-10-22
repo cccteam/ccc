@@ -5,13 +5,15 @@ import (
 	"testing"
 )
 
-// TestGuardSpannerCapacity: before an environment's stack is planned, the databases on
-// the instance 2-env's state names are counted against what the instance holds at its
-// processing units; a stack whose database is not there is refused when the instance is
-// full, with the sentence naming the setting that grows it (2-spn's for the shared
-// instance, 2-env's for an environment's own) and the other way out; a database already
-// there, in any generation, and room on the instance pass; without 2-env's state, its
-// output or a Spanner client nothing is counted.
+// TestGuardSpannerCapacity: before an environment's stack or a pull request's is
+// planned, the databases on the instance 2-env's state names are counted against what
+// the instance holds at its processing units; a stack whose database is not there is
+// refused when the instance is full, with the sentence naming how many of the databases
+// are pull-request stacks' (closing one is the first way out then), the setting that
+// grows the instance (2-spn's for the shared instance, 2-env's for an environment's own)
+// and the other way out; a database already there, in any generation, and room on the
+// instance pass; without 2-env's state, its output, a Spanner client or the permission
+// nothing is counted.
 func TestGuardSpannerCapacity(t *testing.T) {
 	t.Parallel()
 
@@ -25,8 +27,19 @@ func TestGuardSpannerCapacity(t *testing.T) {
 	for _, code := range []string{"lamp", "pier", "signin", "outl", "sites"} {
 		full = append(full, "projects/p-spn/instances/shared-spanner/databases/imp-stg-gbl-"+code+"-db", "projects/p-spn/instances/shared-spanner/databases/imp-prd-gbl-"+code+"-db")
 	}
+	// tstFull is tst's own instance at its ten: six applications' tst databases and four
+	// pull-request stacks'.
+	tstFull := []string{}
+	for _, code := range []string{"lamp", "signin", "outl", "sites", "tenant", "quill"} {
+		tstFull = append(tstFull, "projects/p-tst/instances/imp-tst-gbl-spanner/databases/imp-tst-gbl-"+code+"-db")
+	}
+	for _, pr := range []string{"quill-pr3-db", "quill-pr5-db-2", "sites-pr8-db", "lamp-pr9-db"} {
+		tstFull = append(tstFull, "projects/p-tst/instances/imp-tst-gbl-spanner/databases/"+pr)
+	}
 	tests := []struct {
 		name string
+		// target is what is counted for; stg's environment database when nil.
+		target *capacityTarget
 		// state is 2-env's state in stg, none when empty.
 		state string
 		// spanner is nil for a run without a Spanner client.
@@ -34,6 +47,20 @@ func TestGuardSpannerCapacity(t *testing.T) {
 		wantOut     string
 		wantRefusal string
 	}{
+		{
+			name:        "a pull request's database on the integration environment's full instance is refused, with the pull requests up named first",
+			target:      &capacityTarget{identity: "harbor-apply@p-tst.iam.gserviceaccount.com", bucket: bucket, env: "tst", database: "harbor-pr7-db"},
+			state:       `{"outputs": {"spanner_instance": {"value": {"project": "p-tst", "name": "imp-tst-gbl-spanner", "config": "regional-us-central1"}}}}`,
+			spanner:     &fakeSpanner{databases: tstFull, units: 100},
+			wantRefusal: "Build REJECTED: harbor-pr7-db does not exist, and projects/p-tst/instances/imp-tst-gbl-spanner holds its maximum: 10 databases, 4 of them pull-request stacks', what its 100 processing units allow (ten for every hundred below a node); close or merge a pull request whose stack is up (the sweep takes a closed one's down, /gcbrun down takes it down now), raise spanner_instances.tst.processing_units in 2-env/terraform.tfvars (100 or 200; beyond 200 is a change to the variable's validation), or bedrock destroy an application the organization no longer needs, which frees its databases",
+		},
+		{
+			name:    "a pull request's database already on the instance needs no room",
+			target:  &capacityTarget{identity: "harbor-apply@p-tst.iam.gserviceaccount.com", bucket: bucket, env: "tst", database: "quill-pr5-db"},
+			state:   `{"outputs": {"spanner_instance": {"value": {"project": "p-tst", "name": "imp-tst-gbl-spanner"}}}}`,
+			spanner: &fakeSpanner{databases: tstFull, units: 100},
+			wantOut: "Spanner capacity guard passed: projects/p-tst/instances/imp-tst-gbl-spanner holds quill-pr5-db-2.",
+		},
 		{
 			name:    "without a Spanner client nothing is counted",
 			state:   shared,
@@ -97,16 +124,20 @@ func TestGuardSpannerCapacity(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
+			target := capacityTarget{identity: identity, bucket: bucket, env: "stg", database: "imp-stg-gbl-harbor-db"}
+			if tt.target != nil {
+				target = *tt.target
+			}
 			store := &memoryStore{objects: map[string]string{}}
 			if tt.state != "" {
-				store.objects["gs://"+bucket+"/2-env/stg/default.tfstate"] = tt.state
+				store.objects["gs://"+bucket+"/2-env/"+target.env+"/default.tfstate"] = tt.state
 			}
 			clients := &Clients{StorageAs: store.openAs}
 			if tt.spanner != nil {
 				clients.SpannerAs = tt.spanner.open
 			}
 			var out strings.Builder
-			refusal, err := guardSpannerCapacity(t.Context(), clients, identity, bucket, "imp", "harbor", "stg", &out)
+			refusal, err := guardSpannerCapacity(t.Context(), clients, target, &out)
 			if err != nil {
 				t.Fatalf("guardSpannerCapacity() error = %v", err)
 			}

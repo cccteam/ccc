@@ -792,7 +792,7 @@ func planEnvironment(ctx context.Context, clients *Clients, w Workspace, build *
 	if err := s.initEnvironment(ctx, subs[appSub], e, identity); err != nil {
 		return "", err
 	}
-	refusal, err := guardSpannerCapacity(ctx, clients, identity, m.Placement.StateBucket, m.Placement.Prefix, subs[appSub], e, out)
+	refusal, err := guardSpannerCapacity(ctx, clients, environmentTarget(identity, m.Placement, subs[appSub], e), out)
 	if err != nil {
 		return "", err
 	}

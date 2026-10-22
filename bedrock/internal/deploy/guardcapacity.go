@@ -1,8 +1,9 @@
-// guardcapacity.go is the Spanner capacity guard: before an environment's stack is
-// planned, a count of the databases the environment's instance holds against Google's
+// guardcapacity.go is the Spanner capacity guard: before an environment's stack or a
+// pull request's is planned, a count of the databases the instance holds against Google's
 // rule for its size, so a stack whose database does not exist yet is refused in a sentence
 // here when the instance is full, and not by Google's refusal inside the apply, after the
-// first environment's stack already stands.
+// first environment's stack already stands or with the pull request's environment half
+// made.
 
 package deploy
 
@@ -12,6 +13,7 @@ import (
 	"fmt"
 	"io"
 	"path"
+	"regexp"
 	"strings"
 
 	"github.com/go-playground/errors/v5"
@@ -26,6 +28,18 @@ const (
 	spannerInstanceOutput = "spanner_instance"
 )
 
+// pullRequestDatabaseRE is a pull-request stack's database on the instance, in any
+// generation: <app>-pr<N>-db.
+var pullRequestDatabaseRE = regexp.MustCompile(`-pr\d+-db(-\d+)?$`)
+
+// capacityTarget is what the guard counts for: the stack's database (an environment's,
+// <prefix>-<env>-gbl-<app>-db, or a pull request's, <app>-pr<N>-db), on the instance the
+// environment's databases live on (2-env's output in the state bucket), read as the
+// identity.
+type capacityTarget struct {
+	identity, bucket, env, database string
+}
+
 // spannerInstance is 2-env's spanner_instance output: the project and name of the instance
 // the environment's databases live on, the environment's own or the shared one.
 type spannerInstance struct {
@@ -37,25 +51,26 @@ type spannerInstance struct {
 // spanner_instance output, read from the layer's state as the identity) when the stack's
 // database, in any generation, is not among them, against the databases the instance
 // holds at its processing units (derive.SpannerDatabaseCapacity), and answers the refusal
-// when it is full: the database, the instance, its count and its size, the setting that
-// grows it (2-spn's processing_units for the shared instance, 2-env's spanner_instances
-// for an environment's own) and the other way out, bedrock destroy of an application
-// the organization no longer needs. A database already there needs no room, and the
+// when it is full: the database, the instance, its count (and how many of them are
+// pull-request stacks', whose closing is the first way out then) and its size, the
+// setting that grows it (2-spn's processing_units for the shared instance, 2-env's
+// spanner_instances for an environment's own) and the other way out, bedrock destroy of
+// an application the organization no longer needs. A database already there needs no room, and the
 // guard says so. Without a Spanner client or a store opener (tests of the command
 // alone), without 2-env's state in the environment or its output (a 2-env applied by an
 // older bedrock), or while the identity may not read the instance (a 1-org whose roles
 // an older bedrock rendered), nothing is counted, said in the log: the guard meets the
 // limit early where it can and never stands in for Google's own refusal.
-func guardSpannerCapacity(ctx context.Context, clients *Clients, identity, bucket, prefix, app, env string, out io.Writer) (refusal string, err error) {
+func guardSpannerCapacity(ctx context.Context, clients *Clients, t capacityTarget, out io.Writer) (refusal string, err error) {
 	if clients.SpannerAs == nil || clients.StorageAs == nil {
 		return "", nil
 	}
-	instance, ok, err := environmentInstance(ctx, clients, identity, bucket, env, out)
+	identity, env, database := t.identity, t.env, t.database
+	instance, ok, err := environmentInstance(ctx, clients, identity, t.bucket, env, out)
 	if err != nil || !ok {
 		return "", err
 	}
 	name := "projects/" + instance.Project + "/instances/" + instance.Name
-	database := prefix + "-" + env + "-gbl-" + app + "-db"
 	s, err := clients.SpannerAs(ctx, identity)
 	if err != nil {
 		return "", err
@@ -97,18 +112,55 @@ func guardSpannerCapacity(ctx context.Context, clients *Clients, identity, bucke
 	if instance.Project == identityProject(identity) {
 		setting = "spanner_instances." + env + ".processing_units in 2-env/terraform.tfvars"
 	}
-	refusal = fmt.Sprintf("%s%s does not exist, and %s holds its maximum: %d databases, what its %d processing units allow (ten for every hundred below a node); raise %s (100 or 200; beyond 200 is a change to the variable's validation), or bedrock destroy an application the organization no longer needs, which frees its databases",
-		rejected, database, name, len(databases), units, setting)
+	refusal = fmt.Sprintf("%s%s does not exist, and %s holds its maximum: %d databases%s, what its %d processing units allow (ten for every hundred below a node); %sraise %s (100 or 200; beyond 200 is a change to the variable's validation), or bedrock destroy an application the organization no longer needs, which frees its databases",
+		rejected, database, name, len(databases), pullRequestDatabases(databases), units, pullRequestWayOut(databases), setting)
 	fmt.Fprintln(out, refusal)
 
 	return refusal, nil
+}
+
+// pullRequestDatabases says how many of the instance's databases are pull-request stacks',
+// for the count; nothing when none is.
+func pullRequestDatabases(databases []string) string {
+	n := 0
+	for _, d := range databases {
+		if pullRequestDatabaseRE.MatchString(path.Base(d)) {
+			n++
+		}
+	}
+	if n == 0 {
+		return ""
+	}
+
+	return fmt.Sprintf(", %d of them pull-request stacks'", n)
+}
+
+// pullRequestWayOut is the way out an instance holding pull-request stacks' databases
+// offers first: a pull request closed or merged, whose stack the sweep takes down.
+func pullRequestWayOut(databases []string) string {
+	if pullRequestDatabases(databases) == "" {
+		return ""
+	}
+
+	return "close or merge a pull request whose stack is up (the sweep takes a closed one's down, /gcbrun down takes it down now), "
+}
+
+// environmentTarget is an environment stack's database on the environment's instance.
+func environmentTarget(identity string, p *derive.Placement, app, env string) capacityTarget {
+	return capacityTarget{identity: identity, bucket: p.StateBucket, env: env, database: p.Prefix + "-" + env + "-gbl-" + app + "-db"}
+}
+
+// pullRequestTarget is a pull request's own database, on the integration environment's
+// instance.
+func pullRequestTarget(identity string, p *derive.Placement, app, env, number string) capacityTarget {
+	return capacityTarget{identity: identity, bucket: p.StateBucket, env: env, database: app + "-pr" + number + "-db"}
 }
 
 // guardCapacity runs the Spanner capacity guard for a build with no pull request to
 // answer, the stack trigger's first apply and a tag build's plan: a refusal is the error
 // that stops the build.
 func guardCapacity(ctx context.Context, clients *Clients, identity string, p *derive.Placement, app, env string, out io.Writer) error {
-	refusal, err := guardSpannerCapacity(ctx, clients, identity, p.StateBucket, p.Prefix, app, env, out)
+	refusal, err := guardSpannerCapacity(ctx, clients, environmentTarget(identity, p, app, env), out)
 	if err != nil {
 		return err
 	}
