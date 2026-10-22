@@ -17,7 +17,7 @@ jobs:
     uses: cccteam/github-workflows/.github/workflows/golang-ci.yml@ce3b6a61c4b88c82d3c0c1760dc1a3f5a2731021 # v8.2.3
     with:
       build-tags: '["", "dev"]'
-      golangci-lint-version: 'v2.12.2'
+      golangci-lint-version: 'v2.14.0'
       # The test and lint jobs, the long ones, run on the larger runner the repository
       # variable CI_LARGE_RUNNER names (a GitHub-hosted runner's name, billed per minute)
       # and on the standard runner while the variable is unset; every other job stays on

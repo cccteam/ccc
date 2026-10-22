@@ -95,7 +95,7 @@ func (a *argon2Key) cmpOptions(target *SecureHasher) bool {
 }
 
 func (a *argon2Key) MarshalText() ([]byte, error) {
-	b := make([]byte, 0, 28+base64.StdEncoding.EncodedLen((len(a.salt))+base64.StdEncoding.EncodedLen(len(a.key))))
+	b := make([]byte, 0, 28+base64.StdEncoding.EncodedLen(len(a.salt)+base64.StdEncoding.EncodedLen(len(a.key))))
 	b = fmt.Appendf(b, "$%d", a.memory)
 	b = fmt.Appendf(b, "$%d", a.times)
 	b = fmt.Appendf(b, "$%d", a.parallelism)

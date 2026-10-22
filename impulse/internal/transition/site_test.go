@@ -423,7 +423,7 @@ func TestSiteApplyAddsToSites(t *testing.T) {
 	if !slices.Contains(ch.Did, ".github/workflows/ci.yml: rewritten from the code (an angular-kiosk job for apps/kiosk/web)") {
 		t.Errorf("Did lacks the workflow rewrite: %q", ch.Did)
 	}
-	p := (mustDiscover(t, a.Root)).Profile()
+	p := mustDiscover(t, a.Root).Profile()
 	sites := siteNames(p)
 	if len(p.Sites) != 3 || !strings.Contains(sites, "kiosk") {
 		t.Errorf("profile sites = %s", sites)

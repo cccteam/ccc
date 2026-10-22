@@ -78,6 +78,11 @@ linters:
       min-len: 2
       min-occurrences: 3
     gocritic:
+      # The backquotes in this module's messages and rendered prose are markdown code
+      # spans, not Go quoting, so %#q (which would double-quote and escape some values)
+      # is the wrong tool there.
+      disabled-checks:
+        - sprintfQuotedString
       enabled-tags:
         - diagnostic
         - experimental

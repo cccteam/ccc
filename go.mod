@@ -1,6 +1,6 @@
 module github.com/cccteam/ccc
 
-go 1.26.10
+go 1.27.3
 
 require (
 	github.com/go-playground/errors/v5 v5.4.0
