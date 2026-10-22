@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -1569,6 +1570,110 @@ func TestOrgDestroy(t *testing.T) {
 			}
 			if tt.wantJournal != "" && !strings.HasSuffix(string(journal), tt.wantJournal) {
 				t.Errorf("the journal is:\n%s\nwant it to end with %q", journal, tt.wantJournal)
+			}
+		})
+	}
+}
+
+// TestOrgRegisterCapacity: register refuses the application the placement has no room
+// for on the shared Spanner instance (the registered applications, one database each in
+// stg and prd, against ten databases for every hundred processing units 2-spn declares;
+// 100 when 2-spn's terraform.tfvars does not set them), naming the setting that grows it
+// and the other way out, with the placement unchanged; a larger instance declared there
+// has the room.
+func TestOrgRegisterCapacity(t *testing.T) {
+	t.Parallel()
+
+	const refused = "register sixth: the placement declares 12 databases on the shared Spanner instance (6 applications, one database each in stg and prd), and the instance holds 10 at 100 processing units (ten for every hundred below a node): raise processing_units in 2-spn/terraform.tfvars (100 or 200; beyond 200 is a change to the variable's validation, the decision of 2026-09-25 in JOURNAL.md), or bedrock destroy an application the organization no longer needs, which frees its databases"
+	tests := []struct {
+		name string
+		// spn is 2-spn/terraform.tfvars, none when empty (the variable's default).
+		spn     string
+		wantErr string
+	}{
+		{name: "the sixth application on the smallest instance is refused", wantErr: refused},
+		{name: "two hundred processing units declared in 2-spn hold it", spn: "processing_units = 200\n"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			dir := orgRepo(t)
+			editPlacement(t, dir, func(p *org.Placement) {
+				for i := len(p.Applications); i < 5; i++ {
+					code := "app" + strconv.Itoa(i)
+					p.Applications = append(p.Applications, org.Application{Code: code, Repository: code})
+				}
+			})
+			if tt.spn != "" {
+				if err := os.MkdirAll(filepath.Join(dir, "2-spn"), 0o750); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(dir, "2-spn", "terraform.tfvars"), []byte(tt.spn), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			d := orgDeps(dir)
+			checkout := appCheckout(t, "github.com/"+orgOrganization+"/sixth")
+			_, err := execute(d, "", "org", "register", "sixth", "--dir", dir, checkout)
+			placement, readErr := os.ReadFile(filepath.Join(dir, "placement.json"))
+			if readErr != nil {
+				t.Fatal(readErr)
+			}
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("Execute() error = %v, wantErr %q", err, tt.wantErr)
+				}
+				if strings.Contains(string(placement), `"sixth"`) {
+					t.Errorf("placement.json changed on a refusal:\n%s", placement)
+				}
+
+				return
+			}
+			if err != nil {
+				t.Fatalf("Execute() error = %v", err)
+			}
+			if !strings.Contains(string(placement), `"code": "sixth"`) {
+				t.Errorf("placement.json does not carry the sixth application:\n%s", placement)
+			}
+		})
+	}
+}
+
+// TestOrgCheckCapacity: org check says, without failing, when the placement declares
+// more databases on the shared Spanner instance than it holds, and nothing while it fits.
+func TestOrgCheckCapacity(t *testing.T) {
+	t.Parallel()
+
+	const notice = "Spanner capacity: the placement declares 12 databases on the shared Spanner instance (6 applications, one database each in stg and prd), and the instance holds 10 at 100 processing units"
+	tests := []struct {
+		name         string
+		applications int
+		wantNotice   bool
+	}{
+		{name: "past the instance: said", applications: 6, wantNotice: true},
+		{name: "within it: nothing said", applications: 5},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			dir := orgRepo(t)
+			editPlacement(t, dir, func(p *org.Placement) {
+				for i := len(p.Applications); i < tt.applications; i++ {
+					code := "app" + strconv.Itoa(i)
+					p.Applications = append(p.Applications, org.Application{Code: code, Repository: code})
+				}
+			})
+			if code, out := runOrg(t, "org", "new", dir); code != 0 {
+				t.Fatalf("org new: %d %s", code, out)
+			}
+			code, out := runOrg(t, "org", "check", "--dir", dir)
+			if code != 0 {
+				t.Fatalf("org check: exit %d, want 0:\n%s", code, out)
+			}
+			if strings.Contains(out, notice) != tt.wantNotice {
+				t.Errorf("output carries the notice: %v, want %v:\n%s", !tt.wantNotice, tt.wantNotice, out)
 			}
 		})
 	}

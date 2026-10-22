@@ -113,7 +113,9 @@ func stackPlan(data []byte) (*StackPlan, error) {
 // PlanEnvironmentStack plans the environment's stack in a tag build, as the apply identity,
 // after the image build and before the migrations: tofu init on the environment's state
 // prefix, the release's own test of the secret pins (testPins, before the plan, so that a
-// refused release changes nothing), the Cloud Run services and jobs a failed apply left
+// refused release changes nothing), the capacity guard (guardCapacity: the databases on
+// the environment's instance against what it holds, when the stack's database is not
+// there yet), the Cloud Run services and jobs a failed apply left
 // tainted untainted (untaintCloudRun: they exist, and the plan updates them in place),
 // tofu plan saved to the workspace with its JSON beside it, the summary printed and
 // appended (STACK_PLAN), then the plan's tests. A failing plan or test stops the build
@@ -145,6 +147,9 @@ func PlanEnvironmentStack(ctx context.Context, clients *Clients, w Workspace, ou
 	}
 	m, err := testPins(w, subs[envSub], out)
 	if err != nil {
+		return err
+	}
+	if err := guardCapacity(ctx, clients, identity, m.Placement, subs[appSub], subs[envSub], out); err != nil {
 		return err
 	}
 	generation, err := s.planGeneration(ctx, clients, subs, env, w)
@@ -786,6 +791,15 @@ func planEnvironment(ctx context.Context, clients *Clients, w Workspace, build *
 	s := newEnvironmentStack(clients, w, identity, out)
 	if err := s.initEnvironment(ctx, subs[appSub], e, identity); err != nil {
 		return "", err
+	}
+	refusal, err := guardSpannerCapacity(ctx, clients, environmentTarget(identity, m.Placement, subs[appSub], e), out)
+	if err != nil {
+		return "", err
+	}
+	if refusal != "" {
+		cause := errors.New(refusal)
+
+		return "", refuse(ctx, clients, build, env, fmt.Sprintf("The plan of %s's stack stopped before it ran (build %s): %s", e, build.ID, refusal), cause, out)
 	}
 	generation, err := s.generation(ctx, func(ctx context.Context) (Store, error) { return clients.StorageAs(ctx, identity) }, subs, e)
 	if err != nil {

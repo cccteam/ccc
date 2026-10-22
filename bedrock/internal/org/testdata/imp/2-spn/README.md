@@ -122,7 +122,11 @@ it knows (its `spanner.tf`).
 decision of 2026-09-25 is never more than 200 without explicit agreement, and
 `variables.tf` enforces it: `processing_units` must be 100 or 200. Raising the
 cap is a change to the validation, visible in review, not a number in
-`terraform.tfvars`.
+`terraform.tfvars`. Google lets an instance hold ten databases for every hundred
+processing units below a node, so 100 holds five applications in stg and prd and
+200 ten: `bedrock org register` counts the registered applications against it and
+refuses one past it, `bedrock org check` says when the placement is past it, and
+a stack's plan counts the instance's databases before it creates one.
 
 ## Applying
 

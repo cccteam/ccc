@@ -875,7 +875,18 @@ thing one step hands the next. In order:
   the pull request), then plans the stack for every
   environment of the promotion order, each against that environment's state prefix as
   its plan identity (a reader, without the state lock, so the job can change no
-  environment; the apply identity may act as each), and runs the tests a tag build runs
+  environment; the apply identity may act as each). Before each environment's plan, when
+  the stack's database is not on the instance the environment's databases live on
+  (`2-env`'s `spanner_instance` output, read from its state as the plan identity), it
+  counts the instance's databases against what the instance holds at its processing
+  units (Google's rule: ten for every hundred below a node, a hundred from a node on)
+  and refuses the plan while the instance is full, naming how many of its databases are
+  pull-request stacks' (closing or merging one is the first way out then), the setting
+  that grows the instance (`processing_units` in `2-spn/terraform.tfvars` for the shared
+  instance, `spanner_instances` in `2-env/terraform.tfvars` for an environment's own) and
+  `bedrock destroy` of an application no longer needed, so the limit is met in a
+  sentence on the pull request and not by Google's refusal inside an apply, after the
+  first environment's stack already stands. It then runs the tests a tag build runs
   before its apply, then the pull request's looks ahead as the same identities: the
   patch preview, when the pull request is against a patch line, and the window
   preview. One
@@ -895,7 +906,11 @@ thing one step hands the next. In order:
   the `/gcbrun` comment, beside the preview build, as the apply identity. It reads its
   build the same way, mints the repository's token from the Cloud Build connection, reads
   the latest `/gcbrun` comment, and applies the pull request's own stack into its own
-  state prefix: the plan is saved, the guard lets only the pull request's own resources
+  state prefix: the capacity guard counts the databases on the integration environment's
+  instance when the pull request's own database is not there yet (a stack on
+  `/gcbrun shared-db` makes none) and refuses the job while the instance is full, naming
+  the pull requests whose stacks are up as the first way out; the plan is saved, the
+  guard lets only the pull request's own resources
   through, the apply applies exactly that plan (a destroy on `/gcbrun down`; the
   database replaced on `/gcbrun reload-db`, or when the migrations its last build applied
   are no longer in the tree as applied, read from the pull request's newest deployment
@@ -973,7 +988,10 @@ thing one step hands the next. In order:
 - `deploy stack plan`, `apply`: in a tag build, the environment's stack planned and
   applied as the apply identity, after the image build (a failed build changes no
   infrastructure) and before the jobs and the migrations (what they need exists first).
-  `plan` saves the plan with its JSON, prints and appends the summary (`STACK_PLAN`), and
+  `plan` runs the capacity guard first (the databases on the environment's instance
+  against what it holds, when the stack's database is not there yet, as
+  `deploy plan-environments` does), saves the plan with its JSON, prints and appends the
+  summary (`STACK_PLAN`), and
   runs the tests: no authoritative IAM resource in the stack other than the file stores'
   bucket policies, and every secret version a
   planned revision template pins exists and is enabled. Before the plan it derives the
@@ -1033,7 +1051,11 @@ thing one step hands the next. In order:
   live stack (its deployment records say a release has run on it, and no teardown record
   beside the stack's id is newer than its newest live release: a release's build applies
   a live stack, and the workflow's `run` action runs the live release again), runs `tofu init` on the
-  environment's state prefix as the apply identity, plans with the environment and the
+  environment's state prefix as the apply identity, counts the databases on the
+  environment's instance against what it holds when the stack's database is not there
+  yet (the capacity guard `deploy plan-environments` runs, with the same refusal, so a
+  sixth application's first apply on a full shared instance stops here and not inside
+  tofu's apply), plans with the environment and the
   generated secrets' pins derived from their containers the way a pull request's plan
   derives them (each container's newest enabled version; nothing while a container has
   none, since the first release adds it), prints the plan's summary and applies it. After
@@ -2249,6 +2271,12 @@ leaves the bootstrap administrator with on every project it creates, temporary b
 and removed by hand once the apply trigger applies the layers (`1-org/README.md`, "Applying").
 The listing reads the projects' IAM policies with the run's Google credentials (`gcloud
 auth application-default login`); without any it says so, and it never fails the check.
+While the placement declares more databases on a Spanner instance than it holds (the
+count `org register` refuses on, for the shared instance and each environment's own), or
+the applications' databases take all of the integration environment's instance and leave
+no pull-request stack room for a database of its own, it says so without failing the
+check: an application `bedrock destroy` took down still stands in the placement and
+counts, and the check gates every plan and apply.
 Last it lists each API key in an environment project that carries no API restriction (the
 list of APIs that accept the key; a key with none is accepted by every API in the project
 that takes an API key), with the same credentials and on the same terms: Firebase's browser
@@ -2458,7 +2486,21 @@ application registered before hostnames were recorded has no entry and renders b
 default rule, its code under the apps domain. So every pull request of the sequence carries every
 rendered file, and `org check` passes on each. Register refuses the first application
 while the placement does not record the Cloud Build GitHub authorization, since the
-applications' triggers exist once 2-env holds the connection.
+applications' triggers exist once 2-env holds the connection. It refuses an application
+a Spanner instance has no room for: the registered applications, one database each in
+every environment on the instance, counted against the databases the instance holds at
+its size (ten for every hundred processing units below a node, Google's rule). The
+instances are the shared one, with stg's and prd's databases by default
+(`2-spn/terraform.tfvars`, `processing_units`), and each environment's own, the
+integration environment's by default (`2-env/terraform.tfvars`, `spanner_instances`,
+which places each environment and sizes an own instance; 100 when unset). The sentence
+names the setting that grows the instance and `bedrock destroy` of an application no
+longer needed, which frees its databases; a refusal changes nothing. On the instance that
+holds the integration environment's databases every pull request's stack holds a database
+of its own too (unless it shares the environment's, `/gcbrun shared-db`), so the
+registration says what the applications take there and what is left for pull-request
+stacks across every application. The stacks' plans count again, against the instance
+itself, before a database is created (`deploy plan-environments`, `deploy pr-stack`).
 
 `org register` also makes the application's first `placement.json` (The application's
 placement, above), every field from the organization's placement and none asked of the
