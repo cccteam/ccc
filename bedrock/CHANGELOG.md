@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.9](https://github.com/cccteam/ccc/compare/bedrock/v0.3.8...bedrock/v0.3.9) (2026-10-22)
+
+
+### Bug Fixes
+
+* a database without a schema migrations table yet reads as no version, so a pull request's fresh database migrates ([#1056](https://github.com/cccteam/ccc/issues/1056)) ([4fbab03](https://github.com/cccteam/ccc/commit/4fbab03dbcd05f27ab6a5355c7396e914dcf0759))
+
 ## [0.3.8](https://github.com/cccteam/ccc/compare/bedrock/v0.3.7...bedrock/v0.3.8) (2026-10-22)
 
 
