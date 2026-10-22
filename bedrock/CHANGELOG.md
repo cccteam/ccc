@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.6](https://github.com/cccteam/ccc/compare/bedrock/v0.3.5...bedrock/v0.3.6) (2026-10-22)
+
+
+### Bug Fixes
+
+* the pull-request stack job reads Spanner, the state and the generated pins with its own credentials when it runs as the apply identity ([#1049](https://github.com/cccteam/ccc/issues/1049)) ([945ca35](https://github.com/cccteam/ccc/commit/945ca35b444479dbdfb953bced4c88ed73a85f9e))
+
 ## [0.3.5](https://github.com/cccteam/ccc/compare/bedrock/v0.3.4...bedrock/v0.3.5) (2026-10-22)
 
 
