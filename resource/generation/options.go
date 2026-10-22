@@ -1,7 +1,6 @@
 package generation
 
 import (
-	"encoding/json"
 	"fmt"
 	"maps"
 	"path/filepath"
@@ -1271,24 +1270,28 @@ func defaultTypescriptOverrides() map[string]string {
 		reflect.TypeFor[spanner.NullTime]().String():    dateTSType,
 		reflect.TypeFor[spanner.NullDate]().String():    civilDateTSType,
 		reflect.TypeFor[spanner.NullJSON]().String():    unknownTSType,
-		reflect.TypeFor[json.RawMessage]().String():     unknownTSType,
-		reflect.TypeFor[securehash.Hash]().String():     stringTSType,
-		boolGoType:       booleanStr,
-		stringGoType:     stringTSType,
-		intGoType:        numberTSType,
-		int8GoType:       numberTSType,
-		int16GoType:      numberTSType,
-		int32GoType:      numberTSType,
-		int64GoType:      numberTSType,
-		uintGoType:       numberTSType,
-		uint8GoType:      numberTSType,
-		uint16GoType:     numberTSType,
-		uint32GoType:     numberTSType,
-		uint64GoType:     numberTSType,
-		uintptrGoType:    numberTSType,
-		float32GoType:    numberTSType,
-		float64GoType:    numberTSType,
-		complex64GoType:  numberTSType,
-		complex128GoType: numberTSType,
+		// json.RawMessage under both of its names: the named type before Go 1.27, and
+		// jsontext.Value, which it is an alias of from Go 1.27 on and which aliases read
+		// through resolve to (reflect spells it so too).
+		jsonRawMessageName:                          unknownTSType,
+		jsontextValueName:                           unknownTSType,
+		reflect.TypeFor[securehash.Hash]().String(): stringTSType,
+		boolGoType:                                  booleanStr,
+		stringGoType:                                stringTSType,
+		intGoType:                                   numberTSType,
+		int8GoType:                                  numberTSType,
+		int16GoType:                                 numberTSType,
+		int32GoType:                                 numberTSType,
+		int64GoType:                                 numberTSType,
+		uintGoType:                                  numberTSType,
+		uint8GoType:                                 numberTSType,
+		uint16GoType:                                numberTSType,
+		uint32GoType:                                numberTSType,
+		uint64GoType:                                numberTSType,
+		uintptrGoType:                               numberTSType,
+		float32GoType:                               numberTSType,
+		float64GoType:                               numberTSType,
+		complex64GoType:                             numberTSType,
+		complex128GoType:                            numberTSType,
 	}
 }
