@@ -17,12 +17,14 @@ import (
 
 // guardPlan lets through only what belongs to the pull request. A pull request may have
 // edited the stack any way at all, so every resource the saved plan creates, changes or
-// destroys must carry the pull request's name (<app>-pr<N>) in what names it (name,
-// account_id, service, job, database, parent, secret_id, service_account_id, bucket, or
-// the source of a ruleset), be an IAM membership of one of the pull request's own
-// accounts, or be a grant whose condition bounds it to one of the pull request's resources
-// (the deploy identity's Firestore role on the pull request's database). Resources outside
-// the google provider (time_sleep) shape nothing and pass. Anything else stops the job and is
+// destroys must carry the pull request's name (<app>-pr<N>; a sites-layout service is
+// <app>-pr<N>-<site>) in what names it (name, account_id, service, job, database, parent,
+// secret_id, service_account_id, bucket, or the source of a ruleset), be an IAM membership
+// of one of the pull request's own accounts, be a grant whose condition bounds it to one
+// of the pull request's resources (the deploy identity's Firestore role on the pull
+// request's database), or be a creation whose names are all unknown until the apply (the
+// Firebase API key, named for the stack's random id), which touches nothing that exists.
+// Resources outside the google provider (time_sleep) shape nothing and pass. Anything else stops the job and is
 // listed on the pull request. Shared mode (/gcbrun shared-db) is refused too when the
 // pull request changes the migrations, which would change the shared database before any
 // release. env is the job's mode (the repository's token, shared-db); the plan's JSON is
@@ -55,7 +57,7 @@ func guardPlan(ctx context.Context, clients *Clients, w Workspace, build *Build,
 		return err
 	}
 	if pr != nil {
-		body := fmt.Sprintf("The pull-request build stopped: its plan touches resources that do not belong to this pull request. A pull-request stack applies only resources named %s, memberships of its own accounts, and grants bounded by their condition to its resources. Build %s:\n\n```\n%s\n```", name, build.ID, strings.Join(offenders, "\n"))
+		body := fmt.Sprintf("The pull-request build stopped: its plan touches resources that do not belong to this pull request. A pull-request stack applies only resources named %s, memberships of its own accounts, grants bounded by their condition to its resources, and creations named at the apply alone. Build %s:\n\n```\n%s\n```", name, build.ID, strings.Join(offenders, "\n"))
 		if err := pr.comment(ctx, body, out); err != nil {
 			return err
 		}
@@ -97,9 +99,10 @@ type planChange struct {
 	Address string `json:"address"`
 	Type    string `json:"type"`
 	Change  struct {
-		Actions []string       `json:"actions"`
-		Before  map[string]any `json:"before"`
-		After   map[string]any `json:"after"`
+		Actions      []string       `json:"actions"`
+		Before       map[string]any `json:"before"`
+		After        map[string]any `json:"after"`
+		AfterUnknown map[string]any `json:"after_unknown"`
 	} `json:"change"`
 }
 
@@ -153,8 +156,9 @@ func planOffenders(data []byte, name string) (offenders []string, count int, err
 }
 
 // ownedBy reports whether the change is the pull request's: its naming attributes carry
-// the name, or it is an IAM membership of one of the pull request's accounts, or a grant
-// bounded by its condition to one of the pull request's resources.
+// the name, or it is a creation named at the apply alone, or it is an IAM membership of
+// one of the pull request's accounts, or a grant bounded by its condition to one of the
+// pull request's resources.
 func ownedBy(c planChange, name string) bool {
 	values := c.Change.After
 	if values == nil {
@@ -169,12 +173,33 @@ func ownedBy(c planChange, name string) bool {
 	if strings.Contains(strings.Join(ident, " "), name) {
 		return true
 	}
+	if len(ident) == 0 && namedAtApply(c) {
+		return true
+	}
 	if !strings.HasSuffix(c.Type, "_iam_member") {
 		return false
 	}
 	member, _ := values["member"].(string)
 
 	return strings.HasPrefix(member, "serviceAccount:"+name+"-") || conditioned(values, name)
+}
+
+// namedAtApply reports whether a creation's names are all unknown until the apply: the
+// Firebase API key is named for the stack's random id, which a fresh stack's plan has not
+// drawn yet. Such a creation touches nothing that exists, so it is the pull request's. A
+// grant never is by this rule (its member and role are read apart), nor is a creation
+// with any naming attribute known, which that attribute judges.
+func namedAtApply(c planChange) bool {
+	if c.Change.Before != nil || !slices.Equal(c.Change.Actions, []string{actionCreate}) || strings.Contains(c.Type, "_iam_") {
+		return false
+	}
+	for _, attr := range identifying {
+		if unknown, _ := c.Change.AfterUnknown[attr].(bool); unknown {
+			return true
+		}
+	}
+
+	return false
 }
 
 // conditioned reports whether a grant's condition bounds it to a resource that carries the

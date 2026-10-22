@@ -1087,7 +1087,7 @@ func (v *view) siteProse() {
 		name := "`" + s.Name + "`"
 		names = append(names, name)
 		labels = append(labels, "`"+s.Label+"` for "+name)
-		prs = append(prs, "`"+s.Label+"-pr<N>` for "+name)
+		prs = append(prs, "`"+v.App+"-pr<N>-"+s.Name+"` for "+name)
 		if s.H2C {
 			h2c = append(h2c, name)
 		} else {

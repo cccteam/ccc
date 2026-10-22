@@ -595,7 +595,8 @@ own runtime identities, short names throughout (`beacon-pr<N>` for the service i
 each region, `beacon-pr<N>-app`, `beacon-pr<N>-db`), and the
 hostname `beacon-pr<N>.impulseframework.dev`, which the wildcard backend 2-env creates once
 in tst serves by picking the Cloud Run service named by the hostname's
-first label (2-net's `*.impulseframework.dev` host rule points at it). It reads
+first label (2-net's `*.impulseframework.dev` host rule points at it; a pull request's
+hostnames carry its name, not the sites' labels, which name an environment's). It reads
 tst's secret containers at tst's pinned versions and creates no
 containers, no triggers and no backend of its own. The stack's pr-stack
 trigger applies it as the tst apply identity on the same `/gcbrun` comment

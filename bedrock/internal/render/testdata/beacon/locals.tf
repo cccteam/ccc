@@ -39,14 +39,16 @@ locals {
   migration_databases = join(",", [for env in local.environments : "${env}=projects/${try(data.terraform_remote_state.envs[env].outputs.spanner_instance.project, "")}/instances/${try(data.terraform_remote_state.envs[env].outputs.spanner_instance.name, "")}/databases/${local.prefix}-${env}-gbl-${local.app}-db" if env != var.environment])
 
   # A pull-request stack: this code in tst with var.pull_request set, into
-  # its own state. Its resources carry the short name beacon-pr<N> (2-env's wildcard
-  # backend picks the Cloud Run service by that name from the hostname), and it
+  # its own state. Its resources carry the short name beacon-pr<N>, the pull request's
+  # name, which the pr-stack trigger's plan guard holds every one of them to, and it
   # shares tst's secret containers, identity registration and registry.
   is_pr   = var.pull_request != 0
   pr_name = "${local.app}-pr${var.pull_request}"
-  # The pull-request stack's hostname label and Cloud Run service name, the same word:
-  # 2-env's pull-request backend picks the service by the hostname's first label.
-  pr_host = "${local.label}-pr${var.pull_request}"
+  # The pull-request stack's hostname label and Cloud Run service name, the same word,
+  # the pull request's name: 2-env's pull-request backend picks the service by the
+  # hostname's first label, so the pull request's name serves there, not the site's
+  # label, which names an environment's hostnames alone.
+  pr_host = local.pr_name
 
   # The runtime accounts' IDs: by the convention, or the short name. The
   # migration has none: the pipeline runs the migrate command on the build

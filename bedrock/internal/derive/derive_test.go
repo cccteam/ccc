@@ -781,11 +781,11 @@ func TestPlacementValidate(t *testing.T) {
 		{name: "prefix with a hyphen", mutate: func(p *Placement) { p.Prefix = "im-p" }, wantErr: "prefix"},
 		{name: "a declared hostname label", mutate: func(p *Placement) { p.Hostnames = map[string]SiteHostnames{"harbor": {Label: "lighthouse"}} }},
 		{name: "a label with a hyphen inside", mutate: func(p *Placement) { p.Hostnames = map[string]SiteHostnames{"harbor": {Label: "light-house"}} }},
-		{name: "a label of 41 characters", mutate: func(p *Placement) {
-			p.Hostnames = map[string]SiteHostnames{"harbor": {Label: "l" + strings.Repeat("a", 40)}}
+		{name: "a label of 54 characters", mutate: func(p *Placement) {
+			p.Hostnames = map[string]SiteHostnames{"harbor": {Label: "l" + strings.Repeat("a", 53)}}
 		}},
-		{name: "a label of 42 characters", mutate: func(p *Placement) {
-			p.Hostnames = map[string]SiteHostnames{"harbor": {Label: "l" + strings.Repeat("a", 41)}}
+		{name: "a label of 55 characters", mutate: func(p *Placement) {
+			p.Hostnames = map[string]SiteHostnames{"harbor": {Label: "l" + strings.Repeat("a", 54)}}
 		}, wantErr: `hostnames.harbor: hostname label "laaaa`},
 		{name: "a label in capitals", mutate: func(p *Placement) { p.Hostnames = map[string]SiteHostnames{"harbor": {Label: "Lighthouse"}} }, wantErr: `hostname label "Lighthouse" is not a DNS label`},
 		{name: "a label ending with a hyphen", mutate: func(p *Placement) { p.Hostnames = map[string]SiteHostnames{"harbor": {Label: "light-"}} }, wantErr: `hostname label "light-"`},

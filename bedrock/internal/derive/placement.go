@@ -709,12 +709,13 @@ func (p *Placement) Primary() Region {
 
 // HostnameLabelPattern is the one rule for a site's hostname label: a DNS label of
 // lowercase letters, digits and hyphens, starting with a letter and ending with a letter or
-// digit, of at most 41 characters, so that a pull-request stack's service name,
-// <label>-pr<N>, fits Cloud Run's 49 with a five-digit pull request number.
-const HostnameLabelPattern = `^[a-z]([a-z0-9-]{0,39}[a-z0-9])?$`
+// digit, of at most 54 characters, so that an environment's hostname label, <label>-<env>
+// with an environment name of up to eight characters, fits a DNS label's 63. A pull-request
+// stack's hostname and service are named for the pull request, <app>-pr<N>, not the label.
+const HostnameLabelPattern = `^[a-z]([a-z0-9-]{0,52}[a-z0-9])?$`
 
 // HostnameLabelRule says the rule in words, for the refusals that name it.
-const HostnameLabelRule = "a DNS label of at most 41 lowercase letters, digits and hyphens, starting with a letter and ending with a letter or digit"
+const HostnameLabelRule = "a DNS label of at most 54 lowercase letters, digits and hyphens, starting with a letter and ending with a letter or digit"
 
 var hostnameLabelRE = regexp.MustCompile(HostnameLabelPattern)
 
