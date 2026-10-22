@@ -712,11 +712,12 @@ throttled: the directory holds the credential.
 The same stack, applied in tst with `pull_request` set to the pull request's
 number, is that pull request's environment: its own state
 (`3-app/lantrn/tst/pr<N>`), its own database on tst's instance and its
-own runtime identities, short names throughout (`lantrn-console-pr<N>` for `console` and `lanterns-pr<N>` for `portal`, the
+own runtime identities, short names throughout (`lantrn-pr<N>-console` for `console` and `lantrn-pr<N>-portal` for `portal`, the
 sites' services in each region, `lantrn-pr<N>-app`, `lantrn-pr<N>-db`), and the
-hostnames `<label>-pr<N>.impulseframework.dev`, a site's each, which the wildcard backend 2-env creates once
+hostnames `lantrn-pr<N>-<site>.impulseframework.dev`, a site's each, which the wildcard backend 2-env creates once
 in tst serves by picking the Cloud Run service named by the hostname's
-first label (2-net's `*.impulseframework.dev` host rule points at it). It reads
+first label (2-net's `*.impulseframework.dev` host rule points at it; a pull request's
+hostnames carry its name, not the sites' labels, which name an environment's). It reads
 tst's secret containers at tst's pinned versions and creates no
 containers, no triggers and no backend of its own. The stack's pr-stack
 trigger applies it as the tst apply identity on the same `/gcbrun` comment

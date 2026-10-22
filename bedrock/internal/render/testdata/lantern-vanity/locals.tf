@@ -60,14 +60,16 @@ locals {
   migration_databases = join(",", [for env in local.environments : "${env}=projects/${try(data.terraform_remote_state.envs[env].outputs.spanner_instance.project, "")}/instances/${try(data.terraform_remote_state.envs[env].outputs.spanner_instance.name, "")}/databases/${local.prefix}-${env}-gbl-${local.app}-db" if env != var.environment])
 
   # A pull-request stack: this code in tst with var.pull_request set, into
-  # its own state. Its resources carry the short name lantrn-pr<N> (2-env's wildcard
-  # backend picks the Cloud Run service by that name from the hostname), and it
+  # its own state. Its resources carry the short name lantrn-pr<N>, the pull request's
+  # name, which the pr-stack trigger's plan guard holds every one of them to, and it
   # shares tst's secret containers, identity registration and registry.
   is_pr   = var.pull_request != 0
   pr_name = "${local.app}-pr${var.pull_request}"
-  # Each site's pull-request hostname label and Cloud Run service name, the same word:
-  # 2-env's pull-request backend picks the service by the hostname's first label.
-  site_pr_hosts = { for site, s in local.site_settings : site => "${s.label}-pr${var.pull_request}" }
+  # Each site's pull-request hostname label and Cloud Run service name, the same word,
+  # lantrn-pr<N>-<site>: 2-env's pull-request backend picks the service by the
+  # hostname's first label, so the pull request's name serves there, not the site's
+  # label, which names an environment's hostnames alone.
+  site_pr_hosts = { for site in local.sites : site => "${local.pr_name}-${site}" }
   pr_host       = local.site_pr_hosts[local.sites[0]]
 
   # Which spans the processes record: every one in a pull-request stack and in

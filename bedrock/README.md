@@ -191,11 +191,12 @@ and what its absence means:
   and the site's vanity hostnames (`"portal": {"label": "lanterns", "vanity": {"prd":
   ["lanterns.example"]}}`); the label may be left out of the object for the default.
   The label is one DNS label of lowercase letters, digits and hyphens starting with a
-  letter and ending with a letter or digit, at most 41 characters (so a pull-request
-  stack's service, `<label>-pr<N>`, fits Cloud Run's name): the stack serves
-  `<label>-<env>` under the apps domain, the bare `<label>` in production, `<label>-next`
-  for the next revision and `<label>-pr<N>` for a pull-request stack, whose Cloud Run
-  service carries the same name. A site left out keeps the default, the code (in the sites
+  letter and ending with a letter or digit, at most 54 characters (so `<label>-<env>`, with
+  an environment name of up to eight characters, fits a DNS label): the stack serves
+  `<label>-<env>` under the apps domain, the bare `<label>` in production and `<label>-next`
+  for the next revision. A pull-request stack serves `<app>-pr<N>` (`<app>-pr<N>-<site>` per
+  site in the sites layout), the pull request's name, which its Cloud Run service carries
+  too, as every resource of its stack does. A site left out keeps the default, the code (in the sites
   layout the code, a hyphen and the site's name), so the code is in a URL by default alone
   and stays the identifier every resource name carries. A label names a site the
   application has, and one label under the apps domain only: the organization's wildcard
@@ -2639,9 +2640,10 @@ release tag, before the first release it may; a seed file may; a consolidation i
 accepted by its shape and held until every environment's database is at or above its
 index; against the default branch for a pull request; a refusal names `bedrock migration
 renumber` as the fix), and the
-plan guard (a pull-request stack may only create and change what carries
-its own number), which holds because it runs in the pr-stack trigger, from steps the pull
-request cannot edit.
+plan guard (a pull-request stack may only create and change what carries its own name,
+`<app>-pr<N>`, is a grant to its own accounts or bounded to its resources, or is created
+under names unknown until the apply, which touches nothing that exists), which holds because
+it runs in the pr-stack trigger, from steps the pull request cannot edit.
 
 A run that replaces the database (a restore run) puts the application into maintenance
 first: the release's own image starts as a revision with `APP_MAINTENANCE` set, which

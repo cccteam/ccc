@@ -13,8 +13,9 @@
 # recorded before hostnames were renders by the default rule, its code. A hostname an
 # application serves on a vanity domain (var.vanity_domains, from placement.json's
 # vanityDomains) is recorded and listed the same way, with no -next twin. The wildcard
-# routes every pull-request environment, <label>-pr<N>, to the first environment's
-# pull-request backend, which picks the Cloud Run service by the hostname's first label;
+# routes every pull-request environment, <app>-pr<N> (<app>-pr<N>-<site> per site in the
+# sites layout), to the first environment's pull-request backend, which picks the Cloud
+# Run service by the hostname's first label;
 # exact hostnames win. An application's hostnames are listed once its registration is
 # complete (placement.json's registration, moved by bedrock org register <app> --next
 # after its stack's first apply in every environment has created the backends, which

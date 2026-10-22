@@ -520,6 +520,20 @@ func TestGuardPlan(t *testing.T) {
 	// A bucket's policy is named by its bucket: the pull request's own, or the environment's.
 	ownPolicy := `{"address": "google_storage_bucket_iam_policy.files", "type": "google_storage_bucket_iam_policy", "change": {"actions": ["create"], "after": {"bucket": "imp-tst-gbl-quill-pr7-files-123", "policy_data": "{}"}}}`
 	foreignPolicy := `{"address": "google_storage_bucket_iam_policy.files", "type": "google_storage_bucket_iam_policy", "change": {"actions": ["update"], "before": {"bucket": "imp-tst-gbl-quill-files-123", "policy_data": "{}"}, "after": {"bucket": "imp-tst-gbl-quill-files-123", "policy_data": "{}"}}}`
+	// A sites-layout pull request's services are named <app>-pr<N>-<site>; their invoker
+	// grants are named by the service and their public-invoker tag bindings' parents carry it.
+	ownSiteService := `{"address": "google_cloud_run_v2_service.app[\"console-uc1\"]", "type": "google_cloud_run_v2_service", "change": {"actions": ["create"], "after": {"name": "quill-pr7-console", "location": "us-central1"}}}`
+	ownSiteInvoker := `{"address": "google_cloud_run_v2_service_iam_member.invoker[\"console-uc1\"]", "type": "google_cloud_run_v2_service_iam_member", "change": {"actions": ["create"], "after": {"name": "quill-pr7-console", "member": "allUsers", "role": "roles/run.invoker"}}}`
+	ownSiteBinding := `{"address": "google_tags_location_tag_binding.public_invoker[\"console-uc1\"]", "type": "google_tags_location_tag_binding", "change": {"actions": ["create"], "after": {"parent": "//run.googleapis.com/projects/123/locations/us-central1/services/quill-pr7-console", "tag_value": "tagValues/1"}}}`
+	// The Firebase API key is named for the stack's random id, which a fresh stack's plan
+	// has not drawn: its name is unknown until the apply. A key with a known name is judged
+	// by it.
+	ownKey := `{"address": "google_apikeys_key.firebase", "type": "google_apikeys_key", "change": {"actions": ["create"], "after": {"project": "p", "restrictions": [{"api_targets": [{"service": "identitytoolkit.googleapis.com"}]}]}, "after_unknown": {"name": true, "display_name": true, "id": true}}}`
+	foreignKey := `{"address": "google_apikeys_key.firebase", "type": "google_apikeys_key", "change": {"actions": ["create"], "after": {"name": "imp-tst-gbl-quill-firebase-5c2a", "project": "p"}, "after_unknown": {"id": true}}}`
+	// A grant whose member is unknown until the apply, and an object into the environment's
+	// file store under a name unknown until the apply, are not named at the apply alone.
+	unknownMember := `{"address": "google_project_iam_member.late", "type": "google_project_iam_member", "change": {"actions": ["create"], "after": {"role": "roles/viewer", "project": "p"}, "after_unknown": {"member": true}}}`
+	foreignObject := `{"address": "google_storage_bucket_object.seed", "type": "google_storage_bucket_object", "change": {"actions": ["create"], "after": {"bucket": "imp-tst-gbl-quill-files-123"}, "after_unknown": {"name": true}}}`
 	plan := func(changes ...string) string {
 		return `{"resource_changes": [` + strings.Join(changes, ",") + `]}`
 	}
@@ -570,6 +584,37 @@ func TestGuardPlan(t *testing.T) {
 			name:        "the policy of the environment's file store is refused",
 			plan:        plan(ownChange, foreignPolicy),
 			wantOut:     []string{"google_storage_bucket_iam_policy.files (update)"},
+			wantErr:     "Build REJECTED: the plan touches resources that are not pull request 7's",
+			wantComment: "A pull-request stack applies only resources named quill-pr7",
+		},
+		{
+			name:    "a sites-layout pull request's services, their invoker grants and their tag bindings pass",
+			plan:    plan(ownSiteService, ownSiteInvoker, ownSiteBinding),
+			wantOut: []string{"Guard passed: 3 planned change(s), all pull request 7's."},
+		},
+		{
+			name:    "a creation named at the apply alone passes: the Firebase API key in a fresh stack",
+			plan:    plan(ownChange, ownKey),
+			wantOut: []string{"Guard passed: 2 planned change(s), all pull request 7's."},
+		},
+		{
+			name:        "an API key with a known name that is not the pull request's is refused",
+			plan:        plan(ownChange, foreignKey),
+			wantOut:     []string{"google_apikeys_key.firebase (create)"},
+			wantErr:     "Build REJECTED: the plan touches resources that are not pull request 7's",
+			wantComment: "creations named at the apply alone",
+		},
+		{
+			name:        "a grant whose member is unknown until the apply is refused",
+			plan:        plan(ownChange, unknownMember),
+			wantOut:     []string{"google_project_iam_member.late (create)"},
+			wantErr:     "Build REJECTED: the plan touches resources that are not pull request 7's",
+			wantComment: "A pull-request stack applies only resources named quill-pr7",
+		},
+		{
+			name:        "an object into the environment's file store under a name unknown until the apply is refused",
+			plan:        plan(ownChange, foreignObject),
+			wantOut:     []string{"google_storage_bucket_object.seed (create)"},
 			wantErr:     "Build REJECTED: the plan touches resources that are not pull request 7's",
 			wantComment: "A pull-request stack applies only resources named quill-pr7",
 		},
