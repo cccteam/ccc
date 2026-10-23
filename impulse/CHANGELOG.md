@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.5.4](https://github.com/cccteam/ccc/compare/impulse/v0.5.3...impulse/v0.5.4) (2026-10-23)
+
+
+### Features
+
+* invitations, email addresses and sign-up from mailed links across resource, Lodestar, impulse and bedrock ([#1082](https://github.com/cccteam/ccc/issues/1082)) ([c841798](https://github.com/cccteam/ccc/commit/c841798d7c1f40aacea46dccf25f7a3fc1c2754d))
+
+
+### Bug Fixes
+
+* the upgrade walk reads the tool pin for its position, so a ledger step that moves no framework pin is walked ([#1072](https://github.com/cccteam/ccc/issues/1072)) ([d99f9b3](https://github.com/cccteam/ccc/commit/d99f9b354ff9ddeb02b472c3262e094cb86c61a5))
+
 ## [0.5.3](https://github.com/cccteam/ccc/compare/impulse/v0.5.2...impulse/v0.5.3) (2026-10-23)
 
 
