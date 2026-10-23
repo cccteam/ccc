@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.5](https://github.com/cccteam/ccc/compare/resource/v0.15.4...resource/v0.15.5) (2026-10-23)
+
+
+### Features
+
+* signing out is a route: the sign-out page ends the session, and the login page ends none on arrival ([#1099](https://github.com/cccteam/ccc/issues/1099)) ([a0e29b7](https://github.com/cccteam/ccc/commit/a0e29b75391d881a5cef4d61f42dbcc14eee0856))
+
 ## [0.15.4](https://github.com/cccteam/ccc/compare/resource/v0.15.3...resource/v0.15.4) (2026-10-23)
 
 
