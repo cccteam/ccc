@@ -32,8 +32,10 @@ locals {
   # trigger, which plans each environment's application stack on a pull
   # request as that environment's plan identity, so each of them may
   # impersonate this environment's plan identity of its own application. Read
-  # from tst's 2-env state; in tst they are this layer's own.
-  tst_apply_members = local.is_tst ? { for app in var.applications : app => google_service_account.apply[app].member } : try({ for app, a in data.terraform_remote_state.tst_env[0].outputs.applications : app => a.apply_identity_member }, {})
+  # from tst's 2-env state; in tst they are this layer's own. An application tst's
+  # state still lists and this environment no longer has (one retired on this pull
+  # request, until tst applies) is left out: its plan identity is gone here.
+  tst_apply_members = local.is_tst ? { for app in var.applications : app => google_service_account.apply[app].member } : try({ for app, a in data.terraform_remote_state.tst_env[0].outputs.applications : app => a.apply_identity_member if contains(var.applications, app) }, {})
 
   # tst's deploy identities (by application): a consolidation pull request's build runs
   # the migration guard as them, which reads this environment's migration version
