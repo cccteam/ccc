@@ -29,7 +29,7 @@ const METHODS: LoginMethods = {
 };
 
 // The page composes the library's login component: the component reads the methods route
-// through the application's client and renders the form from it; the page ends the arriving
+// through the application's client and renders the form from it; the page ends no
 // session and, on the component's signedIn, starts the idle watch and navigates. The sign-in
 // itself (the XSRF re-read, the post, the pending step) is the library's and is specified there.
 
@@ -60,17 +60,16 @@ describe('LoginComponent', () => {
     fixture.detectChanges();
   });
 
-  it('shows the release the server named on the methods answer, in the card\'s footer', () => {
+  it("shows the release the server named on the methods answer, in the card's footer", () => {
     const release: HTMLElement | null = fixture.nativeElement.querySelector('mat-card-footer.release ccc-release');
     expect(release?.textContent?.trim()).toBe('v0.3.1');
   });
 
-  it('creates, ending whatever session the browser arrived with, and the component asks the server what the outlet offers', () => {
+  it('creates, ending no session, and the component asks the server what the outlet offers and whether a session stands', () => {
     expect(fixture.componentInstance).toBeTruthy();
-    // The two arrival requests are independent: the logout waits on the live session's stop first.
-    expect(transport.requests.map((request) => `${request.method} ${request.url}`).sort()).toEqual([
-      `DELETE ${environment.apiUrl}/user/session`,
+    expect(transport.requests.map((request) => `${request.method} ${request.url}`)).toEqual([
       `GET ${environment.apiUrl}/user/methods`,
+      `GET ${environment.apiUrl}/user/session`,
     ]);
   });
 
@@ -94,9 +93,10 @@ describe('LoginComponent', () => {
 });
 
 describe('LoginComponent, arriving with a mailed link', () => {
-  // An invitation is accepted by the person signed in, and an address confirmation is posted
-  // for the session the page finds, so the page keeps the session it arrived with for those
-  // two links and ends it, as above, for any other arrival.
+  // The page ends no session on arrival, so a mailed link followed signed in keeps the session:
+  // an invitation is accepted by the person signed in, an address confirmation is posted for
+  // the session the page finds, and a sign-up creates an account of its own. Signing out is
+  // the sign-out route's.
   async function arriveWith(query: Record<string, string>): Promise<ScriptedTransport> {
     const params = convertToParamMap(query);
     const transport = scriptedTransport((request: TransportRequest) =>
@@ -118,18 +118,11 @@ describe('LoginComponent, arriving with a mailed link', () => {
     return transport;
   }
 
-  it('keeps the session for an invitation link and for an address confirmation', async () => {
-    const links: Record<string, string>[] = [{ invitation: 'token' }, { verify: 'token' }];
+  it('keeps the session for every link: an invitation, an address confirmation, a sign-up', async () => {
+    const links: Record<string, string>[] = [{ invitation: 'token' }, { verify: 'token' }, { signUp: 'token' }];
     for (const query of links) {
       const transport = await arriveWith(query);
       expect(transport.requests.filter((request) => request.method === 'DELETE')).toEqual([]);
     }
-  });
-
-  it('ends the session for a sign-up link, which creates an account of its own', async () => {
-    const transport = await arriveWith({ signUp: 'token' });
-    expect(transport.requests.map((request) => `${request.method} ${request.url}`)).toContain(
-      `DELETE ${environment.apiUrl}/user/session`,
-    );
   });
 });

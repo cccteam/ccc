@@ -21,6 +21,6 @@ describe('HeaderComponent', () => {
     const element: HTMLElement = fixture.nativeElement;
     expect(element.querySelector('a.brand')).not.toBeNull();
     expect(element.querySelector('app-topbar')).not.toBeNull();
-    expect(element.querySelector('button')?.textContent).toContain('Sign out');
+    expect(element.querySelector('a[href="/logout"]')?.textContent).toContain('Sign out');
   });
 });

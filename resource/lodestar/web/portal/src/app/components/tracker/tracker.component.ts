@@ -7,16 +7,14 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
 import { MatTableModule } from '@angular/material/table';
-import { Router } from '@angular/router';
+import { RouterLink } from '@angular/router';
 import { injectApi } from '@app/api/api';
 import { DistressCalls as DistressCallFields, Methods, Permissions, Resources } from '@app/service/zz_gen_constants';
 import { DistressCalls, Missions } from '@app/service/zz_gen_resources';
 import { AuthService } from '@cccteam/resource-angular/auth-service';
 import { storeSignal } from '@cccteam/resource-angular/resource-client';
 import { Domain, Method, Page, ResourceHandle, rowCapabilities } from '@cccteam/resource';
-import { IdleService } from '@cccteam/resource-angular/ui-idle-service';
 import { ReleaseComponent } from '@cccteam/resource-angular/ui-release';
-import { tap } from 'rxjs';
 import { TrackerGraphComponent } from './graph/tracker-graph.component';
 
 /** One line of the company's statement, as app.clientStatementLine's wire struct. */
@@ -43,6 +41,7 @@ export interface ClientStatementLine {
 @Component({
   selector: 'app-tracker',
   imports: [
+    RouterLink,
     DatePipe,
     DecimalPipe,
     FormsModule,
@@ -61,8 +60,6 @@ export interface ClientStatementLine {
 export class TrackerComponent {
   private api = injectApi();
   private auth = inject(AuthService);
-  private router = inject(Router);
-  private idle = inject(IdleService);
   private permissions = storeSignal(this.api.permissions.snapshot);
 
   readonly resources = Resources;
@@ -111,7 +108,12 @@ export class TrackerComponent {
     },
     loader: ({ params }) =>
       params.handle
-        ? params.handle.page({ sort: { field: 'deadline' }, limit: this.pageSize, count: true, capabilities: ['Execute'] })
+        ? params.handle.page({
+            sort: { field: 'deadline' },
+            limit: this.pageSize,
+            count: true,
+            capabilities: ['Execute'],
+          })
         : Promise.resolve(undefined as Page<Missions> | undefined),
   });
   missions = computed(() => this.missionsPage.value()?.rows ?? []);
@@ -169,12 +171,20 @@ export class TrackerComponent {
 
   canFile = computed(() => {
     this.permissions();
-    return this.api.can(Permissions.Create, Resources.DistressCalls, (this.current() || undefined) as Domain | undefined);
+    return this.api.can(
+      Permissions.Create,
+      Resources.DistressCalls,
+      (this.current() || undefined) as Domain | undefined,
+    );
   });
 
   creatableFields = computed(() => {
     this.permissions();
-    return this.api.grantedFields(Permissions.Create, Resources.DistressCalls, (this.current() || undefined) as Domain | undefined);
+    return this.api.grantedFields(
+      Permissions.Create,
+      Resources.DistressCalls,
+      (this.current() || undefined) as Domain | undefined,
+    );
   });
 
   canWrite(field: string): boolean {
@@ -221,13 +231,5 @@ export class TrackerComponent {
     this.newSeverity = null;
     this.newCallerContact = '';
     this.calls.reload();
-  }
-
-  logout(): void {
-    this.idle.stop();
-    this.auth
-      .logout()
-      .pipe(tap(() => this.router.navigate(['/login'])))
-      .subscribe();
   }
 }
