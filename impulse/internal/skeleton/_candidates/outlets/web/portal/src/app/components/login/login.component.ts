@@ -4,6 +4,7 @@ import { ActivatedRoute, Router } from '@angular/router';
 import { LoginMethodsComponent } from '@cccteam/resource-angular/auth-login-methods';
 import { AuthService } from '@cccteam/resource-angular/auth-service';
 import { IdleService } from '@cccteam/resource-angular/ui-idle-service';
+import { ReleaseComponent } from '@cccteam/resource-angular/ui-release';
 
 /** The portal's own words for the directory method, keyed by its registration name; the server's label is the default. */
 export const METHOD_LABELS: Readonly<Record<string, string>> = { directory: 'your organization' };
@@ -23,7 +24,7 @@ export const METHOD_LABELS: Readonly<Record<string, string>> = { directory: 'you
   selector: 'app-login',
   templateUrl: './login.component.html',
   styleUrls: ['./login.component.scss'],
-  imports: [LoginMethodsComponent, MatCardModule],
+  imports: [LoginMethodsComponent, MatCardModule, ReleaseComponent],
 })
 export class LoginComponent {
   private auth = inject(AuthService);

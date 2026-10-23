@@ -4,6 +4,7 @@ import { ActivatedRoute, Router } from '@angular/router';
 import { LoginMethodsComponent } from '@cccteam/resource-angular/auth-login-methods';
 import { AuthService } from '@cccteam/resource-angular/auth-service';
 import { IdleService } from '@cccteam/resource-angular/ui-idle-service';
+import { ReleaseComponent } from '@cccteam/resource-angular/ui-release';
 
 /**
  * The portal's manifest lists the client logins the simulated directory can present: one
@@ -40,7 +41,7 @@ export const METHOD_LABELS: Readonly<Record<string, string>> = { directory: 'you
   selector: 'app-login',
   templateUrl: './login.component.html',
   styleUrls: ['./login.component.scss'],
-  imports: [LoginMethodsComponent, MatCardModule],
+  imports: [LoginMethodsComponent, MatCardModule, ReleaseComponent],
 })
 export class LoginComponent {
   private auth = inject(AuthService);

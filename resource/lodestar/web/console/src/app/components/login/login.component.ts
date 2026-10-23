@@ -6,6 +6,7 @@ import { ActivatedRoute, Router } from '@angular/router';
 import { LoginMethodsComponent } from '@cccteam/resource-angular/auth-login-methods';
 import { AuthService } from '@cccteam/resource-angular/auth-service';
 import { IdleService } from '@cccteam/resource-angular/ui-idle-service';
+import { ReleaseComponent } from '@cccteam/resource-angular/ui-release';
 
 /** One card on the crew manifest: the login is the job word, the name alliterates. */
 interface Persona {
@@ -212,7 +213,7 @@ export const DIRECTORY_PERSONA = {
   selector: 'app-login',
   templateUrl: './login.component.html',
   styleUrls: ['./login.component.scss'],
-  imports: [LoginMethodsComponent, MatCardModule, MatIconModule],
+  imports: [LoginMethodsComponent, MatCardModule, MatIconModule, ReleaseComponent],
 })
 export class LoginComponent {
   private auth = inject(AuthService);

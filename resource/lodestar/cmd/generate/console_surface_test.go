@@ -174,7 +174,8 @@ func TestConsoleHandsTheClientItsHooks(t *testing.T) {
 			file: "console/src/app/components/login/login.component.ts",
 			want: []string{
 				"import { LoginMethodsComponent } from '@cccteam/resource-angular/auth-login-methods';",
-				"imports: [LoginMethodsComponent, MatCardModule, MatIconModule],",
+				"import { ReleaseComponent } from '@cccteam/resource-angular/ui-release';",
+				"imports: [LoginMethodsComponent, MatCardModule, MatIconModule, ReleaseComponent],",
 				"this.auth.logout().subscribe();",
 				"this.idle.start();",
 				"void this.router.navigateByUrl(page);",
@@ -182,9 +183,12 @@ func TestConsoleHandsTheClientItsHooks(t *testing.T) {
 			absent: []string{"HttpClient", "/user/", "user/methods", "redirectUrl", "location.assign"},
 		},
 		{
-			name:   "the console's page hands the component where a sign-in lands and takes the page it emits",
-			file:   "console/src/app/components/login/login.component.html",
-			want:   []string{`<ccc-login-methods home="/dashboard" (signedIn)="go($event)" />`},
+			name: "the console's page hands the component where a sign-in lands and takes the page it emits",
+			file: "console/src/app/components/login/login.component.html",
+			want: []string{
+				`<ccc-login-methods home="/dashboard" (signedIn)="go($event)" />`,
+				`<mat-card-footer class="release"><ccc-release /></mat-card-footer>`,
+			},
 			absent: []string{"<form", "ngSubmit", "/user/", "returnUrl"},
 		},
 		{
@@ -199,9 +203,12 @@ func TestConsoleHandsTheClientItsHooks(t *testing.T) {
 			absent: []string{"HttpClient", "/user/", "user/methods", "redirectUrl", "location.assign"},
 		},
 		{
-			name:   "the portal's page hands the component the tracker and its labels",
-			file:   "portal/src/app/components/login/login.component.html",
-			want:   []string{`<ccc-login-methods home="/tracker" [labels]="labels" (signedIn)="go($event)" />`},
+			name: "the portal's page hands the component the tracker and its labels",
+			file: "portal/src/app/components/login/login.component.html",
+			want: []string{
+				`<ccc-login-methods home="/tracker" [labels]="labels" (signedIn)="go($event)" />`,
+				`<mat-card-footer class="release"><ccc-release /></mat-card-footer>`,
+			},
 			absent: []string{"<form", "/user/", "returnUrl"},
 		},
 		{

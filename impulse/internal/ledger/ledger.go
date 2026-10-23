@@ -224,8 +224,8 @@ var Steps = []Step{
 			session v0.13.4
 		`),
 		Pending: true,
-		Impulse: release("v0.6.0"),
-		Note:    "every answer of an outlet names the server's release in X-Api-Version: the generated router puts resource.ReleaseHeader on every outlet ahead of the session handling (the API-key and scheduled outlets included), so the methods list a login page reads before any sign-in carries the release, a browser application shows which release it talks to, and curl shows it; the version check (resource.CheckAPIVersion) refuses as before and keeps naming the release on its refusal; an application regenerates its router (go generate ./...) and changes nothing by hand",
+		Impulse: release("v0.5.6"),
+		Note:    "every answer of an outlet names the server's release in X-Api-Version: the generated router puts resource.ReleaseHeader on every outlet ahead of the session handling (the API-key and scheduled outlets included), so the methods list a login page reads before any sign-in carries the release, a browser application shows which release it talks to, and curl shows it; the version check (resource.CheckAPIVersion) refuses as before and keeps naming the release on its refusal; an application regenerates its router (go generate ./...) and changes nothing by hand; the skeletons' and Lodestar's web pins move to @cccteam/resource 0.0.10, @cccteam/resource-angular 0.0.11 and @cccteam/resource-firestore 0.0.8 (the client keeps the release the server names, and the release line, ccc-release from @cccteam/resource-angular/ui-release, stands under every login card and in the footer of every page, which an application adds by hand as the skeletons do)",
 	},
 }
 
