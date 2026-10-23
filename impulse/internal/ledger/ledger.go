@@ -4,7 +4,9 @@
 // named, together with the recipes that take an application from the step before it, or a
 // note that none is needed. impulse upgrade walks the ledger step by step, reading where
 // the application stands from the framework pins in its go.mod and committing each step as
-// it goes; the pin is the checkpoint, and nothing else records progress. The impulse tool
+// it goes; the pins are the checkpoint, and nothing else records progress: the framework
+// pins say which step's set the application builds against, and the tool pin, moved after
+// each step, tells apart the steps that move no framework pin. The impulse tool
 // pin moves with its step: a step names the impulse release that added it, the walk moves
 // the pin to that release after the step's framework pins, and the step is rendered and
 // checked by it. The tool directive puts impulse's own requirements into the application's
@@ -314,6 +316,13 @@ func (s *Step) Reached(pins map[string]string) bool {
 	return true
 }
 
+// ReachedTool reports whether the tool pin stands at or beyond the impulse release that
+// added the step: so when the step names none, or go.mod pins no tool (an application
+// from before the tool directive stands by its framework pins alone).
+func (s *Step) ReachedTool(pin string) bool {
+	return s.Impulse == "" || pin == "" || semver.Compare(pin, s.Impulse) >= 0
+}
+
 // Moves lists the pins the step moves from the pins given, "ccc/resource v0.12.0" each
 // in module order: a module the pins lack or hold at an earlier version. A pin already at
 // or beyond the step's is not moved.
@@ -342,7 +351,22 @@ type Current struct{}
 // step: no step is pending for the application, so moving the tool pin alone is right;
 // behind it, impulse upgrade is what moves the pins.
 func (Current) AtLastStep(mod *modfile.File) bool {
-	return Position(Steps, AppPins(mod)) == len(Steps)-1
+	return Position(Steps, AppPins(mod), ToolPin(mod)) == len(Steps)-1
+}
+
+// ToolPin reads the impulse tool pin from an application's go.mod: the version it
+// requires impulse at, "" when it does not.
+func ToolPin(mod *modfile.File) string {
+	if mod == nil {
+		return ""
+	}
+	for _, r := range mod.Require {
+		if r.Mod.Path == check.ImpulseModule {
+			return r.Mod.Version
+		}
+	}
+
+	return ""
 }
 
 // AppPins reads the framework pins from an application's go.mod: every required module
@@ -361,12 +385,16 @@ func AppPins(mod *modfile.File) map[string]string {
 	return pins
 }
 
-// Position is the index of the latest step the application's pins reach, -1 when they
-// reach none: where the application stands in the ledger.
-func Position(steps []Step, pins map[string]string) int {
+// Position is the index of the latest step the application stands at or beyond, -1 when
+// it reaches none: every module the step pins is required at its version or later
+// (Reached), and the impulse tool pin stands at or beyond the release that added the
+// step (ReachedTool). The tool pin tells apart the steps that move no framework pin: a
+// step carrying a recipe alone is walked once, and the tool pin the walk moves after it
+// is what says so.
+func Position(steps []Step, pins map[string]string, toolPin string) int {
 	position := -1
 	for i := range steps {
-		if steps[i].Reached(pins) {
+		if steps[i].Reached(pins) && steps[i].ReachedTool(toolPin) {
 			position = i
 		}
 	}
@@ -374,10 +402,10 @@ func Position(steps []Step, pins map[string]string) int {
 	return position
 }
 
-// Pending lists the steps after the application's position, in order: none when its pins
-// reach the last.
-func Pending(steps []Step, pins map[string]string) []Step {
-	return steps[Position(steps, pins)+1:]
+// Pending lists the steps after the application's position, in order: none when it
+// stands at the last.
+func Pending(steps []Step, pins map[string]string, toolPin string) []Step {
+	return steps[Position(steps, pins, toolPin)+1:]
 }
 
 // Names labels each step by the pins it moves from the step before it (the first by all of

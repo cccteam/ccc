@@ -240,7 +240,7 @@ func (f *upgradeExec) record() error {
 	if err != nil {
 		return errors.Wrap(err, "modfile.Parse()")
 	}
-	f.commits = append(f.commits, fmt.Sprintf("step %d, impulse %s", ledger.Position(f.steps, ledger.AppPins(mod))+1, goModImpulsePin(mod)))
+	f.commits = append(f.commits, fmt.Sprintf("step %d, impulse %s", ledger.Position(f.steps, ledger.AppPins(mod), goModImpulsePin(mod))+1, goModImpulsePin(mod)))
 
 	return nil
 }
@@ -422,19 +422,30 @@ func TestUpgrade(t *testing.T) {
 			wantOut: []string{"beacon stands at step 3 of 3, the ledger's last, and pins impulse v0.3.0, the running impulse: nothing to do."},
 		},
 		{
-			name:    "at the last step with the tool pin behind: the tool-only move alone",
+			name:    "framework pins bumped by hand to the last step with the tool pin behind: the steps walk over the pins they find, each moving the tool pin, then the tool-only move",
 			goMod:   upgradeGoMod("v0.3.0", "v0.2.0", "v0.1.0"),
 			steps:   upgradeLedger(),
 			running: check.Build{Version: "v0.3.1", FromModule: true},
 			verify:  passing,
 			wantOut: []string{
-				"beacon stands at step 3 of 3 and pins impulse v0.1.0; the walk:\n  impulse v0.3.1: " + toolPinNote + "\n\n",
+				"beacon stands at step 1 of 3 and pins impulse v0.1.0; the walk:\n  step 2, ccc/resource v0.2.0 (recipe marker), pins ccc/impulse v0.2.0: the marker moves to its new form\n  step 3, access v0.2.0, ccc/resource v0.3.0, pins ccc/impulse v0.3.0: no code change is needed\n  impulse v0.3.1: " + toolPinNote + "\n\n",
+				"=== step 2: the marker moves to its new form ===\nRecipe marker: nothing in the old form.\ngithub.com/cccteam/access is at v0.2.0 already.\ngithub.com/cccteam/ccc/resource is at v0.3.0 already.\nPin the impulse tool to v0.2.0.",
+				"Committed: upgrade: ccc/impulse v0.2.0 (recipe marker).",
+				"=== step 3: no code change is needed ===\ngithub.com/cccteam/access is at v0.2.0 already.\ngithub.com/cccteam/ccc/resource is at v0.3.0 already.\nPin the impulse tool to v0.3.0.",
+				"Committed: upgrade: ccc/impulse v0.3.0.",
 				"=== impulse v0.3.1: " + toolPinNote + " ===\nPin the impulse tool to v0.3.1.",
 				"Committed: upgrade: impulse v0.3.1.",
 				"beacon stands at step 3 of 3 and pins impulse v0.3.1. Review the commits and open the pull request.",
 			},
-			wantCalls:   toolMoveCalls,
-			wantCommits: []string{"step 3, impulse v0.3.1"},
+			wantCalls: concat([]string{
+				"go get -tool github.com/cccteam/ccc/impulse@v0.2.0", "go mod tidy",
+				"go tool impulse render", "go generate ./...", "go tool impulse check --fix", "git add -A",
+				"git commit -q -m upgrade: ccc/impulse v0.2.0 (recipe marker) -m the marker moves to its new form\n\nRecipes applied by impulse upgrade: marker.",
+				"go get -tool github.com/cccteam/ccc/impulse@v0.3.0", "go mod tidy",
+				"go tool impulse render", "go generate ./...", "go tool impulse check --fix", "git add -A",
+				"git commit -q -m upgrade: ccc/impulse v0.3.0 -m no code change is needed",
+			}, toolMoveCalls),
+			wantCommits: []string{"step 2, impulse v0.2.0", "step 3, impulse v0.3.0", "step 3, impulse v0.3.1"},
 		},
 		{
 			name:    "a dry run prints the plan, the steps first and the tool-only move last, and changes nothing",
@@ -555,12 +566,12 @@ func TestUpgrade(t *testing.T) {
 		},
 		{
 			name:    "a checkout build walks the steps, each pinning its release, and makes no tool-only move",
-			goMod:   upgradeGoMod("v0.2.0", "v0.1.0", "v0.1.0"),
+			goMod:   upgradeGoMod("v0.2.0", "v0.1.0", "v0.2.0"),
 			steps:   upgradeLedger(),
 			running: check.Build{Version: "v0.3.1-0.20261008120000-0702ef849363+dirty"},
 			dryRun:  true,
 			wantOut: []string{
-				"beacon stands at step 2 of 3 and pins impulse v0.1.0; the walk:\n  step 3, access v0.2.0, ccc/resource v0.3.0, pins ccc/impulse v0.3.0: no code change is needed\n",
+				"beacon stands at step 2 of 3 and pins impulse v0.2.0; the walk:\n  step 3, access v0.2.0, ccc/resource v0.3.0, pins ccc/impulse v0.3.0: no code change is needed\n",
 				"This impulse was built from a checkout (v0.3.1-0.20261008120000-0702ef849363+dirty), so the tool-only move does not apply: the pin ends where the last step leaves it.",
 			},
 		},
@@ -625,16 +636,16 @@ func TestUpgrade(t *testing.T) {
 		},
 		{
 			name:    "a failing check on the tool-only move; the brief lists the staged paths",
-			goMod:   upgradeGoMod("v0.3.0", "v0.2.0", "v0.1.0"),
+			goMod:   upgradeGoMod("v0.3.0", "v0.2.0", "v0.3.0"),
 			steps:   upgradeLedger(),
-			running: check.Build{Version: "v0.3.0", FromModule: true},
+			running: check.Build{Version: "v0.3.1", FromModule: true},
 			verify: func(context.Context, *check.Env) []check.Result {
 				return []check.Result{{Name: "ci-workflow", Status: check.Fail, Summary: "differs"}}
 			},
-			wantCalls:   []string{"go get -tool github.com/cccteam/ccc/impulse@v0.3.0", "go mod tidy", "go generate ./...", "git add -A"},
+			wantCalls:   []string{"go get -tool github.com/cccteam/ccc/impulse@v0.3.1", "go mod tidy", "go generate ./...", "git add -A"},
 			wantBrief:   true,
 			wantInBrief: "## What changed\n\nThe change under review is staged in the index, 1 path(s):\n\n- go.mod\n\n## The failing checks",
-			wantErr:     "the impulse v0.3.0 tool pin step left the check failing",
+			wantErr:     "the impulse v0.3.1 tool pin step left the check failing",
 		},
 		{
 			name:     "a failing go generate at a step checked in process stops the walk with the brief quoting the generation and naming what the step moved, and the step staged",
@@ -675,7 +686,7 @@ func TestUpgrade(t *testing.T) {
 		},
 		{
 			name:        "a failing go generate on the tool-only move writes the brief with the tool pin as what moved",
-			goMod:       upgradeGoMod("v0.3.0", "v0.2.0", "v0.1.0"),
+			goMod:       upgradeGoMod("v0.3.0", "v0.2.0", "v0.3.0"),
 			steps:       upgradeLedger(),
 			running:     check.Build{Version: "v0.3.1", FromModule: true},
 			generate:    generateOut,
@@ -936,7 +947,7 @@ func TestToolPinDrag(t *testing.T) {
 					pins[module] = version
 				}
 			}
-			if got := ledger.Position(steps, pins); got != tt.want {
+			if got := ledger.Position(steps, pins, ""); got != tt.want {
 				t.Errorf("Position() = %d, want %d", got, tt.want)
 			}
 		})

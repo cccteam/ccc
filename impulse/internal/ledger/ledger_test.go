@@ -53,9 +53,10 @@ func TestPosition(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name string
-		pins map[string]string
-		want int
+		name    string
+		pins    map[string]string
+		toolPin string
+		want    int
 	}{
 		{name: "no framework pin", pins: map[string]string{}, want: -1},
 		{name: "before the first step", pins: map[string]string{resourceModule: "v0.0.9", accessModule: "v0.1.0"}, want: -1},
@@ -64,12 +65,16 @@ func TestPosition(t *testing.T) {
 		{name: "a pseudo-version past the third", pins: map[string]string{resourceModule: "v0.3.1-0.20261005064211-ce3bc37a7307", accessModule: "v0.2.0"}, want: 2},
 		{name: "beyond the last", pins: map[string]string{resourceModule: "v1.0.0", accessModule: "v1.0.0"}, want: 2},
 		{name: "one module missing", pins: map[string]string{resourceModule: "v0.3.0"}, want: -1},
+		{name: "pins at the third, the tool at the second's release: the second", pins: map[string]string{resourceModule: "v0.3.0", accessModule: "v0.2.0"}, toolPin: "v0.2.0", want: 1},
+		{name: "pins at the third, the tool at its release: the third", pins: map[string]string{resourceModule: "v0.3.0", accessModule: "v0.2.0"}, toolPin: "v0.3.0", want: 2},
+		{name: "pins at the third, the tool beyond every step: the third", pins: map[string]string{resourceModule: "v0.3.0", accessModule: "v0.2.0"}, toolPin: "v0.9.0", want: 2},
+		{name: "pins at the second, the tool behind its release: the first, which names none", pins: map[string]string{resourceModule: "v0.2.0", accessModule: "v0.1.0"}, toolPin: "v0.1.0", want: 0},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			if got := Position(testLedger(), tt.pins); got != tt.want {
+			if got := Position(testLedger(), tt.pins, tt.toolPin); got != tt.want {
 				t.Errorf("Position() = %d, want %d", got, tt.want)
 			}
 		})
@@ -82,20 +87,22 @@ func TestPending(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name string
-		pins map[string]string
-		want []string
+		name    string
+		pins    map[string]string
+		toolPin string
+		want    []string
 	}{
 		{name: "before the first: all three", pins: map[string]string{}, want: []string{"access v0.1.0, ccc/resource v0.1.0", "ccc/resource v0.2.0", "access v0.2.0, ccc/resource v0.3.0"}},
 		{name: "at the first: the two after", pins: map[string]string{resourceModule: "v0.1.0", accessModule: "v0.1.0"}, want: []string{"ccc/resource v0.2.0", "access v0.2.0, ccc/resource v0.3.0"}},
 		{name: "at the last: none", pins: map[string]string{resourceModule: "v0.3.0", accessModule: "v0.2.0"}, want: []string{}},
+		{name: "at the last by pins, the tool at the second's release: the third", pins: map[string]string{resourceModule: "v0.3.0", accessModule: "v0.2.0"}, toolPin: "v0.2.0", want: []string{"access v0.2.0, ccc/resource v0.3.0"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
 			var got []string
-			pending := Pending(testLedger(), tt.pins)
+			pending := Pending(testLedger(), tt.pins, tt.toolPin)
 			prev := map[string]string{}
 			if n := len(testLedger()) - len(pending); n > 0 {
 				prev = testLedger()[n-1].Pins
@@ -298,8 +305,9 @@ func TestSkeletonPins(t *testing.T) {
 }
 
 // TestCurrentAtLastStep reads the recorded ledger as the checks do: go.mod at the last
-// step's pins reaches it, one at the step before's does not, and one without framework
-// pins does not.
+// step's pins reaches it, by the pins alone or with the tool at the release that added
+// it; one at the step before's pins with the tool at that step's release does not, and
+// one without framework pins does not.
 func TestCurrentAtLastStep(t *testing.T) {
 	t.Parallel()
 
@@ -318,8 +326,9 @@ func TestCurrentAtLastStep(t *testing.T) {
 		gomod string
 		want  bool
 	}{
-		{name: "at the last step", gomod: goMod(Steps[len(Steps)-1].Pins), want: true},
-		{name: "at the step before", gomod: goMod(Steps[len(Steps)-2].Pins), want: false},
+		{name: "at the last step by its pins alone", gomod: goMod(Steps[len(Steps)-1].Pins), want: true},
+		{name: "at the last step's pins with the tool at the release that added it", gomod: goMod(Steps[len(Steps)-1].Pins) + "require " + check.ImpulseModule + " " + Steps[len(Steps)-1].Impulse + "\n", want: true},
+		{name: "at the step before, by its pins and the tool at the release that added it", gomod: goMod(Steps[len(Steps)-2].Pins) + "require " + check.ImpulseModule + " " + Steps[len(Steps)-2].Impulse + "\n", want: false},
 		{name: "no framework pins", gomod: "module example.com/acme/beacon\n\ngo 1.26\n", want: false},
 	}
 	for _, tt := range tests {

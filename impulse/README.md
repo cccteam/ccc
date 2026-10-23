@@ -601,7 +601,10 @@ session, accesstypes, tracer, cloud, logger, httpio, db-initiator and ccc) toget
 the recipes an application at the step before it needs, or a note that none is needed, and
 the impulse release that added the step. Where the application stands is read, never
 recorded: the framework pins in its `go.mod` say which step it builds against (the latest
-step whose pins they reach), and every step after that is pending. The impulse tool pin
+step whose pins they reach), the impulse tool pin tells apart the steps that move no
+framework pin (a step carrying a recipe alone is reached once the pin stands at or beyond
+the release that added it, which the walk moves it to after the step), and every step
+after that is pending. The impulse tool pin
 moves with its step: the tool directive puts impulse's own requirements into the
 application's build list, so a pin moved ahead of the steps would drag some framework pins
 past them (resource and cloud to the running release's requirements while access stayed

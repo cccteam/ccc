@@ -59,8 +59,11 @@ func newUpgrade() *cobra.Command {
 		Long: `upgrade moves an application through the steps the ledger records after the one its pins
 stand at, then to the running impulse, and commits each. Where the application stands is
 read from the framework pins in its go.mod (the resource, access, session and accesstypes
-versions it builds against), never from a file of its own: the latest step whose pins they
-reach is the position, and every step after it is pending. Each pending step is one commit:
+versions it builds against) and the impulse tool pin, never from a file of its own: the
+latest step whose pins they reach is the position, the tool pin telling apart the steps that
+move no framework pin (a step carrying a recipe alone is reached once the pin stands at or
+beyond the release that added it, where the walk moves it after the step), and every step
+after it is pending. Each pending step is one commit:
 its recipes run (each detects the old form in the application and edits only where it finds
 it, so running twice is safe), the pins it moves move to its set in one go get (a pin
 already at or beyond the step's stays; a set no build list holds is refused by go in its
@@ -285,7 +288,8 @@ func refuseLegacyAuth(a *app.App) error {
 // the running impulse is refused, since the pinned impulse is the one to run.
 func (u *upgrader) plan(a *app.App) (*plan, error) {
 	pins := ledger.AppPins(a.GoMod)
-	p := &plan{position: ledger.Position(u.steps, pins), pending: ledger.Pending(u.steps, pins), toolPin: goModImpulsePin(a.GoMod), release: u.release()}
+	toolPin := goModImpulsePin(a.GoMod)
+	p := &plan{position: ledger.Position(u.steps, pins, toolPin), pending: ledger.Pending(u.steps, pins, toolPin), toolPin: toolPin, release: u.release()}
 	if p.release != "" && p.toolPin != "" && semver.Compare(p.toolPin, p.release) > 0 {
 		return nil, errors.Newf("go.mod pins impulse at %s, newer than the running %s: run the pinned one (go tool impulse upgrade)", p.toolPin, p.release)
 	}
@@ -295,16 +299,7 @@ func (u *upgrader) plan(a *app.App) (*plan, error) {
 
 // goModImpulsePin is the version go.mod requires impulse at, "" when it does not.
 func goModImpulsePin(mod *modfile.File) string {
-	if mod == nil {
-		return ""
-	}
-	for _, r := range mod.Require {
-		if r.Mod.Path == check.ImpulseModule {
-			return r.Mod.Version
-		}
-	}
-
-	return ""
+	return ledger.ToolPin(mod)
 }
 
 // appLabel names the application after its module path's last segment.
