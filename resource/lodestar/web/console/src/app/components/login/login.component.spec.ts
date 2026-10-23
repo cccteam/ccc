@@ -1,6 +1,6 @@
 import { ApplicationRef } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { Router } from '@angular/router';
+import { ActivatedRoute, Router, convertToParamMap } from '@angular/router';
 import { createApi } from '@app/service/zz_gen_api';
 import { LoginMethodsComponent } from '@cccteam/resource-angular/auth-login-methods';
 import { provideResourceTesting } from '@cccteam/resource-angular/testing';
@@ -8,15 +8,26 @@ import { IdleService } from '@cccteam/resource-angular/ui-idle-service';
 import { LoginMethods, TransportRequest } from '@cccteam/resource';
 import { ScriptedTransport, scriptedTransport } from '@cccteam/resource/testing';
 import { environment } from '@env';
+import { of } from 'rxjs';
 import { CREW_MANIFEST, DEMO_PASSWORD, LoginComponent } from './login.component';
 
 /** What the console outlet's methods route answers: the password and the fleet's directory, in the generator program's order. */
 const CONSOLE_METHODS: LoginMethods = {
   methods: [
-    { name: 'password', method: 'password', kind: 'password', label: 'Password', path: '/console/api/user/password/login' },
+    {
+      name: 'password',
+      method: 'password',
+      kind: 'password',
+      label: 'Password',
+      path: '/console/api/user/password/login',
+    },
     { name: 'google', method: 'google', kind: 'redirect', label: 'Google', path: '/console/api/user/google/login' },
   ],
-  pending: { status: '/console/api/user/pending', confirm: '/console/api/user/pending/confirm', cancel: '/console/api/user/pending/cancel' },
+  pending: {
+    status: '/console/api/user/pending',
+    confirm: '/console/api/user/pending/confirm',
+    cancel: '/console/api/user/pending/cancel',
+  },
 };
 
 // Demonstrates: client.login-component.
@@ -42,7 +53,9 @@ describe('LoginComponent', () => {
       // the methods route with the console's list and everything else with an empty 200, and
       // keeps the log. provideResourceTesting also provides the empty router the component
       // reads its refusal code from.
-      providers: [provideResourceTesting({ transport, client: (t) => createApi({ baseUrl: environment.apiUrl, transport: t }) })],
+      providers: [
+        provideResourceTesting({ transport, client: (t) => createApi({ baseUrl: environment.apiUrl, transport: t }) }),
+      ],
     }).compileComponents();
 
     fixture = TestBed.createComponent(LoginComponent);
@@ -64,13 +77,15 @@ describe('LoginComponent', () => {
     const element: HTMLElement = fixture.nativeElement;
     expect(element.querySelector('ccc-login-methods input[name="username"]')).not.toBeNull();
     expect(element.querySelector('ccc-login-methods input[name="password"]')).not.toBeNull();
-    const redirects = Array.from(element.querySelectorAll('button.ccc-login-redirect')).map((button) => button.textContent?.trim());
+    const redirects = Array.from(element.querySelectorAll('button.ccc-login-redirect')).map((button) =>
+      button.textContent?.trim(),
+    );
     expect(redirects).toEqual(['Sign in with Google']);
     expect(element.querySelectorAll('button.persona')).toHaveLength(CREW_MANIFEST.length);
     expect(element.querySelector('.ccc-login-message')).toBeNull();
   });
 
-  it('prefills the component\'s form from the crew manifest, signing in staying an explicit click', () => {
+  it("prefills the component's form from the crew manifest, signing in staying an explicit click", () => {
     const component = fixture.componentInstance;
     expect(component.decks.length).toBeGreaterThan(1);
     expect(component.decks.flatMap((deck) => component.personasOn(deck))).toHaveLength(CREW_MANIFEST.length);
@@ -86,7 +101,7 @@ describe('LoginComponent', () => {
     expect(transport.requests.filter((request) => request.method === 'POST')).toHaveLength(0);
   });
 
-  it('on the component\'s signedIn starts the idle watch and moves to the page it is handed', () => {
+  it("on the component's signedIn starts the idle watch and moves to the page it is handed", () => {
     const idle = TestBed.inject(IdleService);
     const started = vi.spyOn(idle, 'start');
     const navigated = vi.spyOn(TestBed.inject(Router), 'navigateByUrl').mockResolvedValue(true);
@@ -94,5 +109,46 @@ describe('LoginComponent', () => {
     expect(started).toHaveBeenCalledTimes(1);
     expect(navigated).toHaveBeenCalledWith('/dashboard');
     idle.stop();
+  });
+});
+
+describe('LoginComponent, arriving with a mailed link', () => {
+  // An invitation is accepted by the person signed in, and an address confirmation is posted
+  // for the session the page finds, so the page keeps the session it arrived with for those
+  // two links and ends it, as above, for any other arrival.
+  async function arriveWith(query: Record<string, string>): Promise<ScriptedTransport> {
+    const params = convertToParamMap(query);
+    const transport = scriptedTransport((request: TransportRequest) =>
+      request.url.endsWith('/user/methods') ? { status: 200, body: CONSOLE_METHODS } : { status: 200, body: undefined },
+    );
+    TestBed.resetTestingModule();
+    await TestBed.configureTestingModule({
+      imports: [LoginComponent],
+      providers: [
+        provideResourceTesting({ transport, client: (t) => createApi({ baseUrl: environment.apiUrl, transport: t }) }),
+        { provide: ActivatedRoute, useValue: { queryParamMap: of(params), snapshot: { queryParamMap: params } } },
+      ],
+    }).compileComponents();
+    const fixture = TestBed.createComponent(LoginComponent);
+    fixture.detectChanges();
+    await TestBed.inject(ApplicationRef).whenStable();
+    fixture.detectChanges();
+
+    return transport;
+  }
+
+  it('keeps the session for an invitation link and for an address confirmation', async () => {
+    const links: Record<string, string>[] = [{ invitation: 'token' }, { verify: 'token' }];
+    for (const query of links) {
+      const transport = await arriveWith(query);
+      expect(transport.requests.filter((request) => request.method === 'DELETE')).toEqual([]);
+    }
+  });
+
+  it('ends the session for a sign-up link, which creates an account of its own', async () => {
+    const transport = await arriveWith({ signUp: 'token' });
+    expect(transport.requests.map((request) => `${request.method} ${request.url}`)).toContain(
+      `DELETE ${environment.apiUrl}/user/session`,
+    );
   });
 });

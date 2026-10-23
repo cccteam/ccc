@@ -2,7 +2,7 @@
 import { Component, inject, viewChild } from '@angular/core';
 import { MatCardModule } from '@angular/material/card';
 import { MatIconModule } from '@angular/material/icon';
-import { Router } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import { LoginMethodsComponent } from '@cccteam/resource-angular/auth-login-methods';
 import { AuthService } from '@cccteam/resource-angular/auth-service';
 import { IdleService } from '@cccteam/resource-angular/ui-idle-service';
@@ -25,31 +25,160 @@ export const DEMO_PASSWORD = 'lodestar';
  * clicks.
  */
 export const CREW_MANIFEST: Persona[] = [
-  { login: 'governor', name: 'Governor Greer', deck: 'Headquarters', proves: 'Every global role, marshal in all three sectors: the pure-RBAC baseline.' },
-  { login: 'marshal', name: 'Marshal Maren', deck: 'Headquarters', proves: 'Full authority at Anvil, nothing at Bastion or Cinder; every transition including Scrap.' },
-  { login: 'cadet', name: 'Cadet Cass', deck: 'Flight deck', proves: 'Sees hazard 1 and 2 only; Claim lit on those alone; two-input call form.' },
-  { login: 'pilot', name: 'Pilot Pax', deck: 'Flight deck', proves: 'Clearance 3 and certifications decide the board; no quarantine-bay ships.' },
-  { login: 'veteran', name: 'Veteran Vela', deck: 'Flight deck', proves: 'Routine, low-fee missions never reach her board (NOT over an OR).' },
-  { login: 'lead', name: 'Flight Lead Lior', deck: 'Flight deck', proves: "Hammer's missions; runs launch, hold, resume, complete; sorties while underway." },
-  { login: 'dispatcher', name: 'Dispatcher Dunn', deck: 'Flight deck', proves: 'Assigns own squadrons on open or claimed missions; extends deadlines, never pulls them in.' },
-  { login: 'overseer', name: 'Overseer Orla', deck: 'Flight deck', proves: 'The overdue desk: reassign only after the deadline passes — watch it flip.' },
-  { login: 'booking', name: 'Booking Agent Bex', deck: 'Client desk', proves: 'Books within the fee limit; stands down own unclaimed bookings.' },
-  { login: 'wingco', name: 'Wing Commander Wilde', deck: 'Flight deck', proves: "Forge Wing's squadrons and the high-hazard desk." },
-  { login: 'engineer', name: 'Engineer Ezra', deck: 'Hangar deck', proves: 'Inspect, begin, flight-test, pass or fail; estimates after inspection; hails ships.' },
-  { login: 'quartermaster', name: 'Quartermaster Quill', deck: 'Hangar deck', proves: 'Books sortie expenses only while the mission is underway (two hops deep).' },
-  { login: 'supercargo', name: 'Supercargo Sol', deck: 'Salvage hold', proves: 'Releases bonded cargo once; disposes of expired bond.' },
-  { login: 'salvor', name: 'Salvor Sable', deck: 'Salvage hold', proves: 'Recovers wrecks for outfits whose salvage cover is not refused; undecided outfits still qualify.' },
-  { login: 'yeoman', name: 'Yeoman Yael', deck: 'Headquarters', proves: 'Reads the standing orders: a key-less list served whole, sorted on request, never paged.' },
-  { login: 'purser', name: 'Purser Priya', deck: 'Client desk', proves: "Reads each mission's expense manifest and downloads it as a CSV sheet rendered on request." },
-  { login: 'registrar', name: 'Registrar Rhea', deck: 'Archive', proves: 'Keeps the document register: retitles, replaces, and deletes mission documents; a replaced or deleted file leaves the store with the commit.' },
-  { login: 'archivist', name: 'Archivist Ada', deck: 'Archive', proves: 'Finished missions everywhere; fees redacted until completed; the ship’s log.' },
-  { login: 'assessor', name: 'Assessor Asa', deck: 'Hazard board', proves: 'Prices cover on open missions: sees every title, and the hazard level only while a mission is still open.' },
-  { login: 'hazards', name: 'Hazard Analyst Hale', deck: 'Hazard board', proves: 'The hazard board under a certification that expires.' },
-  { login: 'dock', name: 'Dockmaster Dara', deck: 'Hangar deck', proves: 'The hangar deck on the day shift, 06:00 to 18:00 headquarters time.' },
-  { login: 'watch', name: 'Night Watch Nadia', deck: 'Hangar deck', proves: 'The same deck on the night shift; weekday-only task notes.' },
-  { login: 'harbormaster', name: 'Harbormaster Hollis', deck: 'Hangar deck', proves: "Watches the fleet board live: a refit or a hail shows up without a reload, and a board reopened within minutes needs no request." },
-  { login: 'adjutant', name: 'Adjutant Alba', deck: 'Headquarters', proves: 'Keeps the commendations desk, which is behind a feature flag: turns it on and off at runtime, and every instance follows.' },
-  { login: 'surveyor', name: 'Surveyor Shen', deck: 'Headquarters', proves: 'Charts new sectors: a sector she creates is served at once, on every instance, with no restart, migration or new login.' },
+  {
+    login: 'governor',
+    name: 'Governor Greer',
+    deck: 'Headquarters',
+    proves: 'Every global role, marshal in all three sectors: the pure-RBAC baseline.',
+  },
+  {
+    login: 'marshal',
+    name: 'Marshal Maren',
+    deck: 'Headquarters',
+    proves: 'Full authority at Anvil, nothing at Bastion or Cinder; every transition including Scrap.',
+  },
+  {
+    login: 'cadet',
+    name: 'Cadet Cass',
+    deck: 'Flight deck',
+    proves: 'Sees hazard 1 and 2 only; Claim lit on those alone; two-input call form.',
+  },
+  {
+    login: 'pilot',
+    name: 'Pilot Pax',
+    deck: 'Flight deck',
+    proves: 'Clearance 3 and certifications decide the board; no quarantine-bay ships.',
+  },
+  {
+    login: 'veteran',
+    name: 'Veteran Vela',
+    deck: 'Flight deck',
+    proves: 'Routine, low-fee missions never reach her board (NOT over an OR).',
+  },
+  {
+    login: 'lead',
+    name: 'Flight Lead Lior',
+    deck: 'Flight deck',
+    proves: "Hammer's missions; runs launch, hold, resume, complete; sorties while underway.",
+  },
+  {
+    login: 'dispatcher',
+    name: 'Dispatcher Dunn',
+    deck: 'Flight deck',
+    proves: 'Assigns own squadrons on open or claimed missions; extends deadlines, never pulls them in.',
+  },
+  {
+    login: 'overseer',
+    name: 'Overseer Orla',
+    deck: 'Flight deck',
+    proves: 'The overdue desk: reassign only after the deadline passes — watch it flip.',
+  },
+  {
+    login: 'booking',
+    name: 'Booking Agent Bex',
+    deck: 'Client desk',
+    proves: 'Books within the fee limit; stands down own unclaimed bookings.',
+  },
+  {
+    login: 'wingco',
+    name: 'Wing Commander Wilde',
+    deck: 'Flight deck',
+    proves: "Forge Wing's squadrons and the high-hazard desk.",
+  },
+  {
+    login: 'engineer',
+    name: 'Engineer Ezra',
+    deck: 'Hangar deck',
+    proves: 'Inspect, begin, flight-test, pass or fail; estimates after inspection; hails ships.',
+  },
+  {
+    login: 'quartermaster',
+    name: 'Quartermaster Quill',
+    deck: 'Hangar deck',
+    proves: 'Books sortie expenses only while the mission is underway (two hops deep).',
+  },
+  {
+    login: 'supercargo',
+    name: 'Supercargo Sol',
+    deck: 'Salvage hold',
+    proves: 'Releases bonded cargo once; disposes of expired bond.',
+  },
+  {
+    login: 'salvor',
+    name: 'Salvor Sable',
+    deck: 'Salvage hold',
+    proves: 'Recovers wrecks for outfits whose salvage cover is not refused; undecided outfits still qualify.',
+  },
+  {
+    login: 'yeoman',
+    name: 'Yeoman Yael',
+    deck: 'Headquarters',
+    proves: 'Reads the standing orders: a key-less list served whole, sorted on request, never paged.',
+  },
+  {
+    login: 'purser',
+    name: 'Purser Priya',
+    deck: 'Client desk',
+    proves: "Reads each mission's expense manifest and downloads it as a CSV sheet rendered on request.",
+  },
+  {
+    login: 'registrar',
+    name: 'Registrar Rhea',
+    deck: 'Archive',
+    proves:
+      'Keeps the document register: retitles, replaces, and deletes mission documents; a replaced or deleted file leaves the store with the commit.',
+  },
+  {
+    login: 'archivist',
+    name: 'Archivist Ada',
+    deck: 'Archive',
+    proves: 'Finished missions everywhere; fees redacted until completed; the ship’s log.',
+  },
+  {
+    login: 'assessor',
+    name: 'Assessor Asa',
+    deck: 'Hazard board',
+    proves: 'Prices cover on open missions: sees every title, and the hazard level only while a mission is still open.',
+  },
+  {
+    login: 'hazards',
+    name: 'Hazard Analyst Hale',
+    deck: 'Hazard board',
+    proves: 'The hazard board under a certification that expires.',
+  },
+  {
+    login: 'dock',
+    name: 'Dockmaster Dara',
+    deck: 'Hangar deck',
+    proves: 'The hangar deck on the day shift, 06:00 to 18:00 headquarters time.',
+  },
+  {
+    login: 'watch',
+    name: 'Night Watch Nadia',
+    deck: 'Hangar deck',
+    proves: 'The same deck on the night shift; weekday-only task notes.',
+  },
+  {
+    login: 'harbormaster',
+    name: 'Harbormaster Hollis',
+    deck: 'Hangar deck',
+    proves:
+      'Watches the fleet board live: a refit or a hail shows up without a reload, and a board reopened within minutes needs no request.',
+  },
+  {
+    login: 'adjutant',
+    name: 'Adjutant Alba',
+    deck: 'Headquarters',
+    proves:
+      'Keeps the commendations desk, which is behind a feature flag: turns it on and off at runtime, and every instance follows.',
+  },
+  {
+    login: 'surveyor',
+    name: 'Surveyor Shen',
+    deck: 'Headquarters',
+    proves:
+      'Charts new sectors: a sector she creates is served at once, on every instance, with no restart, migration or new login.',
+  },
 ];
 
 /**
@@ -62,7 +191,8 @@ export const CREW_MANIFEST: Persona[] = [
 export const DIRECTORY_PERSONA = {
   login: 'navigator',
   name: 'Navigator Nova',
-  proves: 'Signs in through the fleet’s directory, no password: provisioned at her first sign-in, seated by her groups at every one.',
+  proves:
+    'Signs in through the fleet’s directory, no password: provisioned at her first sign-in, seated by her groups at every one.',
 };
 
 /**
@@ -114,10 +244,16 @@ export class LoginComponent {
 
   /**
    * The page ends whatever session the browser arrived with; the component's first request,
-   * the methods list, then primes the XSRF cookie the sign-in's post needs.
+   * the methods list, then primes the XSRF cookie the sign-in's post needs. A mailed link
+   * that is followed signed in keeps the session: an invitation, which the person signed in
+   * may accept as they are, and an address confirmation, which is posted for the session
+   * the page finds.
    */
   constructor() {
-    this.auth.logout().subscribe();
+    const params = inject(ActivatedRoute).snapshot.queryParamMap;
+    if (!params.has('invitation') && !params.has('verify')) {
+      this.auth.logout().subscribe();
+    }
     this.idle.stop();
   }
 

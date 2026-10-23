@@ -1,12 +1,13 @@
 import { ApplicationRef } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { Router } from '@angular/router';
+import { ActivatedRoute, Router, convertToParamMap } from '@angular/router';
 import { createApi } from '@app/service/zz_gen_api';
 import { provideResourceTesting } from '@cccteam/resource-angular/testing';
 import { IdleService } from '@cccteam/resource-angular/ui-idle-service';
 import { LoginMethods, TransportRequest } from '@cccteam/resource';
 import { ScriptedTransport, scriptedTransport } from '@cccteam/resource/testing';
 import { environment } from '@env';
+import { of } from 'rxjs';
 import { LoginComponent } from './login.component';
 
 /** What the outlet's methods route answers: the password method the skeleton registers. */
@@ -82,5 +83,46 @@ describe('LoginComponent', () => {
     expect(started).toHaveBeenCalledTimes(1);
     expect(navigated).toHaveBeenCalledWith('/dashboard');
     idle.stop();
+  });
+});
+
+describe('LoginComponent, arriving with a mailed link', () => {
+  // An invitation is accepted by the person signed in, and an address confirmation is posted
+  // for the session the page finds, so the page keeps the session it arrived with for those
+  // two links and ends it, as above, for any other arrival.
+  async function arriveWith(query: Record<string, string>): Promise<ScriptedTransport> {
+    const params = convertToParamMap(query);
+    const transport = scriptedTransport((request: TransportRequest) =>
+      request.url.endsWith('/user/methods') ? { status: 200, body: METHODS } : { status: 200, body: undefined },
+    );
+    TestBed.resetTestingModule();
+    await TestBed.configureTestingModule({
+      imports: [LoginComponent],
+      providers: [
+        provideResourceTesting({ transport, client: (t) => createApi({ baseUrl: environment.apiUrl, transport: t }) }),
+        { provide: ActivatedRoute, useValue: { queryParamMap: of(params), snapshot: { queryParamMap: params } } },
+      ],
+    }).compileComponents();
+    const fixture = TestBed.createComponent(LoginComponent);
+    fixture.detectChanges();
+    await TestBed.inject(ApplicationRef).whenStable();
+    fixture.detectChanges();
+
+    return transport;
+  }
+
+  it('keeps the session for an invitation link and for an address confirmation', async () => {
+    const links: Record<string, string>[] = [{ invitation: 'token' }, { verify: 'token' }];
+    for (const query of links) {
+      const transport = await arriveWith(query);
+      expect(transport.requests.filter((request) => request.method === 'DELETE')).toEqual([]);
+    }
+  });
+
+  it('ends the session for a sign-up link, which creates an account of its own', async () => {
+    const transport = await arriveWith({ signUp: 'token' });
+    expect(transport.requests.map((request) => `${request.method} ${request.url}`)).toContain(
+      `DELETE ${environment.apiUrl}/user/session`,
+    );
   });
 });

@@ -1,6 +1,6 @@
 import { Component, inject } from '@angular/core';
 import { MatCardModule } from '@angular/material/card';
-import { Router } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import { LoginMethodsComponent } from '@cccteam/resource-angular/auth-login-methods';
 import { AuthService } from '@cccteam/resource-angular/auth-service';
 import { IdleService } from '@cccteam/resource-angular/ui-idle-service';
@@ -50,9 +50,17 @@ export class LoginComponent {
   readonly manifest = CLIENT_MANIFEST;
   readonly labels = METHOD_LABELS;
 
-  /** The page ends whatever session the browser arrived with; the component's first request, the methods list, follows. */
+  /**
+   * The page ends whatever session the browser arrived with, and the component's first
+   * request, the methods list, follows. A mailed link that is followed signed in keeps the
+   * session: an invitation, which the person signed in may accept as they are, and an
+   * address confirmation, which is posted for the session the page finds.
+   */
   constructor() {
-    this.auth.logout().subscribe();
+    const params = inject(ActivatedRoute).snapshot.queryParamMap;
+    if (!params.has('invitation') && !params.has('verify')) {
+      this.auth.logout().subscribe();
+    }
     this.idle.stop();
   }
 
