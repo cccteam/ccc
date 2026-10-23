@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.12](https://github.com/cccteam/ccc/compare/bedrock/v0.3.11...bedrock/v0.3.12) (2026-10-23)
+
+
+### Features
+
+* bedrock org retire takes an application out of the organization, and bedrock destroy takes a final backup first ([#1090](https://github.com/cccteam/ccc/issues/1090)) ([00bc3d0](https://github.com/cccteam/ccc/commit/00bc3d047032211965d029cd47f74f10ae7d016c))
+
 ## [0.3.11](https://github.com/cccteam/ccc/compare/bedrock/v0.3.10...bedrock/v0.3.11) (2026-10-23)
 
 
