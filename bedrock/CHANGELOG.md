@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.14](https://github.com/cccteam/ccc/compare/bedrock/v0.3.13...bedrock/v0.3.14) (2026-10-23)
+
+
+### Bug Fixes
+
+* the application identity may revoke a browser's live identity on sign-out: the stack grants it Firebase Authentication Admin ([#1106](https://github.com/cccteam/ccc/issues/1106)) ([84dc01f](https://github.com/cccteam/ccc/commit/84dc01f0447cbb0f69d66917698d350b2b2412f7))
+
 ## [0.3.13](https://github.com/cccteam/ccc/compare/bedrock/v0.3.12...bedrock/v0.3.13) (2026-10-23)
 
 
