@@ -21,20 +21,28 @@ const digest: PermissionDigest = {
 
 /**
  * The server as the spec plays it: the four routes a sign-in touches (the session, the
- * digest, the user's domains, and the enabled feature flags, none here), answered from the
- * test. Anything else is a 404 the assertions on the request log would show.
+ * digest, the user's domains, and the enabled feature flags, none here) and the methods list the
+ * address card reads for the email routes, answered from the test. Anything else is a 404 the assertions on the request log would show.
  */
 function server(answer: PermissionDigest): (request: TransportRequest) => TransportResponse {
   return (request) => {
     switch (request.url) {
       case `${environment.apiUrl}/user/session`:
-        return { status: 200, body: { authenticated: true, username: 'admin' } };
+        return {
+          status: 200,
+          body: { authenticated: true, username: 'admin', email: 'admin@skeleton.test', emailVerified: true },
+        };
       case `${environment.apiUrl}/permission-digest`:
         return { status: 200, body: answer };
       case `${environment.apiUrl}/user-domains`:
         return { status: 200, body: [] };
       case `${environment.apiUrl}/features`:
         return { status: 200, body: { enabled: [] } };
+      case `${environment.apiUrl}/user/methods`:
+        return {
+          status: 200,
+          body: { methods: [], email: { add: '/api/user/email', verify: '/api/user/email/verify' } },
+        };
       default:
         return { status: 404, body: { message: `unscripted ${request.method} ${request.url}` } };
     }
@@ -68,8 +76,15 @@ describe('DashboardComponent', () => {
   it('renders who is signed in and the digest per resource, field entries folded into their row', async () => {
     const fixture = await render(digest);
     const element: HTMLElement = fixture.nativeElement;
+    // The address card reads the methods list for the email routes; the offer renders once it has answered.
+    await fixture.whenStable();
+    fixture.detectChanges();
 
     expect(element.querySelector('h1')?.textContent).toContain('Signed in as admin');
+    expect(element.querySelector('.email-card .ccc-email-current')?.textContent).toContain(
+      'admin@skeleton.test is your email address',
+    );
+    expect(element.querySelector('.email-card .ccc-email-edit')?.textContent).toContain('Change the address');
     const rows = Array.from(element.querySelectorAll('tbody tr'));
     expect(rows.map((row) => row.querySelector('td')?.textContent?.trim())).toEqual(['Beacons', 'Harbors']);
     // The columns are List, Read, Create, Update, Delete, Execute; each cell carries its state as a class.
@@ -82,6 +97,7 @@ describe('DashboardComponent', () => {
       `GET ${environment.apiUrl}/permission-digest`,
       `GET ${environment.apiUrl}/user-domains`,
       `GET ${environment.apiUrl}/features`,
+      `GET ${environment.apiUrl}/user/methods`,
     ]);
   });
 

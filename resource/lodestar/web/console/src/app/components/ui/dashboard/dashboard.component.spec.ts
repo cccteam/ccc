@@ -20,18 +20,26 @@ const anvil: PermissionDigest = {
 
 /**
  * The server as the spec plays it: the session, the global digest (empty: a marshal holds
- * nothing outside a sector), the user's domains, and the digest of the sector asked for.
- * Anything else is a 404 the request log would show.
+ * nothing outside a sector), the user's domains, the digest of the sector asked for, and the
+ * methods list the address card reads for the email routes. Anything else is a 404 the request log would show.
  */
 function server(request: TransportRequest): TransportResponse {
   const url = new URL(request.url, 'http://lodestar.test');
   switch (url.pathname) {
     case `${environment.apiUrl}/user/session`:
-      return { status: 200, body: { authenticated: true, username: 'marshal' } };
+      return {
+        status: 200,
+        body: { authenticated: true, username: 'marshal', email: 'marshal@lodestar.test', emailVerified: true },
+      };
     case `${environment.apiUrl}/permission-digest`:
       return { status: 200, body: url.searchParams.get('domain') === 'anvil' ? anvil : {} };
     case `${environment.apiUrl}/user-domains`:
       return { status: 200, body: ['anvil'] };
+    case `${environment.apiUrl}/user/methods`:
+      return {
+        status: 200,
+        body: { methods: [], email: { add: '/api/user/email', verify: '/api/user/email/verify' } },
+      };
     default:
       return { status: 404, body: { message: `unscripted ${request.method} ${request.url}` } };
   }
@@ -60,6 +68,8 @@ describe('DashboardComponent', () => {
     await firstValueFrom(TestBed.inject(AuthService).checkUserSession());
     TestBed.inject(SectorService).enter('anvil');
     await TestBed.inject<ClientBase>(RESOURCE_CLIENT).permissions.loadDigest('anvil' as Domain);
+    // The login page read the methods list before the dashboard opened; the address card reads it for the email routes.
+    await TestBed.inject<ClientBase>(RESOURCE_CLIENT).auth.methods();
 
     fixture = TestBed.createComponent(DashboardComponent);
     fixture.detectChanges();
@@ -78,6 +88,14 @@ describe('DashboardComponent', () => {
       Array.from(row?.querySelectorAll('td:not(.label) .pill') ?? []).map((pill) => pill.textContent?.trim() ?? '');
     expect(pills(missions)).toEqual(['granted', 'granted', 'granted', 'granted', 'granted']);
     expect(pills(ships)).toEqual(['terms apply', 'terms apply', '—', '—', '—']);
+  });
+
+  it('shows the marshal their email address, confirmed, with the offer to change it', () => {
+    const element: HTMLElement = fixture.nativeElement;
+    expect(element.querySelector('.email-card .ccc-email-current')?.textContent).toContain(
+      'marshal@lodestar.test is your email address',
+    );
+    expect(element.querySelector('.email-card .ccc-email-edit')?.textContent).toContain('Change the address');
   });
 
   it('asked the server for the session, both digests, and the domains, and nothing it was not granted', () => {

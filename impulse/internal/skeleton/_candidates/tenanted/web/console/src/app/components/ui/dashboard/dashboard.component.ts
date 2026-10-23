@@ -5,6 +5,7 @@ import { RouterModule } from '@angular/router';
 import { Resources } from '@app/service/zz_gen_constants';
 import { ResourceScopes } from '@app/service/zz_gen_resources';
 import { TenantService } from '@app/tenant/tenant.service';
+import { EmailAddressComponent } from '@cccteam/resource-angular/auth-email-address';
 import { AuthService } from '@cccteam/resource-angular/auth-service';
 import { Permission, PermissionDigestState, Resource } from '@cccteam/resource';
 
@@ -16,7 +17,8 @@ interface PermissionRow {
 }
 
 /**
- * The dashboard shows who is signed in and what the session holds: per generated
+ * The dashboard shows who is signed in and what the session holds, the person's email
+ * address included (added, changed and confirmed through a mailed link, below the digest): per generated
  * resource, the digest state of each permission — in the tenant the page is open in for
  * tenant-scoped resources, globally for global ones. It lives outside the tenant segment
  * and under it: the landing for a session that has picked no tenant, and the tenant's.
@@ -26,7 +28,7 @@ interface PermissionRow {
  */
 @Component({
   selector: 'app-dashboard',
-  imports: [MatButtonModule, MatCardModule, RouterModule],
+  imports: [EmailAddressComponent, MatButtonModule, MatCardModule, RouterModule],
   templateUrl: './dashboard.component.html',
   styleUrl: './dashboard.component.scss',
 })

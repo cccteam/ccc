@@ -5,6 +5,7 @@ import { MatTableModule } from '@angular/material/table';
 import { RouterModule } from '@angular/router';
 import { Methods, Permissions, Resources } from '@app/service/zz_gen_constants';
 import { ResourceScopes } from '@app/service/zz_gen_resources';
+import { EmailAddressComponent } from '@cccteam/resource-angular/auth-email-address';
 import { AuthService } from '@cccteam/resource-angular/auth-service';
 import { Method, Permission, Resource } from '@cccteam/resource';
 import { ImpersonationService } from '@components/sector/impersonation.service';
@@ -19,7 +20,13 @@ interface CardRow {
   states: Record<string, 'granted' | 'conditional' | undefined>;
 }
 
-const READ_WRITE: Permission[] = [Permissions.List, Permissions.Read, Permissions.Create, Permissions.Update, Permissions.Delete];
+const READ_WRITE: Permission[] = [
+  Permissions.List,
+  Permissions.Read,
+  Permissions.Create,
+  Permissions.Update,
+  Permissions.Delete,
+];
 
 /**
  * The dashboard is the service card: a badge listing, per resource, what you hold in
@@ -32,7 +39,7 @@ const READ_WRITE: Permission[] = [Permissions.List, Permissions.Read, Permission
  */
 @Component({
   selector: 'app-dashboard',
-  imports: [MatCardModule, MatIconModule, MatTableModule, RouterModule, StarChartComponent],
+  imports: [EmailAddressComponent, MatCardModule, MatIconModule, MatTableModule, RouterModule, StarChartComponent],
   templateUrl: './dashboard.component.html',
   styleUrl: './dashboard.component.scss',
 })

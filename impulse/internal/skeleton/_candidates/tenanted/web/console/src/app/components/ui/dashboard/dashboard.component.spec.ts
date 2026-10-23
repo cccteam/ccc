@@ -32,15 +32,18 @@ const stranger: Grants = { domains: [], global: {}, tenants: {} };
 
 /**
  * The server as the spec plays it: the session, the digest of the tenant asked for (the
- * global one when none is), the user's domains, and the enabled feature flags (none here).
- * Anything else is a 404 the request log would show.
+ * global one when none is), the user's domains, the enabled feature flags (none here), and the
+ * methods list the address card reads for the email routes. Anything else is a 404 the request log would show.
  */
 function server(grants: Grants): (request: TransportRequest) => TransportResponse {
   return (request) => {
     const url = new URL(request.url, 'http://skeleton.test');
     switch (url.pathname) {
       case `${environment.apiUrl}/user/session`:
-        return { status: 200, body: { authenticated: true, username: 'member' } };
+        return {
+          status: 200,
+          body: { authenticated: true, username: 'member', email: 'member@skeleton.test', emailVerified: true },
+        };
       case `${environment.apiUrl}/permission-digest`: {
         const domain = url.searchParams.get('domain');
         return { status: 200, body: domain ? (grants.tenants[domain] ?? {}) : grants.global };
@@ -49,6 +52,11 @@ function server(grants: Grants): (request: TransportRequest) => TransportRespons
         return { status: 200, body: grants.domains };
       case `${environment.apiUrl}/features`:
         return { status: 200, body: { enabled: [] } };
+      case `${environment.apiUrl}/user/methods`:
+        return {
+          status: 200,
+          body: { methods: [], email: { add: '/api/user/email', verify: '/api/user/email/verify' } },
+        };
       default:
         return { status: 404, body: { message: `unscripted ${request.method} ${request.url}` } };
     }
@@ -98,8 +106,15 @@ describe('DashboardComponent', () => {
   it('renders who is signed in and the digest per resource, tenant-scoped ones in the open tenant', async () => {
     const fixture = await render(member);
     const element: HTMLElement = fixture.nativeElement;
+    // The address card reads the methods list for the email routes; the offer renders once it has answered.
+    await fixture.whenStable();
+    fixture.detectChanges();
 
     expect(element.querySelector('h1')?.textContent).toContain('Signed in as member');
+    expect(element.querySelector('.email-card .ccc-email-current')?.textContent).toContain(
+      'member@skeleton.test is your email address',
+    );
+    expect(element.querySelector('.email-card .ccc-email-edit')?.textContent).toContain('Change the address');
     expect(element.querySelector('p strong')?.textContent).toBe('north');
     const rows = Array.from(element.querySelectorAll('tbody tr'));
     const labels = rows.map((row) => row.querySelector('td')?.textContent?.replace(/\s+/g, ' ').trim());
