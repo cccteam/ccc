@@ -6,7 +6,7 @@ package router
 import "github.com/cccteam/ccc/resource"
 
 // CrewAuth marks the crew auth (github.com/cccteam/ccc/resource/lodestar/pkg/auth/crew) for the user-management
-// surface the library serves on the default outlet: CrewUsers, CrewSeats, CrewRoles, SetCrewUserPassword, UnlinkCrewUserIdentity, CrewSectorUsers, CrewSectorSeats, CrewSectorRoles, SetCrewSectorUserPassword, UnlinkCrewSectorUserIdentity.
+// surface the library serves on the default outlet: CrewUsers, CrewSeats, CrewRoles, CrewInvitations, SetCrewUserPassword, UnlinkCrewUserIdentity, CrewSectorUsers, CrewSectorSeats, CrewSectorRoles, CrewSectorInvitations, SetCrewSectorUserPassword, UnlinkCrewSectorUserIdentity.
 // The surface, its rows and its handlers are instantiated with it, so the auth's
 // resources are their own Go types carrying these names into the collection.
 type CrewAuth struct{}
@@ -18,7 +18,9 @@ func (CrewAuth) UserSurfaceDeclaration() resource.UserSurfaceDeclaration {
 		Tenant:      "Sector",
 		DomainParam: "sectorID",
 		Shape: resource.UserSurfaceShape{
-			Password: true,
+			Password:        true,
+			UsernameIsEmail: false,
+			OpenSignUp:      true,
 			Registrations: []resource.UserRegistration{
 				{Name: "google", Kind: "google", Label: "Google", Invited: false, SyncsRoles: true},
 				{Name: "sign-up", Kind: "google", Label: "Sign up with Google", Invited: false, SyncsRoles: false},
@@ -28,15 +30,17 @@ func (CrewAuth) UserSurfaceDeclaration() resource.UserSurfaceDeclaration {
 }
 
 // NewCrewUserSurface builds the crew auth's surface over its stores: the auth's
-// users and identities (sessionusers.Accounts over the auth's session API) and its
-// engine's user manager, whose memberships are the seats. The application returns the
-// surface from CrewUserSurface(), which the generated handlers call.
-func NewCrewUserSurface(accounts resource.UserAccounts, seats resource.UserSeats) *resource.UserSurface[CrewAuth] {
-	return resource.NewUserSurface[CrewAuth](accounts, seats)
+// users, identities and invitations (sessionusers.Accounts over the auth's session API)
+// and its engine's user manager, whose memberships are the seats. The application
+// returns the surface from CrewUserSurface(), which the generated handlers call. A
+// tenanted application passes resource.WithTenantDirectories over its roster's
+// declarations, which lets a Sector's administrator seat a person its own directory vouched for.
+func NewCrewUserSurface(accounts resource.UserAccounts, seats resource.UserSeats, opts ...resource.UserSurfaceOption) *resource.UserSurface[CrewAuth] {
+	return resource.NewUserSurface[CrewAuth](accounts, seats, opts...)
 }
 
 // MembersAuth marks the members auth (github.com/cccteam/ccc/resource/lodestar/pkg/auth/members) for the user-management
-// surface the library serves on the portal and default outlets: MembersUsers, MembersSeats, MembersRoles, SetMembersUserPassword, UnlinkMembersUserIdentity, MembersSectorUsers, MembersSectorSeats, MembersSectorRoles, SetMembersSectorUserPassword, UnlinkMembersSectorUserIdentity.
+// surface the library serves on the portal and default outlets: MembersUsers, MembersSeats, MembersRoles, MembersInvitations, SetMembersUserPassword, UnlinkMembersUserIdentity, MembersSectorUsers, MembersSectorSeats, MembersSectorRoles, MembersSectorInvitations, SetMembersSectorUserPassword, UnlinkMembersSectorUserIdentity.
 // The surface, its rows and its handlers are instantiated with it, so the auth's
 // resources are their own Go types carrying these names into the collection.
 type MembersAuth struct{}
@@ -48,7 +52,9 @@ func (MembersAuth) UserSurfaceDeclaration() resource.UserSurfaceDeclaration {
 		Tenant:      "Sector",
 		DomainParam: "sectorID",
 		Shape: resource.UserSurfaceShape{
-			Password: false,
+			Password:        false,
+			UsernameIsEmail: false,
+			OpenSignUp:      false,
 			Registrations: []resource.UserRegistration{
 				{Name: "directory", Kind: "google", Label: "Company directory", Invited: false, SyncsRoles: true},
 			},
@@ -57,9 +63,11 @@ func (MembersAuth) UserSurfaceDeclaration() resource.UserSurfaceDeclaration {
 }
 
 // NewMembersUserSurface builds the members auth's surface over its stores: the auth's
-// users and identities (sessionusers.Accounts over the auth's session API) and its
-// engine's user manager, whose memberships are the seats. The application returns the
-// surface from MembersUserSurface(), which the generated handlers call.
-func NewMembersUserSurface(accounts resource.UserAccounts, seats resource.UserSeats) *resource.UserSurface[MembersAuth] {
-	return resource.NewUserSurface[MembersAuth](accounts, seats)
+// users, identities and invitations (sessionusers.Accounts over the auth's session API)
+// and its engine's user manager, whose memberships are the seats. The application
+// returns the surface from MembersUserSurface(), which the generated handlers call. A
+// tenanted application passes resource.WithTenantDirectories over its roster's
+// declarations, which lets a Sector's administrator seat a person its own directory vouched for.
+func NewMembersUserSurface(accounts resource.UserAccounts, seats resource.UserSeats, opts ...resource.UserSurfaceOption) *resource.UserSurface[MembersAuth] {
+	return resource.NewUserSurface[MembersAuth](accounts, seats, opts...)
 }

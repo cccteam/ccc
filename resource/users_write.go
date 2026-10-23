@@ -12,6 +12,7 @@ import (
 	"github.com/cccteam/ccc/tracer"
 	"github.com/cccteam/httpio"
 	"github.com/cccteam/logger"
+	"github.com/cccteam/session/sessioninfo"
 	"github.com/go-playground/errors/v5"
 )
 
@@ -126,6 +127,7 @@ type userWrite struct {
 	fields   []accesstypes.Field
 	username string
 	password *string
+	email    *string
 	disabled bool
 	role     string
 }
@@ -171,6 +173,9 @@ func (d *typedUserWriteDecoder[Row, Request]) decode(op *Operation) (*userWrite,
 	if write.sets(userFieldDisabled) {
 		write.disabled, _ = patchSet.Get(userFieldDisabled).(bool)
 	}
+	if write.sets(userFieldEmail) {
+		write.email, _ = patchSet.Get(userFieldEmail).(*string)
+	}
 	if write.sets(userFieldRole) {
 		write.role, _ = patchSet.Get(userFieldRole).(string)
 	}
@@ -205,6 +210,10 @@ func (s *UserSurface[A]) createUser(ctx context.Context, wc *writeContext, write
 	if err != nil {
 		return ccc.NilUUID, err
 	}
+	email, err := s.validateEmail(write)
+	if err != nil {
+		return ccc.NilUUID, err
+	}
 	var seatScope accesstypes.PolicyScope
 	if n.Tenanted {
 		if seatScope, err = s.validateTenantRole(wc, write); err != nil {
@@ -221,7 +230,12 @@ func (s *UserSurface[A]) createUser(ctx context.Context, wc *writeContext, write
 		userAttrCreatedAt:              time.Now(),
 		userAttrLastSignInAt:           nil,
 		userAttrOrganization:           nil,
+		userAttrEmail:                  nil,
+		userAttrEmailVerified:          false,
 		userAttrRolesSynced:            false,
+	}
+	if email != nil {
+		post[userAttrEmail] = *email
 	}
 	if err := wc.judge.judgeWrite(ctx, decisions, wc.partition.scope, accesstypes.Create, nil, post); err != nil {
 		return ccc.NilUUID, err
@@ -236,7 +250,7 @@ func (s *UserSurface[A]) createUser(ctx context.Context, wc *writeContext, write
 		return ccc.NilUUID, nil
 	}
 
-	id, err := s.accounts.CreateUser(ctx, username, write.password, write.disabled)
+	id, err := s.accounts.CreateUser(ctx, username, write.password, email, write.disabled)
 	if err != nil {
 		return ccc.NilUUID, errors.Wrap(err, "resource.UserAccounts.CreateUser()")
 	}
@@ -281,6 +295,27 @@ func (s *UserSurface[A]) validateCreate(wc *writeContext, write *userWrite) (str
 	return username, nil
 }
 
+// validateEmail reads the address a create or update enters, an operator's entry the
+// person verifies later: none where the write sets none, refused where the username is
+// the address (the store derives it), and never empty.
+func (s *UserSurface[A]) validateEmail(write *userWrite) (*string, error) {
+	if !write.sets(userFieldEmail) {
+		return nil, nil
+	}
+	if s.decl.Shape.UsernameIsEmail {
+		return nil, httpio.NewBadRequestMessage("the username is the person's email address here: give the address as the username, and leave email out")
+	}
+	if write.email == nil {
+		return nil, nil
+	}
+	email := strings.TrimSpace(*write.email)
+	if email == "" {
+		return nil, httpio.NewBadRequestMessage("an empty address is not an address: leave email out, or null to remove it")
+	}
+
+	return &email, nil
+}
+
 // validateTenantRole reads the seat a tenant create gives the new user: a role that
 // exists in the tenant.
 func (s *UserSurface[A]) validateTenantRole(wc *writeContext, write *userWrite) (accesstypes.PolicyScope, error) {
@@ -304,6 +339,8 @@ func wireNameOf(field accesstypes.Field) string {
 		return "password"
 	case userFieldDisabled:
 		return userAttrDisabled
+	case userFieldEmail:
+		return userAttrEmail
 	case userFieldRole:
 		return seatAttrRole
 	default:
@@ -407,9 +444,16 @@ func (s *UserSurface[A]) updateUser(ctx context.Context, wc *writeContext, op *O
 		if username == "" {
 			return httpio.NewBadRequestMessage("a username is required")
 		}
+		if s.decl.Shape.UsernameIsEmail && username != user.account.Username {
+			return httpio.NewConflictMessage("the username is the person's email address: it changes when the person verifies a new address, not by a rename")
+		}
 		if other := wc.snap.byUsername(username); other != nil && other.ID != id {
 			return httpio.NewConflictMessagef("a user named %q already exists", username)
 		}
+	}
+	email, err := s.validateEmail(write)
+	if err != nil {
+		return err
 	}
 	if write.sets(userFieldDisabled) && write.disabled && wc.judge.self(user.account.Username) {
 		return httpio.NewForbiddenMessage("you cannot deactivate your own account")
@@ -425,6 +469,12 @@ func (s *UserSurface[A]) updateUser(ctx context.Context, wc *writeContext, op *O
 	if write.sets(userFieldDisabled) {
 		post[userAttrDisabled] = write.disabled
 	}
+	if write.sets(userFieldEmail) {
+		post[userAttrEmail] = nil
+		if email != nil {
+			post[userAttrEmail] = *email
+		}
+	}
 	if err := wc.judge.judgeWrite(ctx, decisions, wc.partition.scope, accesstypes.Update, user.image(), post); err != nil {
 		return err
 	}
@@ -432,7 +482,7 @@ func (s *UserSurface[A]) updateUser(ctx context.Context, wc *writeContext, op *O
 		return nil
 	}
 
-	return s.applyUserUpdate(ctx, user, write, username)
+	return s.applyUserUpdate(ctx, user, write, username, email)
 }
 
 // refuseUpdateShape refuses what an update never sets: the password, a role, or
@@ -450,19 +500,24 @@ func refuseUpdateShape(n *UserPartitionNames, write *userWrite) error {
 	}
 }
 
-// applyUserUpdate writes a checked update to the stores: the flag, then the rename
-// with its seats.
-func (s *UserSurface[A]) applyUserUpdate(ctx context.Context, user *composedUser, write *userWrite, username string) error {
+// applyUserUpdate writes a checked update to the stores: the flag, the address, then
+// the rename with its seats.
+func (s *UserSurface[A]) applyUserUpdate(ctx context.Context, user *composedUser, write *userWrite, username string, email *string) error {
 	if write.sets(userFieldDisabled) && write.disabled != user.account.Disabled {
 		if err := s.accounts.SetUserDisabled(ctx, user.account.ID, write.disabled); err != nil {
 			return errors.Wrap(err, "resource.UserAccounts.SetUserDisabled()")
+		}
+	}
+	if write.sets(userFieldEmail) {
+		if err := s.accounts.SetUserEmail(ctx, user.account.ID, email); err != nil {
+			return errors.Wrap(err, "resource.UserAccounts.SetUserEmail()")
 		}
 	}
 	if write.sets(userFieldUsername) && username != user.account.Username {
 		if err := s.accounts.RenameUser(ctx, user.account.ID, username); err != nil {
 			return errors.Wrap(err, "resource.UserAccounts.RenameUser()")
 		}
-		if err := s.moveSeats(ctx, user.account.Username, username); err != nil {
+		if err := moveSeats(ctx, s.seats, user.account.Username, username); err != nil {
 			return err
 		}
 	}
@@ -472,9 +527,10 @@ func (s *UserSurface[A]) applyUserUpdate(ctx context.Context, user *composedUser
 
 // moveSeats re-keys a renamed user's memberships: each seat is added under the new name
 // and removed under the old, scope by scope. The two stores are not one transaction; a
-// failure midway is logged with what moved, and renaming back recovers the rest.
-func (s *UserSurface[A]) moveSeats(ctx context.Context, from, to string) error {
-	held, err := s.seats.UserRoles(ctx, userKey(from))
+// failure midway is logged with what moved, and running it again finishes the move
+// (adding a seat that exists is a no-op).
+func moveSeats(ctx context.Context, seats UserSeats, from, to string) error {
+	held, err := seats.UserRoles(ctx, userKey(from))
 	if err != nil {
 		return errors.Wrap(err, "resource.UserSeats.UserRoles()")
 	}
@@ -482,12 +538,12 @@ func (s *UserSurface[A]) moveSeats(ctx context.Context, from, to string) error {
 		if len(roles) == 0 {
 			continue
 		}
-		if err := s.seats.AddUserRoles(ctx, scope, userKey(to), roles...); err != nil {
-			logger.FromCtx(ctx).Errorf("user surface: renaming %q to %q: the seats in %s did not move; rename back to recover them: %v", from, to, scope, err)
+		if err := seats.AddUserRoles(ctx, scope, userKey(to), roles...); err != nil {
+			logger.FromCtx(ctx).Errorf("user surface: renaming %q to %q: the seats in %s did not move; run the move again to recover them: %v", from, to, scope, err)
 
 			return errors.Wrap(err, "resource.UserSeats.AddUserRoles()")
 		}
-		if err := s.seats.DeleteUserRoles(ctx, scope, userKey(from), roles...); err != nil {
+		if err := seats.DeleteUserRoles(ctx, scope, userKey(from), roles...); err != nil {
 			logger.FromCtx(ctx).Errorf("user surface: renaming %q to %q: the seats in %s are held under both names: %v", from, to, scope, err)
 
 			return errors.Wrap(err, "resource.UserSeats.DeleteUserRoles()")
@@ -497,8 +553,46 @@ func (s *UserSurface[A]) moveSeats(ctx context.Context, from, to string) error {
 	return nil
 }
 
-// deleteUser removes a user with every seat they hold. Nobody deletes themselves, and a
-// tenant partition deletes only its own users.
+// SeatsFollowRename is the session library's rename hook (session.Auth.SetUserRenamed)
+// over the Auth's membership store: where the username is the person's email address, a
+// verified new address renames the user, and the seats held under the old name move to
+// the new one, as the surface's own rename moves them. Safe to run again after a
+// failure midway.
+func SeatsFollowRename(seats UserSeats) func(ctx context.Context, userID ccc.UUID, from, to string) error {
+	return func(ctx context.Context, _ ccc.UUID, from, to string) error {
+		return moveSeats(ctx, seats, from, to)
+	}
+}
+
+// deleteOrphan applies the orphan rule once a seat is removed: a user who then holds no
+// seat anywhere, in any tenant, in every tenant or in the global partition, is deleted
+// with their identity links and sessions, since an account nothing admits causes
+// trouble kept; under a directory's open rule the next sign-in creates the row again,
+// and under password sign-up the person signs up again. A user with a seat somewhere,
+// a global role above all, stays.
+func (s *UserSurface[A]) deleteOrphan(ctx context.Context, account *UserAccount) error {
+	held, err := s.seats.UserRoles(ctx, userKey(account.Username))
+	if err != nil {
+		return errors.Wrap(err, "resource.UserSeats.UserRoles()")
+	}
+	for _, roles := range held {
+		if len(roles) > 0 {
+			return nil
+		}
+	}
+	if err := s.accounts.DeleteUser(ctx, account.ID); err != nil {
+		return errors.Wrap(err, "resource.UserAccounts.DeleteUser()")
+	}
+	logger.FromCtx(ctx).Infof("user surface: %q holds no seat anywhere after the removal, so the account is deleted with its identity links (the orphan rule)", account.Username)
+
+	return nil
+}
+
+// deleteUser removes a user. In the global partition the account goes with every seat
+// they hold. In a tenant partition the delete is the tenant's: the user's seats in the
+// tenant are removed, which ends their membership there, and the account goes only when
+// no seat remains anywhere (the orphan rule); a user who holds a role in every tenant is
+// managed from the global surface. Nobody deletes themselves.
 func (s *UserSurface[A]) deleteUser(ctx context.Context, wc *writeContext, op *Operation) error {
 	n := wc.partition.names
 	decisions, err := checkWriteGrants(ctx, wc.perms, wc.partition.scope, accesstypes.Delete, n.Users, nil)
@@ -519,8 +613,8 @@ func (s *UserSurface[A]) deleteUser(ctx context.Context, wc *writeContext, op *O
 	if wc.judge.self(user.account.Username) {
 		return httpio.NewForbiddenMessage("you cannot delete your own account")
 	}
-	if err := s.accountLevel(ctx, wc, user, "the delete"); err != nil {
-		return err
+	if n.Tenanted {
+		return s.removeFromTenant(ctx, wc, decisions, user)
 	}
 	if err := wc.judge.judgeWrite(ctx, decisions, wc.partition.scope, accesstypes.Delete, user.image(), nil); err != nil {
 		return err
@@ -546,6 +640,29 @@ func (s *UserSurface[A]) deleteUser(ctx context.Context, wc *writeContext, op *O
 	}
 
 	return nil
+}
+
+// removeFromTenant is the tenant partition's delete: the user's seats in the tenant go,
+// and the account with them when no seat remains anywhere.
+func (s *UserSurface[A]) removeFromTenant(ctx context.Context, wc *writeContext, decisions accesstypes.Decisions, user *composedUser) error {
+	if len(user.everywhereRoles) > 0 {
+		return httpio.NewConflictMessagef("user %q holds %s in every %s; their account is managed from the global surface", user.account.Username, strings.Join(user.everywhereRoles, ", "), strings.ToLower(s.decl.Tenant))
+	}
+	if err := wc.judge.judgeWrite(ctx, decisions, wc.partition.scope, accesstypes.Delete, user.image(), nil); err != nil {
+		return err
+	}
+	if wc.dryRun {
+		return nil
+	}
+	scope := accesstypes.DomainPolicyScope(wc.partition.domain)
+	held := wc.snap.seats[userKey(user.account.Username)][scope]
+	if len(held) > 0 {
+		if err := s.seats.DeleteUserRoles(ctx, scope, userKey(user.account.Username), held...); err != nil {
+			return errors.Wrap(err, "resource.UserSeats.DeleteUserRoles()")
+		}
+	}
+
+	return s.deleteOrphan(ctx, user.account)
 }
 
 // seatsPatch is the seats patch handler of a partition: add seats, remove them; a seat
@@ -580,8 +697,9 @@ func (s *UserSurface[A]) seatsPatch(a UserApp, tenanted bool) http.HandlerFunc {
 
 // createSeat seats a user in a role: the role must exist where the partition seats
 // (globally or in every tenant for the global partition, in the tenant for the tenant
-// partition), the user must be the partition's, and a user whose roles a directory
-// writes is not seated by hand.
+// partition), the user must be the partition's or vouched for by the tenant's own
+// directory (vouchedFor), and a user whose roles a directory writes is not seated by
+// hand.
 func (s *UserSurface[A]) createSeat(ctx context.Context, wc *writeContext, op *Operation) error {
 	n := wc.partition.names
 	decisions, err := checkWriteGrants(ctx, wc.perms, wc.partition.scope, accesstypes.Create, n.Seats, nil)
@@ -601,7 +719,9 @@ func (s *UserSurface[A]) createSeat(ctx context.Context, wc *writeContext, op *O
 		return httpio.NewBadRequestMessagef("user %s does not exist", id)
 	}
 	if !wc.snap.inPartition(account.Username) {
-		return httpio.NewBadRequestMessagef("user %q is not seated in this %s; seat them from the global surface first", account.Username, strings.ToLower(s.decl.Tenant))
+		if err := s.vouchedFor(ctx, wc, account); err != nil {
+			return err
+		}
 	}
 	scope, ok := wc.snap.roleScope(role)
 	if !ok {
@@ -631,9 +751,38 @@ func (s *UserSurface[A]) createSeat(ctx context.Context, wc *writeContext, op *O
 	return nil
 }
 
+// vouchedFor is the second door into a tenant: a user who holds no seat in the tenant
+// may be seated there when they signed in through a directory the tenant declares
+// (their identity's method and connection are among the tenant's directories): the
+// person entered through the tenant's own directory, was told they have no access yet,
+// and asked their administrator. Anyone else enters by invitation, or is seated from
+// the global surface.
+func (s *UserSurface[A]) vouchedFor(ctx context.Context, wc *writeContext, account *UserAccount) error {
+	tenant := strings.ToLower(s.decl.Tenant)
+	if s.settings.declarations == nil {
+		return httpio.NewBadRequestMessagef("user %q is not seated in this %s: invite them, or seat them from the global surface", account.Username, tenant)
+	}
+	declaration, err := s.settings.declarations(ctx, wc.partition.domain)
+	if err != nil {
+		return errors.Wrap(err, "resource.TenantDeclarations()")
+	}
+	facts, err := wc.snap.factsOf(ctx, account)
+	if err != nil {
+		return err
+	}
+	for i := range facts.identities {
+		identity := &facts.identities[i]
+		if declaration != nil && declaration.Admits(sessioninfo.AuthMethod(identity.Method), identity.Connection) {
+			return nil
+		}
+	}
+
+	return httpio.NewBadRequestMessagef("user %q is not seated in this %s and entered through no directory it declares: invite them, or seat them from the global surface", account.Username, tenant)
+}
+
 // deleteSeat unseats a user from a role. Nobody unseats themselves, a directory's seats
-// are not removed by hand, and a seat held everywhere is removed from the global
-// partition alone.
+// are not removed by hand, a seat held everywhere is removed from the global partition
+// alone, and a user left with no seat anywhere is deleted (the orphan rule).
 func (s *UserSurface[A]) deleteSeat(ctx context.Context, wc *writeContext, op *Operation) error {
 	n := wc.partition.names
 	decisions, err := checkWriteGrants(ctx, wc.perms, wc.partition.scope, accesstypes.Delete, n.Seats, nil)
@@ -679,5 +828,5 @@ func (s *UserSurface[A]) deleteSeat(ctx context.Context, wc *writeContext, op *O
 		return errors.Wrap(err, "resource.UserSeats.DeleteUserRoles()")
 	}
 
-	return nil
+	return s.deleteOrphan(ctx, account)
 }

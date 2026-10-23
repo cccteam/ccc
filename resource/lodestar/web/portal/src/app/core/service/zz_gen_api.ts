@@ -2,7 +2,7 @@
 import { ApiDescriptor, Client, ClientOptions, createClient, MethodHandle, ResourceHandle } from '@cccteam/resource';
 import { Point } from 'geojson';
 import { Methods, Resources } from './zz_gen_constants';
-import { ClientContacts, ClientRosters, DistressCalls, Missions, MissionDocuments, BriefingTemplates, FeatureFlags, MembersUsers, MembersSeats, MembersRoles, MembersSectorUsers, MembersSectorSeats, MembersSectorRoles } from './zz_gen_resources';
+import { ClientContacts, ClientRosters, DistressCalls, Missions, MissionDocuments, BriefingTemplates, FeatureFlags, MembersUsers, MembersSeats, MembersRoles, MembersInvitations, MembersSectorUsers, MembersSectorSeats, MembersSectorRoles, MembersSectorInvitations } from './zz_gen_resources';
 import { StandDownMission, SetFeature, SetFeatureResult, UnlinkMembersUserIdentity, UnlinkMembersSectorUserIdentity } from './zz_gen_methods';
 
 /** The feature flags the application declares, by name: what a route, a field or a method is gated behind. */
@@ -115,6 +115,7 @@ export type FeatureFlagsKey = [name: string];
 export interface MembersUsersPatch {
   username?: string;
   disabled?: boolean;
+  email?: string;
 }
 /** The primary key of MembersUsers, in route order. */
 export type MembersUsersKey = [id: string];
@@ -130,10 +131,22 @@ export type MembersSeatsKey = [user: string, role: string];
 /** The primary key of MembersRoles, in route order. */
 export type MembersRolesKey = [name: string];
 
+/**
+ * The fields a client may set when creating MembersInvitations. Server-owned fields are
+ * absent; a server-generated key is absent, a client-assigned key is required.
+ */
+export interface MembersInvitationsCreate {
+  email: string;
+  roles: string[];
+}
+/** The primary key of MembersInvitations, in route order. */
+export type MembersInvitationsKey = [id: string];
+
 /** The fields a client may change on MembersSectorUsers. Keys, server-owned, and immutable fields are absent. */
 export interface MembersSectorUsersPatch {
   username?: string;
   disabled?: boolean;
+  email?: string;
 }
 /** The primary key of MembersSectorUsers, in route order. */
 export type MembersSectorUsersKey = [id: string];
@@ -148,6 +161,17 @@ export type MembersSectorSeatsKey = [user: string, role: string];
 
 /** The primary key of MembersSectorRoles, in route order. */
 export type MembersSectorRolesKey = [name: string];
+
+/**
+ * The fields a client may set when creating MembersSectorInvitations. Server-owned fields are
+ * absent; a server-generated key is absent, a client-assigned key is required.
+ */
+export interface MembersSectorInvitationsCreate {
+  email: string;
+  roles: string[];
+}
+/** The primary key of MembersSectorInvitations, in route order. */
+export type MembersSectorInvitationsKey = [id: string];
 
 /**
  * Keeps the literal types of the descriptor while letting a client that predates a field
@@ -259,7 +283,7 @@ export const apiDescriptor = defineApiDescriptor({
       operations: ['list', 'read', 'patch', 'remove'],
       page: { default: 50 },
       order: [{ field: 'username', direction: 'asc' }],
-      patchable: ['username', 'disabled'],
+      patchable: ['username', 'disabled', 'email'],
     },
     [Resources.MembersSeats]: {
       resource: Resources.MembersSeats,
@@ -283,6 +307,17 @@ export const apiDescriptor = defineApiDescriptor({
       page: { default: 50 },
       order: [{ field: 'name', direction: 'asc' }],
     },
+    [Resources.MembersInvitations]: {
+      resource: Resources.MembersInvitations,
+      property: 'membersInvitations',
+      route: 'members-invitations',
+      scope: 'global',
+      consolidated: false,
+      keys: ['id'],
+      operations: ['list', 'read', 'create', 'remove'],
+      page: { default: 50 },
+      order: [{ field: 'email', direction: 'asc' }],
+    },
     [Resources.MembersSectorUsers]: {
       resource: Resources.MembersSectorUsers,
       property: 'membersSectorUsers',
@@ -293,7 +328,7 @@ export const apiDescriptor = defineApiDescriptor({
       operations: ['list', 'read', 'patch', 'remove'],
       page: { default: 50 },
       order: [{ field: 'username', direction: 'asc' }],
-      patchable: ['username', 'disabled'],
+      patchable: ['username', 'disabled', 'email'],
     },
     [Resources.MembersSectorSeats]: {
       resource: Resources.MembersSectorSeats,
@@ -317,6 +352,17 @@ export const apiDescriptor = defineApiDescriptor({
       page: { default: 50 },
       order: [{ field: 'name', direction: 'asc' }],
     },
+    [Resources.MembersSectorInvitations]: {
+      resource: Resources.MembersSectorInvitations,
+      property: 'membersSectorInvitations',
+      route: 'members-sector-invitations',
+      scope: 'domain',
+      consolidated: false,
+      keys: ['id'],
+      operations: ['list', 'read', 'create', 'remove'],
+      page: { default: 50 },
+      order: [{ field: 'email', direction: 'asc' }],
+    },
   },
   methods: {
     [Methods.StandDownMission]: { method: Methods.StandDownMission, property: 'standDownMission', route: 'stand-down-mission', scope: 'domain' },
@@ -329,10 +375,12 @@ export const apiDescriptor = defineApiDescriptor({
       auth: 'Members',
       label: 'Members',
       password: false,
+      usernameIsEmail: false,
+      openSignUp: false,
       registrations: [{ name: 'directory', kind: 'google', label: 'Company directory', invited: false, syncsRoles: true }],
       partitions: [
-        { scope: 'global', users: Resources.MembersUsers, seats: Resources.MembersSeats, roles: Resources.MembersRoles, unlinkIdentity: Methods.UnlinkMembersUserIdentity },
-        { scope: 'domain', users: Resources.MembersSectorUsers, seats: Resources.MembersSectorSeats, roles: Resources.MembersSectorRoles, unlinkIdentity: Methods.UnlinkMembersSectorUserIdentity },
+        { scope: 'global', users: Resources.MembersUsers, seats: Resources.MembersSeats, roles: Resources.MembersRoles, invitations: Resources.MembersInvitations, unlinkIdentity: Methods.UnlinkMembersUserIdentity },
+        { scope: 'domain', users: Resources.MembersSectorUsers, seats: Resources.MembersSectorSeats, roles: Resources.MembersSectorRoles, invitations: Resources.MembersSectorInvitations, unlinkIdentity: Methods.UnlinkMembersSectorUserIdentity },
       ],
     },
   ],
@@ -346,6 +394,7 @@ export interface GlobalApi {
   membersUsers: ResourceHandle<MembersUsers, MembersUsersKey, 'list' | 'read' | 'patch' | 'remove', never, MembersUsersPatch>;
   membersSeats: ResourceHandle<MembersSeats, MembersSeatsKey, 'list' | 'read' | 'create' | 'remove', MembersSeatsCreate>;
   membersRoles: ResourceHandle<MembersRoles, MembersRolesKey, 'list' | 'read'>;
+  membersInvitations: ResourceHandle<MembersInvitations, MembersInvitationsKey, 'list' | 'read' | 'create' | 'remove', MembersInvitationsCreate>;
   setFeature: MethodHandle<SetFeature, SetFeatureResult>;
   unlinkMembersUserIdentity: MethodHandle<UnlinkMembersUserIdentity>;
 }
@@ -359,6 +408,7 @@ export interface DomainApi {
   membersSectorUsers: ResourceHandle<MembersSectorUsers, MembersSectorUsersKey, 'list' | 'read' | 'patch' | 'remove', never, MembersSectorUsersPatch>;
   membersSectorSeats: ResourceHandle<MembersSectorSeats, MembersSectorSeatsKey, 'list' | 'read' | 'create' | 'remove', MembersSectorSeatsCreate>;
   membersSectorRoles: ResourceHandle<MembersSectorRoles, MembersSectorRolesKey, 'list' | 'read'>;
+  membersSectorInvitations: ResourceHandle<MembersSectorInvitations, MembersSectorInvitationsKey, 'list' | 'read' | 'create' | 'remove', MembersSectorInvitationsCreate>;
   standDownMission: MethodHandle<StandDownMission>;
   unlinkMembersSectorUserIdentity: MethodHandle<UnlinkMembersSectorUserIdentity>;
 }

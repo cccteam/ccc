@@ -286,6 +286,22 @@ const (
 	// directory of the site's built browser bundle, which differs per site, so the stack
 	// sets it per service to where the image holds the site's bundle.
 	RoleSiteBundle Role = "site-bundle"
+	// RolePublicURL hands the application's address as a browser reaches it to the
+	// processes that construct its level: https:// and the site's canonical hostname,
+	// which every link the auths mail (an invitation, an address verification, a
+	// sign-up) opens the login page under; in the sites layout each site's service
+	// carries its own.
+	RolePublicURL Role = "public-url"
+	// RoleMailbox is the Google Workspace mailbox the auths' mail is sent as
+	// (APP_MAIL_MAILBOX), placed once for the organization: the stack variable
+	// mail_mailbox, empty until the organization names one, when the application
+	// writes its mail to the log and sends nothing.
+	RoleMailbox Role = "mail-mailbox"
+	// RoleMailAppPassword is the mailbox's app password (APP_MAIL_APP_PASSWORD,
+	// secret:"true"), the relay's login: a pinned secret like any other, which the
+	// migrate command reads too, since the data level opens the sender when it is
+	// constructed.
+	RoleMailAppPassword Role = "mail-app-password"
 	// The directory registration of an OIDC auth, keyed as the auth package's Directory
 	// struct names them.
 	RoleClientID     Role = "client-id"
@@ -320,7 +336,7 @@ const defaultGroupLookup = "direct"
 // Derived reports a role whose value the stack derives from a fact of its own.
 func (r Role) Derived() bool {
 	switch r {
-	case RoleServiceName, RoleLoggingProject, RoleDatabaseProject, RoleDatabaseInstance, RoleDatabaseName, RoleRedirectURL, RoleFileStore, RoleTasksQueue, RoleFirestoreProject, RoleFirestoreDatabase, RoleFirebaseAPIKey, RoleTraceSampling, RoleJobsTemplate, RoleSiteBundle:
+	case RoleServiceName, RoleLoggingProject, RoleDatabaseProject, RoleDatabaseInstance, RoleDatabaseName, RoleRedirectURL, RoleFileStore, RoleTasksQueue, RoleFirestoreProject, RoleFirestoreDatabase, RoleFirebaseAPIKey, RoleTraceSampling, RoleJobsTemplate, RoleSiteBundle, RolePublicURL:
 		return true
 	default:
 		return false
@@ -330,7 +346,7 @@ func (r Role) Derived() bool {
 // Placed reports a role whose value is a placement variable.
 func (r Role) Placed() bool {
 	switch r {
-	case RoleClientID, RoleHostedDomain, RoleGroupPrefix, RoleGroupLookup, RoleTenantID, RoleTenants, RoleWorkspaces, RoleAdministrator:
+	case RoleClientID, RoleHostedDomain, RoleGroupPrefix, RoleGroupLookup, RoleTenantID, RoleTenants, RoleWorkspaces, RoleAdministrator, RoleMailbox:
 		return true
 	default:
 		return false
@@ -414,6 +430,17 @@ const (
 	// be traceable, and to edge beyond them, where a request Google's edge sampled is
 	// traced and nothing else.
 	varTraceSampling = "APP_TRACE_SAMPLING"
+	// varPublicURL is the variable an application declares for its address as a browser
+	// reaches it, scheme and host with no path: the stack sets it to https:// and the
+	// site's canonical hostname, each site's own in the sites layout. Every link the
+	// auths mail opens the login page under it.
+	varPublicURL = "APP_PUBLIC_URL"
+	// varMailMailbox and varMailAppPassword are the variables an application declares to
+	// send its auths' mail through the Google Workspace SMTP relay: the mailbox it sends
+	// as, a stack variable once for the organization, and the mailbox's app password, a
+	// secret.
+	varMailMailbox     = "APP_MAIL_MAILBOX"
+	varMailAppPassword = "APP_MAIL_APP_PASSWORD"
 )
 
 // MaintenanceVariable is the variable the pipeline sets on a maintenance revision, which
@@ -438,6 +465,9 @@ var wellKnown = map[string]Role{
 	varFirebaseAPIKey:    RoleFirebaseAPIKey,
 	varTraceSampling:     RoleTraceSampling,
 	JobsTemplateVariable: RoleJobsTemplate,
+	varPublicURL:         RolePublicURL,
+	varMailMailbox:       RoleMailbox,
+	varMailAppPassword:   RoleMailAppPassword,
 }
 
 // roleOf is the table's lookup for a variable: a well-known variable by its exact name,

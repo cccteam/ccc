@@ -11,7 +11,10 @@
 // crew gained a directory sign-in beside the password without the package moving.
 //
 // Three ways in, one population. The password method checks a persona's password, and the
-// personas' roles are the bootstrap's (cmd/bootstrap/users.json). The Google method
+// personas' roles are the bootstrap's (cmd/bootstrap/users.json); it is registered with
+// open sign-up, so a stranger with an address may create a crew login with a password
+// from a mailed link, holding no role, as the Google sign-up registration admits one with
+// a Google account. The Google method
 // provisions whoever the directory verifies under the verified email and reconciles that
 // person's roles to the directory's groups at every sign-in (google.RoleSync): the two
 // methods meet in one users table, one session table and one cookie, so a session opened
@@ -23,7 +26,14 @@
 // a person's one way to a sector is to chart their own, the Sector record's self-service
 // creation shape; in development APP_SIGN_UP_USERNAME says who the simulated sign-up is.
 //
-// Demonstrates: auth.password, auth.two-populations, auth.multi-method, auth.directory-roles, auth.open-sign-up.
+// Invitations are the way an administrator brings a person in: the user-management
+// surface mails a link carrying the roles, into the global partition or into a sector,
+// and whoever follows it and signs in, by any method or by creating a password login,
+// is seated with those roles by the acceptance hook (resource.SeatInvited). A person's
+// email address is held apart from their username, added and verified by the person
+// through a mailed link, or entered unverified by an operator.
+//
+// Demonstrates: auth.password, auth.two-populations, auth.multi-method, auth.directory-roles, auth.open-sign-up, auth.invitation, auth.email-address, auth.password-sign-up.
 package crew
 
 import (
@@ -68,16 +78,23 @@ const (
 	// Auth session, the identity links of its Google sign-ins, the auth events each
 	// session records, the pending sign-ins that wait for a confirmation or an MFA step,
 	// and the impersonation record the library joins into every session read, so a
-	// view-as or act-as-role session carries who established it. The names are spelled
-	// out in full (not TablePrefix + "SessionUsers") so the tool's session-tables check,
-	// which reads the literals, finds their migrations.
+	// view-as or act-as-role session carries who established it, the sign-in attempts
+	// the password method's attempt limiter counts per sign-in name, and the mail links
+	// (the invitations, verifications and sign-ups the auth mails, each a single-use
+	// token). The names are spelled out in full (not TablePrefix + "SessionUsers") so
+	// the tool's session-tables check, which reads the literals, finds their migrations.
 	sessionsTable   = "CrewSessions"
 	usersTable      = "CrewSessionUsers"
 	identitiesTable = "CrewSessionIdentities"
 	eventsTable     = "CrewSessionAuthEvents"
 	pendingTable    = "CrewSessionPendingSignIns"
+	attemptsTable   = "CrewSessionSignInAttempts"
+	mailLinksTable  = "CrewSessionMailLinks"
 	// ImpersonationsTable is exported: the watch desk names it.
 	ImpersonationsTable = "CrewSessionImpersonations"
+
+	// Application is the fleet's name as the mail the auth sends says it.
+	Application = "Lodestar"
 
 	// impersonationTimeout is the configured hard cap on an impersonated session; the
 	// mint route shortens every view-as below it with MaxDuration.
@@ -117,6 +134,10 @@ type Settings struct {
 	// crew's third way in: any Google account, under the same client as the directory,
 	// returned to its own callback (user/sign-up/callback).
 	SignUpRedirectURL string
+	// Mail is how the auth sends its invitations, address verifications and sign-up
+	// links: the configuration's sender, and the console's login page as an absolute
+	// URL, where every link leads. Required; New refuses a nil sender.
+	Mail auth.Mail
 	// Collection is the generated permission collection the role file validates against:
 	// the resources, fields and conditions the release declares. The router package
 	// generates it and imports this one, so the configuration passes it in.
@@ -192,6 +213,55 @@ func (h *Handlers) SignUpCallback() http.HandlerFunc {
 	return h.signUp.Callback()
 }
 
+// InvitationOpen opens the invitation the login page was sent to ({"token"}): it
+// answers the address and the sector the invitation names, and sets the cookie the
+// sign-in that follows carries, so whichever method the person signs in with accepts it.
+func (h *Handlers) InvitationOpen() http.HandlerFunc {
+	return h.Invitation().Open()
+}
+
+// InvitationAccept accepts the opened invitation as the signed-in person, who proved
+// they read the mailbox; the acceptance hook seats them with the roles it carries.
+func (h *Handlers) InvitationAccept() http.HandlerFunc {
+	return h.Invitation().Accept()
+}
+
+// InvitationSignUp creates the invited person's crew login with a password
+// ({"username", "password"}), the invitation's address verified, and signs them in with
+// the invitation accepted on the way.
+func (h *Handlers) InvitationSignUp() http.HandlerFunc {
+	return h.Invitation().SignUp()
+}
+
+// EmailAdd mails a verification link to the address the signed-in person gives
+// ({"email"}); the address is held unverified until the link is followed.
+func (h *Handlers) EmailAdd() http.HandlerFunc {
+	return h.Email().Add()
+}
+
+// EmailVerify marks the address verified from the mailed link's token ({"token"}).
+func (h *Handlers) EmailVerify() http.HandlerFunc {
+	return h.Email().Verify()
+}
+
+// SignUpStart mails a sign-up link to the address a stranger gives ({"email"}): the
+// password method's open sign-up, which answers alike whatever the address's state.
+func (h *Handlers) SignUpStart() http.HandlerFunc {
+	return h.SignUp().Start()
+}
+
+// SignUpOpen opens the sign-up link ({"token"}) and answers the address it was sent to.
+func (h *Handlers) SignUpOpen() http.HandlerFunc {
+	return h.SignUp().Open()
+}
+
+// SignUpComplete creates the crew login from the opened link with the username and
+// password the person chose ({"token", "username", "password"}), the address verified,
+// holding no role and no sector, and signs them in.
+func (h *Handlers) SignUpComplete() http.HandlerFunc {
+	return h.SignUp().Complete()
+}
+
 // PendingStatus reports the sign-in that waits for a password confirmation or an MFA
 // step, if any.
 func (h *Handlers) PendingStatus() http.HandlerFunc {
@@ -220,6 +290,9 @@ func New(ctx context.Context, db *cloudspanner.Client, settings *Settings) (*Aut
 	if settings.TenantDeclarations == nil {
 		return nil, errors.New("crew.Settings.TenantDeclarations is required: the sign-in rule reads what each sector declares about who may enter it through the generated reader (app.NewSectorDeclarationReader)")
 	}
+	if settings.Mail.Sender == nil {
+		return nil, errors.New("crew.Settings.Mail.Sender is required: the auth mails its invitations, address verifications and sign-up links through it (the configuration's driver, or mail.Log in development)")
+	}
 	store, err := spannerstore.New(db, spannerstore.WithPrefix(TablePrefix))
 	if err != nil {
 		return nil, errors.Wrap(err, "spannerstore.New()")
@@ -244,8 +317,10 @@ func New(ctx context.Context, db *cloudspanner.Client, settings *Settings) (*Aut
 		return nil, errors.Wrap(err, "sessionstorage.NewAuthEventsTable()")
 	}
 
-	// One Auth session that both methods establish. The crew has no sign-in policy of
-	// its own: the library's checks decide, and a valid credential signs in.
+	// One Auth session that every method establishes, which mails as the fleet
+	// (session.WithMail): the invitations the user-management surface sends, the
+	// verification of an address a person adds, and the sign-up links, each leading to
+	// the console's login page with its token in the query.
 	crewSession, err := session.NewAuth[session.NoCustomData, session.NoCustomData](
 		sessionstorage.NewSpannerAuth(db, sessionstorage.WithImpersonation(impersonation), sessionstorage.WithAuthEvents(events)),
 		settings.CookieKey,
@@ -253,6 +328,9 @@ func New(ctx context.Context, db *cloudspanner.Client, settings *Settings) (*Aut
 		session.WithUserTableName(usersTable),
 		session.WithIdentitiesTableName(identitiesTable),
 		session.WithPendingSignInsTableName(pendingTable),
+		session.WithSignInAttemptsTableName(attemptsTable),
+		session.WithMailLinksTableName(mailLinksTable),
+		session.WithMail(settings.Mail.Sender, session.MailSettings{Application: Application, LoginURL: settings.Mail.LoginURL}),
 		session.WithCookieName(Name),
 		session.WithXSRFCookieName(XSRFCookie),
 		session.WithSessionTimeout(settings.SessionTimeout),
@@ -285,7 +363,14 @@ func New(ctx context.Context, db *cloudspanner.Client, settings *Settings) (*Aut
 	// persona already holds links the identity to that persona once their password
 	// confirms it (the directory's word alone is not enough), so the development login
 	// APP_GOOGLE_USERNAME names is one that is not on the manifest.
-	password := session.PasswordSignIn(crewSession)
+	//
+	// The password method is registered with open sign-up (session.OpenSignUp): a
+	// stranger gives an address, follows the mailed link and chooses a username and a
+	// password, and the login holds no role and no sector until they chart their own or
+	// an operator seats them, exactly as the Google sign-up registration's does. The
+	// generator program declares the same (PasswordMethod().OpenSignUp()), so the router
+	// mounts the sign-up routes and the login page is told of them.
+	password := session.PasswordSignIn(crewSession, session.OpenSignUp())
 	googleMethod := google.SignIn(crewSession, GoogleRegistration, nil, &google.Config{
 		ClientID:     settings.Directory.ClientID,
 		ClientSecret: settings.Directory.ClientSecret,
@@ -328,6 +413,17 @@ func New(ctx context.Context, db *cloudspanner.Client, settings *Settings) (*Aut
 	//
 	// Demonstrates: tenancy.declaration, tenancy.directory-only.
 	crewSession.SetSignInPolicy(signin.TenantPolicy(resource.SignInRoles(accessClient.UserManager()), settings.TenantDeclarations, signin.AdmitWithoutTenant()))
+
+	// An accepted invitation seats the person with the roles it carries, in the
+	// sector it names or in the global partition, written to the crew engine by the
+	// library's hook (resource.SeatInvited) once the transaction that consumed the
+	// invitation has committed and before the sign-in rule decides, so the rule sees
+	// the new seat: a stranger invited into Bastion signs in admitted. The engine
+	// writes through its own client, outside any transaction, keyed by the username
+	// the hook is handed.
+	//
+	// Demonstrates: auth.invitation.
+	crewSession.SetInvitationAccepted(resource.SeatInvited(accessClient.UserManager()))
 
 	return &Auth{access: accessClient, handlers: &Handlers{Session: crewSession, password: password, google: googleMethod, signUp: signUpMethod}}, nil
 }

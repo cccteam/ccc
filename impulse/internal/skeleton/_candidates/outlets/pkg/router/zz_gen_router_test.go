@@ -68,11 +68,12 @@ func routerChainFor(t *testing.T, url string) routerOutletChain {
 // guard; xsrf says it sits behind the outlet's XSRF guard, as a sign-in's POSTs do.
 // suffix is the path under the outlet's prefix.
 type routerSessionRoute struct {
-	url     string
-	suffix  string
-	method  string
-	handler string
-	xsrf    bool
+	url       string
+	suffix    string
+	method    string
+	handler   string
+	xsrf      bool
+	validated bool
 }
 
 // routerSessionRoutes lists every session outlet's routes.
@@ -86,6 +87,11 @@ func routerSessionRoutes() []routerSessionRoute {
 		{url: "/console/api/user/password/change", suffix: "/user/password/change", method: http.MethodPost, handler: "PasswordChange", xsrf: true},
 		{url: "/console/api/user/pending/confirm", suffix: "/user/pending/confirm", method: http.MethodPost, handler: "PendingConfirmWithPassword", xsrf: true},
 		{url: "/console/api/user/pending/cancel", suffix: "/user/pending/cancel", method: http.MethodPost, handler: "PendingCancel", xsrf: true},
+		{url: "/console/api/user/invitation", suffix: "/user/invitation", method: http.MethodPost, handler: "InvitationOpen", xsrf: true},
+		{url: "/console/api/user/invitation/sign-up", suffix: "/user/invitation/sign-up", method: http.MethodPost, handler: "InvitationSignUp", xsrf: true},
+		{url: "/console/api/user/invitation/accept", suffix: "/user/invitation/accept", method: http.MethodPost, handler: "InvitationAccept", xsrf: true, validated: true},
+		{url: "/console/api/user/email", suffix: "/user/email", method: http.MethodPost, handler: "EmailAdd", xsrf: true, validated: true},
+		{url: "/console/api/user/email/verify", suffix: "/user/email/verify", method: http.MethodPost, handler: "EmailVerify", xsrf: true, validated: true},
 		{url: "/portal/api/user/methods", suffix: "/user/methods", method: http.MethodGet, handler: "PortalMethods"},
 		{url: "/portal/api/user/session", suffix: "/user/session", method: http.MethodGet, handler: "PortalAuthenticated"},
 		{url: "/portal/api/user/session", suffix: "/user/session", method: http.MethodDelete, handler: "PortalLogout"},
@@ -95,6 +101,10 @@ func routerSessionRoutes() []routerSessionRoute {
 		{url: "/portal/api/user/directory/logout", suffix: "/user/directory/logout", method: http.MethodGet, handler: "PortalDirectoryFrontChannelLogout"},
 		{url: "/portal/api/user/pending/confirm", suffix: "/user/pending/confirm", method: http.MethodPost, handler: "PortalPendingConfirmWithPassword", xsrf: true},
 		{url: "/portal/api/user/pending/cancel", suffix: "/user/pending/cancel", method: http.MethodPost, handler: "PortalPendingCancel", xsrf: true},
+		{url: "/portal/api/user/invitation", suffix: "/user/invitation", method: http.MethodPost, handler: "PortalInvitationOpen", xsrf: true},
+		{url: "/portal/api/user/invitation/accept", suffix: "/user/invitation/accept", method: http.MethodPost, handler: "PortalInvitationAccept", xsrf: true, validated: true},
+		{url: "/portal/api/user/email", suffix: "/user/email", method: http.MethodPost, handler: "PortalEmailAdd", xsrf: true, validated: true},
+		{url: "/portal/api/user/email/verify", suffix: "/user/email/verify", method: http.MethodPost, handler: "PortalEmailVerify", xsrf: true, validated: true},
 	}
 }
 
@@ -161,7 +171,8 @@ func TestGeneratedRouter(t *testing.T) {
 // TestGeneratedRouterSessionRoutes proves each session outlet's method list, session,
 // pending and sign-in routes answer behind the outlet's group and before its session
 // guard, a sign-in's POSTs behind the XSRF guard alone: a browser reaches them without
-// a validated session.
+// a validated session; the routes a signed-in person calls (an invitation's acceptance,
+// the address) answer behind both guards.
 func TestGeneratedRouterSessionRoutes(t *testing.T) {
 	t.Parallel()
 
@@ -184,7 +195,10 @@ func TestGeneratedRouterSessionRoutes(t *testing.T) {
 
 			chain := routerChainFor(t, tt.url)
 			want := slices.Concat(routerRootChain, chain.group)
-			if tt.xsrf {
+			switch {
+			case tt.validated:
+				want = append(want, chain.guards...)
+			case tt.xsrf:
 				want = append(want, chain.guards[1])
 			}
 			if !slices.Equal(rec.chain, want) {
@@ -246,6 +260,11 @@ func TestGeneratedRouterNotFound(t *testing.T) {
 		foreign{url: "/console/api/members-roles", method: http.MethodPost},
 		foreign{url: "/console/api/members-roles/testMembersRoleName", method: http.MethodGet},
 		foreign{url: "/console/api/members-roles/testMembersRoleName", method: http.MethodPost},
+		foreign{url: "/console/api/members-invitations", method: http.MethodGet},
+		foreign{url: "/console/api/members-invitations", method: http.MethodPost},
+		foreign{url: "/console/api/members-invitations/testMembersInvitationID", method: http.MethodGet},
+		foreign{url: "/console/api/members-invitations/testMembersInvitationID", method: http.MethodPost},
+		foreign{url: "/console/api/members-invitations", method: http.MethodPatch},
 		foreign{url: "/console/api/unlink-members-user-identity", method: http.MethodPost},
 		foreign{url: "/console/api/tenants/testDomain/members-tenant-users", method: http.MethodGet},
 		foreign{url: "/console/api/tenants/testDomain/members-tenant-users", method: http.MethodPost},
@@ -261,6 +280,11 @@ func TestGeneratedRouterNotFound(t *testing.T) {
 		foreign{url: "/console/api/tenants/testDomain/members-tenant-roles", method: http.MethodPost},
 		foreign{url: "/console/api/tenants/testDomain/members-tenant-roles/testMembersTenantRoleName", method: http.MethodGet},
 		foreign{url: "/console/api/tenants/testDomain/members-tenant-roles/testMembersTenantRoleName", method: http.MethodPost},
+		foreign{url: "/console/api/tenants/testDomain/members-tenant-invitations", method: http.MethodGet},
+		foreign{url: "/console/api/tenants/testDomain/members-tenant-invitations", method: http.MethodPost},
+		foreign{url: "/console/api/tenants/testDomain/members-tenant-invitations/testMembersTenantInvitationID", method: http.MethodGet},
+		foreign{url: "/console/api/tenants/testDomain/members-tenant-invitations/testMembersTenantInvitationID", method: http.MethodPost},
+		foreign{url: "/console/api/tenants/testDomain/members-tenant-invitations", method: http.MethodPatch},
 		foreign{url: "/console/api/tenants/testDomain/unlink-members-tenant-user-identity", method: http.MethodPost},
 		foreign{url: "/console/api/tenants/testDomain/readings", method: http.MethodGet},
 		foreign{url: "/console/api/tenants/testDomain/readings", method: http.MethodPost},
@@ -280,6 +304,11 @@ func TestGeneratedRouterNotFound(t *testing.T) {
 		foreign{url: "/portal/api/staff-roles", method: http.MethodPost},
 		foreign{url: "/portal/api/staff-roles/testStaffRoleName", method: http.MethodGet},
 		foreign{url: "/portal/api/staff-roles/testStaffRoleName", method: http.MethodPost},
+		foreign{url: "/portal/api/staff-invitations", method: http.MethodGet},
+		foreign{url: "/portal/api/staff-invitations", method: http.MethodPost},
+		foreign{url: "/portal/api/staff-invitations/testStaffInvitationID", method: http.MethodGet},
+		foreign{url: "/portal/api/staff-invitations/testStaffInvitationID", method: http.MethodPost},
+		foreign{url: "/portal/api/staff-invitations", method: http.MethodPatch},
 		foreign{url: "/portal/api/set-staff-user-password", method: http.MethodPost},
 		foreign{url: "/portal/api/tenants/testDomain/staff-tenant-users", method: http.MethodGet},
 		foreign{url: "/portal/api/tenants/testDomain/staff-tenant-users", method: http.MethodPost},
@@ -295,6 +324,11 @@ func TestGeneratedRouterNotFound(t *testing.T) {
 		foreign{url: "/portal/api/tenants/testDomain/staff-tenant-roles", method: http.MethodPost},
 		foreign{url: "/portal/api/tenants/testDomain/staff-tenant-roles/testStaffTenantRoleName", method: http.MethodGet},
 		foreign{url: "/portal/api/tenants/testDomain/staff-tenant-roles/testStaffTenantRoleName", method: http.MethodPost},
+		foreign{url: "/portal/api/tenants/testDomain/staff-tenant-invitations", method: http.MethodGet},
+		foreign{url: "/portal/api/tenants/testDomain/staff-tenant-invitations", method: http.MethodPost},
+		foreign{url: "/portal/api/tenants/testDomain/staff-tenant-invitations/testStaffTenantInvitationID", method: http.MethodGet},
+		foreign{url: "/portal/api/tenants/testDomain/staff-tenant-invitations/testStaffTenantInvitationID", method: http.MethodPost},
+		foreign{url: "/portal/api/tenants/testDomain/staff-tenant-invitations", method: http.MethodPatch},
 		foreign{url: "/portal/api/tenants/testDomain/set-staff-tenant-user-password", method: http.MethodPost},
 		foreign{url: "/portal/api/tenants/testDomain/readings", method: http.MethodGet},
 		foreign{url: "/portal/api/tenants/testDomain/readings", method: http.MethodPost},
@@ -332,6 +366,11 @@ func TestGeneratedRouterNotFound(t *testing.T) {
 		foreign{url: "/machines/staff-roles", method: http.MethodPost},
 		foreign{url: "/machines/staff-roles/testStaffRoleName", method: http.MethodGet},
 		foreign{url: "/machines/staff-roles/testStaffRoleName", method: http.MethodPost},
+		foreign{url: "/machines/staff-invitations", method: http.MethodGet},
+		foreign{url: "/machines/staff-invitations", method: http.MethodPost},
+		foreign{url: "/machines/staff-invitations/testStaffInvitationID", method: http.MethodGet},
+		foreign{url: "/machines/staff-invitations/testStaffInvitationID", method: http.MethodPost},
+		foreign{url: "/machines/staff-invitations", method: http.MethodPatch},
 		foreign{url: "/machines/set-staff-user-password", method: http.MethodPost},
 		foreign{url: "/machines/tenants/testDomain/staff-tenant-users", method: http.MethodGet},
 		foreign{url: "/machines/tenants/testDomain/staff-tenant-users", method: http.MethodPost},
@@ -347,6 +386,11 @@ func TestGeneratedRouterNotFound(t *testing.T) {
 		foreign{url: "/machines/tenants/testDomain/staff-tenant-roles", method: http.MethodPost},
 		foreign{url: "/machines/tenants/testDomain/staff-tenant-roles/testStaffTenantRoleName", method: http.MethodGet},
 		foreign{url: "/machines/tenants/testDomain/staff-tenant-roles/testStaffTenantRoleName", method: http.MethodPost},
+		foreign{url: "/machines/tenants/testDomain/staff-tenant-invitations", method: http.MethodGet},
+		foreign{url: "/machines/tenants/testDomain/staff-tenant-invitations", method: http.MethodPost},
+		foreign{url: "/machines/tenants/testDomain/staff-tenant-invitations/testStaffTenantInvitationID", method: http.MethodGet},
+		foreign{url: "/machines/tenants/testDomain/staff-tenant-invitations/testStaffTenantInvitationID", method: http.MethodPost},
+		foreign{url: "/machines/tenants/testDomain/staff-tenant-invitations", method: http.MethodPatch},
 		foreign{url: "/machines/tenants/testDomain/set-staff-tenant-user-password", method: http.MethodPost},
 		foreign{url: "/machines/members-users", method: http.MethodGet},
 		foreign{url: "/machines/members-users", method: http.MethodPost},
@@ -362,6 +406,11 @@ func TestGeneratedRouterNotFound(t *testing.T) {
 		foreign{url: "/machines/members-roles", method: http.MethodPost},
 		foreign{url: "/machines/members-roles/testMembersRoleName", method: http.MethodGet},
 		foreign{url: "/machines/members-roles/testMembersRoleName", method: http.MethodPost},
+		foreign{url: "/machines/members-invitations", method: http.MethodGet},
+		foreign{url: "/machines/members-invitations", method: http.MethodPost},
+		foreign{url: "/machines/members-invitations/testMembersInvitationID", method: http.MethodGet},
+		foreign{url: "/machines/members-invitations/testMembersInvitationID", method: http.MethodPost},
+		foreign{url: "/machines/members-invitations", method: http.MethodPatch},
 		foreign{url: "/machines/unlink-members-user-identity", method: http.MethodPost},
 		foreign{url: "/machines/tenants/testDomain/members-tenant-users", method: http.MethodGet},
 		foreign{url: "/machines/tenants/testDomain/members-tenant-users", method: http.MethodPost},
@@ -377,6 +426,11 @@ func TestGeneratedRouterNotFound(t *testing.T) {
 		foreign{url: "/machines/tenants/testDomain/members-tenant-roles", method: http.MethodPost},
 		foreign{url: "/machines/tenants/testDomain/members-tenant-roles/testMembersTenantRoleName", method: http.MethodGet},
 		foreign{url: "/machines/tenants/testDomain/members-tenant-roles/testMembersTenantRoleName", method: http.MethodPost},
+		foreign{url: "/machines/tenants/testDomain/members-tenant-invitations", method: http.MethodGet},
+		foreign{url: "/machines/tenants/testDomain/members-tenant-invitations", method: http.MethodPost},
+		foreign{url: "/machines/tenants/testDomain/members-tenant-invitations/testMembersTenantInvitationID", method: http.MethodGet},
+		foreign{url: "/machines/tenants/testDomain/members-tenant-invitations/testMembersTenantInvitationID", method: http.MethodPost},
+		foreign{url: "/machines/tenants/testDomain/members-tenant-invitations", method: http.MethodPatch},
 		foreign{url: "/machines/tenants/testDomain/unlink-members-tenant-user-identity", method: http.MethodPost},
 		foreign{url: "/machines/tenants/testDomain/announcements", method: http.MethodGet},
 		foreign{url: "/machines/tenants/testDomain/announcements", method: http.MethodPost},
@@ -957,6 +1011,26 @@ func (s *routerDefaultSessionStub) PendingCancel() http.HandlerFunc {
 	return s.rec.RecordHandlerCall(s.prefix + "PendingCancel")
 }
 
+func (s *routerDefaultSessionStub) InvitationOpen() http.HandlerFunc {
+	return s.rec.RecordHandlerCall(s.prefix + "InvitationOpen")
+}
+
+func (s *routerDefaultSessionStub) InvitationSignUp() http.HandlerFunc {
+	return s.rec.RecordHandlerCall(s.prefix + "InvitationSignUp")
+}
+
+func (s *routerDefaultSessionStub) InvitationAccept() http.HandlerFunc {
+	return s.rec.RecordHandlerCall(s.prefix + "InvitationAccept")
+}
+
+func (s *routerDefaultSessionStub) EmailAdd() http.HandlerFunc {
+	return s.rec.RecordHandlerCall(s.prefix + "EmailAdd")
+}
+
+func (s *routerDefaultSessionStub) EmailVerify() http.HandlerFunc {
+	return s.rec.RecordHandlerCall(s.prefix + "EmailVerify")
+}
+
 func (s *routerDefaultSessionStub) StartSession(next http.Handler) http.Handler {
 	return s.rec.Middleware(s.prefix + "StartSession")(next)
 }
@@ -1014,6 +1088,22 @@ func (s *routerPortalSessionStub) PendingConfirmWithPassword() http.HandlerFunc 
 
 func (s *routerPortalSessionStub) PendingCancel() http.HandlerFunc {
 	return s.rec.RecordHandlerCall(s.prefix + "PendingCancel")
+}
+
+func (s *routerPortalSessionStub) InvitationOpen() http.HandlerFunc {
+	return s.rec.RecordHandlerCall(s.prefix + "InvitationOpen")
+}
+
+func (s *routerPortalSessionStub) InvitationAccept() http.HandlerFunc {
+	return s.rec.RecordHandlerCall(s.prefix + "InvitationAccept")
+}
+
+func (s *routerPortalSessionStub) EmailAdd() http.HandlerFunc {
+	return s.rec.RecordHandlerCall(s.prefix + "EmailAdd")
+}
+
+func (s *routerPortalSessionStub) EmailVerify() http.HandlerFunc {
+	return s.rec.RecordHandlerCall(s.prefix + "EmailVerify")
 }
 
 func (s *routerPortalSessionStub) StartSession(next http.Handler) http.Handler {

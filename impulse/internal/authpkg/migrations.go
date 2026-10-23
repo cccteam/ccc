@@ -18,19 +18,21 @@ const guidCheck = `r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{1
 
 // Migrations renders the Auth session tables of an auth under its table prefix, for
 // Spanner, in the order they apply: the users first, since the sessions reference them,
-// then the sessions with the identities, auth events, pending sign-ins and sign-in
-// attempts in one migration, since a session set is one thing. The DDL is the session
-// library's base and auth schema sets (schema/spanner/migrations,
+// then the sessions with the identities, auth events, pending sign-ins, sign-in attempts
+// and mail links in one migration, since a session set is one thing. The DDL is the
+// session library's base and auth schema sets (schema/spanner/migrations,
 // schema/spanner/auth/migrations) with the commit-timestamp options written inline. who
-// names the population for the comments.
-func Migrations(prefix, who string) []Migration {
+// names the population for the comments. usernameIsEmail renders the users of a password
+// auth whose sign-in name is the address: the normalized address derives from the
+// username rather than from an address column of its own.
+func Migrations(prefix, who string, usernameIsEmail bool) []Migration {
 	return []Migration{
-		{Stem: prefix + "SessionUsers", Up: usersUp(prefix, who), Down: usersDown(prefix)},
+		{Stem: prefix + "SessionUsers", Up: usersUp(prefix, who, usernameIsEmail), Down: usersDown(prefix)},
 		{Stem: prefix + "Sessions", Up: sessionsUp(prefix, who), Down: sessionsDown(prefix)},
 	}
 }
 
-func usersUp(p, who string) string {
+func usersUp(p, who string, usernameIsEmail bool) string {
 	return fmt.Sprintf(`-- The %[2]s auth's users: one row per person whichever way they sign in. PasswordHash is
 -- set for a person with a password and null for one a directory alone admits.
 CREATE TABLE %[1]sSessionUsers (
@@ -46,15 +48,44 @@ CREATE TABLE %[1]sSessionUsers (
   -- first); the session library writes both as commit timestamps.
   CreatedAt          TIMESTAMP NOT NULL OPTIONS (allow_commit_timestamp = true),
   LastSignInAt       TIMESTAMP OPTIONS (allow_commit_timestamp = true),
-  CONSTRAINT CK_%[1]sSessionUsersId CHECK (REGEXP_CONTAINS(Id, %[3]s)),
+%[4]s  CONSTRAINT CK_%[1]sSessionUsersId CHECK (REGEXP_CONTAINS(Id, %[3]s)),
 ) PRIMARY KEY(Id);
 
 CREATE UNIQUE INDEX %[1]sSessionUsersByNormalizedUsername ON %[1]sSessionUsers(NormalizedUsername);
-`, p, who, guidCheck)
+
+CREATE UNIQUE NULL_FILTERED INDEX %[1]sSessionUsersByNormalizedEmail ON %[1]sSessionUsers(NormalizedEmail);
+`, p, who, guidCheck, emailColumns(usernameIsEmail))
+}
+
+// emailColumns are the users table's address columns: the address in two states (the
+// session library's SessionUserEmail migration), derived from the username where the
+// sign-in name is the address.
+func emailColumns(usernameIsEmail bool) string {
+	if usernameIsEmail {
+		return `  -- The person's email address is their sign-in name (session.UsernameIsEmail), so the
+  -- normalized address derives from the username and uniqueness holds once, and
+  -- EmailVerifiedAt is the database's time at which the person proved they read the
+  -- mailbox by following a link sent to it; null while the address is unverified. An
+  -- address is trusted for nothing until it is verified.
+  NormalizedEmail    STRING(MAX) AS (NORMALIZE_AND_CASEFOLD(Username)) STORED,
+  EmailVerifiedAt    TIMESTAMP OPTIONS (allow_commit_timestamp = true),
+`
+	}
+
+	return `  -- The person's email address, in two states, held apart from the username: Email as
+  -- the person gave it, NormalizedEmail the form uniqueness and lookups use, and
+  -- EmailVerifiedAt the database's time at which the person proved they read the
+  -- mailbox by following a link sent to it; null while the address is unverified. An
+  -- address is trusted for nothing until it is verified; an operator may put one on a
+  -- user by hand, unverified, which reserves it. No address is required.
+  Email              STRING(MAX),
+  NormalizedEmail    STRING(MAX) AS (NORMALIZE_AND_CASEFOLD(Email)) STORED,
+  EmailVerifiedAt    TIMESTAMP OPTIONS (allow_commit_timestamp = true),
+`
 }
 
 func usersDown(p string) string {
-	return fmt.Sprintf("DROP INDEX %[1]sSessionUsersByNormalizedUsername;\nDROP TABLE %[1]sSessionUsers;\n", p)
+	return fmt.Sprintf("DROP INDEX %[1]sSessionUsersByNormalizedEmail;\nDROP INDEX %[1]sSessionUsersByNormalizedUsername;\nDROP TABLE %[1]sSessionUsers;\n", p)
 }
 
 func sessionsUp(p, who string) string {
@@ -114,7 +145,7 @@ CREATE INDEX %[1]sSessionIdentitiesByUserId ON %[1]sSessionIdentities(UserId);
 `, p, who, guidCheck) + eventsUp(p, who)
 }
 
-// eventsUp creates the auth events, pending sign-ins and sign-in attempts tables, the
+// eventsUp creates the auth events, pending sign-ins, sign-in attempts and mail links tables, the
 // second half of the sessions migration.
 func eventsUp(p, who string) string {
 	return fmt.Sprintf(`CREATE TABLE %[1]sSessionAuthEvents (
@@ -179,11 +210,44 @@ CREATE TABLE %[1]sSessionSignInAttempts (
     LockedUntil  TIMESTAMP,
     UpdatedAt    TIMESTAMP NOT NULL OPTIONS (allow_commit_timestamp = true),
 ) PRIMARY KEY (Name);
+
+-- The mail links: the single-use links the auth mails. A row is one link: an invitation
+-- to an address, carrying the tenant and the roles its acceptance seats and who sent it;
+-- the verification of an address a signed-in person adds (UserId names the account,
+-- Email the address); or a sign-up a person starts by giving their address. The mail
+-- carries an opaque token and the row keeps its hash; the row is accepted only while it
+-- is live, not expired and not consumed, and is consumed by a conditional update so one
+-- link completes once. A revoked invitation is consumed by hand. A verification link
+-- goes with its user. CreatedAt and ConsumedAt take the commit time; ExpiresAt is the
+-- library's deadline, written as given.
+CREATE TABLE %[1]sSessionMailLinks (
+    Id         STRING(36) NOT NULL,
+    TokenHash  BYTES(32) NOT NULL,
+    Kind       STRING(16) NOT NULL,
+    Email      STRING(MAX) NOT NULL,
+    UserId     STRING(36),
+    Tenant     STRING(MAX),
+    RoleNames  ARRAY<STRING(MAX)>,
+    InvitedBy  STRING(36),
+    CreatedAt  TIMESTAMP NOT NULL OPTIONS (allow_commit_timestamp = true),
+    ExpiresAt  TIMESTAMP NOT NULL,
+    ConsumedAt TIMESTAMP OPTIONS (allow_commit_timestamp = true),
+    CONSTRAINT CK_%[1]sSessionMailLinksId CHECK (REGEXP_CONTAINS(Id, %[3]s)),
+    CONSTRAINT CK_%[1]sSessionMailLinksKind CHECK (Kind IN ('invitation', 'verification', 'sign-up')),
+    CONSTRAINT FK_%[1]sSessionMailLinks_%[1]sSessionUsers FOREIGN KEY (UserId) REFERENCES %[1]sSessionUsers (Id) ON DELETE CASCADE,
+) PRIMARY KEY (Id);
+
+CREATE UNIQUE INDEX %[1]sSessionMailLinksByTokenHash ON %[1]sSessionMailLinks(TokenHash);
+
+CREATE INDEX %[1]sSessionMailLinksByKind ON %[1]sSessionMailLinks(Kind, ConsumedAt, ExpiresAt);
 `, p, who, guidCheck)
 }
 
 func sessionsDown(p string) string {
 	lines := []string{
+		"DROP INDEX %[1]sSessionMailLinksByKind;",
+		"DROP INDEX %[1]sSessionMailLinksByTokenHash;",
+		"DROP TABLE %[1]sSessionMailLinks;",
 		"DROP TABLE %[1]sSessionSignInAttempts;",
 		"DROP INDEX %[1]sSessionPendingSignInsByExpiresAt;",
 		"DROP INDEX %[1]sSessionPendingSignInsByTokenHash;",

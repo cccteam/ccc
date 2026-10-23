@@ -125,6 +125,7 @@ func TestExecute(t *testing.T) {
 	// The migration run opens the data level, which reads the core level's service name
 	// and opens the live service, required, over the Firestore emulator.
 	t.Setenv("APP_SERVICE_NAME", serviceName)
+	t.Setenv("APP_PUBLIC_URL", "http://sites.test")
 	t.Setenv("FIRESTORE_EMULATOR_HOST", firestoreEmulator.Host())
 	// The foothold's settings, which a case may override.
 	t.Setenv("APP_STAFF_ADMINISTRATOR_PASSWORD", administratorPassword)

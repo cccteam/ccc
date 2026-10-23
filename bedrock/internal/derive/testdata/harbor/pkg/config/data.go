@@ -260,6 +260,15 @@ type dataConfig struct {
 	// cryptographically secure random data. Unset, an ephemeral key is generated at
 	// startup.
 	CookieKey string `env:"APP_COOKIE_KEY" secret:"true"`
+
+	// PublicURL is the application's address as a browser reaches it; every link the
+	// auths mail opens the login page under it.
+	PublicURL string `env:"APP_PUBLIC_URL,required"`
+
+	// MailMailbox and MailAppPassword send the auths' mail through the Google Workspace
+	// SMTP relay as the mailbox; unset, the mail is written to the log.
+	MailMailbox     string `env:"APP_MAIL_MAILBOX"`
+	MailAppPassword string `env:"APP_MAIL_APP_PASSWORD" secret:"true"`
 	// The staff auth's directory registration (pkg/auth/staff/directory.go): how the
 	// application is known to Google, under the registration's variables. Under the
 	// session library's skipAuth build tag only the redirect URL, the hosted domain and the

@@ -121,6 +121,11 @@ func TestGeneratedRouteOutletIsolation(t *testing.T) {
 		{url: "/droids/crew-roles", method: http.MethodPost},
 		{url: "/droids/crew-roles/testCrewRoleName", method: http.MethodGet},
 		{url: "/droids/crew-roles/testCrewRoleName", method: http.MethodPost},
+		{url: "/droids/crew-invitations", method: http.MethodGet},
+		{url: "/droids/crew-invitations", method: http.MethodPost},
+		{url: "/droids/crew-invitations/testCrewInvitationID", method: http.MethodGet},
+		{url: "/droids/crew-invitations/testCrewInvitationID", method: http.MethodPost},
+		{url: "/droids/crew-invitations", method: http.MethodPatch},
 		{url: "/droids/set-crew-user-password", method: http.MethodPost},
 		{url: "/droids/unlink-crew-user-identity", method: http.MethodPost},
 		{url: "/droids/sectors/testDomain/crew-sector-users", method: http.MethodGet},
@@ -137,6 +142,11 @@ func TestGeneratedRouteOutletIsolation(t *testing.T) {
 		{url: "/droids/sectors/testDomain/crew-sector-roles", method: http.MethodPost},
 		{url: "/droids/sectors/testDomain/crew-sector-roles/testCrewSectorRoleName", method: http.MethodGet},
 		{url: "/droids/sectors/testDomain/crew-sector-roles/testCrewSectorRoleName", method: http.MethodPost},
+		{url: "/droids/sectors/testDomain/crew-sector-invitations", method: http.MethodGet},
+		{url: "/droids/sectors/testDomain/crew-sector-invitations", method: http.MethodPost},
+		{url: "/droids/sectors/testDomain/crew-sector-invitations/testCrewSectorInvitationID", method: http.MethodGet},
+		{url: "/droids/sectors/testDomain/crew-sector-invitations/testCrewSectorInvitationID", method: http.MethodPost},
+		{url: "/droids/sectors/testDomain/crew-sector-invitations", method: http.MethodPatch},
 		{url: "/droids/sectors/testDomain/set-crew-sector-user-password", method: http.MethodPost},
 		{url: "/droids/sectors/testDomain/unlink-crew-sector-user-identity", method: http.MethodPost},
 		{url: "/droids/members-users", method: http.MethodGet},
@@ -153,6 +163,11 @@ func TestGeneratedRouteOutletIsolation(t *testing.T) {
 		{url: "/droids/members-roles", method: http.MethodPost},
 		{url: "/droids/members-roles/testMembersRoleName", method: http.MethodGet},
 		{url: "/droids/members-roles/testMembersRoleName", method: http.MethodPost},
+		{url: "/droids/members-invitations", method: http.MethodGet},
+		{url: "/droids/members-invitations", method: http.MethodPost},
+		{url: "/droids/members-invitations/testMembersInvitationID", method: http.MethodGet},
+		{url: "/droids/members-invitations/testMembersInvitationID", method: http.MethodPost},
+		{url: "/droids/members-invitations", method: http.MethodPatch},
 		{url: "/droids/unlink-members-user-identity", method: http.MethodPost},
 		{url: "/droids/sectors/testDomain/members-sector-users", method: http.MethodGet},
 		{url: "/droids/sectors/testDomain/members-sector-users", method: http.MethodPost},
@@ -168,6 +183,11 @@ func TestGeneratedRouteOutletIsolation(t *testing.T) {
 		{url: "/droids/sectors/testDomain/members-sector-roles", method: http.MethodPost},
 		{url: "/droids/sectors/testDomain/members-sector-roles/testMembersSectorRoleName", method: http.MethodGet},
 		{url: "/droids/sectors/testDomain/members-sector-roles/testMembersSectorRoleName", method: http.MethodPost},
+		{url: "/droids/sectors/testDomain/members-sector-invitations", method: http.MethodGet},
+		{url: "/droids/sectors/testDomain/members-sector-invitations", method: http.MethodPost},
+		{url: "/droids/sectors/testDomain/members-sector-invitations/testMembersSectorInvitationID", method: http.MethodGet},
+		{url: "/droids/sectors/testDomain/members-sector-invitations/testMembersSectorInvitationID", method: http.MethodPost},
+		{url: "/droids/sectors/testDomain/members-sector-invitations", method: http.MethodPatch},
 		{url: "/droids/sectors/testDomain/unlink-members-sector-user-identity", method: http.MethodPost},
 		{url: "/droids/clients", method: http.MethodGet},
 		{url: "/droids/clients", method: http.MethodPost},
@@ -327,6 +347,11 @@ func TestGeneratedRouteOutletIsolation(t *testing.T) {
 		{url: "/portal/api/crew-roles", method: http.MethodPost},
 		{url: "/portal/api/crew-roles/testCrewRoleName", method: http.MethodGet},
 		{url: "/portal/api/crew-roles/testCrewRoleName", method: http.MethodPost},
+		{url: "/portal/api/crew-invitations", method: http.MethodGet},
+		{url: "/portal/api/crew-invitations", method: http.MethodPost},
+		{url: "/portal/api/crew-invitations/testCrewInvitationID", method: http.MethodGet},
+		{url: "/portal/api/crew-invitations/testCrewInvitationID", method: http.MethodPost},
+		{url: "/portal/api/crew-invitations", method: http.MethodPatch},
 		{url: "/portal/api/set-crew-user-password", method: http.MethodPost},
 		{url: "/portal/api/unlink-crew-user-identity", method: http.MethodPost},
 		{url: "/portal/api/sectors/testDomain/crew-sector-users", method: http.MethodGet},
@@ -343,6 +368,11 @@ func TestGeneratedRouteOutletIsolation(t *testing.T) {
 		{url: "/portal/api/sectors/testDomain/crew-sector-roles", method: http.MethodPost},
 		{url: "/portal/api/sectors/testDomain/crew-sector-roles/testCrewSectorRoleName", method: http.MethodGet},
 		{url: "/portal/api/sectors/testDomain/crew-sector-roles/testCrewSectorRoleName", method: http.MethodPost},
+		{url: "/portal/api/sectors/testDomain/crew-sector-invitations", method: http.MethodGet},
+		{url: "/portal/api/sectors/testDomain/crew-sector-invitations", method: http.MethodPost},
+		{url: "/portal/api/sectors/testDomain/crew-sector-invitations/testCrewSectorInvitationID", method: http.MethodGet},
+		{url: "/portal/api/sectors/testDomain/crew-sector-invitations/testCrewSectorInvitationID", method: http.MethodPost},
+		{url: "/portal/api/sectors/testDomain/crew-sector-invitations", method: http.MethodPatch},
 		{url: "/portal/api/sectors/testDomain/set-crew-sector-user-password", method: http.MethodPost},
 		{url: "/portal/api/sectors/testDomain/unlink-crew-sector-user-identity", method: http.MethodPost},
 		{url: "/portal/api/clients", method: http.MethodGet},
@@ -624,18 +654,22 @@ func generatedRouteParameters() []string {
 		"crewSeatUser",
 		"crewSeatRole",
 		"crewRoleName",
+		"crewInvitationID",
 		"crewSectorUserID",
 		"crewSectorSeatUser",
 		"crewSectorSeatRole",
 		"crewSectorRoleName",
+		"crewSectorInvitationID",
 		"membersUserID",
 		"membersSeatUser",
 		"membersSeatRole",
 		"membersRoleName",
+		"membersInvitationID",
 		"membersSectorUserID",
 		"membersSectorSeatUser",
 		"membersSectorSeatRole",
 		"membersSectorRoleName",
+		"membersSectorInvitationID",
 	}
 
 	return keys
@@ -1597,6 +1631,31 @@ func generatedRouterTests() []*generatedRouterTest {
 			parameters:  map[string]string{"crewRoleName": "testCrewRoleName"},
 		},
 		{
+			url: "/console/api/crew-invitations", method: http.MethodGet,
+			handlerFunc: "CrewInvitations",
+			parameters:  map[string]string{},
+		},
+		{
+			url: "/console/api/crew-invitations", method: http.MethodPost,
+			handlerFunc: "CrewInvitations",
+			parameters:  map[string]string{},
+		},
+		{
+			url: "/console/api/crew-invitations/testCrewInvitationID", method: http.MethodGet,
+			handlerFunc: "CrewInvitation",
+			parameters:  map[string]string{"crewInvitationID": "testCrewInvitationID"},
+		},
+		{
+			url: "/console/api/crew-invitations/testCrewInvitationID", method: http.MethodPost,
+			handlerFunc: "CrewInvitation",
+			parameters:  map[string]string{"crewInvitationID": "testCrewInvitationID"},
+		},
+		{
+			url: "/console/api/crew-invitations", method: http.MethodPatch,
+			handlerFunc: "PatchCrewInvitations",
+			parameters:  map[string]string{},
+		},
+		{
 			url: "/console/api/set-crew-user-password", method: http.MethodPost,
 			handlerFunc: "SetCrewUserPassword",
 			parameters:  map[string]string{},
@@ -1675,6 +1734,31 @@ func generatedRouterTests() []*generatedRouterTest {
 			url: "/console/api/sectors/testDomain/crew-sector-roles/testCrewSectorRoleName", method: http.MethodPost,
 			handlerFunc: "CrewSectorRole",
 			parameters:  map[string]string{"sectorID": "testDomain", "crewSectorRoleName": "testCrewSectorRoleName"},
+		},
+		{
+			url: "/console/api/sectors/testDomain/crew-sector-invitations", method: http.MethodGet,
+			handlerFunc: "CrewSectorInvitations",
+			parameters:  map[string]string{"sectorID": "testDomain"},
+		},
+		{
+			url: "/console/api/sectors/testDomain/crew-sector-invitations", method: http.MethodPost,
+			handlerFunc: "CrewSectorInvitations",
+			parameters:  map[string]string{"sectorID": "testDomain"},
+		},
+		{
+			url: "/console/api/sectors/testDomain/crew-sector-invitations/testCrewSectorInvitationID", method: http.MethodGet,
+			handlerFunc: "CrewSectorInvitation",
+			parameters:  map[string]string{"sectorID": "testDomain", "crewSectorInvitationID": "testCrewSectorInvitationID"},
+		},
+		{
+			url: "/console/api/sectors/testDomain/crew-sector-invitations/testCrewSectorInvitationID", method: http.MethodPost,
+			handlerFunc: "CrewSectorInvitation",
+			parameters:  map[string]string{"sectorID": "testDomain", "crewSectorInvitationID": "testCrewSectorInvitationID"},
+		},
+		{
+			url: "/console/api/sectors/testDomain/crew-sector-invitations", method: http.MethodPatch,
+			handlerFunc: "PatchCrewSectorInvitations",
+			parameters:  map[string]string{"sectorID": "testDomain"},
 		},
 		{
 			url: "/console/api/sectors/testDomain/set-crew-sector-user-password", method: http.MethodPost,
@@ -1757,6 +1841,31 @@ func generatedRouterTests() []*generatedRouterTest {
 			parameters:  map[string]string{"membersRoleName": "testMembersRoleName"},
 		},
 		{
+			url: "/console/api/members-invitations", method: http.MethodGet,
+			handlerFunc: "MembersInvitations",
+			parameters:  map[string]string{},
+		},
+		{
+			url: "/console/api/members-invitations", method: http.MethodPost,
+			handlerFunc: "MembersInvitations",
+			parameters:  map[string]string{},
+		},
+		{
+			url: "/console/api/members-invitations/testMembersInvitationID", method: http.MethodGet,
+			handlerFunc: "MembersInvitation",
+			parameters:  map[string]string{"membersInvitationID": "testMembersInvitationID"},
+		},
+		{
+			url: "/console/api/members-invitations/testMembersInvitationID", method: http.MethodPost,
+			handlerFunc: "MembersInvitation",
+			parameters:  map[string]string{"membersInvitationID": "testMembersInvitationID"},
+		},
+		{
+			url: "/console/api/members-invitations", method: http.MethodPatch,
+			handlerFunc: "PatchMembersInvitations",
+			parameters:  map[string]string{},
+		},
+		{
 			url: "/console/api/unlink-members-user-identity", method: http.MethodPost,
 			handlerFunc: "UnlinkMembersUserIdentity",
 			parameters:  map[string]string{},
@@ -1830,6 +1939,31 @@ func generatedRouterTests() []*generatedRouterTest {
 			url: "/console/api/sectors/testDomain/members-sector-roles/testMembersSectorRoleName", method: http.MethodPost,
 			handlerFunc: "MembersSectorRole",
 			parameters:  map[string]string{"sectorID": "testDomain", "membersSectorRoleName": "testMembersSectorRoleName"},
+		},
+		{
+			url: "/console/api/sectors/testDomain/members-sector-invitations", method: http.MethodGet,
+			handlerFunc: "MembersSectorInvitations",
+			parameters:  map[string]string{"sectorID": "testDomain"},
+		},
+		{
+			url: "/console/api/sectors/testDomain/members-sector-invitations", method: http.MethodPost,
+			handlerFunc: "MembersSectorInvitations",
+			parameters:  map[string]string{"sectorID": "testDomain"},
+		},
+		{
+			url: "/console/api/sectors/testDomain/members-sector-invitations/testMembersSectorInvitationID", method: http.MethodGet,
+			handlerFunc: "MembersSectorInvitation",
+			parameters:  map[string]string{"sectorID": "testDomain", "membersSectorInvitationID": "testMembersSectorInvitationID"},
+		},
+		{
+			url: "/console/api/sectors/testDomain/members-sector-invitations/testMembersSectorInvitationID", method: http.MethodPost,
+			handlerFunc: "MembersSectorInvitation",
+			parameters:  map[string]string{"sectorID": "testDomain", "membersSectorInvitationID": "testMembersSectorInvitationID"},
+		},
+		{
+			url: "/console/api/sectors/testDomain/members-sector-invitations", method: http.MethodPatch,
+			handlerFunc: "PatchMembersSectorInvitations",
+			parameters:  map[string]string{"sectorID": "testDomain"},
 		},
 		{
 			url: "/console/api/sectors/testDomain/unlink-members-sector-user-identity", method: http.MethodPost,
@@ -1907,6 +2041,31 @@ func generatedRouterTests() []*generatedRouterTest {
 			parameters:  map[string]string{"membersRoleName": "testMembersRoleName"},
 		},
 		{
+			url: "/portal/api/members-invitations", method: http.MethodGet,
+			handlerFunc: "MembersInvitations",
+			parameters:  map[string]string{},
+		},
+		{
+			url: "/portal/api/members-invitations", method: http.MethodPost,
+			handlerFunc: "MembersInvitations",
+			parameters:  map[string]string{},
+		},
+		{
+			url: "/portal/api/members-invitations/testMembersInvitationID", method: http.MethodGet,
+			handlerFunc: "MembersInvitation",
+			parameters:  map[string]string{"membersInvitationID": "testMembersInvitationID"},
+		},
+		{
+			url: "/portal/api/members-invitations/testMembersInvitationID", method: http.MethodPost,
+			handlerFunc: "MembersInvitation",
+			parameters:  map[string]string{"membersInvitationID": "testMembersInvitationID"},
+		},
+		{
+			url: "/portal/api/members-invitations", method: http.MethodPatch,
+			handlerFunc: "PatchMembersInvitations",
+			parameters:  map[string]string{},
+		},
+		{
 			url: "/portal/api/unlink-members-user-identity", method: http.MethodPost,
 			handlerFunc: "UnlinkMembersUserIdentity",
 			parameters:  map[string]string{},
@@ -1980,6 +2139,31 @@ func generatedRouterTests() []*generatedRouterTest {
 			url: "/portal/api/sectors/testDomain/members-sector-roles/testMembersSectorRoleName", method: http.MethodPost,
 			handlerFunc: "MembersSectorRole",
 			parameters:  map[string]string{"sectorID": "testDomain", "membersSectorRoleName": "testMembersSectorRoleName"},
+		},
+		{
+			url: "/portal/api/sectors/testDomain/members-sector-invitations", method: http.MethodGet,
+			handlerFunc: "MembersSectorInvitations",
+			parameters:  map[string]string{"sectorID": "testDomain"},
+		},
+		{
+			url: "/portal/api/sectors/testDomain/members-sector-invitations", method: http.MethodPost,
+			handlerFunc: "MembersSectorInvitations",
+			parameters:  map[string]string{"sectorID": "testDomain"},
+		},
+		{
+			url: "/portal/api/sectors/testDomain/members-sector-invitations/testMembersSectorInvitationID", method: http.MethodGet,
+			handlerFunc: "MembersSectorInvitation",
+			parameters:  map[string]string{"sectorID": "testDomain", "membersSectorInvitationID": "testMembersSectorInvitationID"},
+		},
+		{
+			url: "/portal/api/sectors/testDomain/members-sector-invitations/testMembersSectorInvitationID", method: http.MethodPost,
+			handlerFunc: "MembersSectorInvitation",
+			parameters:  map[string]string{"sectorID": "testDomain", "membersSectorInvitationID": "testMembersSectorInvitationID"},
+		},
+		{
+			url: "/portal/api/sectors/testDomain/members-sector-invitations", method: http.MethodPatch,
+			handlerFunc: "PatchMembersSectorInvitations",
+			parameters:  map[string]string{"sectorID": "testDomain"},
 		},
 		{
 			url: "/portal/api/sectors/testDomain/unlink-members-sector-user-identity", method: http.MethodPost,
@@ -2147,6 +2331,18 @@ func (s *generatedHandlersStub) CreateSector() http.HandlerFunc {
 	return s.record("CreateSector")
 }
 
+func (s *generatedHandlersStub) CrewInvitations() http.HandlerFunc {
+	return s.record("CrewInvitations")
+}
+
+func (s *generatedHandlersStub) CrewInvitation() http.HandlerFunc {
+	return s.record("CrewInvitation")
+}
+
+func (s *generatedHandlersStub) PatchCrewInvitations() http.HandlerFunc {
+	return s.record("PatchCrewInvitations")
+}
+
 func (s *generatedHandlersStub) CrewRoles() http.HandlerFunc {
 	return s.record("CrewRoles")
 }
@@ -2165,6 +2361,18 @@ func (s *generatedHandlersStub) CrewSeat() http.HandlerFunc {
 
 func (s *generatedHandlersStub) PatchCrewSeats() http.HandlerFunc {
 	return s.record("PatchCrewSeats")
+}
+
+func (s *generatedHandlersStub) CrewSectorInvitations() http.HandlerFunc {
+	return s.record("CrewSectorInvitations")
+}
+
+func (s *generatedHandlersStub) CrewSectorInvitation() http.HandlerFunc {
+	return s.record("CrewSectorInvitation")
+}
+
+func (s *generatedHandlersStub) PatchCrewSectorInvitations() http.HandlerFunc {
+	return s.record("PatchCrewSectorInvitations")
 }
 
 func (s *generatedHandlersStub) CrewSectorRoles() http.HandlerFunc {
@@ -2291,6 +2499,18 @@ func (s *generatedHandlersStub) LaunchMission() http.HandlerFunc {
 	return s.record("LaunchMission")
 }
 
+func (s *generatedHandlersStub) MembersInvitations() http.HandlerFunc {
+	return s.record("MembersInvitations")
+}
+
+func (s *generatedHandlersStub) MembersInvitation() http.HandlerFunc {
+	return s.record("MembersInvitation")
+}
+
+func (s *generatedHandlersStub) PatchMembersInvitations() http.HandlerFunc {
+	return s.record("PatchMembersInvitations")
+}
+
 func (s *generatedHandlersStub) MembersRoles() http.HandlerFunc {
 	return s.record("MembersRoles")
 }
@@ -2309,6 +2529,18 @@ func (s *generatedHandlersStub) MembersSeat() http.HandlerFunc {
 
 func (s *generatedHandlersStub) PatchMembersSeats() http.HandlerFunc {
 	return s.record("PatchMembersSeats")
+}
+
+func (s *generatedHandlersStub) MembersSectorInvitations() http.HandlerFunc {
+	return s.record("MembersSectorInvitations")
+}
+
+func (s *generatedHandlersStub) MembersSectorInvitation() http.HandlerFunc {
+	return s.record("MembersSectorInvitation")
+}
+
+func (s *generatedHandlersStub) PatchMembersSectorInvitations() http.HandlerFunc {
+	return s.record("PatchMembersSectorInvitations")
 }
 
 func (s *generatedHandlersStub) MembersSectorRoles() http.HandlerFunc {

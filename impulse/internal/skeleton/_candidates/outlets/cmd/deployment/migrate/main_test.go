@@ -128,6 +128,7 @@ func TestExecute(t *testing.T) {
 	// The migration run opens the data level, which reads the core level's service name
 	// and opens the live service, required, over the Firestore emulator.
 	t.Setenv("APP_SERVICE_NAME", serviceName)
+	t.Setenv("APP_PUBLIC_URL", "http://outlets.test")
 	t.Setenv("FIRESTORE_EMULATOR_HOST", firestoreEmulator.Host())
 	// The data level constructs the members auth, whose directory method validates its
 	// organization slot at registration whether or not the directory is simulated, so the

@@ -357,7 +357,7 @@ func TestPlanEnvironmentStack(t *testing.T) {
 			subs:      tagSubs(),
 			generated: true,
 			pins:      map[string]string{cookieVersion: enabledState, dbVersion: enabledState, generatedContainer + "/versions/1": enabledState},
-			tfvars:    pinnedTfvars(`APP_STAFF_DIRECTORY_CLIENT_SECRET = "1", APP_MEMBERS_DIRECTORY_CLIENT_SECRET = "1"`, `APP_STAFF_DIRECTORY_CLIENT_SECRET = "1", APP_MEMBERS_DIRECTORY_CLIENT_SECRET = "1"`, `APP_STAFF_DIRECTORY_CLIENT_SECRET = "1", APP_MEMBERS_DIRECTORY_CLIENT_SECRET = "1"`),
+			tfvars:    pinnedTfvars(`APP_MAIL_APP_PASSWORD = "1", APP_STAFF_DIRECTORY_CLIENT_SECRET = "1", APP_MEMBERS_DIRECTORY_CLIENT_SECRET = "1"`, `APP_MAIL_APP_PASSWORD = "1", APP_STAFF_DIRECTORY_CLIENT_SECRET = "1", APP_MEMBERS_DIRECTORY_CLIENT_SECRET = "1"`, `APP_MAIL_APP_PASSWORD = "1", APP_STAFF_DIRECTORY_CLIENT_SECRET = "1", APP_MEMBERS_DIRECTORY_CLIENT_SECRET = "1"`),
 			wantOut:   []string{"Secret pins: every secret the code declares has a version pinned in stg"},
 			wantTofu:  []string{initLine, stateLine, planLine + ` -var generated_secret_versions={APP_COOKIE_KEY="1"}`, showLine},
 			wantFact:  "Plan: 2 to add, 1 to change, 1 to destroy.",
@@ -708,7 +708,7 @@ func TestPlanEnvironmentStack(t *testing.T) {
 			name:     "a secret with no pinned version in stg refuses the release before the plan, naming the variable and the pin to make",
 			subs:     tagSubs(),
 			pins:     enabledPins(),
-			tfvars:   pinnedTfvars(allPinned, `APP_COOKIE_KEY = "3", APP_MEMBERS_DIRECTORY_CLIENT_SECRET = "1"`, allPinned),
+			tfvars:   pinnedTfvars(allPinned, `APP_COOKIE_KEY = "3", APP_MAIL_APP_PASSWORD = "1", APP_MEMBERS_DIRECTORY_CLIENT_SECRET = "1"`, allPinned),
 			wantTofu: []string{initLine},
 			wantErr:  `Build REJECTED: the code declares a secret stg has no pinned version for (secret_versions.stg in infrastructure/terraform.tfvars): APP_STAFF_DIRECTORY_CLIENT_SECRET. stg's processes would start without it, so the release is refused here; pin it after an operator adds its value (bedrock secret add stg APP_STAFF_DIRECTORY_CLIENT_SECRET): bedrock secret pin stg APP_STAFF_DIRECTORY_CLIENT_SECRET <version>. The pin promotes as a release; tst, the first environment, alone runs without one ("not yet").`,
 		},
@@ -718,7 +718,7 @@ func TestPlanEnvironmentStack(t *testing.T) {
 			pins:     enabledPins(),
 			tfvars:   pinnedTfvars(allPinned, "", allPinned),
 			wantTofu: []string{initLine},
-			wantErr:  "Build REJECTED: the code declares secrets stg has no pinned version for (secret_versions.stg in infrastructure/terraform.tfvars): APP_COOKIE_KEY, APP_STAFF_DIRECTORY_CLIENT_SECRET, APP_MEMBERS_DIRECTORY_CLIENT_SECRET. stg's processes would start without them, so the release is refused here; pin each after an operator adds its value (bedrock secret add stg <VARIABLE>): bedrock secret pin stg APP_COOKIE_KEY <version>, bedrock secret pin stg APP_STAFF_DIRECTORY_CLIENT_SECRET <version>, bedrock secret pin stg APP_MEMBERS_DIRECTORY_CLIENT_SECRET <version>. The pin promotes as a release",
+			wantErr:  "Build REJECTED: the code declares secrets stg has no pinned version for (secret_versions.stg in infrastructure/terraform.tfvars): APP_COOKIE_KEY, APP_MAIL_APP_PASSWORD, APP_STAFF_DIRECTORY_CLIENT_SECRET, APP_MEMBERS_DIRECTORY_CLIENT_SECRET. stg's processes would start without them, so the release is refused here; pin each after an operator adds its value (bedrock secret add stg <VARIABLE>): bedrock secret pin stg APP_COOKIE_KEY <version>, bedrock secret pin stg APP_MAIL_APP_PASSWORD <version>, bedrock secret pin stg APP_STAFF_DIRECTORY_CLIENT_SECRET <version>, bedrock secret pin stg APP_MEMBERS_DIRECTORY_CLIENT_SECRET <version>. The pin promotes as a release",
 		},
 		{
 			name:     "a placement whose secret_versions lacks the environment's map pins none there, and the release is refused",
@@ -726,7 +726,7 @@ func TestPlanEnvironmentStack(t *testing.T) {
 			pins:     enabledPins(),
 			tfvars:   "secret_versions = {\n  tst = { " + allPinned + " }\n}\n",
 			wantTofu: []string{initLine},
-			wantErr:  "Build REJECTED: the code declares secrets stg has no pinned version for (secret_versions.stg in infrastructure/terraform.tfvars): APP_COOKIE_KEY, APP_STAFF_DIRECTORY_CLIENT_SECRET, APP_MEMBERS_DIRECTORY_CLIENT_SECRET.",
+			wantErr:  "Build REJECTED: the code declares secrets stg has no pinned version for (secret_versions.stg in infrastructure/terraform.tfvars): APP_COOKIE_KEY, APP_MAIL_APP_PASSWORD, APP_STAFF_DIRECTORY_CLIENT_SECRET, APP_MEMBERS_DIRECTORY_CLIENT_SECRET.",
 		},
 		{
 			name:     "a restore run refused for a pin drops and restores nothing, since the test runs before the plan",
@@ -743,7 +743,7 @@ func TestPlanEnvironmentStack(t *testing.T) {
 			name:     "a secret with no pinned version in tst, the first environment, is allowed: the release runs without it, and the log says the environments after tst refuse it",
 			subs:     tstSubs(),
 			pins:     enabledPins(),
-			tfvars:   pinnedTfvars(`APP_COOKIE_KEY = "3", APP_MEMBERS_DIRECTORY_CLIENT_SECRET = "1"`, allPinned, allPinned),
+			tfvars:   pinnedTfvars(`APP_COOKIE_KEY = "3", APP_MAIL_APP_PASSWORD = "1", APP_MEMBERS_DIRECTORY_CLIENT_SECRET = "1"`, allPinned, allPinned),
 			wantOut:  []string{`tst has no pinned version for APP_STAFF_DIRECTORY_CLIENT_SECRET (secret_versions.tst in infrastructure/terraform.tfvars): the first environment runs without it, "not yet"; a release to the environments after it is refused until it is pinned there.`, "Tests passed"},
 			wantTofu: []string{strings.Replace(initLine, "3-app/quill/stg", "3-app/quill/tst", 1), stateLine, strings.Replace(planLine, "environment=stg", "environment=tst", 1), showLine},
 			wantFact: "Plan: 2 to add, 1 to change, 1 to destroy.",
@@ -753,7 +753,7 @@ func TestPlanEnvironmentStack(t *testing.T) {
 			subs:     tstSubs(),
 			pins:     enabledPins(),
 			tfvars:   pinnedTfvars("", allPinned, allPinned),
-			wantOut:  []string{`tst has no pinned version for APP_COOKIE_KEY, APP_STAFF_DIRECTORY_CLIENT_SECRET, APP_MEMBERS_DIRECTORY_CLIENT_SECRET (secret_versions.tst in infrastructure/terraform.tfvars): the first environment runs without them, "not yet"; a release to the environments after it is refused until each is pinned there.`, "Tests passed"},
+			wantOut:  []string{`tst has no pinned version for APP_COOKIE_KEY, APP_MAIL_APP_PASSWORD, APP_STAFF_DIRECTORY_CLIENT_SECRET, APP_MEMBERS_DIRECTORY_CLIENT_SECRET (secret_versions.tst in infrastructure/terraform.tfvars): the first environment runs without them, "not yet"; a release to the environments after it is refused until each is pinned there.`, "Tests passed"},
 			wantTofu: []string{strings.Replace(initLine, "3-app/quill/stg", "3-app/quill/tst", 1), stateLine, strings.Replace(planLine, "environment=stg", "environment=tst", 1), showLine},
 			wantFact: "Plan: 2 to add, 1 to change, 1 to destroy.",
 		},
@@ -1373,12 +1373,12 @@ func applicationWorkspace(t *testing.T, files map[string]string) Workspace {
 }
 
 // allPinned pins every secret harbor's code declares (APP_COOKIE_KEY,
-// APP_STAFF_DIRECTORY_CLIENT_SECRET and APP_MEMBERS_DIRECTORY_CLIENT_SECRET, in that
-// order), as one environment's map body;
+// APP_MAIL_APP_PASSWORD, APP_STAFF_DIRECTORY_CLIENT_SECRET and
+// APP_MEMBERS_DIRECTORY_CLIENT_SECRET, in that order), as one environment's map body;
 // generatedPinned is the same with the cookie key declared generated, as render seeds it.
 const (
-	allPinned       = `APP_COOKIE_KEY = "3", APP_STAFF_DIRECTORY_CLIENT_SECRET = "1", APP_MEMBERS_DIRECTORY_CLIENT_SECRET = "1"`
-	generatedPinned = `APP_COOKIE_KEY = "generated", APP_STAFF_DIRECTORY_CLIENT_SECRET = "1", APP_MEMBERS_DIRECTORY_CLIENT_SECRET = "1"`
+	allPinned       = `APP_COOKIE_KEY = "3", APP_MAIL_APP_PASSWORD = "1", APP_STAFF_DIRECTORY_CLIENT_SECRET = "1", APP_MEMBERS_DIRECTORY_CLIENT_SECRET = "1"`
+	generatedPinned = `APP_COOKIE_KEY = "generated", APP_MAIL_APP_PASSWORD = "1", APP_STAFF_DIRECTORY_CLIENT_SECRET = "1", APP_MEMBERS_DIRECTORY_CLIENT_SECRET = "1"`
 	// configPath is harbor's data-level configuration in the checkout, and
 	// generatedContainer the cookie key's container in stg when it is generated.
 	configPath         = "pkg/config/data.go"
@@ -1481,7 +1481,7 @@ func TestPlanEnvironments(t *testing.T) {
 			subs:       prSubs(),
 			pins:       enabledPins(),
 			deployer:   true,
-			tfvars:     pinnedTfvars("", `APP_COOKIE_KEY = "3", APP_MEMBERS_DIRECTORY_CLIENT_SECRET = "1"`, allPinned),
+			tfvars:     pinnedTfvars("", `APP_COOKIE_KEY = "3", APP_MAIL_APP_PASSWORD = "1", APP_MEMBERS_DIRECTORY_CLIENT_SECRET = "1"`, allPinned),
 			wantOut:    []string{"stg: APP_STAFF_DIRECTORY_CLIENT_SECRET has no pinned version in stg (secret_versions.stg in infrastructure/terraform.tfvars); the release is refused there until it is pinned (bedrock secret pin stg APP_STAFF_DIRECTORY_CLIENT_SECRET <version>, after bedrock secret add stg APP_STAFF_DIRECTORY_CLIENT_SECRET has put the value in place).", "prd: Plan: 2 to add, 1 to change, 1 to destroy."},
 			wantNotOut: []string{"no pinned version in tst", "no pinned version in prd", "Build REJECTED"},
 			wantTofu:   every,
@@ -1499,7 +1499,7 @@ func TestPlanEnvironments(t *testing.T) {
 			deployer:    true,
 			tfvars:      pinnedTfvars(allPinned, allPinned, ""),
 			wantTofu:    every,
-			wantComment: []string{"**prd**: Plan: 2 to add, 1 to change, 1 to destroy. APP_COOKIE_KEY, APP_STAFF_DIRECTORY_CLIENT_SECRET, APP_MEMBERS_DIRECTORY_CLIENT_SECRET have no pinned version in prd (secret_versions.prd in infrastructure/terraform.tfvars); the release is refused there until each is pinned (bedrock secret pin prd APP_COOKIE_KEY <version>, bedrock secret pin prd APP_STAFF_DIRECTORY_CLIENT_SECRET <version>, bedrock secret pin prd APP_MEMBERS_DIRECTORY_CLIENT_SECRET <version>, after bedrock secret add prd <VARIABLE> has put the value in place).\n  - `update"},
+			wantComment: []string{"**prd**: Plan: 2 to add, 1 to change, 1 to destroy. APP_COOKIE_KEY, APP_MAIL_APP_PASSWORD, APP_STAFF_DIRECTORY_CLIENT_SECRET, APP_MEMBERS_DIRECTORY_CLIENT_SECRET have no pinned version in prd (secret_versions.prd in infrastructure/terraform.tfvars); the release is refused there until each is pinned (bedrock secret pin prd APP_COOKIE_KEY <version>, bedrock secret pin prd APP_MAIL_APP_PASSWORD <version>, bedrock secret pin prd APP_STAFF_DIRECTORY_CLIENT_SECRET <version>, bedrock secret pin prd APP_MEMBERS_DIRECTORY_CLIENT_SECRET <version>, after bedrock secret add prd <VARIABLE> has put the value in place).\n  - `update"},
 		},
 		{
 			name:        "an environment whose stack was never applied is skipped with the line, the others planned, and the comment names it",

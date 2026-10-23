@@ -221,7 +221,7 @@ variable "secret_versions" {
     and bedrock check refuses one there and the word on any other secret.
 
       secret_versions = {
-        tst = { APP_COOKIE_KEY = "generated", APP_KEEPERS_ADMINISTRATOR_PASSWORD = "generated" }
+        tst = { APP_COOKIE_KEY = "generated", APP_MAIL_APP_PASSWORD = "1" }
       }
   EOT
   type        = map(map(string))
@@ -287,6 +287,12 @@ variable "destroy" {
   EOT
   type        = bool
   default     = false
+}
+
+variable "mail_mailbox" {
+  description = "The Google Workspace mailbox the auths' mail is sent as (APP_MAIL_MAILBOX, dataConfig.MailMailbox), through the Workspace SMTP relay with the mailbox's app password (the secret APP_MAIL_APP_PASSWORD): a no-reply address of the organization's domain, once for the organization. Empty until the organization names one: the application then writes its mail to the log and sends nothing (README, \"Hand steps\")."
+  type        = string
+  default     = ""
 }
 
 variable "state_bucket" {

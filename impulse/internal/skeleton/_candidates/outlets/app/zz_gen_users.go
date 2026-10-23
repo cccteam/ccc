@@ -57,6 +57,21 @@ func (a *App) StaffRole() http.HandlerFunc {
 	return a.StaffUserSurface().Role(a, router.Collection())
 }
 
+// StaffInvitations serves the standing invitations into the global partition: List on StaffInvitations.
+func (a *App) StaffInvitations() http.HandlerFunc {
+	return a.StaffUserSurface().Invitations(a, router.Collection())
+}
+
+// StaffInvitation serves one invitation into the global partition: Read on StaffInvitations.
+func (a *App) StaffInvitation() http.HandlerFunc {
+	return a.StaffUserSurface().Invitation(a, router.Collection())
+}
+
+// PatchStaffInvitations invites into and revokes from the global partition through the operations body: Create and Delete on StaffInvitations.
+func (a *App) PatchStaffInvitations() http.HandlerFunc {
+	return a.StaffUserSurface().PatchInvitations(a, router.Collection())
+}
+
 // SetStaffUserPassword sets a temporary password on a user of the global partition: Execute on SetStaffUserPassword, targeting StaffUsers.
 func (a *App) SetStaffUserPassword() http.HandlerFunc {
 	return a.StaffUserSurface().SetUserPassword(a, router.Collection())
@@ -100,6 +115,21 @@ func (a *App) StaffTenantRoles() http.HandlerFunc {
 // StaffTenantRole serves one role of the route's tenant: Read on StaffTenantRoles.
 func (a *App) StaffTenantRole() http.HandlerFunc {
 	return a.StaffUserSurface().TenantRole(a, router.Collection())
+}
+
+// StaffTenantInvitations serves the standing invitations into the route's tenant: List on StaffTenantInvitations.
+func (a *App) StaffTenantInvitations() http.HandlerFunc {
+	return a.StaffUserSurface().TenantInvitations(a, router.Collection())
+}
+
+// StaffTenantInvitation serves one invitation into the route's tenant: Read on StaffTenantInvitations.
+func (a *App) StaffTenantInvitation() http.HandlerFunc {
+	return a.StaffUserSurface().TenantInvitation(a, router.Collection())
+}
+
+// PatchStaffTenantInvitations invites into and revokes from the route's tenant through the operations body: Create and Delete on StaffTenantInvitations.
+func (a *App) PatchStaffTenantInvitations() http.HandlerFunc {
+	return a.StaffUserSurface().PatchTenantInvitations(a, router.Collection())
 }
 
 // SetStaffTenantUserPassword sets a temporary password on a user of the route's tenant: Execute on SetStaffTenantUserPassword, targeting StaffTenantUsers.
@@ -154,6 +184,21 @@ func (a *App) MembersRole() http.HandlerFunc {
 	return a.MembersUserSurface().Role(a, router.Collection())
 }
 
+// MembersInvitations serves the standing invitations into the global partition: List on MembersInvitations.
+func (a *App) MembersInvitations() http.HandlerFunc {
+	return a.MembersUserSurface().Invitations(a, router.Collection())
+}
+
+// MembersInvitation serves one invitation into the global partition: Read on MembersInvitations.
+func (a *App) MembersInvitation() http.HandlerFunc {
+	return a.MembersUserSurface().Invitation(a, router.Collection())
+}
+
+// PatchMembersInvitations invites into and revokes from the global partition through the operations body: Create and Delete on MembersInvitations.
+func (a *App) PatchMembersInvitations() http.HandlerFunc {
+	return a.MembersUserSurface().PatchInvitations(a, router.Collection())
+}
+
 // UnlinkMembersUserIdentity unlinks an identity from a user of the global partition: Execute on UnlinkMembersUserIdentity, targeting MembersUsers.
 func (a *App) UnlinkMembersUserIdentity() http.HandlerFunc {
 	return a.MembersUserSurface().UnlinkUserIdentity(a, router.Collection())
@@ -197,6 +242,21 @@ func (a *App) MembersTenantRoles() http.HandlerFunc {
 // MembersTenantRole serves one role of the route's tenant: Read on MembersTenantRoles.
 func (a *App) MembersTenantRole() http.HandlerFunc {
 	return a.MembersUserSurface().TenantRole(a, router.Collection())
+}
+
+// MembersTenantInvitations serves the standing invitations into the route's tenant: List on MembersTenantInvitations.
+func (a *App) MembersTenantInvitations() http.HandlerFunc {
+	return a.MembersUserSurface().TenantInvitations(a, router.Collection())
+}
+
+// MembersTenantInvitation serves one invitation into the route's tenant: Read on MembersTenantInvitations.
+func (a *App) MembersTenantInvitation() http.HandlerFunc {
+	return a.MembersUserSurface().TenantInvitation(a, router.Collection())
+}
+
+// PatchMembersTenantInvitations invites into and revokes from the route's tenant through the operations body: Create and Delete on MembersTenantInvitations.
+func (a *App) PatchMembersTenantInvitations() http.HandlerFunc {
+	return a.MembersUserSurface().PatchTenantInvitations(a, router.Collection())
 }
 
 // UnlinkMembersTenantUserIdentity unlinks an identity from a user of the route's tenant: Execute on UnlinkMembersTenantUserIdentity, targeting MembersTenantUsers.

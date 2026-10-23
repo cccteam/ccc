@@ -4,8 +4,8 @@
 package app
 
 import (
-	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/tenanted/pkg/router"
+	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/resource"
 )
 

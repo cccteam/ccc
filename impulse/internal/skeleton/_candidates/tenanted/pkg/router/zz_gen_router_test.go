@@ -59,11 +59,12 @@ func routerChainFor(t *testing.T, url string) routerOutletChain {
 // guard; xsrf says it sits behind the outlet's XSRF guard, as a sign-in's POSTs do.
 // suffix is the path under the outlet's prefix.
 type routerSessionRoute struct {
-	url     string
-	suffix  string
-	method  string
-	handler string
-	xsrf    bool
+	url       string
+	suffix    string
+	method    string
+	handler   string
+	xsrf      bool
+	validated bool
 }
 
 // routerSessionRoutes lists every session outlet's routes.
@@ -79,6 +80,11 @@ func routerSessionRoutes() []routerSessionRoute {
 		{url: "/api/user/password/change", suffix: "/user/password/change", method: http.MethodPost, handler: "PasswordChange", xsrf: true},
 		{url: "/api/user/pending/confirm", suffix: "/user/pending/confirm", method: http.MethodPost, handler: "PendingConfirmWithPassword", xsrf: true},
 		{url: "/api/user/pending/cancel", suffix: "/user/pending/cancel", method: http.MethodPost, handler: "PendingCancel", xsrf: true},
+		{url: "/api/user/invitation", suffix: "/user/invitation", method: http.MethodPost, handler: "InvitationOpen", xsrf: true},
+		{url: "/api/user/invitation/sign-up", suffix: "/user/invitation/sign-up", method: http.MethodPost, handler: "InvitationSignUp", xsrf: true},
+		{url: "/api/user/invitation/accept", suffix: "/user/invitation/accept", method: http.MethodPost, handler: "InvitationAccept", xsrf: true, validated: true},
+		{url: "/api/user/email", suffix: "/user/email", method: http.MethodPost, handler: "EmailAdd", xsrf: true, validated: true},
+		{url: "/api/user/email/verify", suffix: "/user/email/verify", method: http.MethodPost, handler: "EmailVerify", xsrf: true, validated: true},
 	}
 }
 
@@ -145,7 +151,8 @@ func TestGeneratedRouter(t *testing.T) {
 // TestGeneratedRouterSessionRoutes proves each session outlet's method list, session,
 // pending and sign-in routes answer behind the outlet's group and before its session
 // guard, a sign-in's POSTs behind the XSRF guard alone: a browser reaches them without
-// a validated session.
+// a validated session; the routes a signed-in person calls (an invitation's acceptance,
+// the address) answer behind both guards.
 func TestGeneratedRouterSessionRoutes(t *testing.T) {
 	t.Parallel()
 
@@ -168,7 +175,10 @@ func TestGeneratedRouterSessionRoutes(t *testing.T) {
 
 			chain := routerChainFor(t, tt.url)
 			want := slices.Concat(routerRootChain, chain.group)
-			if tt.xsrf {
+			switch {
+			case tt.validated:
+				want = append(want, chain.guards...)
+			case tt.xsrf:
 				want = append(want, chain.guards[1])
 			}
 			if !slices.Equal(rec.chain, want) {
@@ -710,6 +720,26 @@ func (s *routerDefaultSessionStub) PendingConfirmWithPassword() http.HandlerFunc
 
 func (s *routerDefaultSessionStub) PendingCancel() http.HandlerFunc {
 	return s.rec.RecordHandlerCall(s.prefix + "PendingCancel")
+}
+
+func (s *routerDefaultSessionStub) InvitationOpen() http.HandlerFunc {
+	return s.rec.RecordHandlerCall(s.prefix + "InvitationOpen")
+}
+
+func (s *routerDefaultSessionStub) InvitationSignUp() http.HandlerFunc {
+	return s.rec.RecordHandlerCall(s.prefix + "InvitationSignUp")
+}
+
+func (s *routerDefaultSessionStub) InvitationAccept() http.HandlerFunc {
+	return s.rec.RecordHandlerCall(s.prefix + "InvitationAccept")
+}
+
+func (s *routerDefaultSessionStub) EmailAdd() http.HandlerFunc {
+	return s.rec.RecordHandlerCall(s.prefix + "EmailAdd")
+}
+
+func (s *routerDefaultSessionStub) EmailVerify() http.HandlerFunc {
+	return s.rec.RecordHandlerCall(s.prefix + "EmailVerify")
 }
 
 func (s *routerDefaultSessionStub) StartSession(next http.Handler) http.Handler {

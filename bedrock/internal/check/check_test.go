@@ -156,7 +156,7 @@ func TestRun(t *testing.T) {
 				m.Scheduled = []derive.ScheduledRoute{{Path: "/_scheduled/send-daily-digest", Schedule: "0 6 * * 1-5", TimeZone: "America/New_York"}}
 			},
 			wantFindings: []Finding{
-				{Path: "README.md", Line: 276, Want: "  | `POST /_scheduled/send-daily-digest` | `0 6 * * 1-5` | America/New_York |", Got: "  | `POST /_scheduled/send-daily-digest` | `0 7 * * 1-5` | America/New_York |"},
+				{Path: "README.md", Line: 278, Want: "  | `POST /_scheduled/send-daily-digest` | `0 6 * * 1-5` | America/New_York |", Got: "  | `POST /_scheduled/send-daily-digest` | `0 7 * * 1-5` | America/New_York |"},
 				{Path: "scheduler.tf", Line: 29, Want: `      schedule  = "0 6 * * 1-5"`, Got: `      schedule  = "0 7 * * 1-5"`},
 			},
 			wantOutput: []string{"2 of 22 owned file(s) differ", "differs  scheduler.tf:29"},
@@ -168,7 +168,7 @@ func TestRun(t *testing.T) {
 				m.Scheduled = append([]derive.ScheduledRoute{{Path: "/_scheduled/close-stale-holds", Schedule: "*/15 * * * *", TimeZone: "UTC"}}, m.Scheduled...)
 			},
 			wantFindings: []Finding{
-				{Path: "README.md", Line: 276, Want: "  | `POST /_scheduled/close-stale-holds` | `*/15 * * * *` | UTC |", Got: "  | `POST /_scheduled/send-daily-digest` | `0 7 * * 1-5` | America/New_York |"},
+				{Path: "README.md", Line: 278, Want: "  | `POST /_scheduled/close-stale-holds` | `*/15 * * * *` | UTC |", Got: "  | `POST /_scheduled/send-daily-digest` | `0 7 * * 1-5` | America/New_York |"},
 				{Path: "scheduler.tf", Line: 27, Want: `    "close-stale-holds" = {`, Got: `    "send-daily-digest" = {`},
 			},
 			wantOutput: []string{"2 of 22 owned file(s) differ", "differs  scheduler.tf:27"},
@@ -593,7 +593,7 @@ func TestRunGenerated(t *testing.T) {
 			name:     "the word on a secret someone puts in place is refused",
 			versions: "secret_versions = {\n  tst = { APP_STAFF_DIRECTORY_CLIENT_SECRET = \"generated\" }\n  stg = {}\n  prd = {}\n}\n",
 			want: []GeneratedFinding{
-				{Environment: "tst", Variable: "APP_STAFF_DIRECTORY_CLIENT_SECRET", Problem: `APP_STAFF_DIRECTORY_CLIENT_SECRET carries the word generated in secret_versions.tst in terraform.tfvars, and the code declares it secret:"true" (pkg/config/data.go:268): pin a version number (bedrock secret pin tst APP_STAFF_DIRECTORY_CLIENT_SECRET <version>), or declare it secret:"generated" in the code`},
+				{Environment: "tst", Variable: "APP_STAFF_DIRECTORY_CLIENT_SECRET", Problem: `APP_STAFF_DIRECTORY_CLIENT_SECRET carries the word generated in secret_versions.tst in terraform.tfvars, and the code declares it secret:"true" (pkg/config/data.go:277): pin a version number (bedrock secret pin tst APP_STAFF_DIRECTORY_CLIENT_SECRET <version>), or declare it secret:"generated" in the code`},
 			},
 		},
 		{

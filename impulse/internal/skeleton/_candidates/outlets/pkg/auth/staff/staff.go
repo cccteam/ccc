@@ -3,16 +3,22 @@
 //
 // An auth is a package. It owns its session manager, one Auth session with the sign-in
 // methods registered on it (here password), with its own session, user, identity, auth
-// event, pending sign-in and sign-in attempt tables and cookie; its permission store,
-// with its own table prefix, whose engine signals policy changes to the application's
-// other instances through the live service; and its role file, embedded beside it, so
-// the release's default roles travel with the binary. Each method is its own file in
-// this package, named for its registration.
+// event, pending sign-in, sign-in attempt and mail link tables and cookie; its permission
+// store, with its own table prefix, whose engine signals policy changes to the
+// application's other instances through the live service; and its role file, embedded
+// beside it, so the release's default roles travel with the binary. Each method is its
+// own file in this package, named for its registration.
 // A site or an outlet binds to an auth by composing its handlers, and two auths on one
 // database and one host never collide, because everything an auth names carries its
 // name. The same name in this auth and in another is two unrelated principals. The
 // package is named for the population, never for how it signs in: the staff can gain
 // or lose a sign-in method without the package moving.
+//
+// The auth mails: an administrator invites a person by address, with the roles the
+// invitation seats, and the invitee follows the link to accept it; a signed-in person
+// adds an address and proves it by following the link sent to it.
+// The links open the login page of the surface that binds to this auth
+// (Settings.MailLoginURL), through the sender the data level hands in (Settings.Mail).
 package staff
 
 import (
@@ -26,6 +32,7 @@ import (
 	"github.com/cccteam/access/spannerstore"
 	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/session"
+	"github.com/cccteam/session/mail"
 	"github.com/cccteam/session/sessionstorage"
 	"github.com/cccteam/session/signin"
 	"github.com/go-playground/errors/v5"
@@ -36,6 +43,9 @@ const (
 	Name = "staff"
 	// TablePrefix is the name's PascalCase form, which prefixes every table the auth owns.
 	TablePrefix = "Staff"
+	// Application is the application's name as the mail the auth sends says it: the
+	// subject and the first line of an invitation name it.
+	Application = "Outlets"
 
 	// XSRFCookie is the cookie the auth issues its XSRF token in. It carries the auth's name
 	// so two auths on one host never overwrite each other's token; the browser echoes it in
@@ -45,16 +55,18 @@ const (
 	// The auth's tables, which schema/migrations creates: the sessions and users of the
 	// Auth session (a person is one user whichever way they sign in; an identity the
 	// directory verifies links to its user through the identities table), the auth events
-	// each session records, the pending sign-ins that wait for a confirmation and the
-	// sign-in attempts the password method's attempt limiter counts per sign-in name. The
-	// names are spelled out in full so the tool's session-tables check, which reads the
-	// literals, finds their migrations.
+	// each session records, the pending sign-ins that wait for a confirmation, the
+	// sign-in attempts the password method's attempt limiter counts per sign-in name, and
+	// the mail links: the invitations, address verifications and sign-ups the auth mails,
+	// each a single-use token its follower proves. The names are spelled out in full so
+	// the tool's session-tables check, which reads the literals, finds their migrations.
 	sessionsTable   = "StaffSessions"
 	usersTable      = "StaffSessionUsers"
 	identitiesTable = "StaffSessionIdentities"
 	eventsTable     = "StaffSessionAuthEvents"
 	pendingTable    = "StaffSessionPendingSignIns"
 	attemptsTable   = "StaffSessionSignInAttempts"
+	mailLinksTable  = "StaffSessionMailLinks"
 )
 
 // roleFile is the auth's default roles: the role file beside this package, embedded in the
@@ -93,6 +105,17 @@ type Settings struct {
 	CookieKey string
 	// SessionTimeout is the idle timeout of a browser session.
 	SessionTimeout time.Duration
+	// Mail sends the auth's mail: the invitation an administrator sends to an address
+	// and the link that verifies an address a person adds.
+	// The application's one sender, which the data level opens: the Workspace relay
+	// (session/mail/workspace) where the deployment names a mailbox, and the log (mail.Log)
+	// in development, where nothing is sent and a developer follows the link from the log.
+	// Required; New refuses nil.
+	Mail mail.Sender
+	// MailLoginURL is the absolute address of the login page of the surface that binds
+	// to this auth (https://host/login), which every mailed link opens with its token in
+	// the query: the application's public address and the surface's login path.
+	MailLoginURL string
 	// TenantDeclarations reads what a tenant declares about who may enter it, in the
 	// sign-in's transaction, which the sign-in rule decides with: the generated reader
 	// over the Tenant record and its directories (app.NewTenantDeclarationReader).
@@ -146,6 +169,30 @@ func (h *Handlers) PendingCancel() http.HandlerFunc {
 	return h.Pending().Cancel()
 }
 
+// InvitationOpen reads the invitation a mailed link carries: where it seats the invitee
+// and how they may accept it, for the login page to offer.
+func (h *Handlers) InvitationOpen() http.HandlerFunc {
+	return h.Invitation().Open()
+}
+
+// InvitationAccept accepts an invitation as the signed-in person, or as a person who
+// signs in through a registration the invitation admits: the roles it names are seated
+// once the link is consumed.
+func (h *Handlers) InvitationAccept() http.HandlerFunc {
+	return h.Invitation().Accept()
+}
+
+// EmailAdd starts an address change for the signed-in person: a verification link is
+// mailed to the address, and nothing is stored until it is followed.
+func (h *Handlers) EmailAdd() http.HandlerFunc {
+	return h.Email().Add()
+}
+
+// EmailVerify completes an address change from its link: the address is stored verified.
+func (h *Handlers) EmailVerify() http.HandlerFunc {
+	return h.Email().Verify()
+}
+
 // New opens the auth's permission store and session manager over the database and
 // registers the sign-in methods. The permission engine parses and validates the role file
 // against the collection before it opens, so a release whose default roles are wrong does
@@ -155,6 +202,9 @@ func (h *Handlers) PendingCancel() http.HandlerFunc {
 func New(ctx context.Context, db *cloudspanner.Client, settings *Settings) (*Auth, error) {
 	if settings.Signals == nil {
 		return nil, errors.New("staff.Settings.Signals is nil: the permission engine signals policy changes through the application's live service, which every application wires")
+	}
+	if settings.Mail == nil {
+		return nil, errors.New("staff.Settings.Mail is nil: the auth mails its invitations and address verifications through the application's sender (the Workspace relay deployed, the log in development), which the data level opens")
 	}
 	if settings.TenantDeclarations == nil {
 		return nil, errors.New("staff.Settings.TenantDeclarations is nil: the sign-in rule reads what each tenant declares about who may enter it through the generated reader (app.NewTenantDeclarationReader), which the data level hands in")
@@ -189,6 +239,8 @@ func New(ctx context.Context, db *cloudspanner.Client, settings *Settings) (*Aut
 		session.WithIdentitiesTableName(identitiesTable),
 		session.WithPendingSignInsTableName(pendingTable),
 		session.WithSignInAttemptsTableName(attemptsTable),
+		session.WithMailLinksTableName(mailLinksTable),
+		session.WithMail(settings.Mail, session.MailSettings{Application: Application, LoginURL: settings.MailLoginURL}),
 		session.WithCookieName(Name),
 		session.WithXSRFCookieName(XSRFCookie),
 		session.WithSessionTimeout(settings.SessionTimeout),
@@ -215,6 +267,12 @@ func New(ctx context.Context, db *cloudspanner.Client, settings *Settings) (*Aut
 	// the sign-in's transaction (resource.SignInRoles): the Spanner client refuses the
 	// engine's read under the transaction's context as a nested transaction.
 	authSession.SetSignInPolicy(signin.TenantPolicy(resource.SignInRoles(accessClient.UserManager()), settings.TenantDeclarations))
+
+	// An invitation accepted seats its roles: once the transaction that consumed the
+	// invitation has committed, the hook writes the invitee's memberships through the
+	// permission engine, outside the sign-in's transaction (the engine's own read-write
+	// transaction would wait on it), and the sign-in rule that follows finds them.
+	authSession.SetInvitationAccepted(resource.SeatInvited(accessClient.UserManager()))
 
 	return &Auth{db: db, access: accessClient, handlers: handlers}, nil
 }

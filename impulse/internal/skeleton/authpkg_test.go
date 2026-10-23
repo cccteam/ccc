@@ -94,6 +94,18 @@ var candidateMigrations = map[string]map[string][2]int{
 	"outlets":  {PlaceholderAuth: {3, 4}, "members": {9, 10}},
 }
 
+// usernameIsEmail reports an auth whose password method takes the address as the
+// sign-in name, which shapes its users migration; no candidate's does.
+func usernameIsEmail(spec *authpkg.Spec) bool {
+	for i := range spec.Methods {
+		if spec.Methods[i].UsernameIsEmail {
+			return true
+		}
+	}
+
+	return false
+}
+
 // TestAuthPackages holds each candidate's auth packages and their session migrations to
 // the authpkg rendering.
 func TestAuthPackages(t *testing.T) {
@@ -112,7 +124,7 @@ func TestAuthPackages(t *testing.T) {
 				expected[filepath.Join(dir, name)] = data
 			}
 			numbers := candidateMigrations[candidate][spec.Name]
-			for j, m := range authpkg.Migrations(names.Pascal(spec.Name), spec.Name) {
+			for j, m := range authpkg.Migrations(names.Pascal(spec.Name), spec.Name, usernameIsEmail(&spec)) {
 				base := filepath.Join("_candidates", candidate, "schema", "migrations", fmt.Sprintf("%06d_%s", numbers[j], m.Stem))
 				expected[base+".up.sql"] = []byte(m.Up)
 				expected[base+".down.sql"] = []byte(m.Down)

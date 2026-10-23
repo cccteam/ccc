@@ -7,7 +7,8 @@
 //	every request: tracing, hooks.Outermost, request logging, SecurityHeaders, httpio.WithParams
 //	default (/api), sessions (password, google):
 //	  NoCaching, CompressionMiddleware, StartSession, SetXSRFToken: GET /api/user/methods, GET /api/user/session, DELETE /api/user/session, GET /api/user/pending, GET /api/user/google/login, GET /api/user/google/callback
-//	  + ValidateXSRFToken: POST /api/user/password/login, POST /api/user/password/change, POST /api/user/pending/confirm, POST /api/user/pending/cancel
+//	  + ValidateXSRFToken: POST /api/user/password/login, POST /api/user/password/change, POST /api/user/pending/confirm, POST /api/user/pending/cancel, POST /api/user/invitation, POST /api/user/invitation/sign-up
+//	  + ValidateSession, ValidateXSRFToken: POST /api/user/invitation/accept, POST /api/user/email, POST /api/user/email/verify
 //	  + ValidateSession, ValidateXSRFToken, CheckAPIVersion (oldest answered 0.0.1): hooks.Default, generatedRoutes
 //
 // hooks.Root's routes sit behind the every-request chain alone. Under an outlet's prefix
@@ -71,6 +72,16 @@ type DefaultSession interface {
 	PendingStatus() http.HandlerFunc
 	PendingConfirmWithPassword() http.HandlerFunc
 	PendingCancel() http.HandlerFunc
+	// The invitation the login page was sent to, opened (session.InvitationHandlers.Open): the sign-in that follows carries it.
+	InvitationOpen() http.HandlerFunc
+	// The invitation accepted by a person already signed in (session.InvitationHandlers.Accept).
+	InvitationAccept() http.HandlerFunc
+	// An invited person's account, created with a password and signed in (session.InvitationHandlers.SignUp).
+	InvitationSignUp() http.HandlerFunc
+	// A signed-in person's email address, added by mailing it a verification link (session.EmailHandlers.Add).
+	EmailAdd() http.HandlerFunc
+	// The address verified from the mailed link (session.EmailHandlers.Verify).
+	EmailVerify() http.HandlerFunc
 	// The password method's login and password change (session.PasswordMethod); the change validates the session itself, outside ValidateSession.
 	PasswordLogin() http.HandlerFunc
 	PasswordChange() http.HandlerFunc
@@ -139,6 +150,8 @@ func New(h Handlers, hooks Hooks) *chi.Mux {
 			},
 			Pending:        session.PendingRoutes{Status: "/api/user/pending", Confirm: "/api/user/pending/confirm", Cancel: "/api/user/pending/cancel"},
 			ChangePassword: "/api/user/password/change",
+			Invitation:     session.InvitationRoutes{Open: "/api/user/invitation", Accept: "/api/user/invitation/accept", SignUp: "/api/user/invitation/sign-up"},
+			Email:          session.EmailRoutes{Add: "/api/user/email", Verify: "/api/user/email/verify"},
 		}))
 		bounded.Get("/api/user/session", h.Authenticated())
 		bounded.Delete("/api/user/session", h.Logout())
@@ -149,6 +162,8 @@ func New(h Handlers, hooks Hooks) *chi.Mux {
 		guarded.Post("/api/user/password/change", h.PasswordChange())
 		guarded.Post("/api/user/pending/confirm", h.PendingConfirmWithPassword())
 		guarded.Post("/api/user/pending/cancel", h.PendingCancel())
+		guarded.Post("/api/user/invitation", h.InvitationOpen())
+		guarded.Post("/api/user/invitation/sign-up", h.InvitationSignUp())
 
 		r.Group(func(r chi.Router) {
 			r.Use(h.ValidateSession)
@@ -156,11 +171,22 @@ func New(h Handlers, hooks Hooks) *chi.Mux {
 			// The version check: a browser application sends its release in X-Api-Version,
 			// and releases from 0.0.1 up to the server's own are answered. An application outside that
 			// range is refused with 412 naming the server's release, before its body is read;
-			// a request without the header, the session routes above are answered at any release.
+			// a request without the header, the session routes above and below are answered at any release.
 			r.Use(resource.CheckAPIVersion(resource.APIVersionCheck{
 				ServerVersion:  serverVersion,
 				OldestAnswered: "0.0.1",
+				Exempt: []string{
+					"/api/user/invitation/accept",
+					"/api/user/email",
+					"/api/user/email/verify",
+				},
 			}))
+
+			// The session routes a signed-in person calls: the acceptance of an invitation
+			// the browser carries, and the address they add and verify.
+			r.With(resource.BodyLimit(BodyLimit)).Post("/api/user/invitation/accept", h.InvitationAccept())
+			r.With(resource.BodyLimit(BodyLimit)).Post("/api/user/email", h.EmailAdd())
+			r.With(resource.BodyLimit(BodyLimit)).Post("/api/user/email/verify", h.EmailVerify())
 
 			registerGenerated(r, hooks.Default, "Default", func(r chi.Router) {
 				generatedRoutes(r, h)

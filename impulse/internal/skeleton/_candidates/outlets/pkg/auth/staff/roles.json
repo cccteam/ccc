@@ -16,7 +16,15 @@
               "fields": [
                 "username",
                 "password",
-                "disabled"
+                "disabled",
+                "email"
+              ]
+            },
+            {
+              "resource": "StaffInvitations",
+              "fields": [
+                "email",
+                "roles"
               ]
             },
             {
@@ -33,6 +41,9 @@
             },
             {
               "resource": "StaffUsers"
+            },
+            {
+              "resource": "StaffInvitations"
             },
             {
               "resource": "StaffSeats"
@@ -64,7 +75,19 @@
                 "identities",
                 "roles",
                 "everywhereRoles",
-                "rolesSynced"
+                "rolesSynced",
+                "email",
+                "emailVerifiedAt"
+              ]
+            },
+            {
+              "resource": "StaffInvitations",
+              "fields": [
+                "email",
+                "roles",
+                "invitedBy",
+                "createdAt",
+                "expiresAt"
               ]
             },
             {
@@ -102,7 +125,19 @@
                 "identities",
                 "roles",
                 "everywhereRoles",
-                "rolesSynced"
+                "rolesSynced",
+                "email",
+                "emailVerifiedAt"
+              ]
+            },
+            {
+              "resource": "StaffInvitations",
+              "fields": [
+                "email",
+                "roles",
+                "invitedBy",
+                "createdAt",
+                "expiresAt"
               ]
             },
             {
@@ -131,7 +166,8 @@
               "resource": "StaffUsers",
               "fields": [
                 "username",
-                "disabled"
+                "disabled",
+                "email"
               ]
             }
           ]
@@ -195,7 +231,15 @@
                 "username",
                 "password",
                 "disabled",
-                "role"
+                "role",
+                "email"
+              ]
+            },
+            {
+              "resource": "StaffTenantInvitations",
+              "fields": [
+                "email",
+                "roles"
               ]
             },
             {
@@ -215,6 +259,9 @@
             },
             {
               "resource": "StaffTenantUsers"
+            },
+            {
+              "resource": "StaffTenantInvitations"
             },
             {
               "resource": "StaffTenantSeats"
@@ -255,7 +302,19 @@
                 "identities",
                 "roles",
                 "everywhereRoles",
-                "rolesSynced"
+                "rolesSynced",
+                "email",
+                "emailVerifiedAt"
+              ]
+            },
+            {
+              "resource": "StaffTenantInvitations",
+              "fields": [
+                "email",
+                "roles",
+                "invitedBy",
+                "createdAt",
+                "expiresAt"
               ]
             },
             {
@@ -299,7 +358,19 @@
                 "identities",
                 "roles",
                 "everywhereRoles",
-                "rolesSynced"
+                "rolesSynced",
+                "email",
+                "emailVerifiedAt"
+              ]
+            },
+            {
+              "resource": "StaffTenantInvitations",
+              "fields": [
+                "email",
+                "roles",
+                "invitedBy",
+                "createdAt",
+                "expiresAt"
               ]
             },
             {
@@ -325,7 +396,8 @@
               "resource": "StaffTenantUsers",
               "fields": [
                 "username",
-                "disabled"
+                "disabled",
+                "email"
               ]
             }
           ]

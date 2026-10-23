@@ -19,6 +19,7 @@ export const PermissionScopes = {
 
 export const Resources = {
   FeatureFlags: 'FeatureFlags' as Resource,
+  StaffInvitations: 'StaffInvitations' as Resource,
   StaffRoles: 'StaffRoles' as Resource,
   StaffSeats: 'StaffSeats' as Resource,
   StaffUsers: 'StaffUsers' as Resource,
@@ -43,6 +44,25 @@ export namespace FeatureFlags {
     name: 'FeatureFlags.name' as Resource,
     updatedAt: 'FeatureFlags.updatedAt' as Resource,
     updatedBy: 'FeatureFlags.updatedBy' as Resource,
+  };
+}
+
+export namespace StaffInvitations {
+  export const fieldName = {
+    createdAt: 'createdAt' as FieldName,
+    email: 'email' as FieldName,
+    expiresAt: 'expiresAt' as FieldName,
+    id: 'id' as FieldName,
+    invitedBy: 'invitedBy' as FieldName,
+    roles: 'roles' as FieldName,
+  };
+  export const resourceName = {
+    createdAt: 'StaffInvitations.createdAt' as Resource,
+    email: 'StaffInvitations.email' as Resource,
+    expiresAt: 'StaffInvitations.expiresAt' as Resource,
+    id: 'StaffInvitations.id' as Resource,
+    invitedBy: 'StaffInvitations.invitedBy' as Resource,
+    roles: 'StaffInvitations.roles' as Resource,
   };
 }
 
@@ -76,6 +96,8 @@ export namespace StaffUsers {
   export const fieldName = {
     createdAt: 'createdAt' as FieldName,
     disabled: 'disabled' as FieldName,
+    email: 'email' as FieldName,
+    emailVerifiedAt: 'emailVerifiedAt' as FieldName,
     everywhereRoles: 'everywhereRoles' as FieldName,
     hasPassword: 'hasPassword' as FieldName,
     id: 'id' as FieldName,
@@ -91,6 +113,8 @@ export namespace StaffUsers {
   export const resourceName = {
     createdAt: 'StaffUsers.createdAt' as Resource,
     disabled: 'StaffUsers.disabled' as Resource,
+    email: 'StaffUsers.email' as Resource,
+    emailVerifiedAt: 'StaffUsers.emailVerifiedAt' as Resource,
     everywhereRoles: 'StaffUsers.everywhereRoles' as Resource,
     hasPassword: 'StaffUsers.hasPassword' as Resource,
     id: 'StaffUsers.id' as Resource,

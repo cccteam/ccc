@@ -1,3 +1,6 @@
+DROP INDEX StaffSessionMailLinksByKind;
+DROP INDEX StaffSessionMailLinksByTokenHash;
+DROP TABLE StaffSessionMailLinks;
 DROP TABLE StaffSessionSignInAttempts;
 DROP INDEX StaffSessionPendingSignInsByExpiresAt;
 DROP INDEX StaffSessionPendingSignInsByTokenHash;

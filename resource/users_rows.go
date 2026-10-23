@@ -19,15 +19,19 @@ import (
 // UserRow is one user of the global partition (<Auth>Users): the account, its sign-in
 // means, and the roles it holds globally and in every tenant.
 type UserRow[A UserAuth] struct {
-	ID                     ccc.UUID       `json:"id"                     spanner:"Id"`
-	Username               string         `json:"username"               spanner:"Username"`
-	Disabled               bool           `json:"disabled"               spanner:"Disabled"`
-	HasPassword            bool           `json:"hasPassword"            spanner:"HasPassword"`
-	PasswordChangeRequired bool           `json:"passwordChangeRequired" spanner:"PasswordChangeRequired"`
-	CreatedAt              time.Time      `json:"createdAt"              spanner:"CreatedAt"`
-	LastSignInAt           *time.Time     `json:"lastSignInAt"           spanner:"LastSignInAt"`
-	Organization           *string        `json:"organization"           spanner:"Organization"`
-	Identities             []UserIdentity `json:"identities"             spanner:"Identities"`
+	ID                     ccc.UUID   `json:"id"                     spanner:"Id"`
+	Username               string     `json:"username"               spanner:"Username"`
+	Disabled               bool       `json:"disabled"               spanner:"Disabled"`
+	HasPassword            bool       `json:"hasPassword"            spanner:"HasPassword"`
+	PasswordChangeRequired bool       `json:"passwordChangeRequired" spanner:"PasswordChangeRequired"`
+	CreatedAt              time.Time  `json:"createdAt"              spanner:"CreatedAt"`
+	LastSignInAt           *time.Time `json:"lastSignInAt"           spanner:"LastSignInAt"`
+	Organization           *string    `json:"organization"           spanner:"Organization"`
+	// Email is the person's address, nil for none, and EmailVerifiedAt when the person
+	// proved it by following a link sent to it (nil while it is an operator's entry).
+	Email           *string        `json:"email"           spanner:"Email"`
+	EmailVerifiedAt *time.Time     `json:"emailVerifiedAt" spanner:"EmailVerifiedAt"`
+	Identities      []UserIdentity `json:"identities"      spanner:"Identities"`
 	// Roles are the roles held in the partition's own scope, EverywhereRoles the ones
 	// held in every tenant, and RolesSynced that a directory writes them.
 	Roles           []string `json:"roles"           spanner:"Roles"`
@@ -48,18 +52,22 @@ func (UserRow[A]) DefaultConfig() Config {
 // TenantUserRow is one user of the tenant partition (<Auth><Tenant>Users): a user
 // seated in the tenant or everywhere, with the seats held there.
 type TenantUserRow[A UserAuth] struct {
-	ID                     ccc.UUID       `json:"id"                     spanner:"Id"`
-	Username               string         `json:"username"               spanner:"Username"`
-	Disabled               bool           `json:"disabled"               spanner:"Disabled"`
-	HasPassword            bool           `json:"hasPassword"            spanner:"HasPassword"`
-	PasswordChangeRequired bool           `json:"passwordChangeRequired" spanner:"PasswordChangeRequired"`
-	CreatedAt              time.Time      `json:"createdAt"              spanner:"CreatedAt"`
-	LastSignInAt           *time.Time     `json:"lastSignInAt"           spanner:"LastSignInAt"`
-	Organization           *string        `json:"organization"           spanner:"Organization"`
-	Identities             []UserIdentity `json:"identities"             spanner:"Identities"`
-	Roles                  []string       `json:"roles"                  spanner:"Roles"`
-	EverywhereRoles        []string       `json:"everywhereRoles"        spanner:"EverywhereRoles"`
-	RolesSynced            bool           `json:"rolesSynced"            spanner:"RolesSynced"`
+	ID                     ccc.UUID   `json:"id"                     spanner:"Id"`
+	Username               string     `json:"username"               spanner:"Username"`
+	Disabled               bool       `json:"disabled"               spanner:"Disabled"`
+	HasPassword            bool       `json:"hasPassword"            spanner:"HasPassword"`
+	PasswordChangeRequired bool       `json:"passwordChangeRequired" spanner:"PasswordChangeRequired"`
+	CreatedAt              time.Time  `json:"createdAt"              spanner:"CreatedAt"`
+	LastSignInAt           *time.Time `json:"lastSignInAt"           spanner:"LastSignInAt"`
+	Organization           *string    `json:"organization"           spanner:"Organization"`
+	// Email is the person's address, nil for none, and EmailVerifiedAt when the person
+	// proved it by following a link sent to it (nil while it is an operator's entry).
+	Email           *string        `json:"email"           spanner:"Email"`
+	EmailVerifiedAt *time.Time     `json:"emailVerifiedAt" spanner:"EmailVerifiedAt"`
+	Identities      []UserIdentity `json:"identities"      spanner:"Identities"`
+	Roles           []string       `json:"roles"           spanner:"Roles"`
+	EverywhereRoles []string       `json:"everywhereRoles" spanner:"EverywhereRoles"`
+	RolesSynced     bool           `json:"rolesSynced"     spanner:"RolesSynced"`
 }
 
 // Resource is the Auth's name for the resource.
@@ -128,6 +136,50 @@ func (RoleRow[A]) DefaultConfig() Config {
 	return Config{}
 }
 
+// InvitationRow is one standing invitation of the global partition (<Auth>Invitations):
+// an address invited to hold roles globally or in every tenant, until it is accepted,
+// revoked or expires. InvitedBy is the username of the user who sent it, nil when
+// unknown or gone.
+type InvitationRow[A UserAuth] struct {
+	ID        ccc.UUID  `json:"id"        spanner:"Id"`
+	Email     string    `json:"email"     spanner:"Email"`
+	Roles     []string  `json:"roles"     spanner:"Roles"`
+	InvitedBy *string   `json:"invitedBy" spanner:"InvitedBy"`
+	CreatedAt time.Time `json:"createdAt" spanner:"CreatedAt"`
+	ExpiresAt time.Time `json:"expiresAt" spanner:"ExpiresAt"`
+}
+
+// Resource is the Auth's name for the resource.
+func (InvitationRow[A]) Resource() accesstypes.Resource {
+	return namesOf[A]().Global.Invitations
+}
+
+// DefaultConfig tracks nothing: the rows are composed, not stored.
+func (InvitationRow[A]) DefaultConfig() Config {
+	return Config{}
+}
+
+// TenantInvitationRow is one standing invitation of the tenant partition
+// (<Auth><Tenant>Invitations): an address invited to hold roles in the tenant.
+type TenantInvitationRow[A UserAuth] struct {
+	ID        ccc.UUID  `json:"id"        spanner:"Id"`
+	Email     string    `json:"email"     spanner:"Email"`
+	Roles     []string  `json:"roles"     spanner:"Roles"`
+	InvitedBy *string   `json:"invitedBy" spanner:"InvitedBy"`
+	CreatedAt time.Time `json:"createdAt" spanner:"CreatedAt"`
+	ExpiresAt time.Time `json:"expiresAt" spanner:"ExpiresAt"`
+}
+
+// Resource is the Auth's name for the resource.
+func (TenantInvitationRow[A]) Resource() accesstypes.Resource {
+	return namesOf[A]().Tenant.Invitations
+}
+
+// DefaultConfig tracks nothing: the rows are composed, not stored.
+func (TenantInvitationRow[A]) DefaultConfig() Config {
+	return Config{}
+}
+
 // TenantRoleRow is one role a tenant seat may take (<Auth><Tenant>Roles).
 type TenantRoleRow[A UserAuth] struct {
 	Name string `json:"name" spanner:"Name"`
@@ -162,6 +214,8 @@ type userRequest struct {
 	CreatedAt              time.Time      `json:"createdAt"`
 	LastSignInAt           *time.Time     `json:"lastSignInAt"`
 	Organization           *string        `json:"organization"`
+	Email                  *string        `json:"email"`
+	EmailVerifiedAt        *time.Time     `json:"emailVerifiedAt"`
 	Identities             []UserIdentity `json:"identities"`
 	Roles                  []string       `json:"roles"`
 	EverywhereRoles        []string       `json:"everywhereRoles"`
@@ -172,15 +226,33 @@ type userWriteRequest struct {
 	Username string  `json:"username"`
 	Password *string `json:"password" immutable:"true"`
 	Disabled bool    `json:"disabled"`
+	// Email is an operator's entry of the person's address, unverified.
+	Email *string `json:"email"`
 }
 
 type tenantUserWriteRequest struct {
 	Username string  `json:"username"`
 	Password *string `json:"password" immutable:"true"`
 	Disabled bool    `json:"disabled"`
+	Email    *string `json:"email"`
 	// Role is the seat the created user takes in the tenant, which is what makes them
 	// the tenant's user.
 	Role string `json:"role" immutable:"true"`
+}
+
+type invitationRequest struct {
+	ID        ccc.UUID  `json:"id"        index:"true" perm:"-"`
+	Email     string    `json:"email"`
+	Roles     []string  `json:"roles"`
+	InvitedBy *string   `json:"invitedBy"`
+	CreatedAt time.Time `json:"createdAt"`
+	ExpiresAt time.Time `json:"expiresAt"`
+}
+
+// invitationWriteRequest is what a create takes; an invitation is never updated.
+type invitationWriteRequest struct {
+	Email string   `json:"email" immutable:"true"`
+	Roles []string `json:"roles" immutable:"true"`
 }
 
 type seatRequest struct {
@@ -217,18 +289,21 @@ const (
 	userFieldUsername accesstypes.Field = "Username"
 	userFieldPassword accesstypes.Field = "Password"
 	userFieldDisabled accesstypes.Field = "Disabled"
+	userFieldEmail    accesstypes.Field = "Email"
 	userFieldRole     accesstypes.Field = "Role"
 	seatFieldUser     accesstypes.Field = "User"
 	seatFieldRole     accesstypes.Field = "Role"
 	roleFieldName     accesstypes.Field = "Name"
+	invitationFieldID accesstypes.Field = "ID"
 )
 
 // The default orders: users by username then id, seats by username then role, roles by
 // name. The lists are total with the key fields the decoder appends.
 var (
-	usersOrder = Paging{Order: []SortField{{Field: string(userFieldUsername), Direction: SortAscending}}}
-	seatsOrder = Paging{Order: []SortField{{Field: "Username", Direction: SortAscending}, {Field: string(seatFieldRole), Direction: SortAscending}}}
-	rolesOrder = Paging{Order: []SortField{{Field: string(roleFieldName), Direction: SortAscending}}}
+	usersOrder       = Paging{Order: []SortField{{Field: string(userFieldUsername), Direction: SortAscending}}}
+	seatsOrder       = Paging{Order: []SortField{{Field: "Username", Direction: SortAscending}, {Field: string(seatFieldRole), Direction: SortAscending}}}
+	rolesOrder       = Paging{Order: []SortField{{Field: string(roleFieldName), Direction: SortAscending}}}
+	invitationsOrder = Paging{Order: []SortField{{Field: string(userFieldEmail), Direction: SortAscending}}}
 )
 
 // fieldTagsOf reads a request struct's field registrations, the way the generator
@@ -259,6 +334,11 @@ type userSnapshot struct {
 	seats map[accesstypes.User]map[accesstypes.PolicyScope][]accesstypes.Role
 
 	identities map[ccc.UUID][]UserIdentity
+
+	// invitations are the invitations that stand, loaded once the first invitation
+	// route asks (invitationsOf).
+	invitations       []UserInvitation
+	invitationsLoaded bool
 }
 
 // snapshot composes the partition's state.
@@ -361,6 +441,20 @@ func (snap *userSnapshot) inPartition(username string) bool {
 	return false
 }
 
+// invitationsOf loads the standing invitations once, every partition's.
+func (snap *userSnapshot) invitationsOf(ctx context.Context) ([]UserInvitation, error) {
+	if snap.invitationsLoaded {
+		return snap.invitations, nil
+	}
+	invitations, err := snap.accounts.Invitations(ctx)
+	if err != nil {
+		return nil, errors.Wrap(err, "resource.UserAccounts.Invitations()")
+	}
+	snap.invitations, snap.invitationsLoaded = invitations, true
+
+	return invitations, nil
+}
+
 // userFacts are the composed facts of one user beyond the account: what the identities
 // say.
 type userFacts struct {
@@ -433,6 +527,8 @@ func (u *composedUser) image() map[string]any {
 		userAttrCreatedAt:              u.account.CreatedAt,
 		userAttrLastSignInAt:           nil,
 		userAttrOrganization:           nil,
+		userAttrEmail:                  nil,
+		userAttrEmailVerified:          u.account.EmailVerifiedAt != nil,
 		userAttrRolesSynced:            u.facts.rolesSynced,
 	}
 	if u.account.LastSignInAt != nil {
@@ -440,6 +536,9 @@ func (u *composedUser) image() map[string]any {
 	}
 	if u.facts.organization != nil {
 		image[userAttrOrganization] = *u.facts.organization
+	}
+	if u.account.Email != nil {
+		image[userAttrEmail] = *u.account.Email
 	}
 
 	return image
@@ -456,6 +555,8 @@ func toUserRow[A UserAuth](u *composedUser) *UserRow[A] {
 		CreatedAt:              u.account.CreatedAt,
 		LastSignInAt:           u.account.LastSignInAt,
 		Organization:           u.facts.organization,
+		Email:                  u.account.Email,
+		EmailVerifiedAt:        u.account.EmailVerifiedAt,
 		Identities:             u.facts.identities,
 		Roles:                  u.roles,
 		EverywhereRoles:        u.everywhereRoles,
@@ -474,11 +575,75 @@ func toTenantUserRow[A UserAuth](u *composedUser) *TenantUserRow[A] {
 		CreatedAt:              u.account.CreatedAt,
 		LastSignInAt:           u.account.LastSignInAt,
 		Organization:           u.facts.organization,
+		Email:                  u.account.Email,
+		EmailVerifiedAt:        u.account.EmailVerifiedAt,
 		Identities:             u.facts.identities,
 		Roles:                  u.roles,
 		EverywhereRoles:        u.everywhereRoles,
 		RolesSynced:            u.facts.rolesSynced,
 	}
+}
+
+// composedInvitation is an invitation row before it is typed for a partition.
+type composedInvitation struct {
+	inv *UserInvitation
+	// by is the account of the user who sent it, nil when unknown or gone.
+	by *UserAccount
+}
+
+// invitedBy is the sender's username, nil for none.
+func (c *composedInvitation) invitedBy() *string {
+	if c.by == nil {
+		return nil
+	}
+	name := c.by.Username
+
+	return &name
+}
+
+// image is the invitation's attribute values by binding name. The roles ride under the
+// role attribute as a list, which the judge expands: a condition on role is judged once
+// per role the invitation carries.
+func (c *composedInvitation) image() map[string]any {
+	image := map[string]any{
+		userAttrEmail:         c.inv.Email,
+		seatAttrRole:          slices.Clone(c.inv.Roles),
+		invitationAttrInvited: nil,
+		invitationAttrCreated: c.inv.CreatedAt,
+		invitationAttrExpires: c.inv.ExpiresAt,
+	}
+	if by := c.invitedBy(); by != nil {
+		image[invitationAttrInvited] = *by
+	}
+
+	return image
+}
+
+// invitationsIn lists the partition's standing invitations: the global partition's own
+// (no tenant) or the tenant's.
+func (snap *userSnapshot) invitationsIn(ctx context.Context) ([]*composedInvitation, error) {
+	invitations, err := snap.invitationsOf(ctx)
+	if err != nil {
+		return nil, err
+	}
+	tenant := ""
+	if !snap.partition.scope.IsGlobal() {
+		tenant = string(snap.partition.domain)
+	}
+	var out []*composedInvitation
+	for i := range invitations {
+		inv := &invitations[i]
+		if inv.Tenant != tenant {
+			continue
+		}
+		c := &composedInvitation{inv: inv}
+		if inv.InvitedBy.Valid {
+			c.by = snap.byID[inv.InvitedBy.UUID]
+		}
+		out = append(out, c)
+	}
+
+	return out, nil
 }
 
 // composedSeat is a seat row before it is typed for a partition.

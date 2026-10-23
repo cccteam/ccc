@@ -123,12 +123,20 @@ type GeneratedHandlers interface {
 
 	CreateSector() http.HandlerFunc
 
+	CrewInvitations() http.HandlerFunc
+	CrewInvitation() http.HandlerFunc
+	PatchCrewInvitations() http.HandlerFunc
+
 	CrewRoles() http.HandlerFunc
 	CrewRole() http.HandlerFunc
 
 	CrewSeats() http.HandlerFunc
 	CrewSeat() http.HandlerFunc
 	PatchCrewSeats() http.HandlerFunc
+
+	CrewSectorInvitations() http.HandlerFunc
+	CrewSectorInvitation() http.HandlerFunc
+	PatchCrewSectorInvitations() http.HandlerFunc
 
 	CrewSectorRoles() http.HandlerFunc
 	CrewSectorRole() http.HandlerFunc
@@ -178,12 +186,20 @@ type GeneratedHandlers interface {
 
 	LaunchMission() http.HandlerFunc
 
+	MembersInvitations() http.HandlerFunc
+	MembersInvitation() http.HandlerFunc
+	PatchMembersInvitations() http.HandlerFunc
+
 	MembersRoles() http.HandlerFunc
 	MembersRole() http.HandlerFunc
 
 	MembersSeats() http.HandlerFunc
 	MembersSeat() http.HandlerFunc
 	PatchMembersSeats() http.HandlerFunc
+
+	MembersSectorInvitations() http.HandlerFunc
+	MembersSectorInvitation() http.HandlerFunc
+	PatchMembersSectorInvitations() http.HandlerFunc
 
 	MembersSectorRoles() http.HandlerFunc
 	MembersSectorRole() http.HandlerFunc
@@ -379,6 +395,16 @@ func generatedRoutes(r chi.Router, h GeneratedHandlers) {
 
 	bounded.Post("/console/api/create-sector", h.CreateSector())
 
+	crewInvitationsHandler := h.CrewInvitations()
+	bounded.Get("/console/api/crew-invitations", crewInvitationsHandler)
+	bounded.Post("/console/api/crew-invitations", crewInvitationsHandler)
+
+	crewInvitationHandler := h.CrewInvitation()
+	bounded.Get("/console/api/crew-invitations/{crewInvitationID}", crewInvitationHandler)
+	bounded.Post("/console/api/crew-invitations/{crewInvitationID}", crewInvitationHandler)
+
+	bounded.Patch("/console/api/crew-invitations", h.PatchCrewInvitations())
+
 	crewRolesHandler := h.CrewRoles()
 	bounded.Get("/console/api/crew-roles", crewRolesHandler)
 	bounded.Post("/console/api/crew-roles", crewRolesHandler)
@@ -396,6 +422,16 @@ func generatedRoutes(r chi.Router, h GeneratedHandlers) {
 	bounded.Post("/console/api/crew-seats/{crewSeatUser}/{crewSeatRole}", crewSeatHandler)
 
 	bounded.Patch("/console/api/crew-seats", h.PatchCrewSeats())
+
+	crewSectorInvitationsHandler := domainGuard(h.CrewSectorInvitations())
+	bounded.Get("/console/api/sectors/{sectorID}/crew-sector-invitations", crewSectorInvitationsHandler)
+	bounded.Post("/console/api/sectors/{sectorID}/crew-sector-invitations", crewSectorInvitationsHandler)
+
+	crewSectorInvitationHandler := domainGuard(h.CrewSectorInvitation())
+	bounded.Get("/console/api/sectors/{sectorID}/crew-sector-invitations/{crewSectorInvitationID}", crewSectorInvitationHandler)
+	bounded.Post("/console/api/sectors/{sectorID}/crew-sector-invitations/{crewSectorInvitationID}", crewSectorInvitationHandler)
+
+	bounded.Patch("/console/api/sectors/{sectorID}/crew-sector-invitations", domainGuard(h.PatchCrewSectorInvitations()))
 
 	crewSectorRolesHandler := domainGuard(h.CrewSectorRoles())
 	bounded.Get("/console/api/sectors/{sectorID}/crew-sector-roles", crewSectorRolesHandler)
@@ -495,6 +531,16 @@ func generatedRoutes(r chi.Router, h GeneratedHandlers) {
 
 	r.Post("/console/api/sectors/{sectorID}/launch-mission", domainGuard(h.LaunchMission()))
 
+	membersInvitationsHandler := h.MembersInvitations()
+	bounded.Get("/console/api/members-invitations", membersInvitationsHandler)
+	bounded.Post("/console/api/members-invitations", membersInvitationsHandler)
+
+	membersInvitationHandler := h.MembersInvitation()
+	bounded.Get("/console/api/members-invitations/{membersInvitationID}", membersInvitationHandler)
+	bounded.Post("/console/api/members-invitations/{membersInvitationID}", membersInvitationHandler)
+
+	bounded.Patch("/console/api/members-invitations", h.PatchMembersInvitations())
+
 	membersRolesHandler := h.MembersRoles()
 	bounded.Get("/console/api/members-roles", membersRolesHandler)
 	bounded.Post("/console/api/members-roles", membersRolesHandler)
@@ -512,6 +558,16 @@ func generatedRoutes(r chi.Router, h GeneratedHandlers) {
 	bounded.Post("/console/api/members-seats/{membersSeatUser}/{membersSeatRole}", membersSeatHandler)
 
 	bounded.Patch("/console/api/members-seats", h.PatchMembersSeats())
+
+	membersSectorInvitationsHandler := domainGuard(h.MembersSectorInvitations())
+	bounded.Get("/console/api/sectors/{sectorID}/members-sector-invitations", membersSectorInvitationsHandler)
+	bounded.Post("/console/api/sectors/{sectorID}/members-sector-invitations", membersSectorInvitationsHandler)
+
+	membersSectorInvitationHandler := domainGuard(h.MembersSectorInvitation())
+	bounded.Get("/console/api/sectors/{sectorID}/members-sector-invitations/{membersSectorInvitationID}", membersSectorInvitationHandler)
+	bounded.Post("/console/api/sectors/{sectorID}/members-sector-invitations/{membersSectorInvitationID}", membersSectorInvitationHandler)
+
+	bounded.Patch("/console/api/sectors/{sectorID}/members-sector-invitations", domainGuard(h.PatchMembersSectorInvitations()))
 
 	membersSectorRolesHandler := domainGuard(h.MembersSectorRoles())
 	bounded.Get("/console/api/sectors/{sectorID}/members-sector-roles", membersSectorRolesHandler)
@@ -866,12 +922,20 @@ type GeneratedPortalHandlers interface {
 
 	Features() http.HandlerFunc
 
+	MembersInvitations() http.HandlerFunc
+	MembersInvitation() http.HandlerFunc
+	PatchMembersInvitations() http.HandlerFunc
+
 	MembersRoles() http.HandlerFunc
 	MembersRole() http.HandlerFunc
 
 	MembersSeats() http.HandlerFunc
 	MembersSeat() http.HandlerFunc
 	PatchMembersSeats() http.HandlerFunc
+
+	MembersSectorInvitations() http.HandlerFunc
+	MembersSectorInvitation() http.HandlerFunc
+	PatchMembersSectorInvitations() http.HandlerFunc
 
 	MembersSectorRoles() http.HandlerFunc
 	MembersSectorRole() http.HandlerFunc
@@ -962,6 +1026,16 @@ func generatedPortalRoutes(r chi.Router, h GeneratedPortalHandlers) {
 
 	bounded.Get("/portal/api/features", h.Features())
 
+	membersInvitationsHandler := h.MembersInvitations()
+	bounded.Get("/portal/api/members-invitations", membersInvitationsHandler)
+	bounded.Post("/portal/api/members-invitations", membersInvitationsHandler)
+
+	membersInvitationHandler := h.MembersInvitation()
+	bounded.Get("/portal/api/members-invitations/{membersInvitationID}", membersInvitationHandler)
+	bounded.Post("/portal/api/members-invitations/{membersInvitationID}", membersInvitationHandler)
+
+	bounded.Patch("/portal/api/members-invitations", h.PatchMembersInvitations())
+
 	membersRolesHandler := h.MembersRoles()
 	bounded.Get("/portal/api/members-roles", membersRolesHandler)
 	bounded.Post("/portal/api/members-roles", membersRolesHandler)
@@ -979,6 +1053,16 @@ func generatedPortalRoutes(r chi.Router, h GeneratedPortalHandlers) {
 	bounded.Post("/portal/api/members-seats/{membersSeatUser}/{membersSeatRole}", membersSeatHandler)
 
 	bounded.Patch("/portal/api/members-seats", h.PatchMembersSeats())
+
+	membersSectorInvitationsHandler := domainGuard(h.MembersSectorInvitations())
+	bounded.Get("/portal/api/sectors/{sectorID}/members-sector-invitations", membersSectorInvitationsHandler)
+	bounded.Post("/portal/api/sectors/{sectorID}/members-sector-invitations", membersSectorInvitationsHandler)
+
+	membersSectorInvitationHandler := domainGuard(h.MembersSectorInvitation())
+	bounded.Get("/portal/api/sectors/{sectorID}/members-sector-invitations/{membersSectorInvitationID}", membersSectorInvitationHandler)
+	bounded.Post("/portal/api/sectors/{sectorID}/members-sector-invitations/{membersSectorInvitationID}", membersSectorInvitationHandler)
+
+	bounded.Patch("/portal/api/sectors/{sectorID}/members-sector-invitations", domainGuard(h.PatchMembersSectorInvitations()))
 
 	membersSectorRolesHandler := domainGuard(h.MembersSectorRoles())
 	bounded.Get("/portal/api/sectors/{sectorID}/members-sector-roles", membersSectorRolesHandler)

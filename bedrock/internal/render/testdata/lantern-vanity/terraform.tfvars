@@ -7,6 +7,11 @@ state_bucket = "imp-boot-gbl-state-REPLACEME"
 # Placement per environment, filled as each environment is set up. Every map
 # is keyed by environment so one file serves all three applies.
 
+# The Google Workspace mailbox the auths' mail is sent as, once for the
+# organization (README, "Hand steps"); empty, the application writes its mail
+# to the log and sends nothing.
+mail_mailbox = ""
+
 # The version of each secret an environment runs. Empty means "not yet": the
 # container exists, nothing is mounted; tst alone runs that way,
 # and a release to any other environment is refused until every secret the
@@ -51,5 +56,6 @@ cloud_armor = {
 # Defaults that are decisions, restated so they are visible here:
 #   hostnames                    = lantrn-console-tst. / lantrn-console-stg. / console.lanterns.example
 #   placeholder_image            = us-docker.pkg.dev/cloudrun/container/hello
+#   mail_mailbox                 = ""
 #   cloud_armor_sign_in_count    = 30
 #   cloud_armor_sign_in_interval = 60

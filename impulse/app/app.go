@@ -134,6 +134,13 @@ type Auth struct {
 	// AttemptsTable is the sign-in attempts table the password method's attempt limiter
 	// counts in: WithSignInAttemptsTableName or the library default.
 	AttemptsTable string
+	// MailLinksTable is the mail links table the Auth's invitations, address
+	// verifications and sign-ups are kept in: WithMailLinksTableName or the library
+	// default. Read when the Auth sends mail (Mail).
+	MailLinksTable string
+	// Mail reports an Auth constructed with session.WithMail: it mails invitations,
+	// address verifications and sign-up links, and reads the mail links table.
+	Mail bool
 	// AuthEventsTable is the auth events table the storage attaches
 	// (sessionstorage.WithAuthEvents over NewAuthEventsTable), when its name is a literal
 	// or a constant of the file; empty when the storage attaches none or the name does
@@ -184,6 +191,14 @@ type Method struct {
 	// registered on. The scan attaches the method to that construction, or to the only
 	// Auth of its package when the identifier does not resolve.
 	AuthVar string
+	// OpenSignUp reports a password method registered with session.OpenSignUp(): a
+	// stranger signs up from a link mailed to their address, and the outlet's declaration
+	// chains .OpenSignUp() so the router serves the sign-up routes.
+	OpenSignUp bool
+	// UsernameIsEmail reports a password method registered with
+	// session.UsernameIsEmail(): the sign-in name is the person's email address, and the
+	// outlet's declaration chains .UsernameIsEmail() so the users surface says so.
+	UsernameIsEmail bool
 }
 
 // Directory reports a method whose people sign in through a directory or an identity

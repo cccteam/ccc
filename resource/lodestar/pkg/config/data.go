@@ -19,6 +19,8 @@ import (
 	"github.com/cccteam/ccc/resource/lodestar/pkg/auth/members"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/router"
 	"github.com/cccteam/ccc/resource/sessionusers"
+	"github.com/cccteam/session/mail"
+	"github.com/cccteam/session/mail/workspace"
 	"github.com/go-playground/errors/v5"
 	"github.com/sethvargo/go-envconfig"
 )
@@ -151,34 +153,20 @@ func NewDataConfiguration(ctx context.Context) (*DataConfiguration, error) {
 	// every engine on every instance through the policy kind of the signals document.
 	policySignal := auth.PolicySignal(liveService)
 
-	// The crew auth: the console's people, whose default roles ride in the binary and
-	// validate against the generated collection, which the router package generates and
-	// the auth package cannot import. They sign in with a password or through the
-	// fleet's Google directory, whose refused logins return to the console's login page.
-	// The auth opens its stores on the driver's Spanner client: the one vendor-specific
-	// seam left in the level, pending the PostgreSQL client (cccteam/ccc#852).
-	crewAuth, err := crew.New(ctx, db.SpannerClient, &crew.Settings{
-		CookieKey:      cookieKey,
-		SessionTimeout: env.SessionTimeout,
-		LoginURL:       "/console/login",
-		Collection:     router.Collection(),
-		Directory: auth.Directory{
-			ClientID:     env.CrewClientID,
-			ClientSecret: env.CrewClientSecret,
-			RedirectURL:  env.CrewRedirectURL,
-			Connection:   env.CrewConnection,
-			HostedDomain: env.CrewHostedDomain,
-			GroupPrefix:  env.CrewGroupPrefix,
-			GroupLookup:  env.CrewGroupLookup,
-		},
-		SignUpRedirectURL: env.CrewSignUpRedirectURL,
-		ChangeSignal:      policySignal,
-		// The sign-in rule reads what each sector declares about who may enter it in
-		// the sign-in's transaction, through the generated reader.
-		TenantDeclarations: app.NewSectorDeclarationReader(),
-	})
+	// The one mail driver both auths send through: the invitations the user-management
+	// surfaces mail, the verification of an address a person adds, and the crew's
+	// sign-up links. Every link leads to the login page of the surface the auth binds
+	// to, at the application's public address.
+	//
+	// Demonstrates: auth.invitation.
+	sender, err := openMailSender(env)
 	if err != nil {
-		return nil, errors.Wrap(err, "crew.New()")
+		return nil, err
+	}
+
+	crewAuth, err := openCrewAuth(ctx, db, env, cookieKey, policySignal, sender)
+	if err != nil {
+		return nil, err
 	}
 
 	// The tenant roster: every instance's copy of the Sectors table's keys, built by the
@@ -209,30 +197,9 @@ func NewDataConfiguration(ctx context.Context) (*DataConfiguration, error) {
 		live:              liveService,
 	}
 
-	// The members auth: the portal's people, whose roles are the directory's. Its role
-	// synchronization writes a global role in the global partition and a domain role in
-	// every sector, so a client's membership reaches each sector with one row; the
-	// portal's grants then narrow by company. The portal's login page is where a refused
-	// directory login returns to.
-	membersAuth, err := members.New(ctx, db.SpannerClient, &members.Settings{
-		CookieKey:      cookieKey,
-		SessionTimeout: env.SessionTimeout,
-		LoginURL:       "/portal/login",
-		Collection:     router.Collection(),
-		Directory: auth.Directory{
-			ClientID:     env.MembersClientID,
-			ClientSecret: env.MembersClientSecret,
-			RedirectURL:  env.MembersRedirectURL,
-			Connection:   env.MembersConnection,
-			HostedDomain: env.MembersHostedDomain,
-			GroupPrefix:  env.MembersGroupPrefix,
-			GroupLookup:  env.MembersGroupLookup,
-		},
-		ChangeSignal:       policySignal,
-		TenantDeclarations: app.NewSectorDeclarationReader(),
-	})
+	membersAuth, err := openMembersAuth(ctx, db, env, cookieKey, policySignal, sender)
 	if err != nil {
-		return nil, errors.Wrap(err, "members.New()")
+		return nil, err
 	}
 	conf.members = membersAuth
 
@@ -315,16 +282,105 @@ func (c *DataConfiguration) Crew() *crew.Auth {
 // CrewUserSurface returns the crew auth's user-management surface: the crew session's
 // accounts (sessionusers.Accounts over its API) and the crew engine's memberships, which
 // the generated crew user handlers serve through. A seat written here is a policy write
-// the engine announces to every instance through the live service.
+// the engine announces to every instance through the live service. The surface reads
+// each sector's declaration from the roster's copy, so a sector's marshal may seat a
+// person directly, without an invitation, when the person entered through a directory
+// the sector declares (resource.WithTenantDirectories).
 func (c *DataConfiguration) CrewUserSurface() *resource.UserSurface[router.CrewAuth] {
-	return router.NewCrewUserSurface(sessionusers.Accounts(c.crew.Session().API()), c.crew.Access().UserManager())
+	return router.NewCrewUserSurface(sessionusers.Accounts(c.crew.Session().API()), c.crew.Access().UserManager(), resource.WithTenantDirectories(c.tenants.Declarations))
 }
 
 // MembersUserSurface returns the members auth's surface over the members session's
 // accounts and the members engine's memberships, served on the portal and, by the
-// generator program's Manages, on the console.
+// generator program's Manages, on the console, with the same directory-vouched direct
+// seat the crew's offers.
 func (c *DataConfiguration) MembersUserSurface() *resource.UserSurface[router.MembersAuth] {
-	return router.NewMembersUserSurface(sessionusers.Accounts(c.members.Session().API()), c.members.Access().UserManager())
+	return router.NewMembersUserSurface(sessionusers.Accounts(c.members.Session().API()), c.members.Access().UserManager(), resource.WithTenantDirectories(c.tenants.Declarations))
+}
+
+// openCrewAuth opens the crew auth: the console's people, whose default roles ride in
+// the binary and validate against the generated collection, which the router package
+// generates and the auth package cannot import. They sign in with a password or through
+// the fleet's Google directory, whose refused logins return to the console's login
+// page, and the auth mails its links to that page at the application's public address.
+// The auth opens its stores on the driver's Spanner client: the one vendor-specific
+// seam left in the level, pending the PostgreSQL client (cccteam/ccc#852).
+func openCrewAuth(ctx context.Context, db *database.Driver, env *dataConfig, cookieKey string, policySignal access.ChangeSignal, sender mail.Sender) (*crew.Auth, error) {
+	crewAuth, err := crew.New(ctx, db.SpannerClient, &crew.Settings{
+		CookieKey:      cookieKey,
+		SessionTimeout: env.SessionTimeout,
+		LoginURL:       "/console/login",
+		Collection:     router.Collection(),
+		Directory: auth.Directory{
+			ClientID:     env.CrewClientID,
+			ClientSecret: env.CrewClientSecret,
+			RedirectURL:  env.CrewRedirectURL,
+			Connection:   env.CrewConnection,
+			HostedDomain: env.CrewHostedDomain,
+			GroupPrefix:  env.CrewGroupPrefix,
+			GroupLookup:  env.CrewGroupLookup,
+		},
+		SignUpRedirectURL: env.CrewSignUpRedirectURL,
+		ChangeSignal:      policySignal,
+		// The sign-in rule reads what each sector declares about who may enter it in
+		// the sign-in's transaction, through the generated reader.
+		TenantDeclarations: app.NewSectorDeclarationReader(),
+		Mail:               auth.Mail{Sender: sender, LoginURL: env.PublicURL + "/console/login"},
+	})
+	if err != nil {
+		return nil, errors.Wrap(err, "crew.New()")
+	}
+
+	return crewAuth, nil
+}
+
+// openMembersAuth opens the members auth: the portal's people, whose roles are the
+// directory's. Its role synchronization writes a global role in the global partition
+// and a domain role in every sector, so a client's membership reaches each sector with
+// one row; the portal's grants then narrow by company. The portal's login page is where
+// a refused directory login returns to and where the auth's mailed links lead.
+func openMembersAuth(ctx context.Context, db *database.Driver, env *dataConfig, cookieKey string, policySignal access.ChangeSignal, sender mail.Sender) (*members.Auth, error) {
+	membersAuth, err := members.New(ctx, db.SpannerClient, &members.Settings{
+		CookieKey:      cookieKey,
+		SessionTimeout: env.SessionTimeout,
+		LoginURL:       "/portal/login",
+		Collection:     router.Collection(),
+		Directory: auth.Directory{
+			ClientID:     env.MembersClientID,
+			ClientSecret: env.MembersClientSecret,
+			RedirectURL:  env.MembersRedirectURL,
+			Connection:   env.MembersConnection,
+			HostedDomain: env.MembersHostedDomain,
+			GroupPrefix:  env.MembersGroupPrefix,
+			GroupLookup:  env.MembersGroupLookup,
+		},
+		ChangeSignal:       policySignal,
+		TenantDeclarations: app.NewSectorDeclarationReader(),
+		Mail:               auth.Mail{Sender: sender, LoginURL: env.PublicURL + "/portal/login"},
+	})
+	if err != nil {
+		return nil, errors.Wrap(err, "members.New()")
+	}
+
+	return membersAuth, nil
+}
+
+// openMailSender opens the mail driver the auths send through: the Google Workspace
+// SMTP relay as the configured mailbox with its app password (APP_MAIL_MAILBOX,
+// APP_MAIL_APP_PASSWORD), or, with no mailbox configured, the session library's
+// logging stand-in, which writes each message to the log, link included, and sends
+// nothing: development follows the link from the log. A deployed environment configures
+// the mailbox, since the links are secrets.
+func openMailSender(env *dataConfig) (mail.Sender, error) {
+	if env.MailMailbox == "" {
+		return mail.Log{}, nil
+	}
+	sender, err := workspace.New(workspace.Settings{Mailbox: env.MailMailbox, AppPassword: env.MailAppPassword, Name: crew.Application})
+	if err != nil {
+		return nil, errors.Wrap(err, "workspace.New()")
+	}
+
+	return sender, nil
 }
 
 // TenantRoster returns the tenant roster: the sectors this instance serves, loaded when
@@ -403,6 +459,18 @@ type dataConfig struct {
 	MembersHostedDomain   string `env:"APP_MEMBERS_OIDC_HOSTED_DOMAIN"`
 	MembersGroupPrefix    string `env:"APP_MEMBERS_OIDC_GROUP_PREFIX"`
 	MembersGroupLookup    string `env:"APP_MEMBERS_OIDC_GROUP_LOOKUP"`
+
+	// PublicURL is the application's address as a browser reaches it, scheme and host
+	// with no path (https://lodestar.example.com; the dev proxy in development): every
+	// link the auths mail leads to a login page under it. Required, since a mailed link
+	// is absolute.
+	PublicURL string `env:"APP_PUBLIC_URL,required"`
+	// The mail driver: the Google Workspace mailbox the application sends as, through
+	// the Workspace SMTP relay, and the mailbox's app password, a secret the deployment
+	// reads from its store. Unset, the session library's logging stand-in writes each
+	// message to the log instead of sending it, for development alone.
+	MailMailbox     string `env:"APP_MAIL_MAILBOX"`
+	MailAppPassword string `env:"APP_MAIL_APP_PASSWORD" secret:"true"`
 
 	// FileStores are the file stores' URLs.
 	FileStores FileStoreSettings

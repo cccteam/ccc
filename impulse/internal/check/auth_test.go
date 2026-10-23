@@ -53,6 +53,10 @@ const (
 	_ = session.PasswordSignIn(partners)`
 	forwarded = `authA, _ := session.NewAuth[session.NoCustomData, session.NoCustomData](sessionstorage.NewSpannerAuth(client), key, opts...)
 	_ = session.PasswordSignIn(authA)`
+	// mailed sends mail (WithMail), so it reads its mail links table too, and registers
+	// the password method with open sign-up and the address as the sign-in name.
+	mailed = `staff, _ := session.NewAuth[session.NoCustomData, session.NoCustomData](sessionstorage.NewSpannerAuth(client), key, session.WithSessionTableName("StaffSessions"), session.WithUserTableName("StaffUsers"), session.WithIdentitiesTableName("StaffIdentities"), session.WithPendingSignInsTableName("StaffPending"), session.WithSignInAttemptsTableName("StaffAttempts"), session.WithMailLinksTableName("StaffMailLinks"), session.WithMail(nil, session.MailSettings{}))
+	_ = session.PasswordSignIn(staff, session.OpenSignUp(), session.UsernameIsEmail())`
 	noMethods      = `_, _ = session.NewAuth[session.NoCustomData, session.NoCustomData](sessionstorage.NewSpannerAuth(client), key)`
 	unreadableName = `authA, _ := session.NewAuth[session.NoCustomData, session.NoCustomData](sessionstorage.NewSpannerAuth(client), key)
 	_, _ = azure.SignIn(authA, registration(), signin.MembersOfDirectory, &azure.Config{Tenants: azure.AnyTenant()})`
@@ -219,6 +223,29 @@ func TestSessionTables(t *testing.T) {
 			wantDetails: []string{
 				"pkg/config/session.go:12: the Auth at pkg/config/session.go:12 reads table SessionPendingSignIns, which no migration creates (the session library's schema is under " + schemaSets + ")",
 				"pkg/config/session.go:15: the Auth at pkg/config/session.go:15 shares table Sessions with the Auth at pkg/config/session.go:12; each Auth needs its own tables (the With*TableName options and the storage's table constructors)",
+			},
+		},
+		{
+			name: "an Auth that sends mail reads its mail links table",
+			files: map[string]string{
+				"cmd/generate/main.go":                     site,
+				"pkg/config/session.go":                    authFile(mailed),
+				"schema/migrations/000003_Sessions.up.sql": tables("StaffSessions", "StaffUsers", "StaffIdentities", "StaffPending", "StaffAttempts", "StaffMailLinks"),
+			},
+			wantStatus:  Pass,
+			wantSummary: "1 auth(s): methods password (open sign-up, the username is the address); tables StaffSessions, StaffUsers, StaffIdentities, StaffPending, StaffAttempts, StaffMailLinks",
+		},
+		{
+			name: "a missing mail links table",
+			files: map[string]string{
+				"cmd/generate/main.go":                     site,
+				"pkg/config/session.go":                    authFile(mailed),
+				"schema/migrations/000003_Sessions.up.sql": tables("StaffSessions", "StaffUsers", "StaffIdentities", "StaffPending", "StaffAttempts"),
+			},
+			wantStatus:  Fail,
+			wantSummary: "1 auth wiring problem(s)",
+			wantDetails: []string{
+				"pkg/config/session.go:12: the Auth at pkg/config/session.go:12 reads table StaffMailLinks, which no migration creates (the session library's schema is under " + schemaSets + ")",
 			},
 		},
 		{

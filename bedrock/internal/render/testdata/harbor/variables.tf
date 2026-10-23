@@ -261,7 +261,7 @@ variable "secret_versions" {
     and bedrock check refuses one there and the word on any other secret.
 
       secret_versions = {
-        tst = { APP_COOKIE_KEY = "1", APP_STAFF_DIRECTORY_CLIENT_SECRET = "1" }
+        tst = { APP_COOKIE_KEY = "1", APP_MAIL_APP_PASSWORD = "1" }
       }
   EOT
   type        = map(map(string))
@@ -403,6 +403,12 @@ variable "staff_directory_hosted_domain" {
   description = "Google Workspace domain the logins of the staff auth's directory registration are restricted to (APP_STAFF_DIRECTORY_HOSTED_DOMAIN, dataConfig.StaffDirectoryHostedDomain). Required non-empty by the session library at construction, so the migrate command carries it too."
   type        = string
   default     = "impulseframework.com"
+}
+
+variable "mail_mailbox" {
+  description = "The Google Workspace mailbox the auths' mail is sent as (APP_MAIL_MAILBOX, dataConfig.MailMailbox), through the Workspace SMTP relay with the mailbox's app password (the secret APP_MAIL_APP_PASSWORD): a no-reply address of the organization's domain, once for the organization. Empty until the organization names one: the application then writes its mail to the log and sends nothing (README, \"Hand steps\")."
+  type        = string
+  default     = ""
 }
 
 variable "members_administrator" {

@@ -15,6 +15,7 @@ import (
 	"github.com/cccteam/ccc"
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/httpio"
+	"github.com/cccteam/session/signin"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-playground/errors/v5"
 	"github.com/google/go-cmp/cmp"
@@ -44,13 +45,19 @@ type userFixture struct {
 	perms    *scriptedPermissions
 	surface  *UserSurface[testUserAuth]
 	router   chi.Router
+	// declarations are what each sector declares about who may enter it, for the
+	// direct seat of a person its directory vouched for; a sector absent declares
+	// nothing.
+	declarations map[accesstypes.Domain]*signin.TenantDeclaration
 }
 
 type fakeAccounts struct {
-	users      []UserAccount
-	identities map[ccc.UUID][]UserIdentity
-	resets     map[ccc.UUID]string
-	unlinked   []ccc.UUID
+	users       []UserAccount
+	identities  map[ccc.UUID][]UserIdentity
+	resets      map[ccc.UUID]string
+	unlinked    []ccc.UUID
+	invitations []UserInvitation
+	revoked     []ccc.UUID
 }
 
 func (f *fakeAccounts) Users(context.Context) ([]UserAccount, error) {
@@ -82,14 +89,51 @@ func (f *fakeAccounts) User(_ context.Context, id ccc.UUID) (*UserAccount, error
 	return &copied, nil
 }
 
-func (f *fakeAccounts) CreateUser(_ context.Context, username string, password *string, disabled bool) (ccc.UUID, error) {
+func (f *fakeAccounts) CreateUser(_ context.Context, username string, password, email *string, disabled bool) (ccc.UUID, error) {
 	id, err := ccc.NewUUID()
 	if err != nil {
 		return ccc.NilUUID, errors.Wrap(err, "ccc.NewUUID()")
 	}
-	f.users = append(f.users, UserAccount{ID: id, Username: username, HasPassword: password != nil, PasswordChangeRequired: password != nil, Disabled: disabled, CreatedAt: time.Now()})
+	f.users = append(f.users, UserAccount{ID: id, Username: username, HasPassword: password != nil, PasswordChangeRequired: password != nil, Disabled: disabled, CreatedAt: time.Now(), Email: email})
 
 	return id, nil
+}
+
+func (f *fakeAccounts) SetUserEmail(_ context.Context, id ccc.UUID, email *string) error {
+	user, err := f.find(id)
+	if err != nil {
+		return err
+	}
+	user.Email, user.EmailVerifiedAt = email, nil
+
+	return nil
+}
+
+func (f *fakeAccounts) Invite(_ context.Context, req *UserInvitationRequest) (*UserInvitation, error) {
+	id, err := ccc.NewUUID()
+	if err != nil {
+		return nil, errors.Wrap(err, "ccc.NewUUID()")
+	}
+	now := time.Date(2026, 10, 23, 9, 0, 0, 0, time.UTC)
+	inv := UserInvitation{ID: id, Email: req.Email, Tenant: req.Tenant, Roles: slices.Clone(req.Roles), InvitedBy: req.InvitedBy, CreatedAt: now, ExpiresAt: now.Add(7 * 24 * time.Hour)}
+	f.invitations = append(f.invitations, inv)
+
+	return &inv, nil
+}
+
+func (f *fakeAccounts) Invitations(context.Context) ([]UserInvitation, error) {
+	return slices.Clone(f.invitations), nil
+}
+
+func (f *fakeAccounts) RevokeInvitation(_ context.Context, id ccc.UUID) error {
+	before := len(f.invitations)
+	f.invitations = slices.DeleteFunc(f.invitations, func(inv UserInvitation) bool { return inv.ID == id })
+	if len(f.invitations) == before {
+		return httpio.NewNotFoundMessagef("invitation %s does not exist", id)
+	}
+	f.revoked = append(f.revoked, id)
+
+	return nil
 }
 
 func (f *fakeAccounts) RenameUser(_ context.Context, id ccc.UUID, username string) error {
@@ -310,15 +354,20 @@ func newUserFixture(t *testing.T) *userFixture {
 	}
 	signedIn := time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)
 	acme := "acme"
+	// cadet signed in through the lakeside directory, which no registration of the
+	// shape names, and holds no seat: the person the direct seat is for.
+	cadetID := mustUUID(t)
 	accounts := &fakeAccounts{
 		users: []UserAccount{
 			{ID: ids[0], Username: "admin", HasPassword: true, CreatedAt: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC), LastSignInAt: &signedIn},
 			{ID: ids[1], Username: "pilot", CreatedAt: time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC)},
 			{ID: ids[2], Username: "clerk", HasPassword: true, CreatedAt: time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC)},
 			{ID: ids[3], Username: "marshal", HasPassword: true, CreatedAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC)},
+			{ID: cadetID, Username: "cadet", CreatedAt: time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC)},
 		},
 		identities: map[ccc.UUID][]UserIdentity{
-			ids[1]: {{ID: mustUUID(t), Method: "google", Connection: "google", Subject: "sub-1", Organization: &acme, LinkedAt: signedIn, LastUsedAt: signedIn}},
+			ids[1]:  {{ID: mustUUID(t), Method: "google", Connection: "google", Subject: "sub-1", Organization: &acme, LinkedAt: signedIn, LastUsedAt: signedIn}},
+			cadetID: {{ID: mustUUID(t), Method: "azure", Connection: "lakeside", Subject: "sub-2", LinkedAt: signedIn, LastUsedAt: signedIn}},
 		},
 	}
 	seats := &fakeSeats{roles: map[accesstypes.PolicyScope][]accesstypes.Role{
@@ -340,7 +389,11 @@ func newUserFixture(t *testing.T) *userFixture {
 		t.Fatalf("RegisterUserSurface() error = %v", err)
 	}
 	collection := b.GeneratedCollection()
-	surface := NewUserSurface[testUserAuth](accounts, seats)
+	f := &userFixture{accounts: accounts, seats: seats, perms: perms, declarations: map[accesstypes.Domain]*signin.TenantDeclaration{}}
+	surface := NewUserSurface[testUserAuth](accounts, seats, WithTenantDirectories(func(_ context.Context, domain accesstypes.Domain) (*signin.TenantDeclaration, error) {
+		return f.declarations[domain], nil
+	}))
+	f.surface = surface
 	app := userTestApp{perms: perms, key: mustCursorKey(t, base64.StdEncoding.EncodeToString([]byte("users-test-cookie-key-32-bytes!!")))}
 
 	n := surface.Names()
@@ -354,6 +407,9 @@ func newUserFixture(t *testing.T) *userFixture {
 	r.Get("/"+n.Global.RolesRoute, surface.Roles(app, collection))
 	r.Post("/"+n.Global.SetPasswordRoute, surface.SetUserPassword(app, collection))
 	r.Post("/"+n.Global.UnlinkIdentityRoute, surface.UnlinkUserIdentity(app, collection))
+	r.Get("/"+n.Global.InvitationsRoute, surface.Invitations(app, collection))
+	r.Get("/"+n.Global.InvitationsRoute+"/{"+string(n.Global.InvitationParam)+"}", surface.Invitation(app, collection))
+	r.Patch("/"+n.Global.InvitationsRoute, surface.PatchInvitations(app, collection))
 	tenant := "/sectors/{sectorID}/"
 	r.Get(tenant+n.Tenant.UsersRoute, surface.TenantUsers(app, collection))
 	r.Get(tenant+n.Tenant.UsersRoute+"/{"+string(n.Tenant.UserParam)+"}", surface.TenantUser(app, collection))
@@ -362,8 +418,12 @@ func newUserFixture(t *testing.T) *userFixture {
 	r.Patch(tenant+n.Tenant.SeatsRoute, surface.PatchTenantSeats(app, collection))
 	r.Get(tenant+n.Tenant.RolesRoute, surface.TenantRoles(app, collection))
 	r.Post(tenant+n.Tenant.SetPasswordRoute, surface.SetTenantUserPassword(app, collection))
+	r.Get(tenant+n.Tenant.InvitationsRoute, surface.TenantInvitations(app, collection))
+	r.Get(tenant+n.Tenant.InvitationsRoute+"/{"+string(n.Tenant.InvitationParam)+"}", surface.TenantInvitation(app, collection))
+	r.Patch(tenant+n.Tenant.InvitationsRoute, surface.PatchTenantInvitations(app, collection))
+	f.router = r
 
-	return &userFixture{accounts: accounts, seats: seats, perms: perms, surface: surface, router: r}
+	return f
 }
 
 func mustUUID(t *testing.T) ccc.UUID {
@@ -450,16 +510,16 @@ func TestUserSurface_lists(t *testing.T) {
 			},
 			target:    "/crew-users",
 			wantCode:  http.StatusOK,
-			wantNames: []string{"admin", "clerk", "marshal", "pilot"},
+			wantNames: []string{"admin", "cadet", "clerk", "marshal", "pilot"},
 			check: func(t *testing.T, rows []map[string]any) {
 				t.Helper()
 				if got := rows[0]["roles"]; !cmp.Equal(got, []any{"Administrator"}) {
 					t.Errorf("admin roles = %v", got)
 				}
-				if got := rows[3]["everywhereRoles"]; !cmp.Equal(got, []any{"Pilot"}) {
+				if got := rows[4]["everywhereRoles"]; !cmp.Equal(got, []any{"Pilot"}) {
 					t.Errorf("pilot everywhereRoles = %v", got)
 				}
-				if got := rows[3]["rolesSynced"]; got != true {
+				if got := rows[4]["rolesSynced"]; got != true {
 					t.Errorf("pilot rolesSynced = %v, want true: the directory writes the roles", got)
 				}
 				if _, leaked := rows[0]["disabled"]; leaked {
@@ -483,13 +543,13 @@ func TestUserSurface_lists(t *testing.T) {
 			},
 			target:    "/crew-users",
 			wantCode:  http.StatusOK,
-			wantNames: []string{"admin", "clerk", "marshal", "pilot"},
+			wantNames: []string{"admin", "cadet", "clerk", "marshal", "pilot"},
 			check: func(t *testing.T, rows []map[string]any) {
 				t.Helper()
 				if _, ok := rows[0]["createdAt"]; !ok {
 					t.Errorf("admin's createdAt masked; the condition holds for a password user")
 				}
-				if _, ok := rows[3]["createdAt"]; ok {
+				if _, ok := rows[4]["createdAt"]; ok {
 					t.Errorf("pilot's createdAt rendered; the condition refuses a password-less user")
 				}
 			},
@@ -800,8 +860,8 @@ func TestUserSurface_userWrites(t *testing.T) {
 			wantCode: http.StatusOK,
 			check: func(t *testing.T, f *userFixture) {
 				t.Helper()
-				if len(f.accounts.users) != 4 {
-					t.Errorf("%d users after the dry run, want 4", len(f.accounts.users))
+				if len(f.accounts.users) != 5 {
+					t.Errorf("%d users after the dry run, want 5", len(f.accounts.users))
 				}
 			},
 		},
@@ -871,8 +931,8 @@ func TestUserSurface_userWrites(t *testing.T) {
 			wantCode: http.StatusOK,
 			check: func(t *testing.T, f *userFixture) {
 				t.Helper()
-				if len(f.accounts.users) != 3 {
-					t.Errorf("%d users after the delete, want 3", len(f.accounts.users))
+				if len(f.accounts.users) != 4 {
+					t.Errorf("%d users after the delete, want 4", len(f.accounts.users))
 				}
 				if slices.Contains(f.seats.held[everywhere]["Marshal"], "marshal") {
 					t.Errorf("the deleted user still holds Marshal everywhere")
@@ -1269,15 +1329,15 @@ func TestUserSurfaceDeclaration_Names(t *testing.T) {
 	names := decl.Names()
 	want := UserResourceNames{
 		Global: UserPartitionNames{
-			Users: "CrewUsers", Seats: "CrewSeats", Roles: "CrewRoles", SetPassword: "SetCrewUserPassword", UnlinkIdentity: "UnlinkCrewUserIdentity",
-			UsersRoute: "crew-users", SeatsRoute: "crew-seats", RolesRoute: "crew-roles", SetPasswordRoute: "set-crew-user-password", UnlinkIdentityRoute: "unlink-crew-user-identity",
-			UserParam: "crewUserID", SeatUserParam: "crewSeatUser", SeatRoleParam: "crewSeatRole", RoleParam: "crewRoleName",
+			Users: "CrewUsers", Seats: "CrewSeats", Roles: "CrewRoles", Invitations: "CrewInvitations", SetPassword: "SetCrewUserPassword", UnlinkIdentity: "UnlinkCrewUserIdentity",
+			UsersRoute: "crew-users", SeatsRoute: "crew-seats", RolesRoute: "crew-roles", InvitationsRoute: "crew-invitations", SetPasswordRoute: "set-crew-user-password", UnlinkIdentityRoute: "unlink-crew-user-identity",
+			UserParam: "crewUserID", SeatUserParam: "crewSeatUser", SeatRoleParam: "crewSeatRole", RoleParam: "crewRoleName", InvitationParam: "crewInvitationID",
 		},
 		Tenant: UserPartitionNames{
 			Tenanted: true,
-			Users:    "CrewSectorUsers", Seats: "CrewSectorSeats", Roles: "CrewSectorRoles", SetPassword: "SetCrewSectorUserPassword", UnlinkIdentity: "UnlinkCrewSectorUserIdentity",
-			UsersRoute: "crew-sector-users", SeatsRoute: "crew-sector-seats", RolesRoute: "crew-sector-roles", SetPasswordRoute: "set-crew-sector-user-password", UnlinkIdentityRoute: "unlink-crew-sector-user-identity",
-			UserParam: "crewSectorUserID", SeatUserParam: "crewSectorSeatUser", SeatRoleParam: "crewSectorSeatRole", RoleParam: "crewSectorRoleName",
+			Users:    "CrewSectorUsers", Seats: "CrewSectorSeats", Roles: "CrewSectorRoles", Invitations: "CrewSectorInvitations", SetPassword: "SetCrewSectorUserPassword", UnlinkIdentity: "UnlinkCrewSectorUserIdentity",
+			UsersRoute: "crew-sector-users", SeatsRoute: "crew-sector-seats", RolesRoute: "crew-sector-roles", InvitationsRoute: "crew-sector-invitations", SetPasswordRoute: "set-crew-sector-user-password", UnlinkIdentityRoute: "unlink-crew-sector-user-identity",
+			UserParam: "crewSectorUserID", SeatUserParam: "crewSectorSeatUser", SeatRoleParam: "crewSectorSeatRole", RoleParam: "crewSectorRoleName", InvitationParam: "crewSectorInvitationID",
 		},
 	}
 	if diff := cmp.Diff(want, names); diff != "" {

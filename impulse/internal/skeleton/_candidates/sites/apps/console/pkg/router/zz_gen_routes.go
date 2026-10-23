@@ -66,12 +66,20 @@ type GeneratedHandlers interface {
 
 	SetStaffUserPassword() http.HandlerFunc
 
+	StaffInvitations() http.HandlerFunc
+	StaffInvitation() http.HandlerFunc
+	PatchStaffInvitations() http.HandlerFunc
+
 	StaffRoles() http.HandlerFunc
 	StaffRole() http.HandlerFunc
 
 	StaffSeats() http.HandlerFunc
 	StaffSeat() http.HandlerFunc
 	PatchStaffSeats() http.HandlerFunc
+
+	StaffTenantInvitations() http.HandlerFunc
+	StaffTenantInvitation() http.HandlerFunc
+	PatchStaffTenantInvitations() http.HandlerFunc
 
 	StaffTenantRoles() http.HandlerFunc
 	StaffTenantRole() http.HandlerFunc
@@ -139,6 +147,16 @@ func generatedRoutes(r chi.Router, h GeneratedHandlers) {
 
 	bounded.Post("/api/set-staff-user-password", h.SetStaffUserPassword())
 
+	staffInvitationsHandler := h.StaffInvitations()
+	bounded.Get("/api/staff-invitations", staffInvitationsHandler)
+	bounded.Post("/api/staff-invitations", staffInvitationsHandler)
+
+	staffInvitationHandler := h.StaffInvitation()
+	bounded.Get("/api/staff-invitations/{staffInvitationID}", staffInvitationHandler)
+	bounded.Post("/api/staff-invitations/{staffInvitationID}", staffInvitationHandler)
+
+	bounded.Patch("/api/staff-invitations", h.PatchStaffInvitations())
+
 	staffRolesHandler := h.StaffRoles()
 	bounded.Get("/api/staff-roles", staffRolesHandler)
 	bounded.Post("/api/staff-roles", staffRolesHandler)
@@ -156,6 +174,16 @@ func generatedRoutes(r chi.Router, h GeneratedHandlers) {
 	bounded.Post("/api/staff-seats/{staffSeatUser}/{staffSeatRole}", staffSeatHandler)
 
 	bounded.Patch("/api/staff-seats", h.PatchStaffSeats())
+
+	staffTenantInvitationsHandler := domainGuard(h.StaffTenantInvitations())
+	bounded.Get("/api/tenants/{tenantID}/staff-tenant-invitations", staffTenantInvitationsHandler)
+	bounded.Post("/api/tenants/{tenantID}/staff-tenant-invitations", staffTenantInvitationsHandler)
+
+	staffTenantInvitationHandler := domainGuard(h.StaffTenantInvitation())
+	bounded.Get("/api/tenants/{tenantID}/staff-tenant-invitations/{staffTenantInvitationID}", staffTenantInvitationHandler)
+	bounded.Post("/api/tenants/{tenantID}/staff-tenant-invitations/{staffTenantInvitationID}", staffTenantInvitationHandler)
+
+	bounded.Patch("/api/tenants/{tenantID}/staff-tenant-invitations", domainGuard(h.PatchStaffTenantInvitations()))
 
 	staffTenantRolesHandler := domainGuard(h.StaffTenantRoles())
 	bounded.Get("/api/tenants/{tenantID}/staff-tenant-roles", staffTenantRolesHandler)

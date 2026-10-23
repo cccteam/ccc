@@ -353,11 +353,12 @@ tenant picker are handed to the agent with the failing checks as the obligations
 
 func newAddAuth() *cobra.Command {
 	var (
-		f         transitionFlags
-		methods   []string
-		authority string
-		accounts  string
-		outlet    string
+		f               transitionFlags
+		methods         []string
+		authority       string
+		accounts        string
+		usernameIsEmail bool
+		outlet          string
 	)
 
 	cmd := &cobra.Command{
@@ -381,21 +382,31 @@ when none is given), azure:<registration> (Microsoft Entra over OpenID Connect) 
 google:<registration> (Google Workspace over OpenID Connect), the registration being the
 segment of the method's routes (user/<registration>/login). A directory method added here
 takes one organization, and --accounts its standard account rule for a first sign-in, one
-rule for every directory method given: members (members of the directory, the default: the
-person becomes a user under the name the directory presents), invited (invited users only:
-a user created beforehand is linked, anyone else refused) or open (open sign-up, which the
-session library allows with any organization or personal accounts alone, so it is refused
-with the one organization taken here); impulse add method composes the other slots. The
-rule is written to the method file (Accounts) and, for invited, as .InvitedUsers() on the
-method's declaration, so the generated users surface creates the invitations; --accounts
-is refused with the password method alone, as add method refuses it. Its settings are read
-from the environment under the registration's variables (APP_<NAME>_<REGISTRATION>_*), the
-Procfile builds with the session library's skipAuth tag (the directory simulated until the
-application is registered with one), and the role-membership authority is set by
---authority, which is asked when it is not given: "directory" makes the directory's roles
-the authority (every sign-in reconciles the person's roles to them and removes what they
-do not name), "application" keeps role assignment in the application. There is no default,
-because the wrong answer deletes hand-assigned roles at the next sign-in.
+rule for every method given: members (members of the directory, the default: the person
+becomes a user under the name the directory presents), invited (invited users only: a user
+created beforehand is linked, anyone else refused) or open (open sign-up, which the session
+library allows with any organization or personal accounts alone, so it is refused with the
+one organization taken here); impulse add method composes the other slots. The rule is
+written to the method file (Accounts) and, for invited, as .InvitedUsers() on the method's
+declaration, so the generated users surface creates the invitations. The password method
+takes open alone: a stranger gives their address on the login page, follows the link
+mailed to it and chooses a password (session.OpenSignUp(), and .OpenSignUp() on the
+declaration, so the router serves the sign-up routes); members and invited describe a
+directory and are refused with the password method alone. --username-is-email makes the
+password method's sign-in name the person's email address (session.UsernameIsEmail(), and
+.UsernameIsEmail() on the declaration): the users surface derives the address from the
+username, and a verified change of address renames the user with its seats. Every auth
+mails, through the application's one sender (Settings.Mail) and to the login page of the
+surface bound to it (Settings.MailLoginURL): an administrator invites a person by address
+with the roles the invitation seats, and a signed-in person adds and verifies an address.
+A directory method's settings are read from the environment under the registration's
+variables (APP_<NAME>_<REGISTRATION>_*), the Procfile builds with the session library's
+skipAuth tag (the directory simulated until the application is registered with one), and
+the role-membership authority is set by --authority, which is asked when it is not given:
+"directory" makes the directory's roles the authority (every sign-in reconciles the
+person's roles to them and removes what they do not name), "application" keeps role
+assignment in the application. There is no default, because the wrong answer deletes
+hand-assigned roles at the next sign-in.
 
 --outlet names the outlet the new auth serves, asked when it is not given: default for the
 one GenerateRoutes declares (the console's), or a WithRouterOutlet name such as portal; in
@@ -414,7 +425,7 @@ requires for the outlet, its development identities, and the tests that prove it
 are strangers to the other auths are handed to the agent.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			specs, err := authMethods(cmd, methods, authority, accounts)
+			specs, err := authMethods(cmd, methods, authority, accounts, usernameIsEmail)
 			if err != nil {
 				return err
 			}
@@ -432,25 +443,31 @@ are strangers to the other auths are handed to the agent.`,
 	f.bind(cmd)
 	cmd.Flags().StringArrayVar(&methods, "method", nil, "a sign-in method the auth starts with (repeatable): password, azure:<registration>, or google:<registration>; password when none is given")
 	cmd.Flags().StringVar(&authority, "authority", "", "who owns role membership for the directory methods: directory (roles synchronized at every sign-in) or application (roles assigned in the application); asked when not given")
-	cmd.Flags().StringVar(&accounts, "accounts", "", "the standard account rule for a first sign-in: members (default), invited, or open")
+	cmd.Flags().StringVar(&accounts, "accounts", "", "the standard account rule for a first sign-in: members (default), invited, or open; the password method takes open alone")
+	cmd.Flags().BoolVar(&usernameIsEmail, "username-is-email", false, "the password method's sign-in name is the person's email address")
 	cmd.Flags().StringVar(&outlet, "outlet", "", "the outlet the auth serves, whose declaration is pointed at it: default for the console's, or a WithRouterOutlet name; asked when not given")
 
 	return cmd
 }
 
-// authMethods reads add auth's --method flags and settles the directory methods' authority
-// and account rule, which the command takes once for all of them: the authority is asked
-// when a directory method is given without it, and either flag is refused with the
-// password method alone.
-func authMethods(cmd *cobra.Command, methods []string, authority, accounts string) ([]authpkg.Method, error) {
+// authMethods reads add auth's --method flags and settles the methods' authority and
+// account rule, which the command takes once for all of them: the authority is asked when
+// a directory method is given without it and refused with the password method alone; the
+// account rule goes to every directory method, and open to the password method too (a
+// stranger signs up from a mailed link), while members and invited describe a directory
+// and are refused without one. --username-is-email goes to the password method, and is
+// refused without one.
+func authMethods(cmd *cobra.Command, methods []string, authority, accounts string, usernameIsEmail bool) ([]authpkg.Method, error) {
 	specs, err := parseMethods(methods)
 	if err != nil {
 		return nil, err
 	}
-	directory := false
+	directory, password := false, false
 	for i := range specs {
 		if specs[i].Directory() {
 			directory = true
+		} else {
+			password = true
 		}
 	}
 	if directory && authority == "" {
@@ -463,13 +480,22 @@ func authMethods(cmd *cobra.Command, methods []string, authority, accounts strin
 	if !directory && authority != "" {
 		return nil, errors.New("--authority goes with a directory method (azure or google); the password method's role membership is the application's")
 	}
-	if !directory && accounts != "" {
-		return nil, errors.New("--accounts goes with a directory method (azure or google); the password method's users are always created in the application")
+	if !directory && accounts != "" && accounts != authpkg.AccountsOpen {
+		return nil, errors.Newf("--accounts %s goes with a directory method (azure or google); the password method takes open (a stranger signs up from a link mailed to their address) or no rule (its users are created in the application, or invited)", accounts)
+	}
+	if !password && usernameIsEmail {
+		return nil, errors.New("--username-is-email goes with the password method, whose sign-in name it makes the person's email address; a directory method's people sign in as the directory names them")
 	}
 	for i := range specs {
-		if specs[i].Directory() {
+		switch {
+		case specs[i].Directory():
 			specs[i].Authority = authority
 			specs[i].Accounts = accounts
+		default:
+			specs[i].UsernameIsEmail = usernameIsEmail
+			if accounts == authpkg.AccountsOpen {
+				specs[i].Accounts = accounts
+			}
 		}
 	}
 
@@ -572,10 +598,11 @@ func parseMethods(flags []string) ([]authpkg.Method, error) {
 
 func newAddMethod() *cobra.Command {
 	var (
-		f         transitionFlags
-		authority string
-		slot      string
-		accounts  string
+		f               transitionFlags
+		authority       string
+		slot            string
+		accounts        string
+		usernameIsEmail bool
 	)
 
 	cmd := &cobra.Command{
@@ -605,21 +632,28 @@ directory, the default: the person becomes a user under the name the directory p
 invited (invited users only: a user created beforehand is linked, anyone else refused) or
 open (open sign-up). The session library allows open only with any organization or
 personal accounts, and refuses members there, since every organization in the world is
-"the directory".
+"the directory". The password method takes open alone: a stranger gives their address on
+the login page, follows the link mailed to it and chooses a password (session.OpenSignUp(),
+and .OpenSignUp() on the declaration, so the router serves the sign-up routes).
+
+--username-is-email makes the password method's sign-in name the person's email address
+(session.UsernameIsEmail(), and .UsernameIsEmail() on the declaration): the users surface
+derives the address from the username, and a verified change of address renames the user
+with its seats.
 
 --authority is who owns role membership for a directory method, asked when not given:
 directory (the directory's roles are synchronized at every sign-in, allowed with one
 organization only) or application (roles are assigned in the application).`,
 		Args: cobra.RangeArgs(2, 3),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			spec := authpkg.Method{Kind: args[1], Slot: slot, Accounts: accounts, Authority: authority}
+			spec := authpkg.Method{Kind: args[1], Slot: slot, Accounts: accounts, Authority: authority, UsernameIsEmail: usernameIsEmail}
 			if len(args) == 3 {
 				spec.Name = args[2]
 			} else if spec.Kind != app.MethodPassword {
 				spec.Name = spec.Kind
 			}
-			if spec.Kind == app.MethodPassword && (slot != "" || accounts != "" || authority != "") {
-				return errors.New("the password method takes no --slot, --accounts or --authority")
+			if spec.Kind == app.MethodPassword && (slot != "" || authority != "") {
+				return errors.New("the password method takes no --slot or --authority")
 			}
 			if spec.Directory() && authority == "" {
 				answer, err := askAuthority(cmd)
@@ -635,7 +669,8 @@ organization only) or application (roles are assigned in the application).`,
 	f.bind(cmd)
 	cmd.Flags().StringVar(&authority, "authority", "", "who owns role membership for a directory method: directory (roles synchronized at every sign-in, one organization only) or application (roles assigned in the application); asked when not given")
 	cmd.Flags().StringVar(&slot, "slot", "", "the organization slot of a directory method: azure one|listed|any|personal|one-personal|any-personal, google one|listed|any-workspace|any|mixed (default: one)")
-	cmd.Flags().StringVar(&accounts, "accounts", "", "the standard account rule for a first sign-in: members (default), invited, or open")
+	cmd.Flags().StringVar(&accounts, "accounts", "", "the standard account rule for a first sign-in: members (default), invited, or open; the password method takes open alone")
+	cmd.Flags().BoolVar(&usernameIsEmail, "username-is-email", false, "the password method's sign-in name is the person's email address")
 
 	return cmd
 }

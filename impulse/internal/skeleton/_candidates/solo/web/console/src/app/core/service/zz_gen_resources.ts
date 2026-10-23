@@ -32,6 +32,8 @@ export interface StaffUsers {
   createdAt?: Date;
   lastSignInAt?: Date | null;
   organization?: string | null;
+  email?: string | null;
+  emailVerifiedAt?: Date | null;
   identities?: UserIdentity[];
   roles?: string[];
   everywhereRoles?: string[];
@@ -48,6 +50,15 @@ export interface StaffSeats {
 export interface StaffRoles {
   name: string;
   kind?: 'global' | 'domain';
+}
+/** A standing invitation into the global partition of the Staff auth: an address invited to hold roles, until it is accepted, revoked or expires. */
+export interface StaffInvitations {
+  id: string;
+  email?: string;
+  roles?: string[];
+  invitedBy?: string | null;
+  createdAt?: Date;
+  expiresAt?: Date;
 }
 
 /**
@@ -86,6 +97,8 @@ const resourceMap = defineResourceMap({
       { fieldName: 'createdAt', displayType: 'date', required: true, isIndex: false },
       { fieldName: 'lastSignInAt', displayType: 'date', required: false, isIndex: false },
       { fieldName: 'organization', displayType: 'string', required: false, isIndex: false },
+      { fieldName: 'email', displayType: 'string', required: false, isIndex: false },
+      { fieldName: 'emailVerifiedAt', displayType: 'date', required: false, isIndex: false },
       { fieldName: 'identities', displayType: 'object[]', required: true, isIndex: false },
       { fieldName: 'roles', displayType: 'string[]', required: true, isIndex: false },
       { fieldName: 'everywhereRoles', displayType: 'string[]', required: true, isIndex: false },
@@ -112,6 +125,18 @@ const resourceMap = defineResourceMap({
       { fieldName: 'kind', displayType: 'string', required: true, isIndex: false },
     ],
   },
+  [Resources.StaffInvitations]: {
+    route: 'staff-invitations',
+    updateDisabled: true,
+    fields: [
+      { fieldName: 'id', primaryKey: { ordinalPosition: 1 }, displayType: 'uuid', required: true, isIndex: true },
+      { fieldName: 'email', displayType: 'string', required: true, isIndex: false },
+      { fieldName: 'roles', displayType: 'string[]', required: true, isIndex: false },
+      { fieldName: 'invitedBy', displayType: 'string', required: false, isIndex: false },
+      { fieldName: 'createdAt', displayType: 'date', required: true, isIndex: false },
+      { fieldName: 'expiresAt', displayType: 'date', required: true, isIndex: false },
+    ],
+  },
 });
 
 export function resourceMeta(resource: Resource): ResourceMeta {
@@ -128,4 +153,5 @@ export const ResourceScopes: Record<Resource, PermissionScope> = {
   [Resources.StaffUsers]: PermissionScopes.global,
   [Resources.StaffSeats]: PermissionScopes.global,
   [Resources.StaffRoles]: PermissionScopes.global,
+  [Resources.StaffInvitations]: PermissionScopes.global,
 };

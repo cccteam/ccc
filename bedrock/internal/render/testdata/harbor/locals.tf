@@ -200,8 +200,9 @@ locals {
   # readers: which runtime identity mounts it. The service; and the migrate
   # command, which also constructs the data level, reads the generated password
   # of each auth's first administrator (migrate_secrets, below), which it seeds
-  # the administrator user with while the auth's users table holds no rows. So
-  # the deploy identity, which runs the migrate command, holds accessor on
+  # the administrator user with while the auth's users table holds no rows, and
+  # the mailbox's app password, which the data level opens the mail sender with.
+  # So the deploy identity, which runs the migrate command, holds accessor on
   # those containers alone and on no other runtime secret: the session library
   # reads the cookie key (falling back to an ephemeral one), the client secrets
   # and the people's credentials only when a browser signs in, which a
@@ -212,6 +213,14 @@ locals {
       level   = "data"
       source  = "pkg/config/data.go dataConfig.CookieKey"
       purpose = "Signs session cookies and seals list cursors: Base64 of 32+ random bytes. Rotating it ends every session and cursor."
+      # generated: the tooling makes the value (secret:"generated"); nobody types it.
+      generated = false
+    }
+    APP_MAIL_APP_PASSWORD = {
+      name    = "mail-app-password"
+      level   = "data"
+      source  = "pkg/config/data.go dataConfig.MailAppPassword"
+      purpose = "A credential dataConfig.MailAppPassword reads."
       # generated: the tooling makes the value (secret:"generated"); nobody types it.
       generated = false
     }
@@ -243,11 +252,12 @@ locals {
   generated_secrets = { for key, s in local.secrets : key => s if s.generated }
 
   # The secrets the migrate command reads (readers, above): the generated
-  # password of each auth's first administrator, by variable, and the pinned
-  # version of each the command runs with, read back by the pipeline from the
-  # applied stack (cloud-build.tf, _MIGRATE_SECRETS). A secret with no version
-  # yet (a plan by hand) is left out, and the command runs without it.
-  migrate_secrets = toset([])
+  # password of each auth's first administrator and the mailbox's app password,
+  # by variable, and the pinned version of each the command runs with, read
+  # back by the pipeline from the applied stack (cloud-build.tf,
+  # _MIGRATE_SECRETS). A secret with no version yet (a plan by hand) is left
+  # out, and the command runs without it.
+  migrate_secrets = toset(["APP_MAIL_APP_PASSWORD"])
 
   # The versions this environment runs: the placement's pins (a number, or
   # latest) for the secrets someone puts in place, and the derived numbers for
@@ -309,6 +319,13 @@ locals {
     # sign-in name the migrate command seeds the administrator role membership under
     # while the auth's users table holds no rows.
     APP_MEMBERS_ADMINISTRATOR = var.members_administrator[var.environment]
+    # dataConfig.PublicURL: the application's address as a browser reaches it, the
+    # canonical hostname; every link the auths mail opens the login page under it.
+    APP_PUBLIC_URL = "https://${local.hostnames[0]}"
+    # dataConfig.MailMailbox: the Google Workspace mailbox the auths' mail is sent as
+    # (var.mail_mailbox), empty until the organization names one, when the
+    # application writes its mail to the log and sends nothing.
+    APP_MAIL_MAILBOX = var.mail_mailbox
     # dataConfig.SessionTimeout is left to its code default (10m).
   }
 

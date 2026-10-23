@@ -29,7 +29,10 @@ func NewGenerator(ctx context.Context) (generation.Generator, error) {
 		generation.GenerateRouter(),
 		generation.GenerateRoutes("pkg/router", "console/api",
 			// The crew auth's methods, in the order the login page offers them: the
-			// password, and the Google directory under the registration name the auth
+			// password, registered with open sign-up (a stranger creates a crew login with
+			// a password from a mailed link, as crew.go registers it, so the router mounts
+			// the sign-up routes and the login page is told of them), and the Google
+			// directory under the registration name the auth
 			// package gives it (crew.GoogleRegistration), which the router mounts at
 			// /console/api/user/google/login and tells the login page about. The
 			// directory writes a Google sign-in's roles at every sign-in (crew.go's
@@ -43,8 +46,8 @@ func NewGenerator(ctx context.Context) (generation.Generator, error) {
 			// signs in before charting a sector of their own; the router mounts it at
 			// /console/api/user/sign-up/login and the login page offers it under its label.
 			//
-			// Demonstrates: auth.multi-method, auth.user-management, auth.open-sign-up.
-			generation.Auth("github.com/cccteam/ccc/resource/lodestar/pkg/auth/crew", generation.PasswordMethod(), generation.GoogleMethod("google").SyncsRoles(), generation.GoogleMethod("sign-up").Labeled("Sign up with Google").OpenSignUp()),
+			// Demonstrates: auth.multi-method, auth.user-management, auth.open-sign-up, auth.password-sign-up.
+			generation.Auth("github.com/cccteam/ccc/resource/lodestar/pkg/auth/crew", generation.PasswordMethod().OpenSignUp(), generation.GoogleMethod("google").SyncsRoles(), generation.GoogleMethod("sign-up").Labeled("Sign up with Google").OpenSignUp()),
 			generation.WebApp("/console"),
 			// The console also manages the members: the members auth's users, seats and
 			// roles are served under /console/api beside the crew's, through the members

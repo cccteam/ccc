@@ -26,6 +26,7 @@ import (
 	initiator "github.com/cccteam/db-initiator"
 	"github.com/cccteam/logger"
 	"github.com/cccteam/session"
+	"github.com/cccteam/session/mail"
 	"github.com/go-playground/errors/v5"
 	"github.com/go-playground/validator/v10"
 )
@@ -179,6 +180,8 @@ func newServed(ctx context.Context, t *testing.T) *served {
 		Signals:            svc,
 		CookieKey:          testCookieKey,
 		SessionTimeout:     time.Minute,
+		Mail:               &mail.Recorder{},
+		MailLoginURL:       "http://outlets.test/console/login",
 		TenantDeclarations: app.NewTenantDeclarationReader(),
 	})
 	if err != nil {
@@ -203,6 +206,8 @@ func newServed(ctx context.Context, t *testing.T) *served {
 		Signals:        svc,
 		CookieKey:      testCookieKey,
 		SessionTimeout: time.Minute,
+		Mail:           &mail.Recorder{},
+		MailLoginURL:   "http://outlets.test/portal/login",
 		LoginURL:       "/portal/login",
 		Directory:      members.DirectorySettings{TenantID: "00000000-0000-0000-0000-000000000000", RedirectURL: "http://" + server.Listener.Addr().String() + portalAPI + "/user/directory/callback"},
 		// The declaration reader the sign-in rule reads with; the development seed

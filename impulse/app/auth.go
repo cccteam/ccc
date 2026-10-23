@@ -53,6 +53,7 @@ const (
 	DefaultIdentitiesTable = "SessionIdentities"
 	DefaultPendingTable    = "SessionPendingSignIns"
 	DefaultAttemptsTable   = "SessionSignInAttempts"
+	DefaultMailLinksTable  = "SessionMailLinks"
 	// DefaultImpersonationTable is the session library's impersonation table name.
 	DefaultImpersonationTable = "SessionImpersonations"
 	// DefaultAuthEventsTable is the name the library's schema creates the auth events table
@@ -126,7 +127,7 @@ func parseAuths(rel string, src []byte) (auths []Auth, unattached []Method, err 
 					File: rel, Line: fset.Position(call.Pos()).Line, Var: assignedName(call, body),
 					SessionTable: DefaultSessionTable, UserTable: DefaultUserTable,
 					IdentitiesTable: DefaultIdentitiesTable, PendingTable: DefaultPendingTable,
-					AttemptsTable: DefaultAttemptsTable, OptionsForwarded: call.Ellipsis.IsValid(),
+					AttemptsTable: DefaultAttemptsTable, MailLinksTable: DefaultMailLinksTable, OptionsForwarded: call.Ellipsis.IsValid(),
 				}
 				for _, arg := range call.Args {
 					readAuthArg(&auth, arg, pkg, storage, consts, body)
@@ -147,7 +148,9 @@ func parseAuths(rel string, src []byte) (auths []Auth, unattached []Method, err 
 // readMethodCall reads a registration: the method's kind, the Auth it is registered on
 // (the first argument's identifier), its registration name (the second argument, a
 // literal or a constant of the file; the password method is always "password") and, for
-// a directory method, its authority from the configuration (the fourth argument).
+// a directory method, its authority from the configuration (the fourth argument); for
+// the password method, the options after the Auth (session.OpenSignUp(),
+// session.UsernameIsEmail()).
 func readMethodCall(call *ast.CallExpr, kind, local, rel string, fset *token.FileSet, consts map[string]string, body *ast.BlockStmt, f *ast.File) Method {
 	m := Method{File: rel, Line: fset.Position(call.Pos()).Line, Kind: kind, Name: PasswordRegistration}
 	if len(call.Args) > 0 {
@@ -156,6 +159,19 @@ func readMethodCall(call *ast.CallExpr, kind, local, rel string, fset *token.Fil
 		}
 	}
 	if kind == MethodPassword {
+		for _, arg := range call.Args[min(1, len(call.Args)):] {
+			option, ok := arg.(*ast.CallExpr)
+			if !ok {
+				continue
+			}
+			switch name, _ := qualifiedName(option.Fun, local); name {
+			case "OpenSignUp":
+				m.OpenSignUp = true
+			case "UsernameIsEmail":
+				m.UsernameIsEmail = true
+			}
+		}
+
 		return m
 	}
 	if len(call.Args) > 1 {
@@ -352,12 +368,17 @@ func assignedValue(id *ast.Ident, body *ast.BlockStmt) ast.Expr {
 }
 
 // readAuthArg applies one constructor argument to the construction: a session option
-// naming a table or cookie, or a storage constructed with impersonation, auth events, or
-// custom data tables. body is the enclosing function's body, where an identifier the
-// storage's options take is defined.
+// naming a table or cookie, the mail option, or a storage constructed with
+// impersonation, auth events, or custom data tables. body is the enclosing function's
+// body, where an identifier the storage's options take is defined.
 func readAuthArg(auth *Auth, arg ast.Expr, pkg, storage string, consts map[string]string, body *ast.BlockStmt) {
 	call, ok := arg.(*ast.CallExpr)
 	if !ok {
+		return
+	}
+	if name, ok := qualifiedName(call.Fun, pkg); ok && name == "WithMail" {
+		auth.Mail = true
+
 		return
 	}
 	if name, ok := qualifiedName(call.Fun, pkg); ok && len(call.Args) == 1 {
@@ -373,6 +394,8 @@ func readAuthArg(auth *Auth, arg ast.Expr, pkg, storage string, consts map[strin
 				auth.PendingTable = s
 			case "WithSignInAttemptsTableName":
 				auth.AttemptsTable = s
+			case "WithMailLinksTableName":
+				auth.MailLinksTable = s
 			case "WithCookieName":
 				auth.CookieName = s
 			case "WithXSRFCookieName":

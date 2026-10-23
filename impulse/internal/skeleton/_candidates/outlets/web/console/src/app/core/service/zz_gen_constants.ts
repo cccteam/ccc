@@ -20,14 +20,18 @@ export const PermissionScopes = {
 export const Resources = {
   Announcements: 'Announcements' as Resource,
   FeatureFlags: 'FeatureFlags' as Resource,
+  MembersInvitations: 'MembersInvitations' as Resource,
   MembersRoles: 'MembersRoles' as Resource,
   MembersSeats: 'MembersSeats' as Resource,
+  MembersTenantInvitations: 'MembersTenantInvitations' as Resource,
   MembersTenantRoles: 'MembersTenantRoles' as Resource,
   MembersTenantSeats: 'MembersTenantSeats' as Resource,
   MembersTenantUsers: 'MembersTenantUsers' as Resource,
   MembersUsers: 'MembersUsers' as Resource,
+  StaffInvitations: 'StaffInvitations' as Resource,
   StaffRoles: 'StaffRoles' as Resource,
   StaffSeats: 'StaffSeats' as Resource,
+  StaffTenantInvitations: 'StaffTenantInvitations' as Resource,
   StaffTenantRoles: 'StaffTenantRoles' as Resource,
   StaffTenantSeats: 'StaffTenantSeats' as Resource,
   StaffTenantUsers: 'StaffTenantUsers' as Resource,
@@ -76,6 +80,25 @@ export namespace FeatureFlags {
   };
 }
 
+export namespace MembersInvitations {
+  export const fieldName = {
+    createdAt: 'createdAt' as FieldName,
+    email: 'email' as FieldName,
+    expiresAt: 'expiresAt' as FieldName,
+    id: 'id' as FieldName,
+    invitedBy: 'invitedBy' as FieldName,
+    roles: 'roles' as FieldName,
+  };
+  export const resourceName = {
+    createdAt: 'MembersInvitations.createdAt' as Resource,
+    email: 'MembersInvitations.email' as Resource,
+    expiresAt: 'MembersInvitations.expiresAt' as Resource,
+    id: 'MembersInvitations.id' as Resource,
+    invitedBy: 'MembersInvitations.invitedBy' as Resource,
+    roles: 'MembersInvitations.roles' as Resource,
+  };
+}
+
 export namespace MembersRoles {
   export const fieldName = {
     kind: 'kind' as FieldName,
@@ -99,6 +122,25 @@ export namespace MembersSeats {
     role: 'MembersSeats.role' as Resource,
     user: 'MembersSeats.user' as Resource,
     username: 'MembersSeats.username' as Resource,
+  };
+}
+
+export namespace MembersTenantInvitations {
+  export const fieldName = {
+    createdAt: 'createdAt' as FieldName,
+    email: 'email' as FieldName,
+    expiresAt: 'expiresAt' as FieldName,
+    id: 'id' as FieldName,
+    invitedBy: 'invitedBy' as FieldName,
+    roles: 'roles' as FieldName,
+  };
+  export const resourceName = {
+    createdAt: 'MembersTenantInvitations.createdAt' as Resource,
+    email: 'MembersTenantInvitations.email' as Resource,
+    expiresAt: 'MembersTenantInvitations.expiresAt' as Resource,
+    id: 'MembersTenantInvitations.id' as Resource,
+    invitedBy: 'MembersTenantInvitations.invitedBy' as Resource,
+    roles: 'MembersTenantInvitations.roles' as Resource,
   };
 }
 
@@ -130,6 +172,8 @@ export namespace MembersTenantUsers {
   export const fieldName = {
     createdAt: 'createdAt' as FieldName,
     disabled: 'disabled' as FieldName,
+    email: 'email' as FieldName,
+    emailVerifiedAt: 'emailVerifiedAt' as FieldName,
     everywhereRoles: 'everywhereRoles' as FieldName,
     hasPassword: 'hasPassword' as FieldName,
     id: 'id' as FieldName,
@@ -144,6 +188,8 @@ export namespace MembersTenantUsers {
   export const resourceName = {
     createdAt: 'MembersTenantUsers.createdAt' as Resource,
     disabled: 'MembersTenantUsers.disabled' as Resource,
+    email: 'MembersTenantUsers.email' as Resource,
+    emailVerifiedAt: 'MembersTenantUsers.emailVerifiedAt' as Resource,
     everywhereRoles: 'MembersTenantUsers.everywhereRoles' as Resource,
     hasPassword: 'MembersTenantUsers.hasPassword' as Resource,
     id: 'MembersTenantUsers.id' as Resource,
@@ -161,6 +207,8 @@ export namespace MembersUsers {
   export const fieldName = {
     createdAt: 'createdAt' as FieldName,
     disabled: 'disabled' as FieldName,
+    email: 'email' as FieldName,
+    emailVerifiedAt: 'emailVerifiedAt' as FieldName,
     everywhereRoles: 'everywhereRoles' as FieldName,
     hasPassword: 'hasPassword' as FieldName,
     id: 'id' as FieldName,
@@ -175,6 +223,8 @@ export namespace MembersUsers {
   export const resourceName = {
     createdAt: 'MembersUsers.createdAt' as Resource,
     disabled: 'MembersUsers.disabled' as Resource,
+    email: 'MembersUsers.email' as Resource,
+    emailVerifiedAt: 'MembersUsers.emailVerifiedAt' as Resource,
     everywhereRoles: 'MembersUsers.everywhereRoles' as Resource,
     hasPassword: 'MembersUsers.hasPassword' as Resource,
     id: 'MembersUsers.id' as Resource,
@@ -185,6 +235,25 @@ export namespace MembersUsers {
     roles: 'MembersUsers.roles' as Resource,
     rolesSynced: 'MembersUsers.rolesSynced' as Resource,
     username: 'MembersUsers.username' as Resource,
+  };
+}
+
+export namespace StaffInvitations {
+  export const fieldName = {
+    createdAt: 'createdAt' as FieldName,
+    email: 'email' as FieldName,
+    expiresAt: 'expiresAt' as FieldName,
+    id: 'id' as FieldName,
+    invitedBy: 'invitedBy' as FieldName,
+    roles: 'roles' as FieldName,
+  };
+  export const resourceName = {
+    createdAt: 'StaffInvitations.createdAt' as Resource,
+    email: 'StaffInvitations.email' as Resource,
+    expiresAt: 'StaffInvitations.expiresAt' as Resource,
+    id: 'StaffInvitations.id' as Resource,
+    invitedBy: 'StaffInvitations.invitedBy' as Resource,
+    roles: 'StaffInvitations.roles' as Resource,
   };
 }
 
@@ -211,6 +280,25 @@ export namespace StaffSeats {
     role: 'StaffSeats.role' as Resource,
     user: 'StaffSeats.user' as Resource,
     username: 'StaffSeats.username' as Resource,
+  };
+}
+
+export namespace StaffTenantInvitations {
+  export const fieldName = {
+    createdAt: 'createdAt' as FieldName,
+    email: 'email' as FieldName,
+    expiresAt: 'expiresAt' as FieldName,
+    id: 'id' as FieldName,
+    invitedBy: 'invitedBy' as FieldName,
+    roles: 'roles' as FieldName,
+  };
+  export const resourceName = {
+    createdAt: 'StaffTenantInvitations.createdAt' as Resource,
+    email: 'StaffTenantInvitations.email' as Resource,
+    expiresAt: 'StaffTenantInvitations.expiresAt' as Resource,
+    id: 'StaffTenantInvitations.id' as Resource,
+    invitedBy: 'StaffTenantInvitations.invitedBy' as Resource,
+    roles: 'StaffTenantInvitations.roles' as Resource,
   };
 }
 
@@ -242,6 +330,8 @@ export namespace StaffTenantUsers {
   export const fieldName = {
     createdAt: 'createdAt' as FieldName,
     disabled: 'disabled' as FieldName,
+    email: 'email' as FieldName,
+    emailVerifiedAt: 'emailVerifiedAt' as FieldName,
     everywhereRoles: 'everywhereRoles' as FieldName,
     hasPassword: 'hasPassword' as FieldName,
     id: 'id' as FieldName,
@@ -258,6 +348,8 @@ export namespace StaffTenantUsers {
   export const resourceName = {
     createdAt: 'StaffTenantUsers.createdAt' as Resource,
     disabled: 'StaffTenantUsers.disabled' as Resource,
+    email: 'StaffTenantUsers.email' as Resource,
+    emailVerifiedAt: 'StaffTenantUsers.emailVerifiedAt' as Resource,
     everywhereRoles: 'StaffTenantUsers.everywhereRoles' as Resource,
     hasPassword: 'StaffTenantUsers.hasPassword' as Resource,
     id: 'StaffTenantUsers.id' as Resource,
@@ -277,6 +369,8 @@ export namespace StaffUsers {
   export const fieldName = {
     createdAt: 'createdAt' as FieldName,
     disabled: 'disabled' as FieldName,
+    email: 'email' as FieldName,
+    emailVerifiedAt: 'emailVerifiedAt' as FieldName,
     everywhereRoles: 'everywhereRoles' as FieldName,
     hasPassword: 'hasPassword' as FieldName,
     id: 'id' as FieldName,
@@ -292,6 +386,8 @@ export namespace StaffUsers {
   export const resourceName = {
     createdAt: 'StaffUsers.createdAt' as Resource,
     disabled: 'StaffUsers.disabled' as Resource,
+    email: 'StaffUsers.email' as Resource,
+    emailVerifiedAt: 'StaffUsers.emailVerifiedAt' as Resource,
     everywhereRoles: 'StaffUsers.everywhereRoles' as Resource,
     hasPassword: 'StaffUsers.hasPassword' as Resource,
     id: 'StaffUsers.id' as Resource,

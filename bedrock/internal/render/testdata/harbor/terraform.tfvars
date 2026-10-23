@@ -35,6 +35,11 @@ members_administrator = {
   prd = ""
 }
 
+# The Google Workspace mailbox the auths' mail is sent as, once for the
+# organization (README, "Hand steps"); empty, the application writes its mail
+# to the log and sends nothing.
+mail_mailbox = ""
+
 # The version of each secret an environment runs. Empty means "not yet": the
 # container exists, nothing is mounted; tst alone runs that way,
 # and a release to any other environment is refused until every secret the
@@ -82,6 +87,7 @@ cloud_armor = {
 #   staff_directory_group_lookup  = "direct"
 #   staff_directory_group_prefix  = "staff-"
 #   staff_directory_hosted_domain = "impulseframework.com"
+#   mail_mailbox                  = ""
 #   jobs_timeout                  = "1800s"
 #   jobs_retries                  = 0
 #   jobs_resources                = cpu 1, memory 512Mi

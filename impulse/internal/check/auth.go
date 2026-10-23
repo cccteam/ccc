@@ -11,8 +11,8 @@ import (
 
 // sessionTables verifies that every session Auth the application constructs has its
 // tables in the schema (sessions, users, identities, pending sign-ins, sign-in attempts,
-// and the auth events, impersonation and custom data tables where the storage attaches
-// them), that
+// the mail links where the Auth sends mail, and the auth events, impersonation and
+// custom data tables where the storage attaches them), that
 // two Auths never share a table, that every Auth has at least one sign-in method
 // registered on it and every registration an Auth it reaches, and reports the auths
 // that result with their methods. A construction of a session type v0.13.0 retired (the
@@ -89,9 +89,13 @@ func (c sessionTables) Run(_ context.Context, env *Env) Result {
 // schemaSets names the session library's schema sets an Auth's tables come from.
 const schemaSets = "schema/spanner/migrations and schema/spanner/auth/migrations (impersonation/migrations for the impersonation table)"
 
-// authTables lists the tables one construction reads.
+// authTables lists the tables one construction reads: the mail links table when the
+// Auth sends mail (session.WithMail), since an Auth without mail never opens it.
 func authTables(auth *app.Auth) []string {
 	tables := []string{auth.SessionTable, auth.UserTable, auth.IdentitiesTable, auth.PendingTable, auth.AttemptsTable}
+	if auth.Mail {
+		tables = append(tables, auth.MailLinksTable)
+	}
 	if auth.AuthEvents {
 		table := auth.AuthEventsTable
 		if table == "" {
@@ -122,8 +126,9 @@ func authLabel(auth *app.Auth) string {
 }
 
 // methodSummary renders an Auth's methods: the registration name with the method behind
-// it when the two differ, and the authority for a directory method
-// (password, directory (azure, application authority)).
+// it when the two differ, the authority for a directory method, and the password
+// method's open sign-up and address-as-name options (password (open sign-up), directory
+// (azure, application authority)).
 func methodSummary(auth *app.Auth) string {
 	if len(auth.Methods) == 0 {
 		return "no methods"
@@ -138,6 +143,12 @@ func methodSummary(auth *app.Auth) string {
 		}
 		if m.Authority != "" {
 			notes = append(notes, m.Authority+" authority")
+		}
+		if m.OpenSignUp {
+			notes = append(notes, "open sign-up")
+		}
+		if m.UsernameIsEmail {
+			notes = append(notes, "the username is the address")
 		}
 		if len(notes) > 0 {
 			desc += " (" + strings.Join(notes, ", ") + ")"

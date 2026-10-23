@@ -10,7 +10,15 @@
               "fields": [
                 "username",
                 "password",
-                "disabled"
+                "disabled",
+                "email"
+              ]
+            },
+            {
+              "resource": "StaffInvitations",
+              "fields": [
+                "email",
+                "roles"
               ]
             },
             {
@@ -24,6 +32,9 @@
           "Delete": [
             {
               "resource": "StaffUsers"
+            },
+            {
+              "resource": "StaffInvitations"
             },
             {
               "resource": "StaffSeats"
@@ -48,7 +59,19 @@
                 "identities",
                 "roles",
                 "everywhereRoles",
-                "rolesSynced"
+                "rolesSynced",
+                "email",
+                "emailVerifiedAt"
+              ]
+            },
+            {
+              "resource": "StaffInvitations",
+              "fields": [
+                "email",
+                "roles",
+                "invitedBy",
+                "createdAt",
+                "expiresAt"
               ]
             },
             {
@@ -79,7 +102,19 @@
                 "identities",
                 "roles",
                 "everywhereRoles",
-                "rolesSynced"
+                "rolesSynced",
+                "email",
+                "emailVerifiedAt"
+              ]
+            },
+            {
+              "resource": "StaffInvitations",
+              "fields": [
+                "email",
+                "roles",
+                "invitedBy",
+                "createdAt",
+                "expiresAt"
               ]
             },
             {
@@ -101,7 +136,8 @@
               "resource": "StaffUsers",
               "fields": [
                 "username",
-                "disabled"
+                "disabled",
+                "email"
               ]
             }
           ]

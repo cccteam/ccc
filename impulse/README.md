@@ -845,8 +845,9 @@ alone, so no application ships self-service by omission.
 signs in through the methods on its Auth. An auth is a package, `pkg/auth/<name>`, and
 the base has one, `staff`. The new package is rendered from the same source as the
 skeletons' auths, so it owns `<Name>Sessions`, `<Name>SessionUsers`,
-`<Name>SessionIdentities`, `<Name>SessionAuthEvents`, `<Name>SessionPendingSignIns` and
-`<Name>SessionSignInAttempts`, the `<Name>` store prefix, the `<name>` and `<name>-xsrf` cookies, and
+`<Name>SessionIdentities`, `<Name>SessionAuthEvents`, `<Name>SessionPendingSignIns`,
+`<Name>SessionSignInAttempts` and `<Name>SessionMailLinks`, the `<Name>` store prefix, the
+`<name>` and `<name>-xsrf` cookies, and
 `pkg/auth/<name>/roles.json` (empty, embedded by the package) from the start, with one
 file per method; its session tables are written as migrations under the new prefix and
 its access tables copied from an auth the application has; and the data level constructs
@@ -861,6 +862,21 @@ so the regenerated router mounts the auth's session group under the outlet's pre
 Checking its roles in the deploy, the App's handlers the generated router now requires for
 the outlet, its development identities, and the stranger tests are the agent's.
 
+Every auth mails, through the application's one sender and to the login page of the
+surface bound to it: an administrator invites a person by address with the roles the
+invitation seats (`<Name>Invitations`, a resource of the auth's user surface the role file
+grants), the invitee follows the link to accept it, signed in or signing up, and a
+signed-in person adds an address and proves it by following the link sent to it. The
+package's `Settings` take the sender (`Mail`, which the data level opens: the log in
+development, where nothing is sent and a developer follows the link from the log, and the
+Google Workspace SMTP relay where the deployment names a mailbox, `APP_MAIL_MAILBOX` with
+its app password `APP_MAIL_APP_PASSWORD`) and the login page (`MailLoginURL`, the
+application's public address `APP_PUBLIC_URL` and the surface's login path); the settings
+copied from the source auth carry both, and the brief says to point the login page at the
+new auth's outlet. An accepted invitation seats its roles once the transaction that
+consumed it has committed (`SetInvitationAccepted` over `resource.SeatInvited`), outside
+the sign-in's transaction, so the permission engine's own transaction never waits on it.
+
 `--method` names the methods the Auth starts with, repeatable: `password` (the default
 when none is given), `azure:<registration>` or `google:<registration>`, the registration
 being the segment of the method's routes (`user/<registration>/login`). A directory method
@@ -869,7 +885,15 @@ added here takes one organization, and `--accounts` its account rule for a first
 organization), written to the method file and, for `invited`, as `.InvitedUsers()` on the
 method's declaration, so the generated users surface creates the invitations, and for
 `open`, as `.OpenSignUp()`, the rule a self-service tenant record needs; `add method`
-composes the other slots. `--authority` says who owns role
+composes the other slots. The password method takes `open` alone, and `--accounts open`
+reaches it too: a stranger gives their address on the login page, follows the link mailed
+to it and chooses a password (`session.OpenSignUp()` on the registration and
+`.OpenSignUp()` on the declaration, so the router serves the sign-up routes);
+`members` and `invited` describe a directory and are refused with the password method
+alone. `--username-is-email` makes the password method's sign-in name the person's email
+address (`session.UsernameIsEmail()` and `.UsernameIsEmail()`): the users surface derives
+the address from the username, and a verified change of address renames the user with its
+seats (`SetUserRenamed` over `resource.SeatsFollowRename`). `--authority` says who owns role
 membership for a directory method and is asked when not given, never defaulted, because
 the wrong answer deletes hand-assigned roles at the next sign-in: `directory` writes
 `RoleSync` (the directory's roles are reconciled at every sign-in and roles they do not
@@ -895,6 +919,7 @@ impulse add auth partners --outlet partners --agent
 impulse add auth members --method azure:directory --authority application --outlet portal --agent
 impulse add auth members --method password --method google:workspace --authority directory --outlet portal
 impulse add auth members --method google:google --authority application --accounts invited --outlet portal
+impulse add auth clients --method password --accounts open --username-is-email --outlet portal
 ```
 
 `add method` adds a sign-in method to an auth the application has: `password`, `azure`
@@ -938,7 +963,14 @@ the default: the person becomes a user under the name the directory presents), `
 the directory verifies becomes a user holding nothing, declared `.OpenSignUp()` on the
 method, the registration a self-service tenant record needs). The
 session library allows `open` only with any organization or personal accounts, and refuses
-`members` there, since every organization in the world is "the directory". `--authority`
+`members` there, since every organization in the world is "the directory". The password
+method takes `open` alone: a stranger gives their address on the login page, follows the
+link mailed to it and chooses a password (`session.OpenSignUp()` on the registration,
+`.OpenSignUp()` on the declaration, and the sign-up routes on the router).
+`--username-is-email` makes the password method's sign-in name the person's email address
+(`session.UsernameIsEmail()`, `.UsernameIsEmail()` on the declaration): the users surface
+derives the address from the username, and the Auth file's New gains the rename hook, so a
+verified change of address renames the user with its seats. `--authority`
 is as for `add auth`, and the directory authority is allowed with one organization only.
 
 Under the `directory` authority with google, the directory's groups assign roles by name:
@@ -955,6 +987,7 @@ is in the groups the roles variable names.
 impulse add method members azure directory --authority application --agent
 impulse add method members google workspace --slot listed --accounts invited --authority application
 impulse add method partners password
+impulse add method clients password --accounts open --username-is-email
 ```
 
 ### add site

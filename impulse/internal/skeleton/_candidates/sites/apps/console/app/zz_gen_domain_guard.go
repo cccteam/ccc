@@ -6,8 +6,8 @@ package app
 import (
 	"net/http"
 
-	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/sites/apps/console/pkg/router"
+	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/tracer"
 	"github.com/cccteam/httpio"
 )

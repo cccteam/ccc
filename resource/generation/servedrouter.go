@@ -20,10 +20,13 @@ import (
 const (
 	// The session's own routes under an outlet's prefix: the session (read and ended),
 	// the method list the login page renders from, and the pending sign-in.
-	userSessionSuffix = "/user/session"
-	userMethodsSuffix = "/user/methods"
-	userPendingSuffix = "/user/pending"
-	bindAuthMethod    = "BindAuth"
+	userSessionSuffix    = "/user/session"
+	userMethodsSuffix    = "/user/methods"
+	userPendingSuffix    = "/user/pending"
+	userInvitationSuffix = "/user/invitation"
+	userEmailSuffix      = "/user/email"
+	userSignUpSuffix     = "/user/sign-up"
+	bindAuthMethod       = "BindAuth"
 	// schedulerAuthMethod is the Handlers method that admits Cloud Scheduler's calls to
 	// the scheduled routes.
 	schedulerAuthMethod = "SchedulerAuth"
@@ -33,6 +36,16 @@ const (
 	pendingCancelHandler  = "PendingCancel"
 	// methodsHandler tells the login page what the outlet offers (session.Auth.Methods).
 	methodsHandler = "Methods"
+	// The invitation, email address and sign-up handlers on a session outlet's surface
+	// (session.InvitationHandlers, EmailHandlers, SignUpHandlers).
+	invitationOpenHandler   = "InvitationOpen"
+	invitationAcceptHandler = "InvitationAccept"
+	invitationSignUpHandler = "InvitationSignUp"
+	emailAddHandler         = "EmailAdd"
+	emailVerifyHandler      = "EmailVerify"
+	signUpStartHandler      = "SignUpStart"
+	signUpOpenHandler       = "SignUpOpen"
+	signUpCompleteHandler   = "SignUpComplete"
 )
 
 // servedMethod is one sign-in method of a session outlet as the router mounts it and
@@ -62,6 +75,39 @@ type servedPending struct {
 	Status  string
 	Confirm string
 	Cancel  string
+}
+
+// servedInvitation are the invitation routes of a session outlet: where the login page
+// opens an invitation it was sent to, where a signed-in person accepts it, and where an
+// invited stranger creates an account with a password (empty without a password
+// method).
+type servedInvitation struct {
+	Open   string
+	Accept string
+	SignUp string
+}
+
+// servedEmail are the email address routes of a session outlet: where a signed-in
+// person adds an address and where they verify it from the mailed link.
+type servedEmail struct {
+	Add    string
+	Verify string
+}
+
+// servedSignUp are the sign-up routes of a session outlet whose password method
+// declares open sign-up: start from an address, open the mailed link, complete with a
+// password.
+type servedSignUp struct {
+	Start    string
+	Open     string
+	Complete string
+}
+
+// servedSessionHandler is one handler of the session surface beyond the methods' and
+// the pending sign-in's: the invitation, email address and sign-up handlers.
+type servedSessionHandler struct {
+	Name        string
+	Description string
 }
 
 // Hook fields the generated Hooks struct carries beside the per-outlet fields; an outlet
@@ -420,12 +466,25 @@ type servedOutlet struct {
 	// ChangePassword is where the password change is mounted, told to the login page
 	// beside the methods; empty without a password method.
 	ChangePassword string
+	// Invitation, Email and SignUp are the invitation, email address and sign-up
+	// routes the login page is told beside the methods: the invitation's sign-up with a
+	// password method, SignUp when the password method declares open sign-up (nil
+	// otherwise).
+	Invitation servedInvitation
+	Email      servedEmail
+	SignUp     *servedSignUp
 	// Routes are the session routes under the prefix, in mount order: OpenRoutes, the
-	// ones outside the XSRF guard, then GuardedRoutes, the POSTs behind it.
-	Routes        []servedRoute
-	OpenRoutes    []servedRoute
-	GuardedRoutes []servedRoute
-	WebApp        *servedWebApp
+	// ones outside the XSRF guard, GuardedRoutes, the POSTs behind it, then
+	// ValidatedRoutes, the ones a signed-in person calls, inside the validated group
+	// (the acceptance of an invitation, the address's add and verify).
+	Routes          []servedRoute
+	OpenRoutes      []servedRoute
+	GuardedRoutes   []servedRoute
+	ValidatedRoutes []servedRoute
+	// SessionHandlers are the invitation, email address and sign-up handlers the
+	// outlet's session interface names beyond the methods' and the pending sign-in's.
+	SessionHandlers []servedSessionHandler
+	WebApp          *servedWebApp
 	// The session outlet's version check. OldestAnswered is the declaration as written
 	// ("" for none, ThisRelease, or a release); OldestAnsweredExpr the Go expression
 	// the router passes, empty for none; OldestAnsweredNote the chain comment's
@@ -559,9 +618,11 @@ type servedRoute struct {
 	Suffix string
 	// Handler is the session surface's method serving the route (PasswordLogin,
 	// Authenticated); XSRF says the route sits behind the outlet's XSRF guard, as the
-	// POSTs of a sign-in do.
-	Handler string
-	XSRF    bool
+	// POSTs of a sign-in do; Validated that it sits inside the validated group too, as
+	// the routes a signed-in person calls do.
+	Handler   string
+	XSRF      bool
+	Validated bool
 }
 
 // servedWebApp is one browser application the router serves.
@@ -824,13 +885,73 @@ func servedSessionOf(so *servedOutlet, o *routerOutlet) {
 		route(http.MethodPost, userPendingSuffix+"/confirm", pendingConfirmHandler, true),
 		route(http.MethodPost, userPendingSuffix+"/cancel", pendingCancelHandler, true),
 	)
-	so.OpenRoutes, so.GuardedRoutes = open, guarded
-	so.Routes = slices.Concat(open, guarded)
+	guarded, validatedRoutes := servedMailRoutesOf(so, o, guarded, route)
+	so.OpenRoutes, so.GuardedRoutes, so.ValidatedRoutes = open, guarded, validatedRoutes
+	so.Routes = slices.Concat(open, guarded, validatedRoutes)
 	so.AuthLabel = "sessions"
 	if so.AuthPackage != "" {
 		so.AuthLabel += " of the " + so.AuthPackage + " auth"
 	}
 	so.AuthLabel += " (" + strings.Join(kinds, ", ") + ")"
+}
+
+// servedMailRoutesOf adds the invitation, email address and sign-up routes
+// (session.Auth.Invitation, Email and SignUp) to the outlet: the login page opens an
+// invitation and, with a password method, an invited stranger signs up at it, behind
+// the XSRF guard alone; a signed-in person accepts it and adds or verifies an address
+// inside the validated group; open sign-up, when the password method declares it,
+// starts, opens and completes behind the XSRF guard alone. It answers the guarded
+// routes with the mail ones appended, and the validated routes.
+func servedMailRoutesOf(so *servedOutlet, o *routerOutlet, guarded []servedRoute, route func(method, suffix, handler string, xsrf bool) servedRoute) (guardedRoutes, validatedRoutes []servedRoute) {
+	prefix := "/" + o.prefix
+	validated := func(suffix, handler string) servedRoute {
+		r := route(http.MethodPost, suffix, handler, true)
+		r.Validated = true
+
+		return r
+	}
+	hasPassword, openSignUp := false, false
+	for _, m := range o.auth.methods {
+		if m.kind == methodPassword {
+			hasPassword, openSignUp = true, m.openSignUp
+		}
+	}
+	so.Invitation = servedInvitation{Open: prefix + userInvitationSuffix, Accept: prefix + userInvitationSuffix + "/accept"}
+	so.Email = servedEmail{Add: prefix + userEmailSuffix, Verify: prefix + userEmailSuffix + "/verify"}
+	guarded = append(guarded, route(http.MethodPost, userInvitationSuffix, invitationOpenHandler, true))
+	so.SessionHandlers = append(so.SessionHandlers,
+		servedSessionHandler{Name: invitationOpenHandler, Description: "The invitation the login page was sent to, opened (session.InvitationHandlers.Open): the sign-in that follows carries it"},
+		servedSessionHandler{Name: invitationAcceptHandler, Description: "The invitation accepted by a person already signed in (session.InvitationHandlers.Accept)"},
+	)
+	if hasPassword {
+		so.Invitation.SignUp = prefix + userInvitationSuffix + "/sign-up"
+		guarded = append(guarded, route(http.MethodPost, userInvitationSuffix+"/sign-up", invitationSignUpHandler, true))
+		so.SessionHandlers = append(so.SessionHandlers, servedSessionHandler{Name: invitationSignUpHandler, Description: "An invited person's account, created with a password and signed in (session.InvitationHandlers.SignUp)"})
+	}
+	so.SessionHandlers = append(so.SessionHandlers,
+		servedSessionHandler{Name: emailAddHandler, Description: "A signed-in person's email address, added by mailing it a verification link (session.EmailHandlers.Add)"},
+		servedSessionHandler{Name: emailVerifyHandler, Description: "The address verified from the mailed link (session.EmailHandlers.Verify)"},
+	)
+	validatedRoutes = []servedRoute{
+		validated(userInvitationSuffix+"/accept", invitationAcceptHandler),
+		validated(userEmailSuffix, emailAddHandler),
+		validated(userEmailSuffix+"/verify", emailVerifyHandler),
+	}
+	if openSignUp {
+		so.SignUp = &servedSignUp{Start: prefix + userSignUpSuffix, Open: prefix + userSignUpSuffix + "/open", Complete: prefix + userSignUpSuffix + "/complete"}
+		guarded = append(guarded,
+			route(http.MethodPost, userSignUpSuffix, signUpStartHandler, true),
+			route(http.MethodPost, userSignUpSuffix+"/open", signUpOpenHandler, true),
+			route(http.MethodPost, userSignUpSuffix+"/complete", signUpCompleteHandler, true),
+		)
+		so.SessionHandlers = append(so.SessionHandlers,
+			servedSessionHandler{Name: signUpStartHandler, Description: "A sign-up started from an address, which is mailed its link (session.SignUpHandlers.Start)"},
+			servedSessionHandler{Name: signUpOpenHandler, Description: "The sign-up link opened (session.SignUpHandlers.Open)"},
+			servedSessionHandler{Name: signUpCompleteHandler, Description: "The sign-up completed with a password: the account created and signed in (session.SignUpHandlers.Complete)"},
+		)
+	}
+
+	return guarded, validatedRoutes
 }
 
 // handlersSummary lists what the Handlers interface carries, for its doc comment.
@@ -1012,6 +1133,7 @@ var (
 //	{{ .Name }} (/{{ .Prefix }}), {{ .AuthLabel }}{{ with .Words }}, {{ . }}{{ end }}:
 //	  {{ if .AuthPackage }}BindAuth({{ .AuthPackage }}.Name), {{ end }}NoCaching, CompressionMiddleware, StartSession, SetXSRFToken: {{ range $i, $route := .OpenRoutes }}{{ if $i }}, {{ end }}{{ $route.Method }} {{ $route.Path }}{{ end }}
 //	  + ValidateXSRFToken: {{ range $i, $route := .GuardedRoutes }}{{ if $i }}, {{ end }}{{ $route.Method }} {{ $route.Path }}{{ end }}
+//	  + ValidateSession, ValidateXSRFToken: {{ range $i, $route := .ValidatedRoutes }}{{ if $i }}, {{ end }}{{ $route.Method }} {{ $route.Path }}{{ end }}
 //	  + ValidateSession, ValidateXSRFToken, CheckAPIVersion{{ .OldestAnsweredNote }}: hooks.{{ .HookField }}, {{ .RoutesFunc }}
 {{- end }}
 {{- range .MountedBeneath }}
@@ -1155,6 +1277,10 @@ type {{ .SessionInterface }} interface {
 	PendingStatus() http.HandlerFunc
 	PendingConfirmWithPassword() http.HandlerFunc
 	PendingCancel() http.HandlerFunc
+{{- range .SessionHandlers }}
+	// {{ .Description }}.
+	{{ .Name }}() http.HandlerFunc
+{{- end }}
 {{- range .Methods }}
 	// {{ .Description }}.
 {{- range .Handlers }}
@@ -1309,8 +1435,13 @@ func New(h Handlers, hooks Hooks) *chi.Mux {
 {{- if $outlet.ChangePassword }}
 			ChangePassword: "{{ $outlet.ChangePassword }}",
 {{- end }}
+			Invitation: session.InvitationRoutes{Open: "{{ $outlet.Invitation.Open }}", Accept: "{{ $outlet.Invitation.Accept }}"{{ if $outlet.Invitation.SignUp }}, SignUp: "{{ $outlet.Invitation.SignUp }}"{{ end }}},
+			Email: session.EmailRoutes{Add: "{{ $outlet.Email.Add }}", Verify: "{{ $outlet.Email.Verify }}"},
+{{- if $outlet.SignUp }}
+			SignUp: session.SignUpRoutes{Start: "{{ $outlet.SignUp.Start }}", Open: "{{ $outlet.SignUp.Open }}", Complete: "{{ $outlet.SignUp.Complete }}"},
+{{- end }}
 		}))
-{{- else }}
+{{- else if not .Validated }}
 		{{ if .XSRF }}guarded{{ else }}bounded{{ end }}.{{ Pascal .Method }}("{{ .Path }}", {{ $outlet.Receiver }}.{{ .Handler }}())
 {{- end }}
 {{- end }}
@@ -1321,21 +1452,28 @@ func New(h Handlers, hooks Hooks) *chi.Mux {
 			// The version check: a browser application sends its release in X-Api-Version,
 			// and {{ .AnswersSentence }}. An application outside that
 			// range is refused with 412 naming the server's release, before its body is read;
-			// a request without the header, the session routes above{{ if .FileRoutes }} and the stored-file
-			// routes{{ end }} are answered at any release.
+			// a request without the header, the session routes above and below{{ if .FileRoutes }} and the
+			// stored-file routes{{ end }} are answered at any release.
 			r.Use(resource.CheckAPIVersion(resource.APIVersionCheck{
 				ServerVersion: serverVersion,
 {{- if .OldestAnsweredExpr }}
 				OldestAnswered: {{ .OldestAnsweredExpr }},
 {{- end }}
-{{- if .FileRoutes }}
 				Exempt: []string{
+{{- range .ValidatedRoutes }}
+					"{{ .Path }}",
+{{- end }}
 {{- range .FileRoutes }}
 					"{{ .Pattern }}",
 {{- end }}
 				},
-{{- end }}
 			}))
+
+			// The session routes a signed-in person calls: the acceptance of an invitation
+			// the browser carries, and the address they add and verify.
+{{- range .ValidatedRoutes }}
+			r.With(resource.BodyLimit(BodyLimit)).{{ Pascal .Method }}("{{ .Path }}", {{ $outlet.Receiver }}.{{ .Handler }}())
+{{- end }}
 
 			registerGenerated(r, hooks.{{ .HookField }}, "{{ .HookField }}", func(r chi.Router) {
 				{{ .RoutesFunc }}(r, h)
@@ -1536,11 +1674,12 @@ func routerChainFor(t *testing.T, url string) routerOutletChain {
 // guard; xsrf says it sits behind the outlet's XSRF guard, as a sign-in's POSTs do.
 // suffix is the path under the outlet's prefix.
 type routerSessionRoute struct {
-	url     string
-	suffix  string
-	method  string
-	handler string
-	xsrf    bool
+	url       string
+	suffix    string
+	method    string
+	handler   string
+	xsrf      bool
+	validated bool
 }
 
 // routerSessionRoutes lists every session outlet's routes.
@@ -1549,7 +1688,7 @@ func routerSessionRoutes() []routerSessionRoute {
 {{- range .SessionOutlets }}
 {{- $outlet := . }}
 {{- range .Routes }}
-		{url: "{{ .Path }}", suffix: "{{ .Suffix }}", method: {{ .MethodConst }}, handler: "{{ $outlet.StubPrefix }}{{ .Handler }}"{{ if .XSRF }}, xsrf: true{{ end }}},
+		{url: "{{ .Path }}", suffix: "{{ .Suffix }}", method: {{ .MethodConst }}, handler: "{{ $outlet.StubPrefix }}{{ .Handler }}"{{ if .XSRF }}, xsrf: true{{ end }}{{ if .Validated }}, validated: true{{ end }}},
 {{- end }}
 {{- end }}
 	}
@@ -1619,7 +1758,8 @@ func TestGeneratedRouter(t *testing.T) {
 // TestGeneratedRouterSessionRoutes proves each session outlet's method list, session,
 // pending and sign-in routes answer behind the outlet's group and before its session
 // guard, a sign-in's POSTs behind the XSRF guard alone: a browser reaches them without
-// a validated session.
+// a validated session; the routes a signed-in person calls (an invitation's acceptance,
+// the address) answer behind both guards.
 func TestGeneratedRouterSessionRoutes(t *testing.T) {
 	t.Parallel()
 
@@ -1642,7 +1782,10 @@ func TestGeneratedRouterSessionRoutes(t *testing.T) {
 
 			chain := routerChainFor(t, tt.url)
 			want := slices.Concat(routerRootChain, chain.group)
-			if tt.xsrf {
+			switch {
+			case tt.validated:
+				want = append(want, chain.guards...)
+			case tt.xsrf:
 				want = append(want, chain.guards[1])
 			}
 			if !slices.Equal(rec.chain, want) {
