@@ -76,6 +76,26 @@ func CheckAPIVersion(check APIVersionCheck) func(http.Handler) http.Handler {
 	}
 }
 
+// ReleaseHeader names the server's release on every response of the routes it wraps:
+// APIVersionHeader set to release before the handler runs, so a browser application
+// reads which release it talks to from any answer, the methods list its login page reads
+// before any sign-in first of all, and curl shows it. The generated router puts it on
+// every outlet; CheckAPIVersion, behind it on a session outlet, keeps naming the release
+// on its refusal. An empty release names nothing; dev, the local build's name, is named
+// as it is.
+func ReleaseHeader(release string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		if release == "" {
+			return next
+		}
+
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set(APIVersionHeader, release)
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
 // releaseWindow is the resolved range of releases a check answers: the canonical
 // versions, and whether each bound is a release at all.
 type releaseWindow struct {

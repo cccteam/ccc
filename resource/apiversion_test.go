@@ -159,3 +159,38 @@ func Test_releaseVersion(t *testing.T) {
 		})
 	}
 }
+
+// TestReleaseHeader pins what every outlet's answers carry: the server's release as it
+// is, nothing for no release, and no Vary, since naming the release varies nothing.
+func TestReleaseHeader(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		release string
+		want    string
+	}{
+		{name: "a release is named on the answer", release: "2.0.0", want: "2.0.0"},
+		{name: "a build that is not a release is named as it is", release: "dev", want: "dev"},
+		{name: "no release names nothing", release: "", want: ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			r := chi.NewRouter()
+			r.Use(ReleaseHeader(tt.release))
+			r.Get("/api/user/methods", func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusOK)
+			})
+			rr := httptest.NewRecorder()
+			r.ServeHTTP(rr, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/user/methods", http.NoBody))
+			if got := rr.Header().Get(APIVersionHeader); got != tt.want {
+				t.Errorf("%s = %q, want %q", APIVersionHeader, got, tt.want)
+			}
+			if _, varied := rr.Header()["Vary"]; varied {
+				t.Error("the answer is varied on the header: naming the release varies nothing")
+			}
+		})
+	}
+}

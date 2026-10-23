@@ -540,8 +540,9 @@ func (b *routerUnreadBody) Read([]byte) (int, error) {
 // server's release in X-Api-Version before any handler runs or its body is read, a
 // request without the header or with a version that is not a release on either side
 // is answered, the session routes and the stored-file routes answer at any release,
-// an API-key outlet is never checked, and the check sits behind the outlet's guards
-// and ahead of its hook.
+// an API-key outlet is never checked, every answer of an outlet names the server's
+// release in X-Api-Version, and the check sits behind the outlet's guards and ahead
+// of its hook.
 func TestGeneratedRouterAPIVersion(t *testing.T) {
 	t.Parallel()
 
@@ -621,6 +622,9 @@ func TestGeneratedRouterAPIVersion(t *testing.T) {
 			}
 			if got := slices.Contains(rr.Header().Values("Vary"), resource.APIVersionHeader); got != tt.varied {
 				t.Errorf("Vary carries %s = %v, want %v", resource.APIVersionHeader, got, tt.varied)
+			}
+			if got := rr.Header().Get(resource.APIVersionHeader); got != tt.server {
+				t.Errorf("%s = %q, want the server's %q: every answer of an outlet names the release", resource.APIVersionHeader, got, tt.server)
 			}
 		})
 	}

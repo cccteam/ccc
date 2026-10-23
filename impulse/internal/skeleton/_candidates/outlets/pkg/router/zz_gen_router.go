@@ -6,17 +6,17 @@
 //
 //	every request: tracing, hooks.Outermost, request logging, SecurityHeaders, httpio.WithParams
 //	default (/console/api), sessions of the staff auth (password):
-//	  BindAuth(staff.Name), NoCaching, CompressionMiddleware, StartSession, SetXSRFToken: GET /console/api/user/methods, GET /console/api/user/session, DELETE /console/api/user/session, GET /console/api/user/pending
+//	  BindAuth(staff.Name), NoCaching, CompressionMiddleware, ReleaseHeader, StartSession, SetXSRFToken: GET /console/api/user/methods, GET /console/api/user/session, DELETE /console/api/user/session, GET /console/api/user/pending
 //	  + ValidateXSRFToken: POST /console/api/user/password/login, POST /console/api/user/password/change, POST /console/api/user/pending/confirm, POST /console/api/user/pending/cancel, POST /console/api/user/invitation, POST /console/api/user/invitation/sign-up
 //	  + ValidateSession, ValidateXSRFToken: POST /console/api/user/invitation/accept, POST /console/api/user/email, POST /console/api/user/email/verify
 //	  + ValidateSession, ValidateXSRFToken, CheckAPIVersion (oldest answered 0.0.1): hooks.Default, generatedRoutes
 //	portal (/portal/api), sessions of the members auth (directory):
-//	  BindAuth(members.Name), NoCaching, CompressionMiddleware, StartSession, SetXSRFToken: GET /portal/api/user/methods, GET /portal/api/user/session, DELETE /portal/api/user/session, GET /portal/api/user/pending, GET /portal/api/user/directory/login, GET /portal/api/user/directory/callback, GET /portal/api/user/directory/logout
+//	  BindAuth(members.Name), NoCaching, CompressionMiddleware, ReleaseHeader, StartSession, SetXSRFToken: GET /portal/api/user/methods, GET /portal/api/user/session, DELETE /portal/api/user/session, GET /portal/api/user/pending, GET /portal/api/user/directory/login, GET /portal/api/user/directory/callback, GET /portal/api/user/directory/logout
 //	  + ValidateXSRFToken: POST /portal/api/user/pending/confirm, POST /portal/api/user/pending/cancel, POST /portal/api/user/invitation
 //	  + ValidateSession, ValidateXSRFToken: POST /portal/api/user/invitation/accept, POST /portal/api/user/email, POST /portal/api/user/email/verify
 //	  + ValidateSession, ValidateXSRFToken, CheckAPIVersion (oldest answered 0.0.1): hooks.Portal, generatedPortalRoutes
 //	machines (/machines), API key:
-//	  NoCaching, CompressionMiddleware, MachinesAuth: hooks.Machines, generatedMachinesRoutes
+//	  NoCaching, CompressionMiddleware, ReleaseHeader, MachinesAuth: hooks.Machines, generatedMachinesRoutes
 //
 // hooks.Root's routes sit behind the every-request chain alone. Under an outlet's prefix
 // nothing else answers: an unknown path is 404. Outside every prefix the browser
@@ -54,9 +54,10 @@ type Handlers interface {
 	// request to a service identity in place of a browser session.
 	MachinesAuth(next http.Handler) http.Handler
 	// ServerVersion is the release this server was built from, the configuration's
-	// APP_VERSION: what each session outlet checks a browser application's
-	// X-Api-Version against (resource.CheckAPIVersion). A value that is not a release,
-	// dev for one, checks nothing.
+	// APP_VERSION: what every outlet names on each answer (resource.ReleaseHeader) and
+	// each session outlet checks a browser application's X-Api-Version against
+	// (resource.CheckAPIVersion). A value that is not a release, dev for one, is named
+	// as it is and checks nothing.
 	ServerVersion() string
 
 	// Every request: where the request log goes; the router builds the request logger from it.
@@ -174,8 +175,9 @@ type Hooks struct {
 // a not-found handler per outlet prefix, and the browser applications.
 func New(h Handlers, hooks Hooks) *chi.Mux {
 	r := chi.NewRouter()
-	// The release this server was built from, which every session outlet's version
-	// check compares a browser application's X-Api-Version against.
+	// The release this server was built from: every outlet names it on each answer
+	// (X-Api-Version), and each session outlet's version check compares a browser
+	// application's against it.
 	serverVersion := h.ServerVersion()
 
 	// Every request.
@@ -199,6 +201,7 @@ func New(h Handlers, hooks Hooks) *chi.Mux {
 		r.Use(h.BindAuth(staff.Name))
 		r.Use(h.NoCaching)
 		r.Use(h.CompressionMiddleware())
+		r.Use(resource.ReleaseHeader(serverVersion))
 		r.Use(h.StartSession)
 		r.Use(h.SetXSRFToken)
 
@@ -261,6 +264,7 @@ func New(h Handlers, hooks Hooks) *chi.Mux {
 		r.Use(h.BindAuth(members.Name))
 		r.Use(h.NoCaching)
 		r.Use(h.CompressionMiddleware())
+		r.Use(resource.ReleaseHeader(serverVersion))
 		r.Use(portalSession.StartSession)
 		r.Use(portalSession.SetXSRFToken)
 
@@ -321,6 +325,7 @@ func New(h Handlers, hooks Hooks) *chi.Mux {
 	r.Group(func(r chi.Router) {
 		r.Use(h.NoCaching)
 		r.Use(h.CompressionMiddleware())
+		r.Use(resource.ReleaseHeader(serverVersion))
 		r.Use(h.MachinesAuth)
 
 		registerGenerated(r, hooks.Machines, "Machines", func(r chi.Router) {

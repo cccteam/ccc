@@ -590,7 +590,12 @@ callback, `/user/session`) sit outside the check, and the stored-file routes (`@
 are exempt, so a login always works and a file link never fails on a version. An API-key
 outlet is not checked, and refuses the option. Every response on a checked route carries
 `Vary: X-Api-Version`, so a browser never serves one release's cached answer to another.
-Versions compare as semantic versions, with or without a leading `v`. The chain comment
+Every answer of an outlet, checked or not, names the server's release in `X-Api-Version`
+(`resource.ReleaseHeader`, ahead of the session handling on every outlet, the API-key and
+scheduled outlets included), so the methods list a login page reads before any sign-in
+carries it, a browser application shows which release it talks to, and `curl` shows it; a
+`dev` server is named as it is. Versions compare as semantic versions, with or without a
+leading `v`. The chain comment
 names the check per outlet with its oldest answered release, and the generated test
 proves it: in range answered, below or above refused with the header and no handler run
 and no body read, no header and `dev` answered, session and file routes answered at any
