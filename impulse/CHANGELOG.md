@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.8](https://github.com/cccteam/ccc/compare/impulse/v0.5.7...impulse/v0.5.8) (2026-10-23)
+
+
+### Bug Fixes
+
+* the dashboard's email card says in plain words what the address is for and when it counts as confirmed ([#1103](https://github.com/cccteam/ccc/issues/1103)) ([b4c966f](https://github.com/cccteam/ccc/commit/b4c966fcb965d3a99e5699f8be3734ec2e539aef))
+
 ## [0.5.7](https://github.com/cccteam/ccc/compare/impulse/v0.5.6...impulse/v0.5.7) (2026-10-23)
 
 
