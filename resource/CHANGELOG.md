@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.6](https://github.com/cccteam/ccc/compare/resource/v0.15.5...resource/v0.15.6) (2026-10-23)
+
+
+### Bug Fixes
+
+* the dashboard's email card says in plain words what the address is for and when it counts as confirmed ([#1103](https://github.com/cccteam/ccc/issues/1103)) ([b4c966f](https://github.com/cccteam/ccc/commit/b4c966fcb965d3a99e5699f8be3734ec2e539aef))
+
 ## [0.15.5](https://github.com/cccteam/ccc/compare/resource/v0.15.4...resource/v0.15.5) (2026-10-23)
 
 
