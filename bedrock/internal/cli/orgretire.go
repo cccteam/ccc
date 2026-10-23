@@ -168,7 +168,7 @@ func retirePlacement(dir, path string, p *org.Placement, app string, out io.Writ
 		return err
 	}
 	fmt.Fprintf(out, "Removed %s from %s and rendered the %s foundation into %s: %d owned file(s) written; the layers' applications.auto.tfvars name %s no more.\n", app, path, p.Prefix, dir, written.Owned, app)
-	line := fmt.Sprintf("- %s: bedrock org retire %s: %s/%s archived and out of 1-org's state with its settings; %s leaves placement.json on this pull request, whose apply deletes its identities, grants and registry entries. Its data went with bedrock destroy, which kept the final backups until their retention ends.\n", time.Now().UTC().Format("2006-01-02 15:04Z"), app, p.GithubOrganization, repository, app)
+	line := fmt.Sprintf("- %s: bedrock org retire %s: %s/%s archived and out of 1-org's state with its settings; %s leaves placement.json on this pull request, whose apply deletes its identities, grants and registry entries. Its data went with bedrock destroy; the final backups a destroy takes stay on the instance until their retention ends.\n", time.Now().UTC().Format("2006-01-02 15:04Z"), app, p.GithubOrganization, repository, app)
 	if err := appendJournalLine(dir, line); err != nil {
 		return err
 	}
