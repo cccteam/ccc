@@ -197,6 +197,20 @@ resource "google_service_account_iam_member" "app_signs_as_itself" {
   depends_on = [google_service_account.app]
 }
 
+# The identity revoker: when a person signs out, the site revokes the browser's
+# Firebase identity (its refresh tokens) through the Firebase Auth Admin SDK,
+# which takes Firebase Authentication Admin on the project. The role reaches
+# every Firebase Authentication user of the environment project, and all of
+# them are identities the applications there minted for their live feeds:
+# nobody signs in to the project's Firebase Authentication directly.
+resource "google_project_iam_member" "firebase_auth_app" {
+  project = local.project_id
+  role    = "roles/firebaseauth.admin"
+  member  = local.app_member
+
+  depends_on = [google_service_account.app]
+}
+
 # The browser's web API key (LiveSettings.APIKey): the Firebase SDK presents
 # it to the Identity Toolkit API to sign in with the custom token and to the
 # Secure Token API to refresh the ID token that yields, and the key is good
