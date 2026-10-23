@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.15.2](https://github.com/cccteam/ccc/compare/resource/v0.15.1...resource/v0.15.2) (2026-10-23)
+
+
+### Features
+
+* invitations, email addresses and sign-up from mailed links across resource, Lodestar, impulse and bedrock ([#1082](https://github.com/cccteam/ccc/issues/1082)) ([c841798](https://github.com/cccteam/ccc/commit/c841798d7c1f40aacea46dccf25f7a3fc1c2754d))
+
+
+### Code Upgrade
+
+* **deps:** bump the go-dependencies group in /resource with 6 updates ([#1077](https://github.com/cccteam/ccc/issues/1077)) ([0d614b3](https://github.com/cccteam/ccc/commit/0d614b3bc92db31f3822ccb544d7b305b49b9c87))
+
 ## [0.15.1](https://github.com/cccteam/ccc/compare/resource/v0.15.0...resource/v0.15.1) (2026-10-23)
 
 
