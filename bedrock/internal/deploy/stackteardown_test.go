@@ -73,7 +73,7 @@ func TestStackTeardown(t *testing.T) {
 			destroy:        true,
 			wantIdentities: []string{applyIdentity, applyIdentity},
 			wantOut:        []string{"=== destroy of harbor's stack in tst as " + applyIdentity + ", asked for by jo ===", "Destroyed harbor's stack in tst: 19 resource(s)."},
-			wantRan:        []string{initLine + impersonated, "tofu state list", destroyPlan, "tofu show -json DATA/tst/teardown.tfplan", "tofu apply -input=false -no-color DATA/tst/teardown.tfplan"},
+			wantRan:        []string{initLine + impersonated, "tofu state list", "tofu show -json", destroyPlan, "tofu show -json DATA/tst/teardown.tfplan", "tofu apply -input=false -no-color DATA/tst/teardown.tfplan"},
 			wantEnv:        "GOOGLE_IMPERSONATE_SERVICE_ACCOUNT=" + applyIdentity,
 			wantRecord:     []string{`"kind": "destroy"`, `"by": "jo"`},
 		},

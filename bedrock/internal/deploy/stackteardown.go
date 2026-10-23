@@ -59,7 +59,7 @@ func StackTeardown(ctx context.Context, clients *Clients, w Workspace, req *Buil
 	}
 	defer os.RemoveAll(dataDir)
 	t := &TeardownRequest{
-		Dir: filepath.Join(string(w), stackDir), DataDir: dataDir, Placement: p, App: app, Env: env, Destroy: destroy,
+		Dir: filepath.Join(string(w), stackDir), DataDir: dataDir, Placement: p, App: app, Env: env, Destroy: destroy, Backup: destroy,
 		By: requester, Approval: buildApproval(build), Now: time.Now, Identity: identity, Impersonate: !build.runsAs(identity),
 	}
 	fmt.Fprintf(out, "=== %s of %s's stack in %s as %s, asked for by %s ===\n", command, app, env, identity, requester)

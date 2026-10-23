@@ -263,7 +263,8 @@ resource "github_repository" "app" {
   allow_update_branch = true
 
   lifecycle {
-    # A repository is never deleted by this layer.
+    # A repository is never deleted by this layer: a retired application's is
+    # archived and taken out of the state by bedrock org retire, and stays.
     prevent_destroy = true
     # What the repository says about itself and offers (its description,
     # issues, wiki, projects, discussions, its archive flag, its security

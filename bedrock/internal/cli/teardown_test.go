@@ -152,7 +152,15 @@ func TestTeardownAndDestroy(t *testing.T) {
 			args:        []string{"destroy", "prd"},
 			interactive: always,
 			in:          "tst\n",
-			wantOut:     []string{"bedrock destroy destroys quill's stack whole in prd", "prd: 3 resource(s) destroyed, 0 kept.", `protection lifted first: google_cloud_run_v2_service.app["uc1"], google_spanner_database.quill[0]`, "Type prd to go on; anything else stops:", "Stopped: nothing was destroyed."},
+			wantOut:     []string{"bedrock destroy destroys quill's stack whole in prd: the database and every generation of it, each with a final backup taken first, waited for and kept 366 days", "prd: 3 resource(s) destroyed, 0 kept.", `protection lifted first: google_cloud_run_v2_service.app["uc1"], google_spanner_database.quill[0]`, "Type prd to go on; anything else stops:", "Stopped: nothing was destroyed."},
+			wantRan:     []string{"tofu init -input=false -no-color -reconfigure -backend-config=prefix=3-app/quill/prd", "tofu state list", "tofu show -json"},
+		},
+		{
+			name:        "says a destroy without the final backup keeps nothing of the data",
+			args:        []string{"destroy", "prd", "--no-backup"},
+			interactive: never,
+			wantErr:     "bedrock destroy asks for prd typed back at the terminal, and this run has none: --yes stands in for it",
+			wantOut:     []string{"bedrock destroy destroys quill's stack whole in prd, with no final backup of the database (--no-backup)", "no final backup of the database (--no-backup): nothing of its data is kept beyond the backups already taken"},
 			wantRan:     []string{"tofu init -input=false -no-color -reconfigure -backend-config=prefix=3-app/quill/prd", "tofu state list"},
 		},
 		{
@@ -190,8 +198,8 @@ func TestTeardownAndDestroy(t *testing.T) {
 			interactive: never,
 			wantOut:     []string{"No stack in stg", "Pull-request stacks under tst, destroyed whole with their builds' jobs: 4", "Destroyed quill's stack in tst: 3 resource(s).", "Destroyed quill's stack in prd: 3 resource(s).", "=== Pull request 4: stack at 3-app/quill/tst/pr4 ==="},
 			wantRan: []string{
-				"tofu init -input=false -no-color -reconfigure -backend-config=prefix=3-app/quill/tst", "tofu state list",
-				"tofu init -input=false -no-color -reconfigure -backend-config=prefix=3-app/quill/prd", "tofu state list",
+				"tofu init -input=false -no-color -reconfigure -backend-config=prefix=3-app/quill/tst", "tofu state list", "tofu show -json",
+				"tofu init -input=false -no-color -reconfigure -backend-config=prefix=3-app/quill/prd", "tofu state list", "tofu show -json",
 				"tofu plan -destroy -input=false -no-color -out=DATA/tst/teardown.tfplan -var environment=tst -var database_generation=1 -var destroy=true",
 				"tofu show -json DATA/tst/teardown.tfplan", "tofu apply -input=false -no-color DATA/tst/teardown.tfplan",
 				`tofu apply -input=false -no-color -auto-approve -var environment=prd -var database_generation=1 -var destroy=true -target=google_cloud_run_v2_service.app["uc1"] -target=google_spanner_database.quill[0]`,

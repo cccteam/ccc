@@ -1129,6 +1129,32 @@ func (p *Placement) Registered(code string) bool {
 	return slices.Contains(p.Codes(), code)
 }
 
+// Retire takes a registered application out of the placement: its entry, its
+// registration step, its out-of-service record and its hostnames, so that every layer
+// renders without it (bedrock org retire, once the application is torn down and
+// destroyed and its repository archived and out of 1-org's state). An application the
+// placement does not register is refused.
+func (p *Placement) Retire(code string) error {
+	if !p.Registered(code) {
+		return errors.Newf("%s is not registered (applications in placement.json): nothing to retire", code)
+	}
+	p.Applications = slices.DeleteFunc(p.Applications, func(a Application) bool { return a.Code == code })
+	delete(p.Registration, code)
+	if len(p.Registration) == 0 {
+		p.Registration = nil
+	}
+	delete(p.OutOfService, code)
+	if len(p.OutOfService) == 0 {
+		p.OutOfService = nil
+	}
+	delete(p.Hostnames, code)
+	if len(p.Hostnames) == 0 {
+		p.Hostnames = nil
+	}
+
+	return nil
+}
+
 // Register adds an application to the placement, at the first step of its registration:
 // a code under the one rule (derive.ValidateApplicationCode) not registered yet, and a
 // repository name no other application has.

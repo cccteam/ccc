@@ -2003,12 +2003,20 @@ puts the hostnames back on a pull request once the release is live.
 A destroy takes everything, in production after an apply with `destroy=true` recording
 every protection lifted (the services' deletion protection, the database's deletion and
 drop protection, the file stores' force-destroy, the Firestore database's delete
-protection). The stack's id object goes with the stack, so the pipeline's readers see an
-environment never applied; the deployment records stay in the records bucket under
-`<app>/<env>/<id>/`, read by nothing; the Spanner backups the pipeline and the schedules
-took stay until their retention ends; Google keeps the names of the task queue, the
-Firebase key and the migrate log bucket for a while, and a stack applied again takes an id
-of its own. Nothing of either command is undone by bedrock.
+protection). Before anything is destroyed it takes a final backup of each Spanner database
+the stack holds, as of the run and kept 366 days (the most Spanner allows), named after the
+database and the moment (`<database>-final-20261023-1710`), and waits for it (a backup runs
+twenty minutes or more, and the database must stand until it is taken; Spanner takes one
+backup of a database at a time, so a run that finds the schedule's in progress waits for
+that one first); the record names the backups, and `--no-backup` leaves them out when
+nothing of the data is to be kept beyond the backups already taken. The operations
+workflow's `destroy` action takes them always. The stack's id object goes with the stack,
+so the pipeline's readers see an environment never applied; the deployment records stay in
+the records bucket under `<app>/<env>/<id>/`, read by nothing; the final backups and the
+Spanner backups the pipeline and the schedules took stay on the instance until their
+retention ends (the release backups fourteen days, the schedules' ninety); Google keeps the
+names of the task queue, the Firebase key and the migrate log bucket for a while, and a
+stack applied again takes an id of its own. Nothing of either command is undone by bedrock.
 
 ## bedrock domain
 
@@ -2154,6 +2162,7 @@ bedrock org teardown                                            # the applicatio
 bedrock org teardown <app> [<env>...]                            # one application's hostnames out of 2-net ahead of bedrock teardown from its checkout
 bedrock org serve [<app> [<env>...]]                             # the way back: the hostnames (or the listeners and every host) return to 2-net on a pull request
 bedrock org hostnames <app>                                     # the hostnames the application's stacks serve, read from their states and recorded for 2-net after a label change
+bedrock org retire <app>                                        # a torn-down, destroyed application leaves: its repository archived and out of 1-org's state, its entry out of the placement
 bedrock org destroy                                             # every project of the organization deleted, by hand, after the prefix typed back
 ```
 
@@ -2290,7 +2299,11 @@ count `org register` refuses on, for the shared instance and each environment's 
 the applications' databases take all of the integration environment's instance and leave
 no pull-request stack room for a database of its own, it says so without failing the
 check: an application `bedrock destroy` took down still stands in the placement and
-counts, and the check gates every plan and apply.
+counts until `org retire <app>` lets it go, and the check gates every plan and apply.
+While an application is out of service in every environment (`outOfService`), the check
+says that `org retire <app>` is the step that lets its entry go once its stacks are
+destroyed, without failing: the entry stays until then, since 1-org never deletes a
+repository.
 Last it lists each API key in an environment project that carries no API restriction (the
 list of APIs that accept the key; a key with none is accepted by every API in the project
 that takes an API key), with the same credentials and on the same terms: Firebase's browser
@@ -2431,6 +2444,26 @@ An application still in its registration is refused: the completion records its
 hostnames the first time. `org check` holds the record on every pull request, so a label
 two applications declare is refused where it is recorded, never applied.
 
+`org retire <app>` takes an application that is out of service everywhere and whose stacks
+are destroyed out of the organization, by a person at their own computer with their own
+sign-in (`GITHUB_TOKEN`, or gh's token, for the archive and for 1-org's GitHub provider: an
+owner of the GitHub organization, or an admin of the repository). The repository outlives
+the application: the run archives it on GitHub (read-only, with its code, pull requests and
+releases; a person unarchives it in the repository's settings) and takes it, with the
+settings 1-org declared on it (its rulesets, its operations environments and their
+deployment policies), out of 1-org's state, since an archived repository refuses every
+change and the layer never deletes a repository (`prevent_destroy`); they stay on GitHub as
+they were. Then the entry leaves `placement.json` (`applications`, `registration`,
+`outOfService`, `hostnames`), the foundation renders without the application (and an
+application whose stack lived under `3-app/` loses that directory), the journal gets its
+line, and the working tree is left for a pull request whose apply deletes the application's
+cloud side: its identities and their grants, its registry entries, its secret containers'
+grants. It refuses an application still in service somewhere (`org teardown <app>` first,
+with its pull request applied), one 2-net's state still routes, and one whose stack still
+stands in an environment (`bedrock destroy --all` from its checkout, which takes the final
+backups of its databases and the data down). The code typed back gates the run (`--yes`
+stands in for it). A retired application is registered again as a new one.
+
 `org destroy` deletes every project of the organization, by a person at their own computer
 with their own sign-in (an owner of the GCP organization; `GITHUB_TOKEN`, or gh's token, for
 1-org's GitHub provider: the infrastructure GitHub App's installation token, or an
@@ -2443,8 +2476,10 @@ state bucket goes with the boot project; in each an apply with `destroy=true` re
 projects' deletion policy, that no API is disabled first (one a resource outside the layer's
 state uses would refuse) and lifts the folders' protection, and the destroy is tried
 again after a pause while it fails (a folder refuses for a while after its last project's
-deletion). Google keeps a deleted project for 30 days; its id never returns. A layer whose
-state holds nothing is skipped. When 2-net registers domains the network project is kept,
+deletion). Google keeps a deleted project for 30 days; its id never returns. The Spanner
+instance and every backup on it (the release backups, the schedules' and the final backups
+`bedrock destroy` took) go with the Spanner project and come back with it in those days,
+and are gone after. A layer whose state holds nothing is skipped. When 2-net registers domains the network project is kept,
 with its folder and the organization's, for a person: a registration cannot move to another
 project. It refuses a layer rendered by an earlier bedrock, which declares no `destroy`
 variable, and ends with a line in `JOURNAL.md` and what starting over takes (the rendered

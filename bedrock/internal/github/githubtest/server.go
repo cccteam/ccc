@@ -49,6 +49,8 @@ type Repo struct {
 	Releases map[string]github.Release
 	// Changed lists, per head commit, the files a comparison against it names.
 	Changed map[string][]string
+	// Archived says the repository was archived through the API (PATCH with archived).
+	Archived bool
 	// PullStates by pull request number: open or closed.
 	PullStates map[int]string
 	// PullRequests as the API lists them, oldest first; one opened through the API is
@@ -119,6 +121,7 @@ var (
 	pullsRE     = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/pulls$`)
 	deploysRE   = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/deployments$`)
 	statusesRE  = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/deployments/(\d+)/statuses$`)
+	repoRE      = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)$`)
 	repoInstRE  = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/installation$`)
 	tokensRE    = regexp.MustCompile(`^/app/installations/(\d+)/access_tokens$`)
 	userRE      = regexp.MustCompile(`^/user$`)
@@ -271,6 +274,9 @@ var routes = []route{
 			login = "octocat"
 		}
 		reply(w, http.StatusOK, map[string]string{"login": login})
+	}},
+	{repoRE, func(s *Server, w http.ResponseWriter, r *http.Request, m []string) {
+		s.updateRepo(w, r, m[1]+"/"+m[2])
 	}},
 	{dispatchRE, func(s *Server, w http.ResponseWriter, r *http.Request, m []string) {
 		s.dispatch(w, r, m[1]+"/"+m[2], m[3])
@@ -696,6 +702,33 @@ func (s *Server) comments(w http.ResponseWriter, r *http.Request, key string, nu
 	comments := make([]github.Comment, 0, end-start)
 	comments = append(comments, all[start:end]...)
 	reply(w, http.StatusOK, comments)
+}
+
+// updateRepo changes the repository's own settings (PATCH): the archive flag, which
+// Archive sets; anything else in the body is ignored. It answers the repository's name
+// and its flag, as the API does, or 404.
+func (s *Server) updateRepo(w http.ResponseWriter, r *http.Request, key string) {
+	repo, ok := s.repo(w, key)
+	if !ok {
+		return
+	}
+	if r.Method != http.MethodPatch {
+		reply(w, http.StatusMethodNotAllowed, map[string]string{messageKey: "PATCH only"})
+
+		return
+	}
+	var in struct {
+		Archived *bool `json:"archived"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		reply(w, http.StatusUnprocessableEntity, map[string]string{messageKey: "a JSON body is required"})
+
+		return
+	}
+	if in.Archived != nil {
+		repo.Archived = *in.Archived
+	}
+	reply(w, http.StatusOK, map[string]any{"full_name": key, "archived": repo.Archived})
 }
 
 // updateComment replaces a comment's body by its id (PATCH), or answers 404.

@@ -175,12 +175,19 @@ google_service_account.app
 `
 	prdAll := managedAddresses(prdStateList)
 	tests := []struct {
-		name        string
-		env         string
-		destroy     bool
-		routed      bool
-		recorded    bool
-		empty       bool
+		name     string
+		env      string
+		destroy  bool
+		routed   bool
+		recorded bool
+		empty    bool
+		// backup asks the destroy for the final backups; shownState is tofu show -json of
+		// the state when the case needs the databases' values; spanner the fake the
+		// backups are taken on.
+		backup      bool
+		shownState  string
+		spanner     *finalSpanner
+		wantCreated []string
 		stateList   string
 		shown       string
 		wantErr     string
@@ -253,6 +260,48 @@ google_service_account.app
 			wantRecord: []string{`"kind": "destroy"`, `"stackId": "77aa"`, `"release": "v0.1.3"`, `"google_service_account.app"`},
 		},
 		{
+			name:        "destroys prd with the final backups first: each database backed up as of the run, kept 366 days and waited for, named in the record",
+			env:         "prd",
+			destroy:     true,
+			backup:      true,
+			stateList:   prdStateList,
+			shown:       planJSON(prdAll...),
+			shownState:  stateJSONWith(prdAll, nil, map[string]map[string]any{"google_spanner_database.harbor[0]": {"project": "imp-prd-gbl-core-5e6f", "instance": "shared-spanner", "name": "harbor-db"}, `google_spanner_database.restored["2"]`: {"project": "imp-prd-gbl-core-5e6f", "instance": "shared-spanner", "name": "harbor-db-2"}}),
+			spanner:     &finalSpanner{fakeSpanner: &fakeSpanner{creating: 1}},
+			wantSummary: []string{"prd: 6 resource(s) destroyed, 0 kept.", "final backup first, kept 366 days and waited for: harbor-db, harbor-db-2"},
+			wantOut: []string{
+				"=== Final backup: harbor-db-final-20261015-0400 holds harbor-db as of 2026-10-15T04:00:00Z and is kept until 2027-10-16T04:00:00Z (operation projects/imp-prd-gbl-core-5e6f/instances/shared-spanner/operations/op-harbor-db-final-20261015-0400); the destroy waits for it ===",
+				"Waiting for the backup harbor-db-final-20261015-0400: Spanner is taking it (0s so far).",
+				"The backup harbor-db-final-20261015-0400 is ready (",
+				"=== Final backup: harbor-db-2-final-20261015-0400 holds harbor-db-2",
+				"The plan destroys the 6 resource(s) the destroy names and keeps 0, as meant; applying it.",
+				"The final backup(s) projects/imp-prd-gbl-core-5e6f/instances/shared-spanner/backups/harbor-db-final-20261015-0400, projects/imp-prd-gbl-core-5e6f/instances/shared-spanner/backups/harbor-db-2-final-20261015-0400 hold the database(s) as of the destroy and stay on the instance until 2027-10-16; the record names them.",
+			},
+			wantCreated: []string{
+				"harbor-db-final-20261015-0400 of harbor-db as of 2026-10-15T04:00:00Z until 2027-10-16T04:00:00Z",
+				"harbor-db-2-final-20261015-0400 of harbor-db-2 as of 2026-10-15T04:00:00Z until 2027-10-16T04:00:00Z",
+			},
+			wantRan: []string{
+				"tofu init -input=false -no-color -reconfigure -backend-config=prefix=3-app/harbor/prd",
+				"tofu state list",
+				"tofu show -json",
+				`tofu apply -input=false -no-color -auto-approve -var environment=prd -var database_generation=2 -var destroy=true -target=google_cloud_run_v2_service.app["uc1"] -target=google_spanner_database.harbor[0] -target=google_spanner_database.restored["2"] -target=google_storage_bucket.files[0] -target=google_firestore_database.firestore`,
+				"tofu plan -destroy -input=false -no-color -out=DATA/prd/teardown.tfplan -var environment=prd -var database_generation=2 -var destroy=true",
+				"tofu show -json DATA/prd/teardown.tfplan",
+				"tofu apply -input=false -no-color DATA/prd/teardown.tfplan",
+			},
+			wantRecord: []string{`"kind": "destroy"`, `"backups": [`, `"projects/imp-prd-gbl-core-5e6f/instances/shared-spanner/backups/harbor-db-final-20261015-0400"`, `"projects/imp-prd-gbl-core-5e6f/instances/shared-spanner/backups/harbor-db-2-final-20261015-0400"`},
+		},
+		{
+			name:        "says so when a destroy is asked for without the final backup",
+			env:         "prd",
+			destroy:     true,
+			stateList:   prdStateList,
+			shown:       planJSON(prdAll...),
+			wantSummary: []string{"no final backup of the database (--no-backup): nothing of its data is kept beyond the backups already taken"},
+			wantOut:     []string{"Destroyed harbor's stack in prd: 6 resource(s)."},
+		},
+		{
 			name:      "refuses a plan that destroys what the teardown keeps, and one short of it",
 			env:       "tst",
 			stateList: tstStateList,
@@ -294,9 +343,16 @@ google_service_account.app
 			if tt.empty {
 				store.objects["gs://"+teardownStateBucket+"/3-app/harbor/stg/default.tfstate"] = `{"version": 4, "outputs": {}, "resources": []}`
 			}
-			tofu := &fakeRunner{outputs: map[string]string{"tofu state": tt.stateList, "tofu show": tt.shown, "tofu show -json": stateJSON(managedAddresses(tt.stateList), tstDependencies)}}
-			clients := &Clients{Storage: store.open, Exec: tofu}
-			req := &TeardownRequest{Dir: "/checkout/infrastructure", DataDir: "DATA", Placement: teardownPlacement(), App: "harbor", Env: tt.env, Destroy: tt.destroy, By: "jo@lab", Now: func() time.Time { return time.Date(2026, 10, 15, 4, 0, 0, 0, time.UTC) }}
+			shownState := stateJSON(managedAddresses(tt.stateList), tstDependencies)
+			if tt.shownState != "" {
+				shownState = tt.shownState
+			}
+			tofu := &fakeRunner{outputs: map[string]string{"tofu state": tt.stateList, "tofu show": tt.shown, "tofu show -json": shownState}}
+			clients := &Clients{Storage: store.open, Exec: tofu, Sleep: func(context.Context, time.Duration) error { return nil }}
+			if tt.spanner != nil {
+				clients.Spanner = tt.spanner.openDirect
+			}
+			req := &TeardownRequest{Dir: "/checkout/infrastructure", DataDir: "DATA", Placement: teardownPlacement(), App: "harbor", Env: tt.env, Destroy: tt.destroy, Backup: tt.backup, By: "jo@lab", Now: func() time.Time { return time.Date(2026, 10, 15, 4, 0, 0, 0, time.UTC) }}
 			var out strings.Builder
 			prepared, err := PrepareTeardown(context.Background(), clients, req, &out)
 			if err == nil && prepared != nil {
@@ -327,6 +383,11 @@ google_service_account.app
 			if tt.wantRan != nil {
 				if got := tofu.lines(); strings.Join(got, "\n") != strings.Join(tt.wantRan, "\n") {
 					t.Errorf("ran:\n%s\nwant:\n%s", strings.Join(got, "\n"), strings.Join(tt.wantRan, "\n"))
+				}
+			}
+			if tt.wantCreated != nil {
+				if got := tt.spanner.created; strings.Join(got, "\n") != strings.Join(tt.wantCreated, "\n") {
+					t.Errorf("backups taken:\n%s\nwant:\n%s", strings.Join(got, "\n"), strings.Join(tt.wantCreated, "\n"))
 				}
 				if env := tofu.ran[0].Env; len(env) != 1 || env[0] != "TF_DATA_DIR=DATA/"+tt.env {
 					t.Errorf("init ran with env %v, want the environment's data directory alone", env)
@@ -543,4 +604,40 @@ func TestNetHosts(t *testing.T) {
 			}
 		})
 	}
+}
+
+// stateJSONWith is stateJSON with each resource's type and, for the ones named, its
+// values: what a destroy's final backups read the databases from.
+func stateJSONWith(addresses []string, dependencies map[string][]string, values map[string]map[string]any) string {
+	resources := []map[string]any{{"address": "data.terraform_remote_state.env", "mode": "data", "type": "terraform_remote_state", "depends_on": []string{"random_id.stack"}}}
+	for _, address := range addresses {
+		r := map[string]any{"address": address, "mode": "managed", "type": resourceType(address), "depends_on": dependencies[address]}
+		if v, ok := values[address]; ok {
+			r["values"] = v
+		}
+		resources = append(resources, r)
+	}
+	data, _ := json.Marshal(map[string]any{"values": map[string]any{"root_module": map[string]any{"resources": resources}}})
+
+	return string(data)
+}
+
+// finalSpanner is the fake as a destroy's final backups see it: every backup it started
+// reads READY once the creating reads are spent.
+type finalSpanner struct {
+	*fakeSpanner
+}
+
+func (f *finalSpanner) openDirect(context.Context) (Spanner, error) {
+	return f, nil
+}
+
+func (f *finalSpanner) Backup(_ context.Context, name string) (*Backup, error) {
+	b := &Backup{Name: name, State: BackupReady}
+	if f.creating > 0 {
+		f.creating--
+		b.State = BackupCreating
+	}
+
+	return b, nil
 }

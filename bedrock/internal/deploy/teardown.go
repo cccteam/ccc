@@ -24,6 +24,7 @@ import (
 	"io"
 	"maps"
 	"os"
+	"path"
 	"path/filepath"
 	"slices"
 	"sort"
@@ -63,6 +64,8 @@ const (
 	// managedMode the mode of a resource that is not a data source.
 	deleteAction = "delete"
 	managedMode  = "managed"
+	// spannerDatabaseType is the resource type of a Spanner database in the state.
+	spannerDatabaseType = "google_spanner_database"
 	// serviceType is the Cloud Run service's resource type, destroyed by both commands
 	// and protected in production.
 	serviceType = "google_cloud_run_v2_service"
@@ -127,6 +130,11 @@ type TeardownRequest struct {
 	Env       string
 	// Destroy destroys the whole stack instead of tearing it down.
 	Destroy bool
+	// Backup takes, before a destroy drops them, a final backup of each Spanner database
+	// the stack holds, kept finalBackupKeep (the most Spanner allows), waited for, and
+	// named in the record: the command's default, which --no-backup leaves out. A
+	// teardown keeps the database and takes none.
+	Backup bool
 	// By names who runs the command, for the record (the person by hand; the GitHub
 	// actor through the operations workflow), and Approval who approved the build in
 	// Cloud Build, where one did; Now is the clock the record is dated by.
@@ -208,7 +216,26 @@ type EnvironmentTeardown struct {
 	recorded   bool
 	// records is the environment's records bucket, from the stack's state.
 	records string
+	// databases are the Spanner databases the stack holds, read for the final backups a
+	// destroy takes first; backups the resource names of the ones taken.
+	databases []stackDatabase
+	backups   []string
 }
+
+// stackDatabase is a Spanner database the stack holds, by the resource names a backup
+// is taken with: its instance and itself.
+type stackDatabase struct {
+	instance string
+	database string
+}
+
+// The final backup a destroy takes of each database: kept the most Spanner allows, and
+// named after the database, the infix and the moment (<database>-final-20261023-1710).
+const (
+	finalBackupKeep  = 366 * 24 * time.Hour
+	finalBackupInfix = "-final-"
+	finalBackupStamp = "20060102-1504"
+)
 
 // PrepareTeardown reads what the environment's teardown or destroy needs and refuses what
 // cannot go: the stack's state in the state bucket (none, or one with no outputs, the
@@ -273,19 +300,81 @@ func PrepareTeardown(ctx context.Context, clients *Clients, req *TeardownRequest
 		return nil, err
 	}
 	t.sortResources(managedAddresses(string(listed)))
-	if !req.Destroy && len(t.destroyed) > 0 {
-		shown, err := t.s.tofuOutput(ctx, "show", "-json")
-		if err != nil {
-			return nil, err
-		}
-		dependencies, err := stateDependencies(shown)
-		if err != nil {
-			return nil, err
-		}
-		t.sweepDependents(dependencies)
+	if err := t.readStateValues(ctx); err != nil {
+		return nil, err
 	}
 
 	return t, nil
+}
+
+// readStateValues reads tofu show -json of the state where the run needs it: for a
+// teardown's dependents (a kept resource that depends on a destroyed one goes with it)
+// and for a destroy's final backups (the databases the stack holds).
+func (t *EnvironmentTeardown) readStateValues(ctx context.Context) error {
+	sweep := !t.req.Destroy && len(t.destroyed) > 0
+	backup := t.req.Destroy && t.req.Backup && len(t.destroyed) > 0
+	if !sweep && !backup {
+		return nil
+	}
+	shown, err := t.s.tofuOutput(ctx, "show", "-json")
+	if err != nil {
+		return err
+	}
+	if sweep {
+		dependencies, err := stateDependencies(shown)
+		if err != nil {
+			return err
+		}
+		t.sweepDependents(dependencies)
+	}
+	if backup {
+		if t.databases, err = stateDatabases(shown); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// stateDatabases reads, off tofu show -json of the state, the Spanner databases the
+// stack holds (google_spanner_database, managed), each by the resource names a backup
+// is taken with, from its project, instance and name.
+func stateDatabases(shown []byte) ([]stackDatabase, error) {
+	var state struct {
+		Values map[string]json.RawMessage `json:"values"`
+	}
+	if err := json.Unmarshal(shown, &state); err != nil {
+		return nil, errors.Wrap(err, "json.Unmarshal(): tofu show -json of the state")
+	}
+	var module struct {
+		Resources []map[string]json.RawMessage `json:"resources"`
+	}
+	if raw, ok := state.Values["root_module"]; ok {
+		if err := json.Unmarshal(raw, &module); err != nil {
+			return nil, errors.Wrap(err, "json.Unmarshal(): tofu show -json of the state, root_module")
+		}
+	}
+	var databases []stackDatabase
+	for _, r := range module.Resources {
+		var address, typ, mode string
+		var values map[string]any
+		if err := errors.Join(unmarshalField(r, "address", &address), unmarshalField(r, "type", &typ), unmarshalField(r, "mode", &mode), unmarshalField(r, "values", &values)); err != nil {
+			return nil, errors.Wrap(err, "json.Unmarshal(): tofu show -json of the state, resources")
+		}
+		if typ != spannerDatabaseType || mode != managedMode {
+			continue
+		}
+		project, _ := values["project"].(string)
+		instance, _ := values["instance"].(string)
+		name, _ := values["name"].(string)
+		if project == "" || instance == "" || name == "" {
+			return nil, errors.Newf("%s in the state names no project, instance or name: the final backup cannot name the database", address)
+		}
+		instanceName := "projects/" + project + "/instances/" + instance
+		databases = append(databases, stackDatabase{instance: instanceName, database: instanceName + "/databases/" + name})
+	}
+
+	return databases, nil
 }
 
 // stateDependencies reads, off tofu show -json of the state, what each managed resource
@@ -511,8 +600,24 @@ func (t *EnvironmentTeardown) Summary() string {
 	if t.live != nil {
 		fmt.Fprintf(&b, "  live release: %s (its records stay under %s/%s/%s/)\n", t.live.Version, t.req.App, t.req.Env, t.id)
 	}
+	switch {
+	case t.req.Destroy && t.req.Backup && len(t.databases) > 0:
+		fmt.Fprintf(&b, "  final backup first, kept %d days and waited for: %s\n", int(finalBackupKeep.Hours()/24), strings.Join(databaseNames(t.databases), ", "))
+	case t.req.Destroy && !t.req.Backup && len(t.destroyed) > 0:
+		b.WriteString("  no final backup of the database (--no-backup): nothing of its data is kept beyond the backups already taken\n")
+	}
 
 	return b.String()
+}
+
+// databaseNames are the databases' own names, as Spanner shows them on the instance.
+func databaseNames(databases []stackDatabase) []string {
+	names := make([]string, 0, len(databases))
+	for _, d := range databases {
+		names = append(names, path.Base(d.database))
+	}
+
+	return names
 }
 
 // Run does the environment's teardown or destroy: the apply that lifts the protections
@@ -530,6 +635,11 @@ func (t *EnvironmentTeardown) Run(ctx context.Context, out io.Writer) error {
 		fmt.Fprintf(out, "; its teardown has no record yet (an earlier run's write failed after its apply), so one goes to gs://%s/%s.\n", t.records, teardownObject(t.req.App, env))
 
 		return t.writeRecord(ctx)
+	}
+	if t.req.Destroy && t.req.Backup && len(t.databases) > 0 {
+		if err := t.finalBackups(ctx, out); err != nil {
+			return err
+		}
 	}
 	if len(t.protected) > 0 {
 		fmt.Fprintf(out, "Recording in %s's state that %s lifts the protection of %s.\n", env, command, strings.Join(t.protected, ", "))
@@ -623,6 +733,8 @@ type TeardownRecord struct {
 	Release   string    `json:"release,omitempty"`
 	Destroyed []string  `json:"destroyed"`
 	Kept      []string  `json:"kept,omitempty"`
+	// Backups are the final backups a destroy took first, by resource name.
+	Backups []string `json:"backups,omitempty"`
 }
 
 // teardownObject is the record's object in the records bucket.
@@ -636,7 +748,7 @@ func (t *EnvironmentTeardown) writeRecord(ctx context.Context) error {
 	if destroyed == nil {
 		destroyed = []string{}
 	}
-	r := TeardownRecord{Kind: t.req.command(), App: t.req.App, Env: t.req.Env, StackID: t.id, At: t.req.Now().UTC().Format(time.RFC3339), By: t.req.By, Approval: t.req.Approval, Destroyed: destroyed, Kept: t.kept}
+	r := TeardownRecord{Kind: t.req.command(), App: t.req.App, Env: t.req.Env, StackID: t.id, At: t.req.Now().UTC().Format(time.RFC3339), By: t.req.By, Approval: t.req.Approval, Destroyed: destroyed, Kept: t.kept, Backups: t.backups}
 	if t.live != nil {
 		r.Release = t.live.Version
 	}
@@ -660,6 +772,9 @@ func (t *EnvironmentTeardown) epilogue() string {
 	var b strings.Builder
 	if t.req.Destroy {
 		fmt.Fprintf(&b, "Destroyed %s's stack in %s: %d resource(s). A record went to gs://%s/%s; the deployment records under %s/%s/%s/ stay, read by nothing; the Spanner backups the pipeline and the schedules took stay until their retention ends; Google keeps the names of the task queue, the Firebase key and the migrate log bucket for a while, and a stack applied again takes an id of its own.\n", app, env, len(t.destroyed), t.records, teardownObject(app, env), app, env, t.id)
+		if len(t.backups) > 0 {
+			fmt.Fprintf(&b, "The final backup(s) %s hold the database(s) as of the destroy and stay on the instance until %s; the record names them.\n", strings.Join(t.backups, ", "), t.req.Now().UTC().Add(finalBackupKeep).Format("2006-01-02"))
+		}
 
 		return b.String()
 	}
@@ -1044,4 +1159,77 @@ func environmentStanding(ctx context.Context, store Store, bucket, app, env stri
 	}
 
 	return s, nil
+}
+
+// finalBackups takes the final backup of each database the stack holds, before the
+// destroy drops it: as of now, kept finalBackupKeep, waited for (a backup runs for twenty
+// minutes or more, and the database must stand until it is taken), and named in the
+// record. As the apply identity in a build that impersonates it, else as the process's
+// credentials: the person's by hand, the apply identity's in a build that runs as it.
+func (t *EnvironmentTeardown) finalBackups(ctx context.Context, out io.Writer) error {
+	store, err := t.spannerStore(ctx)
+	if err != nil {
+		return err
+	}
+	now := t.req.Now().UTC().Truncate(time.Second)
+	expires := now.Add(finalBackupKeep)
+	for _, d := range t.databases {
+		id := path.Base(d.database) + finalBackupInfix + now.Format(finalBackupStamp)
+		operation, err := startBackup(ctx, t.clients, out, store, d.instance, id, d.database, now, expires, "the final backup "+id)
+		if err != nil {
+			return errors.Wrapf(err, "starting the final backup %s of %s before the destroy; nothing was destroyed", id, path.Base(d.database))
+		}
+		name := d.instance + "/backups/" + id
+		fmt.Fprintf(out, "=== Final backup: %s holds %s as of %s and is kept until %s (operation %s); the destroy waits for it ===\n", id, path.Base(d.database), now.Format(time.RFC3339), expires.Format(time.RFC3339), operation)
+		if err := waitBackupReady(ctx, t.clients, store, name, out); err != nil {
+			return errors.Wrapf(err, "waiting for the final backup %s; nothing was destroyed", id)
+		}
+		t.backups = append(t.backups, name)
+	}
+
+	return nil
+}
+
+// spannerStore opens Spanner for the final backups: as the apply identity in a build
+// that impersonates it, else with the process's own credentials.
+func (t *EnvironmentTeardown) spannerStore(ctx context.Context) (Spanner, error) {
+	if t.req.Identity != "" && t.req.Impersonate {
+		if t.clients.SpannerAs == nil {
+			return nil, errors.New("no Spanner client is wired for the apply identity")
+		}
+
+		return t.clients.SpannerAs(ctx, t.req.Identity)
+	}
+	if t.clients.Spanner == nil {
+		return nil, errors.New("no Spanner client is wired")
+	}
+
+	return t.clients.Spanner(ctx)
+}
+
+// waitBackupReady waits for the backup to be READY, saying what it waits for once and
+// again every backupWaitSays; a backup that is gone while it was being taken is an error.
+func waitBackupReady(ctx context.Context, clients *Clients, store Spanner, name string, out io.Writer) error {
+	waited := time.Duration(0)
+	for {
+		b, err := store.Backup(ctx, name)
+		if err != nil {
+			return err
+		}
+		if b == nil {
+			return errors.Newf("the backup %s is gone while Spanner was taking it", name)
+		}
+		if b.State == BackupReady {
+			fmt.Fprintf(out, "The backup %s is ready (%s).\n", path.Base(name), waited.Round(time.Minute))
+
+			return nil
+		}
+		if waited == 0 || waited%backupWaitSays == 0 {
+			fmt.Fprintf(out, "Waiting for the backup %s: Spanner is taking it (%s so far).\n", path.Base(name), waited.Round(time.Minute))
+		}
+		if err := clients.sleep()(ctx, backupWaitPoll); err != nil {
+			return err
+		}
+		waited += backupWaitPoll
+	}
 }
