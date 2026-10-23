@@ -27,7 +27,7 @@
     "@angular/router": "^21.1.1",
     "@angular/service-worker": "^21.1.1",
     "@cccteam/resource": "0.0.10",
-    "@cccteam/resource-angular": "0.0.12",
+    "@cccteam/resource-angular": "0.0.13",
     "@cccteam/resource-firestore": "0.0.8",
     "@contentful/rich-text-types": "^17.2.5",
     "date-fns": "^4.1.0",
