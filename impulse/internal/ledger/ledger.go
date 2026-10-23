@@ -271,8 +271,8 @@ func validateOrder(s, prev *Step, at string, i int) error {
 			return errors.Newf("%s pins %s at %s, behind step %d's %s; the ledger walks forward only", at, name, s.Pins[name], i, have)
 		}
 	}
-	if len(s.Moves(prev.Pins)) == 0 && len(s.Recipes) == 0 {
-		return errors.Newf("%s moves no pin and names no recipe: it is not a step", at)
+	if len(s.Moves(prev.Pins)) == 0 && len(s.Recipes) == 0 && (prev.Impulse == "" || !s.MovesTool(prev.Impulse)) {
+		return errors.Newf("%s moves no pin, names no recipe and moves the tool pin nowhere: it is not a step", at)
 	}
 	switch {
 	case prev.Impulse == "":
@@ -457,8 +457,10 @@ func Names(steps []Step) []string {
 // modules at valid versions (impulse's own pin is not among them: a step names the release
 // that added it in Impulse, a release or "", never behind the step before's and always
 // named once a step before names one) and a note, no pin moving backward from the step
-// before, every step after the first moving a pin or naming a recipe, and no recipe named
-// twice in one step. The ledger's test holds Steps to it.
+// before, every step after the first moving a framework pin, naming a recipe or moving the
+// tool pin past the step before's (a change the application makes by hand, which the note
+// describes, rides a step of its own), and no recipe named twice in one step. The ledger's
+// test holds Steps to it.
 func Validate(steps []Step) error {
 	if len(steps) == 0 {
 		return errors.New("the ledger records no step; the first is the first impulse release's pins")
