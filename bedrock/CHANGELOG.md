@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.3.11](https://github.com/cccteam/ccc/compare/bedrock/v0.3.10...bedrock/v0.3.11) (2026-10-23)
+
+
+### Features
+
+* invitations, email addresses and sign-up from mailed links across resource, Lodestar, impulse and bedrock ([#1082](https://github.com/cccteam/ccc/issues/1082)) ([c841798](https://github.com/cccteam/ccc/commit/c841798d7c1f40aacea46dccf25f7a3fc1c2754d))
+
+
+### Bug Fixes
+
+* bedrock's Cloud Build client sends a read or a token mint again after a 502, 503 or 504, as the GitHub client does ([#1074](https://github.com/cccteam/ccc/issues/1074)) ([9c340ef](https://github.com/cccteam/ccc/commit/9c340ef49a988ca2d4d6e6c68242370c1266e9be))
+
 ## [0.3.10](https://github.com/cccteam/ccc/compare/bedrock/v0.3.9...bedrock/v0.3.10) (2026-10-23)
 
 
