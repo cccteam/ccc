@@ -168,7 +168,11 @@ from `2-env`'s state.
   `cloud.firestore/<database id>` from `firestore.rules`, bedrock's owned copy
   beside the `.tf` files; `roles/iam.serviceAccountTokenCreator` for the site
   on its own account, for the custom tokens it mints through the IAM
-  Credentials API; and the web API key `imp-<env>-gbl-lantrn-firebase-<id>`
+  Credentials API; `roles/firebaseauth.admin` on the project for the site,
+  which revokes a browser's identity (its refresh tokens) when the person signs
+  out, a role that reaches every Firebase Authentication user of the
+  environment project, all of them identities the applications there minted
+  for their live feeds; and the web API key `imp-<env>-gbl-lantrn-firebase-<id>`
   (the stack's id, below)
   the browser presents to sign in with one, restricted to the Identity Toolkit
   and Secure Token APIs, handed to the processes that construct the data
