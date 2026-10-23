@@ -537,6 +537,21 @@ func TestUpgrade(t *testing.T) {
 			},
 		},
 		{
+			name:    "a step that moves the tool pin alone: the note describes the hand change, and the step commits it",
+			goMod:   upgradeGoMod("v0.3.0", "v0.2.0", "v0.3.0"),
+			steps:   append(upgradeLedger(), ledger.Step{Pins: upgradeLedger()[2].Pins, Note: "the sign-out route is added by hand", Impulse: "v0.3.1"}),
+			running: check.Build{Version: "v0.3.1", FromModule: true},
+			verify:  passing,
+			wantOut: []string{
+				"beacon stands at step 3 of 4 and pins impulse v0.3.0; the walk:\n  step 4, pins ccc/impulse v0.3.1: the sign-out route is added by hand",
+				"Committed: upgrade: ccc/impulse v0.3.1.",
+			},
+			wantCalls: []string{
+				"go get -tool github.com/cccteam/ccc/impulse@v0.3.1", "go mod tidy", "go generate ./...", "git add -A",
+				"git commit -q -m upgrade: ccc/impulse v0.3.1 -m the sign-out route is added by hand",
+			},
+		},
+		{
 			name:    "pseudo-version pins name the modules alone in the subject; the versions go in the body",
 			goMod:   upgradeGoMod("v0.2.0", "v0.1.0", "v0.3.0"),
 			steps:   pseudoLedger(),
