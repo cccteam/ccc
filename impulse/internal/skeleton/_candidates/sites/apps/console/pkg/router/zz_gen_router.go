@@ -6,7 +6,7 @@
 //
 //	every request: tracing, hooks.Outermost, request logging, SecurityHeaders, httpio.WithParams
 //	default (/api), sessions (password):
-//	  NoCaching, CompressionMiddleware, StartSession, SetXSRFToken: GET /api/user/methods, GET /api/user/session, DELETE /api/user/session, GET /api/user/pending
+//	  NoCaching, CompressionMiddleware, ReleaseHeader, StartSession, SetXSRFToken: GET /api/user/methods, GET /api/user/session, DELETE /api/user/session, GET /api/user/pending
 //	  + ValidateXSRFToken: POST /api/user/password/login, POST /api/user/password/change, POST /api/user/pending/confirm, POST /api/user/pending/cancel, POST /api/user/invitation, POST /api/user/invitation/sign-up
 //	  + ValidateSession, ValidateXSRFToken: POST /api/user/invitation/accept, POST /api/user/email, POST /api/user/email/verify
 //	  + ValidateSession, ValidateXSRFToken, CheckAPIVersion (oldest answered 0.0.1): hooks.Default, generatedRoutes
@@ -34,9 +34,10 @@ type Handlers interface {
 	// The default outlet's session surface.
 	DefaultSession
 	// ServerVersion is the release this server was built from, the configuration's
-	// APP_VERSION: what each session outlet checks a browser application's
-	// X-Api-Version against (resource.CheckAPIVersion). A value that is not a release,
-	// dev for one, checks nothing.
+	// APP_VERSION: what every outlet names on each answer (resource.ReleaseHeader) and
+	// each session outlet checks a browser application's X-Api-Version against
+	// (resource.CheckAPIVersion). A value that is not a release, dev for one, is named
+	// as it is and checks nothing.
 	ServerVersion() string
 
 	// Every request: where the request log goes; the router builds the request logger from it.
@@ -108,8 +109,9 @@ type Hooks struct {
 // a not-found handler per outlet prefix, and the browser applications.
 func New(h Handlers, hooks Hooks) *chi.Mux {
 	r := chi.NewRouter()
-	// The release this server was built from, which every session outlet's version
-	// check compares a browser application's X-Api-Version against.
+	// The release this server was built from: every outlet names it on each answer
+	// (X-Api-Version), and each session outlet's version check compares a browser
+	// application's against it.
 	serverVersion := h.ServerVersion()
 
 	// Every request.
@@ -132,6 +134,7 @@ func New(h Handlers, hooks Hooks) *chi.Mux {
 	r.Group(func(r chi.Router) {
 		r.Use(h.NoCaching)
 		r.Use(h.CompressionMiddleware())
+		r.Use(resource.ReleaseHeader(serverVersion))
 		r.Use(h.StartSession)
 		r.Use(h.SetXSRFToken)
 

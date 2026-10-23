@@ -1128,10 +1128,10 @@ var (
 {{- range .Outlets }}
 {{- if .APIKey }}
 //	{{ .Name }} (/{{ .Prefix }}), API key{{ with .Words }}, {{ . }}{{ end }}:
-//	  NoCaching, CompressionMiddleware, {{ .AuthMiddleware }}: hooks.{{ .HookField }}, {{ .RoutesFunc }}
+//	  NoCaching, CompressionMiddleware, ReleaseHeader, {{ .AuthMiddleware }}: hooks.{{ .HookField }}, {{ .RoutesFunc }}
 {{- else }}
 //	{{ .Name }} (/{{ .Prefix }}), {{ .AuthLabel }}{{ with .Words }}, {{ . }}{{ end }}:
-//	  {{ if .AuthPackage }}BindAuth({{ .AuthPackage }}.Name), {{ end }}NoCaching, CompressionMiddleware, StartSession, SetXSRFToken: {{ range $i, $route := .OpenRoutes }}{{ if $i }}, {{ end }}{{ $route.Method }} {{ $route.Path }}{{ end }}
+//	  {{ if .AuthPackage }}BindAuth({{ .AuthPackage }}.Name), {{ end }}NoCaching, CompressionMiddleware, ReleaseHeader, StartSession, SetXSRFToken: {{ range $i, $route := .OpenRoutes }}{{ if $i }}, {{ end }}{{ $route.Method }} {{ $route.Path }}{{ end }}
 //	  + ValidateXSRFToken: {{ range $i, $route := .GuardedRoutes }}{{ if $i }}, {{ end }}{{ $route.Method }} {{ $route.Path }}{{ end }}
 //	  + ValidateSession, ValidateXSRFToken: {{ range $i, $route := .ValidatedRoutes }}{{ if $i }}, {{ end }}{{ $route.Method }} {{ $route.Path }}{{ end }}
 //	  + ValidateSession, ValidateXSRFToken, CheckAPIVersion{{ .OldestAnsweredNote }}: hooks.{{ .HookField }}, {{ .RoutesFunc }}
@@ -1145,7 +1145,7 @@ var (
 {{- end }}
 {{- if .ScheduledRoutes }}
 //	scheduled ({{ .ScheduledPrefix }}), Cloud Scheduler's token:
-//	  NoCaching, CompressionMiddleware, SchedulerAuth: generatedScheduledRoutes
+//	  NoCaching, CompressionMiddleware, ReleaseHeader, SchedulerAuth: generatedScheduledRoutes
 {{- range .ScheduledRoutes }}
 {{- if .RequestLog.Declared }}
 //	  POST {{ .Path }}: request log {{ .RequestLog }}
@@ -1235,9 +1235,10 @@ type Handlers interface {
 	SchedulerAuth(next http.Handler) http.Handler
 {{- end }}
 	// ServerVersion is the release this server was built from, the configuration's
-	// APP_VERSION: what each session outlet checks a browser application's
-	// X-Api-Version against (resource.CheckAPIVersion). A value that is not a release,
-	// dev for one, checks nothing.
+	// APP_VERSION: what every outlet names on each answer (resource.ReleaseHeader) and
+	// each session outlet checks a browser application's X-Api-Version against
+	// (resource.CheckAPIVersion). A value that is not a release, dev for one, is named
+	// as it is and checks nothing.
 	ServerVersion() string
 
 	// Every request: where the request log goes; the router builds the request logger from it.
@@ -1327,9 +1328,10 @@ func New(h Handlers, hooks Hooks) *chi.Mux {
 	}
 {{- end }}
 	r := chi.NewRouter()
-{{- if .SessionOutlets }}
-	// The release this server was built from, which every session outlet's version
-	// check compares a browser application's X-Api-Version against.
+{{- if or .Outlets .ScheduledRoutes }}
+	// The release this server was built from: every outlet names it on each answer
+	// (X-Api-Version), and each session outlet's version check compares a browser
+	// application's against it.
 	serverVersion := h.ServerVersion()
 {{- end }}
 
@@ -1397,6 +1399,7 @@ func New(h Handlers, hooks Hooks) *chi.Mux {
 {{- template "outletWord" . }}
 		r.Use(h.NoCaching)
 		r.Use(h.CompressionMiddleware())
+		r.Use(resource.ReleaseHeader(serverVersion))
 		r.Use(h.{{ .AuthMiddleware }})
 
 		registerGenerated(r, hooks.{{ .HookField }}, "{{ .HookField }}", func(r chi.Router) {
@@ -1415,6 +1418,7 @@ func New(h Handlers, hooks Hooks) *chi.Mux {
 {{- end }}
 		r.Use(h.NoCaching)
 		r.Use(h.CompressionMiddleware())
+		r.Use(resource.ReleaseHeader(serverVersion))
 		r.Use({{ .Receiver }}.StartSession)
 		r.Use({{ .Receiver }}.SetXSRFToken)
 {{ $outlet := . }}
@@ -1491,6 +1495,7 @@ func New(h Handlers, hooks Hooks) *chi.Mux {
 	r.Group(func(r chi.Router) {
 		r.Use(h.NoCaching)
 		r.Use(h.CompressionMiddleware())
+		r.Use(resource.ReleaseHeader(serverVersion))
 		r.Use(h.SchedulerAuth)
 
 		generatedScheduledRoutes(r, h)
@@ -2272,8 +2277,9 @@ func (b *routerUnreadBody) Read([]byte) (int, error) {
 // server's release in X-Api-Version before any handler runs or its body is read, a
 // request without the header or with a version that is not a release on either side
 // is answered, the session routes and the stored-file routes answer at any release,
-// an API-key outlet is never checked, and the check sits behind the outlet's guards
-// and ahead of its hook.
+// an API-key outlet is never checked, every answer of an outlet names the server's
+// release in X-Api-Version, and the check sits behind the outlet's guards and ahead
+// of its hook.
 func TestGeneratedRouterAPIVersion(t *testing.T) {
 	t.Parallel()
 
@@ -2362,6 +2368,9 @@ func TestGeneratedRouterAPIVersion(t *testing.T) {
 			}
 			if got := slices.Contains(rr.Header().Values("Vary"), resource.APIVersionHeader); got != tt.varied {
 				t.Errorf("Vary carries %s = %v, want %v", resource.APIVersionHeader, got, tt.varied)
+			}
+			if got := rr.Header().Get(resource.APIVersionHeader); got != tt.server {
+				t.Errorf("%s = %q, want the server's %q: every answer of an outlet names the release", resource.APIVersionHeader, got, tt.server)
 			}
 		})
 	}

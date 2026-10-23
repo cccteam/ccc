@@ -210,6 +210,23 @@ var Steps = []Step{
 		Impulse: release("v0.5.4"),
 		Note:    "every auth mails, and a person is reached by address: an administrator invites a person by email with the roles the invitation seats (the generated <Auth>Invitations resource, on the global surface and under each tenant, which the role file grants), the invitee follows the mailed link and accepts it signed in or signing up with a new password, and the roles are seated once the transaction that consumed the invitation has committed (SetInvitationAccepted over resource.SeatInvited, set in each auth's New); a signed-in person adds an email address and proves it by following the link sent to it, and the address is trusted for nothing until then (the users table's Email, NormalizedEmail and EmailVerifiedAt columns, which the auth's users migration creates, and the email and emailVerifiedAt fields of the users resource); the password method may admit strangers who sign up from a mailed link (session.OpenSignUp() on the registration, .OpenSignUp() on the declaration, which impulse add auth and add method --accounts open write, and the router's sign-up routes) and may take the address as the sign-in name (session.UsernameIsEmail(), .UsernameIsEmail(), --username-is-email), when a verified change of address renames the user with its seats (SetUserRenamed over resource.SeatsFollowRename); the auth's sessions migration creates the <Prefix>SessionMailLinks table the mailed links live in and the auth names it (session.WithMailLinksTableName); the data level opens the application's one mail sender (session/mail: the log in development, the Google Workspace SMTP relay, session/mail/workspace, where the deployment names a mailbox, APP_MAIL_MAILBOX with the secret APP_MAIL_APP_PASSWORD) and hands every auth its settings, Mail and MailLoginURL, the login page of the surface bound to the auth under the application's public address (APP_PUBLIC_URL, required, which bedrock derives from the site's canonical hostname and the development template sets to the dev proxy); the users surface takes the tenant declarations (resource.WithTenantDirectories) so a tenant seats a person its own directory vouches for by sign-in name; removing a person's last seat anywhere deletes the account with its identity links; the session library's invitation acceptance runs after the consuming transaction commits, outside it; an application adds the mail links and email migrations under each auth's prefix, the Mail and MailLoginURL settings and the hooks in each auth's New, the sender and the variables in its data level, the invitation handlers on its Handlers and the invitation grants in its role files by hand, the skeletons' being the pattern; the skeletons' and Lodestar's web pins move to @cccteam/resource 0.0.9, @cccteam/resource-angular 0.0.10 and @cccteam/resource-firestore 0.0.7 (the login page's invitation, sign-up and address-verification flows, the user-management page's addresses and invitations, and the email-address component)",
 	},
+	{
+		Pins: pins(`
+			access v0.11.1
+			ccc v0.3.5
+			ccc/accesstypes v0.7.0
+			ccc/cloud v0.2.1
+			ccc/resource v0.15.4-0.20261023180628-ce7ca6e6864f
+			ccc/tracer v0.3.0
+			db-initiator v0.4.3
+			httpio v0.7.22
+			logger v0.1.30
+			session v0.13.4
+		`),
+		Pending: true,
+		Impulse: release("v0.6.0"),
+		Note:    "every answer of an outlet names the server's release in X-Api-Version: the generated router puts resource.ReleaseHeader on every outlet ahead of the session handling (the API-key and scheduled outlets included), so the methods list a login page reads before any sign-in carries the release, a browser application shows which release it talks to, and curl shows it; the version check (resource.CheckAPIVersion) refuses as before and keeps naming the release on its refusal; an application regenerates its router (go generate ./...) and changes nothing by hand",
+	},
 }
 
 // validatePending holds a step's Pending mark to its pins: a pin at a pseudo-version

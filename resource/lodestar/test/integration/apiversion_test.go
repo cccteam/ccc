@@ -16,9 +16,11 @@ import (
 // the oldest answered or above the server's is refused with 412 carrying the server's
 // release, before any handler runs (an unknown row answers 412, not its 404); a request
 // with no header is answered; the session routes and a stored-file route are answered at
-// any release, the file route exempt from the check and so untouched by it; and every
-// checked response carries Vary: X-Api-Version. The development stack's dev server is
-// TestAPIVersion_devServerChecksNothing.
+// any release, the file route exempt from the check and so untouched by it; every
+// checked response carries Vary: X-Api-Version; and every answer of an outlet names the
+// server's release in X-Api-Version, the session routes' and the file route's included,
+// since the login page reads its release from the methods list before any sign-in. The
+// development stack's dev server is TestAPIVersion_devServerChecksNothing.
 //
 // Demonstrates: api.version-refusal.
 func TestAPIVersion_refusal(t *testing.T) {
@@ -31,17 +33,17 @@ func TestAPIVersion_refusal(t *testing.T) {
 	const unknownRefit = "a0000000-0000-4000-8000-0000000000de"
 
 	tests := []versionCase{
-		{name: "no header: answered", user: "governor", path: consoleAPI + "/user-domains", wantStatus: http.StatusOK, wantVary: true},
-		{name: "a release in range is answered", user: "governor", version: "1.2.0", path: consoleAPI + "/user-domains", wantStatus: http.StatusOK, wantVary: true},
-		{name: "the oldest answered release itself is answered", user: "governor", version: "0.1.0", path: consoleAPI + "/user-domains", wantStatus: http.StatusOK, wantVary: true},
-		{name: "the server's own release is answered", user: "governor", version: "1.4.0", path: consoleAPI + "/user-domains", wantStatus: http.StatusOK, wantVary: true},
+		{name: "no header: answered", user: "governor", path: consoleAPI + "/user-domains", wantServer: "1.4.0", wantStatus: http.StatusOK, wantVary: true},
+		{name: "a release in range is answered", user: "governor", version: "1.2.0", path: consoleAPI + "/user-domains", wantServer: "1.4.0", wantStatus: http.StatusOK, wantVary: true},
+		{name: "the oldest answered release itself is answered", user: "governor", version: "0.1.0", path: consoleAPI + "/user-domains", wantServer: "1.4.0", wantStatus: http.StatusOK, wantVary: true},
+		{name: "the server's own release is answered", user: "governor", version: "1.4.0", path: consoleAPI + "/user-domains", wantServer: "1.4.0", wantStatus: http.StatusOK, wantVary: true},
 		{name: "a release below the oldest answered is refused with the server's release", user: "governor", version: "0.0.1", path: consoleAPI + "/user-domains", wantStatus: http.StatusPreconditionFailed, wantServer: "1.4.0", wantVary: true},
 		{name: "a release above the server's is refused the same way", user: "governor", version: "9.9.9", path: consoleAPI + "/user-domains", wantStatus: http.StatusPreconditionFailed, wantServer: "1.4.0", wantVary: true},
 		{name: "the refusal lands before the handler: an unknown row is 412, not 404", user: "governor", version: "0.0.1", path: sectorPath(anvil, "refits/"+unknownRefit), wantStatus: http.StatusPreconditionFailed, wantServer: "1.4.0", wantVary: true},
-		{name: "the same unknown row is 404 with no header: the handler ran", user: "governor", path: sectorPath(anvil, "refits/"+unknownRefit), wantStatus: http.StatusNotFound, wantVary: true},
-		{name: "the session route is answered at any release", version: "9.9.9", path: consoleAPI + "/user/session", wantStatus: http.StatusOK},
-		{name: "the portal's session route is answered at any release", version: "0.0.1", path: portalAPI + "/user/session", wantStatus: http.StatusOK},
-		{name: "a stored-file route is answered at any release, untouched by the check", user: "purser", version: "9.9.9", path: sectorPath(anvil, "expense-manifests/"+missionPodID+"/content"), wantStatus: http.StatusOK},
+		{name: "the same unknown row is 404 with no header: the handler ran", user: "governor", path: sectorPath(anvil, "refits/"+unknownRefit), wantServer: "1.4.0", wantStatus: http.StatusNotFound, wantVary: true},
+		{name: "the session route is answered at any release", version: "9.9.9", path: consoleAPI + "/user/session", wantServer: "1.4.0", wantStatus: http.StatusOK},
+		{name: "the portal's session route is answered at any release", version: "0.0.1", path: portalAPI + "/user/session", wantServer: "1.4.0", wantStatus: http.StatusOK},
+		{name: "a stored-file route is answered at any release, untouched by the check", user: "purser", version: "9.9.9", path: sectorPath(anvil, "expense-manifests/"+missionPodID+"/content"), wantServer: "1.4.0", wantStatus: http.StatusOK},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -54,7 +56,8 @@ func TestAPIVersion_refusal(t *testing.T) {
 
 // TestAPIVersion_devServerChecksNothing is the development stack's side of the check: a
 // server whose version is dev (newServed) answers every release, below the oldest
-// answered and above its own alike, as a dev build sends no header at all.
+// answered and above its own alike, as a dev build sends no header at all; its answers
+// name dev as the release.
 //
 // Demonstrates: api.version-refusal.
 func TestAPIVersion_devServerChecksNothing(t *testing.T) {
@@ -64,9 +67,9 @@ func TestAPIVersion_devServerChecksNothing(t *testing.T) {
 	s := newServed(ctx, t)
 
 	tests := []versionCase{
-		{name: "a release below the oldest answered is answered", user: "governor", version: "0.0.1", path: consoleAPI + "/user-domains", wantStatus: http.StatusOK, wantVary: true},
-		{name: "a release above the server's is answered", user: "governor", version: "9.9.9", path: consoleAPI + "/user-domains", wantStatus: http.StatusOK, wantVary: true},
-		{name: "no header: answered", user: "governor", path: consoleAPI + "/user-domains", wantStatus: http.StatusOK, wantVary: true},
+		{name: "a release below the oldest answered is answered", user: "governor", version: "0.0.1", path: consoleAPI + "/user-domains", wantServer: "dev", wantStatus: http.StatusOK, wantVary: true},
+		{name: "a release above the server's is answered", user: "governor", version: "9.9.9", path: consoleAPI + "/user-domains", wantServer: "dev", wantStatus: http.StatusOK, wantVary: true},
+		{name: "no header: answered", user: "governor", path: consoleAPI + "/user-domains", wantServer: "dev", wantStatus: http.StatusOK, wantVary: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

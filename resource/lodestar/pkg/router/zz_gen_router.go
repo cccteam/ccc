@@ -7,20 +7,20 @@
 //	every request: tracing, hooks.Outermost, request logging, SecurityHeaders, httpio.WithParams
 //	  by hand under /beacons/: request log on event, traces off
 //	default (/console/api), sessions of the crew auth (password, google, sign-up):
-//	  BindAuth(crew.Name), NoCaching, CompressionMiddleware, StartSession, SetXSRFToken: GET /console/api/user/methods, GET /console/api/user/session, DELETE /console/api/user/session, GET /console/api/user/pending, GET /console/api/user/google/login, GET /console/api/user/google/callback, GET /console/api/user/sign-up/login, GET /console/api/user/sign-up/callback
+//	  BindAuth(crew.Name), NoCaching, CompressionMiddleware, ReleaseHeader, StartSession, SetXSRFToken: GET /console/api/user/methods, GET /console/api/user/session, DELETE /console/api/user/session, GET /console/api/user/pending, GET /console/api/user/google/login, GET /console/api/user/google/callback, GET /console/api/user/sign-up/login, GET /console/api/user/sign-up/callback
 //	  + ValidateXSRFToken: POST /console/api/user/password/login, POST /console/api/user/password/change, POST /console/api/user/pending/confirm, POST /console/api/user/pending/cancel, POST /console/api/user/invitation, POST /console/api/user/invitation/sign-up, POST /console/api/user/sign-up, POST /console/api/user/sign-up/open, POST /console/api/user/sign-up/complete
 //	  + ValidateSession, ValidateXSRFToken: POST /console/api/user/invitation/accept, POST /console/api/user/email, POST /console/api/user/email/verify
 //	  + ValidateSession, ValidateXSRFToken, CheckAPIVersion (oldest answered 0.1.0): hooks.Default, generatedRoutes
 //	droids (/droids), API key:
-//	  NoCaching, CompressionMiddleware, DroidsAuth: hooks.Droids, generatedDroidsRoutes
+//	  NoCaching, CompressionMiddleware, ReleaseHeader, DroidsAuth: hooks.Droids, generatedDroidsRoutes
 //	  POST /droids/sectors/{sectorID}/ingest-droid-reports: request log on event
 //	portal (/portal/api), sessions of the members auth (directory):
-//	  BindAuth(members.Name), NoCaching, CompressionMiddleware, StartSession, SetXSRFToken: GET /portal/api/user/methods, GET /portal/api/user/session, DELETE /portal/api/user/session, GET /portal/api/user/pending, GET /portal/api/user/directory/login, GET /portal/api/user/directory/callback
+//	  BindAuth(members.Name), NoCaching, CompressionMiddleware, ReleaseHeader, StartSession, SetXSRFToken: GET /portal/api/user/methods, GET /portal/api/user/session, DELETE /portal/api/user/session, GET /portal/api/user/pending, GET /portal/api/user/directory/login, GET /portal/api/user/directory/callback
 //	  + ValidateXSRFToken: POST /portal/api/user/pending/confirm, POST /portal/api/user/pending/cancel, POST /portal/api/user/invitation
 //	  + ValidateSession, ValidateXSRFToken: POST /portal/api/user/invitation/accept, POST /portal/api/user/email, POST /portal/api/user/email/verify
 //	  + ValidateSession, ValidateXSRFToken, CheckAPIVersion: hooks.Portal, generatedPortalRoutes
 //	scheduled (/_scheduled), Cloud Scheduler's token:
-//	  NoCaching, CompressionMiddleware, SchedulerAuth: generatedScheduledRoutes
+//	  NoCaching, CompressionMiddleware, ReleaseHeader, SchedulerAuth: generatedScheduledRoutes
 //
 // hooks.Root's routes sit behind the every-request chain alone. Under an outlet's prefix
 // nothing else answers: an unknown path is 404. Outside every prefix the browser
@@ -75,9 +75,10 @@ type Handlers interface {
 	// environment by scheduled.FromEnvironment).
 	SchedulerAuth(next http.Handler) http.Handler
 	// ServerVersion is the release this server was built from, the configuration's
-	// APP_VERSION: what each session outlet checks a browser application's
-	// X-Api-Version against (resource.CheckAPIVersion). A value that is not a release,
-	// dev for one, checks nothing.
+	// APP_VERSION: what every outlet names on each answer (resource.ReleaseHeader) and
+	// each session outlet checks a browser application's X-Api-Version against
+	// (resource.CheckAPIVersion). A value that is not a release, dev for one, is named
+	// as it is and checks nothing.
 	ServerVersion() string
 
 	// Every request: where the request log goes; the router builds the request logger from it.
@@ -212,8 +213,9 @@ func New(h Handlers, hooks Hooks) *chi.Mux {
 		panic(fmt.Sprintf("router.New: %v", err))
 	}
 	r := chi.NewRouter()
-	// The release this server was built from, which every session outlet's version
-	// check compares a browser application's X-Api-Version against.
+	// The release this server was built from: every outlet names it on each answer
+	// (X-Api-Version), and each session outlet's version check compares a browser
+	// application's against it.
 	serverVersion := h.ServerVersion()
 
 	// Every request.
@@ -250,6 +252,7 @@ func New(h Handlers, hooks Hooks) *chi.Mux {
 		r.Use(h.BindAuth(crew.Name))
 		r.Use(h.NoCaching)
 		r.Use(h.CompressionMiddleware())
+		r.Use(resource.ReleaseHeader(serverVersion))
 		r.Use(h.StartSession)
 		r.Use(h.SetXSRFToken)
 
@@ -325,6 +328,7 @@ func New(h Handlers, hooks Hooks) *chi.Mux {
 	r.Group(func(r chi.Router) {
 		r.Use(h.NoCaching)
 		r.Use(h.CompressionMiddleware())
+		r.Use(resource.ReleaseHeader(serverVersion))
 		r.Use(h.DroidsAuth)
 
 		registerGenerated(r, hooks.Droids, "Droids", func(r chi.Router) {
@@ -338,6 +342,7 @@ func New(h Handlers, hooks Hooks) *chi.Mux {
 		r.Use(h.BindAuth(members.Name))
 		r.Use(h.NoCaching)
 		r.Use(h.CompressionMiddleware())
+		r.Use(resource.ReleaseHeader(serverVersion))
 		r.Use(portalSession.StartSession)
 		r.Use(portalSession.SetXSRFToken)
 
@@ -399,6 +404,7 @@ func New(h Handlers, hooks Hooks) *chi.Mux {
 	r.Group(func(r chi.Router) {
 		r.Use(h.NoCaching)
 		r.Use(h.CompressionMiddleware())
+		r.Use(resource.ReleaseHeader(serverVersion))
 		r.Use(h.SchedulerAuth)
 
 		generatedScheduledRoutes(r, h)
