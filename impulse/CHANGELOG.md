@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.5](https://github.com/cccteam/ccc/compare/impulse/v0.5.4...impulse/v0.5.5) (2026-10-23)
+
+
+### Bug Fixes
+
+* the skeletons and Lodestar move to @cccteam/resource 0.0.9, resource-angular 0.0.10 and resource-firestore 0.0.7 ([#1085](https://github.com/cccteam/ccc/issues/1085)) ([3ad3a52](https://github.com/cccteam/ccc/commit/3ad3a5288fa50be9ea58c2d55241c4b564e64331))
+
 ## [0.5.4](https://github.com/cccteam/ccc/compare/impulse/v0.5.3...impulse/v0.5.4) (2026-10-23)
 
 
