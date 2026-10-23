@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.15.4](https://github.com/cccteam/ccc/compare/resource/v0.15.3...resource/v0.15.4) (2026-10-23)
+
+
+### Features
+
+* every answer of an outlet names the server's release in X-Api-Version, so a browser application can show it ([#1091](https://github.com/cccteam/ccc/issues/1091)) ([b633f73](https://github.com/cccteam/ccc/commit/b633f73da4faeddc6e558aa32f7652b2d3825924))
+* every application shows its release under the login card and in the footer of every page ([#1095](https://github.com/cccteam/ccc/issues/1095)) ([c28b999](https://github.com/cccteam/ccc/commit/c28b999463f1bbcc7be66ba44f565110f4844158))
+* the consoles' dashboard carries the signed-in person's email address, confirmed through a mailed link ([#1088](https://github.com/cccteam/ccc/issues/1088)) ([9e9bdca](https://github.com/cccteam/ccc/commit/9e9bdcabf8b2cb27db0e93899c3518b15cd32da5))
+
+
+### Bug Fixes
+
+* the login pages keep the session when an invitation or address-confirmation link is followed ([#1089](https://github.com/cccteam/ccc/issues/1089)) ([79d2a81](https://github.com/cccteam/ccc/commit/79d2a812e6a20ba99d11f4b47fb4f099f1c38d85))
+
 ## [0.15.3](https://github.com/cccteam/ccc/compare/resource/v0.15.2...resource/v0.15.3) (2026-10-23)
 
 
