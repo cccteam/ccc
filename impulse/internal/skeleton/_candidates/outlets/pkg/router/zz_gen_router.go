@@ -7,11 +7,13 @@
 //	every request: tracing, hooks.Outermost, request logging, SecurityHeaders, httpio.WithParams
 //	default (/console/api), sessions of the staff auth (password):
 //	  BindAuth(staff.Name), NoCaching, CompressionMiddleware, StartSession, SetXSRFToken: GET /console/api/user/methods, GET /console/api/user/session, DELETE /console/api/user/session, GET /console/api/user/pending
-//	  + ValidateXSRFToken: POST /console/api/user/password/login, POST /console/api/user/password/change, POST /console/api/user/pending/confirm, POST /console/api/user/pending/cancel
+//	  + ValidateXSRFToken: POST /console/api/user/password/login, POST /console/api/user/password/change, POST /console/api/user/pending/confirm, POST /console/api/user/pending/cancel, POST /console/api/user/invitation, POST /console/api/user/invitation/sign-up
+//	  + ValidateSession, ValidateXSRFToken: POST /console/api/user/invitation/accept, POST /console/api/user/email, POST /console/api/user/email/verify
 //	  + ValidateSession, ValidateXSRFToken, CheckAPIVersion (oldest answered 0.0.1): hooks.Default, generatedRoutes
 //	portal (/portal/api), sessions of the members auth (directory):
 //	  BindAuth(members.Name), NoCaching, CompressionMiddleware, StartSession, SetXSRFToken: GET /portal/api/user/methods, GET /portal/api/user/session, DELETE /portal/api/user/session, GET /portal/api/user/pending, GET /portal/api/user/directory/login, GET /portal/api/user/directory/callback, GET /portal/api/user/directory/logout
-//	  + ValidateXSRFToken: POST /portal/api/user/pending/confirm, POST /portal/api/user/pending/cancel
+//	  + ValidateXSRFToken: POST /portal/api/user/pending/confirm, POST /portal/api/user/pending/cancel, POST /portal/api/user/invitation
+//	  + ValidateSession, ValidateXSRFToken: POST /portal/api/user/invitation/accept, POST /portal/api/user/email, POST /portal/api/user/email/verify
 //	  + ValidateSession, ValidateXSRFToken, CheckAPIVersion (oldest answered 0.0.1): hooks.Portal, generatedPortalRoutes
 //	machines (/machines), API key:
 //	  NoCaching, CompressionMiddleware, MachinesAuth: hooks.Machines, generatedMachinesRoutes
@@ -95,6 +97,16 @@ type DefaultSession interface {
 	PendingStatus() http.HandlerFunc
 	PendingConfirmWithPassword() http.HandlerFunc
 	PendingCancel() http.HandlerFunc
+	// The invitation the login page was sent to, opened (session.InvitationHandlers.Open): the sign-in that follows carries it.
+	InvitationOpen() http.HandlerFunc
+	// The invitation accepted by a person already signed in (session.InvitationHandlers.Accept).
+	InvitationAccept() http.HandlerFunc
+	// An invited person's account, created with a password and signed in (session.InvitationHandlers.SignUp).
+	InvitationSignUp() http.HandlerFunc
+	// A signed-in person's email address, added by mailing it a verification link (session.EmailHandlers.Add).
+	EmailAdd() http.HandlerFunc
+	// The address verified from the mailed link (session.EmailHandlers.Verify).
+	EmailVerify() http.HandlerFunc
 	// The password method's login and password change (session.PasswordMethod); the change validates the session itself, outside ValidateSession.
 	PasswordLogin() http.HandlerFunc
 	PasswordChange() http.HandlerFunc
@@ -119,6 +131,14 @@ type PortalSession interface {
 	PendingStatus() http.HandlerFunc
 	PendingConfirmWithPassword() http.HandlerFunc
 	PendingCancel() http.HandlerFunc
+	// The invitation the login page was sent to, opened (session.InvitationHandlers.Open): the sign-in that follows carries it.
+	InvitationOpen() http.HandlerFunc
+	// The invitation accepted by a person already signed in (session.InvitationHandlers.Accept).
+	InvitationAccept() http.HandlerFunc
+	// A signed-in person's email address, added by mailing it a verification link (session.EmailHandlers.Add).
+	EmailAdd() http.HandlerFunc
+	// The address verified from the mailed link (session.EmailHandlers.Verify).
+	EmailVerify() http.HandlerFunc
 	// The directory registration's login, callback and front-channel logout (azure.Method).
 	DirectoryLogin() http.HandlerFunc
 	DirectoryCallback() http.HandlerFunc
@@ -193,6 +213,8 @@ func New(h Handlers, hooks Hooks) *chi.Mux {
 			},
 			Pending:        session.PendingRoutes{Status: "/console/api/user/pending", Confirm: "/console/api/user/pending/confirm", Cancel: "/console/api/user/pending/cancel"},
 			ChangePassword: "/console/api/user/password/change",
+			Invitation:     session.InvitationRoutes{Open: "/console/api/user/invitation", Accept: "/console/api/user/invitation/accept", SignUp: "/console/api/user/invitation/sign-up"},
+			Email:          session.EmailRoutes{Add: "/console/api/user/email", Verify: "/console/api/user/email/verify"},
 		}))
 		bounded.Get("/console/api/user/session", h.Authenticated())
 		bounded.Delete("/console/api/user/session", h.Logout())
@@ -201,6 +223,8 @@ func New(h Handlers, hooks Hooks) *chi.Mux {
 		guarded.Post("/console/api/user/password/change", h.PasswordChange())
 		guarded.Post("/console/api/user/pending/confirm", h.PendingConfirmWithPassword())
 		guarded.Post("/console/api/user/pending/cancel", h.PendingCancel())
+		guarded.Post("/console/api/user/invitation", h.InvitationOpen())
+		guarded.Post("/console/api/user/invitation/sign-up", h.InvitationSignUp())
 
 		r.Group(func(r chi.Router) {
 			r.Use(h.ValidateSession)
@@ -208,11 +232,22 @@ func New(h Handlers, hooks Hooks) *chi.Mux {
 			// The version check: a browser application sends its release in X-Api-Version,
 			// and releases from 0.0.1 up to the server's own are answered. An application outside that
 			// range is refused with 412 naming the server's release, before its body is read;
-			// a request without the header, the session routes above are answered at any release.
+			// a request without the header, the session routes above and below are answered at any release.
 			r.Use(resource.CheckAPIVersion(resource.APIVersionCheck{
 				ServerVersion:  serverVersion,
 				OldestAnswered: "0.0.1",
+				Exempt: []string{
+					"/console/api/user/invitation/accept",
+					"/console/api/user/email",
+					"/console/api/user/email/verify",
+				},
 			}))
+
+			// The session routes a signed-in person calls: the acceptance of an invitation
+			// the browser carries, and the address they add and verify.
+			r.With(resource.BodyLimit(BodyLimit)).Post("/console/api/user/invitation/accept", h.InvitationAccept())
+			r.With(resource.BodyLimit(BodyLimit)).Post("/console/api/user/email", h.EmailAdd())
+			r.With(resource.BodyLimit(BodyLimit)).Post("/console/api/user/email/verify", h.EmailVerify())
 
 			registerGenerated(r, hooks.Default, "Default", func(r chi.Router) {
 				generatedRoutes(r, h)
@@ -238,7 +273,9 @@ func New(h Handlers, hooks Hooks) *chi.Mux {
 			Methods: []session.AdvertisedMethod{
 				{Name: "directory", Label: "Microsoft", Path: "/portal/api/user/directory/login"},
 			},
-			Pending: session.PendingRoutes{Status: "/portal/api/user/pending", Confirm: "/portal/api/user/pending/confirm", Cancel: "/portal/api/user/pending/cancel"},
+			Pending:    session.PendingRoutes{Status: "/portal/api/user/pending", Confirm: "/portal/api/user/pending/confirm", Cancel: "/portal/api/user/pending/cancel"},
+			Invitation: session.InvitationRoutes{Open: "/portal/api/user/invitation", Accept: "/portal/api/user/invitation/accept"},
+			Email:      session.EmailRoutes{Add: "/portal/api/user/email", Verify: "/portal/api/user/email/verify"},
 		}))
 		bounded.Get("/portal/api/user/session", portalSession.Authenticated())
 		bounded.Delete("/portal/api/user/session", portalSession.Logout())
@@ -248,6 +285,7 @@ func New(h Handlers, hooks Hooks) *chi.Mux {
 		bounded.Get("/portal/api/user/directory/logout", portalSession.DirectoryFrontChannelLogout())
 		guarded.Post("/portal/api/user/pending/confirm", portalSession.PendingConfirmWithPassword())
 		guarded.Post("/portal/api/user/pending/cancel", portalSession.PendingCancel())
+		guarded.Post("/portal/api/user/invitation", portalSession.InvitationOpen())
 
 		r.Group(func(r chi.Router) {
 			r.Use(portalSession.ValidateSession)
@@ -255,11 +293,22 @@ func New(h Handlers, hooks Hooks) *chi.Mux {
 			// The version check: a browser application sends its release in X-Api-Version,
 			// and releases from 0.0.1 up to the server's own are answered. An application outside that
 			// range is refused with 412 naming the server's release, before its body is read;
-			// a request without the header, the session routes above are answered at any release.
+			// a request without the header, the session routes above and below are answered at any release.
 			r.Use(resource.CheckAPIVersion(resource.APIVersionCheck{
 				ServerVersion:  serverVersion,
 				OldestAnswered: "0.0.1",
+				Exempt: []string{
+					"/portal/api/user/invitation/accept",
+					"/portal/api/user/email",
+					"/portal/api/user/email/verify",
+				},
 			}))
+
+			// The session routes a signed-in person calls: the acceptance of an invitation
+			// the browser carries, and the address they add and verify.
+			r.With(resource.BodyLimit(BodyLimit)).Post("/portal/api/user/invitation/accept", portalSession.InvitationAccept())
+			r.With(resource.BodyLimit(BodyLimit)).Post("/portal/api/user/email", portalSession.EmailAdd())
+			r.With(resource.BodyLimit(BodyLimit)).Post("/portal/api/user/email/verify", portalSession.EmailVerify())
 
 			registerGenerated(r, hooks.Portal, "Portal", func(r chi.Router) {
 				generatedPortalRoutes(r, h)

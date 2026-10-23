@@ -331,7 +331,7 @@ func TestAuthValidate(t *testing.T) {
 		{name: "two methods", auth: Auth{Name: "partners", Methods: []authpkg.Method{{Kind: app.MethodPassword}, {Kind: app.MethodGoogle, Name: "google", Authority: AuthorityApplication}}, Outlet: "default"}},
 		{name: "a registration given twice", auth: Auth{Name: "partners", Methods: []authpkg.Method{{Kind: app.MethodAzure, Name: "directory", Authority: AuthorityApplication}, {Kind: app.MethodGoogle, Name: "directory", Authority: AuthorityApplication}}, Outlet: "default"}, wantErr: "given twice"},
 		{name: "an unknown method", auth: Auth{Name: "partners", Methods: []authpkg.Method{{Kind: "ldap", Name: "ldap", Authority: AuthorityApplication}}, Outlet: "default"}, wantErr: `"ldap" is not a sign-in method`},
-		{name: "an account rule on the password method alone", auth: Auth{Name: "partners", Methods: []authpkg.Method{{Kind: app.MethodPassword, Accounts: authpkg.AccountsInvited}}, Outlet: "default"}, wantErr: "the password method takes no slot, account rule or authority"},
+		{name: "an account rule on the password method alone", auth: Auth{Name: "partners", Methods: []authpkg.Method{{Kind: app.MethodPassword, Accounts: authpkg.AccountsInvited}}, Outlet: "default"}, wantErr: "the password method takes open (a stranger signs up from a link mailed to their address) or no rule"},
 		{name: "a made-up account rule", auth: Auth{Name: "partners", Methods: []authpkg.Method{{Kind: app.MethodGoogle, Name: "workspace", Authority: AuthorityApplication, Accounts: "anyone"}}, Outlet: "default"}, wantErr: `accounts "anyone": members, invited or open`},
 		{name: "open sign-up with the one organization add auth takes", auth: Auth{Name: "partners", Methods: []authpkg.Method{{Kind: app.MethodGoogle, Name: "workspace", Authority: AuthorityApplication, Accounts: authpkg.AccountsOpen}}, Outlet: "default"}, wantErr: "open sign-up is for any organization or personal accounts; a registration naming its Workspaces takes members or invited"},
 		{name: "the auth exists", auth: Auth{Name: "staff", Outlet: "default"}, wantErr: "the staff auth already exists"},
@@ -396,7 +396,7 @@ func TestAuthApply(t *testing.T) {
 		"\treturn assemble(spannerClient, staffAuth), nil\n", 1)
 
 	const packageDid = "pkg/auth/partners: the partners auth package (foothold.go, partners.go, password.go), rendered from the skeleton's auth source: the Auth session over tables prefixed Partners, the partners permission store, and the methods password, each in its own file"
-	const migrationsDid = "schema/migrations: 000005_PartnersAccess, 000006_PartnersSessionUsers, 000007_PartnersSessions, the partners auth's tables: the access tables copied from the staff auth's under the Partners prefix, and the Auth session tables (sessions, users, identities, auth events, pending sign-ins, sign-in attempts)"
+	const migrationsDid = "schema/migrations: 000005_PartnersAccess, 000006_PartnersSessionUsers, 000007_PartnersSessions, the partners auth's tables: the access tables copied from the staff auth's under the Partners prefix, and the Auth session tables (sessions, users with their addresses, identities, auth events, pending sign-ins, sign-in attempts, mail links)"
 	const rolesDid = "pkg/auth/partners/roles.json: the partners auth's role file, empty: author its roles when its surfaces are bound"
 	const configDid = "pkg/config/data.go: the partners auth constructed on DataConfiguration beside the staff auth (field, construction, import), its settings in the construction's literal as the staff auth's are (an application composed before the staffSettings method); pkg/config/partners.go: its accessor Partners()"
 	const configSettingsDid = "pkg/config/data.go: the partners auth constructed on DataConfiguration beside the staff auth (field, construction, import), its settings built by dataConfig.partnersSettings, copied from staffSettings; pkg/config/partners.go: its accessor Partners()"
@@ -555,7 +555,8 @@ func TestAuthApply(t *testing.T) {
 				for _, want := range []string{
 					"\tTenantDeclarations signin.DeclarationReader[*cloudspanner.ReadWriteTransaction]\n}",
 					"\tif settings.TenantDeclarations == nil {\n\t\treturn nil, errors.New(\"partners.Settings.TenantDeclarations is nil: the sign-in rule reads what each tenant declares about who may enter it through the generated reader (app.NewTenantDeclarationReader), which the data level hands in\")\n\t}\n\tstore, err := spannerstore.New(",
-					"\tauthSession.SetSignInPolicy(signin.TenantPolicy(resource.SignInRoles(accessClient.UserManager()), settings.TenantDeclarations, signin.AdmitWithoutTenant()))\n\n\treturn &Auth{db: db, access: accessClient, handlers: handlers}, nil\n",
+					"\tauthSession.SetSignInPolicy(signin.TenantPolicy(resource.SignInRoles(accessClient.UserManager()), settings.TenantDeclarations, signin.AdmitWithoutTenant()))\n\n\t// An invitation accepted seats its roles",
+					"\tauthSession.SetInvitationAccepted(resource.SeatInvited(accessClient.UserManager()))\n\n\treturn &Auth{db: db, access: accessClient, handlers: handlers}, nil\n",
 					"\t\"github.com/cccteam/session/signin\"\n",
 				} {
 					if !strings.Contains(pkg, want) {

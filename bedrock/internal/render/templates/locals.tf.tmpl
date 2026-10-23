@@ -300,8 +300,9 @@ locals {
   # readers: which runtime identity mounts it. The service; and the migrate
   # command, which also constructs the data level, reads the generated password
   # of each auth's first administrator (migrate_secrets, below), which it seeds
-  # the administrator user with while the auth's users table holds no rows. So
-  # the deploy identity, which runs the migrate command, holds accessor on
+  # the administrator user with while the auth's users table holds no rows, and
+  # the mailbox's app password, which the data level opens the mail sender with.
+  # So the deploy identity, which runs the migrate command, holds accessor on
   # those containers alone and on no other runtime secret: the session library
   # reads the cookie key (falling back to an ephemeral one), the client secrets
   # and the people's credentials only when a browser signs in, which a
@@ -329,10 +330,11 @@ locals {
   generated_secrets = { for key, s in local.secrets : key => s if s.generated }
 
   # The secrets the migrate command reads (readers, above): the generated
-  # password of each auth's first administrator, by variable, and the pinned
-  # version of each the command runs with, read back by the pipeline from the
-  # applied stack (cloud-build.tf, _MIGRATE_SECRETS). A secret with no version
-  # yet (a plan by hand) is left out, and the command runs without it.
+  # password of each auth's first administrator and the mailbox's app password,
+  # by variable, and the pinned version of each the command runs with, read
+  # back by the pipeline from the applied stack (cloud-build.tf,
+  # _MIGRATE_SECRETS). A secret with no version yet (a plan by hand) is left
+  # out, and the command runs without it.
   migrate_secrets = toset([{{range $i, $s := .MigrateSecrets}}{{if $i}}, {{end}}"{{$s.Variable.Name}}"{{end}}])
 
   # The versions this environment runs: the placement's pins (a number, or
@@ -399,6 +401,18 @@ locals {
     # while the auth's users table holds no rows.
 {{.AdministratorEnv}}
 {{- end}}
+{{- if .PublicURL}}
+    # {{.PublicURL.Declaration}}: the application's address as a browser reaches it, the
+    # canonical hostname{{if .MultiSite}} of the first site (each site's service carries its own,
+    # site_env){{end}}; every link the auths mail opens the login page under it.
+    {{.PublicURL.Name}} = "https://${local.hostnames[0]}"
+{{- end}}
+{{- if .Mailbox}}
+    # {{.Mailbox.Declaration}}: the Google Workspace mailbox the auths' mail is sent as
+    # (var.mail_mailbox), empty until the organization names one, when the
+    # application writes its mail to the log and sends nothing.
+    {{.Mailbox.Name}} = var.mail_mailbox
+{{- end}}
 {{- range .CodeDefaults}}
     # {{.Declaration}} is left to its code default ({{.Default}}).
 {{- end}}
@@ -418,6 +432,13 @@ locals {
   }
 {{- end}}
 
+{{- if .MultiSite}}
+
+  # Each site's own variables (cloud-run.tf): the bundle the image holds for it
+  # (site_settings){{if .PublicURL}} and its address as a browser reaches it, the site's canonical
+  # hostname, which every link its auths mail opens under{{end}}.
+  site_env = { for site in local.sites : site => merge(local.site_settings[site].env{{if .PublicURL}}, { {{.PublicURL.Name}} = "https://${local.site_hostnames[site][0]}" }{{end}}) }
+{{- end}}
 {{- if .Jobs}}
 
   # {{.JobsTemplate.Declaration}}: the job process's template job (cloud-run.tf), which

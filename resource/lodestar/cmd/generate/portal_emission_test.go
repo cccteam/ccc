@@ -163,7 +163,7 @@ func TestPortalTargetEmission(t *testing.T) {
 		}
 		names = append(names, m[1])
 	}
-	want := "ClientContacts,ClientRosters,DistressCalls,Missions,MissionDocuments,BriefingTemplates,FeatureFlags,UserIdentity,MembersUsers,MembersSeats,MembersRoles,MembersSectorUsers,MembersSectorSeats,MembersSectorRoles"
+	want := "ClientContacts,ClientRosters,DistressCalls,Missions,MissionDocuments,BriefingTemplates,FeatureFlags,UserIdentity,MembersUsers,MembersSeats,MembersRoles,MembersInvitations,MembersSectorUsers,MembersSectorSeats,MembersSectorRoles,MembersSectorInvitations"
 	if strings.Join(names, ",") != want {
 		t.Errorf("portal resource interfaces = %v, want %s", names, want)
 	}

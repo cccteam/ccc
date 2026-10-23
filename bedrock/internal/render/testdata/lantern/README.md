@@ -124,8 +124,8 @@ from `2-env`'s state.
   `spanner.tf`), `roles/monitoring.metricWriter` on the project for the Spanner
   client's metrics (`service-accounts.tf`), and `roles/datastore.user` on the Firestore
   database under the condition naming it (`firestore.tf`). It holds
-  accessor on the generated password of each auth's first administrator
-  (`APP_STAFF_ADMINISTRATOR_PASSWORD`), which the migration seeds the administrator user with, and on
+  accessor on the secrets the migration reads
+  (`APP_MAIL_APP_PASSWORD`, `APP_STAFF_ADMINISTRATOR_PASSWORD`: the generated password of each auth's first administrator, which it seeds the administrator user with, and the mailbox's app password, which the data level opens the mail sender with), and on
   no other runtime secret, which a migration never reads. The Spanner
   client writes its client-side metrics (operation and attempt latency,
   counts) to the project that owns the instance and logs a denial at every
@@ -180,6 +180,7 @@ from `2-env`'s state.
   | Variable | Field | Container |
   |---|---|---|
   | `APP_COOKIE_KEY` | `dataConfig.CookieKey` | `...-cookie-key` |
+  | `APP_MAIL_APP_PASSWORD` | `dataConfig.MailAppPassword` | `...-mail-app-password` |
   | `APP_STAFF_ADMINISTRATOR_PASSWORD` | `dataConfig.StaffAdministratorPassword` | `...-staff-administrator-password` |
 
   The site's identity holds accessor. The migrate command
@@ -344,8 +345,10 @@ above them.
 | `GOOGLE_CLOUD_FIRESTORE_PROJECT` | data | the environment project (the Firestore database's) | yes | yes |
 | `APP_FIRESTORE_DATABASE` | data | the Firestore database | yes | yes |
 | `APP_FIREBASE_API_KEY` | data | the Firebase web API key | yes | yes |
+| `APP_PUBLIC_URL` | data | `https://<first hostname>`, each site's own on its service | yes | yes |
+| `APP_MAIL_MAILBOX` | data | `var.mail_mailbox` | yes | yes |
 | `APP_SCHEDULER_INVOKER` | none, the framework reads it | the scheduler's invoker identity, unset in a pull-request stack | yes | |
-| `APP_COOKIE_KEY`, `APP_STAFF_ADMINISTRATOR_PASSWORD` | data | secret, at the pinned version | yes | |
+| `APP_COOKIE_KEY`, `APP_MAIL_APP_PASSWORD`, `APP_STAFF_ADMINISTRATOR_PASSWORD` | data | secret, at the pinned version | yes | |
 
 The migrate command carries the Firestore
 database because the data level opens its live service when it is constructed, and
@@ -964,9 +967,18 @@ pull request's.
 
 Per environment, after the first apply:
 
-None: every secret the code declares is generated (the first release build in
-each environment adds its first version and pins it; the first apply mounts
-none yet), and the sign-in needs no registration.
+1. In the Google Workspace Admin console, once for the organization: a mailbox the
+   application sends its mail as (a no-reply address of the organization's domain),
+   with 2-step verification turned on and an app password generated for it, and the
+   SMTP relay service (Apps > Google Workspace > Gmail > Routing) accepting mail from
+   the organization's addresses with authentication and TLS required. Put the mailbox
+   in `terraform.tfvars` (`mail_mailbox`) and add the app password as version 1 of
+   `imp-<env>-gbl-lantrn-mail-app-password` in every environment: the password is a
+   declared secret, so a release to an environment after tst waits on its
+   pin. Until the mailbox is named the application writes its mail (the
+   invitations and address verifications its auths send, link included) to the log
+   and sends nothing, which a deployed environment is not left at.
+2. Pin the versions in `secret_versions` and apply.
 
 ## Inputs
 
@@ -984,6 +996,7 @@ none yet), and the sign-in needs no registration.
 | `secret_versions` | Pinned secret version per environment per variable; the word `generated` for a generated secret. | `map(map(string))` | all empty | no |
 | `substitutions` | Extra trigger substitutions per environment, for the hooks and the image build. | `map(map(string))` | `{}` | no |
 | `teardown` | Set by `bedrock teardown` alone: the services' deletion protection lifted at the apply before its destroy. | `bool` | `false` | no |
+| `mail_mailbox` | Google Workspace mailbox the auths' mail is sent as; empty writes the mail to the log instead. | `string` | `""` | no |
 | `state_bucket` | State bucket, for the upstream layers' outputs. | `string` | n/a | yes |
 
 ## Outputs

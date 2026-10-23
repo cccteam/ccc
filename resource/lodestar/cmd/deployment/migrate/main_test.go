@@ -125,6 +125,7 @@ func TestExecute(t *testing.T) {
 	t.Setenv("APP_CREW_OIDC_CONNECTION", "example")
 	t.Setenv("APP_CREW_OIDC_HOSTED_DOMAIN", "example.com")
 	t.Setenv("APP_CREW_OIDC_GROUP_PREFIX", "crew-")
+	t.Setenv("APP_PUBLIC_URL", "http://lodestar.test")
 	last := lastMigration(t)
 
 	tests := []struct {

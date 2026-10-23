@@ -24,6 +24,7 @@ import (
 	initiator "github.com/cccteam/db-initiator"
 	"github.com/cccteam/logger"
 	"github.com/cccteam/session"
+	"github.com/cccteam/session/mail"
 	"github.com/go-playground/validator/v10"
 )
 
@@ -111,7 +112,7 @@ func newServed(ctx context.Context, t *testing.T) *served {
 	// The live service the engine signals policy changes through and the App follows
 	// its feature flags from: in-memory in the suites.
 	svc := live.NewFake()
-	auth, err := staff.New(ctx, db.Client, &staff.Settings{Collection: router.Collection(), Signals: svc, CookieKey: testCookieKey, SessionTimeout: time.Minute})
+	auth, err := staff.New(ctx, db.Client, &staff.Settings{Collection: router.Collection(), Signals: svc, CookieKey: testCookieKey, SessionTimeout: time.Minute, Mail: &mail.Recorder{}, MailLoginURL: "http://solo.test/login"})
 	if err != nil {
 		t.Fatalf("staff.New() error = %v", err)
 	}

@@ -27,22 +27,35 @@ import (
 // Each Auth gets one partition per permission scope, since a resource has one scope and
 // a global role grants only global resources:
 //
-//   - The global partition, <Auth>Users, <Auth>Seats and <Auth>Roles: every user, the
-//     seats held in the global scope and in every tenant, and the roles those seats may
-//     take. With them Set<Auth>UserPassword and Unlink<Auth>UserIdentity, which target
+//   - The global partition, <Auth>Users, <Auth>Seats, <Auth>Roles and
+//     <Auth>Invitations: every user, the seats held in the global scope and in every
+//     tenant, the roles those seats may take, and the invitations that stand into
+//     them. With them Set<Auth>UserPassword and Unlink<Auth>UserIdentity, which target
 //     <Auth>Users.
 //   - The tenant partition under the tenant segment, <Auth><Tenant>Users,
-//     <Auth><Tenant>Seats and <Auth><Tenant>Roles: the users seated in the tenant or
-//     everywhere, their seats there, and the roles a tenant seat may take. With them
+//     <Auth><Tenant>Seats, <Auth><Tenant>Roles and <Auth><Tenant>Invitations: the
+//     users seated in the tenant or everywhere, their seats there, the roles a tenant
+//     seat may take, and the invitations that stand into the tenant. With them
 //     Set<Auth><Tenant>UserPassword and Unlink<Auth><Tenant>UserIdentity.
 //
 // A seat is a row of its own, (user, role), so a role file limits what a delegate may
 // hand out with the post-image: Create on <Auth><Tenant>Seats under
-// new.role IN ('Member', 'Clerk'). The rules no role file writes are the library's:
-// nobody deactivates, deletes or unseats themselves; a user seated outside the tenant
-// is managed from the global partition, so the tenant partition refuses the
-// account-level actions on them; a user whose roles a directory writes (a registration
-// declared SyncsRoles) is not seated by hand.
+// new.role IN ('Member', 'Clerk'); an invitation carries its roles, and a condition on
+// role is judged once per role it carries, so the same grant limits an invitation. The
+// rules no role file writes are the library's: nobody deactivates, deletes or unseats
+// themselves; a user seated outside the tenant is managed from the global partition,
+// so the tenant partition refuses the account-level actions on them; a user whose roles
+// a directory writes (a registration declared SyncsRoles) is not seated by hand; a
+// person whose last seat anywhere is removed is deleted with their identity links (the
+// orphan rule), and a tenant's delete of a user removes their seats there, the account
+// going only when no seat remains anywhere.
+//
+// Two doors lead into a tenant: an invitation, mailed to an address with the roles its
+// acceptance grants (the session library's invitation, accepted by whoever signs in or
+// signs up at it; SeatInvited is the acceptance hook that writes the seats), and the
+// direct seat of a person the tenant's own directory has vouched for: a user who signed
+// in through a directory the tenant declares (WithTenantDirectories) may be seated in
+// the tenant without holding a seat there first.
 
 // UserAuth marks one Auth whose users the library manages. The generated router
 // package declares a type per Auth whose method returns the declaration the generator
@@ -76,7 +89,17 @@ type UserSurfaceDeclaration struct {
 // without a password; a registration that writes the roles from its directory makes the
 // role part read-only for the users it signs in.
 type UserSurfaceShape struct {
-	Password      bool
+	Password bool
+	// UsernameIsEmail marks a password method declared with the username as the
+	// person's email address (session.UsernameIsEmail): the address columns derive
+	// from the username, so the surface takes no address on a user and refuses a
+	// rename, which the session library refuses too; a verified new address renames
+	// the user (SeatsFollowRename keeps the seats with them).
+	UsernameIsEmail bool
+	// OpenSignUp marks a password method that offers sign-up to anyone with an address
+	// (session.OpenSignUp): a fact for the client descriptor, since the login page
+	// serves the sign-up; the surface's rows are the same.
+	OpenSignUp    bool
 	Registrations []UserRegistration
 }
 
@@ -222,19 +245,20 @@ type UserResourceNames struct {
 	Tenant UserPartitionNames
 }
 
-// UserPartitionNames are one partition's names: its three resources and two methods,
+// UserPartitionNames are one partition's names: its four resources and two methods,
 // the route segments they are served at under the outlet's prefix (and, tenanted, the
 // domain segment), and the parameters of their read routes.
 type UserPartitionNames struct {
 	Tenanted bool
 
-	Users, Seats, Roles, SetPassword, UnlinkIdentity accesstypes.Resource
+	Users, Seats, Roles, Invitations, SetPassword, UnlinkIdentity accesstypes.Resource
 
-	UsersRoute, SeatsRoute, RolesRoute, SetPasswordRoute, UnlinkIdentityRoute string
+	UsersRoute, SeatsRoute, RolesRoute, InvitationsRoute, SetPasswordRoute, UnlinkIdentityRoute string
 
 	// UserParam is the users read route's parameter (crewUserID), SeatUserParam and
-	// SeatRoleParam the seats read route's, RoleParam the roles read route's.
-	UserParam, SeatUserParam, SeatRoleParam, RoleParam httpio.ParamType
+	// SeatRoleParam the seats read route's, RoleParam the roles read route's,
+	// InvitationParam the invitations read route's.
+	UserParam, SeatUserParam, SeatRoleParam, RoleParam, InvitationParam httpio.ParamType
 }
 
 // partitionNames spells one partition: <Auth><Tenant>Users and so on, their kebab-case
@@ -244,19 +268,22 @@ func partitionNames(auth, tenant string) UserPartitionNames {
 	prefix := auth + tenant
 	infix := auth + tenant + "User"
 	n := UserPartitionNames{
-		Users:          accesstypes.Resource(prefix + "Users"),
-		Seats:          accesstypes.Resource(prefix + "Seats"),
-		Roles:          accesstypes.Resource(prefix + "Roles"),
-		SetPassword:    accesstypes.Resource("Set" + infix + "Password"),
-		UnlinkIdentity: accesstypes.Resource("Unlink" + infix + "Identity"),
-		UserParam:      httpio.ParamType(strcase.ToGoCamel(prefix + "UserID")),
-		SeatUserParam:  httpio.ParamType(strcase.ToGoCamel(prefix + "SeatUser")),
-		SeatRoleParam:  httpio.ParamType(strcase.ToGoCamel(prefix + "SeatRole")),
-		RoleParam:      httpio.ParamType(strcase.ToGoCamel(prefix + "RoleName")),
+		Users:           accesstypes.Resource(prefix + "Users"),
+		Seats:           accesstypes.Resource(prefix + "Seats"),
+		Roles:           accesstypes.Resource(prefix + "Roles"),
+		Invitations:     accesstypes.Resource(prefix + "Invitations"),
+		SetPassword:     accesstypes.Resource("Set" + infix + "Password"),
+		UnlinkIdentity:  accesstypes.Resource("Unlink" + infix + "Identity"),
+		UserParam:       httpio.ParamType(strcase.ToGoCamel(prefix + "UserID")),
+		SeatUserParam:   httpio.ParamType(strcase.ToGoCamel(prefix + "SeatUser")),
+		SeatRoleParam:   httpio.ParamType(strcase.ToGoCamel(prefix + "SeatRole")),
+		RoleParam:       httpio.ParamType(strcase.ToGoCamel(prefix + "RoleName")),
+		InvitationParam: httpio.ParamType(strcase.ToGoCamel(prefix + "InvitationID")),
 	}
 	n.UsersRoute = strcase.ToKebab(string(n.Users))
 	n.SeatsRoute = strcase.ToKebab(string(n.Seats))
 	n.RolesRoute = strcase.ToKebab(string(n.Roles))
+	n.InvitationsRoute = strcase.ToKebab(string(n.Invitations))
 	n.SetPasswordRoute = strcase.ToKebab(string(n.SetPassword))
 	n.UnlinkIdentityRoute = strcase.ToKebab(string(n.UnlinkIdentity))
 
@@ -265,7 +292,7 @@ func partitionNames(auth, tenant string) UserPartitionNames {
 
 // Resources lists the partition's resources and methods, the names a role file grants.
 func (n *UserPartitionNames) Resources() []accesstypes.Resource {
-	return []accesstypes.Resource{n.Users, n.Seats, n.Roles, n.SetPassword, n.UnlinkIdentity}
+	return []accesstypes.Resource{n.Users, n.Seats, n.Roles, n.Invitations, n.SetPassword, n.UnlinkIdentity}
 }
 
 // Methods lists the partition's methods, which target its users resource.
@@ -285,6 +312,37 @@ type UserAccount struct {
 	Disabled               bool
 	CreatedAt              time.Time
 	LastSignInAt           *time.Time
+	// Email is the person's address, nil for none, and EmailVerifiedAt when the person
+	// proved it by following a link sent to it, nil while it is an operator's entry
+	// (the session library's two states: verified before trusted).
+	Email           *string
+	EmailVerifiedAt *time.Time
+}
+
+// UserInvitation is one standing invitation as the Auth's account store holds it: an
+// address invited to hold roles, in a tenant or on the global surface, until it is
+// accepted, revoked or expires.
+type UserInvitation struct {
+	ID    ccc.UUID
+	Email string
+	// Tenant is the tenant the invitation seats the person in, "" for the global
+	// partition.
+	Tenant string
+	// Roles are the roles the acceptance grants.
+	Roles []string
+	// InvitedBy is the user who sent it, null when unknown.
+	InvitedBy ccc.NullUUID
+	CreatedAt time.Time
+	ExpiresAt time.Time
+}
+
+// UserInvitationRequest is what the surface asks the account store to invite: the
+// address, the tenant ("" for the global partition), the roles, and the caller.
+type UserInvitationRequest struct {
+	Email     string
+	Tenant    string
+	Roles     []string
+	InvitedBy ccc.NullUUID
 }
 
 // UserIdentity is one external identity linked to a user: the way they sign in through a
@@ -314,9 +372,19 @@ type UserAccounts interface {
 	User(ctx context.Context, id ccc.UUID) (*UserAccount, error)
 	// CreateUser adds an account; a password given is one an operator set, so the
 	// account carries the forced-change mark. Nil creates a password-less account that
-	// signs in through a registration.
-	CreateUser(ctx context.Context, username string, password *string, disabled bool) (ccc.UUID, error)
+	// signs in through a registration. An email given is an operator's entry of the
+	// person's address, unverified, which reserves the address; nil enters none.
+	CreateUser(ctx context.Context, username string, password, email *string, disabled bool) (ccc.UUID, error)
 	RenameUser(ctx context.Context, id ccc.UUID, username string) error
+	// SetUserEmail is an operator's entry of the person's address, unverified, or its
+	// removal (nil). Refused (Conflict) where the username is the address.
+	SetUserEmail(ctx context.Context, id ccc.UUID, email *string) error
+	// Invite stores an invitation and mails its link; the invitation is returned as
+	// stored. Invitations lists the ones that stand, and RevokeInvitation withdraws one
+	// (NotFound when it no longer stands).
+	Invite(ctx context.Context, req *UserInvitationRequest) (*UserInvitation, error)
+	Invitations(ctx context.Context) ([]UserInvitation, error)
+	RevokeInvitation(ctx context.Context, id ccc.UUID) error
 	SetUserDisabled(ctx context.Context, id ccc.UUID, disabled bool) error
 	// DeleteUser removes the account with its identities and sessions.
 	DeleteUser(ctx context.Context, id ccc.UUID) error
@@ -359,12 +427,34 @@ type UserSurface[A UserAuth] struct {
 	names    UserResourceNames
 	accounts UserAccounts
 	seats    UserSeats
+	settings userSurfaceSettings
+}
+
+// userSurfaceSettings is what the options set.
+type userSurfaceSettings struct {
+	declarations TenantDeclarations
+}
+
+// UserSurfaceOption configures a surface at construction.
+type UserSurfaceOption func(*userSurfaceSettings)
+
+// WithTenantDirectories gives the surface what each tenant declares about who may
+// enter it, which opens the second door into a tenant: a user who signed in through a
+// directory the tenant declares may be seated in the tenant directly, without holding
+// a seat there first (the person entered through the tenant's own directory, was told
+// they have no access yet, and asked their administrator). Without it a tenant seat
+// goes to the tenant's users alone, and anyone else enters by invitation. A tenanted
+// application passes its roster's Declarations.
+func WithTenantDirectories(declarations TenantDeclarations) UserSurfaceOption {
+	return func(s *userSurfaceSettings) {
+		s.declarations = declarations
+	}
 }
 
 // NewUserSurface builds the surface of the Auth A over its stores. It panics on a
 // declaration the surface cannot serve and on a nil store: both are programming errors
 // surfaced where the application wires its handlers.
-func NewUserSurface[A UserAuth](accounts UserAccounts, seats UserSeats) *UserSurface[A] {
+func NewUserSurface[A UserAuth](accounts UserAccounts, seats UserSeats, opts ...UserSurfaceOption) *UserSurface[A] {
 	var a A
 	decl := a.UserSurfaceDeclaration()
 	if err := decl.Validate(); err != nil {
@@ -373,8 +463,12 @@ func NewUserSurface[A UserAuth](accounts UserAccounts, seats UserSeats) *UserSur
 	if accounts == nil || seats == nil {
 		panic("resource.NewUserSurface: the account store and the membership store are required")
 	}
+	s := &UserSurface[A]{decl: decl, names: decl.Names(), accounts: accounts, seats: seats}
+	for _, opt := range opts {
+		opt(&s.settings)
+	}
 
-	return &UserSurface[A]{decl: decl, names: decl.Names(), accounts: accounts, seats: seats}
+	return s
 }
 
 // Declaration returns the surface's declaration.

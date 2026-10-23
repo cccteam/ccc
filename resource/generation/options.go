@@ -330,10 +330,15 @@ type AuthMethod struct {
 	invited    bool
 	syncsRoles bool
 	openSignUp bool
+	// usernameIsEmail marks the password method declared with the username as the
+	// person's email address (UsernameIsEmail).
+	usernameIsEmail bool
 }
 
 // PasswordMethod is the username and password method, registered as "password" with
-// the label "Password".
+// the label "Password". It takes UsernameIsEmail, which makes the username the
+// person's email address, and OpenSignUp, which offers sign-up to anyone with an
+// address.
 func PasswordMethod() AuthMethod {
 	return AuthMethod{kind: methodPassword, name: passwordMethodName, label: "Password"}
 }
@@ -390,10 +395,23 @@ func (m AuthMethod) SyncsRoles() AuthMethod {
 // Accounts): a stranger signs in and becomes a user holding nothing. A tenant record
 // declaring self-service creation (@tenant(creation: self-service) or both) needs one
 // such registration on the outlet serving it, since the person creates their tenant
-// after signing in. Not for the password method, whose users are always created here,
-// and not beside InvitedUsers, which admits the opposite.
+// after signing in. On the password method it offers sign-up to anyone with an email
+// address (the session library's session.OpenSignUp): the login page starts a sign-up
+// from a mailed link, and the router mounts the sign-up routes. Not beside
+// InvitedUsers, which admits the opposite.
 func (m AuthMethod) OpenSignUp() AuthMethod {
 	m.openSignUp = true
+
+	return m
+}
+
+// UsernameIsEmail declares that the password method's username is the person's email
+// address (the session library's session.UsernameIsEmail): the users table derives the
+// address from the username, the login page asks for the address, a sign-up takes no
+// username, and the user-management surface takes no address beside the username and
+// refuses a rename. For the password method alone.
+func (m AuthMethod) UsernameIsEmail() AuthMethod {
+	m.usernameIsEmail = true
 
 	return m
 }
@@ -412,7 +430,15 @@ func (m AuthMethod) Label() string {
 func (m AuthMethod) String() string {
 	switch m.kind {
 	case methodPassword:
-		return "PasswordMethod()"
+		spelled := "PasswordMethod()"
+		if m.usernameIsEmail {
+			spelled += ".UsernameIsEmail()"
+		}
+		if m.openSignUp {
+			spelled += ".OpenSignUp()"
+		}
+
+		return spelled
 	case methodGoogle, methodAzure, methodWorkOS:
 		spelled := fmt.Sprintf("%sMethod(%q)", caser.ToPascal(string(m.kind)), m.name)
 		if m.invited {
@@ -461,8 +487,10 @@ func validateAuthMethods(importPath string, methods []AuthMethod) error {
 			return errors.Newf("Auth(%q, %s) registers %q twice: each registration has its own name", importPath, m, m.name)
 		case m.label == "":
 			return errors.Newf("Auth(%q, %s) has an empty label: Labeled takes the words the login page shows", importPath, m)
-		case m.kind == methodPassword && (m.invited || m.syncsRoles || m.openSignUp):
-			return errors.Newf("Auth(%q, %s) declares InvitedUsers, SyncsRoles or OpenSignUp on the password method: they describe a registration's directory", importPath, m)
+		case m.kind == methodPassword && (m.invited || m.syncsRoles):
+			return errors.Newf("Auth(%q, %s) declares InvitedUsers or SyncsRoles on the password method: they describe a registration's directory", importPath, m)
+		case m.kind != methodPassword && m.usernameIsEmail:
+			return errors.Newf("Auth(%q, %s) declares UsernameIsEmail on a registration: it describes the password method's username", importPath, m)
 		case m.invited && m.openSignUp:
 			return errors.Newf("Auth(%q, %s) declares both InvitedUsers and OpenSignUp: a registration admits invited users only or anyone, not both", importPath, m)
 		}

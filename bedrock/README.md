@@ -433,7 +433,13 @@ an auth's first-administrator variable (`APP_<AUTH>_ADMINISTRATOR`, the sign-in 
 migrate command seeds the administrator role membership under while the auth has no users)
 becomes a stack variable per environment, carried by every data-level process, and a hand
 step; a first administrator's generated password (`secret:"generated"`) is a secret like
-any other;
+any other; the application's public address (`APP_PUBLIC_URL`, which every link its auths
+mail opens the login page under) is derived from the site's canonical hostname, each
+site's own in the sites layout; the Google Workspace mailbox the auths' mail is sent as
+(`APP_MAIL_MAILBOX`) becomes a stack variable once for the organization (`mail_mailbox`,
+empty until named, when the application writes its mail to the log) and a hand step, and
+its app password (`APP_MAIL_APP_PASSWORD`) a secret the migrate command reads too, since
+the data level opens the sender;
 a main package under `cmd/deployment/migrate` becomes the migrate command, which the
 pipeline takes out of each build's image and runs on the build worker as the deploy
 identity, granted database admin on the application's own database by the stack; a main package

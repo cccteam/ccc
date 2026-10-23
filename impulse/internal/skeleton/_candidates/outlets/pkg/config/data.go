@@ -17,6 +17,8 @@ import (
 	"github.com/cccteam/ccc/resource/live"
 	liveservice "github.com/cccteam/ccc/resource/live/firestore"
 	"github.com/cccteam/ccc/resource/sessionusers"
+	"github.com/cccteam/session/mail"
+	"github.com/cccteam/session/mail/workspace"
 	"github.com/go-playground/errors/v5"
 	"github.com/sethvargo/go-envconfig"
 )
@@ -119,16 +121,22 @@ func NewDataConfiguration(ctx context.Context) (*DataConfiguration, error) {
 		return nil, errors.Wrap(err, "liveservice.Open()")
 	}
 
+	// The sender every auth mails through: the Workspace relay where the deployment names
+	// a mailbox, the log in development.
+	sender, err := openMailSender(env)
+	if err != nil {
+		return nil, err
+	}
 	// The auth's default roles validate against the generated collection when its engine
 	// opens; the collection is passed in here, since the auth package imports no router.
 	// The auth opens its stores on the driver's Spanner client: the one vendor-specific
 	// seam left in the level, pending the PostgreSQL client (cccteam/ccc#852).
-	staffAuth, err := staff.New(ctx, db.SpannerClient, env.staffSettings(router.Collection(), liveService, cookieKey))
+	staffAuth, err := staff.New(ctx, db.SpannerClient, env.staffSettings(router.Collection(), liveService, cookieKey, sender))
 	if err != nil {
 		return nil, errors.Wrap(err, "staff.New()")
 	}
 
-	membersAuth, err := members.New(ctx, db.SpannerClient, env.membersSettings(router.Collection(), liveService, cookieKey))
+	membersAuth, err := members.New(ctx, db.SpannerClient, env.membersSettings(router.Collection(), liveService, cookieKey, sender))
 	if err != nil {
 		return nil, errors.Wrap(err, "members.New()")
 	}
@@ -312,6 +320,19 @@ type dataConfig struct {
 	// startup.
 	CookieKey string `env:"APP_COOKIE_KEY" secret:"generated"`
 
+	// PublicURL is the application's address as a browser reaches it, scheme and host
+	// with no path: every link the auths mail (an invitation, an address verification, a
+	// sign-up) opens the login page under it. The dev proxy in development; a deployment
+	// sets the served hostname, which the stack derives from the site's canonical one.
+	PublicURL string `env:"APP_PUBLIC_URL,required"`
+
+	// MailMailbox and MailAppPassword send the auths' mail through the Google Workspace
+	// SMTP relay as the mailbox (a no-reply address of the organization's domain, with
+	// two-step verification and an app password, the secret). Unset, as in development,
+	// the mail is written to the log and nothing is sent.
+	MailMailbox     string `env:"APP_MAIL_MAILBOX"`
+	MailAppPassword string `env:"APP_MAIL_APP_PASSWORD" secret:"true"`
+
 	// StaffAdministratorPassword is the password of the staff auth's first administrator
 	// (staff.Administrator), which the migrate command seeds while the auth's users table
 	// holds no rows: a secret the stack generates, read like any other setting, that
@@ -338,34 +359,39 @@ type dataConfig struct {
 }
 
 // staffSettings builds the staff auth's settings: the generated collection its default
-// roles validate against, the live service its engine signals policy changes through,
-// the cookie key its sessions are signed with, the session timeout, and the generated
-// reader of a tenant's declaration, which the sign-in rule reads in the sign-in's
-// transaction. A directory registration's settings join the literal here (impulse add
-// method), read from the environment under the registration's variables, so the
-// constructor stays one call per auth.
-func (env *dataConfig) staffSettings(collection access.PermissionCollection, signals staff.Signals, cookieKey string) *staff.Settings {
+// roles validate against, the live service its engine signals policy changes through, the
+// cookie key its sessions are signed with, the session timeout, the sender its mail goes
+// through with the login page its links open, and the generated reader of a tenant's
+// declaration, which the sign-in rule reads in the sign-in's transaction. A directory
+// registration's settings join the literal here (impulse add method), read from the
+// environment under the registration's variables, so the constructor stays one call per
+// auth.
+func (env *dataConfig) staffSettings(collection access.PermissionCollection, signals staff.Signals, cookieKey string, sender mail.Sender) *staff.Settings {
 	return &staff.Settings{
 		Collection:         collection,
 		Signals:            signals,
 		CookieKey:          cookieKey,
 		SessionTimeout:     env.SessionTimeout,
+		Mail:               sender,
+		MailLoginURL:       env.PublicURL + "/console/login",
 		TenantDeclarations: app.NewTenantDeclarationReader(),
 	}
 }
 
 // membersSettings builds the members auth's settings: the generated collection, the live
-// service, the cookie key and the session timeout as the staff auth's, the portal's
-// login page, where a refused directory sign-in returns to (the data level knows it
-// because the auth's error redirects are configured here), and the directory
-// registration's settings, read from the environment under the registration's
-// variables.
-func (env *dataConfig) membersSettings(collection access.PermissionCollection, signals members.Signals, cookieKey string) *members.Settings {
+// service, the cookie key, the session timeout and the sender its mail goes through as
+// the staff auth's, the portal's login page, where a refused directory sign-in returns to
+// (the data level knows it because the auth's error redirects are configured here), and
+// the directory registration's settings, read from the environment under the
+// registration's variables.
+func (env *dataConfig) membersSettings(collection access.PermissionCollection, signals members.Signals, cookieKey string, sender mail.Sender) *members.Settings {
 	return &members.Settings{
 		Collection:     collection,
 		Signals:        signals,
 		CookieKey:      cookieKey,
 		SessionTimeout: env.SessionTimeout,
+		Mail:           sender,
+		MailLoginURL:   env.PublicURL + "/portal/login",
 		LoginURL:       "/portal/login",
 		Directory: members.DirectorySettings{
 			TenantID:     env.MembersDirectoryTenantID,
@@ -375,4 +401,20 @@ func (env *dataConfig) membersSettings(collection access.PermissionCollection, s
 		},
 		TenantDeclarations: app.NewTenantDeclarationReader(),
 	}
+}
+
+// openMailSender opens the sender every auth mails through: the Google Workspace SMTP
+// relay as the mailbox the deployment names (APP_MAIL_MAILBOX, with its app password),
+// or the log where none is named, as in development, where nothing is sent and a
+// developer follows the link from the log.
+func openMailSender(env *dataConfig) (mail.Sender, error) {
+	if env.MailMailbox == "" {
+		return mail.Log{}, nil
+	}
+	sender, err := workspace.New(workspace.Settings{Mailbox: env.MailMailbox, AppPassword: env.MailAppPassword, Name: staff.Application})
+	if err != nil {
+		return nil, errors.Wrap(err, "workspace.New()")
+	}
+
+	return sender, nil
 }

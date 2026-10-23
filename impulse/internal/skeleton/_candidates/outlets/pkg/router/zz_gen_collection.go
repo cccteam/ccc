@@ -29,6 +29,27 @@ func Collection() *resource.GeneratedCollection {
 				QueryKeys: []accesstypes.Tag{"tenantId", "title"},
 			},
 			{
+				Name:        "MembersTenantInvitations",
+				Scope:       accesstypes.DomainPermissionScope,
+				Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.Delete, accesstypes.List, accesstypes.Read},
+				Tags: []resource.TagData{
+					{Name: "createdAt", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
+					{Name: "email", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read}},
+					{Name: "expiresAt", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
+					{Name: "id"},
+					{Name: "invitedBy", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
+					{Name: "roles", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read}},
+				},
+				Attributes: []resource.AttributeData{
+					{Name: "createdAt", Column: "createdAt", Type: "timestamp"},
+					{Name: "email", Column: "email", Type: "string"},
+					{Name: "expiresAt", Column: "expiresAt", Type: "timestamp"},
+					{Name: "invitedBy", Column: "invitedBy", Type: "string"},
+					{Name: "role", Column: "role", Type: "string"},
+				},
+				Order: []accesstypes.Tag{"email"},
+			},
+			{
 				Name:        "MembersTenantRoles",
 				Scope:       accesstypes.DomainPermissionScope,
 				Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read},
@@ -65,6 +86,8 @@ func Collection() *resource.GeneratedCollection {
 				Tags: []resource.TagData{
 					{Name: "createdAt", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
 					{Name: "disabled", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read, accesstypes.Update}},
+					{Name: "email", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read, accesstypes.Update}},
+					{Name: "emailVerifiedAt", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
 					{Name: "everywhereRoles", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
 					{Name: "hasPassword", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
 					{Name: "id"},
@@ -79,6 +102,8 @@ func Collection() *resource.GeneratedCollection {
 				Attributes: []resource.AttributeData{
 					{Name: "createdAt", Column: "createdAt", Type: "timestamp"},
 					{Name: "disabled", Column: "disabled", Type: "bool"},
+					{Name: "email", Column: "email", Type: "string"},
+					{Name: "emailVerified", Column: "emailVerified", Type: "bool"},
 					{Name: "hasPassword", Column: "hasPassword", Type: "bool"},
 					{Name: "lastSignInAt", Column: "lastSignInAt", Type: "timestamp"},
 					{Name: "organization", Column: "organization", Type: "string"},
@@ -108,6 +133,27 @@ func Collection() *resource.GeneratedCollection {
 				Scope:       accesstypes.DomainPermissionScope,
 				Permissions: []accesstypes.Permission{accesstypes.Execute},
 				Target:      "StaffTenantUsers",
+			},
+			{
+				Name:        "StaffTenantInvitations",
+				Scope:       accesstypes.DomainPermissionScope,
+				Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.Delete, accesstypes.List, accesstypes.Read},
+				Tags: []resource.TagData{
+					{Name: "createdAt", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
+					{Name: "email", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read}},
+					{Name: "expiresAt", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
+					{Name: "id"},
+					{Name: "invitedBy", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
+					{Name: "roles", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read}},
+				},
+				Attributes: []resource.AttributeData{
+					{Name: "createdAt", Column: "createdAt", Type: "timestamp"},
+					{Name: "email", Column: "email", Type: "string"},
+					{Name: "expiresAt", Column: "expiresAt", Type: "timestamp"},
+					{Name: "invitedBy", Column: "invitedBy", Type: "string"},
+					{Name: "role", Column: "role", Type: "string"},
+				},
+				Order: []accesstypes.Tag{"email"},
 			},
 			{
 				Name:        "StaffTenantRoles",
@@ -146,6 +192,8 @@ func Collection() *resource.GeneratedCollection {
 				Tags: []resource.TagData{
 					{Name: "createdAt", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
 					{Name: "disabled", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
+					{Name: "email", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
+					{Name: "emailVerifiedAt", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
 					{Name: "everywhereRoles", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
 					{Name: "hasPassword", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
 					{Name: "id"},
@@ -163,6 +211,8 @@ func Collection() *resource.GeneratedCollection {
 				Attributes: []resource.AttributeData{
 					{Name: "createdAt", Column: "createdAt", Type: "timestamp"},
 					{Name: "disabled", Column: "disabled", Type: "bool"},
+					{Name: "email", Column: "email", Type: "string"},
+					{Name: "emailVerified", Column: "emailVerified", Type: "bool"},
 					{Name: "hasPassword", Column: "hasPassword", Type: "bool"},
 					{Name: "lastSignInAt", Column: "lastSignInAt", Type: "timestamp"},
 					{Name: "organization", Column: "organization", Type: "string"},
@@ -206,6 +256,27 @@ func Collection() *resource.GeneratedCollection {
 				Order: []accesstypes.Tag{"name"},
 			},
 			{
+				Name:        "MembersInvitations",
+				Scope:       accesstypes.GlobalPermissionScope,
+				Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.Delete, accesstypes.List, accesstypes.Read},
+				Tags: []resource.TagData{
+					{Name: "createdAt", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
+					{Name: "email", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read}},
+					{Name: "expiresAt", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
+					{Name: "id"},
+					{Name: "invitedBy", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
+					{Name: "roles", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read}},
+				},
+				Attributes: []resource.AttributeData{
+					{Name: "createdAt", Column: "createdAt", Type: "timestamp"},
+					{Name: "email", Column: "email", Type: "string"},
+					{Name: "expiresAt", Column: "expiresAt", Type: "timestamp"},
+					{Name: "invitedBy", Column: "invitedBy", Type: "string"},
+					{Name: "role", Column: "role", Type: "string"},
+				},
+				Order: []accesstypes.Tag{"email"},
+			},
+			{
 				Name:        "MembersRoles",
 				Scope:       accesstypes.GlobalPermissionScope,
 				Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read},
@@ -244,6 +315,8 @@ func Collection() *resource.GeneratedCollection {
 				Tags: []resource.TagData{
 					{Name: "createdAt", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
 					{Name: "disabled", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read, accesstypes.Update}},
+					{Name: "email", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read, accesstypes.Update}},
+					{Name: "emailVerifiedAt", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
 					{Name: "everywhereRoles", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
 					{Name: "hasPassword", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
 					{Name: "id"},
@@ -258,6 +331,8 @@ func Collection() *resource.GeneratedCollection {
 				Attributes: []resource.AttributeData{
 					{Name: "createdAt", Column: "createdAt", Type: "timestamp"},
 					{Name: "disabled", Column: "disabled", Type: "bool"},
+					{Name: "email", Column: "email", Type: "string"},
+					{Name: "emailVerified", Column: "emailVerified", Type: "bool"},
 					{Name: "hasPassword", Column: "hasPassword", Type: "bool"},
 					{Name: "lastSignInAt", Column: "lastSignInAt", Type: "timestamp"},
 					{Name: "organization", Column: "organization", Type: "string"},
@@ -277,6 +352,27 @@ func Collection() *resource.GeneratedCollection {
 				Scope:       accesstypes.GlobalPermissionScope,
 				Permissions: []accesstypes.Permission{accesstypes.Execute},
 				Target:      "StaffUsers",
+			},
+			{
+				Name:        "StaffInvitations",
+				Scope:       accesstypes.GlobalPermissionScope,
+				Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.Delete, accesstypes.List, accesstypes.Read},
+				Tags: []resource.TagData{
+					{Name: "createdAt", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
+					{Name: "email", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read}},
+					{Name: "expiresAt", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
+					{Name: "id"},
+					{Name: "invitedBy", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
+					{Name: "roles", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read}},
+				},
+				Attributes: []resource.AttributeData{
+					{Name: "createdAt", Column: "createdAt", Type: "timestamp"},
+					{Name: "email", Column: "email", Type: "string"},
+					{Name: "expiresAt", Column: "expiresAt", Type: "timestamp"},
+					{Name: "invitedBy", Column: "invitedBy", Type: "string"},
+					{Name: "role", Column: "role", Type: "string"},
+				},
+				Order: []accesstypes.Tag{"email"},
 			},
 			{
 				Name:        "StaffRoles",
@@ -317,6 +413,8 @@ func Collection() *resource.GeneratedCollection {
 				Tags: []resource.TagData{
 					{Name: "createdAt", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
 					{Name: "disabled", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
+					{Name: "email", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
+					{Name: "emailVerifiedAt", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
 					{Name: "everywhereRoles", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
 					{Name: "hasPassword", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
 					{Name: "id"},
@@ -333,6 +431,8 @@ func Collection() *resource.GeneratedCollection {
 				Attributes: []resource.AttributeData{
 					{Name: "createdAt", Column: "createdAt", Type: "timestamp"},
 					{Name: "disabled", Column: "disabled", Type: "bool"},
+					{Name: "email", Column: "email", Type: "string"},
+					{Name: "emailVerified", Column: "emailVerified", Type: "bool"},
 					{Name: "hasPassword", Column: "hasPassword", Type: "bool"},
 					{Name: "lastSignInAt", Column: "lastSignInAt", Type: "timestamp"},
 					{Name: "organization", Column: "organization", Type: "string"},

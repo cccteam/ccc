@@ -9,7 +9,9 @@
 // too: APP_<AUTH>_<REGISTRATION>_<FIELD>, the auth's name and the registration's name
 // upper-cased with every hyphen an underscore (APP_MEMBERS_DIRECTORY_CLIENT_ID). The
 // fields a method takes depend on its kind, its organization slot and its authority (see
-// Method.Fields).
+// Method.Fields). Every auth mails: the invitations its administrators send, the links
+// that verify an address a person adds, and the links a password sign-up starts from, so
+// its Settings take the application's mail sender and the login page the links open.
 package authpkg
 
 import (
@@ -37,6 +39,10 @@ type Spec struct {
 	// Module is the application's module path, which the package's imports of the
 	// application's own packages start with.
 	Module string
+	// Application is the application's name as the mail the auth sends says it ("Harbor",
+	// the Application of session.MailSettings); empty takes the module path's last
+	// element in PascalCase.
+	Application string
 	// AuthDir is the directory the auth packages live under, root-relative (pkg/auth).
 	AuthDir string
 	// Name is the auth's name: the package, the cookie, the table prefix in PascalCase.
@@ -98,8 +104,15 @@ type Method struct {
 	Slot string
 	// Accounts is the standard account rule for a first sign-in: AccountsMembers (members
 	// of the directory, the default), AccountsInvited (invited users only) or
-	// AccountsOpen (open sign-up). Empty is AccountsMembers.
+	// AccountsOpen (open sign-up). Empty is AccountsMembers. The password method takes
+	// AccountsOpen alone (a stranger signs up from a link mailed to their address) or
+	// nothing (its users are created in the application, or invited).
 	Accounts string
+	// UsernameIsEmail marks a password method whose sign-in name is the person's email
+	// address (session.UsernameIsEmail): the users surface derives the address from the
+	// username, a verified change of address renames the user, and the seats held under
+	// the old name follow it. The password method alone takes it.
+	UsernameIsEmail bool
 }
 
 // The organization slots.
@@ -139,20 +152,17 @@ func Accounts() []string { return []string{AccountsMembers, AccountsInvited, Acc
 // Validate checks a method against the library's rules, as the session library enforces
 // them at registration: a slot the kind has, an account rule the slot allows (open sign-up
 // only with any organization or personal accounts; members of the directory not with
-// them), and role synchronization only with one organization.
+// them), role synchronization only with one organization, and for the password method
+// open sign-up or no rule, with the sign-in name as the address on it alone.
 func (m *Method) Validate() error {
 	if m.Kind == app.MethodPassword {
-		if m.Name != "" && m.Name != app.PasswordRegistration {
-			return errors.Newf("the password method is always registered as %q", app.PasswordRegistration)
-		}
-		if m.Slot != "" || m.Accounts != "" || m.Authority != "" {
-			return errors.New("the password method takes no slot, account rule or authority")
-		}
-
-		return nil
+		return m.validatePassword()
 	}
 	if m.Kind != app.MethodAzure && m.Kind != app.MethodGoogle {
 		return errors.Newf("%q is not a sign-in method impulse composes: password, azure or google", m.Kind)
+	}
+	if m.UsernameIsEmail {
+		return errors.New("username-is-email describes the password method's sign-in name; a directory method's people sign in as the directory names them")
 	}
 	if !registrationRE.MatchString(m.Name) {
 		return errors.Newf("registration %q: lowercase letters, digits and hyphens, starting with a letter (directory, entra-one)", m.Name)
@@ -194,6 +204,22 @@ func (m *Method) Validate() error {
 	return nil
 }
 
+// validatePassword checks the password method: always registered as password, no slot or
+// authority, and open sign-up or no account rule.
+func (m *Method) validatePassword() error {
+	if m.Name != "" && m.Name != app.PasswordRegistration {
+		return errors.Newf("the password method is always registered as %q", app.PasswordRegistration)
+	}
+	if m.Slot != "" || m.Authority != "" {
+		return errors.New("the password method takes no slot or authority")
+	}
+	if m.Accounts != "" && m.Accounts != AccountsOpen {
+		return errors.Newf("accounts %q: the password method takes open (a stranger signs up from a link mailed to their address) or no rule (its users are created in the application, or invited)", m.Accounts)
+	}
+
+	return nil
+}
+
 // registrationRE is the shape of a registration name, as the session library takes it.
 var registrationRE = regexp.MustCompile(`^[a-z][a-z0-9-]*$`)
 
@@ -213,14 +239,22 @@ func (m *Method) accounts() string {
 	return m.Accounts
 }
 
+// OpenSignUp reports a method admitting anyone: a directory method under the open
+// sign-up rule, or the password method whose strangers sign up from a mailed link.
+func (m *Method) OpenSignUp() bool {
+	return m.accounts() == AccountsOpen
+}
+
 // Arg is the method as a generator program declares it on an Auth option: its kind and
 // registration name, with .InvitedUsers() chained under the invited-users rule, so the
 // users surface the generator emits creates the invitations the method file's
-// signin.InvitedUsersOnly admits, and .OpenSignUp() under the open sign-up rule, the
-// registration a self-service tenant record needs (the method file's signin.OpenSignUp).
-// The declaration and the method file read the same rule.
+// signin.InvitedUsersOnly admits, .OpenSignUp() under the open sign-up rule (the
+// registration a self-service tenant record needs, the method file's signin.OpenSignUp;
+// on the password method the sign-up routes the router serves, the method file's
+// session.OpenSignUp()), and .UsernameIsEmail() on a password method whose sign-in name
+// is the address. The declaration and the method file read the same rule.
 func (m *Method) Arg() app.AuthMethodArg {
-	return app.AuthMethodArg{Kind: m.Kind, Name: m.Name, InvitedUsers: m.accounts() == AccountsInvited, OpenSignUp: m.accounts() == AccountsOpen}
+	return app.AuthMethodArg{Kind: m.Kind, Name: m.Name, InvitedUsers: m.accounts() == AccountsInvited, OpenSignUp: m.OpenSignUp(), UsernameIsEmail: m.UsernameIsEmail}
 }
 
 // Declaration writes the method as a generator program carries it, package-qualified

@@ -27,7 +27,7 @@ func (s *UserSurface[A]) partitionOf(r *http.Request, tenanted bool) *userPartit
 }
 
 // The editable fields of a user row, and the methods that target it.
-var userEditableFields = []string{userAttrUsername, userAttrDisabled}
+var userEditableFields = []string{userAttrUsername, userAttrDisabled, userAttrEmail}
 
 // Users serves the global partition's users list: List on <Auth>Users.
 func (s *UserSurface[A]) Users(a UserApp, collection *GeneratedCollection) http.HandlerFunc {
@@ -127,6 +127,47 @@ func (s *UserSurface[A]) TenantRole(a UserApp, collection *GeneratedCollection) 
 	return readRole(s, a, collection, true, toTenantRoleRow[A])
 }
 
+// Invitations serves the global partition's standing invitations: List on
+// <Auth>Invitations.
+func (s *UserSurface[A]) Invitations(a UserApp, collection *GeneratedCollection) http.HandlerFunc {
+	return listInvitations(s, a, collection, false, toInvitationRow[A])
+}
+
+// Invitation serves one invitation of the global partition: Read on <Auth>Invitations.
+func (s *UserSurface[A]) Invitation(a UserApp, collection *GeneratedCollection) http.HandlerFunc {
+	return readInvitation(s, a, collection, false, toInvitationRow[A])
+}
+
+// PatchInvitations serves the global partition's invitation writes: Create and Delete
+// on <Auth>Invitations through the operations body.
+func (s *UserSurface[A]) PatchInvitations(a UserApp, _ *GeneratedCollection) http.HandlerFunc {
+	return s.invitationsPatch(a, false)
+}
+
+// TenantInvitations serves the tenant partition's standing invitations: List on
+// <Auth><Tenant>Invitations in the route's tenant.
+func (s *UserSurface[A]) TenantInvitations(a UserApp, collection *GeneratedCollection) http.HandlerFunc {
+	s.requireTenant()
+
+	return listInvitations(s, a, collection, true, toTenantInvitationRow[A])
+}
+
+// TenantInvitation serves one invitation of the tenant partition: Read on
+// <Auth><Tenant>Invitations.
+func (s *UserSurface[A]) TenantInvitation(a UserApp, collection *GeneratedCollection) http.HandlerFunc {
+	s.requireTenant()
+
+	return readInvitation(s, a, collection, true, toTenantInvitationRow[A])
+}
+
+// PatchTenantInvitations serves the tenant partition's invitation writes: Create and
+// Delete on <Auth><Tenant>Invitations.
+func (s *UserSurface[A]) PatchTenantInvitations(a UserApp, _ *GeneratedCollection) http.HandlerFunc {
+	s.requireTenant()
+
+	return s.invitationsPatch(a, true)
+}
+
 // SetUserPassword serves Set<Auth>UserPassword: Execute, targeting <Auth>Users.
 func (s *UserSurface[A]) SetUserPassword(a UserApp, _ *GeneratedCollection) http.HandlerFunc {
 	return s.setUserPassword(a, false)
@@ -217,7 +258,7 @@ func userCapabilities[A UserAuth, Row Resourcer](s *UserSurface[A], rc *readCont
 			}
 		}
 		withheld := func(field string) bool {
-			return outside || (self && field == userAttrDisabled)
+			return outside || (self && field == userAttrDisabled) || (s.decl.Shape.UsernameIsEmail && (field == userAttrUsername || field == userAttrEmail))
 		}
 		allowed := func(method accesstypes.Resource) bool {
 			return !outside && (!self || method != n.SetPassword)

@@ -19,7 +19,7 @@ what they hold.
   default roles the release ships, embedded in the binary and validated against the
   generated collection when the engine opens, so a release whose roles are wrong does not
   start. It authors `Administrator_Global`, the development login's role, over the staff
-  auth's user-management surface alone (`StaffUsers`, `StaffSeats`, `StaffRoles` and
+  auth's user-management surface alone (`StaffUsers`, `StaffSeats`, `StaffInvitations`, `StaffRoles` and
   `SetStaffUserPassword`, the resources the generator declares for the auth): a new
   resource stays invisible to every login until a role in this file is granted it. Every grant in it is proven live by `test/integration/grants_test.go`, which opens
   the auth the way the deployment does and asks the engine about each unconditional
@@ -119,6 +119,12 @@ applies the rest.
 That starts fresh Spanner and Firestore emulators, bootstraps the database (schema, roles, the `admin` / `password`
 login), and serves the API on `$PORT` (:8090). The first run compiles and bootstraps
 before it listens; wait for "Starting Server" in the server pane.
+
+The auths mail: an administrator invites a person by address with the roles the invitation
+seats, and a signed-in person adds and verifies an address. In development the mail is
+written to the server's log, link included, and nothing is sent; a deployment names a
+Workspace mailbox (`APP_MAIL_MAILBOX`, `APP_MAIL_APP_PASSWORD`) and the relay sends it. Every
+link opens the login page under `APP_PUBLIC_URL`.
 
 ### Browser apps
 

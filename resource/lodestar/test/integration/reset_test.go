@@ -23,6 +23,7 @@ import (
 	"github.com/cccteam/ccc/resource/lodestar/pkg/deploy"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/router"
 	initiator "github.com/cccteam/db-initiator"
+	"github.com/cccteam/session/mail"
 )
 
 func TestResetDevelopmentData(t *testing.T) {
@@ -41,8 +42,9 @@ func TestResetDevelopmentData(t *testing.T) {
 		Collection:     router.Collection(),
 		Directory:      auth.Directory{Connection: "example", HostedDomain: "example.com", GroupPrefix: "crew-"},
 		ChangeSignal:   auth.PolicySignal(live.NewFake()),
-		// Required by the auth, though this suite signs nobody in.
+		// Required by the auth, though this suite signs nobody in and mails nothing.
 		TenantDeclarations: app.NewSectorDeclarationReader(),
+		Mail:               auth.Mail{Sender: &mail.Recorder{}, LoginURL: "http://lodestar.test" + consoleLogin},
 	})
 	if err != nil {
 		t.Fatalf("crew.New() error = %v", err)

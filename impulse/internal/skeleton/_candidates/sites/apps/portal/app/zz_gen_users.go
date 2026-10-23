@@ -57,6 +57,21 @@ func (a *App) StaffRole() http.HandlerFunc {
 	return a.StaffUserSurface().Role(a, router.Collection())
 }
 
+// StaffInvitations serves the standing invitations into the global partition: List on StaffInvitations.
+func (a *App) StaffInvitations() http.HandlerFunc {
+	return a.StaffUserSurface().Invitations(a, router.Collection())
+}
+
+// StaffInvitation serves one invitation into the global partition: Read on StaffInvitations.
+func (a *App) StaffInvitation() http.HandlerFunc {
+	return a.StaffUserSurface().Invitation(a, router.Collection())
+}
+
+// PatchStaffInvitations invites into and revokes from the global partition through the operations body: Create and Delete on StaffInvitations.
+func (a *App) PatchStaffInvitations() http.HandlerFunc {
+	return a.StaffUserSurface().PatchInvitations(a, router.Collection())
+}
+
 // SetStaffUserPassword sets a temporary password on a user of the global partition: Execute on SetStaffUserPassword, targeting StaffUsers.
 func (a *App) SetStaffUserPassword() http.HandlerFunc {
 	return a.StaffUserSurface().SetUserPassword(a, router.Collection())
@@ -100,6 +115,21 @@ func (a *App) StaffTenantRoles() http.HandlerFunc {
 // StaffTenantRole serves one role of the route's tenant: Read on StaffTenantRoles.
 func (a *App) StaffTenantRole() http.HandlerFunc {
 	return a.StaffUserSurface().TenantRole(a, router.Collection())
+}
+
+// StaffTenantInvitations serves the standing invitations into the route's tenant: List on StaffTenantInvitations.
+func (a *App) StaffTenantInvitations() http.HandlerFunc {
+	return a.StaffUserSurface().TenantInvitations(a, router.Collection())
+}
+
+// StaffTenantInvitation serves one invitation into the route's tenant: Read on StaffTenantInvitations.
+func (a *App) StaffTenantInvitation() http.HandlerFunc {
+	return a.StaffUserSurface().TenantInvitation(a, router.Collection())
+}
+
+// PatchStaffTenantInvitations invites into and revokes from the route's tenant through the operations body: Create and Delete on StaffTenantInvitations.
+func (a *App) PatchStaffTenantInvitations() http.HandlerFunc {
+	return a.StaffUserSurface().PatchTenantInvitations(a, router.Collection())
 }
 
 // SetStaffTenantUserPassword sets a temporary password on a user of the route's tenant: Execute on SetStaffTenantUserPassword, targeting StaffTenantUsers.

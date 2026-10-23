@@ -19,7 +19,13 @@
 // because everything an auth names carries its name. The same name in this auth and in
 // another is two unrelated principals.
 //
-// Demonstrates: auth.directory-roles, auth.two-populations, auth.skipauth-directory, auth.login-refusal-code.
+// A client is invited too: the console's administrators and the portal's invite an
+// address into the members' global partition or into a sector, and the directory
+// sign-in that follows the mailed link seats the person with the roles the invitation
+// carries (resource.SeatInvited), beside the ones the directory's groups name. A
+// member's address is the one the directory verified, held beside the username.
+//
+// Demonstrates: auth.directory-roles, auth.two-populations, auth.skipauth-directory, auth.login-refusal-code, auth.invitation.
 package members
 
 import (
@@ -60,14 +66,22 @@ const (
 	// The auth's tables, which schema/migrations creates: the sessions and users of the
 	// Auth session (a user keyed by the directory's immutable subject through the
 	// identities table, so a renamed account stays the same person), the auth events
-	// each session records and the pending sign-ins that wait for a confirmation or an
-	// MFA step. The names are spelled out in full so the tool's session-tables check,
-	// which reads the literals, finds their migrations.
+	// each session records, the pending sign-ins that wait for a confirmation or an
+	// MFA step, the sign-in attempts the library counts per name (the mail it sends is
+	// counted there too, under the address), and the mail links (the invitations and
+	// address verifications the auth mails, each a single-use token). The names are
+	// spelled out in full so the tool's session-tables check, which reads the literals,
+	// finds their migrations.
 	sessionsTable   = "MembersSessions"
 	usersTable      = "MembersSessionUsers"
 	identitiesTable = "MembersSessionIdentities"
 	eventsTable     = "MembersSessionAuthEvents"
 	pendingTable    = "MembersSessionPendingSignIns"
+	attemptsTable   = "MembersSessionSignInAttempts"
+	mailLinksTable  = "MembersSessionMailLinks"
+
+	// Application is the fleet's name as the mail the auth sends says it.
+	Application = "Lodestar"
 )
 
 // rolesFile is the auth's default roles: what a client may do, in the lowercase names the
@@ -110,6 +124,10 @@ type Settings struct {
 	// directories (app.NewSectorDeclarationReader), which the sign-in rule decides with.
 	// Required; New refuses nil.
 	TenantDeclarations signin.DeclarationReader[*cloudspanner.ReadWriteTransaction]
+	// Mail is how the auth sends its invitations and address verifications: the
+	// configuration's sender, and the portal's login page as an absolute URL, where
+	// every link leads. Required; New refuses a nil sender.
+	Mail auth.Mail
 }
 
 // Session is the auth's session manager: one Auth session over the Spanner store, whose
@@ -143,6 +161,30 @@ func (h *Handlers) DirectoryCallback() http.HandlerFunc {
 	return h.directory.Callback()
 }
 
+// InvitationOpen opens the invitation the portal's login page was sent to ({"token"}):
+// it answers the address and the sector the invitation names, and sets the cookie the
+// directory sign-in that follows carries, so that sign-in accepts it.
+func (h *Handlers) InvitationOpen() http.HandlerFunc {
+	return h.Invitation().Open()
+}
+
+// InvitationAccept accepts the opened invitation as the signed-in client; the
+// acceptance hook seats them with the roles it carries.
+func (h *Handlers) InvitationAccept() http.HandlerFunc {
+	return h.Invitation().Accept()
+}
+
+// EmailAdd mails a verification link to the address the signed-in client gives
+// ({"email"}); a client the directory verified already holds that address verified.
+func (h *Handlers) EmailAdd() http.HandlerFunc {
+	return h.Email().Add()
+}
+
+// EmailVerify marks the address verified from the mailed link's token ({"token"}).
+func (h *Handlers) EmailVerify() http.HandlerFunc {
+	return h.Email().Verify()
+}
+
 // PendingStatus reports the sign-in that waits for a password confirmation or an MFA
 // step, if any; a member has no password, so none waits today.
 func (h *Handlers) PendingStatus() http.HandlerFunc {
@@ -171,6 +213,9 @@ func New(ctx context.Context, db *cloudspanner.Client, settings *Settings) (*Aut
 	if settings.TenantDeclarations == nil {
 		return nil, errors.New("members.Settings.TenantDeclarations is required: the sign-in rule reads what each sector declares about who may enter it through the generated reader (app.NewSectorDeclarationReader)")
 	}
+	if settings.Mail.Sender == nil {
+		return nil, errors.New("members.Settings.Mail.Sender is required: the auth mails its invitations and address verifications through it (the configuration's driver, or mail.Log in development)")
+	}
 	store, err := spannerstore.New(db, spannerstore.WithPrefix(TablePrefix))
 	if err != nil {
 		return nil, errors.Wrap(err, "spannerstore.New()")
@@ -188,9 +233,10 @@ func New(ctx context.Context, db *cloudspanner.Client, settings *Settings) (*Aut
 		return nil, errors.Wrap(err, "sessionstorage.NewAuthEventsTable()")
 	}
 
-	// One Auth session the directory establishes. The members have no sign-in policy of
-	// their own: every verified sign-in the Workspace admits goes ahead on the library's
-	// checks, and the directory's groups then decide what the person may do.
+	// One Auth session the directory establishes, which mails as the fleet
+	// (session.WithMail): the invitations the user-management surfaces send and the
+	// verification of an address, each leading to the portal's login page with its
+	// token in the query.
 	membersSession, err := session.NewAuth[session.NoCustomData, session.NoCustomData](
 		sessionstorage.NewSpannerAuth(db, sessionstorage.WithAuthEvents(events)),
 		settings.CookieKey,
@@ -198,6 +244,9 @@ func New(ctx context.Context, db *cloudspanner.Client, settings *Settings) (*Aut
 		session.WithUserTableName(usersTable),
 		session.WithIdentitiesTableName(identitiesTable),
 		session.WithPendingSignInsTableName(pendingTable),
+		session.WithSignInAttemptsTableName(attemptsTable),
+		session.WithMailLinksTableName(mailLinksTable),
+		session.WithMail(settings.Mail.Sender, session.MailSettings{Application: Application, LoginURL: settings.Mail.LoginURL}),
 		session.WithCookieName(Name),
 		session.WithXSRFCookieName(XSRFCookie),
 		session.WithSessionTimeout(settings.SessionTimeout),
@@ -249,6 +298,17 @@ func New(ctx context.Context, db *cloudspanner.Client, settings *Settings) (*Aut
 	// transaction (resource.SignInRoles): the Spanner client refuses the engine's read
 	// under the transaction's context as a nested transaction.
 	membersSession.SetSignInPolicy(signin.TenantPolicy(resource.SignInRoles(accessClient.UserManager()), settings.TenantDeclarations))
+
+	// An accepted invitation seats the client with the roles it carries, in the sector
+	// it names or in the global partition, written to the members engine by the
+	// library's hook (resource.SeatInvited) once the transaction that consumed the
+	// invitation has committed, before the sign-in rule decides. The directory's sync
+	// writes beside it at the same sign-in: an invitation's roles are the
+	// application's, the groups' the directory's, and a seat the sync does not name is
+	// left to it (SyncsRoles) only where the directory names roles at all.
+	//
+	// Demonstrates: auth.invitation.
+	membersSession.SetInvitationAccepted(resource.SeatInvited(accessClient.UserManager()))
 
 	return &Auth{access: accessClient, handlers: &Handlers{Session: membersSession, directory: directory}}, nil
 }

@@ -25,6 +25,7 @@ import (
 	initiator "github.com/cccteam/db-initiator"
 	"github.com/cccteam/logger"
 	"github.com/cccteam/session"
+	"github.com/cccteam/session/mail"
 	"github.com/go-playground/errors/v5"
 	"github.com/go-playground/validator/v10"
 )
@@ -157,6 +158,8 @@ func newServed(ctx context.Context, t *testing.T) *served {
 		Signals:        svc,
 		CookieKey:      testCookieKey,
 		SessionTimeout: time.Minute,
+		Mail:           &mail.Recorder{},
+		MailLoginURL:   "http://tenanted.test/login",
 		LoginURL:       "/login",
 		Google:         staff.GoogleSettings{RedirectURL: "http://" + server.Listener.Addr().String() + "/api/user/google/callback"},
 		// The sign-in rule reads what each tenant declares in the sign-in's transaction,

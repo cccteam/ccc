@@ -84,6 +84,9 @@ func TestValidate(t *testing.T) {
 		wantErr string
 	}{
 		{name: "password takes no slot", method: Method{Kind: app.MethodPassword, Slot: SlotAny}, wantErr: "takes no slot"},
+		{name: "password takes open sign-up", method: Method{Kind: app.MethodPassword, Accounts: AccountsOpen, UsernameIsEmail: true}},
+		{name: "password takes no invited rule", method: Method{Kind: app.MethodPassword, Accounts: AccountsInvited}, wantErr: "the password method takes open"},
+		{name: "username-is-email on a directory method", method: Method{Kind: app.MethodGoogle, Name: "x", Authority: app.AuthorityApplication, UsernameIsEmail: true}, wantErr: "username-is-email describes the password method"},
 		{name: "open sign-up needs an open slot", method: Method{Kind: app.MethodAzure, Name: "x", Accounts: AccountsOpen, Authority: app.AuthorityApplication}, wantErr: "open sign-up is for any organization"},
 		{name: "members with any tenant", method: Method{Kind: app.MethodAzure, Name: "x", Slot: SlotAny, Authority: app.AuthorityApplication}, wantErr: "sign up the world"},
 		{name: "role sync beyond one tenant", method: Method{Kind: app.MethodAzure, Name: "x", Slot: SlotListed, Authority: app.AuthorityDirectory}, wantErr: "role synchronization follows one tenant"},

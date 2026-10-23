@@ -80,7 +80,7 @@ directories there, the application's administrator sets directory only.
   validated against the generated collection when the auth's engine opens. A domain role
   is held in every tenant domain, so nothing provisions a file per tenant. The staff file
   authors `Administrator_Global` over the tenant record and the global partition of the
-  staff auth's user-management surface (`StaffUsers`, `StaffSeats`, `StaffRoles`,
+  staff auth's user-management surface (`StaffUsers`, `StaffSeats`, `StaffInvitations`, `StaffRoles`,
   `SetStaffUserPassword`), `Administrator_Domain` over the console's announcements and the
   surface's tenant partition (`StaffTenantUsers` and its siblings), and `Machines_Domain`,
   the service account's role, over the readings; the members file authors
@@ -189,6 +189,12 @@ That starts fresh Spanner and Firestore emulators, bootstraps the database (sche
 `admin` and `member` staff logins with password `password`, the `client` member, and the
 machines service account), and serves every outlet on `$PORT` (:8093). The first run
 compiles and bootstraps before it listens; wait for "Starting Server" in the server pane.
+
+The auths mail: an administrator invites a person by address with the roles the invitation
+seats, and a signed-in person adds and verifies an address. In development the mail is
+written to the server's log, link included, and nothing is sent; a deployment names a
+Workspace mailbox (`APP_MAIL_MAILBOX`, `APP_MAIL_APP_PASSWORD`) and the relay sends it. Every
+link opens the login page under `APP_PUBLIC_URL`.
 
 The server builds with the session library's `skipAuth` tag (see the Procfile), which
 simulates the portal's directory: every portal login is `APP_USERNAME` from `.envrc`

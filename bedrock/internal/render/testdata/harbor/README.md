@@ -125,7 +125,8 @@ from `2-env`'s state.
   `spanner.tf`), `roles/monitoring.metricWriter` on the project for the Spanner
   client's metrics (`service-accounts.tf`), and `roles/datastore.user` on the Firestore
   database under the condition naming it (`firestore.tf`). It holds
-  accessor on 
+  accessor on the secrets the migration reads
+  (`APP_MAIL_APP_PASSWORD`: the generated password of each auth's first administrator, which it seeds the administrator user with, and the mailbox's app password, which the data level opens the mail sender with), and on
   no other runtime secret, which a migration never reads. The Spanner
   client writes its client-side metrics (operation and attempt latency,
   counts) to the project that owns the instance and logs a denial at every
@@ -210,6 +211,7 @@ from `2-env`'s state.
   | Variable | Field | Container |
   |---|---|---|
   | `APP_COOKIE_KEY` | `dataConfig.CookieKey` | `...-cookie-key` |
+  | `APP_MAIL_APP_PASSWORD` | `dataConfig.MailAppPassword` | `...-mail-app-password` |
   | `APP_STAFF_DIRECTORY_CLIENT_SECRET` | `dataConfig.StaffDirectoryClientSecret` | `...-staff-directory-client-secret` |
   | `APP_MEMBERS_DIRECTORY_CLIENT_SECRET` | `dataConfig.MembersDirectoryClientSecret` | `...-members-directory-client-secret` |
 
@@ -405,9 +407,11 @@ above them.
 | `APP_STAFF_DIRECTORY_GROUP_PREFIX` | data | `var.staff_directory_group_prefix` | yes | yes | yes |
 | `APP_STAFF_DIRECTORY_GROUP_LOOKUP` | data | `var.staff_directory_group_lookup` | yes | | |
 | `APP_MEMBERS_ADMINISTRATOR` | data | `var.members_administrator[env]` | yes | yes | yes |
+| `APP_PUBLIC_URL` | data | `https://<first hostname>` | yes | yes | yes |
+| `APP_MAIL_MAILBOX` | data | `var.mail_mailbox` | yes | yes | yes |
 | `APP_JOBS_TEMPLATE` | site | the job process's template job, which the site's own build's job is named from (the job driver's settings, `siteConfig.Template`) | yes | | |
 | `APP_SCHEDULER_INVOKER` | none, the framework reads it | the scheduler's invoker identity, unset in a pull-request stack | yes | | |
-| `APP_COOKIE_KEY`, `APP_STAFF_DIRECTORY_CLIENT_SECRET`, `APP_MEMBERS_DIRECTORY_CLIENT_SECRET` | data | secret, at the pinned version | yes | | yes |
+| `APP_COOKIE_KEY`, `APP_MAIL_APP_PASSWORD`, `APP_STAFF_DIRECTORY_CLIENT_SECRET`, `APP_MEMBERS_DIRECTORY_CLIENT_SECRET` | data | secret, at the pinned version | yes | | yes |
 
 The migrate command and the job process carry the registrations' organization slots and group prefixes because the session
 library validates them when it makes each registration, at construction. The migrate command carries the Firestore
@@ -1074,9 +1078,20 @@ Per environment, after the first apply:
    environment seeds the administrator role membership under it while the auth's
    users table holds no rows, and refuses to seed while the name is empty; the
    person then signs in through the directory and holds the role.
-4. Generate a cookie key (`openssl rand -base64 32`) and add it as version 1
+4. In the Google Workspace Admin console, once for the organization: a mailbox the
+   application sends its mail as (a no-reply address of the organization's domain),
+   with 2-step verification turned on and an app password generated for it, and the
+   SMTP relay service (Apps > Google Workspace > Gmail > Routing) accepting mail from
+   the organization's addresses with authentication and TLS required. Put the mailbox
+   in `terraform.tfvars` (`mail_mailbox`) and add the app password as version 1 of
+   `imp-<env>-gbl-harbor-mail-app-password` in every environment: the password is a
+   declared secret, so a release to an environment after tst waits on its
+   pin. Until the mailbox is named the application writes its mail (the
+   invitations and address verifications its auths send, link included) to the log
+   and sends nothing, which a deployed environment is not left at.
+5. Generate a cookie key (`openssl rand -base64 32`) and add it as version 1
    of `imp-<env>-gbl-harbor-cookie-key`.
-5. Pin the versions in `secret_versions` and apply.
+6. Pin the versions in `secret_versions` and apply.
 
 ## Inputs
 
@@ -1106,6 +1121,7 @@ Per environment, after the first apply:
 | `staff_directory_group_prefix` | Prefix of the role groups of the staff auth's directory registration. | `string` | `"staff-"` | no |
 | `staff_directory_hosted_domain` | Workspace domain the logins of the staff auth's directory registration are restricted to. | `string` | `"impulseframework.com"` | no |
 | `members_administrator` | Sign-in name of the members auth's first administrator, per environment. | `map(string)` | all empty | no |
+| `mail_mailbox` | Google Workspace mailbox the auths' mail is sent as; empty writes the mail to the log instead. | `string` | `""` | no |
 | `state_bucket` | State bucket, for the upstream layers' outputs. | `string` | n/a | yes |
 
 ## Outputs

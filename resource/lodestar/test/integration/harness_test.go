@@ -36,6 +36,7 @@ import (
 	"github.com/cccteam/httpio"
 	"github.com/cccteam/logger"
 	"github.com/cccteam/session"
+	"github.com/cccteam/session/mail"
 	"github.com/cccteam/session/sessioninfo"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-playground/validator/v10"
@@ -713,6 +714,9 @@ type served struct {
 	scheduler *scheduled.Fake
 	// jobs is the job process's fake starter: what the scheduled cleanup started.
 	jobs *jobs.Fake
+	// mail records every message the two auths send (an invitation, an address
+	// verification, a sign-up link), so a suite follows the link the way a person does.
+	mail *mail.Recorder
 }
 
 // newServed provisions the database the way the bootstrap does (schema, the demo world,
@@ -754,10 +758,12 @@ func newServedAt(ctx context.Context, t *testing.T, version string) *served {
 		t.Fatalf("resource.TenantRoster.Start() error = %v", err)
 	}
 
-	// The server is allocated before the auths so each directory's callback can name
-	// the server's own address.
+	// The server is allocated before the auths so each directory's callback and the
+	// mailed links can name the server's own address.
 	server := httptest.NewUnstartedServer(nil)
 	t.Cleanup(server.Close)
+	origin := "http://" + server.Listener.Addr().String()
+	sent := &mail.Recorder{}
 
 	crewAuth, err := crew.New(ctx, db.Client, &crew.Settings{
 		CookieKey:      testCookieKey,
@@ -773,6 +779,7 @@ func newServedAt(ctx context.Context, t *testing.T, version string) *served {
 		SignUpRedirectURL:  "http://" + server.Listener.Addr().String() + consoleAPI + "/user/" + crew.SignUpRegistration + "/callback",
 		ChangeSignal:       policySignal,
 		TenantDeclarations: app.NewSectorDeclarationReader(),
+		Mail:               auth.Mail{Sender: sent, LoginURL: origin + consoleLogin},
 	})
 	if err != nil {
 		t.Fatalf("crew.New() error = %v", err)
@@ -796,6 +803,7 @@ func newServedAt(ctx context.Context, t *testing.T, version string) *served {
 		},
 		ChangeSignal:       policySignal,
 		TenantDeclarations: app.NewSectorDeclarationReader(),
+		Mail:               auth.Mail{Sender: sent, LoginURL: origin + portalLogin},
 	})
 	if err != nil {
 		t.Fatalf("members.New() error = %v", err)
@@ -828,8 +836,8 @@ func newServedAt(ctx context.Context, t *testing.T, version string) *served {
 		membersAuth:   membersAuth,
 		stores:        stores,
 		live:          fake,
-		crewUsers:     router.NewCrewUserSurface(sessionusers.Accounts(crewAuth.Session().API()), crewAuth.Access().UserManager()),
-		membersUsers:  router.NewMembersUserSurface(sessionusers.Accounts(membersAuth.Session().API()), membersAuth.Access().UserManager()),
+		crewUsers:     router.NewCrewUserSurface(sessionusers.Accounts(crewAuth.Session().API()), crewAuth.Access().UserManager(), resource.WithTenantDirectories(roster.Declarations)),
+		membersUsers:  router.NewMembersUserSurface(sessionusers.Accounts(membersAuth.Session().API()), membersAuth.Access().UserManager(), resource.WithTenantDirectories(roster.Declarations)),
 		version:       version,
 		scheduler:     scheduled.NewGuard(schedulerInvoker, keys),
 		jobs:          starter,
@@ -839,7 +847,7 @@ func newServedAt(ctx context.Context, t *testing.T, version string) *served {
 	server.Config.Handler = router.New(a, router.AppHooks(a))
 	server.Start()
 
-	return &served{server: server, access: crewAuth.Access(), members: membersAuth.Access(), stores: stores, db: db, scheduler: keys, jobs: starter}
+	return &served{server: server, access: crewAuth.Access(), members: membersAuth.Access(), stores: stores, db: db, scheduler: keys, jobs: starter, mail: sent}
 }
 
 // schedulerInvoker is the invoker identity the served stack's scheduled routes admit, as

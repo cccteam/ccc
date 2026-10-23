@@ -96,7 +96,7 @@ resource "google_cloud_run_v2_service" "app" {
       }
 
       dynamic "env" {
-        for_each = merge(local.service_env, local.site_settings[each.value.site].env)
+        for_each = merge(local.service_env, local.site_env[each.value.site])
         content {
           name  = env.key
           value = env.value

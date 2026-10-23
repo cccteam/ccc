@@ -312,22 +312,29 @@ func authOf(a *app.App, p *app.AuthPackage) *app.Auth {
 // methodMismatches compares an outlet's declared methods with the methods the package
 // registers: a declaration the package does not register would mount routes to handlers
 // the App cannot supply, and a registration the outlet does not declare has routes
-// nowhere. The two must agree in name and method.
+// nowhere. The two must agree in name and method, and for the password method in its
+// options: a declaration chaining .OpenSignUp() mounts the sign-up routes, which the
+// registration serves only with session.OpenSignUp(), and one chaining
+// .UsernameIsEmail() has the users surface derive the address from the username, which
+// the registration does only with session.UsernameIsEmail().
 func methodMismatches(o *app.Outlet, p *app.AuthPackage, auth *app.Auth) []string {
 	var details []string
-	registered := map[string]string{}
+	registered := map[string]*app.Method{}
 	for i := range auth.Methods {
-		registered[auth.Methods[i].Name] = auth.Methods[i].Kind
+		registered[auth.Methods[i].Name] = &auth.Methods[i]
 	}
 	declared := map[string]bool{}
 	for i := range o.Auth.Methods {
 		m := &o.Auth.Methods[i]
 		declared[m.Name] = true
-		switch kind, ok := registered[m.Name]; {
+		reg, ok := registered[m.Name]
+		switch {
 		case !ok:
 			details = append(details, fmt.Sprintf("%s: outlet %s declares the %s method %s on the %s auth, but %s registers no such method; the generated router would mount routes to handlers the App cannot supply (register it, or drop the declaration)", o.Pos, o.Name, m.Kind, m.Name, p.Name, p.Dir))
-		case kind != m.Kind:
-			details = append(details, fmt.Sprintf("%s: outlet %s declares %s as a %s method on the %s auth, but %s registers it as %s; the generated router would mount the wrong routes", o.Pos, o.Name, m.Name, m.Kind, p.Name, p.Dir, kind))
+		case reg.Kind != m.Kind:
+			details = append(details, fmt.Sprintf("%s: outlet %s declares %s as a %s method on the %s auth, but %s registers it as %s; the generated router would mount the wrong routes", o.Pos, o.Name, m.Name, m.Kind, p.Name, p.Dir, reg.Kind))
+		case m.Kind == app.MethodPassword:
+			details = append(details, passwordMismatches(o, p, m, reg)...)
 		}
 	}
 	for i := range auth.Methods {
@@ -335,6 +342,26 @@ func methodMismatches(o *app.Outlet, p *app.AuthPackage, auth *app.Auth) []strin
 		if !declared[m.Name] {
 			details = append(details, fmt.Sprintf("%s:%d: the %s auth registers the %s method %s, but outlet %s (%s) does not declare it, so its login route is mounted nowhere; declare generation.%s on the outlet's Auth option", m.File, m.Line, p.Name, m.Kind, m.Name, o.Name, o.Pos, strings.TrimPrefix(app.MethodDeclaration(m.Kind, m.Name, ""), "generation.")))
 		}
+	}
+
+	return details
+}
+
+// passwordMismatches compares the password method's declaration with its registration:
+// open sign-up and the username as the address are each said in both places or neither.
+func passwordMismatches(o *app.Outlet, p *app.AuthPackage, declared *app.AuthMethodArg, registered *app.Method) []string {
+	var details []string
+	switch {
+	case declared.OpenSignUp && !registered.OpenSignUp:
+		details = append(details, fmt.Sprintf("%s: outlet %s declares the password method with .OpenSignUp() on the %s auth, but %s:%d registers it without session.OpenSignUp(); the generated router would mount sign-up routes the method refuses (register it with the option, or drop .OpenSignUp())", o.Pos, o.Name, p.Name, registered.File, registered.Line))
+	case !declared.OpenSignUp && registered.OpenSignUp:
+		details = append(details, fmt.Sprintf("%s:%d: the %s auth registers the password method with session.OpenSignUp(), but outlet %s (%s) does not declare .OpenSignUp(), so the sign-up routes are mounted nowhere and the login page offers no sign-up; chain .OpenSignUp() on the declaration", registered.File, registered.Line, p.Name, o.Name, o.Pos))
+	}
+	switch {
+	case declared.UsernameIsEmail && !registered.UsernameIsEmail:
+		details = append(details, fmt.Sprintf("%s: outlet %s declares the password method with .UsernameIsEmail() on the %s auth, but %s:%d registers it without session.UsernameIsEmail(); the users surface would derive the address from a username the method does not hold to one (register it with the option, or drop .UsernameIsEmail())", o.Pos, o.Name, p.Name, registered.File, registered.Line))
+	case !declared.UsernameIsEmail && registered.UsernameIsEmail:
+		details = append(details, fmt.Sprintf("%s:%d: the %s auth registers the password method with session.UsernameIsEmail(), but outlet %s (%s) does not declare .UsernameIsEmail(), so the users surface would hold an address apart from the username that is the address; chain .UsernameIsEmail() on the declaration", registered.File, registered.Line, p.Name, o.Name, o.Pos))
 	}
 
 	return details

@@ -3039,10 +3039,12 @@ export const apiDescriptor = defineApiDescriptor({
       auth: '{{ $s.Auth }}',
       label: '{{ $s.Label }}',
       password: {{ $s.Password }},
+      usernameIsEmail: {{ $s.UsernameIsEmail }},
+      openSignUp: {{ $s.OpenSignUp }},
       registrations: [{{ range $i, $g := $s.Registrations }}{{ if $i }}, {{ end }}{ name: '{{ $g.Name }}', kind: '{{ $g.Kind }}', label: '{{ $g.Label }}', invited: {{ $g.Invited }}, syncsRoles: {{ $g.SyncsRoles }} }{{ end }}],
       partitions: [
 {{- range $p := $s.Partitions }}
-        { scope: '{{ $p.Scope }}', users: Resources.{{ $p.Users }}, seats: Resources.{{ $p.Seats }}, roles: Resources.{{ $p.Roles }}{{ if $p.SetPassword }}, setPassword: Methods.{{ $p.SetPassword }}{{ end }}{{ if $p.UnlinkIdentity }}, unlinkIdentity: Methods.{{ $p.UnlinkIdentity }}{{ end }} },
+        { scope: '{{ $p.Scope }}', users: Resources.{{ $p.Users }}, seats: Resources.{{ $p.Seats }}, roles: Resources.{{ $p.Roles }}, invitations: Resources.{{ $p.Invitations }}{{ if $p.SetPassword }}, setPassword: Methods.{{ $p.SetPassword }}{{ end }}{{ if $p.UnlinkIdentity }}, unlinkIdentity: Methods.{{ $p.UnlinkIdentity }}{{ end }} },
 {{- end }}
       ],
     },

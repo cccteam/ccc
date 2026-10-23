@@ -22,6 +22,13 @@ type view struct {
 	// Directory reports an auth with a directory method: it takes a LoginURL and the
 	// development environment simulates the directory.
 	Directory bool
+	// Application is the application's name as the auth's mail says it.
+	Application string
+	// OpenSignUp reports a password method whose strangers sign up from a mailed link,
+	// and UsernameIsEmail one whose sign-in name is the address, so a verified change
+	// of address renames the user and the seats follow.
+	OpenSignUp      bool
+	UsernameIsEmail bool
 	// Methods are the methods with their rendering helpers.
 	Methods []*methodView
 	// Foothold is the form of the auth's first administrator the deployment seeds
@@ -73,11 +80,15 @@ func newView(spec *Spec) *view {
 	if v.Doc == "" {
 		v.Doc = "the people who sign in to the application"
 	}
+	v.Application = Application(spec)
 	for i := range spec.Methods {
 		mv := newMethodView(spec, &spec.Methods[i])
 		v.Methods = append(v.Methods, mv)
 		if mv.Directory() {
 			v.Directory = true
+		} else {
+			v.OpenSignUp = v.OpenSignUp || mv.OpenSignUp()
+			v.UsernameIsEmail = v.UsernameIsEmail || mv.UsernameIsEmail
 		}
 	}
 	v.Foothold = Foothold(spec)
@@ -104,6 +115,16 @@ func newView(spec *Spec) *view {
 	}
 
 	return v
+}
+
+// Application is the application's name as the auth's mail says it: the spec's, or the
+// module path's last element in PascalCase (example.com/acme/harbor is Harbor).
+func Application(spec *Spec) string {
+	if spec.Application != "" {
+		return spec.Application
+	}
+
+	return names.Pascal(path.Base(spec.Module))
 }
 
 // The forms of the first administrator the deployment seeds while the auth's users table

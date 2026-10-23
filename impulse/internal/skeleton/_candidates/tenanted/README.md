@@ -81,7 +81,7 @@ the connection a tenant declares) beside any Google account.
   default roles the release ships, embedded in the binary and validated against the
   generated collection when the engine opens. It authors the development logins' roles,
   `Administrator_Global` over the tenant record and the global partition of the staff
-  auth's user-management surface (`StaffUsers`, `StaffSeats`, `StaffRoles`,
+  auth's user-management surface (`StaffUsers`, `StaffSeats`, `StaffInvitations`, `StaffRoles`,
   `SetStaffUserPassword`), `Administrator_Domain` over every tenant-scoped resource and
   the surface's tenant partition (`StaffTenantUsers` and its siblings); a domain role is
   held in every tenant domain, the seeded ones
@@ -189,6 +189,12 @@ roles, the `admin`, `member` and `newcomer` logins with password `password`; `ne
 holds no tenant and creates one from the dashboard), and serves the API on
 `$PORT` (:8092). The first run compiles and bootstraps before it listens; wait for
 "Starting Server" in the server pane.
+
+The auths mail: an administrator invites a person by address with the roles the invitation
+seats, and a signed-in person adds and verifies an address. In development the mail is
+written to the server's log, link included, and nothing is sent; a deployment names a
+Workspace mailbox (`APP_MAIL_MAILBOX`, `APP_MAIL_APP_PASSWORD`) and the relay sends it. Every
+link opens the login page under `APP_PUBLIC_URL`.
 
 The server builds with the session library's `skipAuth` tag (see the Procfile), which
 simulates the staff auth's Google registration: every sign-in through the Google button is

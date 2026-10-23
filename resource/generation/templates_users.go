@@ -55,7 +55,9 @@ func ({{ $s.TypeName }}) UserSurfaceDeclaration() resource.UserSurfaceDeclaratio
 		Tenant:      "{{ $s.Tenant }}",
 		DomainParam: "{{ $s.DomainParam }}",
 		Shape: resource.UserSurfaceShape{
-			Password: {{ $s.Password }},
+			Password:        {{ $s.Password }},
+			UsernameIsEmail: {{ $s.UsernameIsEmail }},
+			OpenSignUp:      {{ $s.OpenSignUp }},
 			Registrations: []resource.UserRegistration{
 				{{- range $r := $s.Registrations }}
 				{Name: "{{ $r.Name }}", Kind: "{{ $r.Kind }}", Label: "{{ $r.Label }}", Invited: {{ $r.Invited }}, SyncsRoles: {{ $r.SyncsRoles }}},
@@ -66,11 +68,13 @@ func ({{ $s.TypeName }}) UserSurfaceDeclaration() resource.UserSurfaceDeclaratio
 }
 
 // {{ $s.Constructor }} builds the {{ $s.PackageName }} auth's surface over its stores: the auth's
-// users and identities (sessionusers.Accounts over the auth's session API) and its
-// engine's user manager, whose memberships are the seats. The application returns the
-// surface from {{ $s.Accessor }}(), which the generated handlers call.
-func {{ $s.Constructor }}(accounts resource.UserAccounts, seats resource.UserSeats) *resource.UserSurface[{{ $s.TypeName }}] {
-	return resource.NewUserSurface[{{ $s.TypeName }}](accounts, seats)
+// users, identities and invitations (sessionusers.Accounts over the auth's session API)
+// and its engine's user manager, whose memberships are the seats. The application
+// returns the surface from {{ $s.Accessor }}(), which the generated handlers call.{{ if $s.Tenant }} A
+// tenanted application passes resource.WithTenantDirectories over its roster's
+// declarations, which lets a {{ $s.Tenant }}'s administrator seat a person its own directory vouched for.{{ end }}
+func {{ $s.Constructor }}(accounts resource.UserAccounts, seats resource.UserSeats, opts ...resource.UserSurfaceOption) *resource.UserSurface[{{ $s.TypeName }}] {
+	return resource.NewUserSurface[{{ $s.TypeName }}](accounts, seats, opts...)
 }
 {{ end }}`
 )

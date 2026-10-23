@@ -110,17 +110,17 @@ func TestParseGeneratorProblems(t *testing.T) {
 		{
 			name:         "a sign-in method that is not one of the generation package's",
 			options:      `generation.GenerateRoutes("pkg/router", "api", generation.Auth("example.com/acme/pkg/auth/staff", generation.LDAP)),`,
-			wantProblems: []string{"Auth argument generation.LDAP should be a sign-in method declaration (generation.PasswordMethod(), GoogleMethod(name), AzureMethod(name), or WorkOSMethod(name), with .Labeled(label), .InvitedUsers(), .SyncsRoles() or .OpenSignUp() when chained)"},
+			wantProblems: []string{"Auth argument generation.LDAP should be a sign-in method declaration (generation.PasswordMethod(), GoogleMethod(name), AzureMethod(name), or WorkOSMethod(name), with .Labeled(label), .InvitedUsers(), .SyncsRoles(), .OpenSignUp() or .UsernameIsEmail() when chained)"},
 		},
 		{
 			name:         "a sign-in method written as a string",
 			options:      `generation.GenerateRoutes("pkg/router", "api", generation.Auth("example.com/acme/pkg/auth/staff", "password")),`,
-			wantProblems: []string{`Auth argument "password" should be a sign-in method declaration (generation.PasswordMethod(), GoogleMethod(name), AzureMethod(name), or WorkOSMethod(name), with .Labeled(label), .InvitedUsers(), .SyncsRoles() or .OpenSignUp() when chained)`},
+			wantProblems: []string{`Auth argument "password" should be a sign-in method declaration (generation.PasswordMethod(), GoogleMethod(name), AzureMethod(name), or WorkOSMethod(name), with .Labeled(label), .InvitedUsers(), .SyncsRoles(), .OpenSignUp() or .UsernameIsEmail() when chained)`},
 		},
 		{
 			name:         "a registration flag chained with an argument is not a declaration",
 			options:      `generation.GenerateRoutes("pkg/router", "api", generation.Auth("example.com/acme/pkg/auth/staff", generation.GoogleMethod("directory").SyncsRoles("x"))),`,
-			wantProblems: []string{"Auth argument generation.GoogleMethod(...).SyncsRoles(...) should be a sign-in method declaration (generation.PasswordMethod(), GoogleMethod(name), AzureMethod(name), or WorkOSMethod(name), with .Labeled(label), .InvitedUsers(), .SyncsRoles() or .OpenSignUp() when chained)"},
+			wantProblems: []string{"Auth argument generation.GoogleMethod(...).SyncsRoles(...) should be a sign-in method declaration (generation.PasswordMethod(), GoogleMethod(name), AzureMethod(name), or WorkOSMethod(name), with .Labeled(label), .InvitedUsers(), .SyncsRoles(), .OpenSignUp() or .UsernameIsEmail() when chained)"},
 		},
 		{
 			name:    "a method's label and flags chained in any order, and the outlet managing another auth",

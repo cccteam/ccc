@@ -123,6 +123,8 @@ func userDeclarationOf(auth *outletAuth, tenant, param string) resource.UserSurf
 	for _, m := range auth.methods {
 		if m.kind == methodPassword {
 			decl.Shape.Password = true
+			decl.Shape.UsernameIsEmail = m.usernameIsEmail
+			decl.Shape.OpenSignUp = m.openSignUp
 
 			continue
 		}
@@ -211,6 +213,7 @@ func (r *resourceGenerator) userRoutes(s *userSurface, prefix string) []userRout
 		routes = append(routes, r.userResourceRoutes(p, prefix, p.Users, p.UsersRoute, []routeTestParam{userTestParam(p.UserParam)}, true)...)
 		routes = append(routes, r.userResourceRoutes(p, prefix, p.Seats, p.SeatsRoute, []routeTestParam{userTestParam(p.SeatUserParam), userTestParam(p.SeatRoleParam)}, true)...)
 		routes = append(routes, r.userResourceRoutes(p, prefix, p.Roles, p.RolesRoute, []routeTestParam{userTestParam(p.RoleParam)}, false)...)
+		routes = append(routes, r.userResourceRoutes(p, prefix, p.Invitations, p.InvitationsRoute, []routeTestParam{userTestParam(p.InvitationParam)}, true)...)
 		for _, method := range p.ServedMethods(s.decl.Shape) {
 			path, testPath := r.userRoutePaths(prefix, userMethodRoute(p, method), p.Tenanted)
 			route := &generatedRoute{Method: http.MethodPost, Path: path, HandlerFunc: string(method), DomainScoped: p.Tenanted, TestURL: testPath}
@@ -310,7 +313,7 @@ func (r *resourceGenerator) userRouteParams() ([]string, error) {
 	var params []string
 	for _, s := range surfaces {
 		for _, p := range s.partitions() {
-			params = append(params, string(p.UserParam), string(p.SeatUserParam), string(p.SeatRoleParam), string(p.RoleParam))
+			params = append(params, string(p.UserParam), string(p.SeatUserParam), string(p.SeatRoleParam), string(p.RoleParam), string(p.InvitationParam))
 		}
 	}
 
@@ -416,13 +419,15 @@ const tenantMethodPrefix = "Tenant"
 // The surface rows' field names and the TypeScript types of their collections, as the
 // metadata and the descriptor spell them.
 const (
-	userFieldUsername = "username"
-	userFieldDisabled = "disabled"
-	seatFieldUser     = "user"
-	seatFieldRole     = "role"
-	roleFieldName     = "name"
-	stringListTSType  = "string[]"
-	objectListTSType  = "object[]"
+	userFieldUsername    = "username"
+	userFieldDisabled    = "disabled"
+	userFieldEmail       = "email"
+	seatFieldUser        = "user"
+	seatFieldRole        = "role"
+	roleFieldName        = "name"
+	invitationFieldRoles = "roles"
+	stringListTSType     = "string[]"
+	objectListTSType     = "object[]"
 )
 
 // The generated files: the handlers in the handler package, the marker types and
@@ -481,6 +486,9 @@ func usersHandlers(s *userSurface) []usersHandlerData {
 			usersHandlerData{Name: "Patch" + string(p.Seats), Method: "Patch" + tenant + "Seats", Comment: fmt.Sprintf("seats and unseats in %s through the operations body: Create and Delete on %s", where, p.Seats)},
 			usersHandlerData{Name: string(p.Roles), Method: tenant + "Roles", Comment: fmt.Sprintf("serves the roles a seat of %s may take: List on %s", where, p.Roles)},
 			usersHandlerData{Name: userSingular(p.Roles), Method: tenant + "Role", Comment: fmt.Sprintf("serves one role of %s: Read on %s", where, p.Roles)},
+			usersHandlerData{Name: string(p.Invitations), Method: tenant + "Invitations", Comment: fmt.Sprintf("serves the standing invitations into %s: List on %s", where, p.Invitations)},
+			usersHandlerData{Name: userSingular(p.Invitations), Method: tenant + "Invitation", Comment: fmt.Sprintf("serves one invitation into %s: Read on %s", where, p.Invitations)},
+			usersHandlerData{Name: "Patch" + string(p.Invitations), Method: "Patch" + tenant + "Invitations", Comment: fmt.Sprintf("invites into and revokes from %s through the operations body: Create and Delete on %s", where, p.Invitations)},
 		)
 		for _, method := range p.ServedMethods(s.decl.Shape) {
 			if method == p.SetPassword {
@@ -541,16 +549,19 @@ type userSurfacesData struct {
 
 // userSurfaceFileData is one surface's marker type and constructor.
 type userSurfaceFileData struct {
-	Auth          string
-	ImportPath    string
-	PackageName   string
-	TypeName      string
-	Accessor      string
-	Constructor   string
-	Tenant        string
-	DomainParam   string
-	Password      bool
-	Registrations []resource.UserRegistration
+	Auth        string
+	ImportPath  string
+	PackageName string
+	TypeName    string
+	Accessor    string
+	Constructor string
+	Tenant      string
+	DomainParam string
+	Password    bool
+	// UsernameIsEmail and OpenSignUp are the password method's flags.
+	UsernameIsEmail bool
+	OpenSignUp      bool
+	Registrations   []resource.UserRegistration
 	// OutletList and ResourceList are the serving outlets and the resources, for the
 	// type's doc comment.
 	OutletList   string
@@ -571,16 +582,18 @@ func (r *resourceGenerator) generateUserSurfaces() error {
 	data := &userSurfacesData{Source: r.resource.Dir(), Package: r.router.Package()}
 	for _, s := range surfaces {
 		file := &userSurfaceFileData{
-			Auth:          s.decl.Auth,
-			ImportPath:    s.importPath,
-			PackageName:   assumedPackageName(s.importPath),
-			TypeName:      s.typeName,
-			Accessor:      s.accessor,
-			Constructor:   "New" + s.accessor,
-			Tenant:        s.decl.Tenant,
-			DomainParam:   string(s.decl.DomainParam),
-			Password:      s.decl.Shape.Password,
-			Registrations: s.decl.Shape.Registrations,
+			Auth:            s.decl.Auth,
+			ImportPath:      s.importPath,
+			PackageName:     assumedPackageName(s.importPath),
+			TypeName:        s.typeName,
+			Accessor:        s.accessor,
+			Constructor:     "New" + s.accessor,
+			Tenant:          s.decl.Tenant,
+			DomainParam:     string(s.decl.DomainParam),
+			Password:        s.decl.Shape.Password,
+			UsernameIsEmail: s.decl.Shape.UsernameIsEmail,
+			OpenSignUp:      s.decl.Shape.OpenSignUp,
+			Registrations:   s.decl.Shape.Registrations,
 		}
 		var resources []string
 		for _, p := range s.partitions() {
@@ -669,6 +682,8 @@ func userTSFields() []tsUserField {
 		{Name: "createdAt", TsType: dateTSType, DisplayType: string(displayTypeDate), Required: true},
 		{Name: "lastSignInAt", TsType: dateTSType + " | null", DisplayType: string(displayTypeDate)},
 		{Name: "organization", TsType: stringTSType + " | null", DisplayType: stringTSType},
+		{Name: userFieldEmail, TsType: stringTSType + " | null", DisplayType: stringTSType},
+		{Name: "emailVerifiedAt", TsType: dateTSType + " | null", DisplayType: string(displayTypeDate)},
 		{Name: "identities", TsType: "UserIdentity[]", DisplayType: objectListTSType, Required: true},
 		{Name: "roles", TsType: stringListTSType, DisplayType: stringListTSType, Required: true},
 		{Name: "everywhereRoles", TsType: stringListTSType, DisplayType: stringListTSType, Required: true},
@@ -690,6 +705,18 @@ func seatTSFields(tenanted bool) []tsUserField {
 	}
 }
 
+// invitationTSFields are the invitation row's fields, the same in both partitions.
+func invitationTSFields() []tsUserField {
+	return []tsUserField{
+		{Name: idIdentifier, TsType: stringTSType, DisplayType: uuidTSType, Key: 1, Required: true},
+		{Name: userFieldEmail, TsType: stringTSType, DisplayType: stringTSType, Required: true},
+		{Name: invitationFieldRoles, TsType: stringListTSType, DisplayType: stringListTSType, Required: true},
+		{Name: "invitedBy", TsType: stringTSType + " | null", DisplayType: stringTSType},
+		{Name: "createdAt", TsType: dateTSType, DisplayType: string(displayTypeDate), Required: true},
+		{Name: "expiresAt", TsType: dateTSType, DisplayType: string(displayTypeDate), Required: true},
+	}
+}
+
 func roleTSFields(tenanted bool) []tsUserField {
 	fields := []tsUserField{{Name: roleFieldName, TsType: stringTSType, DisplayType: stringTSType, Key: 1, Required: true}}
 	if !tenanted {
@@ -702,7 +729,7 @@ func roleTSFields(tenanted bool) []tsUserField {
 // tsUserResources lists a surface's resources for the client.
 func tsUserResources(s *userSurface) []*tsUserResource {
 	partitions := s.partitions()
-	out := make([]*tsUserResource, 0, 3*len(partitions))
+	out := make([]*tsUserResource, 0, 4*len(partitions))
 	for _, p := range partitions {
 		scope := accesstypes.GlobalPermissionScope
 		where := "the global partition"
@@ -719,8 +746,15 @@ func tsUserResources(s *userSurface) []*tsUserResource {
 			PatchFields: []*tsAPIField{{Name: userFieldUsername, Type: stringTSType}, {Name: userFieldDisabled, Type: booleanStr}},
 			Order:       []*tsAPISort{{Field: userFieldUsername, Direction: sortAsc}},
 		}
+		// Where the username is the address, no address is entered beside it.
+		if !s.decl.Shape.UsernameIsEmail {
+			users.PatchFields = append(users.PatchFields, &tsAPIField{Name: userFieldEmail, Type: stringTSType})
+		}
 		if users.Creates {
 			users.CreateFields = []*tsAPIField{{Name: userFieldUsername, Type: stringTSType, Required: true}, {Name: "password", Type: stringTSType}, {Name: userFieldDisabled, Type: booleanStr}}
+			if !s.decl.Shape.UsernameIsEmail {
+				users.CreateFields = append(users.CreateFields, &tsAPIField{Name: userFieldEmail, Type: stringTSType})
+			}
 			if p.Tenanted {
 				users.CreateFields = append(users.CreateFields, &tsAPIField{Name: seatFieldRole, Type: stringTSType, Required: true})
 			}
@@ -740,7 +774,16 @@ func tsUserResources(s *userSurface) []*tsUserResource {
 			Keys:   []*tsAPIField{{Name: roleFieldName, Type: stringTSType}},
 			Order:  []*tsAPISort{{Field: roleFieldName, Direction: sortAsc}},
 		}
-		out = append(out, users, seats, roles)
+		invitations := &tsUserResource{
+			Name: string(p.Invitations), Property: strcase.ToCamel(string(p.Invitations)), Route: p.InvitationsRoute, Scope: scope,
+			Doc:     fmt.Sprintf("A standing invitation into %s of the %s auth: an address invited to hold roles, until it is accepted, revoked or expires.", where, s.decl.Auth),
+			Fields:  invitationTSFields(),
+			Creates: true, Deletes: true,
+			Keys:         []*tsAPIField{{Name: idIdentifier, Type: stringTSType}},
+			CreateFields: []*tsAPIField{{Name: userFieldEmail, Type: stringTSType, Required: true}, {Name: invitationFieldRoles, Type: stringListTSType, Required: true}},
+			Order:        []*tsAPISort{{Field: userFieldEmail, Direction: sortAsc}},
+		}
+		out = append(out, users, seats, roles, invitations)
 	}
 
 	return out
@@ -771,7 +814,7 @@ func tsUserMethods(s *userSurface) []*tsUserMethod {
 // apiSurface is the surface as the descriptor's userSurfaces block carries it: the
 // Auth, its label, its shape, and each partition's resource and method names.
 func (s *userSurface) apiSurface() *tsAPISurface {
-	out := &tsAPISurface{Auth: s.decl.Auth, Label: authLabel(s.decl.Auth), Password: s.decl.Shape.Password}
+	out := &tsAPISurface{Auth: s.decl.Auth, Label: authLabel(s.decl.Auth), Password: s.decl.Shape.Password, UsernameIsEmail: s.decl.Shape.UsernameIsEmail, OpenSignUp: s.decl.Shape.OpenSignUp}
 	for _, reg := range s.decl.Shape.Registrations {
 		out.Registrations = append(out.Registrations, &tsAPIRegistration{
 			Name:       reg.Name,
@@ -783,10 +826,11 @@ func (s *userSurface) apiSurface() *tsAPISurface {
 	}
 	for _, p := range s.partitions() {
 		partition := &tsAPIPartition{
-			Scope: string(accesstypes.GlobalPermissionScope),
-			Users: string(p.Users),
-			Seats: string(p.Seats),
-			Roles: string(p.Roles),
+			Scope:       string(accesstypes.GlobalPermissionScope),
+			Users:       string(p.Users),
+			Seats:       string(p.Seats),
+			Roles:       string(p.Roles),
+			Invitations: string(p.Invitations),
 		}
 		if p.Tenanted {
 			partition.Scope = string(accesstypes.DomainPermissionScope)

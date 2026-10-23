@@ -9,7 +9,11 @@
 // Demonstrates: auth.two-populations.
 package auth
 
-import "context"
+import (
+	"context"
+
+	"github.com/cccteam/session/mail"
+)
 
 type ctxKey struct{}
 
@@ -25,6 +29,17 @@ func Name(ctx context.Context) string {
 	name, _ := ctx.Value(ctxKey{}).(string)
 
 	return name
+}
+
+// Mail is how an auth sends mail: the invitations its administrators send, the link
+// that verifies an address a person adds, and the link a password sign-up starts from.
+// The sender is the configuration's one driver, shared by both auths (the Google
+// Workspace relay as the configured mailbox, or the library's logging stand-in in
+// development); LoginURL is the absolute URL of the login page of the surface that
+// binds to the auth, where every mailed link leads with its token in the query.
+type Mail struct {
+	Sender   mail.Sender
+	LoginURL string
 }
 
 // Directory is an auth's registration with Google: the OAuth client's credentials, the

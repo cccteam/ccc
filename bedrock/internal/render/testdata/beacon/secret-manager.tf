@@ -77,7 +77,8 @@ resource "google_secret_manager_secret_iam_member" "app_accessor" {
 # Accessor for the migrate command's secrets (locals.tf, migrate_secrets): the
 # deploy identity, which runs the migrate command on the build worker, reads
 # the generated password of each auth's first administrator to seed the
-# administrator user with, and no other runtime secret. A pull-request stack
+# administrator user with and the mailbox's app password the data level opens
+# the mail sender with, and no other runtime secret. A pull-request stack
 # grants nothing: it shares tst's containers, whose grants tst's stack holds.
 resource "google_secret_manager_secret_iam_member" "migrate_accessor" {
   for_each = local.is_pr ? toset([]) : local.migrate_secrets

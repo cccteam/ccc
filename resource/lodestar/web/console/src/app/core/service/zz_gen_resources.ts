@@ -334,6 +334,8 @@ export interface CrewUsers {
   createdAt?: Date;
   lastSignInAt?: Date | null;
   organization?: string | null;
+  email?: string | null;
+  emailVerifiedAt?: Date | null;
   identities?: UserIdentity[];
   roles?: string[];
   everywhereRoles?: string[];
@@ -351,6 +353,15 @@ export interface CrewRoles {
   name: string;
   kind?: 'global' | 'domain';
 }
+/** A standing invitation into the global partition of the Crew auth: an address invited to hold roles, until it is accepted, revoked or expires. */
+export interface CrewInvitations {
+  id: string;
+  email?: string;
+  roles?: string[];
+  invitedBy?: string | null;
+  createdAt?: Date;
+  expiresAt?: Date;
+}
 /** A user of the Crew auth in one sector: the account, its sign-in means and its seats. */
 export interface CrewSectorUsers {
   id: string;
@@ -361,6 +372,8 @@ export interface CrewSectorUsers {
   createdAt?: Date;
   lastSignInAt?: Date | null;
   organization?: string | null;
+  email?: string | null;
+  emailVerifiedAt?: Date | null;
   identities?: UserIdentity[];
   roles?: string[];
   everywhereRoles?: string[];
@@ -377,6 +390,15 @@ export interface CrewSectorSeats {
 export interface CrewSectorRoles {
   name: string;
 }
+/** A standing invitation into one sector of the Crew auth: an address invited to hold roles, until it is accepted, revoked or expires. */
+export interface CrewSectorInvitations {
+  id: string;
+  email?: string;
+  roles?: string[];
+  invitedBy?: string | null;
+  createdAt?: Date;
+  expiresAt?: Date;
+}
 /** A user of the Members auth in the global partition: the account, its sign-in means and its seats. */
 export interface MembersUsers {
   id: string;
@@ -387,6 +409,8 @@ export interface MembersUsers {
   createdAt?: Date;
   lastSignInAt?: Date | null;
   organization?: string | null;
+  email?: string | null;
+  emailVerifiedAt?: Date | null;
   identities?: UserIdentity[];
   roles?: string[];
   everywhereRoles?: string[];
@@ -404,6 +428,15 @@ export interface MembersRoles {
   name: string;
   kind?: 'global' | 'domain';
 }
+/** A standing invitation into the global partition of the Members auth: an address invited to hold roles, until it is accepted, revoked or expires. */
+export interface MembersInvitations {
+  id: string;
+  email?: string;
+  roles?: string[];
+  invitedBy?: string | null;
+  createdAt?: Date;
+  expiresAt?: Date;
+}
 /** A user of the Members auth in one sector: the account, its sign-in means and its seats. */
 export interface MembersSectorUsers {
   id: string;
@@ -414,6 +447,8 @@ export interface MembersSectorUsers {
   createdAt?: Date;
   lastSignInAt?: Date | null;
   organization?: string | null;
+  email?: string | null;
+  emailVerifiedAt?: Date | null;
   identities?: UserIdentity[];
   roles?: string[];
   everywhereRoles?: string[];
@@ -429,6 +464,15 @@ export interface MembersSectorSeats {
 /** A role a seat of the Members auth in one sector may take. */
 export interface MembersSectorRoles {
   name: string;
+}
+/** A standing invitation into one sector of the Members auth: an address invited to hold roles, until it is accepted, revoked or expires. */
+export interface MembersSectorInvitations {
+  id: string;
+  email?: string;
+  roles?: string[];
+  invitedBy?: string | null;
+  createdAt?: Date;
+  expiresAt?: Date;
 }
 
 /**
@@ -868,6 +912,8 @@ const resourceMap = defineResourceMap({
       { fieldName: 'createdAt', displayType: 'date', required: true, isIndex: false },
       { fieldName: 'lastSignInAt', displayType: 'date', required: false, isIndex: false },
       { fieldName: 'organization', displayType: 'string', required: false, isIndex: false },
+      { fieldName: 'email', displayType: 'string', required: false, isIndex: false },
+      { fieldName: 'emailVerifiedAt', displayType: 'date', required: false, isIndex: false },
       { fieldName: 'identities', displayType: 'object[]', required: true, isIndex: false },
       { fieldName: 'roles', displayType: 'string[]', required: true, isIndex: false },
       { fieldName: 'everywhereRoles', displayType: 'string[]', required: true, isIndex: false },
@@ -894,6 +940,18 @@ const resourceMap = defineResourceMap({
       { fieldName: 'kind', displayType: 'string', required: true, isIndex: false },
     ],
   },
+  [Resources.CrewInvitations]: {
+    route: 'crew-invitations',
+    updateDisabled: true,
+    fields: [
+      { fieldName: 'id', primaryKey: { ordinalPosition: 1 }, displayType: 'uuid', required: true, isIndex: true },
+      { fieldName: 'email', displayType: 'string', required: true, isIndex: false },
+      { fieldName: 'roles', displayType: 'string[]', required: true, isIndex: false },
+      { fieldName: 'invitedBy', displayType: 'string', required: false, isIndex: false },
+      { fieldName: 'createdAt', displayType: 'date', required: true, isIndex: false },
+      { fieldName: 'expiresAt', displayType: 'date', required: true, isIndex: false },
+    ],
+  },
   [Resources.CrewSectorUsers]: {
     route: 'sectors/{sectorID}/crew-sector-users',
     fields: [
@@ -905,6 +963,8 @@ const resourceMap = defineResourceMap({
       { fieldName: 'createdAt', displayType: 'date', required: true, isIndex: false },
       { fieldName: 'lastSignInAt', displayType: 'date', required: false, isIndex: false },
       { fieldName: 'organization', displayType: 'string', required: false, isIndex: false },
+      { fieldName: 'email', displayType: 'string', required: false, isIndex: false },
+      { fieldName: 'emailVerifiedAt', displayType: 'date', required: false, isIndex: false },
       { fieldName: 'identities', displayType: 'object[]', required: true, isIndex: false },
       { fieldName: 'roles', displayType: 'string[]', required: true, isIndex: false },
       { fieldName: 'everywhereRoles', displayType: 'string[]', required: true, isIndex: false },
@@ -930,6 +990,18 @@ const resourceMap = defineResourceMap({
       { fieldName: 'name', primaryKey: { ordinalPosition: 1 }, displayType: 'string', required: true, isIndex: true },
     ],
   },
+  [Resources.CrewSectorInvitations]: {
+    route: 'sectors/{sectorID}/crew-sector-invitations',
+    updateDisabled: true,
+    fields: [
+      { fieldName: 'id', primaryKey: { ordinalPosition: 1 }, displayType: 'uuid', required: true, isIndex: true },
+      { fieldName: 'email', displayType: 'string', required: true, isIndex: false },
+      { fieldName: 'roles', displayType: 'string[]', required: true, isIndex: false },
+      { fieldName: 'invitedBy', displayType: 'string', required: false, isIndex: false },
+      { fieldName: 'createdAt', displayType: 'date', required: true, isIndex: false },
+      { fieldName: 'expiresAt', displayType: 'date', required: true, isIndex: false },
+    ],
+  },
   [Resources.MembersUsers]: {
     route: 'members-users',
     createDisabled: true,
@@ -942,6 +1014,8 @@ const resourceMap = defineResourceMap({
       { fieldName: 'createdAt', displayType: 'date', required: true, isIndex: false },
       { fieldName: 'lastSignInAt', displayType: 'date', required: false, isIndex: false },
       { fieldName: 'organization', displayType: 'string', required: false, isIndex: false },
+      { fieldName: 'email', displayType: 'string', required: false, isIndex: false },
+      { fieldName: 'emailVerifiedAt', displayType: 'date', required: false, isIndex: false },
       { fieldName: 'identities', displayType: 'object[]', required: true, isIndex: false },
       { fieldName: 'roles', displayType: 'string[]', required: true, isIndex: false },
       { fieldName: 'everywhereRoles', displayType: 'string[]', required: true, isIndex: false },
@@ -968,6 +1042,18 @@ const resourceMap = defineResourceMap({
       { fieldName: 'kind', displayType: 'string', required: true, isIndex: false },
     ],
   },
+  [Resources.MembersInvitations]: {
+    route: 'members-invitations',
+    updateDisabled: true,
+    fields: [
+      { fieldName: 'id', primaryKey: { ordinalPosition: 1 }, displayType: 'uuid', required: true, isIndex: true },
+      { fieldName: 'email', displayType: 'string', required: true, isIndex: false },
+      { fieldName: 'roles', displayType: 'string[]', required: true, isIndex: false },
+      { fieldName: 'invitedBy', displayType: 'string', required: false, isIndex: false },
+      { fieldName: 'createdAt', displayType: 'date', required: true, isIndex: false },
+      { fieldName: 'expiresAt', displayType: 'date', required: true, isIndex: false },
+    ],
+  },
   [Resources.MembersSectorUsers]: {
     route: 'sectors/{sectorID}/members-sector-users',
     createDisabled: true,
@@ -980,6 +1066,8 @@ const resourceMap = defineResourceMap({
       { fieldName: 'createdAt', displayType: 'date', required: true, isIndex: false },
       { fieldName: 'lastSignInAt', displayType: 'date', required: false, isIndex: false },
       { fieldName: 'organization', displayType: 'string', required: false, isIndex: false },
+      { fieldName: 'email', displayType: 'string', required: false, isIndex: false },
+      { fieldName: 'emailVerifiedAt', displayType: 'date', required: false, isIndex: false },
       { fieldName: 'identities', displayType: 'object[]', required: true, isIndex: false },
       { fieldName: 'roles', displayType: 'string[]', required: true, isIndex: false },
       { fieldName: 'everywhereRoles', displayType: 'string[]', required: true, isIndex: false },
@@ -1003,6 +1091,18 @@ const resourceMap = defineResourceMap({
     deleteDisabled: true,
     fields: [
       { fieldName: 'name', primaryKey: { ordinalPosition: 1 }, displayType: 'string', required: true, isIndex: true },
+    ],
+  },
+  [Resources.MembersSectorInvitations]: {
+    route: 'sectors/{sectorID}/members-sector-invitations',
+    updateDisabled: true,
+    fields: [
+      { fieldName: 'id', primaryKey: { ordinalPosition: 1 }, displayType: 'uuid', required: true, isIndex: true },
+      { fieldName: 'email', displayType: 'string', required: true, isIndex: false },
+      { fieldName: 'roles', displayType: 'string[]', required: true, isIndex: false },
+      { fieldName: 'invitedBy', displayType: 'string', required: false, isIndex: false },
+      { fieldName: 'createdAt', displayType: 'date', required: true, isIndex: false },
+      { fieldName: 'expiresAt', displayType: 'date', required: true, isIndex: false },
     ],
   },
 });
@@ -1062,15 +1162,19 @@ export const ResourceScopes: Record<Resource, PermissionScope> = {
   [Resources.CrewUsers]: PermissionScopes.global,
   [Resources.CrewSeats]: PermissionScopes.global,
   [Resources.CrewRoles]: PermissionScopes.global,
+  [Resources.CrewInvitations]: PermissionScopes.global,
   [Resources.CrewSectorUsers]: PermissionScopes.domain,
   [Resources.CrewSectorSeats]: PermissionScopes.domain,
   [Resources.CrewSectorRoles]: PermissionScopes.domain,
+  [Resources.CrewSectorInvitations]: PermissionScopes.domain,
   [Resources.MembersUsers]: PermissionScopes.global,
   [Resources.MembersSeats]: PermissionScopes.global,
   [Resources.MembersRoles]: PermissionScopes.global,
+  [Resources.MembersInvitations]: PermissionScopes.global,
   [Resources.MembersSectorUsers]: PermissionScopes.domain,
   [Resources.MembersSectorSeats]: PermissionScopes.domain,
   [Resources.MembersSectorRoles]: PermissionScopes.domain,
+  [Resources.MembersSectorInvitations]: PermissionScopes.domain,
 };
 
 /** One workflow member: the resource, the member or root its hop lands on, and the anchoring foreign-key field. */

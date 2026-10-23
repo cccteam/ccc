@@ -39,6 +39,8 @@ export interface MembersUsers {
   createdAt?: Date;
   lastSignInAt?: Date | null;
   organization?: string | null;
+  email?: string | null;
+  emailVerifiedAt?: Date | null;
   identities?: UserIdentity[];
   roles?: string[];
   everywhereRoles?: string[];
@@ -56,6 +58,15 @@ export interface MembersRoles {
   name: string;
   kind?: 'global' | 'domain';
 }
+/** A standing invitation into the global partition of the Members auth: an address invited to hold roles, until it is accepted, revoked or expires. */
+export interface MembersInvitations {
+  id: string;
+  email?: string;
+  roles?: string[];
+  invitedBy?: string | null;
+  createdAt?: Date;
+  expiresAt?: Date;
+}
 /** A user of the Members auth in one tenant: the account, its sign-in means and its seats. */
 export interface MembersTenantUsers {
   id: string;
@@ -66,6 +77,8 @@ export interface MembersTenantUsers {
   createdAt?: Date;
   lastSignInAt?: Date | null;
   organization?: string | null;
+  email?: string | null;
+  emailVerifiedAt?: Date | null;
   identities?: UserIdentity[];
   roles?: string[];
   everywhereRoles?: string[];
@@ -81,6 +94,15 @@ export interface MembersTenantSeats {
 /** A role a seat of the Members auth in one tenant may take. */
 export interface MembersTenantRoles {
   name: string;
+}
+/** A standing invitation into one tenant of the Members auth: an address invited to hold roles, until it is accepted, revoked or expires. */
+export interface MembersTenantInvitations {
+  id: string;
+  email?: string;
+  roles?: string[];
+  invitedBy?: string | null;
+  createdAt?: Date;
+  expiresAt?: Date;
 }
 
 /**
@@ -130,6 +152,8 @@ const resourceMap = defineResourceMap({
       { fieldName: 'createdAt', displayType: 'date', required: true, isIndex: false },
       { fieldName: 'lastSignInAt', displayType: 'date', required: false, isIndex: false },
       { fieldName: 'organization', displayType: 'string', required: false, isIndex: false },
+      { fieldName: 'email', displayType: 'string', required: false, isIndex: false },
+      { fieldName: 'emailVerifiedAt', displayType: 'date', required: false, isIndex: false },
       { fieldName: 'identities', displayType: 'object[]', required: true, isIndex: false },
       { fieldName: 'roles', displayType: 'string[]', required: true, isIndex: false },
       { fieldName: 'everywhereRoles', displayType: 'string[]', required: true, isIndex: false },
@@ -156,6 +180,18 @@ const resourceMap = defineResourceMap({
       { fieldName: 'kind', displayType: 'string', required: true, isIndex: false },
     ],
   },
+  [Resources.MembersInvitations]: {
+    route: 'members-invitations',
+    updateDisabled: true,
+    fields: [
+      { fieldName: 'id', primaryKey: { ordinalPosition: 1 }, displayType: 'uuid', required: true, isIndex: true },
+      { fieldName: 'email', displayType: 'string', required: true, isIndex: false },
+      { fieldName: 'roles', displayType: 'string[]', required: true, isIndex: false },
+      { fieldName: 'invitedBy', displayType: 'string', required: false, isIndex: false },
+      { fieldName: 'createdAt', displayType: 'date', required: true, isIndex: false },
+      { fieldName: 'expiresAt', displayType: 'date', required: true, isIndex: false },
+    ],
+  },
   [Resources.MembersTenantUsers]: {
     route: 'tenants/{tenantID}/members-tenant-users',
     createDisabled: true,
@@ -168,6 +204,8 @@ const resourceMap = defineResourceMap({
       { fieldName: 'createdAt', displayType: 'date', required: true, isIndex: false },
       { fieldName: 'lastSignInAt', displayType: 'date', required: false, isIndex: false },
       { fieldName: 'organization', displayType: 'string', required: false, isIndex: false },
+      { fieldName: 'email', displayType: 'string', required: false, isIndex: false },
+      { fieldName: 'emailVerifiedAt', displayType: 'date', required: false, isIndex: false },
       { fieldName: 'identities', displayType: 'object[]', required: true, isIndex: false },
       { fieldName: 'roles', displayType: 'string[]', required: true, isIndex: false },
       { fieldName: 'everywhereRoles', displayType: 'string[]', required: true, isIndex: false },
@@ -191,6 +229,18 @@ const resourceMap = defineResourceMap({
     deleteDisabled: true,
     fields: [
       { fieldName: 'name', primaryKey: { ordinalPosition: 1 }, displayType: 'string', required: true, isIndex: true },
+    ],
+  },
+  [Resources.MembersTenantInvitations]: {
+    route: 'tenants/{tenantID}/members-tenant-invitations',
+    updateDisabled: true,
+    fields: [
+      { fieldName: 'id', primaryKey: { ordinalPosition: 1 }, displayType: 'uuid', required: true, isIndex: true },
+      { fieldName: 'email', displayType: 'string', required: true, isIndex: false },
+      { fieldName: 'roles', displayType: 'string[]', required: true, isIndex: false },
+      { fieldName: 'invitedBy', displayType: 'string', required: false, isIndex: false },
+      { fieldName: 'createdAt', displayType: 'date', required: true, isIndex: false },
+      { fieldName: 'expiresAt', displayType: 'date', required: true, isIndex: false },
     ],
   },
 });
@@ -218,7 +268,9 @@ export const ResourceScopes: Record<Resource, PermissionScope> = {
   [Resources.MembersUsers]: PermissionScopes.global,
   [Resources.MembersSeats]: PermissionScopes.global,
   [Resources.MembersRoles]: PermissionScopes.global,
+  [Resources.MembersInvitations]: PermissionScopes.global,
   [Resources.MembersTenantUsers]: PermissionScopes.domain,
   [Resources.MembersTenantSeats]: PermissionScopes.domain,
   [Resources.MembersTenantRoles]: PermissionScopes.domain,
+  [Resources.MembersTenantInvitations]: PermissionScopes.domain,
 };

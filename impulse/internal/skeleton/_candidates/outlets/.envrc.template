@@ -22,6 +22,18 @@ export GOOGLE_CLOUD_SPANNER_DATABASE_NAME=outlets
 # APP_COOKIE_KEY signs session cookies: Base64 of 32+ random bytes. Unset, the process
 # generates an ephemeral key and sessions end when it restarts.
 # export APP_COOKIE_KEY=
+# APP_PUBLIC_URL is the application's address as a browser reaches it, scheme and host with
+# no path: every link the auths mail (an invitation, an address verification, a sign-up)
+# opens the login page under it. The dev proxy here; a deployment sets the served hostname.
+# The console's dev server; the portal's is :4303, so a link the members auth logs opens
+# there once its port is swapped in.
+export APP_PUBLIC_URL=http://127.0.0.1:4301
+# APP_MAIL_MAILBOX and APP_MAIL_APP_PASSWORD send the auths' mail through the Google Workspace
+# SMTP relay as the mailbox (a no-reply address of the organization's domain, with two-step
+# verification and an app password). Unset here: the mail is written to the server's log,
+# link included, and nothing is sent; follow the link from the log.
+# export APP_MAIL_MAILBOX=no-reply@example.com
+# export APP_MAIL_APP_PASSWORD=
 # APP_STAFF_ADMINISTRATOR_PASSWORD is the password of the staff auth's first administrator
 # (pkg/auth/staff, Administrator), which the migrate command seeds while the auth's users
 # table holds no rows; a deployment generates it as a secret, and the bootstrap creates the

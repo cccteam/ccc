@@ -6,7 +6,7 @@ package router
 import "github.com/cccteam/ccc/resource"
 
 // StaffAuth marks the staff auth (github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/sites/pkg/auth/staff) for the user-management
-// surface the library serves on the default outlet: StaffUsers, StaffSeats, StaffRoles, SetStaffUserPassword, UnlinkStaffUserIdentity, StaffTenantUsers, StaffTenantSeats, StaffTenantRoles, SetStaffTenantUserPassword, UnlinkStaffTenantUserIdentity.
+// surface the library serves on the default outlet: StaffUsers, StaffSeats, StaffRoles, StaffInvitations, SetStaffUserPassword, UnlinkStaffUserIdentity, StaffTenantUsers, StaffTenantSeats, StaffTenantRoles, StaffTenantInvitations, SetStaffTenantUserPassword, UnlinkStaffTenantUserIdentity.
 // The surface, its rows and its handlers are instantiated with it, so the auth's
 // resources are their own Go types carrying these names into the collection.
 type StaffAuth struct{}
@@ -18,16 +18,20 @@ func (StaffAuth) UserSurfaceDeclaration() resource.UserSurfaceDeclaration {
 		Tenant:      "Tenant",
 		DomainParam: "tenantID",
 		Shape: resource.UserSurfaceShape{
-			Password:      true,
-			Registrations: []resource.UserRegistration{},
+			Password:        true,
+			UsernameIsEmail: false,
+			OpenSignUp:      false,
+			Registrations:   []resource.UserRegistration{},
 		},
 	}
 }
 
 // NewStaffUserSurface builds the staff auth's surface over its stores: the auth's
-// users and identities (sessionusers.Accounts over the auth's session API) and its
-// engine's user manager, whose memberships are the seats. The application returns the
-// surface from StaffUserSurface(), which the generated handlers call.
-func NewStaffUserSurface(accounts resource.UserAccounts, seats resource.UserSeats) *resource.UserSurface[StaffAuth] {
-	return resource.NewUserSurface[StaffAuth](accounts, seats)
+// users, identities and invitations (sessionusers.Accounts over the auth's session API)
+// and its engine's user manager, whose memberships are the seats. The application
+// returns the surface from StaffUserSurface(), which the generated handlers call. A
+// tenanted application passes resource.WithTenantDirectories over its roster's
+// declarations, which lets a Tenant's administrator seat a person its own directory vouched for.
+func NewStaffUserSurface(accounts resource.UserAccounts, seats resource.UserSeats, opts ...resource.UserSurfaceOption) *resource.UserSurface[StaffAuth] {
+	return resource.NewUserSurface[StaffAuth](accounts, seats, opts...)
 }

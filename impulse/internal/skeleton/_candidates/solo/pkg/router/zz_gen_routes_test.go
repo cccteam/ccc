@@ -142,6 +142,7 @@ func generatedRouteParameters() []string {
 		"staffSeatUser",
 		"staffSeatRole",
 		"staffRoleName",
+		"staffInvitationID",
 	}
 
 	return keys
@@ -273,6 +274,31 @@ func generatedRouterTests() []*generatedRouterTest {
 			parameters:  map[string]string{"staffRoleName": "testStaffRoleName"},
 		},
 		{
+			url: "/api/staff-invitations", method: http.MethodGet,
+			handlerFunc: "StaffInvitations",
+			parameters:  map[string]string{},
+		},
+		{
+			url: "/api/staff-invitations", method: http.MethodPost,
+			handlerFunc: "StaffInvitations",
+			parameters:  map[string]string{},
+		},
+		{
+			url: "/api/staff-invitations/testStaffInvitationID", method: http.MethodGet,
+			handlerFunc: "StaffInvitation",
+			parameters:  map[string]string{"staffInvitationID": "testStaffInvitationID"},
+		},
+		{
+			url: "/api/staff-invitations/testStaffInvitationID", method: http.MethodPost,
+			handlerFunc: "StaffInvitation",
+			parameters:  map[string]string{"staffInvitationID": "testStaffInvitationID"},
+		},
+		{
+			url: "/api/staff-invitations", method: http.MethodPatch,
+			handlerFunc: "PatchStaffInvitations",
+			parameters:  map[string]string{},
+		},
+		{
 			url: "/api/set-staff-user-password", method: http.MethodPost,
 			handlerFunc: "SetStaffUserPassword",
 			parameters:  map[string]string{},
@@ -331,6 +357,18 @@ func (s *generatedHandlersStub) SetFeature() http.HandlerFunc {
 
 func (s *generatedHandlersStub) SetStaffUserPassword() http.HandlerFunc {
 	return s.record("SetStaffUserPassword")
+}
+
+func (s *generatedHandlersStub) StaffInvitations() http.HandlerFunc {
+	return s.record("StaffInvitations")
+}
+
+func (s *generatedHandlersStub) StaffInvitation() http.HandlerFunc {
+	return s.record("StaffInvitation")
+}
+
+func (s *generatedHandlersStub) PatchStaffInvitations() http.HandlerFunc {
+	return s.record("PatchStaffInvitations")
 }
 
 func (s *generatedHandlersStub) StaffRoles() http.HandlerFunc {

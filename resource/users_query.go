@@ -2,6 +2,7 @@ package resource
 
 import (
 	"context"
+	"maps"
 	"net/http"
 	"reflect"
 	"slices"
@@ -136,25 +137,72 @@ func (j *userJudge) permits(ctx context.Context, decision accesstypes.Decision, 
 	case decision.IsDenied():
 		return false, nil
 	}
-	for _, group := range decision.ConditionGroups() {
-		expr := group.Condition.Expr()
-		if expr == nil {
-			continue
-		}
-		image, err := j.image(ctx, expr, pre, post)
-		if err != nil {
-			return false, err
-		}
-		truth, err := condition.Evaluate(expr, image)
-		if err != nil {
-			return false, errors.Wrap(err, "condition.Evaluate()")
-		}
-		if !truth.Permits() {
-			return false, nil
+	for _, variant := range roleVariants(pre, post) {
+		for _, group := range decision.ConditionGroups() {
+			expr := group.Condition.Expr()
+			if expr == nil {
+				continue
+			}
+			image, err := j.image(ctx, expr, variant[0], variant[1])
+			if err != nil {
+				return false, err
+			}
+			truth, err := condition.Evaluate(expr, image)
+			if err != nil {
+				return false, errors.Wrap(err, "condition.Evaluate()")
+			}
+			if !truth.Permits() {
+				return false, nil
+			}
 		}
 	}
 
 	return true, nil
+}
+
+// roleVariants expands an image whose role attribute is a list of roles, an
+// invitation's, into one image per role, so a condition on role holds for the row only
+// when it holds for every role it carries; an image with no list is itself. Each
+// variant is the pre- and post-image pair.
+func roleVariants(pre, post map[string]any) [][2]map[string]any {
+	roles, listed := roleList(pre)
+	inPost := false
+	if !listed {
+		if roles, listed = roleList(post); !listed {
+			return [][2]map[string]any{{pre, post}}
+		}
+		inPost = true
+	}
+	if len(roles) == 0 {
+		return [][2]map[string]any{{pre, post}}
+	}
+	source := pre
+	if inPost {
+		source = post
+	}
+	variants := make([][2]map[string]any, 0, len(roles))
+	for _, role := range roles {
+		image := make(map[string]any, len(source))
+		maps.Copy(image, source)
+		image[seatAttrRole] = role
+		if inPost {
+			variants = append(variants, [2]map[string]any{pre, image})
+		} else {
+			variants = append(variants, [2]map[string]any{image, post})
+		}
+	}
+
+	return variants
+}
+
+// roleList reads the role attribute of an image as a list, when it is one.
+func roleList(image map[string]any) ([]string, bool) {
+	if image == nil {
+		return nil, false
+	}
+	roles, ok := image[seatAttrRole].([]string)
+
+	return roles, ok
 }
 
 // image assembles the evaluator's image for one condition, resolving the caller's own

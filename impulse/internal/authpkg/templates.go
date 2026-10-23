@@ -7,16 +7,23 @@ const authTemplate = `// Package {{.Name}} is the {{.Name}} auth: {{.Doc}}, who 
 //
 // An auth is a package. It owns its session manager, one Auth session with the sign-in
 // methods registered on it (here {{range $i, $m := .Methods}}{{if $i}}, {{end}}{{$m.Name}}{{end}}), with its own session, user, identity, auth
-// event, pending sign-in and sign-in attempt tables and cookie; its permission store,
-// with its own table prefix, whose engine signals policy changes to the application's
-// other instances through the live service; and its role file, embedded beside it, so
-// the release's default roles travel with the binary. Each method is its own file in
-// this package, named for its registration.
+// event, pending sign-in, sign-in attempt and mail link tables and cookie; its permission
+// store, with its own table prefix, whose engine signals policy changes to the
+// application's other instances through the live service; and its role file, embedded
+// beside it, so the release's default roles travel with the binary. Each method is its
+// own file in this package, named for its registration.
 // A site or an outlet binds to an auth by composing its handlers, and two auths on one
 // database and one host never collide, because everything an auth names carries its
 // name. The same name in this auth and in another is two unrelated principals. The
 // package is named for the population, never for how it signs in: the {{.Name}} can gain
 // or lose a sign-in method without the package moving.
+//
+// The auth mails: an administrator invites a person by address, with the roles the
+// invitation seats, and the invitee follows the link to accept it; a signed-in person
+// adds an address and proves it by following the link sent to it{{if .OpenSignUp}}; and a stranger
+// signs up from a link mailed to the address they give{{end}}.
+// The links open the login page of the surface that binds to this auth
+// (Settings.MailLoginURL), through the sender the data level hands in (Settings.Mail).
 package {{.Name}}
 
 import (
@@ -33,6 +40,7 @@ import (
 {{- range .Imports}}
 	"{{.}}"
 {{- end}}
+	"github.com/cccteam/session/mail"
 	"github.com/cccteam/session/sessionstorage"
 	"github.com/go-playground/errors/v5"
 )
@@ -42,6 +50,9 @@ const (
 	Name = "{{.Name}}"
 	// TablePrefix is the name's PascalCase form, which prefixes every table the auth owns.
 	TablePrefix = "{{.Pascal}}"
+	// Application is the application's name as the mail the auth sends says it: the
+	// subject and the first line of an invitation name it.
+	Application = "{{.Application}}"
 
 	// XSRFCookie is the cookie the auth issues its XSRF token in. It carries the auth's name
 	// so two auths on one host never overwrite each other's token; the browser echoes it in
@@ -51,16 +62,18 @@ const (
 	// The auth's tables, which schema/migrations creates: the sessions and users of the
 	// Auth session (a person is one user whichever way they sign in; an identity the
 	// directory verifies links to its user through the identities table), the auth events
-	// each session records, the pending sign-ins that wait for a confirmation and the
-	// sign-in attempts the password method's attempt limiter counts per sign-in name. The
-	// names are spelled out in full so the tool's session-tables check, which reads the
-	// literals, finds their migrations.
+	// each session records, the pending sign-ins that wait for a confirmation, the
+	// sign-in attempts the password method's attempt limiter counts per sign-in name, and
+	// the mail links: the invitations, address verifications and sign-ups the auth mails,
+	// each a single-use token its follower proves. The names are spelled out in full so
+	// the tool's session-tables check, which reads the literals, finds their migrations.
 	sessionsTable   = "{{.Pascal}}Sessions"
 	usersTable      = "{{.Pascal}}SessionUsers"
 	identitiesTable = "{{.Pascal}}SessionIdentities"
 	eventsTable     = "{{.Pascal}}SessionAuthEvents"
 	pendingTable    = "{{.Pascal}}SessionPendingSignIns"
 	attemptsTable   = "{{.Pascal}}SessionSignInAttempts"
+	mailLinksTable  = "{{.Pascal}}SessionMailLinks"
 )
 
 // roleFile is the auth's default roles: the role file beside this package, embedded in the
@@ -99,6 +112,18 @@ type Settings struct {
 	CookieKey string
 	// SessionTimeout is the idle timeout of a browser session.
 	SessionTimeout time.Duration
+	// Mail sends the auth's mail: the invitation an administrator sends to an address{{if .OpenSignUp}},
+	// the link that verifies an address a person adds, and the link a sign-up starts from.{{else}}
+	// and the link that verifies an address a person adds.{{end}}
+	// The application's one sender, which the data level opens: the Workspace relay
+	// (session/mail/workspace) where the deployment names a mailbox, and the log (mail.Log)
+	// in development, where nothing is sent and a developer follows the link from the log.
+	// Required; New refuses nil.
+	Mail mail.Sender
+	// MailLoginURL is the absolute address of the login page of the surface that binds
+	// to this auth (https://host/login), which every mailed link opens with its token in
+	// the query: the application's public address and the surface's login path.
+	MailLoginURL string
 {{- if .Directory}}
 	// LoginURL is the browser page a refused or waiting sign-in returns to, with the
 	// reason as a code in the query (?code=, a sessioninfo.LoginRefusalCode, never text, or
@@ -170,6 +195,30 @@ func (h *Handlers) PendingCancel() http.HandlerFunc {
 	return h.Pending().Cancel()
 }
 
+// InvitationOpen reads the invitation a mailed link carries: where it seats the invitee
+// and how they may accept it, for the login page to offer.
+func (h *Handlers) InvitationOpen() http.HandlerFunc {
+	return h.Invitation().Open()
+}
+
+// InvitationAccept accepts an invitation as the signed-in person, or as a person who
+// signs in through a registration the invitation admits: the roles it names are seated
+// once the link is consumed.
+func (h *Handlers) InvitationAccept() http.HandlerFunc {
+	return h.Invitation().Accept()
+}
+
+// EmailAdd starts an address change for the signed-in person: a verification link is
+// mailed to the address, and nothing is stored until it is followed.
+func (h *Handlers) EmailAdd() http.HandlerFunc {
+	return h.Email().Add()
+}
+
+// EmailVerify completes an address change from its link: the address is stored verified.
+func (h *Handlers) EmailVerify() http.HandlerFunc {
+	return h.Email().Verify()
+}
+
 // New opens the auth's permission store and session manager over the database and
 // registers the sign-in methods. The permission engine parses and validates the role file
 // against the collection before it opens, so a release whose default roles are wrong does
@@ -179,6 +228,9 @@ func (h *Handlers) PendingCancel() http.HandlerFunc {
 func New(ctx context.Context, db *cloudspanner.Client, settings *Settings) (*Auth, error) {
 	if settings.Signals == nil {
 		return nil, errors.New("{{.Name}}.Settings.Signals is nil: the permission engine signals policy changes through the application's live service, which every application wires")
+	}
+	if settings.Mail == nil {
+		return nil, errors.New("{{.Name}}.Settings.Mail is nil: the auth mails its invitations and address verifications{{if .OpenSignUp}} and its sign-up links{{end}} through the application's sender (the Workspace relay deployed, the log in development), which the data level opens")
 	}
 {{- if .TenantPolicy}}
 	if settings.TenantDeclarations == nil {
@@ -215,6 +267,8 @@ func New(ctx context.Context, db *cloudspanner.Client, settings *Settings) (*Aut
 		session.WithIdentitiesTableName(identitiesTable),
 		session.WithPendingSignInsTableName(pendingTable),
 		session.WithSignInAttemptsTableName(attemptsTable),
+		session.WithMailLinksTableName(mailLinksTable),
+		session.WithMail(settings.Mail, session.MailSettings{Application: Application, LoginURL: settings.MailLoginURL}),
 		session.WithCookieName(Name),
 		session.WithXSRFCookieName(XSRFCookie),
 		session.WithSessionTimeout(settings.SessionTimeout),
@@ -260,6 +314,17 @@ func New(ctx context.Context, db *cloudspanner.Client, settings *Settings) (*Aut
 	// the sign-in's transaction (resource.SignInRoles): the Spanner client refuses the
 	// engine's read under the transaction's context as a nested transaction.
 	authSession.SetSignInPolicy(signin.TenantPolicy(resource.SignInRoles(accessClient.UserManager()), settings.TenantDeclarations{{if .TenantPolicy.AdmitWithoutTenant}}, signin.AdmitWithoutTenant(){{end}}))
+{{- end}}
+
+	// An invitation accepted seats its roles: once the transaction that consumed the
+	// invitation has committed, the hook writes the invitee's memberships through the
+	// permission engine, outside the sign-in's transaction (the engine's own read-write
+	// transaction would wait on it), and the sign-in rule that follows finds them.
+	authSession.SetInvitationAccepted(resource.SeatInvited(accessClient.UserManager()))
+{{- if .UsernameIsEmail}}
+	// The sign-in name is the address, so a verified change of address renames the user,
+	// and the seats held under the old name follow it.
+	authSession.SetUserRenamed(resource.SeatsFollowRename(accessClient.UserManager()))
 {{- end}}
 
 	return &Auth{ {{- if .Foothold}}db: db, {{end}}access: accessClient, handlers: handlers}, nil
@@ -336,7 +401,8 @@ import (
 // sign-in is checked against the user's hash in the users table; the bootstrap creates
 // the development logins with their passwords, and a deployed environment starts from the
 // administrator the migrate command seeds (foothold.go), the rest coming from its
-// administration surface.
+// administration surface{{if .OpenSignUp}}, from the invitations it mails, and from the strangers who
+// sign up from a mailed link{{else}} and from the invitations it mails{{end}}.
 const {{.Registration}} = "password"
 
 // PasswordLogin checks a username and password and starts the session.
@@ -349,9 +415,44 @@ func (h *Handlers) PasswordChange() http.HandlerFunc {
 	return h.{{.Field}}.ChangeUserPassword()
 }
 
+// InvitationSignUp accepts an invitation as a stranger with a new password: the invitee
+// becomes a user under the sign-in name they give{{if .UsernameIsEmail}}, the invited address{{end}}, with the
+// address verified by the link, seated in the roles the invitation names.
+func (h *Handlers) InvitationSignUp() http.HandlerFunc {
+	return h.Invitation().SignUp()
+}
+{{- if .OpenSignUp}}
+
+// SignUpStart mails a sign-up link to the address a stranger gives; an address already
+// held gets a notice instead, and the caller learns neither.
+func (h *Handlers) SignUpStart() http.HandlerFunc {
+	return h.SignUp().Start()
+}
+
+// SignUpOpen reads the sign-up a mailed link carries, for the login page to offer the
+// form.
+func (h *Handlers) SignUpOpen() http.HandlerFunc {
+	return h.SignUp().Open()
+}
+
+// SignUpComplete creates the user from the link, with the password they choose and the
+// address verified, and starts their session.
+func (h *Handlers) SignUpComplete() http.HandlerFunc {
+	return h.SignUp().Complete()
+}
+{{- end}}
+
 // register{{.Pascal}} registers the password method on the Auth, before the first request.
+{{- if .OpenSignUp}}
+// Open sign-up (session.OpenSignUp): a stranger gives their address, follows the link
+// mailed to it and chooses a password, and the router serves the sign-up routes.
+{{- end}}
+{{- if .UsernameIsEmail}}
+// The sign-in name is the person's email address (session.UsernameIsEmail): the users
+// surface derives the address from it, and a verified change of address renames the user.
+{{- end}}
 func register{{.Pascal}}(authSession *Session) *session.PasswordMethod {
-	return session.PasswordSignIn(authSession)
+	return session.PasswordSignIn(authSession{{if .OpenSignUp}}, session.OpenSignUp(){{end}}{{if .UsernameIsEmail}}, session.UsernameIsEmail(){{end}})
 }
 `
 

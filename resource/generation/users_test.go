@@ -233,6 +233,9 @@ func Test_userRoutes(t *testing.T) {
 				"PATCH /api/crew-seats PatchCrewSeats -> /api/crew-seats",
 				"GET /api/crew-roles CrewRoles -> /api/crew-roles",
 				"GET /api/crew-roles/{crewRoleName} CrewRole -> /api/crew-roles/testCrewRoleName",
+				"GET /api/crew-invitations CrewInvitations -> /api/crew-invitations",
+				"GET /api/crew-invitations/{crewInvitationID} CrewInvitation -> /api/crew-invitations/testCrewInvitationID",
+				"PATCH /api/crew-invitations PatchCrewInvitations -> /api/crew-invitations",
 				"POST /api/set-crew-user-password SetCrewUserPassword -> /api/set-crew-user-password",
 				"POST /api/unlink-crew-user-identity UnlinkCrewUserIdentity -> /api/unlink-crew-user-identity",
 			},
@@ -248,6 +251,9 @@ func Test_userRoutes(t *testing.T) {
 				"PATCH /portal/api/members-seats PatchMembersSeats -> /portal/api/members-seats",
 				"GET /portal/api/members-roles MembersRoles -> /portal/api/members-roles",
 				"GET /portal/api/members-roles/{membersRoleName} MembersRole -> /portal/api/members-roles/testMembersRoleName",
+				"GET /portal/api/members-invitations MembersInvitations -> /portal/api/members-invitations",
+				"GET /portal/api/members-invitations/{membersInvitationID} MembersInvitation -> /portal/api/members-invitations/testMembersInvitationID",
+				"PATCH /portal/api/members-invitations PatchMembersInvitations -> /portal/api/members-invitations",
 				"POST /portal/api/unlink-members-user-identity UnlinkMembersUserIdentity -> /portal/api/unlink-members-user-identity",
 				"GET /portal/api/ships/{shipID}/members-ship-users MembersShipUsers -> /portal/api/ships/testDomain/members-ship-users (domain)",
 				"GET /portal/api/ships/{shipID}/members-ship-users/{membersShipUserID} MembersShipUser -> /portal/api/ships/testDomain/members-ship-users/testMembersShipUserID (domain)",
@@ -257,6 +263,9 @@ func Test_userRoutes(t *testing.T) {
 				"PATCH /portal/api/ships/{shipID}/members-ship-seats PatchMembersShipSeats -> /portal/api/ships/testDomain/members-ship-seats (domain)",
 				"GET /portal/api/ships/{shipID}/members-ship-roles MembersShipRoles -> /portal/api/ships/testDomain/members-ship-roles (domain)",
 				"GET /portal/api/ships/{shipID}/members-ship-roles/{membersShipRoleName} MembersShipRole -> /portal/api/ships/testDomain/members-ship-roles/testMembersShipRoleName (domain)",
+				"GET /portal/api/ships/{shipID}/members-ship-invitations MembersShipInvitations -> /portal/api/ships/testDomain/members-ship-invitations (domain)",
+				"GET /portal/api/ships/{shipID}/members-ship-invitations/{membersShipInvitationID} MembersShipInvitation -> /portal/api/ships/testDomain/members-ship-invitations/testMembersShipInvitationID (domain)",
+				"PATCH /portal/api/ships/{shipID}/members-ship-invitations PatchMembersShipInvitations -> /portal/api/ships/testDomain/members-ship-invitations (domain)",
 				"POST /portal/api/ships/{shipID}/unlink-members-ship-user-identity UnlinkMembersShipUserIdentity -> /portal/api/ships/testDomain/unlink-members-ship-user-identity (domain)",
 			},
 		},
@@ -316,10 +325,10 @@ func Test_userRouteParams(t *testing.T) {
 		tenanted bool
 		want     []string
 	}{
-		{name: "no tenancy: the global partitions' parameters", want: []string{"crewUserID", "crewSeatUser", "crewSeatRole", "crewRoleName", "membersUserID", "membersSeatUser", "membersSeatRole", "membersRoleName"}},
+		{name: "no tenancy: the global partitions' parameters", want: []string{"crewUserID", "crewSeatUser", "crewSeatRole", "crewRoleName", "crewInvitationID", "membersUserID", "membersSeatUser", "membersSeatRole", "membersRoleName", "membersInvitationID"}},
 		{name: "tenancy adds the tenant partitions'", tenanted: true, want: []string{
-			"crewUserID", "crewSeatUser", "crewSeatRole", "crewRoleName", "crewShipUserID", "crewShipSeatUser", "crewShipSeatRole", "crewShipRoleName",
-			"membersUserID", "membersSeatUser", "membersSeatRole", "membersRoleName", "membersShipUserID", "membersShipSeatUser", "membersShipSeatRole", "membersShipRoleName",
+			"crewUserID", "crewSeatUser", "crewSeatRole", "crewRoleName", "crewInvitationID", "crewShipUserID", "crewShipSeatUser", "crewShipSeatRole", "crewShipRoleName", "crewShipInvitationID",
+			"membersUserID", "membersSeatUser", "membersSeatRole", "membersRoleName", "membersInvitationID", "membersShipUserID", "membersShipSeatUser", "membersShipSeatRole", "membersShipRoleName", "membersShipInvitationID",
 		}},
 	}
 	for _, tt := range tests {
@@ -364,8 +373,8 @@ func Test_accumulateUserRoutes(t *testing.T) {
 		return counts
 	}
 	wantDefault := map[string]int{
-		"CrewUsers": 3, "CrewSeats": 3, "CrewRoles": 2, "SetCrewUserPassword": 1, "UnlinkCrewUserIdentity": 1,
-		"MembersUsers": 3, "MembersSeats": 3, "MembersRoles": 2, "UnlinkMembersUserIdentity": 1,
+		"CrewUsers": 3, "CrewSeats": 3, "CrewRoles": 2, "CrewInvitations": 3, "SetCrewUserPassword": 1, "UnlinkCrewUserIdentity": 1,
+		"MembersUsers": 3, "MembersSeats": 3, "MembersRoles": 2, "MembersInvitations": 3, "UnlinkMembersUserIdentity": 1,
 	}
 	if diff := cmp.Diff(wantDefault, groups(outletRoutes[0])); diff != "" {
 		t.Errorf("default outlet's groups mismatch (-want +got):\n%s", diff)
@@ -373,12 +382,12 @@ func Test_accumulateUserRoutes(t *testing.T) {
 	if got := groups(outletRoutes[1]); len(got) != 0 {
 		t.Errorf("droids outlet's groups = %v, want none", got)
 	}
-	wantPortal := map[string]int{"MembersUsers": 3, "MembersSeats": 3, "MembersRoles": 2, "UnlinkMembersUserIdentity": 1}
+	wantPortal := map[string]int{"MembersUsers": 3, "MembersSeats": 3, "MembersRoles": 2, "MembersInvitations": 3, "UnlinkMembersUserIdentity": 1}
 	if diff := cmp.Diff(wantPortal, groups(outletRoutes[2])); diff != "" {
 		t.Errorf("portal outlet's groups mismatch (-want +got):\n%s", diff)
 	}
-	if len(testRoutes) != 19+9 {
-		t.Errorf("dispatch test routes = %d, want 28 (the default outlet's 19 and the portal's 9)", len(testRoutes))
+	if len(testRoutes) != 25+12 {
+		t.Errorf("dispatch test routes = %d, want 37 (the default outlet's 25 and the portal's 12)", len(testRoutes))
 	}
 	for _, route := range outletRoutes[2].RoutesMap["MembersUsers"] {
 		if !strings.HasPrefix(route.Path, "/portal/api/members-users") {
@@ -416,6 +425,11 @@ func Test_userNegativeTests(t *testing.T) {
 				{Method: "http.MethodPost", URL: "/droids/crew-roles"},
 				{Method: "http.MethodGet", URL: "/droids/crew-roles/testCrewRoleName"},
 				{Method: "http.MethodPost", URL: "/droids/crew-roles/testCrewRoleName"},
+				{Method: "http.MethodGet", URL: "/droids/crew-invitations"},
+				{Method: "http.MethodPost", URL: "/droids/crew-invitations"},
+				{Method: "http.MethodGet", URL: "/droids/crew-invitations/testCrewInvitationID"},
+				{Method: "http.MethodPost", URL: "/droids/crew-invitations/testCrewInvitationID"},
+				{Method: "http.MethodPatch", URL: "/droids/crew-invitations"},
 				{Method: "http.MethodPost", URL: "/droids/set-crew-user-password"},
 				{Method: "http.MethodPost", URL: "/droids/unlink-crew-user-identity"},
 				{Method: "http.MethodGet", URL: "/droids/members-users"},
@@ -432,6 +446,11 @@ func Test_userNegativeTests(t *testing.T) {
 				{Method: "http.MethodPost", URL: "/droids/members-roles"},
 				{Method: "http.MethodGet", URL: "/droids/members-roles/testMembersRoleName"},
 				{Method: "http.MethodPost", URL: "/droids/members-roles/testMembersRoleName"},
+				{Method: "http.MethodGet", URL: "/droids/members-invitations"},
+				{Method: "http.MethodPost", URL: "/droids/members-invitations"},
+				{Method: "http.MethodGet", URL: "/droids/members-invitations/testMembersInvitationID"},
+				{Method: "http.MethodPost", URL: "/droids/members-invitations/testMembersInvitationID"},
+				{Method: "http.MethodPatch", URL: "/droids/members-invitations"},
 				{Method: "http.MethodPost", URL: "/droids/unlink-members-user-identity"},
 			},
 		},
@@ -453,6 +472,11 @@ func Test_userNegativeTests(t *testing.T) {
 				{Method: "http.MethodPost", URL: "/portal/api/crew-roles"},
 				{Method: "http.MethodGet", URL: "/portal/api/crew-roles/testCrewRoleName"},
 				{Method: "http.MethodPost", URL: "/portal/api/crew-roles/testCrewRoleName"},
+				{Method: "http.MethodGet", URL: "/portal/api/crew-invitations"},
+				{Method: "http.MethodPost", URL: "/portal/api/crew-invitations"},
+				{Method: "http.MethodGet", URL: "/portal/api/crew-invitations/testCrewInvitationID"},
+				{Method: "http.MethodPost", URL: "/portal/api/crew-invitations/testCrewInvitationID"},
+				{Method: "http.MethodPatch", URL: "/portal/api/crew-invitations"},
 				{Method: "http.MethodPost", URL: "/portal/api/set-crew-user-password"},
 				{Method: "http.MethodPost", URL: "/portal/api/unlink-crew-user-identity"},
 			},
@@ -523,9 +547,9 @@ func Test_userAuthzCases(t *testing.T) {
 			}
 		})
 	}
-	// Every case is one of the shapes above: 2 surfaces × (crew: 10 + 10 routes, members: 9 + 9 routes), the
+	// Every case is one of the shapes above: 2 surfaces × (crew: 13 + 13 routes, members: 12 + 12 routes), the
 	// methods doubled by their dry runs, the members surface on two outlets.
-	crew, members := 20+4, 18+2
+	crew, members := 26+4, 24+2
 	if want := crew + 2*members; len(got) != want {
 		t.Errorf("cases = %d, want %d", len(got), want)
 	}
@@ -640,9 +664,10 @@ func Test_userSurfacesTemplate(t *testing.T) {
 		"// CrewAuth marks the crew auth (example.com/acme/beacon/pkg/auth/crew) for the user-management\n// surface the library serves on the default and portal outlets: CrewUsers, CrewSeats.",
 		"type CrewAuth struct{}",
 		"func (CrewAuth) UserSurfaceDeclaration() resource.UserSurfaceDeclaration {\n\treturn resource.UserSurfaceDeclaration{\n\t\tAuth:        \"Crew\",\n\t\tTenant:      \"Ship\",\n\t\tDomainParam: \"shipID\",",
-		"Password: true,",
+		"Password:        true,\n\t\t\tUsernameIsEmail: false,\n\t\t\tOpenSignUp:      false,",
 		"{Name: \"google\", Kind: \"google\", Label: \"Fleet directory\", Invited: false, SyncsRoles: true},",
-		"func NewCrewUserSurface(accounts resource.UserAccounts, seats resource.UserSeats) *resource.UserSurface[CrewAuth] {\n\treturn resource.NewUserSurface[CrewAuth](accounts, seats)\n}",
+		"func NewCrewUserSurface(accounts resource.UserAccounts, seats resource.UserSeats, opts ...resource.UserSurfaceOption) *resource.UserSurface[CrewAuth] {\n\treturn resource.NewUserSurface[CrewAuth](accounts, seats, opts...)\n}",
+		"resource.WithTenantDirectories",
 	}, nil)
 	if got, want := outletList([]string{"default"}), "default outlet"; got != want {
 		t.Errorf("outletList(one) = %q, want %q", got, want)
@@ -668,7 +693,10 @@ func Test_typescriptMetadata_users(t *testing.T) {
 	}
 	assertContains(t, "typescriptResourcesTemplate", string(resources), []string{
 		"export interface UserIdentity {\n  id: string;\n  method: string;\n  connection: string;\n  subject: string;\n  organization: string | null;\n  email: string | null;\n  linkedAt: Date;\n  lastUsedAt: Date;\n}",
-		"/** A user of the Crew auth in the global partition: the account, its sign-in means and its seats. */\nexport interface CrewUsers {\n  id: string;\n  username?: string;\n  disabled?: boolean;\n  hasPassword?: boolean;\n  passwordChangeRequired?: boolean;\n  createdAt?: Date;\n  lastSignInAt?: Date | null;\n  organization?: string | null;\n  identities?: UserIdentity[];\n  roles?: string[];\n  everywhereRoles?: string[];\n  rolesSynced?: boolean;\n}",
+		"/** A user of the Crew auth in the global partition: the account, its sign-in means and its seats. */\nexport interface CrewUsers {\n  id: string;\n  username?: string;\n  disabled?: boolean;\n  hasPassword?: boolean;\n  passwordChangeRequired?: boolean;\n  createdAt?: Date;\n  lastSignInAt?: Date | null;\n  organization?: string | null;\n  email?: string | null;\n  emailVerifiedAt?: Date | null;\n  identities?: UserIdentity[];\n  roles?: string[];\n  everywhereRoles?: string[];\n  rolesSynced?: boolean;\n}",
+		"/** A standing invitation into the global partition of the Crew auth: an address invited to hold roles, until it is accepted, revoked or expires. */\nexport interface CrewInvitations {\n  id: string;\n  email?: string;\n  roles?: string[];\n  invitedBy?: string | null;\n  createdAt?: Date;\n  expiresAt?: Date;\n}",
+		"[Resources.CrewInvitations]: {\n    route: 'crew-invitations',\n    updateDisabled: true,",
+		"[Resources.CrewShipInvitations]: PermissionScopes.domain,",
 		"export interface CrewSeats {\n  user: string;\n  role: string;\n  username?: string;\n  everyDomain?: boolean;\n}",
 		"export interface CrewShipSeats {\n  user: string;\n  role: string;\n  username?: string;\n  everywhere?: boolean;\n}",
 		"export interface CrewRoles {\n  name: string;\n  kind?: 'global' | 'domain';\n}",
@@ -718,7 +746,7 @@ func Test_apiClientData_users(t *testing.T) {
 		{
 			name: "the default outlet: crew and the managed members surface",
 			wantContains: []string{
-				"[Resources.CrewUsers]: {\n      resource: Resources.CrewUsers,\n      property: 'crewUsers',\n      route: 'crew-users',\n      scope: 'global',\n      consolidated: false,\n      keys: ['id'],\n      operations: ['list', 'read', 'create', 'patch', 'remove'],\n      page: { default: 50 },\n      order: [{ field: 'username', direction: 'asc' }],\n      patchable: ['username', 'disabled'],\n    },",
+				"[Resources.CrewUsers]: {\n      resource: Resources.CrewUsers,\n      property: 'crewUsers',\n      route: 'crew-users',\n      scope: 'global',\n      consolidated: false,\n      keys: ['id'],\n      operations: ['list', 'read', 'create', 'patch', 'remove'],\n      page: { default: 50 },\n      order: [{ field: 'username', direction: 'asc' }],\n      patchable: ['username', 'disabled', 'email'],\n    },",
 				"[Resources.CrewSeats]: {\n      resource: Resources.CrewSeats,\n      property: 'crewSeats',\n      route: 'crew-seats',\n      scope: 'global',\n      consolidated: false,\n      keys: ['user', 'role'],\n      operations: ['list', 'read', 'create', 'remove'],\n      page: { default: 50 },\n      order: [{ field: 'username', direction: 'asc' }, { field: 'role', direction: 'asc' }],\n    },",
 				"[Resources.CrewRoles]: {\n      resource: Resources.CrewRoles,\n      property: 'crewRoles',\n      route: 'crew-roles',\n      scope: 'global',\n      consolidated: false,\n      keys: ['name'],\n      operations: ['list', 'read'],\n      page: { default: 50 },\n      order: [{ field: 'name', direction: 'asc' }],\n    },",
 				"[Resources.CrewShipUsers]: {\n      resource: Resources.CrewShipUsers,\n      property: 'crewShipUsers',\n      route: 'crew-ship-users',\n      scope: 'domain',",
@@ -726,10 +754,12 @@ func Test_apiClientData_users(t *testing.T) {
 				"[Methods.SetCrewUserPassword]: { method: Methods.SetCrewUserPassword, property: 'setCrewUserPassword', route: 'set-crew-user-password', scope: 'global' },",
 				"[Methods.UnlinkCrewShipUserIdentity]: { method: Methods.UnlinkCrewShipUserIdentity, property: 'unlinkCrewShipUserIdentity', route: 'unlink-crew-ship-user-identity', scope: 'domain' },",
 				"[Methods.UnlinkMembersUserIdentity]: { method: Methods.UnlinkMembersUserIdentity, property: 'unlinkMembersUserIdentity', route: 'unlink-members-user-identity', scope: 'global' },",
-				"export interface CrewUsersCreate {\n  username: string;\n  password?: string;\n  disabled?: boolean;\n}",
-				"export interface CrewShipUsersCreate {\n  username: string;\n  password?: string;\n  disabled?: boolean;\n  role: string;\n}",
-				"export interface MembersUsersCreate {\n  username: string;\n  password?: string;\n  disabled?: boolean;\n}",
-				"export interface CrewUsersPatch {\n  username?: string;\n  disabled?: boolean;\n}",
+				"export interface CrewUsersCreate {\n  username: string;\n  password?: string;\n  disabled?: boolean;\n  email?: string;\n}",
+				"export interface CrewShipUsersCreate {\n  username: string;\n  password?: string;\n  disabled?: boolean;\n  email?: string;\n  role: string;\n}",
+				"export interface MembersUsersCreate {\n  username: string;\n  password?: string;\n  disabled?: boolean;\n  email?: string;\n}",
+				"export interface CrewUsersPatch {\n  username?: string;\n  disabled?: boolean;\n  email?: string;\n}",
+				"export interface CrewInvitationsCreate {\n  email: string;\n  roles: string[];\n}",
+				"crewInvitations: ResourceHandle<CrewInvitations, CrewInvitationsKey, 'list' | 'read' | 'create' | 'remove', CrewInvitationsCreate>;",
 				"export type CrewUsersKey = [id: string];",
 				"export type CrewSeatsKey = [user: string, role: string];",
 				"export type CrewRolesKey = [name: string];",
@@ -738,7 +768,7 @@ func Test_apiClientData_users(t *testing.T) {
 				"crewRoles: ResourceHandle<CrewRoles, CrewRolesKey, 'list' | 'read'>;",
 				"crewShipUsers: ResourceHandle<CrewShipUsers, CrewShipUsersKey, 'list' | 'read' | 'create' | 'patch' | 'remove', CrewShipUsersCreate, CrewShipUsersPatch>;",
 				"setCrewUserPassword: MethodHandle<SetCrewUserPassword>;",
-				"  userSurfaces: [\n    {\n      auth: 'Crew',\n      label: 'Crew',\n      password: true,\n      registrations: [{ name: 'google', kind: 'google', label: 'Fleet directory', invited: false, syncsRoles: true }],\n      partitions: [\n        { scope: 'global', users: Resources.CrewUsers, seats: Resources.CrewSeats, roles: Resources.CrewRoles, setPassword: Methods.SetCrewUserPassword, unlinkIdentity: Methods.UnlinkCrewUserIdentity },\n        { scope: 'domain', users: Resources.CrewShipUsers, seats: Resources.CrewShipSeats, roles: Resources.CrewShipRoles, setPassword: Methods.SetCrewShipUserPassword, unlinkIdentity: Methods.UnlinkCrewShipUserIdentity },\n      ],\n    },\n    {\n      auth: 'Members',\n      label: 'Members',\n      password: false,\n      registrations: [{ name: 'directory', kind: 'azure', label: 'Company directory', invited: true, syncsRoles: false }],\n      partitions: [\n        { scope: 'global', users: Resources.MembersUsers, seats: Resources.MembersSeats, roles: Resources.MembersRoles, unlinkIdentity: Methods.UnlinkMembersUserIdentity },\n        { scope: 'domain', users: Resources.MembersShipUsers, seats: Resources.MembersShipSeats, roles: Resources.MembersShipRoles, unlinkIdentity: Methods.UnlinkMembersShipUserIdentity },\n      ],\n    },\n  ],\n});",
+				"  userSurfaces: [\n    {\n      auth: 'Crew',\n      label: 'Crew',\n      password: true,\n      usernameIsEmail: false,\n      openSignUp: false,\n      registrations: [{ name: 'google', kind: 'google', label: 'Fleet directory', invited: false, syncsRoles: true }],\n      partitions: [\n        { scope: 'global', users: Resources.CrewUsers, seats: Resources.CrewSeats, roles: Resources.CrewRoles, invitations: Resources.CrewInvitations, setPassword: Methods.SetCrewUserPassword, unlinkIdentity: Methods.UnlinkCrewUserIdentity },\n        { scope: 'domain', users: Resources.CrewShipUsers, seats: Resources.CrewShipSeats, roles: Resources.CrewShipRoles, invitations: Resources.CrewShipInvitations, setPassword: Methods.SetCrewShipUserPassword, unlinkIdentity: Methods.UnlinkCrewShipUserIdentity },\n      ],\n    },\n    {\n      auth: 'Members',\n      label: 'Members',\n      password: false,\n      usernameIsEmail: false,\n      openSignUp: false,\n      registrations: [{ name: 'directory', kind: 'azure', label: 'Company directory', invited: true, syncsRoles: false }],\n      partitions: [\n        { scope: 'global', users: Resources.MembersUsers, seats: Resources.MembersSeats, roles: Resources.MembersRoles, invitations: Resources.MembersInvitations, unlinkIdentity: Methods.UnlinkMembersUserIdentity },\n        { scope: 'domain', users: Resources.MembersShipUsers, seats: Resources.MembersShipSeats, roles: Resources.MembersShipRoles, invitations: Resources.MembersShipInvitations, unlinkIdentity: Methods.UnlinkMembersShipUserIdentity },\n      ],\n    },\n  ],\n});",
 			},
 			wantNotContains: []string{"SetMembersUserPassword"},
 		},
@@ -783,9 +813,11 @@ func Test_AuthMethod_directoryDeclarations(t *testing.T) {
 		{name: "a registration declaring neither", methods: []AuthMethod{GoogleMethod("google")}, wantString: `GoogleMethod("google")`},
 		{name: "a registration admitting open sign-up", methods: []AuthMethod{GoogleMethod("sign-up").OpenSignUp()}, wantString: `GoogleMethod("sign-up").OpenSignUp()`},
 		{name: "open sign-up beside role synchronization", methods: []AuthMethod{AzureMethod("anyone").SyncsRoles().OpenSignUp()}, wantString: `AzureMethod("anyone").SyncsRoles().OpenSignUp()`},
-		{name: "InvitedUsers on the password method", methods: []AuthMethod{PasswordMethod().InvitedUsers()}, wantErr: "declares InvitedUsers, SyncsRoles or OpenSignUp on the password method"},
-		{name: "SyncsRoles on the password method", methods: []AuthMethod{PasswordMethod().SyncsRoles()}, wantErr: "declares InvitedUsers, SyncsRoles or OpenSignUp on the password method"},
-		{name: "OpenSignUp on the password method", methods: []AuthMethod{PasswordMethod().OpenSignUp()}, wantErr: "declares InvitedUsers, SyncsRoles or OpenSignUp on the password method"},
+		{name: "InvitedUsers on the password method", methods: []AuthMethod{PasswordMethod().InvitedUsers()}, wantErr: "declares InvitedUsers or SyncsRoles on the password method"},
+		{name: "SyncsRoles on the password method", methods: []AuthMethod{PasswordMethod().SyncsRoles()}, wantErr: "declares InvitedUsers or SyncsRoles on the password method"},
+		{name: "the password method offering sign-up", methods: []AuthMethod{PasswordMethod().OpenSignUp()}, wantString: "PasswordMethod().OpenSignUp()"},
+		{name: "the password method whose username is the address", methods: []AuthMethod{PasswordMethod().UsernameIsEmail().OpenSignUp()}, wantString: "PasswordMethod().UsernameIsEmail().OpenSignUp()"},
+		{name: "UsernameIsEmail on a registration", methods: []AuthMethod{GoogleMethod("google").UsernameIsEmail()}, wantErr: "declares UsernameIsEmail on a registration: it describes the password method's username"},
 		{name: "InvitedUsers beside OpenSignUp", methods: []AuthMethod{GoogleMethod("google").InvitedUsers().OpenSignUp()}, wantErr: "declares both InvitedUsers and OpenSignUp: a registration admits invited users only or anyone, not both"},
 	}
 	for _, tt := range tests {

@@ -706,11 +706,15 @@ type tsAPIData struct {
 
 // tsAPISurface is one Auth's user-management surface as the descriptor carries it.
 type tsAPISurface struct {
-	Auth          string
-	Label         string
-	Password      bool
-	Registrations []*tsAPIRegistration
-	Partitions    []*tsAPIPartition
+	Auth     string
+	Label    string
+	Password bool
+	// UsernameIsEmail and OpenSignUp are the password method's flags: the username is
+	// the address, and sign-up is open to anyone with one.
+	UsernameIsEmail bool
+	OpenSignUp      bool
+	Registrations   []*tsAPIRegistration
+	Partitions      []*tsAPIPartition
 }
 
 // tsAPIRegistration is one external registration of the Auth in the descriptor.
@@ -723,13 +727,14 @@ type tsAPIRegistration struct {
 }
 
 // tsAPIPartition is one partition of a surface in the descriptor: its scope, the
-// three resources' names and the two methods' names, each method empty where the
+// four resources' names and the two methods' names, each method empty where the
 // Auth's methods give none.
 type tsAPIPartition struct {
 	Scope          string
 	Users          string
 	Seats          string
 	Roles          string
+	Invitations    string
 	SetPassword    string
 	UnlinkIdentity string
 }

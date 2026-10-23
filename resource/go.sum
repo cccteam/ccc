@@ -72,8 +72,8 @@ github.com/cccteam/httpio v0.7.22 h1:/5Xb8E6k2W7kPzKddmxTsgowaI6skcYm7/f52K1vM7w
 github.com/cccteam/httpio v0.7.22/go.mod h1:8YRWx9PKjuPo3umkEXH/lPg75WuWye89T+XwDoonOts=
 github.com/cccteam/logger v0.1.30 h1:qXTDpDg27gAlfTL5A6pMs8Tr1ZmHtlvjNeoHM+1kSDg=
 github.com/cccteam/logger v0.1.30/go.mod h1:iXUwTSSBsVV+3EprEzBaTVdBZKQmKsc3rT7dHtzuBew=
-github.com/cccteam/session v0.13.1 h1:4Y7dMnEhlnZP+MBMLmt5hNSkTmfuzkKS+GhpB1gHfW8=
-github.com/cccteam/session v0.13.1/go.mod h1:WBV9wQItyBlPARD9idjjdu4s3N0iiiN2riuYEdzePN8=
+github.com/cccteam/session v0.13.4 h1:l1nxX5SS+5QMs2ADt7dWyUUYsOXfIxrp337widSJr/c=
+github.com/cccteam/session v0.13.4/go.mod h1:u8IPHkiKqiZa1Dx7akZ7onOze64bhYpkBODyHv92yto=
 github.com/cccteam/spxscan v0.0.17 h1:K7Js6L4gtwEttyDt6iP5W1tFBbopR/rrNu3Z3UHF5Mc=
 github.com/cccteam/spxscan v0.0.17/go.mod h1:pDMvFxoeWqOH+/VSv4dMpSbi0DrR/MkbYXpCj3dARV0=
 github.com/cenkalti/backoff/v4 v4.3.0 h1:MyRJ/UdXutAwSAT+s3wNd7MfTIcy71VQueUuFK343L8=
@@ -139,8 +139,8 @@ github.com/georgysavva/scany/v2 v2.1.4 h1:nrzHEJ4oQVRoiKmocRqA1IyGOmM/GQOEsg9UjM
 github.com/georgysavva/scany/v2 v2.1.4/go.mod h1:fqp9yHZzM/PFVa3/rYEC57VmDx+KDch0LoqrJzkvtos=
 github.com/go-chi/chi/v5 v5.5.0 h1:xdKQ1dJmVJsmgahrXSKhUx8NyVPzpwdlyrrQFpMPJgg=
 github.com/go-chi/chi/v5 v5.5.0/go.mod h1:d1IG7GtKPSjPyBP365PH8sAGVHk3qfB/IhjFNRH1wWM=
-github.com/go-jose/go-jose/v4 v4.1.5 h1:RjgjO2LOtWOJKUC5wpwY9LR3B3vwVAz6JS2YHfYU6eA=
-github.com/go-jose/go-jose/v4 v4.1.5/go.mod h1:x4oUasVrzR7071A4TnHLGSPpNOm2a21K9Kf04k1rs08=
+github.com/go-jose/go-jose/v4 v4.1.6 h1:sNRkftxFJxwsILiQukqp5z83QBSmntVwmgRY7AqBDO4=
+github.com/go-jose/go-jose/v4 v4.1.6/go.mod h1:x4oUasVrzR7071A4TnHLGSPpNOm2a21K9Kf04k1rs08=
 github.com/go-logr/logr v1.2.2/go.mod h1:jdQByPbusPIv2/zmleS9BjJVeZ6kBagPoEUsqbVz/1A=
 github.com/go-logr/logr v1.4.4 h1:tG4xh9yMsRCAiodLVTxyrkzSZ9+o0L1Kg/+cPVcbP/8=
 github.com/go-logr/logr v1.4.4/go.mod h1:9T104GzyrTigFIr8wt5mBrctHMim0Nb2HLGrmQ40KvY=

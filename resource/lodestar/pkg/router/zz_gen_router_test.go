@@ -69,11 +69,12 @@ func routerChainFor(t *testing.T, url string) routerOutletChain {
 // guard; xsrf says it sits behind the outlet's XSRF guard, as a sign-in's POSTs do.
 // suffix is the path under the outlet's prefix.
 type routerSessionRoute struct {
-	url     string
-	suffix  string
-	method  string
-	handler string
-	xsrf    bool
+	url       string
+	suffix    string
+	method    string
+	handler   string
+	xsrf      bool
+	validated bool
 }
 
 // routerSessionRoutes lists every session outlet's routes.
@@ -91,6 +92,14 @@ func routerSessionRoutes() []routerSessionRoute {
 		{url: "/console/api/user/password/change", suffix: "/user/password/change", method: http.MethodPost, handler: "PasswordChange", xsrf: true},
 		{url: "/console/api/user/pending/confirm", suffix: "/user/pending/confirm", method: http.MethodPost, handler: "PendingConfirmWithPassword", xsrf: true},
 		{url: "/console/api/user/pending/cancel", suffix: "/user/pending/cancel", method: http.MethodPost, handler: "PendingCancel", xsrf: true},
+		{url: "/console/api/user/invitation", suffix: "/user/invitation", method: http.MethodPost, handler: "InvitationOpen", xsrf: true},
+		{url: "/console/api/user/invitation/sign-up", suffix: "/user/invitation/sign-up", method: http.MethodPost, handler: "InvitationSignUp", xsrf: true},
+		{url: "/console/api/user/sign-up", suffix: "/user/sign-up", method: http.MethodPost, handler: "SignUpStart", xsrf: true},
+		{url: "/console/api/user/sign-up/open", suffix: "/user/sign-up/open", method: http.MethodPost, handler: "SignUpOpen", xsrf: true},
+		{url: "/console/api/user/sign-up/complete", suffix: "/user/sign-up/complete", method: http.MethodPost, handler: "SignUpComplete", xsrf: true},
+		{url: "/console/api/user/invitation/accept", suffix: "/user/invitation/accept", method: http.MethodPost, handler: "InvitationAccept", xsrf: true, validated: true},
+		{url: "/console/api/user/email", suffix: "/user/email", method: http.MethodPost, handler: "EmailAdd", xsrf: true, validated: true},
+		{url: "/console/api/user/email/verify", suffix: "/user/email/verify", method: http.MethodPost, handler: "EmailVerify", xsrf: true, validated: true},
 		{url: "/portal/api/user/methods", suffix: "/user/methods", method: http.MethodGet, handler: "PortalMethods"},
 		{url: "/portal/api/user/session", suffix: "/user/session", method: http.MethodGet, handler: "PortalAuthenticated"},
 		{url: "/portal/api/user/session", suffix: "/user/session", method: http.MethodDelete, handler: "PortalLogout"},
@@ -99,6 +108,10 @@ func routerSessionRoutes() []routerSessionRoute {
 		{url: "/portal/api/user/directory/callback", suffix: "/user/directory/callback", method: http.MethodGet, handler: "PortalDirectoryCallback"},
 		{url: "/portal/api/user/pending/confirm", suffix: "/user/pending/confirm", method: http.MethodPost, handler: "PortalPendingConfirmWithPassword", xsrf: true},
 		{url: "/portal/api/user/pending/cancel", suffix: "/user/pending/cancel", method: http.MethodPost, handler: "PortalPendingCancel", xsrf: true},
+		{url: "/portal/api/user/invitation", suffix: "/user/invitation", method: http.MethodPost, handler: "PortalInvitationOpen", xsrf: true},
+		{url: "/portal/api/user/invitation/accept", suffix: "/user/invitation/accept", method: http.MethodPost, handler: "PortalInvitationAccept", xsrf: true, validated: true},
+		{url: "/portal/api/user/email", suffix: "/user/email", method: http.MethodPost, handler: "PortalEmailAdd", xsrf: true, validated: true},
+		{url: "/portal/api/user/email/verify", suffix: "/user/email/verify", method: http.MethodPost, handler: "PortalEmailVerify", xsrf: true, validated: true},
 	}
 }
 
@@ -165,7 +178,8 @@ func TestGeneratedRouter(t *testing.T) {
 // TestGeneratedRouterSessionRoutes proves each session outlet's method list, session,
 // pending and sign-in routes answer behind the outlet's group and before its session
 // guard, a sign-in's POSTs behind the XSRF guard alone: a browser reaches them without
-// a validated session.
+// a validated session; the routes a signed-in person calls (an invitation's acceptance,
+// the address) answer behind both guards.
 func TestGeneratedRouterSessionRoutes(t *testing.T) {
 	t.Parallel()
 
@@ -188,7 +202,10 @@ func TestGeneratedRouterSessionRoutes(t *testing.T) {
 
 			chain := routerChainFor(t, tt.url)
 			want := slices.Concat(routerRootChain, chain.group)
-			if tt.xsrf {
+			switch {
+			case tt.validated:
+				want = append(want, chain.guards...)
+			case tt.xsrf:
 				want = append(want, chain.guards[1])
 			}
 			if !slices.Equal(rec.chain, want) {
@@ -264,6 +281,11 @@ func TestGeneratedRouterNotFound(t *testing.T) {
 		foreign{url: "/droids/crew-roles", method: http.MethodPost},
 		foreign{url: "/droids/crew-roles/testCrewRoleName", method: http.MethodGet},
 		foreign{url: "/droids/crew-roles/testCrewRoleName", method: http.MethodPost},
+		foreign{url: "/droids/crew-invitations", method: http.MethodGet},
+		foreign{url: "/droids/crew-invitations", method: http.MethodPost},
+		foreign{url: "/droids/crew-invitations/testCrewInvitationID", method: http.MethodGet},
+		foreign{url: "/droids/crew-invitations/testCrewInvitationID", method: http.MethodPost},
+		foreign{url: "/droids/crew-invitations", method: http.MethodPatch},
 		foreign{url: "/droids/set-crew-user-password", method: http.MethodPost},
 		foreign{url: "/droids/unlink-crew-user-identity", method: http.MethodPost},
 		foreign{url: "/droids/sectors/testDomain/crew-sector-users", method: http.MethodGet},
@@ -280,6 +302,11 @@ func TestGeneratedRouterNotFound(t *testing.T) {
 		foreign{url: "/droids/sectors/testDomain/crew-sector-roles", method: http.MethodPost},
 		foreign{url: "/droids/sectors/testDomain/crew-sector-roles/testCrewSectorRoleName", method: http.MethodGet},
 		foreign{url: "/droids/sectors/testDomain/crew-sector-roles/testCrewSectorRoleName", method: http.MethodPost},
+		foreign{url: "/droids/sectors/testDomain/crew-sector-invitations", method: http.MethodGet},
+		foreign{url: "/droids/sectors/testDomain/crew-sector-invitations", method: http.MethodPost},
+		foreign{url: "/droids/sectors/testDomain/crew-sector-invitations/testCrewSectorInvitationID", method: http.MethodGet},
+		foreign{url: "/droids/sectors/testDomain/crew-sector-invitations/testCrewSectorInvitationID", method: http.MethodPost},
+		foreign{url: "/droids/sectors/testDomain/crew-sector-invitations", method: http.MethodPatch},
 		foreign{url: "/droids/sectors/testDomain/set-crew-sector-user-password", method: http.MethodPost},
 		foreign{url: "/droids/sectors/testDomain/unlink-crew-sector-user-identity", method: http.MethodPost},
 		foreign{url: "/droids/members-users", method: http.MethodGet},
@@ -296,6 +323,11 @@ func TestGeneratedRouterNotFound(t *testing.T) {
 		foreign{url: "/droids/members-roles", method: http.MethodPost},
 		foreign{url: "/droids/members-roles/testMembersRoleName", method: http.MethodGet},
 		foreign{url: "/droids/members-roles/testMembersRoleName", method: http.MethodPost},
+		foreign{url: "/droids/members-invitations", method: http.MethodGet},
+		foreign{url: "/droids/members-invitations", method: http.MethodPost},
+		foreign{url: "/droids/members-invitations/testMembersInvitationID", method: http.MethodGet},
+		foreign{url: "/droids/members-invitations/testMembersInvitationID", method: http.MethodPost},
+		foreign{url: "/droids/members-invitations", method: http.MethodPatch},
 		foreign{url: "/droids/unlink-members-user-identity", method: http.MethodPost},
 		foreign{url: "/droids/sectors/testDomain/members-sector-users", method: http.MethodGet},
 		foreign{url: "/droids/sectors/testDomain/members-sector-users", method: http.MethodPost},
@@ -311,6 +343,11 @@ func TestGeneratedRouterNotFound(t *testing.T) {
 		foreign{url: "/droids/sectors/testDomain/members-sector-roles", method: http.MethodPost},
 		foreign{url: "/droids/sectors/testDomain/members-sector-roles/testMembersSectorRoleName", method: http.MethodGet},
 		foreign{url: "/droids/sectors/testDomain/members-sector-roles/testMembersSectorRoleName", method: http.MethodPost},
+		foreign{url: "/droids/sectors/testDomain/members-sector-invitations", method: http.MethodGet},
+		foreign{url: "/droids/sectors/testDomain/members-sector-invitations", method: http.MethodPost},
+		foreign{url: "/droids/sectors/testDomain/members-sector-invitations/testMembersSectorInvitationID", method: http.MethodGet},
+		foreign{url: "/droids/sectors/testDomain/members-sector-invitations/testMembersSectorInvitationID", method: http.MethodPost},
+		foreign{url: "/droids/sectors/testDomain/members-sector-invitations", method: http.MethodPatch},
 		foreign{url: "/droids/sectors/testDomain/unlink-members-sector-user-identity", method: http.MethodPost},
 		foreign{url: "/droids/clients", method: http.MethodGet},
 		foreign{url: "/droids/clients", method: http.MethodPost},
@@ -470,6 +507,11 @@ func TestGeneratedRouterNotFound(t *testing.T) {
 		foreign{url: "/portal/api/crew-roles", method: http.MethodPost},
 		foreign{url: "/portal/api/crew-roles/testCrewRoleName", method: http.MethodGet},
 		foreign{url: "/portal/api/crew-roles/testCrewRoleName", method: http.MethodPost},
+		foreign{url: "/portal/api/crew-invitations", method: http.MethodGet},
+		foreign{url: "/portal/api/crew-invitations", method: http.MethodPost},
+		foreign{url: "/portal/api/crew-invitations/testCrewInvitationID", method: http.MethodGet},
+		foreign{url: "/portal/api/crew-invitations/testCrewInvitationID", method: http.MethodPost},
+		foreign{url: "/portal/api/crew-invitations", method: http.MethodPatch},
 		foreign{url: "/portal/api/set-crew-user-password", method: http.MethodPost},
 		foreign{url: "/portal/api/unlink-crew-user-identity", method: http.MethodPost},
 		foreign{url: "/portal/api/sectors/testDomain/crew-sector-users", method: http.MethodGet},
@@ -486,6 +528,11 @@ func TestGeneratedRouterNotFound(t *testing.T) {
 		foreign{url: "/portal/api/sectors/testDomain/crew-sector-roles", method: http.MethodPost},
 		foreign{url: "/portal/api/sectors/testDomain/crew-sector-roles/testCrewSectorRoleName", method: http.MethodGet},
 		foreign{url: "/portal/api/sectors/testDomain/crew-sector-roles/testCrewSectorRoleName", method: http.MethodPost},
+		foreign{url: "/portal/api/sectors/testDomain/crew-sector-invitations", method: http.MethodGet},
+		foreign{url: "/portal/api/sectors/testDomain/crew-sector-invitations", method: http.MethodPost},
+		foreign{url: "/portal/api/sectors/testDomain/crew-sector-invitations/testCrewSectorInvitationID", method: http.MethodGet},
+		foreign{url: "/portal/api/sectors/testDomain/crew-sector-invitations/testCrewSectorInvitationID", method: http.MethodPost},
+		foreign{url: "/portal/api/sectors/testDomain/crew-sector-invitations", method: http.MethodPatch},
 		foreign{url: "/portal/api/sectors/testDomain/set-crew-sector-user-password", method: http.MethodPost},
 		foreign{url: "/portal/api/sectors/testDomain/unlink-crew-sector-user-identity", method: http.MethodPost},
 		foreign{url: "/portal/api/clients", method: http.MethodGet},
@@ -1260,6 +1307,38 @@ func (s *routerDefaultSessionStub) PendingCancel() http.HandlerFunc {
 	return s.rec.RecordHandlerCall(s.prefix + "PendingCancel")
 }
 
+func (s *routerDefaultSessionStub) InvitationOpen() http.HandlerFunc {
+	return s.rec.RecordHandlerCall(s.prefix + "InvitationOpen")
+}
+
+func (s *routerDefaultSessionStub) InvitationSignUp() http.HandlerFunc {
+	return s.rec.RecordHandlerCall(s.prefix + "InvitationSignUp")
+}
+
+func (s *routerDefaultSessionStub) SignUpStart() http.HandlerFunc {
+	return s.rec.RecordHandlerCall(s.prefix + "SignUpStart")
+}
+
+func (s *routerDefaultSessionStub) SignUpOpen() http.HandlerFunc {
+	return s.rec.RecordHandlerCall(s.prefix + "SignUpOpen")
+}
+
+func (s *routerDefaultSessionStub) SignUpComplete() http.HandlerFunc {
+	return s.rec.RecordHandlerCall(s.prefix + "SignUpComplete")
+}
+
+func (s *routerDefaultSessionStub) InvitationAccept() http.HandlerFunc {
+	return s.rec.RecordHandlerCall(s.prefix + "InvitationAccept")
+}
+
+func (s *routerDefaultSessionStub) EmailAdd() http.HandlerFunc {
+	return s.rec.RecordHandlerCall(s.prefix + "EmailAdd")
+}
+
+func (s *routerDefaultSessionStub) EmailVerify() http.HandlerFunc {
+	return s.rec.RecordHandlerCall(s.prefix + "EmailVerify")
+}
+
 func (s *routerDefaultSessionStub) StartSession(next http.Handler) http.Handler {
 	return s.rec.Middleware(s.prefix + "StartSession")(next)
 }
@@ -1313,6 +1392,22 @@ func (s *routerPortalSessionStub) PendingConfirmWithPassword() http.HandlerFunc 
 
 func (s *routerPortalSessionStub) PendingCancel() http.HandlerFunc {
 	return s.rec.RecordHandlerCall(s.prefix + "PendingCancel")
+}
+
+func (s *routerPortalSessionStub) InvitationOpen() http.HandlerFunc {
+	return s.rec.RecordHandlerCall(s.prefix + "InvitationOpen")
+}
+
+func (s *routerPortalSessionStub) InvitationAccept() http.HandlerFunc {
+	return s.rec.RecordHandlerCall(s.prefix + "InvitationAccept")
+}
+
+func (s *routerPortalSessionStub) EmailAdd() http.HandlerFunc {
+	return s.rec.RecordHandlerCall(s.prefix + "EmailAdd")
+}
+
+func (s *routerPortalSessionStub) EmailVerify() http.HandlerFunc {
+	return s.rec.RecordHandlerCall(s.prefix + "EmailVerify")
 }
 
 func (s *routerPortalSessionStub) StartSession(next http.Handler) http.Handler {

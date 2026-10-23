@@ -68,12 +68,20 @@ type GeneratedHandlers interface {
 
 	SetStaffUserPassword() http.HandlerFunc
 
+	StaffInvitations() http.HandlerFunc
+	StaffInvitation() http.HandlerFunc
+	PatchStaffInvitations() http.HandlerFunc
+
 	StaffRoles() http.HandlerFunc
 	StaffRole() http.HandlerFunc
 
 	StaffSeats() http.HandlerFunc
 	StaffSeat() http.HandlerFunc
 	PatchStaffSeats() http.HandlerFunc
+
+	StaffTenantInvitations() http.HandlerFunc
+	StaffTenantInvitation() http.HandlerFunc
+	PatchStaffTenantInvitations() http.HandlerFunc
 
 	StaffTenantRoles() http.HandlerFunc
 	StaffTenantRole() http.HandlerFunc
@@ -141,6 +149,16 @@ func generatedRoutes(r chi.Router, h GeneratedHandlers) {
 
 	bounded.Post("/console/api/set-staff-user-password", h.SetStaffUserPassword())
 
+	staffInvitationsHandler := h.StaffInvitations()
+	bounded.Get("/console/api/staff-invitations", staffInvitationsHandler)
+	bounded.Post("/console/api/staff-invitations", staffInvitationsHandler)
+
+	staffInvitationHandler := h.StaffInvitation()
+	bounded.Get("/console/api/staff-invitations/{staffInvitationID}", staffInvitationHandler)
+	bounded.Post("/console/api/staff-invitations/{staffInvitationID}", staffInvitationHandler)
+
+	bounded.Patch("/console/api/staff-invitations", h.PatchStaffInvitations())
+
 	staffRolesHandler := h.StaffRoles()
 	bounded.Get("/console/api/staff-roles", staffRolesHandler)
 	bounded.Post("/console/api/staff-roles", staffRolesHandler)
@@ -158,6 +176,16 @@ func generatedRoutes(r chi.Router, h GeneratedHandlers) {
 	bounded.Post("/console/api/staff-seats/{staffSeatUser}/{staffSeatRole}", staffSeatHandler)
 
 	bounded.Patch("/console/api/staff-seats", h.PatchStaffSeats())
+
+	staffTenantInvitationsHandler := domainGuard(h.StaffTenantInvitations())
+	bounded.Get("/console/api/tenants/{tenantID}/staff-tenant-invitations", staffTenantInvitationsHandler)
+	bounded.Post("/console/api/tenants/{tenantID}/staff-tenant-invitations", staffTenantInvitationsHandler)
+
+	staffTenantInvitationHandler := domainGuard(h.StaffTenantInvitation())
+	bounded.Get("/console/api/tenants/{tenantID}/staff-tenant-invitations/{staffTenantInvitationID}", staffTenantInvitationHandler)
+	bounded.Post("/console/api/tenants/{tenantID}/staff-tenant-invitations/{staffTenantInvitationID}", staffTenantInvitationHandler)
+
+	bounded.Patch("/console/api/tenants/{tenantID}/staff-tenant-invitations", domainGuard(h.PatchStaffTenantInvitations()))
 
 	staffTenantRolesHandler := domainGuard(h.StaffTenantRoles())
 	bounded.Get("/console/api/tenants/{tenantID}/staff-tenant-roles", staffTenantRolesHandler)
@@ -246,12 +274,20 @@ type GeneratedPortalHandlers interface {
 
 	Features() http.HandlerFunc
 
+	MembersInvitations() http.HandlerFunc
+	MembersInvitation() http.HandlerFunc
+	PatchMembersInvitations() http.HandlerFunc
+
 	MembersRoles() http.HandlerFunc
 	MembersRole() http.HandlerFunc
 
 	MembersSeats() http.HandlerFunc
 	MembersSeat() http.HandlerFunc
 	PatchMembersSeats() http.HandlerFunc
+
+	MembersTenantInvitations() http.HandlerFunc
+	MembersTenantInvitation() http.HandlerFunc
+	PatchMembersTenantInvitations() http.HandlerFunc
 
 	MembersTenantRoles() http.HandlerFunc
 	MembersTenantRole() http.HandlerFunc
@@ -313,6 +349,16 @@ func generatedPortalRoutes(r chi.Router, h GeneratedPortalHandlers) {
 
 	bounded.Get("/portal/api/features", h.Features())
 
+	membersInvitationsHandler := h.MembersInvitations()
+	bounded.Get("/portal/api/members-invitations", membersInvitationsHandler)
+	bounded.Post("/portal/api/members-invitations", membersInvitationsHandler)
+
+	membersInvitationHandler := h.MembersInvitation()
+	bounded.Get("/portal/api/members-invitations/{membersInvitationID}", membersInvitationHandler)
+	bounded.Post("/portal/api/members-invitations/{membersInvitationID}", membersInvitationHandler)
+
+	bounded.Patch("/portal/api/members-invitations", h.PatchMembersInvitations())
+
 	membersRolesHandler := h.MembersRoles()
 	bounded.Get("/portal/api/members-roles", membersRolesHandler)
 	bounded.Post("/portal/api/members-roles", membersRolesHandler)
@@ -330,6 +376,16 @@ func generatedPortalRoutes(r chi.Router, h GeneratedPortalHandlers) {
 	bounded.Post("/portal/api/members-seats/{membersSeatUser}/{membersSeatRole}", membersSeatHandler)
 
 	bounded.Patch("/portal/api/members-seats", h.PatchMembersSeats())
+
+	membersTenantInvitationsHandler := domainGuard(h.MembersTenantInvitations())
+	bounded.Get("/portal/api/tenants/{tenantID}/members-tenant-invitations", membersTenantInvitationsHandler)
+	bounded.Post("/portal/api/tenants/{tenantID}/members-tenant-invitations", membersTenantInvitationsHandler)
+
+	membersTenantInvitationHandler := domainGuard(h.MembersTenantInvitation())
+	bounded.Get("/portal/api/tenants/{tenantID}/members-tenant-invitations/{membersTenantInvitationID}", membersTenantInvitationHandler)
+	bounded.Post("/portal/api/tenants/{tenantID}/members-tenant-invitations/{membersTenantInvitationID}", membersTenantInvitationHandler)
+
+	bounded.Patch("/portal/api/tenants/{tenantID}/members-tenant-invitations", domainGuard(h.PatchMembersTenantInvitations()))
 
 	membersTenantRolesHandler := domainGuard(h.MembersTenantRoles())
 	bounded.Get("/portal/api/tenants/{tenantID}/members-tenant-roles", membersTenantRolesHandler)

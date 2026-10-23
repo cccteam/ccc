@@ -450,6 +450,14 @@ variable "{{$m.Var "HOSTED_DOMAIN"}}" {
 
 {{end -}}
 {{end -}}
+{{if .Mailbox -}}
+variable "mail_mailbox" {
+  description = "The Google Workspace mailbox the auths' mail is sent as ({{.Mailbox.Name}}, {{.Mailbox.Declaration}}), through the Workspace SMTP relay with the mailbox's app password{{if .MailAppPassword}} (the secret {{.MailAppPassword.Variable.Name}}){{end}}: a no-reply address of the organization's domain, once for the organization. Empty until the organization names one: the application then writes its mail to the log and sends nothing (README, \"Hand steps\")."
+  type        = string
+  default     = ""
+}
+
+{{end -}}
 {{range .Administrators -}}
 variable "{{.Var}}" {
   description = <<-EOT

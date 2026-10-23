@@ -46,6 +46,9 @@ func (m *Method) Command() string {
 	if m.Spec.Accounts != "" {
 		cmd += " --accounts " + m.Spec.Accounts
 	}
+	if m.Spec.UsernameIsEmail {
+		cmd += " --username-is-email"
+	}
 
 	return cmd
 }
@@ -164,10 +167,26 @@ func (m *Method) writeFile(a *app.App, pkg *app.AuthPackage, pkgSpec *authpkg.Sp
 	shape := ""
 	if spec.Directory() {
 		shape = fmt.Sprintf(" (%s, %s, %s, role membership the %s's)", spec.Kind, slotSentence(spec), accountsSentence(spec), spec.Authority)
+	} else if s := passwordShape(spec); s != "" {
+		shape = " (" + s + ")"
 	}
 	ch.didf("%s: the %s method%s: its registration constant, its settings, its handlers (%sLogin and the rest), and register%s, which registers it on the Auth", rel, spec.Name, shape, spec.Pascal(), spec.Pascal())
 
 	return nil
+}
+
+// passwordShape names what the password method takes beyond the default for a report:
+// open sign-up, the username as the address, or nothing.
+func passwordShape(m *authpkg.Method) string {
+	var parts []string
+	if m.OpenSignUp() {
+		parts = append(parts, "open sign-up from a mailed link")
+	}
+	if m.UsernameIsEmail {
+		parts = append(parts, "the sign-in name is the address")
+	}
+
+	return strings.Join(parts, ", ")
 }
 
 // slotSentence names a method's organization slot for a report.
@@ -252,6 +271,8 @@ func (m *Method) editAuth(a *app.App, auth *app.Auth, spec *authpkg.Method, ch *
 		registration = fmt.Sprintf("\thandlers.%s, err = register%s(authSession, accessClient, settings)\n\tif err != nil {\n\t\treturn nil, err\n\t}\n", field, spec.Pascal())
 	case spec.Directory():
 		registration = fmt.Sprintf("\thandlers.%s = register%s(authSession, accessClient, settings)\n", field, spec.Pascal())
+	case spec.UsernameIsEmail:
+		registration += "\t// The sign-in name is the address, so a verified change of address renames the user,\n\t// and the seats held under the old name follow it.\n\tauthSession.SetUserRenamed(resource.SeatsFollowRename(accessClient.UserManager()))\n"
 	}
 	listed := ""
 	if here := hereRE.FindSubmatchIndex(edited); here != nil {
@@ -267,7 +288,11 @@ func (m *Method) editAuth(a *app.App, auth *app.Auth, spec *authpkg.Method, ch *
 	if err := os.WriteFile(a.Abs(rel), edited, mode); err != nil {
 		return errors.Wrap(err, "os.WriteFile()")
 	}
-	ch.didf("%s: Handlers holds the %s method (%s %s), New registers it (register%s)%s%s", rel, spec.Name, field, typ, spec.Pascal(), settingsNote(spec), listed)
+	renamed := ""
+	if spec.UsernameIsEmail && loc != nil {
+		renamed = ", and a verified change of address renames the user with its seats (SetUserRenamed over resource.SeatsFollowRename)"
+	}
+	ch.didf("%s: Handlers holds the %s method (%s %s), New registers it (register%s)%s%s%s", rel, spec.Name, field, typ, spec.Pascal(), settingsNote(spec), listed, renamed)
 
 	return nil
 }
@@ -509,6 +534,12 @@ func (m *Method) Meaning() string {
 		}
 	} else {
 		items = append(items, fmt.Sprintf("Give the %s auth its development logins with passwords in the bootstrap identities, and the test harness a login that posts to `user/password/login`.", m.Auth))
+		if spec.OpenSignUp() {
+			items = append(items, passwordSignUpItem(m.Auth))
+		}
+		if spec.UsernameIsEmail {
+			items = append(items, fmt.Sprintf("Mind the sign-in name. The %s auth's password method takes the person's email address as the username (`session.UsernameIsEmail()`, and `.UsernameIsEmail()` on the declaration), so the generated users surface derives the address from the username, refuses a rename through the users resource, and renames the user when a verified change of address completes (`SetUserRenamed` over `resource.SeatsFollowRename`, which New now sets); the development logins and the first administrator are addresses.", m.Auth))
+		}
 	}
 	for i, item := range items {
 		fmt.Fprintf(&b, "%d. %s\n", i+1, item)
@@ -523,6 +554,18 @@ func (m *Method) Meaning() string {
 // invitations, behind Create on the auth's users resource.
 func invitationsItem(auth string, registrations []string) string {
 	return fmt.Sprintf("Invite its people. The %s registration(s) admit invited users only (`signin.InvitedUsersOnly`, and `.InvitedUsers()` on the declaration), so a person signs in once a user exists under the name the directory presents: the generated users surface of the %s auth creates them, so grant Create on `%sUsers` to the role that invites in the role file.", strings.Join(registrations, ", "), auth, names.Pascal(auth))
+}
+
+// mailItem is the brief's item for the mail an auth sends: the sender it shares with the
+// other auths and the login page its links open.
+func mailItem(auth, outlet string) string {
+	return fmt.Sprintf("Mail. The %[1]s auth mails its invitations and address verifications through the application's sender, which the data level hands every auth (`Settings.Mail`: the log in development, where nothing is sent and a developer follows the link from the log, and the Google Workspace relay where the deployment names a mailbox, `APP_MAIL_MAILBOX` and its app password `APP_MAIL_APP_PASSWORD`), and every link opens the login page `Settings.MailLoginURL` names: set it to the %[2]s outlet's login page, the application's public address (`APP_PUBLIC_URL`) and the outlet's login path, and grant the roles that invite Create on `%[3]sInvitations` in the role file (List, Read and Delete to see and revoke what stands).", auth, outlet, names.Pascal(auth))
+}
+
+// passwordSignUpItem is the brief's item for a password method whose strangers sign up
+// from a mailed link.
+func passwordSignUpItem(auth string) string {
+	return fmt.Sprintf("Decide what a sign-up gets. The %s auth's password method admits anyone (`session.OpenSignUp()`, and `.OpenSignUp()` on the declaration): a stranger gives their address on the login page, follows the link mailed to it and chooses a password, and the router serves the sign-up routes (`user/sign-up`, `/open`, `/complete`). The new user holds no role and no tenant; in a tenanted application the tenant record's creation shape says whether they may create one (`@tenant(creation: self-service)` or `both`), and elsewhere an administrator seats them or an invitation does.", auth)
 }
 
 // openSignUpItem is the brief's item for registrations admitting anyone the directory

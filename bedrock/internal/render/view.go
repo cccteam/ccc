@@ -218,9 +218,18 @@ type view struct {
 	PinnedSecrets    []derive.Secret
 	// MigrateSecrets are the secrets the migrate command reads, alone among the runtime
 	// secrets: the generated password of each auth's first administrator, which the command
-	// seeds the administrator user with. The deploy identity holds accessor on their
+	// seeds the administrator user with, and the mailbox's app password, which the data
+	// level opens the mail sender with. The deploy identity holds accessor on their
 	// containers and on no other.
-	MigrateSecrets       []derive.Secret
+	MigrateSecrets []derive.Secret
+	// PublicURL is the variable in the public-url role and Mailbox the one in the
+	// mail-mailbox role, nil when the application declares none; MailAppPassword the
+	// secret in the mail-app-password role, nil without one; MailboxStep the number of
+	// the mailbox's hand step.
+	PublicURL            *derive.Variable
+	Mailbox              *derive.Variable
+	MailAppPassword      *derive.Secret
+	MailboxStep          int
 	GeneratedCell        string
 	GeneratedPairs       string
 	TfvarsSecretVersions string
@@ -984,6 +993,8 @@ func (v *view) roles() error {
 		}
 	}
 	v.TraceSampling = v.byRole(derive.RoleTraceSampling)
+	v.PublicURL = v.byRole(derive.RolePublicURL)
+	v.Mailbox = v.byRole(derive.RoleMailbox)
 	if v.Jobs != nil {
 		v.JobsTemplate = v.byRole(derive.RoleJobsTemplate)
 		if v.JobsTemplate == nil {
@@ -1475,8 +1486,11 @@ func (v *view) secrets() {
 		}
 		cells = append(cells, "`"+s.Variable.Name+"`")
 		version := `"1"`
-		if s.Variable.Role == derive.RoleAdministratorPassword {
+		if s.Variable.Role == derive.RoleAdministratorPassword || s.Variable.Role == derive.RoleMailAppPassword {
 			v.MigrateSecrets = append(v.MigrateSecrets, s)
+		}
+		if s.Variable.Role == derive.RoleMailAppPassword {
+			v.MailAppPassword = ptr(s)
 		}
 		if s.Generated {
 			version = `"` + secret.Generated + `"`
@@ -1507,11 +1521,15 @@ func (v *view) secrets() {
 	v.TfvarsSecretVersions = aligned("  ", versions)
 	cookieGenerated := v.CookieKeySecret != nil && v.CookieKeySecret.Generated
 	v.CookieKeyStep = len(v.Methods) + len(v.Administrators) + 1
+	if v.Mailbox != nil {
+		v.MailboxStep = v.CookieKeyStep
+		v.CookieKeyStep++
+	}
 	v.PinStep = v.CookieKeyStep
 	if !cookieGenerated {
 		v.PinStep++
 	}
-	v.HandSteps = v.Directory || len(v.Administrators) > 0 || !cookieGenerated || len(v.PinnedSecrets) > 0
+	v.HandSteps = v.Directory || len(v.Administrators) > 0 || v.Mailbox != nil || !cookieGenerated || len(v.PinnedSecrets) > 0
 }
 
 // blocks prepares the aligned blocks and the remaining phrases.
@@ -1574,6 +1592,9 @@ func (v *view) blocks() {
 		{"placeholder_image", v.P.PlaceholderImage},
 	}
 	restated = append(restated, v.registrationDefaults()...)
+	if v.Mailbox != nil {
+		restated = append(restated, [2]string{"mail_mailbox", `""`})
+	}
 	if v.Jobs != nil {
 		restated = append(restated,
 			[2]string{"jobs_timeout", `"` + jobsTimeout + `"`},

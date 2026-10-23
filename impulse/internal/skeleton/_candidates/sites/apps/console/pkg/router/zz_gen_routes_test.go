@@ -146,10 +146,12 @@ func generatedRouteParameters() []string {
 		"staffSeatUser",
 		"staffSeatRole",
 		"staffRoleName",
+		"staffInvitationID",
 		"staffTenantUserID",
 		"staffTenantSeatUser",
 		"staffTenantSeatRole",
 		"staffTenantRoleName",
+		"staffTenantInvitationID",
 	}
 
 	return keys
@@ -341,6 +343,31 @@ func generatedRouterTests() []*generatedRouterTest {
 			parameters:  map[string]string{"staffRoleName": "testStaffRoleName"},
 		},
 		{
+			url: "/api/staff-invitations", method: http.MethodGet,
+			handlerFunc: "StaffInvitations",
+			parameters:  map[string]string{},
+		},
+		{
+			url: "/api/staff-invitations", method: http.MethodPost,
+			handlerFunc: "StaffInvitations",
+			parameters:  map[string]string{},
+		},
+		{
+			url: "/api/staff-invitations/testStaffInvitationID", method: http.MethodGet,
+			handlerFunc: "StaffInvitation",
+			parameters:  map[string]string{"staffInvitationID": "testStaffInvitationID"},
+		},
+		{
+			url: "/api/staff-invitations/testStaffInvitationID", method: http.MethodPost,
+			handlerFunc: "StaffInvitation",
+			parameters:  map[string]string{"staffInvitationID": "testStaffInvitationID"},
+		},
+		{
+			url: "/api/staff-invitations", method: http.MethodPatch,
+			handlerFunc: "PatchStaffInvitations",
+			parameters:  map[string]string{},
+		},
+		{
 			url: "/api/set-staff-user-password", method: http.MethodPost,
 			handlerFunc: "SetStaffUserPassword",
 			parameters:  map[string]string{},
@@ -414,6 +441,31 @@ func generatedRouterTests() []*generatedRouterTest {
 			url: "/api/tenants/testDomain/staff-tenant-roles/testStaffTenantRoleName", method: http.MethodPost,
 			handlerFunc: "StaffTenantRole",
 			parameters:  map[string]string{"tenantID": "testDomain", "staffTenantRoleName": "testStaffTenantRoleName"},
+		},
+		{
+			url: "/api/tenants/testDomain/staff-tenant-invitations", method: http.MethodGet,
+			handlerFunc: "StaffTenantInvitations",
+			parameters:  map[string]string{"tenantID": "testDomain"},
+		},
+		{
+			url: "/api/tenants/testDomain/staff-tenant-invitations", method: http.MethodPost,
+			handlerFunc: "StaffTenantInvitations",
+			parameters:  map[string]string{"tenantID": "testDomain"},
+		},
+		{
+			url: "/api/tenants/testDomain/staff-tenant-invitations/testStaffTenantInvitationID", method: http.MethodGet,
+			handlerFunc: "StaffTenantInvitation",
+			parameters:  map[string]string{"tenantID": "testDomain", "staffTenantInvitationID": "testStaffTenantInvitationID"},
+		},
+		{
+			url: "/api/tenants/testDomain/staff-tenant-invitations/testStaffTenantInvitationID", method: http.MethodPost,
+			handlerFunc: "StaffTenantInvitation",
+			parameters:  map[string]string{"tenantID": "testDomain", "staffTenantInvitationID": "testStaffTenantInvitationID"},
+		},
+		{
+			url: "/api/tenants/testDomain/staff-tenant-invitations", method: http.MethodPatch,
+			handlerFunc: "PatchStaffTenantInvitations",
+			parameters:  map[string]string{"tenantID": "testDomain"},
 		},
 		{
 			url: "/api/tenants/testDomain/set-staff-tenant-user-password", method: http.MethodPost,
@@ -498,6 +550,18 @@ func (s *generatedHandlersStub) SetStaffUserPassword() http.HandlerFunc {
 	return s.record("SetStaffUserPassword")
 }
 
+func (s *generatedHandlersStub) StaffInvitations() http.HandlerFunc {
+	return s.record("StaffInvitations")
+}
+
+func (s *generatedHandlersStub) StaffInvitation() http.HandlerFunc {
+	return s.record("StaffInvitation")
+}
+
+func (s *generatedHandlersStub) PatchStaffInvitations() http.HandlerFunc {
+	return s.record("PatchStaffInvitations")
+}
+
 func (s *generatedHandlersStub) StaffRoles() http.HandlerFunc {
 	return s.record("StaffRoles")
 }
@@ -516,6 +580,18 @@ func (s *generatedHandlersStub) StaffSeat() http.HandlerFunc {
 
 func (s *generatedHandlersStub) PatchStaffSeats() http.HandlerFunc {
 	return s.record("PatchStaffSeats")
+}
+
+func (s *generatedHandlersStub) StaffTenantInvitations() http.HandlerFunc {
+	return s.record("StaffTenantInvitations")
+}
+
+func (s *generatedHandlersStub) StaffTenantInvitation() http.HandlerFunc {
+	return s.record("StaffTenantInvitation")
+}
+
+func (s *generatedHandlersStub) PatchStaffTenantInvitations() http.HandlerFunc {
+	return s.record("PatchStaffTenantInvitations")
 }
 
 func (s *generatedHandlersStub) StaffTenantRoles() http.HandlerFunc {

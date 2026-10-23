@@ -29,6 +29,9 @@
               "resource": "MembersTenantUsers"
             },
             {
+              "resource": "MembersTenantInvitations"
+            },
+            {
               "resource": "MembersTenantSeats"
             }
           ],
@@ -59,7 +62,19 @@
                 "identities",
                 "roles",
                 "everywhereRoles",
-                "rolesSynced"
+                "rolesSynced",
+                "email",
+                "emailVerifiedAt"
+              ]
+            },
+            {
+              "resource": "MembersTenantInvitations",
+              "fields": [
+                "email",
+                "roles",
+                "invitedBy",
+                "createdAt",
+                "expiresAt"
               ]
             },
             {
@@ -95,7 +110,19 @@
                 "identities",
                 "roles",
                 "everywhereRoles",
-                "rolesSynced"
+                "rolesSynced",
+                "email",
+                "emailVerifiedAt"
+              ]
+            },
+            {
+              "resource": "MembersTenantInvitations",
+              "fields": [
+                "email",
+                "roles",
+                "invitedBy",
+                "createdAt",
+                "expiresAt"
               ]
             },
             {
@@ -121,7 +148,8 @@
               "resource": "MembersTenantUsers",
               "fields": [
                 "username",
-                "disabled"
+                "disabled",
+                "email"
               ]
             }
           ]

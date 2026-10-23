@@ -17,7 +17,15 @@ const (
 	userAttrCreatedAt              = "createdAt"
 	userAttrLastSignInAt           = "lastSignInAt"
 	userAttrOrganization           = "organization"
+	userAttrEmail                  = "email"
+	userAttrEmailVerified          = "emailVerified"
 	userAttrRolesSynced            = "rolesSynced"
+
+	// The invitations' attributes beyond email and role (the seat's role name, judged
+	// once per role an invitation carries).
+	invitationAttrInvited = "invitedBy"
+	invitationAttrCreated = "createdAt"
+	invitationAttrExpires = "expiresAt"
 
 	seatAttrUser        = "user"
 	seatAttrUsername    = "username"
@@ -57,6 +65,8 @@ func userBindings(withSubjects bool) *Bindings {
 			column(userAttrCreatedAt, accesstypes.AttributeTypeTimestamp),
 			column(userAttrLastSignInAt, accesstypes.AttributeTypeTimestamp),
 			column(userAttrOrganization, accesstypes.AttributeTypeString),
+			column(userAttrEmail, accesstypes.AttributeTypeString),
+			column(userAttrEmailVerified, accesstypes.AttributeTypeBool),
 			column(userAttrRolesSynced, accesstypes.AttributeTypeBool),
 		},
 	}
@@ -80,6 +90,19 @@ func seatBindings(tenanted bool) *Bindings {
 		column(seatAttrUsername, accesstypes.AttributeTypeString),
 		column(seatAttrRole, accesstypes.AttributeTypeString),
 		column(flag, accesstypes.AttributeTypeBool),
+	}}
+}
+
+// invitationBindings is the invitations resources' vocabulary: the address, the role
+// (judged once per role the invitation carries, so a grant that limits what a delegate
+// may seat limits what they may invite, with the same words), the sender and the times.
+func invitationBindings() *Bindings {
+	return &Bindings{Attributes: []AttributeData{
+		column(userAttrEmail, accesstypes.AttributeTypeString),
+		column(seatAttrRole, accesstypes.AttributeTypeString),
+		column(invitationAttrInvited, accesstypes.AttributeTypeString),
+		column(invitationAttrCreated, accesstypes.AttributeTypeTimestamp),
+		column(invitationAttrExpires, accesstypes.AttributeTypeTimestamp),
 	}}
 }
 
@@ -138,6 +161,9 @@ func registerUserPartition(b *CollectionBuilder, scope accesstypes.PermissionSco
 		return err
 	}
 	if err := registerUserResource(b, scope, n.Roles, readRoles, nil, nil, []accesstypes.Tag{roleAttrName}, roleBindings(n.Tenanted)); err != nil {
+		return err
+	}
+	if err := registerUserResource(b, scope, n.Invitations, fieldTagsOf[invitationRequest](), fieldTagsOf[invitationWriteRequest](), []accesstypes.Permission{accesstypes.Create, accesstypes.Delete}, []accesstypes.Tag{userAttrEmail}, invitationBindings()); err != nil {
 		return err
 	}
 	for _, method := range n.ServedMethods(shape) {

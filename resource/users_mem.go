@@ -26,6 +26,8 @@ type MemUserStore struct {
 	// scope, which a seat may take.
 	seats map[accesstypes.PolicyScope]map[accesstypes.User][]accesstypes.Role
 	roles map[accesstypes.PolicyScope][]accesstypes.Role
+	// invitations are the invitations that stand; Invite adds one with a week to live.
+	invitations []UserInvitation
 }
 
 // NewMemUserStore returns an empty store.
@@ -126,8 +128,9 @@ func (s *MemUserStore) User(_ context.Context, id ccc.UUID) (*UserAccount, error
 }
 
 // CreateUser adds an account; a password given marks it for the forced change, as the
-// session library does. A username in use is a Conflict.
-func (s *MemUserStore) CreateUser(_ context.Context, username string, password *string, disabled bool) (ccc.UUID, error) {
+// session library does, and an email given is held unverified. A username or an
+// address in use is a Conflict.
+func (s *MemUserStore) CreateUser(_ context.Context, username string, password, email *string, disabled bool) (ccc.UUID, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for i := range s.users {
@@ -135,13 +138,82 @@ func (s *MemUserStore) CreateUser(_ context.Context, username string, password *
 			return ccc.NilUUID, httpio.NewConflictMessagef("username %q is taken", username)
 		}
 	}
+	if err := s.addressFree(email, ccc.NilUUID); err != nil {
+		return ccc.NilUUID, err
+	}
 	id, err := ccc.NewUUID()
 	if err != nil {
 		return ccc.NilUUID, errors.Wrap(err, "ccc.NewUUID()")
 	}
-	s.users = append(s.users, UserAccount{ID: id, Username: username, HasPassword: password != nil, PasswordChangeRequired: password != nil, Disabled: disabled, CreatedAt: time.Now()})
+	s.users = append(s.users, UserAccount{ID: id, Username: username, HasPassword: password != nil, PasswordChangeRequired: password != nil, Disabled: disabled, CreatedAt: time.Now(), Email: email})
 
 	return id, nil
+}
+
+// addressFree refuses an address another account than id holds.
+func (s *MemUserStore) addressFree(email *string, id ccc.UUID) error {
+	if email == nil {
+		return nil
+	}
+	for i := range s.users {
+		if s.users[i].ID != id && s.users[i].Email != nil && strings.EqualFold(*s.users[i].Email, *email) {
+			return httpio.NewConflictMessagef("the email address %q is already in use", *email)
+		}
+	}
+
+	return nil
+}
+
+// SetUserEmail enters the address unverified, or removes it (nil).
+func (s *MemUserStore) SetUserEmail(_ context.Context, id ccc.UUID, email *string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	user, err := s.find(id)
+	if err != nil {
+		return err
+	}
+	if err := s.addressFree(email, id); err != nil {
+		return err
+	}
+	user.Email, user.EmailVerifiedAt = email, nil
+
+	return nil
+}
+
+// Invite stores an invitation that stands for a week; nothing is mailed.
+func (s *MemUserStore) Invite(_ context.Context, req *UserInvitationRequest) (*UserInvitation, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	id, err := ccc.NewUUID()
+	if err != nil {
+		return nil, errors.Wrap(err, "ccc.NewUUID()")
+	}
+	now := time.Now()
+	inv := UserInvitation{ID: id, Email: req.Email, Tenant: req.Tenant, Roles: slices.Clone(req.Roles), InvitedBy: req.InvitedBy, CreatedAt: now, ExpiresAt: now.Add(7 * 24 * time.Hour)}
+	s.invitations = append(s.invitations, inv)
+
+	return &inv, nil
+}
+
+// Invitations lists the invitations that stand, in the order they were made.
+func (s *MemUserStore) Invitations(context.Context) ([]UserInvitation, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	return slices.Clone(s.invitations), nil
+}
+
+// RevokeInvitation withdraws an invitation; NotFound where none stands under the id.
+func (s *MemUserStore) RevokeInvitation(_ context.Context, id ccc.UUID) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	before := len(s.invitations)
+	s.invitations = slices.DeleteFunc(s.invitations, func(inv UserInvitation) bool { return inv.ID == id })
+	if len(s.invitations) == before {
+		return httpio.NewNotFoundMessagef("invitation %s does not exist", id)
+	}
+
+	return nil
 }
 
 // RenameUser changes the account's username.

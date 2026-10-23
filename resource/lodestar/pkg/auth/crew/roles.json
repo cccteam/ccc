@@ -133,6 +133,8 @@
                 "createdAt",
                 "lastSignInAt",
                 "organization",
+                "email",
+                "emailVerifiedAt",
                 "identities",
                 "roles",
                 "everywhereRoles",
@@ -153,6 +155,16 @@
               ]
             },
             {
+              "resource": "CrewInvitations",
+              "fields": [
+                "email",
+                "roles",
+                "invitedBy",
+                "createdAt",
+                "expiresAt"
+              ]
+            },
+            {
               "resource": "MembersUsers",
               "fields": [
                 "username",
@@ -162,6 +174,8 @@
                 "createdAt",
                 "lastSignInAt",
                 "organization",
+                "email",
+                "emailVerifiedAt",
                 "identities",
                 "roles",
                 "everywhereRoles",
@@ -179,6 +193,16 @@
               "resource": "MembersRoles",
               "fields": [
                 "kind"
+              ]
+            },
+            {
+              "resource": "MembersInvitations",
+              "fields": [
+                "email",
+                "roles",
+                "invitedBy",
+                "createdAt",
+                "expiresAt"
               ]
             }
           ],
@@ -211,6 +235,8 @@
                 "createdAt",
                 "lastSignInAt",
                 "organization",
+                "email",
+                "emailVerifiedAt",
                 "identities",
                 "roles",
                 "everywhereRoles",
@@ -231,6 +257,16 @@
               ]
             },
             {
+              "resource": "CrewInvitations",
+              "fields": [
+                "email",
+                "roles",
+                "invitedBy",
+                "createdAt",
+                "expiresAt"
+              ]
+            },
+            {
               "resource": "MembersUsers",
               "fields": [
                 "username",
@@ -240,6 +276,8 @@
                 "createdAt",
                 "lastSignInAt",
                 "organization",
+                "email",
+                "emailVerifiedAt",
                 "identities",
                 "roles",
                 "everywhereRoles",
@@ -257,6 +295,16 @@
               "resource": "MembersRoles",
               "fields": [
                 "kind"
+              ]
+            },
+            {
+              "resource": "MembersInvitations",
+              "fields": [
+                "email",
+                "roles",
+                "invitedBy",
+                "createdAt",
+                "expiresAt"
               ]
             }
           ],
@@ -314,7 +362,8 @@
               "fields": [
                 "username",
                 "password",
-                "disabled"
+                "disabled",
+                "email"
               ]
             },
             {
@@ -325,10 +374,24 @@
               ]
             },
             {
+              "resource": "CrewInvitations",
+              "fields": [
+                "email",
+                "roles"
+              ]
+            },
+            {
               "resource": "MembersSeats",
               "fields": [
                 "user",
                 "role"
+              ]
+            },
+            {
+              "resource": "MembersInvitations",
+              "fields": [
+                "email",
+                "roles"
               ]
             }
           ],
@@ -381,14 +444,16 @@
               "resource": "CrewUsers",
               "fields": [
                 "username",
-                "disabled"
+                "disabled",
+                "email"
               ]
             },
             {
               "resource": "MembersUsers",
               "fields": [
                 "username",
-                "disabled"
+                "disabled",
+                "email"
               ]
             }
           ],
@@ -415,10 +480,16 @@
               "resource": "CrewSeats"
             },
             {
+              "resource": "CrewInvitations"
+            },
+            {
               "resource": "MembersUsers"
             },
             {
               "resource": "MembersSeats"
+            },
+            {
+              "resource": "MembersInvitations"
             }
           ],
           "Execute": [
@@ -823,6 +894,8 @@
                 "createdAt",
                 "lastSignInAt",
                 "organization",
+                "email",
+                "emailVerifiedAt",
                 "identities",
                 "roles",
                 "everywhereRoles",
@@ -838,6 +911,16 @@
             },
             {
               "resource": "CrewSectorRoles"
+            },
+            {
+              "resource": "CrewSectorInvitations",
+              "fields": [
+                "email",
+                "roles",
+                "invitedBy",
+                "createdAt",
+                "expiresAt"
+              ]
             },
             {
               "resource": "SectorDirectories",
@@ -1015,6 +1098,8 @@
                 "createdAt",
                 "lastSignInAt",
                 "organization",
+                "email",
+                "emailVerifiedAt",
                 "identities",
                 "roles",
                 "everywhereRoles",
@@ -1030,6 +1115,16 @@
             },
             {
               "resource": "CrewSectorRoles"
+            },
+            {
+              "resource": "CrewSectorInvitations",
+              "fields": [
+                "email",
+                "roles",
+                "invitedBy",
+                "createdAt",
+                "expiresAt"
+              ]
             },
             {
               "resource": "SectorDirectories",
@@ -1150,6 +1245,7 @@
                 "username",
                 "password",
                 "disabled",
+                "email",
                 "role"
               ]
             },
@@ -1158,6 +1254,14 @@
               "fields": [
                 "user",
                 "role"
+              ],
+              "condition": "new.role != 'SectorMarshal'"
+            },
+            {
+              "resource": "CrewSectorInvitations",
+              "fields": [
+                "email",
+                "roles"
               ],
               "condition": "new.role != 'SectorMarshal'"
             },
@@ -1270,7 +1374,8 @@
               "resource": "CrewSectorUsers",
               "fields": [
                 "username",
-                "disabled"
+                "disabled",
+                "email"
               ]
             }
           ],
@@ -1316,6 +1421,10 @@
             },
             {
               "resource": "CrewSectorSeats",
+              "condition": "role != 'SectorMarshal'"
+            },
+            {
+              "resource": "CrewSectorInvitations",
               "condition": "role != 'SectorMarshal'"
             },
             {

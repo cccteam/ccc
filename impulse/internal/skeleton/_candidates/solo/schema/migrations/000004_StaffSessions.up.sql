@@ -113,3 +113,33 @@ CREATE TABLE StaffSessionSignInAttempts (
     LockedUntil  TIMESTAMP,
     UpdatedAt    TIMESTAMP NOT NULL OPTIONS (allow_commit_timestamp = true),
 ) PRIMARY KEY (Name);
+
+-- The mail links: the single-use links the auth mails. A row is one link: an invitation
+-- to an address, carrying the tenant and the roles its acceptance seats and who sent it;
+-- the verification of an address a signed-in person adds (UserId names the account,
+-- Email the address); or a sign-up a person starts by giving their address. The mail
+-- carries an opaque token and the row keeps its hash; the row is accepted only while it
+-- is live, not expired and not consumed, and is consumed by a conditional update so one
+-- link completes once. A revoked invitation is consumed by hand. A verification link
+-- goes with its user. CreatedAt and ConsumedAt take the commit time; ExpiresAt is the
+-- library's deadline, written as given.
+CREATE TABLE StaffSessionMailLinks (
+    Id         STRING(36) NOT NULL,
+    TokenHash  BYTES(32) NOT NULL,
+    Kind       STRING(16) NOT NULL,
+    Email      STRING(MAX) NOT NULL,
+    UserId     STRING(36),
+    Tenant     STRING(MAX),
+    RoleNames  ARRAY<STRING(MAX)>,
+    InvitedBy  STRING(36),
+    CreatedAt  TIMESTAMP NOT NULL OPTIONS (allow_commit_timestamp = true),
+    ExpiresAt  TIMESTAMP NOT NULL,
+    ConsumedAt TIMESTAMP OPTIONS (allow_commit_timestamp = true),
+    CONSTRAINT CK_StaffSessionMailLinksId CHECK (REGEXP_CONTAINS(Id, r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')),
+    CONSTRAINT CK_StaffSessionMailLinksKind CHECK (Kind IN ('invitation', 'verification', 'sign-up')),
+    CONSTRAINT FK_StaffSessionMailLinks_StaffSessionUsers FOREIGN KEY (UserId) REFERENCES StaffSessionUsers (Id) ON DELETE CASCADE,
+) PRIMARY KEY (Id);
+
+CREATE UNIQUE INDEX StaffSessionMailLinksByTokenHash ON StaffSessionMailLinks(TokenHash);
+
+CREATE INDEX StaffSessionMailLinksByKind ON StaffSessionMailLinks(Kind, ConsumedAt, ExpiresAt);

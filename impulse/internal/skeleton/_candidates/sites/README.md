@@ -163,6 +163,12 @@ password `password`), and serves the console site on :8094 and the portal site o
 The first run compiles and bootstraps before it listens; wait for "Starting Server" in
 the console pane, then the portal pane.
 
+The auths mail: an administrator invites a person by address with the roles the invitation
+seats, and a signed-in person adds and verifies an address. In development the mail is
+written to the server's log, link included, and nothing is sent; a deployment names a
+Workspace mailbox (`APP_MAIL_MAILBOX`, `APP_MAIL_APP_PASSWORD`) and the relay sends it. Every
+link opens the login page under `APP_PUBLIC_URL`.
+
 ### Browser apps
 
 Each site has its own Angular workspace, `apps/console/web` and `apps/portal/web`, riding

@@ -57,6 +57,21 @@ func (a *App) CrewRole() http.HandlerFunc {
 	return a.CrewUserSurface().Role(a, router.Collection())
 }
 
+// CrewInvitations serves the standing invitations into the global partition: List on CrewInvitations.
+func (a *App) CrewInvitations() http.HandlerFunc {
+	return a.CrewUserSurface().Invitations(a, router.Collection())
+}
+
+// CrewInvitation serves one invitation into the global partition: Read on CrewInvitations.
+func (a *App) CrewInvitation() http.HandlerFunc {
+	return a.CrewUserSurface().Invitation(a, router.Collection())
+}
+
+// PatchCrewInvitations invites into and revokes from the global partition through the operations body: Create and Delete on CrewInvitations.
+func (a *App) PatchCrewInvitations() http.HandlerFunc {
+	return a.CrewUserSurface().PatchInvitations(a, router.Collection())
+}
+
 // SetCrewUserPassword sets a temporary password on a user of the global partition: Execute on SetCrewUserPassword, targeting CrewUsers.
 func (a *App) SetCrewUserPassword() http.HandlerFunc {
 	return a.CrewUserSurface().SetUserPassword(a, router.Collection())
@@ -105,6 +120,21 @@ func (a *App) CrewSectorRoles() http.HandlerFunc {
 // CrewSectorRole serves one role of the route's sector: Read on CrewSectorRoles.
 func (a *App) CrewSectorRole() http.HandlerFunc {
 	return a.CrewUserSurface().TenantRole(a, router.Collection())
+}
+
+// CrewSectorInvitations serves the standing invitations into the route's sector: List on CrewSectorInvitations.
+func (a *App) CrewSectorInvitations() http.HandlerFunc {
+	return a.CrewUserSurface().TenantInvitations(a, router.Collection())
+}
+
+// CrewSectorInvitation serves one invitation into the route's sector: Read on CrewSectorInvitations.
+func (a *App) CrewSectorInvitation() http.HandlerFunc {
+	return a.CrewUserSurface().TenantInvitation(a, router.Collection())
+}
+
+// PatchCrewSectorInvitations invites into and revokes from the route's sector through the operations body: Create and Delete on CrewSectorInvitations.
+func (a *App) PatchCrewSectorInvitations() http.HandlerFunc {
+	return a.CrewUserSurface().PatchTenantInvitations(a, router.Collection())
 }
 
 // SetCrewSectorUserPassword sets a temporary password on a user of the route's sector: Execute on SetCrewSectorUserPassword, targeting CrewSectorUsers.
@@ -164,6 +194,21 @@ func (a *App) MembersRole() http.HandlerFunc {
 	return a.MembersUserSurface().Role(a, router.Collection())
 }
 
+// MembersInvitations serves the standing invitations into the global partition: List on MembersInvitations.
+func (a *App) MembersInvitations() http.HandlerFunc {
+	return a.MembersUserSurface().Invitations(a, router.Collection())
+}
+
+// MembersInvitation serves one invitation into the global partition: Read on MembersInvitations.
+func (a *App) MembersInvitation() http.HandlerFunc {
+	return a.MembersUserSurface().Invitation(a, router.Collection())
+}
+
+// PatchMembersInvitations invites into and revokes from the global partition through the operations body: Create and Delete on MembersInvitations.
+func (a *App) PatchMembersInvitations() http.HandlerFunc {
+	return a.MembersUserSurface().PatchInvitations(a, router.Collection())
+}
+
 // UnlinkMembersUserIdentity unlinks an identity from a user of the global partition: Execute on UnlinkMembersUserIdentity, targeting MembersUsers.
 func (a *App) UnlinkMembersUserIdentity() http.HandlerFunc {
 	return a.MembersUserSurface().UnlinkUserIdentity(a, router.Collection())
@@ -207,6 +252,21 @@ func (a *App) MembersSectorRoles() http.HandlerFunc {
 // MembersSectorRole serves one role of the route's sector: Read on MembersSectorRoles.
 func (a *App) MembersSectorRole() http.HandlerFunc {
 	return a.MembersUserSurface().TenantRole(a, router.Collection())
+}
+
+// MembersSectorInvitations serves the standing invitations into the route's sector: List on MembersSectorInvitations.
+func (a *App) MembersSectorInvitations() http.HandlerFunc {
+	return a.MembersUserSurface().TenantInvitations(a, router.Collection())
+}
+
+// MembersSectorInvitation serves one invitation into the route's sector: Read on MembersSectorInvitations.
+func (a *App) MembersSectorInvitation() http.HandlerFunc {
+	return a.MembersUserSurface().TenantInvitation(a, router.Collection())
+}
+
+// PatchMembersSectorInvitations invites into and revokes from the route's sector through the operations body: Create and Delete on MembersSectorInvitations.
+func (a *App) PatchMembersSectorInvitations() http.HandlerFunc {
+	return a.MembersUserSurface().PatchTenantInvitations(a, router.Collection())
 }
 
 // UnlinkMembersSectorUserIdentity unlinks an identity from a user of the route's sector: Execute on UnlinkMembersSectorUserIdentity, targeting MembersSectorUsers.

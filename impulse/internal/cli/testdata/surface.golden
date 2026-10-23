@@ -10,6 +10,7 @@ impulse add auth <name>
   --method stringArray
   --outlet string
   --skip-generate bool
+  --username-is-email bool
 impulse add feature <name>
   --agent bool
   --agent-arg stringArray
@@ -39,6 +40,7 @@ impulse add method <auth> <kind> [<registration>]
   --authority string
   --skip-generate bool
   --slot string
+  --username-is-email bool
 impulse add outlet <name>
   --agent bool
   --agent-arg stringArray

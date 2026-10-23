@@ -7,9 +7,9 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/tenanted/pkg/resources"
 	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/tenanted/pkg/router"
+	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/ccc/resource/live"
 	"github.com/cccteam/ccc/tracer"
