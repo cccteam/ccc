@@ -200,12 +200,12 @@ var Steps = []Step{
 			ccc v0.3.5
 			ccc/accesstypes v0.7.0
 			ccc/cloud v0.2.1
-			ccc/resource v0.15.0
+			ccc/resource v0.15.2-0.20261023151910-90ce2f890968
 			ccc/tracer v0.3.0
 			db-initiator v0.4.3
 			httpio v0.7.22
 			logger v0.1.30
-			session v0.13.4-0.20261023132741-04066c8ed423
+			session v0.13.4
 		`),
 		Pending: true,
 		Impulse: release("v0.6.0"),
