@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.5.7](https://github.com/cccteam/ccc/compare/impulse/v0.5.6...impulse/v0.5.7) (2026-10-23)
+
+
+### Features
+
+* signing out is a route: the sign-out page ends the session, and the login page ends none on arrival ([#1099](https://github.com/cccteam/ccc/issues/1099)) ([a0e29b7](https://github.com/cccteam/ccc/commit/a0e29b75391d881a5cef4d61f42dbcc14eee0856))
+
+
+### Bug Fixes
+
+* a ledger step may move the impulse tool pin alone, so a change made by hand rides a step of its own ([#1100](https://github.com/cccteam/ccc/issues/1100)) ([fdcd718](https://github.com/cccteam/ccc/commit/fdcd718a076fb6cef657a0cfc6b20b9add44c43c))
+
 ## [0.5.6](https://github.com/cccteam/ccc/compare/impulse/v0.5.5...impulse/v0.5.6) (2026-10-23)
 
 
