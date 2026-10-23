@@ -1,9 +1,8 @@
 <h1>Welcome aboard, {{ auth.sessionInfo().username }}</h1>
 <p>
-  Lodestar is the operations console of a frontier rescue and salvage service. Below is your service card: per
-  resource, what your posting in the open sector grants you — <b>granted</b>, <b>terms apply</b> (a conditional
-  grant the server narrows row by row), or nothing at all. Every deck consults this same digest before it asks the
-  server for anything.
+  Lodestar is the operations console of a frontier rescue and salvage service. Below is your service card: per resource,
+  what your posting in the open sector grants you — <b>granted</b>, <b>terms apply</b> (a conditional grant the server
+  narrows row by row), or nothing at all. Every deck consults this same digest before it asks the server for anything.
 </p>
 
 <app-star-chart></app-star-chart>
@@ -12,7 +11,9 @@
   <mat-card appearance="outlined" class="table-card">
     <mat-card-header>
       <mat-card-title>Service Ledger</mat-card-title>
-      <mat-card-subtitle>A computed resource, one row per sector: open missions, fees outstanding, settlements made.</mat-card-subtitle>
+      <mat-card-subtitle
+        >A computed resource, one row per sector: open missions, fees outstanding, settlements made.</mat-card-subtitle
+      >
     </mat-card-header>
     <mat-card-content>
       <table mat-table [dataSource]="ledger.value()">
@@ -92,5 +93,18 @@
         <span class="empty">{{ emptyMessage() }}</span>
       }
     </div>
+  </mat-card-content>
+</mat-card>
+
+<mat-card appearance="outlined" class="email-card">
+  <mat-card-header>
+    <mat-card-title>Your email address</mat-card-title>
+    <mat-card-subtitle
+      >Where the service reaches you. An address counts once you confirm it by following a link mailed to
+      it.</mat-card-subtitle
+    >
+  </mat-card-header>
+  <mat-card-content>
+    <ccc-email-address />
   </mat-card-content>
 </mat-card>

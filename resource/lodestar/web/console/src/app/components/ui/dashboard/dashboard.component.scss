@@ -30,7 +30,13 @@
   }
 
   .masked {
-    background: repeating-linear-gradient(45deg, transparent, transparent 6px, rgba(31, 111, 139, 0.15) 6px, rgba(31, 111, 139, 0.15) 12px);
+    background: repeating-linear-gradient(
+      45deg,
+      transparent,
+      transparent 6px,
+      rgba(31, 111, 139, 0.15) 6px,
+      rgba(31, 111, 139, 0.15) 12px
+    );
   }
 }
 
@@ -65,4 +71,8 @@
 h3 {
   margin: 16px 0 8px;
   font-weight: 500;
+}
+
+.email-card {
+  margin-top: 16px;
 }

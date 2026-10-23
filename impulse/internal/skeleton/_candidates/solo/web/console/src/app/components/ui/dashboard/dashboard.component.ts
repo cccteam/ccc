@@ -1,6 +1,7 @@
 import { Component, computed, inject } from '@angular/core';
 import { MatCardModule } from '@angular/material/card';
 import { injectApi } from '@app/api/api';
+import { EmailAddressComponent } from '@cccteam/resource-angular/auth-email-address';
 import { AuthService } from '@cccteam/resource-angular/auth-service';
 import { storeSignal } from '@cccteam/resource-angular/resource-client';
 import { Permission, PermissionDigestState } from '@cccteam/resource';
@@ -12,13 +13,14 @@ interface PermissionRow {
 }
 
 /**
- * The dashboard shows who is signed in and what the session holds: the permission
+ * The dashboard shows who is signed in and what the session holds, the person's email
+ * address included (added, changed and confirmed through a mailed link, below the digest): the permission
  * digest rendered per resource, in the global scope. Field-level entries are folded
  * into their resource's row.
  */
 @Component({
   selector: 'app-dashboard',
-  imports: [MatCardModule],
+  imports: [EmailAddressComponent, MatCardModule],
   templateUrl: './dashboard.component.html',
   styleUrl: './dashboard.component.scss',
 })
