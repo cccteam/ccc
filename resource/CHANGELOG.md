@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.15.1](https://github.com/cccteam/ccc/compare/resource/v0.15.0...resource/v0.15.1) (2026-10-23)
+
+
+### Bug Fixes
+
+* the resource generator knows json.RawMessage under both of its names, so Go 1.27 keeps JSON columns JSON ([#1058](https://github.com/cccteam/ccc/issues/1058)) ([8e73134](https://github.com/cccteam/ccc/commit/8e731345cd8dd38b90e13b2982ee861b06abd7e9))
+
+
+### Code Upgrade
+
+* **deps:** Go 1.27.3; the Go image moves to go1.27.3, so built images carry crypto/x509 GO-2026-6809's fix ([#1059](https://github.com/cccteam/ccc/issues/1059)) ([24d17c1](https://github.com/cccteam/ccc/commit/24d17c14405fd51e065a2ee7af018b637ed58ec4))
+
 ## [0.15.0](https://github.com/cccteam/ccc/compare/resource/v0.14.2...resource/v0.15.0) (2026-10-21)
 
 
