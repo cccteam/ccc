@@ -12,7 +12,6 @@ import { AuthService } from '@cccteam/resource-angular/auth-service';
 import { openFeatureFlagsDialog } from '@cccteam/resource-angular/ccc-feature-flags';
 import { PermissionScope } from '@cccteam/resource-angular/types';
 import { IdleService } from '@cccteam/resource-angular/ui-idle-service';
-import { tap } from 'rxjs';
 import { ImpersonationService } from '@components/sector/impersonation.service';
 import { grantedColumns, SectorService } from '@components/sector/sector.service';
 import { TopbarComponent } from '../topbar/topbar.component';
@@ -67,12 +66,9 @@ export class HeaderComponent {
     openFeatureFlagsDialog(this.dialog);
   }
 
+  /** Signing out is the sign-out route's: the page there ends the session and forwards to the login page. */
   logout(): void {
-    this.idle.stop();
-    this.auth
-      .logout()
-      .pipe(tap(() => this.router.navigate(['/login'])))
-      .subscribe();
+    void this.router.navigate(['/logout']);
   }
 
   /**

@@ -7,6 +7,10 @@ export const routes: Routes = [
     loadComponent: () => import('./components/login/login.component').then((comp) => comp.LoginComponent),
   },
   {
+    path: 'logout',
+    loadComponent: () => import('@cccteam/resource-angular/auth-sign-out').then((comp) => comp.SignOutComponent),
+  },
+  {
     path: 'tracker',
     canActivate: [LoginAuthenticationGuard],
     loadComponent: () => import('./components/tracker/tracker.component').then((comp) => comp.TrackerComponent),

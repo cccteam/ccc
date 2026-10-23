@@ -176,11 +176,11 @@ func TestConsoleHandsTheClientItsHooks(t *testing.T) {
 				"import { LoginMethodsComponent } from '@cccteam/resource-angular/auth-login-methods';",
 				"import { ReleaseComponent } from '@cccteam/resource-angular/ui-release';",
 				"imports: [LoginMethodsComponent, MatCardModule, MatIconModule, ReleaseComponent],",
-				"this.auth.logout().subscribe();",
+				"this.idle.stop();",
 				"this.idle.start();",
 				"void this.router.navigateByUrl(page);",
 			},
-			absent: []string{"HttpClient", "/user/", "user/methods", "redirectUrl", "location.assign"},
+			absent: []string{"HttpClient", "/user/", "user/methods", "redirectUrl", "location.assign", "logout()"},
 		},
 		{
 			name: "the console's page hands the component where a sign-in lands and takes the page it emits",
@@ -197,10 +197,10 @@ func TestConsoleHandsTheClientItsHooks(t *testing.T) {
 			want: []string{
 				"import { LoginMethodsComponent } from '@cccteam/resource-angular/auth-login-methods';",
 				"export const METHOD_LABELS: Readonly<Record<string, string>> = { directory: 'your company directory' };",
-				"this.auth.logout().subscribe();",
+				"this.idle.stop();",
 				"void this.router.navigateByUrl(page);",
 			},
-			absent: []string{"HttpClient", "/user/", "user/methods", "redirectUrl", "location.assign"},
+			absent: []string{"HttpClient", "/user/", "user/methods", "redirectUrl", "location.assign", "logout()"},
 		},
 		{
 			name: "the portal's page hands the component the tracker and its labels",
@@ -210,6 +210,20 @@ func TestConsoleHandsTheClientItsHooks(t *testing.T) {
 				`<mat-card-footer class="release"><ccc-release /></mat-card-footer>`,
 			},
 			absent: []string{"<form", "/user/", "returnUrl"},
+		},
+		{
+			name: "the console signs out through a route composing the library's sign-out page",
+			file: "console/src/app/app.routes.ts",
+			want: []string{
+				"path: 'logout',",
+				"import('@cccteam/resource-angular/auth-sign-out').then((comp) => comp.SignOutComponent)",
+			},
+		},
+		{
+			name:   "the console's header links to the sign-out route and ends no session itself",
+			file:   "console/src/app/components/shared/header/header.component.html",
+			want:   []string{`<a mat-stroked-button routerLink="/logout">Logout</a>`},
+			absent: []string{"logout()"},
 		},
 		{
 			name: "the flight deck reports the declared answer and the edit refusal in place",

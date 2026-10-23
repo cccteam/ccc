@@ -2,7 +2,9 @@
   <div class="impersonation-banner" [class.role]="banner.kind === 'Role'">
     <mat-icon>{{ banner.kind === 'Role' ? 'badge' : 'visibility' }}</mat-icon>
     <span>{{ banner.text }}</span>
-    <span class="cap" title="Every minted session carries a two-hour hard cap (MaxDuration)">{{ banner.remaining }}</span>
+    <span class="cap" title="Every minted session carries a two-hour hard cap (MaxDuration)">{{
+      banner.remaining
+    }}</span>
     <button mat-stroked-button (click)="endImpersonation()">Return to yourself</button>
   </div>
 }
@@ -33,7 +35,9 @@
       action the idle service exposes.
     -->
     @if (idle.isWarning()) {
-      <button mat-flat-button class="stay" (click)="idle.stayLoggedIn()">Stay logged in · {{ idle.countdown() }}s</button>
+      <button mat-flat-button class="stay" (click)="idle.stayLoggedIn()">
+        Stay logged in · {{ idle.countdown() }}s
+      </button>
     }
     <!--
       The feature flags dialog is the library's; the console decides where its link lives.
@@ -44,6 +48,6 @@
     <button mat-stroked-button class="flags" *cccHasPermission="flagsScope" (click)="openFeatureFlags()">
       Feature flags
     </button>
-    <button mat-stroked-button (click)="logout()">Logout</button>
+    <a mat-stroked-button routerLink="/logout">Logout</a>
   </div>
 </div>

@@ -226,6 +226,22 @@ var Steps = []Step{
 		Impulse: release("v0.5.6"),
 		Note:    "every answer of an outlet names the server's release in X-Api-Version: the generated router puts resource.ReleaseHeader on every outlet ahead of the session handling (the API-key and scheduled outlets included), so the methods list a login page reads before any sign-in carries the release, a browser application shows which release it talks to, and curl shows it; the version check (resource.CheckAPIVersion) refuses as before and keeps naming the release on its refusal; an application regenerates its router (go generate ./...) and changes nothing by hand; the skeletons' and Lodestar's web pins move to @cccteam/resource 0.0.10, @cccteam/resource-angular 0.0.11 and @cccteam/resource-firestore 0.0.8 (the client keeps the release the server names, and the release line, ccc-release from @cccteam/resource-angular/ui-release, stands under every login card and in the footer of every page, which an application adds by hand as the skeletons do)",
 	},
+	{
+		Pins: pins(`
+			access v0.11.1
+			ccc v0.3.5
+			ccc/accesstypes v0.7.0
+			ccc/cloud v0.2.1
+			ccc/resource v0.15.4
+			ccc/tracer v0.3.0
+			db-initiator v0.4.3
+			httpio v0.7.22
+			logger v0.1.30
+			session v0.13.4
+		`),
+		Impulse: release("v0.5.7"),
+		Note:    "signing out is a route: the skeletons' and Lodestar's web pins move to @cccteam/resource-angular 0.0.12, whose sign-out page (ccc-sign-out from @cccteam/resource-angular/auth-sign-out) stops the idle watch, ends the session and forwards the browser to the login page, and the skeletons serve it at /logout, the header's Sign out a link to it and the idle watch sending the browser there when the session times out; the login page ends no session on arrival, so a mailed link, a bookmark or the back button signs nobody out, and the library's login component offers a session it finds standing Continue or Sign out in the form's place (the change form to one marked for a password change); an application adds the route, points its sign-out control at it as a link and drops the logout from its login page's constructor by hand, the skeletons' being the pattern",
+	},
 }
 
 // validatePending holds a step's Pending mark to its pins: a pin at a pseudo-version

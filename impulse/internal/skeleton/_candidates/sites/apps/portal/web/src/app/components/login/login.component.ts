@@ -1,8 +1,7 @@
 import { Component, inject } from '@angular/core';
 import { MatCardModule } from '@angular/material/card';
-import { ActivatedRoute, Router } from '@angular/router';
+import { Router } from '@angular/router';
 import { LoginMethodsComponent } from '@cccteam/resource-angular/auth-login-methods';
-import { AuthService } from '@cccteam/resource-angular/auth-service';
 import { IdleService } from '@cccteam/resource-angular/ui-idle-service';
 import { ReleaseComponent } from '@cccteam/resource-angular/ui-release';
 
@@ -25,21 +24,16 @@ import { ReleaseComponent } from '@cccteam/resource-angular/ui-release';
   imports: [LoginMethodsComponent, MatCardModule, ReleaseComponent],
 })
 export class LoginComponent {
-  private auth = inject(AuthService);
   private router = inject(Router);
   private idle = inject(IdleService);
 
   /**
-   * The page ends whatever session the browser arrived with, and the component's first
-   * request, the methods list, follows. A mailed link that is followed signed in keeps the
-   * session: an invitation, which the person signed in may accept as they are, and an
-   * address confirmation, which is posted for the session the page finds.
+   * The page ends no session: the component's first request, the methods list, primes the
+   * XSRF cookie the sign-in's post needs, and a session the browser arrives with is the
+   * component's to offer Continue or Sign out, or to accept a mailed link with. Signing out
+   * is the sign-out route's.
    */
   constructor() {
-    const params = inject(ActivatedRoute).snapshot.queryParamMap;
-    if (!params.has('invitation') && !params.has('verify')) {
-      this.auth.logout().subscribe();
-    }
     this.idle.stop();
   }
 

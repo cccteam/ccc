@@ -9,21 +9,27 @@
       }
     </mat-select>
   </mat-form-field>
-  <button mat-stroked-button (click)="logout()">Sign out</button>
+  <a mat-stroked-button routerLink="/logout">Sign out</a>
 </div>
 
 <div class="page-content">
   <h1>Your missions in {{ current() || '—' }}</h1>
   <p>
     The missions your company booked, each drawn as the service's own state graph. The only edge you may fire is Stand
-    down, and only while a mission is open, claimed, or on hold. Hazard, fee, and deadline show; who flies it and what it
-    settled for never reach this page.
+    down, and only while a mission is open, claimed, or on hold. Hazard, fee, and deadline show; who flies it and what
+    it settled for never reach this page.
   </p>
 
   <div class="pager">
-    <button mat-button type="button" [disabled]="!missionsPage.value()?.prev" (click)="turnPage('prev')">Previous</button>
+    <button mat-button type="button" [disabled]="!missionsPage.value()?.prev" (click)="turnPage('prev')">
+      Previous
+    </button>
     <span class="pager-total">
-      {{ missions().length }}@if (missionTotal() !== undefined) { of {{ missionTotal() }}} missions, {{ pageSize }} a page from the portal's descriptor
+      {{ missions().length }}
+      @if (missionTotal() !== undefined) {
+        of {{ missionTotal() }}
+      }
+      missions, {{ pageSize }} a page from the portal's descriptor
     </span>
     <button mat-button type="button" [disabled]="!missionsPage.value()?.next" (click)="turnPage('next')">Next</button>
   </div>
@@ -90,12 +96,17 @@
   <mat-card appearance="outlined" class="table-card">
     <mat-card-header>
       <mat-card-title>Your company's statement</mat-card-title>
-      <mat-card-subtitle>Every change to your missions in this sector, from the change log; a manual resource served on the portal alone.</mat-card-subtitle>
+      <mat-card-subtitle
+        >Every change to your missions in this sector, from the change log; a manual resource served on the portal
+        alone.</mat-card-subtitle
+      >
     </mat-card-header>
     <mat-card-content>
       <ul>
         @for (line of statement.value(); track line.eventTime + line.missionId) {
-          <li><b>{{ line.title }}</b> · {{ line.eventTime | date: 'medium' }} · {{ line.eventSource }}</li>
+          <li>
+            <b>{{ line.title }}</b> · {{ line.eventTime | date: 'medium' }} · {{ line.eventSource }}
+          </li>
         } @empty {
           <li class="empty">Nothing has changed on your missions yet.</li>
         }

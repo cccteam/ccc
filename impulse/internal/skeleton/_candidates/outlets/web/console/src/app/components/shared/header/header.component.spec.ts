@@ -25,7 +25,7 @@ describe('HeaderComponent', () => {
     expect(element.querySelector('a.brand')).not.toBeNull();
     expect(element.querySelector('app-topbar')).not.toBeNull();
     expect(element.querySelector('mat-select')).not.toBeNull();
-    expect(element.querySelector('button')?.textContent).toContain('Sign out');
+    expect(element.querySelector('a[href="/logout"]')?.textContent).toContain('Sign out');
   });
 
   it('choosing a tenant in the picker opens the same page under it, and sets no tenant itself', () => {

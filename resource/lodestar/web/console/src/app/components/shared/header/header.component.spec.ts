@@ -29,7 +29,14 @@ interface Persona {
 /** The crew's List grant on the cards, field by field as the digest carries it, with the gated field when the flag is on. */
 function cardDigest(gated: boolean): PermissionDigest {
   const digest: PermissionDigest = { PilotCards: { List: 'granted' } };
-  for (const field of ['displayName', 'clearance', 'feeLimit', 'certifications', 'squadrons', ...(gated ? ['commendations'] : [])]) {
+  for (const field of [
+    'displayName',
+    'clearance',
+    'feeLimit',
+    'certifications',
+    'squadrons',
+    ...(gated ? ['commendations'] : []),
+  ]) {
     digest[`PilotCards.${field}`] = { List: 'granted' };
   }
   return digest;
@@ -54,14 +61,33 @@ const paxCited: Persona = {
   username: 'pilot',
   digest: cardDigest(true),
   enabled: ['commendations'],
-  cards: [{ userId: 'pilot', displayName: 'Pilot Pax', clearance: 3, feeLimit: 0, certifications: ['hazard-3'], squadrons: ['Hammer'], commendations: 2 }],
+  cards: [
+    {
+      userId: 'pilot',
+      displayName: 'Pilot Pax',
+      clearance: 3,
+      feeLimit: 0,
+      certifications: ['hazard-3'],
+      squadrons: ['Hammer'],
+      commendations: 2,
+    },
+  ],
 };
 
 const paxDark: Persona = {
   ...paxCited,
   digest: cardDigest(false),
   enabled: [],
-  cards: [{ userId: 'pilot', displayName: 'Pilot Pax', clearance: 3, feeLimit: 0, certifications: ['hazard-3'], squadrons: ['Hammer'] }],
+  cards: [
+    {
+      userId: 'pilot',
+      displayName: 'Pilot Pax',
+      clearance: 3,
+      feeLimit: 0,
+      certifications: ['hazard-3'],
+      squadrons: ['Hammer'],
+    },
+  ],
 };
 
 /** The one flag Lodestar declares, off, as the flags resource lists it. */
@@ -150,7 +176,7 @@ describe('HeaderComponent', () => {
     await signIn(cadet);
     expect(element().querySelector('a.brand')?.textContent).toContain('Lodestar');
     expect(element().querySelector('app-topbar')).not.toBeNull();
-    expect(buttons()).toContain('Logout');
+    expect(element().querySelector('a[href="/logout"]')?.textContent).toContain('Logout');
     expect(element().querySelector('.impersonation-banner')).toBeNull();
   });
 
@@ -167,16 +193,23 @@ describe('HeaderComponent', () => {
 
   it("the link opens the library's dialog, which lists the commendations flag off, read from the flags resource", async () => {
     await signIn(adjutant);
-    const link = Array.from(element().querySelectorAll('button')).find((button) => button.textContent?.includes('Feature flags'));
+    const link = Array.from(element().querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('Feature flags'),
+    );
     expect(link).toBeDefined();
     link?.click();
     const dialog = (): HTMLElement | null => document.querySelector('ccc-feature-flags-dialog');
-    await settle(() => dialog()?.querySelector('li.feature-flag') !== null && dialog()?.querySelector('li.feature-flag') !== undefined);
+    await settle(
+      () =>
+        dialog()?.querySelector('li.feature-flag') !== null && dialog()?.querySelector('li.feature-flag') !== undefined,
+    );
     const rows = Array.from(dialog()?.querySelectorAll('li.feature-flag') ?? []);
     expect(rows.map((row) => row.querySelector('.feature-flag-name')?.textContent?.trim())).toEqual(['commendations']);
     expect(rows[0]?.textContent).toContain('Commendations lets headquarters cite a pilot');
     expect(dialog()?.querySelector('button[role="switch"]')?.getAttribute('aria-checked')).toBe('false');
-    expect(transport.requests.map((request) => request.url)).toContain(`${environment.apiUrl}/feature-flags?sort=name&limit=all`);
+    expect(transport.requests.map((request) => request.url)).toContain(
+      `${environment.apiUrl}/feature-flags?sort=name&limit=all`,
+    );
   });
 
   /** The columns each pilot-cards request named, in request order. */
