@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.13](https://github.com/cccteam/ccc/compare/bedrock/v0.3.12...bedrock/v0.3.13) (2026-10-23)
+
+
+### Bug Fixes
+
+* a retired application's plan passes in the other environments, and the retire's journal line claims no final backup of an earlier destroy ([#1097](https://github.com/cccteam/ccc/issues/1097)) ([5a3f66a](https://github.com/cccteam/ccc/commit/5a3f66a42ec1aa421228614f9933f1f62e23271a))
+
 ## [0.3.12](https://github.com/cccteam/ccc/compare/bedrock/v0.3.11...bedrock/v0.3.12) (2026-10-23)
 
 
