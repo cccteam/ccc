@@ -41,7 +41,9 @@ describe('LoginComponent', () => {
 
   beforeEach(async () => {
     transport = scriptedTransport((request: TransportRequest) =>
-      request.url.endsWith('/user/methods') ? { status: 200, body: PORTAL_METHODS } : { status: 200, body: undefined },
+      request.url.endsWith('/user/methods')
+        ? { status: 200, body: PORTAL_METHODS, headers: { 'x-api-version': 'v0.3.1' } }
+        : { status: 200, body: undefined },
     );
     await TestBed.configureTestingModule({
       imports: [LoginComponent],
@@ -58,6 +60,11 @@ describe('LoginComponent', () => {
     fixture.detectChanges();
     await TestBed.inject(ApplicationRef).whenStable();
     fixture.detectChanges();
+  });
+
+  it('shows the release the server named on the methods answer, in the card\'s footer', () => {
+    const release: HTMLElement | null = fixture.nativeElement.querySelector('mat-card-footer.release ccc-release');
+    expect(release?.textContent?.trim()).toBe('v0.3.1');
   });
 
   it('creates, ending whatever session the browser arrived with, and the component asks the server what the outlet offers', () => {

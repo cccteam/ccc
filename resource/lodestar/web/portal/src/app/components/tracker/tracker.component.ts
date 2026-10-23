@@ -15,6 +15,7 @@ import { AuthService } from '@cccteam/resource-angular/auth-service';
 import { storeSignal } from '@cccteam/resource-angular/resource-client';
 import { Domain, Method, Page, ResourceHandle, rowCapabilities } from '@cccteam/resource';
 import { IdleService } from '@cccteam/resource-angular/ui-idle-service';
+import { ReleaseComponent } from '@cccteam/resource-angular/ui-release';
 import { tap } from 'rxjs';
 import { TrackerGraphComponent } from './graph/tracker-graph.component';
 
@@ -52,6 +53,7 @@ export interface ClientStatementLine {
     MatSelectModule,
     MatTableModule,
     TrackerGraphComponent,
+    ReleaseComponent,
   ],
   templateUrl: './tracker.component.html',
   styleUrl: './tracker.component.scss',

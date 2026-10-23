@@ -1,4 +1,8 @@
 .footer {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
   padding: 12px 24px;
   border-top: 1px solid rgba(0, 0, 0, 0.12);
   color: rgba(0, 0, 0, 0.5);
