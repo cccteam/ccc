@@ -12,7 +12,9 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/go-playground/errors/v5"
 	"github.com/google/go-cmp/cmp"
@@ -1445,6 +1447,7 @@ func TestFactsWrite(t *testing.T) {
 func TestCloudBuild(t *testing.T) {
 	t.Parallel()
 
+	var answered atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		switch r.Method + " " + r.URL.Path {
@@ -1457,6 +1460,17 @@ func TestCloudBuild(t *testing.T) {
 		case "POST /v2/projects/p/locations/l/connections/c/repositories/denied:accessReadToken":
 			w.WriteHeader(http.StatusForbidden)
 			fmt.Fprint(w, `{"error":{"code":403,"message":"Permission denied on connection"}}`)
+		case "POST /v2/projects/p/locations/l/connections/c/repositories/flaky:accessReadToken":
+			if answered.Add(1) < 3 {
+				w.WriteHeader(http.StatusServiceUnavailable)
+				fmt.Fprint(w, `{"error":{"code":503,"message":"The service is currently unavailable."}}`)
+
+				return
+			}
+			fmt.Fprint(w, `{"token":"tok-3","expirationTime":"2026-09-27T06:00:00Z"}`)
+		case "GET /v1/projects/p/locations/l/builds/b-down":
+			w.WriteHeader(http.StatusBadGateway)
+			fmt.Fprint(w, `{"error":{"code":502,"message":"Bad gateway"}}`)
 		default:
 			w.WriteHeader(http.StatusNotFound)
 			fmt.Fprint(w, "no such build")
@@ -1464,10 +1478,11 @@ func TestCloudBuild(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 	tests := []struct {
-		name    string
-		call    func(ctx context.Context, c Builds) (string, error)
-		want    string
-		wantErr string
+		name      string
+		call      func(ctx context.Context, c Builds) (string, error)
+		want      string
+		wantErr   string
+		wantWaits []time.Duration
 	}{
 		{
 			name: "a build is read as the API answers it",
@@ -1508,12 +1523,39 @@ func TestCloudBuild(t *testing.T) {
 			},
 			wantErr: "Cloud Build answered HTTP 404 to GET /v1/projects/p/locations/l/builds/b-2: no such build",
 		},
+		{
+			name: "a token mint the API answers 503 to twice is sent again after two and four seconds, and the third answer is the token",
+			call: func(ctx context.Context, c Builds) (string, error) {
+				return c.ReadToken(ctx, "projects/p/locations/l/connections/c/repositories/flaky")
+			},
+			want:      "tok-3",
+			wantWaits: []time.Duration{2 * time.Second, 4 * time.Second},
+		},
+		{
+			name: "a read the API keeps answering 502 to is sent three times, and the last answer is the error",
+			call: func(ctx context.Context, c Builds) (string, error) {
+				data, err := c.Get(ctx, "p", "l", "b-down")
+
+				return string(data), err
+			},
+			wantErr:   "Cloud Build answered HTTP 502 to GET /v1/projects/p/locations/l/builds/b-down: Bad gateway",
+			wantWaits: []time.Duration{2 * time.Second, 4 * time.Second},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			got, err := tt.call(t.Context(), &cloudBuild{http: srv.Client(), base: srv.URL})
+			var waits []time.Duration
+			c := &cloudBuild{http: srv.Client(), base: srv.URL, wait: func(_ context.Context, d time.Duration) error {
+				waits = append(waits, d)
+
+				return nil
+			}}
+			got, err := tt.call(t.Context(), c)
+			if diff := cmp.Diff(tt.wantWaits, waits); diff != "" {
+				t.Errorf("waits mismatch (-want +got):\n%s", diff)
+			}
 			if tt.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 					t.Fatalf("error = %v, wantErr %q", err, tt.wantErr)

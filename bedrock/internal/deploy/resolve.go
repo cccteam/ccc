@@ -7,6 +7,7 @@ import (
 	"io"
 	"maps"
 	"net/http"
+	"net/url"
 	"os"
 	"path"
 	"path/filepath"
@@ -222,13 +223,39 @@ func NewCloudBuild(ctx context.Context) (Builds, error) {
 		return nil, errors.Wrap(err, "google.DefaultClient()")
 	}
 
-	return &cloudBuild{http: client, base: cloudBuildAPI}, nil
+	client.Timeout = cloudBuildTimeout
+
+	return &cloudBuild{http: client, base: cloudBuildAPI, wait: waitFor}, nil
 }
 
 // cloudBuild is Builds over the Cloud Build REST API.
 type cloudBuild struct {
 	http *http.Client
 	base string
+	// wait waits between attempts; a test substitutes one that does not.
+	wait func(ctx context.Context, d time.Duration) error
+}
+
+// The client's patience: a request is given cloudBuildTimeout, and a read that fails
+// before an answer or that the API answers 502, 503 or 504 is sent again up to
+// cloudBuildRetries times, after cloudBuildRetryWait and then twice that, as the GitHub
+// client does.
+const (
+	cloudBuildTimeout   = 30 * time.Second
+	cloudBuildRetries   = 2
+	cloudBuildRetryWait = 2 * time.Second
+)
+
+// waitFor waits for d, or returns the context's error first.
+func waitFor(ctx context.Context, d time.Duration) error {
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return errors.Wrap(ctx.Err(), "context.Context.Done()")
+	case <-timer.C:
+		return nil
+	}
 }
 
 func (c *cloudBuild) Get(ctx context.Context, project, location, id string) ([]byte, error) {
@@ -253,9 +280,61 @@ func (c *cloudBuild) ReadToken(ctx context.Context, repository string) (string, 
 	return answer.Token, nil
 }
 
-// call sends one request and returns the answer's body; a status outside 2xx is an
-// error carrying the API's message.
+// call sends a request and returns the answer's body; a status outside 2xx is an error
+// carrying the API's message. Every call this client makes is safe to repeat (a build is
+// read; the read token is a short-lived token minted again at no cost), so one that
+// fails before an answer (a timeout, a reset connection) or that the API answers 502,
+// 503 or 504 is sent again after a wait, up to cloudBuildRetries times, and the last
+// error is the one returned.
 func (c *cloudBuild) call(ctx context.Context, method, endpoint string) ([]byte, error) {
+	wait := cloudBuildRetryWait
+	for attempt := 1; ; attempt++ {
+		data, err := c.send(ctx, method, endpoint)
+		if err == nil || attempt > cloudBuildRetries || !transientCloudBuild(err) {
+			return data, err
+		}
+		if werr := c.waitBetween(ctx, wait); werr != nil {
+			return nil, errors.Wrapf(werr, "before sending %s %s again after: %s", method, endpoint, err)
+		}
+		wait *= 2
+	}
+}
+
+// waitBetween waits with the client's wait, or the real one when none was set.
+func (c *cloudBuild) waitBetween(ctx context.Context, d time.Duration) error {
+	if c.wait == nil {
+		return waitFor(ctx, d)
+	}
+
+	return c.wait(ctx, d)
+}
+
+// cloudBuildError is an answer outside 2xx: the status and the API's message.
+type cloudBuildError struct {
+	Status   int
+	Method   string
+	Endpoint string
+	Message  string
+}
+
+func (e *cloudBuildError) Error() string {
+	return fmt.Sprintf("Cloud Build answered HTTP %d to %s %s: %s", e.Status, e.Method, e.Endpoint, e.Message)
+}
+
+// transientCloudBuild reports whether a retry may cure the error: the request failed
+// before an answer, or the API answered 502, 503 or 504.
+func transientCloudBuild(err error) bool {
+	var apiErr *cloudBuildError
+	if errors.As(err, &apiErr) {
+		return apiErr.Status == http.StatusBadGateway || apiErr.Status == http.StatusServiceUnavailable || apiErr.Status == http.StatusGatewayTimeout
+	}
+	var urlErr *url.Error
+
+	return errors.As(err, &urlErr)
+}
+
+// send sends one request and returns the answer's body.
+func (c *cloudBuild) send(ctx context.Context, method, endpoint string) ([]byte, error) {
 	req, err := http.NewRequestWithContext(ctx, method, c.base+endpoint, http.NoBody)
 	if err != nil {
 		return nil, errors.Wrap(err, "http.NewRequestWithContext()")
@@ -284,7 +363,7 @@ func (c *cloudBuild) call(ctx context.Context, method, endpoint string) ([]byte,
 			msg = strings.TrimSpace(string(data))
 		}
 
-		return nil, errors.Newf("Cloud Build answered HTTP %d to %s %s: %s", resp.StatusCode, method, endpoint, msg)
+		return nil, errors.Wrap(&cloudBuildError{Status: resp.StatusCode, Method: method, Endpoint: endpoint, Message: msg}, "cloudbuild")
 	}
 
 	return data, nil
