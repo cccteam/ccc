@@ -26,7 +26,9 @@ import (
 const (
 	teardownUse = "teardown"
 	destroyUse  = "destroy"
-	allFlag     = "all"
+	// noBackupFlag leaves the final backup out of a destroy.
+	noBackupFlag = "no-backup"
+	allFlag      = "all"
 	// confirmFlag goes on without the name typed back; nobody is who the record names
 	// when the system says nothing.
 	confirmFlag = "yes"
@@ -37,6 +39,8 @@ const (
 type teardownFlags struct {
 	dir, app, placement string
 	all, yes            bool
+	// noBackup leaves the final backup out of a destroy.
+	noBackup bool
 }
 
 // newTeardown is teardown [<env>].
@@ -103,7 +107,9 @@ and held against the stack's whole state (anything short of it stops the run wit
 applied), and its apply; then a record of what went, by whom and when, in the records bucket
 (<app>/stacks/<env>/teardown.json), where the stack's own id object is gone with the stack. The
 deployment records stay in the records bucket under <app>/<env>/<id>/, read by nothing; the
-Spanner backups the pipeline and the schedules took stay until their retention ends; Google keeps
+final backup of each database is taken first and waited for, kept 366 days, the most Spanner allows,
+and named in the record (--no-backup leaves it out: nothing of the data is kept beyond the backups
+already taken); the Spanner backups the pipeline and the schedules took stay until their retention ends; Google keeps
 the names of the task queue, the Firebase key and the migrate log bucket for a while, and a stack
 applied again takes an id of its own. It refuses while 2-net routes a host to the environment's
 backend service (Google refuses the backend's deletion while the load balancer uses it): take the
@@ -119,6 +125,7 @@ by bedrock.`,
 		},
 	}
 	teardownFlagSet(cmd, &f)
+	cmd.Flags().BoolVar(&f.noBackup, noBackupFlag, false, "destroy the database without its final backup: nothing of its data is kept beyond the backups already taken")
 
 	return cmd
 }
@@ -206,7 +213,7 @@ func (d deps) takeDown(cmd *cobra.Command, args []string, f *teardownFlags, dest
 	defer os.RemoveAll(dataDir)
 	defer leaveLockFile(stackDir)()
 	request := func(env string) *deploy.TeardownRequest {
-		return &deploy.TeardownRequest{Dir: stackDir, DataDir: dataDir, Placement: p, App: app, Env: env, Destroy: destroy, By: d.takenDownBy(cmd.Context()), Now: time.Now}
+		return &deploy.TeardownRequest{Dir: stackDir, DataDir: dataDir, Placement: p, App: app, Env: env, Destroy: destroy, Backup: destroy && !f.noBackup, By: d.takenDownBy(cmd.Context()), Now: time.Now}
 	}
 	var a *deploy.ApplicationTeardown
 	if f.all {
@@ -222,7 +229,7 @@ func (d deps) takeDown(cmd *cobra.Command, args []string, f *teardownFlags, dest
 
 		return nil
 	}
-	fmt.Fprint(out, teardownWarning(destroy, app, envs, a))
+	fmt.Fprint(out, teardownWarning(destroy, f.noBackup, app, envs, a))
 	ok, err := d.confirmTeardown(cmd, command, word, f.yes)
 	if err != nil || !ok {
 		return err
@@ -266,12 +273,15 @@ func teardownEnvironments(args []string, all bool, app string, p *derive.Placeme
 // teardownWarning says what the run does before the name is typed back: what the
 // command destroys and keeps, each environment's count by type, the pull-request stacks
 // after them, and that nothing is undone.
-func teardownWarning(destroy bool, app string, envs []string, a *deploy.ApplicationTeardown) string {
+func teardownWarning(destroy, noBackup bool, app string, envs []string, a *deploy.ApplicationTeardown) string {
 	var b strings.Builder
 	in := strings.Join(envs, ", ")
-	if destroy {
-		fmt.Fprintf(&b, "bedrock destroy destroys %s's stack whole in %s: the database and every generation of it, the file stores and their objects, the Firestore database, the secret containers and their versions, the identities, the task queue, the migrate logs, the Firebase key, the services, the jobs, the triggers and the schedules. The deployment records stay in the records bucket, read by nothing; the Spanner backups the pipeline and the schedules took stay until their retention ends; a stack applied again takes an id of its own.\n\n", app, in)
-	} else {
+	switch {
+	case destroy && noBackup:
+		fmt.Fprintf(&b, "bedrock destroy destroys %s's stack whole in %s, with no final backup of the database (--%s): the database and every generation of it, the file stores and their objects, the Firestore database, the secret containers and their versions, the identities, the task queue, the migrate logs, the Firebase key, the services, the jobs, the triggers and the schedules. The deployment records stay in the records bucket, read by nothing; the Spanner backups the pipeline and the schedules took stay until their retention ends, and nothing else of the data is kept; a stack applied again takes an id of its own.\n\n", app, in, noBackupFlag)
+	case destroy:
+		fmt.Fprintf(&b, "bedrock destroy destroys %s's stack whole in %s: the database and every generation of it, each with a final backup taken first, waited for and kept 366 days, the file stores and their objects, the Firestore database, the secret containers and their versions, the identities, the task queue, the migrate logs, the Firebase key, the services, the jobs, the triggers and the schedules. The deployment records stay in the records bucket, read by nothing; the final backups and the Spanner backups the pipeline and the schedules took stay until their retention ends; a stack applied again takes an id of its own.\n\n", app, in)
+	default:
 		fmt.Fprintf(&b, "bedrock teardown takes %s's stack in %s down to what it keeps: the Cloud Run services and jobs go, with their endpoint groups and backend services, the triggers, the schedules and the Cloud Armor policy; the database and every generation of it, the file stores, the secret containers, the identities, the Firestore database, the task queue, the migrate logs and the stack's id stay. Bringing an environment back is the operations workflow's apply action and bedrock rerun <env> <release>.\n\n", app, in)
 	}
 	b.WriteString(a.Summary())

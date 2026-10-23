@@ -291,6 +291,27 @@ action and `bedrock rerun` per environment, then `bedrock org serve <app>`
 down, removes the entry, renders the hostnames back and leaves the pull
 request the same way.
 
+## Retiring an application
+
+An application that is out of service everywhere and whose stacks are
+destroyed leaves the organization with `bedrock org retire <app>`. The
+repository outlives the application: the run archives it on GitHub (read-only,
+with its code, pull requests and releases; a person unarchives it in the
+repository's settings) and takes it, with the rulesets and operations
+environments `1-org` declared on it, out of `1-org`'s state, since an archived
+repository refuses every change and the layer never deletes a repository
+(`prevent_destroy`); they stay on GitHub as they were. Then the entry leaves
+`placement.json`, the foundation renders without the application, the journal
+gets its line, and the working tree is left for a pull request whose apply
+deletes the application's cloud side: its identities and their grants, its
+registry entries, its secret containers' grants. The run refuses an
+application still in service somewhere (`bedrock org teardown <app>` first,
+with its pull request applied) and one whose stack still stands in an
+environment (`bedrock destroy --all` from its checkout, which takes the final
+backups of its databases and the data down). `bedrock org check` names the
+step while an application out of service everywhere still stands in the
+placement. A retired application is registered again as a new one.
+
 ## The two GitHub Apps
 
 Besides the infrastructure app `1-org` acts as (`0-bootstrap/README.md`), the

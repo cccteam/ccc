@@ -50,7 +50,7 @@ root, the way an application's stack is rendered from its code; the two commands
 triggers run (plan, apply); and the check, before the seed, that the bootstrap administrator
 holds the roles the seed and the first applies need (preflight).`,
 	}
-	cmd.AddCommand(newOrgNew(d), newOrgPreflight(d), newOrgRender(d), newOrgCheck(d), newOrgRegister(d), newOrgPlan(d), newOrgApply(d), newOrgTeardown(d), newOrgServe(d), newOrgHostnames(d), newOrgDestroy(d))
+	cmd.AddCommand(newOrgNew(d), newOrgPreflight(d), newOrgRender(d), newOrgCheck(d), newOrgRegister(d), newOrgPlan(d), newOrgApply(d), newOrgTeardown(d), newOrgServe(d), newOrgHostnames(d), newOrgRetire(d), newOrgDestroy(d))
 
 	return cmd
 }
@@ -403,7 +403,9 @@ databases take all of the integration environment's instance and leave no pull-r
 stack room for a database of its own, it says so, without failing the check: an
 application bedrock destroy took down still stands in the placement, and the check gates
 every plan and apply; bedrock org register refuses the registration that would exceed an
-instance. It then lists each person (a user: member) holding
+instance. While an application is out of service in every environment (outOfService), it
+says that bedrock org retire <app> is the step that lets its entry go once its stacks are
+destroyed, without failing the check. It then lists each person (a user: member) holding
 roles/owner on an environment project the placement records: the grant a project's creator
 receives, which the first apply of 1-org by hand leaves the bootstrap administrator with on
 every project it creates, temporary by design and removed by hand once the apply trigger
@@ -431,6 +433,7 @@ and never fails the check either.`,
 			registrationReport(cmd.Context(), d, p, dir, cmd.OutOrStdout())
 			fmt.Fprint(cmd.OutOrStdout(), zoneReplacementNotice(p))
 			fmt.Fprint(cmd.OutOrStdout(), capacityNotice(p, dir))
+			fmt.Fprint(cmd.OutOrStdout(), retireNotice(p))
 			for _, f := range r.Findings {
 				switch {
 				case f.Reason != "":
@@ -1514,7 +1517,7 @@ func destroyWarning(p *org.Placement, registered []string) string {
 	if len(registered) > 0 {
 		fmt.Fprintf(&b, "\nKept: the network project %s, with its folder and the organization's, since 2-net registers %s there (registrations in 2-net/terraform.tfvars) and a registration cannot move to another project; it is a person's to deal with (1-org/README.md, \"Removing a project\").\n", p.Projects[netKey], strings.Join(registered, ", "))
 	}
-	b.WriteString("\nGoogle keeps a deleted project for 30 days, in which the console can restore it; its id never returns after. Nothing here is undone by bedrock.\n\n")
+	b.WriteString("\nGoogle keeps a deleted project for 30 days, in which the console can restore it; its id never returns after. The Spanner instance and every backup on it (the release backups, the schedules' and the final backups bedrock destroy took) go with the Spanner project and come back with it in those days, and are gone after. Nothing here is undone by bedrock.\n\n")
 
 	return b.String()
 }
