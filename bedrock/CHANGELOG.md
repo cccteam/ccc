@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.17](https://github.com/cccteam/ccc/compare/bedrock/v0.3.16...bedrock/v0.3.17) (2026-10-24)
+
+
+### Bug Fixes
+
+* the Google hand steps say the Cloud Identity API must be enabled in the project that owns the OAuth client ([#1121](https://github.com/cccteam/ccc/issues/1121)) ([2596921](https://github.com/cccteam/ccc/commit/2596921c7f86b5a2ea6d0dfffe07e24891c6445d))
+
 ## [0.3.16](https://github.com/cccteam/ccc/compare/bedrock/v0.3.15...bedrock/v0.3.16) (2026-10-24)
 
 
