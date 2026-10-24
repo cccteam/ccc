@@ -295,6 +295,12 @@ variable "mail_mailbox" {
   default     = ""
 }
 
+variable "mail_from" {
+  description = "The address the auths' mail is from when it is not the mailbox (APP_MAIL_FROM, dataConfig.MailFrom): an alias of the mailbox's account, which the relay accepts with the mailbox's login while an alias cannot log in itself. Empty sends from the mailbox."
+  type        = string
+  default     = ""
+}
+
 variable "state_bucket" {
   description = "(Required) State bucket 0-bootstrap seeded, read for the upstream layers' outputs. The same name is substituted into the backend block by hand."
   type        = string

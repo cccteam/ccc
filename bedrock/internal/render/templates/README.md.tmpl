@@ -477,6 +477,9 @@ above them.
 {{- if .Mailbox}}
 | `{{.Mailbox.Name}}` | {{.Mailbox.Level}} | `var.mail_mailbox` | yes | yes |{{if .Jobs}} {{if .JobsReadsData}}yes{{end}} |{{end}}
 {{- end}}
+{{- if .MailFrom}}
+| `{{.MailFrom.Name}}` | {{.MailFrom.Level}} | `var.mail_from` | yes | yes |{{if .Jobs}} {{if .JobsReadsData}}yes{{end}} |{{end}}
+{{- end}}
 {{- if .Jobs}}
 | `{{.JobsTemplateVariable}}` | {{.JobsTemplate.Level}} | the job process's template job, which the site's own build's job is named from (the job driver's settings, `{{.JobsTemplate.Declaration}}`) | yes | | |
 {{- end}}
@@ -1207,11 +1210,14 @@ Per environment, after the first apply:
 {{end -}}
 {{if .Mailbox -}}
 {{.MailboxStep}}. In the Google Workspace Admin console, once for the organization: a mailbox the
-   application sends its mail as (a no-reply address of the organization's domain),
+   application sends its mail as (a no-reply address of the organization's domain{{if .MailFrom}},
+   or a real account with the no-reply address as one of its aliases, since an alias
+   cannot log in while the relay accepts it as the From address{{end}}),
    with 2-step verification turned on and an app password generated for it, and the
    SMTP relay service (Apps > Google Workspace > Gmail > Routing) accepting mail from
    the organization's addresses with authentication and TLS required. Put the mailbox
-   in `terraform.tfvars` (`mail_mailbox`){{if .MailAppPassword}} and add the app password as version 1 of
+   in `terraform.tfvars` (`mail_mailbox`{{if .MailFrom}}, and the alias in `mail_from` when the
+   account is not the no-reply address itself{{end}}){{if .MailAppPassword}} and add the app password as version 1 of
    `{{$.Prefix}}-<env>-gbl-{{$.App}}-{{.MailAppPassword.Name}}` in every environment: the password is a
    declared secret, so a release to an environment after {{$.Integration}} waits on its
    pin{{end}}. Until the mailbox is named the application writes its mail (the
@@ -1284,6 +1290,9 @@ none yet), and the sign-in needs no registration.
 {{- end}}
 {{- if .Mailbox}}
 | `mail_mailbox` | Google Workspace mailbox the auths' mail is sent as; empty writes the mail to the log instead. | `string` | `""` | no |
+{{- end}}
+{{- if .MailFrom}}
+| `mail_from` | Address the mail is from when it is not the mailbox, an alias of the mailbox's account; empty sends from the mailbox. | `string` | `""` | no |
 {{- end}}
 | `state_bucket` | State bucket, for the upstream layers' outputs. | `string` | n/a | yes |
 

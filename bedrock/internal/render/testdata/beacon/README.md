@@ -259,6 +259,7 @@ above them.
 | `GOOGLE_CLOUD_SPANNER_PROJECT`, `_INSTANCE_ID`, `_DATABASE_NAME` | data | the database | yes | yes |
 | `APP_PUBLIC_URL` | data | `https://<first hostname>` | yes | yes |
 | `APP_MAIL_MAILBOX` | data | `var.mail_mailbox` | yes | yes |
+| `APP_MAIL_FROM` | data | `var.mail_from` | yes | yes |
 | `APP_COOKIE_KEY`, `APP_MAIL_APP_PASSWORD`, `APP_KEEPERS_ADMINISTRATOR_PASSWORD` | data | secret, at the pinned version | yes | |
 
 Not set: `APP_VERSION` (the
@@ -866,11 +867,14 @@ pull request's.
 Per environment, after the first apply:
 
 1. In the Google Workspace Admin console, once for the organization: a mailbox the
-   application sends its mail as (a no-reply address of the organization's domain),
+   application sends its mail as (a no-reply address of the organization's domain,
+   or a real account with the no-reply address as one of its aliases, since an alias
+   cannot log in while the relay accepts it as the From address),
    with 2-step verification turned on and an app password generated for it, and the
    SMTP relay service (Apps > Google Workspace > Gmail > Routing) accepting mail from
    the organization's addresses with authentication and TLS required. Put the mailbox
-   in `terraform.tfvars` (`mail_mailbox`) and add the app password as version 1 of
+   in `terraform.tfvars` (`mail_mailbox`, and the alias in `mail_from` when the
+   account is not the no-reply address itself) and add the app password as version 1 of
    `imp-<env>-gbl-beacon-mail-app-password` in every environment: the password is a
    declared secret, so a release to an environment after tst waits on its
    pin. Until the mailbox is named the application writes its mail (the
@@ -895,6 +899,7 @@ Per environment, after the first apply:
 | `substitutions` | Extra trigger substitutions per environment, for the hooks and the image build. | `map(map(string))` | `{}` | no |
 | `teardown` | Set by `bedrock teardown` alone: the services' deletion protection lifted at the apply before its destroy. | `bool` | `false` | no |
 | `mail_mailbox` | Google Workspace mailbox the auths' mail is sent as; empty writes the mail to the log instead. | `string` | `""` | no |
+| `mail_from` | Address the mail is from when it is not the mailbox, an alias of the mailbox's account; empty sends from the mailbox. | `string` | `""` | no |
 | `state_bucket` | State bucket, for the upstream layers' outputs. | `string` | n/a | yes |
 
 ## Outputs

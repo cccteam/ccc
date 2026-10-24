@@ -458,6 +458,14 @@ variable "mail_mailbox" {
 }
 
 {{end -}}
+{{if .MailFrom -}}
+variable "mail_from" {
+  description = "The address the auths' mail is from when it is not the mailbox ({{.MailFrom.Name}}, {{.MailFrom.Declaration}}): an alias of the mailbox's account, which the relay accepts with the mailbox's login while an alias cannot log in itself. Empty sends from the mailbox."
+  type        = string
+  default     = ""
+}
+
+{{end -}}
 {{range .Administrators -}}
 variable "{{.Var}}" {
   description = <<-EOT

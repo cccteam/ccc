@@ -223,11 +223,13 @@ type view struct {
 	// containers and on no other.
 	MigrateSecrets []derive.Secret
 	// PublicURL is the variable in the public-url role and Mailbox the one in the
-	// mail-mailbox role, nil when the application declares none; MailAppPassword the
-	// secret in the mail-app-password role, nil without one; MailboxStep the number of
-	// the mailbox's hand step.
+	// mail-mailbox role, nil when the application declares none; MailFrom the one in the
+	// mail-from role (the address the mail is from when it is not the mailbox), nil
+	// without one; MailAppPassword the secret in the mail-app-password role, nil without
+	// one; MailboxStep the number of the mailbox's hand step.
 	PublicURL            *derive.Variable
 	Mailbox              *derive.Variable
+	MailFrom             *derive.Variable
 	MailAppPassword      *derive.Secret
 	MailboxStep          int
 	GeneratedCell        string
@@ -995,6 +997,7 @@ func (v *view) roles() error {
 	v.TraceSampling = v.byRole(derive.RoleTraceSampling)
 	v.PublicURL = v.byRole(derive.RolePublicURL)
 	v.Mailbox = v.byRole(derive.RoleMailbox)
+	v.MailFrom = v.byRole(derive.RoleMailFrom)
 	if v.Jobs != nil {
 		v.JobsTemplate = v.byRole(derive.RoleJobsTemplate)
 		if v.JobsTemplate == nil {
@@ -1262,6 +1265,9 @@ func (v *view) byRole(role derive.Role) *derive.Variable {
 	return nil
 }
 
+// emptyString is how terraform.tfvars restates a string left empty.
+const emptyString = `""`
+
 // environments spells the environments and their hostnames.
 func (v *view) environments() {
 	envs := v.P.Environments
@@ -1291,7 +1297,7 @@ func (v *view) environments() {
 	hosts := make([][2]string, 0, len(envs))
 	var summary, below []string
 	for _, e := range v.Environments {
-		strs = append(strs, [2]string{e.Name, `""`})
+		strs = append(strs, [2]string{e.Name, emptyString})
 		maps = append(maps, [2]string{e.Name, "{}"})
 		hosts = append(hosts, [2]string{e.Name, `["` + strings.Join(e.Hostnames, `", "`) + `"]`})
 		host := e.Hostnames[0]
@@ -1593,7 +1599,10 @@ func (v *view) blocks() {
 	}
 	restated = append(restated, v.registrationDefaults()...)
 	if v.Mailbox != nil {
-		restated = append(restated, [2]string{"mail_mailbox", `""`})
+		restated = append(restated, [2]string{"mail_mailbox", emptyString})
+	}
+	if v.MailFrom != nil {
+		restated = append(restated, [2]string{"mail_from", emptyString})
 	}
 	if v.Jobs != nil {
 		restated = append(restated,

@@ -297,6 +297,12 @@ const (
 	// mail_mailbox, empty until the organization names one, when the application
 	// writes its mail to the log and sends nothing.
 	RoleMailbox Role = "mail-mailbox"
+	// RoleMailFrom is the address the auths' mail is from when it is not the mailbox
+	// (APP_MAIL_FROM): an alias of the mailbox's account, since Google issues no login
+	// to an alias while the relay accepts any From address in the organization's
+	// domains with the account's login. Placed once for the organization: the stack
+	// variable mail_from, empty to send from the mailbox.
+	RoleMailFrom Role = "mail-from"
 	// RoleMailAppPassword is the mailbox's app password (APP_MAIL_APP_PASSWORD,
 	// secret:"true"), the relay's login: a pinned secret like any other, which the
 	// migrate command reads too, since the data level opens the sender when it is
@@ -346,7 +352,7 @@ func (r Role) Derived() bool {
 // Placed reports a role whose value is a placement variable.
 func (r Role) Placed() bool {
 	switch r {
-	case RoleClientID, RoleHostedDomain, RoleGroupPrefix, RoleGroupLookup, RoleTenantID, RoleTenants, RoleWorkspaces, RoleAdministrator, RoleMailbox:
+	case RoleClientID, RoleHostedDomain, RoleGroupPrefix, RoleGroupLookup, RoleTenantID, RoleTenants, RoleWorkspaces, RoleAdministrator, RoleMailbox, RoleMailFrom:
 		return true
 	default:
 		return false
@@ -435,11 +441,13 @@ const (
 	// site's canonical hostname, each site's own in the sites layout. Every link the
 	// auths mail opens the login page under it.
 	varPublicURL = "APP_PUBLIC_URL"
-	// varMailMailbox and varMailAppPassword are the variables an application declares to
-	// send its auths' mail through the Google Workspace SMTP relay: the mailbox it sends
-	// as, a stack variable once for the organization, and the mailbox's app password, a
-	// secret.
+	// varMailMailbox, varMailFrom and varMailAppPassword are the variables an application
+	// declares to send its auths' mail through the Google Workspace SMTP relay: the
+	// mailbox it logs in as, the address the mail is from when that is not the mailbox
+	// (an alias of the mailbox's account), both stack variables once for the
+	// organization, and the mailbox's app password, a secret.
 	varMailMailbox     = "APP_MAIL_MAILBOX"
+	varMailFrom        = "APP_MAIL_FROM"
 	varMailAppPassword = "APP_MAIL_APP_PASSWORD"
 )
 
@@ -467,6 +475,7 @@ var wellKnown = map[string]Role{
 	JobsTemplateVariable: RoleJobsTemplate,
 	varPublicURL:         RolePublicURL,
 	varMailMailbox:       RoleMailbox,
+	varMailFrom:          RoleMailFrom,
 	varMailAppPassword:   RoleMailAppPassword,
 }
 

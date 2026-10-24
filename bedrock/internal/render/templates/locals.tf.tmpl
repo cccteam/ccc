@@ -413,6 +413,12 @@ locals {
     # application writes its mail to the log and sends nothing.
     {{.Mailbox.Name}} = var.mail_mailbox
 {{- end}}
+{{- if .MailFrom}}
+    # {{.MailFrom.Declaration}}: the address the auths' mail is from when it is not the
+    # mailbox (var.mail_from), an alias of the mailbox's account; empty sends from
+    # the mailbox.
+    {{.MailFrom.Name}} = var.mail_from
+{{- end}}
 {{- range .CodeDefaults}}
     # {{.Declaration}} is left to its code default ({{.Default}}).
 {{- end}}
