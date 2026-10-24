@@ -38,7 +38,7 @@
     },
     "resource": {
       "package-name": "resource",
-      "exclude-paths": ["lodestar"]
+      "exclude-paths": ["resource/lodestar"]
     },
     "pkg": {
       "package-name": "pkg"
