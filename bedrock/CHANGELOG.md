@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.16](https://github.com/cccteam/ccc/compare/bedrock/v0.3.15...bedrock/v0.3.16) (2026-10-24)
+
+
+### Bug Fixes
+
+* the deployer's plan comment separates the environments with a blank line and sets the unpinned-secret notice as its own paragraph ([#1114](https://github.com/cccteam/ccc/issues/1114)) ([3a8ae2e](https://github.com/cccteam/ccc/commit/3a8ae2e9deed9b0c74ab158ced160a0a34b30c76))
+
 ## [0.3.15](https://github.com/cccteam/ccc/compare/bedrock/v0.3.14...bedrock/v0.3.15) (2026-10-24)
 
 
