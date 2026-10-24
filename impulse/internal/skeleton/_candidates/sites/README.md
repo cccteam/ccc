@@ -166,7 +166,8 @@ the console pane, then the portal pane.
 The auths mail: an administrator invites a person by address with the roles the invitation
 seats, and a signed-in person adds and verifies an address. In development the mail is
 written to the server's log, link included, and nothing is sent; a deployment names a
-Workspace mailbox (`APP_MAIL_MAILBOX`, `APP_MAIL_APP_PASSWORD`) and the relay sends it. Every
+Workspace mailbox (`APP_MAIL_MAILBOX`, `APP_MAIL_APP_PASSWORD`, and `APP_MAIL_FROM` where the
+mail is from an alias of that account) and the relay sends it. Every
 link opens the login page under `APP_PUBLIC_URL`.
 
 ### Browser apps

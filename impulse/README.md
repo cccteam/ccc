@@ -870,7 +870,8 @@ signed-in person adds an address and proves it by following the link sent to it.
 package's `Settings` take the sender (`Mail`, which the data level opens: the log in
 development, where nothing is sent and a developer follows the link from the log, and the
 Google Workspace SMTP relay where the deployment names a mailbox, `APP_MAIL_MAILBOX` with
-its app password `APP_MAIL_APP_PASSWORD`) and the login page (`MailLoginURL`, the
+its app password `APP_MAIL_APP_PASSWORD` and, where the mail is from an alias of that
+account rather than the account itself, `APP_MAIL_FROM`) and the login page (`MailLoginURL`, the
 application's public address `APP_PUBLIC_URL` and the surface's login path); the settings
 copied from the source auth carry both, and the brief says to point the login page at the
 new auth's outlet. An accepted invitation seats its roles once the transaction that
