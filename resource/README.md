@@ -2075,7 +2075,7 @@ outlet's prefix (the global partition) and under the domain pair (the tenant par
 GET   <prefix>/crew-users                            the users, sort=username            List on CrewUsers
 GET   <prefix>/crew-users/{crewUserID}               one user                            Read on CrewUsers
 PATCH <prefix>/crew-users                            operations body: add /, replace     Create, Update (username, disabled), Delete on CrewUsers
-                                                     and remove /{id} → {"iDs":[...]}
+                                                     and remove /{id} → {"ids":[...]}
 GET   <prefix>/crew-seats, …/crew-seats/{user}/{role} the seats, sort=username,role       List, Read on CrewSeats
 PATCH <prefix>/crew-seats                            add /{user}/{role} {}, remove       Create, Delete on CrewSeats (a seat is never updated)
 GET   <prefix>/crew-roles, …/crew-roles/{crewRoleName} the roles a seat may take          List, Read on CrewRoles (read-only)
