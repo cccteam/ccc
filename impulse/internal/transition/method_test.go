@@ -136,10 +136,19 @@ func TestMethodApply(t *testing.T) {
 			check: func(t *testing.T, a *app.App) {
 				t.Helper()
 				file := read(t, a, "pkg/auth/staff/workspace.go")
-				for _, want := range []string{"google.Workspace(WorkspaceRegistration, settings.Workspace.HostedDomain)", "google.RoleSync(accessClient.UserManager(), settings.Workspace.GroupPrefix, lookup)", "google.ParseGroupLookup(settings.Workspace.GroupLookup)"} {
+				for _, want := range []string{"google.Workspace(WorkspaceRegistration, settings.Workspace.HostedDomain)", "google.RoleSync(accessClient.UserManager(), settings.Workspace.GroupPrefix, lookup)", "google.ParseGroupLookup(settings.Workspace.GroupLookup)", "declaration on every outlet chains .SyncsRoles()"} {
 					if !strings.Contains(file, want) {
 						t.Errorf("workspace.go lacks %q:\n%s", want, file)
 					}
+				}
+				// The declaration says what the method file does: the directory writes the
+				// roles, so the users surface the generator emits never does.
+				if program := read(t, a, "cmd/generate/resourcegenerator/main.go"); !strings.Contains(program, `generation.Auth("example.com/acme/beacon/pkg/auth/staff", generation.PasswordMethod(), generation.GoogleMethod("workspace").SyncsRoles())`) {
+					t.Errorf("program = %s", program)
+				}
+				meaning := (&Method{Auth: "staff", Spec: authpkg.Method{Kind: app.MethodGoogle, Name: "workspace", Authority: AuthorityDirectory}}).Meaning()
+				if !strings.Contains(meaning, "The declaration chains `.SyncsRoles()` (the method file's `RoleSync`), so the generated users surface shows these people's roles as the directory's and never writes them.") {
+					t.Errorf("Meaning() lacks the declaration's flag:\n%s", meaning)
 				}
 			},
 		},
@@ -196,7 +205,7 @@ func TestMethodApply(t *testing.T) {
 			wantDid: []string{
 				"pkg/auth/staff/directory.go: the directory method (azure, one tenant, members of the directory, role membership the directory's): its registration constant, its settings, its handlers (DirectoryLogin and the rest), and registerDirectory, which registers it on the Auth",
 				"pkg/config/data.go: dataConfig reads the staff auth's directory registration from APP_STAFF_DIRECTORY_TENANT_ID, APP_STAFF_DIRECTORY_CLIENT_ID, APP_STAFF_DIRECTORY_CLIENT_SECRET, APP_STAFF_DIRECTORY_REDIRECT_URL, and the staff.Settings literal in NewDataConfiguration (an application composed before the staffSettings method) passes them",
-				`cmd/generate/resourcegenerator/main.go: generation.AzureMethod("directory") declared on 1 outlet Auth option(s) bound to the staff auth, so the generated router mounts user/directory/login, the callback and the front-channel logout and the methods route offers it`,
+				`cmd/generate/resourcegenerator/main.go: generation.AzureMethod("directory").SyncsRoles() declared on 1 outlet Auth option(s) bound to the staff auth, so the generated router mounts user/directory/login, the callback and the front-channel logout and the methods route offers it`,
 			},
 			wantSkipped: []string{
 				"pkg/config/data.go: LoginURL is set to /login when the construction had none; make it the login page of the surface bound to the staff auth",

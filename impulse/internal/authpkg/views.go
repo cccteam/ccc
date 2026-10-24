@@ -258,7 +258,7 @@ func azureView(mv *methodView, m *Method, settings string) {
 	case SlotAnyPersonal:
 		mv.SlotExpr = "azure.Tenants(azure.AnyTenant(), azure.PersonalAccounts())"
 	}
-	if m.Authority == app.AuthorityDirectory {
+	if m.SyncsRoles() {
 		mv.RoleSyncExpr = "signin.RoleSync(accessClient.UserManager())"
 	} else {
 		mv.RoleSyncExpr = "signin.DisableRoleSync()"
@@ -289,7 +289,7 @@ func googleView(mv *methodView, m *Method, settings string) {
 	case SlotMixed:
 		mv.SlotExpr = "google.Workspaces(" + workspace + ", google.AnyGoogleAccount())"
 	}
-	if m.Authority == app.AuthorityDirectory {
+	if m.SyncsRoles() {
 		mv.RoleSyncExpr = "google.RoleSync(accessClient.UserManager(), " + settings + ".GroupPrefix, lookup)"
 	} else {
 		mv.RoleSyncExpr = "google.DisableRoleSync()"
@@ -298,7 +298,7 @@ func googleView(mv *methodView, m *Method, settings string) {
 	if m.slot() == SlotListed {
 		mv.Imports = append(mv.Imports, "strings")
 	}
-	if m.slot() == SlotListed || m.Authority == app.AuthorityDirectory {
+	if m.slot() == SlotListed || m.SyncsRoles() {
 		mv.Imports = append(mv.Imports, "github.com/go-playground/errors/v5")
 	}
 }

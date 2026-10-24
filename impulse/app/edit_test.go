@@ -410,3 +410,85 @@ func run() {
 		})
 	}
 }
+
+func TestChainMethodFlag(t *testing.T) {
+	t.Parallel()
+
+	src := `package main
+
+import gen "github.com/cccteam/ccc/resource/generation"
+
+func run() {
+	_, _ = gen.NewResourceGenerator(nil, "pkg/resources", nil,
+		gen.GenerateRouter(),
+		gen.GenerateRoutes("pkg/router", "api", gen.Auth("example.com/acme/pkg/auth/staff", gen.PasswordMethod(), gen.GoogleMethod("google")), gen.WebApp("/")),
+		gen.WithRouterOutlet("portal", "portal/api", gen.Auth("example.com/acme/pkg/auth/members", gen.GoogleMethod("directory").Labeled("Company directory").InvitedUsers(), gen.AzureMethod("entra").SyncsRoles())),
+		gen.WithRouterOutlet("kiosk", "kiosk", gen.Auth("example.com/acme/pkg/auth/staff", gen.PasswordMethod(), gen.GoogleMethod("google"))),
+	)
+}
+`
+	tests := []struct {
+		name        string
+		importPath  string
+		method      string
+		flag        string
+		wantCount   int
+		wantContain []string
+		wantErr     string
+	}{
+		{
+			name: "every outlet bound to the package, after what the declaration chains", importPath: "example.com/acme/pkg/auth/staff", method: "google", flag: "SyncsRoles", wantCount: 2,
+			wantContain: []string{`gen.Auth("example.com/acme/pkg/auth/staff", gen.PasswordMethod(), gen.GoogleMethod("google").SyncsRoles()), gen.WebApp("/")`, `gen.WithRouterOutlet("kiosk", "kiosk", gen.Auth("example.com/acme/pkg/auth/staff", gen.PasswordMethod(), gen.GoogleMethod("google").SyncsRoles()))`, `gen.GoogleMethod("directory").Labeled("Company directory").InvitedUsers(), gen.AzureMethod("entra").SyncsRoles()`},
+		},
+		{
+			name: "a label and a flag already chained", importPath: "example.com/acme/pkg/auth/members", method: "directory", flag: "SyncsRoles", wantCount: 1,
+			wantContain: []string{`gen.GoogleMethod("directory").Labeled("Company directory").InvitedUsers().SyncsRoles(), gen.AzureMethod("entra").SyncsRoles()`, `gen.GoogleMethod("google")), gen.WebApp("/")`},
+		},
+		{
+			name: "a declaration chaining the flag already", importPath: "example.com/acme/pkg/auth/members", method: "entra", flag: "SyncsRoles", wantCount: 0,
+			wantContain: []string{`gen.AzureMethod("entra").SyncsRoles())`},
+		},
+		{
+			name: "the password method", importPath: "example.com/acme/pkg/auth/staff", method: "password", flag: "UsernameIsEmail", wantCount: 2,
+			wantContain: []string{`gen.Auth("example.com/acme/pkg/auth/staff", gen.PasswordMethod().UsernameIsEmail(), gen.GoogleMethod("google")), gen.WebApp("/")`},
+		},
+		{
+			name: "a package no outlet binds to", importPath: "example.com/acme/pkg/auth/partners", method: "google", flag: "SyncsRoles", wantCount: 0,
+		},
+		{
+			name: "a method the outlet does not declare", importPath: "example.com/acme/pkg/auth/members", method: "google", flag: "SyncsRoles", wantCount: 0,
+		},
+		{
+			name: "a word that is no flag", importPath: "example.com/acme/pkg/auth/staff", method: "google", flag: "Labeled",
+			wantErr: `"Labeled" is not a flag a method declaration chains`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			out, n, err := ChainMethodFlag("main.go", []byte(src), tt.importPath, tt.method, tt.flag)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("ChainMethodFlag() error = %v, want %q", err, tt.wantErr)
+				}
+
+				return
+			}
+			if err != nil {
+				t.Fatalf("ChainMethodFlag() error = %v", err)
+			}
+			if n != tt.wantCount {
+				t.Errorf("edited = %d, want %d", n, tt.wantCount)
+			}
+			for _, want := range tt.wantContain {
+				if !strings.Contains(string(out), want) {
+					t.Errorf("output lacks %q:\n%s", want, out)
+				}
+			}
+			if n == 0 && string(out) != src {
+				t.Errorf("nothing to chain, but the source changed:\n%s", out)
+			}
+		})
+	}
+}

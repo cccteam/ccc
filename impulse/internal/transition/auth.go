@@ -928,7 +928,7 @@ func (au Auth) registrationNote() string {
 // methods' authorities.
 func (au Auth) identitiesNote() string {
 	if au.authority() == AuthorityDirectory {
-		return " Seed no role assignments for the directory-run method: the directory assigns them, and the role file defines what each role may do."
+		return " Seed no role assignments for the directory-run method: the directory assigns them, and the role file defines what each role may do; its declaration chains `.SyncsRoles()` (the method file's `RoleSync`), so the generated users surface shows these people's roles as the directory's and never writes them."
 	}
 
 	return fmt.Sprintf(" Give the %s auth its development identities in the bootstrap identities: a login with a password for the password method, role assignments by username under `global`, `everyDomain` and `domains` for a directory method, kept apart from the other auths' identities.", au.Name)
