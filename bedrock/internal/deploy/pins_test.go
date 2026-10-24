@@ -84,13 +84,13 @@ func TestPinMessages(t *testing.T) {
 			name:        "one secret",
 			unpinned:    []string{"APP_MAIL_KEY"},
 			wantRefusal: `the code declares a secret stg has no pinned version for (secret_versions.stg in infrastructure/terraform.tfvars): APP_MAIL_KEY. stg's processes would start without it, so the release is refused here; pin it after an operator adds its value (bedrock secret add stg APP_MAIL_KEY): bedrock secret pin stg APP_MAIL_KEY <version>. The pin promotes as a release; tst, the first environment, alone runs without one ("not yet").`,
-			wantNotice:  "APP_MAIL_KEY has no pinned version in stg (secret_versions.stg in infrastructure/terraform.tfvars); the release is refused there until it is pinned (bedrock secret pin stg APP_MAIL_KEY <version>, after bedrock secret add stg APP_MAIL_KEY has put the value in place).",
+			wantNotice:  "**Refused until pinned.** `APP_MAIL_KEY` has no pinned version in stg (`secret_versions.stg` in `infrastructure/terraform.tfvars`). After `bedrock secret add stg APP_MAIL_KEY` has put a value in place, pin it: `bedrock secret pin stg APP_MAIL_KEY <version>`.",
 		},
 		{
 			name:        "several secrets, each with its pin",
 			unpinned:    []string{"APP_MAIL_KEY", "APP_COOKIE_KEY"},
 			wantRefusal: `the code declares secrets stg has no pinned version for (secret_versions.stg in infrastructure/terraform.tfvars): APP_MAIL_KEY, APP_COOKIE_KEY. stg's processes would start without them, so the release is refused here; pin each after an operator adds its value (bedrock secret add stg <VARIABLE>): bedrock secret pin stg APP_MAIL_KEY <version>, bedrock secret pin stg APP_COOKIE_KEY <version>. The pin promotes as a release; tst, the first environment, alone runs without one ("not yet").`,
-			wantNotice:  "APP_MAIL_KEY, APP_COOKIE_KEY have no pinned version in stg (secret_versions.stg in infrastructure/terraform.tfvars); the release is refused there until each is pinned (bedrock secret pin stg APP_MAIL_KEY <version>, bedrock secret pin stg APP_COOKIE_KEY <version>, after bedrock secret add stg <VARIABLE> has put the value in place).",
+			wantNotice:  "**Refused until pinned.** `APP_MAIL_KEY` and `APP_COOKIE_KEY` have no pinned version in stg (`secret_versions.stg` in `infrastructure/terraform.tfvars`). After `bedrock secret add stg <VARIABLE>` has put a value in place, pin each: `bedrock secret pin stg APP_MAIL_KEY <version>`, `bedrock secret pin stg APP_COOKIE_KEY <version>`.",
 		},
 	}
 	for _, tt := range tests {

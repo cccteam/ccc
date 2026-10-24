@@ -90,8 +90,9 @@ func testPins(w Workspace, env string, out io.Writer) (*derive.Model, error) {
 
 // pinSummary is what an environment's summary says of its secret pins on a pull request:
 // the notice for an environment after the first that has no pinned version for a secret
-// the code declares, said in the log too; empty otherwise, and always for the first
-// environment, which runs without a pin.
+// the code declares, a quoted paragraph of its own under the plan's summary line, said in
+// the log too; empty otherwise, and always for the first environment, which runs without
+// a pin.
 func pinSummary(w Workspace, m *derive.Model, env string, out io.Writer) (string, error) {
 	unpinned, err := unpinnedSecrets(w, m, env)
 	if err != nil || len(unpinned) == 0 || env == m.Placement.Integration() {
@@ -100,7 +101,7 @@ func pinSummary(w Workspace, m *derive.Model, env string, out io.Writer) (string
 	notice := pinNotice(env, unpinned)
 	fmt.Fprintf(out, "%s: %s\n", env, notice)
 
-	return " " + notice, nil
+	return "\n\n> " + notice + "\n", nil
 }
 
 // pinRefusal says why a tag build refuses the release in env: the secrets the code
@@ -115,16 +116,42 @@ func pinRefusal(env, first string, unpinned []string) string {
 	return fmt.Sprintf("the code declares %s %s has no pinned version for (%s in %s): %s. %s's processes would start without %s, so the release is refused here; pin %s after an operator adds its value (%s): %s. The pin promotes as a release; %s, the first environment, alone runs without one (\"not yet\").", noun, env, pinsKey(env), stackTfvars, strings.Join(unpinned, ", "), env, them(unpinned), each(unpinned), addCommand(env, unpinned), pinCommands(env, unpinned), first)
 }
 
-// pinNotice is the pull request's line for env: the secrets the code declares that env has
-// no pinned version for, in declaration order, that the release is refused there until each
-// is pinned, and the pin to make for each.
+// pinNotice is the pull request's paragraph for env: that the release is refused there
+// until the secrets the code declares that env has no pinned version for are pinned, which
+// they are, in declaration order, where the pin lives, and the commands that put a value in
+// place and pin it. The names and commands are code spans, since the paragraph is markdown.
 func pinNotice(env string, unpinned []string) string {
 	have := "have"
 	if len(unpinned) == 1 {
 		have = "has"
 	}
 
-	return fmt.Sprintf("%s %s no pinned version in %s (%s in %s); the release is refused there until %s is pinned (%s, after %s has put the value in place).", strings.Join(unpinned, ", "), have, env, pinsKey(env), stackTfvars, each(unpinned), pinCommands(env, unpinned), addCommand(env, unpinned))
+	return fmt.Sprintf("**Refused until pinned.** %s %s no pinned version in %s (`%s` in `%s`). After `%s` has put a value in place, pin %s: %s.", codeList(unpinned), have, env, pinsKey(env), stackTfvars, addCommand(env, unpinned), each(unpinned), codePinCommands(env, unpinned))
+}
+
+// codeList is the unpinned secrets' names as code spans: "`A`", "`A` and `B`", "`A`, `B`
+// and `C`".
+func codeList(unpinned []string) string {
+	spans := make([]string, 0, len(unpinned))
+	for _, variable := range unpinned {
+		spans = append(spans, "`"+variable+"`")
+	}
+	if len(spans) <= 1 {
+		return strings.Join(spans, "")
+	}
+
+	return strings.Join(spans[:len(spans)-1], ", ") + " and " + spans[len(spans)-1]
+}
+
+// codePinCommands are the pins to make as code spans, one bedrock secret pin per variable,
+// comma-separated.
+func codePinCommands(env string, unpinned []string) string {
+	commands := make([]string, 0, len(unpinned))
+	for _, variable := range unpinned {
+		commands = append(commands, "`bedrock secret pin "+env+" "+variable+" <version>`")
+	}
+
+	return strings.Join(commands, ", ")
 }
 
 // them is the pronoun for the unpinned secrets: "it" for one, "them" for several.
