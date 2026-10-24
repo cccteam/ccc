@@ -1265,6 +1265,8 @@ func (v *view) byRole(role derive.Role) *derive.Variable {
 	return nil
 }
 
+// emptyString is how terraform.tfvars restates a string left empty.
+const emptyString = `""`
 // environments spells the environments and their hostnames.
 func (v *view) environments() {
 	envs := v.P.Environments
@@ -1294,7 +1296,7 @@ func (v *view) environments() {
 	hosts := make([][2]string, 0, len(envs))
 	var summary, below []string
 	for _, e := range v.Environments {
-		strs = append(strs, [2]string{e.Name, `""`})
+		strs = append(strs, [2]string{e.Name, emptyString})
 		maps = append(maps, [2]string{e.Name, "{}"})
 		hosts = append(hosts, [2]string{e.Name, `["` + strings.Join(e.Hostnames, `", "`) + `"]`})
 		host := e.Hostnames[0]
@@ -1596,10 +1598,10 @@ func (v *view) blocks() {
 	}
 	restated = append(restated, v.registrationDefaults()...)
 	if v.Mailbox != nil {
-		restated = append(restated, [2]string{"mail_mailbox", `""`})
+		restated = append(restated, [2]string{"mail_mailbox", emptyString})
 	}
 	if v.MailFrom != nil {
-		restated = append(restated, [2]string{"mail_from", `""`})
+		restated = append(restated, [2]string{"mail_from", emptyString})
 	}
 	if v.Jobs != nil {
 		restated = append(restated,
