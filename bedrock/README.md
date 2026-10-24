@@ -437,7 +437,9 @@ any other; the application's public address (`APP_PUBLIC_URL`, which every link 
 mail opens the login page under) is derived from the site's canonical hostname, each
 site's own in the sites layout; the Google Workspace mailbox the auths' mail is sent as
 (`APP_MAIL_MAILBOX`) becomes a stack variable once for the organization (`mail_mailbox`,
-empty until named, when the application writes its mail to the log) and a hand step, and
+empty until named, when the application writes its mail to the log) and a hand step, the
+address the mail is from when it is not the mailbox (`APP_MAIL_FROM`, an alias of the
+mailbox's account) a second one beside it (`mail_from`, empty to send from the mailbox), and
 its app password (`APP_MAIL_APP_PASSWORD`) a secret the migrate command reads too, since
 the data level opens the sender;
 a main package under `cmd/deployment/migrate` becomes the migrate command, which the
