@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.7](https://github.com/cccteam/ccc/compare/resource/v0.15.6...resource/v0.15.7) (2026-10-24)
+
+
+### Features
+
+* the skeletons and Lodestar declare the address the auths' mail is from, so a no-reply alias of the mailbox account is the sender ([#1110](https://github.com/cccteam/ccc/issues/1110)) ([641e2fc](https://github.com/cccteam/ccc/commit/641e2fc2cf1eee22daa20c3485c426a3da900254))
+
 ## [0.15.6](https://github.com/cccteam/ccc/compare/resource/v0.15.5...resource/v0.15.6) (2026-10-23)
 
 
