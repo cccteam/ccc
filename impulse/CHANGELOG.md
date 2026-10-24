@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.11](https://github.com/cccteam/ccc/compare/impulse/v0.5.10...impulse/v0.5.11) (2026-10-24)
+
+
+### Bug Fixes
+
+* the Google method declaration impulse writes chains SyncsRoles whenever its method file syncs roles from the directory ([#1122](https://github.com/cccteam/ccc/issues/1122)) ([6276e4a](https://github.com/cccteam/ccc/commit/6276e4a32c05e525b916cfcae616d4553dbbb7ad))
+
 ## [0.5.10](https://github.com/cccteam/ccc/compare/impulse/v0.5.9...impulse/v0.5.10) (2026-10-24)
 
 
