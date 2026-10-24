@@ -1,9 +1,13 @@
+// The page fills the viewport exactly: the padding counts inside the minimum height
+// (border-box), and the dynamic viewport unit follows a mobile browser's toolbars, so
+// the login never scrolls on its own; a card taller than the viewport scrolls from the top.
 .login-page {
   display: flex;
   justify-content: center;
-  padding: 64px 24px;
-  min-height: 100vh;
   align-items: flex-start;
+  box-sizing: border-box;
+  min-height: 100dvh;
+  padding: 64px 24px;
 }
 
 .login-card {
