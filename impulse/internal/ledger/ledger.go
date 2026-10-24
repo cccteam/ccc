@@ -394,6 +394,27 @@ var Steps = []Step{
 		Impulse: release("v0.5.12"),
 		Note:    "session v0.13.8, and the web pins move with the step to @cccteam/resource 0.0.12, @cccteam/resource-angular 0.0.16 and @cccteam/resource-firestore 0.0.10 (the walk rewrites them in every web root's package.json and runs bun install there): the login page keeps showing an invitation after a refused directory sign-in (the methods listing names the invitation the browser carries), offers only the directory buttons that could admit the invited address, puts \"Create an account with a password\" last, and says in plain words why a sign-in was refused; an invitation to an address no sign-in method of the auth could admit is refused when it is sent, with a sentence naming the domain; a sign-in that is refused leaves the invitation it carried standing; nothing to change in the application by hand",
 	},
+	{
+		Pins: pins(`
+			access v0.11.1
+			ccc v0.3.5
+			ccc/accesstypes v0.7.0
+			ccc/cloud v0.2.1
+			ccc/resource v0.15.4
+			ccc/tracer v0.3.0
+			db-initiator v0.4.3
+			httpio v0.7.22
+			logger v0.1.30
+			session v0.13.9
+		`),
+		Web: web(`
+			@cccteam/resource 0.0.12
+			@cccteam/resource-angular 0.0.16
+			@cccteam/resource-firestore 0.0.10
+		`),
+		Impulse: release("v0.5.13"),
+		Note:    "session v0.13.9: a directory sign-in resolves to the user who holds its confirmed address when no user is under the sign-in name (a password user is held for the password confirmation, which links the identity to that user; a user without a password is linked outright), and a new user is never provisioned over an address another user holds confirmed; nothing to change in the application by hand",
+	},
 }
 
 // validatePending holds a step's Pending mark to its pins: a pin at a pseudo-version
