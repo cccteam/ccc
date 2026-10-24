@@ -6,6 +6,7 @@ import (
 	"io"
 	"maps"
 	"os"
+	osexec "os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -115,6 +116,12 @@ type upgradeExec struct {
 	commits  []string
 	dirty    string
 	fail     string
+	// noBun has bun --version fail as a command not found does; bunFails has bun install
+	// exit 1 with an error line. bunDirs records the directories bun install ran in,
+	// relative to the root.
+	noBun    bool
+	bunFails bool
+	bunDirs  []string
 }
 
 // exitStatus is the error a fake command exits non-zero with, carrying the status as the
@@ -132,13 +139,30 @@ func (e exitStatus) ExitCode() int {
 	return e.code
 }
 
-func (f *upgradeExec) Run(_ context.Context, _ string, _ []string, name string, args ...string) ([]byte, error) {
+func (f *upgradeExec) Run(_ context.Context, dir string, _ []string, name string, args ...string) ([]byte, error) {
 	line := name + " " + strings.Join(args, " ")
 	f.calls = append(f.calls, line)
 	if f.fail != "" && strings.HasPrefix(line, f.fail) {
 		return []byte("refused: " + line + "\n"), exitStatus{code: 2, line: line}
 	}
 	switch {
+	case line == "bun --version":
+		if f.noBun {
+			return nil, &osexec.Error{Name: "bun", Err: osexec.ErrNotFound}
+		}
+
+		return []byte("1.4.3\n"), nil
+	case line == "bun install":
+		rel, err := filepath.Rel(f.root, dir)
+		if err != nil {
+			return nil, errors.Wrap(err, "filepath.Rel()")
+		}
+		f.bunDirs = append(f.bunDirs, filepath.ToSlash(rel))
+		if f.bunFails {
+			return []byte("error: package \"@cccteam/resource-angular@0.0.7\" not found\n"), exitStatus{code: 1, line: line}
+		}
+
+		return []byte("3 packages installed\n"), nil
 	case line == "git status --porcelain --untracked-files=all":
 		return []byte(f.dirty), nil
 	case line == "git diff --cached --name-only":
@@ -308,6 +332,43 @@ func pseudoLedger() []ledger.Step {
 	return steps
 }
 
+// webLedger is upgradeLedger with web pins: the first two steps at the first web
+// library's versions, the last step moving all three.
+func webLedger() []ledger.Step {
+	steps := upgradeLedger()
+	steps[0].Web = map[string]string{"@cccteam/resource": "0.0.5", "@cccteam/resource-angular": "0.0.5", "@cccteam/resource-firestore": "0.0.3"}
+	steps[1].Web = steps[0].Web
+	steps[2].Web = map[string]string{"@cccteam/resource": "0.0.6", "@cccteam/resource-angular": "0.0.7", "@cccteam/resource-firestore": "0.0.4"}
+
+	return steps
+}
+
+// webPackageJSON is a web root's package.json at the three versions, formatted as the
+// skeleton's is, the client pinned in the dependencies and the overrides both.
+func webPackageJSON(resource, angular, firestore string) string {
+	return `{
+  "name": "beacon-web",
+  "private": true,
+  "dependencies": {
+    "@angular/core": "^21.1.1",
+    "@cccteam/resource": "` + resource + `",
+    "@cccteam/resource-angular":   "` + angular + `",
+    "@cccteam/resource-firestore": "` + firestore + `",
+    "rxjs": "~7.8.2"
+  },
+  "overrides": {
+    "@cccteam/resource": "` + resource + `"
+  }
+}
+`
+}
+
+// webRoot is a web root's files at the versions: angular.json, which makes it a browser
+// application, and its package.json.
+func webRoot(dir, resource, angular, firestore string) map[string]string {
+	return map[string]string{dir + "/angular.json": "{}", dir + "/package.json": webPackageJSON(resource, angular, firestore)}
+}
+
 func passing(context.Context, *check.Env) []check.Result {
 	return []check.Result{{Name: "pins", Status: check.Pass, Summary: "ok"}}
 }
@@ -375,20 +436,115 @@ func TestUpgrade(t *testing.T) {
 		generate     string
 		report       string
 		verify       func(context.Context, *check.Env) []check.Result
+		noBun        bool
+		bunFails     bool
 		// wantOut are fragments of the output in order, wantNoOut fragments it must not
 		// hold; wantCalls the commands run (the git status, rev-parse and diff --cached
 		// reads left out); wantCommits where go.mod stood at each commit; wantMarker the
-		// marker after the walk; wantBrief whether the handoff brief exists after,
-		// wantInBrief a fragment of it; wantErr the error.
+		// marker after the walk; wantFiles the content of files after it, by path;
+		// wantBunDirs the directories bun install ran in; wantBrief whether the handoff
+		// brief exists after, wantInBrief a fragment of it; wantErr the error.
 		wantOut     []string
 		wantNoOut   []string
 		wantCalls   []string
 		wantCommits []string
 		wantMarker  string
+		wantFiles   map[string]string
+		wantBunDirs []string
 		wantBrief   bool
 		wantInBrief string
 		wantErr     string
 	}{
+		{
+			name:    "a dry run lists the web roots and the moves, and changes nothing",
+			goMod:   upgradeGoMod("v0.2.0", "v0.1.0", "v0.2.0"),
+			files:   concatFiles(webRoot("web", "0.0.5", "0.0.5", "0.0.3"), webRoot("apps/portal/web", "0.0.6", "0.0.7", "0.0.4")),
+			steps:   webLedger(),
+			running: check.Build{Version: "v0.3.0", FromModule: true},
+			dryRun:  true,
+			wantOut: []string{
+				"beacon stands at step 2 of 3 and pins impulse v0.2.0; the walk:\n  step 3, access v0.2.0, ccc/resource v0.3.0, web @cccteam/resource 0.0.6, @cccteam/resource-angular 0.0.7, @cccteam/resource-firestore 0.0.4, pins ccc/impulse v0.3.0: no code change is needed\n",
+				"The web library's pins move in 2 web root(s):\n  apps/portal/web/package.json: at the web pins already\n  web/package.json: @cccteam/resource 0.0.5 to 0.0.6, @cccteam/resource-angular 0.0.5 to 0.0.7, @cccteam/resource-firestore 0.0.3 to 0.0.4\n",
+			},
+			wantFiles: map[string]string{"web/package.json": webPackageJSON("0.0.5", "0.0.5", "0.0.3")},
+		},
+		{
+			name:    "a step's web pins move in every web root behind them: package.json edited in place, bun install run there, both in the commit; a root at them already is left; the subject names the packages",
+			goMod:   upgradeGoMod("v0.2.0", "v0.1.0", "v0.2.0"),
+			files:   concatFiles(webRoot("web", "0.0.5", "0.0.5", "0.0.3"), webRoot("apps/portal/web", "0.0.6", "0.0.7", "0.0.4")),
+			steps:   webLedger(),
+			running: check.Build{Version: "v0.3.0", FromModule: true},
+			verify:  passing,
+			wantOut: []string{
+				"Pin github.com/cccteam/access to v0.2.0.\nPin github.com/cccteam/ccc/resource to v0.3.0.\nPin the impulse tool to v0.3.0.\n",
+				"@cccteam/resource in apps/portal/web/package.json is at 0.0.6 already.\n@cccteam/resource-angular in apps/portal/web/package.json is at 0.0.7 already.\n@cccteam/resource-firestore in apps/portal/web/package.json is at 0.0.4 already.\n",
+				"Pin @cccteam/resource in web/package.json to 0.0.6.\nPin @cccteam/resource-angular in web/package.json to 0.0.7.\nPin @cccteam/resource-firestore in web/package.json to 0.0.4.\nRunning bun install in web\n",
+				"Committed: upgrade: access, ccc/resource, ccc/impulse, @cccteam/resource, @cccteam/resource-angular, @cccteam/resource-firestore.",
+			},
+			wantCalls: []string{
+				"bun --version",
+				"go get github.com/cccteam/access@v0.2.0 github.com/cccteam/ccc/resource@v0.3.0", "go get -tool github.com/cccteam/ccc/impulse@v0.3.0", "go mod tidy", "bun install", "go generate ./...", "git add -A",
+				"git commit -q -m upgrade: access, ccc/resource, ccc/impulse, @cccteam/resource, @cccteam/resource-angular, @cccteam/resource-firestore -m no code change is needed\n\nPins moved: access v0.2.0, ccc/resource v0.3.0, ccc/impulse v0.3.0, @cccteam/resource 0.0.6, @cccteam/resource-angular 0.0.7, @cccteam/resource-firestore 0.0.4.",
+			},
+			wantCommits: []string{"step 3, impulse v0.3.0"},
+			wantFiles:   map[string]string{"web/package.json": webPackageJSON("0.0.6", "0.0.7", "0.0.4"), "apps/portal/web/package.json": webPackageJSON("0.0.6", "0.0.7", "0.0.4")},
+			wantBunDirs: []string{"web"},
+		},
+		{
+			name:    "a web pin bumped by hand ahead of the step stays, and the others move",
+			goMod:   upgradeGoMod("v0.2.0", "v0.1.0", "v0.2.0"),
+			files:   webRoot("web", "0.0.5", "0.0.9", "0.0.3"),
+			steps:   webLedger(),
+			running: check.Build{Version: "v0.3.0", FromModule: true},
+			verify:  passing,
+			wantOut: []string{
+				"The web library's pins move in 1 web root(s):\n  web/package.json: @cccteam/resource 0.0.5 to 0.0.6, @cccteam/resource-angular 0.0.9 stays, ahead of 0.0.7, @cccteam/resource-firestore 0.0.3 to 0.0.4\n",
+				"Pin @cccteam/resource in web/package.json to 0.0.6.\n@cccteam/resource-angular in web/package.json is at 0.0.9 already.\nPin @cccteam/resource-firestore in web/package.json to 0.0.4.\nRunning bun install in web\n",
+				"Committed: upgrade: access, ccc/resource, ccc/impulse, @cccteam/resource, @cccteam/resource-firestore.",
+			},
+			wantCalls: []string{
+				"bun --version",
+				"go get github.com/cccteam/access@v0.2.0 github.com/cccteam/ccc/resource@v0.3.0", "go get -tool github.com/cccteam/ccc/impulse@v0.3.0", "go mod tidy", "bun install", "go generate ./...", "git add -A",
+				"git commit -q -m upgrade: access, ccc/resource, ccc/impulse, @cccteam/resource, @cccteam/resource-firestore -m no code change is needed\n\nPins moved: access v0.2.0, ccc/resource v0.3.0, ccc/impulse v0.3.0, @cccteam/resource 0.0.6, @cccteam/resource-firestore 0.0.4.",
+			},
+			wantFiles:   map[string]string{"web/package.json": webPackageJSON("0.0.6", "0.0.9", "0.0.4")},
+			wantBunDirs: []string{"web"},
+		},
+		{
+			name:    "no web root names the web library: the plan says so, and no bun runs",
+			goMod:   upgradeGoMod("v0.2.0", "v0.1.0", "v0.2.0"),
+			steps:   webLedger(),
+			running: check.Build{Version: "v0.3.0", FromModule: true},
+			verify:  passing,
+			wantOut: []string{"No web root names the web library, so the steps' web pins have nowhere to move.\n", "Committed: upgrade: access v0.2.0, ccc/resource v0.3.0, ccc/impulse v0.3.0."},
+			wantCalls: []string{
+				"go get github.com/cccteam/access@v0.2.0 github.com/cccteam/ccc/resource@v0.3.0", "go get -tool github.com/cccteam/ccc/impulse@v0.3.0", "go mod tidy", "go generate ./...", "git add -A",
+				"git commit -q -m upgrade: access v0.2.0, ccc/resource v0.3.0, ccc/impulse v0.3.0 -m no code change is needed",
+			},
+		},
+		{
+			name:      "bun missing: the walk refuses before anything moves",
+			goMod:     upgradeGoMod("v0.2.0", "v0.1.0", "v0.2.0"),
+			files:     webRoot("web", "0.0.5", "0.0.5", "0.0.3"),
+			steps:     webLedger(),
+			running:   check.Build{Version: "v0.3.0", FromModule: true},
+			noBun:     true,
+			wantCalls: []string{"bun --version"},
+			wantFiles: map[string]string{"web/package.json": webPackageJSON("0.0.5", "0.0.5", "0.0.3")},
+			wantErr:   "bun could not run (bun --version: exec: \"bun\": executable file not found in $PATH): the walk moves the web library's pins in each web root's package.json and runs bun install there, so bun.lock records them; install bun (https://bun.sh) or put it on PATH, and run impulse upgrade again; nothing moved",
+		},
+		{
+			name:        "a failing bun install stops the step with the edit in the tree and the install's words",
+			goMod:       upgradeGoMod("v0.2.0", "v0.1.0", "v0.2.0"),
+			files:       webRoot("web", "0.0.5", "0.0.5", "0.0.3"),
+			steps:       webLedger(),
+			running:     check.Build{Version: "v0.3.0", FromModule: true},
+			bunFails:    true,
+			wantCalls:   []string{"bun --version", "go get github.com/cccteam/access@v0.2.0 github.com/cccteam/ccc/resource@v0.3.0", "go get -tool github.com/cccteam/ccc/impulse@v0.3.0", "go mod tidy", "bun install"},
+			wantFiles:   map[string]string{"web/package.json": webPackageJSON("0.0.6", "0.0.7", "0.0.4")},
+			wantBunDirs: []string{"web"},
+			wantErr:     `bun install in web failed: error: package "@cccteam/resource-angular@0.0.7" not found; web/package.json holds the step's web pins and bun.lock does not yet: fix what the install reports, run bun install there, and run impulse upgrade again once the tree is committed or restored`,
+		},
 		{
 			name:    "an application on the single-method session types is refused before anything moves, a dry run too",
 			goMod:   upgradeGoMod("v0.1.0", "v0.1.0", "v0.1.0"),
@@ -839,7 +995,7 @@ func TestUpgrade(t *testing.T) {
 			if report == "" {
 				report = cleanReport
 			}
-			exec := &upgradeExec{root: root, steps: tt.steps, drags: upgradeDrags(t), holds: tt.holds, refusal: tt.refusal, generate: tt.generate, report: report, dirty: tt.dirty, fail: tt.fail}
+			exec := &upgradeExec{root: root, steps: tt.steps, drags: upgradeDrags(t), holds: tt.holds, refusal: tt.refusal, generate: tt.generate, report: report, dirty: tt.dirty, fail: tt.fail, noBun: tt.noBun, bunFails: tt.bunFails}
 			var out, errOut strings.Builder
 			u := &upgrader{
 				exec: exec, steps: tt.steps, running: tt.running, verify: tt.verify,
@@ -887,6 +1043,18 @@ func TestUpgrade(t *testing.T) {
 				if string(data) != tt.wantMarker {
 					t.Errorf("marker = %q, want %q", data, tt.wantMarker)
 				}
+			}
+			for rel, want := range tt.wantFiles {
+				data, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel)))
+				if err != nil {
+					t.Fatal(err)
+				}
+				if diff := cmp.Diff(want, string(data)); diff != "" {
+					t.Errorf("%s mismatch (-want +got):\n%s", rel, diff)
+				}
+			}
+			if diff := cmp.Diff(tt.wantBunDirs, exec.bunDirs); diff != "" {
+				t.Errorf("bun install directories mismatch (-want +got):\n%s", diff)
 			}
 			brief, err := os.ReadFile(filepath.Join(root, handoff.File))
 			if (err == nil) != tt.wantBrief {
@@ -964,6 +1132,69 @@ func TestToolPinDrag(t *testing.T) {
 			}
 			if got := ledger.Position(steps, pins, ""); got != tt.want {
 				t.Errorf("Position() = %d, want %d", got, tt.want)
+			}
+		})
+	}
+}
+
+// concatFiles joins file sets.
+func concatFiles(sets ...map[string]string) map[string]string {
+	all := map[string]string{}
+	for _, set := range sets {
+		maps.Copy(all, set)
+	}
+
+	return all
+}
+
+// TestRewriteWebPins moves the pins in place: every spec behind the version, in every
+// section, takes it, with the file's formatting kept; a spec at or beyond it, a package
+// not pinned and everything else in the file stay.
+func TestRewriteWebPins(t *testing.T) {
+	t.Parallel()
+
+	pins := map[string]string{"@cccteam/resource": "0.0.12", "@cccteam/resource-angular": "0.0.16", "@cccteam/resource-firestore": "0.0.10"}
+	tests := []struct {
+		name      string
+		data      string
+		want      string
+		wantMoved map[string]string
+	}{
+		{
+			name:      "every section behind moves, the formatting kept",
+			data:      webPackageJSON("0.0.11", "0.0.15", "0.0.9"),
+			want:      webPackageJSON("0.0.12", "0.0.16", "0.0.10"),
+			wantMoved: map[string]string{"@cccteam/resource": "0.0.11", "@cccteam/resource-angular": "0.0.15", "@cccteam/resource-firestore": "0.0.9"},
+		},
+		{
+			name:      "a range and a yalc attachment take the version; one ahead stays",
+			data:      webPackageJSON("^0.0.11", "file:.yalc/@cccteam/resource-angular", "0.0.11"),
+			want:      webPackageJSON("0.0.12", "0.0.16", "0.0.11"),
+			wantMoved: map[string]string{"@cccteam/resource": "^0.0.11", "@cccteam/resource-angular": "file:.yalc/@cccteam/resource-angular"},
+		},
+		{
+			name:      "at the pins: nothing changes",
+			data:      webPackageJSON("0.0.12", "0.0.16", "0.0.10"),
+			want:      webPackageJSON("0.0.12", "0.0.16", "0.0.10"),
+			wantMoved: map[string]string{},
+		},
+		{
+			name:      "a package not named is not added; the client's name is not the Angular package's",
+			data:      "{\n  \"dependencies\": {\"@cccteam/resource\": \"0.0.11\"}\n}\n",
+			want:      "{\n  \"dependencies\": {\"@cccteam/resource\": \"0.0.12\"}\n}\n",
+			wantMoved: map[string]string{"@cccteam/resource": "0.0.11"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, moved := rewriteWebPins([]byte(tt.data), pins)
+			if diff := cmp.Diff(tt.want, string(got)); diff != "" {
+				t.Errorf("rewriteWebPins() mismatch (-want +got):\n%s", diff)
+			}
+			if diff := cmp.Diff(tt.wantMoved, moved); diff != "" {
+				t.Errorf("moved mismatch (-want +got):\n%s", diff)
 			}
 		})
 	}

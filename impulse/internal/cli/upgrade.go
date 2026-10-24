@@ -6,6 +6,8 @@ import (
 	"io"
 	"os"
 	"path"
+	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 
@@ -27,6 +29,7 @@ import (
 const (
 	goCommand        = "go"
 	gitCommand       = "git"
+	bunCommand       = "bun"
 	impulseTool      = "impulse"
 	upgradeCommitTyp = "upgrade"
 	// generateCommand is the regeneration as the walk names it.
@@ -71,7 +74,11 @@ own words, where one go get per pin would move an earlier pin off the step to me
 one), the impulse tool pin moves to the release that added the step (go get -tool; the tool
 directive puts that impulse's requirements into the build list, so the pin moves with its
 step and never ahead of one), go mod tidy runs and go.mod is read back (a moved pin below
-the step's version, or dropped, refuses the step, naming what go.mod holds), the owned
+the step's version, or dropped, refuses the step, naming what go.mod holds), the step's web
+pins move in every web root (the versions of @cccteam/resource, @cccteam/resource-angular
+and @cccteam/resource-firestore are rewritten in place in each package.json that names them,
+and bun install runs there so bun.lock records the registry versions; a pin at or beyond
+the step's stays; the walk refuses to start without bun when a step moves them), the owned
 files are rendered again, go generate runs, impulse check runs (the pinned impulse renders
 and checks, through go tool impulse, when it is not the running one), and everything is
 committed under
@@ -166,6 +173,17 @@ type plan struct {
 	// impulse's version when it was built from a module version, else "".
 	toolPin string
 	release string
+	// web is where the pending steps leave the web pins, the last pending step's; nil
+	// when none names any. webRoots are the application's web roots naming the web
+	// library, where the walk moves them.
+	web      map[string]string
+	webRoots []check.WebRoot
+}
+
+// movesWeb reports whether the walk moves web pins: a pending step names them and the
+// application has a web root to move them in.
+func (p *plan) movesWeb() bool {
+	return len(p.web) > 0 && len(p.webRoots) > 0
 }
 
 // afterSteps is the impulse the application pins once the pending steps are walked: the
@@ -235,6 +253,7 @@ func (u *upgrader) run(ctx context.Context, f *transitionFlags, dryRun bool) err
 	if p.movesTool() {
 		fmt.Fprintf(u.out, "  impulse %s: %s\n", p.release, toolPinNote)
 	}
+	u.printWebRoots(p)
 	if p.release == "" {
 		fmt.Fprintf(u.out, "This impulse was built from a checkout (%s), so the tool-only move does not apply: the pin ends where the last step leaves it.\n", u.running.Version)
 	}
@@ -252,6 +271,11 @@ func (u *upgrader) run(ctx context.Context, f *transitionFlags, dryRun bool) err
 	}
 	if len(dirty) > 0 {
 		return errors.Newf("the working tree is not clean (%d path(s)): commit or stash first, so each step is one commit", len(dirty))
+	}
+	if p.movesWeb() {
+		if out, err := u.exec.Run(ctx, a.Root, nil, bunCommand, "--version"); err != nil {
+			return errors.Newf("bun could not run (bun --version: %s): the walk moves the web library's pins in each web root's package.json and runs bun install there, so bun.lock records them; install bun (https://bun.sh) or put it on PATH, and run impulse upgrade again; nothing moved", lastLine(append(out, []byte(err.Error())...)))
+		}
 	}
 	for i := range p.pending {
 		if err := u.step(ctx, f, repo, &p.pending[i], p.position+2+i); err != nil {
@@ -293,8 +317,63 @@ func (u *upgrader) plan(a *app.App) (*plan, error) {
 	if p.release != "" && p.toolPin != "" && semver.Compare(p.toolPin, p.release) > 0 {
 		return nil, errors.Newf("go.mod pins impulse at %s, newer than the running %s: run the pinned one (go tool impulse upgrade)", p.toolPin, p.release)
 	}
+	for i := range p.pending {
+		if len(p.pending[i].Web) > 0 {
+			p.web = p.pending[i].Web
+		}
+	}
+	if len(p.web) > 0 {
+		roots, err := check.WebRoots(a, ledger.WebPackages)
+		if err != nil {
+			return nil, err
+		}
+		p.webRoots = roots
+	}
 
 	return p, nil
+}
+
+// printWebRoots says where the web pins move, for the plan: each web root naming the web
+// library with the moves the walk ends with (from what it holds to where the last pending
+// step leaves them), or that there is none to move them in. Nothing when no pending step
+// names web pins.
+func (u *upgrader) printWebRoots(p *plan) {
+	if len(p.web) == 0 {
+		return
+	}
+	if len(p.webRoots) == 0 {
+		fmt.Fprintln(u.out, "No web root names the web library, so the steps' web pins have nowhere to move.")
+
+		return
+	}
+	fmt.Fprintf(u.out, "The web library's pins move in %d web root(s):\n", len(p.webRoots))
+	for i := range p.webRoots {
+		fmt.Fprintf(u.out, "  %s: %s\n", p.webRoots[i].File, webRootLine(&p.webRoots[i], p.web))
+	}
+}
+
+// webRootLine says what the walk does to one web root's pins: each package moved, from
+// the spec the file holds to the version; one ahead of the version, which stays; one the
+// file does not name, which nothing moves; or that the root is at the pins already.
+func webRootLine(r *check.WebRoot, web map[string]string) string {
+	var parts []string
+	for _, name := range (&ledger.Step{Web: web}).WebNames() {
+		have := r.Spec(name)
+		switch {
+		case have == "":
+			parts = append(parts, fmt.Sprintf("%s is not named, so nothing moves it (the step pins %s)", name, web[name]))
+		case have == web[name]:
+		case check.WebBehind(have, web[name]):
+			parts = append(parts, fmt.Sprintf("%s %s to %s", name, have, web[name]))
+		default:
+			parts = append(parts, fmt.Sprintf("%s %s stays, ahead of %s", name, have, web[name]))
+		}
+	}
+	if len(parts) == 0 {
+		return "at the web pins already"
+	}
+
+	return strings.Join(parts, ", ")
 }
 
 // goModImpulsePin is the version go.mod requires impulse at, "" when it does not.
@@ -318,17 +397,20 @@ func toolPinLabel(version string) string {
 }
 
 // planLine says what a step does: its number, the pins it moves from the step before,
-// its recipes, the tool pin it moves, and its note.
+// Go then web, its recipes, the tool pin it moves, and its note.
 func planLine(steps []ledger.Step, i int) string {
-	var prevPins map[string]string
+	var prevPins, prevWeb map[string]string
 	prevImpulse := ""
 	if i > 0 {
-		prevPins, prevImpulse = steps[i-1].Pins, steps[i-1].Impulse
+		prevPins, prevWeb, prevImpulse = steps[i-1].Pins, steps[i-1].Web, steps[i-1].Impulse
 	}
 	s := &steps[i]
 	line := fmt.Sprintf("step %d", i+1)
 	if moves := s.Moves(prevPins); len(moves) > 0 {
 		line += ", " + strings.Join(moves, ", ")
+	}
+	if moves := s.WebMoves(prevWeb); len(moves) > 0 {
+		line += ", web " + strings.Join(moves, ", ")
 	}
 	if names := recipeNames(s); names != "" {
 		line += " (" + names + ")"
@@ -377,8 +459,9 @@ func (u *upgrader) moveTool(ctx context.Context, f *transitionFlags, repo handof
 	return u.finish(ctx, f, repo, commit)
 }
 
-// step walks one step: the recipes, the pin bump (the framework pins, then the tool pin),
-// and the finish; a failing check stops with the brief written.
+// step walks one step: the recipes, the pin bump (the framework pins, then the tool pin,
+// then the web pins in every web root), and the finish; a failing check stops with the
+// brief written.
 func (u *upgrader) step(ctx context.Context, f *transitionFlags, repo handoff.Repo, s *ledger.Step, number int) error {
 	fmt.Fprintf(u.out, "=== step %d: %s ===\n", number, s.Note)
 	changes, meanings, err := u.recipes(ctx, f.appDir, s, number)
@@ -396,6 +479,11 @@ func (u *upgrader) step(ctx context.Context, f *transitionFlags, repo handoff.Re
 	if err := u.bumpPins(ctx, a, s); err != nil {
 		return err
 	}
+	webMoves, err := u.bumpWebPins(ctx, a, s)
+	if err != nil {
+		return err
+	}
+	moves = append(moves, webMoves...)
 	moved := strings.Join(moves, ", ")
 	if moved == "" {
 		moved = fmt.Sprintf("step %d", number)
@@ -792,6 +880,92 @@ func (u *upgrader) holdPins(a *app.App, s *ledger.Step, moved []string) error {
 	}
 
 	return nil
+}
+
+// bumpWebPins moves every web root's pins of the web library to the step's, after the Go
+// pins: each package.json naming the library has the versions it holds behind the step's
+// rewritten in place (a spec at or beyond the step's stays, as a Go pin bumped ahead of its
+// step does, and nothing else in the file changes), then bun install runs in the root so
+// bun.lock records the registry versions, and the step's commit carries both files. It
+// answers the pins moved in any root, "@cccteam/resource-angular 0.0.16" each, for the
+// commit. A bun install that fails stops the step with the edit in the tree and a sentence
+// saying what to do.
+func (u *upgrader) bumpWebPins(ctx context.Context, a *app.App, s *ledger.Step) ([]string, error) {
+	if len(s.Web) == 0 {
+		return nil, nil
+	}
+	roots, err := check.WebRoots(a, ledger.WebPackages)
+	if err != nil {
+		return nil, err
+	}
+	tree, err := os.OpenRoot(a.Root)
+	if err != nil {
+		return nil, errors.Wrap(err, "os.OpenRoot()")
+	}
+	defer tree.Close()
+	moved := map[string]bool{}
+	for i := range roots {
+		r := &roots[i]
+		data, err := tree.ReadFile(filepath.FromSlash(r.File))
+		if err != nil {
+			return nil, errors.Wrap(err, "os.Root.ReadFile()")
+		}
+		edited, moves := rewriteWebPins(data, s.Web)
+		for _, name := range s.WebNames() {
+			if _, ok := moves[name]; ok {
+				fmt.Fprintf(u.out, "Pin %s in %s to %s.\n", name, r.File, s.Web[name])
+				moved[name] = true
+			} else if have := r.Spec(name); have != "" {
+				fmt.Fprintf(u.out, "%s in %s is at %s already.\n", name, r.File, have)
+			}
+		}
+		if len(moves) == 0 {
+			continue
+		}
+		if err := tree.WriteFile(filepath.FromSlash(r.File), edited, 0o600); err != nil {
+			return nil, errors.Wrap(err, "os.Root.WriteFile()")
+		}
+		fmt.Fprintf(u.out, "Running bun install in %s\n", r.Dir)
+		if out, err := u.exec.Run(ctx, a.Abs(r.Dir), nil, bunCommand, "install"); err != nil {
+			return nil, errors.Wrapf(err, "bun install in %s failed: %s; %s holds the step's web pins and bun.lock does not yet: fix what the install reports, run bun install there, and run impulse upgrade again once the tree is committed or restored", r.Dir, lastLine(out), r.File)
+		}
+	}
+	webMoves := make([]string, 0, len(moved))
+	for _, name := range s.WebNames() {
+		if moved[name] {
+			webMoves = append(webMoves, name+" "+s.Web[name])
+		}
+	}
+
+	return webMoves, nil
+}
+
+// rewriteWebPins moves a package.json's pins of the packages to the versions, in place:
+// every "<package>": "<spec>" whose spec stands behind the version (an earlier release, a
+// range, a tag, a yalc attachment) takes the version, in whichever section it appears
+// (dependencies, peerDependencies, overrides), and nothing else in the file changes, so
+// the file keeps its formatting. It answers the packages moved and the spec each moved
+// from (the first found).
+func rewriteWebPins(data []byte, pins map[string]string) (edited []byte, moved map[string]string) {
+	moved = map[string]string{}
+	edited = data
+	for _, name := range (&ledger.Step{Web: pins}).WebNames() {
+		re := regexp.MustCompile(`("` + regexp.QuoteMeta(name) + `"\s*:\s*")([^"]*)(")`)
+		edited = re.ReplaceAllFunc(edited, func(m []byte) []byte {
+			sub := re.FindSubmatch(m)
+			spec := string(sub[2])
+			if !check.WebBehind(spec, pins[name]) {
+				return m
+			}
+			if _, ok := moved[name]; !ok {
+				moved[name] = spec
+			}
+
+			return append(append(append([]byte{}, sub[1]...), pins[name]...), sub[3]...)
+		})
+	}
+
+	return edited, moved
 }
 
 // pinTool moves the impulse tool pin to the version.

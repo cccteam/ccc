@@ -2,12 +2,14 @@ package ledger
 
 import (
 	"context"
+	"encoding/json"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/go-playground/errors/v5"
 	"github.com/google/go-cmp/cmp"
 	"golang.org/x/mod/modfile"
 	"golang.org/x/mod/semver"
@@ -180,6 +182,55 @@ func TestMovesTool(t *testing.T) {
 	}
 }
 
+// webPins is a step's web pins at the three versions, in package order.
+func webPins(resource, angular, firestore string) map[string]string {
+	return map[string]string{"@cccteam/resource": resource, "@cccteam/resource-angular": angular, "@cccteam/resource-firestore": firestore}
+}
+
+// TestWebMoves lists what a step moves in a web root's specs: a package missing, behind,
+// or held at a spec that is no exact release, never one at or beyond the step's.
+func TestWebMoves(t *testing.T) {
+	t.Parallel()
+
+	step := Step{Web: webPins("0.0.12", "0.0.16", "0.0.10")}
+	tests := []struct {
+		name string
+		from map[string]string
+		want []string
+	}{
+		{name: "from nothing: every pin", from: nil, want: []string{"@cccteam/resource 0.0.12", "@cccteam/resource-angular 0.0.16", "@cccteam/resource-firestore 0.0.10"}},
+		{name: "from the step before: every pin behind moves", from: webPins("0.0.11", "0.0.15", "0.0.9"), want: []string{"@cccteam/resource 0.0.12", "@cccteam/resource-angular 0.0.16", "@cccteam/resource-firestore 0.0.10"}},
+		{name: "one bumped by hand ahead and one at the step: the one behind alone", from: webPins("0.0.13", "0.0.16", "0.0.9"), want: []string{"@cccteam/resource-firestore 0.0.10"}},
+		{name: "a range and a yalc attachment move", from: webPins("^0.0.12", "file:.yalc/@cccteam/resource-angular", "0.0.10"), want: []string{"@cccteam/resource 0.0.12", "@cccteam/resource-angular 0.0.16"}},
+		{name: "at the step: nothing", from: step.Web, want: nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if diff := cmp.Diff(tt.want, step.WebMoves(tt.from)); diff != "" {
+				t.Errorf("WebMoves() mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+// TestWeb reads a step's web pins from their lines, and stops on a malformed one.
+func TestWeb(t *testing.T) {
+	t.Parallel()
+
+	got := web("\n\t\t@cccteam/resource 0.0.12\n\t\t@cccteam/resource-angular 0.0.16\n\t\t@cccteam/resource-firestore 0.0.10\n\t")
+	if diff := cmp.Diff(webPins("0.0.12", "0.0.16", "0.0.10"), got); diff != "" {
+		t.Errorf("web() mismatch (-want +got):\n%s", diff)
+	}
+	defer func() {
+		if r := recover(); r == nil {
+			t.Error("web() did not stop on a malformed line")
+		}
+	}()
+	web("@cccteam/resource ^0.0.12")
+}
+
 // TestNames labels the steps by what each moves from the one before.
 func TestNames(t *testing.T) {
 	t.Parallel()
@@ -227,8 +278,8 @@ func TestValidate(t *testing.T) {
 		{name: "a pin outside the framework", steps: []Step{{Pins: map[string]string{"github.com/go-chi/chi/v5": "v5.3.2"}, Note: "n"}}, wantErr: "step 1 pins github.com/go-chi/chi/v5, which is not a framework module (github.com/cccteam/...)"},
 		{name: "a pin that is not a version", steps: []Step{{Pins: pins("latest"), Note: "n"}}, wantErr: `step 1 pins github.com/cccteam/ccc/resource at "latest", which is not a semantic version`},
 		{name: "a pin moving backward", steps: []Step{{Pins: pins("v0.2.0"), Note: "n"}, {Pins: pins("v0.1.0"), Note: "n"}}, wantErr: "step 2 pins github.com/cccteam/ccc/resource at v0.1.0, behind step 1's v0.2.0; the ledger walks forward only"},
-		{name: "a step that moves nothing", steps: []Step{{Pins: pins("v0.1.0"), Note: "n"}, {Pins: pins("v0.1.0"), Note: "n"}}, wantErr: "step 2 moves no pin, names no recipe and moves the tool pin nowhere: it is not a step"},
-		{name: "a step that moves nothing and names the release of the step before", steps: []Step{{Pins: pins("v0.1.0"), Note: "n", Impulse: "v0.2.0"}, {Pins: pins("v0.1.0"), Note: "n", Impulse: "v0.2.0"}}, wantErr: "step 2 moves no pin, names no recipe and moves the tool pin nowhere: it is not a step"},
+		{name: "a step that moves nothing", steps: []Step{{Pins: pins("v0.1.0"), Note: "n"}, {Pins: pins("v0.1.0"), Note: "n"}}, wantErr: "step 2 moves no pin, Go or web, names no recipe and moves the tool pin nowhere: it is not a step"},
+		{name: "a step that moves nothing and names the release of the step before", steps: []Step{{Pins: pins("v0.1.0"), Note: "n", Impulse: "v0.2.0"}, {Pins: pins("v0.1.0"), Note: "n", Impulse: "v0.2.0"}}, wantErr: "step 2 moves no pin, Go or web, names no recipe and moves the tool pin nowhere: it is not a step"},
 		{name: "a tool pin move alone is a step: the note describes a change made by hand", steps: []Step{{Pins: pins("v0.1.0"), Note: "n", Impulse: "v0.2.0"}, {Pins: pins("v0.1.0"), Note: "n", Impulse: "v0.2.1"}}},
 		{name: "a recipe alone is a step", steps: []Step{{Pins: pins("v0.1.0"), Note: "n"}, {Pins: pins("v0.1.0"), Note: "n", Recipes: []Recipe{noopRecipe{name: "paging"}}}}},
 		{name: "a recipe named twice", steps: []Step{{Pins: pins("v0.1.0"), Note: "n", Recipes: []Recipe{noopRecipe{name: "paging"}, noopRecipe{name: "paging"}}}}, wantErr: "step 1 names the recipe paging twice"},
@@ -244,6 +295,16 @@ func TestValidate(t *testing.T) {
 		{name: "a step naming a release after one naming none", steps: []Step{{Pins: pins("v0.1.0"), Note: "n"}, {Pins: pins("v0.2.0"), Note: "n", Impulse: "v0.2.0"}}},
 		{name: "one release adding two steps", steps: []Step{{Pins: pins("v0.1.0"), Note: "n", Impulse: "v0.2.0"}, {Pins: pins("v0.2.0"), Note: "n", Impulse: "v0.2.0"}}},
 		{name: "a pending step names the release its pull request takes", steps: []Step{{Pins: pins("v0.1.0"), Note: "n", Impulse: "v0.3.1"}, {Pins: pins("v0.1.1-0.20261009052330-7bd8478e0ccf"), Note: "n", Pending: true, Impulse: "v0.4.0"}}},
+		{name: "web pins on every step", steps: []Step{{Pins: pins("v0.1.0"), Note: "n", Web: webPins("0.0.5", "0.0.5", "0.0.3")}, {Pins: pins("v0.2.0"), Note: "n", Web: webPins("0.0.6", "0.0.7", "0.0.4")}}},
+		{name: "web pins named from the second step on", steps: []Step{{Pins: pins("v0.1.0"), Note: "n"}, {Pins: pins("v0.2.0"), Note: "n", Web: webPins("0.0.6", "0.0.7", "0.0.4")}}},
+		{name: "a web pin move alone is a step", steps: []Step{{Pins: pins("v0.1.0"), Note: "n", Web: webPins("0.0.5", "0.0.5", "0.0.3")}, {Pins: pins("v0.1.0"), Note: "n", Web: webPins("0.0.5", "0.0.6", "0.0.3")}}},
+		{name: "a step after one naming web pins names none", steps: []Step{{Pins: pins("v0.1.0"), Note: "n", Web: webPins("0.0.5", "0.0.5", "0.0.3")}, {Pins: pins("v0.2.0"), Note: "n"}}, wantErr: "step 2 names no web pins and step 1 does: once a step names the web library's versions, every later step does"},
+		{name: "a web pin moving backward", steps: []Step{{Pins: pins("v0.1.0"), Note: "n", Web: webPins("0.0.5", "0.0.6", "0.0.3")}, {Pins: pins("v0.2.0"), Note: "n", Web: webPins("0.0.5", "0.0.5", "0.0.3")}}, wantErr: "step 2 pins @cccteam/resource-angular at 0.0.5, behind step 1's 0.0.6; the ledger walks forward only"},
+		{name: "a web package missing", steps: []Step{{Pins: pins("v0.1.0"), Note: "n", Web: map[string]string{"@cccteam/resource": "0.0.5", "@cccteam/resource-angular": "0.0.5"}}}, wantErr: "step 1 pins no @cccteam/resource-firestore: a step names every web library package's version"},
+		{name: "a package outside the web library", steps: []Step{{Pins: pins("v0.1.0"), Note: "n", Web: map[string]string{"@cccteam/resource": "0.0.5", "@cccteam/resource-angular": "0.0.5", "@cccteam/resource-firestore": "0.0.3", "@angular/core": "21.1.1"}}}, wantErr: "step 1 pins @angular/core, which is not a web library package (@cccteam/resource, @cccteam/resource-angular, @cccteam/resource-firestore)"},
+		{name: "a web pin that is a range", steps: []Step{{Pins: pins("v0.1.0"), Note: "n", Web: map[string]string{"@cccteam/resource": "^0.0.5", "@cccteam/resource-angular": "0.0.5", "@cccteam/resource-firestore": "0.0.3"}}}, wantErr: `step 1 pins @cccteam/resource at "^0.0.5", which is not a release version (0.0.16)`},
+		{name: "a web pin with a v", steps: []Step{{Pins: pins("v0.1.0"), Note: "n", Web: map[string]string{"@cccteam/resource": "v0.0.5", "@cccteam/resource-angular": "0.0.5", "@cccteam/resource-firestore": "0.0.3"}}}, wantErr: `step 1 pins @cccteam/resource at "v0.0.5", which is not a release version (0.0.16)`},
+		{name: "a web pin at a pre-release", steps: []Step{{Pins: pins("v0.1.0"), Note: "n", Web: map[string]string{"@cccteam/resource": "0.0.5-rc.1", "@cccteam/resource-angular": "0.0.5", "@cccteam/resource-firestore": "0.0.3"}}}, wantErr: `step 1 pins @cccteam/resource at "0.0.5-rc.1", which is not a release version (0.0.16)`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -303,6 +364,126 @@ func TestSkeletonPins(t *testing.T) {
 				t.Errorf("candidate %s requires %s %s, which the ledger's last step does not pin: append a step for it", c.Name, r.Mod.Path, r.Mod.Version)
 			}
 		}
+	}
+}
+
+// TestSkeletonWebPins holds the ledger's last step to the skeleton's web roots: every
+// package.json a candidate carries that names the web library pins each package the step
+// pins at the step's version in every section (dependencies, overrides), and names no
+// other @cccteam package, so a web repin of the candidates without its step fails here.
+func TestSkeletonWebPins(t *testing.T) {
+	t.Parallel()
+
+	candidates, err := skeleton.Candidates()
+	if err != nil {
+		t.Fatal(err)
+	}
+	last := &Steps[len(Steps)-1]
+	if len(last.Web) == 0 {
+		t.Fatal("the ledger's last step names no web pins")
+	}
+	for _, c := range candidates {
+		sub, err := skeleton.FS(c.Name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		roots := 0
+		err = fs.WalkDir(sub, ".", func(p string, d fs.DirEntry, err error) error {
+			if err != nil {
+				return errors.Wrap(err, "fs.WalkDir()")
+			}
+			if d.IsDir() || d.Name() != "package.json" || strings.Contains(p, "node_modules") {
+				return nil
+			}
+			data, err := fs.ReadFile(sub, p)
+			if err != nil {
+				return errors.Wrap(err, "fs.ReadFile()")
+			}
+			var raw map[string]json.RawMessage
+			if err := json.Unmarshal(data, &raw); err != nil {
+				return errors.Wrapf(err, "json.Unmarshal(): %s", p)
+			}
+			sections := map[string]map[string]string{}
+			for section, entries := range raw {
+				var specs map[string]string
+				if json.Unmarshal(entries, &specs) == nil {
+					sections[section] = specs
+				}
+			}
+			roots++
+			for section, specs := range sections {
+				for name, spec := range specs {
+					if !strings.HasPrefix(name, "@cccteam/") {
+						continue
+					}
+					want, ok := last.Web[name]
+					switch {
+					case !ok:
+						t.Errorf("candidate %s: %s %s names %s, which the ledger's last step does not pin: append a step for it", c.Name, p, section, name)
+					case spec != want:
+						t.Errorf("candidate %s: %s %s pins %s at %q and the ledger's last step at %s: append a step for the skeleton's web pins", c.Name, p, section, name, spec, want)
+					}
+				}
+			}
+			for _, name := range last.WebNames() {
+				if _, ok := sections["dependencies"][name]; !ok {
+					t.Errorf("candidate %s: %s names no %s among its dependencies, which the ledger's last step pins at %s", c.Name, p, name, last.Web[name])
+				}
+			}
+
+			return nil
+		})
+		if err != nil {
+			t.Fatalf("candidate %s: %v", c.Name, err)
+		}
+		if roots == 0 {
+			t.Errorf("candidate %s carries no package.json", c.Name)
+		}
+	}
+}
+
+// TestCurrentWebPins reads the step's web pins as the checks do: go.mod at the last
+// step's pins answers the last step's, at the step before's pins with the tool at that
+// step's release the step before's, and one without framework pins none.
+func TestCurrentWebPins(t *testing.T) {
+	t.Parallel()
+
+	goMod := func(pins map[string]string, tool string) string {
+		var b strings.Builder
+		b.WriteString("module example.com/acme/beacon\n\ngo 1.26\n\nrequire (\n")
+		for _, name := range (&Step{Pins: pins}).PinNames() {
+			b.WriteString("\t" + name + " " + pins[name] + "\n")
+		}
+		b.WriteString(")\n")
+		if tool != "" {
+			b.WriteString("require " + check.ImpulseModule + " " + tool + "\n")
+		}
+
+		return b.String()
+	}
+	last, before := &Steps[len(Steps)-1], &Steps[len(Steps)-2]
+	tests := []struct {
+		name  string
+		gomod string
+		want  map[string]string
+	}{
+		{name: "at the last step", gomod: goMod(last.Pins, last.Impulse), want: last.Web},
+		{name: "at the step before", gomod: goMod(before.Pins, before.Impulse), want: before.Web},
+		{name: "the last step's pins with the tool at the step before's release: the step before", gomod: goMod(last.Pins, before.Impulse), want: before.Web},
+		{name: "no framework pins", gomod: "module example.com/acme/beacon\n\ngo 1.26\n", want: nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			mod, err := modfile.Parse("go.mod", []byte(tt.gomod), nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if diff := cmp.Diff(tt.want, (Current{}).WebPins(mod)); diff != "" {
+				t.Errorf("WebPins() mismatch (-want +got):\n%s", diff)
+			}
+		})
 	}
 }
 

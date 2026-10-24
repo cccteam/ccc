@@ -645,10 +645,12 @@ func TestIgnored(t *testing.T) {
 }
 
 // atStep answers the pins check's question about the ledger with a fixed reading: true
-// for an application at the last step, false for one behind it.
+// for an application at the last step, false for one behind it; it names no web pins.
 type atStep bool
 
 func (l atStep) AtLastStep(*modfile.File) bool { return bool(l) }
+
+func (atStep) WebPins(*modfile.File) map[string]string { return nil }
 
 // TestPinsFromGoMod reads the tool directive against the running build: held at the pin,
 // a development build noted and not compared, a module build at another version failing
