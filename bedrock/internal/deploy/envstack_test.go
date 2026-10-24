@@ -1488,7 +1488,7 @@ func TestPlanEnvironments(t *testing.T) {
 			wantComment: []string{
 				"The stack's plan for each environment (build b-1), the same tests passed in each:",
 				"**tst**: Plan: 2 to add, 1 to change, 1 to destroy.\n  - `update",
-				"**stg**: Plan: 2 to add, 1 to change, 1 to destroy. APP_STAFF_DIRECTORY_CLIENT_SECRET has no pinned version in stg (secret_versions.stg in infrastructure/terraform.tfvars); the release is refused there until it is pinned (bedrock secret pin stg APP_STAFF_DIRECTORY_CLIENT_SECRET <version>, after bedrock secret add stg APP_STAFF_DIRECTORY_CLIENT_SECRET has put the value in place).\n  - `update",
+				"**stg**: Plan: 2 to add, 1 to change, 1 to destroy.\n\n> **Refused until pinned.** `APP_STAFF_DIRECTORY_CLIENT_SECRET` has no pinned version in stg (`secret_versions.stg` in `infrastructure/terraform.tfvars`). After `bedrock secret add stg APP_STAFF_DIRECTORY_CLIENT_SECRET` has put a value in place, pin it: `bedrock secret pin stg APP_STAFF_DIRECTORY_CLIENT_SECRET <version>`.\n\n  - `update",
 				"**prd**: Plan: 2 to add, 1 to change, 1 to destroy.\n  - `update",
 			},
 		},
