@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.15.10](https://github.com/cccteam/ccc/compare/resource/v0.15.9...resource/v0.15.10) (2026-10-24)
+
+
+### Features
+
+* **impulse:** a ledger step pins the web library beside the Go modules, impulse upgrade rewrites every web root's pins with the step and runs bun install there, and the web-pins check holds them to the step the application stands at ([#1130](https://github.com/cccteam/ccc/issues/1130)) ([02a5abe](https://github.com/cccteam/ccc/commit/02a5abe006ce63f161e9c0035489f9f3b3b35e8e))
+
+
+### Bug Fixes
+
+* **impulse:** the v0.5.13 ledger step pins session v0.13.9, whose directory sign-in resolves to the user holding its confirmed address instead of provisioning a second user ([#1130](https://github.com/cccteam/ccc/issues/1130)) ([02a5abe](https://github.com/cccteam/ccc/commit/02a5abe006ce63f161e9c0035489f9f3b3b35e8e))
+
 ## [0.15.9](https://github.com/cccteam/ccc/compare/resource/v0.15.8...resource/v0.15.9) (2026-10-24)
 
 
