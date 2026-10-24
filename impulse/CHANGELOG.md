@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.10](https://github.com/cccteam/ccc/compare/impulse/v0.5.9...impulse/v0.5.10) (2026-10-24)
+
+
+### Bug Fixes
+
+* the login page fits the browser window, its padding counting inside the full-height minimum ([#1116](https://github.com/cccteam/ccc/issues/1116)) ([38d3e35](https://github.com/cccteam/ccc/commit/38d3e35a8e795d465f0959710b7f8bc061b87d53))
+
 ## [0.5.9](https://github.com/cccteam/ccc/compare/impulse/v0.5.8...impulse/v0.5.9) (2026-10-24)
 
 
