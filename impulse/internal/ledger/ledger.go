@@ -253,10 +253,9 @@ var Steps = []Step{
 			db-initiator v0.4.3
 			httpio v0.7.22
 			logger v0.1.30
-			session v0.13.5-0.20261024004718-ba8388a62350
+			session v0.13.5
 		`),
 		Impulse: release("v0.5.9"),
-		Pending: true,
 		Note:    "the auths' mail may come from an address other than the account that logs in to the relay, so a no-reply alias of a real account serves as the sender without a licensed mailbox of its own: pkg/config/data.go declares MailFrom (APP_MAIL_FROM, optional) beside the mailbox and hands the driver &workspace.Settings{Mailbox: env.MailMailbox, From: env.MailFrom, AppPassword: env.MailAppPassword, Name: …}, since workspace.New now takes a pointer to its settings; .envrc.template lists the variable; the stack carries mail_from beside mail_mailbox (bedrock)",
 	},
 }
