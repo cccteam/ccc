@@ -755,7 +755,7 @@ func PlanEnvironments(ctx context.Context, clients *Clients, w Workspace, req *B
 		return err
 	}
 
-	return pr.comment(ctx, fmt.Sprintf("The stack's plan for each environment (build %s), the same tests passed in each:\n\n%s", build.ID, strings.Join(summaries, "\n")), out)
+	return pr.comment(ctx, fmt.Sprintf("The stack's plan for each environment (build %s), the same tests passed in each:\n\n%s", build.ID, strings.Join(summaries, "\n\n")), out)
 }
 
 // previews are the pull request's looks ahead, read as each environment's plan identity
@@ -836,8 +836,8 @@ func planEnvironment(ctx context.Context, clients *Clients, w Workspace, build *
 	return fmt.Sprintf("**%s**: %s%s%s", e, p.Summary(), pinned, changeList(p)), nil
 }
 
-// changeList is a plan's changes for a comment: one line each, after the summary; none
-// for a plan with no change.
+// changeList is a plan's changes for a comment: one line each, a list after the summary
+// (and after the pin notice, when there is one); none for a plan with no change.
 func changeList(p *StackPlan) string {
 	if len(p.Changes) == 0 {
 		return ""

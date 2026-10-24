@@ -1488,7 +1488,7 @@ func TestPlanEnvironments(t *testing.T) {
 			wantComment: []string{
 				"The stack's plan for each environment (build b-1), the same tests passed in each:",
 				"**tst**: Plan: 2 to add, 1 to change, 1 to destroy.\n  - `update",
-				"**stg**: Plan: 2 to add, 1 to change, 1 to destroy. APP_STAFF_DIRECTORY_CLIENT_SECRET has no pinned version in stg (secret_versions.stg in infrastructure/terraform.tfvars); the release is refused there until it is pinned (bedrock secret pin stg APP_STAFF_DIRECTORY_CLIENT_SECRET <version>, after bedrock secret add stg APP_STAFF_DIRECTORY_CLIENT_SECRET has put the value in place).\n  - `update",
+				"**stg**: Plan: 2 to add, 1 to change, 1 to destroy.\n\n> **Refused until pinned.** `APP_STAFF_DIRECTORY_CLIENT_SECRET` has no pinned version in stg (`secret_versions.stg` in `infrastructure/terraform.tfvars`). After `bedrock secret add stg APP_STAFF_DIRECTORY_CLIENT_SECRET` has put a value in place, pin it: `bedrock secret pin stg APP_STAFF_DIRECTORY_CLIENT_SECRET <version>`.\n\n  - `update",
 				"**prd**: Plan: 2 to add, 1 to change, 1 to destroy.\n  - `update",
 			},
 		},
@@ -1499,7 +1499,7 @@ func TestPlanEnvironments(t *testing.T) {
 			deployer:    true,
 			tfvars:      pinnedTfvars(allPinned, allPinned, ""),
 			wantTofu:    every,
-			wantComment: []string{"**prd**: Plan: 2 to add, 1 to change, 1 to destroy. APP_COOKIE_KEY, APP_MAIL_APP_PASSWORD, APP_STAFF_DIRECTORY_CLIENT_SECRET, APP_MEMBERS_DIRECTORY_CLIENT_SECRET have no pinned version in prd (secret_versions.prd in infrastructure/terraform.tfvars); the release is refused there until each is pinned (bedrock secret pin prd APP_COOKIE_KEY <version>, bedrock secret pin prd APP_MAIL_APP_PASSWORD <version>, bedrock secret pin prd APP_STAFF_DIRECTORY_CLIENT_SECRET <version>, bedrock secret pin prd APP_MEMBERS_DIRECTORY_CLIENT_SECRET <version>, after bedrock secret add prd <VARIABLE> has put the value in place).\n  - `update"},
+			wantComment: []string{"**prd**: Plan: 2 to add, 1 to change, 1 to destroy.\n\n> **Refused until pinned.** `APP_COOKIE_KEY`, `APP_MAIL_APP_PASSWORD`, `APP_STAFF_DIRECTORY_CLIENT_SECRET` and `APP_MEMBERS_DIRECTORY_CLIENT_SECRET` have no pinned version in prd (`secret_versions.prd` in `infrastructure/terraform.tfvars`). After `bedrock secret add prd <VARIABLE>` has put a value in place, pin each: `bedrock secret pin prd APP_COOKIE_KEY <version>`, `bedrock secret pin prd APP_MAIL_APP_PASSWORD <version>`, `bedrock secret pin prd APP_STAFF_DIRECTORY_CLIENT_SECRET <version>`, `bedrock secret pin prd APP_MEMBERS_DIRECTORY_CLIENT_SECRET <version>`.\n\n  - `update"},
 		},
 		{
 			name:        "an environment whose stack was never applied is skipped with the line, the others planned, and the comment names it",
@@ -1509,7 +1509,7 @@ func TestPlanEnvironments(t *testing.T) {
 			unapplied:   "stg",
 			wantOut:     []string{"stg: no stack yet: its first apply is the operations workflow's apply action (the stack README, Applying; the registration sequence's step 4), and the plan waits for it.", "prd: Plan: 2 to add, 1 to change, 1 to destroy."},
 			wantTofu:    []string{initOf("tst", "p-tst"), planOf("tst"), showOf("tst"), initOf("prd", "p-prd"), planOf("prd"), showOf("prd")},
-			wantComment: []string{"**tst**: Plan: 2 to add, 1 to change, 1 to destroy.", "**stg**: no stack yet: its first apply is the operations workflow's apply action, and the plan waits for it\n**prd**: Plan: 2 to add, 1 to change, 1 to destroy."},
+			wantComment: []string{"**tst**: Plan: 2 to add, 1 to change, 1 to destroy.", "**stg**: no stack yet: its first apply is the operations workflow's apply action, and the plan waits for it\n\n**prd**: Plan: 2 to add, 1 to change, 1 to destroy."},
 		},
 		{
 			name: "an environment a rollback moved to generation 2 is planned at it, read from its records bucket as the plan identity",
