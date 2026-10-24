@@ -206,7 +206,7 @@ func TestDerive(t *testing.T) {
 			wantCore: []string{varVersion, varServiceName, varLoggingProject},
 			wantData: []string{
 				varDatabaseProject, varDatabaseInstance, varDatabaseName,
-				"APP_DEFAULT_SESSION_TIMEOUT", "APP_COOKIE_KEY", varPublicURL, varMailMailbox, varMailAppPassword, "APP_KEEPERS_ADMINISTRATOR_PASSWORD",
+				"APP_DEFAULT_SESSION_TIMEOUT", "APP_COOKIE_KEY", varPublicURL, varMailMailbox, varMailFrom, varMailAppPassword, "APP_KEEPERS_ADMINISTRATOR_PASSWORD",
 			},
 			wantSite:     []string{varPort, "APP_CONSOLE_DIST"},
 			wantSiteLvls: []string{LevelCore, LevelData, LevelSite},
@@ -706,6 +706,7 @@ func TestFileStoreName(t *testing.T) {
 		{name: "the job driver's template variable, by the declaration's name, is the stack's to set", variable: "APP_JOBS_TEMPLATE", wantRole: RoleJobsTemplate},
 		{name: "the public address is derived from the hostname", variable: "APP_PUBLIC_URL", wantRole: RolePublicURL},
 		{name: "the mailbox is placed once for the organization", variable: "APP_MAIL_MAILBOX", wantRole: RoleMailbox},
+		{name: "the From address beside the mailbox is placed once for the organization", variable: "APP_MAIL_FROM", wantRole: RoleMailFrom},
 		{name: "the mailbox's app password is a secret the migrate command reads", variable: "APP_MAIL_APP_PASSWORD", wantRole: RoleMailAppPassword},
 		{name: "a variable of the application's own has no role", variable: "APP_DEFAULT_SESSION_TIMEOUT", wantRole: RoleNone},
 	}

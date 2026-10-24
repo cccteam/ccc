@@ -223,11 +223,13 @@ type view struct {
 	// containers and on no other.
 	MigrateSecrets []derive.Secret
 	// PublicURL is the variable in the public-url role and Mailbox the one in the
-	// mail-mailbox role, nil when the application declares none; MailAppPassword the
-	// secret in the mail-app-password role, nil without one; MailboxStep the number of
-	// the mailbox's hand step.
+	// mail-mailbox role, nil when the application declares none; MailFrom the one in the
+	// mail-from role (the address the mail is from when it is not the mailbox), nil
+	// without one; MailAppPassword the secret in the mail-app-password role, nil without
+	// one; MailboxStep the number of the mailbox's hand step.
 	PublicURL            *derive.Variable
 	Mailbox              *derive.Variable
+	MailFrom             *derive.Variable
 	MailAppPassword      *derive.Secret
 	MailboxStep          int
 	GeneratedCell        string
@@ -995,6 +997,7 @@ func (v *view) roles() error {
 	v.TraceSampling = v.byRole(derive.RoleTraceSampling)
 	v.PublicURL = v.byRole(derive.RolePublicURL)
 	v.Mailbox = v.byRole(derive.RoleMailbox)
+	v.MailFrom = v.byRole(derive.RoleMailFrom)
 	if v.Jobs != nil {
 		v.JobsTemplate = v.byRole(derive.RoleJobsTemplate)
 		if v.JobsTemplate == nil {
@@ -1594,6 +1597,9 @@ func (v *view) blocks() {
 	restated = append(restated, v.registrationDefaults()...)
 	if v.Mailbox != nil {
 		restated = append(restated, [2]string{"mail_mailbox", `""`})
+	}
+	if v.MailFrom != nil {
+		restated = append(restated, [2]string{"mail_from", `""`})
 	}
 	if v.Jobs != nil {
 		restated = append(restated,

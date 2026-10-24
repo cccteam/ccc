@@ -12,6 +12,10 @@ state_bucket = "imp-boot-gbl-state-REPLACEME"
 # to the log and sends nothing.
 mail_mailbox = ""
 
+# The address the mail is from when it is not the mailbox: an alias of the
+# mailbox's account, such as no-reply; empty sends from the mailbox.
+mail_from = ""
+
 # The version of each secret an environment runs. Empty means "not yet": the
 # container exists, nothing is mounted; tst alone runs that way,
 # and a release to any other environment is refused until every secret the
@@ -57,5 +61,6 @@ cloud_armor = {
 #   hostnames                    = beacon-tst. / beacon-stg. / beacon.impulseframework.dev
 #   placeholder_image            = us-docker.pkg.dev/cloudrun/container/hello
 #   mail_mailbox                 = ""
+#   mail_from                    = ""
 #   cloud_armor_sign_in_count    = 30
 #   cloud_armor_sign_in_interval = 60

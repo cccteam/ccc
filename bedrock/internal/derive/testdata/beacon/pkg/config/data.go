@@ -171,8 +171,10 @@ type dataConfig struct {
 	PublicURL string `env:"APP_PUBLIC_URL,required"`
 
 	// MailMailbox and MailAppPassword send the auths' mail through the Google Workspace
-	// SMTP relay as the mailbox; unset, the mail is written to the log.
+	// SMTP relay as the mailbox; unset, the mail is written to the log. MailFrom is the
+	// address the mail is from when it is not the mailbox, an alias of its account.
 	MailMailbox     string `env:"APP_MAIL_MAILBOX"`
+	MailFrom        string `env:"APP_MAIL_FROM"`
 	MailAppPassword string `env:"APP_MAIL_APP_PASSWORD" secret:"true"`
 
 	// KeepersAdministratorPassword is the password of the keepers auth's first

@@ -41,6 +41,12 @@ state_bucket = "{{.P.StateBucket}}"
 mail_mailbox = ""
 
 {{end -}}
+{{if .MailFrom -}}
+# The address the mail is from when it is not the mailbox: an alias of the
+# mailbox's account, such as no-reply; empty sends from the mailbox.
+mail_from = ""
+
+{{end -}}
 # The version of each secret an environment runs. Empty means "not yet": the
 # container exists, nothing is mounted; {{.Integration}} alone runs that way,
 # and a release to any other environment is refused until every secret the

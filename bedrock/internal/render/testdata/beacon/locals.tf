@@ -225,6 +225,10 @@ locals {
     # (var.mail_mailbox), empty until the organization names one, when the
     # application writes its mail to the log and sends nothing.
     APP_MAIL_MAILBOX = var.mail_mailbox
+    # dataConfig.MailFrom: the address the auths' mail is from when it is not the
+    # mailbox (var.mail_from), an alias of the mailbox's account; empty sends from
+    # the mailbox.
+    APP_MAIL_FROM = var.mail_from
     # dataConfig.SessionTimeout is left to its code default (10m).
   }
 
