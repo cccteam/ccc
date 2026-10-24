@@ -144,6 +144,7 @@ checks:
   outlet-shape
   sites-wired
   web-wired
+  login-pages
   maintenance-switch
   session-tables
   migrations-reader
