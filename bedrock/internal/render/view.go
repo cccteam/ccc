@@ -1267,6 +1267,7 @@ func (v *view) byRole(role derive.Role) *derive.Variable {
 
 // emptyString is how terraform.tfvars restates a string left empty.
 const emptyString = `""`
+
 // environments spells the environments and their hostnames.
 func (v *view) environments() {
 	envs := v.P.Environments
