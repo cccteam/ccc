@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.15](https://github.com/cccteam/ccc/compare/bedrock/v0.3.14...bedrock/v0.3.15) (2026-10-24)
+
+
+### Features
+
+* the stack carries an optional From address for the auths' mail, so a no-reply alias of the mailbox account is the sender ([#1109](https://github.com/cccteam/ccc/issues/1109)) ([4c7ad78](https://github.com/cccteam/ccc/commit/4c7ad78ada3142c3725603ec6468a08eb260fbac))
+
 ## [0.3.14](https://github.com/cccteam/ccc/compare/bedrock/v0.3.13...bedrock/v0.3.14) (2026-10-23)
 
 
