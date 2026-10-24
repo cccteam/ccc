@@ -291,6 +291,22 @@ var Steps = []Step{
 		Impulse: release("v0.5.11"),
 		Note:    "a directory method whose registration writes the person's roles from the directory at every sign-in (RoleSync: a Microsoft Entra token's application roles, or the Google Groups the group prefix names) declares .SyncsRoles() on every outlet's Auth option, as impulse add auth and add method now write it beside the method file's RoleSync, so the generated user-management surface shows such a person's roles as the directory's and never writes them (it offered them as seats an administrator may remove, which the directory put back at the next sign-in); the recipe chains the flag on every declaration that lacks it where the method file syncs roles, the router regenerates, and impulse check (auths-wired) holds the declaration and the registration to the same rule from here on; and session v0.13.7: the mailed messages (invitation, address confirmation, sign-up and the two notices) read as instructions, say how long the link is good for as a duration instead of a UTC deadline, and end with what to do if it was not the reader; nothing to change in the application",
 	},
+	{
+		Pins: pins(`
+			access v0.11.1
+			ccc v0.3.5
+			ccc/accesstypes v0.7.0
+			ccc/cloud v0.2.1
+			ccc/resource v0.15.4
+			ccc/tracer v0.3.0
+			db-initiator v0.4.3
+			httpio v0.7.22
+			logger v0.1.30
+			session v0.13.8
+		`),
+		Impulse: release("v0.5.12"),
+		Note:    "session v0.13.8 and the web library (@cccteam/resource-angular 0.0.16, @cccteam/resource 0.0.12): the login page keeps showing an invitation after a refused directory sign-in (the methods listing names the invitation the browser carries), offers only the directory buttons that could admit the invited address, puts \"Create an account with a password\" last, and says in plain words why a sign-in was refused; an invitation to an address no sign-in method of the auth could admit is refused when it is sent, with a sentence naming the domain; a sign-in that is refused leaves the invitation it carried standing; nothing to change in the application",
+	},
 }
 
 // validatePending holds a step's Pending mark to its pins: a pin at a pseudo-version

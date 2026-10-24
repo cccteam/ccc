@@ -1967,7 +1967,7 @@ import (
 	{{ $PrimaryKeyType := .Resource.PrimaryKeyType }}
 	{{- if $PrimaryKeyIsGeneratedUUID }}
 	type response struct {
-		IDs []ccc.UUID ` + "`json:\"iDs\"`" + `
+		IDs []ccc.UUID ` + "`json:\"ids\"`" + `
 	}
 	{{- end }}
 

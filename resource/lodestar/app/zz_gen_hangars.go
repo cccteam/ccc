@@ -176,7 +176,7 @@ func (a *App) PatchHangars() http.HandlerFunc {
 	}
 
 	type response struct {
-		IDs []ccc.UUID `json:"iDs"`
+		IDs []ccc.UUID `json:"ids"`
 	}
 
 	decoder := NewDecoder[resources.Hangar, request](a, accesstypes.Create, accesstypes.Update, accesstypes.Delete)

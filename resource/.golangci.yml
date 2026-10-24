@@ -151,6 +151,10 @@ linters:
         rules:
           json: camel
         use-field-name: true
+        # A field named IDs answers under the key ids; camel-casing the field name
+        # would want iDs, the casing slip the key once carried.
+        ignored-fields:
+          - IDs
     wrapcheck:
       ignore-sigs:
         - .Errorf(

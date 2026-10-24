@@ -26,7 +26,7 @@ import (
 // userWriteResponse is what a users patch answers: the ids of the users it created, as a
 // generated resource with a generated key answers.
 type userWriteResponse struct {
-	IDs []ccc.UUID `json:"iDs"`
+	IDs []ccc.UUID `json:"ids"`
 }
 
 // The operation path patterns: a user is addressed by its id, a seat by its user and
