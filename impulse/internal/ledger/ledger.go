@@ -274,6 +274,23 @@ var Steps = []Step{
 		Impulse: release("v0.5.10"),
 		Note:    "the Workspace mail driver introduces itself to the relay with the mailbox's domain (session v0.13.6): Google's relay closed the connection on the Go client's default EHLO localhost, so every send from a deployed application answered 'the message could not be sent'; nothing to change in the application",
 	},
+	{
+		Pins: pins(`
+			access v0.11.1
+			ccc v0.3.5
+			ccc/accesstypes v0.7.0
+			ccc/cloud v0.2.1
+			ccc/resource v0.15.4
+			ccc/tracer v0.3.0
+			db-initiator v0.4.3
+			httpio v0.7.22
+			logger v0.1.30
+			session v0.13.6
+		`),
+		Recipes: []Recipe{recipe.SyncsRoles{}},
+		Impulse: release("v0.5.11"),
+		Note:    "a directory method whose registration writes the person's roles from the directory at every sign-in (RoleSync: a Microsoft Entra token's application roles, or the Google Groups the group prefix names) declares .SyncsRoles() on every outlet's Auth option, as impulse add auth and add method now write it beside the method file's RoleSync, so the generated user-management surface shows such a person's roles as the directory's and never writes them (it offered them as seats an administrator may remove, which the directory put back at the next sign-in); the recipe chains the flag on every declaration that lacks it where the method file syncs roles, the router regenerates, and impulse check (auths-wired) holds the declaration and the registration to the same rule from here on",
+	},
 }
 
 // validatePending holds a step's Pending mark to its pins: a pin at a pseudo-version

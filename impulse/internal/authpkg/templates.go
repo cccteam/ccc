@@ -642,7 +642,9 @@ func (h *Handlers) {{.Pascal}}FrontChannelLogout() http.HandlerFunc {
 // The directory is the authority for role membership: every sign-in reconciles the
 // person's roles to the token's application roles (signin.RoleSync), removing any it does
 // not name, and a sign-in naming no known role is refused. Hand-assigned roles do not
-// survive it, so nothing in the application assigns roles in this store.
+// survive it, so nothing in the application assigns roles in this store, and the
+// registration's declaration on every outlet chains .SyncsRoles(), so the generated
+// users surface shows these people's roles as the directory's and never writes them.
 {{- else}}
 // The application is the authority for role membership (signin.DisableRoleSync): the
 // directory proves who someone is and the application decides what they may do, so a
@@ -751,7 +753,9 @@ func (h *Handlers) {{.Pascal}}Callback() http.HandlerFunc {
 // those named by the group prefix, read through the Cloud Identity Groups API with the
 // person's own sign-in token as far as the group lookup reaches, removing any role no
 // group names; a sign-in in no role group is refused. Hand-assigned roles do not survive
-// it, so nothing in the application assigns roles in this store.
+// it, so nothing in the application assigns roles in this store, and the registration's
+// declaration on every outlet chains .SyncsRoles(), so the generated users surface shows
+// these people's roles as the directory's and never writes them.
 {{- else}}
 // The application is the authority for role membership (google.DisableRoleSync): Google
 // proves who someone is and the application decides what they may do, so a sign-in

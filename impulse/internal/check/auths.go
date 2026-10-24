@@ -312,11 +312,14 @@ func authOf(a *app.App, p *app.AuthPackage) *app.Auth {
 // methodMismatches compares an outlet's declared methods with the methods the package
 // registers: a declaration the package does not register would mount routes to handlers
 // the App cannot supply, and a registration the outlet does not declare has routes
-// nowhere. The two must agree in name and method, and for the password method in its
-// options: a declaration chaining .OpenSignUp() mounts the sign-up routes, which the
-// registration serves only with session.OpenSignUp(), and one chaining
-// .UsernameIsEmail() has the users surface derive the address from the username, which
-// the registration does only with session.UsernameIsEmail().
+// nowhere. The two must agree in name and method, and in the options the users surface
+// and the router read from the declaration: for the password method, a declaration
+// chaining .OpenSignUp() mounts the sign-up routes, which the registration serves only
+// with session.OpenSignUp(), and one chaining .UsernameIsEmail() has the users surface
+// derive the address from the username, which the registration does only with
+// session.UsernameIsEmail(); for a directory method, a declaration chaining .SyncsRoles()
+// has the users surface leave the person's roles to the directory, which is right only
+// where the registration's RoleSync writes them.
 func methodMismatches(o *app.Outlet, p *app.AuthPackage, auth *app.Auth) []string {
 	var details []string
 	registered := map[string]*app.Method{}
@@ -335,6 +338,8 @@ func methodMismatches(o *app.Outlet, p *app.AuthPackage, auth *app.Auth) []strin
 			details = append(details, fmt.Sprintf("%s: outlet %s declares %s as a %s method on the %s auth, but %s registers it as %s; the generated router would mount the wrong routes", o.Pos, o.Name, m.Name, m.Kind, p.Name, p.Dir, reg.Kind))
 		case m.Kind == app.MethodPassword:
 			details = append(details, passwordMismatches(o, p, m, reg)...)
+		default:
+			details = append(details, roleSyncMismatches(o, p, m, reg)...)
 		}
 	}
 	for i := range auth.Methods {
@@ -365,6 +370,68 @@ func passwordMismatches(o *app.Outlet, p *app.AuthPackage, declared *app.AuthMet
 	}
 
 	return details
+}
+
+// roleSyncMismatches compares a directory method's declaration with its registration:
+// the directory writing the person's roles is said in both places or neither. The
+// declaration's .SyncsRoles() has the generated users surface show the roles the
+// registration's RoleSync writes as the directory's and never write them; without it the
+// surface offers those roles as seats an administrator may remove, which the directory
+// puts back at the next sign-in. A registration whose RoleSync the scan does not read is
+// not compared.
+func roleSyncMismatches(o *app.Outlet, p *app.AuthPackage, declared *app.AuthMethodArg, registered *app.Method) []string {
+	switch {
+	case declared.SyncsRoles && registered.Authority == app.AuthorityApplication:
+		return []string{fmt.Sprintf("%s: outlet %s declares the %s method %s with .SyncsRoles() on the %s auth, but %s:%d registers it with DisableRoleSync; the users surface would leave these people's roles to a directory that writes none (register it with RoleSync, or drop .SyncsRoles())", o.Pos, o.Name, declared.Kind, declared.Name, p.Name, registered.File, registered.Line)}
+	case !declared.SyncsRoles && registered.Authority == app.AuthorityDirectory:
+		return []string{fmt.Sprintf("%s:%d: the %s auth registers the %s method %s with RoleSync, but outlet %s (%s) does not declare .SyncsRoles(), so the users surface would show the roles the directory writes as seats an administrator may remove, which the directory puts back at the next sign-in; chain .SyncsRoles() on the declaration", registered.File, registered.Line, p.Name, registered.Kind, registered.Name, o.Name, o.Pos)}
+	default:
+		return nil
+	}
+}
+
+// RoleSyncUndeclared is a directory method registered with RoleSync whose declaration on
+// an outlet's Auth option does not chain .SyncsRoles().
+type RoleSyncUndeclared struct {
+	// Outlet is the outlet declaring the method without the flag.
+	Outlet *app.Outlet
+	// Package is the auth package registering the method.
+	Package *app.AuthPackage
+	// Method is the registration, with the file and line of its register call.
+	Method *app.Method
+}
+
+// RoleSyncUndeclaredMethods lists, outlet by outlet, the directory methods registered with
+// RoleSync whose declaration on the outlet's Auth option does not chain .SyncsRoles():
+// what auths-wired reports, and what impulse upgrade's syncs-roles recipe chains the
+// flag on. A declaration of another kind than the registration is left to auths-wired.
+func RoleSyncUndeclaredMethods(a *app.App) []RoleSyncUndeclared {
+	profile := a.Profile()
+	var found []RoleSyncUndeclared
+	for i := range a.AuthPackages {
+		p := &a.AuthPackages[i]
+		auth := authOf(a, p)
+		if auth == nil {
+			continue
+		}
+		outlets := outletBindings(profile, p.Path)
+		for k := range outlets {
+			o := &outlets[k]
+			for j := range auth.Methods {
+				m := &auth.Methods[j]
+				if m.Authority != app.AuthorityDirectory {
+					continue
+				}
+				declared := o.Auth.Method(m.Name)
+				if declared == nil || declared.Kind != m.Kind || declared.SyncsRoles {
+					continue
+				}
+				found = append(found, RoleSyncUndeclared{Outlet: o, Package: p, Method: m})
+			}
+		}
+	}
+
+	return found
 }
 
 // directoryWriters finds role assignments in the store of an auth whose membership is the

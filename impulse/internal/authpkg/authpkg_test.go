@@ -108,3 +108,67 @@ func TestValidate(t *testing.T) {
 		})
 	}
 }
+
+// TestDeclaration holds the declaration a generator program carries for a method to its
+// kind, registration name, account rule and authority: .InvitedUsers() under the
+// invited-users rule, .SyncsRoles() under the directory authority, .OpenSignUp() under
+// open sign-up, and .UsernameIsEmail() on the password method that takes it.
+func TestDeclaration(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name   string
+		method Method
+		want   string
+	}{
+		{name: "a Google Workspace whose groups write the roles", method: Method{Kind: app.MethodGoogle, Name: "directory", Authority: app.AuthorityDirectory}, want: `generation.GoogleMethod("directory").SyncsRoles()`},
+		{name: "a Google Workspace whose roles the application assigns", method: Method{Kind: app.MethodGoogle, Name: "directory", Authority: app.AuthorityApplication}, want: `generation.GoogleMethod("directory")`},
+		{name: "listed Workspaces admitting invited users", method: Method{Kind: app.MethodGoogle, Name: "listed", Slot: SlotListed, Accounts: AccountsInvited, Authority: app.AuthorityApplication}, want: `generation.GoogleMethod("listed").InvitedUsers()`},
+		{name: "any Google account under open sign-up", method: Method{Kind: app.MethodGoogle, Name: "sign-up", Slot: SlotAny, Accounts: AccountsOpen, Authority: app.AuthorityApplication}, want: `generation.GoogleMethod("sign-up").OpenSignUp()`},
+		{name: "one Workspace and any Google account, invited", method: Method{Kind: app.MethodGoogle, Name: "mixed", Slot: SlotMixed, Accounts: AccountsInvited, Authority: app.AuthorityApplication}, want: `generation.GoogleMethod("mixed").InvitedUsers()`},
+		{name: "an Entra tenant whose application roles write the roles", method: Method{Kind: app.MethodAzure, Name: "entra", Authority: app.AuthorityDirectory}, want: `generation.AzureMethod("entra").SyncsRoles()`},
+		{name: "an Entra tenant whose roles the application assigns", method: Method{Kind: app.MethodAzure, Name: "entra", Authority: app.AuthorityApplication}, want: `generation.AzureMethod("entra")`},
+		{name: "an Entra tenant and personal accounts, invited", method: Method{Kind: app.MethodAzure, Name: "entra", Slot: SlotOnePersonal, Accounts: AccountsInvited, Authority: app.AuthorityApplication}, want: `generation.AzureMethod("entra").InvitedUsers()`},
+		{name: "any Entra tenant under open sign-up", method: Method{Kind: app.MethodAzure, Name: "entra", Slot: SlotAny, Accounts: AccountsOpen, Authority: app.AuthorityApplication}, want: `generation.AzureMethod("entra").OpenSignUp()`},
+		{name: "the password method", method: Method{Kind: app.MethodPassword, Name: app.PasswordRegistration}, want: `generation.PasswordMethod()`},
+		{name: "the password method signing strangers up by their address", method: Method{Kind: app.MethodPassword, Name: app.PasswordRegistration, Accounts: AccountsOpen, UsernameIsEmail: true}, want: `generation.PasswordMethod().OpenSignUp().UsernameIsEmail()`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if err := tt.method.Validate(); err != nil {
+				t.Fatalf("Validate() error = %v", err)
+			}
+			if got := tt.method.Declaration(); got != tt.want {
+				t.Errorf("Declaration() = %s, want %s", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestDeclarationMatchesMethodFile holds the declaration and the method file to the same
+// rule for every method of the smoke specs: the declaration chains .SyncsRoles() exactly
+// where the file registers the method with RoleSync, .InvitedUsers() exactly where it
+// admits invited users only, and .OpenSignUp() exactly where it admits open sign-up.
+func TestDeclarationMatchesMethodFile(t *testing.T) {
+	t.Parallel()
+	for _, spec := range smokeSpecs() {
+		files, err := Files(spec)
+		if err != nil {
+			t.Fatalf("Files(%s) error = %v", spec.Name, err)
+		}
+		for i := range spec.Methods {
+			m := &spec.Methods[i]
+			file := string(files[m.Name+".go"])
+			arg := m.Arg()
+			if got, want := strings.Contains(file, ".RoleSync("), arg.SyncsRoles; got != want {
+				t.Errorf("%s/%s.go registers RoleSync = %v, and the declaration %s says SyncsRoles = %v", spec.Name, m.Name, got, m.Declaration(), want)
+			}
+			if got, want := strings.Contains(file, "signin.InvitedUsersOnly"), arg.InvitedUsers; got != want {
+				t.Errorf("%s/%s.go admits invited users only = %v, and the declaration %s says InvitedUsers = %v", spec.Name, m.Name, got, m.Declaration(), want)
+			}
+			if got, want := strings.Contains(file, "signin.OpenSignUp") || strings.Contains(file, "session.OpenSignUp()"), arg.OpenSignUp; got != want {
+				t.Errorf("%s/%s.go admits open sign-up = %v, and the declaration %s says OpenSignUp = %v", spec.Name, m.Name, got, m.Declaration(), want)
+			}
+		}
+	}
+}

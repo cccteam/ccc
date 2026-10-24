@@ -276,34 +276,119 @@ func AddAuthMethod(rel string, src []byte, importPath, name, declaration string)
 }
 
 // declaresMethod reports whether an Auth option's argument declares the registration
-// name: a method constructor taking it as its name, or PasswordMethod() for password.
+// name: a method constructor taking it as its name, or PasswordMethod() for password,
+// whatever label and flags are chained on it.
 func declaresMethod(arg ast.Expr, pkg, name string) bool {
-	ce, ok := arg.(*ast.CallExpr)
+	declared, _, ok := declaredMethod(arg, pkg)
+
+	return ok && declared == name
+}
+
+// declaredMethod reads the registration name an Auth option's argument declares, with
+// the flags chained on it (InvitedUsers, SyncsRoles, OpenSignUp, UsernameIsEmail): a
+// method constructor taking the name as its one string literal, or PasswordMethod() for
+// password, under .Labeled(label) and the flags in any order. Anything else is not a
+// declaration.
+func declaredMethod(arg ast.Expr, pkg string) (name string, flags map[string]bool, ok bool) {
+	decl, _, flags, ok := splitChain(arg)
 	if !ok {
-		return false
+		return "", nil, false
 	}
-	if sel, ok := ce.Fun.(*ast.SelectorExpr); ok && sel.Sel.Name == labeledMethod {
-		if inner, ok := sel.X.(*ast.CallExpr); ok {
-			ce = inner
-		}
+	ce, ok := decl.(*ast.CallExpr)
+	if !ok {
+		return "", nil, false
 	}
 	sel, ok := ce.Fun.(*ast.SelectorExpr)
 	if !ok || !isQualified(ce.Fun, pkg, sel.Sel.Name) {
-		return false
+		return "", nil, false
 	}
 	kind, known := authMethodConstructors[sel.Sel.Name]
 	if !known {
-		return false
+		return "", nil, false
 	}
 	if kind == MethodPassword {
-		return name == PasswordRegistration
+		return PasswordRegistration, flags, true
 	}
 	if len(ce.Args) != 1 {
-		return false
+		return "", nil, false
 	}
 	s, ok := stringLit(ce.Args[0])
+	if !ok {
+		return "", nil, false
+	}
 
-	return ok && s == name
+	return s, flags, true
+}
+
+// ChainMethodFlag returns the program's source with a flag chained on the declaration of
+// the method registered under name in every Auth option naming importPath, and how many
+// declarations were edited. flag is the flag's method as the generation package spells
+// it (SyncsRoles), appended after whatever the declaration chains already
+// (generation.GoogleMethod("directory").Labeled("Company directory").SyncsRoles()). A
+// declaration chaining the flag is left alone and not counted, so the edit is safe to
+// run twice. The edit is textual, so the rest of the file's comments and layout survive;
+// the result is formatted.
+func ChainMethodFlag(rel string, src []byte, importPath, name, flag string) (out []byte, edited int, err error) {
+	switch flag {
+	case invitedUsersMethod, syncsRolesMethod, openSignUpMethod, usernameIsEmailMethod:
+	default:
+		return nil, 0, errors.Newf("%q is not a flag a method declaration chains: %s, %s, %s or %s", flag, invitedUsersMethod, syncsRolesMethod, openSignUpMethod, usernameIsEmailMethod)
+	}
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, rel, src, parser.ParseComments)
+	if err != nil {
+		return nil, 0, errors.Wrap(err, "parser.ParseFile()")
+	}
+	pkg := generationLocalName(f)
+	if pkg == "" {
+		return nil, 0, errors.Newf("%s does not import %s", rel, generationImportPath)
+	}
+	call := findGeneratorCall(f, pkg)
+	if call == nil {
+		return nil, 0, errors.Newf("%s makes no %s.NewResourceGenerator call", rel, pkg)
+	}
+
+	// The offset each declaration ends at, in source order: the inspection walks the
+	// generator call depth first and the Auth options' arguments never overlap, so the
+	// offsets ascend as collected.
+	var ends []int
+	ast.Inspect(call, func(n ast.Node) bool {
+		ce, ok := n.(*ast.CallExpr)
+		if !ok || !isQualified(ce.Fun, pkg, optAuth) || len(ce.Args) < 1 {
+			return true
+		}
+		if s, ok := stringLit(ce.Args[0]); !ok || s != importPath {
+			return true
+		}
+		for _, arg := range ce.Args[1:] {
+			declared, flags, ok := declaredMethod(arg, pkg)
+			if !ok || declared != name || flags[flag] {
+				continue
+			}
+			ends = append(ends, fset.Position(arg.End()).Offset)
+		}
+
+		return true
+	})
+	if len(ends) == 0 {
+		return src, 0, nil
+	}
+
+	var b bytes.Buffer
+	at := 0
+	for _, offset := range ends {
+		b.Write(src[at:offset])
+		b.WriteString("." + flag + "()")
+		at = offset
+	}
+	b.Write(src[at:])
+
+	out, err = format.Source(b.Bytes())
+	if err != nil {
+		return nil, 0, errors.Wrapf(err, "format.Source(): %s after chaining .%s() on the %s method", rel, flag, name)
+	}
+
+	return out, len(ends), nil
 }
 
 // BindOutletAuth returns the program's source with the outlet's Auth option set to

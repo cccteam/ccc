@@ -245,16 +245,36 @@ func (m *Method) OpenSignUp() bool {
 	return m.accounts() == AccountsOpen
 }
 
+// SyncsRoles reports a method whose registration writes the person's roles from the
+// directory at every sign-in: a directory method under the directory authority. Its
+// method file sets the registration's RoleSync (signin.RoleSync, the token's application
+// roles, for Microsoft Entra; google.RoleSync, the role groups, for Google), where every
+// other method file sets DisableRoleSync. The views that render the method file and the
+// declaration a generator program carries both read this one rule.
+func (m *Method) SyncsRoles() bool {
+	return m.Directory() && m.Authority == app.AuthorityDirectory
+}
+
 // Arg is the method as a generator program declares it on an Auth option: its kind and
 // registration name, with .InvitedUsers() chained under the invited-users rule, so the
 // users surface the generator emits creates the invitations the method file's
-// signin.InvitedUsersOnly admits, .OpenSignUp() under the open sign-up rule (the
-// registration a self-service tenant record needs, the method file's signin.OpenSignUp;
-// on the password method the sign-up routes the router serves, the method file's
-// session.OpenSignUp()), and .UsernameIsEmail() on a password method whose sign-in name
-// is the address. The declaration and the method file read the same rule.
+// signin.InvitedUsersOnly admits, .SyncsRoles() under the directory authority, so that
+// surface shows the roles the method file's RoleSync writes as the directory's and never
+// writes them (a seat removed by hand would come back at the next sign-in),
+// .OpenSignUp() under the open sign-up rule (the registration a self-service tenant
+// record needs, the method file's signin.OpenSignUp; on the password method the sign-up
+// routes the router serves, the method file's session.OpenSignUp()), and
+// .UsernameIsEmail() on a password method whose sign-in name is the address. The
+// declaration and the method file read the same rule for each.
 func (m *Method) Arg() app.AuthMethodArg {
-	return app.AuthMethodArg{Kind: m.Kind, Name: m.Name, InvitedUsers: m.accounts() == AccountsInvited, OpenSignUp: m.OpenSignUp(), UsernameIsEmail: m.UsernameIsEmail}
+	return app.AuthMethodArg{
+		Kind:            m.Kind,
+		Name:            m.Name,
+		InvitedUsers:    m.accounts() == AccountsInvited,
+		SyncsRoles:      m.SyncsRoles(),
+		OpenSignUp:      m.OpenSignUp(),
+		UsernameIsEmail: m.UsernameIsEmail,
+	}
 }
 
 // Declaration writes the method as a generator program carries it, package-qualified
@@ -319,7 +339,7 @@ func (m *Method) Fallible() bool {
 		return true
 	}
 
-	return m.Kind == app.MethodGoogle && m.Authority == app.AuthorityDirectory
+	return m.Kind == app.MethodGoogle && m.SyncsRoles()
 }
 
 // Field is one setting a method reads from the environment.

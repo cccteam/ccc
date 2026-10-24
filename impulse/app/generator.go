@@ -95,8 +95,10 @@ type AuthMethodArg struct {
 	// InvitedUsers is set when the declaration chains .InvitedUsers(): the directory
 	// admits only users an operator created.
 	InvitedUsers bool
-	// SyncsRoles is set when the declaration chains .SyncsRoles(): the directory's groups
-	// write the user's roles at every sign-in.
+	// SyncsRoles is set when the declaration chains .SyncsRoles(): the directory writes
+	// the user's roles at every sign-in (its role groups, or the token's application
+	// roles), as the registration's RoleSync does, so the users surface shows them as the
+	// directory's and never writes them.
 	SyncsRoles bool
 	// OpenSignUp is set when the declaration chains .OpenSignUp(): the directory admits
 	// anyone it verifies, the rule a self-service tenant record needs; on the password

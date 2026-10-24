@@ -524,7 +524,7 @@ func (m *Method) Meaning() string {
 			fmt.Sprintf("Prove it under `-tags skipAuth` as the reference's `test/integration/portal_login_skipauth_test.go` does, setting `APP_%s_USERNAME` for the registration and following `user/%s/login` to the callback.", strings.ToUpper(strings.ReplaceAll(spec.Name, "-", "_")), spec.Name),
 		)
 		if spec.Authority == AuthorityDirectory {
-			items = append(items, "Seed no roles for people who sign in this way; define the roles in the role file and assign them in the directory.")
+			items = append(items, "Seed no roles for people who sign in this way; define the roles in the role file and assign them in the directory. The declaration chains `.SyncsRoles()` (the method file's `RoleSync`), so the generated users surface shows these people's roles as the directory's and never writes them.")
 		}
 		if spec.Accounts == authpkg.AccountsInvited {
 			items = append(items, invitationsItem(m.Auth, []string{spec.Name}))

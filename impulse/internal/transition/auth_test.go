@@ -282,7 +282,7 @@ func TestAuthMeaning(t *testing.T) {
 		{
 			name:  "a directory auth admitting members of the directory",
 			auth:  Auth{Name: "partners", Methods: []authpkg.Method{{Kind: app.MethodAzure, Name: "directory", Authority: AuthorityDirectory}}, Outlet: "portal"},
-			wants: []string{`generation.AzureMethod("directory"))`, "members of the directory, role membership the directory's"},
+			wants: []string{`generation.AzureMethod("directory").SyncsRoles())`, "members of the directory, role membership the directory's", "its declaration chains `.SyncsRoles()` (the method file's `RoleSync`)"},
 			never: []string{"Invite its people", ".InvitedUsers()"},
 		},
 		{
@@ -651,7 +651,7 @@ func TestAuthApply(t *testing.T) {
 			extra: routed,
 			wantDid: []string{
 				"pkg/auth/partners: the partners auth package (partners.go, workspace.go), rendered from the skeleton's auth source: the Auth session over tables prefixed Partners, the partners permission store, and the methods workspace (google, members of the directory, role membership the directory's), each in its own file",
-				programFile + `: the portal outlet's declaration names the partners auth with its methods, generation.Auth("example.com/acme/beacon/pkg/auth/partners", generation.GoogleMethod("workspace")), in place of the staff auth's, so the regenerated router mounts the auth's session group under /portal/api: one login route per method, the methods route its login page renders from, and the pending sign-in routes`,
+				programFile + `: the portal outlet's declaration names the partners auth with its methods, generation.Auth("example.com/acme/beacon/pkg/auth/partners", generation.GoogleMethod("workspace").SyncsRoles()), in place of the staff auth's, so the regenerated router mounts the auth's session group under /portal/api: one login route per method, the methods route its login page renders from, and the pending sign-in routes`,
 			},
 			// The flat layout's browser projects are left as they were: rebinding the
 			// portal's is the agent's, as the brief says.
@@ -672,7 +672,7 @@ func TestAuthApply(t *testing.T) {
 					t.Errorf("data.go construction = %q", got)
 				}
 				program := read(t, a, programFile)
-				if want := "\t\tgeneration.WithRouterOutlet(\"portal\", \"portal/api\",\n\t\t\tgeneration.Auth(\"example.com/acme/beacon/pkg/auth/partners\", generation.GoogleMethod(\"workspace\")),\n\t\t\tgeneration.WebApp(\"/portal\"),\n\t\t),"; !strings.Contains(program, want) {
+				if want := "\t\tgeneration.WithRouterOutlet(\"portal\", \"portal/api\",\n\t\t\tgeneration.Auth(\"example.com/acme/beacon/pkg/auth/partners\", generation.GoogleMethod(\"workspace\").SyncsRoles()),\n\t\t\tgeneration.WebApp(\"/portal\"),\n\t\t),"; !strings.Contains(program, want) {
 					t.Errorf("program lacks %q:\n%s", want, program)
 				}
 				if want := "\t\tgeneration.GenerateRoutes(\"pkg/router\", \"console/api\",\n\t\t\tgeneration.Auth(\"example.com/acme/beacon/pkg/auth/staff\", generation.PasswordMethod()),"; !strings.Contains(program, want) {
