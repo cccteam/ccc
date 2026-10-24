@@ -157,6 +157,7 @@ checks:
   resource-styles
   package-manager
   registry-pins
+  web-pins
   test-runner
   installable
   ci-workflow

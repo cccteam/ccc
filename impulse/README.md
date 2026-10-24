@@ -461,6 +461,7 @@ impulse check --list
 | `resource-styles` | Each browser app that depends on `@cccteam/resource-angular` imports the library's stylesheet (`@use '@cccteam/resource-angular/styles';`) from a global stylesheet its `angular.json` build names. The form and list components request its classes by name; without it fields lose their grid and section labels pile up in a corner. `--fix` prepends the import. |
 | `package-manager` | Every browser app carries the same kind of lockfile (bun, npm, yarn, or pnpm), and the process files and package scripts invoke that tool and no other. Two tools in one repository means two lockfiles drifting apart. |
 | `registry-pins` | Every browser app installs its packages from the registry: a committed `file:.yalc/<package>` spec (or a lockfile recording one) is a local yalc attachment that a clean checkout cannot install, so the pipeline's install fails. `ccclib.sh restore` puts the registry pins back. |
+| `web-pins` | Every web root (a directory holding `angular.json` whose `package.json` names the web library) pins `@cccteam/resource`, `@cccteam/resource-angular` and `@cccteam/resource-firestore` at the versions of the ledger step the application stands at, read from `go.mod`'s framework and tool pins as `impulse upgrade` reads them, in every section that names them (dependencies, overrides). The server libraries and the browser library of one release were written for each other, so a pin behind the step's fails, naming the file, the section, the package, what it holds and what the step pins; `impulse upgrade` moves it. A pin ahead of the step's warns and stays, as a Go pin bumped by hand ahead of its step does; a package the file does not name fails. A web root naming none of the library's packages is passed over, and an application whose step names no web pins is skipped. |
 | `test-runner` | Every browser application project runs its component specs on Angular's unit-test builder, the runner `ng new` scaffolds (`@angular/build:unit-test`: Vitest under jsdom in Node, no browser): a `test` target on that builder, the spec tsconfig it reads (named in the target, or `tsconfig.spec.json` in the project root), and a package script running `ng test <project>`, so `bun run test` runs every project's specs once. A project with no `*.spec.ts` under its source root warns: the runner is wired and nothing runs on it yet. |
 | `installable` | Every browser application bound to a session outlet installs as a progressive web app, and the server serves it through the resource package's served browser app. On the browser side: `@angular/service-worker` is a dependency at the workspace's Angular line (the line of `@angular/core`); the project's production configuration names a worker config (`"serviceWorker": "ngsw-config.json"`) that exists, whose `navigationUrls` exclude the outlet's API under the mount (`!/api/**`, relative to the mount, so the login, callback and stored-file navigations reach the server; an API prefix outside the mount is outside the worker's scope and needs none); the app config provides the worker (`provideServiceWorker`) and the library's update provider (`provideAppUpdate`); `index.html` links the web app manifest, which parses with `id` the mount path with a trailing slash and `scope` and `start_url` `./`; and every icon the manifest declares is there with PNG dimensions matching its `sizes`, read from the file's header. The release reaches the browser: the project's build defines `APP_VERSION` (`"define": { "APP_VERSION": "'dev'" }` in its build options) and the workspace's `build` script redefines it from the `VERSION` environment variable (`ng build console --define \"APP_VERSION='${VERSION:-dev}'\"`, which the image's browser stage sets), so a release build stamps its release and any other `dev`; the app config provides it as `API_VERSION` (`{ provide: API_VERSION, useValue: APP_VERSION }`) and registers `apiVersionInterceptor` through `provideHttpClient(withInterceptors([...]))`, so every request carries the release in `X-Api-Version` and the server can refuse a build it no longer answers. On the server side: the application's hand-written handlers build the asset handlers from `resource.NewBrowserApp(dir, "<mount>")`, `github.com/jtwatson/spaassets` is imported nowhere and gone from `go.mod`. A project with none of the browser side warns as not installable; a project with part of it fails, naming the first missing piece by file. |
 | `ci-workflow` | The committed `.github/workflows/ci.yml`, `.github/workflows/ci-cache.yml` and `.github/workflows/security-scan.yml` equal what impulse renders from the code: one browser job per workspace with the `web` gate over them, the jobs the `//impulse:ci` line puts on the larger runner and whether the test results are reused, the action and tool pins this impulse carries, and the daily security scan. A missing `ci.yml` fails: the pull requests run no checks at all; a missing `ci-cache.yml` fails: the checks start cold on every pull request; a missing `security-scan.yml` fails: nothing rescans the default branch and the latest release between pull requests. Once the files match, the check asks origin for its default branch and fails when `ci-cache.yml` does not fill it (declare it with `default-branch=<name>` on the `//impulse:ci` line); without a remote or a network it says it could not ask. A differing file fails naming the first differing line, what the code renders and what the file has; the fix is `impulse render`, since the file is impulse's: change the code or impulse, not the file. A browser workspace without its job is a difference like any other. |
@@ -642,6 +643,20 @@ impulse tool pin moves to the release that added the step (`go get -tool`; a pin
 beyond it stays), `go mod tidy` runs, and `go.mod` is read back: a moved pin below the
 step's version, or dropped by the tidy, refuses the step, naming the module, what `go.mod`
 holds and what the step pins; one carried beyond it by another requirement stays, noted.
+Then the step's web pins move: a step pins the web library beside the Go modules, the
+versions of `@cccteam/resource`, `@cccteam/resource-angular` and
+`@cccteam/resource-firestore` the skeleton's web roots named when the step's release
+shipped, and the walk rewrites them in every web root of the application (each directory
+holding an `angular.json` whose `package.json` names the library), editing the version
+strings in place wherever they appear (dependencies, overrides) so the file keeps its
+formatting, then runs `bun install` in that web root so `bun.lock` records the registry
+versions; both files go into the step's commit. A web pin at or beyond the step's stays,
+like a Go pin bumped by hand ahead of its step, and a web root already at the step's pins is
+said to be there already. The walk refuses to start when a step moves web pins and bun
+cannot run, before anything moves, and a `bun install` that fails stops the step with the
+install's words and the edit in the tree. The dry run lists the web roots and what moves in
+each. An application without a web root naming the library has nowhere to move them, and
+the plan says so.
 Then the step is rendered and checked by that release: the
 owned files are rendered again (`go tool impulse render`), `go generate ./...` runs (the
 application's own generator program, built against its pins), and `go tool impulse check`
@@ -675,14 +690,22 @@ commit.
 The ledger (`internal/ledger`) opens with the first published impulse release's pin set. A
 step is appended when the skeleton's pins move or a recipe is needed, and never otherwise,
 by the pull request of the impulse release that carries it, which the step names
-(`Impulse`). The ledger's test holds the last step's pins to the candidates' `go.mod` (every
+(`Impulse`). A step pins the web library too (`Web`: the three `@cccteam` packages' versions
+the candidates' web roots named when the step's release shipped), and a step is appended
+when they move as when the Go pins do. The ledger's test holds the last step's pins to the
+candidates' `go.mod` (every
 module it pins at the candidates' version, every cccteam module a candidate requires among
-them), so a pin bump without its step fails the build; holds impulse's own `go.mod` to the
+them), so a pin bump without its step fails the build; holds the last step's web pins to
+every `package.json` the candidates carry (each package at the step's version in every
+section, no other `@cccteam` package named), so a web repin without its step fails the
+build; holds impulse's own `go.mod` to the
 last step (no framework module the step pins is required beyond its pin), so a release
 whose tool directive would carry an application past the ledger fails the build until its
 step is recorded; and holds every step to its shape (a pin set of framework modules none of
 which moves backward, a note, a pin moved or a recipe named, no recipe named twice, and the
-release named once the step before names one, never behind it); and holds every step's pins
+release named once the step before names one, never behind it, and the web pins, once a
+step names them, naming every package of the library at a release version, never behind
+the step before's, and named by every later step); and holds every step's pins
 together: no module a step pins requires a sibling the step pins beyond the step's pin for
 it, read from each pinned release's own `go.mod` in the module cache (or downloaded into it;
 a module neither answers for is a warning, never a failure), since Go builds one list and

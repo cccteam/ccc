@@ -112,13 +112,18 @@ type Env struct {
 }
 
 // Ledger is what the checks ask of the upgrade ledger: whether an application's framework
-// pins reach its last step. The pins check's remedy turns on it, since an application
-// behind the ledger is moved by impulse upgrade, step by step, and never by the tool pin
-// alone, whose move ahead of the walk drags the framework pins past the steps. The ledger
-// package implements it; a check run without one reads the application as at the last
-// step.
+// pins reach its last step, and the web library's versions of the step they stand at. The
+// pins check's remedy turns on the first, since an application behind the ledger is moved
+// by impulse upgrade, step by step, and never by the tool pin alone, whose move ahead of
+// the walk drags the framework pins past the steps; the web-pins check holds every web
+// root to the second. The ledger package implements it; a check run without one reads
+// the application as at the last step and skips the web pins.
 type Ledger interface {
 	AtLastStep(mod *modfile.File) bool
+	// WebPins is the web library's versions by package of the step the application
+	// stands at, read from go.mod's framework and tool pins; nil when it stands before
+	// the first step or the step names none.
+	WebPins(mod *modfile.File) map[string]string
 }
 
 func (e *Env) notef(format string, args ...any) {
@@ -195,6 +200,7 @@ func All() []Check {
 		resourceStyles{},
 		packageManager{},
 		registryPins{},
+		webPins{},
 		testRunner{},
 		installable{},
 		ciWorkflow{},
