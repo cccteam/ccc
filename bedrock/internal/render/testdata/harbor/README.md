@@ -1071,10 +1071,15 @@ Per environment, after the first apply:
    runs a test identity gateway.
    The role-groups read needs no step of its own: the sign-in reads a person's
    groups through the Cloud Identity Groups API with their own sign-in token,
-   and 1-org enables that API in the environment project. The groups
-   themselves are made in the Workspace Admin console, each set so that its
-   members can view its member list (the infrastructure repository's README,
-   "The role groups"). If the role groups
+   and 1-org enables that API in the environment project. Google charges a
+   call made with a person's token to the project that owns the OAuth client,
+   not to the one the application runs in, which is why the client belongs in
+   the environment project; a client created in any other project needs the
+   Cloud Identity API enabled there too, or every sign-in fails at the
+   callback (a 403 from Google, while the screen blames the application). The
+   groups themselves are made in the Workspace Admin console, each set so that
+   its members can view its member list (the infrastructure repository's
+   README, "The role groups"). If the role groups
    are nested, set `staff_directory_group_lookup = "nested"` in `terraform.tfvars`.
 3. Name the members auth's first administrator in `terraform.tfvars` (`members_administrator`), per
    environment: the sign-in name the directory presents (the user principal name
