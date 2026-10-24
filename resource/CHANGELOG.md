@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.15.9](https://github.com/cccteam/ccc/compare/resource/v0.15.8...resource/v0.15.9) (2026-10-24)
+
+
+### Bug Fixes
+
+* **impulse:** the v0.5.12 ledger step pins session v0.13.8 and the web library 0.0.16/0.0.12, whose login page keeps an invitation through a refused sign-in and offers only the buttons that could admit the invitee ([#1127](https://github.com/cccteam/ccc/issues/1127)) ([8fc9946](https://github.com/cccteam/ccc/commit/8fc99468b21726307a306602007671521cd9efdb))
+* **resource:** a create answers its new keys under ids, not iDs ([#1127](https://github.com/cccteam/ccc/issues/1127)) ([8fc9946](https://github.com/cccteam/ccc/commit/8fc99468b21726307a306602007671521cd9efdb))
+
 ## [0.15.8](https://github.com/cccteam/ccc/compare/resource/v0.15.7...resource/v0.15.8) (2026-10-24)
 
 
