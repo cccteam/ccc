@@ -367,9 +367,11 @@ type dataConfig struct {
 
 	// MailMailbox and MailAppPassword send the auths' mail through the Google Workspace
 	// SMTP relay as the mailbox (a no-reply address of the organization's domain, with
-	// two-step verification and an app password, the secret). Unset, as in development,
-	// the mail is written to the log and nothing is sent.
+	// two-step verification and an app password, the secret); MailFrom is the address the
+	// mail is from when it is not the mailbox, an alias of its account. Unset, as in
+	// development, the mail is written to the log and nothing is sent.
 	MailMailbox     string `env:"APP_MAIL_MAILBOX"`
+	MailFrom        string `env:"APP_MAIL_FROM"`
 	MailAppPassword string `env:"APP_MAIL_APP_PASSWORD" secret:"true"`
 
 	// StaffAdministratorPassword is the password of the staff auth's first administrator
@@ -420,7 +422,7 @@ func openMailSender(env *dataConfig) (mail.Sender, error) {
 	if env.MailMailbox == "" {
 		return mail.Log{}, nil
 	}
-	sender, err := workspace.New(workspace.Settings{Mailbox: env.MailMailbox, AppPassword: env.MailAppPassword, Name: staff.Application})
+	sender, err := workspace.New(&workspace.Settings{Mailbox: env.MailMailbox, From: env.MailFrom, AppPassword: env.MailAppPassword, Name: staff.Application})
 	if err != nil {
 		return nil, errors.Wrap(err, "workspace.New()")
 	}

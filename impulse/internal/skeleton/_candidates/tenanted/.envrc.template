@@ -28,9 +28,11 @@ export GOOGLE_CLOUD_SPANNER_DATABASE_NAME=tenanted
 export APP_PUBLIC_URL=http://127.0.0.1:4301
 # APP_MAIL_MAILBOX and APP_MAIL_APP_PASSWORD send the auths' mail through the Google Workspace
 # SMTP relay as the mailbox (a no-reply address of the organization's domain, with two-step
-# verification and an app password). Unset here: the mail is written to the server's log,
-# link included, and nothing is sent; follow the link from the log.
+# verification and an app password); APP_MAIL_FROM is the address the mail is from when it
+# is not the mailbox, an alias of its account. Unset here: the mail is written to the server's
+# log, link included, and nothing is sent; follow the link from the log.
 # export APP_MAIL_MAILBOX=no-reply@example.com
+# export APP_MAIL_FROM=
 # export APP_MAIL_APP_PASSWORD=
 # APP_STAFF_ADMINISTRATOR_PASSWORD is the password of the staff auth's first administrator
 # (pkg/auth/staff, Administrator), which the migrate command seeds while the auth's users

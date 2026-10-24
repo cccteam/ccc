@@ -375,7 +375,7 @@ func openMailSender(env *dataConfig) (mail.Sender, error) {
 	if env.MailMailbox == "" {
 		return mail.Log{}, nil
 	}
-	sender, err := workspace.New(workspace.Settings{Mailbox: env.MailMailbox, AppPassword: env.MailAppPassword, Name: crew.Application})
+	sender, err := workspace.New(&workspace.Settings{Mailbox: env.MailMailbox, From: env.MailFrom, AppPassword: env.MailAppPassword, Name: crew.Application})
 	if err != nil {
 		return nil, errors.Wrap(err, "workspace.New()")
 	}
@@ -466,10 +466,12 @@ type dataConfig struct {
 	// is absolute.
 	PublicURL string `env:"APP_PUBLIC_URL,required"`
 	// The mail driver: the Google Workspace mailbox the application sends as, through
-	// the Workspace SMTP relay, and the mailbox's app password, a secret the deployment
+	// the Workspace SMTP relay, the address the mail is from when it is not the mailbox
+	// (an alias of its account), and the mailbox's app password, a secret the deployment
 	// reads from its store. Unset, the session library's logging stand-in writes each
 	// message to the log instead of sending it, for development alone.
 	MailMailbox     string `env:"APP_MAIL_MAILBOX"`
+	MailFrom        string `env:"APP_MAIL_FROM"`
 	MailAppPassword string `env:"APP_MAIL_APP_PASSWORD" secret:"true"`
 
 	// FileStores are the file stores' URLs.
