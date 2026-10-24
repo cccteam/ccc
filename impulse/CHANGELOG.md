@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.9](https://github.com/cccteam/ccc/compare/impulse/v0.5.8...impulse/v0.5.9) (2026-10-24)
+
+
+### Features
+
+* the skeletons and Lodestar declare the address the auths' mail is from, so a no-reply alias of the mailbox account is the sender ([#1110](https://github.com/cccteam/ccc/issues/1110)) ([641e2fc](https://github.com/cccteam/ccc/commit/641e2fc2cf1eee22daa20c3485c426a3da900254))
+
 ## [0.5.8](https://github.com/cccteam/ccc/compare/impulse/v0.5.7...impulse/v0.5.8) (2026-10-23)
 
 
