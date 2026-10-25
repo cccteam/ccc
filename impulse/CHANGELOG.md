@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.5.16](https://github.com/cccteam/ccc/compare/impulse/v0.5.15...impulse/v0.5.16) (2026-10-25)
+
+
+### Features
+
+* **impulse:** machine outlets carry an auth's tokens: Tokens is read and checked, add outlet takes --tokens &lt;auth&gt;, the auth package template carries the device and token handlers, tables and outlet registrations, the session-tables check requires an issuing auth's token tables, and the outlets skeleton's machines outlet drops its configured key ([#1139](https://github.com/cccteam/ccc/issues/1139)) ([491ca8b](https://github.com/cccteam/ccc/commit/491ca8be7f6a8a67effe1c7bcc6c6a8a06c10d49))
+* **resource:** a machine outlet declares the auth that issues its bearer tokens, Tokens(importPath), and the generated router carries the token check, the device flow's endpoints and the token routes; the hand-written &lt;Outlet&gt;Auth middleware and APIKey() retire ([#1139](https://github.com/cccteam/ccc/issues/1139)) ([491ca8b](https://github.com/cccteam/ccc/commit/491ca8be7f6a8a67effe1c7bcc6c6a8a06c10d49))
+
 ## [0.5.15](https://github.com/cccteam/ccc/compare/impulse/v0.5.14...impulse/v0.5.15) (2026-10-25)
 
 
