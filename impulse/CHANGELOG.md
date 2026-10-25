@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.14](https://github.com/cccteam/ccc/compare/impulse/v0.5.13...impulse/v0.5.14) (2026-10-25)
+
+
+### Features
+
+* **impulse:** impulse check holds each auth's login page to its outlet's mount path, so a refused or waiting sign-in never returns to a page nothing serves ([#1134](https://github.com/cccteam/ccc/issues/1134)) ([9f84e67](https://github.com/cccteam/ccc/commit/9f84e67473fb485aee866ac08a7e4ebe20e5fb04))
+
 ## [0.5.13](https://github.com/cccteam/ccc/compare/impulse/v0.5.12...impulse/v0.5.13) (2026-10-24)
 
 
