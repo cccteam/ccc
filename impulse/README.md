@@ -683,9 +683,12 @@ and, with `--agent`, runs the agent and verifies its work, through `go tool impu
 --staged` with each recipe's change and meaning passed through, so the brief, the agent and
 the verification are the release that added the step's; a pinned release before v0.4.0,
 whose `handoff` has no `--staged`, leaves the walk to write the brief from that release's
-report, and the agent to the user. Fix the obligations or hand them to the agent, commit,
-and run `upgrade` again; it resumes from whatever `go.mod` says, since the pin is the
-checkpoint and nothing else records progress. No step is skipped: a recipe is written
+report, and the agent to the user. A step the agent cleared, its work verified clean, is
+committed under the step's own subject with the body saying the agent did the wiring, and
+the walk goes on to the next step; it stops when the agent's work does not verify, or when
+no agent ran. Then fix the obligations or hand them to the agent, commit, and run `upgrade`
+again; it resumes from whatever `go.mod` says, since the pin is the checkpoint and nothing
+else records progress. No step is skipped: a recipe is written
 against the shape the step before it left behind. A step with no recipe is a pin bump and a
 commit.
 
