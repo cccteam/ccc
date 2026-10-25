@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.15.10](https://github.com/cccteam/ccc/compare/resource/v0.15.9...resource/v0.15.10) (2026-10-25)
+
+
+### Features
+
+* **impulse:** machine outlets carry an auth's tokens: Tokens is read and checked, add outlet takes --tokens &lt;auth&gt;, the auth package template carries the device and token handlers, tables and outlet registrations, the session-tables check requires an issuing auth's token tables, and the outlets skeleton's machines outlet drops its configured key ([#1139](https://github.com/cccteam/ccc/issues/1139)) ([491ca8b](https://github.com/cccteam/ccc/commit/491ca8be7f6a8a67effe1c7bcc6c6a8a06c10d49))
+* **resource:** a machine outlet declares the auth that issues its bearer tokens, Tokens(importPath), and the generated router carries the token check, the device flow's endpoints and the token routes; the hand-written &lt;Outlet&gt;Auth middleware and APIKey() retire ([#1139](https://github.com/cccteam/ccc/issues/1139)) ([491ca8b](https://github.com/cccteam/ccc/commit/491ca8be7f6a8a67effe1c7bcc6c6a8a06c10d49))
+
+
+### Bug Fixes
+
+* **resource:** the orphaned-file cleanup reports and succeeds over a store with nothing aged to delete, so an application that has stored no file yet runs its daily cleanup without a failure ([#1138](https://github.com/cccteam/ccc/issues/1138)) ([4fd6055](https://github.com/cccteam/ccc/commit/4fd6055c874b4e6a27065acad1080bf90f67fd1c))
+
 ## [0.15.9](https://github.com/cccteam/ccc/compare/resource/v0.15.8...resource/v0.15.9) (2026-10-24)
 
 
