@@ -187,6 +187,7 @@ func All() []Check {
 		outletShape{},
 		sitesWired{},
 		webWired{},
+		loginPages{},
 		maintenanceSwitch{},
 		sessionTables{},
 		migrationsReader{},
