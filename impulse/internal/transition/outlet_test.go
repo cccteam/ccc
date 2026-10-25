@@ -198,14 +198,18 @@ func beacon(t *testing.T, extra map[string]string) *app.App {
 }
 
 // fakeExec answers the go commands a transition runs. go mod tidy edits go.mod as its
-// script says (nothing, without one) or fails as the script does; go generate prints
-// out, or fails with err and its output.
+// script says (nothing, without one) or fails as the script does; a generate program run
+// alone (go run ./<site>generator) writes what its script says, or fails as the script
+// does; go generate prints out, or fails with err and its output.
 type fakeExec struct {
 	calls []string
 	out   string
 	err   error
 	// tidy stands in for go mod tidy's edit of go.mod, or its failure.
 	tidy func() error
+	// program stands in for what a site's generate program writes when it runs alone,
+	// or its failure.
+	program func() error
 }
 
 func (f *fakeExec) Run(_ context.Context, _ string, _ []string, name string, args ...string) ([]byte, error) {
@@ -215,6 +219,15 @@ func (f *fakeExec) Run(_ context.Context, _ string, _ []string, name string, arg
 		if f.tidy != nil {
 			if err := f.tidy(); err != nil {
 				return []byte("go: tidy: boom\n"), err
+			}
+		}
+
+		return []byte{}, nil
+	}
+	if name == "go" && len(args) > 0 && args[0] == "run" {
+		if f.program != nil {
+			if err := f.program(); err != nil {
+				return []byte("generation: boom\n"), err
 			}
 		}
 

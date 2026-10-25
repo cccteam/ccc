@@ -1040,9 +1040,13 @@ site moves under `apps/<existing>/` and every import of its packages follows, it
 per site process, inline in the Procfile, as `PORT` is), the deployment's collection
 becomes the union of the sites' router collections (`access.UnionCollection`, which
 refuses sites that declare a shared resource differently), and a shared generator is laid
-in over an empty `pkg/sharedresources`. The CI workflow is rewritten from the code, since
-impulse owns it: an `angular-<name>` job builds, lints and tests the new site's browser
-workspace, and on a promotion the existing site's job becomes `angular-<existing>`.
+in over an empty `pkg/sharedresources`. The new site's router package is generated code
+alone, so the copy lays nothing in it: the site's generate program runs first, from
+`cmd/generate` as its directive runs it, and the package exists before `go mod tidy` reads
+the site's imports of it; the regeneration then runs every program. The CI workflow is
+rewritten from the code, since impulse owns it: an `angular-<name>` job builds, lints and
+tests the new site's browser workspace, and on a promotion the existing site's job becomes
+`angular-<existing>`.
 `--existing` names what the existing site becomes and is asked when not given, never
 defaulted, since the name is the site's directory for good. Everything existing belongs to
 that site. The new site's resources, its place in the integration suite, its browser
