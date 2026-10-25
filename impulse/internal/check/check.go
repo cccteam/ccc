@@ -212,6 +212,7 @@ func All() []Check {
 		envTemplate{},
 		fileStore{},
 		pins{},
+		gofmtCheck{},
 		goworkOff{},
 		regen{},
 	}
