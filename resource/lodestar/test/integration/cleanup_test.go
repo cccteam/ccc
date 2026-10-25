@@ -5,7 +5,8 @@ package integration
 // cleanup-files, pkg/jobs): over a world holding one attached brief, an object no row
 // holds and older than the window is deleted from the Documents store, the brief and a
 // young orphan stay, the default store refuses to run while no row holds a key in it
-// and runs once a photo is attached, and a dry run deletes nothing.
+// and an aged object is there, runs over nothing aged while no row holds a key in it,
+// runs once a photo is attached, and a dry run deletes nothing.
 
 import (
 	"net/http"
@@ -121,6 +122,17 @@ func TestCleanupFiles(t *testing.T) {
 			},
 			opts:    jobs.CleanupOptions{Stores: []resource.StoreName{resource.DefaultStore}},
 			wantErr: "no row holds any key in the default store; the cleanup refuses to empty a store whose holders it was not given",
+		},
+		{
+			name: "the default store with nothing aged runs while no row holds a key in it",
+			arrange: func(t *testing.T, _ http.Handler, stores *testStores) []string {
+				t.Helper()
+				plant(t, stores, resource.DefaultStore, young)
+
+				return nil
+			},
+			opts:        jobs.CleanupOptions{Stores: []resource.StoreName{resource.DefaultStore}},
+			wantReports: []string{"the default store: 1 objects listed, 0 older than 48h0m0s with a UUID name, 0 keys held by rows, deleted 0 orphaned objects"},
 		},
 		{
 			name: "every store at once, each read through its own holders",

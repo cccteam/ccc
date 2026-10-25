@@ -329,3 +329,69 @@ func TestCleanup_unclaimedShare(t *testing.T) {
 		})
 	}
 }
+
+// TestCleanup_nothingAged pins that a store with nothing aged to delete is reported and
+// left alone with no live key: an application that has stored no file yet runs its
+// daily cleanup without a failure, and the no-live-key refusal fires only over aged
+// objects.
+func TestCleanup_nothingAged(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 10, 3, 12, 0, 0, 0, time.UTC)
+	tests := []struct {
+		name string
+		// fill puts the store's objects and returns their keys.
+		fill       func(t *testing.T, store *filestore.Mem) []string
+		wantReport string
+	}{
+		{
+			name:       "an empty store",
+			fill:       func(*testing.T, *filestore.Mem) []string { return []string{} },
+			wantReport: "the default store: 0 objects listed, 0 older than 48h0m0s with a UUID name, 0 keys held by rows, deleted 0 orphaned objects",
+		},
+		{
+			name: "a young object and an aged object with a row's own name",
+			fill: func(t *testing.T, store *filestore.Mem) []string {
+				t.Helper()
+				young, named := newKey(t), "sponsors/logos/"+newKey(t)
+				put(t, store, young, "text/plain", "y")
+				put(t, store, named, "text/plain", "n")
+				if !store.Age(young, now.Add(-time.Hour)) || !store.Age(named, now.Add(-3*24*time.Hour)) {
+					t.Fatal("Age() found no object")
+				}
+
+				return []string{young, named}
+			},
+			wantReport: "the default store: 2 objects listed, 0 older than 48h0m0s with a UUID name, 0 keys held by rows, deleted 0 orphaned objects",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			store := filestore.NewMem()
+			keys := tt.fill(t, store)
+			slices.Sort(keys)
+			cleanup := filestore.Cleanup{
+				Client:  resource.NewMockClient(nil, nil, nil, resource.WithFileStore(store)),
+				Store:   resource.DefaultStore,
+				Holders: []resource.FileHolder{resource.ComputedFileHolder("Documents", resource.FileKey{Field: "StoreKey", Store: resource.DefaultStore})},
+				ComputedKeys: func(context.Context, resource.FileHolder) ([]string, error) {
+					return nil, nil
+				},
+				Now: func() time.Time { return now },
+			}
+			report, err := cleanup.Run(t.Context())
+			if err != nil {
+				t.Fatalf("Run() error = %v", err)
+			}
+			if got := report.String(); got != tt.wantReport {
+				t.Errorf("Report = %q, want %q", got, tt.wantReport)
+			}
+			if diff := cmp.Diff(keys, store.Keys()); diff != "" {
+				t.Errorf("a run with nothing aged changed the store (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
