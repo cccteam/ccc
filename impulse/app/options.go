@@ -147,6 +147,7 @@ const (
 	optGenerateTypescript = "GenerateTypescript"
 	optAuth               = "Auth"
 	optAPIKey             = "APIKey"
+	optTokens             = "Tokens"
 	optWebApp             = "WebApp"
 	optManages            = "Manages"
 	optOldestAnswered     = "OldestAnswered"
@@ -329,6 +330,7 @@ var knownOptions = map[string]optionSpec{
 	optServesSessions:   {kind: kindOutletOption},
 	optAuth:             {kind: kindOutletOption, params: []paramKind{paramString}, variadic: paramAuthMethod},
 	optAPIKey:           {kind: kindOutletOption},
+	optTokens:           {kind: kindOutletOption, params: []paramKind{paramString}},
 	optWebApp:           {kind: kindOutletOption, params: []paramKind{paramString}},
 	optManages:          {kind: kindOutletOption, params: []paramKind{paramString}},
 	optOldestAnswered:   {kind: kindOutletOption, params: []paramKind{paramRelease}},

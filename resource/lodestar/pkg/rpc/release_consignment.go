@@ -13,7 +13,7 @@ import (
 
 type (
 	// ReleaseConsignment stamps a consignment's release to its owner. It is served on both
-	// the default and droids outlets: a droid releases cargo by API key through the same
+	// the default and droids outlets: a droid releases cargo by bearer token through the same
 	// generated surface humans use. The once-only rule is the grant, not the body: the
 	// Supercargo's and the droid's Execute grants carry `releasedAt IS NULL`, evaluated by
 	// the frame against the located row (@target(Consignment)), so a second release is the

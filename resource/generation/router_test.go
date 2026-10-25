@@ -269,7 +269,7 @@ func Test_authBindings(t *testing.T) {
 // Test_allOutlets_defaultServesSessions pins which outlets serve sessions, which decides
 // where the permission-digest, user-domains and live routes register and whether the
 // handlers behind them are generated at all: the default outlet serves them unless it
-// declares APIKey, an extra outlet when it declares a session Auth or ServesSessions, and
+// declares Tokens, an extra outlet when it declares a session Auth or ServesSessions, and
 // an API-key outlet never, since its generated routes are the resource routes its key
 // authorizes and nothing else.
 func Test_allOutlets_defaultServesSessions(t *testing.T) {

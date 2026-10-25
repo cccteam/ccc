@@ -71,8 +71,14 @@ func NewGenerator(ctx context.Context) (generation.Generator, error) {
 		),
 		// The droids outlet is the machine channel: structs annotated with @outlet
 		// naming droids are served under /droids, which the router composes behind
-		// API-key authentication (the App's DroidsAuth) instead of a browser session.
-		generation.WithRouterOutlet("droids", "droids", generation.APIKey()),
+		// the crew auth's bearer tokens instead of a browser session: the token check
+		// of the machine outlet the crew auth registers (the App's Droids), with the
+		// device flow's endpoints in front of it, where a command-line client obtains
+		// its tokens with a crew member's approval. The droid service account presents
+		// the configured key, seeded as its application token.
+		//
+		// Demonstrates: outlet.tokens.
+		generation.WithRouterOutlet("droids", "droids", generation.Tokens("github.com/cccteam/ccc/resource/lodestar/pkg/auth/crew")),
 		// The portal outlet is the clients' browser app: structs annotated with @outlet
 		// naming portal are served under /portal/api behind the members auth, whose
 		// people sign in through their company's Google directory, with their own

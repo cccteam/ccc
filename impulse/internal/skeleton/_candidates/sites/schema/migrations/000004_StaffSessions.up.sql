@@ -143,3 +143,68 @@ CREATE TABLE StaffSessionMailLinks (
 CREATE UNIQUE INDEX StaffSessionMailLinksByTokenHash ON StaffSessionMailLinks(TokenHash);
 
 CREATE INDEX StaffSessionMailLinksByKind ON StaffSessionMailLinks(Kind, ConsumedAt, ExpiresAt);
+
+-- The tokens: the bearer credentials of the machine outlets whose tokens the staff auth
+-- issues. A row is one credential: an application token a person issued to a program of
+-- their own, or the access or refresh token of a device grant a command-line client
+-- obtained with a person's approval; the client holds an opaque secret and the row keeps
+-- its hash. A token acts as its user (UserId) on the one machine outlet it was issued
+-- for (Outlet) and is live while it is not revoked and not expired. A device grant's
+-- tokens share a Family, and every successor a refresh exchange issues joins it, so a
+-- rotated refresh token presented again revokes the family at once (RevokedReason
+-- 'reuse'). CreatedAt, LastUsedAt and RevokedAt take the commit time; ExpiresAt is the
+-- library's deadline, written as given. A token goes with its user.
+CREATE TABLE StaffSessionTokens (
+    Id            STRING(36) NOT NULL,
+    TokenHash     BYTES(32) NOT NULL,
+    Kind          STRING(16) NOT NULL,
+    UserId        STRING(36) NOT NULL,
+    Outlet        STRING(MAX) NOT NULL,
+    Name          STRING(MAX),
+    Family        STRING(36),
+    ClientId      STRING(MAX),
+    CreatedAt     TIMESTAMP NOT NULL OPTIONS (allow_commit_timestamp = true),
+    ExpiresAt     TIMESTAMP NOT NULL,
+    LastUsedAt    TIMESTAMP OPTIONS (allow_commit_timestamp = true),
+    RevokedAt     TIMESTAMP OPTIONS (allow_commit_timestamp = true),
+    RevokedReason STRING(16),
+    CONSTRAINT CK_StaffSessionTokensId CHECK (REGEXP_CONTAINS(Id, r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')),
+    CONSTRAINT CK_StaffSessionTokensKind CHECK (Kind IN ('application', 'access', 'refresh')),
+    CONSTRAINT CK_StaffSessionTokensRevokedReason CHECK (RevokedReason IS NULL OR RevokedReason IN ('revoked', 'rotated', 'reuse', 'user')),
+    CONSTRAINT FK_StaffSessionTokens_StaffSessionUsers FOREIGN KEY (UserId) REFERENCES StaffSessionUsers (Id) ON DELETE CASCADE,
+) PRIMARY KEY (Id);
+
+CREATE UNIQUE INDEX StaffSessionTokensByTokenHash ON StaffSessionTokens(TokenHash);
+
+CREATE INDEX StaffSessionTokensByUser ON StaffSessionTokens(UserId, RevokedAt, ExpiresAt);
+
+CREATE INDEX StaffSessionTokensByFamily ON StaffSessionTokens(Family, RevokedAt);
+
+-- The device codes: the device authorizations command-line clients start for a machine
+-- outlet whose tokens the staff auth issues (RFC 8628). The client holds the opaque
+-- device code and the row keeps its hash; the person is shown the user code, normalized
+-- here. A row is pending until a signed-in person approves it (ApprovedAt, UserId) or
+-- denies it (DeniedAt), or it expires; an approved row is consumed once (ConsumedAt),
+-- when the client's poll redeems it for its tokens. LastPolledAt holds the client to the
+-- polling interval. The time columns but ExpiresAt take the commit time. An approved
+-- code goes with its user.
+CREATE TABLE StaffSessionDeviceCodes (
+    Id             STRING(36) NOT NULL,
+    DeviceCodeHash BYTES(32) NOT NULL,
+    UserCode       STRING(16) NOT NULL,
+    ClientId       STRING(MAX) NOT NULL,
+    Outlet         STRING(MAX) NOT NULL,
+    UserId         STRING(36),
+    CreatedAt      TIMESTAMP NOT NULL OPTIONS (allow_commit_timestamp = true),
+    ExpiresAt      TIMESTAMP NOT NULL,
+    ApprovedAt     TIMESTAMP OPTIONS (allow_commit_timestamp = true),
+    DeniedAt       TIMESTAMP OPTIONS (allow_commit_timestamp = true),
+    LastPolledAt   TIMESTAMP OPTIONS (allow_commit_timestamp = true),
+    ConsumedAt     TIMESTAMP OPTIONS (allow_commit_timestamp = true),
+    CONSTRAINT CK_StaffSessionDeviceCodesId CHECK (REGEXP_CONTAINS(Id, r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')),
+    CONSTRAINT FK_StaffSessionDeviceCodes_StaffSessionUsers FOREIGN KEY (UserId) REFERENCES StaffSessionUsers (Id) ON DELETE CASCADE,
+) PRIMARY KEY (Id);
+
+CREATE UNIQUE INDEX StaffSessionDeviceCodesByHash ON StaffSessionDeviceCodes(DeviceCodeHash);
+
+CREATE INDEX StaffSessionDeviceCodesByUserCode ON StaffSessionDeviceCodes(UserCode, ExpiresAt);

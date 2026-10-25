@@ -182,7 +182,7 @@ func New(h any) {
 					`generation.GenerateRouter(),`,
 					`generation.GenerateRoutes("pkg/router", "api", generation.Auth("example.com/harbor/pkg/auth/staff", generation.PasswordMethod()), generation.WebApp("/")),`,
 					`generation.WithRouterOutlet("portal", "portal/api", generation.Auth("example.com/harbor/pkg/auth/members", generation.AzureMethod("directory")), generation.WebApp("/portal")),`,
-					`generation.WithRouterOutlet("machines", "machines", generation.APIKey()),`,
+					`generation.WithRouterOutlet("machines", "machines", generation.Tokens("example.com/harbor/pkg/auth/staff")),`,
 					`generation.GenerateTypescript("web/console/src/app/core/service"),`,
 					`generation.GenerateTypescript("web/portal/src/app/core/service", generation.ForOutlet("portal")),`,
 				),

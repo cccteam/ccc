@@ -60,7 +60,8 @@ const (
 	consoleLogin = "/console/login"
 	consolePage  = "/console/dashboard"
 
-	// The droids outlet's API key in the suites.
+	// The droid service account's key in the suites, seeded as its token on the droids
+	// outlet.
 	droidsAPIKey = "integration-droids-key"
 
 	// Every persona's password.
@@ -348,8 +349,8 @@ func (c *testConfigurer) ConsoleDist() string { return "" }
 
 func (c *testConfigurer) PortalDist() string { return "" }
 
-// DroidsAPIKey is the droids outlet's key on the served stack; the test router carries no
-// outlet middleware.
+// DroidsAPIKey is the droid service account's key, which the served stack seeds as its
+// token (newServed); the test router carries no outlet middleware.
 func (c *testConfigurer) DroidsAPIKey() string { return droidsAPIKey }
 
 // Scheduler is the served stack's guard over the scheduled routes (newServedAt), which
@@ -824,6 +825,11 @@ func newServedAt(ctx context.Context, t *testing.T, version string) *served {
 			t.Fatalf("CreateSessionUser(%s) error = %v", user.User, err)
 		}
 	}
+	// The droid service account's key, seeded as its token the way the App's Start
+	// seeds the configured one.
+	if err := crewAuth.Handlers().SeedToken(ctx, droidUser, crew.DroidsOutlet, droidsAPIKey); err != nil {
+		t.Fatalf("crew.Handlers.SeedToken() error = %v", err)
+	}
 
 	stores := newTestStores()
 	keys := scheduled.NewFake()
@@ -928,9 +934,25 @@ func (b *browser) session(ctx context.Context) map[string]any {
 	return info
 }
 
-// droid issues one request as a droid carrying the bearer key (empty for an
+// droid issues one request as a droid carrying the bearer token (empty for an
 // unauthenticated probe).
-func droid(ctx context.Context, t *testing.T, s *served, key, method, path string, body []byte) (status int, respBody []byte) {
+func droid(ctx context.Context, t *testing.T, s *served, token, method, path string, body []byte) (status int, respBody []byte) {
+	t.Helper()
+
+	resp := droidResponse(ctx, t, s, token, method, path, body)
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return resp.StatusCode, respBody
+}
+
+// droidResponse is droid returning the whole response, for a suite that reads the
+// token check's challenge; the caller closes the body.
+func droidResponse(ctx context.Context, t *testing.T, s *served, token, method, path string, body []byte) *http.Response {
 	t.Helper()
 
 	req, err := http.NewRequestWithContext(ctx, method, s.server.URL+path, bytes.NewReader(body))
@@ -938,22 +960,16 @@ func droid(ctx context.Context, t *testing.T, s *served, key, method, path strin
 		t.Fatal(err)
 	}
 	req.Header.Set("Content-Type", "application/json")
-	if key != "" {
-		req.Header.Set("Authorization", "Bearer "+key)
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
 	}
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
 
-	respBody, err = io.ReadAll(resp.Body)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	return resp.StatusCode, respBody
+	return resp
 }
 
 // do issues one request as this browser, carrying its cookies and XSRF token.

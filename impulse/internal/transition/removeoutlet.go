@@ -409,10 +409,10 @@ func (r RemoveOutlet) Meaning() string {
 	b.WriteString("Left to unwire:\n\n")
 	items := []string{
 		fmt.Sprintf("The router: under the generated router, the `%s` field of the application's `Hooks`, which no longer exists (a hook naming it fails to compile); under a hand-written router, the group that mounted `generated%sRoutes` under the outlet's prefix, the prefix's not-found handler, and, for a session outlet, the routes that served its browser application (deep links and assets under `/%s/`).", pascal, pascal, r.Name),
-		fmt.Sprintf("The App: the handlers and accessors that were the outlet's (`%s()`, `%sDeepLink`, `%sAssets`, the dist field) and, for an API-key outlet, its `%sAuth` middleware; the generated `Handlers` no longer asks for them.", pascal, pascal, pascal, pascal),
-		fmt.Sprintf("The configuration: the fields read from `APP_%s_*` (a dist directory, an API key) and their lines in the environment template and the Procfile comments.", upper),
+		fmt.Sprintf("The App: the handlers and accessors that were the outlet's (a session outlet's `%s()`, `%sDeepLink`, `%sAssets` and dist field; a machine outlet's `%s()` and the `session.RegisterMachineOutlet` registration behind it); the generated `Handlers` no longer asks for them.", pascal, pascal, pascal, pascal),
+		fmt.Sprintf("The configuration: the fields read from `APP_%s_*` (a dist directory) and their lines in the environment template and the Procfile comments.", upper),
 		fmt.Sprintf("The members: a struct still annotated `@outlet(%s)` alone fails generation. For each, decide whether it moves to the default outlet (drop the annotation, and the console's people reach it) or leaves the application with its table (a migration drops the table). Then run `go generate ./...`.", r.Name),
-		"The tests: the integration tests that signed in or presented a key under the outlet's prefix, and the bootstrap identities that existed only for it (an API-key outlet's service account).",
+		"The tests: the integration tests that signed in or presented a token under the outlet's prefix, and the bootstrap identities that existed only for it.",
 		"The auth the outlet was bound to stays, with its tables, store, and role file, since another surface may bind to it; remove it separately when nothing does.",
 	}
 	for i, item := range items {

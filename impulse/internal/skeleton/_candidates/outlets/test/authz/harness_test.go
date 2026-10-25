@@ -142,10 +142,6 @@ func (c *testConfigurer) ConsoleDist() string { return "" }
 
 func (c *testConfigurer) PortalDist() string { return "" }
 
-// MachinesAPIKey is unused by these suites: the matrix drives the bare test router,
-// which carries no outlet middleware.
-func (c *testConfigurer) MachinesAPIKey() string { return "authz-machines-key" }
-
 // Live is an in-memory live service: the live service is required in every
 // application, so the suites' App starts with a fake nothing subscribes through.
 func (c *testConfigurer) Live() live.Service {

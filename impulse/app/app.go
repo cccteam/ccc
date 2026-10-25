@@ -141,6 +141,12 @@ type Auth struct {
 	// Mail reports an Auth constructed with session.WithMail: it mails invitations,
 	// address verifications and sign-up links, and reads the mail links table.
 	Mail bool
+	// TokensTable is the tokens table the bearer tokens the Auth issues are kept in,
+	// and DeviceCodesTable the device authorizations command-line clients wait on:
+	// WithTokensTableName and WithDeviceCodesTableName or the library defaults. Read
+	// when a machine outlet names the Auth as the issuer of its tokens.
+	TokensTable      string
+	DeviceCodesTable string
 	// AuthEventsTable is the auth events table the storage attaches
 	// (sessionstorage.WithAuthEvents over NewAuthEventsTable), when its name is a literal
 	// or a constant of the file; empty when the storage attaches none or the name does

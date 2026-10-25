@@ -73,7 +73,7 @@ func Test_servedRouter_generatedTestRuns(t *testing.T) {
 	// with a prefix mounted by hand beneath it that never does; the portal caps its spans.
 	outlets := []*routerOutlet{
 		{name: "default", prefix: "api", servesSessions: true, auth: &outletAuth{importPath: fixturePath + "/crew", methods: []AuthMethod{PasswordMethod()}}, webApp: "/console", oldestAnswered: "1.5.0", declaredOldest: true},
-		{name: "droids", prefix: "droids", apiKey: true, requestLog: LogOnEvent(), traces: TracesOff()},
+		{name: "droids", prefix: "droids", apiKey: true, tokenAuth: fixturePath + "/crew", requestLog: LogOnEvent(), traces: TracesOff()},
 		{name: "portal", prefix: "portal/api", servesSessions: true, auth: &outletAuth{importPath: fixturePath + "/members", methods: []AuthMethod{GoogleMethod("google")}}, webApp: "/portal", oldestAnswered: ThisRelease, declaredOldest: true, traces: TracesCapped(0.1)},
 	}
 	content := &generatedRoute{Method: "GET", Path: "/api/widgets/{widgetId}/content", TestURL: "/api/widgets/7/content", HandlerFunc: "WidgetContent", HandlerType: fileHandler, RequestLog: LogNever(), Traces: TracesOff()}

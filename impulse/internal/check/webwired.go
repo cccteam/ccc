@@ -80,7 +80,7 @@ func (c webWired) Run(_ context.Context, env *Env) Result {
 		surfaces := outletSurfaces(site)
 		for j := range surfaces {
 			o := &surfaces[j]
-			if !o.ServesSessions || o.APIKey {
+			if !o.ServesSessions || o.Machine() {
 				continue
 			}
 			for _, t := range targetsFor(site.Generator, o) {

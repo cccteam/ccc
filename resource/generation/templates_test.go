@@ -643,7 +643,7 @@ func Test_routesTemplate_outlets(t *testing.T) {
 				},
 			},
 			wantContains: []string{
-				"func generatedRoutes(r chi.Router, h GeneratedHandlers) {\n\t// The outlet serves machine clients behind an API key, so it serves no live pages",
+				"func generatedRoutes(r chi.Router, h GeneratedHandlers) {\n\t// The outlet serves machine clients carrying bearer tokens, so it serves no live pages",
 				"r = r.With(live.Refusing())",
 				`bounded.Get("/api/widgets", widgetsHandler)`,
 				"func NewTestRouter(h GeneratedHandlers) *chi.Mux {",
@@ -761,13 +761,13 @@ func Test_permissionsTemplate_sessionOutlets(t *testing.T) {
 			},
 		},
 		{
-			// The default outlet declared APIKey serves no sessions, so the comments name
+			// The default outlet declared Tokens serves no sessions, so the comments name
 			// the session outlets' prefixes alone and say the default's is not among them.
 			name: "an API-key default outlet beside session outlets names their prefixes alone",
 			data: permissionsData{Package: "app", ApplicationName: "App", ReceiverName: "a", RoutePrefix: "api", HasExtraSessionOutlets: true, ResourcePackage: "resources"},
 			wantContains: []string{
-				"registers it at GET /<prefix>/permission-digest\n// under each session-serving outlet's prefix, and not under the default outlet's, which is declared APIKey.",
-				"GET /<prefix>/user-domains under each session-serving outlet's\n// prefix, and not under the default outlet's, which is declared APIKey.",
+				"registers it at GET /<prefix>/permission-digest\n// under each session-serving outlet's prefix, and not under the default outlet's, which is declared Tokens.",
+				"GET /<prefix>/user-domains under each session-serving outlet's\n// prefix, and not under the default outlet's, which is declared Tokens.",
 			},
 			wantNotContains: []string{"GET /api/permission-digest", "GET /api/user-domains"},
 		},
@@ -1126,7 +1126,7 @@ func Test_stdlibImports_doesNotShadowTemplateImports(t *testing.T) {
 
 // Test_liveTemplate_sessionOutlets pins the live handlers' doc comments the same way:
 // the default outlet's routes when it serves sessions, the session outlets' prefixes
-// alone when the default outlet is declared APIKey.
+// alone when the default outlet is declared Tokens.
 func Test_liveTemplate_sessionOutlets(t *testing.T) {
 	t.Parallel()
 
@@ -1144,15 +1144,15 @@ func Test_liveTemplate_sessionOutlets(t *testing.T) {
 				"registers it at POST /api/live/unsubscribe.",
 				"GET /api/live/token.",
 			},
-			wantNotContains: []string{"declared APIKey"},
+			wantNotContains: []string{"declared Tokens"},
 		},
 		{
 			name: "an API-key default outlet beside session outlets names their prefixes alone",
 			data: permissionsData{Package: "app", ApplicationName: "App", ReceiverName: "a", RoutePrefix: "api", HasExtraSessionOutlets: true},
 			wantContains: []string{
-				"registers it at POST /<prefix>/live/renew under\n// each session-serving outlet's prefix, and not under the default outlet's, which is declared APIKey.",
-				"registers it at POST /<prefix>/live/unsubscribe under each\n// session-serving outlet's prefix, and not under the default outlet's, which is declared APIKey.",
-				"GET /<prefix>/live/token under each session-serving outlet's prefix,\n// and not under the default outlet's, which is declared APIKey.",
+				"registers it at POST /<prefix>/live/renew under\n// each session-serving outlet's prefix, and not under the default outlet's, which is declared Tokens.",
+				"registers it at POST /<prefix>/live/unsubscribe under each\n// session-serving outlet's prefix, and not under the default outlet's, which is declared Tokens.",
+				"GET /<prefix>/live/token under each session-serving outlet's prefix,\n// and not under the default outlet's, which is declared Tokens.",
 			},
 			wantNotContains: []string{"POST /api/live/renew", "GET /api/live/token"},
 		},

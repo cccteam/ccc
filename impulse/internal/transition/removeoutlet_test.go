@@ -97,7 +97,7 @@ func TestRemoveOutletApply(t *testing.T) {
 			},
 		},
 		{
-			name: "an API-key outlet",
+			name: "a machine outlet",
 			add:  Outlet{Name: "machines", Prefix: "machines"},
 			wantDid: []string{
 				`cmd/generate/resourcegenerator/main.go: removed WithRouterOutlet("machines", ...)`,

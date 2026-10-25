@@ -1,6 +1,6 @@
 // Package app contains Lodestar's http handlers. Most handlers are generated; this file
 // provides the application plumbing the generated code depends on, plus the hand-written
-// served surface (middleware, the droids outlet's API-key authentication, and the two
+// served surface (middleware, the droids outlet's token check, and the two
 // browser applications' static assets) the generated router.New composes around the
 // generated API routes, with the console's and the portal's own routes mounted through
 // router.AppHooks.
@@ -8,7 +8,6 @@ package app
 
 import (
 	"context"
-	"crypto/subtle"
 	"net/http"
 	"strings"
 	"time"
@@ -26,9 +25,7 @@ import (
 	"github.com/cccteam/ccc/resource/lodestar/pkg/router"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/rpc"
 	"github.com/cccteam/ccc/resource/scheduled"
-	"github.com/cccteam/httpio"
 	"github.com/cccteam/logger"
-	"github.com/cccteam/session/sessioninfo"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-playground/errors/v5"
 	"github.com/go-playground/validator/v10"
@@ -90,7 +87,8 @@ type Configurer interface {
 	AppVersion() string
 	ConsoleDist() string
 	PortalDist() string
-	// DroidsAPIKey is the bearer key the droids outlet's clients present.
+	// DroidsAPIKey is the droid service account's configured key, which Start seeds as
+	// its application token on the droids outlet.
 	DroidsAPIKey() string
 	// Live is the live service the generated handlers subscribe through and publish to
 	// (LiveService), the feature flags follow and the permission engines signal
@@ -149,11 +147,12 @@ var operationsClock = func() *time.Location {
 	return loc
 }()
 
-// droidUser is the service identity droids-outlet requests act as once the API key
-// authenticates: the bootstrap grants it roles like any other user, so the machine
-// surface goes through the same fail-closed permission checks as the browser.
+// droidUser is the service account droids-outlet requests act as once their bearer
+// token validates: the bootstrap grants it roles like any other user, and its token is
+// the configured key Start seeds, so the machine surface goes through the same
+// fail-closed permission checks as the browser.
 //
-// Demonstrates: outlet.api-key.
+// Demonstrates: outlet.tokens.
 const droidUser = "droid-r7"
 
 // App implements the application's http handlers, most of which are generated. It owns no
@@ -369,28 +368,22 @@ func (a *App) PortalAssets() http.HandlerFunc {
 	return a.portalApp.Assets()
 }
 
-// DroidsAuth authenticates the droids outlet's machine clients: the request must carry
-// the configured API key as "Authorization: Bearer <key>". A valid key binds the request
-// to the droid service identity the way the session middleware binds a browser request
-// to its user, so the handlers behind it run the same fail-closed permission checks. An
-// empty configured key disables the surface.
+// Droids returns the droids outlet's token surface (router.DroidsTokens): the machine
+// outlet the crew auth registered under crew.DroidsOutlet, whose token check requires
+// "Authorization: Bearer <token>" and binds the request to the crew member or service
+// account the token acts for, the way the session middleware binds a browser request to
+// its user, so the handlers behind it run the same fail-closed permission checks. The
+// droid service account's token is the configured key, seeded at Start; a crew member
+// issues one of their own on the console's token page, or approves a command-line
+// client's device authorization there.
 //
-// Demonstrates: outlet.api-key, outlet.exclusive.
-func (a *App) DroidsAuth(next http.Handler) http.Handler {
-	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
-		key, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
-		if !ok || a.droidsAPIKey == "" ||
-			subtle.ConstantTimeCompare([]byte(key), []byte(a.droidsAPIKey)) != 1 {
-			return httpio.NewEncoder(w).ClientMessage(r.Context(), httpio.NewUnauthorizedMessage("a valid droid API key is required"))
-		}
-
-		ctx := context.WithValue(r.Context(), sessioninfo.CtxSessionInfo, &sessioninfo.SessionData{
-			SessionInfo: &sessioninfo.SessionInfo{Username: droidUser},
-		})
-		next.ServeHTTP(w, r.WithContext(ctx))
-
+// Demonstrates: outlet.tokens, outlet.exclusive.
+func (a *App) Droids() router.DroidsTokens {
+	if a.Handlers == nil {
 		return nil
-	})
+	}
+
+	return a.DroidsTokens()
 }
 
 // SchedulerAuth admits Cloud Scheduler's calls to the scheduled routes: a token Google
@@ -493,6 +486,14 @@ func (a *App) Start(ctx context.Context) error {
 	}
 	if err := a.features.Follow(ctx, a.live); err != nil {
 		return errors.Wrap(err, "resource.FeatureSet.Follow()")
+	}
+	// The droid service account's configured key becomes its application token on the
+	// droids outlet, so the droids' calls pass the same token check as everyone's; a
+	// key rotated between starts replaces the token.
+	if a.Handlers != nil && a.droidsAPIKey != "" {
+		if err := a.SeedToken(ctx, droidUser, crew.DroidsOutlet, a.droidsAPIKey); err != nil {
+			return errors.Wrap(err, "crew.Handlers.SeedToken()")
+		}
 	}
 
 	return nil

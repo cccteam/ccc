@@ -183,7 +183,7 @@ const authParam = "auth"
 // key each person's subscriptions and change set by it: the declared auth package's
 // Name, or, where the outlet declares no Auth because the application's own router
 // composes it, the routes function's auth parameter, which NewTestRouter takes as
-// testParam. An outlet without sessions binds nothing, the API-key outlets among them,
+// testParam. An outlet without sessions binds nothing, the machine outlets among them,
 // whose routes refuse a subscribing request.
 func authBinding(o *routerOutlet) (name string, param bool, testParam string) {
 	switch {

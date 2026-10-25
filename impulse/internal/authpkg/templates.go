@@ -65,15 +65,33 @@ const (
 	// each session records, the pending sign-ins that wait for a confirmation, the
 	// sign-in attempts the password method's attempt limiter counts per sign-in name, and
 	// the mail links: the invitations, address verifications and sign-ups the auth mails,
-	// each a single-use token its follower proves. The names are spelled out in full so
-	// the tool's session-tables check, which reads the literals, finds their migrations.
-	sessionsTable   = "{{.Pascal}}Sessions"
-	usersTable      = "{{.Pascal}}SessionUsers"
-	identitiesTable = "{{.Pascal}}SessionIdentities"
-	eventsTable     = "{{.Pascal}}SessionAuthEvents"
-	pendingTable    = "{{.Pascal}}SessionPendingSignIns"
-	attemptsTable   = "{{.Pascal}}SessionSignInAttempts"
-	mailLinksTable  = "{{.Pascal}}SessionMailLinks"
+	// each a single-use token its follower proves; the tokens: the bearer credentials of
+	// the machine outlets whose tokens this auth issues (the application tokens its people
+	// issue and the access and refresh tokens of the device grants they approve); and the
+	// device codes: the device authorizations command-line clients wait on. The names are
+	// spelled out in full so the tool's session-tables check, which reads the literals,
+	// finds their migrations.
+	sessionsTable    = "{{.Pascal}}Sessions"
+	usersTable       = "{{.Pascal}}SessionUsers"
+	identitiesTable  = "{{.Pascal}}SessionIdentities"
+	eventsTable      = "{{.Pascal}}SessionAuthEvents"
+	pendingTable     = "{{.Pascal}}SessionPendingSignIns"
+	attemptsTable    = "{{.Pascal}}SessionSignInAttempts"
+	mailLinksTable   = "{{.Pascal}}SessionMailLinks"
+	tokensTable      = "{{.Pascal}}SessionTokens"
+	deviceCodesTable = "{{.Pascal}}SessionDeviceCodes"
+{{- range .Outlets}}
+
+	// {{.Pascal}}Outlet is a machine outlet whose tokens the auth issues: the generator
+	// program declares it with Tokens of this package, so the generated router composes
+	// the auth's token check in front of the outlet's routes, mounts the device flow's
+	// endpoints under it, and serves the token routes on the auth's session outlet. A
+	// request there carries a bearer token the auth issued: an application token a person
+	// issued, or one a command-line client obtained with a person's approval. New
+	// registers the outlet on the Auth before the first request, as it registers the
+	// sign-in methods.
+	{{.Pascal}}Outlet = "{{.Name}}"
+{{- end}}
 )
 
 // roleFile is the auth's default roles: the role file beside this package, embedded in the
@@ -171,14 +189,27 @@ type Auth struct {
 
 // Handlers is the auth's served surface, the shape the generated router names for the
 // outlet bound to it: the Auth's middleware and handlers, what the login page is told,
-// the pending sign-in handlers, and each method's handlers under its registration name
-// (in the method's own file).
+// the pending sign-in handlers, each method's handlers under its registration name
+// (in the method's own file){{if .Outlets}}, and the token check of each machine outlet whose tokens
+// the auth issues{{end}}.
 type Handlers struct {
 	*Session
 {{- range .Methods}}
 	{{.Field}} {{.Type}}
 {{- end}}
+{{- range .Outlets}}
+	{{.Name}} *session.MachineOutlet
+{{- end}}
 }
+{{- range .Outlets}}
+
+// {{.Pascal}}Tokens returns the {{.Name}} outlet's token check (router.{{.Pascal}}Tokens): the
+// machine outlet registered on the Auth under {{.Pascal}}Outlet, whose ValidateToken binds
+// each request under the outlet's prefix to the person its bearer token acts for.
+func (h *Handlers) {{.Pascal}}Tokens() *session.MachineOutlet {
+	return h.{{.Name}}
+}
+{{- end}}
 
 // PendingStatus reports the sign-in that waits for a password confirmation, if any.
 func (h *Handlers) PendingStatus() http.HandlerFunc {
@@ -217,6 +248,57 @@ func (h *Handlers) EmailAdd() http.HandlerFunc {
 // EmailVerify completes an address change from its link: the address is stored verified.
 func (h *Handlers) EmailVerify() http.HandlerFunc {
 	return h.Email().Verify()
+}
+
+// DeviceAuthorize starts a command-line client's device authorization ({"client_id",
+// "outlet"}, form-encoded or JSON): the client is told the code the person types and
+// the device code it polls with. The generated router mounts it under the machine
+// outlet whose tokens this auth issues, in front of the token check.
+func (h *Handlers) DeviceAuthorize() http.HandlerFunc {
+	return h.Device().Authorize()
+}
+
+// DeviceToken answers the client's polls (grant_type device_code) with its access and
+// refresh tokens once a person approved, and exchanges a refresh token for the next
+// pair (grant_type refresh_token); a rotated refresh token presented again revokes the
+// grant's family. Mounted beside DeviceAuthorize.
+func (h *Handlers) DeviceToken() http.HandlerFunc {
+	return h.Device().Token()
+}
+
+// DeviceLookup answers the approval page which client asks, for which outlet, for the
+// code the person typed (?userCode=).
+func (h *Handlers) DeviceLookup() http.HandlerFunc {
+	return h.Device().Lookup()
+}
+
+// DeviceApprove approves the device authorization the signed-in person's code names
+// ({"userCode"}), as them: the client's next poll receives tokens acting as them.
+func (h *Handlers) DeviceApprove() http.HandlerFunc {
+	return h.Device().Approve()
+}
+
+// DeviceDeny denies the device authorization the code names ({"userCode"}).
+func (h *Handlers) DeviceDeny() http.HandlerFunc {
+	return h.Device().Deny()
+}
+
+// TokensList lists the signed-in person's live tokens: the application tokens they
+// issued and the tokens of the device grants they approved, never a secret.
+func (h *Handlers) TokensList() http.HandlerFunc {
+	return h.ApplicationTokens().List()
+}
+
+// TokensCreate issues an application token for a program of the signed-in person's own
+// ({"name", "outlet", "expiresIn"}), the secret shown this once.
+func (h *Handlers) TokensCreate() http.HandlerFunc {
+	return h.ApplicationTokens().Create()
+}
+
+// TokensRevoke revokes one of the signed-in person's tokens ({"id"}), a device grant's
+// with its family.
+func (h *Handlers) TokensRevoke() http.HandlerFunc {
+	return h.ApplicationTokens().Revoke()
 }
 
 // New opens the auth's permission store and session manager over the database and
@@ -268,6 +350,8 @@ func New(ctx context.Context, db *cloudspanner.Client, settings *Settings) (*Aut
 		session.WithPendingSignInsTableName(pendingTable),
 		session.WithSignInAttemptsTableName(attemptsTable),
 		session.WithMailLinksTableName(mailLinksTable),
+		session.WithTokensTableName(tokensTable),
+		session.WithDeviceCodesTableName(deviceCodesTable),
 		session.WithMail(settings.Mail, session.MailSettings{Application: Application, LoginURL: settings.MailLoginURL}),
 		session.WithCookieName(Name),
 		session.WithXSRFCookieName(XSRFCookie),
@@ -289,6 +373,14 @@ func New(ctx context.Context, db *cloudspanner.Client, settings *Settings) (*Aut
 {{- else}}
 	handlers.{{.Field}} = register{{.Pascal}}(authSession)
 {{- end}}
+{{- end}}
+{{- range .Outlets}}
+	// The {{.Name}} outlet, registered before the first request as the methods are: its
+	// token check is what the generated router composes in front of the outlet's routes.
+	// Registration closes with the first use of the Auth, so it happens here rather than
+	// where the App is built, which a bootstrap or a test harness may reach after
+	// creating users through the API.
+	handlers.{{.Name}} = session.RegisterMachineOutlet(authSession, {{.Pascal}}Outlet)
 {{- end}}
 {{- if .TenantPolicy}}
 

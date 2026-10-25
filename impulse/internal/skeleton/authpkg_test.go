@@ -40,12 +40,18 @@ func staffSpec(candidate string) authpkg.Spec {
 	if candidate == Base {
 		roles.EveryDomain = nil
 	}
+	// The outlets candidate's staff auth issues the machines outlet's tokens.
+	var outlets []string
+	if candidate == "outlets" {
+		outlets = []string{"machines"}
+	}
 
 	return authpkg.Spec{
 		Module: candidateModule(candidate), AuthDir: "pkg/auth", Name: PlaceholderAuth,
 		Doc:                "the people who sign in to the console with a password",
 		Methods:            []authpkg.Method{{Kind: app.MethodPassword}},
 		AdministratorRoles: roles,
+		MachineOutlets:     outlets,
 		TenantPolicy:       tenantPolicy(candidate),
 	}
 }

@@ -91,7 +91,7 @@ func TestParseGeneratorProblems(t *testing.T) {
 		},
 		{
 			name:    "the router options with a method declaration",
-			options: `generation.GenerateRouter(), generation.GenerateRoutes("pkg/router", "api", generation.Auth("example.com/acme/pkg/auth/staff", generation.PasswordMethod()), generation.WebApp("/")), generation.WithRouterOutlet("machines", "machines", generation.APIKey()),`,
+			options: `generation.GenerateRouter(), generation.GenerateRoutes("pkg/router", "api", generation.Auth("example.com/acme/pkg/auth/staff", generation.PasswordMethod()), generation.WebApp("/")), generation.WithRouterOutlet("machines", "machines", generation.Tokens("example.com/acme/pkg/auth/staff")),`,
 		},
 		{
 			name:    "the oldest answered release as a string or as this release",

@@ -723,7 +723,7 @@ import (
 // that is off ({{ .ResourcePackage }}.FeatureGates); a renamed field or method
 // (@formerly) appears under its former name too, with the same states. The generated router registers it at {{ if .DefaultServesSessions }}GET /{{ .RoutePrefix }}/permission-digest{{ if .HasExtraSessionOutlets }} and,
 // for each additional session-serving outlet (ServesSessions), under that outlet's prefix{{ end }}{{ else }}GET /<prefix>/permission-digest
-// under each session-serving outlet's prefix, and not under the default outlet's, which is declared APIKey{{ end }}.
+// under each session-serving outlet's prefix, and not under the default outlet's, which is declared Tokens{{ end }}.
 func ({{ .ReceiverName }} *{{ .ApplicationName }}) PermissionDigest() http.HandlerFunc {
 	return resource.PermissionDigestHandler({{ .ReceiverName }}.UserPermissions, resource.WithFeatureGates({{ .ResourcePackage }}.FeatureGates(), {{ .ReceiverName }}.FeatureSet()), resource.WithFormerNames({{ .RouterPackage }}.Collection()))
 }
@@ -736,7 +736,7 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) PermissionDigest() http.Handl
 // never disagree. The generated router registers it at
 // {{ if .DefaultServesSessions }}GET /{{ .RoutePrefix }}/user-domains{{ if .HasExtraSessionOutlets }} and, for each additional session-serving
 // outlet (ServesSessions), under that outlet's prefix{{ end }}{{ else }}GET /<prefix>/user-domains under each session-serving outlet's
-// prefix, and not under the default outlet's, which is declared APIKey{{ end }}.
+// prefix, and not under the default outlet's, which is declared Tokens{{ end }}.
 func ({{ .ReceiverName }} *{{ .ApplicationName }}) UserDomains() http.HandlerFunc {
 	return resource.UserDomainsHandler({{ .ReceiverName }}.UserPermissions)
 }
@@ -1034,7 +1034,7 @@ import (
 // are written with a fresh expiry, and the answer says which were kept and which
 // dropped. The generated router registers it at {{ if .DefaultServesSessions }}POST /{{ .RoutePrefix }}/live/renew{{ if .HasExtraSessionOutlets }} and,
 // for each additional session-serving outlet, under that outlet's prefix{{ end }}{{ else }}POST /<prefix>/live/renew under
-// each session-serving outlet's prefix, and not under the default outlet's, which is declared APIKey{{ end }}.
+// each session-serving outlet's prefix, and not under the default outlet's, which is declared Tokens{{ end }}.
 func ({{ .ReceiverName }} *{{ .ApplicationName }}) LiveRenew() http.HandlerFunc {
 	return live.RenewHandler({{ .ReceiverName }}.LiveService(), {{ .ReceiverName }}.UserPermissions)
 }
@@ -1043,7 +1043,7 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) LiveRenew() http.HandlerFunc 
 // deleted and, on a logout, the browser's identity is revoked. The generated router
 // registers it at {{ if .DefaultServesSessions }}POST /{{ .RoutePrefix }}/live/unsubscribe{{ if .HasExtraSessionOutlets }} and, for each additional
 // session-serving outlet, under that outlet's prefix{{ end }}{{ else }}POST /<prefix>/live/unsubscribe under each
-// session-serving outlet's prefix, and not under the default outlet's, which is declared APIKey{{ end }}.
+// session-serving outlet's prefix, and not under the default outlet's, which is declared Tokens{{ end }}.
 func ({{ .ReceiverName }} *{{ .ApplicationName }}) LiveUnsubscribe() http.HandlerFunc {
 	return live.UnsubscribeHandler({{ .ReceiverName }}.LiveService())
 }
@@ -1052,7 +1052,7 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) LiveUnsubscribe() http.Handle
 // identity token and where the change set lives. The generated router registers it at
 // {{ if .DefaultServesSessions }}GET /{{ .RoutePrefix }}/live/token{{ if .HasExtraSessionOutlets }} and, for each additional session-serving outlet,
 // under that outlet's prefix{{ end }}{{ else }}GET /<prefix>/live/token under each session-serving outlet's prefix,
-// and not under the default outlet's, which is declared APIKey{{ end }}.
+// and not under the default outlet's, which is declared Tokens{{ end }}.
 func ({{ .ReceiverName }} *{{ .ApplicationName }}) LiveToken() http.HandlerFunc {
 	return live.TokenHandler({{ .ReceiverName }}.LiveService())
 }
@@ -3293,7 +3293,7 @@ func generatedRoutes(r chi.Router, h GeneratedHandlers{{ if .AuthParam }}, auth 
 	{{- template "subscribingComment" . }}
 	r = r.With(live.Subscribing({{ .AuthName }}))
 {{- else }}
-	// The outlet serves machine clients behind an API key, so it serves no live pages: a
+	// The outlet serves machine clients carrying bearer tokens, so it serves no live pages: a
 	// request carrying X-Subscribe is refused naming the header.
 	r = r.With(live.Refusing())
 {{- end }}

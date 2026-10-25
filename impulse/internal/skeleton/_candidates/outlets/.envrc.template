@@ -80,9 +80,6 @@ export APP_MEMBERS_DIRECTORY_REDIRECT_URL=http://127.0.0.1:4303/portal/api/user/
 export PORT=8093
 # export APP_CONSOLE_DIST=web/dist/console
 # export APP_PORTAL_DIST=web/dist/portal
-# APP_MACHINES_API_KEY is the bearer key machine clients present on /machines. Unset, the
-# process generates an ephemeral key nothing knows, which keeps the channel closed.
-export APP_MACHINES_API_KEY=dev-machines-key
 
 # --- local development only: the emulators the Procfile starts ---
 export SPANNER_EMULATOR_PORT=9016

@@ -12,7 +12,7 @@ import (
 
 type (
 	// IngestDroidReports is the machine-only RPC: @outlet(droids) replaces the default
-	// outlet, so the route exists only behind the API key. The payload is flat, one
+	// outlet, so the route exists only behind the token check. The payload is flat, one
 	// reading per call (a batch is the droid script calling it in a loop); tenancy
 	// resolves through the ship's hangar, so the payload never asserts its own sector. It
 	// has no target, so its Execute grant stays row-free. Frame is the reading's raw

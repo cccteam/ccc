@@ -38,6 +38,7 @@ package crew
 
 import (
 	"context"
+	"crypto/sha256"
 	_ "embed" // the role file rides in the binary
 	"net/http"
 	"time"
@@ -45,8 +46,10 @@ import (
 	cloudspanner "cloud.google.com/go/spanner"
 	"github.com/cccteam/access"
 	"github.com/cccteam/access/spannerstore"
+	"github.com/cccteam/ccc"
 	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/auth"
+	"github.com/cccteam/httpio"
 	"github.com/cccteam/session"
 	"github.com/cccteam/session/google"
 	"github.com/cccteam/session/sessionstorage"
@@ -90,8 +93,30 @@ const (
 	pendingTable    = "CrewSessionPendingSignIns"
 	attemptsTable   = "CrewSessionSignInAttempts"
 	mailLinksTable  = "CrewSessionMailLinks"
+	// The bearer tokens the auth issues for its machine outlet and the device
+	// authorizations command-line clients start, which the token page and the device
+	// flow keep.
+	tokensTable      = "CrewSessionTokens"
+	deviceCodesTable = "CrewSessionDeviceCodes"
 	// ImpersonationsTable is exported: the watch desk names it.
 	ImpersonationsTable = "CrewSessionImpersonations"
+
+	// DroidsOutlet is the machine outlet the auth issues tokens for: the droids'
+	// telemetry channel (/droids), which the generator program declares Tokens of this
+	// package, so the generated router composes the auth's token check in front of the
+	// outlet's routes, mounts the device flow's endpoints under it, and serves the token
+	// routes on the console. A request there carries a bearer token the auth issued: the
+	// droid service account's configured key, seeded as its application token
+	// (SeedToken), or a token a crew member issued on the console, or one a command-line
+	// client obtained with a crew member's approval. New registers the outlet on the
+	// Auth before the first request, as it registers the sign-in methods.
+	DroidsOutlet = "droids"
+	// seededTokenName names the application token SeedToken keeps for a service
+	// account's configured key.
+	seededTokenName = "configured key"
+	// seededTokenLifetime is how long a seeded token lives: the configured key has no
+	// expiry of its own, so the token takes a century and is replaced when the key is.
+	seededTokenLifetime = 100
 
 	// Application is the fleet's name as the mail the auth sends says it.
 	Application = "Lodestar"
@@ -171,9 +196,132 @@ type Auth struct {
 // method under its registration name. The App embeds it.
 type Handlers struct {
 	*Session
+	store    *sessionstorage.Auth[*cloudspanner.ReadWriteTransaction]
 	password *session.PasswordMethod
 	google   *google.Method
 	signUp   *google.Method
+	droids   *session.MachineOutlet
+}
+
+// DroidsTokens returns the droids outlet's token check (router.DroidsTokens): the
+// machine outlet registered on the Auth under DroidsOutlet, whose ValidateToken binds
+// each request on /droids to the account its bearer token acts for.
+func (h *Handlers) DroidsTokens() *session.MachineOutlet {
+	return h.droids
+}
+
+// DeviceAuthorize starts a command-line client's device authorization ({"client_id",
+// "outlet"}, form-encoded or JSON): the client is told the code the person types and
+// the device code it polls with. The generated router mounts it under the droids
+// outlet, in front of the token check.
+func (h *Handlers) DeviceAuthorize() http.HandlerFunc {
+	return h.Device().Authorize()
+}
+
+// DeviceToken answers the client's polls (grant_type device_code) with its access and
+// refresh tokens once a crew member approved, and exchanges a refresh token for the
+// next pair (grant_type refresh_token); a rotated refresh token presented again revokes
+// the grant's family. Mounted beside DeviceAuthorize.
+func (h *Handlers) DeviceToken() http.HandlerFunc {
+	return h.Device().Token()
+}
+
+// DeviceLookup answers the console's approval page which client asks, for which
+// outlet, for the code the person typed (?userCode=).
+func (h *Handlers) DeviceLookup() http.HandlerFunc {
+	return h.Device().Lookup()
+}
+
+// DeviceApprove approves the device authorization the signed-in crew member's code
+// names ({"userCode"}), as them: the client's next poll receives tokens acting as them.
+func (h *Handlers) DeviceApprove() http.HandlerFunc {
+	return h.Device().Approve()
+}
+
+// DeviceDeny denies the device authorization the code names ({"userCode"}).
+func (h *Handlers) DeviceDeny() http.HandlerFunc {
+	return h.Device().Deny()
+}
+
+// TokensList lists the signed-in crew member's live tokens: the application tokens
+// they issued and the tokens of the device grants they approved, never a secret.
+func (h *Handlers) TokensList() http.HandlerFunc {
+	return h.ApplicationTokens().List()
+}
+
+// TokensCreate issues an application token for a program of the signed-in crew
+// member's own ({"name", "outlet", "expiresIn"}), the secret shown this once.
+func (h *Handlers) TokensCreate() http.HandlerFunc {
+	return h.ApplicationTokens().Create()
+}
+
+// TokensRevoke revokes one of the signed-in crew member's tokens ({"id"}), a device
+// grant's with its family.
+func (h *Handlers) TokensRevoke() http.HandlerFunc {
+	return h.ApplicationTokens().Revoke()
+}
+
+// SeedToken makes secret the application token of the service account username on
+// outlet: a machine's configured credential (the droids' APP_DROIDS_API_KEY), kept the
+// way a person's own token is, hashed in the store, bound to the outlet, acting as the
+// account, so the token check and the permission checks treat the droid like any
+// other caller. The account is created without a password when the auth has never
+// seen it; a secret the store already holds live is left alone, and a changed one
+// replaces the account's seeded token on the outlet, so a rotated key takes effect
+// at the next start.
+//
+// Demonstrates: outlet.tokens, machine-identity.
+func (h *Handlers) SeedToken(ctx context.Context, username, outlet, secret string) error {
+	hash := sha256.Sum256([]byte(secret))
+	_, err := h.store.Token(ctx, hash[:])
+	if err == nil {
+		return nil
+	}
+	if !httpio.HasNotFound(err) {
+		return errors.Wrap(err, "sessionstorage.Auth.Token()")
+	}
+
+	api := h.API()
+	var userID ccc.UUID
+	user, err := api.UserByUsername(ctx, username)
+	switch {
+	case err == nil:
+		userID = user.ID
+	case httpio.HasNotFound(err):
+		id, err := api.CreateSessionUser(ctx, &session.CreateUserRequest{Username: username})
+		if err != nil {
+			return errors.Wrapf(err, "session.AuthAPI.CreateSessionUser(): service account %s", username)
+		}
+		userID = id
+	default:
+		return errors.Wrap(err, "session.AuthAPI.UserByUsername()")
+	}
+
+	tokens, err := h.store.Tokens(ctx, userID)
+	if err != nil {
+		return errors.Wrap(err, "sessionstorage.Auth.Tokens()")
+	}
+	for _, tok := range tokens {
+		if tok.Outlet != outlet || tok.Name != seededTokenName {
+			continue
+		}
+		if err := h.store.RevokeUserToken(ctx, userID, tok.ID, sessionstorage.TokenRevokedByHand); err != nil {
+			return errors.Wrap(err, "sessionstorage.Auth.RevokeUserToken()")
+		}
+	}
+	id, err := ccc.NewUUID()
+	if err != nil {
+		return errors.Wrap(err, "ccc.NewUUID()")
+	}
+	seeded := &sessionstorage.Token{
+		ID: id, TokenHash: hash[:], Kind: sessionstorage.TokenApplication, UserID: userID, Outlet: outlet, Name: seededTokenName,
+		ExpiresAt: time.Now().AddDate(seededTokenLifetime, 0, 0),
+	}
+	if err := h.store.InsertToken(ctx, seeded); err != nil {
+		return errors.Wrap(err, "sessionstorage.Auth.InsertToken()")
+	}
+
+	return nil
 }
 
 // PasswordLogin is the password method's login: {"username", "password"} in, the session
@@ -321,8 +469,9 @@ func New(ctx context.Context, db *cloudspanner.Client, settings *Settings) (*Aut
 	// (session.WithMail): the invitations the user-management surface sends, the
 	// verification of an address a person adds, and the sign-up links, each leading to
 	// the console's login page with its token in the query.
+	sessionStore := sessionstorage.NewSpannerAuth(db, sessionstorage.WithImpersonation(impersonation), sessionstorage.WithAuthEvents(events))
 	crewSession, err := session.NewAuth[session.NoCustomData, session.NoCustomData](
-		sessionstorage.NewSpannerAuth(db, sessionstorage.WithImpersonation(impersonation), sessionstorage.WithAuthEvents(events)),
+		sessionStore,
 		settings.CookieKey,
 		session.WithSessionTableName(sessionsTable),
 		session.WithUserTableName(usersTable),
@@ -330,6 +479,8 @@ func New(ctx context.Context, db *cloudspanner.Client, settings *Settings) (*Aut
 		session.WithPendingSignInsTableName(pendingTable),
 		session.WithSignInAttemptsTableName(attemptsTable),
 		session.WithMailLinksTableName(mailLinksTable),
+		session.WithTokensTableName(tokensTable),
+		session.WithDeviceCodesTableName(deviceCodesTable),
 		session.WithMail(settings.Mail.Sender, session.MailSettings{Application: Application, LoginURL: settings.Mail.LoginURL}),
 		session.WithCookieName(Name),
 		session.WithXSRFCookieName(XSRFCookie),
@@ -425,7 +576,14 @@ func New(ctx context.Context, db *cloudspanner.Client, settings *Settings) (*Aut
 	// Demonstrates: auth.invitation.
 	crewSession.SetInvitationAccepted(resource.SeatInvited(accessClient.UserManager()))
 
-	return &Auth{access: accessClient, handlers: &Handlers{Session: crewSession, password: password, google: googleMethod, signUp: signUpMethod}}, nil
+	// The machine outlet the auth issues tokens for, registered before the first
+	// request as the methods are: the droids' channel, whose token check the generated
+	// router composes in front of its routes. Registration closes with the first use of
+	// the Auth, so it happens here rather than where the App is built, which a bootstrap
+	// or a test harness may reach after creating users through the API.
+	droids := session.RegisterMachineOutlet(crewSession, DroidsOutlet)
+
+	return &Auth{access: accessClient, handlers: &Handlers{Session: crewSession, store: sessionStore, password: password, google: googleMethod, signUp: signUpMethod, droids: droids}}, nil
 }
 
 // Access returns the auth's permission engine: the handlers check against it, and its

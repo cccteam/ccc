@@ -44,9 +44,6 @@ type devIdentities struct {
 	// skipAuth build tag, APP_USERNAME does), and the application assigns their roles,
 	// so a member here is role assignments in the members store and nothing more.
 	Members []devMember `json:"members"`
-	// ServiceAccounts are machine identities: they hold roles like any user but get
-	// no login — an outlet's API-key middleware binds requests to them.
-	ServiceAccounts []devServiceAccount `json:"serviceAccounts"`
 }
 
 // devRoles is an identity's role memberships by where each is held, mirroring
@@ -69,12 +66,6 @@ type devUser struct {
 // devMember is one development member: role assignments in the members store, keyed by
 // the username the directory will present.
 type devMember struct {
-	User  accesstypes.User `json:"user"`
-	Roles devRoles         `json:"roles"`
-}
-
-// devServiceAccount is one machine identity: role assignments without a login.
-type devServiceAccount struct {
 	User  accesstypes.User `json:"user"`
 	Roles devRoles         `json:"roles"`
 }
@@ -190,13 +181,6 @@ func seedIdentities(ctx context.Context, data *config.DataConfiguration) error {
 	for _, member := range identities.Members {
 		fmt.Printf("Seeding member %s\n", member.User)
 		if err := assignRoles(ctx, data.Members().Access().UserManager(), member.User, member.Roles); err != nil {
-			return err
-		}
-	}
-
-	for _, account := range identities.ServiceAccounts {
-		fmt.Printf("Seeding service account %s\n", account.User)
-		if err := assignRoles(ctx, data.UserManager(), account.User, account.Roles); err != nil {
 			return err
 		}
 	}

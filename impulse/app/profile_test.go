@@ -166,6 +166,11 @@ func TestReadOutletOptions(t *testing.T) {
 			args: []Arg{call(optAPIKey)},
 			want: Outlet{APIKey: true},
 		},
+		{
+			name: "a machine outlet names the auth whose Auth issues its tokens",
+			args: []Arg{call(optTokens, Arg{Kind: ArgString, Str: "example.com/acme/pkg/auth/staff"})},
+			want: Outlet{Tokens: "example.com/acme/pkg/auth/staff"},
+		},
 	}
 
 	for _, tt := range tests {

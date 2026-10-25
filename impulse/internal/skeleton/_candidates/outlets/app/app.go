@@ -1,13 +1,11 @@
 // Package app contains the application's http handlers. Most handlers are generated; this
 // file provides the application plumbing the generated code depends on, plus the
-// hand-written served surface (middleware, the machines outlet's API-key
-// authentication, and static assets) the generated router.New composes around the generated API
-// routes.
+// hand-written served surface (middleware, the machines outlet's token surface, and
+// static assets) the generated router.New composes around the generated API routes.
 package app
 
 import (
 	"context"
-	"crypto/subtle"
 	"net/http"
 	"strings"
 
@@ -18,9 +16,7 @@ import (
 	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/outlets/pkg/router"
 	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/ccc/resource/live"
-	"github.com/cccteam/httpio"
 	"github.com/cccteam/logger"
-	"github.com/cccteam/session/sessioninfo"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-playground/errors/v5"
 	"github.com/go-playground/validator/v10"
@@ -112,13 +108,7 @@ type Configurer interface {
 	AppVersion() string
 	ConsoleDist() string
 	PortalDist() string
-	MachinesAPIKey() string
 }
-
-// machineUser is the service identity machines-outlet requests act as once the API key
-// authenticates: the bootstrap grants it roles like any other user, so the machine
-// surface goes through the same fail-closed permission checks as the browser.
-const machineUser = "machines"
 
 // App implements the application's http handlers, most of which are generated. It owns no
 // router: whoever serves it composes one at the edge (main composes router.New, test
@@ -143,10 +133,9 @@ type App struct {
 	// resource package's served browser app holds the deep-link rewrite, the prefix strip,
 	// and the two cache classes a service worker needs (hashed files immutable, everything
 	// else revalidated).
-	consoleApp     *resource.BrowserApp
-	portalApp      *resource.BrowserApp
-	machinesAPIKey string
-	live           live.Service
+	consoleApp *resource.BrowserApp
+	portalApp  *resource.BrowserApp
+	live       live.Service
 	// features is the application's copy of its feature flags, read through the
 	// configuration's database client when the App is built; featuresErr is why it
 	// could not be, which Start reports.
@@ -171,7 +160,6 @@ func New(cfg Configurer) *App {
 		version:        cfg.AppVersion(),
 		consoleApp:     resource.NewBrowserApp(cfg.ConsoleDist(), "/console"),
 		portalApp:      resource.NewBrowserApp(cfg.PortalDist(), "/portal"),
-		machinesAPIKey: cfg.MachinesAPIKey(),
 		live:           cfg.Live(),
 		csp:            cspPolicy(cfg.LiveOrigins()),
 	}
@@ -298,26 +286,21 @@ func (a *App) PortalAssets() http.HandlerFunc {
 	return a.portalApp.Assets()
 }
 
-// MachinesAuth authenticates the machines outlet's clients: the request must carry the
-// configured API key as "Authorization: Bearer <key>". A valid key binds the request
-// to the machine service identity the way the session middleware binds a browser
-// request to its user, so the handlers behind it run the same fail-closed permission
-// checks. An empty configured key disables the surface.
-func (a *App) MachinesAuth(next http.Handler) http.Handler {
-	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
-		key, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
-		if !ok || a.machinesAPIKey == "" ||
-			subtle.ConstantTimeCompare([]byte(key), []byte(a.machinesAPIKey)) != 1 {
-			return httpio.NewEncoder(w).ClientMessage(r.Context(), httpio.NewUnauthorizedMessage("a valid machines API key is required"))
-		}
-
-		ctx := context.WithValue(r.Context(), sessioninfo.CtxSessionInfo, &sessioninfo.SessionData{
-			SessionInfo: &sessioninfo.SessionInfo{Username: machineUser},
-		})
-		next.ServeHTTP(w, r.WithContext(ctx))
-
+// Machines returns the machines outlet's token surface (router.MachinesTokens): the
+// machine outlet the staff auth registered under staff.MachinesOutlet, whose token check
+// requires "Authorization: Bearer <token>", answers a request without one with the
+// challenge naming the outlet, and binds the request to the person the token acts for,
+// the way the session middleware binds a browser request to its user, so the handlers
+// behind it run the same fail-closed permission checks. A staff login issues an
+// application token for the outlet on the console (POST /console/api/user/tokens), or
+// approves a command-line client's device authorization there; the token holds that
+// person's roles. There is no configured key: the application issues every token.
+func (a *App) Machines() router.MachinesTokens {
+	if a.Handlers == nil {
 		return nil
-	})
+	}
+
+	return a.Handlers.MachinesTokens()
 }
 
 // UserPermissions returns the permission checker for a request, composed from the

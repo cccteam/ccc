@@ -32,7 +32,7 @@ func TestOutletShape(t *testing.T) {
 				`generation.GenerateHandlers("app"),`,
 				`generation.GenerateRouter(),`,
 				`generation.GenerateRoutes("pkg/router", "api", `+staffAuth+`, generation.WebApp("/")),`,
-				`generation.WithRouterOutlet("machines", "machines", generation.APIKey()),`,
+				`generation.WithRouterOutlet("machines", "machines", generation.Tokens("example.com/harbor/pkg/auth/staff")),`,
 			),
 			wantStatus:  Pass,
 			wantSummary: "1 browser application(s) serve their API under their mount path",

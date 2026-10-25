@@ -173,9 +173,11 @@ func (c options) siteFindings(a *app.App, s *app.Site) []string {
 }
 
 // routerFindings checks the outlet declarations against GenerateRouter. Without the
-// option, Auth, APIKey, and WebApp describe a router nobody generates. With it, every
-// outlet declares Auth or APIKey and not both, a machine outlet serves no browser
-// application, and an auth package the program names has its directory in the module.
+// option, Auth, Tokens, and WebApp describe a router nobody generates. With it, every
+// outlet declares Auth or Tokens and not both, a machine outlet serves no browser
+// application and names the auth of a session outlet of the program as the issuer of its
+// tokens, the retired APIKey is refused as the generator refuses it, and an auth package
+// the program names has its directory in the module.
 func (options) routerFindings(a *app.App, s *app.Site) []string {
 	if s.Generator.RoutesDir() == "" {
 		return nil
@@ -189,6 +191,8 @@ func (options) routerFindings(a *app.App, s *app.Site) []string {
 			switch {
 			case o.Auth != nil:
 				declared = "Auth"
+			case o.Tokens != "":
+				declared = "Tokens"
 			case o.APIKey:
 				declared = "APIKey"
 			case o.WebApp != "":
@@ -201,12 +205,16 @@ func (options) routerFindings(a *app.App, s *app.Site) []string {
 			continue
 		}
 		switch {
-		case o.Auth != nil && o.APIKey:
-			details = append(details, fmt.Sprintf("%s: outlet %s declares both Auth and APIKey; an outlet is a browser surface behind one auth or a machine surface behind an API key", o.Pos, o.Name))
-		case o.Auth == nil && !o.APIKey:
-			details = append(details, fmt.Sprintf("%s: outlet %s declares neither Auth nor APIKey; under GenerateRouter every outlet says how it authenticates", o.Pos, o.Name))
-		case o.APIKey && o.WebApp != "":
-			details = append(details, fmt.Sprintf("%s: outlet %s declares APIKey and WebApp(%q); a machine outlet serves no browser application", o.Pos, o.Name, o.WebApp))
+		case o.APIKey:
+			details = append(details, fmt.Sprintf("%s: outlet %s declares APIKey, which is retired; a machine outlet declares Tokens(importPath), naming the auth package of a session outlet whose Auth issues its tokens, and the generated router carries the token check", o.Pos, o.Name))
+		case o.Auth != nil && o.Tokens != "":
+			details = append(details, fmt.Sprintf("%s: outlet %s declares both Auth and Tokens; an outlet is a browser surface behind one auth or a machine surface carrying an auth's tokens", o.Pos, o.Name))
+		case o.Auth == nil && o.Tokens == "":
+			details = append(details, fmt.Sprintf("%s: outlet %s declares neither Auth nor Tokens; under GenerateRouter every outlet says how it authenticates", o.Pos, o.Name))
+		case o.Tokens != "" && o.WebApp != "":
+			details = append(details, fmt.Sprintf("%s: outlet %s declares Tokens and WebApp(%q); a machine outlet serves no browser application", o.Pos, o.Name, o.WebApp))
+		case o.Tokens != "" && !issuerDeclared(all, o.Tokens):
+			details = append(details, fmt.Sprintf("%s: outlet %s declares Tokens(%q), which no session outlet of the program declares with Auth; a machine outlet carries the tokens of an auth that serves a session outlet, where its people issue them", o.Pos, o.Name, o.Tokens))
 		}
 		if o.Auth == nil {
 			continue
@@ -219,6 +227,18 @@ func (options) routerFindings(a *app.App, s *app.Site) []string {
 	}
 
 	return details
+}
+
+// issuerDeclared reports whether a session outlet binds to the auth package at
+// importPath, so its Auth can issue a machine outlet's tokens.
+func issuerDeclared(all []app.Outlet, importPath string) bool {
+	for i := range all {
+		if all[i].Auth != nil && all[i].Auth.ImportPath == importPath {
+			return true
+		}
+	}
+
+	return false
 }
 
 // layoutFindings checks the sites against the layout: one site at the root, or every

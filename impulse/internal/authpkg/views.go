@@ -31,6 +31,9 @@ type view struct {
 	UsernameIsEmail bool
 	// Methods are the methods with their rendering helpers.
 	Methods []*methodView
+	// Outlets are the machine outlets whose tokens the auth issues, with their rendering
+	// helpers.
+	Outlets []*outletView
 	// Foothold is the form of the auth's first administrator the deployment seeds
 	// (Foothold), FootholdCreatesUser whether the membership form also creates the user
 	// row, AdministratorAuthored whether the spec names the roles, and
@@ -42,6 +45,14 @@ type view struct {
 	AdministratorEveryDomain string
 	// Imports are the import paths the Auth file needs beyond the fixed ones.
 	Imports []string
+}
+
+// outletView is a machine outlet as the Auth file renders it.
+type outletView struct {
+	// Name is the outlet's name as the generator program declares it (machines).
+	Name string
+	// Pascal is the name in PascalCase (Machines): the constant and the getter.
+	Pascal string
 }
 
 // methodView is what a method file's template renders from.
@@ -90,6 +101,9 @@ func newView(spec *Spec) *view {
 			v.OpenSignUp = v.OpenSignUp || mv.OpenSignUp()
 			v.UsernameIsEmail = v.UsernameIsEmail || mv.UsernameIsEmail
 		}
+	}
+	for _, outlet := range spec.MachineOutlets {
+		v.Outlets = append(v.Outlets, &outletView{Name: outlet, Pascal: names.Pascal(outlet)})
 	}
 	v.Foothold = Foothold(spec)
 	v.FootholdCreatesUser = v.Foothold == FootholdMembership && !provisions(spec)

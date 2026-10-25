@@ -22,8 +22,8 @@ import (
 
 // Outlet adds a router outlet to a flat application: a second URL space on the same
 // host, either a browser surface bound to an auth (a session outlet, which gets its own
-// generated client and browser project) or a machine surface behind an authentication the
-// application defines (an API-key outlet).
+// generated client and browser project) or a machine surface whose requests carry the
+// bearer tokens an auth issues (a machine outlet).
 type Outlet struct {
 	// Name is the outlet's lowerCamelCase name, as WithRouterOutlet and @outlet use it.
 	Name string
@@ -31,9 +31,10 @@ type Outlet struct {
 	Prefix string
 	// Sessions marks a session outlet.
 	Sessions bool
-	// Auth names the auth package a session outlet binds to, pkg/auth/<Auth>. Empty binds
-	// the outlet to the auth the default outlet declares: the application's only auth when
-	// impulse new composes the outlet.
+	// Auth names the auth package the outlet binds to, pkg/auth/<Auth>: the auth whose
+	// sessions a session outlet serves, or the auth whose Auth issues a machine outlet's
+	// tokens. Empty binds the outlet to the auth the default outlet declares: the
+	// application's only auth when impulse new composes the outlet.
 	Auth string
 }
 
@@ -47,7 +48,7 @@ var outletNameRE = regexp.MustCompile(`^[a-z][A-Za-z0-9]*$`)
 
 // Command is the impulse command line for the transition.
 func (o Outlet) Command() string {
-	kind := "--api-key"
+	kind := "--tokens " + o.Auth
 	if o.Sessions {
 		kind = "--auth " + o.Auth
 	}
@@ -84,7 +85,7 @@ func (o Outlet) Validate(a *app.App) error {
 	if o.Sessions && defaultTarget(g) == nil {
 		return errors.Newf("%s: a session outlet's browser project is copied from the default outlet's, but no GenerateTypescript target without ForOutlet names one", g.File)
 	}
-	if o.Sessions {
+	if o.Sessions || o.Auth != "" || site.GeneratedRouter {
 		if _, _, err := o.binding(a, site); err != nil {
 			return err
 		}
@@ -93,10 +94,13 @@ func (o Outlet) Validate(a *app.App) error {
 	return nil
 }
 
-// binding resolves the auth a session outlet binds to: the package --auth names, with
-// the methods its Auth registers, or the auth the default outlet declares when none is
-// named. Under a hand-written router that declares no Auth there is nothing to bind to in
-// the program, and both results are empty.
+// binding resolves the auth the outlet binds to: the package --auth or --tokens names,
+// or the auth the default outlet declares when none is named. A session outlet's comes
+// with the methods its Auth registers, which its declaration carries; a machine outlet's
+// is the auth whose Auth issues its tokens, which under the generated router a session
+// outlet of the program must declare, since its people issue the tokens there. Under a
+// hand-written router that declares no Auth there is nothing to bind to in the program,
+// and both results are empty.
 func (o Outlet) binding(a *app.App, site *app.Site) (name string, auth *app.OutletAuth, err error) {
 	if o.Auth == "" {
 		if site.Default.Auth == nil {
@@ -113,6 +117,13 @@ func (o Outlet) binding(a *app.App, site *app.Site) (name string, auth *app.Outl
 		p := &a.AuthPackages[i]
 		if p.Name != o.Auth {
 			continue
+		}
+		if !o.Sessions {
+			if site.GeneratedRouter && !issuerDeclared(site, p.Path) {
+				return "", nil, errors.Newf("%s: the %s auth serves no session outlet, so its Auth cannot issue the %s outlet's tokens; a machine outlet carries the tokens of an auth a session outlet binds to, where its people issue them, and those auths are %s", site.Generator.File, o.Auth, o.Name, sessionAuthNames(a, site))
+			}
+
+			return p.Name, &app.OutletAuth{ImportPath: p.Path}, nil
 		}
 		var registered *app.Auth
 		for j := range a.Auths {
@@ -138,6 +149,33 @@ func (o Outlet) binding(a *app.App, site *app.Site) (name string, auth *app.Outl
 	}
 
 	return "", nil, errors.Newf("no auth package pkg/auth/%s to bind the %s outlet to; the auths are %s (impulse add auth adds one)", o.Auth, o.Name, authNames(a))
+}
+
+// issuerDeclared reports whether a session outlet of the site binds to the auth package
+// at importPath, so its Auth can issue a machine outlet's tokens.
+func issuerDeclared(site *app.Site, importPath string) bool {
+	all := site.AllOutlets()
+	for i := range all {
+		if all[i].Auth != nil && all[i].Auth.ImportPath == importPath {
+			return true
+		}
+	}
+
+	return false
+}
+
+// sessionAuthNames lists the auths the site's session outlets bind to, or says there
+// are none.
+func sessionAuthNames(a *app.App, site *app.Site) string {
+	var names []string
+	all := site.AllOutlets()
+	for i := range all {
+		if all[i].Auth != nil {
+			names = append(names, authName(a, all[i].Auth.ImportPath))
+		}
+	}
+
+	return listed(names)
 }
 
 // authName is the name of the auth package at an import path: the package's directory
@@ -179,7 +217,7 @@ func (o Outlet) Apply(ctx context.Context, a *app.App, exec check.Execer) (*Chan
 		name string
 		auth *app.OutletAuth
 	)
-	if o.Sessions {
+	if o.Sessions || o.Auth != "" || site.GeneratedRouter {
 		var err error
 		if name, auth, err = o.binding(a, site); err != nil {
 			return nil, err
@@ -223,8 +261,10 @@ func (o Outlet) clientNote() string {
 // GenerateTypescript target for the outlet copied from the default outlet's. Under the
 // generated router the declaration says how the outlet authenticates: a session outlet
 // binds to its auth (the one --auth names, else the default outlet's) and serves its
-// browser application at /<name>, an API-key outlet declares APIKey; under a hand-written
-// router a session outlet declares ServesSessions and the brief names the auth.
+// browser application at /<name>, a machine outlet declares Tokens with the import path
+// of the auth whose Auth issues its tokens (the one --tokens names, else the default
+// outlet's); under a hand-written router a session outlet declares ServesSessions and
+// the brief names the auth.
 func (o Outlet) editProgram(a *app.App, site *app.Site, auth *app.OutletAuth, ch *Change) error {
 	g := site.Generator
 	src, mode, err := readFile(a, g.File)
@@ -240,7 +280,7 @@ func (o Outlet) editProgram(a *app.App, site *app.Site, auth *app.OutletAuth, ch
 		option = fmt.Sprintf("generation.WithRouterOutlet(%q, %q,\n\t\t\t%s,\n\t\t\t%s,\n\t\t)", o.Name, o.Prefix, authText, webApp)
 		summary = fmt.Sprintf("generation.WithRouterOutlet(%q, %q, %s, %s)", o.Name, o.Prefix, authText, webApp)
 	case site.GeneratedRouter:
-		option = fmt.Sprintf("generation.WithRouterOutlet(%q, %q, generation.APIKey())", o.Name, o.Prefix)
+		option = fmt.Sprintf("generation.WithRouterOutlet(%q, %q, generation.Tokens(%q))", o.Name, o.Prefix, auth.ImportPath)
 		summary = option
 	case o.Sessions:
 		option = fmt.Sprintf("generation.WithRouterOutlet(%q, %q, generation.ServesSessions())", o.Name, o.Prefix)
@@ -251,8 +291,11 @@ func (o Outlet) editProgram(a *app.App, site *app.Site, auth *app.OutletAuth, ch
 		return err
 	}
 	bound := ""
-	if o.Sessions && !site.GeneratedRouter && o.Auth != "" {
+	switch {
+	case o.Sessions && !site.GeneratedRouter && o.Auth != "":
 		bound = fmt.Sprintf("; the outlet binds to the %s auth, whose session group the hand-written router composes", o.Auth)
+	case !o.Sessions && !site.GeneratedRouter && o.Auth != "":
+		bound = fmt.Sprintf("; the outlet carries the %s auth's tokens, whose token check the hand-written router composes", o.Auth)
 	}
 	ch.didf("%s: added %s%s", g.File, strings.TrimPrefix(summary, "generation."), bound)
 
@@ -940,7 +983,11 @@ func (o Outlet) Meaning() string {
 
 		return b.String()
 	}
-	fmt.Fprintf(&b, "This is an API-key outlet: a machine surface with no browser, declared with `APIKey()`, so the generated router composes its group with no session handling and no XSRF guard: `NoCaching`, `CompressionMiddleware`, then `%sAuth`. Give the App that middleware: it requires `Authorization: Bearer <key>`, compares it in constant time against a configured key (`APP_%s_API_KEY`; when unset, generate an ephemeral key at startup so the surface stays closed), and binds the request to a service identity in the session context the way the session middleware binds a browser to its user, so the handlers behind it run the same permission checks. Seed that service identity's roles in the bootstrap identities. Decide which resources the %s outlet serves and annotate them; then run `go generate ./...`. Extend the integration tests: the right key answers, a wrong key and no key answer unauthorized, and a resource that is not a member answers not found under the prefix.\n", pascal, upper, o.Name)
+	auth := "the auth the console uses"
+	if o.Auth != "" {
+		auth = "the " + o.Auth + " auth"
+	}
+	fmt.Fprintf(&b, "This is a machine outlet: a surface with no browser, declared with `Tokens` naming %s, whose Auth issues the tokens its requests carry, so the generated router composes its group with no session handling and no XSRF guard: `NoCaching`, `CompressionMiddleware`, `ReleaseHeader`, the device flow's two endpoints (`POST /%s/oauth/device/authorize` and `POST /%s/oauth/token`, which a command-line client reaches before it holds a token), then the token check, `%s().ValidateToken`, in front of the outlet's routes. The auth's session outlet gains the token routes under its own prefix (`.../user/tokens`, `.../user/tokens/revoke`, `.../user/device`, `.../user/device/approve`, `.../user/device/deny`), where a signed-in person issues, lists and revokes their own application tokens and approves or denies a command-line client's device authorization; the auth package's handlers already carry them. Give the App what the generated `Handlers` now requires: `%s() router.%sTokens`, returning the machine outlet registered on the auth once, when the App is built and before the first request (`session.RegisterMachineOutlet` over the auth's `Handlers().Session`, under the outlet's name %q). The token check requires `Authorization: Bearer <token>`, answers unauthorized with `WWW-Authenticate: Bearer realm=%q` without one, and binds the request to the person the token acts for, the way the session middleware binds a browser to its user, so the handlers behind it run the same fail-closed permission checks: a program holds a token its person issued, and holds that person's roles. There is no configured key; the application issues every token. Decide which resources the %s outlet serves and annotate them; then run `go generate ./...`. Extend the integration tests: a signed-in person issues a token for the outlet on the auth's session outlet (`POST .../user/tokens` with `{\"name\", \"outlet\": %q}`) and it answers under the prefix, no token and a token the auth never issued answer unauthorized, and a resource that is not a member answers not found under the prefix.\n", auth, o.Prefix, o.Prefix, pascal, pascal, pascal, o.Name, o.Name, o.Name, o.Name)
 
 	return b.String()
 }

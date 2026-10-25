@@ -84,7 +84,7 @@ func Test_renderReleaseFile(t *testing.T) {
 			name: "a release, a machine outlet, no declaration and this release",
 			outlets: []*routerOutlet{
 				{name: "default", prefix: "api", servesSessions: true, auth: crew, oldestAnswered: "1.5.0", declaredOldest: true},
-				{name: "droids", prefix: "droids", apiKey: true},
+				{name: "droids", prefix: "droids", apiKey: true, tokenAuth: crew.importPath},
 				{name: "kiosk", prefix: "kiosk/api", servesSessions: true, auth: crew},
 				{name: "portal", prefix: "portal/api", servesSessions: true, auth: crew, oldestAnswered: ThisRelease, declaredOldest: true},
 			},
@@ -114,7 +114,7 @@ func Test_renderReleaseFile(t *testing.T) {
 		},
 		{
 			name:    "a machine outlet alone",
-			outlets: []*routerOutlet{{name: "default", prefix: "api", apiKey: true}},
+			outlets: []*routerOutlet{{name: "default", prefix: "api", apiKey: true, tokenAuth: crew.importPath}},
 			want: `{
   "outlets": {
     "default": {
@@ -129,7 +129,7 @@ func Test_renderReleaseFile(t *testing.T) {
 			name: "the outlets render in name order whatever the declaration order",
 			outlets: []*routerOutlet{
 				{name: "default", prefix: "api", servesSessions: true, auth: crew},
-				{name: "beacons", prefix: "beacons", apiKey: true},
+				{name: "beacons", prefix: "beacons", apiKey: true, tokenAuth: crew.importPath},
 			},
 			want: `{
   "outlets": {
@@ -340,7 +340,7 @@ func Test_runServedRouterGeneration_writesReleaseFile(t *testing.T) {
 			name: "words at the root, on an outlet and on a hand-mounted prefix",
 			outlets: []*routerOutlet{
 				{name: "default", prefix: "api", servesSessions: true, auth: crew, requestLog: LogNever(), traces: TracesOff()},
-				{name: "droids", prefix: "droids", apiKey: true},
+				{name: "droids", prefix: "droids", apiKey: true, tokenAuth: crew.importPath},
 			},
 			declare: func(r *resourceGenerator) {
 				r.requestLog = LogOnEvent()
@@ -359,7 +359,7 @@ func Test_runServedRouterGeneration_writesReleaseFile(t *testing.T) {
 			name: "a release, a machine outlet, no declaration and this release",
 			outlets: []*routerOutlet{
 				{name: "default", prefix: "api", servesSessions: true, auth: crew, oldestAnswered: "1.5.0", declaredOldest: true},
-				{name: "droids", prefix: "droids", apiKey: true},
+				{name: "droids", prefix: "droids", apiKey: true, tokenAuth: crew.importPath},
 				{name: "kiosk", prefix: "kiosk/api", servesSessions: true, auth: crew},
 				{name: "portal", prefix: "portal/api", servesSessions: true, auth: crew, oldestAnswered: ThisRelease, declaredOldest: true},
 			},

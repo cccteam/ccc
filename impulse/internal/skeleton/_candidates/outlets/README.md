@@ -4,8 +4,10 @@ A tenant-scoped application on the cccteam resource stack with every outlet kind
 site. One hostname, three outlets — the console on `/console/api` with its browser
 application at `/console`, a second browser application (the portal) on `/portal/api`
 behind the same session handling with its application at `/portal`, and a machine REST
-API on `/machines` behind an API key that binds requests to a service identity with roles
-like any user. Every browser outlet's API sits under its application's mount path, and no
+API on `/machines` behind bearer tokens the staff auth issues: a staff login issues an
+application token for the outlet on the console, or approves a command-line client's
+device authorization there, and the token acts as them, with their roles, through the
+same permission checks as the browser. Every browser outlet's API sits under its application's mount path, and no
 application is mounted at `/`: an installed browser application's scope is every URL under
 its start, so one at `/` would own the origin and the other would never get its own install
 prompt. The root alone redirects to `/console/`; every other unmatched path is 404.
@@ -66,10 +68,12 @@ directories there, the application's administrator sets directory only.
   application (`session.DisableRoleSync`): the bootstrap assigns the development members
   their roles.
 - `app` holds the handlers: generated resource handlers for every outlet plus the
-  hand-written middleware, the machines outlet's API-key authentication, and the two
+  hand-written middleware, the machines outlet's token surface, and the two
   static-asset surfaces. `pkg/router` composes them: the staff auth's session group
   around the console, the members auth's around the portal (login redirect, directory
-  callback, front-channel logout), an API-key group for the machines outlet, one Angular
+  callback, front-channel logout), the machines outlet's group behind the staff auth's
+  token check, with the device flow's two endpoints under its prefix and the token routes
+  (`/console/api/user/tokens`, `/console/api/user/device`) on the console, one Angular
   application per browser outlet under its mount path, and the root redirect to the
   console's.
 - `pkg/resources` holds the resource structs the generator reads: `Tenant` (the tenant
@@ -83,7 +87,8 @@ directories there, the application's administrator sets directory only.
   staff auth's user-management surface (`StaffUsers`, `StaffSeats`, `StaffInvitations`, `StaffRoles`,
   `SetStaffUserPassword`), `Administrator_Domain` over the console's announcements and the
   surface's tenant partition (`StaffTenantUsers` and its siblings), and `Machines_Domain`,
-  the service account's role, over the readings; the members file authors
+  the role of the people whose programs read and write the readings through the machines
+  outlet, over the readings; the members file authors
   `Administrator_Domain` over the portal's announcements and the members auth's tenant
   partition (`MembersTenantUsers` and its siblings). A new resource stays invisible until a role in its auth's file is granted
   it. Every grant in either file is proven live by `test/integration/grants_test.go`, which
@@ -103,8 +108,8 @@ directories there, the application's administrator sets directory only.
   creates every user after the first, and the bootstrap creates the development logins
   instead. `cmd/deployment/migrate` is the deploy step;
   `cmd/bootstrap` reuses it to stand up an emulator database, seeds the development
-  tenants (tenancy is data), and adds the development logins, the development member, and
-  the machines service account from `cmd/bootstrap/users.json`, each with its
+  tenants (tenancy is data), and adds the development logins and the development member
+  from `cmd/bootstrap/users.json`, each with its
   memberships by where they are held (`global`, `everyDomain`, `domains`). Its test runs
   each auth's role file through the validation the engine performs when it opens
   (`access.ValidateRoles`) and pins the warnings the deploy would print as typed values,
@@ -186,8 +191,8 @@ generated handler applies the rest.
     overmind start -l spanner,firestore,server
 
 That starts fresh Spanner and Firestore emulators, bootstraps the database (schema, tenants, both auths' roles, the
-`admin` and `member` staff logins with password `password`, the `client` member, and the
-machines service account), and serves every outlet on `$PORT` (:8093). The first run
+`admin` and `member` staff logins with password `password`, and the `client` member), and
+serves every outlet on `$PORT` (:8093). The first run
 compiles and bootstraps before it listens; wait for "Starting Server" in the server pane.
 
 The auths mail: an administrator invites a person by address with the roles the invitation

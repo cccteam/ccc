@@ -8,19 +8,13 @@
     {
       "user": "member",
       "password": "password",
-      "roles": { "global": [], "everyDomain": [], "domains": { "north": ["Administrator_Domain"] } }
+      "roles": { "global": [], "everyDomain": [], "domains": { "north": ["Administrator_Domain", "Machines_Domain"] } }
     }
   ],
   "members": [
     {
       "user": "client",
       "roles": { "global": [], "everyDomain": [], "domains": { "north": ["Administrator_Domain"] } }
-    }
-  ],
-  "serviceAccounts": [
-    {
-      "user": "machines",
-      "roles": { "global": [], "everyDomain": [], "domains": { "north": ["Machines_Domain"] } }
     }
   ]
 }

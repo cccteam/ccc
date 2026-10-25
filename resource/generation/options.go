@@ -107,8 +107,8 @@ func ApplicationName(name string) ResourceOption {
 // GenerateRoutes enables generating a router file containing routes for all handlers and
 // RPC methods, registered under routePrefix on the default outlet. Outlet options refine
 // the default outlet's declaration for the generated router (GenerateRouter): Auth names
-// the auth its browser sessions come from, or APIKey makes it a machine surface, and
-// WebApp names the browser application it serves.
+// the auth its browser sessions come from, or Tokens makes it a machine surface carrying
+// that auth's bearer tokens, and WebApp names the browser application it serves.
 func GenerateRoutes(targetDir, routePrefix string, options ...OutletOption) ResourceOption {
 	return resourceOption(func(r *resourceGenerator) error {
 		r.genRoutes = true
@@ -137,10 +137,10 @@ func GenerateRoutes(targetDir, routePrefix string, options ...OutletOption) Reso
 // outlet's oldest answered release, for a deploy reading the checkout
 // (resource.ReadReleaseFile).
 //
-// Every outlet then declares how it authenticates, Auth or APIKey, and a session outlet
+// Every outlet then declares how it authenticates, Auth or Tokens, and a session outlet
 // that serves a browser application declares WebApp. Requires GenerateRoutes. Without the
 // option the contract is unchanged, generated route tables plus a hand-written router,
-// and Auth, APIKey, and WebApp are not accepted.
+// and Auth, Tokens, and WebApp are not accepted.
 func GenerateRouter() ResourceOption {
 	return resourceOption(func(r *resourceGenerator) error {
 		r.genRouter = true
@@ -161,7 +161,7 @@ type routerOutlet struct {
 	name   string
 	prefix string
 	// auth is the auth the generated router binds the outlet's browser sessions to
-	// (Auth); nil for an API-key outlet and for an outlet under a hand-written router.
+	// (Auth); nil for a machine outlet and for an outlet under a hand-written router.
 	auth *outletAuth
 	// webApp is the mount path of the browser application the outlet serves (WebApp),
 	// empty when it serves none.
@@ -169,19 +169,22 @@ type routerOutlet struct {
 	// oldestAnswered is the oldest release of the browser application the outlet
 	// still answers (OldestAnswered): a release, ThisRelease, or empty for every
 	// release that sends the header. declaredOldest, below, records the declaration,
-	// which contradicts APIKey and describes the generated router.
+	// which contradicts Tokens and describes the generated router.
 	oldestAnswered string
 	// servesSessions declares the outlet a browser-session surface: the generated
 	// router registers the permission-digest, user-domains and live routes under its
-	// prefix. True for the default outlet unless it declares APIKey; opt-in via
-	// ServesSessions() or a session Auth for additional outlets. An API-key outlet
-	// never serves sessions: its generated routes are the resource routes its key
-	// authorizes and nothing else.
+	// prefix. True for the default outlet unless it declares Tokens; opt-in via
+	// ServesSessions() or a session Auth for additional outlets. A machine outlet
+	// never serves sessions: its generated routes are the resource routes its tokens
+	// open and the device flow's endpoints, nothing else.
 	servesSessions bool
-	// apiKey marks a machine outlet for the generated router (APIKey): no session
-	// handling and no XSRF guard, the application's <Outlet>Auth middleware in front.
-	apiKey bool
-	// declaredSessions records an explicit ServesSessions(), which contradicts APIKey.
+	// apiKey marks a machine outlet for the generated router (Tokens, or the retired
+	// APIKey): no session handling and no XSRF guard, the token check in front.
+	// tokenAuth is the import path of the auth package whose Auth issues the outlet's
+	// tokens (Tokens); empty under the retired APIKey, which generation refuses.
+	apiKey    bool
+	tokenAuth string
+	// declaredSessions records an explicit ServesSessions(), which contradicts Tokens.
 	declaredSessions bool
 	declaredOldest   bool
 	// requestLog is the outlet's request log word (OutletRequestLog), which the
@@ -275,7 +278,7 @@ func (f outletOption) applyToOutlet(o *routerOutlet) error { return f(o) }
 // prefix — behind whatever session middleware the application composes around the
 // outlet, exactly like its resource routes — and the application's generated
 // PermissionDigest and UserDomains handlers serve them. The default outlet serves
-// sessions unless it declares APIKey; an outlet without the declaration gets no
+// sessions unless it declares Tokens; an outlet without the declaration gets no
 // permission routes, and a GenerateTypescript target may only name a session-serving
 // outlet (ForOutlet).
 // Under GenerateRouter a session Auth declares the same, so ServesSessions is for
@@ -555,14 +558,56 @@ func Manages(importPath string) OutletOption {
 	})
 }
 
-// APIKey declares a machine outlet for the generated router (GenerateRouter): its group
-// carries no session handling and no XSRF guard; NoCaching, CompressionMiddleware, and
-// the application's <Outlet>Auth middleware run in front of the outlet's routes, and
-// <Outlet>Auth binds each request to a service identity the way the session middleware
-// binds a browser request to its user. An API-key outlet serves no sessions: the
-// generated router registers no permission-digest, user-domains or live routes under
-// its prefix, so its generated routes are the resource routes its key authorizes and
-// nothing else, and a request carrying X-Subscribe is refused naming the header.
+// Tokens declares a machine outlet for the generated router (GenerateRouter): a URL
+// space a program calls with a bearer token, never a session cookie. importPath names
+// the auth package whose Auth issues the outlet's tokens, the same Auth a session
+// outlet of the application declares with Auth; its store holds the tokens, and a
+// signed-in person of that outlet issues an application token for a program of their
+// own, or approves a command-line client's device authorization, on its token page.
+//
+// The generated router composes the outlet's group with no session handling and no
+// XSRF guard: NoCaching, CompressionMiddleware and ReleaseHeader, the device flow's two
+// public endpoints where a client obtains its tokens (POST <prefix>/oauth/device/authorize
+// and POST <prefix>/oauth/token, the issuing auth's session.DeviceHandlers), then the
+// outlet's token check in front of the outlet's routes: the ValidateToken of the
+// machine outlet the application registers on the issuing Auth
+// (session.RegisterMachineOutlet(auth, name)) and hands the router through the outlet's
+// getter on Handlers (<Outlet>() for an additional outlet, embedded for the default).
+// The check binds each request to the person the token acts for the way the session
+// middleware binds a browser request to its user, so the handlers behind it run the
+// same permission checks. The issuing outlet's session surface gains the token page's
+// handlers, mounted in its validated group under <prefix>/user/tokens and
+// <prefix>/user/device.
+//
+// A machine outlet serves no sessions: the generated router registers no
+// permission-digest, user-domains or live routes under its prefix, so its generated
+// routes are the resource routes its tokens authorize and nothing else, and a request
+// carrying X-Subscribe is refused naming the header. An outlet declaring Tokens of an
+// auth no session outlet declares is refused at generation.
+func Tokens(importPath string) OutletOption {
+	return outletOption(func(o *routerOutlet) error {
+		if importPath == "" || strings.ContainsAny(importPath, " \t\n\"") || strings.Trim(importPath, "/") != importPath {
+			return errors.Newf("Tokens(%q) requires an import path: the auth package whose Auth issues the outlet's tokens, such as \"github.com/acme/beacon/pkg/auth/staff\"", importPath)
+		}
+		if o.tokenAuth != "" {
+			return errors.Newf("Tokens(%q) redeclares the outlet's issuing auth (%q): a machine outlet takes one auth's tokens", importPath, o.tokenAuth)
+		}
+		o.apiKey = true
+		o.tokenAuth = importPath
+		o.servesSessions = false
+
+		return nil
+	})
+}
+
+// APIKey declared a machine outlet behind an API key the application checked in a
+// hand-written <Outlet>Auth middleware. The bearer tokens the session library issues
+// replaced it: a machine outlet declares Tokens(importPath), naming the auth whose
+// tokens it takes, and the generated router carries the token check. The option still
+// compiles, so a generator program that declares it is told at generation, naming the
+// outlet, rather than failing to build.
+//
+// Deprecated: declare Tokens(importPath).
 func APIKey() OutletOption {
 	return outletOption(func(o *routerOutlet) error {
 		o.apiKey = true
@@ -614,7 +659,7 @@ const ThisRelease = resource.ThisRelease
 // "1.5.0", or ThisRelease for a release that changes the API inside a maintenance
 // window, when only the server's own release is answered. The default outlet declares
 // it on GenerateRoutes, an additional outlet on WithRouterOutlet; without it every
-// release that sends the header is answered. A machine outlet (APIKey) carries no
+// release that sends the header is answered. A machine outlet (Tokens) carries no
 // release and refuses the option. The declaration is also written to the release file
 // beside the router (resource.ReleaseFileName), which a deploy reads from the checkout
 // to tell whether the release needs a maintenance window.

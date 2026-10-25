@@ -35,10 +35,18 @@ func Test_routerOutletOptions(t *testing.T) {
 			}}},
 		},
 		{
-			name:    "an API key with a web app is recorded; the contradiction is the generator's to refuse",
-			options: []OutletOption{APIKey(), WebApp("/machines")},
-			want:    routerOutlet{apiKey: true, webApp: "/machines"},
+			name:    "tokens of an auth with a web app are recorded; the contradiction is the generator's to refuse",
+			options: []OutletOption{Tokens("example.com/acme/beacon/pkg/auth/staff"), WebApp("/machines")},
+			want:    routerOutlet{apiKey: true, tokenAuth: "example.com/acme/beacon/pkg/auth/staff", webApp: "/machines"},
 		},
+		{
+			name:    "the retired API key is recorded without an issuing auth; generation refuses it",
+			options: []OutletOption{APIKey()},
+			want:    routerOutlet{apiKey: true},
+		},
+		{name: "tokens without an import path", options: []OutletOption{Tokens("")}, wantErr: "requires an import path"},
+		{name: "tokens of a slash-wrapped import path", options: []OutletOption{Tokens("/pkg/auth/staff/")}, wantErr: "requires an import path"},
+		{name: "tokens declared twice", options: []OutletOption{Tokens("example.com/pkg/auth/staff"), Tokens("example.com/pkg/auth/members")}, wantErr: "redeclares the outlet's issuing auth"},
 		{
 			name:    "ServesSessions is remembered as declared",
 			options: []OutletOption{ServesSessions()},
@@ -99,7 +107,7 @@ func Test_routerOutletOptions(t *testing.T) {
 			if err != nil {
 				t.Fatalf("applyToOutlet() error = %v", err)
 			}
-			if got.servesSessions != tt.want.servesSessions || got.declaredSessions != tt.want.declaredSessions || got.apiKey != tt.want.apiKey || got.webApp != tt.want.webApp || got.oldestAnswered != tt.want.oldestAnswered || got.declaredOldest != tt.want.declaredOldest {
+			if got.servesSessions != tt.want.servesSessions || got.declaredSessions != tt.want.declaredSessions || got.apiKey != tt.want.apiKey || got.tokenAuth != tt.want.tokenAuth || got.webApp != tt.want.webApp || got.oldestAnswered != tt.want.oldestAnswered || got.declaredOldest != tt.want.declaredOldest {
 				t.Errorf("outlet = %+v, want %+v", got, tt.want)
 			}
 			switch {
@@ -122,6 +130,7 @@ func Test_validateRouterConfig(t *testing.T) {
 
 	staff := Auth("example.com/acme/beacon/pkg/auth/staff", PasswordMethod())
 	members := Auth("example.com/acme/beacon/pkg/auth/members", GoogleMethod("google"))
+	staffTokens := Tokens("example.com/acme/beacon/pkg/auth/staff")
 
 	tests := []struct {
 		name    string
@@ -138,9 +147,28 @@ func Test_validateRouterConfig(t *testing.T) {
 			wantErr: `outlet "default" declares Auth, which describes the generated router`,
 		},
 		{
+			name:    "Tokens without the switch",
+			options: []ResourceOption{GenerateRoutes("pkg/router", "api"), WithRouterOutlet("machines", "machines", staffTokens)},
+			wantErr: `outlet "machines" declares Tokens, which describes the generated router`,
+		},
+		{
 			name:    "APIKey without the switch",
 			options: []ResourceOption{GenerateRoutes("pkg/router", "api"), WithRouterOutlet("machines", "machines", APIKey())},
 			wantErr: `outlet "machines" declares APIKey`,
+		},
+		{
+			name:    "the retired API key under the switch",
+			options: []ResourceOption{GenerateRouter(), GenerateRoutes("pkg/router", "api", staff), WithRouterOutlet("machines", "machines", APIKey())},
+			wantErr: `outlet "machines" declares APIKey, which is retired: a machine outlet declares Tokens(importPath), naming the auth package of a session outlet whose Auth issues its tokens, and the generated router carries the token check`,
+		},
+		{
+			name:    "tokens of an auth no session outlet declares",
+			options: []ResourceOption{GenerateRouter(), GenerateRoutes("pkg/router", "api", staff), WithRouterOutlet("machines", "machines", Tokens("example.com/acme/beacon/pkg/auth/robots"))},
+			wantErr: `outlet "machines" declares Tokens("example.com/acme/beacon/pkg/auth/robots"), which no session outlet declares with Auth: a machine outlet's tokens are issued by the Auth of a browser outlet of the application, so declare that outlet's auth package`,
+		},
+		{
+			name:    "tokens of an auth a later session outlet declares",
+			options: []ResourceOption{GenerateRouter(), GenerateRoutes("pkg/router", "api", staff), WithRouterOutlet("machines", "machines", Tokens("example.com/acme/beacon/pkg/auth/members")), WithRouterOutlet("portal", "portal/api", members)},
 		},
 		{
 			name:    "WebApp without the switch",
@@ -158,13 +186,13 @@ func Test_validateRouterConfig(t *testing.T) {
 				GenerateRouter(),
 				GenerateRoutes("pkg/router", "api", staff, WebApp("/console"), OldestAnswered("1.5.0")),
 				WithRouterOutlet("portal", "portal/api", members, WebApp("/portal"), OldestAnswered(ThisRelease)),
-				WithRouterOutlet("machines", "machines", APIKey()),
+				WithRouterOutlet("machines", "machines", staffTokens),
 			},
 		},
 		{
-			name:    "an API key with an oldest answered release",
-			options: []ResourceOption{GenerateRouter(), GenerateRoutes("pkg/router", "api", staff), WithRouterOutlet("machines", "machines", APIKey(), OldestAnswered("1.5.0"))},
-			wantErr: `outlet "machines" declares APIKey and OldestAnswered("1.5.0"): a machine outlet's clients carry no release, so nothing is checked against one; the option belongs on a session outlet`,
+			name:    "a machine outlet with an oldest answered release",
+			options: []ResourceOption{GenerateRouter(), GenerateRoutes("pkg/router", "api", staff), WithRouterOutlet("machines", "machines", staffTokens, OldestAnswered("1.5.0"))},
+			wantErr: `outlet "machines" declares Tokens and OldestAnswered("1.5.0"): a machine outlet's clients carry no release, so nothing is checked against one; the option belongs on a session outlet`,
 		},
 		{
 			name:    "the switch without routes",
@@ -177,7 +205,7 @@ func Test_validateRouterConfig(t *testing.T) {
 				GenerateRouter(),
 				GenerateRoutes("pkg/router", "api", staff, WebApp("/console")),
 				WithRouterOutlet("portal", "portal/api", members, WebApp("/portal")),
-				WithRouterOutlet("machines", "machines", APIKey()),
+				WithRouterOutlet("machines", "machines", staffTokens),
 			},
 		},
 		{
@@ -197,37 +225,37 @@ func Test_validateRouterConfig(t *testing.T) {
 		{
 			name:    "an outlet that says nothing",
 			options: []ResourceOption{GenerateRouter(), GenerateRoutes("pkg/router", "api", staff), WithRouterOutlet("portal", "portal/api")},
-			wantErr: `outlet "portal" declares neither Auth nor APIKey`,
+			wantErr: `outlet "portal" declares neither Auth nor Tokens`,
 		},
 		{
 			name:    "the default outlet that says nothing",
 			options: []ResourceOption{GenerateRouter(), GenerateRoutes("pkg/router", "api")},
-			wantErr: `outlet "default" declares neither Auth nor APIKey`,
+			wantErr: `outlet "default" declares neither Auth nor Tokens`,
 		},
 		{
 			name:    "both ways at once",
+			options: []ResourceOption{GenerateRouter(), GenerateRoutes("pkg/router", "api", staff, staffTokens)},
+			wantErr: `outlet "default" declares both Auth and Tokens`,
+		},
+		{
+			name:    "an auth and the retired API key at once",
 			options: []ResourceOption{GenerateRouter(), GenerateRoutes("pkg/router", "api", staff, APIKey())},
 			wantErr: `outlet "default" declares both Auth and APIKey`,
 		},
 		{
-			name:    "an API key that serves sessions",
-			options: []ResourceOption{GenerateRouter(), GenerateRoutes("pkg/router", "api", staff), WithRouterOutlet("machines", "machines", APIKey(), ServesSessions())},
-			wantErr: `outlet "machines" declares APIKey and ServesSessions`,
+			name:    "a machine outlet that serves sessions",
+			options: []ResourceOption{GenerateRouter(), GenerateRoutes("pkg/router", "api", staff), WithRouterOutlet("machines", "machines", staffTokens, ServesSessions())},
+			wantErr: `outlet "machines" declares Tokens and ServesSessions`,
 		},
 		{
-			name:    "an API key with a browser application",
-			options: []ResourceOption{GenerateRouter(), GenerateRoutes("pkg/router", "api", staff), WithRouterOutlet("machines", "machines", APIKey(), WebApp("/machines"))},
-			wantErr: `outlet "machines" declares APIKey and WebApp("/machines")`,
+			name:    "a machine outlet with a browser application",
+			options: []ResourceOption{GenerateRouter(), GenerateRoutes("pkg/router", "api", staff), WithRouterOutlet("machines", "machines", staffTokens, WebApp("/machines"))},
+			wantErr: `outlet "machines" declares Tokens and WebApp("/machines")`,
 		},
 		{
 			name:    "an outlet named after a reserved hook",
-			options: []ResourceOption{GenerateRouter(), GenerateRoutes("pkg/router", "api", staff), WithRouterOutlet("root", "root", APIKey())},
+			options: []ResourceOption{GenerateRouter(), GenerateRoutes("pkg/router", "api", staff), WithRouterOutlet("root", "root", staffTokens)},
 			wantErr: `outlet "root" would take the Hooks field Root`,
-		},
-		{
-			name:    "an API-key outlet whose middleware would be BindAuth",
-			options: []ResourceOption{GenerateRouter(), GenerateRoutes("pkg/router", "api", staff), WithRouterOutlet("bind", "bind", APIKey())},
-			wantErr: `outlet "bind" would take the Handlers method BindAuth`,
 		},
 		{
 			name:    "two outlets on one mount path",
@@ -241,7 +269,7 @@ func Test_validateRouterConfig(t *testing.T) {
 		},
 		{
 			name:    "an outlet prefix at the scheduled prefix",
-			options: []ResourceOption{GenerateRouter(), GenerateRoutes("pkg/router", "api", staff), WithRouterOutlet("machines", "_scheduled", APIKey())},
+			options: []ResourceOption{GenerateRouter(), GenerateRoutes("pkg/router", "api", staff), WithRouterOutlet("machines", "_scheduled", staffTokens)},
 			wantErr: `outlet "machines" has the route prefix /_scheduled, under /_scheduled, which the generated router reserves for the scheduled routes (@schedule)`,
 		},
 		{
@@ -253,11 +281,6 @@ func Test_validateRouterConfig(t *testing.T) {
 			name:    "a browser application under the scheduled prefix",
 			options: []ResourceOption{GenerateRouter(), GenerateRoutes("pkg/router", "api", staff, WebApp("/_scheduled/console"))},
 			wantErr: `outlet "default" declares WebApp("/_scheduled/console"), under /_scheduled, which the generated router reserves for the scheduled routes`,
-		},
-		{
-			name:    "an API-key outlet whose middleware would be SchedulerAuth",
-			options: []ResourceOption{GenerateRouter(), GenerateRoutes("pkg/router", "api", staff), WithRouterOutlet("scheduler", "scheduler", APIKey())},
-			wantErr: `outlet "scheduler" would take the Handlers method SchedulerAuth, which the generated router reserves for the scheduled routes`,
 		},
 		{
 			name:    "a prefix that only begins with the scheduled prefix's letters is not under it",
@@ -292,7 +315,7 @@ func Test_validateRouterConfig(t *testing.T) {
 			options: []ResourceOption{
 				GenerateRouter(),
 				GenerateRoutes("pkg/router", "api", staff, OutletRequestLog(LogOnEvent()), OutletTraces(TracesCapped(0.5))),
-				WithRouterOutlet("machines", "machines", APIKey(), OutletRequestLog(LogNever())),
+				WithRouterOutlet("machines", "machines", staffTokens, OutletRequestLog(LogNever())),
 				WithRequestLog(LogAlways().MinSeverity(logging.Warning)),
 				WithMountedRoutes("/beacons/", LogOnEvent(), TracesOff()),
 				WithMountedRoutes("/machines/telemetry/", LogNever(), TracesOff()),
@@ -423,7 +446,7 @@ func Test_servedRouterData(t *testing.T) {
 			name: "two session auths and an API key",
 			outlets: []*routerOutlet{
 				{name: "default", prefix: "api", servesSessions: true, auth: crew, webApp: "/console"},
-				{name: "droids", prefix: "droids", apiKey: true},
+				{name: "droids", prefix: "droids", apiKey: true, tokenAuth: crew.importPath},
 				{name: "portal", prefix: "portal/api", servesSessions: true, auth: members, webApp: "/portal"},
 			},
 			check: func(t *testing.T, data *servedRouterData) {
@@ -443,15 +466,36 @@ func Test_servedRouterData(t *testing.T) {
 					crewRoutes = append(crewRoutes, route.Method+" "+route.Path)
 				}
 				if want := "GET /api/user/methods,GET /api/user/session,DELETE /api/user/session,GET /api/user/pending,POST /api/user/password/login,POST /api/user/password/change,POST /api/user/pending/confirm,POST /api/user/pending/cancel," +
-					"POST /api/user/invitation,POST /api/user/invitation/sign-up,POST /api/user/invitation/accept,POST /api/user/email,POST /api/user/email/verify"; strings.Join(crewRoutes, ",") != want {
+					"POST /api/user/invitation,POST /api/user/invitation/sign-up,POST /api/user/invitation/accept,POST /api/user/email,POST /api/user/email/verify," +
+					"GET /api/user/tokens,POST /api/user/tokens,POST /api/user/tokens/revoke,GET /api/user/device,POST /api/user/device/approve,POST /api/user/device/deny"; strings.Join(crewRoutes, ",") != want {
 					t.Errorf("crew routes = %v, want %s", crewRoutes, want)
 				}
+				crewOutlet := data.Outlets[0]
+				if !crewOutlet.IssuesTokens || len(crewOutlet.ValidatedRoutes) != 9 || strings.Join(crewOutlet.ExtraHandlers, ",") != "DeviceAuthorize,DeviceToken" {
+					t.Errorf("the issuing outlet = %+v, want the token page's six validated routes and the device flow's two handlers", crewOutlet)
+				}
+				if names := crewOutlet.SessionHandlers; len(names) < 8 || names[len(names)-8].Name != "DeviceAuthorize" || names[len(names)-1].Name != "TokensRevoke" {
+					t.Errorf("the issuing outlet's session handlers = %+v, want the device flow's and the token page's appended", names)
+				}
+				if portal.IssuesTokens || len(portal.ExtraHandlers) != 0 {
+					t.Errorf("the portal outlet issues tokens for nobody, got %+v", portal)
+				}
 				droids := data.Outlets[1]
-				if !droids.APIKey || droids.AuthMiddleware != "DroidsAuth" || droids.RoutesFunc != "generatedDroidsRoutes" || droids.NotFoundPrefix != "/droids/" {
+				if !droids.Machine || droids.TokenAuth != crew.importPath || droids.Issuer != crewOutlet || droids.IssuerExpr != "h" || droids.IssuerPackage != "crew" || droids.AuthPackage != "crew" || droids.AuthLabel != "bearer tokens of the crew auth" {
+					t.Errorf("droids outlet's issuer = %+v", droids)
+				}
+				if droids.Getter != "Droids" || droids.Receiver != "h.Droids()" || droids.TokensInterface != "DroidsTokens" || droids.StubType != "routerDroidsTokensStub" || droids.StubField != "droids" || droids.StubPrefix != "Droids" || droids.RoutesFunc != "generatedDroidsRoutes" || droids.NotFoundPrefix != "/droids/" {
 					t.Errorf("droids outlet = %+v", droids)
 				}
-				if len(data.ExtraOutlets) != 2 || len(data.SessionOutlets) != 2 || len(data.APIKeyOutlets) != 1 {
-					t.Errorf("outlet groups = %d extra, %d session, %d api-key", len(data.ExtraOutlets), len(data.SessionOutlets), len(data.APIKeyOutlets))
+				deviceRoutes := make([]string, 0, len(droids.DeviceRoutes))
+				for _, route := range droids.DeviceRoutes {
+					deviceRoutes = append(deviceRoutes, route.Method+" "+route.Path+" "+route.Handler)
+				}
+				if want := "POST /droids/oauth/device/authorize DeviceAuthorize,POST /droids/oauth/token DeviceToken"; strings.Join(deviceRoutes, ",") != want {
+					t.Errorf("droids device routes = %v, want %s", deviceRoutes, want)
+				}
+				if len(data.ExtraOutlets) != 2 || len(data.SessionOutlets) != 2 || len(data.MachineOutlets) != 1 {
+					t.Errorf("outlet groups = %d extra, %d session, %d machine", len(data.ExtraOutlets), len(data.SessionOutlets), len(data.MachineOutlets))
 				}
 				if data.WebApps[0].Mount != "/console" || data.WebApps[0].DeepLink != "DeepLink" || data.WebApps[1].Mount != "/portal" || data.WebApps[1].DeepLink != "PortalDeepLink" || data.HasRootWebApp {
 					t.Errorf("web apps = %+v, %+v; want /console first and no root application", data.WebApps[0], data.WebApps[1])
@@ -479,6 +523,29 @@ func Test_servedRouterData(t *testing.T) {
 			},
 		},
 		{
+			name: "a machine outlet of a getter session outlet reads the issuer through its getter, and a default machine outlet is embedded",
+			outlets: []*routerOutlet{
+				{name: "default", prefix: "api", apiKey: true, tokenAuth: members.importPath},
+				{name: "portal", prefix: "portal/api", servesSessions: true, auth: members, webApp: "/portal"},
+			},
+			check: func(t *testing.T, data *servedRouterData) {
+				t.Helper()
+				machine, portal := data.Outlets[0], data.Outlets[1]
+				if !machine.Machine || machine.Getter != "" || machine.Receiver != "h" || machine.TokensInterface != "DefaultTokens" || machine.StubType != "routerDefaultTokensStub" || machine.StubPrefix != "" {
+					t.Errorf("default machine outlet = %+v", machine)
+				}
+				if machine.Issuer != portal || machine.IssuerExpr != "h.Portal()" || machine.AuthPackage != "" || machine.AuthLabel != "bearer tokens of the members auth" {
+					t.Errorf("default machine outlet's issuer = %+v", machine)
+				}
+				if !portal.IssuesTokens || len(portal.ValidatedRoutes) != 9 {
+					t.Errorf("the portal outlet issues the tokens: %+v", portal)
+				}
+				if len(data.SessionOutlets) != 1 || len(data.MachineOutlets) != 1 || len(data.WebApps) != 1 || data.RootRedirect != "/portal/" {
+					t.Errorf("outlet groups = %d session, %d machine, %d web apps, redirect %q", len(data.SessionOutlets), len(data.MachineOutlets), len(data.WebApps), data.RootRedirect)
+				}
+			},
+		},
+		{
 			name: "two outlets on one auth stay a single auth",
 			outlets: []*routerOutlet{
 				{name: "default", prefix: "api", servesSessions: true, auth: crew},
@@ -501,7 +568,7 @@ func Test_servedRouterData(t *testing.T) {
 			name: "the version checks: a release, this release, and the stored-file routes by outlet",
 			outlets: []*routerOutlet{
 				{name: "default", prefix: "api", servesSessions: true, auth: crew, oldestAnswered: "1.5.0", declaredOldest: true},
-				{name: "droids", prefix: "droids", apiKey: true},
+				{name: "droids", prefix: "droids", apiKey: true, tokenAuth: crew.importPath},
 				{name: "portal", prefix: "portal/api", servesSessions: true, auth: members, oldestAnswered: ThisRelease, declaredOldest: true},
 			},
 			fileRoutes: map[string][]*generatedRoute{
@@ -528,7 +595,7 @@ func Test_servedRouterData(t *testing.T) {
 					t.Errorf("default file routes mismatch (-want +got):\n%s", diff)
 				}
 				if droids := data.Outlets[1]; len(droids.FileRoutes) != 0 || droids.OldestAnsweredExpr != "" {
-					t.Errorf("an API-key outlet carries no version check, got %+v", droids)
+					t.Errorf("a machine outlet carries no version check, got %+v", droids)
 				}
 				portal := data.Outlets[2]
 				if portal.OldestAnswered != ThisRelease || portal.OldestAnsweredExpr != "resource.ThisRelease" || portal.OldestAnsweredNote != " (oldest answered this release)" || portal.AnswersSentence != "only the server's own release is answered" || len(portal.FileRoutes) != 0 {
@@ -690,7 +757,7 @@ func Test_servedRouterTemplates(t *testing.T) {
 			name: "oldest answered on an additional session outlet and this release on another",
 			outlets: []*routerOutlet{
 				{name: "default", prefix: "api", servesSessions: true, auth: crew},
-				{name: "droids", prefix: "droids", apiKey: true},
+				{name: "droids", prefix: "droids", apiKey: true, tokenAuth: crew.importPath},
 				{name: "portal", prefix: "portal/api", servesSessions: true, auth: members, oldestAnswered: "3.2.0", declaredOldest: true},
 				{name: "kiosk", prefix: "kiosk/api", servesSessions: true, auth: crew, oldestAnswered: ThisRelease, declaredOldest: true},
 			},
@@ -703,7 +770,7 @@ func Test_servedRouterTemplates(t *testing.T) {
 				"\t\t\t\tServerVersion:  serverVersion,\n\t\t\t\tOldestAnswered: \"3.2.0\",\n\t\t\t\tExempt: []string{\n\t\t\t\t\t\"/portal/api/user/invitation/accept\",",
 				"\t\t\tr.Use(kioskSession.ValidateXSRFToken)\n\t\t\t// The version check: a browser application sends its release in X-Api-Version,\n\t\t\t// and only the server's own release is answered.",
 				"\t\t\t\tServerVersion:  serverVersion,\n\t\t\t\tOldestAnswered: resource.ThisRelease,\n\t\t\t\tExempt: []string{\n\t\t\t\t\t\"/kiosk/api/user/invitation/accept\",",
-				"\t\tr.Use(h.DroidsAuth)\n\n\t\tregisterGenerated(r, hooks.Droids, \"Droids\"",
+				"\t\t\tr.Use(h.Droids().ValidateToken)\n\n\t\t\tregisterGenerated(r, hooks.Droids, \"Droids\"",
 			},
 			wantRouterTest: []string{
 				"\t\t{\n\t\t\tprefix: \"/api/\", server: \"2.0.0\", inRange: \"0.0.1\", below: \"\", above: \"2.0.1\",\n\t\t},",
@@ -713,10 +780,10 @@ func Test_servedRouterTemplates(t *testing.T) {
 			},
 		},
 		{
-			name: "two session auths and an API-key outlet",
+			name: "two session auths and a machine outlet taking the crew auth's tokens",
 			outlets: []*routerOutlet{
 				{name: "default", prefix: "api", servesSessions: true, auth: crew, webApp: "/console"},
-				{name: "droids", prefix: "droids", apiKey: true},
+				{name: "droids", prefix: "droids", apiKey: true, tokenAuth: crew.importPath},
 				{name: "portal", prefix: "portal/api", servesSessions: true, auth: members, webApp: "/portal"},
 			},
 			wantRouter: []string{
@@ -724,7 +791,9 @@ func Test_servedRouterTemplates(t *testing.T) {
 				"//\t  BindAuth(crew.Name), NoCaching, CompressionMiddleware, ReleaseHeader, StartSession, SetXSRFToken: GET /api/user/methods, GET /api/user/session, DELETE /api/user/session, GET /api/user/pending",
 				"//\t  + ValidateXSRFToken: POST /api/user/password/login, POST /api/user/password/change, POST /api/user/pending/confirm, POST /api/user/pending/cancel",
 				"//\tportal (/portal/api), sessions of the members auth (google):",
-				"//\tdroids (/droids), API key:\n//\t  NoCaching, CompressionMiddleware, ReleaseHeader, DroidsAuth: hooks.Droids, generatedDroidsRoutes",
+				"//\t  + ValidateSession, ValidateXSRFToken: POST /api/user/invitation/accept, POST /api/user/email, POST /api/user/email/verify, GET /api/user/tokens, POST /api/user/tokens, POST /api/user/tokens/revoke, GET /api/user/device, POST /api/user/device/approve, POST /api/user/device/deny",
+				"//\tdroids (/droids), bearer tokens of the crew auth:\n//\t  BindAuth(crew.Name), NoCaching, CompressionMiddleware, ReleaseHeader: POST /droids/oauth/device/authorize, POST /droids/oauth/token\n//\t  + ValidateToken: hooks.Droids, generatedDroidsRoutes",
+				"//\t  + ValidateSession, ValidateXSRFToken: POST /portal/api/user/invitation/accept, POST /portal/api/user/email, POST /portal/api/user/email/verify\n",
 				"\tGeneratedHandlers\n\tGeneratedDroidsHandlers\n\tGeneratedPortalHandlers\n",
 				"\t// Portal returns the portal outlet's session surface: the members auth's.\n\tPortal() PortalSession\n",
 				"type PortalSession interface {",
@@ -735,10 +804,16 @@ func Test_servedRouterTemplates(t *testing.T) {
 				"\t\t\tChangePassword: \"/api/user/password/change\",",
 				"\t\t\t\t{Name: \"google\", Label: \"Google\", Path: \"/portal/api/user/google/login\"},",
 				"\tBindAuth(name string) func(http.Handler) http.Handler\n",
-				"\tDroidsAuth(next http.Handler) http.Handler\n",
+				"\t// Droids returns the droids outlet's token surface: the machine outlet the application\n\t// registers on the crew auth's Auth (session.RegisterMachineOutlet), whose token\n\t// check binds each request to the person its bearer token acts for.\n\tDroids() DroidsTokens\n",
+				"// DroidsTokens is the droids outlet's token surface: the token check of the machine\n// outlet the application registers on the crew auth's Auth\n// (session.RegisterMachineOutlet(auth, \"droids\")), which a *session.MachineOutlet satisfies.",
+				"type DroidsTokens interface {\n\tValidateToken(next http.Handler) http.Handler\n}",
+				"\t// A command-line client's device authorization started (session.DeviceHandlers.Authorize): the client is told the code the person types; mounted under each machine outlet the auth issues tokens for.\n\tDeviceAuthorize() http.HandlerFunc\n\t// The device flow's token endpoint (session.DeviceHandlers.Token): the client's polls for its pair, and the refresh grant; mounted under each machine outlet the auth issues tokens for.\n\tDeviceToken() http.HandlerFunc\n\t// The pending device authorization the person's code names, for the approval page (session.DeviceHandlers.Lookup).\n\tDeviceLookup() http.HandlerFunc\n\t// The device authorization approved by the signed-in person, as themselves (session.DeviceHandlers.Approve).\n\tDeviceApprove() http.HandlerFunc\n\t// The device authorization denied (session.DeviceHandlers.Deny).\n\tDeviceDeny() http.HandlerFunc\n\t// The signed-in person's live tokens (session.ApplicationTokenHandlers.List).\n\tTokensList() http.HandlerFunc\n\t// An application token issued to the signed-in person for a program of their own, the secret shown once (session.ApplicationTokenHandlers.Create).\n\tTokensCreate() http.HandlerFunc\n\t// A token of the signed-in person's revoked (session.ApplicationTokenHandlers.Revoke).\n\tTokensRevoke() http.HandlerFunc\n",
 				"\tPortalDeepLink(next http.Handler) http.Handler\n\tPortalAssets() http.HandlerFunc\n",
 				"\t\tr.Use(h.BindAuth(crew.Name))\n\t\tr.Use(h.NoCaching)",
-				"\t\tr.Use(h.NoCaching)\n\t\tr.Use(h.CompressionMiddleware())\n\t\tr.Use(resource.ReleaseHeader(serverVersion))\n\t\tr.Use(h.DroidsAuth)\n\n\t\tregisterGenerated(r, hooks.Droids, \"Droids\"",
+				"\t// The droids outlet (/droids): machine clients carrying bearer tokens of the crew auth, so the group\n\t// carries no session handling and no XSRF guard. The device flow's endpoints, where a\n\t// command-line client obtains its tokens with a person's approval, sit in front of the\n\t// token check; everything else sits behind it.\n\tr.Group(func(r chi.Router) {\n\t\tr.Use(h.BindAuth(crew.Name))\n\t\tr.Use(h.NoCaching)\n\t\tr.Use(h.CompressionMiddleware())\n\t\tr.Use(resource.ReleaseHeader(serverVersion))\n\n\t\tbounded := r.With(resource.BodyLimit(BodyLimit))\n\t\tbounded.Post(\"/droids/oauth/device/authorize\", h.DeviceAuthorize())\n\t\tbounded.Post(\"/droids/oauth/token\", h.DeviceToken())\n\n\t\tr.Group(func(r chi.Router) {\n\t\t\tr.Use(h.Droids().ValidateToken)\n\n\t\t\tregisterGenerated(r, hooks.Droids, \"Droids\", func(r chi.Router) {\n\t\t\t\tgeneratedDroidsRoutes(r, h)\n\t\t\t})\n\t\t})\n\t})",
+				"\t\t\t\tExempt: []string{\n\t\t\t\t\t\"/api/user/invitation/accept\",\n\t\t\t\t\t\"/api/user/email\",\n\t\t\t\t\t\"/api/user/email/verify\",\n\t\t\t\t\t\"/api/user/tokens\",\n\t\t\t\t\t\"/api/user/tokens\",\n\t\t\t\t\t\"/api/user/tokens/revoke\",\n\t\t\t\t\t\"/api/user/device\",\n\t\t\t\t\t\"/api/user/device/approve\",\n\t\t\t\t\t\"/api/user/device/deny\",\n\t\t\t\t},",
+				"\t\t\tr.With(resource.BodyLimit(BodyLimit)).Get(\"/api/user/tokens\", h.TokensList())\n\t\t\tr.With(resource.BodyLimit(BodyLimit)).Post(\"/api/user/tokens\", h.TokensCreate())\n\t\t\tr.With(resource.BodyLimit(BodyLimit)).Post(\"/api/user/tokens/revoke\", h.TokensRevoke())\n\t\t\tr.With(resource.BodyLimit(BodyLimit)).Get(\"/api/user/device\", h.DeviceLookup())\n\t\t\tr.With(resource.BodyLimit(BodyLimit)).Post(\"/api/user/device/approve\", h.DeviceApprove())\n\t\t\tr.With(resource.BodyLimit(BodyLimit)).Post(\"/api/user/device/deny\", h.DeviceDeny())\n",
+				"\t// Droids runs inside the droids outlet's token group: r already sits behind\n\t// BindAuth(crew.Name) and the token check, and generated registers the outlet's generated\n\t// routes. Nil registers them directly.\n\tDroids func(r chi.Router, generated func(chi.Router))",
 				"\tportalSession := h.Portal()\n",
 				"\t\tr.Use(portalSession.StartSession)",
 				"\t\tbounded.Get(\"/portal/api/user/google/callback\", portalSession.GoogleCallback())",
@@ -749,11 +824,11 @@ func Test_servedRouterTemplates(t *testing.T) {
 				"The root alone sends the browser to the default outlet's\n\t// application; every other unmatched path is 404.\n\tr.Get(\"/\", func(w http.ResponseWriter, req *http.Request) {\n\t\thttp.Redirect(w, req, \"/console/\", http.StatusTemporaryRedirect)\n\t})\n\n\treturn r\n}",
 				"\tDroids func(r chi.Router, generated func(chi.Router))",
 			},
-			wantNotRouter:     []string{"h.Portal().StartSession", "droidsSession", "catch-all"},
+			wantNotRouter:     []string{"h.Portal().StartSession", "droidsSession", "catch-all", "DroidsAuth", "Auth(next http.Handler)", "PortalDeviceAuthorize", "DeviceAuthorize() http.HandlerFunc\n\t// The device flow's token endpoint (session.DeviceHandlers.Token): the client's polls for its pair, and the refresh grant; mounted under each machine outlet the auth issues tokens for.\n\tDeviceToken() http.HandlerFunc\n\t// The pending device authorization the person's code names, for the approval page (session.DeviceHandlers.Lookup).\n\tDeviceLookup() http.HandlerFunc\n\t// The device authorization approved by the signed-in person, as themselves (session.DeviceHandlers.Approve).\n\tDeviceApprove() http.HandlerFunc\n\t// The device authorization denied (session.DeviceHandlers.Deny).\n\tDeviceDeny() http.HandlerFunc\n\t// The signed-in person's live tokens (session.ApplicationTokenHandlers.List).\n\tTokensList() http.HandlerFunc\n\t// An application token issued to the signed-in person for a program of their own, the secret shown once (session.ApplicationTokenHandlers.Create).\n\tTokensCreate() http.HandlerFunc\n\t// A token of the signed-in person's revoked (session.ApplicationTokenHandlers.Revoke).\n\tTokensRevoke() http.HandlerFunc\n\t// The google registration's login and callback (google.Method)."},
 			wantRouterImports: []string{"example.com/acme/beacon/pkg/auth/crew", "example.com/acme/beacon/pkg/auth/members"},
 			wantRouterTest: []string{
 				"\t\tgroup:  []string{\"BindAuth(\" + crew.Name + \")\", \"NoCaching\", \"CompressionMiddleware\", \"StartSession\", \"SetXSRFToken\"},",
-				"\t\tgroup: []string{\"NoCaching\", \"CompressionMiddleware\", \"DroidsAuth\"},",
+				"\t\tgroup:  []string{\"BindAuth(\" + crew.Name + \")\", \"NoCaching\", \"CompressionMiddleware\"},\n\t\tguards: []string{\"DroidsValidateToken\"},",
 				"\t\tgroup:  []string{\"BindAuth(\" + members.Name + \")\", \"NoCaching\", \"CompressionMiddleware\", \"PortalStartSession\", \"PortalSetXSRFToken\"},",
 				"type routerDefaultSessionStub struct {",
 				"type routerPortalSessionStub struct {",
@@ -766,7 +841,15 @@ func Test_servedRouterTemplates(t *testing.T) {
 				"\t\t{url: \"/portal/api/user/google/callback\", suffix: \"/user/google/callback\", method: http.MethodGet, handler: \"PortalGoogleCallback\"},",
 				"\t\t{url: \"/api/user/password/login\", suffix: \"/user/password/login\", method: http.MethodPost, handler: \"PasswordLogin\", xsrf: true},",
 				"\t\t{url: \"/api/user/password/change\", suffix: \"/user/password/change\", method: http.MethodPost, handler: \"PasswordChange\", xsrf: true},",
-				"func (s *routerHandlersStub) DroidsAuth(next http.Handler) http.Handler {",
+				"// routerDroidsTokensStub records the droids outlet's token check under a name prefix, so a chain\n// says whose tokens a request passed.\ntype routerDroidsTokensStub struct {\n\trec    *routerCallRecorder\n\tprefix string\n}\n\nfunc (s *routerDroidsTokensStub) ValidateToken(next http.Handler) http.Handler {\n\treturn s.rec.Middleware(s.prefix + \"ValidateToken\")(next)\n}",
+				"\tdroids *routerDroidsTokensStub\n",
+				"\t\tdroids:                   &routerDroidsTokensStub{rec: rec, prefix: \"Droids\"},",
+				"func (s *routerHandlersStub) Droids() DroidsTokens {\n\treturn s.droids\n}",
+				"func (s *routerDefaultSessionStub) DeviceAuthorize() http.HandlerFunc {\n\treturn s.rec.RecordHandlerCall(s.prefix + \"DeviceAuthorize\")\n}",
+				"func (s *routerDefaultSessionStub) TokensRevoke() http.HandlerFunc {",
+				"\t\t{url: \"/api/user/tokens\", suffix: \"/user/tokens\", method: http.MethodGet, handler: \"TokensList\", xsrf: true, validated: true},",
+				"\t\t{url: \"/api/user/device/deny\", suffix: \"/user/device/deny\", method: http.MethodPost, handler: \"DeviceDeny\", xsrf: true, validated: true},",
+				"\t\t{url: \"/droids/oauth/device/authorize\", suffix: \"/oauth/device/authorize\", method: http.MethodPost, handler: \"DeviceAuthorize\"},\n\t\t{url: \"/droids/oauth/token\", suffix: \"/oauth/token\", method: http.MethodPost, handler: \"DeviceToken\"},",
 				"func (s *routerHandlersStub) BindAuth(name string) func(http.Handler) http.Handler {",
 				"\t\t\tDroids: func(r chi.Router, generated func(chi.Router)) {",
 				"\t\t{url: \"/console/generated-router-page/deep/link\", handler: \"Assets\", deepLink: \"DeepLink\"},",
@@ -794,19 +877,30 @@ func Test_servedRouterTemplates(t *testing.T) {
 			},
 		},
 		{
-			name:    "an API-key default outlet alone imports no session package",
-			outlets: []*routerOutlet{{name: "default", prefix: "api", apiKey: true}},
-			wantRouter: []string{
-				"//\tdefault (/api), API key:",
-				"\tDefaultAuth(next http.Handler) http.Handler\n",
-				"\tServerVersion() string\n",
-				// Every outlet names the release on its answers, the API-key outlet too.
-				"\t\tr.Use(h.CompressionMiddleware())\n\t\tr.Use(resource.ReleaseHeader(serverVersion))\n\t\tr.Use(h.DefaultAuth)\n",
+			name: "a default machine outlet is embedded and reads its issuer, a getter session outlet, through the getter",
+			outlets: []*routerOutlet{
+				{name: "default", prefix: "api", apiKey: true, tokenAuth: members.importPath},
+				{name: "portal", prefix: "portal/api", servesSessions: true, auth: members, webApp: "/portal"},
 			},
-			wantNotRouter: []string{"StartSession", "DefaultSession", "session.MethodList", "http.Redirect", "r.Use(resource.CheckAPIVersion("},
-			// resource stays imported: the body limit wraps hooks.Root's group on every router.
-			wantNoRouterImports: []string{"github.com/cccteam/session"},
-			wantNotRouterTest:   []string{"SessionStub", "session.MethodList", "TestGeneratedRouterWebApps", "func TestGeneratedRouterSessionRoutes", "TestGeneratedRouterRoot", "TestGeneratedRouterAPIVersion", "routerVersionProbe"},
+			wantRouter: []string{
+				"//\tdefault (/api), bearer tokens of the members auth:\n//\t  NoCaching, CompressionMiddleware, ReleaseHeader: POST /api/oauth/device/authorize, POST /api/oauth/token\n//\t  + ValidateToken: hooks.Default, generatedRoutes",
+				"\t// The default outlet's token surface: the machine outlet the application registers on\n\t// the members auth's Auth (session.RegisterMachineOutlet).\n\tDefaultTokens\n",
+				"type DefaultTokens interface {\n\tValidateToken(next http.Handler) http.Handler\n}",
+				"\tServerVersion() string\n",
+				// Every outlet names the release on its answers, the machine outlet too.
+				"\t\tr.Use(h.CompressionMiddleware())\n\t\tr.Use(resource.ReleaseHeader(serverVersion))\n\n\t\tbounded := r.With(resource.BodyLimit(BodyLimit))\n\t\tbounded.Post(\"/api/oauth/device/authorize\", h.Portal().DeviceAuthorize())\n\t\tbounded.Post(\"/api/oauth/token\", h.Portal().DeviceToken())\n\n\t\tr.Group(func(r chi.Router) {\n\t\t\tr.Use(h.ValidateToken)\n",
+				"\t\t\tr.With(resource.BodyLimit(BodyLimit)).Get(\"/portal/api/user/tokens\", portalSession.TokensList())\n",
+			},
+			wantNotRouter: []string{"DefaultSession", "BindAuth", "DefaultAuth", "h.StartSession"},
+			wantRouterTest: []string{
+				"\t\tgroup:  []string{\"NoCaching\", \"CompressionMiddleware\"},\n\t\tguards: []string{\"ValidateToken\"},",
+				"type routerDefaultTokensStub struct {",
+				"\t*routerDefaultTokensStub\n",
+				"\t\trouterDefaultTokensStub: &routerDefaultTokensStub{rec: rec},",
+				"\t\t{url: \"/api/oauth/token\", suffix: \"/oauth/token\", method: http.MethodPost, handler: \"PortalDeviceToken\"},",
+				"func (s *routerPortalSessionStub) DeviceToken() http.HandlerFunc {",
+			},
+			wantNotRouterTest: []string{"routerDefaultSessionStub", "DefaultAuth"},
 		},
 	}
 	r := &resourceGenerator{client: &client{}}
@@ -953,7 +1047,7 @@ func wordedRouterShape(t *testing.T) (r *resourceGenerator, outlets []*routerOut
 	r.resource = packageDir("pkg/resources")
 	outlets = []*routerOutlet{
 		{name: "default", prefix: "api", servesSessions: true, auth: crew, webApp: "/console"},
-		{name: "droids", prefix: "droids", apiKey: true, requestLog: LogOnEvent(), traces: TracesOff()},
+		{name: "droids", prefix: "droids", apiKey: true, tokenAuth: crew.importPath, requestLog: LogOnEvent(), traces: TracesOff()},
 		{name: "portal", prefix: "portal/api", servesSessions: true, auth: members, webApp: "/portal", traces: TracesCapped(0.1)},
 	}
 	content := &generatedRoute{Method: "GET", Path: "/api/widgets/{widgetID}/content", TestURL: "/api/widgets/testWidgetID/content", HandlerFunc: "WidgetContent", HandlerType: fileHandler, RequestLog: LogNever(), Traces: TracesOff()}
@@ -1108,7 +1202,7 @@ func Test_servedRouterData_wordsUndeclared(t *testing.T) {
 	r := &resourceGenerator{client: &client{}}
 	r.router = packageDir("pkg/router")
 	r.resource = packageDir("pkg/resources")
-	data := r.servedRouterData([]*routerOutlet{{name: "default", prefix: "api", servesSessions: true, auth: crew}, {name: "droids", prefix: "droids", apiKey: true}}, nil, nil, nil)
+	data := r.servedRouterData([]*routerOutlet{{name: "default", prefix: "api", servesSessions: true, auth: crew}, {name: "droids", prefix: "droids", apiKey: true, tokenAuth: crew.importPath}}, nil, nil, nil)
 
 	if data.DeclaresWords || data.UsesLogging || data.UsesStrings || len(data.Surfaces) != 0 || len(data.MountedRoutes) != 0 || len(data.WordedNotFound) != 0 {
 		t.Errorf("payload with nothing declared = %+v", data)
@@ -1166,12 +1260,12 @@ func Test_servedRouterTemplates_words(t *testing.T) {
 			wordedRoutes: wordedRoutes,
 			wantRouter: []string{
 				"//\tevery request: tracing, hooks.Outermost, request logging (always, Warning and above), SecurityHeaders, httpio.WithParams\n//\t  by hand under /beacons/: request log on event, traces off\n//\tdefault (/api), sessions of the crew auth (password):\n",
-				"//\t  + ValidateSession, ValidateXSRFToken, CheckAPIVersion: hooks.Default, generatedRoutes\n//\t  GET /api/widgets/{widgetID}/content: request log never, traces off\n//\tdroids (/droids), API key, request log on event, traces off:\n//\t  NoCaching, CompressionMiddleware, ReleaseHeader, DroidsAuth: hooks.Droids, generatedDroidsRoutes\n//\t  by hand under /droids/telemetry/: request log never, traces capped at 0.5\n//\t  POST /droids/ingest: request log sampled at 0.5\n//\tportal (/portal/api), sessions of the members auth (google), traces capped at 0.1:\n",
+				"//\t  + ValidateSession, ValidateXSRFToken, CheckAPIVersion: hooks.Default, generatedRoutes\n//\t  GET /api/widgets/{widgetID}/content: request log never, traces off\n//\tdroids (/droids), bearer tokens of the crew auth, request log on event, traces off:\n//\t  BindAuth(crew.Name), NoCaching, CompressionMiddleware, ReleaseHeader: POST /droids/oauth/device/authorize, POST /droids/oauth/token\n//\t  + ValidateToken: hooks.Droids, generatedDroidsRoutes\n//\t  by hand under /droids/telemetry/: request log never, traces capped at 0.5\n//\t  POST /droids/ingest: request log sampled at 0.5\n//\tportal (/portal/api), sessions of the members auth (google), traces capped at 0.1:\n",
 				"//\tscheduled (/_scheduled), Cloud Scheduler's token:\n//\t  NoCaching, CompressionMiddleware, ReleaseHeader, SchedulerAuth: generatedScheduledRoutes\n//\t  POST /_scheduled/prune-logs: request log on event\n//\n",
 				"// None is mounted at /: the root alone redirects to /console/, the default outlet's application.\n//\n// The request log word and the trace setting named at each place are the nearest\n// declarations, a route's over its outlet's and an outlet's over the application\n// default; a request under none writes its entry always and its spans follow the front\n// end. The root's request logger decides each entry when the request ends, and a handler\n// may change its own request's word through logger.FromReq(r).SetPolicy.\npackage router\n",
 				"\tr.Use(tracer.NewHandler(tracer.Surfaces(map[string]tracer.Traces{\n\t\t\"/api/widgets/{widgetID}/content\": tracer.TracesOff(),\n\t\t\"/beacons/\":                       tracer.TracesOff(),\n\t\t\"/droids/\":                        tracer.TracesOff(),\n\t\t\"/droids/telemetry/\":              tracer.TracesCapped(0.5),\n\t\t\"/portal/api/\":                    tracer.TracesCapped(0.1),\n\t})))\n\tr.Use(hooks.Outermost...)\n",
 				"\t// word a request starts with, the application default or the word of the longest\n\t// prefix declared by hand that the path sits under; an outlet's word, a route's own\n\t// and a handler's own request override it on the way down.\n\tr.Use(logger.NewRequestLogger(h.LogExporter(),\n\t\tlogger.DefaultPolicy(logger.Always().MinSeverity(logging.Warning)),\n\t\tlogger.PolicyByPrefix(map[string]logger.Policy{\n\t\t\t\"/beacons/\":          logger.OnEvent(),\n\t\t\t\"/droids/telemetry/\": logger.Never(),\n\t\t}),\n\t))\n\tr.Use(h.SecurityHeaders)\n",
-				"\tr.Group(func(r chi.Router) {\n\t\t// Every request under the outlet writes its request log on event, except under\n\t\t// the prefixes declared by hand beneath it, which keep their own word.\n\t\tr.Use(outletRequestLog(logger.OnEvent(), \"/droids/telemetry/\"))\n\t\tr.Use(h.NoCaching)\n\t\tr.Use(h.CompressionMiddleware())\n\t\tr.Use(resource.ReleaseHeader(serverVersion))\n\t\tr.Use(h.DroidsAuth)\n",
+				"\tr.Group(func(r chi.Router) {\n\t\t// Every request under the outlet writes its request log on event, except under\n\t\t// the prefixes declared by hand beneath it, which keep their own word.\n\t\tr.Use(outletRequestLog(logger.OnEvent(), \"/droids/telemetry/\"))\n\t\tr.Use(h.BindAuth(crew.Name))\n\t\tr.Use(h.NoCaching)\n\t\tr.Use(h.CompressionMiddleware())\n\t\tr.Use(resource.ReleaseHeader(serverVersion))\n\n\t\tbounded := r.With(resource.BodyLimit(BodyLimit))\n",
 				"\tfor _, prefix := range []string{\"/api/\", \"/portal/api/\", \"/_scheduled/\"} {",
 				"\t// The droids outlet's not-found handler carries the outlet's word, so an unknown path\n\t// under its prefix is logged as its requests are.\n\tr.Route(\"/droids/\", func(r chi.Router) {\n\t\t// Every request under the outlet writes its request log on event, except under\n\t\t// the prefixes declared by hand beneath it, which keep their own word.\n\t\tr.Use(outletRequestLog(logger.OnEvent(), \"/droids/telemetry/\"))\n\t\tr.NotFound(func(w http.ResponseWriter, _ *http.Request) {\n",
 				"func outletRequestLog(word logger.Policy, mountedPrefixes ...string) func(http.Handler) http.Handler {\n\tsetWord := logger.WithPolicy(word)\n",

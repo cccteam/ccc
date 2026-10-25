@@ -15,7 +15,7 @@ import (
 // TestIngestDroidReports drives the machine-only RPC: the payload is flat, one reading per
 // call (a batch is the droid script calling it in a loop), and the tenant column comes
 // from the ship's hangar. The droids outlet is served under its own prefix by the test
-// router, with no API-key middleware in front of it. The first reading carries its raw
+// router, with no token check in front of it. The first reading carries its raw
 // frame, a telemetry.Frame typed in the droid link's own package, which the generator
 // writes the JSON and Spanner methods for (WithTypes): the column holds the JSON the
 // droid sent, the droid's list reads it back as that JSON, and the reading sent without

@@ -131,7 +131,7 @@ func (c *testConfigurer) ConsoleDist() string { return "" }
 func (c *testConfigurer) PortalDist() string { return "" }
 
 // DroidsAPIKey is unused by these suites: the matrix drives the bare test router, which
-// carries no outlet middleware.
+// carries no token check.
 func (c *testConfigurer) DroidsAPIKey() string { return "authz-droids-key" }
 
 // Scheduler is none: the matrix drives the bare test router, which mounts no scheduled

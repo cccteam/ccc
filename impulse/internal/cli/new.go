@@ -48,7 +48,7 @@ func (nf *newFlags) bind(cmd *cobra.Command) {
 	cmd.Flags().BoolVar(&nf.opts.tenancy, "tenancy", false, "compose the tenancy option: tenant-scoped resources under a tenant segment, roles per tenant")
 	cmd.Flags().StringVar(&nf.opts.tenantTable, "tenant-table", "Tenants", "the tenant-record table when --tenancy is given, PascalCase and plural")
 	cmd.Flags().StringArrayVar(&nf.opts.outlets, "outlet", nil, "compose a session outlet, <name>=<prefix> (repeatable), such as portal=portal/api")
-	cmd.Flags().StringArrayVar(&nf.opts.apiOutlets, "api-outlet", nil, "compose an API-key outlet, <name>=<prefix> (repeatable), such as machines=machines")
+	cmd.Flags().StringArrayVar(&nf.opts.apiOutlets, "api-outlet", nil, "compose a machine outlet, <name>=<prefix> (repeatable), such as machines=machines: a surface with no browser whose requests carry the tokens the console's auth issues")
 	cmd.Flags().StringArrayVar(&nf.opts.sites, "site", nil, "compose the sites layout: two or more site names (repeatable), the first being what the base site becomes under apps/")
 	cmd.Flags().BoolVar(&nf.opts.files, "files", false, "compose the file store: APP_FILE_STORE, the development directory, the cleanup job and its scheduled method")
 	nf.transition.bindAgent(cmd)
@@ -388,7 +388,7 @@ func (o *composedOptions) describe() string {
 		parts = append(parts, "the session outlet "+spec)
 	}
 	for _, spec := range o.apiOutlets {
-		parts = append(parts, "the API-key outlet "+spec)
+		parts = append(parts, "the machine outlet "+spec)
 	}
 	if o.files {
 		parts = append(parts, "the file store")

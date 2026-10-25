@@ -270,7 +270,7 @@ func OutletChoices(a *app.App) []OutletChoice {
 func sessionOutletKeys(choices []OutletChoice) string {
 	var keys []string
 	for i := range choices {
-		if !choices[i].Outlet.APIKey {
+		if !choices[i].Outlet.Machine() {
 			keys = append(keys, choices[i].Key)
 		}
 	}
@@ -290,8 +290,8 @@ func (au Auth) target(a *app.App) (*OutletChoice, error) {
 		if c.Key != au.Outlet {
 			continue
 		}
-		if c.Outlet.APIKey {
-			return nil, errors.Newf("%s: the %s outlet is an API-key outlet (APIKey()), a machine surface with no sign-in; an auth serves a session outlet, and the outlets are %s", c.Outlet.Pos, au.Outlet, sessionOutletKeys(choices))
+		if c.Outlet.Machine() {
+			return nil, errors.Newf("%s: the %s outlet is a machine outlet (Tokens()), a surface with no sign-in; an auth serves a session outlet, and the outlets are %s", c.Outlet.Pos, au.Outlet, sessionOutletKeys(choices))
 		}
 
 		return c, nil

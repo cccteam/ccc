@@ -28,7 +28,8 @@ import (
 var routerRootChain = []string{"LogExporter", "SecurityHeaders"}
 
 // routerOutletChain is one outlet's middleware in order: group runs in front of the
-// outlet's session routes, guards additionally in front of its generated routes.
+// outlet's session routes, or a machine outlet's device-flow endpoints; guards
+// additionally in front of its generated routes.
 type routerOutletChain struct {
 	group  []string
 	guards []string
@@ -45,7 +46,8 @@ var routerOutletChains = map[string]routerOutletChain{
 		guards: []string{"PortalValidateSession", "PortalValidateXSRFToken"},
 	},
 	"/machines/": {
-		group: []string{"NoCaching", "CompressionMiddleware", "MachinesAuth"},
+		group:  []string{"BindAuth(" + staff.Name + ")", "NoCaching", "CompressionMiddleware"},
+		guards: []string{"MachinesValidateToken"},
 	},
 }
 
@@ -76,7 +78,9 @@ type routerSessionRoute struct {
 	validated bool
 }
 
-// routerSessionRoutes lists every session outlet's routes.
+// routerSessionRoutes lists every session outlet's routes, and the device-flow
+// endpoints under each machine outlet's prefix, served by the issuing auth's surface
+// in front of the token check.
 func routerSessionRoutes() []routerSessionRoute {
 	return []routerSessionRoute{
 		{url: "/console/api/user/methods", suffix: "/user/methods", method: http.MethodGet, handler: "Methods"},
@@ -92,6 +96,12 @@ func routerSessionRoutes() []routerSessionRoute {
 		{url: "/console/api/user/invitation/accept", suffix: "/user/invitation/accept", method: http.MethodPost, handler: "InvitationAccept", xsrf: true, validated: true},
 		{url: "/console/api/user/email", suffix: "/user/email", method: http.MethodPost, handler: "EmailAdd", xsrf: true, validated: true},
 		{url: "/console/api/user/email/verify", suffix: "/user/email/verify", method: http.MethodPost, handler: "EmailVerify", xsrf: true, validated: true},
+		{url: "/console/api/user/tokens", suffix: "/user/tokens", method: http.MethodGet, handler: "TokensList", xsrf: true, validated: true},
+		{url: "/console/api/user/tokens", suffix: "/user/tokens", method: http.MethodPost, handler: "TokensCreate", xsrf: true, validated: true},
+		{url: "/console/api/user/tokens/revoke", suffix: "/user/tokens/revoke", method: http.MethodPost, handler: "TokensRevoke", xsrf: true, validated: true},
+		{url: "/console/api/user/device", suffix: "/user/device", method: http.MethodGet, handler: "DeviceLookup", xsrf: true, validated: true},
+		{url: "/console/api/user/device/approve", suffix: "/user/device/approve", method: http.MethodPost, handler: "DeviceApprove", xsrf: true, validated: true},
+		{url: "/console/api/user/device/deny", suffix: "/user/device/deny", method: http.MethodPost, handler: "DeviceDeny", xsrf: true, validated: true},
 		{url: "/portal/api/user/methods", suffix: "/user/methods", method: http.MethodGet, handler: "PortalMethods"},
 		{url: "/portal/api/user/session", suffix: "/user/session", method: http.MethodGet, handler: "PortalAuthenticated"},
 		{url: "/portal/api/user/session", suffix: "/user/session", method: http.MethodDelete, handler: "PortalLogout"},
@@ -105,6 +115,8 @@ func routerSessionRoutes() []routerSessionRoute {
 		{url: "/portal/api/user/invitation/accept", suffix: "/user/invitation/accept", method: http.MethodPost, handler: "PortalInvitationAccept", xsrf: true, validated: true},
 		{url: "/portal/api/user/email", suffix: "/user/email", method: http.MethodPost, handler: "PortalEmailAdd", xsrf: true, validated: true},
 		{url: "/portal/api/user/email/verify", suffix: "/user/email/verify", method: http.MethodPost, handler: "PortalEmailVerify", xsrf: true, validated: true},
+		{url: "/machines/oauth/device/authorize", suffix: "/oauth/device/authorize", method: http.MethodPost, handler: "DeviceAuthorize"},
+		{url: "/machines/oauth/token", suffix: "/oauth/token", method: http.MethodPost, handler: "DeviceToken"},
 	}
 }
 
@@ -172,7 +184,8 @@ func TestGeneratedRouter(t *testing.T) {
 // pending and sign-in routes answer behind the outlet's group and before its session
 // guard, a sign-in's POSTs behind the XSRF guard alone: a browser reaches them without
 // a validated session; the routes a signed-in person calls (an invitation's acceptance,
-// the address) answer behind both guards.
+// the address, the token page) answer behind both guards; and a machine outlet's
+// device-flow endpoints answer behind its group and before its token check.
 func TestGeneratedRouterSessionRoutes(t *testing.T) {
 	t.Parallel()
 
@@ -832,7 +845,7 @@ func (b *routerUnreadBody) Read([]byte) (int, error) {
 // server's release in X-Api-Version before any handler runs or its body is read, a
 // request without the header or with a version that is not a release on either side
 // is answered, the session routes and the stored-file routes answer at any release,
-// an API-key outlet is never checked, every answer of an outlet names the server's
+// a machine outlet is never checked, every answer of an outlet names the server's
 // release in X-Api-Version, and the check sits behind the outlet's guards and ahead
 // of its hook.
 func TestGeneratedRouterAPIVersion(t *testing.T) {
@@ -1035,6 +1048,38 @@ func (s *routerDefaultSessionStub) EmailVerify() http.HandlerFunc {
 	return s.rec.RecordHandlerCall(s.prefix + "EmailVerify")
 }
 
+func (s *routerDefaultSessionStub) TokensList() http.HandlerFunc {
+	return s.rec.RecordHandlerCall(s.prefix + "TokensList")
+}
+
+func (s *routerDefaultSessionStub) TokensCreate() http.HandlerFunc {
+	return s.rec.RecordHandlerCall(s.prefix + "TokensCreate")
+}
+
+func (s *routerDefaultSessionStub) TokensRevoke() http.HandlerFunc {
+	return s.rec.RecordHandlerCall(s.prefix + "TokensRevoke")
+}
+
+func (s *routerDefaultSessionStub) DeviceLookup() http.HandlerFunc {
+	return s.rec.RecordHandlerCall(s.prefix + "DeviceLookup")
+}
+
+func (s *routerDefaultSessionStub) DeviceApprove() http.HandlerFunc {
+	return s.rec.RecordHandlerCall(s.prefix + "DeviceApprove")
+}
+
+func (s *routerDefaultSessionStub) DeviceDeny() http.HandlerFunc {
+	return s.rec.RecordHandlerCall(s.prefix + "DeviceDeny")
+}
+
+func (s *routerDefaultSessionStub) DeviceAuthorize() http.HandlerFunc {
+	return s.rec.RecordHandlerCall(s.prefix + "DeviceAuthorize")
+}
+
+func (s *routerDefaultSessionStub) DeviceToken() http.HandlerFunc {
+	return s.rec.RecordHandlerCall(s.prefix + "DeviceToken")
+}
+
 func (s *routerDefaultSessionStub) StartSession(next http.Handler) http.Handler {
 	return s.rec.Middleware(s.prefix + "StartSession")(next)
 }
@@ -1126,15 +1171,27 @@ func (s *routerPortalSessionStub) ValidateXSRFToken(next http.Handler) http.Hand
 	return s.rec.Middleware(s.prefix + "ValidateXSRFToken")(next)
 }
 
+// routerMachinesTokensStub records the machines outlet's token check under a name prefix, so a chain
+// says whose tokens a request passed.
+type routerMachinesTokensStub struct {
+	rec    *routerCallRecorder
+	prefix string
+}
+
+func (s *routerMachinesTokensStub) ValidateToken(next http.Handler) http.Handler {
+	return s.rec.Middleware(s.prefix + "ValidateToken")(next)
+}
+
 // routerHandlersStub satisfies Handlers for the router tests: the generated surface
 // through the routes test's stub, the session surfaces through the outlets' session
-// stubs, and every middleware and browser-application handler recording under its own
-// name.
+// stubs, the token surfaces through the machine outlets' token stubs, and every
+// middleware and browser-application handler recording under its own name.
 type routerHandlersStub struct {
 	*generatedHandlersStub
 	*routerDefaultSessionStub
-	rec    *routerCallRecorder
-	portal *routerPortalSessionStub
+	rec      *routerCallRecorder
+	portal   *routerPortalSessionStub
+	machines *routerMachinesTokensStub
 	// serverVersion is the release the stub reports; empty, no release, so a case that
 	// sets none is never refused.
 	serverVersion string
@@ -1153,6 +1210,7 @@ func newRouterHandlersStub(rec *routerCallRecorder) *routerHandlersStub {
 		routerDefaultSessionStub: &routerDefaultSessionStub{rec: rec},
 		rec:                      rec,
 		portal:                   &routerPortalSessionStub{rec: rec, prefix: "Portal"},
+		machines:                 &routerMachinesTokensStub{rec: rec, prefix: "Machines"},
 	}
 }
 
@@ -1160,12 +1218,12 @@ func (s *routerHandlersStub) Portal() PortalSession {
 	return s.portal
 }
 
-func (s *routerHandlersStub) BindAuth(name string) func(http.Handler) http.Handler {
-	return s.rec.Middleware("BindAuth(" + name + ")")
+func (s *routerHandlersStub) Machines() MachinesTokens {
+	return s.machines
 }
 
-func (s *routerHandlersStub) MachinesAuth(next http.Handler) http.Handler {
-	return s.rec.Middleware("MachinesAuth")(next)
+func (s *routerHandlersStub) BindAuth(name string) func(http.Handler) http.Handler {
+	return s.rec.Middleware("BindAuth(" + name + ")")
 }
 
 func (s *routerHandlersStub) LogExporter() logger.Exporter {

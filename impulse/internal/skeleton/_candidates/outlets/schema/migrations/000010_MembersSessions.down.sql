@@ -1,3 +1,10 @@
+DROP INDEX MembersSessionDeviceCodesByUserCode;
+DROP INDEX MembersSessionDeviceCodesByHash;
+DROP TABLE MembersSessionDeviceCodes;
+DROP INDEX MembersSessionTokensByFamily;
+DROP INDEX MembersSessionTokensByUser;
+DROP INDEX MembersSessionTokensByTokenHash;
+DROP TABLE MembersSessionTokens;
 DROP INDEX MembersSessionMailLinksByKind;
 DROP INDEX MembersSessionMailLinksByTokenHash;
 DROP TABLE MembersSessionMailLinks;

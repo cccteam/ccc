@@ -1,3 +1,10 @@
+DROP INDEX StaffSessionDeviceCodesByUserCode;
+DROP INDEX StaffSessionDeviceCodesByHash;
+DROP TABLE StaffSessionDeviceCodes;
+DROP INDEX StaffSessionTokensByFamily;
+DROP INDEX StaffSessionTokensByUser;
+DROP INDEX StaffSessionTokensByTokenHash;
+DROP TABLE StaffSessionTokens;
 DROP INDEX StaffSessionMailLinksByKind;
 DROP INDEX StaffSessionMailLinksByTokenHash;
 DROP TABLE StaffSessionMailLinks;

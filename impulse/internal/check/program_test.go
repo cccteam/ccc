@@ -74,7 +74,7 @@ func NewGenerator(ctx context.Context) (generation.Generator, error) {
 			generation.OutletTraces(generation.TracesCapped(0.5)),
 		),
 		generation.WithRouterOutlet("machines", "machines",
-			generation.APIKey(),
+			generation.Tokens("example.com/harbor/pkg/auth/staff"),
 			generation.OutletRequestLog(generation.LogNever()),
 			generation.OutletTraces(generation.TracesOff()),
 		),
