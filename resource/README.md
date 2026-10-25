@@ -290,10 +290,10 @@ An additional outlet that serves sessions (`Auth(...)` under the generated route
 `ServesSessions()` under a hand-written one) gets the same two routes under its own
 prefix, served by the same generated handlers behind the outlet's session middleware;
 an outlet without the declaration gets neither (the generated router tests prove its
-prefix 404s them). The default outlet serves them unless it is declared `APIKey()`: a
-machine outlet's generated routes are the resource routes its key authorizes and nothing
-else, so an API-key outlet, the default included, registers neither of these nor the
-live routes, and when no outlet serves sessions the generated `PermissionDigest`,
+prefix 404s them). The default outlet serves them unless it is declared `Tokens(...)`: a
+machine outlet's generated routes are the resource routes its tokens open and the device
+flow's two endpoints, nothing else, so a machine outlet, the default included, registers
+neither of these nor the live routes, and when no outlet serves sessions the generated `PermissionDigest`,
 `UserDomains` and live handlers are not written at all.
 
 **The digest.** The payload is the user's structural grant enumeration for the requested scope:
@@ -444,7 +444,9 @@ external method under its registration name, `GoogleMethod("google")`,
 label the page shows (the method's own name otherwise: Password, Google, Microsoft,
 Single sign-on). An outlet naming no method, a registration name outside
 `[a-z][a-z0-9-]*`, an external method named `password`, a name declared twice or an
-empty label is refused. A machine outlet declares `generation.APIKey()` instead. And the browser
+empty label is refused. A machine outlet declares `generation.Tokens(importPath)` instead,
+naming the auth package of a session outlet whose `Auth` issues the bearer tokens its
+requests carry (machine outlets, below). And the browser
 application an outlet serves, when it serves one: `generation.WebApp(mountPath)`, `"/"`
 for the application at the root, `"/console"` for one under a path. The default outlet
 declares them on `GenerateRoutes`, the others on `WithRouterOutlet`. A session `Auth`
@@ -458,7 +460,7 @@ generation.GenerateRoutes("pkg/router", "api",
 	generation.Manages("github.com/cccteam/ccc/resource/lodestar/pkg/auth/members"),
 	generation.WebApp("/console"),
 ),
-generation.WithRouterOutlet("droids", "droids", generation.APIKey()),
+generation.WithRouterOutlet("droids", "droids", generation.Tokens("github.com/cccteam/ccc/resource/lodestar/pkg/auth/crew")),
 generation.WithRouterOutlet("portal", "portal/api",
 	generation.Auth("github.com/cccteam/ccc/resource/lodestar/pkg/auth/members", generation.GoogleMethod("directory").Labeled("Company directory").SyncsRoles()),
 	generation.WebApp("/portal"),
@@ -470,9 +472,11 @@ describe the Auth's user-management surface (section 21): what a directory admit
 seats it writes, and which other Auth's users the outlet manages.
 
 Under `GenerateRouter` every outlet says how it authenticates, one way: an outlet with
-neither `Auth` nor `APIKey`, or with both, fails generation, as do a machine outlet with
-a `WebApp`, two outlets on one mount path, and a browser application mounted under an
-API prefix. Without the option the three declarations are refused rather than ignored.
+neither `Auth` nor `Tokens`, or with both, fails generation, as do a machine outlet with
+a `WebApp`, a machine outlet whose `Tokens` names an auth no session outlet declares with
+`Auth`, the retired `APIKey()` (the refusal names `Tokens` as its replacement), two
+outlets on one mount path, and a browser application mounted under an API prefix.
+Without the option the three declarations are refused rather than ignored.
 
 A browser application at `"/"` must be the only one. An installed browser application's
 scope is every URL under its start, so beside a second application one at `/` would own
@@ -498,7 +502,12 @@ name (`PasswordLogin`; `GoogleLogin` and `GoogleCallback` for a method named `go
 (`DefaultSession`) and each additional one's through a getter named after it
 (`Portal() PortalSession`); `BindAuth(name)` only when more than one session
 auth is declared, so a misspelled or removed auth package is a compile error at
-`BindAuth(crew.Name)`; `<Outlet>Auth(next)` per API-key outlet; `LogExporter`, where
+`BindAuth(crew.Name)`; `<Outlet>Tokens` per machine outlet (`Droids() DroidsTokens`,
+embedded as `DefaultTokens` for a default machine outlet), the token check the issuing
+auth's `*session.MachineOutlet` satisfies, and on the issuing auth's session surface the
+device and token handlers (`DeviceAuthorize`, `DeviceToken`, `DeviceLookup`,
+`DeviceApprove`, `DeviceDeny`, `TokensList`, `TokensCreate`, `TokensRevoke`), which the
+auth's `Device()` and `ApplicationTokens()` return; `LogExporter`, where
 the request log goes, from which the router builds the request logger; `SecurityHeaders`,
 `NoCaching`, and `CompressionMiddleware`; and per `WebApp` a `DeepLink` and `Assets`
 pair, prefixed with the outlet's name for an additional outlet
@@ -515,7 +524,7 @@ type Hooks struct {
 	// triggers. They sit behind the every-request chain and nothing else.
 	Root func(r chi.Router)
 	// One field per outlet, named after it. The hook runs inside the outlet's
-	// authenticated group (or the API-key group): r already sits behind the outlet's
+	// authenticated group (or the machine outlet's token-checked group): r already sits behind the outlet's
 	// guards, and generated registers the outlet's generated routes. Nil registers them
 	// directly.
 	Default func(r chi.Router, generated func(chi.Router))
@@ -553,9 +562,31 @@ XSRF cookie its first request was issued, echoed in the header. The password cha
 itself, so it sits outside `ValidateSession`: a person whose operator-set password must
 change before anything else is served reaches it, and the methods route tells the login
 page where (`changePassword`), which renders the change form before the signed-in page
-(section 21). An API-key outlet's group is `NoCaching`,
-`CompressionMiddleware`, `<Outlet>Auth`, then the hook and the routes: no session
-handling and no XSRF guard.
+(section 21).
+
+**Machine outlets.** A machine outlet declares the auth whose `Auth` issues its tokens,
+`Tokens(importPath)`, the same `*session.Auth` a session outlet of the program binds to
+through `Auth`; its people issue the tokens there. The outlet's group is `BindAuth`
+(when several auths are declared), `NoCaching`, `CompressionMiddleware`,
+`ReleaseHeader`, the device flow's two public endpoints (`POST <prefix>/oauth/device/authorize`
+and `POST <prefix>/oauth/token`, RFC 8628 and the refresh grant, served by the issuing
+auth's `DeviceAuthorize` and `DeviceToken`), then the token check,
+`<Outlet>Tokens().ValidateToken`, the hook and the routes: no session handling and no
+XSRF guard. The check requires `Authorization: Bearer <token>`, answers a request without
+a live token of the outlet's with 401 and `WWW-Authenticate: Bearer realm="<outlet>"`,
+and binds the request to the person the token acts for, so the handlers behind it run
+the same permission checks as the browser's. The issuing auth's session outlet gains the
+token routes behind its session and XSRF guards, `GET` and `POST user/tokens`, `POST
+user/tokens/revoke`, `GET user/device`, `POST user/device/approve` and `POST
+user/device/deny`: a signed-in person issues, lists and revokes their own application
+tokens (the secret is in the answer once) and approves or denies a command-line client's
+device authorization by the code it shows. The chain comment names the issuing auth per
+machine outlet and the generated test proves the check: no token and a token the auth
+never issued are challenged, a token opens the routes, and the device endpoints sit in
+front of the check. The application writes nothing for the check: the auth package
+registers the outlet on its `Auth` before the first request
+(`session.RegisterMachineOutlet(auth, "droids")`, beside its sign-in methods) and the
+`Handlers` getter returns it.
 
 **The auth in the route tables.** Each session outlet's routes function binds the name of
 its auth for the live pages (section 14): `generatedRoutes` opens with
@@ -565,9 +596,9 @@ the application writes its own router, the generator does not know the auths, so
 session outlet's routes function takes the name as its last parameter,
 `generatedRoutes(r, h, staff.Name)`, and `NewTestRouter` takes one per session outlet in
 outlet order, `NewTestRouter(h, staff.Name)`; a router that passes none does not
-compile. An API-key outlet binds none and registers no live routes: its resource
+compile. A machine outlet binds none and registers no live routes: its resource
 routes refuse a request carrying `X-Subscribe`, and so do the default outlet's when it
-is declared `APIKey()`.
+is declared `Tokens(...)`.
 
 **Release versions.** A browser application and the server each carry the release they
 were built from, and the server refuses an application it no longer answers. The
@@ -587,11 +618,11 @@ and before its body is read. A request without the header is answered, so file l
 working, and a version that is not a release on either side (`dev`, or anything that is
 not a semantic version) never refuses and is never refused. The session routes (login,
 callback, `/user/session`) sit outside the check, and the stored-file routes (`@file`)
-are exempt, so a login always works and a file link never fails on a version. An API-key
+are exempt, so a login always works and a file link never fails on a version. A machine
 outlet is not checked, and refuses the option. Every response on a checked route carries
 `Vary: X-Api-Version`, so a browser never serves one release's cached answer to another.
 Every answer of an outlet, checked or not, names the server's release in `X-Api-Version`
-(`resource.ReleaseHeader`, ahead of the session handling on every outlet, the API-key and
+(`resource.ReleaseHeader`, ahead of the session handling on every outlet, the machine and
 scheduled outlets included), so the methods list a login page reads before any sign-in
 carries it, a browser application shows which release it talks to, and `curl` shows it; a
 `dev` server is named as it is. Versions compare as semantic versions, with or without a
@@ -599,7 +630,7 @@ leading `v`. The chain comment
 names the check per outlet with its oldest answered release, and the generated test
 proves it: in range answered, below or above refused with the header and no handler run
 and no body read, no header and `dev` answered, session and file routes answered at any
-release, the API-key outlets unchecked, and the refusal landing before the hook.
+release, the machine outlets unchecked, and the refusal landing before the hook.
 
 **The release file.** Beside the router the generator writes `zz_gen_release.json`, which
 names every outlet and, for each session outlet, the oldest release it answers, so a
@@ -609,8 +640,9 @@ the other generated files, and the sweep removes it when the router goes. One en
 outlet, keyed by the outlet's name (`default` for `GenerateRoutes`, the name given to
 `WithRouterOutlet` otherwise): a session outlet carries `oldestAnswered`, the release as
 declared (`"1.5.0"`), `"this"` for `generation.ThisRelease`, or `""` when the option is
-absent and every release that sends the header is answered; an API-key outlet carries
-`"kind": "api-key"` and no `oldestAnswered`, since it is never checked. Lodestar's, with
+absent and every release that sends the header is answered; a machine outlet carries
+`"kind": "api-key"` (the machine kind's name in the file) and no `oldestAnswered`, since
+it is never checked. Lodestar's, with
 no release declared on either session outlet:
 
 ```json
@@ -1541,7 +1573,7 @@ principal and revokes the browser's identity. The token route answers the sessio
 principal's id (below), how to reach the change set, and the identity: in production a
 Firebase custom token the browser signs in with, against the emulator an empty token and
 the emulator host, which the browser connects to with the SDK's mock user token. A
-request carrying `X-Subscribe` on an API-key outlet answers 400 naming the header:
+request carrying `X-Subscribe` on a machine outlet answers 400 naming the header:
 machine clients wanting change notification are a different consumer on a topic. Every
 subscribing request, the live routes included, carries `subscribe=<tab>` on its request
 log line (`AddRequestAttribute`).
@@ -1990,8 +2022,7 @@ reserves, `/_scheduled` (`scheduled.Prefix`), one `POST` each at the method's na
 case: `/_scheduled/prune-droid-reports`. Its group is `NoCaching`, `CompressionMiddleware`
 and `SchedulerAuth`, and nothing else: no session handling, no XSRF guard, no version
 check, no hook. Under the prefix an unknown path is 404, as under an outlet's. No outlet's
-prefix and no browser application's mount path may sit at or under it, and no API-key
-outlet may be named so that its middleware would be `SchedulerAuth`; each is a generation
+prefix and no browser application's mount path may sit at or under it; each is a generation
 error. The route tables carry `GeneratedScheduledHandlers` and `generatedScheduledRoutes`
 beside the outlets', `Handlers` embeds the one and declares `SchedulerAuth(next
 http.Handler) http.Handler`, the chain comment names the group, and the generated test

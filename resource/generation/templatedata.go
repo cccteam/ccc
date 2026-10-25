@@ -219,8 +219,8 @@ type routerFileData struct {
 	ConsolidatedRoute string
 	// ServesSessions registers the permission-digest, user-domains and live routes
 	// under the default outlet's prefix and their handlers on GeneratedHandlers; false
-	// under APIKey, when the outlet's generated routes are the resource routes its key
-	// authorizes and nothing else (an extra outlet's is on its outletRouteData).
+	// under Tokens, when the outlet's generated routes are the resource routes its
+	// tokens open and nothing else (an extra outlet's is on its outletRouteData).
 	ServesSessions bool
 	// ExtraOutlets carries the WithRouterOutlet registration surfaces; the fields
 	// above describe the default outlet, whose generated identifiers are unsuffixed.
@@ -316,7 +316,7 @@ type outletRouteData struct {
 	// serves, which its routes function binds for the live pages (live.Subscribing):
 	// <pkg>.Name for the auth the outlet declares (Auth), or the routes function's auth
 	// parameter where it declares none (AuthParam). Empty for an outlet without sessions
-	// and for an API-key outlet, whose routes refuse a subscribing request.
+	// and for a machine outlet, whose routes refuse a subscribing request.
 	AuthName string
 	// AuthParam marks a session outlet that declares no Auth, as when the application
 	// writes its own router: the generator does not know its auth, so the routes
@@ -344,7 +344,7 @@ type permissionsData struct {
 	// comments; the routes themselves are registered by the routes template.
 	RoutePrefix string
 	// DefaultServesSessions says the default outlet serves the routes the doc
-	// comments name; false under APIKey, when only the additional session outlets do.
+	// comments name; false under Tokens, when only the additional session outlets do.
 	DefaultServesSessions bool
 	// HasExtraSessionOutlets extends the doc comments when additional outlets
 	// serve sessions (ServesSessions), whose routes the same handlers serve.

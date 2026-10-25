@@ -103,7 +103,12 @@ type Outlet struct {
 	// Auth is the outlet's Auth option under the generated router, nil when it declares
 	// none.
 	Auth *OutletAuth
-	// APIKey reports the APIKey option: a machine outlet under the generated router.
+	// Tokens is the Tokens option's import path: the auth package whose Auth issues the
+	// tokens a machine outlet's requests carry, under the generated router. Empty when
+	// the outlet declares none.
+	Tokens string
+	// APIKey reports the APIKey option, the retired form of a machine outlet, which the
+	// generator refuses: the check names Tokens as its replacement.
 	APIKey bool
 	// WebApp is the WebApp option's mount path, empty when the outlet serves none.
 	WebApp string
@@ -154,6 +159,11 @@ func (a OutletAuth) Directory() bool {
 
 // Tenanted reports whether the site's resource package declares a tenant record.
 func (s *Site) Tenanted() bool { return s.TenantRecord != nil }
+
+// Machine reports a machine outlet: one that declares Tokens, or the retired APIKey.
+func (o *Outlet) Machine() bool {
+	return o.Tokens != "" || o.APIKey
+}
 
 // AllOutlets lists the site's outlets, the default first.
 func (s *Site) AllOutlets() []Outlet {
@@ -231,18 +241,16 @@ func readOutletOptions(o *Outlet, args []Arg) {
 		case optServesSessions:
 			o.ServesSessions = true
 		case optAuth:
-			if len(c.Args) >= 1 && c.Args[0].Kind == ArgString {
-				auth := &OutletAuth{ImportPath: c.Args[0].Str}
-				for _, m := range c.Args[1:] {
-					if m.Kind == ArgAuthMethod && m.Method != nil {
-						auth.Methods = append(auth.Methods, *m.Method)
-					}
-				}
+			if auth := readOutletAuth(c); auth != nil {
 				o.Auth = auth
 				o.ServesSessions = true
 			}
 		case optAPIKey:
 			o.APIKey = true
+		case optTokens:
+			if len(c.Args) == 1 && c.Args[0].Kind == ArgString {
+				o.Tokens = c.Args[0].Str
+			}
 		case optWebApp:
 			if len(c.Args) == 1 && c.Args[0].Kind == ArgString {
 				o.WebApp = c.Args[0].Str
@@ -261,6 +269,22 @@ func readOutletOptions(o *Outlet, args []Arg) {
 			}
 		}
 	}
+}
+
+// readOutletAuth reads an Auth option: the auth package it names and the methods it
+// declares; nil when the package is not a string literal.
+func readOutletAuth(c *Call) *OutletAuth {
+	if len(c.Args) < 1 || c.Args[0].Kind != ArgString {
+		return nil
+	}
+	auth := &OutletAuth{ImportPath: c.Args[0].Str}
+	for _, m := range c.Args[1:] {
+		if m.Kind == ArgAuthMethod && m.Method != nil {
+			auth.Methods = append(auth.Methods, *m.Method)
+		}
+	}
+
+	return auth
 }
 
 // moduleName is the module path's last element, or empty without a module directive.

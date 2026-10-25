@@ -199,7 +199,7 @@ func run(ctx context.Context) error {
 			generation.Auth("example.com/acme/beacon/pkg/auth/staff", generation.PasswordMethod()),
 			generation.WebApp("/console"),
 		),
-		generation.WithRouterOutlet("machines", "machines", generation.APIKey()),
+		generation.WithRouterOutlet("machines", "machines", generation.Tokens("example.com/acme/beacon/pkg/auth/staff")),
 		generation.WithRouterOutlet("portal", "portal/api",
 			generation.Auth("example.com/acme/beacon/pkg/auth/staff", generation.PasswordMethod()),
 			generation.WebApp("/portal"),
@@ -338,7 +338,7 @@ func TestAuthValidate(t *testing.T) {
 		{name: "no auth package to write beside", auth: Auth{Name: "partners", Outlet: "default"}, bare: true, wantErr: "no auth package to write beside"},
 		{name: "no outlet", auth: Auth{Name: "partners"}, extra: routed, wantErr: "--outlet is required: the outlet the partners auth serves, whose declaration is pointed at the auth; the outlets are default, portal (impulse add outlet adds one)"},
 		{name: "an outlet the program does not declare", auth: Auth{Name: "partners", Outlet: "kiosk"}, extra: routed, wantErr: "no kiosk outlet for the partners auth to serve; the outlets are default, portal (impulse add outlet adds one)"},
-		{name: "an API-key outlet", auth: Auth{Name: "partners", Outlet: "machines"}, extra: routed, wantErr: "the machines outlet is an API-key outlet (APIKey()), a machine surface with no sign-in; an auth serves a session outlet, and the outlets are default, portal"},
+		{name: "a machine outlet", auth: Auth{Name: "partners", Outlet: "machines"}, extra: routed, wantErr: "the machines outlet is a machine outlet (Tokens()), a surface with no sign-in; an auth serves a session outlet, and the outlets are default, portal"},
 		{name: "a session outlet under the generated router", auth: Auth{Name: "partners", Outlet: "portal"}, extra: routed},
 		{name: "the default outlet under the generated router", auth: Auth{Name: "partners", Outlet: "default"}, extra: routed},
 	}
@@ -441,7 +441,7 @@ func TestAuthApply(t *testing.T) {
 			check: func(t *testing.T, a *app.App) {
 				t.Helper()
 				pkg := read(t, a, "pkg/auth/partners/partners.go")
-				for _, want := range []string{"package partners", `Name = "partners"`, `TablePrefix = "Partners"`, "session.NewAuth[session.NoCustomData, session.NoCustomData](", `sessionsTable   = "PartnersSessions"`, "handlers.password = registerPassword(authSession)"} {
+				for _, want := range []string{"package partners", `Name = "partners"`, `TablePrefix = "Partners"`, "session.NewAuth[session.NoCustomData, session.NoCustomData](", `sessionsTable    = "PartnersSessions"`, "handlers.password = registerPassword(authSession)"} {
 					if !strings.Contains(pkg, want) {
 						t.Errorf("partners.go lacks %q", want)
 					}
@@ -718,8 +718,8 @@ func TestAuthApply(t *testing.T) {
 				if want := "\t\tgeneration.GenerateRoutes(\"pkg/router\", \"console/api\",\n\t\t\tgeneration.Auth(\"example.com/acme/beacon/pkg/auth/partners\", generation.PasswordMethod()),\n\t\t\tgeneration.WebApp(\"/console\"),\n\t\t),"; !strings.Contains(program, want) {
 					t.Errorf("program lacks %q:\n%s", want, program)
 				}
-				if strings.Count(program, "pkg/auth/staff") != 1 {
-					t.Errorf("the staff auth is declared %d times, want once (the portal's):\n%s", strings.Count(program, "pkg/auth/staff"), program)
+				if strings.Count(program, "pkg/auth/staff") != 2 {
+					t.Errorf("the staff auth is named %d times, want twice (the portal's Auth and the machines outlet's Tokens):\n%s", strings.Count(program, "pkg/auth/staff"), program)
 				}
 			},
 		},

@@ -18,8 +18,8 @@ const guidCheck = `r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{1
 
 // Migrations renders the Auth session tables of an auth under its table prefix, for
 // Spanner, in the order they apply: the users first, since the sessions reference them,
-// then the sessions with the identities, auth events, pending sign-ins, sign-in attempts
-// and mail links in one migration, since a session set is one thing. The DDL is the
+// then the sessions with the identities, auth events, pending sign-ins, sign-in attempts,
+// mail links, tokens and device codes in one migration, since a session set is one thing. The DDL is the
 // session library's base and auth schema sets (schema/spanner/migrations,
 // schema/spanner/auth/migrations) with the commit-timestamp options written inline. who
 // names the population for the comments. usernameIsEmail renders the users of a password
@@ -142,11 +142,11 @@ CREATE INDEX %[1]sSessionIdentitiesByUserId ON %[1]sSessionIdentities(UserId);
 -- method, its registration, and the provider's own amr claims). Not interleaved: an
 -- interleaved child's key must begin with the parent's, so the events reference their
 -- session through a cascading foreign key instead.
-`, p, who, guidCheck) + eventsUp(p, who)
+`, p, who, guidCheck) + eventsUp(p, who) + tokensUp(p, who)
 }
 
 // eventsUp creates the auth events, pending sign-ins, sign-in attempts and mail links tables, the
-// second half of the sessions migration.
+// second part of the sessions migration; tokensUp follows it.
 func eventsUp(p, who string) string {
 	return fmt.Sprintf(`CREATE TABLE %[1]sSessionAuthEvents (
     SessionId  STRING(36) NOT NULL,
@@ -240,11 +240,90 @@ CREATE TABLE %[1]sSessionMailLinks (
 CREATE UNIQUE INDEX %[1]sSessionMailLinksByTokenHash ON %[1]sSessionMailLinks(TokenHash);
 
 CREATE INDEX %[1]sSessionMailLinksByKind ON %[1]sSessionMailLinks(Kind, ConsumedAt, ExpiresAt);
+
+`, p, who, guidCheck)
+}
+
+// tokensUp creates the tokens and device codes tables, the last part of the sessions
+// migration: the bearer credentials of the machine outlets whose tokens the auth issues
+// and the device authorizations command-line clients wait on.
+func tokensUp(p, who string) string {
+	return fmt.Sprintf(`-- The tokens: the bearer credentials of the machine outlets whose tokens the %[2]s auth
+-- issues. A row is one credential: an application token a person issued to a program of
+-- their own, or the access or refresh token of a device grant a command-line client
+-- obtained with a person's approval; the client holds an opaque secret and the row keeps
+-- its hash. A token acts as its user (UserId) on the one machine outlet it was issued
+-- for (Outlet) and is live while it is not revoked and not expired. A device grant's
+-- tokens share a Family, and every successor a refresh exchange issues joins it, so a
+-- rotated refresh token presented again revokes the family at once (RevokedReason
+-- 'reuse'). CreatedAt, LastUsedAt and RevokedAt take the commit time; ExpiresAt is the
+-- library's deadline, written as given. A token goes with its user.
+CREATE TABLE %[1]sSessionTokens (
+    Id            STRING(36) NOT NULL,
+    TokenHash     BYTES(32) NOT NULL,
+    Kind          STRING(16) NOT NULL,
+    UserId        STRING(36) NOT NULL,
+    Outlet        STRING(MAX) NOT NULL,
+    Name          STRING(MAX),
+    Family        STRING(36),
+    ClientId      STRING(MAX),
+    CreatedAt     TIMESTAMP NOT NULL OPTIONS (allow_commit_timestamp = true),
+    ExpiresAt     TIMESTAMP NOT NULL,
+    LastUsedAt    TIMESTAMP OPTIONS (allow_commit_timestamp = true),
+    RevokedAt     TIMESTAMP OPTIONS (allow_commit_timestamp = true),
+    RevokedReason STRING(16),
+    CONSTRAINT CK_%[1]sSessionTokensId CHECK (REGEXP_CONTAINS(Id, %[3]s)),
+    CONSTRAINT CK_%[1]sSessionTokensKind CHECK (Kind IN ('application', 'access', 'refresh')),
+    CONSTRAINT CK_%[1]sSessionTokensRevokedReason CHECK (RevokedReason IS NULL OR RevokedReason IN ('revoked', 'rotated', 'reuse', 'user')),
+    CONSTRAINT FK_%[1]sSessionTokens_%[1]sSessionUsers FOREIGN KEY (UserId) REFERENCES %[1]sSessionUsers (Id) ON DELETE CASCADE,
+) PRIMARY KEY (Id);
+
+CREATE UNIQUE INDEX %[1]sSessionTokensByTokenHash ON %[1]sSessionTokens(TokenHash);
+
+CREATE INDEX %[1]sSessionTokensByUser ON %[1]sSessionTokens(UserId, RevokedAt, ExpiresAt);
+
+CREATE INDEX %[1]sSessionTokensByFamily ON %[1]sSessionTokens(Family, RevokedAt);
+
+-- The device codes: the device authorizations command-line clients start for a machine
+-- outlet whose tokens the %[2]s auth issues (RFC 8628). The client holds the opaque
+-- device code and the row keeps its hash; the person is shown the user code, normalized
+-- here. A row is pending until a signed-in person approves it (ApprovedAt, UserId) or
+-- denies it (DeniedAt), or it expires; an approved row is consumed once (ConsumedAt),
+-- when the client's poll redeems it for its tokens. LastPolledAt holds the client to the
+-- polling interval. The time columns but ExpiresAt take the commit time. An approved
+-- code goes with its user.
+CREATE TABLE %[1]sSessionDeviceCodes (
+    Id             STRING(36) NOT NULL,
+    DeviceCodeHash BYTES(32) NOT NULL,
+    UserCode       STRING(16) NOT NULL,
+    ClientId       STRING(MAX) NOT NULL,
+    Outlet         STRING(MAX) NOT NULL,
+    UserId         STRING(36),
+    CreatedAt      TIMESTAMP NOT NULL OPTIONS (allow_commit_timestamp = true),
+    ExpiresAt      TIMESTAMP NOT NULL,
+    ApprovedAt     TIMESTAMP OPTIONS (allow_commit_timestamp = true),
+    DeniedAt       TIMESTAMP OPTIONS (allow_commit_timestamp = true),
+    LastPolledAt   TIMESTAMP OPTIONS (allow_commit_timestamp = true),
+    ConsumedAt     TIMESTAMP OPTIONS (allow_commit_timestamp = true),
+    CONSTRAINT CK_%[1]sSessionDeviceCodesId CHECK (REGEXP_CONTAINS(Id, %[3]s)),
+    CONSTRAINT FK_%[1]sSessionDeviceCodes_%[1]sSessionUsers FOREIGN KEY (UserId) REFERENCES %[1]sSessionUsers (Id) ON DELETE CASCADE,
+) PRIMARY KEY (Id);
+
+CREATE UNIQUE INDEX %[1]sSessionDeviceCodesByHash ON %[1]sSessionDeviceCodes(DeviceCodeHash);
+
+CREATE INDEX %[1]sSessionDeviceCodesByUserCode ON %[1]sSessionDeviceCodes(UserCode, ExpiresAt);
 `, p, who, guidCheck)
 }
 
 func sessionsDown(p string) string {
 	lines := []string{
+		"DROP INDEX %[1]sSessionDeviceCodesByUserCode;",
+		"DROP INDEX %[1]sSessionDeviceCodesByHash;",
+		"DROP TABLE %[1]sSessionDeviceCodes;",
+		"DROP INDEX %[1]sSessionTokensByFamily;",
+		"DROP INDEX %[1]sSessionTokensByUser;",
+		"DROP INDEX %[1]sSessionTokensByTokenHash;",
+		"DROP TABLE %[1]sSessionTokens;",
 		"DROP INDEX %[1]sSessionMailLinksByKind;",
 		"DROP INDEX %[1]sSessionMailLinksByTokenHash;",
 		"DROP TABLE %[1]sSessionMailLinks;",

@@ -169,6 +169,13 @@ func TestSessionTables(t *testing.T) {
 		`generation.GenerateHandlers("app"),`,
 		`generation.GenerateRoutes("pkg/router", "api"),`,
 	)
+	// issuing declares a machine outlet whose tokens the Auth in pkg/config issues.
+	issuing := program("pkg/resources",
+		`generation.GenerateHandlers("app"),`,
+		`generation.GenerateRouter(),`,
+		`generation.GenerateRoutes("pkg/router", "api", generation.Auth("example.com/harbor/pkg/config", generation.PasswordMethod()), generation.WebApp("/")),`,
+		`generation.WithRouterOutlet("machines", "machines", generation.Tokens("example.com/harbor/pkg/config")),`,
+	)
 	const crewTables = "CrewSessions, CrewSessionUsers, CrewSessionIdentities, CrewSessionPendingSignIns, CrewSessionSignInAttempts, CrewSessionImpersonations"
 
 	tests := []struct {
@@ -246,6 +253,30 @@ func TestSessionTables(t *testing.T) {
 			wantSummary: "1 auth wiring problem(s)",
 			wantDetails: []string{
 				"pkg/config/session.go:12: the Auth at pkg/config/session.go:12 reads table StaffMailLinks, which no migration creates (the session library's schema is under " + schemaSets + ")",
+			},
+		},
+		{
+			name: "an Auth a machine outlet names as its issuer reads the tokens and device codes tables",
+			files: map[string]string{
+				"cmd/generate/main.go":                     issuing,
+				"pkg/config/session.go":                    authFile(mailed),
+				"schema/migrations/000003_Sessions.up.sql": tables("StaffSessions", "StaffUsers", "StaffIdentities", "StaffPending", "StaffAttempts", "StaffMailLinks", "SessionTokens", "SessionDeviceCodes"),
+			},
+			wantStatus:  Pass,
+			wantSummary: "1 auth(s): methods password (open sign-up, the username is the address); tables StaffSessions, StaffUsers, StaffIdentities, StaffPending, StaffAttempts, StaffMailLinks, SessionTokens, SessionDeviceCodes",
+		},
+		{
+			name: "missing tokens and device codes tables",
+			files: map[string]string{
+				"cmd/generate/main.go":                     issuing,
+				"pkg/config/session.go":                    authFile(mailed),
+				"schema/migrations/000003_Sessions.up.sql": tables("StaffSessions", "StaffUsers", "StaffIdentities", "StaffPending", "StaffAttempts", "StaffMailLinks"),
+			},
+			wantStatus:  Fail,
+			wantSummary: "2 auth wiring problem(s)",
+			wantDetails: []string{
+				"pkg/config/session.go:12: the Auth at pkg/config/session.go:12 reads table SessionTokens, which no migration creates (the session library's schema is under " + schemaSets + ")",
+				"pkg/config/session.go:12: the Auth at pkg/config/session.go:12 reads table SessionDeviceCodes, which no migration creates (the session library's schema is under " + schemaSets + ")",
 			},
 		},
 		{

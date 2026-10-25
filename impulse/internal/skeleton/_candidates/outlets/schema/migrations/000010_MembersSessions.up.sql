@@ -143,3 +143,68 @@ CREATE TABLE MembersSessionMailLinks (
 CREATE UNIQUE INDEX MembersSessionMailLinksByTokenHash ON MembersSessionMailLinks(TokenHash);
 
 CREATE INDEX MembersSessionMailLinksByKind ON MembersSessionMailLinks(Kind, ConsumedAt, ExpiresAt);
+
+-- The tokens: the bearer credentials of the machine outlets whose tokens the members auth
+-- issues. A row is one credential: an application token a person issued to a program of
+-- their own, or the access or refresh token of a device grant a command-line client
+-- obtained with a person's approval; the client holds an opaque secret and the row keeps
+-- its hash. A token acts as its user (UserId) on the one machine outlet it was issued
+-- for (Outlet) and is live while it is not revoked and not expired. A device grant's
+-- tokens share a Family, and every successor a refresh exchange issues joins it, so a
+-- rotated refresh token presented again revokes the family at once (RevokedReason
+-- 'reuse'). CreatedAt, LastUsedAt and RevokedAt take the commit time; ExpiresAt is the
+-- library's deadline, written as given. A token goes with its user.
+CREATE TABLE MembersSessionTokens (
+    Id            STRING(36) NOT NULL,
+    TokenHash     BYTES(32) NOT NULL,
+    Kind          STRING(16) NOT NULL,
+    UserId        STRING(36) NOT NULL,
+    Outlet        STRING(MAX) NOT NULL,
+    Name          STRING(MAX),
+    Family        STRING(36),
+    ClientId      STRING(MAX),
+    CreatedAt     TIMESTAMP NOT NULL OPTIONS (allow_commit_timestamp = true),
+    ExpiresAt     TIMESTAMP NOT NULL,
+    LastUsedAt    TIMESTAMP OPTIONS (allow_commit_timestamp = true),
+    RevokedAt     TIMESTAMP OPTIONS (allow_commit_timestamp = true),
+    RevokedReason STRING(16),
+    CONSTRAINT CK_MembersSessionTokensId CHECK (REGEXP_CONTAINS(Id, r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')),
+    CONSTRAINT CK_MembersSessionTokensKind CHECK (Kind IN ('application', 'access', 'refresh')),
+    CONSTRAINT CK_MembersSessionTokensRevokedReason CHECK (RevokedReason IS NULL OR RevokedReason IN ('revoked', 'rotated', 'reuse', 'user')),
+    CONSTRAINT FK_MembersSessionTokens_MembersSessionUsers FOREIGN KEY (UserId) REFERENCES MembersSessionUsers (Id) ON DELETE CASCADE,
+) PRIMARY KEY (Id);
+
+CREATE UNIQUE INDEX MembersSessionTokensByTokenHash ON MembersSessionTokens(TokenHash);
+
+CREATE INDEX MembersSessionTokensByUser ON MembersSessionTokens(UserId, RevokedAt, ExpiresAt);
+
+CREATE INDEX MembersSessionTokensByFamily ON MembersSessionTokens(Family, RevokedAt);
+
+-- The device codes: the device authorizations command-line clients start for a machine
+-- outlet whose tokens the members auth issues (RFC 8628). The client holds the opaque
+-- device code and the row keeps its hash; the person is shown the user code, normalized
+-- here. A row is pending until a signed-in person approves it (ApprovedAt, UserId) or
+-- denies it (DeniedAt), or it expires; an approved row is consumed once (ConsumedAt),
+-- when the client's poll redeems it for its tokens. LastPolledAt holds the client to the
+-- polling interval. The time columns but ExpiresAt take the commit time. An approved
+-- code goes with its user.
+CREATE TABLE MembersSessionDeviceCodes (
+    Id             STRING(36) NOT NULL,
+    DeviceCodeHash BYTES(32) NOT NULL,
+    UserCode       STRING(16) NOT NULL,
+    ClientId       STRING(MAX) NOT NULL,
+    Outlet         STRING(MAX) NOT NULL,
+    UserId         STRING(36),
+    CreatedAt      TIMESTAMP NOT NULL OPTIONS (allow_commit_timestamp = true),
+    ExpiresAt      TIMESTAMP NOT NULL,
+    ApprovedAt     TIMESTAMP OPTIONS (allow_commit_timestamp = true),
+    DeniedAt       TIMESTAMP OPTIONS (allow_commit_timestamp = true),
+    LastPolledAt   TIMESTAMP OPTIONS (allow_commit_timestamp = true),
+    ConsumedAt     TIMESTAMP OPTIONS (allow_commit_timestamp = true),
+    CONSTRAINT CK_MembersSessionDeviceCodesId CHECK (REGEXP_CONTAINS(Id, r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')),
+    CONSTRAINT FK_MembersSessionDeviceCodes_MembersSessionUsers FOREIGN KEY (UserId) REFERENCES MembersSessionUsers (Id) ON DELETE CASCADE,
+) PRIMARY KEY (Id);
+
+CREATE UNIQUE INDEX MembersSessionDeviceCodesByHash ON MembersSessionDeviceCodes(DeviceCodeHash);
+
+CREATE INDEX MembersSessionDeviceCodesByUserCode ON MembersSessionDeviceCodes(UserCode, ExpiresAt);

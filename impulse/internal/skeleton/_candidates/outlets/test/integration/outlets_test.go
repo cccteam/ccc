@@ -1,6 +1,7 @@
 package integration
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"testing"
@@ -98,36 +99,67 @@ func TestConsoleSessionOnPortal(t *testing.T) {
 	}
 }
 
-// TestMachinesOutlet drives the machines outlet: the bearer key binds the request to
-// the service identity, which then goes through the same tenancy and permission checks
-// as a browser; without the key the surface is closed.
+// TestMachinesOutlet drives the machines outlet: a staff login issues an application
+// token for it on the console, and the token binds each request to that person, who
+// then goes through the same tenancy and permission checks as a browser; without a
+// token the staff auth issued the surface is closed.
 func TestMachinesOutlet(t *testing.T) {
 	t.Parallel()
 
 	ctx := t.Context()
 	s := newServed(ctx, t)
+	token := issueToken(ctx, t, s, memberUser, adminPassword)
 
 	tests := []struct {
 		name   string
-		key    string
+		token  string
 		target string
 		want   int
 	}{
-		{name: "the key opens a tenant the service account holds a grant in", key: machinesAPIKey, target: "/machines/tenants/" + north + "/readings", want: http.StatusOK},
-		{name: "a tenant without a foothold is concealed", key: machinesAPIKey, target: "/machines/tenants/" + south + "/readings", want: http.StatusNotFound},
-		{name: "announcements are not on the machines outlet", key: machinesAPIKey, target: "/machines/tenants/" + north + "/announcements", want: http.StatusNotFound},
-		{name: "a wrong key is refused", key: "not-the-key", target: "/machines/tenants/" + north + "/readings", want: http.StatusUnauthorized},
-		{name: "no key is refused", key: "", target: "/machines/tenants/" + north + "/readings", want: http.StatusUnauthorized},
-		{name: "readings are not on the console outlet", key: machinesAPIKey, target: consoleAPI + "/tenants/" + north + "/readings", want: http.StatusNotFound},
+		{name: "the token opens a tenant its person holds a grant in", token: token, target: "/machines/tenants/" + north + "/readings", want: http.StatusOK},
+		{name: "a tenant without a foothold is concealed", token: token, target: "/machines/tenants/" + south + "/readings", want: http.StatusNotFound},
+		{name: "announcements are not on the machines outlet", token: token, target: "/machines/tenants/" + north + "/announcements", want: http.StatusNotFound},
+		{name: "a token the staff auth never issued is refused", token: "not-a-token", target: "/machines/tenants/" + north + "/readings", want: http.StatusUnauthorized},
+		{name: "no token is refused", token: "", target: "/machines/tenants/" + north + "/readings", want: http.StatusUnauthorized},
+		{name: "readings are not on the console outlet", token: token, target: consoleAPI + "/tenants/" + north + "/readings", want: http.StatusNotFound},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			status, body := machine(ctx, t, s, tt.key, http.MethodGet, tt.target)
+			status, body := machine(ctx, t, s, tt.token, http.MethodGet, tt.target)
 			if status != tt.want {
 				t.Errorf("GET %s: status %d, want %d: %s", tt.target, status, tt.want, body)
 			}
 		})
 	}
+}
+
+// issueToken signs the staff login in on the console and issues an application token
+// for the machines outlet, as a person does on the console's token page.
+func issueToken(ctx context.Context, t *testing.T, s *served, user, password string) string {
+	t.Helper()
+
+	b := newBrowser(t, s, consoleAPI)
+	if status, body := b.do(ctx, http.MethodGet, consoleAPI+"/user/session", nil); status != http.StatusOK {
+		t.Fatalf("GET session before login: status %d: %s", status, body)
+	}
+	if status, body := b.login(ctx, user, password); status != http.StatusOK {
+		t.Fatalf("console login: status %d: %s", status, body)
+	}
+	status, body := b.do(ctx, http.MethodPost, consoleAPI+"/user/tokens", []byte(`{"name":"suite","outlet":"machines"}`))
+	if status != http.StatusOK {
+		t.Fatalf("POST user/tokens: status %d: %s", status, body)
+	}
+	var issued struct {
+		Token string `json:"token"`
+	}
+	if err := json.Unmarshal(body, &issued); err != nil {
+		t.Fatalf("decoding the issued token: %v: %s", err, body)
+	}
+	if issued.Token == "" {
+		t.Fatalf("the issued token has no secret: %s", body)
+	}
+
+	return issued.Token
 }

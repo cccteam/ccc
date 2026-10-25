@@ -551,8 +551,9 @@ var beaconRouterProgram = strings.Replace(beaconProgram,
 
 // TestOutletApplyGeneratedRouter pins the declaration add outlet writes under the
 // generated router: a session outlet binds to the auth --auth names (the console's when
-// none is named) and serves its browser application at /<name>, an API-key outlet declares
-// APIKey. The fixture has the staff auth (the console's) and a members auth to bind to.
+// none is named) and serves its browser application at /<name>, a machine outlet declares
+// Tokens naming the auth whose Auth issues its tokens (the console's when none is named).
+// The fixture has the staff auth (the console's) and a members auth to bind to.
 func TestOutletApplyGeneratedRouter(t *testing.T) {
 	t.Parallel()
 
@@ -619,12 +620,17 @@ func TestOutletApplyGeneratedRouter(t *testing.T) {
 		},
 		{
 			// No second browser application arrives, so the console stays at the root.
-			name:        "an API-key outlet",
+			name:        "a machine outlet carrying the console's auth's tokens",
 			outlet:      Outlet{Name: "machines", Prefix: "machines"},
-			wantCommand: "impulse add outlet machines --prefix machines --api-key",
-			wantDid:     `cmd/generate/resourcegenerator/main.go: added WithRouterOutlet("machines", "machines", generation.APIKey())`,
-			wantProgram: []string{"\t\tgeneration.WithRouterOutlet(\"machines\", \"machines\", generation.APIKey()),\n", rootConsole},
-			wantAbsent:  []string{"ServesSessions", "console/api"},
+			wantCommand: "impulse add outlet machines --prefix machines --tokens staff",
+			wantDid:     `cmd/generate/resourcegenerator/main.go: added WithRouterOutlet("machines", "machines", generation.Tokens("example.com/acme/beacon/pkg/auth/staff"))`,
+			wantProgram: []string{"\t\tgeneration.WithRouterOutlet(\"machines\", \"machines\", generation.Tokens(\"example.com/acme/beacon/pkg/auth/staff\")),\n", rootConsole},
+			wantAbsent:  []string{"ServesSessions", "console/api", "APIKey"},
+		},
+		{
+			name:    "a machine outlet carrying the tokens of an auth no session outlet binds to",
+			outlet:  Outlet{Name: "machines", Prefix: "machines", Auth: "members"},
+			wantErr: "the members auth serves no session outlet, so its Auth cannot issue the machines outlet's tokens; a machine outlet carries the tokens of an auth a session outlet binds to, where its people issue them, and those auths are staff",
 		},
 	}
 	for _, tt := range tests {
@@ -762,8 +768,8 @@ func TestChangeText(t *testing.T) {
 		},
 		{
 			name:   "with skips",
-			change: Change{Command: "impulse add outlet machines --prefix machines --api-key", Did: []string{"a"}, Skipped: []string{"s"}},
-			want:   "`impulse add outlet machines --prefix machines --api-key` made these changes and staged them:\n\n- a\n\nIt could not make these; they are yours:\n\n- s\n",
+			change: Change{Command: "impulse add outlet machines --prefix machines --tokens staff", Did: []string{"a"}, Skipped: []string{"s"}},
+			want:   "`impulse add outlet machines --prefix machines --tokens staff` made these changes and staged them:\n\n- a\n\nIt could not make these; they are yours:\n\n- s\n",
 		},
 	}
 	for _, tt := range tests {

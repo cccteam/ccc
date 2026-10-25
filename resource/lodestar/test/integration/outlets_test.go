@@ -1,8 +1,12 @@
 package integration
 
 import (
+	"context"
 	"encoding/json"
+	"io"
 	"net/http"
+	"net/url"
+	"strings"
 	"testing"
 )
 
@@ -19,7 +23,7 @@ const portalLogin = "/portal/login"
 // resource is not on the portal at all, and confirm the client's session is a stranger to
 // the console.
 //
-// Demonstrates: GenerateRouter, outlet.session, outlet.isolation, auth.two-populations, outlet.api-key, machine-identity.
+// Demonstrates: GenerateRouter, outlet.session, outlet.isolation, auth.two-populations, outlet.tokens, machine-identity.
 func TestPortalOutlet(t *testing.T) {
 	t.Parallel()
 
@@ -197,4 +201,218 @@ func TestRootRedirect(t *testing.T) {
 			}
 		})
 	}
+}
+
+// deviceCodeGrant is the device code grant type (RFC 8628).
+const deviceCodeGrant = "urn:ietf:params:oauth:grant-type:device_code"
+
+// TestDroidsTokens drives the droids outlet's token check and the ways a token reaches
+// it. The droid service account's configured key, seeded as its application token,
+// opens the droids' routes; a request with no token, or with one the crew auth never
+// issued, is refused with the challenge naming the outlet. A crew member issues an
+// application token of their own on the console, which acts as them on the droids
+// outlet, is listed as used, and dies with its revocation. A command-line client obtains
+// a device grant with a crew member's approval, refreshes it, and loses the rotated
+// access token.
+//
+// Demonstrates: outlet.tokens.
+func TestDroidsTokens(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	s := newServed(ctx, t)
+	reports := "/droids/sectors/" + anvil + "/droid-reports"
+
+	t.Run("the seeded key opens the droids' routes and anything else is challenged", func(t *testing.T) {
+		t.Parallel()
+
+		tests := []struct {
+			name          string
+			token         string
+			want          int
+			wantChallenge string
+		}{
+			{name: "the droid service account's configured key", token: droidsAPIKey, want: http.StatusOK},
+			{name: "no token", token: "", want: http.StatusUnauthorized, wantChallenge: `Bearer realm="droids"`},
+			{name: "a token the crew auth never issued", token: "not-a-token", want: http.StatusUnauthorized, wantChallenge: `Bearer realm="droids", error="invalid_token"`},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+
+				resp := droidResponse(ctx, t, s, tt.token, http.MethodGet, reports, nil)
+				defer resp.Body.Close()
+				body, _ := io.ReadAll(resp.Body)
+				if resp.StatusCode != tt.want {
+					t.Errorf("GET %s: status %d, want %d: %s", reports, resp.StatusCode, tt.want, body)
+				}
+				if got := resp.Header.Get("WWW-Authenticate"); got != tt.wantChallenge {
+					t.Errorf("GET %s: WWW-Authenticate %q, want %q", reports, got, tt.wantChallenge)
+				}
+			})
+		}
+	})
+
+	t.Run("an application token a crew member issues acts as them until they revoke it", func(t *testing.T) {
+		t.Parallel()
+
+		b := newBrowser(t, s, consoleAPI)
+		if status, body := b.do(ctx, http.MethodGet, consoleAPI+"/user/session", nil); status != http.StatusOK {
+			t.Fatalf("GET session before login: status %d: %s", status, body)
+		}
+		if status, body := b.login(ctx, "governor", personaPassword); status != http.StatusOK {
+			t.Fatalf("console login: status %d: %s", status, body)
+		}
+		status, body := b.do(ctx, http.MethodPost, consoleAPI+"/user/tokens", []byte(`{"name":"survey script","outlet":"droids"}`))
+		if status != http.StatusOK {
+			t.Fatalf("POST user/tokens: status %d: %s", status, body)
+		}
+		var issued struct {
+			ID     string `json:"id"`
+			Token  string `json:"token"`
+			Outlet string `json:"outlet"`
+		}
+		if err := json.Unmarshal(body, &issued); err != nil {
+			t.Fatalf("decoding the issued token: %v: %s", err, body)
+		}
+		if issued.Token == "" || issued.Outlet != "droids" {
+			t.Fatalf("issued token = %+v, want a secret for the droids outlet", issued)
+		}
+
+		// The token passes the check and acts as the governor: the features digest
+		// answers any token, and the droids' reports, which only the droid service
+		// account's role lists, are refused to the governor for want of the grant, as
+		// they would be on the console, rather than challenged as a stranger's request is.
+		if status, body := droid(ctx, t, s, issued.Token, http.MethodGet, "/droids/features", nil); status != http.StatusOK {
+			t.Errorf("GET /droids/features with the governor's token: status %d, want %d: %s", status, http.StatusOK, body)
+		}
+		if status, body := droid(ctx, t, s, issued.Token, http.MethodGet, reports, nil); status != http.StatusForbidden {
+			t.Errorf("GET %s with the governor's token: status %d, want %d (the governor holds no droid grant): %s", reports, status, http.StatusForbidden, body)
+		}
+
+		status, body = b.do(ctx, http.MethodGet, consoleAPI+"/user/tokens", nil)
+		if status != http.StatusOK {
+			t.Fatalf("GET user/tokens: status %d: %s", status, body)
+		}
+		var listed []struct {
+			ID         string  `json:"id"`
+			Kind       string  `json:"kind"`
+			Name       string  `json:"name"`
+			Outlet     string  `json:"outlet"`
+			LastUsedAt *string `json:"lastUsedAt"`
+		}
+		if err := json.Unmarshal(body, &listed); err != nil {
+			t.Fatalf("decoding the token list: %v: %s", err, body)
+		}
+		found := false
+		for _, tok := range listed {
+			if tok.ID != issued.ID {
+				continue
+			}
+			found = true
+			if tok.Kind != "application" || tok.Name != "survey script" || tok.Outlet != "droids" || tok.LastUsedAt == nil {
+				t.Errorf("listed token = %+v, want an application token named survey script for droids, used", tok)
+			}
+		}
+		if !found {
+			t.Fatalf("the issued token %s is not in the governor's list: %s", issued.ID, body)
+		}
+
+		if status, body := b.do(ctx, http.MethodPost, consoleAPI+"/user/tokens/revoke", []byte(`{"id":"`+issued.ID+`"}`)); status != http.StatusOK {
+			t.Fatalf("POST user/tokens/revoke: status %d: %s", status, body)
+		}
+		if status, body := droid(ctx, t, s, issued.Token, http.MethodGet, "/droids/features", nil); status != http.StatusUnauthorized {
+			t.Errorf("GET /droids/features with the revoked token: status %d, want %d: %s", status, http.StatusUnauthorized, body)
+		}
+	})
+
+	t.Run("a command-line client obtains a device grant with a crew member's approval", func(t *testing.T) {
+		t.Parallel()
+
+		status, body := droid(ctx, t, s, "", http.MethodPost, "/droids/oauth/device/authorize", []byte(`{"client_id":"corral","outlet":"droids"}`))
+		if status != http.StatusOK {
+			t.Fatalf("POST oauth/device/authorize: status %d: %s", status, body)
+		}
+		// The device flow's answers are the RFC's, snake_case: read as maps.
+		var started map[string]any
+		if err := json.Unmarshal(body, &started); err != nil {
+			t.Fatalf("decoding the device authorization: %v: %s", err, body)
+		}
+		deviceCode, _ := started["device_code"].(string)
+		userCode, _ := started["user_code"].(string)
+		if deviceCode == "" || userCode == "" {
+			t.Fatalf("device authorization = %s, want a device code and a user code", body)
+		}
+
+		// The marshal reads what waits under the code and approves it on the console.
+		b := newBrowser(t, s, consoleAPI)
+		if status, body := b.do(ctx, http.MethodGet, consoleAPI+"/user/session", nil); status != http.StatusOK {
+			t.Fatalf("GET session before login: status %d: %s", status, body)
+		}
+		if status, body := b.login(ctx, "marshal", personaPassword); status != http.StatusOK {
+			t.Fatalf("console login: status %d: %s", status, body)
+		}
+		status, body = b.do(ctx, http.MethodGet, consoleAPI+"/user/device?userCode="+url.QueryEscape(userCode), nil)
+		if status != http.StatusOK {
+			t.Fatalf("GET user/device: status %d: %s", status, body)
+		}
+		var pending struct {
+			ClientID string `json:"clientId"`
+			Outlet   string `json:"outlet"`
+		}
+		if err := json.Unmarshal(body, &pending); err != nil {
+			t.Fatalf("decoding the pending authorization: %v: %s", err, body)
+		}
+		if pending.ClientID != "corral" || pending.Outlet != "droids" {
+			t.Errorf("pending authorization = %+v, want the corral client for droids", pending)
+		}
+		if status, body := b.do(ctx, http.MethodPost, consoleAPI+"/user/device/approve", []byte(`{"userCode":"`+userCode+`"}`)); status != http.StatusOK {
+			t.Fatalf("POST user/device/approve: status %d: %s", status, body)
+		}
+
+		// The client's poll redeems the code for a pair that acts as the marshal.
+		pair := redeem(ctx, t, s, `{"grant_type":"`+deviceCodeGrant+`","device_code":"`+deviceCode+`"}`)
+		if status, body := droid(ctx, t, s, pair.access, http.MethodGet, "/droids/features", nil); status != http.StatusOK {
+			t.Errorf("GET /droids/features with the access token: status %d, want %d: %s", status, http.StatusOK, body)
+		}
+
+		// A refresh exchange rotates the pair: the old access token is dead with it.
+		next := redeem(ctx, t, s, `{"grant_type":"refresh_token","refresh_token":"`+pair.refresh+`"}`)
+		if status, body := droid(ctx, t, s, pair.access, http.MethodGet, "/droids/features", nil); status != http.StatusUnauthorized {
+			t.Errorf("GET /droids/features with the rotated access token: status %d, want %d: %s", status, http.StatusUnauthorized, body)
+		}
+		if status, body := droid(ctx, t, s, next.access, http.MethodGet, "/droids/features", nil); status != http.StatusOK {
+			t.Errorf("GET /droids/features with the next access token: status %d, want %d: %s", status, http.StatusOK, body)
+		}
+	})
+}
+
+// tokenPair is what the token endpoint answers a grant with: the access token and the
+// refresh token (the RFC's access_token and refresh_token).
+type tokenPair struct {
+	access  string
+	refresh string
+}
+
+// redeem posts a grant to the droids outlet's token endpoint and returns the pair.
+func redeem(ctx context.Context, t *testing.T, s *served, grant string) tokenPair {
+	t.Helper()
+
+	status, body := droid(ctx, t, s, "", http.MethodPost, "/droids/oauth/token", []byte(grant))
+	if status != http.StatusOK {
+		t.Fatalf("POST oauth/token: status %d: %s", status, body)
+	}
+	var answer map[string]any
+	if err := json.Unmarshal(body, &answer); err != nil {
+		t.Fatalf("decoding the token pair: %v: %s", err, body)
+	}
+	pair := tokenPair{}
+	pair.access, _ = answer["access_token"].(string)
+	pair.refresh, _ = answer["refresh_token"].(string)
+	kind, _ := answer["token_type"].(string)
+	if pair.access == "" || pair.refresh == "" || !strings.EqualFold(kind, "Bearer") {
+		t.Fatalf("token pair = %s, want a bearer pair", body)
+	}
+
+	return pair
 }

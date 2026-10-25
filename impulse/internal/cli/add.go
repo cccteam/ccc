@@ -272,7 +272,7 @@ func newAddOutlet() *cobra.Command {
 		f      transitionFlags
 		prefix string
 		auth   string
-		apiKey bool
+		tokens string
 	)
 
 	cmd := &cobra.Command{
@@ -287,29 +287,37 @@ angular.json, the package scripts, and the Procfile. A console that was alone at
 to /console with its API at /console/api, since no browser application is mounted at /
 beside another (an installed application's scope is every URL under its start), and the
 regenerated router answers the root alone with a redirect there; the brief lists the Go
-and prose that still name /api. An API-key outlet (--api-key) is a machine surface: the
-generator program gains WithRouterOutlet with APIKey(). (An application that kept a
-hand-written router gains ServesSessions or nothing, as before, and the brief names the
-auth the outlet binds to.)
+and prose that still name /api. A machine outlet (--tokens <name>) is a surface with no
+browser whose requests carry the bearer tokens the named auth issues to its people and
+their programs: the generator program gains WithRouterOutlet with Tokens(<pkg/auth/name>),
+the generated router composes the token check in front of the outlet's routes and the
+device flow's endpoints under its prefix, and the auth's session outlet gains the token
+routes where a signed-in person issues, lists and revokes their tokens and approves a
+command-line client. (An application that kept a hand-written router gains
+ServesSessions or nothing, as before, and the brief names the auth the outlet binds to.)
 
 Either way go generate emits the outlet's routes, handlers, and client, and the
 generated router mounts the outlet from its declaration. The App's handlers the router
-now requires (the outlet's session getter and browser-application pair, or its API-key
-middleware), the configuration, the members, and the tests are handed to the agent with
+now requires (the outlet's session getter and browser-application pair, or its token
+surface), the configuration, the members, and the tests are handed to the agent with
 the failing checks as the obligations.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if (auth != "") == apiKey {
-				return errors.New("choose --auth <name> (a browser surface bound to that auth) or --api-key (a machine surface)")
+			if (auth != "") == (tokens != "") {
+				return errors.New("choose --auth <name> (a browser surface bound to that auth) or --tokens <name> (a machine surface carrying that auth's tokens)")
+			}
+			bound := auth
+			if tokens != "" {
+				bound = tokens
 			}
 
-			return runTransition(cmd, &f, transition_.Outlet{Name: args[0], Prefix: prefix, Sessions: auth != "", Auth: auth}, transition_.ReferenceCandidate)
+			return runTransition(cmd, &f, transition_.Outlet{Name: args[0], Prefix: prefix, Sessions: auth != "", Auth: bound}, transition_.ReferenceCandidate)
 		},
 	}
 	f.bind(cmd)
 	cmd.Flags().StringVar(&prefix, "prefix", "", "the outlet's URL prefix without slashes at either end, such as portal/api (required)")
 	cmd.Flags().StringVar(&auth, "auth", "", "a session outlet: a browser surface bound to this auth package (pkg/auth/<name>), with its own client and browser project")
-	cmd.Flags().BoolVar(&apiKey, "api-key", false, "an API-key outlet: a machine surface behind an authentication the application defines")
+	cmd.Flags().StringVar(&tokens, "tokens", "", "a machine outlet: a surface with no browser whose requests carry the bearer tokens this auth package (pkg/auth/<name>) issues to its people and their programs")
 	_ = cmd.MarkFlagRequired("prefix")
 
 	return cmd
@@ -521,7 +529,7 @@ func askOutlet(cmd *cobra.Command, appDir, auth string) (string, error) {
 	choices := transition_.OutletChoices(a)
 	var keys []string
 	for i := range choices {
-		if !choices[i].Outlet.APIKey {
+		if !choices[i].Outlet.Machine() {
 			keys = append(keys, choices[i].Key)
 		}
 	}
@@ -560,8 +568,10 @@ func askOutlet(cmd *cobra.Command, appDir, auth string) (string, error) {
 func outletDescription(c *transition_.OutletChoice) string {
 	o := &c.Outlet
 	switch {
+	case o.Tokens != "":
+		return fmt.Sprintf("/%s, a machine outlet: a surface with no sign-in, carrying the %s auth's tokens", o.Prefix, path.Base(o.Tokens))
 	case o.APIKey:
-		return fmt.Sprintf("/%s, an API-key outlet: a machine surface with no sign-in", o.Prefix)
+		return fmt.Sprintf("/%s, a machine outlet of the retired APIKey form: a surface with no sign-in", o.Prefix)
 	case o.Auth != nil:
 		return fmt.Sprintf("/%s, bound to the %s auth", o.Prefix, path.Base(o.Auth.ImportPath))
 	default:

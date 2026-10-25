@@ -225,7 +225,7 @@ func TestComposedOptions(t *testing.T) {
 				transition_.Outlet{Name: "kiosk", Prefix: "kiosk/api", Sessions: true},
 				transition_.Outlet{Name: "machines", Prefix: "machines"},
 			},
-			wantDescribe:  "tenancy (Tenants), the session outlet portal=portal/api, the session outlet kiosk=kiosk/api, the API-key outlet machines=machines",
+			wantDescribe:  "tenancy (Tenants), the session outlet portal=portal/api, the session outlet kiosk=kiosk/api, the machine outlet machines=machines",
 			wantReference: transition_.ReferenceCandidate,
 		},
 		{
@@ -245,7 +245,7 @@ func TestComposedOptions(t *testing.T) {
 				transition_.Files{},
 				transition_.Site{Name: "portal", Existing: "console"},
 			},
-			wantDescribe:  "the API-key outlet machines=machines, the file store, the sites console, portal (the base site becomes console)",
+			wantDescribe:  "the machine outlet machines=machines, the file store, the sites console, portal (the base site becomes console)",
 			wantReference: transition_.SitesReference,
 		},
 		{name: "one site is no layout", opts: composedOptions{sites: []string{"console"}}, wantErr: "name at least two sites"},

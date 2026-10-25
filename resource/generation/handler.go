@@ -284,7 +284,7 @@ func (r *resourceGenerator) generateAppContract() error {
 // generatePermissions emits the application's PermissionDigest and UserDomains
 // handlers — delegations to the library-owned handlers — on every application with a
 // session-serving outlet, wiring nothing. Under a generated route table whose outlets
-// all run behind API keys the file is not written: no route would serve them.
+// all carry bearer tokens the file is not written: no route would serve them.
 func (r *resourceGenerator) generatePermissions() error {
 	if !r.anyOutletServesSessions() {
 		log.Printf("No outlet serves sessions: no permissions file")
@@ -316,8 +316,8 @@ func (r *resourceGenerator) generatePermissions() error {
 // generateLive emits the application's live route handlers — LiveRenew,
 // LiveUnsubscribe and LiveToken — as delegations to the library-owned handlers over
 // the application's LiveService, on every application with a session-serving outlet,
-// wiring only the service. Under a generated route table whose outlets all run behind
-// API keys the file is not written: no route would serve them.
+// wiring only the service. Under a generated route table whose outlets all carry
+// bearer tokens the file is not written: no route would serve them.
 func (r *resourceGenerator) generateLive() error {
 	if !r.anyOutletServesSessions() {
 		log.Printf("No outlet serves sessions: no live file")

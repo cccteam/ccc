@@ -41,18 +41,14 @@ const (
 
 	// The development identities the served suites act as: the staff logins admin
 	// (Administrator_Global, and Administrator_Domain in every tenant) and member
-	// (Administrator_Domain in north only); the portal's client, a member of the members
-	// auth who signs in through the simulated directory and holds Administrator_Domain in
-	// north; and the machines service account — no login, bound by the API key — holding
-	// Machines_Domain in north.
+	// (Administrator_Domain and Machines_Domain in north only, so a token of theirs
+	// reads the readings there through the machines outlet); and the portal's client, a
+	// member of the members auth who signs in through the simulated directory and holds
+	// Administrator_Domain in north.
 	adminUser     = "admin"
 	memberUser    = "member"
 	clientUser    = "client"
-	machinesUser  = "machines"
 	adminPassword = "password"
-
-	// The machines outlet's API key in the suites.
-	machinesAPIKey = "integration-machines-key"
 
 	// The browser outlets' API prefixes.
 	consoleAPI = "/console/api"
@@ -129,8 +125,6 @@ func (c *servedConfigurer) AppVersion() string {
 func (c *servedConfigurer) ConsoleDist() string { return "" }
 
 func (c *servedConfigurer) PortalDist() string { return "" }
-
-func (c *servedConfigurer) MachinesAPIKey() string { return machinesAPIKey }
 
 // Live is the in-memory live service the auths' permission engines signal policy
 // changes through: the live service is required in every application.
@@ -246,7 +240,7 @@ func newServed(ctx context.Context, t *testing.T) *served {
 		{adminUser, accesstypes.GlobalPolicyScope(), "Administrator_Global"},
 		{adminUser, accesstypes.EveryDomainPolicyScope(), "Administrator_Domain"},
 		{memberUser, accesstypes.DomainPolicyScope(north), "Administrator_Domain"},
-		{machinesUser, accesstypes.DomainPolicyScope(north), "Machines_Domain"},
+		{memberUser, accesstypes.DomainPolicyScope(north), "Machines_Domain"},
 	}
 	for _, a := range assignments {
 		if err := accessClient.UserManager().AddUserRoles(ctx, a.scope, a.user, a.role); err != nil {
@@ -256,7 +250,7 @@ func newServed(ctx context.Context, t *testing.T) *served {
 
 	// The snapshot swap is asynchronous: wait until the last-provisioned assignment is
 	// visible to the engine before serving.
-	waitForDomains(ctx, t, accessClient, machinesUser, []accesstypes.Domain{north})
+	waitForDomains(ctx, t, accessClient, memberUser, []accesstypes.Domain{north})
 	waitForDomains(ctx, t, membersAccess, clientUser, []accesstypes.Domain{north})
 
 	a := app.New(&servedConfigurer{db: db, auth: staffAuth, members: membersAuth, live: svc, tenants: roster})
@@ -357,15 +351,15 @@ func (b *browser) login(ctx context.Context, user, password string) (status int,
 
 // machine issues one request as a machine client carrying the bearer key (empty for an
 // unauthenticated probe).
-func machine(ctx context.Context, t *testing.T, s *served, key, method, path string) (status int, body []byte) {
+func machine(ctx context.Context, t *testing.T, s *served, token, method, path string) (status int, body []byte) {
 	t.Helper()
 
 	req, err := http.NewRequestWithContext(ctx, method, s.server.URL+path, http.NoBody)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if key != "" {
-		req.Header.Set("Authorization", "Bearer "+key)
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
 	}
 
 	resp, err := http.DefaultClient.Do(req)

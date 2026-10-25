@@ -26,10 +26,12 @@ const (
 	userInvitationSuffix = "/user/invitation"
 	userEmailSuffix      = "/user/email"
 	userSignUpSuffix     = "/user/sign-up"
-	bindAuthMethod       = "BindAuth"
-	// schedulerAuthMethod is the Handlers method that admits Cloud Scheduler's calls to
-	// the scheduled routes.
-	schedulerAuthMethod = "SchedulerAuth"
+	// The token page's routes under an issuing session outlet's prefix, and the device
+	// flow's public endpoints under a machine outlet's.
+	userTokensSuffix  = "/user/tokens"
+	userDeviceSuffix  = "/user/device"
+	oauthDeviceSuffix = "/oauth/device/authorize"
+	oauthTokenSuffix  = "/oauth/token"
 	// The pending sign-in handlers on a session outlet's surface (session.PendingHandlers).
 	pendingStatusHandler  = "PendingStatus"
 	pendingConfirmHandler = "PendingConfirmWithPassword"
@@ -46,6 +48,18 @@ const (
 	signUpStartHandler      = "SignUpStart"
 	signUpOpenHandler       = "SignUpOpen"
 	signUpCompleteHandler   = "SignUpComplete"
+	// The device flow's and the token page's handlers on an issuing session outlet's
+	// surface (session.DeviceHandlers, ApplicationTokenHandlers).
+	deviceAuthorizeHandler = "DeviceAuthorize"
+	deviceTokenHandler     = "DeviceToken"
+	deviceLookupHandler    = "DeviceLookup"
+	deviceApproveHandler   = "DeviceApprove"
+	deviceDenyHandler      = "DeviceDeny"
+	tokensListHandler      = "TokensList"
+	tokensCreateHandler    = "TokensCreate"
+	tokensRevokeHandler    = "TokensRevoke"
+	// validateTokenMethod is the one method of a machine outlet's token surface.
+	validateTokenMethod = "ValidateToken"
 )
 
 // servedMethod is one sign-in method of a session outlet as the router mounts it and
@@ -125,49 +139,18 @@ const rootHookField = "Root"
 func (r *resourceGenerator) validateRouterConfig() error {
 	outlets := r.allOutlets()
 	if !r.genRouter {
-		for _, o := range outlets {
-			var declared string
-			switch {
-			case o.auth != nil:
-				declared = "Auth"
-			case o.apiKey:
-				declared = "APIKey"
-			case o.webApp != "":
-				declared = "WebApp"
-			case o.declaredOldest:
-				declared = "OldestAnswered"
-			case o.requestLog.Declared():
-				declared = "OutletRequestLog"
-			case o.traces.Declared():
-				declared = "OutletTraces"
-			default:
-				continue
-			}
-
-			return errors.Newf("outlet %q declares %s, which describes the generated router: declare GenerateRouter, or drop it and compose the outlet in a hand-written router (ServesSessions marks a session outlet there)", o.name, declared)
-		}
-		switch {
-		case r.requestLog.Declared():
-			return errors.Newf("WithRequestLog(%s) describes the generated router, which builds the request logger with the application default: declare GenerateRouter, or drop it and pass logger.DefaultPolicy to the request logger in a hand-written router", r.requestLog)
-		case len(r.mountedRoutes) > 0:
-			return errors.Newf("WithMountedRoutes(%q) describes the generated router, which builds the request logger and the tracer with the prefix: declare GenerateRouter, or drop it and pass logger.PolicyByPrefix to the request logger in a hand-written router", r.mountedRoutes[0].prefix)
-		}
-
-		return nil
+		return r.validateHandWrittenRouter(outlets)
 	}
 
+	sessionAuths := make(map[string]bool)
 	for _, o := range outlets {
-		switch {
-		case o.auth != nil && o.apiKey:
-			return errors.Newf("outlet %q declares both Auth and APIKey: an outlet is a browser surface behind one auth or a machine surface behind an API key", o.name)
-		case o.auth == nil && !o.apiKey:
-			return errors.Newf("outlet %q declares neither Auth nor APIKey: under GenerateRouter every outlet says how it authenticates", o.name)
-		case o.apiKey && o.declaredSessions:
-			return errors.Newf("outlet %q declares APIKey and ServesSessions: an API-key outlet serves no browser sessions", o.name)
-		case o.apiKey && o.webApp != "":
-			return errors.Newf("outlet %q declares APIKey and WebApp(%q): a machine outlet serves no browser application", o.name, o.webApp)
-		case o.apiKey && o.declaredOldest:
-			return errors.Newf("outlet %q declares APIKey and OldestAnswered(%q): a machine outlet's clients carry no release, so nothing is checked against one; the option belongs on a session outlet", o.name, o.oldestAnswered)
+		if o.auth != nil {
+			sessionAuths[o.auth.importPath] = true
+		}
+	}
+	for _, o := range outlets {
+		if err := validateOutletAuthentication(o, sessionAuths); err != nil {
+			return err
 		}
 		if err := validateReservedNames(o); err != nil {
 			return err
@@ -178,6 +161,70 @@ func (r *resourceGenerator) validateRouterConfig() error {
 	}
 
 	return validateWebAppMounts(outlets)
+}
+
+// validateHandWrittenRouter refuses, under a hand-written router, every declaration that
+// describes the generated one: an outlet's authentication, browser application, release
+// and words, and the program's request log and mounted prefixes.
+func (r *resourceGenerator) validateHandWrittenRouter(outlets []*routerOutlet) error {
+	for _, o := range outlets {
+		var declared string
+		switch {
+		case o.auth != nil:
+			declared = "Auth"
+		case o.tokenAuth != "":
+			declared = "Tokens"
+		case o.apiKey:
+			declared = "APIKey"
+		case o.webApp != "":
+			declared = "WebApp"
+		case o.declaredOldest:
+			declared = "OldestAnswered"
+		case o.requestLog.Declared():
+			declared = "OutletRequestLog"
+		case o.traces.Declared():
+			declared = "OutletTraces"
+		default:
+			continue
+		}
+
+		return errors.Newf("outlet %q declares %s, which describes the generated router: declare GenerateRouter, or drop it and compose the outlet in a hand-written router (ServesSessions marks a session outlet there)", o.name, declared)
+	}
+	switch {
+	case r.requestLog.Declared():
+		return errors.Newf("WithRequestLog(%s) describes the generated router, which builds the request logger with the application default: declare GenerateRouter, or drop it and pass logger.DefaultPolicy to the request logger in a hand-written router", r.requestLog)
+	case len(r.mountedRoutes) > 0:
+		return errors.Newf("WithMountedRoutes(%q) describes the generated router, which builds the request logger and the tracer with the prefix: declare GenerateRouter, or drop it and pass logger.PolicyByPrefix to the request logger in a hand-written router", r.mountedRoutes[0].prefix)
+	}
+
+	return nil
+}
+
+// validateOutletAuthentication holds an outlet under the generated router to one way of
+// authenticating: a session outlet declares Auth, a machine outlet declares Tokens naming
+// an auth a session outlet declares (sessionAuths), and a machine outlet declares nothing
+// of a browser surface's.
+func validateOutletAuthentication(o *routerOutlet, sessionAuths map[string]bool) error {
+	switch {
+	case o.auth != nil && o.tokenAuth != "":
+		return errors.Newf("outlet %q declares both Auth and Tokens: an outlet is a browser surface behind one auth or a machine surface taking an auth's tokens", o.name)
+	case o.auth != nil && o.apiKey:
+		return errors.Newf("outlet %q declares both Auth and APIKey: an outlet is a browser surface behind one auth or a machine surface taking an auth's tokens (Tokens)", o.name)
+	case o.auth == nil && !o.apiKey:
+		return errors.Newf("outlet %q declares neither Auth nor Tokens: under GenerateRouter every outlet says how it authenticates", o.name)
+	case o.apiKey && o.tokenAuth == "":
+		return errors.Newf("outlet %q declares APIKey, which is retired: a machine outlet declares Tokens(importPath), naming the auth package of a session outlet whose Auth issues its tokens, and the generated router carries the token check", o.name)
+	case o.apiKey && !sessionAuths[o.tokenAuth]:
+		return errors.Newf("outlet %q declares Tokens(%q), which no session outlet declares with Auth: a machine outlet's tokens are issued by the Auth of a browser outlet of the application, so declare that outlet's auth package", o.name, o.tokenAuth)
+	case o.apiKey && o.declaredSessions:
+		return errors.Newf("outlet %q declares Tokens and ServesSessions: a machine outlet serves no browser sessions", o.name)
+	case o.apiKey && o.webApp != "":
+		return errors.Newf("outlet %q declares Tokens and WebApp(%q): a machine outlet serves no browser application", o.name, o.webApp)
+	case o.apiKey && o.declaredOldest:
+		return errors.Newf("outlet %q declares Tokens and OldestAnswered(%q): a machine outlet's clients carry no release, so nothing is checked against one; the option belongs on a session outlet", o.name, o.oldestAnswered)
+	}
+
+	return nil
 }
 
 // validateMountedPrefixes checks the hand-mounted prefixes against the router's own
@@ -203,12 +250,6 @@ func validateMountedPrefixes(outlets []*routerOutlet, mounted []mountedRoutes) e
 func validateReservedNames(o *routerOutlet) error {
 	if field := caser.ToPascal(o.name); slices.Contains(reservedHookFields, field) {
 		return errors.Newf("outlet %q would take the Hooks field %s, which the generated router reserves; choose another name", o.name, field)
-	}
-	if o.apiKey && caser.ToPascal(o.name)+"Auth" == bindAuthMethod {
-		return errors.Newf("outlet %q would take the Handlers method BindAuth, which the generated router reserves; choose another name", o.name)
-	}
-	if o.apiKey && caser.ToPascal(o.name)+"Auth" == schedulerAuthMethod {
-		return errors.Newf("outlet %q would take the Handlers method %s, which the generated router reserves for the scheduled routes; choose another name", o.name, schedulerAuthMethod)
 	}
 	if underScheduledPrefix("/" + o.prefix) {
 		return errors.Newf("outlet %q has the route prefix /%s, under %s, which the generated router reserves for the scheduled routes (@%s); choose another prefix", o.name, o.prefix, scheduled.Prefix, scheduleKeyword)
@@ -282,7 +323,7 @@ type servedRouterData struct {
 	// the Handlers interface embeds beside GeneratedHandlers.
 	ExtraOutlets   []*servedOutlet
 	SessionOutlets []*servedOutlet
-	APIKeyOutlets  []*servedOutlet
+	MachineOutlets []*servedOutlet
 	// WebApps are the browser applications, longest mount path first so "/" is last;
 	// HasRootWebApp reports one mounted at "/", the catch-all.
 	WebApps       []*servedWebApp
@@ -435,23 +476,43 @@ type servedOutlet struct {
 	RoutesFunc string
 	// NotFoundPrefix is the outlet's prefix as a mounted path ("/api/").
 	NotFoundPrefix string
-	// APIKey marks a machine outlet; AuthMiddleware is then its <Outlet>Auth method.
-	APIKey         bool
-	AuthMiddleware string
-	// The session outlet's auth: how the chain comment names it (AuthLabel), the
-	// generated interface its session surface satisfies (SessionInterface,
-	// <HookField>Session), and the package it binds to (empty when the auth is not
-	// imported).
+	// Machine marks a machine outlet (Tokens): TokenAuth is the import path of the auth
+	// whose Auth issues its tokens, Issuer the session outlet declaring that auth,
+	// IssuerExpr the expression the router reads the issuer's session surface from (h,
+	// or h.Portal()), IssuerPackage the auth package's name for the prose,
+	// TokensInterface the generated interface its token surface satisfies
+	// (<HookField>Tokens, one ValidateToken), and DeviceRoutes the device flow's public
+	// endpoints under its prefix, served by the issuer's surface.
+	Machine         bool
+	TokenAuth       string
+	Issuer          *servedOutlet
+	IssuerExpr      string
+	IssuerPackage   string
+	TokensInterface string
+	DeviceRoutes    []servedRoute
+	// IssuesTokens marks a session outlet whose Auth issues tokens for a machine outlet:
+	// its surface carries the device flow's and the token page's handlers, the token
+	// page's routes sit in its validated group, and ExtraHandlers are the handlers of
+	// its surface that serve no route under its own prefix (the device flow's public
+	// endpoints, mounted under the machine outlets').
+	IssuesTokens  bool
+	ExtraHandlers []string
+	// The session outlet's auth: how the chain comment names it (AuthLabel), its import
+	// path (AuthPath), the generated interface its session surface satisfies
+	// (SessionInterface, <HookField>Session), and the package it binds to (empty when
+	// the auth is not imported).
 	AuthLabel        string
+	AuthPath         string
 	SessionInterface string
 	AuthPackage      string
-	// Getter returns the outlet's session surface on Handlers for an additional
-	// session outlet; the default outlet's is embedded. Receiver is the expression the
-	// router reads the session surface from: h for the default outlet, a local
-	// variable for a getter outlet.
+	// Getter returns the outlet's surface on Handlers for an additional outlet, its
+	// session surface or its token surface; the default outlet's is embedded. Receiver
+	// is the expression the router reads the surface from: h for the default outlet, a
+	// local variable for a getter session outlet, the getter's call for a getter
+	// machine outlet.
 	Getter   string
 	Receiver string
-	// StubType is the recording stub the generated test builds for the outlet's session
+	// StubType is the recording stub the generated test builds for the outlet's
 	// surface, StubField its field on the test's Handlers stub (empty for the embedded
 	// default), and StubPrefix the name prefix it records under.
 	StubType   string
@@ -693,8 +754,8 @@ func (r *resourceGenerator) servedRouterData(outlets []*routerOutlet, negativeTe
 			data.WebApps = append(data.WebApps, so.WebApp)
 		}
 		switch {
-		case so.APIKey:
-			data.APIKeyOutlets = append(data.APIKeyOutlets, so)
+		case so.Machine:
+			data.MachineOutlets = append(data.MachineOutlets, so)
 		case o.auth != nil:
 			so.FileRoutes = servedFileRoutesOf(fileRoutes[o.name])
 			data.SessionOutlets = append(data.SessionOutlets, so)
@@ -703,6 +764,7 @@ func (r *resourceGenerator) servedRouterData(outlets []*routerOutlet, negativeTe
 		data.Outlets = append(data.Outlets, so)
 	}
 	data.ExtraOutlets = data.Outlets[1:]
+	linkTokenIssuers(data)
 	r.servedMountedRoutes(data)
 	slices.SortFunc(data.Surfaces, func(a, b servedSurface) int {
 		return strings.Compare(a.Pattern, b.Pattern)
@@ -786,8 +848,8 @@ func rootRedirectOf(data *servedRouterData) (target, outlet string) {
 }
 
 // servedOutletOf builds one outlet's payload from its declaration: its names, its
-// browser application, and either its API-key middleware or its session flavor with the
-// flavor's routes under the prefix.
+// browser application, and either its token check (bound to its issuer by
+// linkTokenIssuers) or its session flavor with the flavor's routes under the prefix.
 func servedOutletOf(o *routerOutlet, multiAuth bool) *servedOutlet {
 	so := &servedOutlet{
 		Name:           o.name,
@@ -808,11 +870,27 @@ func servedOutletOf(o *routerOutlet, multiAuth bool) *servedOutlet {
 	so.RequestLog, so.Traces, so.Words = o.requestLog, o.traces, describeWords(o.requestLog, o.traces)
 	switch {
 	case o.apiKey:
-		so.APIKey = true
-		so.AuthMiddleware = so.HookField + "Auth"
+		so.Machine = true
+		so.TokenAuth = o.tokenAuth
+		so.IssuerPackage = assumedPackageName(o.tokenAuth)
+		so.TokensInterface = so.HookField + "Tokens"
+		so.StubType = "router" + so.HookField + "TokensStub"
+		so.Receiver = "h"
+		if o.name != defaultOutletName {
+			so.Getter = so.HookField
+			so.Receiver = "h." + so.HookField + "()"
+			so.StubField = caser.ToCamel(o.name)
+			so.StubPrefix = so.HookField
+		}
+		prefix := "/" + o.prefix
+		so.DeviceRoutes = []servedRoute{
+			{Method: http.MethodPost, MethodConst: httpMethodConstant(http.MethodPost), Path: prefix + oauthDeviceSuffix, Suffix: oauthDeviceSuffix, Handler: deviceAuthorizeHandler},
+			{Method: http.MethodPost, MethodConst: httpMethodConstant(http.MethodPost), Path: prefix + oauthTokenSuffix, Suffix: oauthTokenSuffix, Handler: deviceTokenHandler},
+		}
 	case o.auth != nil:
 		so.SessionInterface = so.HookField + "Session"
 		so.StubType = "router" + so.HookField + "SessionStub"
+		so.AuthPath = o.auth.importPath
 		if multiAuth {
 			so.AuthPackage = o.auth.packageName()
 		}
@@ -830,6 +908,62 @@ func servedOutletOf(o *routerOutlet, multiAuth bool) *servedOutlet {
 	}
 
 	return so
+}
+
+// linkTokenIssuers binds each machine outlet to the session outlet whose Auth issues
+// its tokens (the first declaring that auth), names the issuer in the machine outlet's
+// chain label, binds the machine outlet to the issuer's auth package where the router
+// binds auths, and gives the issuer the token page: its validated routes, and the
+// device flow's and the token page's handlers on its surface.
+func linkTokenIssuers(data *servedRouterData) {
+	for _, m := range data.MachineOutlets {
+		var issuer *servedOutlet
+		for _, so := range data.SessionOutlets {
+			if so.AuthPath == m.TokenAuth {
+				issuer = so
+
+				break
+			}
+		}
+		if issuer == nil {
+			continue
+		}
+		m.Issuer = issuer
+		m.IssuerExpr = "h"
+		if issuer.Getter != "" {
+			m.IssuerExpr = "h." + issuer.Getter + "()"
+		}
+		m.AuthPackage = issuer.AuthPackage
+		m.AuthLabel = "bearer tokens of the " + m.IssuerPackage + " auth"
+		if issuer.IssuesTokens {
+			continue
+		}
+		issuer.IssuesTokens = true
+		prefix := "/" + issuer.Prefix
+		validated := func(method, suffix, handler string) servedRoute {
+			return servedRoute{Method: method, MethodConst: httpMethodConstant(method), Path: prefix + suffix, Suffix: suffix, Handler: handler, XSRF: true, Validated: true}
+		}
+		issuer.ValidatedRoutes = append(issuer.ValidatedRoutes,
+			validated(http.MethodGet, userTokensSuffix, tokensListHandler),
+			validated(http.MethodPost, userTokensSuffix, tokensCreateHandler),
+			validated(http.MethodPost, userTokensSuffix+"/revoke", tokensRevokeHandler),
+			validated(http.MethodGet, userDeviceSuffix, deviceLookupHandler),
+			validated(http.MethodPost, userDeviceSuffix+"/approve", deviceApproveHandler),
+			validated(http.MethodPost, userDeviceSuffix+"/deny", deviceDenyHandler),
+		)
+		issuer.Routes = slices.Concat(issuer.OpenRoutes, issuer.GuardedRoutes, issuer.ValidatedRoutes)
+		issuer.ExtraHandlers = []string{deviceAuthorizeHandler, deviceTokenHandler}
+		issuer.SessionHandlers = append(issuer.SessionHandlers,
+			servedSessionHandler{Name: deviceAuthorizeHandler, Description: "A command-line client's device authorization started (session.DeviceHandlers.Authorize): the client is told the code the person types; mounted under each machine outlet the auth issues tokens for"},
+			servedSessionHandler{Name: deviceTokenHandler, Description: "The device flow's token endpoint (session.DeviceHandlers.Token): the client's polls for its pair, and the refresh grant; mounted under each machine outlet the auth issues tokens for"},
+			servedSessionHandler{Name: deviceLookupHandler, Description: "The pending device authorization the person's code names, for the approval page (session.DeviceHandlers.Lookup)"},
+			servedSessionHandler{Name: deviceApproveHandler, Description: "The device authorization approved by the signed-in person, as themselves (session.DeviceHandlers.Approve)"},
+			servedSessionHandler{Name: deviceDenyHandler, Description: "The device authorization denied (session.DeviceHandlers.Deny)"},
+			servedSessionHandler{Name: tokensListHandler, Description: "The signed-in person's live tokens (session.ApplicationTokenHandlers.List)"},
+			servedSessionHandler{Name: tokensCreateHandler, Description: "An application token issued to the signed-in person for a program of their own, the secret shown once (session.ApplicationTokenHandlers.Create)"},
+			servedSessionHandler{Name: tokensRevokeHandler, Description: "A token of the signed-in person's revoked (session.ApplicationTokenHandlers.Revoke)"},
+		)
+	}
 }
 
 // servedSessionOf fills a session outlet's methods and routes from its auth's methods:
@@ -961,8 +1095,8 @@ func handlersSummary(data *servedRouterData) string {
 		parts = append(parts, "each session outlet's session handlers")
 	}
 	parts = append(parts, "the middleware every request and every outlet passes")
-	if len(data.APIKeyOutlets) > 0 {
-		parts = append(parts, "the API-key outlets' authentication")
+	if len(data.MachineOutlets) > 0 {
+		parts = append(parts, "the machine outlets' token surfaces")
 	}
 	if len(data.ScheduledRoutes) > 0 {
 		parts = append(parts, "the scheduled methods' handlers and the scheduler's token check")
@@ -1126,9 +1260,10 @@ var (
 //	  by hand under {{ .Prefix }}: {{ .Words }}
 {{- end }}
 {{- range .Outlets }}
-{{- if .APIKey }}
-//	{{ .Name }} (/{{ .Prefix }}), API key{{ with .Words }}, {{ . }}{{ end }}:
-//	  NoCaching, CompressionMiddleware, ReleaseHeader, {{ .AuthMiddleware }}: hooks.{{ .HookField }}, {{ .RoutesFunc }}
+{{- if .Machine }}
+//	{{ .Name }} (/{{ .Prefix }}), {{ .AuthLabel }}{{ with .Words }}, {{ . }}{{ end }}:
+//	  {{ if .AuthPackage }}BindAuth({{ .AuthPackage }}.Name), {{ end }}NoCaching, CompressionMiddleware, ReleaseHeader: {{ range $i, $route := .DeviceRoutes }}{{ if $i }}, {{ end }}{{ $route.Method }} {{ $route.Path }}{{ end }}
+//	  + ValidateToken: hooks.{{ .HookField }}, {{ .RoutesFunc }}
 {{- else }}
 //	{{ .Name }} (/{{ .Prefix }}), {{ .AuthLabel }}{{ with .Words }}, {{ . }}{{ end }}:
 //	  {{ if .AuthPackage }}BindAuth({{ .AuthPackage }}.Name), {{ end }}NoCaching, CompressionMiddleware, ReleaseHeader, StartSession, SetXSRFToken: {{ range $i, $route := .OpenRoutes }}{{ if $i }}, {{ end }}{{ $route.Method }} {{ $route.Path }}{{ end }}
@@ -1222,10 +1357,17 @@ type Handlers interface {
 	// the handlers behind it check permissions and tenant visibility in that auth's store.
 	BindAuth(name string) func(http.Handler) http.Handler
 {{- end }}
-{{- range .APIKeyOutlets }}
-	// {{ .AuthMiddleware }} authenticates the {{ .Name }} outlet's machine clients, binding each
-	// request to a service identity in place of a browser session.
-	{{ .AuthMiddleware }}(next http.Handler) http.Handler
+{{- range .MachineOutlets }}
+{{- if .Getter }}
+	// {{ .Getter }} returns the {{ .Name }} outlet's token surface: the machine outlet the application
+	// registers on the {{ .IssuerPackage }} auth's Auth (session.RegisterMachineOutlet), whose token
+	// check binds each request to the person its bearer token acts for.
+	{{ .Getter }}() {{ .TokensInterface }}
+{{- else }}
+	// The default outlet's token surface: the machine outlet the application registers on
+	// the {{ .IssuerPackage }} auth's Auth (session.RegisterMachineOutlet).
+	{{ .TokensInterface }}
+{{- end }}
 {{- end }}
 {{- if .ScheduledRoutes }}
 	// SchedulerAuth admits Cloud Scheduler's calls to the scheduled routes and refuses
@@ -1290,6 +1432,18 @@ type {{ .SessionInterface }} interface {
 {{- end }}
 }
 {{- end }}
+{{- range .MachineOutlets }}
+
+// {{ .TokensInterface }} is the {{ .Name }} outlet's token surface: the token check of the machine
+// outlet the application registers on the {{ .IssuerPackage }} auth's Auth
+// (session.RegisterMachineOutlet(auth, "{{ .Name }}")), which a *session.MachineOutlet satisfies.
+// A request on the outlet carries a bearer token the auth issued for it, an application
+// token or a device grant's access token, and the check binds it to the person the
+// token acts for: the same user, principal and evidence a validated session carries.
+type {{ .TokensInterface }} interface {
+	ValidateToken(next http.Handler) http.Handler
+}
+{{- end }}
 
 // Hooks are the application's additions to the generated router. They compose inward
 // only: a hook adds middleware and routes under the guards it is handed and never sees
@@ -1302,10 +1456,10 @@ type Hooks struct {
 	// triggers. They sit behind the every-request chain and nothing else.
 	Root func(r chi.Router)
 {{- range .Outlets }}
-{{- if .APIKey }}
-	// {{ .HookField }} runs inside the {{ .Name }} outlet's API-key group: r already sits behind
-	// {{ .AuthMiddleware }}, and generated registers the outlet's generated routes. Nil registers
-	// them directly.
+{{- if .Machine }}
+	// {{ .HookField }} runs inside the {{ .Name }} outlet's token group: r already sits behind
+	// {{ if .AuthPackage }}BindAuth({{ .AuthPackage }}.Name) and {{ end }}the token check, and generated registers the outlet's generated
+	// routes. Nil registers them directly.
 {{- else }}
 	// {{ .HookField }} runs inside the {{ .Name }} outlet's authenticated group: r already sits behind
 	// {{ if .AuthPackage }}BindAuth({{ .AuthPackage }}.Name), {{ end }}session validation, and the XSRF guard, and generated registers
@@ -1392,18 +1546,31 @@ func New(h Handlers, hooks Hooks) *chi.Mux {
 		})
 	}
 {{- range .Outlets }}
-{{ if .APIKey }}
-	// The {{ .Name }} outlet (/{{ .Prefix }}): machine clients behind an API key, so the group carries
-	// no session handling and no XSRF guard.
+{{ if .Machine }}
+	// The {{ .Name }} outlet (/{{ .Prefix }}): machine clients carrying {{ .AuthLabel }}, so the group
+	// carries no session handling and no XSRF guard. The device flow's endpoints, where a
+	// command-line client obtains its tokens with a person's approval, sit in front of the
+	// token check; everything else sits behind it.
 	r.Group(func(r chi.Router) {
 {{- template "outletWord" . }}
+{{- if .AuthPackage }}
+		r.Use(h.BindAuth({{ .AuthPackage }}.Name))
+{{- end }}
 		r.Use(h.NoCaching)
 		r.Use(h.CompressionMiddleware())
 		r.Use(resource.ReleaseHeader(serverVersion))
-		r.Use(h.{{ .AuthMiddleware }})
+{{ $outlet := . }}
+		bounded := r.With(resource.BodyLimit(BodyLimit))
+{{- range .DeviceRoutes }}
+		bounded.{{ Pascal .Method }}("{{ .Path }}", {{ $outlet.IssuerExpr }}.{{ .Handler }}())
+{{- end }}
 
-		registerGenerated(r, hooks.{{ .HookField }}, "{{ .HookField }}", func(r chi.Router) {
-			{{ .RoutesFunc }}(r, h)
+		r.Group(func(r chi.Router) {
+			r.Use({{ .Receiver }}.ValidateToken)
+
+			registerGenerated(r, hooks.{{ .HookField }}, "{{ .HookField }}", func(r chi.Router) {
+				{{ .RoutesFunc }}(r, h)
+			})
 		})
 	})
 {{- else }}
@@ -1638,7 +1805,8 @@ import (
 var routerRootChain = []string{"LogExporter", "SecurityHeaders"}
 
 // routerOutletChain is one outlet's middleware in order: group runs in front of the
-// outlet's session routes, guards additionally in front of its generated routes.
+// outlet's session routes, or a machine outlet's device-flow endpoints; guards
+// additionally in front of its generated routes.
 type routerOutletChain struct {
 	group  []string
 	guards []string
@@ -1647,9 +1815,10 @@ type routerOutletChain struct {
 // routerOutletChains keys each outlet's chain by the prefix its routes sit under.
 var routerOutletChains = map[string]routerOutletChain{
 {{- range .Outlets }}
-{{- if .APIKey }}
+{{- if .Machine }}
 	"{{ .NotFoundPrefix }}": {
-		group: []string{"NoCaching", "CompressionMiddleware", "{{ .AuthMiddleware }}"},
+		group:  []string{ {{- if .AuthPackage }}"BindAuth(" + {{ .AuthPackage }}.Name + ")", {{ end }}"NoCaching", "CompressionMiddleware"},
+		guards: []string{"{{ .StubPrefix }}ValidateToken"},
 	},
 {{- else }}
 	"{{ .NotFoundPrefix }}": {
@@ -1687,13 +1856,21 @@ type routerSessionRoute struct {
 	validated bool
 }
 
-// routerSessionRoutes lists every session outlet's routes.
+// routerSessionRoutes lists every session outlet's routes, and the device-flow
+// endpoints under each machine outlet's prefix, served by the issuing auth's surface
+// in front of the token check.
 func routerSessionRoutes() []routerSessionRoute {
 	return []routerSessionRoute{
 {{- range .SessionOutlets }}
 {{- $outlet := . }}
 {{- range .Routes }}
 		{url: "{{ .Path }}", suffix: "{{ .Suffix }}", method: {{ .MethodConst }}, handler: "{{ $outlet.StubPrefix }}{{ .Handler }}"{{ if .XSRF }}, xsrf: true{{ end }}{{ if .Validated }}, validated: true{{ end }}},
+{{- end }}
+{{- end }}
+{{- range .MachineOutlets }}
+{{- $issuer := .Issuer }}
+{{- range .DeviceRoutes }}
+		{url: "{{ .Path }}", suffix: "{{ .Suffix }}", method: {{ .MethodConst }}, handler: "{{ $issuer.StubPrefix }}{{ .Handler }}"},
 {{- end }}
 {{- end }}
 	}
@@ -1764,7 +1941,8 @@ func TestGeneratedRouter(t *testing.T) {
 // pending and sign-in routes answer behind the outlet's group and before its session
 // guard, a sign-in's POSTs behind the XSRF guard alone: a browser reaches them without
 // a validated session; the routes a signed-in person calls (an invitation's acceptance,
-// the address) answer behind both guards.
+// the address, the token page) answer behind both guards; and a machine outlet's
+// device-flow endpoints answer behind its group and before its token check.
 func TestGeneratedRouterSessionRoutes(t *testing.T) {
 	t.Parallel()
 
@@ -2277,7 +2455,7 @@ func (b *routerUnreadBody) Read([]byte) (int, error) {
 // server's release in X-Api-Version before any handler runs or its body is read, a
 // request without the header or with a version that is not a release on either side
 // is answered, the session routes and the stored-file routes answer at any release,
-// an API-key outlet is never checked, every answer of an outlet names the server's
+// a machine outlet is never checked, every answer of an outlet names the server's
 // release in X-Api-Version, and the check sits behind the outlet's guards and ahead
 // of its hook.
 func TestGeneratedRouterAPIVersion(t *testing.T) {
@@ -2323,7 +2501,7 @@ func TestGeneratedRouterAPIVersion(t *testing.T) {
 			tests = append(tests, versionCase{name: where + "a stored-file route at any release " + file.handler, server: probe.server, app: probe.above, method: http.MethodGet, url: file.url, handler: file.handler})
 		}
 	}
-{{- range .APIKeyOutlets }}
+{{- range .MachineOutlets }}
 	for _, route := range generatedRouterTests() {
 		if strings.HasPrefix(route.url, "{{ .NotFoundPrefix }}") {
 			tests = append(tests, versionCase{name: "{{ .Name }} outlet is not checked", server: "2.0.0", app: "99.0.0", method: route.method, url: route.url, handler: route.handlerFunc})
@@ -2442,6 +2620,11 @@ func (s *{{ $stub }}) {{ .Handler }}() http.HandlerFunc {
 }
 {{ end }}
 {{- end }}
+{{- range .ExtraHandlers }}
+func (s *{{ $stub }}) {{ . }}() http.HandlerFunc {
+	return s.rec.RecordHandlerCall(s.prefix + "{{ . }}")
+}
+{{ end }}
 func (s *{{ $stub }}) StartSession(next http.Handler) http.Handler {
 	return s.rec.Middleware(s.prefix + "StartSession")(next)
 }
@@ -2458,10 +2641,22 @@ func (s *{{ $stub }}) ValidateXSRFToken(next http.Handler) http.Handler {
 	return s.rec.Middleware(s.prefix + "ValidateXSRFToken")(next)
 }
 {{ end }}
+{{- range .MachineOutlets }}
+// {{ .StubType }} records the {{ .Name }} outlet's token check under a name prefix, so a chain
+// says whose tokens a request passed.
+type {{ .StubType }} struct {
+	rec    *routerCallRecorder
+	prefix string
+}
+
+func (s *{{ .StubType }}) ValidateToken(next http.Handler) http.Handler {
+	return s.rec.Middleware(s.prefix + "ValidateToken")(next)
+}
+{{ end }}
 // routerHandlersStub satisfies Handlers for the router tests: the generated surface
 // through the routes test's stub, the session surfaces through the outlets' session
-// stubs, and every middleware and browser-application handler recording under its own
-// name.
+// stubs, the token surfaces through the machine outlets' token stubs, and every
+// middleware and browser-application handler recording under its own name.
 type routerHandlersStub struct {
 	*generatedHandlersStub
 {{- range .SessionOutlets }}
@@ -2469,8 +2664,18 @@ type routerHandlersStub struct {
 	*{{ .StubType }}
 {{- end }}
 {{- end }}
+{{- range .MachineOutlets }}
+{{- if not .Getter }}
+	*{{ .StubType }}
+{{- end }}
+{{- end }}
 	rec *routerCallRecorder
 {{- range .SessionOutlets }}
+{{- if .Getter }}
+	{{ .StubField }} *{{ .StubType }}
+{{- end }}
+{{- end }}
+{{- range .MachineOutlets }}
 {{- if .Getter }}
 	{{ .StubField }} *{{ .StubType }}
 {{- end }}
@@ -2518,8 +2723,18 @@ func newRouterHandlersStub(rec *routerCallRecorder) *routerHandlersStub {
 		{{ .StubType }}: &{{ .StubType }}{rec: rec},
 {{- end }}
 {{- end }}
+{{- range .MachineOutlets }}
+{{- if not .Getter }}
+		{{ .StubType }}: &{{ .StubType }}{rec: rec},
+{{- end }}
+{{- end }}
 		rec: rec,
 {{- range .SessionOutlets }}
+{{- if .Getter }}
+		{{ .StubField }}: &{{ .StubType }}{rec: rec, prefix: "{{ .StubPrefix }}"},
+{{- end }}
+{{- end }}
+{{- range .MachineOutlets }}
 {{- if .Getter }}
 		{{ .StubField }}: &{{ .StubType }}{rec: rec, prefix: "{{ .StubPrefix }}"},
 {{- end }}
@@ -2533,14 +2748,16 @@ func (s *routerHandlersStub) {{ .Getter }}() {{ .SessionInterface }} {
 }
 {{ end }}
 {{- end }}
+{{- range .MachineOutlets }}
+{{- if .Getter }}
+func (s *routerHandlersStub) {{ .Getter }}() {{ .TokensInterface }} {
+	return s.{{ .StubField }}
+}
+{{ end }}
+{{- end }}
 {{- if .MultiAuth }}
 func (s *routerHandlersStub) BindAuth(name string) func(http.Handler) http.Handler {
 	return s.rec.Middleware("BindAuth(" + name + ")")
-}
-{{ end }}
-{{- range .APIKeyOutlets }}
-func (s *routerHandlersStub) {{ .AuthMiddleware }}(next http.Handler) http.Handler {
-	return s.rec.Middleware("{{ .AuthMiddleware }}")(next)
 }
 {{ end }}
 {{- if .ScheduledRoutes }}

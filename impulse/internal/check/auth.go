@@ -3,6 +3,7 @@ package check
 import (
 	"context"
 	"fmt"
+	"path"
 	"sort"
 	"strings"
 
@@ -43,10 +44,11 @@ func (c sessionTables) Run(_ context.Context, env *Env) Result {
 		return fail(c.Name(), err.Error())
 	}
 
+	issuers := issuingAuths(a, &p)
 	holders := map[string]string{} // table -> the auth that reads it
 	for i := range a.Auths {
 		auth := &a.Auths[i]
-		for _, t := range authTables(auth) {
+		for _, t := range authTables(auth, issuers[path.Dir(auth.File)]) {
 			if _, ok := tables[t]; !ok {
 				details = append(details, fmt.Sprintf("%s:%d: the %s reads table %s, which no migration creates (the session library's schema is under %s)", auth.File, auth.Line, authLabel(auth), t, schemaSets))
 			}
@@ -81,7 +83,7 @@ func (c sessionTables) Run(_ context.Context, env *Env) Result {
 		return fail(c.Name(), fmt.Sprintf("%d auth wiring problem(s)", len(details)), append(details, unread...)...)
 	}
 
-	auths, notes := authSummary(a.Auths)
+	auths, notes := authSummary(a.Auths, issuers)
 
 	return passWithDetails(c.Name(), fmt.Sprintf("%d auth(s): %s", len(auths), strings.Join(auths, "; ")), append(notes, unread...)...)
 }
@@ -89,12 +91,37 @@ func (c sessionTables) Run(_ context.Context, env *Env) Result {
 // schemaSets names the session library's schema sets an Auth's tables come from.
 const schemaSets = "schema/spanner/migrations and schema/spanner/auth/migrations (impersonation/migrations for the impersonation table)"
 
+// issuingAuths lists the auth packages, by directory, that a machine outlet of a site
+// names as the issuer of its tokens (Tokens in the generator program): their Auths read
+// the tokens and device codes tables.
+func issuingAuths(a *app.App, p *app.Profile) map[string]bool {
+	issuers := map[string]bool{}
+	for i := range p.Sites {
+		outlets := p.Sites[i].AllOutlets()
+		for j := range outlets {
+			if outlets[j].Tokens == "" {
+				continue
+			}
+			if dir, ok := a.ModuleDir(outlets[j].Tokens); ok {
+				issuers[dir] = true
+			}
+		}
+	}
+
+	return issuers
+}
+
 // authTables lists the tables one construction reads: the mail links table when the
-// Auth sends mail (session.WithMail), since an Auth without mail never opens it.
-func authTables(auth *app.Auth) []string {
+// Auth sends mail (session.WithMail), since an Auth without mail never opens it, and the
+// tokens and device codes tables when a machine outlet names the Auth as its issuer
+// (issues), since an Auth that issues no tokens never opens them.
+func authTables(auth *app.Auth, issues bool) []string {
 	tables := []string{auth.SessionTable, auth.UserTable, auth.IdentitiesTable, auth.PendingTable, auth.AttemptsTable}
 	if auth.Mail {
 		tables = append(tables, auth.MailLinksTable)
+	}
+	if issues {
+		tables = append(tables, auth.TokensTable, auth.DeviceCodesTable)
 	}
 	if auth.AuthEvents {
 		table := auth.AuthEventsTable
@@ -161,10 +188,10 @@ func methodSummary(auth *app.Auth) string {
 
 // authSummary renders each construction, named by its package when it lives in one
 // (pkg/auth/<name>), with notes on what the constructions leave to their callers.
-func authSummary(auths []app.Auth) (summaries, notes []string) {
+func authSummary(auths []app.Auth, issuers map[string]bool) (summaries, notes []string) {
 	for i := range auths {
 		auth := &auths[i]
-		desc := fmt.Sprintf("%s; tables %s", methodSummary(auth), strings.Join(authTables(auth), ", "))
+		desc := fmt.Sprintf("%s; tables %s", methodSummary(auth), strings.Join(authTables(auth, issuers[path.Dir(auth.File)]), ", "))
 		if auth.CookieName != "" {
 			desc += ", cookie " + auth.CookieName
 		}

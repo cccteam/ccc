@@ -97,8 +97,8 @@ func (c *SiteConfiguration) PortalDist() string {
 	return c.env.PortalDist
 }
 
-// DroidsAPIKey returns the bearer key the droids outlet's API-key middleware validates
-// droid clients against.
+// DroidsAPIKey returns the droid service account's configured key, which the App seeds
+// at start as the account's application token on the droids outlet.
 func (c *SiteConfiguration) DroidsAPIKey() string {
 	return c.droidsAPIKey
 }
@@ -128,9 +128,10 @@ type siteConfig struct {
 	// PortalDist is the directory holding the portal's built Angular bundle.
 	PortalDist string `env:"APP_PORTAL_DIST,default=web/dist/portal"`
 
-	// DroidsAPIKey is the bearer key droids present on the droids outlet (/droids/...).
-	// Unset, an ephemeral key is generated at startup, which keeps the surface
-	// fail-closed but unreachable until a key is configured.
+	// DroidsAPIKey is the bearer token droids present on the droids outlet (/droids/...):
+	// the droid service account's configured key, seeded at start as its application
+	// token. Unset, an ephemeral key is generated at startup, which keeps the surface
+	// fail-closed but unreachable by the droids until a key is configured.
 	DroidsAPIKey string `env:"APP_DROIDS_API_KEY"`
 
 	// The job driver's variables (jobstarter.Settings, whichever driver the import names:

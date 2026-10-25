@@ -41,8 +41,10 @@ export GOOGLE_CLOUD_SPANNER_DATABASE_NAME=lodestar
 export PORT=8090
 # export APP_CONSOLE_DIST=web/dist/console
 # export APP_PORTAL_DIST=web/dist/portal
-# APP_DROIDS_API_KEY is the bearer key droids present on /droids. Unset, the process
-# generates an ephemeral key nothing knows, which keeps the channel closed.
+# APP_DROIDS_API_KEY is the droid service account's key: the bearer token droids present
+# on /droids, which the server seeds at start as the account's application token in the
+# crew auth. Unset, the process generates an ephemeral key nothing knows, which keeps the
+# channel closed to the droids (a crew member's own token still opens it).
 export APP_DROIDS_API_KEY=dev-droids-key
 # APP_SCHEDULER_INVOKER is the invoker identity whose Google-signed tokens the scheduled
 # routes (/_scheduled) admit, read by the framework (resource/scheduled), not pkg/config;

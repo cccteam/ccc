@@ -12,9 +12,8 @@ import (
 // so the level is the one the sites layout declares once and every site reads.
 type SiteConfiguration struct {
 	*DataConfiguration
-	env            *siteConfig
-	validator      *validator.Validate
-	machinesAPIKey string
+	env       *siteConfig
+	validator *validator.Validate
 }
 
 // NewSiteConfiguration loads every level and constructs the served site's
@@ -30,21 +29,10 @@ func NewSiteConfiguration(ctx context.Context) (*SiteConfiguration, error) {
 		return nil, errors.Wrap(err, "envconfig.ProcessWith()")
 	}
 
-	machinesAPIKey := env.MachinesAPIKey
-	if machinesAPIKey == "" {
-		// An ephemeral key keeps the machines outlet fail-closed: nothing knows it, so
-		// nothing authenticates until APP_MACHINES_API_KEY is configured.
-		machinesAPIKey, err = ephemeralKey()
-		if err != nil {
-			return nil, err
-		}
-	}
-
 	return &SiteConfiguration{
 		DataConfiguration: data,
 		env:               env,
 		validator:         validator.New(),
-		machinesAPIKey:    machinesAPIKey,
 	}, nil
 }
 
@@ -68,12 +56,6 @@ func (c *SiteConfiguration) PortalDist() string {
 	return c.env.PortalDist
 }
 
-// MachinesAPIKey returns the bearer key the machines outlet's API-key middleware
-// validates machine clients against.
-func (c *SiteConfiguration) MachinesAPIKey() string {
-	return c.machinesAPIKey
-}
-
 // siteConfig holds the environment only the served site reads.
 type siteConfig struct {
 	// Port is the TCP port the server listens on.
@@ -84,9 +66,4 @@ type siteConfig struct {
 
 	// PortalDist is the directory holding the portal's built Angular bundle.
 	PortalDist string `env:"APP_PORTAL_DIST,default=web/dist/portal"`
-
-	// MachinesAPIKey is the bearer key machine clients present on the machines outlet
-	// (/machines/...). Unset, an ephemeral key is generated at startup, which keeps
-	// the surface fail-closed but unreachable until a key is configured.
-	MachinesAPIKey string `env:"APP_MACHINES_API_KEY"`
 }

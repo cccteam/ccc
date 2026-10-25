@@ -55,9 +55,12 @@ func newGenerator(ctx context.Context) (generation.Generator, error) {
 			generation.OldestAnswered("0.0.1"),
 		),
 		// The machines outlet is the machine REST API: structs annotated with @outlet
-		// naming machines are served under /machines, which the router composes behind
-		// API-key authentication (the App's MachinesAuth) instead of a browser session.
-		generation.WithRouterOutlet("machines", "machines", generation.APIKey()),
+		// naming machines are served under /machines, which the generated router composes
+		// behind the staff auth's token check instead of a browser session. Tokens names
+		// the auth whose Auth issues the outlet's tokens: a staff login issues an
+		// application token on the console, or approves a command-line client's device
+		// authorization there, and the token acts as them with their roles.
+		generation.WithRouterOutlet("machines", "machines", generation.Tokens("github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/outlets/pkg/auth/staff")),
 		generation.GenerateHandlerTests("test/authz"),
 		// Tenant-scoped resources and RPC methods are served under the tenant segment
 		// pair, /console/api/tenants/{tenantID}/... on each outlet's prefix, which the

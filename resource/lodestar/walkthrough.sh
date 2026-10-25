@@ -1,7 +1,7 @@
 #!/bin/bash
 # Lodestar persona walkthrough: drives every persona's proof by curl through real
 # sessions (login, cookies, XSRF: the served stack, not the test router), plus the droid
-# channel under the API key and the client portal under its own prefix through the
+# channel under its bearer token and the client portal under its own prefix through the
 # simulated directory. Prints PASS/FAIL per check.
 #
 # Run it against a FRESHLY bootstrapped stack (overmind start, or the Procfile's spanner +

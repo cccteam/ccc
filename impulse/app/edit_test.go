@@ -257,7 +257,7 @@ func run() {
 		gen.WithRouterOutlet("kiosk", "kiosk/api",
 			gen.WebApp("/kiosk"),
 		),
-		gen.WithRouterOutlet("machines", "machines", gen.APIKey()),
+		gen.WithRouterOutlet("machines", "machines", gen.Tokens("example.com/acme/pkg/auth/staff")),
 		gen.WithRouterOutlet("bare", "bare"),
 	)
 }

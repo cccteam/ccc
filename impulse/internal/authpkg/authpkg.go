@@ -53,6 +53,12 @@ type Spec struct {
 	// Doc is a sentence for the package comment saying who the population is ("the
 	// people who sign in to the console"); empty for a generic one.
 	Doc string
+	// MachineOutlets are the machine outlets whose tokens the Auth issues, by the names the
+	// generator program declares them with (WithRouterOutlet with Tokens of this package),
+	// in order. New registers each on the Auth before the first request, as it registers
+	// the sign-in methods, and the Handlers hand each one's token check to the generated
+	// router through <Pascal>Tokens.
+	MachineOutlets []string
 	// TenantPolicy is the auth's sign-in rule in an application with a tenant record:
 	// the library's tenant policy over the record's declaration (signin.TenantPolicy),
 	// which the auth's Settings carry as the generated reader and New refuses to open
@@ -442,6 +448,9 @@ func (m *Method) Provider() string {
 	}
 }
 
+// outletNameRE is the shape of an outlet's name: a lowerCamelCase identifier.
+var outletNameRE = regexp.MustCompile(`^[a-z][A-Za-z0-9]*$`)
+
 // Files renders the auth package: the file name (relative to the package directory)
 // and its content, formatted. One file for the Auth and one per method.
 func Files(spec *Spec) (map[string][]byte, error) {
@@ -464,6 +473,15 @@ func Files(spec *Spec) (map[string][]byte, error) {
 			return nil, errors.Newf("the %s auth registers %s twice", spec.Name, m.Name)
 		}
 		seen[m.Name] = true
+	}
+	for _, outlet := range spec.MachineOutlets {
+		if !outletNameRE.MatchString(outlet) {
+			return nil, errors.Newf("the %s auth's machine outlet %q: an outlet is named with a lowerCamelCase identifier, as WithRouterOutlet declares it", spec.Name, outlet)
+		}
+		if seen[outlet] {
+			return nil, errors.Newf("the %s auth names %s twice among its methods and machine outlets", spec.Name, outlet)
+		}
+		seen[outlet] = true
 	}
 	files := map[string][]byte{}
 	main, err := render("auth", authTemplate, newView(spec))

@@ -45,7 +45,7 @@ import (
 )
 
 // usersPath is the committed demo cast: the crew personas with plaintext passwords and
-// their role assignments, and the service accounts the droids outlet's API key binds
+// their role assignments, and the service accounts the droids outlet's tokens bind
 // requests to. The plaintext passwords are deliberate: these are fictional demo
 // credentials for an application that is never published, whether its database is the
 // emulator or a private test instance, and the README says so.
@@ -63,7 +63,8 @@ const (
 type devIdentities struct {
 	Users []devUser `json:"users"`
 	// ServiceAccounts are machine identities: they hold roles like any user but get no
-	// login. The droids outlet's API-key middleware binds requests to them.
+	// login. The droids outlet's token check binds requests to them through the
+	// application token Start seeds from the configured key.
 	ServiceAccounts []devServiceAccount `json:"serviceAccounts"`
 }
 
@@ -86,7 +87,7 @@ type devUser struct {
 
 // devServiceAccount is one machine identity: role assignments without a login.
 //
-// Demonstrates: outlet.api-key.
+// Demonstrates: outlet.tokens.
 type devServiceAccount struct {
 	User  accesstypes.User `json:"user"`
 	Roles devRoles         `json:"roles"`

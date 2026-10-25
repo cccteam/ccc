@@ -20,7 +20,7 @@ type (
 	// ORDER BY is the plain direction so an index can serve it, and the cursor walks across
 	// the NULL boundary in both directions without a repeated or a skipped row.
 	//
-	// Served on the default and droids outlets: a droid releases a consignment by API key
+	// Served on the default and droids outlets: a droid releases a consignment by bearer token
 	// through the same generated surface humans use.
 	//
 	// ReleasedAt sits directly after SectorId in the ConsignmentsBySectorIdReleasedAt

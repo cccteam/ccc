@@ -45,11 +45,11 @@ impulse add outlet <name>
   --agent bool
   --agent-arg stringArray
   --agent-command string (default claude)
-  --api-key bool
   --app string (default .)
   --auth string
   --prefix string (required)
   --skip-generate bool
+  --tokens string
 impulse add site <name>
   --agent bool
   --agent-arg stringArray

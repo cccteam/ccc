@@ -8,15 +8,16 @@
 //	default (/console/api), sessions of the staff auth (password):
 //	  BindAuth(staff.Name), NoCaching, CompressionMiddleware, ReleaseHeader, StartSession, SetXSRFToken: GET /console/api/user/methods, GET /console/api/user/session, DELETE /console/api/user/session, GET /console/api/user/pending
 //	  + ValidateXSRFToken: POST /console/api/user/password/login, POST /console/api/user/password/change, POST /console/api/user/pending/confirm, POST /console/api/user/pending/cancel, POST /console/api/user/invitation, POST /console/api/user/invitation/sign-up
-//	  + ValidateSession, ValidateXSRFToken: POST /console/api/user/invitation/accept, POST /console/api/user/email, POST /console/api/user/email/verify
+//	  + ValidateSession, ValidateXSRFToken: POST /console/api/user/invitation/accept, POST /console/api/user/email, POST /console/api/user/email/verify, GET /console/api/user/tokens, POST /console/api/user/tokens, POST /console/api/user/tokens/revoke, GET /console/api/user/device, POST /console/api/user/device/approve, POST /console/api/user/device/deny
 //	  + ValidateSession, ValidateXSRFToken, CheckAPIVersion (oldest answered 0.0.1): hooks.Default, generatedRoutes
 //	portal (/portal/api), sessions of the members auth (directory):
 //	  BindAuth(members.Name), NoCaching, CompressionMiddleware, ReleaseHeader, StartSession, SetXSRFToken: GET /portal/api/user/methods, GET /portal/api/user/session, DELETE /portal/api/user/session, GET /portal/api/user/pending, GET /portal/api/user/directory/login, GET /portal/api/user/directory/callback, GET /portal/api/user/directory/logout
 //	  + ValidateXSRFToken: POST /portal/api/user/pending/confirm, POST /portal/api/user/pending/cancel, POST /portal/api/user/invitation
 //	  + ValidateSession, ValidateXSRFToken: POST /portal/api/user/invitation/accept, POST /portal/api/user/email, POST /portal/api/user/email/verify
 //	  + ValidateSession, ValidateXSRFToken, CheckAPIVersion (oldest answered 0.0.1): hooks.Portal, generatedPortalRoutes
-//	machines (/machines), API key:
-//	  NoCaching, CompressionMiddleware, ReleaseHeader, MachinesAuth: hooks.Machines, generatedMachinesRoutes
+//	machines (/machines), bearer tokens of the staff auth:
+//	  BindAuth(staff.Name), NoCaching, CompressionMiddleware, ReleaseHeader: POST /machines/oauth/device/authorize, POST /machines/oauth/token
+//	  + ValidateToken: hooks.Machines, generatedMachinesRoutes
 //
 // hooks.Root's routes sit behind the every-request chain alone. Under an outlet's prefix
 // nothing else answers: an unknown path is 404. Outside every prefix the browser
@@ -38,7 +39,7 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-// Handlers is the full surface New composes: every outlet's generated handlers, each session outlet's session handlers, the middleware every request and every outlet passes, the API-key outlets' authentication, and the browser applications' handlers.
+// Handlers is the full surface New composes: every outlet's generated handlers, each session outlet's session handlers, the middleware every request and every outlet passes, the machine outlets' token surfaces, and the browser applications' handlers.
 type Handlers interface {
 	GeneratedHandlers
 	GeneratedPortalHandlers
@@ -50,9 +51,10 @@ type Handlers interface {
 	// BindAuth marks a session group's requests as authenticated by the named auth, so
 	// the handlers behind it check permissions and tenant visibility in that auth's store.
 	BindAuth(name string) func(http.Handler) http.Handler
-	// MachinesAuth authenticates the machines outlet's machine clients, binding each
-	// request to a service identity in place of a browser session.
-	MachinesAuth(next http.Handler) http.Handler
+	// Machines returns the machines outlet's token surface: the machine outlet the application
+	// registers on the staff auth's Auth (session.RegisterMachineOutlet), whose token
+	// check binds each request to the person its bearer token acts for.
+	Machines() MachinesTokens
 	// ServerVersion is the release this server was built from, the configuration's
 	// APP_VERSION: what every outlet names on each answer (resource.ReleaseHeader) and
 	// each session outlet checks a browser application's X-Api-Version against
@@ -108,6 +110,22 @@ type DefaultSession interface {
 	EmailAdd() http.HandlerFunc
 	// The address verified from the mailed link (session.EmailHandlers.Verify).
 	EmailVerify() http.HandlerFunc
+	// A command-line client's device authorization started (session.DeviceHandlers.Authorize): the client is told the code the person types; mounted under each machine outlet the auth issues tokens for.
+	DeviceAuthorize() http.HandlerFunc
+	// The device flow's token endpoint (session.DeviceHandlers.Token): the client's polls for its pair, and the refresh grant; mounted under each machine outlet the auth issues tokens for.
+	DeviceToken() http.HandlerFunc
+	// The pending device authorization the person's code names, for the approval page (session.DeviceHandlers.Lookup).
+	DeviceLookup() http.HandlerFunc
+	// The device authorization approved by the signed-in person, as themselves (session.DeviceHandlers.Approve).
+	DeviceApprove() http.HandlerFunc
+	// The device authorization denied (session.DeviceHandlers.Deny).
+	DeviceDeny() http.HandlerFunc
+	// The signed-in person's live tokens (session.ApplicationTokenHandlers.List).
+	TokensList() http.HandlerFunc
+	// An application token issued to the signed-in person for a program of their own, the secret shown once (session.ApplicationTokenHandlers.Create).
+	TokensCreate() http.HandlerFunc
+	// A token of the signed-in person's revoked (session.ApplicationTokenHandlers.Revoke).
+	TokensRevoke() http.HandlerFunc
 	// The password method's login and password change (session.PasswordMethod); the change validates the session itself, outside ValidateSession.
 	PasswordLogin() http.HandlerFunc
 	PasswordChange() http.HandlerFunc
@@ -146,6 +164,16 @@ type PortalSession interface {
 	DirectoryFrontChannelLogout() http.HandlerFunc
 }
 
+// MachinesTokens is the machines outlet's token surface: the token check of the machine
+// outlet the application registers on the staff auth's Auth
+// (session.RegisterMachineOutlet(auth, "machines")), which a *session.MachineOutlet satisfies.
+// A request on the outlet carries a bearer token the auth issued for it, an application
+// token or a device grant's access token, and the check binds it to the person the
+// token acts for: the same user, principal and evidence a validated session carries.
+type MachinesTokens interface {
+	ValidateToken(next http.Handler) http.Handler
+}
+
 // Hooks are the application's additions to the generated router. They compose inward
 // only: a hook adds middleware and routes under the guards it is handed and never sees
 // the outer router, so no generated route can be lifted out from behind session
@@ -164,9 +192,9 @@ type Hooks struct {
 	// BindAuth(members.Name), session validation, and the XSRF guard, and generated registers
 	// the outlet's generated routes. Nil registers them directly.
 	Portal func(r chi.Router, generated func(chi.Router))
-	// Machines runs inside the machines outlet's API-key group: r already sits behind
-	// MachinesAuth, and generated registers the outlet's generated routes. Nil registers
-	// them directly.
+	// Machines runs inside the machines outlet's token group: r already sits behind
+	// BindAuth(staff.Name) and the token check, and generated registers the outlet's generated
+	// routes. Nil registers them directly.
 	Machines func(r chi.Router, generated func(chi.Router))
 }
 
@@ -243,6 +271,12 @@ func New(h Handlers, hooks Hooks) *chi.Mux {
 					"/console/api/user/invitation/accept",
 					"/console/api/user/email",
 					"/console/api/user/email/verify",
+					"/console/api/user/tokens",
+					"/console/api/user/tokens",
+					"/console/api/user/tokens/revoke",
+					"/console/api/user/device",
+					"/console/api/user/device/approve",
+					"/console/api/user/device/deny",
 				},
 			}))
 
@@ -251,6 +285,12 @@ func New(h Handlers, hooks Hooks) *chi.Mux {
 			r.With(resource.BodyLimit(BodyLimit)).Post("/console/api/user/invitation/accept", h.InvitationAccept())
 			r.With(resource.BodyLimit(BodyLimit)).Post("/console/api/user/email", h.EmailAdd())
 			r.With(resource.BodyLimit(BodyLimit)).Post("/console/api/user/email/verify", h.EmailVerify())
+			r.With(resource.BodyLimit(BodyLimit)).Get("/console/api/user/tokens", h.TokensList())
+			r.With(resource.BodyLimit(BodyLimit)).Post("/console/api/user/tokens", h.TokensCreate())
+			r.With(resource.BodyLimit(BodyLimit)).Post("/console/api/user/tokens/revoke", h.TokensRevoke())
+			r.With(resource.BodyLimit(BodyLimit)).Get("/console/api/user/device", h.DeviceLookup())
+			r.With(resource.BodyLimit(BodyLimit)).Post("/console/api/user/device/approve", h.DeviceApprove())
+			r.With(resource.BodyLimit(BodyLimit)).Post("/console/api/user/device/deny", h.DeviceDeny())
 
 			registerGenerated(r, hooks.Default, "Default", func(r chi.Router) {
 				generatedRoutes(r, h)
@@ -320,16 +360,26 @@ func New(h Handlers, hooks Hooks) *chi.Mux {
 		})
 	})
 
-	// The machines outlet (/machines): machine clients behind an API key, so the group carries
-	// no session handling and no XSRF guard.
+	// The machines outlet (/machines): machine clients carrying bearer tokens of the staff auth, so the group
+	// carries no session handling and no XSRF guard. The device flow's endpoints, where a
+	// command-line client obtains its tokens with a person's approval, sit in front of the
+	// token check; everything else sits behind it.
 	r.Group(func(r chi.Router) {
+		r.Use(h.BindAuth(staff.Name))
 		r.Use(h.NoCaching)
 		r.Use(h.CompressionMiddleware())
 		r.Use(resource.ReleaseHeader(serverVersion))
-		r.Use(h.MachinesAuth)
 
-		registerGenerated(r, hooks.Machines, "Machines", func(r chi.Router) {
-			generatedMachinesRoutes(r, h)
+		bounded := r.With(resource.BodyLimit(BodyLimit))
+		bounded.Post("/machines/oauth/device/authorize", h.DeviceAuthorize())
+		bounded.Post("/machines/oauth/token", h.DeviceToken())
+
+		r.Group(func(r chi.Router) {
+			r.Use(h.Machines().ValidateToken)
+
+			registerGenerated(r, hooks.Machines, "Machines", func(r chi.Router) {
+				generatedMachinesRoutes(r, h)
+			})
 		})
 	})
 

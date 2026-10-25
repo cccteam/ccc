@@ -72,9 +72,9 @@ const BeaconRoute = BeaconsPrefix + "{sectorID}"
 // the guards each outlet's group already carries: the console's routes behind the crew
 // auth's session validation and XSRF guard, the portal's behind the members auth's. The
 // generated router owns everything else: the every-request middleware, each outlet's
-// session or API-key group, the not-found handlers, and the two browser applications.
+// session or token-checked group, the not-found handlers, and the two browser applications.
 //
-// Demonstrates: GenerateRouter, auth.two-populations, auth.user-management, outlet.session, outlet.api-key, outlet.isolation, hand-written-route, impersonation.read-only-backstop, impersonation.end, consolidation.batch, generation.request-log.
+// Demonstrates: GenerateRouter, auth.two-populations, auth.user-management, outlet.session, outlet.tokens, outlet.isolation, hand-written-route, impersonation.read-only-backstop, impersonation.end, consolidation.batch, generation.request-log.
 func AppHooks(h AppHandlers) Hooks {
 	return Hooks{
 		// The root: the beacon pulse outside every outlet, behind the every-request

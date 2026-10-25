@@ -9,10 +9,11 @@
 //	default (/console/api), sessions of the crew auth (password, google, sign-up):
 //	  BindAuth(crew.Name), NoCaching, CompressionMiddleware, ReleaseHeader, StartSession, SetXSRFToken: GET /console/api/user/methods, GET /console/api/user/session, DELETE /console/api/user/session, GET /console/api/user/pending, GET /console/api/user/google/login, GET /console/api/user/google/callback, GET /console/api/user/sign-up/login, GET /console/api/user/sign-up/callback
 //	  + ValidateXSRFToken: POST /console/api/user/password/login, POST /console/api/user/password/change, POST /console/api/user/pending/confirm, POST /console/api/user/pending/cancel, POST /console/api/user/invitation, POST /console/api/user/invitation/sign-up, POST /console/api/user/sign-up, POST /console/api/user/sign-up/open, POST /console/api/user/sign-up/complete
-//	  + ValidateSession, ValidateXSRFToken: POST /console/api/user/invitation/accept, POST /console/api/user/email, POST /console/api/user/email/verify
+//	  + ValidateSession, ValidateXSRFToken: POST /console/api/user/invitation/accept, POST /console/api/user/email, POST /console/api/user/email/verify, GET /console/api/user/tokens, POST /console/api/user/tokens, POST /console/api/user/tokens/revoke, GET /console/api/user/device, POST /console/api/user/device/approve, POST /console/api/user/device/deny
 //	  + ValidateSession, ValidateXSRFToken, CheckAPIVersion (oldest answered 0.1.0): hooks.Default, generatedRoutes
-//	droids (/droids), API key:
-//	  NoCaching, CompressionMiddleware, ReleaseHeader, DroidsAuth: hooks.Droids, generatedDroidsRoutes
+//	droids (/droids), bearer tokens of the crew auth:
+//	  BindAuth(crew.Name), NoCaching, CompressionMiddleware, ReleaseHeader: POST /droids/oauth/device/authorize, POST /droids/oauth/token
+//	  + ValidateToken: hooks.Droids, generatedDroidsRoutes
 //	  POST /droids/sectors/{sectorID}/ingest-droid-reports: request log on event
 //	portal (/portal/api), sessions of the members auth (directory):
 //	  BindAuth(members.Name), NoCaching, CompressionMiddleware, ReleaseHeader, StartSession, SetXSRFToken: GET /portal/api/user/methods, GET /portal/api/user/session, DELETE /portal/api/user/session, GET /portal/api/user/pending, GET /portal/api/user/directory/login, GET /portal/api/user/directory/callback
@@ -49,7 +50,7 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-// Handlers is the full surface New composes: every outlet's generated handlers, each session outlet's session handlers, the middleware every request and every outlet passes, the API-key outlets' authentication, the scheduled methods' handlers and the scheduler's token check, and the browser applications' handlers.
+// Handlers is the full surface New composes: every outlet's generated handlers, each session outlet's session handlers, the middleware every request and every outlet passes, the machine outlets' token surfaces, the scheduled methods' handlers and the scheduler's token check, and the browser applications' handlers.
 type Handlers interface {
 	GeneratedHandlers
 	GeneratedDroidsHandlers
@@ -66,9 +67,10 @@ type Handlers interface {
 	// BindAuth marks a session group's requests as authenticated by the named auth, so
 	// the handlers behind it check permissions and tenant visibility in that auth's store.
 	BindAuth(name string) func(http.Handler) http.Handler
-	// DroidsAuth authenticates the droids outlet's machine clients, binding each
-	// request to a service identity in place of a browser session.
-	DroidsAuth(next http.Handler) http.Handler
+	// Droids returns the droids outlet's token surface: the machine outlet the application
+	// registers on the crew auth's Auth (session.RegisterMachineOutlet), whose token
+	// check binds each request to the person its bearer token acts for.
+	Droids() DroidsTokens
 	// SchedulerAuth admits Cloud Scheduler's calls to the scheduled routes and refuses
 	// every other with 401: a token Google signed for the route's URL whose verified
 	// email is the invoker identity (scheduled.Guard's Middleware, built from the
@@ -135,6 +137,22 @@ type DefaultSession interface {
 	SignUpOpen() http.HandlerFunc
 	// The sign-up completed with a password: the account created and signed in (session.SignUpHandlers.Complete).
 	SignUpComplete() http.HandlerFunc
+	// A command-line client's device authorization started (session.DeviceHandlers.Authorize): the client is told the code the person types; mounted under each machine outlet the auth issues tokens for.
+	DeviceAuthorize() http.HandlerFunc
+	// The device flow's token endpoint (session.DeviceHandlers.Token): the client's polls for its pair, and the refresh grant; mounted under each machine outlet the auth issues tokens for.
+	DeviceToken() http.HandlerFunc
+	// The pending device authorization the person's code names, for the approval page (session.DeviceHandlers.Lookup).
+	DeviceLookup() http.HandlerFunc
+	// The device authorization approved by the signed-in person, as themselves (session.DeviceHandlers.Approve).
+	DeviceApprove() http.HandlerFunc
+	// The device authorization denied (session.DeviceHandlers.Deny).
+	DeviceDeny() http.HandlerFunc
+	// The signed-in person's live tokens (session.ApplicationTokenHandlers.List).
+	TokensList() http.HandlerFunc
+	// An application token issued to the signed-in person for a program of their own, the secret shown once (session.ApplicationTokenHandlers.Create).
+	TokensCreate() http.HandlerFunc
+	// A token of the signed-in person's revoked (session.ApplicationTokenHandlers.Revoke).
+	TokensRevoke() http.HandlerFunc
 	// The password method's login and password change (session.PasswordMethod); the change validates the session itself, outside ValidateSession.
 	PasswordLogin() http.HandlerFunc
 	PasswordChange() http.HandlerFunc
@@ -178,6 +196,16 @@ type PortalSession interface {
 	DirectoryCallback() http.HandlerFunc
 }
 
+// DroidsTokens is the droids outlet's token surface: the token check of the machine
+// outlet the application registers on the crew auth's Auth
+// (session.RegisterMachineOutlet(auth, "droids")), which a *session.MachineOutlet satisfies.
+// A request on the outlet carries a bearer token the auth issued for it, an application
+// token or a device grant's access token, and the check binds it to the person the
+// token acts for: the same user, principal and evidence a validated session carries.
+type DroidsTokens interface {
+	ValidateToken(next http.Handler) http.Handler
+}
+
 // Hooks are the application's additions to the generated router. They compose inward
 // only: a hook adds middleware and routes under the guards it is handed and never sees
 // the outer router, so no generated route can be lifted out from behind session
@@ -192,9 +220,9 @@ type Hooks struct {
 	// BindAuth(crew.Name), session validation, and the XSRF guard, and generated registers
 	// the outlet's generated routes. Nil registers them directly.
 	Default func(r chi.Router, generated func(chi.Router))
-	// Droids runs inside the droids outlet's API-key group: r already sits behind
-	// DroidsAuth, and generated registers the outlet's generated routes. Nil registers
-	// them directly.
+	// Droids runs inside the droids outlet's token group: r already sits behind
+	// BindAuth(crew.Name) and the token check, and generated registers the outlet's generated
+	// routes. Nil registers them directly.
 	Droids func(r chi.Router, generated func(chi.Router))
 	// Portal runs inside the portal outlet's authenticated group: r already sits behind
 	// BindAuth(members.Name), session validation, and the XSRF guard, and generated registers
@@ -305,6 +333,12 @@ func New(h Handlers, hooks Hooks) *chi.Mux {
 					"/console/api/user/invitation/accept",
 					"/console/api/user/email",
 					"/console/api/user/email/verify",
+					"/console/api/user/tokens",
+					"/console/api/user/tokens",
+					"/console/api/user/tokens/revoke",
+					"/console/api/user/device",
+					"/console/api/user/device/approve",
+					"/console/api/user/device/deny",
 					"/console/api/sectors/{sectorID}/expense-manifests/{expenseManifestMissionID}/content",
 					"/console/api/sectors/{sectorID}/mission-documents/{missionDocumentID}/content",
 					"/console/api/sectors/{sectorID}/refit-tasks/{refitTaskRefitID}/{refitTaskTaskNumber}/photo",
@@ -316,6 +350,12 @@ func New(h Handlers, hooks Hooks) *chi.Mux {
 			r.With(resource.BodyLimit(BodyLimit)).Post("/console/api/user/invitation/accept", h.InvitationAccept())
 			r.With(resource.BodyLimit(BodyLimit)).Post("/console/api/user/email", h.EmailAdd())
 			r.With(resource.BodyLimit(BodyLimit)).Post("/console/api/user/email/verify", h.EmailVerify())
+			r.With(resource.BodyLimit(BodyLimit)).Get("/console/api/user/tokens", h.TokensList())
+			r.With(resource.BodyLimit(BodyLimit)).Post("/console/api/user/tokens", h.TokensCreate())
+			r.With(resource.BodyLimit(BodyLimit)).Post("/console/api/user/tokens/revoke", h.TokensRevoke())
+			r.With(resource.BodyLimit(BodyLimit)).Get("/console/api/user/device", h.DeviceLookup())
+			r.With(resource.BodyLimit(BodyLimit)).Post("/console/api/user/device/approve", h.DeviceApprove())
+			r.With(resource.BodyLimit(BodyLimit)).Post("/console/api/user/device/deny", h.DeviceDeny())
 
 			registerGenerated(r, hooks.Default, "Default", func(r chi.Router) {
 				generatedRoutes(r, h)
@@ -323,16 +363,26 @@ func New(h Handlers, hooks Hooks) *chi.Mux {
 		})
 	})
 
-	// The droids outlet (/droids): machine clients behind an API key, so the group carries
-	// no session handling and no XSRF guard.
+	// The droids outlet (/droids): machine clients carrying bearer tokens of the crew auth, so the group
+	// carries no session handling and no XSRF guard. The device flow's endpoints, where a
+	// command-line client obtains its tokens with a person's approval, sit in front of the
+	// token check; everything else sits behind it.
 	r.Group(func(r chi.Router) {
+		r.Use(h.BindAuth(crew.Name))
 		r.Use(h.NoCaching)
 		r.Use(h.CompressionMiddleware())
 		r.Use(resource.ReleaseHeader(serverVersion))
-		r.Use(h.DroidsAuth)
 
-		registerGenerated(r, hooks.Droids, "Droids", func(r chi.Router) {
-			generatedDroidsRoutes(r, h)
+		bounded := r.With(resource.BodyLimit(BodyLimit))
+		bounded.Post("/droids/oauth/device/authorize", h.DeviceAuthorize())
+		bounded.Post("/droids/oauth/token", h.DeviceToken())
+
+		r.Group(func(r chi.Router) {
+			r.Use(h.Droids().ValidateToken)
+
+			registerGenerated(r, hooks.Droids, "Droids", func(r chi.Router) {
+				generatedDroidsRoutes(r, h)
+			})
 		})
 	})
 

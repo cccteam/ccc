@@ -197,6 +197,12 @@ linters:
           - gosec
         path: _test\.go
         text: G101
+      # G101 reads the token routes' path suffixes (/user/tokens, /oauth/token) as
+      # hardcoded credentials: they are paths the generated router mounts.
+      - linters:
+          - gosec
+        path: generation/servedrouter\.go
+        text: G101
       - linters:
           - paralleltest
         path: options_test\.go

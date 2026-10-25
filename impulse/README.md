@@ -34,8 +34,9 @@ templates, this README, and the tool's source.
   a second site, and one left with a single site keeps the sites layout. "Multi-site"
   describes a deployment with several hosts, never a layout.
 - **Outlet**: a second URL space on the same host, declared in the generator program. A
-  session outlet is a browser surface bound to an auth; an API-key outlet is a machine
-  surface. The default outlet is the one `GenerateRoutes` declares. A browser outlet
+  session outlet is a browser surface bound to an auth; a machine outlet is a surface
+  with no browser whose requests carry the bearer tokens an auth issues. The default
+  outlet is the one `GenerateRoutes` declares. A browser outlet
   takes one shape: its application at its own mount path (`WebApp("/portal")`) with its
   API under it (`/portal/api`), so the application's scope covers its own API, login,
   and callback routes. One application alone may sit at `/`; with two or more none does,
@@ -785,7 +786,7 @@ the option. The edits already made stay on disk, to fix the cause and regenerate
 ```sh
 impulse add outlet portal --prefix portal/api --auth staff --agent
 impulse add outlet kiosk --prefix kiosk/api --auth members
-impulse add outlet machines --prefix machines --api-key
+impulse add outlet machines --prefix machines --tokens staff
 ```
 
 `add outlet` adds a router outlet to a flat application. A session outlet binds to an
@@ -804,8 +805,13 @@ name of its Angular project, with its API at `/console/api`, in the generator pr
 regenerated router answers the root alone with a redirect to `/console/`. The App's
 `DeepLink` and `Assets` pair, a `LoginURL` naming the console's login page, the
 hand-written routes and tests that name `/api`, and the README and Procfile lines follow
-by hand, and the brief lists each by file and line. For an API-key outlet the program
-gains `WithRouterOutlet(name, prefix, APIKey())`, and the console stays where it is. (An
+by hand, and the brief lists each by file and line. For a machine outlet (`--tokens
+<name>`) the program gains `WithRouterOutlet(name, prefix, Tokens("<module>/pkg/auth/<name>"))`,
+naming the auth whose Auth issues the outlet's tokens: the generated router composes the
+token check in front of the outlet's routes and the device flow's two endpoints under its
+prefix, the auth's session outlet gains the token routes where a signed-in person issues,
+lists and revokes their application tokens and approves a command-line client, and the
+console stays where it is. (An
 application that kept a hand-written router gains `ServesSessions()` or nothing, as
 before.) `go generate` then emits the outlet's routes, handlers, and client, and the
 generated router mounts the outlet from its declaration: its group, its login routes, its
@@ -931,7 +937,7 @@ and is asked when not given, listing the application's outlets: `default` for th
 `GenerateRoutes` declares (the console's), or a `WithRouterOutlet` name such as `portal`;
 in the sites layout the site's name for its default outlet. The outlet must exist
 (`add outlet` adds one, bound to an auth the application has, and `add auth` moves it to
-the new auth), and an API-key outlet is refused, since a machine surface has no sign-in.
+the new auth), and a machine outlet is refused, since it has no sign-in.
 There is no default, because an auth is reachable only through the outlet bound to it.
 Under a hand-written router the program declares no Auth to point, and the brief says to
 mount the auth's session group in the router. In a tenanted application the new auth's

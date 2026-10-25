@@ -54,6 +54,10 @@ const (
 	DefaultPendingTable    = "SessionPendingSignIns"
 	DefaultAttemptsTable   = "SessionSignInAttempts"
 	DefaultMailLinksTable  = "SessionMailLinks"
+	// The tokens and device codes tables, read when a machine outlet names the Auth as
+	// the issuer of its tokens (Tokens in the generator program).
+	DefaultTokensTable      = "SessionTokens"
+	DefaultDeviceCodesTable = "SessionDeviceCodes"
 	// DefaultImpersonationTable is the session library's impersonation table name.
 	DefaultImpersonationTable = "SessionImpersonations"
 	// DefaultAuthEventsTable is the name the library's schema creates the auth events table
@@ -127,7 +131,8 @@ func parseAuths(rel string, src []byte) (auths []Auth, unattached []Method, err 
 					File: rel, Line: fset.Position(call.Pos()).Line, Var: assignedName(call, body),
 					SessionTable: DefaultSessionTable, UserTable: DefaultUserTable,
 					IdentitiesTable: DefaultIdentitiesTable, PendingTable: DefaultPendingTable,
-					AttemptsTable: DefaultAttemptsTable, MailLinksTable: DefaultMailLinksTable, OptionsForwarded: call.Ellipsis.IsValid(),
+					AttemptsTable: DefaultAttemptsTable, MailLinksTable: DefaultMailLinksTable,
+					TokensTable: DefaultTokensTable, DeviceCodesTable: DefaultDeviceCodesTable, OptionsForwarded: call.Ellipsis.IsValid(),
 				}
 				for _, arg := range call.Args {
 					readAuthArg(&auth, arg, pkg, storage, consts, body)
@@ -396,6 +401,10 @@ func readAuthArg(auth *Auth, arg ast.Expr, pkg, storage string, consts map[strin
 				auth.AttemptsTable = s
 			case "WithMailLinksTableName":
 				auth.MailLinksTable = s
+			case "WithTokensTableName":
+				auth.TokensTable = s
+			case "WithDeviceCodesTableName":
+				auth.DeviceCodesTable = s
 			case "WithCookieName":
 				auth.CookieName = s
 			case "WithXSRFCookieName":
