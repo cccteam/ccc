@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.15](https://github.com/cccteam/ccc/compare/impulse/v0.5.14...impulse/v0.5.15) (2026-10-25)
+
+
+### Bug Fixes
+
+* **impulse:** add site and new --site lay in the new site's router package before go mod tidy, so a site is added to an application whose router is generated ([#1136](https://github.com/cccteam/ccc/issues/1136)) ([69cf941](https://github.com/cccteam/ccc/commit/69cf941106683214a99373bc097175db4ae2e554))
+
 ## [0.5.14](https://github.com/cccteam/ccc/compare/impulse/v0.5.13...impulse/v0.5.14) (2026-10-25)
 
 
