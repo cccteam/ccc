@@ -43,9 +43,12 @@ const (
 // is deleted.
 //
 // It refuses to run when the window is under MinimumWindow, when no row holds any key
-// in the store, since the holders handed to it would then be the wrong ones, and when
-// the unclaimed share of the aged objects is above UnclaimedShare with at least
-// UnclaimedFloor unclaimed, since the live keys were then most likely not all read. It
+// in the store while aged objects are in it, since the holders handed to it would then
+// be the wrong ones, and when the unclaimed share of the aged objects is above
+// UnclaimedShare with at least UnclaimedFloor unclaimed, since the live keys were then
+// most likely not all read. A store with nothing aged to delete, empty or holding only
+// young objects, is reported and left alone whether or not a row holds a key: an
+// application that has stored no file yet runs its daily cleanup without a failure. It
 // touches only UUID-shaped names: an object named any other way belongs to its row and
 // is never the cleanup's.
 type Cleanup struct {
@@ -126,9 +129,6 @@ func (c *Cleanup) Run(ctx context.Context) (*Report, error) {
 		return nil, err
 	}
 	report.Live = len(live)
-	if len(live) == 0 {
-		return nil, errors.Newf("no row holds any key in %s; the cleanup refuses to empty a store whose holders it was not given", c.Store)
-	}
 
 	cutoff := now().Add(-window)
 	var orphans []string
@@ -144,6 +144,9 @@ func (c *Cleanup) Run(ctx context.Context) (*Report, error) {
 		if _, held := live[obj.Key]; !held {
 			orphans = append(orphans, obj.Key)
 		}
+	}
+	if report.Aged > 0 && len(live) == 0 {
+		return nil, errors.Newf("no row holds any key in %s; the cleanup refuses to empty a store whose holders it was not given", c.Store)
 	}
 	slices.Sort(orphans)
 	report.Orphans = orphans

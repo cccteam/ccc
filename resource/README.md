@@ -1444,8 +1444,10 @@ the framework cannot verify the list is complete, so the window and the rules be
 stand between a forgotten package and a deleted file. The window is at least a day
 (`filestore.MinimumWindow`), two by default (`filestore.DefaultWindow`), and never
 shorter than the longest request or job. The cleanup refuses to run when no row holds
-any key in the store, since the holders it was handed would then be the wrong ones, and
-when the unclaimed share of the aged objects is above half (`filestore.UnclaimedShare`)
+any key in the store while aged objects are in it, since the holders it was handed would
+then be the wrong ones (a store with nothing aged to delete is reported and left alone,
+so an application that has stored no file yet runs its daily cleanup without a failure),
+and when the unclaimed share of the aged objects is above half (`filestore.UnclaimedShare`)
 with at least a hundred unclaimed (`filestore.UnclaimedFloor`), since the live keys were
 then most likely not all read; it touches only UUID-shaped names, so an object named by
 its row (an adopter's existing files) is never the cleanup's; and a dry run lists what it
