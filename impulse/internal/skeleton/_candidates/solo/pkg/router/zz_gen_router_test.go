@@ -26,7 +26,8 @@ import (
 var routerRootChain = []string{"LogExporter", "SecurityHeaders"}
 
 // routerOutletChain is one outlet's middleware in order: group runs in front of the
-// outlet's session routes, guards additionally in front of its generated routes.
+// outlet's session routes, or a machine outlet's device-flow endpoints; guards
+// additionally in front of its generated routes.
 type routerOutletChain struct {
 	group  []string
 	guards []string
@@ -67,7 +68,9 @@ type routerSessionRoute struct {
 	validated bool
 }
 
-// routerSessionRoutes lists every session outlet's routes.
+// routerSessionRoutes lists every session outlet's routes, and the device-flow
+// endpoints under each machine outlet's prefix, served by the issuing auth's surface
+// in front of the token check.
 func routerSessionRoutes() []routerSessionRoute {
 	return []routerSessionRoute{
 		{url: "/api/user/methods", suffix: "/user/methods", method: http.MethodGet, handler: "Methods"},
@@ -150,7 +153,8 @@ func TestGeneratedRouter(t *testing.T) {
 // pending and sign-in routes answer behind the outlet's group and before its session
 // guard, a sign-in's POSTs behind the XSRF guard alone: a browser reaches them without
 // a validated session; the routes a signed-in person calls (an invitation's acceptance,
-// the address) answer behind both guards.
+// the address, the token page) answer behind both guards; and a machine outlet's
+// device-flow endpoints answer behind its group and before its token check.
 func TestGeneratedRouterSessionRoutes(t *testing.T) {
 	t.Parallel()
 
@@ -540,7 +544,7 @@ func (b *routerUnreadBody) Read([]byte) (int, error) {
 // server's release in X-Api-Version before any handler runs or its body is read, a
 // request without the header or with a version that is not a release on either side
 // is answered, the session routes and the stored-file routes answer at any release,
-// an API-key outlet is never checked, every answer of an outlet names the server's
+// a machine outlet is never checked, every answer of an outlet names the server's
 // release in X-Api-Version, and the check sits behind the outlet's guards and ahead
 // of its hook.
 func TestGeneratedRouterAPIVersion(t *testing.T) {
@@ -754,8 +758,8 @@ func (s *routerDefaultSessionStub) ValidateXSRFToken(next http.Handler) http.Han
 
 // routerHandlersStub satisfies Handlers for the router tests: the generated surface
 // through the routes test's stub, the session surfaces through the outlets' session
-// stubs, and every middleware and browser-application handler recording under its own
-// name.
+// stubs, the token surfaces through the machine outlets' token stubs, and every
+// middleware and browser-application handler recording under its own name.
 type routerHandlersStub struct {
 	*generatedHandlersStub
 	*routerDefaultSessionStub
