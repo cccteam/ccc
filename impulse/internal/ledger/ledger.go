@@ -421,7 +421,7 @@ var Steps = []Step{
 			ccc v0.3.5
 			ccc/accesstypes v0.7.0
 			ccc/cloud v0.2.1
-			ccc/resource v0.15.10-0.20261025204541-dce3534b85d8
+			ccc/resource v0.15.10
 			ccc/tracer v0.3.0
 			db-initiator v0.4.3
 			httpio v0.7.22
@@ -434,8 +434,7 @@ var Steps = []Step{
 			@cccteam/resource-firestore 0.0.10
 		`),
 		Impulse: release("v0.5.16"),
-		Pending: true,
-		Note:    "session v0.13.10 and the resource package at the commit that retires APIKey(): a machine outlet declares the auth whose Auth issues its bearer tokens, Tokens(importPath), and the generated router carries the token check, the device flow's endpoints under the outlet's prefix and the token routes on the issuing auth's session outlet; an application regenerates its router, declares Tokens on each machine outlet, gives its auth package the device and token handlers, the tokens and device codes tables and the outlet's registration (session.RegisterMachineOutlet beside the sign-in methods, as the outlets skeleton's staff package shows), and replaces its hand-written <Outlet>Auth middleware with the <Outlet>Tokens getter returning that registration; a configured machine key becomes a token the application issues",
+		Note:    "session v0.13.10 and resource v0.15.10, which retires APIKey(): a machine outlet declares the auth whose Auth issues its bearer tokens, Tokens(importPath), and the generated router carries the token check, the device flow's endpoints under the outlet's prefix and the token routes on the issuing auth's session outlet; an application regenerates its router, declares Tokens on each machine outlet, gives its auth package the device and token handlers, the tokens and device codes tables and the outlet's registration (session.RegisterMachineOutlet beside the sign-in methods, as the outlets skeleton's staff package shows), and replaces its hand-written <Outlet>Auth middleware with the <Outlet>Tokens getter returning that registration; a configured machine key becomes a token the application issues",
 	},
 }
 
