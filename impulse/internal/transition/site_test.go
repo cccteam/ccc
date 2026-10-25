@@ -3,9 +3,12 @@ package transition
 import (
 	"go/format"
 	"os"
+	"path"
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/go-playground/errors/v5"
 
 	"github.com/cccteam/ccc/impulse/app"
 	"github.com/cccteam/ccc/impulse/internal/names"
@@ -117,6 +120,30 @@ func siteData() string {
 func flatSite(t *testing.T) *app.App {
 	t.Helper()
 
+	return beacon(t, flatSiteFiles(t))
+}
+
+// generatedRouterSite is the beacon application with a flat site whose router package is
+// generated code alone, as a skeleton's pkg/router is: no hand-written file for add site
+// to copy, while the main package and the authorization harness import the package.
+func generatedRouterSite(t *testing.T) *app.App {
+	t.Helper()
+
+	a := beacon(t, flatSiteFiles(t))
+	if err := os.Remove(a.Abs("pkg/router/router.go")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(a.Abs("pkg/router/zz_gen_router.go"), []byte("package router\n\nimport \"example.com/acme/beacon/app\"\n\nfunc New(a *app.App) any { return generatedRoutes(a) }\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	return mustDiscover(t, a.Root)
+}
+
+// flatSiteFiles is the flat site's file set over the auth's.
+func flatSiteFiles(t *testing.T) map[string]string {
+	t.Helper()
+
 	files := authFiles(t)
 	files["main.go"] = siteMain
 	files["app/app.go"] = siteApp
@@ -135,7 +162,14 @@ func flatSite(t *testing.T) *app.App {
 	files["web/.yalc/@cccteam/resource/package.json"] = "{}\n"
 	files["web/bun.lock"] = "{\n  \"workspaces\": {\n    \"\": {\n      \"name\": \"beacon-web\",\n    },\n  },\n}\n"
 
-	return beacon(t, files)
+	return files
+}
+
+// siteRegenerated is the command sequence add site runs: the new site's generate program
+// alone, so its router package exists, then the module is made whole, then everything is
+// regenerated.
+func siteRegenerated(site string) []string {
+	return append([]string{"go run ./" + site + "generator"}, regenerated...)
 }
 
 func TestSiteValidate(t *testing.T) {
@@ -351,8 +385,8 @@ func TestSiteApplyPromotes(t *testing.T) {
 	if p.Layout != app.LayoutSites || len(p.Sites) != 2 || p.Sites[0].Name != "console" || p.Sites[1].Name != "portal" || len(p.Shared) != 1 {
 		t.Errorf("profile = %+v", p)
 	}
-	if !slices.Equal(regenerated, exec.calls) {
-		t.Errorf("exec calls = %q, want %q", exec.calls, regenerated)
+	if want := siteRegenerated("portal"); !slices.Equal(want, exec.calls) {
+		t.Errorf("exec calls = %q, want %q", exec.calls, want)
 	}
 }
 
@@ -427,6 +461,132 @@ func TestSiteApplyAddsToSites(t *testing.T) {
 	sites := siteNames(p)
 	if len(p.Sites) != 3 || !strings.Contains(sites, "kiosk") {
 		t.Errorf("profile sites = %s", sites)
+	}
+}
+
+// TestSiteApplyGeneratesRouterFirst: the new site's router package is generated code
+// alone, so nothing is copied into it and the site's generate program runs before go mod
+// tidy, which otherwise refuses the module for the site's imports of a package that does
+// not exist.
+func TestSiteApplyGeneratesRouterFirst(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		// promoted adds the site to an application already in the sites layout: the
+		// flat application is promoted first, with portal beside console.
+		promoted bool
+		site     Site
+		// router is the new site's router package, which the program lays in.
+		router string
+		// fails makes the program fail.
+		fails   bool
+		wantErr string
+	}{
+		{
+			name:   "a flat application whose router is generated gains a second site",
+			site:   Site{Name: "portal", Existing: "console"},
+			router: "apps/portal/pkg/router",
+		},
+		{
+			name:     "an application in the sites layout gains a third site",
+			promoted: true,
+			site:     Site{Name: "kiosk"},
+			router:   "apps/kiosk/pkg/router",
+		},
+		{
+			name:    "the program fails before the tidy",
+			site:    Site{Name: "portal", Existing: "console"},
+			router:  "apps/portal/pkg/router",
+			fails:   true,
+			wantErr: "go run ./portalgenerator failed in cmd/generate, so the portal site's router package is not generated and go mod tidy cannot resolve the site's imports; fix the cause and run it there, then go mod tidy and go generate ./...:\ngeneration: boom",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			a := generatedRouterSite(t)
+			if tt.promoted {
+				first := &fakeExec{program: layRouter(a, "apps/portal/pkg/router")}
+				if _, err := (Site{Name: "portal", Existing: "console"}).Apply(t.Context(), a, first); err != nil {
+					t.Fatalf("promotion: %v", err)
+				}
+				a = mustDiscover(t, a.Root)
+			}
+			// What the program and the tidy see of the router package when each runs.
+			routerBeforeProgram, routerAtTidy := true, false
+			exec := &fakeExec{
+				program: func() error {
+					_, err := os.Stat(a.Abs(tt.router))
+					routerBeforeProgram = err == nil
+					if tt.fails {
+						return errors.New("boom")
+					}
+
+					return layRouter(a, tt.router)()
+				},
+				tidy: func() error {
+					_, err := os.Stat(a.Abs(path.Join(tt.router, "zz_gen_router.go")))
+					routerAtTidy = err == nil
+
+					return nil
+				},
+			}
+			ch, err := tt.site.Apply(t.Context(), a, exec)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("Apply() error = %v, want %q", err, tt.wantErr)
+				}
+				if want := []string{"go run ./" + tt.site.Name + "generator"}; !slices.Equal(want, exec.calls) {
+					t.Errorf("exec calls = %q, want %q: a failed program refuses the transition before the tidy", exec.calls, want)
+				}
+
+				return
+			}
+			if err != nil {
+				t.Fatalf("Apply() error = %v", err)
+			}
+			if want := siteRegenerated(tt.site.Name); !slices.Equal(want, exec.calls) {
+				t.Errorf("exec calls = %q, want %q", exec.calls, want)
+			}
+			if routerBeforeProgram {
+				t.Errorf("%s: exists before the program ran; the copy lays no generated file in", tt.router)
+			}
+			if !routerAtTidy {
+				t.Errorf("%s: missing when go mod tidy ran", tt.router)
+			}
+			// The site imports the package the program laid in, and nothing else of the
+			// first site's router came along.
+			if got := read(t, a, path.Join(sitesDir, tt.site.Name, "main.go")); !strings.Contains(got, `"example.com/acme/beacon/`+tt.router+`"`) {
+				t.Errorf("main.go lacks the router import:\n%s", got)
+			}
+			entries, err := os.ReadDir(a.Abs(tt.router))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(entries) != 1 || entries[0].Name() != "zz_gen_router.go" {
+				t.Errorf("%s holds %d entries, want the program's zz_gen_router.go alone", tt.router, len(entries))
+			}
+			if want := "cmd/generate: ran ./" + tt.site.Name + "generator before go mod tidy, so the " + tt.site.Name + " site's router package, generated code alone, exists when tidy reads the site's imports"; !slices.Contains(ch.Did, want) {
+				t.Errorf("Did lacks %q:\n%s", want, strings.Join(ch.Did, "\n"))
+			}
+		})
+	}
+}
+
+// layRouter is a generate program's script: it writes the site's router package, as the
+// generator does on a run.
+func layRouter(a *app.App, router string) func() error {
+	return func() error {
+		if err := os.MkdirAll(a.Abs(router), 0o755); err != nil {
+			return errors.Wrap(err, "os.MkdirAll()")
+		}
+		if err := os.WriteFile(a.Abs(path.Join(router, "zz_gen_router.go")), []byte("package router\n"), 0o644); err != nil {
+			return errors.Wrap(err, "os.WriteFile()")
+		}
+
+		return nil
 	}
 }
 

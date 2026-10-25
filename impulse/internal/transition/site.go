@@ -175,7 +175,11 @@ func (s Site) Apply(ctx context.Context, a *app.App, exec check.Execer) (*Change
 		}
 		first = a.Profile().Sites[0]
 	}
-	if err := s.copySite(a, &first, ch); err != nil {
+	program, err := s.copySite(a, &first, ch)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.generateSite(ctx, a, exec, program, ch); err != nil {
 		return nil, err
 	}
 	writeCI(a, ch, fmt.Sprintf("an angular-%s job for %s", s.Name, path.Join(sitesDir, s.Name, "web")))
@@ -1093,8 +1097,9 @@ func (s Site) addDirective(a *app.App, genDir string, ch *Change) error {
 
 // copySite lays in the new site beside the first: its hand-written Go files with the
 // imports renamed, an empty resources package, its browser workspace, its generator and
-// directive, its processes, and its place in the shared generator and the union.
-func (s Site) copySite(a *app.App, first *app.Site, ch *Change) error {
+// directive, its processes, and its place in the shared generator and the union. Returns
+// the root-relative directory of the site's generate program.
+func (s Site) copySite(a *app.App, first *app.Site, ch *Change) (string, error) {
 	modulePath := a.GoMod.Module.Mod.Path
 	from, to := first.Dir, path.Join(sitesDir, s.Name)
 	g := first.Generator
@@ -1109,7 +1114,7 @@ func (s Site) copySite(a *app.App, first *app.Site, ch *Change) error {
 			continue
 		}
 		if _, err := copyGoFiles(a, dir, strings.Replace(dir, from, to, 1), rewrites); err != nil {
-			return err
+			return "", err
 		}
 	}
 	resourcesDir := strings.Replace(g.ResourcePackageDir, from, to, 1)
@@ -1128,7 +1133,7 @@ func defaultConfig() resource.Config {
 	}
 }
 `, s.Name)); err != nil {
-		return err
+		return "", err
 	}
 	ch.didf("%s: the %s site, its main package, handlers, router, and authorization harness copied from the %s site with the imports renamed, and an empty resources package (every resource stays the %s site's until it is moved or declared in both)", to, s.Name, first.Name, first.Name)
 
@@ -1141,20 +1146,42 @@ func defaultConfig() resource.Config {
 		}
 	}
 	// The generator.
-	if err := s.copyGenerator(a, g, from, to, webDir, project, ch); err != nil {
-		return err
+	program, err := s.copyGenerator(a, g, from, to, webDir, project, ch)
+	if err != nil {
+		return "", err
 	}
 	// The processes.
 	s.addProcesses(a, first, from, to, webDir, project, port, ch)
 	// The shared generator's target and the union, when the application had sites already.
 	if shared := a.SharedGenerators(); len(shared) > 0 {
 		if err := s.addSharedTarget(a, shared[0], s.newClientDir(a, g, from, to, webDir, project), ch); err != nil {
-			return err
+			return "", err
 		}
 		if err := s.extendUnion(a, modulePath, ch); err != nil {
-			return err
+			return "", err
 		}
 	}
+
+	return program, nil
+}
+
+// generateSite runs the new site's generate program alone, from the generators'
+// directory as its directive runs it, before the module is made whole. The site's router
+// is generated code alone (a skeleton's pkg/router holds no hand-written file), so the
+// copy laid no router package in, while the site's main package, handlers and
+// authorization harness import it, and go mod tidy refuses a module whose packages import
+// what does not exist. The program builds without the tidy: it is the first site's
+// program with the site's directories, and imports nothing go.mod does not require
+// already. The regeneration after the tidy runs it again with every other program, and
+// that run records the warnings. A failed run refuses the transition, as a failed tidy
+// does: the site is laid in, but its router is not.
+func (s Site) generateSite(ctx context.Context, a *app.App, exec check.Execer, program string, ch *Change) error {
+	dir, name := path.Dir(program), "./"+path.Base(program)
+	out, err := exec.Run(ctx, a.Abs(dir), nil, "go", "run", name)
+	if err != nil {
+		return errors.Newf("go run %s failed in %s, so the %s site's router package is not generated and go mod tidy cannot resolve the site's imports; fix the cause and run it there, then go mod tidy and go generate ./...:\n%s", name, dir, s.Name, strings.TrimSpace(string(out)))
+	}
+	ch.didf("%s: ran %s before go mod tidy, so the %s site's router package, generated code alone, exists when tidy reads the site's imports", dir, name, s.Name)
 
 	return nil
 }
@@ -1408,8 +1435,9 @@ func (s Site) renameProject(a *app.App, to string, old *app.AngularProject, port
 }
 
 // copyGenerator writes the new site's generator program as a copy of the first site's
-// with the site's directories, and runs it from the directive.
-func (s Site) copyGenerator(a *app.App, g *app.Generator, from, to, webDir, project string, ch *Change) error {
+// with the site's directories, and runs it from the directive. Returns the program's
+// root-relative directory.
+func (s Site) copyGenerator(a *app.App, g *app.Generator, from, to, webDir, project string, ch *Change) (string, error) {
 	modulePath := a.GoMod.Module.Mod.Path
 	var oldRoot, newWeb string
 	if webDir != "" && project != "" {
@@ -1435,7 +1463,7 @@ func (s Site) copyGenerator(a *app.App, g *app.Generator, from, to, webDir, proj
 	srcDir := path.Dir(g.File)
 	entries, err := os.ReadDir(a.Abs(srcDir))
 	if err != nil {
-		return errors.Wrap(err, "os.ReadDir()")
+		return "", errors.Wrap(err, "os.ReadDir()")
 	}
 	genDir := s.Name + "generator"
 	dstDir := path.Join(path.Dir(srcDir), genDir)
@@ -1445,19 +1473,19 @@ func (s Site) copyGenerator(a *app.App, g *app.Generator, from, to, webDir, proj
 		}
 		data, _, err := readFile(a, path.Join(srcDir, entry.Name()))
 		if err != nil {
-			return err
+			return "", err
 		}
 		if err := writeNew(a, path.Join(dstDir, entry.Name()), rewrite(string(data))); err != nil {
-			return err
+			return "", err
 		}
 	}
 	file := path.Join(dstDir, path.Base(g.File))
 	if err := s.addDirective(a, genDir, ch); err != nil {
-		return err
+		return "", err
 	}
 	ch.didf("%s: the %s site's generator, a copy of %s reading and writing under %s", file, s.Name, g.File, to)
 
-	return nil
+	return dstDir, nil
 }
 
 // addProcesses adds the new site's serve process and browser process to the Procfile,
