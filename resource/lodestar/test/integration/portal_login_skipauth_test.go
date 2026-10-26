@@ -43,20 +43,18 @@ func (b *browser) loginPortal(ctx context.Context, user string, roles ...string)
 }
 
 // loginConsoleGoogle signs the browser in on the console as user through the fleet's
-// simulated Google directory, in the named role groups, and returns the callback's
-// status and where it sent the browser. The console's Google registration reads its own
-// pair, APP_GOOGLE_USERNAME and APP_GOOGLE_ROLES, so the portal's client is untouched.
+// simulated Google directory and returns the callback's status and where it sent the
+// browser. The console's Google registration reads its own setting, APP_GOOGLE_USERNAME,
+// so the portal's client is untouched; it names no groups, since the crew's roles are the
+// application's on every method.
 //
 // Demonstrates: auth.multi-method.
-func (b *browser) loginConsoleGoogle(ctx context.Context, user string, roles ...string) (status int, location string) {
+func (b *browser) loginConsoleGoogle(ctx context.Context, user string) (status int, location string) {
 	b.t.Helper()
 
 	simulatedLogin.Lock()
 	defer simulatedLogin.Unlock()
 	if err := os.Setenv("APP_GOOGLE_USERNAME", user); err != nil {
-		b.t.Fatal(err)
-	}
-	if err := os.Setenv("APP_GOOGLE_ROLES", strings.Join(roles, ",")); err != nil {
 		b.t.Fatal(err)
 	}
 

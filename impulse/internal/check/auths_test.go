@@ -261,6 +261,58 @@ func New(ctx context.Context, db *cloudspanner.Client, key string, collection ac
 func (a *Auth) Session() *Session { return a.session }
 `
 
+// membersAuthBeside is membersAuth with the password method registered beside the
+// directory's registration.
+const membersAuthBeside = `package members
+
+import (
+	"context"
+	_ "embed"
+
+	cloudspanner "cloud.google.com/go/spanner"
+	"github.com/cccteam/access"
+	"github.com/cccteam/session"
+	"github.com/cccteam/session/azure"
+	"github.com/cccteam/session/sessionstorage"
+	"github.com/cccteam/session/signin"
+)
+
+const (
+	Name        = "members"
+	TablePrefix = "Members"
+)
+
+//go:embed roles.json
+var roleFile access.RoleFile
+
+func Roles() access.RoleFile { return roleFile }
+
+type Session = session.Auth[session.NoCustomData, session.NoCustomData, *cloudspanner.ReadWriteTransaction]
+
+type Auth struct {
+	session *Session
+}
+
+func New(ctx context.Context, db *cloudspanner.Client, key string, collection access.PermissionCollection) (*Auth, error) {
+	if _, err := access.New(nil, access.WithDefaultRoles(collection, Roles())); err != nil {
+		return nil, err
+	}
+	s, err := session.NewAuth[session.NoCustomData, session.NoCustomData](sessionstorage.NewSpannerAuth(db), key,
+		session.WithSessionTableName(TablePrefix+"Sessions"), session.WithUserTableName(TablePrefix+"SessionUsers"))
+	if err != nil {
+		return nil, err
+	}
+	session.PasswordSignIn(s)
+	if _, err := azure.SignIn(s, "directory", signin.MembersOfDirectory, &azure.Config{Tenants: azure.Tenant(""), RoleSync: %s}); err != nil {
+		return nil, err
+	}
+
+	return &Auth{session: s}, nil
+}
+
+func (a *Auth) Session() *Session { return a.session }
+`
+
 const (
 	membersConfig = `package config
 
@@ -542,6 +594,25 @@ func TestAuthsWired(t *testing.T) {
 			wantStatus: Fail, wantSummary: "1 auth wiring problem(s)",
 			wantDetails: []string{
 				"cmd/generate/main.go:15: outlet default declares the azure method directory with .SyncsRoles() on the members auth, but pkg/auth/members/members.go:40 registers it with DisableRoleSync; the users surface would leave these people's roles to a directory that writes none (register it with RoleSync, or drop .SyncsRoles())",
+			},
+		},
+		{
+			name: "a directory method registered with RoleSync beside the password method is named: it stands alone on its auth",
+			files: map[string]string{
+				"pkg/auth/members/members.go": fmt.Sprintf(membersAuthBeside, "signin.RoleSync(nil)"),
+				"pkg/auth/members/roles.json": rolesJSON,
+				"pkg/config/data.go":          membersConfig,
+				"pkg/deploy/deploy.go":        staffDeploy,
+				"pkg/deploy/deploy_test.go":   membersValidation,
+				"cmd/generate/main.go": program("pkg/resources",
+					`generation.GenerateHandlers("app"),`,
+					`generation.GenerateRouter(),`,
+					`generation.GenerateRoutes("pkg/router", "api", generation.Auth("example.com/harbor/pkg/auth/members", generation.PasswordMethod(), generation.AzureMethod("directory").SyncsRoles())),`,
+				),
+			},
+			wantStatus: Fail, wantSummary: "1 auth wiring problem(s)",
+			wantDetails: []string{
+				"pkg/auth/members/members.go:41: the members auth registers the azure method directory with RoleSync beside password: a registration whose directory writes the roles stands alone on its auth, since the directory is then the authority for everyone the auth holds, and session.NewAuth refuses the second registration; give directory an auth of its own, or register it with DisableRoleSync and declare it without .SyncsRoles() so the application assigns the roles",
 			},
 		},
 		{

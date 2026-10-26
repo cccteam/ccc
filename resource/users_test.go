@@ -32,7 +32,7 @@ func (testUserAuth) UserSurfaceDeclaration() UserSurfaceDeclaration {
 		DomainParam: "sectorID",
 		Shape: UserSurfaceShape{
 			Password:      true,
-			Registrations: []UserRegistration{{Name: "google", Kind: "google", Label: "Google", SyncsRoles: true}},
+			Registrations: []UserRegistration{{Name: "google", Kind: "google", Label: "Google"}},
 		},
 	}
 }
@@ -332,8 +332,8 @@ func (a userTestApp) CursorKey() *CursorKey                         { return a.k
 func (userTestApp) ResourceClient() Client                          { return userTestClient{} }
 
 // The personas: the caller (an administrator), a pilot linked through the directory
-// (roles synced, in Acme), a clerk seated in the Anvil sector alone, and a marshal
-// seated in every sector.
+// (in Acme; the crew's directory leaves the roles to the application), a clerk seated in
+// the Anvil sector alone, and a marshal seated in every sector.
 var (
 	anvil   = accesstypes.Domain("anvil")
 	bastion = accesstypes.Domain("bastion")
@@ -519,8 +519,8 @@ func TestUserSurface_lists(t *testing.T) {
 				if got := rows[4]["everywhereRoles"]; !cmp.Equal(got, []any{"Pilot"}) {
 					t.Errorf("pilot everywhereRoles = %v", got)
 				}
-				if got := rows[4]["rolesSynced"]; got != true {
-					t.Errorf("pilot rolesSynced = %v, want true: the directory writes the roles", got)
+				if got := rows[4]["rolesSynced"]; got != false {
+					t.Errorf("pilot rolesSynced = %v, want false: the crew's directory leaves the roles to the application", got)
 				}
 				if _, leaked := rows[0]["disabled"]; leaked {
 					t.Errorf("disabled rendered without a grant on the field")
@@ -1125,15 +1125,6 @@ func TestUserSurface_seatWrites(t *testing.T) {
 			wantCode: http.StatusBadRequest,
 		},
 		{
-			name:   "a directory's user is not seated by hand",
-			grant:  func(p *scriptedPermissions) { p.grant(accesstypes.Create, "CrewSeats") },
-			target: "/crew-seats",
-			body: func(f *userFixture) string {
-				return fmt.Sprintf(`[{"op":"add","path":"/%s/Marshal","value":{}}]`, f.user(t, "pilot").ID)
-			},
-			wantCode: http.StatusConflict,
-		},
-		{
 			name:   "nobody unseats themselves",
 			grant:  func(p *scriptedPermissions) { p.grant(accesstypes.Delete, "CrewSeats") },
 			target: "/crew-seats",
@@ -1358,7 +1349,7 @@ func TestRegisterUserSurface_collection(t *testing.T) {
 	}{
 		{
 			name:  "one auth with a password and a directory, tenanted",
-			decls: []UserSurfaceDeclaration{{Auth: "Crew", Tenant: "Sector", DomainParam: "sectorID", Shape: UserSurfaceShape{Password: true, Registrations: []UserRegistration{{Name: "google", Kind: "google", Label: "Google", SyncsRoles: true}}}}},
+			decls: []UserSurfaceDeclaration{{Auth: "Crew", Tenant: "Sector", DomainParam: "sectorID", Shape: UserSurfaceShape{Password: true, Registrations: []UserRegistration{{Name: "google", Kind: "google", Label: "Google"}}}}},
 		},
 		{
 			name: "two auths, the second with a directory alone, no tenancy",
@@ -1380,6 +1371,142 @@ func TestRegisterUserSurface_collection(t *testing.T) {
 			}
 			if _, err := NewGeneratedCollection(b.Data()); err != nil {
 				t.Fatalf("NewGeneratedCollection() error = %v", err)
+			}
+		})
+	}
+}
+
+// testDirectoryAuth is a surface whose one registration syncs roles: the directory is the
+// authority for everyone the Auth holds.
+type testDirectoryAuth struct{}
+
+func (testDirectoryAuth) UserSurfaceDeclaration() UserSurfaceDeclaration {
+	return UserSurfaceDeclaration{
+		Auth:  "Fleet",
+		Shape: UserSurfaceShape{Registrations: []UserRegistration{{Name: "google", Kind: "google", Label: "Google", SyncsRoles: true}}},
+	}
+}
+
+// newDirectoryFixture is the world of a surface whose directory writes the roles: two
+// people linked through it, the caller seated as Administrator by the directory.
+func newDirectoryFixture(t *testing.T) *userFixture {
+	t.Helper()
+	signedIn := time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)
+	adminID, pilotID := mustUUID(t), mustUUID(t)
+	accounts := &fakeAccounts{
+		users: []UserAccount{
+			{ID: adminID, Username: "admin", CreatedAt: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC), LastSignInAt: &signedIn},
+			{ID: pilotID, Username: "pilot", CreatedAt: time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC)},
+		},
+		identities: map[ccc.UUID][]UserIdentity{
+			adminID: {{ID: mustUUID(t), Method: "google", Connection: "google", Subject: "sub-admin", LinkedAt: signedIn, LastUsedAt: signedIn}},
+			pilotID: {{ID: mustUUID(t), Method: "google", Connection: "google", Subject: "sub-pilot", LinkedAt: signedIn, LastUsedAt: signedIn}},
+		},
+	}
+	seats := &fakeSeats{roles: map[accesstypes.PolicyScope][]accesstypes.Role{global: {"Administrator", "Pilot"}}}
+	seats.seat(global, "Administrator", "admin")
+	seats.seat(global, "Pilot", "pilot")
+	perms := &scriptedPermissions{user: "admin"}
+	b := NewCollectionBuilder()
+	decl := testDirectoryAuth{}.UserSurfaceDeclaration()
+	if err := RegisterUserSurface(b, &decl, true); err != nil {
+		t.Fatalf("RegisterUserSurface() error = %v", err)
+	}
+	collection := b.GeneratedCollection()
+	f := &userFixture{accounts: accounts, seats: seats, perms: perms, declarations: map[accesstypes.Domain]*signin.TenantDeclaration{}}
+	surface := NewUserSurface[testDirectoryAuth](accounts, seats)
+	app := userTestApp{perms: perms, key: mustCursorKey(t, base64.StdEncoding.EncodeToString([]byte("users-test-cookie-key-32-bytes!!")))}
+
+	n := surface.Names()
+	r := chi.NewRouter()
+	r.Get("/"+n.Global.UsersRoute, surface.Users(app, collection))
+	r.Patch("/"+n.Global.UsersRoute, surface.PatchUsers(app, collection))
+	r.Get("/"+n.Global.SeatsRoute, surface.Seats(app, collection))
+	r.Patch("/"+n.Global.SeatsRoute, surface.PatchSeats(app, collection))
+	f.router = r
+
+	return f
+}
+
+// TestUserSurface_directoryAuthority pins the surface of an Auth whose registration syncs
+// roles, which stands alone there: every row says rolesSynced, and a seat is neither made
+// nor removed by hand, since the directory writes the roles at every sign-in.
+func TestUserSurface_directoryAuthority(t *testing.T) {
+	t.Parallel()
+
+	t.Run("every row says the directory writes the roles", func(t *testing.T) {
+		t.Parallel()
+		f := newDirectoryFixture(t)
+		f.perms.grant(accesstypes.List, "FleetUsers", "FleetUsers.username", "FleetUsers.roles", "FleetUsers.rolesSynced")
+
+		code, body := f.do(t, http.MethodGet, "/fleet-users", "")
+		if code != http.StatusOK {
+			t.Fatalf("status = %d, want 200: %s", code, body)
+		}
+		var rows []map[string]any
+		if err := json.Unmarshal(body, &rows); err != nil {
+			t.Fatalf("rows: %v: %s", err, body)
+		}
+		if len(rows) != 2 {
+			t.Fatalf("rows = %d, want 2: %s", len(rows), body)
+		}
+		for _, row := range rows {
+			if row["rolesSynced"] != true {
+				t.Errorf("%v rolesSynced = %v, want true", row["username"], row["rolesSynced"])
+			}
+		}
+	})
+	t.Run("a seat is not made by hand", func(t *testing.T) {
+		t.Parallel()
+		f := newDirectoryFixture(t)
+		f.perms.grant(accesstypes.Create, "FleetSeats")
+
+		code, body := f.do(t, http.MethodPatch, "/fleet-seats", fmt.Sprintf(`[{"op":"add","path":"/%s/Administrator","value":{}}]`, f.user(t, "pilot").ID))
+		if code != http.StatusConflict || !strings.Contains(string(body), "written by their directory") {
+			t.Fatalf("status = %d, want 409 naming the directory: %s", code, body)
+		}
+	})
+	t.Run("a seat is not removed by hand", func(t *testing.T) {
+		t.Parallel()
+		f := newDirectoryFixture(t)
+		f.perms.grant(accesstypes.Delete, "FleetSeats")
+
+		code, body := f.do(t, http.MethodPatch, "/fleet-seats", fmt.Sprintf(`[{"op":"remove","path":"/%s/Pilot"}]`, f.user(t, "pilot").ID))
+		if code != http.StatusConflict || !strings.Contains(string(body), "unseat them there") {
+			t.Fatalf("status = %d, want 409 naming the directory: %s", code, body)
+		}
+	})
+}
+
+// TestUserSurfaceDeclaration_syncingRegistrationStandsAlone pins Validate's refusal of a
+// registration that syncs roles beside another method.
+func TestUserSurfaceDeclaration_syncingRegistrationStandsAlone(t *testing.T) {
+	t.Parallel()
+
+	syncing := UserRegistration{Name: "google", Kind: "google", Label: "Google", SyncsRoles: true}
+	plain := UserRegistration{Name: "entra", Kind: "azure", Label: "Microsoft"}
+	tests := []struct {
+		name    string
+		shape   UserSurfaceShape
+		wantErr bool
+	}{
+		{name: "a syncing registration alone", shape: UserSurfaceShape{Registrations: []UserRegistration{syncing}}},
+		{name: "a password and a registration that leaves the roles to the application", shape: UserSurfaceShape{Password: true, Registrations: []UserRegistration{plain}}},
+		{name: "a syncing registration beside the password method", shape: UserSurfaceShape{Password: true, Registrations: []UserRegistration{syncing}}, wantErr: true},
+		{name: "a syncing registration beside another registration", shape: UserSurfaceShape{Registrations: []UserRegistration{plain, syncing}}, wantErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			d := &UserSurfaceDeclaration{Auth: "Fleet", Shape: tt.shape}
+
+			err := d.Validate()
+
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("Validate() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if tt.wantErr && !strings.Contains(err.Error(), "stands alone on its Auth") {
+				t.Errorf("Validate() error = %v, want the rule named", err)
 			}
 		})
 	}

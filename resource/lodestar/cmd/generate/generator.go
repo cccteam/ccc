@@ -35,10 +35,11 @@ func NewGenerator(ctx context.Context) (generation.Generator, error) {
 			// directory under the registration name the auth
 			// package gives it (crew.GoogleRegistration), which the router mounts at
 			// /console/api/user/google/login and tells the login page about. The
-			// directory writes a Google sign-in's roles at every sign-in (crew.go's
-			// RoleSync), so the registration declares SyncsRoles: the user-management
-			// surface the generator serves for the crew leaves such a user's seats to
-			// the directory.
+			// crew's roles are the application's on every method (crew.go registers the
+			// directory with DisableRoleSync): a registration whose directory writes the
+			// roles stands alone on its auth, which the members auth below shows; the
+			// user-management surface the generator serves for the crew seats everyone
+			// by hand.
 			//
 			// The third method is the sign-up registration (crew.SignUpRegistration):
 			// any Google account under the open sign-up rule, declared OpenSignUp, which
@@ -47,7 +48,7 @@ func NewGenerator(ctx context.Context) (generation.Generator, error) {
 			// /console/api/user/sign-up/login and the login page offers it under its label.
 			//
 			// Demonstrates: auth.multi-method, auth.user-management, auth.open-sign-up, auth.password-sign-up.
-			generation.Auth("github.com/cccteam/ccc/resource/lodestar/pkg/auth/crew", generation.PasswordMethod().OpenSignUp(), generation.GoogleMethod("google").SyncsRoles(), generation.GoogleMethod("sign-up").Labeled("Sign up with Google").OpenSignUp()),
+			generation.Auth("github.com/cccteam/ccc/resource/lodestar/pkg/auth/crew", generation.PasswordMethod().OpenSignUp(), generation.GoogleMethod("google"), generation.GoogleMethod("sign-up").Labeled("Sign up with Google").OpenSignUp()),
 			generation.WebApp("/console"),
 			// The console also manages the members: the members auth's users, seats and
 			// roles are served under /console/api beside the crew's, through the members

@@ -324,6 +324,8 @@ func TestAuthValidate(t *testing.T) {
 		{name: "a password auth", auth: Auth{Name: "partners", Outlet: "default"}},
 		{name: "a password auth, said so", auth: Auth{Name: "partners", Methods: []authpkg.Method{{Kind: app.MethodPassword}}, Outlet: "default"}},
 		{name: "a bad name", auth: Auth{Name: "Partners", Outlet: "default"}, wantErr: `auth name "Partners"`},
+		{name: "a directory-authority method beside the password method", auth: Auth{Name: "partners", Methods: []authpkg.Method{{Kind: app.MethodPassword}, {Kind: app.MethodGoogle, Name: "workspace", Authority: AuthorityDirectory}}, Outlet: "default"}, wantErr: "a registration whose directory writes the roles stands alone on its auth"},
+		{name: "two directory-authority methods", auth: Auth{Name: "partners", Methods: []authpkg.Method{{Kind: app.MethodAzure, Name: "directory", Authority: AuthorityDirectory}, {Kind: app.MethodGoogle, Name: "workspace", Authority: AuthorityDirectory}}, Outlet: "default"}, wantErr: "stands alone on its auth"},
 		{name: "a directory auth with the directory as authority", auth: Auth{Name: "partners", Methods: []authpkg.Method{{Kind: app.MethodAzure, Name: "directory", Authority: AuthorityDirectory}}, Outlet: "default"}},
 		{name: "a directory auth with the application as authority", auth: Auth{Name: "partners", Methods: []authpkg.Method{{Kind: app.MethodAzure, Name: "directory", Authority: AuthorityApplication}}, Outlet: "default"}},
 		{name: "a directory auth without an authority", auth: Auth{Name: "partners", Methods: []authpkg.Method{{Kind: app.MethodAzure, Name: "directory"}}, Outlet: "default"}, wantErr: "the directory method needs --authority"},

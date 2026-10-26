@@ -114,9 +114,10 @@ type UserRegistration struct {
 	// Invited marks a registration admitting invited users only: the surface creates
 	// the user, without a password, and the person signs in through the directory.
 	Invited bool
-	// SyncsRoles marks a registration that writes a user's roles from its directory at
-	// every sign-in: the seats of a user linked through it are the directory's, shown
-	// and never written here.
+	// SyncsRoles marks a registration that writes the roles from its directory at every
+	// sign-in. Such a registration stands alone on its Auth (Validate refuses another
+	// method beside it), so the directory is the authority for everyone the surface
+	// holds: every row says rolesSynced, and the seats are shown and never written here.
 	SyncsRoles bool
 }
 
@@ -153,38 +154,18 @@ func (s UserSurfaceShape) passwordOnCreate() passwordOnCreate {
 	}
 }
 
-// registrationOf finds the registration an identity was linked through: by the
-// identity's connection, which carries the registration's name, else by the method's
-// kind.
-func (s UserSurfaceShape) registrationOf(identity *UserIdentity) (UserRegistration, bool) {
-	for _, r := range s.Registrations {
-		if identity.Connection != "" && r.Name == identity.Connection {
-			return r, true
-		}
-	}
-	for _, r := range s.Registrations {
-		if r.Kind == identity.Method {
-			return r, true
-		}
-	}
-
-	return UserRegistration{}, false
-}
-
-// syncsRoles reports whether any of the identities was linked through a registration
-// that writes the user's roles.
-func (s UserSurfaceShape) syncsRoles(identities []UserIdentity) bool {
-	for i := range identities {
-		if r, ok := s.registrationOf(&identities[i]); ok && r.SyncsRoles {
-			return true
-		}
-	}
-
-	return false
+// rolesSynced reports whether a directory writes the roles of everyone the surface
+// holds: the Auth's registration syncs roles. Such a registration stands alone on its
+// Auth, so the fact is the Auth's, never read from an identity link (a link carries the
+// directory's connection, which several registrations may select, and the registration
+// that wrote it is not recorded).
+func (s UserSurfaceShape) rolesSynced() bool {
+	return slices.ContainsFunc(s.Registrations, func(r UserRegistration) bool { return r.SyncsRoles })
 }
 
 // Validate refuses a declaration the surface cannot serve: an Auth name that is not
-// PascalCase, a tenant without its route parameter, a registration without a name.
+// PascalCase, a tenant without its route parameter, a registration without a name, a
+// registration that syncs roles beside another method.
 func (d *UserSurfaceDeclaration) Validate() error {
 	if !pascalName(d.Auth) {
 		return errors.Newf("resource.UserSurfaceDeclaration: Auth %q is not a PascalCase name", d.Auth)
@@ -204,6 +185,11 @@ func (d *UserSurfaceDeclaration) Validate() error {
 			return errors.Newf("resource.UserSurfaceDeclaration: registration %q is declared twice", r.Name)
 		}
 		seen[r.Name] = true
+	}
+	for _, r := range d.Shape.Registrations {
+		if r.SyncsRoles && (d.Shape.Password || len(d.Shape.Registrations) > 1) {
+			return errors.Newf("resource.UserSurfaceDeclaration: registration %q syncs roles beside another method: a registration whose directory writes the roles stands alone on its Auth", r.Name)
+		}
 	}
 
 	return nil

@@ -114,6 +114,7 @@ func (authsWired) packageFindings(a *app.App, profile app.Profile, p *app.AuthPa
 				continue
 			}
 			details = append(details, directoryWriters(a, p, m)...)
+			details = append(details, standsAlone(p, auth, m)...)
 		}
 	}
 
@@ -432,6 +433,26 @@ func RoleSyncUndeclaredMethods(a *app.App) []RoleSyncUndeclared {
 	}
 
 	return found
+}
+
+// standsAlone holds the rule that a registration whose directory writes the roles stands
+// alone on its auth: the directory is then the authority for everyone the auth holds,
+// and a second way in is a second authority over the same people (a person it
+// provisions holds nothing, and the users surface refuses to seat them because the
+// directory will not). The session library refuses the registration at construction;
+// this names it before the application starts.
+func standsAlone(p *app.AuthPackage, auth *app.Auth, m *app.Method) []string {
+	if len(auth.Methods) < 2 {
+		return nil
+	}
+	others := make([]string, 0, len(auth.Methods)-1)
+	for i := range auth.Methods {
+		if o := &auth.Methods[i]; o.Name != m.Name {
+			others = append(others, o.Name)
+		}
+	}
+
+	return []string{fmt.Sprintf("%s:%d: the %s auth registers the %s method %s with RoleSync beside %s: a registration whose directory writes the roles stands alone on its auth, since the directory is then the authority for everyone the auth holds, and session.NewAuth refuses the second registration; give %s an auth of its own, or register it with DisableRoleSync and declare it without .SyncsRoles() so the application assigns the roles", m.File, m.Line, p.Name, m.Kind, m.Name, strings.Join(others, ", "), m.Name)}
 }
 
 // directoryWriters finds role assignments in the store of an auth whose membership is the

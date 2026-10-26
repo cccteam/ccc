@@ -456,7 +456,7 @@ stays for applications that keep a hand-written router. Lodestar's program:
 ```go
 generation.GenerateRouter(),
 generation.GenerateRoutes("pkg/router", "api",
-	generation.Auth("github.com/cccteam/ccc/resource/lodestar/pkg/auth/crew", generation.PasswordMethod(), generation.GoogleMethod("google").SyncsRoles()),
+	generation.Auth("github.com/cccteam/ccc/resource/lodestar/pkg/auth/crew", generation.PasswordMethod(), generation.GoogleMethod("google")),
 	generation.Manages("github.com/cccteam/ccc/resource/lodestar/pkg/auth/members"),
 	generation.WebApp("/console"),
 ),
@@ -469,7 +469,9 @@ generation.WithRouterOutlet("portal", "portal/api",
 
 A registration's `.InvitedUsers()` and `.SyncsRoles()`, and an outlet's `Manages(importPath)`,
 describe the Auth's user-management surface (section 21): what a directory admits, whose
-seats it writes, and which other Auth's users the outlet manages.
+seats it writes, and which other Auth's users the outlet manages. A registration declaring
+`.SyncsRoles()` stands alone on its Auth: the directory is then the authority for everyone
+the Auth holds, and a second method beside it is refused.
 
 Under `GenerateRouter` every outlet says how it authenticates, one way: an outlet with
 neither `Auth` nor `Tokens`, or with both, fails generation, as do a machine outlet with
@@ -2158,15 +2160,17 @@ optional password, the set-password method and the forced change: a password an 
 sets marks the account, and the person changes it before anything else is served (section
 8 lists the change route the router mounts). A registration declaring `InvitedUsers()`
 gives create without a password: the directory admits only people the application created
-first. A registration declaring `SyncsRoles()` writes the roles of the people who sign in
-through it at every sign-in, so the surface leaves their seats to the directory: seating
-or unseating such a user by hand is refused with 409, and their row says `rolesSynced`.
-An Auth with no password method and no invited-users registration creates nobody; its
-Unlink method exists once it has any registration. Several Auths give one surface each.
+first. A registration declaring `SyncsRoles()` writes the roles of everyone on its Auth at
+every sign-in, and stands alone there (the generator refuses another method beside it,
+since the directory is then the authority for everyone the Auth holds), so the surface
+leaves every seat to the directory: seating or unseating a user by hand is refused with
+409, and every row says `rolesSynced`. An Auth with no password method and no
+invited-users registration creates nobody; its Unlink method exists once it has any
+registration. Several Auths give one surface each.
 
 ```go
 generation.GenerateRoutes("pkg/router", "console/api",
-	generation.Auth("…/pkg/auth/crew", generation.PasswordMethod(), generation.GoogleMethod("google").SyncsRoles()),
+	generation.Auth("…/pkg/auth/crew", generation.PasswordMethod(), generation.GoogleMethod("google")),
 	generation.Manages("…/pkg/auth/members"),
 	generation.WebApp("/console"),
 ),

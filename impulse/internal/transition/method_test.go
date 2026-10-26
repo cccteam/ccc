@@ -46,6 +46,7 @@ func TestMethodValidate(t *testing.T) {
 		{name: "a directory method without an authority", method: Method{Auth: "staff", Spec: authpkg.Method{Kind: app.MethodAzure, Name: "directory"}}, wantErr: "the directory method needs --authority"},
 		{name: "a slot the kind lacks", method: Method{Auth: "staff", Spec: authpkg.Method{Kind: app.MethodAzure, Name: "directory", Authority: AuthorityApplication, Slot: "galaxy"}}, wantErr: "galaxy"},
 		{name: "the directory authority with any organization", method: Method{Auth: "staff", Spec: authpkg.Method{Kind: app.MethodAzure, Name: "directory", Authority: AuthorityDirectory, Slot: authpkg.SlotAny}}, wantErr: "directory"},
+		{name: "the directory authority beside the password method", method: Method{Auth: "staff", Spec: authpkg.Method{Kind: app.MethodGoogle, Name: "workspace", Authority: AuthorityDirectory}}, wantErr: "a registration whose directory writes the roles stands alone on its auth"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -123,36 +124,6 @@ func TestMethodApply(t *testing.T) {
 			},
 		},
 		{
-			name:   "a Google method under the directory authority names the role groups' prefix the registration validates",
-			method: Method{Auth: "staff", Spec: authpkg.Method{Kind: app.MethodGoogle, Name: "workspace", Authority: AuthorityDirectory}},
-			wantDid: []string{
-				"pkg/auth/staff/workspace.go: the workspace method (google, one Workspace, members of the directory, role membership the directory's): its registration constant, its settings, its handlers (WorkspaceLogin and the rest), and registerWorkspace, which registers it on the Auth",
-			},
-			wantSkipped: []string{
-				"pkg/config/data.go: no environment struct (env := &T{}) to add the workspace method's variables to; read APP_STAFF_WORKSPACE_HOSTED_DOMAIN, APP_STAFF_WORKSPACE_CLIENT_ID, APP_STAFF_WORKSPACE_CLIENT_SECRET, APP_STAFF_WORKSPACE_REDIRECT_URL, APP_STAFF_WORKSPACE_GROUP_PREFIX, APP_STAFF_WORKSPACE_GROUP_LOOKUP and pass them in staff.Settings.Workspace",
-				`test/integration/harness_test.go and cmd/deployment/migrate/main_test.go: the workspace registration validates its organization slot and its role groups' prefix at registration whether or not the directory is simulated, so give the staff auth's construction in the harness Workspace: staff.WorkspaceSettings{HostedDomain: "example.com", RedirectURL: <the served callback>, GroupPrefix: "staff-"} and set APP_STAFF_WORKSPACE_HOSTED_DOMAIN=example.com and APP_STAFF_WORKSPACE_GROUP_PREFIX=staff- where the migrate run's environment is`,
-			},
-			wantNotSkipped: []string{"GroupLookup", "GROUP_LOOKUP=", "RedirectURL: <the served callback>}"},
-			check: func(t *testing.T, a *app.App) {
-				t.Helper()
-				file := read(t, a, "pkg/auth/staff/workspace.go")
-				for _, want := range []string{"google.Workspace(WorkspaceRegistration, settings.Workspace.HostedDomain)", "google.RoleSync(accessClient.UserManager(), settings.Workspace.GroupPrefix, lookup)", "google.ParseGroupLookup(settings.Workspace.GroupLookup)", "declaration on every outlet chains .SyncsRoles()"} {
-					if !strings.Contains(file, want) {
-						t.Errorf("workspace.go lacks %q:\n%s", want, file)
-					}
-				}
-				// The declaration says what the method file does: the directory writes the
-				// roles, so the users surface the generator emits never does.
-				if program := read(t, a, "cmd/generate/resourcegenerator/main.go"); !strings.Contains(program, `generation.Auth("example.com/acme/beacon/pkg/auth/staff", generation.PasswordMethod(), generation.GoogleMethod("workspace").SyncsRoles())`) {
-					t.Errorf("program = %s", program)
-				}
-				meaning := (&Method{Auth: "staff", Spec: authpkg.Method{Kind: app.MethodGoogle, Name: "workspace", Authority: AuthorityDirectory}}).Meaning()
-				if !strings.Contains(meaning, "The declaration chains `.SyncsRoles()` (the method file's `RoleSync`), so the generated users surface shows these people's roles as the directory's and never writes them.") {
-					t.Errorf("Meaning() lacks the declaration's flag:\n%s", meaning)
-				}
-			},
-		},
-		{
 			name:   "a Google method admitting invited users only declares .InvitedUsers() and writes the rule to its file",
 			method: Method{Auth: "staff", Spec: authpkg.Method{Kind: app.MethodGoogle, Name: "workspace", Authority: AuthorityApplication, Accounts: authpkg.AccountsInvited}},
 			wantDid: []string{
@@ -199,13 +170,13 @@ func TestMethodApply(t *testing.T) {
 			},
 		},
 		{
-			name:   "an Entra method under the directory authority, read from the environment struct",
-			method: Method{Auth: "staff", Spec: authpkg.Method{Kind: app.MethodAzure, Name: "directory", Authority: AuthorityDirectory}},
+			name:   "an Entra method under the application authority, read from the environment struct",
+			method: Method{Auth: "staff", Spec: authpkg.Method{Kind: app.MethodAzure, Name: "directory", Authority: AuthorityApplication}},
 			extra:  map[string]string{"pkg/config/data.go": authConfigEnv},
 			wantDid: []string{
-				"pkg/auth/staff/directory.go: the directory method (azure, one tenant, members of the directory, role membership the directory's): its registration constant, its settings, its handlers (DirectoryLogin and the rest), and registerDirectory, which registers it on the Auth",
+				"pkg/auth/staff/directory.go: the directory method (azure, one tenant, members of the directory, role membership the application's): its registration constant, its settings, its handlers (DirectoryLogin and the rest), and registerDirectory, which registers it on the Auth",
 				"pkg/config/data.go: dataConfig reads the staff auth's directory registration from APP_STAFF_DIRECTORY_TENANT_ID, APP_STAFF_DIRECTORY_CLIENT_ID, APP_STAFF_DIRECTORY_CLIENT_SECRET, APP_STAFF_DIRECTORY_REDIRECT_URL, and the staff.Settings literal in NewDataConfiguration (an application composed before the staffSettings method) passes them",
-				`cmd/generate/resourcegenerator/main.go: generation.AzureMethod("directory").SyncsRoles() declared on 1 outlet Auth option(s) bound to the staff auth, so the generated router mounts user/directory/login, the callback and the front-channel logout and the methods route offers it`,
+				`cmd/generate/resourcegenerator/main.go: generation.AzureMethod("directory") declared on 1 outlet Auth option(s) bound to the staff auth, so the generated router mounts user/directory/login, the callback and the front-channel logout and the methods route offers it`,
 			},
 			wantSkipped: []string{
 				"pkg/config/data.go: LoginURL is set to /login when the construction had none; make it the login page of the surface bound to the staff auth",
@@ -215,7 +186,7 @@ func TestMethodApply(t *testing.T) {
 			check: func(t *testing.T, a *app.App) {
 				t.Helper()
 				file := read(t, a, "pkg/auth/staff/directory.go")
-				for _, want := range []string{"azure.Tenant(settings.Directory.TenantID)", "signin.RoleSync(accessClient.UserManager())", "func (h *Handlers) DirectoryFrontChannelLogout() http.HandlerFunc"} {
+				for _, want := range []string{"azure.Tenant(settings.Directory.TenantID)", "signin.DisableRoleSync()", "func (h *Handlers) DirectoryFrontChannelLogout() http.HandlerFunc"} {
 					if !strings.Contains(file, want) {
 						t.Errorf("directory.go lacks %q:\n%s", want, file)
 					}
