@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.5.21](https://github.com/cccteam/ccc/compare/impulse/v0.5.20...impulse/v0.5.21) (2026-10-26)
+
+
+### Features
+
+* **impulse:** CI lints each rendered skeleton with the application's own golangci-lint configuration under both tag sets, so a skeleton line an application's lint rejects fails in ccc ([#1157](https://github.com/cccteam/ccc/issues/1157)) ([35a3da1](https://github.com/cccteam/ccc/commit/35a3da10e74fd07c054cfd653b2e8d9cbde495b6))
+* **impulse:** the login-held check holds every login page rendering the library's login component to the shape that holds its card back while the component's arrival reads are in flight, with a page reading the signal its own way passing and a browser application rendering the component nowhere noted ([926eb23](https://github.com/cccteam/ccc/commit/926eb23193887c8624276cfbfa34bfb167590d3b))
+* **impulse:** the v0.5.21 ledger step raises the login pages' shape as the walk's obligation, so an application that passed the v0.5.19 step with its pages untouched has them wired by the agent ([926eb23](https://github.com/cccteam/ccc/commit/926eb23193887c8624276cfbfa34bfb167590d3b))
+
 ## [0.5.20](https://github.com/cccteam/ccc/compare/impulse/v0.5.19...impulse/v0.5.20) (2026-10-26)
 
 
