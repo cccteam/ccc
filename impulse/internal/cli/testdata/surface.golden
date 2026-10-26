@@ -145,6 +145,7 @@ checks:
   sites-wired
   web-wired
   login-pages
+  login-held
   maintenance-switch
   session-tables
   migrations-reader
