@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.11](https://github.com/cccteam/ccc/compare/resource/v0.15.10...resource/v0.15.11) (2026-10-26)
+
+
+### Features
+
+* the console carries the token page and the device approval page: the descriptor names the machine outlets a console's auth issues for, and the auth names its device page ([#1146](https://github.com/cccteam/ccc/issues/1146)) ([7a3162c](https://github.com/cccteam/ccc/commit/7a3162cbdf749bc9aaa86e312e8b0192dc1f5fb0))
+
 ## [0.15.10](https://github.com/cccteam/ccc/compare/resource/v0.15.9...resource/v0.15.10) (2026-10-25)
 
 
