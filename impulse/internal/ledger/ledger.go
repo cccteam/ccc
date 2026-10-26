@@ -457,6 +457,27 @@ var Steps = []Step{
 		Impulse: release("v0.5.18"),
 		Note:    "the console carries the token page and the device approval page: the generated descriptor of a console whose auth issues tokens names the five routes and the machine outlets it issues for, and the auth names its device page (Settings.DevicePage, passed as session.WithDeviceVerificationURL; the data level names \"<mount>/device\", which the login-pages check holds). An application with a machine outlet mounts <ccc-tokens /> at <mount>/tokens (a navigation item without a permission) and <ccc-device-approval /> at <mount>/device, both from @cccteam/resource-angular/ccc-tokens, by hand per the outlets-flavor skeleton; the web pins move with this step to the ccc-lib release that carries the entry.",
 	},
+	{
+		Pins: pins(`
+			access v0.11.1
+			ccc v0.3.5
+			ccc/accesstypes v0.7.0
+			ccc/cloud v0.2.1
+			ccc/resource v0.15.11
+			ccc/tracer v0.3.0
+			db-initiator v0.4.3
+			httpio v0.7.22
+			logger v0.1.30
+			session v0.13.10
+		`),
+		Web: web(`
+			@cccteam/resource 0.0.13
+			@cccteam/resource-angular 0.0.17
+			@cccteam/resource-firestore 0.0.11
+		`),
+		Impulse: release("v0.5.19"),
+		Note:    "the skeletons' login pages hold their card back while the login component's arrival reads are in flight: the page binds the card's arriving class to the component's arriving signal through a template reference (<mat-card class=\"login-card\" [class.arriving]=\"methods.arriving()\"> over <ccc-login-methods #methods>) and hides the card while the class is on (.login-card.arriving { visibility: hidden }), so a page shows nothing until the component knows what it renders and then renders whole, with no progress bar on every load (the component itself renders nothing while arriving, from @cccteam/resource-angular 0.0.17, which the step before pinned); the development sign-in note leaves the login pages for the README; an application's own login pages take the shape by hand, the skeletons' being the pattern; no pin moves",
+	},
 }
 
 // validatePending holds a step's Pending mark to its pins: a pin at a pseudo-version

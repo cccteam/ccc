@@ -1,5 +1,5 @@
 <div class="login-page">
-  <mat-card class="login-card" appearance="outlined">
+  <mat-card class="login-card" [class.arriving]="methods.arriving()" appearance="outlined">
     <mat-card-header>
       <mat-card-title>Outlets Portal</mat-card-title>
       <mat-card-subtitle>The portal: a second browser application on the same site</mat-card-subtitle>
@@ -8,14 +8,7 @@
       <p>
         Sign in with your organization account. The directory verifies who you are; the portal decides what you may do.
       </p>
-      <ccc-login-methods home="/dashboard" [labels]="labels" (signedIn)="go($event)" />
-      <p class="hint">
-        Development: the server runs with the session library's <code>skipAuth</code> tag, which simulates the
-        directory, so every login is <code>APP_USERNAME</code> from <code>.envrc</code> (<code>client</code>, a member
-        of north). Its roles come from <code>cmd/bootstrap/users.json</code>. The button is the library's login
-        component, rendered from what the server lists at <code>user/methods</code>; the page names no path of its own,
-        only its own words for the directory.
-      </p>
+      <ccc-login-methods #methods home="/dashboard" [labels]="labels" (signedIn)="go($event)" />
     </mat-card-content>
     <mat-card-footer class="release"><ccc-release /></mat-card-footer>
   </mat-card>

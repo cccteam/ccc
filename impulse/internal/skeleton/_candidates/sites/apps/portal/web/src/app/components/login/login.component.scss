@@ -10,6 +10,13 @@
   padding: 64px 24px;
 }
 
+// The card is held back while the login component's arrival reads are in flight
+// (methods.arriving()), so a load shows nothing and then the whole card, the way a page
+// loads; nothing stands in for it meanwhile.
+.login-card.arriving {
+  visibility: hidden;
+}
+
 .login-card {
   width: 360px;
   padding: 8px;
@@ -17,12 +24,6 @@
   mat-card-header {
     margin-bottom: 16px;
   }
-}
-
-.hint {
-  margin: 12px 0 0;
-  font-size: 12px;
-  color: rgba(0, 0, 0, 0.6);
 }
 
 .release {

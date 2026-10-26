@@ -1,5 +1,5 @@
 <div class="login-page">
-  <mat-card class="login-card" appearance="outlined">
+  <mat-card class="login-card" [class.arriving]="methods.arriving()" appearance="outlined">
     <mat-card-header>
       <mat-card-title>✦ Lodestar Client Portal</mat-card-title>
       <mat-card-subtitle>Track the calls and missions your company booked</mat-card-subtitle>
@@ -9,7 +9,7 @@
         Sign in with your company account. The directory says who you are and which groups you hold; the groups are your
         roles here.
       </p>
-      <ccc-login-methods home="/tracker" [labels]="labels" (signedIn)="go($event)" />
+      <ccc-login-methods #methods home="/tracker" [labels]="labels" (signedIn)="go($event)" />
       <div class="manifest">
         @for (persona of manifest; track persona.login) {
           <div class="persona">
@@ -19,13 +19,6 @@
           </div>
         }
       </div>
-      <p class="hint">
-        Development: the server runs with the session library's <code>skipAuth</code> tag, which simulates the
-        directory, so every login is <code>APP_USERNAME</code> from <code>.envrc</code> (<code>client</code>) in the
-        groups <code>APP_ROLES</code> names. No Google tenant is contacted. The button is the library's login component,
-        rendered from what the server lists at <code>user/methods</code>; the page names no path of its own, only its
-        own words for the directory.
-      </p>
     </mat-card-content>
     <mat-card-footer class="release"><ccc-release /></mat-card-footer>
   </mat-card>
