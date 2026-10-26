@@ -66,8 +66,8 @@ github.com/cccteam/ccc/impulse v0.0.0-20261002140325-0702ef849363 h1:VEbj1GuIApo
 github.com/cccteam/ccc/impulse v0.0.0-20261002140325-0702ef849363/go.mod h1:WGcS75SP04O5Gn2TsTGqgp8+RdNK09LUoz14Ku9wwgQ=
 github.com/cccteam/ccc/pkg v0.1.7 h1:H0VZfI4p4w+Jb7QPFmtEWECxI3spYvCx+CPgT7E4Fkg=
 github.com/cccteam/ccc/pkg v0.1.7/go.mod h1:WZ6hrpp+ci1N8iFb/qItR6zScmGxwXqnqgPw6UPmMTc=
-github.com/cccteam/ccc/resource v0.15.11-0.20261026035242-f9c5d8317c70 h1:ui0uygy+L3GDs3fgMvaXanY1DTWaD764scXHoob9jFg=
-github.com/cccteam/ccc/resource v0.15.11-0.20261026035242-f9c5d8317c70/go.mod h1:Pf9kFcHdFr/TX9ae71Kq5O15vbM5YxZ3seBNXbn/g64=
+github.com/cccteam/ccc/resource v0.15.11 h1:+o/sxO0kGEgLDGj2QK0HNFPw8oIBCpBN6GNWWmXlWUc=
+github.com/cccteam/ccc/resource v0.15.11/go.mod h1:Pf9kFcHdFr/TX9ae71Kq5O15vbM5YxZ3seBNXbn/g64=
 github.com/cccteam/ccc/securehash v0.0.17 h1:1G4yvrZ73j1QPkv6HT/H5OQ2C3kev66TQWbOaIsJL1Q=
 github.com/cccteam/ccc/securehash v0.0.17/go.mod h1:gOM3Nu+PGzBfNz0qsM+UyOGNK3HHaH0Nqd7Fis0ntmA=
 github.com/cccteam/ccc/tracer v0.3.0 h1:8oM3zGSsvNuyTy0OWVrc46Z6nqI7r86Z0cNN3bw7CuU=
