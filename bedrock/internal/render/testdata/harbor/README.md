@@ -262,10 +262,15 @@ from `2-env`'s state.
   image only while a serving revision uses it, and an old revision needs the
   shared registry's copy to start again. The service and the job are created
   with a placeholder image.
-  From the first deploy on, the image
-  and the labels and annotations a deploy stamps are the pipeline's
-  (`ignore_changes`); identity, scaling, variables, and secret mounts stay
-  this stack's. The service's port is named `h2c`: the site's main package imports the
+  From the first deploy on, the revision template is the pipeline's
+  (`ignore_changes`): this stack keeps each service standing (its name, its
+  ingress, its protection) and says in its `revision_templates` output what
+  a revision of it runs with (identity, scaling, variables, secret mounts, as
+  this stack evaluates them), and `bedrock deploy service` builds every
+  revision from that and the release's image, so a release runs under its own
+  release's configuration, forward or back (a rollback applies no stack), and
+  an apply never starts a revision. Each build's job is built the same way
+  from the output's `job`. The service's port is named `h2c`: the site's main package imports the
   framework's server (`github.com/cccteam/ccc/resource/server`), which speaks HTTP/1.1 and unencrypted
   HTTP/2 on one listener, so Cloud Run talks HTTP/2 to the container and the 32 MiB
   bounds of HTTP/1 request and response bodies no longer apply; the maintenance
@@ -627,8 +632,11 @@ substitutions and this stack's outputs:
   refuses a build whose connection or repository name is empty, so nothing is
   submitted by hand.
 - The services are deployed through the Cloud Run API by `bedrock deploy
-  service`, which changes the image and the labels and leaves the template's
-  variables, secrets and identity alone: the revision template is this stack's.
+  service`, which builds each revision's template from this stack's
+  `revision_templates` output (read off the stack the build applied, or off
+  the plan of the release's stack in a rollback run, which applies none) and
+  the release's image: the configuration a revision runs under is its own
+  release's.
   `deploy migrate` runs the release's migrate command, which `deploy
   build-image` took out of the image, on the build worker as the deploy
   identity, with `_MIGRATE_ENV`'s variables and the release in
@@ -1184,6 +1192,7 @@ Per environment, after the first apply:
 | `jobs_job` | `{ name, region, resource }` of the job process's Cloud Run job. |
 | `net_hosts` | The `hosts` entries for `2-net`: each hostname mapped to the backend service URI. |
 | `registry` | `<hostname>/<project>/<repository>`; null until `2-shr` registers harbor. |
+| `revision_templates` | Per service name, what its revision runs with (`serviceAccount`, `maxInstances`, `timeout`, `port`, `http2`, `args`, `cpu`, `memory`, `labels`, `env`, `secrets` by variable as `{ secret, version }`), and `job` for the job process; the pipeline builds every revision and job from it. |
 | `secrets` | Per variable: `secret_id` and the pinned `version` (null when unpinned). |
 | `services` | Per region code: `name`, `region`, `uri`. |
 | `stack_id` | The stack's id (four hex characters): the suffix of the names Google keeps after a delete, and the prefix of the stack's deployment records. |

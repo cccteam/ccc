@@ -49,15 +49,17 @@ func TestJobs(t *testing.T) {
 		return resources
 	}
 	tests := []struct {
-		name         string
-		env          string
-		run          *fakeRun
-		policies     map[string]map[string]any
-		wantOut      []string
-		wantCreated  []string
-		wantPatched  []string
-		wantBindings []any
-		wantErr      string
+		name     string
+		env      string
+		run      *fakeRun
+		policies map[string]map[string]any
+		// noJobTemplate leaves the job out of the release's revision templates.
+		noJobTemplate bool
+		wantOut       []string
+		wantCreated   []string
+		wantPatched   []string
+		wantBindings  []any
+		wantErr       string
 	}{
 		{
 			name:    "a torn-down environment does nothing",
@@ -71,7 +73,7 @@ func TestJobs(t *testing.T) {
 			run:      newFakeRun(templates()),
 			policies: map[string]map[string]any{jobsTemplate: templatePolicy},
 			wantOut: []string{
-				"=== Making job [harbor-jobs-v1-2-3] from [harbor-jobs] on this image ===",
+				"=== Making job [harbor-jobs-v1-2-3] after [harbor-jobs] on this image, under the release's own template ===",
 				"Job harbor-jobs-v1-2-3 created: the revision this build deploys starts it through the Cloud Run API; the pipeline does not run it.",
 				"Job harbor-jobs-v1-2-3 may be started by serviceAccount:harbor-app@tst-project.iam.gserviceaccount.com (roles/run.jobsExecutorWithOverrides), as the template's IAM policy says.",
 			},
@@ -101,10 +103,17 @@ func TestJobs(t *testing.T) {
 			wantCreated: []string{jobsJob},
 		},
 		{
-			name:    "a template the project lacks is refused",
+			name:    "a template the project lacks is refused at its policy",
 			env:     environment,
 			run:     newFakeRun(map[string]map[string]any{}),
 			wantErr: "Cloud Run answered HTTP 404 to GET /v2/" + jobsTemplate,
+		},
+		{
+			name:          "revision templates without the job, where the stack names a template job, are refused",
+			env:           environment,
+			run:           newFakeRun(templates()),
+			noJobTemplate: true,
+			wantErr:       "the release's revision templates carry no job template, where the stack names a template job (JOBS_JOB=us-central1=harbor-jobs)",
 		},
 		{
 			name:    "a build without a version is refused",
@@ -130,6 +139,9 @@ func TestJobs(t *testing.T) {
 			t.Parallel()
 
 			w := workspaceFiles(t, map[string]string{EnvironmentFile: tt.env, BuildFile: build})
+			if err := writeRevisionTemplates(w, testRevisionTemplates(t, !tt.noJobTemplate, "harbor-app")); err != nil {
+				t.Fatal(err)
+			}
 			for name, policy := range tt.policies {
 				tt.run.policies[name] = policy
 			}
@@ -170,6 +182,9 @@ func TestJobs(t *testing.T) {
 				container, err := firstContainer(task)
 				if err != nil || container["image"] != "reg/harbor@sha256:abc" {
 					t.Errorf("%s image = %v, want reg/harbor@sha256:abc", shortName(name), container["image"])
+				}
+				if vars, _ := container["env"].([]any); text(task, "serviceAccount") != jobsAccount || text(task, "timeout") != "1800s" || len(vars) != 1 {
+					t.Errorf("%s task is not the release's job template: %v", shortName(name), task)
 				}
 				if diff := cmp.Diff(wantLabels, job["labels"]); diff != "" {
 					t.Errorf("%s labels mismatch (-want +got):\n%s", shortName(name), diff)

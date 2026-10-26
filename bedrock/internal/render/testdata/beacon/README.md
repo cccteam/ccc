@@ -171,10 +171,14 @@ from `2-env`'s state.
   image and runs it on the build worker as the deploy identity, with the
   variables `locals.tf` derives for it (`migrate_env`, which `cloud-build.tf`
   passes to the pipeline as `_MIGRATE_ENV`).
-  From the first deploy on, the image
-  and the labels and annotations a deploy stamps are the pipeline's
-  (`ignore_changes`); identity, scaling, variables, and secret mounts stay
-  this stack's.
+  From the first deploy on, the revision template is the pipeline's
+  (`ignore_changes`): this stack keeps each service standing (its name, its
+  ingress, its protection) and says in its `revision_templates` output what
+  a revision of it runs with (identity, scaling, variables, secret mounts, as
+  this stack evaluates them), and `bedrock deploy service` builds every
+  revision from that and the release's image, so a release runs under its own
+  release's configuration, forward or back (a rollback applies no stack), and
+  an apply never starts a revision.
 - **Load balancer backend**: a serverless NEG per region and one global
   backend service `imp-<env>-gbl-beacon-backend` over both, external managed,
   outlier detection on (5 consecutive errors in a 1-second interval eject a
@@ -466,8 +470,11 @@ substitutions and this stack's outputs:
   refuses a build whose connection or repository name is empty, so nothing is
   submitted by hand.
 - The services are deployed through the Cloud Run API by `bedrock deploy
-  service`, which changes the image and the labels and leaves the template's
-  variables, secrets and identity alone: the revision template is this stack's.
+  service`, which builds each revision's template from this stack's
+  `revision_templates` output (read off the stack the build applied, or off
+  the plan of the release's stack in a rollback run, which applies none) and
+  the release's image: the configuration a revision runs under is its own
+  release's.
   `deploy migrate` runs the release's migrate command, which `deploy
   build-image` took out of the image, on the build worker as the deploy
   identity, with `_MIGRATE_ENV`'s variables and the release in
@@ -950,6 +957,7 @@ Per environment, after the first apply:
 | `identities` | `{ app }` runtime identity emails. |
 | `net_hosts` | The `hosts` entries for `2-net`: each hostname mapped to the backend service URI. |
 | `registry` | `<hostname>/<project>/<repository>`; null until `2-shr` registers beacon. |
+| `revision_templates` | Per service name, what its revision runs with (`serviceAccount`, `maxInstances`, `timeout`, `port`, `http2`, `args`, `cpu`, `memory`, `labels`, `env`, `secrets` by variable as `{ secret, version }`), and `job` for the job process (null); the pipeline builds every revision and job from it. |
 | `secrets` | Per variable: `secret_id` and the pinned `version` (null when unpinned). |
 | `services` | Per region code: `name`, `region`, `uri`. |
 | `stack_id` | The stack's id (four hex characters): the suffix of the names Google keeps after a delete, and the prefix of the stack's deployment records. |

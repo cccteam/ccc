@@ -65,6 +65,38 @@ output "registry" {
   value       = local.registry
 }
 
+output "revision_templates" {
+  description = "What each service's revision runs with, by service name, and the job process's job: identity, scaling, variables and secret mounts as this stack evaluates them. The pipeline builds every revision and job from it and the release's image (bedrock deploy service, deploy jobs), read off the stack it applied, or off the plan of the release's stack in a rollback run, so a release runs under its own release's configuration, forward or back, and no apply starts a revision."
+  value = {
+    services = {
+      for key, svc in google_cloud_run_v2_service.app : svc.name => {
+        serviceAccount = google_service_account.app.email
+        maxInstances   = local.max_instances
+        timeout        = "300s"
+        port           = 8080
+        http2          = true
+        args           = []
+        cpu            = "1"
+        memory         = "512Mi"
+        labels         = local.labels
+        env            = local.service_env
+        secrets        = { for name, s in local.mounted_secrets : name => { secret = local.secret_ids[name], version = tostring(s.version) } }
+      }
+    }
+    job = {
+      serviceAccount = google_service_account.jobs.email
+      timeout        = var.jobs_timeout
+      maxRetries     = var.jobs_retries
+      cpu            = var.jobs_resources.cpu
+      memory         = var.jobs_resources.memory
+      command        = ["/jobs"]
+      labels         = local.labels
+      env            = local.jobs_env
+      secrets        = { for name, s in local.jobs_mounted_secrets : name => { secret = local.secret_ids[name], version = tostring(s.version) } }
+    }
+  }
+}
+
 output "secrets" {
   description = "Secret container ID by the environment variable it feeds, and the version this environment runs (null when not pinned yet)."
   value = {

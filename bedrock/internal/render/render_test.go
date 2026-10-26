@@ -1379,25 +1379,23 @@ func TestMaxInstances(t *testing.T) {
 		absent     []string
 	}{
 		{
-			name: "no cap: Cloud Run's default, no scaling block, and no local",
-			caps: nil,
-			wantRun: []string{
-				"    # Scale to zero, and to Cloud Run's default maximum instances per region:\n    # the placement caps no environment (maxInstances). No scaling block: Cloud\n    # Run's defaults are exactly that, and a block setting only a minimum of\n    # zero is dropped by the service, which every later plan would add again.\n",
-			},
+			name:       "no cap: Cloud Run's default, no scaling block, and no local",
+			caps:       nil,
+			wantRun:    []string{"        maxInstances   = null\n"},
 			wantReadme: "It scales from zero to Cloud Run's default maximum instances per region, the placement capping no environment (`maxInstances`).",
-			absent:     []string{"max_instance_count", "max_instances", "scaling {"},
+			absent:     []string{"max_instance_count", "local.max_instances", "scaling {"},
 		},
 		{
 			name:       "the same cap in every environment",
 			caps:       map[string]int{"tst": 2, "stg": 2, "prd": 2},
-			wantRun:    []string{"    scaling {\n      min_instance_count = 0\n      max_instance_count = local.max_instances\n    }\n"},
+			wantRun:    []string{"        maxInstances   = local.max_instances\n"},
 			wantLocals: []string{"  max_instances = lookup({ tst = 2, stg = 2, prd = 2 }, var.environment, null)\n"},
 			wantReadme: "It scales from zero to at most 2 instances per region in every environment, the placement's cap (`maxInstances`).",
 		},
 		{
 			name:       "caps in some environments, the rest uncapped",
 			caps:       map[string]int{"tst": 1, "prd": 20},
-			wantRun:    []string{"      max_instance_count = local.max_instances\n"},
+			wantRun:    []string{"        maxInstances   = local.max_instances\n"},
 			wantLocals: []string{"  max_instances = lookup({ tst = 1, prd = 20 }, var.environment, null)\n"},
 			wantReadme: "It scales from zero to at most 1 instance per region in tst, 20 in prd, the placement's caps (`maxInstances`), and to Cloud Run's default maximum in stg.",
 		},
@@ -1419,8 +1417,8 @@ func TestMaxInstances(t *testing.T) {
 				}
 			}
 			for _, w := range tt.wantRun {
-				if !strings.Contains(text["cloud-run.tf"], w) {
-					t.Errorf("cloud-run.tf lacks:\n%s", w)
+				if !strings.Contains(text["outputs.tf"], w) {
+					t.Errorf("outputs.tf lacks:\n%s", w)
 				}
 			}
 			for _, w := range tt.wantLocals {

@@ -26,6 +26,7 @@ func TestReadStackOutputs(t *testing.T) {
 			Services: "us-central1=quill-pr7", JobsJob: "us-central1=quill-pr7-jobs", Hostname: "quill-pr7.example.dev",
 			MigrateEnv: `{"APP_SERVICE_NAME":"quill-migrate"}`, MigrateDatabases: `["projects/p/instances/i/databases/quill-pr7-db"]`, MigrateSecrets: pinnedVersions,
 			BuildArguments: map[string]string{"FIREBASE_API_KEY": "AIzaPr7Key"}, Timestamp: "2026-10-12T10:00:00Z",
+			RevisionTemplates: testRevisionTemplates(t, true, "quill-pr7"),
 		}
 		if change != nil {
 			change(&o)
@@ -146,6 +147,11 @@ func TestReadStackOutputs(t *testing.T) {
 				o.Services = ""
 			}),
 			wantErr: "the stack job's outputs name no services (" + named + ")",
+		},
+		{
+			name:    "an object without the revision templates is refused: the stack was applied by a bedrock before them",
+			object:  outputs(1, func(o *StackOutputs) { o.RevisionTemplates = nil }),
+			wantErr: "the stack job's outputs carry no revision templates (" + named + "): the pull request's stack was applied by a bedrock before them, and this build cannot deploy without them; comment /gcbrun again once the pin moves",
 		},
 		{
 			name:    "a tag build says so and ends",

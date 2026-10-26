@@ -208,10 +208,14 @@ from `2-env`'s state.
   image and runs it on the build worker as the deploy identity, with the
   variables `locals.tf` derives for it (`migrate_env`, which `cloud-build.tf`
   passes to the pipeline as `_MIGRATE_ENV`).
-  From the first deploy on, the image
-  and the labels and annotations a deploy stamps are the pipeline's
-  (`ignore_changes`); identity, scaling, variables, and secret mounts stay
-  this stack's. A service's port is named `h2c` when its site's main package imports the
+  From the first deploy on, the revision template is the pipeline's
+  (`ignore_changes`): this stack keeps each service standing (its name, its
+  ingress, its protection) and says in its `revision_templates` output what
+  a revision of it runs with (identity, scaling, variables, secret mounts, as
+  this stack evaluates them), and `bedrock deploy service` builds every
+  revision from that and the release's image, so a release runs under its own
+  release's configuration, forward or back (a rollback applies no stack), and
+  an apply never starts a revision. A service's port is named `h2c` when its site's main package imports the
   framework's server (`github.com/cccteam/ccc/resource/server`), which speaks HTTP/1.1 and unencrypted
   HTTP/2 on one listener, so Cloud Run talks HTTP/2 to the container and the 32 MiB
   bounds of HTTP/1 request and response bodies no longer apply (`console` and `portal`); the
@@ -565,8 +569,11 @@ substitutions and this stack's outputs:
   refuses a build whose connection or repository name is empty, so nothing is
   submitted by hand.
 - The services are deployed through the Cloud Run API by `bedrock deploy
-  service`, which changes the image and the labels and leaves the template's
-  variables, secrets and identity alone: the revision template is this stack's.
+  service`, which builds each revision's template from this stack's
+  `revision_templates` output (read off the stack the build applied, or off
+  the plan of the release's stack in a rollback run, which applies none) and
+  the release's image: the configuration a revision runs under is its own
+  release's.
   `deploy migrate` runs the release's migrate command, which `deploy
   build-image` took out of the image, on the build worker as the deploy
   identity, with `_MIGRATE_ENV`'s variables and the release in
@@ -1052,6 +1059,7 @@ Per environment, after the first apply:
 | `identities` | `{ app }` runtime identity emails. |
 | `net_hosts` | The `hosts` entries for `2-net`: each hostname mapped to its site's backend service URI. |
 | `registry` | `<hostname>/<project>/<repository>`; null until `2-shr` registers lantrn. |
+| `revision_templates` | Per service name, what its revision runs with (`serviceAccount`, `maxInstances`, `timeout`, `port`, `http2`, `args`, `cpu`, `memory`, `labels`, `env`, `secrets` by variable as `{ secret, version }`), and `job` for the job process (null); the pipeline builds every revision and job from it. |
 | `secrets` | Per variable: `secret_id` and the pinned `version` (null when unpinned). |
 | `services` | Per `<site>-<region code>`: `name`, `region`, `uri`. |
 | `sites` | Per site: its `hostnames` and `next_hostnames`, its `backend_service_id` and `next_backend_service_id` (null in a pull-request stack), and its `services` by region code. |

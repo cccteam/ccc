@@ -78,6 +78,10 @@ type StackOutputs struct {
 	MigrateSecrets   string            `json:"migrateSecrets,omitempty"`
 	MigrateDatabases string            `json:"migrateDatabases,omitempty"`
 	BuildArguments   map[string]string `json:"buildArguments,omitempty"`
+	// RevisionTemplates is the stack's revision_templates output as applied: what the
+	// preview build's deploy service and deploy jobs build the revisions and the job
+	// from.
+	RevisionTemplates *RevisionTemplates `json:"revisionTemplates,omitempty"`
 	// SharedDatabase says the stack has no database of its own (/gcbrun shared-db);
 	// DatabaseRecreated says the job replaced the pull request's database, and why.
 	SharedDatabase    bool   `json:"sharedDatabase,omitempty"`
@@ -195,8 +199,14 @@ func ReadStackOutputs(ctx context.Context, clients *Clients, w Workspace, out io
 	case o.Services == "":
 		return errors.Newf("the stack job's outputs name no services (gs://%s/%s)", bucket, object)
 	}
+	if o.RevisionTemplates == nil {
+		return errors.Newf("the stack job's outputs carry no revision templates (gs://%s/%s): the pull request's stack was applied by a bedrock before them, and this build cannot deploy without them; comment %s again once the pin moves", bucket, object, gcbrun)
+	}
 	facts := o.facts()
 	if err := w.Append(facts); err != nil {
+		return err
+	}
+	if err := writeRevisionTemplates(w, o.RevisionTemplates); err != nil {
 		return err
 	}
 	fmt.Fprintf(out, "The pull request's stack (job %s) names %s=%s", o.Build, services, o.Services)

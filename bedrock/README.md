@@ -792,7 +792,10 @@ build), and none of them installs anything. The steps share a workspace, the che
 (`/workspace`, `--workspace` overrides): `environment.sh` (the facts resolve exports, then what later
 steps append), `build.json` (the build as Cloud Build describes it), `build-args.txt` (the
 image build's arguments, `NAME=value` lines: the declared substitutions, then what a hook
-before the build adds) and `revisions.txt` (the revisions the service step created). Each
+before the build adds), `revision-templates.json` (what each service's revision and the
+job process's job run with, as the release's stack says it: identity, scaling, variables,
+secret mounts, left by the stack steps for the deploy steps) and `revisions.txt` (the
+revisions the service step created). Each
 command reads those files, does one thing and appends what it learned; that is the only
 thing one step hands the next. In order:
 
@@ -912,7 +915,12 @@ thing one step hands the next. In order:
   the build, said on the pull request with the way on: retire the variable in
   `terraform.tfvars` in one release and remove the declaration in the next. Google's
   provider refuses the same destroy at the apply alone, where the release has merged and
-  its run has started; the guard says it where the pull request is. It then runs the
+  its run has started; the guard says it where the pull request is. After each plan it
+  also says what the release changes in the revision templates (the `revision_templates`
+  output's value before and after: the variables added, removed and changed, the secret
+  mounts moved, the scaling, the identity, per service and for the job), in the log and
+  on the pull request, which is what the plan showed as a change to the service while the
+  stack owned the template. It then runs the
   tests a tag build runs
   before its apply, then the pull request's looks ahead as the same identities: the
   patch preview, when the pull request is against a patch line, and the window
@@ -957,7 +965,10 @@ thing one step hands the next. In order:
   second failing on the lock.
 - `deploy pr-outputs`: the preview build's read of what the pull request's stack job
   applied, the object above matched to this build's `/gcbrun` comment, whose facts go to
-  `environment.sh` for the steps after. Before the image build when the placement
+  `environment.sh` for the steps after and whose revision templates (the pull request's
+  stack's `revision_templates` output, which the job carries in the object) go to the
+  workspace for `deploy service` and `deploy jobs`; an object without them, written by a
+  bedrock before them, stops the build. Before the image build when the placement
   declares build arguments (the image carries the pull request's own values), after it
   otherwise. An object not yet written is waited for, up to ten minutes, fifteen seconds
   between looks, then the step stops the build naming the trigger; a job that failed
@@ -1032,7 +1043,17 @@ thing one step hands the next. In order:
   database (and the first environment's file stores) or drops it for production's backup
   first applies the stack targeted at those resources with `restore=true`, so that the
   state records their protection lifted for the one apply that replaces them; the plan
-  after it declares the protection again, and passes the guard. Before the plan it derives the
+  after it declares the protection again, and passes the guard. `apply` applies the saved
+  plan and reads the stack's outputs as applied: the migrate command's settings, the
+  hostname, and the `revision_templates` output, what each service's revision and the job
+  process's job run with (identity, scaling, variables, secret mounts), left in the
+  workspace as `revision-templates.json` for `deploy service` and `deploy jobs`. A
+  rollback run applies no stack: `plan` reads the plan of the release's stack for its
+  revision templates (as that stack evaluates them, against the environment as it is;
+  the guard does not read a plan nothing applies, and the plan's JSON is not saved, so
+  the record carries no stack) and `apply` says so and does nothing, so the environment's
+  infrastructure stays as the newer release made it and the earlier release runs under its
+  own configuration. Before the plan it derives the
   generated secrets' pins (`secret:"generated"`): the newest enabled version of each
   container, read as the apply identity, version 1 added when the container has none
   (the container created ahead of the apply, which adopts it), passed to the plan as
@@ -1073,11 +1094,10 @@ thing one step hands the next. In order:
   restored from stands in (`_RESTORE_DATABASE_BACKUP`, the record's `restore.backup`); a record written
   before database generations names none, and production's first database is read. The
   backup and the moment its data is from reach the record
-  (`RESTORE_BACKUP`, `RESTORE_BACKUP_TIME`). While the application is in maintenance the
-  plan carries the maintenance variable's live value (`-var maintenance=1`): the stack
-  declares `APP_MAINTENANCE` with `var.maintenance`, empty by default, and an entry of the
-  service's env set cannot be ignored on its own, so declared and live agree and the apply
-  leaves the service alone while the database is replaced.
+  (`RESTORE_BACKUP`, `RESTORE_BACKUP_TIME`). The stack never touches a service's revision
+  template (the pipeline builds every revision from the stack's `revision_templates`
+  output), so the apply starts no revision while the database is replaced, and the
+  maintenance revision serves until the release's own is deployed after the migrations.
 - `deploy stack first`: the stack trigger's step, the environment's stack applied when no
   release's build can: for the first time, before any release exists there, and again
   after a teardown (`bedrock teardown`), which destroyed the triggers a release's build
@@ -1123,10 +1143,12 @@ thing one step hands the next. In order:
   force whose version is missing or not an integer, a force without a requester) is
   refused by `deploy resolve` and again here, before the command runs.
 - `deploy jobs`: makes this build's job for the job process (`cmd/jobs`) after the
-  stack's apply, before the migrations, as a copy of the stack's template job (`_JOBS_JOB`,
-  read from the stack as this build applied it, so the first release with a job process
-  makes one) named after it with the build's version, on this build's image with the
-  pipeline's labels and the template's IAM policy (the site's `run.jobsExecutorWithOverrides`). It does not
+  stack's apply, before the migrations, from the release's job template (the
+  `revision_templates` output's `job`: identity, variables, secret mounts, timeout,
+  retries, resources, as the release's stack says them), named after the stack's template
+  job (`_JOBS_JOB`, read from the stack as this build applied it, so the first release
+  with a job process makes one) with the build's version, on this build's image with the
+  pipeline's labels and the template job's IAM policy (the site's `run.jobsExecutorWithOverrides`). It does not
   run it; the service carries the template's name (`APP_JOBS_TEMPLATE`, set by the stack)
   and the image its version, and the framework names the job of its own build from the
   two, so the revision starts the job of its own build and a traffic rollback starts the
@@ -1168,9 +1190,13 @@ thing one step hands the next. In order:
   `REVISION_URLS` are left in the workspace for the hook before traffic. The hostname
   `NEXT_URL` is named by is the one the stack this build applied names
   (`CANONICAL_HOSTNAME`, read back after the apply), so a release that changes it is
-  reached under its own. The template is
-  the live service's, so a maintenance revision's `APP_MAINTENANCE` is cleared on the new
-  revision, which serves the application.
+  reached under its own. The revision's template is the release's own, built from the
+  stack's `revision_templates` output (`revision-templates.json`, left by the stack steps
+  or `deploy pr-outputs`) and the release's image: its identity, scaling, variables and
+  secret mounts as the release's stack says them, so a release's image runs under its own
+  release's configuration, forward or back, and a maintenance revision's
+  `APP_MAINTENANCE` is not in it. A service the templates do not name stops the step
+  before anything is touched.
 - `deploy shift-traffic`: moves every region to 100 percent on its new revision, keeping
   the tags other revisions carry; a pull-request revision served under its tag alone
   leaves the traffic where it is.
@@ -1883,7 +1909,11 @@ for is not wired: the job stops before touching anything and says what to record
 release with nothing of the database, started from GitHub. It is the first answer to a
 release that went wrong, in any environment: a schema change migrates forward in a way
 the running code still works with, so the earlier release runs on the database as the
-release left it. When the database is wrong too, `bedrock restore` returns it, in a run
+release left it. The run applies no stack either: the environment's infrastructure stays
+as the release it leaves made it, and the earlier release deploys under its own revision
+templates, read off the plan of its stack (the stack README, "Cloud Run"), so the
+earlier binary runs under its own configuration and nothing the newer release added is
+destroyed. When the database is wrong too, `bedrock restore` returns it, in a run
 of its own, after this one. A release that cannot migrate that way is marked breaking
 (its outlets no longer answer the environment's release), goes under maintenance,
 migrates, deploys and comes out; a problem found after it is a restore, and the writes

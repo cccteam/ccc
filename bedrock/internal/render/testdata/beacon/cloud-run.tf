@@ -3,10 +3,14 @@
 #
 # The site (main.go) as a service in the organization's two
 # regions. Both are created
-# with a placeholder image: the pipeline owns the image from the first deploy
-# on, so the image and the labels and annotations a deploy stamps are ignored
-# here, and everything else about the revision template (identity, scaling,
-# variables, secrets) stays this stack's. The migration (cmd/deployment/migrate) is
+# with a placeholder image on a template that only stands the service up: from
+# the first deploy on the revision template is the pipeline's, which builds
+# every revision from the release's image and what the revision_templates
+# output says (outputs.tf: identity, scaling, variables, secret mounts, as the
+# release's own stack evaluates them), so a release runs under its own
+# configuration, forward or back, and an apply never starts a revision. The
+# template, the labels and the annotations a deploy stamps are ignored here
+# (lifecycle). The migration (cmd/deployment/migrate) is
 # no Cloud Run resource: the pipeline takes the migrate command out of the
 # release's image and runs it on the build worker as the deploy identity, with
 # the variables locals.tf derives for it (migrate_env).
@@ -34,81 +38,31 @@ resource "google_cloud_run_v2_service" "app" {
 
   labels = local.labels
 
+  # The template the service is created with: the placeholder image on the
+  # site's identity, which starts on its own and lets the first apply stand the
+  # service up before the first release. Nothing of a revision is set here
+  # (revision_templates in outputs.tf says it; deploy service builds it).
   template {
     service_account       = google_service_account.app.email
     execution_environment = "EXECUTION_ENVIRONMENT_GEN2"
     timeout               = "300s"
-    labels                = local.labels
-
-    # Scale to zero, and to Cloud Run's default maximum instances per region:
-    # the placement caps no environment (maxInstances). No scaling block: Cloud
-    # Run's defaults are exactly that, and a block setting only a minimum of
-    # zero is dropped by the service, which every later plan would add again.
 
     containers {
       image = var.placeholder_image
 
-
       ports {
         container_port = 8080
-      }
-
-      resources {
-        # CPU only while a request is in flight: no always-on allocation.
-        cpu_idle          = true
-        startup_cpu_boost = true
-        limits = {
-          cpu    = "1"
-          memory = "512Mi"
-        }
-      }
-
-      # The maintenance switch: empty, except on a maintenance revision (a
-      # restore run, a breaking release), which the pipeline deploys with it
-      # set to 1 and whose process then serves the maintenance page and opens
-      # no database. The stack declares it so that it and the pipeline agree on
-      # the variable's presence, and the pipeline passes its live value as
-      # var.maintenance to the plan it makes while the application is in
-      # maintenance, so that the apply leaves the service alone (an env entry
-      # cannot be ignored on its own: the block is a set). The release's own
-      # revision is deployed with it empty again.
-      env {
-        name  = "APP_MAINTENANCE"
-        value = var.maintenance
-      }
-
-      dynamic "env" {
-        for_each = local.service_env
-        content {
-          name  = env.key
-          value = env.value
-        }
-      }
-
-      # Secrets by reference, at the version var.secret_versions pins. A secret
-      # with no pin is not mounted: the process starts without it.
-      dynamic "env" {
-        for_each = local.mounted_secrets
-        content {
-          name = env.key
-          value_source {
-            secret_key_ref {
-              secret  = local.secret_ids[env.key]
-              version = env.value.version
-            }
-          }
-        }
       }
     }
   }
 
   lifecycle {
-    # The pipeline deploys the image and stamps the revision with its own
-    # labels and annotations (commit, build, trigger, client). Those are its.
+    # The revision template is the pipeline's from the first deploy on (deploy
+    # service builds it from the revision_templates output and the release's
+    # image), and so are the labels and annotations a deploy stamps (commit,
+    # build, trigger, client). Those are its.
     ignore_changes = [
-      template[0].containers[0].image,
-      template[0].labels,
-      template[0].annotations,
+      template,
       labels,
       annotations,
       client,

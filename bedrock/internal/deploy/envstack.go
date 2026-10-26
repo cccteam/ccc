@@ -161,14 +161,14 @@ func PlanEnvironmentStack(ctx context.Context, clients *Clients, w Workspace, ou
 	if err != nil {
 		return err
 	}
-	args, err := s.planArguments(ctx, clients, w, subs, env, plan, generation, pins, out)
+	args, err := s.planArguments(ctx, w, subs, env, plan, generation, pins)
 	if err != nil {
 		return err
 	}
 	if err := s.untaintCloudRun(ctx, out); err != nil {
 		return err
 	}
-	p, err := s.planAndTest(ctx, clients, w, subs, plan, args, out)
+	p, err := s.planAndTest(ctx, clients, w, subs, plan, args, env[rollbackFact] != "", out)
 	if err != nil {
 		return err
 	}
@@ -183,8 +183,12 @@ func PlanEnvironmentStack(ctx context.Context, clients *Clients, w Workspace, ou
 // planAndTest runs the tag build's plan with args, saves its JSON beside it, prints what
 // it does, holds it to the guard against a destroy of what the state protects, and runs
 // the plan's tests; a plan, a guard or a test that fails stops the build with the stack
-// unapplied.
-func (s *stack) planAndTest(ctx context.Context, clients *Clients, w Workspace, subs map[string]string, plan string, args []string, out io.Writer) (*StackPlan, error) {
+// unapplied. A rollback run applies no stack: its plan is read for the release's
+// revision templates, as the release's stack evaluates them, which are left for the
+// deploy steps; the plan's JSON is not saved (the record carries no stack), and the
+// guard does not read it (nothing it would refuse is applied), while the tests still
+// hold the release's secret pins to what exists.
+func (s *stack) planAndTest(ctx context.Context, clients *Clients, w Workspace, subs map[string]string, plan string, args []string, rollback bool, out io.Writer) (*StackPlan, error) {
 	if err := s.tofu(ctx, args...); err != nil {
 		return nil, err
 	}
@@ -192,12 +196,28 @@ func (s *stack) planAndTest(ctx context.Context, clients *Clients, w Workspace, 
 	if err != nil {
 		return nil, err
 	}
-	if err := os.WriteFile(filepath.Join(string(w), StackPlanJSONFile), shown, 0o600); err != nil {
-		return nil, errors.Wrapf(err, "os.WriteFile(): %s", StackPlanJSONFile)
-	}
 	p, err := stackPlan(shown)
 	if err != nil {
 		return nil, err
+	}
+	if rollback {
+		fmt.Fprintf(out, "Rollback run: the plan of %s's stack is read for the release's revision templates and not applied, so the environment's infrastructure stays as the release it leaves made it. ", subs[envSub])
+		p.print(out)
+		templates, err := plannedRevisionTemplates(shown)
+		if err != nil {
+			return nil, err
+		}
+		if err := writeRevisionTemplates(w, templates); err != nil {
+			return nil, err
+		}
+		if err := testStack(ctx, clients, s.dir, s.identity, subs, shown, out); err != nil {
+			return nil, err
+		}
+
+		return p, nil
+	}
+	if err := os.WriteFile(filepath.Join(string(w), StackPlanJSONFile), shown, 0o600); err != nil {
+		return nil, errors.Wrapf(err, "os.WriteFile(): %s", StackPlanJSONFile)
 	}
 	p.print(out)
 	if err := guardProtected(shown, subs[envSub]); err != nil {
@@ -211,29 +231,14 @@ func (s *stack) planAndTest(ctx context.Context, clients *Clients, w Workspace, 
 }
 
 // planArguments are the tag build's plan arguments: the environment and the database
-// generation, the generated secrets' pins, the maintenance variable's live value and the
-// run's restore. The plan is told the maintenance variable's live value, so that declared
-// and live agree and the apply never starts an application revision from the template
-// while the application is in maintenance: in this run (a restore run, after deploy
-// maintenance on), or from an earlier run that failed after its maintenance on, whose
-// database may hold no tables until the migrations run (a revision started then cannot
-// come up, and the apply waits on it). An entry of the env set cannot be ignored on its
-// own; the release's own revision is deployed with the variable cleared, after the
-// migrations.
-func (s *stack) planArguments(ctx context.Context, clients *Clients, w Workspace, subs, env map[string]string, plan string, generation int, pins map[string]string, out io.Writer) ([]string, error) {
-	vars := []string{varFlag, "environment=" + subs[envSub], varFlag, "database_generation=" + strconv.Itoa(generation)}
+// generation, the generated secrets' pins and the run's restore. The stack never
+// touches a service's revision template (the pipeline builds every revision from the
+// revision_templates output), so an apply starts no revision, in maintenance or out of
+// it, and the plan is told nothing of the maintenance variable.
+func (s *stack) planArguments(ctx context.Context, w Workspace, subs, env map[string]string, plan string, generation int, pins map[string]string) ([]string, error) {
+	vars := make([]string, 0, 6)
+	vars = append(vars, varFlag, "environment="+subs[envSub], varFlag, "database_generation="+strconv.Itoa(generation))
 	vars = append(vars, generatedArgs(pins)...)
-	build, err := w.Build()
-	if err != nil {
-		return nil, err
-	}
-	live, err := liveMaintenance(ctx, clients, build, env, out)
-	if err != nil {
-		return nil, err
-	}
-	if live != "" {
-		vars = append(vars, varFlag, "maintenance="+live)
-	}
 	restore, err := s.restoreArguments(ctx, subs, env, w, vars)
 	if err != nil {
 		return nil, err
@@ -274,23 +279,6 @@ func (s *stack) liftForRestore(ctx context.Context, env string, vars, addresses 
 	}
 
 	return s.tofu(ctx, args...)
-}
-
-// liveMaintenance is the value the plan declares for the maintenance variable: 1 in a
-// run that is in maintenance, else what the first service the stack names carries live
-// (1 when an earlier run's maintenance was never ended), else "", the default. A service
-// the stack does not name or that is not deployed yet answers "".
-func liveMaintenance(ctx context.Context, clients *Clients, build *Build, env map[string]string, out io.Writer) (string, error) {
-	if env[maintenanceFact] == trueValue {
-		return maintenanceOn, nil
-	}
-	service, on, err := serviceInMaintenance(ctx, clients, build)
-	if err != nil || !on {
-		return "", err
-	}
-	fmt.Fprintf(out, "%s is in maintenance from an earlier run (%s=%s on the service): the plan keeps it so, and the release's revision clears it after the migrations.\n", service, derive.MaintenanceVariable, maintenanceOn)
-
-	return maintenanceOn, nil
 }
 
 // restoredFact lists what a restore run's plan replaces, comma-separated, for the record.
@@ -526,10 +514,17 @@ func ApplyEnvironmentStack(ctx context.Context, clients *Clients, w Workspace, o
 	if err != nil || !ok {
 		return err
 	}
-	if env, err := w.Environment(); err != nil {
+	env, err := w.Environment()
+	if err != nil {
 		return err
-	} else if env[skipDeploy] == trueValue {
+	}
+	switch {
+	case env[skipDeploy] == trueValue:
 		fmt.Fprintln(out, skipped(env))
+
+		return nil
+	case env[rollbackFact] != "":
+		fmt.Fprintf(out, "Rollback run: %s's stack is not applied; the release deploys under its own revision templates, read off its stack's plan.\n", subs[envSub])
 
 		return nil
 	}
@@ -551,10 +546,6 @@ func ApplyEnvironmentStack(ctx context.Context, clients *Clients, w Workspace, o
 		fmt.Fprintf(out, "Applied %s's stack: %d added, %d changed, %d destroyed.\n", subs[envSub], p.Add, p.Change, p.Destroy)
 	}
 	if err := s.appliedFacts(ctx, w, subs); err != nil {
-		return err
-	}
-	env, err := w.Environment()
-	if err != nil {
 		return err
 	}
 	if env[restoreFact] == "" {
@@ -630,7 +621,11 @@ func (s *stack) generation(ctx context.Context, open StoreFunc, subs map[string]
 // terraform.tfvars where hostnames names it, so a release that changes it is deployed
 // under its own. Each value the trigger says otherwise is said in the log.
 func (s *stack) appliedFacts(ctx context.Context, w Workspace, subs map[string]string) error {
-	facts, err := s.facts(ctx)
+	outputs, err := s.outputs(ctx)
+	if err != nil {
+		return err
+	}
+	facts, err := factsOf(outputs)
 	if err != nil {
 		return err
 	}
@@ -692,8 +687,26 @@ func (s *stack) appliedFacts(ctx context.Context, w Workspace, subs map[string]s
 	}
 	fmt.Fprintf(s.out, "The migrate command's settings, secrets and databases are read from the stack as applied (%s, %s, %s).\n", migrateEnvSub, migrateSecretsSub, migrateDatabasesSub)
 	read[migrateEnvFact], read[migrateDatabasesFact], read[migrateSecretsFact] = settings, databases, secrets
+	if err := s.appliedTemplates(w, outputs); err != nil {
+		return err
+	}
 
 	return w.Append(read)
+}
+
+// appliedTemplates reads the revision templates off the applied stack's outputs and
+// leaves them in the workspace for deploy service and deploy jobs.
+func (s *stack) appliedTemplates(w Workspace, outputs map[string]json.RawMessage) error {
+	templates, err := revisionTemplatesOf(outputs)
+	if err != nil {
+		return err
+	}
+	if err := writeRevisionTemplates(w, templates); err != nil {
+		return err
+	}
+	fmt.Fprintf(s.out, "The revision templates are read from the stack as applied (%s): %d service(s), for deploy service%s.\n", revisionTemplatesOutput, len(templates.Services), jobTemplateNote(templates))
+
+	return nil
 }
 
 // clearFirestore deletes every document of the environment's Firestore database in a
@@ -867,6 +880,10 @@ func planEnvironment(ctx context.Context, clients *Clients, w Workspace, build *
 	}
 	fmt.Fprintf(out, "%s: ", e)
 	p.print(out)
+	templates, err := printTemplateChanges(shown, out)
+	if err != nil {
+		return "", err
+	}
 	held, err := protectedDeletions(shown)
 	if err != nil {
 		return "", err
@@ -884,7 +901,44 @@ func planEnvironment(ctx context.Context, clients *Clients, w Workspace, build *
 		return "", err
 	}
 
-	return fmt.Sprintf("**%s**: %s%s%s", e, p.Summary(), pinned, changeList(p)), nil
+	return fmt.Sprintf("**%s**: %s%s%s%s", e, p.Summary(), pinned, changeList(p), templateList(templates)), nil
+}
+
+// printTemplateChanges reads a plan for what the release changes in the revision
+// templates (templateChanges), prints one line each, and answers them for the comment.
+func printTemplateChanges(shown []byte, out io.Writer) ([]string, error) {
+	lines, err := templateChanges(shown)
+	if err != nil {
+		return nil, err
+	}
+	for _, line := range lines {
+		fmt.Fprintf(out, "  revision template of %s\n", line)
+	}
+
+	return lines, nil
+}
+
+// templateList is a plan's revision template changes for a comment: one line each after
+// the changes; none when the templates do not change.
+func templateList(lines []string) string {
+	if len(lines) == 0 {
+		return ""
+	}
+	items := make([]string, 0, len(lines))
+	for _, line := range lines {
+		items = append(items, "  - revision template of "+line)
+	}
+
+	return "\n" + strings.Join(items, "\n")
+}
+
+// jobTemplateNote says whether the templates carry the job process's job, for a log line.
+func jobTemplateNote(t *RevisionTemplates) string {
+	if t.Job == nil {
+		return ""
+	}
+
+	return " and the job process's job, for deploy jobs"
 }
 
 // changeList is a plan's changes for a comment: one line each, a list after the summary

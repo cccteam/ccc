@@ -281,7 +281,6 @@ func TestPlanEnvironmentStack(t *testing.T) {
 		objects map[string]string
 		// live is the maintenance variable's value on the live service the stack names
 		// (_SERVICES is set with it); "" leaves the service out.
-		live string
 		// tfvars is the stack's placement values in the checkout; every secret pinned in
 		// every environment when empty.
 		tfvars       string
@@ -290,6 +289,9 @@ func TestPlanEnvironmentStack(t *testing.T) {
 		wantTofu     []string
 		wantFact     string
 		wantReplaced string
+		// wantTemplates says the run left the revision templates in the workspace and
+		// saved no plan JSON (a rollback run, whose record carries no stack).
+		wantTemplates bool
 		// wantBackup is the backup fact a production-backup restore leaves.
 		wantBackup string
 		// wantCreated are the backups a rollback started; wantRestored what it restored;
@@ -372,35 +374,6 @@ func TestPlanEnvironmentStack(t *testing.T) {
 			wantTofu:     []string{strings.Replace(initLine, "3-app/quill/stg", "3-app/quill/tst", 1), "tofu state list", "tofu apply -input=false -no-color -auto-approve -var environment=tst -var database_generation=1 -var restore=true -target=google_spanner_database.quill[0] -target=google_storage_bucket.files", stateLine, strings.Replace(planLine, "environment=stg", "environment=tst", 1) + " -replace=google_spanner_database.quill[0] -replace=google_storage_bucket.files", showLine},
 			wantFact:     "Plan: 2 to add, 1 to change, 1 to destroy.",
 			wantReplaced: "google_spanner_database.quill[0],google_storage_bucket.files",
-		},
-		{
-			name:         "a restore run in maintenance tells the plan the maintenance variable's live value, so the apply leaves the service alone",
-			subs:         tstSubs(),
-			pins:         enabledPins(),
-			env:          restoreEnv + "export MAINTENANCE=\"true\"\n",
-			state:        stateList,
-			wantOut:      []string{"=== Restore (empty, asked for by octocat): google_spanner_database.quill[0], google_storage_bucket.files is replaced in tst's stack; the migrations then apply afresh ===", "Tests passed"},
-			wantTofu:     []string{strings.Replace(initLine, "3-app/quill/stg", "3-app/quill/tst", 1), "tofu state list", "tofu apply -input=false -no-color -auto-approve -var environment=tst -var database_generation=1 -var maintenance=1 -var restore=true -target=google_spanner_database.quill[0] -target=google_storage_bucket.files", stateLine, strings.Replace(planLine, "environment=stg", "environment=tst", 1) + " -var maintenance=1 -replace=google_spanner_database.quill[0] -replace=google_storage_bucket.files", showLine},
-			wantFact:     "Plan: 2 to add, 1 to change, 1 to destroy.",
-			wantReplaced: "google_spanner_database.quill[0],google_storage_bucket.files",
-		},
-		{
-			name:     "a run that was not in maintenance keeps a service an earlier run's maintenance left so, until the release's revision clears it",
-			subs:     tagSubs(),
-			pins:     enabledPins(),
-			live:     "1",
-			wantOut:  []string{"quill-app is in maintenance from an earlier run (APP_MAINTENANCE=1 on the service): the plan keeps it so, and the release's revision clears it after the migrations.", "Tests passed"},
-			wantTofu: []string{initLine, stateLine, planLine + " -var maintenance=1", showLine},
-			wantFact: "Plan: 2 to add, 1 to change, 1 to destroy.",
-		},
-		{
-			name:     "a service that serves leaves the plan's maintenance variable at its default",
-			subs:     tagSubs(),
-			pins:     enabledPins(),
-			live:     "",
-			wantOut:  []string{"Tests passed"},
-			wantTofu: []string{initLine, stateLine, planLine, showLine},
-			wantFact: "Plan: 2 to add, 1 to change, 1 to destroy.",
 		},
 		{
 			name:         "a restore run in a seeded environment says the seed applies afresh too",
@@ -554,7 +527,7 @@ func TestPlanEnvironmentStack(t *testing.T) {
 			env:          generationEnv,
 			backup:       &Backup{Name: releaseBackupName, Database: quillDatabase, State: BackupReady, VersionTime: "2026-10-04T02:00:00Z"},
 			wantOut:      []string{"Forensic backup: p-stg-gbl-quill-db-forensic-20261005-0430 holds p-stg-gbl-quill-db as of 2026-10-05T04:30:00Z, kept thirty days; p-stg-gbl-quill-db itself stays, protected, as the forensic copy.", "=== Restore: stg is restored from p-stg-gbl-quill-db-pre-v1-2-3 (data as of 2026-10-04T02:00:00Z) into p-stg-gbl-quill-db-2, generation 2 of quill's database ===", "Restored p-stg-gbl-quill-db-2 from p-stg-gbl-quill-db-pre-v1-2-3; Spanner optimizes it in the background and it serves meanwhile.", `Imported p-stg-gbl-quill-db-2 into the stack as google_spanner_database.restored["2"]; the plan points the stack at generation 2.`, "Tests passed"},
-			wantTofu:     []string{initLine, `tofu import -input=false -no-color -var environment=stg -var database_generation=2 google_spanner_database.restored["2"] ` + quillDatabase + "-2", stateLine, strings.Replace(planLine, "generation=1", "generation=2", 1) + " -var maintenance=1", showLine},
+			wantTofu:     []string{initLine, `tofu import -input=false -no-color -var environment=stg -var database_generation=2 google_spanner_database.restored["2"] ` + quillDatabase + "-2", stateLine, strings.Replace(planLine, "generation=1", "generation=2", 1) + "", showLine},
 			wantFact:     "Plan: 2 to add, 1 to change, 1 to destroy.",
 			wantCreated:  []string{"p-stg-gbl-quill-db-forensic-20261005-0430 of p-stg-gbl-quill-db as of 2026-10-05T04:30:00Z until 2026-11-04T04:30:00Z"},
 			wantRestored: "p-stg-gbl-quill-db-2 from " + releaseBackupName,
@@ -585,7 +558,7 @@ func TestPlanEnvironmentStack(t *testing.T) {
 			creating:     2,
 			wantOut:      []string{"Waiting for p-stg-gbl-quill-db-pre-v1-2-3: Spanner is still taking it (CREATING after 0s); a restore needs a READY backup.\nForensic backup: p-stg-gbl-quill-db-forensic-20261005-0430 holds", "=== Restore: stg is restored from p-stg-gbl-quill-db-pre-v1-2-3"},
 			wantCreated:  []string{"p-stg-gbl-quill-db-forensic-20261005-0430 of p-stg-gbl-quill-db as of 2026-10-05T04:30:00Z until 2026-11-04T04:30:00Z"},
-			wantTofu:     []string{initLine, `tofu import -input=false -no-color -var environment=stg -var database_generation=2 google_spanner_database.restored["2"] ` + quillDatabase + "-2", stateLine, strings.Replace(planLine, "generation=1", "generation=2", 1) + " -var maintenance=1", showLine},
+			wantTofu:     []string{initLine, `tofu import -input=false -no-color -var environment=stg -var database_generation=2 google_spanner_database.restored["2"] ` + quillDatabase + "-2", stateLine, strings.Replace(planLine, "generation=1", "generation=2", 1) + "", showLine},
 			wantFact:     "Plan: 2 to add, 1 to change, 1 to destroy.",
 			wantRestored: "p-stg-gbl-quill-db-2 from " + releaseBackupName,
 		},
@@ -597,7 +570,7 @@ func TestPlanEnvironmentStack(t *testing.T) {
 			backup:       &Backup{Name: releaseBackupName, Database: quillDatabase, State: BackupReady, VersionTime: "2026-10-04T02:00:00Z"},
 			pending:      2,
 			wantOut:      []string{"Waiting to start the forensic backup p-stg-gbl-quill-db-forensic-20261005-0430: Spanner is taking another backup of p-stg-gbl-quill-db, and takes one at a time (0s so far); it starts when that one completes.\nForensic backup: p-stg-gbl-quill-db-forensic-20261005-0430 holds", "=== Restore: stg is restored from p-stg-gbl-quill-db-pre-v1-2-3"},
-			wantTofu:     []string{initLine, `tofu import -input=false -no-color -var environment=stg -var database_generation=2 google_spanner_database.restored["2"] ` + quillDatabase + "-2", stateLine, strings.Replace(planLine, "generation=1", "generation=2", 1) + " -var maintenance=1", showLine},
+			wantTofu:     []string{initLine, `tofu import -input=false -no-color -var environment=stg -var database_generation=2 google_spanner_database.restored["2"] ` + quillDatabase + "-2", stateLine, strings.Replace(planLine, "generation=1", "generation=2", 1) + "", showLine},
 			wantFact:     "Plan: 2 to add, 1 to change, 1 to destroy.",
 			wantCreated:  []string{"p-stg-gbl-quill-db-forensic-20261005-0430 of p-stg-gbl-quill-db as of 2026-10-05T04:30:00Z until 2026-11-04T04:30:00Z"},
 			wantRestored: "p-stg-gbl-quill-db-2 from " + releaseBackupName,
@@ -609,7 +582,7 @@ func TestPlanEnvironmentStack(t *testing.T) {
 			env:          strings.Replace(generationEnv, releaseBackupName, "@2026-10-04T02:00:00Z", 1),
 			backup:       &Backup{Name: "projects/p-spn/instances/shared-spanner/backups/p-stg-gbl-quill-db-pit-20261004-0200", Database: quillDatabase, State: BackupReady, VersionTime: "2026-10-04T02:00:00Z"},
 			wantOut:      []string{"Point in time: p-stg-gbl-quill-db-pit-20261004-0200 is made of p-stg-gbl-quill-db as of 2026-10-04T02:00:00Z, kept fourteen days; the restore waits for it.", "=== Restore: stg is restored from p-stg-gbl-quill-db-pit-20261004-0200 (data as of 2026-10-04T02:00:00Z) into p-stg-gbl-quill-db-2, generation 2 of quill's database ==="},
-			wantTofu:     []string{initLine, `tofu import -input=false -no-color -var environment=stg -var database_generation=2 google_spanner_database.restored["2"] ` + quillDatabase + "-2", stateLine, strings.Replace(planLine, "generation=1", "generation=2", 1) + " -var maintenance=1", showLine},
+			wantTofu:     []string{initLine, `tofu import -input=false -no-color -var environment=stg -var database_generation=2 google_spanner_database.restored["2"] ` + quillDatabase + "-2", stateLine, strings.Replace(planLine, "generation=1", "generation=2", 1) + "", showLine},
 			wantFact:     "Plan: 2 to add, 1 to change, 1 to destroy.",
 			wantCreated:  []string{"p-stg-gbl-quill-db-pit-20261004-0200 of p-stg-gbl-quill-db as of 2026-10-04T02:00:00Z until 2026-10-19T04:30:00Z", "p-stg-gbl-quill-db-forensic-20261005-0430 of p-stg-gbl-quill-db as of 2026-10-05T04:30:00Z until 2026-11-04T04:30:00Z"},
 			wantRestored: "p-stg-gbl-quill-db-2 from projects/p-spn/instances/shared-spanner/backups/p-stg-gbl-quill-db-pit-20261004-0200",
@@ -622,21 +595,31 @@ func TestPlanEnvironmentStack(t *testing.T) {
 			backup:       &Backup{Name: releaseBackupName, Database: quillDatabase, State: BackupReady, VersionTime: "2026-10-04T02:00:00Z"},
 			objects:      map[string]string{"gs://records/quill/stg/3c4d/database/2.json": "{}"},
 			wantOut:      []string{"Generation 2: a restore put stg's database into its generation 2 (gs://records/quill/stg/3c4d/database/2.json); the plan points the stack at it.", "Forensic backup: p-stg-gbl-quill-db-2-forensic-20261005-0430 holds p-stg-gbl-quill-db-2", "into p-stg-gbl-quill-db-3, generation 3 of quill's database ==="},
-			wantTofu:     []string{initLine, `tofu import -input=false -no-color -var environment=stg -var database_generation=3 google_spanner_database.restored["3"] ` + quillDatabase + "-3", stateLine, strings.Replace(planLine, "generation=1", "generation=3", 1) + " -var maintenance=1", showLine},
+			wantTofu:     []string{initLine, `tofu import -input=false -no-color -var environment=stg -var database_generation=3 google_spanner_database.restored["3"] ` + quillDatabase + "-3", stateLine, strings.Replace(planLine, "generation=1", "generation=3", 1) + "", showLine},
 			wantFact:     "Plan: 2 to add, 1 to change, 1 to destroy.",
 			wantRestored: "p-stg-gbl-quill-db-3 from " + releaseBackupName,
 			wantFacts:    map[string]string{databaseGenerationFact: "3", previousGenerationFact: "2", restoreKeptFact: quillDatabase + "-2", restoreIntoFact: quillDatabase + "-3"},
 			wantObject:   "gs://records/quill/stg/3c4d/database/3.json",
 		},
 		{
-			name:      "a rollback run plans at the generation as it is: nothing restored, no backup started, no maintenance",
-			subs:      rollbackSubs(),
-			pins:      enabledPins(),
-			env:       rollbackEnv,
-			wantOut:   []string{"Plan: 2 to add, 1 to change, 1 to destroy.", "Tests passed"},
-			wantTofu:  []string{initLine, stateLine, planLine, showLine},
-			wantFact:  "Plan: 2 to add, 1 to change, 1 to destroy.",
-			wantFacts: map[string]string{databaseGenerationFact: "1"},
+			name:          "a rollback run plans at the generation as it is and applies nothing: the plan is read for the release's revision templates, left for the deploy steps, no backup started, no maintenance",
+			subs:          rollbackSubs(),
+			pins:          enabledPins(),
+			env:           rollbackEnv,
+			planJSON:      strings.TrimSuffix(stackPlanJSON, "}") + `, "planned_values": {"outputs": {"revision_templates": {"sensitive": false, "value": ` + revisionTemplatesJSON(false, "quill-app") + `}}}}`,
+			wantOut:       []string{"Rollback run: the plan of stg's stack is read for the release's revision templates and not applied, so the environment's infrastructure stays as the release it leaves made it. Plan: 2 to add, 1 to change, 1 to destroy.", "Tests passed"},
+			wantTofu:      []string{initLine, stateLine, planLine, showLine},
+			wantFact:      "Plan: 2 to add, 1 to change, 1 to destroy.",
+			wantFacts:     map[string]string{databaseGenerationFact: "1"},
+			wantTemplates: true,
+		},
+		{
+			name:     "a rollback run whose plan has no revision templates to read is refused: the release's stack predates them",
+			subs:     rollbackSubs(),
+			pins:     enabledPins(),
+			env:      rollbackEnv,
+			wantTofu: []string{initLine, stateLine, planLine, showLine},
+			wantErr:  "the plan has no revision_templates output: the release's stack was rendered by a bedrock before the output, and its revision templates cannot be read without applying it",
 		},
 		{
 			name:         "a restore to a moment held by an earlier generation backs that generation up and restores it into a new one, the live generation kept",
@@ -646,7 +629,7 @@ func TestPlanEnvironmentStack(t *testing.T) {
 			backup:       &Backup{Name: "projects/p-spn/instances/shared-spanner/backups/p-stg-gbl-quill-db-pit-20261004-0200", Database: quillDatabase, State: BackupReady, VersionTime: "2026-10-04T02:00:00Z"},
 			objects:      map[string]string{"gs://records/quill/stg/3c4d/database/2.json": "{}"},
 			wantOut:      []string{"Point in time: p-stg-gbl-quill-db-pit-20261004-0200 is made of p-stg-gbl-quill-db as of 2026-10-04T02:00:00Z, kept fourteen days; the restore waits for it.", "Forensic backup: p-stg-gbl-quill-db-2-forensic-20261005-0430 holds p-stg-gbl-quill-db-2", "into p-stg-gbl-quill-db-3, generation 3 of quill's database ==="},
-			wantTofu:     []string{initLine, `tofu import -input=false -no-color -var environment=stg -var database_generation=3 google_spanner_database.restored["3"] ` + quillDatabase + "-3", stateLine, strings.Replace(planLine, "generation=1", "generation=3", 1) + " -var maintenance=1", showLine},
+			wantTofu:     []string{initLine, `tofu import -input=false -no-color -var environment=stg -var database_generation=3 google_spanner_database.restored["3"] ` + quillDatabase + "-3", stateLine, strings.Replace(planLine, "generation=1", "generation=3", 1) + "", showLine},
 			wantFact:     "Plan: 2 to add, 1 to change, 1 to destroy.",
 			wantCreated:  []string{"p-stg-gbl-quill-db-pit-20261004-0200 of p-stg-gbl-quill-db as of 2026-10-04T02:00:00Z until 2026-10-19T04:30:00Z", "p-stg-gbl-quill-db-2-forensic-20261005-0430 of p-stg-gbl-quill-db-2 as of 2026-10-05T04:30:00Z until 2026-11-04T04:30:00Z"},
 			wantRestored: "p-stg-gbl-quill-db-3 from projects/p-spn/instances/shared-spanner/backups/p-stg-gbl-quill-db-pit-20261004-0200",
@@ -863,13 +846,6 @@ func TestPlanEnvironmentStack(t *testing.T) {
 				envFile = "export SKIP_DEPLOY=\"\"\n"
 			}
 			subs := tt.subs
-			if tt.live != "" || strings.Contains(tt.name, "serves") {
-				subs = map[string]string{}
-				for k, v := range tt.subs {
-					subs[k] = v
-				}
-				subs["_SERVICES"] = "us-central1=quill-app"
-			}
 			tfvars := tt.tfvars
 			if tfvars == "" {
 				tfvars = pinnedTfvars(allPinned, allPinned, allPinned)
@@ -900,17 +876,6 @@ func TestPlanEnvironmentStack(t *testing.T) {
 				store.objects[stackKey("records", "quill", "stg")] = stackJSON("3c4d")
 			}
 			clients := &Clients{Exec: run, SecretsAs: secrets.openAs, SpannerAs: spanner.open, Storage: store.open, Sleep: noSleep, Now: func() time.Time { return time.Date(2026, 10, 5, 4, 30, 0, 0, time.UTC) }}
-			if tt.live != "" || strings.Contains(tt.name, "serves") {
-				// The stack names one service, deployed, carrying the maintenance variable at
-				// the live value.
-				const name = "projects/p-stg/locations/us-central1/services/quill-app"
-				doc := serviceDoc(name)
-				template, _ := doc["template"].(map[string]any)
-				container, _ := firstContainer(template)
-				container["env"] = []any{map[string]any{"name": "APP_MAINTENANCE", "value": tt.live}}
-				services := newFakeRun(map[string]map[string]any{name: doc})
-				clients.Run = services.open
-			}
 			var out strings.Builder
 			err := PlanEnvironmentStack(t.Context(), clients, w, &out)
 			if tt.wantErr != "" {
@@ -939,6 +904,14 @@ func TestPlanEnvironmentStack(t *testing.T) {
 			}
 			if env[restoredFact] != tt.wantReplaced {
 				t.Errorf("%s = %q, want %q", restoredFact, env[restoredFact], tt.wantReplaced)
+			}
+			if tt.wantTemplates {
+				if _, err := readRevisionTemplates(w); err != nil {
+					t.Errorf("the run left no revision templates: %v", err)
+				}
+				if _, err := os.Stat(filepath.Join(string(w), StackPlanJSONFile)); err == nil {
+					t.Errorf("a rollback run saved the plan's JSON, which the record would carry as applied")
+				}
 			}
 			// A generation restore's backup is checked through wantFacts; the replace path's here.
 			if tt.wantRestored == "" && env[backupFact] != tt.wantBackup {
@@ -988,7 +961,7 @@ func TestPlanEnvironmentStack(t *testing.T) {
 					t.Errorf("the generation note (%+v) and the facts disagree", note)
 				}
 			}
-			if tt.wantFact != "" {
+			if tt.wantFact != "" && !tt.wantTemplates {
 				if _, err := os.Stat(filepath.Join(string(w), StackPlanJSONFile)); err != nil {
 					t.Errorf("the plan's JSON is not in the workspace: %v", err)
 				}
@@ -1043,7 +1016,7 @@ func TestApplyEnvironmentStack(t *testing.T) {
 			subs:         tstSubs(),
 			planJSON:     stackPlanJSON,
 			env:          applyRestoreEnv,
-			outputs:      map[string]string{readSubstitutions: `{"substitutions": {"value": ` + substitutionsOutput + `}}`, readFirestore: "quill-fs\n"},
+			outputs:      map[string]string{readSubstitutions: `{"substitutions": {"value": ` + substitutionsOutput + `}, "revision_templates": {"value": ` + revisionTemplatesJSON(false, "quill-app") + `}}`, readFirestore: "quill-fs\n"},
 			wantOut:      []string{"Applied tst's stack: 2 added, 1 changed, 1 destroyed.", settingsRead, "Restore: every document of the Firestore database quill-fs is deleted; its documents referred to rows the restore replaced."},
 			wantTofu:     []string{"tofu apply -input=false -no-color WS/stack.plan", readSubstitutions, readFirestore},
 			wantSettings: `{"APP_SERVICE_NAME":"quill-migrate"}`,
@@ -1054,7 +1027,7 @@ func TestApplyEnvironmentStack(t *testing.T) {
 			subs:         tstSubs(),
 			planJSON:     stackPlanJSON,
 			env:          applyRestoreEnv,
-			outputs:      map[string]string{readSubstitutions: `{"substitutions": {"value": ` + substitutionsOutput + `}}`},
+			outputs:      map[string]string{readSubstitutions: `{"substitutions": {"value": ` + substitutionsOutput + `}, "revision_templates": {"value": ` + revisionTemplatesJSON(false, "quill-app") + `}}`},
 			fail:         map[string]error{readFirestore: errors.New("no output")},
 			wantOut:      []string{"No Firestore database to clear: the stack has no firestore_database output"},
 			wantTofu:     []string{"tofu apply -input=false -no-color WS/stack.plan", readSubstitutions, readFirestore},
@@ -1064,8 +1037,8 @@ func TestApplyEnvironmentStack(t *testing.T) {
 			name:         "the saved plan is applied as the apply identity, and the migrate command's settings read from the applied stack",
 			subs:         tagSubs(),
 			planJSON:     stackPlanJSON,
-			outputs:      map[string]string{readSubstitutions: `{"substitutions": {"value": ` + substitutionsOutput + `}}`},
-			wantOut:      []string{"Applied stg's stack: 2 added, 1 changed, 1 destroyed.", settingsRead},
+			outputs:      map[string]string{readSubstitutions: `{"substitutions": {"value": ` + substitutionsOutput + `}, "revision_templates": {"value": ` + revisionTemplatesJSON(false, "quill-app") + `}}`},
+			wantOut:      []string{"Applied stg's stack: 2 added, 1 changed, 1 destroyed.", settingsRead, "The revision templates are read from the stack as applied (revision_templates): 1 service(s), for deploy service."},
 			wantTofu:     []string{"tofu apply -input=false -no-color WS/stack.plan", readSubstitutions},
 			wantSettings: `{"APP_SERVICE_NAME":"quill-migrate"}`,
 		},
@@ -1073,7 +1046,7 @@ func TestApplyEnvironmentStack(t *testing.T) {
 			name:         "the environment's hostname is read back from the applied stack, where the trigger still names its last apply's",
 			subs:         withSub(tagSubs(), hostnameSub, "quill-stg.example.dev"),
 			planJSON:     stackPlanJSON,
-			outputs:      map[string]string{readSubstitutions: `{"substitutions": {"value": ` + strings.Replace(substitutionsOutput, "{", `{"_HOSTNAME": "quill.stg.example.dev", `, 1) + `}}`},
+			outputs:      map[string]string{readSubstitutions: `{"substitutions": {"value": ` + strings.Replace(substitutionsOutput, "{", `{"_HOSTNAME": "quill.stg.example.dev", `, 1) + `}, "revision_templates": {"value": ` + revisionTemplatesJSON(false, "quill-app") + `}}`},
 			wantOut:      []string{"The environment's hostname is read from the stack as applied (_HOSTNAME): quill.stg.example.dev, where the trigger (its stack's last apply) says \"quill-stg.example.dev\".", settingsRead},
 			wantTofu:     []string{"tofu apply -input=false -no-color WS/stack.plan", readSubstitutions},
 			wantSettings: `{"APP_SERVICE_NAME":"quill-migrate"}`,
@@ -1083,7 +1056,7 @@ func TestApplyEnvironmentStack(t *testing.T) {
 			name:         "a hostname the trigger names alike is read back without a word",
 			subs:         withSub(tagSubs(), hostnameSub, "quill-stg.example.dev"),
 			planJSON:     stackPlanJSON,
-			outputs:      map[string]string{readSubstitutions: `{"substitutions": {"value": ` + strings.Replace(substitutionsOutput, "{", `{"_HOSTNAME": "quill-stg.example.dev", `, 1) + `}}`},
+			outputs:      map[string]string{readSubstitutions: `{"substitutions": {"value": ` + strings.Replace(substitutionsOutput, "{", `{"_HOSTNAME": "quill-stg.example.dev", `, 1) + `}, "revision_templates": {"value": ` + revisionTemplatesJSON(false, "quill-app") + `}}`},
 			wantOut:      []string{settingsRead},
 			wantTofu:     []string{"tofu apply -input=false -no-color WS/stack.plan", readSubstitutions},
 			wantSettings: `{"APP_SERVICE_NAME":"quill-migrate"}`,
@@ -1093,7 +1066,7 @@ func TestApplyEnvironmentStack(t *testing.T) {
 			name:         "the next revision's hostname a stack names is read back beside the canonical one",
 			subs:         withSub(withSub(tagSubs(), hostnameSub, "quill-stg.example.dev"), nextHostnameSub, "quill-stg-next.example.dev"),
 			planJSON:     stackPlanJSON,
-			outputs:      map[string]string{readSubstitutions: `{"substitutions": {"value": ` + strings.Replace(substitutionsOutput, "{", `{"_HOSTNAME": "staging.quill.example", "_NEXT_HOSTNAME": "quill-stg-next.example.dev", `, 1) + `}}`},
+			outputs:      map[string]string{readSubstitutions: `{"substitutions": {"value": ` + strings.Replace(substitutionsOutput, "{", `{"_HOSTNAME": "staging.quill.example", "_NEXT_HOSTNAME": "quill-stg-next.example.dev", `, 1) + `}, "revision_templates": {"value": ` + revisionTemplatesJSON(false, "quill-app") + `}}`},
 			wantOut:      []string{"The environment's hostname is read from the stack as applied (_HOSTNAME): staging.quill.example, where the trigger (its stack's last apply) says \"quill-stg.example.dev\".", settingsRead},
 			wantTofu:     []string{"tofu apply -input=false -no-color WS/stack.plan", readSubstitutions},
 			wantSettings: `{"APP_SERVICE_NAME":"quill-migrate"}`,
@@ -1104,7 +1077,7 @@ func TestApplyEnvironmentStack(t *testing.T) {
 			name:          "the services, the job process's template job and a build argument the trigger lacks are read from the applied stack",
 			subs:          withSub(tagSubs(), servicesSub, "us-central1=quill-app"),
 			planJSON:      stackPlanJSON,
-			outputs:       map[string]string{readSubstitutions: `{"substitutions": {"value": ` + strings.Replace(substitutionsOutput, `{"_SERVICES": "us-central1=quill-app",`, `{"_SERVICES": "us-central1=quill-app,us-central1=quill-portal", "_JOBS_JOB": "us-central1=quill-jobs", "_BUILD_ARG_THEME": "dark",`, 1) + `}}`},
+			outputs:       map[string]string{readSubstitutions: `{"substitutions": {"value": ` + strings.Replace(substitutionsOutput, `{"_SERVICES": "us-central1=quill-app",`, `{"_SERVICES": "us-central1=quill-app,us-central1=quill-portal", "_JOBS_JOB": "us-central1=quill-jobs", "_BUILD_ARG_THEME": "dark",`, 1) + `}, "revision_templates": {"value": ` + revisionTemplatesJSON(true, "quill-app", "quill-portal") + `}}`},
 			wantOut:       []string{"The services read from the stack as applied (_SERVICES): us-central1=quill-app,us-central1=quill-portal, where the trigger (its stack's last apply) says \"us-central1=quill-app\".", "The job process's template job read from the stack as applied (_JOBS_JOB): us-central1=quill-jobs, where the trigger (its stack's last apply) says \"\".", "The build argument THEME is read from the stack as applied (_BUILD_ARG_THEME), for the steps after the image build, which passed what the trigger carried.", settingsRead},
 			wantTofu:      []string{"tofu apply -input=false -no-color WS/stack.plan", readSubstitutions},
 			wantSettings:  `{"APP_SERVICE_NAME":"quill-migrate"}`,
@@ -1116,7 +1089,7 @@ func TestApplyEnvironmentStack(t *testing.T) {
 			name:          "values the trigger names alike are read back without a word",
 			subs:          withSub(withSub(withSub(tagSubs(), servicesSub, "us-central1=quill-app"), jobsJobSub, "us-central1=quill-jobs"), "_BUILD_ARG_THEME", "dark"),
 			planJSON:      stackPlanJSON,
-			outputs:       map[string]string{readSubstitutions: `{"substitutions": {"value": ` + strings.Replace(substitutionsOutput, `{"_SERVICES": "us-central1=quill-app",`, `{"_SERVICES": "us-central1=quill-app", "_JOBS_JOB": "us-central1=quill-jobs", "_BUILD_ARG_THEME": "dark",`, 1) + `}}`},
+			outputs:       map[string]string{readSubstitutions: `{"substitutions": {"value": ` + strings.Replace(substitutionsOutput, `{"_SERVICES": "us-central1=quill-app",`, `{"_SERVICES": "us-central1=quill-app", "_JOBS_JOB": "us-central1=quill-jobs", "_BUILD_ARG_THEME": "dark",`, 1) + `}, "revision_templates": {"value": ` + revisionTemplatesJSON(true, "quill-app") + `}}`},
 			wantOut:       []string{settingsRead},
 			wantTofu:      []string{"tofu apply -input=false -no-color WS/stack.plan", readSubstitutions},
 			wantSettings:  `{"APP_SERVICE_NAME":"quill-migrate"}`,
@@ -1128,7 +1101,7 @@ func TestApplyEnvironmentStack(t *testing.T) {
 			name:         "a plan with no change applies nothing, and still reads the settings",
 			subs:         tagSubs(),
 			planJSON:     `{"resource_changes": []}`,
-			outputs:      map[string]string{readSubstitutions: `{"substitutions": {"value": ` + substitutionsOutput + `}}`},
+			outputs:      map[string]string{readSubstitutions: `{"substitutions": {"value": ` + substitutionsOutput + `}, "revision_templates": {"value": ` + revisionTemplatesJSON(false, "quill-app") + `}}`},
 			wantOut:      []string{"Nothing to apply: stg's stack matches the code.", settingsRead},
 			wantTofu:     []string{readSubstitutions},
 			wantSettings: `{"APP_SERVICE_NAME":"quill-migrate"}`,
