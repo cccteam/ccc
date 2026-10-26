@@ -169,5 +169,6 @@ checks:
   env-template
   file-store
   pins
+  gofmt
   gowork-off
   regen
