@@ -445,11 +445,12 @@ type dataConfig struct {
 // staffSettings builds the staff auth's settings: the generated collection its default
 // roles validate against, the live service its engine signals policy changes through, the
 // cookie key its sessions are signed with, the session timeout, the sender its mail goes
-// through with the login page its links open, and the generated reader of a tenant's
-// declaration, which the sign-in rule reads in the sign-in's transaction. A directory
-// registration's settings join the literal here (impulse add method), read from the
-// environment under the registration's variables, so the constructor stays one call per
-// auth.
+// through with the login page its links open, the console's device page, where a
+// command-line client asking for the machines outlet sends a staff login for approval,
+// and the generated reader of a tenant's declaration, which the sign-in rule reads in the
+// sign-in's transaction. A directory registration's settings join the literal here
+// (impulse add method), read from the environment under the registration's variables, so
+// the constructor stays one call per auth.
 func (env *dataConfig) staffSettings(collection access.PermissionCollection, signals staff.Signals, cookieKey string, sender mail.Sender) *staff.Settings {
 	return &staff.Settings{
 		Collection:         collection,
@@ -458,6 +459,7 @@ func (env *dataConfig) staffSettings(collection access.PermissionCollection, sig
 		SessionTimeout:     env.SessionTimeout,
 		Mail:               sender,
 		MailLoginURL:       env.PublicURL + "/console/login",
+		DevicePage:         "/console/device",
 		TenantDeclarations: app.NewTenantDeclarationReader(),
 	}
 }

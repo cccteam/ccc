@@ -27,6 +27,10 @@ type typescriptGenerator struct {
 	// userSurfaces are the user-management surfaces the router serves, filtered to the
 	// target outlet's by userSurfacesOn.
 	userSurfaces []*userSurface
+	// tokenIssuers are the descriptor's tokens blocks by session outlet, for the outlets
+	// whose Auth issues tokens for the application's machine outlets (tokenIssuers);
+	// tokensOn picks the target outlet's.
+	tokenIssuers map[string]*tsAPITokens
 	// manualRegistrations are the declared registrations with no generated handler;
 	// each carries its own outlet membership for the outlet filter.
 	manualRegistrations []ManualRegistration
@@ -836,6 +840,9 @@ func (t *typescriptGenerator) apiClientData() *tsAPIData {
 	for _, s := range t.userSurfacesOn() {
 		data.UserSurfaces = append(data.UserSurfaces, s.apiSurface())
 	}
+	// The token routes the outlet serves when its Auth issues tokens for the
+	// application's machine outlets, carried for the token page and the device page.
+	data.Tokens = t.tokensOn()
 
 	for _, res := range data.Resources {
 		if res.Consolidated {

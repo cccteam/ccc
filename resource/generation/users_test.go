@@ -798,6 +798,129 @@ func Test_apiClientData_users(t *testing.T) {
 	}
 }
 
+// tokenFixtureGenerator is a generator whose default outlet signs the crew in and whose
+// crew auth issues the tokens of two machine outlets, droids and probes, beside a portal
+// signing the members in and managing the crew surface, and a kiosk signing the crew in
+// a second time.
+func tokenFixtureGenerator() *resourceGenerator {
+	crew := &outletAuth{importPath: crewAuthPath, methods: []AuthMethod{PasswordMethod()}}
+	members := &outletAuth{importPath: membersAuthPath, methods: []AuthMethod{AzureMethod("directory")}}
+
+	return &resourceGenerator{
+		client:        &client{},
+		genRoutes:     true,
+		routePrefix:   "console/api",
+		defaultOutlet: routerOutlet{auth: crew},
+		extraOutlets: []routerOutlet{
+			{name: "droids", prefix: "droids", apiKey: true, tokenAuth: crewAuthPath},
+			{name: "portal", prefix: "portal/api", servesSessions: true, auth: members, manages: []string{crewAuthPath}},
+			{name: "probes", prefix: "probes/v1", apiKey: true, tokenAuth: crewAuthPath},
+			{name: "kiosk", prefix: "kiosk/api", servesSessions: true, auth: crew},
+		},
+	}
+}
+
+// Test_tokenIssuers pins the derivation: the first session outlet declaring the auth a
+// machine outlet's Tokens names carries the block, listing every machine outlet of that
+// auth in declaration order with its mount path; a second session outlet declaring the
+// same auth, an outlet managing it, and an outlet whose auth issues none get nothing;
+// nothing where the run generates no routes or where no session outlet declares the auth.
+func Test_tokenIssuers(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		generator func() *resourceGenerator
+		want      map[string][]*tsAPIMachineOutlet
+	}{
+		{
+			name: "no routes: nothing",
+			generator: func() *resourceGenerator {
+				r := tokenFixtureGenerator()
+				r.genRoutes = false
+
+				return r
+			},
+		},
+		{
+			name:      "the default outlet issues for both machine outlets, in declaration order",
+			generator: tokenFixtureGenerator,
+			want:      map[string][]*tsAPIMachineOutlet{defaultOutletName: {{Name: "droids", Prefix: "/droids"}, {Name: "probes", Prefix: "/probes/v1"}}},
+		},
+		{
+			name: "no session outlet declares the auth: nothing",
+			generator: func() *resourceGenerator {
+				r := tokenFixtureGenerator()
+				r.extraOutlets[0].tokenAuth = "example.com/acme/beacon/pkg/auth/robots"
+				r.extraOutlets[2].tokenAuth = "example.com/acme/beacon/pkg/auth/robots"
+
+				return r
+			},
+			want: map[string][]*tsAPIMachineOutlet{},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := tt.generator().tokenIssuers()
+			if tt.want == nil {
+				if got != nil {
+					t.Fatalf("tokenIssuers() = %v, want nil", got)
+				}
+
+				return
+			}
+			outlets := make(map[string][]*tsAPIMachineOutlet, len(got))
+			for name, block := range got {
+				outlets[name] = block.Outlets
+				want := &tsAPITokens{Route: "user/tokens", RevokeRoute: "user/tokens/revoke", DeviceRoute: "user/device", ApproveRoute: "user/device/approve", DenyRoute: "user/device/deny", Outlets: block.Outlets}
+				if diff := cmp.Diff(want, block); diff != "" {
+					t.Errorf("tokenIssuers()[%s] mismatch (-want +got):\n%s", name, diff)
+				}
+			}
+			if diff := cmp.Diff(tt.want, outlets); diff != "" {
+				t.Errorf("tokenIssuers() outlets mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+// Test_apiClientData_tokens pins the descriptor's tokens block: on the client of the
+// session outlet whose Auth issues tokens, the routes in the form of userDomainsRoute and
+// every machine outlet of the auth with its mount path; absent from the client of an
+// outlet that only manages the auth, of one whose auth issues none, and of a second outlet
+// declaring the issuing auth.
+func Test_apiClientData_tokens(t *testing.T) {
+	t.Parallel()
+
+	issuers := tokenFixtureGenerator().tokenIssuers()
+	const block = "  tokens: {\n    route: 'user/tokens',\n    revokeRoute: 'user/tokens/revoke',\n    deviceRoute: 'user/device',\n    approveRoute: 'user/device/approve',\n    denyRoute: 'user/device/deny',\n    outlets: [{ name: 'droids', prefix: '/droids' }, { name: 'probes', prefix: '/probes/v1' }],\n  },\n});"
+
+	tests := []struct {
+		name            string
+		outlet          string
+		wantContains    []string
+		wantNotContains []string
+	}{
+		{name: "the default outlet, whose crew auth issues for droids and probes", wantContains: []string{"  userDomainsRoute: 'user-domains',", block}},
+		{name: "the portal, which manages the crew surface and whose members auth issues none", outlet: "portal", wantNotContains: []string{"tokens:"}},
+		{name: "the kiosk, a second outlet declaring the crew auth", outlet: "kiosk", wantNotContains: []string{"tokens:"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			gen := &typescriptGenerator{client: &client{}, tokenIssuers: issuers, outletName: tt.outlet}
+			out, err := gen.generateTemplateOutput("typescriptAPITemplate", typescriptAPITemplate, gen.apiClientData())
+			if err != nil {
+				t.Fatalf("generateTemplateOutput() error = %v", err)
+			}
+			assertContains(t, "typescriptAPITemplate", string(out), tt.wantContains, tt.wantNotContains)
+		})
+	}
+}
+
 // Test_AuthMethod_directoryDeclarations pins InvitedUsers and SyncsRoles: spelled in the
 // method's String, refused on the password method.
 func Test_AuthMethod_directoryDeclarations(t *testing.T) {

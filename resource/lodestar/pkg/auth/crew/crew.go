@@ -163,6 +163,12 @@ type Settings struct {
 	// links: the configuration's sender, and the console's login page as an absolute
 	// URL, where every link leads. Required; New refuses a nil sender.
 	Mail auth.Mail
+	// DevicePage is the console page where a signed-in crew member approves a
+	// command-line client's request to act as them, which a device authorization tells
+	// the client (verification_uri): a path in the application, the console's mount
+	// path joined with /device, where the console mounts the library's device approval
+	// page.
+	DevicePage string
 	// Collection is the generated permission collection the role file validates against:
 	// the resources, fields and conditions the release declares. The router package
 	// generates it and imports this one, so the configuration passes it in.
@@ -486,6 +492,7 @@ func New(ctx context.Context, db *cloudspanner.Client, settings *Settings) (*Aut
 		session.WithXSRFCookieName(XSRFCookie),
 		session.WithSessionTimeout(settings.SessionTimeout),
 		session.WithImpersonationTimeout(impersonationTimeout),
+		session.WithDeviceVerificationURL(settings.DevicePage),
 	)
 	if err != nil {
 		return nil, errors.Wrap(err, "session.NewAuth()")

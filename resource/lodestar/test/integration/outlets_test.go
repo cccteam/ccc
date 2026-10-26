@@ -343,6 +343,14 @@ func TestDroidsTokens(t *testing.T) {
 		if deviceCode == "" || userCode == "" {
 			t.Fatalf("device authorization = %s, want a device code and a user code", body)
 		}
+		// The client is sent to the console's device page (crew.Settings.DevicePage), with
+		// the code the person types already in the query.
+		if got, _ := started["verification_uri"].(string); got != "/console/device" {
+			t.Errorf("verification_uri = %q, want the console's device page /console/device", got)
+		}
+		if got, _ := started["verification_uri_complete"].(string); got != "/console/device?userCode="+userCode {
+			t.Errorf("verification_uri_complete = %q, want /console/device?userCode=%s", got, userCode)
+		}
 
 		// The marshal reads what waits under the code and approves it on the console.
 		b := newBrowser(t, s, consoleAPI)

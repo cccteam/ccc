@@ -142,6 +142,14 @@ type Settings struct {
 	// to this auth (https://host/login), which every mailed link opens with its token in
 	// the query: the application's public address and the surface's login path.
 	MailLoginURL string
+{{- if .Outlets}}
+	// DevicePage is the console page where a signed-in person approves a command-line
+	// client's request to act as them, which a device authorization tells the client
+	// (verification_uri): a path in the application, the mount path of the surface that
+	// binds to this auth joined with /device ("/console/device"), where the console
+	// mounts the library's device approval page.
+	DevicePage string
+{{- end}}
 {{- if .Directory}}
 	// LoginURL is the browser page a refused or waiting sign-in returns to, with the
 	// reason as a code in the query (?code=, a sessioninfo.LoginRefusalCode, never text, or
@@ -356,6 +364,9 @@ func New(ctx context.Context, db *cloudspanner.Client, settings *Settings) (*Aut
 		session.WithCookieName(Name),
 		session.WithXSRFCookieName(XSRFCookie),
 		session.WithSessionTimeout(settings.SessionTimeout),
+{{- if .Outlets}}
+		session.WithDeviceVerificationURL(settings.DevicePage),
+{{- end}}
 	)
 	if err != nil {
 		return nil, errors.Wrap(err, "session.NewAuth()")

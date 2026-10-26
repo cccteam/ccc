@@ -580,11 +580,21 @@ token routes behind its session and XSRF guards, `GET` and `POST user/tokens`, `
 user/tokens/revoke`, `GET user/device`, `POST user/device/approve` and `POST
 user/device/deny`: a signed-in person issues, lists and revokes their own application
 tokens (the secret is in the answer once) and approves or denies a command-line client's
-device authorization by the code it shows. The chain comment names the issuing auth per
-machine outlet and the generated test proves the check: no token and a token the auth
-never issued are challenged, a token opens the routes, and the device endpoints sit in
-front of the check. The application writes nothing for the check: the auth package
-registers the outlet on its `Auth` before the first request
+device authorization by the code it shows. The console carries those two pages from the
+client library: a token page at `<mount>/tokens`, where the person issues, lists and
+revokes their tokens, and a device page at `<mount>/device`, where the link a program
+prints (`/console/device?userCode=XXXX-XXXX`) lands for approval; the issuing auth
+names the device page as its device verification path
+(`session.WithDeviceVerificationURL("/console/device")`), which the device authorization
+tells the client. The issuing outlet's generated descriptor carries a `tokens` block the
+pages configure themselves from, the routes above in the form of `userDomainsRoute`
+and the machine outlets the auth issues for, by name and mount path
+(`outlets: [{ name: 'droids', prefix: '/droids' }]`); an outlet whose auth issues none,
+and one that only manages the issuing auth, carry no block. The chain comment names the
+issuing auth per machine outlet and the generated test proves the check: no token and a
+token the auth never issued are challenged, a token opens the routes, and the device
+endpoints sit in front of the check. The application writes nothing for the check: the
+auth package registers the outlet on its `Auth` before the first request
 (`session.RegisterMachineOutlet(auth, "droids")`, beside its sign-in methods) and the
 `Handlers` getter returns it.
 

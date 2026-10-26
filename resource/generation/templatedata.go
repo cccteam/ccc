@@ -702,6 +702,11 @@ type tsAPIData struct {
 	// tenant record's creation shape admits self-service: the route's segment and
 	// the body's shape, exported beside the descriptor. Nil, nothing is written.
 	TenantCreation *tsTenantCreation
+	// Tokens is the descriptor's tokens block, carried by the session outlet whose
+	// Auth issues tokens for the application's machine outlets: the routes the token
+	// page and the device page read and write through, and the outlets a token is
+	// issued for. Nil, the block is left out.
+	Tokens *tsAPITokens
 }
 
 // tsAPISurface is one Auth's user-management surface as the descriptor carries it.
@@ -737,6 +742,30 @@ type tsAPIPartition struct {
 	Invitations    string
 	SetPassword    string
 	UnlinkIdentity string
+}
+
+// tsAPITokens is the descriptor's tokens block: the token routes of a session outlet
+// whose Auth issues tokens for the application's machine outlets, in the form of
+// userDomainsRoute (no API prefix, relative to the client's base URL), and the machine
+// outlets the Auth issues for, in declaration order. Route lists the signed-in person's
+// live tokens (GET) and issues an application token (POST); RevokeRoute revokes one by
+// id; DeviceRoute looks a command-line client's device request up by the code it
+// printed; ApproveRoute and DenyRoute decide it.
+type tsAPITokens struct {
+	Route        string
+	RevokeRoute  string
+	DeviceRoute  string
+	ApproveRoute string
+	DenyRoute    string
+	Outlets      []*tsAPIMachineOutlet
+}
+
+// tsAPIMachineOutlet is one machine outlet in the tokens block: its name as the server
+// knows it, what an issue and a device authorization name as the outlet, and the mount
+// path its routes are served under, with a leading slash.
+type tsAPIMachineOutlet struct {
+	Name   string
+	Prefix string
 }
 
 // HasUpload reports whether any method on this outlet is an @upload, so the client

@@ -1,9 +1,10 @@
 // The @cccteam/resource declaration the next client release publishes: every name the
 // generated files import, with ApiDescriptor, ResourceMap and the types they reach
 // carrying every block and field today's generator emits (the live routes, the features
-// route, the feature gate on a resource's and a method's descriptor entry and on the
-// resource, field and method metadata), and the rest reduced to what the generated files
-// touch. The compile test type-checks the four emitted client files against it, and the
+// route, the tokens block of an outlet whose Auth issues tokens for the application's
+// machine outlets, the feature gate on a resource's and a method's descriptor entry and
+// on the resource, field and method metadata), and the rest reduced to what the generated
+// files touch. The compile test type-checks the four emitted client files against it, and the
 // descriptor and the resource metadata map taken out of their wrappers and typed directly
 // against it, which is where the excess-property check the wrappers give up lives now: a
 // field the generator emits that this declaration does not carry fails the generator's
@@ -64,6 +65,18 @@ export interface LiveRoutes {
   unsubscribeRoute: string;
   tokenRoute: string;
 }
+export interface MachineOutletDescriptor {
+  name: string;
+  prefix: string;
+}
+export interface TokensDescriptor {
+  route: string;
+  revokeRoute: string;
+  deviceRoute: string;
+  approveRoute: string;
+  denyRoute: string;
+  outlets: readonly MachineOutletDescriptor[];
+}
 export interface ApiDescriptor {
   resources: Record<string, ResourceDescriptor>;
   methods: Record<string, MethodDescriptor>;
@@ -73,6 +86,7 @@ export interface ApiDescriptor {
   userDomainsRoute: string;
   features?: FeaturesRoute;
   live?: LiveRoutes;
+  tokens?: TokensDescriptor;
 }
 
 export interface ClientOptions {

@@ -5,9 +5,10 @@ site. One hostname, three outlets — the console on `/console/api` with its bro
 application at `/console`, a second browser application (the portal) on `/portal/api`
 behind the same session handling with its application at `/portal`, and a machine REST
 API on `/machines` behind bearer tokens the staff auth issues: a staff login issues an
-application token for the outlet on the console, or approves a command-line client's
-device authorization there, and the token acts as them, with their roles, through the
-same permission checks as the browser. Every browser outlet's API sits under its application's mount path, and no
+application token for the outlet on the console's Tokens page (`/console/tokens`), or
+approves a command-line client's device authorization on its device page
+(`/console/device`, the page the staff auth names as its `DevicePage`), and the token
+acts as them, with their roles, through the same permission checks as the browser. Every browser outlet's API sits under its application's mount path, and no
 application is mounted at `/`: an installed browser application's scope is every URL under
 its start, so one at `/` would own the origin and the other would never get its own install
 prompt. The root alone redirects to `/console/`; every other unmatched path is 404.
@@ -73,9 +74,10 @@ directories there, the application's administrator sets directory only.
   around the console, the members auth's around the portal (login redirect, directory
   callback, front-channel logout), the machines outlet's group behind the staff auth's
   token check, with the device flow's two endpoints under its prefix and the token routes
-  (`/console/api/user/tokens`, `/console/api/user/device`) on the console, one Angular
-  application per browser outlet under its mount path, and the root redirect to the
-  console's.
+  (`/console/api/user/tokens`, `/console/api/user/device`) on the console, which the
+  console's Tokens page and device page (the client library's `ccc-tokens` entry) read
+  and write through, one Angular application per browser outlet under its mount path,
+  and the root redirect to the console's.
 - `pkg/resources` holds the resource structs the generator reads: `Tenant` (the tenant
   record, a global resource), `Announcement` (tenant-scoped, on the console and the
   portal), and `Reading` (tenant-scoped, machines-only). `schema/migrations` holds the tables they describe; `schema/devseed` the

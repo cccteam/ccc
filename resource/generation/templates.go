@@ -3051,6 +3051,16 @@ export const apiDescriptor = defineApiDescriptor({
 {{- end }}
   ],
 {{- end }}
+{{- with .Tokens }}
+  tokens: {
+    route: '{{ .Route }}',
+    revokeRoute: '{{ .RevokeRoute }}',
+    deviceRoute: '{{ .DeviceRoute }}',
+    approveRoute: '{{ .ApproveRoute }}',
+    denyRoute: '{{ .DenyRoute }}',
+    outlets: [{{ range $i, $o := .Outlets }}{{ if $i }}, {{ end }}{ name: '{{ $o.Name }}', prefix: '{{ $o.Prefix }}' }{{ end }}],
+  },
+{{- end }}
 });
 {{- with .TenantCreation }}
 

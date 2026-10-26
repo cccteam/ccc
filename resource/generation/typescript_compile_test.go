@@ -15,8 +15,9 @@ import (
 
 // clientDeclarationDir holds the two stand-ins for @cccteam/resource the compile test
 // type-checks the emitted files against: older.d.ts, a client released before the
-// descriptor's live and features blocks and the feature gate, and current.d.ts, the
-// declaration the next client release publishes with every field today's generator emits.
+// descriptor's live, features and tokens blocks and the feature gate, and current.d.ts,
+// the declaration the next client release publishes with every field today's generator
+// emits.
 const clientDeclarationDir = "clientdecl"
 
 // compileTsconfig mirrors the strictness Lodestar's web workspace builds the generated
@@ -273,6 +274,10 @@ func emitFeatureFixtureClient(t *testing.T) map[string]string {
 	}
 
 	dir := t.TempDir()
+	// The droids outlet's tokens block, so the descriptor carries it and the current
+	// declaration is held to it; the derivation is pinned in Test_tokenIssuers.
+	tokens := tokensBlock()
+	tokens.Outlets = []*tsAPIMachineOutlet{{Name: "droids", Prefix: "/droids"}}
 	gen := &typescriptGenerator{
 		client:                r.client,
 		genMetadata:           true,
@@ -281,6 +286,7 @@ func emitFeatureFixtureClient(t *testing.T) map[string]string {
 		rc:                    resource.MustNewGeneratedCollection(collection),
 		domainRouteSegment:    r.domainRouteSegment,
 		domainRouteParam:      r.domainRouteParam,
+		tokenIssuers:          map[string]*tsAPITokens{defaultOutletName: tokens},
 	}
 	gen.ConsolidatedRoute = "resources"
 	if err := gen.generateTypescriptMetadata(); err != nil {
