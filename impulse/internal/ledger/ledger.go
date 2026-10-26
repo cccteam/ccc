@@ -442,7 +442,7 @@ var Steps = []Step{
 			ccc v0.3.5
 			ccc/accesstypes v0.7.0
 			ccc/cloud v0.2.1
-			ccc/resource v0.15.11-0.20261026035242-f9c5d8317c70
+			ccc/resource v0.15.11
 			ccc/tracer v0.3.0
 			db-initiator v0.4.3
 			httpio v0.7.22
@@ -455,7 +455,6 @@ var Steps = []Step{
 			@cccteam/resource-firestore 0.0.11
 		`),
 		Impulse: release("v0.5.18"),
-		Pending: true,
 		Note:    "the console carries the token page and the device approval page: the generated descriptor of a console whose auth issues tokens names the five routes and the machine outlets it issues for, and the auth names its device page (Settings.DevicePage, passed as session.WithDeviceVerificationURL; the data level names \"<mount>/device\", which the login-pages check holds). An application with a machine outlet mounts <ccc-tokens /> at <mount>/tokens (a navigation item without a permission) and <ccc-device-approval /> at <mount>/device, both from @cccteam/resource-angular/ccc-tokens, by hand per the outlets-flavor skeleton; the web pins move with this step to the ccc-lib release that carries the entry.",
 	},
 }
