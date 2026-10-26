@@ -151,6 +151,12 @@ linters:
           - paralleltest
           - tparallel
         path: test/integration/outlets_test\.go
+      # The tenant declaration test signs in through the portal's simulated directory,
+      # which sets a process variable, so it does not run in parallel.
+      - linters:
+          - paralleltest
+          - tparallel
+        path: test/integration/declaration_test\.go
     paths:
       - third_party$
       - builtin$

@@ -300,7 +300,7 @@ func (a *App) Machines() router.MachinesTokens {
 		return nil
 	}
 
-	return a.Handlers.MachinesTokens()
+	return a.MachinesTokens()
 }
 
 // UserPermissions returns the permission checker for a request, composed from the

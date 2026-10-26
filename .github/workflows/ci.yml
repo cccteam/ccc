@@ -143,11 +143,15 @@ jobs:
         working-directory: resource/lodestar/web
         run: bun run test
   impulse-skeletons:
-    # Every skeleton impulse can render is built, tested, and checked, against the
+    # Every skeleton impulse can render is built, tested, linted and checked, against the
     # framework pins the template carries and against the framework at this commit (the
     # rendered application's go.work points at this checkout's ccc modules; libraries
     # outside this repository stay pinned). A generator change that breaks a template, or
     # a template that lags the generator, fails here and not in a downstream application.
+    # The lint runs with the rendered application's own golangci-lint configuration under
+    # both of its tag sets, so a skeleton line an application's lint rejects fails here
+    # too, and not in the application's upgrade walk (the candidates themselves are never
+    # linted: they are templates, not a module).
     # The legs start on every pull request (see the changes job): on one that touches
     # nothing of theirs every step is skipped.
     name: impulse ${{ matrix.candidate }} (${{ matrix.framework }})
@@ -215,6 +219,19 @@ jobs:
         if: ${{ env.RUN == 'true' }}
         working-directory: app
         run: go test -tags skipAuth ./... -timeout 20m
+      - name: Install golangci-lint
+        if: ${{ env.RUN == 'true' }}
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        with:
+          version: 'v2.14.0'
+          install-only: true
+          skip-cache: true
+      - name: Lint with the application's own configuration (both tag sets)
+        if: ${{ env.RUN == 'true' }}
+        working-directory: app
+        run: |
+          golangci-lint run --timeout 10m ./...
+          golangci-lint run --timeout 10m --build-tags skipAuth ./...
       - name: impulse check
         if: ${{ env.RUN == 'true' }}
         working-directory: app
