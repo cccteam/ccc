@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.18](https://github.com/cccteam/ccc/compare/impulse/v0.5.17...impulse/v0.5.18) (2026-10-26)
+
+
+### Features
+
+* the console carries the token page and the device approval page: the descriptor names the machine outlets a console's auth issues for, and the auth names its device page ([#1146](https://github.com/cccteam/ccc/issues/1146)) ([7a3162c](https://github.com/cccteam/ccc/commit/7a3162cbdf749bc9aaa86e312e8b0192dc1f5fb0))
+
 ## [0.5.17](https://github.com/cccteam/ccc/compare/impulse/v0.5.16...impulse/v0.5.17) (2026-10-26)
 
 
