@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.19](https://github.com/cccteam/ccc/compare/impulse/v0.5.18...impulse/v0.5.19) (2026-10-26)
+
+
+### Features
+
+* **impulse:** the skeletons' and Lodestar's login pages hold their card back while the login component's arrival reads are in flight, so a page renders whole once it knows what to render, and the development sign-in note leaves the pages for the README ([#1150](https://github.com/cccteam/ccc/issues/1150)) ([3d150b8](https://github.com/cccteam/ccc/commit/3d150b82949753b255d7a57153afd7d3f4bb0194))
+
 ## [0.5.18](https://github.com/cccteam/ccc/compare/impulse/v0.5.17...impulse/v0.5.18) (2026-10-26)
 
 
