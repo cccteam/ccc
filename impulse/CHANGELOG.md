@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.5.17](https://github.com/cccteam/ccc/compare/impulse/v0.5.16...impulse/v0.5.17) (2026-10-26)
+
+
+### Features
+
+* **impulse:** impulse check runs gofmt over the application's own Go files, test files included, and --fix formats them ([#1145](https://github.com/cccteam/ccc/issues/1145)) ([ebb6124](https://github.com/cccteam/ccc/commit/ebb612401817dff0a60e8103fea575e96655bacc))
+
+
+### Bug Fixes
+
+* **impulse:** impulse upgrade --agent commits a step the agent cleared and walks on, instead of stopping for a commit and a second run at every step ([#1143](https://github.com/cccteam/ccc/issues/1143)) ([7e07e39](https://github.com/cccteam/ccc/commit/7e07e39905b085170b38412e94c2278a62abdb99))
+
 ## [0.5.16](https://github.com/cccteam/ccc/compare/impulse/v0.5.15...impulse/v0.5.16) (2026-10-25)
 
 
