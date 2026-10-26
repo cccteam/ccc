@@ -499,6 +499,27 @@ var Steps = []Step{
 		Impulse: release("v0.5.20"),
 		Note:    "a registration that synchronizes roles stands alone on its auth: the generator refuses an Auth declaration with a method marked .SyncsRoles() beside any other method, the session library refuses the registration at construction, impulse add auth and add method refuse the mix and impulse check names it, since the directory is then the authority for everyone the auth holds and a second way in would be a second authority over the same people (a person it provisions holds nothing, and the users surface refuses to seat them because the directory will not); the users surface reads rolesSynced as the auth's fact (its one registration syncs roles, so every row says it) instead of resolving each identity link to a registration by its connection, which a listed-Workspace or any-Workspace link never matched; an application that mixes a syncing registration with another method splits them into two auths (the shape the skeletons ship: a staff auth on the directory's groups, a members auth the application seats) or turns the sync off on the registration (DisableRoleSync, and the declaration without .SyncsRoles()) so the application assigns the roles; no page or route changes",
 	},
+	{
+		Pins: pins(`
+			access v0.11.1
+			ccc v0.3.5
+			ccc/accesstypes v0.7.0
+			ccc/cloud v0.2.1
+			ccc/resource v0.15.12
+			ccc/tracer v0.3.0
+			db-initiator v0.4.3
+			httpio v0.7.22
+			logger v0.1.30
+			session v0.13.10
+		`),
+		Web: web(`
+			@cccteam/resource 0.0.13
+			@cccteam/resource-angular 0.0.17
+			@cccteam/resource-firestore 0.0.11
+		`),
+		Impulse: release("v0.5.21"),
+		Note:    "the login pages' hold is checked: login-held holds every browser application bound to a session outlet to the shape the v0.5.19 step described by hand (the page gives the library's login component a template reference, reads its arriving signal, and hides the card while the signal is on), so an application whose login pages did not take the shape has it raised here as an obligation the agent wires, in the page's template and stylesheet; no pin moves",
+	},
 }
 
 // validatePending holds a step's Pending mark to its pins: a pin at a pseudo-version
