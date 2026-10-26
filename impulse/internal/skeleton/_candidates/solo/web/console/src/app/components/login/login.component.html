@@ -1,16 +1,11 @@
 <div class="login-page">
-  <mat-card class="login-card" appearance="outlined">
+  <mat-card class="login-card" [class.arriving]="methods.arriving()" appearance="outlined">
     <mat-card-header>
       <mat-card-title>Solo</mat-card-title>
       <mat-card-subtitle>Sign in to continue</mat-card-subtitle>
     </mat-card-header>
     <mat-card-content>
-      <ccc-login-methods home="/dashboard" (signedIn)="go($event)" />
-      <p class="hint">
-        Development login: <code>admin</code> / <code>password</code>, created by <code>cmd/bootstrap</code> from
-        <code>cmd/bootstrap/users.json</code>. The form is the library's login component, rendered from what the server
-        lists at <code>user/methods</code>; the page names no path of its own.
-      </p>
+      <ccc-login-methods #methods home="/dashboard" (signedIn)="go($event)" />
     </mat-card-content>
     <mat-card-footer class="release"><ccc-release /></mat-card-footer>
   </mat-card>

@@ -186,7 +186,8 @@ func TestConsoleHandsTheClientItsHooks(t *testing.T) {
 			name: "the console's page hands the component where a sign-in lands and takes the page it emits",
 			file: "console/src/app/components/login/login.component.html",
 			want: []string{
-				`<ccc-login-methods home="/dashboard" (signedIn)="go($event)" />`,
+				`<ccc-login-methods #methods home="/dashboard" (signedIn)="go($event)" />`,
+				`[class.arriving]="methods.arriving()"`,
 				`<mat-card-footer class="release"><ccc-release /></mat-card-footer>`,
 			},
 			absent: []string{"<form", "ngSubmit", "/user/", "returnUrl"},
@@ -206,7 +207,8 @@ func TestConsoleHandsTheClientItsHooks(t *testing.T) {
 			name: "the portal's page hands the component the tracker and its labels",
 			file: "portal/src/app/components/login/login.component.html",
 			want: []string{
-				`<ccc-login-methods home="/tracker" [labels]="labels" (signedIn)="go($event)" />`,
+				`<ccc-login-methods #methods home="/tracker" [labels]="labels" (signedIn)="go($event)" />`,
+				`[class.arriving]="methods.arriving()"`,
 				`<mat-card-footer class="release"><ccc-release /></mat-card-footer>`,
 			},
 			absent: []string{"<form", "/user/", "returnUrl"},
