@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	cloudspanner "cloud.google.com/go/spanner"
+	"github.com/cccteam/ccc"
 	"github.com/cccteam/session/sessioninfo"
 )
 
@@ -68,13 +69,23 @@ func TestTenantDeclaration_whoMayEnterASector(t *testing.T) {
 	}
 
 	// The navigator: through the fleet's directory, which every sector declares, in a
-	// role held in every sector and no global one.
+	// role held in every sector and no global one. The crew's roles are the
+	// application's, so the first sign-in provisions him holding nothing, and the
+	// governor seats him as Pilot in the global partition, a domain role held in every
+	// sector.
 	navigator := newBrowser(t, s, consoleAPI)
 	if status, body := navigator.do(ctx, http.MethodGet, consoleAPI+"/user/session", nil); status != http.StatusOK {
 		t.Fatalf("GET session before the navigator's login: status %d: %s", status, body)
 	}
-	if status, location := navigator.loginConsoleGoogle(ctx, navigatorUser, "pilot"); status != http.StatusFound || location != consolePage {
+	if status, location := navigator.loginConsoleGoogle(ctx, navigatorUser); status != http.StatusFound || location != consolePage {
 		t.Fatalf("the navigator's Google login: status %d to %q, want %d to %q", status, location, http.StatusFound, consolePage)
+	}
+	if got := navigator.domains(ctx); len(got) != 0 {
+		t.Fatalf("the navigator's chart before any seat = %v, want none", got)
+	}
+	seat := seatBody(crewUserID(ctx, t, governor, navigatorUser), "Pilot")
+	if status, body := governor.do(ctx, http.MethodPatch, consoleAPI+"/"+crewPartitions().Global.SeatsRoute, []byte(seat)); status != http.StatusOK {
+		t.Fatalf("seating the navigator as Pilot: status %d: %s", status, body)
 	}
 	if got, want := navigator.domains(ctx), []string{anvil, bastion, cinder}; !slices.Equal(got, want) {
 		t.Errorf("the navigator's chart = %v, want %v: every sector declares the fleet's directory", got, want)
@@ -174,4 +185,30 @@ func changeEvents(ctx context.Context, t *testing.T, s *served, tables ...string
 	}
 
 	return counts
+}
+
+// crewUserID finds a crew member's id by username through the console's global users
+// route, as the browser b (one who may list the crew) reads it.
+func crewUserID(ctx context.Context, t *testing.T, b *browser, username string) ccc.UUID {
+	t.Helper()
+
+	status, body := b.do(ctx, http.MethodGet, consoleAPI+"/"+crewPartitions().Global.UsersRoute, nil)
+	if status != http.StatusOK {
+		t.Fatalf("GET the crew's users: status %d: %s", status, body)
+	}
+	var rows []struct {
+		ID       ccc.UUID `json:"id"`
+		Username string   `json:"username"`
+	}
+	if err := json.Unmarshal(body, &rows); err != nil {
+		t.Fatalf("the crew's users are not a list: %v: %s", err, body)
+	}
+	for _, row := range rows {
+		if row.Username == username {
+			return row.ID
+		}
+	}
+	t.Fatalf("no crew member %q among %d rows", username, len(rows))
+
+	return ccc.UUID{}
 }

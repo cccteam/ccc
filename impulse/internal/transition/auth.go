@@ -215,6 +215,12 @@ func (au Auth) Validate(a *app.App) error {
 		}
 		seen[m.Name] = true
 	}
+	for i := range methods {
+		m := &methods[i]
+		if m.SyncsRoles() && len(methods) > 1 {
+			return errors.Newf("--method %s --authority directory beside %d other method(s): a registration whose directory writes the roles stands alone on its auth, since the directory is then the authority for everyone the auth holds; give it an auth of its own, or take --authority application so the application assigns the roles", methodFlag(m), len(methods)-1)
+		}
+	}
 	if _, err := au.source(a); err != nil {
 		return err
 	}

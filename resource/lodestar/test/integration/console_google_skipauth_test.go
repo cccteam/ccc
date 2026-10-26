@@ -13,17 +13,16 @@ import (
 
 // TestConsoleGoogleLogin signs in on the console through the fleet's Google directory,
 // the crew auth's second method beside the password, as a person on no manifest: the
-// first sign-in provisions them under the verified email and seats them in the roles
-// the directory's groups name, resolved at the store without regard to case (the groups
-// name pilot, the crew's role is Pilot); a password persona's session and theirs are
-// sessions of the same auth, read at the same route; and the next sign-in reconciles
-// the roles to the groups again, whatever case the groups carry, holding what the
-// directory still names and dropping what it no longer does, with no churn in between.
-// A directory identity whose verified email is a password persona's login is not taken
-// at the directory's word: the sign-in waits for that persona's password, which links
-// the identity and opens the session as the persona.
+// first sign-in provisions them under the verified email, holding no role and no sector,
+// since the crew's roles are the application's on every method (a registration whose
+// directory writes the roles stands alone on its auth, the members auth's shape); a
+// password persona's session and theirs are sessions of the same auth, read at the same
+// route; and the next sign-in finds them as they were, nothing written in between. A
+// directory identity whose verified email is a password persona's login is not taken at
+// the directory's word: the sign-in waits for that persona's password, which links the
+// identity and opens the session as the persona, whose seats stay the application's.
 //
-// Demonstrates: auth.multi-method, auth.directory-roles, auth.skipauth-directory.
+// Demonstrates: auth.multi-method, auth.skipauth-directory.
 func TestConsoleGoogleLogin(t *testing.T) {
 	t.Parallel()
 
@@ -34,7 +33,7 @@ func TestConsoleGoogleLogin(t *testing.T) {
 	if status, body := b.do(ctx, http.MethodGet, consoleAPI+"/user/session", nil); status != http.StatusOK {
 		t.Fatalf("GET session before login: status %d: %s", status, body)
 	}
-	if status, location := b.loginConsoleGoogle(ctx, navigatorUser, "pilot", "crewcommon"); status != http.StatusFound || location != consolePage {
+	if status, location := b.loginConsoleGoogle(ctx, navigatorUser); status != http.StatusFound || location != consolePage {
 		t.Fatalf("console Google login: status %d to %q, want %d to %q", status, location, http.StatusFound, consolePage)
 	}
 	sess := b.session(ctx)
@@ -42,10 +41,9 @@ func TestConsoleGoogleLogin(t *testing.T) {
 		t.Fatalf("session after login = %v, want authenticated as %s", sess, navigatorUser)
 	}
 
-	// Pilot is a domain role held in every sector, so the navigator has a foothold in
-	// all three; CrewCommon is global.
-	if got, want := b.domains(ctx), []string{anvil, bastion, cinder}; !slices.Equal(got, want) {
-		t.Errorf("user-domains after the first sign-in = %v, want %v", got, want)
+	// Provisioned holding nothing: no sector foothold until an operator seats them.
+	if got := b.domains(ctx); len(got) != 0 {
+		t.Errorf("user-domains after the first sign-in = %v, want none: the crew's roles are the application's", got)
 	}
 
 	// A password persona signs in beside: two methods, one auth, one session route.
@@ -55,36 +53,12 @@ func TestConsoleGoogleLogin(t *testing.T) {
 		t.Errorf("the marshal's session reads as %v", got)
 	}
 
-	// The next sign-in names the same groups, in whatever case the directory carries
-	// them: nothing is added or removed, and the foothold stands.
-	if status, _ := b.loginConsoleGoogle(ctx, navigatorUser, "PiLot", "CREWCOMMON"); status != http.StatusFound {
+	// The next sign-in finds the person as they were: nothing is written by the directory.
+	if status, _ := b.loginConsoleGoogle(ctx, navigatorUser); status != http.StatusFound {
 		t.Fatalf("second console Google login: status %d", status)
 	}
-	if got, want := b.domains(ctx), []string{anvil, bastion, cinder}; !slices.Equal(got, want) {
-		t.Errorf("user-domains after the second sign-in = %v, want %v", got, want)
-	}
-
-	// The directory drops the pilot group: the sector foothold goes with it, and the
-	// global role alone remains.
-	if status, _ := b.loginConsoleGoogle(ctx, navigatorUser, "crewcommon"); status != http.StatusFound {
-		t.Fatalf("third console Google login: status %d", status)
-	}
 	if got := b.domains(ctx); len(got) != 0 {
-		t.Errorf("user-domains after the pilot group is dropped = %v, want none", got)
-	}
-
-	// A directory that names no crew role refuses the sign-in: a browser arriving with no
-	// session lands on the console's login page with the refusal's code, and none opens.
-	fresh := newBrowser(t, s, consoleAPI)
-	if status, body := fresh.do(ctx, http.MethodGet, consoleAPI+"/user/session", nil); status != http.StatusOK {
-		t.Fatalf("GET session before the refused login: status %d: %s", status, body)
-	}
-	status, location := fresh.loginConsoleGoogle(ctx, navigatorUser, "not-a-role")
-	if status != http.StatusFound || location != consoleLogin+"?code=no_roles" {
-		t.Fatalf("console Google login naming no role: status %d to %q, want %d to %q", status, location, http.StatusFound, consoleLogin+"?code=no_roles")
-	}
-	if got := fresh.session(ctx)["authenticated"]; got != false {
-		t.Errorf("session after a refused sign-in = %v, want unauthenticated", got)
+		t.Errorf("user-domains after the second sign-in = %v, want none", got)
 	}
 
 	// A directory identity whose verified email is a login a password persona already
@@ -92,12 +66,12 @@ func TestConsoleGoogleLogin(t *testing.T) {
 	// holds the sign-in for that persona's password. The browser lands on the login page
 	// with the pending marker and no session opens; the pending route names the step;
 	// the marshal's password links the identity and opens the session as the marshal,
-	// whose roles the directory's groups govern from this sign-in on.
+	// whose seats are the application's and stand as they were.
 	taken := newBrowser(t, s, consoleAPI)
 	if status, body := taken.do(ctx, http.MethodGet, consoleAPI+"/user/session", nil); status != http.StatusOK {
 		t.Fatalf("GET session before the conflicting login: status %d: %s", status, body)
 	}
-	status, location = taken.loginConsoleGoogle(ctx, "marshal", "pilot")
+	status, location := taken.loginConsoleGoogle(ctx, "marshal")
 	if want := consoleLogin + "?pending=confirmation&returnUrl=" + url.QueryEscape(consolePage); status != http.StatusFound || location != want {
 		t.Fatalf("console Google login as a password persona's login: status %d to %q, want %d to %q", status, location, http.StatusFound, want)
 	}
@@ -122,8 +96,8 @@ func TestConsoleGoogleLogin(t *testing.T) {
 	if sess := taken.session(ctx); sess["authenticated"] != true || sess["username"] != "marshal" {
 		t.Fatalf("session after the confirmation = %v, want authenticated as marshal", sess)
 	}
-	if got, want := taken.domains(ctx), []string{anvil, bastion, cinder}; !slices.Equal(got, want) {
-		t.Errorf("user-domains after the directory signed the marshal in = %v, want the pilot group's %v", got, want)
+	if got, want := taken.domains(ctx), marshal.domains(ctx); !slices.Equal(got, want) {
+		t.Errorf("user-domains after the directory signed the marshal in = %v, want the marshal's own %v", got, want)
 	}
 }
 

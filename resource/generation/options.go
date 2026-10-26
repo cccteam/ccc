@@ -385,8 +385,10 @@ func (m AuthMethod) InvitedUsers() AuthMethod {
 
 // SyncsRoles declares that the registration writes its users' roles from the
 // directory at every sign-in (the method's RoleSync): the Auth's user-management
-// surface shows those users' seats and never writes them, since a seat made by hand
-// would not survive the next sign-in. Not for the password method.
+// surface shows every user's seats and never writes them, since a seat made by hand
+// would not survive the next sign-in. Such a registration stands alone on its Auth
+// (validateAuthMethods refuses another method beside it): the directory is then the
+// authority for everyone the Auth holds. Not for the password method.
 func (m AuthMethod) SyncsRoles() AuthMethod {
 	m.syncsRoles = true
 
@@ -498,6 +500,11 @@ func validateAuthMethods(importPath string, methods []AuthMethod) error {
 			return errors.Newf("Auth(%q, %s) declares both InvitedUsers and OpenSignUp: a registration admits invited users only or anyone, not both", importPath, m)
 		}
 		seen[m.name] = true
+	}
+	for _, m := range methods {
+		if m.syncsRoles && len(methods) > 1 {
+			return errors.Newf("Auth(%q, %s) declares SyncsRoles beside %d other method(s): a registration whose directory writes the roles stands alone on its Auth, since the directory is then the authority for everyone the Auth holds; give the registration an Auth of its own, or drop SyncsRoles so the application assigns the roles", importPath, m, len(methods)-1)
+		}
 	}
 
 	return nil

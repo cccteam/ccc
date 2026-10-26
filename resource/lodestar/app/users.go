@@ -15,10 +15,10 @@ import (
 // What a role may do is the crew role file's to say, in the same grammar as every other
 // resource: SectorMarshal seats and unseats crew in its sector in every role but its own
 // (new.role != 'SectorMarshal'), Headquarters holds both populations in the global
-// partition. A crew member who signs in through the Google directory has their seats
-// written by the directory at every sign-in (crew.go's RoleSync, declared SyncsRoles on
-// the registration), so the surface refuses to seat or unseat them by hand and says so
-// on the row (rolesSynced).
+// partition. The crew's seats are all the application's, whichever way a person signs
+// in; the members' are their directory's at every sign-in (members.go's RoleSync, the
+// registration declared SyncsRoles, standing alone on its auth), so that surface refuses
+// to seat or unseat anyone by hand and says so on every row (rolesSynced).
 //
 // Demonstrates: auth.user-management.
 

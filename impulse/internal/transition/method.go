@@ -83,6 +83,17 @@ func (m *Method) Validate(a *app.App) error {
 			return errors.Newf("%s: the %s auth registers %s already (%s:%d)", pkg.Dir, m.Auth, spec.Name, auth.Methods[i].File, auth.Methods[i].Line)
 		}
 	}
+	// A registration whose directory writes the roles stands alone on its auth: the
+	// directory is then the authority for everyone the auth holds, and a second way in
+	// would be a second authority over the same people.
+	for i := range auth.Methods {
+		if r := &auth.Methods[i]; r.Authority == app.AuthorityDirectory {
+			return errors.Newf("%s:%d: the %s auth's %s method %s writes the roles from its directory and stands alone on its auth: a second method would be a second authority over the same people. Add the %s method on an auth of its own (impulse add auth), or register %s with DisableRoleSync and declare it without .SyncsRoles() so the application assigns the roles", r.File, r.Line, m.Auth, r.Kind, r.Name, spec.Name, r.Name)
+		}
+	}
+	if spec.SyncsRoles() && len(auth.Methods) > 0 {
+		return errors.Newf("%s: the %s auth registers %d method(s) already, and a registration whose directory writes the roles stands alone on its auth: the directory would be the authority for everyone the auth holds. Add the %s method on an auth of its own (impulse add auth %s-%s --method %s:%s --authority directory), or take --authority application so the application assigns the roles", pkg.Dir, m.Auth, len(auth.Methods), spec.Name, m.Auth, spec.Name, spec.Kind, spec.Name)
+	}
 	if _, err := os.Stat(a.Abs(path.Join(pkg.Dir, spec.Name+".go"))); err == nil {
 		return errors.Newf("%s/%s.go already exists", pkg.Dir, spec.Name)
 	}

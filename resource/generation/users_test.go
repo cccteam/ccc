@@ -23,7 +23,7 @@ const (
 func userFixtureGenerator(t *testing.T, tenanted bool) *resourceGenerator {
 	t.Helper()
 
-	crew := &outletAuth{importPath: crewAuthPath, methods: []AuthMethod{PasswordMethod(), GoogleMethod("google").Labeled(fleetDirectory).SyncsRoles()}}
+	crew := &outletAuth{importPath: crewAuthPath, methods: []AuthMethod{PasswordMethod(), GoogleMethod("google").Labeled(fleetDirectory)}}
 	members := &outletAuth{importPath: membersAuthPath, methods: []AuthMethod{AzureMethod("directory").Labeled("Company directory").InvitedUsers()}}
 	r := &resourceGenerator{
 		client:             &client{},
@@ -79,7 +79,7 @@ func Test_userSurfaces(t *testing.T) {
 			name:      "two auths, the default outlet managing members, no tenancy",
 			generator: func(t *testing.T) *resourceGenerator { t.Helper(); return userFixtureGenerator(t, false) },
 			want: []want{
-				{auth: "Crew", typeName: "CrewAuth", accessor: "CrewUserSurface", outlets: []string{"default"}, password: true, registrations: []resource.UserRegistration{{Name: "google", Kind: "google", Label: fleetDirectory, SyncsRoles: true}}},
+				{auth: "Crew", typeName: "CrewAuth", accessor: "CrewUserSurface", outlets: []string{"default"}, password: true, registrations: []resource.UserRegistration{{Name: "google", Kind: "google", Label: fleetDirectory, SyncsRoles: false}}},
 				{auth: "Members", typeName: "MembersAuth", accessor: "MembersUserSurface", outlets: []string{"portal", "default"}, registrations: []resource.UserRegistration{{Name: "directory", Kind: "azure", Label: "Company directory", Invited: true}}},
 			},
 		},
@@ -87,7 +87,7 @@ func Test_userSurfaces(t *testing.T) {
 			name:      "tenancy gives every surface the tenant partition under the route's parameter",
 			generator: func(t *testing.T) *resourceGenerator { t.Helper(); return userFixtureGenerator(t, true) },
 			want: []want{
-				{auth: "Crew", typeName: "CrewAuth", accessor: "CrewUserSurface", outlets: []string{"default"}, password: true, registrations: []resource.UserRegistration{{Name: "google", Kind: "google", Label: fleetDirectory, SyncsRoles: true}}, tenant: "Ship", param: "shipID"},
+				{auth: "Crew", typeName: "CrewAuth", accessor: "CrewUserSurface", outlets: []string{"default"}, password: true, registrations: []resource.UserRegistration{{Name: "google", Kind: "google", Label: fleetDirectory, SyncsRoles: false}}, tenant: "Ship", param: "shipID"},
 				{auth: "Members", typeName: "MembersAuth", accessor: "MembersUserSurface", outlets: []string{"portal", "default"}, registrations: []resource.UserRegistration{{Name: "directory", Kind: "azure", Label: "Company directory", Invited: true}}, tenant: "Ship", param: "shipID"},
 			},
 		},
@@ -665,7 +665,7 @@ func Test_userSurfacesTemplate(t *testing.T) {
 		"type CrewAuth struct{}",
 		"func (CrewAuth) UserSurfaceDeclaration() resource.UserSurfaceDeclaration {\n\treturn resource.UserSurfaceDeclaration{\n\t\tAuth:        \"Crew\",\n\t\tTenant:      \"Ship\",\n\t\tDomainParam: \"shipID\",",
 		"Password:        true,\n\t\t\tUsernameIsEmail: false,\n\t\t\tOpenSignUp:      false,",
-		"{Name: \"google\", Kind: \"google\", Label: \"Fleet directory\", Invited: false, SyncsRoles: true},",
+		"{Name: \"google\", Kind: \"google\", Label: \"Fleet directory\", Invited: false, SyncsRoles: false},",
 		"func NewCrewUserSurface(accounts resource.UserAccounts, seats resource.UserSeats, opts ...resource.UserSurfaceOption) *resource.UserSurface[CrewAuth] {\n\treturn resource.NewUserSurface[CrewAuth](accounts, seats, opts...)\n}",
 		"resource.WithTenantDirectories",
 	}, nil)
@@ -768,7 +768,7 @@ func Test_apiClientData_users(t *testing.T) {
 				"crewRoles: ResourceHandle<CrewRoles, CrewRolesKey, 'list' | 'read'>;",
 				"crewShipUsers: ResourceHandle<CrewShipUsers, CrewShipUsersKey, 'list' | 'read' | 'create' | 'patch' | 'remove', CrewShipUsersCreate, CrewShipUsersPatch>;",
 				"setCrewUserPassword: MethodHandle<SetCrewUserPassword>;",
-				"  userSurfaces: [\n    {\n      auth: 'Crew',\n      label: 'Crew',\n      password: true,\n      usernameIsEmail: false,\n      openSignUp: false,\n      registrations: [{ name: 'google', kind: 'google', label: 'Fleet directory', invited: false, syncsRoles: true }],\n      partitions: [\n        { scope: 'global', users: Resources.CrewUsers, seats: Resources.CrewSeats, roles: Resources.CrewRoles, invitations: Resources.CrewInvitations, setPassword: Methods.SetCrewUserPassword, unlinkIdentity: Methods.UnlinkCrewUserIdentity },\n        { scope: 'domain', users: Resources.CrewShipUsers, seats: Resources.CrewShipSeats, roles: Resources.CrewShipRoles, invitations: Resources.CrewShipInvitations, setPassword: Methods.SetCrewShipUserPassword, unlinkIdentity: Methods.UnlinkCrewShipUserIdentity },\n      ],\n    },\n    {\n      auth: 'Members',\n      label: 'Members',\n      password: false,\n      usernameIsEmail: false,\n      openSignUp: false,\n      registrations: [{ name: 'directory', kind: 'azure', label: 'Company directory', invited: true, syncsRoles: false }],\n      partitions: [\n        { scope: 'global', users: Resources.MembersUsers, seats: Resources.MembersSeats, roles: Resources.MembersRoles, invitations: Resources.MembersInvitations, unlinkIdentity: Methods.UnlinkMembersUserIdentity },\n        { scope: 'domain', users: Resources.MembersShipUsers, seats: Resources.MembersShipSeats, roles: Resources.MembersShipRoles, invitations: Resources.MembersShipInvitations, unlinkIdentity: Methods.UnlinkMembersShipUserIdentity },\n      ],\n    },\n  ],\n});",
+				"  userSurfaces: [\n    {\n      auth: 'Crew',\n      label: 'Crew',\n      password: true,\n      usernameIsEmail: false,\n      openSignUp: false,\n      registrations: [{ name: 'google', kind: 'google', label: 'Fleet directory', invited: false, syncsRoles: false }],\n      partitions: [\n        { scope: 'global', users: Resources.CrewUsers, seats: Resources.CrewSeats, roles: Resources.CrewRoles, invitations: Resources.CrewInvitations, setPassword: Methods.SetCrewUserPassword, unlinkIdentity: Methods.UnlinkCrewUserIdentity },\n        { scope: 'domain', users: Resources.CrewShipUsers, seats: Resources.CrewShipSeats, roles: Resources.CrewShipRoles, invitations: Resources.CrewShipInvitations, setPassword: Methods.SetCrewShipUserPassword, unlinkIdentity: Methods.UnlinkCrewShipUserIdentity },\n      ],\n    },\n    {\n      auth: 'Members',\n      label: 'Members',\n      password: false,\n      usernameIsEmail: false,\n      openSignUp: false,\n      registrations: [{ name: 'directory', kind: 'azure', label: 'Company directory', invited: true, syncsRoles: false }],\n      partitions: [\n        { scope: 'global', users: Resources.MembersUsers, seats: Resources.MembersSeats, roles: Resources.MembersRoles, invitations: Resources.MembersInvitations, unlinkIdentity: Methods.UnlinkMembersUserIdentity },\n        { scope: 'domain', users: Resources.MembersShipUsers, seats: Resources.MembersShipSeats, roles: Resources.MembersShipRoles, invitations: Resources.MembersShipInvitations, unlinkIdentity: Methods.UnlinkMembersShipUserIdentity },\n      ],\n    },\n  ],\n});",
 			},
 			wantNotContains: []string{"SetMembersUserPassword"},
 		},
@@ -942,6 +942,10 @@ func Test_AuthMethod_directoryDeclarations(t *testing.T) {
 		{name: "the password method whose username is the address", methods: []AuthMethod{PasswordMethod().UsernameIsEmail().OpenSignUp()}, wantString: "PasswordMethod().UsernameIsEmail().OpenSignUp()"},
 		{name: "UsernameIsEmail on a registration", methods: []AuthMethod{GoogleMethod("google").UsernameIsEmail()}, wantErr: "declares UsernameIsEmail on a registration: it describes the password method's username"},
 		{name: "InvitedUsers beside OpenSignUp", methods: []AuthMethod{GoogleMethod("google").InvitedUsers().OpenSignUp()}, wantErr: "declares both InvitedUsers and OpenSignUp: a registration admits invited users only or anyone, not both"},
+		{name: "SyncsRoles beside the password method", methods: []AuthMethod{PasswordMethod(), GoogleMethod("google").SyncsRoles()}, wantErr: "declares SyncsRoles beside 1 other method(s): a registration whose directory writes the roles stands alone on its Auth"},
+		{name: "SyncsRoles beside another registration", methods: []AuthMethod{AzureMethod("directory").SyncsRoles(), GoogleMethod("google")}, wantErr: "declares SyncsRoles beside 1 other method(s)"},
+		{name: "two registrations declaring SyncsRoles", methods: []AuthMethod{AzureMethod("directory").SyncsRoles(), GoogleMethod("google").SyncsRoles()}, wantErr: "stands alone on its Auth"},
+		{name: "SyncsRoles alone", methods: []AuthMethod{AzureMethod("directory").SyncsRoles()}, wantString: `AzureMethod("directory").SyncsRoles()`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

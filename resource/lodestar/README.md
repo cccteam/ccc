@@ -49,8 +49,9 @@ on the crew manifest, through the fleet's Google directory as the navigator, or 
 http://127.0.0.1:4301/portal/ and sign in through the simulated directory as `client`.
 Both Go processes build with the session library's `skipAuth` tag, which simulates every
 Google directory from `.envrc`: the portal's from `APP_USERNAME` and `APP_ROLES`, the
-console's from `APP_GOOGLE_USERNAME` and `APP_GOOGLE_ROLES` (the registration's own pair),
-so no tenant is contacted and the persona quick-fill still works. `APP_DROIDS_API_KEY`
+console's from `APP_GOOGLE_USERNAME` (the registration's own setting; the crew's roles
+are the application's, so it names no groups), so no tenant is contacted and the persona
+quick-fill still works. `APP_DROIDS_API_KEY`
 opens the droid channel.
 
 To work on ccc-lib itself, attach the workspace to the local checkout beside this one
@@ -374,10 +375,10 @@ How it is wired:
   over the crew session's accounts and the crew engine's memberships
   ([`app/users.go`](app/users.go), `pkg/config/data.go`): Create and Delete on
   `CrewSectorSeats` in the sector, held by `SectorMarshal` under the condition
-  `new.role != 'SectorMarshal'`, so a marshal seats crew in every role but its own. A
-  crew member who signs in through the Google directory has their seats written by the
-  directory at every sign-in (the registration's `SyncsRoles`), so the surface refuses
-  to seat or unseat them by hand; the members' seats are the directory's the same way.
+  `new.role != 'SectorMarshal'`, so a marshal seats crew in every role but its own. The
+  crew's seats are the application's whichever way a person signs in; the members' are
+  their directory's at every sign-in (the registration's `SyncsRoles`, standing alone on
+  its auth), so that surface refuses to seat or unseat anyone by hand.
 - The checks. The walkthrough's "one channel" section seats and unseats the cadet
   against the second server process over the Firestore emulator;
   [`policy_signal_test.go`](test/integration/policy_signal_test.go) pins it over two

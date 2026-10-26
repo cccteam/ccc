@@ -463,15 +463,15 @@ type userFacts struct {
 	rolesSynced  bool
 }
 
-// factsOf composes a user's identity-derived facts: the organization every link
-// agrees on (nil where they do not, or there is none), and whether a directory writes
-// the roles.
+// factsOf composes a user's facts beyond the account: the organization every identity
+// link agrees on (nil where they do not, or there is none), and whether a directory
+// writes the roles, which is the Auth's fact (its registration syncs roles).
 func (snap *userSnapshot) factsOf(ctx context.Context, account *UserAccount) (*userFacts, error) {
 	identities, err := snap.identitiesOf(ctx, account.ID)
 	if err != nil {
 		return nil, err
 	}
-	facts := &userFacts{identities: identities, rolesSynced: snap.shape.syncsRoles(identities)}
+	facts := &userFacts{identities: identities, rolesSynced: snap.shape.rolesSynced()}
 	for i := range identities {
 		org := identities[i].Organization
 		if org == nil {

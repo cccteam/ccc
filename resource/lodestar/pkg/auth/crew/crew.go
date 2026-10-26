@@ -15,16 +15,19 @@
 // open sign-up, so a stranger with an address may create a crew login with a password
 // from a mailed link, holding no role, as the Google sign-up registration admits one with
 // a Google account. The Google method
-// provisions whoever the directory verifies under the verified email and reconciles that
-// person's roles to the directory's groups at every sign-in (google.RoleSync): the two
-// methods meet in one users table, one session table and one cookie, so a session opened
-// either way is a crew session. In development the directory is simulated and
-// APP_GOOGLE_USERNAME and APP_GOOGLE_ROLES in .envrc say who the Google sign-in is. The
-// sign-up registration is the third way, for a person on no manifest and in no directory:
-// any Google account, open sign-up, so the first sign-in makes a crew login holding no
-// role and no sector, and the roles stay the application's (google.DisableRoleSync). Such
-// a person's one way to a sector is to chart their own, the Sector record's self-service
-// creation shape; in development APP_SIGN_UP_USERNAME says who the simulated sign-up is.
+// provisions whoever the directory verifies under the verified email, holding no role
+// until an operator seats them: the crew's roles are the application's on every method
+// (google.DisableRoleSync), since a registration whose directory writes the roles stands
+// alone on its auth, and the crew auth has three ways in. The two methods meet in one
+// users table, one session table and one cookie, so a session opened either way is a
+// crew session. In development the directory is simulated and APP_GOOGLE_USERNAME in
+// .envrc says who the Google sign-in is. The sign-up registration is the third way, for a
+// person on no manifest and in no directory: any Google account, open sign-up, so the
+// first sign-in makes a crew login holding no role and no sector. Such a person's one way
+// to a sector is to chart their own, the Sector record's self-service creation shape; in
+// development APP_SIGN_UP_USERNAME says who the simulated sign-up is. The directory as
+// the authority for roles is the members auth's shape (pkg/auth/members), where the
+// directory's registration stands alone.
 //
 // Invitations are the way an administrator brings a person in: the user-management
 // surface mails a link carrying the roles, into the global partition or into a sector,
@@ -498,29 +501,21 @@ func New(ctx context.Context, db *cloudspanner.Client, settings *Settings) (*Aut
 		return nil, errors.Wrap(err, "session.NewAuth()")
 	}
 
-	// The directory's groups are the source of a Google sign-in's role membership, read
-	// through the Cloud Identity Groups API with the person's own sign-in token, as far
-	// as the configured lookup reaches. A group is an email address, so the directory
-	// names a role in lowercase (crew-pilot@ names pilot); the sync resolves each name
-	// at the store without regard to case and writes the role file's spelling (Pilot).
-	// Under the session library's skipAuth build tag the lookup is simulated: the
-	// sign-in is in the groups APP_GOOGLE_ROLES names, in any case.
-	lookup, err := google.ParseGroupLookup(settings.Directory.GroupLookup)
-	if err != nil {
-		return nil, errors.Wrap(err, "google.ParseGroupLookup()")
-	}
-
 	// The methods, registered before the first request: the password method under the
 	// library's name, and the Google method under GoogleRegistration. The Google method's
 	// organization slot is the crew's one Workspace, named by the connection setting
 	// (the name every directory identity's link carries) and checked against the hosted
 	// domain. Its account rule is the library's standard one, members of the directory:
 	// a person the directory verifies for the first time becomes a crew member under the
-	// verified email, with no password (the directory is their way in) and the roles
-	// the sync writes at this sign-in. A verified email that is a username a password
-	// persona already holds links the identity to that persona once their password
-	// confirms it (the directory's word alone is not enough), so the development login
-	// APP_GOOGLE_USERNAME names is one that is not on the manifest.
+	// verified email, with no password (the directory is their way in) and no role until
+	// an operator seats them. The application is the authority for the crew's roles
+	// (google.DisableRoleSync): the sign-in neither reads nor writes them. A registration
+	// whose directory writes the roles stands alone on its auth, and the crew auth has
+	// three ways in; the members auth is the one whose directory ranks its people. A
+	// verified email that is a username a password persona already holds links the
+	// identity to that persona once their password confirms it (the directory's word
+	// alone is not enough), so the development login APP_GOOGLE_USERNAME names is one
+	// that is not on the manifest.
 	//
 	// The password method is registered with open sign-up (session.OpenSignUp): a
 	// stranger gives an address, follows the mailed link and chooses a username and a
@@ -534,7 +529,7 @@ func New(ctx context.Context, db *cloudspanner.Client, settings *Settings) (*Aut
 		ClientSecret: settings.Directory.ClientSecret,
 		RedirectURL:  settings.Directory.RedirectURL,
 		Workspaces:   google.Workspace(settings.Directory.Connection, settings.Directory.HostedDomain),
-		RoleSync:     google.RoleSync(accessClient.UserManager(), settings.Directory.GroupPrefix, lookup),
+		RoleSync:     google.DisableRoleSync(),
 		LoginURL:     settings.LoginURL,
 	})
 	// The sign-up registration, under SignUpRegistration: any Google account

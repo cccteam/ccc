@@ -319,8 +319,6 @@ func openCrewAuth(ctx context.Context, db *database.Driver, env *dataConfig, coo
 			RedirectURL:  env.CrewRedirectURL,
 			Connection:   env.CrewConnection,
 			HostedDomain: env.CrewHostedDomain,
-			GroupPrefix:  env.CrewGroupPrefix,
-			GroupLookup:  env.CrewGroupLookup,
 		},
 		SignUpRedirectURL: env.CrewSignUpRedirectURL,
 		DevicePage:        "/console/device",
@@ -448,8 +446,6 @@ type dataConfig struct {
 	CrewRedirectURL  string `env:"APP_CREW_OIDC_REDIRECT_URL"`
 	CrewConnection   string `env:"APP_CREW_OIDC_CONNECTION"`
 	CrewHostedDomain string `env:"APP_CREW_OIDC_HOSTED_DOMAIN"`
-	CrewGroupPrefix  string `env:"APP_CREW_OIDC_GROUP_PREFIX"`
-	CrewGroupLookup  string `env:"APP_CREW_OIDC_GROUP_LOOKUP"`
 	// The crew auth's sign-up registration (any Google account, open sign-up): its own
 	// callback under the console's API, beside the directory's; the client is the
 	// directory's. Under the skipAuth tag the registration's simulated person is

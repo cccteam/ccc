@@ -74,8 +74,8 @@ const (
 	// simulated directory; its roles are the groups the directory names (APP_ROLES).
 	clientUser = "client"
 	// The console's Google sign-in: a crew member the fleet's directory admits who is on
-	// no manifest, so the password personas and the directory's people stay apart;
-	// its roles are the groups the simulated directory names (APP_GOOGLE_ROLES).
+	// no manifest, so the password personas and the directory's people stay apart; the
+	// crew's roles are the application's, so the sign-in holds nothing until seated.
 	navigatorUser = "navigator"
 	droidUser     = "droid-r7"
 
