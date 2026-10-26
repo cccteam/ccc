@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.5.20](https://github.com/cccteam/ccc/compare/impulse/v0.5.19...impulse/v0.5.20) (2026-10-26)
+
+
+### Features
+
+* **impulse:** add auth, add method and check refuse a role-synchronizing method beside any other method on an auth, naming an auth of its own or the application authority as the ways out ([#1153](https://github.com/cccteam/ccc/issues/1153)) ([46a8b34](https://github.com/cccteam/ccc/commit/46a8b3472ec69ebafb0f467916caa9c922050f49))
+* **resource:** a registration that synchronizes roles stands alone on its auth: the generator and the users surface's declaration refuse a syncing method beside another, and rolesSynced is the auth's fact, no longer resolved from an identity link's connection ([#1153](https://github.com/cccteam/ccc/issues/1153)) ([46a8b34](https://github.com/cccteam/ccc/commit/46a8b3472ec69ebafb0f467916caa9c922050f49))
+
+
+### Bug Fixes
+
+* the outlets-flavor skeleton's device authorization test reads the RFC's snake_case answer as a map, so an application's lint passes ([#1152](https://github.com/cccteam/ccc/issues/1152)) ([8995de4](https://github.com/cccteam/ccc/commit/8995de4247e2fa49b9804b94242768f0cf930347))
+
 ## [0.5.19](https://github.com/cccteam/ccc/compare/impulse/v0.5.18...impulse/v0.5.19) (2026-10-26)
 
 
