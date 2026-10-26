@@ -4,6 +4,7 @@ import { tenantGuard, tenantLeave } from '@app/tenant/tenant.guard';
 import { refusedSegment } from '@app/tenant/tenant.service';
 import { LoginAuthenticationGuard } from '@cccteam/resource-angular/auth-authentication-guard';
 import { tenantSignInRoute } from '@components/ui/sign-in/sign-in.routes';
+import { tokensRoute } from '@components/ui/tokens/tokens.routes';
 import { UiComponent } from '@components/ui/ui.component';
 import { tenantUsersRoute, usersRoute } from '@components/ui/users/users.routes';
 
@@ -32,6 +33,15 @@ export const routes: Routes = [
       // The Users page composes the library's user-management component over the global
       // partition of the auth's user surface, behind the List grant on its users resource.
       usersRoute(),
+      // The Tokens page composes the library's tokens component over the descriptor's
+      // tokens block: the signed-in person's own tokens for the machines outlet.
+      tokensRoute(),
+      // The device page, where a command-line client sends the person for approval
+      // (/console/device?userCode=..., the staff auth's DevicePage); no navigation item.
+      {
+        path: 'device',
+        loadComponent: () => import('./components/ui/device/device.component').then((comp) => comp.DeviceComponent),
+      },
       // Where a URL naming a tenant the session cannot reach lands (tenantGuard): the
       // server's answer, under the tenant's own URL. Declared ahead of the segment, so the
       // guard is not asked again on the way there.

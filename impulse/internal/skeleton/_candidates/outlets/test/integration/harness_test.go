@@ -176,6 +176,7 @@ func newServed(ctx context.Context, t *testing.T) *served {
 		SessionTimeout:     time.Minute,
 		Mail:               &mail.Recorder{},
 		MailLoginURL:       "http://outlets.test/console/login",
+		DevicePage:         "/console/device",
 		TenantDeclarations: app.NewTenantDeclarationReader(),
 	})
 	if err != nil {

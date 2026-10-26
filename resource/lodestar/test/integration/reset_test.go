@@ -42,9 +42,11 @@ func TestResetDevelopmentData(t *testing.T) {
 		Collection:     router.Collection(),
 		Directory:      auth.Directory{Connection: "example", HostedDomain: "example.com", GroupPrefix: "crew-"},
 		ChangeSignal:   auth.PolicySignal(live.NewFake()),
-		// Required by the auth, though this suite signs nobody in and mails nothing.
+		// Required by the auth, though this suite signs nobody in, mails nothing and
+		// approves no program.
 		TenantDeclarations: app.NewSectorDeclarationReader(),
 		Mail:               auth.Mail{Sender: &mail.Recorder{}, LoginURL: "http://lodestar.test" + consoleLogin},
+		DevicePage:         consoleDevice,
 	})
 	if err != nil {
 		t.Fatalf("crew.New() error = %v", err)

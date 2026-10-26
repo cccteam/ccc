@@ -4,6 +4,7 @@ import { LoginAuthenticationGuard } from '@cccteam/resource-angular/auth-authent
 import { resourceRoutes } from '@cccteam/resource-angular/resource-route-generator';
 import { sectorRoute, watchDeskRoute } from '@components/sector/sector.routes';
 import { refusedSegment } from '@components/sector/sector.service';
+import { tokensRoute } from '@components/ui/tokens/tokens.routes';
 import { UiComponent } from '@components/ui/ui.component';
 import { usersRoute } from '@components/ui/users/users.routes';
 import { clientsConfig } from './configs/clients.config';
@@ -68,6 +69,18 @@ export const routes: Routes = [
       // partitions of the surfaces the console serves; it joins the Headquarters group the
       // config-driven pages above registered. The sector's crew is the sector's own page.
       usersRoute(),
+      // The Tokens page composes the library's tokens component over the descriptor's
+      // tokens block: a crew member's own tokens for the droids outlet, in the
+      // Headquarters group with the Users page.
+      tokensRoute(),
+      // The device page, where a command-line client sends a crew member for approval
+      // (/console/device?userCode=..., the crew auth's DevicePage); no navigation item.
+      //
+      // Demonstrates: outlet.tokens.
+      {
+        path: 'device',
+        loadComponent: () => import('./components/ui/device/device.component').then((comp) => comp.DeviceComponent),
+      },
       // The watch desk lists every live impersonation in the service: global, listed with
       // the sector decks.
       watchDeskRoute(),

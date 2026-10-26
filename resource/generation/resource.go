@@ -624,6 +624,7 @@ func (r *resourceGenerator) buildUnifiedTypescriptGenerator(gc *resource.Generat
 		return nil, err
 	}
 	t.userSurfaces = surfaces
+	t.tokenIssuers = r.tokenIssuers()
 	t.manualRegistrations = r.manualRegistrations
 	t.domainRouteSegment = r.domainRouteSegment
 	t.domainRouteParam = r.domainRouteParam

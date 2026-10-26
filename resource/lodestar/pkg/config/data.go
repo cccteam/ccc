@@ -302,7 +302,9 @@ func (c *DataConfiguration) MembersUserSurface() *resource.UserSurface[router.Me
 // the binary and validate against the generated collection, which the router package
 // generates and the auth package cannot import. They sign in with a password or through
 // the fleet's Google directory, whose refused logins return to the console's login
-// page, and the auth mails its links to that page at the application's public address.
+// page, the auth mails its links to that page at the application's public address, and
+// a command-line client asking for the droids outlet is sent to the console's device
+// page for a crew member's approval.
 // The auth opens its stores on the driver's Spanner client: the one vendor-specific
 // seam left in the level, pending the PostgreSQL client (cccteam/ccc#852).
 func openCrewAuth(ctx context.Context, db *database.Driver, env *dataConfig, cookieKey string, policySignal access.ChangeSignal, sender mail.Sender) (*crew.Auth, error) {
@@ -321,6 +323,7 @@ func openCrewAuth(ctx context.Context, db *database.Driver, env *dataConfig, coo
 			GroupLookup:  env.CrewGroupLookup,
 		},
 		SignUpRedirectURL: env.CrewSignUpRedirectURL,
+		DevicePage:        "/console/device",
 		ChangeSignal:      policySignal,
 		// The sign-in rule reads what each sector declares about who may enter it in
 		// the sign-in's transaction, through the generated reader.

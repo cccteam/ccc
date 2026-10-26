@@ -436,6 +436,28 @@ var Steps = []Step{
 		Impulse: release("v0.5.16"),
 		Note:    "session v0.13.10 and resource v0.15.10, which retires APIKey(): a machine outlet declares the auth whose Auth issues its bearer tokens, Tokens(importPath), and the generated router carries the token check, the device flow's endpoints under the outlet's prefix and the token routes on the issuing auth's session outlet; an application regenerates its router, declares Tokens on each machine outlet, gives its auth package the device and token handlers, the tokens and device codes tables and the outlet's registration (session.RegisterMachineOutlet beside the sign-in methods, as the outlets skeleton's staff package shows), and replaces its hand-written <Outlet>Auth middleware with the <Outlet>Tokens getter returning that registration; a configured machine key becomes a token the application issues",
 	},
+	{
+		Pins: pins(`
+			access v0.11.1
+			ccc v0.3.5
+			ccc/accesstypes v0.7.0
+			ccc/cloud v0.2.1
+			ccc/resource v0.15.11-0.20261026035242-f9c5d8317c70
+			ccc/tracer v0.3.0
+			db-initiator v0.4.3
+			httpio v0.7.22
+			logger v0.1.30
+			session v0.13.10
+		`),
+		Web: web(`
+			@cccteam/resource 0.0.13
+			@cccteam/resource-angular 0.0.17
+			@cccteam/resource-firestore 0.0.11
+		`),
+		Impulse: release("v0.5.18"),
+		Pending: true,
+		Note:    "the console carries the token page and the device approval page: the generated descriptor of a console whose auth issues tokens names the five routes and the machine outlets it issues for, and the auth names its device page (Settings.DevicePage, passed as session.WithDeviceVerificationURL; the data level names \"<mount>/device\", which the login-pages check holds). An application with a machine outlet mounts <ccc-tokens /> at <mount>/tokens (a navigation item without a permission) and <ccc-device-approval /> at <mount>/device, both from @cccteam/resource-angular/ccc-tokens, by hand per the outlets-flavor skeleton; the web pins move with this step to the ccc-lib release that carries the entry.",
+	},
 }
 
 // validatePending holds a step's Pending mark to its pins: a pin at a pseudo-version

@@ -946,10 +946,10 @@ func linkTokenIssuers(data *servedRouterData) {
 		issuer.ValidatedRoutes = append(issuer.ValidatedRoutes,
 			validated(http.MethodGet, userTokensSuffix, tokensListHandler),
 			validated(http.MethodPost, userTokensSuffix, tokensCreateHandler),
-			validated(http.MethodPost, userTokensSuffix+"/revoke", tokensRevokeHandler),
+			validated(http.MethodPost, userTokensSuffix+tokensRevokeSegment, tokensRevokeHandler),
 			validated(http.MethodGet, userDeviceSuffix, deviceLookupHandler),
-			validated(http.MethodPost, userDeviceSuffix+"/approve", deviceApproveHandler),
-			validated(http.MethodPost, userDeviceSuffix+"/deny", deviceDenyHandler),
+			validated(http.MethodPost, userDeviceSuffix+deviceApproveSegment, deviceApproveHandler),
+			validated(http.MethodPost, userDeviceSuffix+deviceDenySegment, deviceDenyHandler),
 		)
 		issuer.Routes = slices.Concat(issuer.OpenRoutes, issuer.GuardedRoutes, issuer.ValidatedRoutes)
 		issuer.ExtraHandlers = []string{deviceAuthorizeHandler, deviceTokenHandler}

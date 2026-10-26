@@ -1251,6 +1251,14 @@ export const apiDescriptor = defineApiDescriptor({
       ],
     },
   ],
+  tokens: {
+    route: 'user/tokens',
+    revokeRoute: 'user/tokens/revoke',
+    deviceRoute: 'user/device',
+    approveRoute: 'user/device/approve',
+    denyRoute: 'user/device/deny',
+    outlets: [{ name: 'droids', prefix: '/droids' }],
+  },
 });
 
 /**

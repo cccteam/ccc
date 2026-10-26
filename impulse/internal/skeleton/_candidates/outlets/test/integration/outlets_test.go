@@ -3,7 +3,9 @@ package integration
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
+	"strings"
 	"testing"
 )
 
@@ -132,6 +134,53 @@ func TestMachinesOutlet(t *testing.T) {
 				t.Errorf("GET %s: status %d, want %d: %s", tt.target, status, tt.want, body)
 			}
 		})
+	}
+}
+
+// TestMachinesDeviceAuthorization starts a command-line client's device authorization
+// on the machines outlet and confirms where it sends the person: the console's device
+// page (staff.Settings.DevicePage), with the code the person types already in the query,
+// which the console's device page reads to look the request up.
+func TestMachinesDeviceAuthorization(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	s := newServed(ctx, t)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.server.URL+"/machines/oauth/device/authorize", strings.NewReader(`{"client_id":"suite","outlet":"machines"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("POST oauth/device/authorize: status %d: %s", resp.StatusCode, body)
+	}
+	// The device flow's answers are the RFC's, snake_case.
+	var started struct {
+		UserCode                string `json:"user_code"`
+		VerificationURI         string `json:"verification_uri"`
+		VerificationURIComplete string `json:"verification_uri_complete"`
+	}
+	if err := json.Unmarshal(body, &started); err != nil {
+		t.Fatalf("decoding the device authorization: %v: %s", err, body)
+	}
+	if started.UserCode == "" {
+		t.Fatalf("device authorization = %s, want a user code", body)
+	}
+	if started.VerificationURI != "/console/device" {
+		t.Errorf("verification_uri = %q, want the console's device page /console/device", started.VerificationURI)
+	}
+	if want := "/console/device?userCode=" + started.UserCode; started.VerificationURIComplete != want {
+		t.Errorf("verification_uri_complete = %q, want %q", started.VerificationURIComplete, want)
 	}
 }
 

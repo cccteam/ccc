@@ -315,6 +315,14 @@ export const apiDescriptor = defineApiDescriptor({
       ],
     },
   ],
+  tokens: {
+    route: 'user/tokens',
+    revokeRoute: 'user/tokens/revoke',
+    deviceRoute: 'user/device',
+    approveRoute: 'user/device/approve',
+    denyRoute: 'user/device/deny',
+    outlets: [{ name: 'machines', prefix: '/machines' }],
+  },
 });
 
 /** Handles for the global scope, available on the client root. */

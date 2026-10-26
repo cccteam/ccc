@@ -58,7 +58,10 @@ const (
 	// sign-in returns with its code or step in the query, and the page a console
 	// login returns to.
 	consoleLogin = "/console/login"
-	consolePage  = "/console/dashboard"
+	// consoleDevice is the console's device page, where a command-line client sends a
+	// crew member for approval (crew.Settings.DevicePage).
+	consoleDevice = "/console/device"
+	consolePage   = "/console/dashboard"
 
 	// The droid service account's key in the suites, seeded as its token on the droids
 	// outlet.
@@ -770,6 +773,7 @@ func newServedAt(ctx context.Context, t *testing.T, version string) *served {
 		CookieKey:      testCookieKey,
 		SessionTimeout: servedSessionTimeout,
 		LoginURL:       consoleLogin,
+		DevicePage:     consoleDevice,
 		Collection:     router.Collection(),
 		Directory: auth.Directory{
 			RedirectURL:  "http://" + server.Listener.Addr().String() + consoleAPI + "/user/google/callback",

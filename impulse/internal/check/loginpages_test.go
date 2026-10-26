@@ -16,8 +16,8 @@ import (
 // on the default outlet bound to the staff auth, at the root or under /console, with the
 // password method alone or with a Google directory method beside it, a portal outlet
 // bound to the members auth under /portal, a machines outlet bound to the members auth
-// serving no browser application, and a console declaring no auth, as a hand-written
-// router's does.
+// serving no browser application, a machines outlet carrying the staff auth's tokens,
+// and a console declaring no auth, as a hand-written router's does.
 const (
 	staffAtRoot          = `generation.GenerateRoutes("pkg/router", "api", generation.Auth("example.com/harbor/pkg/auth/staff", generation.PasswordMethod()), generation.WebApp("/")),`
 	staffAtConsole       = `generation.GenerateRoutes("pkg/router", "console/api", generation.Auth("example.com/harbor/pkg/auth/staff", generation.PasswordMethod()), generation.WebApp("/console")),`
@@ -25,6 +25,7 @@ const (
 	staffGoogleAtConsole = `generation.GenerateRoutes("pkg/router", "console/api", generation.Auth("example.com/harbor/pkg/auth/staff", generation.PasswordMethod(), generation.GoogleMethod("google")), generation.WebApp("/console")),`
 	membersAtPortal      = `generation.WithRouterOutlet("portal", "portal/api", generation.Auth("example.com/harbor/pkg/auth/members", generation.AzureMethod("directory")), generation.WebApp("/portal")),`
 	membersMachines      = `generation.WithRouterOutlet("machines", "machines", generation.Auth("example.com/harbor/pkg/auth/members", generation.AzureMethod("directory"))),`
+	staffMachines        = `generation.WithRouterOutlet("machines", "machines", generation.Tokens("example.com/harbor/pkg/auth/staff")),`
 	consoleUndeclared    = `generation.GenerateRoutes("pkg/router", "api", generation.WebApp("/")),`
 )
 
@@ -162,6 +163,51 @@ func TestLoginPages(t *testing.T) {
 			wantSummary: "1 auth(s) return a refused or waiting sign-in to their outlet's login page",
 			wantDetails: []string{
 				"staff: pkg/config/data.go:13 names no login page, and its password method sends no sign-in back to one",
+			},
+		},
+		{
+			name:        "a console under /console whose auth issues a machine outlet's tokens names its device page",
+			files:       layout(loginProgram(staffAtConsole, staffMachines), dataLevel(settingsFunc("staff", `MailLoginURL: env.PublicURL + "/console/login",`, `DevicePage: "/console/device",`))),
+			wantStatus:  Pass,
+			wantSummary: "1 auth(s) return a refused or waiting sign-in to their outlet's login page",
+			wantDetails: []string{
+				"staff: pkg/config/data.go:13 mails its links to /console/login, the login page under the default outlet's mount path /console; its password method sends no sign-in back to a login page; sends a command-line client to /console/device, the device page under the default outlet's mount path /console",
+			},
+		},
+		{
+			name:        "an auth issuing tokens at the root takes the library's default device page",
+			files:       layout(loginProgram(staffAtRoot, staffMachines), dataLevel(settingsFunc("staff", `MailLoginURL: env.PublicURL + "/login",`, `LoginURL: "/login",`))),
+			wantStatus:  Pass,
+			wantSummary: "1 auth(s) return a refused or waiting sign-in to their outlet's login page",
+			wantDetails: []string{
+				"staff: pkg/config/data.go:13 returns a refused or waiting sign-in to /login and mails its links to /login, the login page under the default outlet's mount path /; sends a command-line client to /device (the library's default), the device page under the default outlet's mount path /",
+			},
+		},
+		{
+			name:        "an auth issuing tokens under a mount path whose construction names no DevicePage sends a command-line client to the root's page",
+			files:       layout(loginProgram(staffAtConsole, staffMachines), dataLevel(settingsFunc("staff", `MailLoginURL: env.PublicURL + "/console/login",`))),
+			wantStatus:  Fail,
+			wantSummary: "1 login page problem(s)",
+			wantDetails: []string{
+				`pkg/config/data.go:13: the staff auth's settings name no DevicePage, so a command-line client is sent to the library's default, /device, but the device page under the default outlet's mount path /console is /console/device; set DevicePage to "/console/device" in pkg/config/data.go`,
+			},
+		},
+		{
+			name:        "a console moved under /console kept /device",
+			files:       layout(loginProgram(staffAtConsole, staffMachines), dataLevel(settingsFunc("staff", `MailLoginURL: env.PublicURL + "/console/login",`, `DevicePage: "/device",`))),
+			wantStatus:  Fail,
+			wantSummary: "1 login page problem(s)",
+			wantDetails: []string{
+				`pkg/config/data.go:16: the staff auth's DevicePage is "/device", but the device page under the default outlet's mount path /console is /console/device, so a command-line client is sent to a page nothing serves; set DevicePage to "/console/device" in pkg/config/data.go`,
+			},
+		},
+		{
+			name:        "a DevicePage that is not a string literal cannot be read",
+			files:       layout(loginProgram(staffAtConsole, staffMachines), dataLevel(settingsFunc("staff", `DevicePage: env.DevicePage,`))),
+			wantStatus:  Fail,
+			wantSummary: "1 login page problem(s)",
+			wantDetails: []string{
+				`pkg/config/data.go:15: the staff auth's DevicePage is not a string literal, so the page a command-line client is sent to cannot be read; set DevicePage to "/console/device" in pkg/config/data.go`,
 			},
 		},
 		{
