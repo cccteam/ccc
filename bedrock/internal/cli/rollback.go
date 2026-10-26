@@ -20,8 +20,10 @@ func newRollback(d deps) *cobra.Command {
 		Use:   rollbackUse + " <env> --reason <why> [--to <release>]",
 		Short: "Return an environment to an earlier release with nothing of the database, started from GitHub",
 		Long: `rollback returns an environment to an earlier release and touches nothing of the database: the
-earlier release's build runs again (its image reused, its stack applied, its revision deployed, the
-traffic moved), with no migration run, no backup taken and nothing restored. It is the first answer
+earlier release's build runs again (its image reused, its stack planned for its revision templates
+and not applied, its revision deployed under them, the traffic moved), with no migration run, no
+backup taken and nothing restored, so the environment's infrastructure stays as the release it
+leaves made it. It is the first answer
 to a release that went wrong, in any environment: a schema change migrates forward in a way the
 running code still works with, so the earlier release runs on the database as the release left it.
 When the database is wrong too, bedrock restore returns it, in a run of its own, after this one.

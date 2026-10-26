@@ -299,10 +299,16 @@ func templateChanges(plan []byte) ([]string, error) {
 		return nil, nil
 	}
 	before, after := templatesValue(change.Before), templatesValue(change.After)
+	first := change.Before == nil
 	var lines []string
 	for _, name := range slices.Sorted(maps.Keys(after.Services)) {
 		from, was := before.Services[name]
 		to := after.Services[name]
+		if first {
+			lines = append(lines, fmt.Sprintf("%s: read off the stack from this release on; its revision runs with %d variable(s) and %d secret mount(s)", name, len(to.Env), len(to.Secrets)))
+
+			continue
+		}
 		if !was {
 			lines = append(lines, fmt.Sprintf("%s: a new service; its revision runs with %d variable(s) and %d secret mount(s)", name, len(to.Env), len(to.Secrets)))
 
@@ -317,7 +323,10 @@ func templateChanges(plan []byte) ([]string, error) {
 			lines = append(lines, name+": no longer a service of the stack")
 		}
 	}
-	if diff := jobDiff(before.Job, after.Job); diff != "" {
+	switch diff := jobDiff(before.Job, after.Job); {
+	case first && after.Job != nil:
+		lines = append(lines, fmt.Sprintf("the job process's job: read off the stack from this release on; it runs with %d variable(s) and %d secret mount(s)", len(after.Job.Env), len(after.Job.Secrets)))
+	case diff != "":
 		lines = append(lines, "the job process's job: "+diff)
 	}
 	if unknown(change.AfterUnknown) {

@@ -59,6 +59,17 @@ resource "google_spanner_database" "restored" {
   enable_drop_protection   = !local.is_pr && !var.destroy && !var.restore
 }
 
+# The database's identity, for the memberships below: a recreated database (a
+# restore replaces it; /gcbrun reload-db replaces a pull request's) starts with
+# no members, so each membership is recreated with it rather than believed to
+# exist. The memberships follow the database's id, known after the apply that
+# recreates it, and not the database resource whole, whose attributes change
+# without it (a restore run and bedrock destroy lift its protection); in shared
+# mode, with no database of the stack's own, the id is null and never changes.
+resource "terraform_data" "database" {
+  input = one(google_spanner_database.lantrn[*].id)
+}
+
 # Rows, as the site reads and writes them (config.NewDataConfiguration opens
 # the Spanner client as this identity). By name, so that in shared mode the
 # membership lands on tst's database: an additive member naming the pull
@@ -72,11 +83,8 @@ resource "google_spanner_database_iam_member" "app_user" {
 
   depends_on = [google_spanner_database.lantrn, google_spanner_database.restored, google_service_account.app]
 
-  # A recreated database (/gcbrun reload-db replaces it) starts with no
-  # members; the membership is recreated with it rather than believed to
-  # exist.
   lifecycle {
-    replace_triggered_by = [google_spanner_database.lantrn]
+    replace_triggered_by = [terraform_data.database]
   }
 }
 
@@ -97,8 +105,10 @@ resource "google_spanner_database_iam_member" "deploy_admin" {
 
   depends_on = [google_spanner_database.lantrn, google_spanner_database.restored]
 
+  # Recreated with the database (its id is known after the apply that recreates
+  # it), not with a change to the database's attributes.
   lifecycle {
-    replace_triggered_by = [google_spanner_database.lantrn[0]]
+    replace_triggered_by = [google_spanner_database.lantrn[0].id]
   }
 }
 

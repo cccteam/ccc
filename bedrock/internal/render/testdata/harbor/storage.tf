@@ -129,9 +129,11 @@ resource "google_storage_bucket_iam_policy" "files" {
 
   # A recreated bucket (a restore of the first environment replaces it)
   # starts with Cloud Storage's default grants; the policy is set again with
-  # it rather than believed to hold.
+  # it rather than believed to hold. It follows the bucket's id, known after
+  # the apply that recreates it, and not the bucket whole, whose force-destroy
+  # changes without it (a retire, a restore run, bedrock destroy).
   lifecycle {
-    replace_triggered_by = [google_storage_bucket.files[0]]
+    replace_triggered_by = [google_storage_bucket.files[0].id]
   }
 }
 

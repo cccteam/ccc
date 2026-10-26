@@ -226,9 +226,9 @@ func TestTemplateChanges(t *testing.T) {
 			},
 		},
 		{
-			name: "a stack without the output yet: every service new",
+			name: "a stack without the output yet (the first release reading its templates off the stack): every template read from this release on, no service new",
 			plan: planOf(nil, before, false),
-			want: []string{"harbor-app: a new service; its revision runs with 2 variable(s) and 1 secret mount(s)", "the job process's job: new"},
+			want: []string{"harbor-app: read off the stack from this release on; its revision runs with 2 variable(s) and 1 secret mount(s)", "the job process's job: read off the stack from this release on; it runs with 1 variable(s) and 0 secret mount(s)"},
 		},
 		{
 			name: "a value known after the apply is noted",

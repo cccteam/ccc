@@ -1943,8 +1943,9 @@ cancels it, so a rollback nobody approved is not left waiting.
 **The build**, as the deploy identity, is the earlier release's build again: the resolve
 step prints the statement first and switches the migrations off; the release check, the
 guard and the image build run as for any release (the image is reused when the commit
-built one); the stack is applied as that release had it, at the database's generation as
-it is; no backup is taken and nothing is restored; the release deploys the way a release
+built one); the stack is planned for the release's revision templates and not applied, so
+the environment's infrastructure stays as the release it leaves made it, the database at
+its generation as it is; no backup is taken and nothing is restored; the release deploys the way a release
 deploys, behind the maintenance page where the return is breaking for the environment's
 clients and never waiting for a window; traffic moves; and the record names the
 requester, the approver, the reason and the release left, and lists the migrations the
