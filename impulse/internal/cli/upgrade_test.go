@@ -269,6 +269,9 @@ func (f *upgradeExec) record() error {
 	return nil
 }
 
+// agentCleared is the body line a step the agent cleared carries in its commit.
+const agentCleared = "The step's move left the check failing; the agent did the wiring under the brief, and its work verified clean."
+
 // upgradeLedger is three steps: the first the application stands at, the second with the
 // marker recipe, added by impulse v0.2.0, the third a pin bump alone, added by v0.3.0.
 func upgradeLedger() []ledger.Step {
@@ -768,7 +771,7 @@ func TestUpgrade(t *testing.T) {
 			wantErr:     "step 2 (ccc/resource v0.2.0, ccc/impulse v0.2.0) left the check failing; its changes are staged and the brief is at .impulse-handoff.md. When the check is clean, commit and run impulse upgrade again: it resumes from go.mod",
 		},
 		{
-			name:      "a failing check by a pinned release with handoff --staged: the staged step is handed to it with the recipe's change and meaning, and the agent when asked; no brief is written here",
+			name:      "a failing check by a pinned release with handoff --staged: the staged step is handed to it with the recipe's change and meaning, and the agent when asked; the step the agent cleared is committed and the walk continues",
 			goMod:     upgradeGoMod("v0.1.0", "v0.1.0", "v0.1.0"),
 			marker:    "old\n",
 			steps:     stagedLedger(t),
@@ -781,14 +784,44 @@ func TestUpgrade(t *testing.T) {
 				"The pinned impulse " + handoffStagedSince + " renders the owned files and checks the step.",
 				"FAIL  paging  1 offset\n      pkg/x.go:3: Offset",
 				"The pinned impulse " + handoffStagedSince + " writes the brief, runs the agent and verifies its work, through go tool impulse handoff --staged.",
+				"Committed: upgrade: ccc/resource v0.2.0, ccc/impulse " + handoffStagedSince + " (recipe marker) (the agent cleared the step).",
+				"=== step 3",
+				"Committed: upgrade: access v0.2.0, ccc/resource v0.3.0, ccc/impulse " + stagedLater(t) + " (the agent cleared the step).",
 			},
-			wantNoOut: []string{"The agent is not launched", "Wrote the brief"},
+			wantNoOut: []string{"The agent is not launched", "Wrote the brief", "left the check failing"},
 			wantCalls: []string{
 				"go get github.com/cccteam/ccc/resource@v0.2.0", "go get -tool github.com/cccteam/ccc/impulse@" + handoffStagedSince, "go mod tidy", "go tool impulse render", "go generate ./...", "go tool impulse check --fix", "git add -A",
 				"go tool impulse handoff --staged --change " + markerChange + " --meaning The marker names the form the step expects. --agent --agent-command claude --agent-arg --model --agent-arg sonnet",
+				"git add -A",
+				"git commit -q -m upgrade: ccc/resource v0.2.0, ccc/impulse " + handoffStagedSince + " (recipe marker) -m the marker moves to its new form\n\nRecipes applied by impulse upgrade: marker.\n\n" + agentCleared,
+				"go get github.com/cccteam/access@v0.2.0 github.com/cccteam/ccc/resource@v0.3.0", "go get -tool github.com/cccteam/ccc/impulse@" + stagedLater(t), "go mod tidy", "go tool impulse render", "go generate ./...", "go tool impulse check --fix", "git add -A",
+				"go tool impulse handoff --staged --agent --agent-command claude --agent-arg --model --agent-arg sonnet",
+				"git add -A",
+				"git commit -q -m upgrade: access v0.2.0, ccc/resource v0.3.0, ccc/impulse " + stagedLater(t) + " -m no code change is needed\n\n" + agentCleared,
+			},
+			wantCommits: []string{"step 2, impulse " + handoffStagedSince, "step 3, impulse " + stagedLater(t)},
+			wantMarker:  "new\n",
+		},
+		{
+			name:    "a failing check by a pinned release with handoff --staged, the agent asked for and its work not verifying: the walk stops at the handoff's word, nothing committed",
+			goMod:   upgradeGoMod("v0.1.0", "v0.1.0", "v0.1.0"),
+			marker:  "old\n",
+			steps:   stagedLedger(t),
+			running: check.Build{Version: "(devel)"},
+			agent:   true,
+			report:  failingReport,
+			fail:    "go tool impulse handoff",
+			wantOut: []string{
+				"=== step 2",
+				"The pinned impulse " + handoffStagedSince + " writes the brief, runs the agent and verifies its work, through go tool impulse handoff --staged.",
+			},
+			wantNoOut: []string{"Committed:", "=== step 3"},
+			wantCalls: []string{
+				"go get github.com/cccteam/ccc/resource@v0.2.0", "go get -tool github.com/cccteam/ccc/impulse@" + handoffStagedSince, "go mod tidy", "go tool impulse render", "go generate ./...", "go tool impulse check --fix", "git add -A",
+				"go tool impulse handoff --staged --change " + markerChange + " --meaning The marker names the form the step expects. --agent --agent-command claude",
 			},
 			wantMarker: "new\n",
-			wantErr:    "step 2 (ccc/resource v0.2.0, ccc/impulse " + handoffStagedSince + ") left the check failing; its changes are staged and the brief is at .impulse-handoff.md. When the check is clean, commit and run impulse upgrade again: it resumes from go.mod",
+			wantErr:    "go tool impulse handoff: ",
 		},
 		{
 			name:         "a failing check at a pin bump by a pinned release with handoff --staged, without the agent; the walk's --skip-generate reaches the handoff",

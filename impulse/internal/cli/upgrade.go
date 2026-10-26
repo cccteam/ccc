@@ -96,9 +96,12 @@ needs of the generator program.
 At a step checked by the pinned impulse, that impulse writes the brief from the staged
 tree and, with --agent, runs the agent and verifies its work, through go tool impulse
 handoff --staged, from impulse ` + handoffStagedSince + ` on; a pinned release before it leaves the
-walk to write the brief from that release's report, and the agent to the user. Fix or
-hand off, commit, and run upgrade again; it resumes from whatever go.mod says. No step is
-skipped, since a recipe is written against the shape the step before it left behind.
+walk to write the brief from that release's report, and the agent to the user. A step the
+agent cleared (its work verified clean) is committed under the step's own subject and the
+walk goes on to the next step; it stops when the agent's work does not verify, or when no
+agent ran. Then fix or hand off, commit, and run upgrade again; it resumes from whatever
+go.mod says. No step is skipped, since a recipe is written against the shape the step
+before it left behind.
 
 Upgrade impulse first, then bedrock (bedrock upgrade), and land both in one change: bedrock's
 checks read what the walk writes (the drivers' settings the configuration embeds, the release
@@ -697,7 +700,9 @@ func (u *upgrader) env(f *transitionFlags, a *app.App) *check.Env {
 // verification after it are the release that added the step's (its check runs the
 // generation again, so its brief quotes the failure). An earlier pinned release's brief
 // is written here from its report, and the agent is left to the user, since the
-// verification after it would be the running impulse's.
+// verification after it would be the running impulse's. With --agent, a step the agent
+// cleared is committed here and the walk continues; the walk stops only when the agent's
+// work did not verify, or when no agent ran.
 func (u *upgrader) handoff(ctx context.Context, f *transitionFlags, repo handoff.Repo, a *app.App, c *commit, o *outcome, pinned string) error {
 	left := "the check"
 	if o.generate {
@@ -718,8 +723,30 @@ func (u *upgrader) handoff(ctx context.Context, f *transitionFlags, repo handoff
 	if err != nil {
 		return err
 	}
+	if f.agent && (pinned == "" || handoffStaged(pinned)) {
+		// The agent ran on the brief and its work verified clean (a handoff that did not
+		// verify returned its error), so the step is committed and the walk goes on.
+		return u.commitCleared(ctx, repo, a, c, left)
+	}
 
 	return errors.Newf("%s left %s failing; its changes are staged and the brief is at %s. When the check is clean, commit and run impulse upgrade again: it resumes from go.mod", c.label, left, handoff.File)
+}
+
+// commitCleared commits a step the agent cleared: with --agent, the handoff ran the agent
+// on the brief and verified its work clean, so the step is committed under its own
+// subject, the body saying the agent did the wiring, and the walk continues to the next
+// step instead of stopping for a commit and a second run.
+func (u *upgrader) commitCleared(ctx context.Context, repo handoff.Repo, a *app.App, c *commit, left string) error {
+	if err := repo.StageAll(ctx); err != nil {
+		return err
+	}
+	body := c.body + "\n\nThe step's move left " + left + " failing; the agent did the wiring under the brief, and its work verified clean."
+	if out, err := u.exec.Run(ctx, a.Root, nil, gitCommand, "commit", "-q", "-m", c.subject, "-m", body); err != nil {
+		return errors.Wrapf(err, "git commit: %s", lastLine(out))
+	}
+	fmt.Fprintf(u.out, "Committed: %s (the agent cleared the step).\n\n", c.subject)
+
+	return nil
 }
 
 // handoffInProcess writes the brief from the results, with the staged paths as the
