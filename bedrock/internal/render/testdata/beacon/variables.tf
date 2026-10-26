@@ -278,15 +278,50 @@ variable "teardown" {
 variable "destroy" {
   description = <<-EOT
     Set by bedrock destroy alone, never in terraform.tfvars: the environment
-    is being destroyed whole, prd's database, files and Firestore
+    is being destroyed whole, its database, files, secrets and Firestore
     database included. The command applies the stack with it before the
     destroy, so that the state records every protection lifted: the
-    services' deletion protection, the database's deletion and drop
-    protection, the file stores' force-destroy and the Firestore database's
-    delete protection.
+    services' deletion protection (prd's), and in every
+    environment the database's deletion and drop protection, the file stores'
+    force-destroy, the secret containers' deletion protection and the
+    Firestore database's delete protection.
   EOT
   type        = bool
   default     = false
+}
+
+variable "restore" {
+  description = <<-EOT
+    Set by a restore run alone, never in terraform.tfvars: the environment's
+    database is being replaced or dropped and restored (and in tst its
+    file stores replaced with it). The run applies the stack with it, targeted
+    at those resources, before its plan, so that the state records their
+    protection lifted (the database's deletion and drop protection, the file
+    stores' force-destroy) for the one apply that replaces them; the plan
+    after it declares the protection again.
+  EOT
+  type        = bool
+  default     = false
+}
+
+variable "retired" {
+  description = <<-EOT
+    The secrets and file stores a release retires, by the variable each is
+    declared by (pkg/config/data.go; APP_FILE_STORE or APP_FILE_STORE_<NAME>).
+    Anything the running release uses is retired in one release and removed
+    in the next, never both at once: the database, the file stores and the
+    secret containers hold data, so each is protected from a destroy in every
+    environment, and a release whose code stops declaring one is refused at
+    its plan (the pull request's check build plans the environment) unless
+    the release before it named the variable here. Naming it lifts the
+    protection; the next release removes the declaration and the name
+    together. Nothing here is read for a pull-request stack, which is torn
+    down whole, or for bedrock destroy, which lifts every protection itself.
+
+      retired = ["APP_LEGACY_API_KEY", "APP_FILE_STORE_EXPORTS"]
+  EOT
+  type        = list(string)
+  default     = []
 }
 
 variable "mail_mailbox" {

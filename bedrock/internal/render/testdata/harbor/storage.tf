@@ -50,10 +50,13 @@ resource "google_storage_bucket" "files" {
     retention_duration_seconds = local.is_prd ? 604800 : 0
   }
 
-  # prd keeps its objects through a destroy, unless bedrock destroy lifts
-  # that with its apply (var.destroy); every other environment can be rebuilt by a
-  # pipeline, and a pull-request stack is torn down with its objects.
-  force_destroy = !local.is_prd || var.destroy
+  # A bucket holding objects refuses a destroy in every environment: a release
+  # that stops declaring the store is refused at its plan until the release
+  # before it retired the store (var.retired, the variable's name). A restore
+  # run in tst replaces the store, and bedrock destroy destroys it, each
+  # after an apply that records the protection lifted (var.restore,
+  # var.destroy). A pull-request stack is torn down with its objects.
+  force_destroy = local.is_pr || var.destroy || var.restore || contains(var.retired, "APP_FILE_STORE")
 
   labels = local.labels
 }

@@ -200,6 +200,7 @@ func TestTeardownAndDestroy(t *testing.T) {
 			wantRan: []string{
 				"tofu init -input=false -no-color -reconfigure -backend-config=prefix=3-app/quill/tst", "tofu state list", "tofu show -json",
 				"tofu init -input=false -no-color -reconfigure -backend-config=prefix=3-app/quill/prd", "tofu state list", "tofu show -json",
+				"tofu apply -input=false -no-color -auto-approve -var environment=tst -var database_generation=1 -var destroy=true -target=google_spanner_database.quill[0]",
 				"tofu plan -destroy -input=false -no-color -out=DATA/tst/teardown.tfplan -var environment=tst -var database_generation=1 -var destroy=true",
 				"tofu show -json DATA/tst/teardown.tfplan", "tofu apply -input=false -no-color DATA/tst/teardown.tfplan",
 				`tofu apply -input=false -no-color -auto-approve -var environment=prd -var database_generation=1 -var destroy=true -target=google_cloud_run_v2_service.app["uc1"] -target=google_spanner_database.quill[0]`,

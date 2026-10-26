@@ -27,8 +27,9 @@ const preamble = "# Impulse handoff: example.com/acme/beacon\n\n" +
 	"You are working in an Impulse application (Go services built on the cccteam libraries, with ccc/resource generating the handlers, routes, and browser clients from annotated resource structs; a listed resource declares its order with `@order` on the struct or every page of it names a `sort`, since a paged request with neither is refused). The application root is `/w/beacon`, and it is your working directory.\n\n"
 
 const rulesTail = "5. Do not stage or commit. Leave your work in the working tree; the pull request is the review.\n" +
-	"6. Keep the tests table-driven and the suite passing: `go test ./...`.\n" +
-	"7. Stop when the check is clean. In your final message, say what you changed and what a reviewer should look at.\n"
+	"6. Anything the running release uses is retired in one release and removed in the next, never both at once: a schema object (a column, a table), an environment variable, a secret, a file store. A secret or a file store is retired by naming its variable in `retired` in `infrastructure/terraform.tfvars` while its declaration stays; the next release removes the declaration and the name together. A release that destroys an un-retired one is refused at its plan.\n" +
+	"7. Keep the tests table-driven and the suite passing: `go test ./...`.\n" +
+	"8. Stop when the check is clean. In your final message, say what you changed and what a reviewer should look at.\n"
 
 func TestBriefWrite(t *testing.T) {
 	t.Parallel()
@@ -84,8 +85,9 @@ func TestBriefWrite(t *testing.T) {
 				"1. Run `impulse check` from the application root until it reports no FAIL. The regen check runs go generate, which needs the Spanner emulator through podman or docker; if neither is available, run `impulse check --skip-generate` and say so in your final message.\n" +
 				"2. Do not edit generated files (`zz_gen_*`). Change the source they are generated from and run `go generate ./...`.\n" +
 				"3. Do not stage or commit. Leave your work in the working tree; the pull request is the review.\n" +
-				"4. Keep the tests table-driven and the suite passing: `go test ./...`.\n" +
-				"5. Stop when the check is clean. In your final message, say what you changed and what a reviewer should look at.\n" +
+				"4. Anything the running release uses is retired in one release and removed in the next, never both at once: a schema object (a column, a table), an environment variable, a secret, a file store. A secret or a file store is retired by naming its variable in `retired` in `infrastructure/terraform.tfvars` while its declaration stays; the next release removes the declaration and the name together. A release that destroys an un-retired one is refused at its plan.\n" +
+				"5. Keep the tests table-driven and the suite passing: `go test ./...`.\n" +
+				"6. Stop when the check is clean. In your final message, say what you changed and what a reviewer should look at.\n" +
 				"\n## Done when\n\n`impulse check` reports no FAIL.\n",
 		},
 		{
@@ -109,8 +111,9 @@ func TestBriefWrite(t *testing.T) {
 				"1. Run `impulse check` from the application root until it reports no FAIL. The regen check runs go generate, which needs the Spanner emulator through podman or docker; if neither is available, run `impulse check --skip-generate` and say so in your final message.\n" +
 				"2. Do not edit generated files (`zz_gen_*`). Change the source they are generated from and run `go generate ./...`.\n" +
 				"3. Do not stage or commit. Leave your work in the working tree; the pull request is the review.\n" +
-				"4. Keep the tests table-driven and the suite passing: `go test ./...`.\n" +
-				"5. Stop when the check is clean. In your final message, say what you changed and what a reviewer should look at.\n" +
+				"4. Anything the running release uses is retired in one release and removed in the next, never both at once: a schema object (a column, a table), an environment variable, a secret, a file store. A secret or a file store is retired by naming its variable in `retired` in `infrastructure/terraform.tfvars` while its declaration stays; the next release removes the declaration and the name together. A release that destroys an un-retired one is refused at its plan.\n" +
+				"5. Keep the tests table-driven and the suite passing: `go test ./...`.\n" +
+				"6. Stop when the check is clean. In your final message, say what you changed and what a reviewer should look at.\n" +
 				"\n## Done when\n\n`impulse check` reports no FAIL.\n",
 		},
 		{
@@ -127,8 +130,9 @@ func TestBriefWrite(t *testing.T) {
 				"1. Run `impulse check` from the application root until it reports no FAIL. The regen check runs go generate, which needs the Spanner emulator through podman or docker; if neither is available, run `impulse check --skip-generate` and say so in your final message.\n" +
 				"2. Do not edit generated files (`zz_gen_*`). Change the source they are generated from and run `go generate ./...`.\n" +
 				"3. Do not stage or commit. Leave your work in the working tree; the pull request is the review.\n" +
-				"4. Keep the tests table-driven and the suite passing: `go test ./...`.\n" +
-				"5. Stop when the check is clean. In your final message, say what you changed and what a reviewer should look at.\n" +
+				"4. Anything the running release uses is retired in one release and removed in the next, never both at once: a schema object (a column, a table), an environment variable, a secret, a file store. A secret or a file store is retired by naming its variable in `retired` in `infrastructure/terraform.tfvars` while its declaration stays; the next release removes the declaration and the name together. A release that destroys an un-retired one is refused at its plan.\n" +
+				"5. Keep the tests table-driven and the suite passing: `go test ./...`.\n" +
+				"6. Stop when the check is clean. In your final message, say what you changed and what a reviewer should look at.\n" +
 				"\n## Done when\n\n`impulse check` reports no FAIL.\n",
 		},
 	}

@@ -369,7 +369,7 @@ func TestPlanEnvironmentStack(t *testing.T) {
 			env:          restoreEnv,
 			state:        stateList,
 			wantOut:      []string{"=== Restore (empty, asked for by octocat): google_spanner_database.quill[0], google_storage_bucket.files is replaced in tst's stack; the migrations then apply afresh ===", "The Firestore database stays (Firestore keeps a deleted database's id unavailable for minutes); the apply deletes its documents instead.", "Tests passed"},
-			wantTofu:     []string{strings.Replace(initLine, "3-app/quill/stg", "3-app/quill/tst", 1), "tofu state list", stateLine, strings.Replace(planLine, "environment=stg", "environment=tst", 1) + " -replace=google_spanner_database.quill[0] -replace=google_storage_bucket.files", showLine},
+			wantTofu:     []string{strings.Replace(initLine, "3-app/quill/stg", "3-app/quill/tst", 1), "tofu state list", "tofu apply -input=false -no-color -auto-approve -var environment=tst -var database_generation=1 -var restore=true -target=google_spanner_database.quill[0] -target=google_storage_bucket.files", stateLine, strings.Replace(planLine, "environment=stg", "environment=tst", 1) + " -replace=google_spanner_database.quill[0] -replace=google_storage_bucket.files", showLine},
 			wantFact:     "Plan: 2 to add, 1 to change, 1 to destroy.",
 			wantReplaced: "google_spanner_database.quill[0],google_storage_bucket.files",
 		},
@@ -380,7 +380,7 @@ func TestPlanEnvironmentStack(t *testing.T) {
 			env:          restoreEnv + "export MAINTENANCE=\"true\"\n",
 			state:        stateList,
 			wantOut:      []string{"=== Restore (empty, asked for by octocat): google_spanner_database.quill[0], google_storage_bucket.files is replaced in tst's stack; the migrations then apply afresh ===", "Tests passed"},
-			wantTofu:     []string{strings.Replace(initLine, "3-app/quill/stg", "3-app/quill/tst", 1), "tofu state list", stateLine, strings.Replace(planLine, "environment=stg", "environment=tst", 1) + " -var maintenance=1 -replace=google_spanner_database.quill[0] -replace=google_storage_bucket.files", showLine},
+			wantTofu:     []string{strings.Replace(initLine, "3-app/quill/stg", "3-app/quill/tst", 1), "tofu state list", "tofu apply -input=false -no-color -auto-approve -var environment=tst -var database_generation=1 -var maintenance=1 -var restore=true -target=google_spanner_database.quill[0] -target=google_storage_bucket.files", stateLine, strings.Replace(planLine, "environment=stg", "environment=tst", 1) + " -var maintenance=1 -replace=google_spanner_database.quill[0] -replace=google_storage_bucket.files", showLine},
 			wantFact:     "Plan: 2 to add, 1 to change, 1 to destroy.",
 			wantReplaced: "google_spanner_database.quill[0],google_storage_bucket.files",
 		},
@@ -409,7 +409,7 @@ func TestPlanEnvironmentStack(t *testing.T) {
 			env:          restoreEnv + "export SEED=\"true\"\n",
 			state:        stateList,
 			wantOut:      []string{"=== Restore (empty, asked for by octocat): google_spanner_database.quill[0], google_storage_bucket.files is replaced in tst's stack; the migrations and the seed then apply afresh ===", "Tests passed"},
-			wantTofu:     []string{strings.Replace(initLine, "3-app/quill/stg", "3-app/quill/tst", 1), "tofu state list", stateLine, strings.Replace(planLine, "environment=stg", "environment=tst", 1) + " -replace=google_spanner_database.quill[0] -replace=google_storage_bucket.files", showLine},
+			wantTofu:     []string{strings.Replace(initLine, "3-app/quill/stg", "3-app/quill/tst", 1), "tofu state list", "tofu apply -input=false -no-color -auto-approve -var environment=tst -var database_generation=1 -var restore=true -target=google_spanner_database.quill[0] -target=google_storage_bucket.files", stateLine, strings.Replace(planLine, "environment=stg", "environment=tst", 1) + " -replace=google_spanner_database.quill[0] -replace=google_storage_bucket.files", showLine},
 			wantFact:     "Plan: 2 to add, 1 to change, 1 to destroy.",
 			wantReplaced: "google_spanner_database.quill[0],google_storage_bucket.files",
 		},
@@ -420,7 +420,7 @@ func TestPlanEnvironmentStack(t *testing.T) {
 			env:          restoreEnv,
 			state:        "google_spanner_database.quill[0]\ngoogle_storage_bucket.files\ngoogle_storage_bucket.files_documents\ngoogle_storage_bucket.files_client_files\n",
 			wantOut:      []string{"=== Restore (empty, asked for by octocat): google_spanner_database.quill[0], google_storage_bucket.files, google_storage_bucket.files_documents, google_storage_bucket.files_client_files is replaced in tst's stack; the migrations then apply afresh ===", "Tests passed"},
-			wantTofu:     []string{strings.Replace(initLine, "3-app/quill/stg", "3-app/quill/tst", 1), "tofu state list", stateLine, strings.Replace(planLine, "environment=stg", "environment=tst", 1) + " -replace=google_spanner_database.quill[0] -replace=google_storage_bucket.files -replace=google_storage_bucket.files_documents -replace=google_storage_bucket.files_client_files", showLine},
+			wantTofu:     []string{strings.Replace(initLine, "3-app/quill/stg", "3-app/quill/tst", 1), "tofu state list", "tofu apply -input=false -no-color -auto-approve -var environment=tst -var database_generation=1 -var restore=true -target=google_spanner_database.quill[0] -target=google_storage_bucket.files -target=google_storage_bucket.files_documents -target=google_storage_bucket.files_client_files", stateLine, strings.Replace(planLine, "environment=stg", "environment=tst", 1) + " -replace=google_spanner_database.quill[0] -replace=google_storage_bucket.files -replace=google_storage_bucket.files_documents -replace=google_storage_bucket.files_client_files", showLine},
 			wantFact:     "Plan: 2 to add, 1 to change, 1 to destroy.",
 			wantReplaced: "google_spanner_database.quill[0],google_storage_bucket.files,google_storage_bucket.files_documents,google_storage_bucket.files_client_files",
 		},
@@ -431,7 +431,7 @@ func TestPlanEnvironmentStack(t *testing.T) {
 			env:          restoreEnv,
 			state:        "google_spanner_database.quill[0]\ngoogle_storage_bucket.files\n",
 			wantOut:      []string{"=== Restore (empty, asked for by octocat): google_spanner_database.quill[0] is replaced in tst's stack; the migrations then apply afresh ===", "Tests passed"},
-			wantTofu:     []string{strings.Replace(initLine, "3-app/quill/stg", "3-app/quill/tst", 1), "tofu state list", stateLine, strings.Replace(planLine, "environment=stg", "environment=tst", 1) + " -replace=google_spanner_database.quill[0]", showLine},
+			wantTofu:     []string{strings.Replace(initLine, "3-app/quill/stg", "3-app/quill/tst", 1), "tofu state list", "tofu apply -input=false -no-color -auto-approve -var environment=tst -var database_generation=1 -var restore=true -target=google_spanner_database.quill[0]", stateLine, strings.Replace(planLine, "environment=stg", "environment=tst", 1) + " -replace=google_spanner_database.quill[0]", showLine},
 			wantFact:     "Plan: 2 to add, 1 to change, 1 to destroy.",
 			wantReplaced: "google_spanner_database.quill[0]",
 		},
@@ -442,7 +442,7 @@ func TestPlanEnvironmentStack(t *testing.T) {
 			env:          restoreEnv,
 			state:        "google_spanner_database.quill[0]\ngoogle_storage_bucket.files\n",
 			wantOut:      []string{"=== Restore (empty, asked for by octocat): google_spanner_database.quill[0] is replaced in stg's stack"},
-			wantTofu:     []string{initLine, "tofu state list", stateLine, planLine + " -replace=google_spanner_database.quill[0]", showLine},
+			wantTofu:     []string{initLine, "tofu state list", "tofu apply -input=false -no-color -auto-approve -var environment=stg -var database_generation=1 -var restore=true -target=google_spanner_database.quill[0]", stateLine, planLine + " -replace=google_spanner_database.quill[0]", showLine},
 			wantFact:     "Plan: 2 to add, 1 to change, 1 to destroy.",
 			wantReplaced: "google_spanner_database.quill[0]",
 		},
@@ -462,7 +462,7 @@ func TestPlanEnvironmentStack(t *testing.T) {
 			state:        "# google_spanner_database.quill[0]:\nresource \"google_spanner_database\" \"quill\" {\n    database_dialect = \"GOOGLE_STANDARD_SQL\"\n    instance         = \"shared-spanner\"\n    name             = \"p-stg-gbl-quill-db\"\n    project          = \"p-spn\"\n}\n",
 			backup:       &Backup{Name: "projects/p-spn/instances/shared-spanner/backups/p-prd-gbl-quill-db-20261001", VersionTime: "2026-10-01T02:00:00Z", CreateTime: "2026-10-01T02:05:00Z", State: BackupReady},
 			wantOut:      []string{"=== Restore (production-backup, asked for by octocat): stg's database p-stg-gbl-quill-db is dropped and restored from production's backup p-prd-gbl-quill-db-20261001 (data as of 2026-10-01T02:00:00Z); the migrations production's backup predates then apply ===", "Dropped p-stg-gbl-quill-db.", "Restored p-stg-gbl-quill-db from p-prd-gbl-quill-db-20261001; the plan recreates its memberships.", "Tests passed"},
-			wantTofu:     []string{initLine, "tofu state show google_spanner_database.quill[0]", stateLine, planLine, showLine},
+			wantTofu:     []string{initLine, "tofu state show google_spanner_database.quill[0]", "tofu apply -input=false -no-color -auto-approve -var environment=stg -var database_generation=1 -var restore=true -target=google_spanner_database.quill[0]", stateLine, planLine, showLine},
 			wantFact:     "Plan: 2 to add, 1 to change, 1 to destroy.",
 			wantReplaced: "google_spanner_database.quill[0]",
 			wantBackup:   "projects/p-spn/instances/shared-spanner/backups/p-prd-gbl-quill-db-20261001",
@@ -476,7 +476,7 @@ func TestPlanEnvironmentStack(t *testing.T) {
 			backup:       &Backup{Name: "projects/p-spn/instances/shared-spanner/backups/p-prd-gbl-quill-db-20261001", VersionTime: "2026-10-01T02:00:00Z", CreateTime: "2026-10-01T02:05:00Z", State: BackupReady},
 			creating:     1,
 			wantOut:      []string{"Waiting for p-prd-gbl-quill-db-20261001: Spanner is still taking it (CREATING after 0s); a restore needs a READY backup.", "stg's database p-stg-gbl-quill-db is dropped and restored from production's backup p-prd-gbl-quill-db-20261001 (data as of 2026-10-01T02:00:00Z)", "Restored p-stg-gbl-quill-db from p-prd-gbl-quill-db-20261001; the plan recreates its memberships.", "Tests passed"},
-			wantTofu:     []string{initLine, "tofu state show google_spanner_database.quill[0]", stateLine, planLine, showLine},
+			wantTofu:     []string{initLine, "tofu state show google_spanner_database.quill[0]", "tofu apply -input=false -no-color -auto-approve -var environment=stg -var database_generation=1 -var restore=true -target=google_spanner_database.quill[0]", stateLine, planLine, showLine},
 			wantFact:     "Plan: 2 to add, 1 to change, 1 to destroy.",
 			wantReplaced: "google_spanner_database.quill[0]",
 			wantBackup:   "projects/p-spn/instances/shared-spanner/backups/p-prd-gbl-quill-db-20261001",
@@ -489,7 +489,7 @@ func TestPlanEnvironmentStack(t *testing.T) {
 			state:        "resource \"google_spanner_database\" \"quill\" {\n    instance = \"shared-spanner\"\n    name     = \"p-stg-gbl-quill-db\"\n    project  = \"p-spn\"\n}\n",
 			backup:       &Backup{Name: "projects/p-spn/instances/shared-spanner/backups/p-prd-gbl-quill-db-3-20261001", VersionTime: "2026-10-01T02:00:00Z", CreateTime: "2026-10-01T02:05:00Z", State: BackupReady},
 			wantOut:      []string{"stg's database p-stg-gbl-quill-db is dropped and restored from production's backup p-prd-gbl-quill-db-3-20261001 (data as of 2026-10-01T02:00:00Z)", "Restored p-stg-gbl-quill-db from p-prd-gbl-quill-db-3-20261001; the plan recreates its memberships.", "Tests passed"},
-			wantTofu:     []string{initLine, "tofu state show google_spanner_database.quill[0]", stateLine, planLine, showLine},
+			wantTofu:     []string{initLine, "tofu state show google_spanner_database.quill[0]", "tofu apply -input=false -no-color -auto-approve -var environment=stg -var database_generation=1 -var restore=true -target=google_spanner_database.quill[0]", stateLine, planLine, showLine},
 			wantFact:     "Plan: 2 to add, 1 to change, 1 to destroy.",
 			wantReplaced: "google_spanner_database.quill[0]",
 			wantBackup:   "projects/p-spn/instances/shared-spanner/backups/p-prd-gbl-quill-db-3-20261001",
@@ -502,7 +502,7 @@ func TestPlanEnvironmentStack(t *testing.T) {
 			state:        "resource \"google_spanner_database\" \"quill\" {\n    instance = \"shared-spanner\"\n    name     = \"p-stg-gbl-quill-db\"\n    project  = \"p-spn\"\n}\n",
 			backup:       &Backup{Name: "projects/p-spn/instances/shared-spanner/backups/p-prd-gbl-quill-db-3-pre-v0-17-2", VersionTime: "2026-10-06T00:11:01Z", CreateTime: "2026-10-06T00:11:02Z", State: BackupReady},
 			wantOut:      []string{"stg's database p-stg-gbl-quill-db is dropped and restored from production's backup p-prd-gbl-quill-db-3-pre-v0-17-2 (data as of 2026-10-06T00:11:01Z)", "Restored p-stg-gbl-quill-db from p-prd-gbl-quill-db-3-pre-v0-17-2; the plan recreates its memberships.", "Tests passed"},
-			wantTofu:     []string{initLine, "tofu state show google_spanner_database.quill[0]", stateLine, planLine, showLine},
+			wantTofu:     []string{initLine, "tofu state show google_spanner_database.quill[0]", "tofu apply -input=false -no-color -auto-approve -var environment=stg -var database_generation=1 -var restore=true -target=google_spanner_database.quill[0]", stateLine, planLine, showLine},
 			wantFact:     "Plan: 2 to add, 1 to change, 1 to destroy.",
 			wantReplaced: "google_spanner_database.quill[0]",
 			wantBackup:   "projects/p-spn/instances/shared-spanner/backups/p-prd-gbl-quill-db-3-pre-v0-17-2",
@@ -515,7 +515,7 @@ func TestPlanEnvironmentStack(t *testing.T) {
 			state:        "resource \"google_spanner_database\" \"quill\" {\n    instance = \"shared-spanner\"\n    name     = \"p-stg-gbl-quill-db\"\n    project  = \"p-spn\"\n}\n",
 			backup:       &Backup{Name: "projects/p-spn/instances/shared-spanner/backups/p-prd-gbl-quill-db-2-pre-v0-16-3", VersionTime: "2026-10-05T18:03:57Z", CreateTime: "2026-10-05T18:04:00Z", State: BackupReady},
 			wantOut:      []string{"p-prd-gbl-quill-db-3 has no backup of its own yet (a restore put it there from p-prd-gbl-quill-db-2-pre-v0-16-3, and no release or schedule has taken one since): that backup, whose data its own began as, is restored.", "stg's database p-stg-gbl-quill-db is dropped and restored from production's backup p-prd-gbl-quill-db-2-pre-v0-16-3 (data as of 2026-10-05T18:03:57Z)", "Tests passed"},
-			wantTofu:     []string{initLine, "tofu state show google_spanner_database.quill[0]", stateLine, planLine, showLine},
+			wantTofu:     []string{initLine, "tofu state show google_spanner_database.quill[0]", "tofu apply -input=false -no-color -auto-approve -var environment=stg -var database_generation=1 -var restore=true -target=google_spanner_database.quill[0]", stateLine, planLine, showLine},
 			wantFact:     "Plan: 2 to add, 1 to change, 1 to destroy.",
 			wantReplaced: "google_spanner_database.quill[0]",
 			wantBackup:   "projects/p-spn/instances/shared-spanner/backups/p-prd-gbl-quill-db-2-pre-v0-16-3",
@@ -805,6 +805,24 @@ func TestPlanEnvironmentStack(t *testing.T) {
 			stackFile: "resource \"google_storage_bucket_iam_policy\" \"records\" {}\n",
 			wantTofu:  []string{initLine, stateLine, planLine, showLine},
 			wantErr:   "is the one admitted): iam.tf:1 google_storage_bucket_iam_policy.records",
+		},
+		{
+			name:     "a plan that destroys a secret container the state protects is refused before the tests, with the retire step, nothing applied",
+			subs:     tagSubs(),
+			pins:     enabledPins(),
+			planJSON: protectedPlanJSON(`google_secret_manager_secret.quill["APP_LEGACY_KEY"]`, "google_secret_manager_secret", "APP_LEGACY_KEY", []string{"delete"}, map[string]any{"deletion_protection": true}),
+			wantOut:  []string{"Plan: 0 to add, 0 to change, 1 to destroy.", `  delete google_secret_manager_secret.quill["APP_LEGACY_KEY"]`},
+			wantTofu: []string{initLine, stateLine, planLine, showLine},
+			wantErr:  "Build REJECTED: the plan of stg's stack destroys what the state protects, and nothing was applied:\n  google_secret_manager_secret.quill[\"APP_LEGACY_KEY\"]: the plan destroys it, and the state records its protection (deletion_protection = true); a secret container holds every version of its value, so a release that stops declaring it is refused until the release before it retired it: keep the declaration, name APP_LEGACY_KEY in retired in terraform.tfvars (retired = [\"APP_LEGACY_KEY\"]) and release, which lifts the protection; the next release removes the declaration and the name together",
+		},
+		{
+			name:     "a secret container whose protection the release before lifted goes, and the tests run",
+			subs:     tagSubs(),
+			pins:     enabledPins(),
+			planJSON: protectedPlanJSON(`google_secret_manager_secret.quill["APP_LEGACY_KEY"]`, "google_secret_manager_secret", "APP_LEGACY_KEY", []string{"delete"}, map[string]any{"deletion_protection": false}),
+			wantOut:  []string{"Plan: 0 to add, 0 to change, 1 to destroy.", "Tests passed"},
+			wantTofu: []string{initLine, stateLine, planLine, showLine},
+			wantFact: "Plan: 0 to add, 0 to change, 1 to destroy.",
 		},
 		{
 			name:     "a tainted service and job, whose create failed, are untainted before the plan: they exist, and the apply creates a new revision in place of the one whose start failed",
@@ -1453,15 +1471,28 @@ func TestPlanEnvironments(t *testing.T) {
 		// checkout's code. baseTfvars is the base branch's copy, as the GitHub stand-in
 		// serves it on master; none when empty, and the Cloud Armor guard has nothing to
 		// compare.
-		tfvars      string
-		generated   bool
-		baseTfvars  string
+		tfvars     string
+		generated  bool
+		baseTfvars string
+		// planJSON is every environment's plan as tofu shows it; the stack's usual plan
+		// when empty.
+		planJSON    string
 		wantOut     []string
 		wantNotOut  []string
 		wantTofu    []string
 		wantComment []string
 		wantErr     string
 	}{
+		{
+			name:        "a plan that destroys a file store's bucket the state protects is refused in the first environment, said on the pull request with the retire step",
+			subs:        prSubs(),
+			pins:        enabledPins(),
+			planJSON:    protectedPlanJSON("google_storage_bucket.files_exports[0]", "google_storage_bucket", 0, []string{"delete"}, map[string]any{"force_destroy": false}),
+			wantOut:     []string{"tst: Plan: 0 to add, 0 to change, 1 to destroy."},
+			wantTofu:    []string{initOf("tst", "p-tst"), planOf("tst"), showOf("tst")},
+			wantComment: []string{"The plan of tst's stack stopped (build b-1): it destroys what the state protects, and nothing was applied.\n\n- google_storage_bucket.files_exports[0]: the plan destroys it, and the state records its protection (force_destroy = false); a file store's bucket holds its objects, so a release that stops declaring it is refused until the release before it retired it: keep the declaration, name APP_FILE_STORE_EXPORTS in retired in terraform.tfvars (retired = [\"APP_FILE_STORE_EXPORTS\"]) and release, which lifts the protection; the next release removes the declaration and the name together"},
+			wantErr:     "Build REJECTED: the plan of tst's stack destroys what the state protects: google_storage_bucket.files_exports[0]",
+		},
 		{
 			name:      "a generated secret is pinned to each environment's newest enabled version, read as its plan identity, and left unmounted where none exists yet",
 			subs:      prSubs(),
@@ -1690,7 +1721,11 @@ func TestPlanEnvironments(t *testing.T) {
 			if tt.stackFile != "" {
 				writeStackFile(t, w, tt.stackFile)
 			}
-			run := &fakeRunner{outputs: map[string]string{"tofu show": stackPlanJSON}, fail: map[string]error{"tofu plan": tt.planErr}}
+			planJSON := tt.planJSON
+			if planJSON == "" {
+				planJSON = stackPlanJSON
+			}
+			run := &fakeRunner{outputs: map[string]string{"tofu show": planJSON}, fail: map[string]error{"tofu plan": tt.planErr}}
 			builds := &fakeBuilds{build: jobBuild(t, subs, applyIdentityID, steps), token: "test-token", mintErr: tt.mintErr}
 			repo := armorRepo(tt.baseTfvars)
 			_, gh := githubStandIn(t, repo)

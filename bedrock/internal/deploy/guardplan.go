@@ -98,7 +98,10 @@ func sharedMigrations(ctx context.Context, clients *Clients, subs, env map[strin
 type planChange struct {
 	Address string `json:"address"`
 	Type    string `json:"type"`
-	Change  struct {
+	// Index is the instance's key for a resource with for_each (a string) or count (a
+	// number); nil for a single instance.
+	Index  any `json:"index"`
+	Change struct {
 		Actions      []string       `json:"actions"`
 		Before       map[string]any `json:"before"`
 		After        map[string]any `json:"after"`

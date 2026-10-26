@@ -8,7 +8,8 @@
 // destroys the whole stack. Both drive tofu in the checkout's stack directory as the
 // person (their own sign-in, no identity impersonated), against the environment's state
 // prefix, the way the stack trigger's first apply does: an apply that records the protections
-// lifted where production holds them (var.teardown, var.destroy), a destroy plan with
+// lifted where the stack holds them (the services' in production, var.teardown; the data
+// stores' in every environment, var.destroy), a destroy plan with
 // the kept resources excluded, the plan read back and held against what the command
 // means to destroy, the apply of that plan, and a record of what was done beside the
 // stack's id. Neither runs while 2-net routes a host to the environment's backend
@@ -106,12 +107,13 @@ var teardownNames = map[string]bool{
 }
 
 // protectedTypes are the resource types production protects from deletion, which a
-// teardown lifts the protection of; destroyProtectedTypes the ones a destroy lifts
-// besides (the database's deletion and drop protection, the file stores' force-destroy,
-// the Firestore database's delete protection).
+// teardown lifts the protection of; destroyProtectedTypes the ones every environment
+// protects, which a destroy lifts besides (the database's deletion and drop protection,
+// the file stores' force-destroy, the secret containers' deletion protection, the
+// Firestore database's delete protection).
 var (
 	protectedTypes        = map[string]bool{serviceType: true}
-	destroyProtectedTypes = map[string]bool{"google_spanner_database": true, "google_storage_bucket": true, "google_firestore_database": true}
+	destroyProtectedTypes = map[string]bool{"google_spanner_database": true, "google_storage_bucket": true, "google_secret_manager_secret": true, "google_firestore_database": true}
 )
 
 // TeardownRequest is one environment's teardown, or its destroy with Destroy.
@@ -560,8 +562,9 @@ func recordAfter(at string, live *Record) bool {
 
 // sortResources sorts the stack's managed resources into what goes and what stays, and
 // finds the protected ones among what goes: a destroy takes everything, a teardown the
-// types and names of a teardown; production protects its services, and against a destroy
-// its database, file stores and Firestore database.
+// types and names of a teardown; production protects its services, and every environment
+// protects against a destroy its database, file stores, secret containers and Firestore
+// database.
 func (t *EnvironmentTeardown) sortResources(addresses []string) {
 	production := t.req.Env == t.req.Placement.Production()
 	for _, address := range addresses {
@@ -573,7 +576,7 @@ func (t *EnvironmentTeardown) sortResources(addresses []string) {
 			continue
 		}
 		t.destroyed = append(t.destroyed, address)
-		if production && (protectedTypes[typ] || (t.req.Destroy && destroyProtectedTypes[typ])) {
+		if (production && protectedTypes[typ]) || (t.req.Destroy && destroyProtectedTypes[typ]) {
 			t.protected = append(t.protected, address)
 		}
 	}

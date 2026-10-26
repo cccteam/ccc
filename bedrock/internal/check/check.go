@@ -156,6 +156,25 @@ type Report struct {
 	// no entry, where the word generated belongs; and a secret someone puts in place
 	// carrying the word. Refused: the stack's own precondition refuses the same.
 	Generated []GeneratedFinding
+	// Retirements are the entries of retired in terraform.tfvars, the variables a
+	// release retires: each a line of the report naming what the variable declares (a
+	// secret, a build secret, a file store, the Firestore database), whose protection
+	// against a destroy the release's apply lifts in every environment so that the next
+	// release can remove the declaration; and refused when nothing declares the variable
+	// (Retirement.Problem), since the release that removes a declaration takes its name
+	// out of the list with it.
+	Retirements []Retirement
+}
+
+// Retirement is one entry of retired in terraform.tfvars.
+type Retirement struct {
+	// Variable is the entry, the variable a secret, a build secret, a file store or the
+	// Firestore database is declared by.
+	Variable string
+	// What says what the variable declares, and where; empty when nothing does.
+	What string
+	// Problem says why the entry is refused: nothing declares the variable.
+	Problem string
 }
 
 // GeneratedFinding is one disagreement between a secret's tag in the code and its entry
@@ -189,9 +208,20 @@ type MaintenanceFinding struct {
 // build argument declared by the Dockerfile, release lines that a feature release opens,
 // a changelog section for every accepted title type, release-please's files in place, no
 // Cloud Armor policy removed in one step, and a sign-in throttle threshold the policy
-// can take.
+// can take, and no retired variable that nothing declares.
 func (r *Report) Clean() bool {
-	return len(r.Findings) == 0 && len(r.Authoritative) == 0 && len(r.Migrations) == 0 && len(r.BuildSecrets) == 0 && len(r.Generated) == 0 && len(r.Binaries) == 0 && len(r.Bundles) == 0 && r.startClean() && r.siteBundlesClean() && len(r.Stages) == 0 && len(r.BuildArguments) == 0 && len(r.ReleaseLines) == 0 && len(r.ReleaseSections) == 0 && len(r.ReleaseFiles) == 0 && len(r.CloudArmor) == 0 && len(r.SignInThreshold) == 0 && len(r.Retired) == 0
+	return len(r.Findings) == 0 && len(r.Authoritative) == 0 && len(r.Migrations) == 0 && len(r.BuildSecrets) == 0 && len(r.Generated) == 0 && len(r.Binaries) == 0 && len(r.Bundles) == 0 && r.startClean() && r.siteBundlesClean() && len(r.Stages) == 0 && len(r.BuildArguments) == 0 && len(r.ReleaseLines) == 0 && len(r.ReleaseSections) == 0 && len(r.ReleaseFiles) == 0 && len(r.CloudArmor) == 0 && len(r.SignInThreshold) == 0 && len(r.Retired) == 0 && r.retirementsClean()
+}
+
+// retirementsClean reports every retired variable declared by something.
+func (r *Report) retirementsClean() bool {
+	for i := range r.Retirements {
+		if r.Retirements[i].Problem != "" {
+			return false
+		}
+	}
+
+	return true
 }
 
 // startClean reports an image whose start follows the layout's contract, or none read.
@@ -278,7 +308,8 @@ func Run(ctx context.Context, m *derive.Model, dir, appDir string) (*Report, err
 
 // scanPlacement reads the stack's terraform.tfvars for a Cloud Armor policy the tree
 // removes in one step (against the default branch's copy), for a sign-in throttle
-// threshold the policy could not take, and for the secrets that track latest.
+// threshold the policy could not take, for the secrets that track latest, for the
+// generated secrets' entries, and for the variables the release retires.
 func (r *Report) scanPlacement(ctx context.Context, m *derive.Model, dir string) error {
 	armor, err := scanCloudArmor(ctx, dir, m.Placement.DefaultBranch)
 	if err != nil {
@@ -300,8 +331,65 @@ func (r *Report) scanPlacement(ctx context.Context, m *derive.Model, dir string)
 		return err
 	}
 	r.Generated = generated
+	retirements, err := scanRetired(dir, m)
+	if err != nil {
+		return err
+	}
+	r.Retirements = retirements
 
 	return nil
+}
+
+// scanRetired reads the stack's terraform.tfvars for the variables the release retires
+// (retired), each held against what the code and the placement declare: a secret, a
+// build secret (any environment's build_secrets), a file store or the Firestore
+// database. One nothing declares is refused: the release that removes a declaration
+// takes the name out of the list with it, and a name that is not a protected resource's
+// variable lifts nothing.
+func scanRetired(dir string, m *derive.Model) ([]Retirement, error) {
+	names, err := secret.Retired(dir)
+	if err != nil {
+		return nil, err
+	}
+	if len(names) == 0 {
+		return nil, nil
+	}
+	declared := map[string]string{}
+	for _, s := range m.Secrets {
+		declared[s.Variable.Name] = fmt.Sprintf("a secret (%s:%d)", s.Variable.File, s.Variable.Line)
+	}
+	for i := range m.FileStores {
+		v := m.FileStores[i].Variable
+		declared[v.Name] = fmt.Sprintf("a file store (%s:%d)", v.File, v.Line)
+	}
+	for i := range m.Variables {
+		if v := &m.Variables[i]; v.Role == derive.RoleFirestoreDatabase {
+			declared[v.Name] = fmt.Sprintf("the Firestore database (%s:%d)", v.File, v.Line)
+		}
+	}
+	for _, env := range m.Placement.Environments {
+		build, err := secret.BuildSecretNames(dir, env)
+		if err != nil {
+			return nil, err
+		}
+		for _, name := range build {
+			if _, ok := declared[name]; !ok {
+				declared[name] = "a build secret (build_secrets in terraform.tfvars)"
+			}
+		}
+	}
+	found := make([]Retirement, 0, len(names))
+	for _, name := range names {
+		what, ok := declared[name]
+		if !ok {
+			found = append(found, Retirement{Variable: name, Problem: fmt.Sprintf("%s is in retired in terraform.tfvars and nothing declares it (no secret, no build secret, no file store, no Firestore database by that variable): take the name out; the release that removes a declaration takes its name out of retired with it, and a name that declares no protected resource lifts nothing", name)})
+
+			continue
+		}
+		found = append(found, Retirement{Variable: name, What: what})
+	}
+
+	return found, nil
 }
 
 // scanGenerated reads the stack's terraform.tfvars against the code's secret tags,
@@ -585,18 +673,7 @@ func (r *Report) Write(w io.Writer) {
 		fmt.Fprintf(w, "           code:      %s\n", f.Want)
 		fmt.Fprintf(w, "           committed: %s\n", f.Got)
 	}
-	for _, path := range r.Unseeded {
-		fmt.Fprintf(w, "  unseeded %s (bedrock render creates it once)\n", path)
-	}
-	for _, path := range r.Retired {
-		fmt.Fprintf(w, "  retired  %s (at the application root): an earlier bedrock rendered it; bedrock render removes it\n", path)
-	}
-	if len(r.Latest) == 0 {
-		fmt.Fprintln(w, "  latest   no secret tracks latest: every entry of secret_versions in terraform.tfvars pins a version number")
-	}
-	for _, l := range r.Latest {
-		fmt.Fprintf(w, "  latest   %s tracks latest in %s (secret_versions.%s in terraform.tfvars): the environment runs whatever version is added next, with no release; pinning a version number is the default, and latest the exception for a secret that has to follow its source\n", l.Variable, l.Environment, l.Environment)
-	}
+	r.writeInformation(w)
 	if r.Start != nil && r.Start.Problem == "" {
 		fmt.Fprintf(w, "  image    %s\n", r.Start.Passed())
 	}
@@ -616,6 +693,11 @@ func (r *Report) Write(w io.Writer) {
 	}
 	for _, g := range r.Generated {
 		fmt.Fprintf(w, "  refused  %s\n", g.Problem)
+	}
+	for i := range r.Retirements {
+		if rt := &r.Retirements[i]; rt.Problem != "" {
+			fmt.Fprintf(w, "  refused  %s\n", rt.Problem)
+		}
 	}
 	r.writeImage(w)
 	for _, rl := range r.ReleaseLines {
@@ -638,6 +720,29 @@ func (r *Report) Write(w io.Writer) {
 	}
 	for _, mf := range r.Maintenance {
 		fmt.Fprintf(w, "  warning  %s\n", mf.Problem)
+	}
+}
+
+// writeInformation prints the lines that fail nothing: the seeded files the directory
+// lacks, the retired files still committed, the secrets tracking latest, and the
+// variables the release retires.
+func (r *Report) writeInformation(w io.Writer) {
+	for _, path := range r.Unseeded {
+		fmt.Fprintf(w, "  unseeded %s (bedrock render creates it once)\n", path)
+	}
+	for _, path := range r.Retired {
+		fmt.Fprintf(w, "  retired  %s (at the application root): an earlier bedrock rendered it; bedrock render removes it\n", path)
+	}
+	if len(r.Latest) == 0 {
+		fmt.Fprintln(w, "  latest   no secret tracks latest: every entry of secret_versions in terraform.tfvars pins a version number")
+	}
+	for _, l := range r.Latest {
+		fmt.Fprintf(w, "  latest   %s tracks latest in %s (secret_versions.%s in terraform.tfvars): the environment runs whatever version is added next, with no release; pinning a version number is the default, and latest the exception for a secret that has to follow its source\n", l.Variable, l.Environment, l.Environment)
+	}
+	for i := range r.Retirements {
+		if rt := &r.Retirements[i]; rt.Problem == "" {
+			fmt.Fprintf(w, "  retire   %s is retired (retired in terraform.tfvars), %s: this release's apply lifts its protection against a destroy in every environment, and the next release removes the declaration and takes the name out of retired\n", rt.Variable, rt.What)
+		}
 	}
 }
 

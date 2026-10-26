@@ -260,6 +260,28 @@ google_service_account.app
 			wantRecord: []string{`"kind": "destroy"`, `"stackId": "77aa"`, `"release": "v0.1.3"`, `"google_service_account.app"`},
 		},
 		{
+			name:        "destroys tst: the data stores' protections lifted first in every environment, the services' in production alone",
+			env:         "tst",
+			destroy:     true,
+			stateList:   tstStateList,
+			shown:       planJSON(managedAddresses(tstStateList)...),
+			wantSummary: []string{"tst: 19 resource(s) destroyed, 0 kept.", `protection lifted first: google_spanner_database.harbor[0], google_storage_bucket.files[0], google_firestore_database.firestore, google_secret_manager_secret.harbor["APP_COOKIE_KEY"], google_storage_bucket.migrate_logs[0]`},
+			wantOut: []string{
+				`Recording in tst's state that destroy lifts the protection of google_spanner_database.harbor[0], google_storage_bucket.files[0], google_firestore_database.firestore, google_secret_manager_secret.harbor["APP_COOKIE_KEY"], google_storage_bucket.migrate_logs[0].`,
+				"The plan destroys the 19 resource(s) the destroy names and keeps 0, as meant; applying it.",
+				"Destroyed harbor's stack in tst: 19 resource(s).",
+			},
+			wantRan: []string{
+				"tofu init -input=false -no-color -reconfigure -backend-config=prefix=3-app/harbor/tst",
+				"tofu state list",
+				`tofu apply -input=false -no-color -auto-approve -var environment=tst -var database_generation=1 -var generated_secret_versions={APP_COOKIE_KEY="3"} -var destroy=true -target=google_spanner_database.harbor[0] -target=google_storage_bucket.files[0] -target=google_firestore_database.firestore -target=google_secret_manager_secret.harbor["APP_COOKIE_KEY"] -target=google_storage_bucket.migrate_logs[0]`,
+				`tofu plan -destroy -input=false -no-color -out=DATA/tst/teardown.tfplan -var environment=tst -var database_generation=1 -var generated_secret_versions={APP_COOKIE_KEY="3"} -var destroy=true`,
+				"tofu show -json DATA/tst/teardown.tfplan",
+				"tofu apply -input=false -no-color DATA/tst/teardown.tfplan",
+			},
+			wantRecord: []string{`"kind": "destroy"`, `"stackId": "9f3c"`, `"release": "v0.1.4"`, `"google_secret_manager_secret.harbor[\"APP_COOKIE_KEY\"]"`},
+		},
+		{
 			name:        "destroys prd with the final backups first: each database backed up as of the run, kept 366 days and waited for, named in the record",
 			env:         "prd",
 			destroy:     true,

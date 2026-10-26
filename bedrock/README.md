@@ -648,6 +648,14 @@ It also refuses:
   `secret:"generated"`, whose version the pipeline derives at each build and whose entry
   is the word `generated` in every environment; and the word on a secret someone puts in
   place. Each line names the environment, the entry and what to write.
+- a variable in `retired` in `terraform.tfvars` that nothing declares: no secret, no
+  build secret (any environment's `build_secrets`), no file store and no Firestore
+  database by that variable. The list names what a release retires (the stack README,
+  "Retiring a secret or a file store"): the release's apply lifts the protection of the
+  secret container, the file store's bucket or the Firestore database in every
+  environment, and the next release removes the declaration and takes the name out of
+  the list together, so a name left behind is refused, and a name that declares no
+  protected resource lifts nothing.
 - a build argument `placement.json` declares (`buildArguments`) that no stage of the
   Dockerfile declares with `ARG`, naming the line to add (`ARG FIREBASE_API_KEY`) to the
   stage that builds with it: the image build would be given the value and drop it. An
@@ -678,7 +686,9 @@ version number, which the environment then runs at whatever version is added nex
 no release. One line names each secret and environment, and a stack where every secret is
 pinned says so. Pinning is the default and `latest` the exception for a secret that has
 to follow its source, so the listing never fails the check; it keeps the exception
-visible.
+visible. It lists each variable `retired` names the same way, with what the variable
+declares and where: the retirement is this release's, and the next release's removal is
+what the line looks ahead to.
 
 The application's check runs in Cloud Build, from the stack's check trigger
 (`infrastructure/cloud-build.tf`, rendered with the stack), on every push to a pull
@@ -895,7 +905,15 @@ thing one step hands the next. In order:
   instance, `spanner_instances` in `2-env/terraform.tfvars` for an environment's own) and
   `bedrock destroy` of an application no longer needed, so the limit is met in a
   sentence on the pull request and not by Google's refusal inside an apply, after the
-  first environment's stack already stands. It then runs the tests a tag build runs
+  first environment's stack already stands. After each environment's plan it reads the
+  plan for a destroy of a resource whose state records its protection (a secret
+  container, a file store's bucket, the database, the Firestore database: protected in
+  every environment, the stack README's "Retiring a secret or a file store") and refuses
+  the build, said on the pull request with the way on: retire the variable in
+  `terraform.tfvars` in one release and remove the declaration in the next. Google's
+  provider refuses the same destroy at the apply alone, where the release has merged and
+  its run has started; the guard says it where the pull request is. It then runs the
+  tests a tag build runs
   before its apply, then the pull request's looks ahead as the same identities: the
   patch preview, when the pull request is against a patch line, and the window
   preview. One
@@ -1005,10 +1023,16 @@ thing one step hands the next. In order:
   `plan` runs the capacity guard first (the databases on the environment's instance
   against what it holds, when the stack's database is not there yet, as
   `deploy plan-environments` does), saves the plan with its JSON, prints and appends the
-  summary (`STACK_PLAN`), and
+  summary (`STACK_PLAN`), refuses a plan that destroys a resource whose state records its
+  protection (the guard `deploy plan-environments` runs on the pull request, so a release
+  meets it only when its pull request's plan was bound to another state), and
   runs the tests: no authoritative IAM resource in the stack other than the file stores'
   bucket policies, and every secret version a
-  planned revision template pins exists and is enabled. Before the plan it derives the
+  planned revision template pins exists and is enabled. A restore run that replaces the
+  database (and the first environment's file stores) or drops it for production's backup
+  first applies the stack targeted at those resources with `restore=true`, so that the
+  state records their protection lifted for the one apply that replaces them; the plan
+  after it declares the protection again, and passes the guard. Before the plan it derives the
   generated secrets' pins (`secret:"generated"`): the newest enabled version of each
   container, read as the apply identity, version 1 added when the container has none
   (the container created ahead of the apply, which adopts it), passed to the plan as
@@ -1327,6 +1351,17 @@ random version (the stack grants that identity and the apply identity the adding
 versions on the generated containers alone) and runs the live release again, so a
 revision pinned to the new version takes traffic in the same action; a rotated cookie key
 signs every user of the environment out, which is the point.
+
+A secret's container is protected from a destroy in every environment (`deletion_protection`
+in `secret-manager.tf`), as the file stores' buckets and the Firestore database are: a
+container holds every version of its value, and the release before stays deployable. A
+release whose code stops declaring a secret is refused at its plan, on the pull request and
+in the release's own plan step, until the release before it retired the variable: keep the
+declaration, name the variable in `retired` in the application layer's `terraform.tfvars`
+(`retired = ["APP_LEGACY_API_KEY"]`), release, which lifts the protection, then remove the
+declaration and the name together in the next release. `check` lists each retirement and
+refuses a name nothing declares; a build secret retires the same way by its name. The stack
+README says the rule in full ("Retiring a secret or a file store").
 
 In the organization's infrastructure repository (the one whose `placement.json` at the root
 names the organization, `organizationId`), the same two commands take one of the
@@ -1815,7 +1850,10 @@ seed list) may leave the release out: the workflow's job reads production's live
 from production's deployment records, says which, and runs it; a release named is run as
 named, and the job says whether it is production's. The first environment and a seeded
 one restore to an empty database, which has no production state to return to, so they
-name their release. The command checks that the environment is not production (whose
+name their release. The build lifts the database's protection (and the first
+environment's file stores') with an apply it records before the replace, since every
+environment protects them (the stack README, "Retiring a secret or a file store"). The
+command checks that the environment is not production (whose
 database is restored to a backup alone), that a release named exists, and that the
 placement records the environment's project (`projects`, the id and the number, which
 `bedrock org register` writes into the application's first placement), then dispatches
@@ -2002,10 +2040,11 @@ applies the stack again (the services and the triggers), then `bedrock rerun <en
 through them, then `bedrock org serve <app> [<env>...]` from the organization's checkout, which
 puts the hostnames back on a pull request once the release is live.
 
-A destroy takes everything, in production after an apply with `destroy=true` recording
-every protection lifted (the services' deletion protection, the database's deletion and
-drop protection, the file stores' force-destroy, the Firestore database's delete
-protection). Before anything is destroyed it takes a final backup of each Spanner database
+A destroy takes everything, after an apply with `destroy=true` recording every
+protection lifted: in every environment the database's deletion and drop protection, the
+file stores' force-destroy, the secret containers' deletion protection and the Firestore
+database's delete protection, and in production the services' deletion protection. Before
+anything is destroyed it takes a final backup of each Spanner database
 the stack holds, as of the run and kept 366 days (the most Spanner allows), named after the
 database and the moment (`<database>-final-20261023-1710`), and waits for it (a backup runs
 twenty minutes or more, and the database must stand until it is taken; Spanner takes one

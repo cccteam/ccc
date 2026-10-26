@@ -26,6 +26,11 @@ const (
 	buildKey    = "build_secrets"
 )
 
+// retiredKey is the placement attribute listing the variables a release retires
+// (bedrock's stack: var.retired): the secrets and file stores whose protection against
+// a destroy the release's apply lifts, so that the release after it removes them.
+const retiredKey = "retired"
+
 // placement is a parsed terraform.tfvars.
 type placement struct {
 	file string
@@ -99,6 +104,49 @@ func BuildSecretNames(layerDir, env string) ([]string, error) {
 // environment all pin none; a map that is not written out is refused.
 func PinnedVariables(layerDir, env string) ([]string, error) {
 	return entryNames(layerDir, versionsKey, env)
+}
+
+// Retired lists the variables the layer's placement (terraform.tfvars in layerDir)
+// retires (retired = [...]), in the file's order: each the variable a secret, a build
+// secret, a file store or the Firestore database is declared by, whose protection
+// against a destroy the stack's next apply lifts in every environment, so that the
+// release after this one can remove the declaration. No file and no list hold none; a
+// list that is not written out, and an entry that is not a literal string, are refused.
+func Retired(layerDir string) ([]string, error) {
+	file := filepath.Join(layerDir, tfvarsFile)
+	src, err := os.ReadFile(file)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, nil
+		}
+
+		return nil, errors.Wrap(err, "os.ReadFile()")
+	}
+	p, err := parsePlacement(src, file)
+	if err != nil {
+		return nil, err
+	}
+	attr, ok := p.body.Attributes[retiredKey]
+	if !ok {
+		return nil, nil
+	}
+	list, ok := attr.Expr.(*hclsyntax.TupleConsExpr)
+	if !ok {
+		return nil, errors.Newf("%s is not a list written out ([ ... ])", p.at(retiredKey))
+	}
+	var names []string
+	for _, e := range list.Exprs {
+		v, diags := e.Value(nil)
+		if diags.HasErrors() {
+			return nil, errors.Wrap(diags, p.at(retiredKey))
+		}
+		if v.IsNull() || !v.Type().Equals(cty.String) {
+			return nil, errors.Newf("%s holds an entry that is not a string", p.at(retiredKey))
+		}
+		names = append(names, v.AsString())
+	}
+
+	return names, nil
 }
 
 // entryNames lists the keys of the environment's map under key (build_secrets, or

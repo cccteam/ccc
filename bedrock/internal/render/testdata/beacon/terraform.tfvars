@@ -30,6 +30,12 @@ secret_versions = {
   prd = { APP_COOKIE_KEY = "generated", APP_KEEPERS_ADMINISTRATOR_PASSWORD = "generated" }
 }
 
+# The secrets and file stores a release retires, by variable: anything the
+# running release uses is retired in one release and removed in the next.
+# Naming one here lifts the protection that refuses its destroy at a plan;
+# the next release removes its declaration and takes the name out again.
+retired = []
+
 # Extra trigger substitutions for the application's hooks and its image build,
 # per environment (_NAME = value); none by default (README, "Customizing the
 # pipeline").
