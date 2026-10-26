@@ -450,9 +450,9 @@ var Steps = []Step{
 			session v0.13.10
 		`),
 		Web: web(`
-			@cccteam/resource 0.0.12
-			@cccteam/resource-angular 0.0.16
-			@cccteam/resource-firestore 0.0.10
+			@cccteam/resource 0.0.13
+			@cccteam/resource-angular 0.0.17
+			@cccteam/resource-firestore 0.0.11
 		`),
 		Impulse: release("v0.5.18"),
 		Pending: true,
