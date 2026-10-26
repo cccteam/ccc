@@ -164,23 +164,20 @@ func TestMachinesDeviceAuthorization(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("POST oauth/device/authorize: status %d: %s", resp.StatusCode, body)
 	}
-	// The device flow's answers are the RFC's, snake_case.
-	var started struct {
-		UserCode                string `json:"user_code"`
-		VerificationURI         string `json:"verification_uri"`
-		VerificationURIComplete string `json:"verification_uri_complete"`
-	}
+	// The device flow's answers are the RFC's, snake_case: read as a map.
+	var started map[string]any
 	if err := json.Unmarshal(body, &started); err != nil {
 		t.Fatalf("decoding the device authorization: %v: %s", err, body)
 	}
-	if started.UserCode == "" {
+	userCode, _ := started["user_code"].(string)
+	if userCode == "" {
 		t.Fatalf("device authorization = %s, want a user code", body)
 	}
-	if started.VerificationURI != "/console/device" {
-		t.Errorf("verification_uri = %q, want the console's device page /console/device", started.VerificationURI)
+	if got, _ := started["verification_uri"].(string); got != "/console/device" {
+		t.Errorf("verification_uri = %q, want the console's device page /console/device", got)
 	}
-	if want := "/console/device?userCode=" + started.UserCode; started.VerificationURIComplete != want {
-		t.Errorf("verification_uri_complete = %q, want %q", started.VerificationURIComplete, want)
+	if got, _ := started["verification_uri_complete"].(string); got != "/console/device?userCode="+userCode {
+		t.Errorf("verification_uri_complete = %q, want /console/device?userCode=%s", got, userCode)
 	}
 }
 
