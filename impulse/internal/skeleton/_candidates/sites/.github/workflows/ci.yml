@@ -110,6 +110,14 @@ jobs:
         run: |
           go vet ./...
           go vet -tags skipAuth ./...
+      - name: Trim the Go build cache
+        # The build cache keeps an object until Go's own trim finds it unused for five
+        # days, and a day of builds adds objects faster than that, so a saved entry only
+        # grows until the restored tree no longer fits the runner's disk. Go touches the
+        # objects a build reads and the restore keeps the times, so the ones untouched
+        # for a day are what no build of the last day read: they go before the save.
+        if: ${{ !cancelled() }}
+        run: find "$(go env GOCACHE)" -type f -mtime +1 -delete
       - name: Save the Go caches
         # Only when no entry for this go.sum was found (a dependency change, or a cold
         # repository): the entries the branch's own run saves after a merge carry the rest,
@@ -161,6 +169,14 @@ jobs:
             go-test-${{ runner.os }}-
       - name: go test
         run: go test -race -count=1 -timeout 20m ./...
+      - name: Trim the Go build cache
+        # The build cache keeps an object until Go's own trim finds it unused for five
+        # days, and a day of builds adds objects faster than that, so a saved entry only
+        # grows until the restored tree no longer fits the runner's disk. Go touches the
+        # objects a build reads and the restore keeps the times, so the ones untouched
+        # for a day are what no build of the last day read: they go before the save.
+        if: ${{ !cancelled() }}
+        run: find "$(go env GOCACHE)" -type f -mtime +1 -delete
       - name: Save the Go caches
         # Only when no entry for this go.sum was found (a dependency change, or a cold
         # repository): the entries the branch's own run saves after a merge carry the rest,
@@ -212,6 +228,14 @@ jobs:
             go-test-skipauth-${{ runner.os }}-
       - name: go test (skipAuth)
         run: go test -race -count=1 -timeout 20m -tags skipAuth ./...
+      - name: Trim the Go build cache
+        # The build cache keeps an object until Go's own trim finds it unused for five
+        # days, and a day of builds adds objects faster than that, so a saved entry only
+        # grows until the restored tree no longer fits the runner's disk. Go touches the
+        # objects a build reads and the restore keeps the times, so the ones untouched
+        # for a day are what no build of the last day read: they go before the save.
+        if: ${{ !cancelled() }}
+        run: find "$(go env GOCACHE)" -type f -mtime +1 -delete
       - name: Save the Go caches
         # Only when no entry for this go.sum was found (a dependency change, or a cold
         # repository): the entries the branch's own run saves after a merge carry the rest,
