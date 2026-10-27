@@ -182,22 +182,33 @@ type rolesDocument struct {
 type rolesRole struct {
 	Name        string `json:"name"`
 	Permissions map[string][]struct {
-		Resource  string `json:"resource"`
-		Condition string `json:"condition"`
+		Resource  string   `json:"resource"`
+		Fields    []string `json:"fields"`
+		Condition string   `json:"condition"`
 	} `json:"permissions"`
+}
+
+// readRolesFile reads a role file generically.
+func readRolesFile(abs string) (rolesDocument, error) {
+	var doc rolesDocument
+	raw, err := os.ReadFile(abs)
+	if err != nil {
+		return doc, errors.Wrap(err, "os.ReadFile()")
+	}
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		return doc, errors.Wrap(err, "json.Unmarshal()")
+	}
+
+	return doc, nil
 }
 
 // conditionalGrants reads the conditional grants of a role file in file order: the
 // global roles, then the domain roles, each role's permissions by name, each permission's
 // grants as written.
 func conditionalGrants(abs string) ([]grant, error) {
-	raw, err := os.ReadFile(abs)
+	doc, err := readRolesFile(abs)
 	if err != nil {
-		return nil, errors.Wrap(err, "os.ReadFile()")
-	}
-	var doc rolesDocument
-	if err := json.Unmarshal(raw, &doc); err != nil {
-		return nil, errors.Wrap(err, "json.Unmarshal()")
+		return nil, err
 	}
 	var grants []grant
 	for _, role := range slices.Concat(doc.Roles.Global, doc.Roles.Domain) {

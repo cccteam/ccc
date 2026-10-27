@@ -150,6 +150,8 @@ checks:
   session-tables
   migrations-reader
   auths-wired
+  administrator-roles
+  directory-admission
   change-signal
   conditions-proven
   skipauth
