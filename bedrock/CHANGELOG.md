@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.19](https://github.com/cccteam/ccc/compare/bedrock/v0.3.18...bedrock/v0.3.19) (2026-10-27)
+
+
+### Bug Fixes
+
+* **bedrock:** the stack README's hand step for a Microsoft registration names the supported account type the registration's tenant shape needs, and the consent another tenant gives a multi-tenant one ([#1168](https://github.com/cccteam/ccc/issues/1168)) ([0448049](https://github.com/cccteam/ccc/commit/0448049627c8c1190a5195720ca64db16877b633))
+* **impulse:** the application reader records a Microsoft registration's tenant shape (one, listed, any, personal) from its configuration ([#1168](https://github.com/cccteam/ccc/issues/1168)) ([0448049](https://github.com/cccteam/ccc/commit/0448049627c8c1190a5195720ca64db16877b633))
+
 ## [0.3.18](https://github.com/cccteam/ccc/compare/bedrock/v0.3.17...bedrock/v0.3.18) (2026-10-27)
 
 
