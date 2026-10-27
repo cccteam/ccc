@@ -98,7 +98,10 @@ func sharedMigrations(ctx context.Context, clients *Clients, subs, env map[strin
 type planChange struct {
 	Address string `json:"address"`
 	Type    string `json:"type"`
-	Change  struct {
+	// Index is the instance's key for a resource with for_each (a string) or count (a
+	// number); nil for a single instance.
+	Index  any `json:"index"`
+	Change struct {
 		Actions      []string       `json:"actions"`
 		Before       map[string]any `json:"before"`
 		After        map[string]any `json:"after"`
@@ -112,16 +115,25 @@ type planChange struct {
 // policy is named by its bucket, the pull request's own.
 var identifying = []string{keyName, "account_id", "service", "job", "database", "parent", "secret_id", "service_account_id", "bucket", "source"}
 
-// planDocument is a plan as tofu show -json gives it: its resource changes and its
-// output changes.
+// planDocument is a plan as tofu show -json gives it: its resource changes, its output
+// changes and the outputs' planned values, where known.
 type planDocument struct {
 	ResourceChanges []planChange                `json:"resource_changes"`
 	OutputChanges   map[string]planOutputChange `json:"output_changes"`
+	PlannedValues   struct {
+		Outputs map[string]struct {
+			Value json.RawMessage `json:"value"`
+		} `json:"outputs"`
+	} `json:"planned_values"`
 }
 
-// planOutputChange is an output's planned value; nil when it is not known yet.
+// planOutputChange is an output's change: its value before and after, nil where it is
+// not known yet (after_unknown marks what).
 type planOutputChange struct {
-	After any `json:"after"`
+	Actions      []string `json:"actions"`
+	Before       any      `json:"before"`
+	After        any      `json:"after"`
+	AfterUnknown any      `json:"after_unknown"`
 }
 
 // The actions a planned change carries.

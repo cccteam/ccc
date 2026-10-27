@@ -156,7 +156,7 @@ func TestRun(t *testing.T) {
 				m.Scheduled = []derive.ScheduledRoute{{Path: "/_scheduled/send-daily-digest", Schedule: "0 6 * * 1-5", TimeZone: "America/New_York"}}
 			},
 			wantFindings: []Finding{
-				{Path: "README.md", Line: 282, Want: "  | `POST /_scheduled/send-daily-digest` | `0 6 * * 1-5` | America/New_York |", Got: "  | `POST /_scheduled/send-daily-digest` | `0 7 * * 1-5` | America/New_York |"},
+				{Path: "README.md", Line: 287, Want: "  | `POST /_scheduled/send-daily-digest` | `0 6 * * 1-5` | America/New_York |", Got: "  | `POST /_scheduled/send-daily-digest` | `0 7 * * 1-5` | America/New_York |"},
 				{Path: "scheduler.tf", Line: 29, Want: `      schedule  = "0 6 * * 1-5"`, Got: `      schedule  = "0 7 * * 1-5"`},
 			},
 			wantOutput: []string{"2 of 22 owned file(s) differ", "differs  scheduler.tf:29"},
@@ -168,7 +168,7 @@ func TestRun(t *testing.T) {
 				m.Scheduled = append([]derive.ScheduledRoute{{Path: "/_scheduled/close-stale-holds", Schedule: "*/15 * * * *", TimeZone: "UTC"}}, m.Scheduled...)
 			},
 			wantFindings: []Finding{
-				{Path: "README.md", Line: 282, Want: "  | `POST /_scheduled/close-stale-holds` | `*/15 * * * *` | UTC |", Got: "  | `POST /_scheduled/send-daily-digest` | `0 7 * * 1-5` | America/New_York |"},
+				{Path: "README.md", Line: 287, Want: "  | `POST /_scheduled/close-stale-holds` | `*/15 * * * *` | UTC |", Got: "  | `POST /_scheduled/send-daily-digest` | `0 7 * * 1-5` | America/New_York |"},
 				{Path: "scheduler.tf", Line: 27, Want: `    "close-stale-holds" = {`, Got: `    "send-daily-digest" = {`},
 			},
 			wantOutput: []string{"2 of 22 owned file(s) differ", "differs  scheduler.tf:27"},
@@ -514,6 +514,115 @@ func TestFirstDifference(t *testing.T) {
 			line, w, g, same := firstDifference([]byte(tt.want), []byte(tt.got))
 			if line != tt.wantLine || w != tt.wantW || g != tt.wantG || same != tt.wantSame {
 				t.Errorf("firstDifference() = %d, %q, %q, %v; want %d, %q, %q, %v", line, w, g, same, tt.wantLine, tt.wantW, tt.wantG, tt.wantSame)
+			}
+		})
+	}
+}
+
+// TestRunRetired: the retired variables of terraform.tfvars, each a line of the report
+// naming what it declares; a name nothing declares refused; a list not written out
+// stopping the check.
+func TestRunRetired(t *testing.T) {
+	t.Parallel()
+
+	const gone = "APP_GONE is in retired in terraform.tfvars and nothing declares it (no secret, no build secret, no file store, no Firestore database by that variable): take the name out; the release that removes a declaration takes its name out of retired with it, and a name that declares no protected resource lifts nothing"
+	tests := []struct {
+		name string
+		// retired replaces the seeded empty list; build the seeded build_secrets map.
+		retired    string
+		build      string
+		wantClean  bool
+		want       []Retirement
+		wantOutput []string
+		absent     []string
+		wantErr    string
+	}{
+		{
+			name:      "nothing retired",
+			wantClean: true,
+			absent:    []string{"retire   "},
+		},
+		{
+			name:      "a secret, the file store and the Firestore database retired are lines of the report, in the list's order",
+			retired:   "retired = [\"APP_FILE_STORE\", \"APP_COOKIE_KEY\", \"APP_FIRESTORE_DATABASE\"]\n",
+			wantClean: true,
+			want: []Retirement{
+				{Variable: "APP_FILE_STORE", What: "a file store (pkg/config/data.go:293)"},
+				{Variable: "APP_COOKIE_KEY", What: "a secret (pkg/config/data.go:262)"},
+				{Variable: "APP_FIRESTORE_DATABASE", What: "the Firestore database (pkg/config/data.go:58)"},
+			},
+			wantOutput: []string{
+				"  retire   APP_FILE_STORE is retired (retired in terraform.tfvars), a file store (pkg/config/data.go:293): this release's apply lifts its protection against a destroy in every environment, and the next release removes the declaration and takes the name out of retired",
+				"  retire   APP_COOKIE_KEY is retired (retired in terraform.tfvars), a secret (pkg/config/data.go:262)",
+				"  retire   APP_FIRESTORE_DATABASE is retired (retired in terraform.tfvars), the Firestore database (pkg/config/data.go:58)",
+			},
+		},
+		{
+			name:      "a build secret any environment declares",
+			retired:   "retired = [\"LICENSE\"]\n",
+			build:     "build_secrets = {\n  tst = {}\n  stg = { LICENSE = \"1\" }\n  prd = {}\n}\n",
+			wantClean: true,
+			want:      []Retirement{{Variable: "LICENSE", What: "a build secret (build_secrets in terraform.tfvars)"}},
+		},
+		{
+			name:       "a name nothing declares is refused",
+			retired:    "retired = [\"APP_COOKIE_KEY\", \"APP_GONE\"]\n",
+			want:       []Retirement{{Variable: "APP_COOKIE_KEY", What: "a secret (pkg/config/data.go:262)"}, {Variable: "APP_GONE", Problem: gone}},
+			wantOutput: []string{"  refused  " + gone},
+		},
+		{
+			name:    "a list that is not written out stops the check",
+			retired: "retired = var.gone\n",
+			wantErr: "retired in",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			dir := copyGolden(t)
+			path := filepath.Join(dir, "terraform.tfvars")
+			data, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tt.retired != "" {
+				data = bytes.Replace(data, []byte("retired = []\n"), []byte(tt.retired), 1)
+			}
+			if tt.build != "" {
+				data = bytes.Replace(data, []byte("build_secrets = {\n  tst = {}\n  stg = {}\n  prd = {}\n}\n"), []byte(tt.build), 1)
+			}
+			if err := os.WriteFile(path, data, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			report, err := Run(t.Context(), harborModel(t), dir, filepath.Join(dir, "root"))
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("Run() error = %v, wantErr %q", err, tt.wantErr)
+				}
+
+				return
+			}
+			if err != nil {
+				t.Fatalf("Run() error = %v", err)
+			}
+			if report.Clean() != tt.wantClean {
+				t.Errorf("Clean() = %v, want %v", report.Clean(), tt.wantClean)
+			}
+			if diff := cmp.Diff(tt.want, report.Retirements); diff != "" {
+				t.Errorf("Retirements mismatch (-want +got):\n%s", diff)
+			}
+			var out bytes.Buffer
+			report.Write(&out)
+			for _, want := range tt.wantOutput {
+				if !strings.Contains(out.String(), want) {
+					t.Errorf("Write() output lacks %q:\n%s", want, out.String())
+				}
+			}
+			for _, a := range tt.absent {
+				if strings.Contains(out.String(), a) {
+					t.Errorf("Write() output carries %q:\n%s", a, out.String())
+				}
 			}
 		})
 	}

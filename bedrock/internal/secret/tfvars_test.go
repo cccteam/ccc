@@ -537,3 +537,50 @@ func TestVersions(t *testing.T) {
 		})
 	}
 }
+
+// TestRetired: the variables the placement retires, in the file's order; none without the
+// file or the list; a list not written out and an entry that is not a string refused.
+func TestRetired(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		tfvars  string
+		missing bool
+		want    []string
+		wantErr string
+	}{
+		{name: "the retired variables, in the file's order", tfvars: "retired = [\"APP_LEGACY_API_KEY\", \"APP_FILE_STORE_EXPORTS\"]\n", want: []string{"APP_LEGACY_API_KEY", "APP_FILE_STORE_EXPORTS"}},
+		{name: "an empty list retires none", tfvars: "retired = []\n"},
+		{name: "a placement without the list retires none", tfvars: "secret_versions = {\n  tst = {}\n}\n"},
+		{name: "no placement retires none", missing: true},
+		{name: "a list that is not written out is refused", tfvars: "retired = var.gone\n", wantErr: "retired in"},
+		{name: "an entry that is not a string is refused", tfvars: "retired = [1]\n", wantErr: "holds an entry that is not a string"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			dir := t.TempDir()
+			if !tt.missing {
+				if err := os.WriteFile(filepath.Join(dir, tfvarsFile), []byte(tt.tfvars), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			got, err := Retired(dir)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("Retired() error = %v, wantErr %q", err, tt.wantErr)
+				}
+
+				return
+			}
+			if err != nil {
+				t.Fatalf("Retired() error = %v", err)
+			}
+			if !slices.Equal(got, tt.want) {
+				t.Errorf("Retired() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}

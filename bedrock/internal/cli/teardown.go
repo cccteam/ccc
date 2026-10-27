@@ -99,10 +99,11 @@ of it, the file stores and their objects, the Firestore database, the secret con
 versions, the identities, the Cloud Tasks queue, the migrate logs, the Firebase key, the services,
 the jobs, the triggers, the schedules and the stack's id. It runs by a person at their own
 computer with their own sign-in (gcloud auth application-default login), driving tofu in the stack
-directory against the environment's state prefix the way the stack trigger's first apply does: in
-production, an apply with destroy=true first, recording in the state that every protection is
-lifted (the services' deletion protection, the database's deletion and drop protection, the file
-stores' force-destroy, the Firestore database's delete protection); then a destroy plan, read back
+directory against the environment's state prefix the way the stack trigger's first apply does: an
+apply with destroy=true first, recording in the state that every protection is lifted (in every
+environment the database's deletion and drop protection, the file stores' force-destroy, the
+secret containers' deletion protection and the Firestore database's delete protection, and in
+production the services' deletion protection); then a destroy plan, read back
 and held against the stack's whole state (anything short of it stops the run with nothing
 applied), and its apply; then a record of what went, by whom and when, in the records bucket
 (<app>/stacks/<env>/teardown.json), where the stack's own id object is gone with the stack. The

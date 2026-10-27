@@ -129,13 +129,18 @@ func TestDeploy(t *testing.T) {
 			wantFields:    [][]string{nil},
 		},
 		{
-			name:          "a maintenance revision's variable is cleared on the release's revision",
+			name:          "the release's own template replaces the live one: a maintenance revision's variable is gone, and the release's variables and secret mounts are set",
 			env:           environment,
 			maintenance:   true,
-			wantOut:       []string{"The maintenance revision's APP_MAINTENANCE is cleared on the new revision: it serves the application.", "Revision [harbor-app-00008-new] deployed to [harbor-app] in [us-central1] under the tag [next]"},
+			wantOut:       []string{"Deploying revision to [harbor-app] without traffic, under the release's own template (2 variable(s), 1 secret mount(s))...", "Revision [harbor-app-00008-new] deployed to [harbor-app] in [us-central1] under the tag [next]"},
 			wantRevisions: "us-central1,harbor-app,harbor-app-00008-new\nus-west3,harbor-app,harbor-app-00008-new\n",
 			wantTraffic:   append(append([]any{}, pinned...), map[string]any{keyType: targetLatest, keyPercent: float64(0), keyTag: "next"}),
 			wantFields:    [][]string{nil},
+		},
+		{
+			name:    "a service the release's templates do not name is refused",
+			env:     strings.Replace(environment, "us-west3=harbor-app", "us-west3=harbor-other", 1),
+			wantErr: "the release's revision templates name no service harbor-other (they name harbor-app): the stack applied names the services the build deploys to",
 		},
 		{
 			name:    "a workspace without the digest is refused",
@@ -171,6 +176,9 @@ func TestDeploy(t *testing.T) {
 				buildFile = tt.build
 			}
 			w := workspaceFiles(t, map[string]string{EnvironmentFile: tt.env, BuildFile: buildFile})
+			if err := writeRevisionTemplates(w, testRevisionTemplates(t, false, "harbor-app")); err != nil {
+				t.Fatal(err)
+			}
 			var out strings.Builder
 			err := Deploy(t.Context(), &Clients{Run: run.open}, w, &out)
 			if tt.wantErr != "" {
@@ -220,11 +228,16 @@ func TestDeploy(t *testing.T) {
 			if container["image"] != "reg/harbor@sha256:abc" {
 				t.Errorf("image = %v, want reg/harbor@sha256:abc", container["image"])
 			}
-			if tt.maintenance {
-				want := []any{map[string]any{"name": "APP_MAINTENANCE", "value": ""}, map[string]any{"name": "APP_OTHER", "value": "kept"}}
-				if diff := cmp.Diff(want, container["env"]); diff != "" {
-					t.Errorf("env mismatch (-want +got):\n%s", diff)
-				}
+			wantEnv := asJSON(t, parseJSON(t, `[
+				{"name": "APP_COOKIE_KEY", "valueSource": {"secretKeyRef": {"secret": "imp-tst-gbl-harbor-cookie-key", "version": "3"}}},
+				{"name": "APP_FILE_STORE", "value": "gs://files"},
+				{"name": "APP_SERVICE_NAME", "value": "harbor-app"}
+			]`))
+			if diff := cmp.Diff(wantEnv, asJSON(t, container["env"])); diff != "" {
+				t.Errorf("env mismatch (-want +got):\n%s", diff)
+			}
+			if text(template, "serviceAccount") != "harbor-app@tst-project.iam.gserviceaccount.com" {
+				t.Errorf("serviceAccount = %v: the template is not the release's", template["serviceAccount"])
 			}
 			if text(last, "labels.gcb-build-id") != "b-1" || (tt.build == "" && text(template, "labels.pr-number") != "7") || text(last, "labels.terraform") != "true" {
 				t.Errorf("labels = %v / %v", last["labels"], template["labels"])

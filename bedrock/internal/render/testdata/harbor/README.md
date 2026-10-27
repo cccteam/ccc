@@ -262,10 +262,15 @@ from `2-env`'s state.
   image only while a serving revision uses it, and an old revision needs the
   shared registry's copy to start again. The service and the job are created
   with a placeholder image.
-  From the first deploy on, the image
-  and the labels and annotations a deploy stamps are the pipeline's
-  (`ignore_changes`); identity, scaling, variables, and secret mounts stay
-  this stack's. The service's port is named `h2c`: the site's main package imports the
+  From the first deploy on, the revision template is the pipeline's
+  (`ignore_changes`): this stack keeps each service standing (its name, its
+  ingress, its protection) and says in its `revision_templates` output what
+  a revision of it runs with (identity, scaling, variables, secret mounts, as
+  this stack evaluates them), and `bedrock deploy service` builds every
+  revision from that and the release's image, so a release runs under its own
+  release's configuration, forward or back (a rollback applies no stack), and
+  an apply never starts a revision. Each build's job is built the same way
+  from the output's `job`. The service's port is named `h2c`: the site's main package imports the
   framework's server (`github.com/cccteam/ccc/resource/server`), which speaks HTTP/1.1 and unencrypted
   HTTP/2 on one listener, so Cloud Run talks HTTP/2 to the container and the 32 MiB
   bounds of HTTP/1 request and response bodies no longer apply; the maintenance
@@ -518,6 +523,37 @@ secret the deploy identity must read that is not the application's own (a
 hook fetching a shared configuration) is granted in 2-env
 (`build_time_secrets`) instead.
 
+### Retiring a secret or a file store
+
+Anything the running release uses is retired in one release and removed in
+the next, never both at once: the release before stays deployable (a
+rollback runs it again), and what it reads has to be there. The schema
+migrations carry that rule for the database's objects; the stack carries it
+for what holds data. In every environment the database (deletion and drop
+protection), the file stores (no force-destroy), the secret containers
+(deletion protection) and the Firestore database (delete protection) are
+protected from a destroy, and the pipeline reads each plan for a destroy of
+one whose protection the state records: the pull request's check build
+refuses it in the environment's plan and says so on the pull request, and a
+release's own plan step refuses it before anything is applied. Google's
+provider refuses the same at the apply, as the backstop.
+
+To stop declaring a secret (`secret:"true"`), a build secret
+(`build_secrets`), a file store (`APP_FILE_STORE`, `APP_FILE_STORE_<NAME>`) or the Firestore
+database (`APP_FIRESTORE_DATABASE`): keep the
+declaration and name the variable in `retired` in `terraform.tfvars`, and
+release. That release's apply records the protection lifted in every
+environment (`var.retired`), and `bedrock check` lists the retirement as a
+line of its report. The next release removes the declaration and takes the
+name out of `retired` together; `bedrock check` refuses a name nothing
+declares. A variable taken out of `retired` while its declaration stays is
+protected again by the next apply. The database is never retired: `bedrock
+destroy` alone destroys it, and a restore run alone replaces it, each after
+an apply that records the protection lifted (`var.destroy`, `var.restore`).
+A pull-request stack protects nothing, since it is torn down whole.
+
+    retired = ["APP_LEGACY_API_KEY", "APP_FILE_STORE_EXPORTS"]
+
 ## The pipeline's contract
 
 What `cloudbuild.yaml` in the harbor repository can rely on, from the trigger
@@ -596,8 +632,11 @@ substitutions and this stack's outputs:
   refuses a build whose connection or repository name is empty, so nothing is
   submitted by hand.
 - The services are deployed through the Cloud Run API by `bedrock deploy
-  service`, which changes the image and the labels and leaves the template's
-  variables, secrets and identity alone: the revision template is this stack's.
+  service`, which builds each revision's template from this stack's
+  `revision_templates` output (read off the stack the build applied, or off
+  the plan of the release's stack in a rollback run, which applies none) and
+  the release's image: the configuration a revision runs under is its own
+  release's.
   `deploy migrate` runs the release's migrate command, which `deploy
   build-image` took out of the image, on the build worker as the deploy
   identity, with `_MIGRATE_ENV`'s variables and the release in
@@ -841,7 +880,8 @@ placement's `seed` list is restored by the next release whose tree no longer
 carries a seed file as the environment's live release applied it (edited,
 renumbered or removed). That release runs as a restore run the release itself
 asks for: the application serves its maintenance page while the database (and
-the file stores' buckets) is replaced and the Firestore documents are deleted, the
+the file stores' buckets) is replaced, after an apply the run records that lifts
+their protection (`var.restore`), and the Firestore documents are deleted, the
 migrations and the seed apply from the start, and the record carries the
 reason. A seed file added beside the applied ones is applied as a new data
 migration and recreates nothing; an environment off the list never applied the
@@ -981,12 +1021,14 @@ reads it there before it reads or writes a record, and the records sit under
 history of its own and the old stack's records stay where they were, read by
 nothing. A release build whose stack says no id (the stack was applied by a
 bedrock without one) is refused at the record; apply the stack once. The id
-is the output `stack_id`. In prd the stack protects the database
-(deletion and drop protection), the Cloud Run services, the file stores (no
-force-destroy) and the Firestore database from deletion, and a destroy
-refuses them as they stand; `bedrock destroy` lifts them with an apply before
-its destroy ("Taking an environment down"), and the stack made in its place
-has an id of its own.
+is the output `stack_id`. In every environment the stack protects the
+database (deletion and drop protection), the file stores (no force-destroy),
+the secret containers (deletion protection) and the Firestore database from
+deletion, and in prd the Cloud Run services too; a destroy refuses
+them as they stand, and a release whose plan would destroy one is refused at
+the plan ("Retiring a secret or a file store"). `bedrock destroy` lifts them
+with an apply before its destroy ("Taking an environment down"), and the
+stack made in its place has an id of its own.
 
 ## Taking an environment down
 
@@ -1023,9 +1065,11 @@ the services and the triggers again with the placeholder image, then
 
 `bedrock destroy <env>` destroys the stack whole, the database, the file
 stores and their objects, the Firestore database, the secret containers and
-their versions, the identities, the queue, the logs and the key included, in
-prd after an apply with `destroy=true` recording every protection
-lifted. The deployment records stay in the records bucket under
+their versions, the identities, the queue, the logs and the key included,
+after an apply with `destroy=true` recording every protection lifted: the
+database's, the file stores', the secret containers' and the Firestore
+database's in every environment, and the services' in prd. The
+deployment records stay in the records bucket under
 `harbor/<env>/<id>/`, read by nothing; the Spanner backups the pipeline and
 the schedules took stay until their retention ends; Google keeps the three
 names above for a while, and a stack applied again takes an id of its own.
@@ -1110,7 +1154,7 @@ Per environment, after the first apply:
 | `cloud_armor` | Cloud Armor per environment: `"preview"`, `"enforce"` or `"off"` (the policy kept, detached); an environment left out has no policy. Off before removed. | `map(string)` | `{}` | no |
 | `cloud_armor_sign_in_count` | Sign-in POSTs one client address may make to a sign-in route in the interval before its further ones answer 429. | `number` | `30` | no |
 | `cloud_armor_sign_in_interval` | Seconds the sign-in count is taken over. | `number` | `60` | no |
-| `destroy` | Set by `bedrock destroy` alone: every protection lifted at the apply before its destroy. | `bool` | `false` | no |
+| `destroy` | Set by `bedrock destroy` alone: every protection lifted at the apply before its destroy, in every environment. | `bool` | `false` | no |
 | `environment` | `tst`, `stg`, or `prd`; passed as `-var` on every run. | `string` | n/a | yes |
 | `generated_secret_versions` | The generated secrets' versions, derived and passed by the pipeline's plan step; never written here. | `map(string)` | `{}` | no |
 | `hostnames` | Hostnames per environment; the first is canonical. | `map(list(string))` | the three above | no |
@@ -1118,6 +1162,8 @@ Per environment, after the first apply:
 | `jobs_retries` | Retries of a failed run of the job process. | `number` | `0` | no |
 | `jobs_timeout` | How long one run of the job process may take. | `string` | `"1800s"` | no |
 | `placeholder_image` | Image the services and job are created with. | `string` | `us-docker.pkg.dev/cloudrun/container/hello` | no |
+| `restore` | Set by a restore run alone: the database's protection (and tst's file stores') lifted at the apply before the plan that replaces them. | `bool` | `false` | no |
+| `retired` | The secrets and file stores a release retires, by variable: each one's protection lifted, so that the next release can remove it ("Retiring a secret or a file store"). | `list(string)` | `[]` | no |
 | `secret_versions` | Pinned secret version per environment per variable; the word `generated` for a generated secret. | `map(map(string))` | all empty | no |
 | `substitutions` | Extra trigger substitutions per environment, for the hooks and the image build. | `map(map(string))` | `{}` | no |
 | `tasks_max_attempts` | Attempts per task of the queue. | `number` | `5` | no |
@@ -1146,6 +1192,7 @@ Per environment, after the first apply:
 | `jobs_job` | `{ name, region, resource }` of the job process's Cloud Run job. |
 | `net_hosts` | The `hosts` entries for `2-net`: each hostname mapped to the backend service URI. |
 | `registry` | `<hostname>/<project>/<repository>`; null until `2-shr` registers harbor. |
+| `revision_templates` | Per service name, what its revision runs with (`serviceAccount`, `maxInstances`, `timeout`, `port`, `http2`, `args`, `cpu`, `memory`, `labels`, `env`, `secrets` by variable as `{ secret, version }`), and `job` for the job process; the pipeline builds every revision and job from it. |
 | `secrets` | Per variable: `secret_id` and the pinned `version` (null when unpinned). |
 | `services` | Per region code: `name`, `region`, `uri`. |
 | `stack_id` | The stack's id (four hex characters): the suffix of the names Google keeps after a delete, and the prefix of the stack's deployment records. |

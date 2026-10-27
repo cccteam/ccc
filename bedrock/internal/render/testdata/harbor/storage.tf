@@ -50,10 +50,13 @@ resource "google_storage_bucket" "files" {
     retention_duration_seconds = local.is_prd ? 604800 : 0
   }
 
-  # prd keeps its objects through a destroy, unless bedrock destroy lifts
-  # that with its apply (var.destroy); every other environment can be rebuilt by a
-  # pipeline, and a pull-request stack is torn down with its objects.
-  force_destroy = !local.is_prd || var.destroy
+  # A bucket holding objects refuses a destroy in every environment: a release
+  # that stops declaring the store is refused at its plan until the release
+  # before it retired the store (var.retired, the variable's name). A restore
+  # run in tst replaces the store, and bedrock destroy destroys it, each
+  # after an apply that records the protection lifted (var.restore,
+  # var.destroy). A pull-request stack is torn down with its objects.
+  force_destroy = local.is_pr || var.destroy || var.restore || contains(var.retired, "APP_FILE_STORE")
 
   labels = local.labels
 }
@@ -126,9 +129,11 @@ resource "google_storage_bucket_iam_policy" "files" {
 
   # A recreated bucket (a restore of the first environment replaces it)
   # starts with Cloud Storage's default grants; the policy is set again with
-  # it rather than believed to hold.
+  # it rather than believed to hold. It follows the bucket's id, known after
+  # the apply that recreates it, and not the bucket whole, whose force-destroy
+  # changes without it (a retire, a restore run, bedrock destroy).
   lifecycle {
-    replace_triggered_by = [google_storage_bucket.files[0]]
+    replace_triggered_by = [google_storage_bucket.files[0].id]
   }
 }
 

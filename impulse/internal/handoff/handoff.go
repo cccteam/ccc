@@ -163,8 +163,9 @@ func (b *Brief) failing() []check.Result {
 	return failing
 }
 
-// rules are the agent's rules. They are short, and every one of them is either verified
-// by the check or by Verify's guardrail comparison.
+// rules are the agent's rules. They are short, and every one of them is verified: by
+// the check, by Verify's guardrail comparison, or, for the retire rule, by bedrock's
+// check and the pipeline's plan guard.
 func (b *Brief) rules() []string {
 	rules := []string{
 		fmt.Sprintf("Run `%s` from the application root until it reports no FAIL. The regen check runs go generate, which needs the Spanner emulator through podman or docker; if neither is available, run `%s --skip-generate` and say so in your final message.", CheckCommand, CheckCommand),
@@ -178,6 +179,7 @@ func (b *Brief) rules() []string {
 	}
 	rules = append(rules,
 		"Do not stage or commit. Leave your work in the working tree; the pull request is the review.",
+		"Anything the running release uses is retired in one release and removed in the next, never both at once: a schema object (a column, a table), an environment variable, a secret, a file store. A secret or a file store is retired by naming its variable in `retired` in `infrastructure/terraform.tfvars` while its declaration stays; the next release removes the declaration and the name together. A release that destroys an un-retired one is refused at its plan.",
 		"Keep the tests table-driven and the suite passing: `go test ./...`.",
 		"Stop when the check is clean. In your final message, say what you changed and what a reviewer should look at.",
 	)

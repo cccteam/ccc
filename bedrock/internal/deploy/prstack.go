@@ -285,7 +285,7 @@ func (j *stackJob) run(ctx context.Context, outputs *StackOutputs) (bool, error)
 	if err := guardPlan(ctx, j.clients, j.w, j.build, env, j.out); err != nil {
 		return false, err
 	}
-	facts, err := s.apply(ctx, j.build, env)
+	facts, templates, err := s.apply(ctx, j.build, env)
 	if err != nil {
 		return false, err
 	}
@@ -295,6 +295,7 @@ func (j *stackJob) run(ctx context.Context, outputs *StackOutputs) (bool, error)
 		return true, nil
 	}
 	outputs.applied(f, facts)
+	outputs.RevisionTemplates = templates
 	if env[replaceDatabaseFact] == trueValue {
 		outputs.DatabaseRecreated = f.ReloadReason
 	}
@@ -427,35 +428,43 @@ func (s *stack) replaceDatabase(ctx context.Context, app, reason string, env map
 // command runs with and the build arguments the placement declares (_BUILD_ARG_<NAME>,
 // the pull request's own values), which are answered as facts, and a database the job
 // recreated without being asked is said on the pull request.
-func (s *stack) apply(ctx context.Context, build *Build, env map[string]string) (map[string]string, error) {
+func (s *stack) apply(ctx context.Context, build *Build, env map[string]string) (map[string]string, *RevisionTemplates, error) {
 	subs := build.Substitutions
 	w := Workspace(filepath.Dir(s.dir))
 	if env[downFact] == trueValue {
 		if err := deleteBuildJobs(ctx, s.clients, s, subs, subs[prNumberSub], s.out); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 	}
 	data, err := os.ReadFile(filepath.Join(string(w), PlanJSONFile))
 	if err != nil {
-		return nil, errors.Wrapf(err, "os.ReadFile(): %s", PlanJSONFile)
+		return nil, nil, errors.Wrapf(err, "os.ReadFile(): %s", PlanJSONFile)
 	}
 	p, err := stackPlan(data)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if len(p.Changes) == 0 {
 		fmt.Fprintln(s.out, "Nothing to apply: the pull request's stack matches the code.")
 	} else if err := s.tofu(ctx, "apply", noInputFlag, noColorFlag, lockTimeoutFlag, filepath.Join(string(w), PlanFile)); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if env[downFact] == trueValue {
 		fmt.Fprintln(s.out, "=== /gcbrun down: the pull request's environment is gone ===")
 
-		return nil, nil
+		return nil, nil, nil
 	}
-	facts, err := s.facts(ctx)
+	outputs, err := s.outputs(ctx)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
+	}
+	facts, err := factsOf(outputs)
+	if err != nil {
+		return nil, nil, err
+	}
+	templates, err := revisionTemplatesOf(outputs)
+	if err != nil {
+		return nil, nil, err
 	}
 	fmt.Fprintf(s.out, "The pull request's stack names %s=%s", services, facts[services])
 	if facts[jobsJobFact] != "" {
@@ -466,24 +475,24 @@ func (s *stack) apply(ctx context.Context, build *Build, env map[string]string) 
 		fmt.Fprintf(s.out, "The image build passes the pull request's own build arguments: %s.\n", strings.Join(names, ", "))
 	}
 	if env[replaceDatabaseFact] != trueValue || env[reloadReasonFact] == gcbrun+" reload-db" {
-		return facts, nil
+		return facts, templates, nil
 	}
 	pr, err := speaker(ctx, s.clients, build, env, false)
 	if err != nil || pr == nil {
-		return facts, err
+		return facts, templates, err
 	}
 	if err := pr.comment(ctx, fmt.Sprintf("The pull request's database is recreated this build: %s (build %s).", env[reloadReasonFact], build.ID), s.out); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	return facts, nil
+	return facts, templates, nil
 }
 
-// facts reads the stack's substitutions output from its state into the facts the deploy
-// steps read (stackFacts). The outputs are read whole, so a state without the output
-// (never applied, or applied by a bedrock before the output) is said plainly, not in
-// tofu's words for a missing output.
-func (s *stack) facts(ctx context.Context) (map[string]string, error) {
+// outputs reads the stack's outputs whole from its state (tofu output -json), each
+// output's value by name, so that a state without an output (never applied, or applied
+// by a bedrock before the output) is said plainly by its reader, not in tofu's words for
+// a missing output.
+func (s *stack) outputs(ctx context.Context) (map[string]json.RawMessage, error) {
 	data, err := s.tofuOutput(ctx, "output", "-json")
 	if err != nil {
 		return nil, err
@@ -494,12 +503,34 @@ func (s *stack) facts(ctx context.Context) (map[string]string, error) {
 	if err := json.Unmarshal(data, &outputs); err != nil {
 		return nil, errors.Wrap(err, "json.Unmarshal(): tofu output -json")
 	}
+	values := make(map[string]json.RawMessage, len(outputs))
+	for name, output := range outputs {
+		values[name] = output.Value
+	}
+
+	return values, nil
+}
+
+// facts reads the stack's substitutions output from its state into the facts the deploy
+// steps read (factsOf).
+func (s *stack) facts(ctx context.Context) (map[string]string, error) {
+	outputs, err := s.outputs(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return factsOf(outputs)
+}
+
+// factsOf reads the substitutions output off the stack's outputs into the facts the
+// deploy steps read (stackFacts).
+func factsOf(outputs map[string]json.RawMessage) (map[string]string, error) {
 	substitutions, ok := outputs[substitutionsOutput]
 	if !ok {
 		return nil, errors.Newf("the stack's state has no %s output: never applied, or applied by a bedrock before the output", substitutionsOutput)
 	}
 
-	return stackFacts(substitutions.Value)
+	return stackFacts(substitutions)
 }
 
 // stackFacts reads the stack's substitutions output (a map of the trigger's

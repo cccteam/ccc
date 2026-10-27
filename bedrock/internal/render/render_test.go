@@ -1227,7 +1227,7 @@ func TestFileStorePolicy(t *testing.T) {
 				"data \"google_iam_policy\" \"files\" {\n  count = local.own_database ? 1 : 0\n\n  binding {\n    role    = \"roles/storage.objectUser\"\n    members = concat([local.app_member, local.jobs_member], local.files_preview_members)\n  }\n\n  # Cloud Storage's default grants to the project's basic roles, kept as it\n  # makes them.\n  binding {\n    role    = \"roles/storage.legacyBucketOwner\"\n    members = [\"projectOwner:${local.project_id}\", \"projectEditor:${local.project_id}\"]\n  }\n  binding {\n    role    = \"roles/storage.legacyObjectOwner\"\n    members = [\"projectOwner:${local.project_id}\", \"projectEditor:${local.project_id}\"]\n  }\n  binding {\n    role    = \"roles/storage.legacyBucketReader\"\n    members = [\"projectViewer:${local.project_id}\"]\n  }\n  binding {\n    role    = \"roles/storage.legacyObjectReader\"\n    members = [\"projectViewer:${local.project_id}\"]\n  }\n}\n",
 				"and the project's\n# basic roles as Cloud Storage grants them on a new bucket",
 				"resource \"google_storage_bucket_iam_policy\" \"files\" {\n  count = local.own_database ? 1 : 0\n\n  bucket      = google_storage_bucket.files[0].name\n  policy_data = data.google_iam_policy.files[0].policy_data\n\n  depends_on = [google_service_account.app, google_service_account.jobs]\n",
-				"  lifecycle {\n    replace_triggered_by = [google_storage_bucket.files[0]]\n  }\n",
+				"  lifecycle {\n    replace_triggered_by = [google_storage_bucket.files[0].id]\n  }\n",
 				"resource \"google_storage_bucket_iam_member\" \"files_preview\" {\n  for_each = local.own_database ? toset([]) : toset([\"app\", \"jobs\"])\n\n  bucket = local.files_bucket_name\n  role   = \"roles/storage.objectUser\"\n  member = each.key == \"app\" ? local.app_member : local.jobs_member\n}\n",
 				"the one authoritative IAM resource the stack\n# declares",
 			},
@@ -1379,25 +1379,23 @@ func TestMaxInstances(t *testing.T) {
 		absent     []string
 	}{
 		{
-			name: "no cap: Cloud Run's default, no scaling block, and no local",
-			caps: nil,
-			wantRun: []string{
-				"    # Scale to zero, and to Cloud Run's default maximum instances per region:\n    # the placement caps no environment (maxInstances). No scaling block: Cloud\n    # Run's defaults are exactly that, and a block setting only a minimum of\n    # zero is dropped by the service, which every later plan would add again.\n",
-			},
+			name:       "no cap: Cloud Run's default, no scaling block, and no local",
+			caps:       nil,
+			wantRun:    []string{"        maxInstances   = null\n"},
 			wantReadme: "It scales from zero to Cloud Run's default maximum instances per region, the placement capping no environment (`maxInstances`).",
-			absent:     []string{"max_instance_count", "max_instances", "scaling {"},
+			absent:     []string{"max_instance_count", "local.max_instances", "scaling {"},
 		},
 		{
 			name:       "the same cap in every environment",
 			caps:       map[string]int{"tst": 2, "stg": 2, "prd": 2},
-			wantRun:    []string{"    scaling {\n      min_instance_count = 0\n      max_instance_count = local.max_instances\n    }\n"},
+			wantRun:    []string{"        maxInstances   = local.max_instances\n"},
 			wantLocals: []string{"  max_instances = lookup({ tst = 2, stg = 2, prd = 2 }, var.environment, null)\n"},
 			wantReadme: "It scales from zero to at most 2 instances per region in every environment, the placement's cap (`maxInstances`).",
 		},
 		{
 			name:       "caps in some environments, the rest uncapped",
 			caps:       map[string]int{"tst": 1, "prd": 20},
-			wantRun:    []string{"      max_instance_count = local.max_instances\n"},
+			wantRun:    []string{"        maxInstances   = local.max_instances\n"},
 			wantLocals: []string{"  max_instances = lookup({ tst = 1, prd = 20 }, var.environment, null)\n"},
 			wantReadme: "It scales from zero to at most 1 instance per region in tst, 20 in prd, the placement's caps (`maxInstances`), and to Cloud Run's default maximum in stg.",
 		},
@@ -1419,8 +1417,8 @@ func TestMaxInstances(t *testing.T) {
 				}
 			}
 			for _, w := range tt.wantRun {
-				if !strings.Contains(text["cloud-run.tf"], w) {
-					t.Errorf("cloud-run.tf lacks:\n%s", w)
+				if !strings.Contains(text["outputs.tf"], w) {
+					t.Errorf("outputs.tf lacks:\n%s", w)
 				}
 			}
 			for _, w := range tt.wantLocals {

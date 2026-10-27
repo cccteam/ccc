@@ -1,12 +1,11 @@
-// jobs.go makes each build's job of the job process from the stack's template job, for an
-// application with one, right after the image build and before anything touches the
+// jobs.go makes each build's job of the job process from the release's job template, for
+// an application with one, right after the image build and before anything touches the
 // database.
 
 package deploy
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"strings"
@@ -15,10 +14,12 @@ import (
 )
 
 // Jobs creates this build's job for the job process (cmd/jobs), when the application has
-// one: a copy of the template job the stack owns (named by the substitution _JOBS_JOB, read
-// from the stack as this build applied it; never run, never deployed to), named
-// <template>-<version key>, put on this build's image with the pipeline's labels and given
-// the template's IAM policy: the service carries the template's name (APP_JOBS_TEMPLATE,
+// one: built from the job template the release's stack says (the revision_templates
+// output's job: identity, variables, secret mounts, timeout, retries, resources), named
+// after the stack's template job (the substitution _JOBS_JOB, read from the stack as this
+// build applied it; never run, never deployed to) with the version key, <template>-<version
+// key>, on this build's image with the pipeline's labels and given the template job's IAM
+// policy: the service carries the template's name (APP_JOBS_TEMPLATE,
 // set by the stack) and the image its version, and the framework names the job of its own
 // build from the two (resource/jobs), so the revision this build deploys starts a job of
 // its own code, and a traffic rollback to an earlier revision starts that revision's job;
@@ -51,6 +52,13 @@ func Jobs(ctx context.Context, clients *Clients, w Workspace, out io.Writer) err
 	if err != nil {
 		return err
 	}
+	templates, err := readRevisionTemplates(w)
+	if err != nil {
+		return err
+	}
+	if templates.Job == nil {
+		return errors.Newf("the release's revision templates carry no job template, where the stack names a template job (%s=%s): the stack applied and the templates read disagree", jobsJobFact, env[jobsJobFact])
+	}
 	run, err := clients.Run(ctx)
 	if err != nil {
 		return err
@@ -60,7 +68,7 @@ func Jobs(ctx context.Context, clients *Clients, w Workspace, out io.Writer) err
 	if err != nil {
 		return err
 	}
-	verb, err := makeJob(ctx, run, template, name, image, pipelineLabels(build, env[versionFact]), out)
+	verb, err := makeJob(ctx, run, template, name, templates.Job.document(image), pipelineLabels(build, env[versionFact]), out)
 	if err != nil {
 		return err
 	}
@@ -78,18 +86,12 @@ func Jobs(ctx context.Context, clients *Clients, w Workspace, out io.Writer) err
 	return nil
 }
 
-// makeJob creates or updates the build's job from the template on the image with the
-// labels, and answers which it did.
-func makeJob(ctx context.Context, run Run, template, name, image string, labels map[string]string, out io.Writer) (string, error) {
-	fmt.Fprintf(out, "=== Making job [%s] from [%s] on this image ===\n", shortName(name), shortName(template))
-	doc, err := run.Get(ctx, template)
-	if err != nil {
-		return "", err
-	}
-	job, err := jobFromTemplate(doc, image, labels)
-	if err != nil {
-		return "", errors.Wrapf(err, "template job %s", shortName(template))
-	}
+// makeJob creates or updates the build's job, named after the template job, from the
+// release's job document (JobTemplate.document, on this build's image) with the labels,
+// and answers which it did.
+func makeJob(ctx context.Context, run Run, template, name string, job map[string]any, labels map[string]string, out io.Writer) (string, error) {
+	fmt.Fprintf(out, "=== Making job [%s] after [%s] on this image, under the release's own template ===\n", shortName(name), shortName(template))
+	setLabels(job, labels)
 	switch _, err := run.Get(ctx, name); {
 	case err == nil:
 		if _, err := run.Patch(ctx, name, job); err != nil {
@@ -159,45 +161,6 @@ func parentAndID(name string) (parent, id string) {
 	}
 
 	return name[:i], name[i+len("/jobs/"):]
-}
-
-// jobFromTemplate is the job to create or update from the template job's document: its
-// template, labels and annotations copied, the image set and the labels overlaid. The
-// rest of the document is the API's own (name, times, conditions) and is left behind.
-func jobFromTemplate(doc map[string]any, image string, labels map[string]string) (map[string]any, error) {
-	job := map[string]any{}
-	for _, key := range []string{keyTemplate, keyLabels, "annotations"} {
-		if value, ok := doc[key]; ok {
-			copied, err := deepCopy(value)
-			if err != nil {
-				return nil, err
-			}
-			job[key] = copied
-		}
-	}
-	task, _ := field(job, keyTemplate+"."+keyTemplate).(map[string]any)
-	container, err := firstContainer(task)
-	if err != nil {
-		return nil, err
-	}
-	container["image"] = image
-	setLabels(job, labels)
-
-	return job, nil
-}
-
-// deepCopy copies a document's value through its JSON form.
-func deepCopy(value any) (any, error) {
-	data, err := json.Marshal(value)
-	if err != nil {
-		return nil, errors.Wrap(err, "json.Marshal()")
-	}
-	var copied any
-	if err := json.Unmarshal(data, &copied); err != nil {
-		return nil, errors.Wrap(err, "json.Unmarshal()")
-	}
-
-	return copied, nil
 }
 
 // copyPolicy puts the template job's IAM policy on the build's job, bindings and version,

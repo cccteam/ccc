@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"maps"
+	"slices"
 	"strings"
-
-	"github.com/cccteam/ccc/bedrock/internal/derive"
 
 	"github.com/go-playground/errors/v5"
 )
@@ -55,6 +55,10 @@ func Deploy(ctx context.Context, clients *Clients, w Workspace, out io.Writer) e
 	if env[services] == "" {
 		return errors.Newf("%s names no services (SERVICES): the resolve step writes them", EnvironmentFile)
 	}
+	templates, err := readRevisionTemplates(w)
+	if err != nil {
+		return err
+	}
 	run, err := clients.Run(ctx)
 	if err != nil {
 		return err
@@ -74,22 +78,11 @@ func Deploy(ctx context.Context, clients *Clients, w Workspace, out io.Writer) e
 		if err != nil {
 			return err
 		}
-		fmt.Fprintf(out, "--- Service [%s] in region [%s] ---\n", service, region)
-		name := serviceName(build.Substitutions[projectSub], region, service)
-		doc, err := repair(ctx, run, name, service, out)
+		revision, uri, err := deployService(ctx, run, build, templates, region, service, image, labels, tag, out)
 		if err != nil {
 			return err
 		}
-		if clearMaintenance(doc) {
-			fmt.Fprintf(out, "The maintenance revision's %s is cleared on the new revision: it serves the application.\n", derive.MaintenanceVariable)
-		}
-		fmt.Fprintf(out, "Deploying revision to [%s] without traffic...\n", service)
-		revision, uri, err := deployRevision(ctx, run, name, doc, image, labels, tag)
-		if err != nil {
-			return errors.Wrapf(err, "the deployment to region %s", region)
-		}
-		fmt.Fprintf(out, "Revision [%s] deployed to [%s] in [%s] under the tag [%s]\n", revision, service, region, tag)
-		revisions = append(revisions, Revision{Region: region, Service: service, Revision: revision})
+		revisions = append(revisions, revision)
 		if url := taggedURL(uri, tag); url != "" {
 			urls = append(urls, region+"="+url)
 		}
@@ -99,6 +92,32 @@ func Deploy(ctx context.Context, clients *Clients, w Workspace, out io.Writer) e
 	}
 
 	return nextFacts(w, env, build, urls, out)
+}
+
+// deployService puts the release's revision on one service: the service repaired when a
+// failed earlier deploy left it inconsistent, its template replaced by the release's own
+// (the stack's revision_templates output, built on the image), the revision created
+// without traffic under the tag. It answers the revision and the service's URL.
+func deployService(ctx context.Context, run Run, build *Build, templates *RevisionTemplates, region, service, image string, labels map[string]string, tag string, out io.Writer) (Revision, string, error) {
+	fmt.Fprintf(out, "--- Service [%s] in region [%s] ---\n", service, region)
+	template, ok := templates.Services[service]
+	if !ok {
+		return Revision{}, "", errors.Newf("the release's revision templates name no service %s (they name %s): the stack applied names the services the build deploys to", service, strings.Join(slices.Sorted(maps.Keys(templates.Services)), ", "))
+	}
+	name := serviceName(build.Substitutions[projectSub], region, service)
+	doc, err := repair(ctx, run, name, service, out)
+	if err != nil {
+		return Revision{}, "", err
+	}
+	doc[keyTemplate] = template.document(image)
+	fmt.Fprintf(out, "Deploying revision to [%s] without traffic, under the release's own template (%d variable(s), %d secret mount(s))...\n", service, len(template.Env), len(template.Secrets))
+	revision, uri, err := deployRevision(ctx, run, name, doc, image, labels, tag)
+	if err != nil {
+		return Revision{}, "", errors.Wrapf(err, "the deployment to region %s", region)
+	}
+	fmt.Fprintf(out, "Revision [%s] deployed to [%s] in [%s] under the tag [%s]\n", revision, service, region, tag)
+
+	return Revision{Region: region, Service: service, Revision: revision}, uri, nil
 }
 
 // nextFacts leaves what the hook before traffic calls: the next revision's public URL
@@ -316,32 +335,11 @@ func inconsistentLastReady(doc map[string]any) string {
 	return shortName(text(doc, "latestReadyRevision"))
 }
 
-// clearMaintenance empties the maintenance variable in the service's template when a
-// maintenance revision left it set, so that the revision deployed from the template
-// serves the application: the template is the live service's, maintenance revision
-// included. True when it was set.
-func clearMaintenance(doc map[string]any) bool {
-	template, _ := doc[keyTemplate].(map[string]any)
-	container, err := firstContainer(template)
-	if err != nil {
-		return false
-	}
-	vars, _ := container["env"].([]any)
-	cleared := false
-	for _, entry := range vars {
-		v, _ := entry.(map[string]any)
-		if text(v, keyName) == derive.MaintenanceVariable && text(v, keyValue) != "" {
-			v[keyValue] = ""
-			cleared = true
-		}
-	}
-
-	return cleared
-}
-
 // deployRevision sends the service back with the image, the labels and its traffic
 // pinned to what serves now, and answers the revision the change created and the
-// service's URL.
+// service's URL. The template is the document's: the release's own (deploy service,
+// built from the stack's revision_templates output) or, for a maintenance revision, the
+// live service's with the switch set.
 func deployRevision(ctx context.Context, run Run, name string, doc map[string]any, image string, labels map[string]string, tag string) (revision, uri string, err error) {
 	template, _ := doc[keyTemplate].(map[string]any)
 	container, err := firstContainer(template)

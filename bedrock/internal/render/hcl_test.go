@@ -131,8 +131,8 @@ func TestFirestoreProjectEnv(t *testing.T) {
 			uses := []struct {
 				file, block, env string
 			}{
-				{file: "cloud-run.tf", block: "google_cloud_run_v2_service.app", env: "service_env"},
-				{file: "cloud-run.tf", block: "google_cloud_run_v2_job.jobs", env: "jobs_env"},
+				{file: "outputs.tf", env: "service_env"},
+				{file: "outputs.tf", env: "jobs_env"},
 				{file: "cloud-build.tf", env: "migrate_env"},
 			}
 			for _, u := range uses {

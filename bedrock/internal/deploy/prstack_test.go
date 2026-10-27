@@ -91,6 +91,7 @@ func TestPullRequestStack(t *testing.T) {
 			MigrateEnv: `{"APP_SERVICE_NAME":"quill-migrate"}`, MigrateDatabases: `["projects/p/instances/i/databases/quill-pr7-db"]`,
 			MigrateSecrets: "{}",
 			BuildArguments: map[string]string{"FIREBASE_API_KEY": "AIzaPr7Key"}, Timestamp: "2026-10-12T10:00:00Z",
+			RevisionTemplates: testRevisionTemplates(t, true, "quill-pr7"),
 		}
 	}
 	tests := []struct {
@@ -412,7 +413,7 @@ func TestPullRequestStack(t *testing.T) {
 			w := applicationWorkspace(t, files)
 			builds := &fakeBuilds{build: jobBuild(t, subs, identity, steps), token: "test-token"}
 			comments := &fakeComments{bodies: tt.comments}
-			run := &fakeRunner{outputs: map[string]string{"tofu show": plan, "tofu output": `{"substitutions": {"value": ` + output + `}}`, "tofu state": tt.state}, fail: map[string]error{"tofu apply": tt.applyErr}}
+			run := &fakeRunner{outputs: map[string]string{"tofu show": plan, "tofu output": `{"substitutions": {"value": ` + output + `}, "revision_templates": {"value": ` + revisionTemplatesJSON(true, "quill-pr7") + `}}`, "tofu state": tt.state}, fail: map[string]error{"tofu apply": tt.applyErr}}
 			repo := &githubtest.Repo{
 				Refs:     map[string]github.Object{"refs/heads/master": {Type: "commit", SHA: "c4"}},
 				Ancestry: map[string][]string{"c9": {"c9", "c4"}, "c4": {"c4"}},

@@ -4,10 +4,14 @@
 # {{if .MultiSite}}Each site ({{.ServedSites}}) as a service of its own{{else}}The site ({{(index .Sites 0).Main}}) as a service{{end}} in the organization's two
 # regions{{if .Jobs}}, and the job process ({{.Jobs.Dir}}) as a job in the primary
 # region{{end}}. {{if or .Jobs .MultiSite}}All are{{else}}Both are{{end}} created
-# with a placeholder image: the pipeline owns the image from the first deploy
-# on, so the image and the labels and annotations a deploy stamps are ignored
-# here, and everything else about the revision template (identity, scaling,
-# variables, secrets) stays this stack's. The migration ({{.Migrate.Dir}}) is
+# with a placeholder image on a template that only stands the service up: from
+# the first deploy on the revision template is the pipeline's, which builds
+# every revision from the release's image and what the revision_templates
+# output says (outputs.tf: identity, scaling, variables, secret mounts, as the
+# release's own stack evaluates them), so a release runs under its own
+# configuration, forward or back, and an apply never starts a revision. The
+# template, the labels and the annotations a deploy stamps are ignored here
+# (lifecycle). The migration ({{.Migrate.Dir}}) is
 # no Cloud Run resource: the pipeline takes the migrate command out of the
 # release's image and runs it on the build worker as the deploy identity, with
 # the variables locals.tf derives for it (migrate_env).
@@ -43,27 +47,14 @@ resource "google_cloud_run_v2_service" "app" {
 
   labels = local.labels
 
+  # The template the service is created with: the placeholder image on the
+  # site's identity, which starts on its own and lets the first apply stand the
+  # service up before the first release. Nothing of a revision is set here
+  # (revision_templates in outputs.tf says it; deploy service builds it).
   template {
     service_account       = google_service_account.app.email
     execution_environment = "EXECUTION_ENVIRONMENT_GEN2"
     timeout               = "300s"
-    labels                = local.labels
-{{- if .MaxInstancesMap}}
-
-    # Scale to zero, and to at most local.max_instances per region: the
-    # placement's cap for this environment (maxInstances), or Cloud Run's
-    # default where it sets none.
-    scaling {
-      min_instance_count = 0
-      max_instance_count = local.max_instances
-    }
-{{- else}}
-
-    # Scale to zero, and to Cloud Run's default maximum instances per region:
-    # the placement caps no environment (maxInstances). No scaling block: Cloud
-    # Run's defaults are exactly that, and a block setting only a minimum of
-    # zero is dropped by the service, which every later plan would add again.
-{{- end}}
 
     containers {
       image = var.placeholder_image
@@ -77,7 +68,6 @@ resource "google_cloud_run_v2_service" "app" {
       # before the pipeline's first deploy owns the image.
       args = [local.site_settings[each.value.site].binary]
 {{- end}}
-
 
       ports {
 {{- if .MultiSite}}
@@ -99,63 +89,16 @@ resource "google_cloud_run_v2_service" "app" {
 {{- end}}
         container_port = {{.Port.Default}}
       }
-
-      resources {
-        # CPU only while a request is in flight: no always-on allocation.
-        cpu_idle          = true
-        startup_cpu_boost = true
-        limits = {
-          cpu    = "1"
-          memory = "512Mi"
-        }
-      }
-
-      # The maintenance switch: empty, except on a maintenance revision (a
-      # restore run, a breaking release), which the pipeline deploys with it
-      # set to 1 and whose process then serves the maintenance page and opens
-      # no database. The stack declares it so that it and the pipeline agree on
-      # the variable's presence, and the pipeline passes its live value as
-      # var.maintenance to the plan it makes while the application is in
-      # maintenance, so that the apply leaves the service alone (an env entry
-      # cannot be ignored on its own: the block is a set). The release's own
-      # revision is deployed with it empty again.
-      env {
-        name  = "{{.MaintenanceVariable}}"
-        value = var.maintenance
-      }
-
-      dynamic "env" {
-        for_each = {{if .MultiSite}}merge(local.service_env, local.site_env[each.value.site]){{else}}local.service_env{{end}}
-        content {
-          name  = env.key
-          value = env.value
-        }
-      }
-
-      # Secrets by reference, at the version var.secret_versions pins. A secret
-      # with no pin is not mounted: the process starts without it.
-      dynamic "env" {
-        for_each = local.mounted_secrets
-        content {
-          name = env.key
-          value_source {
-            secret_key_ref {
-              secret  = local.secret_ids[env.key]
-              version = env.value.version
-            }
-          }
-        }
-      }
     }
   }
 
   lifecycle {
-    # The pipeline deploys the image and stamps the revision with its own
-    # labels and annotations (commit, build, trigger, client). Those are its.
+    # The revision template is the pipeline's from the first deploy on (deploy
+    # service builds it from the revision_templates output and the release's
+    # image), and so are the labels and annotations a deploy stamps (commit,
+    # build, trigger, client). Those are its.
     ignore_changes = [
-      template[0].containers[0].image,
-      template[0].labels,
-      template[0].annotations,
+      template,
       labels,
       annotations,
       client,
@@ -240,10 +183,11 @@ resource "google_cloud_run_v2_service_iam_member" "invoker" {
 # from the two: a revision starts the job of its own build, and a
 # traffic rollback starts the earlier one. Only the running service starts
 # the job process; the pipeline never runs it and a schedule calls an endpoint
-# on the service. The stack keeps the jobs' variables, secrets, identity,
-# timeout, retries and resources here (var.jobs_timeout, var.jobs_retries,
-# var.jobs_resources), and the pipeline deletes a build's job once no revision
-# in any region carries its version (bedrock deploy sweep-jobs).
+# on the service. The jobs' variables, secrets, identity, timeout, retries and
+# resources (var.jobs_timeout, var.jobs_retries, var.jobs_resources) reach each
+# build's job through the revision_templates output (outputs.tf), and the
+# pipeline deletes a build's job once no revision in any region carries its
+# version (bedrock deploy sweep-jobs).
 # ---------------------------------------------------------------------------
 
 resource "google_cloud_run_v2_job" "jobs" {
@@ -255,6 +199,10 @@ resource "google_cloud_run_v2_job" "jobs" {
 
   labels = local.labels
 
+  # The template the job is created with: the placeholder image on the job
+  # process's identity. Nothing of a build's job is set here: revision_templates
+  # in outputs.tf says it (its variables, secret mounts, timeout, retries and
+  # resources), and deploy jobs builds each build's job from it.
   template {
     task_count = 1
     labels     = local.labels
@@ -262,55 +210,22 @@ resource "google_cloud_run_v2_job" "jobs" {
     template {
       service_account       = google_service_account.jobs.email
       execution_environment = "EXECUTION_ENVIRONMENT_GEN2"
-      max_retries           = var.jobs_retries
-      timeout               = var.jobs_timeout
 
       containers {
         image = var.placeholder_image
         # The image starts the site by default; the job's command runs the jobs
         # binary beside it instead (Dockerfile: /jobs).
         command = ["/jobs"]
-
-        resources {
-          limits = {
-            cpu    = var.jobs_resources.cpu
-            memory = var.jobs_resources.memory
-          }
-        }
-
-        dynamic "env" {
-          for_each = local.jobs_env
-          content {
-            name  = env.key
-            value = env.value
-          }
-        }
-{{- if .JobsReadsData}}
-
-        # Secrets by reference, at the version var.secret_versions pins: the
-        # ones at the levels the job process constructs (locals.tf, jobs_secrets).
-        dynamic "env" {
-          for_each = local.jobs_mounted_secrets
-          content {
-            name = env.key
-            value_source {
-              secret_key_ref {
-                secret  = local.secret_ids[env.key]
-                version = env.value.version
-              }
-            }
-          }
-        }
-{{- end}}
       }
     }
   }
 
   lifecycle {
+    # The template is the pipeline's from the first build on (deploy jobs builds
+    # each build's job from the revision_templates output), and so are the
+    # labels and annotations a build stamps.
     ignore_changes = [
-      template[0].template[0].containers[0].image,
-      template[0].labels,
-      template[0].annotations,
+      template,
       labels,
       annotations,
       client,

@@ -7,7 +7,10 @@
 # application in the shared environment project reaches no other application's
 # documents. One database per environment beside the Spanner database, a
 # pull-request stack's own for a pull request, Native mode, in the primary
-# region; prd keeps point-in-time recovery on and resists deletion. The
+# region; prd keeps point-in-time recovery on, and every environment
+# resists deletion: a release that stops declaring APP_FIRESTORE_DATABASE is refused at its
+# plan until the release before it retired the variable (var.retired), and
+# bedrock destroy lifts the protection with its apply (var.destroy). The
 # migrate command constructs the data level too, whose live service signals the
 # policy kind when the release's roles are written, so it receives the name as
 # well, and the deploy identity, which runs it on the build worker, the grant.
@@ -29,7 +32,7 @@ resource "google_firestore_database" "firestore" {
   type        = "FIRESTORE_NATIVE"
 
   point_in_time_recovery_enablement = local.is_prd ? "POINT_IN_TIME_RECOVERY_ENABLED" : "POINT_IN_TIME_RECOVERY_DISABLED"
-  delete_protection_state           = local.is_prd && !var.destroy ? "DELETE_PROTECTION_ENABLED" : "DELETE_PROTECTION_DISABLED"
+  delete_protection_state           = !local.is_pr && !var.destroy && !contains(var.retired, "APP_FIRESTORE_DATABASE") ? "DELETE_PROTECTION_ENABLED" : "DELETE_PROTECTION_DISABLED"
   deletion_policy                   = "DELETE"
 }
 
