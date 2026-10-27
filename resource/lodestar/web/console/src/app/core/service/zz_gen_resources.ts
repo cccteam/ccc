@@ -183,6 +183,7 @@ export interface SectorDirectories {
   sectorId?: string;
   method?: string;
   connection?: string;
+  defaultSeat?: string;
 }
 
 export interface Ships {
@@ -715,6 +716,7 @@ const resourceMap = defineResourceMap({
       { fieldName: 'sectorId', displayType: 'enumerated', required: true, isIndex: true, filterable: 'always', enumeratedResource: Resources.Sectors, readOnly: true },
       { fieldName: 'method', displayType: 'string', required: true, isIndex: true, filterable: 'always', maxLength: 16 },
       { fieldName: 'connection', displayType: 'string', required: true, isIndex: false },
+      { fieldName: 'defaultSeat', displayType: 'string', required: false, isIndex: false, maxLength: 64 },
     ],
   },
   [Resources.Ships]: {

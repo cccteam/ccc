@@ -51,7 +51,8 @@ func TestPortalTargetEmission(t *testing.T) {
 	consoleResources := read("web/console/src/app/core/service/zz_gen_resources.ts")
 	consoleAPI := read("web/console/src/app/core/service/zz_gen_api.ts")
 
-	// The two column types, as both targets render them.
+	// The two column types, as both targets' row files render them (a write shape says
+	// the nullable column takes null; the row leaves a NULL cell absent).
 	columnTypes := []string{
 		"import { Point } from 'geojson';",
 		"  position?: Point;",
@@ -126,7 +127,7 @@ func TestPortalTargetEmission(t *testing.T) {
 		{
 			name:   "the console client imports Point for the create and patch shapes, and types provenance through the row type",
 			source: consoleAPI,
-			want:   []string{"import { Point } from 'geojson';", "  position?: Point;"},
+			want:   []string{"import { Point } from 'geojson';", "  position?: Point | null;"},
 			absent: []string{"CustomTypes"},
 		},
 	}

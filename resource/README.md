@@ -93,6 +93,7 @@ type Ship struct { ... }
 | `@tenantDirectory` | `@resource` struct, `@permissionScope(domain)` | none | The struct is the directories record: the tenant-scoped table whose rows are the directories a tenant admits its people through, one row per declaration (one domain, one directory by default; a second directory is a second row), each naming the sign-in method (`@directoryMethod`) and the connection (`@directoryConnection`). Its tenant is the bare `@domain` column, the tenant's key on the row itself, so a tenant's administrator declares its own directories under the record's Create and Delete grants, and the record's change events are the audit. With it the generated `New<Record>Roster` reads what each tenant declares beside its key (`resource.WithTenantDeclarations`), `New<Record>DeclarationReader` reads one tenant's declaration in the sign-in's transaction for `signin.TenantPolicy`, the record's write paths reload the roster after their commit and signal the tenants kind as the tenant record's do, and the create-your-tenant route declares the creator's directory on the new tenant. Refused on a global resource, on the tenant record itself, on a second struct, with a join-path `@domain`, and without either column. Example: [SectorDirectory](lodestar/pkg/resources/sector_directories.go). |
 | `@directoryMethod` | field of the `@tenantDirectory` record, a `string` column | none | The column holds the sign-in method a directory is reached through, as `sessioninfo.AuthMethod` spells it: `google`, `azure` or `workos`. Refused off the directories record, on a column that is not a string, and on a second column. Example: [SectorDirectory](lodestar/pkg/resources/sector_directories.go). |
 | `@directoryConnection` | field of the `@tenantDirectory` record, a `string` column | none | The column holds the connection a directory's identities carry, the value the session's first auth event records beside the method: a Google Workspace by its domain (the registration admitting any Workspace writes the account's domain), a Microsoft Entra tenant by its tenant id, a WorkOS connection by its id. Refused off the directories record, on a column that is not a string, and on a second column. Example: [SectorDirectory](lodestar/pkg/resources/sector_directories.go). |
+| `@directoryDefaultSeat` | field of the `@tenantDirectory` record, a `string` or `*string` column | none | The column names the role a stranger the directory vouches for is seated with in the tenant at their first sign-in, chosen by the tenant's administrator from the tenant's roles on its Sign-in page; NULL (or empty) says the tenant admits the directory's strangers by invitation only: they are refused with the `invitation_only` refusal and no account is created, and an invitation link is the way in. A directories record without the column admits every stranger by invitation only. With it the generated `New<Record>DirectoryReader` answers every tenant's declaration of a directory with its seat, which the auth's directory admission reads (`session.Auth.SetDirectoryAdmission`) before the method's account rule, and the seat is written through `resource.SeatDeclared` once the sign-in's transaction has committed (section 16). Refused off the directories record, on a column that is neither a string nor a nullable string, and on a second column. Example: [SectorDirectory](lodestar/pkg/resources/sector_directories.go). |
 | `@page` | `@resource`, `@virtual`, or `@computed` struct | `default: N` and/or `max: M` | Declares the list's page sizes: the page a request without `limit` receives, and the largest page a request may ask for. Both are positive integers; the default never exceeds the maximum, and a maximum alone must be at least the generator-wide default of 50. Undeclared, the list serves pages of 50 with no maximum. A request over the maximum is refused with a 400 naming it, never clamped, and a resource with a maximum refuses `limit=all`. The maximum is also the switch a picker reads: a resource with none is small enough to load whole, read in one request with `limit=all` and sort optional; a resource with a maximum is paged, one server page at a time, so its list needs an order (`@order`, or `sort` on the request) and a picker over it reads the chosen row by key, which is why a bounded picker source may not suppress its read (`@enumerate`). Declaring the maximum is the deliberate choice; nothing decides at runtime from an observed size. Refused on a `@computed` or `@virtual` struct with no `@primarykey`, naming the struct and the two ways out (declare the key, or drop `@page`): without a key the resource is a whole read-only list, with no read route and no paging, so a page size on it is a contradiction. The generated TypeScript descriptor carries both numbers. Example: [Mission](lodestar/pkg/resources/missions.go). |
 | `@order` | `@resource`, `@virtual`, or `@computed` struct | comma list of `Field [asc\|desc]` | Declares the order a list takes when the request carries no `sort`, naming Go fields of the struct; the direction defaults to `asc`. The primary key is appended at runtime so the order is total, and a request's `sort` replaces the declared order for that request. The declaration is optional, and every paged request needs an order from somewhere: a resource that declares none serves a request without `sort` only as the whole list (`limit=all`), which is not sorted — its table or view statement carries no `ORDER BY` and the rows arrive in the database's own order, a computed list keeps the order its body yielded — and refuses a bare GET or a `limit` with a 400 naming the resource and the way out (section 4). A nullable column renders as the plain direction and sorts in its database's own `NULL` placement, so an index on the column serves the order: Spanner places `NULL` first ascending and last descending, PostgreSQL last ascending and first descending. A computed resource follows the same placement: its handler sorts and pages the body's rows where the application's database would. On a computed resource only a leaf field may be named (a nested field is opaque). The generated TypeScript descriptor carries the declared order (`order: [{ field, direction }]`, JSON names), so a browser client knows a request without a `sort` is already ordered and pages by cursor; to a resource that declares none it sends a `sort` of its own or asks `limit=all`. On a table-backed resource with a bare `@domain`, generation warns when no index leads with the tenant column and then these columns in this order and direction, naming the index it wants (section 9). Example: [Mission](lodestar/pkg/resources/missions.go). |
 
@@ -1244,6 +1245,13 @@ carries them (`zz_gen_resources.ts` for table, view, and computed fields;
 `zz_gen_methods.ts` for request and result fields; `zz_gen_api.ts` for the key, create,
 and patch shapes). The client library exports no application types.
 
+**Nullable columns in the write shapes.** A row interface leaves a NULL cell absent, so
+a nullable column is an optional property there (`notes?: string`). The Create and
+Patch shapes say what the wire takes: an explicit `null` clears the column and an absent
+property leaves it alone, so a nullable column renders `notes?: string | null` in both,
+and in the create-your-tenant body (section 16). A key is never nullable, and a nullable
+boolean keeps its `NullBoolean` value type, which carries its own null.
+
 Examples: [MissionDocument.Provenance](lodestar/pkg/resources/mission_documents.go), a
 plain struct on a `JSON` column, derived and stored by generated methods;
 [DistressCall.Position](lodestar/pkg/resources/distress_calls.go), a GeoJSON `Point`
@@ -1904,6 +1912,51 @@ creator's directory on the new tenant in the row's transaction, when the creator
 through one, reloads the roster before it seats the creator, so the seat's probe asks
 what the next request asks, and removes the directory with the row when the seat fails.
 
+**The default seat.** What a stranger from a declared directory gets at a first sign-in
+is the directory row's to say, before the method's account rule is reached. The
+directories record may carry one more column, `@directoryDefaultSeat` (section 1), a
+nullable string naming a role of the tenant: a person no user exists for who signs in
+through a directory a tenant declares is created and seated with that role in that
+tenant, and signed in; where the row names none (NULL, the default, and every row of a
+record without the column), they are refused with the `invitation_only` refusal and no
+account is created, unless they followed an invitation link, which is the way past. A
+person already seated in a declaring tenant, or holding a global or every-domain role,
+is let through as before, and the directory a stranger comes through that no tenant
+declares falls to the method's rule (members, invited, open). The generator emits
+`New<Record>DirectoryReader()`, a `signin.DirectoryReader[*spanner.ReadWriteTransaction]`
+reading every tenant's declaration of one directory with its seat in the sign-in's own
+transaction, and the application hands it, with the seat hook, to each auth whose roles
+are the application's own:
+`authSession.SetDirectoryAdmission(settings.TenantDirectories, resource.SignInRoles(engine.UserManager()), resource.SeatDeclared(engine.UserManager()))`.
+An auth whose directory names the roles (a registration that syncs them) sets no
+admission: its directory is the authority on who holds what, and a default seat would
+be overwritten at the next sign-in.
+The seat is written the way an accepted invitation's seats are, after the sign-in's
+transaction has committed and before the sign-in policy decides, so the policy finds the
+membership. The tenant's administrator sets the row's seat on the Sign-in page, a picker
+over the tenant's roles, and the record's change events are the audit of who opened the
+door and when. Two consequences: in a self-service application a colleague of a tenant's
+creator who signs in from the directory that tenant already declared gets no account and
+no second tenant, but the invitation-only answer; and the directory-vouched door of the
+user surface (section 21) no longer applies to a declared directory with a null seat,
+since no such account exists, while it keeps applying to undeclared directories under
+open sign-up.
+
+**The creator's seat.** The person who creates a tenant is its first administrator,
+whatever the creation shape: the record's create path (the standalone patch handler and
+the consolidated dispatcher) seats the creator in each tenant the request created with
+the roles `<Record>AdministratorRoles()` names, through the user-management surface of
+the auth bound to the session outlets serving the record (`<Auth>UserSurface().SeatStore()`,
+both asserted against the application type in the generated roster file), after the
+commit and once this instance's roster lists the tenant, as the self-service route does;
+a seat that cannot be written removes the rows the request created, reloads the roster,
+signals, and answers the failure. A record served by session outlets bound to different
+auths is refused at generation, since the handler seats through one surface; a record
+served by no session auth (a hand-written router, a machine outlet alone) seats nobody.
+With the last-owner rule (section 21) an operator creates a customer's tenant, seats or
+invites its first administrator as a second owner, and leaves; an existing tenant gains no
+seat after the fact.
+
 **Tests.** The generated authorization matrix drives domain-scoped routes with the domain
 value `testDomain`, and the application's `newTestHandler` adds it to the test
 application's roster with `Add`, since the empty schema holds no tenant row; under
@@ -2225,13 +2278,22 @@ crew in the sector in every role but the marshal's own:
 A seat is a resource rather than a method because a Create grant's condition may read the
 row being written (`new.role`) and an Execute grant's cannot.
 
-**The rules the library keeps** whatever the role file says: nobody disables, deletes or
-unseats themselves (403); a user whose only way in is the identity being unlinked keeps it
-(409); a tenant seat needs the user already seated in the tenant, from the global surface
-(400); a password is set through the set-password method, never through an update (400);
-a username rename moves the person's seats to the new name. Grants are checked before any
-store is read, so a denied caller learns nothing, and every refusal is one the client
-library's error hook already renders.
+**The rules the library keeps** whatever the role file says: nobody disables or deletes
+themselves (403); nobody unseats themselves from the last administrator seat of a
+partition (403), the last-owner rule: the surface is built with
+`resource.WithAdministratorRoles(global, domain)` naming the auth's administrator roles
+(the ones its first administrator is seeded with: the global roles are the global
+partition's, the domain roles a tenant partition's, held in the tenant or everywhere),
+and a self-unseat goes unless the seat is one of them and no holder of one would remain
+in the partition, so a tenant's creator seats its first administrator and leaves, and a
+person who left is brought back by one who stayed; without the option every self-unseat
+is refused; a user whose only way in is the identity being unlinked keeps it (409); a
+tenant seat needs the user already seated in the tenant, from the global surface (400);
+a password is set through the set-password method, never through an update (400); a
+username rename moves the person's seats to the new name; and a seat removed that was
+the person's last anywhere deletes the account with its identity links, whoever removed
+it (the orphan rule). Grants are checked before any store is read, so a denied caller
+learns nothing, and every refusal is one the client library's error hook already renders.
 
 **Tests.** The generated authorization matrix carries the lists and reads as query pairs
 and the patches and methods as denied-only cases, each method with its dry run, on every

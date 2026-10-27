@@ -126,10 +126,15 @@ type App struct {
 
 // New constructs an App from its dependencies.
 func New(cfg Configurer) *App {
+	// The user-management surfaces over the auths' stores: each knows its auth's
+	// administrator roles (resource.WithAdministratorRoles), so a self-unseat is judged
+	// by the last-owner rule, and what each tenant declares (resource.WithTenantDirectories),
+	// so a tenant's administrator seats a person its own directory vouched for.
+	staffAccounts, staffSeats := cfg.StaffUserStores()
 	a := &App{
 		access:         cfg.Access(),
 		resourceClient: cfg.ResourceClient(),
-		staffUsers:     router.NewStaffUserSurface(cfg.StaffUserStores()),
+		staffUsers:     router.NewStaffUserSurface(staffAccounts, staffSeats, resource.WithTenantDirectories(cfg.TenantDeclarations()), resource.WithAdministratorRoles(staff.AdministratorRoles())),
 		cursorKey:      cfg.CursorKey(),
 		tenants:        cfg.TenantRoster(),
 		declarations:   cfg.TenantDeclarations(),

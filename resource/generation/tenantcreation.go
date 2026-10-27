@@ -107,9 +107,62 @@ func tenantCreationHandlerFunc(record string) string {
 
 // tenantCreationRolesAccessor is the method the application supplies the administrator
 // roles through: TenantAdministratorRoles, the domain roles the person who creates a
-// tenant holds in it.
+// tenant holds in it, through the record's create path and through the
+// create-your-tenant route alike.
 func tenantCreationRolesAccessor(record string) string {
 	return record + "AdministratorRoles"
+}
+
+// tenantSeatData is what the tenant record's create path seats its creator with
+// (resource.SeatFirstAdministrator, after the commit): the record's name, the word for
+// one of its rows, its key's type, the application's accessor of the administrator
+// roles, and the auth whose user-management surface the seat is written through, the
+// auth of the session outlets serving the record. The create-your-tenant route seats
+// the same way.
+type tenantSeatData struct {
+	Record          string
+	RecordLower     string
+	KeyType         string
+	Auth            string
+	AuthType        string
+	SurfaceAccessor string
+	RolesAccessor   string
+}
+
+// tenantSeatData resolves the creator's seat for the record's create path: nil where
+// the record has no create path (self-service alone creates through its route) or no
+// session outlet bound to an auth serves it (a hand-written router, a machine
+// outlet), since the seat is written through an auth's surface; an error where the
+// session outlets serving it bind to different auths, since the record's handler is
+// one and seats through one surface.
+func (r *resourceGenerator) tenantSeatData(record *resourceInfo) (*tenantSeatData, error) {
+	if !record.TenantCreation.AdministratorCreates() {
+		return nil, nil
+	}
+	var auth *outletAuth
+	for _, outlet := range r.tenantCreationOutlets(record) {
+		if outlet.auth == nil {
+			continue
+		}
+		if auth != nil && auth.importPath != outlet.auth.importPath {
+			return nil, errors.Newf("struct %s: the record is served by outlets bound to different auths (%q and %q); its create seats the creator as the %s's first administrator through one auth's user-management surface, so serve the record on the outlets of one auth (@outlet)", record.Name(), auth.importPath, outlet.auth.importPath, strings.ToLower(strcase.ToCase(record.Name(), strcase.LowerCase, ' ')))
+		}
+		auth = outlet.auth
+	}
+	if auth == nil {
+		return nil, nil
+	}
+	name := caser.ToPascal(auth.packageName())
+
+	return &tenantSeatData{
+		Record:          record.Name(),
+		RecordLower:     strings.ToLower(strcase.ToCase(record.Name(), strcase.LowerCase, ' ')),
+		KeyType:         record.PrimaryKeyType(),
+		Auth:            name,
+		AuthType:        name + "Auth",
+		SurfaceAccessor: name + "UserSurface",
+		RolesAccessor:   tenantCreationRolesAccessor(record.Name()),
+	}, nil
 }
 
 // tenantCreationOutlets are the session-serving outlets the record is served on: where
@@ -136,7 +189,13 @@ func (r *resourceGenerator) tenantCreationOutlets(record *resourceInfo) []*route
 // self-service.
 func (r *resourceGenerator) validateTenantCreation() error {
 	record := r.tenantRecord()
-	if record == nil || !record.TenantCreation.SelfService() {
+	if record == nil {
+		return nil
+	}
+	if _, err := r.tenantSeatData(record); err != nil {
+		return err
+	}
+	if !record.TenantCreation.SelfService() {
 		return nil
 	}
 	declared := fmt.Sprintf("@%s(%s: %s)", tenantKeyword, tenantCreationArgKey, record.TenantCreation)

@@ -216,6 +216,29 @@ func Test_apiClientData(t *testing.T) {
 				"  listedName: Point;",
 			},
 		},
+		{
+			name: "a nullable column's write shapes take null, which clears it; a key and a nullable boolean do not",
+			generator: func() *typescriptGenerator {
+				widget := fixtureResource(t, structs, "Widget", func(res *resourceInfo) {
+					typed(res)
+					for _, f := range res.Fields {
+						switch f.Name() {
+						case "ID", "Name", "Code":
+							f.IsNullable = true
+						case "Secret":
+							f.typescriptType = booleanStr
+							f.IsNullable = true
+						}
+					}
+				})
+				return &typescriptGenerator{client: &client{resources: []*resourceInfo{widget}}}
+			},
+			wantContains: []string{
+				"export interface WidgetsCreate {\n  name?: string | null;\n  listedName: string;\n  code?: string | null;\n  secret?: NullBoolean;\n}",
+				"export interface WidgetsPatch {\n  name?: string | null;\n  listedName?: string;\n  secret?: NullBoolean;\n}",
+			},
+			wantNotContains: []string{"id?: string | null", "NullBoolean | null"},
+		},
 	}
 
 	for _, tt := range tests {

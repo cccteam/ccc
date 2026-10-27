@@ -235,6 +235,9 @@ func TestTenancyApply(t *testing.T) {
 	noPermissions := "app/app.go: UserPermissions passes no nil roster to resource.SessionPermissions, so the roster's Domains and the declarations were not handed to it; pass a.tenants.Domains and a.declarations where the session permissions are composed, so a login's tenant list is the roster filtered by its footholds and by what each tenant declares"
 	// The fixtures construct no auth, so the sign-in rule is the agent's.
 	noAuth := "no auth package constructs a session.Auth, so no sign-in rule was set; where one is, set signin.TenantPolicy(resource.SignInRoles(<engine>.UserManager()), <handlers>.NewTenantDeclarationReader()) on the session with SetSignInPolicy before the first request, so a sign-in is admitted by what the person's tenants declare"
+	// Without an auth whose roles the application assigns, the creator's seat roles are
+	// the agent's too.
+	noSeatAuth := "no auth whose roles the application assigns constructs a session.Auth the scan reads, so the roles the Tenant record's create path seats a tenant's creator with were not exposed on the app; the generated contract asks the handlers for TenantAdministratorRoles() []accesstypes.Role (the domain roles the creator holds in the new tenant, the auth's AdministratorRoles held in every tenant) beside the auth's user-management surface accessor (<Auth>UserSurface()); add them where the App is declared"
 
 	tests := []struct {
 		name        string
@@ -248,7 +251,7 @@ func TestTenancyApply(t *testing.T) {
 			files: tenancyFiles(),
 			wantDid: []string{
 				"cmd/generate/resourcegenerator/main.go: added WithConcealedDomains(); the tenant segment /tenants derives from the Tenant record",
-				"schema/migrations/000003_Tenants.up.sql and .down.sql: the Tenants table (a slug primary key, a unique Name, and DirectoryOnly) and the TenantDirectories table (the tenant's declared directories)",
+				"schema/migrations/000003_Tenants.up.sql and .down.sql: the Tenants table (a slug primary key, a unique Name, and DirectoryOnly) and the TenantDirectories table (the tenant's declared directories, each with its DefaultSeat)",
 				"schema/devseed/000001_dev_tenants.up.sql and .down.sql: the development tenants north and south, a data migration for the bootstrap to apply before the logins",
 				"pkg/resources/tenants.go: the Tenant resource struct, global, keyed by slug, listed in name order (@order(Name asc)), with its declaration's flag (DirectoryOnly) and change tracking",
 				"pkg/resources/tenant_directories.go: the TenantDirectory resource struct, the tenant's declared directories, tenant-scoped under /tenants/{tenantID}/tenant-directories",
@@ -257,7 +260,7 @@ func TestTenancyApply(t *testing.T) {
 				"web/console/src/app/core/tenant/tenant.service.ts, tenant.guard.ts, components/ui/tenant-refused/ and components/ui/sign-in/: the tenant service (the tenant the URL names, the session's tenant list, and the digest scoped to it), the tenant guard on the tenant segment, the refusal page and the tenant's sign-in page (who may enter the tenant: its declared directories and whether they are the only way in, with its route and navigation item in sign-in.routes.ts) from the reference; the tenant segment in the routes, the header's tenant picker, and the pages under the segment, the sign-in page's route among them, are yours",
 				"ran go generate ./..., which emitted the Tenant and TenantDirectory resources, the tenant segment pair under /tenants/{tenantID}, the roster constructor NewTenantRoster and the declaration reader NewTenantDeclarationReader",
 			},
-			wantSkipped: []string{noSignals, noAuth, noPermissions},
+			wantSkipped: []string{noSignals, noAuth, noSeatAuth, noPermissions},
 			check: func(t *testing.T, a *app.App) {
 				t.Helper()
 				if diff := cmp.Diff(wantConfig, read(t, a, "pkg/config/data.go")); diff != "" {
@@ -271,7 +274,7 @@ func TestTenancyApply(t *testing.T) {
 					"schema/migrations/000003_Tenants.down.sql":                                    "DROP INDEX TenantDirectoriesByTenantIdMethodConnection;\nDROP TABLE TenantDirectories;\nDROP INDEX TenantsByName;\nDROP TABLE Tenants;",
 					"schema/devseed/000001_dev_tenants.up.sql":                                     "INSERT INTO Tenants (Id, Name) VALUES ('north', 'North');",
 					"pkg/resources/tenants.go":                                                     "package resources\n\nimport \"github.com/cccteam/ccc/resource\"\n\ntype (\n\t// Tenant is the tenant record (@tenant)",
-					"pkg/resources/tenant_directories.go":                                          "\t// @resource\n\t// @permissionScope(domain)\n\t// @tenantDirectory\n\t// @order(Method asc, Connection asc)\n\tTenantDirectory struct {\n\t\tID ccc.UUID `spanner:\"Id\"`\n\t\t// @domain\n\t\tTenantID string `spanner:\"TenantId\"`\n\t\t// @directoryMethod\n\t\tMethod string `spanner:\"Method\"`\n\t\t// @directoryConnection\n\t\tConnection string `spanner:\"Connection\"`\n\t}",
+					"pkg/resources/tenant_directories.go":                                          "\t// @resource\n\t// @permissionScope(domain)\n\t// @tenantDirectory\n\t// @order(Method asc, Connection asc)\n\tTenantDirectory struct {\n\t\tID ccc.UUID `spanner:\"Id\"`\n\t\t// @domain\n\t\tTenantID string `spanner:\"TenantId\"`\n\t\t// @directoryMethod\n\t\tMethod string `spanner:\"Method\"`\n\t\t// @directoryConnection\n\t\tConnection string `spanner:\"Connection\"`\n\t\t// @directoryDefaultSeat\n\t\tDefaultSeat *string `spanner:\"DefaultSeat\"`\n\t}",
 					"web/console/src/app/components/ui/sign-in/tenant-sign-in.component.ts":        "export class TenantSignInComponent",
 					"web/console/src/app/components/ui/sign-in/sign-in.routes.ts":                  "export const tenantSignInRoute",
 					"pkg/config/tenancy.go":                                                        "package config\n",
@@ -315,7 +318,7 @@ func TestTenancyApply(t *testing.T) {
 			}(),
 			wantDid: []string{
 				"cmd/generate/resourcegenerator/main.go: added WithConcealedDomains(); the tenant segment /tenants derives from the Tenant record",
-				"schema/migrations/000003_Tenants.up.sql and .down.sql: the Tenants table (a slug primary key, a unique Name, and DirectoryOnly) and the TenantDirectories table (the tenant's declared directories)",
+				"schema/migrations/000003_Tenants.up.sql and .down.sql: the Tenants table (a slug primary key, a unique Name, and DirectoryOnly) and the TenantDirectories table (the tenant's declared directories, each with its DefaultSeat)",
 				"schema/devseed/000001_dev_tenants.up.sql and .down.sql: the development tenants north and south, a data migration for the bootstrap to apply before the logins",
 				"pkg/resources/tenants.go: the Tenant resource struct, global, keyed by slug, listed in name order (@order(Name asc)), with its declaration's flag (DirectoryOnly) and change tracking",
 				"pkg/resources/tenant_directories.go: the TenantDirectory resource struct, the tenant's declared directories, tenant-scoped under /tenants/{tenantID}/tenant-directories",
@@ -325,7 +328,7 @@ func TestTenancyApply(t *testing.T) {
 				"web/console/src/app/core/tenant/tenant.service.ts, tenant.guard.ts, components/ui/tenant-refused/ and components/ui/sign-in/: the tenant service (the tenant the URL names, the session's tenant list, and the digest scoped to it), the tenant guard on the tenant segment, the refusal page and the tenant's sign-in page (who may enter the tenant: its declared directories and whether they are the only way in, with its route and navigation item in sign-in.routes.ts) from the reference; the tenant segment in the routes, the header's tenant picker, and the pages under the segment, the sign-in page's route among them, are yours",
 				"ran go generate ./..., which emitted the Tenant and TenantDirectory resources, the tenant segment pair under /tenants/{tenantID}, the roster constructor NewTenantRoster and the declaration reader NewTenantDeclarationReader",
 			},
-			wantSkipped: []string{noAuth},
+			wantSkipped: []string{noAuth, noSeatAuth},
 			check: func(t *testing.T, a *app.App) {
 				t.Helper()
 				config := read(t, a, "pkg/config/tenancy.go")
@@ -355,7 +358,7 @@ func TestTenancyApply(t *testing.T) {
 			},
 			wantDid: []string{
 				"cmd/generate/resourcegenerator/main.go: added WithConcealedDomains(); the tenant segment /tenants derives from the Tenant record",
-				"schema/migrations/000002_Tenants.up.sql and .down.sql: the Tenants table (a slug primary key, a unique Name, and DirectoryOnly) and the TenantDirectories table (the tenant's declared directories)",
+				"schema/migrations/000002_Tenants.up.sql and .down.sql: the Tenants table (a slug primary key, a unique Name, and DirectoryOnly) and the TenantDirectories table (the tenant's declared directories, each with its DefaultSeat)",
 				"pkg/resources/tenants.go: the Tenant resource struct, global, keyed by slug, listed in name order (@order(Name asc)), with its declaration's flag (DirectoryOnly) and change tracking",
 				"pkg/resources/tenant_directories.go: the TenantDirectory resource struct, the tenant's declared directories, tenant-scoped under /tenants/{tenantID}/tenant-directories",
 				"ran go generate ./..., which emitted the Tenant and TenantDirectory resources, the tenant segment pair under /tenants/{tenantID}, the roster constructor NewTenantRoster and the declaration reader NewTenantDeclarationReader",
@@ -383,9 +386,10 @@ func TestTenancyApply(t *testing.T) {
 	// The auth package gains the reader in its Settings and the sign-in rule in New, and
 	// the data level's settings literal passes the reader in.
 	withAuthDid := slices.Clone(tests[0].wantDid)
+	withAuthDid[6] = "app/tenancy.go: TenancyConfigurer (embedded in Configurer, asking TenantRoster() and TenantDeclarations()), App.TenantRoster() and App.TenantAdministratorRoles() (the staff auth's AdministratorRoles held in every tenant: the domain roles the Tenant record's create path seats a tenant's creator with, through the auth's user-management surface the generated contract asks the handlers for); app/app.go gained the fields and their assignments"
 	withAuthDid = slices.Insert(withAuthDid, 6,
-		"pkg/auth/staff/staff.go: Settings carries the declaration reader (TenantDeclarations), New refuses a nil one, and New sets the sign-in rule on the session (signin.TenantPolicy over the reader, the memberships read through resource.SignInRoles)",
-		"pkg/config/data.go: the staff.Settings literal in NewDataConfiguration (an application composed before the staffSettings method) passes the declaration reader (app.NewTenantDeclarationReader()) to the staff auth",
+		"pkg/auth/staff/staff.go: Settings carries the declaration reader (TenantDeclarations) and the directory reader (TenantDirectories), New refuses a nil one, and New sets the sign-in rule on the session (signin.TenantPolicy over the reader, the memberships read through resource.SignInRoles) and the directory admission (session.Auth.SetDirectoryAdmission over the directory reader, the seats written through resource.SeatDeclared)",
+		"pkg/config/data.go: the staff.Settings literal in NewDataConfiguration (an application composed before the staffSettings method) passes the declaration reader (app.NewTenantDeclarationReader()) and the directory reader (app.NewTenantDirectoryReader()) to the staff auth",
 	)
 	tests = append(tests, struct {
 		name        string
@@ -405,16 +409,28 @@ func TestTenancyApply(t *testing.T) {
 				t.Errorf("tenancy.go lacks %q:\n%s", want, config)
 			}
 			data := read(t, a, "pkg/config/data.go")
-			for _, want := range []string{"\ttenants       *resource.TenantRoster\n", "conf.startTenants(ctx)", "&staff.Settings{CookieKey: cookieKey, TenantDeclarations: app.NewTenantDeclarationReader()}", "\t\"example.com/acme/beacon/app\"\n"} {
+			for _, want := range []string{"\ttenants       *resource.TenantRoster\n", "conf.startTenants(ctx)", "&staff.Settings{CookieKey: cookieKey, TenantDeclarations: app.NewTenantDeclarationReader(), TenantDirectories: app.NewTenantDirectoryReader()}", "\t\"example.com/acme/beacon/app\"\n"} {
 				if !strings.Contains(data, want) {
 					t.Errorf("data.go lacks %q:\n%s", want, data)
 				}
 			}
+			tenancy := read(t, a, "app/tenancy.go")
+			for _, want := range []string{
+				"\t\"github.com/cccteam/ccc/accesstypes\"\n\t\"github.com/cccteam/ccc/resource\"\n\t\"example.com/acme/beacon/pkg/auth/staff\"\n",
+				"func (a *App) TenantAdministratorRoles() []accesstypes.Role {\n\t_, everyDomain := staff.AdministratorRoles()\n\n\treturn everyDomain\n}\n",
+			} {
+				if !strings.Contains(tenancy, want) {
+					t.Errorf("app/tenancy.go lacks %q:\n%s", want, tenancy)
+				}
+			}
 			staff := read(t, a, "pkg/auth/staff/staff.go")
 			for _, want := range []string{
-				"\tTenantDeclarations signin.DeclarationReader[*cloudspanner.ReadWriteTransaction]\n}",
-				"\tif settings.TenantDeclarations == nil {\n\t\treturn nil, errors.New(\"staff.Settings.TenantDeclarations is nil: the sign-in rule reads what each tenant declares about who may enter it through the generated reader (app.NewTenantDeclarationReader), which the data level hands in\")\n\t}\n\n\tstore, err := spannerstore.New(",
-				"\tauthSession.SetSignInPolicy(signin.TenantPolicy(resource.SignInRoles(accessClient.UserManager()), settings.TenantDeclarations))\n\n\treturn &Auth{db: db, access: accessClient, handlers: handlers}, nil\n",
+				"\tTenantDeclarations signin.DeclarationReader[*cloudspanner.ReadWriteTransaction]\n",
+				"\tTenantDirectories signin.DirectoryReader[*cloudspanner.ReadWriteTransaction]\n}",
+				"\tif settings.TenantDeclarations == nil {\n\t\treturn nil, errors.New(\"staff.Settings.TenantDeclarations is nil: the sign-in rule reads what each tenant declares about who may enter it through the generated reader (app.NewTenantDeclarationReader), which the data level hands in\")\n\t}\n",
+				"\tif settings.TenantDirectories == nil {\n\t\treturn nil, errors.New(\"staff.Settings.TenantDirectories is nil: the directory admission reads what the tenants declare about one directory, its default seat included, through the generated reader (app.NewTenantDirectoryReader), which the data level hands in\")\n\t}\n\n\tstore, err := spannerstore.New(",
+				"\tauthSession.SetSignInPolicy(signin.TenantPolicy(resource.SignInRoles(accessClient.UserManager()), settings.TenantDeclarations))\n\n\t// The directory admission",
+				"\tauthSession.SetDirectoryAdmission(settings.TenantDirectories, resource.SignInRoles(accessClient.UserManager()), resource.SeatDeclared(accessClient.UserManager()))\n\n\treturn &Auth{db: db, access: accessClient, handlers: handlers}, nil\n",
 				"\t\"github.com/cccteam/session/signin\"\n",
 				"\t\"github.com/cccteam/ccc/resource\"\n",
 			} {
@@ -447,6 +463,7 @@ func TestTenancyApply(t *testing.T) {
 			"pkg/config/data.go: NewDataConfiguration does not end in \"return &DataConfiguration{...}, nil\", so the roster's start was not inserted; call conf.startTenants(ctx) once the configuration is built, and fail the start on its error",
 			noSignals,
 			noAuth,
+			noSeatAuth,
 			noPermissions,
 		},
 		check: func(t *testing.T, a *app.App) {

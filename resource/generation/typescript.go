@@ -933,9 +933,19 @@ func (t *typescriptGenerator) apiResource(res *resourceInfo) *tsAPIResource {
 	return out
 }
 
-// newTSAPIField renders a resource field for the client file.
+// newTSAPIField renders a resource field for a write shape of the client file. A
+// nullable column takes an explicit null on the wire, which clears it, so its type says
+// so; a key is never nullable, and a nullable boolean's value type carries its own null.
 func newTSAPIField(field *resourceField, required bool) *tsAPIField {
-	return &tsAPIField{Name: strcase.ToCamel(field.Name()), Type: field.TypescriptDataType(), Required: required, Import: field.tsImport}
+	fieldType := field.TypescriptDataType()
+
+	return &tsAPIField{
+		Name:     strcase.ToCamel(field.Name()),
+		Type:     fieldType,
+		Required: required,
+		Nullable: field.IsNullable && !field.IsPrimaryKey && fieldType != nullBooleanTSType,
+		Import:   field.tsImport,
+	}
 }
 
 // apiOrder renders a declared @order for the descriptor: the JSON name of each field

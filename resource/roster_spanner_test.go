@@ -493,13 +493,26 @@ func TestTenantRoster_stopsWithContext(t *testing.T) {
 }
 
 // stationColumns names the declaration the roster tests' fixture carries: the
-// directory-only flag on Stations and the StationDirectories rows.
+// directory-only flag on Stations and the StationDirectories rows with their default
+// seat.
 var stationColumns = &TenantDeclarationColumns{
-	DirectoryOnly:    "DirectoryOnly",
-	DirectoriesTable: "StationDirectories",
-	TenantColumn:     "StationId",
-	MethodColumn:     "Method",
-	ConnectionColumn: "Connection",
+	DirectoryOnly:     "DirectoryOnly",
+	DirectoriesTable:  "StationDirectories",
+	TenantColumn:      "StationId",
+	MethodColumn:      "Method",
+	ConnectionColumn:  "Connection",
+	DefaultSeatColumn: "DefaultSeat",
+}
+
+// seatStationDirectory sets the default seat of one of a station's directories, the
+// row declareStation wrote at that index, as the Sign-in page's edit commits it.
+func seatStationDirectory(t *testing.T, db *initiator.SpannerDB, id accesstypes.Domain, index int, seat accesstypes.Role) {
+	t.Helper()
+
+	mutation := spanner.Update("StationDirectories", []string{"Id", "DefaultSeat"}, []any{string(id) + "-" + strconv.Itoa(index), string(seat)})
+	if _, err := db.Apply(t.Context(), []*spanner.Mutation{mutation}); err != nil {
+		t.Fatalf("spanner.Client.Apply() error = %v", err)
+	}
 }
 
 // declareStation writes a station's declaration the way the records' write paths commit
@@ -658,6 +671,59 @@ func TestNewTenantDeclarationReader(t *testing.T) {
 			}
 			if diff := cmp.Diff(tt.want, got); diff != "" {
 				t.Errorf("reader(%q) mismatch (-want +got):\n%s", tt.tenant, diff)
+			}
+		})
+	}
+}
+
+// TestNewTenantDirectoryReader pins the sign-in's directory reader over the emulator:
+// in the read-write transaction it is handed it answers every station's declaration of
+// one directory with the row's default seat ("" where the row names none), ordered by
+// station; nothing for a directory no station declares; and nothing without a
+// directories record, whatever the directory.
+func TestNewTenantDirectoryReader(t *testing.T) {
+	t.Parallel()
+
+	workspace := signin.Directory{Method: sessioninfo.MethodGoogle, Connection: "frontier.example"}
+	entra := signin.Directory{Method: sessioninfo.MethodAzure, Connection: "6f2c1b7e-0000-4000-8000-000000000001"}
+	db, _ := tenantDatabase(t, "directory-reader", "alpha", "beta", "gamma")
+	declareStation(t, db, "alpha", true, workspace, entra)
+	declareStation(t, db, "beta", false, workspace)
+	seatStationDirectory(t, db, "alpha", 0, "Clerk")
+	seatStationDirectory(t, db, "beta", 0, "Pilot")
+
+	tests := []struct {
+		name      string
+		columns   *TenantDeclarationColumns
+		directory signin.Directory
+		want      []signin.DeclaredDirectory
+	}{
+		{name: "a directory two stations declare: each with its seat, by station", columns: stationColumns, directory: workspace, want: []signin.DeclaredDirectory{{Tenant: "alpha", DefaultSeat: "Clerk"}, {Tenant: "beta", DefaultSeat: "Pilot"}}},
+		{name: "a row naming no seat: the empty seat", columns: stationColumns, directory: entra, want: []signin.DeclaredDirectory{{Tenant: "alpha"}}},
+		{name: "a directory no station declares: nothing", columns: stationColumns, directory: signin.Directory{Method: sessioninfo.MethodGoogle, Connection: "elsewhere.example"}, want: []signin.DeclaredDirectory{}},
+		{name: "a record without the seat column: every seat empty", columns: &TenantDeclarationColumns{DirectoryOnly: "DirectoryOnly", DirectoriesTable: "StationDirectories", TenantColumn: "StationId", MethodColumn: "Method", ConnectionColumn: "Connection"}, directory: workspace, want: []signin.DeclaredDirectory{{Tenant: "alpha"}, {Tenant: "beta"}}},
+		{name: "no directories record: nothing, with no read", columns: nil, directory: workspace, want: nil},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			reader := NewTenantDirectoryReader(tt.columns)
+			var got []signin.DeclaredDirectory
+			if _, err := db.ReadWriteTransaction(t.Context(), func(ctx context.Context, txn *spanner.ReadWriteTransaction) error {
+				declared, err := reader(ctx, txn, tt.directory)
+				if err != nil {
+					return err
+				}
+				got = declared
+
+				return nil
+			}); err != nil {
+				t.Fatalf("reader() error = %v", err)
+			}
+			if diff := cmp.Diff(tt.want, got); diff != "" {
+				t.Errorf("reader(%v) mismatch (-want +got):\n%s", tt.directory, diff)
 			}
 		})
 	}

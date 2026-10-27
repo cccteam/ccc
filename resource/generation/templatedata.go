@@ -114,8 +114,11 @@ type consolidatedPatchData struct {
 	SegmentCase *consolidatedCaseData
 	// HasTenant says the tenant record or the directories record is among the cases:
 	// the dispatcher then reloads the roster after a commit that wrote either, and
-	// signals the tenants kind.
+	// signals the tenants kind. Seat is the creator's seat the dispatcher writes after
+	// a commit that created tenants, nil where the record is not among the cases or
+	// its create seats nobody (tenantSeatData).
 	HasTenant           bool
+	Seat                *tenantSeatData
 	DomainRouteSegment  string
 	DomainPatternPrefix string // "/stations/{stationID}" — the chi pattern the descent case prefix-matches
 	Package             string
@@ -137,6 +140,10 @@ type consolidatedCaseData struct {
 	DomainPatternPrefix string // "" for global cases
 	ResourcePackage     string
 	ReceiverName        string
+	// Seated marks the tenant record's case when the dispatcher seats the creator of
+	// each tenant the transaction created (consolidatedPatchData.Seat): the case
+	// collects the keys its create operations wrote.
+	Seated bool
 }
 
 func (d *consolidatedPatchData) typeImports() []fixerImport {
@@ -154,6 +161,10 @@ type handlerContentData struct {
 	VirtualResourcesPackage string
 	ApplicationName         string
 	ReceiverName            string
+	// Seat is the creator's seat the tenant record's patch handler writes after a
+	// create's commit, nil on every other resource and where the record's create
+	// seats nobody (tenantSeatData).
+	Seat *tenantSeatData
 }
 
 // fileHandlerData feeds one @file route's handler on a table or view resource.
@@ -910,6 +921,10 @@ type tsAPIField struct {
 	Name     string
 	Type     string
 	Required bool
+	// Nullable is true for a nullable column in a write shape: the wire takes an
+	// explicit null for it, which clears the column, so the shape says `| null`. A
+	// nullable boolean carries its null form in its own value type instead.
+	Nullable bool
 	// Import is the @typescript declaration behind the field's type, nil for a
 	// built-in row or a derived interface.
 	Import *tsImport

@@ -9,7 +9,7 @@ import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { MatTableModule } from '@angular/material/table';
 import { injectApi } from '@app/api/api';
 import { Permissions, Resources } from '@app/service/zz_gen_constants';
-import { TenantDirectories, Tenants } from '@app/service/zz_gen_resources';
+import { StaffTenantRoles, TenantDirectories, Tenants } from '@app/service/zz_gen_resources';
 import { ApiError, Domain } from '@cccteam/resource';
 
 /** A sign-in method a directory is reached through, with what its connection is. */
@@ -47,7 +47,11 @@ export const directoryMethods: readonly DirectoryMethod[] = [
  * (the record's directory-only flag, which closes passwords). A directory is declared or
  * withdrawn here under the tenant's Create and Delete grants on TenantDirectories, which
  * the tenant's administrator holds; the flag is set under the Update grant on the global
- * Tenants record, the application's administrator's. The server reloads what every
+ * Tenants record, the application's administrator's. Each declared directory carries a
+ * default seat, the role a stranger who signs in through it is seated with in the tenant
+ * at their first sign-in: the tenant's administrator picks it from the tenant's roles, or
+ * none, under the Update grant on the row, and a row with none tells the directory's
+ * strangers the tenant admits them by invitation only. The server reloads what every
  * instance knows after each write, so a change decides the next request at once, and
  * each write leaves a change event.
  */
@@ -73,7 +77,9 @@ export class TenantSignInComponent {
   tenantID = input.required<string>();
 
   readonly methods = directoryMethods;
-  readonly columns = ['method', 'connection', 'withdraw'];
+  readonly columns = ['method', 'connection', 'seat', 'withdraw'];
+  /** The picker's choice for a directory whose strangers are admitted by invitation only. */
+  readonly invitationOnly = '';
 
   /** The tenant's row on the global record: its name and its directory-only flag. */
   tenant = resource({
@@ -92,7 +98,18 @@ export class TenantSignInComponent {
     defaultValue: [],
   });
 
+  /** The tenant's roles, the default seat's choices, listed where the digest grants List on them. */
+  roles = resource({
+    params: () => ({ tenant: this.tenantID() }),
+    loader: ({ params }): Promise<StaffTenantRoles[]> => {
+      const handle = this.api.domain(params.tenant as Domain).staffTenantRoles;
+      return handle.can(Permissions.List) ? handle.list() : Promise.resolve([]);
+    },
+    defaultValue: [],
+  });
+
   canList = computed(() => this.api.domain(this.tenantID() as Domain).tenantDirectories.can(Permissions.List));
+  canSeat = computed(() => this.api.domain(this.tenantID() as Domain).tenantDirectories.can(Permissions.Update));
   canDeclare = computed(() => this.api.domain(this.tenantID() as Domain).tenantDirectories.can(Permissions.Create));
   canWithdraw = computed(() => this.api.domain(this.tenantID() as Domain).tenantDirectories.can(Permissions.Delete));
   canClose = computed(() => this.api.can(Permissions.Update, Resources.Tenants));
@@ -128,6 +145,19 @@ export class TenantSignInComponent {
     await this.write(async () => {
       await this.api.domain(this.tenantID() as Domain).tenantDirectories.create({ method, connection: connection.trim() });
       this.form.controls.connection.reset();
+      this.directories.reload();
+    });
+  }
+
+  /** What the directory's strangers get, as the row says. */
+  seatOf(directory: TenantDirectories): string {
+    return directory.defaultSeat || 'Invitation only';
+  }
+
+  /** Sets the directory's default seat: a role of the tenant, or none (null clears the column). */
+  async seat(directory: TenantDirectories, role: string): Promise<void> {
+    await this.write(async () => {
+      await this.api.domain(this.tenantID() as Domain).tenantDirectories.patch([directory.id], { defaultSeat: role || null });
       this.directories.reload();
     });
   }

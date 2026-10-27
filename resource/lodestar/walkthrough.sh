@@ -172,7 +172,8 @@ r=$(curl -s -w '\n%{http_code}' "$PORTAL/user/methods"); assert_py "the portal t
 # ---- the two auths, and the crew's two ways in ----
 r=$(req client GET "$PORTAL/user/session"); assert_py "cleo is signed in through the directory" "$r" "rows['authenticated'] and rows['username']=='client'"
 r=$(req navigator GET "$API/user/session"); assert_py "the navigator is signed in on the console through the fleet's directory: a crew session like the password personas'" "$r" "rows['authenticated'] and rows['username']=='navigator'"
-r=$(req navigator GET "$API/user-domains"); assert_py "the directory's pilot group seats the navigator in every sector (Pilot is held in every sector), spelled the role file's way" "$r" "rows==['anvil','bastion','cinder']"
+r=$(req navigator GET "$API/user-domains"); assert_py "the navigator is on no manifest: his first sign-in created him seated where a declaring row names a default seat, Cinder's SectorCrew, and nowhere else (Anvil's and Bastion's rows name none)" "$r" "rows==['cinder']"
+r=$(req navigator GET "$API/sectors/cinder/crew-sector-users"); assert_py "Cinder's crew lists him as SectorCrew, the row's default seat" "$r" "[u['roles'] for u in rows if u['username']=='navigator']==[['SectorCrew']]"
 r=$(req client GET "$ANVIL/missions"); check "a client's session is a stranger to the console" 401 "$r"
 r=$(req marshal GET "$PORTAL/user-domains"); check "a crew session is a stranger to the portal" 401 "$r"
 
@@ -610,7 +611,10 @@ fi
 # does not exist; the client's portal, whose directory role is held in every sector, opens
 # Dawn at once, as the governor and the archivist see it with nothing written for them; and
 # the second process serves Dawn at its next request, its roster reloaded on the signal
-# rather than at the five-minute backstop. Demonstrates: tenancy.run-time-tenant.
+# rather than at the five-minute backstop. The create path seats the creator as the new
+# sector's marshal (SectorMarshal, the role SectorAdministratorRoles names), whatever the
+# creation shape: the surveyor is Dawn's first administrator, as the pioneer is Ember's.
+# Demonstrates: tenancy.run-time-tenant, tenancy.creator-seat.
 DAWN=$API/sectors/dawn
 r=$(req surveyor GET "$API/user-domains"); assert_py "the surveyor's chart lights the three charted sectors: SectorCrew held in every sector" "$r" "rows == ['anvil','bastion','cinder']"
 r=$(req surveyor GET "$DAWN/wings"); check "Dawn is not on the chart yet: a sector that does not exist" 404 "$r"
@@ -625,6 +629,8 @@ r=$(req surveyor GET "$API/user-domains"); assert_py "her star chart lights Dawn
 r=$(req surveyor GET "$DAWN/wings"); check "Dawn's wings answer her: SectorCrew, held in every sector, reached Dawn with nothing written" 200 "$r"
 assert_py "an empty wing list: Dawn is charted, not yet crewed" "$r" "rows == []"
 r=$(req surveyor PATCH "$API/resources" '[{"op":"patch","path":"/sectors/dawn","value":{"region":"Far frontier"}}]'); check "the surveyor corrects Dawn's region (Update on Sectors)" 200 "$r"
+r=$(req surveyor GET "$DAWN/crew-sector-users"); check "the create path seated the surveyor as Dawn's marshal: Dawn's crew answers her" 200 "$r"
+assert_py "and lists her as SectorMarshal" "$r" "'SectorMarshal' in [u['roles'] for u in rows if u['username']=='surveyor'][0]"
 r=$(req marshal GET "$API/user-domains"); assert_py "the marshal's chart does not light Dawn" "$r" "rows == ['anvil']"
 r=$(req marshal GET "$DAWN/wings"); check "Dawn's routes answer the marshal 404: a sector that does not exist for her" 404 "$r"
 r=$(req governor GET "$API/user-domains"); assert_py "the governor, marshal in every sector, sees Dawn" "$r" "rows == ['anvil','bastion','cinder','dawn']"
@@ -683,8 +689,12 @@ r=$(req client GET "$PORTAL/user-domains"); assert_py "cleo's portal lists Ember
 # directory in a role held in every sector, charts all three, Bastion included; the
 # governor withdraws Anvil's directory and the navigator's next request stands outside
 # Anvil; headquarters opens Bastion to passwords and the rigger's chart lights it and the
-# bosun signs in. The staff, a global role, keep every sector throughout.
-# Demonstrates: tenancy.declaration, tenancy.directory-only.
+# bosun signs in. The staff, a global role, keep every sector throughout. Each directory
+# row carries a default seat (SectorDirectory.DefaultSeat), what a stranger the directory
+# vouches for gets at their first sign-in: Cinder's names SectorCrew, which seated the
+# navigator; the governor clears it (an explicit null, the way the Sign-in page's picker
+# does) and names it again, under Update on the row.
+# Demonstrates: tenancy.declaration, tenancy.directory-only, tenancy.default-seat.
 login rigger
 r=$(req rigger GET "$API/user-domains"); assert_py "the rigger's chart lights Anvil alone: Bastion admits its people through its directory only, and she came by password" "$r" "rows == ['anvil']"
 r=$(req rigger GET "$API/sectors/bastion/wings"); check "Bastion answers her as a sector that does not exist" 404 "$r"
@@ -693,6 +703,8 @@ rm -f "$S/bosun.jar"; curl -s -L -c "$S/bosun.jar" -b "$S/bosun.jar" -o /dev/nul
 r=$(curl -s -c "$S/bosun.jar" -b "$S/bosun.jar" -H "X-XSRF-TOKEN: $(xsrf bosun)" -H 'Content-Type: application/json' -d '{"username":"bosun","password":"lodestar"}' -w '\n%{http_code}' "$API/user/password/login")
 check "the bosun, whose only sector is Bastion, is refused at sign-in" 401 "$r"
 assert_py "naming the rule: directory_only" "$r" "rows['code']=='directory_only'"
+r=$(req governor GET "$API/crew-users"); NAVIGATOR_ID=$(body "$r" | py "print([u['id'] for u in rows if u['username']=='navigator'][0])")
+r=$(req governor PATCH "$API/crew-seats" "[{\"op\":\"add\",\"path\":\"/$NAVIGATOR_ID/Pilot\",\"value\":{}}]"); check "the governor seats the navigator as Pilot in the global partition, a domain role held in every sector" 200 "$r"
 r=$(req navigator GET "$API/user-domains"); assert_py "the navigator, through the fleet's directory, which every sector declares, charts all three: Bastion admits him" "$r" "rows == ['anvil','bastion','cinder']"
 r=$(req governor GET "$ANVIL/sector-directories"); assert_py "Anvil declares one directory: the fleet's Google Workspace, example" "$r" "[(d['method'],d['connection']) for d in rows]==[('google','example')]"
 ANVIL_DIRECTORY=$(body "$r" | py "print(rows[0]['id'])")
@@ -710,6 +722,13 @@ r=$(curl -s -c "$S/bosun.jar" -b "$S/bosun.jar" -H "X-XSRF-TOKEN: $(xsrf bosun)"
 check "and the bosun signs in" 200 "$r"
 r=$(req governor PATCH "$API/resources" '[{"op":"patch","path":"/sectors/bastion","value":{"directoryOnly":true}}]'); check "headquarters closes Bastion again" 200 "$r"
 r=$(req bosun GET "$API/user-domains"); assert_py "the bosun's chart goes dark: the session stands, and reaches no sector" "$r" "rows == []"
+r=$(req governor GET "$API/sectors/cinder/sector-directories"); assert_py "Cinder's directory row names SectorCrew as its default seat" "$r" "[(d['method'],d['connection'],d.get('defaultSeat')) for d in rows]==[('google','example','SectorCrew')]"
+CINDER_DIRECTORY=$(body "$r" | py "print(rows[0]['id'])")
+r=$(req marshal PATCH "$API/resources" "[{\"op\":\"patch\",\"path\":\"/sectors/cinder/sector-directories/$CINDER_DIRECTORY\",\"value\":{\"defaultSeat\":null}}]"); check "the marshal of Anvil holds no Update on Cinder's rows" 403 "$r"
+r=$(req governor PATCH "$API/resources" "[{\"op\":\"patch\",\"path\":\"/sectors/cinder/sector-directories/$CINDER_DIRECTORY\",\"value\":{\"defaultSeat\":null}}]"); check "the governor clears Cinder's default seat: an explicit null clears the column" 200 "$r"
+r=$(req governor GET "$API/sectors/cinder/sector-directories"); assert_py "the row names no seat: a stranger from the fleet's directory is now admitted by invitation only" "$r" "[d.get('defaultSeat') for d in rows]==[None]"
+r=$(req governor PATCH "$API/resources" "[{\"op\":\"patch\",\"path\":\"/sectors/cinder/sector-directories/$CINDER_DIRECTORY\",\"value\":{\"defaultSeat\":\"SectorCrew\"}}]"); check "and names SectorCrew again" 200 "$r"
+r=$(req governor GET "$API/sectors/cinder/sector-directories"); assert_py "the row names SectorCrew" "$r" "[d.get('defaultSeat') for d in rows]==['SectorCrew']"
 
 # ---- squadrons config page: the array config's request ----
 # The Squadrons page's "Other squadrons in this sector" is an arrayConfig over the same resource, its listFilter excluding the page's row by the indexed key; Squadrons declares a maximum, so the library asks one server page (the key column alone, with the count) and draws each row by the iterated config. Demonstrates: config.array.

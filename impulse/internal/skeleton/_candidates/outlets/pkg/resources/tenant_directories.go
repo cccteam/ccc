@@ -17,6 +17,12 @@ type (
 	// administrator declares its directories on the console under the record's Create
 	// and Delete grants (Administrator_Domain), and the change events are the audit.
 	//
+	// DefaultSeat is what a stranger the directory vouches for gets at their first
+	// sign-in: the tenant's role they are seated with, or NULL, and the tenant admits
+	// them by invitation only (they are refused with no account, and an invitation is
+	// the way in). The tenant's administrator sets it on the Sign-in page, a picker
+	// over the tenant's roles.
+	//
 	// The tenancy column is on the row itself (the bare @domain binding), as the
 	// directories record requires: a directory is the tenant's own declaration, stamped
 	// from the request's tenant on create, never written by the wire. The record is on
@@ -34,6 +40,8 @@ type (
 		Method string `spanner:"Method"`
 		// @directoryConnection
 		Connection string `spanner:"Connection"`
+		// @directoryDefaultSeat
+		DefaultSeat *string `spanner:"DefaultSeat"`
 	}
 )
 

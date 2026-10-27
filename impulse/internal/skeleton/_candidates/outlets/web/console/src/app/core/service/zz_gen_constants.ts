@@ -405,12 +405,14 @@ export namespace StaffUsers {
 export namespace TenantDirectories {
   export const fieldName = {
     connection: 'connection' as FieldName,
+    defaultSeat: 'defaultSeat' as FieldName,
     id: 'id' as FieldName,
     method: 'method' as FieldName,
     tenantId: 'tenantId' as FieldName,
   };
   export const resourceName = {
     connection: 'TenantDirectories.connection' as Resource,
+    defaultSeat: 'TenantDirectories.defaultSeat' as Resource,
     id: 'TenantDirectories.id' as Resource,
     method: 'TenantDirectories.method' as Resource,
     tenantId: 'TenantDirectories.tenantId' as Resource,

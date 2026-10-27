@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/cccteam/access"
+	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/outlets/pkg/auth"
 	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/outlets/pkg/auth/members"
 	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/outlets/pkg/auth/staff"
@@ -146,12 +147,18 @@ type App struct {
 
 // New constructs an App from its dependencies.
 func New(cfg Configurer) *App {
+	// The user-management surfaces over the auths' stores: each knows its auth's
+	// administrator roles (resource.WithAdministratorRoles), so a self-unseat is judged
+	// by the last-owner rule, and what each tenant declares (resource.WithTenantDirectories),
+	// so a tenant's administrator seats a person its own directory vouched for.
+	staffAccounts, staffSeats := cfg.StaffUserStores()
+	memberAccounts, memberSeats := cfg.MembersUserStores()
 	a := &App{
 		access:         cfg.Access(),
 		engines:        map[string]access.Controller{},
 		resourceClient: cfg.ResourceClient(),
-		staffUsers:     router.NewStaffUserSurface(cfg.StaffUserStores()),
-		membersUsers:   router.NewMembersUserSurface(cfg.MembersUserStores()),
+		staffUsers:     router.NewStaffUserSurface(staffAccounts, staffSeats, resource.WithTenantDirectories(cfg.TenantDeclarations()), resource.WithAdministratorRoles(staff.AdministratorRoles())),
+		membersUsers:   router.NewMembersUserSurface(memberAccounts, memberSeats, resource.WithTenantDirectories(cfg.TenantDeclarations()), resource.WithAdministratorRoles(members.AdministratorRoles())),
 		cursorKey:      cfg.CursorKey(),
 		tenants:        cfg.TenantRoster(),
 		declarations:   cfg.TenantDeclarations(),
@@ -325,6 +332,17 @@ func (a *App) UserPermissions(r *http.Request) resource.UserPermissions {
 // generated write paths add and remove tenants in it after their commit.
 func (a *App) TenantRoster() *resource.TenantRoster {
 	return a.tenants
+}
+
+// TenantAdministratorRoles names the domain roles the person who creates a tenant holds
+// in it from then on, seated by the Tenant record's create path once the row commits:
+// the staff auth's administrator role in a tenant, the one the development administrator
+// holds in every tenant (pkg/auth/staff, AdministratorRoles), so the first person in a
+// tenant can do there what an administrator can, invite its people included.
+func (a *App) TenantAdministratorRoles() []accesstypes.Role {
+	_, everyDomain := staff.AdministratorRoles()
+
+	return everyDomain
 }
 
 // Validator returns the request validator the generated decoder constructors draw on.

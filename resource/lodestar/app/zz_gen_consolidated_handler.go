@@ -146,10 +146,11 @@ func (a *App) PatchResources() http.HandlerFunc {
 	sectorDecoder := NewDecoder[resources.Sector, sectorRequest](a, accesstypes.Create, accesstypes.Update, accesstypes.Delete)
 
 	type sectorDirectoryRequest struct {
-		ID         ccc.UUID `json:"-"`
-		SectorID   string   `json:"-"`
-		Method     string   `json:"method"     sqltype:"STRING(16)"`
-		Connection string   `json:"connection"`
+		ID          ccc.UUID `json:"-"`
+		SectorID    string   `json:"-"`
+		Method      string   `json:"method"      sqltype:"STRING(16)"`
+		Connection  string   `json:"connection"`
+		DefaultSeat *string  `json:"defaultSeat" sqltype:"STRING(64)"`
 	}
 	sectorDirectoryDecoder := NewDecoder[resources.SectorDirectory, sectorDirectoryRequest](a, accesstypes.Create, accesstypes.Update, accesstypes.Delete)
 
@@ -217,6 +218,14 @@ func (a *App) PatchResources() http.HandlerFunc {
 
 	type response map[string][]ccc.UUID
 
+	// The creator of a Sector is its first administrator: the roles SectorAdministratorRoles
+	// names, seated through the Crew auth's seats after a create's commit.
+	roles := a.SectorAdministratorRoles()
+	if len(roles) == 0 {
+		panic("SectorAdministratorRoles() names no role: the person who creates a Sector holds its administrator role, which the application names there")
+	}
+	seats := a.CrewUserSurface().SeatStore()
+
 	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
 		ctx, span := tracer.Start(r.Context())
 		defer span.End()
@@ -230,6 +239,8 @@ func (a *App) PatchResources() http.HandlerFunc {
 		// The roster follows the commit: a tenant or a declaration this transaction
 		// writes reaches it once the commit lands, never inside the transaction.
 		tenantsWritten := false
+		// The Sectors this transaction creates, their creator seated after the commit.
+		var created []string
 
 		// The rows the transaction writes are collected for the live pages, published
 		// once the commit lands and before the answer, each under the domain its
@@ -238,6 +249,7 @@ func (a *App) PatchResources() http.HandlerFunc {
 		if err := a.ResourceClient().ExecuteFunc(ctx, func(ctx context.Context, txn resource.ReadWriteTransaction) error {
 			resp = response{}
 			tenantsWritten = false
+			created = nil
 			r, err := resource.CloneRequest(r)
 			if err != nil {
 				return errors.Wrap(err, "resource.CloneRequest()")
@@ -432,6 +444,7 @@ func (a *App) PatchResources() http.HandlerFunc {
 							if err := resources.NewSectorCreatePatchFromPatchSet(id, patchSet).Buffer(ctx, txn, eventSource); err != nil {
 								return errors.Wrap(err, "resources.SectorCreatePatch.Buffer()")
 							}
+							created = append(created, id)
 						case resource.OperationUpdate:
 							id := httpio.Param[string](req, "id")
 							if err := resources.NewSectorUpdatePatchFromPatchSet(id, patchSet).Buffer(ctx, txn, eventSource); err != nil {
@@ -905,6 +918,31 @@ func (a *App) PatchResources() http.HandlerFunc {
 			if err := a.TenantRoster().Reload(ctx); err != nil {
 				logger.FromCtx(ctx).Errorf("tenants: rereading the roster after the commit failed; this instance reloads on the tenants signal or at its backstop: %v", err)
 			}
+		}
+		for _, domain := range created {
+			if err := resource.SeatFirstAdministrator(ctx, seats, userPermissions, accesstypes.Domain(domain), roles); err != nil {
+				if undo := a.ResourceClient().ExecuteFunc(ctx, func(ctx context.Context, txn resource.ReadWriteTransaction) error {
+					for _, row := range created {
+						if err := resources.NewSectorDeletePatch(row).Buffer(ctx, txn, eventSource); err != nil {
+							return errors.Wrap(err, "resources.SectorDeletePatch.Buffer()")
+						}
+					}
+
+					return nil
+				}); undo != nil {
+					logger.FromCtx(ctx).Errorf("sector %s: its creator could not be seated as its administrator, and the rows this request created could not be removed either: %v", domain, undo)
+				}
+				if err := a.TenantRoster().Reload(ctx); err != nil {
+					logger.FromCtx(ctx).Errorf("tenants: rereading the roster after the rows were removed failed; this instance reloads on the tenants signal or at its backstop: %v", err)
+				}
+				if err := a.LiveService().Signal(ctx, resource.KindTenants); err != nil {
+					logger.FromCtx(ctx).Errorf("tenants: signaling the tenants kind failed; the other instances reload at their backstop: %v", err)
+				}
+
+				return httpio.NewEncoder(w).ClientMessage(ctx, err)
+			}
+		}
+		if tenantsWritten {
 			if err := a.LiveService().Signal(ctx, resource.KindTenants); err != nil {
 				logger.FromCtx(ctx).Errorf("tenants: signaling the tenants kind failed; the other instances reload at their backstop: %v", err)
 			}

@@ -165,6 +165,78 @@ func Test_validateTenantCreation(t *testing.T) {
 // Test_tenantCreationFields pins the create-your-tenant request's shape: the key first
 // and required, then every column the wire may write, required where the column is,
 // and no server-owned column.
+// Test_tenantSeatData pins what the record's create path seats its creator with: the
+// accessors over the auth of the session outlets serving the record; nothing for a
+// record created through its route alone or served by no session auth; a refusal
+// where the record's outlets bind to different auths.
+func Test_tenantSeatData(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		creation tenantCreation
+		mutate   func(r *resourceGenerator)
+		want     *tenantSeatData
+		wantErr  string
+	}{
+		{
+			name:   "the default outlet's auth seats the creator",
+			mutate: func(r *resourceGenerator) { r.defaultOutlet.auth = openAuth("example.com/app/pkg/auth/staff") },
+			want:   &tenantSeatData{Record: "Station", RecordLower: "station", KeyType: "string", Auth: "Staff", AuthType: "StaffAuth", SurfaceAccessor: "StaffUserSurface", RolesAccessor: "StationAdministratorRoles"},
+		},
+		{
+			name:     "the both shape seats the creator of an administrator's create too",
+			creation: tenantCreationBoth,
+			mutate:   func(r *resourceGenerator) { r.defaultOutlet.auth = openAuth("example.com/app/pkg/auth/staff") },
+			want:     &tenantSeatData{Record: "Station", RecordLower: "station", KeyType: "string", Auth: "Staff", AuthType: "StaffAuth", SurfaceAccessor: "StaffUserSurface", RolesAccessor: "StationAdministratorRoles"},
+		},
+		{
+			name:     "a self-service record has no create path to seat through",
+			creation: tenantCreationSelfService,
+			mutate:   func(r *resourceGenerator) { r.defaultOutlet.auth = openAuth("example.com/app/pkg/auth/staff") },
+		},
+		{
+			name: "no session auth, no seat",
+		},
+		{
+			name: "outlets bound to different auths are refused",
+			mutate: func(r *resourceGenerator) {
+				r.resources[0].OutletNames = []string{defaultOutletName, "members"}
+				r.defaultOutlet.auth = openAuth("example.com/app/pkg/auth/staff")
+				r.extraOutlets = []routerOutlet{{name: "members", prefix: "members", servesSessions: true, auth: openAuth("example.com/app/pkg/auth/members")}}
+			},
+			wantErr: `struct Station: the record is served by outlets bound to different auths ("example.com/app/pkg/auth/staff" and "example.com/app/pkg/auth/members"); its create seats the creator as the station's first administrator through one auth's user-management surface, so serve the record on the outlets of one auth (@outlet)`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			r := tenantCreationFixtureGenerator(t, "Station", func(r *resourceGenerator) {
+				r.resources[0].TenantCreation = tt.creation
+				if tt.mutate != nil {
+					tt.mutate(r)
+				}
+			})
+			got, err := r.tenantSeatData(r.resources[0])
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("tenantSeatData() error = %v, want it to contain %q", err, tt.wantErr)
+				}
+
+				return
+			}
+			if err != nil {
+				t.Fatalf("tenantSeatData() error = %v", err)
+			}
+			if diff := cmp.Diff(tt.want, got); diff != "" {
+				t.Errorf("tenantSeatData() mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
 func Test_tenantCreationFields(t *testing.T) {
 	t.Parallel()
 
@@ -426,11 +498,11 @@ func Test_apiClientData_tenantCreation(t *testing.T) {
 			},
 		},
 		{
-			name:   "a self-service record's nullable column is optional",
+			name:   "a self-service record's nullable column is optional and takes null",
 			record: "Station",
 			wantContains: []string{
 				"export const createStationRoute = 'create-station';",
-				"export interface CreateStation {\n  id: string;\n  name: string;\n  motto?: string;\n  opened: string;\n}",
+				"export interface CreateStation {\n  id: string;\n  name: string;\n  motto?: string | null;\n  opened: string;\n}",
 			},
 			wantNotContains: []string{"derived"},
 		},

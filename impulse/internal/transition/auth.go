@@ -522,6 +522,9 @@ func (au Auth) writePackage(a *app.App, src *authSource, spec *authpkg.Spec, ch 
 		if spec.TenantPolicy.AdmitWithoutTenant {
 			rule += ", admitting a person who holds no tenant yet (signin.AdmitWithoutTenant), since the record is created by its own people"
 		}
+		if spec.DirectoryAdmission() {
+			rule += fmt.Sprintf(", and the directory admission over the record's directory rows (session.Auth.SetDirectoryAdmission through the directory reader its settings carry, %s: a stranger from a declared directory gets the row's default seat or is refused by invitation only)", spec.TenantPolicy.DirectoryReader())
+		}
 	}
 	ch.didf("%s: the %s auth package (%s), rendered from the skeleton's auth source: the Auth session over tables prefixed %s, the %s permission store, and the methods %s, each in its own file%s", dir, au.Name, strings.Join(authpkg.FileNames(spec), ", "), au.Pascal(), au.Name, strings.Join(described, ", "), rule)
 	switch authpkg.Foothold(spec) {

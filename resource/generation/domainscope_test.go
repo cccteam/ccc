@@ -695,6 +695,39 @@ func Test_consolidatedTemplate_domainDispatch(t *testing.T) {
 			},
 		},
 		{
+			name: "the tenant record's create seats its creator between the roster's reload and the signal",
+			data: consolidatedPatchData{
+				Resources: []*resourceInfo{globalCase.resourceInfo, domainCase.resourceInfo},
+				SegmentCase: &consolidatedCaseData{
+					resourceInfo:    fixtureResource(t, tenantStructs, "Sector", func(res *resourceInfo) { res.IsTenant = true }),
+					ResourcePackage: "resources",
+					ReceiverName:    "a",
+					Seated:          true,
+				},
+				HasTenant:           true,
+				Seat:                &tenantSeatData{Record: "Sector", RecordLower: "sector", KeyType: "string", Auth: "Staff", AuthType: "StaffAuth", SurfaceAccessor: "StaffUserSurface", RolesAccessor: "SectorAdministratorRoles"},
+				DomainCases:         []consolidatedCaseData{domainCase},
+				DomainRouteSegment:  "sectors",
+				DomainPatternPrefix: "/sectors/{sectorID}",
+				Package:             "app",
+				ResourcePackage:     "resources",
+				ApplicationName:     "App",
+				ReceiverName:        "a",
+				HandlerName:         "PatchResources",
+			},
+			wantContains: []string{
+				"roles := a.SectorAdministratorRoles()",
+				"seats := a.StaffUserSurface().SeatStore()",
+				"var created []string",
+				"created = nil",
+				"created = append(created, id)",
+				"for _, domain := range created {",
+				"if err := resource.SeatFirstAdministrator(ctx, seats, userPermissions, accesstypes.Domain(domain), roles); err != nil {",
+				"resources.NewSectorDeletePatch(row).Buffer(ctx, txn, eventSource)",
+				"return httpio.NewEncoder(w).ClientMessage(ctx, err)",
+			},
+		},
+		{
 			name: "concealed domains ask the roster, the session's reach, then the caller's foothold",
 			data: consolidatedPatchData{
 				Resources:           []*resourceInfo{globalCase.resourceInfo, domainCase.resourceInfo},
@@ -755,6 +788,17 @@ func Test_consolidatedTemplate_domainDispatch(t *testing.T) {
 			for _, notWant := range tt.wantNotContains {
 				if strings.Contains(string(out), notWant) {
 					t.Errorf("consolidatedPatchTemplate output must not contain %q:\n%s", notWant, out)
+				}
+			}
+			if tt.data.Seat != nil {
+				// The seat between the roster's reload and the tenants signal, before the answer.
+				rendered := string(out)
+				reload := strings.Index(rendered, "a.TenantRoster().Reload(ctx)")
+				seat := strings.Index(rendered, "resource.SeatFirstAdministrator(")
+				signal := strings.LastIndex(rendered, "Signal(ctx, resource.KindTenants)")
+				answer := strings.Index(rendered, "return httpio.NewEncoder(w).Ok(resp)")
+				if reload >= seat || seat >= signal || signal >= answer {
+					t.Errorf("order: roster %d, seat %d, signal %d, answer %d; want ascending:\n%s", reload, seat, signal, answer, out)
 				}
 			}
 		})

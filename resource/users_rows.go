@@ -690,6 +690,23 @@ func (snap *userSnapshot) seatsOf() []*composedSeat {
 	return seats
 }
 
+// administratorRemains reports whether a holder of one of the administrator roles
+// would remain in the partition once the seat is removed: any seat of the partition but
+// that one whose role is among them, the same person's other administrator seat
+// included.
+func (snap *userSnapshot) administratorRemains(roles []accesstypes.Role, removed *composedSeat) bool {
+	for _, seat := range snap.seatsOf() {
+		if seat.user.ID == removed.user.ID && seat.role == removed.role && seat.scope == removed.scope {
+			continue
+		}
+		if slices.Contains(roles, seat.role) {
+			return true
+		}
+	}
+
+	return false
+}
+
 // seatOf finds one seat of the partition by user and role.
 func (snap *userSnapshot) seatOf(user *UserAccount, role accesstypes.Role) *composedSeat {
 	for _, scope := range snap.partition.seatScopes {

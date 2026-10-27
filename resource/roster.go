@@ -65,6 +65,13 @@ type TenantDeclarationColumns struct {
 	TenantColumn     string
 	MethodColumn     string
 	ConnectionColumn string
+	// DefaultSeatColumn is the directories record's column naming the role a person the
+	// directory vouches for is seated with in the tenant at their first sign-in, NULL or
+	// empty for none (the tenant admits its people through that directory by invitation
+	// only); empty when the record carries no such column, and every directory admits
+	// by invitation only. Read by the sign-in's directory reader
+	// (NewTenantDirectoryReader), never by the roster.
+	DefaultSeatColumn string
 }
 
 // declared reports whether the roster reads a declaration: the columns are given and
@@ -360,6 +367,48 @@ func NewTenantDeclarationReader(table, keyColumn string, columns *TenantDeclarat
 		}
 
 		return set[tenant], nil
+	}
+}
+
+// NewTenantDirectoryReader returns the reader of every tenant's declaration of one
+// directory, for a first sign-in by a person no user was created for
+// (session.Auth.SetDirectoryAdmission, through signin.DirectoryReader): the directories
+// record's rows whose method and connection are the directory's, each as its tenant
+// with the directory's default seat (DefaultSeatColumn, "" where the record carries no
+// such column or the row names none), read in the sign-in's own transaction on
+// Spanner. The generated New<Record>DirectoryReader constructor supplies the columns;
+// an application calls that one. A directory no tenant declares answers nothing, and
+// so does a record that declares no directories. The reader has no side effects, as a
+// retried transaction needs.
+func NewTenantDirectoryReader(columns *TenantDeclarationColumns) signin.DirectoryReader[*spanner.ReadWriteTransaction] {
+	return func(ctx context.Context, txn *spanner.ReadWriteTransaction, directory signin.Directory) ([]signin.DeclaredDirectory, error) {
+		if !columns.declared() {
+			return nil, nil
+		}
+		g := newSQLGenerator(Spanner)
+		seat := "''"
+		if columns.DefaultSeatColumn != "" {
+			seat = fmt.Sprintf("COALESCE(%s, '')", g.quoteIdentifier(columns.DefaultSeatColumn))
+		}
+		statement := spanner.Statement{
+			SQL: fmt.Sprintf("SELECT CAST(%s AS %s) AS Domain, %s AS DefaultSeat FROM %s WHERE %s = @method AND %s = @connection ORDER BY %s",
+				g.quoteIdentifier(columns.TenantColumn), columnTypeString, seat, g.quoteIdentifier(columns.DirectoriesTable),
+				g.quoteIdentifier(columns.MethodColumn), g.quoteIdentifier(columns.ConnectionColumn), g.quoteIdentifier(columns.TenantColumn)),
+			Params: map[string]any{"method": string(directory.Method), "connection": directory.Connection},
+		}
+		var rows []struct {
+			Domain      string `spanner:"Domain"`
+			DefaultSeat string `spanner:"DefaultSeat"`
+		}
+		if err := spxscan.Select(ctx, txn, &rows, statement); err != nil {
+			return nil, errors.Wrap(err, "spxscan.Select()")
+		}
+		declared := make([]signin.DeclaredDirectory, 0, len(rows))
+		for _, row := range rows {
+			declared = append(declared, signin.DeclaredDirectory{Tenant: accesstypes.Domain(row.Domain), DefaultSeat: accesstypes.Role(row.DefaultSeat)})
+		}
+
+		return declared, nil
 	}
 }
 

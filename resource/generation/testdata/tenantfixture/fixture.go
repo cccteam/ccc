@@ -175,7 +175,8 @@ type (
 	}
 
 	// HarborDirectory is the well-formed directories record: tenant-scoped through the
-	// bare @domain column, with its method and connection columns.
+	// bare @domain column, with its method and connection columns and the default seat
+	// a stranger it vouches for gets at their first sign-in.
 	//
 	// @resource
 	// @permissionScope(domain)
@@ -188,6 +189,73 @@ type (
 		Method string `spanner:"Method"`
 		// @directoryConnection
 		Connection string `spanner:"Connection"`
+		// @directoryDefaultSeat
+		DefaultSeat *string `spanner:"DefaultSeat"`
+	}
+
+	// Breakwater is a well-formed directories record without the default seat column:
+	// every harbor admits the strangers its directories vouch for by invitation only.
+	//
+	// @resource
+	// @permissionScope(domain)
+	// @tenantDirectory
+	Breakwater struct {
+		ID ccc.UUID `spanner:"Id"`
+		// @domain
+		HarborID string `spanner:"HarborId"`
+		// @directoryMethod
+		Method string `spanner:"Method"`
+		// @directoryConnection
+		Connection string `spanner:"Connection"`
+	}
+
+	// Slipway declares @directoryDefaultSeat on a resource that is not the directories
+	// record.
+	//
+	// @resource
+	// @permissionScope(domain)
+	Slipway struct {
+		ID ccc.UUID `spanner:"Id"`
+		// @domain
+		HarborID string `spanner:"HarborId"`
+		// @directoryDefaultSeat
+		Seat string `spanner:"Seat"`
+	}
+
+	// Wharf is a directories record whose default seat is a BOOL.
+	//
+	// @resource
+	// @permissionScope(domain)
+	// @tenantDirectory
+	Wharf struct {
+		ID ccc.UUID `spanner:"Id"`
+		// @domain
+		HarborID string `spanner:"HarborId"`
+		// @directoryMethod
+		Method string `spanner:"Method"`
+		// @directoryConnection
+		Connection string `spanner:"Connection"`
+		// @directoryDefaultSeat
+		Seated bool `spanner:"Seated"`
+	}
+
+	// Bollard is a directories record declaring @directoryDefaultSeat on two columns.
+	//
+	// @resource
+	// @permissionScope(domain)
+	// @tenantDirectory
+	Bollard struct {
+		ID ccc.UUID `spanner:"Id"`
+		// @domain
+		HarborID string `spanner:"HarborId"`
+		// @directoryMethod
+		Method string `spanner:"Method"`
+		// @directoryConnection
+		Connection string `spanner:"Connection"`
+		// @directoryDefaultSeat
+		Seat string `spanner:"Seat"`
+		// @directoryDefaultSeat
+		Rank string `spanner:"Rank"`
 	}
 
 	// Pier declares @directoryOnly on a resource that is not the tenant record.

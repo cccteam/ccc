@@ -188,9 +188,18 @@ type tenantsData struct {
 	// RecordLower is the word for one of the record's rows in prose.
 	RecordLower string
 	// Declaration is the declaration's columns (resource.TenantDeclarationColumns), nil
-	// where the record declares none; Directories names the directories record.
+	// where the record declares none; Directories names the directories record and
+	// DefaultSeat its default seat field, empty where it carries none.
 	Declaration *tenantDeclarationColumns
 	Directories string
+	DefaultSeat string
+	// Seat is the creator's seat the record's create path writes, nil where the
+	// record's create seats nobody (tenantSeatData); the file asserts the accessors
+	// it draws on against the application type.
+	Seat                *tenantSeatData
+	LocalPackageImports string
+	RouterPackage       string
+	ApplicationName     string
 }
 
 // generateTenants emits the tenant record's roster constructor, New<Record>Roster, into
@@ -207,17 +216,28 @@ func (r *resourceGenerator) generateTenants() error {
 	destinationFilePath := filepath.Join(r.handler.Dir(), generatedGoFileName(tenantRosterOutputName))
 
 	keyColumn, _ := tenant.PrimaryKey().LookupTag(spannerTagKey)
+	seat, err := r.tenantSeatData(tenant)
+	if err != nil {
+		return err
+	}
 	data := &tenantsData{
-		Source:      r.resource.Dir(),
-		Package:     r.handler.Package(),
-		Name:        tenant.Name(),
-		Table:       r.pluralize(tenant.Name()),
-		KeyColumn:   keyColumn,
-		RecordLower: strings.ToLower(strcase.ToCase(tenant.Name(), strcase.LowerCase, ' ')),
-		Declaration: r.declarationColumns(tenant),
+		Source:              r.resource.Dir(),
+		Package:             r.handler.Package(),
+		Name:                tenant.Name(),
+		Table:               r.pluralize(tenant.Name()),
+		KeyColumn:           keyColumn,
+		RecordLower:         strings.ToLower(strcase.ToCase(tenant.Name(), strcase.LowerCase, ' ')),
+		Declaration:         r.declarationColumns(tenant),
+		Seat:                seat,
+		LocalPackageImports: r.localPackageImports(),
+		RouterPackage:       r.router.Package(),
+		ApplicationName:     r.applicationName,
 	}
 	if tenant.HasDeclaration() {
 		data.Directories = tenant.declaration.Directories.Name()
+		if field := tenant.declaration.Directories.DirectoryDefaultSeatField; field != nil {
+			data.DefaultSeat = field.Name()
+		}
 	}
 	if err := r.writeFormattedGoFile(destinationFilePath, "tenantsTemplate", tenantsTemplate, data); err != nil {
 		return errors.Wrap(err, "writeFormattedGoFile()")

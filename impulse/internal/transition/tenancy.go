@@ -195,11 +195,14 @@ CREATE UNIQUE INDEX %[1]sByName ON %[1]s(Name);
 -- sign-in method (google, azure, workos) and the connection the method's identities
 -- carry (a Google Workspace by its domain, a Microsoft Entra tenant by its tenant id).
 -- One domain, one directory by default; a second directory is a second row.
+-- DefaultSeat names the role a stranger the directory vouches for is seated with in the
+-- tenant at their first sign-in; NULL says the tenant admits them by invitation only.
 CREATE TABLE %[2]s (
   Id STRING(36) NOT NULL,
   %[3]sId STRING(64) NOT NULL,
   Method STRING(16) NOT NULL,
   Connection STRING(MAX) NOT NULL,
+  DefaultSeat STRING(64),
 
   CONSTRAINT CK_%[2]s_Id CHECK (REGEXP_CONTAINS(Id, r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')),
   CONSTRAINT CK_%[2]s_Method CHECK (Method IN ('google', 'azure', 'workos')),
@@ -215,7 +218,7 @@ CREATE UNIQUE INDEX %[2]sBy%[3]sIdMethodConnection ON %[2]s(%[3]sId, Method, Con
 	if err := writeNew(a, path.Join(dir, base+".down.sql"), down); err != nil {
 		return err
 	}
-	ch.didf("%s/%s.up.sql and .down.sql: the %s table (a slug primary key, a unique Name, and DirectoryOnly) and the %s table (the tenant's declared directories)", dir, base, tn.Table, tn.DirectoryTable())
+	ch.didf("%s/%s.up.sql and .down.sql: the %s table (a slug primary key, a unique Name, and DirectoryOnly) and the %s table (the tenant's declared directories, each with its DefaultSeat)", dir, base, tn.Table, tn.DirectoryTable())
 
 	return nil
 }
@@ -548,10 +551,20 @@ func (tn Tenancy) editApp(a *app.App, ch *Change) error {
 		}
 	}
 	tenancyFile := path.Join(path.Dir(rel), "tenancy.go")
-	if err := writeNew(a, tenancyFile, tn.appSource(pkg)); err != nil {
+	seatPkg := tn.seatAuth(a)
+	seatPkgName := ""
+	if seatPkg != nil {
+		seatPkgName = packageNameOf(a, seatPkg.Dir)
+	}
+	if err := writeNew(a, tenancyFile, tn.appSource(pkg, seatPkg, seatPkgName)); err != nil {
 		return err
 	}
-	ch.didf("%s: TenancyConfigurer (embedded in Configurer, asking %s() and %s()) and App.%s(); %s gained the fields and their assignments", tenancyFile, rosterAccessor, declarationsAccessor, rosterAccessor, rel)
+	if seatPkg == nil {
+		ch.skipf("no auth whose roles the application assigns constructs a session.Auth the scan reads, so the roles the %s record's create path seats a tenant's creator with were not exposed on the app; the generated contract asks the handlers for %s() []accesstypes.Role (the domain roles the creator holds in the new tenant, the auth's AdministratorRoles held in every tenant) beside the auth's user-management surface accessor (<Auth>UserSurface()); add them where the App is declared", tn.Record(), tn.rolesAccessor())
+		ch.didf("%s: TenancyConfigurer (embedded in Configurer, asking %s() and %s()) and App.%s(); %s gained the fields and their assignments", tenancyFile, rosterAccessor, declarationsAccessor, rosterAccessor, rel)
+	} else {
+		ch.didf("%s: TenancyConfigurer (embedded in Configurer, asking %s() and %s()), App.%s() and App.%s() (the %s auth's AdministratorRoles held in every tenant: the domain roles the %s record's create path seats a tenant's creator with, through the auth's user-management surface the generated contract asks the handlers for); %s gained the fields and their assignments", tenancyFile, rosterAccessor, declarationsAccessor, rosterAccessor, tn.rolesAccessor(), seatPkg.Name, tn.Record(), rel)
+	}
 	if edited != nil {
 		if err := tn.editPermissions(a, rel, ch); err != nil {
 			return err
@@ -599,10 +612,53 @@ func (Tenancy) editPermissions(a *app.App, rel string, ch *Change) error {
 	return nil
 }
 
-func (tn Tenancy) appSource(pkg string) string {
+// rolesAccessor is the generated contract's accessor of the roles the tenant record's
+// create path seats a tenant's creator with: <Record>AdministratorRoles.
+func (tn Tenancy) rolesAccessor() string {
+	return tn.Record() + "AdministratorRoles"
+}
+
+// seatAuth picks the auth whose user-management surface the tenant record's create
+// path seats a tenant's creator through: the first auth package whose Auth the scan
+// reads and whose roles the application assigns (an auth whose directory names the
+// roles seats nobody). Nil when none qualifies.
+func (tn Tenancy) seatAuth(a *app.App) *app.AuthPackage {
+	for i := range a.AuthPackages {
+		pkg := &a.AuthPackages[i]
+		for j := range a.Auths {
+			if path.Dir(a.Auths[j].File) == pkg.Dir && !directoryAuthority(&a.Auths[j]) {
+				return pkg
+			}
+		}
+	}
+
+	return nil
+}
+
+// appSource is the App's tenancy file: the configurer's tenancy half, the roster's
+// accessor and, over the seat auth when one qualifies, the creator's roles.
+func (tn Tenancy) appSource(pkg string, seatPkg *app.AuthPackage, seatPkgName string) string {
+	imports := `import "github.com/cccteam/ccc/resource"`
+	roles := ""
+	if seatPkg != nil {
+		imports = fmt.Sprintf("import (\n\t\"github.com/cccteam/ccc/accesstypes\"\n\t\"github.com/cccteam/ccc/resource\"\n\t%q\n)", seatPkg.Path)
+		roles = fmt.Sprintf(`
+// %[1]s names the domain roles the person who creates a %[2]s holds in it from
+// then on, seated by the %[3]s record's create path once the row commits: the %[4]s
+// auth's administrator role in a tenant, the one its first administrator holds in every
+// tenant (%[5]s.AdministratorRoles), so the first person in a tenant can do there what an
+// administrator can, invite its people included.
+func (a *App) %[1]s() []accesstypes.Role {
+	_, everyDomain := %[5]s.AdministratorRoles()
+
+	return everyDomain
+}
+`, tn.rolesAccessor(), strings.ToLower(tn.Record()), tn.Record(), seatPkg.Name, seatPkgName)
+	}
+
 	return fmt.Sprintf(`package %s
 
-import "github.com/cccteam/ccc/resource"
+%s
 
 // TenancyConfigurer is what the configuration provides for tenancy: the tenant roster the
 // data level built with the generated constructor and started, and the roster's copy of
@@ -612,22 +668,22 @@ import "github.com/cccteam/ccc/resource"
 // existence is concealed (generation.WithConcealedDomains) they ask the caller's foothold
 // next, so a prober cannot confirm a tenant exists from the rejection shape.
 type TenancyConfigurer interface {
-	%[2]s() *resource.TenantRoster
-	// %[3]s reads what a tenant declares about who may enter it, as the running
+	%[3]s() *resource.TenantRoster
+	// %[4]s reads what a tenant declares about who may enter it, as the running
 	// application knows it: the roster's copy, reloaded on every write of the tenant
 	// record or its directories. UserPermissions hands it to resource.SessionPermissions,
 	// so a tenant declaring a directory is offered to a session that came through that
 	// directory, and a directory-only tenant to no password session.
-	%[3]s() resource.TenantDeclarations
+	%[4]s() resource.TenantDeclarations
 }
 
-// %[2]s returns the application's tenant roster, the generated contract's accessor
+// %[3]s returns the application's tenant roster, the generated contract's accessor
 // (domainScopedApp); UserPermissions hands its Domains to resource.SessionPermissions, so
 // a session's tenant list is the roster filtered by the principal's footholds.
-func (a *App) %[2]s() *resource.TenantRoster {
+func (a *App) %[3]s() *resource.TenantRoster {
 	return a.tenants
 }
-`, pkg, rosterAccessor, declarationsAccessor)
+%[5]s`, pkg, imports, rosterAccessor, declarationsAccessor, roles)
 }
 
 // packageNameOf is the package clause of the non-test Go files under a root-relative

@@ -45,6 +45,7 @@ func TestResetDevelopmentData(t *testing.T) {
 		// Required by the auth, though this suite signs nobody in, mails nothing and
 		// approves no program.
 		TenantDeclarations: app.NewSectorDeclarationReader(),
+		TenantDirectories:  app.NewSectorDirectoryReader(),
 		Mail:               auth.Mail{Sender: &mail.Recorder{}, LoginURL: "http://lodestar.test" + consoleLogin},
 		DevicePage:         consoleDevice,
 	})

@@ -19,10 +19,11 @@ import (
 
 func (a *App) SectorDirectories() http.HandlerFunc {
 	type sectorDirectory struct {
-		ID         ccc.UUID `json:"id"         index:"true" perm:"-"`
-		SectorID   string   `json:"sectorId"   index:"true"`
-		Method     string   `json:"method"     index:"true"`
-		Connection string   `json:"connection"`
+		ID          ccc.UUID `json:"id"          index:"true" perm:"-"`
+		SectorID    string   `json:"sectorId"    index:"true"`
+		Method      string   `json:"method"      index:"true"`
+		Connection  string   `json:"connection"`
+		DefaultSeat *string  `json:"defaultSeat"`
 	}
 
 	type response []map[string]any
@@ -81,6 +82,10 @@ func (a *App) SectorDirectories() http.HandlerFunc {
 					if !row.Masked("connection") {
 						rmap["connection"] = rec.Connection
 					}
+				case "DefaultSeat":
+					if !row.Masked("defaultSeat") {
+						rmap["defaultSeat"] = rec.DefaultSeat
+					}
 				}
 			}
 			if capabilities := row.Capabilities(); capabilities != nil {
@@ -104,10 +109,11 @@ func (a *App) SectorDirectories() http.HandlerFunc {
 
 func (a *App) SectorDirectory() http.HandlerFunc {
 	type response struct {
-		ID         ccc.UUID `json:"id"         index:"true" perm:"-"`
-		SectorID   string   `json:"sectorId"`
-		Method     string   `json:"method"`
-		Connection string   `json:"connection"`
+		ID          ccc.UUID `json:"id"          index:"true" perm:"-"`
+		SectorID    string   `json:"sectorId"`
+		Method      string   `json:"method"`
+		Connection  string   `json:"connection"`
+		DefaultSeat *string  `json:"defaultSeat"`
 	}
 
 	decoder := NewQueryDecoder[resources.SectorDirectory, response](a, accesstypes.Read)
@@ -153,6 +159,10 @@ func (a *App) SectorDirectory() http.HandlerFunc {
 			case "Connection":
 				if !row.Masked("connection") {
 					rmap["connection"] = rec.Connection
+				}
+			case "DefaultSeat":
+				if !row.Masked("defaultSeat") {
+					rmap["defaultSeat"] = rec.DefaultSeat
 				}
 			}
 		}

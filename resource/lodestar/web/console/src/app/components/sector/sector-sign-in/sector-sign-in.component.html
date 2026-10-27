@@ -6,7 +6,10 @@
   directory here; one domain is one directory, and a second directory is a second declaration. Passwords are this
   application's own way in, and every sector admits them unless it is <strong>directory only</strong>: then its people
   enter through its directories alone, and a password does not reach it. A person whose every sector is directory only
-  cannot sign in with a password at all.
+  cannot sign in with a password at all. Each declared directory carries a <strong>default seat</strong>: the role a
+  stranger who signs in through it is seated with here at their first sign-in, so they enter at once. With no default
+  seat, the directory's strangers are told this sector admits people by invitation only, and an invited person enters
+  with the roles the invitation names.
 </p>
 
 @if (error()) {
@@ -31,6 +34,27 @@
           <th mat-header-cell *matHeaderCellDef>Connection</th>
           <td mat-cell *matCellDef="let directory">
             <code>{{ directory.connection }}</code>
+          </td>
+        </ng-container>
+        <ng-container matColumnDef="seat">
+          <th mat-header-cell *matHeaderCellDef>Default seat</th>
+          <td mat-cell *matCellDef="let directory">
+            @if (canSeat()) {
+              <mat-select
+                class="seat-picker"
+                aria-label="Default seat"
+                [value]="directory.defaultSeat || invitationOnly"
+                [disabled]="busy()"
+                (selectionChange)="seat(directory, $event.value)"
+              >
+                <mat-option [value]="invitationOnly">Invitation only</mat-option>
+                @for (role of roles.value(); track role.name) {
+                  <mat-option [value]="role.name">{{ role.name }}</mat-option>
+                }
+              </mat-select>
+            } @else {
+              {{ seatOf(directory) }}
+            }
           </td>
         </ng-container>
         <ng-container matColumnDef="withdraw">
@@ -59,7 +83,8 @@
     <mat-card-header>
       <mat-card-title>Declare a directory</mat-card-title>
       <mat-card-subtitle>
-        A person who signs in through it enters this sector, provided they hold a role here.
+        A person who signs in through it enters this sector when they hold a role here; a stranger gets the default
+        seat you pick, or is told to ask for an invitation.
       </mat-card-subtitle>
     </mat-card-header>
     <mat-card-content>

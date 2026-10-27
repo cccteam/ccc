@@ -42,8 +42,10 @@ import (
 // hand out with the post-image: Create on <Auth><Tenant>Seats under
 // new.role IN ('Member', 'Clerk'); an invitation carries its roles, and a condition on
 // role is judged once per role it carries, so the same grant limits an invitation. The
-// rules no role file writes are the library's: nobody deactivates, deletes or unseats
-// themselves; a user seated outside the tenant is managed from the global partition,
+// rules no role file writes are the library's: nobody deactivates or deletes
+// themselves, and nobody unseats themselves from the last administrator seat of a
+// partition (WithAdministratorRoles; without it, from any seat); a user seated outside
+// the tenant is managed from the global partition,
 // so the tenant partition refuses the account-level actions on them; a user whose roles
 // a directory writes (a registration declared SyncsRoles) is not seated by hand; a
 // person whose last seat anywhere is removed is deleted with their identity links (the
@@ -418,7 +420,16 @@ type UserSurface[A UserAuth] struct {
 
 // userSurfaceSettings is what the options set.
 type userSurfaceSettings struct {
-	declarations TenantDeclarations
+	declarations   TenantDeclarations
+	administrators *administratorRoles
+}
+
+// administratorRoles are the roles whose holders administer a partition, by where
+// they are held: the global ones in the global partition, the domain ones in a tenant
+// partition (held in the tenant's own scope or in every tenant).
+type administratorRoles struct {
+	global []accesstypes.Role
+	domain []accesstypes.Role
 }
 
 // UserSurfaceOption configures a surface at construction.
@@ -434,6 +445,20 @@ type UserSurfaceOption func(*userSurfaceSettings)
 func WithTenantDirectories(declarations TenantDeclarations) UserSurfaceOption {
 	return func(s *userSurfaceSettings) {
 		s.declarations = declarations
+	}
+}
+
+// WithAdministratorRoles names the roles whose holders administer a partition, which
+// turns the surface's refusal of a self-unseat into the last-owner rule: a person may
+// unseat themselves unless the seat is one of the partition's administrator roles and
+// no other holder of one would remain there. The global roles are the global
+// partition's (held in the global scope), the domain roles a tenant partition's (held
+// in the tenant's own scope or in every tenant). Without the option every self-unseat
+// is refused, as it was. An application passes its auth's administrator roles, the
+// ones its first administrator is seeded with (the auth package's AdministratorRoles).
+func WithAdministratorRoles(global, domain []accesstypes.Role) UserSurfaceOption {
+	return func(s *userSurfaceSettings) {
+		s.administrators = &administratorRoles{global: global, domain: domain}
 	}
 }
 

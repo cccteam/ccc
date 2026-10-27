@@ -548,16 +548,19 @@ func TestAuthApply(t *testing.T) {
 			auth:  Auth{Name: "partners", Outlet: "default"},
 			extra: map[string]string{"pkg/config/data.go": declaredConfig, "pkg/resources/tenants.go": tenantRecord},
 			wantDid: []string{
-				packageDid + ", and the sign-in rule over the Tenant record's declaration (signin.TenantPolicy through the reader its settings carry, app.NewTenantDeclarationReader), admitting a person who holds no tenant yet (signin.AdmitWithoutTenant), since the record is created by its own people",
+				packageDid + ", and the sign-in rule over the Tenant record's declaration (signin.TenantPolicy through the reader its settings carry, app.NewTenantDeclarationReader), admitting a person who holds no tenant yet (signin.AdmitWithoutTenant), since the record is created by its own people, and the directory admission over the record's directory rows (session.Auth.SetDirectoryAdmission through the directory reader its settings carry, app.NewTenantDirectoryReader: a stranger from a declared directory gets the row's default seat or is refused by invitation only)",
 				migrationsDid, rolesDid, configDid, "ran go generate ./...",
 			},
 			check: func(t *testing.T, a *app.App) {
 				t.Helper()
 				pkg := read(t, a, "pkg/auth/partners/partners.go")
 				for _, want := range []string{
-					"\tTenantDeclarations signin.DeclarationReader[*cloudspanner.ReadWriteTransaction]\n}",
-					"\tif settings.TenantDeclarations == nil {\n\t\treturn nil, errors.New(\"partners.Settings.TenantDeclarations is nil: the sign-in rule reads what each tenant declares about who may enter it through the generated reader (app.NewTenantDeclarationReader), which the data level hands in\")\n\t}\n\tstore, err := spannerstore.New(",
-					"\tauthSession.SetSignInPolicy(signin.TenantPolicy(resource.SignInRoles(accessClient.UserManager()), settings.TenantDeclarations, signin.AdmitWithoutTenant()))\n\n\t// An invitation accepted seats its roles",
+					"\tTenantDeclarations signin.DeclarationReader[*cloudspanner.ReadWriteTransaction]\n",
+					"\tTenantDirectories signin.DirectoryReader[*cloudspanner.ReadWriteTransaction]\n}",
+					"\tif settings.TenantDeclarations == nil {\n\t\treturn nil, errors.New(\"partners.Settings.TenantDeclarations is nil: the sign-in rule reads what each tenant declares about who may enter it through the generated reader (app.NewTenantDeclarationReader), which the data level hands in\")\n\t}\n",
+					"\tif settings.TenantDirectories == nil {\n\t\treturn nil, errors.New(\"partners.Settings.TenantDirectories is nil: the directory admission reads what the tenants declare about one directory, its default seat included, through the generated reader (app.NewTenantDirectoryReader), which the data level hands in\")\n\t}\n\tstore, err := spannerstore.New(",
+					"\tauthSession.SetSignInPolicy(signin.TenantPolicy(resource.SignInRoles(accessClient.UserManager()), settings.TenantDeclarations, signin.AdmitWithoutTenant()))\n\n\t// The directory admission",
+					"\tauthSession.SetDirectoryAdmission(settings.TenantDirectories, resource.SignInRoles(accessClient.UserManager()), resource.SeatDeclared(accessClient.UserManager()))\n\n\t// An invitation accepted seats its roles",
 					"\tauthSession.SetInvitationAccepted(resource.SeatInvited(accessClient.UserManager()))\n\n\treturn &Auth{db: db, access: accessClient, handlers: handlers}, nil\n",
 					"\t\"github.com/cccteam/session/signin\"\n",
 				} {

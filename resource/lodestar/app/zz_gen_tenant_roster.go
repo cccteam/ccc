@@ -5,20 +5,32 @@ package app
 
 import (
 	"cloud.google.com/go/spanner"
+	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/resource"
+	"github.com/cccteam/ccc/resource/lodestar/pkg/router"
 	"github.com/cccteam/session/signin"
 )
 
+// The Sector record's create seats its creator as the first administrator of the new
+// sector (resource.SeatFirstAdministrator, after the commit) with the roles
+// SectorAdministratorRoles names, through the Crew auth's user-management surface:
+// the application supplies both beside the generated contract.
+var _ interface {
+	SectorAdministratorRoles() []accesstypes.Role
+	CrewUserSurface() *resource.UserSurface[router.CrewAuth]
+} = (*App)(nil)
+
 // sectorDeclaration names where the Sector record keeps its declaration of who
 // may enter a sector (@directoryOnly on the record, the SectorDirectory record's columns): what
-// the roster reads beside the keys and the sign-in policy's reader reads in its own
+// the roster reads beside the keys and the sign-in's readers read in its own
 // transaction.
 var sectorDeclaration = resource.TenantDeclarationColumns{
-	DirectoryOnly:    "DirectoryOnly",
-	DirectoriesTable: "SectorDirectories",
-	TenantColumn:     "SectorId",
-	MethodColumn:     "Method",
-	ConnectionColumn: "Connection",
+	DirectoryOnly:     "DirectoryOnly",
+	DirectoriesTable:  "SectorDirectories",
+	TenantColumn:      "SectorId",
+	MethodColumn:      "Method",
+	ConnectionColumn:  "Connection",
+	DefaultSeatColumn: "DefaultSeat",
 }
 
 // NewSectorRoster builds the application's tenant roster over the Sector record
@@ -45,4 +57,16 @@ func NewSectorRoster(client resource.Client, opts ...resource.TenantRosterOption
 // settings; a sector the table does not hold declares nothing.
 func NewSectorDeclarationReader() signin.DeclarationReader[*spanner.ReadWriteTransaction] {
 	return resource.NewTenantDeclarationReader("Sectors", "Id", &sectorDeclaration)
+}
+
+// NewSectorDirectoryReader builds the sign-in's reader of every sector's declaration of
+// one directory (session.Auth.SetDirectoryAdmission, through signin.DirectoryReader):
+// the SectorDirectory rows naming the directory's method and connection, each as its sector
+// with the default seat the row carries (SectorDirectory.DefaultSeat: the role a stranger the
+// directory vouches for is seated with at their first sign-in, none for a NULL, and the
+// sector admits them by invitation only),
+// read in the sign-in's own transaction. The application hands it to the auth whose
+// people enter sectors, beside the seat hook (resource.SeatDeclared).
+func NewSectorDirectoryReader() signin.DirectoryReader[*spanner.ReadWriteTransaction] {
+	return resource.NewTenantDirectoryReader(&sectorDeclaration)
 }

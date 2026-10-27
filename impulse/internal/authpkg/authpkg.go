@@ -81,6 +81,33 @@ type TenantPolicy struct {
 	AdmitWithoutTenant bool
 }
 
+// DirectoryReader is the generated directory reader's constructor as the data level
+// qualifies it (app.NewTenantDirectoryReader), beside the declaration reader: the
+// reader of every tenant's declaration of one directory with its default seat, which
+// the auth's directory admission decides a stranger's first sign-in with.
+func (p *TenantPolicy) DirectoryReader() string {
+	return strings.TrimSuffix(p.Reader, "New"+p.Record+"DeclarationReader") + "New" + p.Record + "DirectoryReader"
+}
+
+// DirectoryAdmission reports whether the auth sets the library's directory admission
+// (session.Auth.SetDirectoryAdmission) over the tenant record's directory rows: an auth
+// serving a tenanted site whose roles the application assigns. An auth with a
+// registration whose directory writes the roles is the directory's authority for
+// everyone it holds, and sets none: its strangers are provisioned with the roles the
+// directory names.
+func (s *Spec) DirectoryAdmission() bool {
+	if s.TenantPolicy == nil {
+		return false
+	}
+	for i := range s.Methods {
+		if s.Methods[i].SyncsRoles() {
+			return false
+		}
+	}
+
+	return true
+}
+
 // AdministratorRoles are role names by where a membership is held: the global partition
 // and every tenant domain.
 type AdministratorRoles struct {

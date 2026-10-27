@@ -18,11 +18,17 @@ type (
 	// sector), and the change events are the audit. A self-service sector's first
 	// directory is the one its creator came through, written by the create-sector route.
 	//
+	// DefaultSeat is what a fleet member nobody has seated gets when they first sign in
+	// through the directory: the sector's role they are seated with (Cinder seats them
+	// SectorCrew), or NULL, and the sector admits them by invitation only (Anvil,
+	// Bastion): they are refused with no account, and an invitation is the way in. The
+	// marshal sets it on the Sign-in page, a picker over the sector's roles.
+	//
 	// The tenancy column is on the row itself (the bare @domain binding), as the
 	// directories record requires: a directory is the sector's own declaration, stamped
 	// from the request's sector on create, never written by the wire.
 	//
-	// Demonstrates: tenancy.declaration, tenancy.creator-directory.
+	// Demonstrates: tenancy.declaration, tenancy.creator-directory, tenancy.default-seat.
 	//
 	// @resource
 	// @permissionScope(domain)
@@ -36,6 +42,8 @@ type (
 		Method string `spanner:"Method"`
 		// @directoryConnection
 		Connection string `spanner:"Connection"`
+		// @directoryDefaultSeat
+		DefaultSeat *string `spanner:"DefaultSeat"`
 	}
 )
 
