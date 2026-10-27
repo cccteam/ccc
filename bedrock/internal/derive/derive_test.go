@@ -58,6 +58,12 @@ func methodLine(a *Auth, m *Method) string {
 		fields = append(fields, f.Field+"="+f.Variable.Name)
 	}
 	line += "; " + strings.Join(fields, " ")
+	if m.Tenants != "" {
+		line += "; tenants " + m.Tenants
+		if m.PersonalAccounts {
+			line += "+personal"
+		}
+	}
 	if m.GroupPrefixDefault != "" || m.GroupLookupDefault != "" {
 		line += "; groups " + m.GroupPrefixDefault + " " + m.GroupLookupDefault
 	}
@@ -142,7 +148,7 @@ func TestDerive(t *testing.T) {
 			wantMigrate:  []string{LevelCore, LevelData},
 			wantJobs:     []string{LevelCore, LevelData},
 			wantMethods: []string{
-				"members/directory azure application: outlet portal, callback GET /portal/api/user/directory/callback, logout GET /portal/api/user/directory/logout; TenantID=APP_MEMBERS_DIRECTORY_TENANT_ID ClientID=APP_MEMBERS_DIRECTORY_CLIENT_ID ClientSecret=APP_MEMBERS_DIRECTORY_CLIENT_SECRET RedirectURL=APP_MEMBERS_DIRECTORY_REDIRECT_URL",
+				"members/directory azure application: outlet portal, callback GET /portal/api/user/directory/callback, logout GET /portal/api/user/directory/logout; TenantID=APP_MEMBERS_DIRECTORY_TENANT_ID ClientID=APP_MEMBERS_DIRECTORY_CLIENT_ID ClientSecret=APP_MEMBERS_DIRECTORY_CLIENT_SECRET RedirectURL=APP_MEMBERS_DIRECTORY_REDIRECT_URL; tenants one",
 				"staff/directory google directory: outlet default, callback GET /api/user/directory/callback; HostedDomain=APP_STAFF_DIRECTORY_HOSTED_DOMAIN ClientID=APP_STAFF_DIRECTORY_CLIENT_ID ClientSecret=APP_STAFF_DIRECTORY_CLIENT_SECRET RedirectURL=APP_STAFF_DIRECTORY_REDIRECT_URL GroupPrefix=APP_STAFF_DIRECTORY_GROUP_PREFIX GroupLookup=APP_STAFF_DIRECTORY_GROUP_LOOKUP; groups staff- direct",
 			},
 			wantSchema: Schema{MigrationsDir: "schema/migrations", MigrateCall: "pkg/deploy MigrateSchema", GenerateDir: "cmd/generate", GeneratePackage: "generate"},

@@ -193,6 +193,17 @@ type Method struct {
 	// AuthorityApplication for DisableRoleSync, and empty for the password method or a
 	// slot the scan does not read.
 	Authority string
+	// Tenants is the tenant shape of a Microsoft registration, read from the
+	// registration's Tenants slot: TenantsOne for azure.Tenant or azure.NamedTenant alone,
+	// TenantsListed for azure.Tenants of several tenants, TenantsAny for azure.AnyTenant
+	// (alone or beside listed tenants) and TenantsPersonal for azure.PersonalAccounts
+	// alone. Empty for another method, and for a slot the scan does not read, such as
+	// the tenants a function parses out of a setting at startup.
+	Tenants string
+	// PersonalAccounts reports a Microsoft registration admitting Microsoft personal
+	// accounts (azure.PersonalAccounts), alone (TenantsPersonal) or beside the tenants
+	// Tenants describes.
+	PersonalAccounts bool
 	// AuthVar is the identifier the registration's first argument names: the Auth it is
 	// registered on. The scan attaches the method to that construction, or to the only
 	// Auth of its package when the identifier does not resolve.

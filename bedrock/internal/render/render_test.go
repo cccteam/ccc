@@ -128,6 +128,128 @@ func TestRenderGolden(t *testing.T) {
 	}
 }
 
+// TestMicrosoftHandStep renders the README's hand step for a Microsoft registration
+// under every tenant shape, over the harbor fixture's registration with its shape and
+// its slot setting varied: the supported account type the Entra admin center offers
+// for the shape, in the admin center's words; the consent another tenant gives a
+// registration admitting tenants beyond its own; and, when the scan did not read the
+// shape, the one the settings imply, said to be taken from them.
+func TestMicrosoftHandStep(t *testing.T) {
+	t.Parallel()
+
+	const (
+		consent      = "Another tenant admits the registration once its administrator consents at"
+		fromSettings = "taken from the registration's settings"
+	)
+	tests := []struct {
+		name     string
+		tenants  string
+		personal bool
+		// slot is the slot setting the registration declares in place of harbor's tenant
+		// id: FieldTenantID, FieldTenants, or none.
+		slot    string
+		want    []string
+		wantNot []string
+	}{
+		{
+			name: "one tenant", tenants: app.TenantsOne, slot: derive.FieldTenantID,
+			want:    []string{"**Single tenant only**, the entry naming your tenant", `("Accounts in this organizational directory only" in the admin center's`, "the directory (tenant) ID in\n   `members_directory_tenant_id`"},
+			wantNot: []string{consent, fromSettings},
+		},
+		{
+			name: "listed tenants", tenants: app.TenantsListed, slot: derive.FieldTenants,
+			want:    []string{"**Multiple Entra ID tenants**", `("Accounts in any organizational directory (Multitenant)" in the admin center's`, "the tenants it admits, named, in `members_directory_tenants`", consent, "`https://login.microsoftonline.com/<that tenant's id>/adminconsent?client_id=<the client id>`"},
+			wantNot: []string{fromSettings, "naming your tenant"},
+		},
+		{
+			name: "any tenant", tenants: app.TenantsAny,
+			want:    []string{"**Multiple Entra ID tenants**", consent, "(`members_directory_client_id`), and add the client secret"},
+			wantNot: []string{fromSettings},
+		},
+		{
+			name: "any tenant and personal accounts", tenants: app.TenantsAny, personal: true,
+			want:    []string{"**Any Entra ID Tenant + Personal Microsoft accounts**", `("Accounts in any organizational directory and personal Microsoft accounts" in`, consent},
+			wantNot: []string{fromSettings},
+		},
+		{
+			name: "one tenant and personal accounts", tenants: app.TenantsOne, personal: true, slot: derive.FieldTenantID,
+			want:    []string{"**Any Entra ID Tenant + Personal Microsoft accounts**", "the directory (tenant) ID in"},
+			wantNot: []string{consent, "naming your tenant"},
+		},
+		{
+			name: "listed tenants and personal accounts", tenants: app.TenantsListed, personal: true, slot: derive.FieldTenants,
+			want: []string{"**Any Entra ID Tenant + Personal Microsoft accounts**", "the tenants it admits, named, in", consent},
+		},
+		{
+			name: "personal accounts alone", tenants: app.TenantsPersonal, personal: true,
+			want:    []string{"**Personal accounts only**", `("Personal Microsoft accounts only" in the admin center's`},
+			wantNot: []string{consent, fromSettings},
+		},
+		{
+			name: "a shape the scan did not read, with a tenant id", slot: derive.FieldTenantID,
+			want:    []string{"**Single tenant only**", fromSettings, "the directory (tenant) ID in"},
+			wantNot: []string{consent},
+		},
+		{
+			name: "a shape the scan did not read, with listed tenants", slot: derive.FieldTenants,
+			want: []string{"**Multiple Entra ID tenants**", fromSettings, consent},
+		},
+		{
+			name: "a shape the scan did not read, with no slot setting",
+			want: []string{"**Multiple Entra ID tenants**", fromSettings, consent},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			m := deriveFixture(t, "harbor", "placement.json")
+			var method *derive.Method
+			for _, d := range m.DirectoryMethods() {
+				if d.Kind == app.MethodAzure {
+					method = d
+				}
+			}
+			if method == nil {
+				t.Fatal("harbor registers no Microsoft method")
+			}
+			method.Tenants, method.PersonalAccounts = tt.tenants, tt.personal
+			tenantID := method.Variables[derive.FieldTenantID]
+			delete(method.Variables, derive.FieldTenantID)
+			if tt.slot != "" {
+				slot := *tenantID
+				method.Variables[tt.slot] = &slot
+			}
+			files, err := Render(m)
+			if err != nil {
+				t.Fatalf("Render() error = %v", err)
+			}
+			var readme string
+			for _, f := range files {
+				if f.Path == "README.md" && !f.Root {
+					readme = string(f.Content)
+				}
+			}
+			start := strings.Index(readme, "In the Microsoft Entra admin center")
+			end := strings.Index(readme, "In the Google Cloud console")
+			if start < 0 || end < start {
+				t.Fatalf("the README renders no Microsoft hand step before the Google one:\n%s", readme)
+			}
+			step := readme[start:end]
+			for _, want := range tt.want {
+				if !strings.Contains(step, want) {
+					t.Errorf("the step lacks %q:\n%s", want, step)
+				}
+			}
+			for _, wantNot := range tt.wantNot {
+				if strings.Contains(step, wantNot) {
+					t.Errorf("the step carries %q:\n%s", wantNot, step)
+				}
+			}
+		})
+	}
+}
+
 // firstDiff shows the first differing line of two texts, with a little context.
 func firstDiff(want, got []byte) string {
 	w := strings.Split(string(want), "\n")

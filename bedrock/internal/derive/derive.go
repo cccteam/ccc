@@ -706,6 +706,12 @@ type Method struct {
 	// Authority is who owns role membership for a directory method: directory or
 	// application (app.AuthorityDirectory, app.AuthorityApplication).
 	Authority string
+	// Tenants is the tenant shape a Microsoft registration builds (app.TenantsOne,
+	// app.TenantsListed, app.TenantsAny, app.TenantsPersonal), and PersonalAccounts
+	// whether it admits Microsoft personal accounts, alone or beside the tenants. Tenants
+	// is empty for another kind, and for a slot the scan did not read.
+	Tenants          string
+	PersonalAccounts bool
 	// Variables are the registration's settings the data level reads from the
 	// environment, by field (FieldClientID), each under
 	// APP_<AUTH>_<REGISTRATION>_<FIELD>; nil for the password method.
