@@ -165,6 +165,7 @@ func newServed(ctx context.Context, t *testing.T) *served {
 		// The sign-in rule reads what each tenant declares in the sign-in's transaction,
 		// through the generated reader, as production does.
 		TenantDeclarations: app.NewTenantDeclarationReader(),
+		TenantDirectories:  app.NewTenantDirectoryReader(),
 	})
 	if err != nil {
 		t.Fatalf("staff.New() error = %v", err)

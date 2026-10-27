@@ -50,6 +50,7 @@ import (
 	"github.com/cccteam/access"
 	"github.com/cccteam/access/spannerstore"
 	"github.com/cccteam/ccc"
+	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/auth"
 	"github.com/cccteam/httpio"
@@ -129,6 +130,18 @@ const (
 	impersonationTimeout = 4 * time.Hour
 )
 
+// AdministratorRoles are the roles whose holders administer a partition, by where they
+// are held: Headquarters in the global partition, SectorMarshal in a sector (the
+// governor holds it in every sector). The user-management surface judges a self-unseat
+// by them (resource.WithAdministratorRoles, the last-owner rule): a marshal leaves a
+// sector once another marshal holds it, and the last one is refused; and the Sector
+// record's create seats the creator with the sector's (app.SectorAdministratorRoles).
+//
+// Demonstrates: tenancy.creator-seat.
+func AdministratorRoles() (global, everyDomain []accesstypes.Role) {
+	return []accesstypes.Role{"Headquarters"}, []accesstypes.Role{"SectorMarshal"}
+}
+
 // rolesFile is the auth's default roles: the release's own policy for the crew, which
 // travels with the binary and is handed to the permission engine at New. The store holds
 // no row for these roles; a login holds one by name alone, and the file is the complete
@@ -186,6 +199,11 @@ type Settings struct {
 	// directories (app.NewSectorDeclarationReader), which the sign-in rule decides with.
 	// Required; New refuses nil.
 	TenantDeclarations signin.DeclarationReader[*cloudspanner.ReadWriteTransaction]
+	// TenantDirectories reads every sector's declaration of one directory with the
+	// default seat its row carries, in the sign-in's transaction: the generated reader
+	// (app.NewSectorDirectoryReader), which the directory admission decides a stranger's
+	// first sign-in with. Required; New refuses nil.
+	TenantDirectories signin.DirectoryReader[*cloudspanner.ReadWriteTransaction]
 }
 
 // Session is the auth's session manager: one Auth session over the Spanner store, whose
@@ -447,6 +465,9 @@ func New(ctx context.Context, db *cloudspanner.Client, settings *Settings) (*Aut
 	if settings.TenantDeclarations == nil {
 		return nil, errors.New("crew.Settings.TenantDeclarations is required: the sign-in rule reads what each sector declares about who may enter it through the generated reader (app.NewSectorDeclarationReader)")
 	}
+	if settings.TenantDirectories == nil {
+		return nil, errors.New("crew.Settings.TenantDirectories is required: the directory admission reads what each sector declares about one directory, its default seat included, through the generated reader (app.NewSectorDirectoryReader)")
+	}
 	if settings.Mail.Sender == nil {
 		return nil, errors.New("crew.Settings.Mail.Sender is required: the auth mails its invitations, address verifications and sign-up links through it (the configuration's driver, or mail.Log in development)")
 	}
@@ -566,6 +587,23 @@ func New(ctx context.Context, db *cloudspanner.Client, settings *Settings) (*Aut
 	//
 	// Demonstrates: tenancy.declaration, tenancy.directory-only.
 	crewSession.SetSignInPolicy(signin.TenantPolicy(resource.SignInRoles(accessClient.UserManager()), settings.TenantDeclarations, signin.AdmitWithoutTenant()))
+
+	// The directory admission: what a fleet member nobody has seated gets at their first
+	// sign-in through a directory a sector declares, before the registration's account
+	// rule is reached. The directory rows the sectors declare for the identity's
+	// connection decide: a row with a default seat creates the person and seats them
+	// with it (Cinder seats them SectorCrew, written through the engine once the
+	// sign-in's transaction has committed, resource.SeatDeclared, before the sign-in
+	// rule decides, so the rule finds the membership); rows with none refuse them
+	// (invitation_only), and no account is created, unless they followed an invitation
+	// link, which is the way in; a person already seated somewhere is the sector's own
+	// and passes. A directory no sector declares falls to the registration's rule as
+	// before (the pioneer's sign-up). The crew's roles are the application's, so the
+	// admission is set here; an auth whose directory writes the roles (the members'
+	// directory) is the authority for everyone it holds and sets none.
+	//
+	// Demonstrates: tenancy.default-seat.
+	crewSession.SetDirectoryAdmission(settings.TenantDirectories, resource.SignInRoles(accessClient.UserManager()), resource.SeatDeclared(accessClient.UserManager()))
 
 	// An accepted invitation seats the person with the roles it carries, in the
 	// sector it names or in the global partition, written to the crew engine by the

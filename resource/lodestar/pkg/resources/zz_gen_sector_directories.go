@@ -26,10 +26,11 @@ func (SectorDirectory) DefaultConfig() resource.Config {
 // and read, so a query armed with Enforce meets the field permissions the routes
 // enforce; sectorDirectoryReadSets holds one Set per read operation.
 type sectorDirectoryRead struct {
-	ID         ccc.UUID `json:"id"         perm:"-"`
-	SectorID   string   `json:"sectorId"`
-	Method     string   `json:"method"`
-	Connection string   `json:"connection"`
+	ID          ccc.UUID `json:"id"          perm:"-"`
+	SectorID    string   `json:"sectorId"`
+	Method      string   `json:"method"`
+	Connection  string   `json:"connection"`
+	DefaultSeat *string  `json:"defaultSeat"`
 }
 
 var sectorDirectoryReadSets resource.SetCache[SectorDirectory, sectorDirectoryRead]
@@ -38,10 +39,11 @@ var sectorDirectoryReadSets resource.SetCache[SectorDirectory, sectorDirectoryRe
 // accept on a mutation, so a patch armed with Enforce meets the field permissions the
 // routes enforce; sectorDirectoryWriteSets holds one Set per mutation.
 type sectorDirectoryWrite struct {
-	ID         ccc.UUID `json:"-"`
-	SectorID   string   `json:"-"`
-	Method     string   `json:"method"     sqltype:"STRING(16)"`
-	Connection string   `json:"connection"`
+	ID          ccc.UUID `json:"-"`
+	SectorID    string   `json:"-"`
+	Method      string   `json:"method"      sqltype:"STRING(16)"`
+	Connection  string   `json:"connection"`
+	DefaultSeat *string  `json:"defaultSeat" sqltype:"STRING(64)"`
 }
 
 var sectorDirectoryWriteSets resource.SetCache[SectorDirectory, sectorDirectoryWrite]
@@ -154,6 +156,7 @@ func (c *SectorDirectoryColumns) All() *SectorDirectoryColumns {
 		"SectorID",
 		"Method",
 		"Connection",
+		"DefaultSeat",
 	}
 
 	return c
@@ -179,6 +182,12 @@ func (c *SectorDirectoryColumns) Method() *SectorDirectoryColumns {
 
 func (c *SectorDirectoryColumns) Connection() *SectorDirectoryColumns {
 	c.fields = append(c.fields, "Connection")
+
+	return c
+}
+
+func (c *SectorDirectoryColumns) DefaultSeat() *SectorDirectoryColumns {
+	c.fields = append(c.fields, "DefaultSeat")
 
 	return c
 }
@@ -287,6 +296,10 @@ func (c *sectorDirectorySort) Method() *SectorDirectorySort {
 
 func (c *sectorDirectorySort) Connection() *SectorDirectorySort {
 	return c.addField("Connection")
+}
+
+func (c *sectorDirectorySort) DefaultSeat() *SectorDirectorySort {
+	return c.addField("DefaultSeat")
 }
 
 type SectorDirectorySort struct {
@@ -424,6 +437,26 @@ func (p *SectorDirectoryCreatePatch) ConnectionIsSet() bool {
 	return p.patchSet.IsSet("Connection")
 }
 
+func (p *SectorDirectoryCreatePatch) SetDefaultSeat(v *string) *SectorDirectoryCreatePatch {
+	if v != nil {
+		p.patchSet.Set("DefaultSeat", v)
+	} else {
+		p.patchSet.Set("DefaultSeat", nil)
+	}
+
+	return p
+}
+
+func (p *SectorDirectoryCreatePatch) DefaultSeat() *string {
+	v, _ := p.patchSet.Get("DefaultSeat").(*string)
+
+	return v
+}
+
+func (p *SectorDirectoryCreatePatch) DefaultSeatIsSet() bool {
+	return p.patchSet.IsSet("DefaultSeat")
+}
+
 // Diff is intended for unit testing, and reports the differences between two values using github.com/google/go-cmp/cmp
 func (p *SectorDirectoryCreatePatch) Diff(got *SectorDirectoryCreatePatch, opts ...cmp.Option) string {
 	return resource.PatchSetDiff(opts...)(p.patchSet, got.patchSet)
@@ -538,6 +571,26 @@ func (p *SectorDirectoryUpdatePatch) Connection() string {
 
 func (p *SectorDirectoryUpdatePatch) ConnectionIsSet() bool {
 	return p.patchSet.IsSet("Connection")
+}
+
+func (p *SectorDirectoryUpdatePatch) SetDefaultSeat(v *string) *SectorDirectoryUpdatePatch {
+	if v != nil {
+		p.patchSet.Set("DefaultSeat", v)
+	} else {
+		p.patchSet.Set("DefaultSeat", nil)
+	}
+
+	return p
+}
+
+func (p *SectorDirectoryUpdatePatch) DefaultSeat() *string {
+	v, _ := p.patchSet.Get("DefaultSeat").(*string)
+
+	return v
+}
+
+func (p *SectorDirectoryUpdatePatch) DefaultSeatIsSet() bool {
+	return p.patchSet.IsSet("DefaultSeat")
 }
 
 // Diff is intended for unit testing, and reports the differences between two values using github.com/google/go-cmp/cmp

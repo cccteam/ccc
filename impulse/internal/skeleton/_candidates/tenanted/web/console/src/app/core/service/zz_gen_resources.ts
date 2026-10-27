@@ -20,6 +20,7 @@ export interface TenantDirectories {
   tenantId?: string;
   method?: string;
   connection?: string;
+  defaultSeat?: string;
 }
 
 /** A feature flag: one declared flag's row, as the feature flags dialog lists it. */
@@ -157,6 +158,7 @@ const resourceMap = defineResourceMap({
       { fieldName: 'tenantId', displayType: 'enumerated', required: true, isIndex: true, filterable: 'always', enumeratedResource: Resources.Tenants, readOnly: true },
       { fieldName: 'method', displayType: 'string', required: true, isIndex: true, filterable: 'always', maxLength: 16 },
       { fieldName: 'connection', displayType: 'string', required: true, isIndex: false },
+      { fieldName: 'defaultSeat', displayType: 'string', required: false, isIndex: false, maxLength: 64 },
     ],
   },
   [Resources.FeatureFlags]: {

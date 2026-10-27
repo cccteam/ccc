@@ -780,9 +780,10 @@ func (s *UserSurface[A]) vouchedFor(ctx context.Context, wc *writeContext, accou
 	return httpio.NewBadRequestMessagef("user %q is not seated in this %s and entered through no directory it declares: invite them, or seat them from the global surface", account.Username, tenant)
 }
 
-// deleteSeat unseats a user from a role. Nobody unseats themselves, a directory's seats
-// are not removed by hand, a seat held everywhere is removed from the global partition
-// alone, and a user left with no seat anywhere is deleted (the orphan rule).
+// deleteSeat unseats a user from a role. A self-unseat is judged by the last-owner rule
+// (selfUnseat), a directory's seats are not removed by hand, a seat held everywhere is
+// removed from the global partition alone, and a user left with no seat anywhere is
+// deleted (the orphan rule), whoever removed the seat.
 func (s *UserSurface[A]) deleteSeat(ctx context.Context, wc *writeContext, op *Operation) error {
 	n := wc.partition.names
 	decisions, err := checkWriteGrants(ctx, wc.perms, wc.partition.scope, accesstypes.Delete, n.Seats, nil)
@@ -806,7 +807,9 @@ func (s *UserSurface[A]) deleteSeat(ctx context.Context, wc *writeContext, op *O
 		return httpio.NewNotFoundMessagef("seat %s %s does not exist", id, role)
 	}
 	if wc.judge.self(account.Username) {
-		return httpio.NewForbiddenMessage("you cannot unseat yourself")
+		if err := s.selfUnseat(wc, seat); err != nil {
+			return err
+		}
 	}
 	facts, err := wc.snap.factsOf(ctx, account)
 	if err != nil {
@@ -829,4 +832,29 @@ func (s *UserSurface[A]) deleteSeat(ctx context.Context, wc *writeContext, op *O
 	}
 
 	return s.deleteOrphan(ctx, account)
+}
+
+// selfUnseat judges a person's removal of their own seat by the last-owner rule: the
+// seat goes unless it is one of the partition's administrator roles and nobody would
+// hold one in the partition after (the holders the partition shows, a seat held in
+// every tenant among a tenant's). A partition is never left without an administrator,
+// and a person who leaves it otherwise is brought back by one who remains. Without the
+// administrator roles (WithAdministratorRoles) every self-unseat is refused, as the
+// surface did before the rule.
+func (s *UserSurface[A]) selfUnseat(wc *writeContext, seat *composedSeat) error {
+	if s.settings.administrators == nil {
+		return httpio.NewForbiddenMessage("you cannot unseat yourself")
+	}
+	roles := s.settings.administrators.global
+	if !wc.partition.scope.IsGlobal() {
+		roles = s.settings.administrators.domain
+	}
+	if !slices.Contains(roles, seat.role) || wc.snap.administratorRemains(roles, seat) {
+		return nil
+	}
+	if wc.partition.scope.IsGlobal() {
+		return httpio.NewForbiddenMessage("you are the last administrator: seat another before you unseat yourself")
+	}
+
+	return httpio.NewForbiddenMessagef("you are the last administrator of this %s: seat another before you unseat yourself", strings.ToLower(s.decl.Tenant))
 }

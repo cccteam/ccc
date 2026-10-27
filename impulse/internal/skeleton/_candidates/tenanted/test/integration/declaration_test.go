@@ -20,13 +20,17 @@ import (
 // on the served stack: a tenant admits a session established through a directory only
 // when it declares that directory, and a tenant whose people enter through its
 // directories only refuses a password session at reach time and, when every tenant of
-// the person is such, at sign-in. A declaration written through the API decides the
-// next request, since the records' write paths reload the roster after their commit;
-// the administrator, who holds a global role, keeps every tenant; and every edit leaves
-// a change event. Under the session library's skipAuth build tag Google is simulated:
-// the callback signs in whoever APP_GOOGLE_USERNAME names, as a Workspace account whose
-// connection is the simulated Workspace's domain. The test sets that variable, so it
-// does not run in parallel.
+// the person is such, at sign-in. A declared directory's row carries a default seat,
+// what a stranger the directory vouches for gets at their first sign-in: with none, the
+// stranger is refused by invitation only and no account is created; with a role named,
+// their next sign-in creates them seated with it in the tenant; and the seat is cleared
+// with an explicit null, the way the Sign-in page's picker clears it. A declaration
+// written through the API decides the next request, since the records' write paths
+// reload the roster after their commit; the administrator, who holds a global role,
+// keeps every tenant; and every edit leaves a change event. Under the session library's
+// skipAuth build tag Google is simulated: the callback signs in whoever
+// APP_GOOGLE_USERNAME names, as a Workspace account whose connection is the simulated
+// Workspace's domain. The test sets that variable, so it does not run in parallel.
 func TestDeclaration_whoMayEnterATenant(t *testing.T) {
 	ctx := t.Context()
 	s := newServed(ctx, t)
@@ -77,11 +81,57 @@ func TestDeclaration_whoMayEnterATenant(t *testing.T) {
 	if domains := userDomains(ctx, t, traveler); len(domains) != 0 {
 		t.Errorf("the traveler's chart once the directory is withdrawn = %v, want none", domains)
 	}
-	if status, body := admin.do(ctx, http.MethodPatch, "/api/resources", []byte(declare)); status != http.StatusOK {
+	status, body = admin.do(ctx, http.MethodPatch, "/api/resources", []byte(declare))
+	if status != http.StatusOK {
 		t.Fatalf("declaring the directory again: status %d: %s", status, body)
+	}
+	if err := json.Unmarshal(body, &created); err != nil || len(created.TenantDirectories) != 1 {
+		t.Fatalf("the second declaration's answer = %s (err %v), want the new row's id", body, err)
 	}
 	if domains := userDomains(ctx, t, traveler); !slices.Equal(domains, []string{south}) {
 		t.Errorf("the traveler's chart once the directory is declared again = %v, want [%s]", domains, south)
+	}
+
+	// The default seat. The row names none, so a newcomer from the same Workspace, whom
+	// nobody seated, is refused by invitation only: the callback sends the browser to
+	// the login page with the code, no session opens, and no account is created; the
+	// traveler, seated before the declaration, passes as before.
+	t.Setenv("APP_GOOGLE_USERNAME", "newcomer")
+	newcomer := newBrowser(t, s)
+	status, location := newcomer.redirect(ctx, "/api/user/google/login?returnUrl="+url.QueryEscape("/dashboard"))
+	if status != http.StatusFound {
+		t.Fatalf("GET /api/user/google/login as the newcomer: status %d, want %d to the directory", status, http.StatusFound)
+	}
+	if status, location = newcomer.redirect(ctx, location); status != http.StatusFound || !strings.HasSuffix(location, "/login?code="+string(sessioninfo.RefusedInvitationOnly)) {
+		t.Fatalf("the newcomer's callback with no seat on the row: %d to %q, want %d to the login page naming %s", status, location, http.StatusFound, sessioninfo.RefusedInvitationOnly)
+	}
+	if status, body := newcomer.do(ctx, http.MethodGet, "/api/user/session", nil); status != http.StatusOK || !strings.Contains(string(body), `"authenticated":false`) {
+		t.Errorf("GET /api/user/session after the refusal: status %d: %s, want no session", status, body)
+	}
+	if accountExists(ctx, t, s, "newcomer") {
+		t.Errorf("an account was created for the refused newcomer, want none")
+	}
+	// Administrator_Domain named on the row, the newcomer's next sign-in creates them
+	// seated with it in south, where their chart stands at once.
+	row := "/tenants/" + south + "/tenant-directories/" + created.TenantDirectories[0]
+	nameSeat := `[{"op":"patch","path":"` + row + `","value":{"defaultSeat":"Administrator_Domain"}}]`
+	if status, body := admin.do(ctx, http.MethodPatch, "/api/resources", []byte(nameSeat)); status != http.StatusOK {
+		t.Fatalf("naming the row's default seat: status %d: %s", status, body)
+	}
+	newcomer = signedInThroughGoogle(ctx, t, s)
+	if domains := userDomains(ctx, t, newcomer); !slices.Equal(domains, []string{south}) {
+		t.Errorf("the newcomer's chart after the seated sign-in = %v, want [%s]: the row's default seat", domains, south)
+	}
+	if status, body := newcomer.do(ctx, http.MethodGet, "/api/tenants/"+south+"/announcements", nil); status != http.StatusOK {
+		t.Errorf("GET south announcements as the newcomer: status %d, want 200: %s", status, body)
+	}
+	// Cleared with an explicit null, the row names no seat again.
+	clearSeat := `[{"op":"patch","path":"` + row + `","value":{"defaultSeat":null}}]`
+	if status, body := admin.do(ctx, http.MethodPatch, "/api/resources", []byte(clearSeat)); status != http.StatusOK {
+		t.Fatalf("clearing the row's default seat: status %d: %s", status, body)
+	}
+	if seats := defaultSeats(ctx, t, admin, south); !slices.Equal(seats, []string{""}) {
+		t.Errorf("south's default seats once cleared = %q, want the one row naming none", seats)
 	}
 
 	// North admits its people through its directories only: the member, signed in by
@@ -132,9 +182,57 @@ func TestDeclaration_whoMayEnterATenant(t *testing.T) {
 
 	// Every edit is audited: the records' change events carry the declaration's writes.
 	events := changeEvents(ctx, t, s, "Tenants", "TenantDirectories")
-	if events["Tenants"] < 2 || events["TenantDirectories"] < 3 {
-		t.Errorf("change events = %v, want the two flag writes on Tenants and the directory's three writes on TenantDirectories", events)
+	if events["Tenants"] < 2 || events["TenantDirectories"] < 5 {
+		t.Errorf("change events = %v, want the two flag writes on Tenants and the directory's five writes on TenantDirectories", events)
 	}
+}
+
+// accountExists reports whether the staff auth holds a user under the username.
+func accountExists(ctx context.Context, t *testing.T, s *served, user string) bool {
+	t.Helper()
+
+	iter := s.db.Client.Single().Query(ctx, cloudspanner.Statement{
+		SQL:    "SELECT COUNT(*) FROM StaffSessionUsers WHERE Username = @user",
+		Params: map[string]any{"user": user},
+	})
+	defer iter.Stop()
+	row, err := iter.Next()
+	if err != nil {
+		t.Fatalf("counting accounts named %s: %v", user, err)
+	}
+	var n int64
+	if err := row.Columns(&n); err != nil {
+		t.Fatalf("reading the count of accounts named %s: %v", user, err)
+	}
+
+	return n > 0
+}
+
+// defaultSeats lists the tenant's declared directories' default seats, in the record's
+// order, an empty string for a row naming none.
+func defaultSeats(ctx context.Context, t *testing.T, b *browser, tenant string) []string {
+	t.Helper()
+
+	status, body := b.do(ctx, http.MethodGet, "/api/tenants/"+tenant+"/tenant-directories", nil)
+	if status != http.StatusOK {
+		t.Fatalf("GET %s's directories: status %d: %s", tenant, status, body)
+	}
+	var rows []struct {
+		DefaultSeat *string `json:"defaultSeat"`
+	}
+	if err := json.Unmarshal(body, &rows); err != nil {
+		t.Fatalf("the directories are not a list: %v: %s", err, body)
+	}
+	seats := make([]string, 0, len(rows))
+	for _, row := range rows {
+		if row.DefaultSeat == nil {
+			seats = append(seats, "")
+			continue
+		}
+		seats = append(seats, *row.DefaultSeat)
+	}
+
+	return seats
 }
 
 // signedInThroughGoogle returns a browser signed in through the staff auth's google

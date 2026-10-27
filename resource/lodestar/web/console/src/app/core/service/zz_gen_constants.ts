@@ -847,12 +847,14 @@ export namespace Refits {
 export namespace SectorDirectories {
   export const fieldName = {
     connection: 'connection' as FieldName,
+    defaultSeat: 'defaultSeat' as FieldName,
     id: 'id' as FieldName,
     method: 'method' as FieldName,
     sectorId: 'sectorId' as FieldName,
   };
   export const resourceName = {
     connection: 'SectorDirectories.connection' as Resource,
+    defaultSeat: 'SectorDirectories.defaultSeat' as Resource,
     id: 'SectorDirectories.id' as Resource,
     method: 'SectorDirectories.method' as Resource,
     sectorId: 'SectorDirectories.sectorId' as Resource,

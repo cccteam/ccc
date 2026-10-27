@@ -9,7 +9,7 @@ import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { MatTableModule } from '@angular/material/table';
 import { injectApi } from '@app/api/api';
 import { Permissions, Resources } from '@app/service/zz_gen_constants';
-import { SectorDirectories, Sectors } from '@app/service/zz_gen_resources';
+import { CrewSectorRoles, SectorDirectories, Sectors } from '@app/service/zz_gen_resources';
 import { ApiError, Domain } from '@cccteam/resource';
 
 /** A sign-in method a directory is reached through, with what its connection is. */
@@ -47,11 +47,14 @@ export const directoryMethods: readonly DirectoryMethod[] = [
  * (the record's directory-only flag, which closes passwords). A directory is declared or
  * withdrawn here under the sector's Create and Delete grants on SectorDirectories, which
  * the sector's marshal holds; the flag is set under the Update grant on the global
- * Sectors record, which headquarters holds. The server reloads what every instance knows
- * after each write, so a change decides the next request at once, and each write leaves
- * a change event.
+ * Sectors record, which headquarters holds. Each declared directory carries a default
+ * seat, the role a stranger who signs in through it is seated with in the sector at their
+ * first sign-in: the marshal picks it from the sector's roles, or none, under the Update
+ * grant on the row, and a row with none tells the directory's strangers the sector admits
+ * them by invitation only. The server reloads what every instance knows after each write,
+ * so a change decides the next request at once, and each write leaves a change event.
  *
- * Demonstrates: tenancy.declaration, tenancy.directory-only.
+ * Demonstrates: tenancy.declaration, tenancy.directory-only, tenancy.default-seat.
  */
 @Component({
   selector: 'app-sector-sign-in',
@@ -75,7 +78,9 @@ export class SectorSignInComponent {
   sectorID = input.required<string>();
 
   readonly methods = directoryMethods;
-  readonly columns = ['method', 'connection', 'withdraw'];
+  readonly columns = ['method', 'connection', 'seat', 'withdraw'];
+  /** The picker's choice for a directory whose strangers are admitted by invitation only. */
+  readonly invitationOnly = '';
 
   /** The sector's row on the global record: its name and its directory-only flag. */
   sector = resource({
@@ -94,7 +99,18 @@ export class SectorSignInComponent {
     defaultValue: [],
   });
 
+  /** The sector's roles, the default seat's choices, listed where the digest grants List on them. */
+  roles = resource({
+    params: () => ({ sector: this.sectorID() }),
+    loader: ({ params }): Promise<CrewSectorRoles[]> => {
+      const handle = this.api.domain(params.sector as Domain).crewSectorRoles;
+      return handle.can(Permissions.List) ? handle.list() : Promise.resolve([]);
+    },
+    defaultValue: [],
+  });
+
   canList = computed(() => this.api.domain(this.sectorID() as Domain).sectorDirectories.can(Permissions.List));
+  canSeat = computed(() => this.api.domain(this.sectorID() as Domain).sectorDirectories.can(Permissions.Update));
   canDeclare = computed(() => this.api.domain(this.sectorID() as Domain).sectorDirectories.can(Permissions.Create));
   canWithdraw = computed(() => this.api.domain(this.sectorID() as Domain).sectorDirectories.can(Permissions.Delete));
   canClose = computed(() => this.api.can(Permissions.Update, Resources.Sectors));
@@ -130,6 +146,19 @@ export class SectorSignInComponent {
     await this.write(async () => {
       await this.api.domain(this.sectorID() as Domain).sectorDirectories.create({ method, connection: connection.trim() });
       this.form.controls.connection.reset();
+      this.directories.reload();
+    });
+  }
+
+  /** What the directory's strangers get, as the row says. */
+  seatOf(directory: SectorDirectories): string {
+    return directory.defaultSeat || 'Invitation only';
+  }
+
+  /** Sets the directory's default seat: a role of the sector, or none (null clears the column). */
+  async seat(directory: SectorDirectories, role: string): Promise<void> {
+    await this.write(async () => {
+      await this.api.domain(this.sectorID() as Domain).sectorDirectories.patch([directory.id], { defaultSeat: role || null });
       this.directories.reload();
     });
   }

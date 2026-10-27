@@ -13,16 +13,18 @@ import (
 
 // TestConsoleGoogleLogin signs in on the console through the fleet's Google directory,
 // the crew auth's second method beside the password, as a person on no manifest: the
-// first sign-in provisions them under the verified email, holding no role and no sector,
-// since the crew's roles are the application's on every method (a registration whose
-// directory writes the roles stands alone on its auth, the members auth's shape); a
-// password persona's session and theirs are sessions of the same auth, read at the same
-// route; and the next sign-in finds them as they were, nothing written in between. A
-// directory identity whose verified email is a password persona's login is not taken at
-// the directory's word: the sign-in waits for that persona's password, which links the
-// identity and opens the session as the persona, whose seats stay the application's.
+// first sign-in provisions them under the verified email, holding what the sectors
+// declaring the directory name as its default seat and nothing else (Cinder's row names
+// SectorCrew, Anvil's and Bastion's none), since the crew's roles are the application's
+// on every method (a registration whose directory writes the roles stands alone on its
+// auth, the members auth's shape); a password persona's session and theirs are sessions
+// of the same auth, read at the same route; and the next sign-in finds them as they
+// were, nothing written in between. A directory identity whose verified email is a
+// password persona's login is not taken at the directory's word: the sign-in waits for
+// that persona's password, which links the identity and opens the session as the
+// persona, whose seats stay the application's.
 //
-// Demonstrates: auth.multi-method, auth.skipauth-directory.
+// Demonstrates: auth.multi-method, auth.skipauth-directory, tenancy.default-seat.
 func TestConsoleGoogleLogin(t *testing.T) {
 	t.Parallel()
 
@@ -41,9 +43,10 @@ func TestConsoleGoogleLogin(t *testing.T) {
 		t.Fatalf("session after login = %v, want authenticated as %s", sess, navigatorUser)
 	}
 
-	// Provisioned holding nothing: no sector foothold until an operator seats them.
-	if got := b.domains(ctx); len(got) != 0 {
-		t.Errorf("user-domains after the first sign-in = %v, want none: the crew's roles are the application's", got)
+	// Provisioned with the default seat alone: the one row naming one seats them in
+	// Cinder, and no other sector is theirs until an operator seats them.
+	if got, want := b.domains(ctx), []string{cinder}; !slices.Equal(got, want) {
+		t.Errorf("user-domains after the first sign-in = %v, want %v: Cinder's row names SectorCrew as its default seat, the others none", got, want)
 	}
 
 	// A password persona signs in beside: two methods, one auth, one session route.
@@ -57,8 +60,8 @@ func TestConsoleGoogleLogin(t *testing.T) {
 	if status, _ := b.loginConsoleGoogle(ctx, navigatorUser); status != http.StatusFound {
 		t.Fatalf("second console Google login: status %d", status)
 	}
-	if got := b.domains(ctx); len(got) != 0 {
-		t.Errorf("user-domains after the second sign-in = %v, want none", got)
+	if got, want := b.domains(ctx), []string{cinder}; !slices.Equal(got, want) {
+		t.Errorf("user-domains after the second sign-in = %v, want %v, as after the first", got, want)
 	}
 
 	// A directory identity whose verified email is a login a password persona already

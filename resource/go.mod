@@ -20,7 +20,7 @@ require (
 	github.com/cccteam/db-initiator v0.4.3
 	github.com/cccteam/httpio v0.7.22
 	github.com/cccteam/logger v0.1.30
-	github.com/cccteam/session v0.13.10
+	github.com/cccteam/session v0.13.13-0.20261027034450-949596b9ae93
 	github.com/cccteam/spxscan v0.0.17
 	github.com/cloudspannerecosystem/memefish v0.8.1
 	github.com/ettle/strcase v0.2.0

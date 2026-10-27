@@ -178,6 +178,7 @@ func newServed(ctx context.Context, t *testing.T) *served {
 		MailLoginURL:       "http://outlets.test/console/login",
 		DevicePage:         "/console/device",
 		TenantDeclarations: app.NewTenantDeclarationReader(),
+		TenantDirectories:  app.NewTenantDirectoryReader(),
 	})
 	if err != nil {
 		t.Fatalf("staff.New() error = %v", err)
@@ -208,6 +209,7 @@ func newServed(ctx context.Context, t *testing.T) *served {
 		// The declaration reader the sign-in rule reads with; the development seed
 		// declares the directory above on both tenants.
 		TenantDeclarations: app.NewTenantDeclarationReader(),
+		TenantDirectories:  app.NewTenantDirectoryReader(),
 	})
 	if err != nil {
 		t.Fatalf("members.New() error = %v", err)

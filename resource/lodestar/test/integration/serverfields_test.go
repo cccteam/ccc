@@ -109,13 +109,13 @@ func TestInputOnlyTypescript(t *testing.T) {
 			name:  "the create shape carries the transcript",
 			file:  "zz_gen_api.ts",
 			block: "export interface DistressCallsCreate {",
-			want:  "  transcript?: string;",
+			want:  "  transcript?: string | null;",
 		},
 		{
 			name:  "the patch shape carries the transcript",
 			file:  "zz_gen_api.ts",
 			block: "export interface DistressCallsPatch {",
-			want:  "  transcript?: string;",
+			want:  "  transcript?: string | null;",
 		},
 		{
 			name: "the field-name constant stays for the grant check",

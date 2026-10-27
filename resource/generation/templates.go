@@ -690,12 +690,48 @@ const (
 	// publish failure is logged and never fails the request: the instance reloads on
 	// its own signal subscription or at its backstop. The live service is required in
 	// every application, so there is no nil check.
-	tenantsCommitted = `if tenantsWritten {
+	tenantsReloaded = `if tenantsWritten {
 			if err := {{ .ReceiverName }}.TenantRoster().Reload(ctx); err != nil {
 				logger.FromCtx(ctx).Errorf("tenants: rereading the roster after the commit failed; this instance reloads on the tenants signal or at its backstop: %v", err)
 			}
+		}`
+
+	tenantsSignaled = `if tenantsWritten {
 			if err := {{ .ReceiverName }}.LiveService().Signal(ctx, resource.KindTenants); err != nil {
 				logger.FromCtx(ctx).Errorf("tenants: signaling the tenants kind failed; the other instances reload at their backstop: %v", err)
+			}
+		}`
+
+	// tenantCreatorSeated is spliced into the tenant record's write paths between the
+	// roster's reload and the tenants signal, where the record's create seats its
+	// creator: the person who creates a tenant is its first administrator, seated with
+	// the roles the application names (<Record>AdministratorRoles) through the auth's
+	// seats after the commit, since the permission store writes memberships outside the
+	// row's transaction, and once this instance's roster lists the tenant, so the
+	// seat's probe asks what the person's next request asks. A seat that cannot be
+	// written takes the rows this request created with it, as the create-your-tenant
+	// route's does, and the roster and the other instances are told.
+	tenantCreatorSeated = `for _, domain := range created {
+			if err := resource.SeatFirstAdministrator(ctx, seats, userPermissions, accesstypes.Domain(domain), roles); err != nil {
+				if undo := {{ .ReceiverName }}.ResourceClient().ExecuteFunc(ctx, func(ctx context.Context, txn resource.ReadWriteTransaction) error {
+					for _, row := range created {
+						if err := {{ .ResourcePackage }}.New{{ .Seat.Record }}DeletePatch(row).Buffer(ctx, txn, eventSource); err != nil {
+							return errors.Wrap(err, "{{ .ResourcePackage }}.{{ .Seat.Record }}DeletePatch.Buffer()")
+						}
+					}
+
+					return nil
+				}); undo != nil {
+					logger.FromCtx(ctx).Errorf("{{ .Seat.RecordLower }} %s: its creator could not be seated as its administrator, and the rows this request created could not be removed either: %v", domain, undo)
+				}
+				if err := {{ .ReceiverName }}.TenantRoster().Reload(ctx); err != nil {
+					logger.FromCtx(ctx).Errorf("tenants: rereading the roster after the rows were removed failed; this instance reloads on the tenants signal or at its backstop: %v", err)
+				}
+				if err := {{ .ReceiverName }}.LiveService().Signal(ctx, resource.KindTenants); err != nil {
+					logger.FromCtx(ctx).Errorf("tenants: signaling the tenants kind failed; the other instances reload at their backstop: %v", err)
+				}
+
+				return httpio.NewEncoder(w).ClientMessage(ctx, err)
 			}
 		}`
 
@@ -1142,16 +1178,31 @@ import (
 {{- if .Declaration }}
 	"cloud.google.com/go/spanner"
 {{- end }}
+{{- if .Seat }}
+	{{ .LocalPackageImports }}
+	"github.com/cccteam/ccc/accesstypes"
+{{- end }}
 	"github.com/cccteam/ccc/resource"
 {{- if .Declaration }}
 	"github.com/cccteam/session/signin"
 {{- end }}
 )
+{{- if .Seat }}
+
+// The {{ .Name }} record's create seats its creator as the first administrator of the new
+// {{ .RecordLower }} (resource.SeatFirstAdministrator, after the commit) with the roles
+// {{ .Seat.RolesAccessor }} names, through the {{ .Seat.Auth }} auth's user-management surface:
+// the application supplies both beside the generated contract.
+var _ interface {
+	{{ .Seat.RolesAccessor }}() []accesstypes.Role
+	{{ .Seat.SurfaceAccessor }}() *resource.UserSurface[{{ .RouterPackage }}.{{ .Seat.AuthType }}]
+} = (*{{ .ApplicationName }})(nil)
+{{- end }}
 {{- if .Declaration }}
 
 // {{ GoCamel .Name }}Declaration names where the {{ .Name }} record keeps its declaration of who
 // may enter a {{ .RecordLower }} (@directoryOnly on the record, the {{ .Directories }} record's columns): what
-// the roster reads beside the keys and the sign-in policy's reader reads in its own
+// the roster reads beside the keys and the sign-in's readers read in its own
 // transaction.
 var {{ GoCamel .Name }}Declaration = resource.TenantDeclarationColumns{
 	DirectoryOnly:    {{ printf "%q" .Declaration.DirectoryOnly }},
@@ -1159,6 +1210,9 @@ var {{ GoCamel .Name }}Declaration = resource.TenantDeclarationColumns{
 	TenantColumn:     {{ printf "%q" .Declaration.TenantColumn }},
 	MethodColumn:     {{ printf "%q" .Declaration.MethodColumn }},
 	ConnectionColumn: {{ printf "%q" .Declaration.ConnectionColumn }},
+	{{- if .Declaration.DefaultSeatColumn }}
+	DefaultSeatColumn: {{ printf "%q" .Declaration.DefaultSeatColumn }},
+	{{- end }}
 }
 {{- end }}
 
@@ -1191,6 +1245,23 @@ func New{{ .Name }}Roster(client resource.Client, opts ...resource.TenantRosterO
 // settings; a {{ .RecordLower }} the table does not hold declares nothing.
 func New{{ .Name }}DeclarationReader() signin.DeclarationReader[*spanner.ReadWriteTransaction] {
 	return resource.NewTenantDeclarationReader({{ printf "%q" .Table }}, {{ printf "%q" .KeyColumn }}, &{{ GoCamel .Name }}Declaration)
+}
+
+// New{{ .Name }}DirectoryReader builds the sign-in's reader of every {{ .RecordLower }}'s declaration of
+// one directory (session.Auth.SetDirectoryAdmission, through signin.DirectoryReader):
+// the {{ .Directories }} rows naming the directory's method and connection, each as its {{ .RecordLower }}
+{{- if .DefaultSeat }}
+// with the default seat the row carries ({{ .Directories }}.{{ .DefaultSeat }}: the role a stranger the
+// directory vouches for is seated with at their first sign-in, none for a NULL, and the
+// {{ .RecordLower }} admits them by invitation only),
+{{- else }}
+// with no default seat (the record carries no @directoryDefaultSeat column, so every
+// {{ .RecordLower }} admits a stranger its directory vouches for by invitation only),
+{{- end }}
+// read in the sign-in's own transaction. The application hands it to the auth whose
+// people enter {{ .RecordLower }}s, beside the seat hook (resource.SeatDeclared).
+func New{{ .Name }}DirectoryReader() signin.DirectoryReader[*spanner.ReadWriteTransaction] {
+	return resource.NewTenantDirectoryReader(&{{ GoCamel .Name }}Declaration)
 }
 {{- end }}
 `
@@ -1972,6 +2043,16 @@ import (
 	{{- end }}
 
 	decoder := NewDecoder[{{ .ResourcePackage }}.{{ .Resource.Name }}, request]({{ .ReceiverName }}, {{ .Resource.PatchPermissionList }})
+	{{- if .Seat }}
+
+	// The creator of a {{ .Resource.Name }} is its first administrator: the roles {{ .Seat.RolesAccessor }}
+	// names, seated through the {{ .Seat.Auth }} auth's seats after a create's commit.
+	roles := {{ .ReceiverName }}.{{ .Seat.RolesAccessor }}()
+	if len(roles) == 0 {
+		panic("{{ .Seat.RolesAccessor }}() names no role: the person who creates a {{ .Resource.Name }} holds its administrator role, which the application names there")
+	}
+	seats := {{ .ReceiverName }}.{{ .Seat.SurfaceAccessor }}().SeatStore()
+	{{- end }}
 
 	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
 		ctx, span := tracer.Start(r.Context())
@@ -1990,6 +2071,11 @@ import (
 		// reaches it once the commit lands, never inside the transaction.
 		tenantsWritten := false
 		{{- end }}
+		{{- if .Seat }}
+		// The {{ .Resource.Name }}s this transaction creates, their creator seated after the commit.
+		var created []{{ $PrimaryKeyType }}
+		userPermissions := {{ .ReceiverName }}.UserPermissions(r)
+		{{- end }}
 
 		// The rows the transaction writes are collected for the live pages, published
 		// once the commit lands and before the answer.
@@ -2000,6 +2086,9 @@ import (
 			{{- end }}
 			{{- if .Resource.SignalsTenants }}
 			tenantsWritten = false
+			{{- end }}
+			{{- if .Seat }}
+			created = nil
 			{{- end }}
 			r, err := resource.CloneRequest(r)
 			if err != nil {
@@ -2050,6 +2139,9 @@ import (
 					if err := {{ .ResourcePackage }}.New{{ .Resource.Name }}CreatePatchFromPatchSet(id, patchSet).Buffer(ctx, txn, eventSource); err != nil {
 						return errors.Wrap(err, "{{ .ResourcePackage }}.{{ .Resource.Name }}CreatePatch.Buffer()")
 					}
+					{{- if .Seat }}
+					created = append(created, id)
+					{{- end }}
 				{{- end }}
 				case resource.OperationUpdate:
 				{{- if .Resource.HasCompoundPrimaryKey }}
@@ -2088,7 +2180,13 @@ import (
 		}
 		live.Publish(ctx, {{ .ReceiverName }}.LiveService(), {{ if .Resource.IsDomainScoped }}domain{{ else }}""{{ end }}, touched)
 		{{- if .Resource.SignalsTenants }}
-		` + tenantsCommitted + `
+		` + tenantsReloaded + `
+		{{- end }}
+		{{- if .Seat }}
+		` + tenantCreatorSeated + `
+		{{- end }}
+		{{- if .Resource.SignalsTenants }}
+		` + tenantsSignaled + `
 		{{- end }}
 
 		{{ if $PrimaryKeyIsGeneratedUUID  }}
@@ -2131,6 +2229,16 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .HandlerName }}() http.Han
 	{{ end }}
 
 	type response map[string][]ccc.UUID
+	{{- if .Seat }}
+
+	// The creator of a {{ .Seat.Record }} is its first administrator: the roles {{ .Seat.RolesAccessor }}
+	// names, seated through the {{ .Seat.Auth }} auth's seats after a create's commit.
+	roles := {{ .ReceiverName }}.{{ .Seat.RolesAccessor }}()
+	if len(roles) == 0 {
+		panic("{{ .Seat.RolesAccessor }}() names no role: the person who creates a {{ .Seat.Record }} holds its administrator role, which the application names there")
+	}
+	seats := {{ .ReceiverName }}.{{ .Seat.SurfaceAccessor }}().SeatStore()
+	{{- end }}
 
 	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
 		ctx, span := tracer.Start(r.Context())
@@ -2147,6 +2255,10 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .HandlerName }}() http.Han
 		// writes reaches it once the commit lands, never inside the transaction.
 		tenantsWritten := false
 		{{- end }}
+		{{- if .Seat }}
+		// The {{ .Seat.Record }}s this transaction creates, their creator seated after the commit.
+		var created []{{ .Seat.KeyType }}
+		{{- end }}
 
 		// The rows the transaction writes are collected for the live pages, published
 		// once the commit lands and before the answer, each under the domain its
@@ -2156,6 +2268,9 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .HandlerName }}() http.Han
 			resp = response{}
 			{{- if .HasTenant }}
 			tenantsWritten = false
+			{{- end }}
+			{{- if .Seat }}
+			created = nil
 			{{- end }}
 			r, err := resource.CloneRequest(r)
 			if err != nil {
@@ -2221,7 +2336,13 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .HandlerName }}() http.Han
 		}
 		live.Publish(ctx, {{ .ReceiverName }}.LiveService(), "", touched)
 		{{- if .HasTenant }}
-		` + tenantsCommitted + `
+		` + tenantsReloaded + `
+		{{- end }}
+		{{- if .Seat }}
+		` + tenantCreatorSeated + `
+		{{- end }}
+		{{- if .HasTenant }}
+		` + tenantsSignaled + `
 		{{- end }}
 
 		return httpio.NewEncoder(w).Ok(resp)
@@ -2284,6 +2405,9 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .HandlerName }}() http.Han
 							if err := {{ .ResourcePackage }}.New{{ .Name }}CreatePatchFromPatchSet(id, patchSet).Buffer(ctx, txn, eventSource); err != nil {
 								return errors.Wrap(err, "{{ .ResourcePackage }}.{{ .Name }}CreatePatch.Buffer()")
 							}
+							{{- if .Seated }}
+							created = append(created, id)
+							{{- end }}
 						{{- end }}
 						case resource.OperationUpdate:
 							{{- if .HasCompoundPrimaryKey }}
@@ -2955,7 +3079,7 @@ export const Feature = {
 {{- if $r.CreateFields }}
 export interface {{ $r.Name }}Create {
 {{- range $f := $r.CreateFields }}
-  {{ $f.Name }}{{ if not $f.Required }}?{{ end }}: {{ $f.Type }};
+  {{ $f.Name }}{{ if not $f.Required }}?{{ end }}: {{ $f.Type }}{{ if $f.Nullable }} | null{{ end }};
 {{- end }}
 }
 {{- else }}
@@ -2967,7 +3091,7 @@ export type {{ $r.Name }}Create = Record<never, never>;
 {{- if $r.PatchFields }}
 export interface {{ $r.Name }}Patch {
 {{- range $f := $r.PatchFields }}
-  {{ $f.Name }}?: {{ $f.Type }};
+  {{ $f.Name }}?: {{ $f.Type }}{{ if $f.Nullable }} | null{{ end }};
 {{- end }}
 }
 {{- else }}
@@ -3074,7 +3198,7 @@ export const {{ .RouteConstant }} = '{{ .Route }}';
 /** The body the create-your-{{ .RecordLower }} route takes: the {{ .Record }} record's fields with its key. */
 export interface {{ .RequestType }} {
 {{- range $f := .Fields }}
-  {{ $f.Name }}{{ if not $f.Required }}?{{ end }}: {{ $f.Type }};
+  {{ $f.Name }}{{ if not $f.Required }}?{{ end }}: {{ $f.Type }}{{ if $f.Nullable }} | null{{ end }};
 {{- end }}
 }
 {{- end }}

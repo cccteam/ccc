@@ -561,10 +561,27 @@ directory on every sector, so the navigator and the client reach the sectors the
 role in, and makes Bastion directory only: the rigger charts Anvil alone and the bosun is
 refused at sign-in. A self-service sector's first directory is the one its creator came
 through, written by the create-sector route with the row, so Ember admits the pioneer at
-once. The console's Sign-in page (Sector Ops menu, under the sector's URL) carries the
-declaration: the sector's marshal declares and withdraws directories there, headquarters
-sets directory only. Demonstrates: tenancy.declaration, tenancy.directory-only,
-tenancy.creator-directory.
+once. Each directory row carries a default seat (`SectorDirectory.DefaultSeat`,
+`@directoryDefaultSeat`): the role a stranger the directory vouches for is seated with in
+that sector at their first sign-in, before the registration's account rule is reached.
+Cinder's row names `SectorCrew`, so the navigator's first sign-in creates him seated
+there; Anvil's and Bastion's name none, so a stranger no row seats is refused by
+invitation only (`invitation_only`, the login page's sentence) and no account is created,
+unless they followed an invitation. The crew auth reads every sector's declaration of a
+directory with its seat through the generated `app.NewSectorDirectoryReader`
+(`SetDirectoryAdmission`, with `resource.SeatDeclared` writing the seat once the sign-in
+has committed); the members auth, whose directory names the roles, sets none. The
+console's Sign-in page (Sector Ops menu, under the sector's URL) carries the declaration:
+the sector's marshal declares and withdraws directories there and picks each one's
+default seat from the sector's roles, headquarters sets directory only. A sector's
+creator is its first marshal whatever the creation shape: the create path seats the
+surveyor as `SectorMarshal` in Dawn after the row commits, as the create-sector route
+seats the pioneer in Ember (`SectorAdministratorRoles`, from `crew.AdministratorRoles`),
+and the last holder of a partition's administrator role (`Headquarters` globally,
+`SectorMarshal` in a sector, `resource.WithAdministratorRoles`) is refused leaving it
+until another holds it, so an operator creates a customer's sector, seats its first
+administrator and leaves. Demonstrates: tenancy.declaration, tenancy.directory-only,
+tenancy.creator-directory, tenancy.default-seat, tenancy.creator-seat.
 
 ## The personas
 

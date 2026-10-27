@@ -784,6 +784,7 @@ func newServedAt(ctx context.Context, t *testing.T, version string) *served {
 		SignUpRedirectURL:  "http://" + server.Listener.Addr().String() + consoleAPI + "/user/" + crew.SignUpRegistration + "/callback",
 		ChangeSignal:       policySignal,
 		TenantDeclarations: app.NewSectorDeclarationReader(),
+		TenantDirectories:  app.NewSectorDirectoryReader(),
 		Mail:               auth.Mail{Sender: sent, LoginURL: origin + consoleLogin},
 	})
 	if err != nil {
@@ -846,7 +847,7 @@ func newServedAt(ctx context.Context, t *testing.T, version string) *served {
 		membersAuth:   membersAuth,
 		stores:        stores,
 		live:          fake,
-		crewUsers:     router.NewCrewUserSurface(sessionusers.Accounts(crewAuth.Session().API()), crewAuth.Access().UserManager(), resource.WithTenantDirectories(roster.Declarations)),
+		crewUsers:     router.NewCrewUserSurface(sessionusers.Accounts(crewAuth.Session().API()), crewAuth.Access().UserManager(), resource.WithTenantDirectories(roster.Declarations), resource.WithAdministratorRoles(crew.AdministratorRoles())),
 		membersUsers:  router.NewMembersUserSurface(sessionusers.Accounts(membersAuth.Session().API()), membersAuth.Access().UserManager(), resource.WithTenantDirectories(roster.Declarations)),
 		version:       version,
 		scheduler:     scheduled.NewGuard(schedulerInvoker, keys),

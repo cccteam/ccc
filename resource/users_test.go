@@ -344,6 +344,14 @@ var (
 
 func newUserFixture(t *testing.T) *userFixture {
 	t.Helper()
+
+	return newUserFixtureWith(t)
+}
+
+// newUserFixtureWith builds the fixture with more options on the surface, beside the
+// tenant directories every fixture carries.
+func newUserFixtureWith(t *testing.T, opts ...UserSurfaceOption) *userFixture {
+	t.Helper()
 	ids := make([]ccc.UUID, 4)
 	for i := range ids {
 		id, err := ccc.NewUUID()
@@ -390,9 +398,10 @@ func newUserFixture(t *testing.T) *userFixture {
 	}
 	collection := b.GeneratedCollection()
 	f := &userFixture{accounts: accounts, seats: seats, perms: perms, declarations: map[accesstypes.Domain]*signin.TenantDeclaration{}}
-	surface := NewUserSurface[testUserAuth](accounts, seats, WithTenantDirectories(func(_ context.Context, domain accesstypes.Domain) (*signin.TenantDeclaration, error) {
+	opts = append([]UserSurfaceOption{WithTenantDirectories(func(_ context.Context, domain accesstypes.Domain) (*signin.TenantDeclaration, error) {
 		return f.declarations[domain], nil
-	}))
+	})}, opts...)
+	surface := NewUserSurface[testUserAuth](accounts, seats, opts...)
 	f.surface = surface
 	app := userTestApp{perms: perms, key: mustCursorKey(t, base64.StdEncoding.EncodeToString([]byte("users-test-cookie-key-32-bytes!!")))}
 
@@ -1125,7 +1134,7 @@ func TestUserSurface_seatWrites(t *testing.T) {
 			wantCode: http.StatusBadRequest,
 		},
 		{
-			name:   "nobody unseats themselves",
+			name:   "without administrator roles nobody unseats themselves",
 			grant:  func(p *scriptedPermissions) { p.grant(accesstypes.Delete, "CrewSeats") },
 			target: "/crew-seats",
 			body: func(f *userFixture) string {
@@ -1200,6 +1209,137 @@ func TestUserSurface_seatWrites(t *testing.T) {
 			code, body := f.do(t, http.MethodPatch, tt.target, tt.body(f))
 			if code != tt.wantCode {
 				t.Fatalf("status = %d, want %d: %s", code, tt.wantCode, body)
+			}
+			if tt.check != nil {
+				tt.check(t, f)
+			}
+		})
+	}
+}
+
+// TestUserSurface_lastOwner pins the last-owner rule a surface built with
+// WithAdministratorRoles keeps: a self-unseat goes unless it would leave the partition
+// without a holder of its administrator roles; the global partition counts its global
+// roles, a tenant partition its domain roles held in the tenant or everywhere. The
+// caller is admin, seated Administrator globally and, for the tenant cases, Marshal at
+// anvil, where marshal holds Marshal everywhere.
+func TestUserSurface_lastOwner(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		arrange  func(f *userFixture)
+		target   string
+		body     func(f *userFixture) string
+		wantCode int
+		wantBody string
+		check    func(t *testing.T, f *userFixture)
+	}{
+		{
+			name:   "the last global administrator cannot unseat themselves",
+			target: "/crew-seats",
+			body: func(f *userFixture) string {
+				return fmt.Sprintf(`[{"op":"remove","path":"/%s/Administrator"}]`, f.user(t, "admin").ID)
+			},
+			wantCode: http.StatusForbidden,
+			wantBody: "you are the last administrator: seat another before you unseat yourself",
+		},
+		{
+			name:    "a global administrator leaves once another holds the role",
+			arrange: func(f *userFixture) { f.seats.seat(global, "Administrator", "clerk") },
+			target:  "/crew-seats",
+			body: func(f *userFixture) string {
+				return fmt.Sprintf(`[{"op":"remove","path":"/%s/Administrator"}]`, f.user(t, "admin").ID)
+			},
+			wantCode: http.StatusOK,
+			check: func(t *testing.T, f *userFixture) {
+				t.Helper()
+				if slices.Contains(f.seats.held[global]["Administrator"], "admin") {
+					t.Error("admin still seated as Administrator")
+				}
+			},
+		},
+		{
+			name:    "a domain role held everywhere is no global administrator",
+			arrange: func(f *userFixture) { f.seats.seat(everywhere, "Marshal", "admin") },
+			target:  "/crew-seats",
+			body: func(f *userFixture) string {
+				return fmt.Sprintf(`[{"op":"remove","path":"/%s/Administrator"}]`, f.user(t, "admin").ID)
+			},
+			wantCode: http.StatusForbidden,
+		},
+		{
+			name:    "a seat that is no administrator's goes",
+			arrange: func(f *userFixture) { f.seats.seat(global, "Auditor", "admin") },
+			target:  "/crew-seats",
+			body: func(f *userFixture) string {
+				return fmt.Sprintf(`[{"op":"remove","path":"/%s/Auditor"}]`, f.user(t, "admin").ID)
+			},
+			wantCode: http.StatusOK,
+			check: func(t *testing.T, f *userFixture) {
+				t.Helper()
+				if slices.Contains(f.seats.held[global]["Auditor"], "admin") {
+					t.Error("admin still seated as Auditor")
+				}
+			},
+		},
+		{
+			name:    "a tenant's administrator leaves while one seated everywhere remains",
+			arrange: func(f *userFixture) { f.seats.seat(accesstypes.DomainPolicyScope(anvil), "Marshal", "admin") },
+			target:  "/sectors/anvil/crew-sector-seats",
+			body: func(f *userFixture) string {
+				return fmt.Sprintf(`[{"op":"remove","path":"/%s/Marshal"}]`, f.user(t, "admin").ID)
+			},
+			wantCode: http.StatusOK,
+			check: func(t *testing.T, f *userFixture) {
+				t.Helper()
+				if slices.Contains(f.seats.held[accesstypes.DomainPolicyScope(anvil)]["Marshal"], "admin") {
+					t.Error("admin still seated as Marshal at anvil")
+				}
+			},
+		},
+		{
+			name: "the last administrator of a tenant cannot unseat themselves",
+			arrange: func(f *userFixture) {
+				f.seats.seat(accesstypes.DomainPolicyScope(anvil), "Marshal", "admin")
+				f.seats.held[everywhere]["Marshal"] = nil
+			},
+			target: "/sectors/anvil/crew-sector-seats",
+			body: func(f *userFixture) string {
+				return fmt.Sprintf(`[{"op":"remove","path":"/%s/Marshal"}]`, f.user(t, "admin").ID)
+			},
+			wantCode: http.StatusForbidden,
+			wantBody: "you are the last administrator of this sector: seat another before you unseat yourself",
+		},
+		{
+			name: "the same person's administrator seat held everywhere counts",
+			arrange: func(f *userFixture) {
+				f.seats.seat(accesstypes.DomainPolicyScope(anvil), "Marshal", "admin")
+				f.seats.held[everywhere]["Marshal"] = []accesstypes.User{"admin"}
+			},
+			target: "/sectors/anvil/crew-sector-seats",
+			body: func(f *userFixture) string {
+				return fmt.Sprintf(`[{"op":"remove","path":"/%s/Marshal"}]`, f.user(t, "admin").ID)
+			},
+			wantCode: http.StatusOK,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			f := newUserFixtureWith(t, WithAdministratorRoles([]accesstypes.Role{"Administrator"}, []accesstypes.Role{"Marshal"}))
+			f.perms.grant(accesstypes.Delete, "CrewSeats")
+			f.perms.grant(accesstypes.Delete, "CrewSectorSeats")
+			if tt.arrange != nil {
+				tt.arrange(f)
+			}
+
+			code, body := f.do(t, http.MethodPatch, tt.target, tt.body(f))
+			if code != tt.wantCode {
+				t.Fatalf("status = %d, want %d: %s", code, tt.wantCode, body)
+			}
+			if tt.wantBody != "" && !strings.Contains(string(body), tt.wantBody) {
+				t.Errorf("body = %s, want it to carry %q", body, tt.wantBody)
 			}
 			if tt.check != nil {
 				tt.check(t, f)

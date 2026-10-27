@@ -86,6 +86,21 @@ func Test_resolveTenantDeclaration(t *testing.T) {
 			structs: []string{"Harbor"},
 			wantErr: "struct Harbor field DirectoryOnly: @directoryOnly with no directories record in the package; a tenant whose people enter through its directories only needs directories to enter through, so declare the directories record (@tenantDirectory) or drop the flag",
 		},
+		{
+			name:    "@directoryDefaultSeat off the directories record is refused",
+			structs: []string{"Harbor", "HarborDirectory", "Slipway"},
+			wantErr: "struct Slipway field Seat: @directoryDefaultSeat on a resource that is not the directories record; the default seat is the @tenantDirectory record's column, so annotate the record's struct @tenantDirectory first",
+		},
+		{
+			name:    "@directoryDefaultSeat on a column that is not a string is refused",
+			structs: []string{"Harbor", "Wharf"},
+			wantErr: "struct Wharf field Seated: @directoryDefaultSeat on a bool column; the default seat is a role name, a string or a nullable string (*string), NULL where the tenant admits the directory's strangers by invitation only",
+		},
+		{
+			name:    "@directoryDefaultSeat on a second column is refused naming the first",
+			structs: []string{"Harbor", "Bollard"},
+			wantErr: "struct Bollard field Rank: @directoryDefaultSeat on a second column; field Seat carries it already",
+		},
 	}
 
 	for _, tt := range tests {
@@ -116,6 +131,9 @@ func Test_resolveTenantDeclaration(t *testing.T) {
 			if directories.DirectoryConnectionField == nil || directories.DirectoryConnectionField.Name() != "Connection" {
 				t.Errorf("%s.DirectoryConnectionField = %v, want Connection", directories.Name(), directories.DirectoryConnectionField)
 			}
+			if directories.DirectoryDefaultSeatField == nil || directories.DirectoryDefaultSeatField.Name() != "DefaultSeat" {
+				t.Errorf("%s.DirectoryDefaultSeatField = %v, want DefaultSeat", directories.Name(), directories.DirectoryDefaultSeatField)
+			}
 			if !directories.SignalsTenants() || !record.SignalsTenants() {
 				t.Error("both records' write paths keep the roster current")
 			}
@@ -140,12 +158,17 @@ func Test_declarationColumns(t *testing.T) {
 		{
 			name:    "the record's flag and the directories record's columns",
 			structs: []string{"Harbor", "HarborDirectory"},
-			want:    &tenantDeclarationColumns{DirectoryOnly: "DirectoryOnly", DirectoriesTable: "HarborDirectories", TenantColumn: "HarborId", MethodColumn: "Method", ConnectionColumn: "Connection"},
+			want:    &tenantDeclarationColumns{DirectoryOnly: "DirectoryOnly", DirectoriesTable: "HarborDirectories", TenantColumn: "HarborId", MethodColumn: "Method", ConnectionColumn: "Connection", DefaultSeatColumn: "DefaultSeat"},
 		},
 		{
 			name:    "a record without the flag names no directory-only column",
 			structs: []string{"Sector", "HarborDirectory"},
-			want:    &tenantDeclarationColumns{DirectoriesTable: "HarborDirectories", TenantColumn: "HarborId", MethodColumn: "Method", ConnectionColumn: "Connection"},
+			want:    &tenantDeclarationColumns{DirectoriesTable: "HarborDirectories", TenantColumn: "HarborId", MethodColumn: "Method", ConnectionColumn: "Connection", DefaultSeatColumn: "DefaultSeat"},
+		},
+		{
+			name:    "a directories record without the seat column names none",
+			structs: []string{"Harbor", "Breakwater"},
+			want:    &tenantDeclarationColumns{DirectoryOnly: "DirectoryOnly", DirectoriesTable: "Breakwaters", TenantColumn: "HarborId", MethodColumn: "Method", ConnectionColumn: "Connection"},
 		},
 		{name: "no directories record is no declaration", structs: []string{"Sector", "Berth"}},
 	}
@@ -198,13 +221,35 @@ func Test_tenantsTemplate_declaration(t *testing.T) {
 				`return resource.NewTenantRoster(client, "Harbors", "Id", opts...)`,
 				"func NewHarborDeclarationReader() signin.DeclarationReader[*spanner.ReadWriteTransaction] {",
 				`return resource.NewTenantDeclarationReader("Harbors", "Id", &harborDeclaration)`,
+				"func NewHarborDirectoryReader() signin.DirectoryReader[*spanner.ReadWriteTransaction] {",
+				"return resource.NewTenantDirectoryReader(&harborDeclaration)",
+				"with no default seat (the record carries no @directoryDefaultSeat column",
+			},
+			wantNotContains: []string{"DefaultSeatColumn", "AdministratorRoles"},
+		},
+		{
+			name: "the seat column and the creator's seat contract",
+			data: &tenantsData{
+				Source: "resources", Package: "app", Name: "Harbor", Table: "Harbors", KeyColumn: "Id", RecordLower: "harbor", Directories: "HarborDirectory", DefaultSeat: "DefaultSeat",
+				Declaration:     &tenantDeclarationColumns{DirectoriesTable: "HarborDirectories", TenantColumn: "HarborId", MethodColumn: "Method", ConnectionColumn: "Connection", DefaultSeatColumn: "DefaultSeat"},
+				Seat:            &tenantSeatData{Record: "Harbor", RecordLower: "harbor", KeyType: "string", Auth: "Staff", AuthType: "StaffAuth", SurfaceAccessor: "StaffUserSurface", RolesAccessor: "HarborAdministratorRoles"},
+				RouterPackage:   "router",
+				ApplicationName: "App",
+			},
+			wantContains: []string{
+				`DefaultSeatColumn: "DefaultSeat",`,
+				"with the default seat the row carries (HarborDirectory.DefaultSeat:",
+				`"github.com/cccteam/ccc/accesstypes"`,
+				"HarborAdministratorRoles() []accesstypes.Role",
+				"StaffUserSurface() *resource.UserSurface[router.StaffAuth]",
+				"} = (*App)(nil)",
 			},
 		},
 		{
 			name:            "a record declaring none carries neither",
 			data:            &tenantsData{Source: "resources", Package: "app", Name: "Sector", Table: "Sectors", KeyColumn: "Id", RecordLower: "sector"},
 			wantContains:    []string{`return resource.NewTenantRoster(client, "Sectors", "Id", opts...)`},
-			wantNotContains: []string{"WithTenantDeclarations", "DeclarationReader", "signin", "spanner"},
+			wantNotContains: []string{"WithTenantDeclarations", "DeclarationReader", "DirectoryReader", "signin", "spanner", "AdministratorRoles"},
 		},
 	}
 

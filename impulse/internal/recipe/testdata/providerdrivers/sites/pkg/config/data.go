@@ -407,6 +407,7 @@ func (env *dataConfig) staffSettings(collection access.PermissionCollection, sig
 		Mail:               sender,
 		MailLoginURL:       env.PublicURL + "/login",
 		TenantDeclarations: consoleapp.NewTenantDeclarationReader(),
+		TenantDirectories:  consoleapp.NewTenantDirectoryReader(),
 	}
 }
 

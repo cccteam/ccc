@@ -16,15 +16,19 @@ import (
 // tenant admits its people through, one per declaration, each naming the sign-in
 // method (@directoryMethod: google, azure, workos, as sessioninfo.AuthMethod spells
 // them) and the connection the method's identities carry (@directoryConnection: a
-// Google Workspace by its domain, a Microsoft Entra tenant by its tenant id). The
+// Google Workspace by its domain, a Microsoft Entra tenant by its tenant id), and
+// naming, when the record carries the column, the default seat (@directoryDefaultSeat:
+// the role a stranger the directory vouches for is seated with in the tenant at their
+// first sign-in, NULL where the tenant admits such strangers by invitation only). The
 // generator holds the shape at capture, so the generated constructors
 // (New<Record>Roster with the declaration's columns, New<Record>DeclarationReader for
-// the sign-in policy) and the write paths that keep every instance's copy current
-// render against a declaration that can serve as one.
+// the sign-in policy, New<Record>DirectoryReader for the directory admission) and the
+// write paths that keep every instance's copy current render against a declaration
+// that can serve as one.
 
 // resolveTenantDeclaration reads a table-backed struct's declaration annotations:
-// @tenantDirectory on the struct, @directoryOnly, @directoryMethod and
-// @directoryConnection on its fields, each refused where it cannot mean anything.
+// @tenantDirectory on the struct, @directoryOnly, @directoryMethod, @directoryConnection
+// and @directoryDefaultSeat on its fields, each refused where it cannot mean anything.
 // The rules that read across structs (one directories record, the record it belongs
 // to) run once every struct is extracted (rejectSecondTenantDirectory,
 // validateTenantDeclaration). The scope and the tenant record resolve first.
@@ -60,10 +64,47 @@ func resolveTenantDeclaration(res *resourceInfo, pStruct *parser.Struct, annotat
 			if err := res.setDirectoryColumn(&res.DirectoryConnectionField, field, directoryConnectionKeyword, "the connection a directory's identities carry"); err != nil {
 				return err
 			}
+		case fieldAnnotations.Has(directoryDefaultSeatKeyword):
+			if err := res.setDirectorySeatColumn(field); err != nil {
+				return err
+			}
 		}
 	}
 
 	return nil
+}
+
+// setDirectorySeatColumn records the directories record's default seat column
+// (@directoryDefaultSeat), refusing it off the record, on a column that is neither a
+// string nor a nullable string, and declared twice.
+func (r *resourceInfo) setDirectorySeatColumn(field *parser.Field) error {
+	switch {
+	case !r.IsTenantDirectory:
+		return errors.Newf("struct %s field %s: @%s on a resource that is not the directories record; the default seat is the @%s record's column, so annotate the record's struct @%s first", r.Name(), field.Name(), directoryDefaultSeatKeyword, tenantDirectoryKeyword, tenantDirectoryKeyword)
+	case !isStringOrNullableString(field.GoType()):
+		return errors.Newf("struct %s field %s: @%s on a %s column; the default seat is a role name, a string or a nullable string (*string), NULL where the tenant admits the directory's strangers by invitation only", r.Name(), field.Name(), directoryDefaultSeatKeyword, field.Type())
+	case r.DirectoryDefaultSeatField != nil:
+		return errors.Newf("struct %s field %s: @%s on a second column; field %s carries it already", r.Name(), field.Name(), directoryDefaultSeatKeyword, r.DirectoryDefaultSeatField.Name())
+	}
+	r.DirectoryDefaultSeatField = r.fieldNamed(field.Name())
+	if r.DirectoryDefaultSeatField == nil {
+		return errors.Newf("struct %s field %s: @%s on a column the schema does not hold", r.Name(), field.Name(), directoryDefaultSeatKeyword)
+	}
+
+	return nil
+}
+
+// isStringOrNullableString reports whether the type is a string or a pointer to one.
+func isStringOrNullableString(t types.Type) bool {
+	if t == nil {
+		return false
+	}
+	t = types.Unalias(t)
+	if p, isPointer := t.(*types.Pointer); isPointer {
+		t = p.Elem()
+	}
+
+	return isStringKinded(t)
 }
 
 // setDirectoryColumn records one of the directories record's two columns, refusing it
@@ -194,14 +235,16 @@ func (r *resourceGenerator) validateTenantDeclaration() error {
 }
 
 // tenantDeclarationColumns is the declaration as the generated constructors hand it to
-// resource.WithTenantDeclarations and resource.NewTenantDeclarationReader: the column
-// names behind the record's annotated fields.
+// resource.WithTenantDeclarations, resource.NewTenantDeclarationReader and
+// resource.NewTenantDirectoryReader: the column names behind the record's annotated
+// fields, the default seat's empty where the record carries none.
 type tenantDeclarationColumns struct {
-	DirectoryOnly    string
-	DirectoriesTable string
-	TenantColumn     string
-	MethodColumn     string
-	ConnectionColumn string
+	DirectoryOnly     string
+	DirectoriesTable  string
+	TenantColumn      string
+	MethodColumn      string
+	ConnectionColumn  string
+	DefaultSeatColumn string
 }
 
 // declarationColumns reads the declaration's columns off the record, nil when the
@@ -219,6 +262,9 @@ func (r *resourceGenerator) declarationColumns(record *resourceInfo) *tenantDecl
 	}
 	if record.DirectoryOnlyField != nil {
 		columns.DirectoryOnly = spannerColumn(record.DirectoryOnlyField)
+	}
+	if directories.DirectoryDefaultSeatField != nil {
+		columns.DefaultSeatColumn = spannerColumn(directories.DirectoryDefaultSeatField)
 	}
 
 	return columns

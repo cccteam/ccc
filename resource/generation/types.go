@@ -1197,11 +1197,16 @@ type resourceInfo struct {
 	// IsTenantDirectory marks the directories record (@tenantDirectory): the
 	// tenant-scoped resource whose rows are the directories a tenant admits its people
 	// through, one per declaration, with DirectoryMethodField (@directoryMethod) and
-	// DirectoryConnectionField (@directoryConnection) as its two columns. Its generated
-	// write paths keep every instance's tenant roster current, as the record's do.
-	IsTenantDirectory        bool
-	DirectoryMethodField     *resourceField
-	DirectoryConnectionField *resourceField
+	// DirectoryConnectionField (@directoryConnection) as its two columns, and
+	// DirectoryDefaultSeatField (@directoryDefaultSeat) as the column naming the role
+	// a stranger the directory vouches for is seated with at their first sign-in, nil
+	// where the record carries none and every tenant admits such strangers by
+	// invitation only. Its generated write paths keep every instance's tenant roster
+	// current, as the record's do.
+	IsTenantDirectory         bool
+	DirectoryMethodField      *resourceField
+	DirectoryConnectionField  *resourceField
+	DirectoryDefaultSeatField *resourceField
 	// declaration is the tenant record's declaration of who may enter a tenant, set
 	// once the directories record is known to belong to it (validateTenantDeclaration);
 	// nil on every other resource and on a record whose package declares none.
@@ -2125,6 +2130,7 @@ const (
 	tenantDirectoryKeyword      string = "tenantDirectory"      // Declares the directories record: the tenant-scoped @resource whose rows are the directories a tenant admits its people through, one per declaration
 	directoryMethodKeyword      string = "directoryMethod"      // Marks the directories record's string column holding the sign-in method a directory is reached through (google, azure, workos)
 	directoryConnectionKeyword  string = "directoryConnection"  // Marks the directories record's string column holding the connection a directory's identities carry (a Google Workspace by its domain, a Microsoft Entra tenant by its tenant id)
+	directoryDefaultSeatKeyword string = "directoryDefaultSeat" // Marks the directories record's string column naming the role a stranger the directory vouches for is seated with at their first sign-in, NULL where the tenant admits them by invitation only
 	formerlyKeyword             string = "formerly"             // Declares a field's or a method's former name, answered beside the current one while older applications still send it: @formerly(Title)
 	scheduleKeyword             string = "schedule"             // Declares an RPC method a scheduled route Cloud Scheduler calls: @schedule("0 3 * * *"[, zone: "America/Denver", log: onEvent])
 )
@@ -2167,6 +2173,7 @@ func resourceKeywords() map[string]genlang.KeywordOpts {
 		tenantDirectoryKeyword:      {genlang.ScanStruct: genlang.NoArgs | genlang.Exclusive},
 		directoryMethodKeyword:      {genlang.ScanField: genlang.NoArgs | genlang.Exclusive},
 		directoryConnectionKeyword:  {genlang.ScanField: genlang.NoArgs | genlang.Exclusive},
+		directoryDefaultSeatKeyword: {genlang.ScanField: genlang.NoArgs | genlang.Exclusive},
 		formerlyKeyword:             {genlang.ScanStruct: genlang.ArgsRequired | genlang.Exclusive, genlang.ScanField: genlang.ArgsRequired | genlang.Exclusive},
 		scheduleKeyword:             {genlang.ScanStruct: genlang.ArgsRequired | genlang.Exclusive},
 	}

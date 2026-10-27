@@ -20,15 +20,20 @@ import (
 // rigger, by password, holding SectorCrew in Anvil and Bastion and no global role,
 // charts Anvil alone and Bastion answers her as a sector that does not exist; the bosun,
 // whose only sector is Bastion, is refused at sign-in naming the rule; the navigator,
-// through the fleet's directory in a role held in every sector and no global one, charts
-// all three, Bastion included. The governor withdraws Anvil's directory and the
-// navigator's next request stands outside Anvil; declared again, he is back; the same
-// declaration twice is a conflict. Headquarters opens Bastion to passwords and the
-// rigger's chart lights it and the bosun signs in. Every edit leaves a change event. The
-// directory sign-in sets a process variable, so the test does not run in parallel with
-// the other directory sign-ins (simulatedLogin).
+// through the fleet's directory on no manifest, is created at his first sign-in seated
+// where a declaring row names a default seat, Cinder's SectorCrew, and then, seated by
+// the governor in a role held in every sector and no global one, charts all three,
+// Bastion included. The governor withdraws Anvil's directory and the navigator's next
+// request stands outside Anvil; declared again, he is back; the same declaration twice
+// is a conflict. Headquarters opens Bastion to passwords and the rigger's chart lights
+// it and the bosun signs in. The default seat is the row's: with Cinder's cleared and no
+// row naming one, a stranger from the fleet's directory is refused by invitation only
+// and no account is created; with SectorCrew named on Anvil's row, the same stranger's
+// next sign-in creates her seated there. Every edit leaves a change event. The directory
+// sign-in sets a process variable, so the test does not run in parallel with the other
+// directory sign-ins (simulatedLogin).
 //
-// Demonstrates: tenancy.declaration, tenancy.directory-only.
+// Demonstrates: tenancy.declaration, tenancy.directory-only, tenancy.default-seat.
 func TestTenantDeclaration_whoMayEnterASector(t *testing.T) {
 	t.Parallel()
 
@@ -68,11 +73,11 @@ func TestTenantDeclaration_whoMayEnterASector(t *testing.T) {
 		t.Errorf("the bosun's refusal code = %q (err %v), want %q: %s", refusal.Code, err, sessioninfo.RefusedDirectoryOnly, body)
 	}
 
-	// The navigator: through the fleet's directory, which every sector declares, in a
-	// role held in every sector and no global one. The crew's roles are the
-	// application's, so the first sign-in provisions him holding nothing, and the
-	// governor seats him as Pilot in the global partition, a domain role held in every
-	// sector.
+	// The navigator: through the fleet's directory, which every sector declares, on no
+	// manifest. The crew's roles are the application's, so the first sign-in creates him
+	// with what the declaring rows name as their default seat: Cinder's names SectorCrew,
+	// Anvil's and Bastion's none, so his chart lights Cinder alone. The governor then
+	// seats him as Pilot in the global partition, a domain role held in every sector.
 	navigator := newBrowser(t, s, consoleAPI)
 	if status, body := navigator.do(ctx, http.MethodGet, consoleAPI+"/user/session", nil); status != http.StatusOK {
 		t.Fatalf("GET session before the navigator's login: status %d: %s", status, body)
@@ -80,8 +85,11 @@ func TestTenantDeclaration_whoMayEnterASector(t *testing.T) {
 	if status, location := navigator.loginConsoleGoogle(ctx, navigatorUser); status != http.StatusFound || location != consolePage {
 		t.Fatalf("the navigator's Google login: status %d to %q, want %d to %q", status, location, http.StatusFound, consolePage)
 	}
-	if got := navigator.domains(ctx); len(got) != 0 {
-		t.Fatalf("the navigator's chart before any seat = %v, want none", got)
+	if got, want := navigator.domains(ctx), []string{cinder}; !slices.Equal(got, want) {
+		t.Fatalf("the navigator's chart after the first sign-in = %v, want %v: Cinder's row names SectorCrew as its default seat", got, want)
+	}
+	if row := userRow(ctx, t, governor, crewSectorUsers(cinder), navigatorUser); row == nil || !slices.Equal(rolesOf(row), []string{"SectorCrew"}) {
+		t.Fatalf("the navigator on Cinder's crew = %v, want seated as SectorCrew by the directory's default seat", row)
 	}
 	seat := seatBody(crewUserID(ctx, t, governor, navigatorUser), "Pilot")
 	if status, body := governor.do(ctx, http.MethodPatch, consoleAPI+"/"+crewPartitions().Global.SeatsRoute, []byte(seat)); status != http.StatusOK {
@@ -132,18 +140,74 @@ func TestTenantDeclaration_whoMayEnterASector(t *testing.T) {
 		t.Errorf("the bosun's password sign-in once Bastion admits passwords: status %d, want 200: %s", status, body)
 	}
 
+	// The default seat is the row's, set under Update on SectorDirectories, which the
+	// governor holds as marshal in every sector. With Cinder's seat cleared (an explicit
+	// null, the way the Sign-in page clears it) no declaring row names one, so a stranger
+	// from the fleet's directory is refused by invitation only: the browser lands on the
+	// login page with the code, no session opens, and no account is created.
+	cinderRows := directories(ctx, t, governor, cinder)
+	if len(cinderRows) != 1 || cinderRows[0].DefaultSeat == nil || *cinderRows[0].DefaultSeat != "SectorCrew" {
+		t.Fatalf("Cinder's directories = %+v, want the seeded fleet directory naming SectorCrew as its default seat", cinderRows)
+	}
+	clearSeat := `[{"op":"patch","path":"/sectors/` + cinder + `/sector-directories/` + cinderRows[0].ID + `","value":{"defaultSeat":null}}]`
+	if status, body := governor.do(ctx, http.MethodPatch, consoleAPI+"/resources", []byte(clearSeat)); status != http.StatusOK {
+		t.Fatalf("clearing Cinder's default seat: status %d: %s", status, body)
+	}
+	if rows := directories(ctx, t, governor, cinder); len(rows) != 1 || rows[0].DefaultSeat != nil {
+		t.Fatalf("Cinder's directories once the seat is cleared = %+v, want the row with no default seat", rows)
+	}
+	drifter := newBrowser(t, s, consoleAPI)
+	if status, body := drifter.do(ctx, http.MethodGet, consoleAPI+"/user/session", nil); status != http.StatusOK {
+		t.Fatalf("GET session before the drifter's login: status %d: %s", status, body)
+	}
+	status, location := drifter.loginConsoleGoogle(ctx, drifterUser)
+	if want := consoleLogin + "?code=" + string(sessioninfo.RefusedInvitationOnly); status != http.StatusFound || location != want {
+		t.Fatalf("the drifter's Google login with no row naming a seat: status %d to %q, want %d to %q", status, location, http.StatusFound, want)
+	}
+	if sess := drifter.session(ctx); sess["authenticated"] != false {
+		t.Errorf("the drifter's session after the refusal = %v, want none", sess)
+	}
+	if row := userRow(ctx, t, governor, crewGlobalRoute(crewPartitions().Global.UsersRoute), drifterUser); row != nil {
+		t.Errorf("the drifter's account after the refusal = %v, want none created", row)
+	}
+
+	// Anvil's row names SectorCrew, and the drifter's next sign-in creates her seated
+	// there: her chart lights Anvil alone.
+	anvilRows := directories(ctx, t, governor, anvil)
+	if len(anvilRows) != 1 {
+		t.Fatalf("Anvil's directories = %+v, want the one declared again", anvilRows)
+	}
+	nameSeat := `[{"op":"patch","path":"/sectors/` + anvil + `/sector-directories/` + anvilRows[0].ID + `","value":{"defaultSeat":"SectorCrew"}}]`
+	if status, body := governor.do(ctx, http.MethodPatch, consoleAPI+"/resources", []byte(nameSeat)); status != http.StatusOK {
+		t.Fatalf("naming Anvil's default seat: status %d: %s", status, body)
+	}
+	if status, location := drifter.loginConsoleGoogle(ctx, drifterUser); status != http.StatusFound || location != consolePage {
+		t.Fatalf("the drifter's Google login once Anvil's row names a seat: status %d to %q, want %d to %q", status, location, http.StatusFound, consolePage)
+	}
+	if got, want := drifter.domains(ctx), []string{anvil}; !slices.Equal(got, want) {
+		t.Errorf("the drifter's chart = %v, want %v: Anvil's row seats her, no other row names a seat", got, want)
+	}
+	if row := userRow(ctx, t, governor, crewSectorUsers(anvil), drifterUser); row == nil || !slices.Equal(rolesOf(row), []string{"SectorCrew"}) {
+		t.Errorf("the drifter on Anvil's crew = %v, want seated as SectorCrew by the directory's default seat", row)
+	}
+
 	// Every edit is audited: the records' change events carry the declaration's writes.
 	events := changeEvents(ctx, t, s, "Sectors", "SectorDirectories")
-	if events["Sectors"] < 1 || events["SectorDirectories"] < 2 {
-		t.Errorf("change events = %v, want the flag write on Sectors and the withdrawal and declaration on SectorDirectories", events)
+	if events["Sectors"] < 1 || events["SectorDirectories"] < 4 {
+		t.Errorf("change events = %v, want the flag write on Sectors and the withdrawal, declaration and two seat writes on SectorDirectories", events)
 	}
 }
 
+// drifterUser is a stranger from the fleet's directory on no manifest, whom no row seats
+// until Anvil's names a default seat.
+const drifterUser = "drifter"
+
 // sectorDirectory is a row of the directories record as the console lists it.
 type sectorDirectory struct {
-	ID         string `json:"id"`
-	Method     string `json:"method"`
-	Connection string `json:"connection"`
+	ID          string  `json:"id"`
+	Method      string  `json:"method"`
+	Connection  string  `json:"connection"`
+	DefaultSeat *string `json:"defaultSeat"`
 }
 
 // directories lists the sector's declared directories on the console.

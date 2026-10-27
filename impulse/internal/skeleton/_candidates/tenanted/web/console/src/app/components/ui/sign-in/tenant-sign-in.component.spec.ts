@@ -1,5 +1,7 @@
 import { ApplicationRef } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { MatSelect } from '@angular/material/select';
+import { By } from '@angular/platform-browser';
 import { createApi } from '@app/service/zz_gen_api';
 import { TenantDirectories } from '@app/service/zz_gen_resources';
 import { ClientBase, Domain, PermissionDigest, TransportRequest, TransportResponse } from '@cccteam/resource';
@@ -12,8 +14,9 @@ import { firstValueFrom } from 'rxjs';
 import { TenantSignInComponent } from './tenant-sign-in.component';
 
 // The tenant's sign-in page shows who may enter the tenant as its declaration says, and
-// lets the holder of each grant change it: the tenant's administrator (List, Create and
-// Delete on TenantDirectories in the tenant) lists, declares and withdraws directories and
+// lets the holder of each grant change it: the tenant's administrator (List, Create,
+// Update and Delete on TenantDirectories in the tenant) lists, declares and withdraws
+// directories, picks each one's default seat from the tenant's roles or clears it, and
 // is told the application's administrator sets directory only; the application's
 // administrator (Update on the global Tenants record too) flips the flag; a session
 // without the grants sees the sentences and nothing is requested.
@@ -24,16 +27,22 @@ const entra: TenantDirectories = {
   tenantId: 'acme',
   method: 'azure',
   connection: '6f2c1b7e-3d4a-4c1e-9b2a-1f0e8d7c6b5a',
+  defaultSeat: 'Administrator_Domain',
 };
 const directories = [workspace, entra];
+const tenantRoles = [{ name: 'Administrator_Domain' }];
 
+const administratorGrants: PermissionDigest = {
+  TenantDirectories: { List: 'granted', Create: 'granted', Update: 'granted', Delete: 'granted' },
+  StaffTenantRoles: { List: 'granted' },
+};
 const tenantAdministrator: { global: PermissionDigest; acme: PermissionDigest } = {
   global: {},
-  acme: { TenantDirectories: { List: 'granted', Create: 'granted', Delete: 'granted' } },
+  acme: administratorGrants,
 };
 const applicationAdministrator: { global: PermissionDigest; acme: PermissionDigest } = {
   global: { Tenants: { Read: 'granted', Update: 'granted' } },
-  acme: { TenantDirectories: { List: 'granted', Create: 'granted', Delete: 'granted' } },
+  acme: administratorGrants,
 };
 const nobody: { global: PermissionDigest; acme: PermissionDigest } = { global: {}, acme: {} };
 
@@ -53,6 +62,8 @@ function serverFor(digests: { global: PermissionDigest; acme: PermissionDigest }
         return { status: 200, body: { id: 'acme', name: 'Acme', directoryOnly: false } };
       case `${environment.apiUrl}/tenants/acme/tenant-directories`:
         return { status: 200, body: directories };
+      case `${environment.apiUrl}/tenants/acme/staff-tenant-roles`:
+        return { status: 200, body: tenantRoles };
       // Every write rides the consolidated route as one operation.
       case `${environment.apiUrl}/resources`:
         return { status: 200, body: {} };
@@ -106,6 +117,7 @@ describe('TenantSignInComponent', () => {
     expect(texts('h1')).toEqual(['Who may enter acme']);
     expect(texts('.directories td:first-child')).toEqual(['Google Workspace', 'Microsoft Entra']);
     expect(texts('.directories code')).toEqual(['acme.example', '6f2c1b7e-3d4a-4c1e-9b2a-1f0e8d7c6b5a']);
+    expect(element().querySelectorAll('.seat-picker').length).toBe(2);
     expect(element().querySelector('.declare-form')).not.toBeNull();
     expect(element().querySelector('.directory-only')).toBeNull();
     expect(texts('.empty')).toContain('Your role does not cover the tenant record, which carries this setting.');
@@ -123,6 +135,38 @@ describe('TenantSignInComponent', () => {
       { op: 'add', path: '/tenants/acme/tenant-directories', value: { method: 'google', connection: 'partner.example' } },
       { op: 'remove', path: '/tenants/acme/tenant-directories/d-2' },
     ]);
+  });
+
+  it("the tenant's administrator picks a directory's default seat from the tenant's roles, and clears it", async () => {
+    await pageFor(tenantAdministrator);
+
+    // The picker offers invitation only and every role of the tenant; a row with no seat
+    // stands at invitation only (the empty choice), a row with one at its role.
+    const pickers = fixture.debugElement.queryAll(By.css('.seat-picker')).map((d) => d.componentInstance as MatSelect);
+    expect(pickers.map((p) => p.value)).toEqual(['', 'Administrator_Domain']);
+    expect(pickers[0]?.options.map((o) => o.viewValue)).toEqual(['Invitation only', 'Administrator_Domain']);
+
+    await fixture.componentInstance.seat(workspace, 'Administrator_Domain');
+    await settle();
+    expect(writes()).toEqual([
+      { op: 'patch', path: '/tenants/acme/tenant-directories/d-1', value: { defaultSeat: 'Administrator_Domain' } },
+    ]);
+
+    // Clearing the seat sends an explicit null: the column is cleared, not left alone.
+    await fixture.componentInstance.seat(entra, '');
+    await settle();
+    expect(writes()).toEqual([
+      { op: 'patch', path: '/tenants/acme/tenant-directories/d-1', value: { defaultSeat: 'Administrator_Domain' } },
+      { op: 'patch', path: '/tenants/acme/tenant-directories/d-2', value: { defaultSeat: null } },
+    ]);
+  });
+
+  it('a reader without Update on the directories sees each default seat as a sentence', async () => {
+    await pageFor({ global: {}, acme: { TenantDirectories: { List: 'granted' } } });
+
+    expect(element().querySelector('.seat-picker')).toBeNull();
+    expect(texts('.directories td:nth-child(3)')).toEqual(['Invitation only', 'Administrator_Domain']);
+    expect(transport.requests.map((r) => r.url.replace(/\?.*$/, '')).filter((u) => u.includes('staff-tenant-roles'))).toEqual([]);
   });
 
   it("the application's administrator flips directory only on the tenant record", async () => {

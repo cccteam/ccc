@@ -39,17 +39,17 @@ export type ClientRostersKey = [id: string];
 export interface DistressCallsCreate {
   summary: string;
   severity: number;
-  callerContact?: string;
-  transcript?: string;
-  position?: Point;
+  callerContact?: string | null;
+  transcript?: string | null;
+  position?: Point | null;
 }
 /** The fields a client may change on DistressCalls. Keys, server-owned, and immutable fields are absent. */
 export interface DistressCallsPatch {
   summary?: string;
   severity?: number;
-  callerContact?: string;
-  transcript?: string;
-  position?: Point;
+  callerContact?: string | null;
+  transcript?: string | null;
+  position?: Point | null;
 }
 /** The primary key of DistressCalls, in route order. */
 export type DistressCallsKey = [id: string];
@@ -62,30 +62,30 @@ export interface MissionsCreate {
   clientId: string;
   kindId: string;
   title: string;
-  brief?: string;
-  briefingTemplateId?: string;
+  brief?: string | null;
+  briefingTemplateId?: string | null;
   hazard: number;
   fee: number;
   deadline: Date;
-  requiredCertId?: string;
-  assignedSquadronId?: string;
-  notes?: string;
-  settlement?: number;
+  requiredCertId?: string | null;
+  assignedSquadronId?: string | null;
+  notes?: string | null;
+  settlement?: number | null;
 }
 /** The fields a client may change on Missions. Keys, server-owned, and immutable fields are absent. */
 export interface MissionsPatch {
   clientId?: string;
   kindId?: string;
   title?: string;
-  brief?: string;
-  briefingTemplateId?: string;
+  brief?: string | null;
+  briefingTemplateId?: string | null;
   hazard?: number;
   fee?: number;
   deadline?: Date;
-  requiredCertId?: string;
-  assignedSquadronId?: string;
-  notes?: string;
-  settlement?: number;
+  requiredCertId?: string | null;
+  assignedSquadronId?: string | null;
+  notes?: string | null;
+  settlement?: number | null;
 }
 /** The primary key of Missions, in route order. */
 export type MissionsKey = [id: string];
@@ -99,7 +99,7 @@ export interface MissionDocumentsPatch {
   size?: number;
   uploadedBy?: string;
   uploadedAt?: Date;
-  provenance?: MissionDocuments.Provenance;
+  provenance?: MissionDocuments.Provenance | null;
   digest?: string;
 }
 /** The primary key of MissionDocuments, in route order. */

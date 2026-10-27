@@ -80,7 +80,7 @@ export interface ConsignmentsCreate {
   description: string;
   mass: number;
   expiresOn: Date;
-  releasedAt?: Date;
+  releasedAt?: Date | null;
 }
 /** The fields a client may change on Consignments. Keys, server-owned, and immutable fields are absent. */
 export interface ConsignmentsPatch {
@@ -88,7 +88,7 @@ export interface ConsignmentsPatch {
   description?: string;
   mass?: number;
   expiresOn?: Date;
-  releasedAt?: Date;
+  releasedAt?: Date | null;
 }
 /** The primary key of Consignments, in route order. */
 export type ConsignmentsKey = [id: string];
@@ -100,17 +100,17 @@ export type ConsignmentsKey = [id: string];
 export interface DistressCallsCreate {
   summary: string;
   severity: number;
-  callerContact?: string;
-  transcript?: string;
-  position?: Point;
+  callerContact?: string | null;
+  transcript?: string | null;
+  position?: Point | null;
 }
 /** The fields a client may change on DistressCalls. Keys, server-owned, and immutable fields are absent. */
 export interface DistressCallsPatch {
   summary?: string;
   severity?: number;
-  callerContact?: string;
-  transcript?: string;
-  position?: Point;
+  callerContact?: string | null;
+  transcript?: string | null;
+  position?: Point | null;
 }
 /** The primary key of DistressCalls, in route order. */
 export type DistressCallsKey = [id: string];
@@ -142,30 +142,30 @@ export interface MissionsCreate {
   clientId: string;
   kindId: string;
   title: string;
-  brief?: string;
-  briefingTemplateId?: string;
+  brief?: string | null;
+  briefingTemplateId?: string | null;
   hazard: number;
   fee: number;
   deadline: Date;
-  requiredCertId?: string;
-  assignedSquadronId?: string;
-  notes?: string;
-  settlement?: number;
+  requiredCertId?: string | null;
+  assignedSquadronId?: string | null;
+  notes?: string | null;
+  settlement?: number | null;
 }
 /** The fields a client may change on Missions. Keys, server-owned, and immutable fields are absent. */
 export interface MissionsPatch {
   clientId?: string;
   kindId?: string;
   title?: string;
-  brief?: string;
-  briefingTemplateId?: string;
+  brief?: string | null;
+  briefingTemplateId?: string | null;
   hazard?: number;
   fee?: number;
   deadline?: Date;
-  requiredCertId?: string;
-  assignedSquadronId?: string;
-  notes?: string;
-  settlement?: number;
+  requiredCertId?: string | null;
+  assignedSquadronId?: string | null;
+  notes?: string | null;
+  settlement?: number | null;
 }
 /** The primary key of Missions, in route order. */
 export type MissionsKey = [id: string];
@@ -182,7 +182,7 @@ export interface MissionDocumentsPatch {
   size?: number;
   uploadedBy?: string;
   uploadedAt?: Date;
-  provenance?: MissionDocuments.Provenance;
+  provenance?: MissionDocuments.Provenance | null;
   digest?: string;
 }
 /** The primary key of MissionDocuments, in route order. */
@@ -233,14 +233,14 @@ export type PilotCertificationsKey = [userId: string, certificationId: string];
  */
 export interface RefitsCreate {
   shipId: string;
-  estimate?: number;
-  notes?: string;
+  estimate?: number | null;
+  notes?: string | null;
 }
 /** The fields a client may change on Refits. Keys, server-owned, and immutable fields are absent. */
 export interface RefitsPatch {
   shipId?: string;
-  estimate?: number;
-  notes?: string;
+  estimate?: number | null;
+  notes?: string | null;
 }
 /** The primary key of Refits, in route order. */
 export type RefitsKey = [id: string];
@@ -254,13 +254,13 @@ export interface RefitTasksCreate {
   taskNumber: number;
   instructions: string;
   done: boolean;
-  notes?: string;
+  notes?: string | null;
 }
 /** The fields a client may change on RefitTasks. Keys, server-owned, and immutable fields are absent. */
 export interface RefitTasksPatch {
   instructions?: string;
   done?: boolean;
-  notes?: string;
+  notes?: string | null;
 }
 /** The primary key of RefitTasks, in route order. */
 export type RefitTasksKey = [refitId: string, taskNumber: number];
@@ -293,11 +293,13 @@ export type SectorsKey = [id: string];
 export interface SectorDirectoriesCreate {
   method: string;
   connection: string;
+  defaultSeat?: string | null;
 }
 /** The fields a client may change on SectorDirectories. Keys, server-owned, and immutable fields are absent. */
 export interface SectorDirectoriesPatch {
   method?: string;
   connection?: string;
+  defaultSeat?: string | null;
 }
 /** The primary key of SectorDirectories, in route order. */
 export type SectorDirectoriesKey = [id: string];
@@ -351,8 +353,8 @@ export interface SortiesCreate {
   shipId: string;
   pilotUserId: string;
   launchedAt: Date;
-  returnedAt?: Date;
-  debrief?: string;
+  returnedAt?: Date | null;
+  debrief?: string | null;
 }
 /** The fields a client may change on Sorties. Keys, server-owned, and immutable fields are absent. */
 export interface SortiesPatch {
@@ -360,8 +362,8 @@ export interface SortiesPatch {
   shipId?: string;
   pilotUserId?: string;
   launchedAt?: Date;
-  returnedAt?: Date;
-  debrief?: string;
+  returnedAt?: Date | null;
+  debrief?: string | null;
 }
 /** The primary key of Sorties, in route order. */
 export type SortiesKey = [id: string];
@@ -374,14 +376,14 @@ export interface SortieExpensesCreate {
   sortieId: string;
   category: string;
   amount: number;
-  memo?: string;
+  memo?: string | null;
 }
 /** The fields a client may change on SortieExpenses. Keys, server-owned, and immutable fields are absent. */
 export interface SortieExpensesPatch {
   sortieId?: string;
   category?: string;
   amount?: number;
-  memo?: string;
+  memo?: string | null;
 }
 /** The primary key of SortieExpenses, in route order. */
 export type SortieExpensesKey = [id: string];
@@ -393,13 +395,13 @@ export type SortieExpensesKey = [id: string];
 export interface SquadronsCreate {
   wingId: string;
   name: string;
-  callsigns?: string[];
+  callsigns?: string[] | null;
 }
 /** The fields a client may change on Squadrons. Keys, server-owned, and immutable fields are absent. */
 export interface SquadronsPatch {
   wingId?: string;
   name?: string;
-  callsigns?: string[];
+  callsigns?: string[] | null;
 }
 /** The primary key of Squadrons, in route order. */
 export type SquadronsKey = [id: string];
@@ -843,7 +845,7 @@ export const apiDescriptor = defineApiDescriptor({
       operations: ['list', 'read', 'create', 'patch', 'remove', 'batch'],
       page: { default: 50 },
       order: [{ field: 'method', direction: 'asc' }, { field: 'connection', direction: 'asc' }],
-      patchable: ['method', 'connection'],
+      patchable: ['method', 'connection', 'defaultSeat'],
     },
     [Resources.Ships]: {
       resource: Resources.Ships,

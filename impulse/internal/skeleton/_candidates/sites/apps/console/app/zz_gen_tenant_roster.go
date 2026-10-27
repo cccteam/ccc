@@ -5,20 +5,32 @@ package app
 
 import (
 	"cloud.google.com/go/spanner"
+	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/sites/apps/console/pkg/router"
+	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/session/signin"
 )
 
+// The Tenant record's create seats its creator as the first administrator of the new
+// tenant (resource.SeatFirstAdministrator, after the commit) with the roles
+// TenantAdministratorRoles names, through the Staff auth's user-management surface:
+// the application supplies both beside the generated contract.
+var _ interface {
+	TenantAdministratorRoles() []accesstypes.Role
+	StaffUserSurface() *resource.UserSurface[router.StaffAuth]
+} = (*App)(nil)
+
 // tenantDeclaration names where the Tenant record keeps its declaration of who
 // may enter a tenant (@directoryOnly on the record, the TenantDirectory record's columns): what
-// the roster reads beside the keys and the sign-in policy's reader reads in its own
+// the roster reads beside the keys and the sign-in's readers read in its own
 // transaction.
 var tenantDeclaration = resource.TenantDeclarationColumns{
-	DirectoryOnly:    "DirectoryOnly",
-	DirectoriesTable: "TenantDirectories",
-	TenantColumn:     "TenantId",
-	MethodColumn:     "Method",
-	ConnectionColumn: "Connection",
+	DirectoryOnly:     "DirectoryOnly",
+	DirectoriesTable:  "TenantDirectories",
+	TenantColumn:      "TenantId",
+	MethodColumn:      "Method",
+	ConnectionColumn:  "Connection",
+	DefaultSeatColumn: "DefaultSeat",
 }
 
 // NewTenantRoster builds the application's tenant roster over the Tenant record
@@ -45,4 +57,16 @@ func NewTenantRoster(client resource.Client, opts ...resource.TenantRosterOption
 // settings; a tenant the table does not hold declares nothing.
 func NewTenantDeclarationReader() signin.DeclarationReader[*spanner.ReadWriteTransaction] {
 	return resource.NewTenantDeclarationReader("Tenants", "Id", &tenantDeclaration)
+}
+
+// NewTenantDirectoryReader builds the sign-in's reader of every tenant's declaration of
+// one directory (session.Auth.SetDirectoryAdmission, through signin.DirectoryReader):
+// the TenantDirectory rows naming the directory's method and connection, each as its tenant
+// with the default seat the row carries (TenantDirectory.DefaultSeat: the role a stranger the
+// directory vouches for is seated with at their first sign-in, none for a NULL, and the
+// tenant admits them by invitation only),
+// read in the sign-in's own transaction. The application hands it to the auth whose
+// people enter tenants, beside the seat hook (resource.SeatDeclared).
+func NewTenantDirectoryReader() signin.DirectoryReader[*spanner.ReadWriteTransaction] {
+	return resource.NewTenantDirectoryReader(&tenantDeclaration)
 }

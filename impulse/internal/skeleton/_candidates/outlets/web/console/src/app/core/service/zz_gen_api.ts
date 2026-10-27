@@ -44,11 +44,13 @@ export type TenantsKey = [id: string];
 export interface TenantDirectoriesCreate {
   method: string;
   connection: string;
+  defaultSeat?: string | null;
 }
 /** The fields a client may change on TenantDirectories. Keys, server-owned, and immutable fields are absent. */
 export interface TenantDirectoriesPatch {
   method?: string;
   connection?: string;
+  defaultSeat?: string | null;
 }
 /** The primary key of TenantDirectories, in route order. */
 export type TenantDirectoriesKey = [id: string];
@@ -192,7 +194,7 @@ export const apiDescriptor = defineApiDescriptor({
       operations: ['list', 'read', 'create', 'patch', 'remove', 'batch'],
       page: { default: 50 },
       order: [{ field: 'method', direction: 'asc' }, { field: 'connection', direction: 'asc' }],
-      patchable: ['method', 'connection'],
+      patchable: ['method', 'connection', 'defaultSeat'],
     },
     [Resources.FeatureFlags]: {
       resource: Resources.FeatureFlags,

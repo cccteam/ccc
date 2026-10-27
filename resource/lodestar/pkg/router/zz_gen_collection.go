@@ -574,6 +574,7 @@ func Collection() *resource.GeneratedCollection {
 				Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.Delete, accesstypes.List, accesstypes.Read, accesstypes.Update},
 				Tags: []resource.TagData{
 					{Name: "connection", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
+					{Name: "defaultSeat", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
 					{Name: "id"},
 					{Name: "method", Permissions: []accesstypes.Permission{accesstypes.Create, accesstypes.List, accesstypes.Read, accesstypes.Update}},
 					{Name: "sectorId", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},

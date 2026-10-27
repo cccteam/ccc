@@ -402,6 +402,7 @@ func (env *dataConfig) staffSettings(collection access.PermissionCollection, sig
 		Signals:            signals,
 		CookieKey:          cookieKey,
 		TenantDeclarations: app.NewTenantDeclarationReader(),
+		TenantDirectories:  app.NewTenantDirectoryReader(),
 		SessionTimeout:     env.SessionTimeout,
 		Mail:               sender,
 		MailLoginURL:       env.PublicURL + "/login",

@@ -3,7 +3,20 @@
 
 package app
 
-import "github.com/cccteam/ccc/resource"
+import (
+	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/sites/apps/portal/pkg/router"
+	"github.com/cccteam/ccc/accesstypes"
+	"github.com/cccteam/ccc/resource"
+)
+
+// The Tenant record's create seats its creator as the first administrator of the new
+// tenant (resource.SeatFirstAdministrator, after the commit) with the roles
+// TenantAdministratorRoles names, through the Staff auth's user-management surface:
+// the application supplies both beside the generated contract.
+var _ interface {
+	TenantAdministratorRoles() []accesstypes.Role
+	StaffUserSurface() *resource.UserSurface[router.StaffAuth]
+} = (*App)(nil)
 
 // NewTenantRoster builds the application's tenant roster over the Tenant record
 // (@tenant): the Id column of Tenants, read once at Start and kept

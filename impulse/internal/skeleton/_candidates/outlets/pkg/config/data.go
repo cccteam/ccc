@@ -379,6 +379,7 @@ func (env *dataConfig) staffSettings(collection access.PermissionCollection, sig
 		MailLoginURL:       env.PublicURL + "/console/login",
 		DevicePage:         "/console/device",
 		TenantDeclarations: app.NewTenantDeclarationReader(),
+		TenantDirectories:  app.NewTenantDirectoryReader(),
 	}
 }
 
@@ -404,6 +405,7 @@ func (env *dataConfig) membersSettings(collection access.PermissionCollection, s
 			RedirectURL:  env.MembersDirectoryRedirectURL,
 		},
 		TenantDeclarations: app.NewTenantDeclarationReader(),
+		TenantDirectories:  app.NewTenantDirectoryReader(),
 	}
 }
 

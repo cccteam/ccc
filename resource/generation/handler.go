@@ -411,6 +411,15 @@ func (r *resourceGenerator) generateConsolidatedPatchHandler(outlet *routerOutle
 	destinationFilePath := filepath.Join(r.handler.Dir(), fileName)
 
 	domainPatternPrefix := fmt.Sprintf("/%s/{%s}", r.domainRouteSegment, r.domainRouteParam)
+	var seat *tenantSeatData
+	for _, res := range resources {
+		if res.IsTenant {
+			var err error
+			if seat, err = r.tenantSeatData(res); err != nil {
+				return err
+			}
+		}
+	}
 	var globalCases, domainCases []consolidatedCaseData
 	var segmentCase *consolidatedCaseData
 	for _, res := range resources {
@@ -418,6 +427,7 @@ func (r *resourceGenerator) generateConsolidatedPatchHandler(outlet *routerOutle
 			resourceInfo:    res,
 			ResourcePackage: r.resource.Package(),
 			ReceiverName:    r.receiverName,
+			Seated:          res.IsTenant && seat != nil,
 		}
 		switch {
 		case res.IsDomainScoped():
@@ -447,6 +457,7 @@ func (r *resourceGenerator) generateConsolidatedPatchHandler(outlet *routerOutle
 		DomainCases:         domainCases,
 		SegmentCase:         segmentCase,
 		HasTenant:           slices.ContainsFunc(resources, func(res *resourceInfo) bool { return res.SignalsTenants() }),
+		Seat:                seat,
 		DomainRouteSegment:  r.domainRouteSegment,
 		DomainPatternPrefix: domainPatternPrefix,
 		Package:             r.handler.Package(),
@@ -465,12 +476,20 @@ func (r *resourceGenerator) generateConsolidatedPatchHandler(outlet *routerOutle
 }
 
 func (r *resourceGenerator) handlerContent(handler HandlerType, res *resourceInfo) ([]byte, error) {
+	var seat *tenantSeatData
+	if res.IsTenant {
+		var err error
+		if seat, err = r.tenantSeatData(res); err != nil {
+			return nil, err
+		}
+	}
 	output, err := r.generateTemplateOutput("handler", handler.template(), handlerContentData{
 		ResourcePackage:         r.resource.Package(),
 		Resource:                res,
 		VirtualResourcesPackage: r.virtual.Package(),
 		ApplicationName:         r.applicationName,
 		ReceiverName:            r.receiverName,
+		Seat:                    seat,
 	})
 	if err != nil {
 		return nil, errors.Wrap(err, "generateTemplateOutput()")

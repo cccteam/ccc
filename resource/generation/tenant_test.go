@@ -33,7 +33,11 @@ func tenantFixtureTables() map[string]*tableMetadata {
 		// The declaration's shapes: the record with its flag, the directories record,
 		// and each shape the annotations refuse.
 		"Harbors":           {PkCount: 1, Columns: map[string]columnMeta{"Id": pk, "Name": plain, "DirectoryOnly": plain}},
-		"HarborDirectories": {PkCount: 1, Columns: map[string]columnMeta{"Id": pk, "HarborId": plain, "Method": plain, "Connection": plain}},
+		"HarborDirectories": {PkCount: 1, Columns: map[string]columnMeta{"Id": pk, "HarborId": plain, "Method": plain, "Connection": plain, "DefaultSeat": nullable}},
+		"Slipways":          {PkCount: 1, Columns: map[string]columnMeta{"Id": pk, "HarborId": plain, "Seat": plain}},
+		"Wharfs":            {PkCount: 1, Columns: map[string]columnMeta{"Id": pk, "HarborId": plain, "Method": plain, "Connection": plain, "Seated": plain}},
+		"Breakwaters":       {PkCount: 1, Columns: map[string]columnMeta{"Id": pk, "HarborId": plain, "Method": plain, "Connection": plain}},
+		"Bollards":          {PkCount: 1, Columns: map[string]columnMeta{"Id": pk, "HarborId": plain, "Method": plain, "Connection": plain, "Seat": plain, "Rank": plain}},
 		"Piers":             {PkCount: 1, Columns: map[string]columnMeta{"Id": pk, "Closed": plain}},
 		"Quays":             {PkCount: 1, Columns: map[string]columnMeta{"Id": pk, "Mode": plain}},
 		"Beacons":           {PkCount: 1, Columns: map[string]columnMeta{"Id": pk, "Method": plain, "Connection": plain}},
@@ -360,10 +364,13 @@ func Test_patchTemplate_tenant(t *testing.T) {
 	structs := fixtureStructs(loadFixture(t, "tenantfixture"))
 
 	tests := []struct {
-		name            string
-		tenant          bool
-		directory       bool
-		creation        tenantCreation
+		name      string
+		tenant    bool
+		directory bool
+		creation  tenantCreation
+		// auth binds the default outlet to the staff auth, which the record's create
+		// seats its creator through.
+		auth            bool
 		wantContains    []string
 		wantNotContains []string
 	}{
@@ -390,6 +397,32 @@ func Test_patchTemplate_tenant(t *testing.T) {
 			},
 		},
 		{
+			name:   "the record's create seats its creator between the roster's reload and the signal",
+			tenant: true,
+			auth:   true,
+			wantContains: []string{
+				"roles := a.SectorAdministratorRoles()",
+				`panic("SectorAdministratorRoles() names no role: the person who creates a Sector holds its administrator role, which the application names there")`,
+				"seats := a.StaffUserSurface().SeatStore()",
+				"var created []string",
+				"userPermissions := a.UserPermissions(r)",
+				"created = nil",
+				"created = append(created, id)",
+				"for _, domain := range created {",
+				"if err := resource.SeatFirstAdministrator(ctx, seats, userPermissions, accesstypes.Domain(domain), roles); err != nil {",
+				".NewSectorDeletePatch(row).Buffer(ctx, txn, eventSource)",
+				"if err := a.TenantRoster().Reload(ctx); err != nil {",
+				"if err := a.LiveService().Signal(ctx, resource.KindTenants); err != nil {",
+			},
+		},
+		{
+			name:            "a self-service record's handler seats nobody, since it creates nothing",
+			tenant:          true,
+			auth:            true,
+			creation:        tenantCreationSelfService,
+			wantNotContains: []string{"SeatFirstAdministrator", "AdministratorRoles"},
+		},
+		{
 			name:      "the directories record reloads the roster after the commit and signals, as the record does",
 			directory: true,
 			wantContains: []string{
@@ -412,6 +445,9 @@ func Test_patchTemplate_tenant(t *testing.T) {
 				res.IsTenant, res.IsTenantDirectory, res.TenantCreation = tt.tenant, tt.directory, tt.creation
 			})
 			r := &resourceGenerator{client: &client{resource: "testdata/tenantfixture"}, applicationName: "App", receiverName: "a"}
+			if tt.auth {
+				r.defaultOutlet.auth = &outletAuth{importPath: "example.com/app/pkg/auth/staff"}
+			}
 			out, err := r.handlerContent(PatchHandler, res)
 			if err != nil {
 				t.Fatalf("handlerContent() error = %v", err)
@@ -435,14 +471,18 @@ func Test_patchTemplate_tenant(t *testing.T) {
 			}
 
 			// After the commit means after ExecuteFunc returns; the roster before the
-			// signal, the signal before the answer.
+			// signal, the signal before the answer, and the creator's seat, where the
+			// record's create writes one, between the roster and the signal.
 			s := string(out)
 			commit := strings.Index(s, "}); err != nil {")
 			reload := strings.Index(s, "a.TenantRoster().Reload(ctx)")
-			signal := strings.Index(s, "Signal(ctx, resource.KindTenants)")
+			signal := strings.LastIndex(s, "Signal(ctx, resource.KindTenants)")
 			answer := strings.Index(s, "return httpio.NewEncoder(w).Ok(")
 			if commit >= reload || reload >= signal || signal >= answer {
 				t.Errorf("order: commit %d, roster %d, signal %d, answer %d; want ascending:\n%s", commit, reload, signal, answer, out)
+			}
+			if seat := strings.Index(s, "resource.SeatFirstAdministrator("); tt.auth && (reload >= seat || seat >= signal) {
+				t.Errorf("order: roster %d, seat %d, signal %d; want the seat between them:\n%s", reload, seat, signal, out)
 			}
 		})
 	}

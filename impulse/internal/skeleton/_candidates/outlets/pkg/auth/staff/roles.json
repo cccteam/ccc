@@ -215,6 +215,7 @@
               "resource": "TenantDirectories",
               "fields": [
                 "connection",
+                "defaultSeat",
                 "method"
               ]
             },
@@ -277,6 +278,7 @@
               "resource": "TenantDirectories",
               "fields": [
                 "connection",
+                "defaultSeat",
                 "method",
                 "tenantId"
               ]
@@ -333,6 +335,7 @@
               "resource": "TenantDirectories",
               "fields": [
                 "connection",
+                "defaultSeat",
                 "method",
                 "tenantId"
               ]
@@ -398,6 +401,12 @@
                 "username",
                 "disabled",
                 "email"
+              ]
+            },
+            {
+              "resource": "TenantDirectories",
+              "fields": [
+                "defaultSeat"
               ]
             }
           ]

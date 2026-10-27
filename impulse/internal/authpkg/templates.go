@@ -169,6 +169,13 @@ type Settings struct {
 	// Required; New refuses nil.
 	TenantDeclarations signin.DeclarationReader[*cloudspanner.ReadWriteTransaction]
 {{- end}}
+{{- if .DirectoryAdmission}}
+	// TenantDirectories reads every tenant's declaration of one directory with the
+	// default seat its row carries, in the sign-in's transaction, which the directory
+	// admission decides a stranger's first sign-in with: the generated reader
+	// ({{.TenantPolicy.DirectoryReader}}). Required; New refuses nil.
+	TenantDirectories signin.DirectoryReader[*cloudspanner.ReadWriteTransaction]
+{{- end}}
 }
 
 // Signals is the channel the auth's permission engine signals a policy change on and
@@ -327,6 +334,11 @@ func New(ctx context.Context, db *cloudspanner.Client, settings *Settings) (*Aut
 		return nil, errors.New("{{.Name}}.Settings.TenantDeclarations is nil: the sign-in rule reads what each tenant declares about who may enter it through the generated reader ({{.TenantPolicy.Reader}}), which the data level hands in")
 	}
 {{- end}}
+{{- if .DirectoryAdmission}}
+	if settings.TenantDirectories == nil {
+		return nil, errors.New("{{.Name}}.Settings.TenantDirectories is nil: the directory admission reads what the tenants declare about one directory, its default seat included, through the generated reader ({{.TenantPolicy.DirectoryReader}}), which the data level hands in")
+	}
+{{- end}}
 	store, err := spannerstore.New(db, spannerstore.WithPrefix(TablePrefix))
 	if err != nil {
 		return nil, errors.Wrap(err, "spannerstore.New()")
@@ -417,6 +429,21 @@ func New(ctx context.Context, db *cloudspanner.Client, settings *Settings) (*Aut
 	// the sign-in's transaction (resource.SignInRoles): the Spanner client refuses the
 	// engine's read under the transaction's context as a nested transaction.
 	authSession.SetSignInPolicy(signin.TenantPolicy(resource.SignInRoles(accessClient.UserManager()), settings.TenantDeclarations{{if .TenantPolicy.AdmitWithoutTenant}}, signin.AdmitWithoutTenant(){{end}}))
+{{- end}}
+{{- if .DirectoryAdmission}}
+
+	// The directory admission: what a stranger gets at their first sign-in through a
+	// directory a tenant declares, before the registration's account rule is reached.
+	// The directory rows the tenants declare for the identity's connection decide: a
+	// row with a default seat creates the person and seats them with it (written
+	// through the engine once the sign-in's transaction has committed, resource.SeatDeclared,
+	// before the sign-in rule decides, so the rule finds the membership); rows with
+	// none refuse them (invitation_only) and no account is created, unless they
+	// followed an invitation link, which is the way in; a person already seated
+	// somewhere is the tenant's own and passes. A directory no tenant declares falls to
+	// the registration's rule. The auth's roles are the application's, so the admission
+	// is set here; an auth whose directory writes the roles sets none.
+	authSession.SetDirectoryAdmission(settings.TenantDirectories, resource.SignInRoles(accessClient.UserManager()), resource.SeatDeclared(accessClient.UserManager()))
 {{- end}}
 
 	// An invitation accepted seats its roles: once the transaction that consumed the

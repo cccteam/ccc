@@ -26,10 +26,11 @@ func (TenantDirectory) DefaultConfig() resource.Config {
 // and read, so a query armed with Enforce meets the field permissions the routes
 // enforce; tenantDirectoryReadSets holds one Set per read operation.
 type tenantDirectoryRead struct {
-	ID         ccc.UUID `json:"id"         perm:"-"`
-	TenantID   string   `json:"tenantId"`
-	Method     string   `json:"method"`
-	Connection string   `json:"connection"`
+	ID          ccc.UUID `json:"id"          perm:"-"`
+	TenantID    string   `json:"tenantId"`
+	Method      string   `json:"method"`
+	Connection  string   `json:"connection"`
+	DefaultSeat *string  `json:"defaultSeat"`
 }
 
 var tenantDirectoryReadSets resource.SetCache[TenantDirectory, tenantDirectoryRead]
@@ -38,10 +39,11 @@ var tenantDirectoryReadSets resource.SetCache[TenantDirectory, tenantDirectoryRe
 // accept on a mutation, so a patch armed with Enforce meets the field permissions the
 // routes enforce; tenantDirectoryWriteSets holds one Set per mutation.
 type tenantDirectoryWrite struct {
-	ID         ccc.UUID `json:"-"`
-	TenantID   string   `json:"-"`
-	Method     string   `json:"method"     sqltype:"STRING(16)"`
-	Connection string   `json:"connection"`
+	ID          ccc.UUID `json:"-"`
+	TenantID    string   `json:"-"`
+	Method      string   `json:"method"      sqltype:"STRING(16)"`
+	Connection  string   `json:"connection"`
+	DefaultSeat *string  `json:"defaultSeat" sqltype:"STRING(64)"`
 }
 
 var tenantDirectoryWriteSets resource.SetCache[TenantDirectory, tenantDirectoryWrite]
@@ -154,6 +156,7 @@ func (c *TenantDirectoryColumns) All() *TenantDirectoryColumns {
 		"TenantID",
 		"Method",
 		"Connection",
+		"DefaultSeat",
 	}
 
 	return c
@@ -179,6 +182,12 @@ func (c *TenantDirectoryColumns) Method() *TenantDirectoryColumns {
 
 func (c *TenantDirectoryColumns) Connection() *TenantDirectoryColumns {
 	c.fields = append(c.fields, "Connection")
+
+	return c
+}
+
+func (c *TenantDirectoryColumns) DefaultSeat() *TenantDirectoryColumns {
+	c.fields = append(c.fields, "DefaultSeat")
 
 	return c
 }
@@ -287,6 +296,10 @@ func (c *tenantDirectorySort) Method() *TenantDirectorySort {
 
 func (c *tenantDirectorySort) Connection() *TenantDirectorySort {
 	return c.addField("Connection")
+}
+
+func (c *tenantDirectorySort) DefaultSeat() *TenantDirectorySort {
+	return c.addField("DefaultSeat")
 }
 
 type TenantDirectorySort struct {
@@ -424,6 +437,26 @@ func (p *TenantDirectoryCreatePatch) ConnectionIsSet() bool {
 	return p.patchSet.IsSet("Connection")
 }
 
+func (p *TenantDirectoryCreatePatch) SetDefaultSeat(v *string) *TenantDirectoryCreatePatch {
+	if v != nil {
+		p.patchSet.Set("DefaultSeat", v)
+	} else {
+		p.patchSet.Set("DefaultSeat", nil)
+	}
+
+	return p
+}
+
+func (p *TenantDirectoryCreatePatch) DefaultSeat() *string {
+	v, _ := p.patchSet.Get("DefaultSeat").(*string)
+
+	return v
+}
+
+func (p *TenantDirectoryCreatePatch) DefaultSeatIsSet() bool {
+	return p.patchSet.IsSet("DefaultSeat")
+}
+
 // Diff is intended for unit testing, and reports the differences between two values using github.com/google/go-cmp/cmp
 func (p *TenantDirectoryCreatePatch) Diff(got *TenantDirectoryCreatePatch, opts ...cmp.Option) string {
 	return resource.PatchSetDiff(opts...)(p.patchSet, got.patchSet)
@@ -538,6 +571,26 @@ func (p *TenantDirectoryUpdatePatch) Connection() string {
 
 func (p *TenantDirectoryUpdatePatch) ConnectionIsSet() bool {
 	return p.patchSet.IsSet("Connection")
+}
+
+func (p *TenantDirectoryUpdatePatch) SetDefaultSeat(v *string) *TenantDirectoryUpdatePatch {
+	if v != nil {
+		p.patchSet.Set("DefaultSeat", v)
+	} else {
+		p.patchSet.Set("DefaultSeat", nil)
+	}
+
+	return p
+}
+
+func (p *TenantDirectoryUpdatePatch) DefaultSeat() *string {
+	v, _ := p.patchSet.Get("DefaultSeat").(*string)
+
+	return v
+}
+
+func (p *TenantDirectoryUpdatePatch) DefaultSeatIsSet() bool {
+	return p.patchSet.IsSet("DefaultSeat")
 }
 
 // Diff is intended for unit testing, and reports the differences between two values using github.com/google/go-cmp/cmp

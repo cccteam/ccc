@@ -285,9 +285,11 @@ func (c *DataConfiguration) Crew() *crew.Auth {
 // the engine announces to every instance through the live service. The surface reads
 // each sector's declaration from the roster's copy, so a sector's marshal may seat a
 // person directly, without an invitation, when the person entered through a directory
-// the sector declares (resource.WithTenantDirectories).
+// the sector declares (resource.WithTenantDirectories), and knows the crew's
+// administrator roles (resource.WithAdministratorRoles), so a self-unseat is judged by
+// the last-owner rule: a marshal leaves a sector once another marshal holds it.
 func (c *DataConfiguration) CrewUserSurface() *resource.UserSurface[router.CrewAuth] {
-	return router.NewCrewUserSurface(sessionusers.Accounts(c.crew.Session().API()), c.crew.Access().UserManager(), resource.WithTenantDirectories(c.tenants.Declarations))
+	return router.NewCrewUserSurface(sessionusers.Accounts(c.crew.Session().API()), c.crew.Access().UserManager(), resource.WithTenantDirectories(c.tenants.Declarations), resource.WithAdministratorRoles(crew.AdministratorRoles()))
 }
 
 // MembersUserSurface returns the members auth's surface over the members session's
@@ -324,8 +326,11 @@ func openCrewAuth(ctx context.Context, db *database.Driver, env *dataConfig, coo
 		DevicePage:        "/console/device",
 		ChangeSignal:      policySignal,
 		// The sign-in rule reads what each sector declares about who may enter it in
-		// the sign-in's transaction, through the generated reader.
+		// the sign-in's transaction, through the generated reader; the directory
+		// admission reads what the sectors declare about one directory, with its
+		// default seat, through the other.
 		TenantDeclarations: app.NewSectorDeclarationReader(),
+		TenantDirectories:  app.NewSectorDirectoryReader(),
 		Mail:               auth.Mail{Sender: sender, LoginURL: env.PublicURL + "/console/login"},
 	})
 	if err != nil {

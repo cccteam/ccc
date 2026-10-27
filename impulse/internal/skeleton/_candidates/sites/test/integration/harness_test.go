@@ -165,6 +165,7 @@ func newServed(ctx context.Context, t *testing.T) *served {
 		Mail:               &mail.Recorder{},
 		MailLoginURL:       "http://sites.test/login",
 		TenantDeclarations: consoleapp.NewTenantDeclarationReader(),
+		TenantDirectories:  consoleapp.NewTenantDirectoryReader(),
 	})
 	if err != nil {
 		t.Fatalf("staff.New() error = %v", err)

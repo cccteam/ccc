@@ -19,10 +19,11 @@ import (
 
 func (a *App) TenantDirectories() http.HandlerFunc {
 	type tenantDirectory struct {
-		ID         ccc.UUID `json:"id"         index:"true" perm:"-"`
-		TenantID   string   `json:"tenantId"   index:"true"`
-		Method     string   `json:"method"     index:"true"`
-		Connection string   `json:"connection"`
+		ID          ccc.UUID `json:"id"          index:"true" perm:"-"`
+		TenantID    string   `json:"tenantId"    index:"true"`
+		Method      string   `json:"method"      index:"true"`
+		Connection  string   `json:"connection"`
+		DefaultSeat *string  `json:"defaultSeat"`
 	}
 
 	type response []map[string]any
@@ -81,6 +82,10 @@ func (a *App) TenantDirectories() http.HandlerFunc {
 					if !row.Masked("connection") {
 						rmap["connection"] = rec.Connection
 					}
+				case "DefaultSeat":
+					if !row.Masked("defaultSeat") {
+						rmap["defaultSeat"] = rec.DefaultSeat
+					}
 				}
 			}
 			if capabilities := row.Capabilities(); capabilities != nil {
@@ -104,10 +109,11 @@ func (a *App) TenantDirectories() http.HandlerFunc {
 
 func (a *App) TenantDirectory() http.HandlerFunc {
 	type response struct {
-		ID         ccc.UUID `json:"id"         index:"true" perm:"-"`
-		TenantID   string   `json:"tenantId"`
-		Method     string   `json:"method"`
-		Connection string   `json:"connection"`
+		ID          ccc.UUID `json:"id"          index:"true" perm:"-"`
+		TenantID    string   `json:"tenantId"`
+		Method      string   `json:"method"`
+		Connection  string   `json:"connection"`
+		DefaultSeat *string  `json:"defaultSeat"`
 	}
 
 	decoder := NewQueryDecoder[resources.TenantDirectory, response](a, accesstypes.Read)
@@ -153,6 +159,10 @@ func (a *App) TenantDirectory() http.HandlerFunc {
 			case "Connection":
 				if !row.Masked("connection") {
 					rmap["connection"] = rec.Connection
+				}
+			case "DefaultSeat":
+				if !row.Masked("defaultSeat") {
+					rmap["defaultSeat"] = rec.DefaultSeat
 				}
 			}
 		}
