@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.5.22](https://github.com/cccteam/ccc/compare/impulse/v0.5.21...impulse/v0.5.22) (2026-10-27)
+
+
+### Features
+
+* **bedrock:** every environment protects its data stores from a destroy, and a release retires a secret or a file store one release before removing it ([#1160](https://github.com/cccteam/ccc/issues/1160)) ([87f9b8e](https://github.com/cccteam/ccc/commit/87f9b8e42eb98f8cd6fb21998eb40981b9e1f011))
+* **bedrock:** the pipeline builds every revision from the release's own stack, and a rollback applies no stack ([#1160](https://github.com/cccteam/ccc/issues/1160)) ([87f9b8e](https://github.com/cccteam/ccc/commit/87f9b8e42eb98f8cd6fb21998eb40981b9e1f011))
+* **impulse:** the handoff brief tells the agent that anything the running release uses is retired in one release and removed in the next ([#1160](https://github.com/cccteam/ccc/issues/1160)) ([87f9b8e](https://github.com/cccteam/ccc/commit/87f9b8e42eb98f8cd6fb21998eb40981b9e1f011))
+
+
+### Bug Fixes
+
+* **bedrock:** the memberships on the database and a file store's bucket policy follow the database's and the bucket's ids, so a change to their attributes no longer recreates the grants ([#1160](https://github.com/cccteam/ccc/issues/1160)) ([87f9b8e](https://github.com/cccteam/ccc/commit/87f9b8e42eb98f8cd6fb21998eb40981b9e1f011))
+
 ## [0.5.21](https://github.com/cccteam/ccc/compare/impulse/v0.5.20...impulse/v0.5.21) (2026-10-26)
 
 
