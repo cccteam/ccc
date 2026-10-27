@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/ettle/strcase"
 	"github.com/go-playground/errors/v5"
 
 	"github.com/cccteam/ccc/cloud"
@@ -226,7 +227,7 @@ func parseEngines(rel string, src []byte) ([]Engine, error) {
 }
 
 // scanAnnotations records the file's struct annotations (@permissionScope(domain),
-// @tenant, @outlet) and its constructions of a tenant roster.
+// @tenant, @tenantDirectory, @outlet) and its constructions of a tenant roster.
 func (a *App) scanAnnotations(rel string, data []byte) error {
 	if bytes.Contains(data, []byte("@"+permissionScopeKeyword)) || bytes.Contains(data, []byte("@"+outletKeyword)) || bytes.Contains(data, []byte("@"+tenantKeyword)) {
 		docs, err := parseStructDocs(rel, data)
@@ -243,6 +244,9 @@ func (a *App) scanAnnotations(rel string, data []byte) error {
 					record.Creation = shape[1]
 				}
 				a.TenantRecords = append(a.TenantRecords, record)
+			}
+			if tenantDirectoryRE.MatchString(d.Doc) {
+				a.TenantDirectories = append(a.TenantDirectories, directoryRecord(rel, &d))
 			}
 			for _, m := range outletRE.FindAllStringSubmatch(d.Doc, -1) {
 				member := OutletMember{File: rel, Line: d.Line, Name: d.Name}
@@ -265,6 +269,22 @@ func (a *App) scanAnnotations(rel string, data []byte) error {
 	}
 
 	return nil
+}
+
+// directoryRecord reads a struct annotated @tenantDirectory: the record, and the field
+// annotated @directoryDefaultSeat when it carries one.
+func directoryRecord(rel string, d *structDoc) DirectoryRecord {
+	record := DirectoryRecord{File: rel, Line: d.Line, Name: d.Name}
+	for i := range d.Fields {
+		if f := &d.Fields[i]; directoryDefaultSeatRE.MatchString(f.Doc) {
+			record.DefaultSeatField = f.Name
+			record.DefaultSeatName = wireName(f)
+
+			break
+		}
+	}
+
+	return record
 }
 
 // The generated tenant roster constructor's shape (New<Record>Roster) and the option
@@ -713,28 +733,43 @@ func stripLeadingComments(data []byte) []byte {
 
 // The annotations and import the scan reads.
 const (
-	permissionScopeKeyword = "permissionScope"
-	outletKeyword          = "outlet"
-	tenantKeyword          = "tenant"
-	accessImportPath       = "github.com/cccteam/access"
+	permissionScopeKeyword      = "permissionScope"
+	outletKeyword               = "outlet"
+	tenantKeyword               = "tenant"
+	tenantDirectoryKeyword      = "tenantDirectory"
+	directoryDefaultSeatKeyword = "directoryDefaultSeat"
+	accessImportPath            = "github.com/cccteam/access"
 )
 
 // domainScopeRE matches the @permissionScope(domain) struct annotation; outletRE
 // captures the names an @outlet(...) annotation lists; tenantRE matches the @tenant
 // struct annotation, a line of its own in the doc comment, capturing its arguments;
-// tenantCreationRE captures the creation shape among them (creation: self-service).
+// tenantCreationRE captures the creation shape among them (creation: self-service);
+// tenantDirectoryRE matches the @tenantDirectory struct annotation, a line of its own,
+// and directoryDefaultSeatRE the @directoryDefaultSeat field annotation.
 var (
-	domainScopeRE    = regexp.MustCompile(`@` + permissionScopeKeyword + `\(\s*domain\s*\)`)
-	outletRE         = regexp.MustCompile(`@` + outletKeyword + `\(([^)]*)\)`)
-	tenantRE         = regexp.MustCompile(`(?m)^\s*@` + tenantKeyword + `\s*(?:\(([^)]*)\))?\s*$`)
-	tenantCreationRE = regexp.MustCompile(`\b` + TenantCreationArg + `\s*:\s*([A-Za-z-]+)`)
+	domainScopeRE          = regexp.MustCompile(`@` + permissionScopeKeyword + `\(\s*domain\s*\)`)
+	outletRE               = regexp.MustCompile(`@` + outletKeyword + `\(([^)]*)\)`)
+	tenantRE               = regexp.MustCompile(`(?m)^\s*@` + tenantKeyword + `\s*(?:\(([^)]*)\))?\s*$`)
+	tenantCreationRE       = regexp.MustCompile(`\b` + TenantCreationArg + `\s*:\s*([A-Za-z-]+)`)
+	tenantDirectoryRE      = regexp.MustCompile(`(?m)^\s*@` + tenantDirectoryKeyword + `\s*$`)
+	directoryDefaultSeatRE = regexp.MustCompile(`@` + directoryDefaultSeatKeyword + `\b`)
 )
 
-// structDoc is one struct type declaration with its doc comment.
+// structDoc is one struct type declaration with its doc comment and its fields' comments.
 type structDoc struct {
+	Name   string
+	Line   int
+	Doc    string
+	Fields []fieldDoc
+}
+
+// fieldDoc is one named field of a struct: its name, its doc comment and trailing
+// comment together, and its tag.
+type fieldDoc struct {
 	Name string
-	Line int
 	Doc  string
+	Tag  string
 }
 
 // parseStructDocs returns every struct type in the file that has a doc comment.
@@ -756,7 +791,8 @@ func parseStructDocs(rel string, src []byte) ([]structDoc, error) {
 			if !ok {
 				continue
 			}
-			if _, isStruct := ts.Type.(*ast.StructType); !isStruct {
+			st, isStruct := ts.Type.(*ast.StructType)
+			if !isStruct {
 				continue
 			}
 			doc := ts.Doc
@@ -766,11 +802,44 @@ func parseStructDocs(rel string, src []byte) ([]structDoc, error) {
 			if doc == nil {
 				continue
 			}
-			docs = append(docs, structDoc{Name: ts.Name.Name, Line: fset.Position(ts.Pos()).Line, Doc: doc.Text()})
+			docs = append(docs, structDoc{Name: ts.Name.Name, Line: fset.Position(ts.Pos()).Line, Doc: doc.Text(), Fields: fieldDocs(st)})
 		}
 	}
 
 	return docs, nil
+}
+
+// fieldDocs reads a struct's named fields with their comments: the doc comment above a
+// field and the comment on its line, where an annotation may stand.
+func fieldDocs(st *ast.StructType) []fieldDoc {
+	var fields []fieldDoc
+	for _, f := range st.Fields.List {
+		doc := f.Doc.Text()
+		if f.Comment != nil {
+			doc += f.Comment.Text()
+		}
+		tag := ""
+		if f.Tag != nil {
+			if s, err := strconv.Unquote(f.Tag.Value); err == nil {
+				tag = s
+			}
+		}
+		for _, name := range f.Names {
+			fields = append(fields, fieldDoc{Name: name.Name, Doc: doc, Tag: tag})
+		}
+	}
+
+	return fields
+}
+
+// wireName is a field's name on the wire as the generator writes it: its json tag, or
+// its name in camel case.
+func wireName(f *fieldDoc) string {
+	if name, _, _ := strings.Cut(reflect.StructTag(f.Tag).Get("json"), ","); name != "" && name != "-" {
+		return name
+	}
+
+	return strcase.ToCamel(f.Name)
 }
 
 // localImportName returns the name the file imports the path under, or empty when the

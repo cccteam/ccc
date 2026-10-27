@@ -193,6 +193,8 @@ func All() []Check {
 		sessionTables{},
 		migrationsReader{},
 		authsWired{},
+		administratorRoles{},
+		directoryAdmission{},
 		changeSignal{},
 		conditionsProven{},
 		skipAuth{},

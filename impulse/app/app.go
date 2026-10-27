@@ -52,6 +52,10 @@ type App struct {
 	// TenantRecords are the structs the application's own code annotates @tenant: each
 	// resource package's tenant record, the global resource whose rows are the tenants.
 	TenantRecords []TenantRecord
+	// TenantDirectories are the structs the application's own code annotates
+	// @tenantDirectory: each resource package's directories record, the tenant-scoped
+	// resource whose rows are the directories a tenant admits its people through.
+	TenantDirectories []DirectoryRecord
 	// RosterConstructions are the constructions of a tenant roster outside tests: the
 	// calls to a generated New<Record>Roster constructor, with what each is handed.
 	RosterConstructions []RosterConstruction
@@ -303,6 +307,24 @@ const (
 // sign-in rule admits a person who holds none (signin.AdmitWithoutTenant).
 func (r *TenantRecord) SelfService() bool {
 	return r.Creation == TenantCreationSelfService || r.Creation == TenantCreationBoth
+}
+
+// DirectoryRecord is one struct annotated @tenantDirectory: the directories record, the
+// tenant-scoped resource whose rows are the directories a tenant admits its people
+// through, one row per declaration, with the column naming a stranger's default seat
+// when the record carries one: the role a stranger the directory vouches for is seated
+// with at their first sign-in, NULL where the tenant admits them by invitation only.
+type DirectoryRecord struct {
+	File string
+	Line int
+	Name string
+	// DefaultSeatField is the field annotated @directoryDefaultSeat; empty when the
+	// record carries none.
+	DefaultSeatField string
+	// DefaultSeatName is the default seat field's name on the wire, which the role files
+	// grant it by: its json tag, or the field's name in camel case, as the generator
+	// writes it.
+	DefaultSeatName string
 }
 
 // RosterConstruction is one call outside tests to a generated tenant roster constructor

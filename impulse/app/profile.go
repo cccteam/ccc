@@ -76,6 +76,10 @@ type Site struct {
 	// parameter from the record and emits the constructor of the roster the application
 	// builds over it.
 	TenantRecord *TenantRecord
+	// Directories is the @tenantDirectory struct of the site's resource package, nil
+	// when the tenant record declares no directories: the directories record, whose rows
+	// are the directories a tenant admits its people through.
+	Directories *DirectoryRecord
 	// ConcealedDomains reports WithConcealedDomains.
 	ConcealedDomains bool
 	// GeneratedRouter reports GenerateRouter: the router is generated from the outlet
@@ -203,6 +207,13 @@ func (a *App) site(g *Generator) Site {
 	for i := range a.TenantRecords {
 		if path.Dir(a.TenantRecords[i].File) == g.ResourcePackageDir {
 			s.TenantRecord = &a.TenantRecords[i]
+
+			break
+		}
+	}
+	for i := range a.TenantDirectories {
+		if path.Dir(a.TenantDirectories[i].File) == g.ResourcePackageDir {
+			s.Directories = &a.TenantDirectories[i]
 
 			break
 		}
