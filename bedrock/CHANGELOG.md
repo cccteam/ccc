@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.20](https://github.com/cccteam/ccc/compare/bedrock/v0.3.19...bedrock/v0.3.20) (2026-10-27)
+
+
+### Bug Fixes
+
+* **bedrock:** restore and the other operation commands say when GitHub does not list the operations workflow, and org register prints the apply action in every case, never a trigger to run by hand ([41f03d4](https://github.com/cccteam/ccc/commit/41f03d4cd903a6702c396811509141b5e8a771d6))
+* **bedrock:** the operations workflow lists itself on the push that adds or changes its file, so an operation can start from a repository whose first push did not list it ([41f03d4](https://github.com/cccteam/ccc/commit/41f03d4cd903a6702c396811509141b5e8a771d6))
+
 ## [0.3.19](https://github.com/cccteam/ccc/compare/bedrock/v0.3.18...bedrock/v0.3.19) (2026-10-27)
 
 
