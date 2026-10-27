@@ -19,6 +19,7 @@ import (
 	"github.com/cccteam/ccc/bedrock/internal/hook"
 	"github.com/cccteam/ccc/bedrock/internal/release"
 	"github.com/cccteam/ccc/bedrock/internal/secret"
+	"github.com/cccteam/ccc/impulse/app"
 )
 
 // view is the data every template executes against.
@@ -1195,6 +1196,69 @@ func (m *methodView) Microsoft() bool {
 	return m.FrontChannelLogout()
 }
 
+// TenantShape is the tenant shape a Microsoft registration's hand step follows: the
+// one the registration builds (app.TenantsOne, app.TenantsListed, app.TenantsAny,
+// app.TenantsPersonal) or, when the scan did not read it, the one its settings imply:
+// a tenant id setting means one tenant, anything else listed tenants.
+func (m *methodView) TenantShape() string {
+	if m.Tenants != "" {
+		return m.Tenants
+	}
+	if m.Variable(derive.FieldTenantID) != nil {
+		return app.TenantsOne
+	}
+
+	return app.TenantsListed
+}
+
+// TenantsFromSettings reports a shape the scan did not read, which the hand step takes
+// from the registration's settings and says so.
+func (m *methodView) TenantsFromSettings() bool {
+	return m.Tenants == ""
+}
+
+// OneTenant reports a registration admitting one tenant and nothing else: the shape
+// whose app registration is single-tenant, the entry of the admin center's list that
+// names the tenant.
+func (m *methodView) OneTenant() bool {
+	return m.TenantShape() == app.TenantsOne && !m.PersonalAccounts
+}
+
+// OtherTenants reports a registration admitting tenants beyond the one it is registered
+// in, listed or any: each of them admits the registration through its own consent,
+// which the hand step names.
+func (m *methodView) OtherTenants() bool {
+	shape := m.TenantShape()
+
+	return shape == app.TenantsListed || shape == app.TenantsAny
+}
+
+// accountType is one supported account type of the Entra admin center's New
+// registration page: the entry as the page names it, and as it named it before, since
+// the earlier wording still stands in many guides.
+type accountType struct {
+	Label  string
+	Former string
+}
+
+// AccountType is the supported account type the registration's tenant shape needs:
+// single tenant for one tenant alone, multiple tenants for listed or any tenants,
+// tenants and personal accounts for any shape admitting personal accounts beside
+// tenants, and personal accounts alone for those alone.
+func (m *methodView) AccountType() accountType {
+	shape := m.TenantShape()
+	switch {
+	case shape == app.TenantsPersonal:
+		return accountType{Label: "Personal accounts only", Former: "Personal Microsoft accounts only"}
+	case m.PersonalAccounts:
+		return accountType{Label: "Any Entra ID Tenant + Personal Microsoft accounts", Former: "Accounts in any organizational directory and personal Microsoft accounts"}
+	case shape == app.TenantsOne:
+		return accountType{Label: "Single tenant only", Former: "Accounts in this organizational directory only"}
+	default:
+		return accountType{Label: "Multiple Entra ID tenants", Former: "Accounts in any organizational directory (Multitenant)"}
+	}
+}
+
 // methods prepares the directory methods: one view per registration, each with its
 // client secret found among the secrets by the registration's variable.
 func (v *view) methods() error {
@@ -1970,9 +2034,9 @@ func repoFullName(repository string) string {
 
 // sweepMinute spreads the applications' hourly sweeps over the hour: the minute is a
 // hash of the application code, stable across renders.
-func sweepMinute(app string) int {
+func sweepMinute(code string) int {
 	h := fnv.New32a()
-	_, _ = h.Write([]byte(app))
+	_, _ = h.Write([]byte(code))
 
 	return int(h.Sum32() % 60)
 }

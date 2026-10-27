@@ -1085,7 +1085,9 @@ Per environment, after the first apply:
 
 1. In the Microsoft Entra admin center, for the members auth's directory registration: one app
    registration per environment (Identity > Applications > App registrations >
-   New registration), accounts in this organizational directory only, platform
+   New registration), supported account types
+   **Single tenant only**, the entry naming your tenant
+   ("Accounts in this organizational directory only" in the admin center's earlier wording), platform
    Web with the redirect URI = output `members_directory_redirect_url` and the
    front-channel logout URL = output `members_directory_logout_url`; then Certificates &
    secrets > New client secret. Put the application (client) ID in

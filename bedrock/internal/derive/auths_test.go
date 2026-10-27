@@ -257,6 +257,84 @@ func TestRegistrationVariables(t *testing.T) {
 	}
 }
 
+// TestTenantSlot holds a Microsoft registration's settings to the tenant shape it
+// builds: a tenant id setting goes with one tenant, a tenants setting with listed
+// tenants, and either beside another shape is refused naming the registration's file and
+// line. A shape the scan did not read is held to nothing, and so is a shape declaring
+// neither setting.
+func TestTenantSlot(t *testing.T) {
+	t.Parallel()
+
+	setting := func(field, name string) map[string]*Variable {
+		return map[string]*Variable{field: {Name: name}, FieldClientID: {Name: "APP_MEMBERS_DIRECTORY_CLIENT_ID"}}
+	}
+	registration := &app.Method{File: "pkg/auth/members/directory.go", Line: 58, Kind: app.MethodAzure, Name: "directory"}
+	tests := []struct {
+		name      string
+		tenants   string
+		personal  bool
+		variables map[string]*Variable
+		wantErr   string
+	}{
+		{name: "one tenant with its tenant id", tenants: app.TenantsOne, variables: setting(FieldTenantID, "APP_MEMBERS_DIRECTORY_TENANT_ID")},
+		{name: "one tenant and personal accounts with the tenant id", tenants: app.TenantsOne, personal: true, variables: setting(FieldTenantID, "APP_MEMBERS_DIRECTORY_TENANT_ID")},
+		{name: "listed tenants with their list", tenants: app.TenantsListed, variables: setting(FieldTenants, "APP_MEMBERS_DIRECTORY_TENANTS")},
+		{name: "any tenant declares neither", tenants: app.TenantsAny, variables: setting(FieldClientID, "APP_MEMBERS_DIRECTORY_CLIENT_ID")},
+		{name: "one tenant written in the code declares neither", tenants: app.TenantsOne, variables: setting(FieldClientID, "APP_MEMBERS_DIRECTORY_CLIENT_ID")},
+		{name: "a shape the scan did not read is held to nothing", variables: setting(FieldTenants, "APP_MEMBERS_DIRECTORY_TENANTS")},
+		{
+			name:      "any tenant with a tenant id",
+			tenants:   app.TenantsAny,
+			variables: setting(FieldTenantID, "APP_MEMBERS_DIRECTORY_TENANT_ID"),
+			wantErr:   "pkg/auth/members/directory.go:58: the members auth's directory registration admits any tenant and declares APP_MEMBERS_DIRECTORY_TENANT_ID: a tenant id setting names the one tenant a registration admits (azure.Tenant); admit the tenant it names, or drop the setting",
+		},
+		{
+			name:      "personal accounts with a tenant id",
+			tenants:   app.TenantsPersonal,
+			personal:  true,
+			variables: setting(FieldTenantID, "APP_MEMBERS_DIRECTORY_TENANT_ID"),
+			wantErr:   "the members auth's directory registration admits Microsoft personal accounts and declares APP_MEMBERS_DIRECTORY_TENANT_ID",
+		},
+		{
+			name:      "listed tenants with a tenant id",
+			tenants:   app.TenantsListed,
+			variables: setting(FieldTenantID, "APP_MEMBERS_DIRECTORY_TENANT_ID"),
+			wantErr:   "admits listed tenants and declares APP_MEMBERS_DIRECTORY_TENANT_ID",
+		},
+		{
+			name:      "one tenant with a tenants list",
+			tenants:   app.TenantsOne,
+			variables: setting(FieldTenants, "APP_MEMBERS_DIRECTORY_TENANTS"),
+			wantErr:   "pkg/auth/members/directory.go:58: the members auth's directory registration admits one tenant and declares APP_MEMBERS_DIRECTORY_TENANTS: a tenants setting lists the tenants a registration admits (azure.Tenants of named tenants); list the tenants it names, or drop the setting",
+		},
+		{
+			name:      "any tenant and personal accounts with a tenants list",
+			tenants:   app.TenantsAny,
+			personal:  true,
+			variables: setting(FieldTenants, "APP_MEMBERS_DIRECTORY_TENANTS"),
+			wantErr:   "admits any tenant and Microsoft personal accounts and declares APP_MEMBERS_DIRECTORY_TENANTS",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			method := Method{Auth: "members", Name: "directory", Kind: app.MethodAzure, Authority: app.AuthorityApplication, Tenants: tt.tenants, PersonalAccounts: tt.personal, Variables: tt.variables}
+			err := method.tenantSlot(registration)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("tenantSlot() error = %v, wantErr %q", err, tt.wantErr)
+				}
+
+				return
+			}
+			if err != nil {
+				t.Fatalf("tenantSlot() error = %v", err)
+			}
+		})
+	}
+}
+
 // TestMethodRoutes settles a directory method's routes from the outlet its auth is bound
 // to: the callback under the outlet's prefix, and the front-channel logout for a
 // Microsoft registration. An auth bound to no outlet or to two is refused, since a

@@ -136,9 +136,12 @@ func (m *Model) auth(a *app.App, cfg *config, profile *app.Profile, pkg *app.Aut
 	}
 	outlets := boundOutlets(profile, pkg.Path)
 	for _, registration := range constructions[0].Methods {
-		method := Method{Auth: pkg.Name, Name: registration.Name, Kind: registration.Kind, Authority: registration.Authority}
+		method := Method{Auth: pkg.Name, Name: registration.Name, Kind: registration.Kind, Authority: registration.Authority, Tenants: registration.Tenants, PersonalAccounts: registration.PersonalAccounts}
 		if method.Directory() {
 			if err := m.registrationVariables(cfg, &method); err != nil {
+				return Auth{}, err
+			}
+			if err := method.tenantSlot(&registration); err != nil {
 				return Auth{}, err
 			}
 			if err := method.routes(outlets); err != nil {
@@ -260,6 +263,48 @@ func (m *Model) registrationVariables(cfg *config, method *Method) error {
 	}
 
 	return nil
+}
+
+// tenantSlot holds a Microsoft registration's settings to the tenant shape it builds: a
+// tenant id setting (TenantID) names the one tenant of azure.Tenant, and a tenants
+// setting (Tenants) lists the tenants of azure.Tenants. A setting beside another shape
+// is refused, naming the registration: the stack would ask the placement for a tenant
+// the registration never reads, and the README's hand step would describe the wrong app
+// registration. A shape the scan did not read is held to nothing.
+func (m *Method) tenantSlot(registration *app.Method) error {
+	if m.Tenants == "" {
+		return nil
+	}
+	if v := m.Variable(FieldTenantID); v != nil && m.Tenants != app.TenantsOne {
+		return errors.Newf("%s:%d: the %s auth's %s registration admits %s and declares %s: a tenant id setting names the one tenant a registration admits (azure.Tenant); admit the tenant it names, or drop the setting", registration.File, registration.Line, m.Auth, m.Name, tenantsProse(m.Tenants, m.PersonalAccounts), v.Name)
+	}
+	if v := m.Variable(FieldTenants); v != nil && m.Tenants != app.TenantsListed {
+		return errors.Newf("%s:%d: the %s auth's %s registration admits %s and declares %s: a tenants setting lists the tenants a registration admits (azure.Tenants of named tenants); list the tenants it names, or drop the setting", registration.File, registration.Line, m.Auth, m.Name, tenantsProse(m.Tenants, m.PersonalAccounts), v.Name)
+	}
+
+	return nil
+}
+
+// tenantsProse says what a Microsoft registration admits, from its tenant shape: one
+// tenant, listed tenants, any tenant or Microsoft personal accounts, with personal
+// accounts named beside the tenants when it admits both.
+func tenantsProse(tenants string, personal bool) string {
+	var what string
+	switch tenants {
+	case app.TenantsOne:
+		what = "one tenant"
+	case app.TenantsListed:
+		what = "listed tenants"
+	case app.TenantsAny:
+		what = "any tenant"
+	default:
+		return "Microsoft personal accounts"
+	}
+	if personal {
+		what += " and Microsoft personal accounts"
+	}
+
+	return what
 }
 
 // variableNamed returns the variable by its name, or nil.

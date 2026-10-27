@@ -1201,7 +1201,11 @@ Per environment, after the first apply:
 {{if .Microsoft -}}
 {{.Step}}. In the Microsoft Entra admin center, for {{.Label}}: one app
    registration per environment (Identity > Applications > App registrations >
-   New registration), accounts in this organizational directory only, platform
+   New registration), supported account types
+   **{{.AccountType.Label}}**{{if .OneTenant}}, the entry naming your tenant{{end}}
+   ("{{.AccountType.Former}}" in the admin center's earlier wording{{if .TenantsFromSettings}};
+   taken from the registration's settings, since bedrock could not read how its
+   code builds its tenants{{end}}), platform
    Web with the redirect URI = output `{{.Var "REDIRECT_URL"}}` and the
    front-channel logout URL = output `{{.Var "LOGOUT_URL"}}`; then Certificates &
    secrets > New client secret. Put the application (client) ID in
@@ -1210,6 +1214,11 @@ Per environment, after the first apply:
    organization; the session library validates it at construction, so the first
    release in an environment waits on it){{end}}, and add the client secret as
    version 1 of `{{$.Prefix}}-<env>-gbl-{{$.App}}-{{.Secret.Name}}`.
+{{- if .OtherTenants}}
+   Another tenant admits the registration once its administrator consents at
+   `https://login.microsoftonline.com/<that tenant's id>/adminconsent?client_id=<the client id>`,
+   or a user of that tenant consents at their first sign-in where the tenant allows it.
+{{- end}}
    In {{$.Integration}}, each pull request's environment signs in through the same
    registration: add its callback,
    `https://{{$.App}}-pr<N>.{{$.P.AppsDomain}}{{.Callback.Path}}`, to the
