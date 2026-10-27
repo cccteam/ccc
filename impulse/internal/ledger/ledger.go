@@ -520,6 +520,28 @@ var Steps = []Step{
 		Impulse: release("v0.5.21"),
 		Note:    "the login pages' hold is checked: login-held holds every browser application bound to a session outlet to the shape the v0.5.19 step described by hand (the page gives the library's login component a template reference, reads its arriving signal, and hides the card while the signal is on), so an application whose login pages did not take the shape has it raised here as an obligation the agent wires, in the page's template and stylesheet; no pin moves",
 	},
+	{
+		Pins: pins(`
+			access v0.11.1
+			ccc v0.3.5
+			ccc/accesstypes v0.7.0
+			ccc/cloud v0.2.1
+			ccc/resource v0.15.13-0.20261027053149-d317358698ad
+			ccc/tracer v0.3.0
+			db-initiator v0.4.3
+			httpio v0.7.22
+			logger v0.1.30
+			session v0.13.13-0.20261027034450-949596b9ae93
+		`),
+		Web: web(`
+			@cccteam/resource 0.0.13
+			@cccteam/resource-angular 0.0.17
+			@cccteam/resource-firestore 0.0.11
+		`),
+		Impulse: release("v0.5.23"),
+		Pending: true,
+		Note:    "a tenant's creator is its first administrator, and a directory row carries a default seat: the Tenant record's create path seats the creator with the application's administrator roles under every creation shape (the create-your-tenant route did so already), so the handlers expose <Record>AdministratorRoles() []accesstypes.Role (the auth's AdministratorRoles held in every tenant) beside the auth's user-surface accessor, which the generated contract asserts, and the user surface takes resource.WithAdministratorRoles(<auth>.AdministratorRoles()) so a self-unseat is refused only for the last holder of a partition's administrator role (the last-owner rule, in place of the refusal of every self-unseat); the tenant directory record gains a nullable DefaultSeat column (STRING(64), annotated @directoryDefaultSeat; a migration adds it to the directories table), what a stranger the directory vouches for is seated with at their first sign-in, chosen by the tenant's administrator on the Sign-in page, which gains a picker over the tenant's roles (the administrator role's grants on the directory record carry defaultSeat on Create, List and Read and gain Update on it); each auth whose roles the application assigns carries the generated directory reader in its Settings (TenantDirectories, New<Record>DirectoryReader) and sets session.Auth.SetDirectoryAdmission(reader, resource.SignInRoles(engine.UserManager()), resource.SeatDeclared(engine.UserManager())) beside its sign-in policy (session v0.13.13), so a stranger from a declared directory is created seated with the row's role or refused by invitation only (invitation_only) with no account, before the registration's account rule, while an auth whose directory names the roles sets none; the login page's sentence for the code is the library's from @cccteam/resource-angular 0.0.18, a web pin the next step moves; and the generated client types a nullable column's Create and Patch properties as T | null, so a page that clears one sends null",
+	},
 }
 
 // validatePending holds a step's Pending mark to its pins: a pin at a pseudo-version
