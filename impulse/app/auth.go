@@ -45,6 +45,18 @@ const (
 	AuthorityApplication = "application"
 )
 
+// The tenant shapes of a Microsoft registration, read from the registration's Tenants
+// slot: one tenant (azure.Tenant or azure.NamedTenant alone), listed tenants
+// (azure.Tenants of several), any tenant (azure.AnyTenant, alone or beside listed
+// tenants) and Microsoft personal accounts alone (azure.PersonalAccounts). Personal
+// accounts beside tenants are Method.PersonalAccounts.
+const (
+	TenantsOne      = "one"
+	TenantsListed   = "listed"
+	TenantsAny      = "any"
+	TenantsPersonal = "personal"
+)
+
 // The session library's default table names for an Auth, which the library's schema sets
 // create under those names (schema/spanner/migrations and schema/spanner/auth/migrations).
 const (
@@ -153,9 +165,9 @@ func parseAuths(rel string, src []byte) (auths []Auth, unattached []Method, err 
 // readMethodCall reads a registration: the method's kind, the Auth it is registered on
 // (the first argument's identifier), its registration name (the second argument, a
 // literal or a constant of the file; the password method is always "password") and, for
-// a directory method, its authority from the configuration (the fourth argument); for
-// the password method, the options after the Auth (session.OpenSignUp(),
-// session.UsernameIsEmail()).
+// a directory method, its authority from the configuration (the fourth argument), with
+// the tenant shape of a Microsoft registration; for the password method, the options
+// after the Auth (session.OpenSignUp(), session.UsernameIsEmail()).
 func readMethodCall(call *ast.CallExpr, kind, local, rel string, fset *token.FileSet, consts map[string]string, body *ast.BlockStmt, f *ast.File) Method {
 	m := Method{File: rel, Line: fset.Position(call.Pos()).Line, Kind: kind, Name: PasswordRegistration}
 	if len(call.Args) > 0 {
@@ -186,7 +198,11 @@ func readMethodCall(call *ast.CallExpr, kind, local, rel string, fset *token.Fil
 		}
 	}
 	if len(call.Args) > 3 {
-		m.Authority = readAuthority(call.Args[3], body, local, f)
+		cfg := compositeOf(call.Args[3], body)
+		m.Authority = readAuthority(cfg, local, f)
+		if kind == MethodAzure {
+			m.Tenants, m.PersonalAccounts = readTenants(configField(cfg, "Tenants"), body, local)
+		}
 	}
 
 	return m
@@ -279,52 +295,144 @@ func assignedName(call *ast.CallExpr, body *ast.BlockStmt) string {
 }
 
 // readAuthority reads the RoleSync slot of a registration's configuration: the Config
-// literal's RoleSync field, in the call itself (&azure.Config{...}) or in the nearest
-// assignment of the identifier passed, as the application writes it to keep the call
-// short. signin.RoleSync or google.RoleSync is the directory's authority, DisableRoleSync
-// the application's; anything else is not read.
-func readAuthority(cfg ast.Expr, body *ast.BlockStmt, methodPkg string, f *ast.File) string {
-	lit := compositeOf(cfg, body)
-	if lit == nil {
+// literal's RoleSync field. signin.RoleSync or google.RoleSync is the directory's
+// authority, DisableRoleSync the application's; anything else is not read.
+func readAuthority(cfg *ast.CompositeLit, methodPkg string, f *ast.File) string {
+	call, ok := configField(cfg, "RoleSync").(*ast.CallExpr)
+	if !ok {
+		return ""
+	}
+	sel, ok := selectorOf(call.Fun)
+	if !ok {
+		return ""
+	}
+	pkgIdent, ok := sel.X.(*ast.Ident)
+	if !ok {
 		return ""
 	}
 	signinPkg := localImportName(f, sessionSignInImportPath)
-	for _, elt := range lit.Elts {
+	if local := pkgIdent.Name; local != methodPkg && (signinPkg == "" || local != signinPkg) {
+		return ""
+	}
+	switch sel.Sel.Name {
+	case "RoleSync":
+		return AuthorityDirectory
+	case "DisableRoleSync":
+		return AuthorityApplication
+	default:
+		return ""
+	}
+}
+
+// readTenants reads the Tenants slot of a Microsoft registration's configuration into
+// the shape it builds and whether it admits personal accounts: the slot expression in
+// the Config literal, or the nearest assignment of the identifier it names
+// (set := azure.Tenants(...)). A slot built any other way, such as the tenants a
+// function parses out of a setting at startup, is not read, and both are empty.
+func readTenants(slot ast.Expr, body *ast.BlockStmt, methodPkg string) (tenants string, personal bool) {
+	s, ok := tenantShapeOf(slot, body, methodPkg)
+	if !ok {
+		return "", false
+	}
+	switch {
+	case s.any:
+		return TenantsAny, s.personal
+	case s.listed > 1:
+		return TenantsListed, s.personal
+	case s.listed == 1:
+		return TenantsOne, s.personal
+	case s.personal:
+		return TenantsPersonal, true
+	default:
+		// azure.Tenants() of nothing: the library refuses it at registration.
+		return "", false
+	}
+}
+
+// tenantShape is what the scan reads of a slot expression: how many tenants it lists,
+// and whether it admits any tenant or personal accounts.
+type tenantShape struct {
+	listed   int
+	any      bool
+	personal bool
+}
+
+// tenantShapeOf reads a slot expression as the azure package builds one: Tenant or
+// NamedTenant list one tenant, AnyTenant admits any, PersonalAccounts admits personal
+// accounts, and Tenants unites its arguments; an identifier is read through its nearest
+// assignment in the body. Anything else, a Tenants call spreading a slice included, is
+// not read.
+func tenantShapeOf(slot ast.Expr, body *ast.BlockStmt, methodPkg string) (tenantShape, bool) {
+	switch e := slot.(type) {
+	case *ast.ParenExpr:
+		return tenantShapeOf(e.X, body, methodPkg)
+	case *ast.Ident:
+		value := assignedValue(e, body)
+		if value == nil {
+			return tenantShape{}, false
+		}
+
+		return tenantShapeOf(value, body, methodPkg)
+	case *ast.CallExpr:
+		name, ok := qualifiedName(e.Fun, methodPkg)
+		if !ok {
+			return tenantShape{}, false
+		}
+		switch name {
+		case "Tenant", "NamedTenant":
+			return tenantShape{listed: 1}, true
+		case "AnyTenant":
+			return tenantShape{any: true}, true
+		case "PersonalAccounts":
+			return tenantShape{personal: true}, true
+		case "Tenants":
+			return tenantUnionOf(e, body, methodPkg)
+		default:
+			return tenantShape{}, false
+		}
+	default:
+		return tenantShape{}, false
+	}
+}
+
+// tenantUnionOf reads an azure.Tenants call: the union of its arguments' shapes, each
+// read in turn; a call spreading a slice or holding an argument the scan does not read
+// is not read.
+func tenantUnionOf(call *ast.CallExpr, body *ast.BlockStmt, methodPkg string) (tenantShape, bool) {
+	if call.Ellipsis.IsValid() {
+		return tenantShape{}, false
+	}
+	var union tenantShape
+	for _, arg := range call.Args {
+		s, ok := tenantShapeOf(arg, body, methodPkg)
+		if !ok {
+			return tenantShape{}, false
+		}
+		union.listed += s.listed
+		union.any = union.any || s.any
+		union.personal = union.personal || s.personal
+	}
+
+	return union, true
+}
+
+// configField is the value a configuration literal gives the named field, or nil when
+// the field is not set or the literal was not found.
+func configField(cfg *ast.CompositeLit, name string) ast.Expr {
+	if cfg == nil {
+		return nil
+	}
+	for _, elt := range cfg.Elts {
 		kv, ok := elt.(*ast.KeyValueExpr)
 		if !ok {
 			continue
 		}
-		key, ok := kv.Key.(*ast.Ident)
-		if !ok || key.Name != "RoleSync" {
-			continue
+		if key, ok := kv.Key.(*ast.Ident); ok && key.Name == name {
+			return kv.Value
 		}
-		call, ok := kv.Value.(*ast.CallExpr)
-		if !ok {
-			return ""
-		}
-		sel, ok := selectorOf(call.Fun)
-		if !ok {
-			return ""
-		}
-		pkgIdent, ok := sel.X.(*ast.Ident)
-		if !ok {
-			return ""
-		}
-		local := pkgIdent.Name
-		if local != methodPkg && (signinPkg == "" || local != signinPkg) {
-			return ""
-		}
-		switch sel.Sel.Name {
-		case "RoleSync":
-			return AuthorityDirectory
-		case "DisableRoleSync":
-			return AuthorityApplication
-		}
-
-		return ""
 	}
 
-	return ""
+	return nil
 }
 
 // compositeOf returns the composite literal an expression is, or the one the identifier
