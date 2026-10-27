@@ -2284,10 +2284,11 @@ partition (403), the last-owner rule: the surface is built with
 `resource.WithAdministratorRoles(global, domain)` naming the auth's administrator roles
 (the ones its first administrator is seeded with: the global roles are the global
 partition's, the domain roles a tenant partition's, held in the tenant or everywhere),
-and a self-unseat goes unless the seat is one of them and no holder of one would remain
-in the partition, so a tenant's creator seats its first administrator and leaves, and a
-person who left is brought back by one who stayed; without the option every self-unseat
-is refused; a user whose only way in is the identity being unlinked keeps it (409); a
+and a self-unseat goes unless the seat is one of them and no other person holding one
+would remain in the partition (the same person's role held in every tenant stands behind
+their seat in one of them; their other administrator role is no other person), so a
+tenant's creator seats its first administrator and leaves, and a person who left is
+brought back by one who stayed; without the option every self-unseat is refused; a user whose only way in is the identity being unlinked keeps it (409); a
 tenant seat needs the user already seated in the tenant, from the global surface (400);
 a password is set through the set-password method, never through an update (400); a
 username rename moves the person's seats to the new name; and a seat removed that was

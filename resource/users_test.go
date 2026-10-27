@@ -1227,7 +1227,10 @@ func TestUserSurface_lastOwner(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name     string
+		name string
+		// global names the global partition's administrator roles when the case needs
+		// more than Administrator.
+		global   []accesstypes.Role
 		arrange  func(f *userFixture)
 		target   string
 		body     func(f *userFixture) string
@@ -1267,6 +1270,29 @@ func TestUserSurface_lastOwner(t *testing.T) {
 				return fmt.Sprintf(`[{"op":"remove","path":"/%s/Administrator"}]`, f.user(t, "admin").ID)
 			},
 			wantCode: http.StatusForbidden,
+		},
+		{
+			name:    "the same person's other administrator role is no administrator who remains",
+			global:  []accesstypes.Role{"Administrator", "Auditor"},
+			arrange: func(f *userFixture) { f.seats.seat(global, "Auditor", "admin") },
+			target:  "/crew-seats",
+			body: func(f *userFixture) string {
+				return fmt.Sprintf(`[{"op":"remove","path":"/%s/Administrator"}]`, f.user(t, "admin").ID)
+			},
+			wantCode: http.StatusForbidden,
+			wantBody: "you are the last administrator: seat another before you unseat yourself",
+		},
+		{
+			name:   "another person's other administrator role is an administrator who remains",
+			global: []accesstypes.Role{"Administrator", "Auditor"},
+			arrange: func(f *userFixture) {
+				f.seats.seat(global, "Auditor", "clerk")
+			},
+			target: "/crew-seats",
+			body: func(f *userFixture) string {
+				return fmt.Sprintf(`[{"op":"remove","path":"/%s/Administrator"}]`, f.user(t, "admin").ID)
+			},
+			wantCode: http.StatusOK,
 		},
 		{
 			name:    "a seat that is no administrator's goes",
@@ -1327,7 +1353,11 @@ func TestUserSurface_lastOwner(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			f := newUserFixtureWith(t, WithAdministratorRoles([]accesstypes.Role{"Administrator"}, []accesstypes.Role{"Marshal"}))
+			global := []accesstypes.Role{"Administrator"}
+			if tt.global != nil {
+				global = tt.global
+			}
+			f := newUserFixtureWith(t, WithAdministratorRoles(global, []accesstypes.Role{"Marshal"}))
 			f.perms.grant(accesstypes.Delete, "CrewSeats")
 			f.perms.grant(accesstypes.Delete, "CrewSectorSeats")
 			if tt.arrange != nil {
