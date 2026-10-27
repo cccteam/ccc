@@ -192,6 +192,7 @@ func newServed(ctx context.Context, t *testing.T) *served {
 		role  accesstypes.Role
 	}{
 		{adminUser, accesstypes.GlobalPolicyScope(), "Administrator_Global"},
+		{adminUser, accesstypes.GlobalPolicyScope(), "FeatureAdministrator"},
 		{adminUser, accesstypes.EveryDomainPolicyScope(), "Administrator_Domain"},
 		{memberUser, accesstypes.DomainPolicyScope(north), "Administrator_Domain"},
 	}
