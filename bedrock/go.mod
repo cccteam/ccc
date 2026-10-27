@@ -9,7 +9,7 @@ require (
 	cloud.google.com/go/secretmanager v1.22.0
 	cloud.google.com/go/storage v1.69.0
 	github.com/cccteam/ccc/cloud v0.2.1
-	github.com/cccteam/ccc/impulse v0.5.24-0.20261027162230-8be8d63b7439
+	github.com/cccteam/ccc/impulse v0.5.24
 	github.com/cccteam/ccc/resource v0.14.0
 	github.com/go-playground/errors/v5 v5.4.0
 	github.com/google/go-cmp v0.7.0
@@ -42,6 +42,7 @@ require (
 	github.com/cncf/xds/go v0.0.0-20260202195803-dba9d589def2 // indirect
 	github.com/envoyproxy/go-control-plane/envoy v1.39.0 // indirect
 	github.com/envoyproxy/protoc-gen-validate v1.3.3 // indirect
+	github.com/ettle/strcase v0.2.0 // indirect
 	github.com/felixge/httpsnoop v1.1.0 // indirect
 	github.com/go-jose/go-jose/v4 v4.1.5 // indirect
 	github.com/go-logr/logr v1.4.4 // indirect
