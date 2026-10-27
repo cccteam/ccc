@@ -547,7 +547,7 @@ var Steps = []Step{
 			ccc v0.3.5
 			ccc/accesstypes v0.7.0
 			ccc/cloud v0.2.1
-			ccc/resource v0.15.13
+			ccc/resource v0.15.14
 			ccc/tracer v0.3.0
 			db-initiator v0.4.3
 			httpio v0.7.22
@@ -560,7 +560,7 @@ var Steps = []Step{
 			@cccteam/resource-firestore 0.0.11
 		`),
 		Impulse: release("v0.5.24"),
-		Note:    "the v0.5.23 step's wiring is checked: administrator-roles holds every user surface the application builds to resource.WithAdministratorRoles(<auth>.AdministratorRoles()), and directory-admission holds an application whose tenant record declares directories to the directories record's @directoryDefaultSeat column, the directory admission (SetDirectoryAdmission) on every auth whose roles the application assigns, and a role granting Update on the record's default seat, so an application whose pins moved past the step without the wiring has it raised here as an obligation the agent wires; no pin moves",
+		Note:    "the v0.5.23 step's wiring is checked: administrator-roles holds every user surface the application builds to resource.WithAdministratorRoles(<auth>.AdministratorRoles()), and directory-admission holds an application whose tenant record declares directories to the directories record's @directoryDefaultSeat column, the directory admission (SetDirectoryAdmission) on every auth whose roles the application assigns, and a role granting Update on the record's default seat, so an application whose pins moved past the step without the wiring has it raised here as an obligation the agent wires; the pins move to resource v0.15.14, whose last-owner rule counts other people: the actor's own second administrator role is no administrator who remains, so the one holder of a partition's administrator roles is refused dropping any of them",
 	},
 }
 
