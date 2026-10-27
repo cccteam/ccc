@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.5.24](https://github.com/cccteam/ccc/compare/impulse/v0.5.23...impulse/v0.5.24) (2026-10-27)
+
+
+### Features
+
+* **impulse:** the administrator-roles check holds every user surface the application builds to resource.WithAdministratorRoles, so the last-owner rule is wired ([#1169](https://github.com/cccteam/ccc/issues/1169)) ([a205c8d](https://github.com/cccteam/ccc/commit/a205c8d2a96399cc2aa62a5601d24c8bf59f0db6))
+* **impulse:** the directory-admission check holds an application whose tenant record declares directories to the default seat column, the directory admission on each auth whose roles the application assigns, and the grant to set the seat ([#1169](https://github.com/cccteam/ccc/issues/1169)) ([a205c8d](https://github.com/cccteam/ccc/commit/a205c8d2a96399cc2aa62a5601d24c8bf59f0db6))
+* **impulse:** the ledger's v0.5.24 step raises the v0.5.23 step's hand wiring as an obligation the upgrade's agent wires ([#1169](https://github.com/cccteam/ccc/issues/1169)) ([a205c8d](https://github.com/cccteam/ccc/commit/a205c8d2a96399cc2aa62a5601d24c8bf59f0db6))
+
+
+### Bug Fixes
+
+* **bedrock:** the stack README's hand step for a Microsoft registration names the supported account type the registration's tenant shape needs, and the consent another tenant gives a multi-tenant one ([#1168](https://github.com/cccteam/ccc/issues/1168)) ([0448049](https://github.com/cccteam/ccc/commit/0448049627c8c1190a5195720ca64db16877b633))
+* **impulse:** the application reader records a Microsoft registration's tenant shape (one, listed, any, personal) from its configuration ([#1168](https://github.com/cccteam/ccc/issues/1168)) ([0448049](https://github.com/cccteam/ccc/commit/0448049627c8c1190a5195720ca64db16877b633))
+* **impulse:** the CI trims the Go build cache before saving it, so a day of builds no longer grows the entry past the runner's disk ([#1174](https://github.com/cccteam/ccc/issues/1174)) ([24924a8](https://github.com/cccteam/ccc/commit/24924a82361e0135649d39f029de04fea1862cae))
+
 ## [0.5.23](https://github.com/cccteam/ccc/compare/impulse/v0.5.22...impulse/v0.5.23) (2026-10-27)
 
 
