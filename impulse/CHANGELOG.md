@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.5.23](https://github.com/cccteam/ccc/compare/impulse/v0.5.22...impulse/v0.5.23) (2026-10-27)
+
+
+### Features
+
+* **impulse:** the auth packages set the directory admission, add tenancy wires the default seat and the creator's roles, and the skeleton candidates carry the Sign-in page's seat picker ([#1163](https://github.com/cccteam/ccc/issues/1163)) ([82eefdb](https://github.com/cccteam/ccc/commit/82eefdbb765d4e20a15e19dfd6ef66a1fa6fd484))
+* **resource:** a tenant directory row carries a default seat ([@directory](https://github.com/directory)DefaultSeat): a stranger from a declared directory is created seated with it or refused by invitation only, before the registration's account rule ([#1163](https://github.com/cccteam/ccc/issues/1163)) ([82eefdb](https://github.com/cccteam/ccc/commit/82eefdbb765d4e20a15e19dfd6ef66a1fa6fd484))
+* **resource:** a tenant's creator is seated as its first administrator by the create path under every creation shape, and the self-unseat refusal becomes the last-owner rule ([#1163](https://github.com/cccteam/ccc/issues/1163)) ([82eefdb](https://github.com/cccteam/ccc/commit/82eefdbb765d4e20a15e19dfd6ef66a1fa6fd484))
+* **resource:** the generated client's Create and Patch properties of a nullable column take null, which clears the column ([#1163](https://github.com/cccteam/ccc/issues/1163)) ([82eefdb](https://github.com/cccteam/ccc/commit/82eefdbb765d4e20a15e19dfd6ef66a1fa6fd484))
+
 ## [0.5.22](https://github.com/cccteam/ccc/compare/impulse/v0.5.21...impulse/v0.5.22) (2026-10-27)
 
 
