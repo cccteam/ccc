@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.14](https://github.com/cccteam/ccc/compare/resource/v0.15.13...resource/v0.15.14) (2026-10-27)
+
+
+### Bug Fixes
+
+* **resource:** the last-owner rule counts other people, so an administrator holding two administrator roles cannot drop either while nobody else holds one ([#1172](https://github.com/cccteam/ccc/issues/1172)) ([c6ee2ec](https://github.com/cccteam/ccc/commit/c6ee2ecd19bbf5bcde01bc857a944b785859a5e8))
+
 ## [0.15.13](https://github.com/cccteam/ccc/compare/resource/v0.15.12...resource/v0.15.13) (2026-10-27)
 
 
