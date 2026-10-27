@@ -1239,12 +1239,6 @@ func TestOrgRegisterNext(t *testing.T) {
 		wantFiles  map[string][]string
 		wantAbsent map[string][]string
 	}
-	// stackTriggers are the commands the grants step prints while GitHub lists no
-	// operations workflow: the stack trigger 2-env made in each environment, started as
-	// the workflow would start it.
-	const stackTriggers = "  gcloud builds triggers run imp-tst-uc1-quill-stack --branch=master --region=us-central1 --project=imp-tst-gbl-core-1a2b\n" +
-		"  gcloud builds triggers run imp-stg-uc1-quill-stack --branch=master --region=us-central1 --project=imp-stg-gbl-core-3c4d\n" +
-		"  gcloud builds triggers run imp-prd-uc1-quill-stack --branch=master --region=us-central1 --project=imp-prd-gbl-core-5e6f\n"
 	tests := []struct {
 		name string
 		// workflows are the paths GitHub lists for the repository; pushed gives it a
@@ -1309,7 +1303,7 @@ func TestOrgRegisterNext(t *testing.T) {
 			},
 		},
 		{
-			name:      "the stack trigger by hand while GitHub lists no operations workflow",
+			name:      "the apply action once the merge lists the operations workflow GitHub does not list yet",
 			workflows: []string{".github/workflows/ci.yml"},
 			pushed:    true,
 			steps: []step{{
@@ -1317,8 +1311,7 @@ func TestOrgRegisterNext(t *testing.T) {
 				args:    []string{"org", "register", "quill", "--next"},
 				wantOut: []string{
 					"Moved quill-portal's registration to its grants in",
-					"After its merge and apply: quill-portal's own stack,\napplied for the first time in each environment. GitHub does not list its operations workflow yet: a\nworkflow is listed once a push of at most twenty commits adds or changes its file on the\ndefault branch, or once it runs, and the repository's first push carried more, so the\nworkflow's apply action cannot start the stack trigger for this apply. Start the trigger as\nthe workflow would, in a terminal, as the operator, tst, stg, prd in that order; in stg and prd, whose\nbuilds wait for an approval, approve the build in Cloud Build:\n" + stackTriggers +
-						"A pull request that changes .github/workflows/operations.yml lists the workflow for every apply after this one. Then\nbedrock org register quill --next.\n",
+					"After its merge and apply: quill-portal's own stack,\napplied for the first time in each environment. GitHub does not list its operations workflow yet: the push to master that adds or\nchanges the workflow's file (the merge of the stack rendered at this bedrock) runs the\nworkflow's registered job, which lists it, and the first apply then starts through the\nworkflow's apply action: Actions,\noperations, Run workflow, with the action apply and the environment, tst, stg, prd in that order (or\ngh workflow run operations.yml --repo imp-example/quill-portal -f action=apply -f environment=<env>; its\ninfrastructure/README.md, Applying). Then\nbedrock org register quill --next.\n",
 				},
 				wantFiles: map[string][]string{"placement.json": {"\"quill\": \"grants\""}},
 			}},
@@ -1330,8 +1323,7 @@ func TestOrgRegisterNext(t *testing.T) {
 				args:    []string{"org", "register", "quill", "--next"},
 				wantOut: []string{
 					"Moved quill-portal's registration to its grants in",
-					"After its merge and apply: quill-portal's own stack,\napplied for the first time in each environment. The repository is empty: the application's first push comes first, to master, the default\nbranch the stack trigger builds, with its stack rendered there (bedrock render) from its\nfirst placement.json. A first push of at most twenty commits lists the operations workflow\n(GitHub lists a workflow once a push of at most twenty commits adds or changes its file on\nthe default branch, or once it runs), and the stack's first apply then starts through the\nworkflow's apply action: Actions,\noperations, Run workflow, with the action apply and the environment, tst, stg, prd in that order (or\ngh workflow run operations.yml --repo imp-example/quill-portal -f action=apply -f environment=<env>; its\ninfrastructure/README.md, Applying). A first push of more lists no workflow until a pull request\nchanges its file, so the workflow's apply action cannot start the stack trigger for this\napply: start the trigger as the workflow would, in a terminal, as the operator,\ntst, stg, prd in that order; in stg and prd, whose\nbuilds wait for an approval, approve the build in Cloud Build:\n" + stackTriggers +
-						"A pull request that changes .github/workflows/operations.yml lists the workflow for every apply after this one. Then\nbedrock org register quill --next.\n",
+					"After its merge and apply: quill-portal's own stack,\napplied for the first time in each environment. The repository is empty: the application's first push comes first, to master, the default\nbranch the stack trigger builds, with its stack rendered there (bedrock render) from its\nfirst placement.json. That push runs the operations workflow's registered job, which lists\nthe workflow, and the stack's first apply then starts through the workflow's apply action:\nActions,\noperations, Run workflow, with the action apply and the environment, tst, stg, prd in that order (or\ngh workflow run operations.yml --repo imp-example/quill-portal -f action=apply -f environment=<env>; its\ninfrastructure/README.md, Applying). Then\nbedrock org register quill --next.\n",
 				},
 				wantFiles: map[string][]string{"placement.json": {"\"quill\": \"grants\""}},
 			}},

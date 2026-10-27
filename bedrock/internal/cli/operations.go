@@ -93,6 +93,13 @@ func dispatchOperation(ctx context.Context, d deps, rc *repositoryContext, env, 
 	}
 	inputs[environmentLabel], inputs[releaseInput] = env, tag
 	if err := client.DispatchWorkflow(ctx, rc.owner, rc.repo, render.OperationsWorkflow, p.DefaultBranch, inputs); err != nil {
+		if github.NotFound(err) {
+			listed, listErr := operationsWorkflowListed(ctx, client, rc.owner, rc.repo)
+			if listErr == nil && !listed {
+				return "", errors.Newf("GitHub does not list the operations workflow of %s/%s, so nothing can start it. GitHub lists a workflow once a run of it exists or once a push to %s adds or changes its file, and the push that created the repository did not list this one; the workflow bedrock renders now runs once on the push that adds or changes its file, which lists it. Render the workflow with this bedrock (bedrock upgrade), merge it, and ask again", rc.owner, rc.repo, p.DefaultBranch)
+			}
+		}
+
 		return "", errors.Wrapf(err, "starting the operations workflow of %s/%s on %s", rc.owner, rc.repo, p.DefaultBranch)
 	}
 

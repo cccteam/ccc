@@ -93,6 +93,15 @@ func TestRestoreAndPatch(t *testing.T) {
 			wantDispatch: "operations.yml master action=restore environment=tst release=v0.1.4",
 		},
 		{
+			name:   "restore says so when GitHub does not list the operations workflow, which the push that created the repository left unlisted",
+			remote: "git@github.com:impulseframework/harbor.git",
+			prepare: func(_ *githubtest.Server, repo *githubtest.Repo) {
+				repo.Workflows = []string{".github/workflows/ci.yml"}
+			},
+			args:    []string{"restore", "tst", "v0.1.4", "--placement", placement},
+			wantErr: "GitHub does not list the operations workflow of impulseframework/harbor, so nothing can start it. GitHub lists a workflow once a run of it exists or once a push to master adds or changes its file, and the push that created the repository did not list this one; the workflow bedrock renders now runs once on the push that adds or changes its file, which lists it. Render the workflow with this bedrock (bedrock upgrade), merge it, and ask again",
+		},
+		{
 			name:   "restore with no release in an environment restored from production's backup leaves the release to the workflow, which reads production's live release",
 			remote: "git@github.com:impulseframework/harbor.git",
 			args:   []string{"restore", "stg", "--placement", placement},
