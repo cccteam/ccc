@@ -330,9 +330,10 @@ func (c *Client) Tags(ctx context.Context, owner, repo string) ([]Tag, error) {
 }
 
 // Workflow is one of the repository's Actions workflows. GitHub lists a workflow once a
-// push of at most twenty commits adds or changes its file on the default branch (the
-// push event's commit list is capped there), or once it runs; a first push of more
-// commits lists none of them until then.
+// run of it exists or once a push to the default branch adds or changes its file; the
+// push that creates the repository does not always list the files it carries (first
+// pushes of five commits and more have listed none), so a workflow nothing runs can stay
+// unlisted until a later push changes it.
 type Workflow struct {
 	ID    int64  `json:"id"`
 	Name  string `json:"name"`

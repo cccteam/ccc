@@ -867,23 +867,24 @@ const (
 	// firstApplyWorkflow is the operations workflow's apply action: GitHub lists the
 	// workflow.
 	firstApplyWorkflow firstApply = iota
-	// firstApplyByHand is the stack trigger started by hand, as the workflow would start
-	// it: the repository has commits and GitHub lists no operations workflow, since its
-	// first push carried more than twenty.
-	firstApplyByHand
-	// firstApplyAfterPush is the application's first push, then one of the two above by
-	// the push's size: the repository is empty.
+	// firstApplyAfterMerge is the operations workflow's apply action once the push that
+	// merges the stack rendered at this bedrock lists the workflow: the repository has
+	// commits and GitHub lists no operations workflow yet.
+	firstApplyAfterMerge
+	// firstApplyAfterPush is the application's first push, which lists the workflow, then
+	// its apply action: the repository is empty.
 	firstApplyAfterPush
 )
 
 // firstApplyStart reads from GitHub how the stack's first apply starts, which the
 // repository's workflow list and whether anything is pushed to it decide: the operations
-// workflow's apply action when GitHub lists the workflow; while it does not, the stack
-// trigger by hand when the repository has commits (GitHub lists a workflow once a push of
-// at most twenty commits adds or changes its file on the default branch, or once it runs,
-// so its first push carried more), and the application's first push first when the
-// repository is empty. A list or a repository that cannot be read is a refusal, so the
-// instruction printed is never a guess.
+// workflow's apply action when GitHub lists the workflow; the same action once the push
+// that merges the stack rendered at this bedrock lists it, when the repository has commits
+// and GitHub lists no workflow yet (the workflow runs its registered job on the push that
+// adds or changes its file, which lists it; the push that creates a repository does not
+// always list the files it carries on its own); and the application's first push first
+// when the repository is empty. A list or a repository that cannot be read is a refusal,
+// so the instruction printed is never a guess.
 func (d deps) firstApplyStart(ctx context.Context, owner, repository string) (firstApply, error) {
 	client, err := d.github(ctx)
 	if err != nil {
@@ -904,7 +905,7 @@ func (d deps) firstApplyStart(ctx context.Context, owner, repository string) (fi
 		return firstApplyAfterPush, nil
 	}
 
-	return firstApplyByHand, nil
+	return firstApplyAfterMerge, nil
 }
 
 // operationsWorkflowListed reports whether GitHub lists the repository's operations
@@ -926,31 +927,28 @@ func operationsWorkflowListed(ctx context.Context, client *github.Client, owner,
 // firstApplyInstruction says how the application's stack is applied for the first time in
 // each environment, continuing the sentence "applied for the first time in each
 // environment": through the operations workflow's apply action when GitHub lists the
-// workflow; by starting the stack trigger 2-env made in each environment as the workflow
-// would, with the cause, when the repository has commits and GitHub lists no workflow;
-// and after the application's first push, whose size decides between the two, while the
-// repository is empty. It ends with the register --next that follows.
+// workflow; through the same action once the push that merges the rendered stack lists
+// it, when the repository has commits and GitHub lists no workflow yet; and after the
+// application's first push, which lists it, while the repository is empty. It ends with
+// the register --next that follows.
 func firstApplyInstruction(p *org.Placement, app, repository string, start firstApply) string {
 	var b strings.Builder
 	switch start {
 	case firstApplyWorkflow:
 		fmt.Fprintf(&b, " through its operations workflow, which GitHub lists: %s. Then\n", workflowApply(p, repository))
-	case firstApplyByHand:
-		fmt.Fprintf(&b, `. GitHub does not list its operations workflow yet: a
-workflow is listed once a push of at most twenty commits adds or changes its file on the
-default branch, or once it runs, and the repository's first push carried more, so the
-workflow's apply action cannot start the stack trigger for this apply. Start the trigger as
-the workflow would, in a terminal, as the operator, %s`, triggersByHand(p, app))
+	case firstApplyAfterMerge:
+		fmt.Fprintf(&b, `. GitHub does not list its operations workflow yet: the push to %s that adds or
+changes the workflow's file (the merge of the stack rendered at this bedrock) runs the
+workflow's registered job, which lists it, and the first apply then starts through the
+workflow's apply action: %s. Then
+`, p.GithubDefaultBranch, workflowApply(p, repository))
 	case firstApplyAfterPush:
 		fmt.Fprintf(&b, `. The repository is empty: the application's first push comes first, to %s, the default
 branch the stack trigger builds, with its stack rendered there (bedrock render) from its
-first placement.json. A first push of at most twenty commits lists the operations workflow
-(GitHub lists a workflow once a push of at most twenty commits adds or changes its file on
-the default branch, or once it runs), and the stack's first apply then starts through the
-workflow's apply action: %s. A first push of more lists no workflow until a pull request
-changes its file, so the workflow's apply action cannot start the stack trigger for this
-apply: start the trigger as the workflow would, in a terminal, as the operator,
-%s`, p.GithubDefaultBranch, workflowApply(p, repository), triggersByHand(p, app))
+first placement.json. That push runs the operations workflow's registered job, which lists
+the workflow, and the stack's first apply then starts through the workflow's apply action:
+%s. Then
+`, p.GithubDefaultBranch, workflowApply(p, repository))
 	}
 	fmt.Fprintf(&b, "bedrock org register %s --next.\n", app)
 
@@ -965,23 +963,6 @@ func workflowApply(p *org.Placement, repository string) string {
 operations, Run workflow, with the action apply and the environment, %s in that order (or
 gh workflow run %s --repo %s/%s -f action=apply -f environment=<env>; its
 infrastructure/README.md, Applying)`, strings.Join(org.Environments, ", "), render.OperationsWorkflow, p.GithubOrganization, repository)
-}
-
-// triggersByHand is the stack trigger 2-env made in each environment, started by the
-// operator as the operations workflow would start it, with the approvals that wait: how
-// the stack's first apply starts while GitHub lists no workflow. It ends with the pull
-// request that lists the workflow for every apply after.
-func triggersByHand(p *org.Placement, app string) string {
-	var b strings.Builder
-	fmt.Fprintf(&b, `%s in that order; in %s, whose
-builds wait for an approval, approve the build in Cloud Build:
-`, strings.Join(org.Environments, ", "), strings.Join(p.ApprovalEnvironments(), " and "))
-	for _, env := range org.Environments {
-		fmt.Fprintf(&b, "  gcloud builds triggers run %s --branch=%s --region=%s --project=%s\n", p.StackTriggerName(env, app), p.GithubDefaultBranch, p.Primary().Name, p.Project(env))
-	}
-	fmt.Fprintf(&b, "A pull request that changes %s lists the workflow for every apply after this one. Then\n", operationsWorkflowPath)
-
-	return b.String()
 }
 
 // registrationReady refuses the registration's next step while the state it needs is not
@@ -1279,12 +1260,11 @@ every rendered file:
      identities that exist now. Its output says how step 4 starts.
   4. %[4]s's own stack, rendered in its repository (bedrock render) from its first
      placement.json (below) and pushed to %[1]s, applied for the first time in each
-     environment: through its operations workflow (Actions, operations, apply, with the
-     environment: the stack trigger 2-env made there applies it as the apply identity)
-     once GitHub lists the workflow, else by starting that trigger as the workflow would,
-     since a first push of more than twenty commits lists no workflow until a pull
-     request changes its file; step 3 prints the one that works, or both with the rule
-     while nothing is pushed yet. Every later apply is its pipeline's, with each release.
+     environment through its operations workflow (Actions, operations, apply, with the
+     environment: the stack trigger 2-env made there applies it as the apply identity),
+     which the push that adds or changes its file lists, since the workflow runs its
+     registered job on that push; step 3 prints the way that applies. Every later apply
+     is its pipeline's, with each release.
   5. bedrock org register %[2]s --next once more, then the pull request it renders: the
      hostnames (2-net), onto the backends the stack created, and the stack's check trigger
      as a required check of the repository (1-org), which the first apply made; until then

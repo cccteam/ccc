@@ -1885,7 +1885,13 @@ placement records the environment's project (`projects`, the id and the number, 
 `bedrock org register` writes into the application's first placement), then dispatches
 the operations workflow (`.github/workflows/operations.yml`, rendered and owned by
 bedrock) as the person signed in to gh, and prints where to watch it; the Run workflow
-button on the Actions tab starts the same job. The job runs in the GitHub Environment
+button on the Actions tab starts the same job. The workflow lists itself: GitHub lists a
+workflow once a run of it exists or once a push to the default branch adds or changes its
+file, and the push that creates the repository does not always do the latter, so the
+workflow's one push-triggered job (`registered`) runs on the push that adds or changes
+the file and does nothing else; a repository whose workflow GitHub does not list (`bedrock
+restore` says so) merges the workflow this bedrock renders, and that push lists it. The
+job runs in the GitHub Environment
 named after the target environment, which the organization's `1-org` layer declares so
 that it deploys from the default branch alone (the workflow file a restore runs is the
 committed one; a reviewer for an environment is the repository's setting to add). It
@@ -2578,13 +2584,12 @@ first apply made; until then the application's pull requests merge on the CI job
 the stack's first apply starts is printed when `org register <app> --next` moves the
 registration to its grants, read from GitHub's workflow list for the repository and from
 whether anything is pushed to it yet: the operations workflow's `apply` action when GitHub
-lists the workflow; else, when the repository has commits, the stack trigger 2-env made in
-each environment started as the workflow would start it (`gcloud builds triggers run
-<prefix>-<env>-<region>-<code>-stack` on the default branch, as the operator), since GitHub
-lists a workflow once a push of at most twenty commits adds or changes its file on the
-default branch or once it runs, and a first push of more lists none until a pull request
-changes the file; and while the repository is empty, that the application's first push to
-the default branch comes first, with both ways and the rule that picks between them; a
+lists the workflow; the same action once the push that merges the rendered stack lists it,
+when the repository has commits and GitHub lists no workflow yet (the workflow runs its
+`registered` job on the push that adds or changes its file, which lists it; the push that
+creates a repository does not always list the files it carries on its own); and while the
+repository is empty, that the application's first push to the default branch comes first,
+which lists the workflow the same way; a
 repository that cannot be read moves nothing. The output names the
 application by its repository and keeps the code to the commands. The
 placement records how far the registration has gone

@@ -42,14 +42,12 @@ environment and the generated secrets' pins derived from their containers,
 nothing while a container has no version, which the first release adds).
 Nobody holds a cloud role for it: repository write and the Environment's
 approval are what the action takes, and the audit log names who asked. GitHub
-lists a workflow once a push of at most twenty commits adds or changes its file
-on the default branch, or once it runs, so a repository whose first push carried
-more lists none of its workflows until a pull request changes the file, and the
-`apply` action cannot be started; until then the stack trigger is started as the
-action would start it, by the operator in a terminal (`gcloud builds triggers
-run imp-<env>-<region>-lantrn-stack` on the default branch, in the
-environment's project), the command `bedrock org register lantrn --next`
-prints at the grants step. Every
+lists a workflow once a run of it exists or once a push to the default branch
+adds or changes its file, and the push that creates a repository does not
+always list the files it carries, so the workflow runs its `registered` job,
+which does nothing else, on the push that adds or changes the file: the
+workflow is listed from that push, and the `apply` action starts from it; the
+command `bedrock org register lantrn --next` says so at the grants step. Every
 later apply is the pipeline's, and a release run again (the `run` action)
 applies the stack again. After a teardown (`bedrock teardown`), which
 destroyed the triggers a release's build would run in, the same `apply`

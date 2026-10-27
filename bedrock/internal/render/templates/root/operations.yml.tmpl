@@ -98,6 +98,12 @@
 # version and the requester. The command's lines, read from the build's log, print in the run's
 # summary. Production's migrations are the platform operator's: none of the three runs there.
 #
+# The push trigger lists the workflow. GitHub lists a workflow once a run of it exists or once a
+# push to the default branch adds or changes its file, and the push that creates the repository
+# does not always do the latter, leaving a workflow nothing can start. The registered job runs on
+# the push that adds or changes this file, which lists the workflow, and does nothing else; every
+# other job runs on workflow_dispatch alone.
+#
 # Each job's name is static: GitHub prints a skipped job's name as written, its expressions
 # unrendered, in the run's summary, so a name carrying the inputs read as its template on the two
 # jobs the action skipped. The steps' lines carry the release and the environment.
@@ -184,10 +190,23 @@ on:
         description: "For teardown and destroy: the environment's name typed again, in place of the prompt the hand command asks at the terminal"
         type: string
         default: ""
+  push:
+    branches:
+      - {{.P.DefaultBranch}}
+    paths:
+      - .github/workflows/operations.yml
 
 permissions: {}
 
 jobs:
+  registered:
+    name: registered
+    if: ${{"{{"}} github.event_name == 'push' {{"}}"}}
+    runs-on: ubuntu-latest
+    steps:
+      - name: the listing
+        run: echo "GitHub lists this workflow from this push. An operation starts from the Run workflow button, or from a bedrock command (restore, rerun, rollback, backups, maintenance off, secret rotate, migration)." >> "$GITHUB_STEP_SUMMARY"
+
   restore:
     name: restore the environment
     if: ${{"{{"}} inputs.action == 'restore' {{"}}"}}
@@ -759,7 +778,7 @@ jobs:
 
   migration:
     name: the migrations' operation
-    if: ${{"{{"}} inputs.action != 'restore' && inputs.action != 'run' && inputs.action != 'rollback' && inputs.action != 'list' && inputs.action != 'maintenance' && inputs.action != 'apply' && inputs.action != 'teardown' && inputs.action != 'destroy' && inputs.action != 'rotate' {{"}}"}}
+    if: ${{"{{"}} github.event_name == 'workflow_dispatch' && inputs.action != 'restore' && inputs.action != 'run' && inputs.action != 'rollback' && inputs.action != 'list' && inputs.action != 'maintenance' && inputs.action != 'apply' && inputs.action != 'teardown' && inputs.action != 'destroy' && inputs.action != 'rotate' {{"}}"}}
     runs-on: ubuntu-latest
     environment: ${{"{{"}} inputs.environment {{"}}"}}
     permissions:

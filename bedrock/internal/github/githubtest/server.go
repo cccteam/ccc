@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -61,7 +62,8 @@ type Repo struct {
 	// Dispatches is the workflow_dispatch events started, oldest first.
 	Dispatches []Dispatch
 	// Workflows are the paths of the workflows GitHub lists for the repository
-	// (.github/workflows/ci.yml), in listing order.
+	// (.github/workflows/ci.yml), in listing order; a dispatch of a file the listing lacks
+	// is answered 404 as GitHub answers it. Nil models no listing, and every file dispatches.
 	Workflows []string
 }
 
@@ -284,10 +286,16 @@ var routes = []route{
 }
 
 // dispatch records a workflow_dispatch event; the workflow file must be one the
-// repository could carry (a name), and the ref a branch the repository has.
+// repository could carry (a name) and, when the repository models its listing, one
+// GitHub lists, and the ref a branch the repository has.
 func (s *Server) dispatch(w http.ResponseWriter, r *http.Request, key, file string) {
 	repo, ok := s.repo(w, key)
 	if !ok {
+		return
+	}
+	if repo.Workflows != nil && !slices.Contains(repo.Workflows, ".github/workflows/"+file) {
+		reply(w, http.StatusNotFound, map[string]string{messageKey: notFound})
+
 		return
 	}
 	if r.Method != http.MethodPost {
