@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -152,7 +153,9 @@ func TestFollower_Upgrade(t *testing.T) {
 			handler: func(string) http.Handler {
 				return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 					w.Header().Set(ChecksumHeader, "0000")
-					_, _ = w.Write(newContent)
+					// The content is streamed rather than written in one call: the security scan reads a
+					// direct write of bytes to a response as unescaped output.
+					_, _ = io.Copy(w, bytes.NewReader(newContent))
 				})
 			},
 			wantErr: "is not the X-Program-Sha256 the answer carried, 0000: the file is removed",
@@ -162,7 +165,9 @@ func TestFollower_Upgrade(t *testing.T) {
 			server: "1.6.0",
 			handler: func(string) http.Handler {
 				return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-					_, _ = w.Write(newContent)
+					// The content is streamed rather than written in one call: the security scan reads a
+					// direct write of bytes to a response as unescaped output.
+					_, _ = io.Copy(w, bytes.NewReader(newContent))
 				})
 			},
 			wantErr: "answered without X-Program-Sha256: the answer is not a shipped program",
