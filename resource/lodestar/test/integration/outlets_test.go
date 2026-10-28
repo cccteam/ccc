@@ -19,7 +19,7 @@ const portalLogin = "/portal/login"
 
 // TestPortalOutlet drives the portal the way its browser application does: sign in
 // through the directory under the portal prefix as a client whose groups name the
-// client-portal role, read the portal's sector list and digest, confirm a console-only
+// ClientPortal role, read the portal's sector list and digest, confirm a console-only
 // resource is not on the portal at all, and confirm the client's session is a stranger to
 // the console.
 //
@@ -34,7 +34,7 @@ func TestPortalOutlet(t *testing.T) {
 	if status, body := b.do(ctx, http.MethodGet, portalAPI+"/user/session", nil); status != http.StatusOK {
 		t.Fatalf("GET session before login: status %d: %s", status, body)
 	}
-	if status, location := b.loginPortal(ctx, clientUser, "client-portal"); status != http.StatusFound || location != portalPage {
+	if status, location := b.loginPortal(ctx, clientUser, "ClientPortal"); status != http.StatusFound || location != portalPage {
 		t.Fatalf("portal login: status %d to %q, want %d to %q", status, location, http.StatusFound, portalPage)
 	}
 	status, body := b.do(ctx, http.MethodGet, portalAPI+"/user/session", nil)

@@ -92,7 +92,7 @@ export OVERMIND_NO_PORT=1
 # simulated login through it is APP_USERNAME, in the groups APP_ROLES names, since the
 # registration sets no pair of its own.
 export APP_USERNAME=client
-export APP_ROLES=client-portal,client-account
+export APP_ROLES=ClientPortal,ClientAccount
 # export APP_MEMBERS_OIDC_CLIENT_ID=
 # export APP_MEMBERS_OIDC_CLIENT_SECRET=
 # APP_MEMBERS_OIDC_REDIRECT_URL is the browser-facing callback of the surface that binds to

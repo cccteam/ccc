@@ -151,7 +151,8 @@
             {
               "resource": "CrewRoles",
               "fields": [
-                "kind"
+                "kind",
+                "description"
               ]
             },
             {
@@ -192,7 +193,8 @@
             {
               "resource": "MembersRoles",
               "fields": [
-                "kind"
+                "kind",
+                "description"
               ]
             },
             {
@@ -253,7 +255,8 @@
             {
               "resource": "CrewRoles",
               "fields": [
-                "kind"
+                "kind",
+                "description"
               ]
             },
             {
@@ -294,7 +297,8 @@
             {
               "resource": "MembersRoles",
               "fields": [
-                "kind"
+                "kind",
+                "description"
               ]
             },
             {
@@ -916,7 +920,10 @@
               ]
             },
             {
-              "resource": "CrewSectorRoles"
+              "resource": "CrewSectorRoles",
+              "fields": [
+                "description"
+              ]
             },
             {
               "resource": "CrewSectorInvitations",
@@ -1121,7 +1128,10 @@
               ]
             },
             {
-              "resource": "CrewSectorRoles"
+              "resource": "CrewSectorRoles",
+              "fields": [
+                "description"
+              ]
             },
             {
               "resource": "CrewSectorInvitations",

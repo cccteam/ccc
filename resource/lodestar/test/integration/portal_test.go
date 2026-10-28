@@ -4,7 +4,7 @@ package integration
 // missions and its own filed calls; a refit, ship, or squadron route under the prefix 404s
 // as a non-member; StandDown fires on an open own-company mission and refuses on another
 // company's; the portal digest names the portal's members and no others; the portal's
-// user-domains lists the sectors where the client-portal role is held; the client's
+// user-domains lists the sectors where the ClientPortal role is held; the client's
 // statement is the portal-only manual resource.
 
 import (
@@ -31,12 +31,12 @@ func TestClientPortal(t *testing.T) {
 	_, h, _ := sharedWorld(t)
 
 	// The portal grants this suite proves, each pinned to the roles file (conditions-proven).
-	provesGrant(t, members.Roles(), "client-account", "List", "ClientContacts", "userId = subject")
-	provesGrant(t, members.Roles(), "client-account", "Read", "ClientContacts", "userId = subject")
-	provesGrant(t, members.Roles(), "client-portal", "List", "Missions", "client = subject.client")
-	provesGrant(t, members.Roles(), "client-portal", "Read", "Missions", "client = subject.client")
-	provesGrant(t, members.Roles(), "client-portal", "List", "DistressCalls", "filedBy = subject")
-	provesGrant(t, members.Roles(), "client-portal", "Read", "DistressCalls", "filedBy = subject")
+	provesGrant(t, members.Roles(), "ClientAccount", "List", "ClientContacts", "userId = subject")
+	provesGrant(t, members.Roles(), "ClientAccount", "Read", "ClientContacts", "userId = subject")
+	provesGrant(t, members.Roles(), "ClientPortal", "List", "Missions", "client = subject.client")
+	provesGrant(t, members.Roles(), "ClientPortal", "Read", "Missions", "client = subject.client")
+	provesGrant(t, members.Roles(), "ClientPortal", "List", "DistressCalls", "filedBy = subject")
+	provesGrant(t, members.Roles(), "ClientPortal", "Read", "DistressCalls", "filedBy = subject")
 
 	t.Run("cleo sees only Halvard's missions, with the portal width", func(t *testing.T) {
 		t.Parallel()
@@ -216,7 +216,7 @@ func TestClientPortalActions(t *testing.T) {
 	_, _, h := demoWorld(t)
 
 	// The grant this suite proves, pinned to the roles file (conditions-proven).
-	provesGrant(t, members.Roles(), "client-portal", "Execute", "StandDownMission", "client = subject.client")
+	provesGrant(t, members.Roles(), "ClientPortal", "Execute", "StandDownMission", "client = subject.client")
 
 	t.Run("cleo files a call with her contact: the one PII field a client writes", func(t *testing.T) {
 		t.Parallel()

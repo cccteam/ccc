@@ -2,7 +2,7 @@
   "roles": {
     "global": [
       {
-        "name": "client-account",
+        "name": "ClientAccount",
         "permissions": {
           "Read": [
             {
@@ -29,7 +29,7 @@
     ],
     "domain": [
       {
-        "name": "client-portal",
+        "name": "ClientPortal",
         "permissions": {
           "List": [
             {
