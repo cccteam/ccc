@@ -114,6 +114,10 @@ type Report struct {
 	// BuildArguments are the build arguments the placement declares (buildArguments) that
 	// no stage of the Dockerfile declares with ARG.
 	BuildArguments []BuildArgumentFinding
+	// Programs are the shipped programs the release files declare when no stage of the
+	// Dockerfile declares the PROGRAMS build argument, under which the image build
+	// compiles none of them; nil when the code ships none, or a stage declares it.
+	Programs *ProgramsFinding
 	// Retired lists the files an earlier bedrock rendered at the application root that
 	// are still committed (render.Retired); bedrock render removes them.
 	Retired []string
@@ -205,12 +209,13 @@ type MaintenanceFinding struct {
 // Clean reports no drift, no refused resource, a sound migration sequence, every
 // required build secret declared, every job's binary built, an image that starts as the
 // layout's contract says, reserved stages holding their install alone, every declared
-// build argument declared by the Dockerfile, release lines that a feature release opens,
-// a changelog section for every accepted title type, release-please's files in place, no
+// build argument declared by the Dockerfile, the shipped programs' build argument
+// declared when the code ships any, release lines that a feature release opens, a
+// changelog section for every accepted title type, release-please's files in place, no
 // Cloud Armor policy removed in one step, and a sign-in throttle threshold the policy
 // can take, and no retired variable that nothing declares.
 func (r *Report) Clean() bool {
-	return len(r.Findings) == 0 && len(r.Authoritative) == 0 && len(r.Migrations) == 0 && len(r.BuildSecrets) == 0 && len(r.Generated) == 0 && len(r.Binaries) == 0 && len(r.Bundles) == 0 && r.startClean() && r.siteBundlesClean() && len(r.Stages) == 0 && len(r.BuildArguments) == 0 && len(r.ReleaseLines) == 0 && len(r.ReleaseSections) == 0 && len(r.ReleaseFiles) == 0 && len(r.CloudArmor) == 0 && len(r.SignInThreshold) == 0 && len(r.Retired) == 0 && r.retirementsClean()
+	return len(r.Findings) == 0 && len(r.Authoritative) == 0 && len(r.Migrations) == 0 && len(r.BuildSecrets) == 0 && len(r.Generated) == 0 && len(r.Binaries) == 0 && len(r.Bundles) == 0 && r.startClean() && r.siteBundlesClean() && len(r.Stages) == 0 && len(r.BuildArguments) == 0 && r.Programs == nil && len(r.ReleaseLines) == 0 && len(r.ReleaseSections) == 0 && len(r.ReleaseFiles) == 0 && len(r.CloudArmor) == 0 && len(r.SignInThreshold) == 0 && len(r.Retired) == 0 && r.retirementsClean()
 }
 
 // retirementsClean reports every retired variable declared by something.
@@ -463,7 +468,8 @@ func scanLatest(dir string, envs []string) ([]LatestSecret, error) {
 
 // scanImage reads the Dockerfile against the stack: the binaries its jobs run, the
 // bundles its site serves, the job name it carries, how it starts, its reserved stages,
-// and the build arguments the placement declares.
+// the build arguments the placement declares, and the shipped programs' build argument
+// when the release files ship any.
 func (r *Report) scanImage(appDir string, m *derive.Model) error {
 	binaries, err := scanBinaries(appDir, m)
 	if err != nil {
@@ -487,6 +493,11 @@ func (r *Report) scanImage(appDir string, m *derive.Model) error {
 		return err
 	}
 	r.BuildArguments = buildArguments
+	programs, err := scanPrograms(appDir, m)
+	if err != nil {
+		return err
+	}
+	r.Programs = programs
 
 	return nil
 }
@@ -749,11 +760,12 @@ func (r *Report) writeInformation(w io.Writer) {
 // writeImage prints the refusals the Dockerfile earns: the build secrets no environment
 // declares, the binaries and bundles it does not build or set, a start the stack's
 // services cannot start (its refused line, with the lines to write under it), the
-// reserved stages holding more than their install, and the build arguments it does not
-// declare.
+// reserved stages holding more than their install, the build arguments it does not
+// declare, and the shipped programs it does not compile (the same way, with the lines
+// to add under it).
 func (r *Report) writeImage(w io.Writer) {
 	for _, bs := range r.BuildSecrets {
-		fmt.Fprintf(w, "  refused  Dockerfile mounts build secret %s as required; %s declare%s no such secret (terraform.tfvars build_secrets)\n", bs.ID, joinEnvironments(bs.Missing), pluralS(len(bs.Missing)))
+		fmt.Fprintf(w, "  refused  Dockerfile mounts build secret %s as required; %s declare%s no such secret (terraform.tfvars build_secrets)\n", bs.ID, joinAnd(bs.Missing), pluralS(len(bs.Missing)))
 	}
 	for _, b := range r.Binaries {
 		fmt.Fprintf(w, "  refused  Dockerfile builds no %s, the command %s: go build -o /build%s ./%s in the Go stage, with /build copied into the runtime image\n", b.Binary, b.Runs, b.Binary, b.Dir)
@@ -767,13 +779,7 @@ func (r *Report) writeImage(w io.Writer) {
 		}
 	}
 	if r.Start != nil && r.Start.Problem != "" {
-		for i, line := range r.Start.Refusal(dockerfileName) {
-			label := "           "
-			if i == 0 {
-				label = "  refused  "
-			}
-			fmt.Fprintf(w, "%s%s\n", label, line)
-		}
+		writeRefusal(w, r.Start.Refusal(dockerfileName))
 	}
 	for _, s := range r.Stages {
 		fmt.Fprintf(w, "  refused  Dockerfile:%d stage %s %s (%q): the image build exports this stage's layers to the registry's cache, which every environment's build reads, so the stage holds its install and nothing else\n", s.Line, s.Stage, s.Problem, s.Instruction)
@@ -781,18 +787,33 @@ func (r *Report) writeImage(w io.Writer) {
 	for _, ba := range r.BuildArguments {
 		fmt.Fprintf(w, "  refused  placement.json declares build argument %s (%s), which the Dockerfile does not declare: add the line \"ARG %s\" to the stage that builds with it (a browser build stage, before its build), since a build argument reaches only the stages that declare it\n", ba.Name, ba.Value, ba.Name)
 	}
+	if r.Programs != nil {
+		writeRefusal(w, r.Programs.Refusal(dockerfileName))
+	}
 }
 
-// joinEnvironments writes environments the way a sentence lists them: "stg", "stg and
-// prd", "tst, stg and prd".
-func joinEnvironments(envs []string) string {
-	switch len(envs) {
+// writeRefusal prints a refusal that runs over several lines: the first under the
+// report's label, the lines to write indented under it.
+func writeRefusal(w io.Writer, lines []string) {
+	for i, line := range lines {
+		label := "           "
+		if i == 0 {
+			label = "  refused  "
+		}
+		fmt.Fprintf(w, "%s%s\n", label, line)
+	}
+}
+
+// joinAnd writes names the way a sentence lists them: "stg", "stg and prd", "tst, stg
+// and prd".
+func joinAnd(names []string) string {
+	switch len(names) {
 	case 0:
 		return ""
 	case 1:
-		return envs[0]
+		return names[0]
 	default:
-		return strings.Join(envs[:len(envs)-1], ", ") + " and " + envs[len(envs)-1]
+		return strings.Join(names[:len(names)-1], ", ") + " and " + names[len(names)-1]
 	}
 }
 

@@ -91,6 +91,12 @@ type Model struct {
 	// scoped to its services and backend.
 	Surfaces   []Surface
 	RequestLog *RequestLogExclusion
+	// ShippedPrograms are the command programs the generator programs declare on a
+	// machine outlet, read from every site's release file, by directory: the image build
+	// compiles each for its platforms into the image (the Dockerfile's PROGRAMS build
+	// argument), and the outlet serves the binaries to the installed copies. None when
+	// the code ships none.
+	ShippedPrograms []ReleaseProgram
 	// Outlets are the sites' router outlets as the generator programs declare them, the
 	// first site's first and the default of each first, a prefix listed once: the URL
 	// spaces the routes carrying JSON input live under, which Cloud Armor's rule sets

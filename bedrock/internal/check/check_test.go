@@ -318,7 +318,7 @@ func TestRun(t *testing.T) {
 					t.Fatal(err)
 				}
 			},
-			wantOutput: []string{"22 owned file(s) match the code", "refused  Dockerfile:64 stage go-modules copies .; the stage copies only go.mod or go.sum (\"COPY . ./\"): the image build exports this stage's layers to the registry's cache"},
+			wantOutput: []string{"22 owned file(s) match the code", "refused  Dockerfile:68 stage go-modules copies .; the stage copies only go.mod or go.sum (\"COPY . ./\"): the image build exports this stage's layers to the registry's cache"},
 		},
 		{
 			name: "a build argument the placement declares that the Dockerfile does not is refused",
@@ -336,6 +336,34 @@ func TestRun(t *testing.T) {
 				}
 			},
 			wantOutput: []string{"refused  placement.json declares build argument PROJECT_ID (projectId), which the Dockerfile does not declare: add the line \"ARG PROJECT_ID\" to the stage that builds with it"},
+		},
+		{
+			name:   "the shipped programs the release files declare compile in the committed Dockerfile",
+			mutate: func(*testing.T, string) {},
+			code: func(m *derive.Model) {
+				m.ShippedPrograms = []derive.ReleaseProgram{{Name: "corral", Dir: "cmd/corral", Platforms: []string{"linux/amd64"}}}
+			},
+			wantClean: true,
+		},
+		{
+			name: "shipped programs with a Dockerfile that declares no PROGRAMS are refused, with the lines to add",
+			mutate: func(t *testing.T, dir string) {
+				t.Helper()
+
+				path := filepath.Join(dir, "root", "Dockerfile")
+				data, err := os.ReadFile(path)
+				if err != nil {
+					t.Fatal(err)
+				}
+				data = bytes.ReplaceAll(data, []byte("ARG PROGRAMS\n"), nil)
+				if err := os.WriteFile(path, data, 0o600); err != nil {
+					t.Fatal(err)
+				}
+			},
+			code: func(m *derive.Model) {
+				m.ShippedPrograms = []derive.ReleaseProgram{{Name: "corral", Dir: "cmd/corral", Platforms: []string{"linux/amd64"}}}
+			},
+			wantOutput: []string{"22 owned file(s) match the code", "refused  Dockerfile declares no PROGRAMS build argument, and the release files ship cmd/corral (for linux/amd64): the pipeline passes", "           ARG PROGRAMS\n", "           COPY --from=build-env /programs /programs\n"},
 		},
 		{
 			name: "a Dockerfile without the reserved stages is warned about, not refused",

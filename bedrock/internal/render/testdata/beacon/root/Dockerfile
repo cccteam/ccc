@@ -12,8 +12,12 @@
 #     docker pull cgr.dev/chainguard/go:latest
 #     docker inspect cgr.dev/chainguard/go:latest --format='{{index .RepoDigests 0}}'
 #
-# Build arguments: VERSION (the release; the process reports it as APP_VERSION) and COMMIT
-# (the commit it was built from, recorded on the image). A local build:
+# Build arguments: VERSION (the release; the process reports it as APP_VERSION), COMMIT
+# (the commit it was built from, recorded on the image) and PROGRAMS (the shipped programs,
+# the command programs a generator program declares on a machine outlet: one word per
+# program, <dir>=<os>/<arch>[,<os>/<arch>...], the words separated by spaces, which the
+# pipeline composes from the generated release file; a local build passes none and
+# compiles none). A local build:
 #
 #     podman build --build-arg VERSION=dev --build-arg COMMIT=$(git rev-parse HEAD) -t beacon .
 #
@@ -107,6 +111,25 @@ RUN go build -trimpath -ldflags="-s -w" -o /build/app . && \
     go build -trimpath -ldflags="-s -w" -o /build/migrate ./cmd/deployment/migrate && \
     go build -trimpath -ldflags="-s -w" -o /build/hooks ./cmd/deployment/hooks
 
+# The shipped programs: the command programs a generator program declares on a machine
+# outlet, which that outlet serves to their installed copies, so a copy upgrades itself
+# from the release. PROGRAMS names each with its platforms, as the header says, and the
+# pipeline composes it from the release file; a local build passes none and compiles
+# none. Each program is compiled for each of its platforms as /programs/<name>-<os>-<arch>,
+# the name its directory's last element, with the release stamped into the framework's
+# variable at link time, which a copy compares with the server's release to decide
+# whether to upgrade. VERSION is declared again here so the stamp can read it.
+ARG VERSION
+ARG PROGRAMS
+RUN mkdir -p /programs && for program in $PROGRAMS; do \
+        dir="${program%%=*}"; \
+        (IFS=,; for platform in ${program#*=}; do \
+            GOOS="${platform%/*}" GOARCH="${platform#*/}" go build -trimpath \
+                -ldflags="-s -w -X github.com/cccteam/ccc/resource/shipped.Release=${VERSION}" \
+                -o "/programs/${dir##*/}-${platform%/*}-${platform#*/}" "./$dir" || exit 1; \
+        done) || exit 1; \
+    done
+
 # ---- Browser: the Angular bundles, built fresh in every environment ----------------------
 
 FROM docker.io/library/node@sha256:392e1e23f34da768d8d1f4e502b64f200d3be3465934d4b7930f57d7e2fc1989 AS web-build-env
@@ -130,7 +153,7 @@ COPY web/ ./
 # default configuration is production; it writes dist/console.
 RUN bun run build
 
-# ---- Runtime: a static image with the two binaries, the bundles, and the schema -----------
+# ---- Runtime: a static image with the two binaries, the bundles, the shipped programs and the schema -----------
 FROM cgr.dev/chainguard/static@sha256:1fe35025bd06652914560fd01af12a705c645c5566a8d40766b2a4769f33a824
 
 ARG VERSION
@@ -142,6 +165,10 @@ LABEL org.opencontainers.image.title="beacon" \
 
 COPY --from=build-env /build /
 
+# The shipped programs, one binary per program and platform, which the server serves from
+# the directory APP_PROGRAMS names below; an empty directory when the release ships none.
+COPY --from=build-env /programs /programs
+
 # The migrate command reads schema (the migrations, the seed) relative to its
 # working directory, and the server serves each bundle from the directory its variable
 # names, so everything sits under the working directory set below.
@@ -149,9 +176,11 @@ COPY --from=web-build-env /src/web/dist/console /home/nonroot/web/dist/console
 COPY schema /home/nonroot/schema
 
 # APP_VERSION is the configuration's version input: the image carries its own release, so
-# no deploy step repeats it. PORT is Cloud Run's; the configuration's default, 8080, is what the
+# no deploy step repeats it. APP_PROGRAMS is the directory the server serves the shipped programs
+# from, the one copied above. PORT is Cloud Run's; the configuration's default, 8080, is what the
 # image declares.
 ENV APP_VERSION="${VERSION}" \
+    APP_PROGRAMS=/programs \
     APP_CONSOLE_DIST=/home/nonroot/web/dist/console
 
 WORKDIR /home/nonroot

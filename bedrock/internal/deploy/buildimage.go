@@ -87,7 +87,10 @@ var cacheStages = []cacheStage{
 // it under its two tags (<release>-<env> and <commit>-<env>), unless the release check
 // found this commit's build to reuse. The build arguments are VERSION and COMMIT (the
 // image bakes the version in, and the framework names the job of its build from it and
-// the template job the stack sets on the service), the build arguments the placement declares, values of
+// the template job the stack sets on the service), PROGRAMS (the shipped programs the
+// checkout's release files declare, read from the application as bedrock check reads it,
+// one word per program as the seeded Dockerfile's loop compiles them; empty when the
+// code ships none), the build arguments the placement declares, values of
 // the stack's (every _BUILD_ARG_<NAME> the environment file carries, as NAME=value: a
 // release build's trigger's, which resolve exported, or a pull request's own stack's, which
 // deploy pr-outputs appended; the log names them and never their values), the declared
@@ -126,16 +129,21 @@ func BuildImage(ctx context.Context, clients *Clients, w Workspace, secretDir, m
 	if err != nil {
 		return err
 	}
-	args := []string{dockerBuildx, dockerBuild, "--build-arg", "VERSION=" + env[versionFact], "--build-arg", "COMMIT=" + build.Substitutions[commitSub]}
+	shipped, err := shippedPrograms(w)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintln(out, programsLine(shipped))
+	args := []string{dockerBuildx, dockerBuild, buildArgFlag, "VERSION=" + env[versionFact], buildArgFlag, "COMMIT=" + build.Substitutions[commitSub], buildArgFlag, programsArgument + "=" + programsValue(shipped)}
 	stackArgs := stackBuildArguments(env)
 	if len(stackArgs) > 0 {
 		fmt.Fprintf(out, "Build arguments from the stack (placement.json, buildArguments): %s.\n", strings.Join(slices.Sorted(maps.Keys(stackArgs)), ", "))
 	}
 	for _, name := range slices.Sorted(maps.Keys(stackArgs)) {
-		args = append(args, "--build-arg", name+"="+stackArgs[name])
+		args = append(args, buildArgFlag, name+"="+stackArgs[name])
 	}
 	for _, arg := range buildArgs {
-		args = append(args, "--build-arg", arg)
+		args = append(args, buildArgFlag, arg)
 	}
 	secretArgs, cleanup, err := buildSecrets(ctx, clients, env[buildSecretsFact], secretDir, out)
 	defer cleanup()
@@ -325,6 +333,63 @@ type cacheSource struct {
 // String is the source as the tests and the log name it.
 func (s cacheSource) String() string {
 	return s.Commit + " (" + strings.Join(s.Why, ", ") + ")"
+}
+
+// programsArgument is the build argument that carries the shipped programs to the
+// seeded Dockerfile, whose loop compiles each for its platforms: one word per program,
+// <dir>=<os>/<arch>[,<os>/<arch>...], the words separated by single spaces, in directory
+// order; empty when the code ships none, and then the loop compiles nothing.
+const programsArgument = "PROGRAMS"
+
+// shippedPrograms reads the shipped programs the checkout's release files declare, from
+// the application as bedrock check reads it under the checkout's placement: by
+// directory, each with its platforms.
+func shippedPrograms(w Workspace) ([]derive.ReleaseProgram, error) {
+	p, err := checkoutPlacement(w, "the application's shipped programs are read under it")
+	if err != nil {
+		return nil, err
+	}
+	m, err := checkoutModel(w, p)
+	if err != nil {
+		return nil, err
+	}
+
+	return m.ShippedPrograms, nil
+}
+
+// programsValue is the build argument's value for the programs.
+func programsValue(programs []derive.ReleaseProgram) string {
+	words := make([]string, 0, len(programs))
+	for i := range programs {
+		words = append(words, programs[i].Dir+"="+strings.Join(programs[i].Platforms, ","))
+	}
+
+	return strings.Join(words, " ")
+}
+
+// programsLine says which programs the build compiles and for which platforms, one
+// sentence: "Shipped programs: cmd/corral for linux/amd64 and linux/arm64; cmd/beacon
+// for linux/amd64." or "No shipped programs."
+func programsLine(programs []derive.ReleaseProgram) string {
+	if len(programs) == 0 {
+		return "No shipped programs."
+	}
+	parts := make([]string, 0, len(programs))
+	for i := range programs {
+		parts = append(parts, programs[i].Dir+" for "+joinAnd(programs[i].Platforms))
+	}
+
+	return "Shipped programs: " + strings.Join(parts, "; ") + "."
+}
+
+// joinAnd writes names the way a sentence lists them: "linux/amd64", "linux/amd64 and
+// linux/arm64", "linux/amd64, linux/arm64 and darwin/arm64".
+func joinAnd(names []string) string {
+	if len(names) < 2 {
+		return strings.Join(names, "")
+	}
+
+	return strings.Join(names[:len(names)-1], ", ") + " and " + names[len(names)-1]
 }
 
 // stackBuildArguments are the build arguments of the stack the environment file carries:
@@ -521,7 +586,7 @@ func (p *cachePlan) writes(s cacheStage) bool {
 func (p *cachePlan) stageArgs(s cacheStage) []string {
 	args := []string{dockerBuildx, dockerBuild, "--target", s.name}
 	for _, pair := range p.seen[s.name] {
-		args = append(args, "--build-arg", pair)
+		args = append(args, buildArgFlag, pair)
 	}
 	if !p.cacheable(s) {
 		args = append(args, "--no-cache")
@@ -676,6 +741,8 @@ const (
 	// (dockerBuild).
 	dockerBuildx = "buildx"
 	dockerBuild  = "build"
+	// buildArgFlag passes one build argument, NAME=value, to the build.
+	buildArgFlag = "--build-arg"
 	// dockerCreate makes a container from an image without starting it, to copy a file out.
 	dockerCreate = "create"
 	// dockerfileName is the image build at the application root.
