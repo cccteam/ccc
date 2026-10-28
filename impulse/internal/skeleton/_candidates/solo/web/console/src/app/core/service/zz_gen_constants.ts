@@ -69,10 +69,12 @@ export namespace StaffInvitations {
 
 export namespace StaffRoles {
   export const fieldName = {
+    description: 'description' as FieldName,
     kind: 'kind' as FieldName,
     name: 'name' as FieldName,
   };
   export const resourceName = {
+    description: 'StaffRoles.description' as Resource,
     kind: 'StaffRoles.kind' as Resource,
     name: 'StaffRoles.name' as Resource,
   };

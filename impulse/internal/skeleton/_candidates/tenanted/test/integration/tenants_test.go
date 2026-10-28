@@ -14,7 +14,7 @@ import (
 // guard asks the roster, which the commit updated), named in the administrator's tenant
 // list (a domain role held in every domain is a foothold there too), concealed from the
 // member who holds nothing there, and gone from the segment the moment it is deleted.
-// The create path seats the creator as the tenant's administrator (Administrator_Domain,
+// The create path seats the creator as the tenant's administrator (TenantAdministrator,
 // the role TenantAdministratorRoles names) after the commit, whatever the creation
 // shape, so the tenant's own crew list names them from the first request.
 func TestTenants_createdThroughTheAPIAreUsableAtOnce(t *testing.T) {
@@ -58,8 +58,8 @@ func TestTenants_createdThroughTheAPIAreUsableAtOnce(t *testing.T) {
 
 	// The creator holds the tenant's administrator seat there: the create path seated
 	// them once the row committed, and the tenant's crew list names them with it.
-	if roles := tenantRolesOf(ctx, t, admin, east, adminUser); !slices.Contains(roles, "Administrator_Domain") {
-		t.Errorf("the administrator's roles in %s = %v, want Administrator_Domain among them: the create path seats the creator", east, roles)
+	if roles := tenantRolesOf(ctx, t, admin, east, adminUser); !slices.Contains(roles, "TenantAdministrator") {
+		t.Errorf("the administrator's roles in %s = %v, want TenantAdministrator among them: the create path seats the creator", east, roles)
 	}
 
 	// The administrator's tenant list names the new tenant: the roster lists it, and the

@@ -26,7 +26,7 @@ type (
 	//
 	// Who may create a tenant is declared here, apart from who may enter one
 	// (@tenant(creation: ...)): an administrator alone (@tenant, the default: the create
-	// path above under the Administrator_Global role's Create grant), the person who
+	// path above under the Administrator role's Create grant), the person who
 	// becomes its administrator (self-service), or both, as here. Self-service is one
 	// generated route, POST /api/create-tenant: a stranger signs in first, through the
 	// staff auth's google registration (any Google account, open sign-up), holds no
@@ -53,7 +53,7 @@ type (
 		Name string `spanner:"Name"`
 		// DirectoryOnly says the tenant's people enter through its directories only: a
 		// password does not reach the tenant. Set by whoever holds the record's Update
-		// grant on the column (Administrator_Global), never at creation: a new tenant
+		// grant on the column (Administrator), never at creation: a new tenant
 		// declares nothing beyond its creator's directory.
 		// @directoryOnly
 		DirectoryOnly bool `spanner:"DirectoryOnly"`

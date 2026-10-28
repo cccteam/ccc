@@ -57,6 +57,7 @@ export interface MembersSeats {
 export interface MembersRoles {
   name: string;
   kind?: 'global' | 'domain';
+  description?: string;
 }
 /** A standing invitation into the global partition of the Members auth: an address invited to hold roles, until it is accepted, revoked or expires. */
 export interface MembersInvitations {
@@ -94,6 +95,7 @@ export interface MembersTenantSeats {
 /** A role a seat of the Members auth in one tenant may take. */
 export interface MembersTenantRoles {
   name: string;
+  description?: string;
 }
 /** A standing invitation into one tenant of the Members auth: an address invited to hold roles, until it is accepted, revoked or expires. */
 export interface MembersTenantInvitations {
@@ -178,6 +180,7 @@ const resourceMap = defineResourceMap({
     fields: [
       { fieldName: 'name', primaryKey: { ordinalPosition: 1 }, displayType: 'string', required: true, isIndex: true },
       { fieldName: 'kind', displayType: 'string', required: true, isIndex: false },
+      { fieldName: 'description', displayType: 'string', required: true, isIndex: false },
     ],
   },
   [Resources.MembersInvitations]: {
@@ -229,6 +232,7 @@ const resourceMap = defineResourceMap({
     deleteDisabled: true,
     fields: [
       { fieldName: 'name', primaryKey: { ordinalPosition: 1 }, displayType: 'string', required: true, isIndex: true },
+      { fieldName: 'description', displayType: 'string', required: true, isIndex: false },
     ],
   },
   [Resources.MembersTenantInvitations]: {

@@ -3,18 +3,18 @@
     {
       "user": "admin",
       "password": "password",
-      "roles": { "global": ["Administrator_Global", "FeatureAdministrator"], "everyDomain": ["Administrator_Domain"], "domains": {} }
+      "roles": { "global": ["Administrator", "FeatureAdministrator"], "everyDomain": ["TenantAdministrator"], "domains": {} }
     },
     {
       "user": "member",
       "password": "password",
-      "roles": { "global": [], "everyDomain": [], "domains": { "north": ["Administrator_Domain", "Machines_Domain"] } }
+      "roles": { "global": [], "everyDomain": [], "domains": { "north": ["TenantAdministrator", "MachineOperator"] } }
     }
   ],
   "members": [
     {
       "user": "client",
-      "roles": { "global": [], "everyDomain": [], "domains": { "north": ["Administrator_Domain"] } }
+      "roles": { "global": [], "everyDomain": [], "domains": { "north": ["TenantAdministrator"] } }
     }
   ]
 }

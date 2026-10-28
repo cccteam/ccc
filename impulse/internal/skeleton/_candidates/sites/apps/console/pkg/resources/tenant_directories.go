@@ -15,7 +15,7 @@ type (
 	// it (impulse add method); a declared directory admits the people who come through
 	// it from then on. One domain, one directory by default; a second directory is an
 	// explicit second row. A tenant's own administrator declares its directories under
-	// the record's Create and Delete grants (Administrator_Domain), and the change events
+	// the record's Create and Delete grants (TenantAdministrator), and the change events
 	// are the audit.
 	//
 	// DefaultSeat is what a stranger the directory vouches for gets at their first

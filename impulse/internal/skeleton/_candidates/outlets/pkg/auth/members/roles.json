@@ -3,7 +3,7 @@
     "global": [],
     "domain": [
       {
-        "name": "Administrator_Domain",
+        "name": "TenantAdministrator",
         "permissions": {
           "Create": [
             {
@@ -88,7 +88,10 @@
               ]
             },
             {
-              "resource": "MembersTenantRoles"
+              "resource": "MembersTenantRoles",
+              "fields": [
+                "description"
+              ]
             }
           ],
           "Read": [
@@ -136,7 +139,10 @@
               ]
             },
             {
-              "resource": "MembersTenantRoles"
+              "resource": "MembersTenantRoles",
+              "fields": [
+                "description"
+              ]
             }
           ],
           "Update": [

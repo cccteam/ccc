@@ -12,12 +12,12 @@ import (
 // TestLastOwner_anAdministratorLeavesOnceAnotherRemains proves the last-owner rule on
 // the served stack: a person leaves an administrator seat of a partition once another
 // holder remains there, and the last one is refused. The administrator, the one holder
-// of Administrator_Global, the global partition's administrator role
+// of Administrator, the global partition's administrator role
 // (staff.AdministratorRoles), is refused leaving it in the rule's words; a seat that is
-// no administrator role of its partition goes freely, Administrator_Domain held in every
+// no administrator role of its partition goes freely, TenantAdministrator held in every
 // tenant, a domain role; in a tenant they created, where the create path seated them as
 // its administrator, they are refused leaving as its last one and leave once a holder in
-// every tenant stands beside them; and once the member holds Administrator_Global
+// every tenant stands beside them; and once the member holds Administrator
 // beside them, they leave it. So an operator creates a customer's tenant, seats its
 // first administrator and leaves, and no partition is left with nobody to seat the next.
 func TestLastOwner_anAdministratorLeavesOnceAnotherRemains(t *testing.T) {
@@ -30,18 +30,18 @@ func TestLastOwner_anAdministratorLeavesOnceAnotherRemains(t *testing.T) {
 	memberID := staffUserID(ctx, t, admin, memberUser)
 
 	// The last holder of the partition's administrator role is refused, in the rule's words.
-	status, body := admin.do(ctx, http.MethodPatch, "/api/staff-seats", []byte(unseatOp(adminID, "Administrator_Global")))
+	status, body := admin.do(ctx, http.MethodPatch, "/api/staff-seats", []byte(unseatOp(adminID, "Administrator")))
 	if status != http.StatusForbidden || !strings.Contains(string(body), "you are the last administrator: seat another before you unseat yourself") {
-		t.Fatalf("the administrator leaving Administrator_Global as its one holder: status %d, want 403 naming the rule: %s", status, body)
+		t.Fatalf("the administrator leaving Administrator as its one holder: status %d, want 403 naming the rule: %s", status, body)
 	}
-	if roles := globalRolesOf(ctx, t, admin, adminUser); !slices.Contains(roles, "Administrator_Global") {
-		t.Fatalf("the administrator's roles after the refusal = %v, want Administrator_Global kept", roles)
+	if roles := globalRolesOf(ctx, t, admin, adminUser); !slices.Contains(roles, "Administrator") {
+		t.Fatalf("the administrator's roles after the refusal = %v, want Administrator kept", roles)
 	}
 
-	// A seat that is no administrator role of its partition goes freely: Administrator_Domain
+	// A seat that is no administrator role of its partition goes freely: TenantAdministrator
 	// held in every tenant is a domain role, not the global partition's.
-	if status, body := admin.do(ctx, http.MethodPatch, "/api/staff-seats", []byte(unseatOp(adminID, "Administrator_Domain"))); status != http.StatusOK {
-		t.Fatalf("the administrator leaving Administrator_Domain held in every tenant: status %d, want 200: %s", status, body)
+	if status, body := admin.do(ctx, http.MethodPatch, "/api/staff-seats", []byte(unseatOp(adminID, "TenantAdministrator"))); status != http.StatusOK {
+		t.Fatalf("the administrator leaving TenantAdministrator held in every tenant: status %d, want 200: %s", status, body)
 	}
 
 	// In a tenant: the create path seated the creator as west's administrator, and with
@@ -51,31 +51,31 @@ func TestLastOwner_anAdministratorLeavesOnceAnotherRemains(t *testing.T) {
 	if status, body := admin.do(ctx, http.MethodPatch, "/api/resources", []byte(`[{"op":"add","path":"/tenants/`+west+`","value":{"name":"West"}}]`)); status != http.StatusOK {
 		t.Fatalf("creating %s: status %d: %s", west, status, body)
 	}
-	if roles := tenantRolesOf(ctx, t, admin, west, adminUser); !slices.Contains(roles, "Administrator_Domain") {
-		t.Fatalf("the administrator's roles in %s = %v, want Administrator_Domain: the create path seats the creator", west, roles)
+	if roles := tenantRolesOf(ctx, t, admin, west, adminUser); !slices.Contains(roles, "TenantAdministrator") {
+		t.Fatalf("the administrator's roles in %s = %v, want TenantAdministrator: the create path seats the creator", west, roles)
 	}
 	westSeats := "/api/tenants/" + west + "/staff-tenant-seats"
-	status, body = admin.do(ctx, http.MethodPatch, westSeats, []byte(unseatOp(adminID, "Administrator_Domain")))
+	status, body = admin.do(ctx, http.MethodPatch, westSeats, []byte(unseatOp(adminID, "TenantAdministrator")))
 	if status != http.StatusForbidden || !strings.Contains(string(body), "you are the last administrator of this tenant: seat another before you unseat yourself") {
 		t.Fatalf("the administrator leaving %s's seat as its one holder: status %d, want 403 naming the rule: %s", west, status, body)
 	}
-	if status, body := admin.do(ctx, http.MethodPatch, "/api/staff-seats", []byte(seatOp(adminID, "Administrator_Domain"))); status != http.StatusOK {
-		t.Fatalf("the administrator taking Administrator_Domain in every tenant again: status %d: %s", status, body)
+	if status, body := admin.do(ctx, http.MethodPatch, "/api/staff-seats", []byte(seatOp(adminID, "TenantAdministrator"))); status != http.StatusOK {
+		t.Fatalf("the administrator taking TenantAdministrator in every tenant again: status %d: %s", status, body)
 	}
-	if status, body := admin.do(ctx, http.MethodPatch, westSeats, []byte(unseatOp(adminID, "Administrator_Domain"))); status != http.StatusOK {
+	if status, body := admin.do(ctx, http.MethodPatch, westSeats, []byte(unseatOp(adminID, "TenantAdministrator"))); status != http.StatusOK {
 		t.Fatalf("the administrator leaving %s's seat with the every-tenant seat standing: status %d, want 200: %s", west, status, body)
 	}
 
 	// Another holder seated, the administrator leaves.
-	if status, body := admin.do(ctx, http.MethodPatch, "/api/staff-seats", []byte(seatOp(memberID, "Administrator_Global"))); status != http.StatusOK {
-		t.Fatalf("seating the member as Administrator_Global: status %d: %s", status, body)
+	if status, body := admin.do(ctx, http.MethodPatch, "/api/staff-seats", []byte(seatOp(memberID, "Administrator"))); status != http.StatusOK {
+		t.Fatalf("seating the member as Administrator: status %d: %s", status, body)
 	}
-	if status, body := admin.do(ctx, http.MethodPatch, "/api/staff-seats", []byte(unseatOp(adminID, "Administrator_Global"))); status != http.StatusOK {
-		t.Fatalf("the administrator leaving Administrator_Global once the member holds it: status %d, want 200: %s", status, body)
+	if status, body := admin.do(ctx, http.MethodPatch, "/api/staff-seats", []byte(unseatOp(adminID, "Administrator"))); status != http.StatusOK {
+		t.Fatalf("the administrator leaving Administrator once the member holds it: status %d, want 200: %s", status, body)
 	}
 	member := signedIn(ctx, t, s, memberUser)
-	if roles := globalRolesOf(ctx, t, member, adminUser); slices.Contains(roles, "Administrator_Global") {
-		t.Errorf("the administrator's roles once they left = %v, want Administrator_Global gone", roles)
+	if roles := globalRolesOf(ctx, t, member, adminUser); slices.Contains(roles, "Administrator") {
+		t.Errorf("the administrator's roles once they left = %v, want Administrator gone", roles)
 	}
 }
 

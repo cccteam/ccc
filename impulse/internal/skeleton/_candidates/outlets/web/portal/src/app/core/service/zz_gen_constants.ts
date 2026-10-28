@@ -103,10 +103,12 @@ export namespace MembersInvitations {
 
 export namespace MembersRoles {
   export const fieldName = {
+    description: 'description' as FieldName,
     kind: 'kind' as FieldName,
     name: 'name' as FieldName,
   };
   export const resourceName = {
+    description: 'MembersRoles.description' as Resource,
     kind: 'MembersRoles.kind' as Resource,
     name: 'MembersRoles.name' as Resource,
   };
@@ -148,9 +150,11 @@ export namespace MembersTenantInvitations {
 
 export namespace MembersTenantRoles {
   export const fieldName = {
+    description: 'description' as FieldName,
     name: 'name' as FieldName,
   };
   export const resourceName = {
+    description: 'MembersTenantRoles.description' as Resource,
     name: 'MembersTenantRoles.name' as Resource,
   };
 }
@@ -261,10 +265,12 @@ export namespace StaffInvitations {
 
 export namespace StaffRoles {
   export const fieldName = {
+    description: 'description' as FieldName,
     kind: 'kind' as FieldName,
     name: 'name' as FieldName,
   };
   export const resourceName = {
+    description: 'StaffRoles.description' as Resource,
     kind: 'StaffRoles.kind' as Resource,
     name: 'StaffRoles.name' as Resource,
   };
@@ -306,9 +312,11 @@ export namespace StaffTenantInvitations {
 
 export namespace StaffTenantRoles {
   export const fieldName = {
+    description: 'description' as FieldName,
     name: 'name' as FieldName,
   };
   export const resourceName = {
+    description: 'StaffTenantRoles.description' as Resource,
     name: 'StaffTenantRoles.name' as Resource,
   };
 }

@@ -48,7 +48,11 @@ templates, this README, and the tool's source.
 - **Auth**: a population that holds roles in its own permission store and signs in
   through the methods registered on its Auth session. It is a package, `pkg/auth/<name>`,
   whose name prefixes its tables and cookies and whose role file (`roles.json`, embedded
-  in the package) holds the release's default roles for it.
+  in the package) holds the release's default roles for it. A role is named for its job
+  in PascalCase (`Administrator`, `TenantAdministrator`, `FeatureAdministrator`), never
+  for where it is held: the file declares that by its structure (a global role under
+  `global`, a domain role under `domain`, held in every tenant), and the user-management
+  surface serves it as the role's `kind`.
 - **Method**: one way an auth's people sign in, registered on the Auth under a
   registration name that is the segment of its routes (`user/<registration>/login`):
   `password` (always registered as `password`), `azure` (Microsoft Entra over OpenID
@@ -429,7 +433,8 @@ are optional and not rendered.
 A Google method under the `directory` authority assigns roles from the directory's groups
 by name. A group's email is lowercase, so the names reach the store in lowercase; the store
 resolves a directory's name without regard to case and writes the membership in the role
-file's spelling, so the file keeps its names as they are (the base's `Administrator_Global`).
+file's spelling, so the file keeps its names as they are (the base's `Administrator`, which
+the group `<prefix>administrator@` names).
 Two roles differing only in case are refused when the engine opens, so a resolution is never
 a guess.
 
@@ -896,7 +901,9 @@ skeletons' auths, so it owns `<Name>Sessions`, `<Name>SessionUsers`,
 `<Name>SessionSignInAttempts`, `<Name>SessionMailLinks`, `<Name>SessionFactorCodes` and
 `<Name>SessionTrustedDevices`, the `<Name>` store prefix, the `<name>`, `<name>-xsrf` and
 `<name>-trusted` cookies, and
-`pkg/auth/<name>/roles.json` (empty, embedded by the package) from the start, with one
+`pkg/auth/<name>/roles.json` (empty, embedded by the package) from the start, to be
+authored with roles named for their job in PascalCase and never for where they are held
+(section Vocabulary, Auth), with one
 file per method; its session tables are written as migrations under the new prefix and
 its access tables copied from an auth the application has; and the data level constructs
 it beside that auth, its settings built by a function of its own on the environment

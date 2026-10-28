@@ -2,7 +2,7 @@
   "roles": {
     "global": [
       {
-        "name": "Administrator_Global",
+        "name": "Administrator",
         "permissions": {
           "Create": [
             {
@@ -103,7 +103,8 @@
             {
               "resource": "StaffRoles",
               "fields": [
-                "kind"
+                "kind",
+                "description"
               ]
             }
           ],
@@ -153,7 +154,8 @@
             {
               "resource": "StaffRoles",
               "fields": [
-                "kind"
+                "kind",
+                "description"
               ]
             }
           ],
@@ -211,7 +213,7 @@
     ],
     "domain": [
       {
-        "name": "Administrator_Domain",
+        "name": "TenantAdministrator",
         "permissions": {
           "Create": [
             {
@@ -335,7 +337,10 @@
               ]
             },
             {
-              "resource": "StaffTenantRoles"
+              "resource": "StaffTenantRoles",
+              "fields": [
+                "description"
+              ]
             }
           ],
           "Read": [
@@ -393,7 +398,10 @@
               ]
             },
             {
-              "resource": "StaffTenantRoles"
+              "resource": "StaffTenantRoles",
+              "fields": [
+                "description"
+              ]
             }
           ],
           "Update": [

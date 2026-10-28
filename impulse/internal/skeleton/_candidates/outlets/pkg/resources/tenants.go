@@ -44,7 +44,7 @@ type (
 		Name string `spanner:"Name"`
 		// DirectoryOnly says the tenant's people enter through its directories only: a
 		// password does not reach the tenant. Set by whoever holds the record's Update
-		// grant on the column (Administrator_Global), never at creation: a new tenant
+		// grant on the column (Administrator), never at creation: a new tenant
 		// declares nothing.
 		// @directoryOnly
 		DirectoryOnly bool `spanner:"DirectoryOnly"`

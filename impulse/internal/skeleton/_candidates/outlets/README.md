@@ -103,14 +103,17 @@ generated router test proves the route sits behind the token check.
   development tenants; `pkg/auth/staff/roles.json` and `pkg/auth/members/roles.json` each
   auth's role file: the default roles the release ships, embedded in the binary and
   validated against the generated collection when the auth's engine opens. A domain role
-  is held in every tenant domain, so nothing provisions a file per tenant. The staff file
-  authors `Administrator_Global` over the tenant record and the global partition of the
+  is held in every tenant domain, so nothing provisions a file per tenant. A role is named
+  for its job in PascalCase (`Administrator`, `TenantAdministrator`, `MachineOperator`),
+  never for where it is held: the file's structure says that, and the Users page shows it
+  as the role's kind. The staff file
+  authors `Administrator` over the tenant record and the global partition of the
   staff auth's user-management surface (`StaffUsers`, `StaffSeats`, `StaffInvitations`, `StaffRoles`,
-  `SetStaffUserPassword`), `Administrator_Domain` over the console's announcements and the
-  surface's tenant partition (`StaffTenantUsers` and its siblings), and `Machines_Domain`,
+  `SetStaffUserPassword`), `TenantAdministrator` over the console's announcements and the
+  surface's tenant partition (`StaffTenantUsers` and its siblings), and `MachineOperator`,
   the role of the people whose programs read and write the readings through the machines
   outlet, over the readings; the members file authors
-  `Administrator_Domain` over the portal's announcements and the members auth's tenant
+  `TenantAdministrator` over the portal's announcements and the members auth's tenant
   partition (`MembersTenantUsers` and its siblings). A new resource stays invisible until a role in its auth's file is granted
   it. Every grant in either file is proven live by `test/integration/grants_test.go`, which
   opens each auth the way the deployment does and asks its engine about each

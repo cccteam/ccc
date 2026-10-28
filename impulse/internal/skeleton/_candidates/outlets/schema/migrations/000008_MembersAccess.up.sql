@@ -3,6 +3,7 @@ CREATE TABLE MembersRoles (
   Axis STRING(128) NOT NULL,
   Domain STRING(128) NOT NULL,
   Role STRING(128) NOT NULL,
+  Description STRING(MAX) NOT NULL,
   UpdatedAt TIMESTAMP NOT NULL OPTIONS (allow_commit_timestamp = true),
   CONSTRAINT MembersRolesKind CHECK (Kind IN ('global', 'domain', 'every')),
 ) PRIMARY KEY (Kind, Axis, Domain, Role);

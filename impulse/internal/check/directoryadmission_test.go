@@ -96,8 +96,8 @@ func (a *Auth) Session() *Session { return a.session }
 	admissionCall = "\ts.SetDirectoryAdmission(settings.TenantDirectories, resource.SignInRoles(engine.UserManager()), resource.SeatDeclared(engine.UserManager()))\n"
 	// seatRoles grants the tenant's administrator Update on the directories record with
 	// the default seat; noSeatRoles grants Update on the record without it.
-	seatRoles   = `{"roles": {"global": [], "domain": [{"name": "Administrator_Domain", "permissions": {"Create": [{"resource": "TenantDirectories", "fields": ["connection", "defaultSeat", "method"]}], "Update": [{"resource": "TenantDirectories", "fields": ["defaultSeat"]}]}}]}}` + "\n"
-	noSeatRoles = `{"roles": {"global": [], "domain": [{"name": "Administrator_Domain", "permissions": {"Create": [{"resource": "TenantDirectories", "fields": ["connection", "defaultSeat", "method"]}], "Update": [{"resource": "TenantDirectories", "fields": ["connection"]}]}}]}}` + "\n"
+	seatRoles   = `{"roles": {"global": [], "domain": [{"name": "TenantAdministrator", "permissions": {"Create": [{"resource": "TenantDirectories", "fields": ["connection", "defaultSeat", "method"]}], "Update": [{"resource": "TenantDirectories", "fields": ["defaultSeat"]}]}}]}}` + "\n"
+	noSeatRoles = `{"roles": {"global": [], "domain": [{"name": "TenantAdministrator", "permissions": {"Create": [{"resource": "TenantDirectories", "fields": ["connection", "defaultSeat", "method"]}], "Update": [{"resource": "TenantDirectories", "fields": ["connection"]}]}}]}}` + "\n"
 )
 
 // admitted lays out a flat tenanted application with the skeletons' wiring: the tenant

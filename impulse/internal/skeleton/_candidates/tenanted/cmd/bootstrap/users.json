@@ -5,11 +5,11 @@
       "password": "password",
       "roles": {
         "global": [
-          "Administrator_Global",
+          "Administrator",
           "FeatureAdministrator"
         ],
         "everyDomain": [
-          "Administrator_Domain"
+          "TenantAdministrator"
         ],
         "domains": {}
       }
@@ -22,7 +22,7 @@
         "everyDomain": [],
         "domains": {
           "north": [
-            "Administrator_Domain"
+            "TenantAdministrator"
           ]
         }
       }

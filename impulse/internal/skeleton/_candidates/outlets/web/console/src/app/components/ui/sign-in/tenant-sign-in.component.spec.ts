@@ -27,10 +27,10 @@ const entra: TenantDirectories = {
   tenantId: 'acme',
   method: 'azure',
   connection: '6f2c1b7e-3d4a-4c1e-9b2a-1f0e8d7c6b5a',
-  defaultSeat: 'Administrator_Domain',
+  defaultSeat: 'TenantAdministrator',
 };
 const directories = [workspace, entra];
-const tenantRoles = [{ name: 'Administrator_Domain' }];
+const tenantRoles = [{ name: 'TenantAdministrator' }];
 
 const administratorGrants: PermissionDigest = {
   TenantDirectories: { List: 'granted', Create: 'granted', Update: 'granted', Delete: 'granted' },
@@ -143,20 +143,20 @@ describe('TenantSignInComponent', () => {
     // The picker offers invitation only and every role of the tenant; a row with no seat
     // stands at invitation only (the empty choice), a row with one at its role.
     const pickers = fixture.debugElement.queryAll(By.css('.seat-picker')).map((d) => d.componentInstance as MatSelect);
-    expect(pickers.map((p) => p.value)).toEqual(['', 'Administrator_Domain']);
-    expect(pickers[0]?.options.map((o) => o.viewValue)).toEqual(['Invitation only', 'Administrator_Domain']);
+    expect(pickers.map((p) => p.value)).toEqual(['', 'TenantAdministrator']);
+    expect(pickers[0]?.options.map((o) => o.viewValue)).toEqual(['Invitation only', 'TenantAdministrator']);
 
-    await fixture.componentInstance.seat(workspace, 'Administrator_Domain');
+    await fixture.componentInstance.seat(workspace, 'TenantAdministrator');
     await settle();
     expect(writes()).toEqual([
-      { op: 'patch', path: '/tenants/acme/tenant-directories/d-1', value: { defaultSeat: 'Administrator_Domain' } },
+      { op: 'patch', path: '/tenants/acme/tenant-directories/d-1', value: { defaultSeat: 'TenantAdministrator' } },
     ]);
 
     // Clearing the seat sends an explicit null: the column is cleared, not left alone.
     await fixture.componentInstance.seat(entra, '');
     await settle();
     expect(writes()).toEqual([
-      { op: 'patch', path: '/tenants/acme/tenant-directories/d-1', value: { defaultSeat: 'Administrator_Domain' } },
+      { op: 'patch', path: '/tenants/acme/tenant-directories/d-1', value: { defaultSeat: 'TenantAdministrator' } },
       { op: 'patch', path: '/tenants/acme/tenant-directories/d-2', value: { defaultSeat: null } },
     ]);
   });
@@ -165,7 +165,7 @@ describe('TenantSignInComponent', () => {
     await pageFor({ global: {}, acme: { TenantDirectories: { List: 'granted' } } });
 
     expect(element().querySelector('.seat-picker')).toBeNull();
-    expect(texts('.directories td:nth-child(3)')).toEqual(['Invitation only', 'Administrator_Domain']);
+    expect(texts('.directories td:nth-child(3)')).toEqual(['Invitation only', 'TenantAdministrator']);
     expect(transport.requests.map((r) => r.url.replace(/\?.*$/, '')).filter((u) => u.includes('staff-tenant-roles'))).toEqual([]);
   });
 

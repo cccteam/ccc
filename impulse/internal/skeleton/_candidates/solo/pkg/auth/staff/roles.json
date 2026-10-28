@@ -2,7 +2,7 @@
   "roles": {
     "global": [
       {
-        "name": "Administrator_Global",
+        "name": "Administrator",
         "permissions": {
           "Create": [
             {
@@ -87,7 +87,8 @@
             {
               "resource": "StaffRoles",
               "fields": [
-                "kind"
+                "kind",
+                "description"
               ]
             }
           ],
@@ -130,7 +131,8 @@
             {
               "resource": "StaffRoles",
               "fields": [
-                "kind"
+                "kind",
+                "description"
               ]
             }
           ],
