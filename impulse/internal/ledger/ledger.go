@@ -631,7 +631,7 @@ var Steps = []Step{
 			ccc v0.3.5
 			ccc/accesstypes v0.7.0
 			ccc/cloud v0.2.1
-			ccc/resource v0.15.18-0.20261028175435-8df03287f848
+			ccc/resource v0.16.0
 			ccc/tracer v0.3.0
 			db-initiator v0.4.3
 			httpio v0.7.22
@@ -639,13 +639,12 @@ var Steps = []Step{
 			session v0.13.14
 		`),
 		Web: web(`
-			@cccteam/resource 0.0.14
-			@cccteam/resource-angular 0.0.19
-			@cccteam/resource-firestore 0.0.12
+			@cccteam/resource 0.0.15
+			@cccteam/resource-angular 0.0.20
+			@cccteam/resource-firestore 0.0.13
 		`),
-		Impulse: release("v0.5.28"),
-		Pending: true,
-		Note:    "every role is named in one grammar and says what it is for: the permission engine refuses a role file naming a role outside letters and digits starting with a capital letter (Administrator, TenantAdministrator; the scope is never part of the name, since the file's structure says where a role is held and the Users page shows it as the role's kind) or a role without a description, one or two plain sentences saying what the role is for, which the user-management surface serves beside the name (the roles resources' List and Read grants name description beside kind, and the generated TypeScript clients carry the field); a custom role made at run time (UserManager.AddRole) takes a description and follows the same grammar, and the engine's store writes it to a Description column on each <Name>Roles table (Spanner: Description STRING(MAX) NOT NULL after Role), which the skeletons' access migrations create; the roles-file check parses every auth package's role file the way the engine reads it at start, with no permission collection, and names the file, the role and the rule of a refusal; an existing application taking this release does three things by hand: renames every role whose name is outside the grammar, in its role files, its development logins, its tests and wherever else the name is written (in the skeletons' naming, Administrator_Global is Administrator, Administrator_Domain is TenantAdministrator and Machines_Domain is MachineOperator), gives every role in its role files a description, and adds the Description column to each <Name>Roles table; and the pins move to access v0.12.0 and to resource v0.15.18-0.20261028175435-8df03287f848, the pushed commit, until its release",
+		Impulse: release("v0.6.0"),
+		Note:    "every role is named in one grammar and says what it is for: the permission engine refuses a role file naming a role outside letters and digits starting with a capital letter (Administrator, TenantAdministrator; the scope is never part of the name, since the file's structure says where a role is held and the Users page shows it as the role's kind) or a role without a description, one or two plain sentences saying what the role is for, which the user-management surface serves beside the name (the roles resources' List and Read grants name description beside kind, and the generated TypeScript clients carry the field); a custom role made at run time (UserManager.AddRole) takes a description and follows the same grammar, and the engine's store writes it to a Description column on each <Name>Roles table (Spanner: Description STRING(MAX) NOT NULL after Role), which the skeletons' access migrations create; the roles-file check parses every auth package's role file the way the engine reads it at start, with no permission collection, and names the file, the role and the rule of a refusal; an existing application taking this release does three things by hand: renames every role whose name is outside the grammar, in its role files, its development logins, its tests and wherever else the name is written (in the skeletons' naming, Administrator_Global is Administrator, Administrator_Domain is TenantAdministrator and Machines_Domain is MachineOperator), gives every role in its role files a description, and adds the Description column to each <Name>Roles table; and the pins move to access v0.12.0 and resource v0.16.0, and the web pins to @cccteam/resource 0.0.15, @cccteam/resource-angular 0.0.20 and @cccteam/resource-firestore 0.0.13, which carry the users page in the shape of Google Cloud's IAM page: one row per person with each role's title and where it applies, an Edit access panel whose picker shows each role's title, where it applies and its description and whose Save applies the difference one seat at a time, and a Manage account panel for the account's own actions",
 	},
 }
 
