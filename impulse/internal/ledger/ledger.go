@@ -568,7 +568,7 @@ var Steps = []Step{
 			ccc v0.3.5
 			ccc/accesstypes v0.7.0
 			ccc/cloud v0.2.1
-			ccc/resource v0.15.16-0.20261028032852-694af8f821db
+			ccc/resource v0.15.16
 			ccc/tracer v0.3.0
 			db-initiator v0.4.3
 			httpio v0.7.22
@@ -581,8 +581,7 @@ var Steps = []Step{
 			@cccteam/resource-firestore 0.0.11
 		`),
 		Impulse: release("v0.5.25"),
-		Pending: true,
-		Note:    "a machine outlet ships a program with the release: the generator program declares it on the outlet beside Tokens, generation.ShipsProgram(\"cmd/<name>\", generation.Platforms(\"linux/amd64\")), naming the program's main package by its root-relative directory and the platforms it is compiled for; the release file lists the outlet's programs, from which the version build compiles each for its platforms into the image; the generated router serves the file with its checksum at GET /<prefix>/programs/<name>/<release>/<os>/<arch> behind the outlet's token check, and the generated router test proves the route sits behind it; a person installs the first copy on a machine from the release's assets or with go install, and from then on the copy keeps itself at the outlet's release through resource/shipped, whose Follower reads the server's release from every answer, fetches a newer release with the token the copy already carries, verifies the checksum, swaps the file in beside the running copy and leaves the program to exit for its service manager; the new shipped-programs check holds every declared program to being a main package on a machine outlet that builds for each platform it declares, and an application whose outlets ship no program passes it saying so; no code change is needed of an application that ships none, and the pins move to the resource commit that carries the option and the package",
+		Note:    "a machine outlet ships a program with the release: the generator program declares it on the outlet beside Tokens, generation.ShipsProgram(\"cmd/<name>\", generation.Platforms(\"linux/amd64\")), naming the program's main package by its root-relative directory and the platforms it is compiled for; the release file lists the outlet's programs, from which the version build compiles each for its platforms into the image; the generated router serves the file with its checksum at GET /<prefix>/programs/<name>/<release>/<os>/<arch> behind the outlet's token check, and the generated router test proves the route sits behind it; a person installs the first copy on a machine from the release's assets or with go install, and from then on the copy keeps itself at the outlet's release through resource/shipped, whose Follower reads the server's release from every answer, fetches a newer release with the token the copy already carries, verifies the checksum, swaps the file in beside the running copy and leaves the program to exit for its service manager; the new shipped-programs check holds every declared program to being a main package on a machine outlet that builds for each platform it declares, and an application whose outlets ship no program passes it saying so; no code change is needed of an application that ships none, and the pins move to resource v0.15.16, which carries the option and the package, and whose maintenance page says it will automatically reload when the application becomes available.",
 	},
 }
 
