@@ -4,6 +4,7 @@
     "domain": [
       {
         "name": "TenantAdministrator",
+        "description": "Runs one tenant on the portal: manages its members and their seats, and posts its announcements.",
         "permissions": {
           "Create": [
             {
