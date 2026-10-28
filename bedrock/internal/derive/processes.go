@@ -33,9 +33,8 @@ const (
 )
 
 // processes settles the sites, the migration and the job process.
-func (m *Model) processes(a *app.App, cfg *config) error {
-	profile := a.Profile()
-	if err := m.sites(a, cfg, &profile); err != nil {
+func (m *Model) processes(a *app.App, cfg *config, profile *app.Profile) error {
+	if err := m.sites(a, cfg, profile); err != nil {
 		return err
 	}
 	if slices.Contains(a.MainPackages, migrateDir) {

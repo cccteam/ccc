@@ -65,13 +65,15 @@ func run(ctx context.Context) error {
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt)
 	defer stop()
 
-	if os.Getenv("SPANNER_EMULATOR_HOST") == "" {
-		return errors.New("SPANNER_EMULATOR_HOST must be set: the bootstrap only targets a Spanner emulator")
-	}
-
 	settings, err := config.LoadDatabaseSettings(ctx)
 	if err != nil {
 		return errors.Wrap(err, "config.LoadDatabaseSettings()")
+	}
+	// The emulator host is the database driver's setting (SPANNER_EMULATOR_HOST, the
+	// variable the client library reads too), so the configuration says where the client
+	// would connect; the bootstrap targets nothing but an emulator.
+	if settings.EmulatorHost == "" {
+		return errors.New("SPANNER_EMULATOR_HOST must be set: the bootstrap only targets a Spanner emulator")
 	}
 
 	if err := initiator.NewSpannerInstance(ctx, settings.ProjectID, settings.InstanceID); err != nil {

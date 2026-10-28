@@ -901,7 +901,14 @@ func Derive(a *app.App, p *Placement) (*Model, error) {
 	module := a.GoMod.Module.Mod.Path
 
 	m := &Model{App: p.Code, Module: module, Repository: repositoryURL(module), EnvTemplate: a.EnvTemplate, Placement: p, behindDrivers: resourceBeforeDrivers(a.GoMod)}
-	cfg, err := readConfig(a)
+	// The release files first: they name the shipped programs, whose main packages
+	// hold their own env tags, which the configuration leaves out.
+	profile := a.Profile()
+	releases, err := readReleaseFiles(a, &profile)
+	if err != nil {
+		return nil, err
+	}
+	cfg, err := readConfig(a, shippedProgramDirs(releases))
 	if err != nil {
 		return nil, err
 	}
@@ -910,7 +917,7 @@ func Derive(a *app.App, p *Placement) (*Model, error) {
 	if err := m.classify(cfg); err != nil {
 		return nil, err
 	}
-	if err := m.processes(a, cfg); err != nil {
+	if err := m.processes(a, cfg, &profile); err != nil {
 		return nil, err
 	}
 	if err := m.auths(a, cfg); err != nil {
@@ -934,7 +941,7 @@ func Derive(a *app.App, p *Placement) (*Model, error) {
 	if err := m.imageInputs(a); err != nil {
 		return nil, err
 	}
-	if err := m.releaseFiles(a); err != nil {
+	if err := m.releaseFiles(releases); err != nil {
 		return nil, err
 	}
 	if err := m.armor(); err != nil {

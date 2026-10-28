@@ -94,15 +94,20 @@ type expansion struct {
 	variable string
 }
 
-// readConfig parses the package holding the env tags.
-func readConfig(a *app.App) (*config, error) {
-	if len(a.EnvTags) == 0 {
+// readConfig parses the package holding the application's env tags, the config package.
+// The main package of a shipped program a release file declares (programDirs, the
+// directories the files name) holds the program's own: the settings it reads on the
+// machine it is installed on, not the application's configuration. Its tags are left out
+// here, so nothing of them reaches the stack's variables or the processes' levels.
+func readConfig(a *app.App, programDirs []string) (*config, error) {
+	tags := applicationTags(a.EnvTags, programDirs)
+	if len(tags) == 0 {
 		return nil, errors.New("the application declares no env tags: nothing to configure")
 	}
-	dir := path.Dir(a.EnvTags[0].File)
-	for _, t := range a.EnvTags {
+	dir := path.Dir(tags[0].File)
+	for _, t := range tags {
 		if path.Dir(t.File) != dir {
-			return nil, errors.Newf("env tags in more than one package (%s and %s); the config package must hold them all", dir, path.Dir(t.File))
+			return nil, errors.Newf("env tags in more than one package (%s and %s): the config package holds the application's, and only the main package of a shipped program a release file declares (ShipsProgram) holds its own", dir, path.Dir(t.File))
 		}
 	}
 
@@ -118,7 +123,7 @@ func readConfig(a *app.App) (*config, error) {
 	if err := cfg.placeLevels(); err != nil {
 		return nil, err
 	}
-	if err := cfg.placeVariables(a.EnvTags); err != nil {
+	if err := cfg.placeVariables(tags); err != nil {
 		return nil, err
 	}
 	image, err := dockerfileEnv(a)
@@ -138,6 +143,19 @@ func readConfig(a *app.App) (*config, error) {
 	}
 
 	return cfg, nil
+}
+
+// applicationTags are the env tags outside the declared shipped programs' main packages:
+// the application's own, which the config package holds.
+func applicationTags(tags []app.EnvTag, programDirs []string) []app.EnvTag {
+	kept := make([]app.EnvTag, 0, len(tags))
+	for _, t := range tags {
+		if !slices.Contains(programDirs, path.Dir(t.File)) {
+			kept = append(kept, t)
+		}
+	}
+
+	return kept
 }
 
 // readFile records one file's structs and functions.

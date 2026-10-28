@@ -671,6 +671,14 @@ It also refuses:
   the Go build stage after its `go build`, and the copy into the runtime stage with
   `APP_PROGRAMS=/programs` on its `ENV` line. An application that ships none passes
   whether or not its Dockerfile carries them.
+- an `env` struct tag outside the config package, naming the two packages: the stack's
+  variables are derived from the config package's tags, so a tag elsewhere declares a
+  variable nothing sets. One package is exempt: the main package of a shipped program a
+  release file declares (`ShipsProgram` on a machine outlet), whose tags are the
+  program's own settings, read on the machine it is installed on, which the derivation
+  leaves out, so nothing of them reaches the stack's variables or the processes' levels.
+  `impulse check` (`env-reads`) holds the reads to the same two places: no environment
+  read outside the config package, except inside such a package.
 - a Firestore database (`APP_FIRESTORE_DATABASE`) without its project variable
   (`GOOGLE_CLOUD_FIRESTORE_PROJECT`), which the stack sets to the environment project,
   or without `schema/firestore/firestore.indexes.json`

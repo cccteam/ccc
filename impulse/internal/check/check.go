@@ -213,6 +213,7 @@ func All() []Check {
 		featureFlags{},
 		sitesGenerators{},
 		envTemplate{},
+		envReads{},
 		fileStore{},
 		pins{},
 		gofmtCheck{},

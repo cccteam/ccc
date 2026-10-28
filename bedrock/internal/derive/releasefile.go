@@ -298,6 +298,53 @@ func ReadReleaseFile(dir string) (*ReleaseFile, error) {
 	return &f, nil
 }
 
+// readReleaseFiles reads the release file beside each site's generated router, keyed by
+// the router's directory: the sites the profile lists whose generator declares one. A
+// site whose router has no release file yet has no entry; a release file that does not
+// read is refused, since the stack cannot say which jobs the code declares, which routes
+// carry files, which entries the code means to keep, or which programs the image build
+// compiles.
+func readReleaseFiles(a *app.App, profile *app.Profile) (map[string]*ReleaseFile, error) {
+	files := map[string]*ReleaseFile{}
+	for i := range profile.Sites {
+		s := &profile.Sites[i]
+		if s.Generator == nil {
+			continue
+		}
+		dir := s.Generator.RoutesDir()
+		if dir == "" {
+			continue
+		}
+		f, err := ReadReleaseFile(a.Abs(dir))
+		switch {
+		case errors.Is(err, os.ErrNotExist):
+			continue
+		case err != nil:
+			return nil, errors.Wrapf(err, "the %s site", s.Name)
+		}
+		files[dir] = f
+	}
+
+	return files, nil
+}
+
+// shippedProgramDirs lists the directories the release files name as shipped programs',
+// sorted and without repeats: the main packages whose env tags are the programs' own,
+// which the configuration leaves out (readConfig).
+func shippedProgramDirs(files map[string]*ReleaseFile) []string {
+	var dirs []string
+	for _, f := range files {
+		for _, p := range f.Programs() {
+			if !slices.Contains(dirs, p.Dir) {
+				dirs = append(dirs, p.Dir)
+			}
+		}
+	}
+	sort.Strings(dirs)
+
+	return dirs
+}
+
 // validatePrograms refuses a shipped program of the file name the generator would not
 // write: one on an outlet that is not a machine outlet, a directory that is not a clean
 // relative path of the checkout, a name other than the directory's last element, no
@@ -474,29 +521,21 @@ func validateScheduled(name string, routes []ScheduledRoute) error {
 	return nil
 }
 
-// releaseFiles reads each site's scheduled routes, file routes, surfaces and shipped
-// programs from the release file beside its generated router, derives each site's
-// request log exclusion from its surfaces, and gathers the model's: every site's
-// scheduled routes, each naming its site, every site's file routes with a route listed
-// once, the first site's surfaces and exclusion, and every site's shipped programs by
-// directory, a directory shipped by two sites refused, since the image holds one binary
-// per program and platform. A site with no router, or whose router has no release file
-// yet, has none of them; a release file that does not read is refused, since the stack
-// cannot say which jobs the code declares, which routes carry files, which entries the
-// code means to keep, or which programs the image build compiles.
-func (m *Model) releaseFiles(a *app.App) error {
+// releaseFiles takes each site's scheduled routes, file routes, surfaces and shipped
+// programs from the release file read beside its generated router (readReleaseFiles, by
+// the router's directory), derives each site's request log exclusion from its surfaces,
+// and gathers the model's: every site's scheduled routes, each naming its site, every
+// site's file routes with a route listed once, the first site's surfaces and exclusion,
+// and every site's shipped programs by directory, a directory shipped by two sites
+// refused, since the image holds one binary per program and platform. A site with no
+// router, or whose router has no release file yet, has none of them.
+func (m *Model) releaseFiles(files map[string]*ReleaseFile) error {
 	shippedBy := map[string]string{}
 	for i := range m.Sites {
 		s := &m.Sites[i]
-		if s.RouterDir == "" {
+		f := files[s.RouterDir]
+		if f == nil {
 			continue
-		}
-		f, err := ReadReleaseFile(a.Abs(s.RouterDir))
-		switch {
-		case errors.Is(err, os.ErrNotExist):
-			continue
-		case err != nil:
-			return errors.Wrapf(err, "the %s site", s.Name)
 		}
 		s.Scheduled = f.Scheduled
 		for j := range s.Scheduled {
