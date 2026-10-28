@@ -8,7 +8,7 @@
 // secret is opened. The handler answers every request 503 Service Unavailable with a
 // Retry-After header and the marker header, X-Maintenance: 1, by which the browser
 // library tells maintenance from an ordinary 503: a navigation gets the embedded page,
-// which checks back on its own and reloads when the application answers again; anything
+// which reloads on its own when the application becomes available again; anything
 // else gets no body. The pipeline trusts none of this at deploy time: it probes the
 // revision for the 503 and the marker before any traffic moves.
 package maintenance
