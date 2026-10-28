@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.21](https://github.com/cccteam/ccc/compare/bedrock/v0.3.20...bedrock/v0.3.21) (2026-10-28)
+
+
+### Bug Fixes
+
+* **bedrock:** the deploy steps retry Cloud Run's and the registry's transient answers (5xx, timeouts) with doubling waits before failing the release, and the image build is run once more when a base image's pull fails transiently ([#1179](https://github.com/cccteam/ccc/issues/1179)) ([bd3ab05](https://github.com/cccteam/ccc/commit/bd3ab059085a8ec70a0208829e2c53be858ebda5))
+
 ## [0.3.20](https://github.com/cccteam/ccc/compare/bedrock/v0.3.19...bedrock/v0.3.20) (2026-10-27)
 
 
