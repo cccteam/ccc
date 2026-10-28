@@ -42,7 +42,6 @@ import (
 
 	"github.com/cccteam/ccc/resource/shipped"
 	"github.com/go-playground/errors/v5"
-	"github.com/sethvargo/go-envconfig"
 )
 
 // programName is the name the outlet serves the program under: the base of its
@@ -71,13 +70,15 @@ var (
 	errHelp    = errors.New("the usage was asked for")
 )
 
-// settings is what the droid reads from its environment.
+// settings is what the droid reads from its environment. The settings are the droid's
+// own, read here with plain lookups rather than declared as the application's
+// configuration, which the stack derives from the config package's env tags.
 type settings struct {
-	Outlet   string `env:"DROID_OUTLET,required"`
-	Token    string `env:"DROID_TOKEN,required"`
-	Sector   string `env:"DROID_SECTOR,required"`
-	Ship     string `env:"DROID_SHIP,required"`
-	Firmware string `env:"DROID_FIRMWARE"`
+	Outlet   string
+	Token    string
+	Sector   string
+	Ship     string
+	Firmware string
 }
 
 // observation is one run's work: the subsystem and the reading taken.
@@ -125,7 +126,7 @@ func execute(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 
 		return exitRefused
 	}
-	s, err := readSettings(ctx)
+	s, err := readSettings()
 	if err != nil {
 		fmt.Fprintln(stderr, err)
 
@@ -188,16 +189,41 @@ func parse(args []string, stderr io.Writer) (*observation, error) {
 }
 
 // readSettings reads the environment, the default firmware standing in for an unset one.
-func readSettings(ctx context.Context) (*settings, error) {
-	s := &settings{}
-	if err := envconfig.ProcessWith(ctx, &envconfig.Config{Target: s, Lookuper: envconfig.OsLookuper()}); err != nil {
-		return nil, errors.Wrap(err, "envconfig.ProcessWith()")
+// A required variable that is unset or empty refuses the run with a sentence naming it.
+func readSettings() (*settings, error) {
+	outlet, err := required("DROID_OUTLET", "the droids outlet's URL as the router mounts it, such as https://lodestar.example.com/droids")
+	if err != nil {
+		return nil, err
 	}
-	if s.Firmware == "" {
-		s.Firmware = defaultFirmware
+	token, err := required("DROID_TOKEN", "the droid account's token, the key the server seeds as its application token (APP_DROIDS_API_KEY) or a token a crew member issued")
+	if err != nil {
+		return nil, err
+	}
+	sector, err := required("DROID_SECTOR", "the sector the ship is in, such as anvil")
+	if err != nil {
+		return nil, err
+	}
+	ship, err := required("DROID_SHIP", "the ship the droid rides, by id")
+	if err != nil {
+		return nil, err
+	}
+	firmware := os.Getenv("DROID_FIRMWARE")
+	if firmware == "" {
+		firmware = defaultFirmware
 	}
 
-	return s, nil
+	return &settings{Outlet: outlet, Token: token, Sector: sector, Ship: ship, Firmware: firmware}, nil
+}
+
+// required reads a variable the droid cannot run without: an unset or empty one is
+// refused with a sentence naming the variable and what it is.
+func required(name, what string) (string, error) {
+	value := os.Getenv(name)
+	if value == "" {
+		return "", errors.Newf("%s is required: %s", name, what)
+	}
+
+	return value, nil
 }
 
 // newReport shapes the ingest payload for the observation: the ship and the reading, and

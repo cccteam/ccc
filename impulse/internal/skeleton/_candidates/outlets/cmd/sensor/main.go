@@ -38,7 +38,6 @@ import (
 
 	"github.com/cccteam/ccc/resource/shipped"
 	"github.com/go-playground/errors/v5"
-	"github.com/sethvargo/go-envconfig"
 )
 
 // programName is the name the outlet serves the program under: the base of its
@@ -71,12 +70,14 @@ var (
 	errHelp    = errors.New("the usage was asked for")
 )
 
-// settings is what the sensor reads from its environment.
+// settings is what the sensor reads from its environment. The settings are the
+// machine's own, read here with plain lookups rather than declared as the application's
+// configuration, which the stack derives from the config package's env tags.
 type settings struct {
-	Outlet string `env:"SENSOR_OUTLET,required"`
-	Token  string `env:"SENSOR_TOKEN,required"`
-	Tenant string `env:"SENSOR_TENANT,required"`
-	Source string `env:"SENSOR_SOURCE"`
+	Outlet string
+	Token  string
+	Tenant string
+	Source string
 }
 
 // command is one run's work: the word and, for a post, the value.
@@ -138,7 +139,7 @@ func execute(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 
 		return exitRefused
 	}
-	s, err := readSettings(ctx)
+	s, err := readSettings()
 	if err != nil {
 		fmt.Fprintln(stderr, err)
 
@@ -208,21 +209,41 @@ func parse(args []string, stderr io.Writer) (*command, error) {
 	}
 }
 
-// readSettings reads the environment, the hostname standing in for an unset source.
-func readSettings(ctx context.Context) (*settings, error) {
-	s := &settings{}
-	if err := envconfig.ProcessWith(ctx, &envconfig.Config{Target: s, Lookuper: envconfig.OsLookuper()}); err != nil {
-		return nil, errors.Wrap(err, "envconfig.ProcessWith()")
+// readSettings reads the environment, the hostname standing in for an unset source. A
+// required variable that is unset or empty refuses the run with a sentence naming it.
+func readSettings() (*settings, error) {
+	outlet, err := required("SENSOR_OUTLET", "the machines outlet's URL as the router mounts it, such as https://app.example.com/machines")
+	if err != nil {
+		return nil, err
 	}
-	if s.Source == "" {
-		hostname, err := os.Hostname()
+	token, err := required("SENSOR_TOKEN", "an application token a staff login issued for the outlet on the console's Tokens page")
+	if err != nil {
+		return nil, err
+	}
+	tenant, err := required("SENSOR_TENANT", "the tenant the readings belong to")
+	if err != nil {
+		return nil, err
+	}
+	source := os.Getenv("SENSOR_SOURCE")
+	if source == "" {
+		source, err = os.Hostname()
 		if err != nil {
 			return nil, errors.Wrap(err, "os.Hostname()")
 		}
-		s.Source = hostname
 	}
 
-	return s, nil
+	return &settings{Outlet: outlet, Token: token, Tenant: tenant, Source: source}, nil
+}
+
+// required reads a variable the sensor cannot run without: an unset or empty one is
+// refused with a sentence naming the variable and what it is.
+func required(name, what string) (string, error) {
+	value := os.Getenv(name)
+	if value == "" {
+		return "", errors.Newf("%s is required: %s", name, what)
+	}
+
+	return value, nil
 }
 
 // run does the command's work and prints the result.
