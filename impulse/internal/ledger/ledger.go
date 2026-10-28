@@ -562,6 +562,28 @@ var Steps = []Step{
 		Impulse: release("v0.5.24"),
 		Note:    "the v0.5.23 step's wiring is checked: administrator-roles holds every user surface the application builds to resource.WithAdministratorRoles(<auth>.AdministratorRoles()), and directory-admission holds an application whose tenant record declares directories to the directories record's @directoryDefaultSeat column, the directory admission (SetDirectoryAdmission) on every auth whose roles the application assigns, and a role granting Update on the record's default seat, so an application whose pins moved past the step without the wiring has it raised here as an obligation the agent wires; the pins move to resource v0.15.14, whose last-owner rule counts other people: the actor's own second administrator role is no administrator who remains, so the one holder of a partition's administrator roles is refused dropping any of them",
 	},
+	{
+		Pins: pins(`
+			access v0.11.1
+			ccc v0.3.5
+			ccc/accesstypes v0.7.0
+			ccc/cloud v0.2.1
+			ccc/resource v0.15.16-0.20261028032852-694af8f821db
+			ccc/tracer v0.3.0
+			db-initiator v0.4.3
+			httpio v0.7.22
+			logger v0.1.30
+			session v0.13.13
+		`),
+		Web: web(`
+			@cccteam/resource 0.0.13
+			@cccteam/resource-angular 0.0.18
+			@cccteam/resource-firestore 0.0.11
+		`),
+		Impulse: release("v0.5.25"),
+		Pending: true,
+		Note:    "a machine outlet ships a program with the release: the generator program declares it on the outlet beside Tokens, generation.ShipsProgram(\"cmd/<name>\", generation.Platforms(\"linux/amd64\")), naming the program's main package by its root-relative directory and the platforms it is compiled for; the release file lists the outlet's programs, from which the version build compiles each for its platforms into the image; the generated router serves the file with its checksum at GET /<prefix>/programs/<name>/<release>/<os>/<arch> behind the outlet's token check, and the generated router test proves the route sits behind it; a person installs the first copy on a machine from the release's assets or with go install, and from then on the copy keeps itself at the outlet's release through resource/shipped, whose Follower reads the server's release from every answer, fetches a newer release with the token the copy already carries, verifies the checksum, swaps the file in beside the running copy and leaves the program to exit for its service manager; the new shipped-programs check holds every declared program to being a main package on a machine outlet that builds for each platform it declares, and an application whose outlets ship no program passes it saying so; no code change is needed of an application that ships none, and the pins move to the resource commit that carries the option and the package",
+	},
 }
 
 // validatePending holds a step's Pending mark to its pins: a pin at a pseudo-version
