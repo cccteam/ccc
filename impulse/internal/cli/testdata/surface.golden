@@ -170,6 +170,7 @@ checks:
   feature-flags
   sites-generators
   env-template
+  env-reads
   file-store
   pins
   gofmt

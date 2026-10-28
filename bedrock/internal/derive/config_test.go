@@ -142,7 +142,7 @@ func TestEmbeddedFrameworkSettings(t *testing.T) {
 			if tt.scanned {
 				a.EnvTags = append(a.EnvTags, scannedTags(t, src)...)
 			}
-			cfg, err := readConfig(a)
+			cfg, err := readConfig(a, nil)
 			if tt.wantErr != "" {
 				wantErr := atLine(t, src, tt.wantErrAt, tt.wantErr)
 				if err == nil || !strings.Contains(err.Error(), wantErr) {
@@ -277,7 +277,7 @@ func TestEmbeddedDriverSettingsAlias(t *testing.T) {
 			if err != nil {
 				t.Fatalf("app.Discover() error = %v", err)
 			}
-			cfg, err := readConfig(a)
+			cfg, err := readConfig(a, nil)
 			if err != nil {
 				t.Fatalf("readConfig() error = %v", err)
 			}
@@ -295,6 +295,109 @@ func TestEmbeddedDriverSettingsAlias(t *testing.T) {
 			}
 			if !slices.Equal(got, want) {
 				t.Errorf("the wrapper's variables =\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
+			}
+		})
+	}
+}
+
+// TestShippedProgramTags reads an application whose code carries env tags outside the
+// config package. In the main package of a shipped program a release file declares they
+// are the program's own, read on the machine it is installed on: the configuration leaves
+// them out, whatever variables they name, and nothing of them reaches the stack's
+// variables. In a package no release file declares they are refused, the refusal saying
+// where tags may live.
+func TestShippedProgramTags(t *testing.T) {
+	t.Parallel()
+
+	const (
+		releaseFile = "pkg/router/zz_gen_release.json"
+		programFile = "cmd/corral/main.go"
+		configDir   = "pkg/config"
+		// shipping is a release file with a machine outlet shipping the program.
+		shipping = `{"outlets": {"default": {}, "machines": {"kind": "api-key", "programs": [{"name": "corral", "dir": "cmd/corral", "platforms": ["linux/amd64"]}]}}}`
+	)
+	// program is the shipped program's main package, reading its settings from a tagged
+	// struct that names the variable.
+	program := func(variable string) string {
+		return "package main\n\n// settings is what the corral reads from its environment.\ntype settings struct {\n\tOutlet string `env:\"" + variable + ",required\"`\n}\n\nfunc main() {}\n"
+	}
+	tests := []struct {
+		name  string
+		files map[string]string
+		// wantAbsent is a variable the program's tags name, which the configuration
+		// leaves out.
+		wantAbsent string
+		// wantProgram says the model lists the program as shipped.
+		wantProgram bool
+		wantErr     string
+	}{
+		{
+			name:        "a declared program's main package carries its own tags",
+			files:       map[string]string{releaseFile: shipping, programFile: program("CORRAL_OUTLET")},
+			wantAbsent:  "CORRAL_OUTLET",
+			wantProgram: true,
+		},
+		{
+			name:    "tags in a package no release file declares are refused",
+			files:   map[string]string{programFile: program("CORRAL_OUTLET")},
+			wantErr: "env tags in more than one package (cmd/corral and pkg/config): the config package holds the application's, and only the main package of a shipped program a release file declares (ShipsProgram) holds its own",
+		},
+		{
+			name:        "a declared program's tags may name a variable the config package names",
+			files:       map[string]string{releaseFile: shipping, programFile: program(varServiceName)},
+			wantProgram: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			dir := filepath.Join(t.TempDir(), "app")
+			if err := os.CopyFS(dir, os.DirFS(filepath.Join("testdata", "harbor"))); err != nil {
+				t.Fatalf("os.CopyFS() error = %v", err)
+			}
+			for name, content := range tt.files {
+				if err := os.MkdirAll(filepath.Dir(filepath.Join(dir, filepath.FromSlash(name))), 0o750); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(dir, filepath.FromSlash(name)), []byte(content), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			a, err := app.Discover(dir)
+			if err != nil {
+				t.Fatalf("app.Discover() error = %v", err)
+			}
+			m, err := Derive(a, fixturePlacement(t, "placement.json"))
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("Derive() error = %v, wantErr %q", err, tt.wantErr)
+				}
+
+				return
+			}
+			if err != nil {
+				t.Fatalf("Derive() error = %v", err)
+			}
+			named := 0
+			for i := range m.Variables {
+				v := &m.Variables[i]
+				if filepath.ToSlash(filepath.Dir(v.File)) != configDir {
+					t.Errorf("variable %s is declared in %s, and every variable of the stack is the config package's", v.Name, v.File)
+				}
+				if v.Name == tt.wantAbsent {
+					t.Errorf("variable %s reached the stack from the program's tags", v.Name)
+				}
+				if v.Name == varServiceName {
+					named++
+				}
+			}
+			if named != 1 {
+				t.Errorf("%s is declared %d time(s), want once, by the config package", varServiceName, named)
+			}
+			shipped := slices.ContainsFunc(m.ShippedPrograms, func(p ReleaseProgram) bool { return p.Dir == "cmd/corral" })
+			if shipped != tt.wantProgram {
+				t.Errorf("ShippedPrograms lists cmd/corral = %t, want %t", shipped, tt.wantProgram)
 			}
 		})
 	}

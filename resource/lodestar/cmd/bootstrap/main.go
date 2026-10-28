@@ -111,7 +111,7 @@ func run(ctx context.Context, reset bool) error {
 		return errors.Wrap(err, "config.LoadDatabaseSettings()")
 	}
 
-	where := targetOf(os.Getenv("SPANNER_EMULATOR_HOST"))
+	where := targetOf(settings.EmulatorHost)
 	fmt.Printf("Bootstrapping %s in %s\n", settings.DatabasePath(), where)
 
 	if where == emulatorTarget {
@@ -183,7 +183,8 @@ func run(ctx context.Context, reset bool) error {
 }
 
 // targetOf picks the target the way the Spanner client library does: an emulator host in
-// the environment means the emulator, none means the real project.
+// the database settings (SPANNER_EMULATOR_HOST, the variable the library reads too) means
+// the emulator, none means the real project.
 func targetOf(emulatorHost string) target {
 	if emulatorHost != "" {
 		return emulatorTarget
