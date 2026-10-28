@@ -50,6 +50,7 @@ export interface StaffSeats {
 export interface StaffRoles {
   name: string;
   kind?: 'global' | 'domain';
+  description?: string;
 }
 /** A standing invitation into the global partition of the Staff auth: an address invited to hold roles, until it is accepted, revoked or expires. */
 export interface StaffInvitations {
@@ -123,6 +124,7 @@ const resourceMap = defineResourceMap({
     fields: [
       { fieldName: 'name', primaryKey: { ordinalPosition: 1 }, displayType: 'string', required: true, isIndex: true },
       { fieldName: 'kind', displayType: 'string', required: true, isIndex: false },
+      { fieldName: 'description', displayType: 'string', required: true, isIndex: false },
     ],
   },
   [Resources.StaffInvitations]: {

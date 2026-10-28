@@ -26,10 +26,10 @@ the route's tenant as the component's domain.
 
 Who may create a tenant is declared on the record, apart from who may enter one. The
 record declares both ways (`@tenant(creation: both)`): an administrator creates tenants
-through the record's create path, under the `Administrator_Global` role's Create grant,
+through the record's create path, under the `Administrator` role's Create grant,
 and a person who signs in holding no tenant creates their own through the generated
 create-your-tenant route (`POST /api/create-tenant`), which writes the row, seats them
-with the roles the App names in `TenantAdministratorRoles` (`Administrator_Domain`) and
+with the roles the App names in `TenantAdministratorRoles` (`TenantAdministrator`) and
 hands the tenant to the roster, so their next request stands in it; a person who already
 holds a tenant is refused, an administrator of one tenant never creates another, and the
 console's dashboard offers the page to a session without a tenant. The order is sign in
@@ -58,8 +58,8 @@ records' generated write paths reload it after their commit and signal every ins
 so a declaration edited anywhere decides the next request everywhere, and a tenant the
 session may not enter is not listed and answers as one that does not exist. The
 console's Sign-in page under the tenant (`/tenants/{tenantID}/sign-in`) lists, declares
-and withdraws directories under the tenant's own grants (`Administrator_Domain`) and
-flips directory only under the global record's Update grant (`Administrator_Global`);
+and withdraws directories under the tenant's own grants (`TenantAdministrator`) and
+flips directory only under the global record's Update grant (`Administrator`);
 both records write change events, the audit of every edit. A self-service tenant's
 first directory is the one its creator came through, written by the create-your-tenant
 route; the staff auth's google registration admits any Workspace account (its domain is
@@ -79,10 +79,15 @@ the connection a tenant declares) beside any Google account.
   TenantId). `schema/migrations` holds the tables they describe; `schema/devseed` the
   development tenants; `pkg/auth/staff/roles.json` the staff auth's role file: the
   default roles the release ships, embedded in the binary and validated against the
-  generated collection when the engine opens. It authors the development logins' roles,
-  `Administrator_Global` over the tenant record and the global partition of the staff
+  generated collection when the engine opens. A role is named for its job in PascalCase
+  (`Administrator`, `TenantAdministrator`), never for where it is held: the file's
+  structure says that, and the Users page shows it as the role's kind. Every role carries
+  a description, one or two plain sentences saying what it is for, which the Users page
+  shows beside the name; a role without one is refused. It authors the
+  development logins' roles,
+  `Administrator` over the tenant record and the global partition of the staff
   auth's user-management surface (`StaffUsers`, `StaffSeats`, `StaffInvitations`, `StaffRoles`,
-  `SetStaffUserPassword`), `Administrator_Domain` over every tenant-scoped resource and
+  `SetStaffUserPassword`), `TenantAdministrator` over every tenant-scoped resource and
   the surface's tenant partition (`StaffTenantUsers` and its siblings); a domain role is
   held in every tenant domain, the seeded ones
   and those created later, so nothing provisions the file per tenant. A new resource

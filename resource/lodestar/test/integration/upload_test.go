@@ -262,8 +262,8 @@ func TestMissionDocument_portalListing(t *testing.T) {
 	id := attachHaulerBrief(t, h)
 
 	// The portal grants this suite proves, each pinned to the roles file (conditions-proven).
-	provesGrant(t, members.Roles(), "client-portal", "List", "MissionDocuments", "client = subject.client")
-	provesGrant(t, members.Roles(), "client-portal", "Read", "MissionDocuments", "client = subject.client")
+	provesGrant(t, members.Roles(), "ClientPortal", "List", "MissionDocuments", "client = subject.client")
+	provesGrant(t, members.Roles(), "ClientPortal", "Read", "MissionDocuments", "client = subject.client")
 
 	portalStatus, portalBody := doRequestAs(t, h, "client", http.MethodGet, "/portal/api/sectors/anvil/mission-documents", "")
 	assertStatus(t, portalStatus, http.StatusOK, portalBody)

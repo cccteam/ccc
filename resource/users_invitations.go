@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cccteam/access"
 	"github.com/cccteam/ccc"
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/ccc/tracer"
@@ -393,7 +394,7 @@ func invitedScopes(ctx context.Context, seats UserSeats, inv *sessioninfo.Invita
 		return byScope, nil
 	}
 	candidates := []accesstypes.PolicyScope{accesstypes.GlobalPolicyScope(), accesstypes.EveryDomainPolicyScope()}
-	existing := make(map[accesstypes.PolicyScope][]accesstypes.Role, len(candidates))
+	existing := make(map[accesstypes.PolicyScope][]access.RoleInfo, len(candidates))
 	for _, scope := range candidates {
 		roles, err := seats.Roles(ctx, scope)
 		if err != nil {
@@ -405,7 +406,7 @@ func invitedScopes(ctx context.Context, seats UserSeats, inv *sessioninfo.Invita
 		role := accesstypes.Role(name)
 		placed := false
 		for _, scope := range candidates {
-			if slices.Contains(existing[scope], role) {
+			if roleListed(existing[scope], role) {
 				byScope[scope] = append(byScope[scope], role)
 				placed = true
 

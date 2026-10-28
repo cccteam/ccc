@@ -15,7 +15,7 @@ type (
 	// seed declares on both tenants), a Google Workspace by its domain. One domain, one
 	// directory by default; a second directory is an explicit second row. A tenant's own
 	// administrator declares its directories on the console under the record's Create
-	// and Delete grants (Administrator_Domain), and the change events are the audit.
+	// and Delete grants (TenantAdministrator), and the change events are the audit.
 	//
 	// DefaultSeat is what a stranger the directory vouches for gets at their first
 	// sign-in: the tenant's role they are seated with, or NULL, and the tenant admits

@@ -3,7 +3,8 @@
     "global": [],
     "domain": [
       {
-        "name": "Administrator_Domain",
+        "name": "TenantAdministrator",
+        "description": "Runs one tenant on the portal: manages its members and their seats, and posts its announcements.",
         "permissions": {
           "Create": [
             {
@@ -88,7 +89,10 @@
               ]
             },
             {
-              "resource": "MembersTenantRoles"
+              "resource": "MembersTenantRoles",
+              "fields": [
+                "description"
+              ]
             }
           ],
           "Read": [
@@ -136,7 +140,10 @@
               ]
             },
             {
-              "resource": "MembersTenantRoles"
+              "resource": "MembersTenantRoles",
+              "fields": [
+                "description"
+              ]
             }
           ],
           "Update": [

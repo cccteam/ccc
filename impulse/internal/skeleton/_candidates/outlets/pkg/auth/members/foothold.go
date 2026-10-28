@@ -12,7 +12,7 @@ import (
 // what the development identities hold (cmd/bootstrap/users.json), a domain role in every
 // tenant domain, so the foothold can do what the development logins can.
 func AdministratorRoles() (global, everyDomain []accesstypes.Role) {
-	return nil, []accesstypes.Role{"Administrator_Domain"}
+	return nil, []accesstypes.Role{"TenantAdministrator"}
 }
 
 // SeedAdministrator writes the administrator role memberships under signInName when the

@@ -110,7 +110,8 @@ func TestTemporalWindows(t *testing.T) {
 	taskFields := []accesstypes.Tag{"notes"}
 	conf := &access.RoleConfig{Roles: access.ScopedRoles{Domain: []*access.Role{
 		{
-			Name: "OnShift",
+			Name:        "OnShift",
+			Description: "Works the refits during the shift.",
 			Permissions: map[accesstypes.Permission][]access.Grant{
 				accesstypes.List: {{
 					Resource: "Refits", Fields: refitFields,
@@ -120,7 +121,8 @@ func TestTemporalWindows(t *testing.T) {
 			},
 		},
 		{
-			Name: "OffShift",
+			Name:        "OffShift",
+			Description: "Works the refits off the shift.",
 			Permissions: map[accesstypes.Permission][]access.Grant{
 				accesstypes.List: {{
 					Resource: "Refits", Fields: refitFields,
@@ -132,7 +134,8 @@ func TestTemporalWindows(t *testing.T) {
 		{
 			// A window straddling midnight around the instant: the wrap-around OR
 			// form must hold across the boundary.
-			Name: "Midnight",
+			Name:        "Midnight",
+			Description: "Works the refits across midnight.",
 			Permissions: map[accesstypes.Permission][]access.Grant{
 				accesstypes.List: {{
 					Resource: "Refits", Fields: refitFields,

@@ -86,7 +86,12 @@ withdraws directories there, the application's administrator sets directory only
   sites-generators check fails the build when a generator reads a different schema or the
   shared generator misses a site.
 - `schema/migrations` is the one schema; `pkg/auth/staff/roles.json` the staff auth's
-  role file, the default roles the release ships, embedded in the binary. A domain role is
+  role file, the default roles the release ships, embedded in the binary. A role is named
+  for its job in PascalCase (`Administrator`, `TenantAdministrator`), never for where it
+  is held: the file's structure says that, and the Users page shows it as the role's
+  kind. Every role carries a description, one or two plain sentences saying what it is
+  for, which the Users page shows beside the name; a role without one is refused. A
+  domain role is
   held in every tenant domain, so nothing provisions the file per tenant. Every grant in
   it is proven live by `test/integration/grants_test.go`, which opens the auth the way
   the deployment does and asks the engine about each unconditional grant; a conditional

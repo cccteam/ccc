@@ -143,7 +143,7 @@ func newServed(ctx context.Context, t *testing.T) *served {
 	if err != nil {
 		t.Fatalf("CreateSessionUser() error = %v", err)
 	}
-	if err := accessClient.UserManager().AddUserRoles(ctx, accesstypes.GlobalPolicyScope(), adminUser, "Administrator_Global"); err != nil {
+	if err := accessClient.UserManager().AddUserRoles(ctx, accesstypes.GlobalPolicyScope(), adminUser, "Administrator"); err != nil {
 		t.Fatalf("AddUserRoles() error = %v", err)
 	}
 

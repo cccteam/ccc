@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cccteam/access"
 	"github.com/cccteam/ccc"
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/httpio"
@@ -23,9 +24,9 @@ type MemUserStore struct {
 	users      []UserAccount
 	identities map[ccc.UUID][]UserIdentity
 	// seats holds each scope's memberships by user; roles the roles that exist in each
-	// scope, which a seat may take.
+	// scope, which a seat may take, each with what it is for (DeclareRoles).
 	seats map[accesstypes.PolicyScope]map[accesstypes.User][]accesstypes.Role
-	roles map[accesstypes.PolicyScope][]accesstypes.Role
+	roles map[accesstypes.PolicyScope][]access.RoleInfo
 	// invitations are the invitations that stand; Invite adds one with a week to live.
 	invitations []UserInvitation
 }
@@ -35,7 +36,7 @@ func NewMemUserStore() *MemUserStore {
 	return &MemUserStore{
 		identities: make(map[ccc.UUID][]UserIdentity),
 		seats:      make(map[accesstypes.PolicyScope]map[accesstypes.User][]accesstypes.Role),
-		roles:      make(map[accesstypes.PolicyScope][]accesstypes.Role),
+		roles:      make(map[accesstypes.PolicyScope][]access.RoleInfo),
 	}
 }
 
@@ -53,28 +54,37 @@ func (s *MemUserStore) AddUser(username string, withPassword bool) ccc.UUID {
 	return id
 }
 
-// DeclareRoles makes the roles exist in the scope, as a role file's roles exist in a
-// permission engine's.
-func (s *MemUserStore) DeclareRoles(scope accesstypes.PolicyScope, roles ...accesstypes.Role) {
+// DeclareRoles makes the roles exist in the scope, each with what it is for, as a role
+// file's roles exist in a permission engine's; the surface serves the description beside
+// the role's name. A role declared again takes the new description.
+func (s *MemUserStore) DeclareRoles(scope accesstypes.PolicyScope, roles ...access.RoleInfo) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.declare(scope, roles...)
 }
 
-func (s *MemUserStore) declare(scope accesstypes.PolicyScope, roles ...accesstypes.Role) {
+func (s *MemUserStore) declare(scope accesstypes.PolicyScope, roles ...access.RoleInfo) {
 	for _, role := range roles {
-		if !slices.Contains(s.roles[scope], role) {
-			s.roles[scope] = append(s.roles[scope], role)
+		if i := slices.IndexFunc(s.roles[scope], func(r access.RoleInfo) bool { return r.Name == role.Name }); i >= 0 {
+			s.roles[scope][i].Description = role.Description
+
+			continue
 		}
+		s.roles[scope] = append(s.roles[scope], role)
 	}
-	slices.Sort(s.roles[scope])
+	slices.SortFunc(s.roles[scope], compareRoleInfo)
 }
 
-// Seat seats the user in the roles in the scope, declaring the roles.
+// Seat seats the user in the roles in the scope. A role the scope does not hold is
+// declared by the seat, saying nothing of what it is for until DeclareRoles does.
 func (s *MemUserStore) Seat(scope accesstypes.PolicyScope, user accesstypes.User, roles ...accesstypes.Role) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.declare(scope, roles...)
+	for _, role := range roles {
+		if !roleListed(s.roles[scope], role) {
+			s.declare(scope, access.RoleInfo{Name: role})
+		}
+	}
 	s.seat(scope, user, roles...)
 }
 
@@ -312,7 +322,7 @@ func (s *MemUserStore) AddUserRoles(_ context.Context, scope accesstypes.PolicyS
 	defer s.mu.Unlock()
 	existing := s.rolesIn(scope)
 	for _, role := range roles {
-		if !slices.Contains(existing, role) {
+		if !roleListed(existing, role) {
 			return errors.Newf("role %s does not exist in %s", role, scope)
 		}
 	}
@@ -371,25 +381,26 @@ func (s *MemUserStore) RoleUsers(_ context.Context, scope accesstypes.PolicyScop
 	return users, nil
 }
 
-// Roles lists the roles that exist in the scope, sorted: the ones declared there and, for
-// one domain, the ones declared in every domain.
-func (s *MemUserStore) Roles(_ context.Context, scope accesstypes.PolicyScope) ([]accesstypes.Role, error) {
+// Roles lists the roles that exist in the scope, sorted by name, each with what it is
+// for: the ones declared there and, for one domain, the ones declared in every domain
+// under a name the domain does not hold.
+func (s *MemUserStore) Roles(_ context.Context, scope accesstypes.PolicyScope) ([]access.RoleInfo, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	return s.rolesIn(scope), nil
 }
 
-func (s *MemUserStore) rolesIn(scope accesstypes.PolicyScope) []accesstypes.Role {
+func (s *MemUserStore) rolesIn(scope accesstypes.PolicyScope) []access.RoleInfo {
 	roles := slices.Clone(s.roles[scope])
 	if _, oneDomain := scope.Domain(); oneDomain {
 		for _, role := range s.roles[accesstypes.EveryDomainPolicyScope()] {
-			if !slices.Contains(roles, role) {
+			if !roleListed(roles, role.Name) {
 				roles = append(roles, role)
 			}
 		}
 	}
-	slices.Sort(roles)
+	slices.SortFunc(roles, compareRoleInfo)
 
 	return roles
 }

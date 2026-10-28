@@ -14,7 +14,7 @@ type (
 	// registration admits any Workspace and writes the account's domain), a Microsoft
 	// Entra tenant by its tenant id. One domain, one directory by default; a second
 	// directory is an explicit second row. A tenant's own administrator declares its
-	// directories under the record's Create and Delete grants (Administrator_Domain), and
+	// directories under the record's Create and Delete grants (TenantAdministrator), and
 	// the change events are the audit. A self-service tenant's first directory is the one
 	// its creator came through, written by the create-your-tenant route.
 	//

@@ -42,8 +42,8 @@ const (
 	south = "south"
 
 	// The development logins the served suites sign in as: admin holds
-	// Administrator_Global and Administrator_Domain in every tenant, member and the
-	// portal's client hold Administrator_Domain in north only.
+	// Administrator and TenantAdministrator in every tenant, member and the
+	// portal's client hold TenantAdministrator in north only.
 	adminUser     = "admin"
 	memberUser    = "member"
 	clientUser    = "client"
@@ -203,10 +203,10 @@ func newServed(ctx context.Context, t *testing.T) *served {
 		scope accesstypes.PolicyScope
 		role  accesstypes.Role
 	}{
-		{adminUser, accesstypes.GlobalPolicyScope(), "Administrator_Global"},
-		{adminUser, accesstypes.EveryDomainPolicyScope(), "Administrator_Domain"},
-		{memberUser, accesstypes.DomainPolicyScope(north), "Administrator_Domain"},
-		{clientUser, accesstypes.DomainPolicyScope(north), "Administrator_Domain"},
+		{adminUser, accesstypes.GlobalPolicyScope(), "Administrator"},
+		{adminUser, accesstypes.EveryDomainPolicyScope(), "TenantAdministrator"},
+		{memberUser, accesstypes.DomainPolicyScope(north), "TenantAdministrator"},
+		{clientUser, accesstypes.DomainPolicyScope(north), "TenantAdministrator"},
 	}
 	for _, a := range assignments {
 		if err := accessClient.UserManager().AddUserRoles(ctx, a.scope, a.user, a.role); err != nil {

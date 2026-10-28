@@ -112,10 +112,10 @@ func TestDeclaration_whoMayEnterATenant(t *testing.T) {
 	if accountExists(ctx, t, s, "newcomer") {
 		t.Errorf("an account was created for the refused newcomer, want none")
 	}
-	// Administrator_Domain named on the row, the newcomer's next sign-in creates them
+	// TenantAdministrator named on the row, the newcomer's next sign-in creates them
 	// seated with it in south, where their chart stands at once.
 	row := "/tenants/" + south + "/tenant-directories/" + created.TenantDirectories[0]
-	nameSeat := `[{"op":"patch","path":"` + row + `","value":{"defaultSeat":"Administrator_Domain"}}]`
+	nameSeat := `[{"op":"patch","path":"` + row + `","value":{"defaultSeat":"TenantAdministrator"}}]`
 	if status, body := admin.do(ctx, http.MethodPatch, "/api/resources", []byte(nameSeat)); status != http.StatusOK {
 		t.Fatalf("naming the row's default seat: status %d: %s", status, body)
 	}
@@ -262,7 +262,7 @@ func signedInThroughGoogle(ctx context.Context, t *testing.T, s *served) *browse
 func seat(ctx context.Context, t *testing.T, s *served, user accesstypes.User, tenant accesstypes.Domain) {
 	t.Helper()
 
-	if err := s.access.UserManager().AddUserRoles(ctx, accesstypes.DomainPolicyScope(tenant), user, "Administrator_Domain"); err != nil {
+	if err := s.access.UserManager().AddUserRoles(ctx, accesstypes.DomainPolicyScope(tenant), user, "TenantAdministrator"); err != nil {
 		t.Fatalf("AddUserRoles(%s, %s) error = %v", user, tenant, err)
 	}
 	waitForDomains(ctx, t, s.access, user, []accesstypes.Domain{tenant})

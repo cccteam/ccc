@@ -14,10 +14,10 @@ func TestRoleWriters(t *testing.T) {
 import "context"
 
 func run(ctx context.Context, data *Data) error {
-	if err := data.Members().Access().UserManager().AddUserRoles(ctx, scope, "client", "Administrator_Domain"); err != nil {
+	if err := data.Members().Access().UserManager().AddUserRoles(ctx, scope, "client", "TenantAdministrator"); err != nil {
 		return err
 	}
-	if err := data.Staff().Access().UserManager().AddUserRoles(ctx, scope, "admin", "Administrator_Domain"); err != nil {
+	if err := data.Staff().Access().UserManager().AddUserRoles(ctx, scope, "admin", "TenantAdministrator"); err != nil {
 		return err
 	}
 	if err := assign(ctx, data.Members().Access().UserManager(), "client"); err != nil {
@@ -27,13 +27,13 @@ func run(ctx context.Context, data *Data) error {
 		return err
 	}
 	membersAuth := data.Members()
-	_ = membersAuth.Access().UserManager().DeleteUserRoles(ctx, scope, "client", "Administrator_Domain")
+	_ = membersAuth.Access().UserManager().DeleteUserRoles(ctx, scope, "client", "TenantAdministrator")
 
 	return deploy.CheckRoles(ctx, data.Members().Access(), members.Name)
 }
 
 func assign(ctx context.Context, manager Manager, user string) error {
-	return manager.AddRoleUsers(ctx, scope, "Administrator_Domain", user)
+	return manager.AddRoleUsers(ctx, scope, "TenantAdministrator", user)
 }
 
 func report(ctx context.Context, manager Manager) error {

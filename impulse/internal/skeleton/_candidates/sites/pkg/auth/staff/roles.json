@@ -2,7 +2,8 @@
   "roles": {
     "global": [
       {
-        "name": "Administrator_Global",
+        "name": "Administrator",
+        "description": "Manages the application's tenants and people: creates tenants, creates and invites users, seats and unseats roles, and resets passwords.",
         "permissions": {
           "Create": [
             {
@@ -103,7 +104,8 @@
             {
               "resource": "StaffRoles",
               "fields": [
-                "kind"
+                "kind",
+                "description"
               ]
             }
           ],
@@ -153,7 +155,8 @@
             {
               "resource": "StaffRoles",
               "fields": [
-                "kind"
+                "kind",
+                "description"
               ]
             }
           ],
@@ -178,6 +181,7 @@
       },
       {
         "name": "FeatureAdministrator",
+        "description": "Turns feature flags on and off for an environment.",
         "permissions": {
           "Execute": [
             {
@@ -211,7 +215,8 @@
     ],
     "domain": [
       {
-        "name": "Administrator_Domain",
+        "name": "TenantAdministrator",
+        "description": "Runs one tenant: manages its people and their seats, declares the directories they sign in through, and posts its announcements.",
         "permissions": {
           "Create": [
             {
@@ -335,7 +340,10 @@
               ]
             },
             {
-              "resource": "StaffTenantRoles"
+              "resource": "StaffTenantRoles",
+              "fields": [
+                "description"
+              ]
             }
           ],
           "Read": [
@@ -393,7 +401,10 @@
               ]
             },
             {
-              "resource": "StaffTenantRoles"
+              "resource": "StaffTenantRoles",
+              "fields": [
+                "description"
+              ]
             }
           ],
           "Update": [

@@ -21,7 +21,7 @@ const Administrator = "administrator"
 // what the development identities hold (cmd/bootstrap/users.json), a domain role in every
 // tenant domain, so the foothold can do what the development logins can.
 func AdministratorRoles() (global, everyDomain []accesstypes.Role) {
-	return []accesstypes.Role{"Administrator_Global", "FeatureAdministrator"}, []accesstypes.Role{"Administrator_Domain"}
+	return []accesstypes.Role{"Administrator", "FeatureAdministrator"}, []accesstypes.Role{"TenantAdministrator"}
 }
 
 // SeedAdministrator creates the first administrator when the auth's users table holds no

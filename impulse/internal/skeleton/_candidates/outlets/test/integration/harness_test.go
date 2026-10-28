@@ -41,11 +41,11 @@ const (
 	south = "south"
 
 	// The development identities the served suites act as: the staff logins admin
-	// (Administrator_Global, and Administrator_Domain in every tenant) and member
-	// (Administrator_Domain and Machines_Domain in north only, so a token of theirs
+	// (Administrator, and TenantAdministrator in every tenant) and member
+	// (TenantAdministrator and MachineOperator in north only, so a token of theirs
 	// reads the readings there through the machines outlet); and the portal's client, a
 	// member of the members auth who signs in through the simulated directory and holds
-	// Administrator_Domain in north.
+	// TenantAdministrator in north.
 	adminUser     = "admin"
 	memberUser    = "member"
 	clientUser    = "client"
@@ -237,7 +237,7 @@ func newServed(ctx context.Context, t *testing.T) *served {
 	membersAccess := membersAuth.Access()
 	// The portal's client is a member: no login to create, since the directory presents
 	// the name; only a membership, in the members store.
-	if err := membersAccess.UserManager().AddUserRoles(ctx, accesstypes.DomainPolicyScope(north), clientUser, "Administrator_Domain"); err != nil {
+	if err := membersAccess.UserManager().AddUserRoles(ctx, accesstypes.DomainPolicyScope(north), clientUser, "TenantAdministrator"); err != nil {
 		t.Fatalf("AddUserRoles(%s, north) error = %v", clientUser, err)
 	}
 
@@ -255,10 +255,10 @@ func newServed(ctx context.Context, t *testing.T) *served {
 		scope accesstypes.PolicyScope
 		role  accesstypes.Role
 	}{
-		{adminUser, accesstypes.GlobalPolicyScope(), "Administrator_Global"},
-		{adminUser, accesstypes.EveryDomainPolicyScope(), "Administrator_Domain"},
-		{memberUser, accesstypes.DomainPolicyScope(north), "Administrator_Domain"},
-		{memberUser, accesstypes.DomainPolicyScope(north), "Machines_Domain"},
+		{adminUser, accesstypes.GlobalPolicyScope(), "Administrator"},
+		{adminUser, accesstypes.EveryDomainPolicyScope(), "TenantAdministrator"},
+		{memberUser, accesstypes.DomainPolicyScope(north), "TenantAdministrator"},
+		{memberUser, accesstypes.DomainPolicyScope(north), "MachineOperator"},
 	}
 	for _, a := range assignments {
 		if err := accessClient.UserManager().AddUserRoles(ctx, a.scope, a.user, a.role); err != nil {

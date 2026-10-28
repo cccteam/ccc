@@ -193,6 +193,7 @@ func All() []Check {
 		sessionTables{},
 		migrationsReader{},
 		authsWired{},
+		rolesFileAccepted{},
 		administratorRoles{},
 		directoryAdmission{},
 		changeSignal{},

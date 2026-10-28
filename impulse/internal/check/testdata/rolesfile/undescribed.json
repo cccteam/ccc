@@ -1,0 +1,29 @@
+{
+  "roles": {
+    "global": [
+      {
+        "name": "Administrator",
+        "description": "Manages the application's people: creates users, seats and unseats roles, and resets passwords.",
+        "permissions": {
+          "List": [
+            {
+              "resource": "StaffUsers"
+            }
+          ]
+        }
+      },
+      {
+        "name": "Auditor",
+        "description": "",
+        "permissions": {
+          "List": [
+            {
+              "resource": "StaffUsers"
+            }
+          ]
+        }
+      }
+    ],
+    "domain": []
+  }
+}

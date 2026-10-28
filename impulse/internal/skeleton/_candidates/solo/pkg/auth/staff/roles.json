@@ -2,7 +2,8 @@
   "roles": {
     "global": [
       {
-        "name": "Administrator_Global",
+        "name": "Administrator",
+        "description": "Manages the application's people: creates users, invites them, seats and unseats roles, and resets passwords.",
         "permissions": {
           "Create": [
             {
@@ -87,7 +88,8 @@
             {
               "resource": "StaffRoles",
               "fields": [
-                "kind"
+                "kind",
+                "description"
               ]
             }
           ],
@@ -130,7 +132,8 @@
             {
               "resource": "StaffRoles",
               "fields": [
-                "kind"
+                "kind",
+                "description"
               ]
             }
           ],
@@ -148,6 +151,7 @@
       },
       {
         "name": "FeatureAdministrator",
+        "description": "Turns feature flags on and off for an environment.",
         "permissions": {
           "Execute": [
             {

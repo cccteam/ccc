@@ -34,7 +34,7 @@ func TestCustomRole_undeclaredGrantIsSkipped(t *testing.T) {
 		undeclared accesstypes.Resource = "Ledgers"
 	)
 	held := accesstypes.DomainPolicyScope(anvil)
-	if err := manager.AddRole(ctx, held, role); err != nil {
+	if err := manager.AddRole(ctx, held, role, "Audits a sector's missions."); err != nil {
 		t.Fatalf("access.UserManager.AddRole() error = %v", err)
 	}
 	// The manager validates no grant name: the grant on the undeclared resource is

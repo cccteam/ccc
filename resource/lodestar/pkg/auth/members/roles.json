@@ -2,7 +2,8 @@
   "roles": {
     "global": [
       {
-        "name": "client-account",
+        "name": "ClientAccount",
+        "description": "A client's account: sees the client's own contacts.",
         "permissions": {
           "Read": [
             {
@@ -29,7 +30,8 @@
     ],
     "domain": [
       {
-        "name": "client-portal",
+        "name": "ClientPortal",
+        "description": "A client in a sector: sees their missions, documents and statements, files a distress call, and stands down a mission.",
         "permissions": {
           "List": [
             {

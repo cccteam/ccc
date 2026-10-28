@@ -59,8 +59,8 @@ type demoIdentities struct {
 // every sector, as role synchronization writes them. The parity world assigns them
 // directly, since no login runs here.
 var clientRoles = demoRoles{
-	Global:      []accesstypes.Role{"client-account"},
-	EveryDomain: []accesstypes.Role{"client-portal"},
+	Global:      []accesstypes.Role{"ClientAccount"},
+	EveryDomain: []accesstypes.Role{"ClientPortal"},
 }
 
 func loadIdentities() (*demoIdentities, error) {

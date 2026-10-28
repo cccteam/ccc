@@ -353,6 +353,7 @@ export interface CrewSeats {
 export interface CrewRoles {
   name: string;
   kind?: 'global' | 'domain';
+  description?: string;
 }
 /** A standing invitation into the global partition of the Crew auth: an address invited to hold roles, until it is accepted, revoked or expires. */
 export interface CrewInvitations {
@@ -390,6 +391,7 @@ export interface CrewSectorSeats {
 /** A role a seat of the Crew auth in one sector may take. */
 export interface CrewSectorRoles {
   name: string;
+  description?: string;
 }
 /** A standing invitation into one sector of the Crew auth: an address invited to hold roles, until it is accepted, revoked or expires. */
 export interface CrewSectorInvitations {
@@ -428,6 +430,7 @@ export interface MembersSeats {
 export interface MembersRoles {
   name: string;
   kind?: 'global' | 'domain';
+  description?: string;
 }
 /** A standing invitation into the global partition of the Members auth: an address invited to hold roles, until it is accepted, revoked or expires. */
 export interface MembersInvitations {
@@ -465,6 +468,7 @@ export interface MembersSectorSeats {
 /** A role a seat of the Members auth in one sector may take. */
 export interface MembersSectorRoles {
   name: string;
+  description?: string;
 }
 /** A standing invitation into one sector of the Members auth: an address invited to hold roles, until it is accepted, revoked or expires. */
 export interface MembersSectorInvitations {
@@ -940,6 +944,7 @@ const resourceMap = defineResourceMap({
     fields: [
       { fieldName: 'name', primaryKey: { ordinalPosition: 1 }, displayType: 'string', required: true, isIndex: true },
       { fieldName: 'kind', displayType: 'string', required: true, isIndex: false },
+      { fieldName: 'description', displayType: 'string', required: true, isIndex: false },
     ],
   },
   [Resources.CrewInvitations]: {
@@ -990,6 +995,7 @@ const resourceMap = defineResourceMap({
     deleteDisabled: true,
     fields: [
       { fieldName: 'name', primaryKey: { ordinalPosition: 1 }, displayType: 'string', required: true, isIndex: true },
+      { fieldName: 'description', displayType: 'string', required: true, isIndex: false },
     ],
   },
   [Resources.CrewSectorInvitations]: {
@@ -1042,6 +1048,7 @@ const resourceMap = defineResourceMap({
     fields: [
       { fieldName: 'name', primaryKey: { ordinalPosition: 1 }, displayType: 'string', required: true, isIndex: true },
       { fieldName: 'kind', displayType: 'string', required: true, isIndex: false },
+      { fieldName: 'description', displayType: 'string', required: true, isIndex: false },
     ],
   },
   [Resources.MembersInvitations]: {
@@ -1093,6 +1100,7 @@ const resourceMap = defineResourceMap({
     deleteDisabled: true,
     fields: [
       { fieldName: 'name', primaryKey: { ordinalPosition: 1 }, displayType: 'string', required: true, isIndex: true },
+      { fieldName: 'description', displayType: 'string', required: true, isIndex: false },
     ],
   },
   [Resources.MembersSectorInvitations]: {
