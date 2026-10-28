@@ -723,11 +723,14 @@ func invitationTSFields() []tsUserField {
 	}
 }
 
+// roleTSFields are the role row's fields: the name, the kind in the global partition,
+// and the description, what the role is for.
 func roleTSFields(tenanted bool) []tsUserField {
 	fields := []tsUserField{{Name: roleFieldName, TsType: stringTSType, DisplayType: stringTSType, Key: 1, Required: true}}
 	if !tenanted {
 		fields = append(fields, tsUserField{Name: "kind", TsType: "'global' | 'domain'", DisplayType: stringTSType, Required: true})
 	}
+	fields = append(fields, tsUserField{Name: "description", TsType: stringTSType, DisplayType: stringTSType, Required: true})
 
 	return fields
 }

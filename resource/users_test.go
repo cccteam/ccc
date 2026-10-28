@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -207,6 +208,9 @@ func (f *fakeAccounts) UnlinkIdentity(_ context.Context, identityID ccc.UUID) er
 type fakeSeats struct {
 	roles map[accesstypes.PolicyScope][]accesstypes.Role
 	held  map[accesstypes.PolicyScope]map[accesstypes.Role][]accesstypes.User
+	// descriptions is what the described roles are for, by scope and name; a role
+	// without one is served with an empty description.
+	descriptions map[accesstypes.PolicyScope]map[accesstypes.Role]string
 }
 
 func (f *fakeSeats) seat(scope accesstypes.PolicyScope, role accesstypes.Role, users ...accesstypes.User) {
@@ -261,6 +265,10 @@ func (f *fakeSeats) RoleUsers(_ context.Context, scope accesstypes.PolicyScope, 
 
 func (f *fakeSeats) Roles(_ context.Context, scope accesstypes.PolicyScope) ([]accesstypes.Role, error) {
 	return slices.Clone(f.roles[scope]), nil
+}
+
+func (f *fakeSeats) RoleDescriptions(_ context.Context, scope accesstypes.PolicyScope) (map[accesstypes.Role]string, error) {
+	return maps.Clone(f.descriptions[scope]), nil
 }
 
 // scriptedPermissions answers each permission from a table of decisions; a resource off
@@ -352,6 +360,12 @@ var (
 	everywhere = accesstypes.EveryDomainPolicyScope()
 )
 
+// What the described roles are for, as a role file would say it.
+const (
+	administratorDescription = "Manages the crew: creates users, seats and unseats roles, and resets passwords."
+	marshalDescription       = "Runs a sector: seats its crew and commands its missions."
+)
+
 func newUserFixture(t *testing.T) *userFixture {
 	t.Helper()
 
@@ -388,12 +402,21 @@ func newUserFixtureWith(t *testing.T, opts ...UserSurfaceOption) *userFixture {
 			cadetID: {{ID: mustUUID(t), Method: "azure", Connection: "lakeside", Subject: "sub-2", LinkedAt: signedIn, LastUsedAt: signedIn}},
 		},
 	}
-	seats := &fakeSeats{roles: map[accesstypes.PolicyScope][]accesstypes.Role{
-		global:                                 {"Administrator", "Auditor"},
-		everywhere:                             {"Marshal", "Pilot", "Clerk"},
-		accesstypes.DomainPolicyScope(anvil):   {"Marshal", "Pilot", "Clerk"},
-		accesstypes.DomainPolicyScope(bastion): {"Marshal", "Pilot", "Clerk"},
-	}}
+	seats := &fakeSeats{
+		roles: map[accesstypes.PolicyScope][]accesstypes.Role{
+			global:                                 {"Administrator", "Auditor"},
+			everywhere:                             {"Marshal", "Pilot", "Clerk"},
+			accesstypes.DomainPolicyScope(anvil):   {"Marshal", "Pilot", "Clerk"},
+			accesstypes.DomainPolicyScope(bastion): {"Marshal", "Pilot", "Clerk"},
+		},
+		// The administrator and the marshal are described; the rest are not, as a store
+		// that says nothing about a role leaves it.
+		descriptions: map[accesstypes.PolicyScope]map[accesstypes.Role]string{
+			global:                               {"Administrator": administratorDescription},
+			everywhere:                           {"Marshal": marshalDescription},
+			accesstypes.DomainPolicyScope(anvil): {"Marshal": marshalDescription},
+		},
+	}
 	seats.seat(global, "Administrator", "admin")
 	seats.seat(everywhere, "Pilot", "pilot")
 	seats.seat(everywhere, "Marshal", "marshal")
@@ -665,6 +688,42 @@ func TestUserSurface_lists(t *testing.T) {
 					got = append(got, fmt.Sprintf("%s:%s", row["name"], row["kind"]))
 				}
 				want := []string{"Administrator:global", "Auditor:global", "Clerk:domain", "Marshal:domain", "Pilot:domain"}
+				if diff := cmp.Diff(want, got); diff != "" {
+					t.Errorf("roles mismatch (-want +got):\n%s", diff)
+				}
+			},
+		},
+		{
+			name:     "the global roles say what each is for, and nothing for a role the store does not describe",
+			grant:    func(p *scriptedPermissions) { p.grant(accesstypes.List, "CrewRoles", "CrewRoles.description") },
+			target:   "/crew-roles",
+			wantCode: http.StatusOK,
+			check: func(t *testing.T, rows []map[string]any) {
+				t.Helper()
+				got := make([]string, 0, len(rows))
+				for _, row := range rows {
+					got = append(got, fmt.Sprintf("%s:%s", row["name"], row["description"]))
+				}
+				want := []string{"Administrator:" + administratorDescription, "Auditor:", "Clerk:", "Marshal:" + marshalDescription, "Pilot:"}
+				if diff := cmp.Diff(want, got); diff != "" {
+					t.Errorf("roles mismatch (-want +got):\n%s", diff)
+				}
+			},
+		},
+		{
+			name: "the sector roles say what each is for",
+			grant: func(p *scriptedPermissions) {
+				p.grant(accesstypes.List, "CrewSectorRoles", "CrewSectorRoles.description")
+			},
+			target:   "/sectors/anvil/crew-sector-roles",
+			wantCode: http.StatusOK,
+			check: func(t *testing.T, rows []map[string]any) {
+				t.Helper()
+				got := make([]string, 0, len(rows))
+				for _, row := range rows {
+					got = append(got, fmt.Sprintf("%s:%s", row["name"], row["description"]))
+				}
+				want := []string{"Clerk:", "Marshal:" + marshalDescription, "Pilot:"}
 				if diff := cmp.Diff(want, got); diff != "" {
 					t.Errorf("roles mismatch (-want +got):\n%s", diff)
 				}

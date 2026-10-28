@@ -513,12 +513,12 @@ func readSeat[A UserAuth, Row Resourcer](s *UserSurface[A], a UserApp, collectio
 
 // toRoleRow types a composed role as the global partition's row.
 func toRoleRow[A UserAuth](role *composedRole) *RoleRow[A] {
-	return &RoleRow[A]{Name: string(role.name), Kind: role.kind()}
+	return &RoleRow[A]{Name: string(role.name), Kind: role.kind(), Description: role.description}
 }
 
 // toTenantRoleRow types a composed role as the tenant partition's row.
 func toTenantRoleRow[A UserAuth](role *composedRole) *TenantRoleRow[A] {
-	return &TenantRoleRow[A]{Name: string(role.name)}
+	return &TenantRoleRow[A]{Name: string(role.name), Description: role.description}
 }
 
 // roleItems composes the partition's role rows.

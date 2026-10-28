@@ -23,9 +23,11 @@ type MemUserStore struct {
 	users      []UserAccount
 	identities map[ccc.UUID][]UserIdentity
 	// seats holds each scope's memberships by user; roles the roles that exist in each
-	// scope, which a seat may take.
-	seats map[accesstypes.PolicyScope]map[accesstypes.User][]accesstypes.Role
-	roles map[accesstypes.PolicyScope][]accesstypes.Role
+	// scope, which a seat may take, and descriptions what each is for where it was
+	// described (DescribeRoles).
+	seats        map[accesstypes.PolicyScope]map[accesstypes.User][]accesstypes.Role
+	roles        map[accesstypes.PolicyScope][]accesstypes.Role
+	descriptions map[accesstypes.PolicyScope]map[accesstypes.Role]string
 	// invitations are the invitations that stand; Invite adds one with a week to live.
 	invitations []UserInvitation
 }
@@ -33,9 +35,10 @@ type MemUserStore struct {
 // NewMemUserStore returns an empty store.
 func NewMemUserStore() *MemUserStore {
 	return &MemUserStore{
-		identities: make(map[ccc.UUID][]UserIdentity),
-		seats:      make(map[accesstypes.PolicyScope]map[accesstypes.User][]accesstypes.Role),
-		roles:      make(map[accesstypes.PolicyScope][]accesstypes.Role),
+		identities:   make(map[ccc.UUID][]UserIdentity),
+		seats:        make(map[accesstypes.PolicyScope]map[accesstypes.User][]accesstypes.Role),
+		roles:        make(map[accesstypes.PolicyScope][]accesstypes.Role),
+		descriptions: make(map[accesstypes.PolicyScope]map[accesstypes.Role]string),
 	}
 }
 
@@ -68,6 +71,23 @@ func (s *MemUserStore) declare(scope accesstypes.PolicyScope, roles ...accesstyp
 		}
 	}
 	slices.Sort(s.roles[scope])
+}
+
+// DescribeRoles makes the roles exist in the scope with what each is for, as a role
+// file's roles exist in a permission engine's with their descriptions; the surface
+// serves the description beside the role's name.
+func (s *MemUserStore) DescribeRoles(scope accesstypes.PolicyScope, descriptions map[accesstypes.Role]string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	described := s.descriptions[scope]
+	if described == nil {
+		described = make(map[accesstypes.Role]string, len(descriptions))
+		s.descriptions[scope] = described
+	}
+	for role, description := range descriptions {
+		s.declare(scope, role)
+		described[role] = description
+	}
 }
 
 // Seat seats the user in the roles in the scope, declaring the roles.
@@ -394,7 +414,27 @@ func (s *MemUserStore) rolesIn(scope accesstypes.PolicyScope) []accesstypes.Role
 	return roles
 }
 
+// RoleDescriptions returns what each role that exists in the scope is for, by name: the
+// ones described there and, for one domain, the ones described in every domain. A role
+// declared without a description is absent.
+func (s *MemUserStore) RoleDescriptions(_ context.Context, scope accesstypes.PolicyScope) (map[accesstypes.Role]string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	descriptions := make(map[accesstypes.Role]string, len(s.descriptions[scope]))
+	if _, oneDomain := scope.Domain(); oneDomain {
+		for role, description := range s.descriptions[accesstypes.EveryDomainPolicyScope()] {
+			descriptions[role] = description
+		}
+	}
+	for role, description := range s.descriptions[scope] {
+		descriptions[role] = description
+	}
+
+	return descriptions, nil
+}
+
 var (
-	_ UserAccounts = (*MemUserStore)(nil)
-	_ UserSeats    = (*MemUserStore)(nil)
+	_ UserAccounts  = (*MemUserStore)(nil)
+	_ UserSeats     = (*MemUserStore)(nil)
+	_ roleDescriber = (*MemUserStore)(nil)
 )

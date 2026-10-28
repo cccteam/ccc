@@ -2233,7 +2233,10 @@ person's directory links carry, when they agree), `identities` (each link: `id`,
 seats held in the partition's scope), `everywhereRoles` (the seats held in every domain)
 and `rolesSynced` (the seats are a directory's, see below). A seat row carries `user`,
 `role`, `username` and `everyDomain` (`everywhere` in the tenant partition); a role row
-`name` and, in the global partition, `kind` (`global` or `domain`). The rows are composed
+`name`, `description` (what the role is for, in a sentence or two) and, in the global
+partition, `kind` (`global` or `domain`). A role is named for its job in PascalCase
+(`Administrator`, `SectorMarshal`), never for where it is held: the role file declares
+that by its structure, and the row's `kind` serves it. The rows are composed
 in Go from the Auth's account store (the session library's users and identities) and its
 engine's memberships, so a condition on a grant is judged over the composed row, and the
 capability envelope (`capabilities=Update,Delete,Execute`) answers from the grants and the

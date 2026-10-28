@@ -120,10 +120,12 @@ func (TenantSeatRow[A]) DefaultConfig() Config {
 }
 
 // RoleRow is one role a global seat may take (<Auth>Roles): a role of the global kind,
-// held in the global scope, or of the domain kind, held in every tenant.
+// held in the global scope, or of the domain kind, held in every tenant. Description is
+// what the role is for, the role file's sentence or two about it.
 type RoleRow[A UserAuth] struct {
-	Name string `json:"name" spanner:"Name"`
-	Kind string `json:"kind" spanner:"Kind"`
+	Name        string `json:"name"        spanner:"Name"`
+	Kind        string `json:"kind"        spanner:"Kind"`
+	Description string `json:"description" spanner:"Description"`
 }
 
 // Resource is the Auth's name for the resource.
@@ -180,9 +182,11 @@ func (TenantInvitationRow[A]) DefaultConfig() Config {
 	return Config{}
 }
 
-// TenantRoleRow is one role a tenant seat may take (<Auth><Tenant>Roles).
+// TenantRoleRow is one role a tenant seat may take (<Auth><Tenant>Roles). Description is
+// what the role is for, the role file's sentence or two about it.
 type TenantRoleRow[A UserAuth] struct {
-	Name string `json:"name" spanner:"Name"`
+	Name        string `json:"name"        spanner:"Name"`
+	Description string `json:"description" spanner:"Description"`
 }
 
 // Resource is the Auth's name for the resource.
@@ -275,12 +279,14 @@ type tenantSeatRequest struct {
 }
 
 type roleRequest struct {
-	Name string `json:"name" index:"true" perm:"-"`
-	Kind string `json:"kind"`
+	Name        string `json:"name"        index:"true" perm:"-"`
+	Kind        string `json:"kind"`
+	Description string `json:"description"`
 }
 
 type tenantRoleRequest struct {
-	Name string `json:"name" index:"true" perm:"-"`
+	Name        string `json:"name"        index:"true" perm:"-"`
+	Description string `json:"description"`
 }
 
 // The Go field names the handlers address.
@@ -328,10 +334,12 @@ type userSnapshot struct {
 
 	users []UserAccount
 	byID  map[ccc.UUID]*UserAccount
-	// roles are the roles that exist in each of the partition's scopes, sorted; seats
-	// the roles each user holds in each, by the membership store's user key.
-	roles map[accesstypes.PolicyScope][]accesstypes.Role
-	seats map[accesstypes.User]map[accesstypes.PolicyScope][]accesstypes.Role
+	// roles are the roles that exist in each of the partition's scopes, sorted;
+	// descriptions what each is for, by name, where the store says; seats the roles each
+	// user holds in each, by the membership store's user key.
+	roles        map[accesstypes.PolicyScope][]accesstypes.Role
+	descriptions map[accesstypes.PolicyScope]map[accesstypes.Role]string
+	seats        map[accesstypes.User]map[accesstypes.PolicyScope][]accesstypes.Role
 
 	identities map[ccc.UUID][]UserIdentity
 
@@ -348,18 +356,23 @@ func (s *UserSurface[A]) snapshot(ctx context.Context, p *userPartition) (*userS
 		return nil, errors.Wrap(err, "resource.UserAccounts.Users()")
 	}
 	snap := &userSnapshot{
-		shape:      s.decl.Shape,
-		accounts:   s.accounts,
-		partition:  p,
-		users:      users,
-		byID:       make(map[ccc.UUID]*UserAccount, len(users)),
-		roles:      make(map[accesstypes.PolicyScope][]accesstypes.Role, len(p.seatScopes)),
-		seats:      make(map[accesstypes.User]map[accesstypes.PolicyScope][]accesstypes.Role),
-		identities: make(map[ccc.UUID][]UserIdentity),
+		shape:        s.decl.Shape,
+		accounts:     s.accounts,
+		partition:    p,
+		users:        users,
+		byID:         make(map[ccc.UUID]*UserAccount, len(users)),
+		roles:        make(map[accesstypes.PolicyScope][]accesstypes.Role, len(p.seatScopes)),
+		descriptions: make(map[accesstypes.PolicyScope]map[accesstypes.Role]string, len(p.seatScopes)),
+		seats:        make(map[accesstypes.User]map[accesstypes.PolicyScope][]accesstypes.Role),
+		identities:   make(map[ccc.UUID][]UserIdentity),
 	}
 	for i := range snap.users {
 		snap.byID[snap.users[i].ID] = &snap.users[i]
 	}
+	// phase 2 (cccteam/backlog#463): the store's Roles answers what each role is for
+	// beside its name once the access library's does; until then a store that describes
+	// its roles does so through roleDescriber, and the rest serve an empty description.
+	describer, describes := s.seats.(roleDescriber)
 	for _, scope := range p.seatScopes {
 		roles, err := s.seats.Roles(ctx, scope)
 		if err != nil {
@@ -367,6 +380,13 @@ func (s *UserSurface[A]) snapshot(ctx context.Context, p *userPartition) (*userS
 		}
 		slices.Sort(roles)
 		snap.roles[scope] = roles
+		if describes {
+			descriptions, err := describer.RoleDescriptions(ctx, scope)
+			if err != nil {
+				return nil, errors.Wrap(err, "resource.roleDescriber.RoleDescriptions()")
+			}
+			snap.descriptions[scope] = descriptions
+		}
 		for _, role := range roles {
 			holders, err := s.seats.RoleUsers(ctx, scope, role)
 			if err != nil {
@@ -740,8 +760,9 @@ func (snap *userSnapshot) roleScope(role accesstypes.Role) (accesstypes.PolicySc
 
 // composedRole is a role row before it is typed for a partition.
 type composedRole struct {
-	name  accesstypes.Role
-	scope accesstypes.PolicyScope
+	name        accesstypes.Role
+	scope       accesstypes.PolicyScope
+	description string
 }
 
 func (r *composedRole) kind() string {
@@ -768,7 +789,7 @@ func (snap *userSnapshot) rolesOf() []*composedRole {
 	var roles []*composedRole
 	for _, scope := range snap.partition.ownScopes() {
 		for _, role := range snap.roles[scope] {
-			roles = append(roles, &composedRole{name: role, scope: scope})
+			roles = append(roles, &composedRole{name: role, scope: scope, description: snap.descriptions[scope][role]})
 		}
 	}
 

@@ -403,6 +403,17 @@ type UserSeats interface {
 	Roles(ctx context.Context, scope accesstypes.PolicyScope) ([]accesstypes.Role, error)
 }
 
+// roleDescriber is a membership store that says what each of its roles is for. The
+// surface serves the description beside the role's name and kind from a UserSeats that
+// implements it, and an empty description from one that does not.
+//
+// phase 2 (cccteam/backlog#463): UserSeats.Roles answers the description beside the name
+// once the access library's UserManager does, and this seam goes.
+type roleDescriber interface {
+	// RoleDescriptions returns what each role that exists in scope is for, by name.
+	RoleDescriptions(ctx context.Context, scope accesstypes.PolicyScope) (map[accesstypes.Role]string, error)
+}
+
 // UserApp is the application surface the user handlers draw on: the decoder seam, the
 // cursor key the lists page with, and the database client, whose type decides where a
 // sort places NULL.
