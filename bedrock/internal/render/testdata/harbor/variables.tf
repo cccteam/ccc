@@ -388,6 +388,21 @@ variable "members_directory_tenant_id" {
   }
 }
 
+variable "members_directory_administered_tenants" {
+  description = <<-EOT
+    The Microsoft Entra tenants the deployment administers, among those the members auth's directory registration
+    admits, by tenant id, comma-separated (APP_MEMBERS_DIRECTORY_ADMINISTERED_TENANTS, dataConfig.MembersDirectoryAdministeredTenants):
+    a sign-in from one carries the tenant's own second factor, which the deployment
+    vouches for (a Conditional Access policy requiring multifactor authentication of
+    everyone), and is asked for no sign-in code. Empty when the deployment administers
+    none, so every sign-in is asked for the code. The registration reads it when it is
+    made, at construction, so every data-level process carries it, and refuses a tenant
+    it does not admit.
+  EOT
+  type        = string
+  default     = ""
+}
+
 variable "staff_directory_client_id" {
   description = <<-EOT
     Per environment, the client ID of the staff auth's directory registration with Google
@@ -432,6 +447,20 @@ variable "staff_directory_hosted_domain" {
   description = "Google Workspace domain the logins of the staff auth's directory registration are restricted to (APP_STAFF_DIRECTORY_HOSTED_DOMAIN, dataConfig.StaffDirectoryHostedDomain). Required non-empty by the session library at construction, so the migrate command carries it too."
   type        = string
   default     = "impulseframework.com"
+}
+
+variable "staff_directory_administered_workspaces" {
+  description = <<-EOT
+    The Google Workspaces the deployment administers, among those the staff auth's directory registration
+    admits, by domain, comma-separated (APP_STAFF_DIRECTORY_ADMINISTERED_WORKSPACES, dataConfig.StaffDirectoryAdministeredWorkspaces):
+    a sign-in from one carries the Workspace's own second factor, which the deployment
+    vouches for (2-Step Verification enforced for everyone), and is asked for no sign-in
+    code. Empty when the deployment administers none, so every sign-in is asked for the
+    code. The registration reads it when it is made, at construction, so every
+    data-level process carries it, and refuses a Workspace it does not admit.
+  EOT
+  type        = string
+  default     = ""
 }
 
 variable "mail_mailbox" {

@@ -17,6 +17,12 @@ members_directory_client_id = {
   prd = ""
 }
 members_directory_tenant_id = ""
+# The tenants the deployment administers among those the registration admits, by
+# tenant id, comma-separated, once for the organization: a sign-in from one carries
+# the tenant's own second factor (a Conditional Access policy requiring multifactor
+# authentication of everyone) and is asked for no sign-in code; empty, every sign-in
+# is asked for the code.
+members_directory_administered_tenants = ""
 
 # The staff auth's directory registration with Google (README, "Hand
 # steps"): the client id of each environment's registration.
@@ -25,6 +31,11 @@ staff_directory_client_id = {
   stg = ""
   prd = ""
 }
+# The Workspaces the deployment administers among those the registration admits, by
+# domain, comma-separated, once for the organization: a sign-in from one carries the
+# Workspace's own second factor (2-Step Verification enforced for everyone) and is
+# asked for no sign-in code; empty, every sign-in is asked for the code.
+staff_directory_administered_workspaces = ""
 
 # The members auth's first administrator, per environment (README, "Hand steps"):
 # the sign-in name the directory presents, which the migrate command seeds the

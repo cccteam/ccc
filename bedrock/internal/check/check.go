@@ -79,6 +79,11 @@ type Report struct {
 	// stack, owned files and a person's alike, in path then line order, the file
 	// stores' bucket policies excepted.
 	Authoritative []Authoritative
+	// Undeclared lists the input variables the stack's .tf files read (var.<name>),
+	// owned files and a person's alike, that no variable block among them declares, in
+	// path then line order: tofu refuses the plan at its first step over any one of
+	// them, with nothing else in the stack read.
+	Undeclared []render.UndeclaredVariable
 	// Migrations are the problems with the schema migrations directory: a file that
 	// is not a migration, an index with two up files, a gap in the sequence.
 	// MigrationsFix names their fix when the checkout has no release tag: the renumber
@@ -206,7 +211,7 @@ type MaintenanceFinding struct {
 	Problem string
 }
 
-// Clean reports no drift, no refused resource, a sound migration sequence, every
+// Clean reports no drift, no refused resource, every variable read declared, a sound migration sequence, every
 // required build secret declared, every job's binary built, an image that starts as the
 // layout's contract says, reserved stages holding their install alone, every declared
 // build argument declared by the Dockerfile, the shipped programs' build argument
@@ -215,7 +220,7 @@ type MaintenanceFinding struct {
 // Cloud Armor policy removed in one step, and a sign-in throttle threshold the policy
 // can take, and no retired variable that nothing declares.
 func (r *Report) Clean() bool {
-	return len(r.Findings) == 0 && len(r.Authoritative) == 0 && len(r.Migrations) == 0 && len(r.BuildSecrets) == 0 && len(r.Generated) == 0 && len(r.Binaries) == 0 && len(r.Bundles) == 0 && r.startClean() && r.siteBundlesClean() && len(r.Stages) == 0 && len(r.BuildArguments) == 0 && r.Programs == nil && len(r.ReleaseLines) == 0 && len(r.ReleaseSections) == 0 && len(r.ReleaseFiles) == 0 && len(r.CloudArmor) == 0 && len(r.SignInThreshold) == 0 && len(r.Retired) == 0 && r.retirementsClean()
+	return len(r.Findings) == 0 && len(r.Authoritative) == 0 && len(r.Undeclared) == 0 && len(r.Migrations) == 0 && len(r.BuildSecrets) == 0 && len(r.Generated) == 0 && len(r.Binaries) == 0 && len(r.Bundles) == 0 && r.startClean() && r.siteBundlesClean() && len(r.Stages) == 0 && len(r.BuildArguments) == 0 && r.Programs == nil && len(r.ReleaseLines) == 0 && len(r.ReleaseSections) == 0 && len(r.ReleaseFiles) == 0 && len(r.CloudArmor) == 0 && len(r.SignInThreshold) == 0 && len(r.Retired) == 0 && r.retirementsClean()
 }
 
 // retirementsClean reports every retired variable declared by something.
@@ -279,11 +284,9 @@ func Run(ctx context.Context, m *derive.Model, dir, appDir string) (*Report, err
 			r.Retired = append(r.Retired, name)
 		}
 	}
-	authoritative, err := scanAuthoritative(dir, fileStorePolicies(m))
-	if err != nil {
+	if err := r.scanStack(dir, m); err != nil {
 		return nil, err
 	}
-	r.Authoritative = authoritative
 	migrations, _, err := Migrations(appDir, m)
 	if err != nil {
 		return nil, err
@@ -309,6 +312,24 @@ func Run(ctx context.Context, m *derive.Model, dir, appDir string) (*Report, err
 	}
 
 	return r, nil
+}
+
+// scanStack reads every .tf file of the stack directory, a person's files included, for
+// the authoritative IAM resources the stack refuses and for the input variables the files
+// read that no variable block among them declares.
+func (r *Report) scanStack(dir string, m *derive.Model) error {
+	authoritative, err := scanAuthoritative(dir, fileStorePolicies(m))
+	if err != nil {
+		return err
+	}
+	r.Authoritative = authoritative
+	undeclared, err := scanUndeclared(dir)
+	if err != nil {
+		return err
+	}
+	r.Undeclared = undeclared
+
+	return nil
 }
 
 // scanPlacement reads the stack's terraform.tfvars for a Cloud Armor policy the tree
@@ -638,6 +659,25 @@ func scanAuthoritative(dir string, admitted []string) ([]Authoritative, error) {
 	return found, nil
 }
 
+// scanUndeclared finds the input variables the .tf files of the directory read, a
+// person's files included, that no variable block among them declares.
+func scanUndeclared(dir string) ([]render.UndeclaredVariable, error) {
+	paths, err := filepath.Glob(filepath.Join(dir, "*.tf"))
+	if err != nil {
+		return nil, errors.Wrap(err, "filepath.Glob()")
+	}
+	files := make(map[string][]byte, len(paths))
+	for _, path := range paths {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return nil, errors.Wrapf(err, "os.ReadFile(): %s", path)
+		}
+		files[filepath.Base(path)] = data
+	}
+
+	return render.UndeclaredVariables(files), nil
+}
+
 // firstDifference finds the first line where the two texts part, or reports them the
 // same.
 func firstDifference(want, got []byte) (line int, wantLine, gotLine string, same bool) {
@@ -695,6 +735,9 @@ func (r *Report) Write(w io.Writer) {
 	}
 	for _, a := range r.Authoritative {
 		fmt.Fprintf(w, "  refused  %s:%d %s: an authoritative IAM resource replaces every member on each apply; declare a *_iam_member per member instead (a file store's bucket policy, storage.tf's, is the one admitted)\n", a.Path, a.Line, a.Address)
+	}
+	for _, u := range r.Undeclared {
+		fmt.Fprintf(w, "  refused  %s:%d reads var.%s, and no variable block in the stack declares it: tofu refuses the plan at its first step. Declare it in a file of yours (variable \"%s\" {}) when the reference is yours; in a file bedrock renders, the declaration is bedrock's to render, and the fix is a bedrock that does (bedrock upgrade)\n", u.Path, u.Line, u.Name, u.Name)
 	}
 	for _, mf := range r.Migrations {
 		fmt.Fprintf(w, "  refused  %s: %s\n", mf.Path, mf.Problem)

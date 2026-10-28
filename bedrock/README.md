@@ -634,6 +634,11 @@ It also refuses:
   stack sets each bucket's whole permission list on purpose, so that a grant added by hand
   does not outlive the next apply, and a pull-request stack makes buckets of its own. The pipeline's test before every apply admits the same
   addresses, named from the buckets its trigger carries (`_FILE_STORES`).
+- an input variable a `.tf` file of the stack reads (`var.<name>`), in an owned file or
+  one of yours, that no `variable` block in the stack declares, naming the file and the
+  line: tofu refuses the plan at its first step over it, with nothing else in the stack
+  read. A file of your own declares every variable it reads; the owned files' declarations
+  are bedrock's to render, and the render tests hold every template to them.
 - a Dockerfile whose browser build stage (the stage that runs `bun run build`) does not
   declare `ARG VERSION`: a build argument is visible inside a stage only after the stage
   declares it again, and the release is stamped into each bundle in that stage, so without

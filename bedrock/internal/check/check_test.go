@@ -11,6 +11,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 
 	"github.com/cccteam/ccc/bedrock/internal/derive"
+	"github.com/cccteam/ccc/bedrock/internal/render"
 	"github.com/cccteam/ccc/impulse/app"
 )
 
@@ -71,6 +72,8 @@ func TestRun(t *testing.T) {
 		wantFindings []Finding
 		wantUnseeded []string
 		wantRefused  []Authoritative
+		// wantUndeclared are the variable references the report refuses as undeclared.
+		wantUndeclared []render.UndeclaredVariable
 		// wantReleaseFiles are release-please's files the report refuses as missing.
 		wantReleaseFiles []string
 		wantOutput       []string
@@ -304,6 +307,31 @@ func TestRun(t *testing.T) {
 			wantClean: true,
 		},
 		{
+			name: "a variable a file reads that no block in the stack declares is refused at its line",
+			mutate: func(t *testing.T, dir string) {
+				t.Helper()
+
+				custom := "# a person's file, reading var.owner here in a comment\nlocals {\n  owner = var.owner\n}\n"
+				if err := os.WriteFile(filepath.Join(dir, "custom.tf"), []byte(custom), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			},
+			wantUndeclared: []render.UndeclaredVariable{{Path: "custom.tf", Line: 3, Name: "owner"}},
+			wantOutput:     []string{"22 owned file(s) match the code", "refused  custom.tf:3 reads var.owner, and no variable block in the stack declares it: tofu refuses the plan at its first step. Declare it in a file of yours (variable \"owner\" {}) when the reference is yours"},
+		},
+		{
+			name: "a person's file declaring the variable it reads is clean",
+			mutate: func(t *testing.T, dir string) {
+				t.Helper()
+
+				custom := "variable \"owner\" {\n  type    = string\n  default = \"\"\n}\n\nlocals {\n  owner = var.owner\n  env   = var.environment\n}\n"
+				if err := os.WriteFile(filepath.Join(dir, "custom.tf"), []byte(custom), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			},
+			wantClean: true,
+		},
+		{
 			name: "a reserved stage of the Dockerfile holding more than its install is refused",
 			mutate: func(t *testing.T, dir string) {
 				t.Helper()
@@ -416,6 +444,9 @@ func TestRun(t *testing.T) {
 				if report.Authoritative[i] != want {
 					t.Errorf("Authoritative[%d] = %+v, want %+v", i, report.Authoritative[i], want)
 				}
+			}
+			if diff := cmp.Diff(tt.wantUndeclared, report.Undeclared); diff != "" {
+				t.Errorf("Undeclared mismatch (-want +got):\n%s", diff)
 			}
 			var out bytes.Buffer
 			report.Write(&out)
@@ -575,13 +606,13 @@ func TestRunRetired(t *testing.T) {
 			retired:   "retired = [\"APP_FILE_STORE\", \"APP_COOKIE_KEY\", \"APP_FIRESTORE_DATABASE\"]\n",
 			wantClean: true,
 			want: []Retirement{
-				{Variable: "APP_FILE_STORE", What: "a file store (pkg/config/data.go:293)"},
-				{Variable: "APP_COOKIE_KEY", What: "a secret (pkg/config/data.go:262)"},
+				{Variable: "APP_FILE_STORE", What: "a file store (pkg/config/data.go:297)"},
+				{Variable: "APP_COOKIE_KEY", What: "a secret (pkg/config/data.go:264)"},
 				{Variable: "APP_FIRESTORE_DATABASE", What: "the Firestore database (pkg/config/data.go:58)"},
 			},
 			wantOutput: []string{
-				"  retire   APP_FILE_STORE is retired (retired in terraform.tfvars), a file store (pkg/config/data.go:293): this release's apply lifts its protection against a destroy in every environment, and the next release removes the declaration and takes the name out of retired",
-				"  retire   APP_COOKIE_KEY is retired (retired in terraform.tfvars), a secret (pkg/config/data.go:262)",
+				"  retire   APP_FILE_STORE is retired (retired in terraform.tfvars), a file store (pkg/config/data.go:297): this release's apply lifts its protection against a destroy in every environment, and the next release removes the declaration and takes the name out of retired",
+				"  retire   APP_COOKIE_KEY is retired (retired in terraform.tfvars), a secret (pkg/config/data.go:264)",
 				"  retire   APP_FIRESTORE_DATABASE is retired (retired in terraform.tfvars), the Firestore database (pkg/config/data.go:58)",
 			},
 		},
@@ -595,7 +626,7 @@ func TestRunRetired(t *testing.T) {
 		{
 			name:       "a name nothing declares is refused",
 			retired:    "retired = [\"APP_COOKIE_KEY\", \"APP_GONE\"]\n",
-			want:       []Retirement{{Variable: "APP_COOKIE_KEY", What: "a secret (pkg/config/data.go:262)"}, {Variable: "APP_GONE", Problem: gone}},
+			want:       []Retirement{{Variable: "APP_COOKIE_KEY", What: "a secret (pkg/config/data.go:264)"}, {Variable: "APP_GONE", Problem: gone}},
 			wantOutput: []string{"  refused  " + gone},
 		},
 		{
@@ -720,17 +751,17 @@ func TestRunGenerated(t *testing.T) {
 			generated: true,
 			versions:  "secret_versions = {\n  tst = { APP_COOKIE_KEY = 3 }\n  stg = { APP_COOKIE_KEY = \"latest\" }\n  prd = {}\n}\n",
 			want: []GeneratedFinding{
-				{Environment: "tst", Variable: "APP_COOKIE_KEY", Problem: `APP_COOKIE_KEY is generated (secret:"generated" at pkg/config/data.go:262) and secret_versions.tst in terraform.tfvars pins "3" where the word generated belongs: write APP_COOKIE_KEY = "generated" there; its version is derived at each build, and bedrock secret rotate tst APP_COOKIE_KEY adds the next`},
-				{Environment: "stg", Variable: "APP_COOKIE_KEY", Problem: `APP_COOKIE_KEY is generated (secret:"generated" at pkg/config/data.go:262) and secret_versions.stg in terraform.tfvars pins "latest" where the word generated belongs: write APP_COOKIE_KEY = "generated" there; its version is derived at each build, and bedrock secret rotate stg APP_COOKIE_KEY adds the next`},
-				{Environment: "prd", Variable: "APP_COOKIE_KEY", Problem: `APP_COOKIE_KEY is generated (secret:"generated" at pkg/config/data.go:262) and secret_versions.prd in terraform.tfvars has no entry for it: write APP_COOKIE_KEY = "generated" there; its version is derived at each build`},
+				{Environment: "tst", Variable: "APP_COOKIE_KEY", Problem: `APP_COOKIE_KEY is generated (secret:"generated" at pkg/config/data.go:264) and secret_versions.tst in terraform.tfvars pins "3" where the word generated belongs: write APP_COOKIE_KEY = "generated" there; its version is derived at each build, and bedrock secret rotate tst APP_COOKIE_KEY adds the next`},
+				{Environment: "stg", Variable: "APP_COOKIE_KEY", Problem: `APP_COOKIE_KEY is generated (secret:"generated" at pkg/config/data.go:264) and secret_versions.stg in terraform.tfvars pins "latest" where the word generated belongs: write APP_COOKIE_KEY = "generated" there; its version is derived at each build, and bedrock secret rotate stg APP_COOKIE_KEY adds the next`},
+				{Environment: "prd", Variable: "APP_COOKIE_KEY", Problem: `APP_COOKIE_KEY is generated (secret:"generated" at pkg/config/data.go:264) and secret_versions.prd in terraform.tfvars has no entry for it: write APP_COOKIE_KEY = "generated" there; its version is derived at each build`},
 			},
-			wantOut: []string{"  refused  APP_COOKIE_KEY is generated (secret:\"generated\" at pkg/config/data.go:262) and secret_versions.tst in terraform.tfvars pins \"3\" where the word generated belongs"},
+			wantOut: []string{"  refused  APP_COOKIE_KEY is generated (secret:\"generated\" at pkg/config/data.go:264) and secret_versions.tst in terraform.tfvars pins \"3\" where the word generated belongs"},
 		},
 		{
 			name:     "the word on a secret someone puts in place is refused",
 			versions: "secret_versions = {\n  tst = { APP_STAFF_DIRECTORY_CLIENT_SECRET = \"generated\" }\n  stg = {}\n  prd = {}\n}\n",
 			want: []GeneratedFinding{
-				{Environment: "tst", Variable: "APP_STAFF_DIRECTORY_CLIENT_SECRET", Problem: `APP_STAFF_DIRECTORY_CLIENT_SECRET carries the word generated in secret_versions.tst in terraform.tfvars, and the code declares it secret:"true" (pkg/config/data.go:277): pin a version number (bedrock secret pin tst APP_STAFF_DIRECTORY_CLIENT_SECRET <version>), or declare it secret:"generated" in the code`},
+				{Environment: "tst", Variable: "APP_STAFF_DIRECTORY_CLIENT_SECRET", Problem: `APP_STAFF_DIRECTORY_CLIENT_SECRET carries the word generated in secret_versions.tst in terraform.tfvars, and the code declares it secret:"true" (pkg/config/data.go:279): pin a version number (bedrock secret pin tst APP_STAFF_DIRECTORY_CLIENT_SECRET <version>), or declare it secret:"generated" in the code`},
 			},
 		},
 		{
