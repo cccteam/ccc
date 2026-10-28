@@ -2,7 +2,7 @@
   "roles": {
     "global": [
       {
-        "name": "Administrator_Global",
+        "name": "Administrator",
         "permissions": {
           "Create": [
             {
@@ -78,7 +78,7 @@
     ],
     "domain": [
       {
-        "name": "Administrator_Domain",
+        "name": "TenantAdministrator",
         "permissions": {
           "Create": [
             {
