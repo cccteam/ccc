@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.5.25](https://github.com/cccteam/ccc/compare/impulse/v0.5.24...impulse/v0.5.25) (2026-10-28)
+
+
+### Features
+
+* an application ships a command program with its release: ShipsProgram on a machine outlet names its main package and platforms, the image build compiles it, the outlet serves it behind its token check, and an installed copy upgrades itself from the outlet through resource/shipped ([#1184](https://github.com/cccteam/ccc/issues/1184)) ([5b89382](https://github.com/cccteam/ccc/commit/5b893827e026be12938639afe369e93a58239cba))
+
+
+### Dependencies
+
+* **impulse:** the skeleton's pins move to resource v0.15.16, which carries ShipsProgram and resource/shipped and whose maintenance page says it will automatically reload when the application becomes available ([#1188](https://github.com/cccteam/ccc/issues/1188)) ([4fc769c](https://github.com/cccteam/ccc/commit/4fc769c0702d1a551085b0445fd89a27abf64d89))
+
 ## [0.5.24](https://github.com/cccteam/ccc/compare/impulse/v0.5.23...impulse/v0.5.24) (2026-10-27)
 
 
