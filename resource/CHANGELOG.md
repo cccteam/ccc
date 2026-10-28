@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.15](https://github.com/cccteam/ccc/compare/resource/v0.15.14...resource/v0.15.15) (2026-10-28)
+
+
+### Bug Fixes
+
+* **resource:** the maintenance page says it will automatically reload when the application becomes available ([5fdbfdc](https://github.com/cccteam/ccc/commit/5fdbfdca19e220f6e34fe5ff3b34687722015099))
+
 ## [0.15.14](https://github.com/cccteam/ccc/compare/resource/v0.15.13...resource/v0.15.14) (2026-10-27)
 
 
