@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.5.26](https://github.com/cccteam/ccc/compare/impulse/v0.5.25...impulse/v0.5.26) (2026-10-28)
+
+
+### Features
+
+* **bedrock:** the administered tenants and Workspaces of a directory registration are placement variables ([3d45773](https://github.com/cccteam/ccc/commit/3d45773884f4d35a42db39312c7a451bf5fc9086))
+* **impulse:** every generated auth requires the sign-in code unless a remembered browser or an administered directory stands in for it, a directory method declares the organizations the deployment administers (_ADMINISTERED_TENANTS, _ADMINISTERED_WORKSPACES), the session migration creates the sign-in codes and trusted devices tables, and the pins move to session v0.13.14 ([3d45773](https://github.com/cccteam/ccc/commit/3d45773884f4d35a42db39312c7a451bf5fc9086))
+* **resource:** every session carries a second factor: the generated router serves the sign-in code routes, the user surface resets a person's remembered browsers (Reset&lt;…&gt;UserFactors), and Lodestar demonstrates the code, the attested directory and the remembered browser ([3d45773](https://github.com/cccteam/ccc/commit/3d45773884f4d35a42db39312c7a451bf5fc9086))
+
+
+### Bug Fixes
+
+* a declared shipped program's main package may carry its own tagged settings, which bedrock's derivation leaves out of the application's configuration, and impulse refuses any environment read outside the config package except inside such a package ([#1195](https://github.com/cccteam/ccc/issues/1195)) ([f2ac8e0](https://github.com/cccteam/ccc/commit/f2ac8e029cd1c8cf1587a02679fff1ff8bbc5492))
+* **impulse:** the CI workflow's image job passes the shipped programs to the image build, composed from the ShipsProgram declarations, so the image compiles them instead of a placeholder named ci ([#1191](https://github.com/cccteam/ccc/issues/1191)) ([e495bd2](https://github.com/cccteam/ccc/commit/e495bd2e7824765d68de51f2efc3061fa368ea00))
+
+
+### Dependencies
+
+* **impulse:** the skeleton's pins move to resource v0.15.17, which carries the second factor's routes and methods, and the ledger holds one step for the 0.5.26 release ([#1196](https://github.com/cccteam/ccc/issues/1196)) ([b095ec5](https://github.com/cccteam/ccc/commit/b095ec58231d3464bf3ce61b0acf985e8903eec5))
+
 ## [0.5.25](https://github.com/cccteam/ccc/compare/impulse/v0.5.24...impulse/v0.5.25) (2026-10-28)
 
 
