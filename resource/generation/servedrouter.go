@@ -3,6 +3,7 @@ package generation
 import (
 	"fmt"
 	"log"
+	"maps"
 	"net/http"
 	"path/filepath"
 	"slices"
@@ -226,6 +227,43 @@ func validateOutletAuthentication(o *routerOutlet, sessionAuths map[string]bool)
 		return errors.Newf("outlet %q declares Tokens and WebApp(%q): a machine outlet serves no browser application", o.name, o.webApp)
 	case o.apiKey && o.declaredOldest:
 		return errors.Newf("outlet %q declares Tokens and OldestAnswered(%q): a machine outlet's clients carry no release, so nothing is checked against one; the option belongs on a session outlet", o.name, o.oldestAnswered)
+	}
+
+	return nil
+}
+
+// shippedProgramsSegment is the segment under a machine outlet's prefix the generated
+// router serves the shipped programs at: GET /<prefix>/programs/*.
+const shippedProgramsSegment = "programs"
+
+// validateShippedProgramRoutes refuses a route of a shipping outlet under the segment
+// its programs route owns: a resource whose route name is programs, or a method mounted
+// at that segment, would share /<prefix>/programs with GET /<prefix>/programs/*, and the
+// router would answer some of each one's requests from the other. The routes are read
+// from the outlet's route tables (outletRoutes, by outlet index), the sources in name
+// order so the first refusal is the same on every run; a renamed method's former route
+// counts as the method's.
+func validateShippedProgramRoutes(outlets []*routerOutlet, outletRoutes []*outletRouteData) error {
+	for i, o := range outlets {
+		if len(o.programs) == 0 {
+			continue
+		}
+		owner := "/" + o.prefix + "/" + shippedProgramsSegment
+		for _, source := range slices.Sorted(maps.Keys(outletRoutes[i].RoutesMap)) {
+			for _, route := range outletRoutes[i].RoutesMap[source] {
+				for _, p := range []string{route.Path, route.FormerPath} {
+					if p != owner && !strings.HasPrefix(p, owner+"/") {
+						continue
+					}
+					kind := "resource"
+					if route.HandlerType == "" {
+						kind = "method"
+					}
+
+					return errors.Newf("outlet %q ships programs, so GET %s/* is the shipped programs route (ShipsProgram), and the %s %s is served under the same segment at %s %s: rename the %s, or ship the programs from another outlet", o.name, owner, kind, source, route.Method, p, kind)
+				}
+			}
+		}
 	}
 
 	return nil

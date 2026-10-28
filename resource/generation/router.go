@@ -68,6 +68,12 @@ func (r *resourceGenerator) runRouteGeneration() error {
 	}
 	routerTestRoutes = append(routerTestRoutes, userRoutes...)
 
+	// Every outlet's routes are known now: none of a shipping outlet's may sit under
+	// the segment its programs route owns.
+	if err := validateShippedProgramRoutes(outlets, outletRoutes); err != nil {
+		return err
+	}
+
 	stubDomainGuard, stubFeatureGuard := false, false
 	routeRequestLogs, routeMinSeverities := false, false
 	for _, outlet := range outletRoutes {
