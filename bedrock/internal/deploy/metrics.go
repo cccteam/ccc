@@ -7,6 +7,7 @@ package deploy
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -32,14 +33,17 @@ type Metrics interface {
 type MetricsFunc func(ctx context.Context) (Metrics, error)
 
 // NewCloudMonitoring opens the Cloud Monitoring v3 REST API with the process's default
-// credentials.
-func NewCloudMonitoring(ctx context.Context) (Metrics, error) {
-	client, err := google.DefaultClient(ctx, cloudPlatformScope)
-	if err != nil {
-		return nil, errors.Wrap(err, "google.DefaultClient()")
-	}
+// credentials, noting on out each call it sends again after a transient answer
+// (retry.go).
+func NewCloudMonitoring(out io.Writer) MetricsFunc {
+	return func(ctx context.Context) (Metrics, error) {
+		client, err := google.DefaultClient(ctx, cloudPlatformScope)
+		if err != nil {
+			return nil, errors.Wrap(err, "google.DefaultClient()")
+		}
 
-	return &cloudMonitoring{cloudRun: &cloudRun{http: client, base: monitoringAPI, poll: time.Second, service: "Cloud Monitoring"}, now: time.Now}, nil
+		return &cloudMonitoring{cloudRun: &cloudRun{http: client, base: monitoringAPI, poll: time.Second, service: "Cloud Monitoring", retry: retrier{out: out}}, now: time.Now}, nil
+	}
 }
 
 // cloudMonitoring is Metrics over the v3 API.

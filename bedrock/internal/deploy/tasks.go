@@ -6,6 +6,7 @@ package deploy
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"time"
 
@@ -33,14 +34,18 @@ type Tasks interface {
 // TasksFunc opens Tasks.
 type TasksFunc func(ctx context.Context) (Tasks, error)
 
-// NewCloudTasks opens the Cloud Tasks v2 REST API with the process's default credentials.
-func NewCloudTasks(ctx context.Context) (Tasks, error) {
-	client, err := google.DefaultClient(ctx, cloudPlatformScope)
-	if err != nil {
-		return nil, errors.Wrap(err, "google.DefaultClient()")
-	}
+// NewCloudTasks opens the Cloud Tasks v2 REST API with the process's default
+// credentials, noting on out each call it sends again after a transient answer
+// (retry.go).
+func NewCloudTasks(out io.Writer) TasksFunc {
+	return func(ctx context.Context) (Tasks, error) {
+		client, err := google.DefaultClient(ctx, cloudPlatformScope)
+		if err != nil {
+			return nil, errors.Wrap(err, "google.DefaultClient()")
+		}
 
-	return &cloudTasks{cloudRun: &cloudRun{http: client, base: cloudTasksAPI, poll: time.Second, service: "Cloud Tasks"}}, nil
+		return &cloudTasks{cloudRun: &cloudRun{http: client, base: cloudTasksAPI, poll: time.Second, service: "Cloud Tasks", retry: retrier{out: out}}}, nil
+	}
 }
 
 // cloudTasks is Tasks over the v2 API; it reuses the Cloud Run client's calling, since

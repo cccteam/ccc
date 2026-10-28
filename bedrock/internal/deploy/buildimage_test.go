@@ -1,12 +1,16 @@
 package deploy
 
 import (
+	"context"
+	"fmt"
+	"io"
 	"maps"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/go-playground/errors/v5"
 )
@@ -118,6 +122,11 @@ func TestBuildImage(t *testing.T) {
 		hooks     bool
 		noMigrate bool
 		wantTaken []string
+		// pullFailure is the line the first full build fails with, written to its output
+		// as docker writes it; wantBuilds is how many times the full build ran (once when
+		// zero).
+		pullFailure string
+		wantBuilds  int
 	}{
 		{name: "a torn-down environment builds nothing", env: "export SKIP_DEPLOY=\"true\"\n", wantOut: []string{tornDown}},
 		{
@@ -297,6 +306,21 @@ func TestBuildImage(t *testing.T) {
 			wantErr:   "the image carries no migrate command at /migrate (the Dockerfile builds it: go build -o /build/migrate ./cmd/deployment/migrate)",
 			wantTaken: []string{"docker create reg/quill@sha256:new", "docker cp cid-1:/migrate MIGRATE", "docker rm cid-1"},
 		},
+		{
+			name: "a build whose FROM image's pull failed transiently is run once more after a wait", env: env, metadata: `{"containerimage.digest": "sha256:new"}`, wantBuilt: true,
+			pullFailure: "ERROR: failed to solve: docker.io/library/golang:1.27.3-bookworm@sha256:" + strings.Repeat("a", 64) + ": not found",
+			wantBuilds:  2,
+			wantOut: []string{
+				"The build failed pulling a FROM image, which the registry may serve again shortly (ERROR: failed to solve: docker.io/library/golang:1.27.3-bookworm@sha256:" + strings.Repeat("a", 64) + ": not found); the build is run once more in 30s.",
+				"Built and pushed reg/quill@sha256:new",
+			},
+		},
+		{
+			name: "a build that failed in its own steps is not run again", env: env, wantBuilt: true,
+			pullFailure: `ERROR: failed to solve: process "/bin/sh -c go build -o /build/app ." did not complete successfully: exit code: 1`,
+			wantErr:     "docker failed: exit status 1",
+			wantNotOut:  []string{"run once more"},
+		},
 	}
 	// triggerBuildList is the trigger's list of build secrets, as its stack's last apply
 	// set it: the step reads the facts' list (BUILD_SECRETS) and never this one.
@@ -346,7 +370,12 @@ func TestBuildImage(t *testing.T) {
 				registry.digests["reg/quill:"+tag] = "sha256:" + tag
 			}
 			store := &memoryStore{objects: withStacks(tt.records)}
-			clients := &Clients{Exec: run, Secrets: (&fakeSecrets{payloads: tt.secrets}).open, Registry: registry.open, Storage: store.open}
+			var exec Runner = run
+			if tt.pullFailure != "" {
+				exec = &pullFailingRunner{fakeRunner: run, line: tt.pullFailure}
+			}
+			clock := &fakeClock{}
+			clients := &Clients{Exec: exec, Secrets: (&fakeSecrets{payloads: tt.secrets}).open, Registry: registry.open, Storage: store.open, Sleep: clock.Sleep}
 			var out strings.Builder
 			err := BuildImage(t.Context(), clients, w, secretDir, migrate, hooks, &out)
 			if tt.wantErr != "" {
@@ -358,7 +387,7 @@ func TestBuildImage(t *testing.T) {
 			}
 			var built, builder bool
 			var taken, stages []string
-			buildLine := ""
+			buildLine, builds := "", 0
 			for _, line := range run.lines() {
 				switch {
 				case strings.HasPrefix(line, "docker buildx create --driver docker-container --use"):
@@ -371,6 +400,7 @@ func TestBuildImage(t *testing.T) {
 					continue
 				case strings.HasPrefix(line, "docker buildx build "):
 					built = true
+					builds++
 					buildLine = line
 
 					continue
@@ -385,6 +415,15 @@ func TestBuildImage(t *testing.T) {
 			}
 			if built != tt.wantBuilt || builder != tt.wantBuilt {
 				t.Fatalf("ran %v, want a build %t with a docker-container builder created before it", run.lines(), tt.wantBuilt)
+			}
+			if tt.wantBuilt {
+				wantBuilds := max(tt.wantBuilds, 1)
+				if builds != wantBuilds {
+					t.Errorf("the full build ran %d times, want %d", builds, wantBuilds)
+				}
+				if wantSlept := slices.Repeat([]time.Duration{buildAgainWait}, wantBuilds-1); !slices.Equal(clock.slept, wantSlept) {
+					t.Errorf("slept %v, want %v", clock.slept, wantSlept)
+				}
 			}
 			// Every built image has its migrate command taken out; a case that says nothing
 			// else about the take-out wants that alone.
@@ -512,6 +551,100 @@ func TestCacheSources(t *testing.T) {
 			}
 			if !slices.Equal(got, tt.want) {
 				t.Errorf("cacheSources() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+// pullFailingRunner is fakeRunner with the first full build failing: it writes the line
+// to the build's output and fails, as docker does; every run after it is the fake's.
+type pullFailingRunner struct {
+	*fakeRunner
+	line   string
+	failed bool
+}
+
+func (r *pullFailingRunner) Run(ctx context.Context, c Command, out io.Writer) error {
+	if r.failed || len(c.Args) < 2 || c.Args[0] != dockerBuildx || c.Args[1] != dockerBuild || slices.Contains(c.Args, "--target") {
+		return r.fakeRunner.Run(ctx, c, out)
+	}
+	r.failed = true
+	_ = r.fakeRunner.Run(ctx, c, io.Discard)
+	fmt.Fprintln(out, r.line)
+
+	return errors.New("docker failed: exit status 1")
+}
+
+func TestTransientPull(t *testing.T) {
+	t.Parallel()
+
+	const digest = "@sha256:abababababababababababababababababababababababababababababababab"
+	tests := []struct {
+		name string
+		line string
+		want bool
+	}{
+		{name: "the build's summary of a pinned image not found", line: "ERROR: failed to solve: docker.io/library/golang:1.27.3-bookworm" + digest + ": not found", want: true},
+		{name: "a step's failure on a pinned image not found", line: "#4 ERROR: docker.io/library/golang:1.27.3-bookworm" + digest + ": not found", want: true},
+		{name: "a summary that names the image before the reason, twice", line: "ERROR: failed to solve: failed to resolve source metadata for docker.io/library/golang:1.27.3-bookworm" + digest + ": docker.io/library/golang:1.27.3-bookworm" + digest + ": not found", want: true},
+		{name: "a registry answering 503 to the manifest read", line: "ERROR: failed to solve: failed to load metadata for docker.io/oven/bun:1.2.21" + digest + ": unexpected status from HEAD request to https://registry-1.docker.io/v2/oven/bun/manifests/sha256:abab: 503 Service Unavailable", want: true},
+		{name: "a registry answering 500 to the manifest read, as older BuildKit writes it", line: "ERROR: failed to solve: docker.io/library/golang:1.27.3-bookworm: unexpected status code [manifests 1.27.3-bookworm]: 500 Internal Server Error", want: true},
+		{name: "a registry on a port answering 502", line: "ERROR: failed to solve: localhost:5000/base/go:1.27: unexpected status from HEAD request to http://localhost:5000/v2/base/go/manifests/1.27: 502 Bad Gateway", want: true},
+		{name: "a connection the registry reset", line: `ERROR: failed to solve: docker.io/library/golang:1.27.3-bookworm: failed to do request: Head "https://registry-1.docker.io/v2/library/golang/manifests/1.27.3-bookworm": read tcp 10.128.0.2:35410->3.94.224.37:443: read: connection reset by peer`, want: true},
+		{name: "a manifest read that timed out", line: `ERROR: failed to solve: failed to resolve source metadata for docker.io/library/golang:1.27.3-bookworm: failed to do request: Head "https://registry-1.docker.io/v2/library/golang/manifests/1.27.3-bookworm": dial tcp 3.94.224.37:443: i/o timeout`, want: true},
+		{name: "a manifest the registry does not know", line: "#5 ERROR: us-central1-docker.pkg.dev/shr/base/go:1.27" + digest + ": manifest unknown", want: true},
+		{name: "a pinned image named without its registry", line: "ERROR: failed to solve: golang:1.27.3-bookworm" + digest + ": not found", want: true},
+		{name: "a RUN that failed", line: `ERROR: failed to solve: process "/bin/sh -c go build -o /build/app ." did not complete successfully: exit code: 1`, want: false},
+		{name: "a COPY of a file that is not there", line: `ERROR: failed to solve: failed to compute cache key: failed to calculate checksum of ref 7f2a3b::k8s9: "/missing": not found`, want: false},
+		{name: "an image the build may not pull", line: "ERROR: failed to solve: docker.io/library/golang:1.27.3-bookworm: pull access denied, repository does not exist or may require authorization: server message: insufficient_scope: authorization failed", want: false},
+		{name: "a registry refusing the manifest read", line: "ERROR: failed to solve: docker.io/library/golang:1.27.3-bookworm: unexpected status from HEAD request to https://registry-1.docker.io/v2/library/golang/manifests/1.27.3-bookworm: 401 Unauthorized", want: false},
+		{name: "a RUN's own output naming a 503", line: "#8 1.234 go: github.com/x/y@v1.2.3: reading https://proxy.golang.org/github.com/x/y/@v/v1.2.3.mod: 503 Service Unavailable", want: false},
+		{name: "a Dockerfile that does not parse", line: "ERROR: failed to solve: dockerfile parse error on line 3: unknown instruction: FORM", want: false},
+		{name: "a push the registry answered 503", line: "ERROR: failed to solve: failed to push us-central1-docker.pkg.dev/shr/repo/harbor:c9-tst: unexpected status from PUT request to https://us-central1-docker.pkg.dev/v2/shr/repo/harbor/manifests/c9-tst: 503 Service Unavailable", want: false},
+		{name: "a step's progress line naming the image", line: "#4 [go-modules 1/4] FROM docker.io/library/golang:1.27.3-bookworm" + digest, want: false},
+		{name: "a step done", line: "#4 DONE 0.3s", want: false},
+		{name: "an empty line", line: "", want: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := transientPull(tt.line); got != tt.want {
+				t.Errorf("transientPull(%q) = %t, want %t", tt.line, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestPullWatch(t *testing.T) {
+	t.Parallel()
+
+	const notFound = "#4 ERROR: docker.io/library/golang:1.27.3-bookworm@sha256:abababababababababababababababababababababababababababababababab: not found"
+	tests := []struct {
+		name string
+		// chunks are the writes, as the build's output comes.
+		chunks []string
+		want   string
+	}{
+		{name: "a line split across writes", chunks: []string{notFound[:30], notFound[30:60], notFound[60:] + "\n#4 DONE 0.3s\n"}, want: notFound},
+		{name: "the first line that says so is kept", chunks: []string{"#3 DONE 0.1s\n" + notFound + "\n" + strings.Replace(notFound, "#4", "#5", 1) + "\n"}, want: notFound},
+		{name: "a last line without a newline is seen at the close", chunks: []string{"#3 DONE 0.1s\n" + notFound}, want: notFound},
+		{name: "a carriage return before the newline is not part of the line", chunks: []string{notFound + "\r\n"}, want: notFound},
+		{name: "an output with no such line keeps none", chunks: []string{"#3 DONE 0.1s\n", "ERROR: failed to solve: process \"/bin/sh -c go build\" did not complete successfully: exit code: 1\n"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			watch := &pullWatch{}
+			for _, chunk := range tt.chunks {
+				if n, err := watch.Write([]byte(chunk)); n != len(chunk) || err != nil {
+					t.Fatalf("Write() = %d, %v", n, err)
+				}
+			}
+			watch.close()
+			if watch.line != tt.want {
+				t.Errorf("kept %q, want %q", watch.line, tt.want)
 			}
 		})
 	}

@@ -7,6 +7,7 @@ package deploy
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"time"
 
@@ -29,17 +30,20 @@ type Firestore interface {
 // owns the environment's data stores, since the deploy identity holds no data role.
 type FirestoreAsFunc func(ctx context.Context, identity string) (Firestore, error)
 
-// NewFirestoreAs opens the Firestore v1 REST API as the identity.
-func NewFirestoreAs(ctx context.Context, identity string) (Firestore, error) {
-	source, err := impersonate.CredentialsTokenSource(ctx, impersonate.CredentialsConfig{
-		TargetPrincipal: identity,
-		Scopes:          []string{cloudPlatformScope},
-	})
-	if err != nil {
-		return nil, errors.Wrapf(err, "impersonate.CredentialsTokenSource(): %s", identity)
-	}
+// NewFirestoreAs opens the Firestore v1 REST API as the identity, noting on out each
+// call it sends again after a transient answer (retry.go).
+func NewFirestoreAs(out io.Writer) FirestoreAsFunc {
+	return func(ctx context.Context, identity string) (Firestore, error) {
+		source, err := impersonate.CredentialsTokenSource(ctx, impersonate.CredentialsConfig{
+			TargetPrincipal: identity,
+			Scopes:          []string{cloudPlatformScope},
+		})
+		if err != nil {
+			return nil, errors.Wrapf(err, "impersonate.CredentialsTokenSource(): %s", identity)
+		}
 
-	return &firestore{cloudRun: &cloudRun{http: oauth2.NewClient(ctx, source), base: firestoreAPI, poll: 5 * time.Second, service: serviceFirestore}}, nil
+		return &firestore{cloudRun: &cloudRun{http: oauth2.NewClient(ctx, source), base: firestoreAPI, poll: 5 * time.Second, service: serviceFirestore, retry: retrier{out: out}}}, nil
+	}
 }
 
 // firestore is Firestore over the v1 API; it reuses the Cloud Run client's calling.

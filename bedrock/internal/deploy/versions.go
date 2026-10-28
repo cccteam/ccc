@@ -11,6 +11,7 @@ package deploy
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -65,14 +66,17 @@ type Versions interface {
 type VersionsFunc func(ctx context.Context) (Versions, error)
 
 // NewVersions opens the Spanner v1 REST API with the process's default credentials, the
-// build's identity.
-func NewVersions(ctx context.Context) (Versions, error) {
-	client, err := google.DefaultClient(ctx, cloudPlatformScope)
-	if err != nil {
-		return nil, errors.Wrap(err, "google.DefaultClient()")
-	}
+// build's identity, noting on out each call it sends again after a transient answer
+// (retry.go).
+func NewVersions(out io.Writer) VersionsFunc {
+	return func(ctx context.Context) (Versions, error) {
+		client, err := google.DefaultClient(ctx, cloudPlatformScope)
+		if err != nil {
+			return nil, errors.Wrap(err, "google.DefaultClient()")
+		}
 
-	return &versions{spanner: &cloudRun{http: client, base: spannerAPI, service: serviceSpanner}}, nil
+		return &versions{spanner: &cloudRun{http: client, base: spannerAPI, service: serviceSpanner, retry: retrier{out: out}}}, nil
+	}
 }
 
 // versions reads through the shared REST caller.

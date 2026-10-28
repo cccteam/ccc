@@ -119,7 +119,7 @@ func newRoot() *cobra.Command {
 		githubToken: github.Token,
 		interactive: stdinIsTerminal,
 		readSecret:  readHidden,
-		deploy:      deploy.DefaultClients(),
+		deploy:      deploy.DefaultClients(os.Stdout),
 		releases:    release.GitHub,
 		version:     version,
 		lookups:     domain.DefaultLookups(),
