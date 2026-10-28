@@ -4,7 +4,16 @@
       "oldestAnswered": "0.1.0"
     },
     "droids": {
-      "kind": "api-key"
+      "kind": "api-key",
+      "programs": [
+        {
+          "name": "droid",
+          "dir": "cmd/droid",
+          "platforms": [
+            "linux/amd64"
+          ]
+        }
+      ]
     },
     "portal": {
       "oldestAnswered": ""

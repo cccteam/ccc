@@ -191,6 +191,30 @@ rename keeps its column. The generated TypeScript knows only `memo`, so the flig
 expense manifest moved to it. The next release that raises oldest answered past this one drops the annotation,
 and `note` leaves the wire.
 
+## The program the release ships
+
+The droids run a program the release ships: `cmd/droid`, declared on the droids outlet
+in `cmd/generate/generator.go` with `generation.ShipsProgram("cmd/droid",
+generation.Platforms("linux/amd64"))` ([`outlet.programs`](cmd/droid/main.go)). The
+image build compiles it for each platform into the image, and the outlet serves the
+file with its checksum at `GET /droids/programs/droid/<release>/linux/amd64`, behind
+the token check, so a copy on a droid fetches its next release where it already sends
+its telemetry. A person installs the first copy from the release's assets or with `go
+install github.com/cccteam/ccc/resource/lodestar/cmd/droid@<release>`. Given the
+outlet's URL, the droid account's token (the key the server seeds as its application
+token, `APP_DROIDS_API_KEY`, or a token a crew member issued), the sector and the ship
+(`DROID_OUTLET`, `DROID_TOKEN`, `DROID_SECTOR`, `DROID_SHIP`; `DROID_FIRMWARE` names the
+firmware in the frame), `droid reactor 0.55` sends one reading through
+`IngestDroidReports`, the frame written as the firmware's own JSON, and then the copy
+reads the server's release from the answer (`X-Api-Version`): newer than its own, it
+fetches that release's file with the token it carries, verifies the checksum, swaps the
+file in beside itself (the old one kept as `droid.old`), says so and exits 0 for its
+service manager to start the new release (`resource/shipped`). A copy built from a
+checkout never upgrades, and the development stack runs `dev` on both sides, so the
+walkthrough cannot show the upgrade; the generated router test proves the route sits
+behind the token check, and `impulse check` (`shipped-programs`) builds the program for
+each platform it declares.
+
 ## Live pages
 
 The console's Ships page is live. Sign in as `harbormaster` (Harbormaster Hollis), open
@@ -619,7 +643,7 @@ manifest: pick a card, sign in, switch, never more than two clicks.
 | `rigger` | Rigger Rook, Anvil and Bastion, no global role | `SectorCrew` in Anvil and in Bastion, by password, and nothing global: Bastion admits its people through its directory only (`Sector.DirectoryOnly`), so her chart lights Anvil alone and Bastion answers her as a sector that does not exist, until headquarters opens Bastion to passwords and her chart lights it at once. Demonstrates: tenancy.directory-only. |
 | `bosun` | Bosun Bram, Bastion only | `SectorCrew` in Bastion alone, by password: every sector of his is directory only, so his sign-in is refused naming the rule (`directory_only`), and admitted once headquarters opens Bastion. Demonstrates: tenancy.directory-only. |
 | `client` | Client Cleo, portal only | Signs in through her company's directory, whose groups are her roles; the second browser app over the second TypeScript target; `client = subject.client` from the ClientContact anchor; a conditional Execute fired from a portal session; a PII field an external user writes; the portal-only client statement. Demonstrates: auth.directory-roles, auth.skipauth-directory, typescript.second-target, outlet.session, @subjectValue.second-anchor, @manualAddResource.outlet. |
-| `droid-r7` | R7, service account, no login | The droids outlet, behind the crew auth's bearer tokens (its configured key is seeded as its application token): telemetry with no human route, one reading per call, each carrying the firmware's raw frame, a type declared in the droid link's own package whose generated methods the generator writes there (`WithTypes`); releases through the shared method under its own read grant. Demonstrates: outlet.tokens, outlet.exclusive, machine-identity, rpc.row-free, typescript.types-package. |
+| `droid-r7` | R7, service account, no login | The droids outlet, behind the crew auth's bearer tokens (its configured key is seeded as its application token): telemetry with no human route, one reading per call, each carrying the firmware's raw frame, a type declared in the droid link's own package whose generated methods the generator writes there (`WithTypes`); releases through the shared method under its own read grant; the program the release ships to the droids (`cmd/droid`), which sends one frame and upgrades itself from the outlet. Demonstrates: outlet.tokens, outlet.exclusive, machine-identity, rpc.row-free, typescript.types-package, outlet.programs. |
 
 ## Where things live
 

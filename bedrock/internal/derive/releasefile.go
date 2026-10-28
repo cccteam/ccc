@@ -1,9 +1,10 @@
 // releasefile.go reads the generated release file: the oldest release of the browser
 // application each router outlet still answers, which decides whether a release needs
 // a maintenance window, the scheduled routes, which the stack gives a Cloud Scheduler
-// job each, the file routes, which Cloud Armor matches ahead of its rules, and the
-// surfaces with their request log words, which the stack renders the request log's
-// exclusion from (requestlog.go).
+// job each, the file routes, which Cloud Armor matches ahead of its rules, the surfaces
+// with their request log words, which the stack renders the request log's exclusion
+// from (requestlog.go), and the shipped programs each machine outlet declares, which the
+// image build compiles into the image.
 
 package derive
 
@@ -12,6 +13,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -198,11 +200,38 @@ var (
 // ReleaseOutlet is one outlet's entry. A session outlet carries its oldest answered
 // release: a release such as 1.5.0, "this" for the server's own, or "" when every
 // release that sends its version is answered. An API-key outlet carries its kind and is
-// never checked against a release.
+// never checked against a release; it alone may ship programs.
 type ReleaseOutlet struct {
 	Kind           string `json:"kind,omitempty"`
 	OldestAnswered string `json:"oldestAnswered,omitempty"`
+	// Programs are the command programs the outlet ships, as the generator program
+	// declares them: the version build compiles each for its platforms into the image,
+	// and the outlet serves the binaries to the installed copies, which upgrade
+	// themselves from it. None when the outlet ships none.
+	Programs []ReleaseProgram `json:"programs,omitempty"`
 }
+
+// ReleaseProgram is one shipped program: a main package of the checkout, compiled for
+// each of its platforms.
+type ReleaseProgram struct {
+	// Name is the program's name, the last element of Dir (corral): the binary is
+	// served as <name>-<os>-<arch>.
+	Name string `json:"name"`
+	// Dir is the root-relative directory of the program's main package (cmd/corral).
+	Dir string `json:"dir"`
+	// Platforms are the platforms the program is compiled for, each <os>/<arch> in
+	// lower case (linux/amd64), at least one.
+	Platforms []string `json:"platforms"`
+}
+
+// The shapes a shipped program's values take in the file: the directory is segments of
+// letters, digits, dashes, underscores and dots, and a platform an operating system and
+// an architecture in lower case. The image build writes each into a build argument the
+// Dockerfile's shell loops over, so nothing else passes.
+var (
+	programDirRE      = regexp.MustCompile(`^[A-Za-z0-9_.-]+(/[A-Za-z0-9_.-]+)*$`)
+	programPlatformRE = regexp.MustCompile(`^[a-z0-9]+/[a-z0-9]+$`)
+)
 
 // OldestAnswered is the newest value over the session outlets of what each outlet
 // answers at the oldest: the one the maintenance window is decided by, with the outlet
@@ -253,6 +282,9 @@ func ReadReleaseFile(dir string) (*ReleaseFile, error) {
 			return nil, errors.Newf("%s: outlet %s answers %q at the oldest, which is not a release (1.5.0), %q or \"\"", name, outlet, o.OldestAnswered, ReleaseThis)
 		}
 	}
+	if err := validatePrograms(name, &f); err != nil {
+		return nil, err
+	}
 	if err := validateScheduled(name, f.Scheduled); err != nil {
 		return nil, err
 	}
@@ -264,6 +296,67 @@ func ReadReleaseFile(dir string) (*ReleaseFile, error) {
 	}
 
 	return &f, nil
+}
+
+// validatePrograms refuses a shipped program of the file name the generator would not
+// write: one on an outlet that is not a machine outlet, a directory that is not a clean
+// relative path of the checkout, a name other than the directory's last element, no
+// platform, a platform that is not <os>/<arch> in lower case, a platform listed twice,
+// or a directory shipped by two outlets.
+func validatePrograms(name string, f *ReleaseFile) error {
+	shippedBy := map[string]string{}
+	for _, outlet := range outletNames(f) {
+		o := f.Outlets[outlet]
+		if len(o.Programs) > 0 && o.Kind != OutletAPIKey {
+			return errors.Newf("%s: outlet %s ships a program (%s), and a program ships on a machine outlet alone (kind %q)", name, outlet, o.Programs[0].Dir, OutletAPIKey)
+		}
+		for i := range o.Programs {
+			p := &o.Programs[i]
+			if err := p.validate(name, outlet); err != nil {
+				return err
+			}
+			if by, ok := shippedBy[p.Dir]; ok {
+				return errors.Newf("%s: the program %s is shipped by two outlets, %s and %s", name, p.Dir, by, outlet)
+			}
+			shippedBy[p.Dir] = outlet
+		}
+	}
+
+	return nil
+}
+
+// validate refuses a program the generator would not write, naming the file and the
+// outlet it is on.
+func (p *ReleaseProgram) validate(name, outlet string) error {
+	switch {
+	case !programDirRE.MatchString(p.Dir), path.Clean(p.Dir) != p.Dir, p.Dir == ".", p.Dir == "..", strings.HasPrefix(p.Dir, "../"):
+		return errors.Newf("%s: outlet %s ships a program from %q, which is not a clean relative directory of the checkout (cmd/corral)", name, outlet, p.Dir)
+	case p.Name != path.Base(p.Dir):
+		return errors.Newf("%s: outlet %s ships the program %q from %s, and a program's name is the last element of its directory (%s)", name, outlet, p.Name, p.Dir, path.Base(p.Dir))
+	case len(p.Platforms) == 0:
+		return errors.Newf("%s: outlet %s ships %s for no platform, and a program ships for at least one (linux/amd64)", name, outlet, p.Dir)
+	}
+	for i, platform := range p.Platforms {
+		switch {
+		case !programPlatformRE.MatchString(platform):
+			return errors.Newf("%s: outlet %s ships %s for %q, which is not an operating system and an architecture in lower case (linux/amd64)", name, outlet, p.Dir, platform)
+		case slices.Contains(p.Platforms[:i], platform):
+			return errors.Newf("%s: outlet %s ships %s for %s twice", name, outlet, p.Dir, platform)
+		}
+	}
+
+	return nil
+}
+
+// Programs lists the file's shipped programs over its outlets, by directory.
+func (f *ReleaseFile) Programs() []ReleaseProgram {
+	var programs []ReleaseProgram
+	for _, name := range outletNames(f) {
+		programs = append(programs, f.Outlets[name].Programs...)
+	}
+	slices.SortFunc(programs, func(a, b ReleaseProgram) int { return strings.Compare(a.Dir, b.Dir) })
+
+	return programs
 }
 
 // surfacePrefixRE is the shape of a surface's prefix: the root alone, or segments of
@@ -381,15 +474,18 @@ func validateScheduled(name string, routes []ScheduledRoute) error {
 	return nil
 }
 
-// releaseFiles reads each site's scheduled routes, file routes and surfaces from the
-// release file beside its generated router, derives each site's request log exclusion
-// from its surfaces, and gathers the model's: every site's scheduled routes, each
-// naming its site, every site's file routes with a route listed once, and the first
-// site's surfaces and exclusion. A site with no router, or whose router has no release
-// file yet, has none of them; a release file that does not read is refused, since the
-// stack cannot say which jobs the code declares, which routes carry files, or which
-// entries the code means to keep.
+// releaseFiles reads each site's scheduled routes, file routes, surfaces and shipped
+// programs from the release file beside its generated router, derives each site's
+// request log exclusion from its surfaces, and gathers the model's: every site's
+// scheduled routes, each naming its site, every site's file routes with a route listed
+// once, the first site's surfaces and exclusion, and every site's shipped programs by
+// directory, a directory shipped by two sites refused, since the image holds one binary
+// per program and platform. A site with no router, or whose router has no release file
+// yet, has none of them; a release file that does not read is refused, since the stack
+// cannot say which jobs the code declares, which routes carry files, which entries the
+// code means to keep, or which programs the image build compiles.
 func (m *Model) releaseFiles(a *app.App) error {
+	shippedBy := map[string]string{}
 	for i := range m.Sites {
 		s := &m.Sites[i]
 		if s.RouterDir == "" {
@@ -415,7 +511,15 @@ func (m *Model) releaseFiles(a *app.App) error {
 				m.FileRoutes = append(m.FileRoutes, r)
 			}
 		}
+		for _, p := range f.Programs() {
+			if by, ok := shippedBy[p.Dir]; ok {
+				return errors.Newf("the program %s is shipped by two sites, %s and %s, and the image holds one binary per program and platform: ship it from one outlet", p.Dir, by, s.Name)
+			}
+			shippedBy[p.Dir] = s.Name
+			m.ShippedPrograms = append(m.ShippedPrograms, p)
+		}
 	}
+	slices.SortFunc(m.ShippedPrograms, func(a, b ReleaseProgram) int { return strings.Compare(a.Dir, b.Dir) })
 	if len(m.Sites) > 0 {
 		m.Surfaces, m.RequestLog = m.Sites[0].Surfaces, m.Sites[0].RequestLog
 	}

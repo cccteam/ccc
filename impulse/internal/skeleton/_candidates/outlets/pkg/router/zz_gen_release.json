@@ -4,7 +4,16 @@
       "oldestAnswered": "0.0.1"
     },
     "machines": {
-      "kind": "api-key"
+      "kind": "api-key",
+      "programs": [
+        {
+          "name": "sensor",
+          "dir": "cmd/sensor",
+          "platforms": [
+            "linux/amd64"
+          ]
+        }
+      ]
     },
     "portal": {
       "oldestAnswered": "0.0.1"

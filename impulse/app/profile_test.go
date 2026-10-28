@@ -171,6 +171,26 @@ func TestReadOutletOptions(t *testing.T) {
 			args: []Arg{call(optTokens, Arg{Kind: ArgString, Str: "example.com/acme/pkg/auth/staff"})},
 			want: Outlet{Tokens: "example.com/acme/pkg/auth/staff"},
 		},
+		{
+			name: "a machine outlet ships programs, each named by its directory with its platforms",
+			args: []Arg{
+				call(optTokens, Arg{Kind: ArgString, Str: "example.com/acme/pkg/auth/staff"}),
+				call(optShipsProgram, Arg{Kind: ArgString, Str: "cmd/corral"}, call(optPlatforms, Arg{Kind: ArgString, Str: "linux/amd64"}, Arg{Kind: ArgString, Str: "linux/arm64"})),
+				call(optShipsProgram, Arg{Kind: ArgString, Str: "cmd/sensor"}, call(optPlatforms, Arg{Kind: ArgString, Str: "linux/amd64"})),
+			},
+			want: Outlet{Tokens: "example.com/acme/pkg/auth/staff", Programs: []Program{
+				{Dir: "cmd/corral", Name: "corral", Platforms: []string{"linux/amd64", "linux/arm64"}},
+				{Dir: "cmd/sensor", Name: "sensor", Platforms: []string{"linux/amd64"}},
+			}},
+		},
+		{
+			name: "a program whose directory the reader could not interpret is not read, and a platform that is not a literal is left out",
+			args: []Arg{
+				call(optShipsProgram, Arg{Kind: ArgOther, Text: "dir"}, call(optPlatforms, Arg{Kind: ArgString, Str: "linux/amd64"})),
+				call(optShipsProgram, Arg{Kind: ArgString, Str: "cmd/corral"}, call(optPlatforms, Arg{Kind: ArgOther, Text: "platform"})),
+			},
+			want: Outlet{Programs: []Program{{Dir: "cmd/corral", Name: "corral"}}},
+		},
 	}
 
 	for _, tt := range tests {

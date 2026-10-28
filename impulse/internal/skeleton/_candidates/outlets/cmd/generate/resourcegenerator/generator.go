@@ -60,7 +60,21 @@ func newGenerator(ctx context.Context) (generation.Generator, error) {
 		// the auth whose Auth issues the outlet's tokens: a staff login issues an
 		// application token on the console, or approves a command-line client's device
 		// authorization there, and the token acts as them with their roles.
-		generation.WithRouterOutlet("machines", "machines", generation.Tokens("github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/outlets/pkg/auth/staff")),
+		generation.WithRouterOutlet("machines", "machines",
+			generation.Tokens("github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/outlets/pkg/auth/staff"),
+			// The sensor ships with the release. ShipsProgram names the main package of a
+			// program the release carries to the machines that run it, cmd/sensor, which
+			// posts and lists readings here, and the platforms it is compiled for. The image
+			// build compiles it for each platform into the image, and this outlet serves the
+			// file with its checksum at GET /machines/programs/sensor/<release>/linux/amd64,
+			// behind the token check above, to the copies installed on the machines. A
+			// person installs the first copy from the release's assets or with go install;
+			// from then on the copy follows the release the outlet's answers name
+			// (resource/shipped): it fetches a newer release with the token it already
+			// carries, verifies the checksum, swaps the file in beside itself and exits for
+			// its service manager to start the new release.
+			generation.ShipsProgram("cmd/sensor", generation.Platforms("linux/amd64")),
+		),
 		generation.GenerateHandlerTests("test/authz"),
 		// Tenant-scoped resources and RPC methods are served under the tenant segment
 		// pair, /console/api/tenants/{tenantID}/... on each outlet's prefix, which the

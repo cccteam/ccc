@@ -127,6 +127,20 @@ func TestParseGeneratorProblems(t *testing.T) {
 			options: `generation.GenerateRoutes("pkg/router", "api", generation.Auth("example.com/acme/pkg/auth/staff", generation.PasswordMethod(), generation.GoogleMethod("google").SyncsRoles().Labeled("Workspace")), generation.Manages("example.com/acme/pkg/auth/members")),`,
 		},
 		{
+			name:    "a shipped program with its platforms",
+			options: `generation.WithRouterOutlet("machines", "machines", generation.Tokens("example.com/acme/pkg/auth/staff"), generation.ShipsProgram("cmd/corral", generation.Platforms("linux/amd64"))),`,
+		},
+		{
+			name:         "a shipped program naming no directory, and platforms that are not literals",
+			options:      `generation.WithRouterOutlet("machines", "machines", generation.Tokens("example.com/acme/pkg/auth/staff"), generation.ShipsProgram(), generation.ShipsProgram("cmd/corral", generation.Platforms(platform))),`,
+			wantProblems: []string{"ShipsProgram takes 1 argument(s), found 0", "Platforms argument platform is not a literal"},
+		},
+		{
+			name:         "a program option outside a shipped program, and an outlet option inside one",
+			options:      `generation.WithRouterOutlet("machines", "machines", generation.Platforms("linux/amd64"), generation.ShipsProgram("cmd/corral", generation.Tokens("example.com/acme/pkg/auth/staff"))),`,
+			wantProblems: []string{"Platforms is a ProgramOption, but a OutletOption is expected here", "Tokens is a OutletOption, but a ProgramOption is expected here"},
+		},
+		{
 			name:         "ts option at top level",
 			options:      `generation.GenerateEnums(),`,
 			wantProblems: []string{"GenerateEnums is a TSOption, but a ResourceOption is expected here"},
@@ -348,6 +362,19 @@ func TestParseGeneratorRecordsDeclarations(t *testing.T) {
 				{Kind: ArgString, Str: "machines"},
 				{Kind: ArgCall, Call: &Call{Name: "OutletRequestLog", Pos: "main.go:14", Args: []Arg{{Kind: ArgConstructor, Str: "LogNever()"}}}},
 				{Kind: ArgCall, Call: &Call{Name: "OutletTraces", Pos: "main.go:14", Args: []Arg{{Kind: ArgConstructor, Str: "TracesOff()"}}}},
+			},
+		},
+		{
+			name:   "a shipped program's platforms nest in the program's options",
+			option: `generation.WithRouterOutlet("machines", "machines", generation.Tokens("example.com/acme/pkg/auth/staff"), generation.ShipsProgram("cmd/corral", generation.Platforms("linux/amd64", "linux/arm64"))),`,
+			want: []Arg{
+				{Kind: ArgString, Str: "machines"},
+				{Kind: ArgString, Str: "machines"},
+				{Kind: ArgCall, Call: &Call{Name: "Tokens", Pos: "main.go:14", Args: []Arg{{Kind: ArgString, Str: "example.com/acme/pkg/auth/staff"}}}},
+				{Kind: ArgCall, Call: &Call{Name: "ShipsProgram", Pos: "main.go:14", Args: []Arg{
+					{Kind: ArgString, Str: "cmd/corral"},
+					{Kind: ArgCall, Call: &Call{Name: "Platforms", Pos: "main.go:14", Args: []Arg{{Kind: ArgString, Str: "linux/amd64"}, {Kind: ArgString, Str: "linux/arm64"}}}},
+				}}},
 			},
 		},
 	}

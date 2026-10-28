@@ -174,4 +174,5 @@ checks:
   pins
   gofmt
   gowork-off
+  shipped-programs
   regen

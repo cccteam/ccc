@@ -601,6 +601,30 @@ auth package registers the outlet on its `Auth` before the first request
 (`session.RegisterMachineOutlet(auth, "droids")`, beside its sign-in methods) and the
 `Handlers` getter returns it.
 
+**Shipped programs.** A machine outlet serves the programs the release ships to their
+installed copies, which fetch their next release there with the token they already carry:
+`generation.ShipsProgram("cmd/corral", generation.Platforms("linux/amd64"))` beside
+`Tokens`, naming the program's main package by its root-relative directory (its name is
+the directory's base) and the platforms, each `<os>/<arch>`. The release file lists the
+programs on the outlet's entry (`"programs": [{"name": "corral", "dir": "cmd/corral",
+"platforms": ["linux/amd64"]}]`), from which the version build compiles each for its
+platforms and copies the files into the image beside the server, one per platform named
+`corral-linux-amd64`, in the directory `APP_PROGRAMS` names. The generated router mounts
+the handler of `resource/shipped` behind the token check at `GET
+<prefix>/programs/<name>/<release>/<os>/<arch>`, which answers the file with its SHA-256
+in `X-Program-Sha256`, or 404 with one sentence saying why: the program or platform is not
+shipped, the release is not the server's (naming which it is, so a copy asks again for the
+release it read from `X-Api-Version`), the image carries no programs, or the file is
+missing. A copy follows the release every answer names through `shipped.Follower`: its
+`Transport` wraps the program's transport and keeps the newest release seen, `Newer` says
+when it is newer than the copy's own (`shipped.OwnRelease`: the release stamped at link
+time, else the module version a `go install` copy carries; a development copy never
+upgrades), and `Upgrade` fetches the file with the copy's token, writes it beside the
+running executable, verifies the checksum, keeps the running file as `.old`, renames the
+new file over the running path and returns the release; the program logs it and exits 0
+for its service manager to start the new release. A session outlet declaring the option
+is refused, and the generated test proves the route sits behind the token check.
+
 **The auth in the route tables.** Each session outlet's routes function binds the name of
 its auth for the live pages (section 14): `generatedRoutes` opens with
 `live.Subscribing(crew.Name)`, so the routes file imports every declared auth package,

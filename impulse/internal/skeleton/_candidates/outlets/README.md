@@ -54,6 +54,25 @@ every edit. The console's tenant pages carry the declaration at
 `/tenants/{tenantID}/sign-in`: the tenant's administrator declares and withdraws
 directories there, the application's administrator sets directory only.
 
+The release ships a program for the machines: the sensor, `cmd/sensor`, declared on the
+machines outlet in `cmd/generate/resourcegenerator/generator.go` with
+`generation.ShipsProgram("cmd/sensor", generation.Platforms("linux/amd64"))`. The image
+build compiles it for each platform into the image, and the outlet serves the file with
+its checksum at `GET /machines/programs/sensor/<release>/linux/amd64`, behind the token
+check, so a copy installed on a machine fetches its next release where it already posts
+its readings. A person installs the first copy from the release's assets or with `go
+install <module>/cmd/sensor@<release>`. Given the outlet's URL, an application token a
+staff login issued for the outlet on the console's Tokens page, and the tenant
+(`SENSOR_OUTLET`, `SENSOR_TOKEN`, `SENSOR_TENANT`; `SENSOR_SOURCE` names the machine in
+its readings, the hostname when unset), `sensor post 21.5` posts one reading and `sensor
+list` lists the latest, and after either the copy reads the server's release from the
+answer (`X-Api-Version`): newer than its own, it fetches that release's file with the
+token it carries, verifies the checksum, swaps the file in beside itself (the old one
+kept as `sensor.old`), says so and exits 0 for its service manager to start the new
+release (`resource/shipped`). A copy built from a checkout never upgrades. `impulse
+check` (`shipped-programs`) builds the program for each platform it declares, and the
+generated router test proves the route sits behind the token check.
+
 ## Layout
 
 - `main.go` serves the API and the console's built bundle.

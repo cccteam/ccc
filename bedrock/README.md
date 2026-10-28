@@ -662,6 +662,15 @@ It also refuses:
   `ARG` before the first `FROM` does not count, since it reaches the `FROM` lines alone.
   `render` refuses a value the stack does not make for the code (`firebaseApiKey`
   without `APP_FIREBASE_API_KEY`, `firestoreDatabase` without `APP_FIRESTORE_DATABASE`).
+- the shipped programs the release files declare (a command program the generator
+  program declares on a machine outlet, which that outlet serves to the installed copies)
+  with a Dockerfile no stage of which declares `ARG PROGRAMS`: the pipeline passes the
+  programs to the image build as `PROGRAMS`, and a stage reads it only once it declares
+  it, so the image would carry no program and the outlet serve none. The refusal names
+  the programs and the lines to add, as the seeded Dockerfile has them: the compile in
+  the Go build stage after its `go build`, and the copy into the runtime stage with
+  `APP_PROGRAMS=/programs` on its `ENV` line. An application that ships none passes
+  whether or not its Dockerfile carries them.
 - a Firestore database (`APP_FIRESTORE_DATABASE`) without its project variable
   (`GOOGLE_CLOUD_FIRESTORE_PROJECT`), which the stack sets to the environment project,
   or without `schema/firestore/firestore.indexes.json`
@@ -980,12 +989,16 @@ thing one step hands the next. In order:
   added to that build; both exist and agree, the build is reused; the release tag names
   another build, the run is refused.
 - `deploy build-image`: builds the checkout's Dockerfile with docker and pushes the image
-  under its two tags, with the build arguments (`VERSION`, `COMMIT`, the job of the
-  build, the stack's values `placement.json` declares as `_BUILD_ARG_<NAME>` in
+  under its two tags, with the build arguments (`VERSION`, `COMMIT`, `PROGRAMS`, the job
+  of the build, the stack's values `placement.json` declares as `_BUILD_ARG_<NAME>` in
   `environment.sh`, passed as `NAME=value` and named in the log without their values,
   then `build-args.txt`) and the declared build secrets (read as the deploy identity
   into memory and passed as BuildKit secrets, never build arguments); the digest goes to
-  `environment.sh`. In a pull-request build of an application that declares build
+  `environment.sh`. `PROGRAMS` carries the shipped programs the checkout's release files
+  declare, read from the application under the checkout's placement as `check` reads
+  it: one word per program, `<dir>=<os>/<arch>[,...]`, which the seeded Dockerfile's loop
+  compiles for each platform into `/programs`; empty when the code ships none, and the
+  log says which. In a pull-request build of an application that declares build
   arguments, the step waits for the pull request's stack to be applied, so the image
   carries the pull request's own values. The build runs in a BuildKit container
   (buildx's docker-container driver, created for the build: the one driver that

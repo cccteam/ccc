@@ -109,6 +109,32 @@ func TestReadReleaseFile(t *testing.T) {
 		{name: "a setting outside the vocabulary", content: `{"outlets": {"default": {}}, "surfaces": [{"prefix": "/api/", "traces": "some"}]}`, wantErr: `the surface /api/ has the trace setting "some"; the settings are followFrontEnd, capped and off`},
 		{name: "a rate without the capped setting", content: `{"outlets": {"default": {}}, "surfaces": [{"prefix": "/api/", "traces": "off", "rate": 0.5}]}`, wantErr: "the surface /api/ carries a rate without the capped setting"},
 		{name: "capped without a rate", content: `{"outlets": {"default": {}}, "surfaces": [{"prefix": "/api/", "traces": "capped"}]}`, wantErr: "the surface /api/ is capped at 0; the rate is above 0 and at most 1"},
+		{
+			name:    "a machine outlet shipping two programs, one for two platforms",
+			content: machinesShipping(`{"name": "corral", "dir": "cmd/corral", "platforms": ["linux/amd64", "linux/arm64"]}, {"name": "beacon", "dir": "cmd/tools/beacon", "platforms": ["linux/amd64"]}`),
+			want: &ReleaseFile{Outlets: map[string]ReleaseOutlet{
+				"default":  {},
+				"machines": {Kind: OutletAPIKey, Programs: []ReleaseProgram{{Name: "corral", Dir: "cmd/corral", Platforms: []string{"linux/amd64", "linux/arm64"}}, {Name: "beacon", Dir: "cmd/tools/beacon", Platforms: []string{"linux/amd64"}}}},
+			}},
+		},
+		{name: "a program on a session outlet", content: `{"outlets": {"default": {"programs": [{"name": "corral", "dir": "cmd/corral", "platforms": ["linux/amd64"]}]}}}`, wantErr: `outlet default ships a program (cmd/corral), and a program ships on a machine outlet alone (kind "api-key")`},
+		{name: "a program whose name is not its directory's last element", content: machinesShipping(`{"name": "tool", "dir": "cmd/corral", "platforms": ["linux/amd64"]}`), wantErr: `outlet machines ships the program "tool" from cmd/corral, and a program's name is the last element of its directory (corral)`},
+		{name: "a program directory with a leading dot segment", content: machinesShipping(`{"name": "corral", "dir": "./cmd/corral", "platforms": ["linux/amd64"]}`), wantErr: `outlet machines ships a program from "./cmd/corral", which is not a clean relative directory of the checkout (cmd/corral)`},
+		{name: "a program directory above the checkout", content: machinesShipping(`{"name": "corral", "dir": "../corral", "platforms": ["linux/amd64"]}`), wantErr: `ships a program from "../corral", which is not a clean relative directory`},
+		{name: "the parent directory as a program directory", content: machinesShipping(`{"name": "..", "dir": "..", "platforms": ["linux/amd64"]}`), wantErr: `ships a program from "..", which is not a clean relative directory`},
+		{name: "an absolute program directory", content: machinesShipping(`{"name": "corral", "dir": "/cmd/corral", "platforms": ["linux/amd64"]}`), wantErr: `ships a program from "/cmd/corral", which is not a clean relative directory`},
+		{name: "a program directory with a trailing slash", content: machinesShipping(`{"name": "corral", "dir": "cmd/corral/", "platforms": ["linux/amd64"]}`), wantErr: `ships a program from "cmd/corral/", which is not a clean relative directory`},
+		{name: "a program directory carrying a space", content: machinesShipping(`{"name": "my tool", "dir": "cmd/my tool", "platforms": ["linux/amd64"]}`), wantErr: `ships a program from "cmd/my tool", which is not a clean relative directory`},
+		{name: "the root as a program directory", content: machinesShipping(`{"name": ".", "dir": ".", "platforms": ["linux/amd64"]}`), wantErr: `ships a program from ".", which is not a clean relative directory`},
+		{name: "a program for no platform", content: machinesShipping(`{"name": "corral", "dir": "cmd/corral", "platforms": []}`), wantErr: "outlet machines ships cmd/corral for no platform, and a program ships for at least one (linux/amd64)"},
+		{name: "a platform in upper case", content: machinesShipping(`{"name": "corral", "dir": "cmd/corral", "platforms": ["Linux/amd64"]}`), wantErr: `outlet machines ships cmd/corral for "Linux/amd64", which is not an operating system and an architecture in lower case (linux/amd64)`},
+		{name: "a platform without its architecture", content: machinesShipping(`{"name": "corral", "dir": "cmd/corral", "platforms": ["linux"]}`), wantErr: `ships cmd/corral for "linux", which is not an operating system and an architecture`},
+		{name: "a platform listed twice", content: machinesShipping(`{"name": "corral", "dir": "cmd/corral", "platforms": ["linux/amd64", "linux/amd64"]}`), wantErr: "outlet machines ships cmd/corral for linux/amd64 twice"},
+		{
+			name:    "a program shipped by two outlets",
+			content: `{"outlets": {"default": {}, "machines": {"kind": "api-key", "programs": [{"name": "corral", "dir": "cmd/corral", "platforms": ["linux/amd64"]}]}, "agents": {"kind": "api-key", "programs": [{"name": "corral", "dir": "cmd/corral", "platforms": ["linux/arm64"]}]}}}`,
+			wantErr: "the program cmd/corral is shipped by two outlets, agents and machines",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -136,6 +162,49 @@ func TestReadReleaseFile(t *testing.T) {
 			}
 			if diff := cmp.Diff(tt.want, got); diff != "" {
 				t.Errorf("ReadReleaseFile() mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+// machinesShipping is a release file whose machine outlet ships the programs given, as
+// JSON objects.
+func machinesShipping(programs string) string {
+	return `{"outlets": {"default": {}, "machines": {"kind": "api-key", "programs": [` + programs + `]}}}`
+}
+
+// TestReleaseFilePrograms lists the shipped programs over the outlets by directory,
+// whatever order the outlets and their programs come in.
+func TestReleaseFilePrograms(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		outlets map[string]ReleaseOutlet
+		want    []string
+	}{
+		{name: "no outlet ships", outlets: map[string]ReleaseOutlet{"default": {}, "machines": {Kind: OutletAPIKey}}},
+		{
+			name: "two outlets' programs, by directory",
+			outlets: map[string]ReleaseOutlet{
+				"default":  {},
+				"machines": {Kind: OutletAPIKey, Programs: []ReleaseProgram{{Name: "corral", Dir: "cmd/corral", Platforms: []string{"linux/amd64"}}, {Name: "agent", Dir: "cmd/agent", Platforms: []string{"linux/arm64"}}}},
+				"agents":   {Kind: OutletAPIKey, Programs: []ReleaseProgram{{Name: "beacon", Dir: "cmd/beacon", Platforms: []string{"linux/amd64"}}}},
+			},
+			want: []string{"cmd/agent", "cmd/beacon", "cmd/corral"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			f := &ReleaseFile{Outlets: tt.outlets}
+			var got []string
+			for _, p := range f.Programs() {
+				got = append(got, p.Dir)
+			}
+			if diff := cmp.Diff(tt.want, got); diff != "" {
+				t.Errorf("Programs() mismatch (-want +got):\n%s", diff)
 			}
 		})
 	}

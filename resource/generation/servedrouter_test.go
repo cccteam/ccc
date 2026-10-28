@@ -1,6 +1,7 @@
 package generation
 
 import (
+	"net/http"
 	"slices"
 	"strconv"
 	"strings"
@@ -120,6 +121,89 @@ func Test_routerOutletOptions(t *testing.T) {
 	}
 }
 
+// Test_shipsProgram pins the shipped-program declaration's own checks: a clean relative
+// directory, at least one platform of the shape <os>/<arch>, each named once, the
+// platforms declared once, and a directory declared once per outlet; what is recorded
+// is the directory, its base as the name, and the platforms in declaration order.
+func Test_shipsProgram(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		options []OutletOption
+		want    []shippedProgram
+		// wantErr are fragments the error carries: the declaration that failed and why.
+		wantErr []string
+	}{
+		{
+			name:    "a program with one platform",
+			options: []OutletOption{Tokens("example.com/acme/beacon/pkg/auth/staff"), ShipsProgram("cmd/corral", Platforms("linux/amd64"))},
+			want:    []shippedProgram{{dir: "cmd/corral", name: "corral", platforms: []string{"linux/amd64"}}},
+		},
+		{
+			name:    "two programs keep their order and their platforms",
+			options: []OutletOption{ShipsProgram("cmd/corral", Platforms("linux/amd64", "linux/arm64")), ShipsProgram("tools/beacon", Platforms("darwin/arm64"))},
+			want: []shippedProgram{
+				{dir: "cmd/corral", name: "corral", platforms: []string{"linux/amd64", "linux/arm64"}},
+				{dir: "tools/beacon", name: "beacon", platforms: []string{"darwin/arm64"}},
+			},
+		},
+		{
+			name:    "a program at the module root",
+			options: []OutletOption{ShipsProgram("corral", Platforms("linux/amd64"))},
+			want:    []shippedProgram{{dir: "corral", name: "corral", platforms: []string{"linux/amd64"}}},
+		},
+		{name: "an empty directory", options: []OutletOption{ShipsProgram("", Platforms("linux/amd64"))}, wantErr: []string{`ShipsProgram("") requires the program's directory as a clean relative path, such as "cmd/corral"`}},
+		{name: "an absolute directory", options: []OutletOption{ShipsProgram("/cmd/corral", Platforms("linux/amd64"))}, wantErr: []string{`ShipsProgram("/cmd/corral") requires the program's directory as a clean relative path`}},
+		{name: "a directory with a leading ./", options: []OutletOption{ShipsProgram("./cmd/corral", Platforms("linux/amd64"))}, wantErr: []string{`ShipsProgram("./cmd/corral") requires the program's directory as a clean relative path`}},
+		{name: "a directory with a trailing slash", options: []OutletOption{ShipsProgram("cmd/corral/", Platforms("linux/amd64"))}, wantErr: []string{`ShipsProgram("cmd/corral/") requires the program's directory as a clean relative path`}},
+		{name: "a directory with a double slash", options: []OutletOption{ShipsProgram("cmd//corral", Platforms("linux/amd64"))}, wantErr: []string{"requires the program's directory as a clean relative path"}},
+		{name: "the current directory", options: []OutletOption{ShipsProgram(".", Platforms("linux/amd64"))}, wantErr: []string{"requires the program's directory as a clean relative path"}},
+		{name: "a directory with a space", options: []OutletOption{ShipsProgram("cmd/my corral", Platforms("linux/amd64"))}, wantErr: []string{"requires the program's directory as a clean relative path"}},
+		{name: "a directory above the module", options: []OutletOption{ShipsProgram("../corral", Platforms("linux/amd64"))}, wantErr: []string{`ShipsProgram("../corral") requires a directory inside the module: no ".."`}},
+		{name: "a directory climbing in the middle", options: []OutletOption{ShipsProgram("cmd/../corral", Platforms("linux/amd64"))}, wantErr: []string{"requires the program's directory as a clean relative path"}},
+		{name: "no platform", options: []OutletOption{ShipsProgram("cmd/corral")}, wantErr: []string{`ShipsProgram("cmd/corral") declares no platform: name the platforms the release compiles it for, such as Platforms("linux/amd64")`}},
+		{name: "an empty Platforms", options: []OutletOption{ShipsProgram("cmd/corral", Platforms())}, wantErr: []string{`ShipsProgram("cmd/corral")`, `Platforms() names no platform: write each as <os>/<arch>, such as "linux/amd64"`}},
+		{name: "a platform without an architecture", options: []OutletOption{ShipsProgram("cmd/corral", Platforms("linux"))}, wantErr: []string{`ShipsProgram("cmd/corral")`, `Platforms(["linux"]) names "linux", which is not <os>/<arch> in lowercase letters and digits, such as "linux/amd64"`}},
+		{name: "a platform in capitals", options: []OutletOption{ShipsProgram("cmd/corral", Platforms("Linux/AMD64"))}, wantErr: []string{`names "Linux/AMD64", which is not <os>/<arch>`}},
+		{name: "a platform with two slashes", options: []OutletOption{ShipsProgram("cmd/corral", Platforms("linux/amd64/v3"))}, wantErr: []string{`names "linux/amd64/v3", which is not <os>/<arch>`}},
+		{name: "a platform named twice", options: []OutletOption{ShipsProgram("cmd/corral", Platforms("linux/amd64", "linux/amd64"))}, wantErr: []string{`Platforms(["linux/amd64" "linux/amd64"]) names "linux/amd64" twice`}},
+		{name: "the platforms declared twice", options: []OutletOption{ShipsProgram("cmd/corral", Platforms("linux/amd64"), Platforms("linux/arm64"))}, wantErr: []string{`Platforms(["linux/arm64"]) redeclares the program's platforms (["linux/amd64"]): a program declares them once`}},
+		{name: "a directory declared twice", options: []OutletOption{ShipsProgram("cmd/corral", Platforms("linux/amd64")), ShipsProgram("cmd/corral", Platforms("linux/arm64"))}, wantErr: []string{`ShipsProgram("cmd/corral") is declared twice on the outlet`}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			var got routerOutlet
+			var err error
+			for _, opt := range tt.options {
+				if err = opt.applyToOutlet(&got); err != nil {
+					break
+				}
+			}
+			if len(tt.wantErr) > 0 {
+				if err == nil {
+					t.Fatalf("applyToOutlet() error = nil, want containing %q", tt.wantErr)
+				}
+				for _, want := range tt.wantErr {
+					if !strings.Contains(err.Error(), want) {
+						t.Errorf("applyToOutlet() error = %v, want containing %q", err, want)
+					}
+				}
+
+				return
+			}
+			if err != nil {
+				t.Fatalf("applyToOutlet() error = %v", err)
+			}
+			if diff := cmp.Diff(tt.want, got.programs, cmp.AllowUnexported(shippedProgram{})); diff != "" {
+				t.Errorf("programs mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
 // Test_validateRouterConfig pins the agreements between GenerateRouter and the outlet
 // declarations: the router options are refused without the switch, every outlet
 // authenticates one way with it, the reserved names stay free, the browser
@@ -150,6 +234,25 @@ func Test_validateRouterConfig(t *testing.T) {
 			name:    "Tokens without the switch",
 			options: []ResourceOption{GenerateRoutes("pkg/router", "api"), WithRouterOutlet("machines", "machines", staffTokens)},
 			wantErr: `outlet "machines" declares Tokens, which describes the generated router`,
+		},
+		{
+			name:    "ShipsProgram without the switch",
+			options: []ResourceOption{GenerateRoutes("pkg/router", "api"), WithRouterOutlet("machines", "machines", ShipsProgram("cmd/corral", Platforms("linux/amd64")))},
+			wantErr: `outlet "machines" declares ShipsProgram, which describes the generated router`,
+		},
+		{
+			name:    "a machine outlet shipping a program",
+			options: []ResourceOption{GenerateRouter(), GenerateRoutes("pkg/router", "api", staff), WithRouterOutlet("machines", "machines", ShipsProgram("cmd/corral", Platforms("linux/amd64")), staffTokens)},
+		},
+		{
+			name:    "a session outlet shipping a program",
+			options: []ResourceOption{GenerateRouter(), GenerateRoutes("pkg/router", "api", staff, ShipsProgram("cmd/corral", Platforms("linux/amd64")))},
+			wantErr: `outlet "default" declares Auth and ShipsProgram("cmd/corral"): a session outlet serves no programs; a machine outlet, declared with Tokens(importPath), serves the programs the release ships behind its token check`,
+		},
+		{
+			name:    "an outlet shipping a program and declaring no auth",
+			options: []ResourceOption{GenerateRouter(), GenerateRoutes("pkg/router", "api", staff), WithRouterOutlet("machines", "machines", ShipsProgram("cmd/corral", Platforms("linux/amd64")))},
+			wantErr: `outlet "machines" declares neither Auth nor Tokens`,
 		},
 		{
 			name:    "APIKey without the switch",
@@ -366,6 +469,148 @@ func Test_validateRouterConfig(t *testing.T) {
 			}
 			if err != nil {
 				t.Fatalf("error = %v", err)
+			}
+		})
+	}
+}
+
+// Test_validateShippedProgramRoutes pins the refusal of a route under the segment a
+// shipping outlet's programs route owns: a resource whose route name is programs, a
+// method mounted at the segment, or a renamed method whose former route sits there,
+// each named with its outlet and the owning route; the same resource on an outlet that
+// ships nothing passes, as do a shipping outlet's other routes, a route whose segment
+// merely starts with programs, and a domain-scoped resource under the tenant segment.
+func Test_validateShippedProgramRoutes(t *testing.T) {
+	t.Parallel()
+
+	crew := &outletAuth{importPath: "example.com/acme/beacon/pkg/auth/crew", methods: []AuthMethod{PasswordMethod()}}
+	corral := []shippedProgram{{dir: "cmd/corral", name: "corral", platforms: []string{"linux/amd64"}}}
+	programResource := func(prefix string) []*generatedRoute {
+		return []*generatedRoute{
+			{Method: http.MethodGet, Path: "/" + prefix + "/programs", HandlerFunc: "Programs", HandlerType: ListHandler},
+			{Method: http.MethodGet, Path: "/" + prefix + "/programs/{programID}", HandlerFunc: "ProgramRead", HandlerType: ReadHandler},
+			{Method: http.MethodPatch, Path: "/" + prefix + "/programs", HandlerFunc: "ProgramPatch", HandlerType: PatchHandler},
+		}
+	}
+	beaconResource := []*generatedRoute{
+		{Method: http.MethodGet, Path: "/machines/beacons", HandlerFunc: "Beacons", HandlerType: ListHandler},
+		{Method: http.MethodGet, Path: "/machines/beacons/{beaconID}", HandlerFunc: "BeaconRead", HandlerType: ReadHandler},
+	}
+
+	tests := []struct {
+		name string
+		// outlets are the declarations; routes the route tables by outlet name, in the
+		// same order.
+		outlets []*routerOutlet
+		routes  map[string]map[string][]*generatedRoute
+		wantErr string
+	}{
+		{
+			name: "a shipping outlet with a programs resource is refused",
+			outlets: []*routerOutlet{
+				{name: "default", prefix: "api", servesSessions: true, auth: crew},
+				{name: "machines", prefix: "machines", apiKey: true, tokenAuth: crew.importPath, programs: corral},
+			},
+			routes: map[string]map[string][]*generatedRoute{
+				"default":  {"Program": programResource("api")},
+				"machines": {"Beacon": beaconResource, "Program": programResource("machines")},
+			},
+			wantErr: `outlet "machines" ships programs, so GET /machines/programs/* is the shipped programs route (ShipsProgram), and the resource Program is served under the same segment at GET /machines/programs: rename the resource, or ship the programs from another outlet`,
+		},
+		{
+			name: "the same resource on an outlet shipping nothing passes",
+			outlets: []*routerOutlet{
+				{name: "default", prefix: "api", servesSessions: true, auth: crew},
+				{name: "machines", prefix: "machines", apiKey: true, tokenAuth: crew.importPath},
+			},
+			routes: map[string]map[string][]*generatedRoute{
+				"default":  {"Program": programResource("api")},
+				"machines": {"Program": programResource("machines")},
+			},
+		},
+		{
+			name: "a shipping outlet with other resources passes",
+			outlets: []*routerOutlet{
+				{name: "default", prefix: "api", servesSessions: true, auth: crew},
+				{name: "machines", prefix: "machines", apiKey: true, tokenAuth: crew.importPath, programs: corral},
+			},
+			routes: map[string]map[string][]*generatedRoute{
+				"default":  {"Program": programResource("api")},
+				"machines": {"Beacon": beaconResource, "ListBeacons": {{Method: http.MethodPost, Path: "/machines/list-beacons", HandlerFunc: "ListBeacons"}}},
+			},
+		},
+		{
+			name: "a method mounted at the segment is refused",
+			outlets: []*routerOutlet{
+				{name: "default", prefix: "api", servesSessions: true, auth: crew},
+				{name: "machines", prefix: "machines", apiKey: true, tokenAuth: crew.importPath, programs: corral},
+			},
+			routes: map[string]map[string][]*generatedRoute{
+				"machines": {"Programs": {{Method: http.MethodPost, Path: "/machines/programs", HandlerFunc: "Programs", SelfBounded: true}}},
+			},
+			wantErr: `outlet "machines" ships programs, so GET /machines/programs/* is the shipped programs route (ShipsProgram), and the method Programs is served under the same segment at POST /machines/programs: rename the method, or ship the programs from another outlet`,
+		},
+		{
+			name: "a renamed method whose former route sits at the segment is refused",
+			outlets: []*routerOutlet{
+				{name: "default", prefix: "api", servesSessions: true, auth: crew},
+				{name: "machines", prefix: "machines", apiKey: true, tokenAuth: crew.importPath, programs: corral},
+			},
+			routes: map[string]map[string][]*generatedRoute{
+				"machines": {"ListPrograms": {{Method: http.MethodPost, Path: "/machines/list-programs", FormerPath: "/machines/programs", HandlerFunc: "ListPrograms", SelfBounded: true}}},
+			},
+			wantErr: `the method ListPrograms is served under the same segment at POST /machines/programs: rename the method`,
+		},
+		{
+			name: "a segment that merely starts with programs passes",
+			outlets: []*routerOutlet{
+				{name: "default", prefix: "api", servesSessions: true, auth: crew},
+				{name: "machines", prefix: "machines", apiKey: true, tokenAuth: crew.importPath, programs: corral},
+			},
+			routes: map[string]map[string][]*generatedRoute{
+				"machines": {"ProgramsArchive": {{Method: http.MethodGet, Path: "/machines/programs-archive", HandlerFunc: "ProgramsArchive", HandlerType: ListHandler}}},
+			},
+		},
+		{
+			name: "a domain-scoped programs resource under the tenant segment passes",
+			outlets: []*routerOutlet{
+				{name: "default", prefix: "api", servesSessions: true, auth: crew},
+				{name: "machines", prefix: "machines", apiKey: true, tokenAuth: crew.importPath, programs: corral},
+			},
+			routes: map[string]map[string][]*generatedRoute{
+				"machines": {"Program": {{Method: http.MethodGet, Path: "/machines/tenants/{tenantID}/programs", HandlerFunc: "Programs", HandlerType: ListHandler, DomainScoped: true}}},
+			},
+		},
+		{
+			name: "the shipping outlet's prefix bounds the check: another outlet's programs resource passes",
+			outlets: []*routerOutlet{
+				{name: "default", prefix: "api", servesSessions: true, auth: crew},
+				{name: "machines", prefix: "machines", apiKey: true, tokenAuth: crew.importPath, programs: corral},
+				{name: "kiosks", prefix: "kiosks", apiKey: true, tokenAuth: crew.importPath},
+			},
+			routes: map[string]map[string][]*generatedRoute{
+				"kiosks": {"Program": programResource("kiosks")},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			outletRoutes := make([]*outletRouteData, len(tt.outlets))
+			for i, o := range tt.outlets {
+				outletRoutes[i] = &outletRouteData{Name: o.name, Prefix: o.prefix, RoutesMap: tt.routes[o.name]}
+			}
+			err := validateShippedProgramRoutes(tt.outlets, outletRoutes)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("validateShippedProgramRoutes() error = %v, want containing %q", err, tt.wantErr)
+				}
+
+				return
+			}
+			if err != nil {
+				t.Fatalf("validateShippedProgramRoutes() error = %v", err)
 			}
 		})
 	}
@@ -606,6 +851,50 @@ func Test_servedRouterData(t *testing.T) {
 				}
 			},
 		},
+		{
+			name: "a machine outlet's programs are listed with the sentence the route names them by, and the payload says a program is shipped",
+			outlets: []*routerOutlet{
+				{name: "default", prefix: "api", servesSessions: true, auth: crew},
+				{name: "droids", prefix: "droids", apiKey: true, tokenAuth: crew.importPath, programs: []shippedProgram{
+					{dir: "cmd/corral", name: "corral", platforms: []string{"linux/amd64", "linux/arm64", "darwin/arm64"}},
+					{dir: "tools/beacon", name: "beacon", platforms: []string{"linux/amd64"}},
+				}},
+				{name: "kiosks", prefix: "kiosks", apiKey: true, tokenAuth: crew.importPath},
+			},
+			check: func(t *testing.T, data *servedRouterData) {
+				t.Helper()
+				if !data.ShipsPrograms {
+					t.Error("ShipsPrograms = false, want true")
+				}
+				droids, kiosks := data.Outlets[1], data.Outlets[2]
+				wantPrograms := []servedProgram{
+					{Name: "corral", Platforms: []string{"linux/amd64", "linux/arm64", "darwin/arm64"}},
+					{Name: "beacon", Platforms: []string{"linux/amd64"}},
+				}
+				if diff := cmp.Diff(wantPrograms, droids.Programs); diff != "" {
+					t.Errorf("droids programs mismatch (-want +got):\n%s", diff)
+				}
+				if want := "corral for linux/amd64, linux/arm64, and darwin/arm64; beacon for linux/amd64"; droids.ProgramsSentence != want {
+					t.Errorf("droids ProgramsSentence = %q, want %q", droids.ProgramsSentence, want)
+				}
+				if len(kiosks.Programs) != 0 || kiosks.ProgramsSentence != "" {
+					t.Errorf("an outlet shipping nothing lists no programs, got %+v", kiosks)
+				}
+			},
+		},
+		{
+			name: "machine outlets shipping nothing leave the payload without a program",
+			outlets: []*routerOutlet{
+				{name: "default", prefix: "api", servesSessions: true, auth: crew},
+				{name: "droids", prefix: "droids", apiKey: true, tokenAuth: crew.importPath},
+			},
+			check: func(t *testing.T, data *servedRouterData) {
+				t.Helper()
+				if data.ShipsPrograms {
+					t.Error("ShipsPrograms = true, want false")
+				}
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -615,6 +904,31 @@ func Test_servedRouterData(t *testing.T) {
 			r.router = packageDir("pkg/router")
 			r.resource = packageDir("pkg/resources")
 			tt.check(t, r.servedRouterData(tt.outlets, nil, tt.fileRoutes, nil))
+		})
+	}
+}
+
+// Test_joinAnd pins the prose a list is joined as.
+func Test_joinAnd(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		items []string
+		want  string
+	}{
+		{name: "nothing"},
+		{name: "one", items: []string{"a"}, want: "a"},
+		{name: "two", items: []string{"a", "b"}, want: "a and b"},
+		{name: "three", items: []string{"a", "b", "c"}, want: "a, b, and c"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := joinAnd(tt.items); got != tt.want {
+				t.Errorf("joinAnd(%q) = %q, want %q", tt.items, got, tt.want)
+			}
 		})
 	}
 }
@@ -824,8 +1138,9 @@ func Test_servedRouterTemplates(t *testing.T) {
 				"The root alone sends the browser to the default outlet's\n\t// application; every other unmatched path is 404.\n\tr.Get(\"/\", func(w http.ResponseWriter, req *http.Request) {\n\t\thttp.Redirect(w, req, \"/console/\", http.StatusTemporaryRedirect)\n\t})\n\n\treturn r\n}",
 				"\tDroids func(r chi.Router, generated func(chi.Router))",
 			},
-			wantNotRouter:     []string{"h.Portal().StartSession", "droidsSession", "catch-all", "DroidsAuth", "Auth(next http.Handler)", "PortalDeviceAuthorize", "DeviceAuthorize() http.HandlerFunc\n\t// The device flow's token endpoint (session.DeviceHandlers.Token): the client's polls for its pair, and the refresh grant; mounted under each machine outlet the auth issues tokens for.\n\tDeviceToken() http.HandlerFunc\n\t// The pending device authorization the person's code names, for the approval page (session.DeviceHandlers.Lookup).\n\tDeviceLookup() http.HandlerFunc\n\t// The device authorization approved by the signed-in person, as themselves (session.DeviceHandlers.Approve).\n\tDeviceApprove() http.HandlerFunc\n\t// The device authorization denied (session.DeviceHandlers.Deny).\n\tDeviceDeny() http.HandlerFunc\n\t// The signed-in person's live tokens (session.ApplicationTokenHandlers.List).\n\tTokensList() http.HandlerFunc\n\t// An application token issued to the signed-in person for a program of their own, the secret shown once (session.ApplicationTokenHandlers.Create).\n\tTokensCreate() http.HandlerFunc\n\t// A token of the signed-in person's revoked (session.ApplicationTokenHandlers.Revoke).\n\tTokensRevoke() http.HandlerFunc\n\t// The google registration's login and callback (google.Method)."},
-			wantRouterImports: []string{"example.com/acme/beacon/pkg/auth/crew", "example.com/acme/beacon/pkg/auth/members"},
+			wantNotRouter:       []string{"h.Portal().StartSession", "droidsSession", "catch-all", "DroidsAuth", "Auth(next http.Handler)", "PortalDeviceAuthorize", "DeviceAuthorize() http.HandlerFunc\n\t// The device flow's token endpoint (session.DeviceHandlers.Token): the client's polls for its pair, and the refresh grant; mounted under each machine outlet the auth issues tokens for.\n\tDeviceToken() http.HandlerFunc\n\t// The pending device authorization the person's code names, for the approval page (session.DeviceHandlers.Lookup).\n\tDeviceLookup() http.HandlerFunc\n\t// The device authorization approved by the signed-in person, as themselves (session.DeviceHandlers.Approve).\n\tDeviceApprove() http.HandlerFunc\n\t// The device authorization denied (session.DeviceHandlers.Deny).\n\tDeviceDeny() http.HandlerFunc\n\t// The signed-in person's live tokens (session.ApplicationTokenHandlers.List).\n\tTokensList() http.HandlerFunc\n\t// An application token issued to the signed-in person for a program of their own, the secret shown once (session.ApplicationTokenHandlers.Create).\n\tTokensCreate() http.HandlerFunc\n\t// A token of the signed-in person's revoked (session.ApplicationTokenHandlers.Revoke).\n\tTokensRevoke() http.HandlerFunc\n\t// The google registration's login and callback (google.Method)."},
+			wantRouterImports:   []string{"example.com/acme/beacon/pkg/auth/crew", "example.com/acme/beacon/pkg/auth/members"},
+			wantNoRouterImports: []string{"github.com/cccteam/ccc/resource/shipped"},
 			wantRouterTest: []string{
 				"\t\tgroup:  []string{\"BindAuth(\" + crew.Name + \")\", \"NoCaching\", \"CompressionMiddleware\", \"StartSession\", \"SetXSRFToken\"},",
 				"\t\tgroup:  []string{\"BindAuth(\" + crew.Name + \")\", \"NoCaching\", \"CompressionMiddleware\"},\n\t\tguards: []string{\"DroidsValidateToken\"},",
@@ -901,6 +1216,36 @@ func Test_servedRouterTemplates(t *testing.T) {
 				"func (s *routerPortalSessionStub) DeviceToken() http.HandlerFunc {",
 			},
 			wantNotRouterTest: []string{"routerDefaultSessionStub", "DefaultAuth"},
+		},
+		{
+			name: "a machine outlet shipping two programs serves them behind its token check",
+			outlets: []*routerOutlet{
+				{name: "default", prefix: "api", servesSessions: true, auth: crew},
+				{name: "droids", prefix: "droids", apiKey: true, tokenAuth: crew.importPath, programs: []shippedProgram{
+					{dir: "cmd/corral", name: "corral", platforms: []string{"linux/amd64", "linux/arm64"}},
+					{dir: "tools/beacon", name: "beacon", platforms: []string{"linux/amd64"}},
+				}},
+				{name: "kiosks", prefix: "kiosks", apiKey: true, tokenAuth: crew.importPath},
+			},
+			wantRouter: []string{
+				"//\tdroids (/droids), bearer tokens of the crew auth:\n//\t  NoCaching, CompressionMiddleware, ReleaseHeader: POST /droids/oauth/device/authorize, POST /droids/oauth/token\n//\t  + ValidateToken: hooks.Droids, generatedDroidsRoutes, GET /droids/programs/*",
+				"//\tkiosks (/kiosks), bearer tokens of the crew auth:\n//\t  NoCaching, CompressionMiddleware, ReleaseHeader: POST /kiosks/oauth/device/authorize, POST /kiosks/oauth/token\n//\t  + ValidateToken: hooks.Kiosks, generatedKiosksRoutes",
+				"\t\tr.Group(func(r chi.Router) {\n\t\t\tr.Use(h.Droids().ValidateToken)\n\n" +
+					"\t\t\tregisterGenerated(r, hooks.Droids, \"Droids\", func(r chi.Router) {\n\t\t\t\tgeneratedDroidsRoutes(r, h)\n\t\t\t})\n\n" +
+					"\t\t\t// The programs this release ships to their installed copies (ShipsProgram):\n\t\t\t// corral for linux/amd64 and linux/arm64; beacon for linux/amd64. A copy fetches its next release here with its token. The\n\t\t\t// route is registered after the hook, so it sits behind whatever the hook adds in\n\t\t\t// front of the outlet's routes, and the hook may still add it.\n" +
+					"\t\t\tr.Handle(\"/droids/programs/*\", http.StripPrefix(\"/droids/programs\", shipped.Handler(serverVersion, shipped.Program{Name: \"corral\", Platforms: []string{\"linux/amd64\", \"linux/arm64\"}}, shipped.Program{Name: \"beacon\", Platforms: []string{\"linux/amd64\"}})))\n\t\t})",
+				"\t\tr.Group(func(r chi.Router) {\n\t\t\tr.Use(h.Kiosks().ValidateToken)\n\n\t\t\tregisterGenerated(r, hooks.Kiosks, \"Kiosks\", func(r chi.Router) {\n\t\t\t\tgeneratedKiosksRoutes(r, h)\n\t\t\t})\n\t\t})",
+			},
+			wantNotRouter:     []string{"/kiosks/programs"},
+			wantRouterImports: []string{"github.com/cccteam/ccc/resource/shipped"},
+			wantRouterTest: []string{
+				"func TestGeneratedRouterPrograms(t *testing.T) {",
+				"\turls := []string{\n\t\t\"/droids/programs/corral/1.0.0/linux/amd64\",\n\t\t\"/droids/programs/corral/1.0.0/linux/arm64\",\n\t\t\"/droids/programs/beacon/1.0.0/linux/amd64\",\n\t}",
+				"\t\t\trr := serveGeneratedRouterRequest(t, rec, \"2.0.0\", Hooks{}, req)\n\n\t\t\tif got := rr.Code; got != http.StatusNotFound {",
+				"\t\t\tif got := rr.Body.String(); !strings.Contains(got, \"this server is release 2.0.0\") {",
+				"\t\t\tchain := routerChainFor(t, url)\n\t\t\twant := slices.Concat(routerRootChain, chain.group, chain.guards)",
+			},
+			wantNotRouterTest: []string{"/kiosks/programs"},
 		},
 	}
 	r := &resourceGenerator{client: &client{}}

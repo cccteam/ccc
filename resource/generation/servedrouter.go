@@ -3,6 +3,7 @@ package generation
 import (
 	"fmt"
 	"log"
+	"maps"
 	"net/http"
 	"path/filepath"
 	"slices"
@@ -176,6 +177,8 @@ func (r *resourceGenerator) validateHandWrittenRouter(outlets []*routerOutlet) e
 			declared = "Tokens"
 		case o.apiKey:
 			declared = "APIKey"
+		case len(o.programs) > 0:
+			declared = "ShipsProgram"
 		case o.webApp != "":
 			declared = "WebApp"
 		case o.declaredOldest:
@@ -202,14 +205,16 @@ func (r *resourceGenerator) validateHandWrittenRouter(outlets []*routerOutlet) e
 
 // validateOutletAuthentication holds an outlet under the generated router to one way of
 // authenticating: a session outlet declares Auth, a machine outlet declares Tokens naming
-// an auth a session outlet declares (sessionAuths), and a machine outlet declares nothing
-// of a browser surface's.
+// an auth a session outlet declares (sessionAuths), a machine outlet declares nothing of
+// a browser surface's, and a session outlet ships no programs.
 func validateOutletAuthentication(o *routerOutlet, sessionAuths map[string]bool) error {
 	switch {
 	case o.auth != nil && o.tokenAuth != "":
 		return errors.Newf("outlet %q declares both Auth and Tokens: an outlet is a browser surface behind one auth or a machine surface taking an auth's tokens", o.name)
 	case o.auth != nil && o.apiKey:
 		return errors.Newf("outlet %q declares both Auth and APIKey: an outlet is a browser surface behind one auth or a machine surface taking an auth's tokens (Tokens)", o.name)
+	case o.auth != nil && len(o.programs) > 0:
+		return errors.Newf("outlet %q declares Auth and ShipsProgram(%q): a session outlet serves no programs; a machine outlet, declared with Tokens(importPath), serves the programs the release ships behind its token check", o.name, o.programs[0].dir)
 	case o.auth == nil && !o.apiKey:
 		return errors.Newf("outlet %q declares neither Auth nor Tokens: under GenerateRouter every outlet says how it authenticates", o.name)
 	case o.apiKey && o.tokenAuth == "":
@@ -222,6 +227,43 @@ func validateOutletAuthentication(o *routerOutlet, sessionAuths map[string]bool)
 		return errors.Newf("outlet %q declares Tokens and WebApp(%q): a machine outlet serves no browser application", o.name, o.webApp)
 	case o.apiKey && o.declaredOldest:
 		return errors.Newf("outlet %q declares Tokens and OldestAnswered(%q): a machine outlet's clients carry no release, so nothing is checked against one; the option belongs on a session outlet", o.name, o.oldestAnswered)
+	}
+
+	return nil
+}
+
+// shippedProgramsSegment is the segment under a machine outlet's prefix the generated
+// router serves the shipped programs at: GET /<prefix>/programs/*.
+const shippedProgramsSegment = "programs"
+
+// validateShippedProgramRoutes refuses a route of a shipping outlet under the segment
+// its programs route owns: a resource whose route name is programs, or a method mounted
+// at that segment, would share /<prefix>/programs with GET /<prefix>/programs/*, and the
+// router would answer some of each one's requests from the other. The routes are read
+// from the outlet's route tables (outletRoutes, by outlet index), the sources in name
+// order so the first refusal is the same on every run; a renamed method's former route
+// counts as the method's.
+func validateShippedProgramRoutes(outlets []*routerOutlet, outletRoutes []*outletRouteData) error {
+	for i, o := range outlets {
+		if len(o.programs) == 0 {
+			continue
+		}
+		owner := "/" + o.prefix + "/" + shippedProgramsSegment
+		for _, source := range slices.Sorted(maps.Keys(outletRoutes[i].RoutesMap)) {
+			for _, route := range outletRoutes[i].RoutesMap[source] {
+				for _, p := range []string{route.Path, route.FormerPath} {
+					if p != owner && !strings.HasPrefix(p, owner+"/") {
+						continue
+					}
+					kind := "resource"
+					if route.HandlerType == "" {
+						kind = "method"
+					}
+
+					return errors.Newf("outlet %q ships programs, so GET %s/* is the shipped programs route (ShipsProgram), and the %s %s is served under the same segment at %s %s: rename the %s, or ship the programs from another outlet", o.name, owner, kind, source, route.Method, p, kind)
+				}
+			}
+		}
 	}
 
 	return nil
@@ -324,6 +366,9 @@ type servedRouterData struct {
 	ExtraOutlets   []*servedOutlet
 	SessionOutlets []*servedOutlet
 	MachineOutlets []*servedOutlet
+	// ShipsPrograms reports that some machine outlet ships a program (ShipsProgram),
+	// so the router imports resource/shipped and the generated test proves the route.
+	ShipsPrograms bool
 	// WebApps are the browser applications, longest mount path first so "/" is last;
 	// HasRootWebApp reports one mounted at "/", the catch-all.
 	WebApps       []*servedWebApp
@@ -490,6 +535,11 @@ type servedOutlet struct {
 	IssuerPackage   string
 	TokensInterface string
 	DeviceRoutes    []servedRoute
+	// Programs are the programs a machine outlet ships (ShipsProgram), in declaration
+	// order, and ProgramsSentence names them for the route's comment: "corral for
+	// linux/amd64 and linux/arm64; beacon for linux/amd64".
+	Programs         []servedProgram
+	ProgramsSentence string
 	// IssuesTokens marks a session outlet whose Auth issues tokens for a machine outlet:
 	// its surface carries the device flow's and the token page's handlers, the token
 	// page's routes sit in its validated group, and ExtraHandlers are the handlers of
@@ -579,6 +629,40 @@ func (o *servedOutlet) MountedPrefixes() []string {
 	}
 
 	return prefixes
+}
+
+// servedProgram is one program a machine outlet ships, as the router declares it to
+// shipped.Handler: its name and its platforms, each <os>/<arch>.
+type servedProgram struct {
+	Name      string
+	Platforms []string
+}
+
+// servedProgramsOf lists a machine outlet's programs for the template, and the sentence
+// the route's comment names them with: each program with its platforms as prose, the
+// programs separated by semicolons since a program's own list carries commas.
+func servedProgramsOf(o *routerOutlet) (programs []servedProgram, sentence string) {
+	names := make([]string, 0, len(o.programs))
+	for _, program := range o.programs {
+		programs = append(programs, servedProgram{Name: program.name, Platforms: slices.Clone(program.platforms)})
+		names = append(names, program.name+" for "+joinAnd(program.platforms))
+	}
+
+	return programs, strings.Join(names, "; ")
+}
+
+// joinAnd joins items as prose: "a", "a and b", "a, b, and c".
+func joinAnd(items []string) string {
+	switch len(items) {
+	case 0:
+		return ""
+	case 1:
+		return items[0]
+	case 2:
+		return items[0] + " and " + items[1]
+	default:
+		return strings.Join(items[:len(items)-1], ", ") + ", and " + items[len(items)-1]
+	}
 }
 
 // servedFileRoute is one stored-file route of a session outlet: the pattern the check
@@ -756,6 +840,7 @@ func (r *resourceGenerator) servedRouterData(outlets []*routerOutlet, negativeTe
 		switch {
 		case so.Machine:
 			data.MachineOutlets = append(data.MachineOutlets, so)
+			data.ShipsPrograms = data.ShipsPrograms || len(so.Programs) > 0
 		case o.auth != nil:
 			so.FileRoutes = servedFileRoutesOf(fileRoutes[o.name])
 			data.SessionOutlets = append(data.SessionOutlets, so)
@@ -887,6 +972,7 @@ func servedOutletOf(o *routerOutlet, multiAuth bool) *servedOutlet {
 			{Method: http.MethodPost, MethodConst: httpMethodConstant(http.MethodPost), Path: prefix + oauthDeviceSuffix, Suffix: oauthDeviceSuffix, Handler: deviceAuthorizeHandler},
 			{Method: http.MethodPost, MethodConst: httpMethodConstant(http.MethodPost), Path: prefix + oauthTokenSuffix, Suffix: oauthTokenSuffix, Handler: deviceTokenHandler},
 		}
+		so.Programs, so.ProgramsSentence = servedProgramsOf(o)
 	case o.auth != nil:
 		so.SessionInterface = so.HookField + "Session"
 		so.StubType = "router" + so.HookField + "SessionStub"
@@ -1263,7 +1349,7 @@ var (
 {{- if .Machine }}
 //	{{ .Name }} (/{{ .Prefix }}), {{ .AuthLabel }}{{ with .Words }}, {{ . }}{{ end }}:
 //	  {{ if .AuthPackage }}BindAuth({{ .AuthPackage }}.Name), {{ end }}NoCaching, CompressionMiddleware, ReleaseHeader: {{ range $i, $route := .DeviceRoutes }}{{ if $i }}, {{ end }}{{ $route.Method }} {{ $route.Path }}{{ end }}
-//	  + ValidateToken: hooks.{{ .HookField }}, {{ .RoutesFunc }}
+//	  + ValidateToken: hooks.{{ .HookField }}, {{ .RoutesFunc }}{{ if .Programs }}, GET /{{ .Prefix }}/programs/*{{ end }}
 {{- else }}
 //	{{ .Name }} (/{{ .Prefix }}), {{ .AuthLabel }}{{ with .Words }}, {{ . }}{{ end }}:
 //	  {{ if .AuthPackage }}BindAuth({{ .AuthPackage }}.Name), {{ end }}NoCaching, CompressionMiddleware, ReleaseHeader, StartSession, SetXSRFToken: {{ range $i, $route := .OpenRoutes }}{{ if $i }}, {{ end }}{{ $route.Method }} {{ $route.Path }}{{ end }}
@@ -1320,6 +1406,9 @@ import (
 	"github.com/cccteam/ccc/resource"
 {{- range .StoreImports }}
 	"{{ . }}"
+{{- end }}
+{{- if .ShipsPrograms }}
+	"github.com/cccteam/ccc/resource/shipped"
 {{- end }}
 	"github.com/cccteam/ccc/tracer"
 	"github.com/cccteam/httpio"
@@ -1571,6 +1660,14 @@ func New(h Handlers, hooks Hooks) *chi.Mux {
 			registerGenerated(r, hooks.{{ .HookField }}, "{{ .HookField }}", func(r chi.Router) {
 				{{ .RoutesFunc }}(r, h)
 			})
+{{- if .Programs }}
+
+			// The programs this release ships to their installed copies (ShipsProgram):
+			// {{ .ProgramsSentence }}. A copy fetches its next release here with its token. The
+			// route is registered after the hook, so it sits behind whatever the hook adds in
+			// front of the outlet's routes, and the hook may still add it.
+			r.Handle("/{{ .Prefix }}/programs/*", http.StripPrefix("/{{ .Prefix }}/programs", shipped.Handler(serverVersion{{ range .Programs }}, shipped.Program{Name: "{{ .Name }}", Platforms: []string{ {{- range $i, $p := .Platforms }}{{ if $i }}, {{ end }}"{{ $p }}"{{ end -}} }}{{ end }})))
+{{- end }}
 		})
 	})
 {{- else }}
@@ -1971,6 +2068,56 @@ func TestGeneratedRouterSessionRoutes(t *testing.T) {
 			case tt.xsrf:
 				want = append(want, chain.guards[1])
 			}
+			if !slices.Equal(rec.chain, want) {
+				t.Errorf("middleware chain = %v, want %v", rec.chain, want)
+			}
+		})
+	}
+}
+{{ end }}
+{{- if .ShipsPrograms }}
+// TestGeneratedRouterPrograms proves each shipped program's route sits behind its outlet's
+// token check: a fetch for a release that is not the server's reaches the shipped
+// handler, which refuses it naming the server's release, with the release in
+// X-Api-Version, having passed the every-request chain, the outlet's group and its token
+// check, and no generated handler. With a hook that adds middleware, the route sits
+// behind it too, as the generated routes do.
+func TestGeneratedRouterPrograms(t *testing.T) {
+	t.Parallel()
+
+	urls := []string{
+{{- range .MachineOutlets }}
+{{- $outlet := . }}
+{{- range .Programs }}
+{{- $program := . }}
+{{- range .Platforms }}
+		"/{{ $outlet.Prefix }}/programs/{{ $program.Name }}/1.0.0/{{ . }}",
+{{- end }}
+{{- end }}
+{{- end }}
+	}
+	for _, url := range urls {
+		t.Run("GET-url"+strings.ReplaceAll(url, "/", "-"), func(t *testing.T) {
+			t.Parallel()
+
+			rec := newRouterCallRecorder()
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, url, http.NoBody)
+			rr := serveGeneratedRouterRequest(t, rec, "2.0.0", Hooks{}, req)
+
+			if got := rr.Code; got != http.StatusNotFound {
+				t.Errorf("response.Code = %v, want %v", got, http.StatusNotFound)
+			}
+			if got := rr.Body.String(); !strings.Contains(got, "this server is release 2.0.0") {
+				t.Errorf("body = %q, want the server's release named", got)
+			}
+			if got := rr.Header().Get(resource.APIVersionHeader); got != "2.0.0" {
+				t.Errorf("%s = %q, want the server's release", resource.APIVersionHeader, got)
+			}
+			if cnt := len(rec.handlers); cnt != 0 {
+				t.Errorf("expected no generated handler called, got: %v", rec.handlers)
+			}
+			chain := routerChainFor(t, url)
+			want := slices.Concat(routerRootChain, chain.group, chain.guards)
 			if !slices.Equal(rec.chain, want) {
 				t.Errorf("middleware chain = %v, want %v", rec.chain, want)
 			}

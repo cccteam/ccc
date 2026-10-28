@@ -3,6 +3,7 @@ package generation
 import (
 	"fmt"
 	"maps"
+	"path"
 	"path/filepath"
 	"reflect"
 	"regexp"
@@ -137,10 +138,11 @@ func GenerateRoutes(targetDir, routePrefix string, options ...OutletOption) Reso
 // outlet's oldest answered release, for a deploy reading the checkout
 // (resource.ReadReleaseFile).
 //
-// Every outlet then declares how it authenticates, Auth or Tokens, and a session outlet
-// that serves a browser application declares WebApp. Requires GenerateRoutes. Without the
-// option the contract is unchanged, generated route tables plus a hand-written router,
-// and Auth, Tokens, and WebApp are not accepted.
+// Every outlet then declares how it authenticates, Auth or Tokens, a session outlet
+// that serves a browser application declares WebApp, and a machine outlet that serves
+// the programs the release ships declares ShipsProgram. Requires GenerateRoutes. Without
+// the option the contract is unchanged, generated route tables plus a hand-written
+// router, and Auth, Tokens, WebApp, and ShipsProgram are not accepted.
 func GenerateRouter() ResourceOption {
 	return resourceOption(func(r *resourceGenerator) error {
 		r.genRouter = true
@@ -196,6 +198,19 @@ type routerOutlet struct {
 	// manages are the import paths of the other Auths whose user-management surfaces
 	// this outlet serves beside its own (Manages), in declaration order.
 	manages []string
+	// programs are the programs a machine outlet ships to their installed copies
+	// (ShipsProgram), in declaration order; a session outlet ships none, which
+	// generation refuses.
+	programs []shippedProgram
+}
+
+// shippedProgram is one ShipsProgram declaration: the main package's root-relative
+// directory, the program's name (the directory's base), and the platforms the release
+// compiles it for.
+type shippedProgram struct {
+	dir       string
+	name      string
+	platforms []string
 }
 
 // outletAuth is one Auth declaration: the auth package a session outlet binds to and the
@@ -619,6 +634,104 @@ func APIKey() OutletOption {
 	return outletOption(func(o *routerOutlet) error {
 		o.apiKey = true
 		o.servesSessions = false
+
+		return nil
+	})
+}
+
+// ShipsProgram declares that a machine outlet serves a program the release ships to its
+// installed copies, which fetch their next release there with the token they already
+// carry. dir is the root-relative directory of the program's main package, "cmd/corral",
+// and the program's name is the directory's base, corral. The version build compiles
+// the program for the platforms the declaration names (Platforms) and copies each file
+// into the image beside the server, and the generated router serves them under the
+// outlet's prefix, behind its token check, at
+// GET <prefix>/programs/<name>/<release>/<os>/<arch> with the file's checksum
+// (resource/shipped). The release file beside the router lists the programs, so the
+// build reads what to compile from the checkout.
+//
+// The directory is a clean relative path: no leading "/" or "./" and no "..". At least
+// one platform is declared, each <os>/<arch> in lowercase letters and digits, such as
+// linux/amd64. A directory declared twice on the outlet is refused. The option belongs
+// on a machine outlet (Tokens); a session outlet serves no programs, which generation
+// refuses.
+func ShipsProgram(dir string, options ...ProgramOption) OutletOption {
+	return outletOption(func(o *routerOutlet) error {
+		if err := validateProgramDir(dir); err != nil {
+			return err
+		}
+		program := shippedProgram{dir: dir, name: path.Base(dir)}
+		for _, opt := range options {
+			if err := opt.applyToProgram(&program); err != nil {
+				return errors.Wrapf(err, "ShipsProgram(%q)", dir)
+			}
+		}
+		if len(program.platforms) == 0 {
+			return errors.Newf("ShipsProgram(%q) declares no platform: name the platforms the release compiles it for, such as Platforms(\"linux/amd64\")", dir)
+		}
+		for _, declared := range o.programs {
+			if declared.dir == dir {
+				return errors.Newf("ShipsProgram(%q) is declared twice on the outlet", dir)
+			}
+		}
+		o.programs = append(o.programs, program)
+
+		return nil
+	})
+}
+
+// validateProgramDir refuses a directory that is not a clean relative path: empty, with
+// a leading "/" or "./", with a ".." segment, with a space or a quote, or ending in a
+// separator.
+func validateProgramDir(dir string) error {
+	switch {
+	case dir == "", strings.ContainsAny(dir, " \t\n\"\\"), strings.HasPrefix(dir, "/"), strings.HasPrefix(dir, "./"), path.Clean(dir) != dir, dir == ".":
+		return errors.Newf("ShipsProgram(%q) requires the program's directory as a clean relative path, such as \"cmd/corral\"", dir)
+	case dir == ".." || strings.HasPrefix(dir, "../") || strings.Contains(dir, "/../") || strings.HasSuffix(dir, "/.."):
+		return errors.Newf("ShipsProgram(%q) requires a directory inside the module: no \"..\"", dir)
+	}
+
+	return nil
+}
+
+// ProgramOption refines one ShipsProgram declaration.
+type ProgramOption interface {
+	applyToProgram(*shippedProgram) error
+}
+
+// programOption adapts a function to ProgramOption.
+type programOption func(*shippedProgram) error
+
+func (f programOption) applyToProgram(p *shippedProgram) error {
+	return f(p)
+}
+
+// platformPattern is the shape of a platform, <os>/<arch> in lowercase letters and
+// digits, as Go names them (GOOS/GOARCH).
+var platformPattern = regexp.MustCompile(`^[a-z0-9]+/[a-z0-9]+$`)
+
+// Platforms declares the platforms the release compiles a shipped program for, each
+// <os>/<arch> as Go names them: "linux/amd64", "linux/arm64". The version build
+// compiles one file per platform and the outlet serves each to the copies running on
+// it. At least one is named, each in lowercase letters and digits with one slash, none
+// twice, and a program declares them once.
+func Platforms(platforms ...string) ProgramOption {
+	return programOption(func(p *shippedProgram) error {
+		if len(platforms) == 0 {
+			return errors.New("Platforms() names no platform: write each as <os>/<arch>, such as \"linux/amd64\"")
+		}
+		if p.platforms != nil {
+			return errors.Newf("Platforms(%q) redeclares the program's platforms (%q): a program declares them once", platforms, p.platforms)
+		}
+		for i, platform := range platforms {
+			if !platformPattern.MatchString(platform) {
+				return errors.Newf("Platforms(%q) names %q, which is not <os>/<arch> in lowercase letters and digits, such as \"linux/amd64\"", platforms, platform)
+			}
+			if slices.Contains(platforms[:i], platform) {
+				return errors.Newf("Platforms(%q) names %q twice", platforms, platform)
+			}
+		}
+		p.platforms = slices.Clone(platforms)
 
 		return nil
 	})

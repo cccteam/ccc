@@ -13,9 +13,10 @@ import (
 )
 
 // runReleaseFileGeneration writes the release file (resource.ReleaseFileName) beside the
-// served router: every outlet by name, a machine outlet by its kind and a session outlet
-// by its oldest answered release as the generator program declared it, so a deploy reads
-// from the checkout whether the release needs a maintenance window; the scheduled
+// served router: every outlet by name, a machine outlet by its kind and the programs it
+// ships (ShipsProgram), which the version build compiles for their platforms, and a
+// session outlet by its oldest answered release as the generator program declared it, so
+// a deploy reads from the checkout whether the release needs a maintenance window; the scheduled
 // routes with their schedules, which the application's stack creates a Cloud Scheduler
 // job for each of; the file routes, each @upload method's and each stored file's
 // (fileRoutes, by outlet name), which the stack puts ahead of its web application
@@ -113,7 +114,7 @@ func releaseFileOf(outlets []*routerOutlet, scheduledRoutes []*scheduledRoute, f
 	file := resource.ReleaseFile{Outlets: make(map[string]resource.ReleaseOutlet, len(outlets)), FileRoutes: fileRoutes, Surfaces: surfaces}
 	for _, o := range outlets {
 		if o.apiKey {
-			file.Outlets[o.name] = resource.ReleaseOutlet{APIKey: true}
+			file.Outlets[o.name] = resource.ReleaseOutlet{APIKey: true, Programs: releaseProgramsOf(o)}
 
 			continue
 		}
@@ -127,6 +128,20 @@ func releaseFileOf(outlets []*routerOutlet, scheduledRoutes []*scheduledRoute, f
 	})
 
 	return file
+}
+
+// releaseProgramsOf lists the programs a machine outlet ships for the release file, in
+// declaration order; nil when it ships none, so the entry carries no programs.
+func releaseProgramsOf(o *routerOutlet) []resource.ReleaseProgram {
+	if len(o.programs) == 0 {
+		return nil
+	}
+	programs := make([]resource.ReleaseProgram, 0, len(o.programs))
+	for _, program := range o.programs {
+		programs = append(programs, resource.ReleaseProgram{Name: program.name, Dir: program.dir, Platforms: slices.Clone(program.platforms)})
+	}
+
+	return programs
 }
 
 // renderReleaseFile renders the release file indented, the outlets in name order, with

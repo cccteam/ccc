@@ -127,6 +127,25 @@ type Outlet struct {
 	// Traces is the OutletTraces setting as the program writes it (TracesOff()), empty
 	// when the outlet declares none and its spans follow the front end.
 	Traces string
+	// Programs are the ShipsProgram declarations, in order: the programs the release
+	// ships and a machine outlet serves to their installed copies. A session outlet
+	// declares none; the shipped-programs check names Tokens for one that does.
+	Programs []Program
+	// Pos is the position of the declaring call.
+	Pos string
+}
+
+// Program is one ShipsProgram declaration: a program the release ships, which the image
+// build compiles for each platform and the declaring machine outlet serves to the
+// copies installed on machines, behind its token check.
+type Program struct {
+	// Dir is the root-relative directory of the program's main package: cmd/corral.
+	Dir string
+	// Name is the program's name, the directory's base: corral.
+	Name string
+	// Platforms are the platforms the release compiles the program for, each <os>/<arch>
+	// as the Platforms option names them, in declaration order.
+	Platforms []string
 	// Pos is the position of the declaring call.
 	Pos string
 }
@@ -278,8 +297,34 @@ func readOutletOptions(o *Outlet, args []Arg) {
 			if len(c.Args) == 1 && c.Args[0].Kind == ArgConstructor {
 				o.Traces = c.Args[0].Str
 			}
+		case optShipsProgram:
+			if program := readProgram(c); program != nil {
+				o.Programs = append(o.Programs, *program)
+			}
 		}
 	}
+}
+
+// readProgram reads a ShipsProgram option: the directory it names, the program's name
+// (the directory's base), and the platforms its Platforms calls name, each a string
+// literal; nil when the directory is not a string literal.
+func readProgram(c *Call) *Program {
+	if len(c.Args) < 1 || c.Args[0].Kind != ArgString {
+		return nil
+	}
+	program := &Program{Dir: c.Args[0].Str, Name: path.Base(c.Args[0].Str), Pos: c.Pos}
+	for _, arg := range c.Args[1:] {
+		if arg.Kind != ArgCall || arg.Call.Name != optPlatforms {
+			continue
+		}
+		for _, platform := range arg.Call.Args {
+			if platform.Kind == ArgString {
+				program.Platforms = append(program.Platforms, platform.Str)
+			}
+		}
+	}
+
+	return program
 }
 
 // readOutletAuth reads an Auth option: the auth package it names and the methods it
