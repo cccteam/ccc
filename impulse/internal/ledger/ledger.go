@@ -604,6 +604,28 @@ var Steps = []Step{
 		Impulse: release("v0.5.26"),
 		Note:    "the CI workflow passes the shipped programs to the image build: the rendered docker build line of the image job carries PROGRAMS, composed from the generator programs' ShipsProgram declarations (one word per program, <dir>=<os>/<arch>[,<os>/<arch>...], empty when no outlet ships one), so the image job compiles the shipped programs as the version build does instead of a placeholder named ci, which the seeded Dockerfile's loop could not build (go: unsupported GOOS/GOARCH pair ci/ci); the step's render rewrites the workflows, and a later change to the declarations is followed by impulse render, which the ci-workflow check holds the committed files to; and a shipped program reads its settings from its own environment with plain lookups rather than env tags, which bedrock takes for the application's configuration and refuses outside the config package; no pin moves, and no code change is needed of an application that ships none",
 	},
+	{
+		Pins: pins(`
+			access v0.11.1
+			ccc v0.3.5
+			ccc/accesstypes v0.7.0
+			ccc/cloud v0.2.1
+			ccc/resource v0.15.17-0.20261028155201-ecc98f939a7f
+			ccc/tracer v0.3.0
+			db-initiator v0.4.3
+			httpio v0.7.22
+			logger v0.1.30
+			session v0.13.14
+		`),
+		Web: web(`
+			@cccteam/resource 0.0.13
+			@cccteam/resource-angular 0.0.18
+			@cccteam/resource-firestore 0.0.11
+		`),
+		Impulse: release("v0.5.27"),
+		Pending: true,
+		Note:    "every session carries a second factor: each auth's New sets the sign-in rule requireSecondFactor (after the tenant policy, where there is one), which holds a sign-in for the sign-in code the auth mails (session v0.13.14's email code) unless a browser the person asked to be remembered, or the attestation of a directory the deployment administers or whose token says a second factor was passed, stands in for it; the auth owns the sign-in codes and trusted devices tables (<Name>SessionFactorCodes and <Name>SessionTrustedDevices, which its session migration creates) and the <name>-trusted cookie, passes them in (WithFactorCodesTableName, WithTrustedDevicesTableName, WithTrustedDeviceCookieName) and serves the pending sign-in's code handlers (PendingSendCode, PendingVerifyCode, PendingEnrollEmail), which the generated router mounts under user/pending and tells the login page about; a directory method declares the organizations the deployment administers, by tenant id or domain (APP_<AUTH>_<REGISTRATION>_ADMINISTERED_TENANTS or _ADMINISTERED_WORKSPACES, read into the method's settings as AdministeredTenants or AdministeredWorkspaces), and builds its slot in <field>Slot(settings) with those entries attesting, so a sign-in from one carries the directory's second factor and is asked for no code (an open slot names them beside its open entry; a slot that names its organizations refuses one it does not admit, so its registration returns an error New passes up); the users surface's Reset<…>UserFactors method forgets a person's remembered browsers, granted with Execute to the administrator roles in the role file beside Set<…>UserPassword; the session-tables check holds the two tables beside the mail links; the development template declares no administered organization, so every sign-in in development is asked for the code, which the mail log prints; and the pins move to session v0.13.14 and to the resource commit carrying the routes, the method and Lodestar's demonstrations",
+	},
 }
 
 // validatePending holds a step's Pending mark to its pins: a pin at a pseudo-version
