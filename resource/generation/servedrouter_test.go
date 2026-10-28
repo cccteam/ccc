@@ -1,6 +1,7 @@
 package generation
 
 import (
+	"net/http"
 	"slices"
 	"strconv"
 	"strings"
@@ -468,6 +469,148 @@ func Test_validateRouterConfig(t *testing.T) {
 			}
 			if err != nil {
 				t.Fatalf("error = %v", err)
+			}
+		})
+	}
+}
+
+// Test_validateShippedProgramRoutes pins the refusal of a route under the segment a
+// shipping outlet's programs route owns: a resource whose route name is programs, a
+// method mounted at the segment, or a renamed method whose former route sits there,
+// each named with its outlet and the owning route; the same resource on an outlet that
+// ships nothing passes, as do a shipping outlet's other routes, a route whose segment
+// merely starts with programs, and a domain-scoped resource under the tenant segment.
+func Test_validateShippedProgramRoutes(t *testing.T) {
+	t.Parallel()
+
+	crew := &outletAuth{importPath: "example.com/acme/beacon/pkg/auth/crew", methods: []AuthMethod{PasswordMethod()}}
+	corral := []shippedProgram{{dir: "cmd/corral", name: "corral", platforms: []string{"linux/amd64"}}}
+	programResource := func(prefix string) []*generatedRoute {
+		return []*generatedRoute{
+			{Method: http.MethodGet, Path: "/" + prefix + "/programs", HandlerFunc: "Programs", HandlerType: ListHandler},
+			{Method: http.MethodGet, Path: "/" + prefix + "/programs/{programID}", HandlerFunc: "ProgramRead", HandlerType: ReadHandler},
+			{Method: http.MethodPatch, Path: "/" + prefix + "/programs", HandlerFunc: "ProgramPatch", HandlerType: PatchHandler},
+		}
+	}
+	beaconResource := []*generatedRoute{
+		{Method: http.MethodGet, Path: "/machines/beacons", HandlerFunc: "Beacons", HandlerType: ListHandler},
+		{Method: http.MethodGet, Path: "/machines/beacons/{beaconID}", HandlerFunc: "BeaconRead", HandlerType: ReadHandler},
+	}
+
+	tests := []struct {
+		name string
+		// outlets are the declarations; routes the route tables by outlet name, in the
+		// same order.
+		outlets []*routerOutlet
+		routes  map[string]map[string][]*generatedRoute
+		wantErr string
+	}{
+		{
+			name: "a shipping outlet with a programs resource is refused",
+			outlets: []*routerOutlet{
+				{name: "default", prefix: "api", servesSessions: true, auth: crew},
+				{name: "machines", prefix: "machines", apiKey: true, tokenAuth: crew.importPath, programs: corral},
+			},
+			routes: map[string]map[string][]*generatedRoute{
+				"default":  {"Program": programResource("api")},
+				"machines": {"Beacon": beaconResource, "Program": programResource("machines")},
+			},
+			wantErr: `outlet "machines" ships programs, so GET /machines/programs/* is the shipped programs route (ShipsProgram), and the resource Program is served under the same segment at GET /machines/programs: rename the resource, or ship the programs from another outlet`,
+		},
+		{
+			name: "the same resource on an outlet shipping nothing passes",
+			outlets: []*routerOutlet{
+				{name: "default", prefix: "api", servesSessions: true, auth: crew},
+				{name: "machines", prefix: "machines", apiKey: true, tokenAuth: crew.importPath},
+			},
+			routes: map[string]map[string][]*generatedRoute{
+				"default":  {"Program": programResource("api")},
+				"machines": {"Program": programResource("machines")},
+			},
+		},
+		{
+			name: "a shipping outlet with other resources passes",
+			outlets: []*routerOutlet{
+				{name: "default", prefix: "api", servesSessions: true, auth: crew},
+				{name: "machines", prefix: "machines", apiKey: true, tokenAuth: crew.importPath, programs: corral},
+			},
+			routes: map[string]map[string][]*generatedRoute{
+				"default":  {"Program": programResource("api")},
+				"machines": {"Beacon": beaconResource, "ListBeacons": {{Method: http.MethodPost, Path: "/machines/list-beacons", HandlerFunc: "ListBeacons"}}},
+			},
+		},
+		{
+			name: "a method mounted at the segment is refused",
+			outlets: []*routerOutlet{
+				{name: "default", prefix: "api", servesSessions: true, auth: crew},
+				{name: "machines", prefix: "machines", apiKey: true, tokenAuth: crew.importPath, programs: corral},
+			},
+			routes: map[string]map[string][]*generatedRoute{
+				"machines": {"Programs": {{Method: http.MethodPost, Path: "/machines/programs", HandlerFunc: "Programs", SelfBounded: true}}},
+			},
+			wantErr: `outlet "machines" ships programs, so GET /machines/programs/* is the shipped programs route (ShipsProgram), and the method Programs is served under the same segment at POST /machines/programs: rename the method, or ship the programs from another outlet`,
+		},
+		{
+			name: "a renamed method whose former route sits at the segment is refused",
+			outlets: []*routerOutlet{
+				{name: "default", prefix: "api", servesSessions: true, auth: crew},
+				{name: "machines", prefix: "machines", apiKey: true, tokenAuth: crew.importPath, programs: corral},
+			},
+			routes: map[string]map[string][]*generatedRoute{
+				"machines": {"ListPrograms": {{Method: http.MethodPost, Path: "/machines/list-programs", FormerPath: "/machines/programs", HandlerFunc: "ListPrograms", SelfBounded: true}}},
+			},
+			wantErr: `the method ListPrograms is served under the same segment at POST /machines/programs: rename the method`,
+		},
+		{
+			name: "a segment that merely starts with programs passes",
+			outlets: []*routerOutlet{
+				{name: "default", prefix: "api", servesSessions: true, auth: crew},
+				{name: "machines", prefix: "machines", apiKey: true, tokenAuth: crew.importPath, programs: corral},
+			},
+			routes: map[string]map[string][]*generatedRoute{
+				"machines": {"ProgramsArchive": {{Method: http.MethodGet, Path: "/machines/programs-archive", HandlerFunc: "ProgramsArchive", HandlerType: ListHandler}}},
+			},
+		},
+		{
+			name: "a domain-scoped programs resource under the tenant segment passes",
+			outlets: []*routerOutlet{
+				{name: "default", prefix: "api", servesSessions: true, auth: crew},
+				{name: "machines", prefix: "machines", apiKey: true, tokenAuth: crew.importPath, programs: corral},
+			},
+			routes: map[string]map[string][]*generatedRoute{
+				"machines": {"Program": {{Method: http.MethodGet, Path: "/machines/tenants/{tenantID}/programs", HandlerFunc: "Programs", HandlerType: ListHandler, DomainScoped: true}}},
+			},
+		},
+		{
+			name: "the shipping outlet's prefix bounds the check: another outlet's programs resource passes",
+			outlets: []*routerOutlet{
+				{name: "default", prefix: "api", servesSessions: true, auth: crew},
+				{name: "machines", prefix: "machines", apiKey: true, tokenAuth: crew.importPath, programs: corral},
+				{name: "kiosks", prefix: "kiosks", apiKey: true, tokenAuth: crew.importPath},
+			},
+			routes: map[string]map[string][]*generatedRoute{
+				"kiosks": {"Program": programResource("kiosks")},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			outletRoutes := make([]*outletRouteData, len(tt.outlets))
+			for i, o := range tt.outlets {
+				outletRoutes[i] = &outletRouteData{Name: o.name, Prefix: o.prefix, RoutesMap: tt.routes[o.name]}
+			}
+			err := validateShippedProgramRoutes(tt.outlets, outletRoutes)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("validateShippedProgramRoutes() error = %v, want containing %q", err, tt.wantErr)
+				}
+
+				return
+			}
+			if err != nil {
+				t.Fatalf("validateShippedProgramRoutes() error = %v", err)
 			}
 		})
 	}
