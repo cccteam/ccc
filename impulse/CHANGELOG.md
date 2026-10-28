@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.6.0](https://github.com/cccteam/ccc/compare/impulse/v0.5.27...impulse/v0.6.0) (2026-10-28)
+
+
+### ⚠ BREAKING CHANGES
+
+* **resource:** a roles file names every role in the one grammar (letters and digits starting with a capital letter, the scope never part of the name) and gives every role a description, one or two plain sentences saying what it is for, or the permission engine refuses it at start; each <Name>Roles table gains a Description STRING(MAX) NOT NULL column; UserSeats.Roles returns []access.RoleInfo and MemUserStore.DeclareRoles takes access.RoleInfo; the resource module requires github.com/cccteam/access.
+
+### Features
+
+* **impulse:** the skeletons name roles for their job (Administrator, TenantAdministrator, MachineOperator) and describe every role, the roles resources serve each role's description, and impulse check gains roles-file, which reads every role file the way the permission engine does ([#1198](https://github.com/cccteam/ccc/issues/1198)) ([c949146](https://github.com/cccteam/ccc/commit/c9491467fa98fb76abc8974a1b5fd8533f30b2bd))
+* **resource:** every role carries a description and the user-management surface serves it: the roles rows and the generated client gain description, the seat store lists each role with what it is for, and the generator detects an enumeration table by its Id and Description columns together ([#1198](https://github.com/cccteam/ccc/issues/1198)) ([c949146](https://github.com/cccteam/ccc/commit/c9491467fa98fb76abc8974a1b5fd8533f30b2bd))
+
+
+### Bug Fixes
+
+* **impulse:** the rendered CI's lint jobs restore the build leg's Go caches, so a dependency change no longer runs golangci-lint cold past its timeout ([#1206](https://github.com/cccteam/ccc/issues/1206)) ([e9f0317](https://github.com/cccteam/ccc/commit/e9f031773ee6faf0da4b67985dce78455bd5e6e3))
+* the v0.6.0 step's brief carries the seats under renamed roles to the new names, since the deploy's role check only warns of a seat naming a role nothing defines ([#1207](https://github.com/cccteam/ccc/issues/1207)) ([5b618b2](https://github.com/cccteam/ccc/commit/5b618b2b579edc4cb8c63df05fdd739ab770781a))
+
 ## [0.5.27](https://github.com/cccteam/ccc/compare/impulse/v0.5.26...impulse/v0.5.27) (2026-10-28)
 
 
