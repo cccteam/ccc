@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -603,7 +604,7 @@ func TestCacheSteps(t *testing.T) {
 	}
 	// The image build is not cached: a plain docker build, no builder of its own.
 	prImage := job(pr, "image")
-	if !strings.Contains(prImage, `        run: docker build --build-arg VERSION=ci --build-arg COMMIT="$GITHUB_SHA" $BUILD_INPUTS -t application:ci .`+"\n") || strings.Contains(prImage, "buildx") || strings.Contains(prImage, "cache") {
+	if !strings.Contains(prImage, `        run: docker build --build-arg VERSION=ci --build-arg COMMIT="$GITHUB_SHA" --build-arg PROGRAMS= $BUILD_INPUTS -t application:ci .`+"\n") || strings.Contains(prImage, "buildx") || strings.Contains(prImage, "cache") {
 		t.Errorf("the image job is not the plain build:\n%s", prImage)
 	}
 }
@@ -708,7 +709,8 @@ func TestSecurityScan(t *testing.T) {
 
 // TestBuildInputs: the image job of the pull request workflow and of the scan read the
 // build's inputs from the Dockerfile in the same step (every ARG without a default as ci,
-// every mounted build secret from a placeholder) and pass them to docker build.
+// VERSION, COMMIT and PROGRAMS aside, every mounted build secret from a placeholder) and
+// pass them to docker build.
 func TestBuildInputs(t *testing.T) {
 	t.Parallel()
 
@@ -737,14 +739,14 @@ func TestBuildInputs(t *testing.T) {
 				"      - name: The build inputs the Dockerfile declares\n",
 				"        id: build-inputs\n        if: steps.dockerfile.outputs.present == 'true'\n",
 				`grep -E '^ARG [A-Z_][A-Z0-9_]*$' Dockerfile`,
-				`case "$name" in VERSION|COMMIT) continue ;; esac`,
+				`case "$name" in VERSION|COMMIT|PROGRAMS) continue ;; esac`,
 				`flags="$flags --build-arg $name=ci"`,
 				`grep -oE -- '--mount=type=secret,[^ ]*' Dockerfile`,
 				`printf 'ci' > "$RUNNER_TEMP/secrets/$name"`,
 				`flags="$flags --secret id=$name,src=$RUNNER_TEMP/secrets/$name"`,
 				`echo "flags=${flags# }" >> "$GITHUB_OUTPUT"`,
 				"          BUILD_INPUTS: ${{ steps.build-inputs.outputs.flags }}\n",
-				"        run: docker build --build-arg VERSION=ci --build-arg COMMIT=" + tt.commit + " $BUILD_INPUTS -t application:ci .\n",
+				"        run: docker build --build-arg VERSION=ci --build-arg COMMIT=" + tt.commit + " --build-arg PROGRAMS= $BUILD_INPUTS -t application:ci .\n",
 			} {
 				if !strings.Contains(image, want) {
 					t.Errorf("%s's image job lacks %q:\n%s", tt.file, want, image)
@@ -755,6 +757,123 @@ func TestBuildInputs(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestPrograms: the docker build line of the pull request workflow and of the scan
+// passes the shipped programs as PROGRAMS, composed from the ShipsProgram declarations of
+// every site's outlets, one word per program (<dir>=<os>/<arch>[,<os>/<arch>...]) in
+// declaration order across the outlets in profile order, quoted; empty, and unquoted,
+// when no outlet ships one. The step reading the Dockerfile's build arguments skips
+// PROGRAMS, so the build never takes the placeholder for it, and the line says where the
+// value comes from.
+func TestPrograms(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		generators []*app.Generator
+		want       string
+	}{
+		{
+			name:       "no outlet ships a program",
+			generators: []*app.Generator{siteGenerator(".", machineOutlet("machines"))},
+			want:       "--build-arg PROGRAMS=",
+		},
+		{
+			name:       "one program on one platform",
+			generators: []*app.Generator{siteGenerator(".", machineOutlet("machines", shipsProgram("cmd/sensor", "linux/amd64")))},
+			want:       `--build-arg PROGRAMS="cmd/sensor=linux/amd64"`,
+		},
+		{
+			name: "two programs on two platforms each, in declaration order",
+			generators: []*app.Generator{siteGenerator(".",
+				machineOutlet("machines", shipsProgram("cmd/sensor", "linux/amd64", "linux/arm64")),
+				machineOutlet("beacons", shipsProgram("cmd/beacon", "darwin/arm64", "linux/amd64")),
+			)},
+			want: `--build-arg PROGRAMS="cmd/sensor=linux/amd64,linux/arm64 cmd/beacon=darwin/arm64,linux/amd64"`,
+		},
+		{
+			name: "the programs of two sites, in the sites' order",
+			generators: []*app.Generator{
+				siteGenerator("apps/portal", machineOutlet("machines", shipsProgram("cmd/sensor", "linux/amd64"))),
+				siteGenerator("apps/console", machineOutlet("machines", shipsProgram("cmd/beacon", "linux/arm64"))),
+			},
+			want: `--build-arg PROGRAMS="cmd/sensor=linux/amd64 cmd/beacon=linux/arm64"`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			for _, file := range []string{ci.File, ci.ScanFile} {
+				rendered, err := ci.RenderFile(&app.App{Generators: tt.generators}, file)
+				if err != nil {
+					t.Fatalf("RenderFile(%s) error = %v", file, err)
+				}
+				image := job(rendered, "image")
+				if image == "" {
+					t.Fatalf("%s has no image job", file)
+				}
+				if !strings.Contains(image, " "+tt.want+" $BUILD_INPUTS ") {
+					t.Errorf("%s's docker build does not pass %s:\n%s", file, tt.want, image)
+				}
+				for _, want := range []string{
+					`case "$name" in VERSION|COMMIT|PROGRAMS) continue ;; esac`,
+					"        # PROGRAMS is the shipped programs the Dockerfile compiles into the image",
+					"ShipsProgram declarations",
+				} {
+					if !strings.Contains(image, want) {
+						t.Errorf("%s's image job lacks %q:\n%s", file, want, image)
+					}
+				}
+			}
+		})
+	}
+}
+
+// siteGenerator is a site generator under dir (its resource package, handlers and routes
+// all under it: "." is the flat layout, apps/<site> a site), with the given outlet
+// declarations after the default outlet.
+func siteGenerator(dir string, outlets ...app.Call) *app.Generator {
+	str := func(s string) app.Arg {
+		return app.Arg{Kind: app.ArgString, Str: s}
+	}
+	g := &app.Generator{
+		File:               path.Join(dir, "cmd/generate/main.go"),
+		ResourcePackageDir: path.Join(dir, "pkg/resources"),
+		Options: []app.Call{
+			{Name: "GenerateHandlers", Args: []app.Arg{str(path.Join(dir, "pkg/app"))}},
+			{Name: "GenerateRouter"},
+			{Name: "GenerateRoutes", Args: []app.Arg{str(path.Join(dir, "pkg/router")), str("api")}},
+		},
+	}
+	g.Options = append(g.Options, outlets...)
+
+	return g
+}
+
+// machineOutlet is a WithRouterOutlet declaration of a machine outlet (one with Tokens)
+// named name, with the ShipsProgram options.
+func machineOutlet(name string, programs ...app.Arg) app.Call {
+	args := []app.Arg{
+		{Kind: app.ArgString, Str: name},
+		{Kind: app.ArgString, Str: name},
+		{Kind: app.ArgCall, Call: &app.Call{Name: "Tokens", Args: []app.Arg{{Kind: app.ArgString, Str: "example.com/ci/pkg/auth/machines"}}}},
+	}
+	args = append(args, programs...)
+
+	return app.Call{Name: "WithRouterOutlet", Args: args}
+}
+
+// shipsProgram is a ShipsProgram option naming the program's directory and, in a
+// Platforms option, its platforms.
+func shipsProgram(dir string, platforms ...string) app.Arg {
+	call := &app.Call{Name: "Platforms"}
+	for _, p := range platforms {
+		call.Args = append(call.Args, app.Arg{Kind: app.ArgString, Str: p})
+	}
+
+	return app.Arg{Kind: app.ArgCall, Call: &app.Call{Name: "ShipsProgram", Args: []app.Arg{{Kind: app.ArgString, Str: dir}, {Kind: app.ArgCall, Call: call}}}}
 }
 
 // TestTitleTypes: the title job accepts exactly TitleTypes, in their order, so the list

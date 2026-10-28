@@ -80,7 +80,7 @@ jobs:
           go run golang.org/x/vuln/cmd/govulncheck@[[.Govulncheck]] ./...
           go run golang.org/x/vuln/cmd/govulncheck@[[.Govulncheck]] -tags skipAuth ./...
 
-  # The container image at each ref, once the application has a Dockerfile (bedrock seeds it): the build with the inputs the Dockerfile declares (ci for every build argument without a default, a placeholder for every build secret), and Grype over the built image, failing on a high or critical vulnerability; hadolint runs on the pull request alone. Without a Dockerfile the leg passes with nothing to build.
+  # The container image at each ref, once the application has a Dockerfile (bedrock seeds it): the build with the inputs the Dockerfile declares (the shipped programs as PROGRAMS, so the image compiles them; ci for every other build argument without a default; a placeholder for every build secret), and Grype over the built image, failing on a high or critical vulnerability; hadolint runs on the pull request alone. Without a Dockerfile the leg passes with nothing to build.
   image:
     name: image (${{ matrix.ref || 'the default branch' }})
     runs-on: [[index .RunsOn "image"]]
@@ -105,7 +105,12 @@ jobs:
         env:
           # The flags the step above derived, split on spaces into the command.
           BUILD_INPUTS: ${{ steps.build-inputs.outputs.flags }}
-        run: docker build --build-arg VERSION=ci --build-arg COMMIT="$(git rev-parse HEAD)" $BUILD_INPUTS -t application:ci .
+        # PROGRAMS is the shipped programs the Dockerfile compiles into the image, one word
+        # per program as <dir>=<os>/<arch>[,<os>/<arch>...], empty when no outlet ships one;
+        # the value is composed from the generator programs' ShipsProgram declarations when
+        # impulse renders this file, so a change to them is followed by impulse render. The
+        # build at the latest release passes the same value, the default branch's.
+        run: docker build --build-arg VERSION=ci --build-arg COMMIT="$(git rev-parse HEAD)" --build-arg PROGRAMS=[[if .Programs]]"[[.Programs]]"[[end]] $BUILD_INPUTS -t application:ci .
       - name: Grype
         if: steps.dockerfile.outputs.present == 'true'
         uses: anchore/scan-action@27805bf3b4e84b4a5c980df22ed233c00390a439 # v7.4.2

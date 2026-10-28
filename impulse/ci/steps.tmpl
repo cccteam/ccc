@@ -63,18 +63,18 @@ place. */]]
 [[- end]]
 [[- define "build-inputs"]]
       - name: The build inputs the Dockerfile declares
-        # Every ARG line with no default takes the value ci (VERSION and COMMIT aside,
-        # which the build passes itself), and every BuildKit secret a RUN line mounts
-        # (--mount=type=secret,id=NAME) is served from a placeholder file holding ci, so a
-        # Dockerfile that requires a secret builds here without the real value. The image
-        # is built to be scanned, never to be deployed.
+        # Every ARG line with no default takes the value ci (VERSION, COMMIT and PROGRAMS
+        # aside, which the build passes itself), and every BuildKit secret a RUN line
+        # mounts (--mount=type=secret,id=NAME) is served from a placeholder file holding
+        # ci, so a Dockerfile that requires a secret builds here without the real value.
+        # The image is built to be scanned, never to be deployed.
         id: build-inputs
         if: steps.dockerfile.outputs.present == 'true'
         run: |
           set -euo pipefail
           flags=""
           for name in $(grep -E '^ARG [A-Z_][A-Z0-9_]*$' Dockerfile | awk '{ print $2 }' | sort -u || true); do
-            case "$name" in VERSION|COMMIT) continue ;; esac
+            case "$name" in VERSION|COMMIT|PROGRAMS) continue ;; esac
             flags="$flags --build-arg $name=ci"
           done
           mkdir -p "$RUNNER_TEMP/secrets"
