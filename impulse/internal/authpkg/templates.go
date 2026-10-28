@@ -7,7 +7,8 @@ const authTemplate = `// Package {{.Name}} is the {{.Name}} auth: {{.Doc}}, who 
 //
 // An auth is a package. It owns its session manager, one Auth session with the sign-in
 // methods registered on it (here {{range $i, $m := .Methods}}{{if $i}}, {{end}}{{$m.Name}}{{end}}), with its own session, user, identity, auth
-// event, pending sign-in, sign-in attempt and mail link tables and cookie; its permission
+// event, pending sign-in, sign-in attempt, mail link, sign-in code and trusted device
+// tables and cookies; its permission
 // store, with its own table prefix, whose engine signals policy changes to the
 // application's other instances through the live service; and its role file, embedded
 // beside it, so the release's default roles travel with the binary. Each method is its
@@ -24,6 +25,15 @@ const authTemplate = `// Package {{.Name}} is the {{.Name}} auth: {{.Doc}}, who 
 // signs up from a link mailed to the address they give{{end}}.
 // The links open the login page of the surface that binds to this auth
 // (Settings.MailLoginURL), through the sender the data level hands in (Settings.Mail).
+//
+// Every session carries a second factor. A sign-in the password admitted, or a directory
+// the deployment does not administer, waits for the sign-in code the auth mails to the
+// person's verified address (a person who holds none gives one first), unless the
+// browser is one the person asked to be remembered after a code (the {{.Name}}-trusted
+// cookie); a sign-in through a directory the deployment administers, or whose token says
+// a second factor was passed, carries the directory's and is asked for nothing. An
+// administrator resets the browsers a person asked to be remembered from the users
+// surface, so their next sign-in asks again.
 package {{.Name}}
 
 import (
@@ -58,6 +68,9 @@ const (
 	// so two auths on one host never overwrite each other's token; the browser echoes it in
 	// the X-XSRF-TOKEN header, so the web app that binds to this auth names the same cookie.
 	XSRFCookie = Name + "-xsrf"
+	// TrustedDeviceCookie is the cookie a browser the person asked to be remembered after a
+	// sign-in code carries its token in; it carries the auth's name as XSRFCookie does.
+	TrustedDeviceCookie = Name + "-trusted"
 
 	// The auth's tables, which schema/migrations creates: the sessions and users of the
 	// Auth session (a person is one user whichever way they sign in; an identity the
@@ -67,10 +80,11 @@ const (
 	// the mail links: the invitations, address verifications and sign-ups the auth mails,
 	// each a single-use token its follower proves; the tokens: the bearer credentials of
 	// the machine outlets whose tokens this auth issues (the application tokens its people
-	// issue and the access and refresh tokens of the device grants they approve); and the
-	// device codes: the device authorizations command-line clients wait on. The names are
-	// spelled out in full so the tool's session-tables check, which reads the literals,
-	// finds their migrations.
+	// issue and the access and refresh tokens of the device grants they approve); the
+	// device codes: the device authorizations command-line clients wait on; and the second
+	// factor's tables: the sign-in codes mailed to people and the browsers they asked to
+	// be remembered. The names are spelled out in full so the tool's session-tables
+	// check, which reads the literals, finds their migrations.
 	sessionsTable    = "{{.Pascal}}Sessions"
 	usersTable       = "{{.Pascal}}SessionUsers"
 	identitiesTable  = "{{.Pascal}}SessionIdentities"
@@ -80,6 +94,8 @@ const (
 	mailLinksTable   = "{{.Pascal}}SessionMailLinks"
 	tokensTable      = "{{.Pascal}}SessionTokens"
 	deviceCodesTable = "{{.Pascal}}SessionDeviceCodes"
+	factorCodesTable    = "{{.Pascal}}SessionFactorCodes"
+	trustedDevicesTable = "{{.Pascal}}SessionTrustedDevices"
 {{- range .Outlets}}
 
 	// {{.Pascal}}Outlet is a machine outlet whose tokens the auth issues: the generator
@@ -241,6 +257,24 @@ func (h *Handlers) PendingCancel() http.HandlerFunc {
 	return h.Pending().Cancel()
 }
 
+// PendingSendCode mails the sign-in code to the address of the person whose sign-in
+// waits for the second factor, and again when they ask for another.
+func (h *Handlers) PendingSendCode() http.HandlerFunc {
+	return h.Pending().SendCode()
+}
+
+// PendingVerifyCode completes a waiting sign-in with the code the person was mailed,
+// remembering the browser when they ask.
+func (h *Handlers) PendingVerifyCode() http.HandlerFunc {
+	return h.Pending().VerifyCode()
+}
+
+// PendingEnrollEmail takes the address the sign-in code goes to, from a person whose
+// sign-in waits for the second factor and who holds no address yet.
+func (h *Handlers) PendingEnrollEmail() http.HandlerFunc {
+	return h.Pending().EnrollEmail()
+}
+
 // InvitationOpen reads the invitation a mailed link carries: where it seats the invitee
 // and how they may accept it, for the login page to offer.
 func (h *Handlers) InvitationOpen() http.HandlerFunc {
@@ -372,6 +406,9 @@ func New(ctx context.Context, db *cloudspanner.Client, settings *Settings) (*Aut
 		session.WithMailLinksTableName(mailLinksTable),
 		session.WithTokensTableName(tokensTable),
 		session.WithDeviceCodesTableName(deviceCodesTable),
+		session.WithFactorCodesTableName(factorCodesTable),
+		session.WithTrustedDevicesTableName(trustedDevicesTable),
+		session.WithTrustedDeviceCookieName(TrustedDeviceCookie),
 		session.WithMail(settings.Mail, session.MailSettings{Application: Application, LoginURL: settings.MailLoginURL}),
 		session.WithCookieName(Name),
 		session.WithXSRFCookieName(XSRFCookie),
@@ -427,8 +464,13 @@ func New(ctx context.Context, db *cloudspanner.Client, settings *Settings) (*Aut
 	// Which tenants the session then reaches is decided again, tenant by tenant, where
 	// its tenant list is computed (UserPermissions). The memberships are read outside
 	// the sign-in's transaction (resource.SignInRoles): the Spanner client refuses the
-	// engine's read under the transaction's context as a nested transaction.
-	authSession.SetSignInPolicy(signin.TenantPolicy(resource.SignInRoles(accessClient.UserManager()), settings.TenantDeclarations{{if .TenantPolicy.AdmitWithoutTenant}}, signin.AdmitWithoutTenant(){{end}}))
+	// engine's read under the transaction's context as a nested transaction. A sign-in
+	// the rule admits then carries a second factor (requireSecondFactor).
+	authSession.SetSignInPolicy(signin.TenantPolicy(resource.SignInRoles(accessClient.UserManager()), settings.TenantDeclarations{{if .TenantPolicy.AdmitWithoutTenant}}, signin.AdmitWithoutTenant(){{end}}).Then(requireSecondFactor))
+{{- else}}
+
+	// The sign-in rule: every session carries a second factor (requireSecondFactor).
+	authSession.SetSignInPolicy(requireSecondFactor)
 {{- end}}
 {{- if .DirectoryAdmission}}
 
@@ -483,6 +525,17 @@ func (a *Auth) Close() error {
 	}
 
 	return nil
+}
+
+// requireSecondFactor is the sign-in rule every session ends with: the second factor, the
+// sign-in code mailed to the person's address (sessioninfo.MethodEmailCode), unless the
+// sign-in carries one already, a remembered browser's token or the attestation of a
+// directory the deployment administers or whose token says a second factor was passed,
+// which the library takes before it asks. A sign-in the rule holds waits for the code
+// (?pending=mfa on the login page), where the person asks for it, enters it and may ask
+// for the browser to be remembered.
+func requireSecondFactor(context.Context, *cloudspanner.ReadWriteTransaction, *sessioninfo.NewSessionRequest) (*signin.Decision, error) {
+	return signin.RequireMFA(sessioninfo.MethodEmailCode), nil
 }
 
 // announcePolicy is the sending half of the engine's change signal: after a policy write
@@ -788,16 +841,18 @@ func (h *Handlers) {{.Pascal}}FrontChannelLogout() http.HandlerFunc {
 // (not_invited){{else}}, open sign-up: anyone the slot admits becomes a user under their
 // user principal name{{end}}.
 func register{{.Pascal}}(authSession *Session, accessClient *access.Client, settings *Settings) (*azure.Method{{if .Fallible}}, error{{end}}) {
-{{- if eq .SlotExpr "tenants"}}
-	tenants, err := parse{{.Pascal}}Tenants(settings.{{.Pascal}}.Tenants)
+{{- if .SlotFallible}}
+	tenants, err := {{.Field}}Slot(settings)
 	if err != nil {
 		return nil, err
 	}
+{{- else if .Administered}}
+	tenants := {{.Field}}Slot(settings)
 {{- end}}
 	_ = accessClient
 
 	return azure.SignIn(authSession, {{.Registration}}, nil, &azure.Config{
-		Tenants:      {{.SlotExpr}},
+		Tenants:      {{if .Administered}}tenants{{else}}{{.SlotExpr}}{{end}},
 		ClientID:     settings.{{.Pascal}}.ClientID,
 		ClientSecret: settings.{{.Pascal}}.ClientSecret,
 		RedirectURL:  settings.{{.Pascal}}.RedirectURL,
@@ -806,13 +861,64 @@ func register{{.Pascal}}(authSession *Session, accessClient *access.Client, sett
 		LoginURL:     settings.LoginURL,
 	}){{if .Fallible}}, nil{{end}}
 }
-{{- if eq .SlotExpr "tenants"}}
+{{- if .Administered}}
+
+// {{.Field}}Slot is the registration's organization slot, {{.SlotWords}}, with the
+// tenants the deployment administers declared as attesting (AdministeredTenants): a
+// sign-in from one carries the tenant's own second factor, which the deployment vouches
+// for, and is not asked for the sign-in code.
+{{- if eq .SlotKind "one" "one-personal"}}
+func {{.Field}}Slot(settings *Settings) (azure.TenantSet, error) {
+	tenant := azure.Tenant(settings.{{.Pascal}}.TenantID)
+	for _, id := range parse{{.Pascal}}Administered(settings.{{.Pascal}}.AdministeredTenants) {
+		if !strings.EqualFold(id, settings.{{.Pascal}}.TenantID) {
+			return azure.TenantSet{}, errors.Newf("{{.Registration}}: the administered tenant %q is not the tenant admitted, %s", id, settings.{{.Pascal}}.TenantID)
+		}
+		tenant = tenant.Attesting()
+	}
+
+	return {{if eq .SlotKind "one"}}tenant{{else}}azure.Tenants(tenant, azure.PersonalAccounts()){{end}}, nil
+}
+{{- else if eq .SlotKind "listed"}}
+func {{.Field}}Slot(settings *Settings) (azure.TenantSet, error) {
+	return parse{{.Pascal}}Tenants(settings.{{.Pascal}}.Tenants, parse{{.Pascal}}Administered(settings.{{.Pascal}}.AdministeredTenants))
+}
+{{- else}}
+func {{.Field}}Slot(settings *Settings) azure.TenantSet {
+	administered := parse{{.Pascal}}Administered(settings.{{.Pascal}}.AdministeredTenants)
+	sets := make([]azure.TenantSet, 0, len(administered)+{{if eq .SlotKind "any-personal"}}2{{else}}1{{end}})
+	sets = append(sets, azure.AnyTenant(){{if eq .SlotKind "any-personal"}}, azure.PersonalAccounts(){{end}})
+	for _, id := range administered {
+		sets = append(sets, azure.Tenant(id).Attesting())
+	}
+
+	return azure.Tenants(sets...)
+}
+{{- end}}
+
+// parse{{.Pascal}}Administered reads the administered tenants from their setting: the
+// tenant ids, comma-separated, lower-cased; none for an empty setting.
+func parse{{.Pascal}}Administered(value string) []string {
+	var ids []string
+	for _, id := range strings.Split(value, ",") {
+		if id = strings.ToLower(strings.TrimSpace(id)); id != "" {
+			ids = append(ids, id)
+		}
+	}
+
+	return ids
+}
+{{- end}}
+{{- if eq .SlotKind "listed"}}
 
 // parse{{.Pascal}}Tenants reads the listed tenants from their setting: <name>=<tenant id>,
-// comma-separated. The name is the tenant key every link made through the tenant
-// carries, so it is never changed once people have signed in.
-func parse{{.Pascal}}Tenants(value string) (azure.TenantSet, error) {
+// comma-separated, each declared attesting when its id is among the administered. The
+// name is the tenant key every link made through the tenant carries, so it is never
+// changed once people have signed in. An administered tenant that is not listed is
+// refused.
+func parse{{.Pascal}}Tenants(value string, administered []string) (azure.TenantSet, error) {
 	var sets []azure.TenantSet
+	attesting := map[string]bool{}
 	for _, entry := range strings.Split(value, ",") {
 		entry = strings.TrimSpace(entry)
 		if entry == "" {
@@ -822,10 +928,21 @@ func parse{{.Pascal}}Tenants(value string) (azure.TenantSet, error) {
 		if !ok || name == "" || id == "" {
 			return azure.TenantSet{}, errors.Newf("{{.Registration}}: tenant %q is not <name>=<tenant id>", entry)
 		}
-		sets = append(sets, azure.NamedTenant(strings.TrimSpace(id), strings.TrimSpace(name)))
+		id = strings.TrimSpace(id)
+		tenant := azure.NamedTenant(id, strings.TrimSpace(name))
+		if slices.Contains(administered, strings.ToLower(id)) {
+			tenant = tenant.Attesting()
+			attesting[strings.ToLower(id)] = true
+		}
+		sets = append(sets, tenant)
 	}
 	if len(sets) == 0 {
 		return azure.TenantSet{}, errors.New("{{.Registration}}: no tenant listed; set the tenants as <name>=<tenant id>, comma-separated")
+	}
+	for _, id := range administered {
+		if !attesting[id] {
+			return azure.TenantSet{}, errors.Newf("{{.Registration}}: the administered tenant %q is not among the tenants listed", id)
+		}
 	}
 
 	return azure.Tenants(sets...), nil
@@ -905,11 +1022,13 @@ func (h *Handlers) {{.Pascal}}Callback() http.HandlerFunc {
 // Workspace carries the provider itself (google.AnyAccountConnection).
 {{- end}}
 func register{{.Pascal}}(authSession *Session, accessClient *access.Client, settings *Settings) (*google.Method{{if .Fallible}}, error{{end}}) {
-{{- if eq .SlotExpr "workspaces"}}
-	workspaces, err := parse{{.Pascal}}Workspaces(settings.{{.Pascal}}.Workspaces)
+{{- if .SlotFallible}}
+	workspaces, err := {{.Field}}Slot(settings)
 	if err != nil {
 		return nil, err
 	}
+{{- else}}
+	workspaces := {{.Field}}Slot(settings)
 {{- end}}
 {{- if eq .Authority "directory"}}
 	lookup, err := google.ParseGroupLookup(settings.{{.Pascal}}.GroupLookup)
@@ -923,19 +1042,70 @@ func register{{.Pascal}}(authSession *Session, accessClient *access.Client, sett
 		ClientID:     settings.{{.Pascal}}.ClientID,
 		ClientSecret: settings.{{.Pascal}}.ClientSecret,
 		RedirectURL:  settings.{{.Pascal}}.RedirectURL,
-		Workspaces:   {{.SlotExpr}},
+		Workspaces:   workspaces,
 		RoleSync:     {{.RoleSyncExpr}},
 		Accounts:     {{.AccountsExpr}},
 		LoginURL:     settings.LoginURL,
 	}){{if .Fallible}}, nil{{end}}
 }
-{{- if eq .SlotExpr "workspaces"}}
+
+// {{.Field}}Slot is the registration's organization slot, {{.SlotWords}}, with the
+// Workspaces the deployment administers declared as attesting (AdministeredWorkspaces):
+// a sign-in from one carries the Workspace's own second factor, which the deployment
+// vouches for, and is not asked for the sign-in code.
+{{- if eq .SlotKind "one" "mixed"}}
+func {{.Field}}Slot(settings *Settings) (google.WorkspaceSet, error) {
+	workspace := google.Workspace({{.Registration}}, settings.{{.Pascal}}.HostedDomain)
+	for _, domain := range parse{{.Pascal}}Administered(settings.{{.Pascal}}.AdministeredWorkspaces) {
+		if !strings.EqualFold(domain, settings.{{.Pascal}}.HostedDomain) {
+			return google.WorkspaceSet{}, errors.Newf("{{.Registration}}: the administered Workspace %q is not the Workspace admitted, %s", domain, settings.{{.Pascal}}.HostedDomain)
+		}
+		workspace = workspace.Attesting()
+	}
+
+	return {{if eq .SlotKind "one"}}workspace{{else}}google.Workspaces(workspace, google.AnyGoogleAccount()){{end}}, nil
+}
+{{- else if eq .SlotKind "listed"}}
+func {{.Field}}Slot(settings *Settings) (google.WorkspaceSet, error) {
+	return parse{{.Pascal}}Workspaces(settings.{{.Pascal}}.Workspaces, parse{{.Pascal}}Administered(settings.{{.Pascal}}.AdministeredWorkspaces))
+}
+{{- else}}
+func {{.Field}}Slot(settings *Settings) google.WorkspaceSet {
+	administered := parse{{.Pascal}}Administered(settings.{{.Pascal}}.AdministeredWorkspaces)
+	sets := make([]google.WorkspaceSet, 0, len(administered)+{{if eq .SlotKind "any"}}2{{else}}1{{end}})
+	sets = append(sets, google.AnyWorkspace(){{if eq .SlotKind "any"}}, google.AnyGoogleAccount(){{end}})
+	for _, domain := range administered {
+		// Named by its domain: the connection a Workspace account's link carries under the
+		// open entry, so the links made before the Workspace was declared keep theirs.
+		sets = append(sets, google.Workspace(domain, domain).Attesting())
+	}
+
+	return google.Workspaces(sets...)
+}
+{{- end}}
+
+// parse{{.Pascal}}Administered reads the administered Workspaces from their setting: the
+// domains, comma-separated, lower-cased; none for an empty setting.
+func parse{{.Pascal}}Administered(value string) []string {
+	var domains []string
+	for _, domain := range strings.Split(value, ",") {
+		if domain = strings.ToLower(strings.TrimSpace(domain)); domain != "" {
+			domains = append(domains, domain)
+		}
+	}
+
+	return domains
+}
+{{- if eq .SlotKind "listed"}}
 
 // parse{{.Pascal}}Workspaces reads the listed Workspaces from their setting:
-// <name>=<domain>[+<domain>], comma-separated. The name is the connection every link made
-// through the Workspace carries, so it is never changed once people have signed in.
-func parse{{.Pascal}}Workspaces(value string) (google.WorkspaceSet, error) {
+// <name>=<domain>[+<domain>], comma-separated, each declared attesting when one of its
+// domains is among the administered. The name is the connection every link made through
+// the Workspace carries, so it is never changed once people have signed in. An
+// administered Workspace that is not listed is refused.
+func parse{{.Pascal}}Workspaces(value string, administered []string) (google.WorkspaceSet, error) {
 	var sets []google.WorkspaceSet
+	attesting := map[string]bool{}
 	for _, entry := range strings.Split(value, ",") {
 		entry = strings.TrimSpace(entry)
 		if entry == "" {
@@ -945,10 +1115,22 @@ func parse{{.Pascal}}Workspaces(value string) (google.WorkspaceSet, error) {
 		if !ok || name == "" || domains == "" {
 			return google.WorkspaceSet{}, errors.Newf("{{.Registration}}: Workspace %q is not <name>=<domain>[+<domain>]", entry)
 		}
-		sets = append(sets, google.Workspace(strings.TrimSpace(name), strings.Split(domains, "+")...))
+		workspace := google.Workspace(strings.TrimSpace(name), strings.Split(domains, "+")...)
+		for _, domain := range strings.Split(domains, "+") {
+			if slices.Contains(administered, strings.ToLower(domain)) {
+				workspace = workspace.Attesting()
+				attesting[strings.ToLower(domain)] = true
+			}
+		}
+		sets = append(sets, workspace)
 	}
 	if len(sets) == 0 {
 		return google.WorkspaceSet{}, errors.New("{{.Registration}}: no Workspace listed; set the Workspaces as <name>=<domain>[+<domain>], comma-separated")
+	}
+	for _, domain := range administered {
+		if !attesting[domain] {
+			return google.WorkspaceSet{}, errors.Newf("{{.Registration}}: the administered Workspace %q is not among the Workspaces listed", domain)
+		}
 	}
 
 	return google.Workspaces(sets...), nil

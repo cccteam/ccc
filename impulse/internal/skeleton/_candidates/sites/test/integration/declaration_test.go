@@ -26,9 +26,9 @@ func TestDeclaration_whoMayEnterATenant(t *testing.T) {
 
 	ctx := t.Context()
 	s := newServed(ctx, t)
-	admin := signedIn(ctx, t, s.console, adminUser)
-	member := signedIn(ctx, t, s.console, memberUser)
-	portalMember := signedIn(ctx, t, s.portal, memberUser)
+	admin := signedIn(ctx, t, s, s.console, adminUser)
+	member := signedIn(ctx, t, s, s.console, memberUser)
+	portalMember := signedIn(ctx, t, s, s.portal, memberUser)
 
 	// A directory declared on north admits the people who come through it; the member,
 	// who came by password, keeps north as before.
@@ -69,7 +69,7 @@ func TestDeclaration_whoMayEnterATenant(t *testing.T) {
 	if domains := chart(ctx, t, admin); !slices.Equal(domains, []string{north, south}) {
 		t.Errorf("the administrator's chart = %v, want both: a global role reaches every tenant", domains)
 	}
-	fresh := newBrowser(t, s.console)
+	fresh := newBrowser(t, s, s.console)
 	if status, body := fresh.do(ctx, http.MethodGet, "/api/user/session", nil); status != http.StatusOK {
 		t.Fatalf("GET session before the refused login: status %d: %s", status, body)
 	}
@@ -103,18 +103,13 @@ func TestDeclaration_whoMayEnterATenant(t *testing.T) {
 	}
 }
 
-// signedIn returns a browser signed in on the site as the development login: the first
-// request primes the XSRF cookie the login route requires.
-func signedIn(ctx context.Context, t *testing.T, site *httptest.Server, user string) *browser {
+// signedIn returns a browser signed in on the site as the development login, through the
+// password and the second factor every session carries (browser.signIn).
+func signedIn(ctx context.Context, t *testing.T, s *served, site *httptest.Server, user string) *browser {
 	t.Helper()
 
-	b := newBrowser(t, site)
-	if status, body := b.do(ctx, http.MethodGet, "/api/user/session", nil); status != http.StatusOK {
-		t.Fatalf("GET /api/user/session before login: status %d: %s", status, body)
-	}
-	if status, body := b.login(ctx, user, adminPassword); status != http.StatusOK {
-		t.Fatalf("login as %s: status %d: %s", user, status, body)
-	}
+	b := newBrowser(t, s, site)
+	b.signIn(ctx, user)
 
 	return b
 }

@@ -373,6 +373,11 @@ func generatedRouterTests() []*generatedRouterTest {
 			parameters:  map[string]string{},
 		},
 		{
+			url: "/api/reset-staff-user-factors", method: http.MethodPost,
+			handlerFunc: "ResetStaffUserFactors",
+			parameters:  map[string]string{},
+		},
+		{
 			url: "/api/tenants/testDomain/staff-tenant-users", method: http.MethodGet,
 			handlerFunc: "StaffTenantUsers",
 			parameters:  map[string]string{"tenantID": "testDomain"},
@@ -473,6 +478,11 @@ func generatedRouterTests() []*generatedRouterTest {
 			parameters:  map[string]string{"tenantID": "testDomain"},
 		},
 		{
+			url: "/api/tenants/testDomain/reset-staff-tenant-user-factors", method: http.MethodPost,
+			handlerFunc: "ResetStaffTenantUserFactors",
+			parameters:  map[string]string{"tenantID": "testDomain"},
+		},
+		{
 			url: "/api/resources", method: http.MethodPatch,
 			handlerFunc: "PatchResources",
 		},
@@ -536,6 +546,14 @@ func (s *generatedHandlersStub) FeatureFlag() http.HandlerFunc {
 
 func (s *generatedHandlersStub) Features() http.HandlerFunc {
 	return s.record("Features")
+}
+
+func (s *generatedHandlersStub) ResetStaffTenantUserFactors() http.HandlerFunc {
+	return s.record("ResetStaffTenantUserFactors")
+}
+
+func (s *generatedHandlersStub) ResetStaffUserFactors() http.HandlerFunc {
+	return s.record("ResetStaffUserFactors")
 }
 
 func (s *generatedHandlersStub) SetFeature() http.HandlerFunc {

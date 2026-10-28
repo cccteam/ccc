@@ -235,11 +235,14 @@ func userTestParam(param httpio.ParamType) routeTestParam {
 
 // userMethodRoute is a method's route segment in the partition.
 func userMethodRoute(p *resource.UserPartitionNames, method accesstypes.Resource) string {
-	if method == p.SetPassword {
+	switch method {
+	case p.SetPassword:
 		return p.SetPasswordRoute
+	case p.UnlinkIdentity:
+		return p.UnlinkIdentityRoute
+	default:
+		return p.ResetFactorsRoute
 	}
-
-	return p.UnlinkIdentityRoute
 }
 
 // userResourceRoutes builds one resource's routes: the list, the read with its
@@ -491,10 +494,13 @@ func usersHandlers(s *userSurface) []usersHandlerData {
 			usersHandlerData{Name: "Patch" + string(p.Invitations), Method: "Patch" + tenant + "Invitations", Comment: fmt.Sprintf("invites into and revokes from %s through the operations body: Create and Delete on %s", where, p.Invitations)},
 		)
 		for _, method := range p.ServedMethods(s.decl.Shape) {
-			if method == p.SetPassword {
+			switch method {
+			case p.SetPassword:
 				handlers = append(handlers, usersHandlerData{Name: string(method), Method: "Set" + tenant + "UserPassword", Comment: fmt.Sprintf("sets a temporary password on a user of %s: Execute on %s, targeting %s", where, method, p.Users)})
-			} else {
+			case p.UnlinkIdentity:
 				handlers = append(handlers, usersHandlerData{Name: string(method), Method: "Unlink" + tenant + "UserIdentity", Comment: fmt.Sprintf("unlinks an identity from a user of %s: Execute on %s, targeting %s", where, method, p.Users)})
+			default:
+				handlers = append(handlers, usersHandlerData{Name: string(method), Method: "Reset" + tenant + "UserFactors", Comment: fmt.Sprintf("forgets the browsers a user of %s asked to be remembered, so their next sign-in asks for the second factor: Execute on %s, targeting %s", where, method, p.Users)})
 			}
 		}
 	}
@@ -799,10 +805,13 @@ func tsUserMethods(s *userSurface) []*tsUserMethod {
 		}
 		for _, method := range p.ServedMethods(s.decl.Shape) {
 			m := &tsUserMethod{Name: string(method), Property: strcase.ToCamel(string(method)), Route: userMethodRoute(p, method), Scope: scope}
-			if method == p.SetPassword {
+			switch method {
+			case p.SetPassword:
 				m.Fields = []tsUserField{{Name: seatFieldUser, TsType: stringTSType, DisplayType: uuidTSType, Required: true}, {Name: "password", TsType: stringTSType, DisplayType: stringTSType, Required: true}}
-			} else {
+			case p.UnlinkIdentity:
 				m.Fields = []tsUserField{{Name: seatFieldUser, TsType: stringTSType, DisplayType: uuidTSType, Required: true}, {Name: "identity", TsType: stringTSType, DisplayType: uuidTSType, Required: true}}
+			default:
+				m.Fields = []tsUserField{{Name: seatFieldUser, TsType: stringTSType, DisplayType: uuidTSType, Required: true}}
 			}
 			out = append(out, m)
 		}
@@ -836,10 +845,13 @@ func (s *userSurface) apiSurface() *tsAPISurface {
 			partition.Scope = string(accesstypes.DomainPermissionScope)
 		}
 		for _, method := range p.ServedMethods(s.decl.Shape) {
-			if method == p.SetPassword {
+			switch method {
+			case p.SetPassword:
 				partition.SetPassword = string(method)
-			} else {
+			case p.UnlinkIdentity:
 				partition.UnlinkIdentity = string(method)
+			default:
+				partition.ResetFactors = string(method)
 			}
 		}
 		out.Partitions = append(out.Partitions, partition)

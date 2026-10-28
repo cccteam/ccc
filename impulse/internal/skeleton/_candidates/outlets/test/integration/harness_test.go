@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -145,6 +146,15 @@ type served struct {
 	members *access.Client
 	// db is the test database, for the suites that read a table directly.
 	db *initiator.SpannerDB
+	// mail is the recorder the staff auth sends its mail to, where a suite reads the
+	// sign-in code a sign-in waits for.
+	mail *mail.Recorder
+	// codeMu lets one sign-in at a time run its second factor on the stack, so the code a
+	// browser reads from the recorder is its own, and trusted holds, per login, the token
+	// of the browser the login asked to be remembered at their first sign-in, which their
+	// later sign-ins carry (browser.signIn).
+	codeMu  sync.Mutex
+	trusted map[string]*http.Cookie
 }
 
 // newServed provisions the database the way the deployment does (the schema and the
@@ -169,12 +179,14 @@ func newServed(ctx context.Context, t *testing.T) *served {
 	if err := roster.Start(ctx); err != nil {
 		t.Fatalf("resource.TenantRoster.Start() error = %v", err)
 	}
+	// The recorder the staff auth's mail goes to: the suites read the sign-in codes from it.
+	sent := &mail.Recorder{}
 	staffAuth, err := staff.New(ctx, db.Client, &staff.Settings{
 		Collection:         router.Collection(),
 		Signals:            svc,
 		CookieKey:          testCookieKey,
 		SessionTimeout:     time.Minute,
-		Mail:               &mail.Recorder{},
+		Mail:               sent,
 		MailLoginURL:       "http://outlets.test/console/login",
 		DevicePage:         "/console/device",
 		TenantDeclarations: app.NewTenantDeclarationReader(),
@@ -196,7 +208,10 @@ func newServed(ctx context.Context, t *testing.T) *served {
 	// The members auth: under the skipAuth build tag the directory is simulated and the
 	// login returns straight to the callback, so the callback is the registration detail
 	// that matters, beside a well-formed tenant id, which the method validates at
-	// registration whether or not the directory is simulated.
+	// registration whether or not the directory is simulated. The tenant is declared as
+	// one the deployment administers, so a sign-in through the directory carries the
+	// tenant's own second factor and opens its session at the callback, with no sign-in
+	// code asked.
 	membersAuth, err := members.New(ctx, db.Client, &members.Settings{
 		Collection:     router.Collection(),
 		Signals:        svc,
@@ -205,7 +220,7 @@ func newServed(ctx context.Context, t *testing.T) *served {
 		Mail:           &mail.Recorder{},
 		MailLoginURL:   "http://outlets.test/portal/login",
 		LoginURL:       "/portal/login",
-		Directory:      members.DirectorySettings{TenantID: "00000000-0000-0000-0000-000000000000", RedirectURL: "http://" + server.Listener.Addr().String() + portalAPI + "/user/directory/callback"},
+		Directory:      members.DirectorySettings{TenantID: "00000000-0000-0000-0000-000000000000", AdministeredTenants: "00000000-0000-0000-0000-000000000000", RedirectURL: "http://" + server.Listener.Addr().String() + portalAPI + "/user/directory/callback"},
 		// The declaration reader the sign-in rule reads with; the development seed
 		// declares the directory above on both tenants.
 		TenantDeclarations: app.NewTenantDeclarationReader(),
@@ -265,7 +280,7 @@ func newServed(ctx context.Context, t *testing.T) *served {
 	server.Config.Handler = router.New(a, router.Hooks{})
 	server.Start()
 
-	return &served{server: server, access: accessClient, members: membersAccess, db: db}
+	return &served{server: server, access: accessClient, members: membersAccess, db: db, mail: sent, trusted: map[string]*http.Cookie{}}
 }
 
 // waitForDomains blocks until the engine's snapshot reports the user's footholds in
@@ -314,6 +329,13 @@ var outletXSRF = map[string]string{
 	portalAPI:  members.XSRFCookie,
 }
 
+// outletTrusted names the cookie a remembered browser carries its trusted-device token
+// in, per session-serving outlet.
+var outletTrusted = map[string]string{
+	consoleAPI: staff.TrustedDeviceCookie,
+	portalAPI:  members.TrustedDeviceCookie,
+}
+
 // browser is one browser's view of the served application on one session-serving
 // outlet: a cookie jar and the XSRF token the session middleware issued into it.
 type browser struct {
@@ -322,6 +344,11 @@ type browser struct {
 	prefix string
 	xsrf   string
 	client *http.Client
+	// trusted is the cookie a remembered browser carries its trusted-device token in.
+	trusted string
+	// served is the stack the browser is on, whose recorder holds the code a sign-in
+	// waits for and whose trusted tokens a remembered browser carries.
+	served *served
 }
 
 func newBrowser(t *testing.T, s *served, prefix string) *browser {
@@ -337,7 +364,7 @@ func newBrowser(t *testing.T, s *served, prefix string) *browser {
 		t.Fatalf("no auth issues an XSRF cookie on %s", prefix)
 	}
 
-	return &browser{t: t, base: s.server.URL, prefix: prefix, xsrf: xsrf, client: &http.Client{Jar: jar}}
+	return &browser{t: t, base: s.server.URL, prefix: prefix, xsrf: xsrf, client: &http.Client{Jar: jar}, trusted: outletTrusted[prefix], served: s}
 }
 
 // login posts the credentials to the outlet's login route and returns the status.

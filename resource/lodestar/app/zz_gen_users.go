@@ -82,6 +82,11 @@ func (a *App) UnlinkCrewUserIdentity() http.HandlerFunc {
 	return a.CrewUserSurface().UnlinkUserIdentity(a, router.Collection())
 }
 
+// ResetCrewUserFactors forgets the browsers a user of the global partition asked to be remembered, so their next sign-in asks for the second factor: Execute on ResetCrewUserFactors, targeting CrewUsers.
+func (a *App) ResetCrewUserFactors() http.HandlerFunc {
+	return a.CrewUserSurface().ResetUserFactors(a, router.Collection())
+}
+
 // CrewSectorUsers serves the users of the route's sector: List on CrewSectorUsers.
 func (a *App) CrewSectorUsers() http.HandlerFunc {
 	return a.CrewUserSurface().TenantUsers(a, router.Collection())
@@ -145,6 +150,11 @@ func (a *App) SetCrewSectorUserPassword() http.HandlerFunc {
 // UnlinkCrewSectorUserIdentity unlinks an identity from a user of the route's sector: Execute on UnlinkCrewSectorUserIdentity, targeting CrewSectorUsers.
 func (a *App) UnlinkCrewSectorUserIdentity() http.HandlerFunc {
 	return a.CrewUserSurface().UnlinkTenantUserIdentity(a, router.Collection())
+}
+
+// ResetCrewSectorUserFactors forgets the browsers a user of the route's sector asked to be remembered, so their next sign-in asks for the second factor: Execute on ResetCrewSectorUserFactors, targeting CrewSectorUsers.
+func (a *App) ResetCrewSectorUserFactors() http.HandlerFunc {
+	return a.CrewUserSurface().ResetTenantUserFactors(a, router.Collection())
 }
 
 // The Members auth's user-management surface (github.com/cccteam/ccc/resource/lodestar/pkg/auth/members): the application
@@ -214,6 +224,11 @@ func (a *App) UnlinkMembersUserIdentity() http.HandlerFunc {
 	return a.MembersUserSurface().UnlinkUserIdentity(a, router.Collection())
 }
 
+// ResetMembersUserFactors forgets the browsers a user of the global partition asked to be remembered, so their next sign-in asks for the second factor: Execute on ResetMembersUserFactors, targeting MembersUsers.
+func (a *App) ResetMembersUserFactors() http.HandlerFunc {
+	return a.MembersUserSurface().ResetUserFactors(a, router.Collection())
+}
+
 // MembersSectorUsers serves the users of the route's sector: List on MembersSectorUsers.
 func (a *App) MembersSectorUsers() http.HandlerFunc {
 	return a.MembersUserSurface().TenantUsers(a, router.Collection())
@@ -272,4 +287,9 @@ func (a *App) PatchMembersSectorInvitations() http.HandlerFunc {
 // UnlinkMembersSectorUserIdentity unlinks an identity from a user of the route's sector: Execute on UnlinkMembersSectorUserIdentity, targeting MembersSectorUsers.
 func (a *App) UnlinkMembersSectorUserIdentity() http.HandlerFunc {
 	return a.MembersUserSurface().UnlinkTenantUserIdentity(a, router.Collection())
+}
+
+// ResetMembersSectorUserFactors forgets the browsers a user of the route's sector asked to be remembered, so their next sign-in asks for the second factor: Execute on ResetMembersSectorUserFactors, targeting MembersSectorUsers.
+func (a *App) ResetMembersSectorUserFactors() http.HandlerFunc {
+	return a.MembersUserSurface().ResetTenantUserFactors(a, router.Collection())
 }

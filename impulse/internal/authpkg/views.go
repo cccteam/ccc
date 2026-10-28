@@ -65,8 +65,14 @@ type methodView struct {
 	Field string
 	// Type is the method's Go type (*azure.Method).
 	Type string
-	// SlotExpr is the organization slot as the registration's Config takes it.
-	SlotExpr string
+	// SlotExpr is the organization slot as the registration's Config takes it, for a
+	// method that declares no administered organizations (Microsoft personal accounts
+	// alone); every other method builds its slot in a function of its own (<field>Slot),
+	// which SlotKind, the slot's normalized name, and SlotWords, the slot in words,
+	// render.
+	SlotExpr  string
+	SlotKind  string
+	SlotWords string
 	// AccountsExpr is the account rule as the Config takes it.
 	AccountsExpr string
 	// RoleSyncExpr is the role synchronization as the Config takes it.
@@ -124,9 +130,9 @@ func newView(spec *Spec) *view {
 			v.Imports = append(v.Imports, imp)
 		}
 	}
-	if spec.TenantPolicy != nil {
-		v.Imports = append(v.Imports, "github.com/cccteam/session/signin")
-	}
+	// The sign-in rule every auth sets (requireSecondFactor) names the library's decision
+	// and the factor's method.
+	v.Imports = append(v.Imports, "github.com/cccteam/session/sessioninfo", "github.com/cccteam/session/signin")
 
 	return v
 }
@@ -200,7 +206,7 @@ func roleLiteral(roles []string) string {
 }
 
 func newMethodView(spec *Spec, m *Method) *methodView {
-	mv := &methodView{Method: m, Auth: spec.Name, AuthPascal: names.Pascal(spec.Name), Fields: m.Fields()}
+	mv := &methodView{Method: m, Auth: spec.Name, AuthPascal: names.Pascal(spec.Name), Fields: m.Fields(), SlotKind: m.slot(), SlotWords: slotWords(m)}
 	mv.Field = lowerFirst(m.Pascal())
 	for i := range mv.Fields {
 		mv.Variables = append(mv.Variables, m.Variable(spec.Name, &mv.Fields[i]))
@@ -278,8 +284,48 @@ func azureView(mv *methodView, m *Method, settings string) {
 		mv.RoleSyncExpr = "signin.DisableRoleSync()"
 	}
 	mv.Imports = []string{netHTTP, "github.com/cccteam/access", "github.com/cccteam/session/azure", "github.com/cccteam/session/signin"}
+	if m.Administered() {
+		mv.Imports = append(mv.Imports, "strings")
+	}
 	if m.slot() == SlotListed {
-		mv.Imports = append(mv.Imports, "strings", "github.com/go-playground/errors/v5")
+		mv.Imports = append(mv.Imports, "slices")
+	}
+	if m.SlotFallible() {
+		mv.Imports = append(mv.Imports, "github.com/go-playground/errors/v5")
+	}
+}
+
+// slotWords is a method's organization slot in words, for the slot function's comment.
+func slotWords(m *Method) string {
+	switch m.slot() {
+	case SlotOne:
+		if m.Kind == app.MethodGoogle {
+			return "one Workspace (HostedDomain)"
+		}
+
+		return "one tenant (TenantID)"
+	case SlotListed:
+		if m.Kind == app.MethodGoogle {
+			return "the Workspaces listed (Workspaces)"
+		}
+
+		return "the tenants listed (Tenants)"
+	case SlotAny:
+		if m.Kind == app.MethodGoogle {
+			return "any Google account"
+		}
+
+		return "any work or school tenant"
+	case SlotOnePersonal:
+		return "one tenant (TenantID) and Microsoft personal accounts"
+	case SlotAnyPersonal:
+		return "any work or school tenant and Microsoft personal accounts"
+	case SlotAnyWorkspace:
+		return "any Workspace account"
+	case SlotMixed:
+		return "one Workspace (HostedDomain) and any Google account"
+	default:
+		return m.slot()
 	}
 }
 
@@ -308,11 +354,11 @@ func googleView(mv *methodView, m *Method, settings string) {
 	} else {
 		mv.RoleSyncExpr = "google.DisableRoleSync()"
 	}
-	mv.Imports = []string{netHTTP, "github.com/cccteam/access", "github.com/cccteam/session/google", "github.com/cccteam/session/signin"}
+	mv.Imports = []string{netHTTP, "strings", "github.com/cccteam/access", "github.com/cccteam/session/google", "github.com/cccteam/session/signin"}
 	if m.slot() == SlotListed {
-		mv.Imports = append(mv.Imports, "strings")
+		mv.Imports = append(mv.Imports, "slices")
 	}
-	if m.slot() == SlotListed || m.SyncsRoles() {
+	if m.SlotFallible() || m.SyncsRoles() {
 		mv.Imports = append(mv.Imports, "github.com/go-playground/errors/v5")
 	}
 }

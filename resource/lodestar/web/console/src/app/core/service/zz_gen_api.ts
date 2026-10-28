@@ -3,7 +3,7 @@ import { ApiDescriptor, Client, ClientOptions, createClient, MethodHandle, NullB
 import { Point } from 'geojson';
 import { Methods, Resources } from './zz_gen_constants';
 import { Clients, ClientContacts, ClientRosters, Commendations, Consignments, DistressCalls, FeeByKinds, Hangars, Missions, MissionBoards, MissionDocuments, OpenMissionsBySquadrons, Pilots, PilotAssignments, PilotCertifications, Refits, RefitTasks, Sectors, SectorDirectories, Ships, ShipClasses, Sorties, SortieExpenses, Squadrons, SquadronMemberships, SquadronRosters, Wings, BriefingTemplates, ExpenseManifests, PilotCards, SectorHazardBoards, ServiceLedgers, StandingOrders, FeatureFlags, CrewUsers, CrewSeats, CrewRoles, CrewInvitations, CrewSectorUsers, CrewSectorSeats, CrewSectorRoles, CrewSectorInvitations, MembersUsers, MembersSeats, MembersRoles, MembersInvitations, MembersSectorUsers, MembersSectorSeats, MembersSectorRoles, MembersSectorInvitations } from './zz_gen_resources';
-import { AttachMissionDocument, AttachMissionDocumentResult, AttachRefitPhoto, BeginRefit, ClaimMission, CompileBriefing, CompileBriefingResult, CompleteMission, CompleteMissionAnswer, FailFlightTest, FailMission, HailShip, HoldMission, InspectShip, InspectShipResult, IssueBulletin, LaunchMission, PassFlightTest, ReleaseConsignment, ReleaseConsignmentResult, ReplaceMissionDocument, ResumeMission, ScrapShip, StandDownMission, StartFlightTest, SetFeature, SetFeatureResult, SetCrewUserPassword, UnlinkCrewUserIdentity, SetCrewSectorUserPassword, UnlinkCrewSectorUserIdentity, UnlinkMembersUserIdentity, UnlinkMembersSectorUserIdentity } from './zz_gen_methods';
+import { AttachMissionDocument, AttachMissionDocumentResult, AttachRefitPhoto, BeginRefit, ClaimMission, CompileBriefing, CompileBriefingResult, CompleteMission, CompleteMissionAnswer, FailFlightTest, FailMission, HailShip, HoldMission, InspectShip, InspectShipResult, IssueBulletin, LaunchMission, PassFlightTest, ReleaseConsignment, ReleaseConsignmentResult, ReplaceMissionDocument, ResumeMission, ScrapShip, StandDownMission, StartFlightTest, SetFeature, SetFeatureResult, SetCrewUserPassword, UnlinkCrewUserIdentity, ResetCrewUserFactors, SetCrewSectorUserPassword, UnlinkCrewSectorUserIdentity, ResetCrewSectorUserFactors, UnlinkMembersUserIdentity, ResetMembersUserFactors, UnlinkMembersSectorUserIdentity, ResetMembersSectorUserFactors } from './zz_gen_methods';
 
 /** The feature flags the application declares, by name: what a route, a field or a method is gated behind. */
 export type Feature = 'commendations';
@@ -1222,10 +1222,14 @@ export const apiDescriptor = defineApiDescriptor({
     [Methods.SetFeature]: { method: Methods.SetFeature, property: 'setFeature', route: 'set-feature', scope: 'global', answers: true },
     [Methods.SetCrewUserPassword]: { method: Methods.SetCrewUserPassword, property: 'setCrewUserPassword', route: 'set-crew-user-password', scope: 'global' },
     [Methods.UnlinkCrewUserIdentity]: { method: Methods.UnlinkCrewUserIdentity, property: 'unlinkCrewUserIdentity', route: 'unlink-crew-user-identity', scope: 'global' },
+    [Methods.ResetCrewUserFactors]: { method: Methods.ResetCrewUserFactors, property: 'resetCrewUserFactors', route: 'reset-crew-user-factors', scope: 'global' },
     [Methods.SetCrewSectorUserPassword]: { method: Methods.SetCrewSectorUserPassword, property: 'setCrewSectorUserPassword', route: 'set-crew-sector-user-password', scope: 'domain' },
     [Methods.UnlinkCrewSectorUserIdentity]: { method: Methods.UnlinkCrewSectorUserIdentity, property: 'unlinkCrewSectorUserIdentity', route: 'unlink-crew-sector-user-identity', scope: 'domain' },
+    [Methods.ResetCrewSectorUserFactors]: { method: Methods.ResetCrewSectorUserFactors, property: 'resetCrewSectorUserFactors', route: 'reset-crew-sector-user-factors', scope: 'domain' },
     [Methods.UnlinkMembersUserIdentity]: { method: Methods.UnlinkMembersUserIdentity, property: 'unlinkMembersUserIdentity', route: 'unlink-members-user-identity', scope: 'global' },
+    [Methods.ResetMembersUserFactors]: { method: Methods.ResetMembersUserFactors, property: 'resetMembersUserFactors', route: 'reset-members-user-factors', scope: 'global' },
     [Methods.UnlinkMembersSectorUserIdentity]: { method: Methods.UnlinkMembersSectorUserIdentity, property: 'unlinkMembersSectorUserIdentity', route: 'unlink-members-sector-user-identity', scope: 'domain' },
+    [Methods.ResetMembersSectorUserFactors]: { method: Methods.ResetMembersSectorUserFactors, property: 'resetMembersSectorUserFactors', route: 'reset-members-sector-user-factors', scope: 'domain' },
   },
   userSurfaces: [
     {
@@ -1236,8 +1240,8 @@ export const apiDescriptor = defineApiDescriptor({
       openSignUp: true,
       registrations: [{ name: 'google', kind: 'google', label: 'Google', invited: false, syncsRoles: false }, { name: 'sign-up', kind: 'google', label: 'Sign up with Google', invited: false, syncsRoles: false }],
       partitions: [
-        { scope: 'global', users: Resources.CrewUsers, seats: Resources.CrewSeats, roles: Resources.CrewRoles, invitations: Resources.CrewInvitations, setPassword: Methods.SetCrewUserPassword, unlinkIdentity: Methods.UnlinkCrewUserIdentity },
-        { scope: 'domain', users: Resources.CrewSectorUsers, seats: Resources.CrewSectorSeats, roles: Resources.CrewSectorRoles, invitations: Resources.CrewSectorInvitations, setPassword: Methods.SetCrewSectorUserPassword, unlinkIdentity: Methods.UnlinkCrewSectorUserIdentity },
+        { scope: 'global', users: Resources.CrewUsers, seats: Resources.CrewSeats, roles: Resources.CrewRoles, invitations: Resources.CrewInvitations, setPassword: Methods.SetCrewUserPassword, unlinkIdentity: Methods.UnlinkCrewUserIdentity, resetFactors: Methods.ResetCrewUserFactors },
+        { scope: 'domain', users: Resources.CrewSectorUsers, seats: Resources.CrewSectorSeats, roles: Resources.CrewSectorRoles, invitations: Resources.CrewSectorInvitations, setPassword: Methods.SetCrewSectorUserPassword, unlinkIdentity: Methods.UnlinkCrewSectorUserIdentity, resetFactors: Methods.ResetCrewSectorUserFactors },
       ],
     },
     {
@@ -1248,8 +1252,8 @@ export const apiDescriptor = defineApiDescriptor({
       openSignUp: false,
       registrations: [{ name: 'directory', kind: 'google', label: 'Company directory', invited: false, syncsRoles: true }],
       partitions: [
-        { scope: 'global', users: Resources.MembersUsers, seats: Resources.MembersSeats, roles: Resources.MembersRoles, invitations: Resources.MembersInvitations, unlinkIdentity: Methods.UnlinkMembersUserIdentity },
-        { scope: 'domain', users: Resources.MembersSectorUsers, seats: Resources.MembersSectorSeats, roles: Resources.MembersSectorRoles, invitations: Resources.MembersSectorInvitations, unlinkIdentity: Methods.UnlinkMembersSectorUserIdentity },
+        { scope: 'global', users: Resources.MembersUsers, seats: Resources.MembersSeats, roles: Resources.MembersRoles, invitations: Resources.MembersInvitations, unlinkIdentity: Methods.UnlinkMembersUserIdentity, resetFactors: Methods.ResetMembersUserFactors },
+        { scope: 'domain', users: Resources.MembersSectorUsers, seats: Resources.MembersSectorSeats, roles: Resources.MembersSectorRoles, invitations: Resources.MembersSectorInvitations, unlinkIdentity: Methods.UnlinkMembersSectorUserIdentity, resetFactors: Methods.ResetMembersSectorUserFactors },
       ],
     },
   ],
@@ -1305,7 +1309,9 @@ export interface GlobalApi {
   setFeature: MethodHandle<SetFeature, SetFeatureResult>;
   setCrewUserPassword: MethodHandle<SetCrewUserPassword>;
   unlinkCrewUserIdentity: MethodHandle<UnlinkCrewUserIdentity>;
+  resetCrewUserFactors: MethodHandle<ResetCrewUserFactors>;
   unlinkMembersUserIdentity: MethodHandle<UnlinkMembersUserIdentity>;
+  resetMembersUserFactors: MethodHandle<ResetMembersUserFactors>;
 }
 
 /** Handles for one tenant partition, available on client.domain(...). */
@@ -1360,7 +1366,9 @@ export interface DomainApi {
   startFlightTest: MethodHandle<StartFlightTest>;
   setCrewSectorUserPassword: MethodHandle<SetCrewSectorUserPassword>;
   unlinkCrewSectorUserIdentity: MethodHandle<UnlinkCrewSectorUserIdentity>;
+  resetCrewSectorUserFactors: MethodHandle<ResetCrewSectorUserFactors>;
   unlinkMembersSectorUserIdentity: MethodHandle<UnlinkMembersSectorUserIdentity>;
+  resetMembersSectorUserFactors: MethodHandle<ResetMembersSectorUserFactors>;
 }
 
 export type Api = Client<GlobalApi, DomainApi>;

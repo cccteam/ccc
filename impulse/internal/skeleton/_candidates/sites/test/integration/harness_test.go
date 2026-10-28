@@ -10,6 +10,7 @@ import (
 	"net/http/cookiejar"
 	"net/http/httptest"
 	"slices"
+	"sync"
 	"testing"
 	"time"
 
@@ -128,6 +129,15 @@ type served struct {
 	access  *access.Client
 	// db is the test database, for the suites that read a table directly.
 	db *initiator.SpannerDB
+	// mail is the recorder the staff auth sends its mail to, where a suite reads the
+	// sign-in code a sign-in waits for.
+	mail *mail.Recorder
+	// codeMu lets one sign-in at a time run its second factor on the stack, so the code a
+	// browser reads from the recorder is its own, and trusted holds, per login, the token
+	// of the browser the login asked to be remembered at their first sign-in, which their
+	// later sign-ins carry (browser.signIn).
+	codeMu  sync.Mutex
+	trusted map[string]*http.Cookie
 }
 
 // newServed provisions the database the way the deployment does (the schema and the
@@ -157,12 +167,14 @@ func newServed(ctx context.Context, t *testing.T) *served {
 	if err := roster.Start(ctx); err != nil {
 		t.Fatalf("resource.TenantRoster.Start() error = %v", err)
 	}
+	// The recorder the staff auth's mail goes to: the suites read the sign-in codes from it.
+	sent := &mail.Recorder{}
 	auth, err := staff.New(ctx, db.Client, &staff.Settings{
 		Collection:         collection,
 		Signals:            svc,
 		CookieKey:          testCookieKey,
 		SessionTimeout:     time.Minute,
-		Mail:               &mail.Recorder{},
+		Mail:               sent,
 		MailLoginURL:       "http://sites.test/login",
 		TenantDeclarations: consoleapp.NewTenantDeclarationReader(),
 		TenantDirectories:  consoleapp.NewTenantDirectoryReader(),
@@ -221,7 +233,7 @@ func newServed(ctx context.Context, t *testing.T) *served {
 	portal := httptest.NewServer(portalrouter.New(portalApp, portalrouter.Hooks{}))
 	t.Cleanup(portal.Close)
 
-	return &served{console: console, portal: portal, access: accessClient, db: db}
+	return &served{console: console, portal: portal, access: accessClient, db: db, mail: sent, trusted: map[string]*http.Cookie{}}
 }
 
 // waitForDomains blocks until the engine's snapshot reports the user's footholds in
@@ -269,10 +281,13 @@ type browser struct {
 	t      *testing.T
 	base   string
 	client *http.Client
+	// served is the stack the browser is on, whose recorder holds the code a sign-in
+	// waits for and whose trusted tokens a remembered browser carries.
+	served *served
 }
 
-// newBrowser opens a browser on one site.
-func newBrowser(t *testing.T, site *httptest.Server) *browser {
+// newBrowser opens a browser on one site of the stack.
+func newBrowser(t *testing.T, s *served, site *httptest.Server) *browser {
 	t.Helper()
 
 	jar, err := cookiejar.New(nil)
@@ -280,7 +295,7 @@ func newBrowser(t *testing.T, site *httptest.Server) *browser {
 		t.Fatal(err)
 	}
 
-	return &browser{t: t, base: site.URL, client: &http.Client{Jar: jar}}
+	return &browser{t: t, base: site.URL, client: &http.Client{Jar: jar}, served: s}
 }
 
 // login posts the credentials to the login route and returns the status.

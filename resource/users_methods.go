@@ -29,6 +29,12 @@ type UnlinkUserIdentityRequest struct {
 	Identity ccc.UUID `json:"identity"`
 }
 
+// ResetUserFactorsRequest is the body of Reset<Auth>UserFactors: the user whose
+// remembered browsers are forgotten.
+type ResetUserFactorsRequest struct {
+	User ccc.UUID `json:"user"`
+}
+
 // methodContext decodes a method's body and checks Execute on it, then locates the
 // target user in the partition and judges the grant's condition over their row.
 func (s *UserSurface[A]) methodTarget(ctx context.Context, r *http.Request, a UserApp, tenanted bool, method accesstypes.Resource, user ccc.UUID) (*writeContext, *composedUser, error) {
@@ -143,6 +149,45 @@ func (s *UserSurface[A]) unlinkUserIdentity(a UserApp, tenanted bool) http.Handl
 		}
 		if err := s.accounts.UnlinkIdentity(ctx, linked.ID); err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, errors.Wrap(err, "resource.UserAccounts.UnlinkIdentity()"))
+		}
+
+		return httpio.NewEncoder(w).Ok(nil)
+	})
+}
+
+// resetUserFactors is Reset<Auth>UserFactors: the person's second factor reset. Every
+// browser they asked to be remembered is forgotten, so their next sign-in from any of
+// them asks for the factor again; the sign-in code itself has nothing to reset, since
+// a new one is mailed at every sign-in. An operator who lost their own remembered
+// browsers may reset their own.
+func (s *UserSurface[A]) resetUserFactors(a UserApp, tenanted bool) http.HandlerFunc {
+	decoder, err := newStructDecoder[ResetUserFactorsRequest]()
+	if err != nil {
+		panic(err)
+	}
+	decoder = decoder.WithValidator(a.Validator())
+
+	return httpio.Log(func(w http.ResponseWriter, r *http.Request) error {
+		ctx, span := tracer.Start(r.Context())
+		defer span.End()
+
+		req, err := decoder.Decode(r)
+		if err != nil {
+			return httpio.NewEncoder(w).ClientMessage(ctx, err)
+		}
+		method := s.partitionOf(r, tenanted).names.ResetFactors
+		wc, target, err := s.methodTarget(ctx, r, a, tenanted, method, req.User)
+		if err != nil {
+			return httpio.NewEncoder(w).ClientMessage(ctx, err)
+		}
+		if err := s.accountLevel(ctx, wc, target, "the second-factor reset"); err != nil {
+			return httpio.NewEncoder(w).ClientMessage(ctx, err)
+		}
+		if wc.dryRun {
+			return httpio.NewEncoder(w).Ok(nil)
+		}
+		if err := s.accounts.ResetUserFactors(ctx, target.account.ID); err != nil {
+			return httpio.NewEncoder(w).ClientMessage(ctx, errors.Wrap(err, "resource.UserAccounts.ResetUserFactors()"))
 		}
 
 		return httpio.NewEncoder(w).Ok(nil)

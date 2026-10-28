@@ -2,10 +2,12 @@ package members
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/cccteam/access"
 	"github.com/cccteam/session/azure"
 	"github.com/cccteam/session/signin"
+	"github.com/go-playground/errors/v5"
 )
 
 // DirectoryRegistration is the name the directory registration goes under on the Auth: the
@@ -22,6 +24,8 @@ const DirectoryRegistration = "directory"
 type DirectorySettings struct {
 	// TenantID is the tenant whose accounts the registration admits, by its tenant id (the tid claim, a GUID); the slot is validated at registration, so the simulated directory needs a well-formed placeholder.
 	TenantID string
+	// AdministeredTenants is the tenants the deployment administers, by tenant id, comma-separated, each one the registration admits: a sign-in from one carries the tenant's own second factor, which the deployment vouches for (a Conditional Access policy requiring multifactor authentication of everyone), and is not asked for the sign-in code; empty when the deployment administers none.
+	AdministeredTenants string
 	// ClientID is the app registration's application (client) id.
 	ClientID string
 	// ClientSecret is the app registration's client secret.
@@ -57,16 +61,49 @@ func (h *Handlers) DirectoryFrontChannelLogout() http.HandlerFunc {
 // library's standard one, members of the directory: the person becomes a user under their
 // user principal name, with no password, linked by the directory's immutable tenant and
 // object ids so a renamed account stays the same person.
-func registerDirectory(authSession *Session, accessClient *access.Client, settings *Settings) *azure.Method {
+func registerDirectory(authSession *Session, accessClient *access.Client, settings *Settings) (*azure.Method, error) {
+	tenants, err := directorySlot(settings)
+	if err != nil {
+		return nil, err
+	}
 	_ = accessClient
 
 	return azure.SignIn(authSession, DirectoryRegistration, nil, &azure.Config{
-		Tenants:      azure.Tenant(settings.Directory.TenantID),
+		Tenants:      tenants,
 		ClientID:     settings.Directory.ClientID,
 		ClientSecret: settings.Directory.ClientSecret,
 		RedirectURL:  settings.Directory.RedirectURL,
 		RoleSync:     signin.DisableRoleSync(),
 		Accounts:     signin.MembersOfDirectory,
 		LoginURL:     settings.LoginURL,
-	})
+	}), nil
+}
+
+// directorySlot is the registration's organization slot, one tenant (TenantID), with the
+// tenants the deployment administers declared as attesting (AdministeredTenants): a
+// sign-in from one carries the tenant's own second factor, which the deployment vouches
+// for, and is not asked for the sign-in code.
+func directorySlot(settings *Settings) (azure.TenantSet, error) {
+	tenant := azure.Tenant(settings.Directory.TenantID)
+	for _, id := range parseDirectoryAdministered(settings.Directory.AdministeredTenants) {
+		if !strings.EqualFold(id, settings.Directory.TenantID) {
+			return azure.TenantSet{}, errors.Newf("DirectoryRegistration: the administered tenant %q is not the tenant admitted, %s", id, settings.Directory.TenantID)
+		}
+		tenant = tenant.Attesting()
+	}
+
+	return tenant, nil
+}
+
+// parseDirectoryAdministered reads the administered tenants from their setting: the
+// tenant ids, comma-separated, lower-cased; none for an empty setting.
+func parseDirectoryAdministered(value string) []string {
+	var ids []string
+	for _, id := range strings.Split(value, ",") {
+		if id = strings.ToLower(strings.TrimSpace(id)); id != "" {
+			ids = append(ids, id)
+		}
+	}
+
+	return ids
 }

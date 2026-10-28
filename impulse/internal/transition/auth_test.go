@@ -443,7 +443,7 @@ func TestAuthApply(t *testing.T) {
 			check: func(t *testing.T, a *app.App) {
 				t.Helper()
 				pkg := read(t, a, "pkg/auth/partners/partners.go")
-				for _, want := range []string{"package partners", `Name = "partners"`, `TablePrefix = "Partners"`, "session.NewAuth[session.NoCustomData, session.NoCustomData](", `sessionsTable    = "PartnersSessions"`, "handlers.password = registerPassword(authSession)"} {
+				for _, want := range []string{"package partners", `Name = "partners"`, `TablePrefix = "Partners"`, "session.NewAuth[session.NoCustomData, session.NoCustomData](", `sessionsTable       = "PartnersSessions"`, "handlers.password = registerPassword(authSession)"} {
 					if !strings.Contains(pkg, want) {
 						t.Errorf("partners.go lacks %q", want)
 					}
@@ -491,7 +491,7 @@ func TestAuthApply(t *testing.T) {
 			auth:  Auth{Name: "partners", Methods: []authpkg.Method{{Kind: app.MethodAzure, Name: "directory", Authority: AuthorityApplication}}, Outlet: "default"},
 			extra: map[string]string{"pkg/config/data.go": authConfigSettings},
 			wantDid: []string{
-				"pkg/config/data.go: dataConfig reads the partners auth's directory registration from APP_PARTNERS_DIRECTORY_TENANT_ID, APP_PARTNERS_DIRECTORY_CLIENT_ID, APP_PARTNERS_DIRECTORY_CLIENT_SECRET, APP_PARTNERS_DIRECTORY_REDIRECT_URL",
+				"pkg/config/data.go: dataConfig reads the partners auth's directory registration from APP_PARTNERS_DIRECTORY_TENANT_ID, APP_PARTNERS_DIRECTORY_ADMINISTERED_TENANTS, APP_PARTNERS_DIRECTORY_CLIENT_ID, APP_PARTNERS_DIRECTORY_CLIENT_SECRET, APP_PARTNERS_DIRECTORY_REDIRECT_URL",
 				configSettingsDid,
 			},
 			check: func(t *testing.T, a *app.App) {
@@ -499,9 +499,9 @@ func TestAuthApply(t *testing.T) {
 				got := read(t, a, "pkg/config/data.go")
 				for _, want := range []string{
 					"\tpartnersAuth, err := partners.New(ctx, spannerClient, env.partnersSettings(cookieKey))\n",
-					"\tPartnersDirectoryTenantID     string `env:\"APP_PARTNERS_DIRECTORY_TENANT_ID\"`\n",
-					"\tPartnersDirectoryClientSecret string `env:\"APP_PARTNERS_DIRECTORY_CLIENT_SECRET\" secret:\"true\"`\n",
-					"// partnersSettings builds the partners auth's settings: the cookie key and the session\n// timeout. A directory registration's settings join the literal here.\nfunc (env *dataConfig) partnersSettings(cookieKey string) *partners.Settings {\n\treturn &partners.Settings{\n\t\tCookieKey:      cookieKey,\n\t\tSessionTimeout: env.SessionTimeout,\n\t\tLoginURL:       \"/login\",\n\t\tDirectory: partners.DirectorySettings{\n\t\t\tTenantID:     env.PartnersDirectoryTenantID,\n\t\t\tClientID:     env.PartnersDirectoryClientID,\n\t\t\tClientSecret: env.PartnersDirectoryClientSecret,\n\t\t\tRedirectURL:  env.PartnersDirectoryRedirectURL,\n\t\t},\n\t}\n}\n",
+					"\tPartnersDirectoryTenantID            string `env:\"APP_PARTNERS_DIRECTORY_TENANT_ID\"`\n",
+					"\tPartnersDirectoryClientSecret        string `env:\"APP_PARTNERS_DIRECTORY_CLIENT_SECRET\"        secret:\"true\"`\n",
+					"// partnersSettings builds the partners auth's settings: the cookie key and the session\n// timeout. A directory registration's settings join the literal here.\nfunc (env *dataConfig) partnersSettings(cookieKey string) *partners.Settings {\n\treturn &partners.Settings{\n\t\tCookieKey:      cookieKey,\n\t\tSessionTimeout: env.SessionTimeout,\n\t\tLoginURL:       \"/login\",\n\t\tDirectory: partners.DirectorySettings{\n\t\t\tTenantID:            env.PartnersDirectoryTenantID,\n\t\t\tAdministeredTenants: env.PartnersDirectoryAdministeredTenants,\n\t\t\tClientID:            env.PartnersDirectoryClientID,\n\t\t\tClientSecret:        env.PartnersDirectoryClientSecret,\n\t\t\tRedirectURL:         env.PartnersDirectoryRedirectURL,\n\t\t},\n\t}\n}\n",
 				} {
 					if !strings.Contains(got, want) {
 						t.Errorf("data.go lacks %q:\n%s", want, got)
@@ -559,7 +559,7 @@ func TestAuthApply(t *testing.T) {
 					"\tTenantDirectories signin.DirectoryReader[*cloudspanner.ReadWriteTransaction]\n}",
 					"\tif settings.TenantDeclarations == nil {\n\t\treturn nil, errors.New(\"partners.Settings.TenantDeclarations is nil: the sign-in rule reads what each tenant declares about who may enter it through the generated reader (app.NewTenantDeclarationReader), which the data level hands in\")\n\t}\n",
 					"\tif settings.TenantDirectories == nil {\n\t\treturn nil, errors.New(\"partners.Settings.TenantDirectories is nil: the directory admission reads what the tenants declare about one directory, its default seat included, through the generated reader (app.NewTenantDirectoryReader), which the data level hands in\")\n\t}\n\tstore, err := spannerstore.New(",
-					"\tauthSession.SetSignInPolicy(signin.TenantPolicy(resource.SignInRoles(accessClient.UserManager()), settings.TenantDeclarations, signin.AdmitWithoutTenant()))\n\n\t// The directory admission",
+					"\tauthSession.SetSignInPolicy(signin.TenantPolicy(resource.SignInRoles(accessClient.UserManager()), settings.TenantDeclarations, signin.AdmitWithoutTenant()).Then(requireSecondFactor))\n\n\t// The directory admission",
 					"\tauthSession.SetDirectoryAdmission(settings.TenantDirectories, resource.SignInRoles(accessClient.UserManager()), resource.SeatDeclared(accessClient.UserManager()))\n\n\t// An invitation accepted seats its roles",
 					"\tauthSession.SetInvitationAccepted(resource.SeatInvited(accessClient.UserManager()))\n\n\treturn &Auth{db: db, access: accessClient, handlers: handlers}, nil\n",
 					"\t\"github.com/cccteam/session/signin\"\n",
@@ -597,7 +597,7 @@ func TestAuthApply(t *testing.T) {
 			wantDid: []string{
 				"pkg/auth/partners: the partners auth package (directory.go, foothold.go, partners.go), rendered from the skeleton's auth source: the Auth session over tables prefixed Partners, the partners permission store, and the methods directory (azure, members of the directory, role membership the application's), each in its own file",
 				migrationsDid, rolesDid,
-				"pkg/config/data.go: dataConfig reads the partners auth's directory registration from APP_PARTNERS_DIRECTORY_TENANT_ID, APP_PARTNERS_DIRECTORY_CLIENT_ID, APP_PARTNERS_DIRECTORY_CLIENT_SECRET, APP_PARTNERS_DIRECTORY_REDIRECT_URL",
+				"pkg/config/data.go: dataConfig reads the partners auth's directory registration from APP_PARTNERS_DIRECTORY_TENANT_ID, APP_PARTNERS_DIRECTORY_ADMINISTERED_TENANTS, APP_PARTNERS_DIRECTORY_CLIENT_ID, APP_PARTNERS_DIRECTORY_CLIENT_SECRET, APP_PARTNERS_DIRECTORY_REDIRECT_URL",
 				configDid,
 				"Procfile: 2 go run command(s) build with -tags skipAuth, so the partners auth's directory is simulated in development",
 				"ran go generate ./...",
@@ -605,7 +605,7 @@ func TestAuthApply(t *testing.T) {
 			wantSkipped: []string{
 				"pkg/auth/partners/foothold.go: the first administrator the migrate command seeds while the auth's users table holds no rows, the administrator role memberships under the sign-in name the placement names; author AdministratorRoles with the role file, declare the name in the data level (APP_PARTNERS_ADMINISTRATOR) and seed it from pkg/deploy SeedAdministrators",
 				"pkg/config/data.go: Close releases the staff auth only; release the partners auth too",
-				"no environment template (.envrc.template, .env.template, .env.example) to add the directory method's variables to (APP_PARTNERS_DIRECTORY_TENANT_ID, APP_PARTNERS_DIRECTORY_CLIENT_ID, APP_PARTNERS_DIRECTORY_CLIENT_SECRET, APP_PARTNERS_DIRECTORY_REDIRECT_URL)",
+				"no environment template (.envrc.template, .env.template, .env.example) to add the directory method's variables to (APP_PARTNERS_DIRECTORY_TENANT_ID, APP_PARTNERS_DIRECTORY_ADMINISTERED_TENANTS, APP_PARTNERS_DIRECTORY_CLIENT_ID, APP_PARTNERS_DIRECTORY_CLIENT_SECRET, APP_PARTNERS_DIRECTORY_REDIRECT_URL)",
 			},
 			check: func(t *testing.T, a *app.App) {
 				t.Helper()
@@ -616,16 +616,16 @@ func TestAuthApply(t *testing.T) {
 					}
 				}
 				main := read(t, a, "pkg/auth/partners/partners.go")
-				for _, want := range []string{"\tdirectory *azure.Method\n", "handlers.directory = registerDirectory(authSession, accessClient, settings)", "\tLoginURL string\n", "\tDirectory DirectorySettings\n"} {
+				for _, want := range []string{"\tdirectory *azure.Method\n", "handlers.directory, err = registerDirectory(authSession, accessClient, settings)", "\tLoginURL string\n", "\tDirectory DirectorySettings\n"} {
 					if !strings.Contains(main, want) {
 						t.Errorf("partners.go lacks %q", want)
 					}
 				}
 				got := read(t, a, "pkg/config/data.go")
 				for _, want := range []string{
-					"\tPartnersDirectoryTenantID     string `env:\"APP_PARTNERS_DIRECTORY_TENANT_ID\"`\n",
-					"\tPartnersDirectoryClientSecret string `env:\"APP_PARTNERS_DIRECTORY_CLIENT_SECRET\" secret:\"true\"`\n",
-					"partnersAuth, err := partners.New(ctx, spannerClient, &partners.Settings{\n\t\tCookieKey:      cookieKey,\n\t\tSessionTimeout: env.SessionTimeout,\n\t\tLoginURL:       \"/login\",\n\t\tDirectory: partners.DirectorySettings{\n\t\t\tTenantID:     env.PartnersDirectoryTenantID,\n\t\t\tClientID:     env.PartnersDirectoryClientID,\n\t\t\tClientSecret: env.PartnersDirectoryClientSecret,\n\t\t\tRedirectURL:  env.PartnersDirectoryRedirectURL,\n\t\t},\n\t})",
+					"\tPartnersDirectoryTenantID            string `env:\"APP_PARTNERS_DIRECTORY_TENANT_ID\"`\n",
+					"\tPartnersDirectoryClientSecret        string `env:\"APP_PARTNERS_DIRECTORY_CLIENT_SECRET\"        secret:\"true\"`\n",
+					"partnersAuth, err := partners.New(ctx, spannerClient, &partners.Settings{\n\t\tCookieKey:      cookieKey,\n\t\tSessionTimeout: env.SessionTimeout,\n\t\tLoginURL:       \"/login\",\n\t\tDirectory: partners.DirectorySettings{\n\t\t\tTenantID:            env.PartnersDirectoryTenantID,\n\t\t\tAdministeredTenants: env.PartnersDirectoryAdministeredTenants,\n\t\t\tClientID:            env.PartnersDirectoryClientID,\n\t\t\tClientSecret:        env.PartnersDirectoryClientSecret,\n\t\t\tRedirectURL:         env.PartnersDirectoryRedirectURL,\n\t\t},\n\t})",
 				} {
 					if !strings.Contains(got, want) {
 						t.Errorf("data.go lacks %q:\n%s", want, got)
@@ -641,7 +641,7 @@ func TestAuthApply(t *testing.T) {
 			auth:  Auth{Name: "partners", Methods: []authpkg.Method{{Kind: app.MethodAzure, Name: "directory", Authority: AuthorityApplication}}, Outlet: "default"},
 			extra: map[string]string{programFile: authRouterProgram, ".envrc.template": "export PORT=8090\n"},
 			wantDid: []string{
-				".envrc.template: the directory method's variables (APP_PARTNERS_DIRECTORY_TENANT_ID, APP_PARTNERS_DIRECTORY_CLIENT_ID, APP_PARTNERS_DIRECTORY_CLIENT_SECRET, APP_PARTNERS_DIRECTORY_REDIRECT_URL), to fill in; APP_PARTNERS_DIRECTORY_REDIRECT_URL is set to the console project's development callback, http://127.0.0.1:4300/console/api/user/directory/callback",
+				".envrc.template: the directory method's variables (APP_PARTNERS_DIRECTORY_TENANT_ID, APP_PARTNERS_DIRECTORY_ADMINISTERED_TENANTS, APP_PARTNERS_DIRECTORY_CLIENT_ID, APP_PARTNERS_DIRECTORY_CLIENT_SECRET, APP_PARTNERS_DIRECTORY_REDIRECT_URL), to fill in; APP_PARTNERS_DIRECTORY_REDIRECT_URL is set to the console project's development callback, http://127.0.0.1:4300/console/api/user/directory/callback",
 			},
 			check: func(t *testing.T, a *app.App) {
 				t.Helper()

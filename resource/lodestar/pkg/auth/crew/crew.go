@@ -36,7 +36,14 @@
 // email address is held apart from their username, added and verified by the person
 // through a mailed link, or entered unverified by an operator.
 //
-// Demonstrates: auth.password, auth.two-populations, auth.multi-method, auth.directory-roles, auth.open-sign-up, auth.invitation, auth.email-address, auth.password-sign-up.
+// Every crew session carries a second factor, whichever way the person signed in
+// (pkg/auth: auth.RequireSecondFactor, the sign-in rule's last word): the fleet's
+// directory attests for its people when the deployment says the fleet administers it,
+// a browser a person asked to be remembered stands in for the factor, and otherwise the
+// login page runs the sign-in code the auth mails. Headquarters resets a person's
+// remembered browsers from the user-management surface (ResetCrewUserFactors).
+//
+// Demonstrates: auth.password, auth.two-populations, auth.multi-method, auth.directory-roles, auth.open-sign-up, auth.invitation, auth.email-address, auth.password-sign-up, auth.second-factor, auth.trusted-device.
 package crew
 
 import (
@@ -71,6 +78,11 @@ const (
 	// so two auths on one host never overwrite each other's token; the browser echoes it in
 	// the X-XSRF-TOKEN header, so the web app that binds to this auth names the same cookie.
 	XSRFCookie = Name + "-xsrf"
+	// TrustedDeviceCookie is the cookie a browser a crew member asked to be remembered
+	// after the sign-in code holds its token in, for the trusted-device period; it
+	// carries the auth's name for the same reason, since the members' cookie lives on
+	// the same host.
+	TrustedDeviceCookie = Name + "-trusted"
 
 	// GoogleRegistration is the name the Google method is registered under on the Auth:
 	// the segment of its login and callback routes (user/google/login) and, in
@@ -86,17 +98,21 @@ const (
 	// session records, the pending sign-ins that wait for a confirmation or an MFA step,
 	// and the impersonation record the library joins into every session read, so a
 	// view-as or act-as-role session carries who established it, the sign-in attempts
-	// the password method's attempt limiter counts per sign-in name, and the mail links
+	// the password method's attempt limiter counts per sign-in name, the mail links
 	// (the invitations, verifications and sign-ups the auth mails, each a single-use
-	// token). The names are spelled out in full (not TablePrefix + "SessionUsers") so
-	// the tool's session-tables check, which reads the literals, finds their migrations.
-	sessionsTable   = "CrewSessions"
-	usersTable      = "CrewSessionUsers"
-	identitiesTable = "CrewSessionIdentities"
-	eventsTable     = "CrewSessionAuthEvents"
-	pendingTable    = "CrewSessionPendingSignIns"
-	attemptsTable   = "CrewSessionSignInAttempts"
-	mailLinksTable  = "CrewSessionMailLinks"
+	// token), and the second factor's: the sign-in codes mailed for a pending sign-in
+	// and the browsers people asked to be remembered. The names are spelled out in full
+	// (not TablePrefix + "SessionUsers") so the tool's session-tables check, which
+	// reads the literals, finds their migrations.
+	sessionsTable       = "CrewSessions"
+	usersTable          = "CrewSessionUsers"
+	identitiesTable     = "CrewSessionIdentities"
+	eventsTable         = "CrewSessionAuthEvents"
+	pendingTable        = "CrewSessionPendingSignIns"
+	attemptsTable       = "CrewSessionSignInAttempts"
+	mailLinksTable      = "CrewSessionMailLinks"
+	factorCodesTable    = "CrewSessionFactorCodes"
+	trustedDevicesTable = "CrewSessionTrustedDevices"
 	// The bearer tokens the auth issues for its machine outlet and the device
 	// authorizations command-line clients start, which the token page and the device
 	// flow keep.
@@ -437,8 +453,8 @@ func (h *Handlers) SignUpComplete() http.HandlerFunc {
 	return h.SignUp().Complete()
 }
 
-// PendingStatus reports the sign-in that waits for a password confirmation or an MFA
-// step, if any.
+// PendingStatus reports the sign-in that waits for a password confirmation or for the
+// second factor, if any: for the factor, the state of the sign-in code (emailCode).
 func (h *Handlers) PendingStatus() http.HandlerFunc {
 	return h.Pending().Status()
 }
@@ -451,6 +467,27 @@ func (h *Handlers) PendingConfirmWithPassword() http.HandlerFunc {
 // PendingCancel discards a waiting sign-in.
 func (h *Handlers) PendingCancel() http.HandlerFunc {
 	return h.Pending().Cancel()
+}
+
+// PendingSendCode mails the sign-in code to the person whose sign-in waits for the
+// second factor: the address they hold, verified or not, which the code then verifies.
+func (h *Handlers) PendingSendCode() http.HandlerFunc {
+	return h.Pending().SendCode()
+}
+
+// PendingVerifyCode completes a waiting sign-in with the code entered ({"code",
+// "rememberDevice"}): a wrong code is refused (invalid_code) and the fifth kills the
+// code, a code entered while none stands asks for a new one (code_expired), and
+// rememberDevice keeps the browser trusted for the period.
+func (h *Handlers) PendingVerifyCode() http.HandlerFunc {
+	return h.Pending().VerifyCode()
+}
+
+// PendingEnrollEmail takes the address a person who holds none gives for the code
+// ({"email"}): the code is mailed there, and the address is written on them verified
+// once it is entered.
+func (h *Handlers) PendingEnrollEmail() http.HandlerFunc {
+	return h.Pending().EnrollEmail()
 }
 
 // New opens the auth's permission store and session manager over the database. The
@@ -511,6 +548,9 @@ func New(ctx context.Context, db *cloudspanner.Client, settings *Settings) (*Aut
 		session.WithMailLinksTableName(mailLinksTable),
 		session.WithTokensTableName(tokensTable),
 		session.WithDeviceCodesTableName(deviceCodesTable),
+		session.WithFactorCodesTableName(factorCodesTable),
+		session.WithTrustedDevicesTableName(trustedDevicesTable),
+		session.WithTrustedDeviceCookieName(TrustedDeviceCookie),
 		session.WithMail(settings.Mail.Sender, session.MailSettings{Application: Application, LoginURL: settings.Mail.LoginURL}),
 		session.WithCookieName(Name),
 		session.WithXSRFCookieName(XSRFCookie),
@@ -526,7 +566,9 @@ func New(ctx context.Context, db *cloudspanner.Client, settings *Settings) (*Aut
 	// library's name, and the Google method under GoogleRegistration. The Google method's
 	// organization slot is the crew's one Workspace, named by the connection setting
 	// (the name every directory identity's link carries) and checked against the hosted
-	// domain. Its account rule is the library's standard one, members of the directory:
+	// domain, declared attesting where the deployment says the fleet administers it
+	// (auth.Directory.Administered), so a sign-in through it carries the Workspace's
+	// second factor and is never asked for the code. Its account rule is the library's standard one, members of the directory:
 	// a person the directory verifies for the first time becomes a crew member under the
 	// verified email, with no password (the directory is their way in) and no role until
 	// an operator seats them. The application is the authority for the crew's roles
@@ -549,7 +591,7 @@ func New(ctx context.Context, db *cloudspanner.Client, settings *Settings) (*Aut
 		ClientID:     settings.Directory.ClientID,
 		ClientSecret: settings.Directory.ClientSecret,
 		RedirectURL:  settings.Directory.RedirectURL,
-		Workspaces:   google.Workspace(settings.Directory.Connection, settings.Directory.HostedDomain),
+		Workspaces:   settings.Directory.Workspace(),
 		RoleSync:     google.DisableRoleSync(),
 		LoginURL:     settings.LoginURL,
 	})
@@ -584,9 +626,13 @@ func New(ctx context.Context, db *cloudspanner.Client, settings *Settings) (*Aut
 	// (app.UserPermissions). The memberships are read outside the sign-in's transaction
 	// (resource.SignInRoles): the Spanner client refuses the engine's read under the
 	// transaction's context as a nested transaction.
+	// The rule's last word is the second factor every crew session carries
+	// (auth.RequireSecondFactor): a sign-in the tenant policy admits waits for the
+	// code the auth mails, unless the fleet's directory attested for the person or the
+	// browser is one they asked to be remembered.
 	//
-	// Demonstrates: tenancy.declaration, tenancy.directory-only.
-	crewSession.SetSignInPolicy(signin.TenantPolicy(resource.SignInRoles(accessClient.UserManager()), settings.TenantDeclarations, signin.AdmitWithoutTenant()))
+	// Demonstrates: tenancy.declaration, tenancy.directory-only, auth.second-factor.
+	crewSession.SetSignInPolicy(signin.TenantPolicy(resource.SignInRoles(accessClient.UserManager()), settings.TenantDeclarations, signin.AdmitWithoutTenant()).Then(auth.RequireSecondFactor))
 
 	// The directory admission: what a fleet member nobody has seated gets at their first
 	// sign-in through a directory a sector declares, before the registration's account

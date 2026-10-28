@@ -58,6 +58,10 @@ type GeneratedHandlers interface {
 
 	Features() http.HandlerFunc
 
+	ResetStaffTenantUserFactors() http.HandlerFunc
+
+	ResetStaffUserFactors() http.HandlerFunc
+
 	SetFeature() http.HandlerFunc
 
 	SetStaffTenantUserPassword() http.HandlerFunc
@@ -132,6 +136,10 @@ func generatedRoutes(r chi.Router, h GeneratedHandlers) {
 	bounded.Post("/api/feature-flags/{featureFlagName}", featureFlagHandler)
 
 	bounded.Get("/api/features", h.Features())
+
+	bounded.Post("/api/tenants/{tenantID}/reset-staff-tenant-user-factors", domainGuard(h.ResetStaffTenantUserFactors()))
+
+	bounded.Post("/api/reset-staff-user-factors", h.ResetStaffUserFactors())
 
 	bounded.Post("/api/set-feature", h.SetFeature())
 

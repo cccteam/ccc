@@ -559,8 +559,11 @@ external method under its registration name, `GET user/<name>/login` and `GET
 user/<name>/callback` (`GET user/<name>/logout` too for Azure, the directory's
 front-channel logout). The sign-in's POSTs sit behind the outlet's XSRF guard alone, as
 the session library wires them: `POST user/password/login`, `POST user/password/change`,
-`POST user/pending/confirm`, `POST user/pending/cancel`; a browser reaches them with the
-XSRF cookie its first request was issued, echoed in the header. The password change
+`POST user/pending/confirm`, `POST user/pending/cancel`, `POST user/pending/code` (mails
+the sign-in code to a sign-in that waits for the second factor), `POST
+user/pending/code/verify` and `POST user/pending/email` (the address a person who holds
+none gives for the code); a browser reaches them with the XSRF cookie its first request
+was issued, echoed in the header. The password change
 (`PasswordChange`, the password method's `ChangeUserPassword`) validates the session
 itself, so it sits outside `ValidateSession`: a person whose operator-set password must
 change before anything else is served reaches it, and the methods route tells the login
@@ -2203,13 +2206,17 @@ PATCH <prefix>/crew-seats                            add /{user}/{role} {}, remo
 GET   <prefix>/crew-roles, …/crew-roles/{crewRoleName} the roles a seat may take          List, Read on CrewRoles (read-only)
 POST  <prefix>/set-crew-user-password                {"user","password"}                 Execute on SetCrewUserPassword, targeting CrewUsers
 POST  <prefix>/unlink-crew-user-identity             {"user","identity"}                 Execute on UnlinkCrewUserIdentity, targeting CrewUsers
+POST  <prefix>/reset-crew-user-factors               {"user"}                            Execute on ResetCrewUserFactors, targeting CrewUsers
 GET/PATCH <prefix>/sectors/{sectorID}/crew-sector-users, -seats, -roles,                 the same on CrewSectorUsers, CrewSectorSeats,
-POST  <prefix>/sectors/{sectorID}/set-crew-sector-user-password, unlink-crew-sector-user-identity   CrewSectorRoles and their methods (domain scope)
+POST  <prefix>/sectors/{sectorID}/set-crew-sector-user-password, unlink-crew-sector-user-identity,   CrewSectorRoles and their methods (domain scope)
+      reset-crew-sector-user-factors
 ```
 
 The resource names are the Auth's package name in PascalCase, the tenant record's name
-for the tenant partition, and `Users`, `Seats`, `Roles`; the methods `Set<…>UserPassword`
-and `Unlink<…>UserIdentity`. The global partition is every user of the Auth with the
+for the tenant partition, and `Users`, `Seats`, `Roles`; the methods `Set<…>UserPassword`,
+`Unlink<…>UserIdentity` and `Reset<…>UserFactors` (forgets the browsers a user asked to
+be remembered after a sign-in code, so their next sign-in asks for the second factor
+again; served on every Auth). The global partition is every user of the Auth with the
 seats held in the global scope and in every domain; the tenant partition is the users
 seated in the route's tenant or everywhere, with their seats there. A create in the
 tenant partition takes a `role` beside `username`, `password` and `disabled`: the seat is

@@ -2,7 +2,7 @@
 import { ApiDescriptor, Client, ClientOptions, createClient, MethodHandle, ResourceHandle } from '@cccteam/resource';
 import { Methods, Resources } from './zz_gen_constants';
 import { Announcements, Tenants, TenantDirectories, FeatureFlags, StaffUsers, StaffSeats, StaffRoles, StaffInvitations, StaffTenantUsers, StaffTenantSeats, StaffTenantRoles, StaffTenantInvitations } from './zz_gen_resources';
-import { SetFeature, SetFeatureResult, SetStaffUserPassword, UnlinkStaffUserIdentity, SetStaffTenantUserPassword, UnlinkStaffTenantUserIdentity } from './zz_gen_methods';
+import { SetFeature, SetFeatureResult, SetStaffUserPassword, UnlinkStaffUserIdentity, ResetStaffUserFactors, SetStaffTenantUserPassword, UnlinkStaffTenantUserIdentity, ResetStaffTenantUserFactors } from './zz_gen_methods';
 
 /**
  * The fields a client may set when creating Announcements. Server-owned fields are
@@ -302,8 +302,10 @@ export const apiDescriptor = defineApiDescriptor({
     [Methods.SetFeature]: { method: Methods.SetFeature, property: 'setFeature', route: 'set-feature', scope: 'global', answers: true },
     [Methods.SetStaffUserPassword]: { method: Methods.SetStaffUserPassword, property: 'setStaffUserPassword', route: 'set-staff-user-password', scope: 'global' },
     [Methods.UnlinkStaffUserIdentity]: { method: Methods.UnlinkStaffUserIdentity, property: 'unlinkStaffUserIdentity', route: 'unlink-staff-user-identity', scope: 'global' },
+    [Methods.ResetStaffUserFactors]: { method: Methods.ResetStaffUserFactors, property: 'resetStaffUserFactors', route: 'reset-staff-user-factors', scope: 'global' },
     [Methods.SetStaffTenantUserPassword]: { method: Methods.SetStaffTenantUserPassword, property: 'setStaffTenantUserPassword', route: 'set-staff-tenant-user-password', scope: 'domain' },
     [Methods.UnlinkStaffTenantUserIdentity]: { method: Methods.UnlinkStaffTenantUserIdentity, property: 'unlinkStaffTenantUserIdentity', route: 'unlink-staff-tenant-user-identity', scope: 'domain' },
+    [Methods.ResetStaffTenantUserFactors]: { method: Methods.ResetStaffTenantUserFactors, property: 'resetStaffTenantUserFactors', route: 'reset-staff-tenant-user-factors', scope: 'domain' },
   },
   userSurfaces: [
     {
@@ -314,8 +316,8 @@ export const apiDescriptor = defineApiDescriptor({
       openSignUp: false,
       registrations: [{ name: 'google', kind: 'google', label: 'Google', invited: false, syncsRoles: false }],
       partitions: [
-        { scope: 'global', users: Resources.StaffUsers, seats: Resources.StaffSeats, roles: Resources.StaffRoles, invitations: Resources.StaffInvitations, setPassword: Methods.SetStaffUserPassword, unlinkIdentity: Methods.UnlinkStaffUserIdentity },
-        { scope: 'domain', users: Resources.StaffTenantUsers, seats: Resources.StaffTenantSeats, roles: Resources.StaffTenantRoles, invitations: Resources.StaffTenantInvitations, setPassword: Methods.SetStaffTenantUserPassword, unlinkIdentity: Methods.UnlinkStaffTenantUserIdentity },
+        { scope: 'global', users: Resources.StaffUsers, seats: Resources.StaffSeats, roles: Resources.StaffRoles, invitations: Resources.StaffInvitations, setPassword: Methods.SetStaffUserPassword, unlinkIdentity: Methods.UnlinkStaffUserIdentity, resetFactors: Methods.ResetStaffUserFactors },
+        { scope: 'domain', users: Resources.StaffTenantUsers, seats: Resources.StaffTenantSeats, roles: Resources.StaffTenantRoles, invitations: Resources.StaffTenantInvitations, setPassword: Methods.SetStaffTenantUserPassword, unlinkIdentity: Methods.UnlinkStaffTenantUserIdentity, resetFactors: Methods.ResetStaffTenantUserFactors },
       ],
     },
   ],
@@ -345,6 +347,7 @@ export interface GlobalApi {
   setFeature: MethodHandle<SetFeature, SetFeatureResult>;
   setStaffUserPassword: MethodHandle<SetStaffUserPassword>;
   unlinkStaffUserIdentity: MethodHandle<UnlinkStaffUserIdentity>;
+  resetStaffUserFactors: MethodHandle<ResetStaffUserFactors>;
 }
 
 /** Handles for one tenant partition, available on client.domain(...). */
@@ -357,6 +360,7 @@ export interface DomainApi {
   staffTenantInvitations: ResourceHandle<StaffTenantInvitations, StaffTenantInvitationsKey, 'list' | 'read' | 'create' | 'remove', StaffTenantInvitationsCreate>;
   setStaffTenantUserPassword: MethodHandle<SetStaffTenantUserPassword>;
   unlinkStaffTenantUserIdentity: MethodHandle<UnlinkStaffTenantUserIdentity>;
+  resetStaffTenantUserFactors: MethodHandle<ResetStaffTenantUserFactors>;
 }
 
 export type Api = Client<GlobalApi, DomainApi>;

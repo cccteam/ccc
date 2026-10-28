@@ -3,7 +3,8 @@
 //
 // An auth is a package. It owns its session manager, one Auth session with the sign-in
 // methods registered on it (here password), with its own session, user, identity, auth
-// event, pending sign-in, sign-in attempt and mail link tables and cookie; its permission
+// event, pending sign-in, sign-in attempt, mail link, sign-in code and trusted device
+// tables and cookies; its permission
 // store, with its own table prefix, whose engine signals policy changes to the
 // application's other instances through the live service; and its role file, embedded
 // beside it, so the release's default roles travel with the binary. Each method is its
@@ -19,6 +20,15 @@
 // adds an address and proves it by following the link sent to it.
 // The links open the login page of the surface that binds to this auth
 // (Settings.MailLoginURL), through the sender the data level hands in (Settings.Mail).
+//
+// Every session carries a second factor. A sign-in the password admitted, or a directory
+// the deployment does not administer, waits for the sign-in code the auth mails to the
+// person's verified address (a person who holds none gives one first), unless the
+// browser is one the person asked to be remembered after a code (the staff-trusted
+// cookie); a sign-in through a directory the deployment administers, or whose token says
+// a second factor was passed, carries the directory's and is asked for nothing. An
+// administrator resets the browsers a person asked to be remembered from the users
+// surface, so their next sign-in asks again.
 package staff
 
 import (
@@ -33,6 +43,7 @@ import (
 	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/session"
 	"github.com/cccteam/session/mail"
+	"github.com/cccteam/session/sessioninfo"
 	"github.com/cccteam/session/sessionstorage"
 	"github.com/cccteam/session/signin"
 	"github.com/go-playground/errors/v5"
@@ -51,6 +62,9 @@ const (
 	// so two auths on one host never overwrite each other's token; the browser echoes it in
 	// the X-XSRF-TOKEN header, so the web app that binds to this auth names the same cookie.
 	XSRFCookie = Name + "-xsrf"
+	// TrustedDeviceCookie is the cookie a browser the person asked to be remembered after a
+	// sign-in code carries its token in; it carries the auth's name as XSRFCookie does.
+	TrustedDeviceCookie = Name + "-trusted"
 
 	// The auth's tables, which schema/migrations creates: the sessions and users of the
 	// Auth session (a person is one user whichever way they sign in; an identity the
@@ -60,19 +74,22 @@ const (
 	// the mail links: the invitations, address verifications and sign-ups the auth mails,
 	// each a single-use token its follower proves; the tokens: the bearer credentials of
 	// the machine outlets whose tokens this auth issues (the application tokens its people
-	// issue and the access and refresh tokens of the device grants they approve); and the
-	// device codes: the device authorizations command-line clients wait on. The names are
-	// spelled out in full so the tool's session-tables check, which reads the literals,
-	// finds their migrations.
-	sessionsTable    = "StaffSessions"
-	usersTable       = "StaffSessionUsers"
-	identitiesTable  = "StaffSessionIdentities"
-	eventsTable      = "StaffSessionAuthEvents"
-	pendingTable     = "StaffSessionPendingSignIns"
-	attemptsTable    = "StaffSessionSignInAttempts"
-	mailLinksTable   = "StaffSessionMailLinks"
-	tokensTable      = "StaffSessionTokens"
-	deviceCodesTable = "StaffSessionDeviceCodes"
+	// issue and the access and refresh tokens of the device grants they approve); the
+	// device codes: the device authorizations command-line clients wait on; and the second
+	// factor's tables: the sign-in codes mailed to people and the browsers they asked to
+	// be remembered. The names are spelled out in full so the tool's session-tables
+	// check, which reads the literals, finds their migrations.
+	sessionsTable       = "StaffSessions"
+	usersTable          = "StaffSessionUsers"
+	identitiesTable     = "StaffSessionIdentities"
+	eventsTable         = "StaffSessionAuthEvents"
+	pendingTable        = "StaffSessionPendingSignIns"
+	attemptsTable       = "StaffSessionSignInAttempts"
+	mailLinksTable      = "StaffSessionMailLinks"
+	tokensTable         = "StaffSessionTokens"
+	deviceCodesTable    = "StaffSessionDeviceCodes"
+	factorCodesTable    = "StaffSessionFactorCodes"
+	trustedDevicesTable = "StaffSessionTrustedDevices"
 )
 
 // roleFile is the auth's default roles: the role file beside this package, embedded in the
@@ -178,6 +195,24 @@ func (h *Handlers) PendingConfirmWithPassword() http.HandlerFunc {
 // PendingCancel discards a waiting sign-in.
 func (h *Handlers) PendingCancel() http.HandlerFunc {
 	return h.Pending().Cancel()
+}
+
+// PendingSendCode mails the sign-in code to the address of the person whose sign-in
+// waits for the second factor, and again when they ask for another.
+func (h *Handlers) PendingSendCode() http.HandlerFunc {
+	return h.Pending().SendCode()
+}
+
+// PendingVerifyCode completes a waiting sign-in with the code the person was mailed,
+// remembering the browser when they ask.
+func (h *Handlers) PendingVerifyCode() http.HandlerFunc {
+	return h.Pending().VerifyCode()
+}
+
+// PendingEnrollEmail takes the address the sign-in code goes to, from a person whose
+// sign-in waits for the second factor and who holds no address yet.
+func (h *Handlers) PendingEnrollEmail() http.HandlerFunc {
+	return h.Pending().EnrollEmail()
 }
 
 // InvitationOpen reads the invitation a mailed link carries: where it seats the invitee
@@ -307,6 +342,9 @@ func New(ctx context.Context, db *cloudspanner.Client, settings *Settings) (*Aut
 		session.WithMailLinksTableName(mailLinksTable),
 		session.WithTokensTableName(tokensTable),
 		session.WithDeviceCodesTableName(deviceCodesTable),
+		session.WithFactorCodesTableName(factorCodesTable),
+		session.WithTrustedDevicesTableName(trustedDevicesTable),
+		session.WithTrustedDeviceCookieName(TrustedDeviceCookie),
 		session.WithMail(settings.Mail, session.MailSettings{Application: Application, LoginURL: settings.MailLoginURL}),
 		session.WithCookieName(Name),
 		session.WithXSRFCookieName(XSRFCookie),
@@ -332,8 +370,9 @@ func New(ctx context.Context, db *cloudspanner.Client, settings *Settings) (*Aut
 	// Which tenants the session then reaches is decided again, tenant by tenant, where
 	// its tenant list is computed (UserPermissions). The memberships are read outside
 	// the sign-in's transaction (resource.SignInRoles): the Spanner client refuses the
-	// engine's read under the transaction's context as a nested transaction.
-	authSession.SetSignInPolicy(signin.TenantPolicy(resource.SignInRoles(accessClient.UserManager()), settings.TenantDeclarations))
+	// engine's read under the transaction's context as a nested transaction. A sign-in
+	// the rule admits then carries a second factor (requireSecondFactor).
+	authSession.SetSignInPolicy(signin.TenantPolicy(resource.SignInRoles(accessClient.UserManager()), settings.TenantDeclarations).Then(requireSecondFactor))
 
 	// The directory admission: what a stranger gets at their first sign-in through a
 	// directory a tenant declares, before the registration's account rule is reached.
@@ -380,6 +419,17 @@ func (a *Auth) Close() error {
 	}
 
 	return nil
+}
+
+// requireSecondFactor is the sign-in rule every session ends with: the second factor, the
+// sign-in code mailed to the person's address (sessioninfo.MethodEmailCode), unless the
+// sign-in carries one already, a remembered browser's token or the attestation of a
+// directory the deployment administers or whose token says a second factor was passed,
+// which the library takes before it asks. A sign-in the rule holds waits for the code
+// (?pending=mfa on the login page), where the person asks for it, enters it and may ask
+// for the browser to be remembered.
+func requireSecondFactor(context.Context, *cloudspanner.ReadWriteTransaction, *sessioninfo.NewSessionRequest) (*signin.Decision, error) {
+	return signin.RequireMFA(sessioninfo.MethodEmailCode), nil
 }
 
 // announcePolicy is the sending half of the engine's change signal: after a policy write

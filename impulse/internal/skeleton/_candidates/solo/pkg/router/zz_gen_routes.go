@@ -45,6 +45,8 @@ type GeneratedHandlers interface {
 
 	Features() http.HandlerFunc
 
+	ResetStaffUserFactors() http.HandlerFunc
+
 	SetFeature() http.HandlerFunc
 
 	SetStaffUserPassword() http.HandlerFunc
@@ -90,6 +92,8 @@ func generatedRoutes(r chi.Router, h GeneratedHandlers) {
 	bounded.Post("/api/feature-flags/{featureFlagName}", featureFlagHandler)
 
 	bounded.Get("/api/features", h.Features())
+
+	bounded.Post("/api/reset-staff-user-factors", h.ResetStaffUserFactors())
 
 	bounded.Post("/api/set-feature", h.SetFeature())
 

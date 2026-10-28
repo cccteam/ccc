@@ -2,7 +2,7 @@
 import { ApiDescriptor, Client, ClientOptions, createClient, MethodHandle, ResourceHandle } from '@cccteam/resource';
 import { Methods, Resources } from './zz_gen_constants';
 import { FeatureFlags, StaffUsers, StaffSeats, StaffRoles, StaffInvitations } from './zz_gen_resources';
-import { SetFeature, SetFeatureResult, SetStaffUserPassword } from './zz_gen_methods';
+import { SetFeature, SetFeatureResult, SetStaffUserPassword, ResetStaffUserFactors } from './zz_gen_methods';
 
 /** The primary key of FeatureFlags, in route order. */
 export type FeatureFlagsKey = [name: string];
@@ -125,6 +125,7 @@ export const apiDescriptor = defineApiDescriptor({
   methods: {
     [Methods.SetFeature]: { method: Methods.SetFeature, property: 'setFeature', route: 'set-feature', scope: 'global', answers: true },
     [Methods.SetStaffUserPassword]: { method: Methods.SetStaffUserPassword, property: 'setStaffUserPassword', route: 'set-staff-user-password', scope: 'global' },
+    [Methods.ResetStaffUserFactors]: { method: Methods.ResetStaffUserFactors, property: 'resetStaffUserFactors', route: 'reset-staff-user-factors', scope: 'global' },
   },
   userSurfaces: [
     {
@@ -135,7 +136,7 @@ export const apiDescriptor = defineApiDescriptor({
       openSignUp: false,
       registrations: [],
       partitions: [
-        { scope: 'global', users: Resources.StaffUsers, seats: Resources.StaffSeats, roles: Resources.StaffRoles, invitations: Resources.StaffInvitations, setPassword: Methods.SetStaffUserPassword },
+        { scope: 'global', users: Resources.StaffUsers, seats: Resources.StaffSeats, roles: Resources.StaffRoles, invitations: Resources.StaffInvitations, setPassword: Methods.SetStaffUserPassword, resetFactors: Methods.ResetStaffUserFactors },
       ],
     },
   ],
@@ -150,6 +151,7 @@ export interface GlobalApi {
   staffInvitations: ResourceHandle<StaffInvitations, StaffInvitationsKey, 'list' | 'read' | 'create' | 'remove', StaffInvitationsCreate>;
   setFeature: MethodHandle<SetFeature, SetFeatureResult>;
   setStaffUserPassword: MethodHandle<SetStaffUserPassword>;
+  resetStaffUserFactors: MethodHandle<ResetStaffUserFactors>;
 }
 
 /** Handles for one tenant partition, available on client.domain(...). */

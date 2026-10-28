@@ -304,9 +304,10 @@ type dataConfig struct {
 	// The staff auth's google registration: how the application is known to Google. Under
 	// the session library's skipAuth build tag (the Procfile's) Google is simulated and
 	// only the redirect URL is read.
-	StaffGoogleClientID     string `env:"APP_STAFF_GOOGLE_CLIENT_ID"`
-	StaffGoogleClientSecret string `env:"APP_STAFF_GOOGLE_CLIENT_SECRET" secret:"true"`
-	StaffGoogleRedirectURL  string `env:"APP_STAFF_GOOGLE_REDIRECT_URL"`
+	StaffGoogleAdministeredWorkspaces string `env:"APP_STAFF_GOOGLE_ADMINISTERED_WORKSPACES"`
+	StaffGoogleClientID               string `env:"APP_STAFF_GOOGLE_CLIENT_ID"`
+	StaffGoogleClientSecret           string `env:"APP_STAFF_GOOGLE_CLIENT_SECRET"           secret:"true"`
+	StaffGoogleRedirectURL            string `env:"APP_STAFF_GOOGLE_REDIRECT_URL"`
 }
 
 // staffSettings builds the staff auth's settings: the generated collection its default
@@ -329,9 +330,10 @@ func (env *dataConfig) staffSettings(collection access.PermissionCollection, sig
 		MailLoginURL:       env.PublicURL + "/login",
 		LoginURL:           "/login",
 		Google: staff.GoogleSettings{
-			ClientID:     env.StaffGoogleClientID,
-			ClientSecret: env.StaffGoogleClientSecret,
-			RedirectURL:  env.StaffGoogleRedirectURL,
+			AdministeredWorkspaces: env.StaffGoogleAdministeredWorkspaces,
+			ClientID:               env.StaffGoogleClientID,
+			ClientSecret:           env.StaffGoogleClientSecret,
+			RedirectURL:            env.StaffGoogleRedirectURL,
 		},
 	}
 }

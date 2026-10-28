@@ -60,13 +60,20 @@ export APP_PUBLIC_URL=http://127.0.0.1:4301
 # Procfile builds with the session library's skipAuth tag, which simulates the directory:
 # every sign-in through it is APP_DIRECTORY_USERNAME, or APP_USERNAME when that is unset
 # (the roles in APP_ROLES are ignored, since the application assigns members their roles),
-# and only the tenant id and the redirect URL are read: the tenant below is a placeholder
-# that is nobody's, since the method validates its organization slot at registration
-# whether or not the directory is simulated. Register the application with a tenant, fill
-# the registration's variables in (APP_<AUTH>_<REGISTRATION>_*), and drop the tag to use it.
+# and only the tenant id, the administered tenants and the redirect URL are read: the
+# tenant below is a placeholder that is nobody's, since the method validates its
+# organization slot at registration whether or not the directory is simulated. Register
+# the application with a tenant, fill the registration's variables in
+# (APP_<AUTH>_<REGISTRATION>_*), and drop the tag to use it.
 export APP_USERNAME=client
 export APP_ROLES=
 export APP_MEMBERS_DIRECTORY_TENANT_ID=00000000-0000-0000-0000-000000000000
+# APP_MEMBERS_DIRECTORY_ADMINISTERED_TENANTS: the tenants the deployment administers, by
+# tenant id, comma-separated, each one the registration admits: a sign-in from one carries
+# the tenant's own second factor and is not asked for the sign-in code. Empty when the
+# deployment administers none, as here: every sign-in is asked for the code, which the mail
+# log prints in development. Read under the simulated directory too.
+export APP_MEMBERS_DIRECTORY_ADMINISTERED_TENANTS=
 # export APP_MEMBERS_DIRECTORY_CLIENT_ID=
 # export APP_MEMBERS_DIRECTORY_CLIENT_SECRET=
 export APP_MEMBERS_DIRECTORY_REDIRECT_URL=http://127.0.0.1:4303/portal/api/user/directory/callback

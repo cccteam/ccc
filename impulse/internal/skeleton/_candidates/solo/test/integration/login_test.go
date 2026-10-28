@@ -42,6 +42,11 @@ func TestLogin(t *testing.T) {
 			if status != tt.wantLogin {
 				t.Fatalf("login status = %d, want %d: %s", status, tt.wantLogin, body)
 			}
+			if status == http.StatusOK {
+				// The password admitted the login, and the session opens once the second
+				// factor every session carries is entered: the sign-in code the auth mailed.
+				b.secondFactor(ctx, tt.user, false)
+			}
 
 			status, body = b.do(ctx, http.MethodGet, "/api/user/session", nil)
 			if status != http.StatusOK {

@@ -25,7 +25,11 @@
 // carries (resource.SeatInvited), beside the ones the directory's groups name. A
 // member's address is the one the directory verified, held beside the username.
 //
-// Demonstrates: auth.directory-roles, auth.two-populations, auth.skipauth-directory, auth.login-refusal-code, auth.invitation.
+// Every member session carries a second factor (pkg/auth: auth.RequireSecondFactor):
+// the company's directory attests for its people when the deployment says the fleet
+// administers it, and otherwise the login page runs the sign-in code the auth mails.
+//
+// Demonstrates: auth.directory-roles, auth.two-populations, auth.skipauth-directory, auth.login-refusal-code, auth.invitation, auth.second-factor, auth.attested-directory.
 package members
 
 import (
@@ -56,6 +60,10 @@ const (
 	// so two auths on one host never overwrite each other's token; the browser echoes it in
 	// the X-XSRF-TOKEN header, so the web app that binds to this auth names the same cookie.
 	XSRFCookie = Name + "-xsrf"
+	// TrustedDeviceCookie is the cookie a browser a member asked to be remembered after
+	// the sign-in code holds its token in; it carries the auth's name, since the crew's
+	// cookie lives on the same host.
+	TrustedDeviceCookie = Name + "-trusted"
 
 	// DirectoryRegistration is the name the directory is registered under on the Auth:
 	// the segment of its login and callback routes (user/directory/login). In
@@ -68,17 +76,20 @@ const (
 	// identities table, so a renamed account stays the same person), the auth events
 	// each session records, the pending sign-ins that wait for a confirmation or an
 	// MFA step, the sign-in attempts the library counts per name (the mail it sends is
-	// counted there too, under the address), and the mail links (the invitations and
-	// address verifications the auth mails, each a single-use token). The names are
-	// spelled out in full so the tool's session-tables check, which reads the literals,
-	// finds their migrations.
-	sessionsTable   = "MembersSessions"
-	usersTable      = "MembersSessionUsers"
-	identitiesTable = "MembersSessionIdentities"
-	eventsTable     = "MembersSessionAuthEvents"
-	pendingTable    = "MembersSessionPendingSignIns"
-	attemptsTable   = "MembersSessionSignInAttempts"
-	mailLinksTable  = "MembersSessionMailLinks"
+	// counted there too, under the address), the mail links (the invitations and
+	// address verifications the auth mails, each a single-use token), and the second
+	// factor's: the sign-in codes mailed for a pending sign-in and the browsers people
+	// asked to be remembered. The names are spelled out in full so the tool's
+	// session-tables check, which reads the literals, finds their migrations.
+	sessionsTable       = "MembersSessions"
+	usersTable          = "MembersSessionUsers"
+	identitiesTable     = "MembersSessionIdentities"
+	eventsTable         = "MembersSessionAuthEvents"
+	pendingTable        = "MembersSessionPendingSignIns"
+	attemptsTable       = "MembersSessionSignInAttempts"
+	mailLinksTable      = "MembersSessionMailLinks"
+	factorCodesTable    = "MembersSessionFactorCodes"
+	trustedDevicesTable = "MembersSessionTrustedDevices"
 
 	// Application is the fleet's name as the mail the auth sends says it.
 	Application = "Lodestar"
@@ -185,8 +196,9 @@ func (h *Handlers) EmailVerify() http.HandlerFunc {
 	return h.Email().Verify()
 }
 
-// PendingStatus reports the sign-in that waits for a password confirmation or an MFA
-// step, if any; a member has no password, so none waits today.
+// PendingStatus reports the sign-in that waits for a password confirmation or for the
+// second factor, if any; a member has no password, so only the factor's wait happens,
+// for a member whose directory the fleet does not administer.
 func (h *Handlers) PendingStatus() http.HandlerFunc {
 	return h.Pending().Status()
 }
@@ -199,6 +211,27 @@ func (h *Handlers) PendingConfirmWithPassword() http.HandlerFunc {
 // PendingCancel discards a waiting sign-in.
 func (h *Handlers) PendingCancel() http.HandlerFunc {
 	return h.Pending().Cancel()
+}
+
+// PendingSendCode mails the sign-in code to the person whose sign-in waits for the
+// second factor: the address they hold, verified or not, which the code then verifies.
+func (h *Handlers) PendingSendCode() http.HandlerFunc {
+	return h.Pending().SendCode()
+}
+
+// PendingVerifyCode completes a waiting sign-in with the code entered ({"code",
+// "rememberDevice"}): a wrong code is refused (invalid_code) and the fifth kills the
+// code, a code entered while none stands asks for a new one (code_expired), and
+// rememberDevice keeps the browser trusted for the period.
+func (h *Handlers) PendingVerifyCode() http.HandlerFunc {
+	return h.Pending().VerifyCode()
+}
+
+// PendingEnrollEmail takes the address a person who holds none gives for the code
+// ({"email"}): the code is mailed there, and the address is written on them verified
+// once it is entered.
+func (h *Handlers) PendingEnrollEmail() http.HandlerFunc {
+	return h.Pending().EnrollEmail()
 }
 
 // New opens the auth's permission store and session manager over the database. The
@@ -246,6 +279,9 @@ func New(ctx context.Context, db *cloudspanner.Client, settings *Settings) (*Aut
 		session.WithPendingSignInsTableName(pendingTable),
 		session.WithSignInAttemptsTableName(attemptsTable),
 		session.WithMailLinksTableName(mailLinksTable),
+		session.WithFactorCodesTableName(factorCodesTable),
+		session.WithTrustedDevicesTableName(trustedDevicesTable),
+		session.WithTrustedDeviceCookieName(TrustedDeviceCookie),
 		session.WithMail(settings.Mail.Sender, session.MailSettings{Application: Application, LoginURL: settings.Mail.LoginURL}),
 		session.WithCookieName(Name),
 		session.WithXSRFCookieName(XSRFCookie),
@@ -273,7 +309,10 @@ func New(ctx context.Context, db *cloudspanner.Client, settings *Settings) (*Aut
 	// keeps no list of sectors. Hand-assigned roles do not survive it, so nothing in the
 	// application assigns roles in this store.
 	// The organization slot is the members' one Workspace, named by the connection
-	// setting (the name every link carries) and checked against the hosted domain. The
+	// setting (the name every link carries) and checked against the hosted domain,
+	// declared attesting where the deployment says the fleet administers it
+	// (auth.Directory.Administered), so a member's sign-in carries the Workspace's
+	// second factor and is never asked for the code. The
 	// account rule is the library's standard one, members of the directory: an identity
 	// the directory verifies for the first time becomes a member under the verified
 	// email, with no password (the directory is their only way in), linked by the
@@ -283,7 +322,7 @@ func New(ctx context.Context, db *cloudspanner.Client, settings *Settings) (*Aut
 		ClientID:     settings.Directory.ClientID,
 		ClientSecret: settings.Directory.ClientSecret,
 		RedirectURL:  settings.Directory.RedirectURL,
-		Workspaces:   google.Workspace(settings.Directory.Connection, settings.Directory.HostedDomain),
+		Workspaces:   settings.Directory.Workspace(),
 		RoleSync:     google.RoleSync(accessClient.UserManager(), settings.Directory.GroupPrefix, lookup),
 		LoginURL:     settings.LoginURL,
 	})
@@ -296,8 +335,12 @@ func New(ctx context.Context, db *cloudspanner.Client, settings *Settings) (*Aut
 	// again where its chart is computed (app.UserPermissions): the seed declares the
 	// company directory on every sector. The memberships are read outside the sign-in's
 	// transaction (resource.SignInRoles): the Spanner client refuses the engine's read
-	// under the transaction's context as a nested transaction.
-	membersSession.SetSignInPolicy(signin.TenantPolicy(resource.SignInRoles(accessClient.UserManager()), settings.TenantDeclarations))
+	// under the transaction's context as a nested transaction. The rule's last word is
+	// the second factor every member session carries (auth.RequireSecondFactor), which
+	// the company's directory attests for where the fleet administers it.
+	//
+	// Demonstrates: auth.second-factor.
+	membersSession.SetSignInPolicy(signin.TenantPolicy(resource.SignInRoles(accessClient.UserManager()), settings.TenantDeclarations).Then(auth.RequireSecondFactor))
 
 	// An accepted invitation seats the client with the roles it carries, in the sector
 	// it names or in the global partition, written to the members engine by the

@@ -6,7 +6,7 @@ package router
 import "github.com/cccteam/ccc/resource"
 
 // StaffAuth marks the staff auth (github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/outlets/pkg/auth/staff) for the user-management
-// surface the library serves on the default outlet: StaffUsers, StaffSeats, StaffRoles, StaffInvitations, SetStaffUserPassword, UnlinkStaffUserIdentity, StaffTenantUsers, StaffTenantSeats, StaffTenantRoles, StaffTenantInvitations, SetStaffTenantUserPassword, UnlinkStaffTenantUserIdentity.
+// surface the library serves on the default outlet: StaffUsers, StaffSeats, StaffRoles, StaffInvitations, SetStaffUserPassword, UnlinkStaffUserIdentity, ResetStaffUserFactors, StaffTenantUsers, StaffTenantSeats, StaffTenantRoles, StaffTenantInvitations, SetStaffTenantUserPassword, UnlinkStaffTenantUserIdentity, ResetStaffTenantUserFactors.
 // The surface, its rows and its handlers are instantiated with it, so the auth's
 // resources are their own Go types carrying these names into the collection.
 type StaffAuth struct{}
@@ -37,7 +37,7 @@ func NewStaffUserSurface(accounts resource.UserAccounts, seats resource.UserSeat
 }
 
 // MembersAuth marks the members auth (github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/outlets/pkg/auth/members) for the user-management
-// surface the library serves on the portal outlet: MembersUsers, MembersSeats, MembersRoles, MembersInvitations, SetMembersUserPassword, UnlinkMembersUserIdentity, MembersTenantUsers, MembersTenantSeats, MembersTenantRoles, MembersTenantInvitations, SetMembersTenantUserPassword, UnlinkMembersTenantUserIdentity.
+// surface the library serves on the portal outlet: MembersUsers, MembersSeats, MembersRoles, MembersInvitations, SetMembersUserPassword, UnlinkMembersUserIdentity, ResetMembersUserFactors, MembersTenantUsers, MembersTenantSeats, MembersTenantRoles, MembersTenantInvitations, SetMembersTenantUserPassword, UnlinkMembersTenantUserIdentity, ResetMembersTenantUserFactors.
 // The surface, its rows and its handlers are instantiated with it, so the auth's
 // resources are their own Go types carrying these names into the collection.
 type MembersAuth struct{}

@@ -26,6 +26,7 @@ export const Resources = {
 };
 
 export const Methods = {
+  ResetStaffUserFactors: 'ResetStaffUserFactors' as Method,
   SetFeature: 'SetFeature' as Method,
   SetStaffUserPassword: 'SetStaffUserPassword' as Method,
 };

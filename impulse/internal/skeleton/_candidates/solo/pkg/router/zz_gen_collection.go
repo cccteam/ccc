@@ -28,6 +28,12 @@ func Collection() *resource.GeneratedCollection {
 				Order: []accesstypes.Tag{"name"},
 			},
 			{
+				Name:        "ResetStaffUserFactors",
+				Scope:       accesstypes.GlobalPermissionScope,
+				Permissions: []accesstypes.Permission{accesstypes.Execute},
+				Target:      "StaffUsers",
+			},
+			{
 				Name:        "SetFeature",
 				Scope:       accesstypes.GlobalPermissionScope,
 				Permissions: []accesstypes.Permission{accesstypes.Execute},

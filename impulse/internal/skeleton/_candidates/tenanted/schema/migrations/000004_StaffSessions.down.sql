@@ -1,3 +1,8 @@
+DROP INDEX StaffSessionTrustedDevicesByUser;
+DROP INDEX StaffSessionTrustedDevicesByTokenHash;
+DROP TABLE StaffSessionTrustedDevices;
+DROP INDEX StaffSessionFactorCodesByPending;
+DROP TABLE StaffSessionFactorCodes;
 DROP INDEX StaffSessionDeviceCodesByUserCode;
 DROP INDEX StaffSessionDeviceCodesByHash;
 DROP TABLE StaffSessionDeviceCodes;

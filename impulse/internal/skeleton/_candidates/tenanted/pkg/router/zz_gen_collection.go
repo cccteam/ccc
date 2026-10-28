@@ -29,6 +29,12 @@ func Collection() *resource.GeneratedCollection {
 				QueryKeys: []accesstypes.Tag{"tenantId", "title"},
 			},
 			{
+				Name:        "ResetStaffTenantUserFactors",
+				Scope:       accesstypes.DomainPermissionScope,
+				Permissions: []accesstypes.Permission{accesstypes.Execute},
+				Target:      "StaffTenantUsers",
+			},
+			{
 				Name:        "SetStaffTenantUserPassword",
 				Scope:       accesstypes.DomainPermissionScope,
 				Permissions: []accesstypes.Permission{accesstypes.Execute},
@@ -155,6 +161,12 @@ func Collection() *resource.GeneratedCollection {
 					{Name: "updatedBy", Permissions: []accesstypes.Permission{accesstypes.List, accesstypes.Read}},
 				},
 				Order: []accesstypes.Tag{"name"},
+			},
+			{
+				Name:        "ResetStaffUserFactors",
+				Scope:       accesstypes.GlobalPermissionScope,
+				Permissions: []accesstypes.Permission{accesstypes.Execute},
+				Target:      "StaffUsers",
 			},
 			{
 				Name:        "SetFeature",

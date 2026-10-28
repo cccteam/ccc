@@ -6,7 +6,7 @@ package router
 import "github.com/cccteam/ccc/resource"
 
 // CrewAuth marks the crew auth (github.com/cccteam/ccc/resource/lodestar/pkg/auth/crew) for the user-management
-// surface the library serves on the default outlet: CrewUsers, CrewSeats, CrewRoles, CrewInvitations, SetCrewUserPassword, UnlinkCrewUserIdentity, CrewSectorUsers, CrewSectorSeats, CrewSectorRoles, CrewSectorInvitations, SetCrewSectorUserPassword, UnlinkCrewSectorUserIdentity.
+// surface the library serves on the default outlet: CrewUsers, CrewSeats, CrewRoles, CrewInvitations, SetCrewUserPassword, UnlinkCrewUserIdentity, ResetCrewUserFactors, CrewSectorUsers, CrewSectorSeats, CrewSectorRoles, CrewSectorInvitations, SetCrewSectorUserPassword, UnlinkCrewSectorUserIdentity, ResetCrewSectorUserFactors.
 // The surface, its rows and its handlers are instantiated with it, so the auth's
 // resources are their own Go types carrying these names into the collection.
 type CrewAuth struct{}
@@ -40,7 +40,7 @@ func NewCrewUserSurface(accounts resource.UserAccounts, seats resource.UserSeats
 }
 
 // MembersAuth marks the members auth (github.com/cccteam/ccc/resource/lodestar/pkg/auth/members) for the user-management
-// surface the library serves on the portal and default outlets: MembersUsers, MembersSeats, MembersRoles, MembersInvitations, SetMembersUserPassword, UnlinkMembersUserIdentity, MembersSectorUsers, MembersSectorSeats, MembersSectorRoles, MembersSectorInvitations, SetMembersSectorUserPassword, UnlinkMembersSectorUserIdentity.
+// surface the library serves on the portal and default outlets: MembersUsers, MembersSeats, MembersRoles, MembersInvitations, SetMembersUserPassword, UnlinkMembersUserIdentity, ResetMembersUserFactors, MembersSectorUsers, MembersSectorSeats, MembersSectorRoles, MembersSectorInvitations, SetMembersSectorUserPassword, UnlinkMembersSectorUserIdentity, ResetMembersSectorUserFactors.
 // The surface, its rows and its handlers are instantiated with it, so the auth's
 // resources are their own Go types carrying these names into the collection.
 type MembersAuth struct{}

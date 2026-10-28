@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -127,6 +128,15 @@ type served struct {
 	auth *staff.Auth
 	// db is the test database, for a suite that reads what the stack recorded.
 	db *initiator.SpannerDB
+	// mail is the recorder the staff auth sends its mail to, where a suite reads the
+	// sign-in code a sign-in waits for.
+	mail *mail.Recorder
+	// codeMu lets one sign-in at a time run its second factor on the stack, so the code a
+	// browser reads from the recorder is its own, and trusted holds, per login, the token
+	// of the browser the login asked to be remembered at their first sign-in, which their
+	// later sign-ins carry (browser.signIn).
+	codeMu  sync.Mutex
+	trusted map[string]*http.Cookie
 }
 
 // newServed provisions the database the way the deployment does (the schema and the
@@ -153,12 +163,14 @@ func newServed(ctx context.Context, t *testing.T) *served {
 	// name its callback, the one setting of the registration the simulated directory
 	// reads (the suites build with the skipAuth tag); it starts once the router exists.
 	server := httptest.NewUnstartedServer(nil)
+	// The recorder the staff auth's mail goes to: the suites read the sign-in codes from it.
+	sent := &mail.Recorder{}
 	auth, err := staff.New(ctx, db.Client, &staff.Settings{
 		Collection:     router.Collection(),
 		Signals:        svc,
 		CookieKey:      testCookieKey,
 		SessionTimeout: time.Minute,
-		Mail:           &mail.Recorder{},
+		Mail:           sent,
 		MailLoginURL:   "http://tenanted.test/login",
 		LoginURL:       "/login",
 		Google:         staff.GoogleSettings{RedirectURL: "http://" + server.Listener.Addr().String() + "/api/user/google/callback"},
@@ -216,7 +228,7 @@ func newServed(ctx context.Context, t *testing.T) *served {
 	server.Start()
 	t.Cleanup(server.Close)
 
-	return &served{server: server, access: accessClient, auth: auth, db: db}
+	return &served{server: server, access: accessClient, auth: auth, db: db, mail: sent, trusted: map[string]*http.Cookie{}}
 }
 
 // waitForDomains blocks until the engine's snapshot reports the user's footholds in
@@ -264,6 +276,9 @@ type browser struct {
 	t      *testing.T
 	base   string
 	client *http.Client
+	// served is the stack the browser is on, whose recorder holds the code a sign-in
+	// waits for and whose trusted tokens a remembered browser carries.
+	served *served
 }
 
 func newBrowser(t *testing.T, s *served) *browser {
@@ -274,7 +289,7 @@ func newBrowser(t *testing.T, s *served) *browser {
 		t.Fatal(err)
 	}
 
-	return &browser{t: t, base: s.server.URL, client: &http.Client{Jar: jar}}
+	return &browser{t: t, base: s.server.URL, client: &http.Client{Jar: jar}, served: s}
 }
 
 // login posts the credentials to the login route and returns the status.

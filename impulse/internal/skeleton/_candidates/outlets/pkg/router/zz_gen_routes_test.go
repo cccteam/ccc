@@ -113,6 +113,7 @@ func TestGeneratedRouteOutletIsolation(t *testing.T) {
 		{url: "/console/api/members-invitations/testMembersInvitationID", method: http.MethodPost},
 		{url: "/console/api/members-invitations", method: http.MethodPatch},
 		{url: "/console/api/unlink-members-user-identity", method: http.MethodPost},
+		{url: "/console/api/reset-members-user-factors", method: http.MethodPost},
 		{url: "/console/api/tenants/testDomain/members-tenant-users", method: http.MethodGet},
 		{url: "/console/api/tenants/testDomain/members-tenant-users", method: http.MethodPost},
 		{url: "/console/api/tenants/testDomain/members-tenant-users/testMembersTenantUserID", method: http.MethodGet},
@@ -133,6 +134,7 @@ func TestGeneratedRouteOutletIsolation(t *testing.T) {
 		{url: "/console/api/tenants/testDomain/members-tenant-invitations/testMembersTenantInvitationID", method: http.MethodPost},
 		{url: "/console/api/tenants/testDomain/members-tenant-invitations", method: http.MethodPatch},
 		{url: "/console/api/tenants/testDomain/unlink-members-tenant-user-identity", method: http.MethodPost},
+		{url: "/console/api/tenants/testDomain/reset-members-tenant-user-factors", method: http.MethodPost},
 		{url: "/console/api/tenants/testDomain/readings", method: http.MethodGet},
 		{url: "/console/api/tenants/testDomain/readings", method: http.MethodPost},
 		{url: "/console/api/tenants/testDomain/readings/testReadingID", method: http.MethodGet},
@@ -157,6 +159,7 @@ func TestGeneratedRouteOutletIsolation(t *testing.T) {
 		{url: "/portal/api/staff-invitations/testStaffInvitationID", method: http.MethodPost},
 		{url: "/portal/api/staff-invitations", method: http.MethodPatch},
 		{url: "/portal/api/set-staff-user-password", method: http.MethodPost},
+		{url: "/portal/api/reset-staff-user-factors", method: http.MethodPost},
 		{url: "/portal/api/tenants/testDomain/staff-tenant-users", method: http.MethodGet},
 		{url: "/portal/api/tenants/testDomain/staff-tenant-users", method: http.MethodPost},
 		{url: "/portal/api/tenants/testDomain/staff-tenant-users/testStaffTenantUserID", method: http.MethodGet},
@@ -177,6 +180,7 @@ func TestGeneratedRouteOutletIsolation(t *testing.T) {
 		{url: "/portal/api/tenants/testDomain/staff-tenant-invitations/testStaffTenantInvitationID", method: http.MethodPost},
 		{url: "/portal/api/tenants/testDomain/staff-tenant-invitations", method: http.MethodPatch},
 		{url: "/portal/api/tenants/testDomain/set-staff-tenant-user-password", method: http.MethodPost},
+		{url: "/portal/api/tenants/testDomain/reset-staff-tenant-user-factors", method: http.MethodPost},
 		{url: "/portal/api/tenants/testDomain/readings", method: http.MethodGet},
 		{url: "/portal/api/tenants/testDomain/readings", method: http.MethodPost},
 		{url: "/portal/api/tenants/testDomain/readings/testReadingID", method: http.MethodGet},
@@ -219,6 +223,7 @@ func TestGeneratedRouteOutletIsolation(t *testing.T) {
 		{url: "/machines/staff-invitations/testStaffInvitationID", method: http.MethodPost},
 		{url: "/machines/staff-invitations", method: http.MethodPatch},
 		{url: "/machines/set-staff-user-password", method: http.MethodPost},
+		{url: "/machines/reset-staff-user-factors", method: http.MethodPost},
 		{url: "/machines/tenants/testDomain/staff-tenant-users", method: http.MethodGet},
 		{url: "/machines/tenants/testDomain/staff-tenant-users", method: http.MethodPost},
 		{url: "/machines/tenants/testDomain/staff-tenant-users/testStaffTenantUserID", method: http.MethodGet},
@@ -239,6 +244,7 @@ func TestGeneratedRouteOutletIsolation(t *testing.T) {
 		{url: "/machines/tenants/testDomain/staff-tenant-invitations/testStaffTenantInvitationID", method: http.MethodPost},
 		{url: "/machines/tenants/testDomain/staff-tenant-invitations", method: http.MethodPatch},
 		{url: "/machines/tenants/testDomain/set-staff-tenant-user-password", method: http.MethodPost},
+		{url: "/machines/tenants/testDomain/reset-staff-tenant-user-factors", method: http.MethodPost},
 		{url: "/machines/members-users", method: http.MethodGet},
 		{url: "/machines/members-users", method: http.MethodPost},
 		{url: "/machines/members-users/testMembersUserID", method: http.MethodGet},
@@ -259,6 +265,7 @@ func TestGeneratedRouteOutletIsolation(t *testing.T) {
 		{url: "/machines/members-invitations/testMembersInvitationID", method: http.MethodPost},
 		{url: "/machines/members-invitations", method: http.MethodPatch},
 		{url: "/machines/unlink-members-user-identity", method: http.MethodPost},
+		{url: "/machines/reset-members-user-factors", method: http.MethodPost},
 		{url: "/machines/tenants/testDomain/members-tenant-users", method: http.MethodGet},
 		{url: "/machines/tenants/testDomain/members-tenant-users", method: http.MethodPost},
 		{url: "/machines/tenants/testDomain/members-tenant-users/testMembersTenantUserID", method: http.MethodGet},
@@ -279,6 +286,7 @@ func TestGeneratedRouteOutletIsolation(t *testing.T) {
 		{url: "/machines/tenants/testDomain/members-tenant-invitations/testMembersTenantInvitationID", method: http.MethodPost},
 		{url: "/machines/tenants/testDomain/members-tenant-invitations", method: http.MethodPatch},
 		{url: "/machines/tenants/testDomain/unlink-members-tenant-user-identity", method: http.MethodPost},
+		{url: "/machines/tenants/testDomain/reset-members-tenant-user-factors", method: http.MethodPost},
 		{url: "/machines/tenants/testDomain/announcements", method: http.MethodGet},
 		{url: "/machines/tenants/testDomain/announcements", method: http.MethodPost},
 		{url: "/machines/tenants/testDomain/announcements/testAnnouncementID", method: http.MethodGet},
@@ -722,6 +730,11 @@ func generatedRouterTests() []*generatedRouterTest {
 			parameters:  map[string]string{},
 		},
 		{
+			url: "/console/api/reset-staff-user-factors", method: http.MethodPost,
+			handlerFunc: "ResetStaffUserFactors",
+			parameters:  map[string]string{},
+		},
+		{
 			url: "/console/api/tenants/testDomain/staff-tenant-users", method: http.MethodGet,
 			handlerFunc: "StaffTenantUsers",
 			parameters:  map[string]string{"tenantID": "testDomain"},
@@ -819,6 +832,11 @@ func generatedRouterTests() []*generatedRouterTest {
 		{
 			url: "/console/api/tenants/testDomain/set-staff-tenant-user-password", method: http.MethodPost,
 			handlerFunc: "SetStaffTenantUserPassword",
+			parameters:  map[string]string{"tenantID": "testDomain"},
+		},
+		{
+			url: "/console/api/tenants/testDomain/reset-staff-tenant-user-factors", method: http.MethodPost,
+			handlerFunc: "ResetStaffTenantUserFactors",
 			parameters:  map[string]string{"tenantID": "testDomain"},
 		},
 		{
@@ -922,6 +940,11 @@ func generatedRouterTests() []*generatedRouterTest {
 			parameters:  map[string]string{},
 		},
 		{
+			url: "/portal/api/reset-members-user-factors", method: http.MethodPost,
+			handlerFunc: "ResetMembersUserFactors",
+			parameters:  map[string]string{},
+		},
+		{
 			url: "/portal/api/tenants/testDomain/members-tenant-users", method: http.MethodGet,
 			handlerFunc: "MembersTenantUsers",
 			parameters:  map[string]string{"tenantID": "testDomain"},
@@ -1022,6 +1045,11 @@ func generatedRouterTests() []*generatedRouterTest {
 			parameters:  map[string]string{"tenantID": "testDomain"},
 		},
 		{
+			url: "/portal/api/tenants/testDomain/reset-members-tenant-user-factors", method: http.MethodPost,
+			handlerFunc: "ResetMembersTenantUserFactors",
+			parameters:  map[string]string{"tenantID": "testDomain"},
+		},
+		{
 			url: "/console/api/resources", method: http.MethodPatch,
 			handlerFunc: "PatchResources",
 		},
@@ -1116,6 +1144,14 @@ func (s *generatedHandlersStub) FeatureFlag() http.HandlerFunc {
 
 func (s *generatedHandlersStub) Features() http.HandlerFunc {
 	return s.record("Features")
+}
+
+func (s *generatedHandlersStub) ResetStaffTenantUserFactors() http.HandlerFunc {
+	return s.record("ResetStaffTenantUserFactors")
+}
+
+func (s *generatedHandlersStub) ResetStaffUserFactors() http.HandlerFunc {
+	return s.record("ResetStaffUserFactors")
 }
 
 func (s *generatedHandlersStub) SetFeature() http.HandlerFunc {
@@ -1340,6 +1376,14 @@ func (s *generatedHandlersStub) Reading() http.HandlerFunc {
 
 func (s *generatedHandlersStub) Readings() http.HandlerFunc {
 	return s.record("Readings")
+}
+
+func (s *generatedHandlersStub) ResetMembersTenantUserFactors() http.HandlerFunc {
+	return s.record("ResetMembersTenantUserFactors")
+}
+
+func (s *generatedHandlersStub) ResetMembersUserFactors() http.HandlerFunc {
+	return s.record("ResetMembersUserFactors")
 }
 
 func (s *generatedHandlersStub) UnlinkMembersTenantUserIdentity() http.HandlerFunc {

@@ -8,7 +8,9 @@ import (
 
 // loginMethods is what an outlet's methods route tells the login page: the sign-in
 // methods the outlet offers, in the order the generator program registered them, each
-// with the path the router mounted it at, and the pending sign-in's routes.
+// with the path the router mounted it at, and the pending sign-in's routes, the second
+// factor's among them (where the page asks for the sign-in code, verifies it, and takes
+// the address of a person who holds none).
 type loginMethods struct {
 	Methods []struct {
 		Name   string `json:"name"`
@@ -18,9 +20,12 @@ type loginMethods struct {
 		Path   string `json:"path"`
 	} `json:"methods"`
 	Pending struct {
-		Status  string `json:"status"`
-		Confirm string `json:"confirm"`
-		Cancel  string `json:"cancel"`
+		Status      string `json:"status"`
+		Confirm     string `json:"confirm"`
+		Cancel      string `json:"cancel"`
+		SendCode    string `json:"sendCode"`
+		VerifyCode  string `json:"verifyCode"`
+		EnrollEmail string `json:"enrollEmail"`
 	} `json:"pending"`
 }
 
@@ -49,14 +54,16 @@ func TestLoginMethods(t *testing.T) {
 				`{"name":"password","method":"password","kind":"password","label":"Password","path":"/console/api/user/password/login"},` +
 				`{"name":"google","method":"google","kind":"redirect","label":"Google","path":"/console/api/user/google/login"},` +
 				`{"name":"sign-up","method":"google","kind":"redirect","label":"Sign up with Google","path":"/console/api/user/sign-up/login"}],` +
-				`"pending":{"status":"/console/api/user/pending","confirm":"/console/api/user/pending/confirm","cancel":"/console/api/user/pending/cancel"}}`,
+				`"pending":{"status":"/console/api/user/pending","confirm":"/console/api/user/pending/confirm","cancel":"/console/api/user/pending/cancel",` +
+				`"sendCode":"/console/api/user/pending/code","verifyCode":"/console/api/user/pending/code/verify","enrollEmail":"/console/api/user/pending/email"}}`,
 		},
 		{
 			name:   "the portal offers the company directory alone",
 			prefix: portalAPI,
 			want: `{"methods":[` +
 				`{"name":"directory","method":"google","kind":"redirect","label":"Company directory","path":"/portal/api/user/directory/login"}],` +
-				`"pending":{"status":"/portal/api/user/pending","confirm":"/portal/api/user/pending/confirm","cancel":"/portal/api/user/pending/cancel"}}`,
+				`"pending":{"status":"/portal/api/user/pending","confirm":"/portal/api/user/pending/confirm","cancel":"/portal/api/user/pending/cancel",` +
+				`"sendCode":"/portal/api/user/pending/code","verifyCode":"/portal/api/user/pending/code/verify","enrollEmail":"/portal/api/user/pending/email"}}`,
 		},
 	}
 	for _, tt := range tests {

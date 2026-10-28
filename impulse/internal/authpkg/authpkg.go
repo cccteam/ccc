@@ -360,7 +360,8 @@ func (m *Method) Upper() string {
 func (m *Method) Directory() bool { return m.Kind != app.MethodPassword }
 
 // Fallible reports whether registering the method can fail before the session library
-// validates it: a listed slot parses its tenants or Workspaces from their setting, and a
+// validates it: a method whose organization slot names its organizations builds the
+// slot from their settings and what the deployment administers (SlotFallible), and a
 // Google method under the directory authority parses its group lookup. Every other
 // registration hands the library its settings as they are, so its register function
 // returns the method alone.
@@ -368,11 +369,36 @@ func (m *Method) Fallible() bool {
 	if !m.Directory() {
 		return false
 	}
-	if m.slot() == SlotListed {
+	if m.SlotFallible() {
 		return true
 	}
 
 	return m.Kind == app.MethodGoogle && m.SyncsRoles()
+}
+
+// SlotFallible reports whether building the method's organization slot can fail: the
+// slot names its organizations (one tenant or Workspace, alone or beside the personal
+// accounts or any Google account, or the listed ones), so an administered organization
+// the slot does not admit is refused. An open slot admits whatever the deployment
+// declares administered beside its open entry.
+func (m *Method) SlotFallible() bool {
+	if !m.Directory() {
+		return false
+	}
+	switch m.slot() {
+	case SlotOne, SlotListed, SlotOnePersonal, SlotMixed:
+		return true
+	default:
+		return false
+	}
+}
+
+// Administered reports whether the method declares the organizations the deployment
+// administers (AdministeredTenants, AdministeredWorkspaces), whose sign-ins carry the
+// directory's second factor: every directory method but one admitting Microsoft
+// personal accounts alone, which no deployment administers.
+func (m *Method) Administered() bool {
+	return m.Directory() && (m.Kind != app.MethodAzure || m.slot() != SlotPersonal)
 }
 
 // Field is one setting a method reads from the environment.
@@ -405,6 +431,10 @@ const (
 	FieldWorkspaces   = "Workspaces"
 	FieldGroupPrefix  = "GroupPrefix"
 	FieldGroupLookup  = "GroupLookup"
+	// The organizations the deployment administers among those the slot admits, whose
+	// sign-ins carry the directory's second factor: tenants by id, Workspaces by domain.
+	FieldAdministeredTenants    = "AdministeredTenants"
+	FieldAdministeredWorkspaces = "AdministeredWorkspaces"
 )
 
 // Fields lists the settings a method reads, in order: what the method's settings struct
@@ -423,6 +453,9 @@ func (m *Method) Fields() []Field {
 		case SlotListed:
 			fields = append(fields, Field{Name: FieldTenants, Suffix: "TENANTS", Simulated: true, Doc: "the tenants the registration admits, each named: <name>=<tenant id>, comma-separated (lab-a=<guid>,lab-b=<guid>); the name is the tenant key every link made through it carries, and the slot is validated at registration, so the simulated directory needs well-formed placeholders"})
 		}
+		if m.Administered() {
+			fields = append(fields, Field{Name: FieldAdministeredTenants, Suffix: "ADMINISTERED_TENANTS", Simulated: true, Doc: "the tenants the deployment administers, by tenant id, comma-separated, each one the registration admits: a sign-in from one carries the tenant's own second factor, which the deployment vouches for (a Conditional Access policy requiring multifactor authentication of everyone), and is not asked for the sign-in code; empty when the deployment administers none"})
+		}
 		fields = append(fields,
 			Field{Name: FieldClientID, Suffix: "CLIENT_ID", Doc: "the app registration's application (client) id"},
 			Field{Name: FieldClientSecret, Suffix: "CLIENT_SECRET", Secret: true, Doc: "the app registration's client secret"},
@@ -436,6 +469,7 @@ func (m *Method) Fields() []Field {
 			fields = append(fields, Field{Name: FieldWorkspaces, Suffix: "WORKSPACES", Simulated: true, Doc: "the Workspaces the registration admits, each named with its domains: <name>=<domain>[+<domain>], comma-separated (lab=example.com,second=other.org); the name is the connection every link made through it carries"})
 		}
 		fields = append(fields,
+			Field{Name: FieldAdministeredWorkspaces, Suffix: "ADMINISTERED_WORKSPACES", Simulated: true, Doc: "the Workspaces the deployment administers, by domain, comma-separated, each one the registration admits: a sign-in from one carries the Workspace's own second factor, which the deployment vouches for (2-Step Verification enforced for everyone), and is not asked for the sign-in code; empty when the deployment administers none"},
 			Field{Name: FieldClientID, Suffix: "CLIENT_ID", Doc: "the OAuth client's id"},
 			Field{Name: FieldClientSecret, Suffix: "CLIENT_SECRET", Secret: true, Doc: "the OAuth client's secret"},
 			Field{Name: FieldRedirectURL, Suffix: "REDIRECT_URL", Simulated: true, Doc: "the browser-facing callback Google returns the browser to: <base>/<outlet>/api/user/" + m.Name + "/callback"},

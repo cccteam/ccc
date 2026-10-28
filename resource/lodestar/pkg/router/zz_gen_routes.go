@@ -253,6 +253,14 @@ type GeneratedHandlers interface {
 
 	ReplaceMissionDocument() http.HandlerFunc
 
+	ResetCrewSectorUserFactors() http.HandlerFunc
+
+	ResetCrewUserFactors() http.HandlerFunc
+
+	ResetMembersSectorUserFactors() http.HandlerFunc
+
+	ResetMembersUserFactors() http.HandlerFunc
+
 	ResumeMission() http.HandlerFunc
 
 	ScrapShip() http.HandlerFunc
@@ -693,6 +701,14 @@ func generatedRoutes(r chi.Router, h GeneratedHandlers) {
 
 	r.Post("/console/api/sectors/{sectorID}/replace-mission-document", domainGuard(h.ReplaceMissionDocument()))
 
+	bounded.Post("/console/api/sectors/{sectorID}/reset-crew-sector-user-factors", domainGuard(h.ResetCrewSectorUserFactors()))
+
+	bounded.Post("/console/api/reset-crew-user-factors", h.ResetCrewUserFactors())
+
+	bounded.Post("/console/api/sectors/{sectorID}/reset-members-sector-user-factors", domainGuard(h.ResetMembersSectorUserFactors()))
+
+	bounded.Post("/console/api/reset-members-user-factors", h.ResetMembersUserFactors())
+
 	r.Post("/console/api/sectors/{sectorID}/resume-mission", domainGuard(h.ResumeMission()))
 
 	r.Post("/console/api/sectors/{sectorID}/scrap-ship", domainGuard(h.ScrapShip()))
@@ -959,6 +975,10 @@ type GeneratedPortalHandlers interface {
 	MissionDocument() http.HandlerFunc
 	MissionDocumentContent() http.HandlerFunc
 
+	ResetMembersSectorUserFactors() http.HandlerFunc
+
+	ResetMembersUserFactors() http.HandlerFunc
+
 	SetFeature() http.HandlerFunc
 
 	StandDownMission() http.HandlerFunc
@@ -1119,6 +1139,10 @@ func generatedPortalRoutes(r chi.Router, h GeneratedPortalHandlers) {
 	bounded.Post("/portal/api/sectors/{sectorID}/mission-documents/{missionDocumentID}", missionDocumentHandler)
 
 	bounded.Get("/portal/api/sectors/{sectorID}/mission-documents/{missionDocumentID}/content", domainGuard(h.MissionDocumentContent()))
+
+	bounded.Post("/portal/api/sectors/{sectorID}/reset-members-sector-user-factors", domainGuard(h.ResetMembersSectorUserFactors()))
+
+	bounded.Post("/portal/api/reset-members-user-factors", h.ResetMembersUserFactors())
 
 	bounded.Post("/portal/api/set-feature", h.SetFeature())
 

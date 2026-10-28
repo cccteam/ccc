@@ -15,8 +15,8 @@ import (
 	"github.com/go-playground/errors/v5"
 )
 
-// Accounts adapts an Auth's API: its users, identities, passwords, addresses and
-// invitations, as the surface reads and writes them. A password an operator sets
+// Accounts adapts an Auth's API: its users, identities, passwords, addresses,
+// invitations and second factors, as the surface reads and writes them. A password an operator sets
 // through CreateUser or ResetUserPassword carries the forced-change mark; an address
 // entered through CreateUser or SetUserEmail is held unverified.
 func Accounts[S, U, Tx any](api *session.AuthAPI[S, U, Tx]) resource.UserAccounts {
@@ -142,6 +142,14 @@ func (a *accounts[S, U, Tx]) DeleteUser(ctx context.Context, id ccc.UUID) error 
 func (a *accounts[S, U, Tx]) ResetUserPassword(ctx context.Context, id ccc.UUID, temporary string) error {
 	if err := a.api.ResetSessionUserPassword(ctx, id, temporary); err != nil {
 		return errors.Wrap(err, "session.AuthAPI.ResetSessionUserPassword()")
+	}
+
+	return nil
+}
+
+func (a *accounts[S, U, Tx]) ResetUserFactors(ctx context.Context, id ccc.UUID) error {
+	if err := a.api.ResetFactors(ctx, id); err != nil {
+		return errors.Wrap(err, "session.AuthAPI.ResetFactors()")
 	}
 
 	return nil

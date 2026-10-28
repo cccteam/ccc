@@ -109,12 +109,7 @@ func TestConsoleSessionOnPortal(t *testing.T) {
 	s := newServed(ctx, t)
 	b := newBrowser(t, s, consoleAPI)
 
-	if status, body := b.do(ctx, http.MethodGet, consoleAPI+"/user/session", nil); status != http.StatusOK {
-		t.Fatalf("GET session before login: status %d: %s", status, body)
-	}
-	if status, body := b.login(ctx, "governor", personaPassword); status != http.StatusOK {
-		t.Fatalf("console login: status %d: %s", status, body)
-	}
+	b.signIn(ctx, "governor")
 
 	tests := []struct {
 		name   string
@@ -257,12 +252,7 @@ func TestDroidsTokens(t *testing.T) {
 		t.Parallel()
 
 		b := newBrowser(t, s, consoleAPI)
-		if status, body := b.do(ctx, http.MethodGet, consoleAPI+"/user/session", nil); status != http.StatusOK {
-			t.Fatalf("GET session before login: status %d: %s", status, body)
-		}
-		if status, body := b.login(ctx, "governor", personaPassword); status != http.StatusOK {
-			t.Fatalf("console login: status %d: %s", status, body)
-		}
+		b.signIn(ctx, "governor")
 		status, body := b.do(ctx, http.MethodPost, consoleAPI+"/user/tokens", []byte(`{"name":"survey script","outlet":"droids"}`))
 		if status != http.StatusOK {
 			t.Fatalf("POST user/tokens: status %d: %s", status, body)
@@ -354,12 +344,7 @@ func TestDroidsTokens(t *testing.T) {
 
 		// The marshal reads what waits under the code and approves it on the console.
 		b := newBrowser(t, s, consoleAPI)
-		if status, body := b.do(ctx, http.MethodGet, consoleAPI+"/user/session", nil); status != http.StatusOK {
-			t.Fatalf("GET session before login: status %d: %s", status, body)
-		}
-		if status, body := b.login(ctx, "marshal", personaPassword); status != http.StatusOK {
-			t.Fatalf("console login: status %d: %s", status, body)
-		}
+		b.signIn(ctx, "marshal")
 		status, body = b.do(ctx, http.MethodGet, consoleAPI+"/user/device?userCode="+url.QueryEscape(userCode), nil)
 		if status != http.StatusOK {
 			t.Fatalf("GET user/device: status %d: %s", status, body)

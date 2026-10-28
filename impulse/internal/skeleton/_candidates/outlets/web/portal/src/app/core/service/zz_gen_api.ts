@@ -2,7 +2,7 @@
 import { ApiDescriptor, Client, ClientOptions, createClient, MethodHandle, ResourceHandle } from '@cccteam/resource';
 import { Methods, Resources } from './zz_gen_constants';
 import { Announcements, FeatureFlags, MembersUsers, MembersSeats, MembersRoles, MembersInvitations, MembersTenantUsers, MembersTenantSeats, MembersTenantRoles, MembersTenantInvitations } from './zz_gen_resources';
-import { SetFeature, SetFeatureResult, UnlinkMembersUserIdentity, UnlinkMembersTenantUserIdentity } from './zz_gen_methods';
+import { SetFeature, SetFeatureResult, UnlinkMembersUserIdentity, ResetMembersUserFactors, UnlinkMembersTenantUserIdentity, ResetMembersTenantUserFactors } from './zz_gen_methods';
 
 /**
  * The fields a client may set when creating Announcements. Server-owned fields are
@@ -221,7 +221,9 @@ export const apiDescriptor = defineApiDescriptor({
   methods: {
     [Methods.SetFeature]: { method: Methods.SetFeature, property: 'setFeature', route: 'set-feature', scope: 'global', answers: true },
     [Methods.UnlinkMembersUserIdentity]: { method: Methods.UnlinkMembersUserIdentity, property: 'unlinkMembersUserIdentity', route: 'unlink-members-user-identity', scope: 'global' },
+    [Methods.ResetMembersUserFactors]: { method: Methods.ResetMembersUserFactors, property: 'resetMembersUserFactors', route: 'reset-members-user-factors', scope: 'global' },
     [Methods.UnlinkMembersTenantUserIdentity]: { method: Methods.UnlinkMembersTenantUserIdentity, property: 'unlinkMembersTenantUserIdentity', route: 'unlink-members-tenant-user-identity', scope: 'domain' },
+    [Methods.ResetMembersTenantUserFactors]: { method: Methods.ResetMembersTenantUserFactors, property: 'resetMembersTenantUserFactors', route: 'reset-members-tenant-user-factors', scope: 'domain' },
   },
   userSurfaces: [
     {
@@ -232,8 +234,8 @@ export const apiDescriptor = defineApiDescriptor({
       openSignUp: false,
       registrations: [{ name: 'directory', kind: 'azure', label: 'Microsoft', invited: false, syncsRoles: false }],
       partitions: [
-        { scope: 'global', users: Resources.MembersUsers, seats: Resources.MembersSeats, roles: Resources.MembersRoles, invitations: Resources.MembersInvitations, unlinkIdentity: Methods.UnlinkMembersUserIdentity },
-        { scope: 'domain', users: Resources.MembersTenantUsers, seats: Resources.MembersTenantSeats, roles: Resources.MembersTenantRoles, invitations: Resources.MembersTenantInvitations, unlinkIdentity: Methods.UnlinkMembersTenantUserIdentity },
+        { scope: 'global', users: Resources.MembersUsers, seats: Resources.MembersSeats, roles: Resources.MembersRoles, invitations: Resources.MembersInvitations, unlinkIdentity: Methods.UnlinkMembersUserIdentity, resetFactors: Methods.ResetMembersUserFactors },
+        { scope: 'domain', users: Resources.MembersTenantUsers, seats: Resources.MembersTenantSeats, roles: Resources.MembersTenantRoles, invitations: Resources.MembersTenantInvitations, unlinkIdentity: Methods.UnlinkMembersTenantUserIdentity, resetFactors: Methods.ResetMembersTenantUserFactors },
       ],
     },
   ],
@@ -248,6 +250,7 @@ export interface GlobalApi {
   membersInvitations: ResourceHandle<MembersInvitations, MembersInvitationsKey, 'list' | 'read' | 'create' | 'remove', MembersInvitationsCreate>;
   setFeature: MethodHandle<SetFeature, SetFeatureResult>;
   unlinkMembersUserIdentity: MethodHandle<UnlinkMembersUserIdentity>;
+  resetMembersUserFactors: MethodHandle<ResetMembersUserFactors>;
 }
 
 /** Handles for one tenant partition, available on client.domain(...). */
@@ -258,6 +261,7 @@ export interface DomainApi {
   membersTenantRoles: ResourceHandle<MembersTenantRoles, MembersTenantRolesKey, 'list' | 'read'>;
   membersTenantInvitations: ResourceHandle<MembersTenantInvitations, MembersTenantInvitationsKey, 'list' | 'read' | 'create' | 'remove', MembersTenantInvitationsCreate>;
   unlinkMembersTenantUserIdentity: MethodHandle<UnlinkMembersTenantUserIdentity>;
+  resetMembersTenantUserFactors: MethodHandle<ResetMembersTenantUserFactors>;
 }
 
 export type Api = Client<GlobalApi, DomainApi>;

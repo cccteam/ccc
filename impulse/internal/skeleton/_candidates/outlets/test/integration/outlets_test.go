@@ -26,6 +26,9 @@ func TestPortalOutlet(t *testing.T) {
 	if status, body := b.do(ctx, http.MethodGet, portalAPI+"/user/session", nil); status != http.StatusOK {
 		t.Fatalf("GET session before login: status %d: %s", status, body)
 	}
+	// The deployment administers the directory's tenant (the harness declares it), so
+	// the sign-in carries the tenant's second factor: the callback opens the session and
+	// sends the browser to the page, asking for no sign-in code.
 	if status, location := b.loginPortal(ctx, clientUser); status != http.StatusFound || location != portalPage {
 		t.Fatalf("portal login: status %d to %q, want %d to %q", status, location, http.StatusFound, portalPage)
 	}
@@ -74,13 +77,7 @@ func TestConsoleSessionOnPortal(t *testing.T) {
 	ctx := t.Context()
 	s := newServed(ctx, t)
 	b := newBrowser(t, s, consoleAPI)
-
-	if status, body := b.do(ctx, http.MethodGet, consoleAPI+"/user/session", nil); status != http.StatusOK {
-		t.Fatalf("GET session before login: status %d: %s", status, body)
-	}
-	if status, body := b.login(ctx, adminUser, adminPassword); status != http.StatusOK {
-		t.Fatalf("console login: status %d: %s", status, body)
-	}
+	b.signIn(ctx, adminUser)
 
 	tests := []struct {
 		name   string
@@ -110,7 +107,7 @@ func TestMachinesOutlet(t *testing.T) {
 
 	ctx := t.Context()
 	s := newServed(ctx, t)
-	token := issueToken(ctx, t, s, memberUser, adminPassword)
+	token := issueToken(ctx, t, s, memberUser)
 
 	tests := []struct {
 		name   string
@@ -183,16 +180,11 @@ func TestMachinesDeviceAuthorization(t *testing.T) {
 
 // issueToken signs the staff login in on the console and issues an application token
 // for the machines outlet, as a person does on the console's token page.
-func issueToken(ctx context.Context, t *testing.T, s *served, user, password string) string {
+func issueToken(ctx context.Context, t *testing.T, s *served, user string) string {
 	t.Helper()
 
 	b := newBrowser(t, s, consoleAPI)
-	if status, body := b.do(ctx, http.MethodGet, consoleAPI+"/user/session", nil); status != http.StatusOK {
-		t.Fatalf("GET session before login: status %d: %s", status, body)
-	}
-	if status, body := b.login(ctx, user, password); status != http.StatusOK {
-		t.Fatalf("console login: status %d: %s", status, body)
-	}
+	b.signIn(ctx, user)
 	status, body := b.do(ctx, http.MethodPost, consoleAPI+"/user/tokens", []byte(`{"name":"suite","outlet":"machines"}`))
 	if status != http.StatusOK {
 		t.Fatalf("POST user/tokens: status %d: %s", status, body)

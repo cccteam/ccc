@@ -233,15 +233,15 @@ type UserResourceNames struct {
 	Tenant UserPartitionNames
 }
 
-// UserPartitionNames are one partition's names: its four resources and two methods,
+// UserPartitionNames are one partition's names: its four resources and three methods,
 // the route segments they are served at under the outlet's prefix (and, tenanted, the
 // domain segment), and the parameters of their read routes.
 type UserPartitionNames struct {
 	Tenanted bool
 
-	Users, Seats, Roles, Invitations, SetPassword, UnlinkIdentity accesstypes.Resource
+	Users, Seats, Roles, Invitations, SetPassword, UnlinkIdentity, ResetFactors accesstypes.Resource
 
-	UsersRoute, SeatsRoute, RolesRoute, InvitationsRoute, SetPasswordRoute, UnlinkIdentityRoute string
+	UsersRoute, SeatsRoute, RolesRoute, InvitationsRoute, SetPasswordRoute, UnlinkIdentityRoute, ResetFactorsRoute string
 
 	// UserParam is the users read route's parameter (crewUserID), SeatUserParam and
 	// SeatRoleParam the seats read route's, RoleParam the roles read route's,
@@ -262,6 +262,7 @@ func partitionNames(auth, tenant string) UserPartitionNames {
 		Invitations:     accesstypes.Resource(prefix + "Invitations"),
 		SetPassword:     accesstypes.Resource("Set" + infix + "Password"),
 		UnlinkIdentity:  accesstypes.Resource("Unlink" + infix + "Identity"),
+		ResetFactors:    accesstypes.Resource("Reset" + infix + "Factors"),
 		UserParam:       httpio.ParamType(strcase.ToGoCamel(prefix + "UserID")),
 		SeatUserParam:   httpio.ParamType(strcase.ToGoCamel(prefix + "SeatUser")),
 		SeatRoleParam:   httpio.ParamType(strcase.ToGoCamel(prefix + "SeatRole")),
@@ -274,18 +275,19 @@ func partitionNames(auth, tenant string) UserPartitionNames {
 	n.InvitationsRoute = strcase.ToKebab(string(n.Invitations))
 	n.SetPasswordRoute = strcase.ToKebab(string(n.SetPassword))
 	n.UnlinkIdentityRoute = strcase.ToKebab(string(n.UnlinkIdentity))
+	n.ResetFactorsRoute = strcase.ToKebab(string(n.ResetFactors))
 
 	return n
 }
 
 // Resources lists the partition's resources and methods, the names a role file grants.
 func (n *UserPartitionNames) Resources() []accesstypes.Resource {
-	return []accesstypes.Resource{n.Users, n.Seats, n.Roles, n.Invitations, n.SetPassword, n.UnlinkIdentity}
+	return []accesstypes.Resource{n.Users, n.Seats, n.Roles, n.Invitations, n.SetPassword, n.UnlinkIdentity, n.ResetFactors}
 }
 
 // Methods lists the partition's methods, which target its users resource.
 func (n *UserPartitionNames) Methods() []accesstypes.Resource {
-	return []accesstypes.Resource{n.SetPassword, n.UnlinkIdentity}
+	return []accesstypes.Resource{n.SetPassword, n.UnlinkIdentity, n.ResetFactors}
 }
 
 // UserAccount is one user as the Auth's account store holds it.
@@ -379,6 +381,10 @@ type UserAccounts interface {
 	// ResetUserPassword sets a temporary password an operator chose: the account
 	// takes the forced-change mark and its sessions end.
 	ResetUserPassword(ctx context.Context, id ccc.UUID, temporary string) error
+	// ResetUserFactors forgets every browser the person asked to be remembered after
+	// a second factor, so their next sign-in from any of them asks for the factor
+	// again (session.AuthAPI.ResetFactors).
+	ResetUserFactors(ctx context.Context, id ccc.UUID) error
 	Identities(ctx context.Context, id ccc.UUID) ([]UserIdentity, error)
 	UnlinkIdentity(ctx context.Context, identityID ccc.UUID) error
 }

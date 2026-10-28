@@ -555,6 +555,18 @@ func Collection() *resource.GeneratedCollection {
 				Target:      "MissionDocuments",
 			},
 			{
+				Name:        "ResetCrewSectorUserFactors",
+				Scope:       accesstypes.DomainPermissionScope,
+				Permissions: []accesstypes.Permission{accesstypes.Execute},
+				Target:      "CrewSectorUsers",
+			},
+			{
+				Name:        "ResetMembersSectorUserFactors",
+				Scope:       accesstypes.DomainPermissionScope,
+				Permissions: []accesstypes.Permission{accesstypes.Execute},
+				Target:      "MembersSectorUsers",
+			},
+			{
 				Name:        "ResumeMission",
 				Scope:       accesstypes.DomainPermissionScope,
 				Permissions: []accesstypes.Permission{accesstypes.Execute},
@@ -1087,6 +1099,18 @@ func Collection() *resource.GeneratedCollection {
 				},
 				Order:     []accesstypes.Tag{"displayName"},
 				QueryKeys: []accesstypes.Tag{"userId"},
+			},
+			{
+				Name:        "ResetCrewUserFactors",
+				Scope:       accesstypes.GlobalPermissionScope,
+				Permissions: []accesstypes.Permission{accesstypes.Execute},
+				Target:      "CrewUsers",
+			},
+			{
+				Name:        "ResetMembersUserFactors",
+				Scope:       accesstypes.GlobalPermissionScope,
+				Permissions: []accesstypes.Permission{accesstypes.Execute},
+				Target:      "MembersUsers",
 			},
 			{
 				Name:        "Sectors",

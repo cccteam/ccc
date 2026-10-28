@@ -29,16 +29,20 @@ func TestSelfService_signInFirstThroughOpenSignUp(t *testing.T) {
 	}
 
 	// Signing in: the login route sends the browser to the simulated directory, which
-	// is the callback, and the callback sends it on to the page the login named.
+	// is the callback.
 	t.Setenv("APP_GOOGLE_USERNAME", "wanderer")
 	status, location := b.redirect(ctx, "/api/user/google/login?returnUrl="+url.QueryEscape("/dashboard"))
 	if status != http.StatusFound {
 		t.Fatalf("GET /api/user/google/login: status %d, want %d to the directory", status, http.StatusFound)
 	}
+	// The account's Workspace is not one the deployment administers, so the callback
+	// sends the browser to the login page's code step (pending=mfa), and the sign-in code
+	// opens the session, going on to /dashboard.
 	status, location = b.redirect(ctx, location)
-	if status != http.StatusFound || !strings.HasSuffix(location, "/dashboard") {
-		t.Fatalf("the callback answered %d to %q, want %d to /dashboard", status, location, http.StatusFound)
+	if status != http.StatusFound || location != "/login?pending=mfa&returnUrl="+url.QueryEscape("/dashboard") {
+		t.Fatalf("the callback answered %d to %q, want %d to the login page's code step, returning to /dashboard", status, location, http.StatusFound)
 	}
+	b.secondFactor(ctx, "wanderer", false)
 	status, body = b.do(ctx, http.MethodGet, "/api/user/session", nil)
 	if status != http.StatusOK || !strings.Contains(string(body), `"wanderer"`) {
 		t.Fatalf("GET /api/user/session after the sign-in: status %d: %s", status, body)

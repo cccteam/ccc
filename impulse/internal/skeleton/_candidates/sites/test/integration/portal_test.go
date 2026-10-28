@@ -13,14 +13,8 @@ func TestPortalSite(t *testing.T) {
 
 	ctx := t.Context()
 	s := newServed(ctx, t)
-	b := newBrowser(t, s.portal)
-
-	if status, body := b.do(ctx, http.MethodGet, "/api/user/session", nil); status != http.StatusOK {
-		t.Fatalf("GET session before login: status %d: %s", status, body)
-	}
-	if status, body := b.login(ctx, clientUser, adminPassword); status != http.StatusOK {
-		t.Fatalf("portal login: status %d: %s", status, body)
-	}
+	b := newBrowser(t, s, s.portal)
+	b.signIn(ctx, clientUser)
 
 	tests := []struct {
 		name   string

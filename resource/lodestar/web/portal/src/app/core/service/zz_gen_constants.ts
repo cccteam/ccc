@@ -46,6 +46,10 @@ export const Resources = {
 
 export const Methods = {
   StandDownMission: 'StandDownMission' as Method,
+  ResetCrewSectorUserFactors: 'ResetCrewSectorUserFactors' as Method,
+  ResetCrewUserFactors: 'ResetCrewUserFactors' as Method,
+  ResetMembersSectorUserFactors: 'ResetMembersSectorUserFactors' as Method,
+  ResetMembersUserFactors: 'ResetMembersUserFactors' as Method,
   SetCrewSectorUserPassword: 'SetCrewSectorUserPassword' as Method,
   SetCrewUserPassword: 'SetCrewUserPassword' as Method,
   SetFeature: 'SetFeature' as Method,

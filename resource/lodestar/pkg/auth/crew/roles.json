@@ -500,10 +500,16 @@
               "resource": "SetCrewUserPassword"
             },
             {
+              "resource": "ResetCrewUserFactors"
+            },
+            {
               "resource": "UnlinkCrewUserIdentity"
             },
             {
               "resource": "UnlinkMembersUserIdentity"
+            },
+            {
+              "resource": "ResetMembersUserFactors"
             }
           ]
         }
@@ -1494,6 +1500,9 @@
             },
             {
               "resource": "SetCrewSectorUserPassword"
+            },
+            {
+              "resource": "ResetCrewSectorUserFactors"
             },
             {
               "resource": "UnlinkCrewSectorUserIdentity"

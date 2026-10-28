@@ -11,8 +11,11 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
+	"net/url"
+	"regexp"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -719,8 +722,18 @@ type served struct {
 	// jobs is the job process's fake starter: what the scheduled cleanup started.
 	jobs *jobs.Fake
 	// mail records every message the two auths send (an invitation, an address
-	// verification, a sign-up link), so a suite follows the link the way a person does.
+	// verification, a sign-up link, a sign-in code), so a suite follows the link or
+	// enters the code the way a person does.
 	mail *mail.Recorder
+	// codeMu lets one sign-in at a time run its second factor on the stack, so the code
+	// a browser reads from the recorder is the one its sign-in was sent, and trusted
+	// holds, per outlet and persona, the token of the browser the persona asked to be
+	// remembered at their first sign-in, which the next sign-in of theirs carries: a
+	// persona signs in many times across a suite, as a person does from the browser
+	// they remembered, and is mailed a code once (an address is sent three within
+	// fifteen minutes).
+	codeMu  sync.Mutex
+	trusted map[string]*http.Cookie
 }
 
 // newServed provisions the database the way the bootstrap does (schema, the demo world,
@@ -779,6 +792,7 @@ func newServedAt(ctx context.Context, t *testing.T, version string) *served {
 			RedirectURL:  "http://" + server.Listener.Addr().String() + consoleAPI + "/user/google/callback",
 			Connection:   "example",
 			HostedDomain: "example.com",
+			Administered: true,
 			GroupPrefix:  "crew-",
 		},
 		SignUpRedirectURL:  "http://" + server.Listener.Addr().String() + consoleAPI + "/user/" + crew.SignUpRegistration + "/callback",
@@ -805,6 +819,7 @@ func newServedAt(ctx context.Context, t *testing.T, version string) *served {
 			RedirectURL:  "http://" + server.Listener.Addr().String() + portalAPI + "/user/directory/callback",
 			Connection:   "example",
 			HostedDomain: "example.com",
+			Administered: true,
 			GroupPrefix:  "members-",
 		},
 		ChangeSignal:       policySignal,
@@ -858,7 +873,7 @@ func newServedAt(ctx context.Context, t *testing.T, version string) *served {
 	server.Config.Handler = router.New(a, router.AppHooks(a))
 	server.Start()
 
-	return &served{server: server, access: crewAuth.Access(), members: membersAuth.Access(), stores: stores, db: db, scheduler: keys, jobs: starter, mail: sent}
+	return &served{server: server, access: crewAuth.Access(), members: membersAuth.Access(), stores: stores, db: db, scheduler: keys, jobs: starter, mail: sent, trusted: map[string]*http.Cookie{}}
 }
 
 // schedulerInvoker is the invoker identity the served stack's scheduled routes admit, as
@@ -872,6 +887,13 @@ var outletXSRF = map[string]string{
 	portalAPI:  members.XSRFCookie,
 }
 
+// outletTrusted names the cookie a remembered browser carries its trusted-device token
+// in, per session-serving outlet.
+var outletTrusted = map[string]string{
+	consoleAPI: crew.TrustedDeviceCookie,
+	portalAPI:  members.TrustedDeviceCookie,
+}
+
 // browser is one browser's view of the served application on one session-serving
 // outlet: a cookie jar and the XSRF token the session middleware issued into it.
 type browser struct {
@@ -880,6 +902,11 @@ type browser struct {
 	prefix string
 	xsrf   string
 	client *http.Client
+	// trusted is the cookie a remembered browser carries its trusted-device token in.
+	trusted string
+	// served is the stack the browser is on, whose recorder holds the code a sign-in
+	// waits for.
+	served *served
 }
 
 func newBrowser(t *testing.T, s *served, prefix string) *browser {
@@ -895,7 +922,7 @@ func newBrowser(t *testing.T, s *served, prefix string) *browser {
 		t.Fatalf("no auth issues an XSRF cookie on %s", prefix)
 	}
 
-	return &browser{t: t, base: s.server.URL, prefix: prefix, xsrf: xsrf, client: &http.Client{Jar: jar}}
+	return &browser{t: t, base: s.server.URL, prefix: prefix, xsrf: xsrf, client: &http.Client{Jar: jar}, trusted: outletTrusted[prefix], served: s}
 }
 
 // login posts the credentials to the outlet's password login route and returns the status.
@@ -910,17 +937,191 @@ func (b *browser) login(ctx context.Context, user, password string) (status int,
 	return b.do(ctx, http.MethodPost, b.prefix+"/user/password/login", credentials)
 }
 
-// signIn primes the XSRF handshake and signs a persona in on the console, failing the
-// test on refusal.
+// signIn primes the XSRF handshake and signs a persona in on the console the way a
+// person does, failing the test on refusal: the password, then the second factor every
+// session carries. The persona's first sign-in on the stack enters the sign-in code
+// read from the mail the auth sent and asks for the browser to be remembered; every
+// later sign-in of theirs carries that browser's token (served.trusted), so it is the
+// remembered browser and is not asked.
 func (b *browser) signIn(ctx context.Context, user string) {
 	b.t.Helper()
 
+	s := b.served
+	s.codeMu.Lock()
+	defer s.codeMu.Unlock()
+	key := b.prefix + " " + user
+	if cookie := s.trusted[key]; cookie != nil {
+		b.remember(cookie)
+	}
 	if status, body := b.do(ctx, http.MethodGet, b.prefix+"/user/session", nil); status != http.StatusOK {
 		b.t.Fatalf("GET %s/user/session before login: status %d: %s", b.prefix, status, body)
 	}
-	if status, body := b.login(ctx, user, personaPassword); status != http.StatusOK {
+	status, body := b.login(ctx, user, personaPassword)
+	if status != http.StatusOK {
 		b.t.Fatalf("login %s: status %d: %s", user, status, body)
 	}
+	if heldForFactor(b.t, body) {
+		b.secondFactorLocked(ctx, user, true)
+		s.trusted[key] = b.trustedCookie()
+	}
+}
+
+// heldForFactor reads a password login's answer: whether the sign-in waits for the
+// second factor (mfaIsRequired).
+func heldForFactor(t *testing.T, body []byte) bool {
+	t.Helper()
+
+	var answer struct {
+		MFAIsRequired bool `json:"mfaIsRequired"`
+	}
+	if err := json.Unmarshal(body, &answer); err != nil {
+		t.Fatalf("decoding the login's answer: %v: %s", err, body)
+	}
+
+	return answer.MFAIsRequired
+}
+
+// remember puts a remembered browser's trusted-device cookie, as its jar holds it, into
+// this browser's jar: the person signs in again from the browser they asked to be
+// remembered.
+func (b *browser) remember(cookie *http.Cookie) {
+	b.t.Helper()
+
+	site, err := url.Parse(b.base)
+	if err != nil {
+		b.t.Fatal(err)
+	}
+	b.client.Jar.SetCookies(site, []*http.Cookie{cookie})
+}
+
+// trustedCookie is the trusted-device cookie this browser's jar holds, or nil when the
+// person never asked for the browser to be remembered.
+func (b *browser) trustedCookie() *http.Cookie {
+	b.t.Helper()
+
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, b.base+b.prefix+"/user/session", http.NoBody)
+	if err != nil {
+		b.t.Fatal(err)
+	}
+	for _, cookie := range b.client.Jar.Cookies(req.URL) {
+		if cookie.Name == b.trusted {
+			return cookie
+		}
+	}
+
+	return nil
+}
+
+// pendingSignIn is the pending route's answer as the login page reads it: why the
+// sign-in waits, and for the second factor, the state of the sign-in code.
+type pendingSignIn struct {
+	Reason    string   `json:"reason"`
+	Email     string   `json:"email"`
+	Factors   []string `json:"factors"`
+	EmailCode *struct {
+		CodeEmail   string `json:"codeEmail"`
+		EnrollEmail bool   `json:"enrollEmail"`
+		CodeSent    bool   `json:"codeSent"`
+	} `json:"emailCode"`
+}
+
+// pending reads the sign-in this browser waits on.
+func (b *browser) pending(ctx context.Context) *pendingSignIn {
+	b.t.Helper()
+
+	status, body := b.do(ctx, http.MethodGet, b.prefix+"/user/pending", nil)
+	if status != http.StatusOK {
+		b.t.Fatalf("GET %s/user/pending: status %d: %s", b.prefix, status, body)
+	}
+	pending := &pendingSignIn{}
+	if err := json.Unmarshal(body, pending); err != nil {
+		b.t.Fatalf("decoding the pending sign-in: %v: %s", err, body)
+	}
+
+	return pending
+}
+
+// codeSubject finds the sign-in code in a code message's subject ("Your Lodestar
+// sign-in code is 483 920").
+var codeSubject = regexp.MustCompile(`\b(\d{3}) (\d{3})\b`)
+
+// factorAddress is the address a persona gives for the sign-in code when they hold
+// none: the personas sign in by their job word and carry no address until they give one.
+func factorAddress(user string) string {
+	return user + "@mail.example"
+}
+
+// secondFactor completes the second factor this browser's sign-in waits for, the way
+// the login page does once the password admitted the person (or a directory the fleet
+// does not administer): the address for the code where the person holds none, the code
+// asked for and read from the mail the auth sent, and the code verified, asking for the
+// browser to be remembered when remember is set. A sign-in the fleet's directory
+// attested for never waits here. One sign-in at a time runs its factor on the stack.
+//
+// Demonstrates: auth.second-factor.
+func (b *browser) secondFactor(ctx context.Context, user string, remember bool) {
+	b.t.Helper()
+
+	b.served.codeMu.Lock()
+	defer b.served.codeMu.Unlock()
+	b.secondFactorLocked(ctx, user, remember)
+}
+
+// secondFactorLocked is secondFactor for a caller holding the stack's factor lock.
+func (b *browser) secondFactorLocked(ctx context.Context, user string, remember bool) {
+	b.t.Helper()
+
+	pending := b.pending(ctx)
+	if pending.Reason != string(sessioninfo.PendingMFA) || pending.EmailCode == nil {
+		b.t.Fatalf("the sign-in of %s waits for %+v, want the second factor with the sign-in code offered", user, pending)
+	}
+	code := b.askCodeLocked(ctx, pending.EmailCode.EnrollEmail, factorAddress(user))
+	verify, err := json.Marshal(map[string]any{"code": code, "rememberDevice": remember})
+	if err != nil {
+		b.t.Fatal(err)
+	}
+	if status, body := b.do(ctx, http.MethodPost, b.prefix+"/user/pending/code/verify", verify); status != http.StatusOK {
+		b.t.Fatalf("verifying the sign-in code of %s: status %d: %s", user, status, body)
+	}
+}
+
+// sentCode asks for the sign-in code, giving the address first where the person holds
+// none, and reads the code from the message the auth sent. One sign-in at a time asks
+// on the stack, so the message read is this sign-in's.
+func (b *browser) sentCode(ctx context.Context, enroll bool, address string) string {
+	b.t.Helper()
+
+	b.served.codeMu.Lock()
+	defer b.served.codeMu.Unlock()
+
+	return b.askCodeLocked(ctx, enroll, address)
+}
+
+// askCodeLocked is sentCode for a caller holding the stack's factor lock.
+func (b *browser) askCodeLocked(ctx context.Context, enroll bool, address string) string {
+	b.t.Helper()
+
+	s := b.served
+	before := len(s.mail.Messages())
+	if enroll {
+		give, err := json.Marshal(map[string]string{"email": address})
+		if err != nil {
+			b.t.Fatal(err)
+		}
+		if status, body := b.do(ctx, http.MethodPost, b.prefix+"/user/pending/email", give); status != http.StatusOK {
+			b.t.Fatalf("giving %s for the sign-in code: status %d: %s", address, status, body)
+		}
+	} else if status, body := b.do(ctx, http.MethodPost, b.prefix+"/user/pending/code", nil); status != http.StatusOK {
+		b.t.Fatalf("asking for the sign-in code: status %d: %s", status, body)
+	}
+	for _, m := range s.mail.Messages()[before:] {
+		if match := codeSubject.FindStringSubmatch(m.Subject); match != nil {
+			return match[1] + match[2]
+		}
+	}
+	b.t.Fatalf("no sign-in code was mailed after the request (%d messages before)", before)
+
+	return ""
 }
 
 // session reads the session route as this browser.

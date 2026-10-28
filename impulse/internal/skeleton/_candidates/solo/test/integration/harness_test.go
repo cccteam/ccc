@@ -10,6 +10,7 @@ import (
 	"net/http/cookiejar"
 	"net/http/httptest"
 	"slices"
+	"sync"
 	"testing"
 	"time"
 
@@ -96,6 +97,17 @@ func (c *servedConfigurer) LiveOrigins() []string {
 type served struct {
 	server *httptest.Server
 	access *access.Client
+	// adminID is the development login's user id, for the users surface's methods.
+	adminID string
+	// mail is the recorder the staff auth sends its mail to, where a suite reads the
+	// sign-in code a sign-in waits for.
+	mail *mail.Recorder
+	// codeMu lets one sign-in at a time run its second factor on the stack, so the code a
+	// browser reads from the recorder is its own, and trusted holds, per login, the token
+	// of the browser the login asked to be remembered at their first sign-in, which their
+	// later sign-ins carry (browser.signIn).
+	codeMu  sync.Mutex
+	trusted map[string]*http.Cookie
 }
 
 // newServed provisions the database the way the deployment does (the schema, then the
@@ -112,7 +124,9 @@ func newServed(ctx context.Context, t *testing.T) *served {
 	// The live service the engine signals policy changes through and the App follows
 	// its feature flags from: in-memory in the suites.
 	svc := live.NewFake()
-	auth, err := staff.New(ctx, db.Client, &staff.Settings{Collection: router.Collection(), Signals: svc, CookieKey: testCookieKey, SessionTimeout: time.Minute, Mail: &mail.Recorder{}, MailLoginURL: "http://solo.test/login"})
+	// The recorder the staff auth's mail goes to: the suites read the sign-in codes from it.
+	sent := &mail.Recorder{}
+	auth, err := staff.New(ctx, db.Client, &staff.Settings{Collection: router.Collection(), Signals: svc, CookieKey: testCookieKey, SessionTimeout: time.Minute, Mail: sent, MailLoginURL: "http://solo.test/login"})
 	if err != nil {
 		t.Fatalf("staff.New() error = %v", err)
 	}
@@ -125,7 +139,8 @@ func newServed(ctx context.Context, t *testing.T) *served {
 
 	passwordAuth := auth.Session()
 	password := adminPassword
-	if _, err := passwordAuth.API().CreateSessionUser(ctx, &session.CreateUserRequest{Username: adminUser, Password: &password}); err != nil {
+	adminID, err := passwordAuth.API().CreateSessionUser(ctx, &session.CreateUserRequest{Username: adminUser, Password: &password})
+	if err != nil {
 		t.Fatalf("CreateSessionUser() error = %v", err)
 	}
 	if err := accessClient.UserManager().AddUserRoles(ctx, accesstypes.GlobalPolicyScope(), adminUser, "Administrator_Global"); err != nil {
@@ -142,7 +157,7 @@ func newServed(ctx context.Context, t *testing.T) *served {
 	server := httptest.NewServer(handler)
 	t.Cleanup(server.Close)
 
-	return &served{server: server, access: accessClient}
+	return &served{server: server, access: accessClient, adminID: adminID.String(), mail: sent, trusted: map[string]*http.Cookie{}}
 }
 
 // testCookieKey signs session cookies in the suites; any 32 bytes will do.
@@ -154,6 +169,9 @@ type browser struct {
 	t      *testing.T
 	base   string
 	client *http.Client
+	// served is the stack the browser is on, whose recorder holds the code a sign-in
+	// waits for and whose trusted tokens a remembered browser carries.
+	served *served
 }
 
 func newBrowser(t *testing.T, s *served) *browser {
@@ -164,7 +182,7 @@ func newBrowser(t *testing.T, s *served) *browser {
 		t.Fatal(err)
 	}
 
-	return &browser{t: t, base: s.server.URL, client: &http.Client{Jar: jar}}
+	return &browser{t: t, base: s.server.URL, client: &http.Client{Jar: jar}, served: s}
 }
 
 // login posts the credentials to the login route and returns the status.

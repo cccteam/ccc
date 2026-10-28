@@ -55,6 +55,7 @@ type fakeAccounts struct {
 	users       []UserAccount
 	identities  map[ccc.UUID][]UserIdentity
 	resets      map[ccc.UUID]string
+	factorReset []ccc.UUID
 	unlinked    []ccc.UUID
 	invitations []UserInvitation
 	revoked     []ccc.UUID
@@ -175,6 +176,15 @@ func (f *fakeAccounts) ResetUserPassword(_ context.Context, id ccc.UUID, tempora
 		f.resets = map[ccc.UUID]string{}
 	}
 	f.resets[id] = temporary
+
+	return nil
+}
+
+func (f *fakeAccounts) ResetUserFactors(_ context.Context, id ccc.UUID) error {
+	if _, err := f.find(id); err != nil {
+		return err
+	}
+	f.factorReset = append(f.factorReset, id)
 
 	return nil
 }
@@ -416,6 +426,7 @@ func newUserFixtureWith(t *testing.T, opts ...UserSurfaceOption) *userFixture {
 	r.Get("/"+n.Global.RolesRoute, surface.Roles(app, collection))
 	r.Post("/"+n.Global.SetPasswordRoute, surface.SetUserPassword(app, collection))
 	r.Post("/"+n.Global.UnlinkIdentityRoute, surface.UnlinkUserIdentity(app, collection))
+	r.Post("/"+n.Global.ResetFactorsRoute, surface.ResetUserFactors(app, collection))
 	r.Get("/"+n.Global.InvitationsRoute, surface.Invitations(app, collection))
 	r.Get("/"+n.Global.InvitationsRoute+"/{"+string(n.Global.InvitationParam)+"}", surface.Invitation(app, collection))
 	r.Patch("/"+n.Global.InvitationsRoute, surface.PatchInvitations(app, collection))
@@ -427,6 +438,7 @@ func newUserFixtureWith(t *testing.T, opts ...UserSurfaceOption) *userFixture {
 	r.Patch(tenant+n.Tenant.SeatsRoute, surface.PatchTenantSeats(app, collection))
 	r.Get(tenant+n.Tenant.RolesRoute, surface.TenantRoles(app, collection))
 	r.Post(tenant+n.Tenant.SetPasswordRoute, surface.SetTenantUserPassword(app, collection))
+	r.Post(tenant+n.Tenant.ResetFactorsRoute, surface.ResetTenantUserFactors(app, collection))
 	r.Get(tenant+n.Tenant.InvitationsRoute, surface.TenantInvitations(app, collection))
 	r.Get(tenant+n.Tenant.InvitationsRoute+"/{"+string(n.Tenant.InvitationParam)+"}", surface.TenantInvitation(app, collection))
 	r.Patch(tenant+n.Tenant.InvitationsRoute, surface.PatchTenantInvitations(app, collection))
@@ -1464,6 +1476,40 @@ func TestUserSurface_methods(t *testing.T) {
 			body:     func(f *userFixture) string { return fmt.Sprintf(`{"user":%q,"password":"x"}`, f.user(t, "marshal").ID) },
 			wantCode: http.StatusConflict,
 		},
+		{
+			name:     "a second-factor reset forgets the user's remembered browsers",
+			grant:    func(p *scriptedPermissions) { p.grant(accesstypes.Execute, "ResetCrewUserFactors") },
+			target:   "/reset-crew-user-factors",
+			body:     func(f *userFixture) string { return fmt.Sprintf(`{"user":%q}`, f.user(t, "clerk").ID) },
+			wantCode: http.StatusOK,
+			check: func(t *testing.T, f *userFixture) {
+				t.Helper()
+				if got := f.accounts.factorReset; len(got) != 1 || got[0] != f.user(t, "clerk").ID {
+					t.Errorf("factors reset for %v, want the clerk alone", got)
+				}
+			},
+		},
+		{
+			name:     "an operator resets their own second factor",
+			grant:    func(p *scriptedPermissions) { p.grant(accesstypes.Execute, "ResetCrewUserFactors") },
+			target:   "/reset-crew-user-factors",
+			body:     func(f *userFixture) string { return fmt.Sprintf(`{"user":%q}`, f.user(t, "admin").ID) },
+			wantCode: http.StatusOK,
+		},
+		{
+			name:     "a second-factor reset without Execute is Forbidden",
+			grant:    func(*scriptedPermissions) {},
+			target:   "/reset-crew-user-factors",
+			body:     func(f *userFixture) string { return fmt.Sprintf(`{"user":%q}`, f.user(t, "clerk").ID) },
+			wantCode: http.StatusForbidden,
+		},
+		{
+			name:     "a tenant second-factor reset on a user seated outside the sector is refused",
+			grant:    func(p *scriptedPermissions) { p.grant(accesstypes.Execute, "ResetCrewSectorUserFactors") },
+			target:   "/sectors/anvil/reset-crew-sector-user-factors",
+			body:     func(f *userFixture) string { return fmt.Sprintf(`{"user":%q}`, f.user(t, "marshal").ID) },
+			wantCode: http.StatusConflict,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1490,14 +1536,14 @@ func TestUserSurfaceDeclaration_Names(t *testing.T) {
 	names := decl.Names()
 	want := UserResourceNames{
 		Global: UserPartitionNames{
-			Users: "CrewUsers", Seats: "CrewSeats", Roles: "CrewRoles", Invitations: "CrewInvitations", SetPassword: "SetCrewUserPassword", UnlinkIdentity: "UnlinkCrewUserIdentity",
-			UsersRoute: "crew-users", SeatsRoute: "crew-seats", RolesRoute: "crew-roles", InvitationsRoute: "crew-invitations", SetPasswordRoute: "set-crew-user-password", UnlinkIdentityRoute: "unlink-crew-user-identity",
+			Users: "CrewUsers", Seats: "CrewSeats", Roles: "CrewRoles", Invitations: "CrewInvitations", SetPassword: "SetCrewUserPassword", UnlinkIdentity: "UnlinkCrewUserIdentity", ResetFactors: "ResetCrewUserFactors",
+			UsersRoute: "crew-users", SeatsRoute: "crew-seats", RolesRoute: "crew-roles", InvitationsRoute: "crew-invitations", SetPasswordRoute: "set-crew-user-password", UnlinkIdentityRoute: "unlink-crew-user-identity", ResetFactorsRoute: "reset-crew-user-factors",
 			UserParam: "crewUserID", SeatUserParam: "crewSeatUser", SeatRoleParam: "crewSeatRole", RoleParam: "crewRoleName", InvitationParam: "crewInvitationID",
 		},
 		Tenant: UserPartitionNames{
 			Tenanted: true,
-			Users:    "CrewSectorUsers", Seats: "CrewSectorSeats", Roles: "CrewSectorRoles", Invitations: "CrewSectorInvitations", SetPassword: "SetCrewSectorUserPassword", UnlinkIdentity: "UnlinkCrewSectorUserIdentity",
-			UsersRoute: "crew-sector-users", SeatsRoute: "crew-sector-seats", RolesRoute: "crew-sector-roles", InvitationsRoute: "crew-sector-invitations", SetPasswordRoute: "set-crew-sector-user-password", UnlinkIdentityRoute: "unlink-crew-sector-user-identity",
+			Users:    "CrewSectorUsers", Seats: "CrewSectorSeats", Roles: "CrewSectorRoles", Invitations: "CrewSectorInvitations", SetPassword: "SetCrewSectorUserPassword", UnlinkIdentity: "UnlinkCrewSectorUserIdentity", ResetFactors: "ResetCrewSectorUserFactors",
+			UsersRoute: "crew-sector-users", SeatsRoute: "crew-sector-seats", RolesRoute: "crew-sector-roles", InvitationsRoute: "crew-sector-invitations", SetPasswordRoute: "set-crew-sector-user-password", UnlinkIdentityRoute: "unlink-crew-sector-user-identity", ResetFactorsRoute: "reset-crew-sector-user-factors",
 			UserParam: "crewSectorUserID", SeatUserParam: "crewSectorSeatUser", SeatRoleParam: "crewSectorSeatRole", RoleParam: "crewSectorRoleName", InvitationParam: "crewSectorInvitationID",
 		},
 	}

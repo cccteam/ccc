@@ -189,6 +189,9 @@ func TestInvitation_globalSignUpWithPassword(t *testing.T) {
 	if status, body := stranger.do(ctx, http.MethodPost, consoleAPI+"/user/invitation/sign-up", jsonBody(t, map[string]string{"username": username, "password": signUpPassword})); status != http.StatusOK {
 		t.Fatalf("POST invitation/sign-up: status %d: %s", status, body)
 	}
+	// The login is created and signed in, and the sign-in waits for the second factor
+	// as every session does: the code goes to the invitation's address, now theirs.
+	stranger.secondFactor(ctx, username, false)
 	sess := stranger.session(ctx)
 	if sess["authenticated"] != true || sess["username"] != username || sess["email"] != email || sess["emailVerified"] != true {
 		t.Fatalf("session after the sign-up = %v, want %s signed in with %s verified", sess, username, email)
@@ -276,9 +279,11 @@ func TestInvitation_sectorAcceptedBySignedInPersona(t *testing.T) {
 	if status, body := cadet.do(ctx, http.MethodPost, consoleAPI+"/user/invitation/accept", nil); status != http.StatusOK {
 		t.Fatalf("the cadet accepts: status %d: %s", status, body)
 	}
+	// The address she gave for her sign-in code stays hers: an invitation's address
+	// lands on a person who holds none (the ensign's sign-up), never over one held.
 	sess := cadet.session(ctx)
-	if sess["email"] != email || sess["emailVerified"] != true {
-		t.Errorf("the cadet's session after the acceptance = %v, want %s verified", sess, email)
+	if sess["email"] != factorAddress(string(policyCadet)) || sess["emailVerified"] != true {
+		t.Errorf("the cadet's session after the acceptance = %v, want the address she holds, %s, verified", sess, factorAddress(string(policyCadet)))
 	}
 	row := userRow(ctx, t, marshal, crewSectorUsers(anvil), string(policyCadet))
 	if row == nil || !equalStrings(rolesOf(row), []string{"Cadet", string(harbormasterRole), "SectorCrew"}) {
@@ -289,11 +294,12 @@ func TestInvitation_sectorAcceptedBySignedInPersona(t *testing.T) {
 	}
 }
 
-// TestEmailAddress_addedAndVerified has a persona add an address and verify it from the
-// mailed link: the add mails the link and writes nothing on the user, who holds no
-// address until the token is posted back, when the address lands verified; the address
-// is then taken, so another persona who gives it is mailed a notice instead of a link
-// and keeps none.
+// TestEmailAddress_addedAndVerified has a persona change her address and verify the new
+// one from the mailed link: the pilot holds the address she gave for her sign-in code,
+// the add mails the link and writes nothing on the user, who holds the old address
+// until the token is posted back, when the new one lands verified; the address is then
+// taken, so another persona who gives it is mailed a notice instead of a link and keeps
+// her own.
 //
 // Demonstrates: auth.email-address.
 func TestEmailAddress_addedAndVerified(t *testing.T) {
@@ -305,14 +311,14 @@ func TestEmailAddress_addedAndVerified(t *testing.T) {
 
 	pilot := newBrowser(t, s, consoleAPI)
 	pilot.signIn(ctx, "pilot")
-	if sess := pilot.session(ctx); sess["email"] != nil || sess["emailVerified"] != false {
-		t.Fatalf("the pilot's session before the add = %v, want no address", sess)
+	if sess := pilot.session(ctx); sess["email"] != factorAddress("pilot") || sess["emailVerified"] != true {
+		t.Fatalf("the pilot's session before the add = %v, want the address she gave for her sign-in code, verified", sess)
 	}
 	if status, body := pilot.do(ctx, http.MethodPost, consoleAPI+"/user/email", jsonBody(t, map[string]string{"email": email})); status != http.StatusOK {
 		t.Fatalf("POST email: status %d: %s", status, body)
 	}
-	if sess := pilot.session(ctx); sess["email"] != nil {
-		t.Fatalf("the pilot's session after the add = %v, want no address until the link is followed", sess)
+	if sess := pilot.session(ctx); sess["email"] != factorAddress("pilot") {
+		t.Fatalf("the pilot's session after the add = %v, want the old address until the link is followed", sess)
 	}
 	_, token := lastMailTo(t, s, email, "verify")
 	if status, body := pilot.do(ctx, http.MethodPost, consoleAPI+"/user/email/verify", jsonBody(t, map[string]string{"token": token})); status != http.StatusOK {
@@ -324,9 +330,9 @@ func TestEmailAddress_addedAndVerified(t *testing.T) {
 
 	// The address is taken: another persona who gives it is mailed a notice, not a
 	// link, and the screen says nothing either way.
-	sent := len(s.mail.Messages())
 	veteran := newBrowser(t, s, consoleAPI)
 	veteran.signIn(ctx, "veteran")
+	sent := len(s.mail.Messages())
 	if status, body := veteran.do(ctx, http.MethodPost, consoleAPI+"/user/email", jsonBody(t, map[string]string{"email": email})); status != http.StatusOK {
 		t.Fatalf("the veteran gives the pilot's address: status %d: %s", status, body)
 	}
@@ -334,8 +340,8 @@ func TestEmailAddress_addedAndVerified(t *testing.T) {
 	if len(messages) != sent+1 || messages[sent].To != email || strings.Contains(messages[sent].Text, "verify=") {
 		t.Errorf("the mail for a held address = %+v, want one notice to %s without a verification link", messages[sent:], email)
 	}
-	if sess := veteran.session(ctx); sess["email"] != nil {
-		t.Errorf("the veteran's session = %v, want no address", sess)
+	if sess := veteran.session(ctx); sess["email"] != factorAddress("veteran") {
+		t.Errorf("the veteran's session = %v, want her own address kept", sess)
 	}
 }
 
@@ -373,6 +379,9 @@ func TestPasswordSignUp_fromMailedLink(t *testing.T) {
 	if status, body := stranger.do(ctx, http.MethodPost, consoleAPI+"/user/sign-up/complete", jsonBody(t, map[string]string{"token": token, "username": username, "password": signUpPassword})); status != http.StatusOK {
 		t.Fatalf("POST sign-up/complete: status %d: %s", status, body)
 	}
+	// Signed in, and waiting for the second factor as every session does: the code
+	// goes to the address the sign-up verified.
+	stranger.secondFactor(ctx, username, false)
 	sess := stranger.session(ctx)
 	if sess["authenticated"] != true || sess["username"] != username || sess["email"] != email || sess["emailVerified"] != true {
 		t.Fatalf("session after the sign-up = %v, want %s signed in with %s verified", sess, username, email)
