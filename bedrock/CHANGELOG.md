@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.4.0](https://github.com/cccteam/ccc/compare/bedrock/v0.3.24...bedrock/v0.4.0) (2026-10-28)
+
+
+### ⚠ BREAKING CHANGES
+
+* **resource:** a roles file names every role in the one grammar (letters and digits starting with a capital letter, the scope never part of the name) and gives every role a description, one or two plain sentences saying what it is for, or the permission engine refuses it at start; each <Name>Roles table gains a Description STRING(MAX) NOT NULL column; UserSeats.Roles returns []access.RoleInfo and MemUserStore.DeclareRoles takes access.RoleInfo; the resource module requires github.com/cccteam/access.
+
+### Features
+
+* **impulse:** the skeletons name roles for their job (Administrator, TenantAdministrator, MachineOperator) and describe every role, the roles resources serve each role's description, and impulse check gains roles-file, which reads every role file the way the permission engine does ([#1198](https://github.com/cccteam/ccc/issues/1198)) ([c949146](https://github.com/cccteam/ccc/commit/c9491467fa98fb76abc8974a1b5fd8533f30b2bd))
+* **resource:** every role carries a description and the user-management surface serves it: the roles rows and the generated client gain description, the seat store lists each role with what it is for, and the generator detects an enumeration table by its Id and Description columns together ([#1198](https://github.com/cccteam/ccc/issues/1198)) ([c949146](https://github.com/cccteam/ccc/commit/c9491467fa98fb76abc8974a1b5fd8533f30b2bd))
+
 ## [0.3.24](https://github.com/cccteam/ccc/compare/bedrock/v0.3.23...bedrock/v0.3.24) (2026-10-28)
 
 
