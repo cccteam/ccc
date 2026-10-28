@@ -150,6 +150,7 @@ checks:
   session-tables
   migrations-reader
   auths-wired
+  roles-file
   administrator-roles
   directory-admission
   change-signal

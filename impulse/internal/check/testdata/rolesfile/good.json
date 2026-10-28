@@ -1,0 +1,32 @@
+{
+  "roles": {
+    "global": [
+      {
+        "name": "Administrator",
+        "description": "Manages the application's people: creates users, seats and unseats roles, and resets passwords.",
+        "permissions": {
+          "List": [
+            {
+              "resource": "StaffUsers",
+              "fields": ["username", "disabled"]
+            }
+          ]
+        }
+      }
+    ],
+    "domain": [
+      {
+        "name": "TenantAdministrator",
+        "description": "Runs one tenant: manages its people and their seats.",
+        "permissions": {
+          "Read": [
+            {
+              "resource": "Announcements",
+              "condition": "postedBy = subject"
+            }
+          ]
+        }
+      }
+    ]
+  }
+}
