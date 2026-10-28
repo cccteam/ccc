@@ -59,7 +59,7 @@ func TestResetDevelopmentData(t *testing.T) {
 	})
 	manager := crewAuth.Access().UserManager()
 	held := accesstypes.DomainPolicyScope(anvil)
-	if err := manager.AddRole(ctx, held, "Auditor"); err != nil {
+	if err := manager.AddRole(ctx, held, "Auditor", "Audits a sector's missions."); err != nil {
 		t.Fatalf("access.UserManager.AddRole() error = %v", err)
 	}
 	if err := manager.AddRoleGrant(ctx, held, "Auditor", accesstypes.List, "Missions", ""); err != nil {

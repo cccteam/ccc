@@ -3,6 +3,7 @@
     "global": [
       {
         "name": "CrewCommon",
+        "description": "Sees what every crew member sees: the sectors, the ship classes, the pilots and their certifications.",
         "permissions": {
           "List": [
             {
@@ -85,6 +86,7 @@
       },
       {
         "name": "Headquarters",
+        "description": "Runs the fleet from headquarters: manages clients, ships, pilots and sectors, the crew's and the clients' accounts and seats, and issues bulletins.",
         "permissions": {
           "List": [
             {
@@ -520,6 +522,7 @@
       },
       {
         "name": "BulletinOfficer",
+        "description": "Issues fleet-wide bulletins.",
         "permissions": {
           "Execute": [
             {
@@ -531,6 +534,7 @@
       },
       {
         "name": "ClientBrowser",
+        "description": "Browses the client list.",
         "permissions": {
           "List": [
             {
@@ -547,6 +551,7 @@
       },
       {
         "name": "SalvageDesk",
+        "description": "Works the salvage desk: browses the client list.",
         "permissions": {
           "List": [
             {
@@ -562,6 +567,7 @@
       },
       {
         "name": "CommandStaff",
+        "description": "Views the application as another user and assumes any role, for support and demonstrations.",
         "permissions": {
           "Execute": [
             {
@@ -575,6 +581,7 @@
       },
       {
         "name": "BriefingClerk",
+        "description": "Browses the briefing templates.",
         "permissions": {
           "List": [
             {
@@ -590,6 +597,7 @@
       },
       {
         "name": "OrdersDesk",
+        "description": "Browses the standing orders.",
         "permissions": {
           "List": [
             {
@@ -604,6 +612,7 @@
       },
       {
         "name": "Adjutant",
+        "description": "Records commendations and reads the ones on file.",
         "permissions": {
           "List": [
             {
@@ -640,6 +649,7 @@
       },
       {
         "name": "FeatureAdministrator",
+        "description": "Turns feature flags on and off for an environment.",
         "permissions": {
           "List": [
             {
@@ -672,6 +682,7 @@
       },
       {
         "name": "Surveyor",
+        "description": "Charts new sectors and corrects their records.",
         "permissions": {
           "Create": [
             {
@@ -699,6 +710,7 @@
     "domain": [
       {
         "name": "SectorMarshal",
+        "description": "Runs a sector: seats its crew, declares its directories, and commands its missions, ships, refits and consignments.",
         "permissions": {
           "List": [
             {
@@ -1522,6 +1534,7 @@
       },
       {
         "name": "SectorCrew",
+        "description": "Sees a sector's wings and hangars.",
         "permissions": {
           "List": [
             {
@@ -1561,6 +1574,7 @@
       },
       {
         "name": "Cadet",
+        "description": "Flies as a cadet: sees the sector's missions and squadrons, claims a mission, and files a distress call.",
         "permissions": {
           "List": [
             {
@@ -1643,6 +1657,7 @@
       },
       {
         "name": "Pilot",
+        "description": "Flies for a sector: sees its missions, ships and squadrons, claims a mission, and hails a ship.",
         "permissions": {
           "List": [
             {
@@ -1736,6 +1751,7 @@
       },
       {
         "name": "Veteran",
+        "description": "Sees a sector's missions and squadrons.",
         "permissions": {
           "List": [
             {
@@ -1797,6 +1813,7 @@
       },
       {
         "name": "FlightLead",
+        "description": "Leads flights: plans sorties and their expenses, and launches, holds, resumes, completes or fails a mission.",
         "permissions": {
           "List": [
             {
@@ -1962,6 +1979,7 @@
       },
       {
         "name": "Dispatcher",
+        "description": "Dispatches a sector's missions: keeps the mission board, attaches documents, compiles briefings, and holds a mission.",
         "permissions": {
           "Execute": [
             {
@@ -2160,6 +2178,7 @@
       },
       {
         "name": "Overseer",
+        "description": "Oversees a sector's missions and squadrons and amends a mission's record.",
         "permissions": {
           "List": [
             {
@@ -2260,6 +2279,7 @@
       },
       {
         "name": "BookingAgent",
+        "description": "Books missions for clients: creates, amends, cancels and stands down a mission.",
         "permissions": {
           "List": [
             {
@@ -2390,6 +2410,7 @@
       },
       {
         "name": "WingCommander",
+        "description": "Commands a wing: sees the sector's missions and squadrons.",
         "permissions": {
           "List": [
             {
@@ -2453,6 +2474,7 @@
       },
       {
         "name": "Engineer",
+        "description": "Keeps the ships flying: inspects a ship, runs its refit and flight tests, and hails it.",
         "permissions": {
           "List": [
             {
@@ -2577,6 +2599,7 @@
       },
       {
         "name": "Quartermaster",
+        "description": "Keeps the sortie expenses: records, amends and removes them.",
         "permissions": {
           "List": [
             {
@@ -2675,6 +2698,7 @@
       },
       {
         "name": "Supercargo",
+        "description": "Handles consignments: records them and releases them for delivery.",
         "permissions": {
           "List": [
             {
@@ -2742,6 +2766,7 @@
       },
       {
         "name": "Archivist",
+        "description": "Keeps the sector's record: reads missions, sorties, expenses and the ship's log, and compiles briefings.",
         "permissions": {
           "List": [
             {
@@ -2887,6 +2912,7 @@
       },
       {
         "name": "Assessor",
+        "description": "Assesses missions from the list.",
         "permissions": {
           "List": [
             {
@@ -2907,6 +2933,7 @@
       },
       {
         "name": "HazardAnalyst",
+        "description": "Watches the sector's hazard board and the ships in it.",
         "permissions": {
           "List": [
             {
@@ -2949,6 +2976,7 @@
       },
       {
         "name": "Dockmaster",
+        "description": "Watches the dock: the ships and their refits.",
         "permissions": {
           "List": [
             {
@@ -3020,6 +3048,7 @@
       },
       {
         "name": "NightWatch",
+        "description": "Stands the night watch over the dock and ticks off refit tasks.",
         "permissions": {
           "List": [
             {
@@ -3100,6 +3129,7 @@
       },
       {
         "name": "Harbormaster",
+        "description": "Sees the ships in the sector's harbor.",
         "permissions": {
           "List": [
             {
@@ -3133,6 +3163,7 @@
       },
       {
         "name": "DroidIngest",
+        "description": "The droids' account: ingests their reports and releases consignments.",
         "permissions": {
           "Execute": [
             {
@@ -3177,6 +3208,7 @@
       },
       {
         "name": "Paymaster",
+        "description": "Settles a mission's pay.",
         "permissions": {
           "Update": [
             {
@@ -3190,6 +3222,7 @@
       },
       {
         "name": "Purser",
+        "description": "Reads the expense manifests.",
         "permissions": {
           "List": [
             {
@@ -3216,6 +3249,7 @@
       },
       {
         "name": "Registrar",
+        "description": "Keeps the mission documents: amends, replaces and removes them.",
         "permissions": {
           "List": [
             {
@@ -3272,6 +3306,7 @@
       },
       {
         "name": "Photographer",
+        "description": "Photographs refit work and attaches the pictures to the tasks.",
         "permissions": {
           "List": [
             {

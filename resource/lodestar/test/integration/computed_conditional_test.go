@@ -86,7 +86,8 @@ func TestComputedRowConditionRefused(t *testing.T) {
 	t.Parallel()
 
 	conf := &access.RoleConfig{Roles: access.ScopedRoles{Domain: []*access.Role{{
-		Name: "BadAnalyst",
+		Name:        "BadAnalyst",
+		Description: "Reads the hazard board by a row's reading.",
 		Permissions: map[accesstypes.Permission][]access.Grant{
 			accesstypes.List: {{Resource: "SectorHazardBoards", Fields: []accesstypes.Tag{"shipName"}, Condition: "worstReading > 0.5"}},
 		},
