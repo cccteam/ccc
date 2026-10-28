@@ -52,8 +52,8 @@ github.com/MicahParks/keyfunc v1.9.0 h1:lhKd5xrFHLNOWrDc4Tyb/Q1AJ4LCzQ48GVJyVIID
 github.com/MicahParks/keyfunc v1.9.0/go.mod h1:IdnCilugA0O/99dW+/MkvlyrsX8+L8+x95xuVNtM5jw=
 github.com/Microsoft/go-winio v0.6.2 h1:F2VQgta7ecxGYO8k3ZZz3RS8fVIXVxONVUPlNERoyfY=
 github.com/Microsoft/go-winio v0.6.2/go.mod h1:yd8OoFMLzJbo9gZq8j5qaps8bJ9aShtEA8Ipt1oGCvU=
-github.com/cccteam/access v0.11.1 h1:J6QesqdoKF7g3/B8NVwCyF3pjl96GQNtQKBhumga78s=
-github.com/cccteam/access v0.11.1/go.mod h1:mlTjz31rDrLE1aNEHf0CnVllOlmk3UiIShNEWYZrxDI=
+github.com/cccteam/access v0.11.3-0.20261028172051-2021849a4c1d h1:H0BFkh/J/N59QwBbw8HQyYyyhJSxqxXrjeZI/VrCNKE=
+github.com/cccteam/access v0.11.3-0.20261028172051-2021849a4c1d/go.mod h1:6RGG0+hxn6za6XeOP/DW3eyPZyP0TT+rN2gjuG3i5a0=
 github.com/cccteam/ccc v0.3.5 h1:EthL/yJ9Hs/PRqO0fa5mTbfE2EVj2p2isPFpQVKAZSo=
 github.com/cccteam/ccc v0.3.5/go.mod h1:9X9ZE38KPlaVBZr0oUHmulsQndH7w+4neZnXFckp9ms=
 github.com/cccteam/ccc/accesstypes v0.7.0 h1:GEeOzOdIR3PAkeQD0QbAVyhvxV6kdh1TQrQGNVA8fKM=
@@ -66,8 +66,8 @@ github.com/cccteam/ccc/impulse v0.0.0-20261002140325-0702ef849363 h1:VEbj1GuIApo
 github.com/cccteam/ccc/impulse v0.0.0-20261002140325-0702ef849363/go.mod h1:WGcS75SP04O5Gn2TsTGqgp8+RdNK09LUoz14Ku9wwgQ=
 github.com/cccteam/ccc/pkg v0.1.7 h1:H0VZfI4p4w+Jb7QPFmtEWECxI3spYvCx+CPgT7E4Fkg=
 github.com/cccteam/ccc/pkg v0.1.7/go.mod h1:WZ6hrpp+ci1N8iFb/qItR6zScmGxwXqnqgPw6UPmMTc=
-github.com/cccteam/ccc/resource v0.15.17 h1:nMQ8SLndviq+A9FJfdPI7UZyqMJAW7m+p1Jwx6oOOQY=
-github.com/cccteam/ccc/resource v0.15.17/go.mod h1:jGIBSuMvFhxk66VvH/XhuW0JWYMPB99HpB8g2+tyb14=
+github.com/cccteam/ccc/resource v0.15.18-0.20261028175435-8df03287f848 h1:8RFtF5NrVcIY+PVlpLv3wcbH9oj5JjKemlty2NY11aA=
+github.com/cccteam/ccc/resource v0.15.18-0.20261028175435-8df03287f848/go.mod h1:MvE+9Go9ts2SPtk+fb9Q5YV56Cr8SjunxlCtVGEz9Vo=
 github.com/cccteam/ccc/securehash v0.0.17 h1:1G4yvrZ73j1QPkv6HT/H5OQ2C3kev66TQWbOaIsJL1Q=
 github.com/cccteam/ccc/securehash v0.0.17/go.mod h1:gOM3Nu+PGzBfNz0qsM+UyOGNK3HHaH0Nqd7Fis0ntmA=
 github.com/cccteam/ccc/tracer v0.3.0 h1:8oM3zGSsvNuyTy0OWVrc46Z6nqI7r86Z0cNN3bw7CuU=
