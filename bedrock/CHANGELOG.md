@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.3.23](https://github.com/cccteam/ccc/compare/bedrock/v0.3.22...bedrock/v0.3.23) (2026-10-28)
+
+
+### Features
+
+* **bedrock:** the administered tenants and Workspaces of a directory registration are placement variables ([3d45773](https://github.com/cccteam/ccc/commit/3d45773884f4d35a42db39312c7a451bf5fc9086))
+* **impulse:** every generated auth requires the sign-in code unless a remembered browser or an administered directory stands in for it, a directory method declares the organizations the deployment administers (_ADMINISTERED_TENANTS, _ADMINISTERED_WORKSPACES), the session migration creates the sign-in codes and trusted devices tables, and the pins move to session v0.13.14 ([3d45773](https://github.com/cccteam/ccc/commit/3d45773884f4d35a42db39312c7a451bf5fc9086))
+* **resource:** every session carries a second factor: the generated router serves the sign-in code routes, the user surface resets a person's remembered browsers (Reset&lt;…&gt;UserFactors), and Lodestar demonstrates the code, the attested directory and the remembered browser ([3d45773](https://github.com/cccteam/ccc/commit/3d45773884f4d35a42db39312c7a451bf5fc9086))
+
+
+### Bug Fixes
+
+* a declared shipped program's main package may carry its own tagged settings, which bedrock's derivation leaves out of the application's configuration, and impulse refuses any environment read outside the config package except inside such a package ([#1195](https://github.com/cccteam/ccc/issues/1195)) ([f2ac8e0](https://github.com/cccteam/ccc/commit/f2ac8e029cd1c8cf1587a02679fff1ff8bbc5492))
+
 ## [0.3.22](https://github.com/cccteam/ccc/compare/bedrock/v0.3.21...bedrock/v0.3.22) (2026-10-28)
 
 
