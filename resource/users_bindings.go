@@ -210,7 +210,8 @@ func registerUserResource(b *CollectionBuilder, scope accesstypes.PermissionScop
 
 // ServedMethods lists the methods the shape serves in the partition: the password
 // reset where the Auth has a password method, the unlinking where it has registrations
-// to link identities through.
+// to link identities through, and the second-factor reset on every Auth, since a
+// person signs in with one whichever way they sign in.
 func (n *UserPartitionNames) ServedMethods(shape UserSurfaceShape) []accesstypes.Resource {
 	var methods []accesstypes.Resource
 	if shape.Password {
@@ -219,6 +220,7 @@ func (n *UserPartitionNames) ServedMethods(shape UserSurfaceShape) []accesstypes
 	if len(shape.Registrations) > 0 {
 		methods = append(methods, n.UnlinkIdentity)
 	}
+	methods = append(methods, n.ResetFactors)
 
 	return methods
 }

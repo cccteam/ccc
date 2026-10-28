@@ -178,11 +178,23 @@ func (s *UserSurface[A]) UnlinkUserIdentity(a UserApp, _ *GeneratedCollection) h
 	return s.unlinkUserIdentity(a, false)
 }
 
+// ResetUserFactors serves Reset<Auth>UserFactors: Execute, targeting <Auth>Users.
+func (s *UserSurface[A]) ResetUserFactors(a UserApp, _ *GeneratedCollection) http.HandlerFunc {
+	return s.resetUserFactors(a, false)
+}
+
 // SetTenantUserPassword serves Set<Auth><Tenant>UserPassword.
 func (s *UserSurface[A]) SetTenantUserPassword(a UserApp, _ *GeneratedCollection) http.HandlerFunc {
 	s.requireTenant()
 
 	return s.setUserPassword(a, true)
+}
+
+// ResetTenantUserFactors serves Reset<Auth><Tenant>UserFactors.
+func (s *UserSurface[A]) ResetTenantUserFactors(a UserApp, _ *GeneratedCollection) http.HandlerFunc {
+	s.requireTenant()
+
+	return s.resetUserFactors(a, true)
 }
 
 // UnlinkTenantUserIdentity serves Unlink<Auth><Tenant>UserIdentity.

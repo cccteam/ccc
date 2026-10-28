@@ -19,7 +19,8 @@ const guidCheck = `r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{1
 // Migrations renders the Auth session tables of an auth under its table prefix, for
 // Spanner, in the order they apply: the users first, since the sessions reference them,
 // then the sessions with the identities, auth events, pending sign-ins, sign-in attempts,
-// mail links, tokens and device codes in one migration, since a session set is one thing. The DDL is the
+// mail links, tokens, device codes, sign-in codes and trusted devices in one migration,
+// since a session set is one thing. The DDL is the
 // session library's base and auth schema sets (schema/spanner/migrations,
 // schema/spanner/auth/migrations) with the commit-timestamp options written inline. who
 // names the population for the comments. usernameIsEmail renders the users of a password
@@ -142,7 +143,7 @@ CREATE INDEX %[1]sSessionIdentitiesByUserId ON %[1]sSessionIdentities(UserId);
 -- method, its registration, and the provider's own amr claims). Not interleaved: an
 -- interleaved child's key must begin with the parent's, so the events reference their
 -- session through a cascading foreign key instead.
-`, p, who, guidCheck) + eventsUp(p, who) + tokensUp(p, who)
+`, p, who, guidCheck) + eventsUp(p, who) + tokensUp(p, who) + factorsUp(p, who)
 }
 
 // eventsUp creates the auth events, pending sign-ins, sign-in attempts and mail links tables, the
@@ -244,9 +245,9 @@ CREATE INDEX %[1]sSessionMailLinksByKind ON %[1]sSessionMailLinks(Kind, Consumed
 `, p, who, guidCheck)
 }
 
-// tokensUp creates the tokens and device codes tables, the last part of the sessions
+// tokensUp creates the tokens and device codes tables, the third part of the sessions
 // migration: the bearer credentials of the machine outlets whose tokens the auth issues
-// and the device authorizations command-line clients wait on.
+// and the device authorizations command-line clients wait on; factorsUp follows it.
 func tokensUp(p, who string) string {
 	return fmt.Sprintf(`-- The tokens: the bearer credentials of the machine outlets whose tokens the %[2]s auth
 -- issues. A row is one credential: an application token a person issued to a program of
@@ -315,8 +316,61 @@ CREATE INDEX %[1]sSessionDeviceCodesByUserCode ON %[1]sSessionDeviceCodes(UserCo
 `, p, who, guidCheck)
 }
 
+// factorsUp creates the sign-in codes and trusted devices tables, the last part of the
+// sessions migration: the second factor every session carries.
+func factorsUp(p, who string) string {
+	return fmt.Sprintf(`
+-- The second factor of the %[2]s auth's sessions: the sign-in codes and the trusted
+-- devices. A sign-in code is one code mailed for a pending sign-in (PendingId): the mail
+-- carries the code and the row keeps its hash; the row is live while it is not consumed
+-- and not expired, Attempts counts the wrong codes entered against it, and a new code for
+-- the same pending sign-in consumes the earlier one. A trusted device is a browser a
+-- person asked to be remembered after a code (UserId): the browser holds an opaque token
+-- in the auth's trusted-device cookie and the row keeps its hash; it stands in for the
+-- factor while it is not revoked and not expired, and an administrator revokes every
+-- browser of a person's from the users surface. A code goes with its pending sign-in and
+-- a device with its user. CreatedAt, ConsumedAt, LastUsedAt and RevokedAt take the commit
+-- time; ExpiresAt is the library's deadline, written as given.
+CREATE TABLE %[1]sSessionFactorCodes (
+    Id         STRING(36) NOT NULL,
+    PendingId  STRING(36) NOT NULL,
+    Email      STRING(MAX) NOT NULL,
+    CodeHash   BYTES(32) NOT NULL,
+    Attempts   INT64 NOT NULL,
+    CreatedAt  TIMESTAMP NOT NULL OPTIONS (allow_commit_timestamp = true),
+    ExpiresAt  TIMESTAMP NOT NULL,
+    ConsumedAt TIMESTAMP OPTIONS (allow_commit_timestamp = true),
+    CONSTRAINT CK_%[1]sSessionFactorCodesId CHECK (REGEXP_CONTAINS(Id, %[3]s)),
+    CONSTRAINT FK_%[1]sSessionFactorCodes_%[1]sSessionPendingSignIns FOREIGN KEY (PendingId) REFERENCES %[1]sSessionPendingSignIns (Id) ON DELETE CASCADE,
+) PRIMARY KEY (Id);
+
+CREATE INDEX %[1]sSessionFactorCodesByPending ON %[1]sSessionFactorCodes(PendingId, ConsumedAt, ExpiresAt);
+
+CREATE TABLE %[1]sSessionTrustedDevices (
+    Id         STRING(36) NOT NULL,
+    UserId     STRING(36) NOT NULL,
+    TokenHash  BYTES(32) NOT NULL,
+    CreatedAt  TIMESTAMP NOT NULL OPTIONS (allow_commit_timestamp = true),
+    ExpiresAt  TIMESTAMP NOT NULL,
+    LastUsedAt TIMESTAMP OPTIONS (allow_commit_timestamp = true),
+    RevokedAt  TIMESTAMP OPTIONS (allow_commit_timestamp = true),
+    CONSTRAINT CK_%[1]sSessionTrustedDevicesId CHECK (REGEXP_CONTAINS(Id, %[3]s)),
+    CONSTRAINT FK_%[1]sSessionTrustedDevices_%[1]sSessionUsers FOREIGN KEY (UserId) REFERENCES %[1]sSessionUsers (Id) ON DELETE CASCADE,
+) PRIMARY KEY (Id);
+
+CREATE UNIQUE INDEX %[1]sSessionTrustedDevicesByTokenHash ON %[1]sSessionTrustedDevices(TokenHash);
+
+CREATE INDEX %[1]sSessionTrustedDevicesByUser ON %[1]sSessionTrustedDevices(UserId, RevokedAt);
+`, p, who, guidCheck)
+}
+
 func sessionsDown(p string) string {
 	lines := []string{
+		"DROP INDEX %[1]sSessionTrustedDevicesByUser;",
+		"DROP INDEX %[1]sSessionTrustedDevicesByTokenHash;",
+		"DROP TABLE %[1]sSessionTrustedDevices;",
+		"DROP INDEX %[1]sSessionFactorCodesByPending;",
+		"DROP TABLE %[1]sSessionFactorCodes;",
 		"DROP INDEX %[1]sSessionDeviceCodesByUserCode;",
 		"DROP INDEX %[1]sSessionDeviceCodesByHash;",
 		"DROP TABLE %[1]sSessionDeviceCodes;",

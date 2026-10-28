@@ -60,6 +60,9 @@ func TestLogin(t *testing.T) {
 
 				return
 			}
+			// The password admitted the persona; the session opens once the sign-in
+			// code every session waits for is entered.
+			b.secondFactor(ctx, tt.user, false)
 
 			status, body = b.do(ctx, http.MethodGet, consoleAPI+"/user-domains", nil)
 			if status != http.StatusOK {

@@ -99,21 +99,21 @@ func TestMethodApply(t *testing.T) {
 				"ran go generate ./..., so the router mounts the method's routes and the login page offers it",
 			},
 			wantSkipped: []string{
-				"pkg/config/data.go: no environment struct (env := &T{}) to add the workspace method's variables to; read APP_STAFF_WORKSPACE_HOSTED_DOMAIN, APP_STAFF_WORKSPACE_CLIENT_ID, APP_STAFF_WORKSPACE_CLIENT_SECRET, APP_STAFF_WORKSPACE_REDIRECT_URL and pass them in staff.Settings.Workspace",
-				"no environment template (.envrc.template, .env.template, .env.example) to add the workspace method's variables to (APP_STAFF_WORKSPACE_HOSTED_DOMAIN, APP_STAFF_WORKSPACE_CLIENT_ID, APP_STAFF_WORKSPACE_CLIENT_SECRET, APP_STAFF_WORKSPACE_REDIRECT_URL)",
+				"pkg/config/data.go: no environment struct (env := &T{}) to add the workspace method's variables to; read APP_STAFF_WORKSPACE_HOSTED_DOMAIN, APP_STAFF_WORKSPACE_ADMINISTERED_WORKSPACES, APP_STAFF_WORKSPACE_CLIENT_ID, APP_STAFF_WORKSPACE_CLIENT_SECRET, APP_STAFF_WORKSPACE_REDIRECT_URL and pass them in staff.Settings.Workspace",
+				"no environment template (.envrc.template, .env.template, .env.example) to add the workspace method's variables to (APP_STAFF_WORKSPACE_HOSTED_DOMAIN, APP_STAFF_WORKSPACE_ADMINISTERED_WORKSPACES, APP_STAFF_WORKSPACE_CLIENT_ID, APP_STAFF_WORKSPACE_CLIENT_SECRET, APP_STAFF_WORKSPACE_REDIRECT_URL)",
 				`test/integration/harness_test.go and cmd/deployment/migrate/main_test.go: the workspace registration validates its organization slot at registration whether or not the directory is simulated, so give the staff auth's construction in the harness Workspace: staff.WorkspaceSettings{HostedDomain: "example.com", RedirectURL: <the served callback>} and set APP_STAFF_WORKSPACE_HOSTED_DOMAIN=example.com where the migrate run's environment is`,
 			},
 			wantNotSkipped: []string{"GroupPrefix", "GROUP_PREFIX", "role groups' prefix"},
 			check: func(t *testing.T, a *app.App) {
 				t.Helper()
 				file := read(t, a, "pkg/auth/staff/workspace.go")
-				for _, want := range []string{"package staff", `const WorkspaceRegistration = "workspace"`, "type WorkspaceSettings struct", "func (h *Handlers) WorkspaceLogin() http.HandlerFunc", "func (h *Handlers) WorkspaceCallback() http.HandlerFunc", "func registerWorkspace(authSession *Session, accessClient *access.Client, settings *Settings) *google.Method", "google.Workspace(WorkspaceRegistration, settings.Workspace.HostedDomain)", "signin.MembersOfDirectory", "google.DisableRoleSync()"} {
+				for _, want := range []string{"package staff", `const WorkspaceRegistration = "workspace"`, "type WorkspaceSettings struct", "func (h *Handlers) WorkspaceLogin() http.HandlerFunc", "func (h *Handlers) WorkspaceCallback() http.HandlerFunc", "func registerWorkspace(authSession *Session, accessClient *access.Client, settings *Settings) (*google.Method, error)", "google.Workspace(WorkspaceRegistration, settings.Workspace.HostedDomain)", "signin.MembersOfDirectory", "google.DisableRoleSync()"} {
 					if !strings.Contains(file, want) {
 						t.Errorf("workspace.go lacks %q:\n%s", want, file)
 					}
 				}
 				main := read(t, a, "pkg/auth/staff/staff.go")
-				for _, want := range []string{"\tpassword  *session.PasswordMethod\n\tworkspace *google.Method\n", "\thandlers.password = registerPassword(authSession)\n", "\tauthSession.SetInvitationAccepted(resource.SeatInvited(accessClient.UserManager()))\n\thandlers.workspace = registerWorkspace(authSession, accessClient, settings)\n\n\treturn &Auth{db: db, access: accessClient, handlers: handlers}, nil", "\tWorkspace WorkspaceSettings\n", "\tLoginURL string\n", "\t\"github.com/cccteam/session/google\"\n"} {
+				for _, want := range []string{"\tpassword  *session.PasswordMethod\n\tworkspace *google.Method\n", "\thandlers.password = registerPassword(authSession)\n", "\tauthSession.SetInvitationAccepted(resource.SeatInvited(accessClient.UserManager()))\n\thandlers.workspace, err = registerWorkspace(authSession, accessClient, settings)\n\tif err != nil {\n\t\treturn nil, err\n\t}\n\n\treturn &Auth{db: db, access: accessClient, handlers: handlers}, nil", "\tWorkspace WorkspaceSettings\n", "\tLoginURL string\n", "\t\"github.com/cccteam/session/google\"\n"} {
 					if !strings.Contains(main, want) {
 						t.Errorf("staff.go lacks %q:\n%s", want, main)
 					}
@@ -175,7 +175,7 @@ func TestMethodApply(t *testing.T) {
 			extra:  map[string]string{"pkg/config/data.go": authConfigEnv},
 			wantDid: []string{
 				"pkg/auth/staff/directory.go: the directory method (azure, one tenant, members of the directory, role membership the application's): its registration constant, its settings, its handlers (DirectoryLogin and the rest), and registerDirectory, which registers it on the Auth",
-				"pkg/config/data.go: dataConfig reads the staff auth's directory registration from APP_STAFF_DIRECTORY_TENANT_ID, APP_STAFF_DIRECTORY_CLIENT_ID, APP_STAFF_DIRECTORY_CLIENT_SECRET, APP_STAFF_DIRECTORY_REDIRECT_URL, and the staff.Settings literal in NewDataConfiguration (an application composed before the staffSettings method) passes them",
+				"pkg/config/data.go: dataConfig reads the staff auth's directory registration from APP_STAFF_DIRECTORY_TENANT_ID, APP_STAFF_DIRECTORY_ADMINISTERED_TENANTS, APP_STAFF_DIRECTORY_CLIENT_ID, APP_STAFF_DIRECTORY_CLIENT_SECRET, APP_STAFF_DIRECTORY_REDIRECT_URL, and the staff.Settings literal in NewDataConfiguration (an application composed before the staffSettings method) passes them",
 				`cmd/generate/resourcegenerator/main.go: generation.AzureMethod("directory") declared on 1 outlet Auth option(s) bound to the staff auth, so the generated router mounts user/directory/login, the callback and the front-channel logout and the methods route offers it`,
 			},
 			wantSkipped: []string{
@@ -193,9 +193,9 @@ func TestMethodApply(t *testing.T) {
 				}
 				data := read(t, a, "pkg/config/data.go")
 				for _, want := range []string{
-					"\tStaffDirectoryTenantID     string `env:\"APP_STAFF_DIRECTORY_TENANT_ID\"`\n",
-					"\tStaffDirectoryClientSecret string `env:\"APP_STAFF_DIRECTORY_CLIENT_SECRET\" secret:\"true\"`\n",
-					"\t\tDirectory: staff.DirectorySettings{\n\t\t\tTenantID:     env.StaffDirectoryTenantID,\n\t\t\tClientID:     env.StaffDirectoryClientID,\n\t\t\tClientSecret: env.StaffDirectoryClientSecret,\n\t\t\tRedirectURL:  env.StaffDirectoryRedirectURL,\n\t\t},\n",
+					"\tStaffDirectoryTenantID            string `env:\"APP_STAFF_DIRECTORY_TENANT_ID\"`\n",
+					"\tStaffDirectoryClientSecret        string `env:\"APP_STAFF_DIRECTORY_CLIENT_SECRET\"        secret:\"true\"`\n",
+					"\t\tDirectory: staff.DirectorySettings{\n\t\t\tTenantID:            env.StaffDirectoryTenantID,\n\t\t\tAdministeredTenants: env.StaffDirectoryAdministeredTenants,\n\t\t\tClientID:            env.StaffDirectoryClientID,\n\t\t\tClientSecret:        env.StaffDirectoryClientSecret,\n\t\t\tRedirectURL:         env.StaffDirectoryRedirectURL,\n\t\t},\n",
 					"\t\tLoginURL:       \"/login\",\n",
 				} {
 					if !strings.Contains(data, want) {
@@ -209,7 +209,7 @@ func TestMethodApply(t *testing.T) {
 			method: Method{Auth: "staff", Spec: authpkg.Method{Kind: app.MethodAzure, Name: "directory", Authority: AuthorityApplication}},
 			extra:  map[string]string{"pkg/config/data.go": authConfigSettings},
 			wantDid: []string{
-				"pkg/config/data.go: dataConfig reads the staff auth's directory registration from APP_STAFF_DIRECTORY_TENANT_ID, APP_STAFF_DIRECTORY_CLIENT_ID, APP_STAFF_DIRECTORY_CLIENT_SECRET, APP_STAFF_DIRECTORY_REDIRECT_URL, and dataConfig.staffSettings passes them",
+				"pkg/config/data.go: dataConfig reads the staff auth's directory registration from APP_STAFF_DIRECTORY_TENANT_ID, APP_STAFF_DIRECTORY_ADMINISTERED_TENANTS, APP_STAFF_DIRECTORY_CLIENT_ID, APP_STAFF_DIRECTORY_CLIENT_SECRET, APP_STAFF_DIRECTORY_REDIRECT_URL, and dataConfig.staffSettings passes them",
 			},
 			wantSkipped: []string{
 				"pkg/config/data.go: LoginURL is set to /login when the construction had none; make it the login page of the surface bound to the staff auth",
@@ -220,8 +220,8 @@ func TestMethodApply(t *testing.T) {
 				for _, want := range []string{
 					// The constructor is as it was: the settings come from the function.
 					"\tstaffAuth, err := staff.New(ctx, spannerClient, env.staffSettings(cookieKey))\n",
-					"\tStaffDirectoryTenantID     string `env:\"APP_STAFF_DIRECTORY_TENANT_ID\"`\n",
-					"func (env *dataConfig) staffSettings(cookieKey string) *staff.Settings {\n\treturn &staff.Settings{\n\t\tCookieKey:      cookieKey,\n\t\tSessionTimeout: env.SessionTimeout,\n\t\tLoginURL:       \"/login\",\n\t\tDirectory: staff.DirectorySettings{\n\t\t\tTenantID:     env.StaffDirectoryTenantID,\n\t\t\tClientID:     env.StaffDirectoryClientID,\n\t\t\tClientSecret: env.StaffDirectoryClientSecret,\n\t\t\tRedirectURL:  env.StaffDirectoryRedirectURL,\n\t\t},\n\t}\n}\n",
+					"\tStaffDirectoryTenantID            string `env:\"APP_STAFF_DIRECTORY_TENANT_ID\"`\n",
+					"func (env *dataConfig) staffSettings(cookieKey string) *staff.Settings {\n\treturn &staff.Settings{\n\t\tCookieKey:      cookieKey,\n\t\tSessionTimeout: env.SessionTimeout,\n\t\tLoginURL:       \"/login\",\n\t\tDirectory: staff.DirectorySettings{\n\t\t\tTenantID:            env.StaffDirectoryTenantID,\n\t\t\tAdministeredTenants: env.StaffDirectoryAdministeredTenants,\n\t\t\tClientID:            env.StaffDirectoryClientID,\n\t\t\tClientSecret:        env.StaffDirectoryClientSecret,\n\t\t\tRedirectURL:         env.StaffDirectoryRedirectURL,\n\t\t},\n\t}\n}\n",
 				} {
 					if !strings.Contains(data, want) {
 						t.Errorf("data.go lacks %q:\n%s", want, data)
@@ -236,13 +236,13 @@ func TestMethodApply(t *testing.T) {
 				"\treturn &staff.Settings{CookieKey: cookieKey, SessionTimeout: env.SessionTimeout}\n",
 				"\treturn &staff.Settings{\n\t\tCookieKey:      cookieKey,\n\t\tSessionTimeout: env.SessionTimeout,\n\t\tLoginURL:       \"/console/login\",\n\t\tDirectory: staff.DirectorySettings{\n\t\t\tTenantID: env.StaffDirectoryTenantID,\n\t\t},\n\t}\n", 1)},
 			wantDid: []string{
-				"pkg/config/data.go: dataConfig reads the staff auth's workspace registration from APP_STAFF_WORKSPACE_HOSTED_DOMAIN, APP_STAFF_WORKSPACE_CLIENT_ID, APP_STAFF_WORKSPACE_CLIENT_SECRET, APP_STAFF_WORKSPACE_REDIRECT_URL, and dataConfig.staffSettings passes them",
+				"pkg/config/data.go: dataConfig reads the staff auth's workspace registration from APP_STAFF_WORKSPACE_HOSTED_DOMAIN, APP_STAFF_WORKSPACE_ADMINISTERED_WORKSPACES, APP_STAFF_WORKSPACE_CLIENT_ID, APP_STAFF_WORKSPACE_CLIENT_SECRET, APP_STAFF_WORKSPACE_REDIRECT_URL, and dataConfig.staffSettings passes them",
 			},
 			check: func(t *testing.T, a *app.App) {
 				t.Helper()
 				data := read(t, a, "pkg/config/data.go")
 				// The login page the literal had is kept, and the new registration follows the first.
-				if want := "\t\tLoginURL:       \"/console/login\",\n\t\tDirectory: staff.DirectorySettings{\n\t\t\tTenantID: env.StaffDirectoryTenantID,\n\t\t},\n\t\tWorkspace: staff.WorkspaceSettings{\n\t\t\tHostedDomain: env.StaffWorkspaceHostedDomain,\n\t\t\tClientID:     env.StaffWorkspaceClientID,\n\t\t\tClientSecret: env.StaffWorkspaceClientSecret,\n\t\t\tRedirectURL:  env.StaffWorkspaceRedirectURL,\n\t\t},\n\t}\n}\n"; !strings.Contains(data, want) {
+				if want := "\t\tLoginURL:       \"/console/login\",\n\t\tDirectory: staff.DirectorySettings{\n\t\t\tTenantID: env.StaffDirectoryTenantID,\n\t\t},\n\t\tWorkspace: staff.WorkspaceSettings{\n\t\t\tHostedDomain:           env.StaffWorkspaceHostedDomain,\n\t\t\tAdministeredWorkspaces: env.StaffWorkspaceAdministeredWorkspaces,\n\t\t\tClientID:               env.StaffWorkspaceClientID,\n\t\t\tClientSecret:           env.StaffWorkspaceClientSecret,\n\t\t\tRedirectURL:            env.StaffWorkspaceRedirectURL,\n\t\t},\n\t}\n}\n"; !strings.Contains(data, want) {
 					t.Errorf("data.go lacks %q:\n%s", want, data)
 				}
 			},
@@ -252,7 +252,7 @@ func TestMethodApply(t *testing.T) {
 			method: Method{Auth: "staff", Spec: authpkg.Method{Kind: app.MethodAzure, Name: "directory", Authority: AuthorityApplication}},
 			extra:  map[string]string{"pkg/config/data.go": strings.Replace(authConfigEnv, "&staff.Settings{CookieKey: cookieKey, SessionTimeout: env.SessionTimeout}", "settings(env, cookieKey)", 1)},
 			wantDid: []string{
-				"pkg/config/data.go: dataConfig reads the staff auth's directory registration from APP_STAFF_DIRECTORY_TENANT_ID, APP_STAFF_DIRECTORY_CLIENT_ID, APP_STAFF_DIRECTORY_CLIENT_SECRET, APP_STAFF_DIRECTORY_REDIRECT_URL",
+				"pkg/config/data.go: dataConfig reads the staff auth's directory registration from APP_STAFF_DIRECTORY_TENANT_ID, APP_STAFF_DIRECTORY_ADMINISTERED_TENANTS, APP_STAFF_DIRECTORY_CLIENT_ID, APP_STAFF_DIRECTORY_CLIENT_SECRET, APP_STAFF_DIRECTORY_REDIRECT_URL",
 			},
 			wantSkipped: []string{
 				"pkg/config/data.go: dataConfig has no staffSettings method and NewDataConfiguration builds no staff.Settings{...} literal, so the directory method's settings are read into dataConfig but not passed; set staff.Settings.Directory from them",
@@ -273,7 +273,7 @@ func TestMethodApply(t *testing.T) {
 			method: Method{Auth: "staff", Spec: authpkg.Method{Kind: app.MethodGoogle, Name: "google", Authority: AuthorityApplication, Slot: authpkg.SlotAny, Accounts: authpkg.AccountsInvited}},
 			extra:  map[string]string{".envrc.template": "export PORT=8090\n"},
 			wantDid: []string{
-				".envrc.template: the google method's variables (APP_STAFF_GOOGLE_CLIENT_ID, APP_STAFF_GOOGLE_CLIENT_SECRET, APP_STAFF_GOOGLE_REDIRECT_URL), to fill in; APP_STAFF_GOOGLE_REDIRECT_URL is set to the console project's development callback, http://127.0.0.1:4300/api/user/google/callback",
+				".envrc.template: the google method's variables (APP_STAFF_GOOGLE_ADMINISTERED_WORKSPACES, APP_STAFF_GOOGLE_CLIENT_ID, APP_STAFF_GOOGLE_CLIENT_SECRET, APP_STAFF_GOOGLE_REDIRECT_URL), to fill in; APP_STAFF_GOOGLE_REDIRECT_URL is set to the console project's development callback, http://127.0.0.1:4300/api/user/google/callback",
 			},
 			check: func(t *testing.T, a *app.App) {
 				t.Helper()
@@ -293,7 +293,7 @@ func TestMethodApply(t *testing.T) {
 			method: Method{Auth: "staff", Spec: authpkg.Method{Kind: app.MethodGoogle, Name: "google", Authority: AuthorityApplication, Slot: authpkg.SlotAny, Accounts: authpkg.AccountsInvited}},
 			extra:  map[string]string{".envrc.template": "export PORT=8090\n", "web/angular.json": strings.Replace(beaconAngular, "              \"port\": 4300,\n", "", 1)},
 			wantDid: []string{
-				".envrc.template: the google method's variables (APP_STAFF_GOOGLE_CLIENT_ID, APP_STAFF_GOOGLE_CLIENT_SECRET, APP_STAFF_GOOGLE_REDIRECT_URL), to fill in",
+				".envrc.template: the google method's variables (APP_STAFF_GOOGLE_ADMINISTERED_WORKSPACES, APP_STAFF_GOOGLE_CLIENT_ID, APP_STAFF_GOOGLE_CLIENT_SECRET, APP_STAFF_GOOGLE_REDIRECT_URL), to fill in",
 			},
 			check: func(t *testing.T, a *app.App) {
 				t.Helper()

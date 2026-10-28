@@ -43,6 +43,9 @@
           "Execute": [
             {
               "resource": "SetStaffUserPassword"
+            },
+            {
+              "resource": "ResetStaffUserFactors"
             }
           ],
           "List": [

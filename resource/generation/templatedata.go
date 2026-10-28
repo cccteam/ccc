@@ -743,8 +743,8 @@ type tsAPIRegistration struct {
 }
 
 // tsAPIPartition is one partition of a surface in the descriptor: its scope, the
-// four resources' names and the two methods' names, each method empty where the
-// Auth's methods give none.
+// four resources' names and the three methods' names, the password reset and the
+// unlinking empty where the Auth's methods give none.
 type tsAPIPartition struct {
 	Scope          string
 	Users          string
@@ -753,6 +753,7 @@ type tsAPIPartition struct {
 	Invitations    string
 	SetPassword    string
 	UnlinkIdentity string
+	ResetFactors   string
 }
 
 // tsAPITokens is the descriptor's tokens block: the token routes of a session outlet

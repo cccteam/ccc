@@ -34,9 +34,12 @@ const (
 	oauthDeviceSuffix = "/oauth/device/authorize"
 	oauthTokenSuffix  = "/oauth/token"
 	// The pending sign-in handlers on a session outlet's surface (session.PendingHandlers).
-	pendingStatusHandler  = "PendingStatus"
-	pendingConfirmHandler = "PendingConfirmWithPassword"
-	pendingCancelHandler  = "PendingCancel"
+	pendingStatusHandler      = "PendingStatus"
+	pendingConfirmHandler     = "PendingConfirmWithPassword"
+	pendingCancelHandler      = "PendingCancel"
+	pendingSendCodeHandler    = "PendingSendCode"
+	pendingVerifyCodeHandler  = "PendingVerifyCode"
+	pendingEnrollEmailHandler = "PendingEnrollEmail"
 	// methodsHandler tells the login page what the outlet offers (session.Auth.Methods).
 	methodsHandler = "Methods"
 	// The invitation, email address and sign-up handlers on a session outlet's surface
@@ -85,11 +88,16 @@ type servedMethod struct {
 }
 
 // servedPending are the pending sign-in routes of a session outlet: what the login
-// page is told beside the methods.
+// page is told beside the methods. The last three are the second factor's: where the
+// page asks for the sign-in code the Auth mails, where it verifies the code entered,
+// and where a person who holds no address gives one for the code.
 type servedPending struct {
-	Status  string
-	Confirm string
-	Cancel  string
+	Status      string
+	Confirm     string
+	Cancel      string
+	SendCode    string
+	VerifyCode  string
+	EnrollEmail string
 }
 
 // servedInvitation are the invitation routes of a session outlet: where the login page
@@ -1062,7 +1070,10 @@ func servedSessionOf(so *servedOutlet, o *routerOutlet) {
 		return servedRoute{Method: method, MethodConst: httpMethodConstant(method), Path: prefix + suffix, Suffix: suffix, Handler: handler, XSRF: xsrf}
 	}
 	so.MethodsPath = prefix + userMethodsSuffix
-	so.Pending = servedPending{Status: prefix + userPendingSuffix, Confirm: prefix + userPendingSuffix + "/confirm", Cancel: prefix + userPendingSuffix + "/cancel"}
+	so.Pending = servedPending{
+		Status: prefix + userPendingSuffix, Confirm: prefix + userPendingSuffix + "/confirm", Cancel: prefix + userPendingSuffix + "/cancel",
+		SendCode: prefix + userPendingSuffix + "/code", VerifyCode: prefix + userPendingSuffix + "/code/verify", EnrollEmail: prefix + userPendingSuffix + "/email",
+	}
 	open := []servedRoute{
 		route(http.MethodGet, userMethodsSuffix, methodsHandler, false),
 		route(http.MethodGet, userSessionSuffix, "Authenticated", false),
@@ -1104,6 +1115,9 @@ func servedSessionOf(so *servedOutlet, o *routerOutlet) {
 	guarded = append(guarded,
 		route(http.MethodPost, userPendingSuffix+"/confirm", pendingConfirmHandler, true),
 		route(http.MethodPost, userPendingSuffix+"/cancel", pendingCancelHandler, true),
+		route(http.MethodPost, userPendingSuffix+"/code", pendingSendCodeHandler, true),
+		route(http.MethodPost, userPendingSuffix+"/code/verify", pendingVerifyCodeHandler, true),
+		route(http.MethodPost, userPendingSuffix+"/email", pendingEnrollEmailHandler, true),
 	)
 	guarded, validatedRoutes := servedMailRoutesOf(so, o, guarded, route)
 	so.OpenRoutes, so.GuardedRoutes, so.ValidatedRoutes = open, guarded, validatedRoutes
@@ -1505,10 +1519,15 @@ type {{ .SessionInterface }} interface {
 	// router hands it the methods below at the paths it mounts them.
 	Methods(list *session.MethodList) http.HandlerFunc
 	// The pending sign-in (session.PendingHandlers): a sign-in that waits for a
-	// password confirmation or the application's MFA step.
+	// password confirmation or for the second factor, and the second factor's step:
+	// the sign-in code the Auth mails, verified from the login page, and the address a
+	// person who holds none gives for it.
 	PendingStatus() http.HandlerFunc
 	PendingConfirmWithPassword() http.HandlerFunc
 	PendingCancel() http.HandlerFunc
+	PendingSendCode() http.HandlerFunc
+	PendingVerifyCode() http.HandlerFunc
+	PendingEnrollEmail() http.HandlerFunc
 {{- range .SessionHandlers }}
 	// {{ .Description }}.
 	{{ .Name }}() http.HandlerFunc
@@ -1699,7 +1718,10 @@ func New(h Handlers, hooks Hooks) *chi.Mux {
 				{Name: "{{ .Name }}", Label: "{{ .Label }}", Path: "{{ .LoginPath }}"},
 {{- end }}
 			},
-			Pending: session.PendingRoutes{Status: "{{ $outlet.Pending.Status }}", Confirm: "{{ $outlet.Pending.Confirm }}", Cancel: "{{ $outlet.Pending.Cancel }}"},
+			Pending: session.PendingRoutes{
+				Status: "{{ $outlet.Pending.Status }}", Confirm: "{{ $outlet.Pending.Confirm }}", Cancel: "{{ $outlet.Pending.Cancel }}",
+				SendCode: "{{ $outlet.Pending.SendCode }}", VerifyCode: "{{ $outlet.Pending.VerifyCode }}", EnrollEmail: "{{ $outlet.Pending.EnrollEmail }}",
+			},
 {{- if $outlet.ChangePassword }}
 			ChangePassword: "{{ $outlet.ChangePassword }}",
 {{- end }}

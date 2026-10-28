@@ -128,6 +128,7 @@ func TestGeneratedRouteOutletIsolation(t *testing.T) {
 		{url: "/droids/crew-invitations", method: http.MethodPatch},
 		{url: "/droids/set-crew-user-password", method: http.MethodPost},
 		{url: "/droids/unlink-crew-user-identity", method: http.MethodPost},
+		{url: "/droids/reset-crew-user-factors", method: http.MethodPost},
 		{url: "/droids/sectors/testDomain/crew-sector-users", method: http.MethodGet},
 		{url: "/droids/sectors/testDomain/crew-sector-users", method: http.MethodPost},
 		{url: "/droids/sectors/testDomain/crew-sector-users/testCrewSectorUserID", method: http.MethodGet},
@@ -149,6 +150,7 @@ func TestGeneratedRouteOutletIsolation(t *testing.T) {
 		{url: "/droids/sectors/testDomain/crew-sector-invitations", method: http.MethodPatch},
 		{url: "/droids/sectors/testDomain/set-crew-sector-user-password", method: http.MethodPost},
 		{url: "/droids/sectors/testDomain/unlink-crew-sector-user-identity", method: http.MethodPost},
+		{url: "/droids/sectors/testDomain/reset-crew-sector-user-factors", method: http.MethodPost},
 		{url: "/droids/members-users", method: http.MethodGet},
 		{url: "/droids/members-users", method: http.MethodPost},
 		{url: "/droids/members-users/testMembersUserID", method: http.MethodGet},
@@ -169,6 +171,7 @@ func TestGeneratedRouteOutletIsolation(t *testing.T) {
 		{url: "/droids/members-invitations/testMembersInvitationID", method: http.MethodPost},
 		{url: "/droids/members-invitations", method: http.MethodPatch},
 		{url: "/droids/unlink-members-user-identity", method: http.MethodPost},
+		{url: "/droids/reset-members-user-factors", method: http.MethodPost},
 		{url: "/droids/sectors/testDomain/members-sector-users", method: http.MethodGet},
 		{url: "/droids/sectors/testDomain/members-sector-users", method: http.MethodPost},
 		{url: "/droids/sectors/testDomain/members-sector-users/testMembersSectorUserID", method: http.MethodGet},
@@ -189,6 +192,7 @@ func TestGeneratedRouteOutletIsolation(t *testing.T) {
 		{url: "/droids/sectors/testDomain/members-sector-invitations/testMembersSectorInvitationID", method: http.MethodPost},
 		{url: "/droids/sectors/testDomain/members-sector-invitations", method: http.MethodPatch},
 		{url: "/droids/sectors/testDomain/unlink-members-sector-user-identity", method: http.MethodPost},
+		{url: "/droids/sectors/testDomain/reset-members-sector-user-factors", method: http.MethodPost},
 		{url: "/droids/clients", method: http.MethodGet},
 		{url: "/droids/clients", method: http.MethodPost},
 		{url: "/droids/clients/testClientID", method: http.MethodGet},
@@ -354,6 +358,7 @@ func TestGeneratedRouteOutletIsolation(t *testing.T) {
 		{url: "/portal/api/crew-invitations", method: http.MethodPatch},
 		{url: "/portal/api/set-crew-user-password", method: http.MethodPost},
 		{url: "/portal/api/unlink-crew-user-identity", method: http.MethodPost},
+		{url: "/portal/api/reset-crew-user-factors", method: http.MethodPost},
 		{url: "/portal/api/sectors/testDomain/crew-sector-users", method: http.MethodGet},
 		{url: "/portal/api/sectors/testDomain/crew-sector-users", method: http.MethodPost},
 		{url: "/portal/api/sectors/testDomain/crew-sector-users/testCrewSectorUserID", method: http.MethodGet},
@@ -375,6 +380,7 @@ func TestGeneratedRouteOutletIsolation(t *testing.T) {
 		{url: "/portal/api/sectors/testDomain/crew-sector-invitations", method: http.MethodPatch},
 		{url: "/portal/api/sectors/testDomain/set-crew-sector-user-password", method: http.MethodPost},
 		{url: "/portal/api/sectors/testDomain/unlink-crew-sector-user-identity", method: http.MethodPost},
+		{url: "/portal/api/sectors/testDomain/reset-crew-sector-user-factors", method: http.MethodPost},
 		{url: "/portal/api/clients", method: http.MethodGet},
 		{url: "/portal/api/clients", method: http.MethodPost},
 		{url: "/portal/api/clients/testClientID", method: http.MethodGet},
@@ -1666,6 +1672,11 @@ func generatedRouterTests() []*generatedRouterTest {
 			parameters:  map[string]string{},
 		},
 		{
+			url: "/console/api/reset-crew-user-factors", method: http.MethodPost,
+			handlerFunc: "ResetCrewUserFactors",
+			parameters:  map[string]string{},
+		},
+		{
 			url: "/console/api/sectors/testDomain/crew-sector-users", method: http.MethodGet,
 			handlerFunc: "CrewSectorUsers",
 			parameters:  map[string]string{"sectorID": "testDomain"},
@@ -1771,6 +1782,11 @@ func generatedRouterTests() []*generatedRouterTest {
 			parameters:  map[string]string{"sectorID": "testDomain"},
 		},
 		{
+			url: "/console/api/sectors/testDomain/reset-crew-sector-user-factors", method: http.MethodPost,
+			handlerFunc: "ResetCrewSectorUserFactors",
+			parameters:  map[string]string{"sectorID": "testDomain"},
+		},
+		{
 			url: "/console/api/members-users", method: http.MethodGet,
 			handlerFunc: "MembersUsers",
 			parameters:  map[string]string{},
@@ -1868,6 +1884,11 @@ func generatedRouterTests() []*generatedRouterTest {
 		{
 			url: "/console/api/unlink-members-user-identity", method: http.MethodPost,
 			handlerFunc: "UnlinkMembersUserIdentity",
+			parameters:  map[string]string{},
+		},
+		{
+			url: "/console/api/reset-members-user-factors", method: http.MethodPost,
+			handlerFunc: "ResetMembersUserFactors",
 			parameters:  map[string]string{},
 		},
 		{
@@ -1971,6 +1992,11 @@ func generatedRouterTests() []*generatedRouterTest {
 			parameters:  map[string]string{"sectorID": "testDomain"},
 		},
 		{
+			url: "/console/api/sectors/testDomain/reset-members-sector-user-factors", method: http.MethodPost,
+			handlerFunc: "ResetMembersSectorUserFactors",
+			parameters:  map[string]string{"sectorID": "testDomain"},
+		},
+		{
 			url: "/portal/api/members-users", method: http.MethodGet,
 			handlerFunc: "MembersUsers",
 			parameters:  map[string]string{},
@@ -2071,6 +2097,11 @@ func generatedRouterTests() []*generatedRouterTest {
 			parameters:  map[string]string{},
 		},
 		{
+			url: "/portal/api/reset-members-user-factors", method: http.MethodPost,
+			handlerFunc: "ResetMembersUserFactors",
+			parameters:  map[string]string{},
+		},
+		{
 			url: "/portal/api/sectors/testDomain/members-sector-users", method: http.MethodGet,
 			handlerFunc: "MembersSectorUsers",
 			parameters:  map[string]string{"sectorID": "testDomain"},
@@ -2168,6 +2199,11 @@ func generatedRouterTests() []*generatedRouterTest {
 		{
 			url: "/portal/api/sectors/testDomain/unlink-members-sector-user-identity", method: http.MethodPost,
 			handlerFunc: "UnlinkMembersSectorUserIdentity",
+			parameters:  map[string]string{"sectorID": "testDomain"},
+		},
+		{
+			url: "/portal/api/sectors/testDomain/reset-members-sector-user-factors", method: http.MethodPost,
+			handlerFunc: "ResetMembersSectorUserFactors",
 			parameters:  map[string]string{"sectorID": "testDomain"},
 		},
 		{
@@ -2681,6 +2717,22 @@ func (s *generatedHandlersStub) ReleaseConsignment() http.HandlerFunc {
 
 func (s *generatedHandlersStub) ReplaceMissionDocument() http.HandlerFunc {
 	return s.record("ReplaceMissionDocument")
+}
+
+func (s *generatedHandlersStub) ResetCrewSectorUserFactors() http.HandlerFunc {
+	return s.record("ResetCrewSectorUserFactors")
+}
+
+func (s *generatedHandlersStub) ResetCrewUserFactors() http.HandlerFunc {
+	return s.record("ResetCrewUserFactors")
+}
+
+func (s *generatedHandlersStub) ResetMembersSectorUserFactors() http.HandlerFunc {
+	return s.record("ResetMembersSectorUserFactors")
+}
+
+func (s *generatedHandlersStub) ResetMembersUserFactors() http.HandlerFunc {
+	return s.record("ResetMembersUserFactors")
 }
 
 func (s *generatedHandlersStub) ResumeMission() http.HandlerFunc {

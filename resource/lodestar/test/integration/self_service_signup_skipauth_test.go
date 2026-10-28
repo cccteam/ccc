@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"net/url"
 	"os"
 	"slices"
 	"testing"
@@ -23,7 +24,12 @@ import (
 // Ember's first directory is the one she came through, written by the route in the
 // row's transaction, so Ember admits her Google session at once.
 //
-// Demonstrates: tenancy.self-service, tenancy.creator-directory, auth.open-sign-up, auth.skipauth-directory.
+// Any Google account is a directory the fleet does not administer, so her sign-up
+// waits for the second factor: the browser lands on the login page with the pending
+// marker, she gives an address for the sign-in code (a sign-up holds none), and the
+// code opens the session.
+//
+// Demonstrates: tenancy.self-service, tenancy.creator-directory, auth.open-sign-up, auth.skipauth-directory, auth.second-factor.
 func TestSelfServiceSignUp_signInFirstThenChart(t *testing.T) {
 	t.Parallel()
 
@@ -34,9 +40,11 @@ func TestSelfServiceSignUp_signInFirstThenChart(t *testing.T) {
 	if status, body := b.do(ctx, http.MethodGet, consoleAPI+"/user/session", nil); status != http.StatusOK {
 		t.Fatalf("GET session before the sign-up: status %d: %s", status, body)
 	}
-	if status, location := b.loginConsoleSignUp(ctx, string(pioneerUser)); status != http.StatusFound || location != consolePage {
-		t.Fatalf("console sign-up: status %d to %q, want %d to %q", status, location, http.StatusFound, consolePage)
+	held := consoleLogin + "?pending=mfa&returnUrl=" + url.QueryEscape(consolePage)
+	if status, location := b.loginConsoleSignUp(ctx, string(pioneerUser)); status != http.StatusFound || location != held {
+		t.Fatalf("console sign-up: status %d to %q, want %d to %q, the login page with the second factor's wait", status, location, http.StatusFound, held)
 	}
+	b.secondFactor(ctx, string(pioneerUser), false)
 	sess := b.session(ctx)
 	if sess["authenticated"] != true || sess["username"] != string(pioneerUser) {
 		t.Fatalf("session after the sign-up = %v, want authenticated as %s", sess, pioneerUser)

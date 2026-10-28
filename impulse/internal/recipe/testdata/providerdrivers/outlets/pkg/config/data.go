@@ -429,10 +429,11 @@ type dataConfig struct {
 	// the callback the directory returns the browser to, under the registration's
 	// variables (APP_<AUTH>_<REGISTRATION>_*). Under the session library's skipAuth build
 	// tag the directory is simulated and only the redirect URL is read.
-	MembersDirectoryTenantID     string `env:"APP_MEMBERS_DIRECTORY_TENANT_ID"`
-	MembersDirectoryClientID     string `env:"APP_MEMBERS_DIRECTORY_CLIENT_ID"`
-	MembersDirectoryClientSecret string `env:"APP_MEMBERS_DIRECTORY_CLIENT_SECRET" secret:"true"`
-	MembersDirectoryRedirectURL  string `env:"APP_MEMBERS_DIRECTORY_REDIRECT_URL"`
+	MembersDirectoryTenantID            string `env:"APP_MEMBERS_DIRECTORY_TENANT_ID"`
+	MembersDirectoryAdministeredTenants string `env:"APP_MEMBERS_DIRECTORY_ADMINISTERED_TENANTS"`
+	MembersDirectoryClientID            string `env:"APP_MEMBERS_DIRECTORY_CLIENT_ID"`
+	MembersDirectoryClientSecret        string `env:"APP_MEMBERS_DIRECTORY_CLIENT_SECRET"        secret:"true"`
+	MembersDirectoryRedirectURL         string `env:"APP_MEMBERS_DIRECTORY_REDIRECT_URL"`
 
 	// MembersAdministrator is the sign-in name of the members auth's first administrator,
 	// as the directory presents it (the user principal name): the migrate command seeds
@@ -481,10 +482,11 @@ func (env *dataConfig) membersSettings(collection access.PermissionCollection, s
 		MailLoginURL:   env.PublicURL + "/portal/login",
 		LoginURL:       "/portal/login",
 		Directory: members.DirectorySettings{
-			TenantID:     env.MembersDirectoryTenantID,
-			ClientID:     env.MembersDirectoryClientID,
-			ClientSecret: env.MembersDirectoryClientSecret,
-			RedirectURL:  env.MembersDirectoryRedirectURL,
+			TenantID:            env.MembersDirectoryTenantID,
+			AdministeredTenants: env.MembersDirectoryAdministeredTenants,
+			ClientID:            env.MembersDirectoryClientID,
+			ClientSecret:        env.MembersDirectoryClientSecret,
+			RedirectURL:         env.MembersDirectoryRedirectURL,
 		},
 		TenantDeclarations: app.NewTenantDeclarationReader(),
 		TenantDirectories:  app.NewTenantDirectoryReader(),

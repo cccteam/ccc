@@ -3,7 +3,7 @@ import { ApiDescriptor, Client, ClientOptions, createClient, MethodHandle, Resou
 import { Point } from 'geojson';
 import { Methods, Resources } from './zz_gen_constants';
 import { ClientContacts, ClientRosters, DistressCalls, Missions, MissionDocuments, BriefingTemplates, FeatureFlags, MembersUsers, MembersSeats, MembersRoles, MembersInvitations, MembersSectorUsers, MembersSectorSeats, MembersSectorRoles, MembersSectorInvitations } from './zz_gen_resources';
-import { StandDownMission, SetFeature, SetFeatureResult, UnlinkMembersUserIdentity, UnlinkMembersSectorUserIdentity } from './zz_gen_methods';
+import { StandDownMission, SetFeature, SetFeatureResult, UnlinkMembersUserIdentity, ResetMembersUserFactors, UnlinkMembersSectorUserIdentity, ResetMembersSectorUserFactors } from './zz_gen_methods';
 
 /** The feature flags the application declares, by name: what a route, a field or a method is gated behind. */
 export type Feature = 'commendations';
@@ -368,7 +368,9 @@ export const apiDescriptor = defineApiDescriptor({
     [Methods.StandDownMission]: { method: Methods.StandDownMission, property: 'standDownMission', route: 'stand-down-mission', scope: 'domain' },
     [Methods.SetFeature]: { method: Methods.SetFeature, property: 'setFeature', route: 'set-feature', scope: 'global', answers: true },
     [Methods.UnlinkMembersUserIdentity]: { method: Methods.UnlinkMembersUserIdentity, property: 'unlinkMembersUserIdentity', route: 'unlink-members-user-identity', scope: 'global' },
+    [Methods.ResetMembersUserFactors]: { method: Methods.ResetMembersUserFactors, property: 'resetMembersUserFactors', route: 'reset-members-user-factors', scope: 'global' },
     [Methods.UnlinkMembersSectorUserIdentity]: { method: Methods.UnlinkMembersSectorUserIdentity, property: 'unlinkMembersSectorUserIdentity', route: 'unlink-members-sector-user-identity', scope: 'domain' },
+    [Methods.ResetMembersSectorUserFactors]: { method: Methods.ResetMembersSectorUserFactors, property: 'resetMembersSectorUserFactors', route: 'reset-members-sector-user-factors', scope: 'domain' },
   },
   userSurfaces: [
     {
@@ -379,8 +381,8 @@ export const apiDescriptor = defineApiDescriptor({
       openSignUp: false,
       registrations: [{ name: 'directory', kind: 'google', label: 'Company directory', invited: false, syncsRoles: true }],
       partitions: [
-        { scope: 'global', users: Resources.MembersUsers, seats: Resources.MembersSeats, roles: Resources.MembersRoles, invitations: Resources.MembersInvitations, unlinkIdentity: Methods.UnlinkMembersUserIdentity },
-        { scope: 'domain', users: Resources.MembersSectorUsers, seats: Resources.MembersSectorSeats, roles: Resources.MembersSectorRoles, invitations: Resources.MembersSectorInvitations, unlinkIdentity: Methods.UnlinkMembersSectorUserIdentity },
+        { scope: 'global', users: Resources.MembersUsers, seats: Resources.MembersSeats, roles: Resources.MembersRoles, invitations: Resources.MembersInvitations, unlinkIdentity: Methods.UnlinkMembersUserIdentity, resetFactors: Methods.ResetMembersUserFactors },
+        { scope: 'domain', users: Resources.MembersSectorUsers, seats: Resources.MembersSectorSeats, roles: Resources.MembersSectorRoles, invitations: Resources.MembersSectorInvitations, unlinkIdentity: Methods.UnlinkMembersSectorUserIdentity, resetFactors: Methods.ResetMembersSectorUserFactors },
       ],
     },
   ],
@@ -397,6 +399,7 @@ export interface GlobalApi {
   membersInvitations: ResourceHandle<MembersInvitations, MembersInvitationsKey, 'list' | 'read' | 'create' | 'remove', MembersInvitationsCreate>;
   setFeature: MethodHandle<SetFeature, SetFeatureResult>;
   unlinkMembersUserIdentity: MethodHandle<UnlinkMembersUserIdentity>;
+  resetMembersUserFactors: MethodHandle<ResetMembersUserFactors>;
 }
 
 /** Handles for one tenant partition, available on client.domain(...). */
@@ -411,6 +414,7 @@ export interface DomainApi {
   membersSectorInvitations: ResourceHandle<MembersSectorInvitations, MembersSectorInvitationsKey, 'list' | 'read' | 'create' | 'remove', MembersSectorInvitationsCreate>;
   standDownMission: MethodHandle<StandDownMission>;
   unlinkMembersSectorUserIdentity: MethodHandle<UnlinkMembersSectorUserIdentity>;
+  resetMembersSectorUserFactors: MethodHandle<ResetMembersSectorUserFactors>;
 }
 
 export type Api = Client<GlobalApi, DomainApi>;

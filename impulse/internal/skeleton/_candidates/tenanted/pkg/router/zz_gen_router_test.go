@@ -83,6 +83,9 @@ func routerSessionRoutes() []routerSessionRoute {
 		{url: "/api/user/password/change", suffix: "/user/password/change", method: http.MethodPost, handler: "PasswordChange", xsrf: true},
 		{url: "/api/user/pending/confirm", suffix: "/user/pending/confirm", method: http.MethodPost, handler: "PendingConfirmWithPassword", xsrf: true},
 		{url: "/api/user/pending/cancel", suffix: "/user/pending/cancel", method: http.MethodPost, handler: "PendingCancel", xsrf: true},
+		{url: "/api/user/pending/code", suffix: "/user/pending/code", method: http.MethodPost, handler: "PendingSendCode", xsrf: true},
+		{url: "/api/user/pending/code/verify", suffix: "/user/pending/code/verify", method: http.MethodPost, handler: "PendingVerifyCode", xsrf: true},
+		{url: "/api/user/pending/email", suffix: "/user/pending/email", method: http.MethodPost, handler: "PendingEnrollEmail", xsrf: true},
 		{url: "/api/user/invitation", suffix: "/user/invitation", method: http.MethodPost, handler: "InvitationOpen", xsrf: true},
 		{url: "/api/user/invitation/sign-up", suffix: "/user/invitation/sign-up", method: http.MethodPost, handler: "InvitationSignUp", xsrf: true},
 		{url: "/api/user/invitation/accept", suffix: "/user/invitation/accept", method: http.MethodPost, handler: "InvitationAccept", xsrf: true, validated: true},
@@ -728,6 +731,18 @@ func (s *routerDefaultSessionStub) PendingConfirmWithPassword() http.HandlerFunc
 
 func (s *routerDefaultSessionStub) PendingCancel() http.HandlerFunc {
 	return s.rec.RecordHandlerCall(s.prefix + "PendingCancel")
+}
+
+func (s *routerDefaultSessionStub) PendingSendCode() http.HandlerFunc {
+	return s.rec.RecordHandlerCall(s.prefix + "PendingSendCode")
+}
+
+func (s *routerDefaultSessionStub) PendingVerifyCode() http.HandlerFunc {
+	return s.rec.RecordHandlerCall(s.prefix + "PendingVerifyCode")
+}
+
+func (s *routerDefaultSessionStub) PendingEnrollEmail() http.HandlerFunc {
+	return s.rec.RecordHandlerCall(s.prefix + "PendingEnrollEmail")
 }
 
 func (s *routerDefaultSessionStub) InvitationOpen() http.HandlerFunc {

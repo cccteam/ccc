@@ -55,7 +55,7 @@ const (
 	_ = session.PasswordSignIn(authA)`
 	// mailed sends mail (WithMail), so it reads its mail links table too, and registers
 	// the password method with open sign-up and the address as the sign-in name.
-	mailed = `staff, _ := session.NewAuth[session.NoCustomData, session.NoCustomData](sessionstorage.NewSpannerAuth(client), key, session.WithSessionTableName("StaffSessions"), session.WithUserTableName("StaffUsers"), session.WithIdentitiesTableName("StaffIdentities"), session.WithPendingSignInsTableName("StaffPending"), session.WithSignInAttemptsTableName("StaffAttempts"), session.WithMailLinksTableName("StaffMailLinks"), session.WithMail(nil, session.MailSettings{}))
+	mailed = `staff, _ := session.NewAuth[session.NoCustomData, session.NoCustomData](sessionstorage.NewSpannerAuth(client), key, session.WithSessionTableName("StaffSessions"), session.WithUserTableName("StaffUsers"), session.WithIdentitiesTableName("StaffIdentities"), session.WithPendingSignInsTableName("StaffPending"), session.WithSignInAttemptsTableName("StaffAttempts"), session.WithMailLinksTableName("StaffMailLinks"), session.WithFactorCodesTableName("StaffFactorCodes"), session.WithTrustedDevicesTableName("StaffTrustedDevices"), session.WithMail(nil, session.MailSettings{}))
 	_ = session.PasswordSignIn(staff, session.OpenSignUp(), session.UsernameIsEmail())`
 	noMethods      = `_, _ = session.NewAuth[session.NoCustomData, session.NoCustomData](sessionstorage.NewSpannerAuth(client), key)`
 	unreadableName = `authA, _ := session.NewAuth[session.NoCustomData, session.NoCustomData](sessionstorage.NewSpannerAuth(client), key)
@@ -237,22 +237,24 @@ func TestSessionTables(t *testing.T) {
 			files: map[string]string{
 				"cmd/generate/main.go":                     site,
 				"pkg/config/session.go":                    authFile(mailed),
-				"schema/migrations/000003_Sessions.up.sql": tables("StaffSessions", "StaffUsers", "StaffIdentities", "StaffPending", "StaffAttempts", "StaffMailLinks"),
+				"schema/migrations/000003_Sessions.up.sql": tables("StaffSessions", "StaffUsers", "StaffIdentities", "StaffPending", "StaffAttempts", "StaffMailLinks", "StaffFactorCodes", "StaffTrustedDevices"),
 			},
 			wantStatus:  Pass,
-			wantSummary: "1 auth(s): methods password (open sign-up, the username is the address); tables StaffSessions, StaffUsers, StaffIdentities, StaffPending, StaffAttempts, StaffMailLinks",
+			wantSummary: "1 auth(s): methods password (open sign-up, the username is the address); tables StaffSessions, StaffUsers, StaffIdentities, StaffPending, StaffAttempts, StaffMailLinks, StaffFactorCodes, StaffTrustedDevices",
 		},
 		{
-			name: "a missing mail links table",
+			name: "the mail links, sign-in codes and trusted devices tables missing",
 			files: map[string]string{
 				"cmd/generate/main.go":                     site,
 				"pkg/config/session.go":                    authFile(mailed),
 				"schema/migrations/000003_Sessions.up.sql": tables("StaffSessions", "StaffUsers", "StaffIdentities", "StaffPending", "StaffAttempts"),
 			},
 			wantStatus:  Fail,
-			wantSummary: "1 auth wiring problem(s)",
+			wantSummary: "3 auth wiring problem(s)",
 			wantDetails: []string{
 				"pkg/config/session.go:12: the Auth at pkg/config/session.go:12 reads table StaffMailLinks, which no migration creates (the session library's schema is under " + schemaSets + ")",
+				"pkg/config/session.go:12: the Auth at pkg/config/session.go:12 reads table StaffFactorCodes, which no migration creates (the session library's schema is under " + schemaSets + ")",
+				"pkg/config/session.go:12: the Auth at pkg/config/session.go:12 reads table StaffTrustedDevices, which no migration creates (the session library's schema is under " + schemaSets + ")",
 			},
 		},
 		{
@@ -260,17 +262,17 @@ func TestSessionTables(t *testing.T) {
 			files: map[string]string{
 				"cmd/generate/main.go":                     issuing,
 				"pkg/config/session.go":                    authFile(mailed),
-				"schema/migrations/000003_Sessions.up.sql": tables("StaffSessions", "StaffUsers", "StaffIdentities", "StaffPending", "StaffAttempts", "StaffMailLinks", "SessionTokens", "SessionDeviceCodes"),
+				"schema/migrations/000003_Sessions.up.sql": tables("StaffSessions", "StaffUsers", "StaffIdentities", "StaffPending", "StaffAttempts", "StaffMailLinks", "StaffFactorCodes", "StaffTrustedDevices", "SessionTokens", "SessionDeviceCodes"),
 			},
 			wantStatus:  Pass,
-			wantSummary: "1 auth(s): methods password (open sign-up, the username is the address); tables StaffSessions, StaffUsers, StaffIdentities, StaffPending, StaffAttempts, StaffMailLinks, SessionTokens, SessionDeviceCodes",
+			wantSummary: "1 auth(s): methods password (open sign-up, the username is the address); tables StaffSessions, StaffUsers, StaffIdentities, StaffPending, StaffAttempts, StaffMailLinks, StaffFactorCodes, StaffTrustedDevices, SessionTokens, SessionDeviceCodes",
 		},
 		{
 			name: "missing tokens and device codes tables",
 			files: map[string]string{
 				"cmd/generate/main.go":                     issuing,
 				"pkg/config/session.go":                    authFile(mailed),
-				"schema/migrations/000003_Sessions.up.sql": tables("StaffSessions", "StaffUsers", "StaffIdentities", "StaffPending", "StaffAttempts", "StaffMailLinks"),
+				"schema/migrations/000003_Sessions.up.sql": tables("StaffSessions", "StaffUsers", "StaffIdentities", "StaffPending", "StaffAttempts", "StaffMailLinks", "StaffFactorCodes", "StaffTrustedDevices"),
 			},
 			wantStatus:  Fail,
 			wantSummary: "2 auth wiring problem(s)",

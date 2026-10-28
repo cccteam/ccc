@@ -2,7 +2,7 @@
 import { ApiDescriptor, Client, ClientOptions, createClient, MethodHandle, ResourceHandle } from '@cccteam/resource';
 import { Methods, Resources } from './zz_gen_constants';
 import { Announcements, FeatureFlags, StaffUsers, StaffSeats, StaffRoles, StaffInvitations, StaffTenantUsers, StaffTenantSeats, StaffTenantRoles, StaffTenantInvitations } from './zz_gen_resources';
-import { SetFeature, SetFeatureResult, SetStaffUserPassword, SetStaffTenantUserPassword } from './zz_gen_methods';
+import { SetFeature, SetFeatureResult, SetStaffUserPassword, ResetStaffUserFactors, SetStaffTenantUserPassword, ResetStaffTenantUserFactors } from './zz_gen_methods';
 
 /**
  * The fields a client may set when creating Announcements. Server-owned fields are
@@ -244,7 +244,9 @@ export const apiDescriptor = defineApiDescriptor({
   methods: {
     [Methods.SetFeature]: { method: Methods.SetFeature, property: 'setFeature', route: 'set-feature', scope: 'global', answers: true },
     [Methods.SetStaffUserPassword]: { method: Methods.SetStaffUserPassword, property: 'setStaffUserPassword', route: 'set-staff-user-password', scope: 'global' },
+    [Methods.ResetStaffUserFactors]: { method: Methods.ResetStaffUserFactors, property: 'resetStaffUserFactors', route: 'reset-staff-user-factors', scope: 'global' },
     [Methods.SetStaffTenantUserPassword]: { method: Methods.SetStaffTenantUserPassword, property: 'setStaffTenantUserPassword', route: 'set-staff-tenant-user-password', scope: 'domain' },
+    [Methods.ResetStaffTenantUserFactors]: { method: Methods.ResetStaffTenantUserFactors, property: 'resetStaffTenantUserFactors', route: 'reset-staff-tenant-user-factors', scope: 'domain' },
   },
   userSurfaces: [
     {
@@ -255,8 +257,8 @@ export const apiDescriptor = defineApiDescriptor({
       openSignUp: false,
       registrations: [],
       partitions: [
-        { scope: 'global', users: Resources.StaffUsers, seats: Resources.StaffSeats, roles: Resources.StaffRoles, invitations: Resources.StaffInvitations, setPassword: Methods.SetStaffUserPassword },
-        { scope: 'domain', users: Resources.StaffTenantUsers, seats: Resources.StaffTenantSeats, roles: Resources.StaffTenantRoles, invitations: Resources.StaffTenantInvitations, setPassword: Methods.SetStaffTenantUserPassword },
+        { scope: 'global', users: Resources.StaffUsers, seats: Resources.StaffSeats, roles: Resources.StaffRoles, invitations: Resources.StaffInvitations, setPassword: Methods.SetStaffUserPassword, resetFactors: Methods.ResetStaffUserFactors },
+        { scope: 'domain', users: Resources.StaffTenantUsers, seats: Resources.StaffTenantSeats, roles: Resources.StaffTenantRoles, invitations: Resources.StaffTenantInvitations, setPassword: Methods.SetStaffTenantUserPassword, resetFactors: Methods.ResetStaffTenantUserFactors },
       ],
     },
   ],
@@ -271,6 +273,7 @@ export interface GlobalApi {
   staffInvitations: ResourceHandle<StaffInvitations, StaffInvitationsKey, 'list' | 'read' | 'create' | 'remove', StaffInvitationsCreate>;
   setFeature: MethodHandle<SetFeature, SetFeatureResult>;
   setStaffUserPassword: MethodHandle<SetStaffUserPassword>;
+  resetStaffUserFactors: MethodHandle<ResetStaffUserFactors>;
 }
 
 /** Handles for one tenant partition, available on client.domain(...). */
@@ -281,6 +284,7 @@ export interface DomainApi {
   staffTenantRoles: ResourceHandle<StaffTenantRoles, StaffTenantRolesKey, 'list' | 'read'>;
   staffTenantInvitations: ResourceHandle<StaffTenantInvitations, StaffTenantInvitationsKey, 'list' | 'read' | 'create' | 'remove', StaffTenantInvitationsCreate>;
   setStaffTenantUserPassword: MethodHandle<SetStaffTenantUserPassword>;
+  resetStaffTenantUserFactors: MethodHandle<ResetStaffTenantUserFactors>;
 }
 
 export type Api = Client<GlobalApi, DomainApi>;

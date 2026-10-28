@@ -82,6 +82,11 @@ func (a *App) UnlinkStaffUserIdentity() http.HandlerFunc {
 	return a.StaffUserSurface().UnlinkUserIdentity(a, router.Collection())
 }
 
+// ResetStaffUserFactors forgets the browsers a user of the global partition asked to be remembered, so their next sign-in asks for the second factor: Execute on ResetStaffUserFactors, targeting StaffUsers.
+func (a *App) ResetStaffUserFactors() http.HandlerFunc {
+	return a.StaffUserSurface().ResetUserFactors(a, router.Collection())
+}
+
 // StaffTenantUsers serves the users of the route's tenant: List on StaffTenantUsers.
 func (a *App) StaffTenantUsers() http.HandlerFunc {
 	return a.StaffUserSurface().TenantUsers(a, router.Collection())
@@ -145,4 +150,9 @@ func (a *App) SetStaffTenantUserPassword() http.HandlerFunc {
 // UnlinkStaffTenantUserIdentity unlinks an identity from a user of the route's tenant: Execute on UnlinkStaffTenantUserIdentity, targeting StaffTenantUsers.
 func (a *App) UnlinkStaffTenantUserIdentity() http.HandlerFunc {
 	return a.StaffUserSurface().UnlinkTenantUserIdentity(a, router.Collection())
+}
+
+// ResetStaffTenantUserFactors forgets the browsers a user of the route's tenant asked to be remembered, so their next sign-in asks for the second factor: Execute on ResetStaffTenantUserFactors, targeting StaffTenantUsers.
+func (a *App) ResetStaffTenantUserFactors() http.HandlerFunc {
+	return a.StaffUserSurface().ResetTenantUserFactors(a, router.Collection())
 }

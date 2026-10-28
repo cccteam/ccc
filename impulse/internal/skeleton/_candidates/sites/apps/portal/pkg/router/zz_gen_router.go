@@ -7,7 +7,7 @@
 //	every request: tracing, hooks.Outermost, request logging, SecurityHeaders, httpio.WithParams
 //	default (/api), sessions (password):
 //	  NoCaching, CompressionMiddleware, ReleaseHeader, StartSession, SetXSRFToken: GET /api/user/methods, GET /api/user/session, DELETE /api/user/session, GET /api/user/pending
-//	  + ValidateXSRFToken: POST /api/user/password/login, POST /api/user/password/change, POST /api/user/pending/confirm, POST /api/user/pending/cancel, POST /api/user/invitation, POST /api/user/invitation/sign-up
+//	  + ValidateXSRFToken: POST /api/user/password/login, POST /api/user/password/change, POST /api/user/pending/confirm, POST /api/user/pending/cancel, POST /api/user/pending/code, POST /api/user/pending/code/verify, POST /api/user/pending/email, POST /api/user/invitation, POST /api/user/invitation/sign-up
 //	  + ValidateSession, ValidateXSRFToken: POST /api/user/invitation/accept, POST /api/user/email, POST /api/user/email/verify
 //	  + ValidateSession, ValidateXSRFToken, CheckAPIVersion (oldest answered 0.0.1): hooks.Default, generatedRoutes
 //
@@ -69,10 +69,15 @@ type DefaultSession interface {
 	// router hands it the methods below at the paths it mounts them.
 	Methods(list *session.MethodList) http.HandlerFunc
 	// The pending sign-in (session.PendingHandlers): a sign-in that waits for a
-	// password confirmation or the application's MFA step.
+	// password confirmation or for the second factor, and the second factor's step:
+	// the sign-in code the Auth mails, verified from the login page, and the address a
+	// person who holds none gives for it.
 	PendingStatus() http.HandlerFunc
 	PendingConfirmWithPassword() http.HandlerFunc
 	PendingCancel() http.HandlerFunc
+	PendingSendCode() http.HandlerFunc
+	PendingVerifyCode() http.HandlerFunc
+	PendingEnrollEmail() http.HandlerFunc
 	// The invitation the login page was sent to, opened (session.InvitationHandlers.Open): the sign-in that follows carries it.
 	InvitationOpen() http.HandlerFunc
 	// The invitation accepted by a person already signed in (session.InvitationHandlers.Accept).
@@ -147,7 +152,10 @@ func New(h Handlers, hooks Hooks) *chi.Mux {
 			Methods: []session.AdvertisedMethod{
 				{Name: "password", Label: "Password", Path: "/api/user/password/login"},
 			},
-			Pending:        session.PendingRoutes{Status: "/api/user/pending", Confirm: "/api/user/pending/confirm", Cancel: "/api/user/pending/cancel"},
+			Pending: session.PendingRoutes{
+				Status: "/api/user/pending", Confirm: "/api/user/pending/confirm", Cancel: "/api/user/pending/cancel",
+				SendCode: "/api/user/pending/code", VerifyCode: "/api/user/pending/code/verify", EnrollEmail: "/api/user/pending/email",
+			},
 			ChangePassword: "/api/user/password/change",
 			Invitation:     session.InvitationRoutes{Open: "/api/user/invitation", Accept: "/api/user/invitation/accept", SignUp: "/api/user/invitation/sign-up"},
 			Email:          session.EmailRoutes{Add: "/api/user/email", Verify: "/api/user/email/verify"},
@@ -159,6 +167,9 @@ func New(h Handlers, hooks Hooks) *chi.Mux {
 		guarded.Post("/api/user/password/change", h.PasswordChange())
 		guarded.Post("/api/user/pending/confirm", h.PendingConfirmWithPassword())
 		guarded.Post("/api/user/pending/cancel", h.PendingCancel())
+		guarded.Post("/api/user/pending/code", h.PendingSendCode())
+		guarded.Post("/api/user/pending/code/verify", h.PendingVerifyCode())
+		guarded.Post("/api/user/pending/email", h.PendingEnrollEmail())
 		guarded.Post("/api/user/invitation", h.InvitationOpen())
 		guarded.Post("/api/user/invitation/sign-up", h.InvitationSignUp())
 

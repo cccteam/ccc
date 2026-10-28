@@ -524,6 +524,24 @@ code, and renders the confirmation step for a sign-in that waits; each page keep
 manifest, its words for a method (the portal's "your company directory", a label override
 keyed by the registration's name) and where a sign-in lands.
 
+Every session carries a second factor, whichever way the person signed in: both auths'
+sign-in rule ends with `auth.RequireSecondFactor` (`signin.RequireMFA` with the sign-in
+code as the factor, chained after the tenant policy with `Then`), and the session
+library satisfies it before it holds the sign-in. The fleet's Google Workspace attests
+for its people where the deployment says the fleet administers it
+(`APP_CREW_OIDC_ADMINISTERED`, `APP_MEMBERS_OIDC_ADMINISTERED`; `auth.Directory.Administered`
+declares the Workspace `Attesting()` on the registration), so the navigator and the
+clients are never asked; a password persona, and the pioneer who signs up with any
+Google account (a directory nobody here administers), wait for the sign-in code the auth
+mails to the address they hold (a persona holds none until they give one at the step; in
+development the mail is the log), entered on the login page through the pending routes
+(`/console/api/user/pending/code`, `…/code/verify`, `…/email`); a browser a person asked
+to be remembered stands in for the code for thirty days (the `crew-trusted` and
+`members-trusted` cookies, the trusted devices table under each auth's prefix), and
+headquarters forgets a person's remembered browsers from the Users page
+(`ResetCrewUserFactors`, `ResetMembersUserFactors`, beside the password reset).
+Demonstrates: auth.second-factor, auth.attested-directory, auth.trusted-device.
+
 The crew sign in with passwords at `/console/api/user/password/login`, or through the
 fleet's Google directory at `/console/api/user/google/login`, two methods on one session:
 or sign up with any Google account at `/console/api/user/sign-up/login`, three methods

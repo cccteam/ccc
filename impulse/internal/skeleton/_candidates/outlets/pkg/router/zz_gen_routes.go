@@ -62,6 +62,10 @@ type GeneratedHandlers interface {
 
 	Features() http.HandlerFunc
 
+	ResetStaffTenantUserFactors() http.HandlerFunc
+
+	ResetStaffUserFactors() http.HandlerFunc
+
 	SetFeature() http.HandlerFunc
 
 	SetStaffTenantUserPassword() http.HandlerFunc
@@ -142,6 +146,10 @@ func generatedRoutes(r chi.Router, h GeneratedHandlers) {
 	bounded.Post("/console/api/feature-flags/{featureFlagName}", featureFlagHandler)
 
 	bounded.Get("/console/api/features", h.Features())
+
+	bounded.Post("/console/api/tenants/{tenantID}/reset-staff-tenant-user-factors", domainGuard(h.ResetStaffTenantUserFactors()))
+
+	bounded.Post("/console/api/reset-staff-user-factors", h.ResetStaffUserFactors())
 
 	bounded.Post("/console/api/set-feature", h.SetFeature())
 
@@ -304,6 +312,10 @@ type GeneratedPortalHandlers interface {
 	MembersUser() http.HandlerFunc
 	PatchMembersUsers() http.HandlerFunc
 
+	ResetMembersTenantUserFactors() http.HandlerFunc
+
+	ResetMembersUserFactors() http.HandlerFunc
+
 	SetFeature() http.HandlerFunc
 
 	UnlinkMembersTenantUserIdentity() http.HandlerFunc
@@ -424,6 +436,10 @@ func generatedPortalRoutes(r chi.Router, h GeneratedPortalHandlers) {
 	bounded.Post("/portal/api/members-users/{membersUserID}", membersUserHandler)
 
 	bounded.Patch("/portal/api/members-users", h.PatchMembersUsers())
+
+	bounded.Post("/portal/api/tenants/{tenantID}/reset-members-tenant-user-factors", domainGuard(h.ResetMembersTenantUserFactors()))
+
+	bounded.Post("/portal/api/reset-members-user-factors", h.ResetMembersUserFactors())
 
 	bounded.Post("/portal/api/set-feature", h.SetFeature())
 

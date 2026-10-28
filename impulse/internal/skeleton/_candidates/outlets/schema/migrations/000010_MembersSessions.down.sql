@@ -1,3 +1,8 @@
+DROP INDEX MembersSessionTrustedDevicesByUser;
+DROP INDEX MembersSessionTrustedDevicesByTokenHash;
+DROP TABLE MembersSessionTrustedDevices;
+DROP INDEX MembersSessionFactorCodesByPending;
+DROP TABLE MembersSessionFactorCodes;
 DROP INDEX MembersSessionDeviceCodesByUserCode;
 DROP INDEX MembersSessionDeviceCodesByHash;
 DROP TABLE MembersSessionDeviceCodes;

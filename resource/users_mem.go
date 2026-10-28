@@ -268,6 +268,17 @@ func (s *MemUserStore) ResetUserPassword(_ context.Context, id ccc.UUID, _ strin
 	return nil
 }
 
+// ResetUserFactors has nothing to forget: the store keeps no remembered browsers.
+func (s *MemUserStore) ResetUserFactors(_ context.Context, id ccc.UUID) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, err := s.find(id); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 // LinkIdentity records an identity on the account, for a test that unlinks one.
 func (s *MemUserStore) LinkIdentity(id ccc.UUID, identity *UserIdentity) {
 	s.mu.Lock()

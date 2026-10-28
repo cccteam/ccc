@@ -47,6 +47,12 @@ export APP_PUBLIC_URL=http://127.0.0.1:4301
 # only the redirect URL is read. To sign in through Google for real, register the
 # application there, fill in the client id and secret, and drop the tag.
 export APP_GOOGLE_USERNAME=newcomer
+# APP_STAFF_GOOGLE_ADMINISTERED_WORKSPACES: the Workspaces the deployment administers, by
+# domain, comma-separated, each one the registration admits: a sign-in from one carries the
+# Workspace's own second factor and is not asked for the sign-in code. Empty when the
+# deployment administers none, as here: every sign-in is asked for the code, which the mail
+# log prints in development. Read under the simulated directory too.
+export APP_STAFF_GOOGLE_ADMINISTERED_WORKSPACES=
 # export APP_STAFF_GOOGLE_CLIENT_ID=
 # export APP_STAFF_GOOGLE_CLIENT_SECRET=
 export APP_STAFF_GOOGLE_REDIRECT_URL=http://127.0.0.1:4301/api/user/google/callback

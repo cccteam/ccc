@@ -106,6 +106,13 @@ export APP_MEMBERS_OIDC_CONNECTION=example
 # APP_MEMBERS_OIDC_HOSTED_DOMAIN is the Google Workspace domain logins are restricted to; the
 # simulated directory presents it too, so it is set in development.
 export APP_MEMBERS_OIDC_HOSTED_DOMAIN=example.com
+# APP_MEMBERS_OIDC_ADMINISTERED says the fleet administers the members' Workspace and knows it
+# enforces a second factor at every sign-in (2-Step Verification enforcement): a member's
+# sign-in then carries the Workspace's second factor and is never asked for the sign-in code
+# every session otherwise waits for (the code is mailed; in development it is written to the
+# log). Read under the simulated directory too, so it is set in development; a Workspace the
+# fleet does not administer leaves it unset.
+export APP_MEMBERS_OIDC_ADMINISTERED=true
 # APP_MEMBERS_OIDC_GROUP_PREFIX names the Google Groups that carry roles: <prefix><role>@<domain>
 # assigns <role>. Read under the simulated directory too (APP_ROLES stand in for the groups),
 # so it is set in development.
@@ -130,9 +137,14 @@ export APP_GOOGLE_USERNAME=navigator
 # APP_CREW_OIDC_REDIRECT_URL is the registration's callback route under the console's API,
 # through the dev proxy.
 export APP_CREW_OIDC_REDIRECT_URL=http://127.0.0.1:4300/console/api/user/google/callback
-# APP_CREW_OIDC_CONNECTION names the crew's Google Workspace the same way.
+# APP_CREW_OIDC_CONNECTION names the crew's Google Workspace the same way, and
+# APP_CREW_OIDC_ADMINISTERED says the fleet administers it, as the members' flag does: the
+# navigator's sign-in carries the Workspace's second factor, while a password persona and
+# the pioneer (any Google account, which nobody here administers) enter the code the log
+# shows, or sign in from a browser they asked to be remembered.
 export APP_CREW_OIDC_CONNECTION=example
 export APP_CREW_OIDC_HOSTED_DOMAIN=example.com
+export APP_CREW_OIDC_ADMINISTERED=true
 #
 # The crew auth's sign-up registration, the third way into the console: any Google account,
 # open sign-up, no roles (the application is the authority), for a person on no manifest and

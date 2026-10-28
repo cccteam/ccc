@@ -2,6 +2,7 @@ package staff
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/cccteam/access"
 	"github.com/cccteam/session/google"
@@ -19,6 +20,8 @@ const GoogleRegistration = "google"
 // registration, read from the environment. Under the session library's skipAuth build tag
 // Google is simulated and only the fields the simulated sign-in presents are read.
 type GoogleSettings struct {
+	// AdministeredWorkspaces is the Workspaces the deployment administers, by domain, comma-separated, each one the registration admits: a sign-in from one carries the Workspace's own second factor, which the deployment vouches for (2-Step Verification enforced for everyone), and is not asked for the sign-in code; empty when the deployment administers none.
+	AdministeredWorkspaces string
 	// ClientID is the OAuth client's id.
 	ClientID string
 	// ClientSecret is the OAuth client's secret.
@@ -53,15 +56,46 @@ func (h *Handlers) GoogleCallback() http.HandlerFunc {
 // what a tenant's declaration names a Google directory by, and an account outside a
 // Workspace carries the provider itself (google.AnyAccountConnection).
 func registerGoogle(authSession *Session, accessClient *access.Client, settings *Settings) *google.Method {
+	workspaces := googleSlot(settings)
 	_ = accessClient
 
 	return google.SignIn(authSession, GoogleRegistration, nil, &google.Config{
 		ClientID:     settings.Google.ClientID,
 		ClientSecret: settings.Google.ClientSecret,
 		RedirectURL:  settings.Google.RedirectURL,
-		Workspaces:   google.Workspaces(google.AnyWorkspace(), google.AnyGoogleAccount()),
+		Workspaces:   workspaces,
 		RoleSync:     google.DisableRoleSync(),
 		Accounts:     signin.OpenSignUp,
 		LoginURL:     settings.LoginURL,
 	})
+}
+
+// googleSlot is the registration's organization slot, any Google account, with the
+// Workspaces the deployment administers declared as attesting (AdministeredWorkspaces):
+// a sign-in from one carries the Workspace's own second factor, which the deployment
+// vouches for, and is not asked for the sign-in code.
+func googleSlot(settings *Settings) google.WorkspaceSet {
+	administered := parseGoogleAdministered(settings.Google.AdministeredWorkspaces)
+	sets := make([]google.WorkspaceSet, 0, len(administered)+2)
+	sets = append(sets, google.AnyWorkspace(), google.AnyGoogleAccount())
+	for _, domain := range administered {
+		// Named by its domain: the connection a Workspace account's link carries under the
+		// open entry, so the links made before the Workspace was declared keep theirs.
+		sets = append(sets, google.Workspace(domain, domain).Attesting())
+	}
+
+	return google.Workspaces(sets...)
+}
+
+// parseGoogleAdministered reads the administered Workspaces from their setting: the
+// domains, comma-separated, lower-cased; none for an empty setting.
+func parseGoogleAdministered(value string) []string {
+	var domains []string
+	for _, domain := range strings.Split(value, ",") {
+		if domain = strings.ToLower(strings.TrimSpace(domain)); domain != "" {
+			domains = append(domains, domain)
+		}
+	}
+
+	return domains
 }

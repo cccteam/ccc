@@ -12,8 +12,8 @@ import (
 
 // sessionTables verifies that every session Auth the application constructs has its
 // tables in the schema (sessions, users, identities, pending sign-ins, sign-in attempts,
-// the mail links where the Auth sends mail, and the auth events, impersonation and
-// custom data tables where the storage attaches them), that
+// the mail links, sign-in codes and trusted devices where the Auth sends mail, and the
+// auth events, impersonation and custom data tables where the storage attaches them), that
 // two Auths never share a table, that every Auth has at least one sign-in method
 // registered on it and every registration an Auth it reaches, and reports the auths
 // that result with their methods. A construction of a session type v0.13.0 retired (the
@@ -111,14 +111,15 @@ func issuingAuths(a *app.App, p *app.Profile) map[string]bool {
 	return issuers
 }
 
-// authTables lists the tables one construction reads: the mail links table when the
-// Auth sends mail (session.WithMail), since an Auth without mail never opens it, and the
-// tokens and device codes tables when a machine outlet names the Auth as its issuer
-// (issues), since an Auth that issues no tokens never opens them.
+// authTables lists the tables one construction reads: the mail links, sign-in codes and
+// trusted devices tables when the Auth sends mail (session.WithMail), since an Auth
+// without mail never opens the links and mails no code, and the tokens and device codes
+// tables when a machine outlet names the Auth as its issuer (issues), since an Auth that
+// issues no tokens never opens them.
 func authTables(auth *app.Auth, issues bool) []string {
 	tables := []string{auth.SessionTable, auth.UserTable, auth.IdentitiesTable, auth.PendingTable, auth.AttemptsTable}
 	if auth.Mail {
-		tables = append(tables, auth.MailLinksTable)
+		tables = append(tables, auth.MailLinksTable, auth.FactorCodesTable, auth.TrustedDevicesTable)
 	}
 	if issues {
 		tables = append(tables, auth.TokensTable, auth.DeviceCodesTable)
@@ -197,6 +198,9 @@ func authSummary(auths []app.Auth, issuers map[string]bool) (summaries, notes []
 		}
 		if auth.XSRFCookieName != "" {
 			desc += ", xsrf cookie " + auth.XSRFCookieName
+		}
+		if auth.TrustedDeviceCookieName != "" {
+			desc += ", trusted-device cookie " + auth.TrustedDeviceCookieName
 		}
 		if name := app.AuthPackageName(auth.File); name != "" {
 			desc = name + ": " + desc

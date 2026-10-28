@@ -76,3 +76,8 @@ func (a *App) PatchStaffInvitations() http.HandlerFunc {
 func (a *App) SetStaffUserPassword() http.HandlerFunc {
 	return a.StaffUserSurface().SetUserPassword(a, router.Collection())
 }
+
+// ResetStaffUserFactors forgets the browsers a user of the global partition asked to be remembered, so their next sign-in asks for the second factor: Execute on ResetStaffUserFactors, targeting StaffUsers.
+func (a *App) ResetStaffUserFactors() http.HandlerFunc {
+	return a.StaffUserSurface().ResetUserFactors(a, router.Collection())
+}

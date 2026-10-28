@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/url"
+	"os"
 	"slices"
 	"strings"
 	"testing"
@@ -237,7 +238,9 @@ func defaultSeats(ctx context.Context, t *testing.T, b *browser, tenant string) 
 
 // signedInThroughGoogle returns a browser signed in through the staff auth's google
 // registration, simulated: the login route sends the browser to the callback, which
-// signs in whoever APP_GOOGLE_USERNAME names.
+// signs in whoever APP_GOOGLE_USERNAME names. The account's Workspace is not one the
+// deployment administers, so the callback sends the browser to the login page's code
+// step (pending=mfa) and the sign-in code opens the session, as a person enters it.
 func signedInThroughGoogle(ctx context.Context, t *testing.T, s *served) *browser {
 	t.Helper()
 
@@ -246,9 +249,10 @@ func signedInThroughGoogle(ctx context.Context, t *testing.T, s *served) *browse
 	if status != http.StatusFound {
 		t.Fatalf("GET /api/user/google/login: status %d, want %d to the directory", status, http.StatusFound)
 	}
-	if status, location = b.redirect(ctx, location); status != http.StatusFound || !strings.HasSuffix(location, "/dashboard") {
-		t.Fatalf("the callback answered %d to %q, want %d to /dashboard", status, location, http.StatusFound)
+	if status, location = b.redirect(ctx, location); status != http.StatusFound || location != "/login?pending=mfa&returnUrl="+url.QueryEscape("/dashboard") {
+		t.Fatalf("the callback answered %d to %q, want %d to the login page's code step, returning to /dashboard", status, location, http.StatusFound)
 	}
+	b.secondFactor(ctx, os.Getenv("APP_GOOGLE_USERNAME"), false)
 
 	return b
 }

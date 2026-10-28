@@ -111,18 +111,13 @@ func tenantRolesOf(ctx context.Context, t *testing.T, b *browser, tenant, user s
 	return nil
 }
 
-// signedIn returns a browser signed in as the development login: the first request
-// primes the XSRF cookie the login route requires.
+// signedIn returns a browser signed in as the development login, through the password
+// and the second factor every session carries (browser.signIn).
 func signedIn(ctx context.Context, t *testing.T, s *served, user string) *browser {
 	t.Helper()
 
 	b := newBrowser(t, s)
-	if status, body := b.do(ctx, http.MethodGet, "/api/user/session", nil); status != http.StatusOK {
-		t.Fatalf("GET /api/user/session before login as %s: status %d: %s", user, status, body)
-	}
-	if status, body := b.login(ctx, user, adminPassword); status != http.StatusOK {
-		t.Fatalf("login as %s: status %d: %s", user, status, body)
-	}
+	b.signIn(ctx, user)
 
 	return b
 }

@@ -29,6 +29,10 @@ const (
 	FieldRedirectURL  = "RedirectURL"
 	FieldGroupPrefix  = "GroupPrefix"
 	FieldGroupLookup  = "GroupLookup"
+	// The organizations the deployment administers among those the slot admits, whose
+	// sign-ins carry the directory's second factor: tenants by id, Workspaces by domain.
+	FieldAdministeredTenants    = "AdministeredTenants"
+	FieldAdministeredWorkspaces = "AdministeredWorkspaces"
 )
 
 // registrationField is one setting of a directory method under the convention: the
@@ -54,8 +58,10 @@ type registrationField struct {
 var registrationFields = []registrationField{
 	{Field: FieldTenantID, Suffix: "TENANT_ID", Role: RoleTenantID, Kinds: []string{app.MethodAzure}},
 	{Field: FieldTenants, Suffix: "TENANTS", Role: RoleTenants, Kinds: []string{app.MethodAzure}},
+	{Field: FieldAdministeredTenants, Suffix: "ADMINISTERED_TENANTS", Role: RoleAdministeredTenants, Kinds: []string{app.MethodAzure}},
 	{Field: FieldHostedDomain, Suffix: "HOSTED_DOMAIN", Role: RoleHostedDomain, Kinds: []string{app.MethodGoogle}},
 	{Field: FieldWorkspaces, Suffix: "WORKSPACES", Role: RoleWorkspaces, Kinds: []string{app.MethodGoogle}},
+	{Field: FieldAdministeredWorkspaces, Suffix: "ADMINISTERED_WORKSPACES", Role: RoleAdministeredWorkspaces, Kinds: []string{app.MethodGoogle}},
 	{Field: FieldClientID, Suffix: "CLIENT_ID", Role: RoleClientID, Kinds: []string{app.MethodAzure, app.MethodGoogle}, Required: true},
 	{Field: FieldClientSecret, Suffix: "CLIENT_SECRET", Role: RoleClientSecret, Kinds: []string{app.MethodAzure, app.MethodGoogle}, Required: true, Secret: true},
 	{Field: FieldRedirectURL, Suffix: "REDIRECT_URL", Role: RoleRedirectURL, Kinds: []string{app.MethodAzure, app.MethodGoogle}, Required: true},

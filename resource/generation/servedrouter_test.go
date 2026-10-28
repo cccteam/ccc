@@ -645,7 +645,7 @@ func Test_servedRouterData(t *testing.T) {
 				if o.AuthPackage != "" || o.Getter != "" || o.Receiver != "h" || o.HookField != "Default" || o.SessionInterface != "DefaultSession" || o.StubType != "routerDefaultSessionStub" {
 					t.Errorf("default outlet = %+v", o)
 				}
-				if o.AuthLabel != "sessions (azure)" || o.MethodsPath != "/api/user/methods" || o.Pending != (servedPending{Status: "/api/user/pending", Confirm: "/api/user/pending/confirm", Cancel: "/api/user/pending/cancel"}) {
+				if o.AuthLabel != "sessions (azure)" || o.MethodsPath != "/api/user/methods" || o.Pending != (servedPending{Status: "/api/user/pending", Confirm: "/api/user/pending/confirm", Cancel: "/api/user/pending/cancel", SendCode: "/api/user/pending/code", VerifyCode: "/api/user/pending/code/verify", EnrollEmail: "/api/user/pending/email"}) {
 					t.Errorf("default outlet's session = %+v", o)
 				}
 				if len(o.Methods) != 1 || o.Methods[0].Name != "azure" || o.Methods[0].Kind != "azure" || o.Methods[0].Label != "Microsoft" || o.Methods[0].Accessor != "Azure" || o.Methods[0].LoginPath != "/api/user/azure/login" || strings.Join(o.Methods[0].Handlers, ",") != "AzureLogin,AzureCallback,AzureFrontChannelLogout" {
@@ -668,13 +668,14 @@ func Test_servedRouterData(t *testing.T) {
 				want := "GET /api/user/methods Methods,GET /api/user/session Authenticated,DELETE /api/user/session Logout,GET /api/user/pending PendingStatus," +
 					"GET /api/user/azure/login AzureLogin,GET /api/user/azure/callback AzureCallback,GET /api/user/azure/logout AzureFrontChannelLogout," +
 					"POST /api/user/pending/confirm PendingConfirmWithPassword (xsrf),POST /api/user/pending/cancel PendingCancel (xsrf)," +
+					"POST /api/user/pending/code PendingSendCode (xsrf),POST /api/user/pending/code/verify PendingVerifyCode (xsrf),POST /api/user/pending/email PendingEnrollEmail (xsrf)," +
 					"POST /api/user/invitation InvitationOpen (xsrf)," +
 					"POST /api/user/invitation/accept InvitationAccept (xsrf),POST /api/user/email EmailAdd (xsrf),POST /api/user/email/verify EmailVerify (xsrf)"
 				if got := strings.Join(paths, ","); got != want {
 					t.Errorf("routes = %s, want %s", got, want)
 				}
-				if len(o.OpenRoutes) != 7 || len(o.GuardedRoutes) != 3 || len(o.ValidatedRoutes) != 3 {
-					t.Errorf("open, guarded, validated = %d, %d, %d; want 7, 3, 3", len(o.OpenRoutes), len(o.GuardedRoutes), len(o.ValidatedRoutes))
+				if len(o.OpenRoutes) != 7 || len(o.GuardedRoutes) != 6 || len(o.ValidatedRoutes) != 3 {
+					t.Errorf("open, guarded, validated = %d, %d, %d; want 7, 6, 3", len(o.OpenRoutes), len(o.GuardedRoutes), len(o.ValidatedRoutes))
 				}
 				if o.Invitation != (servedInvitation{Open: "/api/user/invitation", Accept: "/api/user/invitation/accept"}) || o.Email != (servedEmail{Add: "/api/user/email", Verify: "/api/user/email/verify"}) || o.SignUp != nil {
 					t.Errorf("invitation, email, sign-up = %+v, %+v, %+v; want the invitation without sign-up, the email routes, no sign-up", o.Invitation, o.Email, o.SignUp)
@@ -711,6 +712,7 @@ func Test_servedRouterData(t *testing.T) {
 					crewRoutes = append(crewRoutes, route.Method+" "+route.Path)
 				}
 				if want := "GET /api/user/methods,GET /api/user/session,DELETE /api/user/session,GET /api/user/pending,POST /api/user/password/login,POST /api/user/password/change,POST /api/user/pending/confirm,POST /api/user/pending/cancel," +
+					"POST /api/user/pending/code,POST /api/user/pending/code/verify,POST /api/user/pending/email," +
 					"POST /api/user/invitation,POST /api/user/invitation/sign-up,POST /api/user/invitation/accept,POST /api/user/email,POST /api/user/email/verify," +
 					"GET /api/user/tokens,POST /api/user/tokens,POST /api/user/tokens/revoke,GET /api/user/device,POST /api/user/device/approve,POST /api/user/device/deny"; strings.Join(crewRoutes, ",") != want {
 					t.Errorf("crew routes = %v, want %s", crewRoutes, want)
@@ -991,18 +993,18 @@ func Test_servedRouterTemplates(t *testing.T) {
 				"//\tevery request: tracing, hooks.Outermost, request logging, SecurityHeaders, httpio.WithParams",
 				"//\tdefault (/api), sessions (azure):",
 				"//\t  NoCaching, CompressionMiddleware, ReleaseHeader, StartSession, SetXSRFToken: GET /api/user/methods, GET /api/user/session, DELETE /api/user/session, GET /api/user/pending, GET /api/user/azure/login, GET /api/user/azure/callback, GET /api/user/azure/logout",
-				"//\t  + ValidateXSRFToken: POST /api/user/pending/confirm, POST /api/user/pending/cancel",
+				"//\t  + ValidateXSRFToken: POST /api/user/pending/confirm, POST /api/user/pending/cancel, POST /api/user/pending/code, POST /api/user/pending/code/verify, POST /api/user/pending/email",
 				"//\t  + ValidateSession, ValidateXSRFToken, CheckAPIVersion: hooks.Default, generatedRoutes",
 				"\t// The default outlet's session surface.\n\tDefaultSession\n",
 				"type DefaultSession interface {\n\tStartSession(next http.Handler) http.Handler\n",
 				"\tMethods(list *session.MethodList) http.HandlerFunc\n",
-				"\tPendingStatus() http.HandlerFunc\n\tPendingConfirmWithPassword() http.HandlerFunc\n\tPendingCancel() http.HandlerFunc\n" +
+				"\tPendingStatus() http.HandlerFunc\n\tPendingConfirmWithPassword() http.HandlerFunc\n\tPendingCancel() http.HandlerFunc\n\tPendingSendCode() http.HandlerFunc\n\tPendingVerifyCode() http.HandlerFunc\n\tPendingEnrollEmail() http.HandlerFunc\n" +
 					"\t// The invitation the login page was sent to, opened (session.InvitationHandlers.Open): the sign-in that follows carries it.\n\tInvitationOpen() http.HandlerFunc\n" +
 					"\t// The invitation accepted by a person already signed in (session.InvitationHandlers.Accept).\n\tInvitationAccept() http.HandlerFunc\n" +
 					"\t// A signed-in person's email address, added by mailing it a verification link (session.EmailHandlers.Add).\n\tEmailAdd() http.HandlerFunc\n" +
 					"\t// The address verified from the mailed link (session.EmailHandlers.Verify).\n\tEmailVerify() http.HandlerFunc\n" +
 					"\t// The azure registration's login, callback and front-channel logout (azure.Method).\n\tAzureLogin() http.HandlerFunc\n\tAzureCallback() http.HandlerFunc\n\tAzureFrontChannelLogout() http.HandlerFunc\n}",
-				"\t\tbounded := r.With(resource.BodyLimit(BodyLimit))\n\t\tguarded := bounded.With(h.ValidateXSRFToken)\n\t\tbounded.Get(\"/api/user/methods\", h.Methods(&session.MethodList{\n\t\t\tMethods: []session.AdvertisedMethod{\n\t\t\t\t{Name: \"azure\", Label: \"Microsoft\", Path: \"/api/user/azure/login\"},\n\t\t\t},\n\t\t\tPending:    session.PendingRoutes{Status: \"/api/user/pending\", Confirm: \"/api/user/pending/confirm\", Cancel: \"/api/user/pending/cancel\"},\n" +
+				"\t\tbounded := r.With(resource.BodyLimit(BodyLimit))\n\t\tguarded := bounded.With(h.ValidateXSRFToken)\n\t\tbounded.Get(\"/api/user/methods\", h.Methods(&session.MethodList{\n\t\t\tMethods: []session.AdvertisedMethod{\n\t\t\t\t{Name: \"azure\", Label: \"Microsoft\", Path: \"/api/user/azure/login\"},\n\t\t\t},\n\t\t\tPending: session.PendingRoutes{\n\t\t\t\tStatus: \"/api/user/pending\", Confirm: \"/api/user/pending/confirm\", Cancel: \"/api/user/pending/cancel\",\n\t\t\t\tSendCode: \"/api/user/pending/code\", VerifyCode: \"/api/user/pending/code/verify\", EnrollEmail: \"/api/user/pending/email\",\n\t\t\t},\n" +
 					"\t\t\tInvitation: session.InvitationRoutes{Open: \"/api/user/invitation\", Accept: \"/api/user/invitation/accept\"},\n\t\t\tEmail:      session.EmailRoutes{Add: \"/api/user/email\", Verify: \"/api/user/email/verify\"},\n\t\t}))\n",
 				"\t\tguarded.Post(\"/api/user/invitation\", h.InvitationOpen())\n",
 				"\t\tguarded.Post(\"/api/user/pending/confirm\", h.PendingConfirmWithPassword())\n\t\tguarded.Post(\"/api/user/pending/cancel\", h.PendingCancel())\n",
@@ -1103,7 +1105,7 @@ func Test_servedRouterTemplates(t *testing.T) {
 			wantRouter: []string{
 				"//\tdefault (/api), sessions of the crew auth (password):",
 				"//\t  BindAuth(crew.Name), NoCaching, CompressionMiddleware, ReleaseHeader, StartSession, SetXSRFToken: GET /api/user/methods, GET /api/user/session, DELETE /api/user/session, GET /api/user/pending",
-				"//\t  + ValidateXSRFToken: POST /api/user/password/login, POST /api/user/password/change, POST /api/user/pending/confirm, POST /api/user/pending/cancel",
+				"//\t  + ValidateXSRFToken: POST /api/user/password/login, POST /api/user/password/change, POST /api/user/pending/confirm, POST /api/user/pending/cancel, POST /api/user/pending/code, POST /api/user/pending/code/verify, POST /api/user/pending/email",
 				"//\tportal (/portal/api), sessions of the members auth (google):",
 				"//\t  + ValidateSession, ValidateXSRFToken: POST /api/user/invitation/accept, POST /api/user/email, POST /api/user/email/verify, GET /api/user/tokens, POST /api/user/tokens, POST /api/user/tokens/revoke, GET /api/user/device, POST /api/user/device/approve, POST /api/user/device/deny",
 				"//\tdroids (/droids), bearer tokens of the crew auth:\n//\t  BindAuth(crew.Name), NoCaching, CompressionMiddleware, ReleaseHeader: POST /droids/oauth/device/authorize, POST /droids/oauth/token\n//\t  + ValidateToken: hooks.Droids, generatedDroidsRoutes",

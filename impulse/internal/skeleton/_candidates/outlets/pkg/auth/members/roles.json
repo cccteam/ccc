@@ -38,6 +38,9 @@
           "Execute": [
             {
               "resource": "UnlinkMembersTenantUserIdentity"
+            },
+            {
+              "resource": "ResetMembersTenantUserFactors"
             }
           ],
           "List": [

@@ -22,9 +22,12 @@ import (
 // were, nothing written in between. A directory identity whose verified email is a
 // password persona's login is not taken at the directory's word: the sign-in waits for
 // that persona's password, which links the identity and opens the session as the
-// persona, whose seats stay the application's.
+// persona, whose seats stay the application's. The fleet administers its Workspace
+// (auth.Directory.Administered), so a sign-in through the directory carries the
+// Workspace's second factor and is never asked for the sign-in code, the sign-in a
+// password confirmed included.
 //
-// Demonstrates: auth.multi-method, auth.skipauth-directory, tenancy.default-seat.
+// Demonstrates: auth.multi-method, auth.skipauth-directory, tenancy.default-seat, auth.attested-directory.
 func TestConsoleGoogleLogin(t *testing.T) {
 	t.Parallel()
 
@@ -96,6 +99,9 @@ func TestConsoleGoogleLogin(t *testing.T) {
 	if status, body := taken.do(ctx, http.MethodPost, consoleAPI+"/user/pending/confirm", confirmation); status != http.StatusOK {
 		t.Fatalf("confirming the sign-in with the marshal's password: status %d: %s", status, body)
 	}
+	// The password confirmed the identity and the session opened at once: the sign-in
+	// is the directory's, which attests for the marshal, so no code follows the
+	// confirmation.
 	if sess := taken.session(ctx); sess["authenticated"] != true || sess["username"] != "marshal" {
 		t.Fatalf("session after the confirmation = %v, want authenticated as marshal", sess)
 	}

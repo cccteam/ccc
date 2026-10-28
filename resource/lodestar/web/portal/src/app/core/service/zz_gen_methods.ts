@@ -39,6 +39,14 @@ export interface UnlinkMembersUserIdentity {
   identity: string;
 }
 
+/** The body ResetMembersUserFactors takes. */
+export interface ResetMembersUserFactorsConfig {
+  user: string | FieldPointer;
+}
+export interface ResetMembersUserFactors {
+  user: string;
+}
+
 /** The body UnlinkMembersSectorUserIdentity takes. */
 export interface UnlinkMembersSectorUserIdentityConfig {
   user: string | FieldPointer;
@@ -47,6 +55,14 @@ export interface UnlinkMembersSectorUserIdentityConfig {
 export interface UnlinkMembersSectorUserIdentity {
   user: string;
   identity: string;
+}
+
+/** The body ResetMembersSectorUserFactors takes. */
+export interface ResetMembersSectorUserFactorsConfig {
+  user: string | FieldPointer;
+}
+export interface ResetMembersSectorUserFactors {
+  user: string;
 }
 
 export interface RPCFieldMeta {
@@ -104,11 +120,23 @@ const methodMap: MethodMap = {
       { fieldName: 'identity', displayType: 'uuid' },
     ],
   },
+  [Methods.ResetMembersUserFactors]: {
+    route: 'reset-members-user-factors',
+    fields: [
+      { fieldName: 'user', displayType: 'uuid' },
+    ],
+  },
   [Methods.UnlinkMembersSectorUserIdentity]: {
     route: 'unlink-members-sector-user-identity',
     fields: [
       { fieldName: 'user', displayType: 'uuid' },
       { fieldName: 'identity', displayType: 'uuid' },
+    ],
+  },
+  [Methods.ResetMembersSectorUserFactors]: {
+    route: 'reset-members-sector-user-factors',
+    fields: [
+      { fieldName: 'user', displayType: 'uuid' },
     ],
   },
 };

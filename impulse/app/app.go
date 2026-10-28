@@ -143,8 +143,15 @@ type Auth struct {
 	// default. Read when the Auth sends mail (Mail).
 	MailLinksTable string
 	// Mail reports an Auth constructed with session.WithMail: it mails invitations,
-	// address verifications and sign-up links, and reads the mail links table.
+	// address verifications, sign-up links and sign-in codes, and reads the mail links,
+	// sign-in codes and trusted devices tables.
 	Mail bool
+	// FactorCodesTable is the sign-in codes table the second factor's mailed codes are
+	// kept in, and TrustedDevicesTable the browsers people asked to be remembered after
+	// a code: WithFactorCodesTableName and WithTrustedDevicesTableName or the library
+	// defaults. Read when the Auth sends mail (Mail), since the code is mailed.
+	FactorCodesTable    string
+	TrustedDevicesTable string
 	// TokensTable is the tokens table the bearer tokens the Auth issues are kept in,
 	// and DeviceCodesTable the device authorizations command-line clients wait on:
 	// WithTokensTableName and WithDeviceCodesTableName or the library defaults. Read
@@ -166,6 +173,9 @@ type Auth struct {
 	CookieName string
 	// XSRFCookieName is the WithXSRFCookieName argument, or empty for the library default.
 	XSRFCookieName string
+	// TrustedDeviceCookieName is the WithTrustedDeviceCookieName argument, the cookie a
+	// remembered browser carries its token in, or empty for the library default.
+	TrustedDeviceCookieName string
 	// Impersonation reports a storage constructed with sessionstorage.WithImpersonation.
 	Impersonation bool
 	// ImpersonationTable is the impersonation table's name when the code states it: a

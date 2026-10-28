@@ -36,7 +36,7 @@ func TestLogin(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			b := newBrowser(t, s.console)
+			b := newBrowser(t, s, s.console)
 
 			// The first request primes the XSRF cookie the login route requires.
 			if status, body := b.do(ctx, http.MethodGet, "/api/user/session", nil); status != http.StatusOK {
@@ -46,6 +46,11 @@ func TestLogin(t *testing.T) {
 			status, body := b.login(ctx, tt.user, tt.password)
 			if status != tt.wantLogin {
 				t.Fatalf("login status = %d, want %d: %s", status, tt.wantLogin, body)
+			}
+			if status == http.StatusOK {
+				// The password admitted the login, and the session opens once the second
+				// factor every session carries is entered: the sign-in code the auth mailed.
+				b.secondFactor(ctx, tt.user, false)
 			}
 			if tt.wantLogin != http.StatusOK {
 				if status, body := b.do(ctx, http.MethodGet, "/api/user-domains", nil); status != http.StatusUnauthorized {

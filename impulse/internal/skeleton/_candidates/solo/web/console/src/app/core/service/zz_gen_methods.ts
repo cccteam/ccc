@@ -32,6 +32,14 @@ export interface SetStaffUserPassword {
   password: string;
 }
 
+/** The body ResetStaffUserFactors takes. */
+export interface ResetStaffUserFactorsConfig {
+  user: string | FieldPointer;
+}
+export interface ResetStaffUserFactors {
+  user: string;
+}
+
 export interface RPCFieldMeta {
   fieldName: string;
   displayType: ValidRPCTypes;
@@ -78,6 +86,12 @@ const methodMap: MethodMap = {
     fields: [
       { fieldName: 'user', displayType: 'uuid' },
       { fieldName: 'password', displayType: 'string' },
+    ],
+  },
+  [Methods.ResetStaffUserFactors]: {
+    route: 'reset-staff-user-factors',
+    fields: [
+      { fieldName: 'user', displayType: 'uuid' },
     ],
   },
 };

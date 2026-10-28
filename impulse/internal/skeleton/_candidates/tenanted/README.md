@@ -191,8 +191,11 @@ holds no tenant and creates one from the dashboard), and serves the API on
 "Starting Server" in the server pane.
 
 The auths mail: an administrator invites a person by address with the roles the invitation
-seats, and a signed-in person adds and verifies an address. In development the mail is
-written to the server's log, link included, and nothing is sent; a deployment names a
+seats, a signed-in person adds and verifies an address, and every sign-in that carries no
+second factor of its own (a password, or a directory the deployment does not administer)
+is mailed a sign-in code, which the login page asks for; a browser the person asks to be
+remembered is not asked again. In development the mail is written to the server's log,
+link and code included, and nothing is sent; a deployment names a
 Workspace mailbox (`APP_MAIL_MAILBOX`, `APP_MAIL_APP_PASSWORD`, and `APP_MAIL_FROM` where the
 mail is from an alias of that account) and the relay sends it. Every
 link opens the login page under `APP_PUBLIC_URL`.

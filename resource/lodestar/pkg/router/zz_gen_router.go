@@ -8,7 +8,7 @@
 //	  by hand under /beacons/: request log on event, traces off
 //	default (/console/api), sessions of the crew auth (password, google, sign-up):
 //	  BindAuth(crew.Name), NoCaching, CompressionMiddleware, ReleaseHeader, StartSession, SetXSRFToken: GET /console/api/user/methods, GET /console/api/user/session, DELETE /console/api/user/session, GET /console/api/user/pending, GET /console/api/user/google/login, GET /console/api/user/google/callback, GET /console/api/user/sign-up/login, GET /console/api/user/sign-up/callback
-//	  + ValidateXSRFToken: POST /console/api/user/password/login, POST /console/api/user/password/change, POST /console/api/user/pending/confirm, POST /console/api/user/pending/cancel, POST /console/api/user/invitation, POST /console/api/user/invitation/sign-up, POST /console/api/user/sign-up, POST /console/api/user/sign-up/open, POST /console/api/user/sign-up/complete
+//	  + ValidateXSRFToken: POST /console/api/user/password/login, POST /console/api/user/password/change, POST /console/api/user/pending/confirm, POST /console/api/user/pending/cancel, POST /console/api/user/pending/code, POST /console/api/user/pending/code/verify, POST /console/api/user/pending/email, POST /console/api/user/invitation, POST /console/api/user/invitation/sign-up, POST /console/api/user/sign-up, POST /console/api/user/sign-up/open, POST /console/api/user/sign-up/complete
 //	  + ValidateSession, ValidateXSRFToken: POST /console/api/user/invitation/accept, POST /console/api/user/email, POST /console/api/user/email/verify, GET /console/api/user/tokens, POST /console/api/user/tokens, POST /console/api/user/tokens/revoke, GET /console/api/user/device, POST /console/api/user/device/approve, POST /console/api/user/device/deny
 //	  + ValidateSession, ValidateXSRFToken, CheckAPIVersion (oldest answered 0.1.0): hooks.Default, generatedRoutes
 //	droids (/droids), bearer tokens of the crew auth:
@@ -17,7 +17,7 @@
 //	  POST /droids/sectors/{sectorID}/ingest-droid-reports: request log on event
 //	portal (/portal/api), sessions of the members auth (directory):
 //	  BindAuth(members.Name), NoCaching, CompressionMiddleware, ReleaseHeader, StartSession, SetXSRFToken: GET /portal/api/user/methods, GET /portal/api/user/session, DELETE /portal/api/user/session, GET /portal/api/user/pending, GET /portal/api/user/directory/login, GET /portal/api/user/directory/callback
-//	  + ValidateXSRFToken: POST /portal/api/user/pending/confirm, POST /portal/api/user/pending/cancel, POST /portal/api/user/invitation
+//	  + ValidateXSRFToken: POST /portal/api/user/pending/confirm, POST /portal/api/user/pending/cancel, POST /portal/api/user/pending/code, POST /portal/api/user/pending/code/verify, POST /portal/api/user/pending/email, POST /portal/api/user/invitation
 //	  + ValidateSession, ValidateXSRFToken: POST /portal/api/user/invitation/accept, POST /portal/api/user/email, POST /portal/api/user/email/verify
 //	  + ValidateSession, ValidateXSRFToken, CheckAPIVersion: hooks.Portal, generatedPortalRoutes
 //	scheduled (/_scheduled), Cloud Scheduler's token:
@@ -118,10 +118,15 @@ type DefaultSession interface {
 	// router hands it the methods below at the paths it mounts them.
 	Methods(list *session.MethodList) http.HandlerFunc
 	// The pending sign-in (session.PendingHandlers): a sign-in that waits for a
-	// password confirmation or the application's MFA step.
+	// password confirmation or for the second factor, and the second factor's step:
+	// the sign-in code the Auth mails, verified from the login page, and the address a
+	// person who holds none gives for it.
 	PendingStatus() http.HandlerFunc
 	PendingConfirmWithPassword() http.HandlerFunc
 	PendingCancel() http.HandlerFunc
+	PendingSendCode() http.HandlerFunc
+	PendingVerifyCode() http.HandlerFunc
+	PendingEnrollEmail() http.HandlerFunc
 	// The invitation the login page was sent to, opened (session.InvitationHandlers.Open): the sign-in that follows carries it.
 	InvitationOpen() http.HandlerFunc
 	// The invitation accepted by a person already signed in (session.InvitationHandlers.Accept).
@@ -180,10 +185,15 @@ type PortalSession interface {
 	// router hands it the methods below at the paths it mounts them.
 	Methods(list *session.MethodList) http.HandlerFunc
 	// The pending sign-in (session.PendingHandlers): a sign-in that waits for a
-	// password confirmation or the application's MFA step.
+	// password confirmation or for the second factor, and the second factor's step:
+	// the sign-in code the Auth mails, verified from the login page, and the address a
+	// person who holds none gives for it.
 	PendingStatus() http.HandlerFunc
 	PendingConfirmWithPassword() http.HandlerFunc
 	PendingCancel() http.HandlerFunc
+	PendingSendCode() http.HandlerFunc
+	PendingVerifyCode() http.HandlerFunc
+	PendingEnrollEmail() http.HandlerFunc
 	// The invitation the login page was sent to, opened (session.InvitationHandlers.Open): the sign-in that follows carries it.
 	InvitationOpen() http.HandlerFunc
 	// The invitation accepted by a person already signed in (session.InvitationHandlers.Accept).
@@ -296,7 +306,10 @@ func New(h Handlers, hooks Hooks) *chi.Mux {
 				{Name: "google", Label: "Google", Path: "/console/api/user/google/login"},
 				{Name: "sign-up", Label: "Sign up with Google", Path: "/console/api/user/sign-up/login"},
 			},
-			Pending:        session.PendingRoutes{Status: "/console/api/user/pending", Confirm: "/console/api/user/pending/confirm", Cancel: "/console/api/user/pending/cancel"},
+			Pending: session.PendingRoutes{
+				Status: "/console/api/user/pending", Confirm: "/console/api/user/pending/confirm", Cancel: "/console/api/user/pending/cancel",
+				SendCode: "/console/api/user/pending/code", VerifyCode: "/console/api/user/pending/code/verify", EnrollEmail: "/console/api/user/pending/email",
+			},
 			ChangePassword: "/console/api/user/password/change",
 			Invitation:     session.InvitationRoutes{Open: "/console/api/user/invitation", Accept: "/console/api/user/invitation/accept", SignUp: "/console/api/user/invitation/sign-up"},
 			Email:          session.EmailRoutes{Add: "/console/api/user/email", Verify: "/console/api/user/email/verify"},
@@ -313,6 +326,9 @@ func New(h Handlers, hooks Hooks) *chi.Mux {
 		guarded.Post("/console/api/user/password/change", h.PasswordChange())
 		guarded.Post("/console/api/user/pending/confirm", h.PendingConfirmWithPassword())
 		guarded.Post("/console/api/user/pending/cancel", h.PendingCancel())
+		guarded.Post("/console/api/user/pending/code", h.PendingSendCode())
+		guarded.Post("/console/api/user/pending/code/verify", h.PendingVerifyCode())
+		guarded.Post("/console/api/user/pending/email", h.PendingEnrollEmail())
 		guarded.Post("/console/api/user/invitation", h.InvitationOpen())
 		guarded.Post("/console/api/user/invitation/sign-up", h.InvitationSignUp())
 		guarded.Post("/console/api/user/sign-up", h.SignUpStart())
@@ -412,7 +428,10 @@ func New(h Handlers, hooks Hooks) *chi.Mux {
 			Methods: []session.AdvertisedMethod{
 				{Name: "directory", Label: "Company directory", Path: "/portal/api/user/directory/login"},
 			},
-			Pending:    session.PendingRoutes{Status: "/portal/api/user/pending", Confirm: "/portal/api/user/pending/confirm", Cancel: "/portal/api/user/pending/cancel"},
+			Pending: session.PendingRoutes{
+				Status: "/portal/api/user/pending", Confirm: "/portal/api/user/pending/confirm", Cancel: "/portal/api/user/pending/cancel",
+				SendCode: "/portal/api/user/pending/code", VerifyCode: "/portal/api/user/pending/code/verify", EnrollEmail: "/portal/api/user/pending/email",
+			},
 			Invitation: session.InvitationRoutes{Open: "/portal/api/user/invitation", Accept: "/portal/api/user/invitation/accept"},
 			Email:      session.EmailRoutes{Add: "/portal/api/user/email", Verify: "/portal/api/user/email/verify"},
 		}))
@@ -423,6 +442,9 @@ func New(h Handlers, hooks Hooks) *chi.Mux {
 		bounded.Get("/portal/api/user/directory/callback", portalSession.DirectoryCallback())
 		guarded.Post("/portal/api/user/pending/confirm", portalSession.PendingConfirmWithPassword())
 		guarded.Post("/portal/api/user/pending/cancel", portalSession.PendingCancel())
+		guarded.Post("/portal/api/user/pending/code", portalSession.PendingSendCode())
+		guarded.Post("/portal/api/user/pending/code/verify", portalSession.PendingVerifyCode())
+		guarded.Post("/portal/api/user/pending/email", portalSession.PendingEnrollEmail())
 		guarded.Post("/portal/api/user/invitation", portalSession.InvitationOpen())
 
 		r.Group(func(r chi.Router) {

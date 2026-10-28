@@ -32,6 +32,14 @@ export interface SetStaffUserPassword {
   password: string;
 }
 
+/** The body ResetStaffUserFactors takes. */
+export interface ResetStaffUserFactorsConfig {
+  user: string | FieldPointer;
+}
+export interface ResetStaffUserFactors {
+  user: string;
+}
+
 /** The body SetStaffTenantUserPassword takes. */
 export interface SetStaffTenantUserPasswordConfig {
   user: string | FieldPointer;
@@ -40,6 +48,14 @@ export interface SetStaffTenantUserPasswordConfig {
 export interface SetStaffTenantUserPassword {
   user: string;
   password: string;
+}
+
+/** The body ResetStaffTenantUserFactors takes. */
+export interface ResetStaffTenantUserFactorsConfig {
+  user: string | FieldPointer;
+}
+export interface ResetStaffTenantUserFactors {
+  user: string;
 }
 
 export interface RPCFieldMeta {
@@ -90,11 +106,23 @@ const methodMap: MethodMap = {
       { fieldName: 'password', displayType: 'string' },
     ],
   },
+  [Methods.ResetStaffUserFactors]: {
+    route: 'reset-staff-user-factors',
+    fields: [
+      { fieldName: 'user', displayType: 'uuid' },
+    ],
+  },
   [Methods.SetStaffTenantUserPassword]: {
     route: 'set-staff-tenant-user-password',
     fields: [
       { fieldName: 'user', displayType: 'uuid' },
       { fieldName: 'password', displayType: 'string' },
+    ],
+  },
+  [Methods.ResetStaffTenantUserFactors]: {
+    route: 'reset-staff-tenant-user-factors',
+    fields: [
+      { fieldName: 'user', displayType: 'uuid' },
     ],
   },
 };

@@ -1,0 +1,5 @@
+DROP INDEX CrewSessionTrustedDevicesByUser;
+DROP INDEX CrewSessionTrustedDevicesByTokenHash;
+DROP TABLE CrewSessionTrustedDevices;
+DROP INDEX CrewSessionFactorCodesByPending;
+DROP TABLE CrewSessionFactorCodes;

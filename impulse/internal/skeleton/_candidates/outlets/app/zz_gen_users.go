@@ -77,6 +77,11 @@ func (a *App) SetStaffUserPassword() http.HandlerFunc {
 	return a.StaffUserSurface().SetUserPassword(a, router.Collection())
 }
 
+// ResetStaffUserFactors forgets the browsers a user of the global partition asked to be remembered, so their next sign-in asks for the second factor: Execute on ResetStaffUserFactors, targeting StaffUsers.
+func (a *App) ResetStaffUserFactors() http.HandlerFunc {
+	return a.StaffUserSurface().ResetUserFactors(a, router.Collection())
+}
+
 // StaffTenantUsers serves the users of the route's tenant: List on StaffTenantUsers.
 func (a *App) StaffTenantUsers() http.HandlerFunc {
 	return a.StaffUserSurface().TenantUsers(a, router.Collection())
@@ -135,6 +140,11 @@ func (a *App) PatchStaffTenantInvitations() http.HandlerFunc {
 // SetStaffTenantUserPassword sets a temporary password on a user of the route's tenant: Execute on SetStaffTenantUserPassword, targeting StaffTenantUsers.
 func (a *App) SetStaffTenantUserPassword() http.HandlerFunc {
 	return a.StaffUserSurface().SetTenantUserPassword(a, router.Collection())
+}
+
+// ResetStaffTenantUserFactors forgets the browsers a user of the route's tenant asked to be remembered, so their next sign-in asks for the second factor: Execute on ResetStaffTenantUserFactors, targeting StaffTenantUsers.
+func (a *App) ResetStaffTenantUserFactors() http.HandlerFunc {
+	return a.StaffUserSurface().ResetTenantUserFactors(a, router.Collection())
 }
 
 // The Members auth's user-management surface (github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/outlets/pkg/auth/members): the application
@@ -204,6 +214,11 @@ func (a *App) UnlinkMembersUserIdentity() http.HandlerFunc {
 	return a.MembersUserSurface().UnlinkUserIdentity(a, router.Collection())
 }
 
+// ResetMembersUserFactors forgets the browsers a user of the global partition asked to be remembered, so their next sign-in asks for the second factor: Execute on ResetMembersUserFactors, targeting MembersUsers.
+func (a *App) ResetMembersUserFactors() http.HandlerFunc {
+	return a.MembersUserSurface().ResetUserFactors(a, router.Collection())
+}
+
 // MembersTenantUsers serves the users of the route's tenant: List on MembersTenantUsers.
 func (a *App) MembersTenantUsers() http.HandlerFunc {
 	return a.MembersUserSurface().TenantUsers(a, router.Collection())
@@ -262,4 +277,9 @@ func (a *App) PatchMembersTenantInvitations() http.HandlerFunc {
 // UnlinkMembersTenantUserIdentity unlinks an identity from a user of the route's tenant: Execute on UnlinkMembersTenantUserIdentity, targeting MembersTenantUsers.
 func (a *App) UnlinkMembersTenantUserIdentity() http.HandlerFunc {
 	return a.MembersUserSurface().UnlinkTenantUserIdentity(a, router.Collection())
+}
+
+// ResetMembersTenantUserFactors forgets the browsers a user of the route's tenant asked to be remembered, so their next sign-in asks for the second factor: Execute on ResetMembersTenantUserFactors, targeting MembersTenantUsers.
+func (a *App) ResetMembersTenantUserFactors() http.HandlerFunc {
+	return a.MembersUserSurface().ResetTenantUserFactors(a, router.Collection())
 }

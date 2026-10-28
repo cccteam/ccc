@@ -321,6 +321,7 @@ func openCrewAuth(ctx context.Context, db *database.Driver, env *dataConfig, coo
 			RedirectURL:  env.CrewRedirectURL,
 			Connection:   env.CrewConnection,
 			HostedDomain: env.CrewHostedDomain,
+			Administered: env.CrewAdministered,
 		},
 		SignUpRedirectURL: env.CrewSignUpRedirectURL,
 		DevicePage:        "/console/device",
@@ -357,6 +358,7 @@ func openMembersAuth(ctx context.Context, db *database.Driver, env *dataConfig, 
 			RedirectURL:  env.MembersRedirectURL,
 			Connection:   env.MembersConnection,
 			HostedDomain: env.MembersHostedDomain,
+			Administered: env.MembersAdministered,
 			GroupPrefix:  env.MembersGroupPrefix,
 			GroupLookup:  env.MembersGroupLookup,
 		},
@@ -442,15 +444,18 @@ type dataConfig struct {
 	CookieKey string `env:"APP_COOKIE_KEY"`
 	// Each auth's Google registration (pkg/auth/crew, pkg/auth/members): the application's
 	// client credentials, the callback Google returns the browser to, the Workspace domain
-	// logins are restricted to, the prefix of the Google Groups that carry roles, and how
-	// far the groups lookup reaches: direct (the default), or nested for a directory that
-	// nests its role groups. Under the session library's skipAuth build tag only the
-	// redirect URL, the connection, the hosted domain, and the group prefix are read.
+	// logins are restricted to, whether the fleet administers the Workspace (its people
+	// then carry its second factor and are never asked for the sign-in code), the prefix
+	// of the Google Groups that carry roles, and how far the groups lookup reaches:
+	// direct (the default), or nested for a directory that nests its role groups. Under
+	// the session library's skipAuth build tag only the redirect URL, the connection,
+	// the hosted domain, the administered flag and the group prefix are read.
 	CrewClientID     string `env:"APP_CREW_OIDC_CLIENT_ID"`
 	CrewClientSecret string `env:"APP_CREW_OIDC_CLIENT_SECRET"`
 	CrewRedirectURL  string `env:"APP_CREW_OIDC_REDIRECT_URL"`
 	CrewConnection   string `env:"APP_CREW_OIDC_CONNECTION"`
 	CrewHostedDomain string `env:"APP_CREW_OIDC_HOSTED_DOMAIN"`
+	CrewAdministered bool   `env:"APP_CREW_OIDC_ADMINISTERED"`
 	// The crew auth's sign-up registration (any Google account, open sign-up): its own
 	// callback under the console's API, beside the directory's; the client is the
 	// directory's. Under the skipAuth tag the registration's simulated person is
@@ -461,6 +466,7 @@ type dataConfig struct {
 	MembersRedirectURL    string `env:"APP_MEMBERS_OIDC_REDIRECT_URL"`
 	MembersConnection     string `env:"APP_MEMBERS_OIDC_CONNECTION"`
 	MembersHostedDomain   string `env:"APP_MEMBERS_OIDC_HOSTED_DOMAIN"`
+	MembersAdministered   bool   `env:"APP_MEMBERS_OIDC_ADMINISTERED"`
 	MembersGroupPrefix    string `env:"APP_MEMBERS_OIDC_GROUP_PREFIX"`
 	MembersGroupLookup    string `env:"APP_MEMBERS_OIDC_GROUP_LOOKUP"`
 

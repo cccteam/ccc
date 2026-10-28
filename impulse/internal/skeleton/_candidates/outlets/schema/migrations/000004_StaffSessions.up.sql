@@ -208,3 +208,45 @@ CREATE TABLE StaffSessionDeviceCodes (
 CREATE UNIQUE INDEX StaffSessionDeviceCodesByHash ON StaffSessionDeviceCodes(DeviceCodeHash);
 
 CREATE INDEX StaffSessionDeviceCodesByUserCode ON StaffSessionDeviceCodes(UserCode, ExpiresAt);
+
+-- The second factor of the staff auth's sessions: the sign-in codes and the trusted
+-- devices. A sign-in code is one code mailed for a pending sign-in (PendingId): the mail
+-- carries the code and the row keeps its hash; the row is live while it is not consumed
+-- and not expired, Attempts counts the wrong codes entered against it, and a new code for
+-- the same pending sign-in consumes the earlier one. A trusted device is a browser a
+-- person asked to be remembered after a code (UserId): the browser holds an opaque token
+-- in the auth's trusted-device cookie and the row keeps its hash; it stands in for the
+-- factor while it is not revoked and not expired, and an administrator revokes every
+-- browser of a person's from the users surface. A code goes with its pending sign-in and
+-- a device with its user. CreatedAt, ConsumedAt, LastUsedAt and RevokedAt take the commit
+-- time; ExpiresAt is the library's deadline, written as given.
+CREATE TABLE StaffSessionFactorCodes (
+    Id         STRING(36) NOT NULL,
+    PendingId  STRING(36) NOT NULL,
+    Email      STRING(MAX) NOT NULL,
+    CodeHash   BYTES(32) NOT NULL,
+    Attempts   INT64 NOT NULL,
+    CreatedAt  TIMESTAMP NOT NULL OPTIONS (allow_commit_timestamp = true),
+    ExpiresAt  TIMESTAMP NOT NULL,
+    ConsumedAt TIMESTAMP OPTIONS (allow_commit_timestamp = true),
+    CONSTRAINT CK_StaffSessionFactorCodesId CHECK (REGEXP_CONTAINS(Id, r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')),
+    CONSTRAINT FK_StaffSessionFactorCodes_StaffSessionPendingSignIns FOREIGN KEY (PendingId) REFERENCES StaffSessionPendingSignIns (Id) ON DELETE CASCADE,
+) PRIMARY KEY (Id);
+
+CREATE INDEX StaffSessionFactorCodesByPending ON StaffSessionFactorCodes(PendingId, ConsumedAt, ExpiresAt);
+
+CREATE TABLE StaffSessionTrustedDevices (
+    Id         STRING(36) NOT NULL,
+    UserId     STRING(36) NOT NULL,
+    TokenHash  BYTES(32) NOT NULL,
+    CreatedAt  TIMESTAMP NOT NULL OPTIONS (allow_commit_timestamp = true),
+    ExpiresAt  TIMESTAMP NOT NULL,
+    LastUsedAt TIMESTAMP OPTIONS (allow_commit_timestamp = true),
+    RevokedAt  TIMESTAMP OPTIONS (allow_commit_timestamp = true),
+    CONSTRAINT CK_StaffSessionTrustedDevicesId CHECK (REGEXP_CONTAINS(Id, r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')),
+    CONSTRAINT FK_StaffSessionTrustedDevices_StaffSessionUsers FOREIGN KEY (UserId) REFERENCES StaffSessionUsers (Id) ON DELETE CASCADE,
+) PRIMARY KEY (Id);
+
+CREATE UNIQUE INDEX StaffSessionTrustedDevicesByTokenHash ON StaffSessionTrustedDevices(TokenHash);
+
+CREATE INDEX StaffSessionTrustedDevicesByUser ON StaffSessionTrustedDevices(UserId, RevokedAt);

@@ -31,12 +31,7 @@ func TestDeclaration_whoMayEnterATenant(t *testing.T) {
 	s := newServed(ctx, t)
 
 	admin := newBrowser(t, s, consoleAPI)
-	if status, body := admin.do(ctx, http.MethodGet, consoleAPI+"/user/session", nil); status != http.StatusOK {
-		t.Fatalf("GET console session before login: status %d: %s", status, body)
-	}
-	if status, body := admin.login(ctx, adminUser, adminPassword); status != http.StatusOK {
-		t.Fatalf("the administrator's login: status %d: %s", status, body)
-	}
+	admin.signIn(ctx, adminUser)
 
 	// The member reaches north through the seeded declaration of the directory.
 	client := newBrowser(t, s, portalAPI)
@@ -91,12 +86,7 @@ func TestDeclaration_whoMayEnterATenant(t *testing.T) {
 	// role, keeps every tenant, and the portal's member, who came through the directory,
 	// keeps north.
 	member := newBrowser(t, s, consoleAPI)
-	if status, body := member.do(ctx, http.MethodGet, consoleAPI+"/user/session", nil); status != http.StatusOK {
-		t.Fatalf("GET console session before the member's login: status %d: %s", status, body)
-	}
-	if status, body := member.login(ctx, memberUser, adminPassword); status != http.StatusOK {
-		t.Fatalf("the staff member's login: status %d: %s", status, body)
-	}
+	member.signIn(ctx, memberUser)
 	if domains := chart(ctx, t, member, consoleAPI); !slices.Equal(domains, []string{north}) {
 		t.Fatalf("the staff member's chart before = %v, want [%s]", domains, north)
 	}

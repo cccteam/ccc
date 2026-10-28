@@ -259,6 +259,21 @@ func TestGeneratedAuthorizationMatrix(t *testing.T) {
 			headers:      map[string]string{"X-Dry-Run": "true"},
 			wantStatuses: []int{http.StatusForbidden},
 		},
+		{
+			name:         "ResetStaffUserFactors denied",
+			method:       http.MethodPost,
+			target:       "/api/reset-staff-user-factors",
+			body:         `{}`,
+			wantStatuses: []int{http.StatusForbidden},
+		},
+		{
+			name:         "ResetStaffUserFactors dry run denied",
+			method:       http.MethodPost,
+			target:       "/api/reset-staff-user-factors",
+			body:         `{}`,
+			headers:      map[string]string{"X-Dry-Run": "true"},
+			wantStatuses: []int{http.StatusForbidden},
+		},
 	}
 
 	db, err := prepareDatabase(t.Context(), t)

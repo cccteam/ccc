@@ -328,6 +328,12 @@ const (
 	RoleTenantID   Role = "tenant-id"
 	RoleTenants    Role = "tenants"
 	RoleWorkspaces Role = "workspaces"
+	// The organizations the deployment administers among those a registration admits
+	// (tenants by id, Workspaces by domain), whose sign-ins carry the directory's second
+	// factor and are not asked for the sign-in code; empty where the deployment
+	// administers none.
+	RoleAdministeredTenants    Role = "administered-tenants"
+	RoleAdministeredWorkspaces Role = "administered-workspaces"
 	// RoleAdministrator is the sign-in name of an auth's first administrator
 	// (APP_<AUTH>_ADMINISTRATOR), placed per environment: the deployment's migrate command
 	// seeds the administrator role membership under it while the auth's users table holds
@@ -358,7 +364,7 @@ func (r Role) Derived() bool {
 // Placed reports a role whose value is a placement variable.
 func (r Role) Placed() bool {
 	switch r {
-	case RoleClientID, RoleHostedDomain, RoleGroupPrefix, RoleGroupLookup, RoleTenantID, RoleTenants, RoleWorkspaces, RoleAdministrator, RoleMailbox, RoleMailFrom:
+	case RoleClientID, RoleHostedDomain, RoleGroupPrefix, RoleGroupLookup, RoleTenantID, RoleTenants, RoleWorkspaces, RoleAdministeredTenants, RoleAdministeredWorkspaces, RoleAdministrator, RoleMailbox, RoleMailFrom:
 		return true
 	default:
 		return false
@@ -379,7 +385,7 @@ func (r Role) PerEnvironment() bool {
 // site does.
 func (r Role) ConstructionTime() bool {
 	switch r {
-	case RoleHostedDomain, RoleGroupPrefix, RoleTenantID, RoleTenants, RoleWorkspaces:
+	case RoleHostedDomain, RoleGroupPrefix, RoleTenantID, RoleTenants, RoleWorkspaces, RoleAdministeredTenants, RoleAdministeredWorkspaces:
 		return true
 	default:
 		return false

@@ -269,6 +269,14 @@ export interface UnlinkCrewUserIdentity {
   identity: string;
 }
 
+/** The body ResetCrewUserFactors takes. */
+export interface ResetCrewUserFactorsConfig {
+  user: string | FieldPointer;
+}
+export interface ResetCrewUserFactors {
+  user: string;
+}
+
 /** The body SetCrewSectorUserPassword takes. */
 export interface SetCrewSectorUserPasswordConfig {
   user: string | FieldPointer;
@@ -289,6 +297,14 @@ export interface UnlinkCrewSectorUserIdentity {
   identity: string;
 }
 
+/** The body ResetCrewSectorUserFactors takes. */
+export interface ResetCrewSectorUserFactorsConfig {
+  user: string | FieldPointer;
+}
+export interface ResetCrewSectorUserFactors {
+  user: string;
+}
+
 /** The body UnlinkMembersUserIdentity takes. */
 export interface UnlinkMembersUserIdentityConfig {
   user: string | FieldPointer;
@@ -299,6 +315,14 @@ export interface UnlinkMembersUserIdentity {
   identity: string;
 }
 
+/** The body ResetMembersUserFactors takes. */
+export interface ResetMembersUserFactorsConfig {
+  user: string | FieldPointer;
+}
+export interface ResetMembersUserFactors {
+  user: string;
+}
+
 /** The body UnlinkMembersSectorUserIdentity takes. */
 export interface UnlinkMembersSectorUserIdentityConfig {
   user: string | FieldPointer;
@@ -307,6 +331,14 @@ export interface UnlinkMembersSectorUserIdentityConfig {
 export interface UnlinkMembersSectorUserIdentity {
   user: string;
   identity: string;
+}
+
+/** The body ResetMembersSectorUserFactors takes. */
+export interface ResetMembersSectorUserFactorsConfig {
+  user: string | FieldPointer;
+}
+export interface ResetMembersSectorUserFactors {
+  user: string;
 }
 
 export interface RPCFieldMeta {
@@ -515,6 +547,12 @@ const methodMap: MethodMap = {
       { fieldName: 'identity', displayType: 'uuid' },
     ],
   },
+  [Methods.ResetCrewUserFactors]: {
+    route: 'reset-crew-user-factors',
+    fields: [
+      { fieldName: 'user', displayType: 'uuid' },
+    ],
+  },
   [Methods.SetCrewSectorUserPassword]: {
     route: 'set-crew-sector-user-password',
     fields: [
@@ -529,6 +567,12 @@ const methodMap: MethodMap = {
       { fieldName: 'identity', displayType: 'uuid' },
     ],
   },
+  [Methods.ResetCrewSectorUserFactors]: {
+    route: 'reset-crew-sector-user-factors',
+    fields: [
+      { fieldName: 'user', displayType: 'uuid' },
+    ],
+  },
   [Methods.UnlinkMembersUserIdentity]: {
     route: 'unlink-members-user-identity',
     fields: [
@@ -536,11 +580,23 @@ const methodMap: MethodMap = {
       { fieldName: 'identity', displayType: 'uuid' },
     ],
   },
+  [Methods.ResetMembersUserFactors]: {
+    route: 'reset-members-user-factors',
+    fields: [
+      { fieldName: 'user', displayType: 'uuid' },
+    ],
+  },
   [Methods.UnlinkMembersSectorUserIdentity]: {
     route: 'unlink-members-sector-user-identity',
     fields: [
       { fieldName: 'user', displayType: 'uuid' },
       { fieldName: 'identity', displayType: 'uuid' },
+    ],
+  },
+  [Methods.ResetMembersSectorUserFactors]: {
+    route: 'reset-members-sector-user-factors',
+    fields: [
+      { fieldName: 'user', displayType: 'uuid' },
     ],
   },
 };

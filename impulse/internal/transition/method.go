@@ -417,9 +417,16 @@ func addMethodEnv(rel string, src []byte, structName, auth string, spec *authpkg
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s{\n", spec.SettingsType())
 	fields := spec.Fields()
+	// The fields' tags align: the application's lint (tagalign) wants a second tag at one
+	// column across the block, so the secret marker is padded past the longest env tag.
+	longest := 0
+	for i := range fields {
+		longest = max(longest, len(fmt.Sprintf("env:%q", spec.Variable(auth, &fields[i]))))
+	}
 	for i := range fields {
 		f := &fields[i]
-		field := fmt.Sprintf("%s%s%s string `env:%q%s`", authPascal, spec.Pascal(), f.Name, spec.Variable(auth, f), secretTag(f))
+		envTag := fmt.Sprintf("env:%q", spec.Variable(auth, f))
+		field := fmt.Sprintf("%s%s%s string `%s%s`", authPascal, spec.Pascal(), f.Name, envTag, secretTag(f, longest-len(envTag)))
 		if i == 0 {
 			field = fmt.Sprintf("// The %s auth's %s registration (pkg/auth/%s/%s.go): %s, under the registration's\n// variables (APP_<AUTH>_<REGISTRATION>_*). Under the session library's skipAuth build tag\n// the directory is simulated and only what the simulated sign-in presents is read.\n", auth, spec.Name, auth, spec.Name, fieldsSentence(spec)) + field
 		}
@@ -434,10 +441,11 @@ func addMethodEnv(rel string, src []byte, structName, auth string, spec *authpkg
 	return b.String(), edited, nil
 }
 
-// secretTag is the secret marker a credential field carries.
-func secretTag(f *authpkg.Field) string {
+// secretTag is the secret marker a credential field carries, set pad spaces further
+// from its env tag than the one space between tags, so it aligns with the block's.
+func secretTag(f *authpkg.Field, pad int) string {
 	if f.Secret {
-		return ` secret:"true"`
+		return strings.Repeat(" ", pad+1) + `secret:"true"`
 	}
 
 	return ""

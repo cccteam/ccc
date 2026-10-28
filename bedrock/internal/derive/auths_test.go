@@ -154,6 +154,26 @@ func TestRegistrationVariables(t *testing.T) {
 			wantFields: []string{FieldTenantID, FieldClientID, FieldClientSecret, FieldRedirectURL},
 		},
 		{
+			name:   "a Microsoft registration declaring the tenants the deployment administers",
+			method: Method{Auth: "members", Name: "directory", Kind: app.MethodAzure, Authority: app.AuthorityApplication},
+			variables: []Variable{
+				variable("APP_MEMBERS_DIRECTORY_TENANT_ID", false), variable("APP_MEMBERS_DIRECTORY_ADMINISTERED_TENANTS", false), variable("APP_MEMBERS_DIRECTORY_CLIENT_ID", false),
+				variable("APP_MEMBERS_DIRECTORY_CLIENT_SECRET", true), variable("APP_MEMBERS_DIRECTORY_REDIRECT_URL", false),
+			},
+			wantRoles:  map[string]Role{"APP_MEMBERS_DIRECTORY_TENANT_ID": RoleTenantID, "APP_MEMBERS_DIRECTORY_ADMINISTERED_TENANTS": RoleAdministeredTenants},
+			wantFields: []string{FieldTenantID, FieldAdministeredTenants, FieldClientID, FieldClientSecret, FieldRedirectURL},
+		},
+		{
+			name:   "a Google registration declaring the Workspaces the deployment administers",
+			method: Method{Auth: "staff", Name: "directory", Kind: app.MethodGoogle, Authority: app.AuthorityApplication},
+			variables: []Variable{
+				variable("APP_STAFF_DIRECTORY_WORKSPACES", false), variable("APP_STAFF_DIRECTORY_ADMINISTERED_WORKSPACES", false), variable("APP_STAFF_DIRECTORY_CLIENT_ID", false),
+				variable("APP_STAFF_DIRECTORY_CLIENT_SECRET", true), variable("APP_STAFF_DIRECTORY_REDIRECT_URL", false),
+			},
+			wantRoles:  map[string]Role{"APP_STAFF_DIRECTORY_WORKSPACES": RoleWorkspaces, "APP_STAFF_DIRECTORY_ADMINISTERED_WORKSPACES": RoleAdministeredWorkspaces},
+			wantFields: []string{FieldWorkspaces, FieldAdministeredWorkspaces, FieldClientID, FieldClientSecret, FieldRedirectURL},
+		},
+		{
 			name:   "a Microsoft registration admitting any tenant declares no slot",
 			method: Method{Auth: "members", Name: "any", Kind: app.MethodAzure, Authority: app.AuthorityApplication},
 			variables: []Variable{
