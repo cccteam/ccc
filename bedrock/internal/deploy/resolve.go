@@ -193,12 +193,14 @@ type Clients struct {
 	Exec Runner
 }
 
-// DefaultClients opens the real services.
-func DefaultClients() *Clients {
+// DefaultClients opens the real services. out is where the clients note a call they
+// send again after a transient answer (retry.go): the process's standard output, which
+// in the pipeline is the step's.
+func DefaultClients(out io.Writer) *Clients {
 	return &Clients{
 		Storage: NewStorage, StorageAs: NewStorageAs, StorageAsWriter: NewStorageAsWriter, Builds: NewCloudBuild, Comments: GitHubComments, GitHub: PublicGitHub,
-		Registry: NewArtifactRegistry, Run: NewCloudRun, Secrets: NewSecretManager, Exec: OSRunner{}, Grants: NewGrants, Versions: NewVersions,
-		SecretsAs: NewSecretManagerAs, Tasks: NewCloudTasks, Metrics: NewCloudMonitoring, HTTP: &http.Client{Timeout: 30 * time.Second}, FirestoreAs: NewFirestoreAs, SpannerAs: NewSpannerAs, Spanner: NewSpanner,
+		Registry: NewArtifactRegistry(out), Run: NewCloudRun(out), Secrets: NewSecretManager, Exec: OSRunner{}, Grants: NewGrants(out), Versions: NewVersions(out),
+		SecretsAs: NewSecretManagerAs, Tasks: NewCloudTasks(out), Metrics: NewCloudMonitoring(out), HTTP: &http.Client{Timeout: 30 * time.Second}, FirestoreAs: NewFirestoreAs(out), SpannerAs: NewSpannerAs(out), Spanner: NewSpanner(out),
 	}
 }
 

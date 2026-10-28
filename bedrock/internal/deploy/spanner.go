@@ -9,6 +9,7 @@ package deploy
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"net/url"
 	"sort"
@@ -105,27 +106,33 @@ type SpannerAsFunc func(ctx context.Context, identity string) (Spanner, error)
 // for a step that runs as the identity it reads as.
 type SpannerFunc func(ctx context.Context) (Spanner, error)
 
-// NewSpanner opens the Spanner v1 REST API with the process's default credentials.
-func NewSpanner(ctx context.Context) (Spanner, error) {
-	client, err := google.DefaultClient(ctx, cloudPlatformScope)
-	if err != nil {
-		return nil, errors.Wrap(err, "google.DefaultClient()")
-	}
+// NewSpanner opens the Spanner v1 REST API with the process's default credentials,
+// noting on out each call it sends again after a transient answer (retry.go).
+func NewSpanner(out io.Writer) SpannerFunc {
+	return func(ctx context.Context) (Spanner, error) {
+		client, err := google.DefaultClient(ctx, cloudPlatformScope)
+		if err != nil {
+			return nil, errors.Wrap(err, "google.DefaultClient()")
+		}
 
-	return &spanner{cloudRun: &cloudRun{http: client, base: spannerAPI, poll: 10 * time.Second, service: serviceSpanner}}, nil
+		return &spanner{cloudRun: &cloudRun{http: client, base: spannerAPI, poll: 10 * time.Second, service: serviceSpanner, retry: retrier{out: out}}}, nil
+	}
 }
 
-// NewSpannerAs opens the Spanner v1 REST API as the identity.
-func NewSpannerAs(ctx context.Context, identity string) (Spanner, error) {
-	source, err := impersonate.CredentialsTokenSource(ctx, impersonate.CredentialsConfig{
-		TargetPrincipal: identity,
-		Scopes:          []string{cloudPlatformScope},
-	})
-	if err != nil {
-		return nil, errors.Wrapf(err, "impersonate.CredentialsTokenSource(): %s", identity)
-	}
+// NewSpannerAs opens the Spanner v1 REST API as the identity, noting on out each call
+// it sends again after a transient answer (retry.go).
+func NewSpannerAs(out io.Writer) SpannerAsFunc {
+	return func(ctx context.Context, identity string) (Spanner, error) {
+		source, err := impersonate.CredentialsTokenSource(ctx, impersonate.CredentialsConfig{
+			TargetPrincipal: identity,
+			Scopes:          []string{cloudPlatformScope},
+		})
+		if err != nil {
+			return nil, errors.Wrapf(err, "impersonate.CredentialsTokenSource(): %s", identity)
+		}
 
-	return &spanner{cloudRun: &cloudRun{http: oauth2.NewClient(ctx, source), base: spannerAPI, poll: 10 * time.Second, service: serviceSpanner}}, nil
+		return &spanner{cloudRun: &cloudRun{http: oauth2.NewClient(ctx, source), base: spannerAPI, poll: 10 * time.Second, service: serviceSpanner, retry: retrier{out: out}}}, nil
+	}
 }
 
 // spanner is Spanner over the v1 API; it reuses the Cloud Run client's calling.

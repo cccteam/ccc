@@ -4,6 +4,7 @@ package deploy
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -14,8 +15,10 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/go-playground/errors/v5"
 
@@ -184,12 +187,130 @@ func runBuilds(ctx context.Context, clients *Clients, w Workspace, plan *cachePl
 		return err
 	}
 	for _, s := range plan.stages {
-		if err := clients.Exec.Run(ctx, Command{Dir: string(w), Name: dockerProgram, Args: plan.stageArgs(s)}, out); err != nil {
+		if err := runBuild(ctx, clients, Command{Dir: string(w), Name: dockerProgram, Args: plan.stageArgs(s)}, out); err != nil {
 			return err
 		}
 	}
 
-	return clients.Exec.Run(ctx, Command{Dir: string(w), Name: dockerProgram, Args: full}, out)
+	return runBuild(ctx, clients, Command{Dir: string(w), Name: dockerProgram, Args: full}, out)
+}
+
+// buildAgainWait is how long a build whose FROM image's pull failed transiently waits
+// before it is run once more.
+const buildAgainWait = 30 * time.Second
+
+// runBuild runs one docker build. A build that fails pulling a FROM image for a reason
+// that can only be transient (transientPull) is run once more after buildAgainWait,
+// since the image a pinned reference names exists whether or not the registry served
+// it just now; the second run's failure is final. Any other failure is final at once.
+func runBuild(ctx context.Context, clients *Clients, c Command, out io.Writer) error {
+	watch := &pullWatch{}
+	err := clients.Exec.Run(ctx, c, io.MultiWriter(out, watch))
+	watch.close()
+	if err == nil || watch.line == "" {
+		return err
+	}
+	fmt.Fprintf(out, "The build failed pulling a FROM image, which the registry may serve again shortly (%s); the build is run once more in %s.\n", watch.line, buildAgainWait)
+	if err := clients.sleep()(ctx, buildAgainWait); err != nil {
+		return err
+	}
+
+	return clients.Exec.Run(ctx, c, out)
+}
+
+// pullWatch is a writer the build's output passes through on its way to the step's
+// output, keeping the first line that says a FROM image's pull failed transiently.
+type pullWatch struct {
+	partial []byte
+	line    string
+}
+
+// maxWatchedLine bounds a line the watch holds on to while waiting for its end; a
+// longer one is not a line BuildKit writes about a failure.
+const maxWatchedLine = 64 << 10
+
+func (p *pullWatch) Write(data []byte) (int, error) {
+	p.partial = append(p.partial, data...)
+	for {
+		end := bytes.IndexByte(p.partial, '\n')
+		if end < 0 {
+			break
+		}
+		p.see(string(p.partial[:end]))
+		p.partial = p.partial[end+1:]
+	}
+	if len(p.partial) > maxWatchedLine {
+		p.partial = nil
+	}
+
+	return len(data), nil
+}
+
+// close sees the output's last line when it ended without a newline.
+func (p *pullWatch) close() {
+	if len(p.partial) > 0 {
+		p.see(string(p.partial))
+		p.partial = nil
+	}
+}
+
+func (p *pullWatch) see(line string) {
+	line = strings.TrimRight(line, "\r")
+	if p.line == "" && transientPull(line) {
+		p.line = line
+	}
+}
+
+// How BuildKit writes a failed pull of a FROM image, and the reasons that can only be
+// transient. BuildKit writes a step's failure as "#4 ERROR: <failure>" and the build's as
+// "ERROR: failed to solve: <failure>"; a failure of a FROM image's pull names the image
+// as the registry does (docker.io/library/golang:1.27@sha256:…) before the reason, on
+// its own or after "failed to resolve source metadata for <image>: " (or "failed to
+// load metadata for <image>: "). A build error in the Dockerfile's own steps names no
+// image there: a RUN that failed says process "/bin/sh -c go build" did not complete
+// successfully, and a COPY of a missing file says failed to compute cache key: … "/x":
+// not found, which the image's place in the line keeps apart from an image not found.
+var (
+	// imageReference is an image as BuildKit names one: a registry host (one with a
+	// dot, as docker.io or us-central1-docker.pkg.dev, or localhost; with a port or
+	// not), a path, and a tag and a digest, each optional; or, with no host, a path
+	// with a digest.
+	imageReference = `(?:(?:[a-z0-9-]+(?:\.[a-z0-9-]+)+|localhost)(?::\d+)?/[a-z0-9._/-]+(?::[A-Za-z0-9._-]+)?(?:@sha256:[0-9a-f]{64})?|[a-z0-9._/-]+(?::[A-Za-z0-9._-]+)?@sha256:[0-9a-f]{64})`
+	// pullFailure is a failure line that names an image before its reason: the image
+	// and the reason.
+	pullFailure = regexp.MustCompile(`^(?:#\d+ )?ERROR: (?:failed to solve: )?(?:failed to (?:resolve source metadata|load metadata) for )?(` + imageReference + `): (.+)$`)
+	// unexpectedStatus5xx is a registry's 5xx as BuildKit reports one (unexpected status
+	// from HEAD request to https://…: 503 Service Unavailable).
+	unexpectedStatus5xx = regexp.MustCompile(`unexpected status.*: 5\d{2}\b`)
+	// connectionReasons are the ends of a request that got no answer from the registry.
+	connectionReasons = []string{"connection reset by peer", "connection refused", "i/o timeout", "TLS handshake timeout", "Client.Timeout exceeded", "unexpected EOF"}
+)
+
+// transientPull reports whether the line, from a failed docker build's output, says a
+// FROM image's pull failed for a reason that can only be transient: the registry
+// answered that the image was not found or its manifest unknown (a pinned image exists,
+// so a miss is the registry's), answered 5xx, or gave no answer because the request
+// timed out or its connection was reset, refused or closed early. A tag that truly
+// does not exist reads the same and costs one more run after the wait.
+func transientPull(line string) bool {
+	m := pullFailure.FindStringSubmatch(line)
+	if m == nil {
+		return false
+	}
+	image, reason := m[1], m[2]
+	// The build's summary repeats the image before the reason: failed to resolve source
+	// metadata for <image>: <image>: not found.
+	reason = strings.TrimPrefix(reason, image+": ")
+	if strings.HasSuffix(reason, "not found") || strings.Contains(reason, "manifest unknown") || unexpectedStatus5xx.MatchString(reason) {
+		return true
+	}
+	for _, end := range connectionReasons {
+		if strings.Contains(reason, end) {
+			return true
+		}
+	}
+
+	return false
 }
 
 // cacheSource is one commit whose caches the build may read, and what it is to the

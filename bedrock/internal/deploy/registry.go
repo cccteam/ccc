@@ -1,6 +1,7 @@
 package deploy
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"io"
@@ -32,21 +33,30 @@ type Registry interface {
 type RegistryFunc func(ctx context.Context) (Registry, error)
 
 // NewArtifactRegistry opens the Artifact Registry REST API with the process's default
-// credentials: the build's own identity on Cloud Build.
-func NewArtifactRegistry(ctx context.Context) (Registry, error) {
-	client, err := google.DefaultClient(ctx, cloudPlatformScope)
-	if err != nil {
-		return nil, errors.Wrap(err, "google.DefaultClient()")
-	}
+// credentials: the build's own identity on Cloud Build. Each call it sends again after
+// a transient answer is noted on out (retry.go).
+func NewArtifactRegistry(out io.Writer) RegistryFunc {
+	return func(ctx context.Context) (Registry, error) {
+		client, err := google.DefaultClient(ctx, cloudPlatformScope)
+		if err != nil {
+			return nil, errors.Wrap(err, "google.DefaultClient()")
+		}
 
-	return &artifactRegistry{http: client, base: artifactRegistryAPI}, nil
+		return &artifactRegistry{http: client, base: artifactRegistryAPI, retry: retrier{out: out}}, nil
+	}
 }
+
+// serviceArtifactRegistry names the API in messages.
+const serviceArtifactRegistry = "Artifact Registry"
 
 // artifactRegistry is Registry over the Artifact Registry REST API: a tag is a resource
 // under the image's package, naming a version, which is the digest.
 type artifactRegistry struct {
 	http *http.Client
 	base string
+	// retry sends a call again when its answer can only be transient (retry.go); the
+	// zero value waits for real and notes nothing.
+	retry retrier
 }
 
 // imagePackage is an image's place in Artifact Registry: <location>-docker.pkg.dev/
@@ -114,38 +124,60 @@ func (r *artifactRegistry) AddTag(ctx context.Context, image, tag, digest string
 	return nil
 }
 
-// call sends one request and returns the status and the answer's body; a status outside
-// 2xx other than 404 is an error carrying the API's message.
+// call sends the request and returns the status and the answer's body; a status outside
+// 2xx other than 404 is an error carrying the API's message. A 404 is the API's answer
+// (the tag does not exist) and is never sent again; a request whose failure can only be
+// transient (the API answered 5xx, or gave no answer because the request timed out or
+// its connection was reset) is, as retry.go says.
 func (r *artifactRegistry) call(ctx context.Context, method, path string, body any) (status int, data []byte, err error) {
-	var payload io.Reader = http.NoBody
+	var encoded []byte
 	if body != nil {
-		encoded, err := json.Marshal(body)
-		if err != nil {
+		if encoded, err = json.Marshal(body); err != nil {
 			return 0, nil, errors.Wrap(err, "json.Marshal()")
 		}
-		payload = strings.NewReader(string(encoded))
+	}
+	err = r.retry.do(ctx, func() error {
+		var err error
+		status, data, err = r.send(ctx, method, path, encoded)
+
+		return err
+	})
+	if err != nil {
+		return 0, nil, err
+	}
+
+	return status, data, nil
+}
+
+// send sends one request with the encoded JSON body (nil for none) and returns the
+// status and the answer's body: a 2xx's or a 404's. Any other status is an apiError,
+// and a request that got no answer a transportError.
+func (r *artifactRegistry) send(ctx context.Context, method, path string, encoded []byte) (status int, data []byte, err error) {
+	var payload io.Reader = http.NoBody
+	if encoded != nil {
+		payload = bytes.NewReader(encoded)
 	}
 	req, err := http.NewRequestWithContext(ctx, method, r.base+path, payload)
 	if err != nil {
 		return 0, nil, errors.Wrap(err, "http.NewRequestWithContext()")
 	}
-	if body != nil {
+	if encoded != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
 	resp, err := r.http.Do(req)
 	if err != nil {
-		return 0, nil, errors.Wrap(err, "http.Client.Do()")
+		return 0, nil, errors.Wrap(&transportError{service: serviceArtifactRegistry, method: method, path: path, err: err}, "http.Client.Do()")
 	}
 	defer resp.Body.Close()
 	data, err = io.ReadAll(io.LimitReader(resp.Body, maxAnswer))
 	if err != nil {
-		return 0, nil, errors.Wrap(err, "io.ReadAll()")
+		return 0, nil, errors.Wrap(&transportError{service: serviceArtifactRegistry, method: method, path: path, err: err}, "io.ReadAll()")
 	}
 	if resp.StatusCode == http.StatusNotFound {
 		return resp.StatusCode, data, nil
 	}
 	if resp.StatusCode < http.StatusOK || resp.StatusCode > 299 {
-		return resp.StatusCode, nil, errors.Newf("Artifact Registry answered HTTP %d to %s %s: %s", resp.StatusCode, method, path, apiMessage(data))
+		return 0, nil, errors.Wrap(&apiError{service: serviceArtifactRegistry, status: resp.StatusCode, method: method, path: path, message: apiMessage(data)}, "artifactRegistry.call()")
 	}
 
 	return resp.StatusCode, data, nil

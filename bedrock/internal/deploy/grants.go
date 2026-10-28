@@ -42,17 +42,20 @@ type Grants interface {
 type GrantsFunc func(ctx context.Context) (Grants, error)
 
 // NewGrants opens the Spanner and Firestore v1 REST APIs with the process's default
-// credentials, the worker's identity.
-func NewGrants(ctx context.Context) (Grants, error) {
-	client, err := google.DefaultClient(ctx, cloudPlatformScope)
-	if err != nil {
-		return nil, errors.Wrap(err, "google.DefaultClient()")
-	}
+// credentials, the worker's identity, noting on out each call they send again after a
+// transient answer (retry.go).
+func NewGrants(out io.Writer) GrantsFunc {
+	return func(ctx context.Context) (Grants, error) {
+		client, err := google.DefaultClient(ctx, cloudPlatformScope)
+		if err != nil {
+			return nil, errors.Wrap(err, "google.DefaultClient()")
+		}
 
-	return &grants{
-		spanner:   &cloudRun{http: client, base: spannerAPI, service: serviceSpanner},
-		firestore: &cloudRun{http: client, base: firestoreAPI, service: serviceFirestore},
-	}, nil
+		return &grants{
+			spanner:   &cloudRun{http: client, base: spannerAPI, service: serviceSpanner, retry: retrier{out: out}},
+			firestore: &cloudRun{http: client, base: firestoreAPI, service: serviceFirestore, retry: retrier{out: out}},
+		}, nil
+	}
 }
 
 // grants reads through the shared REST caller.

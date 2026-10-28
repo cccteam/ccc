@@ -71,11 +71,15 @@ type Run interface {
 // apiError is an answer outside 2xx from the API, with its status.
 type apiError struct {
 	// service is the API that answered, as its messages name it (Cloud Run, Cloud Tasks,
-	// Firestore, Spanner, Cloud Monitoring): the client is shared by all of them.
+	// Firestore, Spanner, Cloud Monitoring, Artifact Registry): the client is shared by
+	// all of them.
 	service      string
 	status       int
 	method, path string
 	message      string
+	// attempts is how many attempts were made when this answer ended them (retry.go);
+	// zero or one says nothing of attempts.
+	attempts int
 }
 
 func (e *apiError) Error() string {
@@ -83,8 +87,22 @@ func (e *apiError) Error() string {
 	if service == "" {
 		service = "Cloud Run"
 	}
+	s := fmt.Sprintf("%s answered HTTP %d to %s %s: %s", service, e.status, e.method, e.path, e.message)
+	if e.attempts > 1 {
+		s = strings.TrimSuffix(s, ".") + fmt.Sprintf("; given up after %d attempts", e.attempts)
+	}
 
-	return fmt.Sprintf("%s answered HTTP %d to %s %s: %s", service, e.status, e.method, e.path, e.message)
+	return s
+}
+
+// transient reports an answer that can only be transient: 5xx. A refusal (4xx) is the
+// API's answer to the call.
+func (e *apiError) transient() bool {
+	return e.status >= http.StatusInternalServerError
+}
+
+func (e *apiError) givenUpAfter(attempts int) {
+	e.attempts = attempts
 }
 
 // isNotFound reports an error that is the API answering 404.
@@ -104,14 +122,17 @@ func isForbidden(err error) bool {
 // RunFunc opens Run.
 type RunFunc func(ctx context.Context) (Run, error)
 
-// NewCloudRun opens the Cloud Run v2 REST API with the process's default credentials.
-func NewCloudRun(ctx context.Context) (Run, error) {
-	client, err := google.DefaultClient(ctx, cloudPlatformScope)
-	if err != nil {
-		return nil, errors.Wrap(err, "google.DefaultClient()")
-	}
+// NewCloudRun opens the Cloud Run v2 REST API with the process's default credentials,
+// noting on out each call it sends again after a transient answer (retry.go).
+func NewCloudRun(out io.Writer) RunFunc {
+	return func(ctx context.Context) (Run, error) {
+		client, err := google.DefaultClient(ctx, cloudPlatformScope)
+		if err != nil {
+			return nil, errors.Wrap(err, "google.DefaultClient()")
+		}
 
-	return &cloudRun{http: client, base: cloudRunAPI, poll: 5 * time.Second}, nil
+		return &cloudRun{http: client, base: cloudRunAPI, poll: 5 * time.Second, retry: retrier{out: out}}, nil
+	}
 }
 
 // The other services that share the Cloud Run client's calling, as their messages name
@@ -130,6 +151,9 @@ type cloudRun struct {
 	// service names the API in messages; Cloud Run when empty, since the other clients
 	// (Cloud Tasks, Firestore, Spanner, Cloud Monitoring) reuse this one's calling.
 	service string
+	// retry sends a call again when its answer can only be transient (retry.go); the
+	// zero value waits for real and notes nothing.
+	retry retrier
 }
 
 // name is the API's name for messages.
@@ -274,32 +298,55 @@ func (c *cloudRun) wait(ctx context.Context, op map[string]any) (map[string]any,
 	}
 }
 
-// call sends one request and decodes the answer; a status outside 2xx is an error
-// carrying the API's message.
+// call sends the request and decodes the answer; a status outside 2xx is an error
+// carrying the API's message. A request whose failure can only be transient (the API
+// answered 5xx, or gave no answer because the request timed out or its connection was
+// reset) is sent again, as retry.go says.
 func (c *cloudRun) call(ctx context.Context, method, path string, body map[string]any) (map[string]any, error) {
-	var payload io.Reader = http.NoBody
+	var encoded []byte
 	if body != nil {
-		encoded, err := json.Marshal(body)
-		if err != nil {
+		var err error
+		if encoded, err = json.Marshal(body); err != nil {
 			return nil, errors.Wrap(err, "json.Marshal()")
 		}
+	}
+	var answer map[string]any
+	err := c.retry.do(ctx, func() error {
+		var err error
+		answer, err = c.send(ctx, method, path, encoded)
+
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return answer, nil
+}
+
+// send sends one request with the encoded JSON body (nil for none) and decodes the
+// answer: a status outside 2xx is an apiError, and a request that got no answer a
+// transportError.
+func (c *cloudRun) send(ctx context.Context, method, path string, encoded []byte) (map[string]any, error) {
+	var payload io.Reader = http.NoBody
+	if encoded != nil {
 		payload = bytes.NewReader(encoded)
 	}
 	req, err := http.NewRequestWithContext(ctx, method, c.base+path, payload)
 	if err != nil {
 		return nil, errors.Wrap(err, "http.NewRequestWithContext()")
 	}
-	if body != nil {
+	if encoded != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return nil, errors.Wrap(err, "http.Client.Do()")
+		return nil, errors.Wrap(&transportError{service: c.name(), method: method, path: path, err: err}, "http.Client.Do()")
 	}
 	defer resp.Body.Close()
 	data, err := io.ReadAll(io.LimitReader(resp.Body, maxAnswer))
 	if err != nil {
-		return nil, errors.Wrap(err, "io.ReadAll()")
+		return nil, errors.Wrap(&transportError{service: c.name(), method: method, path: path, err: err}, "io.ReadAll()")
 	}
 	if resp.StatusCode < http.StatusOK || resp.StatusCode > 299 {
 		return nil, errors.Wrap(&apiError{service: c.name(), status: resp.StatusCode, method: method, path: path, message: apiMessage(data)}, "cloudRun.call()")
