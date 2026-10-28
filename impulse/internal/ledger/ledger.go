@@ -562,6 +562,27 @@ var Steps = []Step{
 		Impulse: release("v0.5.24"),
 		Note:    "the v0.5.23 step's wiring is checked: administrator-roles holds every user surface the application builds to resource.WithAdministratorRoles(<auth>.AdministratorRoles()), and directory-admission holds an application whose tenant record declares directories to the directories record's @directoryDefaultSeat column, the directory admission (SetDirectoryAdmission) on every auth whose roles the application assigns, and a role granting Update on the record's default seat, so an application whose pins moved past the step without the wiring has it raised here as an obligation the agent wires; the pins move to resource v0.15.14, whose last-owner rule counts other people: the actor's own second administrator role is no administrator who remains, so the one holder of a partition's administrator roles is refused dropping any of them",
 	},
+	{
+		Pins: pins(`
+			access v0.11.1
+			ccc v0.3.5
+			ccc/accesstypes v0.7.0
+			ccc/cloud v0.2.1
+			ccc/resource v0.15.15
+			ccc/tracer v0.3.0
+			db-initiator v0.4.3
+			httpio v0.7.22
+			logger v0.1.30
+			session v0.13.13
+		`),
+		Web: web(`
+			@cccteam/resource 0.0.13
+			@cccteam/resource-angular 0.0.18
+			@cccteam/resource-firestore 0.0.11
+		`),
+		Impulse: release("v0.5.25"),
+		Note:    "no code change is needed: the pins move to resource v0.15.15, whose maintenance page says it will automatically reload when the application becomes available",
+	},
 }
 
 // validatePending holds a step's Pending mark to its pins: a pin at a pseudo-version
