@@ -11,8 +11,9 @@ import (
 )
 
 // Test_renderReleaseFile pins the release file's bytes for the shapes an outlet takes
-// (a release, this release, no declaration and a machine outlet) and for the scheduled
-// routes, and that what is written reads back through the reader a deploy uses.
+// (a release, this release, no declaration, a machine outlet and one shipping programs)
+// and for the scheduled routes, and that what is written reads back through the reader a
+// deploy uses.
 func Test_renderReleaseFile(t *testing.T) {
 	t.Parallel()
 
@@ -110,6 +111,51 @@ func Test_renderReleaseFile(t *testing.T) {
 				"droids":  {APIKey: true},
 				"kiosk":   {},
 				"portal":  {OldestAnswered: resource.ThisRelease},
+			}},
+		},
+		{
+			name: "a machine outlet shipping two programs",
+			outlets: []*routerOutlet{
+				{name: "default", prefix: "api", servesSessions: true, auth: crew},
+				{name: "droids", prefix: "droids", apiKey: true, tokenAuth: crew.importPath, programs: []shippedProgram{
+					{dir: "cmd/corral", name: "corral", platforms: []string{"linux/amd64", "linux/arm64"}},
+					{dir: "tools/beacon", name: "beacon", platforms: []string{"linux/amd64"}},
+				}},
+			},
+			want: `{
+  "outlets": {
+    "default": {
+      "oldestAnswered": ""
+    },
+    "droids": {
+      "kind": "api-key",
+      "programs": [
+        {
+          "name": "corral",
+          "dir": "cmd/corral",
+          "platforms": [
+            "linux/amd64",
+            "linux/arm64"
+          ]
+        },
+        {
+          "name": "beacon",
+          "dir": "tools/beacon",
+          "platforms": [
+            "linux/amd64"
+          ]
+        }
+      ]
+    }
+  }
+}
+`,
+			wantRead: resource.ReleaseFile{Outlets: map[string]resource.ReleaseOutlet{
+				"default": {},
+				"droids": {APIKey: true, Programs: []resource.ReleaseProgram{
+					{Name: "corral", Dir: "cmd/corral", Platforms: []string{"linux/amd64", "linux/arm64"}},
+					{Name: "beacon", Dir: "tools/beacon", Platforms: []string{"linux/amd64"}},
+				}},
 			}},
 		},
 		{
@@ -340,14 +386,14 @@ func Test_runServedRouterGeneration_writesReleaseFile(t *testing.T) {
 			name: "words at the root, on an outlet and on a hand-mounted prefix",
 			outlets: []*routerOutlet{
 				{name: "default", prefix: "api", servesSessions: true, auth: crew, requestLog: LogNever(), traces: TracesOff()},
-				{name: "droids", prefix: "droids", apiKey: true, tokenAuth: crew.importPath},
+				{name: "droids", prefix: "droids", apiKey: true, tokenAuth: crew.importPath, programs: []shippedProgram{{dir: "cmd/corral", name: "corral", platforms: []string{"linux/amd64"}}}},
 			},
 			declare: func(r *resourceGenerator) {
 				r.requestLog = LogOnEvent()
 				r.mountedRoutes = []mountedRoutes{{prefix: "/beacons/", requestLog: LogSampled(0.5), traces: TracesCapped(0.25)}}
 			},
 			want: resource.ReleaseFile{
-				Outlets: map[string]resource.ReleaseOutlet{"default": {}, "droids": {APIKey: true}},
+				Outlets: map[string]resource.ReleaseOutlet{"default": {}, "droids": {APIKey: true, Programs: []resource.ReleaseProgram{{Name: "corral", Dir: "cmd/corral", Platforms: []string{"linux/amd64"}}}}},
 				Surfaces: []resource.Surface{
 					{Prefix: "/", Kind: resource.SurfacePrefix, Log: resource.RequestLogOnEvent},
 					{Prefix: "/api/", Kind: resource.SurfacePrefix, Log: resource.RequestLogNever, Traces: resource.TracesOff},

@@ -56,6 +56,49 @@ func TestReadReleaseFile(t *testing.T) {
 			want:    ReleaseFile{Outlets: map[string]ReleaseOutlet{"default": {OldestAnswered: "v2.0.0-rc1"}}},
 		},
 		{
+			name:    "a machine outlet shipping programs",
+			content: `{"outlets": {"api": {"kind": "api-key", "programs": [{"name": "corral", "dir": "cmd/corral", "platforms": ["linux/amd64", "linux/arm64"]}, {"name": "beacon", "dir": "tools/beacon", "platforms": ["linux/amd64"]}]}}}`,
+			want: ReleaseFile{Outlets: map[string]ReleaseOutlet{"api": {APIKey: true, Programs: []ReleaseProgram{
+				{Name: "corral", Dir: "cmd/corral", Platforms: []string{"linux/amd64", "linux/arm64"}},
+				{Name: "beacon", Dir: "tools/beacon", Platforms: []string{"linux/amd64"}},
+			}}}},
+		},
+		{
+			name:    "a machine outlet shipping nothing carries no programs",
+			content: `{"outlets": {"api": {"kind": "api-key", "programs": []}}}`,
+			want:    ReleaseFile{Outlets: map[string]ReleaseOutlet{"api": {APIKey: true}}},
+		},
+		{
+			name:    "a session outlet carrying programs",
+			content: `{"outlets": {"default": {"oldestAnswered": "", "programs": [{"name": "corral", "dir": "cmd/corral", "platforms": ["linux/amd64"]}]}}}`,
+			wantErr: "a session outlet ships no programs: cmd/corral is shipped by an api-key outlet",
+		},
+		{
+			name:    "a program named other than its directory's base",
+			content: `{"outlets": {"api": {"kind": "api-key", "programs": [{"name": "corral", "dir": "cmd/daemon", "platforms": ["linux/amd64"]}]}}}`,
+			wantErr: `the program "cmd/daemon" is named "corral"; a program is named after its directory's base`,
+		},
+		{
+			name:    "a program without a directory",
+			content: `{"outlets": {"api": {"kind": "api-key", "programs": [{"name": "corral", "platforms": ["linux/amd64"]}]}}}`,
+			wantErr: `the program "corral" names no directory`,
+		},
+		{
+			name:    "a program without a platform",
+			content: `{"outlets": {"api": {"kind": "api-key", "programs": [{"name": "corral", "dir": "cmd/corral"}]}}}`,
+			wantErr: "the program cmd/corral names no platform",
+		},
+		{
+			name:    "a platform that is not os/arch",
+			content: `{"outlets": {"api": {"kind": "api-key", "programs": [{"name": "corral", "dir": "cmd/corral", "platforms": ["linux"]}]}}}`,
+			wantErr: `the program cmd/corral names the platform "linux"; a platform is <os>/<arch> in lowercase letters and digits, such as linux/amd64`,
+		},
+		{
+			name:    "a platform in capitals",
+			content: `{"outlets": {"api": {"kind": "api-key", "programs": [{"name": "corral", "dir": "cmd/corral", "platforms": ["Linux/AMD64"]}]}}}`,
+			wantErr: `names the platform "Linux/AMD64"`,
+		},
+		{
 			name:    "a field the reader does not know is tolerated",
 			content: `{"outlets": {"default": {"oldestAnswered": "1.5.0", "note": "later"}}, "later": true}`,
 			want:    ReleaseFile{Outlets: map[string]ReleaseOutlet{"default": {OldestAnswered: "1.5.0"}}},
@@ -306,6 +349,11 @@ func TestReleaseOutlet_MarshalJSON(t *testing.T) {
 		{name: "this release", outlet: ReleaseOutlet{OldestAnswered: ThisRelease}, want: `{"oldestAnswered":"this"}`},
 		{name: "no declaration", outlet: ReleaseOutlet{}, want: `{"oldestAnswered":""}`},
 		{name: "a machine outlet", outlet: ReleaseOutlet{APIKey: true}, want: `{"kind":"api-key"}`},
+		{
+			name:   "a machine outlet shipping a program",
+			outlet: ReleaseOutlet{APIKey: true, Programs: []ReleaseProgram{{Name: "corral", Dir: "cmd/corral", Platforms: []string{"linux/amd64"}}}},
+			want:   `{"kind":"api-key","programs":[{"name":"corral","dir":"cmd/corral","platforms":["linux/amd64"]}]}`,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -323,8 +371,52 @@ func TestReleaseOutlet_MarshalJSON(t *testing.T) {
 			if err := json.Unmarshal(got, &back); err != nil {
 				t.Fatalf("json.Unmarshal() error = %v", err)
 			}
-			if back != tt.outlet {
-				t.Errorf("round trip = %+v, want %+v", back, tt.outlet)
+			if diff := cmp.Diff(tt.outlet, back); diff != "" {
+				t.Errorf("round trip mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+// TestReleaseOutlet_MarshalJSON_refuses pins the entries the writer refuses, so the
+// generator never writes a file the reader would refuse: programs on a session outlet
+// and a program that is not the shape the file spells.
+func TestReleaseOutlet_MarshalJSON_refuses(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		outlet  ReleaseOutlet
+		wantErr string
+	}{
+		{
+			name:    "a session outlet shipping a program",
+			outlet:  ReleaseOutlet{OldestAnswered: "1.5.0", Programs: []ReleaseProgram{{Name: "corral", Dir: "cmd/corral", Platforms: []string{"linux/amd64"}}}},
+			wantErr: "a session outlet ships no programs: cmd/corral is shipped by a machine outlet",
+		},
+		{
+			name:    "a program named other than its directory's base",
+			outlet:  ReleaseOutlet{APIKey: true, Programs: []ReleaseProgram{{Name: "daemon", Dir: "cmd/corral", Platforms: []string{"linux/amd64"}}}},
+			wantErr: `the program "cmd/corral" is named "daemon"`,
+		},
+		{
+			name:    "a program without a platform",
+			outlet:  ReleaseOutlet{APIKey: true, Programs: []ReleaseProgram{{Name: "corral", Dir: "cmd/corral"}}},
+			wantErr: "the program cmd/corral names no platform",
+		},
+		{
+			name:    "a platform with two slashes",
+			outlet:  ReleaseOutlet{APIKey: true, Programs: []ReleaseProgram{{Name: "corral", Dir: "cmd/corral", Platforms: []string{"linux/amd64/v3"}}}},
+			wantErr: `the program cmd/corral names the platform "linux/amd64/v3"`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := json.Marshal(tt.outlet)
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("json.Marshal() error = %v, want it to contain %q", err, tt.wantErr)
 			}
 		})
 	}

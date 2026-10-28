@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"net/http"
 	"os"
+	"path"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/cccteam/ccc/resource/scheduled"
@@ -19,7 +21,9 @@ import (
 // program), so a deploy reads from the checkout, never from a binary, whether a release
 // needs a maintenance window: a release whose outlet answers only the server's own does.
 // It also lists the scheduled routes (@schedule) with their schedules, which the
-// application's stack reads to create a Cloud Scheduler job for each.
+// application's stack reads to create a Cloud Scheduler job for each, and the programs
+// each machine outlet ships (ShipsProgram), which the version build compiles for their
+// platforms and copies into the image.
 const ReleaseFileName = "zz_gen_release.json"
 
 // How the release file spells its values: ThisRelease as an outlet's oldest answered
@@ -160,9 +164,9 @@ type ScheduledRoute struct {
 
 // ReleaseOutlet is one outlet's entry in the release file. A session outlet carries its
 // oldest answered release; a machine outlet is never checked against a release and
-// carries only its kind.
+// carries its kind and the programs the release ships through it.
 type ReleaseOutlet struct {
-	// APIKey marks a machine outlet (APIKey in the generator program), written as
+	// APIKey marks a machine outlet (Tokens in the generator program), written as
 	// {"kind": "api-key"}: its clients carry no release, so nothing is checked against
 	// one, and the entry carries no oldestAnswered.
 	APIKey bool
@@ -172,25 +176,76 @@ type ReleaseOutlet struct {
 	// "", when the option is absent and every release that sends the header is
 	// answered. Empty on a machine outlet.
 	OldestAnswered string
+	// Programs are the programs the release ships through a machine outlet
+	// (ShipsProgram in the generator program), in declaration order, written as
+	// "programs" on the outlet's entry and absent when it ships none: the version build
+	// compiles each for its platforms and the outlet serves the compiled files to their
+	// installed copies. A session outlet ships none.
+	Programs []ReleaseProgram
 }
 
-// releaseOutletEntry is an outlet's entry as the file spells it: kind on a machine
-// outlet, oldestAnswered on a session outlet, each absent on the other.
+// ReleaseProgram is one program a machine outlet ships, as the release file spells it:
+// the main package's root-relative directory (cmd/corral), the program's name, the base
+// of that directory (corral), and the platforms it is compiled for, each as
+// <os>/<arch> (linux/amd64).
+type ReleaseProgram struct {
+	Name      string   `json:"name"`
+	Dir       string   `json:"dir"`
+	Platforms []string `json:"platforms"`
+}
+
+// platformPattern is the shape of a platform in the release file, <os>/<arch> in
+// lowercase letters and digits, as Go names them.
+var platformPattern = regexp.MustCompile(`^[a-z0-9]+/[a-z0-9]+$`)
+
+// validate refuses a program the generator would not write: no directory, a name that is
+// not the base of the directory, no platform, or a platform that is not <os>/<arch>.
+func (p ReleaseProgram) validate() error {
+	switch {
+	case p.Dir == "":
+		return errors.Newf("the program %q names no directory", p.Name)
+	case p.Name != path.Base(p.Dir):
+		return errors.Newf("the program %q is named %q; a program is named after its directory's base", p.Dir, p.Name)
+	case len(p.Platforms) == 0:
+		return errors.Newf("the program %s names no platform", p.Dir)
+	}
+	for _, platform := range p.Platforms {
+		if !platformPattern.MatchString(platform) {
+			return errors.Newf("the program %s names the platform %q; a platform is <os>/<arch> in lowercase letters and digits, such as linux/amd64", p.Dir, platform)
+		}
+	}
+
+	return nil
+}
+
+// releaseOutletEntry is an outlet's entry as the file spells it: kind and the programs
+// on a machine outlet, oldestAnswered on a session outlet, each absent on the other.
 type releaseOutletEntry struct {
-	Kind           string  `json:"kind,omitempty"`
-	OldestAnswered *string `json:"oldestAnswered,omitempty"`
+	Kind           string           `json:"kind,omitempty"`
+	OldestAnswered *string          `json:"oldestAnswered,omitempty"`
+	Programs       []ReleaseProgram `json:"programs,omitempty"`
 }
 
 // MarshalJSON writes the entry as the file spells it: {"kind": "api-key"} for a machine
-// outlet, {"oldestAnswered": <release>} for a session outlet with ThisRelease as "this".
+// outlet, with its programs when it ships any, {"oldestAnswered": <release>} for a
+// session outlet with ThisRelease as "this". A session outlet carrying programs, or a
+// program the generator would not write, is refused.
 func (o ReleaseOutlet) MarshalJSON() ([]byte, error) {
 	if o.APIKey {
-		data, err := json.Marshal(releaseOutletEntry{Kind: releaseFileAPIKey})
+		for _, program := range o.Programs {
+			if err := program.validate(); err != nil {
+				return nil, err
+			}
+		}
+		data, err := json.Marshal(releaseOutletEntry{Kind: releaseFileAPIKey, Programs: o.Programs})
 		if err != nil {
 			return nil, errors.Wrap(err, "json.Marshal()")
 		}
 
 		return data, nil
+	}
+	if len(o.Programs) > 0 {
+		return nil, errors.Newf("a session outlet ships no programs: %s is shipped by a machine outlet", o.Programs[0].Dir)
 	}
 
 	oldest := o.OldestAnswered
@@ -207,8 +262,9 @@ func (o ReleaseOutlet) MarshalJSON() ([]byte, error) {
 
 // UnmarshalJSON reads an entry as the file spells it and refuses one that is neither a
 // machine outlet nor a session outlet naming its oldest answered release: a kind other
-// than api-key, a machine outlet carrying oldestAnswered, a session outlet without it,
-// or an oldestAnswered that is neither a release, "this" nor empty.
+// than api-key, a machine outlet carrying oldestAnswered, a session outlet without it or
+// carrying programs, an oldestAnswered that is neither a release, "this" nor empty, or
+// a program that is not the shape the generator writes.
 func (o *ReleaseOutlet) UnmarshalJSON(data []byte) error {
 	var entry releaseOutletEntry
 	if err := json.Unmarshal(data, &entry); err != nil {
@@ -220,11 +276,23 @@ func (o *ReleaseOutlet) UnmarshalJSON(data []byte) error {
 		if entry.OldestAnswered != nil {
 			return errors.Newf("an %s outlet carries no oldestAnswered: its clients carry no release", releaseFileAPIKey)
 		}
-		*o = ReleaseOutlet{APIKey: true}
+		for _, program := range entry.Programs {
+			if err := program.validate(); err != nil {
+				return err
+			}
+		}
+		programs := entry.Programs
+		if len(programs) == 0 {
+			// An empty list reads as none, as a file written without the list does.
+			programs = nil
+		}
+		*o = ReleaseOutlet{APIKey: true, Programs: programs}
 
 		return nil
 	case entry.Kind != "":
 		return errors.Newf("kind %q is not %q, the one kind an entry declares; a session outlet declares no kind", entry.Kind, releaseFileAPIKey)
+	case len(entry.Programs) > 0:
+		return errors.Newf("a session outlet ships no programs: %s is shipped by an %s outlet", entry.Programs[0].Dir, releaseFileAPIKey)
 	case entry.OldestAnswered == nil:
 		return errors.New("a session outlet names its oldestAnswered: a release, \"this\" for the server's own, or \"\" for every release")
 	}
@@ -249,27 +317,27 @@ func (o *ReleaseOutlet) UnmarshalJSON(data []byte) error {
 // there, or the application predates the file. A file that is not the shape the
 // generator writes, or that names no outlet, is refused naming what is wrong.
 func ReadReleaseFile(dir string) (ReleaseFile, error) {
-	path := filepath.Join(dir, ReleaseFileName)
-	raw, err := os.ReadFile(path)
+	filePath := filepath.Join(dir, ReleaseFileName)
+	raw, err := os.ReadFile(filePath)
 	if err != nil {
-		return ReleaseFile{}, errors.Wrapf(err, "reading the release file %s", path)
+		return ReleaseFile{}, errors.Wrapf(err, "reading the release file %s", filePath)
 	}
 
 	var file ReleaseFile
 	if err := json.Unmarshal(raw, &file); err != nil {
-		return ReleaseFile{}, errors.Wrapf(err, "the release file %s is not the shape the generator writes", path)
+		return ReleaseFile{}, errors.Wrapf(err, "the release file %s is not the shape the generator writes", filePath)
 	}
 	if len(file.Outlets) == 0 {
-		return ReleaseFile{}, errors.Newf("the release file %s names no outlet; a generated router has at least its default outlet", path)
+		return ReleaseFile{}, errors.Newf("the release file %s names no outlet; a generated router has at least its default outlet", filePath)
 	}
 	for _, route := range file.Scheduled {
 		if err := route.validate(); err != nil {
-			return ReleaseFile{}, errors.Wrapf(err, "the release file %s", path)
+			return ReleaseFile{}, errors.Wrapf(err, "the release file %s", filePath)
 		}
 	}
 	for _, route := range file.FileRoutes {
 		if err := route.validate(); err != nil {
-			return ReleaseFile{}, errors.Wrapf(err, "the release file %s", path)
+			return ReleaseFile{}, errors.Wrapf(err, "the release file %s", filePath)
 		}
 	}
 	for i := range file.Surfaces {
@@ -280,7 +348,7 @@ func ReadReleaseFile(dir string) (ReleaseFile, error) {
 			surface.Kind = SurfacePrefix
 		}
 		if err := surface.validate(); err != nil {
-			return ReleaseFile{}, errors.Wrapf(err, "the release file %s", path)
+			return ReleaseFile{}, errors.Wrapf(err, "the release file %s", filePath)
 		}
 	}
 

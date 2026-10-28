@@ -17,8 +17,8 @@ const generationImportPath = "github.com/cccteam/ccc/resource/generation"
 // Test_servedRouter_generatedTestRuns renders the served router and its test for the
 // Lodestar shape, two browser applications under prefixes and a machine outlet, beside a
 // hand-written stand-in for the route tables and two auth packages, and runs the rendered
-// test with go test: the root redirect, every mount, every route and every refusal hold in
-// a compiled router, not only in the template text. A scheduled method rides along, so its
+// test with go test: the root redirect, every mount, every route, every refusal and the
+// shipped program's route hold in a compiled router, not only in the template text. A scheduled method rides along, so its
 // route under the scheduled prefix and its chain are proven the same way. The request log
 // words ride along too: the application default, the droids outlet's word with a prefix
 // mounted by hand beneath it, a prefix mounted by hand at the root, the stored-file
@@ -73,7 +73,7 @@ func Test_servedRouter_generatedTestRuns(t *testing.T) {
 	// with a prefix mounted by hand beneath it that never does; the portal caps its spans.
 	outlets := []*routerOutlet{
 		{name: "default", prefix: "api", servesSessions: true, auth: &outletAuth{importPath: fixturePath + "/crew", methods: []AuthMethod{PasswordMethod()}}, webApp: "/console", oldestAnswered: "1.5.0", declaredOldest: true},
-		{name: "droids", prefix: "droids", apiKey: true, tokenAuth: fixturePath + "/crew", requestLog: LogOnEvent(), traces: TracesOff()},
+		{name: "droids", prefix: "droids", apiKey: true, tokenAuth: fixturePath + "/crew", requestLog: LogOnEvent(), traces: TracesOff(), programs: []shippedProgram{{dir: "cmd/beacon", name: "beacon", platforms: []string{"linux/amd64", "linux/arm64"}}}},
 		{name: "portal", prefix: "portal/api", servesSessions: true, auth: &outletAuth{importPath: fixturePath + "/members", methods: []AuthMethod{GoogleMethod("google")}}, webApp: "/portal", oldestAnswered: ThisRelease, declaredOldest: true, traces: TracesCapped(0.1)},
 	}
 	content := &generatedRoute{Method: "GET", Path: "/api/widgets/{widgetId}/content", TestURL: "/api/widgets/7/content", HandlerFunc: "WidgetContent", HandlerType: fileHandler, RequestLog: LogNever(), Traces: TracesOff()}
@@ -96,8 +96,8 @@ func Test_servedRouter_generatedTestRuns(t *testing.T) {
 	r.router = packageDir("pkg/router")
 	r.resource = packageDir("pkg/resources")
 	data := r.servedRouterData(outlets, nil, fileRoutes, wordedRoutes)
-	if data.RootRedirect != "/console/" || !data.MultiAuth {
-		t.Fatalf("RootRedirect = %q, MultiAuth = %v; want /console/ and two auths", data.RootRedirect, data.MultiAuth)
+	if data.RootRedirect != "/console/" || !data.MultiAuth || !data.ShipsPrograms {
+		t.Fatalf("RootRedirect = %q, MultiAuth = %v, ShipsPrograms = %v; want /console/, two auths and a shipped program", data.RootRedirect, data.MultiAuth, data.ShipsPrograms)
 	}
 
 	files := map[string]string{
@@ -140,6 +140,8 @@ func Test_servedRouter_generatedTestRuns(t *testing.T) {
 		"--- PASS: TestGeneratedRouterSessionRoutes/POST-url-api-user-password-login",
 		"--- PASS: TestGeneratedRouterSessionRoutes/POST-url-portal-api-user-pending-confirm",
 		"--- PASS: TestGeneratedRouterNotFound/POST-url-droids-user-password-login",
+		"--- PASS: TestGeneratedRouterPrograms/GET-url-droids-programs-beacon-1.0.0-linux-amd64",
+		"--- PASS: TestGeneratedRouterPrograms/GET-url-droids-programs-beacon-1.0.0-linux-arm64",
 		"--- PASS: TestGeneratedRouterHooks",
 		"--- PASS: TestGeneratedRouterAPIVersion/-api-the_oldest_answered_release",
 		"--- PASS: TestGeneratedRouterAPIVersion/-api-a_release_below_the_oldest_answered",
