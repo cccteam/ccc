@@ -437,6 +437,23 @@ variable "{{$m.Var "TENANTS"}}" {
 }
 
 {{end -}}
+{{with .Setting "AdministeredTenants" -}}
+variable "{{$m.Var "ADMINISTERED_TENANTS"}}" {
+  description = <<-EOT
+    The Microsoft Entra tenants the deployment administers, among those {{$m.Label}}
+    admits, by tenant id, comma-separated ({{.Variable.Name}}, {{.Variable.Declaration}}):
+    a sign-in from one carries the tenant's own second factor, which the deployment
+    vouches for (a Conditional Access policy requiring multifactor authentication of
+    everyone), and is asked for no sign-in code. Empty when the deployment administers
+    none, so every sign-in is asked for the code. The registration reads it when it is
+    made, at construction, so every data-level process carries it, and refuses a tenant
+    it does not admit.
+  EOT
+  type        = string
+  default     = ""
+}
+
+{{end -}}
 {{with .Setting "Workspaces" -}}
 variable "{{$m.Var "WORKSPACES"}}" {
   description = "The Google Workspaces {{$m.Label}} admits, each named with its domains: <name>=<domain>[+<domain>], comma-separated ({{.Variable.Name}}, {{.Variable.Declaration}}); the name is the connection every link made through it carries. The session library validates the list when the registration is made, at construction, so every data-level process carries it and the first release in an environment waits on it (README, \"Hand steps\")."
@@ -476,6 +493,22 @@ variable "{{$m.Var "HOSTED_DOMAIN"}}" {
   description = "Google Workspace domain the logins of {{$m.Label}} are restricted to ({{.Variable.Name}}, {{.Variable.Declaration}}). Required non-empty by the session library at construction, so the migrate command carries it too."
   type        = string
   default     = "{{$.P.HostedDomain}}"
+}
+
+{{end -}}
+{{with .Setting "AdministeredWorkspaces" -}}
+variable "{{$m.Var "ADMINISTERED_WORKSPACES"}}" {
+  description = <<-EOT
+    The Google Workspaces the deployment administers, among those {{$m.Label}}
+    admits, by domain, comma-separated ({{.Variable.Name}}, {{.Variable.Declaration}}):
+    a sign-in from one carries the Workspace's own second factor, which the deployment
+    vouches for (2-Step Verification enforced for everyone), and is asked for no sign-in
+    code. Empty when the deployment administers none, so every sign-in is asked for the
+    code. The registration reads it when it is made, at construction, so every
+    data-level process carries it, and refuses a Workspace it does not admit.
+  EOT
+  type        = string
+  default     = ""
 }
 
 {{end -}}

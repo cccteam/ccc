@@ -312,9 +312,11 @@ locals {
     GOOGLE_CLOUD_SPANNER_DATABASE_NAME = local.database_name
     # The directory registrations' settings the session library reads when it makes
     # each registration, at construction, so every data-level process gets them.
-    APP_MEMBERS_DIRECTORY_TENANT_ID   = var.members_directory_tenant_id
-    APP_STAFF_DIRECTORY_HOSTED_DOMAIN = var.staff_directory_hosted_domain
-    APP_STAFF_DIRECTORY_GROUP_PREFIX  = var.staff_directory_group_prefix
+    APP_MEMBERS_DIRECTORY_TENANT_ID             = var.members_directory_tenant_id
+    APP_MEMBERS_DIRECTORY_ADMINISTERED_TENANTS  = var.members_directory_administered_tenants
+    APP_STAFF_DIRECTORY_HOSTED_DOMAIN           = var.staff_directory_hosted_domain
+    APP_STAFF_DIRECTORY_ADMINISTERED_WORKSPACES = var.staff_directory_administered_workspaces
+    APP_STAFF_DIRECTORY_GROUP_PREFIX            = var.staff_directory_group_prefix
     # The first administrator of each auth whose roles the application assigns: the
     # sign-in name the migrate command seeds the administrator role membership under
     # while the auth's users table holds no rows.

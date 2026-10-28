@@ -47,6 +47,49 @@ func TestRenderedStackParsesAsHCL(t *testing.T) {
 	}
 }
 
+// TestRenderedVariablesDeclared holds every rendered .tf file to the variables the stack
+// declares: a var.<name> a template hands a process (locals.tf) or a resource reads is a
+// variable block of variables.tf, or tofu refuses the plan at its first step, with
+// nothing else in the stack read. That is where a directory registration's administered
+// organizations were caught (bedrock 0.3.23 handed them to the data level and declared
+// no variable for them), after bedrock check had passed the tree.
+func TestRenderedVariablesDeclared(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		fixture   string
+		placement string
+	}{
+		{name: "harbor, a Google directory auth and a Microsoft one", fixture: "harbor", placement: "placement.json"},
+		{name: "beacon, a password auth", fixture: "beacon", placement: "placement-beacon.json"},
+		{name: "lantern, two sites behind one image", fixture: "lantern", placement: "placement-lantern.json"},
+		{name: "lantern on a vanity domain", fixture: "lantern", placement: "placement-lantern-vanity.json"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			files, err := Render(deriveFixture(t, tt.fixture, tt.placement))
+			if err != nil {
+				t.Fatalf("Render() error = %v", err)
+			}
+			stack := map[string][]byte{}
+			for _, f := range files {
+				if !f.Root && strings.HasSuffix(f.Path, ".tf") {
+					stack[f.Path] = f.Content
+				}
+			}
+			if len(stack) == 0 {
+				t.Fatal("the render produced no .tf file")
+			}
+			for _, u := range UndeclaredVariables(stack) {
+				t.Errorf("%s:%d reads var.%s, which no variable block declares", u.Path, u.Line, u.Name)
+			}
+		})
+	}
+}
+
 // tfFiles lists the .tf files under dir, failing the test when there are none.
 func tfFiles(t *testing.T, dir string) []string {
 	t.Helper()

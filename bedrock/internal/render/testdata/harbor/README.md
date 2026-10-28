@@ -406,9 +406,11 @@ above them.
 | `APP_FIRESTORE_DATABASE` | data | the Firestore database | yes | yes | yes |
 | `APP_FIREBASE_API_KEY` | data | the Firebase web API key | yes | yes | yes |
 | `APP_MEMBERS_DIRECTORY_TENANT_ID` | data | `var.members_directory_tenant_id` | yes | yes | yes |
+| `APP_MEMBERS_DIRECTORY_ADMINISTERED_TENANTS` | data | `var.members_directory_administered_tenants` | yes | yes | yes |
 | `APP_MEMBERS_DIRECTORY_CLIENT_ID` | data | `var.members_directory_client_id[env]` | yes | | |
 | `APP_MEMBERS_DIRECTORY_REDIRECT_URL` | data | `https://<first hostname>/portal/api/user/directory/callback` | yes | | |
 | `APP_STAFF_DIRECTORY_HOSTED_DOMAIN` | data | `var.staff_directory_hosted_domain` | yes | yes | yes |
+| `APP_STAFF_DIRECTORY_ADMINISTERED_WORKSPACES` | data | `var.staff_directory_administered_workspaces` | yes | yes | yes |
 | `APP_STAFF_DIRECTORY_CLIENT_ID` | data | `var.staff_directory_client_id[env]` | yes | | |
 | `APP_STAFF_DIRECTORY_REDIRECT_URL` | data | `https://<first hostname>/api/user/directory/callback` | yes | | |
 | `APP_STAFF_DIRECTORY_GROUP_PREFIX` | data | `var.staff_directory_group_prefix` | yes | yes | yes |
@@ -1085,7 +1087,9 @@ Per environment, after the first apply:
    registration per environment (Identity > Applications > App registrations >
    New registration), supported account types
    **Single tenant only**, the entry naming your tenant
-   ("Accounts in this organizational directory only" in the admin center's earlier wording), platform
+   ("Accounts in this organizational directory only" in the admin center's earlier wording;
+   taken from the registration's settings, since bedrock could not read how its
+   code builds its tenants), platform
    Web with the redirect URI = output `members_directory_redirect_url` and the
    front-channel logout URL = output `members_directory_logout_url`; then Certificates &
    secrets > New client secret. Put the application (client) ID in
@@ -1094,6 +1098,11 @@ Per environment, after the first apply:
    organization; the session library validates it at construction, so the first
    release in an environment waits on it), and add the client secret as
    version 1 of `imp-<env>-gbl-harbor-members-directory-client-secret`.
+   Once a Conditional Access policy requires multifactor authentication of
+   everyone in a tenant the organization administers, put its tenant id in
+   `members_directory_administered_tenants` (comma-separated, once for the
+   organization): its sign-ins then carry the tenant's second factor and are
+   asked for no sign-in code, where every other sign-in is asked for the code.
    In tst, each pull request's environment signs in through the same
    registration: add its callback,
    `https://harbor-pr<N>.impulseframework.dev/portal/api/user/directory/callback`, to the
@@ -1108,6 +1117,11 @@ Per environment, after the first apply:
    redirect URI = output `staff_directory_redirect_url`. Put the client ID in
    `terraform.tfvars` (`staff_directory_client_id`), and add the client secret as version 1 of
    `imp-<env>-gbl-harbor-staff-directory-client-secret`.
+   Once 2-Step Verification is enforced for everyone in a Workspace the
+   organization administers, put its domain in `staff_directory_administered_workspaces`
+   (comma-separated, once for the organization): its sign-ins then carry the
+   Workspace's second factor and are asked for no sign-in code, where every
+   other sign-in is asked for the code.
    In tst, each pull request's environment signs in through the same
    client: add its callback,
    `https://harbor-pr<N>.impulseframework.dev/api/user/directory/callback`, to the client's
@@ -1171,10 +1185,12 @@ Per environment, after the first apply:
 | `teardown` | Set by `bedrock teardown` alone: the services' deletion protection lifted at the apply before its destroy. | `bool` | `false` | no |
 | `members_directory_client_id` | Client ID of the members auth's directory registration, per environment. | `map(string)` | all empty | no |
 | `members_directory_tenant_id` | Tenant id of the Entra tenant the members auth's directory registration admits. | `string` | `""` | no |
+| `members_directory_administered_tenants` | The Entra tenants the deployment administers among those the members auth's directory registration admits, by tenant id; their sign-ins are asked for no sign-in code. | `string` | `""` | no |
 | `staff_directory_client_id` | Client ID of the staff auth's directory registration, per environment. | `map(string)` | all empty | no |
 | `staff_directory_group_lookup` | How far the groups read of the staff auth's directory registration reaches: direct or nested. | `string` | `"direct"` | no |
 | `staff_directory_group_prefix` | Prefix of the role groups of the staff auth's directory registration. | `string` | `"staff-"` | no |
 | `staff_directory_hosted_domain` | Workspace domain the logins of the staff auth's directory registration are restricted to. | `string` | `"impulseframework.com"` | no |
+| `staff_directory_administered_workspaces` | The Workspaces the deployment administers among those the staff auth's directory registration admits, by domain; their sign-ins are asked for no sign-in code. | `string` | `""` | no |
 | `members_administrator` | Sign-in name of the members auth's first administrator, per environment. | `map(string)` | all empty | no |
 | `mail_mailbox` | Google Workspace mailbox the auths' mail is sent as; empty writes the mail to the log instead. | `string` | `""` | no |
 | `state_bucket` | State bucket, for the upstream layers' outputs. | `string` | n/a | yes |

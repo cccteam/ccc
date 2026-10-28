@@ -140,12 +140,13 @@ func NewDataConfiguration(ctx context.Context) (*DataConfiguration, error) {
 		SessionTimeout: env.SessionTimeout,
 		LoginURL:       "/login",
 		Directory: staff.DirectorySettings{
-			ClientID:     env.StaffDirectoryClientID,
-			ClientSecret: env.StaffDirectoryClientSecret,
-			RedirectURL:  env.StaffDirectoryRedirectURL,
-			HostedDomain: env.StaffDirectoryHostedDomain,
-			GroupPrefix:  env.StaffDirectoryGroupPrefix,
-			GroupLookup:  env.StaffDirectoryGroupLookup,
+			ClientID:               env.StaffDirectoryClientID,
+			ClientSecret:           env.StaffDirectoryClientSecret,
+			RedirectURL:            env.StaffDirectoryRedirectURL,
+			HostedDomain:           env.StaffDirectoryHostedDomain,
+			AdministeredWorkspaces: env.StaffDirectoryAdministeredWorkspaces,
+			GroupPrefix:            env.StaffDirectoryGroupPrefix,
+			GroupLookup:            env.StaffDirectoryGroupLookup,
 		},
 	})
 	if err != nil {
@@ -157,10 +158,11 @@ func NewDataConfiguration(ctx context.Context) (*DataConfiguration, error) {
 		SessionTimeout: env.SessionTimeout,
 		LoginURL:       "/portal/login",
 		Directory: members.DirectorySettings{
-			TenantID:     env.MembersDirectoryTenantID,
-			ClientID:     env.MembersDirectoryClientID,
-			ClientSecret: env.MembersDirectoryClientSecret,
-			RedirectURL:  env.MembersDirectoryRedirectURL,
+			TenantID:            env.MembersDirectoryTenantID,
+			AdministeredTenants: env.MembersDirectoryAdministeredTenants,
+			ClientID:            env.MembersDirectoryClientID,
+			ClientSecret:        env.MembersDirectoryClientSecret,
+			RedirectURL:         env.MembersDirectoryRedirectURL,
 		},
 	})
 	if err != nil {
@@ -273,20 +275,22 @@ type dataConfig struct {
 	// application is known to Google, under the registration's variables. Under the
 	// session library's skipAuth build tag only the redirect URL, the hosted domain and the
 	// group prefix are read.
-	StaffDirectoryClientID     string `env:"APP_STAFF_DIRECTORY_CLIENT_ID"`
-	StaffDirectoryClientSecret string `env:"APP_STAFF_DIRECTORY_CLIENT_SECRET" secret:"true"`
-	StaffDirectoryRedirectURL  string `env:"APP_STAFF_DIRECTORY_REDIRECT_URL"`
-	StaffDirectoryHostedDomain string `env:"APP_STAFF_DIRECTORY_HOSTED_DOMAIN"`
-	StaffDirectoryGroupPrefix  string `env:"APP_STAFF_DIRECTORY_GROUP_PREFIX"`
-	StaffDirectoryGroupLookup  string `env:"APP_STAFF_DIRECTORY_GROUP_LOOKUP"`
+	StaffDirectoryClientID               string `env:"APP_STAFF_DIRECTORY_CLIENT_ID"`
+	StaffDirectoryClientSecret           string `env:"APP_STAFF_DIRECTORY_CLIENT_SECRET" secret:"true"`
+	StaffDirectoryRedirectURL            string `env:"APP_STAFF_DIRECTORY_REDIRECT_URL"`
+	StaffDirectoryHostedDomain           string `env:"APP_STAFF_DIRECTORY_HOSTED_DOMAIN"`
+	StaffDirectoryAdministeredWorkspaces string `env:"APP_STAFF_DIRECTORY_ADMINISTERED_WORKSPACES"`
+	StaffDirectoryGroupPrefix            string `env:"APP_STAFF_DIRECTORY_GROUP_PREFIX"`
+	StaffDirectoryGroupLookup            string `env:"APP_STAFF_DIRECTORY_GROUP_LOOKUP"`
 
 	// The members auth's directory registration (pkg/auth/members/directory.go): how the
 	// application is known to Microsoft, under the registration's variables. Under the
 	// skipAuth build tag only the tenant id and the redirect URL are read.
-	MembersDirectoryTenantID     string `env:"APP_MEMBERS_DIRECTORY_TENANT_ID"`
-	MembersDirectoryClientID     string `env:"APP_MEMBERS_DIRECTORY_CLIENT_ID"`
-	MembersDirectoryClientSecret string `env:"APP_MEMBERS_DIRECTORY_CLIENT_SECRET" secret:"true"`
-	MembersDirectoryRedirectURL  string `env:"APP_MEMBERS_DIRECTORY_REDIRECT_URL"`
+	MembersDirectoryTenantID            string `env:"APP_MEMBERS_DIRECTORY_TENANT_ID"`
+	MembersDirectoryAdministeredTenants string `env:"APP_MEMBERS_DIRECTORY_ADMINISTERED_TENANTS"`
+	MembersDirectoryClientID            string `env:"APP_MEMBERS_DIRECTORY_CLIENT_ID"`
+	MembersDirectoryClientSecret        string `env:"APP_MEMBERS_DIRECTORY_CLIENT_SECRET"        secret:"true"`
+	MembersDirectoryRedirectURL         string `env:"APP_MEMBERS_DIRECTORY_REDIRECT_URL"`
 
 	// FileStore is the application's default file store: the Cloud Storage bucket its
 	// files live in, as a gs:// URL.

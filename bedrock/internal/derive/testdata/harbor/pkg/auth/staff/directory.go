@@ -2,6 +2,7 @@ package staff
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/cccteam/access"
 	"github.com/cccteam/session/google"
@@ -29,6 +30,12 @@ type DirectorySettings struct {
 	RedirectURL string
 	// HostedDomain is the Workspace's domain, checked against the verified hd claim.
 	HostedDomain string
+	// AdministeredWorkspaces is the Workspaces the deployment administers, by domain,
+	// comma-separated, each one the registration admits: a sign-in from one carries the
+	// Workspace's own second factor, which the deployment vouches for (2-Step Verification
+	// enforced for everyone), and is not asked for the sign-in code; empty when the
+	// deployment administers none.
+	AdministeredWorkspaces string
 	// GroupPrefix is the local-part prefix of the Google Groups that carry roles: a group
 	// <GroupPrefix><role>@<domain> assigns <role>. It is never empty, since it is the only
 	// filter between role groups and the rest of the directory.
@@ -60,9 +67,13 @@ func registerDirectory(authSession *Session, accessClient *access.Client, settin
 	if err != nil {
 		return nil, errors.Wrap(err, "google.ParseGroupLookup()")
 	}
+	workspace, err := directorySlot(settings)
+	if err != nil {
+		return nil, err
+	}
 
 	return google.SignIn(authSession, DirectoryRegistration, nil, &google.Config{
-		Workspaces:   google.Workspace(Name, settings.Directory.HostedDomain),
+		Workspaces:   workspace,
 		ClientID:     settings.Directory.ClientID,
 		ClientSecret: settings.Directory.ClientSecret,
 		RedirectURL:  settings.Directory.RedirectURL,
@@ -70,4 +81,33 @@ func registerDirectory(authSession *Session, accessClient *access.Client, settin
 		Accounts:     signin.MembersOfDirectory,
 		LoginURL:     settings.LoginURL,
 	}), nil
+}
+
+// directorySlot is the registration's organization slot, one Workspace (HostedDomain),
+// with the Workspaces the deployment administers declared as attesting
+// (AdministeredWorkspaces): a sign-in from one carries the Workspace's own second factor,
+// which the deployment vouches for, and is not asked for the sign-in code.
+func directorySlot(settings *Settings) (google.WorkspaceSet, error) {
+	workspace := google.Workspace(DirectoryRegistration, settings.Directory.HostedDomain)
+	for _, domain := range parseDirectoryAdministered(settings.Directory.AdministeredWorkspaces) {
+		if !strings.EqualFold(domain, settings.Directory.HostedDomain) {
+			return google.WorkspaceSet{}, errors.Newf("DirectoryRegistration: the administered Workspace %q is not the Workspace admitted, %s", domain, settings.Directory.HostedDomain)
+		}
+		workspace = workspace.Attesting()
+	}
+
+	return workspace, nil
+}
+
+// parseDirectoryAdministered reads the administered Workspaces from their setting: the
+// domains, comma-separated, lower-cased; none for an empty setting.
+func parseDirectoryAdministered(value string) []string {
+	var domains []string
+	for _, domain := range strings.Split(value, ",") {
+		if domain = strings.ToLower(strings.TrimSpace(domain)); domain != "" {
+			domains = append(domains, domain)
+		}
+	}
+
+	return domains
 }

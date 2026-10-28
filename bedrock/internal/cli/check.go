@@ -38,6 +38,11 @@ accepts, naming the types: release-please drops a merge whose type has no sectio
 as it drops a hidden one, so a pull request of only such titles would never release. Whether
 a section is hidden is the application's choice; only an absent entry is refused.
 
+The variables: every input variable a .tf file of the stack reads (var.<name>), in an
+owned file or one of yours, is declared by a variable block in the stack, or tofu refuses
+the plan at its first step with nothing else read; the check refuses the reference first,
+naming the file and the line.
+
 The build secrets: a secret the Dockerfile mounts as required (--mount=type=secret,
 id=NAME,required=true) must be declared in every environment's build_secrets in
 terraform.tfvars, or a release that passed the earlier environments fails in the image

@@ -61,8 +61,8 @@ type Settings struct {
 	LoginURL string
 	// Directory is the directory registration's settings: how the application is known
 	// to Microsoft, read from the environment (APP_MEMBERS_DIRECTORY_TENANT_ID,
-	// APP_MEMBERS_DIRECTORY_CLIENT_ID, APP_MEMBERS_DIRECTORY_CLIENT_SECRET,
-	// APP_MEMBERS_DIRECTORY_REDIRECT_URL).
+	// APP_MEMBERS_DIRECTORY_ADMINISTERED_TENANTS, APP_MEMBERS_DIRECTORY_CLIENT_ID,
+	// APP_MEMBERS_DIRECTORY_CLIENT_SECRET, APP_MEMBERS_DIRECTORY_REDIRECT_URL).
 	Directory DirectorySettings
 }
 

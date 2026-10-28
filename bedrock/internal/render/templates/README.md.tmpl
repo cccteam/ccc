@@ -1196,6 +1196,7 @@ pull request's.
 Per environment, after the first apply:
 
 {{range .Methods -}}
+{{$m := . -}}
 {{if .Microsoft -}}
 {{.Step}}. In the Microsoft Entra admin center, for {{.Label}}: one app
    registration per environment (Identity > Applications > App registrations >
@@ -1212,6 +1213,13 @@ Per environment, after the first apply:
    organization; the session library validates it at construction, so the first
    release in an environment waits on it){{end}}, and add the client secret as
    version 1 of `{{$.Prefix}}-<env>-gbl-{{$.App}}-{{.Secret.Name}}`.
+{{- with .Setting "AdministeredTenants"}}
+   Once a Conditional Access policy requires multifactor authentication of
+   everyone in a tenant the organization administers, put its tenant id in
+   `{{$m.Var "ADMINISTERED_TENANTS"}}` (comma-separated, once for the
+   organization): its sign-ins then carry the tenant's second factor and are
+   asked for no sign-in code, where every other sign-in is asked for the code.
+{{- end}}
 {{- if .OtherTenants}}
    Another tenant admits the registration once its administrator consents at
    `https://login.microsoftonline.com/<that tenant's id>/adminconsent?client_id=<the client id>`,
@@ -1235,6 +1243,13 @@ Per environment, after the first apply:
    library validates them at construction, so the first release in an
    environment waits on them){{end}}, and add the client secret as version 1 of
    `{{$.Prefix}}-<env>-gbl-{{$.App}}-{{.Secret.Name}}`.
+{{- with .Setting "AdministeredWorkspaces"}}
+   Once 2-Step Verification is enforced for everyone in a Workspace the
+   organization administers, put its domain in `{{$m.Var "ADMINISTERED_WORKSPACES"}}`
+   (comma-separated, once for the organization): its sign-ins then carry the
+   Workspace's second factor and are asked for no sign-in code, where every
+   other sign-in is asked for the code.
+{{- end}}
    In {{$.Integration}}, each pull request's environment signs in through the same
    client: add its callback,
    `https://{{$.App}}-pr<N>.{{$.P.AppsDomain}}{{.Callback.Path}}`, to the client's
@@ -1330,6 +1345,9 @@ none yet), and the sign-in needs no registration.
 {{- with .Setting "Tenants"}}
 | `{{$m.Var "TENANTS"}}` | The Entra tenants {{$m.Label}} admits, named. | `string` | `""` | no |
 {{- end}}
+{{- with .Setting "AdministeredTenants"}}
+| `{{$m.Var "ADMINISTERED_TENANTS"}}` | The Entra tenants the deployment administers among those {{$m.Label}} admits, by tenant id; their sign-ins are asked for no sign-in code. | `string` | `""` | no |
+{{- end}}
 {{- with .Setting "Workspaces"}}
 | `{{$m.Var "WORKSPACES"}}` | The Workspaces {{$m.Label}} admits, named. | `string` | `""` | no |
 {{- end}}
@@ -1341,6 +1359,9 @@ none yet), and the sign-in needs no registration.
 {{- end}}
 {{- with .Setting "HostedDomain"}}
 | `{{$m.Var "HOSTED_DOMAIN"}}` | Workspace domain the logins of {{$m.Label}} are restricted to. | `string` | `"{{$.P.HostedDomain}}"` | no |
+{{- end}}
+{{- with .Setting "AdministeredWorkspaces"}}
+| `{{$m.Var "ADMINISTERED_WORKSPACES"}}` | The Workspaces the deployment administers among those {{$m.Label}} admits, by domain; their sign-ins are asked for no sign-in code. | `string` | `""` | no |
 {{- end}}
 {{- end}}
 {{- range .Administrators}}

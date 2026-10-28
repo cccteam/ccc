@@ -8,6 +8,7 @@ state_bucket = "{{.P.StateBucket}}"
 # is keyed by environment so one file serves all {{.EnvCountWord}} applies.
 
 {{range .Methods -}}
+{{$m := . -}}
 # The {{.Auth}} auth's {{.Name}} registration with {{.Provider}} (README, "Hand
 # steps"): the client id of each environment's registration{{if .Slot}}, and
 {{- if eq .Slot.Field "TenantID"}} the tenant whose
@@ -23,6 +24,17 @@ state_bucket = "{{.P.StateBucket}}"
 {{$.TfvarsEnvStrings}}
 }
 {{if .Slot}}{{.Var .Slot.Suffix}} = ""
+{{end}}{{with .Setting "AdministeredTenants"}}# The tenants the deployment administers among those the registration admits, by
+# tenant id, comma-separated, once for the organization: a sign-in from one carries
+# the tenant's own second factor (a Conditional Access policy requiring multifactor
+# authentication of everyone) and is asked for no sign-in code; empty, every sign-in
+# is asked for the code.
+{{$m.Var "ADMINISTERED_TENANTS"}} = ""
+{{end}}{{with .Setting "AdministeredWorkspaces"}}# The Workspaces the deployment administers among those the registration admits, by
+# domain, comma-separated, once for the organization: a sign-in from one carries the
+# Workspace's own second factor (2-Step Verification enforced for everyone) and is
+# asked for no sign-in code; empty, every sign-in is asked for the code.
+{{$m.Var "ADMINISTERED_WORKSPACES"}} = ""
 {{end}}
 {{end -}}
 {{range .Administrators -}}
