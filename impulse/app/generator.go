@@ -438,7 +438,7 @@ func (r *reader) readCall(expr ast.Expr, want optionKind) (Call, bool) {
 // readArg reads one argument, checking it against the expected parameter kind.
 func (r *reader) readArg(expr ast.Expr, option string, expect paramKind) Arg {
 	switch expect {
-	case paramTSOption, paramOutletOption:
+	case paramTSOption, paramOutletOption, paramProgramOption:
 		c, ok := r.readCall(expr, expect.optionKind())
 		if !ok {
 			return Arg{Kind: ArgOther, Text: exprText(expr)}

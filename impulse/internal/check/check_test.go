@@ -86,7 +86,7 @@ func TestSelect(t *testing.T) {
 			"generator-program", "options", "tenancy-wired", "outlet-wired", "outlet-shape", "sites-wired", "web-wired", "login-pages", "login-held", "maintenance-switch", "session-tables", "migrations-reader", "auths-wired", "administrator-roles", "directory-admission", "change-signal", "conditions-proven", "skipauth", "emulator-version", "prettier-ignore", "eslint-ignore",
 			"resource-styles", "package-manager", "registry-pins", "web-pins", "test-runner", "installable", "ci-workflow",
 			"paging", "rpc-execute", "feature-flags", "sites-generators", "env-template", "file-store", "pins",
-			"gofmt", "gowork-off", "regen",
+			"gofmt", "gowork-off", "shipped-programs", "regen",
 		}},
 		{name: "subset keeps run order", only: []string{regen{}.Name(), pins{}.Name()}, want: []string{pins{}.Name(), regen{}.Name()}},
 		{name: "unknown", only: []string{"nope"}, wantErr: `unknown check "nope"`},

@@ -228,6 +228,47 @@ func TestGeneratedRouterSessionRoutes(t *testing.T) {
 	}
 }
 
+// TestGeneratedRouterPrograms proves each shipped program's route sits behind its outlet's
+// token check: a fetch for a release that is not the server's reaches the shipped
+// handler, which refuses it naming the server's release, with the release in
+// X-Api-Version, having passed the every-request chain, the outlet's group and its token
+// check, and no generated handler. With a hook that adds middleware, the route sits
+// behind it too, as the generated routes do.
+func TestGeneratedRouterPrograms(t *testing.T) {
+	t.Parallel()
+
+	urls := []string{
+		"/droids/programs/droid/1.0.0/linux/amd64",
+	}
+	for _, url := range urls {
+		t.Run("GET-url"+strings.ReplaceAll(url, "/", "-"), func(t *testing.T) {
+			t.Parallel()
+
+			rec := newRouterCallRecorder()
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, url, http.NoBody)
+			rr := serveGeneratedRouterRequest(t, rec, "2.0.0", Hooks{}, req)
+
+			if got := rr.Code; got != http.StatusNotFound {
+				t.Errorf("response.Code = %v, want %v", got, http.StatusNotFound)
+			}
+			if got := rr.Body.String(); !strings.Contains(got, "this server is release 2.0.0") {
+				t.Errorf("body = %q, want the server's release named", got)
+			}
+			if got := rr.Header().Get(resource.APIVersionHeader); got != "2.0.0" {
+				t.Errorf("%s = %q, want the server's release", resource.APIVersionHeader, got)
+			}
+			if cnt := len(rec.handlers); cnt != 0 {
+				t.Errorf("expected no generated handler called, got: %v", rec.handlers)
+			}
+			chain := routerChainFor(t, url)
+			want := slices.Concat(routerRootChain, chain.group, chain.guards)
+			if !slices.Equal(rec.chain, want) {
+				t.Errorf("middleware chain = %v, want %v", rec.chain, want)
+			}
+		})
+	}
+}
+
 // TestGeneratedRouterNotFound proves the prefixes are closed: under every outlet's
 // prefix an unknown path is 404 from the prefix's own not-found handler, never a browser
 // application's entry document, and a route of one outlet addressed under another's

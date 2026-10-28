@@ -13,7 +13,7 @@
 //	  + ValidateSession, ValidateXSRFToken, CheckAPIVersion (oldest answered 0.1.0): hooks.Default, generatedRoutes
 //	droids (/droids), bearer tokens of the crew auth:
 //	  BindAuth(crew.Name), NoCaching, CompressionMiddleware, ReleaseHeader: POST /droids/oauth/device/authorize, POST /droids/oauth/token
-//	  + ValidateToken: hooks.Droids, generatedDroidsRoutes
+//	  + ValidateToken: hooks.Droids, generatedDroidsRoutes, GET /droids/programs/*
 //	  POST /droids/sectors/{sectorID}/ingest-droid-reports: request log on event
 //	portal (/portal/api), sessions of the members auth (directory):
 //	  BindAuth(members.Name), NoCaching, CompressionMiddleware, ReleaseHeader, StartSession, SetXSRFToken: GET /portal/api/user/methods, GET /portal/api/user/session, DELETE /portal/api/user/session, GET /portal/api/user/pending, GET /portal/api/user/directory/login, GET /portal/api/user/directory/callback
@@ -43,6 +43,7 @@ import (
 	"github.com/cccteam/ccc/resource/lodestar/pkg/auth/crew"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/auth/members"
 	"github.com/cccteam/ccc/resource/lodestar/pkg/resources"
+	"github.com/cccteam/ccc/resource/shipped"
 	"github.com/cccteam/ccc/tracer"
 	"github.com/cccteam/httpio"
 	"github.com/cccteam/logger"
@@ -383,6 +384,12 @@ func New(h Handlers, hooks Hooks) *chi.Mux {
 			registerGenerated(r, hooks.Droids, "Droids", func(r chi.Router) {
 				generatedDroidsRoutes(r, h)
 			})
+
+			// The programs this release ships to their installed copies (ShipsProgram):
+			// droid for linux/amd64. A copy fetches its next release here with its token. The
+			// route is registered after the hook, so it sits behind whatever the hook adds in
+			// front of the outlet's routes, and the hook may still add it.
+			r.Handle("/droids/programs/*", http.StripPrefix("/droids/programs", shipped.Handler(serverVersion, shipped.Program{Name: "droid", Platforms: []string{"linux/amd64"}})))
 		})
 	})
 

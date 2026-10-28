@@ -217,6 +217,7 @@ func All() []Check {
 		pins{},
 		gofmtCheck{},
 		goworkOff{},
+		shippedPrograms{},
 		regen{},
 	}
 }

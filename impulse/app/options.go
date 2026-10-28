@@ -9,6 +9,9 @@ const (
 	kindResourceOption optionKind = iota + 1
 	kindTSOption
 	kindOutletOption
+	// kindProgramOption refines one ShipsProgram declaration: the platforms the release
+	// compiles the program for (Platforms).
+	kindProgramOption
 )
 
 func (k optionKind) String() string {
@@ -19,6 +22,8 @@ func (k optionKind) String() string {
 		return "TSOption"
 	case kindOutletOption:
 		return "OutletOption"
+	case kindProgramOption:
+		return "ProgramOption"
 	default:
 		return "option"
 	}
@@ -56,6 +61,9 @@ const (
 	// paramTraces is a trace setting: a call to one of the generation package's Traces
 	// constructors (generation.TracesOff()).
 	paramTraces
+	// paramProgramOption is a ProgramOption call refining a ShipsProgram declaration
+	// (generation.Platforms("linux/amd64")).
+	paramProgramOption
 )
 
 // ThisReleaseIdent is the generation package's identifier naming the server's own
@@ -88,6 +96,8 @@ func (k paramKind) String() string {
 		return "generation.<RequestLog> call (LogAlways(), LogOnEvent(), LogSampled(fraction) or LogNever(), with .MinSeverity(logging.<Severity>) chained when wanted)"
 	case paramTraces:
 		return "generation.<Traces> call (TracesFollowFrontEnd(), TracesCapped(rate) or TracesOff())"
+	case paramProgramOption:
+		return "ProgramOption"
 	case paramAny, paramNone:
 		return "argument"
 	default:
@@ -107,7 +117,7 @@ func (k paramKind) argKind() ArgKind {
 		return ArgBoolMap
 	case paramComposite:
 		return ArgComposite
-	case paramTSOption, paramOutletOption:
+	case paramTSOption, paramOutletOption, paramProgramOption:
 		return ArgCall
 	case paramAuthMethod:
 		return ArgAuthMethod
@@ -130,6 +140,8 @@ func (k paramKind) optionKind() optionKind {
 		return kindTSOption
 	case paramOutletOption:
 		return kindOutletOption
+	case paramProgramOption:
+		return kindProgramOption
 	case paramNone, paramAny, paramString, paramBool, paramStringMap, paramBoolMap, paramComposite, paramAuthMethod, paramRelease, paramInt, paramRequestLog, paramTraces:
 		return 0
 	default:
@@ -156,6 +168,8 @@ const (
 	optWithRouterOutlet   = "WithRouterOutlet"
 	optOutletRequestLog   = "OutletRequestLog"
 	optOutletTraces       = "OutletTraces"
+	optShipsProgram       = "ShipsProgram"
+	optPlatforms          = "Platforms"
 )
 
 // The generation package's sign-in method constructors, as a program writes them
@@ -336,6 +350,11 @@ var knownOptions = map[string]optionSpec{
 	optOldestAnswered:   {kind: kindOutletOption, params: []paramKind{paramRelease}},
 	optOutletRequestLog: {kind: kindOutletOption, params: []paramKind{paramRequestLog}},
 	optOutletTraces:     {kind: kindOutletOption, params: []paramKind{paramTraces}},
+	// ShipsProgram names the root-relative directory of a program's main package and
+	// takes the program options refining it; Platforms names the platforms the release
+	// compiles it for, each <os>/<arch>.
+	optShipsProgram: {kind: kindOutletOption, params: []paramKind{paramString}, variadic: paramProgramOption},
+	optPlatforms:    {kind: kindProgramOption, variadic: paramString},
 
 	"ForOutlet":           {kind: kindTSOption, params: []paramKind{paramString}},
 	"GeneratePermissions": {kind: kindTSOption},

@@ -79,7 +79,24 @@ func NewGenerator(ctx context.Context) (generation.Generator, error) {
 		// the configured key, seeded as its application token.
 		//
 		// Demonstrates: outlet.tokens.
-		generation.WithRouterOutlet("droids", "droids", generation.Tokens("github.com/cccteam/ccc/resource/lodestar/pkg/auth/crew")),
+		generation.WithRouterOutlet("droids", "droids",
+			generation.Tokens("github.com/cccteam/ccc/resource/lodestar/pkg/auth/crew"),
+			// The droid's program ships with the release. ShipsProgram names the main
+			// package of a program the release carries to the droids that run it,
+			// cmd/droid, which sends one telemetry frame through this outlet's ingest
+			// method, and the platforms it is compiled for. The image build compiles it
+			// for each platform into the image, and this outlet serves the file with its
+			// checksum at GET /droids/programs/droid/<release>/linux/amd64, behind the
+			// token check above, to the copies installed on the droids. A person installs
+			// the first copy from the release's assets or with go install; from then on
+			// the copy follows the release the outlet's answers name (resource/shipped):
+			// it fetches a newer release with the token it already carries, verifies the
+			// checksum, swaps the file in beside itself and exits for its service manager
+			// to start the new release.
+			//
+			// Demonstrates: outlet.programs.
+			generation.ShipsProgram("cmd/droid", generation.Platforms("linux/amd64")),
+		),
 		// The portal outlet is the clients' browser app: structs annotated with @outlet
 		// naming portal are served under /portal/api behind the members auth, whose
 		// people sign in through their company's Google directory, with their own

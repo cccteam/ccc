@@ -17,7 +17,7 @@
 //	  + ValidateSession, ValidateXSRFToken, CheckAPIVersion (oldest answered 0.0.1): hooks.Portal, generatedPortalRoutes
 //	machines (/machines), bearer tokens of the staff auth:
 //	  BindAuth(staff.Name), NoCaching, CompressionMiddleware, ReleaseHeader: POST /machines/oauth/device/authorize, POST /machines/oauth/token
-//	  + ValidateToken: hooks.Machines, generatedMachinesRoutes
+//	  + ValidateToken: hooks.Machines, generatedMachinesRoutes, GET /machines/programs/*
 //
 // hooks.Root's routes sit behind the every-request chain alone. Under an outlet's prefix
 // nothing else answers: an unknown path is 404. Outside every prefix the browser
@@ -32,6 +32,7 @@ import (
 	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/outlets/pkg/auth/members"
 	"github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/outlets/pkg/auth/staff"
 	"github.com/cccteam/ccc/resource"
+	"github.com/cccteam/ccc/resource/shipped"
 	"github.com/cccteam/ccc/tracer"
 	"github.com/cccteam/httpio"
 	"github.com/cccteam/logger"
@@ -380,6 +381,12 @@ func New(h Handlers, hooks Hooks) *chi.Mux {
 			registerGenerated(r, hooks.Machines, "Machines", func(r chi.Router) {
 				generatedMachinesRoutes(r, h)
 			})
+
+			// The programs this release ships to their installed copies (ShipsProgram):
+			// sensor for linux/amd64. A copy fetches its next release here with its token. The
+			// route is registered after the hook, so it sits behind whatever the hook adds in
+			// front of the outlet's routes, and the hook may still add it.
+			r.Handle("/machines/programs/*", http.StripPrefix("/machines/programs", shipped.Handler(serverVersion, shipped.Program{Name: "sensor", Platforms: []string{"linux/amd64"}})))
 		})
 	})
 

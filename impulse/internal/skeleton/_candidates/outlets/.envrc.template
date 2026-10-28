@@ -81,6 +81,18 @@ export PORT=8093
 # export APP_CONSOLE_DIST=web/dist/console
 # export APP_PORTAL_DIST=web/dist/portal
 
+# --- the sensor: the program the release ships to the machines (cmd/sensor) ---
+# A copy installed on a machine reads these, not the application; they are here for a run
+# against the development stack (go run ./cmd/sensor list). SENSOR_OUTLET is the machines
+# outlet's URL as the router mounts it; SENSOR_TOKEN an application token a staff login
+# issued for the outlet on the console's Tokens page (/console/tokens); SENSOR_TENANT the
+# tenant the readings belong to; SENSOR_SOURCE the name the readings carry for the
+# machine, the hostname when unset.
+# export SENSOR_OUTLET=http://127.0.0.1:8093/machines
+# export SENSOR_TOKEN=
+# export SENSOR_TENANT=north
+# export SENSOR_SOURCE=
+
 # --- local development only: the emulators the Procfile starts ---
 export SPANNER_EMULATOR_PORT=9016
 export SPANNER_EMULATOR_HOST=127.0.0.1:${SPANNER_EMULATOR_PORT}
