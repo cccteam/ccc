@@ -366,23 +366,25 @@ repository's own issues, and nothing in it gates anything.
 
 The caches. A pull request's `go-build`, `go-test` and `go-test-skipauth` restore the Go
 module cache and build cache from the nearest entry saved under their own job's key (the
-same `go.sum` first, then any), and `go-vuln` and `go-check` restore `go-build`'s, whose
-compile they share. Neither cache can serve a stale result: a module is verified against
-`go.sum` when read, and a build output is addressed by the hash of its inputs (the
-toolchain, the flags, the sources, the dependencies' outputs), so an entry from an older
-commit is either exactly what this commit computes or unused. The entries come from
-`ci-cache.yml`: after each push to the default branch or a patch branch it builds and
-tests what those jobs build and test, at the branch's head (the tests run rather than
-compile, since what a test builds as it runs is in the cache only when it ran), and
-saves under their keys with the commit's, so a pull request's first run starts from the
-branch it targets and compiles what it changed and nothing else. A pull request run
-saves an entry of its own only when it found none for its `go.sum` (a dependency
+same `go.sum` first, then any), and `go-lint`, `go-lint-skipauth`, `go-vuln` and
+`go-check` restore `go-build`'s, whose compile they share: golangci-lint loads every
+package through it, and a lint leg that started from nothing after a dependency change
+ran past its five minutes on a cold runner. Neither cache can serve a stale result: a
+module is verified against `go.sum` when read, and a build output is addressed by the
+hash of its inputs (the toolchain, the flags, the sources, the dependencies' outputs), so
+an entry from an older commit is either exactly what this commit computes or unused. The
+entries come from `ci-cache.yml`: after each push to the default branch or a patch branch
+it builds and tests what those jobs build and test, at the branch's head (the tests run
+rather than compile, since what a test builds as it runs is in the cache only when it
+ran), and saves under their keys with the commit's, so a pull request's first run starts
+from the branch it targets and compiles what it changed and nothing else. A pull request
+run saves an entry of its own only when it found none for its `go.sum` (a dependency
 change), so the caches grow with merges, not with pushes; GitHub keeps the newest ten
 gigabytes and drops an entry unused for a week. Nothing else is cached: the image build
 compiles fresh by design (its download stages are a minute of the job, and exporting
 them to the Actions cache cost more than it saved), govulncheck, Grype and Semgrep fetch
 their databases and rules when the job runs, the emulator images are pulled, and the lint
-legs keep setup-go's cache and golangci-lint's own.
+legs keep golangci-lint's own cache beside the Go caches they restore.
 
 Go's cached test results are the one reuse whose inputs Go cannot see in full, so the test
 legs run every test (`go test -count=1`) unless the application turns the reuse on. Go
