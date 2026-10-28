@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.16](https://github.com/cccteam/ccc/compare/resource/v0.15.15...resource/v0.15.16) (2026-10-28)
+
+
+### Features
+
+* an application ships a command program with its release: ShipsProgram on a machine outlet names its main package and platforms, the image build compiles it, the outlet serves it behind its token check, and an installed copy upgrades itself from the outlet through resource/shipped ([#1184](https://github.com/cccteam/ccc/issues/1184)) ([5b89382](https://github.com/cccteam/ccc/commit/5b893827e026be12938639afe369e93a58239cba))
+
 ## [0.15.15](https://github.com/cccteam/ccc/compare/resource/v0.15.14...resource/v0.15.15) (2026-10-28)
 
 
