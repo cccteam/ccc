@@ -20,7 +20,9 @@ what they hold.
   generated collection when the engine opens, so a release whose roles are wrong does not
   start. A role is named for its job in PascalCase (`Administrator`,
   `FeatureAdministrator`), never for where it is held: the file's structure says that,
-  and the Users page shows it as the role's kind. It authors `Administrator`, the
+  and the Users page shows it as the role's kind. Every role carries a description, one
+  or two plain sentences saying what it is for, which the Users page shows beside the
+  name; a role without one is refused. It authors `Administrator`, the
   development login's role, over the staff
   auth's user-management surface alone (`StaffUsers`, `StaffSeats`, `StaffInvitations`, `StaffRoles` and
   `SetStaffUserPassword`, the resources the generator declares for the auth): a new

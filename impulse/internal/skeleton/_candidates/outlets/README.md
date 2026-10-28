@@ -106,7 +106,9 @@ generated router test proves the route sits behind the token check.
   is held in every tenant domain, so nothing provisions a file per tenant. A role is named
   for its job in PascalCase (`Administrator`, `TenantAdministrator`, `MachineOperator`),
   never for where it is held: the file's structure says that, and the Users page shows it
-  as the role's kind. The staff file
+  as the role's kind. Every role carries a description, one or two plain sentences saying
+  what it is for, which the Users page shows beside the name; a role without one is
+  refused. The staff file
   authors `Administrator` over the tenant record and the global partition of the
   staff auth's user-management surface (`StaffUsers`, `StaffSeats`, `StaffInvitations`, `StaffRoles`,
   `SetStaffUserPassword`), `TenantAdministrator` over the console's announcements and the

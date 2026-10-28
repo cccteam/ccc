@@ -81,7 +81,9 @@ the connection a tenant declares) beside any Google account.
   default roles the release ships, embedded in the binary and validated against the
   generated collection when the engine opens. A role is named for its job in PascalCase
   (`Administrator`, `TenantAdministrator`), never for where it is held: the file's
-  structure says that, and the Users page shows it as the role's kind. It authors the
+  structure says that, and the Users page shows it as the role's kind. Every role carries
+  a description, one or two plain sentences saying what it is for, which the Users page
+  shows beside the name; a role without one is refused. It authors the
   development logins' roles,
   `Administrator` over the tenant record and the global partition of the staff
   auth's user-management surface (`StaffUsers`, `StaffSeats`, `StaffInvitations`, `StaffRoles`,

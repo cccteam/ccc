@@ -2233,8 +2233,9 @@ person's directory links carry, when they agree), `identities` (each link: `id`,
 seats held in the partition's scope), `everywhereRoles` (the seats held in every domain)
 and `rolesSynced` (the seats are a directory's, see below). A seat row carries `user`,
 `role`, `username` and `everyDomain` (`everywhere` in the tenant partition); a role row
-`name`, `description` (what the role is for, in a sentence or two) and, in the global
-partition, `kind` (`global` or `domain`). A role is named for its job in PascalCase
+`name`, `description` (what the role is for, in a sentence or two: the role file's for a
+default role, the one given when a custom role was made) and, in the global partition,
+`kind` (`global` or `domain`). A role is named for its job in PascalCase
 (`Administrator`, `SectorMarshal`), never for where it is held: the role file declares
 that by its structure, and the row's `kind` serves it. The rows are composed
 in Go from the Auth's account store (the session library's users and identities) and its
@@ -2291,9 +2292,16 @@ func (c *DataConfiguration) CrewUserSurface() *resource.UserSurface[router.CrewA
 A test harness hands the constructor `resource.NewMemUserStore()` for both: the
 generated authorization matrix drives the surface's routes like every other, so every
 Auth needs a surface there, and the in-memory store answers an empty list to a granted
-case and is never read by a denied one.
+case and is never read by a denied one. A harness that reads the roles declares them
+with what each is for (`DeclareRoles(scope, access.RoleInfo{Name: "Pilot", Description:
+"Flies for a sector."})`), as a role file's roles exist in a permission engine's.
 
-**The role file.** The surface's resources are granted like any other, fields included
+**The role file.** Every role in it is named in the one grammar the access library
+keeps, letters and digits starting with a capital letter (`Administrator`,
+`SectorMarshal`), and carries a `description`, one or two plain sentences saying what
+the role is for; the engine refuses a file whose role has another kind of name or no
+description, and the surface serves the description beside the name.
+The surface's resources are granted like any other, fields included
 (a user's non-key fields for List and Read, `username`, `password`, `disabled` and, in the
 tenant partition, `role` for Create, `username` and `disabled` for Update; a seat's `user`
 and `role` for Create). A condition may use the row's attributes (`username`, `disabled`,
