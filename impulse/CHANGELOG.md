@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.27](https://github.com/cccteam/ccc/compare/impulse/v0.5.26...impulse/v0.5.27) (2026-10-28)
+
+
+### Features
+
+* an application's login page runs the sign-in code step and its users page forgets a person's remembered browsers: the web pins move to @cccteam/resource-angular 0.0.19, with resource 0.0.14 and resource-firestore 0.0.12, and the ledger's v0.5.27 step carries them ([#1200](https://github.com/cccteam/ccc/issues/1200)) ([b0c2309](https://github.com/cccteam/ccc/commit/b0c23090617b10136af36904e3cfc0909dd25f19))
+
 ## [0.5.26](https://github.com/cccteam/ccc/compare/impulse/v0.5.25...impulse/v0.5.26) (2026-10-28)
 
 
