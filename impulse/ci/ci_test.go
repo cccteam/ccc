@@ -528,8 +528,8 @@ func TestDefaultBranch(t *testing.T) {
 }
 
 // TestCacheSteps: the Go legs restore the Go caches from the lineage CachedJobs names
-// (their own for go-build and the test legs, go-build's for go-vuln and go-check), the
-// ones that save do so only when their go.sum had no entry, the lint legs and the rest
+// (their own for go-build and the test legs, go-build's for the lint legs, go-vuln and
+// go-check), the ones that save do so only when their go.sum had no entry, the rest
 // restore nothing, setup-go's own cache is off wherever the caches are restored, and the
 // cache-filling workflow saves under the commit's key in every Go job.
 func TestCacheSteps(t *testing.T) {
@@ -606,6 +606,58 @@ func TestCacheSteps(t *testing.T) {
 	prImage := job(pr, "image")
 	if !strings.Contains(prImage, `        run: docker build --build-arg VERSION=ci --build-arg COMMIT="$GITHUB_SHA" --build-arg PROGRAMS= $BUILD_INPUTS -t application:ci .`+"\n") || strings.Contains(prImage, "buildx") || strings.Contains(prImage, "cache") {
 		t.Errorf("the image job is not the plain build:\n%s", prImage)
+	}
+}
+
+// TestLintJobs: the two lint jobs restore go-build's Go caches alone (golangci-lint loads
+// every package through the compile the build leg saved, so a dependency change no longer
+// runs it cold past its timeout), with setup-go's own cache off and no save of their own,
+// and run golangci-lint at the pinned version with the five-minute timeout, the skipAuth
+// leg with its tag.
+func TestLintJobs(t *testing.T) {
+	t.Parallel()
+
+	pr, err := ci.Render(&app.App{WebApps: []app.WebApp{{Dir: "web"}}})
+	if err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+	tests := []struct {
+		name string
+		job  string
+		args string
+	}{
+		{name: "without tags", job: "go-lint", args: "--timeout 5m"},
+		{name: "with skipAuth", job: "go-lint-skipauth", args: "--timeout 5m --build-tags skipAuth"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			j := job(pr, tt.job)
+			if j == "" {
+				t.Fatalf("the workflow has no %s job", tt.job)
+			}
+			for _, want := range []string{
+				"          go-version-file: go.mod\n          cache: false\n",
+				"      - name: Restore the Go caches\n",
+				"          key: go-build-${{ runner.os }}-${{ hashFiles('go.sum') }}-${{ github.sha }}\n",
+				"          restore-keys: |\n            go-build-${{ runner.os }}-${{ hashFiles('go.sum') }}-\n            go-build-${{ runner.os }}-\n",
+				"        uses: golangci/golangci-lint-action@",
+				"          version: " + ci.GolangciLint + "\n          args: " + tt.args + "\n",
+			} {
+				if !strings.Contains(j, want) {
+					t.Errorf("%s lacks %q:\n%s", tt.job, want, j)
+				}
+			}
+			for _, unwanted := range []string{"Save the Go caches", "cache-dependency-path"} {
+				if strings.Contains(j, unwanted) {
+					t.Errorf("%s carries %q:\n%s", tt.job, unwanted, j)
+				}
+			}
+			if strings.Index(j, "      - name: Restore the Go caches\n") > strings.Index(j, "golangci/golangci-lint-action@") {
+				t.Errorf("%s restores the Go caches after golangci-lint ran:\n%s", tt.job, j)
+			}
+		})
 	}
 }
 

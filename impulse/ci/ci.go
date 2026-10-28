@@ -109,6 +109,8 @@ const (
 	goBuild        = "go-build"
 	goTest         = "go-test"
 	goTestSkipAuth = "go-test-skipauth"
+	goLint         = "go-lint"
+	goLintSkipAuth = "go-lint-skipauth"
 	goVuln         = "go-vuln"
 	goCheck        = "go-check"
 	image          = "image"
@@ -116,7 +118,7 @@ const (
 
 // GoJobs are the Go legs, in the file's order: the jobs the go gate needs, each running at
 // once with the others.
-var GoJobs = []string{goBuild, goTest, goTestSkipAuth, "go-lint", "go-lint-skipauth", goVuln, "go-semgrep", goCheck}
+var GoJobs = []string{goBuild, goTest, goTestSkipAuth, goLint, goLintSkipAuth, goVuln, "go-semgrep", goCheck}
 
 // LargeRunnerVariable is the GitHub Actions variable (on the repository or the
 // organization) naming the larger runner: a runner label or a runner group. The jobs the
@@ -368,13 +370,17 @@ type CachedJob struct {
 // CachedJobs lists the Go legs that restore the saved Go caches (the module cache and
 // the build cache), in the file's order: go-build, go-test and go-test-skipauth each
 // restore the nearest entry of their own lineage and save one when no entry for their
-// go.sum existed, since their builds differ (the race detector, the tags); go-vuln and
-// go-check restore go-build's, which holds what their compiles share with it, and save
-// nothing. The lint legs keep setup-go's cache and golangci-lint's own.
+// go.sum existed, since their builds differ (the race detector, the tags); the two lint
+// legs, go-vuln and go-check restore go-build's, which holds what their compiles share
+// with it, and save nothing. golangci-lint loads every package through that compile, so
+// a lint leg that started from nothing after a dependency change ran past its timeout on
+// a cold runner; the lint legs keep golangci-lint's own cache beside the restored entry.
 var CachedJobs = []CachedJob{
 	{Job: goBuild, From: goBuild, Saves: true},
 	{Job: goTest, From: goTest, Saves: true},
 	{Job: goTestSkipAuth, From: goTestSkipAuth, Saves: true},
+	{Job: goLint, From: goBuild},
+	{Job: goLintSkipAuth, From: goBuild},
 	{Job: goVuln, From: goBuild},
 	{Job: goCheck, From: goBuild},
 }

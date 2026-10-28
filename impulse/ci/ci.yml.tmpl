@@ -21,17 +21,18 @@
 # The caches. The build and test legs restore the Go module cache and build cache from the
 # nearest entry saved under their job's key (ci-cache.yml saves one after each push to the
 # default branch or a patch branch; a pull request run saves one of its own only when it
-# found none for its go.sum). Neither serves a stale result: a module is verified against
-# go.sum when read and a build output is addressed by the hash of its inputs, so an entry
-# from an older commit is either what this one computes or unused. The image build is not
-# cached: its compile and bundles are built fresh by design, and its download stages are
-# a minute of the job. The pins fix the engines, not what they know: govulncheck reads
-# vuln.go.dev, Grype downloads its vulnerability database and Semgrep fetches its registry
-# rules when the job runs, so this file at an old pin still finds a vulnerability published
-# after it; TruffleHog's detectors, golangci-lint's linters and the actions move with
-# impulse releases. Between pull requests, security-scan.yml (owned the same way) runs
-# govulncheck and Grype over the default branch and the latest release every day and
-# reports to an issue of this repository.
+# found none for its go.sum), and the lint legs, go-vuln and go-check restore go-build's
+# entry, whose compile theirs share, and save nothing. Neither cache serves a stale result:
+# a module is verified against go.sum when read and a build output is addressed by the
+# hash of its inputs, so an entry from an older commit is either what this one computes or
+# unused. The image build is not cached: its compile and bundles are built fresh by design,
+# and its download stages are a minute of the job. The pins fix the engines, not what they
+# know: govulncheck reads vuln.go.dev, Grype downloads its vulnerability database and
+# Semgrep fetches its registry rules when the job runs, so this file at an old pin still
+# finds a vulnerability published after it; TruffleHog's detectors, golangci-lint's linters
+# and the actions move with impulse releases. Between pull requests, security-scan.yml
+# (owned the same way) runs govulncheck and Grype over the default branch and the latest
+# release every day and reports to an issue of this repository.
 name: CI
 
 on:
@@ -140,7 +141,7 @@ jobs:
         run: go test -race [[.TestFlags]]-timeout 20m -tags skipAuth ./...
 [[- template "gocache-save" (index .Cache "go-test-skipauth")]]
 
-  # golangci-lint at the version the skeleton's .golangci.yml is written for, without tags.
+  # golangci-lint at the version the skeleton's .golangci.yml is written for, without tags. It restores go-build's Go caches, as go-vuln does, and saves nothing: golangci-lint loads every package through the compile the build leg saved, so after a dependency change it starts from the nearest entry instead of from nothing, which on a cold runner ran past its five minutes. The five minutes stay: with the caches restored they hold, and a timeout that fires only on a cold runner says the cache is gone. The action keeps golangci-lint's own cache beside them.
   go-lint:
     runs-on: [[index .RunsOn "go-lint"]]
     timeout-minutes: 15
@@ -151,14 +152,15 @@ jobs:
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
           go-version-file: go.mod
-          cache-dependency-path: go.sum
+          cache: false
+[[- template "gocache-restore" (index .Cache "go-lint")]]
       - name: golangci-lint
         uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
           version: [[.GolangciLint]]
           args: --timeout 5m
 
-  # golangci-lint with skipAuth.
+  # golangci-lint with skipAuth, restoring go-build's Go caches as go-lint does (the build leg compiles with the tag too) and saving nothing.
   go-lint-skipauth:
     runs-on: [[index .RunsOn "go-lint-skipauth"]]
     timeout-minutes: 15
@@ -169,7 +171,8 @@ jobs:
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
           go-version-file: go.mod
-          cache-dependency-path: go.sum
+          cache: false
+[[- template "gocache-restore" (index .Cache "go-lint-skipauth")]]
       - name: golangci-lint (skipAuth)
         uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
