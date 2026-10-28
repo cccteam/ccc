@@ -187,3 +187,46 @@ func Test_createTableMapUsingQuery(t *testing.T) {
 		})
 	}
 }
+
+// Test_fetchEnumValues pins what makes a table an enumeration: an Id column beside the
+// Description column. The fixture's Flags (keyed by name) and Roles (keyed by scope and
+// name) carry a Description too and are no enumeration. Requires the Spanner emulator
+// (podman/docker).
+func Test_fetchEnumValues(t *testing.T) {
+	t.Parallel()
+	if testing.Short() {
+		t.Skip("the schema read requires the Spanner emulator")
+	}
+
+	_, thisFile, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("runtime.Caller() failed")
+	}
+	migrations := "file://" + filepath.Join(filepath.Dir(thisFile), "testdata", "migrations")
+
+	ctx := context.Background()
+	db, spannerContainer, err := createSpannerDB(ctx, "1.5.56", []string{migrations})
+	if err != nil {
+		t.Fatalf("createSpannerDB() error = %v", err)
+	}
+	t.Cleanup(func() {
+		if err := db.DropDatabase(context.Background()); err != nil {
+			t.Errorf("DropDatabase() error = %v", err)
+		}
+		if err := db.Close(); err != nil {
+			t.Errorf("Close() error = %v", err)
+		}
+		releaseSpannerContainer(context.Background(), spannerContainer)
+	})
+
+	got, err := fetchEnumValues(ctx, db.Client)
+	if err != nil {
+		t.Fatalf("fetchEnumValues() error = %v", err)
+	}
+	want := map[string][]*enumData{
+		"WidgetKinds": {{ID: "gear", Description: "Gear"}, {ID: "lever", Description: "Lever"}},
+	}
+	if diff := cmp.Diff(want, got); diff != "" {
+		t.Errorf("fetchEnumValues() mismatch (-want +got):\n%s", diff)
+	}
+}

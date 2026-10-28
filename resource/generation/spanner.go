@@ -6,7 +6,6 @@ import (
 	"log"
 
 	"cloud.google.com/go/spanner"
-	"github.com/cccteam/ccc/resource"
 	initiator "github.com/cccteam/db-initiator"
 	"github.com/cccteam/spxscan"
 	"github.com/go-playground/errors/v5"
@@ -267,11 +266,19 @@ func queryIndexSchema(ctx context.Context, db *spanner.Client) ([]indexSchemaRes
 	return result, nil
 }
 
+// fetchEnumValues reads every enumeration table's rows: a table is an enumeration when
+// it carries an Id column and a Description column, the id the program's constant and
+// the description its display. A Description column alone names none, since the
+// library's feature flags table (keyed by name) and an auth's roles table (keyed by
+// scope and name) carry one too.
 func fetchEnumValues(ctx context.Context, db *spanner.Client) (map[string][]*enumData, error) {
 	qry := `
 	SELECT DISTINCT
 		c.TABLE_NAME
 	FROM INFORMATION_SCHEMA.COLUMNS c
+	JOIN INFORMATION_SCHEMA.COLUMNS i ON i.TABLE_SCHEMA = c.TABLE_SCHEMA
+		AND i.TABLE_NAME = c.TABLE_NAME
+		AND i.COLUMN_NAME = 'Id'
 	LEFT JOIN INFORMATION_SCHEMA.TABLES t ON c.TABLE_NAME = t.TABLE_NAME
 		AND t.TABLE_TYPE = 'BASE TABLE'
 	WHERE c.COLUMN_NAME = 'Description';
@@ -289,11 +296,6 @@ func fetchEnumValues(ctx context.Context, db *spanner.Client) (map[string][]*enu
 
 	enumResults := make(map[string][]*enumData, len(results))
 	for _, tnr := range results {
-		// The library's feature flags table carries a Description column too, keyed by
-		// name: it is the flags' row, never an enumeration.
-		if tnr.TableName == string(resource.FeatureFlagsResource) {
-			continue
-		}
 		stmt := spanner.Statement{SQL: fmt.Sprintf("SELECT DISTINCT Id, Description FROM %s ORDER BY Id", tnr.TableName)}
 
 		var results []*enumData
