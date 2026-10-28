@@ -759,7 +759,10 @@ func newDeployBuildImage(d deps) *cobra.Command {
 		Short: "Build the image from the checkout's Dockerfile and push it",
 		Long: `build-image runs docker buildx build over the checkout's Dockerfile and pushes the image under its
 two tags (<release>-<env> and <commit>-<env>), unless check-release found this commit's build to
-reuse. The build arguments are VERSION and COMMIT, the build arguments the placement declares
+reuse. The build arguments are VERSION, COMMIT and PROGRAMS (the shipped programs the checkout's
+release files declare, read from the application under the checkout's placement: one word per
+program, <dir>=<os>/<arch>[,...], which the seeded Dockerfile's loop compiles; empty when the code
+ships none), the build arguments the placement declares
 (every _BUILD_ARG_<NAME> environment.sh carries, passed as NAME=value and named in the log
 without their values), the declared substitutions and what a hook before the build added
 (build-args.txt, NAME=value lines). Each declared build secret

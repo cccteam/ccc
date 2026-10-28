@@ -558,6 +558,95 @@ func scheduledLine(r *ScheduledRoute) string {
 	return fmt.Sprintf("%s: POST %s at %s in %s", r.Name(), r.Path, r.Schedule, r.TimeZone)
 }
 
+// TestDeriveShippedPrograms gathers the shipped programs from every site's release file
+// by directory, over a copy of the fixture whose release files each case writes, and
+// refuses a program two sites ship, since the image holds one binary per program and
+// platform.
+func TestDeriveShippedPrograms(t *testing.T) {
+	t.Parallel()
+
+	const (
+		harborRelease  = "pkg/router/zz_gen_release.json"
+		consoleRelease = "apps/console/pkg/router/zz_gen_release.json"
+		portalRelease  = "apps/portal/pkg/router/zz_gen_release.json"
+	)
+	tests := []struct {
+		name string
+		// fixture is the application, and placement its placement under testdata;
+		// files are the release files to write over it, by root-relative path.
+		fixture   string
+		placement string
+		files     map[string]string
+		want      []string
+		wantErr   string
+	}{
+		{name: "harbor's release file ships none", fixture: "harbor", placement: "placement.json"},
+		{
+			name: "two outlets' programs, by directory", fixture: "harbor", placement: "placement.json",
+			files: map[string]string{harborRelease: `{"outlets": {"default": {}, "machines": {"kind": "api-key", "programs": [{"name": "corral", "dir": "cmd/corral", "platforms": ["linux/amd64", "linux/arm64"]}]}, "agents": {"kind": "api-key", "programs": [{"name": "beacon", "dir": "cmd/beacon", "platforms": ["linux/amd64"]}]}}}`},
+			want:  []string{"cmd/beacon: linux/amd64", "cmd/corral: linux/amd64, linux/arm64"},
+		},
+		{
+			name: "two sites' programs gathered, by directory", fixture: "lantern", placement: "placement-lantern.json",
+			files: map[string]string{
+				consoleRelease: `{"outlets": {"default": {}, "machines": {"kind": "api-key", "programs": [{"name": "corral", "dir": "cmd/corral", "platforms": ["linux/amd64", "linux/arm64"]}]}}}`,
+				portalRelease:  `{"outlets": {"default": {}, "agents": {"kind": "api-key", "programs": [{"name": "beacon", "dir": "cmd/beacon", "platforms": ["linux/amd64"]}]}}}`,
+			},
+			want: []string{"cmd/beacon: linux/amd64", "cmd/corral: linux/amd64, linux/arm64"},
+		},
+		{
+			name: "a program two sites ship is refused", fixture: "lantern", placement: "placement-lantern.json",
+			files: map[string]string{
+				consoleRelease: `{"outlets": {"default": {}, "machines": {"kind": "api-key", "programs": [{"name": "corral", "dir": "cmd/corral", "platforms": ["linux/amd64"]}]}}}`,
+				portalRelease:  `{"outlets": {"default": {}, "agents": {"kind": "api-key", "programs": [{"name": "corral", "dir": "cmd/corral", "platforms": ["linux/arm64"]}]}}}`,
+			},
+			wantErr: "the program cmd/corral is shipped by two sites, console and portal, and the image holds one binary per program and platform: ship it from one outlet",
+		},
+		{
+			name: "a release file that does not read is refused", fixture: "harbor", placement: "placement.json",
+			files:   map[string]string{harborRelease: `{"outlets": {"default": {"programs": [{"name": "corral", "dir": "cmd/corral", "platforms": ["linux/amd64"]}]}}}`},
+			wantErr: `pkg/router/zz_gen_release.json: outlet default ships a program (cmd/corral), and a program ships on a machine outlet alone (kind "api-key")`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			dir := filepath.Join(t.TempDir(), "app")
+			if err := os.CopyFS(dir, os.DirFS(filepath.Join("testdata", tt.fixture))); err != nil {
+				t.Fatalf("os.CopyFS() error = %v", err)
+			}
+			for name, content := range tt.files {
+				if err := os.WriteFile(filepath.Join(dir, filepath.FromSlash(name)), []byte(content), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			a, err := app.Discover(dir)
+			if err != nil {
+				t.Fatalf("app.Discover() error = %v", err)
+			}
+			m, err := Derive(a, fixturePlacement(t, tt.placement))
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("Derive() error = %v, wantErr %q", err, tt.wantErr)
+				}
+
+				return
+			}
+			if err != nil {
+				t.Fatalf("Derive() error = %v", err)
+			}
+			var got []string
+			for i := range m.ShippedPrograms {
+				got = append(got, m.ShippedPrograms[i].Dir+": "+strings.Join(m.ShippedPrograms[i].Platforms, ", "))
+			}
+			if !slices.Equal(got, tt.want) {
+				t.Errorf("ShippedPrograms = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 // siteLine spells a site: its name, directory and label, its process, whether it speaks
 // h2c, its router, its bundle, and what its release file declares.
 func siteLine(s *Site) string {
@@ -909,7 +998,7 @@ func TestPlacementValidate(t *testing.T) {
 		{
 			name:    "a build argument the pipeline passes itself",
 			mutate:  func(p *Placement) { p.BuildArguments = map[string]string{"VERSION": "environment"} },
-			wantErr: "buildArguments names VERSION, a build argument the pipeline passes itself (VERSION, COMMIT): give the value another name",
+			wantErr: "buildArguments names VERSION, a build argument the pipeline passes itself (VERSION, COMMIT, PROGRAMS): give the value another name",
 		},
 		{name: "the commit as a build argument", mutate: func(p *Placement) { p.BuildArguments = map[string]string{"COMMIT": "hostname"} }, wantErr: "buildArguments names COMMIT, a build argument the pipeline passes itself"},
 	}

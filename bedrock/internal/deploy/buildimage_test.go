@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"github.com/go-playground/errors/v5"
+
+	"github.com/cccteam/ccc/bedrock/internal/derive"
 )
 
 // seededDockerfile is the seeded Dockerfile's shape in short: the two reserved stages,
@@ -50,6 +52,7 @@ WORKDIR /src/web
 COPY web/package.json web/bun.lock ./
 RUN bun install --frozen-lockfile
 FROM node AS web-build-env
+ARG VERSION
 ARG FIREBASE_API_KEY
 COPY --from=web-packages /src/web/node_modules ./node_modules
 RUN bun run build
@@ -142,11 +145,11 @@ func TestBuildImage(t *testing.T) {
 			secrets:   map[string]string{"projects/p/secrets/npm/versions/2": "s3cret"},
 			metadata:  `{"containerimage.digest": "sha256:new"}`,
 			wantArgs: []string{
-				"--build-arg VERSION=v1.2.3", "--build-arg COMMIT=c9", "--build-arg _WIDGET_MODE=on", "--build-arg FRONTEND_VERSION=4.1",
+				"--build-arg VERSION=v1.2.3", "--build-arg COMMIT=c9 --build-arg PROGRAMS= --build-arg _WIDGET_MODE=on", "--build-arg FRONTEND_VERSION=4.1",
 				"--secret id=NPM_TOKEN,src=SECRETS/NPM_TOKEN", "--tag reg/quill:c9-tst", "--tag reg/quill:v1.2.3-tst", "--push .",
 			},
 			wantNoArgs: []string{"--cache-from", "--cache-to", "--no-cache", "--target"},
-			wantOut:    []string{"Build secret NPM_TOKEN: projects/p/secrets/npm/versions/2 (6 bytes)", "Layer cache: read nothing; written cache-c9-go, cache-c9-web.", "Built and pushed reg/quill@sha256:new"},
+			wantOut:    []string{"No shipped programs.", "Build secret NPM_TOKEN: projects/p/secrets/npm/versions/2 (6 bytes)", "Layer cache: read nothing; written cache-c9-go, cache-c9-web.", "Built and pushed reg/quill@sha256:new"},
 			wantBuilt:  true,
 			wantTaken:  []string{"docker create reg/quill@sha256:new", "docker cp cid-1:/migrate MIGRATE", "docker rm cid-1"},
 		},
@@ -155,10 +158,25 @@ func TestBuildImage(t *testing.T) {
 			env:        env + stackArgsEnv,
 			metadata:   `{"containerimage.digest": "sha256:new"}`,
 			buildArgs:  "_WIDGET_MODE=on\n",
-			wantArgs:   []string{"--build-arg COMMIT=c9 --build-arg FIREBASE_API_KEY=AIzaTstKey --build-arg PROJECT_ID=tst-project --build-arg _WIDGET_MODE=on"},
+			wantArgs:   []string{"--build-arg COMMIT=c9 --build-arg PROGRAMS= --build-arg FIREBASE_API_KEY=AIzaTstKey --build-arg PROJECT_ID=tst-project --build-arg _WIDGET_MODE=on"},
 			wantOut:    []string{"Build arguments from the stack (placement.json, buildArguments): FIREBASE_API_KEY, PROJECT_ID.", "Layer cache: read nothing; written cache-c9-go, cache-c9-web."},
 			wantNotOut: []string{"AIzaTstKey", "tst-project", " sees the build arguments"},
 			wantBuilt:  true,
+		},
+		{
+			name:      "the shipped programs the release files declare are passed as PROGRAMS, by directory, and named; the dependency stages never see them",
+			env:       env + stackArgsEnv,
+			metadata:  `{"containerimage.digest": "sha256:new"}`,
+			files:     map[string]string{releaseFilePath: `{"outlets": {"default": {}, "machines": {"kind": "api-key", "programs": [{"name": "corral", "dir": "cmd/corral", "platforms": ["linux/amd64", "linux/arm64"]}, {"name": "beacon", "dir": "cmd/beacon", "platforms": ["linux/amd64"]}]}}}`},
+			wantArgs:  []string{"--build-arg COMMIT=c9 --build-arg PROGRAMS=cmd/beacon=linux/amd64 cmd/corral=linux/amd64,linux/arm64 --build-arg FIREBASE_API_KEY=AIzaTstKey"},
+			wantOut:   []string{"Shipped programs: cmd/beacon for linux/amd64; cmd/corral for linux/amd64 and linux/arm64.", "Layer cache: read nothing; written cache-c9-go, cache-c9-web."},
+			wantBuilt: true,
+		},
+		{
+			name:    "a release file that does not read is refused before anything is built",
+			env:     env,
+			files:   map[string]string{releaseFilePath: `{"outlets": {"default": {"programs": [{"name": "corral", "dir": "cmd/corral", "platforms": ["linux/amd64"]}]}}}`},
+			wantErr: `outlet default ships a program (cmd/corral), and a program ships on a machine outlet alone (kind "api-key")`,
 		},
 		{
 			name:       "a dependency stage built on a stage that declares a build argument is passed it and caches under a digest of its value",
@@ -339,9 +357,9 @@ func TestBuildImage(t *testing.T) {
 			if tt.declared != "" {
 				environment += "export " + buildSecretsFact + "=" + doubleQuote(tt.declared) + "\n"
 			}
-			files := map[string]string{EnvironmentFile: environment, BuildFile: buildFor(t, subs), BuildArgsFile: tt.buildArgs, dockerfileName: dockerfile}
+			files := map[string]string{EnvironmentFile: environment, BuildFile: buildFor(t, subs), BuildArgsFile: tt.buildArgs, dockerfileName: dockerfile, placementPath: testPlacement("")}
 			maps.Copy(files, tt.files)
-			w := workspaceFiles(t, files)
+			w := applicationWorkspace(t, files)
 			secretDir := t.TempDir()
 			var secretSeen string
 			home := t.TempDir()
@@ -472,6 +490,46 @@ func TestBuildImage(t *testing.T) {
 			env, _ := w.Environment()
 			if env[digestFact] != "sha256:new" {
 				t.Errorf("IMAGE_DIGEST = %q", env[digestFact])
+			}
+		})
+	}
+}
+
+// TestProgramsArgument composes the PROGRAMS build argument and the log line from the
+// shipped programs: none, one, one for several platforms, several.
+func TestProgramsArgument(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		programs []derive.ReleaseProgram
+		want     string
+		wantLine string
+	}{
+		{name: "none", wantLine: "No shipped programs."},
+		{name: "one program for one platform", programs: []derive.ReleaseProgram{{Name: "corral", Dir: "cmd/corral", Platforms: []string{"linux/amd64"}}}, want: "cmd/corral=linux/amd64", wantLine: "Shipped programs: cmd/corral for linux/amd64."},
+		{
+			name:     "one program for several platforms",
+			programs: []derive.ReleaseProgram{{Name: "corral", Dir: "cmd/corral", Platforms: []string{"linux/amd64", "linux/arm64", "darwin/arm64"}}},
+			want:     "cmd/corral=linux/amd64,linux/arm64,darwin/arm64",
+			wantLine: "Shipped programs: cmd/corral for linux/amd64, linux/arm64 and darwin/arm64.",
+		},
+		{
+			name:     "several programs, in the order given",
+			programs: []derive.ReleaseProgram{{Name: "beacon", Dir: "cmd/beacon", Platforms: []string{"linux/amd64"}}, {Name: "corral", Dir: "cmd/tools/corral", Platforms: []string{"linux/amd64", "linux/arm64"}}},
+			want:     "cmd/beacon=linux/amd64 cmd/tools/corral=linux/amd64,linux/arm64",
+			wantLine: "Shipped programs: cmd/beacon for linux/amd64; cmd/tools/corral for linux/amd64 and linux/arm64.",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := programsValue(tt.programs); got != tt.want {
+				t.Errorf("programsValue() = %q, want %q", got, tt.want)
+			}
+			if got := programsLine(tt.programs); got != tt.wantLine {
+				t.Errorf("programsLine() = %q, want %q", got, tt.wantLine)
 			}
 		})
 	}

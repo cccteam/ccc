@@ -132,5 +132,5 @@ func joinTypes(types []string) string {
 		quoted[i] = "`" + t + "`"
 	}
 
-	return joinEnvironments(quoted)
+	return joinAnd(quoted)
 }
