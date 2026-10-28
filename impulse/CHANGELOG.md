@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.1](https://github.com/cccteam/ccc/compare/impulse/v0.6.0...impulse/v0.6.1) (2026-10-28)
+
+
+### Bug Fixes
+
+* the v0.6.0 step's brief names description in the roles resources' List and Read grants, which the surface serves only when the grant names it ([#1208](https://github.com/cccteam/ccc/issues/1208)) ([b58f46d](https://github.com/cccteam/ccc/commit/b58f46d531cacd7249e02d83ec4991da20957ffc))
+
 ## [0.6.0](https://github.com/cccteam/ccc/compare/impulse/v0.5.27...impulse/v0.6.0) (2026-10-28)
 
 
