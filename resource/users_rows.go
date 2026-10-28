@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cccteam/access"
 	"github.com/cccteam/ccc"
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/go-playground/errors/v5"
@@ -334,12 +335,11 @@ type userSnapshot struct {
 
 	users []UserAccount
 	byID  map[ccc.UUID]*UserAccount
-	// roles are the roles that exist in each of the partition's scopes, sorted;
-	// descriptions what each is for, by name, where the store says; seats the roles each
-	// user holds in each, by the membership store's user key.
-	roles        map[accesstypes.PolicyScope][]accesstypes.Role
-	descriptions map[accesstypes.PolicyScope]map[accesstypes.Role]string
-	seats        map[accesstypes.User]map[accesstypes.PolicyScope][]accesstypes.Role
+	// roles are the roles that exist in each of the partition's scopes, sorted by name,
+	// each with what it is for; seats the roles each user holds in each, by the
+	// membership store's user key.
+	roles map[accesstypes.PolicyScope][]access.RoleInfo
+	seats map[accesstypes.User]map[accesstypes.PolicyScope][]accesstypes.Role
 
 	identities map[ccc.UUID][]UserIdentity
 
@@ -356,39 +356,27 @@ func (s *UserSurface[A]) snapshot(ctx context.Context, p *userPartition) (*userS
 		return nil, errors.Wrap(err, "resource.UserAccounts.Users()")
 	}
 	snap := &userSnapshot{
-		shape:        s.decl.Shape,
-		accounts:     s.accounts,
-		partition:    p,
-		users:        users,
-		byID:         make(map[ccc.UUID]*UserAccount, len(users)),
-		roles:        make(map[accesstypes.PolicyScope][]accesstypes.Role, len(p.seatScopes)),
-		descriptions: make(map[accesstypes.PolicyScope]map[accesstypes.Role]string, len(p.seatScopes)),
-		seats:        make(map[accesstypes.User]map[accesstypes.PolicyScope][]accesstypes.Role),
-		identities:   make(map[ccc.UUID][]UserIdentity),
+		shape:      s.decl.Shape,
+		accounts:   s.accounts,
+		partition:  p,
+		users:      users,
+		byID:       make(map[ccc.UUID]*UserAccount, len(users)),
+		roles:      make(map[accesstypes.PolicyScope][]access.RoleInfo, len(p.seatScopes)),
+		seats:      make(map[accesstypes.User]map[accesstypes.PolicyScope][]accesstypes.Role),
+		identities: make(map[ccc.UUID][]UserIdentity),
 	}
 	for i := range snap.users {
 		snap.byID[snap.users[i].ID] = &snap.users[i]
 	}
-	// phase 2 (cccteam/backlog#463): the store's Roles answers what each role is for
-	// beside its name once the access library's does; until then a store that describes
-	// its roles does so through roleDescriber, and the rest serve an empty description.
-	describer, describes := s.seats.(roleDescriber)
 	for _, scope := range p.seatScopes {
 		roles, err := s.seats.Roles(ctx, scope)
 		if err != nil {
 			return nil, errors.Wrap(err, "resource.UserSeats.Roles()")
 		}
-		slices.Sort(roles)
+		slices.SortFunc(roles, compareRoleInfo)
 		snap.roles[scope] = roles
-		if describes {
-			descriptions, err := describer.RoleDescriptions(ctx, scope)
-			if err != nil {
-				return nil, errors.Wrap(err, "resource.roleDescriber.RoleDescriptions()")
-			}
-			snap.descriptions[scope] = descriptions
-		}
 		for _, role := range roles {
-			holders, err := s.seats.RoleUsers(ctx, scope, role)
+			holders, err := s.seats.RoleUsers(ctx, scope, role.Name)
 			if err != nil {
 				return nil, errors.Wrap(err, "resource.UserSeats.RoleUsers()")
 			}
@@ -398,7 +386,7 @@ func (s *UserSurface[A]) snapshot(ctx context.Context, p *userPartition) (*userS
 					held = make(map[accesstypes.PolicyScope][]accesstypes.Role)
 					snap.seats[holder] = held
 				}
-				held[scope] = append(held[scope], role)
+				held[scope] = append(held[scope], role.Name)
 			}
 		}
 	}
@@ -750,12 +738,22 @@ func (snap *userSnapshot) seatOf(user *UserAccount, role accesstypes.Role) *comp
 // exists in none.
 func (snap *userSnapshot) roleScope(role accesstypes.Role) (accesstypes.PolicyScope, bool) {
 	for _, scope := range snap.partition.ownScopes() {
-		if slices.Contains(snap.roles[scope], role) {
+		if roleListed(snap.roles[scope], role) {
 			return scope, true
 		}
 	}
 
 	return accesstypes.PolicyScope{}, false
+}
+
+// roleListed reports whether a listing of roles carries the role by name.
+func roleListed(roles []access.RoleInfo, role accesstypes.Role) bool {
+	return slices.ContainsFunc(roles, func(r access.RoleInfo) bool { return r.Name == role })
+}
+
+// compareRoleInfo orders listed roles by name.
+func compareRoleInfo(a, b access.RoleInfo) int {
+	return strings.Compare(string(a.Name), string(b.Name))
 }
 
 // composedRole is a role row before it is typed for a partition.
@@ -789,7 +787,7 @@ func (snap *userSnapshot) rolesOf() []*composedRole {
 	var roles []*composedRole
 	for _, scope := range snap.partition.ownScopes() {
 		for _, role := range snap.roles[scope] {
-			roles = append(roles, &composedRole{name: role, scope: scope, description: snap.descriptions[scope][role]})
+			roles = append(roles, &composedRole{name: role.Name, scope: scope, description: role.Description})
 		}
 	}
 

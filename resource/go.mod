@@ -10,6 +10,7 @@ require (
 	cloud.google.com/go/spanner v1.96.1
 	cloud.google.com/go/storage v1.69.0
 	firebase.google.com/go/v4 v4.22.0
+	github.com/cccteam/access v0.11.3-0.20261028172051-2021849a4c1d
 	github.com/cccteam/ccc v0.3.5
 	github.com/cccteam/ccc/accesstypes v0.7.0
 	github.com/cccteam/ccc/cache v0.2.2

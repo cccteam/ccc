@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cccteam/access"
 	"github.com/cccteam/ccc"
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/httpio"
@@ -398,20 +399,10 @@ type UserSeats interface {
 	// scopes given, those of each given scope otherwise.
 	UserRoles(ctx context.Context, user accesstypes.User, scopes ...accesstypes.PolicyScope) (accesstypes.RoleCollection, error)
 	RoleUsers(ctx context.Context, scope accesstypes.PolicyScope, role accesstypes.Role) ([]accesstypes.User, error)
-	// Roles lists the roles that exist in scope: the default roles of the scope's kind
-	// and the custom roles held there.
-	Roles(ctx context.Context, scope accesstypes.PolicyScope) ([]accesstypes.Role, error)
-}
-
-// roleDescriber is a membership store that says what each of its roles is for. The
-// surface serves the description beside the role's name and kind from a UserSeats that
-// implements it, and an empty description from one that does not.
-//
-// phase 2 (cccteam/backlog#463): UserSeats.Roles answers the description beside the name
-// once the access library's UserManager does, and this seam goes.
-type roleDescriber interface {
-	// RoleDescriptions returns what each role that exists in scope is for, by name.
-	RoleDescriptions(ctx context.Context, scope accesstypes.PolicyScope) (map[accesstypes.Role]string, error)
+	// Roles lists the roles that exist in scope, each with what it is for: the default
+	// roles of the scope's kind, described by the role file, and the custom roles held
+	// there, described when they were made.
+	Roles(ctx context.Context, scope accesstypes.PolicyScope) ([]access.RoleInfo, error)
 }
 
 // UserApp is the application surface the user handlers draw on: the decoder seam, the

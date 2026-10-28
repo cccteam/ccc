@@ -4,6 +4,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/cccteam/access"
 	"github.com/cccteam/ccc"
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/session/signin"
@@ -15,7 +16,7 @@ import (
 func TestSeatDeclared(t *testing.T) {
 	t.Parallel()
 
-	seats := &fakeSeats{roles: map[accesstypes.PolicyScope][]accesstypes.Role{accesstypes.DomainPolicyScope(anvil): {"Clerk"}, accesstypes.DomainPolicyScope(bastion): {"Pilot"}}}
+	seats := &fakeSeats{roles: map[accesstypes.PolicyScope][]access.RoleInfo{accesstypes.DomainPolicyScope(anvil): namedRoles("Clerk"), accesstypes.DomainPolicyScope(bastion): namedRoles("Pilot")}}
 	hook := SeatDeclared(seats)
 	if err := hook(t.Context(), ccc.NilUUID, "amy@lakeside.edu", []signin.DirectorySeat{{Tenant: anvil, Role: "Clerk"}, {Tenant: bastion, Role: "Pilot"}}); err != nil {
 		t.Fatalf("hook error = %v", err)

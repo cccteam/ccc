@@ -52,6 +52,8 @@ github.com/MicahParks/keyfunc v1.9.0 h1:lhKd5xrFHLNOWrDc4Tyb/Q1AJ4LCzQ48GVJyVIID
 github.com/MicahParks/keyfunc v1.9.0/go.mod h1:IdnCilugA0O/99dW+/MkvlyrsX8+L8+x95xuVNtM5jw=
 github.com/Microsoft/go-winio v0.6.2 h1:F2VQgta7ecxGYO8k3ZZz3RS8fVIXVxONVUPlNERoyfY=
 github.com/Microsoft/go-winio v0.6.2/go.mod h1:yd8OoFMLzJbo9gZq8j5qaps8bJ9aShtEA8Ipt1oGCvU=
+github.com/cccteam/access v0.11.3-0.20261028172051-2021849a4c1d h1:H0BFkh/J/N59QwBbw8HQyYyyhJSxqxXrjeZI/VrCNKE=
+github.com/cccteam/access v0.11.3-0.20261028172051-2021849a4c1d/go.mod h1:6RGG0+hxn6za6XeOP/DW3eyPZyP0TT+rN2gjuG3i5a0=
 github.com/cccteam/ccc v0.3.5 h1:EthL/yJ9Hs/PRqO0fa5mTbfE2EVj2p2isPFpQVKAZSo=
 github.com/cccteam/ccc v0.3.5/go.mod h1:9X9ZE38KPlaVBZr0oUHmulsQndH7w+4neZnXFckp9ms=
 github.com/cccteam/ccc/accesstypes v0.7.0 h1:GEeOzOdIR3PAkeQD0QbAVyhvxV6kdh1TQrQGNVA8fKM=

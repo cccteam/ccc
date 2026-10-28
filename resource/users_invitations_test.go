@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cccteam/access"
 	"github.com/cccteam/ccc"
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/session/sessioninfo"
@@ -528,7 +529,7 @@ func TestUserSurface_usernameIsEmail(t *testing.T) {
 	t.Parallel()
 
 	accounts := &fakeAccounts{users: []UserAccount{{ID: mustUUID(t), Username: "pat@lakeside.edu", HasPassword: true}}}
-	seats := &fakeSeats{roles: map[accesstypes.PolicyScope][]accesstypes.Role{global: {"Administrator"}}}
+	seats := &fakeSeats{roles: map[accesstypes.PolicyScope][]access.RoleInfo{global: namedRoles("Administrator")}}
 	perms := &scriptedPermissions{user: "pat@lakeside.edu"}
 	perms.grant(accesstypes.Create, "StaffUsers", "StaffUsers.username", "StaffUsers.password", "StaffUsers.email").
 		grant(accesstypes.Update, "StaffUsers", "StaffUsers.username", "StaffUsers.email")
@@ -564,7 +565,7 @@ func TestUserSurface_usernameIsEmail(t *testing.T) {
 func TestSeatInvited(t *testing.T) {
 	t.Parallel()
 
-	seats := &fakeSeats{roles: map[accesstypes.PolicyScope][]accesstypes.Role{global: {"Administrator"}, everywhere: {"Pilot"}, accesstypes.DomainPolicyScope(anvil): {"Clerk"}}}
+	seats := &fakeSeats{roles: map[accesstypes.PolicyScope][]access.RoleInfo{global: namedRoles("Administrator"), everywhere: namedRoles("Pilot"), accesstypes.DomainPolicyScope(anvil): namedRoles("Clerk")}}
 	hook := SeatInvited(seats)
 	if err := hook(t.Context(), ccc.NilUUID, "amy", &sessioninfo.Invitation{Email: "amy@lakeside.edu", Tenant: "anvil", RoleNames: []string{"Clerk"}}); err != nil {
 		t.Fatalf("hook (tenant) error = %v", err)
@@ -587,7 +588,7 @@ func TestSeatInvited(t *testing.T) {
 func TestSeatsFollowRename(t *testing.T) {
 	t.Parallel()
 
-	seats := &fakeSeats{roles: map[accesstypes.PolicyScope][]accesstypes.Role{global: {"Administrator"}, accesstypes.DomainPolicyScope(anvil): {"Clerk"}}}
+	seats := &fakeSeats{roles: map[accesstypes.PolicyScope][]access.RoleInfo{global: namedRoles("Administrator"), accesstypes.DomainPolicyScope(anvil): namedRoles("Clerk")}}
 	seats.seat(global, "Administrator", "pat@lakeside.edu")
 	seats.seat(accesstypes.DomainPolicyScope(anvil), "Clerk", "pat@lakeside.edu")
 	if err := SeatsFollowRename(seats)(t.Context(), ccc.NilUUID, "pat@lakeside.edu", "pat.lee@lakeside.edu"); err != nil {

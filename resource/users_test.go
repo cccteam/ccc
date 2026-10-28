@@ -5,7 +5,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"maps"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -13,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cccteam/access"
 	"github.com/cccteam/ccc"
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/httpio"
@@ -204,13 +204,21 @@ func (f *fakeAccounts) UnlinkIdentity(_ context.Context, identityID ccc.UUID) er
 }
 
 // fakeSeats holds memberships by scope, role and user, with the roles that exist in
-// each scope.
+// each scope, each with what it is for.
 type fakeSeats struct {
-	roles map[accesstypes.PolicyScope][]accesstypes.Role
+	roles map[accesstypes.PolicyScope][]access.RoleInfo
 	held  map[accesstypes.PolicyScope]map[accesstypes.Role][]accesstypes.User
-	// descriptions is what the described roles are for, by scope and name; a role
-	// without one is served with an empty description.
-	descriptions map[accesstypes.PolicyScope]map[accesstypes.Role]string
+}
+
+// namedRoles lists roles for a fake seat store by name, each described for its name,
+// for a test that reads no description.
+func namedRoles(names ...accesstypes.Role) []access.RoleInfo {
+	roles := make([]access.RoleInfo, 0, len(names))
+	for _, name := range names {
+		roles = append(roles, access.RoleInfo{Name: name, Description: "Holds the " + string(name) + " seat."})
+	}
+
+	return roles
 }
 
 func (f *fakeSeats) seat(scope accesstypes.PolicyScope, role accesstypes.Role, users ...accesstypes.User) {
@@ -263,12 +271,8 @@ func (f *fakeSeats) RoleUsers(_ context.Context, scope accesstypes.PolicyScope, 
 	return slices.Clone(f.held[scope][role]), nil
 }
 
-func (f *fakeSeats) Roles(_ context.Context, scope accesstypes.PolicyScope) ([]accesstypes.Role, error) {
+func (f *fakeSeats) Roles(_ context.Context, scope accesstypes.PolicyScope) ([]access.RoleInfo, error) {
 	return slices.Clone(f.roles[scope]), nil
-}
-
-func (f *fakeSeats) RoleDescriptions(_ context.Context, scope accesstypes.PolicyScope) (map[accesstypes.Role]string, error) {
-	return maps.Clone(f.descriptions[scope]), nil
 }
 
 // scriptedPermissions answers each permission from a table of decisions; a resource off
@@ -363,7 +367,10 @@ var (
 // What the described roles are for, as a role file would say it.
 const (
 	administratorDescription = "Manages the crew: creates users, seats and unseats roles, and resets passwords."
+	auditorDescription       = "Reads the crew's records."
 	marshalDescription       = "Runs a sector: seats its crew and commands its missions."
+	pilotDescription         = "Flies for a sector: sees its missions and claims one."
+	clerkDescription         = "Keeps a sector's records."
 )
 
 func newUserFixture(t *testing.T) *userFixture {
@@ -402,19 +409,21 @@ func newUserFixtureWith(t *testing.T, opts ...UserSurfaceOption) *userFixture {
 			cadetID: {{ID: mustUUID(t), Method: "azure", Connection: "lakeside", Subject: "sub-2", LinkedAt: signedIn, LastUsedAt: signedIn}},
 		},
 	}
+	// The sector roles are listed unsorted, as a store need not sort them.
+	sectorRoles := []access.RoleInfo{
+		{Name: "Marshal", Description: marshalDescription},
+		{Name: "Pilot", Description: pilotDescription},
+		{Name: "Clerk", Description: clerkDescription},
+	}
 	seats := &fakeSeats{
-		roles: map[accesstypes.PolicyScope][]accesstypes.Role{
-			global:                                 {"Administrator", "Auditor"},
-			everywhere:                             {"Marshal", "Pilot", "Clerk"},
-			accesstypes.DomainPolicyScope(anvil):   {"Marshal", "Pilot", "Clerk"},
-			accesstypes.DomainPolicyScope(bastion): {"Marshal", "Pilot", "Clerk"},
-		},
-		// The administrator and the marshal are described; the rest are not, as a store
-		// that says nothing about a role leaves it.
-		descriptions: map[accesstypes.PolicyScope]map[accesstypes.Role]string{
-			global:                               {"Administrator": administratorDescription},
-			everywhere:                           {"Marshal": marshalDescription},
-			accesstypes.DomainPolicyScope(anvil): {"Marshal": marshalDescription},
+		roles: map[accesstypes.PolicyScope][]access.RoleInfo{
+			global: {
+				{Name: "Administrator", Description: administratorDescription},
+				{Name: "Auditor", Description: auditorDescription},
+			},
+			everywhere:                             sectorRoles,
+			accesstypes.DomainPolicyScope(anvil):   sectorRoles,
+			accesstypes.DomainPolicyScope(bastion): sectorRoles,
 		},
 	}
 	seats.seat(global, "Administrator", "admin")
@@ -694,7 +703,7 @@ func TestUserSurface_lists(t *testing.T) {
 			},
 		},
 		{
-			name:     "the global roles say what each is for, and nothing for a role the store does not describe",
+			name:     "the global roles say what each is for",
 			grant:    func(p *scriptedPermissions) { p.grant(accesstypes.List, "CrewRoles", "CrewRoles.description") },
 			target:   "/crew-roles",
 			wantCode: http.StatusOK,
@@ -704,7 +713,7 @@ func TestUserSurface_lists(t *testing.T) {
 				for _, row := range rows {
 					got = append(got, fmt.Sprintf("%s:%s", row["name"], row["description"]))
 				}
-				want := []string{"Administrator:" + administratorDescription, "Auditor:", "Clerk:", "Marshal:" + marshalDescription, "Pilot:"}
+				want := []string{"Administrator:" + administratorDescription, "Auditor:" + auditorDescription, "Clerk:" + clerkDescription, "Marshal:" + marshalDescription, "Pilot:" + pilotDescription}
 				if diff := cmp.Diff(want, got); diff != "" {
 					t.Errorf("roles mismatch (-want +got):\n%s", diff)
 				}
@@ -723,7 +732,7 @@ func TestUserSurface_lists(t *testing.T) {
 				for _, row := range rows {
 					got = append(got, fmt.Sprintf("%s:%s", row["name"], row["description"]))
 				}
-				want := []string{"Clerk:", "Marshal:" + marshalDescription, "Pilot:"}
+				want := []string{"Clerk:" + clerkDescription, "Marshal:" + marshalDescription, "Pilot:" + pilotDescription}
 				if diff := cmp.Diff(want, got); diff != "" {
 					t.Errorf("roles mismatch (-want +got):\n%s", diff)
 				}
@@ -1678,7 +1687,7 @@ func newDirectoryFixture(t *testing.T) *userFixture {
 			pilotID: {{ID: mustUUID(t), Method: "google", Connection: "google", Subject: "sub-pilot", LinkedAt: signedIn, LastUsedAt: signedIn}},
 		},
 	}
-	seats := &fakeSeats{roles: map[accesstypes.PolicyScope][]accesstypes.Role{global: {"Administrator", "Pilot"}}}
+	seats := &fakeSeats{roles: map[accesstypes.PolicyScope][]access.RoleInfo{global: namedRoles("Administrator", "Pilot")}}
 	seats.seat(global, "Administrator", "admin")
 	seats.seat(global, "Pilot", "pilot")
 	perms := &scriptedPermissions{user: "admin"}
