@@ -606,6 +606,27 @@ var Steps = []Step{
 	},
 	{
 		Pins: pins(`
+			access v0.11.1
+			ccc v0.3.5
+			ccc/accesstypes v0.7.0
+			ccc/cloud v0.2.1
+			ccc/resource v0.15.17
+			ccc/tracer v0.3.0
+			db-initiator v0.4.3
+			httpio v0.7.22
+			logger v0.1.30
+			session v0.13.14
+		`),
+		Web: web(`
+			@cccteam/resource 0.0.14
+			@cccteam/resource-angular 0.0.19
+			@cccteam/resource-firestore 0.0.12
+		`),
+		Impulse: release("v0.5.27"),
+		Note:    "the login page runs the sign-in code step: a sign-in the auth holds for the second factor has the code mailed at once to the address the account holds, and the step says where it went over the code field, a box that has the browser remembered, Sign in and Send a new code; a person whose account holds no email address is asked for one first, and it is written on the account, confirmed, when its code is entered; a wrong code, or one entered after the code sent died, keeps the form with its sentence, and an address sent three codes within fifteen minutes is refused with the wait; the users page forgets a person's remembered browsers through the Reset<…>UserFactors method, so their next sign-in asks for the code again; no code change is needed: the web pins move to @cccteam/resource 0.0.14, @cccteam/resource-angular 0.0.19 and @cccteam/resource-firestore 0.0.12, which carry the step and the action",
+	},
+	{
+		Pins: pins(`
 			access v0.12.0
 			ccc v0.3.5
 			ccc/accesstypes v0.7.0
@@ -618,11 +639,11 @@ var Steps = []Step{
 			session v0.13.14
 		`),
 		Web: web(`
-			@cccteam/resource 0.0.13
-			@cccteam/resource-angular 0.0.18
-			@cccteam/resource-firestore 0.0.11
+			@cccteam/resource 0.0.14
+			@cccteam/resource-angular 0.0.19
+			@cccteam/resource-firestore 0.0.12
 		`),
-		Impulse: release("v0.5.27"),
+		Impulse: release("v0.5.28"),
 		Pending: true,
 		Note:    "every role is named in one grammar and says what it is for: the permission engine refuses a role file naming a role outside letters and digits starting with a capital letter (Administrator, TenantAdministrator; the scope is never part of the name, since the file's structure says where a role is held and the Users page shows it as the role's kind) or a role without a description, one or two plain sentences saying what the role is for, which the user-management surface serves beside the name (the roles resources' List and Read grants name description beside kind, and the generated TypeScript clients carry the field); a custom role made at run time (UserManager.AddRole) takes a description and follows the same grammar, and the engine's store writes it to a Description column on each <Name>Roles table (Spanner: Description STRING(MAX) NOT NULL after Role), which the skeletons' access migrations create; the roles-file check parses every auth package's role file the way the engine reads it at start, with no permission collection, and names the file, the role and the rule of a refusal; an existing application taking this release does three things by hand: renames every role whose name is outside the grammar, in its role files, its development logins, its tests and wherever else the name is written (in the skeletons' naming, Administrator_Global is Administrator, Administrator_Domain is TenantAdministrator and Machines_Domain is MachineOperator), gives every role in its role files a description, and adds the Description column to each <Name>Roles table; and the pins move to access v0.12.0 and to resource v0.15.18-0.20261028175435-8df03287f848, the pushed commit, until its release",
 	},
