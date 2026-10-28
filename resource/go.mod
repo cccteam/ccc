@@ -10,7 +10,7 @@ require (
 	cloud.google.com/go/spanner v1.96.1
 	cloud.google.com/go/storage v1.69.0
 	firebase.google.com/go/v4 v4.22.0
-	github.com/cccteam/access v0.11.3-0.20261028172051-2021849a4c1d
+	github.com/cccteam/access v0.12.0
 	github.com/cccteam/ccc v0.3.5
 	github.com/cccteam/ccc/accesstypes v0.7.0
 	github.com/cccteam/ccc/cache v0.2.2
@@ -41,7 +41,7 @@ require (
 	golang.org/x/mod v0.42.0
 	golang.org/x/sync v0.24.0
 	golang.org/x/tools v0.52.0
-	google.golang.org/api v0.304.0
+	google.golang.org/api v0.306.0
 	google.golang.org/grpc v1.84.0
 	google.golang.org/protobuf v1.36.12
 )
@@ -143,5 +143,5 @@ require (
 	google.golang.org/appengine/v2 v2.0.6 // indirect
 	google.golang.org/genproto v0.0.0-20261005182115-fad411399dd8 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20261005182115-fad411399dd8 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20261005182115-fad411399dd8 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20261019180522-ce908d29299b // indirect
 )

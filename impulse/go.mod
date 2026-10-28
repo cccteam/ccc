@@ -3,7 +3,7 @@ module github.com/cccteam/ccc/impulse
 go 1.27.3
 
 require (
-	github.com/cccteam/access v0.11.3-0.20261028172051-2021849a4c1d
+	github.com/cccteam/access v0.12.0
 	github.com/cccteam/ccc/cloud v0.2.1
 	github.com/cccteam/ccc/resource v0.14.0
 	github.com/ettle/strcase v0.2.0
@@ -87,10 +87,10 @@ require (
 	golang.org/x/sys v0.49.0 // indirect
 	golang.org/x/text v0.43.0 // indirect
 	golang.org/x/time v0.16.0 // indirect
-	google.golang.org/api v0.304.0 // indirect
+	google.golang.org/api v0.306.0 // indirect
 	google.golang.org/genproto v0.0.0-20261005182115-fad411399dd8 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20261005182115-fad411399dd8 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20261005182115-fad411399dd8 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20261019180522-ce908d29299b // indirect
 	google.golang.org/grpc v1.84.0 // indirect
 	google.golang.org/protobuf v1.36.12 // indirect
 )

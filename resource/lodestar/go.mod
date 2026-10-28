@@ -10,7 +10,7 @@ replace github.com/cccteam/ccc/resource => ../
 require (
 	cloud.google.com/go v0.123.0
 	cloud.google.com/go/spanner v1.96.1
-	github.com/cccteam/access v0.11.3-0.20261028172051-2021849a4c1d
+	github.com/cccteam/access v0.12.0
 	github.com/cccteam/ccc v0.3.5
 	github.com/cccteam/ccc/accesstypes v0.7.0
 	github.com/cccteam/ccc/cloud v0.2.1
@@ -28,7 +28,7 @@ require (
 	github.com/sethvargo/go-envconfig v1.4.3
 	github.com/shopspring/decimal v1.5.0
 	github.com/spf13/cobra v1.10.2
-	google.golang.org/api v0.304.0
+	google.golang.org/api v0.306.0
 	google.golang.org/grpc v1.84.0
 )
 
@@ -157,6 +157,6 @@ require (
 	google.golang.org/appengine/v2 v2.0.6 // indirect
 	google.golang.org/genproto v0.0.0-20261005182115-fad411399dd8 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20261005182115-fad411399dd8 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20261005182115-fad411399dd8 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20261019180522-ce908d29299b // indirect
 	google.golang.org/protobuf v1.36.12 // indirect
 )
