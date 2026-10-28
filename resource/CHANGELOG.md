@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.15.17](https://github.com/cccteam/ccc/compare/resource/v0.15.16...resource/v0.15.17) (2026-10-28)
+
+
+### Features
+
+* **bedrock:** the administered tenants and Workspaces of a directory registration are placement variables ([3d45773](https://github.com/cccteam/ccc/commit/3d45773884f4d35a42db39312c7a451bf5fc9086))
+* **impulse:** every generated auth requires the sign-in code unless a remembered browser or an administered directory stands in for it, a directory method declares the organizations the deployment administers (_ADMINISTERED_TENANTS, _ADMINISTERED_WORKSPACES), the session migration creates the sign-in codes and trusted devices tables, and the pins move to session v0.13.14 ([3d45773](https://github.com/cccteam/ccc/commit/3d45773884f4d35a42db39312c7a451bf5fc9086))
+* **resource:** every session carries a second factor: the generated router serves the sign-in code routes, the user surface resets a person's remembered browsers (Reset&lt;…&gt;UserFactors), and Lodestar demonstrates the code, the attested directory and the remembered browser ([3d45773](https://github.com/cccteam/ccc/commit/3d45773884f4d35a42db39312c7a451bf5fc9086))
+
 ## [0.15.16](https://github.com/cccteam/ccc/compare/resource/v0.15.15...resource/v0.15.16) (2026-10-28)
 
 
