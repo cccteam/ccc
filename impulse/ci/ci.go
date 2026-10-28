@@ -351,6 +351,9 @@ type data struct {
 	// the issue it reports to.
 	ScanSchedule   string
 	ScanIssueTitle string
+	// Programs is the PROGRAMS build argument the image build passes: the shipped
+	// programs the generator programs declare, as programs composes them.
+	Programs string
 }
 
 // CachedJob is one Go leg's use of the saved Go caches.
@@ -412,6 +415,7 @@ func render(a *app.App, file string) ([]byte, error) {
 		TruffleHog:     TruffleHog,
 		ScanSchedule:   ScanSchedule,
 		ScanIssueTitle: ScanIssueTitle,
+		Programs:       programs(a),
 	}
 	for _, c := range CachedJobs {
 		d.Cache[c.Job] = c
@@ -425,6 +429,30 @@ func render(a *app.App, file string) ([]byte, error) {
 	}
 
 	return b.Bytes(), nil
+}
+
+// programs composes the PROGRAMS build argument the image build passes to docker build:
+// the shipped programs the generator programs declare (ShipsProgram), one word per
+// program, <dir>=<os>/<arch>[,<os>/<arch>...], the words separated by single spaces, in
+// declaration order across the outlets of every site in profile order; empty when no
+// outlet ships a program, so the seeded Dockerfile's loop compiles nothing. The words are
+// those bedrock passes from the release file when it builds a version's image (bedrock
+// orders them by directory), rendered into the workflow here so the job compiles the
+// shipped programs without a tool at run time; a change to the declarations is followed
+// by impulse render, which the ci-workflow check holds the committed file to.
+func programs(a *app.App) string {
+	var words []string
+	sites := a.Profile().Sites
+	for i := range sites {
+		outlets := sites[i].AllOutlets()
+		for j := range outlets {
+			for _, p := range outlets[j].Programs {
+				words = append(words, p.Dir+"="+strings.Join(p.Platforms, ","))
+			}
+		}
+	}
+
+	return strings.Join(words, " ")
 }
 
 // branchList writes the push trigger's branch list: the default branches bare, the

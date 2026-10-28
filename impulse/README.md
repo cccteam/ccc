@@ -314,12 +314,17 @@ so the gate covers every job:
 - `image`: once the application has a Dockerfile (bedrock seeds it), hadolint over it, the
   build, and Grype over the built image, failing on a high or critical vulnerability. The
   build's inputs are read from the Dockerfile when the job runs: every `ARG` without a
-  default (`VERSION` and `COMMIT` aside, which the job passes itself) is passed as `ci`,
-  and every build secret a `RUN` line mounts (`--mount=type=secret,id=NAME`) is served
-  from a placeholder file holding `ci`, so a Dockerfile that requires a secret builds on
-  the pull request without the real value; the image is built to be scanned, never
-  deployed. Without a Dockerfile the job passes with nothing to build, so the check exists
-  on every pull request.
+  default (`VERSION`, `COMMIT` and `PROGRAMS` aside, which the job passes itself) is
+  passed as `ci`, and every build secret a `RUN` line mounts
+  (`--mount=type=secret,id=NAME`) is served from a placeholder file holding `ci`, so a
+  Dockerfile that requires a secret builds on the pull request without the real value.
+  `PROGRAMS` is the shipped programs the Dockerfile compiles into the image, one word per
+  program as `<dir>=<os>/<arch>[,<os>/<arch>...]` (empty when no outlet ships one),
+  composed from the generator programs' `ShipsProgram` declarations when `impulse render`
+  writes the workflow, so the job proves the shipped programs compile, and a change to the
+  declarations is followed by `impulse render` (`ci-workflow` holds the file to it). The
+  image is built to be scanned, never deployed. Without a Dockerfile the job passes with
+  nothing to build, so the check exists on every pull request.
 - `secrets`: TruffleHog over the whole history reachable from the pull request's head; a
   secret confirmed live, or one whose check could not finish, fails.
 - `migrations`: against the base branch, `schema/migrations` gains files only; a committed
