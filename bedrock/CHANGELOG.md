@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.24](https://github.com/cccteam/ccc/compare/bedrock/v0.3.23...bedrock/v0.3.24) (2026-10-28)
+
+
+### Bug Fixes
+
+* **bedrock:** the stack declares the administered tenants and Workspaces variables its locals hand to the processes, so a stack with a directory registration plans again on 0.3.23's successor, and the render tests hold every referenced variable to a declaration ([#1197](https://github.com/cccteam/ccc/issues/1197)) ([0774118](https://github.com/cccteam/ccc/commit/07741180122523155d74c535ca95b7acea9bc786))
+
 ## [0.3.23](https://github.com/cccteam/ccc/compare/bedrock/v0.3.22...bedrock/v0.3.23) (2026-10-28)
 
 
