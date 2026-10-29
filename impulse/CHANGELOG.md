@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.3](https://github.com/cccteam/ccc/compare/impulse/v0.6.2...impulse/v0.6.3) (2026-10-29)
+
+
+### Features
+
+* **impulse:** the login card's release line sits to the right with room above it; an existing application makes the same change to the `.release` rule of each login stylesheet ([bb37145](https://github.com/cccteam/ccc/commit/bb3714570eb4c8f21095bb43fb062e861ede116d))
+
 ## [0.6.2](https://github.com/cccteam/ccc/compare/impulse/v0.6.1...impulse/v0.6.2) (2026-10-29)
 
 
