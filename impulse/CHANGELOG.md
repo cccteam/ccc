@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.6.4](https://github.com/cccteam/ccc/compare/impulse/v0.6.3...impulse/v0.6.4) (2026-10-29)
+
+
+### Features
+
+* **impulse:** the outlets candidate's machine outlet is named devices ([a068ae2](https://github.com/cccteam/ccc/commit/a068ae22f5f0c8abd8124505d89adac7009dc0c3))
+* **impulse:** the sign-in steps a generated server asks the login page for are named in one list, held to the policy the generator writes, and the repository's CI refuses a web pin whose login page does not declare every one of them, so a release never pairs a server with a page that cannot render what it asks ([#1214](https://github.com/cccteam/ccc/issues/1214)) ([530c9f3](https://github.com/cccteam/ccc/commit/530c9f3e869db9fa5686fd5b4619ee20e19a8bf9))
+
 ## [0.6.3](https://github.com/cccteam/ccc/compare/impulse/v0.6.2...impulse/v0.6.3) (2026-10-29)
 
 
