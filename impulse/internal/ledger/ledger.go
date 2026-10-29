@@ -709,6 +709,28 @@ var Steps = []Step{
 		Impulse: release("v0.6.6"),
 		Note:    "a sign-out at Microsoft ends the application's sessions through a Microsoft registration serving several tenants or personal accounts, which it never did (session v0.13.16: Entra sends the session id alone, and the front-channel logout handler scopes such a request to the registration's declared issuers), and the trusted device cookie holds one token per user, so two people sharing a browser each stay remembered after the second factor (session v0.13.17); the web pins move to @cccteam/resource-angular 0.0.25: the Users page names a linked identity by its provider and the organization the link carries, and the login card offers \"Use a different account\", which asks the provider for its account chooser; the resource pin moves to v0.16.2, whose Labeled documentation says a registration's label is a name the login page writes \"Sign in with\" before; no code change is needed",
 	},
+	{
+		Pins: pins(`
+			access v0.12.0
+			ccc v0.3.6
+			ccc/accesstypes v0.7.0
+			ccc/cloud v0.2.1
+			ccc/resource v0.16.2
+			ccc/tracer v0.3.1
+			db-initiator v0.4.3
+			httpio v0.7.22
+			logger v0.1.30
+			session v0.13.17
+		`),
+		Web: web(`
+			@cccteam/resource 0.0.17
+			@cccteam/resource-angular 0.0.25
+			@cccteam/resource-firestore 0.0.15
+		`),
+		Recipes: []Recipe{recipe.SecondFactor{}},
+		Impulse: release("v0.6.7"),
+		Note:    "every auth package ends its sign-in rule with the second factor: the 0.5.26 step had impulse write requireSecondFactor into a new auth package and the walk into no existing one, so an application upgraded through that step kept the sign-in codes and trusted devices tables and the pending sign-in's code handlers and asked nobody for the code; the second-factor recipe writes the rule into each auth package whose rule does not end with it (.Then(requireSecondFactor) chained on the one SetSignInPolicy call's policy, or the call set on the construction after its error check when the package makes none, and the function at the end of the file with its imports where the package has none returning signin.RequireMFA), and the second-factor check holds every auth package to the rule from here on (impulse check --fix writes it the same way); the pins do not move",
+	},
 }
 
 // validatePending holds a step's Pending mark to its pins: a pin at a pseudo-version

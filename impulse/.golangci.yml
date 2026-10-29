@@ -173,6 +173,12 @@ linters:
           - gosec
         path: internal/handoff/agent\.go
         text: G204
+      # check --fix and impulse upgrade's second-factor recipe write the sign-in rule into a
+      # file of the application's own auth package, read from the package's directory.
+      - linters:
+          - gosec
+        path: internal/check/secondfactor\.go
+        text: G703
       # Tests edit copies of the fixture applications under their own temporary directory.
       - linters:
           - gosec

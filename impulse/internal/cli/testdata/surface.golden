@@ -153,6 +153,7 @@ checks:
   roles-file
   administrator-roles
   directory-admission
+  second-factor
   change-signal
   conditions-proven
   skipauth
