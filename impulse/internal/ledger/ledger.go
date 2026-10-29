@@ -661,11 +661,11 @@ var Steps = []Step{
 		`),
 		Web: web(`
 			@cccteam/resource 0.0.15
-			@cccteam/resource-angular 0.0.21
+			@cccteam/resource-angular 0.0.22
 			@cccteam/resource-firestore 0.0.13
 		`),
 		Impulse: release("v0.6.4"),
-		Note:    "the web pins move to @cccteam/resource-angular 0.0.21: the login card says the server did not answer, with Try again, when its first reads fail, never the raw status; the tokens page keeps the page's own heading, says what a token is for, shows dates to the minute and revokes from a trash can through a dialog; the Users page's row opens a menu that names every action the caller may take on that user, each one step with one call in a dialog, and its access panel's rows act at once and say so when every role is held; an action dialog any page may ask in (askInDialog from @cccteam/resource-angular/ccc-dialogs); and the login page declares the sign-in steps it renders (cccteam.signInSteps in the package's package.json, SIGN_IN_STEPS in the component), and a step it does not render says the page is older than the server and asks for a reload; the outlets candidate's machine outlet is named devices, served at /devices, with its role DeviceOperator, since the outlet's name is each application's own, which an application keeps or renames by hand, the candidate's being the pattern; no code change is needed",
+		Note:    "the web pins move to @cccteam/resource-angular 0.0.22: the login card says the server did not answer, with Try again, when its first reads fail, never the raw status; the tokens page keeps the page's own heading, says what a token is for, shows dates to the minute and revokes from a trash can through a dialog; the Users page's row opens a menu that names every action the caller may take on that user, each one step with one call in a dialog, and its access panel's rows act at once and say so when every role is held; an action dialog any page may ask in (askInDialog from @cccteam/resource-angular/ccc-dialogs); and the login page declares the sign-in steps it renders (cccteam.signInSteps in the package's package.json, SIGN_IN_STEPS in the component), and a step it does not render says the page is older than the server and asks for a reload; and the Users page's row menu opens beside its button, to its left, when neither below nor above has room, never over the button that opened it or another row's, and the button keeps a tint while its menu is open; the outlets candidate's machine outlet is named devices, served at /devices, with its role DeviceOperator, since the outlet's name is each application's own, which an application keeps or renames by hand, the candidate's being the pattern; no code change is needed",
 	},
 }
 
