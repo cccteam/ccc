@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"path"
 	"path/filepath"
@@ -51,13 +52,18 @@ const (
 	pullRequestBuildNotice = "Pull-request build: the environments' stacks are planned by the stack's check trigger, and the pull request's own is applied by its pr-stack trigger; this build applies nothing."
 )
 
-// StackPlan is what a plan of the environment's stack would do: the counts tofu prints and
-// each change. The deployment record carries the tag build's.
+// StackPlan is what a plan of the environment's stack would do: the counts tofu prints,
+// each change, and each output the plan changes. The deployment record carries the tag
+// build's. The outputs are listed because the stack passes its settings through to them
+// (the revision templates carry the environment variables, the substitutions the names
+// the steps read): a change to a setting alone plans no resource change and still has to
+// be applied, or the release deploys under the values before it.
 type StackPlan struct {
 	Add     int           `json:"add"`
 	Change  int           `json:"change"`
 	Destroy int           `json:"destroy"`
 	Changes []StackChange `json:"changes,omitempty"`
+	Outputs []StackOutput `json:"outputs,omitempty"`
 }
 
 // StackChange is one planned change: the resource's address and tofu's actions.
@@ -66,21 +72,52 @@ type StackChange struct {
 	Actions []string `json:"actions"`
 }
 
+// StackOutput is one planned change to an output: its name and tofu's actions.
+type StackOutput struct {
+	Name    string   `json:"name"`
+	Actions []string `json:"actions"`
+}
+
 // Summary is the plan's one line, as tofu prints it.
 func (p *StackPlan) Summary() string {
 	return fmt.Sprintf("Plan: %d to add, %d to change, %d to destroy.", p.Add, p.Change, p.Destroy)
 }
 
-// print says what the plan does: the summary, then one change per line.
+// Empty says the plan changes nothing, no resource and no output: an apply of it is
+// skipped.
+func (p *StackPlan) Empty() bool {
+	return len(p.Changes) == 0 && len(p.Outputs) == 0
+}
+
+// appliedCounts is what an apply of the plan did, for the applied line: the resource
+// counts, then the outputs it updated when the plan changed any.
+func (p *StackPlan) appliedCounts() string {
+	counts := fmt.Sprintf("%d added, %d changed, %d destroyed", p.Add, p.Change, p.Destroy)
+	switch len(p.Outputs) {
+	case 0:
+		return counts
+	case 1:
+		return counts + ", 1 output updated"
+	default:
+		return fmt.Sprintf("%s, %d outputs updated", counts, len(p.Outputs))
+	}
+}
+
+// print says what the plan does: the summary, then one change per line, then one changed
+// output per line.
 func (p *StackPlan) print(out io.Writer) {
 	fmt.Fprintln(out, p.Summary())
 	for _, c := range p.Changes {
 		fmt.Fprintf(out, "  %s %s\n", strings.Join(c.Actions, "+"), c.Address)
 	}
+	for _, o := range p.Outputs {
+		fmt.Fprintf(out, "  %s output %s\n", strings.Join(o.Actions, "+"), o.Name)
+	}
 }
 
 // stackPlan reads a plan's JSON (tofu show -json) into what it would do, no-ops and reads
-// left out; a replace counts one to add and one to destroy, as tofu counts it.
+// left out; a replace counts one to add and one to destroy, as tofu counts it. The outputs
+// the plan changes follow by name, no-ops left out.
 func stackPlan(data []byte) (*StackPlan, error) {
 	var plan planDocument
 	if err := json.Unmarshal(data, &plan); err != nil {
@@ -89,7 +126,7 @@ func stackPlan(data []byte) (*StackPlan, error) {
 	p := &StackPlan{}
 	for _, c := range plan.ResourceChanges {
 		actions := slices.DeleteFunc(slices.Clone(c.Change.Actions), func(a string) bool {
-			return a == "no-op" || a == "read"
+			return a == actionNoOp || a == actionRead
 		})
 		if len(actions) == 0 {
 			continue
@@ -105,6 +142,15 @@ func stackPlan(data []byte) (*StackPlan, error) {
 			}
 		}
 		p.Changes = append(p.Changes, StackChange{Address: c.Address, Actions: actions})
+	}
+	for _, name := range slices.Sorted(maps.Keys(plan.OutputChanges)) {
+		actions := slices.DeleteFunc(slices.Clone(plan.OutputChanges[name].Actions), func(a string) bool {
+			return a == actionNoOp
+		})
+		if len(actions) == 0 {
+			continue
+		}
+		p.Outputs = append(p.Outputs, StackOutput{Name: name, Actions: actions})
 	}
 
 	return p, nil
@@ -537,13 +583,13 @@ func ApplyEnvironmentStack(ctx context.Context, clients *Clients, w Workspace, o
 		return err
 	}
 	s := newEnvironmentStack(clients, w, subs[applyIdentitySub], out)
-	if len(p.Changes) == 0 {
+	if p.Empty() {
 		fmt.Fprintf(out, "Nothing to apply: %s's stack matches the code.\n", subs[envSub])
 	} else {
 		if err := s.tofu(ctx, "apply", noInputFlag, noColorFlag, filepath.Join(string(w), StackPlanFile)); err != nil {
 			return err
 		}
-		fmt.Fprintf(out, "Applied %s's stack: %d added, %d changed, %d destroyed.\n", subs[envSub], p.Add, p.Change, p.Destroy)
+		fmt.Fprintf(out, "Applied %s's stack: %s.\n", subs[envSub], p.appliedCounts())
 	}
 	if err := s.appliedFacts(ctx, w, subs); err != nil {
 		return err
@@ -941,15 +987,19 @@ func jobTemplateNote(t *RevisionTemplates) string {
 	return " and the job process's job, for deploy jobs"
 }
 
-// changeList is a plan's changes for a comment: one line each, a list after the summary
-// (and after the pin notice, when there is one); none for a plan with no change.
+// changeList is a plan's changes for a comment: one line each, the changed outputs after
+// the resources, a list after the summary (and after the pin notice, when there is one);
+// none for a plan with no change.
 func changeList(p *StackPlan) string {
-	if len(p.Changes) == 0 {
+	if p.Empty() {
 		return ""
 	}
 	var lines []string
 	for _, c := range p.Changes {
 		lines = append(lines, "  - `"+strings.Join(c.Actions, "+")+" "+c.Address+"`")
+	}
+	for _, o := range p.Outputs {
+		lines = append(lines, "  - `"+strings.Join(o.Actions, "+")+" output "+o.Name+"`")
 	}
 
 	return "\n" + strings.Join(lines, "\n")

@@ -72,9 +72,17 @@ func TestFirstApply(t *testing.T) {
 		{
 			name:     "a plan with no change applies nothing",
 			build:    deployBuild,
-			shown:    `{"resource_changes": []}`,
+			shown:    `{"resource_changes": [], "output_changes": {"revision_templates": {"actions": ["no-op"]}}}`,
 			wantOut:  []string{"Nothing to apply: tst's stack matches the code already."},
 			wantTofu: initLine + " -backend-config=impersonate_service_account=quill-apply@p-stg.iam.gserviceaccount.com\n" + stateLine + "\n" + planLine + "\n" + showLine,
+			wantEnv:  "GOOGLE_IMPERSONATE_SERVICE_ACCOUNT=quill-apply@p-stg.iam.gserviceaccount.com",
+		},
+		{
+			name:     "a plan that changes an output alone is applied",
+			build:    deployBuild,
+			shown:    `{"resource_changes": [], "output_changes": {"revision_templates": {"actions": ["update"]}}}`,
+			wantOut:  []string{"Applied tst's stack for the first time: 0 added, 0 changed, 0 destroyed, 1 output updated. A release's build applies it from here on."},
+			wantTofu: initLine + " -backend-config=impersonate_service_account=quill-apply@p-stg.iam.gserviceaccount.com\n" + stateLine + "\n" + planLine + "\n" + showLine + "\n" + applyLine,
 			wantEnv:  "GOOGLE_IMPERSONATE_SERVICE_ACCOUNT=quill-apply@p-stg.iam.gserviceaccount.com",
 		},
 		{
