@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.5](https://github.com/cccteam/ccc/compare/impulse/v0.6.4...impulse/v0.6.5) (2026-10-29)
+
+
+### Features
+
+* the web pins move to @cccteam/resource 0.0.16, @cccteam/resource-angular 0.0.23 and @cccteam/resource-firestore 0.0.14, and the skeletons' and Lodestar's session pin to v0.13.15: the login page forwards a deep link straight to the only redirect sign-in method and stops on a direct visit, a refusal, a pending step or a second method; after a refusal the same redirect button asks the provider for its account chooser, and a direct visit offers "Use a different account" under each redirect button; the ledger's v0.6.5 step records the move, and no code change is needed ([#1221](https://github.com/cccteam/ccc/issues/1221)) ([fd00fc6](https://github.com/cccteam/ccc/commit/fd00fc672ed9ee52addd8955760fd41dfa4c72fe))
+
 ## [0.6.4](https://github.com/cccteam/ccc/compare/impulse/v0.6.3...impulse/v0.6.4) (2026-10-29)
 
 
