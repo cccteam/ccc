@@ -1196,25 +1196,12 @@ func (m *methodView) Microsoft() bool {
 	return m.FrontChannelLogout()
 }
 
-// TenantShape is the tenant shape a Microsoft registration's hand step follows: the
-// one the registration builds (app.TenantsOne, app.TenantsListed, app.TenantsAny,
-// app.TenantsPersonal) or, when the scan did not read it, the one its settings imply:
-// a tenant id setting means one tenant, anything else listed tenants.
+// TenantShape is the tenant shape a Microsoft registration's hand step follows, the one
+// the registration's slot function builds (app.TenantsOne, app.TenantsListed,
+// app.TenantsAny, app.TenantsPersonal); the derivation refused a registration whose
+// shape the scan did not read, so every method here has one.
 func (m *methodView) TenantShape() string {
-	if m.Tenants != "" {
-		return m.Tenants
-	}
-	if m.Variable(derive.FieldTenantID) != nil {
-		return app.TenantsOne
-	}
-
-	return app.TenantsListed
-}
-
-// TenantsFromSettings reports a shape the scan did not read, which the hand step takes
-// from the registration's settings and says so.
-func (m *methodView) TenantsFromSettings() bool {
-	return m.Tenants == ""
+	return m.Tenants
 }
 
 // OneTenant reports a registration admitting one tenant and nothing else: the shape

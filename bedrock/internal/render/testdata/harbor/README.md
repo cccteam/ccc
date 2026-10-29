@@ -1087,9 +1087,7 @@ Per environment, after the first apply:
    registration per environment (Identity > Applications > App registrations >
    New registration), supported account types
    **Single tenant only**, the entry naming your tenant
-   ("Accounts in this organizational directory only" in the admin center's earlier wording;
-   taken from the registration's settings, since bedrock could not read how its
-   code builds its tenants), platform
+   ("Accounts in this organizational directory only" in the admin center's earlier wording), platform
    Web with the redirect URI = output `members_directory_redirect_url` and the
    front-channel logout URL = output `members_directory_logout_url`; then Certificates &
    secrets > New client secret. Put the application (client) ID in

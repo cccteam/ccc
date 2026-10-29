@@ -131,16 +131,13 @@ func TestRenderGolden(t *testing.T) {
 // TestMicrosoftHandStep renders the README's hand step for a Microsoft registration
 // under every tenant shape, over the harbor fixture's registration with its shape and
 // its slot setting varied: the supported account type the Entra admin center offers
-// for the shape, in the admin center's words; the consent another tenant gives a
-// registration admitting tenants beyond its own; and, when the scan did not read the
-// shape, the one the settings imply, said to be taken from them.
+// for the shape, in the admin center's words, and the consent another tenant gives a
+// registration admitting tenants beyond its own. A shape the scan did not read never
+// reaches the README: the derivation refuses the registration (TestTenantSlot).
 func TestMicrosoftHandStep(t *testing.T) {
 	t.Parallel()
 
-	const (
-		consent      = "Another tenant admits the registration once its administrator consents at"
-		fromSettings = "taken from the registration's settings"
-	)
+	const consent = "Another tenant admits the registration once its administrator consents at"
 	tests := []struct {
 		name     string
 		tenants  string
@@ -154,22 +151,20 @@ func TestMicrosoftHandStep(t *testing.T) {
 		{
 			name: "one tenant", tenants: app.TenantsOne, slot: derive.FieldTenantID,
 			want:    []string{"**Single tenant only**, the entry naming your tenant", `("Accounts in this organizational directory only" in the admin center's`, "the directory (tenant) ID in\n   `members_directory_tenant_id`"},
-			wantNot: []string{consent, fromSettings},
+			wantNot: []string{consent},
 		},
 		{
 			name: "listed tenants", tenants: app.TenantsListed, slot: derive.FieldTenants,
 			want:    []string{"**Multiple Entra ID tenants**", `("Accounts in any organizational directory (Multitenant)" in the admin center's`, "the tenants it admits, named, in `members_directory_tenants`", consent, "`https://login.microsoftonline.com/<that tenant's id>/adminconsent?client_id=<the client id>`"},
-			wantNot: []string{fromSettings, "naming your tenant"},
+			wantNot: []string{"naming your tenant"},
 		},
 		{
 			name: "any tenant", tenants: app.TenantsAny,
-			want:    []string{"**Multiple Entra ID tenants**", consent, "(`members_directory_client_id`), and add the client secret"},
-			wantNot: []string{fromSettings},
+			want: []string{"**Multiple Entra ID tenants**", consent, "(`members_directory_client_id`), and add the client secret"},
 		},
 		{
 			name: "any tenant and personal accounts", tenants: app.TenantsAny, personal: true,
-			want:    []string{"**Any Entra ID Tenant + Personal Microsoft accounts**", `("Accounts in any organizational directory and personal Microsoft accounts" in`, consent},
-			wantNot: []string{fromSettings},
+			want: []string{"**Any Entra ID Tenant + Personal Microsoft accounts**", `("Accounts in any organizational directory and personal Microsoft accounts" in`, consent},
 		},
 		{
 			name: "one tenant and personal accounts", tenants: app.TenantsOne, personal: true, slot: derive.FieldTenantID,
@@ -183,20 +178,7 @@ func TestMicrosoftHandStep(t *testing.T) {
 		{
 			name: "personal accounts alone", tenants: app.TenantsPersonal, personal: true,
 			want:    []string{"**Personal accounts only**", `("Personal Microsoft accounts only" in the admin center's`},
-			wantNot: []string{consent, fromSettings},
-		},
-		{
-			name: "a shape the scan did not read, with a tenant id", slot: derive.FieldTenantID,
-			want:    []string{"**Single tenant only**", fromSettings, "the directory (tenant) ID in"},
 			wantNot: []string{consent},
-		},
-		{
-			name: "a shape the scan did not read, with listed tenants", slot: derive.FieldTenants,
-			want: []string{"**Multiple Entra ID tenants**", fromSettings, consent},
-		},
-		{
-			name: "a shape the scan did not read, with no slot setting",
-			want: []string{"**Multiple Entra ID tenants**", fromSettings, consent},
 		},
 	}
 	for _, tt := range tests {
