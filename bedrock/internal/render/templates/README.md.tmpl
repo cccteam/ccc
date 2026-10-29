@@ -26,7 +26,12 @@ the releases at 0.1.0 (`initial-version`) with a feature on the minor below
 1.0 and a changelog section for every title type the CI's `title` check
 accepts (`upgrade`, `infra` and `config` shown, so a merge of only those
 releases a patch; `cleanup` hidden), and `.release-please-manifest.json`, at
-0.0.0 until release-please moves it with each release. `bedrock check` refuses
+0.0.0 until release-please moves it with each release. The trigger runs on
+every push to the default branch; a push the platform failed to build (the
+build ended before its first step) leaves a merged release pull request
+untagged, and the operations workflow's `release` action (`bedrock release`)
+runs the trigger again on the branch's head, in {{.Integration}}, where it
+lives; with nothing pending it cuts nothing. `bedrock check` refuses
 the root without either, and a configuration whose sections lack an accepted
 type.
 

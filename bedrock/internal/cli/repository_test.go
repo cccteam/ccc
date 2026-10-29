@@ -242,6 +242,21 @@ func TestRestoreAndPatch(t *testing.T) {
 			wantErr: `--backup "yesterday" is not a backup's resource name (projects/<p>/instances/<i>/backups/<b>); bedrock backups prd lists them`,
 		},
 		{
+			name:   "release dispatches the release action for the first environment, naming no release",
+			remote: "git@github.com:impulseframework/harbor.git",
+			args:   []string{"release", "--placement", placement},
+			wantOut: []string{
+				"Asked, as octocat, for the release trigger to run on master: the operations workflow of impulseframework/harbor runs it in tst, where the trigger lives (https://github.com/impulseframework/harbor/actions/workflows/operations.yml). release-please cuts the release master is owed, if a merged release pull request awaits its tag, and opens or refreshes the next release pull request; with nothing pending it cuts nothing. A tag made this way runs its builds as a push's tag would.",
+			},
+			wantDispatch: "operations.yml master action=release environment=tst release=",
+		},
+		{
+			name:    "release takes no argument",
+			remote:  "git@github.com:impulseframework/harbor.git",
+			args:    []string{"release", "v0.1.4", "--placement", placement},
+			wantErr: "unknown command \"v0.1.4\" for \"bedrock release\"",
+		},
+		{
 			name:   "backups dispatches the list action",
 			remote: "git@github.com:impulseframework/harbor.git",
 			args:   []string{"backups", "prd", "--placement", placement},

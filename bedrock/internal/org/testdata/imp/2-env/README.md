@@ -340,7 +340,12 @@ the identity narrows that to the application's own repository. The identity
 holds `cloudBuildTriggerRunner` (`1-org`'s custom role: starts a trigger's
 build and reads how it went) on the environment project, and
 `roles/iam.serviceAccountUser` on the application's deploy identity, which
-starting a trigger whose builds run as it requires, and nothing else here.
+starting a trigger whose builds run as it requires, and nothing else here. In
+the first environment, where the application's release trigger lives, it
+holds the same on the release identity: the workflow's `release` action
+(`bedrock release`) runs that trigger on the default branch's head, for the
+release a merged release pull request is owed when the platform ended the
+push's build before release-please ran.
 Below production the application's own stack adds one bounded read (its
 `logging.tf`): `roles/logging.viewAccessor` on the view over the bucket
 holding the application's build logs, so the workflow's migration job prints

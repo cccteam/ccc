@@ -103,12 +103,15 @@ type view struct {
 	// OperationsProse spells them, RestorableProse the ones a restore reaches. AuthAction
 	// and GcloudAction are the pinned GitHub Actions the workflow uses; PrimaryRegion is
 	// where the version triggers are.
-	Operations      []operationsEnv
-	OperationsProse string
-	RestorableProse string
-	AuthAction      string
-	GcloudAction    string
-	PrimaryRegion   string
+	Operations []operationsEnv
+	// ReleaseOperation is the first environment's entry, the one holding the release
+	// trigger, which the workflow's release action runs on the default branch's head.
+	ReleaseOperation operationsEnv
+	OperationsProse  string
+	RestorableProse  string
+	AuthAction       string
+	GcloudAction     string
+	PrimaryRegion    string
 	// Image is what the seeded Dockerfile derives from the code.
 	Image imageView
 	// SubstitutionNames are the pipeline's own substitutions, space separated: the keys
@@ -1479,6 +1482,9 @@ type operationsEnv struct {
 	// Rollback is the environment's rollback trigger, which bedrock rollback runs: the
 	// earlier release's build again with nothing of the database, in every environment.
 	Rollback string
+	// Release is the release trigger, which the release action runs on the default
+	// branch's head: set on the first environment, where the trigger lives, alone.
+	Release string
 }
 
 // The pinned GitHub Actions the operations workflow uses, by commit, with the release
@@ -1506,6 +1512,9 @@ func (v *view) operations() {
 		}
 		o.Rollback = v.Prefix + "-" + env + "-" + v.PrimaryCode + "-" + v.App + "-rollback"
 		o.Stack = v.Prefix + "-" + env + "-" + v.PrimaryCode + "-" + v.App + "-stack"
+		if env == v.Integration {
+			o.Release = v.Prefix + "-" + env + "-" + v.PrimaryCode + "-" + v.App + "-" + ReleaseTrigger
+		}
 		if project, ok := v.P.Project(env); ok {
 			o.Wired = true
 			o.Project = project.ID
@@ -1514,6 +1523,7 @@ func (v *view) operations() {
 		}
 		v.Operations = append(v.Operations, o)
 	}
+	v.ReleaseOperation = v.Operations[0]
 	v.OperationsProse = joinOr(v.P.Environments)
 	v.RestorableProse = joinOr(v.P.Restorable())
 }

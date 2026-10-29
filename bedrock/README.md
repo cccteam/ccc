@@ -254,8 +254,8 @@ and what its absence means:
   to a moment (`bedrock restore --at`) and what a backup taken as of a past moment can
   hold. Not written. Absent, or for an environment it leaves out, seven days.
 - `projects`: each environment project's `id` and `number`, by which the operations
-  workflow, started from GitHub (`bedrock restore`, `bedrock rerun`, `bedrock rollback`,
-  `bedrock backups`, `bedrock maintenance`),
+  workflow, started from GitHub (`bedrock restore`, `bedrock rerun`, `bedrock release`,
+  `bedrock rollback`, `bedrock backups`, `bedrock maintenance`),
   names the environment's identity provider and operations identity. From the organization's
   `projects` and `projectNumbers`, 1-org's outputs. An environment without an entry
   cannot be operated from GitHub.
@@ -2046,6 +2046,26 @@ release again below production with the migrate command's lines printed in the r
 release's own action is `run`, and `bedrock rerun` is its command. Nobody runs a trigger
 or submits a build by hand: every build starts from a trigger, and a release is run again
 through this door.
+
+## bedrock release
+
+`release` runs the application's release trigger again on the default branch's head,
+through the same door as a rerun. The trigger lives in the first environment alone and
+runs on every push to the default branch, as the release identity: the merge-back guard,
+then release-please's `github-release`, which tags and publishes the release a merged
+release pull request is owed, and `release-pr`, which opens or refreshes the next release
+pull request. A push the platform failed to build (Cloud Build ended the build before its
+first step ran) leaves that pull request untagged, and nothing short of the next push ran
+the trigger again. The command names no environment, since the trigger has one home, and
+no release, since it does not exist yet: it checks that the placement records the first
+environment's project, dispatches the operations workflow with the `release` action as
+the person signed in to gh, and prints where to watch it. The job exchanges its token
+for the first environment's operations identity in that GitHub Environment and runs the
+trigger on the branch with no substitution; the tag it makes runs its builds in every
+environment as a tag always has, the approval gates included. With nothing pending the
+build runs and cuts nothing, so the button is safe to press whenever someone wonders.
+Anyone who can merge to the default branch may start it, in Actions or through the
+command: every merge runs the trigger anyway. Nobody runs the trigger by hand.
 
 ## bedrock teardown and bedrock destroy
 
