@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.2](https://github.com/cccteam/ccc/compare/bedrock/v0.4.1...bedrock/v0.4.2) (2026-10-29)
+
+
+### Bug Fixes
+
+* **bedrock:** a release whose only change to the environment's stack is an output value (a setting the stack passes through to the revision templates or the substitutions) applies the stack instead of answering that it matches the code, the plan lists the changed outputs, and the applied line counts them ([#1219](https://github.com/cccteam/ccc/issues/1219)) ([7dfa50b](https://github.com/cccteam/ccc/commit/7dfa50bf5d88eb743677f58e183b900b7579ada7))
+
 ## [0.4.1](https://github.com/cccteam/ccc/compare/bedrock/v0.4.0...bedrock/v0.4.1) (2026-10-29)
 
 
