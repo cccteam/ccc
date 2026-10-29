@@ -11,15 +11,15 @@ require (
 	cloud.google.com/go v0.123.0
 	cloud.google.com/go/spanner v1.96.1
 	github.com/cccteam/access v0.12.0
-	github.com/cccteam/ccc v0.3.5
+	github.com/cccteam/ccc v0.3.6
 	github.com/cccteam/ccc/accesstypes v0.7.0
 	github.com/cccteam/ccc/cloud v0.2.1
 	github.com/cccteam/ccc/resource v0.15.4
-	github.com/cccteam/ccc/tracer v0.3.0
+	github.com/cccteam/ccc/tracer v0.3.1
 	github.com/cccteam/db-initiator v0.4.3
 	github.com/cccteam/httpio v0.7.22
 	github.com/cccteam/logger v0.1.30
-	github.com/cccteam/session v0.13.14
+	github.com/cccteam/session v0.13.15
 	github.com/cccteam/spxscan v0.0.17
 	github.com/go-chi/chi/v5 v5.5.0
 	github.com/go-playground/errors/v5 v5.4.0
@@ -28,7 +28,7 @@ require (
 	github.com/sethvargo/go-envconfig v1.4.3
 	github.com/shopspring/decimal v1.5.0
 	github.com/spf13/cobra v1.10.2
-	google.golang.org/api v0.306.0
+	google.golang.org/api v0.307.0
 	google.golang.org/grpc v1.84.0
 )
 
@@ -55,7 +55,7 @@ require (
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/cccteam/ccc/cache v0.2.2 // indirect
 	github.com/cccteam/ccc/pkg v0.1.7 // indirect
-	github.com/cccteam/ccc/securehash v0.0.17 // indirect
+	github.com/cccteam/ccc/securehash v0.0.18 // indirect
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
