@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.8](https://github.com/cccteam/ccc/compare/impulse/v0.6.7...impulse/v0.6.8) (2026-10-29)
+
+
+### Bug Fixes
+
+* **impulse:** the second-factor recipe and impulse check --fix name what the rule leaves to the author: the application's tests that sign in with a password now meet the code step, which they complete as the skeleton's integration tests do; and auths-wired holds the trusted-device cookie apart between auths as it does the session and XSRF cookies ([#1233](https://github.com/cccteam/ccc/issues/1233)) ([3b49845](https://github.com/cccteam/ccc/commit/3b49845add43b87dd17629adcf6577ed7dbd1344))
+
 ## [0.6.7](https://github.com/cccteam/ccc/compare/impulse/v0.6.6...impulse/v0.6.7) (2026-10-29)
 
 
