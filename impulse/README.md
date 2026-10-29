@@ -1037,7 +1037,12 @@ personal accounts), `any-personal` (any tenant and personal accounts). For googl
 (one Workspace, the default), `listed` (named Workspaces), `any-workspace` (any
 Workspace), `any` (any Google account, with any Workspace named beside it, so a Workspace
 account's link carries its domain as its connection, what a tenant's declaration names a
-Google directory by), `mixed` (one Workspace and any Google account).
+Google directory by), `mixed` (one Workspace and any Google account). The method file builds the slot in a
+function of its own, `<registration>Slot`, where the organizations the deployment
+administers are declared attesting; for a Microsoft registration that function is the one
+place bedrock reads the tenant shape from, for the app registration's supported account
+type in the stack's hand steps, and a registration that builds its tenants any other way is
+refused by `bedrock check`.
 `--accounts` is the account rule for a first sign-in: `members` (members of the directory,
 the default: the person becomes a user under the name the directory presents), `invited`
 (a user created beforehand is linked, anyone else refused) or `open` (open sign-up: anyone

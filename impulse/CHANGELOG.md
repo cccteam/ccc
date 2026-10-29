@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.6.3](https://github.com/cccteam/ccc/compare/impulse/v0.6.2...impulse/v0.6.3) (2026-10-29)
+
+
+### Features
+
+* **impulse:** the login card's release line sits to the right with room above it; an existing application makes the same change to the `.release` rule of each login stylesheet ([bb37145](https://github.com/cccteam/ccc/commit/bb3714570eb4c8f21095bb43fb062e861ede116d))
+
+## [0.6.2](https://github.com/cccteam/ccc/compare/impulse/v0.6.1...impulse/v0.6.2) (2026-10-29)
+
+
+### Bug Fixes
+
+* **impulse:** the scan reads a Microsoft registration's tenant shape from the slot function impulse add method writes, every shape included, and the personal-only slot is written through a slot function as well, so bedrock's hand step names the supported account type from the code again ([#1212](https://github.com/cccteam/ccc/issues/1212)) ([e8d1fae](https://github.com/cccteam/ccc/commit/e8d1fae15835e700945db04367c72e1355783c70))
+
 ## [0.6.1](https://github.com/cccteam/ccc/compare/impulse/v0.6.0...impulse/v0.6.1) (2026-10-28)
 
 
