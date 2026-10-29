@@ -141,7 +141,11 @@ trigger plans it on a pull request as `imp-org-gbl-plan`.
   a release, and a release run again, are started from GitHub: the
   application's operations workflow exchanges its token for the environment's
   operations identity and runs the environment's version trigger with the
-  instruction, and the pipeline does the work as the deploy identity. `2-env`
+  instruction, and the pipeline does the work as the deploy identity; in tst
+  the same identity runs the application's release trigger on the default
+  branch (the `release` action, `bedrock release`), which tags the release a
+  merged release pull request is owed when the platform ended the push's
+  build before release-please ran. `2-env`
   grants the role on each environment project to each application's
   operations identity, in every environment (in production for the rerun
   alone), and in tst to each application's deploy identity as well, as which

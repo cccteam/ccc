@@ -70,7 +70,7 @@ resource "google_service_account" "operations" {
   project      = local.project_id
   account_id   = "${local.name}-gbl-${each.key}-ops"
   display_name = "Operations SA - ${local.name}-gbl-${each.key}"
-  description  = "Operations identity for ${each.key} in ${var.environment}: the application's operations workflow runs the version trigger as it, and nothing else."
+  description  = "Operations identity for ${each.key} in ${var.environment}: the application's operations workflow runs the version trigger as it${local.is_tst ? ", and the release trigger on the default branch" : ""}, and nothing else."
 }
 
 # The operations workflow of the application's own repository, and no other
@@ -97,6 +97,18 @@ resource "google_service_account_iam_member" "operations_runs_deploy" {
   for_each = local.apps
 
   service_account_id = google_service_account.deploy[each.key].name
+  role               = "roles/iam.serviceAccountUser"
+  member             = google_service_account.operations[each.key].member
+}
+
+# The release trigger, in the first environment alone, runs as the release
+# identity: the operations workflow's release action starts it on the default
+# branch's head (bedrock release), so the operations identity acts as that
+# account there too.
+resource "google_service_account_iam_member" "operations_runs_release" {
+  for_each = local.is_tst ? local.apps : toset([])
+
+  service_account_id = google_service_account.release[each.key].name
   role               = "roles/iam.serviceAccountUser"
   member             = google_service_account.operations[each.key].member
 }

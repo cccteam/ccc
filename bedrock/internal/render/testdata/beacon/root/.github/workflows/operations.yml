@@ -13,11 +13,14 @@
 # identity, as for any release. The identity here starts the trigger, reads how the build went and,
 # below production, reads the lines the migrate command wrote into the build's log (through the
 # view over the bucket holding this application's build logs, and no other log), and nothing else.
-# Started by bedrock restore <env>, bedrock rerun <env> <release>, bedrock rollback <env> --reason,
-# bedrock backups <env>, bedrock maintenance off <env>, bedrock secret rotate <env> <VARIABLE>,
-# bedrock migration version|rerun|force, or the Run workflow button; a release waits for its
-# approval in Cloud Build as any release does, a rerun, a restore, a rollback, a rotation and the
-# maintenance step in production included.
+# Started by bedrock restore <env>, bedrock rerun <env> <release>, bedrock release, bedrock rollback
+# <env> --reason, bedrock backups <env>, bedrock maintenance off <env>, bedrock secret rotate <env>
+# <VARIABLE>, bedrock migration version|rerun|force, or the Run workflow button; a release waits for
+# its approval in Cloud Build as any release does, a rerun, a restore, a rollback, a rotation and the
+# maintenance step in production included. The release action is the one job that runs no version
+# trigger: it runs the release trigger, which lives in tst alone, on master's
+# head, as a push to the branch runs it, for the release a merged release pull request is owed when
+# the platform ended the push's build before release-please ran; with nothing pending it cuts nothing.
 #
 # restore (tst, stg, or prd): two kinds. The environment's own restore (tst or stg;
 # production has none): the application goes into maintenance, the database is replaced (an empty
@@ -113,13 +116,14 @@ on:
   workflow_dispatch:
     inputs:
       action:
-        description: "What to do: restore the environment's database (an empty database or production's backup below production; a backup by name, @<moment> or a release's cut anywhere, production included); run the release again (its tag build, with no instruction; production included); apply (the environment's stack when no release's build can, from the default branch: for the first time, before any release exists there, or again after a teardown); teardown or destroy (the environment's stack taken down to what it keeps, or destroyed whole, through the stack trigger as the apply identity; the environment's name typed into confirm); rollback (return the environment to an earlier release, with nothing of the database); list (the releases, their cuts and backups, and the database generations the environment can be restored to, in this run's summary); maintenance (take the application out of a maintenance an earlier run left on); or a migration operation (version, rerun, force, below production)"
+        description: "What to do: restore the environment's database (an empty database or production's backup below production; a backup by name, @<moment> or a release's cut anywhere, production included); run the release again (its tag build, with no instruction; production included); release (the release trigger again on master's head in tst, where it lives, for the release a merged release pull request is owed when the platform ended the push's build before release-please ran; nothing pending, nothing cut; the environment input is not read); apply (the environment's stack when no release's build can, from the default branch: for the first time, before any release exists there, or again after a teardown); teardown or destroy (the environment's stack taken down to what it keeps, or destroyed whole, through the stack trigger as the apply identity; the environment's name typed into confirm); rollback (return the environment to an earlier release, with nothing of the database); list (the releases, their cuts and backups, and the database generations the environment can be restored to, in this run's summary); maintenance (take the application out of a maintenance an earlier run left on); or a migration operation (version, rerun, force, below production)"
         type: choice
         required: true
         default: restore
         options:
           - restore
           - run
+          - release
           - apply
           - teardown
           - destroy
@@ -193,7 +197,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: the listing
-        run: echo "GitHub lists this workflow from this push. An operation starts from the Run workflow button, or from a bedrock command (restore, rerun, rollback, backups, maintenance off, secret rotate, migration)." >> "$GITHUB_STEP_SUMMARY"
+        run: echo "GitHub lists this workflow from this push. An operation starts from the Run workflow button, or from a bedrock command (restore, rerun, release, rollback, backups, maintenance off, secret rotate, migration)." >> "$GITHUB_STEP_SUMMARY"
 
   restore:
     name: restore the environment
@@ -503,6 +507,59 @@ jobs:
             sleep 30
           done
 
+  release:
+    name: cut the release master is owed
+    if: ${{ inputs.action == 'release' }}
+    runs-on: ubuntu-latest
+    environment: tst
+    permissions:
+      id-token: write
+    env:
+      ENVIRONMENT: tst
+      CHOSEN: ${{ inputs.environment }}
+      BRANCH: master
+      REQUESTER: ${{ github.actor }}
+      REGION: us-central1
+    steps:
+      # The release trigger lives in the first environment alone and runs on the default
+      # branch's pushes, as the release identity: release-please, which tags the release a
+      # merged release pull request is owed and opens or refreshes the next one. A push the
+      # platform failed to build leaves that pull request untagged; this job runs the same
+      # trigger on the branch's head. The environment input, required of every action, is
+      # not read here: the trigger has one home.
+      - name: The first environment's project, identity and release trigger
+        run: |
+          if [ -z "${PROJECT:-}" ]; then
+            echo "::error::$ENVIRONMENT is not wired for operations: record its project (projects.$ENVIRONMENT, the id and the number bedrock org render prints) in infrastructure/placement.json and render again"
+            exit 1
+          fi
+          if [ "$CHOSEN" != "$ENVIRONMENT" ]; then
+            echo "::notice::The release trigger lives in $ENVIRONMENT; the environment input ($CHOSEN) is not read by this action."
+          fi
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: ${{ env.PROVIDER }}
+          service_account: ${{ env.IDENTITY }}
+      - uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+      # The release trigger's build on the branch's head, waited for to its end: the
+      # merge-back guard, then release-please's github-release and release-pr, as the push
+      # would have run them. The tag it makes runs its builds in every environment as a
+      # tag always has, the approval gates included.
+      - name: Run the release trigger on the default branch
+        run: |
+          build=$(gcloud builds triggers run "$TRIGGER" --branch "$BRANCH" --region "$REGION" --project "$PROJECT" \
+            --format='value(metadata.build.id)')
+          echo "Build $build in $ENVIRONMENT runs the release trigger on $BRANCH, asked for by $REQUESTER: release-please cuts the release the branch is owed, if any, and opens or refreshes the next release pull request."
+          echo "https://console.cloud.google.com/cloud-build/builds;region=$REGION/$build?project=$PROJECT"
+          while :; do
+            status=$(gcloud builds describe "$build" --region "$REGION" --project "$PROJECT" --format='value(status)')
+            case "$status" in
+              SUCCESS) echo "Build $build succeeded: release-please ran on $BRANCH; a release it cut runs its builds now, and its log says what it did."; exit 0 ;;
+              FAILURE|CANCELLED|TIMEOUT|INTERNAL_ERROR|EXPIRED) echo "::error::Build $build ended $status; its log says why. Nothing was cut; ask again once the cause is gone."; exit 1 ;;
+            esac
+            sleep 30
+          done
+
   apply:
     name: apply the environment's stack when no release's build can
     if: ${{ inputs.action == 'apply' }}
@@ -743,7 +800,7 @@ jobs:
 
   migration:
     name: the migrations' operation
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.action != 'restore' && inputs.action != 'run' && inputs.action != 'rollback' && inputs.action != 'list' && inputs.action != 'maintenance' && inputs.action != 'apply' && inputs.action != 'teardown' && inputs.action != 'destroy' && inputs.action != 'rotate' }}
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.action != 'restore' && inputs.action != 'run' && inputs.action != 'release' && inputs.action != 'rollback' && inputs.action != 'list' && inputs.action != 'maintenance' && inputs.action != 'apply' && inputs.action != 'teardown' && inputs.action != 'destroy' && inputs.action != 'rotate' }}
     runs-on: ubuntu-latest
     environment: ${{ inputs.environment }}
     permissions:
