@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.16.2](https://github.com/cccteam/ccc/compare/resource/v0.16.1...resource/v0.16.2) (2026-10-29)
+
+
+### Bug Fixes
+
+* **lodestar:** the console's login page reads "Sign in with Lodestar" and "Sign in with Google" instead of "Sign in with Sign up with Google" ([#1227](https://github.com/cccteam/ccc/issues/1227)) ([18338f9](https://github.com/cccteam/ccc/commit/18338f932a84181ec99c87120c4b6ec7b4a0bf48))
+
+
+### Documentation
+
+* **resource:** Labeled's documentation says a registration's label is a name the login page writes "Sign in with" before, never a sentence, and "Google" is the right default for an application with one Google registration ([#1227](https://github.com/cccteam/ccc/issues/1227)) ([18338f9](https://github.com/cccteam/ccc/commit/18338f932a84181ec99c87120c4b6ec7b4a0bf48))
+
 ## [0.16.1](https://github.com/cccteam/ccc/compare/resource/v0.16.0...resource/v0.16.1) (2026-10-29)
 
 
