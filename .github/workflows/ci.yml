@@ -142,6 +142,22 @@ jobs:
       - name: Test
         working-directory: resource/lodestar/web
         run: bun run test
+  sign-in-steps:
+    # The login page the skeletons pin renders every sign-in step the generated server asks
+    # for. The server's steps are impulse's (impulse/internal/authpkg/sign-in-steps.json,
+    # held by its test to the policy the generator writes); the page's are what
+    # @cccteam/resource-angular declares under cccteam.signInSteps in its package.json, read
+    # from the registry at the version the skeletons' web roots pin. A pull request that
+    # moves the session pin to a release asking for a step the pinned page cannot render
+    # fails here, naming the step, and waits for the web library release that renders it:
+    # impulse 0.5.26 shipped such a pairing, and every password sign-in dead-ended in the
+    # browser until 0.5.27. One curl and jq; it runs on every pull request.
+    name: sign-in steps
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: The pinned login page declares every step the server asks for
+        run: .github/scripts/sign-in-steps.sh
   impulse-skeletons:
     # Every skeleton impulse can render is built, tested, linted and checked, against the
     # framework pins the template carries and against the framework at this commit (the
