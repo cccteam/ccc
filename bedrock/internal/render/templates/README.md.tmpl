@@ -1202,9 +1202,7 @@ Per environment, after the first apply:
    registration per environment (Identity > Applications > App registrations >
    New registration), supported account types
    **{{.AccountType.Label}}**{{if .OneTenant}}, the entry naming your tenant{{end}}
-   ("{{.AccountType.Former}}" in the admin center's earlier wording{{if .TenantsFromSettings}};
-   taken from the registration's settings, since bedrock could not read how its
-   code builds its tenants{{end}}), platform
+   ("{{.AccountType.Former}}" in the admin center's earlier wording), platform
    Web with the redirect URI = output `{{.Var "REDIRECT_URL"}}` and the
    front-channel logout URL = output `{{.Var "LOGOUT_URL"}}`; then Certificates &
    secrets > New client secret. Put the application (client) ID in

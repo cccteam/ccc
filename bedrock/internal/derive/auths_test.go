@@ -277,9 +277,9 @@ func TestRegistrationVariables(t *testing.T) {
 	}
 }
 
-// TestTenantSlot holds a Microsoft registration's settings to the tenant shape it
-// builds: a tenant id setting goes with one tenant, a tenants setting with listed
-// tenants, and either beside another shape is refused naming the registration's file and
+// TestTenantSlot holds a Microsoft registration to a read tenant shape and its settings
+// to that shape: a tenant id setting goes with one tenant, a tenants setting with listed
+// tenants, a shape the scan did not read is refused, and either setting beside another shape is refused naming the registration's file and
 // line. A shape the scan did not read is held to nothing, and so is a shape declaring
 // neither setting.
 func TestTenantSlot(t *testing.T) {
@@ -301,7 +301,11 @@ func TestTenantSlot(t *testing.T) {
 		{name: "listed tenants with their list", tenants: app.TenantsListed, variables: setting(FieldTenants, "APP_MEMBERS_DIRECTORY_TENANTS")},
 		{name: "any tenant declares neither", tenants: app.TenantsAny, variables: setting(FieldClientID, "APP_MEMBERS_DIRECTORY_CLIENT_ID")},
 		{name: "one tenant written in the code declares neither", tenants: app.TenantsOne, variables: setting(FieldClientID, "APP_MEMBERS_DIRECTORY_CLIENT_ID")},
-		{name: "a shape the scan did not read is held to nothing", variables: setting(FieldTenants, "APP_MEMBERS_DIRECTORY_TENANTS")},
+		{
+			name:      "a shape the scan did not read is refused",
+			variables: setting(FieldTenants, "APP_MEMBERS_DIRECTORY_TENANTS"),
+			wantErr:   "pkg/auth/members/directory.go:58: the members auth's directory registration builds its tenants in a way bedrock does not read: build them in the slot function impulse add method writes (tenants, err := directorySlot(settings)), from azure.Tenant, azure.NamedTenant, azure.AnyTenant, azure.PersonalAccounts and azure.Tenants, and name that function's result in the configuration's Tenants field",
+		},
 		{
 			name:      "any tenant with a tenant id",
 			tenants:   app.TenantsAny,

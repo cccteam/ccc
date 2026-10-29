@@ -719,9 +719,10 @@ type Method struct {
 	// application (app.AuthorityDirectory, app.AuthorityApplication).
 	Authority string
 	// Tenants is the tenant shape a Microsoft registration builds (app.TenantsOne,
-	// app.TenantsListed, app.TenantsAny, app.TenantsPersonal), and PersonalAccounts
-	// whether it admits Microsoft personal accounts, alone or beside the tenants. Tenants
-	// is empty for another kind, and for a slot the scan did not read.
+	// app.TenantsListed, app.TenantsAny, app.TenantsPersonal), read from the slot
+	// function impulse add method writes, and PersonalAccounts whether it admits Microsoft
+	// personal accounts, alone or beside the tenants. Tenants is empty for another kind;
+	// a Microsoft registration whose slot the scan did not read is refused (tenantSlot).
 	Tenants          string
 	PersonalAccounts bool
 	// Variables are the registration's settings the data level reads from the

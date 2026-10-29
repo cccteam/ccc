@@ -271,15 +271,21 @@ func (m *Model) registrationVariables(cfg *config, method *Method) error {
 	return nil
 }
 
-// tenantSlot holds a Microsoft registration's settings to the tenant shape it builds: a
-// tenant id setting (TenantID) names the one tenant of azure.Tenant, and a tenants
-// setting (Tenants) lists the tenants of azure.Tenants. A setting beside another shape
-// is refused, naming the registration: the stack would ask the placement for a tenant
-// the registration never reads, and the README's hand step would describe the wrong app
-// registration. A shape the scan did not read is held to nothing.
+// tenantSlot holds a Microsoft registration to the tenant shape the scan read from its
+// slot function, and its settings to that shape: a tenant id setting (TenantID) names
+// the one tenant of azure.Tenant, and a tenants setting (Tenants) lists the tenants of
+// azure.Tenants. A registration whose shape the scan did not read is refused, naming the
+// registration: bedrock reads the shape from the slot function impulse add method
+// writes and from nowhere else, since the hand step's supported account type follows
+// it. A setting beside another shape is refused too: the stack would ask the placement
+// for a tenant the registration never reads, and the hand step would describe the wrong
+// app registration.
 func (m *Method) tenantSlot(registration *app.Method) error {
-	if m.Tenants == "" {
+	if m.Kind != app.MethodAzure {
 		return nil
+	}
+	if m.Tenants == "" {
+		return errors.Newf("%s:%d: the %s auth's %s registration builds its tenants in a way bedrock does not read: build them in the slot function impulse add method writes (tenants, err := %s(settings)), from azure.Tenant, azure.NamedTenant, azure.AnyTenant, azure.PersonalAccounts and azure.Tenants, and name that function's result in the configuration's Tenants field", registration.File, registration.Line, m.Auth, m.Name, slotFunctionName(m.Name))
 	}
 	if v := m.Variable(FieldTenantID); v != nil && m.Tenants != app.TenantsOne {
 		return errors.Newf("%s:%d: the %s auth's %s registration admits %s and declares %s: a tenant id setting names the one tenant a registration admits (azure.Tenant); admit the tenant it names, or drop the setting", registration.File, registration.Line, m.Auth, m.Name, tenantsProse(m.Tenants, m.PersonalAccounts), v.Name)
@@ -289,6 +295,24 @@ func (m *Method) tenantSlot(registration *app.Method) error {
 	}
 
 	return nil
+}
+
+// slotFunctionName is the slot function impulse add method writes for a registration,
+// the registration's name in lower camel case: directorySlot for directory,
+// entraOneInvitedSlot for entra-one-invited.
+func slotFunctionName(registration string) string {
+	var b strings.Builder
+	for i, part := range strings.FieldsFunc(registration, func(r rune) bool { return r == '-' || r == '_' }) {
+		if i == 0 {
+			b.WriteString(strings.ToLower(part))
+
+			continue
+		}
+		b.WriteString(strings.ToUpper(part[:1]) + strings.ToLower(part[1:]))
+	}
+	b.WriteString("Slot")
+
+	return b.String()
 }
 
 // tenantsProse says what a Microsoft registration admits, from its tenant shape: one
