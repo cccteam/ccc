@@ -340,8 +340,13 @@ type UserInvitationRequest struct {
 // registration. It is a field of the user row, so its wire shape is fixed here.
 type UserIdentity struct {
 	ID ccc.UUID `json:"id"`
-	// Method is the method's kind (google, azure, workos), Connection the registration
-	// the identity was linked through, Subject the directory's identifier.
+	// Method is the method's kind (google, azure, workos). Connection and Subject are the
+	// link's key: the connection is the directory the identity came from as the session
+	// library keys it (a Google Workspace by the registration's name for it or its domain,
+	// a Microsoft tenant by its id, a WorkOS connection by its id), and the subject is the
+	// directory's identifier for the person. Neither is a name a person knows; a page
+	// names the identity by its method and organization. The registration the identity
+	// signed in through is not recorded on the link.
 	Method     string `json:"method"`
 	Connection string `json:"connection"`
 	Subject    string `json:"subject"`
