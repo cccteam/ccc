@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.6](https://github.com/cccteam/ccc/compare/impulse/v0.6.5...impulse/v0.6.6) (2026-10-29)
+
+
+### Dependencies
+
+* **impulse:** the skeleton's pins move to session v0.13.17, whose trusted device cookie holds one token per user, and to session v0.13.16's front-channel logout fix, resource v0.16.2 and the web library's 0.0.17, 0.0.25 and 0.0.15, in one ledger step for the 0.6.6 release ([#1229](https://github.com/cccteam/ccc/issues/1229)) ([76c6181](https://github.com/cccteam/ccc/commit/76c61810a19ded7ba967a1d0077510db7632b70b))
+
 ## [0.6.5](https://github.com/cccteam/ccc/compare/impulse/v0.6.4...impulse/v0.6.5) (2026-10-29)
 
 
