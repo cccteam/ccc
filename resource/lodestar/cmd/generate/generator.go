@@ -48,7 +48,7 @@ func NewGenerator(ctx context.Context) (generation.Generator, error) {
 			// /console/api/user/sign-up/login and the login page offers it under its label.
 			//
 			// Demonstrates: auth.multi-method, auth.user-management, auth.open-sign-up, auth.password-sign-up.
-			generation.Auth("github.com/cccteam/ccc/resource/lodestar/pkg/auth/crew", generation.PasswordMethod().OpenSignUp(), generation.GoogleMethod("google"), generation.GoogleMethod("sign-up").Labeled("Sign up with Google").OpenSignUp()),
+			generation.Auth("github.com/cccteam/ccc/resource/lodestar/pkg/auth/crew", generation.PasswordMethod().OpenSignUp(), generation.GoogleMethod("google").Labeled("Lodestar"), generation.GoogleMethod("sign-up").OpenSignUp()),
 			generation.WebApp("/console"),
 			// The console also manages the members: the members auth's users, seats and
 			// roles are served under /console/api beside the crew's, through the members

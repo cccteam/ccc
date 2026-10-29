@@ -362,7 +362,8 @@ func PasswordMethod() AuthMethod {
 }
 
 // GoogleMethod is the Google Workspace method registered under name, with the label
-// "Google".
+// "Google": the right words whenever the application has one Google registration, the
+// normal case, whatever accounts it admits.
 func GoogleMethod(name string) AuthMethod {
 	return AuthMethod{kind: methodGoogle, name: name, label: "Google"}
 }
@@ -379,8 +380,13 @@ func WorkOSMethod(name string) AuthMethod {
 	return AuthMethod{kind: methodWorkOS, name: name, label: "Single sign-on"}
 }
 
-// Labeled gives the method the label the login page shows for it, in the
-// application's words ("Company directory").
+// Labeled gives the method other words than its default, for an application that wants
+// them. The label names what a person signs in with: the login page writes "Sign in
+// with" in front of it and "Use a different … account" around it, so it is a name, never
+// a sentence ("Sign up with Google" would render as "Sign in with Sign up with Google").
+// The defaults ("Google", "Microsoft") are right for the normal application, which has one
+// registration per provider; one that registers two of a provider tells them apart here,
+// as Lodestar names its Workspace registration "Lodestar" beside the open "Google".
 func (m AuthMethod) Labeled(label string) AuthMethod {
 	m.label = label
 
