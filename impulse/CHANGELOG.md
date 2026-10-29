@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.7](https://github.com/cccteam/ccc/compare/impulse/v0.6.6...impulse/v0.6.7) (2026-10-29)
+
+
+### Bug Fixes
+
+* **impulse:** every auth package ends its sign-in rule with the second factor: the second-factor check holds every auth package's New to requireSecondFactor, and impulse upgrade's second-factor recipe (a new ledger step; impulse check --fix writes it too) brings an application upgraded through 0.5.26 to the rule, which it never got and so signed people in on the password alone ([#1231](https://github.com/cccteam/ccc/issues/1231)) ([c582a39](https://github.com/cccteam/ccc/commit/c582a39d35c1cd811eaea14c16de83028df619b4))
+
 ## [0.6.6](https://github.com/cccteam/ccc/compare/impulse/v0.6.5...impulse/v0.6.6) (2026-10-29)
 
 
