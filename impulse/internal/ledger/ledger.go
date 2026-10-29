@@ -702,12 +702,12 @@ var Steps = []Step{
 			session v0.13.16
 		`),
 		Web: web(`
-			@cccteam/resource 0.0.16
-			@cccteam/resource-angular 0.0.23
-			@cccteam/resource-firestore 0.0.14
+			@cccteam/resource 0.0.17
+			@cccteam/resource-angular 0.0.25
+			@cccteam/resource-firestore 0.0.15
 		`),
 		Impulse: release("v0.6.6"),
-		Note:    "a sign-out at Microsoft ends the application's sessions through a Microsoft registration serving several tenants or personal accounts, which it never did: Entra sends the session id alone, and session v0.13.16's front-channel logout handler scopes such a request to the registration's declared issuers; no code change is needed",
+		Note:    "a sign-out at Microsoft ends the application's sessions through a Microsoft registration serving several tenants or personal accounts, which it never did (session v0.13.16: Entra sends the session id alone, and the front-channel logout handler scopes such a request to the registration's declared issuers); the web pins move to @cccteam/resource-angular 0.0.25: the Users page names a linked identity by its provider and the organization the link carries, and the login card offers \"Use a different account\", which asks the provider for its account chooser; no code change is needed",
 	},
 }
 
