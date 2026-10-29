@@ -731,6 +731,27 @@ var Steps = []Step{
 		Impulse: release("v0.6.7"),
 		Note:    "every auth package ends its sign-in rule with the second factor: the 0.5.26 step had impulse write requireSecondFactor into a new auth package and the walk into no existing one, so an application upgraded through that step kept the sign-in codes and trusted devices tables and the pending sign-in's code handlers and asked nobody for the code; the second-factor recipe writes the rule into each auth package whose rule does not end with it (.Then(requireSecondFactor) chained on the one SetSignInPolicy call's policy, or the call set on the construction after its error check when the package makes none, and the function at the end of the file with its imports where the package has none returning signin.RequireMFA), and the second-factor check holds every auth package to the rule from here on (impulse check --fix writes it the same way); the pins do not move",
 	},
+	{
+		Pins: pins(`
+			access v0.12.0
+			ccc v0.3.6
+			ccc/accesstypes v0.7.0
+			ccc/cloud v0.2.1
+			ccc/resource v0.16.2
+			ccc/tracer v0.3.1
+			db-initiator v0.4.3
+			httpio v0.7.22
+			logger v0.1.30
+			session v0.13.17
+		`),
+		Web: web(`
+			@cccteam/resource 0.0.17
+			@cccteam/resource-angular 0.0.25
+			@cccteam/resource-firestore 0.0.15
+		`),
+		Impulse: release("v0.6.8"),
+		Note:    "the second-factor recipe names what the rule leaves to the agent: the application's tests that sign in with a password now meet the code step before any session opens, and complete it as the skeleton's integration tests do (test/integration/second_factor_test.go: the code read from the mail.Recorder the auth is constructed to send to, entered at user/pending/code/verify), which an application that took the 0.6.7 step before this one does by hand; and auths-wired holds the trusted-device cookie apart between auths as it does the session and XSRF cookies (session.WithTrustedDeviceCookieName, the skeletons' <name>-trusted), since a browser one auth remembers in the library's default cookie forgets the other's remembered browsers; the pins do not move",
+	},
 }
 
 // validatePending holds a step's Pending mark to its pins: a pin at a pseudo-version

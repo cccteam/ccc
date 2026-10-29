@@ -79,6 +79,7 @@ func (c secondFactor) Run(_ context.Context, env *Env) Result {
 				continue
 			}
 			fixed = append(fixed, did...)
+			fixed = append(fixed, SecondFactorTestObligation(r.Package))
 		}
 		held = append(held, r.Package.Name)
 	}
@@ -92,6 +93,17 @@ func (c secondFactor) Run(_ context.Context, env *Env) Result {
 
 	return pass(c.Name(), summary)
 }
+
+// SecondFactorTestObligation says what writing the rule into an auth package leaves to
+// its author, which no check sees: the application's tests that sign in to the auth with
+// a password now meet the code step before any session opens, and complete it the way
+// the skeleton's integration tests do.
+func SecondFactorTestObligation(p *app.AuthPackage) string {
+	return fmt.Sprintf("%s: the tests that sign in to the %s auth with a password now meet the code step before any session opens; complete it as the skeleton's integration tests do (test/integration/second_factor_test.go: the code read from the mail.Recorder the auth is constructed to send to, entered at user/pending/code/verify)", p.Dir, p.Name)
+}
+
+// SecondFactorLeftNote is the sentence over the obligations the rule leaves.
+const SecondFactorLeftNote = "Every password sign-in now waits for the mailed code, so a test that signs in and expects a session completes the code step first; the skeleton's integration tests are the pattern."
 
 // The identifiers the rule is read and written by: the function the auth template
 // writes, the session library's setter, the chaining of two policies and the decision.

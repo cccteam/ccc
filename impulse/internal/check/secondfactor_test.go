@@ -150,6 +150,7 @@ func TestSecondFactorFix(t *testing.T) {
 			wantDetails: []string{
 				"pkg/auth/staff/staff.go:23: s.SetSignInPolicy(requireSecondFactor) set after the staff auth's construction, so every sign-in waits for the second factor",
 				"pkg/auth/staff/staff.go: requireSecondFactor written, the rule returning signin.RequireMFA(sessioninfo.MethodEmailCode), with its imports",
+				"pkg/auth/staff: the tests that sign in to the staff auth with a password now meet the code step before any session opens; complete it as the skeleton's integration tests do (test/integration/second_factor_test.go: the code read from the mail.Recorder the auth is constructed to send to, entered at user/pending/code/verify)",
 			},
 			wantSource: []string{
 				"\t}\n\n\t// The sign-in rule: every session carries a second factor (requireSecondFactor).\n\ts.SetSignInPolicy(requireSecondFactor)\n\tsession.PasswordSignIn(s)\n",
@@ -163,6 +164,7 @@ func TestSecondFactorFix(t *testing.T) {
 			wantDetails: []string{
 				"pkg/auth/staff/staff.go:28: .Then(requireSecondFactor) chained on the staff auth's sign-in rule, so a sign-in the rule admits waits for the second factor",
 				"pkg/auth/staff/staff.go: requireSecondFactor written, the rule returning signin.RequireMFA(sessioninfo.MethodEmailCode), with its imports",
+				"pkg/auth/staff: the tests that sign in to the staff auth with a password now meet the code step before any session opens; complete it as the skeleton's integration tests do (test/integration/second_factor_test.go: the code read from the mail.Recorder the auth is constructed to send to, entered at user/pending/code/verify)",
 			},
 			wantSource: []string{"\ts.SetSignInPolicy(signin.TenantPolicy(nil, nil).Then(requireSecondFactor))\n", "func requireSecondFactor("},
 		},
@@ -174,7 +176,7 @@ func secondFactor(context.Context, *cloudspanner.ReadWriteTransaction, *sessioni
 	return signin.RequireMFA(sessioninfo.MethodEmailCode), nil
 }
 `,
-			wantDetails: []string{"pkg/auth/staff/staff.go:28: .Then(secondFactor) chained on the staff auth's sign-in rule, so a sign-in the rule admits waits for the second factor"},
+			wantDetails: []string{"pkg/auth/staff/staff.go:28: .Then(secondFactor) chained on the staff auth's sign-in rule, so a sign-in the rule admits waits for the second factor", "pkg/auth/staff: the tests that sign in to the staff auth with a password now meet the code step before any session opens; complete it as the skeleton's integration tests do (test/integration/second_factor_test.go: the code read from the mail.Recorder the auth is constructed to send to, entered at user/pending/code/verify)"},
 			wantSource:  []string{"\ts.SetSignInPolicy(signin.TenantPolicy(nil, nil).Then(allowEveryone).Then(secondFactor))\n"},
 		},
 	}

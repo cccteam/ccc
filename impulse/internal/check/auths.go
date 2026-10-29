@@ -31,7 +31,7 @@ const authsWiredName = "auths-wired"
 func (authsWired) Name() string { return authsWiredName }
 
 func (authsWired) Describe() string {
-	return "every auth package is constructed by the data level, embeds its role file and hands it to the permission engine (access.WithDefaultRoles), and is bound by a surface (an outlet's Auth declaration naming the methods the package registers, or a hand-written surface taking its type); no two auths share a session or XSRF cookie; an auth with a directory-run method has no role writers in the application; and a role file handed to the engine is validated by a test (WARN)"
+	return "every auth package is constructed by the data level, embeds its role file and hands it to the permission engine (access.WithDefaultRoles), and is bound by a surface (an outlet's Auth declaration naming the methods the package registers, or a hand-written surface taking its type); no two auths share a session, XSRF or trusted-device cookie; an auth with a directory-run method has no role writers in the application; and a role file handed to the engine is validated by a test (WARN)"
 }
 
 // The identifiers an auth package exports that the wiring is read from.
@@ -210,8 +210,9 @@ func rolesExport(a *app.App, p *app.AuthPackage) (exported, embedded bool) {
 
 // The session library's cookie names when a construction leaves them unset.
 const (
-	defaultSessionCookie = "auth"
-	defaultXSRFCookie    = "XSRF-TOKEN"
+	defaultSessionCookie       = "auth"
+	defaultXSRFCookie          = "XSRF-TOKEN"
+	defaultTrustedDeviceCookie = "auth-trusted"
 )
 
 // cookieCollisions finds two auth packages issuing the same cookie: the session cookie or
@@ -228,14 +229,17 @@ func cookieCollisions(auths []app.Auth) []string {
 			continue
 		}
 		pkg := path.Dir(auth.File)
-		session, xsrf := auth.CookieName, auth.XSRFCookieName
+		session, xsrf, trusted := auth.CookieName, auth.XSRFCookieName, auth.TrustedDeviceCookieName
 		if session == "" {
 			session = defaultSessionCookie
 		}
 		if xsrf == "" {
 			xsrf = defaultXSRFCookie
 		}
-		for _, c := range []cookie{{"session", session}, {"xsrf", xsrf}} {
+		if trusted == "" {
+			trusted = defaultTrustedDeviceCookie
+		}
+		for _, c := range []cookie{{"session", session}, {"xsrf", xsrf}, {"trusted", trusted}} {
 			if !slices.Contains(holders[c], pkg) {
 				holders[c] = append(holders[c], pkg)
 			}
@@ -251,6 +255,8 @@ func cookieCollisions(auths []app.Auth) []string {
 		switch c.kind {
 		case "session":
 			details = append(details, fmt.Sprintf("%s: both ride their sessions in the cookie %s, so a login to one ends the other's session in the browser; name each auth's cookie (session.WithCookieName)", strings.Join(pkgs, ", "), c.name))
+		case "trusted":
+			details = append(details, fmt.Sprintf("%s: both remember a browser in the cookie %s, so a browser one auth remembers after a sign-in code forgets the other's remembered browsers; name each auth's cookie (session.WithTrustedDeviceCookieName, the skeletons' <name>-trusted)", strings.Join(pkgs, ", "), c.name))
 		default:
 			details = append(details, fmt.Sprintf("%s: both issue their XSRF token in the cookie %s, so a login to one overwrites the other's token in the browser; name each auth's cookie (session.WithXSRFCookieName) and the same name in the web app that binds to it (withXsrfConfiguration)", strings.Join(pkgs, ", "), c.name))
 		}

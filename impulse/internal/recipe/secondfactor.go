@@ -18,7 +18,8 @@ import (
 // check when the package makes none, and the function at the end of the file with its
 // imports when the package has none returning signin.RequireMFA. A package whose rule
 // ends with the second factor is left alone, so the recipe is safe to run twice; the
-// second-factor check holds the rule from here on.
+// second-factor check holds the rule from here on. What the rule leaves to the agent is
+// named: the application's tests that sign in with a password now meet the code step.
 type SecondFactor struct{}
 
 // Name is the recipe's short name.
@@ -61,7 +62,11 @@ func (SecondFactor) Apply(_ context.Context, a *app.App, _ check.Execer) (*trans
 		ch.Did = append(ch.Did, did...)
 		if skipped != "" {
 			ch.Skipped = append(ch.Skipped, skipped)
+
+			continue
 		}
+		ch.Left = append(ch.Left, check.SecondFactorTestObligation(r.Package))
+		ch.LeftNote = check.SecondFactorLeftNote
 	}
 
 	return ch, nil

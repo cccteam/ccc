@@ -514,11 +514,12 @@ func TestAuthsWired(t *testing.T) {
 		{
 			name:       "two auths leave their cookies at the library defaults",
 			files:      with(with(without(), "pkg/auth/members/members.go", fmt.Sprintf(membersAuth, "signin.DisableRoleSync()")), "pkg/auth/members/roles.json", rolesJSON),
-			wantStatus: Fail, wantSummary: "4 auth wiring problem(s)",
+			wantStatus: Fail, wantSummary: "5 auth wiring problem(s)",
 			wantDetails: []string{
 				"pkg/auth/members: nothing outside tests calls members.New; the members auth is never constructed",
 				`pkg/auth/members: no outlet declares Auth("example.com/harbor/pkg/auth/members", ...) and no surface takes *members.Auth; nothing binds to the members auth, so its people can sign in nowhere`,
 				"pkg/auth/members, pkg/auth/staff: both issue their XSRF token in the cookie XSRF-TOKEN, so a login to one overwrites the other's token in the browser; name each auth's cookie (session.WithXSRFCookieName) and the same name in the web app that binds to it (withXsrfConfiguration)",
+				"pkg/auth/members, pkg/auth/staff: both remember a browser in the cookie auth-trusted, so a browser one auth remembers after a sign-in code forgets the other's remembered browsers; name each auth's cookie (session.WithTrustedDeviceCookieName, the skeletons' <name>-trusted)",
 				"pkg/auth/members, pkg/auth/staff: both ride their sessions in the cookie auth, so a login to one ends the other's session in the browser; name each auth's cookie (session.WithCookieName)",
 				"pkg/auth/members: no test validates the members auth's role file (access.ValidateRoles over the collection, parsing members.Roles()), so a warning the deploy prints is accepted nowhere in code; add the members row to pkg/deploy/deploy_test.go with its expected warnings empty",
 			},
@@ -686,8 +687,15 @@ func TestAuthsWired(t *testing.T) {
 func TestCookieCollisions(t *testing.T) {
 	t.Parallel()
 
+	// auth is a construction naming its session and XSRF cookies, and its trusted-device
+	// cookie after the session one, or leaving every cookie at the library's default.
 	auth := func(file, cookie, xsrf string) app.Auth {
-		return app.Auth{File: file, CookieName: cookie, XSRFCookieName: xsrf}
+		trusted := ""
+		if cookie != "" {
+			trusted = cookie + "-trusted"
+		}
+
+		return app.Auth{File: file, CookieName: cookie, XSRFCookieName: xsrf, TrustedDeviceCookieName: trusted}
 	}
 	tests := []struct {
 		name  string
@@ -704,6 +712,7 @@ func TestCookieCollisions(t *testing.T) {
 			auths: []app.Auth{auth("pkg/auth/staff/staff.go", "", ""), auth("pkg/auth/members/members.go", "", "")},
 			want: []string{
 				"pkg/auth/members, pkg/auth/staff: both issue their XSRF token in the cookie XSRF-TOKEN, so a login to one overwrites the other's token in the browser; name each auth's cookie (session.WithXSRFCookieName) and the same name in the web app that binds to it (withXsrfConfiguration)",
+				"pkg/auth/members, pkg/auth/staff: both remember a browser in the cookie auth-trusted, so a browser one auth remembers after a sign-in code forgets the other's remembered browsers; name each auth's cookie (session.WithTrustedDeviceCookieName, the skeletons' <name>-trusted)",
 				"pkg/auth/members, pkg/auth/staff: both ride their sessions in the cookie auth, so a login to one ends the other's session in the browser; name each auth's cookie (session.WithCookieName)",
 			},
 		},
