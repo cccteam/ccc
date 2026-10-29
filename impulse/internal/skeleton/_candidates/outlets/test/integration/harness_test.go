@@ -42,8 +42,8 @@ const (
 
 	// The development identities the served suites act as: the staff logins admin
 	// (Administrator, and TenantAdministrator in every tenant) and member
-	// (TenantAdministrator and MachineOperator in north only, so a token of theirs
-	// reads the readings there through the machines outlet); and the portal's client, a
+	// (TenantAdministrator and DeviceOperator in north only, so a token of theirs
+	// reads the readings there through the devices outlet); and the portal's client, a
 	// member of the members auth who signs in through the simulated directory and holds
 	// TenantAdministrator in north.
 	adminUser     = "admin"
@@ -258,7 +258,7 @@ func newServed(ctx context.Context, t *testing.T) *served {
 		{adminUser, accesstypes.GlobalPolicyScope(), "Administrator"},
 		{adminUser, accesstypes.EveryDomainPolicyScope(), "TenantAdministrator"},
 		{memberUser, accesstypes.DomainPolicyScope(north), "TenantAdministrator"},
-		{memberUser, accesstypes.DomainPolicyScope(north), "MachineOperator"},
+		{memberUser, accesstypes.DomainPolicyScope(north), "DeviceOperator"},
 	}
 	for _, a := range assignments {
 		if err := accessClient.UserManager().AddUserRoles(ctx, a.scope, a.user, a.role); err != nil {

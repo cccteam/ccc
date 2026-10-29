@@ -1,6 +1,6 @@
 // Package app contains the application's http handlers. Most handlers are generated; this
 // file provides the application plumbing the generated code depends on, plus the
-// hand-written served surface (middleware, the machines outlet's token surface, and
+// hand-written served surface (middleware, the devices outlet's token surface, and
 // static assets) the generated router.New composes around the generated API routes.
 package app
 
@@ -94,7 +94,7 @@ type Configurer interface {
 	// Live is the live service the generated handlers subscribe through and publish to
 	// (LiveService) and the feature flags follow (Start): the Firestore service over the
 	// database or the emulator the data level opened, required in every application. One
-	// service serves both browser outlets; the machines outlet refuses a subscribing
+	// service serves both browser outlets; the devices outlet refuses a subscribing
 	// request.
 	Live() live.Service
 	// LiveOrigins are the origins the browser reaches the change feed at, which the
@@ -293,8 +293,8 @@ func (a *App) PortalAssets() http.HandlerFunc {
 	return a.portalApp.Assets()
 }
 
-// Machines returns the machines outlet's token surface (router.MachinesTokens): the
-// machine outlet the staff auth registered under staff.MachinesOutlet, whose token check
+// Devices returns the devices outlet's token surface (router.DevicesTokens): the
+// machine outlet the staff auth registered under staff.DevicesOutlet, whose token check
 // requires "Authorization: Bearer <token>", answers a request without one with the
 // challenge naming the outlet, and binds the request to the person the token acts for,
 // the way the session middleware binds a browser request to its user, so the handlers
@@ -302,12 +302,12 @@ func (a *App) PortalAssets() http.HandlerFunc {
 // application token for the outlet on the console (POST /console/api/user/tokens), or
 // approves a command-line client's device authorization there; the token holds that
 // person's roles. There is no configured key: the application issues every token.
-func (a *App) Machines() router.MachinesTokens {
+func (a *App) Devices() router.DevicesTokens {
 	if a.Handlers == nil {
 		return nil
 	}
 
-	return a.MachinesTokens()
+	return a.DevicesTokens()
 }
 
 // UserPermissions returns the permission checker for a request, composed from the
@@ -364,7 +364,7 @@ func (a *App) CursorKey() *resource.CursorKey {
 // list and read handlers register a subscribing request's interest in it before the
 // query, the mutations publish their committed rows through it, and the generated live
 // routes on the console and the portal renew, unsubscribe and mint the browser's
-// identity against it; the machines outlet refuses a request carrying X-Subscribe.
+// identity against it; the devices outlet refuses a request carrying X-Subscribe.
 // Every application wires one; the generated handlers assume it.
 func (a *App) LiveService() live.Service {
 	return a.live

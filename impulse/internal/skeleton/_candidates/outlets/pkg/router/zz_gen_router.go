@@ -15,9 +15,9 @@
 //	  + ValidateXSRFToken: POST /portal/api/user/pending/confirm, POST /portal/api/user/pending/cancel, POST /portal/api/user/pending/code, POST /portal/api/user/pending/code/verify, POST /portal/api/user/pending/email, POST /portal/api/user/invitation
 //	  + ValidateSession, ValidateXSRFToken: POST /portal/api/user/invitation/accept, POST /portal/api/user/email, POST /portal/api/user/email/verify
 //	  + ValidateSession, ValidateXSRFToken, CheckAPIVersion (oldest answered 0.0.1): hooks.Portal, generatedPortalRoutes
-//	machines (/machines), bearer tokens of the staff auth:
-//	  BindAuth(staff.Name), NoCaching, CompressionMiddleware, ReleaseHeader: POST /machines/oauth/device/authorize, POST /machines/oauth/token
-//	  + ValidateToken: hooks.Machines, generatedMachinesRoutes, GET /machines/programs/*
+//	devices (/devices), bearer tokens of the staff auth:
+//	  BindAuth(staff.Name), NoCaching, CompressionMiddleware, ReleaseHeader: POST /devices/oauth/device/authorize, POST /devices/oauth/token
+//	  + ValidateToken: hooks.Devices, generatedDevicesRoutes, GET /devices/programs/*
 //
 // hooks.Root's routes sit behind the every-request chain alone. Under an outlet's prefix
 // nothing else answers: an unknown path is 404. Outside every prefix the browser
@@ -44,7 +44,7 @@ import (
 type Handlers interface {
 	GeneratedHandlers
 	GeneratedPortalHandlers
-	GeneratedMachinesHandlers
+	GeneratedDevicesHandlers
 	// The default outlet's session surface: the staff auth's.
 	DefaultSession
 	// Portal returns the portal outlet's session surface: the members auth's.
@@ -52,10 +52,10 @@ type Handlers interface {
 	// BindAuth marks a session group's requests as authenticated by the named auth, so
 	// the handlers behind it check permissions and tenant visibility in that auth's store.
 	BindAuth(name string) func(http.Handler) http.Handler
-	// Machines returns the machines outlet's token surface: the machine outlet the application
+	// Devices returns the devices outlet's token surface: the machine outlet the application
 	// registers on the staff auth's Auth (session.RegisterMachineOutlet), whose token
 	// check binds each request to the person its bearer token acts for.
-	Machines() MachinesTokens
+	Devices() DevicesTokens
 	// ServerVersion is the release this server was built from, the configuration's
 	// APP_VERSION: what every outlet names on each answer (resource.ReleaseHeader) and
 	// each session outlet checks a browser application's X-Api-Version against
@@ -175,13 +175,13 @@ type PortalSession interface {
 	DirectoryFrontChannelLogout() http.HandlerFunc
 }
 
-// MachinesTokens is the machines outlet's token surface: the token check of the machine
+// DevicesTokens is the devices outlet's token surface: the token check of the machine
 // outlet the application registers on the staff auth's Auth
-// (session.RegisterMachineOutlet(auth, "machines")), which a *session.MachineOutlet satisfies.
+// (session.RegisterMachineOutlet(auth, "devices")), which a *session.MachineOutlet satisfies.
 // A request on the outlet carries a bearer token the auth issued for it, an application
 // token or a device grant's access token, and the check binds it to the person the
 // token acts for: the same user, principal and evidence a validated session carries.
-type MachinesTokens interface {
+type DevicesTokens interface {
 	ValidateToken(next http.Handler) http.Handler
 }
 
@@ -203,10 +203,10 @@ type Hooks struct {
 	// BindAuth(members.Name), session validation, and the XSRF guard, and generated registers
 	// the outlet's generated routes. Nil registers them directly.
 	Portal func(r chi.Router, generated func(chi.Router))
-	// Machines runs inside the machines outlet's token group: r already sits behind
+	// Devices runs inside the devices outlet's token group: r already sits behind
 	// BindAuth(staff.Name) and the token check, and generated registers the outlet's generated
 	// routes. Nil registers them directly.
-	Machines func(r chi.Router, generated func(chi.Router))
+	Devices func(r chi.Router, generated func(chi.Router))
 }
 
 // New wires the served application: the every-request middleware, hooks.Root, one group
@@ -383,7 +383,7 @@ func New(h Handlers, hooks Hooks) *chi.Mux {
 		})
 	})
 
-	// The machines outlet (/machines): machine clients carrying bearer tokens of the staff auth, so the group
+	// The devices outlet (/devices): machine clients carrying bearer tokens of the staff auth, so the group
 	// carries no session handling and no XSRF guard. The device flow's endpoints, where a
 	// command-line client obtains its tokens with a person's approval, sit in front of the
 	// token check; everything else sits behind it.
@@ -394,27 +394,27 @@ func New(h Handlers, hooks Hooks) *chi.Mux {
 		r.Use(resource.ReleaseHeader(serverVersion))
 
 		bounded := r.With(resource.BodyLimit(BodyLimit))
-		bounded.Post("/machines/oauth/device/authorize", h.DeviceAuthorize())
-		bounded.Post("/machines/oauth/token", h.DeviceToken())
+		bounded.Post("/devices/oauth/device/authorize", h.DeviceAuthorize())
+		bounded.Post("/devices/oauth/token", h.DeviceToken())
 
 		r.Group(func(r chi.Router) {
-			r.Use(h.Machines().ValidateToken)
+			r.Use(h.Devices().ValidateToken)
 
-			registerGenerated(r, hooks.Machines, "Machines", func(r chi.Router) {
-				generatedMachinesRoutes(r, h)
+			registerGenerated(r, hooks.Devices, "Devices", func(r chi.Router) {
+				generatedDevicesRoutes(r, h)
 			})
 
 			// The programs this release ships to their installed copies (ShipsProgram):
 			// sensor for linux/amd64. A copy fetches its next release here with its token. The
 			// route is registered after the hook, so it sits behind whatever the hook adds in
 			// front of the outlet's routes, and the hook may still add it.
-			r.Handle("/machines/programs/*", http.StripPrefix("/machines/programs", shipped.Handler(serverVersion, shipped.Program{Name: "sensor", Platforms: []string{"linux/amd64"}})))
+			r.Handle("/devices/programs/*", http.StripPrefix("/devices/programs", shipped.Handler(serverVersion, shipped.Program{Name: "sensor", Platforms: []string{"linux/amd64"}})))
 		})
 	})
 
 	// Under an outlet's prefix nothing else answers: an unknown API path is 404, never a
 	// browser application's entry document.
-	for _, prefix := range []string{"/console/api/", "/portal/api/", "/machines/"} {
+	for _, prefix := range []string{"/console/api/", "/portal/api/", "/devices/"} {
 		r.Route(prefix, func(r chi.Router) {
 			r.NotFound(func(w http.ResponseWriter, _ *http.Request) {
 				http.Error(w, "Not Found", http.StatusNotFound)

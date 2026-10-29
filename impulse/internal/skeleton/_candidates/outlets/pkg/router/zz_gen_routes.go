@@ -450,9 +450,9 @@ func generatedPortalRoutes(r chi.Router, h GeneratedPortalHandlers) {
 	bounded.Patch("/portal/api/resources", h.PatchPortalResources())
 }
 
-// GeneratedMachinesHandlers is the machines outlet's generated
+// GeneratedDevicesHandlers is the devices outlet's generated
 // handler surface: the handlers of the resources attached to the outlet via @outlet.
-type GeneratedMachinesHandlers interface {
+type GeneratedDevicesHandlers interface {
 	// DomainGuard wraps every domain-scoped route below: it rejects requests for
 	// domains the application does not recognize before the handler runs.
 	DomainGuard() func(http.HandlerFunc) http.HandlerFunc
@@ -462,10 +462,10 @@ type GeneratedMachinesHandlers interface {
 	Readings() http.HandlerFunc
 	Reading() http.HandlerFunc
 
-	PatchMachinesResources() http.HandlerFunc
+	PatchDevicesResources() http.HandlerFunc
 }
 
-func generatedMachinesRoutes(r chi.Router, h GeneratedMachinesHandlers) {
+func generatedDevicesRoutes(r chi.Router, h GeneratedDevicesHandlers) {
 	// The outlet serves no browser sessions, so it serves no live pages: a request
 	// carrying X-Subscribe is refused naming the header.
 	r = r.With(live.Refusing())
@@ -474,17 +474,17 @@ func generatedMachinesRoutes(r chi.Router, h GeneratedMachinesHandlers) {
 	bounded := r.With(resource.BodyLimit(BodyLimit))
 	domainGuard := h.DomainGuard()
 
-	bounded.Get("/machines/features", h.Features())
+	bounded.Get("/devices/features", h.Features())
 
 	readingsHandler := domainGuard(h.Readings())
-	bounded.Get("/machines/tenants/{tenantID}/readings", readingsHandler)
-	bounded.Post("/machines/tenants/{tenantID}/readings", readingsHandler)
+	bounded.Get("/devices/tenants/{tenantID}/readings", readingsHandler)
+	bounded.Post("/devices/tenants/{tenantID}/readings", readingsHandler)
 
 	readingHandler := domainGuard(h.Reading())
-	bounded.Get("/machines/tenants/{tenantID}/readings/{readingID}", readingHandler)
-	bounded.Post("/machines/tenants/{tenantID}/readings/{readingID}", readingHandler)
+	bounded.Get("/devices/tenants/{tenantID}/readings/{readingID}", readingHandler)
+	bounded.Post("/devices/tenants/{tenantID}/readings/{readingID}", readingHandler)
 
-	bounded.Patch("/machines/resources", h.PatchMachinesResources())
+	bounded.Patch("/devices/resources", h.PatchDevicesResources())
 }
 
 // AllGeneratedHandlers is every outlet's generated handler surface in one interface:
@@ -493,7 +493,7 @@ func generatedMachinesRoutes(r chi.Router, h GeneratedMachinesHandlers) {
 type AllGeneratedHandlers interface {
 	GeneratedHandlers
 	GeneratedPortalHandlers
-	GeneratedMachinesHandlers
+	GeneratedDevicesHandlers
 }
 
 // NewTestRouter serves every outlet's generated API routes bare, for test composition
@@ -506,7 +506,7 @@ func NewTestRouter(h AllGeneratedHandlers) *chi.Mux {
 	r.Use(httpio.WithParams)
 	generatedRoutes(r, h)
 	generatedPortalRoutes(r, h)
-	generatedMachinesRoutes(r, h)
+	generatedDevicesRoutes(r, h)
 
 	return r
 }

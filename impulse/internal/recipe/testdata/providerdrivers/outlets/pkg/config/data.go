@@ -447,7 +447,7 @@ type dataConfig struct {
 // roles validate against, the live service its engine signals policy changes through, the
 // cookie key its sessions are signed with, the session timeout, the sender its mail goes
 // through with the login page its links open, the console's device page, where a
-// command-line client asking for the machines outlet sends a staff login for approval,
+// command-line client asking for the devices outlet sends a staff login for approval,
 // and the generated reader of a tenant's declaration, which the sign-in rule reads in the
 // sign-in's transaction. A directory registration's settings join the literal here
 // (impulse add method), read from the environment under the registration's variables, so

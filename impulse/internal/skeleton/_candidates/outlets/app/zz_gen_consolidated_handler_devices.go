@@ -19,7 +19,7 @@ import (
 	"github.com/go-playground/errors/v5"
 )
 
-func (a *App) PatchMachinesResources() http.HandlerFunc {
+func (a *App) PatchDevicesResources() http.HandlerFunc {
 	type readingRequest struct {
 		ID         ccc.UUID  `json:"-"`
 		TenantID   string    `json:"-"`

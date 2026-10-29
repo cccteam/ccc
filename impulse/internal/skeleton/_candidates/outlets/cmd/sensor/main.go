@@ -1,5 +1,5 @@
-// Package main is the sensor: the program the release ships to the machines that report
-// readings, which the machines outlet serves to its installed copies and which keeps
+// Package main is the sensor: the program the release ships to the devices that report
+// readings, which the devices outlet serves to its installed copies and which keeps
 // itself at the outlet's release. A run does one thing against the outlet, posts one
 // reading or lists the latest, and then follows the release the outlet's answers name:
 // when the server is a newer release than this copy, it fetches that release's file
@@ -9,14 +9,14 @@
 //	sensor post <value>    post one reading of the value, taken now
 //	sensor list            list the latest readings, newest first
 //
-// The settings are the machine's environment:
+// The settings are the device's environment:
 //
-//	SENSOR_OUTLET  the machines outlet's URL as the router mounts it, https://app.example.com/machines
+//	SENSOR_OUTLET  the devices outlet's URL as the router mounts it, https://app.example.com/devices
 //	SENSOR_TOKEN   an application token a staff login issued for the outlet on the console's Tokens page
 //	SENSOR_TENANT  the tenant the readings belong to; north in development
-//	SENSOR_SOURCE  the name the readings carry for this machine; the hostname when unset
+//	SENSOR_SOURCE  the name the readings carry for this device; the hostname when unset
 //
-// A person installs the first copy on a machine from the release's assets or with
+// A person installs the first copy on a device from the release's assets or with
 // go install <module>/cmd/sensor@<release>. The image build stamps the release into
 // every copy it compiles (resource/shipped.Release); a copy built from a checkout is a
 // development copy and never upgrades.
@@ -283,7 +283,7 @@ func follow(ctx context.Context, f *shipped.Follower, stdout, stderr io.Writer) 
 	return 0
 }
 
-// client calls the machines outlet for one tenant.
+// client calls the devices outlet for one tenant.
 type client struct {
 	outlet string
 	tenant string

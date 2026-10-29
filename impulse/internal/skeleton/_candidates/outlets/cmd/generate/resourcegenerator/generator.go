@@ -54,20 +54,20 @@ func newGenerator(ctx context.Context) (generation.Generator, error) {
 			// release deployed inside a maintenance window.
 			generation.OldestAnswered("0.0.1"),
 		),
-		// The machines outlet is the machine REST API: structs annotated with @outlet
-		// naming machines are served under /machines, which the generated router composes
+		// The devices outlet is the machine REST API: structs annotated with @outlet
+		// naming devices are served under /devices, which the generated router composes
 		// behind the staff auth's token check instead of a browser session. Tokens names
 		// the auth whose Auth issues the outlet's tokens: a staff login issues an
 		// application token on the console, or approves a command-line client's device
 		// authorization there, and the token acts as them with their roles.
-		generation.WithRouterOutlet("machines", "machines",
+		generation.WithRouterOutlet("devices", "devices",
 			generation.Tokens("github.com/cccteam/ccc/impulse/internal/skeleton/_candidates/outlets/pkg/auth/staff"),
 			// The sensor ships with the release. ShipsProgram names the main package of a
-			// program the release carries to the machines that run it, cmd/sensor, which
+			// program the release carries to the devices that run it, cmd/sensor, which
 			// posts and lists readings here, and the platforms it is compiled for. The image
 			// build compiles it for each platform into the image, and this outlet serves the
-			// file with its checksum at GET /machines/programs/sensor/<release>/linux/amd64,
-			// behind the token check above, to the copies installed on the machines. A
+			// file with its checksum at GET /devices/programs/sensor/<release>/linux/amd64,
+			// behind the token check above, to the copies installed on the devices. A
 			// person installs the first copy from the release's assets or with go install;
 			// from then on the copy follows the release the outlet's answers name
 			// (resource/shipped): it fetches a newer release with the token it already
