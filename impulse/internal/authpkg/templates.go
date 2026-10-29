@@ -848,11 +848,13 @@ func register{{.Pascal}}(authSession *Session, accessClient *access.Client, sett
 	}
 {{- else if .Administered}}
 	tenants := {{.Field}}Slot(settings)
+{{- else}}
+	tenants := {{.Field}}Slot()
 {{- end}}
 	_ = accessClient
 
 	return azure.SignIn(authSession, {{.Registration}}, nil, &azure.Config{
-		Tenants:      {{if .Administered}}tenants{{else}}{{.SlotExpr}}{{end}},
+		Tenants:      tenants,
 		ClientID:     settings.{{.Pascal}}.ClientID,
 		ClientSecret: settings.{{.Pascal}}.ClientSecret,
 		RedirectURL:  settings.{{.Pascal}}.RedirectURL,
@@ -866,7 +868,8 @@ func register{{.Pascal}}(authSession *Session, accessClient *access.Client, sett
 // {{.Field}}Slot is the registration's organization slot, {{.SlotWords}}, with the
 // tenants the deployment administers declared as attesting (AdministeredTenants): a
 // sign-in from one carries the tenant's own second factor, which the deployment vouches
-// for, and is not asked for the sign-in code.
+// for, and is not asked for the sign-in code. bedrock reads the registration's tenant
+// shape from this function, for the app registration's supported account types.
 {{- if eq .SlotKind "one" "one-personal"}}
 func {{.Field}}Slot(settings *Settings) (azure.TenantSet, error) {
 	tenant := azure.Tenant(settings.{{.Pascal}}.TenantID)
@@ -907,6 +910,14 @@ func parse{{.Pascal}}Administered(value string) []string {
 	}
 
 	return ids
+}
+{{- else}}
+
+// {{.Field}}Slot is the registration's organization slot, {{.SlotWords}}: there is no
+// organization to administer, so it reads no setting. bedrock reads the registration's
+// tenant shape from this function, as it does from every registration's slot function.
+func {{.Field}}Slot() azure.TenantSet {
+	return azure.PersonalAccounts()
 }
 {{- end}}
 {{- if eq .SlotKind "listed"}}

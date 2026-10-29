@@ -45,11 +45,12 @@ const (
 	AuthorityApplication = "application"
 )
 
-// The tenant shapes of a Microsoft registration, read from the registration's Tenants
-// slot: one tenant (azure.Tenant or azure.NamedTenant alone), listed tenants
-// (azure.Tenants of several), any tenant (azure.AnyTenant, alone or beside listed
-// tenants) and Microsoft personal accounts alone (azure.PersonalAccounts). Personal
-// accounts beside tenants are Method.PersonalAccounts.
+// The tenant shapes of a Microsoft registration, read from the slot function its
+// configuration's Tenants slot calls: one tenant (azure.Tenant or azure.NamedTenant
+// alone), listed tenants (azure.Tenants of several, or a tenant built in a loop), any
+// tenant (azure.AnyTenant, alone or beside listed tenants) and Microsoft personal
+// accounts alone (azure.PersonalAccounts). Personal accounts beside tenants are
+// Method.PersonalAccounts.
 const (
 	TenantsOne      = "one"
 	TenantsListed   = "listed"
@@ -206,7 +207,7 @@ func readMethodCall(call *ast.CallExpr, kind, local, rel string, fset *token.Fil
 		cfg := compositeOf(call.Args[3], body)
 		m.Authority = readAuthority(cfg, local, f)
 		if kind == MethodAzure {
-			m.Tenants, m.PersonalAccounts = readTenants(configField(cfg, "Tenants"), body, local)
+			m.Tenants, m.PersonalAccounts = readTenants(configField(cfg, "Tenants"), body, local, f)
 		}
 	}
 
@@ -330,95 +331,132 @@ func readAuthority(cfg *ast.CompositeLit, methodPkg string, f *ast.File) string 
 }
 
 // readTenants reads the Tenants slot of a Microsoft registration's configuration into
-// the shape it builds and whether it admits personal accounts: the slot expression in
-// the Config literal, or the nearest assignment of the identifier it names
-// (set := azure.Tenants(...)). A slot built any other way, such as the tenants a
-// function parses out of a setting at startup, is not read, and both are empty.
-func readTenants(slot ast.Expr, body *ast.BlockStmt, methodPkg string) (tenants string, personal bool) {
-	s, ok := tenantShapeOf(slot, body, methodPkg)
-	if !ok {
+// the shape it builds and whether it admits personal accounts. The slot names an
+// identifier the registering function assigned from a call to a function of the file,
+// the registration's slot function (tenants, err := directorySlot(settings)), as impulse
+// add method writes it, and the shape is the union of the azure building blocks in that
+// function's body and in the file's functions it calls: Tenant and NamedTenant list one
+// tenant, AnyTenant admits any, PersonalAccounts admits personal accounts, and Tenants
+// unites, a spread slice included, since the slice's appends are in the same body. A
+// Tenant or NamedTenant reached inside a loop counts as several, since a loop over a
+// setting lists them, and Attesting() on a block keeps its shape. A slot written any
+// other way, a block in the configuration itself included, is not read, and both are
+// empty; bedrock refuses such a registration.
+func readTenants(slot ast.Expr, body *ast.BlockStmt, methodPkg string, f *ast.File) (tenants string, personal bool) {
+	fn := slotFunction(slot, body, f)
+	if fn == nil || fn.Body == nil {
 		return "", false
 	}
+	var s tenantShape
+	collectTenantBlocks(fn.Body, false, methodPkg, f, 0, &s)
 	switch {
 	case s.any:
 		return TenantsAny, s.personal
-	case s.listed > 1:
+	case s.several || s.listed > 1:
 		return TenantsListed, s.personal
 	case s.listed == 1:
 		return TenantsOne, s.personal
 	case s.personal:
 		return TenantsPersonal, true
 	default:
-		// azure.Tenants() of nothing: the library refuses it at registration.
+		// A function building no block the scan reads, or azure.Tenants() of nothing,
+		// which the library refuses at registration.
 		return "", false
 	}
 }
 
-// tenantShape is what the scan reads of a slot expression: how many tenants it lists,
-// and whether it admits any tenant or personal accounts.
+// slotFunction is the function of the file the slot calls: the slot is an identifier,
+// through any parentheses, its nearest assignment in the body is a call, and the call
+// names a function the file declares. nil otherwise.
+func slotFunction(slot ast.Expr, body *ast.BlockStmt, f *ast.File) *ast.FuncDecl {
+	for {
+		paren, ok := slot.(*ast.ParenExpr)
+		if !ok {
+			break
+		}
+		slot = paren.X
+	}
+	id, ok := slot.(*ast.Ident)
+	if !ok {
+		return nil
+	}
+	call, ok := assignedValue(id, body).(*ast.CallExpr)
+	if !ok {
+		return nil
+	}
+	name, ok := call.Fun.(*ast.Ident)
+	if !ok {
+		return nil
+	}
+
+	return fileFunction(f, name.Name)
+}
+
+// fileFunction is the function the file declares under the name, nil when it declares
+// none; methods are not functions of the file.
+func fileFunction(f *ast.File, name string) *ast.FuncDecl {
+	for _, decl := range f.Decls {
+		if fn, ok := decl.(*ast.FuncDecl); ok && fn.Recv == nil && fn.Name.Name == name {
+			return fn
+		}
+	}
+
+	return nil
+}
+
+// tenantShape is what the scan reads of a slot function: how many tenants it lists
+// outside loops, whether it lists tenants inside one, and whether it admits any tenant
+// or personal accounts.
 type tenantShape struct {
 	listed   int
+	several  bool
 	any      bool
 	personal bool
 }
 
-// tenantShapeOf reads a slot expression as the azure package builds one: Tenant or
-// NamedTenant list one tenant, AnyTenant admits any, PersonalAccounts admits personal
-// accounts, and Tenants unites its arguments; an identifier is read through its nearest
-// assignment in the body. Anything else, a Tenants call spreading a slice included, is
-// not read.
-func tenantShapeOf(slot ast.Expr, body *ast.BlockStmt, methodPkg string) (tenantShape, bool) {
-	switch e := slot.(type) {
-	case *ast.ParenExpr:
-		return tenantShapeOf(e.X, body, methodPkg)
-	case *ast.Ident:
-		value := assignedValue(e, body)
-		if value == nil {
-			return tenantShape{}, false
-		}
+// collectTenantBlocks adds the azure building blocks under n to the shape: a block in a
+// loop's body is read with inLoop set, and a call to another function of the file is
+// read through, one level down, so the listed slot's parser counts. Attesting() and the
+// other calls on a block are walked into, so the block under them is read.
+func collectTenantBlocks(n ast.Node, inLoop bool, methodPkg string, f *ast.File, depth int, s *tenantShape) {
+	ast.Inspect(n, func(node ast.Node) bool {
+		switch e := node.(type) {
+		case *ast.ForStmt:
+			collectTenantBlocks(e.Body, true, methodPkg, f, depth, s)
 
-		return tenantShapeOf(value, body, methodPkg)
-	case *ast.CallExpr:
-		name, ok := qualifiedName(e.Fun, methodPkg)
-		if !ok {
-			return tenantShape{}, false
-		}
-		switch name {
-		case "Tenant", "NamedTenant":
-			return tenantShape{listed: 1}, true
-		case "AnyTenant":
-			return tenantShape{any: true}, true
-		case "PersonalAccounts":
-			return tenantShape{personal: true}, true
-		case "Tenants":
-			return tenantUnionOf(e, body, methodPkg)
+			return false
+		case *ast.RangeStmt:
+			collectTenantBlocks(e.Body, true, methodPkg, f, depth, s)
+
+			return false
+		case *ast.CallExpr:
+			if name, ok := qualifiedName(e.Fun, methodPkg); ok {
+				switch name {
+				case "Tenant", "NamedTenant":
+					if inLoop {
+						s.several = true
+					} else {
+						s.listed++
+					}
+				case "AnyTenant":
+					s.any = true
+				case "PersonalAccounts":
+					s.personal = true
+				}
+
+				return true
+			}
+			if id, ok := e.Fun.(*ast.Ident); ok && depth == 0 {
+				if fn := fileFunction(f, id.Name); fn != nil && fn.Body != nil {
+					collectTenantBlocks(fn.Body, inLoop, methodPkg, f, depth+1, s)
+				}
+			}
+
+			return true
 		default:
-			return tenantShape{}, false
+			return true
 		}
-	default:
-		return tenantShape{}, false
-	}
-}
-
-// tenantUnionOf reads an azure.Tenants call: the union of its arguments' shapes, each
-// read in turn; a call spreading a slice or holding an argument the scan does not read
-// is not read.
-func tenantUnionOf(call *ast.CallExpr, body *ast.BlockStmt, methodPkg string) (tenantShape, bool) {
-	if call.Ellipsis.IsValid() {
-		return tenantShape{}, false
-	}
-	var union tenantShape
-	for _, arg := range call.Args {
-		s, ok := tenantShapeOf(arg, body, methodPkg)
-		if !ok {
-			return tenantShape{}, false
-		}
-		union.listed += s.listed
-		union.any = union.any || s.any
-		union.personal = union.personal || s.personal
-	}
-
-	return union, true
+	})
 }
 
 // configField is the value a configuration literal gives the named field, or nil when
