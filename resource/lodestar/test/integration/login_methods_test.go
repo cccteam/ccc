@@ -52,8 +52,8 @@ func TestLoginMethods(t *testing.T) {
 			prefix: consoleAPI,
 			want: `{"methods":[` +
 				`{"name":"password","method":"password","kind":"password","label":"Password","path":"/console/api/user/password/login"},` +
-				`{"name":"google","method":"google","kind":"redirect","label":"Google","path":"/console/api/user/google/login"},` +
-				`{"name":"sign-up","method":"google","kind":"redirect","label":"Sign up with Google","path":"/console/api/user/sign-up/login"}],` +
+				`{"name":"google","method":"google","kind":"redirect","label":"Lodestar","path":"/console/api/user/google/login"},` +
+				`{"name":"sign-up","method":"google","kind":"redirect","label":"Google","path":"/console/api/user/sign-up/login"}],` +
 				`"pending":{"status":"/console/api/user/pending","confirm":"/console/api/user/pending/confirm","cancel":"/console/api/user/pending/cancel",` +
 				`"sendCode":"/console/api/user/pending/code","verifyCode":"/console/api/user/pending/code/verify","enrollEmail":"/console/api/user/pending/email"}}`,
 		},

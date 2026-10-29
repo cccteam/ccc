@@ -1238,7 +1238,7 @@ export const apiDescriptor = defineApiDescriptor({
       password: true,
       usernameIsEmail: false,
       openSignUp: true,
-      registrations: [{ name: 'google', kind: 'google', label: 'Google', invited: false, syncsRoles: false }, { name: 'sign-up', kind: 'google', label: 'Sign up with Google', invited: false, syncsRoles: false }],
+      registrations: [{ name: 'google', kind: 'google', label: 'Lodestar', invited: false, syncsRoles: false }, { name: 'sign-up', kind: 'google', label: 'Google', invited: false, syncsRoles: false }],
       partitions: [
         { scope: 'global', users: Resources.CrewUsers, seats: Resources.CrewSeats, roles: Resources.CrewRoles, invitations: Resources.CrewInvitations, setPassword: Methods.SetCrewUserPassword, unlinkIdentity: Methods.UnlinkCrewUserIdentity, resetFactors: Methods.ResetCrewUserFactors },
         { scope: 'domain', users: Resources.CrewSectorUsers, seats: Resources.CrewSectorSeats, roles: Resources.CrewSectorRoles, invitations: Resources.CrewSectorInvitations, setPassword: Methods.SetCrewSectorUserPassword, unlinkIdentity: Methods.UnlinkCrewSectorUserIdentity, resetFactors: Methods.ResetCrewSectorUserFactors },

@@ -303,8 +303,8 @@ func New(h Handlers, hooks Hooks) *chi.Mux {
 		bounded.Get("/console/api/user/methods", h.Methods(&session.MethodList{
 			Methods: []session.AdvertisedMethod{
 				{Name: "password", Label: "Password", Path: "/console/api/user/password/login"},
-				{Name: "google", Label: "Google", Path: "/console/api/user/google/login"},
-				{Name: "sign-up", Label: "Sign up with Google", Path: "/console/api/user/sign-up/login"},
+				{Name: "google", Label: "Lodestar", Path: "/console/api/user/google/login"},
+				{Name: "sign-up", Label: "Google", Path: "/console/api/user/sign-up/login"},
 			},
 			Pending: session.PendingRoutes{
 				Status: "/console/api/user/pending", Confirm: "/console/api/user/pending/confirm", Cancel: "/console/api/user/pending/cancel",
