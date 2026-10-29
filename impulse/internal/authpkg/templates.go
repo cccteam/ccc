@@ -1,5 +1,20 @@
 package authpkg
 
+// secondFactorRule is the sign-in rule every auth package ends with, as the template
+// writes it into the package and impulse upgrade's second-factor recipe writes it into an
+// auth package that set none (SecondFactorRule).
+const secondFactorRule = `// requireSecondFactor is the sign-in rule every session ends with: the second factor, the
+// sign-in code mailed to the person's address (sessioninfo.MethodEmailCode), unless the
+// sign-in carries one already, a remembered browser's token or the attestation of a
+// directory the deployment administers or whose token says a second factor was passed,
+// which the library takes before it asks. A sign-in the rule holds waits for the code
+// (?pending=mfa on the login page), where the person asks for it, enters it and may ask
+// for the browser to be remembered.
+func requireSecondFactor(context.Context, *cloudspanner.ReadWriteTransaction, *sessioninfo.NewSessionRequest) (*signin.Decision, error) {
+	return signin.RequireMFA(sessioninfo.MethodEmailCode), nil
+}
+`
+
 // authTemplate renders the Auth file: the package, its tables, its permission store, its
 // role file, the Auth session with the methods registered on it, and the served surface.
 const authTemplate = `// Package {{.Name}} is the {{.Name}} auth: {{.Doc}}, who hold their roles in the
@@ -527,17 +542,7 @@ func (a *Auth) Close() error {
 	return nil
 }
 
-// requireSecondFactor is the sign-in rule every session ends with: the second factor, the
-// sign-in code mailed to the person's address (sessioninfo.MethodEmailCode), unless the
-// sign-in carries one already, a remembered browser's token or the attestation of a
-// directory the deployment administers or whose token says a second factor was passed,
-// which the library takes before it asks. A sign-in the rule holds waits for the code
-// (?pending=mfa on the login page), where the person asks for it, enters it and may ask
-// for the browser to be remembered.
-func requireSecondFactor(context.Context, *cloudspanner.ReadWriteTransaction, *sessioninfo.NewSessionRequest) (*signin.Decision, error) {
-	return signin.RequireMFA(sessioninfo.MethodEmailCode), nil
-}
-
+` + secondFactorRule + `
 // announcePolicy is the sending half of the engine's change signal: after a policy write
 // (a role, a grant, a membership) the engine signals the policy kind on the live service,
 // and every instance subscribed to the kind rereads its snapshot. A failure is the
@@ -1148,3 +1153,12 @@ func parse{{.Pascal}}Workspaces(value string, administered []string) (google.Wor
 }
 {{- end}}
 `
+
+// SecondFactorRule is the text of requireSecondFactor, the sign-in rule every auth
+// package ends with, as the auth template writes it: a package-level function over the
+// Spanner transaction (imported as cloudspanner), sessioninfo and signin, returning
+// signin.RequireMFA(sessioninfo.MethodEmailCode). impulse upgrade's second-factor recipe
+// and impulse check --fix write it into an auth package that has none.
+func SecondFactorRule() string {
+	return secondFactorRule
+}

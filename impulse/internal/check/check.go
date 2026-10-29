@@ -196,6 +196,7 @@ func All() []Check {
 		rolesFileAccepted{},
 		administratorRoles{},
 		directoryAdmission{},
+		secondFactor{},
 		changeSignal{},
 		conditionsProven{},
 		skipAuth{},
