@@ -699,7 +699,7 @@ var Steps = []Step{
 			db-initiator v0.4.3
 			httpio v0.7.22
 			logger v0.1.30
-			session v0.13.16
+			session v0.13.17
 		`),
 		Web: web(`
 			@cccteam/resource 0.0.17
@@ -707,7 +707,7 @@ var Steps = []Step{
 			@cccteam/resource-firestore 0.0.15
 		`),
 		Impulse: release("v0.6.6"),
-		Note:    "a sign-out at Microsoft ends the application's sessions through a Microsoft registration serving several tenants or personal accounts, which it never did (session v0.13.16: Entra sends the session id alone, and the front-channel logout handler scopes such a request to the registration's declared issuers); the web pins move to @cccteam/resource-angular 0.0.25: the Users page names a linked identity by its provider and the organization the link carries, and the login card offers \"Use a different account\", which asks the provider for its account chooser; the resource pin moves to v0.16.2, whose Labeled documentation says a registration's label is a name the login page writes \"Sign in with\" before; no code change is needed",
+		Note:    "a sign-out at Microsoft ends the application's sessions through a Microsoft registration serving several tenants or personal accounts, which it never did (session v0.13.16: Entra sends the session id alone, and the front-channel logout handler scopes such a request to the registration's declared issuers), and the trusted device cookie holds one token per user, so two people sharing a browser each stay remembered after the second factor (session v0.13.17); the web pins move to @cccteam/resource-angular 0.0.25: the Users page names a linked identity by its provider and the organization the link carries, and the login card offers \"Use a different account\", which asks the provider for its account chooser; the resource pin moves to v0.16.2, whose Labeled documentation says a registration's label is a name the login page writes \"Sign in with\" before; no code change is needed",
 	},
 }
 
