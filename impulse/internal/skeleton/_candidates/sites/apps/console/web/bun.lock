@@ -16,7 +16,7 @@
         "@angular/router": "^21.1.1",
         "@angular/service-worker": "^21.1.1",
         "@cccteam/resource": "0.0.15",
-        "@cccteam/resource-angular": "0.0.20",
+        "@cccteam/resource-angular": "0.0.21",
         "@cccteam/resource-firestore": "0.0.13",
         "@contentful/rich-text-types": "^17.2.5",
         "date-fns": "^4.1.0",
@@ -168,7 +168,7 @@
 
     "@cccteam/resource": ["@cccteam/resource@0.0.15", "", { "dependencies": { "tslib": "^2.3.0" } }, "sha512-8cHZ9C7Pdqsr1+PHeP/p58qfFlXbMWN/G5410lRep+PEKfK6oMgh2UlMF0zxPeZ2jX9DReWui3tZWM2b8AwnOQ=="],
 
-    "@cccteam/resource-angular": ["@cccteam/resource-angular@0.0.20", "", { "dependencies": { "date-fns": "^4.1.0", "date-fns-tz": "^3.2.0", "tslib": "^2.3.0" }, "peerDependencies": { "@angular/common": "^21.0.0", "@angular/core": "^21.0.0", "@angular/service-worker": "^21.0.0", "@cccteam/resource": "^0.0.15" }, "optionalPeers": ["@angular/service-worker"] }, "sha512-h5XyEDiHRfl35cujyBa4cQ3VN4tUVXNPEGPYNIz0XXSIFQyAZ/7SsmB2hOKO664fDxWwJSZdoMFnopmt8H2eZQ=="],
+    "@cccteam/resource-angular": ["@cccteam/resource-angular@0.0.21", "", { "dependencies": { "date-fns": "^4.1.0", "date-fns-tz": "^3.2.0", "tslib": "^2.3.0" }, "peerDependencies": { "@angular/common": "^21.0.0", "@angular/core": "^21.0.0", "@angular/service-worker": "^21.0.0", "@cccteam/resource": "^0.0.15" }, "optionalPeers": ["@angular/service-worker"] }, "sha512-1llv+ItMQv/DQO2HRnXzBm5+5TPVUcmczxTcjSRmQgLmWYdS1WYA1swcvkfmoHnLy8gYhyEHCVexsBQgUyHQMg=="],
 
     "@cccteam/resource-firestore": ["@cccteam/resource-firestore@0.0.13", "", { "dependencies": { "tslib": "^2.3.0" }, "peerDependencies": { "@cccteam/resource": "^0.0.15", "firebase": "^12.19.0" } }, "sha512-x53f1H/1rPaixagfM3Gy4ZwDV/uvqxWd+A5/bUKv/MMaES796lGgpTeB55lhapzGx0TonQ8PQQk3Eg9+MHVZkg=="],
 
