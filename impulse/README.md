@@ -676,7 +676,12 @@ shipped, and the walk rewrites them in every web root of the application (each d
 holding an `angular.json` whose `package.json` names the library), editing the version
 strings in place wherever they appear (dependencies, overrides) so the file keeps its
 formatting, then runs `bun install` in that web root so `bun.lock` records the registry
-versions; both files go into the step's commit. A web pin at or beyond the step's stays,
+versions; both files go into the step's commit. A step's server and page are held together
+before the step is recorded: the repository's CI reads the sign-in steps the login page
+declares (`cccteam.signInSteps` in `@cccteam/resource-angular`'s package.json, at the
+version the skeletons pin) against the steps the generated server asks the page for
+(`impulse/internal/authpkg/sign-in-steps.json`, held to the generator's policy by its test),
+and refuses a pairing the page cannot render, naming the step. A web pin at or beyond the step's stays,
 like a Go pin bumped by hand ahead of its step, and a web root already at the step's pins is
 said to be there already. The walk refuses to start when a step moves web pins and bun
 cannot run, before anything moves, and a `bun install` that fails stops the step with the
