@@ -65,6 +65,7 @@ func TestSecondFactor(t *testing.T) {
 		funcs      string
 		wantDetect []string
 		wantDid    []string
+		wantLeft   []string
 		wantSource []string
 	}{
 		{
@@ -74,6 +75,7 @@ func TestSecondFactor(t *testing.T) {
 				"pkg/auth/staff/staff.go:21: s.SetSignInPolicy(requireSecondFactor) set after the staff auth's construction, so every sign-in waits for the second factor",
 				"pkg/auth/staff/staff.go: requireSecondFactor written, the rule returning signin.RequireMFA(sessioninfo.MethodEmailCode), with its imports",
 			},
+			wantLeft:   []string{"pkg/auth/staff: the tests that sign in to the staff auth with a password now meet the code step before any session opens; complete it as the skeleton's integration tests do (test/integration/second_factor_test.go: the code read from the mail.Recorder the auth is constructed to send to, entered at user/pending/code/verify)"},
 			wantSource: []string{"\t}\n\n\t// The sign-in rule: every session carries a second factor (requireSecondFactor).\n\ts.SetSignInPolicy(requireSecondFactor)\n", "func requireSecondFactor(context.Context, *cloudspanner.ReadWriteTransaction, *sessioninfo.NewSessionRequest) (*signin.Decision, error) {"},
 		},
 		{
@@ -84,6 +86,7 @@ func TestSecondFactor(t *testing.T) {
 				"pkg/auth/staff/staff.go:26: .Then(requireSecondFactor) chained on the staff auth's sign-in rule, so a sign-in the rule admits waits for the second factor",
 				"pkg/auth/staff/staff.go: requireSecondFactor written, the rule returning signin.RequireMFA(sessioninfo.MethodEmailCode), with its imports",
 			},
+			wantLeft:   []string{"pkg/auth/staff: the tests that sign in to the staff auth with a password now meet the code step before any session opens; complete it as the skeleton's integration tests do (test/integration/second_factor_test.go: the code read from the mail.Recorder the auth is constructed to send to, entered at user/pending/code/verify)"},
 			wantSource: []string{"\ts.SetSignInPolicy(signin.TenantPolicy(nil, nil).Then(requireSecondFactor))\n"},
 		},
 		{
@@ -129,6 +132,16 @@ func TestSecondFactor(t *testing.T) {
 			}
 			if len(ch.Skipped) != 0 {
 				t.Errorf("Apply() skipped %v", ch.Skipped)
+			}
+			if diff := cmp.Diff(tt.wantLeft, ch.Left); diff != "" {
+				t.Errorf("Apply() Left mismatch (-want +got):\n%s", diff)
+			}
+			wantNote := ""
+			if len(tt.wantLeft) > 0 {
+				wantNote = "Every password sign-in now waits for the mailed code, so a test that signs in and expects a session completes the code step first; the skeleton's integration tests are the pattern."
+			}
+			if ch.LeftNote != wantNote {
+				t.Errorf("Apply() LeftNote = %q, want %q", ch.LeftNote, wantNote)
 			}
 			src, err := os.ReadFile(filepath.Join(root, "pkg", "auth", "staff", "staff.go"))
 			if err != nil {
