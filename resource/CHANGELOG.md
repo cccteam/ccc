@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.16.1](https://github.com/cccteam/ccc/compare/resource/v0.16.0...resource/v0.16.1) (2026-10-29)
+
+
+### Bug Fixes
+
+* **lodestar:** the console lists the Sector Ops group once ([#1224](https://github.com/cccteam/ccc/issues/1224)) ([d914d6a](https://github.com/cccteam/ccc/commit/d914d6adfecbc8b626b487bed94857c9a48fefe8))
+
+
+### Documentation
+
+* **resource:** the identity row's comment says the connection is the directory's key, not the registration ([#1224](https://github.com/cccteam/ccc/issues/1224)) ([d914d6a](https://github.com/cccteam/ccc/commit/d914d6adfecbc8b626b487bed94857c9a48fefe8))
+
 ## [0.16.0](https://github.com/cccteam/ccc/compare/resource/v0.15.17...resource/v0.16.0) (2026-10-28)
 
 
