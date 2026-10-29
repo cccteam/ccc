@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.1](https://github.com/cccteam/ccc/compare/bedrock/v0.4.0...bedrock/v0.4.1) (2026-10-29)
+
+
+### Bug Fixes
+
+* **bedrock:** a Microsoft registration's tenant shape is read from the slot function impulse add method writes and from nowhere else, a registration built any other way is refused with its file and line, and the stack README's hand step names the supported account type from the code instead of saying it could not read it ([#1213](https://github.com/cccteam/ccc/issues/1213)) ([c6ace93](https://github.com/cccteam/ccc/commit/c6ace93fbeab7fff86f6325988c6a5207db6e469))
+
 ## [0.4.0](https://github.com/cccteam/ccc/compare/bedrock/v0.3.24...bedrock/v0.4.0) (2026-10-28)
 
 
