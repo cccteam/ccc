@@ -4,7 +4,6 @@ import { Methods, Permissions, Resources } from '@app/service/zz_gen_constants';
 import { DomainRoutePath } from '@app/service/zz_gen_resources';
 import { generatedNavItems } from '@cccteam/resource-angular/resource-nav';
 import { DashboardComponent } from '@components/ui/dashboard/dashboard.component';
-import { MenuItem } from '@shared/topbar/topbar.component';
 import { BriefingComponent } from './briefing/briefing.component';
 import { CallLogComponent } from './call-log/call-log.component';
 import { FlightDeckComponent } from './flight-deck/flight-deck.component';
@@ -30,21 +29,27 @@ let cachedSectorRoute: Route | undefined;
  * its declared directories and whether they are the only way in), and the config-driven pages the caller hands
  * in, which resourceRoutes registered at the route their configs name
  * (`sectors/:sectorID/missions`) in the navigation and as where their rows open, and
- * which are mounted here by that route's last part. The decks are listed in the generated
- * navigation beside them: each item names the segment's route parameter, which the top
- * bar fills with the open sector, and the List grant its deck needs, asked of that
- * sector's digest. The watch desk is global (every live impersonation in the service) and
- * lives outside the segment, listed with the decks.
+ * which are mounted here by that route's last part. The decks join the Sector Ops group
+ * those config pages named in the generated navigation (found by its label, made here
+ * only when no config page named it, so the top bar lists the group once): each item
+ * names the segment's route parameter, which the top bar fills with the open sector, and
+ * the List grant its deck needs, asked of that sector's digest. The watch desk is global
+ * (every live impersonation in the service) and lives outside the segment, listed with
+ * the decks.
  */
 export const sectorRoute = (pages: Route[]): Route => {
   if (cachedSectorRoute) {
     return cachedSectorRoute;
   }
 
-  const groupItem: MenuItem = { label: 'Sector Ops', children: [] };
-  generatedNavItems.push(groupItem);
+  let groupItem = generatedNavItems.find((item) => item.label === 'Sector Ops');
+  if (!groupItem) {
+    groupItem = { label: 'Sector Ops', children: [] };
+    generatedNavItems.push(groupItem);
+  }
   const list = Permissions.List;
   groupItem.children = [
+    ...(groupItem.children ?? []),
     {
       label: 'Flight Deck',
       route: [DomainRoutePath, 'flight-deck'],
