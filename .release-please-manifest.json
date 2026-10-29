@@ -9,6 +9,6 @@
   "tracer": "0.3.2",
   "middleware": "0.0.14",
   "impulse": "0.6.4",
-  "bedrock": "0.4.0",
+  "bedrock": "0.4.1",
   "cloud": "0.2.3"
 }
