@@ -444,7 +444,7 @@ func (s *stack) apply(ctx context.Context, build *Build, env map[string]string) 
 	if err != nil {
 		return nil, nil, err
 	}
-	if len(p.Changes) == 0 {
+	if p.Empty() {
 		fmt.Fprintln(s.out, "Nothing to apply: the pull request's stack matches the code.")
 	} else if err := s.tofu(ctx, "apply", noInputFlag, noColorFlag, lockTimeoutFlag, filepath.Join(string(w), PlanFile)); err != nil {
 		return nil, nil, err

@@ -191,9 +191,17 @@ func TestPullRequestStack(t *testing.T) {
 		{
 			name:       "a plan with nothing to apply is not applied, and the state names what deploys",
 			comments:   []string{"/gcbrun"},
-			plan:       `{"resource_changes": [{"address": "google_spanner_instance.shared", "type": "google_spanner_instance", "change": {"actions": ["no-op"], "after": {"name": "tst-shared"}}}]}`,
+			plan:       `{"resource_changes": [{"address": "google_spanner_instance.shared", "type": "google_spanner_instance", "change": {"actions": ["no-op"], "after": {"name": "tst-shared"}}}], "output_changes": {"revision_templates": {"actions": ["no-op"]}}}`,
 			wantTofu:   []string{initLine, planLine, showLine, outputLine},
 			wantOut:    []string{"Guard passed: 0 planned change(s), all pull request 7's.", "Nothing to apply: the pull request's stack matches the code."},
+			wantObject: applied(1),
+		},
+		{
+			name:       "a plan that changes an output alone is applied",
+			comments:   []string{"/gcbrun"},
+			plan:       `{"resource_changes": [], "output_changes": {"revision_templates": {"actions": ["update"]}}}`,
+			wantTofu:   []string{initLine, planLine, showLine, applyLine, outputLine},
+			wantOut:    []string{"Guard passed: 0 planned change(s), all pull request 7's."},
 			wantObject: applied(1),
 		},
 		{

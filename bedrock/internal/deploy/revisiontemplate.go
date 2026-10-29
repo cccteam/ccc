@@ -295,7 +295,7 @@ func templateChanges(plan []byte) ([]string, error) {
 		return nil, errors.Wrap(err, "json.Unmarshal(): the plan's JSON")
 	}
 	change, ok := doc.OutputChanges[revisionTemplatesOutput]
-	if !ok || slices.Contains(change.Actions, "no-op") {
+	if !ok || slices.Contains(change.Actions, actionNoOp) {
 		return nil, nil
 	}
 	before, after := templatesValue(change.Before), templatesValue(change.After)

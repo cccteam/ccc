@@ -48,10 +48,12 @@ func TestStackPlan(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name    string
-		data    string
-		want    *StackPlan
-		wantErr string
+		name string
+		data string
+		want *StackPlan
+		// wantEmpty says the plan is nothing to apply.
+		wantEmpty bool
+		wantErr   string
 	}{
 		{
 			name: "the counts and the changes, no-ops and reads left out, a replace counted twice",
@@ -62,7 +64,16 @@ func TestStackPlan(t *testing.T) {
 				{Address: "google_secret_manager_secret.old", Actions: []string{actionDelete, actionCreate}},
 			}},
 		},
-		{name: "a plan with no change", data: `{"resource_changes": [{"address": "a.b", "type": "google_x", "change": {"actions": ["no-op"]}}]}`, want: &StackPlan{}},
+		{name: "a plan with no change", data: `{"resource_changes": [{"address": "a.b", "type": "google_x", "change": {"actions": ["no-op"]}}]}`, want: &StackPlan{}, wantEmpty: true},
+		{
+			name: "the outputs the plan changes, by name, no-ops left out: a settings change alone is not nothing",
+			data: `{"resource_changes": [], "output_changes": {"substitutions": {"actions": ["update"]}, "revision_templates": {"actions": ["update"]}, "firestore_database": {"actions": ["no-op"]}}}`,
+			want: &StackPlan{Outputs: []StackOutput{
+				{Name: "revision_templates", Actions: []string{actionUpdate}},
+				{Name: "substitutions", Actions: []string{actionUpdate}},
+			}},
+		},
+		{name: "a plan whose outputs are all unchanged", data: `{"resource_changes": [], "output_changes": {"revision_templates": {"actions": ["no-op"]}}}`, want: &StackPlan{}, wantEmpty: true},
 		{name: "a plan that is not JSON is refused", data: "{", wantErr: "the plan's JSON"},
 	}
 	for _, tt := range tests {
@@ -85,6 +96,61 @@ func TestStackPlan(t *testing.T) {
 			}
 			if got.Summary() != fmt.Sprintf("Plan: %d to add, %d to change, %d to destroy.", tt.want.Add, tt.want.Change, tt.want.Destroy) {
 				t.Errorf("Summary() = %q", got.Summary())
+			}
+			if got.Empty() != tt.wantEmpty {
+				t.Errorf("Empty() = %v, want %v", got.Empty(), tt.wantEmpty)
+			}
+		})
+	}
+}
+
+// TestStackPlanPrint pins what a plan prints and what its applied line counts: the changed
+// outputs follow the resources, and count in the applied line in words.
+func TestStackPlanPrint(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		plan        *StackPlan
+		wantPrint   string
+		wantApplied string
+		wantList    string
+	}{
+		{
+			name:        "resources and an output",
+			plan:        &StackPlan{Add: 1, Changes: []StackChange{{Address: "google_storage_bucket.files", Actions: []string{actionCreate}}}, Outputs: []StackOutput{{Name: "revision_templates", Actions: []string{actionUpdate}}}},
+			wantPrint:   "Plan: 1 to add, 0 to change, 0 to destroy.\n  create google_storage_bucket.files\n  update output revision_templates\n",
+			wantApplied: "1 added, 0 changed, 0 destroyed, 1 output updated",
+			wantList:    "\n  - `create google_storage_bucket.files`\n  - `update output revision_templates`",
+		},
+		{
+			name:        "two outputs and no resource",
+			plan:        &StackPlan{Outputs: []StackOutput{{Name: "revision_templates", Actions: []string{actionUpdate}}, {Name: "substitutions", Actions: []string{actionUpdate}}}},
+			wantPrint:   "Plan: 0 to add, 0 to change, 0 to destroy.\n  update output revision_templates\n  update output substitutions\n",
+			wantApplied: "0 added, 0 changed, 0 destroyed, 2 outputs updated",
+			wantList:    "\n  - `update output revision_templates`\n  - `update output substitutions`",
+		},
+		{
+			name:        "nothing",
+			plan:        &StackPlan{},
+			wantPrint:   "Plan: 0 to add, 0 to change, 0 to destroy.\n",
+			wantApplied: "0 added, 0 changed, 0 destroyed",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			var out strings.Builder
+			tt.plan.print(&out)
+			if out.String() != tt.wantPrint {
+				t.Errorf("print() wrote %q, want %q", out.String(), tt.wantPrint)
+			}
+			if got := tt.plan.appliedCounts(); got != tt.wantApplied {
+				t.Errorf("appliedCounts() = %q, want %q", got, tt.wantApplied)
+			}
+			if got := changeList(tt.plan); got != tt.wantList {
+				t.Errorf("changeList() = %q, want %q", got, tt.wantList)
 			}
 		})
 	}
@@ -1098,9 +1164,18 @@ func TestApplyEnvironmentStack(t *testing.T) {
 			wantArguments: map[string]string{"_BUILD_ARG_THEME": "dark"},
 		},
 		{
+			name:         "a plan that changes an output alone is applied: a settings change the stack passes through to the revision templates",
+			subs:         tagSubs(),
+			planJSON:     `{"resource_changes": [], "output_changes": {"revision_templates": {"actions": ["update"]}}}`,
+			outputs:      map[string]string{readSubstitutions: `{"substitutions": {"value": ` + substitutionsOutput + `}, "revision_templates": {"value": ` + revisionTemplatesJSON(false, "quill-app") + `}}`},
+			wantOut:      []string{"Applied stg's stack: 0 added, 0 changed, 0 destroyed, 1 output updated.", settingsRead},
+			wantTofu:     []string{"tofu apply -input=false -no-color WS/stack.plan", readSubstitutions},
+			wantSettings: `{"APP_SERVICE_NAME":"quill-migrate"}`,
+		},
+		{
 			name:         "a plan with no change applies nothing, and still reads the settings",
 			subs:         tagSubs(),
-			planJSON:     `{"resource_changes": []}`,
+			planJSON:     `{"resource_changes": [], "output_changes": {"revision_templates": {"actions": ["no-op"]}}}`,
 			outputs:      map[string]string{readSubstitutions: `{"substitutions": {"value": ` + substitutionsOutput + `}, "revision_templates": {"value": ` + revisionTemplatesJSON(false, "quill-app") + `}}`},
 			wantOut:      []string{"Nothing to apply: stg's stack matches the code.", settingsRead},
 			wantTofu:     []string{readSubstitutions},

@@ -136,11 +136,13 @@ type planOutputChange struct {
 	AfterUnknown any      `json:"after_unknown"`
 }
 
-// The actions a planned change carries.
+// The actions a planned change carries; a no-op and a read change nothing.
 const (
 	actionCreate = "create"
 	actionUpdate = "update"
 	actionDelete = "delete"
+	actionNoOp   = "no-op"
+	actionRead   = "read"
 )
 
 // planOffenders reads the plan's changes and answers the ones that are not the pull
@@ -152,7 +154,7 @@ func planOffenders(data []byte, name string) (offenders []string, count int, err
 	}
 	for _, c := range plan.ResourceChanges {
 		actions := slices.DeleteFunc(slices.Clone(c.Change.Actions), func(a string) bool {
-			return a == "no-op" || a == "read"
+			return a == actionNoOp || a == actionRead
 		})
 		if len(actions) == 0 {
 			continue

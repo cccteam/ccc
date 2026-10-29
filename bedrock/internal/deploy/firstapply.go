@@ -85,7 +85,7 @@ func FirstApply(ctx context.Context, clients *Clients, w Workspace, req *BuildRe
 		return err
 	}
 	pl.print(out)
-	if len(pl.Changes) == 0 {
+	if pl.Empty() {
 		fmt.Fprintf(out, "Nothing to apply: %s's stack matches the code already.\n", env)
 
 		return nil
@@ -94,11 +94,11 @@ func FirstApply(ctx context.Context, clients *Clients, w Workspace, req *BuildRe
 		return err
 	}
 	if tornDown {
-		fmt.Fprintf(out, "Applied %s's stack again after its teardown: %d added, %d changed, %d destroyed. Its triggers are back; the operations workflow's run action runs the release it ran, and a release's build applies it from here on.\n", env, pl.Add, pl.Change, pl.Destroy)
+		fmt.Fprintf(out, "Applied %s's stack again after its teardown: %s. Its triggers are back; the operations workflow's run action runs the release it ran, and a release's build applies it from here on.\n", env, pl.appliedCounts())
 
 		return nil
 	}
-	fmt.Fprintf(out, "Applied %s's stack for the first time: %d added, %d changed, %d destroyed. A release's build applies it from here on.\n", env, pl.Add, pl.Change, pl.Destroy)
+	fmt.Fprintf(out, "Applied %s's stack for the first time: %s. A release's build applies it from here on.\n", env, pl.appliedCounts())
 
 	return nil
 }
