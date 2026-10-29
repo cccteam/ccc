@@ -40,10 +40,10 @@ func staffSpec(candidate string) authpkg.Spec {
 	if candidate == Base {
 		roles.EveryDomain = nil
 	}
-	// The outlets candidate's staff auth issues the machines outlet's tokens.
+	// The outlets candidate's staff auth issues the devices outlet's tokens.
 	var outlets []string
 	if candidate == "outlets" {
-		outlets = []string{"machines"}
+		outlets = []string{"devices"}
 	}
 
 	return authpkg.Spec{

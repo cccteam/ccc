@@ -34,7 +34,7 @@ export const routes: Routes = [
       // partition of the auth's user surface, behind the List grant on its users resource.
       usersRoute(),
       // The Tokens page composes the library's tokens component over the descriptor's
-      // tokens block: the signed-in person's own tokens for the machines outlet.
+      // tokens block: the signed-in person's own tokens for the devices outlet.
       tokensRoute(),
       // The device page, where a command-line client sends the person for approval
       // (/console/device?userCode=..., the staff auth's DevicePage); no navigation item.

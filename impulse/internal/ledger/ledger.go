@@ -646,6 +646,27 @@ var Steps = []Step{
 		Impulse: release("v0.6.0"),
 		Note:    "every role is named in one grammar and says what it is for: the permission engine refuses a role file naming a role outside letters and digits starting with a capital letter (Administrator, TenantAdministrator; the scope is never part of the name, since the file's structure says where a role is held and the Users page shows it as the role's kind) or a role without a description, one or two plain sentences saying what the role is for, which the user-management surface serves beside the name (the roles resources' List and Read grants name description beside kind, and the generated TypeScript clients carry the field); a custom role made at run time (UserManager.AddRole) takes a description and follows the same grammar, and the engine's store writes it to a Description column on each <Name>Roles table (Spanner: Description STRING(MAX) NOT NULL after Role), which the skeletons' access migrations create; the roles-file check parses every auth package's role file the way the engine reads it at start, with no permission collection, and names the file, the role and the rule of a refusal; an existing application taking this release does five things by hand, the last two in a schema migration: renames every role whose name is outside the grammar, in its role files, its development logins, its tests and wherever else the name is written (in the skeletons' naming, Administrator_Global is Administrator, Administrator_Domain is TenantAdministrator and Machines_Domain is MachineOperator); gives every role in its role files a description; names description beside kind in every List and Read grant on a roles resource (<Name>Roles, <Name>TenantRoles), since the user-management surface serves only the fields the caller's grant names and the Users page shows no description until the grant names it, which no check catches; adds the Description column to each <Name>Roles table, nullable first and NOT NULL once every row holds one where the database refuses a NOT NULL column on an existing table; and carries every seat, custom role and grant held under an old name to the new one (INSERT INTO <Name>UserRoles (Kind, Axis, Domain, Role, User, CreatedAt) SELECT Kind, Axis, Domain, 'Administrator', User, CreatedAt FROM <Name>UserRoles WHERE Role = 'Administrator_Global', then DELETE the rows under the old name, and the same on <Name>Roles and <Name>RoleGrants for a renamed custom role), because the deploy's role check only warns of a membership naming a role the release does not define and seeds no administrator while a user exists, so a seat left under an old name is a person locked out; and the pins move to access v0.12.0 and resource v0.16.0, and the web pins to @cccteam/resource 0.0.15, @cccteam/resource-angular 0.0.20 and @cccteam/resource-firestore 0.0.13, which carry the users page in the shape of Google Cloud's IAM page: one row per person with each role's title and where it applies, an Edit access panel whose picker shows each role's title, where it applies and its description and whose Save applies the difference one seat at a time, and a Manage account panel for the account's own actions; and the rendered CI's lint jobs restore the build leg's Go caches, so a dependency change no longer runs golangci-lint cold past its timeout; the step's render rewrites the workflows, and no code change is needed for it",
 	},
+	{
+		Pins: pins(`
+			access v0.12.0
+			ccc v0.3.5
+			ccc/accesstypes v0.7.0
+			ccc/cloud v0.2.1
+			ccc/resource v0.16.0
+			ccc/tracer v0.3.0
+			db-initiator v0.4.3
+			httpio v0.7.22
+			logger v0.1.30
+			session v0.13.14
+		`),
+		Web: web(`
+			@cccteam/resource 0.0.15
+			@cccteam/resource-angular 0.0.22
+			@cccteam/resource-firestore 0.0.13
+		`),
+		Impulse: release("v0.6.4"),
+		Note:    "the web pins move to @cccteam/resource-angular 0.0.22: the login card says the server did not answer, with Try again, when its first reads fail, never the raw status; the tokens page keeps the page's own heading, says what a token is for, shows dates to the minute and revokes from a trash can through a dialog; the Users page's row opens a menu that names every action the caller may take on that user, each one step with one call in a dialog, and its access panel's rows act at once and say so when every role is held; an action dialog any page may ask in (askInDialog from @cccteam/resource-angular/ccc-dialogs); and the login page declares the sign-in steps it renders (cccteam.signInSteps in the package's package.json, SIGN_IN_STEPS in the component), and a step it does not render says the page is older than the server and asks for a reload; and the Users page's row menu opens beside its button, to its left, when neither below nor above has room, never over the button that opened it or another row's, and the button keeps a tint while its menu is open; the outlets candidate's machine outlet is named devices, served at /devices, with its role DeviceOperator, since the outlet's name is each application's own, which an application keeps or renames by hand, the candidate's being the pattern; no code change is needed",
+	},
 }
 
 // validatePending holds a step's Pending mark to its pins: a pin at a pseudo-version

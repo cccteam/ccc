@@ -45,9 +45,9 @@ var routerOutletChains = map[string]routerOutletChain{
 		group:  []string{"BindAuth(" + members.Name + ")", "NoCaching", "CompressionMiddleware", "PortalStartSession", "PortalSetXSRFToken"},
 		guards: []string{"PortalValidateSession", "PortalValidateXSRFToken"},
 	},
-	"/machines/": {
+	"/devices/": {
 		group:  []string{"BindAuth(" + staff.Name + ")", "NoCaching", "CompressionMiddleware"},
-		guards: []string{"MachinesValidateToken"},
+		guards: []string{"DevicesValidateToken"},
 	},
 }
 
@@ -121,8 +121,8 @@ func routerSessionRoutes() []routerSessionRoute {
 		{url: "/portal/api/user/invitation/accept", suffix: "/user/invitation/accept", method: http.MethodPost, handler: "PortalInvitationAccept", xsrf: true, validated: true},
 		{url: "/portal/api/user/email", suffix: "/user/email", method: http.MethodPost, handler: "PortalEmailAdd", xsrf: true, validated: true},
 		{url: "/portal/api/user/email/verify", suffix: "/user/email/verify", method: http.MethodPost, handler: "PortalEmailVerify", xsrf: true, validated: true},
-		{url: "/machines/oauth/device/authorize", suffix: "/oauth/device/authorize", method: http.MethodPost, handler: "DeviceAuthorize"},
-		{url: "/machines/oauth/token", suffix: "/oauth/token", method: http.MethodPost, handler: "DeviceToken"},
+		{url: "/devices/oauth/device/authorize", suffix: "/oauth/device/authorize", method: http.MethodPost, handler: "DeviceAuthorize"},
+		{url: "/devices/oauth/token", suffix: "/oauth/token", method: http.MethodPost, handler: "DeviceToken"},
 	}
 }
 
@@ -237,7 +237,7 @@ func TestGeneratedRouterPrograms(t *testing.T) {
 	t.Parallel()
 
 	urls := []string{
-		"/machines/programs/sensor/1.0.0/linux/amd64",
+		"/devices/programs/sensor/1.0.0/linux/amd64",
 	}
 	for _, url := range urls {
 		t.Run("GET-url"+strings.ReplaceAll(url, "/", "-"), func(t *testing.T) {
@@ -279,7 +279,7 @@ func TestGeneratedRouterNotFound(t *testing.T) {
 	unknown := []string{
 		"/console/api/does-not-exist",
 		"/portal/api/does-not-exist",
-		"/machines/does-not-exist",
+		"/devices/does-not-exist",
 	}
 	for _, url := range unknown {
 		t.Run("GET-url"+strings.ReplaceAll(url, "/", "-"), func(t *testing.T) {
@@ -406,112 +406,112 @@ func TestGeneratedRouterNotFound(t *testing.T) {
 		foreign{url: "/portal/api/tenants/testDomain/tenant-directories", method: http.MethodPost},
 		foreign{url: "/portal/api/tenants/testDomain/tenant-directories/testTenantDirectoryID", method: http.MethodGet},
 		foreign{url: "/portal/api/tenants/testDomain/tenant-directories/testTenantDirectoryID", method: http.MethodPost},
-		foreign{url: "/machines/permission-digest", method: http.MethodGet},
-		foreign{url: "/machines/user-domains", method: http.MethodGet},
-		foreign{url: "/machines/live/renew", method: http.MethodPost},
-		foreign{url: "/machines/live/unsubscribe", method: http.MethodPost},
-		foreign{url: "/machines/live/token", method: http.MethodGet},
-		foreign{url: "/machines/feature-flags", method: http.MethodGet},
-		foreign{url: "/machines/feature-flags", method: http.MethodPost},
-		foreign{url: "/machines/feature-flags/testFeatureFlagName", method: http.MethodGet},
-		foreign{url: "/machines/feature-flags/testFeatureFlagName", method: http.MethodPost},
-		foreign{url: "/machines/set-feature", method: http.MethodPost},
-		foreign{url: "/machines/staff-users", method: http.MethodGet},
-		foreign{url: "/machines/staff-users", method: http.MethodPost},
-		foreign{url: "/machines/staff-users/testStaffUserID", method: http.MethodGet},
-		foreign{url: "/machines/staff-users/testStaffUserID", method: http.MethodPost},
-		foreign{url: "/machines/staff-users", method: http.MethodPatch},
-		foreign{url: "/machines/staff-seats", method: http.MethodGet},
-		foreign{url: "/machines/staff-seats", method: http.MethodPost},
-		foreign{url: "/machines/staff-seats/testStaffSeatUser/testStaffSeatRole", method: http.MethodGet},
-		foreign{url: "/machines/staff-seats/testStaffSeatUser/testStaffSeatRole", method: http.MethodPost},
-		foreign{url: "/machines/staff-seats", method: http.MethodPatch},
-		foreign{url: "/machines/staff-roles", method: http.MethodGet},
-		foreign{url: "/machines/staff-roles", method: http.MethodPost},
-		foreign{url: "/machines/staff-roles/testStaffRoleName", method: http.MethodGet},
-		foreign{url: "/machines/staff-roles/testStaffRoleName", method: http.MethodPost},
-		foreign{url: "/machines/staff-invitations", method: http.MethodGet},
-		foreign{url: "/machines/staff-invitations", method: http.MethodPost},
-		foreign{url: "/machines/staff-invitations/testStaffInvitationID", method: http.MethodGet},
-		foreign{url: "/machines/staff-invitations/testStaffInvitationID", method: http.MethodPost},
-		foreign{url: "/machines/staff-invitations", method: http.MethodPatch},
-		foreign{url: "/machines/set-staff-user-password", method: http.MethodPost},
-		foreign{url: "/machines/reset-staff-user-factors", method: http.MethodPost},
-		foreign{url: "/machines/tenants/testDomain/staff-tenant-users", method: http.MethodGet},
-		foreign{url: "/machines/tenants/testDomain/staff-tenant-users", method: http.MethodPost},
-		foreign{url: "/machines/tenants/testDomain/staff-tenant-users/testStaffTenantUserID", method: http.MethodGet},
-		foreign{url: "/machines/tenants/testDomain/staff-tenant-users/testStaffTenantUserID", method: http.MethodPost},
-		foreign{url: "/machines/tenants/testDomain/staff-tenant-users", method: http.MethodPatch},
-		foreign{url: "/machines/tenants/testDomain/staff-tenant-seats", method: http.MethodGet},
-		foreign{url: "/machines/tenants/testDomain/staff-tenant-seats", method: http.MethodPost},
-		foreign{url: "/machines/tenants/testDomain/staff-tenant-seats/testStaffTenantSeatUser/testStaffTenantSeatRole", method: http.MethodGet},
-		foreign{url: "/machines/tenants/testDomain/staff-tenant-seats/testStaffTenantSeatUser/testStaffTenantSeatRole", method: http.MethodPost},
-		foreign{url: "/machines/tenants/testDomain/staff-tenant-seats", method: http.MethodPatch},
-		foreign{url: "/machines/tenants/testDomain/staff-tenant-roles", method: http.MethodGet},
-		foreign{url: "/machines/tenants/testDomain/staff-tenant-roles", method: http.MethodPost},
-		foreign{url: "/machines/tenants/testDomain/staff-tenant-roles/testStaffTenantRoleName", method: http.MethodGet},
-		foreign{url: "/machines/tenants/testDomain/staff-tenant-roles/testStaffTenantRoleName", method: http.MethodPost},
-		foreign{url: "/machines/tenants/testDomain/staff-tenant-invitations", method: http.MethodGet},
-		foreign{url: "/machines/tenants/testDomain/staff-tenant-invitations", method: http.MethodPost},
-		foreign{url: "/machines/tenants/testDomain/staff-tenant-invitations/testStaffTenantInvitationID", method: http.MethodGet},
-		foreign{url: "/machines/tenants/testDomain/staff-tenant-invitations/testStaffTenantInvitationID", method: http.MethodPost},
-		foreign{url: "/machines/tenants/testDomain/staff-tenant-invitations", method: http.MethodPatch},
-		foreign{url: "/machines/tenants/testDomain/set-staff-tenant-user-password", method: http.MethodPost},
-		foreign{url: "/machines/tenants/testDomain/reset-staff-tenant-user-factors", method: http.MethodPost},
-		foreign{url: "/machines/members-users", method: http.MethodGet},
-		foreign{url: "/machines/members-users", method: http.MethodPost},
-		foreign{url: "/machines/members-users/testMembersUserID", method: http.MethodGet},
-		foreign{url: "/machines/members-users/testMembersUserID", method: http.MethodPost},
-		foreign{url: "/machines/members-users", method: http.MethodPatch},
-		foreign{url: "/machines/members-seats", method: http.MethodGet},
-		foreign{url: "/machines/members-seats", method: http.MethodPost},
-		foreign{url: "/machines/members-seats/testMembersSeatUser/testMembersSeatRole", method: http.MethodGet},
-		foreign{url: "/machines/members-seats/testMembersSeatUser/testMembersSeatRole", method: http.MethodPost},
-		foreign{url: "/machines/members-seats", method: http.MethodPatch},
-		foreign{url: "/machines/members-roles", method: http.MethodGet},
-		foreign{url: "/machines/members-roles", method: http.MethodPost},
-		foreign{url: "/machines/members-roles/testMembersRoleName", method: http.MethodGet},
-		foreign{url: "/machines/members-roles/testMembersRoleName", method: http.MethodPost},
-		foreign{url: "/machines/members-invitations", method: http.MethodGet},
-		foreign{url: "/machines/members-invitations", method: http.MethodPost},
-		foreign{url: "/machines/members-invitations/testMembersInvitationID", method: http.MethodGet},
-		foreign{url: "/machines/members-invitations/testMembersInvitationID", method: http.MethodPost},
-		foreign{url: "/machines/members-invitations", method: http.MethodPatch},
-		foreign{url: "/machines/unlink-members-user-identity", method: http.MethodPost},
-		foreign{url: "/machines/reset-members-user-factors", method: http.MethodPost},
-		foreign{url: "/machines/tenants/testDomain/members-tenant-users", method: http.MethodGet},
-		foreign{url: "/machines/tenants/testDomain/members-tenant-users", method: http.MethodPost},
-		foreign{url: "/machines/tenants/testDomain/members-tenant-users/testMembersTenantUserID", method: http.MethodGet},
-		foreign{url: "/machines/tenants/testDomain/members-tenant-users/testMembersTenantUserID", method: http.MethodPost},
-		foreign{url: "/machines/tenants/testDomain/members-tenant-users", method: http.MethodPatch},
-		foreign{url: "/machines/tenants/testDomain/members-tenant-seats", method: http.MethodGet},
-		foreign{url: "/machines/tenants/testDomain/members-tenant-seats", method: http.MethodPost},
-		foreign{url: "/machines/tenants/testDomain/members-tenant-seats/testMembersTenantSeatUser/testMembersTenantSeatRole", method: http.MethodGet},
-		foreign{url: "/machines/tenants/testDomain/members-tenant-seats/testMembersTenantSeatUser/testMembersTenantSeatRole", method: http.MethodPost},
-		foreign{url: "/machines/tenants/testDomain/members-tenant-seats", method: http.MethodPatch},
-		foreign{url: "/machines/tenants/testDomain/members-tenant-roles", method: http.MethodGet},
-		foreign{url: "/machines/tenants/testDomain/members-tenant-roles", method: http.MethodPost},
-		foreign{url: "/machines/tenants/testDomain/members-tenant-roles/testMembersTenantRoleName", method: http.MethodGet},
-		foreign{url: "/machines/tenants/testDomain/members-tenant-roles/testMembersTenantRoleName", method: http.MethodPost},
-		foreign{url: "/machines/tenants/testDomain/members-tenant-invitations", method: http.MethodGet},
-		foreign{url: "/machines/tenants/testDomain/members-tenant-invitations", method: http.MethodPost},
-		foreign{url: "/machines/tenants/testDomain/members-tenant-invitations/testMembersTenantInvitationID", method: http.MethodGet},
-		foreign{url: "/machines/tenants/testDomain/members-tenant-invitations/testMembersTenantInvitationID", method: http.MethodPost},
-		foreign{url: "/machines/tenants/testDomain/members-tenant-invitations", method: http.MethodPatch},
-		foreign{url: "/machines/tenants/testDomain/unlink-members-tenant-user-identity", method: http.MethodPost},
-		foreign{url: "/machines/tenants/testDomain/reset-members-tenant-user-factors", method: http.MethodPost},
-		foreign{url: "/machines/tenants/testDomain/announcements", method: http.MethodGet},
-		foreign{url: "/machines/tenants/testDomain/announcements", method: http.MethodPost},
-		foreign{url: "/machines/tenants/testDomain/announcements/testAnnouncementID", method: http.MethodGet},
-		foreign{url: "/machines/tenants/testDomain/announcements/testAnnouncementID", method: http.MethodPost},
-		foreign{url: "/machines/tenants", method: http.MethodGet},
-		foreign{url: "/machines/tenants", method: http.MethodPost},
-		foreign{url: "/machines/tenants/testTenantID", method: http.MethodGet},
-		foreign{url: "/machines/tenants/testTenantID", method: http.MethodPost},
-		foreign{url: "/machines/tenants/testDomain/tenant-directories", method: http.MethodGet},
-		foreign{url: "/machines/tenants/testDomain/tenant-directories", method: http.MethodPost},
-		foreign{url: "/machines/tenants/testDomain/tenant-directories/testTenantDirectoryID", method: http.MethodGet},
-		foreign{url: "/machines/tenants/testDomain/tenant-directories/testTenantDirectoryID", method: http.MethodPost},
+		foreign{url: "/devices/permission-digest", method: http.MethodGet},
+		foreign{url: "/devices/user-domains", method: http.MethodGet},
+		foreign{url: "/devices/live/renew", method: http.MethodPost},
+		foreign{url: "/devices/live/unsubscribe", method: http.MethodPost},
+		foreign{url: "/devices/live/token", method: http.MethodGet},
+		foreign{url: "/devices/feature-flags", method: http.MethodGet},
+		foreign{url: "/devices/feature-flags", method: http.MethodPost},
+		foreign{url: "/devices/feature-flags/testFeatureFlagName", method: http.MethodGet},
+		foreign{url: "/devices/feature-flags/testFeatureFlagName", method: http.MethodPost},
+		foreign{url: "/devices/set-feature", method: http.MethodPost},
+		foreign{url: "/devices/staff-users", method: http.MethodGet},
+		foreign{url: "/devices/staff-users", method: http.MethodPost},
+		foreign{url: "/devices/staff-users/testStaffUserID", method: http.MethodGet},
+		foreign{url: "/devices/staff-users/testStaffUserID", method: http.MethodPost},
+		foreign{url: "/devices/staff-users", method: http.MethodPatch},
+		foreign{url: "/devices/staff-seats", method: http.MethodGet},
+		foreign{url: "/devices/staff-seats", method: http.MethodPost},
+		foreign{url: "/devices/staff-seats/testStaffSeatUser/testStaffSeatRole", method: http.MethodGet},
+		foreign{url: "/devices/staff-seats/testStaffSeatUser/testStaffSeatRole", method: http.MethodPost},
+		foreign{url: "/devices/staff-seats", method: http.MethodPatch},
+		foreign{url: "/devices/staff-roles", method: http.MethodGet},
+		foreign{url: "/devices/staff-roles", method: http.MethodPost},
+		foreign{url: "/devices/staff-roles/testStaffRoleName", method: http.MethodGet},
+		foreign{url: "/devices/staff-roles/testStaffRoleName", method: http.MethodPost},
+		foreign{url: "/devices/staff-invitations", method: http.MethodGet},
+		foreign{url: "/devices/staff-invitations", method: http.MethodPost},
+		foreign{url: "/devices/staff-invitations/testStaffInvitationID", method: http.MethodGet},
+		foreign{url: "/devices/staff-invitations/testStaffInvitationID", method: http.MethodPost},
+		foreign{url: "/devices/staff-invitations", method: http.MethodPatch},
+		foreign{url: "/devices/set-staff-user-password", method: http.MethodPost},
+		foreign{url: "/devices/reset-staff-user-factors", method: http.MethodPost},
+		foreign{url: "/devices/tenants/testDomain/staff-tenant-users", method: http.MethodGet},
+		foreign{url: "/devices/tenants/testDomain/staff-tenant-users", method: http.MethodPost},
+		foreign{url: "/devices/tenants/testDomain/staff-tenant-users/testStaffTenantUserID", method: http.MethodGet},
+		foreign{url: "/devices/tenants/testDomain/staff-tenant-users/testStaffTenantUserID", method: http.MethodPost},
+		foreign{url: "/devices/tenants/testDomain/staff-tenant-users", method: http.MethodPatch},
+		foreign{url: "/devices/tenants/testDomain/staff-tenant-seats", method: http.MethodGet},
+		foreign{url: "/devices/tenants/testDomain/staff-tenant-seats", method: http.MethodPost},
+		foreign{url: "/devices/tenants/testDomain/staff-tenant-seats/testStaffTenantSeatUser/testStaffTenantSeatRole", method: http.MethodGet},
+		foreign{url: "/devices/tenants/testDomain/staff-tenant-seats/testStaffTenantSeatUser/testStaffTenantSeatRole", method: http.MethodPost},
+		foreign{url: "/devices/tenants/testDomain/staff-tenant-seats", method: http.MethodPatch},
+		foreign{url: "/devices/tenants/testDomain/staff-tenant-roles", method: http.MethodGet},
+		foreign{url: "/devices/tenants/testDomain/staff-tenant-roles", method: http.MethodPost},
+		foreign{url: "/devices/tenants/testDomain/staff-tenant-roles/testStaffTenantRoleName", method: http.MethodGet},
+		foreign{url: "/devices/tenants/testDomain/staff-tenant-roles/testStaffTenantRoleName", method: http.MethodPost},
+		foreign{url: "/devices/tenants/testDomain/staff-tenant-invitations", method: http.MethodGet},
+		foreign{url: "/devices/tenants/testDomain/staff-tenant-invitations", method: http.MethodPost},
+		foreign{url: "/devices/tenants/testDomain/staff-tenant-invitations/testStaffTenantInvitationID", method: http.MethodGet},
+		foreign{url: "/devices/tenants/testDomain/staff-tenant-invitations/testStaffTenantInvitationID", method: http.MethodPost},
+		foreign{url: "/devices/tenants/testDomain/staff-tenant-invitations", method: http.MethodPatch},
+		foreign{url: "/devices/tenants/testDomain/set-staff-tenant-user-password", method: http.MethodPost},
+		foreign{url: "/devices/tenants/testDomain/reset-staff-tenant-user-factors", method: http.MethodPost},
+		foreign{url: "/devices/members-users", method: http.MethodGet},
+		foreign{url: "/devices/members-users", method: http.MethodPost},
+		foreign{url: "/devices/members-users/testMembersUserID", method: http.MethodGet},
+		foreign{url: "/devices/members-users/testMembersUserID", method: http.MethodPost},
+		foreign{url: "/devices/members-users", method: http.MethodPatch},
+		foreign{url: "/devices/members-seats", method: http.MethodGet},
+		foreign{url: "/devices/members-seats", method: http.MethodPost},
+		foreign{url: "/devices/members-seats/testMembersSeatUser/testMembersSeatRole", method: http.MethodGet},
+		foreign{url: "/devices/members-seats/testMembersSeatUser/testMembersSeatRole", method: http.MethodPost},
+		foreign{url: "/devices/members-seats", method: http.MethodPatch},
+		foreign{url: "/devices/members-roles", method: http.MethodGet},
+		foreign{url: "/devices/members-roles", method: http.MethodPost},
+		foreign{url: "/devices/members-roles/testMembersRoleName", method: http.MethodGet},
+		foreign{url: "/devices/members-roles/testMembersRoleName", method: http.MethodPost},
+		foreign{url: "/devices/members-invitations", method: http.MethodGet},
+		foreign{url: "/devices/members-invitations", method: http.MethodPost},
+		foreign{url: "/devices/members-invitations/testMembersInvitationID", method: http.MethodGet},
+		foreign{url: "/devices/members-invitations/testMembersInvitationID", method: http.MethodPost},
+		foreign{url: "/devices/members-invitations", method: http.MethodPatch},
+		foreign{url: "/devices/unlink-members-user-identity", method: http.MethodPost},
+		foreign{url: "/devices/reset-members-user-factors", method: http.MethodPost},
+		foreign{url: "/devices/tenants/testDomain/members-tenant-users", method: http.MethodGet},
+		foreign{url: "/devices/tenants/testDomain/members-tenant-users", method: http.MethodPost},
+		foreign{url: "/devices/tenants/testDomain/members-tenant-users/testMembersTenantUserID", method: http.MethodGet},
+		foreign{url: "/devices/tenants/testDomain/members-tenant-users/testMembersTenantUserID", method: http.MethodPost},
+		foreign{url: "/devices/tenants/testDomain/members-tenant-users", method: http.MethodPatch},
+		foreign{url: "/devices/tenants/testDomain/members-tenant-seats", method: http.MethodGet},
+		foreign{url: "/devices/tenants/testDomain/members-tenant-seats", method: http.MethodPost},
+		foreign{url: "/devices/tenants/testDomain/members-tenant-seats/testMembersTenantSeatUser/testMembersTenantSeatRole", method: http.MethodGet},
+		foreign{url: "/devices/tenants/testDomain/members-tenant-seats/testMembersTenantSeatUser/testMembersTenantSeatRole", method: http.MethodPost},
+		foreign{url: "/devices/tenants/testDomain/members-tenant-seats", method: http.MethodPatch},
+		foreign{url: "/devices/tenants/testDomain/members-tenant-roles", method: http.MethodGet},
+		foreign{url: "/devices/tenants/testDomain/members-tenant-roles", method: http.MethodPost},
+		foreign{url: "/devices/tenants/testDomain/members-tenant-roles/testMembersTenantRoleName", method: http.MethodGet},
+		foreign{url: "/devices/tenants/testDomain/members-tenant-roles/testMembersTenantRoleName", method: http.MethodPost},
+		foreign{url: "/devices/tenants/testDomain/members-tenant-invitations", method: http.MethodGet},
+		foreign{url: "/devices/tenants/testDomain/members-tenant-invitations", method: http.MethodPost},
+		foreign{url: "/devices/tenants/testDomain/members-tenant-invitations/testMembersTenantInvitationID", method: http.MethodGet},
+		foreign{url: "/devices/tenants/testDomain/members-tenant-invitations/testMembersTenantInvitationID", method: http.MethodPost},
+		foreign{url: "/devices/tenants/testDomain/members-tenant-invitations", method: http.MethodPatch},
+		foreign{url: "/devices/tenants/testDomain/unlink-members-tenant-user-identity", method: http.MethodPost},
+		foreign{url: "/devices/tenants/testDomain/reset-members-tenant-user-factors", method: http.MethodPost},
+		foreign{url: "/devices/tenants/testDomain/announcements", method: http.MethodGet},
+		foreign{url: "/devices/tenants/testDomain/announcements", method: http.MethodPost},
+		foreign{url: "/devices/tenants/testDomain/announcements/testAnnouncementID", method: http.MethodGet},
+		foreign{url: "/devices/tenants/testDomain/announcements/testAnnouncementID", method: http.MethodPost},
+		foreign{url: "/devices/tenants", method: http.MethodGet},
+		foreign{url: "/devices/tenants", method: http.MethodPost},
+		foreign{url: "/devices/tenants/testTenantID", method: http.MethodGet},
+		foreign{url: "/devices/tenants/testTenantID", method: http.MethodPost},
+		foreign{url: "/devices/tenants/testDomain/tenant-directories", method: http.MethodGet},
+		foreign{url: "/devices/tenants/testDomain/tenant-directories", method: http.MethodPost},
+		foreign{url: "/devices/tenants/testDomain/tenant-directories/testTenantDirectoryID", method: http.MethodGet},
+		foreign{url: "/devices/tenants/testDomain/tenant-directories/testTenantDirectoryID", method: http.MethodPost},
 	)
 	// Every session route addressed under every other outlet's prefix, unless that
 	// outlet mounts the same route itself.
@@ -647,9 +647,9 @@ func TestGeneratedRouterHooks(t *testing.T) {
 				r.Get("/portal/api/generated-router-probe", rec.RecordHandlerCall("PortalProbe"))
 				generated(r)
 			},
-			Machines: func(r chi.Router, generated func(chi.Router)) {
-				r.Use(rec.Middleware("MachinesHook"))
-				r.Get("/machines/generated-router-probe", rec.RecordHandlerCall("MachinesProbe"))
+			Devices: func(r chi.Router, generated func(chi.Router)) {
+				r.Use(rec.Middleware("DevicesHook"))
+				r.Get("/devices/generated-router-probe", rec.RecordHandlerCall("DevicesProbe"))
 				generated(r)
 			},
 		}
@@ -674,8 +674,8 @@ func TestGeneratedRouterHooks(t *testing.T) {
 			chain: slices.Concat(outermost, routerOutletChains["/portal/api/"].group, routerOutletChains["/portal/api/"].guards, []string{"PortalHook"}),
 		},
 		{
-			name: "the machines outlet's hook", url: "/machines/generated-router-probe", method: http.MethodGet, handler: "MachinesProbe",
-			chain: slices.Concat(outermost, routerOutletChains["/machines/"].group, routerOutletChains["/machines/"].guards, []string{"MachinesHook"}),
+			name: "the devices outlet's hook", url: "/devices/generated-router-probe", method: http.MethodGet, handler: "DevicesProbe",
+			chain: slices.Concat(outermost, routerOutletChains["/devices/"].group, routerOutletChains["/devices/"].guards, []string{"DevicesHook"}),
 		},
 	}
 	// Every generated route registers through its outlet's hook, so it passes the
@@ -733,7 +733,7 @@ func TestGeneratedRouterHooks(t *testing.T) {
 var prefixHookFields = map[string]string{
 	"/console/api/": "Default",
 	"/portal/api/":  "Portal",
-	"/machines/":    "Machines",
+	"/devices/":     "Devices",
 }
 
 // requestLogOutput collects what the console exporter writes through the standard
@@ -797,7 +797,7 @@ func requestLogHooks() Hooks {
 		Portal: func(r chi.Router, generated func(chi.Router)) {
 			generated(r)
 		},
-		Machines: func(r chi.Router, generated func(chi.Router)) {
+		Devices: func(r chi.Router, generated func(chi.Router)) {
 			generated(r)
 		},
 	}
@@ -947,8 +947,8 @@ func TestGeneratedRouterAPIVersion(t *testing.T) {
 		}
 	}
 	for _, route := range generatedRouterTests() {
-		if strings.HasPrefix(route.url, "/machines/") {
-			tests = append(tests, versionCase{name: "machines outlet is not checked", server: "2.0.0", app: "99.0.0", method: route.method, url: route.url, handler: route.handlerFunc})
+		if strings.HasPrefix(route.url, "/devices/") {
+			tests = append(tests, versionCase{name: "devices outlet is not checked", server: "2.0.0", app: "99.0.0", method: route.method, url: route.url, handler: route.handlerFunc})
 
 			break
 		}
@@ -1250,14 +1250,14 @@ func (s *routerPortalSessionStub) ValidateXSRFToken(next http.Handler) http.Hand
 	return s.rec.Middleware(s.prefix + "ValidateXSRFToken")(next)
 }
 
-// routerMachinesTokensStub records the machines outlet's token check under a name prefix, so a chain
+// routerDevicesTokensStub records the devices outlet's token check under a name prefix, so a chain
 // says whose tokens a request passed.
-type routerMachinesTokensStub struct {
+type routerDevicesTokensStub struct {
 	rec    *routerCallRecorder
 	prefix string
 }
 
-func (s *routerMachinesTokensStub) ValidateToken(next http.Handler) http.Handler {
+func (s *routerDevicesTokensStub) ValidateToken(next http.Handler) http.Handler {
 	return s.rec.Middleware(s.prefix + "ValidateToken")(next)
 }
 
@@ -1268,9 +1268,9 @@ func (s *routerMachinesTokensStub) ValidateToken(next http.Handler) http.Handler
 type routerHandlersStub struct {
 	*generatedHandlersStub
 	*routerDefaultSessionStub
-	rec      *routerCallRecorder
-	portal   *routerPortalSessionStub
-	machines *routerMachinesTokensStub
+	rec     *routerCallRecorder
+	portal  *routerPortalSessionStub
+	devices *routerDevicesTokensStub
 	// serverVersion is the release the stub reports; empty, no release, so a case that
 	// sets none is never refused.
 	serverVersion string
@@ -1289,7 +1289,7 @@ func newRouterHandlersStub(rec *routerCallRecorder) *routerHandlersStub {
 		routerDefaultSessionStub: &routerDefaultSessionStub{rec: rec},
 		rec:                      rec,
 		portal:                   &routerPortalSessionStub{rec: rec, prefix: "Portal"},
-		machines:                 &routerMachinesTokensStub{rec: rec, prefix: "Machines"},
+		devices:                  &routerDevicesTokensStub{rec: rec, prefix: "Devices"},
 	}
 }
 
@@ -1297,8 +1297,8 @@ func (s *routerHandlersStub) Portal() PortalSession {
 	return s.portal
 }
 
-func (s *routerHandlersStub) Machines() MachinesTokens {
-	return s.machines
+func (s *routerHandlersStub) Devices() DevicesTokens {
+	return s.devices
 }
 
 func (s *routerHandlersStub) BindAuth(name string) func(http.Handler) http.Handler {

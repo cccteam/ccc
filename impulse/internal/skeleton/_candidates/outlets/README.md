@@ -4,7 +4,7 @@ A tenant-scoped application on the cccteam resource stack with every outlet kind
 site. One hostname, three outlets — the console on `/console/api` with its browser
 application at `/console`, a second browser application (the portal) on `/portal/api`
 behind the same session handling with its application at `/portal`, and a machine REST
-API on `/machines` behind bearer tokens the staff auth issues: a staff login issues an
+API on `/devices` behind bearer tokens the staff auth issues: a staff login issues an
 application token for the outlet on the console's Tokens page (`/console/tokens`), or
 approves a command-line client's device authorization on its device page
 (`/console/device`, the page the staff auth names as its `DevicePage`), and the token
@@ -18,7 +18,7 @@ outlet's prefix), the data level's tenant roster keeps the tenants current on ev
 instance (a tenant created through the API is usable at once, without a restart), and
 tenant existence is concealed from logins that hold nothing there. `Announcement` is the first tenant-scoped resource — a login's tenant list
 is where it holds a grant, and a grant needs a tenant-scoped resource to land on, so the
-application ships one. `Reading` is machines-only. The console and the portal each mirror
+application ships one. `Reading` is devices-only. The console and the portal each mirror
 the API's shape: every tenant-scoped page lives under the tenant segment,
 `/tenants/{tenantID}/...` (the generated `DomainRoutePath`), so a link to a tenant's page
 can be shared and a bookmark lands where it points, and the global pages keep their routes.
@@ -54,16 +54,16 @@ every edit. The console's tenant pages carry the declaration at
 `/tenants/{tenantID}/sign-in`: the tenant's administrator declares and withdraws
 directories there, the application's administrator sets directory only.
 
-The release ships a program for the machines: the sensor, `cmd/sensor`, declared on the
-machines outlet in `cmd/generate/resourcegenerator/generator.go` with
+The release ships a program for the devices: the sensor, `cmd/sensor`, declared on the
+devices outlet in `cmd/generate/resourcegenerator/generator.go` with
 `generation.ShipsProgram("cmd/sensor", generation.Platforms("linux/amd64"))`. The image
 build compiles it for each platform into the image, and the outlet serves the file with
-its checksum at `GET /machines/programs/sensor/<release>/linux/amd64`, behind the token
-check, so a copy installed on a machine fetches its next release where it already posts
+its checksum at `GET /devices/programs/sensor/<release>/linux/amd64`, behind the token
+check, so a copy installed on a device fetches its next release where it already posts
 its readings. A person installs the first copy from the release's assets or with `go
 install <module>/cmd/sensor@<release>`. Given the outlet's URL, an application token a
 staff login issued for the outlet on the console's Tokens page, and the tenant
-(`SENSOR_OUTLET`, `SENSOR_TOKEN`, `SENSOR_TENANT`; `SENSOR_SOURCE` names the machine in
+(`SENSOR_OUTLET`, `SENSOR_TOKEN`, `SENSOR_TENANT`; `SENSOR_SOURCE` names the device in
 its readings, the hostname when unset), `sensor post 21.5` posts one reading and `sensor
 list` lists the latest, and after either the copy reads the server's release from the
 answer (`X-Api-Version`): newer than its own, it fetches that release's file with the
@@ -88,10 +88,10 @@ generated router test proves the route sits behind the token check.
   application (`session.DisableRoleSync`): the bootstrap assigns the development members
   their roles.
 - `app` holds the handlers: generated resource handlers for every outlet plus the
-  hand-written middleware, the machines outlet's token surface, and the two
+  hand-written middleware, the devices outlet's token surface, and the two
   static-asset surfaces. `pkg/router` composes them: the staff auth's session group
   around the console, the members auth's around the portal (login redirect, directory
-  callback, front-channel logout), the machines outlet's group behind the staff auth's
+  callback, front-channel logout), the devices outlet's group behind the staff auth's
   token check, with the device flow's two endpoints under its prefix and the token routes
   (`/console/api/user/tokens`, `/console/api/user/device`) on the console, which the
   console's Tokens page and device page (the client library's `ccc-tokens` entry) read
@@ -99,12 +99,12 @@ generated router test proves the route sits behind the token check.
   and the root redirect to the console's.
 - `pkg/resources` holds the resource structs the generator reads: `Tenant` (the tenant
   record, a global resource), `Announcement` (tenant-scoped, on the console and the
-  portal), and `Reading` (tenant-scoped, machines-only). `schema/migrations` holds the tables they describe; `schema/devseed` the
+  portal), and `Reading` (tenant-scoped, devices-only). `schema/migrations` holds the tables they describe; `schema/devseed` the
   development tenants; `pkg/auth/staff/roles.json` and `pkg/auth/members/roles.json` each
   auth's role file: the default roles the release ships, embedded in the binary and
   validated against the generated collection when the auth's engine opens. A domain role
   is held in every tenant domain, so nothing provisions a file per tenant. A role is named
-  for its job in PascalCase (`Administrator`, `TenantAdministrator`, `MachineOperator`),
+  for its job in PascalCase (`Administrator`, `TenantAdministrator`, `DeviceOperator`),
   never for where it is held: the file's structure says that, and the Users page shows it
   as the role's kind. Every role carries a description, one or two plain sentences saying
   what it is for, which the Users page shows beside the name; a role without one is
@@ -112,8 +112,8 @@ generated router test proves the route sits behind the token check.
   authors `Administrator` over the tenant record and the global partition of the
   staff auth's user-management surface (`StaffUsers`, `StaffSeats`, `StaffInvitations`, `StaffRoles`,
   `SetStaffUserPassword`), `TenantAdministrator` over the console's announcements and the
-  surface's tenant partition (`StaffTenantUsers` and its siblings), and `MachineOperator`,
-  the role of the people whose programs read and write the readings through the machines
+  surface's tenant partition (`StaffTenantUsers` and its siblings), and `DeviceOperator`,
+  the role of the people whose programs read and write the readings through the devices
   outlet, over the readings; the members file authors
   `TenantAdministrator` over the portal's announcements and the members auth's tenant
   partition (`MembersTenantUsers` and its siblings). A new resource stays invisible until a role in its auth's file is granted
@@ -181,7 +181,7 @@ keeps a known flag's state, and deletes what the release no longer declares, and
 flip is recorded in `FeatureFlagChanges`. The App reads the table when it is built
 (`FeatureSet`) and follows it from `Start` (the live service's signals document, the
 `features` kind, and the five-minute backstop reread), so the generated routes, decoders,
-digest and features route answer from one copy. Every outlet serves `features` under its prefix (`/console/api`, `/portal/api`, `/machines`), and the two session outlets serve `feature-flags` and `set-feature`. Flipping is the generated
+digest and features route answer from one copy. Every outlet serves `features` under its prefix (`/console/api`, `/portal/api`, `/devices`), and the two session outlets serve `feature-flags` and `set-feature`. Flipping is the generated
 `SetFeature` method, held by the `FeatureAdministrator` role in the staff role file
 (Execute on `SetFeature`, List and Read on `FeatureFlags`), which the development `admin`
 login holds, so a member of the portal sees the flags' effect and flips nothing; the library's `FeatureFlagsDialog` calls it, and the console decides
@@ -306,7 +306,7 @@ through `FIRESTORE_EMULATOR_HOST` in development (`pkg/config`, `LiveSettings`;
 with no project named, the driver opens the emulator under its own project id). The live service is required: with neither
 a database nor the emulator configured the data level refuses to start, naming the two
 variables. The App hands it to the generated handlers
-through `LiveService()`, and the generated router serves the live routes on both browser outlets (`/console/api/live/...` and `/portal/api/live/...`: `renew`, `unsubscribe`, `token`), while the machines outlet, a machine surface, refuses a request carrying the header. The
+through `LiveService()`, and the generated router serves the live routes on both browser outlets (`/console/api/live/...` and `/portal/api/live/...`: `renew`, `unsubscribe`, `token`), while the devices outlet, a machine surface, refuses a request carrying the header. The
 content security policy the App sends names the change feed's origins beside the
 application (the emulator in development, Firebase's hosts in production), since the
 browser's feed connects to them directly rather than through the API.

@@ -430,8 +430,8 @@
         }
       },
       {
-        "name": "MachineOperator",
-        "description": "Records and reads a tenant's readings through the machines outlet, on behalf of the programs that send them.",
+        "name": "DeviceOperator",
+        "description": "Records and reads a tenant's readings through the devices outlet, on behalf of the programs that send them.",
         "permissions": {
           "Create": [
             {

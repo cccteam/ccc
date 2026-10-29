@@ -91,7 +91,7 @@ const (
 	factorCodesTable    = "StaffSessionFactorCodes"
 	trustedDevicesTable = "StaffSessionTrustedDevices"
 
-	// MachinesOutlet is a machine outlet whose tokens the auth issues: the generator
+	// DevicesOutlet is a machine outlet whose tokens the auth issues: the generator
 	// program declares it with Tokens of this package, so the generated router composes
 	// the auth's token check in front of the outlet's routes, mounts the device flow's
 	// endpoints under it, and serves the token routes on the auth's session outlet. A
@@ -99,7 +99,7 @@ const (
 	// issued, or one a command-line client obtained with a person's approval. New
 	// registers the outlet on the Auth before the first request, as it registers the
 	// sign-in methods.
-	MachinesOutlet = "machines"
+	DevicesOutlet = "devices"
 )
 
 // roleFile is the auth's default roles: the role file beside this package, embedded in the
@@ -197,14 +197,14 @@ type Auth struct {
 type Handlers struct {
 	*Session
 	password *session.PasswordMethod
-	machines *session.MachineOutlet
+	devices  *session.MachineOutlet
 }
 
-// MachinesTokens returns the machines outlet's token check (router.MachinesTokens): the
-// machine outlet registered on the Auth under MachinesOutlet, whose ValidateToken binds
+// DevicesTokens returns the devices outlet's token check (router.DevicesTokens): the
+// machine outlet registered on the Auth under DevicesOutlet, whose ValidateToken binds
 // each request under the outlet's prefix to the person its bearer token acts for.
-func (h *Handlers) MachinesTokens() *session.MachineOutlet {
-	return h.machines
+func (h *Handlers) DevicesTokens() *session.MachineOutlet {
+	return h.devices
 }
 
 // PendingStatus reports the sign-in that waits for a password confirmation, if any.
@@ -382,12 +382,12 @@ func New(ctx context.Context, db *cloudspanner.Client, settings *Settings) (*Aut
 
 	handlers := &Handlers{Session: authSession}
 	handlers.password = registerPassword(authSession)
-	// The machines outlet, registered before the first request as the methods are: its
+	// The devices outlet, registered before the first request as the methods are: its
 	// token check is what the generated router composes in front of the outlet's routes.
 	// Registration closes with the first use of the Auth, so it happens here rather than
 	// where the App is built, which a bootstrap or a test harness may reach after
 	// creating users through the API.
-	handlers.machines = session.RegisterMachineOutlet(authSession, MachinesOutlet)
+	handlers.devices = session.RegisterMachineOutlet(authSession, DevicesOutlet)
 
 	// The sign-in rule: the library's tenant policy. A person's tenants are where they
 	// hold a role (the engine's memberships), and what each tenant admits is its

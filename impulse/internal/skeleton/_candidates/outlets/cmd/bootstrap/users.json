@@ -8,7 +8,7 @@
     {
       "user": "member",
       "password": "password",
-      "roles": { "global": [], "everyDomain": [], "domains": { "north": ["TenantAdministrator", "MachineOperator"] } }
+      "roles": { "global": [], "everyDomain": [], "domains": { "north": ["TenantAdministrator", "DeviceOperator"] } }
     }
   ],
   "members": [

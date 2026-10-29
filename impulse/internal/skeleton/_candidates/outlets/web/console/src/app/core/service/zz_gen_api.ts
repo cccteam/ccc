@@ -325,7 +325,7 @@ export const apiDescriptor = defineApiDescriptor({
     deviceRoute: 'user/device',
     approveRoute: 'user/device/approve',
     denyRoute: 'user/device/deny',
-    outlets: [{ name: 'machines', prefix: '/machines' }],
+    outlets: [{ name: 'devices', prefix: '/devices' }],
   },
 });
 

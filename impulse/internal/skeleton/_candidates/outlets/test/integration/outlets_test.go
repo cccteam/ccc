@@ -56,7 +56,7 @@ func TestPortalOutlet(t *testing.T) {
 		{name: "the portal serves the tenant digest", target: portalAPI + "/permission-digest?domain=" + north, want: http.StatusOK},
 		{name: "announcements are a portal member", target: portalAPI + "/tenants/" + north + "/announcements", want: http.StatusOK},
 		{name: "the tenant record is console-only", target: portalAPI + "/tenants", want: http.StatusNotFound},
-		{name: "readings are machines-only", target: portalAPI + "/tenants/" + north + "/readings", want: http.StatusNotFound},
+		{name: "readings are devices-only", target: portalAPI + "/tenants/" + north + "/readings", want: http.StatusNotFound},
 		{name: "a member's session is a stranger to the console", target: consoleAPI + "/tenants/" + north + "/announcements", want: http.StatusUnauthorized},
 	}
 	for _, tt := range tests {
@@ -98,11 +98,11 @@ func TestConsoleSessionOnPortal(t *testing.T) {
 	}
 }
 
-// TestMachinesOutlet drives the machines outlet: a staff login issues an application
+// TestDevicesOutlet drives the devices outlet: a staff login issues an application
 // token for it on the console, and the token binds each request to that person, who
 // then goes through the same tenancy and permission checks as a browser; without a
 // token the staff auth issued the surface is closed.
-func TestMachinesOutlet(t *testing.T) {
+func TestDevicesOutlet(t *testing.T) {
 	t.Parallel()
 
 	ctx := t.Context()
@@ -115,11 +115,11 @@ func TestMachinesOutlet(t *testing.T) {
 		target string
 		want   int
 	}{
-		{name: "the token opens a tenant its person holds a grant in", token: token, target: "/machines/tenants/" + north + "/readings", want: http.StatusOK},
-		{name: "a tenant without a foothold is concealed", token: token, target: "/machines/tenants/" + south + "/readings", want: http.StatusNotFound},
-		{name: "announcements are not on the machines outlet", token: token, target: "/machines/tenants/" + north + "/announcements", want: http.StatusNotFound},
-		{name: "a token the staff auth never issued is refused", token: "not-a-token", target: "/machines/tenants/" + north + "/readings", want: http.StatusUnauthorized},
-		{name: "no token is refused", token: "", target: "/machines/tenants/" + north + "/readings", want: http.StatusUnauthorized},
+		{name: "the token opens a tenant its person holds a grant in", token: token, target: "/devices/tenants/" + north + "/readings", want: http.StatusOK},
+		{name: "a tenant without a foothold is concealed", token: token, target: "/devices/tenants/" + south + "/readings", want: http.StatusNotFound},
+		{name: "announcements are not on the devices outlet", token: token, target: "/devices/tenants/" + north + "/announcements", want: http.StatusNotFound},
+		{name: "a token the staff auth never issued is refused", token: "not-a-token", target: "/devices/tenants/" + north + "/readings", want: http.StatusUnauthorized},
+		{name: "no token is refused", token: "", target: "/devices/tenants/" + north + "/readings", want: http.StatusUnauthorized},
 		{name: "readings are not on the console outlet", token: token, target: consoleAPI + "/tenants/" + north + "/readings", want: http.StatusNotFound},
 	}
 	for _, tt := range tests {
@@ -134,17 +134,17 @@ func TestMachinesOutlet(t *testing.T) {
 	}
 }
 
-// TestMachinesDeviceAuthorization starts a command-line client's device authorization
-// on the machines outlet and confirms where it sends the person: the console's device
+// TestDevicesOutletDeviceAuthorization starts a command-line client's device authorization
+// on the devices outlet and confirms where it sends the person: the console's device
 // page (staff.Settings.DevicePage), with the code the person types already in the query,
 // which the console's device page reads to look the request up.
-func TestMachinesDeviceAuthorization(t *testing.T) {
+func TestDevicesOutletDeviceAuthorization(t *testing.T) {
 	t.Parallel()
 
 	ctx := t.Context()
 	s := newServed(ctx, t)
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.server.URL+"/machines/oauth/device/authorize", strings.NewReader(`{"client_id":"suite","outlet":"machines"}`))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.server.URL+"/devices/oauth/device/authorize", strings.NewReader(`{"client_id":"suite","outlet":"devices"}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -179,13 +179,13 @@ func TestMachinesDeviceAuthorization(t *testing.T) {
 }
 
 // issueToken signs the staff login in on the console and issues an application token
-// for the machines outlet, as a person does on the console's token page.
+// for the devices outlet, as a person does on the console's token page.
 func issueToken(ctx context.Context, t *testing.T, s *served, user string) string {
 	t.Helper()
 
 	b := newBrowser(t, s, consoleAPI)
 	b.signIn(ctx, user)
-	status, body := b.do(ctx, http.MethodPost, consoleAPI+"/user/tokens", []byte(`{"name":"suite","outlet":"machines"}`))
+	status, body := b.do(ctx, http.MethodPost, consoleAPI+"/user/tokens", []byte(`{"name":"suite","outlet":"devices"}`))
 	if status != http.StatusOK {
 		t.Fatalf("POST user/tokens: status %d: %s", status, body)
 	}
