@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.3](https://github.com/cccteam/ccc/compare/bedrock/v0.4.2...bedrock/v0.4.3) (2026-10-29)
+
+
+### Features
+
+* **bedrock:** the operations workflow's `release` action runs the application's release trigger again on the default branch's head from GitHub, for the release a merged release pull request is owed when the platform ended the push's build before release-please ran; `bedrock release` dispatches it, and the operations identity acts as the release identity in the first environment ([#1235](https://github.com/cccteam/ccc/issues/1235)) ([1586c38](https://github.com/cccteam/ccc/commit/1586c38597c7788a3be2ebea2734cd18790066ac))
+
 ## [0.4.2](https://github.com/cccteam/ccc/compare/bedrock/v0.4.1...bedrock/v0.4.2) (2026-10-29)
 
 
