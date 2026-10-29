@@ -688,6 +688,27 @@ var Steps = []Step{
 		Impulse: release("v0.6.5"),
 		Note:    "the login page forwards a deep link straight to the only redirect sign-in method: a person a guard sent to the login page, with one redirect method registered and no session standing, goes on to the provider without a stop at the page, while a direct visit to the login page, a refusal, a pending step, a password method beside the redirect one or a second redirect method stop at the page as before; after a refusal the same redirect button asks the provider for its account chooser (the login route's ?prompt=select_account, which the Google and Entra routes of session v0.13.15 pass to the provider as its prompt, refusing any other value with 400), so a person refused as not invited is not sent round the same account again, and a direct visit offers Use a different <Label> account under each redirect button; the OIDC callback refuses a provider's error answer (error=access_denied when the person canceled at its chooser) before any token exchange, so the login page is always reached with a code; no code change is needed: the pins move to session v0.13.15, and with it to ccc v0.3.6 and ccc/tracer v0.3.1, which it requires, and the web pins to @cccteam/resource 0.0.16, @cccteam/resource-angular 0.0.23 and @cccteam/resource-firestore 0.0.14, which carry the forward, the chooser and the link",
 	},
+	{
+		Pins: pins(`
+			access v0.12.0
+			ccc v0.3.6
+			ccc/accesstypes v0.7.0
+			ccc/cloud v0.2.1
+			ccc/resource v0.16.0
+			ccc/tracer v0.3.1
+			db-initiator v0.4.3
+			httpio v0.7.22
+			logger v0.1.30
+			session v0.13.16
+		`),
+		Web: web(`
+			@cccteam/resource 0.0.16
+			@cccteam/resource-angular 0.0.23
+			@cccteam/resource-firestore 0.0.14
+		`),
+		Impulse: release("v0.6.6"),
+		Note:    "a sign-out at Microsoft ends the application's sessions through a Microsoft registration serving several tenants or personal accounts, which it never did: Entra sends the session id alone, and session v0.13.16's front-channel logout handler scopes such a request to the registration's declared issuers; no code change is needed",
+	},
 }
 
 // validatePending holds a step's Pending mark to its pins: a pin at a pseudo-version
