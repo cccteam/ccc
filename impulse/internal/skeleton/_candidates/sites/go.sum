@@ -66,8 +66,8 @@ github.com/cccteam/ccc/impulse v0.0.0-20261002140325-0702ef849363 h1:VEbj1GuIApo
 github.com/cccteam/ccc/impulse v0.0.0-20261002140325-0702ef849363/go.mod h1:WGcS75SP04O5Gn2TsTGqgp8+RdNK09LUoz14Ku9wwgQ=
 github.com/cccteam/ccc/pkg v0.1.7 h1:H0VZfI4p4w+Jb7QPFmtEWECxI3spYvCx+CPgT7E4Fkg=
 github.com/cccteam/ccc/pkg v0.1.7/go.mod h1:WZ6hrpp+ci1N8iFb/qItR6zScmGxwXqnqgPw6UPmMTc=
-github.com/cccteam/ccc/resource v0.16.0 h1:dTcOULPU7SDgWmb3/nLC9rylS7GeTbMceNboB7yi0H8=
-github.com/cccteam/ccc/resource v0.16.0/go.mod h1:d0P+k1uFrkrRaY4ey3fbEPs+RYWd7i4LGQttFjsMCSc=
+github.com/cccteam/ccc/resource v0.16.2 h1:SvfC7Z1dnf/l1YAXeCGFbUv/XKyFss/Do5be30rU9dI=
+github.com/cccteam/ccc/resource v0.16.2/go.mod h1:d0P+k1uFrkrRaY4ey3fbEPs+RYWd7i4LGQttFjsMCSc=
 github.com/cccteam/ccc/securehash v0.0.18 h1:8OrOPjHeN8k94UtYVYX2gAeLk+6V4vVYqnsxxwxigI4=
 github.com/cccteam/ccc/securehash v0.0.18/go.mod h1:/sVpckIrGY8gXmjuTUDt9cTQmOwrpoJ0AJX5m/hB21Y=
 github.com/cccteam/ccc/tracer v0.3.1 h1:IB7ky/7DaBbZGlpBD9okVYKk7/2YTnvgdPrPVwsIHQw=
@@ -78,8 +78,8 @@ github.com/cccteam/httpio v0.7.22 h1:/5Xb8E6k2W7kPzKddmxTsgowaI6skcYm7/f52K1vM7w
 github.com/cccteam/httpio v0.7.22/go.mod h1:8YRWx9PKjuPo3umkEXH/lPg75WuWye89T+XwDoonOts=
 github.com/cccteam/logger v0.1.30 h1:qXTDpDg27gAlfTL5A6pMs8Tr1ZmHtlvjNeoHM+1kSDg=
 github.com/cccteam/logger v0.1.30/go.mod h1:iXUwTSSBsVV+3EprEzBaTVdBZKQmKsc3rT7dHtzuBew=
-github.com/cccteam/session v0.13.15 h1:ZamgRMPMTwicbdWy1H9VO03T/RnYDE15ubVmzT2Lwr0=
-github.com/cccteam/session v0.13.15/go.mod h1:eXqRs9nupArHxi1TM+mPewCtZ0GQvm9lbb6lKjZ8Yhw=
+github.com/cccteam/session v0.13.16 h1:Ur+goV1MADXlQEHfC7Zdhjm5T6M4ZhV3oNXan5p53fk=
+github.com/cccteam/session v0.13.16/go.mod h1:eXqRs9nupArHxi1TM+mPewCtZ0GQvm9lbb6lKjZ8Yhw=
 github.com/cccteam/spxscan v0.0.17 h1:K7Js6L4gtwEttyDt6iP5W1tFBbopR/rrNu3Z3UHF5Mc=
 github.com/cccteam/spxscan v0.0.17/go.mod h1:pDMvFxoeWqOH+/VSv4dMpSbi0DrR/MkbYXpCj3dARV0=
 github.com/cenkalti/backoff/v4 v4.3.0 h1:MyRJ/UdXutAwSAT+s3wNd7MfTIcy71VQueUuFK343L8=
