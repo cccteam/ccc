@@ -82,7 +82,8 @@ func registerDirectory(authSession *Session, accessClient *access.Client, settin
 // directorySlot is the registration's organization slot, one tenant (TenantID), with the
 // tenants the deployment administers declared as attesting (AdministeredTenants): a
 // sign-in from one carries the tenant's own second factor, which the deployment vouches
-// for, and is not asked for the sign-in code.
+// for, and is not asked for the sign-in code. bedrock reads the registration's tenant
+// shape from this function, for the app registration's supported account types.
 func directorySlot(settings *Settings) (azure.TenantSet, error) {
 	tenant := azure.Tenant(settings.Directory.TenantID)
 	for _, id := range parseDirectoryAdministered(settings.Directory.AdministeredTenants) {

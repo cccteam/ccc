@@ -65,12 +65,9 @@ type methodView struct {
 	Field string
 	// Type is the method's Go type (*azure.Method).
 	Type string
-	// SlotExpr is the organization slot as the registration's Config takes it, for a
-	// method that declares no administered organizations (Microsoft personal accounts
-	// alone); every other method builds its slot in a function of its own (<field>Slot),
-	// which SlotKind, the slot's normalized name, and SlotWords, the slot in words,
-	// render.
-	SlotExpr  string
+	// SlotKind is the slot's normalized name and SlotWords the slot in words, rendering
+	// the function every directory method builds its slot in (<field>Slot), the one
+	// place bedrock reads a Microsoft registration's tenant shape from.
 	SlotKind  string
 	SlotWords string
 	// AccountsExpr is the account rule as the Config takes it.
@@ -226,7 +223,7 @@ func newMethodView(spec *Spec, m *Method) *methodView {
 		mv.Type = "*session.PasswordMethod"
 		mv.Imports = []string{netHTTP, "github.com/cccteam/session"}
 	case app.MethodAzure:
-		azureView(mv, m, settings)
+		azureView(mv, m)
 	case app.MethodGoogle:
 		googleView(mv, m, settings)
 	}
@@ -260,24 +257,10 @@ func splitImports(imports []string) (std, other []string) {
 // netHTTP is the import every method's handlers need.
 const netHTTP = "net/http"
 
-// azureView fills the view of a Microsoft Entra method: its slot expression, its
-// role-synchronization expression and its imports.
-func azureView(mv *methodView, m *Method, settings string) {
+// azureView fills the view of a Microsoft Entra method: its role-synchronization
+// expression and its imports.
+func azureView(mv *methodView, m *Method) {
 	mv.Type = "*azure.Method"
-	switch m.slot() {
-	case SlotOne:
-		mv.SlotExpr = "azure.Tenant(" + settings + ".TenantID)"
-	case SlotListed:
-		mv.SlotExpr = "tenants"
-	case SlotAny:
-		mv.SlotExpr = "azure.AnyTenant()"
-	case SlotPersonal:
-		mv.SlotExpr = "azure.PersonalAccounts()"
-	case SlotOnePersonal:
-		mv.SlotExpr = "azure.Tenants(azure.Tenant(" + settings + ".TenantID), azure.PersonalAccounts())"
-	case SlotAnyPersonal:
-		mv.SlotExpr = "azure.Tenants(azure.AnyTenant(), azure.PersonalAccounts())"
-	}
 	if m.SyncsRoles() {
 		mv.RoleSyncExpr = "signin.RoleSync(accessClient.UserManager())"
 	} else {
@@ -320,6 +303,8 @@ func slotWords(m *Method) string {
 		return "one tenant (TenantID) and Microsoft personal accounts"
 	case SlotAnyPersonal:
 		return "any work or school tenant and Microsoft personal accounts"
+	case SlotPersonal:
+		return "Microsoft personal accounts alone"
 	case SlotAnyWorkspace:
 		return "any Workspace account"
 	case SlotMixed:
@@ -329,26 +314,10 @@ func slotWords(m *Method) string {
 	}
 }
 
-// googleView fills the view of a Google Workspace method: its slot expression, its
-// role-synchronization expression and its imports.
+// googleView fills the view of a Google Workspace method: its role-synchronization
+// expression and its imports.
 func googleView(mv *methodView, m *Method, settings string) {
 	mv.Type = "*google.Method"
-	workspace := "google.Workspace(" + m.Registration() + ", " + settings + ".HostedDomain)"
-	switch m.slot() {
-	case SlotOne:
-		mv.SlotExpr = workspace
-	case SlotListed:
-		mv.SlotExpr = "workspaces"
-	case SlotAnyWorkspace:
-		mv.SlotExpr = "google.AnyWorkspace()"
-	case SlotAny:
-		// Any Google account, with any Workspace named beside it so a Workspace account's
-		// link carries its domain as its connection (what a tenant's declaration names a
-		// Google directory by) rather than the provider itself.
-		mv.SlotExpr = "google.Workspaces(google.AnyWorkspace(), google.AnyGoogleAccount())"
-	case SlotMixed:
-		mv.SlotExpr = "google.Workspaces(" + workspace + ", google.AnyGoogleAccount())"
-	}
 	if m.SyncsRoles() {
 		mv.RoleSyncExpr = "google.RoleSync(accessClient.UserManager(), " + settings + ".GroupPrefix, lookup)"
 	} else {

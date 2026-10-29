@@ -207,12 +207,12 @@ type Method struct {
 	// AuthorityApplication for DisableRoleSync, and empty for the password method or a
 	// slot the scan does not read.
 	Authority string
-	// Tenants is the tenant shape of a Microsoft registration, read from the
-	// registration's Tenants slot: TenantsOne for azure.Tenant or azure.NamedTenant alone,
-	// TenantsListed for azure.Tenants of several tenants, TenantsAny for azure.AnyTenant
-	// (alone or beside listed tenants) and TenantsPersonal for azure.PersonalAccounts
-	// alone. Empty for another method, and for a slot the scan does not read, such as
-	// the tenants a function parses out of a setting at startup.
+	// Tenants is the tenant shape of a Microsoft registration, read from the slot
+	// function its configuration's Tenants slot calls (readTenants): TenantsOne for
+	// azure.Tenant or azure.NamedTenant alone, TenantsListed for azure.Tenants of several
+	// tenants or a tenant built in a loop, TenantsAny for azure.AnyTenant (alone or beside
+	// listed tenants) and TenantsPersonal for azure.PersonalAccounts alone. Empty for
+	// another method, and for a slot written any other way, which bedrock refuses.
 	Tenants string
 	// PersonalAccounts reports a Microsoft registration admitting Microsoft personal
 	// accounts (azure.PersonalAccounts), alone (TenantsPersonal) or beside the tenants
