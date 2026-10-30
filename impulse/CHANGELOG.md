@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.6.9](https://github.com/cccteam/ccc/compare/impulse/v0.6.8...impulse/v0.6.9) (2026-10-30)
+
+
+### Bug Fixes
+
+* **impulse:** the skeleton's lint allows cloud.google.com/go/civil, which a resource with a date field imports; depguard refused the import in an application's own resource before ([#1237](https://github.com/cccteam/ccc/issues/1237)) ([16f3161](https://github.com/cccteam/ccc/commit/16f316101d05f4828116c7c52e1a6fc8e0d4b002))
+
+
+### Dependencies
+
+* **impulse:** the skeleton's pins and Lodestar move to session v0.13.18 and to @cccteam/resource 0.0.18, @cccteam/resource-angular 0.0.26 and @cccteam/resource-firestore 0.0.16, in the 0.6.9 step: an invitation is accepted through a directory only as the invited address, and the login card's invitation screen offers every way that can accept it for that address and none that cannot ([#1237](https://github.com/cccteam/ccc/issues/1237)) ([16f3161](https://github.com/cccteam/ccc/commit/16f316101d05f4828116c7c52e1a6fc8e0d4b002))
+
 ## [0.6.8](https://github.com/cccteam/ccc/compare/impulse/v0.6.7...impulse/v0.6.8) (2026-10-29)
 
 
