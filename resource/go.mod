@@ -16,7 +16,7 @@ require (
 	github.com/cccteam/ccc/cache v0.2.4
 	github.com/cccteam/ccc/cloud v0.2.3
 	github.com/cccteam/ccc/pkg v0.1.9
-	github.com/cccteam/ccc/securehash v0.0.19
+	github.com/cccteam/ccc/securehash v0.0.20
 	github.com/cccteam/ccc/tracer v0.3.2
 	github.com/cccteam/db-initiator v0.4.3
 	github.com/cccteam/httpio v0.7.22
@@ -41,7 +41,7 @@ require (
 	golang.org/x/mod v0.42.0
 	golang.org/x/sync v0.24.0
 	golang.org/x/tools v0.52.0
-	google.golang.org/api v0.307.0
+	google.golang.org/api v0.308.0
 	google.golang.org/grpc v1.84.0
 	google.golang.org/protobuf v1.36.12
 )

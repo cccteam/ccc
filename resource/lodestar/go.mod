@@ -28,7 +28,7 @@ require (
 	github.com/sethvargo/go-envconfig v1.4.3
 	github.com/shopspring/decimal v1.6.0
 	github.com/spf13/cobra v1.10.2
-	google.golang.org/api v0.307.0
+	google.golang.org/api v0.308.0
 	google.golang.org/grpc v1.84.0
 )
 
@@ -55,7 +55,7 @@ require (
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/cccteam/ccc/cache v0.2.4 // indirect
 	github.com/cccteam/ccc/pkg v0.1.9 // indirect
-	github.com/cccteam/ccc/securehash v0.0.19 // indirect
+	github.com/cccteam/ccc/securehash v0.0.20 // indirect
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
