@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.10](https://github.com/cccteam/ccc/compare/impulse/v0.6.9...impulse/v0.6.10) (2026-10-30)
+
+
+### Dependencies
+
+* **impulse:** the skeleton's pins and Lodestar move to session v0.13.19 and the web library's address rule on every path, in the 0.6.10 step ([#1239](https://github.com/cccteam/ccc/issues/1239)) ([88a091a](https://github.com/cccteam/ccc/commit/88a091ab5c1b4c45c07d342aedecbee673c5d9d2))
+
 ## [0.6.9](https://github.com/cccteam/ccc/compare/impulse/v0.6.8...impulse/v0.6.9) (2026-10-30)
 
 
