@@ -33,7 +33,7 @@
                 "input": "console/public"
               }
             ],
-            "styles": ["@angular/material/prebuilt-themes/azure-blue.css", "console/src/styles.scss"],
+            "styles": ["console/src/theme.scss", "console/src/styles.scss"],
             "scripts": [],
             "define": { "APP_VERSION": "'dev'" }
           },
@@ -139,7 +139,7 @@
                 "input": "portal/public"
               }
             ],
-            "styles": ["@angular/material/prebuilt-themes/azure-blue.css", "portal/src/styles.scss"],
+            "styles": ["portal/src/theme.scss", "portal/src/styles.scss"],
             "scripts": [],
             "define": { "APP_VERSION": "'dev'" }
           },

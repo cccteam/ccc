@@ -1,0 +1,24 @@
+// The application's Material theme: the one place for its colours, type and density.
+// Angular Material's mat.theme emits the system tokens every Material control reads, and
+// the library's theme sheet (@cccteam/resource-angular/theme) hands the frame the library
+// draws itself (the navigation, the resource pages, the notices, the dialogs) to the same
+// tokens, so a change of palette here reaches every surface. The manifest of the crew console
+// (public/manifest.webmanifest, theme_color and background_color) and index.html's
+// theme-color carry the page's colours as literals; keep them in step with the palette
+// until they are rendered from one brand declaration.
+@use '@angular/material' as mat;
+@use '@cccteam/resource-angular/theme';
+
+html {
+  color-scheme: light;
+  @include mat.theme(
+    (
+      color: (
+        primary: mat.$azure-palette,
+        tertiary: mat.$blue-palette,
+      ),
+      typography: Roboto,
+      density: 0,
+    )
+  );
+}
