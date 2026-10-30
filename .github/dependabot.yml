@@ -48,8 +48,12 @@ updates:
       go-dependencies:
         patterns:
           - '*'
+  # Lodestar (resource/lodestar) is its own module that replaces the resource module with the
+  # checkout, and resource's tests run Lodestar's: the two move together, in one PR.
   - package-ecosystem: 'gomod'
-    directory: '/resource'
+    directories:
+      - '/resource'
+      - '/resource/lodestar'
     schedule:
       interval: 'weekly'
     commit-message:
