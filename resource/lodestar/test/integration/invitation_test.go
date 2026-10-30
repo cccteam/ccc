@@ -225,10 +225,13 @@ func TestInvitation_globalSignUpWithPassword(t *testing.T) {
 
 // TestInvitation_sectorAcceptedBySignedInPersona invites an address into Anvil and has
 // a persona who already holds a login accept it: the marshal (SectorMarshal at Anvil,
-// Create on CrewSectorInvitations in every role but its own) invites the cadet's
-// address as a harbormaster, cannot invite a marshal, and the cadet, signed in with her
-// password, opens the link and accepts: she holds the seat, and the address, which she
-// held none of, is hers verified. A revoked invitation is one the link no longer opens.
+// Create on CrewSectorInvitations in every role but its own) invites a stranger's
+// address as a harbormaster and cannot invite a marshal; the cadet, signed in with her
+// password and holding the address she gave for her sign-in code, opens that link and is
+// refused the acceptance, since an invitation is accepted only by the account that holds
+// its address, and the invitation stands; invited at her own address, she opens the link
+// and accepts: she holds the seat, her address unchanged. A revoked invitation is one the
+// link no longer opens.
 //
 // Demonstrates: auth.invitation.
 func TestInvitation_sectorAcceptedBySignedInPersona(t *testing.T) {
@@ -276,21 +279,51 @@ func TestInvitation_sectorAcceptedBySignedInPersona(t *testing.T) {
 	if status, body := cadet.do(ctx, http.MethodPost, consoleAPI+"/user/invitation", jsonBody(t, map[string]string{"token": token})); status != http.StatusOK {
 		t.Fatalf("the cadet opens the invitation: status %d: %s", status, body)
 	}
+	// The cadet holds the address she gave for her sign-in code, not the invited one: an
+	// invitation is accepted only by the account that holds its address, so the acceptance
+	// is refused with the sentence the login page shows, and nothing is consumed.
+	status, body := cadet.do(ctx, http.MethodPost, consoleAPI+"/user/invitation/accept", nil)
+	if status != http.StatusForbidden {
+		t.Fatalf("the cadet accepts an invitation to another address: status %d, want 403: %s", status, body)
+	}
+	var refused struct {
+		Message string `json:"message"`
+	}
+	if want := "This invitation is for " + email + ". Sign in with that account."; json.Unmarshal(body, &refused) != nil || refused.Message != want {
+		t.Errorf("the refusal = %s, want the message %q", body, want)
+	}
+	if row := userRow(ctx, t, marshal, crewSectorUsers(anvil), string(policyCadet)); row == nil || slices.Contains(rolesOf(row), string(harbormasterRole)) {
+		t.Fatalf("the cadet's row at Anvil after the refusal = %v, want no Harbormaster seat", row)
+	}
+	if standing := invitations(ctx, t, marshal, invitationsRoute); len(standing) != 1 || standing[0]["email"] != email {
+		t.Fatalf("Anvil's standing invitations after the refusal = %v, want the one to %s", standing, email)
+	}
+
+	// Invited at the address she holds, she accepts: she holds the seat, and the address
+	// stays hers verified; an invitation's address lands on a person who holds none (the
+	// ensign's sign-up), never over one held. The stranger's invitation stands for the
+	// account that holds that address.
+	own := factorAddress(string(policyCadet))
+	if status, body := marshal.do(ctx, http.MethodPatch, invitationsRoute, inviteBody(own, string(harbormasterRole))); status != http.StatusOK {
+		t.Fatalf("the marshal invites the cadet's own address: status %d: %s", status, body)
+	}
+	_, ownToken := lastMailTo(t, s, own, "invitation")
+	if status, body := cadet.do(ctx, http.MethodPost, consoleAPI+"/user/invitation", jsonBody(t, map[string]string{"token": ownToken})); status != http.StatusOK {
+		t.Fatalf("the cadet opens the invitation to her own address: status %d: %s", status, body)
+	}
 	if status, body := cadet.do(ctx, http.MethodPost, consoleAPI+"/user/invitation/accept", nil); status != http.StatusOK {
 		t.Fatalf("the cadet accepts: status %d: %s", status, body)
 	}
-	// The address she gave for her sign-in code stays hers: an invitation's address
-	// lands on a person who holds none (the ensign's sign-up), never over one held.
 	sess := cadet.session(ctx)
-	if sess["email"] != factorAddress(string(policyCadet)) || sess["emailVerified"] != true {
-		t.Errorf("the cadet's session after the acceptance = %v, want the address she holds, %s, verified", sess, factorAddress(string(policyCadet)))
+	if sess["email"] != own || sess["emailVerified"] != true {
+		t.Errorf("the cadet's session after the acceptance = %v, want %s verified", sess, own)
 	}
 	row := userRow(ctx, t, marshal, crewSectorUsers(anvil), string(policyCadet))
 	if row == nil || !equalStrings(rolesOf(row), []string{"Cadet", string(harbormasterRole), "SectorCrew"}) {
 		t.Fatalf("the cadet's row at Anvil = %v, want Cadet, Harbormaster and SectorCrew", row)
 	}
-	if standing := invitations(ctx, t, marshal, invitationsRoute); len(standing) != 0 {
-		t.Errorf("Anvil's standing invitations = %v, want none", standing)
+	if standing := invitations(ctx, t, marshal, invitationsRoute); len(standing) != 1 || standing[0]["email"] != email {
+		t.Errorf("Anvil's standing invitations = %v, want the stranger's alone, untouched", standing)
 	}
 }
 
