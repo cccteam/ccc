@@ -809,11 +809,11 @@ var Steps = []Step{
 		`),
 		Web: web(`
 			@cccteam/resource 0.0.19
-			@cccteam/resource-angular 0.0.27
+			@cccteam/resource-angular 0.0.28
 			@cccteam/resource-firestore 0.0.18
 		`),
 		Impulse: release("v0.6.11"),
-		Note:    "the live feed holds its Firebase identity in memory only and signs it out before its app is deleted (@cccteam/resource-firestore 0.0.18): a sign-out leaves no user in the browser and the next sign-in reloads nothing stale; no code change is needed",
+		Note:    "the live feed holds its Firebase identity in memory only and signs it out before its app is deleted (@cccteam/resource-firestore 0.0.18): a sign-out leaves no user in the browser and the next sign-in reloads nothing stale; and the theme reaches every component (@cccteam/resource-angular 0.0.28): every colour the library draws with is a token with the library's own colour as its default, so nothing changes until a root opts in, and the new @cccteam/resource-angular/theme sheet hands the frame to the root's Material theme; a new application seeds a theme.scss (mat.theme from its palette, the theme sheet included) in place of the prebuilt stylesheet; an existing application keeps its prebuilt stylesheet, and adopts by adding the same theme.scss beside its styles.scss and naming it in angular.json in the prebuilt file's place; no code change is needed",
 	},
 }
 
