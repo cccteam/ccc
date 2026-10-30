@@ -773,6 +773,27 @@ var Steps = []Step{
 		Impulse: release("v0.6.9"),
 		Note:    "an invitation is accepted through a directory only as the invited address, and the login card's invitation screen offers every way that can accept it for that address and none that cannot (session v0.13.18: a directory sign-in that carries an invitation for another address is refused with invitation_address, the invitation left standing, and the invitation's Open answer and the methods answer say whether an account holds the address and whether it has a password; @cccteam/resource 0.0.18 and @cccteam/resource-angular 0.0.26: \"Continue with <label> as <address>\" sends the provider the address as its login hint, the password form shows for an account with a password, the account form opens by itself where no account holds the address and no directory admits it, and \"Use a different account\" is not offered while an invitation stands); resourceRoutes now lists a page whose config names no navigation group at the top level of the menu, so an application that listed such a page itself with addNavItem removes that call, or the page is listed twice; no other code change is needed",
 	},
+	{
+		Pins: pins(`
+			access v0.12.0
+			ccc v0.3.6
+			ccc/accesstypes v0.7.0
+			ccc/cloud v0.2.1
+			ccc/resource v0.16.2
+			ccc/tracer v0.3.1
+			db-initiator v0.4.3
+			httpio v0.7.22
+			logger v0.1.30
+			session v0.13.19
+		`),
+		Web: web(`
+			@cccteam/resource 0.0.19
+			@cccteam/resource-angular 0.0.27
+			@cccteam/resource-firestore 0.0.17
+		`),
+		Impulse: release("v0.6.10"),
+		Note:    "an invitation is accepted only by the account it was sent to on every path (session v0.13.19): a password sign-in by an account that holds another address, and the acceptance by hand of a person signed in as such an account, are refused with invitation_address as a directory sign-in already was, the invitation left standing; an account with no address still accepts by the link and takes the address; the login card (@cccteam/resource-angular 0.0.27) offers the \"Accept as\" button for the signed-in user only when that account holds the invited address or none, and otherwise says whose the invitation is and how to accept it; no code change is needed",
+	},
 }
 
 // validatePending holds a step's Pending mark to its pins: a pin at a pseudo-version
