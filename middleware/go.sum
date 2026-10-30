@@ -14,8 +14,8 @@ cloud.google.com/go/longrunning v1.3.0 h1:lZ6c8SJJBmILp/Wnr3vGnBLa0q+cYfSHRCcUfV
 cloud.google.com/go/longrunning v1.3.0/go.mod h1:wpgLxCn+UA3/TZ1bj/fW39mfDpwVlMPu1xKJyoMt7V0=
 github.com/cccteam/ccc v0.3.3 h1:MsKD9c+a5P6mHYj6xaw1lYM90iORVdjArCHdXFqIEsA=
 github.com/cccteam/ccc v0.3.3/go.mod h1:mMvs+AvedNa8vOADImamEAUqnsxhPlvnXYjFVV+/SeY=
-github.com/cccteam/ccc/tracer v0.3.0 h1:8oM3zGSsvNuyTy0OWVrc46Z6nqI7r86Z0cNN3bw7CuU=
-github.com/cccteam/ccc/tracer v0.3.0/go.mod h1:WZ3MgINHN/cLiropQHtYsNvUGWyN37p7l924rFNRmoY=
+github.com/cccteam/ccc/tracer v0.3.2 h1:Q9ziwEgX14RJnp7wwoxCbhR5KS7d2BFcf6jLSLp3rp8=
+github.com/cccteam/ccc/tracer v0.3.2/go.mod h1:DOO9j28kxH47a6nkZyCXufwOnFWLhkcmzef4neptCBk=
 github.com/cccteam/httpio v0.7.22 h1:/5Xb8E6k2W7kPzKddmxTsgowaI6skcYm7/f52K1vM7w=
 github.com/cccteam/httpio v0.7.22/go.mod h1:8YRWx9PKjuPo3umkEXH/lPg75WuWye89T+XwDoonOts=
 github.com/cccteam/logger v0.1.27 h1:SNYK8jfMLMFOtZ0aoPNBeHrnwZWZ4zWWhEv3cwgDEsc=

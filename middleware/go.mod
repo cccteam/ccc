@@ -4,7 +4,7 @@ go 1.27.3
 
 require (
 	cloud.google.com/go/auth v0.24.1
-	github.com/cccteam/ccc/tracer v0.3.0
+	github.com/cccteam/ccc/tracer v0.3.2
 	github.com/cccteam/httpio v0.7.22
 	github.com/go-playground/errors/v5 v5.4.0
 )
