@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.6.12](https://github.com/cccteam/ccc/compare/impulse/v0.6.11...impulse/v0.6.12) (2026-10-30)
+
+
+### Features
+
+* **impulse:** a person picks the application's look from a hard-coded list, light or dark and one of the palettes the application offers, and the choice holds on that browser: every console offers Blue and Workspace through the library's palettes mixin and names them to provideTheme, the portals offer light and dark alone, the dashboard's Appearance card composes the library's theme picker, and the applications' own stylesheets read the Material tokens so dark follows; an existing application adopts by hand (theme.scss, provideTheme, the card); no code change is needed otherwise ([#1249](https://github.com/cccteam/ccc/issues/1249)) ([dd4a37a](https://github.com/cccteam/ccc/commit/dd4a37a0bff8b12945df8e62e46af6509689991d))
+* **resource:** Lodestar offers the person's choice of look on both apps, with a third palette, and declares the demonstration webapp.theme-choice ([#1249](https://github.com/cccteam/ccc/issues/1249)) ([dd4a37a](https://github.com/cccteam/ccc/commit/dd4a37a0bff8b12945df8e62e46af6509689991d))
+
 ## [0.6.11](https://github.com/cccteam/ccc/compare/impulse/v0.6.10...impulse/v0.6.11) (2026-10-30)
 
 
