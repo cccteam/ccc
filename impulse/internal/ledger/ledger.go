@@ -794,6 +794,27 @@ var Steps = []Step{
 		Impulse: release("v0.6.10"),
 		Note:    "an invitation is accepted only by the account it was sent to on every path (session v0.13.19): a password sign-in by an account that holds another address, and the acceptance by hand of a person signed in as such an account, are refused with invitation_address as a directory sign-in already was, the invitation left standing; an account with no address still accepts by the link and takes the address; the login card (@cccteam/resource-angular 0.0.27) offers the \"Accept as\" button for the signed-in user only when that account holds the invited address or none, and otherwise says whose the invitation is and how to accept it; no code change is needed",
 	},
+	{
+		Pins: pins(`
+			access v0.12.0
+			ccc v0.3.6
+			ccc/accesstypes v0.7.0
+			ccc/cloud v0.2.1
+			ccc/resource v0.16.2
+			ccc/tracer v0.3.1
+			db-initiator v0.4.3
+			httpio v0.7.22
+			logger v0.1.30
+			session v0.13.19
+		`),
+		Web: web(`
+			@cccteam/resource 0.0.19
+			@cccteam/resource-angular 0.0.27
+			@cccteam/resource-firestore 0.0.18
+		`),
+		Impulse: release("v0.6.11"),
+		Note:    "the live feed holds its Firebase identity in memory only and signs it out before its app is deleted (@cccteam/resource-firestore 0.0.18): a sign-out leaves no user in the browser and the next sign-in reloads nothing stale; no code change is needed",
+	},
 }
 
 // validatePending holds a step's Pending mark to its pins: a pin at a pseudo-version
