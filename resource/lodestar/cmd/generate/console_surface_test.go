@@ -260,3 +260,89 @@ func TestConsoleHandsTheClientItsHooks(t *testing.T) {
 		})
 	}
 }
+
+// TestThemeChoiceSurface pins how the console and the portal offer the person's choice of
+// look: theme.scss hands its palettes to the library's palettes mixin under quoted ids,
+// app.config.ts names the same ids to provideTheme (the portal, with one palette, names
+// none), and the dashboard (the portal's tracker) composes the library's theme picker in
+// an Appearance card; nothing of the choice is stored on the server.
+//
+// Demonstrates: webapp.theme-choice.
+func TestThemeChoiceSurface(t *testing.T) {
+	t.Parallel()
+
+	_, thisFile, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("runtime.Caller failed")
+	}
+	web := filepath.Join(filepath.Dir(thisFile), "..", "..", "web")
+
+	tests := []struct {
+		name string
+		file string
+		want []string
+	}{
+		{
+			name: "the console's theme offers three palettes through the mixin",
+			file: "console/src/theme.scss",
+			want: []string{
+				"@use '@cccteam/resource-angular/palettes';",
+				"@include theme.palettes(",
+				"'blue': (",
+				"primary: mat.$azure-palette,",
+				"'workspace': (",
+				"primary: palettes.$workspace-primary,",
+				"tertiary: palettes.$workspace-tertiary,",
+				"'violet': (",
+				"primary: mat.$violet-palette,",
+				"tertiary: mat.$magenta-palette,",
+			},
+		},
+		{
+			name: "the console names the same ids to provideTheme",
+			file: "console/src/app/app.config.ts",
+			want: []string{
+				"import { provideTheme } from '@cccteam/resource-angular/ui-theme';",
+				"{ id: 'blue', label: 'Blue' },",
+				"{ id: 'workspace', label: 'Workspace' },",
+				"{ id: 'violet', label: 'Violet' },",
+			},
+		},
+		{
+			name: "the dashboard composes the picker in its Appearance card",
+			file: "console/src/app/components/ui/dashboard/dashboard.component.html",
+			want: []string{"<mat-card-title>Appearance</mat-card-title>", "<ccc-theme-picker />"},
+		},
+		{
+			name: "the portal offers one palette and names none to provideTheme",
+			file: "portal/src/theme.scss",
+			want: []string{"@include theme.palettes(", "'blue': (", "primary: mat.$azure-palette,", "tertiary: mat.$blue-palette,"},
+		},
+		{
+			name: "the portal starts the service with no palette",
+			file: "portal/src/app/app.config.ts",
+			want: []string{"import { provideTheme } from '@cccteam/resource-angular/ui-theme';", "provideTheme(),"},
+		},
+		{
+			name: "the tracker composes the picker",
+			file: "portal/src/app/components/tracker/tracker.component.html",
+			want: []string{"<mat-card-title>Appearance</mat-card-title>", "<ccc-theme-picker />"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			data, err := os.ReadFile(filepath.Join(web, tt.file))
+			if err != nil {
+				t.Fatalf("reading %s: %v", tt.file, err)
+			}
+			source := string(data)
+			for _, want := range tt.want {
+				if !strings.Contains(source, want) {
+					t.Errorf("%s: missing %q", tt.file, want)
+				}
+			}
+		})
+	}
+}

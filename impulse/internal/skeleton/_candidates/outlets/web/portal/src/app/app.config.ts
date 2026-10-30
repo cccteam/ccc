@@ -19,6 +19,7 @@ import {
   SESSION_PATH,
 } from '@cccteam/resource-angular/types';
 import { provideAppUpdate } from '@cccteam/resource-angular/ui-app-update';
+import { provideTheme } from '@cccteam/resource-angular/ui-theme';
 import { firestoreChangeFeed } from '@cccteam/resource-firestore';
 import { environment } from '@env';
 import { routes } from './app.routes';
@@ -80,5 +81,9 @@ export const appConfig: ApplicationConfig = {
     // refuses this one's release.
     provideServiceWorker('ngsw-worker.js', { enabled: !isDevMode(), registrationStrategy: 'registerWhenStable:30000' }),
     provideAppUpdate(),
+    // The look the person chose, light or dark, applied before the first page renders
+    // and remembered in the browser; the dashboard's Appearance card is where they
+    // choose. The portal offers one palette (theme.scss), so no palette is named here.
+    provideTheme(),
   ],
 };

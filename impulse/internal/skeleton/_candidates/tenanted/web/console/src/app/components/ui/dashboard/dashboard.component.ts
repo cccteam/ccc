@@ -7,6 +7,7 @@ import { ResourceScopes } from '@app/service/zz_gen_resources';
 import { TenantService } from '@app/tenant/tenant.service';
 import { EmailAddressComponent } from '@cccteam/resource-angular/auth-email-address';
 import { AuthService } from '@cccteam/resource-angular/auth-service';
+import { ThemePickerComponent } from '@cccteam/resource-angular/ui-theme';
 import { Permission, PermissionDigestState, Resource } from '@cccteam/resource';
 
 /** One row of the permissions card: a resource and the digest state of each permission on it. */
@@ -25,10 +26,12 @@ interface PermissionRow {
  * A session holding no tenant is offered the create-your-tenant page instead: the Tenant
  * record's creation shape (`@tenant(creation: both)`) lets a signed-in person create
  * their own.
+ * The Appearance card at the foot composes the library's theme picker: light or dark, and
+ * the palettes theme.scss offers, remembered on this browser.
  */
 @Component({
   selector: 'app-dashboard',
-  imports: [EmailAddressComponent, MatButtonModule, MatCardModule, RouterModule],
+  imports: [EmailAddressComponent, MatButtonModule, MatCardModule, RouterModule, ThemePickerComponent],
   templateUrl: './dashboard.component.html',
   styleUrl: './dashboard.component.scss',
 })

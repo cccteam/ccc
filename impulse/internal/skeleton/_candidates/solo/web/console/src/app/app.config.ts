@@ -19,6 +19,7 @@ import {
   SESSION_PATH,
 } from '@cccteam/resource-angular/types';
 import { provideAppUpdate } from '@cccteam/resource-angular/ui-app-update';
+import { provideTheme } from '@cccteam/resource-angular/ui-theme';
 import { firestoreChangeFeed } from '@cccteam/resource-firestore';
 import { environment } from '@env';
 import { routes } from './app.routes';
@@ -80,5 +81,15 @@ export const appConfig: ApplicationConfig = {
     // refuses this one's release.
     provideServiceWorker('ngsw-worker.js', { enabled: !isDevMode(), registrationStrategy: 'registerWhenStable:30000' }),
     provideAppUpdate(),
+    // The look the person chose, light or dark and one of the palettes named here, the
+    // ids of theme.scss's palette map in the same order, applied before the first page
+    // renders and remembered in the browser; the dashboard's Appearance card is where
+    // they choose.
+    provideTheme({
+      palettes: [
+        { id: 'blue', label: 'Blue' },
+        { id: 'workspace', label: 'Workspace' },
+      ],
+    }),
   ],
 };

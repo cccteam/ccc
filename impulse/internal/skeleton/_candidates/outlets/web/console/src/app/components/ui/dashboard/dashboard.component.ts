@@ -5,6 +5,7 @@ import { ResourceScopes } from '@app/service/zz_gen_resources';
 import { TenantService } from '@app/tenant/tenant.service';
 import { EmailAddressComponent } from '@cccteam/resource-angular/auth-email-address';
 import { AuthService } from '@cccteam/resource-angular/auth-service';
+import { ThemePickerComponent } from '@cccteam/resource-angular/ui-theme';
 import { Permission, PermissionDigestState, Resource } from '@cccteam/resource';
 
 /** One row of the permissions card: a resource and the digest state of each permission on it. */
@@ -20,10 +21,12 @@ interface PermissionRow {
  * resource, the digest state of each permission — in the tenant the page is open in for
  * tenant-scoped resources, globally for global ones. It lives outside the tenant segment
  * and under it: the landing for a session that has picked no tenant, and the tenant's.
+ * The Appearance card at the foot composes the library's theme picker: light or dark, and
+ * the palettes theme.scss offers, remembered on this browser.
  */
 @Component({
   selector: 'app-dashboard',
-  imports: [EmailAddressComponent, MatCardModule],
+  imports: [EmailAddressComponent, MatCardModule, ThemePickerComponent],
   templateUrl: './dashboard.component.html',
   styleUrl: './dashboard.component.scss',
 })

@@ -1,24 +1,30 @@
-// The application's Material theme: the one place for its colors, type and density.
-// Angular Material's mat.theme emits the system tokens every Material control reads, and
-// the library's theme sheet (@cccteam/resource-angular/theme) hands the frame the library
-// draws itself (the navigation, the resource pages, the notices, the dialogs) to the same
-// tokens, so a change of palette here reaches every surface. The manifest of the client portal
-// (public/manifest.webmanifest, theme_color and background_color) and index.html's
-// theme-color carry the page's colors as literals; keep them in step with the palette
-// until they are rendered from one brand declaration.
+// The application's Material theme: the one place for its colors, type and density, and
+// the palettes a person may choose between. Angular Material's mat.theme emits the system
+// tokens every Material control reads, and the library's theme sheet
+// (@cccteam/resource-angular/theme) hands the frame the library draws itself (the
+// navigation, the resource pages, the notices, the dialogs) to the same tokens, so a
+// change of palette here reaches every surface. Its palettes mixin emits the first
+// palette's theme on html, the look where no choice was made, and every palette's color
+// tokens under html[data-palette='<id>']; ThemeService (provideTheme in app.config.ts,
+// which names the same ids) sets that attribute from the person's choice, and
+// color-scheme on html from their light or dark, which flips every token since mat.theme
+// emits both values of each. The manifest (public/manifest.webmanifest, theme_color and
+// background_color) and index.html's theme-color carry the first palette's primary and
+// the page's colors as literals; keep them in step until they are rendered from one
+// brand declaration.
+// The portal offers one palette, so its picker offers light and dark alone; a second
+// entry here, and in provideTheme, is the whole of offering a choice of colors.
 @use '@angular/material' as mat;
 @use '@cccteam/resource-angular/theme';
 
 html {
   color-scheme: light;
-  @include mat.theme(
-    (
-      color: (
-        primary: mat.$azure-palette,
-        tertiary: mat.$blue-palette,
-      ),
-      typography: Roboto,
-      density: 0,
-    )
-  );
 }
+@include theme.palettes(
+  (
+    'blue': (
+      primary: mat.$azure-palette,
+      tertiary: mat.$blue-palette,
+    ),
+  )
+);

@@ -4,7 +4,7 @@
   flex-wrap: wrap;
   gap: 16px;
   padding: 12px 24px;
-  border-top: 1px solid rgba(0, 0, 0, 0.12);
-  color: rgba(0, 0, 0, 0.5);
+  border-top: 1px solid var(--mat-sys-outline-variant);
+  color: var(--mat-sys-on-surface-variant);
   font-size: 12px;
 }

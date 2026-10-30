@@ -13,7 +13,8 @@ body {
   height: 100%;
   margin: 0;
   font-family: Roboto, 'Helvetica Neue', sans-serif;
-  background-color: #f4f5f8;
+  background-color: var(--mat-sys-surface-container-low);
+  color: var(--mat-sys-on-surface);
 }
 
 .page-content {
@@ -22,7 +23,7 @@ body {
 
 .empty {
   padding: 16px;
-  color: rgba(0, 0, 0, 0.55);
+  color: var(--mat-sys-on-surface-variant);
 }
 
 .table-card,
@@ -52,15 +53,15 @@ body {
   padding: 2px 10px;
   border-radius: 12px;
   font-size: 12px;
-  background: rgba(0, 0, 0, 0.08);
+  background: var(--mat-sys-surface-container-high);
   text-transform: capitalize;
 }
 
 .redacted {
   display: inline-block;
   padding: 0 6px;
-  border: 2px solid #b3261e;
-  color: #b3261e;
+  border: 2px solid var(--mat-sys-error);
+  color: var(--mat-sys-error);
   font-weight: 700;
   font-size: 11px;
   letter-spacing: 0.12em;
@@ -68,12 +69,12 @@ body {
 }
 
 .overdue {
-  color: #b3261e;
+  color: var(--mat-sys-error);
   font-weight: 500;
 }
 
 .refusal-slot .refusal {
-  color: #a5640a;
+  color: var(--mat-sys-tertiary);
   font-family: ui-monospace, monospace;
   font-size: 0.85rem;
   padding: 0.75rem 1rem 0;
