@@ -17,7 +17,7 @@
         "@angular/service-worker": "^21.1.1",
         "@cccteam/resource": "0.0.19",
         "@cccteam/resource-angular": "0.0.27",
-        "@cccteam/resource-firestore": "0.0.17",
+        "@cccteam/resource-firestore": "0.0.18",
         "@contentful/rich-text-types": "^17.2.5",
         "date-fns": "^4.1.0",
         "date-fns-tz": "^3.2.0",
@@ -170,7 +170,7 @@
 
     "@cccteam/resource-angular": ["@cccteam/resource-angular@0.0.27", "", { "dependencies": { "date-fns": "^4.1.0", "date-fns-tz": "^3.2.0", "tslib": "^2.3.0" }, "peerDependencies": { "@angular/common": "^21.0.0", "@angular/core": "^21.0.0", "@angular/service-worker": "^21.0.0", "@cccteam/resource": "^0.0.19" }, "optionalPeers": ["@angular/service-worker"] }, "sha512-iHH4i5uxOItsf3/RqTUzXsaACrvY3GKnXnphO0fel7381/eqSpHhbP9qxkV98tYR0j3PiuBSD7vICqRao08DHA=="],
 
-    "@cccteam/resource-firestore": ["@cccteam/resource-firestore@0.0.17", "", { "dependencies": { "tslib": "^2.3.0" }, "peerDependencies": { "@cccteam/resource": "^0.0.19", "firebase": "^12.19.0" } }, "sha512-9pbH5VZ+/9NFDoBNvoRY6lqxDNmsiS0kWaynQZ3B0JA3d7HWouUexqBl07g9EO3bgNmzuQ+dcmMG3Aeoj4C1TA=="],
+    "@cccteam/resource-firestore": ["@cccteam/resource-firestore@0.0.18", "", { "dependencies": { "tslib": "^2.3.0" }, "peerDependencies": { "@cccteam/resource": "^0.0.19", "firebase": "^12.19.0" } }, "sha512-pigsSr5JnXBwdTCtS5jr3G5CrED9eIfNDByWYt8R9zRfTKwDIP3tQHJDuMyKuZcCQGFZ1RlKOh4Ma+0CpnfZFg=="],
 
     "@contentful/rich-text-types": ["@contentful/rich-text-types@17.2.7", "", {}, "sha512-aIdozk8vk5gsYcallOrwEiL6+GSlMXZorDOmiVELfpbVaXMJPJPlf2CBw3LUzviAqCw0UPQcKHHCwG7SdY7u5w=="],
 
