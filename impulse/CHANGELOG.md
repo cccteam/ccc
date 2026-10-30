@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.6.11](https://github.com/cccteam/ccc/compare/impulse/v0.6.10...impulse/v0.6.11) (2026-10-30)
+
+
+### Features
+
+* **impulse:** a new application seeds a Material theme of its own (`theme.scss` with `mat.theme` from its palette and the library's theme sheet) in place of the prebuilt stylesheet, so a change of palette reaches every surface, and Lodestar's roots move onto one keeping their palettes ([#1248](https://github.com/cccteam/ccc/issues/1248)) ([692d49f](https://github.com/cccteam/ccc/commit/692d49f4e8dd1d0df2af1f893e6c55c432b3a48f))
+
+
+### Dependencies
+
+* **impulse:** the skeleton's pins and Lodestar move to @cccteam/resource-angular 0.0.28, the release whose theme sheet hands the library's frame to the application's theme, in the 0.6.11 step ([#1248](https://github.com/cccteam/ccc/issues/1248)) ([692d49f](https://github.com/cccteam/ccc/commit/692d49f4e8dd1d0df2af1f893e6c55c432b3a48f))
+* **impulse:** the skeleton's pins and Lodestar move to the web library's in-memory live identity, in the 0.6.11 step ([#1244](https://github.com/cccteam/ccc/issues/1244)) ([bc8c8e3](https://github.com/cccteam/ccc/commit/bc8c8e38efc10a2216808295ff8ee2cbbc4cf025))
+
 ## [0.6.10](https://github.com/cccteam/ccc/compare/impulse/v0.6.9...impulse/v0.6.10) (2026-10-30)
 
 
