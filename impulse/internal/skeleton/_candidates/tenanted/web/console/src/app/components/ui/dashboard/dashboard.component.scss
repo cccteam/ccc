@@ -15,7 +15,7 @@
   td {
     padding: 4px 8px;
     text-align: center;
-    border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+    border-bottom: 1px solid var(--mat-sys-outline-variant);
   }
 
   th:first-child,
@@ -28,35 +28,39 @@
   }
 
   .granted {
-    color: #2f7a3e;
+    color: var(--mat-sys-primary);
   }
 
   .conditional {
-    color: #a5640a;
+    color: var(--mat-sys-tertiary);
   }
 
   .absent {
-    color: rgba(0, 0, 0, 0.25);
+    color: var(--mat-sys-outline);
   }
 
   .empty {
-    color: rgba(0, 0, 0, 0.5);
+    color: var(--mat-sys-on-surface-variant);
     text-align: left;
   }
 }
 
 .legend {
   font-size: 12px;
-  color: rgba(0, 0, 0, 0.6);
+  color: var(--mat-sys-on-surface-variant);
   margin: 8px 0 0;
 }
 
 .card-table .scope {
   font-size: 11px;
-  color: rgba(0, 0, 0, 0.5);
+  color: var(--mat-sys-on-surface-variant);
   margin-left: 4px;
 }
 
 .email-card {
+  margin-top: 16px;
+}
+
+.appearance-card {
   margin-top: 16px;
 }

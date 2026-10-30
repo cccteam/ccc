@@ -11,12 +11,12 @@
   td {
     text-align: left;
     padding: 4px 8px;
-    border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+    border-bottom: 1px solid var(--mat-sys-outline-variant);
   }
 
   th {
     font-weight: 500;
-    color: rgba(0, 0, 0, 0.6);
+    color: var(--mat-sys-on-surface-variant);
   }
 
   .label {
@@ -26,7 +26,7 @@
   .scope {
     margin-left: 6px;
     font-size: 11px;
-    color: rgba(0, 0, 0, 0.45);
+    color: var(--mat-sys-on-surface-variant);
   }
 
   .masked {
@@ -34,8 +34,8 @@
       45deg,
       transparent,
       transparent 6px,
-      rgba(31, 111, 139, 0.15) 6px,
-      rgba(31, 111, 139, 0.15) 12px
+      color-mix(in srgb, var(--mat-sys-primary) 15%, transparent) 6px,
+      color-mix(in srgb, var(--mat-sys-primary) 15%, transparent) 12px
     );
   }
 }
@@ -45,20 +45,20 @@
   padding: 1px 8px;
   border-radius: 10px;
   font-size: 11px;
-  background: rgba(0, 0, 0, 0.06);
+  background: var(--mat-sys-surface-container-high);
 
   &.granted {
-    background: rgba(47, 122, 62, 0.18);
-    color: #2f7a3e;
+    background: var(--mat-sys-primary-container);
+    color: var(--mat-sys-on-primary-container);
   }
 
   &.conditional {
-    background: rgba(165, 100, 10, 0.18);
-    color: #a5640a;
+    background: var(--mat-sys-tertiary-container);
+    color: var(--mat-sys-on-tertiary-container);
   }
 
   &.absent {
-    color: rgba(0, 0, 0, 0.35);
+    color: var(--mat-sys-outline);
   }
 }
 
@@ -74,5 +74,9 @@ h3 {
 }
 
 .email-card {
+  margin-top: 16px;
+}
+
+.appearance-card {
   margin-top: 16px;
 }

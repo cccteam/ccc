@@ -15,6 +15,7 @@ import { AuthService } from '@cccteam/resource-angular/auth-service';
 import { storeSignal } from '@cccteam/resource-angular/resource-client';
 import { Domain, Method, Page, ResourceHandle, rowCapabilities } from '@cccteam/resource';
 import { ReleaseComponent } from '@cccteam/resource-angular/ui-release';
+import { ThemePickerComponent } from '@cccteam/resource-angular/ui-theme';
 import { TrackerGraphComponent } from './graph/tracker-graph.component';
 
 /** One line of the company's statement, as app.clientStatementLine's wire struct. */
@@ -53,6 +54,7 @@ export interface ClientStatementLine {
     MatTableModule,
     TrackerGraphComponent,
     ReleaseComponent,
+    ThemePickerComponent,
   ],
   templateUrl: './tracker.component.html',
   styleUrl: './tracker.component.scss',

@@ -7,6 +7,7 @@ import { Methods, Permissions, Resources } from '@app/service/zz_gen_constants';
 import { ResourceScopes } from '@app/service/zz_gen_resources';
 import { EmailAddressComponent } from '@cccteam/resource-angular/auth-email-address';
 import { AuthService } from '@cccteam/resource-angular/auth-service';
+import { ThemePickerComponent } from '@cccteam/resource-angular/ui-theme';
 import { Method, Permission, Resource } from '@cccteam/resource';
 import { ImpersonationService } from '@components/sector/impersonation.service';
 import { SectorService } from '@components/sector/sector.service';
@@ -33,13 +34,23 @@ const READ_WRITE: Permission[] = [
  * the open sector — granted, conditional ("terms apply"), or absent. It is the
  * permission digest rendered as an object in the world; every deck consults the same
  * digest before issuing a request. Under a masked "view as" session the write column
- * carries a stripe: Masked drops those permissions from the digest itself.
+ * carries a stripe: Masked drops those permissions from the digest itself. The Appearance
+ * card at the foot composes the library's theme picker: light or dark, and the palettes
+ * theme.scss offers, remembered on this browser.
  *
- * Demonstrates: permission-digest, impersonation.mask, computed.pushdown, tenancy.user-domains.
+ * Demonstrates: permission-digest, impersonation.mask, computed.pushdown, tenancy.user-domains, webapp.theme-choice.
  */
 @Component({
   selector: 'app-dashboard',
-  imports: [EmailAddressComponent, MatCardModule, MatIconModule, MatTableModule, RouterModule, StarChartComponent],
+  imports: [
+    EmailAddressComponent,
+    MatCardModule,
+    MatIconModule,
+    MatTableModule,
+    RouterModule,
+    StarChartComponent,
+    ThemePickerComponent,
+  ],
   templateUrl: './dashboard.component.html',
   styleUrl: './dashboard.component.scss',
 })

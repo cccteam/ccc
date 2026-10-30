@@ -4,6 +4,7 @@ import { injectApi } from '@app/api/api';
 import { EmailAddressComponent } from '@cccteam/resource-angular/auth-email-address';
 import { AuthService } from '@cccteam/resource-angular/auth-service';
 import { storeSignal } from '@cccteam/resource-angular/resource-client';
+import { ThemePickerComponent } from '@cccteam/resource-angular/ui-theme';
 import { Permission, PermissionDigestState } from '@cccteam/resource';
 
 /** One row of the permissions card: a resource and the digest state of each permission on it. */
@@ -17,10 +18,12 @@ interface PermissionRow {
  * address included (added, changed and confirmed through a mailed link, below the digest): the permission
  * digest rendered per resource, in the global scope. Field-level entries are folded
  * into their resource's row.
+ * The Appearance card at the foot composes the library's theme picker: light or dark, and
+ * the palettes theme.scss offers, remembered on this browser.
  */
 @Component({
   selector: 'app-dashboard',
-  imports: [EmailAddressComponent, MatCardModule],
+  imports: [EmailAddressComponent, MatCardModule, ThemePickerComponent],
   templateUrl: './dashboard.component.html',
   styleUrl: './dashboard.component.scss',
 })
