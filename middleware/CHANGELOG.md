@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.15](https://github.com/cccteam/ccc/compare/middleware/v0.0.14...middleware/v0.0.15) (2026-10-30)
+
+
+### Code Upgrade
+
+* **deps:** bump github.com/cccteam/ccc/tracer ([#1241](https://github.com/cccteam/ccc/issues/1241)) ([0e548d3](https://github.com/cccteam/ccc/commit/0e548d3ed519a1db1586a6aad6cb2f8e64c03d9c))
+
 ## [0.0.14](https://github.com/cccteam/ccc/compare/middleware/v0.0.13...middleware/v0.0.14) (2026-10-23)
 
 
