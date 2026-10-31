@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -39,7 +38,7 @@ func (p *personaProvider) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	p.mu.Unlock()
 	if p.refuse != 0 {
 		w.WriteHeader(p.refuse)
-		_, _ = io.WriteString(w, `{"message": "`+p.message+`"}`)
+		_ = json.NewEncoder(w).Encode(map[string]string{"message": p.message})
 
 		return
 	}

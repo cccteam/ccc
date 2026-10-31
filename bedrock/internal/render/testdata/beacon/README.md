@@ -266,7 +266,7 @@ above them.
 | `GOOGLE_CLOUD_SPANNER_PROJECT`, `_INSTANCE_ID`, `_DATABASE_NAME` | data | the database | yes | yes |
 | `APP_KEEPERS_PERSONA_ISSUER` | data | `https://persona.impulseframework.dev/persona` in a pull-request stack and tst, empty beyond | yes | |
 | `APP_KEEPERS_PERSONA_CLIENT_ID` | data | `beacon-pr<N>` in a pull-request stack, `beacon-tst` in tst, empty beyond | yes | |
-| `APP_KEEPERS_PERSONA_REDIRECT_URL` | data | `https://<first hostname>/api/user/persona/callback` | yes | |
+| `APP_KEEPERS_PERSONA_REDIRECT_URL` | data | `https://` + first hostname + `/api/user/persona/callback` | yes | |
 | `APP_PUBLIC_URL` | data | `https://<first hostname>` | yes | yes |
 | `APP_MAIL_MAILBOX` | data | `var.mail_mailbox` | yes | yes |
 | `APP_MAIL_FROM` | data | `var.mail_from` | yes | yes |

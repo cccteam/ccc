@@ -479,7 +479,7 @@ above them.
 {{- range .Personas}}
 | `{{(.Variable "Issuer").Name}}` | {{(.Variable "Issuer").Level}} | `{{.Issuer}}` in a pull-request stack and {{$.Integration}}, empty beyond | yes | |{{if $.Jobs}} |{{end}}
 | `{{(.Variable "ClientID").Name}}` | {{(.Variable "ClientID").Level}} | `{{.ClientIDRoot}}-pr<N>` in a pull-request stack, `{{.ClientIDRoot}}-{{$.Integration}}` in {{$.Integration}}, empty beyond | yes | |{{if $.Jobs}} |{{end}}
-| `{{(.Variable "RedirectURL").Name}}` | {{(.Variable "RedirectURL").Level}} | `https://<{{if $.MultiSite}}the {{.Site}} site's {{end}}first hostname>{{.Callback.Path}}` | yes | |{{if $.Jobs}} |{{end}}
+| `{{(.Variable "RedirectURL").Name}}` | {{(.Variable "RedirectURL").Level}} | `https://` + {{if $.MultiSite}}the {{.Site}} site's {{end}}first hostname + `{{.Callback.Path}}` | yes | |{{if $.Jobs}} |{{end}}
 {{- end}}
 {{- range .Administrators}}
 | `{{.Variable.Name}}` | {{.Variable.Level}} | `var.{{.Var}}[env]` | yes | yes |{{if $.Jobs}} {{if $.JobsReadsData}}yes{{end}} |{{end}}
