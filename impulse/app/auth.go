@@ -21,16 +21,21 @@ const (
 	sessionAzureImportPath   = "github.com/cccteam/session/azure"
 	sessionGoogleImportPath  = "github.com/cccteam/session/google"
 	sessionWorkOSImportPath  = "github.com/cccteam/session/workos"
+	sessionOIDCImportPath    = "github.com/cccteam/session/oidc"
 	sessionSignInImportPath  = "github.com/cccteam/session/signin"
 )
 
 // The sign-in methods, as the session library names them: the password method of the
-// root package and the redirect methods of the azure, google and workos packages.
+// root package, the redirect methods of the azure, google and workos packages, and the
+// persona sign-in of the test environments, which is the library's generic OpenID
+// Connect method (the oidc package) against the persona provider: impulse composes that
+// method as the persona method and nothing else.
 const (
 	MethodPassword = "password"
 	MethodAzure    = "azure"
 	MethodGoogle   = "google"
 	MethodWorkOS   = "workos"
+	MethodPersona  = "persona"
 )
 
 // PasswordRegistration is the name the password method is always registered under.
@@ -93,6 +98,7 @@ var methodConstructors = map[string]map[string]string{
 	sessionAzureImportPath:  {signInConstructor: MethodAzure},
 	sessionGoogleImportPath: {signInConstructor: MethodGoogle},
 	sessionWorkOSImportPath: {signInConstructor: MethodWorkOS},
+	sessionOIDCImportPath:   {signInConstructor: MethodPersona},
 }
 
 // signInConstructor is the name every directory method's package registers through.

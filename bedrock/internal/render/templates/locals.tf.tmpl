@@ -214,6 +214,17 @@ locals {
   {{.Var "LOGOUT_URL"}} = "https://${local.{{if $.MultiSite}}site_hostnames["{{.Site}}"]{{else}}hostnames{{end}}[0]}{{.Logout.Path}}"
 {{- end}}
 {{- end}}
+{{- range .Personas}}
+
+  # The {{.Auth}} auth's {{.Name}} registration is the persona method, the sign-in of the
+  # test environments through the persona provider placement.json names (persona): the issuer in a
+  # pull-request stack and in {{$.Integration}}, where the method is registered, and empty
+  # beyond them, where it is not and the login page never offers it; the deployment's
+  # client ID at the provider, the placement's client ID root with the pull request or
+  # the environment appended; and the callback, the route the generated router
+  # ({{$.RouterDir}}) registers as {{.Callback.Method}} {{.Callback.Path}}, on the {{if $.MultiSite}}{{.Site}} site's{{else}}environment's{{end}} canonical host.
+{{.Locals}}
+{{- end}}
 
   # The database the site opens: the environment's own, a pull request's own,
   # or in shared mode (var.shared_database) {{.Integration}}'s, which the pull-request
@@ -437,6 +448,39 @@ locals {
 {{- end}}
   }
 {{- end}}
+{{- if .Persona}}
+
+  # The persona registrations' settings the served site reads and a migration does
+  # not: the issuer, set where the method is registered, the deployment's client ID
+  # and the callback (the locals above).
+  site_persona_env = {
+{{- range .Personas}}
+{{.SiteEnv}}
+{{- end}}
+  }
+
+  # What the pipeline registers with the persona provider after traffic (deploy
+  # persona register) and removes at a teardown (deploy persona remove), per persona
+  # method: the provider, the application's client ID root (the deployment's client
+  # ID is the root with the pull request or the environment appended), the site whose
+  # canonical hostname the callback is on, the callback's path and the cast in the
+  # checkout. The triggers carry it as _PERSONA (persona_substitution) in {{.Integration}}, where
+  # the method is registered, and as nothing elsewhere.
+  persona_registrations = [
+{{- range .Personas}}
+    {
+      auth         = "{{.Auth}}"
+      registration = "{{.Name}}"
+      issuer       = "{{.Issuer}}"
+      clientIdRoot = "{{.ClientIDRoot}}"
+      site         = "{{.Site}}"
+      callbackPath = "{{.Callback.Path}}"
+      castFile     = "{{.CastFile}}"
+    },
+{{- end}}
+  ]
+  persona_substitution = var.environment == "{{.Integration}}" ? jsonencode(local.persona_registrations) : ""
+{{- end}}
 
 {{- if .MultiSite}}
 
@@ -524,7 +568,7 @@ locals {
   # detail the Dockerfile owns. Neither is set here.{{else if .MultiSite}}; each site's bundle variable is its service's alone
   # (site_settings, cloud-run.tf), since the image holds one bundle per site. Neither
   # is set here.{{else}}. It is not set here.{{end}}
-  service_env = merge(local.core_env, local.data_env{{if .Directory}}, local.site_directory_env{{end}}{{if .FileStores}}, local.files_env{{end}}{{if .TasksQueue}}, local.tasks_env{{end}}{{if .FirestoreDatabase}}, local.firestore_env{{end}}{{if .Scheduled}}, local.scheduler_env{{end}}{{if .Jobs}}, local.jobs_template_env{{end}})
+  service_env = merge(local.core_env, local.data_env{{if .Directory}}, local.site_directory_env{{end}}{{if .Persona}}, local.site_persona_env{{end}}{{if .FileStores}}, local.files_env{{end}}{{if .TasksQueue}}, local.tasks_env{{end}}{{if .FirestoreDatabase}}, local.firestore_env{{end}}{{if .Scheduled}}, local.scheduler_env{{end}}{{if .Jobs}}, local.jobs_template_env{{end}})
 
   # {{.Migrate.Dir}} reads {{.MigrateLevels}} and nothing above them: what the pipeline
   # runs the migrate command with on the build worker (cloud-build.tf,

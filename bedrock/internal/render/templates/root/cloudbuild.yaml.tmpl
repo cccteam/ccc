@@ -37,6 +37,10 @@
 #   WriteDeploymentRecord     the record of what is now running, which the next environment's gate reads (deploy record)
 #   TalkBack                  the pull request is told what the build did (deploy talk-back)
 #   Hook*                     the application's own hooks, one step per stage it implements (deploy hook <stage>)
+{{- if .Persona}}
+#   PersonaRegister           each persona method's deployment, its callback and its cast, registered with the persona provider (deploy persona register)
+#   PersonaRemove             a torn-down pull request's registrations removed from the persona provider (deploy persona remove)
+{{- end}}
 #
 # The revision template (variables, secret mounts, identity, scaling) belongs to the
 # application's infrastructure layer; a deploy changes the image and stamps its labels,
@@ -158,6 +162,17 @@ steps:
     entrypoint: /builder/home/bedrock
     args: [deploy, hook, after-down]
     timeout: 900s
+{{- end}}
+{{- if .Persona}}
+
+  # A teardown removes the pull request's persona registrations from the persona provider,
+  # as this build's deploy identity (its Google identity token for the provider); nothing
+  # to do otherwise.
+  - id: PersonaRemove
+    name: {{.GcloudImage}}
+    entrypoint: /builder/home/bedrock
+    args: [deploy, persona, remove]
+    timeout: 300s
 {{- end}}
 
   # A run that replaces the database (a restore run) puts the application into maintenance
@@ -344,6 +359,19 @@ steps:
     entrypoint: /builder/home/bedrock
     args: [deploy, hook, after-traffic{{if .HookByProgram "after-traffic"}}, --program{{end}}]
     timeout: 900s
+{{- end}}
+{{- if .Persona}}
+
+  # The persona registrations: each persona method's deployment, its callback and its
+  # cast (_PERSONA, from the stack), sent to the persona provider as this build's deploy
+  # identity (its Google identity token for the provider), so the provider offers the
+  # cast for this deployment. A failing registration fails the build before the record is
+  # written.
+  - id: PersonaRegister
+    name: {{.GcloudImage}}
+    entrypoint: /builder/home/bedrock
+    args: [deploy, persona, register]
+    timeout: 300s
 {{- end}}
 
   # The record of what now runs, in the records bucket; the next environment's gate reads it.

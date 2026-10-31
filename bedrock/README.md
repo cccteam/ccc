@@ -370,6 +370,21 @@ and what its absence means:
   - `projectId`: the environment project's id;
   - `environment`: the environment's name;
   - `hostname`: the service's canonical hostname in the environment.
+- `persona`: the persona provider the first environment and its pull requests sign in
+  through when an auth registers the persona method (`impulse add method <auth>
+  persona`): the provider's `issuer` URL (https) and the application's `clientId` root
+  at the provider (lowercase letters, digits and hyphens starting with a letter), both
+  from Redgrade's registration of the application. The stack sets the issuer on the
+  served site in the first environment and its pull requests alone, so the method is
+  registered there and nowhere else and a later environment never offers it; derives each
+  deployment's client ID from the root (`<root>-pr<N>` for a pull request,
+  `<root>-<first environment>` for the environment) and the callback from the canonical
+  hostname; and carries the registrations on the triggers (`_PERSONA`), from which the
+  pipeline registers each deployment, its callback and its cast
+  (`pkg/auth/<auth>/cast.json`) with the provider after traffic (`deploy persona
+  register`) and removes a torn-down or closed pull request's (`deploy persona remove`,
+  the sweep). Absent, no auth may register the method; present, one must; `render` and
+  `check` refuse the mismatch either way, and a cast that is missing or malformed.
 
   Such a value exists only once the stack is applied (the Firebase key is made by the
   apply), so it cannot be written per environment the way a declared substitution in
@@ -691,6 +706,15 @@ It also refuses:
   file: the stack applies the database's indexes, time-to-live policies and rules from
   them, so render and check both stop before the stack is written. `APP_FIREBASE_API_KEY`
   without the database, or at another level than it, is refused the same way.
+
+- an auth registering the persona method (`oidc.SignIn`, `impulse add method persona`)
+  under a `placement.json` that names no persona provider (`persona`), since the method is
+  registered where the stack sets the issuer and nowhere else; a `persona` block that no
+  auth's method reads; a persona method whose registration synchronizes roles from the
+  provider (`RoleSync`), since the provider asserts who a persona is and the cast seeds
+  what it may do; and a persona method whose cast (`pkg/auth/<auth>/cast.json`) is
+  missing or does not read (no persona, a login outside its shape, a login twice), naming
+  the registration and the file.
 
 It also warns, without failing, about the maintenance windows (Maintenance windows,
 below): production with no maintenance setting in `placement.json`, so that the refusal
@@ -1257,6 +1281,19 @@ takes the program out of the image for the hook steps (`deploy hook <stage> --pr
 The pipeline has a step for each stage the application implements. `deploy sweep`
 is the hourly sweep's one step: the pull requests whose services stand, which of them
 are closed, and each closed one's stack destroyed, its state object deleted last.
+
+`deploy persona register` is the step after the hooks in a build whose environment has a
+persona provider (`_PERSONA`, which the triggers carry in the first environment alone):
+for each persona method, it sends the provider the deployment's registration, the client ID
+the placement's root and the deployment make (`<root>-pr<N>` for a pull request,
+`<root>-<first environment>` for the environment), the callback on the deployment's
+canonical hostname and the cast from the checkout, as the build's deploy identity with its
+Google identity token for the provider, so the provider offers the cast for this
+deployment; a refusal fails the build before the record is written. A build with nothing
+to send, or a torn-down environment, does nothing. `deploy persona remove` runs after a
+teardown's `after-down` hook and removes the pull request's registrations; outside a
+teardown it does nothing, and the sweep removes a closed pull request's the same way, best
+effort, since the provider forgets a registration nothing refreshes on its own.
 
 ## Maintenance windows
 

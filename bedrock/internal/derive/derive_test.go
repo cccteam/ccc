@@ -198,13 +198,13 @@ func TestDerive(t *testing.T) {
 			wantRequestLog:     harborClause,
 		},
 		{
-			name:               "beacon, a password auth: no registration, no callback",
+			name:               "beacon, a password auth beside the persona method: no directory registration, the persona callback",
 			fixture:            "beacon",
 			placement:          "placement-beacon.json",
 			wantApp:            "beacon",
 			wantOutlets:        []string{"default /api"},
 			wantSignIn:         []string{"POST /api/user/password/login: the default outlet's password login", "POST /api/user/pending/confirm: the default outlet's pending sign-in confirmation", "POST /api/user/pending/cancel: the default outlet's pending sign-in cancel"},
-			wantMethods:        []string{"keepers/password password"},
+			wantMethods:        []string{"keepers/password password", "keepers/persona persona"},
 			wantAdministrators: []string{"keepers APP_KEEPERS_ADMINISTRATOR_PASSWORD administrator-password"},
 			wantSecrets: []string{
 				"APP_COOKIE_KEY cookie-key pkg/config/data.go dataConfig.CookieKey",
@@ -215,6 +215,7 @@ func TestDerive(t *testing.T) {
 			wantData: []string{
 				varDatabaseProject, varDatabaseInstance, varDatabaseName,
 				"APP_DEFAULT_SESSION_TIMEOUT", "APP_COOKIE_KEY", varPublicURL, varMailMailbox, varMailFrom, varMailAppPassword, "APP_KEEPERS_ADMINISTRATOR_PASSWORD",
+				"APP_KEEPERS_PERSONA_ISSUER", "APP_KEEPERS_PERSONA_CLIENT_ID", "APP_KEEPERS_PERSONA_REDIRECT_URL",
 			},
 			wantSite:     []string{varPort, "APP_CONSOLE_DIST"},
 			wantSiteLvls: []string{LevelCore, LevelData, LevelSite},

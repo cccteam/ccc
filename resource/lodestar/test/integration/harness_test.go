@@ -711,6 +711,8 @@ func opPath(sector, rest string) string {
 // served is one running instance of the application under test.
 type served struct {
 	server *httptest.Server
+	// crew is the crew auth, whose cast a suite seeds.
+	crew *crew.Auth
 	// access is the crew auth's engine, members the members auth's.
 	access  *access.Client
 	members *access.Client
@@ -753,6 +755,22 @@ func newServed(ctx context.Context, t *testing.T) *served {
 // and "" is dev, which checks nothing.
 func newServedAt(ctx context.Context, t *testing.T, version string) *served {
 	t.Helper()
+
+	return newServedWith(ctx, t, servedOptions{version: version})
+}
+
+// servedOptions are what a suite varies about the served stack: the release it reports
+// (newServedAt), and the persona provider the crew auth is configured with, nil for none,
+// as every environment but the test environments is.
+type servedOptions struct {
+	version string
+	persona *auth.Persona
+}
+
+// newServedWith is the served stack under the options.
+func newServedWith(ctx context.Context, t *testing.T, opts servedOptions) *served {
+	t.Helper()
+	version := opts.version
 	if !simulatedDirectory() {
 		t.Skip("the portal signs in through a directory: run this suite with -tags skipAuth to simulate it")
 	}
@@ -796,6 +814,7 @@ func newServedAt(ctx context.Context, t *testing.T, version string) *served {
 			GroupPrefix:  "crew-",
 		},
 		SignUpRedirectURL:  "http://" + server.Listener.Addr().String() + consoleAPI + "/user/" + crew.SignUpRegistration + "/callback",
+		Persona:            personaSettings(opts.persona, "http://"+server.Listener.Addr().String()+consoleAPI+"/user/"+crew.PersonaRegistration+"/callback"),
 		ChangeSignal:       policySignal,
 		TenantDeclarations: app.NewSectorDeclarationReader(),
 		TenantDirectories:  app.NewSectorDirectoryReader(),
@@ -873,7 +892,17 @@ func newServedAt(ctx context.Context, t *testing.T, version string) *served {
 	server.Config.Handler = router.New(a, router.AppHooks(a))
 	server.Start()
 
-	return &served{server: server, access: crewAuth.Access(), members: membersAuth.Access(), stores: stores, db: db, scheduler: keys, jobs: starter, mail: sent, trusted: map[string]*http.Cookie{}}
+	return &served{server: server, crew: crewAuth, access: crewAuth.Access(), members: membersAuth.Access(), stores: stores, db: db, scheduler: keys, jobs: starter, mail: sent, trusted: map[string]*http.Cookie{}}
+}
+
+// personaSettings is the crew auth's persona settings for the stack: none when no
+// provider is configured, else the provider with the stack's own callback.
+func personaSettings(p *auth.Persona, callback string) auth.Persona {
+	if p == nil {
+		return auth.Persona{}
+	}
+
+	return auth.Persona{Issuer: p.Issuer, ClientID: p.ClientID, RedirectURL: callback}
 }
 
 // schedulerInvoker is the invoker identity the served stack's scheduled routes admit, as

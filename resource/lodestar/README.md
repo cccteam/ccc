@@ -45,7 +45,10 @@ seeds it again without touching the schema), serves the application on :8090, an
 the crew console on :4300 (`/console/api` proxied) and the client portal on :4301
 (`/portal/api` proxied). Browse http://127.0.0.1:4300/console/ and sign in as any persona
 on the crew manifest, through "Sign in with Lodestar", the fleet's Google directory, as the navigator, or with
-"Sign in with Google", any Google account, as the pioneer, who holds nothing and charts her own sector; browse
+"Sign in with Google", any Google account, as the pioneer, who holds nothing and charts her own sector, or with
+"Sign in with Persona", the persona provider of the test environments, as a member of the cast
+(`pkg/auth/crew/cast.json`: `hq`, `warden`, `rookie`; in development the simulated provider signs
+`APP_PERSONA_USERNAME` in); browse
 http://127.0.0.1:4301/portal/ and sign in through the simulated directory as `client`.
 Both Go processes build with the session library's `skipAuth` tag, which simulates every
 Google directory from `.envrc`: the portal's from `APP_USERNAME` and `APP_ROLES`, the

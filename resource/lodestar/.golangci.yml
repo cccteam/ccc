@@ -163,7 +163,7 @@ linters:
       - linters:
           - gomoddirectives
         path: go\.mod
-        text: ccc/resource
+        text: ccc/(resource|impulse)
     paths:
       - third_party$
       - builtin$

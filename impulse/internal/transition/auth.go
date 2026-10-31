@@ -919,6 +919,8 @@ func methodSentence(m *authpkg.Method) string {
 		return fmt.Sprintf("`%s`, Microsoft Entra over OpenID Connect (`azure.SignIn`), %s, role membership the %s's", m.Name, accountsSentence(m), m.Authority)
 	case app.MethodGoogle:
 		return fmt.Sprintf("`%s`, Google Workspace over OpenID Connect (`google.SignIn`), %s, role membership the %s's", m.Name, accountsSentence(m), m.Authority)
+	case app.MethodPersona:
+		return fmt.Sprintf("`%s`, the persona sign-in of the test environments over OpenID Connect (`oidc.SignIn` against the persona provider, registered only where the provider is configured), invited users only, role membership the application's", m.Name)
 	default:
 		return "`" + m.Name + "`"
 	}

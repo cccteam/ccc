@@ -93,6 +93,17 @@ locals {
   # traffic calls while the old revision still serves. None for a pull-request stack.
   next_hostnames = local.is_pr ? [] : [for host in local.hostnames : replace(host, "/^([^.]+)\\./", "$1-next.")]
 
+  # The keepers auth's persona registration is the persona method, the sign-in of the
+  # test environments through the persona provider placement.json names (persona): the issuer in a
+  # pull-request stack and in tst, where the method is registered, and empty
+  # beyond them, where it is not and the login page never offers it; the deployment's
+  # client ID at the provider, the placement's client ID root with the pull request or
+  # the environment appended; and the callback, the route the generated router
+  # (pkg/router) registers as GET /api/user/persona/callback, on the environment's canonical host.
+  keepers_persona_issuer       = local.is_pr || var.environment == "tst" ? "https://persona.impulseframework.dev/persona" : ""
+  keepers_persona_client_id    = local.is_pr ? "beacon-pr${var.pull_request}" : var.environment == "tst" ? "beacon-tst" : ""
+  keepers_persona_redirect_url = "https://${local.hostnames[0]}/api/user/persona/callback"
+
   # The database the site opens: the environment's own, a pull request's own,
   # or in shared mode (var.shared_database) tst's, which the pull-request
   # stack then only reads by name and grants its app identity on.
@@ -232,10 +243,39 @@ locals {
     # dataConfig.SessionTimeout is left to its code default (10m).
   }
 
+  # The persona registrations' settings the served site reads and a migration does
+  # not: the issuer, set where the method is registered, the deployment's client ID
+  # and the callback (the locals above).
+  site_persona_env = {
+    APP_KEEPERS_PERSONA_ISSUER       = local.keepers_persona_issuer
+    APP_KEEPERS_PERSONA_CLIENT_ID    = local.keepers_persona_client_id
+    APP_KEEPERS_PERSONA_REDIRECT_URL = local.keepers_persona_redirect_url
+  }
+
+  # What the pipeline registers with the persona provider after traffic (deploy
+  # persona register) and removes at a teardown (deploy persona remove), per persona
+  # method: the provider, the application's client ID root (the deployment's client
+  # ID is the root with the pull request or the environment appended), the site whose
+  # canonical hostname the callback is on, the callback's path and the cast in the
+  # checkout. The triggers carry it as _PERSONA (persona_substitution) in tst, where
+  # the method is registered, and as nothing elsewhere.
+  persona_registrations = [
+    {
+      auth         = "keepers"
+      registration = "persona"
+      issuer       = "https://persona.impulseframework.dev/persona"
+      clientIdRoot = "beacon"
+      site         = "beacon"
+      callbackPath = "/api/user/persona/callback"
+      castFile     = "pkg/auth/keepers/cast.json"
+    },
+  ]
+  persona_substitution = var.environment == "tst" ? jsonencode(local.persona_registrations) : ""
+
   # site.go: PORT is set by Cloud Run itself (reserved; setting it is an
   # error) and APP_CONSOLE_DIST is where the image put the bundle, a build
   # detail the Dockerfile owns. Neither is set here.
-  service_env = merge(local.core_env, local.data_env)
+  service_env = merge(local.core_env, local.data_env, local.site_persona_env)
 
   # cmd/deployment/migrate reads core and data and nothing above them: what the pipeline
   # runs the migrate command with on the build worker (cloud-build.tf,

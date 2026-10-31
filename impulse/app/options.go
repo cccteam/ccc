@@ -181,6 +181,7 @@ var authMethodConstructors = map[string]string{
 	"GoogleMethod":   MethodGoogle,
 	"AzureMethod":    MethodAzure,
 	"WorkOSMethod":   MethodWorkOS,
+	"PersonaMethod":  MethodPersona,
 }
 
 // labeledMethod is the method that chains a label onto a declaration

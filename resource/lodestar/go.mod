@@ -14,12 +14,13 @@ require (
 	github.com/cccteam/ccc v0.3.7
 	github.com/cccteam/ccc/accesstypes v0.7.1
 	github.com/cccteam/ccc/cloud v0.2.3
+	github.com/cccteam/ccc/impulse v0.6.4
 	github.com/cccteam/ccc/resource v0.15.4
 	github.com/cccteam/ccc/tracer v0.3.2
 	github.com/cccteam/db-initiator v0.4.3
 	github.com/cccteam/httpio v0.7.22
 	github.com/cccteam/logger v0.1.31
-	github.com/cccteam/session v0.13.19
+	github.com/cccteam/session v0.13.20
 	github.com/cccteam/spxscan v0.0.18
 	github.com/go-chi/chi/v5 v5.5.0
 	github.com/go-playground/errors/v5 v5.4.0
@@ -121,7 +122,7 @@ require (
 	github.com/power-devops/perfstat v0.0.0-20260916203055-22a1a467d9f0 // indirect
 	github.com/shirou/gopsutil/v4 v4.26.9 // indirect
 	github.com/sirupsen/logrus v1.10.2 // indirect
-	github.com/spf13/pflag v1.0.9 // indirect
+	github.com/spf13/pflag v1.0.10 // indirect
 	github.com/spiffe/go-spiffe/v2 v2.9.0 // indirect
 	github.com/stretchr/testify v1.12.1 // indirect
 	github.com/testcontainers/testcontainers-go v0.44.0 // indirect
@@ -160,3 +161,5 @@ require (
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20261019180522-ce908d29299b // indirect
 	google.golang.org/protobuf v1.36.12 // indirect
 )
+
+replace github.com/cccteam/ccc/impulse => ../../impulse

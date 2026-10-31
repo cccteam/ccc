@@ -1093,12 +1093,16 @@ func TestOrgRegisterThenRender(t *testing.T) {
 	tests := []struct {
 		name string
 		// app is the application registered, a fixture under ../derive/testdata; others
-		// are the applications the organization holds before it.
-		app    string
-		others []string
+		// are the applications the organization holds before it. persona is written into
+		// the registered placement by hand, as the persona provider's block is until
+		// Redgrade's registration of the application hands it over: beacon's keepers auth
+		// registers the persona method, which the block names the provider for.
+		app     string
+		others  []string
+		persona *derive.PersonaPlacement
 	}{
 		{name: "harbor, a Google directory auth", app: "harbor", others: []string{"beacon"}},
-		{name: "beacon, a password auth, the organization's first", app: "beacon"},
+		{name: "beacon, a password auth beside the persona method, the organization's first", app: "beacon", persona: &derive.PersonaPlacement{Issuer: "https://persona.impulseframework.dev/persona", ClientID: "beacon"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1126,6 +1130,17 @@ func TestOrgRegisterThenRender(t *testing.T) {
 			app := copyRepo(t, filepath.Join("..", "derive", "testdata", tt.app))
 			if out, err := execute(orgDeps(dir), "", "org", "register", tt.app, "--dir", dir, app); err != nil {
 				t.Fatalf("org register error = %v; output:\n%s", err, out)
+			}
+			if tt.persona != nil {
+				registered := filepath.Join(app, "infrastructure", placementFile)
+				p, err := derive.ReadPlacement(registered)
+				if err != nil {
+					t.Fatal(err)
+				}
+				p.Persona = tt.persona
+				if err := derive.WritePlacement(registered, p); err != nil {
+					t.Fatal(err)
+				}
 			}
 			d := deps{interactive: never, version: installedHead, cwd: app}
 			out, err := execute(d, "", renderCommand)

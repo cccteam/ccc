@@ -593,13 +593,13 @@ func parseMethods(flags []string) ([]authpkg.Method, error) {
 				return nil, errors.Newf("--method %s: the password method takes no registration name", flag)
 			}
 			specs = append(specs, authpkg.Method{Kind: app.MethodPassword})
-		case app.MethodAzure, app.MethodGoogle:
+		case app.MethodAzure, app.MethodGoogle, app.MethodPersona:
 			if name == "" {
 				name = kind
 			}
 			specs = append(specs, authpkg.Method{Kind: kind, Name: name})
 		default:
-			return nil, errors.Newf("--method %s: password, azure:<registration>, or google:<registration>", flag)
+			return nil, errors.Newf("--method %s: password, azure:<registration>, google:<registration>, or persona", flag)
 		}
 	}
 
@@ -619,16 +619,26 @@ func newAddMethod() *cobra.Command {
 		Use:   "method <auth> <kind> [<registration>]",
 		Short: "Add a sign-in method to an auth: a registration on its Auth, in a file of its own",
 		Long: `method adds a sign-in method to an auth the application has: password, azure (Microsoft
-Entra over OpenID Connect) or google (Google Workspace over OpenID Connect), under the
-registration name given (the segment of its routes, user/<registration>/login; the kind's
-name when none is given; the password method is always registered as password). The method
-gets a file of its own in the auth's package with its registration constant, its settings,
-its handlers and the registration New makes; the Auth file's Handlers and Settings gain it;
-the data level reads its settings from the environment under the registration's variables
-(APP_<AUTH>_<REGISTRATION>_*); every outlet bound to the auth declares it, so the generated
-router mounts its routes and the login page, which renders from the methods route, offers
-it; and for a directory method the Procfile builds with the session library's skipAuth
-tag, which simulates the directory until the application is registered with it.
+Entra over OpenID Connect), google (Google Workspace over OpenID Connect) or persona (the
+persona sign-in of the test environments, over OpenID Connect against the persona
+provider), under the registration name given (the segment of its routes,
+user/<registration>/login; the kind's name when none is given; the password method is
+always registered as password). The method gets a file of its own in the auth's package
+with its registration constant, its settings, its handlers and the registration New makes;
+the Auth file's Handlers and Settings gain it; the data level reads its settings from the
+environment under the registration's variables (APP_<AUTH>_<REGISTRATION>_*); every outlet
+bound to the auth declares it, so the generated router mounts its routes and the login page,
+which renders from the methods route, offers it; and for a directory method the Procfile
+builds with the session library's skipAuth tag, which simulates the directory until the
+application is registered with it.
+
+The persona method is registered only where the persona provider is configured: the
+placement's persona block names the provider's issuer and the application's client ID root,
+bedrock sets them in the first environment and its pull requests, and a later environment,
+where they are empty, never offers the method. It takes no slot, the application authority
+and invited users only: the personas are the accounts of the auth's cast (pkg/auth/<auth>/cast.json,
+written empty here and named by hand), which the migrate command seeds and the deploy
+registers with the provider, and a sign-in links the persona's identity to its account.
 
 --slot is the organization slot of a directory method, which organizations' accounts it
 admits. For azure: one (one tenant, the default), listed (named tenants), any (any tenant),
@@ -665,7 +675,15 @@ organization only) or application (roles are assigned in the application).`,
 			if spec.Kind == app.MethodPassword && (slot != "" || authority != "") {
 				return errors.New("the password method takes no --slot or --authority")
 			}
-			if spec.Directory() && authority == "" {
+			if spec.Kind == app.MethodPersona {
+				if slot != "" {
+					return errors.New("the persona method takes no --slot: the persona provider is one issuer, and which personas it offers is the deployment's cast")
+				}
+				if authority == "" {
+					spec.Authority = app.AuthorityApplication
+				}
+			}
+			if spec.Directory() && spec.Authority == "" {
 				answer, err := askAuthority(cmd)
 				if err != nil {
 					return err
@@ -677,7 +695,7 @@ organization only) or application (roles are assigned in the application).`,
 		},
 	}
 	f.bind(cmd)
-	cmd.Flags().StringVar(&authority, "authority", "", "who owns role membership for a directory method: directory (roles synchronized at every sign-in, one organization only) or application (roles assigned in the application); asked when not given")
+	cmd.Flags().StringVar(&authority, "authority", "", "who owns role membership for a directory method: directory (roles synchronized at every sign-in, one organization only) or application (roles assigned in the application); asked when not given, and application for the persona method")
 	cmd.Flags().StringVar(&slot, "slot", "", "the organization slot of a directory method: azure one|listed|any|personal|one-personal|any-personal, google one|listed|any-workspace|any|mixed (default: one)")
 	cmd.Flags().StringVar(&accounts, "accounts", "", "the standard account rule for a first sign-in: members (default), invited, or open; the password method takes open alone")
 	cmd.Flags().BoolVar(&usernameIsEmail, "username-is-email", false, "the password method's sign-in name is the person's email address")

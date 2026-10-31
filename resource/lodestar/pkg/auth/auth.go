@@ -110,3 +110,16 @@ func (d *Directory) Workspace() google.WorkspaceSet {
 func RequireSecondFactor(context.Context, *cloudspanner.ReadWriteTransaction, *sessioninfo.NewSessionRequest) (*signin.Decision, error) {
 	return signin.RequireMFA(sessioninfo.MethodEmailCode), nil
 }
+
+// Persona is how the application is known to the persona provider, the sign-in of the
+// test environments (pkg/auth/crew, PersonaRegistration): the provider's issuer URL,
+// where the browser is sent to pick a persona of the deployment's cast; the deployment's
+// client ID at the provider; and the callback the provider returns the browser to. The
+// provider is configured in a pull-request environment and the first environment alone:
+// an empty Issuer leaves the method unregistered, so a later environment never offers it
+// and nothing in the build differs between them.
+type Persona struct {
+	Issuer      string
+	ClientID    string
+	RedirectURL string
+}

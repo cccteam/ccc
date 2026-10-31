@@ -151,6 +151,7 @@ checks:
   migrations-reader
   auths-wired
   roles-file
+  persona-cast
   administrator-roles
   directory-admission
   second-factor
