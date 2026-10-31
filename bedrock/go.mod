@@ -9,7 +9,7 @@ require (
 	cloud.google.com/go/secretmanager v1.22.0
 	cloud.google.com/go/storage v1.69.0
 	github.com/cccteam/ccc/cloud v0.2.1
-	github.com/cccteam/ccc/impulse v0.6.13-0.20261031172357-70c62d2b6b0a
+	github.com/cccteam/ccc/impulse v0.6.13
 	github.com/cccteam/ccc/resource v0.14.0
 	github.com/go-playground/errors/v5 v5.4.0
 	github.com/google/go-cmp v0.7.0
