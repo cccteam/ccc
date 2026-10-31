@@ -154,6 +154,19 @@ export APP_CREW_OIDC_ADMINISTERED=true
 export APP_SIGN_UP_USERNAME=pioneer
 export APP_CREW_SIGN_UP_REDIRECT_URL=http://127.0.0.1:4300/console/api/user/sign-up/callback
 #
+# The crew auth's persona registration, the sign-in of the test environments: the persona
+# provider offers the cast (pkg/auth/crew/cast.json) and signs the person in as the persona
+# they pick, with its roles. The method is registered where APP_CREW_PERSONA_ISSUER is set
+# and nowhere else; deployed, bedrock sets it in a pull-request environment and the first
+# environment alone, from the placement's persona block, and derives the client ID and the
+# callback. Here the simulated provider stands in: every sign-in through it is
+# APP_PERSONA_USERNAME, a login of the cast, which the application seeds at start where the
+# method is registered.
+export APP_PERSONA_USERNAME=rookie
+export APP_CREW_PERSONA_ISSUER=https://persona.example.com
+export APP_CREW_PERSONA_CLIENT_ID=lodestar-dev
+export APP_CREW_PERSONA_REDIRECT_URL=http://127.0.0.1:4300/console/api/user/persona/callback
+#
 # APP_PUBLIC_URL is the application's address as a browser reaches it, scheme and host with no
 # path: the dev proxy here. Every link the auths mail (an invitation, an address verification,
 # a sign-up) leads to a login page under it.

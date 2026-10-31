@@ -1162,3 +1162,212 @@ func parse{{.Pascal}}Workspaces(value string, administered []string) (google.Wor
 func SecondFactorRule() string {
 	return secondFactorRule
 }
+
+// personaTemplate renders the persona method's file: the session library's generic OpenID
+// Connect method against the persona provider, registered only where the provider is
+// configured.
+const personaTemplate = `package {{.Auth}}
+
+import (
+{{- range .StdImports}}
+	"{{.}}"
+{{- end}}
+{{ range .Imports}}
+	"{{.}}"
+{{- end}}
+)
+
+// {{.Registration}} is the name the {{.Name}} registration goes under on the Auth: the
+// segment of its login and callback routes (user/{{.Name}}/login), and the connection every
+// link made through the persona provider carries. In development the simulated provider
+// signs it in as {{.SimulatedUsername}}, or the shared APP_USERNAME when that is unset, with
+// the roles {{.SimulatedRoles}} or APP_ROLES name.
+const {{.Registration}} = "{{.Name}}"
+
+// {{.SettingsType}} is how the application is known to the persona provider for the
+// {{.Name}} registration, read from the environment. The provider is configured in the
+// first environment and its pull requests alone: an empty Issuer leaves the method
+// unregistered, so a later environment never offers it, and nothing in the build differs
+// between them. Under the session library's skipAuth build tag the provider is simulated
+// and only the fields the simulated sign-in presents are read.
+type {{.SettingsType}} struct {
+{{- range .Fields}}
+	// {{.Name}} is {{.Doc}}.
+	{{.Name}} string
+{{- end}}
+}
+
+// {{.Pascal}}Login sends the browser to the persona provider, where the person picks a
+// persona of this deployment's cast, or is signed in straight away as the persona the
+// login_hint query parameter names. Nil where the method is not registered: the generated
+// router mounts the route and tells the login page of the method only where it is.
+func (h *Handlers) {{.Pascal}}Login() http.HandlerFunc {
+	if h.{{.Field}} == nil {
+		return nil
+	}
+
+	return h.{{.Field}}.Login()
+}
+
+// {{.Pascal}}Callback receives the browser back from the provider, resolves the persona's
+// identity, links it to the seeded account of the same login and starts the session. Nil
+// where the method is not registered.
+func (h *Handlers) {{.Pascal}}Callback() http.HandlerFunc {
+	if h.{{.Field}} == nil {
+		return nil
+	}
+
+	return h.{{.Field}}.Callback()
+}
+
+// register{{.Pascal}} registers the {{.Name}} registration on the Auth, before the first
+// request, where the provider is configured, and answers nil where it is not: the issuer
+// is a placement value of the first environment and its pull requests, so a later
+// environment never registers the method. The provider is a standard OpenID Connect
+// issuer and the application a public client: no secret, and PKCE binds the code to the
+// login that asked for it. The application is the authority for role membership
+// (signin.DisableRoleSync): the provider says which persona signed in, and the cast the
+// migrate command seeded says what the persona may do. The provider attests (Attesting): the person signed in to the provider's host to
+// pick a persona, which is the whole proof in a test environment, so a persona sign-in is
+// never asked for the sign-in code. The account rule is invited users
+// only: the persona's identity (its login as the subject) is linked to the account seeded
+// under that login (cast.json, SeedCast), and a persona the seed does not know is refused.
+func register{{.Pascal}}(authSession *Session, accessClient *access.Client, settings *Settings) *oidc.Method {
+	_ = accessClient
+	if settings.{{.Pascal}}.Issuer == "" {
+		return nil
+	}
+
+	return oidc.SignIn(authSession, {{.Registration}}, nil, &oidc.Config{
+		Issuer:      settings.{{.Pascal}}.Issuer,
+		ClientID:    settings.{{.Pascal}}.ClientID,
+		RedirectURL: settings.{{.Pascal}}.RedirectURL,
+		Connection:  {{.Registration}},
+		Attesting:   true,
+		RoleSync:    {{.RoleSyncExpr}},
+		Accounts:    {{.AccountsExpr}},
+		LoginURL:    settings.LoginURL,
+	})
+}
+`
+
+// castTemplate renders the persona method's cast.go: the cast file embedded, read for the
+// deploy's registration and seeded by the migrate command.
+const castTemplate = `package {{.Auth}}
+
+import (
+	"context"
+	_ "embed" // the cast rides in the binary
+
+	"github.com/cccteam/access"
+	"github.com/cccteam/ccc/accesstypes"
+	"github.com/cccteam/ccc/impulse/persona"
+	"github.com/cccteam/httpio"
+	"github.com/cccteam/session"
+	"github.com/go-playground/errors/v5"
+)
+
+// castFile is the cast of the persona sign-in: the personas a test environment seeds and
+// the persona provider offers, declared beside this package in cast.json (login, name,
+// address and roles, each role one the role file defines). The deploy registers the cast
+// with the provider after traffic (bedrock deploy persona register), and the migrate command
+// seeds its accounts in the environments that take the seed (SeedCast).
+//
+//go:embed cast.json
+var castFile []byte
+
+// Cast reads the cast file.
+func Cast() (*persona.Cast, error) {
+	cast, err := persona.ReadCast(castFile)
+	if err != nil {
+		return nil, errors.Wrap(err, "persona.ReadCast(): cast.json")
+	}
+
+	return cast, nil
+}
+
+// SeedCast seeds the cast: a password-less user under each persona's login, with the
+// persona's address, seated in the roles the cast names, a global role in the global
+// partition and a domain role in every tenant domain, as the first administrator's roles
+// are. A persona whose user exists is left as it is, so every deploy seeds the cast again
+// harmlessly and a persona added to the cast arrives at the next one. The memberships are
+// written first, since writing one that exists is a no-op, then the user: a run that fails
+// between the two leaves no user, so the next deploy finishes the job. The persona sign-in
+// links the provider's identity to the user of the same login at the first sign-in
+// (invited users only), so a persona the seed never made is refused there. It answers how
+// many users it created.
+func (a *Auth) SeedCast(ctx context.Context) (int, error) {
+	cast, err := Cast()
+	if err != nil {
+		return 0, err
+	}
+	roles, err := Roles().Parse()
+	if err != nil {
+		return 0, errors.Wrap(err, "access.RoleFile.Parse()")
+	}
+	created := 0
+	for i := range cast.Personas {
+		p := &cast.Personas[i]
+		if _, err := a.handlers.API().UserByUsername(ctx, p.Login); err == nil {
+			continue
+		} else if !httpio.HasNotFound(err) {
+			return created, errors.Wrapf(err, "session.AuthAPI.UserByUsername(): %s", p.Login)
+		}
+		if err := a.seatPersona(ctx, roles, p); err != nil {
+			return created, err
+		}
+		req := &session.CreateUserRequest{Username: p.Login}
+		if p.Email != "" {
+			req.Email = &p.Email
+		}
+		if _, err := a.handlers.API().CreateSessionUser(ctx, req); err != nil {
+			return created, errors.Wrapf(err, "session.AuthAPI.CreateSessionUser(): %s", p.Login)
+		}
+		created++
+	}
+
+	return created, nil
+}
+
+// seatPersona writes a persona's memberships, each role where the role file holds it: a
+// global role in the global partition, a domain role in every tenant domain. A role the
+// file does not define is refused, since the seed names nothing the release does not.
+func (a *Auth) seatPersona(ctx context.Context, roles *access.RoleConfig, p *persona.Persona) error {
+	var global, everyDomain []accesstypes.Role
+	for _, name := range p.Roles {
+		role := accesstypes.Role(name)
+		switch {
+		case definesRole(roles.Roles.Global, role):
+			global = append(global, role)
+		case definesRole(roles.Roles.Domain, role):
+			everyDomain = append(everyDomain, role)
+		default:
+			return errors.Newf("cast.json: the persona %s holds the role %q, which the %s auth's role file does not define", p.Login, name, Name)
+		}
+	}
+	manager := a.access.UserManager()
+	if len(global) > 0 {
+		if err := manager.AddUserRoles(ctx, accesstypes.GlobalPolicyScope(), accesstypes.User(p.Login), global...); err != nil {
+			return errors.Wrapf(err, "access.UserManager.AddUserRoles(): %s in the global partition", p.Login)
+		}
+	}
+	if len(everyDomain) > 0 {
+		if err := manager.AddUserRoles(ctx, accesstypes.EveryDomainPolicyScope(), accesstypes.User(p.Login), everyDomain...); err != nil {
+			return errors.Wrapf(err, "access.UserManager.AddUserRoles(): %s in every domain", p.Login)
+		}
+	}
+
+	return nil
+}
+
+// definesRole reports whether the role file defines the role at the scope.
+func definesRole(defined []*access.Role, role accesstypes.Role) bool {
+	for _, r := range defined {
+		if r.Name == role {
+			return true
+		}
+	}
+
+	return false
+}
+`

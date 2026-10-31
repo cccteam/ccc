@@ -52,7 +52,7 @@ apply action; teardown and destroy are the same trigger's step for the workflow'
 destroy actions, the pipeline's path to take an environment down.`,
 	}
 	envStack.AddCommand(newDeployEnvStackPlan(d), newDeployEnvStackApply(d), newDeployEnvStackFirst(d), newDeployEnvStackTeardown(d, false), newDeployEnvStackTeardown(d, true))
-	cmd.AddCommand(newDeployResolve(d), newDeployValidateRelease(d), newDeployGuardMigrations(d), newDeployPlanEnvironments(d), newDeployPullRequestStack(d), newDeployStackOutputs(d), newDeployHook(d),
+	cmd.AddCommand(newDeployResolve(d), newDeployValidateRelease(d), newDeployGuardMigrations(d), newDeployPlanEnvironments(d), newDeployPullRequestStack(d), newDeployStackOutputs(d), newDeployHook(d), newDeployPersona(d),
 		newDeployCheckRelease(d), newDeployBuildImage(d), envStack, newDeployBackup(d), newDeployMigrate(d), newDeployJobs(d), newDeployService(d),
 		newDeployShiftTraffic(d), newDeploySweepJobs(d), newDeployRecord(d), newDeployTalkBack(d), newDeploySweep(d), newDeployRelease(d), newDeployMaintenance(d), newDeployWindow(d))
 
@@ -744,6 +744,36 @@ the build at its stage. The pipeline has a step for each stage the application i
 	workspaceFlag(cmd, &workspace)
 	cmd.Flags().BoolVar(&program, "program", false, "run the hooks program rather than the stage's script")
 	cmd.Flags().StringVar(&programPath, "program-path", hooksProgram, "where build-image left the hooks program")
+
+	return cmd
+}
+
+// newDeployPersona is deploy persona.
+func newDeployPersona(d deps) *cobra.Command {
+	var workspace string
+	actions := make([]string, 0, len(deploy.PersonaActions))
+	for _, a := range deploy.PersonaActions {
+		actions = append(actions, string(a))
+	}
+	cmd := &cobra.Command{
+		Use:       "persona <register|remove>",
+		Short:     "Register the deployment with the persona provider, or remove it",
+		ValidArgs: actions,
+		Long: `persona register sends the persona provider each persona method's registration for this deployment,
+after traffic moved: the client ID the placement's root and the deployment make (<root>-pr<N> for a pull
+request, <root>-<environment> for the first environment), the callback on the deployment's canonical
+hostname, and the cast from the checkout (pkg/auth/<auth>/cast.json), as the build's deploy identity
+with its Google identity token for the provider. The registrations come from the _PERSONA substitution
+the stack's triggers carry in the first environment (locals.tf, persona_registrations); a build with
+none, or a torn-down environment, does nothing. persona remove removes a torn-down pull request's
+registrations and does nothing outside a teardown; the sweep removes a closed pull request's the same
+way. A refusal by the provider fails the step.`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return deploy.Persona(cmd.Context(), d.deploy, deploy.Workspace(workspace), deploy.PersonaAction(args[0]), cmd.OutOrStdout())
+		},
+	}
+	workspaceFlag(cmd, &workspace)
 
 	return cmd
 }

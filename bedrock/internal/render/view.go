@@ -141,6 +141,12 @@ type view struct {
 	// method alone has none of that, and its stack carries the cookie key alone.
 	Methods   []*methodView
 	Directory bool
+	// Personas are the persona methods of every auth, auths by name and methods in
+	// registration order, each with what the stack carries for it: the issuer and the
+	// client id it derives from the placement's persona block, the callback, and the
+	// registration the pipeline sends the provider. Persona reports there is any.
+	Personas []*personaView
+	Persona  bool
 	// Sites are the served sites as the templates see them, in the generators' order;
 	// ServedSites names them as the stack does (Process.Main), the several with "and".
 	Sites       []*siteView
@@ -959,6 +965,7 @@ func newView(m *derive.Model) (*view, error) {
 	if err := v.methods(); err != nil {
 		return nil, err
 	}
+	v.personas()
 	v.administrators()
 	v.environments()
 	v.vanity()
@@ -1276,6 +1283,54 @@ func (v *view) methods() error {
 	v.Directory = len(v.Methods) > 0
 
 	return nil
+}
+
+// personaView is one persona method as the templates see it: the method, the stem of its
+// locals (<auth>_<registration>), its label in prose, the provider's issuer and the
+// application's client ID root from the placement, the aligned assignment blocks of its
+// locals and of the settings the served site reads, for locals.tf.
+type personaView struct {
+	*derive.Method
+	Stem         string
+	Label        string
+	Issuer       string
+	ClientIDRoot string
+	// Locals assigns the method's three locals: the issuer where the method is registered,
+	// the deployment's client id, and the callback on the canonical hostname.
+	Locals string
+	// SiteEnv assigns the method's three settings from those locals.
+	SiteEnv string
+}
+
+// Var is the name of the method's local for a setting, by the variable's suffix:
+// <stem>_<suffix in lower case> (keepers_persona_issuer).
+func (p *personaView) Var(suffix string) string {
+	return p.Stem + "_" + strings.ToLower(suffix)
+}
+
+// personas prepares the persona methods: one view per registration, its locals built from
+// the placement's persona block, which derive holds the methods to.
+func (v *view) personas() {
+	block := v.P.Persona
+	for _, m := range v.Model.Personas() {
+		pv := &personaView{Method: m, Stem: m.Stem(), Label: "the " + m.Auth + " auth's " + m.Name + " registration", Issuer: block.Issuer, ClientIDRoot: block.ClientID}
+		hostnames := "hostnames"
+		if v.MultiSite() {
+			hostnames = `site_hostnames["` + m.Site + `"]`
+		}
+		pv.Locals = aligned("  ", [][2]string{
+			{pv.Var("ISSUER"), fmt.Sprintf(`local.is_pr || var.environment == "%s" ? "%s" : ""`, v.Integration, block.Issuer)},
+			{pv.Var("CLIENT_ID"), fmt.Sprintf(`local.is_pr ? "%s-pr${var.pull_request}" : var.environment == "%s" ? "%s-%s" : ""`, block.ClientID, v.Integration, block.ClientID, v.Integration)},
+			{pv.Var("REDIRECT_URL"), fmt.Sprintf(`"https://${local.%s[0]}%s"`, hostnames, m.Callback.Path)},
+		})
+		pv.SiteEnv = aligned("    ", [][2]string{
+			{m.Variable(derive.FieldIssuer).Name, "local." + pv.Var("ISSUER")},
+			{m.Variable(derive.FieldClientID).Name, "local." + pv.Var("CLIENT_ID")},
+			{m.Variable(derive.FieldRedirectURL).Name, "local." + pv.Var("REDIRECT_URL")},
+		})
+		v.Personas = append(v.Personas, pv)
+	}
+	v.Persona = len(v.Personas) > 0
 }
 
 // authView is one auth whose first administrator the placement names: the auth, its

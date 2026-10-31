@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"maps"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -89,6 +90,18 @@ type Placement struct {
 	// Labels are labels the organization puts on every resource, beside the ones the
 	// stack derives.
 	Labels map[string]string `json:"labels,omitempty"`
+	// Persona names the persona provider the first environment and its pull requests sign
+	// in through when an auth registers the persona method (impulse add method persona):
+	// the provider's issuer URL and the application's client ID root, both from Redgrade's
+	// registration of the application. The stack sets the issuer on the served site in
+	// the first environment and its pull requests alone (the method is registered where
+	// the issuer is set and nowhere else), derives each deployment's client ID from the
+	// root (<root>-pr<N> for a pull request, <root>-<first environment> for the
+	// environment) and the callback from the canonical hostname, and the pipeline
+	// registers each deployment, its callback and its cast with the provider after
+	// traffic and removes a torn-down pull request's. Absent, no auth may register the
+	// method; present, one must (render and check refuse the mismatch either way).
+	Persona *PersonaPlacement `json:"persona,omitempty"`
 	// Seed lists the environments whose database takes the development seed
 	// (schema/devseed, as data migrations tracked apart from the schema) at a release
 	// build, after the schema migrations. Absent, none: a database holding data is
@@ -165,6 +178,36 @@ type Placement struct {
 	// by them; an environment without an entry is not wired for it. Production's serves
 	// the rerun alone: it is never restored by a run.
 	Projects map[string]Project `json:"projects,omitempty"`
+}
+
+// PersonaPlacement is the persona provider's place in the application: the provider's
+// issuer URL, where the browser is sent to sign in as a persona, and the application's
+// client ID root at the provider, which each deployment's client ID is built from.
+type PersonaPlacement struct {
+	Issuer   string `json:"issuer"`
+	ClientID string `json:"clientId"`
+}
+
+// personaClientIDRE is the shape of a client ID root: lowercase letters, digits and
+// hyphens starting with a letter, at most 40 characters, so a deployment's client ID (the
+// root with -pr<N> or the environment appended) stays a plain identifier.
+var personaClientIDRE = regexp.MustCompile(`^[a-z][a-z0-9-]{0,39}$`)
+
+// Validate checks the block: an https issuer URL with a host and no query or fragment,
+// and a client ID root in its shape. A nil block is valid: no persona provider.
+func (p *PersonaPlacement) Validate() error {
+	if p == nil {
+		return nil
+	}
+	u, err := url.Parse(p.Issuer)
+	if err != nil || u.Scheme != "https" || u.Host == "" || u.RawQuery != "" || u.Fragment != "" {
+		return errors.Newf("persona.issuer %q: the persona provider's issuer URL, https with a host and an optional path, no query or fragment", p.Issuer)
+	}
+	if !personaClientIDRE.MatchString(p.ClientID) {
+		return errors.Newf("persona.clientId %q: the application's client ID root at the provider, lowercase letters, digits and hyphens starting with a letter, at most 40 characters", p.ClientID)
+	}
+
+	return nil
 }
 
 // Region is one Cloud Run region with the code that names its regional resources.
@@ -363,6 +406,9 @@ func (p *Placement) Validate() error {
 		return err
 	}
 	if err := p.CloudArmor.Validate(); err != nil {
+		return err
+	}
+	if err := p.Persona.Validate(); err != nil {
 		return err
 	}
 	if err := p.validateBuildArguments(); err != nil {

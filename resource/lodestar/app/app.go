@@ -168,6 +168,7 @@ type App struct {
 	// the App's own routes reach the session middleware and the impersonation API
 	// directly. portal is the portal outlet's: the members auth's, with the directory.
 	*crew.Handlers
+	crew           *crew.Auth
 	portal         *members.Handlers
 	resourceClient resource.Client
 	cursorKey      *resource.CursorKey
@@ -242,6 +243,7 @@ func New(cfg Configurer) *App {
 	// The authorization suites bind no auth: they compose the API surface through the
 	// test router, and nothing on that path touches the session.
 	if crewAuth := cfg.Crew(); crewAuth != nil {
+		a.crew = crewAuth
 		a.Handlers = crewAuth.Handlers()
 	}
 	if membersAuth := cfg.Members(); membersAuth != nil {
@@ -497,6 +499,16 @@ func (a *App) Start(ctx context.Context) error {
 	if a.Handlers != nil && a.droidsAPIKey != "" {
 		if err := a.SeedToken(ctx, droidUser, crew.DroidsOutlet, a.droidsAPIKey); err != nil {
 			return errors.Wrap(err, "crew.Handlers.SeedToken()")
+		}
+	}
+	// The persona cast: where the persona method is registered (the test environments),
+	// the cast's logins exist for the persona sign-in to link to, seated in their roles;
+	// a login seeded already is left as it is.
+	//
+	// Demonstrates: auth.persona.
+	if a.crew != nil && a.crew.PersonaRegistered() {
+		if _, err := a.crew.SeedCast(ctx); err != nil {
+			return errors.Wrap(err, "crew.Auth.SeedCast()")
 		}
 	}
 

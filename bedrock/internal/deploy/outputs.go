@@ -78,6 +78,11 @@ type StackOutputs struct {
 	MigrateSecrets   string            `json:"migrateSecrets,omitempty"`
 	MigrateDatabases string            `json:"migrateDatabases,omitempty"`
 	BuildArguments   map[string]string `json:"buildArguments,omitempty"`
+	// Persona is the persona registrations the pull request's stack carries (the
+	// _PERSONA substitution as its code renders it), which the preview build registers
+	// with the provider as the pull request's own; empty when the code has no persona
+	// method.
+	Persona string `json:"persona,omitempty"`
 	// RevisionTemplates is the stack's revision_templates output as applied: what the
 	// preview build's deploy service and deploy jobs build the revisions and the job
 	// from.
@@ -107,6 +112,7 @@ func (o *StackOutputs) applied(f *Facts, facts map[string]string) {
 	o.Status = StackApplied
 	o.Services, o.JobsJob, o.Hostname, o.Hostnames = facts[services], facts[jobsJobFact], facts[prHostnameFact], facts[prHostnamesFact]
 	o.MigrateEnv, o.MigrateSecrets, o.MigrateDatabases = facts[migrateEnvFact], facts[migrateSecretsFact], facts[migrateDatabasesFact]
+	o.Persona = facts[personaFact]
 	for _, name := range stackArgumentNames(facts) {
 		if o.BuildArguments == nil {
 			o.BuildArguments = map[string]string{}
@@ -123,13 +129,14 @@ func (o *StackOutputs) fail(err error) {
 
 // facts are what the preview build's steps read of an applied stack, by the facts'
 // names: the services, the hostname, the job, the migrate command's settings, secrets
-// and databases, the database mode and the build arguments as their substitutions.
+// and databases, the persona registrations, the database mode and the build arguments
+// as their substitutions.
 func (o *StackOutputs) facts() map[string]string {
 	facts := map[string]string{
 		services: o.Services, prHostnameFact: o.Hostname,
 		sharedDBFact: flag(o.SharedDatabase), reloadDBFact: flag(o.DatabaseRecreated != ""), reloadReasonFact: o.DatabaseRecreated,
 	}
-	for fact, value := range map[string]string{jobsJobFact: o.JobsJob, prHostnamesFact: o.Hostnames, migrateEnvFact: o.MigrateEnv, migrateSecretsFact: o.MigrateSecrets, migrateDatabasesFact: o.MigrateDatabases} {
+	for fact, value := range map[string]string{jobsJobFact: o.JobsJob, prHostnamesFact: o.Hostnames, migrateEnvFact: o.MigrateEnv, migrateSecretsFact: o.MigrateSecrets, migrateDatabasesFact: o.MigrateDatabases, personaFact: o.Persona} {
 		if value != "" {
 			facts[fact] = value
 		}

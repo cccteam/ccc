@@ -441,9 +441,13 @@ The auth behind a session outlet, `generation.Auth(importPath, methods...)`: the
 package (the package exporting `Name`) and the sign-in methods its `session.Auth`
 registers, in the order the login page offers them: `PasswordMethod()`, and each
 external method under its registration name, `GoogleMethod("google")`,
-`AzureMethod("lakeside-entra")`, `WorkOSMethod("sso")`, with `.Labeled(text)` for the
-label the page shows (the method's own name otherwise: Password, Google, Microsoft,
-Single sign-on). An outlet naming no method, a registration name outside
+`AzureMethod("lakeside-entra")`, `WorkOSMethod("sso")`, `PersonaMethod("persona")`, with
+`.Labeled(text)` for the label the page shows (the method's own name otherwise: Password,
+Google, Microsoft, Single sign-on, Persona). A persona method is optional at run time:
+the router mounts its login and callback and the methods route offers it only where the
+auth's handlers are non-nil (the method is registered where the persona provider is
+configured, the test environments), so the same build offers it nowhere else; it takes
+`.InvitedUsers()` and neither `.SyncsRoles()` nor `.OpenSignUp()`. An outlet naming no method, a registration name outside
 `[a-z][a-z0-9-]*`, an external method named `password`, a name declared twice or an
 empty label is refused. A machine outlet declares `generation.Tokens(importPath)` instead,
 naming the auth package of a session outlet whose `Auth` issues the bearer tokens its

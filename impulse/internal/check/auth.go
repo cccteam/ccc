@@ -60,7 +60,7 @@ func (c sessionTables) Run(_ context.Context, env *Env) Result {
 			holders[t] = authLabel(auth)
 		}
 		if len(auth.Methods) == 0 {
-			details = append(details, fmt.Sprintf("%s:%d: the %s registers no sign-in method, so nobody can sign in to it; register session.PasswordSignIn, azure.SignIn, or google.SignIn on it", auth.File, auth.Line, authLabel(auth)))
+			details = append(details, fmt.Sprintf("%s:%d: the %s registers no sign-in method, so nobody can sign in to it; register session.PasswordSignIn, azure.SignIn, google.SignIn, or oidc.SignIn (the persona method) on it", auth.File, auth.Line, authLabel(auth)))
 		}
 		seen := map[string]bool{}
 		for j := range auth.Methods {

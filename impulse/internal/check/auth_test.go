@@ -317,7 +317,7 @@ func TestSessionTables(t *testing.T) {
 			wantStatus:  Fail,
 			wantSummary: "1 auth wiring problem(s)",
 			wantDetails: []string{
-				"pkg/config/session.go:12: the Auth at pkg/config/session.go:12 registers no sign-in method, so nobody can sign in to it; register session.PasswordSignIn, azure.SignIn, or google.SignIn on it",
+				"pkg/config/session.go:12: the Auth at pkg/config/session.go:12 registers no sign-in method, so nobody can sign in to it; register session.PasswordSignIn, azure.SignIn, google.SignIn, or oidc.SignIn (the persona method) on it",
 			},
 		},
 		{

@@ -38,6 +38,10 @@ func smokeSpecs() []*Spec {
 		{Module: "example.com/beacon", AuthDir: "pkg/auth", Name: "closed", Methods: []Method{
 			{Kind: app.MethodAzure, Name: "directory", Authority: app.AuthorityApplication},
 		}, TenantPolicy: &TenantPolicy{Record: "Tenant", Reader: "app.NewTenantDeclarationReader"}},
+		{Module: "example.com/beacon", AuthDir: "pkg/auth", Name: "crew", Doc: "the people who sign in to the console, and the personas of the test environments", Methods: []Method{
+			{Kind: app.MethodPassword},
+			{Kind: app.MethodPersona},
+		}},
 	}
 }
 
@@ -72,6 +76,11 @@ func TestFiles(t *testing.T) {
 			if err := os.WriteFile(filepath.Join(dir, "roles.json"), []byte("{}\n"), 0o600); err != nil {
 				t.Fatal(err)
 			}
+			if name == CastGoFile {
+				if err := os.WriteFile(filepath.Join(dir, "cast.json"), []byte(`{"personas": [{"login": "cadet", "name": "Cadet Example", "roles": []}]}`+"\n"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
 		}
 	}
 }
@@ -93,6 +102,13 @@ func TestValidate(t *testing.T) {
 		{name: "google slot on azure", method: Method{Kind: app.MethodAzure, Name: "x", Slot: SlotMixed, Authority: app.AuthorityApplication}, wantErr: "a azure method takes"},
 		{name: "authority required", method: Method{Kind: app.MethodGoogle, Name: "x"}, wantErr: "authority"},
 		{name: "bad registration name", method: Method{Kind: app.MethodGoogle, Name: "Dir", Authority: app.AuthorityApplication}, wantErr: "registration"},
+		{name: "persona takes no slot", method: Method{Kind: app.MethodPersona, Name: "persona", Slot: SlotAny}, wantErr: "the persona method takes no slot"},
+		{name: "persona under the directory authority", method: Method{Kind: app.MethodPersona, Name: "persona", Authority: app.AuthorityDirectory}, wantErr: "the persona method takes the application authority alone"},
+		{name: "persona admitting open sign-up", method: Method{Kind: app.MethodPersona, Name: "persona", Accounts: AccountsOpen}, wantErr: "the persona method admits invited users only"},
+		{name: "persona with username-is-email", method: Method{Kind: app.MethodPersona, Name: "persona", UsernameIsEmail: true}, wantErr: "a persona signs in as the login its cast names"},
+		{name: "persona named password", method: Method{Kind: app.MethodPersona, Name: "password"}, wantErr: "is the password method's registration name"},
+		{name: "persona with nothing but its name", method: Method{Kind: app.MethodPersona, Name: "persona"}},
+		{name: "persona under the application authority, invited", method: Method{Kind: app.MethodPersona, Name: "reviewers", Authority: app.AuthorityApplication, Accounts: AccountsInvited}},
 		{name: "fine", method: Method{Kind: app.MethodGoogle, Name: "directory", Authority: app.AuthorityDirectory}},
 	}
 	for _, tt := range tests {
@@ -131,6 +147,8 @@ func TestDeclaration(t *testing.T) {
 		{name: "any Entra tenant under open sign-up", method: Method{Kind: app.MethodAzure, Name: "entra", Slot: SlotAny, Accounts: AccountsOpen, Authority: app.AuthorityApplication}, want: `generation.AzureMethod("entra").OpenSignUp()`},
 		{name: "the password method", method: Method{Kind: app.MethodPassword, Name: app.PasswordRegistration}, want: `generation.PasswordMethod()`},
 		{name: "the password method signing strangers up by their address", method: Method{Kind: app.MethodPassword, Name: app.PasswordRegistration, Accounts: AccountsOpen, UsernameIsEmail: true}, want: `generation.PasswordMethod().OpenSignUp().UsernameIsEmail()`},
+		{name: "the persona method, whose personas are the invited users", method: Method{Kind: app.MethodPersona, Name: "persona"}, want: `generation.PersonaMethod("persona").InvitedUsers()`},
+		{name: "the persona method under another registration name", method: Method{Kind: app.MethodPersona, Name: "reviewers", Authority: app.AuthorityApplication, Accounts: AccountsInvited}, want: `generation.PersonaMethod("reviewers").InvitedUsers()`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -174,6 +174,23 @@ func TestRegistrationVariables(t *testing.T) {
 			wantFields: []string{FieldWorkspaces, FieldAdministeredWorkspaces, FieldClientID, FieldClientSecret, FieldRedirectURL},
 		},
 		{
+			name:   "a persona registration reads the issuer, its derived client id and the callback, and no secret",
+			method: Method{Auth: "keepers", Name: "persona", Kind: app.MethodPersona, Authority: app.AuthorityApplication},
+			variables: []Variable{
+				variable("APP_KEEPERS_PERSONA_ISSUER", false), variable("APP_KEEPERS_PERSONA_CLIENT_ID", false), variable("APP_KEEPERS_PERSONA_REDIRECT_URL", false),
+			},
+			wantRoles:  map[string]Role{"APP_KEEPERS_PERSONA_ISSUER": RoleIssuer, "APP_KEEPERS_PERSONA_CLIENT_ID": RolePersonaClientID, "APP_KEEPERS_PERSONA_REDIRECT_URL": RoleRedirectURL},
+			wantFields: []string{FieldIssuer, FieldClientID, FieldRedirectURL},
+		},
+		{
+			name:   "a persona registration declaring no issuer is refused",
+			method: Method{Auth: "keepers", Name: "persona", Kind: app.MethodPersona, Authority: app.AuthorityApplication},
+			variables: []Variable{
+				variable("APP_KEEPERS_PERSONA_CLIENT_ID", false), variable("APP_KEEPERS_PERSONA_REDIRECT_URL", false),
+			},
+			wantErr: "the keepers auth's persona registration (persona) declares no APP_KEEPERS_PERSONA_ISSUER variable",
+		},
+		{
 			name:   "a Microsoft registration admitting any tenant declares no slot",
 			method: Method{Auth: "members", Name: "any", Kind: app.MethodAzure, Authority: app.AuthorityApplication},
 			variables: []Variable{

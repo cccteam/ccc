@@ -230,6 +230,52 @@ func TestMethodApply(t *testing.T) {
 			},
 		},
 		{
+			name:   "a persona method, registered where the provider is configured, with its cast",
+			method: Method{Auth: "staff", Spec: authpkg.Method{Kind: app.MethodPersona, Name: "persona"}},
+			wantDid: []string{
+				"pkg/auth/staff/persona.go: the persona method (persona, the persona provider, invited users only, role membership the application's): its registration constant, its settings, its handlers (PersonaLogin and the rest), and registerPersona, which registers it on the Auth",
+				"pkg/auth/staff/cast.json and pkg/auth/staff/cast.go: the cast of the persona sign-in, empty, and the file that embeds it, reads it (Cast) and seeds its accounts (SeedCast)",
+				"pkg/auth/staff/staff.go: Handlers holds the persona method (persona *oidc.Method), New registers it (registerPersona), and Settings carries its PersonaSettings and the LoginURL, and the package doc lists it",
+				`cmd/generate/resourcegenerator/main.go: generation.PersonaMethod("persona").InvitedUsers() declared on 1 outlet Auth option(s) bound to the staff auth, so the generated router mounts user/persona/login and the callback and the methods route offers it, where the provider is configured`,
+				"ran go generate ./..., so the router mounts the method's routes and the login page offers it",
+			},
+			wantSkipped: []string{
+				"pkg/auth/staff/cast.json: name the personas (login, name, email, roles from roles.json); impulse check and bedrock check refuse an empty cast (persona-cast), since a persona sign-in with nobody to sign in as deploys nothing useful",
+				"cmd/deployment/migrate: seed the cast where the seed runs (-seed), after SeedAdministrators: data.Staff().SeedCast(ctx), so the environments that take the seed hold the personas' accounts for the sign-in to link",
+				`placement.json: name the persona provider under persona ({"issuer": the provider's URL, "clientId": the application's client ID root, both from Redgrade's registration of the application}), so bedrock sets APP_STAFF_PERSONA_ISSUER in the first environment and its pull requests, derives APP_STAFF_PERSONA_CLIENT_ID and APP_STAFF_PERSONA_REDIRECT_URL, and registers each deployment with the provider after traffic; without it the method is registered nowhere`,
+				"pkg/config/data.go: no environment struct (env := &T{}) to add the persona method's variables to; read APP_STAFF_PERSONA_ISSUER, APP_STAFF_PERSONA_CLIENT_ID, APP_STAFF_PERSONA_REDIRECT_URL and pass them in staff.Settings.Persona",
+			},
+			// No secret, no organization slot to validate in the harness, no directory shape.
+			wantNotSkipped: []string{"CLIENT_SECRET", "harness_test.go", "GroupPrefix", "ADMINISTERED"},
+			check: func(t *testing.T, a *app.App) {
+				t.Helper()
+				file := read(t, a, "pkg/auth/staff/persona.go")
+				for _, want := range []string{"package staff", `const PersonaRegistration = "persona"`, "type PersonaSettings struct", "func (h *Handlers) PersonaLogin() http.HandlerFunc", "func (h *Handlers) PersonaCallback() http.HandlerFunc", "func registerPersona(authSession *Session, accessClient *access.Client, settings *Settings) *oidc.Method", "if settings.Persona.Issuer == \"\" {\n\t\treturn nil\n\t}", "oidc.SignIn(authSession, PersonaRegistration", "signin.DisableRoleSync()", "\t\tAccounts:    signin.", "LoginURL:    settings.LoginURL"} {
+					if !strings.Contains(file, want) {
+						t.Errorf("persona.go lacks %q:\n%s", want, file)
+					}
+				}
+				cast := read(t, a, "pkg/auth/staff/cast.go")
+				for _, want := range []string{"//go:embed cast.json", "func Cast() (*persona.Cast, error)", "func (a *Auth) SeedCast(ctx context.Context) (int, error)", "httpio.HasNotFound(err)", "accesstypes.GlobalPolicyScope()", "accesstypes.EveryDomainPolicyScope()"} {
+					if !strings.Contains(cast, want) {
+						t.Errorf("cast.go lacks %q:\n%s", want, cast)
+					}
+				}
+				if got := read(t, a, "pkg/auth/staff/cast.json"); got != "{\n  \"personas\": []\n}\n" {
+					t.Errorf("cast.json = %q", got)
+				}
+				main := read(t, a, "pkg/auth/staff/staff.go")
+				for _, want := range []string{"\tpassword *session.PasswordMethod\n\tpersona  *oidc.Method\n", "\thandlers.persona = registerPersona(authSession, accessClient, settings)\n", "\tPersona PersonaSettings\n", "\tLoginURL string\n", "\t\"github.com/cccteam/session/oidc\"\n"} {
+					if !strings.Contains(main, want) {
+						t.Errorf("staff.go lacks %q:\n%s", want, main)
+					}
+				}
+				if program := read(t, a, "cmd/generate/resourcegenerator/main.go"); !strings.Contains(program, `generation.Auth("example.com/acme/beacon/pkg/auth/staff", generation.PasswordMethod(), generation.PersonaMethod("persona").InvitedUsers())`) {
+					t.Errorf("program = %s", program)
+				}
+			},
+		},
+		{
 			name:   "a second registration joins the function under the first",
 			method: Method{Auth: "staff", Spec: authpkg.Method{Kind: app.MethodGoogle, Name: "workspace", Authority: AuthorityApplication}},
 			extra: map[string]string{"pkg/config/data.go": strings.Replace(authConfigSettings,

@@ -326,6 +326,12 @@ const (
 	methodAzure authMethodKind = "azure"
 	// methodWorkOS is WorkOS single sign-on (workos.SignIn): Google's routes.
 	methodWorkOS authMethodKind = "workos"
+	// methodPersona is the persona sign-in of the test environments (oidc.SignIn, the
+	// session library's generic OpenID Connect method, against the persona provider):
+	// Google's routes. The Auth registers it only where its provider is configured, so
+	// the router mounts its routes and offers it to the login page where the surface has
+	// it and nowhere else.
+	methodPersona authMethodKind = "persona"
 )
 
 // passwordMethodName is the name the session library registers the password method
@@ -335,7 +341,7 @@ const passwordMethodName = "password"
 // AuthMethod is one sign-in method registered on a session outlet's Auth, as the
 // generated router mounts it: the method, the name it is registered under, and the
 // label the login page shows for it. Build one with PasswordMethod, GoogleMethod,
-// AzureMethod or WorkOSMethod, and reword its label with Labeled.
+// AzureMethod, WorkOSMethod or PersonaMethod, and reword its label with Labeled.
 type AuthMethod struct {
 	kind  authMethodKind
 	name  string
@@ -378,6 +384,17 @@ func AzureMethod(name string) AuthMethod {
 // label "Single sign-on".
 func WorkOSMethod(name string) AuthMethod {
 	return AuthMethod{kind: methodWorkOS, name: name, label: "Single sign-on"}
+}
+
+// PersonaMethod is the persona sign-in of the test environments registered under name,
+// with the label "Persona": a person signs in as one of the personas the deployment
+// seeded, through the persona provider. The Auth registers the method only where its
+// provider is configured (the first environment and its pull requests), and the surface's
+// handlers for it are nil elsewhere, so the generated router mounts its routes and tells
+// the login page of it only where the surface has it. Declared with InvitedUsers, since
+// the personas are seeded accounts the sign-in links to.
+func PersonaMethod(name string) AuthMethod {
+	return AuthMethod{kind: methodPersona, name: name, label: "Persona"}
 }
 
 // Labeled gives the method other words than its default, for an application that wants
@@ -465,7 +482,7 @@ func (m AuthMethod) String() string {
 		}
 
 		return spelled
-	case methodGoogle, methodAzure, methodWorkOS:
+	case methodGoogle, methodAzure, methodWorkOS, methodPersona:
 		spelled := fmt.Sprintf("%sMethod(%q)", caser.ToPascal(string(m.kind)), m.name)
 		if m.invited {
 			spelled += ".InvitedUsers()"
@@ -504,7 +521,7 @@ func validateAuthMethods(importPath string, methods []AuthMethod) error {
 	for _, m := range methods {
 		switch {
 		case m.kind == "":
-			return errors.Newf("Auth(%q) is given a zero AuthMethod: build each with PasswordMethod, GoogleMethod, AzureMethod or WorkOSMethod", importPath)
+			return errors.Newf("Auth(%q) is given a zero AuthMethod: build each with PasswordMethod, GoogleMethod, AzureMethod, WorkOSMethod or PersonaMethod", importPath)
 		case !registrationName.MatchString(m.name):
 			return errors.Newf("Auth(%q, %s) names the registration %q; a registration name is lowercase letters, digits and hyphens, starting with a letter", importPath, m, m.name)
 		case m.kind != methodPassword && m.name == passwordMethodName:
@@ -519,6 +536,8 @@ func validateAuthMethods(importPath string, methods []AuthMethod) error {
 			return errors.Newf("Auth(%q, %s) declares UsernameIsEmail on a registration: it describes the password method's username", importPath, m)
 		case m.invited && m.openSignUp:
 			return errors.Newf("Auth(%q, %s) declares both InvitedUsers and OpenSignUp: a registration admits invited users only or anyone, not both", importPath, m)
+		case m.kind == methodPersona && (m.syncsRoles || m.openSignUp):
+			return errors.Newf("Auth(%q, %s) declares SyncsRoles or OpenSignUp on the persona method: the persona provider asserts who a persona is and nothing about roles, and the personas are seeded accounts, so the method admits invited users only", importPath, m)
 		}
 		seen[m.name] = true
 	}

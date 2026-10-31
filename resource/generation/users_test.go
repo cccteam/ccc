@@ -960,6 +960,9 @@ func Test_AuthMethod_directoryDeclarations(t *testing.T) {
 		{name: "InvitedUsers beside OpenSignUp", methods: []AuthMethod{GoogleMethod("google").InvitedUsers().OpenSignUp()}, wantErr: "declares both InvitedUsers and OpenSignUp: a registration admits invited users only or anyone, not both"},
 		{name: "SyncsRoles beside the password method", methods: []AuthMethod{PasswordMethod(), GoogleMethod("google").SyncsRoles()}, wantErr: "declares SyncsRoles beside 1 other method(s): a registration whose directory writes the roles stands alone on its Auth"},
 		{name: "SyncsRoles beside another registration", methods: []AuthMethod{AzureMethod("directory").SyncsRoles(), GoogleMethod("google")}, wantErr: "declares SyncsRoles beside 1 other method(s)"},
+		{name: "SyncsRoles on the persona method", methods: []AuthMethod{PersonaMethod("persona").SyncsRoles()}, wantErr: "declares SyncsRoles or OpenSignUp on the persona method: the persona provider asserts who a persona is and nothing about roles"},
+		{name: "OpenSignUp on the persona method", methods: []AuthMethod{PersonaMethod("persona").OpenSignUp()}, wantErr: "declares SyncsRoles or OpenSignUp on the persona method"},
+		{name: "the persona method beside the password method", methods: []AuthMethod{PersonaMethod("persona").InvitedUsers(), PasswordMethod()}, wantString: `PersonaMethod("persona").InvitedUsers()`},
 		{name: "two registrations declaring SyncsRoles", methods: []AuthMethod{AzureMethod("directory").SyncsRoles(), GoogleMethod("google").SyncsRoles()}, wantErr: "stands alone on its Auth"},
 		{name: "SyncsRoles alone", methods: []AuthMethod{AzureMethod("directory").SyncsRoles()}, wantString: `AzureMethod("directory").SyncsRoles()`},
 	}

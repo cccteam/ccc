@@ -63,6 +63,7 @@ import (
 	"github.com/cccteam/httpio"
 	"github.com/cccteam/session"
 	"github.com/cccteam/session/google"
+	"github.com/cccteam/session/oidc"
 	"github.com/cccteam/session/sessionstorage"
 	"github.com/cccteam/session/signin"
 	"github.com/go-playground/errors/v5"
@@ -92,6 +93,12 @@ const (
 	// Google account, through user/sign-up/login, and in development the registration
 	// whose simulated person APP_SIGN_UP_USERNAME names.
 	SignUpRegistration = "sign-up"
+	// PersonaRegistration is the name the persona method is registered under: the sign-in
+	// of the test environments through the persona provider (user/persona/login), where a
+	// reviewer, a tester or an agent picks a persona of the cast (cast.json) and is signed
+	// in as it with its roles; the connection every persona identity's link carries; and
+	// in development the registration whose simulated person APP_PERSONA_USERNAME names.
+	PersonaRegistration = "persona"
 
 	// The auth's tables, which schema/migrations creates: the sessions and users of the
 	// Auth session, the identity links of its Google sign-ins, the auth events each
@@ -191,6 +198,10 @@ type Settings struct {
 	// crew's third way in: any Google account, under the same client as the directory,
 	// returned to its own callback (user/sign-up/callback).
 	SignUpRedirectURL string
+	// Persona identifies the application to the persona provider, the crew's way in for
+	// the test environments: set in a pull-request environment and the first environment,
+	// where the method is registered, and empty everywhere else, where it is not.
+	Persona auth.Persona
 	// Mail is how the auth sends its invitations, address verifications and sign-up
 	// links: the configuration's sender, and the console's login page as an absolute
 	// URL, where every link leads. Required; New refuses a nil sender.
@@ -243,6 +254,7 @@ type Handlers struct {
 	password *session.PasswordMethod
 	google   *google.Method
 	signUp   *google.Method
+	persona  *oidc.Method
 	droids   *session.MachineOutlet
 }
 
@@ -402,6 +414,32 @@ func (h *Handlers) SignUpLogin() http.HandlerFunc {
 // it has never seen (open sign-up) holding no role, and starts the session.
 func (h *Handlers) SignUpCallback() http.HandlerFunc {
 	return h.signUp.Callback()
+}
+
+// PersonaLogin sends the browser to the persona provider, where the person picks a
+// persona of this deployment's cast, or is signed in straight away as the persona the
+// login_hint query parameter names (the machine path). Nil where the method is not
+// registered: the generated router mounts the route and tells the login page of the
+// method only where it is, so the same build offers it in the test environments alone.
+//
+// Demonstrates: auth.persona.
+func (h *Handlers) PersonaLogin() http.HandlerFunc {
+	if h.persona == nil {
+		return nil
+	}
+
+	return h.persona.Login()
+}
+
+// PersonaCallback receives the browser back from the persona provider, links the
+// persona's identity to the crew login of the same name (the cast's seeded account) and
+// starts the session. Nil where the method is not registered.
+func (h *Handlers) PersonaCallback() http.HandlerFunc {
+	if h.persona == nil {
+		return nil
+	}
+
+	return h.persona.Callback()
 }
 
 // InvitationOpen opens the invitation the login page was sent to ({"token"}): it
@@ -612,6 +650,10 @@ func New(ctx context.Context, db *cloudspanner.Client, settings *Settings) (*Aut
 		LoginURL:     settings.LoginURL,
 	})
 
+	// The persona method, under PersonaRegistration, where the provider is configured
+	// (registerPersona): the sign-in of the test environments.
+	personaMethod := registerPersona(crewSession, settings)
+
 	// The sign-in rule: the library's tenant policy. A person's sectors are where they
 	// hold a role (the engine's memberships), and what each sector admits is its
 	// declaration, read in the sign-in's transaction: a password is admitted unless
@@ -669,7 +711,44 @@ func New(ctx context.Context, db *cloudspanner.Client, settings *Settings) (*Aut
 	// or a test harness may reach after creating users through the API.
 	droids := session.RegisterMachineOutlet(crewSession, DroidsOutlet)
 
-	return &Auth{access: accessClient, handlers: &Handlers{Session: crewSession, store: sessionStore, password: password, google: googleMethod, signUp: signUpMethod, droids: droids}}, nil
+	return &Auth{access: accessClient, handlers: &Handlers{Session: crewSession, store: sessionStore, password: password, google: googleMethod, signUp: signUpMethod, persona: personaMethod, droids: droids}}, nil
+}
+
+// registerPersona registers the persona method on the Auth where the provider is
+// configured, and answers nil where it is not: the session library's generic OpenID
+// Connect method (oidc.SignIn) against the persona provider the placement names, the
+// application a public client (no secret; PKCE binds the code to the login that asked for
+// it). The provider attests (Attesting): the person signed in to the provider's host to
+// pick a persona, which is the whole proof in a test environment, so a persona sign-in is
+// never asked for the code. The application is the authority for roles
+// (signin.DisableRoleSync), and the account rule is invited users only: the persona's
+// identity (its login as the subject) is linked to the crew login seeded under that login
+// (cast.json, SeedCast), and a persona the seed never made is refused. An empty issuer
+// registers nothing, so a later environment never offers the method and nothing in the
+// build differs.
+//
+// Demonstrates: auth.persona.
+func registerPersona(crewSession *Session, settings *Settings) *oidc.Method {
+	if settings.Persona.Issuer == "" {
+		return nil
+	}
+
+	return oidc.SignIn(crewSession, PersonaRegistration, nil, &oidc.Config{
+		Issuer:      settings.Persona.Issuer,
+		ClientID:    settings.Persona.ClientID,
+		RedirectURL: settings.Persona.RedirectURL,
+		Connection:  PersonaRegistration,
+		Attesting:   true,
+		RoleSync:    signin.DisableRoleSync(),
+		Accounts:    signin.InvitedUsersOnly,
+		LoginURL:    settings.LoginURL,
+	})
+}
+
+// PersonaRegistered reports whether the persona method is registered on the Auth: the
+// persona provider is configured, as it is in the test environments alone.
+func (a *Auth) PersonaRegistered() bool {
+	return a.handlers.persona != nil
 }
 
 // Access returns the auth's permission engine: the handlers check against it, and its

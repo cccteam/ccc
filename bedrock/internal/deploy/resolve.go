@@ -161,8 +161,12 @@ type Clients struct {
 	Tasks TasksFunc
 	// Metrics opens Cloud Monitoring, for the active instances a maintenance step waits on.
 	Metrics MetricsFunc
-	// HTTP is the client a maintenance step probes the maintenance revision with.
+	// HTTP is the client a maintenance step probes the maintenance revision with, and
+	// the persona registrations go through.
 	HTTP *http.Client
+	// IDToken mints the build identity's Google identity token for an audience: the
+	// persona provider takes it as the deploy identity's proof of itself.
+	IDToken IDTokenFunc
 	// Sleep waits between a maintenance step's tries and through the wait for a
 	// maintenance window; nil waits for real.
 	Sleep SleepFunc
@@ -200,7 +204,7 @@ func DefaultClients(out io.Writer) *Clients {
 	return &Clients{
 		Storage: NewStorage, StorageAs: NewStorageAs, StorageAsWriter: NewStorageAsWriter, Builds: NewCloudBuild, Comments: GitHubComments, GitHub: PublicGitHub,
 		Registry: NewArtifactRegistry(out), Run: NewCloudRun(out), Secrets: NewSecretManager, Exec: OSRunner{}, Grants: NewGrants(out), Versions: NewVersions(out),
-		SecretsAs: NewSecretManagerAs, Tasks: NewCloudTasks(out), Metrics: NewCloudMonitoring(out), HTTP: &http.Client{Timeout: 30 * time.Second}, FirestoreAs: NewFirestoreAs(out), SpannerAs: NewSpannerAs(out), Spanner: NewSpanner(out),
+		SecretsAs: NewSecretManagerAs, Tasks: NewCloudTasks(out), Metrics: NewCloudMonitoring(out), HTTP: &http.Client{Timeout: 30 * time.Second}, IDToken: GoogleIDToken, FirestoreAs: NewFirestoreAs(out), SpannerAs: NewSpannerAs(out), Spanner: NewSpanner(out),
 	}
 }
 

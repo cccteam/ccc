@@ -1,0 +1,6 @@
+{
+  "personas": [
+    {"login": "admin", "name": "Admin Example", "email": "admin@example.com", "roles": ["Administrator"]},
+    {"login": "keeper", "name": "Keeper Example", "email": "keeper@example.com", "roles": []}
+  ]
+}

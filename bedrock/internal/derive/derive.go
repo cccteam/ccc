@@ -334,6 +334,16 @@ const (
 	// administers none.
 	RoleAdministeredTenants    Role = "administered-tenants"
 	RoleAdministeredWorkspaces Role = "administered-workspaces"
+	// RoleIssuer is the persona provider's issuer URL (APP_<AUTH>_<REGISTRATION>_ISSUER
+	// of a persona method), the stack's to set: the placement's issuer in the first
+	// environment and its pull requests, where the persona method is registered, and
+	// empty everywhere else, where it is not. RolePersonaClientID is the deployment's
+	// client ID at the provider (the persona method's _CLIENT_ID): the placement's client
+	// ID root with the pull request or the environment appended, which the stack derives,
+	// unlike a directory registration's client ID, which the placement names per
+	// environment.
+	RoleIssuer          Role = "issuer"
+	RolePersonaClientID Role = "persona-client-id"
 	// RoleAdministrator is the sign-in name of an auth's first administrator
 	// (APP_<AUTH>_ADMINISTRATOR), placed per environment: the deployment's migrate command
 	// seeds the administrator role membership under it while the auth's users table holds
@@ -354,7 +364,7 @@ const defaultGroupLookup = "direct"
 // Derived reports a role whose value the stack derives from a fact of its own.
 func (r Role) Derived() bool {
 	switch r {
-	case RoleServiceName, RoleLoggingProject, RoleDatabaseProject, RoleDatabaseInstance, RoleDatabaseName, RoleRedirectURL, RoleFileStore, RoleTasksQueue, RoleFirestoreProject, RoleFirestoreDatabase, RoleFirebaseAPIKey, RoleTraceSampling, RoleJobsTemplate, RoleSiteBundle, RolePublicURL:
+	case RoleServiceName, RoleLoggingProject, RoleDatabaseProject, RoleDatabaseInstance, RoleDatabaseName, RoleRedirectURL, RoleFileStore, RoleTasksQueue, RoleFirestoreProject, RoleFirestoreDatabase, RoleFirebaseAPIKey, RoleTraceSampling, RoleJobsTemplate, RoleSiteBundle, RolePublicURL, RoleIssuer, RolePersonaClientID:
 		return true
 	default:
 		return false
@@ -713,7 +723,7 @@ type Method struct {
 	// Name is the registration name: the segment of the method's routes
 	// (user/<name>/callback) and of its variables.
 	Name string
-	// Kind is the method: password, azure, or google.
+	// Kind is the method: password, azure, google, or persona.
 	Kind string
 	// Authority is who owns role membership for a directory method: directory or
 	// application (app.AuthorityDirectory, app.AuthorityApplication).
@@ -744,12 +754,24 @@ type Method struct {
 	// role groups.
 	GroupPrefixDefault string
 	GroupLookupDefault string
+	// CastFile is the root-relative cast of a persona method (pkg/auth/<auth>/cast.json):
+	// the personas the migrate command seeds and the pipeline registers with the persona
+	// provider for each deployment. Empty for another kind.
+	CastFile string
 }
 
-// Directory reports a method whose people sign in through a directory: every kind but
-// the password method.
+// Directory reports a method whose people sign in through a directory, Microsoft Entra
+// or Google: the stack carries the registration's placement variables, its client secret
+// and a hand step for the registration at the directory. The persona method is none: its
+// provider is configured by the placement alone.
 func (m *Method) Directory() bool {
-	return m.Kind != app.MethodPassword
+	return m.Kind == app.MethodAzure || m.Kind == app.MethodGoogle
+}
+
+// Persona reports the persona method: the sign-in of the test environments through the
+// persona provider the placement names, registered where the stack sets its issuer.
+func (m *Method) Persona() bool {
+	return m.Kind == app.MethodPersona
 }
 
 // FrontChannelLogout reports a method whose registration names a front-channel logout
@@ -777,18 +799,25 @@ func (m *Method) Provider() string {
 		return "Microsoft"
 	case app.MethodGoogle:
 		return "Google"
+	case app.MethodPersona:
+		return "the persona provider"
 	default:
 		return ""
 	}
 }
 
 // Fields lists the registration's settings in the stack's order (registrationFields),
-// each with its variable: those the registration declares.
+// each with its variable: those the registration declares, among the settings a method
+// of its kind reads.
 func (m *Method) Fields() []RegistrationSetting {
 	var settings []RegistrationSetting
 	for i := range registrationFields {
-		if v := m.Variables[registrationFields[i].Field]; v != nil {
-			settings = append(settings, RegistrationSetting{Field: registrationFields[i].Field, Suffix: registrationFields[i].Suffix, Variable: v})
+		f := &registrationFields[i]
+		if !f.reads(m.Kind, m.Authority) {
+			continue
+		}
+		if v := m.Variables[f.Field]; v != nil {
+			settings = append(settings, RegistrationSetting{Field: f.Field, Suffix: f.Suffix, Variable: v})
 		}
 	}
 
@@ -810,6 +839,21 @@ func (m *Model) DirectoryMethods() []*Method {
 	for i := range m.Auths {
 		for j := range m.Auths[i].Methods {
 			if m.Auths[i].Methods[j].Directory() {
+				methods = append(methods, &m.Auths[i].Methods[j])
+			}
+		}
+	}
+
+	return methods
+}
+
+// Personas lists every persona method of every auth, auths by name, methods in
+// registration order.
+func (m *Model) Personas() []*Method {
+	var methods []*Method
+	for i := range m.Auths {
+		for j := range m.Auths[i].Methods {
+			if m.Auths[i].Methods[j].Persona() {
 				methods = append(methods, &m.Auths[i].Methods[j])
 			}
 		}
@@ -922,6 +966,9 @@ func Derive(a *app.App, p *Placement) (*Model, error) {
 		return nil, err
 	}
 	if err := m.auths(a, cfg); err != nil {
+		return nil, err
+	}
+	if err := m.personaPlacement(); err != nil {
 		return nil, err
 	}
 	if err := m.schema(a); err != nil {

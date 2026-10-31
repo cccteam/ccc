@@ -510,11 +510,14 @@ func TestRenderName(t *testing.T) {
 	consoleManifest := []string{`"name": "Beacon"`, `"short_name": "Beacon"`}
 	portalManifest := []string{`"name": "Beacon Portal"`, `"short_name": "Beacon Portal"`}
 	consoleFooter := []string{"  name = 'Beacon';\n"}
+	// The auth packages' Application constant is the name the mail an auth sends says.
+	authApplication := []string{"\tApplication = \"Beacon\"\n"}
 	oneWorkspace := map[string][]string{
 		"web/package.json": {`"name": "beacon-web"`},
 		"web/bun.lock":     {`"name": "beacon-web"`},
 		"web/console/public/manifest.webmanifest":                          consoleManifest,
 		"web/console/src/app/components/shared/footer/footer.component.ts": consoleFooter,
+		"pkg/auth/staff/staff.go":                                          authApplication,
 	}
 	tests := []struct {
 		name      string
@@ -529,8 +532,11 @@ func TestRenderName(t *testing.T) {
 			"web/console/public/manifest.webmanifest":                          consoleManifest,
 			"web/portal/public/manifest.webmanifest":                           portalManifest,
 			"web/console/src/app/components/shared/footer/footer.component.ts": consoleFooter,
+			"pkg/auth/staff/staff.go":                                          authApplication,
+			"pkg/auth/members/members.go":                                      authApplication,
 		}},
 		{name: "sites", candidate: "sites", slots: map[string][]string{
+			"pkg/auth/staff/staff.go":                                               authApplication,
 			"apps/console/web/package.json":                                         {`"name": "beacon-console-web"`},
 			"apps/console/web/bun.lock":                                             {`"name": "beacon-console-web"`},
 			"apps/console/web/public/manifest.webmanifest":                          consoleManifest,
@@ -566,7 +572,10 @@ func TestRenderName(t *testing.T) {
 						t.Errorf("%s lacks %q", rel, want)
 					}
 				}
-				if m := candidate.FindString(string(data)); m != "" {
+				// A Go file's prose uses the English words the candidates are named after
+				// (the outlets an auth issues tokens to), so only the other slots are held
+				// to naming the candidate nowhere.
+				if m := candidate.FindString(string(data)); m != "" && !strings.HasSuffix(rel, ".go") {
 					t.Errorf("%s still names the candidate: %q", rel, m)
 				}
 			}

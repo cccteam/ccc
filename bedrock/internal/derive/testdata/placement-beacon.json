@@ -27,5 +27,9 @@
   "labels": {
     "bedrock-lab": "true"
   },
-  "buildMachine": "E2_HIGHCPU_8"
+  "buildMachine": "E2_HIGHCPU_8",
+  "persona": {
+    "issuer": "https://persona.impulseframework.dev/persona",
+    "clientId": "beacon"
+  }
 }

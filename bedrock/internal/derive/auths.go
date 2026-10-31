@@ -29,6 +29,9 @@ const (
 	FieldRedirectURL  = "RedirectURL"
 	FieldGroupPrefix  = "GroupPrefix"
 	FieldGroupLookup  = "GroupLookup"
+	// FieldIssuer is the persona provider's issuer URL, the one setting of the persona
+	// method beside the client id and the callback.
+	FieldIssuer = "Issuer"
 	// The organizations the deployment administers among those the slot admits, whose
 	// sign-ins carry the directory's second factor: tenants by id, Workspaces by domain.
 	FieldAdministeredTenants    = "AdministeredTenants"
@@ -54,7 +57,8 @@ type registrationField struct {
 // organization slot first (one of two shapes per kind, or none for a registration that
 // admits any organization), then the client credentials and the callback every
 // directory method reads, then the role groups of a Google registration under the
-// directory's authority.
+// directory's authority. The persona method reads the provider's issuer, its client id
+// (which the stack derives, under a role of its own) and the callback, and no secret.
 var registrationFields = []registrationField{
 	{Field: FieldTenantID, Suffix: "TENANT_ID", Role: RoleTenantID, Kinds: []string{app.MethodAzure}},
 	{Field: FieldTenants, Suffix: "TENANTS", Role: RoleTenants, Kinds: []string{app.MethodAzure}},
@@ -64,7 +68,9 @@ var registrationFields = []registrationField{
 	{Field: FieldAdministeredWorkspaces, Suffix: "ADMINISTERED_WORKSPACES", Role: RoleAdministeredWorkspaces, Kinds: []string{app.MethodGoogle}},
 	{Field: FieldClientID, Suffix: "CLIENT_ID", Role: RoleClientID, Kinds: []string{app.MethodAzure, app.MethodGoogle}, Required: true},
 	{Field: FieldClientSecret, Suffix: "CLIENT_SECRET", Role: RoleClientSecret, Kinds: []string{app.MethodAzure, app.MethodGoogle}, Required: true, Secret: true},
-	{Field: FieldRedirectURL, Suffix: "REDIRECT_URL", Role: RoleRedirectURL, Kinds: []string{app.MethodAzure, app.MethodGoogle}, Required: true},
+	{Field: FieldIssuer, Suffix: "ISSUER", Role: RoleIssuer, Kinds: []string{app.MethodPersona}, Required: true},
+	{Field: FieldClientID, Suffix: "CLIENT_ID", Role: RolePersonaClientID, Kinds: []string{app.MethodPersona}, Required: true},
+	{Field: FieldRedirectURL, Suffix: "REDIRECT_URL", Role: RoleRedirectURL, Kinds: []string{app.MethodAzure, app.MethodGoogle, app.MethodPersona}, Required: true},
 	{Field: FieldGroupPrefix, Suffix: "GROUP_PREFIX", Role: RoleGroupPrefix, Kinds: []string{app.MethodGoogle}, Required: true, DirectoryAuthority: true},
 	{Field: FieldGroupLookup, Suffix: "GROUP_LOOKUP", Role: RoleGroupLookup, Kinds: []string{app.MethodGoogle}, DirectoryAuthority: true},
 }
@@ -143,7 +149,8 @@ func (m *Model) auth(a *app.App, cfg *config, profile *app.Profile, pkg *app.Aut
 	outlets := boundOutlets(profile, pkg.Path)
 	for _, registration := range constructions[0].Methods {
 		method := Method{Auth: pkg.Name, Name: registration.Name, Kind: registration.Kind, Authority: registration.Authority, Tenants: registration.Tenants, PersonalAccounts: registration.PersonalAccounts}
-		if method.Directory() {
+		switch {
+		case method.Directory():
 			if err := m.registrationVariables(cfg, &method); err != nil {
 				return Auth{}, err
 			}
@@ -151,6 +158,16 @@ func (m *Model) auth(a *app.App, cfg *config, profile *app.Profile, pkg *app.Aut
 				return Auth{}, err
 			}
 			if err := method.routes(outlets); err != nil {
+				return Auth{}, err
+			}
+		case method.Persona():
+			if err := m.registrationVariables(cfg, &method); err != nil {
+				return Auth{}, err
+			}
+			if err := method.routes(outlets); err != nil {
+				return Auth{}, err
+			}
+			if err := method.personaCast(a, pkg, &registration); err != nil {
 				return Auth{}, err
 			}
 		}

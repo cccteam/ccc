@@ -88,6 +88,7 @@ func Sweep(ctx context.Context, clients *Clients, w Workspace, req *BuildRequest
 		if err := destroyPullRequestStack(ctx, clients, s, subs, number, p.StateBucket, out); err != nil {
 			return err
 		}
+		removePersonaRegistrations(ctx, clients, subs, number, out)
 	}
 
 	return nil
