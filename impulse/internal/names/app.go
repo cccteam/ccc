@@ -68,6 +68,16 @@ var (
 // reads when it installs the application.
 const webManifest = "manifest.webmanifest"
 
+// applicationConstRE matches an auth package's Application constant, the application's
+// name as the mail the auth sends says it, in display form (Solo).
+var applicationConstRE = regexp.MustCompile(`(?m)^(\s*Application\s*=\s*")([^"]*)"`)
+
+// authSource reports a Go file of an auth package (pkg/auth/<auth>/...), where the
+// Application constant lives.
+func authSource(rel string) bool {
+	return strings.HasSuffix(rel, ".go") && strings.Contains("/"+rel, "/pkg/auth/")
+}
+
 // envTemplates are the environment template names an application may carry.
 var envTemplates = map[string]bool{".envrc.template": true, ".env.template": true, ".env.example": true}
 
@@ -101,9 +111,10 @@ func Display(name string) string {
 // the service and the development database (<candidate>, <candidate>-dev) and its
 // heading comment, the root README's heading, and, in display form, the browser
 // projects' titles and the name and short_name of their web app manifests (Solo, Solo
-// Portal). rel is the file's path in the tree and text its content; a file outside those
-// slots comes back unchanged. Nowhere else: the candidate names are English words (sites,
-// outlets), so a template's prose says "the application" rather than naming it.
+// Portal), and the auth packages' Application constant, the name the mail an auth sends
+// says (Solo). rel is the file's path in the tree and text its content; a file outside
+// those slots comes back unchanged. Nowhere else: the candidate names are English words
+// (sites, outlets), so a template's prose says "the application" rather than naming it.
 func RenameApp(rel, text, from, to string) string {
 	base := path.Base(rel)
 	switch {
@@ -120,6 +131,17 @@ func RenameApp(rel, text, from, to string) string {
 			}
 
 			return sub[1] + toTitle + strings.TrimPrefix(name, fromTitle) + `"`
+		})
+	case authSource(rel):
+		fromTitle, toTitle := Display(from), Display(to)
+
+		return applicationConstRE.ReplaceAllStringFunc(text, func(m string) string {
+			sub := applicationConstRE.FindStringSubmatch(m)
+			if sub[2] != fromTitle {
+				return m
+			}
+
+			return sub[1] + toTitle + `"`
 		})
 	case base == "package.json" || base == "bun.lock":
 		return workspaceNameRE.ReplaceAllStringFunc(text, func(m string) string {

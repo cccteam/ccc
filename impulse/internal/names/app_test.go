@@ -109,6 +109,10 @@ func TestRenameApp(t *testing.T) {
 		{name: "a source file that is not a page or a component keeps its text", rel: "web/console/src/app/solo.service.ts", text: "const x = 'Solo';\n", want: "const x = 'Solo';\n"},
 		{name: "a README elsewhere", rel: "apps/console/README.md", text: "# solo\n", want: "# solo\n"},
 		{name: "a Go file", rel: "main.go", text: "// main serves solo.\n", want: "// main serves solo.\n"},
+		{name: "the auth package's application constant", rel: "pkg/auth/staff/staff.go", text: "\tName = \"staff\"\n\tApplication = \"Solo\"\n", want: "\tName = \"staff\"\n\tApplication = \"Beacon\"\n"},
+		{name: "a second auth's constant", rel: "pkg/auth/members/members.go", text: "\tApplication = \"Solo\"\n", want: "\tApplication = \"Beacon\"\n"},
+		{name: "an application constant that is not the candidate's name keeps its text", rel: "pkg/auth/staff/staff.go", text: "\tApplication = \"Solomon\"\n", want: "\tApplication = \"Solomon\"\n"},
+		{name: "a Go file outside the auth packages keeps the constant", rel: "pkg/config/data.go", text: "\tApplication = \"Solo\"\n", want: "\tApplication = \"Solo\"\n"},
 		{name: "angular.json", rel: "web/angular.json", text: `"name": "solo-web"`, want: `"name": "solo-web"`},
 	}
 	for _, tt := range tests {
