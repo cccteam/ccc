@@ -1283,7 +1283,10 @@ is the hourly sweep's one step: the pull requests whose services stand, which of
 are closed, and each closed one's stack destroyed, its state object deleted last.
 
 `deploy persona register` is the step after the hooks in a build whose environment has a
-persona provider (`_PERSONA`, which the triggers carry in the first environment alone):
+persona provider (`_PERSONA`, which the triggers carry in the first environment alone; a
+pull-request build reads its own stack's registrations instead, `PERSONA` from
+`ReadPullRequestStack`, so a pull request that introduces or changes the method registers
+what its own code says before any release carries it to the triggers):
 for each persona method, it sends the provider the deployment's registration, the client ID
 the placement's root and the deployment make (`<root>-pr<N>` for a pull request,
 `<root>-<first environment>` for the environment), the callback on the deployment's

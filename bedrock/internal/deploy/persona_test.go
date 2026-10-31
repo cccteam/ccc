@@ -82,9 +82,12 @@ func TestPersona(t *testing.T) {
 		env     string
 		subs    map[string]string
 		persona bool
-		noCast  bool
-		refuse  int
-		message string
+		// stackPersona writes the registrations as the PERSONA fact the pull request's
+		// stack job leaves for the preview build, with no _PERSONA on the trigger.
+		stackPersona bool
+		noCast       bool
+		refuse       int
+		message      string
 		// wantRequests are the provider's requests as METHOD path; wantBody the first
 		// registration's body when one is sent.
 		wantRequests []string
@@ -149,6 +152,12 @@ func TestPersona(t *testing.T) {
 			wantOut: []string{"Not a teardown: nothing to remove from the persona provider."},
 		},
 		{
+			name: "a pull-request build registers what its own stack says before any release carries the method to the triggers", action: PersonaRegister,
+			env:  "export PR_HOSTNAME=\"beacon-pr12.impulseframework.dev\"\n",
+			subs: map[string]string{"_ENV": "tst", "_PR_NUMBER": "12", "_HOSTNAME": "beacon-tst.impulseframework.dev"}, stackPersona: true,
+			wantRequests: []string{"PUT /persona/registrations/beacon-pr12"},
+		},
+		{
 			name: "the provider refuses the deploy identity", action: PersonaRegister,
 			env:  "export PR_HOSTNAME=\"beacon-pr12.impulseframework.dev\"\n",
 			subs: map[string]string{"_ENV": "tst", "_PR_NUMBER": "12"}, persona: true,
@@ -187,8 +196,12 @@ func TestPersona(t *testing.T) {
 			if tt.persona {
 				subs["_PERSONA"] = registrations(server.URL)
 			}
+			env := tt.env
+			if tt.stackPersona {
+				env += "export PERSONA=" + doubleQuote(registrations(server.URL)) + "\n"
+			}
 			files := map[string]string{
-				EnvironmentFile: "export RELEASE=\"v1.2.3\"\n" + tt.env,
+				EnvironmentFile: "export RELEASE=\"v1.2.3\"\n" + env,
 				BuildFile:       build(subs),
 			}
 			if !tt.noCast {

@@ -22,8 +22,16 @@ import (
 
 // personaSub is the substitution the stack's triggers carry in the first environment: the
 // persona registrations, as a JSON list (locals.tf, persona_registrations); empty beyond
-// it, where the persona method is not registered.
+// it, where the persona method is not registered. The triggers say what the environment's
+// last release applied, so a tag build reads it.
 const personaSub = "_PERSONA"
+
+// personaFact is the same list as the pull request's own stack carries it, read off that
+// stack's substitutions output by the stack job and written for the preview build
+// (ReadPullRequestStack). A pull-request build prefers it to the trigger's substitution:
+// a pull request that introduces or changes the method registers what its own code says,
+// before any release carries it to the triggers.
+const personaFact = "PERSONA"
 
 // personaRegistration is one entry of the _PERSONA substitution: a persona method's
 // provider, the application's client ID root (the deployment's client ID is the root with
@@ -87,7 +95,7 @@ func Persona(ctx context.Context, clients *Clients, w Workspace, action PersonaA
 	if err != nil {
 		return err
 	}
-	registrations, err := personaRegistrations(build)
+	registrations, err := personaRegistrations(build, env)
 	if err != nil {
 		return err
 	}
@@ -119,15 +127,22 @@ func Persona(ctx context.Context, clients *Clients, w Workspace, action PersonaA
 	return nil
 }
 
-// personaRegistrations reads the build's _PERSONA substitution; none when it is empty.
-func personaRegistrations(build *Build) ([]personaRegistration, error) {
-	raw := strings.TrimSpace(build.Substitutions[personaSub])
+// personaRegistrations reads the registrations: the pull request's own stack's (the
+// PERSONA fact) when the build has them, else the build's _PERSONA substitution; none
+// when both are empty.
+func personaRegistrations(build *Build, env map[string]string) ([]personaRegistration, error) {
+	source := personaFact
+	raw := strings.TrimSpace(env[personaFact])
+	if raw == "" {
+		source = personaSub + " substitution"
+		raw = strings.TrimSpace(build.Substitutions[personaSub])
+	}
 	if raw == "" {
 		return nil, nil
 	}
 	var registrations []personaRegistration
 	if err := json.Unmarshal([]byte(raw), &registrations); err != nil {
-		return nil, errors.Wrapf(err, "json.Unmarshal(): the %s substitution", personaSub)
+		return nil, errors.Wrapf(err, "json.Unmarshal(): the %s", source)
 	}
 
 	return registrations, nil
@@ -203,7 +218,7 @@ func removePersonas(ctx context.Context, clients *Clients, build *Build, registr
 // registrations, best effort: the provider forgets a registration nothing refreshes on
 // its own, so a refusal is said and the sweep goes on.
 func removePersonaRegistrations(ctx context.Context, clients *Clients, subs map[string]string, number string, out io.Writer) {
-	registrations, err := personaRegistrations(&Build{ID: "sweep", Substitutions: subs})
+	registrations, err := personaRegistrations(&Build{ID: "sweep", Substitutions: subs}, nil)
 	if err != nil {
 		fmt.Fprintf(out, "Notice: the persona registrations could not be read (%v); pull request %s's expire on their own.\n", err, number)
 
