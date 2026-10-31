@@ -290,7 +290,7 @@ func personaToken(ctx context.Context, clients *Clients, issuer string) (string,
 	}
 	token, err := clients.IDToken(ctx, issuer)
 	if err != nil {
-		return "", errors.Wrapf(err, "the identity token for %s", issuer)
+		return "", errors.Wrapf(err, "the identity token for %s (Cloud Build issues it to a deploy identity that may create its own OpenID Connect tokens: roles/iam.serviceAccountOpenIdTokenCreator on itself, from the organization's environment layer)", issuer)
 	}
 
 	return token, nil

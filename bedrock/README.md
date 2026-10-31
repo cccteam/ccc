@@ -1291,8 +1291,10 @@ for each persona method, it sends the provider the deployment's registration, th
 the placement's root and the deployment make (`<root>-pr<N>` for a pull request,
 `<root>-<first environment>` for the environment), the callback on the deployment's
 canonical hostname and the cast from the checkout, as the build's deploy identity with its
-Google identity token for the provider, so the provider offers the cast for this
-deployment; a refusal fails the build before the record is written. A build with nothing
+Google identity token for the provider (Cloud Build's metadata server issues it to the deploy
+identity under its grant to create its own OpenID Connect tokens, from the organization's
+environment layer), so the provider offers the cast for this deployment; a refusal fails the
+build before the record is written. A build with nothing
 to send, or a torn-down environment, does nothing. `deploy persona remove` runs after a
 teardown's `after-down` hook and removes the pull request's registrations; outside a
 teardown it does nothing, and the sweep removes a closed pull request's the same way, best
