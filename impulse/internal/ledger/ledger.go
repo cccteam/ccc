@@ -836,6 +836,27 @@ var Steps = []Step{
 		Impulse: release("v0.6.12"),
 		Note:    "a person picks the application's look from a hard-coded list, light or dark and one of the palettes the application offers, and the choice holds on that browser (@cccteam/resource-angular 0.0.29): ThemeService applies it to the root element and remembers it in the browser's local storage so the login page honors it before sign-in, provideTheme starts the service with the application and names the palettes, the theme picker (ccc-theme-picker) is the control, the theme sheet's palettes mixin emits the first palette's theme on html and every palette's color tokens under html[data-palette], and the palettes sheet carries a Workspace palette generated from Google's blue and green; a new application's consoles offer Blue and Workspace from theme.scss and app.config.ts, its portals light and dark alone, and its dashboard carries an Appearance card composing the picker; an existing application adopts by hand: theme.scss hands its palettes to the mixin under quoted ids, app.config.ts names the same ids to provideTheme, the dashboard composes the picker, and its own stylesheets read the Material tokens where they carried literal colors so dark follows; nothing is stored on the server; no code change is needed otherwise",
 	},
+	{
+		Pins: pins(`
+			access v0.12.0
+			ccc v0.3.7
+			ccc/accesstypes v0.7.1
+			ccc/cloud v0.2.3
+			ccc/resource v0.16.5
+			ccc/tracer v0.3.2
+			db-initiator v0.4.3
+			httpio v0.7.22
+			logger v0.1.31
+			session v0.13.20
+		`),
+		Web: web(`
+			@cccteam/resource 0.0.19
+			@cccteam/resource-angular 0.0.29
+			@cccteam/resource-firestore 0.0.18
+		`),
+		Impulse: release("v0.6.13"),
+		Note:    "an application can offer the persona sign-in of its test environments: impulse add method persona writes a persona method beside the auth's own, its cast file and the cast's seeding, and the generator mounts the method where the auth registers it (resource v0.16.5) over the session library's generic OpenID Connect method (session v0.13.20); the placement's persona block names the provider and bedrock registers each deployment of the first environment and its pull requests. Nothing changes for an application that adds no persona method.",
+	},
 }
 
 // validatePending holds a step's Pending mark to its pins: a pin at a pseudo-version
