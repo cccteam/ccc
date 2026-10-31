@@ -46,10 +46,13 @@ output "registry" {
 }
 
 output "revision_templates" {
-  description = "What each service's revision runs with, by service name, and the job process's job (none): identity, scaling, variables and secret mounts as this stack evaluates them. The pipeline builds every revision and job from it and the release's image (bedrock deploy service, deploy jobs), read off the stack it applied, or off the plan of the release's stack in a rollback run, so a release runs under its own release's configuration, forward or back, and no apply starts a revision."
+  description = "What each service's revision runs with, by service name (a pull request's service carries one name in every region, and one entry stands for them all), and the job process's job (none): identity, scaling, variables and secret mounts as this stack evaluates them. The pipeline builds every revision and job from it and the release's image (bedrock deploy service, deploy jobs), read off the stack it applied, or off the plan of the release's stack in a rollback run, so a release runs under its own release's configuration, forward or back, and no apply starts a revision."
   value = {
     services = {
-      for key, svc in google_cloud_run_v2_service.app : svc.name => {
+      # The services by name: an environment's services carry their region in their names,
+      # and a pull request's carry one name in every region, so the names are grouped and
+      # any one of a name's keys stands for the group (its site is the same in every region).
+      for name, keys in { for key, svc in google_cloud_run_v2_service.app : svc.name => key... } : name => {
         serviceAccount = google_service_account.app.email
         maxInstances   = null
         timeout        = "300s"

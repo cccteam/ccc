@@ -86,6 +86,14 @@ type methodView struct {
 	// Simulated are the names the simulated directory signs the registration in with:
 	// APP_<REGISTRATION>_USERNAME and _ROLES.
 	SimulatedUsername, SimulatedRoles string
+	// module is the application's module path.
+	module string
+}
+
+// Module is the application's module path, for the imports of the application's own
+// packages.
+func (mv *methodView) Module() string {
+	return mv.module
 }
 
 func newView(spec *Spec) *view {
@@ -121,6 +129,8 @@ func newView(spec *Spec) *view {
 			imp = "github.com/cccteam/session/azure"
 		case app.MethodGoogle:
 			imp = "github.com/cccteam/session/google"
+		case app.MethodPersona:
+			imp = "github.com/cccteam/session/oidc"
 		}
 		if imp != "" && !seen[imp] {
 			seen[imp] = true
@@ -129,7 +139,7 @@ func newView(spec *Spec) *view {
 	}
 	// The sign-in rule every auth sets (requireSecondFactor) names the library's decision
 	// and the factor's method.
-	v.Imports = append(v.Imports, "github.com/cccteam/session/sessioninfo", "github.com/cccteam/session/signin")
+	v.Imports = append(v.Imports, "github.com/cccteam/session/sessioninfo", signinImport)
 
 	return v
 }
@@ -203,7 +213,7 @@ func roleLiteral(roles []string) string {
 }
 
 func newMethodView(spec *Spec, m *Method) *methodView {
-	mv := &methodView{Method: m, Auth: spec.Name, AuthPascal: names.Pascal(spec.Name), Fields: m.Fields(), SlotKind: m.slot(), SlotWords: slotWords(m)}
+	mv := &methodView{Method: m, Auth: spec.Name, AuthPascal: names.Pascal(spec.Name), Fields: m.Fields(), SlotKind: m.slot(), SlotWords: slotWords(m), module: spec.Module}
 	mv.Field = lowerFirst(m.Pascal())
 	for i := range mv.Fields {
 		mv.Variables = append(mv.Variables, m.Variable(spec.Name, &mv.Fields[i]))
@@ -226,6 +236,8 @@ func newMethodView(spec *Spec, m *Method) *methodView {
 		azureView(mv, m)
 	case app.MethodGoogle:
 		googleView(mv, m, settings)
+	case app.MethodPersona:
+		personaView(mv)
 	}
 	switch m.accounts() {
 	case AccountsInvited:
@@ -255,7 +267,11 @@ func splitImports(imports []string) (std, other []string) {
 }
 
 // netHTTP is the import every method's handlers need.
-const netHTTP = "net/http"
+const (
+	netHTTP      = "net/http"
+	accessImport = "github.com/cccteam/access"
+	signinImport = "github.com/cccteam/session/signin"
+)
 
 // azureView fills the view of a Microsoft Entra method: its role-synchronization
 // expression and its imports.
@@ -266,7 +282,7 @@ func azureView(mv *methodView, m *Method) {
 	} else {
 		mv.RoleSyncExpr = "signin.DisableRoleSync()"
 	}
-	mv.Imports = []string{netHTTP, "github.com/cccteam/access", "github.com/cccteam/session/azure", "github.com/cccteam/session/signin"}
+	mv.Imports = []string{netHTTP, accessImport, "github.com/cccteam/session/azure", signinImport}
 	if m.Administered() {
 		mv.Imports = append(mv.Imports, "strings")
 	}
@@ -276,6 +292,15 @@ func azureView(mv *methodView, m *Method) {
 	if m.SlotFallible() {
 		mv.Imports = append(mv.Imports, "github.com/go-playground/errors/v5")
 	}
+}
+
+// personaView fills the view of the persona method: the session library's generic OpenID
+// Connect method against the persona provider, with the application's authority for roles
+// and the cast's accounts to link to.
+func personaView(mv *methodView) {
+	mv.Type = "*oidc.Method"
+	mv.RoleSyncExpr = "signin.DisableRoleSync()"
+	mv.Imports = []string{netHTTP, accessImport, "github.com/cccteam/session/oidc", signinImport}
 }
 
 // slotWords is a method's organization slot in words, for the slot function's comment.
@@ -323,7 +348,7 @@ func googleView(mv *methodView, m *Method, settings string) {
 	} else {
 		mv.RoleSyncExpr = "google.DisableRoleSync()"
 	}
-	mv.Imports = []string{netHTTP, "strings", "github.com/cccteam/access", "github.com/cccteam/session/google", "github.com/cccteam/session/signin"}
+	mv.Imports = []string{netHTTP, "strings", accessImport, "github.com/cccteam/session/google", signinImport}
 	if m.slot() == SlotListed {
 		mv.Imports = append(mv.Imports, "slices")
 	}

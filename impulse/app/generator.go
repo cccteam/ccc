@@ -85,7 +85,7 @@ const (
 
 // AuthMethodArg is a sign-in method as an outlet's Auth option declares it.
 type AuthMethodArg struct {
-	// Kind is the method: password, google, azure, or workos.
+	// Kind is the method: password, google, azure, workos, or persona.
 	Kind string
 	// Name is the registration name; password for the password method.
 	Name string

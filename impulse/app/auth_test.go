@@ -15,6 +15,7 @@ import (
 	"github.com/cccteam/session"
 	"github.com/cccteam/session/azure"
 	"github.com/cccteam/session/google"
+	"github.com/cccteam/session/oidc"
 	"github.com/cccteam/session/sessionstorage"
 	"github.com/cccteam/session/signin"
 )
@@ -216,6 +217,11 @@ func parseDirectoryTenants(value string, administered []string) (azure.TenantSet
 			statements:    `	_, _ = google.SignIn(authSession, "workspace", nil, &google.Config{Workspaces: google.AnyWorkspace(), RoleSync: google.RoleSync(nil, "", nil)})`,
 			wantAuthority: AuthorityDirectory,
 		},
+		{
+			name:          "a persona registration has no tenant shape and leaves the roles to the application",
+			statements:    `	_ = oidc.SignIn(authSession, "persona", nil, &oidc.Config{Issuer: settings.Persona.Issuer, ClientID: settings.Persona.ClientID, RedirectURL: settings.Persona.RedirectURL, Connection: "persona", RoleSync: signin.DisableRoleSync(), Accounts: signin.InvitedUsersOnly(), LoginURL: settings.LoginURL})`,
+			wantAuthority: AuthorityApplication,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -236,5 +242,24 @@ func parseDirectoryTenants(value string, administered []string) (azure.TenantSet
 				t.Errorf("Authority = %q, want %q", m.Authority, tt.wantAuthority)
 			}
 		})
+	}
+}
+
+// TestPersonaRegistration reads the persona method from the generic OpenID Connect
+// package's constructor (oidc.SignIn): the method's kind is persona under the
+// registration name the call gives it.
+func TestPersonaRegistration(t *testing.T) {
+	t.Parallel()
+
+	auths, unattached, err := parseAuths("pkg/auth/members/members.go", []byte(registrationFile(`	_ = oidc.SignIn(authSession, "reviewers", nil, &oidc.Config{Issuer: settings.Reviewers.Issuer, RoleSync: signin.DisableRoleSync()})`)))
+	if err != nil {
+		t.Fatalf("parseAuths() error = %v", err)
+	}
+	if len(auths) != 1 || len(auths[0].Methods) != 1 || len(unattached) != 0 {
+		t.Fatalf("parseAuths() = %d auths, %d unattached; want one auth with one method", len(auths), len(unattached))
+	}
+	m := auths[0].Methods[0]
+	if m.Kind != MethodPersona || m.Name != "reviewers" || m.Authority != AuthorityApplication {
+		t.Errorf("method = %s %q under %q; want persona reviewers under the application authority", m.Kind, m.Name, m.Authority)
 	}
 }

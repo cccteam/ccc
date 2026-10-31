@@ -6,8 +6,8 @@
 //
 //	every request: tracing, hooks.Outermost, request logging, SecurityHeaders, httpio.WithParams
 //	  by hand under /beacons/: request log on event, traces off
-//	default (/console/api), sessions of the crew auth (password, google, sign-up):
-//	  BindAuth(crew.Name), NoCaching, CompressionMiddleware, ReleaseHeader, StartSession, SetXSRFToken: GET /console/api/user/methods, GET /console/api/user/session, DELETE /console/api/user/session, GET /console/api/user/pending, GET /console/api/user/google/login, GET /console/api/user/google/callback, GET /console/api/user/sign-up/login, GET /console/api/user/sign-up/callback
+//	default (/console/api), sessions of the crew auth (password, google, sign-up, persona):
+//	  BindAuth(crew.Name), NoCaching, CompressionMiddleware, ReleaseHeader, StartSession, SetXSRFToken: GET /console/api/user/methods, GET /console/api/user/session, DELETE /console/api/user/session, GET /console/api/user/pending, GET /console/api/user/google/login, GET /console/api/user/google/callback, GET /console/api/user/sign-up/login, GET /console/api/user/sign-up/callback, GET /console/api/user/persona/login, GET /console/api/user/persona/callback
 //	  + ValidateXSRFToken: POST /console/api/user/password/login, POST /console/api/user/password/change, POST /console/api/user/pending/confirm, POST /console/api/user/pending/cancel, POST /console/api/user/pending/code, POST /console/api/user/pending/code/verify, POST /console/api/user/pending/email, POST /console/api/user/invitation, POST /console/api/user/invitation/sign-up, POST /console/api/user/sign-up, POST /console/api/user/sign-up/open, POST /console/api/user/sign-up/complete
 //	  + ValidateSession, ValidateXSRFToken: POST /console/api/user/invitation/accept, POST /console/api/user/email, POST /console/api/user/email/verify, GET /console/api/user/tokens, POST /console/api/user/tokens, POST /console/api/user/tokens/revoke, GET /console/api/user/device, POST /console/api/user/device/approve, POST /console/api/user/device/deny
 //	  + ValidateSession, ValidateXSRFToken, CheckAPIVersion (oldest answered 0.1.0): hooks.Default, generatedRoutes
@@ -168,6 +168,9 @@ type DefaultSession interface {
 	// The sign-up registration's login and callback (google.Method).
 	SignUpLogin() http.HandlerFunc
 	SignUpCallback() http.HandlerFunc
+	// The persona registration's login and callback (oidc.Method), where the Auth registered it: the persona provider is configured in the first environment and its pull requests, and the handlers are nil elsewhere.
+	PersonaLogin() http.HandlerFunc
+	PersonaCallback() http.HandlerFunc
 }
 
 // PortalSession is the portal outlet's session surface: the Auth's middleware and
@@ -286,7 +289,7 @@ func New(h Handlers, hooks Hooks) *chi.Mux {
 		})
 	}
 
-	// The default outlet (/console/api): sessions of the crew auth (password, google, sign-up).
+	// The default outlet (/console/api): sessions of the crew auth (password, google, sign-up, persona).
 	r.Group(func(r chi.Router) {
 		r.Use(h.BindAuth(crew.Name))
 		r.Use(h.NoCaching)
@@ -300,12 +303,21 @@ func New(h Handlers, hooks Hooks) *chi.Mux {
 		// mounted below; the sign-in's POSTs sit behind the XSRF guard.
 		bounded := r.With(resource.BodyLimit(BodyLimit))
 		guarded := bounded.With(h.ValidateXSRFToken)
+		// A method the Auth registers only where its provider is configured (persona): the
+		// surface has its handlers there and nil elsewhere, so its routes are mounted and
+		// the login page is told of it only where it is.
+		methods := []session.AdvertisedMethod{
+			{Name: "password", Label: "Password", Path: "/console/api/user/password/login"},
+			{Name: "google", Label: "Lodestar", Path: "/console/api/user/google/login"},
+			{Name: "sign-up", Label: "Google", Path: "/console/api/user/sign-up/login"},
+		}
+		if login := h.PersonaLogin(); login != nil {
+			bounded.Get("/console/api/user/persona/login", login)
+			bounded.Get("/console/api/user/persona/callback", h.PersonaCallback())
+			methods = append(methods, session.AdvertisedMethod{Name: "persona", Label: "Persona", Path: "/console/api/user/persona/login"})
+		}
 		bounded.Get("/console/api/user/methods", h.Methods(&session.MethodList{
-			Methods: []session.AdvertisedMethod{
-				{Name: "password", Label: "Password", Path: "/console/api/user/password/login"},
-				{Name: "google", Label: "Lodestar", Path: "/console/api/user/google/login"},
-				{Name: "sign-up", Label: "Google", Path: "/console/api/user/sign-up/login"},
-			},
+			Methods: methods,
 			Pending: session.PendingRoutes{
 				Status: "/console/api/user/pending", Confirm: "/console/api/user/pending/confirm", Cancel: "/console/api/user/pending/cancel",
 				SendCode: "/console/api/user/pending/code", VerifyCode: "/console/api/user/pending/code/verify", EnrollEmail: "/console/api/user/pending/email",

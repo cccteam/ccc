@@ -18,6 +18,7 @@ import (
 	"github.com/cccteam/access"
 	"github.com/cccteam/access/spannerstore"
 	"github.com/cccteam/session"
+	"github.com/cccteam/session/oidc"
 	"github.com/cccteam/session/sessionstorage"
 	"github.com/go-playground/errors/v5"
 )
@@ -51,6 +52,10 @@ type Settings struct {
 	CookieKey string
 	// SessionTimeout is the idle timeout of a browser session.
 	SessionTimeout time.Duration
+	// LoginURL is the login page a redirect method returns the browser to on a refusal.
+	LoginURL string
+	// Persona is the persona registration's settings (persona.go).
+	Persona PersonaSettings
 }
 
 // Session is the auth's session manager: one Auth session over the Spanner store, whose
@@ -69,6 +74,7 @@ type Auth struct {
 type Handlers struct {
 	*Session
 	password *session.PasswordMethod
+	persona  *oidc.Method
 }
 
 // PendingStatus reports the sign-in that waits for a password confirmation, if any.
@@ -124,6 +130,7 @@ func New(ctx context.Context, db *cloudspanner.Client, settings Settings) (*Auth
 
 	handlers := &Handlers{Session: authSession}
 	handlers.password = registerPassword(authSession)
+	handlers.persona = registerPersona(authSession, accessClient, &settings)
 
 	return &Auth{access: accessClient, handlers: handlers}, nil
 }

@@ -897,6 +897,42 @@ func Test_servedRouterData(t *testing.T) {
 				}
 			},
 		},
+		{
+			name: "a persona method is optional: its routes are open routes the router mounts from the method's own list",
+			outlets: []*routerOutlet{
+				{name: "default", prefix: "api", servesSessions: true, auth: &outletAuth{importPath: "example.com/acme/beacon/pkg/auth/crew", methods: []AuthMethod{PasswordMethod(), PersonaMethod("persona").InvitedUsers()}}},
+			},
+			check: func(t *testing.T, data *servedRouterData) {
+				t.Helper()
+				o := data.Outlets[0]
+				if len(o.Methods) != 2 || o.Methods[0].Optional || !o.Methods[1].Optional {
+					t.Fatalf("methods = %+v, want the password method listed and the persona method optional", o.Methods)
+				}
+				persona := o.Methods[1]
+				if persona.Kind != "persona" || persona.Label != "Persona" || persona.Accessor != "Persona" || persona.LoginPath != "/api/user/persona/login" || strings.Join(persona.Handlers, ",") != "PersonaLogin,PersonaCallback" {
+					t.Errorf("persona method = %+v", persona)
+				}
+				routes := make([]string, 0, len(persona.Routes))
+				for _, route := range persona.Routes {
+					routes = append(routes, route.Method+" "+route.Path+" "+route.Handler+" optional="+strconv.FormatBool(route.Optional))
+				}
+				if got := strings.Join(routes, ","); got != "GET /api/user/persona/login PersonaLogin optional=true,GET /api/user/persona/callback PersonaCallback optional=true" {
+					t.Errorf("persona routes = %s", got)
+				}
+				optional := 0
+				for _, route := range o.OpenRoutes {
+					if route.Optional {
+						optional++
+					}
+				}
+				if optional != 2 {
+					t.Errorf("optional open routes = %d, want the persona method's two among the open routes", optional)
+				}
+				if listed, opt := o.ListedMethods(), o.OptionalMethods(); len(listed) != 1 || listed[0].Name != "password" || len(opt) != 1 || opt[0].Name != "persona" {
+					t.Errorf("listed = %+v, optional = %+v", listed, opt)
+				}
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1248,6 +1284,26 @@ func Test_servedRouterTemplates(t *testing.T) {
 				"\t\t\tchain := routerChainFor(t, url)\n\t\t\twant := slices.Concat(routerRootChain, chain.group, chain.guards)",
 			},
 			wantNotRouterTest: []string{"/kiosks/programs"},
+		},
+		{
+			name:    "a persona method is mounted and offered where the surface has it",
+			outlets: []*routerOutlet{{name: "default", prefix: "api", servesSessions: true, auth: &outletAuth{importPath: "example.com/acme/beacon/pkg/auth/crew", methods: []AuthMethod{PasswordMethod(), PersonaMethod("persona").InvitedUsers()}}}},
+			wantRouter: []string{
+				"//\tdefault (/api), sessions (password, persona):",
+				"GET /api/user/pending, GET /api/user/persona/login, GET /api/user/persona/callback\n",
+				"\t// The persona registration's login and callback (oidc.Method), where the Auth registered it: the persona provider is configured in the first environment and its pull requests, and the handlers are nil elsewhere.\n\tPersonaLogin() http.HandlerFunc\n\tPersonaCallback() http.HandlerFunc\n}",
+				"\t\tbounded := r.With(resource.BodyLimit(BodyLimit))\n\t\tguarded := bounded.With(h.ValidateXSRFToken)\n" +
+					"\t\t// A method the Auth registers only where its provider is configured (persona): the\n\t\t// surface has its handlers there and nil elsewhere, so its routes are mounted and\n\t\t// the login page is told of it only where it is.\n" +
+					"\t\tmethods := []session.AdvertisedMethod{\n\t\t\t{Name: \"password\", Label: \"Password\", Path: \"/api/user/password/login\"},\n\t\t}\n" +
+					"\t\tif login := h.PersonaLogin(); login != nil {\n\t\t\tbounded.Get(\"/api/user/persona/login\", login)\n\t\t\tbounded.Get(\"/api/user/persona/callback\", h.PersonaCallback())\n" +
+					"\t\t\tmethods = append(methods, session.AdvertisedMethod{Name: \"persona\", Label: \"Persona\", Path: \"/api/user/persona/login\"})\n\t\t}\n" +
+					"\t\tbounded.Get(\"/api/user/methods\", h.Methods(&session.MethodList{\n\t\t\tMethods: methods,\n\t\t\tPending: session.PendingRoutes{",
+			},
+			wantNotRouter: []string{"\t\tbounded.Get(\"/api/user/persona/login\", h.PersonaLogin())"},
+			wantRouterTest: []string{
+				"func (s *routerDefaultSessionStub) PersonaLogin() http.HandlerFunc {",
+				"\t\t{url: \"/api/user/persona/callback\", suffix: \"/user/persona/callback\", method: http.MethodGet, handler: \"PersonaCallback\"},",
+			},
 		},
 	}
 	r := &resourceGenerator{client: &client{}}

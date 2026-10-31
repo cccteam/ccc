@@ -15,6 +15,7 @@ import (
 	"github.com/cccteam/ccc/impulse/internal/authpkg"
 	"github.com/cccteam/ccc/impulse/internal/check"
 	"github.com/cccteam/ccc/impulse/internal/names"
+	"github.com/cccteam/ccc/impulse/persona"
 )
 
 // Method adds a sign-in method to an auth the application has: a registration on its
@@ -23,7 +24,9 @@ import (
 // the auth so the generated router mounts its routes, and simulated in development
 // (skipAuth) when it is a directory method. The login page renders from the methods
 // route, so a method declared is a button offered; nothing else about the surface
-// changes.
+// changes. The persona method, the sign-in of the test environments, also gets its cast
+// (cast.json, the personas the deployment seeds and registers with the persona provider)
+// and the file that reads and seeds it (cast.go).
 type Method struct {
 	// Auth is the name of the auth the method is added to.
 	Auth string
@@ -34,10 +37,10 @@ type Method struct {
 // Command is the impulse command line for the transition.
 func (m *Method) Command() string {
 	cmd := fmt.Sprintf("impulse add method %s %s", m.Auth, m.Spec.Kind)
-	if m.Spec.Kind != app.MethodPassword {
+	if m.Spec.Kind != app.MethodPassword && (m.Spec.Kind != app.MethodPersona || (m.Spec.Name != "" && m.Spec.Name != authpkg.PersonaRegistration)) {
 		cmd += " " + m.Spec.Name
 	}
-	if m.Spec.Authority != "" {
+	if m.Spec.Authority != "" && m.Spec.Kind != app.MethodPersona {
 		cmd += " --authority " + m.Spec.Authority
 	}
 	if m.Spec.Slot != "" {
@@ -53,11 +56,18 @@ func (m *Method) Command() string {
 	return cmd
 }
 
-// spec returns the method with the password method's name settled.
+// spec returns the method with its fixed names settled: the password method's, the
+// persona method's default name and the application's authority, the one it takes.
 func (m *Method) spec() *authpkg.Method {
 	s := m.Spec
-	if s.Kind == app.MethodPassword {
-		s.Name = app.PasswordRegistration
+	s.SettleName()
+	if s.Kind == app.MethodPersona {
+		if s.Authority == "" {
+			s.Authority = app.AuthorityApplication
+		}
+		if s.Accounts == "" {
+			s.Accounts = authpkg.AccountsInvited
+		}
 	}
 
 	return &s
@@ -137,6 +147,11 @@ func (m *Method) Apply(ctx context.Context, a *app.App, exec check.Execer) (*Cha
 	if err := m.writeFile(a, pkg, pkgSpec, ch); err != nil {
 		return nil, err
 	}
+	if spec.Persona() {
+		if err := m.writeCast(a, pkg, pkgSpec, ch); err != nil {
+			return nil, err
+		}
+	}
 	if err := m.editAuth(a, auth, spec, ch); err != nil {
 		return nil, err
 	}
@@ -186,6 +201,31 @@ func (m *Method) writeFile(a *app.App, pkg *app.AuthPackage, pkgSpec *authpkg.Sp
 	return nil
 }
 
+// writeCast writes the persona method's cast: cast.json, empty until the agent fills it,
+// since a cast is the application's own and nothing stands in for it, and cast.go, which
+// embeds it, reads it and seeds it.
+func (m *Method) writeCast(a *app.App, pkg *app.AuthPackage, pkgSpec *authpkg.Spec, ch *Change) error {
+	castGo, err := authpkg.CastFile(pkgSpec, &pkgSpec.Methods[0])
+	if err != nil {
+		return err
+	}
+	if err := writeNew(a, path.Join(pkg.Dir, authpkg.CastGoFile), string(castGo)); err != nil {
+		return err
+	}
+	if err := writeNew(a, path.Join(pkg.Dir, persona.CastFile), emptyCast); err != nil {
+		return err
+	}
+	ch.didf("%s/%s and %s/%s: the cast of the persona sign-in, empty, and the file that embeds it, reads it (Cast) and seeds its accounts (SeedCast)", pkg.Dir, persona.CastFile, pkg.Dir, authpkg.CastGoFile)
+	ch.skipf("%s/%s: name the personas (login, name, email, roles from roles.json); impulse check and bedrock check refuse an empty cast (persona-cast), since a persona sign-in with nobody to sign in as deploys nothing useful", pkg.Dir, persona.CastFile)
+	ch.skipf("cmd/deployment/migrate: seed the cast where the seed runs (-seed), after SeedAdministrators: data.%s().SeedCast(ctx), so the environments that take the seed hold the personas' accounts for the sign-in to link", names.Pascal(m.Auth))
+	ch.skipf("placement.json: name the persona provider under persona ({\"issuer\": the provider's URL, \"clientId\": the application's client ID root, both from Redgrade's registration of the application}), so bedrock sets %s in the first environment and its pull requests, derives %s and %s, and registers each deployment with the provider after traffic; without it the method is registered nowhere", methodVariables(m.Auth, &pkgSpec.Methods[0])[0], methodVariables(m.Auth, &pkgSpec.Methods[0])[1], methodVariables(m.Auth, &pkgSpec.Methods[0])[2])
+
+	return nil
+}
+
+// emptyCast is the cast file as written: no persona yet.
+const emptyCast = "{\n  \"personas\": []\n}\n"
+
 // passwordShape names what the password method takes beyond the default for a report:
 // open sign-up, the username as the address, or nothing.
 func passwordShape(m *authpkg.Method) string {
@@ -202,6 +242,9 @@ func passwordShape(m *authpkg.Method) string {
 
 // slotSentence names a method's organization slot for a report.
 func slotSentence(m *authpkg.Method) string {
+	if m.Persona() {
+		return "the persona provider"
+	}
 	switch m.Slot {
 	case "", authpkg.SlotOne:
 		if m.Kind == app.MethodGoogle {
@@ -331,6 +374,8 @@ func methodType(kind string) string {
 		return "*azure.Method"
 	case app.MethodGoogle:
 		return "*google.Method"
+	case app.MethodPersona:
+		return "*oidc.Method"
 	default:
 		return "*session.PasswordMethod"
 	}
@@ -343,6 +388,8 @@ func methodImport(kind string) string {
 		return "github.com/cccteam/session/azure"
 	case app.MethodGoogle:
 		return "github.com/cccteam/session/google"
+	case app.MethodPersona:
+		return "github.com/cccteam/session/oidc"
 	default:
 		return "github.com/cccteam/session"
 	}
@@ -503,7 +550,7 @@ func (m *Method) declare(a *app.App, pkg *app.AuthPackage, spec *authpkg.Method,
 
 		return nil
 	}
-	ch.didf("%s: %s declared on %d outlet Auth option(s) bound to the %s auth, so the generated router mounts user/%s/login%s and the methods route offers it", strings.Join(files, ", "), declaration, edited, m.Auth, spec.Name, callbackNote(spec))
+	ch.didf("%s: %s declared on %d outlet Auth option(s) bound to the %s auth, so the generated router mounts user/%s/login%s and the methods route offers it%s", strings.Join(files, ", "), declaration, edited, m.Auth, spec.Name, callbackNote(spec), configuredNote(spec))
 
 	return nil
 }
@@ -514,9 +561,21 @@ func callbackNote(spec *authpkg.Method) string {
 		return ", the callback and the front-channel logout"
 	case app.MethodGoogle:
 		return " and the callback"
+	case app.MethodPersona:
+		return " and the callback"
 	default:
 		return ""
 	}
+}
+
+// configuredNote qualifies a persona method's routes: the generated router mounts and
+// offers them only where the provider is configured (the issuer set), nowhere else.
+func configuredNote(spec *authpkg.Method) string {
+	if spec.Kind == app.MethodPersona {
+		return ", where the provider is configured"
+	}
+
+	return ""
 }
 
 // Meaning explains the method and names the wiring left to do.
@@ -524,7 +583,11 @@ func (m *Method) Meaning() string {
 	spec := m.spec()
 	var b strings.Builder
 	fmt.Fprintf(&b, "A sign-in method is a registration on an auth's Auth session: the %[1]s auth now offers %[2]s beside its other methods, in `pkg/auth/%[1]s/%[3]s.go`, which holds the registration's constant, its settings, its handlers and the `register%[4]s` call New makes before the first request. ", m.Auth, methodSentence(spec), spec.Name, spec.Pascal())
-	if spec.Directory() {
+	switch {
+	case spec.Persona():
+		b.WriteString("It is the sign-in of the test environments: the method is registered only where the persona provider is configured (an empty issuer leaves it unregistered, so a later environment never offers it and nothing in the build differs between environments), the application is a public client of the provider with PKCE and no secret, a person who signed in to the provider picks a persona of this deployment's cast and comes back as that persona, and the account rule is invited users only, linking the persona's identity to the account the migrate command seeded under its login. Role membership stays the application's: the provider says which persona signed in and the cast says what it may do. ")
+		fmt.Fprintf(&b, "The data level reads its settings from the environment under the registration's variables (%s), which bedrock sets in the first environment and its pull requests from the placement's persona block and leaves empty beyond them, and the Procfile builds with the session library's `skipAuth` tag, which simulates the provider in development: a sign-in through this registration is `APP_%s_USERNAME`, or `APP_USERNAME` when that is unset. ", strings.Join(methodVariables(m.Auth, spec), ", "), strings.ToUpper(strings.ReplaceAll(spec.Name, "-", "_")))
+	case spec.Directory():
 		fmt.Fprintf(&b, "Its organization slot is %s and its account rule %s. ", slotSentence(spec), accountsSentence(spec))
 		if spec.Authority == AuthorityDirectory {
 			b.WriteString("Role membership is the directory's: every sign-in reconciles the person's roles to what the directory asserts and removes any it does not name, so nothing in the application assigns roles in this store for people who sign in this way. ")
@@ -537,7 +600,15 @@ func (m *Method) Meaning() string {
 	items := []string{
 		fmt.Sprintf("Look at the login page. The surface bound to the %s auth renders its sign-in methods from `GET <prefix>/user/methods`; a page on the library's login component (the skeleton's) offers %s by itself, and a page that lists the methods itself gains the %s button (`<prefix>/user/%s/login?returnUrl=<page>`)%s.", m.Auth, spec.Name, spec.Name, spec.Name, passwordFormNote(spec)),
 	}
-	if spec.Directory() {
+	switch {
+	case spec.Persona():
+		items = append(items,
+			fmt.Sprintf("Name the cast in `pkg/auth/%s/cast.json`: each persona's login, name, email and roles (roles the role file defines; a global role is held in the global partition, a domain role in every tenant domain). The deploy registers the cast with the provider, the picker shows it, and the migrate command seeds its accounts.", m.Auth),
+			fmt.Sprintf("Seed the cast where the seed runs: in `cmd/deployment/migrate`, after `SeedAdministrators`, call `data.%s().SeedCast(ctx)` under `-seed`, so the environments that take the seed hold the personas' accounts for the sign-in to link.", names.Pascal(m.Auth)),
+			"Name the provider in `placement.json`: a `persona` block with `issuer` (the provider's URL) and `clientId` (the application's client ID root), both from Redgrade's registration of the application. bedrock sets the issuer in the first environment and its pull requests and derives the deployment's client ID and the callback; the method is registered nowhere without the block, and `bedrock check` says so.",
+			fmt.Sprintf("Prove it under `-tags skipAuth` as the reference's `test/integration/portal_login_skipauth_test.go` does, setting `APP_%s_USERNAME` to a persona's login and following `user/%s/login` to the callback; in a pull-request environment, open the login page, sign in through the provider as a persona, and read the persona's roles on the user page.", strings.ToUpper(strings.ReplaceAll(spec.Name, "-", "_")), spec.Name),
+		)
+	case spec.Directory():
 		items = append(items,
 			fmt.Sprintf("Register it with %s and fill in %s in the environment template, with the redirect URL the browser-facing callback of the surface (`<base>/<outlet>/api/user/%s/callback`); drop the `skipAuth` tag to sign in through the directory for real.", spec.Provider(), strings.Join(methodVariables(m.Auth, spec), ", "), spec.Name),
 			fmt.Sprintf("Prove it under `-tags skipAuth` as the reference's `test/integration/portal_login_skipauth_test.go` does, setting `APP_%s_USERNAME` for the registration and following `user/%s/login` to the callback.", strings.ToUpper(strings.ReplaceAll(spec.Name, "-", "_")), spec.Name),
@@ -551,7 +622,7 @@ func (m *Method) Meaning() string {
 		if spec.Accounts == authpkg.AccountsOpen {
 			items = append(items, openSignUpItem([]string{spec.Name}))
 		}
-	} else {
+	default:
 		items = append(items, fmt.Sprintf("Give the %s auth its development logins with passwords in the bootstrap identities, and the test harness a login that posts to `user/password/login`.", m.Auth))
 		if spec.OpenSignUp() {
 			items = append(items, passwordSignUpItem(m.Auth))
@@ -804,10 +875,19 @@ func devValue(f *authpkg.Field, auth string) string {
 		return "lab=example.com"
 	case authpkg.FieldGroupPrefix:
 		return auth + "-"
+	case authpkg.FieldIssuer:
+		return placeholderIssuer
+	case authpkg.FieldClientID:
+		return auth + "-dev"
 	default:
 		return ""
 	}
 }
+
+// placeholderIssuer is the persona provider's issuer for the simulated provider: the
+// method registers with an absolute URL whether or not the provider is simulated, so the
+// development template names one nobody serves, and the simulated sign-in never calls it.
+const placeholderIssuer = "https://persona.example.com"
 
 // literalPlace is where an auth's Settings literal is built on the data level: add
 // appends an element to it, and name is how a did line names it.

@@ -324,8 +324,13 @@ func openCrewAuth(ctx context.Context, db *database.Driver, env *dataConfig, coo
 			Administered: env.CrewAdministered,
 		},
 		SignUpRedirectURL: env.CrewSignUpRedirectURL,
-		DevicePage:        "/console/device",
-		ChangeSignal:      policySignal,
+		Persona: auth.Persona{
+			Issuer:      env.CrewPersonaIssuer,
+			ClientID:    env.CrewPersonaClientID,
+			RedirectURL: env.CrewPersonaRedirectURL,
+		},
+		DevicePage:   "/console/device",
+		ChangeSignal: policySignal,
 		// The sign-in rule reads what each sector declares about who may enter it in
 		// the sign-in's transaction, through the generated reader; the directory
 		// admission reads what the sectors declare about one directory, with its
@@ -461,14 +466,24 @@ type dataConfig struct {
 	// directory's. Under the skipAuth tag the registration's simulated person is
 	// APP_SIGN_UP_USERNAME.
 	CrewSignUpRedirectURL string `env:"APP_CREW_SIGN_UP_REDIRECT_URL"`
-	MembersClientID       string `env:"APP_MEMBERS_OIDC_CLIENT_ID"`
-	MembersClientSecret   string `env:"APP_MEMBERS_OIDC_CLIENT_SECRET"`
-	MembersRedirectURL    string `env:"APP_MEMBERS_OIDC_REDIRECT_URL"`
-	MembersConnection     string `env:"APP_MEMBERS_OIDC_CONNECTION"`
-	MembersHostedDomain   string `env:"APP_MEMBERS_OIDC_HOSTED_DOMAIN"`
-	MembersAdministered   bool   `env:"APP_MEMBERS_OIDC_ADMINISTERED"`
-	MembersGroupPrefix    string `env:"APP_MEMBERS_OIDC_GROUP_PREFIX"`
-	MembersGroupLookup    string `env:"APP_MEMBERS_OIDC_GROUP_LOOKUP"`
+	// The crew auth's persona registration, the sign-in of the test environments: the
+	// persona provider's issuer, which bedrock sets in a pull-request environment and the
+	// first environment alone (the method is registered where it is set and nowhere
+	// else), the deployment's client ID at the provider, which bedrock derives from the
+	// placement's client ID root, and the callback the provider returns the browser to.
+	// Under the skipAuth tag the provider is simulated: every sign-in through it is
+	// APP_PERSONA_USERNAME, a login of the cast.
+	CrewPersonaIssuer      string `env:"APP_CREW_PERSONA_ISSUER"`
+	CrewPersonaClientID    string `env:"APP_CREW_PERSONA_CLIENT_ID"`
+	CrewPersonaRedirectURL string `env:"APP_CREW_PERSONA_REDIRECT_URL"`
+	MembersClientID        string `env:"APP_MEMBERS_OIDC_CLIENT_ID"`
+	MembersClientSecret    string `env:"APP_MEMBERS_OIDC_CLIENT_SECRET"`
+	MembersRedirectURL     string `env:"APP_MEMBERS_OIDC_REDIRECT_URL"`
+	MembersConnection      string `env:"APP_MEMBERS_OIDC_CONNECTION"`
+	MembersHostedDomain    string `env:"APP_MEMBERS_OIDC_HOSTED_DOMAIN"`
+	MembersAdministered    bool   `env:"APP_MEMBERS_OIDC_ADMINISTERED"`
+	MembersGroupPrefix     string `env:"APP_MEMBERS_OIDC_GROUP_PREFIX"`
+	MembersGroupLookup     string `env:"APP_MEMBERS_OIDC_GROUP_LOOKUP"`
 
 	// PublicURL is the application's address as a browser reaches it, scheme and host
 	// with no path (https://lodestar.example.com; the dev proxy in development): every

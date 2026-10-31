@@ -22,7 +22,7 @@ func newGenerator(ctx context.Context) (generation.Generator, error) {
 		// at /.
 		generation.GenerateRouter(),
 		generation.GenerateRoutes("pkg/router", "api",
-			generation.Auth("github.com/impulseframework/beacon/pkg/auth/keepers", generation.PasswordMethod()),
+			generation.Auth("github.com/impulseframework/beacon/pkg/auth/keepers", generation.PasswordMethod(), generation.PersonaMethod("persona").InvitedUsers()),
 			generation.WebApp("/"),
 		),
 		generation.GenerateHandlerTests("test/authz"),

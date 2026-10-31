@@ -83,7 +83,16 @@ func NewDataConfiguration(ctx context.Context) (*DataConfiguration, error) {
 		return nil, errors.Wrap(err, "resource.NewCursorKey()")
 	}
 
-	keepersAuth, err := keepers.New(ctx, spannerClient, keepers.Settings{CookieKey: cookieKey, SessionTimeout: env.SessionTimeout})
+	keepersAuth, err := keepers.New(ctx, spannerClient, keepers.Settings{
+		CookieKey:      cookieKey,
+		SessionTimeout: env.SessionTimeout,
+		LoginURL:       "/login",
+		Persona: keepers.PersonaSettings{
+			Issuer:      env.KeepersPersonaIssuer,
+			ClientID:    env.KeepersPersonaClientID,
+			RedirectURL: env.KeepersPersonaRedirectURL,
+		},
+	})
 	if err != nil {
 		return nil, errors.Wrap(err, "keepers.New()")
 	}
@@ -182,4 +191,11 @@ type dataConfig struct {
 	// table holds no rows. The stack generates it and nobody types it; the first sign-in
 	// changes it.
 	KeepersAdministratorPassword string `env:"APP_KEEPERS_ADMINISTRATOR_PASSWORD" secret:"generated"`
+
+	// The keepers auth's persona registration: the persona provider's issuer, set in the
+	// first environment and its pull requests alone, where the method is registered; the
+	// deployment's client ID at the provider; and the callback the provider returns to.
+	KeepersPersonaIssuer      string `env:"APP_KEEPERS_PERSONA_ISSUER"`
+	KeepersPersonaClientID    string `env:"APP_KEEPERS_PERSONA_CLIENT_ID"`
+	KeepersPersonaRedirectURL string `env:"APP_KEEPERS_PERSONA_REDIRECT_URL"`
 }

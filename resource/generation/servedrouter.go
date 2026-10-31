@@ -70,10 +70,17 @@ const (
 // the login page is told of it.
 type servedMethod struct {
 	// Name is the registration's name on the Auth, Label what the login page shows,
-	// Kind the method behind the registration (password, google, azure, workos).
+	// Kind the method behind the registration (password, google, azure, workos, persona).
 	Name  string
 	Label string
 	Kind  string
+	// Optional marks a method the Auth registers only where its provider is configured
+	// (the persona method): the surface's handlers for it are nil elsewhere, so the
+	// router mounts Routes, the method's own routes, and offers the method to the login
+	// page only where the surface has it. Routes is empty for every other method, whose
+	// routes are among the outlet's OpenRoutes and GuardedRoutes.
+	Optional bool
+	Routes   []servedRoute
 	// Accessor is the Pascal-cased name the outlet's session surface prefixes the
 	// method's handlers with (Password, Google, LakesideEntra).
 	Accessor string
@@ -628,6 +635,33 @@ type servedOutlet struct {
 	RouteWords     []servedRouteWords
 }
 
+// OptionalMethods are the outlet's methods the Auth registers only where their provider
+// is configured, whose routes the router mounts where the surface has them;
+// ListedMethods the rest, which the login page is always told of.
+func (o *servedOutlet) OptionalMethods() []servedMethod {
+	var optional []servedMethod
+	for i := range o.Methods {
+		if o.Methods[i].Optional {
+			optional = append(optional, o.Methods[i])
+		}
+	}
+
+	return optional
+}
+
+// ListedMethods are the outlet's methods the login page is always told of: every method
+// but the optional ones.
+func (o *servedOutlet) ListedMethods() []servedMethod {
+	var listed []servedMethod
+	for i := range o.Methods {
+		if !o.Methods[i].Optional {
+			listed = append(listed, o.Methods[i])
+		}
+	}
+
+	return listed
+}
+
 // MountedPrefixes lists the prefixes beneath the outlet, for the helper that keeps their
 // word.
 func (o *servedOutlet) MountedPrefixes() []string {
@@ -772,10 +806,13 @@ type servedRoute struct {
 	// Handler is the session surface's method serving the route (PasswordLogin,
 	// Authenticated); XSRF says the route sits behind the outlet's XSRF guard, as the
 	// POSTs of a sign-in do; Validated that it sits inside the validated group too, as
-	// the routes a signed-in person calls do.
+	// the routes a signed-in person calls do; Optional that the route belongs to a
+	// method the Auth registers only where its provider is configured, mounted from the
+	// method's own routes where the surface has it.
 	Handler   string
 	XSRF      bool
 	Validated bool
+	Optional  bool
 }
 
 // servedWebApp is one browser application the router serves.
@@ -1108,6 +1145,23 @@ func servedSessionOf(so *servedOutlet, o *routerOutlet) {
 				sm.Description = fmt.Sprintf("The %s registration's login, callback and front-channel logout (azure.Method)", m.name)
 				open = append(open, route(http.MethodGet, base+"/logout", sm.Accessor+"FrontChannelLogout", false))
 			}
+		case methodPersona:
+			// The persona method's routes are the redirect methods' routes, mounted where the
+			// surface has the method: they are listed among the open routes, for the chain
+			// comment, the stub and the generated test, and the router mounts them from the
+			// method's own list under the surface's word.
+			sm.LoginPath = prefix + base + "/login"
+			sm.Handlers = []string{sm.Accessor + "Login", sm.Accessor + "Callback"}
+			sm.Description = fmt.Sprintf("The %s registration's login and callback (oidc.Method), where the Auth registered it: the persona provider is configured in the first environment and its pull requests, and the handlers are nil elsewhere", m.name)
+			sm.Optional = true
+			sm.Routes = []servedRoute{
+				route(http.MethodGet, base+"/login", sm.Accessor+"Login", false),
+				route(http.MethodGet, base+"/callback", sm.Accessor+"Callback", false),
+			}
+			for i := range sm.Routes {
+				sm.Routes[i].Optional = true
+			}
+			open = append(open, sm.Routes...)
 		}
 		so.Methods = append(so.Methods, sm)
 		kinds = append(kinds, m.name)
@@ -1710,14 +1764,40 @@ func New(h Handlers, hooks Hooks) *chi.Mux {
 		// mounted below; the sign-in's POSTs sit behind the XSRF guard.
 		bounded := r.With(resource.BodyLimit(BodyLimit))
 		guarded := bounded.With({{ .Receiver }}.ValidateXSRFToken)
+{{- if $outlet.OptionalMethods }}
+		// A method the Auth registers only where its provider is configured ({{ range $i, $m := $outlet.OptionalMethods }}{{ if $i }}, {{ end }}{{ $m.Name }}{{ end }}): the
+		// surface has its handlers there and nil elsewhere, so its routes are mounted and
+		// the login page is told of it only where it is.
+		methods := []session.AdvertisedMethod{
+{{- range $outlet.ListedMethods }}
+			{Name: "{{ .Name }}", Label: "{{ .Label }}", Path: "{{ .LoginPath }}"},
+{{- end }}
+		}
+{{- range $outlet.OptionalMethods }}
+		if login := {{ $outlet.Receiver }}.{{ .Accessor }}Login(); login != nil {
+{{- range $i, $route := .Routes }}
+{{- if $i }}
+			bounded.{{ Pascal $route.Method }}("{{ $route.Path }}", {{ $outlet.Receiver }}.{{ $route.Handler }}())
+{{- else }}
+			bounded.{{ Pascal $route.Method }}("{{ $route.Path }}", login)
+{{- end }}
+{{- end }}
+			methods = append(methods, session.AdvertisedMethod{Name: "{{ .Name }}", Label: "{{ .Label }}", Path: "{{ .LoginPath }}"})
+		}
+{{- end }}
+{{- end }}
 {{- range .Routes }}
 {{- if eq .Handler "Methods" }}
 		{{ if .XSRF }}guarded{{ else }}bounded{{ end }}.{{ Pascal .Method }}("{{ .Path }}", {{ $outlet.Receiver }}.Methods(&session.MethodList{
+{{- if $outlet.OptionalMethods }}
+			Methods: methods,
+{{- else }}
 			Methods: []session.AdvertisedMethod{
 {{- range $outlet.Methods }}
 				{Name: "{{ .Name }}", Label: "{{ .Label }}", Path: "{{ .LoginPath }}"},
 {{- end }}
 			},
+{{- end }}
 			Pending: session.PendingRoutes{
 				Status: "{{ $outlet.Pending.Status }}", Confirm: "{{ $outlet.Pending.Confirm }}", Cancel: "{{ $outlet.Pending.Cancel }}",
 				SendCode: "{{ $outlet.Pending.SendCode }}", VerifyCode: "{{ $outlet.Pending.VerifyCode }}", EnrollEmail: "{{ $outlet.Pending.EnrollEmail }}",
@@ -1731,7 +1811,7 @@ func New(h Handlers, hooks Hooks) *chi.Mux {
 			SignUp: session.SignUpRoutes{Start: "{{ $outlet.SignUp.Start }}", Open: "{{ $outlet.SignUp.Open }}", Complete: "{{ $outlet.SignUp.Complete }}"},
 {{- end }}
 		}))
-{{- else if not .Validated }}
+{{- else if and (not .Validated) (not .Optional) }}
 		{{ if .XSRF }}guarded{{ else }}bounded{{ end }}.{{ Pascal .Method }}("{{ .Path }}", {{ $outlet.Receiver }}.{{ .Handler }}())
 {{- end }}
 {{- end }}

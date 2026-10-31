@@ -264,12 +264,20 @@ above them.
 | `APP_SERVICE_NAME` | core | `beacon` / `beacon-migrate` | yes | yes |
 | `GOOGLE_CLOUD_LOGGING_PROJECT` | core | the environment project | yes | yes |
 | `GOOGLE_CLOUD_SPANNER_PROJECT`, `_INSTANCE_ID`, `_DATABASE_NAME` | data | the database | yes | yes |
+| `APP_KEEPERS_PERSONA_ISSUER` | data | `https://persona.impulseframework.dev/persona` in a pull-request stack and tst, empty beyond | yes | |
+| `APP_KEEPERS_PERSONA_CLIENT_ID` | data | `beacon-pr<N>` in a pull-request stack, `beacon-tst` in tst, empty beyond | yes | |
+| `APP_KEEPERS_PERSONA_REDIRECT_URL` | data | `https://` + first hostname + `/api/user/persona/callback` | yes | |
 | `APP_PUBLIC_URL` | data | `https://<first hostname>` | yes | yes |
 | `APP_MAIL_MAILBOX` | data | `var.mail_mailbox` | yes | yes |
 | `APP_MAIL_FROM` | data | `var.mail_from` | yes | yes |
 | `APP_COOKIE_KEY`, `APP_MAIL_APP_PASSWORD`, `APP_KEEPERS_ADMINISTRATOR_PASSWORD` | data | secret, at the pinned version | yes | |
 
-Not set: `APP_VERSION` (the
+The persona method (the keepers auth's persona registration) is
+registered where its issuer is set and nowhere else, so a later environment never offers
+it and nothing in the build differs; the pipeline registers each deployment, its callback
+and its cast (`pkg/auth/keepers/cast.json`) with the provider after traffic (`deploy persona
+register`, from `_PERSONA`) and removes a torn-down pull request's (`deploy persona
+remove`). Not set: `APP_VERSION` (the
 pipeline bakes it into the image, so a deploy never edits the template's
 variables), `APP_DEFAULT_SESSION_TIMEOUT` (code default), `PORT` (Cloud Run
 sets it), `APP_CONSOLE_DIST` (where the image put the bundle).

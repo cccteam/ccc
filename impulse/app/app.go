@@ -189,7 +189,8 @@ type Auth struct {
 	OptionsForwarded bool
 	// Methods are the sign-in methods registered on the Auth, in source order: the
 	// password method (session.PasswordSignIn) and the redirect methods (azure.SignIn,
-	// google.SignIn, workos.SignIn) whose first argument names this construction.
+	// google.SignIn, workos.SignIn, and oidc.SignIn, the persona method) whose first
+	// argument names this construction.
 	Methods []Method
 }
 
@@ -197,7 +198,7 @@ type Auth struct {
 type Method struct {
 	File string
 	Line int
-	// Kind is the method: password, azure, google, or workos.
+	// Kind is the method: password, azure, google, workos, or persona.
 	Kind string
 	// Name is the registration name: the segment of the method's login and callback
 	// routes (user/<name>/login). The password method is always registered as password.

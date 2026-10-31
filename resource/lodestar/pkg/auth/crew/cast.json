@@ -1,0 +1,7 @@
+{
+  "personas": [
+    {"login": "hq", "name": "Fleet Headquarters", "email": "hq@example.com", "roles": ["Headquarters"]},
+    {"login": "warden", "name": "Sector Warden", "email": "warden@example.com", "roles": ["SectorMarshal"]},
+    {"login": "rookie", "name": "Rookie Pilot", "email": "rookie@example.com", "roles": ["Cadet"]}
+  ]
+}

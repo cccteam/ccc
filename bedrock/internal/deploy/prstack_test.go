@@ -695,6 +695,11 @@ func TestStackFacts(t *testing.T) {
 			want:   map[string]string{services: "us-central1=quill-pr7", migrateEnvFact: "{}", migrateDatabasesFact: "[]", migrateSecretsFact: "{}", jobsJobFact: "us-central1=quill-pr7-jobs", prHostnameFact: "quill-pr7.example.dev", "_BUILD_ARG_SITE_HOST": "quill-pr7.example.dev"},
 		},
 		{
+			name:   "the persona registrations the stack carries reach the preview build as the pull request's own",
+			output: `{"_SERVICES": "us-central1=quill-pr7", "_HOSTNAME": "quill-pr7.example.dev", "_PERSONA": "[{\"auth\":\"keepers\"}]"}`,
+			want:   map[string]string{services: "us-central1=quill-pr7", prHostnameFact: "quill-pr7.example.dev", personaFact: `[{"auth":"keepers"}]`},
+		},
+		{
 			name:   "a stack applied by an older bedrock names no settings for the migrate command, which the migrate step refuses later",
 			output: `{"_SERVICES": "us-central1=quill-pr7", "_HOSTNAME": "quill-pr7.example.dev"}`,
 			want:   map[string]string{services: "us-central1=quill-pr7", prHostnameFact: "quill-pr7.example.dev"},

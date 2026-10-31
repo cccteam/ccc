@@ -397,6 +397,22 @@ resource "google_service_account_iam_member" "deploy_impersonates_apply" {
   member             = google_service_account.deploy[each.key].member
 }
 
+# The deploy identity may create its own OpenID Connect identity tokens: a persona
+# registration (bedrock deploy persona register, in the first environment and its
+# pull requests) proves the build to the persona provider with the deploy
+# identity's Google identity token for the provider's issuer. Cloud Build's
+# metadata server issues one to a build's own service account only when that
+# account holds iam.serviceAccounts.getOpenIdToken on itself, and otherwise
+# answers as if the identity endpoint did not exist. The role is the narrow one
+# (identity tokens, nothing else), on the account itself, never on the project.
+resource "google_service_account_iam_member" "deploy_mints_own_identity" {
+  for_each = local.apps
+
+  service_account_id = google_service_account.deploy[each.key].name
+  role               = "roles/iam.serviceAccountOpenIdTokenCreator"
+  member             = google_service_account.deploy[each.key].member
+}
+
 # The next environment's deploy identities read this environment's deployment
 # records (that environment's pipeline admits a release only after a live
 # record of it exists here: the record gate) through a binding of the records

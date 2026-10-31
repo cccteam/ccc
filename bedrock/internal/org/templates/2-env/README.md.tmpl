@@ -224,7 +224,11 @@ the pull request's newest deployment record before its plan (the
 stale-database check; a list is a request on the bucket, so no grant under a
 prefix admits it), and `roles/storage.objectUser` under `<app>/stacks/`: the
 stack writes the object naming its id there (`<app>/stacks/<env>/stack.json`),
-and in tst the stack jobs write their outputs.
+and in tst the stack jobs write their outputs. It may create its own OpenID
+Connect identity tokens (`roles/iam.serviceAccountOpenIdTokenCreator` on its
+own account): a persona registration proves the build to the persona provider
+with one, and Cloud Build's metadata server issues it to a build's service
+account only under that grant.
 
 ### Application plan identity `{{.Prefix}}-<env>-gbl-<app>-plan`
 

@@ -539,9 +539,11 @@ func factsOf(outputs map[string]json.RawMessage) (map[string]string, error) {
 // variables the migrate command runs with (MIGRATE_ENV, from _MIGRATE_ENV), the secrets
 // it reads (MIGRATE_SECRETS, from _MIGRATE_SECRETS) and the databases it reaches
 // (MIGRATE_DATABASES, from _MIGRATE_DATABASES), which the migrate step requires and a
-// stack applied by an older bedrock lacks, and the build arguments
+// stack applied by an older bedrock lacks, the build arguments
 // the placement declares (_BUILD_ARG_<NAME>, by their substitutions' names), which a
-// pull-request build's image build reads as the pull request's own.
+// pull-request build's image build reads as the pull request's own, and the persona
+// registrations (PERSONA, from _PERSONA), which the preview build registers with the
+// provider as the pull request's own.
 func stackFacts(data []byte) (map[string]string, error) {
 	var subs map[string]string
 	if err := json.Unmarshal(data, &subs); err != nil {
@@ -570,6 +572,9 @@ func stackFacts(data []byte) (map[string]string, error) {
 	}
 	if databases := subs[migrateDatabasesSub]; databases != "" {
 		facts[migrateDatabasesFact] = databases
+	}
+	if registrations := subs[personaSub]; registrations != "" {
+		facts[personaFact] = registrations
 	}
 	if secrets := subs[migrateSecretsSub]; secrets != "" {
 		facts[migrateSecretsFact] = secrets

@@ -117,10 +117,12 @@ type AdministratorRoles struct {
 
 // Method is one sign-in method of the auth.
 type Method struct {
-	// Kind is the method: app.MethodPassword, app.MethodAzure or app.MethodGoogle.
+	// Kind is the method: app.MethodPassword, app.MethodAzure, app.MethodGoogle or
+	// app.MethodPersona.
 	Kind string
 	// Name is the registration name (user/<name>/login); password for the password
-	// method, which takes no other.
+	// method, which takes no other, and persona for the persona method when none is
+	// given.
 	Name string
 	// Authority is who owns role membership for a directory method: app.AuthorityDirectory
 	// (the registration synchronizes roles from the directory at every sign-in) or
@@ -139,7 +141,9 @@ type Method struct {
 	// of the directory, the default), AccountsInvited (invited users only) or
 	// AccountsOpen (open sign-up). Empty is AccountsMembers. The password method takes
 	// AccountsOpen alone (a stranger signs up from a link mailed to their address) or
-	// nothing (its users are created in the application, or invited).
+	// nothing (its users are created in the application, or invited). The persona method
+	// takes AccountsInvited alone, its default: the personas are the accounts the cast
+	// seeds, and the sign-in links to them.
 	Accounts string
 	// UsernameIsEmail marks a password method whose sign-in name is the person's email
 	// address (session.UsernameIsEmail): the users surface derives the address from the
@@ -185,14 +189,18 @@ func Accounts() []string { return []string{AccountsMembers, AccountsInvited, Acc
 // Validate checks a method against the library's rules, as the session library enforces
 // them at registration: a slot the kind has, an account rule the slot allows (open sign-up
 // only with any organization or personal accounts; members of the directory not with
-// them), role synchronization only with one organization, and for the password method
-// open sign-up or no rule, with the sign-in name as the address on it alone.
+// them), role synchronization only with one organization, for the password method open
+// sign-up or no rule, with the sign-in name as the address on it alone, and for the
+// persona method no slot, the application's authority and invited users only.
 func (m *Method) Validate() error {
 	if m.Kind == app.MethodPassword {
 		return m.validatePassword()
 	}
+	if m.Kind == app.MethodPersona {
+		return m.validatePersona()
+	}
 	if m.Kind != app.MethodAzure && m.Kind != app.MethodGoogle {
-		return errors.Newf("%q is not a sign-in method impulse composes: password, azure or google", m.Kind)
+		return errors.Newf("%q is not a sign-in method impulse composes: password, azure, google or persona", m.Kind)
 	}
 	if m.UsernameIsEmail {
 		return errors.New("username-is-email describes the password method's sign-in name; a directory method's people sign in as the directory names them")
@@ -253,6 +261,38 @@ func (m *Method) validatePassword() error {
 	return nil
 }
 
+// validatePersona checks the persona method: a registration name, no slot (the provider
+// is one issuer), the application's authority (the provider asserts who a persona is and
+// nothing about roles) and invited users only (the personas are seeded accounts).
+func (m *Method) validatePersona() error {
+	if m.UsernameIsEmail {
+		return errors.New("username-is-email describes the password method's sign-in name; a persona signs in as the login its cast names")
+	}
+	if !registrationRE.MatchString(m.Name) {
+		return errors.Newf("registration %q: lowercase letters, digits and hyphens, starting with a letter (persona)", m.Name)
+	}
+	if m.Name == app.PasswordRegistration {
+		return errors.Newf("%q is the password method's registration name", m.Name)
+	}
+	if m.Slot != "" {
+		return errors.New("the persona method takes no slot: the persona provider is one issuer, and which personas it offers is the deployment's cast")
+	}
+	if m.Authority != "" && m.Authority != app.AuthorityApplication {
+		return errors.Newf("authority %q: the persona method takes the application authority alone, since the persona provider asserts who a persona is and the cast seeds what it may do", m.Authority)
+	}
+	if m.Accounts != "" && m.Accounts != AccountsInvited {
+		return errors.Newf("accounts %q: the persona method admits invited users only, since the personas are the accounts the cast seeds and the sign-in links to them", m.Accounts)
+	}
+
+	return nil
+}
+
+// The variable suffixes every redirect method's registration shares.
+const (
+	suffixClientID    = "CLIENT_ID"
+	suffixRedirectURL = "REDIRECT_URL"
+)
+
 // registrationRE is the shape of a registration name, as the session library takes it.
 var registrationRE = regexp.MustCompile(`^[a-z][a-z0-9-]*$`)
 
@@ -266,6 +306,10 @@ func (m *Method) slot() string {
 
 func (m *Method) accounts() string {
 	if m.Accounts == "" {
+		if m.Kind == app.MethodPersona {
+			return AccountsInvited
+		}
+
 		return AccountsMembers
 	}
 
@@ -283,9 +327,10 @@ func (m *Method) OpenSignUp() bool {
 // method file sets the registration's RoleSync (signin.RoleSync, the token's application
 // roles, for Microsoft Entra; google.RoleSync, the role groups, for Google), where every
 // other method file sets DisableRoleSync. The views that render the method file and the
-// declaration a generator program carries both read this one rule.
+// declaration a generator program carries both read this one rule. The persona method
+// never does: the provider asserts identity alone.
 func (m *Method) SyncsRoles() bool {
-	return m.Directory() && m.Authority == app.AuthorityDirectory
+	return m.Directory() && m.Kind != app.MethodPersona && m.Authority == app.AuthorityDirectory
 }
 
 // Arg is the method as a generator program declares it on an Auth option: its kind and
@@ -356,8 +401,14 @@ func (m *Method) Upper() string {
 	return strings.ToUpper(strings.ReplaceAll(m.Name, "-", "_"))
 }
 
-// Directory reports a method whose people are sent to a directory or identity provider.
+// Directory reports a method whose people are sent to a directory or identity provider:
+// every kind but the password method, the persona method among them, since its people
+// are sent to the persona provider and the development environment simulates it.
 func (m *Method) Directory() bool { return m.Kind != app.MethodPassword }
+
+// Persona reports the persona method: registered only where its provider is configured,
+// with a cast the deployment seeds and registers.
+func (m *Method) Persona() bool { return m.Kind == app.MethodPersona }
 
 // Fallible reports whether registering the method can fail before the session library
 // validates it: a method whose organization slot names its organizations builds the
@@ -366,7 +417,7 @@ func (m *Method) Directory() bool { return m.Kind != app.MethodPassword }
 // registration hands the library its settings as they are, so its register function
 // returns the method alone.
 func (m *Method) Fallible() bool {
-	if !m.Directory() {
+	if !m.Directory() || m.Persona() {
 		return false
 	}
 	if m.SlotFallible() {
@@ -382,7 +433,7 @@ func (m *Method) Fallible() bool {
 // the slot does not admit is refused. An open slot admits whatever the deployment
 // declares administered beside its open entry.
 func (m *Method) SlotFallible() bool {
-	if !m.Directory() {
+	if !m.Directory() || m.Persona() {
 		return false
 	}
 	switch m.slot() {
@@ -396,9 +447,10 @@ func (m *Method) SlotFallible() bool {
 // Administered reports whether the method declares the organizations the deployment
 // administers (AdministeredTenants, AdministeredWorkspaces), whose sign-ins carry the
 // directory's second factor: every directory method but one admitting Microsoft
-// personal accounts alone, which no deployment administers.
+// personal accounts alone, which no deployment administers, and the persona method,
+// whose provider is no organization.
 func (m *Method) Administered() bool {
-	return m.Directory() && (m.Kind != app.MethodAzure || m.slot() != SlotPersonal)
+	return m.Directory() && !m.Persona() && (m.Kind != app.MethodAzure || m.slot() != SlotPersonal)
 }
 
 // Field is one setting a method reads from the environment.
@@ -435,7 +487,13 @@ const (
 	// sign-ins carry the directory's second factor: tenants by id, Workspaces by domain.
 	FieldAdministeredTenants    = "AdministeredTenants"
 	FieldAdministeredWorkspaces = "AdministeredWorkspaces"
+	// FieldIssuer is the persona provider's issuer URL: the one setting that decides
+	// whether the persona method is registered.
+	FieldIssuer = "Issuer"
 )
+
+// PersonaRegistration is the persona method's registration name when none is given.
+const PersonaRegistration = "persona"
 
 // Fields lists the settings a method reads, in order: what the method's settings struct
 // holds, what the data level reads from the environment and what bedrock supplies per
@@ -457,9 +515,15 @@ func (m *Method) Fields() []Field {
 			fields = append(fields, Field{Name: FieldAdministeredTenants, Suffix: "ADMINISTERED_TENANTS", Simulated: true, Doc: "the tenants the deployment administers, by tenant id, comma-separated, each one the registration admits: a sign-in from one carries the tenant's own second factor, which the deployment vouches for (a Conditional Access policy requiring multifactor authentication of everyone), and is not asked for the sign-in code; empty when the deployment administers none"})
 		}
 		fields = append(fields,
-			Field{Name: FieldClientID, Suffix: "CLIENT_ID", Doc: "the app registration's application (client) id"},
+			Field{Name: FieldClientID, Suffix: suffixClientID, Doc: "the app registration's application (client) id"},
 			Field{Name: FieldClientSecret, Suffix: "CLIENT_SECRET", Secret: true, Doc: "the app registration's client secret"},
-			Field{Name: FieldRedirectURL, Suffix: "REDIRECT_URL", Simulated: true, Doc: "the browser-facing callback the directory returns the browser to: <base>/<outlet>/api/user/" + m.Name + "/callback"},
+			Field{Name: FieldRedirectURL, Suffix: suffixRedirectURL, Simulated: true, Doc: "the browser-facing callback the directory returns the browser to: <base>/<outlet>/api/user/" + m.Name + "/callback"},
+		)
+	case app.MethodPersona:
+		fields = append(fields,
+			Field{Name: FieldIssuer, Suffix: "ISSUER", Simulated: true, Doc: "the persona provider's issuer URL, where the browser is sent to sign in as a persona; a placement value of the first environment and its pull requests, empty everywhere else, where the method is not registered"},
+			Field{Name: FieldClientID, Suffix: suffixClientID, Simulated: true, Doc: "the deployment's client ID at the provider: the application's client ID root with the environment or the pull request appended, which bedrock derives"},
+			Field{Name: FieldRedirectURL, Suffix: suffixRedirectURL, Simulated: true, Doc: "the browser-facing callback the provider returns the browser to: <base>/<outlet>/api/user/" + m.Name + "/callback"},
 		)
 	case app.MethodGoogle:
 		switch m.slot() {
@@ -470,9 +534,9 @@ func (m *Method) Fields() []Field {
 		}
 		fields = append(fields,
 			Field{Name: FieldAdministeredWorkspaces, Suffix: "ADMINISTERED_WORKSPACES", Simulated: true, Doc: "the Workspaces the deployment administers, by domain, comma-separated, each one the registration admits: a sign-in from one carries the Workspace's own second factor, which the deployment vouches for (2-Step Verification enforced for everyone), and is not asked for the sign-in code; empty when the deployment administers none"},
-			Field{Name: FieldClientID, Suffix: "CLIENT_ID", Doc: "the OAuth client's id"},
+			Field{Name: FieldClientID, Suffix: suffixClientID, Doc: "the OAuth client's id"},
 			Field{Name: FieldClientSecret, Suffix: "CLIENT_SECRET", Secret: true, Doc: "the OAuth client's secret"},
-			Field{Name: FieldRedirectURL, Suffix: "REDIRECT_URL", Simulated: true, Doc: "the browser-facing callback Google returns the browser to: <base>/<outlet>/api/user/" + m.Name + "/callback"},
+			Field{Name: FieldRedirectURL, Suffix: suffixRedirectURL, Simulated: true, Doc: "the browser-facing callback Google returns the browser to: <base>/<outlet>/api/user/" + m.Name + "/callback"},
 		)
 		if m.Authority == app.AuthorityDirectory {
 			fields = append(fields,
@@ -504,6 +568,8 @@ func (m *Method) Provider() string {
 		return "Microsoft"
 	case app.MethodGoogle:
 		return "Google"
+	case app.MethodPersona:
+		return "the persona provider"
 	default:
 		return ""
 	}
@@ -524,9 +590,7 @@ func Files(spec *Spec) (map[string][]byte, error) {
 	seen := map[string]bool{}
 	for i := range spec.Methods {
 		m := &spec.Methods[i]
-		if m.Kind == app.MethodPassword {
-			m.Name = app.PasswordRegistration
-		}
+		m.SettleName()
 		if err := m.Validate(); err != nil {
 			return nil, errors.Wrapf(err, "the %s auth's %s method", spec.Name, m.Name)
 		}
@@ -559,46 +623,78 @@ func Files(spec *Spec) (map[string][]byte, error) {
 	}
 	for i := range spec.Methods {
 		m := &spec.Methods[i]
-		var tmpl string
-		switch m.Kind {
-		case app.MethodPassword:
-			tmpl = loginFormTemplate
-		case app.MethodAzure:
-			tmpl = azureTemplate
-		case app.MethodGoogle:
-			tmpl = googleTemplate
-		}
-		out, err := render(m.Name, tmpl, newMethodView(spec, m))
+		out, err := render(m.Name, methodTemplate(m), newMethodView(spec, m))
 		if err != nil {
 			return nil, err
 		}
 		files[m.Name+".go"] = out
+		if m.Persona() {
+			cast, err := render(CastGoFile, castTemplate, newMethodView(spec, m))
+			if err != nil {
+				return nil, err
+			}
+			files[CastGoFile] = cast
+		}
 	}
 
 	return files, nil
+}
+
+// CastGoFile is the file the persona method's cast is read and seeded through, beside the
+// cast file itself (persona.CastFile).
+const CastGoFile = "cast.go"
+
+// SettleName gives a method its fixed registration name where the kind has one: password
+// for the password method, persona for the persona method when none is given.
+func (m *Method) SettleName() {
+	switch {
+	case m.Kind == app.MethodPassword:
+		m.Name = app.PasswordRegistration
+	case m.Kind == app.MethodPersona && m.Name == "":
+		m.Name = PersonaRegistration
+	}
+}
+
+// methodTemplate is the template a method's file renders from.
+func methodTemplate(m *Method) string {
+	switch m.Kind {
+	case app.MethodPassword:
+		return loginFormTemplate
+	case app.MethodAzure:
+		return azureTemplate
+	case app.MethodGoogle:
+		return googleTemplate
+	case app.MethodPersona:
+		return personaTemplate
+	default:
+		return ""
+	}
 }
 
 // MethodFile renders one method's file of the auth package, for a method added to an
 // auth that exists: the method's registration constant, settings, handlers and
 // registration function.
 func MethodFile(spec *Spec, m *Method) ([]byte, error) {
-	if m.Kind == app.MethodPassword {
-		m.Name = app.PasswordRegistration
-	}
+	m.SettleName()
 	if err := m.Validate(); err != nil {
 		return nil, errors.Wrapf(err, "the %s auth's %s method", spec.Name, m.Name)
 	}
-	var tmpl string
-	switch m.Kind {
-	case app.MethodPassword:
-		tmpl = loginFormTemplate
-	case app.MethodAzure:
-		tmpl = azureTemplate
-	case app.MethodGoogle:
-		tmpl = googleTemplate
+
+	return render(m.Name, methodTemplate(m), newMethodView(spec, m))
+}
+
+// CastFile renders the persona method's cast.go: the embedded cast file, read for the
+// deploy and seeded by the migrate command.
+func CastFile(spec *Spec, m *Method) ([]byte, error) {
+	m.SettleName()
+	if err := m.Validate(); err != nil {
+		return nil, errors.Wrapf(err, "the %s auth's %s method", spec.Name, m.Name)
+	}
+	if !m.Persona() {
+		return nil, errors.Newf("the %s method has no cast: the persona method alone does", m.Name)
 	}
 
-	return render(m.Name, tmpl, newMethodView(spec, m))
+	return render(CastGoFile, castTemplate, newMethodView(spec, m))
 }
 
 // FileNames lists the files Files renders, sorted.
@@ -609,11 +705,12 @@ func FileNames(spec *Spec) []string {
 		files = append(files, footholdFile)
 	}
 	for i := range spec.Methods {
-		name := spec.Methods[i].Name
-		if spec.Methods[i].Kind == app.MethodPassword {
-			name = app.PasswordRegistration
+		m := spec.Methods[i]
+		m.SettleName()
+		files = append(files, m.Name+".go")
+		if m.Persona() {
+			files = append(files, CastGoFile)
 		}
-		files = append(files, name+".go")
 	}
 	sort.Strings(files)
 

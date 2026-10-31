@@ -101,6 +101,7 @@ locals {
     _RECORDS_BUCKETS         = local.records_buckets
     _MIGRATION_DATABASES     = local.migration_databases             # env=database in every other environment; the guard reads each one's migration version on a consolidation
     _APPLY_IDENTITY          = local.identities.apply_identity_email # the identity a pull-request build applies its stack as and a tag build applies the environment's stack as, impersonated by the deploy identity (2-env grants it in every environment)
+    _PERSONA                 = local.persona_substitution            # the registrations the pipeline sends the persona provider after traffic and removes at a teardown (locals.tf, persona_registrations), as a JSON list; empty beyond tst, where the persona method is not registered
     _ROLLBACK                = ""                                    # a rollback run (bedrock rollback, on the rollback trigger alone): the release the environment leaves; the earlier release's build runs again with nothing of the database, no migration run and no backup taken
     _REASON                  = ""                                    # why the rollback or the restore was asked for; the first step prints it and the record carries it
     _RESTORE                 = ""                                    # a restore run's instruction: empty or production-backup (the database replaced in place, below production), or a backup's resource name or @<moment> (restored into the database's next generation, the live database kept as the forensic copy; production included)
