@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.6.13](https://github.com/cccteam/ccc/compare/impulse/v0.6.12...impulse/v0.6.13) (2026-10-31)
+
+
+### Features
+
+* **bedrock:** the placement's persona block names the persona provider; the stack sets the issuer and derives the client id and the callback in the first environment and its pull requests; the pipeline registers each deployment with the provider after traffic and removes a torn-down or closed pull request's (deploy persona register, deploy persona remove) ([#1252](https://github.com/cccteam/ccc/issues/1252)) ([62dbffb](https://github.com/cccteam/ccc/commit/62dbffbe04950e2a3dcd70117cc333f290aab128))
+* **impulse:** impulse add method persona writes the persona method, its cast and the cast's seeding; the persona-cast check holds the cast to its shape and its roles to the role file; the persona package carries the cast contract and the provider's registration client ([#1252](https://github.com/cccteam/ccc/issues/1252)) ([62dbffb](https://github.com/cccteam/ccc/commit/62dbffbe04950e2a3dcd70117cc333f290aab128))
+* **resource:** the generator declares a persona method (PersonaMethod) that the served router mounts and the methods route offers only where the auth registers it, and Lodestar demonstrates the persona sign-in of the test environments on the console's crew auth, with its cast seeded at start ([#1252](https://github.com/cccteam/ccc/issues/1252)) ([62dbffb](https://github.com/cccteam/ccc/commit/62dbffbe04950e2a3dcd70117cc333f290aab128))
+
+
+### Bug Fixes
+
+* **bedrock:** a pull-request build registers its persona deployment from its own stack's outputs, so a pull request that introduces or changes the method registers before any release carries it to the environment's triggers ([#1252](https://github.com/cccteam/ccc/issues/1252)) ([62dbffb](https://github.com/cccteam/ccc/commit/62dbffbe04950e2a3dcd70117cc333f290aab128))
+* **bedrock:** a pull-request stack with two regions applies: the revision templates output groups the services by name, since a pull request's service carries one name in every region, instead of failing on the duplicate key ([#1252](https://github.com/cccteam/ccc/issues/1252)) ([62dbffb](https://github.com/cccteam/ccc/commit/62dbffbe04950e2a3dcd70117cc333f290aab128))
+* **bedrock:** the organization's environment layer grants each deploy identity the right to create its own OpenID Connect tokens, which Cloud Build's metadata server requires before it issues the identity token a persona registration proves itself with ([#1252](https://github.com/cccteam/ccc/issues/1252)) ([62dbffb](https://github.com/cccteam/ccc/commit/62dbffbe04950e2a3dcd70117cc333f290aab128))
+* **impulse:** impulse new writes the application's name into the auth packages' Application constant, so the mail an auth sends names the application and not the skeleton's candidate ([#1252](https://github.com/cccteam/ccc/issues/1252)) ([62dbffb](https://github.com/cccteam/ccc/commit/62dbffbe04950e2a3dcd70117cc333f290aab128))
+
+
+### Dependencies
+
+* **impulse:** the skeleton's pins move to resource v0.16.5 and session v0.13.20, which the persona sign-in method is written against, with the modules resource v0.16.5 raises, in one ledger step for the 0.6.13 release ([#1256](https://github.com/cccteam/ccc/issues/1256)) ([f4f071d](https://github.com/cccteam/ccc/commit/f4f071dec5feff54ac6b5bc4baec80ce60199de9))
+
 ## [0.6.12](https://github.com/cccteam/ccc/compare/impulse/v0.6.11...impulse/v0.6.12) (2026-10-30)
 
 
