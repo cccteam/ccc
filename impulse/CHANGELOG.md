@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.14](https://github.com/cccteam/ccc/compare/impulse/v0.6.13...impulse/v0.6.14) (2026-11-01)
+
+
+### Features
+
+* **impulse:** every skeleton header carries the Feature flags link, shown to anyone holding List on FeatureFlags and opening the web library's dialog, and the 0.6.14 step's feature-flags-link recipe writes it into an existing application's headers ([#1259](https://github.com/cccteam/ccc/issues/1259)) ([7bf5ae6](https://github.com/cccteam/ccc/commit/7bf5ae6f8807e6c80998d989a4886d4b2ab00714))
+
 ## [0.6.13](https://github.com/cccteam/ccc/compare/impulse/v0.6.12...impulse/v0.6.13) (2026-10-31)
 
 
