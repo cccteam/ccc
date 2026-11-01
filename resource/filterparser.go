@@ -337,7 +337,7 @@ type FilterFieldInfo struct {
 }
 
 // ColumnName returns the column name for the given DBType.
-func (f FilterFieldInfo) ColumnName(dbType DBType) (string, error) {
+func (f *FilterFieldInfo) ColumnName(dbType DBType) (string, error) {
 	name, ok := f.dbColumnNames[dbType]
 	if !ok {
 		return name, errors.Newf("field %s (json: %s) not found in resource metadata for db type %s", f.GOFieldName, f.JSONFieldName, dbType)
@@ -352,7 +352,7 @@ func (f FilterFieldInfo) ColumnName(dbType DBType) (string, error) {
 const goFieldNames DBType = "gofields"
 
 // name returns the identifier a condition on this field carries for the parse target.
-func (f FilterFieldInfo) name(target DBType) (string, error) {
+func (f *FilterFieldInfo) name(target DBType) (string, error) {
 	if target == goFieldNames {
 		return f.GOFieldName, nil
 	}
@@ -608,56 +608,17 @@ func (p *FilterParser) parseConditionToken(dbType DBType) (ExpressionNode, error
 		}
 		condition.IsNullOp = true
 	case inStr, notinStr:
-		if len(parts) < 3 {
-			return nil, httpio.NewBadRequestMessagef("operator '%s' requires a value part in condition '%s'	", condition.Operator, p.current.Value)
+		values, err := p.parseListValues(&fieldInfo, field, condition.Operator, parts)
+		if err != nil {
+			return nil, err
 		}
-		valPart := strings.TrimSpace(parts[2])
-		if !strings.HasPrefix(valPart, "(") || !strings.HasSuffix(valPart, ")") {
-			return nil, httpio.NewBadRequestMessagef("value for '%s' must be in parentheses, e.g., (v1,v2), got '%s' in condition '%s'", condition.Operator, valPart, p.current.Value)
-		}
-		valPart = valPart[1 : len(valPart)-1] // Remove parentheses
-		if valPart == "" {                    // e.g. name:in:()
-			return nil, httpio.NewBadRequestMessagef("value list for '%s' cannot be empty in condition '%s'", condition.Operator, p.current.Value)
-		}
-		values := splitQuotedList(valPart)
-		condition.Values = make([]any, 0, len(values))
-		for _, v := range values {
-			trimmed, err := unquoteFilterValue(v)
-			if err != nil {
-				return nil, err
-			}
-			if trimmed == "" { // e.g. name:in:(v1,,v2)
-				return nil, httpio.NewBadRequestMessagef("empty value in list for operator '%s' in condition '%s'", condition.Operator, p.current.Value)
-			}
-
-			valueType, valueKind := fieldInfo.FieldType, fieldInfo.Kind
-			if valueKind == reflect.Slice || valueKind == reflect.Array {
-				if fieldInfo.FieldType == nil {
-					return nil, errors.Newf("FieldType not available in FieldInfo for slice/array field '%s' to determine element kind", field)
-				}
-				valueType = fieldInfo.FieldType.Elem()
-				valueKind = valueType.Kind()
-			}
-
-			typedValue, err := p.convertValue(trimmed, valueType, valueKind)
-			if err != nil {
-				return nil, err
-			}
-			condition.Values = append(condition.Values, typedValue)
-		}
+		condition.Values = values
 	case eqStr, neStr, gtStr, ltStr, gteStr, lteStr:
-		if len(parts) < 3 {
-			return nil, httpio.NewBadRequestMessagef("operator '%s' requires a value in condition '%s'", condition.Operator, p.current.Value)
-		}
-		strValue, err := unquoteFilterValue(parts[2])
+		value, err := p.parseComparisonValue(&fieldInfo, condition.Operator, parts)
 		if err != nil {
 			return nil, err
 		}
-		typedValue, err := p.convertValue(strValue, fieldInfo.FieldType, fieldInfo.Kind)
-		if err != nil {
-			return nil, err
-		}
-		condition.Value = typedValue
+		condition.Value = value
 	case startswithStr, endswithStr, containsStr:
 		match, err := p.parseMatchCondition(dbType, &fieldInfo, jsonFieldNameStr, condition.Operator, parts)
 		if err != nil {
@@ -675,6 +636,62 @@ func (p *FilterParser) parseConditionToken(dbType DBType) (ExpressionNode, error
 	}
 
 	return &ConditionNode{Condition: condition}, nil
+}
+
+// parseListValues reads an in or notin condition's parenthesized list: every value
+// unquoted, non-empty, and typed by the field, or by its element type on a slice field.
+func (p *FilterParser) parseListValues(fieldInfo *FilterFieldInfo, field, operator string, parts []string) ([]any, error) {
+	if len(parts) < 3 {
+		return nil, httpio.NewBadRequestMessagef("operator '%s' requires a value part in condition '%s'	", operator, p.current.Value)
+	}
+	valPart := strings.TrimSpace(parts[2])
+	if !strings.HasPrefix(valPart, "(") || !strings.HasSuffix(valPart, ")") {
+		return nil, httpio.NewBadRequestMessagef("value for '%s' must be in parentheses, e.g., (v1,v2), got '%s' in condition '%s'", operator, valPart, p.current.Value)
+	}
+	valPart = valPart[1 : len(valPart)-1] // Remove parentheses
+	if valPart == "" {                    // e.g. name:in:()
+		return nil, httpio.NewBadRequestMessagef("value list for '%s' cannot be empty in condition '%s'", operator, p.current.Value)
+	}
+	valueType, valueKind := fieldInfo.FieldType, fieldInfo.Kind
+	if valueKind == reflect.Slice || valueKind == reflect.Array {
+		if fieldInfo.FieldType == nil {
+			return nil, errors.Newf("FieldType not available in FieldInfo for slice/array field '%s' to determine element kind", field)
+		}
+		valueType = fieldInfo.FieldType.Elem()
+		valueKind = valueType.Kind()
+	}
+	values := splitQuotedList(valPart)
+	typed := make([]any, 0, len(values))
+	for _, v := range values {
+		trimmed, err := unquoteFilterValue(v)
+		if err != nil {
+			return nil, err
+		}
+		if trimmed == "" { // e.g. name:in:(v1,,v2)
+			return nil, httpio.NewBadRequestMessagef("empty value in list for operator '%s' in condition '%s'", operator, p.current.Value)
+		}
+		typedValue, err := p.convertValue(trimmed, valueType, valueKind)
+		if err != nil {
+			return nil, err
+		}
+		typed = append(typed, typedValue)
+	}
+
+	return typed, nil
+}
+
+// parseComparisonValue reads the value of an eq, ne, gt, lt, gte or lte condition,
+// unquoted and typed by the field.
+func (p *FilterParser) parseComparisonValue(fieldInfo *FilterFieldInfo, operator string, parts []string) (any, error) {
+	if len(parts) < 3 {
+		return nil, httpio.NewBadRequestMessagef("operator '%s' requires a value in condition '%s'", operator, p.current.Value)
+	}
+	strValue, err := unquoteFilterValue(parts[2])
+	if err != nil {
+		return nil, err
+	}
+
+	return p.convertValue(strValue, fieldInfo.FieldType, fieldInfo.Kind)
 }
 
 // parsedMatch is an explicit match as the parser reads it: the term and the field's

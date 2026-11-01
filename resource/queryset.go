@@ -1124,15 +1124,7 @@ func (q *QuerySet[Resource]) stmt(dbType DBType) (*Statement, error) {
 		return nil, err
 	}
 
-	for k := range subqueryParams {
-		if _, ok := where.Params[k]; ok {
-			return nil, errors.Newf("named parameter collision: %s subquery and where clause both contain named parameter %q", q.Resource(), k)
-		}
-
-		where.Params[k] = subqueryParams[k]
-	}
-
-	if err := q.mergeRegistryParams(registry, where.Params); err != nil {
+	if err := q.mergeStatementParams(where, subqueryParams, registry); err != nil {
 		return nil, err
 	}
 
@@ -1160,6 +1152,20 @@ func (q *QuerySet[Resource]) stmt(dbType DBType) (*Statement, error) {
 	stmt.optimizerVersion = q.optimizerVersion(dbType, filterAst)
 
 	return stmt, nil
+}
+
+// mergeStatementParams folds the subquery's parameters and the registry's into the WHERE
+// clause's, refusing a name the subquery and the clause both bind.
+func (q *QuerySet[Resource]) mergeStatementParams(where *Statement, subqueryParams map[string]any, registry *paramRegistry) error {
+	for k := range subqueryParams {
+		if _, ok := where.Params[k]; ok {
+			return errors.Newf("named parameter collision: %s subquery and where clause both contain named parameter %q", q.Resource(), k)
+		}
+
+		where.Params[k] = subqueryParams[k]
+	}
+
+	return q.mergeRegistryParams(registry, where.Params)
 }
 
 // optimizerVersion names the query optimizer version a statement runs under:
