@@ -64,7 +64,7 @@ type (
 		// @domain
 		TenantID  string   `spanner:"TenantId"`
 		AccountID ccc.UUID `spanner:"AccountId"`
-		Body      string   `spanner:"Body"`
+		Body      string   `spanner:"Body" conditions:"pii"`
 	}
 
 	// Pairing references Accounts twice, so a branch through it names its foreign key.

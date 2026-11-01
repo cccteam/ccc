@@ -431,6 +431,18 @@ type searchBranch struct {
 	childField *resourceField
 }
 
+// ChildName is the child resource's struct name, which the TypeScript metadata names
+// through the Resources enumeration so the browser can ask the child's digest.
+func (b *searchBranch) ChildName() string {
+	return b.child.Name()
+}
+
+// ChildWireName is the child field's JSON name: the field whose List grant on the child
+// governs the branch.
+func (b *searchBranch) ChildWireName() string {
+	return b.childField.WireName()
+}
+
 // GoLiteral renders the branch as the resource.SearchBranch literal the generated
 // method returns.
 func (b *searchBranch) GoLiteral() string {

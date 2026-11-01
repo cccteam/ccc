@@ -233,7 +233,7 @@ func TestSearchFacts(t *testing.T) {
 
 		want := []resource.SearchBranch{
 			{Name: "accountContact.displayName", Resource: "AccountContacts", Field: "DisplayName", Tag: "displayName", Table: "AccountContacts", Column: "DisplayName", JoinColumn: "AccountId", TenantColumn: "TenantId", Token: "DisplayName_Search", Index: "AccountContactsSearch", Role: resource.SearchRoleText, Contains: true},
-			{Name: "accountNote.body", Resource: "AccountNotes", Field: "Body", Tag: "body", Table: "AccountNotes", Column: "Body", JoinColumn: "AccountId", TenantColumn: "TenantId", Token: "Body_Search", Index: "AccountNotesSearch", Role: resource.SearchRoleText, Contains: true},
+			{Name: "accountNote.body", Resource: "AccountNotes", Field: "Body", Tag: "body", Table: "AccountNotes", Column: "Body", JoinColumn: "AccountId", TenantColumn: "TenantId", Token: "Body_Search", Index: "AccountNotesSearch", Role: resource.SearchRoleText, Contains: true, PII: true},
 			{Name: "pairing.label", Resource: "Pairings", Field: "Label", Tag: "label", Table: "Pairings", Column: "Label", JoinColumn: "OtherAccountId", TenantColumn: "TenantId", Token: "Label_Search", Index: "PairingsSearch", Role: resource.SearchRoleText, Contains: true},
 		}
 		got := make([]resource.SearchBranch, 0, len(account.SearchBranches))
@@ -355,11 +355,15 @@ func TestSearchFacts(t *testing.T) {
 		source := string(out)
 		for _, want := range []string{
 			"{ fieldName: 'name', displayType: 'string', required: true, isIndex: false, filterable: 'withIndexed', search: ['contains', 'startswith', 'endswith'] }",
-			"{ fieldName: 'email', displayType: 'string', required: true, isIndex: false, filterable: 'withIndexed', search: ['startswith'] }",
+			"{ fieldName: 'email', displayType: 'string', required: true, isIndex: false, filterable: 'withIndexed', search: ['startswith'], pii: true }",
 			"{ fieldName: 'code', displayType: 'string', required: true, isIndex: false, filterable: 'withIndexed', search: ['startswith'] }",
 			"{ fieldName: 'bornOn', displayType: 'string', required: true, isIndex: false, filterable: 'withIndexed' }",
 			"{ fieldName: 'notes', displayType: 'string', required: true, isIndex: false }",
 			"searchFields: ['name', 'phone', 'bornOn', 'openedAt', 'email', 'accountContact.displayName', 'accountNote.body', 'pairing.label'],",
+			// The branches name the child resource and field whose grant governs each, and
+			// the PII child field, so the browser leaves a denied branch out of what the box
+			// says it searches and posts a box that reaches a PII field.
+			"searchBranches: [{ field: 'accountContact.displayName', resource: Resources.AccountContacts, fieldName: 'displayName' }, { field: 'accountNote.body', resource: Resources.AccountNotes, fieldName: 'body', pii: true }, { field: 'pairing.label', resource: Resources.Pairings, fieldName: 'label' }],",
 		} {
 			if !strings.Contains(source, want) {
 				t.Errorf("metadata lacks %q:\n%s", want, source)

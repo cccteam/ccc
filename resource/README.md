@@ -262,7 +262,12 @@ digits never meets a digits field; a term that is not a date never meets a date 
 The fields are the resource's own fields with the search fact, in declaration order, and
 the `@searchAlso` branches (section 1); the TypeScript resource metadata lists them as
 `searchFields: ['name', 'contactEmail', 'clientContact.displayName']`, so a screen can say
-what the box searches, and the resource decides the list, never the screen. An anchored
+what the box searches, and the resource decides the list, never the screen. Beside it the
+metadata carries what the browser needs to apply the same grants: `pii: true` on a field
+declared `pii` (a box reaching one is posted), and `searchBranches: [{ field:
+'clientContact.displayName', resource: Resources.ClientContacts, fieldName: 'displayName' }]`,
+the child resource and field whose List grant governs each branch, with `pii: true` on a
+PII child field, so a denied branch leaves the box's placeholder as it leaves the search. An anchored
 field contributes each of its anchors, a plain one `contains`. One box per filter; a
 second is a 400. The box is sent as a filter condition like any other, so it joins the
 rest of the filter with `,` and `|`, and the whole filter travels in the URL, or in the

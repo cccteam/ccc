@@ -218,7 +218,7 @@ const resourceMap = defineResourceMap({
       { fieldName: 'sectorId', displayType: 'string', required: true, isIndex: true, filterable: 'always', readOnly: true },
       { fieldName: 'summary', displayType: 'string', required: true, isIndex: false },
       { fieldName: 'severity', displayType: 'number', required: true, isIndex: true, filterable: 'always' },
-      { fieldName: 'callerContact', displayType: 'string', required: false, isIndex: false },
+      { fieldName: 'callerContact', displayType: 'string', required: false, isIndex: false, pii: true },
       { fieldName: 'transcript', displayType: 'string', required: false, isIndex: false, writeOnly: true },
       { fieldName: 'caseNumber', displayType: 'string', required: false, isIndex: true, filterable: 'always', readOnly: true },
       { fieldName: 'filedBy', displayType: 'string', required: false, isIndex: false, readOnly: true },

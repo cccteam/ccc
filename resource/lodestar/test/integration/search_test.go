@@ -245,9 +245,10 @@ func TestSearch(t *testing.T) {
 			// An anchored token column answers the three matches; an indexed field filters always.
 			"{ fieldName: 'name', displayType: 'string', required: true, isIndex: true, filterable: 'always', search: ['contains', 'startswith', 'endswith'] }",
 			// A plain token column answers contains alone; the field filters beside an indexed one, and its match stands alone.
-			"{ fieldName: 'contactName', displayType: 'string', required: true, isIndex: false, filterable: 'withIndexed', search: ['contains'] }",
+			"{ fieldName: 'contactName', displayType: 'string', required: true, isIndex: false, filterable: 'withIndexed', search: ['contains'], pii: true }",
 			// The box's fields in declaration order, the branch under its dotted name.
 			"searchFields: ['name', 'contactName', 'contactEmail', 'clientContact.displayName'],",
+			"searchBranches: [{ field: 'clientContact.displayName', resource: Resources.ClientContacts, fieldName: 'displayName' }],",
 			// The prefix fact alone.
 			"{ fieldName: 'name', displayType: 'string', required: true, isIndex: true, filterable: 'always', search: ['startswith'] }",
 			// A date joins the box and answers no match.
