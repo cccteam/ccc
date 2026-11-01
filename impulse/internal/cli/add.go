@@ -140,9 +140,9 @@ Feature union carries it. In the sites layout --site names the site whose resour
 package declares it.
 
 What the flag gates (@feature(<Constant>) on a resource, a field or a method, or a read of
-it in Go or in the browser), the description, and where the flags dialog's link lives are
-handed to the agent; the feature-flags check fails while the flag gates nothing and is
-read nowhere.`,
+it in Go or in the browser) and the description are handed to the agent; the header's
+Feature flags link opens the dialog that flips it; the feature-flags check fails while the
+flag gates nothing and is read nowhere.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runTransition(cmd, &f, transition_.AddFeature{Name: args[0], Site: site}, "")

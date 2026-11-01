@@ -130,8 +130,8 @@ flip is recorded in `FeatureFlagChanges`. The App reads the table when it is bui
 digest and features route answer from one copy. Each site serves `features` under its `/api`. Flipping is the generated
 `SetFeature` method, held by the `FeatureAdministrator` role in the staff role file
 (Execute on `SetFeature`, List and Read on `FeatureFlags`), which the development `admin`
-login holds; the library's `FeatureFlagsDialog` calls it, and the console decides
-where its link lives once the browser side takes the released client. A flag's
+login holds; the library's `FeatureFlagsDialog` calls it, opened from the Feature flags
+link in the header, shown to anyone holding List on `FeatureFlags`. A flag's
 development state is its row in `schema/devseed/<n>_dev_feature_flags.up.sql`, which
 `impulse add feature` writes off (set it to TRUE to start development and the test
 environments with the feature on) and `impulse remove feature` deletes with the constant

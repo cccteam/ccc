@@ -857,6 +857,28 @@ var Steps = []Step{
 		Impulse: release("v0.6.13"),
 		Note:    "an application can offer the persona sign-in of its test environments: impulse add method persona writes a persona method beside the auth's own, its cast file and the cast's seeding, and the generator mounts the method where the auth registers it (resource v0.16.5) over the session library's generic OpenID Connect method (session v0.13.20); the placement's persona block names the provider and bedrock registers each deployment of the first environment and its pull requests. Nothing changes for an application that adds no persona method.",
 	},
+	{
+		Pins: pins(`
+			access v0.12.0
+			ccc v0.3.7
+			ccc/accesstypes v0.7.1
+			ccc/cloud v0.2.3
+			ccc/resource v0.16.5
+			ccc/tracer v0.3.2
+			db-initiator v0.4.3
+			httpio v0.7.22
+			logger v0.1.31
+			session v0.13.20
+		`),
+		Web: web(`
+			@cccteam/resource 0.0.19
+			@cccteam/resource-angular 0.0.29
+			@cccteam/resource-firestore 0.0.18
+		`),
+		Recipes: []Recipe{recipe.FeatureFlagsLink{}},
+		Impulse: release("v0.6.14"),
+		Note:    "every browser application's header carries the Feature flags link, shown to anyone holding List on FeatureFlags and opening the web library's dialog, so a feature administrator has a door to the flags: the recipe writes it into each header that still has the skeleton's shape and names the one it cannot edit. No pin moves.",
+	},
 }
 
 // validatePending holds a step's Pending mark to its pins: a pin at a pseudo-version

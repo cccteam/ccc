@@ -15,6 +15,13 @@
         }
       </mat-select>
     </mat-form-field>
+    <!--
+      The feature flags dialog is the library's; the link shows under List on FeatureFlags,
+      the dialog's read, and the digest decides inside the dialog whether the toggles work.
+    -->
+    <button mat-stroked-button class="flags" *cccHasPermission="flagsScope" (click)="openFeatureFlags()">
+      Feature flags
+    </button>
     <span class="username">{{ auth.sessionInfo().username }}</span>
     <a mat-stroked-button routerLink="/logout">Sign out</a>
   </div>
