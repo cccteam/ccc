@@ -18,6 +18,11 @@ const (
 	indexTagKey              = "index"
 	uniqueIndexTagKey        = "uniqueindex"
 	maskingTagKey            = "masking"
+	// searchTagKey names, on a @virtual struct's text field, the table column whose
+	// search fact the field carries (search:"Clients.Name"): the generator cannot read
+	// the view's projection, so the author states it, as index does. Refused on a
+	// table-backed struct, where the schema states the facts.
+	searchTagKey = "search"
 )
 
 // sourceStructTagKeys registers every author-written struct-tag key for the
@@ -31,6 +36,7 @@ var sourceStructTagKeys = []string{
 	indexTagKey,
 	uniqueIndexTagKey,
 	maskingTagKey,
+	searchTagKey,
 }
 
 // Values recognized in a masking tag: how a field's masked cells meet a sort or a
@@ -85,4 +91,8 @@ const (
 	// formerlyOutTagKey carries a renamed request struct field's former wire name
 	// (resourceField.FormerlyTag); the decoders answer the former name as the current.
 	formerlyOutTagKey = "formerly"
+	// searchOutTagKey carries a list or read request struct field's search vocabulary
+	// (resourceField.SearchTag): the matches it answers and the columns they render
+	// through, which the decoders read back.
+	searchOutTagKey = "search"
 )

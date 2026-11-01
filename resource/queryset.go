@@ -40,6 +40,19 @@ type QuerySet[Resource Resourcer] struct {
 	// ordering or filtering by a field the caller cannot read on every row is
 	// an inference channel. Empty on a hand-built QuerySet.
 	filterFields []accesstypes.Field
+	// searchBox says the decoded filter carries the search box, and searchFields
+	// names the resource's own fields it searches, in declaration order. Unlike a
+	// filter field, a box field the caller cannot read drops out of the box instead
+	// of refusing the request (README section 4): the box names what it searches,
+	// so a dropped field discloses nothing by its absence. droppedSearchFields
+	// records those; branchDecisions and droppedBranches record what the checks
+	// decided for the resource's @searchAlso branches, by the branch's dotted name.
+	// All empty on a hand-built QuerySet.
+	searchBox           bool
+	searchFields        []accesstypes.Field
+	droppedSearchFields map[accesstypes.Field]struct{}
+	branchDecisions     map[string]accesstypes.Decision
+	droppedBranches     map[string]struct{}
 	// keyFields are the resource's primary-key fields, in declaration order,
 	// appended to every decoded list's order so the order is total: two rows
 	// equal on every sort column are separated by the key. Stamped by the
@@ -253,6 +266,9 @@ func (q *QuerySet[Resource]) checkReadPermissions(ctx context.Context, dbType DB
 		if err := q.checkQueryFieldsReadable(ctx, q.resourceSet, q.userPermissions); err != nil {
 			return err
 		}
+		if err := q.checkSearchFieldsReadable(ctx); err != nil {
+			return err
+		}
 	}
 
 	fields := q.Fields()
@@ -305,16 +321,22 @@ func (q *QuerySet[Resource]) queryFields() []accesstypes.Field {
 
 // queryColumns returns the fields whose columns the statement names outside
 // the select list: the read order (the request's sort or the declared default,
-// then the key) and the filter's fields, each once.
+// then the key), the filter's fields, and the search box's fields that
+// survived the read checks, each once.
 func (q *QuerySet[Resource]) queryColumns() []accesstypes.Field {
 	order := q.Order()
-	fields := make([]accesstypes.Field, 0, len(order)+len(q.filterFields))
+	fields := make([]accesstypes.Field, 0, len(order)+len(q.filterFields)+len(q.searchFields))
 	for _, sf := range order {
 		if !slices.Contains(fields, accesstypes.Field(sf.Field)) {
 			fields = append(fields, accesstypes.Field(sf.Field))
 		}
 	}
 	for _, field := range q.filterFields {
+		if !slices.Contains(fields, field) {
+			fields = append(fields, field)
+		}
+	}
+	for _, field := range q.activeSearchFields() {
 		if !slices.Contains(fields, field) {
 			fields = append(fields, field)
 		}
@@ -331,7 +353,7 @@ func (q *QuerySet[Resource]) queryColumns() []accesstypes.Field {
 // rendering. The exempt primary key follows the resource-level grant already
 // checked.
 func (q *QuerySet[Resource]) checkQueryFieldsReadable(ctx context.Context, rSet *Set[Resource], userPermissions UserPermissions) error {
-	decisions, fields, err := q.queryFieldDecisions(ctx, rSet, userPermissions)
+	decisions, fields, err := q.queryFieldDecisions(ctx, rSet, userPermissions, q.queryFields())
 	if err != nil {
 		return err
 	}
@@ -346,17 +368,30 @@ func (q *QuerySet[Resource]) checkQueryFieldsReadable(ctx context.Context, rSet 
 }
 
 // checkQueryFieldsGranted is the computed resource's readability rule: a sort
-// or filter field needs the caller's unconditional grant, because the handler
-// orders and filters the body's rows by the field's real values and no
-// statement renders a visible projection over them.
+// or filter field, and a field the search box searches, needs the caller's
+// unconditional grant, because the handler orders, filters and searches the
+// body's rows by the field's real values and no statement renders a visible
+// projection over them.
 func (q *QuerySet[Resource]) checkQueryFieldsGranted(ctx context.Context, rSet *Set[Resource], userPermissions UserPermissions) error {
-	decisions, fields, err := q.queryFieldDecisions(ctx, rSet, userPermissions)
+	queried := q.queryFields()
+	fields := slices.Clone(queried)
+	for _, field := range q.searchFields {
+		if !slices.Contains(fields, field) {
+			fields = append(fields, field)
+		}
+	}
+	decisions, checked, err := q.queryFieldDecisions(ctx, rSet, userPermissions, fields)
 	if err != nil {
 		return err
 	}
-	for _, qf := range fields {
+	for _, qf := range checked {
 		if !decisions[qf.res].IsGranted() {
-			return httpio.NewForbiddenMessagef("scope (%s), user (%s) cannot sort or filter on %s: (%s) on %s must be granted unconditionally", q.scope, userPermissions.User(), q.jsonName(qf.field), q.requiredPermission, qf.res)
+			verb := "sort or filter on"
+			if !slices.Contains(queried, qf.field) {
+				verb = "search"
+			}
+
+			return httpio.NewForbiddenMessagef("scope (%s), user (%s) cannot %s %s: (%s) on %s must be granted unconditionally", q.scope, userPermissions.User(), verb, q.jsonName(qf.field), q.requiredPermission, qf.res)
 		}
 	}
 
@@ -369,13 +404,13 @@ type queryField struct {
 	res   accesstypes.Resource
 }
 
-// queryFieldDecisions checks the grant-bearing sort and filter fields in one
+// queryFieldDecisions checks the grant-bearing fields among the given ones in one
 // call and returns the decisions with the fields in request order, so a
 // refusal names the first offending field.
-func (q *QuerySet[Resource]) queryFieldDecisions(ctx context.Context, rSet *Set[Resource], userPermissions UserPermissions) (accesstypes.Decisions, []queryField, error) {
+func (q *QuerySet[Resource]) queryFieldDecisions(ctx context.Context, rSet *Set[Resource], userPermissions UserPermissions, candidates []accesstypes.Field) (accesstypes.Decisions, []queryField, error) {
 	var fields []queryField
 	var resources []accesstypes.Resource
-	for _, field := range q.queryFields() {
+	for _, field := range candidates {
 		if rSet.PermissionRequired(field, q.requiredPermission) {
 			res := rSet.Resource(field)
 			fields = append(fields, queryField{field: field, res: res})
@@ -882,45 +917,92 @@ func (q *QuerySet[Resource]) filterColumnExpressions(dbType DBType, rendered *re
 	return expressions, nil
 }
 
-func (q *QuerySet[Resource]) astWhereClause(dbType DBType, filterAst ExpressionNode, rendered *renderedReadConditions) (*Statement, error) {
+// astWhereClause renders the filter tree as the statement's WHERE. query is the
+// resource's FROM item and tenancy its tenancy predicate: a Spanner search box
+// whose fields span several search indexes, or whose resource declares
+// @searchAlso branches, cannot sit in one WHERE and reads the resource through
+// one key set per term instead (search_render.go). The returned from is then
+// the FROM item that replaces query, and the WHERE carries the rest of the
+// filter; "" leaves the plain FROM. Such a box joins the rest of the filter
+// with AND alone, since no key set stands for one side of an OR.
+func (q *QuerySet[Resource]) astWhereClause(dbType DBType, filterAst ExpressionNode, rendered *renderedReadConditions, registry *paramRegistry, query, tenancy string) (*Statement, string, error) {
 	expressions, err := q.filterColumnExpressions(dbType, rendered)
 	if err != nil {
-		return nil, err
+		return nil, "", err
+	}
+	gen, err := loweredSQLGenerator(dbType)
+	if err != nil {
+		return nil, "", err
+	}
+	gen.setColumnExpressions(expressions)
+
+	fieldGrants, err := q.searchFieldGrants(dbType, rendered)
+	if err != nil {
+		return nil, "", err
+	}
+	branchGrants, err := q.searchBranchGrants(dbType, registry)
+	if err != nil {
+		return nil, "", err
+	}
+	gen.setSearchGrants(string(q.Resource()), fieldGrants, branchGrants)
+
+	params := make(map[string]any)
+	residual := filterAst
+	from := ""
+	if dbType == SpannerDBType {
+		if box := findSearchBox(filterAst); box != nil && box.Condition.search.needsKeySet() {
+			split, rest, ok := splitSearchConjunct(filterAst)
+			if !ok {
+				return nil, "", httpio.NewBadRequestMessage("the search box over this resource searches several indexes, which are read through one key set per term, so it joins the rest of the filter with AND alone; move the box out of the OR")
+			}
+			set, err := gen.renderSearchKeySet(split.Condition.search, query, string(q.Resource()), tenancy)
+			if err != nil {
+				return nil, "", errors.Wrap(err, "sqlGenerator.renderSearchKeySet()")
+			}
+			if set.empty {
+				return &Statement{SQL: "WHERE " + sqlFalse, Params: params}, "", nil
+			}
+			for _, param := range set.params {
+				params[param.Name] = param.Value
+			}
+			from = set.from
+			residual = rest
+		}
 	}
 
-	switch dbType {
-	case SpannerDBType:
-		gen := NewSpannerGenerator()
-		gen.setColumnExpressions(expressions)
-		sql, params, err := gen.GenerateSQL(filterAst)
-		if err != nil {
-			return nil, errors.Wrap(err, "SpannerGenerator.GenerateSQL()")
-		}
-
-		return &Statement{SQL: "WHERE " + sql, Params: params}, nil
-	case PostgresDBType:
-		gen := NewPostgreSQLGenerator()
-		gen.setColumnExpressions(expressions)
-		sql, params, err := gen.GenerateSQL(filterAst)
-		if err != nil {
-			return nil, errors.Wrap(err, "PostgreSQLGenerator.GenerateSQL()")
-		}
-
-		return &Statement{SQL: "WHERE " + sql, Params: params}, nil
-	default:
-		return nil, errors.Newf("unsupported dbType: %s", dbType)
+	// The key set and the residual filter share the generator's placeholder
+	// counter, so the statement's parameters stay unique.
+	sql, residualParams, err := gen.generateSQLRecursive(residual)
+	if err != nil {
+		return nil, "", errors.Wrap(err, "sqlGenerator.GenerateSQL()")
 	}
+	for _, param := range residualParams {
+		params[param.Name] = param.Value
+	}
+	if sql != "" {
+		// A filter whose top level is an OR is parenthesized: the tenancy, the
+		// row-condition and the cursor predicates are appended with AND, which
+		// would otherwise bind to its last alternative alone.
+		if op, ok := residual.(*LogicalOpNode); ok && op.Operator == OperatorOr {
+			sql = "(" + sql + ")"
+		}
+		sql = "WHERE " + sql
+	}
+
+	return &Statement{SQL: sql, Params: params}, from, nil
 }
 
-// where translates the the fields to database struct tags in databaseType when building the where clause
-func (q *QuerySet[Resource]) where(dbType DBType, filterAst ExpressionNode, rendered *renderedReadConditions) (*Statement, error) {
+// where translates the the fields to database struct tags in databaseType when
+// building the where clause. query and tenancy serve a filter's search box
+// (astWhereClause); a key-set WHERE needs neither.
+func (q *QuerySet[Resource]) where(dbType DBType, filterAst ExpressionNode, rendered *renderedReadConditions, registry *paramRegistry, query, tenancy string) (*Statement, string, error) {
 	if filterAst != nil {
-		return q.astWhereClause(dbType, filterAst, rendered)
+		return q.astWhereClause(dbType, filterAst, rendered, registry, query, tenancy)
 	}
 
 	parts := q.KeySet().Parts()
 	if len(parts) == 0 {
-		return &Statement{Params: map[string]any{}}, nil
+		return &Statement{Params: map[string]any{}}, "", nil
 	}
 
 	builder := strings.Builder{}
@@ -928,7 +1010,7 @@ func (q *QuerySet[Resource]) where(dbType DBType, filterAst ExpressionNode, rend
 	for _, part := range parts {
 		f, ok := q.rMeta.dbFieldMap(dbType)[part.Key]
 		if !ok {
-			return nil, errors.Newf("field %s not found in struct", part.Key)
+			return nil, "", errors.Newf("field %s not found in struct", part.Key)
 		}
 		switch dbType {
 		case SpannerDBType:
@@ -936,7 +1018,7 @@ func (q *QuerySet[Resource]) where(dbType DBType, filterAst ExpressionNode, rend
 		case PostgresDBType:
 			fmt.Fprintf(&builder, ` AND "%s" = @_%s`, f.ColumnName, strings.ToLower(f.ColumnName))
 		default:
-			return nil, errors.Newf("unsupported dbType: %s", dbType)
+			return nil, "", errors.Newf("unsupported dbType: %s", dbType)
 		}
 		params["_"+strings.ToLower(f.ColumnName)] = part.Value
 	}
@@ -944,17 +1026,18 @@ func (q *QuerySet[Resource]) where(dbType DBType, filterAst ExpressionNode, rend
 	return &Statement{
 		SQL:    "WHERE " + builder.String()[5:],
 		Params: params,
-	}, nil
+	}, "", nil
 }
 
 // whereWithPredicates builds the WHERE clause and appends the lowered
 // predicate fragments: the tenancy AND sits in the WHERE before the read
 // rules' row predicate (design plan §06) — checked domain == filtered domain
-// by construction.
-func (q *QuerySet[Resource]) whereWithPredicates(dbType DBType, filterAst ExpressionNode, tenancy string, rendered *renderedReadConditions, cursorPredicate string) (*Statement, error) {
-	where, err := q.where(dbType, filterAst, rendered)
+// by construction. The second result is the FROM item a search box's key set
+// replaces the resource's with, "" to keep it (astWhereClause).
+func (q *QuerySet[Resource]) whereWithPredicates(dbType DBType, filterAst ExpressionNode, tenancy string, rendered *renderedReadConditions, cursorPredicate string, registry *paramRegistry, query string) (*Statement, string, error) {
+	where, from, err := q.where(dbType, filterAst, rendered, registry, query, tenancy)
 	if err != nil {
-		return nil, errors.Wrap(err, "patcher.Where()")
+		return nil, "", errors.Wrap(err, "patcher.Where()")
 	}
 
 	predicates := []string{tenancy}
@@ -975,7 +1058,7 @@ func (q *QuerySet[Resource]) whereWithPredicates(dbType DBType, filterAst Expres
 		}
 	}
 
-	return where, nil
+	return where, from, nil
 }
 
 // stmt builds a SQL statement for the given database type from the QuerySet.
@@ -1026,9 +1109,14 @@ func (q *QuerySet[Resource]) stmt(dbType DBType) (*Statement, error) {
 		return nil, errors.Wrap(err, "QuerySet.cursorPredicate()")
 	}
 
-	where, err := q.whereWithPredicates(dbType, filterAst, tenancy, rendered, cursorPredicate)
+	withClause, query, subqueryParams := q.query()
+
+	where, from, err := q.whereWithPredicates(dbType, filterAst, tenancy, rendered, cursorPredicate, registry, query)
 	if err != nil {
 		return nil, err
+	}
+	if from != "" {
+		query = from
 	}
 
 	orderByClause, limitClause, err := q.pageClauses(dbType, rendered)
@@ -1036,16 +1124,7 @@ func (q *QuerySet[Resource]) stmt(dbType DBType) (*Statement, error) {
 		return nil, err
 	}
 
-	withClause, query, subqueryParams := q.query()
-	for k := range subqueryParams {
-		if _, ok := where.Params[k]; ok {
-			return nil, errors.Newf("named parameter collision: %s subquery and where clause both contain named parameter %q", q.Resource(), k)
-		}
-
-		where.Params[k] = subqueryParams[k]
-	}
-
-	if err := q.mergeRegistryParams(registry, where.Params); err != nil {
+	if err := q.mergeStatementParams(where, subqueryParams, registry); err != nil {
 		return nil, err
 	}
 
@@ -1070,8 +1149,34 @@ func (q *QuerySet[Resource]) stmt(dbType DBType) (*Statement, error) {
 	}
 	stmt.capabilityPlan = capPlan
 	stmt.cursorColumns = cursorColumns
+	stmt.optimizerVersion = q.optimizerVersion(dbType, filterAst)
 
 	return stmt, nil
+}
+
+// mergeStatementParams folds the subquery's parameters and the registry's into the WHERE
+// clause's, refusing a name the subquery and the clause both bind.
+func (q *QuerySet[Resource]) mergeStatementParams(where *Statement, subqueryParams map[string]any, registry *paramRegistry) error {
+	for k := range subqueryParams {
+		if _, ok := where.Params[k]; ok {
+			return errors.Newf("named parameter collision: %s subquery and where clause both contain named parameter %q", q.Resource(), k)
+		}
+
+		where.Params[k] = subqueryParams[k]
+	}
+
+	return q.mergeRegistryParams(registry, where.Params)
+}
+
+// optimizerVersion names the query optimizer version a statement runs under:
+// searchOptimizerVersion on Spanner where the filter carries a search
+// predicate, "" everywhere else so the database's own stands.
+func (q *QuerySet[Resource]) optimizerVersion(dbType DBType, filterAst ExpressionNode) string {
+	if dbType == SpannerDBType && hasSearchPredicate(filterAst) {
+		return searchOptimizerVersion
+	}
+
+	return ""
 }
 
 // pageClauses renders the statement's ORDER BY and LIMIT.
@@ -1191,12 +1296,16 @@ func (q *QuerySet[Resource]) countStmt(dbType DBType) (*Statement, error) {
 		return nil, errors.Wrap(err, "QuerySet.tenancyPredicate()")
 	}
 
-	where, err := q.whereWithPredicates(dbType, filterAst, tenancy, rendered, "")
+	withClause, query, subqueryParams := q.query()
+
+	where, from, err := q.whereWithPredicates(dbType, filterAst, tenancy, rendered, "", registry, query)
 	if err != nil {
 		return nil, err
 	}
+	if from != "" {
+		query = from
+	}
 
-	withClause, query, subqueryParams := q.query()
 	for k := range subqueryParams {
 		if _, ok := where.Params[k]; ok {
 			return nil, errors.Newf("named parameter collision: %s subquery and where clause both contain named parameter %q", q.Resource(), k)
@@ -1215,7 +1324,7 @@ func (q *QuerySet[Resource]) countStmt(dbType DBType) (*Statement, error) {
 			%s`, withClause, query, where.SQL,
 	)
 
-	return &Statement{SQL: sql, Params: where.Params}, nil
+	return &Statement{SQL: sql, Params: where.Params, optimizerVersion: q.optimizerVersion(dbType, filterAst)}, nil
 }
 
 // Read executes the query and returns a single result wrapped in the Row envelope.

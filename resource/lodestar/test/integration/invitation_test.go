@@ -191,7 +191,7 @@ func TestInvitation_globalSignUpWithPassword(t *testing.T) {
 	}
 	// The login is created and signed in, and the sign-in waits for the second factor
 	// as every session does: the code goes to the invitation's address, now theirs.
-	stranger.secondFactor(ctx, username, false)
+	stranger.secondFactor(ctx, username)
 	sess := stranger.session(ctx)
 	if sess["authenticated"] != true || sess["username"] != username || sess["email"] != email || sess["emailVerified"] != true {
 		t.Fatalf("session after the sign-up = %v, want %s signed in with %s verified", sess, username, email)
@@ -414,7 +414,7 @@ func TestPasswordSignUp_fromMailedLink(t *testing.T) {
 	}
 	// Signed in, and waiting for the second factor as every session does: the code
 	// goes to the address the sign-up verified.
-	stranger.secondFactor(ctx, username, false)
+	stranger.secondFactor(ctx, username)
 	sess := stranger.session(ctx)
 	if sess["authenticated"] != true || sess["username"] != username || sess["email"] != email || sess["emailVerified"] != true {
 		t.Fatalf("session after the sign-up = %v, want %s signed in with %s verified", sess, username, email)

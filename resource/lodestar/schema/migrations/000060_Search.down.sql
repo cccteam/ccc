@@ -1,0 +1,12 @@
+DROP INDEX HangarsBySectorIdNameLower;
+DROP INDEX MissionsBySectorIdClientId;
+ALTER TABLE Hangars DROP COLUMN Name_Lower;
+DROP SEARCH INDEX MissionsSearch;
+ALTER TABLE Missions DROP COLUMN Deadline_Search;
+ALTER TABLE Missions DROP COLUMN Title_Search;
+DROP SEARCH INDEX ClientContactsSearch;
+ALTER TABLE ClientContacts DROP COLUMN DisplayName_Search;
+DROP SEARCH INDEX ClientsSearch;
+ALTER TABLE Clients DROP COLUMN ContactEmail_Search;
+ALTER TABLE Clients DROP COLUMN ContactName_Search;
+ALTER TABLE Clients DROP COLUMN Name_Search;

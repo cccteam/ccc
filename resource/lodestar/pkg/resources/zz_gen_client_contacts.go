@@ -219,6 +219,38 @@ func (p ClientContactQueryPartialClause) ClientID() ClientContactQueryIdent[ccc.
 	return ClientContactQueryIdent[ccc.UUID]{Ident: resource.NewIdent[ccc.UUID]("ClientID", p.partialClause, true)}
 }
 
+func (p ClientContactQueryPartialClause) DisplayName() ClientContactDisplayNameQueryIdent {
+	return ClientContactDisplayNameQueryIdent{
+		ClientContactQueryIdent: ClientContactQueryIdent[string]{Ident: resource.NewIdent[string]("DisplayName", p.partialClause, false)},
+		text:                    resource.NewTextIdent("DisplayName", p.partialClause, false, "token=DisplayName_Search;index=ClientContactsSearch;role=text;contains"),
+	}
+}
+
+// ClientContactDisplayNameQueryIdent is DisplayName's identifier with the text
+// matches its schema answers ('contains'); a match it does not answer is not here.
+type ClientContactDisplayNameQueryIdent struct {
+	ClientContactQueryIdent[string]
+	text resource.TextIdent
+}
+
+func (i ClientContactDisplayNameQueryIdent) Contains(term string) ClientContactQueryClause {
+	return ClientContactQueryClause{clause: i.text.Contains(term)}
+}
+
+// Search creates the search box over ClientContact's searchable fields, as the
+// filter grammar's *:search:"…" does: every term of the text must be found in one of
+// them ('displayName').
+func (p ClientContactQueryPartialClause) Search(text string) (ClientContactQueryClause, error) {
+	clause, err := p.partialClause.Search(text, "ID", []resource.SearchColumn{
+		{Column: "DisplayName", Tag: "token=DisplayName_Search;index=ClientContactsSearch;role=text;contains"},
+	}, nil)
+	if err != nil {
+		return ClientContactQueryClause{}, err
+	}
+
+	return ClientContactQueryClause{clause: clause}, nil
+}
+
 type ClientContactQueryClause struct {
 	clause resource.QueryClause
 }

@@ -43,6 +43,13 @@ const (
 	// a columns, sort or filter parameter naming the former name reaches the field
 	// under its current one.
 	formerlyTagKey = "formerly"
+	// searchTagKey carries a list or read request struct field's search vocabulary
+	// (search.go): the text matches the field answers and the columns they render
+	// through. The generator writes it where the schema states a search fact (a token
+	// column in the table's search index) or a prefix fact (a lowercased stored column
+	// leading an index), and as memory onto a computed resource's allow_filter text
+	// fields; the decoder reads it back and refuses a value it cannot parse.
+	searchTagKey = "search"
 )
 
 // maskingPositional is the masking tag value the generator writes for a
@@ -67,6 +74,7 @@ var runtimeTagKeys = []string{
 	nullableTagKey,
 	featureTagKey,
 	formerlyTagKey,
+	searchTagKey,
 }
 
 // Reserved query-string parameter names consumed by QueryDecoder; they can never be used

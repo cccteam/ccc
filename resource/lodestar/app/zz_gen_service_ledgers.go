@@ -19,8 +19,8 @@ import (
 
 func (a *App) ServiceLedgers() http.HandlerFunc {
 	type serviceLedger struct {
-		SectorID        string          `json:"sectorId"        allow_filter:"true" perm:"-"`
-		Name            string          `json:"name"            allow_filter:"true"`
+		SectorID        string          `json:"sectorId"        allow_filter:"true" perm:"-"        search:"memory"`
+		Name            string          `json:"name"            allow_filter:"true" search:"memory"`
 		OpenMissions    int64           `json:"openMissions"    allow_filter:"true"`
 		FeesOutstanding decimal.Decimal `json:"feesOutstanding"`
 		Settlements     decimal.Decimal `json:"settlements"`

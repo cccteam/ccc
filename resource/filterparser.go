@@ -3,6 +3,7 @@ package resource
 import (
 	"fmt"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -90,6 +91,16 @@ LOOP:
 	for i := l.pos; i < len(l.input); i++ {
 		l.pos++
 		switch l.input[i] {
+		case '"':
+			// A quoted value runs to its closing quote, a backslash escaping a quote or
+			// a backslash inside it, so a comma, a pipe, a parenthesis or a colon in it
+			// never ends the condition.
+			end, err := l.closingQuote(i)
+			if err != nil {
+				return Token{}, err
+			}
+			l.pos = end + 1
+			i = end
 		case '(':
 			parenCount++
 			if parenCount > 1 {
@@ -117,6 +128,76 @@ LOOP:
 	return Token{Type: TokenCondition, Value: l.input[start:l.pos]}, nil
 }
 
+// closingQuote finds the quote closing the one at open, reading a backslash as the
+// escape of the character after it.
+func (l *FilterLexer) closingQuote(open int) (int, error) {
+	for i := open + 1; i < len(l.input); i++ {
+		switch l.input[i] {
+		case '\\':
+			i++
+		case '"':
+			return i, nil
+		}
+	}
+
+	return 0, httpio.NewBadRequestMessagef("Invalid filter query. The quote opened at character %d of %s is never closed.", open+1, l.input)
+}
+
+// unquoteFilterValue reads a condition's value: a value in double quotes may contain
+// commas, pipes, parentheses, colons and spaces, a backslash escaping a quote or a
+// backslash; an unquoted value stays as it is, trimmed, so no existing request changes.
+func unquoteFilterValue(raw string) (string, error) {
+	value := strings.TrimSpace(raw)
+	if !strings.HasPrefix(value, `"`) {
+		return value, nil
+	}
+	if len(value) < 2 || !strings.HasSuffix(value, `"`) {
+		return "", httpio.NewBadRequestMessagef("Invalid filter query. The quoted value %s is never closed.", raw)
+	}
+	var b strings.Builder
+	inner := value[1 : len(value)-1]
+	for i := 0; i < len(inner); i++ {
+		c := inner[i]
+		switch c {
+		case '\\':
+			if i+1 >= len(inner) || (inner[i+1] != '"' && inner[i+1] != '\\') {
+				return "", httpio.NewBadRequestMessagef("Invalid filter query. A backslash in %s escapes a quote or a backslash only.", raw)
+			}
+			i++
+			c = inner[i]
+		case '"':
+			return "", httpio.NewBadRequestMessagef("Invalid filter query. The quoted value %s closes early; escape an inner quote with a backslash.", raw)
+		}
+		b.WriteByte(c)
+	}
+
+	return b.String(), nil
+}
+
+// splitQuotedList splits an in or notin list at the commas outside quotes.
+func splitQuotedList(list string) []string {
+	var values []string
+	start := 0
+	quoted := false
+	for i := 0; i < len(list); i++ {
+		switch list[i] {
+		case '\\':
+			if quoted {
+				i++
+			}
+		case '"':
+			quoted = !quoted
+		case ',':
+			if !quoted {
+				values = append(values, list[start:i])
+				start = i + 1
+			}
+		}
+	}
+
+	return append(values, list[start:])
+}
+
 // ExpressionNode represents a node in the filter AST.
 type ExpressionNode interface {
 	// String returns a string representation of the node (for debugging/testing).
@@ -127,9 +208,21 @@ type ExpressionNode interface {
 type Condition struct {
 	Field    string
 	Operator string
-	Value    any   // For eq, ne, gt, lt, gte, lte
+	Value    any   // For eq, ne, gt, lt, gte, lte, startswith, endswith, contains, and the box's text
 	Values   []any // For in, notin
 	IsNullOp bool  // For isnull, isnotnull
+
+	// match carries the field's search spec behind a startswith, endswith or contains
+	// condition: the columns the match renders through. Nil on every other operator.
+	match *searchField
+	// search is the box behind a *:search condition: its terms, the fields it searches
+	// and the child branches. Nil on every other condition.
+	search *searchCondition
+}
+
+// IsSearch reports whether the condition is the search box, *:search:"…".
+func (c *Condition) IsSearch() bool {
+	return c.search != nil
 }
 
 // TypedValues returns an in or notin list as a slice of the values' own type, the
@@ -169,6 +262,9 @@ type ConditionNode struct {
 func (cn *ConditionNode) String() string {
 	if cn.Condition.IsNullOp {
 		return fmt.Sprintf("%s:%s", cn.Condition.Field, cn.Condition.Operator)
+	}
+	if cn.Condition.search != nil {
+		return fmt.Sprintf("%s:%s:%q", cn.Condition.Field, cn.Condition.Operator, cn.Condition.search.text)
 	}
 	if len(cn.Condition.Values) > 0 {
 		strValues := make([]string, len(cn.Condition.Values))
@@ -231,10 +327,17 @@ type FilterFieldInfo struct {
 	// Positional marks a field declared masking:"positional": a filter on it
 	// compares the raw column even where the caller's grant is conditional.
 	Positional bool
+	// Search is the field's search tag, read back from the request struct: the matches
+	// it answers and the columns they render through, and whether it joins the box. Nil
+	// on a field with neither fact.
+	Search *SearchSpec
+	// order is the field's position in the request struct: the box lists its fields in
+	// declaration order.
+	order int
 }
 
 // ColumnName returns the column name for the given DBType.
-func (f FilterFieldInfo) ColumnName(dbType DBType) (string, error) {
+func (f *FilterFieldInfo) ColumnName(dbType DBType) (string, error) {
 	name, ok := f.dbColumnNames[dbType]
 	if !ok {
 		return name, errors.Newf("field %s (json: %s) not found in resource metadata for db type %s", f.GOFieldName, f.JSONFieldName, dbType)
@@ -249,7 +352,7 @@ func (f FilterFieldInfo) ColumnName(dbType DBType) (string, error) {
 const goFieldNames DBType = "gofields"
 
 // name returns the identifier a condition on this field carries for the parse target.
-func (f FilterFieldInfo) name(target DBType) (string, error) {
+func (f *FilterFieldInfo) name(target DBType) (string, error) {
 	if target == goFieldNames {
 		return f.GOFieldName, nil
 	}
@@ -268,7 +371,25 @@ type FilterParser struct {
 	infixParseFns   map[TokenType]infixParseFn
 	jsonToFieldInfo map[jsonFieldName]FilterFieldInfo
 
+	// searchBranches are the resource's @searchAlso branches and searchKeys its key
+	// column per parse target, which the box carries (WithSearch); boxSeen refuses a
+	// second box in one filter.
+	searchBranches []SearchBranch
+	searchKeys     map[DBType]string
+	boxSeen        bool
+
 	parsedExpression map[DBType]ExpressionNode
+}
+
+// WithSearch hands the parser the resource's @searchAlso branches and its key column
+// per parse target (the Go field under the in-memory target), which a *:search condition
+// carries into the statement. The decoders pass them from the resource's metadata; a
+// parser without them serves a resource that declares no branch.
+func (p *FilterParser) WithSearch(branches []SearchBranch, keys map[DBType]string) *FilterParser {
+	p.searchBranches = branches
+	p.searchKeys = keys
+
+	return p
 }
 
 // NewFilterParser creates a new parser with the given lexer and field information map.
@@ -305,6 +426,7 @@ func NewFilterParser(lexer *FilterLexer, jsonToFieldInfo map[jsonFieldName]Filte
 func (p *FilterParser) reset() error {
 	p.lexer.Reset()
 	p.hasIndexedField = false
+	p.boxSeen = false
 
 	// Reprime the parser by advancing the tokens back to the start of the input.
 	if err := p.advance(); err != nil {
@@ -450,6 +572,14 @@ func (p *FilterParser) parseConditionToken(dbType DBType) (ExpressionNode, error
 	if jsonFieldNameStr == "" {
 		return nil, httpio.NewBadRequestMessagef("field name cannot be empty in condition '%s'", p.current.Value)
 	}
+	operator := strings.ToLower(strings.TrimSpace(parts[1]))
+
+	if jsonFieldNameStr == searchBoxField {
+		return p.parseSearchCondition(dbType, operator, parts)
+	}
+	if operator == searchStr {
+		return nil, httpio.NewBadRequestMessagef("operator '%s' is the search box's and names no field; write %s:%s:\"…\" instead of condition '%s'", searchStr, searchBoxField, searchStr, p.current.Value)
+	}
 
 	fieldInfo, found := p.jsonToFieldInfo[jsonFieldName(jsonFieldNameStr)]
 	if !found {
@@ -468,7 +598,7 @@ func (p *FilterParser) parseConditionToken(dbType DBType) (ExpressionNode, error
 
 	condition := Condition{
 		Field:    field,
-		Operator: strings.ToLower(strings.TrimSpace(parts[1])),
+		Operator: operator,
 	}
 
 	switch condition.Operator {
@@ -478,55 +608,225 @@ func (p *FilterParser) parseConditionToken(dbType DBType) (ExpressionNode, error
 		}
 		condition.IsNullOp = true
 	case inStr, notinStr:
-		if len(parts) < 3 {
-			return nil, httpio.NewBadRequestMessagef("operator '%s' requires a value part in condition '%s'	", condition.Operator, p.current.Value)
-		}
-		valPart := strings.TrimSpace(parts[2])
-		if !strings.HasPrefix(valPart, "(") || !strings.HasSuffix(valPart, ")") {
-			return nil, httpio.NewBadRequestMessagef("value for '%s' must be in parentheses, e.g., (v1,v2), got '%s' in condition '%s'", condition.Operator, valPart, p.current.Value)
-		}
-		valPart = valPart[1 : len(valPart)-1] // Remove parentheses
-		if valPart == "" {                    // e.g. name:in:()
-			return nil, httpio.NewBadRequestMessagef("value list for '%s' cannot be empty in condition '%s'", condition.Operator, p.current.Value)
-		}
-		values := strings.Split(valPart, ",")
-		condition.Values = make([]any, 0, len(values))
-		for _, v := range values {
-			trimmed := strings.TrimSpace(v)
-			if trimmed == "" { // e.g. name:in:(v1,,v2)
-				return nil, httpio.NewBadRequestMessagef("empty value in list for operator '%s' in condition '%s'", condition.Operator, p.current.Value)
-			}
-
-			valueType, valueKind := fieldInfo.FieldType, fieldInfo.Kind
-			if valueKind == reflect.Slice || valueKind == reflect.Array {
-				if fieldInfo.FieldType == nil {
-					return nil, errors.Newf("FieldType not available in FieldInfo for slice/array field '%s' to determine element kind", field)
-				}
-				valueType = fieldInfo.FieldType.Elem()
-				valueKind = valueType.Kind()
-			}
-
-			typedValue, err := p.convertValue(trimmed, valueType, valueKind)
-			if err != nil {
-				return nil, err
-			}
-			condition.Values = append(condition.Values, typedValue)
-		}
-	case eqStr, neStr, gtStr, ltStr, gteStr, lteStr:
-		if len(parts) < 3 {
-			return nil, httpio.NewBadRequestMessagef("operator '%s' requires a value in condition '%s'", condition.Operator, p.current.Value)
-		}
-		strValue := strings.TrimSpace(parts[2])
-		typedValue, err := p.convertValue(strValue, fieldInfo.FieldType, fieldInfo.Kind)
+		values, err := p.parseListValues(&fieldInfo, field, condition.Operator, parts)
 		if err != nil {
 			return nil, err
 		}
-		condition.Value = typedValue
+		condition.Values = values
+	case eqStr, neStr, gtStr, ltStr, gteStr, lteStr:
+		value, err := p.parseComparisonValue(&fieldInfo, condition.Operator, parts)
+		if err != nil {
+			return nil, err
+		}
+		condition.Value = value
+	case startswithStr, endswithStr, containsStr:
+		match, err := p.parseMatchCondition(dbType, &fieldInfo, jsonFieldNameStr, condition.Operator, parts)
+		if err != nil {
+			return nil, err
+		}
+		condition.Value = match.term
+		condition.match = match.field
+		// The search index, or the index the lowercased column leads, serves the
+		// match: it is the indexed touch a table filter needs.
+		if fieldInfo.Search.Token != "" || fieldInfo.Search.Lower != "" {
+			p.hasIndexedField = true
+		}
 	default:
 		return nil, httpio.NewBadRequestMessagef("unknown operator '%s' in condition '%s'", condition.Operator, p.current.Value)
 	}
 
 	return &ConditionNode{Condition: condition}, nil
+}
+
+// parseListValues reads an in or notin condition's parenthesized list: every value
+// unquoted, non-empty, and typed by the field, or by its element type on a slice field.
+func (p *FilterParser) parseListValues(fieldInfo *FilterFieldInfo, field, operator string, parts []string) ([]any, error) {
+	if len(parts) < 3 {
+		return nil, httpio.NewBadRequestMessagef("operator '%s' requires a value part in condition '%s'	", operator, p.current.Value)
+	}
+	valPart := strings.TrimSpace(parts[2])
+	if !strings.HasPrefix(valPart, "(") || !strings.HasSuffix(valPart, ")") {
+		return nil, httpio.NewBadRequestMessagef("value for '%s' must be in parentheses, e.g., (v1,v2), got '%s' in condition '%s'", operator, valPart, p.current.Value)
+	}
+	valPart = valPart[1 : len(valPart)-1] // Remove parentheses
+	if valPart == "" {                    // e.g. name:in:()
+		return nil, httpio.NewBadRequestMessagef("value list for '%s' cannot be empty in condition '%s'", operator, p.current.Value)
+	}
+	valueType, valueKind := fieldInfo.FieldType, fieldInfo.Kind
+	if valueKind == reflect.Slice || valueKind == reflect.Array {
+		if fieldInfo.FieldType == nil {
+			return nil, errors.Newf("FieldType not available in FieldInfo for slice/array field '%s' to determine element kind", field)
+		}
+		valueType = fieldInfo.FieldType.Elem()
+		valueKind = valueType.Kind()
+	}
+	values := splitQuotedList(valPart)
+	typed := make([]any, 0, len(values))
+	for _, v := range values {
+		trimmed, err := unquoteFilterValue(v)
+		if err != nil {
+			return nil, err
+		}
+		if trimmed == "" { // e.g. name:in:(v1,,v2)
+			return nil, httpio.NewBadRequestMessagef("empty value in list for operator '%s' in condition '%s'", operator, p.current.Value)
+		}
+		typedValue, err := p.convertValue(trimmed, valueType, valueKind)
+		if err != nil {
+			return nil, err
+		}
+		typed = append(typed, typedValue)
+	}
+
+	return typed, nil
+}
+
+// parseComparisonValue reads the value of an eq, ne, gt, lt, gte or lte condition,
+// unquoted and typed by the field.
+func (p *FilterParser) parseComparisonValue(fieldInfo *FilterFieldInfo, operator string, parts []string) (any, error) {
+	if len(parts) < 3 {
+		return nil, httpio.NewBadRequestMessagef("operator '%s' requires a value in condition '%s'", operator, p.current.Value)
+	}
+	strValue, err := unquoteFilterValue(parts[2])
+	if err != nil {
+		return nil, err
+	}
+
+	return p.convertValue(strValue, fieldInfo.FieldType, fieldInfo.Kind)
+}
+
+// parsedMatch is an explicit match as the parser reads it: the term and the field's
+// search vocabulary the renderer binds it through.
+type parsedMatch struct {
+	term  string
+	field *searchField
+}
+
+// parseMatchCondition reads a startswith, endswith or contains condition: a string
+// field, a non-empty value, and a field whose search tag answers the match, refused with
+// the same 400 shape as an unknown operator where it does not, since the browser's
+// metadata lists the same matches and never draws the control.
+func (p *FilterParser) parseMatchCondition(dbType DBType, fieldInfo *FilterFieldInfo, jsonName, operator string, parts []string) (*parsedMatch, error) {
+	if fieldInfo.Kind != reflect.String {
+		return nil, httpio.NewBadRequestMessagef("operator '%s' matches text and '%s' is not a text field, in condition '%s'", operator, jsonName, p.current.Value)
+	}
+	if !fieldInfo.Search.Answers(operator) {
+		return nil, httpio.NewBadRequestMessagef("unknown operator '%s' for '%s' in condition '%s': the field answers %s", operator, jsonName, p.current.Value, answeredMatches(fieldInfo.Search))
+	}
+	if len(parts) < 3 {
+		return nil, httpio.NewBadRequestMessagef("operator '%s' requires a value in condition '%s'", operator, p.current.Value)
+	}
+	term, err := unquoteFilterValue(parts[2])
+	if err != nil {
+		return nil, err
+	}
+	if term == "" {
+		return nil, httpio.NewBadRequestMessagef("operator '%s' requires a non-empty value in condition '%s'", operator, p.current.Value)
+	}
+
+	return &parsedMatch{term: term, field: p.searchFieldFor(dbType, fieldInfo, jsonName)}, nil
+}
+
+// answeredMatches spells the matches a field answers for a refusal.
+func answeredMatches(spec *SearchSpec) string {
+	matches := spec.Matches()
+	if len(matches) == 0 {
+		return "no text match: eq, ne, in, notin, isnull and isnotnull"
+	}
+
+	return strings.Join(matches, ", ")
+}
+
+// searchFieldFor renders a filterable field as the box or a match carries it under the
+// parse target.
+func (p *FilterParser) searchFieldFor(dbType DBType, fieldInfo *FilterFieldInfo, jsonName string) *searchField {
+	name, _ := fieldInfo.name(dbType)
+	column := fieldInfo.GOFieldName
+	if dbType != goFieldNames {
+		column = name
+	}
+
+	return &searchField{
+		name:       name,
+		column:     column,
+		goField:    fieldInfo.GOFieldName,
+		jsonName:   jsonName,
+		spec:       fieldInfo.Search,
+		pii:        fieldInfo.PII,
+		positional: fieldInfo.Positional,
+	}
+}
+
+// parseSearchCondition reads the box, *:search:"nguyen 1987 4321": the text splits into
+// terms at whitespace under the limits, and the condition carries every field of the
+// resource that joins the box, in declaration order, with the resource's child branches.
+// One box per filter; a box counts as the indexed touch a table filter needs, since the
+// search index serves it.
+func (p *FilterParser) parseSearchCondition(dbType DBType, operator string, parts []string) (ExpressionNode, error) {
+	if operator != searchStr {
+		return nil, httpio.NewBadRequestMessagef("'%s' takes the operator '%s' alone, in condition '%s'", searchBoxField, searchStr, p.current.Value)
+	}
+	if p.boxSeen {
+		return nil, httpio.NewBadRequestMessagef("one search box per filter; a second %s:%s condition was found in '%s'", searchBoxField, searchStr, p.current.Value)
+	}
+	if len(parts) < 3 {
+		return nil, httpio.NewBadRequestMessagef("operator '%s' requires a value in condition '%s'", searchStr, p.current.Value)
+	}
+	text, err := unquoteFilterValue(parts[2])
+	if err != nil {
+		return nil, err
+	}
+	terms, err := splitSearchTerms(text)
+	if err != nil {
+		return nil, httpio.NewBadRequestMessagef("Invalid filter query. %s, in condition '%s'.", err.Error(), p.current.Value)
+	}
+
+	fields := p.boxFields(dbType)
+	if len(fields) == 0 && len(p.searchBranches) == 0 {
+		return nil, httpio.NewBadRequestMessagef("no field of this resource is searchable, so the search box has nothing to search; a field joins the box through a token column in the table's search index")
+	}
+	p.boxSeen = true
+	p.hasIndexedField = true
+
+	condition := Condition{
+		Field:    searchBoxField,
+		Operator: searchStr,
+		Value:    text,
+		search: &searchCondition{
+			text:     text,
+			terms:    terms,
+			fields:   fields,
+			branches: p.searchBranches,
+			key:      p.searchKeys[dbType],
+		},
+	}
+
+	return &ConditionNode{Condition: condition}, nil
+}
+
+// boxFields lists the resource's fields that join the box, in declaration order.
+func (p *FilterParser) boxFields(dbType DBType) []searchField {
+	infos := make([]*FilterFieldInfo, 0, len(p.jsonToFieldInfo))
+	seen := make(map[string]struct{}, len(p.jsonToFieldInfo))
+	for _, info := range p.jsonToFieldInfo {
+		if !info.Search.JoinsBox() {
+			continue
+		}
+		// A renamed field is listed under both names; the box names it once, by its
+		// current name.
+		if _, dup := seen[info.GOFieldName]; dup {
+			continue
+		}
+		seen[info.GOFieldName] = struct{}{}
+		infos = append(infos, &info)
+	}
+	slices.SortFunc(infos, func(a, b *FilterFieldInfo) int { return a.order - b.order })
+
+	fields := make([]searchField, 0, len(infos))
+	for _, info := range infos {
+		fields = append(fields, *p.searchFieldFor(dbType, info, info.JSONFieldName))
+	}
+
+	return fields
 }
 
 // convertValue types a filter value for the field it compares against: by the field's

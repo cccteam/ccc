@@ -62,6 +62,19 @@ func ({{ .Resource.Name }}) FileKeys() []resource.FileKey {
 	}
 }
 {{- end }}
+{{- if .Resource.SearchBranches }}
+
+// SearchBranches names the child text the resource's search box also searches
+// (@searchAlso), each reached through the foreign key joining the child to this row;
+// the child field's own permission governs each branch.
+func ({{ .Resource.Name }}) SearchBranches() []resource.SearchBranch {
+	return []resource.SearchBranch{
+	{{- range $branch := .Resource.SearchBranches }}
+		{{ $branch.GoLiteral }},
+	{{- end }}
+	}
+}
+{{- end }}
 
 // {{ PrivateType .Resource.Name }}Read mirrors the wire shape the resource routes list
 // and read, so a query armed with Enforce meets the field permissions the routes
@@ -227,7 +240,36 @@ func (p {{ .Resource.Name }}QueryPartialClause) Group(qc {{ .Resource.Name }}Que
 }
 
 {{ range $field := .Resource.Fields }}
-{{ if $field.IsQueryClauseEligible -}}
+{{ if $field.TextIdentEligible -}}
+func (p {{ $field.Parent.Name }}QueryPartialClause) {{ $field.Name }}() {{ $field.Parent.Name }}{{ $field.Name }}QueryIdent {
+	return {{ $field.Parent.Name }}{{ $field.Name }}QueryIdent{
+		{{ $field.Parent.Name }}QueryIdent: {{ $field.Parent.Name }}QueryIdent[string]{Ident: resource.NewIdent[string]("{{ $field.Name }}", p.partialClause, {{ $field.IsIndex }})},
+		text:   resource.NewTextIdent("{{ $field.Name }}", p.partialClause, {{ $field.IsIndex }}, "{{ $field.SearchTagValue }}"),
+	}
+}
+
+// {{ $field.Parent.Name }}{{ $field.Name }}QueryIdent is {{ $field.Name }}'s identifier with the text
+// matches its schema answers ({{ $field.TypescriptSearch }}); a match it does not answer is not here.
+type {{ $field.Parent.Name }}{{ $field.Name }}QueryIdent struct {
+	{{ $field.Parent.Name }}QueryIdent[string]
+	text resource.TextIdent
+}
+{{ if $field.AnswersMatch "contains" }}
+func (i {{ $field.Parent.Name }}{{ $field.Name }}QueryIdent) Contains(term string) {{ $field.Parent.Name }}QueryClause {
+	return {{ $field.Parent.Name }}QueryClause{clause: i.text.Contains(term)}
+}
+{{ end }}
+{{- if $field.AnswersMatch "startswith" }}
+func (i {{ $field.Parent.Name }}{{ $field.Name }}QueryIdent) StartsWith(term string) {{ $field.Parent.Name }}QueryClause {
+	return {{ $field.Parent.Name }}QueryClause{clause: i.text.StartsWith(term)}
+}
+{{ end }}
+{{- if $field.AnswersMatch "endswith" }}
+func (i {{ $field.Parent.Name }}{{ $field.Name }}QueryIdent) EndsWith(term string) {{ $field.Parent.Name }}QueryClause {
+	return {{ $field.Parent.Name }}QueryClause{clause: i.text.EndsWith(term)}
+}
+{{ end }}
+{{- else if $field.IsQueryClauseEligible -}}
 {{ if $unwrappedType := $field.UnwrappedNullType -}}
 func (p {{ $field.Parent.Name }}QueryPartialClause) {{ $field.Name }}() {{ $field.Parent.Name }}QueryIdent[{{ $unwrappedType }}] {
 	return {{ $field.Parent.Name }}QueryIdent[{{ $unwrappedType }}]{Ident: resource.NewIdent[{{ $unwrappedType }}]("{{ $field.Name }}", p.partialClause, {{ $field.IsIndex }})}
@@ -239,6 +281,24 @@ func (p {{ $field.Parent.Name }}QueryPartialClause) {{ $field.Name }}() {{ $fiel
 {{- end }}
 {{- end }}
 {{ end }}
+{{- if .Resource.HasSearchBox }}
+
+// Search creates the search box over {{ .Resource.Name }}'s searchable fields, as the
+// filter grammar's *:search:"…" does: every term of the text must be found in one of
+// them ({{ .Resource.TypescriptSearchFields }}).
+func (p {{ .Resource.Name }}QueryPartialClause) Search(text string) ({{ .Resource.Name }}QueryClause, error) {
+	clause, err := p.partialClause.Search(text, "{{ .Resource.SearchKeyColumn }}", []resource.SearchColumn{
+	{{- range $column := .Resource.SearchColumns }}
+		{Column: "{{ $column.Column }}", Tag: "{{ $column.Tag }}"},
+	{{- end }}
+	}, {{ if .Resource.SearchBranches }}{{ .Resource.Name }}{}.SearchBranches(){{ else }}nil{{ end }})
+	if err != nil {
+		return {{ .Resource.Name }}QueryClause{}, err
+	}
+
+	return {{ .Resource.Name }}QueryClause{clause: clause}, nil
+}
+{{- end }}
 
 type {{ .Resource.Name }}QueryClause struct {
 	clause resource.QueryClause
@@ -1882,7 +1942,7 @@ import (
 	listTemplate = `func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ Pluralize .Resource.Name }}() http.HandlerFunc {
 	type {{ GoCamel .Resource.Name }} struct {
 		{{- range $field := .Resource.Fields }}
-		{{ $field.Name }} {{ $field.Type}} ` + "`{{ $field.JSONTag }} {{ $field.IndexTag }} {{ $field.AllowFilterTag }} {{ $field.PermTag }} {{ $field.PIITag }} {{ $field.MaskingTag }} {{ $field.FeatureTag }} {{ $field.FormerlyTag }}`" + `
+		{{ $field.Name }} {{ $field.Type}} ` + "`{{ $field.JSONTag }} {{ $field.IndexTag }} {{ $field.AllowFilterTag }} {{ $field.PermTag }} {{ $field.PIITag }} {{ $field.MaskingTag }} {{ $field.FeatureTag }} {{ $field.FormerlyTag }} {{ $field.SearchTag }}`" + `
 		{{- end }}
 	}
 
@@ -1962,7 +2022,7 @@ import (
 	readTemplate = `func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ .Resource.Name }}() http.HandlerFunc {
 	type response struct {
 		{{- range $field := .Resource.Fields }}
-		{{ $field.Name }} {{ $field.Type}} ` + "`{{ $field.JSONTag }} {{ $field.UniqueIndexTag }} {{ $field.PermTag }} {{ $field.PIITag }} {{ $field.MaskingTag }} {{ $field.FeatureTag }} {{ $field.FormerlyTag }}`" + `
+		{{ $field.Name }} {{ $field.Type}} ` + "`{{ $field.JSONTag }} {{ $field.UniqueIndexTag }} {{ $field.PermTag }} {{ $field.PIITag }} {{ $field.MaskingTag }} {{ $field.FeatureTag }} {{ $field.FormerlyTag }} {{ $field.SearchTag }}`" + `
 		{{- end }}
 	}
 
@@ -2722,12 +2782,18 @@ const resourceMap = defineResourceMap({
       {{- if not $field.IsFileKey }}
       { fieldName: '{{ Camel $field.Name }}', 
        {{- if $field.IsPrimaryKey }} primaryKey: { ordinalPosition: {{ $field.KeyOrdinalPosition }} }, 
-       {{- end }} displayType: '{{ DisplayType $field.TypescriptDisplayType }}', required: {{ $field.IsRequired }}, isIndex: {{ $field.IsIndex }}{{ if $field.TypescriptFilterable }}, filterable: '{{ $field.TypescriptFilterable }}'{{ end }}{{ if $field.IsPositional }}, masking: 'positional'{{ end }}{{ if $field.TypescriptMaxLength }}, maxLength: {{ $field.TypescriptMaxLength }}{{ end -}}
+       {{- end }} displayType: '{{ DisplayType $field.TypescriptDisplayType }}', required: {{ $field.IsRequired }}, isIndex: {{ $field.IsIndex }}{{ if $field.TypescriptFilterable }}, filterable: '{{ $field.TypescriptFilterable }}'{{ end }}{{ if $field.TypescriptSearch }}, search: [{{ $field.TypescriptSearch }}]{{ end }}{{ if $field.IsPII }}, pii: true{{ end }}{{ if $field.IsPositional }}, masking: 'positional'{{ end }}{{ if $field.TypescriptMaxLength }}, maxLength: {{ $field.TypescriptMaxLength }}{{ end -}}
       {{- if $field.Enumeration }}, enumeration: {{ EnumerationLiteral $field.EnumerationValues }}
       {{- else if $field.IsEnumerated }}, enumeratedResource: Resources.{{ $field.EnumeratedResource }}{{ end }}{{ if or $field.IsOutputOnly $resource.IsEnumeration }}, readOnly: true{{ end }}{{ if $field.IsInputOnly }}, writeOnly: true{{ end }}{{ if $field.FeatureName }}, feature: '{{ $field.FeatureName }}'{{ end }} },
       {{- end }}
       {{- end }}
     ],
+    {{- if $resource.HasSearchBox }}
+    searchFields: [{{ $resource.TypescriptSearchFields }}],
+    {{- end }}
+    {{- if $resource.SearchBranches }}
+    searchBranches: [{{ range $i, $branch := $resource.SearchBranches }}{{ if $i }}, {{ end }}{ field: '{{ $branch.Name }}', resource: Resources.{{ Pluralize $branch.ChildName }}, fieldName: '{{ $branch.ChildWireName }}'{{ if $branch.PII }}, pii: true{{ end }} }{{ end }}],
+    {{- end }}
   },
 
   {{- end }}
@@ -2754,12 +2820,15 @@ const resourceMap = defineResourceMap({
       {{- if not $field.IsFileKey }}
       { fieldName: '{{ Camel $field.Name }}', 
        {{- if $field.IsPrimaryKey }} primaryKey: { ordinalPosition: {{ $field.KeyOrdinalPosition }} }, 
-       {{- end }} displayType: '{{ DisplayType $field.TypescriptDisplayType }}', required: {{ $field.IsPrimaryKey }}, isIndex: false{{ if $field.TypescriptFilterable }}, filterable: '{{ $field.TypescriptFilterable }}'{{ end }}
+       {{- end }} displayType: '{{ DisplayType $field.TypescriptDisplayType }}', required: {{ $field.IsPrimaryKey }}, isIndex: false{{ if $field.TypescriptFilterable }}, filterable: '{{ $field.TypescriptFilterable }}'{{ end }}{{ if $field.TypescriptSearch }}, search: [{{ $field.TypescriptSearch }}]{{ end }}{{ if $field.IsPII }}, pii: true{{ end }}
       {{- if $field.Enumeration }}, enumeration: {{ EnumerationLiteral $field.EnumerationValues }}
       {{- else if $field.IsEnumerated }}, enumeratedResource: Resources.{{ $field.EnumeratedResource }}{{ end }}{{ if $field.FeatureName }}, feature: '{{ $field.FeatureName }}'{{ end }} },
       {{- end }}
       {{- end }}
     ],
+    {{- if $resource.TypescriptSearchFields }}
+    searchFields: [{{ $resource.TypescriptSearchFields }}],
+    {{- end }}
   },
 
   {{- end }}
@@ -4748,7 +4817,7 @@ func ({{ .ReceiverName }} *{{ .ApplicationName }}) {{ Pluralize .Resource.Name }
 {{ . }}{{- end }}
 	type {{ GoCamel .Resource.Name }} struct {
 		{{- range $field := .Resource.Fields }}
-		{{ $field.Name }} {{ $field.MirrorType }} ` + "`{{ $field.JSONTag }} {{ $field.AllowFilterTag }} {{ $field.PermTag }} {{ $field.PIITag }} {{ $field.FeatureTag }}`" + `
+		{{ $field.Name }} {{ $field.MirrorType }} ` + "`{{ $field.JSONTag }} {{ $field.AllowFilterTag }} {{ $field.PermTag }} {{ $field.PIITag }} {{ $field.FeatureTag }} {{ $field.SearchTag }}`" + `
 		{{- end }}
 	}
 

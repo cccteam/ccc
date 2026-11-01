@@ -437,6 +437,9 @@ type Metadata[Resource Resourcer] struct {
 	// the patch machinery reads their old values on a delete and on a write that sets
 	// one, and records the released objects on the transaction.
 	fileKeys []FileKey
+	// searchBranches are the resource's @searchAlso declarations (the generated
+	// SearchBranches): the child text its search box also searches.
+	searchBranches []SearchBranch
 }
 
 // NewMetadata creates or retrieves cached metadata for a resource.
@@ -451,6 +454,7 @@ func NewMetadata[Resource Resourcer]() *Metadata[Resource] {
 		changeTrackingTable: c.cfg.ChangeTrackingTable,
 		trackChanges:        c.cfg.TrackChanges,
 		fileKeys:            c.fileKeys,
+		searchBranches:      c.searchBranches,
 	}
 }
 
@@ -476,10 +480,11 @@ var resMetadataCache = resourceMetadataCache{
 }
 
 type resourceMetadataCacheEntry struct {
-	dbMap    map[DBType]map[accesstypes.Field]dbFieldMetadata
-	dbFields map[DBType][]accesstypes.Field
-	cfg      Config
-	fileKeys []FileKey
+	dbMap          map[DBType]map[accesstypes.Field]dbFieldMetadata
+	dbFields       map[DBType][]accesstypes.Field
+	cfg            Config
+	fileKeys       []FileKey
+	searchBranches []SearchBranch
 }
 
 type resourceMetadataCache struct {
@@ -526,6 +531,11 @@ func (c *resourceMetadataCache) get(res Resourcer) *resourceMetadataCacheEntry {
 		fileKeys = f.FileKeys()
 	}
 
+	var searchBranches []SearchBranch
+	if b, ok := res.(searchBrancher); ok {
+		searchBranches = b.SearchBranches()
+	}
+
 	dbMap := make(map[DBType]map[accesstypes.Field]dbFieldMetadata)
 	dbFields := make(map[DBType][]accesstypes.Field)
 	for _, dbType := range dbTypes() {
@@ -535,10 +545,11 @@ func (c *resourceMetadataCache) get(res Resourcer) *resourceMetadataCacheEntry {
 	}
 
 	c.cache[t] = &resourceMetadataCacheEntry{
-		dbMap:    dbMap,
-		dbFields: dbFields,
-		cfg:      cfg,
-		fileKeys: fileKeys,
+		dbMap:          dbMap,
+		dbFields:       dbFields,
+		cfg:            cfg,
+		fileKeys:       fileKeys,
+		searchBranches: searchBranches,
 	}
 
 	return c.cache[t]

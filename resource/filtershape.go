@@ -151,9 +151,17 @@ func (f *FilterShape) eval(node ExpressionNode, row reflect.Value) (bool, error)
 // matchCondition evaluates one condition against a row. A NULL field (nil
 // pointer, invalid Null* wrapper) matches only isnull, as in SQL.
 func matchCondition(c *Condition, row reflect.Value) (bool, error) {
+	if c.search != nil {
+		return matchSearchBox(c.search, row)
+	}
 	field := fieldValue(row, c.Field)
 	if !field.IsValid() {
 		return false, errors.Newf("FilterShape.Match: %s is not a field of %s", c.Field, row.Type())
+	}
+	if c.match != nil {
+		term, _ := c.Value.(string)
+
+		return matchFieldText(field, c.match.spec, term, c.Operator), nil
 	}
 	value, isNull := derefNullable(field)
 	if c.IsNullOp {
@@ -198,6 +206,57 @@ func matchCondition(c *Condition, row reflect.Value) (bool, error) {
 			return false, errors.Newf("FilterShape.Match: unknown operator %q", c.Operator)
 		}
 	}
+}
+
+// matchFieldText evaluates a startswith, endswith or contains condition against one
+// cell: the cell read for the field's role and the term normalized the same way, the
+// in-memory reading of the forms the renderer binds. A NULL cell matches nothing.
+func matchFieldText(field reflect.Value, spec *SearchSpec, term, operator string) bool {
+	cell, ok := searchValueText(field, spec)
+	if !ok {
+		return false
+	}
+	normalized, ok := matchTermForRole(term, spec)
+	if !ok {
+		return false
+	}
+
+	return matchSearchText(cell, normalized, operator)
+}
+
+// matchSearchBox evaluates the box against one row: every term is found in at least
+// one of the resource's own fields, each read for its role. A @searchAlso branch
+// searches child rows the row does not carry, so only a table resource declares one,
+// and a table's box renders in SQL rather than reaching here.
+func matchSearchBox(box *searchCondition, row reflect.Value) (bool, error) {
+	for _, term := range box.terms {
+		found := false
+		for i := range box.fields {
+			f := &box.fields[i]
+			field := fieldValue(row, f.goField)
+			if !field.IsValid() {
+				return false, errors.Newf("FilterShape.Match: %s is not a field of %s", f.goField, row.Type())
+			}
+			cell, ok := searchValueText(field, f.spec)
+			if !ok {
+				continue
+			}
+			normalized, ok := matchTermForRole(term, f.spec)
+			if !ok {
+				continue
+			}
+			if boxMatches(cell, normalized, f.spec) {
+				found = true
+
+				break
+			}
+		}
+		if !found {
+			return false, nil
+		}
+	}
+
+	return true, nil
 }
 
 // compareToLiteral compares a row value with a filter literal (a string for

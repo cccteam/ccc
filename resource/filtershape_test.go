@@ -11,6 +11,7 @@ import (
 	"github.com/cccteam/ccc"
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/shopspring/decimal"
 )
 
@@ -223,7 +224,7 @@ func TestFilterShape_Take(t *testing.T) {
 				t.Errorf("IsConjunction() = %v, want %v", filter.IsConjunction(), tt.wantConjunction)
 			}
 			taken := filter.Take(tt.take...)
-			if diff := cmp.Diff(tt.wantTaken, taken); diff != "" {
+			if diff := cmp.Diff(tt.wantTaken, taken, cmpopts.IgnoreUnexported(Condition{})); diff != "" {
 				t.Errorf("Take() mismatch (-want +got):\n%s", diff)
 			}
 			if filter.residualEmpty() == tt.wantResidual {

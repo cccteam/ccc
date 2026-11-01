@@ -44,7 +44,7 @@ func TestSelfServiceSignUp_signInFirstThenChart(t *testing.T) {
 	if status, location := b.loginConsoleSignUp(ctx, string(pioneerUser)); status != http.StatusFound || location != held {
 		t.Fatalf("console sign-up: status %d to %q, want %d to %q, the login page with the second factor's wait", status, location, http.StatusFound, held)
 	}
-	b.secondFactor(ctx, string(pioneerUser), false)
+	b.secondFactor(ctx, string(pioneerUser))
 	sess := b.session(ctx)
 	if sess["authenticated"] != true || sess["username"] != string(pioneerUser) {
 		t.Fatalf("session after the sign-up = %v, want authenticated as %s", sess, pioneerUser)

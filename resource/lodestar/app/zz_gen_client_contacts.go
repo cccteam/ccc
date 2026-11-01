@@ -19,10 +19,10 @@ import (
 
 func (a *App) ClientContacts() http.HandlerFunc {
 	type clientContact struct {
-		ID          ccc.UUID `json:"id"          index:"true" perm:"-"`
+		ID          ccc.UUID `json:"id"          index:"true"                                                                    perm:"-"`
 		UserID      string   `json:"userId"      index:"true"`
 		ClientID    ccc.UUID `json:"clientId"    index:"true"`
-		DisplayName string   `json:"displayName"`
+		DisplayName string   `json:"displayName" search:"token=DisplayName_Search;index=ClientContactsSearch;role=text;contains"`
 	}
 
 	type response []map[string]any
@@ -103,10 +103,10 @@ func (a *App) ClientContacts() http.HandlerFunc {
 
 func (a *App) ClientContact() http.HandlerFunc {
 	type response struct {
-		ID          ccc.UUID `json:"id"          index:"true" perm:"-"`
+		ID          ccc.UUID `json:"id"          index:"true"                                                                    perm:"-"`
 		UserID      string   `json:"userId"      index:"true"`
 		ClientID    ccc.UUID `json:"clientId"`
-		DisplayName string   `json:"displayName"`
+		DisplayName string   `json:"displayName" search:"token=DisplayName_Search;index=ClientContactsSearch;role=text;contains"`
 	}
 
 	decoder := NewQueryDecoder[resources.ClientContact, response](a, accesstypes.Read)

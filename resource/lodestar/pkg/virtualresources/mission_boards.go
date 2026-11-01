@@ -21,7 +21,12 @@ type (
 	// its metadata says filterable: withIndexed, and the browser offers a days-left
 	// filter only beside one on an indexed column, the rule the database parse enforces.
 	//
-	// Demonstrates: @rowsOf, @rowsOf.same-row, @virtual, virtual.domain, metadata.filterable.
+	// The board's box searches two tables' indexes: Title names Missions.Title and
+	// ClientName names Clients.Name, the SQL projects both token columns, and a box over
+	// the board gathers each term's key set per index and joins it back on the key; the
+	// box then joins the rest of the filter with AND alone.
+	//
+	// Demonstrates: @rowsOf, @rowsOf.same-row, @virtual, virtual.domain, metadata.filterable, search.view, search.key-set.
 	//
 	// @virtual
 	// @rowsOf(Missions)
@@ -33,8 +38,8 @@ type (
 		ID ccc.UUID `spanner:"Id" index:"true"`
 		// @domain
 		SectorID     string    `spanner:"SectorId"     index:"true"`
-		Title        string    `spanner:"Title"        index:"true"`
-		ClientName   string    `spanner:"ClientName"   index:"true"`
+		Title        string    `spanner:"Title"        index:"true"        search:"Missions.Title"`
+		ClientName   string    `spanner:"ClientName"   index:"true"        search:"Clients.Name"`
 		SquadronName *string   `spanner:"SquadronName" index:"true"`
 		KindID       string    `spanner:"KindId"       index:"true"`
 		StatusID     string    `spanner:"StatusId"     index:"true"`

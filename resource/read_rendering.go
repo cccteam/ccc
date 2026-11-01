@@ -325,6 +325,13 @@ type renderedReadConditions struct {
 	// renders byte-identical to before.
 	queryOverrides map[accesstypes.Field]string
 
+	// queryConditions is the bare lowered condition behind each query override,
+	// for the search matches: a startswith, endswith or contains condition, and
+	// a search box field, conjoins the condition inside its match instead of
+	// running over the CASE, so the search index still serves it (README
+	// section 4). Rendered for exactly the fields queryOverrides is.
+	queryConditions map[accesstypes.Field]string
+
 	// maskColumn is the reserved masked-names select item, "" when every CASE
 	// pruned.
 	maskColumn string
@@ -360,8 +367,9 @@ func (q *QuerySet[Resource]) renderReadConditions(dbType DBType, plan *readCondi
 	lctx := q.loweringCtx()
 
 	rendered := &renderedReadConditions{
-		overrides:      make(map[accesstypes.Field]string),
-		queryOverrides: make(map[accesstypes.Field]string),
+		overrides:       make(map[accesstypes.Field]string),
+		queryOverrides:  make(map[accesstypes.Field]string),
+		queryConditions: make(map[accesstypes.Field]string),
 	}
 
 	if len(plan.rowPredicate) > 0 {
@@ -437,6 +445,7 @@ func (q *QuerySet[Resource]) renderQueryOverrides(dbType DBType, plan *readCondi
 			return err
 		}
 		rendered.queryOverrides[field] = fmt.Sprintf("CASE WHEN %s THEN %s END", condSQL, conditions.gen.quoteIdentifier(dbField.ColumnName))
+		rendered.queryConditions[field] = condSQL
 	}
 
 	return nil

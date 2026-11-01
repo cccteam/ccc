@@ -203,8 +203,22 @@ func (p HangarQueryPartialClause) SectorID() HangarQueryIdent[string] {
 	return HangarQueryIdent[string]{Ident: resource.NewIdent[string]("SectorID", p.partialClause, true)}
 }
 
-func (p HangarQueryPartialClause) Name() HangarQueryIdent[string] {
-	return HangarQueryIdent[string]{Ident: resource.NewIdent[string]("Name", p.partialClause, true)}
+func (p HangarQueryPartialClause) Name() HangarNameQueryIdent {
+	return HangarNameQueryIdent{
+		HangarQueryIdent: HangarQueryIdent[string]{Ident: resource.NewIdent[string]("Name", p.partialClause, true)},
+		text:             resource.NewTextIdent("Name", p.partialClause, true, "lower=Name_Lower"),
+	}
+}
+
+// HangarNameQueryIdent is Name's identifier with the text
+// matches its schema answers ('startswith'); a match it does not answer is not here.
+type HangarNameQueryIdent struct {
+	HangarQueryIdent[string]
+	text resource.TextIdent
+}
+
+func (i HangarNameQueryIdent) StartsWith(term string) HangarQueryClause {
+	return HangarQueryClause{clause: i.text.StartsWith(term)}
 }
 
 type HangarQueryClause struct {

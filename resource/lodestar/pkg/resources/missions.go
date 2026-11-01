@@ -65,7 +65,13 @@ type (
 	// PATCH, while nine decimals are accepted; the schema's InvalidArgument at commit is
 	// never reached from a request.
 	//
-	// Demonstrates: @state, @attribute, @attribute.decimal, @attribute.timestamp, @attribute.nullable-fk, output_only, default_create_fn, @defaultsCreateType, @validateCreateType, change-tracking, outlet.shared, @order, @page, cell-masking, paging.masked-sort, masking.positional, filter.typed-values, filter.validated-at-decode, condition.now, condition.not-in, condition.prefix-not, condition.subject-scalar, condition.old-vs-new, write-grouping, @attribute.join-path-global, @enumerate.plain-column, @enumerate.key-view, metadata.filterable, index.tenant-second, commit.constraint-refusal, decode.value-limit.
+	// The mission's box searches Title as text and Deadline as a date: MissionsSearch
+	// (migration 000060) carries Title's tokens and the deadline's day as YYYYMMDD, so a
+	// typed day meets the deadline as a prefix, and the index is partitioned by SectorId,
+	// so a sector's search reads its own partition. Deadline answers no explicit match; it
+	// joins the box alone.
+	//
+	// Demonstrates: @state, @attribute, @attribute.decimal, @attribute.timestamp, @attribute.nullable-fk, output_only, default_create_fn, @defaultsCreateType, @validateCreateType, change-tracking, outlet.shared, @order, @page, cell-masking, paging.masked-sort, masking.positional, filter.typed-values, filter.validated-at-decode, condition.now, condition.not-in, condition.prefix-not, condition.subject-scalar, condition.old-vs-new, write-grouping, @attribute.join-path-global, @enumerate.plain-column, @enumerate.key-view, metadata.filterable, index.tenant-second, commit.constraint-refusal, decode.value-limit, search.box, search.date, search.partitioned.
 	//
 	// @resource
 	// @permissionScope(domain)

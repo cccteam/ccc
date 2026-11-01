@@ -463,7 +463,7 @@ func Collection() *resource.GeneratedCollection {
 				},
 				Domain:    &resource.DomainBindingData{Column: "SectorId"},
 				Order:     []accesstypes.Tag{"deadline"},
-				QueryKeys: []accesstypes.Tag{"sectorId", "clientId", "kindId", "fee", "deadline", "requiredCertId", "assignedSquadronId", "statusId"},
+				QueryKeys: []accesstypes.Tag{"sectorId", "clientId", "kindId", "title", "fee", "deadline", "requiredCertId", "assignedSquadronId", "statusId"},
 			},
 			{
 				Name:        "OpenMissionsBySquadrons",
@@ -809,7 +809,7 @@ func Collection() *resource.GeneratedCollection {
 					{Name: "client", UserColumn: "UserId", Column: "ClientId", Type: "string"},
 				},
 				Order:     []accesstypes.Tag{"displayName"},
-				QueryKeys: []accesstypes.Tag{"userId", "clientId"},
+				QueryKeys: []accesstypes.Tag{"userId", "clientId", "displayName"},
 			},
 			{
 				Name:        "Clients",
@@ -828,7 +828,7 @@ func Collection() *resource.GeneratedCollection {
 					{Name: "trusted", Column: "Trusted", Type: "bool"},
 				},
 				Order:     []accesstypes.Tag{"name"},
-				QueryKeys: []accesstypes.Tag{"name", "contactEmail"},
+				QueryKeys: []accesstypes.Tag{"name", "contactName", "contactEmail"},
 			},
 			{
 				Name:        "Commendations",

@@ -30,9 +30,23 @@ type (
 	// SalvageDesk role lists clients under, `insured IS NULL OR insured = true`: the
 	// salvage desk sees covered and undecided outfits, never refused ones.
 	//
-	// Demonstrates: pii, pii.filter-placement, allow_filter, @attribute.bool, @attribute.nullable-bool, consolidation.exclusion, commit.constraint-refusal, nullboolean.
+	// Clients is the search demonstration. The schema (migration 000060) gives Name,
+	// ContactName and ContactEmail hidden token columns under one search index,
+	// ClientsSearch, and the generator derives the vocabulary from that alone: the three
+	// fields join the resource's search box (`*:search:"halvard example"`, every term
+	// found in some field), Name's tokens are anchored, so Name answers startswith and
+	// endswith beside contains, and the other two answer contains alone. @searchAlso adds
+	// the client contact's display name to the box through the contact table's own index,
+	// joined on ClientId. ContactEmail is PII, so a filter carrying the box posts. The
+	// ClientBrowser role reads name alone under `trusted = true`: its box drops the
+	// contact fields and the branch without a word, matches a name only on a trusted row,
+	// and an explicit `contactEmail:contains:` from that role is a 403. A quoted value
+	// carries the grammar's separators (`name:eq:"Halvard Freight"`).
+	//
+	// Demonstrates: pii, pii.filter-placement, allow_filter, @attribute.bool, @attribute.nullable-bool, consolidation.exclusion, commit.constraint-refusal, nullboolean, search.box, search.match, @searchAlso, search.pii-posts, search.denied-field, search.conditional-field, search.quoted-value, metadata.search.
 	//
 	// @resource
+	// @searchAlso(ClientContact.DisplayName)
 	// @order(Name asc)
 	// @page(default: 25, max: 200)
 	Client struct {

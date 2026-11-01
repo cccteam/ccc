@@ -22,8 +22,8 @@ func (a *App) MissionBoards() http.HandlerFunc {
 	type missionBoard struct {
 		ID           ccc.UUID  `json:"id"           index:"true"        perm:"-"`
 		SectorID     string    `json:"sectorId"     index:"true"`
-		Title        string    `json:"title"        index:"true"`
-		ClientName   string    `json:"clientName"   index:"true"`
+		Title        string    `json:"title"        index:"true"        search:"token=Title_Search;index=MissionsSearch;role=text;contains"`
+		ClientName   string    `json:"clientName"   index:"true"        search:"token=Name_Search;index=ClientsSearch;role=text;anchors=prefix,suffix;contains"`
 		SquadronName *string   `json:"squadronName" index:"true"`
 		KindID       string    `json:"kindId"       index:"true"`
 		StatusID     string    `json:"statusId"     index:"true"`
@@ -130,10 +130,10 @@ func (a *App) MissionBoards() http.HandlerFunc {
 
 func (a *App) MissionBoard() http.HandlerFunc {
 	type response struct {
-		ID           ccc.UUID  `json:"id"           index:"true" perm:"-"`
+		ID           ccc.UUID  `json:"id"           index:"true"                                                                            perm:"-"`
 		SectorID     string    `json:"sectorId"`
-		Title        string    `json:"title"`
-		ClientName   string    `json:"clientName"`
+		Title        string    `json:"title"        search:"token=Title_Search;index=MissionsSearch;role=text;contains"`
+		ClientName   string    `json:"clientName"   search:"token=Name_Search;index=ClientsSearch;role=text;anchors=prefix,suffix;contains"`
 		SquadronName *string   `json:"squadronName"`
 		KindID       string    `json:"kindId"`
 		StatusID     string    `json:"statusId"`

@@ -321,6 +321,24 @@ func (p MissionQueryPartialClause) KindID() MissionQueryIdent[string] {
 	return MissionQueryIdent[string]{Ident: resource.NewIdent[string]("KindID", p.partialClause, true)}
 }
 
+func (p MissionQueryPartialClause) Title() MissionTitleQueryIdent {
+	return MissionTitleQueryIdent{
+		MissionQueryIdent: MissionQueryIdent[string]{Ident: resource.NewIdent[string]("Title", p.partialClause, false)},
+		text:              resource.NewTextIdent("Title", p.partialClause, false, "token=Title_Search;index=MissionsSearch;role=text;contains"),
+	}
+}
+
+// MissionTitleQueryIdent is Title's identifier with the text
+// matches its schema answers ('contains'); a match it does not answer is not here.
+type MissionTitleQueryIdent struct {
+	MissionQueryIdent[string]
+	text resource.TextIdent
+}
+
+func (i MissionTitleQueryIdent) Contains(term string) MissionQueryClause {
+	return MissionQueryClause{clause: i.text.Contains(term)}
+}
+
 func (p MissionQueryPartialClause) Fee() MissionQueryIdent[decimal.Decimal] {
 	return MissionQueryIdent[decimal.Decimal]{Ident: resource.NewIdent[decimal.Decimal]("Fee", p.partialClause, false)}
 }
@@ -339,6 +357,21 @@ func (p MissionQueryPartialClause) AssignedSquadronID() MissionQueryIdent[ccc.UU
 
 func (p MissionQueryPartialClause) StatusID() MissionQueryIdent[string] {
 	return MissionQueryIdent[string]{Ident: resource.NewIdent[string]("StatusID", p.partialClause, true)}
+}
+
+// Search creates the search box over Mission's searchable fields, as the
+// filter grammar's *:search:"…" does: every term of the text must be found in one of
+// them ('title', 'deadline').
+func (p MissionQueryPartialClause) Search(text string) (MissionQueryClause, error) {
+	clause, err := p.partialClause.Search(text, "ID", []resource.SearchColumn{
+		{Column: "Title", Tag: "token=Title_Search;index=MissionsSearch;role=text;contains"},
+		{Column: "Deadline", Tag: "token=Deadline_Search;index=MissionsSearch;role=date;contains;zone=UTC"},
+	}, nil)
+	if err != nil {
+		return MissionQueryClause{}, err
+	}
+
+	return MissionQueryClause{clause: clause}, nil
 }
 
 type MissionQueryClause struct {

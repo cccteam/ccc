@@ -109,6 +109,12 @@ func (c *client) structsToResources(structs []*parser.Struct, validators ...stru
 		return nil, err
 	}
 
+	// A @searchAlso names another table's field, so it resolves once every
+	// table-backed resource is extracted with its search facts.
+	if err := c.resolveSearchBranches(resources); err != nil {
+		return nil, err
+	}
+
 	return resources, nil
 }
 
@@ -136,6 +142,12 @@ func (c *client) resolveResource(resource *resourceInfo, pStruct *parser.Struct,
 	// The tenant anchor is known only now, and the field flag for the column after it
 	// in an index key depends on it.
 	resource.deriveTenantIndexFlags(table)
+
+	// So do the search facts: the search index's partition is checked against the
+	// tenant column, and the prefix fact reads the same tenant-second position.
+	if err := c.resolveSearchFacts(resource, pStruct, annotations, table); err != nil {
+		return err
+	}
 
 	// With the order and the index flags known, a positional declaration can be
 	// checked against what a list of the resource sorts and filters by.
@@ -410,6 +422,12 @@ func (c *client) resolveVirtualResource(resource *resourceInfo, pStruct *parser.
 		return err
 	}
 
+	// A view's search facts are authored (the search tag names the table column),
+	// and read against the schema's.
+	if err := c.resolveViewSearchFacts(resource, pStruct, annotations); err != nil {
+		return err
+	}
+
 	return c.resolveResourceFeatures(resource, pStruct, annotations)
 }
 
@@ -593,7 +611,17 @@ func newResourceFields(parent *resourceInfo, pStruct *parser.Struct, table *tabl
 
 			continue
 		}
+		if field.HasTag(searchTagKey) {
+			field.AddError(fmt.Sprintf("cannot use %s tag in non-virtual resource; the schema states the search facts", searchTagKey))
+
+			continue
+		}
 		if refusal, ok := listColumnTagRefusal(field); ok {
+			field.AddError(refusal)
+
+			continue
+		}
+		if refusal, ok := generatedColumnRefusal(field, &tableColumn); ok {
 			field.AddError(refusal)
 
 			continue
@@ -613,6 +641,7 @@ func newResourceFields(parent *resourceInfo, pStruct *parser.Struct, table *tabl
 			ReferencedField:    tableColumn.ReferencedColumn,
 			HasDefault:         tableColumn.HasDefault,
 			SpannerType:        tableColumn.SpannerType,
+			IsGenerated:        tableColumn.GenerationExpression != "",
 		})
 	}
 
@@ -647,7 +676,7 @@ func (r *resourceInfo) deriveTenantIndexFlags(table *tableMetadata) {
 	}
 
 	for _, index := range table.Indexes {
-		if len(index.Key) < 2 || index.Key[0].Column != anchor {
+		if index.Search || len(index.Key) < 2 || index.Key[0].Column != anchor {
 			continue
 		}
 		if field, ok := byColumn[index.Key[1].Column]; ok {
@@ -752,7 +781,7 @@ func (c *client) structsToRPCMethods(structs []*parser.Struct, validators ...str
 		// The annotations other kinds own: a resource's bindings, a view's table, and a
 		// field type's TypeScript type; and the masking tag, which a method's request
 		// never carries.
-		if err := errors.Join(rejectBindingAnnotations(s, annotations, "RPC method"), rejectRowsOf(s, annotations, "RPC method"), rejectTypescriptAnnotation(s, annotations, "RPC method"), rejectMaskingTags(s, "RPC method"), rejectFileAnnotations(s, annotations, "RPC method"), rejectTenantAnnotation(s, annotations, "@"+rpcKeyword+" struct"), rejectReservedMethodName(s)); err != nil {
+		if err := errors.Join(rejectBindingAnnotations(s, annotations, "RPC method"), rejectRowsOf(s, annotations, "RPC method"), rejectTypescriptAnnotation(s, annotations, "RPC method"), rejectMaskingTags(s, "RPC method"), rejectFileAnnotations(s, annotations, "RPC method"), rejectTenantAnnotation(s, annotations, "@"+rpcKeyword+" struct"), rejectSearchAlso(s, annotations, "RPC method"), rejectReservedMethodName(s)); err != nil {
 			errs = append(errs, err)
 
 			continue
@@ -961,7 +990,7 @@ func (c *client) structsToCompResources(structs []*parser.Struct, validators ...
 			continue
 		}
 
-		if err := errors.Join(rejectRPCOnlyAnnotations(s, annotations, "computed resource"), rejectTypescriptAnnotation(s, annotations, "computed resource"), rejectTenantAnnotation(s, annotations, "@"+computedKeyword+" struct"), rejectFormerlyAnnotations(s, annotations, "computed resource"), c.rejectReservedResourceName(s, "computed resource")); err != nil {
+		if err := errors.Join(rejectRPCOnlyAnnotations(s, annotations, "computed resource"), rejectTypescriptAnnotation(s, annotations, "computed resource"), rejectTenantAnnotation(s, annotations, "@"+computedKeyword+" struct"), rejectFormerlyAnnotations(s, annotations, "computed resource"), rejectSearchAlso(s, annotations, "computed resource"), c.rejectReservedResourceName(s, "computed resource")); err != nil {
 			resourceErrors = append(resourceErrors, err)
 
 			continue

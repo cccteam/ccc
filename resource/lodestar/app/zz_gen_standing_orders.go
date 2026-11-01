@@ -16,7 +16,7 @@ import (
 
 func (a *App) StandingOrders() http.HandlerFunc {
 	type standingOrder struct {
-		Section   string `json:"section"   allow_filter:"true"`
+		Section   string `json:"section"   allow_filter:"true" search:"memory"`
 		Directive string `json:"directive"`
 	}
 

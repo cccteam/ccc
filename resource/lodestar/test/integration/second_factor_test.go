@@ -4,6 +4,7 @@ package integration
 
 import (
 	"context"
+	stderrors "errors"
 	"net/http"
 	"slices"
 	"strings"
@@ -97,7 +98,7 @@ func TestSecondFactor(t *testing.T) {
 	if pending := other.pending(ctx); pending.EmailCode == nil || pending.EmailCode.EnrollEmail {
 		t.Fatalf("the other browser's pending sign-in = %+v, want the code offered to the address she holds", pending)
 	}
-	other.secondFactor(ctx, "cadet", false)
+	other.secondFactor(ctx, "cadet")
 	if sess := other.session(ctx); sess["authenticated"] != true {
 		t.Fatalf("session from the other browser after the code = %v, want the cadet signed in", sess)
 	}
@@ -114,7 +115,7 @@ func TestSecondFactor(t *testing.T) {
 	if status, body := cass.login(ctx, "cadet", personaPassword); status != http.StatusOK || !heldForFactor(t, body) {
 		t.Fatalf("the once-remembered browser's sign-in after the reset: status %d: %s, want 200 holding the sign-in for the second factor", status, body)
 	}
-	cass.secondFactor(ctx, "cadet", false)
+	cass.secondFactor(ctx, "cadet")
 	if sess := cass.session(ctx); sess["authenticated"] != true {
 		t.Fatalf("session after the reset and the code = %v, want the cadet signed in", sess)
 	}
@@ -160,7 +161,7 @@ func authEvents(ctx context.Context, t *testing.T, s *served, username string) [
 	var methods []string
 	for {
 		row, err := iter.Next()
-		if err == iterator.Done {
+		if stderrors.Is(err, iterator.Done) {
 			break
 		}
 		if err != nil {

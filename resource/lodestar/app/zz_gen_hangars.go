@@ -23,7 +23,7 @@ func (a *App) Hangars() http.HandlerFunc {
 	type hangar struct {
 		ID       ccc.UUID `json:"id"       index:"true" perm:"-"`
 		SectorID string   `json:"sectorId" index:"true"`
-		Name     string   `json:"name"     index:"true"`
+		Name     string   `json:"name"     index:"true" search:"lower=Name_Lower"`
 		Zone     string   `json:"zone"`
 	}
 
@@ -106,9 +106,9 @@ func (a *App) Hangars() http.HandlerFunc {
 
 func (a *App) Hangar() http.HandlerFunc {
 	type response struct {
-		ID       ccc.UUID `json:"id"       index:"true" perm:"-"`
+		ID       ccc.UUID `json:"id"       index:"true"              perm:"-"`
 		SectorID string   `json:"sectorId"`
-		Name     string   `json:"name"`
+		Name     string   `json:"name"     search:"lower=Name_Lower"`
 		Zone     string   `json:"zone"`
 	}
 
