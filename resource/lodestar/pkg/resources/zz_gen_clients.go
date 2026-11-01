@@ -22,6 +22,15 @@ func (Client) DefaultConfig() resource.Config {
 	return defaultConfig()
 }
 
+// SearchBranches names the child text the resource's search box also searches
+// (@searchAlso), each reached through the foreign key joining the child to this row;
+// the child field's own permission governs each branch.
+func (Client) SearchBranches() []resource.SearchBranch {
+	return []resource.SearchBranch{
+		{Name: "clientContact.displayName", Resource: "ClientContacts", Field: "DisplayName", Tag: "displayName", Table: "ClientContacts", Column: "DisplayName", JoinColumn: "ClientId", TenantColumn: "", Token: "DisplayName_Search", Index: "ClientContactsSearch", Role: resource.SearchRoleText, Anchors: nil, Contains: true, Zone: "", PII: false},
+	}
+}
+
 // clientRead mirrors the wire shape the resource routes list
 // and read, so a query armed with Enforce meets the field permissions the routes
 // enforce; clientReadSets holds one Set per read operation.
@@ -229,12 +238,82 @@ func (p ClientQueryPartialClause) ID() ClientQueryIdent[ccc.UUID] {
 	return ClientQueryIdent[ccc.UUID]{Ident: resource.NewIdent[ccc.UUID]("ID", p.partialClause, true)}
 }
 
-func (p ClientQueryPartialClause) Name() ClientQueryIdent[string] {
-	return ClientQueryIdent[string]{Ident: resource.NewIdent[string]("Name", p.partialClause, true)}
+func (p ClientQueryPartialClause) Name() ClientNameQueryIdent {
+	return ClientNameQueryIdent{
+		ClientQueryIdent: ClientQueryIdent[string]{Ident: resource.NewIdent[string]("Name", p.partialClause, true)},
+		text:             resource.NewTextIdent("Name", p.partialClause, true, "token=Name_Search;index=ClientsSearch;role=text;anchors=prefix,suffix;contains"),
+	}
 }
 
-func (p ClientQueryPartialClause) ContactEmail() ClientQueryIdent[string] {
-	return ClientQueryIdent[string]{Ident: resource.NewIdent[string]("ContactEmail", p.partialClause, false)}
+// ClientNameQueryIdent is Name's identifier with the text
+// matches its schema answers ('contains', 'startswith', 'endswith'); a match it does not answer is not here.
+type ClientNameQueryIdent struct {
+	ClientQueryIdent[string]
+	text resource.TextIdent
+}
+
+func (i ClientNameQueryIdent) Contains(term string) ClientQueryClause {
+	return ClientQueryClause{clause: i.text.Contains(term)}
+}
+
+func (i ClientNameQueryIdent) StartsWith(term string) ClientQueryClause {
+	return ClientQueryClause{clause: i.text.StartsWith(term)}
+}
+
+func (i ClientNameQueryIdent) EndsWith(term string) ClientQueryClause {
+	return ClientQueryClause{clause: i.text.EndsWith(term)}
+}
+
+func (p ClientQueryPartialClause) ContactName() ClientContactNameQueryIdent {
+	return ClientContactNameQueryIdent{
+		ClientQueryIdent: ClientQueryIdent[string]{Ident: resource.NewIdent[string]("ContactName", p.partialClause, false)},
+		text:             resource.NewTextIdent("ContactName", p.partialClause, false, "token=ContactName_Search;index=ClientsSearch;role=text;contains"),
+	}
+}
+
+// ClientContactNameQueryIdent is ContactName's identifier with the text
+// matches its schema answers ('contains'); a match it does not answer is not here.
+type ClientContactNameQueryIdent struct {
+	ClientQueryIdent[string]
+	text resource.TextIdent
+}
+
+func (i ClientContactNameQueryIdent) Contains(term string) ClientQueryClause {
+	return ClientQueryClause{clause: i.text.Contains(term)}
+}
+
+func (p ClientQueryPartialClause) ContactEmail() ClientContactEmailQueryIdent {
+	return ClientContactEmailQueryIdent{
+		ClientQueryIdent: ClientQueryIdent[string]{Ident: resource.NewIdent[string]("ContactEmail", p.partialClause, false)},
+		text:             resource.NewTextIdent("ContactEmail", p.partialClause, false, "token=ContactEmail_Search;index=ClientsSearch;role=text;contains"),
+	}
+}
+
+// ClientContactEmailQueryIdent is ContactEmail's identifier with the text
+// matches its schema answers ('contains'); a match it does not answer is not here.
+type ClientContactEmailQueryIdent struct {
+	ClientQueryIdent[string]
+	text resource.TextIdent
+}
+
+func (i ClientContactEmailQueryIdent) Contains(term string) ClientQueryClause {
+	return ClientQueryClause{clause: i.text.Contains(term)}
+}
+
+// Search creates the search box over Client's searchable fields, as the
+// filter grammar's *:search:"…" does: every term of the text must be found in one of
+// them ('name', 'contactName', 'contactEmail', 'clientContact.displayName').
+func (p ClientQueryPartialClause) Search(text string) (ClientQueryClause, error) {
+	clause, err := p.partialClause.Search(text, "ID", []resource.SearchColumn{
+		{Column: "Name", Tag: "token=Name_Search;index=ClientsSearch;role=text;anchors=prefix,suffix;contains"},
+		{Column: "ContactName", Tag: "token=ContactName_Search;index=ClientsSearch;role=text;contains"},
+		{Column: "ContactEmail", Tag: "token=ContactEmail_Search;index=ClientsSearch;role=text;contains"},
+	}, Client{}.SearchBranches())
+	if err != nil {
+		return ClientQueryClause{}, err
+	}
+
+	return ClientQueryClause{clause: clause}, nil
 }
 
 type ClientQueryClause struct {

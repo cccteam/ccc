@@ -231,12 +231,48 @@ func (p MissionBoardQueryPartialClause) SectorID() MissionBoardQueryIdent[string
 	return MissionBoardQueryIdent[string]{Ident: resource.NewIdent[string]("SectorID", p.partialClause, true)}
 }
 
-func (p MissionBoardQueryPartialClause) Title() MissionBoardQueryIdent[string] {
-	return MissionBoardQueryIdent[string]{Ident: resource.NewIdent[string]("Title", p.partialClause, true)}
+func (p MissionBoardQueryPartialClause) Title() MissionBoardTitleQueryIdent {
+	return MissionBoardTitleQueryIdent{
+		MissionBoardQueryIdent: MissionBoardQueryIdent[string]{Ident: resource.NewIdent[string]("Title", p.partialClause, true)},
+		text:                   resource.NewTextIdent("Title", p.partialClause, true, "token=Title_Search;index=MissionsSearch;role=text;contains"),
+	}
 }
 
-func (p MissionBoardQueryPartialClause) ClientName() MissionBoardQueryIdent[string] {
-	return MissionBoardQueryIdent[string]{Ident: resource.NewIdent[string]("ClientName", p.partialClause, true)}
+// MissionBoardTitleQueryIdent is Title's identifier with the text
+// matches its schema answers ('contains'); a match it does not answer is not here.
+type MissionBoardTitleQueryIdent struct {
+	MissionBoardQueryIdent[string]
+	text resource.TextIdent
+}
+
+func (i MissionBoardTitleQueryIdent) Contains(term string) MissionBoardQueryClause {
+	return MissionBoardQueryClause{clause: i.text.Contains(term)}
+}
+
+func (p MissionBoardQueryPartialClause) ClientName() MissionBoardClientNameQueryIdent {
+	return MissionBoardClientNameQueryIdent{
+		MissionBoardQueryIdent: MissionBoardQueryIdent[string]{Ident: resource.NewIdent[string]("ClientName", p.partialClause, true)},
+		text:                   resource.NewTextIdent("ClientName", p.partialClause, true, "token=Name_Search;index=ClientsSearch;role=text;anchors=prefix,suffix;contains"),
+	}
+}
+
+// MissionBoardClientNameQueryIdent is ClientName's identifier with the text
+// matches its schema answers ('contains', 'startswith', 'endswith'); a match it does not answer is not here.
+type MissionBoardClientNameQueryIdent struct {
+	MissionBoardQueryIdent[string]
+	text resource.TextIdent
+}
+
+func (i MissionBoardClientNameQueryIdent) Contains(term string) MissionBoardQueryClause {
+	return MissionBoardQueryClause{clause: i.text.Contains(term)}
+}
+
+func (i MissionBoardClientNameQueryIdent) StartsWith(term string) MissionBoardQueryClause {
+	return MissionBoardQueryClause{clause: i.text.StartsWith(term)}
+}
+
+func (i MissionBoardClientNameQueryIdent) EndsWith(term string) MissionBoardQueryClause {
+	return MissionBoardQueryClause{clause: i.text.EndsWith(term)}
 }
 
 func (p MissionBoardQueryPartialClause) SquadronName() MissionBoardQueryIdent[string] {
@@ -257,6 +293,21 @@ func (p MissionBoardQueryPartialClause) Deadline() MissionBoardQueryIdent[time.T
 
 func (p MissionBoardQueryPartialClause) DaysLeft() MissionBoardQueryIdent[int64] {
 	return MissionBoardQueryIdent[int64]{Ident: resource.NewIdent[int64]("DaysLeft", p.partialClause, false)}
+}
+
+// Search creates the search box over MissionBoard's searchable fields, as the
+// filter grammar's *:search:"…" does: every term of the text must be found in one of
+// them ('title', 'clientName').
+func (p MissionBoardQueryPartialClause) Search(text string) (MissionBoardQueryClause, error) {
+	clause, err := p.partialClause.Search(text, "ID", []resource.SearchColumn{
+		{Column: "Title", Tag: "token=Title_Search;index=MissionsSearch;role=text;contains"},
+		{Column: "ClientName", Tag: "token=Name_Search;index=ClientsSearch;role=text;anchors=prefix,suffix;contains"},
+	}, nil)
+	if err != nil {
+		return MissionBoardQueryClause{}, err
+	}
+
+	return MissionBoardQueryClause{clause: clause}, nil
 }
 
 type MissionBoardQueryClause struct {

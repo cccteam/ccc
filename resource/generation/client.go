@@ -413,6 +413,7 @@ func (t *tableMetadata) addSchemaResult(result *informationSchemaResult) {
 	column.IsNullable = result.IsNullable
 	column.HasDefault = result.HasDefault
 	column.SpannerType = result.SpannerType
+	column.GenerationExpression = valueOrEmpty(result.GenerationExpression)
 
 	t.Columns[result.ColumnName] = column
 }
@@ -425,6 +426,7 @@ func (t *tableMetadata) addIndexResult(result *indexSchemaResult) {
 		t.Indexes = append(t.Indexes, indexMeta{
 			Name:         result.IndexName,
 			PrimaryKey:   result.IndexType == primaryKeyIndexType,
+			Search:       result.IndexType == searchIndexType,
 			Unique:       result.IsUnique,
 			NullFiltered: result.IsNullFiltered,
 			Managed:      result.IsManaged,
@@ -454,10 +456,12 @@ func (t *tableMetadata) addIndexResult(result *indexSchemaResult) {
 // A column that is the whole key of a unique index, the primary key included,
 // identifies a row on its own. Null filtering does not disqualify: such an index still
 // enforces one row per non-null value, and the subject subquery compares by equality,
-// which never matches NULL. The index list is the fact the schema read records and the
-// cache keeps; the flags are derived from it on every read and every cache load, never
-// trusted from storage, so a cache an earlier generator wrote cannot carry a flag this
-// one no longer derives.
+// which never matches NULL. A search index gives no column a seek: its key is its
+// token columns, which no field carries, and its partition column, which the search
+// functions bind (search.go). The index list is the fact the schema read records and
+// the cache keeps; the flags are derived from it on every read and every cache load,
+// never trusted from storage, so a cache an earlier generator wrote cannot carry a flag
+// this one no longer derives.
 func (t *tableMetadata) deriveIndexFlags() {
 	for name, column := range t.Columns {
 		column.IsIndex, column.IsUniqueIndex = false, false
@@ -465,7 +469,7 @@ func (t *tableMetadata) deriveIndexFlags() {
 	}
 
 	for _, index := range t.Indexes {
-		if len(index.Key) == 0 {
+		if len(index.Key) == 0 || index.Search {
 			continue
 		}
 		leading := index.Key[0].Column

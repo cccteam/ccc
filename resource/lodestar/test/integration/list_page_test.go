@@ -197,13 +197,13 @@ func TestListPage_metadata(t *testing.T) {
 		want    string
 		absence bool
 	}{
-		{name: "an indexed view column filters always", source: resources, want: "{ fieldName: 'title', displayType: 'string', required: true, isIndex: true, filterable: 'always' }"},
+		{name: "an indexed view column filters always", source: resources, want: "{ fieldName: 'title', displayType: 'string', required: true, isIndex: true, filterable: 'always', search: ['contains'] }"},
 		{name: "a view's allow_filter column, computed in the SQL, filters beside an indexed one", source: resources, want: "{ fieldName: 'daysLeft', displayType: 'number', required: true, isIndex: false, filterable: 'withIndexed' }"},
 		{name: "a table allow_filter column filters beside an indexed one", source: resources, want: "{ fieldName: 'fee', displayType: 'number', required: true, isIndex: false, filterable: 'withIndexed' }"},
 		{name: "a plain column carries no filterable, so the grid draws no control", source: resources, want: "{ fieldName: 'notes', displayType: 'string', required: false, isIndex: false }"},
 		{name: "the column after the tenant column in a composite index filters always", source: resources, want: "{ fieldName: 'deadline', displayType: 'date', required: true, isIndex: true, filterable: 'always', masking: 'positional' }"},
 		{name: "a trailing key column with nothing bound before it carries no filterable", source: resources, want: "{ fieldName: 'taskNumber', primaryKey: { ordinalPosition: 1 }, displayType: 'number', required: true, isIndex: false }"},
-		{name: "a computed resource's allow_filter column filters always", source: resources, want: "{ fieldName: 'shipName', displayType: 'string', required: false, isIndex: false, filterable: 'always' }"},
+		{name: "a computed resource's allow_filter column filters always", source: resources, want: "{ fieldName: 'shipName', displayType: 'string', required: false, isIndex: false, filterable: 'always', search: ['contains', 'startswith', 'endswith'] }"},
 		{name: "the board's descriptor carries its declared page sizes and order", source: api, want: "route: 'mission-boards',\n      scope: 'domain',\n      consolidated: false,\n      keys: ['id'],\n      operations: ['list', 'read'],\n      page: { default: 25, max: 200 },\n      order: [{ field: 'deadline', direction: 'asc' }],"},
 		{name: "a view's declared descending order reaches the descriptor too", source: api, want: "route: 'open-missions-by-squadrons',\n      scope: 'domain',\n      consolidated: false,\n      keys: ['squadronId', 'sectorId'],\n      operations: ['list', 'read'],\n      page: { default: 25, max: 200 },\n      order: [{ field: 'openMissions', direction: 'desc' }],"},
 	}

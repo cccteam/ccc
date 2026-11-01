@@ -206,8 +206,44 @@ func (p ClientRosterQueryPartialClause) SectorID() ClientRosterQueryIdent[string
 	return ClientRosterQueryIdent[string]{Ident: resource.NewIdent[string]("SectorID", p.partialClause, true)}
 }
 
-func (p ClientRosterQueryPartialClause) Name() ClientRosterQueryIdent[string] {
-	return ClientRosterQueryIdent[string]{Ident: resource.NewIdent[string]("Name", p.partialClause, true)}
+func (p ClientRosterQueryPartialClause) Name() ClientRosterNameQueryIdent {
+	return ClientRosterNameQueryIdent{
+		ClientRosterQueryIdent: ClientRosterQueryIdent[string]{Ident: resource.NewIdent[string]("Name", p.partialClause, true)},
+		text:                   resource.NewTextIdent("Name", p.partialClause, true, "token=Name_Search;index=ClientsSearch;role=text;anchors=prefix,suffix;contains"),
+	}
+}
+
+// ClientRosterNameQueryIdent is Name's identifier with the text
+// matches its schema answers ('contains', 'startswith', 'endswith'); a match it does not answer is not here.
+type ClientRosterNameQueryIdent struct {
+	ClientRosterQueryIdent[string]
+	text resource.TextIdent
+}
+
+func (i ClientRosterNameQueryIdent) Contains(term string) ClientRosterQueryClause {
+	return ClientRosterQueryClause{clause: i.text.Contains(term)}
+}
+
+func (i ClientRosterNameQueryIdent) StartsWith(term string) ClientRosterQueryClause {
+	return ClientRosterQueryClause{clause: i.text.StartsWith(term)}
+}
+
+func (i ClientRosterNameQueryIdent) EndsWith(term string) ClientRosterQueryClause {
+	return ClientRosterQueryClause{clause: i.text.EndsWith(term)}
+}
+
+// Search creates the search box over ClientRoster's searchable fields, as the
+// filter grammar's *:search:"…" does: every term of the text must be found in one of
+// them ('name').
+func (p ClientRosterQueryPartialClause) Search(text string) (ClientRosterQueryClause, error) {
+	clause, err := p.partialClause.Search(text, "ID", []resource.SearchColumn{
+		{Column: "Name", Tag: "token=Name_Search;index=ClientsSearch;role=text;anchors=prefix,suffix;contains"},
+	}, nil)
+	if err != nil {
+		return ClientRosterQueryClause{}, err
+	}
+
+	return ClientRosterQueryClause{clause: clause}, nil
 }
 
 type ClientRosterQueryClause struct {

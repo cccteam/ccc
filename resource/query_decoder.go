@@ -22,6 +22,11 @@ type parsedQueryParams struct {
 	// FilterFields names the resource fields the filter expression touches, so
 	// the read checks can require an unconditional grant on each of them.
 	FilterFields []accesstypes.Field
+	// SearchBox says the filter carries the search box, and SearchFields names the
+	// resource's own fields it searches, in declaration order; a field the caller
+	// cannot read drops out at the read checks instead of refusing the request.
+	SearchBox    bool
+	SearchFields []accesstypes.Field
 	Page         pageRequest
 	Capabilities []accesstypes.Permission
 }
@@ -72,6 +77,14 @@ type QueryDecoder[Resource Resourcer, Request any] struct {
 	// refused as any unknown field is and the default projection leaves it out. Nil
 	// hides every gated field.
 	features *FeatureSet
+	// boxFields are the request fields the search box searches, in declaration
+	// order; boxPII says one of them, or a @searchAlso branch, is PII, so a filter
+	// carrying the box posts; searchKeys is the resource's single-column key per
+	// parse target, which a box's key set joins on, nil when the request type marks
+	// no key or several.
+	boxFields  []accesstypes.Field
+	boxPII     bool
+	searchKeys map[DBType]string
 }
 
 // WithFeatures installs the FeatureSet the decoder reads the gated fields' flags
@@ -150,14 +163,69 @@ func NewQueryDecoder[Resource Resourcer, Request any](resSet *Set[Resource]) (*Q
 		return nil, errors.Wrap(err, "newStructDecoder[filterBody]()")
 	}
 
+	keyFields := primaryKeyFields(reflect.TypeOf(req))
+	boxFields, boxPII := searchBoxFields(filterParserFields)
+	for i := range resSet.ResourceMetadata().searchBranches {
+		branch := &resSet.ResourceMetadata().searchBranches[i]
+		boxPII = boxPII || branch.PII
+	}
+
 	return &QueryDecoder[Resource, Request]{
 		requestFieldMapper: mapper,
 		resourceSet:        resSet,
 		filterParserFields: filterParserFields,
 		bodyDecoder:        bodyDecoder,
 		requestType:        reflect.TypeOf(req),
-		keyFields:          primaryKeyFields(reflect.TypeOf(req)),
+		keyFields:          keyFields,
+		boxFields:          boxFields,
+		boxPII:             boxPII,
+		searchKeys:         searchKeyColumns(keyFields, resSet.ResourceMetadata()),
 	}, nil
+}
+
+// searchBoxFields lists the request fields that join the search box, in declaration
+// order, and whether one of them is PII.
+func searchBoxFields(fields map[jsonFieldName]FilterFieldInfo) ([]accesstypes.Field, bool) {
+	infos := make([]FilterFieldInfo, 0, len(fields))
+	seen := make(map[string]struct{}, len(fields))
+	for _, info := range fields {
+		if !info.Search.JoinsBox() {
+			continue
+		}
+		if _, dup := seen[info.GOFieldName]; dup {
+			continue
+		}
+		seen[info.GOFieldName] = struct{}{}
+		infos = append(infos, info)
+	}
+	slices.SortFunc(infos, func(a, b FilterFieldInfo) int { return a.order - b.order })
+
+	out := make([]accesstypes.Field, 0, len(infos))
+	pii := false
+	for _, info := range infos {
+		out = append(out, accesstypes.Field(info.GOFieldName))
+		pii = pii || info.PII
+	}
+
+	return out, pii
+}
+
+// searchKeyColumns names the resource's single-column key per parse target (the Go
+// field under the in-memory target), which a search box's key set joins on; nil when
+// the request type marks no key or several.
+func searchKeyColumns[Resource Resourcer](keyFields []accesstypes.Field, meta *Metadata[Resource]) map[DBType]string {
+	if len(keyFields) != 1 {
+		return nil
+	}
+	key := keyFields[0]
+	keys := map[DBType]string{goFieldNames: string(key)}
+	for _, dbType := range dbTypes() {
+		if entry, ok := meta.dbFieldMap(dbType)[key]; ok {
+			keys[dbType] = entry.ColumnName
+		}
+	}
+
+	return keys
 }
 
 // primaryKeyFields returns the request type's primary-key fields, the ones the
@@ -268,6 +336,8 @@ func (d *QueryDecoder[Resource, Request]) DecodeWithoutPermissions(request *http
 	qSet.jsonNames = d.requestFieldMapper.JSONNames()
 	qSet.SetFilterParser(parsedQuery.FilterParser)
 	qSet.filterFields = parsedQuery.FilterFields
+	qSet.searchBox = parsedQuery.SearchBox
+	qSet.searchFields = parsedQuery.SearchFields
 	qSet.keyFields = d.keyFields
 	qSet.defaultOrder = d.paging.Order
 	qSet.cursorKey = d.cursorKey
@@ -342,6 +412,8 @@ func (d *QueryDecoder[Resource, Request]) parseQuery(query url.Values, hidden ma
 	var sortFields []SortField
 	var filterParser func(DBType) (ExpressionNode, error)
 	var filterFields []accesstypes.Field
+	var searchBox bool
+	var searchFields []accesstypes.Field
 	var err error
 
 	if sortParamValue := query.Get(sortParam); sortParamValue != "" {
@@ -388,6 +460,10 @@ func (d *QueryDecoder[Resource, Request]) parseQuery(query url.Values, hidden ma
 			return nil, err
 		}
 		filterFields = d.filterFields(filterStr)
+		if d.hasSearchBox(filterStr) {
+			searchBox = true
+			searchFields = d.visibleBoxFields(hidden)
+		}
 
 		delete(query, filterParam)
 	}
@@ -429,9 +505,42 @@ func (d *QueryDecoder[Resource, Request]) parseQuery(query url.Values, hidden ma
 		SortFields:   sortFields,
 		FilterParser: filterParser,
 		FilterFields: filterFields,
+		SearchBox:    searchBox,
+		SearchFields: searchFields,
 		Page:         page,
 		Capabilities: capabilities,
 	}, nil
+}
+
+// visibleBoxFields returns the search box's fields less the hidden ones.
+func (d *QueryDecoder[Resource, Request]) visibleBoxFields(hidden map[accesstypes.Field]struct{}) []accesstypes.Field {
+	if len(hidden) == 0 {
+		return d.boxFields
+	}
+
+	return slices.DeleteFunc(slices.Clone(d.boxFields), func(field accesstypes.Field) bool {
+		_, isHidden := hidden[field]
+
+		return isHidden
+	})
+}
+
+// hasSearchBox reports whether a filter's text carries the search box, a condition on
+// the pseudo-field *. The walk reads tokens only; the parse decides whether the box is
+// well formed.
+func (d *QueryDecoder[Resource, Request]) hasSearchBox(filterStr string) bool {
+	lexer := NewFilterLexer(filterStr)
+	for {
+		token, err := lexer.NextToken()
+		if err != nil || token.Type == TokenEOF {
+			return false
+		}
+		if token.Type == TokenCondition {
+			if field, _, _ := strings.Cut(token.Value, ":"); strings.TrimSpace(field) == searchBoxField {
+				return true
+			}
+		}
+	}
 }
 
 // wholeListOnly reports whether this decoder lists a key-less resource: a list
@@ -569,15 +678,22 @@ func (d *QueryDecoder[Resource, Request]) filterExpressionParser(filterStr strin
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create filter expression parser")
 	}
+	parser.WithSearch(d.resourceSet.ResourceMetadata().searchBranches, d.searchKeys)
 
 	return parser.Parse, nil
 }
 
+// checkForPII refuses a filter in the URL that names a sensitive field, or that
+// carries the search box where the box searches one: the text would be logged with
+// the URL, so such a filter posts.
 func (d *QueryDecoder[Resource, Request]) checkForPII(filterStr string) error {
 	for _, fieldInfo := range d.filterConditionFields(filterStr) {
 		if fieldInfo.PII {
 			return httpio.NewBadRequestMessagef("cannot filter on sensitive field in URL: %s", fieldInfo.JSONFieldName)
 		}
+	}
+	if d.boxPII && d.hasSearchBox(filterStr) {
+		return httpio.NewBadRequestMessagef("cannot filter on sensitive field in URL: the search box searches a sensitive field; send the filter in the request body")
 	}
 
 	return nil
@@ -624,7 +740,11 @@ func newFilterParserFields[Resource Resourcer](reqType reflect.Type, resourceMet
 	fields := make(map[jsonFieldName]FilterFieldInfo)
 
 	for structField := range reqType.Fields() {
-		if structField.Tag.Get(indexTagKey) != trueStr && structField.Tag.Get(allowFilterTagKey) != trueStr {
+		// A field is filterable when an index serves it, the source allows a filter
+		// on it, or the schema gives it a search vocabulary (the search tag): the
+		// matches and the box the tag names are filters through the search index.
+		searchTag := structField.Tag.Get(searchTagKey)
+		if structField.Tag.Get(indexTagKey) != trueStr && structField.Tag.Get(allowFilterTagKey) != trueStr && searchTag == "" {
 			continue
 		}
 
@@ -652,6 +772,20 @@ func newFilterParserFields[Resource Resourcer](reqType reflect.Type, resourceMet
 			fieldKind = fieldType.Kind()
 		}
 
+		var search *SearchSpec
+		if searchTag != "" {
+			// A tag the runtime cannot read, or one on a field that is not text, is
+			// generated code out of step with the package: regenerate.
+			spec, err := parseSearchSpec(searchTag)
+			if err != nil {
+				return nil, errors.Wrapf(err, "field %s", goStructFieldName)
+			}
+			if fieldKind != reflect.String && fieldType != nullStringType && spec.Role != SearchRoleDate {
+				return nil, errors.Newf("field %s carries a search tag but is not a text field", goStructFieldName)
+			}
+			search = spec
+		}
+
 		info := FilterFieldInfo{
 			JSONFieldName: jsonFieldNameStr,
 			GOFieldName:   goStructFieldName,
@@ -661,6 +795,8 @@ func newFilterParserFields[Resource Resourcer](reqType reflect.Type, resourceMet
 			Indexed:       structField.Tag.Get(indexTagKey) == trueStr,
 			PII:           structField.Tag.Get(piiTagKey) == trueStr,
 			Positional:    structField.Tag.Get(maskingTagKey) == maskingPositional,
+			Search:        search,
+			order:         structField.Index[0],
 		}
 		fields[jsonFieldName(jsonFieldNameStr)] = info
 		// A filter naming the field's former wire name is the same condition on the

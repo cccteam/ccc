@@ -45,6 +45,28 @@ type sqlGenerator struct {
 	// conditionally granted column (read_rendering.go). Nil renders every
 	// column as its quoted identifier.
 	columnExpressions map[string]string
+
+	// searchGrants is what the caller's grants decided for the search fields a
+	// statement names, by column: a denied field drops out of the box, a
+	// conditionally granted one conjoins its condition inside its match
+	// (search_render.go). Nil renders every match bare.
+	searchGrants map[string]searchGrant
+	// branchGrants is the same for the resource's @searchAlso branches, by the
+	// branch's dotted name.
+	branchGrants map[string]searchGrant
+	// outer is the resource the statement reads, which a PostgreSQL branch
+	// correlates its child table with; "" renders the key bare.
+	outer string
+}
+
+// searchGrant is one search field's standing under the caller's grants.
+type searchGrant struct {
+	// dropped marks a denied field: it leaves the box silently.
+	dropped bool
+	// condition is the lowered condition of a conditional grant, conjoined inside
+	// the field's match so the index stays usable; "" for an unconditional grant
+	// and for a positional field, whose match renders bare.
+	condition string
 }
 
 // newSQLGenerator creates a new SQL generator for the specified dialect.
@@ -143,6 +165,14 @@ func (s *sqlGenerator) setColumnExpressions(expressions map[string]string) {
 	s.columnExpressions = expressions
 }
 
+// setSearchGrants installs what the caller's grants decided for the search fields
+// and branches the statement may name, and the resource a branch correlates with.
+func (s *sqlGenerator) setSearchGrants(outer string, fields, branches map[string]searchGrant) {
+	s.outer = outer
+	s.searchGrants = fields
+	s.branchGrants = branches
+}
+
 // conditionColumn renders the column a condition tests: its override when the
 // statement filters on the column's visible projection, else the quoted
 // identifier.
@@ -201,6 +231,10 @@ func (s *sqlGenerator) generateConditionSQL(cn *ConditionNode) (string, []QueryP
 		return fmt.Sprintf("%s IS NULL", field), nil, nil
 	case isnotnullStr:
 		return fmt.Sprintf("%s IS NOT NULL", field), nil, nil
+	case startswithStr, endswithStr, containsStr:
+		return s.generateMatchSQL(cn)
+	case searchStr:
+		return s.generateSearchSQL(cn)
 	default:
 		return "", nil, errors.Wrapf(ErrUnsupportedOperator, "operator: %s", op)
 	}

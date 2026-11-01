@@ -7,6 +7,7 @@ import (
 	"reflect"
 
 	"cloud.google.com/go/spanner"
+	sppb "cloud.google.com/go/spanner/apiv1/spannerpb"
 	"github.com/cccteam/ccc/accesstypes"
 	"github.com/cccteam/httpio"
 	"github.com/cccteam/spxscan"
@@ -139,6 +140,44 @@ func envelopeScan(stmt *Statement) bool {
 	return stmt.maskedNamesColumn != "" || stmt.capabilityPlan != nil || len(stmt.cursorColumns) > 0
 }
 
+// querier returns the transaction a statement runs on. A statement that names a query
+// optimizer version (a search predicate, see searchOptimizerVersion) runs through
+// QueryWithOptions with the version in its request options; every other statement runs
+// plainly, byte-identical to before.
+func (c *spannerReader[Resource]) querier(stmt *Statement) spxapi.Querier {
+	txn := c.readTxn()
+	if stmt.optimizerVersion == "" {
+		return txn
+	}
+
+	return &optionsQuerier{
+		Querier: txn,
+		options: spanner.QueryOptions{Options: &sppb.ExecuteSqlRequest_QueryOptions{OptimizerVersion: stmt.optimizerVersion}},
+	}
+}
+
+// queryOptioner is the part of a Spanner transaction that takes per-query options:
+// spanner.ReadOnlyTransaction and spanner.ReadWriteTransaction both implement it.
+type queryOptioner interface {
+	QueryWithOptions(ctx context.Context, statement spanner.Statement, opts spanner.QueryOptions) *spanner.RowIterator
+}
+
+// optionsQuerier runs every query with fixed options over a transaction that takes
+// them, and plainly over one that does not (a test double).
+type optionsQuerier struct {
+	spxapi.Querier
+	options spanner.QueryOptions
+}
+
+// Query runs the statement with the querier's options.
+func (q *optionsQuerier) Query(ctx context.Context, statement spanner.Statement) *spanner.RowIterator {
+	if o, ok := q.Querier.(queryOptioner); ok {
+		return o.QueryWithOptions(ctx, statement, q.options)
+	}
+
+	return q.Querier.Query(ctx, statement)
+}
+
 // Read reads a single resource from the database.
 func (c *spannerReader[Resource]) Read(ctx context.Context, stmt *Statement) (*Row[Resource], error) {
 	var res Resource
@@ -155,7 +194,7 @@ func (c *spannerReader[Resource]) Read(ctx context.Context, stmt *Statement) (*R
 	}
 
 	row := new(Row[Resource])
-	if err := spxscan.Get(ctx, c.readTxn(), &row.Data, stmt.SpannerStatement()); err != nil {
+	if err := spxscan.Get(ctx, c.querier(stmt), &row.Data, stmt.SpannerStatement()); err != nil {
 		if errors.Is(err, spxapi.ErrNotFound) {
 			return nil, httpio.NewNotFoundMessagef("%s (%s) not found", res.Resource(), stmt.resolvedWhereClause)
 		}
@@ -169,7 +208,7 @@ func (c *spannerReader[Resource]) Read(ctx context.Context, stmt *Statement) (*R
 // readEnvelope reads the first row of an envelope statement; a nil row with
 // no error means no row matched.
 func (c *spannerReader[Resource]) readEnvelope(ctx context.Context, stmt *Statement) (*Row[Resource], error) {
-	it := c.readTxn().Query(ctx, stmt.SpannerStatement())
+	it := c.querier(stmt).Query(ctx, stmt.SpannerStatement())
 	defer it.Stop()
 
 	spannerRow, err := it.Next()
@@ -191,7 +230,7 @@ func (c *spannerReader[Resource]) List(ctx context.Context, stmt *Statement) ite
 	}
 
 	return func(yield func(*Row[Resource], error) bool) {
-		for r, err := range spxscan.SelectSeq[Resource](ctx, c.readTxn(), stmt.SpannerStatement()) {
+		for r, err := range spxscan.SelectSeq[Resource](ctx, c.querier(stmt), stmt.SpannerStatement()) {
 			if err != nil {
 				yield(nil, errors.Wrap(err, "spxscan.SelectSeq()"))
 
@@ -206,7 +245,7 @@ func (c *spannerReader[Resource]) List(ctx context.Context, stmt *Statement) ite
 
 // Count runs a COUNT(*) statement and returns its one value.
 func (c *spannerReader[Resource]) Count(ctx context.Context, stmt *Statement) (int64, error) {
-	it := c.readTxn().Query(ctx, stmt.SpannerStatement())
+	it := c.querier(stmt).Query(ctx, stmt.SpannerStatement())
 	defer it.Stop()
 
 	spannerRow, err := it.Next()
@@ -225,7 +264,7 @@ func (c *spannerReader[Resource]) Count(ctx context.Context, stmt *Statement) (i
 // its reserved metadata columns into the Row envelope.
 func (c *spannerReader[Resource]) listEnvelope(ctx context.Context, stmt *Statement) iter.Seq2[*Row[Resource], error] {
 	return func(yield func(*Row[Resource], error) bool) {
-		it := c.readTxn().Query(ctx, stmt.SpannerStatement())
+		it := c.querier(stmt).Query(ctx, stmt.SpannerStatement())
 		defer it.Stop()
 
 		for {

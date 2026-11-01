@@ -104,6 +104,22 @@ var Demonstrations = []Demonstration{
 	{"decode.nullable-slice", "A nullable BYTES or ARRAY column typed by the plain slice: nullability follows the column, a null is accepted at decode where the column allows it and refused with cannot be null where it does not, and the metadata carries required accordingly."},
 	{"create-form-narrowing", "The digest's field-level Create entries decide which inputs a form renders."},
 
+	// Search.
+	{"search.box", "The search box: *:search:\"terms\" in a filter finds the rows where every term appears in some field the schema's search index covers, through that index; count and the cursor pages carry it like any filter."},
+	{"search.match", "startswith, endswith and contains on a text field whose column has a token column: SEARCH_SUBSTRING over the table's search index; a field whose tokens carry no anchors answers contains alone, and the others refuse at decode."},
+	{"search.prefix", "A stored LOWER(column) second in the tenant's index gives a field a case-folded startswith and nothing else; the table needs no search index, and the field joins no box."},
+	{"search.date", "A date in the box: its token column holds the day as YYYYMMDD, so a typed day meets it as a prefix; the field answers no explicit match."},
+	{"search.partitioned", "A search index partitioned by the bare @domain column: a sector's box reads its own partition."},
+	{"@searchAlso", "@searchAlso(Child.Field): the parent's box also searches a child table's text through the child's search index, joined on the foreign key; the child field's own permission governs the branch, and the child's box searches the field as well."},
+	{"search.pii-posts", "A box over a resource whose box searches a PII field sends the filter in the request body; the URL form is refused."},
+	{"search.denied-field", "A box field the caller may not read drops out of the box without a word; an explicit match on it is a 403."},
+	{"search.conditional-field", "A box field held under a condition matches only rows meeting the condition: the match is conjoined with the grant's condition."},
+	{"search.key-set", "A box spanning two search indexes: each term's keys are gathered per index and joined back on the resource's key, so the box must join the rest of the filter with AND alone, and a box inside an OR is refused."},
+	{"search.view", "A view's field names the table column it projects (search:\"Table.Column\") and the SQL projects that column's token column under its own name, so the view's box and matches ride the table's index."},
+	{"search.memory", "A computed resource's allow_filter text field answers the three matches in memory and joins the box, which the handler evaluates over the folded rows."},
+	{"search.quoted-value", "A quoted filter value, with backslash escapes, carries the grammar's separators: name:eq:\"Halvard Freight\"."},
+	{"metadata.search", "FieldMeta.search and ResourceMeta.searchFields: the browser learns which matches a column answers and which fields the box searches from the generated metadata, and draws the controls nowhere else."},
+
 	// Structure.
 	{"interleaved-table", "An interleaved child table."},
 	{"compound-key", "A compound primary key."},

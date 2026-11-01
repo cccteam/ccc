@@ -23,7 +23,11 @@ type (
 	// (a view with no key lists only). A bounded source with a suppressed read fails
 	// generation naming the two ways out.
 	//
-	// Demonstrates: @enumerate.key-view, @virtual, virtual.domain, virtual.keyed-read, outlet.shared.
+	// The generator cannot read the view's SQL, so Name says which table column it
+	// projects (search:"Clients.Name"), the SQL projects that column's token column under
+	// its own name, and the roster's box and Name's matches ride ClientsSearch.
+	//
+	// Demonstrates: @enumerate.key-view, @virtual, virtual.domain, virtual.keyed-read, outlet.shared, search.view.
 	//
 	// @virtual
 	// @permissionScope(domain)
@@ -35,7 +39,7 @@ type (
 		ID ccc.UUID `spanner:"Id" index:"true"`
 		// @domain
 		SectorID       string `spanner:"SectorId"       index:"true"`
-		Name           string `spanner:"Name"           index:"true"`
+		Name           string `spanner:"Name"           index:"true" search:"Clients.Name"`
 		Trusted        bool   `spanner:"Trusted"`
 		ContactCount   int64  `spanner:"ContactCount"`
 		SectorMissions int64  `spanner:"SectorMissions"`

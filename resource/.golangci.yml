@@ -87,6 +87,7 @@ linters:
             - go.uber.org/mock/gomock
             - golang.org/x/crypto/hkdf
             - golang.org/x/sync/errgroup
+            - golang.org/x/text/unicode/norm
             - google.golang.org/api/googleapi
             - google.golang.org/api/idtoken
             - golang.org/x/mod/semver

@@ -43,6 +43,11 @@ type Statement struct {
 	// otherwise. The readers scan them into the Row envelope.
 	cursorColumns []cursorColumn
 
+	// optimizerVersion is the query optimizer version the Spanner readers name in
+	// the statement's request options, "" to leave the database's own. A statement
+	// carrying a search predicate names searchOptimizerVersion (search.go).
+	optimizerVersion string
+
 	SQL    string
 	Params map[string]any
 }

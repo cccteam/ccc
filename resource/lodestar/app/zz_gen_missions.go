@@ -21,16 +21,16 @@ import (
 
 func (a *App) Missions() http.HandlerFunc {
 	type mission struct {
-		ID                 ccc.UUID              `json:"id"                 index:"true"        perm:"-"`
+		ID                 ccc.UUID              `json:"id"                 index:"true"                                                        perm:"-"`
 		SectorID           string                `json:"sectorId"           index:"true"`
 		ClientID           ccc.UUID              `json:"clientId"           index:"true"`
 		KindID             string                `json:"kindId"             index:"true"`
-		Title              string                `json:"title"`
+		Title              string                `json:"title"              search:"token=Title_Search;index=MissionsSearch;role=text;contains"`
 		Brief              *string               `json:"brief"`
 		BriefingTemplateID *string               `json:"briefingTemplateId"`
 		Hazard             resources.HazardLevel `json:"hazard"`
 		Fee                decimal.Decimal       `json:"fee"                allow_filter:"true"`
-		Deadline           time.Time             `json:"deadline"           index:"true"        masking:"positional"`
+		Deadline           time.Time             `json:"deadline"           index:"true"                                                        masking:"positional" search:"token=Deadline_Search;index=MissionsSearch;role=date;contains;zone=UTC"`
 		RequiredCertID     *string               `json:"requiredCertId"     index:"true"`
 		BookedBy           string                `json:"bookedBy"`
 		AssignedSquadronID ccc.NullUUID          `json:"assignedSquadronId" index:"true"`
@@ -166,16 +166,16 @@ func (a *App) Missions() http.HandlerFunc {
 
 func (a *App) Mission() http.HandlerFunc {
 	type response struct {
-		ID                 ccc.UUID              `json:"id"                 index:"true"         perm:"-"`
+		ID                 ccc.UUID              `json:"id"                 index:"true"                                                        perm:"-"`
 		SectorID           string                `json:"sectorId"`
 		ClientID           ccc.UUID              `json:"clientId"`
 		KindID             string                `json:"kindId"`
-		Title              string                `json:"title"`
+		Title              string                `json:"title"              search:"token=Title_Search;index=MissionsSearch;role=text;contains"`
 		Brief              *string               `json:"brief"`
 		BriefingTemplateID *string               `json:"briefingTemplateId"`
 		Hazard             resources.HazardLevel `json:"hazard"`
 		Fee                decimal.Decimal       `json:"fee"`
-		Deadline           time.Time             `json:"deadline"           masking:"positional"`
+		Deadline           time.Time             `json:"deadline"           masking:"positional"                                                search:"token=Deadline_Search;index=MissionsSearch;role=date;contains;zone=UTC"`
 		RequiredCertID     *string               `json:"requiredCertId"`
 		BookedBy           string                `json:"bookedBy"`
 		AssignedSquadronID ccc.NullUUID          `json:"assignedSquadronId"`

@@ -351,6 +351,10 @@ type indexMeta struct {
 	NullFiltered bool
 	// Managed marks an index Spanner created to back a foreign key.
 	Managed bool
+	// Search marks a search index (CREATE SEARCH INDEX): its key is its TOKENLIST
+	// columns, then its partition columns, and it serves the search functions alone,
+	// never a seek or an order (search.go).
+	Search  bool
 	Key     []indexColumn
 	Storing []string
 }
@@ -390,6 +394,12 @@ type columnMeta struct {
 	// reads for a table that stores files (CascadeReleaseFinding).
 	DeleteRule string
 	HasDefault bool
+	// GenerationExpression is a generated column's expression as
+	// INFORMATION_SCHEMA.COLUMNS spells it, "" on a plain column. A TOKENLIST column's
+	// names the tokenizer the search facts derive from, and a LOWER(col) column
+	// leading an index is the prefix fact (search.go); a field over any generated
+	// column is output-only by derivation.
+	GenerationExpression string
 }
 
 type generatedRoute struct {
@@ -1182,6 +1192,16 @@ type resourceInfo struct {
 	// its consolidated arm are gated behind; nil when the resource is not gated.
 	Feature *featureGate
 
+	// SearchBranches are the resource's @searchAlso declarations, resolved once every
+	// table-backed resource is extracted (resolveSearchBranches): the child text its
+	// search box also searches. searchAlso holds the declarations as written until then.
+	SearchBranches []*searchBranch
+	searchAlso     []searchAlsoDecl
+	// searchWarnings are the schema findings the search facts raised (an unpartitioned
+	// search index on a tenant-scoped resource, a child index not storing the join
+	// column), reported with the schema warnings.
+	searchWarnings []Warning
+
 	// IsTenant marks the tenant record (@tenant): the global, table-backed resource
 	// whose rows are the tenants. Its route name is the domain route segment, its key's
 	// route parameter the domain route parameter, and its generated write paths keep
@@ -1581,6 +1601,18 @@ type resourceField struct {
 	// Formerly is the field's former name as its @formerly wrote it; empty for a field
 	// never renamed. Its wire name (FormerWireName) is answered beside the current one.
 	Formerly string
+
+	// Search is the field's search vocabulary (README section 4): the search fact its
+	// column's TOKENLIST column in the table's search index states, the prefix fact a
+	// lowercased stored column leading an index states, or, on a view, the fact the
+	// authored search tag names. Nil on a field with neither. The list and read request
+	// structs carry it as the search tag, and the TypeScript metadata as the field's
+	// matches.
+	Search *resource.SearchSpec
+
+	// IsGenerated marks a field over a generated column (GENERATION_EXPRESSION): the
+	// database computes the value, so the field is output-only by derivation.
+	IsGenerated bool
 }
 
 // FormerWireName is the field's former wire name, derived from Formerly as the current
@@ -1878,8 +1910,9 @@ func (f *resourceField) IsOutputOnly() bool {
 	// able to express a state write (transitions live in RPC bodies). A
 	// tenant-key column is the same shape: the framework stamps it from the
 	// request's domain partition, so the wire cannot write it. A @file key
-	// column too: only Go code writes it, as an @upload body does.
-	if f.IsState || f.IsTenantKey || f.IsFileKey {
+	// column too: only Go code writes it, as an @upload body does. And a
+	// generated column: the database computes it, and refuses a write.
+	if f.IsState || f.IsTenantKey || f.IsFileKey || f.IsGenerated {
 		return true
 	}
 
@@ -2038,7 +2071,7 @@ func (f *resourceField) IsRequired() bool {
 }
 
 func (f *resourceField) IsQueryClauseEligible() bool {
-	if f.IsIndex || f.IsUniqueIndex {
+	if f.IsIndex || f.IsUniqueIndex || f.Search != nil {
 		return true
 	}
 
@@ -2056,7 +2089,10 @@ func (f *resourceField) TypescriptFilterable() string {
 	if f.IsIndex || f.IsUniqueIndex {
 		return tsFilterableAlways
 	}
-	if f.HasTag(allowFilterTagKey) {
+	if f.HasTag(allowFilterTagKey) || f.Search != nil {
+		// A field filterable through its search fact alone: its ordinary operators need
+		// an indexed companion like allow_filter's, and its matches stand alone, as the
+		// field's search list says.
 		return tsFilterableWithIndexed
 	}
 
@@ -2133,6 +2169,7 @@ const (
 	directoryDefaultSeatKeyword string = "directoryDefaultSeat" // Marks the directories record's string column naming the role a stranger the directory vouches for is seated with at their first sign-in, NULL where the tenant admits them by invitation only
 	formerlyKeyword             string = "formerly"             // Declares a field's or a method's former name, answered beside the current one while older applications still send it: @formerly(Title)
 	scheduleKeyword             string = "schedule"             // Declares an RPC method a scheduled route Cloud Scheduler calls: @schedule("0 3 * * *"[, zone: "America/Denver", log: onEvent])
+	searchAlsoKeyword           string = "searchAlso"           // Declares a child table's text a table-backed resource's search box also searches, one hop down a foreign key: @searchAlso(ClientContact.DisplayName[, via: ClientId])
 )
 
 func resourceKeywords() map[string]genlang.KeywordOpts {
@@ -2176,6 +2213,7 @@ func resourceKeywords() map[string]genlang.KeywordOpts {
 		directoryDefaultSeatKeyword: {genlang.ScanField: genlang.NoArgs | genlang.Exclusive},
 		formerlyKeyword:             {genlang.ScanStruct: genlang.ArgsRequired | genlang.Exclusive, genlang.ScanField: genlang.ArgsRequired | genlang.Exclusive},
 		scheduleKeyword:             {genlang.ScanStruct: genlang.ArgsRequired | genlang.Exclusive},
+		searchAlsoKeyword:           {genlang.ScanStruct: genlang.ArgsRequired},
 	}
 }
 

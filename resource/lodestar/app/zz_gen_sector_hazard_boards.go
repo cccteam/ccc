@@ -28,8 +28,8 @@ func (a *App) SectorHazardBoards() http.HandlerFunc {
 
 	type sectorHazardBoard struct {
 		ShipID       ccc.UUID  `json:"shipId"       perm:"-"`
-		Subsystem    string    `json:"subsystem"    allow_filter:"true" perm:"-"`
-		ShipName     string    `json:"shipName"     allow_filter:"true"`
+		Subsystem    string    `json:"subsystem"    allow_filter:"true" perm:"-"        search:"memory"`
+		ShipName     string    `json:"shipName"     allow_filter:"true" search:"memory"`
 		SectorID     string    `json:"sectorId"`
 		WorstReading float64   `json:"worstReading"`
 		RecordedAt   time.Time `json:"recordedAt"`

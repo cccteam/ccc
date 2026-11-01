@@ -541,8 +541,12 @@ func Test_typescriptResourcesTemplate_filterable(t *testing.T) {
 				return tsResourcesData{ComputedResources: []*computedResource{board}, GenPrefix: "zz_gen"}
 			},
 			wantContains: []string{
-				"{ fieldName: 'shipName', displayType: 'string', required: false, isIndex: false, filterable: 'always' }",
+				// An allow_filter text field is searched in memory too: the metadata names
+				// the three matches, and the resource lists the field under searchFields.
+				"{ fieldName: 'shipName', displayType: 'string', required: false, isIndex: false, filterable: 'always', search: ['contains', 'startswith', 'endswith'] }",
+				"{ fieldName: 'note', displayType: 'string', required: false, isIndex: false, filterable: 'always', search: ['contains', 'startswith', 'endswith'] }",
 				"{ fieldName: 'subsystem', displayType: 'string', required: false, isIndex: false }",
+				"searchFields: ['shipName', 'note'],",
 			},
 			wantNotContains: []string{"filterable: 'withIndexed'"},
 		},

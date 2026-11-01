@@ -40,7 +40,11 @@ type (
 	// memory (Collect): the contrast to the ledger's SQL pushdown. The board declares a
 	// default page but no maximum, so limit=all is legal on it.
 	//
-	// Demonstrates: @computed, computed.domain, computed.compound-key, computed.conditional-grant, computed.fold, computed.take-filter, rpc.nested-shape, paging.limit-all, machine-identity.
+	// ShipName and Subsystem are text and allow_filter, so they answer the three text
+	// matches in memory and join the board's box, which the handler evaluates over the
+	// folded rows.
+	//
+	// Demonstrates: @computed, computed.domain, computed.compound-key, computed.conditional-grant, computed.fold, computed.take-filter, rpc.nested-shape, paging.limit-all, machine-identity, search.memory.
 	//
 	// @computed
 	// @permissionScope(domain)
@@ -88,16 +92,20 @@ func ListSectorHazardBoard(ctx context.Context, qSet *resource.QuerySet[SectorHa
 			return
 		}
 
+		// Take is all-or-nothing per field, so the body answers every operator the
+		// field admits: an equality narrows the Ship query, and a text match
+		// (contains, startswith, endswith: the field is allow_filter text) is applied
+		// to the ship's name here, the way the handler would apply it over a row.
 		var shipNames []string
+		var nameMatches []resource.Condition
 		for _, condition := range qSet.Filter().Take("ShipName") {
-			// Only an equality narrows the Ship query; any other operator goes
-			// back to the handler by not being taken. Take is all-or-nothing per
-			// field, so the condition is re-applied here for the operators the
-			// query cannot express.
-			if condition.Operator == opEqual {
+			switch {
+			case condition.Operator == opEqual:
 				shipNames = append(shipNames, fmt.Sprint(condition.Value))
-			} else {
-				yield(nil, errors.Newf("ListSectorHazardBoard: shipName supports eq only, got %s", condition.Operator))
+			case condition.IsTextMatch():
+				nameMatches = append(nameMatches, condition)
+			default:
+				yield(nil, errors.Newf("ListSectorHazardBoard: shipName supports eq and the text matches, got %s", condition.Operator))
 
 				return
 			}
@@ -110,7 +118,13 @@ func ListSectorHazardBoard(ctx context.Context, qSet *resource.QuerySet[SectorHa
 			return
 		}
 
+	boards:
 		for _, board := range boards {
+			for _, condition := range nameMatches {
+				if !condition.MatchesText(board.ShipName) {
+					continue boards
+				}
+			}
 			if !yield(board, nil) {
 				return
 			}

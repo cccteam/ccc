@@ -22,9 +22,9 @@ import (
 func (a *App) Clients() http.HandlerFunc {
 	type client struct {
 		ID           ccc.UUID `json:"id"           index:"true"        perm:"-"`
-		Name         string   `json:"name"         index:"true"`
-		ContactName  string   `json:"contactName"  pii:"true"`
-		ContactEmail string   `json:"contactEmail" allow_filter:"true" pii:"true"`
+		Name         string   `json:"name"         index:"true"        search:"token=Name_Search;index=ClientsSearch;role=text;anchors=prefix,suffix;contains"`
+		ContactName  string   `json:"contactName"  pii:"true"          search:"token=ContactName_Search;index=ClientsSearch;role=text;contains"`
+		ContactEmail string   `json:"contactEmail" allow_filter:"true" pii:"true"                                                                              search:"token=ContactEmail_Search;index=ClientsSearch;role=text;contains"`
 		Trusted      bool     `json:"trusted"`
 		Insured      *bool    `json:"insured"`
 	}
@@ -116,9 +116,9 @@ func (a *App) Clients() http.HandlerFunc {
 func (a *App) Client() http.HandlerFunc {
 	type response struct {
 		ID           ccc.UUID `json:"id"           index:"true" perm:"-"`
-		Name         string   `json:"name"         index:"true"`
-		ContactName  string   `json:"contactName"  pii:"true"`
-		ContactEmail string   `json:"contactEmail" pii:"true"`
+		Name         string   `json:"name"         index:"true" search:"token=Name_Search;index=ClientsSearch;role=text;anchors=prefix,suffix;contains"`
+		ContactName  string   `json:"contactName"  pii:"true"   search:"token=ContactName_Search;index=ClientsSearch;role=text;contains"`
+		ContactEmail string   `json:"contactEmail" pii:"true"   search:"token=ContactEmail_Search;index=ClientsSearch;role=text;contains"`
 		Trusted      bool     `json:"trusted"`
 		Insured      *bool    `json:"insured"`
 	}

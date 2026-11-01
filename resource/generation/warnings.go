@@ -117,6 +117,7 @@ func (c *client) schemaWarnings(resources []*resourceInfo) []Warning {
 
 	var warnings []Warning
 	for _, res := range sorted {
+		warnings = append(warnings, res.searchWarnings...)
 		if res.IsVirtual || res.ListHandlerDisabled() || res.DomainBinding == nil {
 			continue
 		}
@@ -187,7 +188,7 @@ func (t *tableMetadata) servesOrder(tenantColumn string, order []resource.SortFi
 	}
 
 	for _, index := range t.Indexes {
-		if index.NullFiltered || len(index.Key) < len(wanted) {
+		if index.NullFiltered || index.Search || len(index.Key) < len(wanted) {
 			continue
 		}
 		if slices.Equal(index.Key[:len(wanted)], wanted) {
