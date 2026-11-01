@@ -185,6 +185,12 @@ linters:
           - gosec
         path: internal/check/secondfactor\.go
         text: G703
+      # impulse upgrade's feature-flags-link recipe writes the link into the header files of
+      # the application's own browser applications, found under their web roots.
+      - linters:
+          - gosec
+        path: internal/recipe/featureflagslink\.go
+        text: G703
       # Tests edit copies of the fixture applications under their own temporary directory.
       - linters:
           - gosec

@@ -1178,9 +1178,9 @@ The check then fails on `feature-flags`, because the new flag gates nothing and 
 nowhere, and the brief hands the agent what is left: what to gate (`@feature(<Constant>)`
 on a resource, a field or a method, or a read in Go or in the browser), the description to
 write in place of the stub, how a flag is flipped (the generated `SetFeature` method
-under the `FeatureAdministrator` role, which the development login holds), and where the
-library's `FeatureFlagsDialog` link lives (`openFeatureFlagsDialog(inject(MatDialog))`
-from `@cccteam/resource-angular/ccc-feature-flags`; the application decides the place).
+under the `FeatureAdministrator` role, which the development login holds), and that the
+header's Feature flags link opens the library's `FeatureFlagsDialog` (`openFeatureFlagsDialog`
+from `@cccteam/resource-angular/ccc-feature-flags`, shown under List on `FeatureFlags`).
 
 ```sh
 impulse add feature cargo_manifest --agent
