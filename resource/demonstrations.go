@@ -111,7 +111,7 @@ var Demonstrations = []Demonstration{
 	{"search.date", "A date in the box: its token column holds the day as YYYYMMDD, so a typed day meets it as a prefix; the field answers no explicit match."},
 	{"search.partitioned", "A search index partitioned by the bare @domain column: a sector's box reads its own partition."},
 	{"@searchAlso", "@searchAlso(Child.Field): the parent's box also searches a child table's text through the child's search index, joined on the foreign key; the child field's own permission governs the branch, and the child's box searches the field as well."},
-	{"search.pii-posts", "A box over a resource whose box searches a PII field sends the filter in the request body; the URL form is refused."},
+	{"search.pii-posts", "A box over a resource whose box searches a PII field sends the filter in the request body, and the URL form is refused; a caller whose grants deny every PII field the box would search keeps the box in the URL."},
 	{"search.denied-field", "A box field the caller may not read drops out of the box without a word; an explicit match on it is a 403."},
 	{"search.conditional-field", "A box field held under a condition matches only rows meeting the condition: the match is conjoined with the grant's condition."},
 	{"search.key-set", "A box spanning two search indexes: each term's keys are gathered per index and joined back on the resource's key, so the box must join the rest of the filter with AND alone, and a box inside an OR is refused."},

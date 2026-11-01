@@ -700,6 +700,87 @@ func TestQueryDecoder_Search(t *testing.T) {
 		}
 	})
 
+	t.Run("Decode keeps a box in the URL when the caller's grants deny every PII field it would search", func(t *testing.T) {
+		t.Parallel()
+
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/rows?"+url.Values{"filter": {`*:search:"ann"`}}.Encode(), http.NoBody)
+		perms := &fakeUserPermissions{granted: map[accesstypes.Permission][]accesstypes.Resource{accesstypes.List: {"searchRows", "searchRows.name", "searchRows.phone", "searchRows.bornOn"}}}
+		qSet, err := newDecoder(t).Decode(req, perms, testScope)
+		if err != nil {
+			t.Fatalf("Decode() error = %v", err)
+		}
+		if !qSet.searchBox {
+			t.Error("searchBox = false, want true")
+		}
+		if diff := cmp.Diff([][]accesstypes.Resource{{"searchRows.email"}}, perms.gotResources); diff != "" {
+			t.Errorf("the placement asked about the wrong fields (-want +got):\n%s", diff)
+		}
+	})
+
+	t.Run("Decode refuses a box in the URL when the caller may search a PII field, granted or conditional", func(t *testing.T) {
+		t.Parallel()
+
+		for name, perms := range map[string]*fakeUserPermissions{
+			"granted":     {granted: map[accesstypes.Permission][]accesstypes.Resource{accesstypes.List: {"searchRows.email"}}},
+			"conditional": {conditional: map[accesstypes.Permission][]accesstypes.Resource{accesstypes.List: {"searchRows.email"}}},
+		} {
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/rows?"+url.Values{"filter": {`*:search:"ann"`}}.Encode(), http.NoBody)
+			_, err := newDecoder(t).Decode(req, perms, testScope)
+			if err == nil || !strings.Contains(err.Error(), "send the filter in the request body") {
+				t.Errorf("%s: Decode() error = %v, want the body placement refusal", name, err)
+			}
+		}
+	})
+
+	t.Run("Decode asks no placement question of a posted box", func(t *testing.T) {
+		t.Parallel()
+
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/rows", strings.NewReader(`{"filter":"*:search:\"ann\""}`))
+		req.Header.Set("Content-Type", "application/json")
+		perms := &fakeUserPermissions{granted: map[accesstypes.Permission][]accesstypes.Resource{accesstypes.List: {"searchRows.email"}}}
+		if _, err := newDecoder(t).Decode(req, perms, testScope); err != nil {
+			t.Fatalf("Decode() error = %v", err)
+		}
+		if perms.checkCalls != 0 {
+			t.Errorf("Check() called %d times at decode, want none", perms.checkCalls)
+		}
+	})
+
+	t.Run("a PII branch keeps the box out of the URL unless the caller is denied the child field", func(t *testing.T) {
+		t.Parallel()
+
+		piiBranch := searchBranch
+		piiBranch.PII = true
+		keyBranch := piiBranch
+		keyBranch.Tag = ""
+		for name, tt := range map[string]struct {
+			branch SearchBranch
+			perms  *fakeUserPermissions
+			want   bool
+		}{
+			"the child field denied":  {branch: piiBranch, perms: &fakeUserPermissions{}, want: false},
+			"the child field granted": {branch: piiBranch, perms: &fakeUserPermissions{granted: map[accesstypes.Permission][]accesstypes.Resource{accesstypes.List: {"Contacts.displayName"}}}, want: true},
+			"a key field, exempt":     {branch: keyBranch, perms: &fakeUserPermissions{}, want: true},
+		} {
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/rows", strings.NewReader(`{"filter":"*:search:\"ann\""}`))
+			req.Header.Set("Content-Type", "application/json")
+			qSet, err := newDecoder(t).Decode(req, tt.perms, testScope)
+			if err != nil {
+				t.Fatalf("%s: Decode() error = %v", name, err)
+			}
+			meta := *qSet.rMeta
+			meta.searchBranches = []SearchBranch{tt.branch}
+			qSet.rMeta = &meta
+			got, err := qSet.searchBoxReachesPII(t.Context(), nil)
+			if err != nil {
+				t.Fatalf("%s: searchBoxReachesPII() error = %v", name, err)
+			}
+			if got != tt.want {
+				t.Errorf("%s: searchBoxReachesPII() = %v, want %v", name, got, tt.want)
+			}
+		}
+	})
+
 	t.Run("a match that names no PII field travels in the URL", func(t *testing.T) {
 		t.Parallel()
 

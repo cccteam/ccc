@@ -39,9 +39,9 @@ type (
 	// the client contact's display name to the box through the contact table's own index,
 	// joined on ClientId. ContactEmail is PII, so a filter carrying the box posts. The
 	// ClientBrowser role reads name alone under `trusted = true`: its box drops the
-	// contact fields and the branch without a word, matches a name only on a trusted row,
-	// and an explicit `contactEmail:contains:` from that role is a 403. A quoted value
-	// carries the grammar's separators (`name:eq:"Halvard Freight"`).
+	// contact fields and the branch without a word and so travels in the URL, matches a
+	// name only on a trusted row, and an explicit `contactEmail:contains:` from that role
+	// is a 403. A quoted value carries the grammar's separators (`name:eq:"Halvard Freight"`).
 	//
 	// Demonstrates: pii, pii.filter-placement, allow_filter, @attribute.bool, @attribute.nullable-bool, consolidation.exclusion, commit.constraint-refusal, nullboolean, search.box, search.match, @searchAlso, search.pii-posts, search.denied-field, search.conditional-field, search.quoted-value, metadata.search.
 	//

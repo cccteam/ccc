@@ -118,8 +118,10 @@ func TestSearch(t *testing.T) {
 		{name: "a term nothing holds answers an empty list", user: "governor", method: http.MethodPost, target: consoleAPI + "/clients", body: box("zephyr"), wantStatus: http.StatusOK, wantNames: []string{}},
 		{name: "a second box in one filter is refused", user: "governor", method: http.MethodPost, target: consoleAPI + "/clients", body: `{"filter":"*:search:\"a\",*:search:\"b\""}`, wantStatus: http.StatusBadRequest},
 		{name: "the box joins the rest of the filter with AND: a term every client meets, narrowed by a match on the name", user: "governor", method: http.MethodPost, target: consoleAPI + "/clients", body: `{"filter":"name:startswith:merid,*:search:\"example\""}`, wantStatus: http.StatusOK, wantNames: []string{"Meridian Survey Office"}},
-		// The PII placement: the box searches ContactEmail, so a filter carrying it posts.
+		// The PII placement: the box searches ContactEmail, so a filter carrying it posts,
+		// unless the caller's grants deny every PII field it would search.
 		{name: "a box over a resource whose box searches a PII field is refused in the URL", user: "governor", target: consoleAPI + "/clients?" + filter(`*:search:"halvard"`), wantStatus: http.StatusBadRequest, wantBody: "request body"},
+		{name: "the same box stays in the URL for the ClientBrowser role, which reads the name alone: the PII field is denied, so the box never searches it", user: "cadet", target: consoleAPI + "/clients?" + filter(`*:search:"merid"`), wantStatus: http.StatusOK, wantNames: []string{"Meridian Survey Office"}},
 		{name: "an explicit match on the PII field is refused in the URL too", user: "governor", target: consoleAPI + "/clients?" + filter(`contactEmail:contains:halvard`), wantStatus: http.StatusBadRequest},
 		{name: "an explicit match on the PII field, posted, answers", user: "governor", method: http.MethodPost, target: consoleAPI + "/clients", body: `{"filter":"contactEmail:contains:halvard"}`, wantStatus: http.StatusOK, wantNames: []string{"Halvard Freight"}},
 		// The matches: Name's tokens are anchored, the contact fields' are not.
