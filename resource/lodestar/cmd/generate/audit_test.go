@@ -9,7 +9,7 @@ import (
 
 // TestAuditFindings pins the audit pass's findings over this application as typed
 // values: exactly one, the cascade finding on RefitTask, whose table is interleaved in
-// Refits ON DELETE CASCADE and stores the task photo (migration 000040), so a refit
+// Refits ON DELETE CASCADE and stores the task photo, so a refit
 // deleted by patch takes its tasks and their photos past the release. The set is
 // exact: a new @file table on a cascade shows up here. Runs the generator in-process
 // like TestSchemaWarnings, so it regenerates the tree like go generate does; the

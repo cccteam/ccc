@@ -90,14 +90,14 @@ func TestRoles_validateAgainstTheCollection(t *testing.T) {
 	}
 }
 
-// TestFeatureFlagsMigration pins the feature flags migration to the library's statements:
+// TestFeatureFlagsMigration pins the schema's feature flags tables to the library's statements:
 // the tables the deploy's MigrateFeatures and the generated handlers read are the ones
 // resource.FeatureFlagsDDL declares, copied into the schema as every application copies
 // them.
 func TestFeatureFlagsMigration(t *testing.T) {
 	t.Parallel()
 
-	migration, err := os.ReadFile("../../schema/migrations/000042_FeatureFlags.up.sql")
+	migration, err := os.ReadFile("../../schema/migrations/000001_Baseline.up.sql")
 	if err != nil {
 		t.Fatalf("os.ReadFile() error = %v", err)
 	}

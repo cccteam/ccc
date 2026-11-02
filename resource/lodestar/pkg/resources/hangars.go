@@ -14,7 +14,7 @@ type (
 	// ships is refused at commit; the refusal answers 409 naming Hangars, never the ships.
 	//
 	// Name carries the prefix fact alone: a stored LOWER(Name) column sits after SectorId
-	// in HangarsBySectorIdNameLower (migration 000060), so `name:startswith:anvil` seeks
+	// in HangarsBySectorIdNameLower, so `name:startswith:anvil` seeks
 	// that index with the sector bound, case-folded, and the field answers nothing else;
 	// Hangars has no search index, so no box.
 	//

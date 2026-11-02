@@ -42,7 +42,7 @@ type (
 	// withIndexed — the browser offers a fee filter only beside one on an indexed
 	// column, the same rule the database parse enforces. Deadline is that indexed
 	// column without leading any index: it sits directly after SectorId in
-	// MissionsBySectorIdDeadline (migration 000032), and the list binds the sector by
+	// MissionsBySectorIdDeadline, and the list binds the sector by
 	// equality, so a deadline filter alone seeks that index; the generated list struct
 	// tags Deadline index:"true" and its metadata says filterable: always.
 	//
@@ -55,7 +55,7 @@ type (
 	//
 	// Hazard is guarded at two points. The create validator answers a hazard outside 1..5
 	// as 400 naming the field before anything is buffered; the update path has no
-	// validator, so the schema's CK_Missions_Hazard (migration 000033) refuses the same
+	// validator, so the schema's CK_Missions_Hazard refuses the same
 	// value at commit, and the library answers that as 400 naming Missions. Its type is
 	// HazardLevel, a named variant of INT64, the column type the assessor's paging
 	// demonstration rides (see the type).
@@ -66,7 +66,7 @@ type (
 	// never reached from a request.
 	//
 	// The mission's box searches Title as text and Deadline as a date: MissionsSearch
-	// (migration 000060) carries Title's tokens and the deadline's day as YYYYMMDD, so a
+	// carries Title's tokens and the deadline's day as YYYYMMDD, so a
 	// typed day meets the deadline as a prefix, and the index is partitioned by SectorId,
 	// so a sector's search reads its own partition. Deadline answers no explicit match; it
 	// joins the box alone.

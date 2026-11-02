@@ -209,8 +209,17 @@ func ResetDevelopmentData(ctx context.Context, client *spanner.Client, migration
 		if table == schemaMigrationsTable || owned[table] {
 			continue
 		}
-		if _, err := client.Apply(ctx, []*spanner.Mutation{spanner.Delete(table, spanner.AllKeys())}); err != nil {
-			return errors.Wrapf(err, "spanner.Client.Apply(): emptying %s", table)
+		// SQL rather than a delete-all mutation: on a real instance the mutation never
+		// returned for CrewSessions holding rows, while this statement took 200ms
+		// (Enterprise edition, measured 2026-11-02; the emulator answers both).
+		if _, err := client.ReadWriteTransaction(ctx, func(ctx context.Context, tx *spanner.ReadWriteTransaction) error {
+			if _, err := tx.Update(ctx, spanner.Statement{SQL: "DELETE FROM `" + table + "` WHERE TRUE"}); err != nil {
+				return errors.Wrap(err, "spanner.ReadWriteTransaction.Update()")
+			}
+
+			return nil
+		}); err != nil {
+			return errors.Wrapf(err, "spanner.Client.ReadWriteTransaction(): emptying %s", table)
 		}
 	}
 

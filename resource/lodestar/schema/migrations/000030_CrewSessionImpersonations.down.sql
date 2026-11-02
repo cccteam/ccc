@@ -1,5 +1,0 @@
-DROP INDEX CrewSessionImpersonations_PrincipalUser_idx;
-
-DROP INDEX CrewSessionImpersonations_ActorUsername_idx;
-
-DROP TABLE CrewSessionImpersonations;

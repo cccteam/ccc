@@ -9,7 +9,7 @@ import (
 // TestSchemaWarnings pins the schema warnings the generator raises over this
 // application: exactly one index warning, DroidReports, the registered demonstration
 // that keeps no tenant-leading index while every other bare-tenant resource listing in
-// a declared order carries one (migration 000032), and one join-path warning per
+// a declared order carries one, and one join-path warning per
 // resource that resolves its sector through foreign keys. The set is exact: a new
 // bare-tenant resource without its index, or a new join path, shows up here. Runs the
 // generator in-process, so it regenerates the tree like go generate does. Requires the
