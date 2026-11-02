@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.6.14](https://github.com/cccteam/ccc/compare/impulse/v0.6.13...impulse/v0.6.14) (2026-11-02)
+
+
+### Features
+
+* **impulse:** every skeleton header carries the Feature flags link, shown to anyone holding List on FeatureFlags and opening the web library's dialog, and the 0.6.14 step's feature-flags-link recipe writes it into an existing application's headers ([#1259](https://github.com/cccteam/ccc/issues/1259)) ([7bf5ae6](https://github.com/cccteam/ccc/commit/7bf5ae6f8807e6c80998d989a4886d4b2ab00714))
+
+
+### Bug Fixes
+
+* **impulse:** the skeleton's pins move to resource v0.16.6 and the browser libraries 0.0.20 / 0.0.31 / 0.0.19, which carry search over resources, and the v0.6.14 ledger step names them ([#1263](https://github.com/cccteam/ccc/issues/1263)) ([bf23c47](https://github.com/cccteam/ccc/commit/bf23c4788cf95e6aceb337411d58d732981d7f17))
+
 ## [0.6.13](https://github.com/cccteam/ccc/compare/impulse/v0.6.12...impulse/v0.6.13) (2026-10-31)
 
 
