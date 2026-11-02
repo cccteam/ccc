@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.16.6](https://github.com/cccteam/ccc/compare/resource/v0.16.5...resource/v0.16.6) (2026-11-02)
+
+
+### Features
+
+* **resource:** search over resources: startswith, endswith and contains on a text field, and a search box over a resource's fields, derived from the schema's token columns and search index; [@search](https://github.com/search)Also branches, PII placement, per-field grants, the key-set statement on Spanner, and the generated search metadata with its PII and branch markers ([#1258](https://github.com/cccteam/ccc/issues/1258)) ([39a92bf](https://github.com/cccteam/ccc/commit/39a92bfd66df2daa0c185bf819fad64262bde67c))
+
+
+### Bug Fixes
+
+* **resource:** a filter whose top level is an OR is parenthesized before the tenancy, row-condition and cursor predicates, which bound to its last alternative alone ([#1258](https://github.com/cccteam/ccc/issues/1258)) ([39a92bf](https://github.com/cccteam/ccc/commit/39a92bfd66df2daa0c185bf819fad64262bde67c))
+* **resource:** a search box in the URL is admitted when the PII fields it would search are all denied to the caller; one the caller may search, granted or conditional, still sends the filter to the body ([#1262](https://github.com/cccteam/ccc/issues/1262)) ([49d30e9](https://github.com/cccteam/ccc/commit/49d30e921c5090a13cc280a2b37de277d9cedf16))
+
 ## [0.16.5](https://github.com/cccteam/ccc/compare/resource/v0.16.4...resource/v0.16.5) (2026-10-31)
 
 
