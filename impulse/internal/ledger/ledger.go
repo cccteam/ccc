@@ -863,7 +863,7 @@ var Steps = []Step{
 			ccc v0.3.7
 			ccc/accesstypes v0.7.1
 			ccc/cloud v0.2.3
-			ccc/resource v0.16.5
+			ccc/resource v0.16.6
 			ccc/tracer v0.3.2
 			db-initiator v0.4.3
 			httpio v0.7.22
@@ -871,13 +871,13 @@ var Steps = []Step{
 			session v0.13.20
 		`),
 		Web: web(`
-			@cccteam/resource 0.0.19
-			@cccteam/resource-angular 0.0.29
-			@cccteam/resource-firestore 0.0.18
+			@cccteam/resource 0.0.20
+			@cccteam/resource-angular 0.0.31
+			@cccteam/resource-firestore 0.0.19
 		`),
 		Recipes: []Recipe{recipe.FeatureFlagsLink{}},
 		Impulse: release("v0.6.14"),
-		Note:    "every browser application's header carries the Feature flags link, shown to anyone holding List on FeatureFlags and opening the web library's dialog, so a feature administrator has a door to the flags: the recipe writes it into each header that still has the skeleton's shape and names the one it cannot edit. No pin moves.",
+		Note:    "every browser application's header carries the Feature flags link, shown to anyone holding List on FeatureFlags and opening the web library's dialog, so a feature administrator has a door to the flags: the recipe writes it into each header that still has the skeleton's shape and names the one it cannot edit. The pins move to resource v0.16.6 and the browser libraries (@cccteam/resource 0.0.20, @cccteam/resource-angular 0.0.31, @cccteam/resource-firestore 0.0.19): search over resources, where the schema states a search fact for a field, as the matches in a column's menu and the search box on the list page and in a paged picker, with a filter that reaches a PII field posted on its own.",
 	},
 }
 
