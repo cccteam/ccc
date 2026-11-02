@@ -69,6 +69,9 @@ export const missionsConfig = rootConfig({
               listConcatFn: 'hyphen-concat',
               viewConcatFn: 'hyphen-concat',
               sorts: [{ field: ClientRosters.fieldName.name, direction: 'asc' }],
+              // The roster is paged and projects the clients' token column on Name, so the
+              // picker's panel carries the search box: typing narrows the page on the server.
+              searchable: true,
             }),
           }),
           field({ name: Missions.fieldName.kindId, label: 'Kind', cols: 4 }),
