@@ -23,6 +23,46 @@ func (b *SearchBranch) fieldResource() accesstypes.Resource {
 	return accesstypes.Resource(fmt.Sprintf("%s.%s", b.Resource, b.Tag))
 }
 
+// searchBoxReachesPII reports whether the box, as this caller searches it, reads a
+// sensitive field: a PII box field (piiFields) or a PII @searchAlso branch the
+// caller's grants do not deny. A denied field drops out of the box, so a box whose
+// PII fields are all denied discloses nothing sensitive and may travel in the URL.
+func (q *QuerySet[Resource]) searchBoxReachesPII(ctx context.Context, piiFields []accesstypes.Field) (bool, error) {
+	var resources []accesstypes.Resource
+	for _, field := range piiFields {
+		if !q.resourceSet.PermissionRequired(field, q.requiredPermission) {
+			// Exempt from field-level enforcement: every caller reads it.
+			return true, nil
+		}
+		resources = append(resources, q.resourceSet.Resource(field))
+	}
+	for i := range q.rMeta.searchBranches {
+		branch := &q.rMeta.searchBranches[i]
+		if !branch.PII {
+			continue
+		}
+		if branch.Tag == "" {
+			return true, nil
+		}
+		resources = append(resources, branch.fieldResource())
+	}
+	if len(resources) == 0 {
+		return false, nil
+	}
+
+	decisions, err := q.userPermissions.Check(ctx, q.env, q.scope, q.requiredPermission, resources...)
+	if err != nil {
+		return false, errors.Wrap(err, "resource.UserPermissions.Check()")
+	}
+	for _, res := range resources {
+		if !decisions[res].IsDenied() {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
 // checkSearchFieldsReadable decides the box's fields and branches under the caller's
 // grants: denied drops, conditional carries its decision for the rendering, granted
 // renders bare. Nothing is refused here.

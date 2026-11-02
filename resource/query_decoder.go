@@ -78,13 +78,15 @@ type QueryDecoder[Resource Resourcer, Request any] struct {
 	// hides every gated field.
 	features *FeatureSet
 	// boxFields are the request fields the search box searches, in declaration
-	// order; boxPII says one of them, or a @searchAlso branch, is PII, so a filter
-	// carrying the box posts; searchKeys is the resource's single-column key per
-	// parse target, which a box's key set joins on, nil when the request type marks
-	// no key or several.
-	boxFields  []accesstypes.Field
-	boxPII     bool
-	searchKeys map[DBType]string
+	// order, and boxPIIFields those among them that are PII; boxPII says one of
+	// them, or a @searchAlso branch, is PII, so a filter carrying the box posts
+	// unless the caller's grants deny every PII field it would search (Decode);
+	// searchKeys is the resource's single-column key per parse target, which a
+	// box's key set joins on, nil when the request type marks no key or several.
+	boxFields    []accesstypes.Field
+	boxPIIFields []accesstypes.Field
+	boxPII       bool
+	searchKeys   map[DBType]string
 }
 
 // WithFeatures installs the FeatureSet the decoder reads the gated fields' flags
@@ -164,7 +166,8 @@ func NewQueryDecoder[Resource Resourcer, Request any](resSet *Set[Resource]) (*Q
 	}
 
 	keyFields := primaryKeyFields(reflect.TypeOf(req))
-	boxFields, boxPII := searchBoxFields(filterParserFields)
+	boxFields, boxPIIFields := searchBoxFields(filterParserFields)
+	boxPII := len(boxPIIFields) > 0
 	for i := range resSet.ResourceMetadata().searchBranches {
 		branch := &resSet.ResourceMetadata().searchBranches[i]
 		boxPII = boxPII || branch.PII
@@ -178,14 +181,15 @@ func NewQueryDecoder[Resource Resourcer, Request any](resSet *Set[Resource]) (*Q
 		requestType:        reflect.TypeOf(req),
 		keyFields:          keyFields,
 		boxFields:          boxFields,
+		boxPIIFields:       boxPIIFields,
 		boxPII:             boxPII,
 		searchKeys:         searchKeyColumns(keyFields, resSet.ResourceMetadata()),
 	}, nil
 }
 
 // searchBoxFields lists the request fields that join the search box, in declaration
-// order, and whether one of them is PII.
-func searchBoxFields(fields map[jsonFieldName]FilterFieldInfo) ([]accesstypes.Field, bool) {
+// order, and the PII fields among them.
+func searchBoxFields(fields map[jsonFieldName]FilterFieldInfo) (boxFields, piiFields []accesstypes.Field) {
 	infos := make([]FilterFieldInfo, 0, len(fields))
 	seen := make(map[string]struct{}, len(fields))
 	for _, info := range fields {
@@ -200,14 +204,16 @@ func searchBoxFields(fields map[jsonFieldName]FilterFieldInfo) ([]accesstypes.Fi
 	}
 	slices.SortFunc(infos, func(a, b FilterFieldInfo) int { return a.order - b.order })
 
-	out := make([]accesstypes.Field, 0, len(infos))
-	pii := false
+	boxFields = make([]accesstypes.Field, 0, len(infos))
 	for _, info := range infos {
-		out = append(out, accesstypes.Field(info.GOFieldName))
-		pii = pii || info.PII
+		field := accesstypes.Field(info.GOFieldName)
+		boxFields = append(boxFields, field)
+		if info.PII {
+			piiFields = append(piiFields, field)
+		}
 	}
 
-	return out, pii
+	return boxFields, piiFields
 }
 
 // searchKeyColumns names the resource's single-column key per parse target (the Go
@@ -297,10 +303,19 @@ func MustNewQueryDecoder[Resource Resourcer, Request any](collection *GeneratedC
 
 // DecodeWithoutPermissions decodes an http.Request into a QuerySet without enforcing user permissions.
 func (d *QueryDecoder[Resource, Request]) DecodeWithoutPermissions(request *http.Request) (*QuerySet[Resource], error) {
+	// With no caller to ask, a box in the URL over a resource whose box searches a
+	// PII field is refused outright; Decode asks the caller's grants instead.
+	return d.decode(request, d.boxPII)
+}
+
+// decode builds the QuerySet from the request. boxPII says a search box in the URL
+// is refused because it would search a PII field; a filter naming a PII field in
+// the URL is refused regardless.
+func (d *QueryDecoder[Resource, Request]) decode(request *http.Request, boxPII bool) (*QuerySet[Resource], error) {
 	queryParams := request.URL.Query()
 
 	if filterStr := queryParams.Get(filterParam); filterStr != "" {
-		if err := d.checkForPII(filterStr); err != nil {
+		if err := d.checkForPII(filterStr, boxPII); err != nil {
 			return nil, err
 		}
 	}
@@ -383,9 +398,11 @@ func (d *QueryDecoder[Resource, Request]) requireOrder(qSet *QuerySet[Resource])
 }
 
 // Decode decodes an http.Request into a QuerySet and enables user permission enforcement
-// in the given domain partition.
+// in the given domain partition. A search box in the URL is admitted when the PII fields
+// it would search are all denied to the caller; one the caller may search sends the
+// filter to the body (DecodeWithoutPermissions, with no caller to ask, refuses it outright).
 func (d *QueryDecoder[Resource, Request]) Decode(request *http.Request, userPermissions UserPermissions, scope accesstypes.Scope) (*QuerySet[Resource], error) {
-	qSet, err := d.DecodeWithoutPermissions(request)
+	qSet, err := d.decode(request, false)
 	if err != nil {
 		return nil, err
 	}
@@ -396,6 +413,19 @@ func (d *QueryDecoder[Resource, Request]) Decode(request *http.Request, userPerm
 	}
 
 	qSet.EnableUserPermissionEnforcement(d.resourceSet, userPermissions, scope, perms[0])
+
+	// A box in the URL stays there when the PII fields it would search are all
+	// denied to this caller, since a denied field drops out of the box; one the
+	// caller may search, granted or conditional, sends the filter to the body.
+	if d.boxPII && qSet.searchBox && request.URL.Query().Get(filterParam) != "" {
+		reaches, err := qSet.searchBoxReachesPII(request.Context(), d.boxPIIFields)
+		if err != nil {
+			return nil, err
+		}
+		if reaches {
+			return nil, errSearchBoxInURL()
+		}
+	}
 
 	// The cursor is bound here and not in DecodeWithoutPermissions because its
 	// fingerprint covers the scope: a cursor from one tenant's walk is refused
@@ -683,20 +713,25 @@ func (d *QueryDecoder[Resource, Request]) filterExpressionParser(filterStr strin
 	return parser.Parse, nil
 }
 
-// checkForPII refuses a filter in the URL that names a sensitive field, or that
-// carries the search box where the box searches one: the text would be logged with
-// the URL, so such a filter posts.
-func (d *QueryDecoder[Resource, Request]) checkForPII(filterStr string) error {
+// checkForPII refuses a filter in the URL that names a sensitive field, or, when
+// boxPII says so, one that carries the search box: such a filter travels in the body.
+func (d *QueryDecoder[Resource, Request]) checkForPII(filterStr string, boxPII bool) error {
 	for _, fieldInfo := range d.filterConditionFields(filterStr) {
 		if fieldInfo.PII {
 			return httpio.NewBadRequestMessagef("cannot filter on sensitive field in URL: %s", fieldInfo.JSONFieldName)
 		}
 	}
-	if d.boxPII && d.hasSearchBox(filterStr) {
-		return httpio.NewBadRequestMessagef("cannot filter on sensitive field in URL: the search box searches a sensitive field; send the filter in the request body")
+	if boxPII && d.hasSearchBox(filterStr) {
+		return errSearchBoxInURL()
 	}
 
 	return nil
+}
+
+// errSearchBoxInURL is the refusal of a search box in the URL that would search a
+// sensitive field: the filter belongs in the request body.
+func errSearchBoxInURL() error {
+	return httpio.NewBadRequestMessagef("cannot filter on sensitive field in URL: the search box searches a sensitive field; send the filter in the request body")
 }
 
 // filterFields names the resource fields a filter expression touches, in first
