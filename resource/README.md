@@ -1841,7 +1841,7 @@ the second a record of every flip written in the flip's own transaction; the row
 their flag, so there is no foreign key. `resource.FeatureFlagsDDL(dbType)` renders the
 statements for Spanner and for PostgreSQL, and an application copies them into a
 migration as Lodestar does in
-[000042_FeatureFlags.up.sql](lodestar/schema/migrations/000042_FeatureFlags.up.sql),
+[000001_Baseline.up.sql](lodestar/schema/migrations/000001_Baseline.up.sql),
 pinned to the function by a test. The generator never derives a resource from the table:
 `FeatureFlags` has a `Description` column but no `Id`, and an enumeration table is
 recognized by the two together.

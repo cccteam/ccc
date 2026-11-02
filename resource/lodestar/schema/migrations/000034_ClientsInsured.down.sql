@@ -1,1 +1,0 @@
-ALTER TABLE Clients DROP COLUMN Insured;

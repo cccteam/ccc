@@ -1,5 +1,0 @@
-DROP INDEX MembersSessionTrustedDevicesByUser;
-DROP INDEX MembersSessionTrustedDevicesByTokenHash;
-DROP TABLE MembersSessionTrustedDevices;
-DROP INDEX MembersSessionFactorCodesByPending;
-DROP TABLE MembersSessionFactorCodes;

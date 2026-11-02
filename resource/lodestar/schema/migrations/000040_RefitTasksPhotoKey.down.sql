@@ -1,1 +1,0 @@
-ALTER TABLE RefitTasks DROP COLUMN PhotoKey;

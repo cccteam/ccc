@@ -1,1 +1,0 @@
-ALTER TABLE Missions DROP CONSTRAINT CK_Missions_Hazard;

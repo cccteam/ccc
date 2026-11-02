@@ -20,7 +20,7 @@ type (
 	// The table has no index leading with SectorId then RecordedAt on purpose: the
 	// resource is the registered demonstration of the generator's index warning, which
 	// names the CREATE INDEX the list wants at every generate. Every other bare-tenant
-	// resource that lists in a declared order carries that index (migration 000032).
+	// resource that lists in a declared order carries that index.
 	//
 	// Frame is the reading's raw frame, a telemetry.Frame: the type lives in the droid
 	// link's own package, which cmd/generate names with WithTypes, so the generator

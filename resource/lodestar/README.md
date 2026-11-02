@@ -480,11 +480,12 @@ project the application credentials reach.
    `GOOGLE_CLOUD_SPANNER_DATABASE_NAME` at the instance.
 3. `go run -tags skipAuth ./cmd/bootstrap` creates the database, applies the schema, seeds
    the world, checks both auths' policy stores against their role files, and creates the
-   personas. Schema changes on a
-   real instance are slow and counted against its limits (about six minutes for the
-   thirty migrations, measured 2026-09-11), so this runs once per database; every later
-   session starts with `go run -tags skipAuth ./cmd/bootstrap -reset`, which empties the
-   data and seeds it again with no schema change, in about two minutes.
+   personas. Schema changes on a real instance are slow and counted against its limits,
+   which is why the schema is one migration (`000001_Baseline` applies in about two minutes
+   on an Enterprise instance, where the sixty files it folds took more than thirteen,
+   measured 2026-11-02), and this runs once per database; every later session starts with
+   `go run -tags skipAuth ./cmd/bootstrap -reset`, which empties the data and seeds it again
+   with no schema change, in about a minute.
 4. `go run -tags skipAuth .` serves the application on `PORT` against the real database,
    and `overmind start -l console,portal` runs the browser apps against it.
 5. `./walkthrough.sh` runs every persona's proof; it moves workflow state, so reset before

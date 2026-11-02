@@ -1,1 +1,0 @@
-ALTER TABLE RefitTasks ADD COLUMN PhotoKey STRING(36);

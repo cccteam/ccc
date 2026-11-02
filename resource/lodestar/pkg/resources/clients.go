@@ -30,7 +30,7 @@ type (
 	// SalvageDesk role lists clients under, `insured IS NULL OR insured = true`: the
 	// salvage desk sees covered and undecided outfits, never refused ones.
 	//
-	// Clients is the search demonstration. The schema (migration 000060) gives Name,
+	// Clients is the search demonstration. The schema gives Name,
 	// ContactName and ContactEmail hidden token columns under one search index,
 	// ClientsSearch, and the generator derives the vocabulary from that alone: the three
 	// fields join the resource's search box (`*:search:"halvard example"`, every term
