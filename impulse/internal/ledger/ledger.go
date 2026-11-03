@@ -885,7 +885,7 @@ var Steps = []Step{
 			ccc v0.3.7
 			ccc/accesstypes v0.7.1
 			ccc/cloud v0.2.3
-			ccc/resource v0.16.7-0.20261103005747-bf08e734a562
+			ccc/resource v0.16.7
 			ccc/tracer v0.3.2
 			db-initiator v0.4.3
 			httpio v0.7.22
@@ -898,7 +898,6 @@ var Steps = []Step{
 			@cccteam/resource-firestore 0.0.21
 		`),
 		Impulse: release("v0.6.15"),
-		Pending: true,
 		Note:    "every list and record page on a table-backed resource is live by default: the generated metadata says whose changes are published (live, true on a table, false on a virtual or computed resource), the browser library reads it as the page's default, live: false opts a page out, and a page asking live of a resource whose changes are not published is told once and asks plainly; regeneration carries the metadata, no code change is needed. The pins move to resource at the commit that emits it, pending its release, and the browser libraries (@cccteam/resource 0.0.21, @cccteam/resource-angular 0.0.33, @cccteam/resource-firestore 0.0.20). The login page returns the browser to a server page named by returnUrl, as the persona sign-in's picker sends one: the web library's login component loads an address the server handed over and routes a page the guard remembered, so an application hosts pages behind its session with no change to its login page.",
 	},
 }
