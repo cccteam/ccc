@@ -221,7 +221,7 @@ func (a *App) PatchResources() http.HandlerFunc {
 		}); err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
-		live.Publish(ctx, a.LiveService(), "", touched)
+		live.Publish(ctx, a.LiveService(), liveDerivations, "", touched)
 		if tenantsWritten {
 			if err := a.TenantRoster().Reload(ctx); err != nil {
 				logger.FromCtx(ctx).Errorf("tenants: rereading the roster after the commit failed; this instance reloads on the tenants signal or at its backstop: %v", err)
