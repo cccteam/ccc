@@ -26,7 +26,15 @@ type (
 	// the board gathers each term's key set per index and joins it back on the key; the
 	// box then joins the rest of the filter with AND alone.
 	//
-	// Demonstrates: @rowsOf, @rowsOf.same-row, @virtual, virtual.domain, metadata.filterable, search.view, search.key-set.
+	// The board is live without a declaration: the generator reads the tables its query
+	// names off mission_boards.sql (Missions, Clients, Squadrons), writes them into the
+	// handler package's live derivations, and marks the board published in its metadata.
+	// A mission's write reaches the board's row and list subscribers under the mission's
+	// own key, as Missions' own do; a client's or a squadron's write reaches every
+	// subscriber of the board as one resource document, in every sector for Clients,
+	// which is global.
+	//
+	// Demonstrates: @rowsOf, @rowsOf.same-row, @virtual, virtual.domain, metadata.filterable, search.view, search.key-set, live.derived.
 	//
 	// @virtual
 	// @rowsOf(Missions)

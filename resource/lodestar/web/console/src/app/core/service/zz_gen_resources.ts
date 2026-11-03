@@ -520,7 +520,7 @@ const resourceMap = defineResourceMap({
   },
   [Resources.ClientRosters]: {
     route: 'sectors/{sectorID}/client-rosters',
-    live: false,
+    live: true,
     fields: [
       { fieldName: 'id', primaryKey: { ordinalPosition: 0 }, displayType: 'uuid', required: false, isIndex: true, filterable: 'always' },
       { fieldName: 'sectorId', displayType: 'string', required: true, isIndex: true, filterable: 'always' },
@@ -577,7 +577,7 @@ const resourceMap = defineResourceMap({
   },
   [Resources.FeeByKinds]: {
     route: 'fee-by-kinds',
-    live: false,
+    live: true,
     fields: [
       { fieldName: 'kindId', primaryKey: { ordinalPosition: 0 }, displayType: 'string', required: true, isIndex: true, filterable: 'always' },
       { fieldName: 'missionCount', displayType: 'number', required: true, isIndex: false },
@@ -622,7 +622,7 @@ const resourceMap = defineResourceMap({
   [Resources.MissionBoards]: {
     route: 'sectors/{sectorID}/mission-boards',
     rowsOf: Resources.Missions,
-    live: false,
+    live: true,
     fields: [
       { fieldName: 'id', primaryKey: { ordinalPosition: 0 }, displayType: 'uuid', required: false, isIndex: true, filterable: 'always' },
       { fieldName: 'sectorId', displayType: 'string', required: true, isIndex: true, filterable: 'always' },
@@ -656,7 +656,7 @@ const resourceMap = defineResourceMap({
   },
   [Resources.OpenMissionsBySquadrons]: {
     route: 'sectors/{sectorID}/open-missions-by-squadrons',
-    live: false,
+    live: true,
     fields: [
       { fieldName: 'squadronId', primaryKey: { ordinalPosition: 0 }, displayType: 'uuid', required: false, isIndex: true, filterable: 'always' },
       { fieldName: 'squadronName', displayType: 'string', required: true, isIndex: true, filterable: 'always' },
@@ -680,7 +680,7 @@ const resourceMap = defineResourceMap({
   [Resources.PilotAssignments]: {
     route: 'sectors/{sectorID}/pilot-assignments',
     rowsOf: Resources.SquadronMemberships,
-    live: false,
+    live: true,
     fields: [
       { fieldName: 'squadronId', primaryKey: { ordinalPosition: 0 }, displayType: 'enumerated', required: false, isIndex: true, filterable: 'always', enumeratedResource: Resources.Squadrons },
       { fieldName: 'userId', primaryKey: { ordinalPosition: 1 }, displayType: 'string', required: true, isIndex: true, filterable: 'always' },
@@ -824,7 +824,7 @@ const resourceMap = defineResourceMap({
   [Resources.SquadronRosters]: {
     route: 'sectors/{sectorID}/squadron-rosters',
     rowsOf: Resources.SquadronMemberships,
-    live: false,
+    live: true,
     fields: [
       { fieldName: 'squadronId', primaryKey: { ordinalPosition: 0 }, displayType: 'uuid', required: false, isIndex: true, filterable: 'always' },
       { fieldName: 'userId', primaryKey: { ordinalPosition: 1 }, displayType: 'string', required: true, isIndex: true, filterable: 'always' },
@@ -894,7 +894,7 @@ const resourceMap = defineResourceMap({
     createDisabled: true,
     updateDisabled: true,
     deleteDisabled: true,
-    live: false,
+    live: true,
     fields: [
       { fieldName: 'shipId', primaryKey: { ordinalPosition: 0 }, displayType: 'uuid', required: true, isIndex: false },
       { fieldName: 'subsystem', primaryKey: { ordinalPosition: 1 }, displayType: 'string', required: true, isIndex: false, filterable: 'always', search: ['contains', 'startswith', 'endswith'] },

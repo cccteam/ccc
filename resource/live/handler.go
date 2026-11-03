@@ -167,17 +167,18 @@ func SetCacheControl(w http.ResponseWriter, r *http.Request) {
 // Publish writes a committed request's changes into its subscribers' change sets, after
 // the commit and before the response: the rows the request's transactions wrote, each
 // group under the domain its patch was decoded in (domain is the request's route
-// domain, which rows written by hand take). It is bounded by PublishTimeout, a failure
-// is logged, and the request answers either way. Nothing happens for a request that
-// committed nothing.
-func Publish(ctx context.Context, svc Service, domain accesstypes.Domain, touched *resource.TouchedRows) {
+// domain, which rows written by hand take), expanded with the virtual and computed
+// resources those rows reach (derivations, the generated value; nil reaches none). It is
+// bounded by PublishTimeout, a failure is logged, and the request answers either way.
+// Nothing happens for a request that committed nothing.
+func Publish(ctx context.Context, svc Service, derivations *Derivations, domain accesstypes.Domain, touched *resource.TouchedRows) {
 	if touched.Empty() {
 		return
 	}
 	ctx, cancel := context.WithTimeout(ctx, PublishTimeout)
 	defer cancel()
 	for changeDomain, rows := range touched.Rows(domain) {
-		if err := svc.Publish(ctx, changeDomain, rows); err != nil {
+		if err := svc.Publish(ctx, changeDomain, derivations.Expand(rows)); err != nil {
 			logger.FromCtx(ctx).Errorf("live: publishing the changes of domain %q failed; the pages refetch at their next change: %v", changeDomain, err)
 		}
 	}

@@ -297,6 +297,24 @@ How it is wired:
   the repository, as the console's other browser proofs are run) that leaves the fleet
   board and comes back with no request to the server, then sees a hail produce a refetch
   carrying the change's timestamp as `_v`.
+- The derived resources. A page on a virtual or computed resource is live the same way
+  once the publish knows which tables change it. The generator reads each virtual
+  resource's tables off its embedded query: Mission Boards carries Missions' rows
+  (`@rowsOf`) and reads Clients and Squadrons; Squadron Rosters and Pilot Assignments
+  carry SquadronMemberships' rows and read Squadrons, Wings and, for the rosters, Pilots;
+  Client Rosters, Fee By Kinds and Open Missions By Squadrons carry no table's rows and
+  read Clients, ClientContacts, Missions, Sectors and Squadrons between them. The hazard
+  board is a computed resource, so it declares what its body folds,
+  `@changedBy(Ships, DroidReports)`; the other computed resources declare nothing and stay
+  plain, the expense manifests among them although their body reads Missions. The sets
+  are in [`app/zz_gen_live_derivations.go`](app/zz_gen_live_derivations.go), and each
+  such resource's metadata says `live: true`, so its pages are live by default. A
+  mission's write reaches the mission board's row and list subscribers under the
+  mission's own key, as Missions' own; a client's write, Clients being global, reaches
+  every board subscriber in every sector as one resource document; a ship's write
+  reaches the hazard board's subscribers in its sector. The integration suite plays all
+  three ([`live_test.go`](test/integration/live_test.go)).
+
 
 ## Feature flags
 

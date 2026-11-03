@@ -114,7 +114,7 @@ func (a *App) CompileBriefing() http.HandlerFunc {
 		}
 		result = answer
 
-		live.Publish(ctx, a.LiveService(), domain, touched)
+		live.Publish(ctx, a.LiveService(), liveDerivations, domain, touched)
 		if result == nil {
 			return httpio.NewEncoder(w).Ok(nil)
 		}

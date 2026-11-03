@@ -116,7 +116,7 @@ func (a *App) AttachRefitPhoto() http.HandlerFunc {
 		// The transaction committed with the keys recorded: the rows claim the
 		// objects, and nothing more happens to the store.
 
-		live.Publish(ctx, a.LiveService(), domain, touched)
+		live.Publish(ctx, a.LiveService(), liveDerivations, domain, touched)
 
 		return httpio.NewEncoder(w).Ok(nil)
 	})

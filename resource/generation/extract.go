@@ -49,7 +49,7 @@ func (c *client) structsToResources(structs []*parser.Struct, validators ...stru
 
 		// The annotations other kinds own: a method's frame, a view's table, and a
 		// field type's TypeScript type; and the name the library's flags resource holds.
-		if err := errors.Join(rejectRPCOnlyAnnotations(pStruct, annotations, "resource"), rejectRowsOf(pStruct, annotations, "table-backed resource"), rejectTypescriptAnnotation(pStruct, annotations, "table-backed resource"), c.rejectReservedResourceName(pStruct, "table-backed resource")); err != nil {
+		if err := errors.Join(rejectRPCOnlyAnnotations(pStruct, annotations, "resource"), rejectRowsOf(pStruct, annotations, "table-backed resource"), rejectChangedBy(pStruct, annotations, "table-backed resource"), rejectTypescriptAnnotation(pStruct, annotations, "table-backed resource"), c.rejectReservedResourceName(pStruct, "table-backed resource")); err != nil {
 			resourceErrors = append(resourceErrors, err)
 
 			continue
@@ -476,7 +476,7 @@ func (c *client) structsToVirtualResources(structs []*parser.Struct, validators 
 			continue
 		}
 		resource.Fields = fields
-		declareRowsOf(annotations, &resource.rowsOfDecl)
+		declareViewDeclarations(annotations, &resource.rowsOfDecl, &resource.publishDecl)
 
 		// A view declares the pickers its fields list and its order and page sizes as a
 		// table does, and its list handler and descriptor carry them the same way.
@@ -781,7 +781,7 @@ func (c *client) structsToRPCMethods(structs []*parser.Struct, validators ...str
 		// The annotations other kinds own: a resource's bindings, a view's table, and a
 		// field type's TypeScript type; and the masking tag, which a method's request
 		// never carries.
-		if err := errors.Join(rejectBindingAnnotations(s, annotations, "RPC method"), rejectRowsOf(s, annotations, "RPC method"), rejectTypescriptAnnotation(s, annotations, "RPC method"), rejectMaskingTags(s, "RPC method"), rejectFileAnnotations(s, annotations, "RPC method"), rejectTenantAnnotation(s, annotations, "@"+rpcKeyword+" struct"), rejectSearchAlso(s, annotations, "RPC method"), rejectReservedMethodName(s)); err != nil {
+		if err := errors.Join(rejectBindingAnnotations(s, annotations, "RPC method"), rejectRowsOf(s, annotations, "RPC method"), rejectChangedBy(s, annotations, "RPC method"), rejectTypescriptAnnotation(s, annotations, "RPC method"), rejectMaskingTags(s, "RPC method"), rejectFileAnnotations(s, annotations, "RPC method"), rejectTenantAnnotation(s, annotations, "@"+rpcKeyword+" struct"), rejectSearchAlso(s, annotations, "RPC method"), rejectReservedMethodName(s)); err != nil {
 			errs = append(errs, err)
 
 			continue
@@ -1015,7 +1015,7 @@ func (c *client) structsToCompResources(structs []*parser.Struct, validators ...
 			Struct: s,
 			Shape:  shape,
 		}
-		declareRowsOf(annotations, &res.rowsOfDecl)
+		declareViewDeclarations(annotations, &res.rowsOfDecl, &res.publishDecl)
 
 		if annotations.Struct.Has(suppressKeyword) {
 			if err := applyComputedSuppressDirectives(res, annotations.Struct.Get(suppressKeyword).Seq()); err != nil {

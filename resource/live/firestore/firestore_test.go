@@ -348,7 +348,7 @@ func TestService_Publish(t *testing.T) {
 			}
 			register(t, svc, now, subs...)
 
-			if err := svc.Publish(t.Context(), tt.domain, tt.touched(res)); err != nil {
+			if err := svc.Publish(t.Context(), tt.domain, live.Writes{Rows: tt.touched(res)}); err != nil {
 				t.Fatalf("Publish() error = %v", err)
 			}
 
@@ -388,16 +388,16 @@ func TestService_Publish_coalesces(t *testing.T) {
 	register(t, svc, now, live.Subscription{Principal: p1, Tab: "t1", Resource: res, Key: "k1"})
 
 	// Two publishes within one second are one document, the second's deleted flag kept.
-	if err := svc.Publish(t.Context(), "anvil", map[accesstypes.Resource][]resource.RowChange{res: {{Key: "k1"}}}); err != nil {
+	if err := svc.Publish(t.Context(), "anvil", live.Writes{Rows: map[accesstypes.Resource][]resource.RowChange{res: {{Key: "k1"}}}}); err != nil {
 		t.Fatalf("Publish() error = %v", err)
 	}
 	clock = now.Add(700 * time.Millisecond)
-	if err := svc.Publish(t.Context(), "anvil", map[accesstypes.Resource][]resource.RowChange{res: {{Key: "k1", Deleted: true}}}); err != nil {
+	if err := svc.Publish(t.Context(), "anvil", live.Writes{Rows: map[accesstypes.Resource][]resource.RowChange{res: {{Key: "k1", Deleted: true}}}}); err != nil {
 		t.Fatalf("Publish() error = %v", err)
 	}
 	// The next second is a new document.
 	clock = now.Add(time.Second)
-	if err := svc.Publish(t.Context(), "anvil", map[accesstypes.Resource][]resource.RowChange{res: {{Key: "k1"}}}); err != nil {
+	if err := svc.Publish(t.Context(), "anvil", live.Writes{Rows: map[accesstypes.Resource][]resource.RowChange{res: {{Key: "k1"}}}}); err != nil {
 		t.Fatalf("Publish() error = %v", err)
 	}
 
@@ -557,7 +557,7 @@ func TestService_twoAuthsOneName(t *testing.T) {
 
 	// One commit writes row k2 in anvil: the list's watcher and the row's watcher each
 	// get their own document in their own set.
-	if err := svc.Publish(t.Context(), "anvil", map[accesstypes.Resource][]resource.RowChange{res: {{Key: "k2"}}}); err != nil {
+	if err := svc.Publish(t.Context(), "anvil", live.Writes{Rows: map[accesstypes.Resource][]resource.RowChange{res: {{Key: "k2"}}}}); err != nil {
 		t.Fatalf("Publish() error = %v", err)
 	}
 	for _, p := range people {

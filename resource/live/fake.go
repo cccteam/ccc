@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/cccteam/ccc/accesstypes"
-	"github.com/cccteam/ccc/resource"
 )
 
 // Fake is an in-memory Service for tests: the record is a map, a publish keeps the
@@ -44,8 +43,8 @@ type FakeChange struct {
 
 // FakePublish is one Publish call the fake received.
 type FakePublish struct {
-	Domain  accesstypes.Domain
-	Touched map[accesstypes.Resource][]resource.RowChange
+	Domain accesstypes.Domain
+	Writes Writes
 }
 
 // What the fake's Token answers: an emulator-shaped payload.
@@ -162,15 +161,15 @@ func (f *Fake) lookup(match func(Subscription) bool) ([]Subscription, error) {
 
 // Publish fans the changes out and keeps the documents per principal, coalescing by id
 // within the fake's current second as the Firestore implementation does.
-func (f *Fake) Publish(ctx context.Context, domain accesstypes.Domain, touched map[accesstypes.Resource][]resource.RowChange) error {
+func (f *Fake) Publish(ctx context.Context, domain accesstypes.Domain, writes Writes) error {
 	if f.Err != nil {
 		return f.Err
 	}
 	f.mu.Lock()
-	f.publishs = append(f.publishs, FakePublish{Domain: domain, Touched: touched})
+	f.publishs = append(f.publishs, FakePublish{Domain: domain, Writes: writes})
 	f.mu.Unlock()
 
-	changes, err := Fanout(ctx, f, domain, touched)
+	changes, err := Fanout(ctx, f, domain, writes)
 	if err != nil {
 		return err
 	}

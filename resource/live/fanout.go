@@ -6,21 +6,24 @@ import (
 	"time"
 
 	"github.com/cccteam/ccc/accesstypes"
-	"github.com/cccteam/ccc/resource"
 	"github.com/go-playground/errors/v5"
 )
 
 // Fanout computes the change documents one publish writes, per principal, from the
-// record: for each resource touched under BulkThreshold rows, a list document for every
+// record: for each resource written under BulkThreshold rows, a list document for every
 // subscriber of the resource's list in the request's domain and a row document for
-// every subscriber of each touched row; above the threshold, one lookup of the
+// every subscriber of each written row; above the threshold, one lookup of the
 // resource's subscribers and a resource document for each user subscribed to any of its
-// rows or to its list in the request's domain, with no per-row lookups. A user
-// subscribed through several tabs, or to a row and the list both, gets each distinct
-// document once; a row written and then deleted reports deleted. Expired subscriptions
-// are the record's to leave out. Every publisher implementation writes what Fanout
-// returns, so the shape of a change set is decided here once.
-func Fanout(ctx context.Context, record SubscriptionRecord, domain accesstypes.Domain, touched map[accesstypes.Resource][]resource.RowChange) (Changes, error) {
+// rows or to its list in the request's domain, with no per-row lookups. A derived
+// resource changed wholesale (Writes.Whole, a virtual or computed resource reached
+// through a table it reads) takes the same one lookup and resource document, to its row
+// subscribers and to its list subscribers in the request's domain, or in every domain
+// when the change says so. A user subscribed through several tabs, or to a row and the
+// list both, gets each distinct document once; a row written and then deleted reports
+// deleted. Expired subscriptions are the record's to leave out. Every publisher
+// implementation writes what Fanout returns, so the shape of a change set is decided
+// here once.
+func Fanout(ctx context.Context, record SubscriptionRecord, domain accesstypes.Domain, writes Writes) (Changes, error) {
 	changes := make(Changes)
 	add := func(subs []Subscription, doc ChangeDocument) {
 		for _, sub := range subs {
@@ -29,14 +32,14 @@ func Fanout(ctx context.Context, record SubscriptionRecord, domain accesstypes.D
 	}
 
 	resources := slices.Sorted(func(yield func(accesstypes.Resource) bool) {
-		for res := range touched {
+		for res := range writes.Rows {
 			if !yield(res) {
 				return
 			}
 		}
 	})
 	for _, res := range resources {
-		rows := touched[res]
+		rows := writes.Rows[res]
 		if len(rows) == 0 {
 			continue
 		}
@@ -65,6 +68,17 @@ func Fanout(ctx context.Context, record SubscriptionRecord, domain accesstypes.D
 				return nil, errors.Wrap(err, "live.SubscriptionRecord.SubscribersOfRow()")
 			}
 			add(rowSubs, ChangeDocument{Kind: RowChange, Resource: res, Key: row.Key, Deleted: row.Deleted})
+		}
+	}
+	for _, whole := range writes.Whole {
+		subs, err := record.SubscribersOfResource(ctx, whole.Resource)
+		if err != nil {
+			return nil, errors.Wrap(err, "live.SubscriptionRecord.SubscribersOfResource()")
+		}
+		for _, sub := range subs {
+			if sub.IsRow() || whole.AllDomains || sub.Domain == domain {
+				changes.add(sub.Principal, ChangeDocument{Kind: ResourceChange, Resource: whole.Resource})
+			}
 		}
 	}
 

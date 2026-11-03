@@ -76,7 +76,7 @@ func (a *App) IngestDroidReports() http.HandlerFunc {
 			return httpio.NewEncoder(w).ClientMessage(ctx, errors.Wrap(err, "spanner.Client.ReadWriteTransaction()"))
 		}
 
-		live.Publish(ctx, a.LiveService(), domain, touched)
+		live.Publish(ctx, a.LiveService(), liveDerivations, domain, touched)
 
 		return httpio.NewEncoder(w).Ok(nil)
 	})

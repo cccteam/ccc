@@ -32,14 +32,16 @@ type SubscriptionRecord interface {
 }
 
 // ChangePublisher writes a committed request's changes into its subscribers' change
-// sets: for each touched row the subscribers of the row get a row document and the
+// sets: for each written row the subscribers of the row get a row document and the
 // subscribers of the resource's list in the request's domain a list document, writes to
-// one target within one second coalescing; above BulkThreshold touched rows of one
-// resource, every subscriber of the resource gets one resource document instead. The
-// publisher never checks permission: a subscription was written for a permitted request
-// and is re-checked at renewal.
+// one target within one second coalescing; above BulkThreshold written rows of one
+// resource, and for a derived resource changed wholesale, every subscriber of the
+// resource gets one resource document instead (Fanout). The writes arrive expanded
+// (Derivations.Expand): the derived resources a commit reaches are already among them.
+// The publisher never checks permission: a subscription was written for a permitted
+// request and is re-checked at renewal.
 type ChangePublisher interface {
-	Publish(ctx context.Context, domain accesstypes.Domain, touched map[accesstypes.Resource][]resource.RowChange) error
+	Publish(ctx context.Context, domain accesstypes.Domain, writes Writes) error
 }
 
 // Identity mints and revokes the browser's identity on the change set.

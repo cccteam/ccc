@@ -269,7 +269,7 @@ func (t *typescriptGenerator) Generate() error {
 	t.resources = resources
 	// A view's @rowsOf names a table-backed resource, refusing a view of either kind,
 	// so it too resolves against every kind before the filter narrows the sets.
-	if err := t.resolveRowsOf(resources, computedResources); err != nil {
+	if err := t.resolveViewDeclarations(resources, computedResources); err != nil {
 		return err
 	}
 
