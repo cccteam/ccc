@@ -2777,6 +2777,11 @@ const resourceMap = defineResourceMap({
 	{{- if $resource.DeleteHandlerDisabled }}
     deleteDisabled: true,
     {{- end }}
+    {{- if $resource.IsVirtual }}
+    live: false,
+    {{- else }}
+    live: true,
+    {{- end }}
     fields: [
       {{- range $field := $resource.Fields }}
       {{- if not $field.IsFileKey }}
@@ -2815,6 +2820,7 @@ const resourceMap = defineResourceMap({
     createDisabled: true,
     updateDisabled: true,
     deleteDisabled: true,
+    live: false,
     fields: [
       {{- range $field := $resource.Fields }}
       {{- if not $field.IsFileKey }}
@@ -2838,6 +2844,7 @@ const resourceMap = defineResourceMap({
     createDisabled: true,
     updateDisabled: true,
     deleteDisabled: true,
+    live: false,
     fields: [
       { fieldName: 'name', primaryKey: { ordinalPosition: 1 }, displayType: 'string', required: true, isIndex: true },
       { fieldName: 'description', displayType: 'string', required: true, isIndex: false },
@@ -2859,6 +2866,7 @@ const resourceMap = defineResourceMap({
     {{- if not $r.Deletes }}
     deleteDisabled: true,
     {{- end }}
+    live: false,
     fields: [
       {{- range $f := $r.Fields }}
       { fieldName: '{{ $f.Name }}',{{ if $f.Key }} primaryKey: { ordinalPosition: {{ $f.Key }} },{{ end }} displayType: '{{ $f.DisplayType }}', required: {{ $f.Required }}, isIndex: {{ if $f.Key }}true{{ else }}false{{ end }} },

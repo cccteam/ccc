@@ -23,6 +23,12 @@ func Test_typescriptResourcesTemplate_optionalFields(t *testing.T) {
 	for _, f := range gadget.Fields {
 		f.typescriptType = "string"
 	}
+	view := fixtureResource(t, structs, "Widget", func(res *resourceInfo) {
+		res.IsVirtual = true
+		for _, f := range res.Fields {
+			f.typescriptType = "string"
+		}
+	})
 
 	tests := []struct {
 		name            string
@@ -42,6 +48,8 @@ func Test_typescriptResourcesTemplate_optionalFields(t *testing.T) {
 				"  name?: string;",
 				"{ fieldName: 'name', displayType: 'string', required: true, isIndex: false }",
 				"{ fieldName: 'id', primaryKey: { ordinalPosition: 0 }, displayType: 'string', required: false, isIndex: false }",
+				// A table's changes are published, so its pages are live by default.
+				"    live: true,\n    fields: [",
 			},
 			wantNotContains: []string{
 				"  id?: string;",
@@ -59,11 +67,22 @@ func Test_typescriptResourcesTemplate_optionalFields(t *testing.T) {
 				"  id: string;",
 				"  name?: string;",
 				"{ fieldName: 'name', displayType: 'string', required: false, isIndex: false }",
+				// No publish reaches a computed resource yet: its pages stay plain by default.
+				"    live: false,\n    fields: [",
 			},
 			wantNotContains: []string{
 				"  id?: string;",
 				"  name: string;",
 			},
+		},
+		{
+			name: "a virtual resource's metadata says its changes are not published",
+			data: tsResourcesData{
+				Resources: []*resourceInfo{view},
+				GenPrefix: "zz_gen",
+			},
+			wantContains:    []string{"    live: false,\n    fields: ["},
+			wantNotContains: []string{"live: true"},
 		},
 	}
 

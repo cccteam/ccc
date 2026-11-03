@@ -278,10 +278,16 @@ How it is wired:
   header. The content security policy's `connect-src` names the feed's origin beside the
   application, the emulator in development and Firebase's hosts in production, because
   the browser's feed connects there directly ([`live.pages`](app/app.go)).
-- The browser. [`ships.config.ts`](web/console/src/app/configs/ships.config.ts) says
-  `live: true`, which makes the list page and its row page live and nothing else on them;
-  [`app.config.ts`](web/console/src/app/app.config.ts) provides `CHANGE_FEED` with the
-  Firestore feed from `@cccteam/resource-firestore`, and the library's `AuthService`
+- The browser. Every list page and record page on a table-backed resource is live by
+  default: the generated metadata's `live` says the resource's changes are published, and
+  the library makes such a page live unless its config says `live: false`. A page on a
+  virtual or computed resource stays plain until that resource's changes are published,
+  and a config asking `live: true` of one is announced once in the browser console. So
+  [`ships.config.ts`](web/console/src/app/configs/ships.config.ts) says nothing about it
+  and the fleet board and its row page are live, while the pickers and the edit form on
+  them stay plain; [`app.config.ts`](web/console/src/app/app.config.ts) provides
+  `CHANGE_FEED` with the Firestore feed from `@cccteam/resource-firestore`, and the
+  library's `AuthService`
   starts the feed after login with the identity `live/token` answers and stops it at
   logout, unsubscribing everything first. The environments carry nothing
   Firestore-specific: the project, the database, the emulator host and the key arrive in

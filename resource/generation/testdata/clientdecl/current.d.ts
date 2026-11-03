@@ -161,6 +161,7 @@ export interface ResourceMeta {
   route: string;
   consolidatedRoute?: string;
   rowsOf?: Resource;
+  live?: boolean;
   listDisabled?: boolean;
   readDisabled?: boolean;
   createDisabled?: boolean;

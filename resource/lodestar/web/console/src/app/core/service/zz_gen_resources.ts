@@ -494,6 +494,7 @@ function defineResourceMap<T extends ResourceMap>(map: T): T & ResourceMap {
 const resourceMap = defineResourceMap({
   [Resources.Clients]: {
     route: 'clients',
+    live: true,
     fields: [
       { fieldName: 'id', primaryKey: { ordinalPosition: 0 }, displayType: 'uuid', required: false, isIndex: true, filterable: 'always' },
       { fieldName: 'name', displayType: 'string', required: true, isIndex: true, filterable: 'always', search: ['contains', 'startswith', 'endswith'] },
@@ -508,6 +509,7 @@ const resourceMap = defineResourceMap({
   [Resources.ClientContacts]: {
     route: 'client-contacts',
     consolidatedRoute: 'resources',
+    live: true,
     fields: [
       { fieldName: 'id', primaryKey: { ordinalPosition: 0 }, displayType: 'uuid', required: false, isIndex: true, filterable: 'always' },
       { fieldName: 'userId', displayType: 'string', required: true, isIndex: true, filterable: 'always', maxLength: 320 },
@@ -518,6 +520,7 @@ const resourceMap = defineResourceMap({
   },
   [Resources.ClientRosters]: {
     route: 'sectors/{sectorID}/client-rosters',
+    live: false,
     fields: [
       { fieldName: 'id', primaryKey: { ordinalPosition: 0 }, displayType: 'uuid', required: false, isIndex: true, filterable: 'always' },
       { fieldName: 'sectorId', displayType: 'string', required: true, isIndex: true, filterable: 'always' },
@@ -532,6 +535,7 @@ const resourceMap = defineResourceMap({
     route: 'commendations',
     feature: 'commendations',
     consolidatedRoute: 'resources',
+    live: true,
     fields: [
       { fieldName: 'id', primaryKey: { ordinalPosition: 0 }, displayType: 'uuid', required: false, isIndex: true, filterable: 'always' },
       { fieldName: 'pilotId', displayType: 'enumerated', required: true, isIndex: true, filterable: 'always', enumeratedResource: Resources.Pilots },
@@ -543,6 +547,7 @@ const resourceMap = defineResourceMap({
   [Resources.Consignments]: {
     route: 'sectors/{sectorID}/consignments',
     consolidatedRoute: 'resources',
+    live: true,
     fields: [
       { fieldName: 'id', primaryKey: { ordinalPosition: 0 }, displayType: 'uuid', required: false, isIndex: true, filterable: 'always' },
       { fieldName: 'sectorId', displayType: 'enumerated', required: true, isIndex: true, filterable: 'always', enumeratedResource: Resources.Sectors, readOnly: true },
@@ -557,6 +562,7 @@ const resourceMap = defineResourceMap({
   [Resources.DistressCalls]: {
     route: 'sectors/{sectorID}/distress-calls',
     consolidatedRoute: 'resources',
+    live: true,
     fields: [
       { fieldName: 'id', primaryKey: { ordinalPosition: 0 }, displayType: 'uuid', required: false, isIndex: true, filterable: 'always' },
       { fieldName: 'sectorId', displayType: 'enumerated', required: true, isIndex: true, filterable: 'always', enumeratedResource: Resources.Sectors, readOnly: true },
@@ -571,6 +577,7 @@ const resourceMap = defineResourceMap({
   },
   [Resources.FeeByKinds]: {
     route: 'fee-by-kinds',
+    live: false,
     fields: [
       { fieldName: 'kindId', primaryKey: { ordinalPosition: 0 }, displayType: 'string', required: true, isIndex: true, filterable: 'always' },
       { fieldName: 'missionCount', displayType: 'number', required: true, isIndex: false },
@@ -580,6 +587,7 @@ const resourceMap = defineResourceMap({
   },
   [Resources.Hangars]: {
     route: 'sectors/{sectorID}/hangars',
+    live: true,
     fields: [
       { fieldName: 'id', primaryKey: { ordinalPosition: 0 }, displayType: 'uuid', required: false, isIndex: true, filterable: 'always' },
       { fieldName: 'sectorId', displayType: 'enumerated', required: true, isIndex: true, filterable: 'always', enumeratedResource: Resources.Sectors, readOnly: true },
@@ -590,6 +598,7 @@ const resourceMap = defineResourceMap({
   [Resources.Missions]: {
     route: 'sectors/{sectorID}/missions',
     consolidatedRoute: 'resources',
+    live: true,
     fields: [
       { fieldName: 'id', primaryKey: { ordinalPosition: 0 }, displayType: 'uuid', required: false, isIndex: true, filterable: 'always' },
       { fieldName: 'sectorId', displayType: 'enumerated', required: true, isIndex: true, filterable: 'always', enumeratedResource: Resources.Sectors, readOnly: true },
@@ -613,6 +622,7 @@ const resourceMap = defineResourceMap({
   [Resources.MissionBoards]: {
     route: 'sectors/{sectorID}/mission-boards',
     rowsOf: Resources.Missions,
+    live: false,
     fields: [
       { fieldName: 'id', primaryKey: { ordinalPosition: 0 }, displayType: 'uuid', required: false, isIndex: true, filterable: 'always' },
       { fieldName: 'sectorId', displayType: 'string', required: true, isIndex: true, filterable: 'always' },
@@ -630,6 +640,7 @@ const resourceMap = defineResourceMap({
     route: 'sectors/{sectorID}/mission-documents',
     consolidatedRoute: 'resources',
     createDisabled: true,
+    live: true,
     fields: [
       { fieldName: 'id', primaryKey: { ordinalPosition: 0 }, displayType: 'uuid', required: false, isIndex: true, filterable: 'always' },
       { fieldName: 'missionId', displayType: 'enumerated', required: true, isIndex: true, filterable: 'always', enumeratedResource: Resources.Missions },
@@ -645,6 +656,7 @@ const resourceMap = defineResourceMap({
   },
   [Resources.OpenMissionsBySquadrons]: {
     route: 'sectors/{sectorID}/open-missions-by-squadrons',
+    live: false,
     fields: [
       { fieldName: 'squadronId', primaryKey: { ordinalPosition: 0 }, displayType: 'uuid', required: false, isIndex: true, filterable: 'always' },
       { fieldName: 'squadronName', displayType: 'string', required: true, isIndex: true, filterable: 'always' },
@@ -656,6 +668,7 @@ const resourceMap = defineResourceMap({
   [Resources.Pilots]: {
     route: 'pilots',
     consolidatedRoute: 'resources',
+    live: true,
     fields: [
       { fieldName: 'id', primaryKey: { ordinalPosition: 0 }, displayType: 'uuid', required: false, isIndex: true, filterable: 'always' },
       { fieldName: 'userId', displayType: 'string', required: true, isIndex: true, filterable: 'always', maxLength: 320 },
@@ -667,6 +680,7 @@ const resourceMap = defineResourceMap({
   [Resources.PilotAssignments]: {
     route: 'sectors/{sectorID}/pilot-assignments',
     rowsOf: Resources.SquadronMemberships,
+    live: false,
     fields: [
       { fieldName: 'squadronId', primaryKey: { ordinalPosition: 0 }, displayType: 'enumerated', required: false, isIndex: true, filterable: 'always', enumeratedResource: Resources.Squadrons },
       { fieldName: 'userId', primaryKey: { ordinalPosition: 1 }, displayType: 'string', required: true, isIndex: true, filterable: 'always' },
@@ -678,6 +692,7 @@ const resourceMap = defineResourceMap({
   [Resources.PilotCertifications]: {
     route: 'pilot-certifications',
     consolidatedRoute: 'resources',
+    live: true,
     fields: [
       { fieldName: 'userId', primaryKey: { ordinalPosition: 0 }, displayType: 'string', required: true, isIndex: true, filterable: 'always' },
       { fieldName: 'certificationId', primaryKey: { ordinalPosition: 1 }, displayType: 'enumerated', required: true, isIndex: true, filterable: 'always', enumeration: [{ id: "deep_space", display: "Deep space" }, { id: "escort", display: "Escort" }, { id: "hazmat", display: "Hazardous materials" }, { id: "salvage", display: "Salvage" }] },
@@ -686,6 +701,7 @@ const resourceMap = defineResourceMap({
   [Resources.Refits]: {
     route: 'sectors/{sectorID}/refits',
     consolidatedRoute: 'resources',
+    live: true,
     fields: [
       { fieldName: 'id', primaryKey: { ordinalPosition: 0 }, displayType: 'uuid', required: false, isIndex: true, filterable: 'always' },
       { fieldName: 'shipId', displayType: 'enumerated', required: true, isIndex: true, filterable: 'always', enumeratedResource: Resources.Ships },
@@ -699,6 +715,7 @@ const resourceMap = defineResourceMap({
   [Resources.RefitTasks]: {
     route: 'sectors/{sectorID}/refit-tasks',
     consolidatedRoute: 'resources',
+    live: true,
     fields: [
       { fieldName: 'refitId', primaryKey: { ordinalPosition: 0 }, displayType: 'enumerated', required: true, isIndex: true, filterable: 'always', enumeratedResource: Resources.Refits },
       { fieldName: 'taskNumber', primaryKey: { ordinalPosition: 1 }, displayType: 'number', required: true, isIndex: false },
@@ -710,6 +727,7 @@ const resourceMap = defineResourceMap({
   [Resources.Sectors]: {
     route: 'sectors',
     consolidatedRoute: 'resources',
+    live: true,
     fields: [
       { fieldName: 'id', primaryKey: { ordinalPosition: 0 }, displayType: 'string', required: true, isIndex: true, filterable: 'always' },
       { fieldName: 'name', displayType: 'string', required: true, isIndex: true, filterable: 'always' },
@@ -721,6 +739,7 @@ const resourceMap = defineResourceMap({
   [Resources.SectorDirectories]: {
     route: 'sectors/{sectorID}/sector-directories',
     consolidatedRoute: 'resources',
+    live: true,
     fields: [
       { fieldName: 'id', primaryKey: { ordinalPosition: 0 }, displayType: 'uuid', required: false, isIndex: true, filterable: 'always' },
       { fieldName: 'sectorId', displayType: 'enumerated', required: true, isIndex: true, filterable: 'always', enumeratedResource: Resources.Sectors, readOnly: true },
@@ -732,6 +751,7 @@ const resourceMap = defineResourceMap({
   [Resources.Ships]: {
     route: 'sectors/{sectorID}/ships',
     consolidatedRoute: 'resources',
+    live: true,
     fields: [
       { fieldName: 'id', primaryKey: { ordinalPosition: 0 }, displayType: 'uuid', required: false, isIndex: true, filterable: 'always' },
       { fieldName: 'hangarId', displayType: 'enumerated', required: true, isIndex: true, filterable: 'always', enumeratedResource: Resources.Hangars },
@@ -746,6 +766,7 @@ const resourceMap = defineResourceMap({
   [Resources.ShipClasses]: {
     route: 'ship-classes',
     consolidatedRoute: 'resources',
+    live: true,
     fields: [
       { fieldName: 'id', primaryKey: { ordinalPosition: 0 }, displayType: 'uuid', required: false, isIndex: true, filterable: 'always' },
       { fieldName: 'designation', displayType: 'string', required: true, isIndex: true, filterable: 'always' },
@@ -757,6 +778,7 @@ const resourceMap = defineResourceMap({
   [Resources.Sorties]: {
     route: 'sectors/{sectorID}/sorties',
     consolidatedRoute: 'resources',
+    live: true,
     fields: [
       { fieldName: 'id', primaryKey: { ordinalPosition: 0 }, displayType: 'uuid', required: false, isIndex: true, filterable: 'always' },
       { fieldName: 'missionId', displayType: 'enumerated', required: true, isIndex: true, filterable: 'always', enumeratedResource: Resources.Missions },
@@ -770,6 +792,7 @@ const resourceMap = defineResourceMap({
   [Resources.SortieExpenses]: {
     route: 'sectors/{sectorID}/sortie-expenses',
     consolidatedRoute: 'resources',
+    live: true,
     fields: [
       { fieldName: 'id', primaryKey: { ordinalPosition: 0 }, displayType: 'uuid', required: false, isIndex: true, filterable: 'always' },
       { fieldName: 'sortieId', displayType: 'enumerated', required: true, isIndex: true, filterable: 'always', enumeratedResource: Resources.Sorties },
@@ -781,6 +804,7 @@ const resourceMap = defineResourceMap({
   [Resources.Squadrons]: {
     route: 'sectors/{sectorID}/squadrons',
     consolidatedRoute: 'resources',
+    live: true,
     fields: [
       { fieldName: 'id', primaryKey: { ordinalPosition: 0 }, displayType: 'uuid', required: false, isIndex: true, filterable: 'always' },
       { fieldName: 'wingId', displayType: 'enumerated', required: true, isIndex: true, filterable: 'always', enumeratedResource: Resources.Wings },
@@ -791,6 +815,7 @@ const resourceMap = defineResourceMap({
   [Resources.SquadronMemberships]: {
     route: 'sectors/{sectorID}/squadron-memberships',
     consolidatedRoute: 'resources',
+    live: true,
     fields: [
       { fieldName: 'squadronId', primaryKey: { ordinalPosition: 0 }, displayType: 'enumerated', required: true, isIndex: true, filterable: 'always', enumeratedResource: Resources.Squadrons },
       { fieldName: 'userId', primaryKey: { ordinalPosition: 1 }, displayType: 'string', required: true, isIndex: true, filterable: 'always' },
@@ -799,6 +824,7 @@ const resourceMap = defineResourceMap({
   [Resources.SquadronRosters]: {
     route: 'sectors/{sectorID}/squadron-rosters',
     rowsOf: Resources.SquadronMemberships,
+    live: false,
     fields: [
       { fieldName: 'squadronId', primaryKey: { ordinalPosition: 0 }, displayType: 'uuid', required: false, isIndex: true, filterable: 'always' },
       { fieldName: 'userId', primaryKey: { ordinalPosition: 1 }, displayType: 'string', required: true, isIndex: true, filterable: 'always' },
@@ -811,6 +837,7 @@ const resourceMap = defineResourceMap({
   [Resources.Wings]: {
     route: 'sectors/{sectorID}/wings',
     consolidatedRoute: 'resources',
+    live: true,
     fields: [
       { fieldName: 'id', primaryKey: { ordinalPosition: 0 }, displayType: 'uuid', required: false, isIndex: true, filterable: 'always' },
       { fieldName: 'sectorId', displayType: 'enumerated', required: true, isIndex: true, filterable: 'always', enumeratedResource: Resources.Sectors, readOnly: true },
@@ -823,6 +850,7 @@ const resourceMap = defineResourceMap({
     createDisabled: true,
     updateDisabled: true,
     deleteDisabled: true,
+    live: false,
     fields: [
       { fieldName: 'id', primaryKey: { ordinalPosition: 0 }, displayType: 'string', required: true, isIndex: false },
       { fieldName: 'name', displayType: 'string', required: false, isIndex: false },
@@ -836,6 +864,7 @@ const resourceMap = defineResourceMap({
     createDisabled: true,
     updateDisabled: true,
     deleteDisabled: true,
+    live: false,
     fields: [
       { fieldName: 'missionId', primaryKey: { ordinalPosition: 0 }, displayType: 'uuid', required: true, isIndex: false },
       { fieldName: 'title', displayType: 'string', required: false, isIndex: false },
@@ -849,6 +878,7 @@ const resourceMap = defineResourceMap({
     createDisabled: true,
     updateDisabled: true,
     deleteDisabled: true,
+    live: false,
     fields: [
       { fieldName: 'userId', primaryKey: { ordinalPosition: 0 }, displayType: 'string', required: true, isIndex: false },
       { fieldName: 'displayName', displayType: 'string', required: false, isIndex: false },
@@ -864,6 +894,7 @@ const resourceMap = defineResourceMap({
     createDisabled: true,
     updateDisabled: true,
     deleteDisabled: true,
+    live: false,
     fields: [
       { fieldName: 'shipId', primaryKey: { ordinalPosition: 0 }, displayType: 'uuid', required: true, isIndex: false },
       { fieldName: 'subsystem', primaryKey: { ordinalPosition: 1 }, displayType: 'string', required: true, isIndex: false, filterable: 'always', search: ['contains', 'startswith', 'endswith'] },
@@ -881,6 +912,7 @@ const resourceMap = defineResourceMap({
     createDisabled: true,
     updateDisabled: true,
     deleteDisabled: true,
+    live: false,
     fields: [
       { fieldName: 'sectorId', primaryKey: { ordinalPosition: 0 }, displayType: 'string', required: true, isIndex: false, filterable: 'always', search: ['contains', 'startswith', 'endswith'] },
       { fieldName: 'name', displayType: 'string', required: false, isIndex: false, filterable: 'always', search: ['contains', 'startswith', 'endswith'] },
@@ -897,6 +929,7 @@ const resourceMap = defineResourceMap({
     createDisabled: true,
     updateDisabled: true,
     deleteDisabled: true,
+    live: false,
     fields: [
       { fieldName: 'section', displayType: 'string', required: false, isIndex: false, filterable: 'always', search: ['contains', 'startswith', 'endswith'] },
       { fieldName: 'directive', displayType: 'string', required: false, isIndex: false },
@@ -908,6 +941,7 @@ const resourceMap = defineResourceMap({
     createDisabled: true,
     updateDisabled: true,
     deleteDisabled: true,
+    live: false,
     fields: [
       { fieldName: 'name', primaryKey: { ordinalPosition: 1 }, displayType: 'string', required: true, isIndex: true },
       { fieldName: 'description', displayType: 'string', required: true, isIndex: false },
@@ -918,6 +952,7 @@ const resourceMap = defineResourceMap({
   },
   [Resources.CrewUsers]: {
     route: 'crew-users',
+    live: false,
     fields: [
       { fieldName: 'id', primaryKey: { ordinalPosition: 1 }, displayType: 'uuid', required: true, isIndex: true },
       { fieldName: 'username', displayType: 'string', required: true, isIndex: false },
@@ -938,6 +973,7 @@ const resourceMap = defineResourceMap({
   [Resources.CrewSeats]: {
     route: 'crew-seats',
     updateDisabled: true,
+    live: false,
     fields: [
       { fieldName: 'user', primaryKey: { ordinalPosition: 1 }, displayType: 'uuid', required: true, isIndex: true },
       { fieldName: 'role', primaryKey: { ordinalPosition: 2 }, displayType: 'string', required: true, isIndex: true },
@@ -950,6 +986,7 @@ const resourceMap = defineResourceMap({
     createDisabled: true,
     updateDisabled: true,
     deleteDisabled: true,
+    live: false,
     fields: [
       { fieldName: 'name', primaryKey: { ordinalPosition: 1 }, displayType: 'string', required: true, isIndex: true },
       { fieldName: 'kind', displayType: 'string', required: true, isIndex: false },
@@ -959,6 +996,7 @@ const resourceMap = defineResourceMap({
   [Resources.CrewInvitations]: {
     route: 'crew-invitations',
     updateDisabled: true,
+    live: false,
     fields: [
       { fieldName: 'id', primaryKey: { ordinalPosition: 1 }, displayType: 'uuid', required: true, isIndex: true },
       { fieldName: 'email', displayType: 'string', required: true, isIndex: false },
@@ -970,6 +1008,7 @@ const resourceMap = defineResourceMap({
   },
   [Resources.CrewSectorUsers]: {
     route: 'sectors/{sectorID}/crew-sector-users',
+    live: false,
     fields: [
       { fieldName: 'id', primaryKey: { ordinalPosition: 1 }, displayType: 'uuid', required: true, isIndex: true },
       { fieldName: 'username', displayType: 'string', required: true, isIndex: false },
@@ -990,6 +1029,7 @@ const resourceMap = defineResourceMap({
   [Resources.CrewSectorSeats]: {
     route: 'sectors/{sectorID}/crew-sector-seats',
     updateDisabled: true,
+    live: false,
     fields: [
       { fieldName: 'user', primaryKey: { ordinalPosition: 1 }, displayType: 'uuid', required: true, isIndex: true },
       { fieldName: 'role', primaryKey: { ordinalPosition: 2 }, displayType: 'string', required: true, isIndex: true },
@@ -1002,6 +1042,7 @@ const resourceMap = defineResourceMap({
     createDisabled: true,
     updateDisabled: true,
     deleteDisabled: true,
+    live: false,
     fields: [
       { fieldName: 'name', primaryKey: { ordinalPosition: 1 }, displayType: 'string', required: true, isIndex: true },
       { fieldName: 'description', displayType: 'string', required: true, isIndex: false },
@@ -1010,6 +1051,7 @@ const resourceMap = defineResourceMap({
   [Resources.CrewSectorInvitations]: {
     route: 'sectors/{sectorID}/crew-sector-invitations',
     updateDisabled: true,
+    live: false,
     fields: [
       { fieldName: 'id', primaryKey: { ordinalPosition: 1 }, displayType: 'uuid', required: true, isIndex: true },
       { fieldName: 'email', displayType: 'string', required: true, isIndex: false },
@@ -1022,6 +1064,7 @@ const resourceMap = defineResourceMap({
   [Resources.MembersUsers]: {
     route: 'members-users',
     createDisabled: true,
+    live: false,
     fields: [
       { fieldName: 'id', primaryKey: { ordinalPosition: 1 }, displayType: 'uuid', required: true, isIndex: true },
       { fieldName: 'username', displayType: 'string', required: true, isIndex: false },
@@ -1042,6 +1085,7 @@ const resourceMap = defineResourceMap({
   [Resources.MembersSeats]: {
     route: 'members-seats',
     updateDisabled: true,
+    live: false,
     fields: [
       { fieldName: 'user', primaryKey: { ordinalPosition: 1 }, displayType: 'uuid', required: true, isIndex: true },
       { fieldName: 'role', primaryKey: { ordinalPosition: 2 }, displayType: 'string', required: true, isIndex: true },
@@ -1054,6 +1098,7 @@ const resourceMap = defineResourceMap({
     createDisabled: true,
     updateDisabled: true,
     deleteDisabled: true,
+    live: false,
     fields: [
       { fieldName: 'name', primaryKey: { ordinalPosition: 1 }, displayType: 'string', required: true, isIndex: true },
       { fieldName: 'kind', displayType: 'string', required: true, isIndex: false },
@@ -1063,6 +1108,7 @@ const resourceMap = defineResourceMap({
   [Resources.MembersInvitations]: {
     route: 'members-invitations',
     updateDisabled: true,
+    live: false,
     fields: [
       { fieldName: 'id', primaryKey: { ordinalPosition: 1 }, displayType: 'uuid', required: true, isIndex: true },
       { fieldName: 'email', displayType: 'string', required: true, isIndex: false },
@@ -1075,6 +1121,7 @@ const resourceMap = defineResourceMap({
   [Resources.MembersSectorUsers]: {
     route: 'sectors/{sectorID}/members-sector-users',
     createDisabled: true,
+    live: false,
     fields: [
       { fieldName: 'id', primaryKey: { ordinalPosition: 1 }, displayType: 'uuid', required: true, isIndex: true },
       { fieldName: 'username', displayType: 'string', required: true, isIndex: false },
@@ -1095,6 +1142,7 @@ const resourceMap = defineResourceMap({
   [Resources.MembersSectorSeats]: {
     route: 'sectors/{sectorID}/members-sector-seats',
     updateDisabled: true,
+    live: false,
     fields: [
       { fieldName: 'user', primaryKey: { ordinalPosition: 1 }, displayType: 'uuid', required: true, isIndex: true },
       { fieldName: 'role', primaryKey: { ordinalPosition: 2 }, displayType: 'string', required: true, isIndex: true },
@@ -1107,6 +1155,7 @@ const resourceMap = defineResourceMap({
     createDisabled: true,
     updateDisabled: true,
     deleteDisabled: true,
+    live: false,
     fields: [
       { fieldName: 'name', primaryKey: { ordinalPosition: 1 }, displayType: 'string', required: true, isIndex: true },
       { fieldName: 'description', displayType: 'string', required: true, isIndex: false },
@@ -1115,6 +1164,7 @@ const resourceMap = defineResourceMap({
   [Resources.MembersSectorInvitations]: {
     route: 'sectors/{sectorID}/members-sector-invitations',
     updateDisabled: true,
+    live: false,
     fields: [
       { fieldName: 'id', primaryKey: { ordinalPosition: 1 }, displayType: 'uuid', required: true, isIndex: true },
       { fieldName: 'email', displayType: 'string', required: true, isIndex: false },

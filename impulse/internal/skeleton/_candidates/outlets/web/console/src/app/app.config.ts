@@ -56,8 +56,9 @@ export const appConfig: ApplicationConfig = {
     // custom token in), and stops it at logout, unsubscribing everything and revoking the
     // identity before the session itself is logged out. Nothing Firestore-specific lives in
     // the environment: the project, the database, the emulator host and the key all arrive
-    // in the token payload. A page is live only when its view configuration says so
-    // (live: true on a list or record page); the provider alone makes nothing live.
+    // in the token payload. With the feed provided, every list and record page on a
+    // table-backed resource is live (the generated metadata says the resource's changes
+    // are published); live: false on a page's view configuration opts it out.
     { provide: CHANGE_FEED, useFactory: () => firestoreChangeFeed() },
     provideRouter(routes, withComponentInputBinding(), withRouterConfig({ paramsInheritanceStrategy: 'always' })),
     // The date adapter and the animations as standalone providers: the animations module,

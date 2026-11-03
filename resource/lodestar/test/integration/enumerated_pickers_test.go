@@ -328,7 +328,7 @@ func TestEnumeratedMetadata(t *testing.T) {
 		{
 			name: "the keyed view serves a read, so its metadata says nothing of readDisabled",
 			file: "zz_gen_resources.ts",
-			want: "[Resources.ClientRosters]: {\n    route: 'sectors/{sectorID}/client-rosters',\n    fields: [",
+			want: "[Resources.ClientRosters]: {\n    route: 'sectors/{sectorID}/client-rosters',\n    live: false,\n    fields: [",
 		},
 		{
 			name: "the keyed view's descriptor lists the read operation beside the list",
