@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.6.15](https://github.com/cccteam/ccc/compare/impulse/v0.6.14...impulse/v0.6.15) (2026-11-03)
+
+
+### Features
+
+* **resource:** the generated metadata says whether a resource's changes are published (`live`: true on a table-backed resource, false on a virtual or computed resource), so a list or record page on a table is live by default in the browser library from resource-angular 0.0.33 and `live: false` opts a page out; Lodestar's Ships page drops its flag ([#1265](https://github.com/cccteam/ccc/issues/1265)) ([517cf4b](https://github.com/cccteam/ccc/commit/517cf4b2cd51c636f076fd7940ba42e36b7f34c5))
+
+
+### Bug Fixes
+
+* **impulse:** the skeleton's pins move to resource v0.16.7 and to resource-angular 0.0.34, resource 0.0.22 and resource-firestore 0.0.21, whose login page returns the browser to a server page named by returnUrl, and the v0.6.15 ledger step names them ([#1270](https://github.com/cccteam/ccc/issues/1270)) ([31207e7](https://github.com/cccteam/ccc/commit/31207e765694d0d0b72232984ed4d15ff14b1eef))
+
 ## [0.6.14](https://github.com/cccteam/ccc/compare/impulse/v0.6.13...impulse/v0.6.14) (2026-11-02)
 
 
