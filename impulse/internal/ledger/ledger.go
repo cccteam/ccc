@@ -906,7 +906,7 @@ var Steps = []Step{
 			ccc v0.3.7
 			ccc/accesstypes v0.7.1
 			ccc/cloud v0.2.3
-			ccc/resource v0.16.8-0.20261103020228-6634403d3edc
+			ccc/resource v0.16.8
 			ccc/tracer v0.3.2
 			db-initiator v0.4.3
 			httpio v0.7.22
@@ -919,8 +919,7 @@ var Steps = []Step{
 			@cccteam/resource-firestore 0.0.21
 		`),
 		Impulse: release("v0.6.16"),
-		Pending: true,
-		Note:    "a virtual or computed resource's changes reach its live pages: the generator reads the tables a virtual resource's query names off the embedded SQL behind its Subquery method with the lexer, or takes the @changedBy declaration, which replaces the reading on a virtual resource and is the only source on a computed one (a query it cannot read refuses generation and names the declaration as the way out); the record of each published resource's tables, read or declared, is generated beside the resource as the package's LiveDerivations and assembled in the application for every publish; a write to the table whose rows a resource carries (@rowsOf) reaches its row and list subscribers under the same key, and a write to any other table it reads reaches every subscriber as one resource document; the metadata says live for such a resource, so its pages are live by default, and regeneration carries all of it, no code change is needed. The pins move to resource at the commit that carries it, pending its release.",
+		Note:    "a virtual or computed resource's changes reach its live pages: the generator reads the tables a virtual resource's query names off the embedded SQL behind its Subquery method with the lexer, or takes the @changedBy declaration, which replaces the reading on a virtual resource and is the only source on a computed one (a query it cannot read refuses generation and names the declaration as the way out); the record of each published resource's tables, read or declared, is generated beside the resource as the package's LiveDerivations and assembled in the application for every publish; a write to the table whose rows a resource carries (@rowsOf) reaches its row and list subscribers under the same key, and a write to any other table it reads reaches every subscriber as one resource document; the metadata says live for such a resource, so its pages are live by default, and regeneration carries all of it, no code change is needed. The pins move to resource v0.16.8, the release that carries it.",
 	},
 }
 
