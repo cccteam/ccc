@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.16.8](https://github.com/cccteam/ccc/compare/resource/v0.16.7...resource/v0.16.8) (2026-11-03)
+
+
+### Features
+
+* **resource:** a virtual or computed resource's changes reach its live pages: the generator reads the tables off the embedded query with the lexer or takes [@changed](https://github.com/changed)By, which replaces the reading, records them beside the resource as each package's LiveDerivations, and the fan-out publishes the [@rows](https://github.com/rows)Of root under the same keys and any other table's change as one resource document; the metadata says live for such a resource, so its pages are live by default ([#1271](https://github.com/cccteam/ccc/issues/1271)) ([3c96c2e](https://github.com/cccteam/ccc/commit/3c96c2e336163e0983e712df785b53349f22de14))
+
 ## [0.16.7](https://github.com/cccteam/ccc/compare/resource/v0.16.6...resource/v0.16.7) (2026-11-03)
 
 
