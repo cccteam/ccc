@@ -16,7 +16,14 @@ import { field, listViewConfig, nullBooleanConfig, rootConfig, section } from '@
 // accessible name. The map is declared here and the data drives it; the ClientBrowser
 // persona, who lists trusted clients alone, sees nothing but badges.
 //
-// Demonstrates: nullboolean, column.icon.
+// The box searches the name, the two contact fields and the contact's display name
+// through the child table, and sits beside the column filters; the request is placed as a
+// whole. Headquarters, whose box reaches the PII fields, posts the filter with the trusted
+// filter or a contact-name match beside the box, and a ClientBrowser persona, for whom the
+// box searches the name alone, keeps the same shape in the URL and reads under the box
+// which fields the role leaves out.
+//
+// Demonstrates: nullboolean, column.icon, search.beside-filters, search.beside-filters.pii.
 export const clientsConfig = rootConfig({
   nav: { navItem: { label: 'Clients' }, group: 'Headquarters' },
   parentConfig: listViewConfig({

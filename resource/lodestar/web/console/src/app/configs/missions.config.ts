@@ -38,7 +38,16 @@ import { enumeratedConfig, field, listViewConfig, rootConfig, section } from '@c
 // template picker reads it whole with limit=all and resolves the chosen sheet from that
 // list, which is why the catalog needs no read route.
 //
-// Demonstrates: picker.config-driven, picker.paged, picker.whole, @enumerate.plain-column, @enumerate.key-view, picker.read-disabled, @rowsOf.same-row, list.server-paged, metadata.filterable.
+// The board's box sits above the grid, beside the column filters, and both narrow one
+// request: the page sends the complete column filters and the box as conjuncts of one
+// AND, `(statusId:eq:open),*:search:"survey"`, so the key set the box gathers over the
+// two indexes and the filters' residual narrow the same page, with its count and its
+// declared order. The box counts as the indexed touch the days-left control waits for, so
+// a days-left filter rides beside the box alone and leaves when the last indexed touch,
+// the box or a status filter, is cleared; the deadline's menu takes what is typed, an RFC
+// 3339 timestamp, since the column is a timestamp.
+//
+// Demonstrates: picker.config-driven, picker.paged, picker.whole, @enumerate.plain-column, @enumerate.key-view, picker.read-disabled, @rowsOf.same-row, list.server-paged, metadata.filterable, search.beside-filters.
 export const missionsConfig = rootConfig({
   nav: { navItem: { label: 'Missions (config page)' }, group: 'Sector Ops' },
   routeData: { route: `${DomainRoutePath}/missions` },
