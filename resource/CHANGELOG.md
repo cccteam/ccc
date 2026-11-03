@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.16.9](https://github.com/cccteam/ccc/compare/resource/v0.16.8...resource/v0.16.9) (2026-11-03)
+
+
+### Bug Fixes
+
+* **resource:** the search box finds a term anywhere in a field whose tokens carry anchors, as it does in a plain field; the anchors serve startswith and endswith alone ([#1278](https://github.com/cccteam/ccc/issues/1278)) ([c51f972](https://github.com/cccteam/ccc/commit/c51f9722e099094539364005847efaf0189dfb24))
+
 ## [0.16.8](https://github.com/cccteam/ccc/compare/resource/v0.16.7...resource/v0.16.8) (2026-11-03)
 
 
