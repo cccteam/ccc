@@ -22,9 +22,17 @@ import (
 
 // personaSub is the substitution the stack's triggers carry in the first environment: the
 // persona registrations, as a JSON list (locals.tf, persona_registrations); empty beyond
+// the first environment. It says what the stack said at its last apply, so it lags a
+// release that adds or removes the method by one; the steps read the stack as applied
+// instead (personaFact) and take the substitution only where no apply was read.
 // it, where the persona method is not registered. The triggers say what the environment's
 // last release applied, so a tag build reads it.
 const personaSub = "_PERSONA"
+
+// noRegistrations is the PERSONA fact of a stack that names no registrations: a stack
+// read says so explicitly, so the step never falls back to the trigger's _PERSONA for a
+// stack it has read.
+const noRegistrations = "[]"
 
 // personaFact is the same list as the pull request's own stack carries it, read off that
 // stack's substitutions output by the stack job and written for the preview build
@@ -127,9 +135,11 @@ func Persona(ctx context.Context, clients *Clients, w Workspace, action PersonaA
 	return nil
 }
 
-// personaRegistrations reads the registrations: the pull request's own stack's (the
-// PERSONA fact) when the build has them, else the build's _PERSONA substitution; none
-// when both are empty.
+// personaRegistrations reads the registrations: the stack's as applied (the PERSONA
+// fact: a release build's after its own apply, a pull request's from its stack job, a
+// teardown's and the sweep's from the standing stack before it is destroyed, "[]" where
+// the stack names none), else the trigger's _PERSONA substitution, what the stack said
+// at its last apply; none when both are empty.
 func personaRegistrations(build *Build, env map[string]string) ([]personaRegistration, error) {
 	source := personaFact
 	raw := strings.TrimSpace(env[personaFact])
@@ -215,10 +225,11 @@ func removePersonas(ctx context.Context, clients *Clients, build *Build, registr
 }
 
 // removePersonaRegistrations is the sweep's removal of a closed pull request's
-// registrations, best effort: the provider forgets a registration nothing refreshes on
-// its own, so a refusal is said and the sweep goes on.
-func removePersonaRegistrations(ctx context.Context, clients *Clients, subs map[string]string, number string, out io.Writer) {
-	registrations, err := personaRegistrations(&Build{ID: "sweep", Substitutions: subs}, nil)
+// registrations, read from its stack before the destroy (facts), best effort: the
+// provider forgets a registration nothing refreshes on its own, so a refusal is said and
+// the sweep goes on.
+func removePersonaRegistrations(ctx context.Context, clients *Clients, subs map[string]string, number string, facts map[string]string, out io.Writer) {
+	registrations, err := personaRegistrations(&Build{ID: "sweep", Substitutions: subs}, facts)
 	if err != nil {
 		fmt.Fprintf(out, "Notice: the persona registrations could not be read (%v); pull request %s's expire on their own.\n", err, number)
 

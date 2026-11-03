@@ -276,8 +276,9 @@ The persona method (the keepers auth's persona registration) is
 registered where its issuer is set and nowhere else, so a later environment never offers
 it and nothing in the build differs; the pipeline registers each deployment, its callback
 and its cast (`pkg/auth/keepers/cast.json`) with the provider after traffic (`deploy persona
-register`, from `_PERSONA`) and removes a torn-down pull request's (`deploy persona
-remove`). Not set: `APP_VERSION` (the
+register`, from the stack as applied, so the release that adds or removes the method
+registers what it carries in that very run) and removes a torn-down pull request's
+(`deploy persona remove`, from the stack before its destroy). Not set: `APP_VERSION` (the
 pipeline bakes it into the image, so a deploy never edits the template's
 variables), `APP_DEFAULT_SESSION_TIMEOUT` (code default), `PORT` (Cloud Run
 sets it), `APP_CONSOLE_DIST` (where the image put the bundle).

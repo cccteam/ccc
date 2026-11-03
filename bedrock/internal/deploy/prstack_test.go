@@ -89,7 +89,7 @@ func TestPullRequestStack(t *testing.T) {
 			App: "quill", Env: tstEnvironment, PullRequest: "7", Commit: "c9", Build: "b-1", Comment: comment, Status: StackApplied,
 			Services: "us-central1=quill-pr7", JobsJob: "us-central1=quill-pr7-jobs", Hostname: "quill-pr7.example.dev",
 			MigrateEnv: `{"APP_SERVICE_NAME":"quill-migrate"}`, MigrateDatabases: `["projects/p/instances/i/databases/quill-pr7-db"]`,
-			MigrateSecrets: "{}",
+			MigrateSecrets: "{}", Persona: "[]",
 			BuildArguments: map[string]string{"FIREBASE_API_KEY": "AIzaPr7Key"}, Timestamp: "2026-10-12T10:00:00Z",
 			RevisionTemplates: testRevisionTemplates(t, true, "quill-pr7"),
 		}
@@ -205,12 +205,14 @@ func TestPullRequestStack(t *testing.T) {
 			wantObject: applied(1),
 		},
 		{
-			name:        "/gcbrun down destroys the environment, its builds' jobs first, and writes the destroy",
-			comments:    []string{"/gcbrun down"},
-			output:      substitutions,
-			wantTofu:    []string{initLine, planLine + " -destroy", showLine, outputLine, applyLine},
-			wantOut:     []string{"=== /gcbrun down: planning the destroy of the pull request's environment ===", "Job quill-pr7-jobs-pr7-c9 deleted with pull request 7's environment.", "=== /gcbrun down: the pull request's environment is gone ===", strings.Replace(written, "%s", "destroyed", 1)},
-			wantObject:  &StackOutputs{App: "quill", Env: tstEnvironment, PullRequest: "7", Commit: "c9", Build: "b-1", Comment: 1, Status: StackDestroyed, Timestamp: "2026-10-12T10:00:00Z"},
+			name:     "/gcbrun down destroys the environment, its builds' jobs first, and writes the destroy",
+			comments: []string{"/gcbrun down"},
+			output:   substitutions,
+			wantTofu: []string{initLine, planLine + " -destroy", showLine, outputLine, applyLine},
+			wantOut:  []string{"=== /gcbrun down: planning the destroy of the pull request's environment ===", "Job quill-pr7-jobs-pr7-c9 deleted with pull request 7's environment.", "=== /gcbrun down: the pull request's environment is gone ===", strings.Replace(written, "%s", "destroyed", 1)},
+			// The registrations are read off the standing stack before the destroy ("[]" here:
+			// the stack names none) and written for the preview build's deploy persona remove.
+			wantObject:  &StackOutputs{App: "quill", Env: tstEnvironment, PullRequest: "7", Commit: "c9", Build: "b-1", Comment: 1, Status: StackDestroyed, Persona: "[]", Timestamp: "2026-10-12T10:00:00Z"},
 			wantDeleted: []string{"projects/p/locations/us-central1/jobs/quill-pr7-jobs-pr7-c9"},
 		},
 		{
@@ -692,7 +694,7 @@ func TestStackFacts(t *testing.T) {
 		{
 			name:   "the stack's output names what the steps after deploy, the migrate command's settings and the build arguments among them",
 			output: `{"_SERVICES": "us-central1=quill-pr7", "_MIGRATE_ENV": "{}", "_MIGRATE_DATABASES": "[]", "_MIGRATE_SECRETS": "{}", "_JOBS_JOB": "us-central1=quill-pr7-jobs", "_HOSTNAME": "quill-pr7.example.dev", "_ENV": "tst", "_BUILD_ARG_SITE_HOST": "quill-pr7.example.dev"}`,
-			want:   map[string]string{services: "us-central1=quill-pr7", migrateEnvFact: "{}", migrateDatabasesFact: "[]", migrateSecretsFact: "{}", jobsJobFact: "us-central1=quill-pr7-jobs", prHostnameFact: "quill-pr7.example.dev", "_BUILD_ARG_SITE_HOST": "quill-pr7.example.dev"},
+			want:   map[string]string{services: "us-central1=quill-pr7", migrateEnvFact: "{}", migrateDatabasesFact: "[]", migrateSecretsFact: "{}", jobsJobFact: "us-central1=quill-pr7-jobs", personaFact: "[]", prHostnameFact: "quill-pr7.example.dev", "_BUILD_ARG_SITE_HOST": "quill-pr7.example.dev"},
 		},
 		{
 			name:   "the persona registrations the stack carries reach the preview build as the pull request's own",
@@ -700,9 +702,14 @@ func TestStackFacts(t *testing.T) {
 			want:   map[string]string{services: "us-central1=quill-pr7", prHostnameFact: "quill-pr7.example.dev", personaFact: `[{"auth":"keepers"}]`},
 		},
 		{
+			name:   "a stack that names no registrations, or an empty list past the first environment, says so as the fact, so no reader falls back to the trigger",
+			output: `{"_SERVICES": "us-central1=quill-pr7", "_HOSTNAME": "quill-pr7.example.dev", "_PERSONA": ""}`,
+			want:   map[string]string{services: "us-central1=quill-pr7", prHostnameFact: "quill-pr7.example.dev", personaFact: "[]"},
+		},
+		{
 			name:   "a stack applied by an older bedrock names no settings for the migrate command, which the migrate step refuses later",
 			output: `{"_SERVICES": "us-central1=quill-pr7", "_HOSTNAME": "quill-pr7.example.dev"}`,
-			want:   map[string]string{services: "us-central1=quill-pr7", prHostnameFact: "quill-pr7.example.dev"},
+			want:   map[string]string{services: "us-central1=quill-pr7", prHostnameFact: "quill-pr7.example.dev", personaFact: "[]"},
 		},
 		{
 			name:    "an output naming no services is refused",

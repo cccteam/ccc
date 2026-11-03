@@ -841,7 +841,7 @@ func TeardownPullRequests(ctx context.Context, clients *Clients, req *TeardownRe
 		if err := s.initAt(ctx, prefix); err != nil {
 			return err
 		}
-		if err := destroyPullRequestStack(ctx, clients, s, subs, number, req.Placement.StateBucket, out); err != nil {
+		if _, err := destroyPullRequestStack(ctx, clients, s, subs, number, req.Placement.StateBucket, out); err != nil {
 			return err
 		}
 	}

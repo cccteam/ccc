@@ -85,10 +85,11 @@ func Sweep(ctx context.Context, clients *Clients, w Workspace, req *BuildRequest
 		if err := s.init(ctx, subs, number); err != nil {
 			return err
 		}
-		if err := destroyPullRequestStack(ctx, clients, s, subs, number, p.StateBucket, out); err != nil {
+		standing, err := destroyPullRequestStack(ctx, clients, s, subs, number, p.StateBucket, out)
+		if err != nil {
 			return err
 		}
-		removePersonaRegistrations(ctx, clients, subs, number, out)
+		removePersonaRegistrations(ctx, clients, subs, number, standing, out)
 	}
 
 	return nil
@@ -98,27 +99,46 @@ func Sweep(ctx context.Context, clients *Clients, w Workspace, req *BuildRequest
 // prefix: its builds' jobs deleted first, then the stack, then its state object in the
 // bucket, so nothing of the stack is kept and no later run walks an empty state. A state
 // that holds no resources (a stack only initialized, or destroyed already) is skipped
-// before any output is read, and its object goes the same way. The sweep does it for a
-// closed pull request, and bedrock teardown --all and destroy --all for every pull
-// request's.
-func destroyPullRequestStack(ctx context.Context, clients *Clients, s *stack, subs map[string]string, number, bucket string, out io.Writer) error {
+// before any output is read, and its object goes the same way. It answers the stack's
+// facts as read before the destroy (nil for a stack skipped or whose outputs could not be
+// read), for what is removed after it: the sweep removes the persona registrations the
+// stack named. The sweep does it for a closed pull request, and bedrock teardown --all
+// and destroy --all for every pull request's.
+func destroyPullRequestStack(ctx context.Context, clients *Clients, s *stack, subs map[string]string, number, bucket string, out io.Writer) (map[string]string, error) {
 	listed, err := s.tofuOutput(ctx, "state", "list")
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if strings.TrimSpace(string(listed)) == "" {
 		fmt.Fprintf(out, "Pull request %s's stack holds nothing (never applied, or destroyed already); skipped.\n", number)
 
-		return deleteStateObject(ctx, clients, bucket, pullRequestPrefix(subs, number), number, out)
+		return nil, deleteStateObject(ctx, clients, bucket, pullRequestPrefix(subs, number), number, out)
 	}
-	if err := deleteBuildJobs(ctx, clients, s, subs, number, out); err != nil {
-		return err
+	standing := standingFacts(ctx, s, number, out)
+	if err := deleteBuildJobs(ctx, clients, subs, number, standing, out); err != nil {
+		return nil, err
 	}
 	if err := s.tofu(ctx, destroyCmd, autoApprove, noInputFlag, noColorFlag, varFlag, "environment="+subs[envSub], varFlag, "pull_request="+number); err != nil {
-		return err
+		return nil, err
 	}
 
-	return deleteStateObject(ctx, clients, bucket, pullRequestPrefix(subs, number), number, out)
+	return standing, deleteStateObject(ctx, clients, bucket, pullRequestPrefix(subs, number), number, out)
+}
+
+// standingFacts reads a standing pull request stack's facts off its outputs before it is
+// destroyed: the template job its builds copied, and the persona registrations the
+// provider holds for it. A stack whose outputs cannot be read (never applied, or applied
+// by a bedrock before the output) answers nil, with a notice: none of its builds' jobs is
+// deleted, and its registrations are read from the trigger's substitution instead.
+func standingFacts(ctx context.Context, s *stack, number string, out io.Writer) map[string]string {
+	facts, err := s.facts(ctx)
+	if err != nil {
+		fmt.Fprintf(out, "Notice: pull request %s's stack names no jobs (%v); none of its builds' jobs is deleted, and its persona registrations are read from the trigger.\n", number, errors.Cause(err))
+
+		return nil
+	}
+
+	return facts
 }
 
 // deleteStateObject deletes the pull request's state object at its prefix in the state
@@ -143,17 +163,14 @@ func deleteStateObject(ctx context.Context, clients *Clients, bucket, prefix, nu
 
 // deleteBuildJobs deletes the jobs the pull request's builds made: the copies of its
 // stack's template job for the job process, named under the template's prefix. The
-// template's name comes from the stack's substitutions output, where a pull request's
-// build learns it: the trigger's substitutions name the environment's template, which no
-// copy of a pull request's is under. It runs with the stack initialized and before it is
-// destroyed, since the output lives in its state; a stack whose output cannot be read,
-// one never applied, names no job, and nothing is deleted; an application without a job
-// process made none.
-func deleteBuildJobs(ctx context.Context, clients *Clients, s *stack, subs map[string]string, number string, out io.Writer) error {
-	facts, err := s.facts(ctx)
-	if err != nil {
-		fmt.Fprintf(out, "Notice: pull request %s's stack names no jobs (%v); none of its builds' jobs is deleted.\n", number, errors.Cause(err))
-
+// template's name comes from the stack's substitutions output (facts, read by
+// standingFacts), where a pull request's build learns it: the trigger's substitutions
+// name the environment's template, which no copy of a pull request's is under. It runs
+// with the stack initialized and before it is destroyed, since the output lives in its
+// state; a stack whose output could not be read (nil facts), one never applied, names no
+// job, and nothing is deleted; an application without a job process made none.
+func deleteBuildJobs(ctx context.Context, clients *Clients, subs map[string]string, number string, facts map[string]string, out io.Writer) error {
+	if facts == nil {
 		return nil
 	}
 	if facts[jobsJobFact] == "" {

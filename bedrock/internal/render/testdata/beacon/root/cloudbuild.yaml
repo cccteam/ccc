@@ -153,8 +153,9 @@ steps:
     timeout: 900s
 
   # A teardown removes the pull request's persona registrations from the persona provider,
-  # as this build's deploy identity (its Google identity token for the provider); nothing
-  # to do otherwise.
+  # as this build's deploy identity (its Google identity token for the provider): the
+  # registrations its stack job read off the standing stack before the destroy (PERSONA),
+  # since the trigger's _PERSONA lags a release; nothing to do otherwise.
   - id: PersonaRemove
     name: gcr.io/cloud-builders/gcloud
     entrypoint: /builder/home/bedrock
@@ -301,10 +302,12 @@ steps:
     timeout: 900s
 
   # The persona registrations: each persona method's deployment, its callback and its
-  # cast (_PERSONA, from the stack), sent to the persona provider as this build's deploy
-  # identity (its Google identity token for the provider), so the provider offers the
-  # cast for this deployment. A failing registration fails the build before the record is
-  # written.
+  # cast (PERSONA, read from the stack as applied by ApplyEnvironmentStack, so the release
+  # that adds or removes the method registers what it carries in this very run; the
+  # trigger's _PERSONA says what the stack said at its last apply), sent to the persona
+  # provider as this build's deploy identity (its Google identity token for the provider),
+  # so the provider offers the cast for this deployment. A failing registration fails the
+  # build before the record is written.
   - id: PersonaRegister
     name: gcr.io/cloud-builders/gcloud
     entrypoint: /builder/home/bedrock

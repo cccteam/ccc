@@ -291,6 +291,7 @@ func (j *stackJob) run(ctx context.Context, outputs *StackOutputs) (bool, error)
 	}
 	if f.Down {
 		outputs.Status = StackDestroyed
+		outputs.Persona = facts[personaFact]
 
 		return true, nil
 	}
@@ -431,8 +432,14 @@ func (s *stack) replaceDatabase(ctx context.Context, app, reason string, env map
 func (s *stack) apply(ctx context.Context, build *Build, env map[string]string) (map[string]string, *RevisionTemplates, error) {
 	subs := build.Substitutions
 	w := Workspace(filepath.Dir(s.dir))
+	// A teardown reads the standing stack's outputs before the destroy: the template job
+	// its builds copied, deleted here, and its persona registrations, which the preview
+	// build's deploy persona remove takes from the job's outputs, since the trigger's
+	// _PERSONA lags a release.
+	var standing map[string]string
 	if env[downFact] == trueValue {
-		if err := deleteBuildJobs(ctx, s.clients, s, subs, subs[prNumberSub], s.out); err != nil {
+		standing = standingFacts(ctx, s, subs[prNumberSub], s.out)
+		if err := deleteBuildJobs(ctx, s.clients, subs, subs[prNumberSub], standing, s.out); err != nil {
 			return nil, nil, err
 		}
 	}
@@ -452,7 +459,7 @@ func (s *stack) apply(ctx context.Context, build *Build, env map[string]string) 
 	if env[downFact] == trueValue {
 		fmt.Fprintln(s.out, "=== /gcbrun down: the pull request's environment is gone ===")
 
-		return nil, nil, nil
+		return standing, nil, nil
 	}
 	outputs, err := s.outputs(ctx)
 	if err != nil {
@@ -573,8 +580,13 @@ func stackFacts(data []byte) (map[string]string, error) {
 	if databases := subs[migrateDatabasesSub]; databases != "" {
 		facts[migrateDatabasesFact] = databases
 	}
-	if registrations := subs[personaSub]; registrations != "" {
-		facts[personaFact] = registrations
+	// The persona registrations as the stack renders them, "[]" where it names none (no
+	// persona method, or an environment past the first): a reader that has the stack as
+	// applied never falls back to the trigger's _PERSONA, which says what the stack said
+	// at its last apply and lags a release that adds or removes the method.
+	facts[personaFact] = subs[personaSub]
+	if facts[personaFact] == "" {
+		facts[personaFact] = noRegistrations
 	}
 	if secrets := subs[migrateSecretsSub]; secrets != "" {
 		facts[migrateSecretsFact] = secrets

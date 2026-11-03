@@ -125,6 +125,16 @@ func TestReadStackOutputs(t *testing.T) {
 			wantSlept:  1,
 		},
 		{
+			name:      "/gcbrun down: the registrations the job read off the stack before the destroy are left for deploy persona remove",
+			env:       "export DOWN=\"true\"\nexport SKIP_DEPLOY=\"true\"\n",
+			object:    outputs(1, func(o *StackOutputs) { destroyed(o); o.Persona = `[{"auth":"keepers"}]` }),
+			wantFacts: map[string]string{personaFact: `[{"auth":"keepers"}]`},
+			wantOut: []string{
+				"The stack job destroyed the pull request's environment (build b-9); nothing deploys.",
+				"Its persona registrations, read from the stack before the destroy, are left for deploy persona remove (PERSONA).",
+			},
+		},
+		{
 			name:    "a destroy where this build was to deploy is refused",
 			object:  outputs(1, destroyed),
 			wantErr: "the pull request's stack job destroyed the environment (build b-9), where this build was to deploy into it: comment /gcbrun again to stand it up",

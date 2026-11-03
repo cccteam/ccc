@@ -1,6 +1,8 @@
 package deploy
 
 import (
+	"context"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -55,9 +57,12 @@ func TestSweep(t *testing.T) {
 		wantTofu    []string
 		wantDeleted []string
 		// wantState says the state object is still in the bucket after the sweep.
-		wantState  bool
-		wantErr    string
-		badRequest bool
+		wantState bool
+		// wantRemoved are the persona provider's requests (METHOD path): the registrations
+		// the stack named, read before the destroy, removed after it.
+		wantRemoved []string
+		wantErr     string
+		badRequest  bool
 	}{
 		{
 			name:      "no pull-request environment, nothing to do",
@@ -83,7 +88,8 @@ func TestSweep(t *testing.T) {
 				"projects/p/locations/us-central1/jobs/quill-jobs":                   job("quill-jobs", "quill", "", ""),
 			},
 			states:      map[int]string{7: "closed", 12: "open"},
-			output:      output,
+			output:      strings.Replace(output, `"_HOSTNAME"`, `"_PERSONA": "[{\"auth\":\"keepers\",\"registration\":\"persona\",\"issuer\":\"ISSUER/persona\",\"clientIdRoot\":\"quill\"}]", "_HOSTNAME"`, 1),
+			wantRemoved: []string{"DELETE /persona/registrations/quill-pr7"},
 			wantOut:     []string{"Pull requests with an environment: 7 9 12", "Pull request 7 is closed: its environment goes.", "=== Pull request 7: stack at 3-app/quill/tst/pr7 as quill-apply@p.iam.gserviceaccount.com ===", "Job quill-pr7-jobs-pr7-abc1234 deleted with pull request 7's environment.", "Job quill-pr7-jobs-pr7-def5678 deleted with pull request 7's environment.", "Pull request 7's state object " + stateObject + " is deleted: nothing of its stack is kept.", "Notice: GitHub did not answer for pull request 9", "Pull request 12 is open: its environment stays."},
 			wantTofu:    []string{initLine, stateList, readOut, destroy},
 			wantDeleted: []string{"projects/p/locations/us-central1/jobs/quill-pr7-jobs-pr7-abc1234", "projects/p/locations/us-central1/jobs/quill-pr7-jobs-pr7-def5678"},
@@ -106,7 +112,7 @@ func TestSweep(t *testing.T) {
 			},
 			states:   map[int]string{7: "closed"},
 			output:   "{}",
-			wantOut:  []string{"Pull request 7 is closed: its environment goes.", "Notice: pull request 7's stack names no jobs (the stack's state has no substitutions output: never applied, or applied by a bedrock before the output); none of its builds' jobs is deleted."},
+			wantOut:  []string{"Pull request 7 is closed: its environment goes.", "Notice: pull request 7's stack names no jobs (the stack's state has no substitutions output: never applied, or applied by a bedrock before the output); none of its builds' jobs is deleted, and its persona registrations are read from the trigger."},
 			wantTofu: []string{initLine, stateList, readOut, destroy},
 		},
 		{
@@ -149,7 +155,10 @@ func TestSweep(t *testing.T) {
 			if tt.empty {
 				listed = ""
 			}
-			run := &fakeRunner{outputs: map[string]string{"tofu output": tt.output, stateList: listed}}
+			provider := &personaProvider{}
+			issuer := httptest.NewServer(provider)
+			t.Cleanup(issuer.Close)
+			run := &fakeRunner{outputs: map[string]string{"tofu output": strings.ReplaceAll(tt.output, "ISSUER", issuer.URL), stateList: listed}}
 			req := &BuildRequest{BuildID: "b-1", Project: "p", Location: "us-central1"}
 			if tt.badRequest {
 				req.BuildID = ""
@@ -158,7 +167,10 @@ func TestSweep(t *testing.T) {
 			store := &memoryStore{objects: map[string]string{stateObject: "{}"}}
 			w := workspaceFiles(t, map[string]string{stackDir + "/" + placementFile: testPlacement("")})
 			var out strings.Builder
-			err := Sweep(t.Context(), &Clients{Builds: builds.open, Run: cloudRun.open, GitHub: gh, Exec: run, Storage: store.open}, w, req, &out)
+			clients := &Clients{Builds: builds.open, Run: cloudRun.open, GitHub: gh, Exec: run, Storage: store.open, HTTP: issuer.Client(), IDToken: func(_ context.Context, audience string) (string, error) {
+				return "token-for-" + audience, nil
+			}}
+			err := Sweep(t.Context(), clients, w, req, &out)
 			if tt.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 					t.Fatalf("Sweep() error = %v, want %q", err, tt.wantErr)
@@ -172,6 +184,13 @@ func TestSweep(t *testing.T) {
 			containsAll(t, out.String(), tt.wantOut...)
 			if diff := cmp.Diff(tt.wantTofu, run.lines(), cmpopts.EquateEmpty()); diff != "" {
 				t.Errorf("tofu (-want +got):\n%s", diff)
+			}
+			var removed []string
+			for _, r := range provider.requests {
+				removed = append(removed, r.Method+" "+r.Path)
+			}
+			if diff := cmp.Diff(tt.wantRemoved, removed, cmpopts.EquateEmpty()); diff != "" {
+				t.Errorf("provider requests (-want +got):\n%s", diff)
 			}
 			if diff := cmp.Diff(tt.wantDeleted, cloudRun.deleted, cmpopts.EquateEmpty()); diff != "" {
 				t.Errorf("deleted (-want +got):\n%s\noutput:\n%s", diff, out.String())

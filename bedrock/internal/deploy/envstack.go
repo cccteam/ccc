@@ -658,8 +658,10 @@ func (s *stack) generation(ctx context.Context, open StoreFunc, subs map[string]
 // databases it reaches; the services (_SERVICES: a release that adds a browser
 // application deploys to it in this very run); the job process's template job (_JOBS_JOB:
 // the first release that adds a job process makes this build's job from it, where the
-// trigger names none yet); and the build arguments the stack makes (_BUILD_ARG_<NAME>,
-// for the hooks after the image build, which passed what the trigger carried). The
+// trigger names none yet); the build arguments the stack makes (_BUILD_ARG_<NAME>,
+// for the hooks after the image build, which passed what the trigger carried); and the
+// persona registrations (_PERSONA, left as PERSONA, "[]" for none: deploy persona
+// register sends what this release carries, in this very run). The
 // environment's canonical hostname is read back the same way (_HOSTNAME, left as
 // CANONICAL_HOSTNAME for deploy service, which names the next revision's URL by it,
 // and _NEXT_HOSTNAME, left as NEXT_HOSTNAME, where the stack names the next revision's
@@ -706,6 +708,7 @@ func (s *stack) appliedFacts(ctx context.Context, w Workspace, subs map[string]s
 			fmt.Fprintf(s.out, "The sites' hostnames are read from the stack as applied (%s): %s, where the trigger (its stack's last apply) says %q.\n", hostnamesSub, sites, said)
 		}
 	}
+	s.appliedPersona(read, facts, subs)
 	// The next revision's hostname a stack names (its canonical hostname on a vanity
 	// domain) is read back the same way, for deploy service to name the next URL by.
 	for _, f := range [][3]string{{nextHostnameFact, nextHostnameSub, "The next revision's hostname is"}, {nextHostnamesFact, nextHostnamesSub, "The sites' next hostnames are"}} {
@@ -719,17 +722,9 @@ func (s *stack) appliedFacts(ctx context.Context, w Workspace, subs map[string]s
 			fmt.Fprintf(s.out, "%s read from the stack as applied (%s): %s, where the trigger (its stack's last apply) says %q.\n", what, sub, next, said)
 		}
 	}
-	settings := facts[migrateEnvFact]
-	if settings == "" {
-		return errors.Newf("the stack's substitutions output names no %s, the migrate command's settings: the stack is rendered by an older bedrock than the pipeline's, which bedrock check refuses", migrateEnvSub)
-	}
-	databases := facts[migrateDatabasesFact]
-	if databases == "" {
-		return errors.Newf("the stack's substitutions output names no %s, the databases the migrate command reaches: the stack is rendered by an older bedrock than the pipeline's, which bedrock check refuses", migrateDatabasesSub)
-	}
-	secrets := facts[migrateSecretsFact]
-	if secrets == "" {
-		return errors.Newf("the stack's substitutions output names no %s, the secrets the migrate command reads: the stack is rendered by an older bedrock than the pipeline's, which bedrock check refuses", migrateSecretsSub)
+	settings, databases, secrets, err := migrateFactsOf(facts)
+	if err != nil {
+		return err
 	}
 	fmt.Fprintf(s.out, "The migrate command's settings, secrets and databases are read from the stack as applied (%s, %s, %s).\n", migrateEnvSub, migrateSecretsSub, migrateDatabasesSub)
 	read[migrateEnvFact], read[migrateDatabasesFact], read[migrateSecretsFact] = settings, databases, secrets
@@ -738,6 +733,42 @@ func (s *stack) appliedFacts(ctx context.Context, w Workspace, subs map[string]s
 	}
 
 	return w.Append(read)
+}
+
+// appliedPersona leaves the persona registrations as the applied stack names them
+// (PERSONA, "[]" for none), so the release that adds or removes a persona method
+// registers what it carries in this very run, and says so where the trigger's _PERSONA,
+// what the stack said at its last apply, differs.
+func (s *stack) appliedPersona(read, facts, subs map[string]string) {
+	registrations := facts[personaFact]
+	read[personaFact] = registrations
+	said := subs[personaSub]
+	if said == "" {
+		said = noRegistrations
+	}
+	if said != registrations {
+		fmt.Fprintf(s.out, "The persona registrations are read from the stack as applied (%s): %s, where the trigger (its stack's last apply) says %s.\n", personaSub, registrations, said)
+	}
+}
+
+// migrateFactsOf answers the migrate command's settings, databases and secrets the
+// applied stack names, refusing a stack rendered by an older bedrock than the pipeline's,
+// which names none of them.
+func migrateFactsOf(facts map[string]string) (settings, databases, secrets string, err error) {
+	settings = facts[migrateEnvFact]
+	if settings == "" {
+		return "", "", "", errors.Newf("the stack's substitutions output names no %s, the migrate command's settings: the stack is rendered by an older bedrock than the pipeline's, which bedrock check refuses", migrateEnvSub)
+	}
+	databases = facts[migrateDatabasesFact]
+	if databases == "" {
+		return "", "", "", errors.Newf("the stack's substitutions output names no %s, the databases the migrate command reaches: the stack is rendered by an older bedrock than the pipeline's, which bedrock check refuses", migrateDatabasesSub)
+	}
+	secrets = facts[migrateSecretsFact]
+	if secrets == "" {
+		return "", "", "", errors.Newf("the stack's substitutions output names no %s, the secrets the migrate command reads: the stack is rendered by an older bedrock than the pipeline's, which bedrock check refuses", migrateSecretsSub)
+	}
+
+	return settings, databases, secrets, nil
 }
 
 // appliedTemplates reads the revision templates off the applied stack's outputs and

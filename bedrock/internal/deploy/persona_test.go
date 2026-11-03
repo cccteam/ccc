@@ -158,6 +158,17 @@ func TestPersona(t *testing.T) {
 			wantRequests: []string{"PUT /persona/registrations/beacon-pr12"},
 		},
 		{
+			name: "the stack as applied names no registrations where the trigger still carries some (the method was removed): nothing is registered", action: PersonaRegister,
+			env:  "export CANONICAL_HOSTNAME=\"beacon-tst.impulseframework.dev\"\nexport PERSONA=\"[]\"\n",
+			subs: map[string]string{"_ENV": "tst", "_PR_NUMBER": ""}, persona: true,
+			wantOut: []string{"No persona provider in tst: nothing to register."},
+		},
+		{
+			name: "a teardown whose stack named no registrations removes nothing, whatever the trigger carries", action: PersonaRemove,
+			env: "export DOWN=\"true\"\nexport SKIP_DEPLOY=\"true\"\nexport PERSONA=\"[]\"\n", subs: map[string]string{"_ENV": "tst", "_PR_NUMBER": "12"}, persona: true,
+			wantOut: []string{"No persona provider in tst: nothing to remove."},
+		},
+		{
 			name: "the provider refuses the deploy identity", action: PersonaRegister,
 			env:  "export PR_HOSTNAME=\"beacon-pr12.impulseframework.dev\"\n",
 			subs: map[string]string{"_ENV": "tst", "_PR_NUMBER": "12"}, persona: true,

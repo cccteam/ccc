@@ -1075,8 +1075,36 @@ func TestApplyEnvironmentStack(t *testing.T) {
 		wantServices  string
 		wantJobsJob   string
 		wantArguments map[string]string
-		wantErr       string
+		// wantPersona is the persona registrations read back from the applied stack
+		// (PERSONA), when a case checks them: "[]" for a stack that names none.
+		wantPersona string
+		wantErr     string
 	}{
+		{
+			name:         "the persona registrations are read from the applied stack, so the release that adds the method registers in this very run",
+			subs:         tagSubs(),
+			planJSON:     stackPlanJSON,
+			outputs:      map[string]string{readSubstitutions: `{"substitutions": {"value": ` + strings.TrimSuffix(substitutionsOutput, "}") + `, "_PERSONA": "[{\"auth\":\"keepers\"}]"}}, "revision_templates": {"value": ` + revisionTemplatesJSON(false, "quill-app") + `}}`},
+			wantOut:      []string{`The persona registrations are read from the stack as applied (_PERSONA): [{"auth":"keepers"}], where the trigger (its stack's last apply) says [].`},
+			wantTofu:     []string{"tofu apply -input=false -no-color WS/stack.plan", readSubstitutions},
+			wantSettings: `{"APP_SERVICE_NAME":"quill-migrate"}`,
+			wantPersona:  `[{"auth":"keepers"}]`,
+		},
+		{
+			name: "a stack that names no registrations where the trigger still carries some (the method was removed) leaves none, in this very run",
+			subs: func() map[string]string {
+				subs := tagSubs()
+				subs["_PERSONA"] = `[{"auth":"keepers"}]`
+
+				return subs
+			}(),
+			planJSON:     stackPlanJSON,
+			outputs:      map[string]string{readSubstitutions: `{"substitutions": {"value": ` + substitutionsOutput + `}, "revision_templates": {"value": ` + revisionTemplatesJSON(false, "quill-app") + `}}`},
+			wantOut:      []string{`The persona registrations are read from the stack as applied (_PERSONA): [], where the trigger (its stack's last apply) says [{"auth":"keepers"}].`},
+			wantTofu:     []string{"tofu apply -input=false -no-color WS/stack.plan", readSubstitutions},
+			wantSettings: `{"APP_SERVICE_NAME":"quill-migrate"}`,
+			wantPersona:  "[]",
+		},
 		{
 			name:         "a restore run deletes the Firestore database's documents after the apply, as the apply identity",
 			subs:         tstSubs(),
@@ -1272,6 +1300,15 @@ func TestApplyEnvironmentStack(t *testing.T) {
 				if env[name] != want {
 					t.Errorf("%s = %q, want %q", name, env[name], want)
 				}
+			}
+			if tt.wantPersona != "" && env[personaFact] != tt.wantPersona {
+				t.Errorf("%s = %q, want %q", personaFact, env[personaFact], tt.wantPersona)
+			}
+			if tt.wantPersona == "" && tt.wantSettings != "" && env[personaFact] != "[]" {
+				t.Errorf("%s = %q, want %q for a stack that names none", personaFact, env[personaFact], "[]")
+			}
+			if tt.wantPersona == "" && strings.Contains(out.String(), "The persona registrations are read") {
+				t.Errorf("registrations the trigger names alike are said:\n%s", out.String())
 			}
 			if tt.wantServices != "" && tt.wantServices == tt.subs[servicesSub] && tt.wantJobsJob == tt.subs[jobsJobSub] && (strings.Contains(out.String(), "(_SERVICES)") || strings.Contains(out.String(), "(_JOBS_JOB)") || strings.Contains(out.String(), "(_BUILD_ARG_")) {
 				t.Errorf("a value the trigger names alike is said:\n%s", out.String())

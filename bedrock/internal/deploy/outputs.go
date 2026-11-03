@@ -79,9 +79,10 @@ type StackOutputs struct {
 	MigrateDatabases string            `json:"migrateDatabases,omitempty"`
 	BuildArguments   map[string]string `json:"buildArguments,omitempty"`
 	// Persona is the persona registrations the pull request's stack carries (the
-	// _PERSONA substitution as its code renders it), which the preview build registers
-	// with the provider as the pull request's own; empty when the code has no persona
-	// method.
+	// _PERSONA substitution as its code renders it, "[]" for none), which the preview
+	// build registers with the provider as the pull request's own; on a destroy, the
+	// registrations read before it, which the teardown's deploy persona remove removes.
+	// Empty for an object written by a bedrock before it.
 	Persona string `json:"persona,omitempty"`
 	// RevisionTemplates is the stack's revision_templates output as applied: what the
 	// preview build's deploy service and deploy jobs build the revisions and the job
@@ -199,8 +200,14 @@ func ReadStackOutputs(ctx context.Context, clients *Clients, w Workspace, out io
 		return errors.Newf("the pull request's stack job destroyed the environment (build %s), where this build was to deploy into it: comment /gcbrun again to stand it up", o.Build)
 	case o.Status == StackDestroyed:
 		fmt.Fprintf(out, "The stack job destroyed the pull request's environment (build %s); nothing deploys.\n", o.Build)
+		if o.Persona == "" {
+			return nil
+		}
+		// The registrations the job read off the stack before the destroy, for deploy
+		// persona remove: the trigger's _PERSONA lags a release.
+		fmt.Fprintf(out, "Its persona registrations, read from the stack before the destroy, are left for deploy persona remove (%s).\n", personaFact)
 
-		return nil
+		return w.Append(map[string]string{personaFact: o.Persona})
 	case down:
 		return errors.Newf("the pull request's stack job applied the stack (build %s), where this build was to tear it down (/gcbrun down): the two read different comments", o.Build)
 	case o.Services == "":
