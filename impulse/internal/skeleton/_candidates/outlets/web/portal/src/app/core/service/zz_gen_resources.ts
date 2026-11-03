@@ -122,6 +122,7 @@ const resourceMap = defineResourceMap({
   [Resources.Announcements]: {
     route: 'tenants/{tenantID}/announcements',
     consolidatedRoute: 'resources',
+    live: true,
     fields: [
       { fieldName: 'id', primaryKey: { ordinalPosition: 0 }, displayType: 'uuid', required: false, isIndex: true, filterable: 'always' },
       { fieldName: 'tenantId', displayType: 'string', required: true, isIndex: true, filterable: 'always', readOnly: true },
@@ -134,6 +135,7 @@ const resourceMap = defineResourceMap({
     createDisabled: true,
     updateDisabled: true,
     deleteDisabled: true,
+    live: false,
     fields: [
       { fieldName: 'name', primaryKey: { ordinalPosition: 1 }, displayType: 'string', required: true, isIndex: true },
       { fieldName: 'description', displayType: 'string', required: true, isIndex: false },
@@ -145,6 +147,7 @@ const resourceMap = defineResourceMap({
   [Resources.MembersUsers]: {
     route: 'members-users',
     createDisabled: true,
+    live: false,
     fields: [
       { fieldName: 'id', primaryKey: { ordinalPosition: 1 }, displayType: 'uuid', required: true, isIndex: true },
       { fieldName: 'username', displayType: 'string', required: true, isIndex: false },
@@ -165,6 +168,7 @@ const resourceMap = defineResourceMap({
   [Resources.MembersSeats]: {
     route: 'members-seats',
     updateDisabled: true,
+    live: false,
     fields: [
       { fieldName: 'user', primaryKey: { ordinalPosition: 1 }, displayType: 'uuid', required: true, isIndex: true },
       { fieldName: 'role', primaryKey: { ordinalPosition: 2 }, displayType: 'string', required: true, isIndex: true },
@@ -177,6 +181,7 @@ const resourceMap = defineResourceMap({
     createDisabled: true,
     updateDisabled: true,
     deleteDisabled: true,
+    live: false,
     fields: [
       { fieldName: 'name', primaryKey: { ordinalPosition: 1 }, displayType: 'string', required: true, isIndex: true },
       { fieldName: 'kind', displayType: 'string', required: true, isIndex: false },
@@ -186,6 +191,7 @@ const resourceMap = defineResourceMap({
   [Resources.MembersInvitations]: {
     route: 'members-invitations',
     updateDisabled: true,
+    live: false,
     fields: [
       { fieldName: 'id', primaryKey: { ordinalPosition: 1 }, displayType: 'uuid', required: true, isIndex: true },
       { fieldName: 'email', displayType: 'string', required: true, isIndex: false },
@@ -198,6 +204,7 @@ const resourceMap = defineResourceMap({
   [Resources.MembersTenantUsers]: {
     route: 'tenants/{tenantID}/members-tenant-users',
     createDisabled: true,
+    live: false,
     fields: [
       { fieldName: 'id', primaryKey: { ordinalPosition: 1 }, displayType: 'uuid', required: true, isIndex: true },
       { fieldName: 'username', displayType: 'string', required: true, isIndex: false },
@@ -218,6 +225,7 @@ const resourceMap = defineResourceMap({
   [Resources.MembersTenantSeats]: {
     route: 'tenants/{tenantID}/members-tenant-seats',
     updateDisabled: true,
+    live: false,
     fields: [
       { fieldName: 'user', primaryKey: { ordinalPosition: 1 }, displayType: 'uuid', required: true, isIndex: true },
       { fieldName: 'role', primaryKey: { ordinalPosition: 2 }, displayType: 'string', required: true, isIndex: true },
@@ -230,6 +238,7 @@ const resourceMap = defineResourceMap({
     createDisabled: true,
     updateDisabled: true,
     deleteDisabled: true,
+    live: false,
     fields: [
       { fieldName: 'name', primaryKey: { ordinalPosition: 1 }, displayType: 'string', required: true, isIndex: true },
       { fieldName: 'description', displayType: 'string', required: true, isIndex: false },
@@ -238,6 +247,7 @@ const resourceMap = defineResourceMap({
   [Resources.MembersTenantInvitations]: {
     route: 'tenants/{tenantID}/members-tenant-invitations',
     updateDisabled: true,
+    live: false,
     fields: [
       { fieldName: 'id', primaryKey: { ordinalPosition: 1 }, displayType: 'uuid', required: true, isIndex: true },
       { fieldName: 'email', displayType: 'string', required: true, isIndex: false },

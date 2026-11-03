@@ -1663,8 +1663,9 @@ scaling to zero.
 
 **The shape.** A request opts in by carrying the header `X-Subscribe: <tab>`, a
 client-minted tab id of 1 to 64 characters of `[A-Za-z0-9_-]`; the client library sends
-it only on requests a page asked to be live (list pages, record pages), never from a
-picker, an edit form or an export. On a permitted list or read the generated handler
+it only on a live page's requests (list pages and record pages, live by default on a
+table-backed resource, whose generated metadata says its changes are published, unless
+the page says `live: false`), never from a picker, an edit form or an export. On a permitted list or read the generated handler
 registers the subscription — who, which tab, which resource, which key or which tenant
 domain, until when — *before* it runs the query, so a commit that lands during the
 query is not missed; a refused request registers nothing. A row is named by its key as
