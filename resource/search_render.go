@@ -12,8 +12,8 @@ import (
 // anchor as its relative search type, or STARTS_WITH over the lowercased column for the
 // prefix fact; on PostgreSQL it is ILIKE over the role's expression of the column, the
 // matching trigram or expression index being the application's DDL as every PostgreSQL
-// index is. The box is AND over terms of OR over fields of the field's match: an
-// anchored field contributes each declared anchor, a plain field contributes contains.
+// index is. The box is AND over terms of OR over fields, every field contributing
+// contains, anchors or not; the anchors serve startswith and endswith alone.
 // Under the caller's grants a denied field drops out of the box and a conditionally
 // granted one conjoins its condition inside its match, which keeps the index usable.
 //
@@ -180,10 +180,9 @@ func (s *sqlGenerator) generateSearchSQL(cn *ConditionNode) (string, []QueryPara
 	return conjunction(termSQLs), params, nil
 }
 
-// boxFieldSQL renders one field's contribution to a term: each declared anchor, or
-// contains where none is declared, under the field's grant. The second result is false
-// when the field contributes nothing: denied, or the term normalizes to nothing for its
-// role.
+// boxFieldSQL renders one field's contribution to a term, contains, under the field's
+// grant. The second result is false when the field contributes nothing: denied, or the
+// term normalizes to nothing for its role.
 func (s *sqlGenerator) boxFieldSQL(field *searchField, term string, params *[]QueryParam) (string, bool) {
 	grant := s.searchGrants[field.column]
 	if grant.dropped {
@@ -200,34 +199,19 @@ func (s *sqlGenerator) boxFieldSQL(field *searchField, term string, params *[]Qu
 	return sql, true
 }
 
-// boxMatchSQL renders a spec's box match for a term over a column.
+// boxMatchSQL renders a spec's box match for a term over a column: contains, whatever
+// anchors the tokens carry, since a term typed in the box is looked for anywhere in the
+// value; the anchors serve the explicit startswith and endswith alone.
 func (s *sqlGenerator) boxMatchSQL(column string, spec *SearchSpec, term string, params *[]QueryParam) (string, bool) {
 	normalized, ok := normalizeSearchTerm(term, spec.Role)
 	if !ok {
 		return "", false
 	}
-	if len(spec.Anchors) == 0 {
-		if s.dialect == Spanner {
-			return s.searchSubstringSQL(spec.Token, normalized, "", params), true
-		}
-
-		return s.likeSQL(s.roleExpression(column, spec), normalized, containsStr, params), true
-	}
-	alternatives := make([]string, 0, len(spec.Anchors))
-	for _, anchor := range spec.Anchors {
-		if s.dialect == Spanner {
-			alternatives = append(alternatives, s.searchSubstringSQL(spec.Token, normalized, anchor, params))
-
-			continue
-		}
-		operator := startswithStr
-		if anchor == SearchAnchorSuffix {
-			operator = endswithStr
-		}
-		alternatives = append(alternatives, s.likeSQL(s.roleExpression(column, spec), normalized, operator, params))
+	if s.dialect == Spanner {
+		return s.searchSubstringSQL(spec.Token, normalized, "", params), true
 	}
 
-	return disjunction(alternatives), true
+	return s.likeSQL(s.roleExpression(column, spec), normalized, containsStr, params), true
 }
 
 // branchExistsSQL renders a PostgreSQL branch: the child rows joined to this row by the

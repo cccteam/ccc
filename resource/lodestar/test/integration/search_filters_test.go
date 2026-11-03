@@ -112,8 +112,7 @@ func TestSearchBesideFilters(t *testing.T) {
 	nameKey := func(row map[string]any) string { return cell[string](t, row, "name") }
 
 	// The board's term, station, meets both indexes: the relay station's missions through
-	// the client's name (its suffix, the anchors Name's tokens carry) and one title through
-	// the missions' index.
+	// the client's name and one title through the missions' index.
 	surveyed := selectRows(boards, boardMatch("station"))
 	if len(surveyed) < 4 {
 		t.Fatalf("the seed holds %d Anvil boards naming station, want at least 4", len(surveyed))

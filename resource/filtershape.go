@@ -245,7 +245,7 @@ func matchSearchBox(box *searchCondition, row reflect.Value) (bool, error) {
 			if !ok {
 				continue
 			}
-			if boxMatches(cell, normalized, f.spec) {
+			if boxMatches(cell, normalized) {
 				found = true
 
 				break
