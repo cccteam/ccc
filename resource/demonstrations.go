@@ -118,6 +118,8 @@ var Demonstrations = []Demonstration{
 	{"search.view", "A view's field names the table column it projects (search:\"Table.Column\") and the SQL projects that column's token column under its own name, so the view's box and matches ride the table's index."},
 	{"search.memory", "A computed resource's allow_filter text field answers the three matches in memory and joins the box, which the handler evaluates over the folded rows."},
 	{"search.quoted-value", "A quoted filter value, with backslash escapes, carries the grammar's separators: name:eq:\"Halvard Freight\"."},
+	{"search.beside-filters", "The box beside the column filters: the list page sends the page's filter, the complete column filters and the box as conjuncts of one AND, (page),(columns),*:search:\"…\"; the server narrows by the box's key set and the rest of the filter together, the count and the cursor carry the whole, the declared order stands, and the box is the indexed touch a companion-only column waits for."},
+	{"search.beside-filters.pii", "A filter carrying the box and column filters is placed as a whole: posted when the box or any column filter reaches a PII field for the caller, kept in the URL when the caller's grants deny every PII field it would reach; a field the caller may not read drops out of the box beside a filter as it does alone."},
 	{"metadata.search", "FieldMeta.search and ResourceMeta.searchFields: the browser learns which matches a column answers and which fields the box searches from the generated metadata, and draws the controls nowhere else."},
 
 	// Structure.

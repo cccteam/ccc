@@ -384,6 +384,32 @@ How it is wired:
   covers the link, the dialog and the card in both states, and the headless check in the
   walkthrough's feature-flags section drives the flip through the dialog.
 
+## Finding and narrowing on one list
+
+A list page over a resource with search fields draws the box above the grid, and the
+grid's column filters beside it; both narrow one request. The page sends its own filter,
+the complete column filters and the box as conjuncts of one AND, the first two
+parenthesized and the box bare, `(statusId:eq:open),*:search:"survey"`. The server
+gathers the box's key set and applies the rest of the filter over the joined rows, the
+count and the cursor pages carry the whole, and the declared order stands. The box is the
+indexed touch a companion-only column waits for, so on the
+[Missions page](web/console/src/app/configs/missions.config.ts), the board over two
+tables' indexes with filters on status, squadron, kind, deadline and days left, a
+days-left filter rides beside the box alone and leaves when the last indexed touch, the
+box or a status filter, is cleared; the deadline's menu takes what is typed, an RFC 3339
+timestamp, since the column is a timestamp. The filter is placed as a whole: on the
+[Clients page](web/console/src/app/configs/clients.config.ts) headquarters, whose box
+reaches the contact fields, posts it with the trusted filter or a contact-name match
+beside the box, and a ClientBrowser persona, whose box searches the name alone, keeps the
+same shape in the URL and reads under the box which fields the role leaves out.
+
+The checks: the integration suite's `search_filters_test.go` sends both pages' requests
+in that wire form and pins the answers against the unfiltered lists, and a headless check
+driven in Chrome (playwright-core and the system browser from a scratch project outside
+the repository, as the console's other browser proofs are run) types in the box, commits
+filters from the column menus, clears the box, turns the page, and reads each request's
+method and filter beside the server's log, on the emulator and on a real instance.
+
 ## One channel between instances
 
 Every instance holds one listener on one document. The live service keeps a signals
