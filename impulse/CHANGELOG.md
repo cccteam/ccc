@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.17](https://github.com/cccteam/ccc/compare/impulse/v0.6.16...impulse/v0.6.17) (2026-11-03)
+
+
+### Bug Fixes
+
+* **impulse:** the skeleton's web pins move to resource-angular 0.0.35, resource 0.0.23 and resource-firestore 0.0.22, whose live session echoes the application's named XSRF cookie on the page-leave unsubscribe, and the v0.6.17 ledger step names them ([#1275](https://github.com/cccteam/ccc/issues/1275)) ([7c68303](https://github.com/cccteam/ccc/commit/7c68303cdf1e753e9d91965cff4427c9b9758b57))
+
 ## [0.6.16](https://github.com/cccteam/ccc/compare/impulse/v0.6.15...impulse/v0.6.16) (2026-11-03)
 
 
