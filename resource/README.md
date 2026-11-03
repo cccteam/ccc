@@ -268,8 +268,9 @@ metadata carries what the browser needs to apply the same grants: `pii: true` on
 declared `pii` (a box reaching one is posted), and `searchBranches: [{ field:
 'clientContact.displayName', resource: Resources.ClientContacts, fieldName: 'displayName' }]`,
 the child resource and field whose List grant governs each branch, with `pii: true` on a
-PII child field, so a denied branch leaves the box's placeholder as it leaves the search. An anchored
-field contributes each of its anchors, a plain one `contains`. One box per filter; a
+PII child field, so a denied branch leaves the box's placeholder as it leaves the search. Every
+token field contributes `contains` to the box, anchors or not, so a term is found anywhere in
+the value; the anchors give the field `startswith` and `endswith` beside it. One box per filter; a
 second is a 400. The box is sent as a filter condition like any other, so it joins the
 rest of the filter with `,` and `|`, and the whole filter travels in the URL, or in the
 POST body where the box searches a `pii` field, as a `pii` field's own condition does.

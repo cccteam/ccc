@@ -354,11 +354,11 @@ func TestSQLGenerator_Search(t *testing.T) {
 		{name: "digits strip the term", filter: "phone:contains:555-12", dialect: Spanner, wantSQL: "SEARCH_SUBSTRING(`Phone_Search`, @_p1)", wantParams: map[string]any{"_p1": "55512"}},
 		{name: "a term with no digits never meets a digits field", filter: "phone:contains:ext", dialect: Spanner, wantSQL: "FALSE", wantParams: map[string]any{}},
 		{name: "startswith through the lowercased column", filter: "code:startswith:AbC", dialect: Spanner, wantSQL: "STARTS_WITH(`Code_Lower`, @_p1)", wantParams: map[string]any{"_p1": "abc"}},
-		{name: "the box inline over one index", filter: `*:search:"ann"`, dialect: Spanner, wantSQL: "((SEARCH_SUBSTRING(`Name_Search`, @_p1, relative_search_type => 'value_prefix') OR SEARCH_SUBSTRING(`Name_Search`, @_p2, relative_search_type => 'value_suffix')) OR SEARCH_SUBSTRING(`Email_Search`, @_p3) OR SEARCH_SUBSTRING(`Title_Search`, @_p4))", wantParams: map[string]any{"_p1": "ann", "_p2": "ann", "_p3": "ann", "_p4": "ann"}},
-		{name: "the box ANDs its terms, each read for every role", filter: `*:search:"555 1987-03"`, dialect: Spanner, wantSQL: "(((SEARCH_SUBSTRING(`Name_Search`, @_p1, relative_search_type => 'value_prefix') OR SEARCH_SUBSTRING(`Name_Search`, @_p2, relative_search_type => 'value_suffix')) OR SEARCH_SUBSTRING(`Phone_Search`, @_p3) OR SEARCH_SUBSTRING(`Email_Search`, @_p4) OR SEARCH_SUBSTRING(`Title_Search`, @_p5)) AND ((SEARCH_SUBSTRING(`Name_Search`, @_p6, relative_search_type => 'value_prefix') OR SEARCH_SUBSTRING(`Name_Search`, @_p7, relative_search_type => 'value_suffix')) OR SEARCH_SUBSTRING(`Phone_Search`, @_p8) OR SEARCH_SUBSTRING(`BornOn_Search`, @_p9) OR SEARCH_SUBSTRING(`Email_Search`, @_p10) OR SEARCH_SUBSTRING(`Title_Search`, @_p11)))", wantParams: map[string]any{"_p1": "555", "_p2": "555", "_p3": "555", "_p4": "555", "_p5": "555", "_p6": "1987-03", "_p7": "1987-03", "_p8": "198703", "_p9": "198703", "_p10": "1987-03", "_p11": "1987-03"}},
+		{name: "the box inline over one index", filter: `*:search:"ann"`, dialect: Spanner, wantSQL: "(SEARCH_SUBSTRING(`Name_Search`, @_p1) OR SEARCH_SUBSTRING(`Email_Search`, @_p2) OR SEARCH_SUBSTRING(`Title_Search`, @_p3))", wantParams: map[string]any{"_p1": "ann", "_p2": "ann", "_p3": "ann"}},
+		{name: "the box ANDs its terms, each read for every role", filter: `*:search:"555 1987-03"`, dialect: Spanner, wantSQL: "((SEARCH_SUBSTRING(`Name_Search`, @_p1) OR SEARCH_SUBSTRING(`Phone_Search`, @_p2) OR SEARCH_SUBSTRING(`Email_Search`, @_p3) OR SEARCH_SUBSTRING(`Title_Search`, @_p4)) AND (SEARCH_SUBSTRING(`Name_Search`, @_p5) OR SEARCH_SUBSTRING(`Phone_Search`, @_p6) OR SEARCH_SUBSTRING(`BornOn_Search`, @_p7) OR SEARCH_SUBSTRING(`Email_Search`, @_p8) OR SEARCH_SUBSTRING(`Title_Search`, @_p9)))", wantParams: map[string]any{"_p1": "555", "_p2": "555", "_p3": "555", "_p4": "555", "_p5": "1987-03", "_p6": "198703", "_p7": "198703", "_p8": "1987-03", "_p9": "1987-03"}},
 		{name: "a branch renders as a key set on Spanner, never inline", filter: `*:search:"ann"`, dialect: Spanner, branches: true, wantErr: "renders as a key set on Spanner, never inline"},
-		{name: "a denied field drops out of the box silently", filter: `*:search:"ann"`, dialect: Spanner, grants: map[string]searchGrant{"Email": {dropped: true}, "Title": {dropped: true}}, wantSQL: "(SEARCH_SUBSTRING(`Name_Search`, @_p1, relative_search_type => 'value_prefix') OR SEARCH_SUBSTRING(`Name_Search`, @_p2, relative_search_type => 'value_suffix'))", wantParams: map[string]any{"_p1": "ann", "_p2": "ann"}},
-		{name: "a conditional field's match is conjoined with its condition", filter: `*:search:"ann"`, dialect: Spanner, grants: map[string]searchGrant{"Name": {condition: "`Trusted` = TRUE"}, "Email": {dropped: true}, "Title": {dropped: true}}, wantSQL: "(`Trusted` = TRUE AND (SEARCH_SUBSTRING(`Name_Search`, @_p1, relative_search_type => 'value_prefix') OR SEARCH_SUBSTRING(`Name_Search`, @_p2, relative_search_type => 'value_suffix')))", wantParams: map[string]any{"_p1": "ann", "_p2": "ann"}},
+		{name: "a denied field drops out of the box silently", filter: `*:search:"ann"`, dialect: Spanner, grants: map[string]searchGrant{"Email": {dropped: true}, "Title": {dropped: true}}, wantSQL: "SEARCH_SUBSTRING(`Name_Search`, @_p1)", wantParams: map[string]any{"_p1": "ann"}},
+		{name: "a conditional field's match is conjoined with its condition", filter: `*:search:"ann"`, dialect: Spanner, grants: map[string]searchGrant{"Name": {condition: "`Trusted` = TRUE"}, "Email": {dropped: true}, "Title": {dropped: true}}, wantSQL: "(`Trusted` = TRUE AND SEARCH_SUBSTRING(`Name_Search`, @_p1))", wantParams: map[string]any{"_p1": "ann"}},
 		{name: "an explicit match on a denied field renders false", filter: "email:contains:ann", dialect: Spanner, grants: map[string]searchGrant{"Email": {dropped: true}}, wantSQL: "FALSE", wantParams: map[string]any{}},
 		{name: "an explicit match on a conditional field carries the condition", filter: "name:contains:ann", dialect: Spanner, grants: map[string]searchGrant{"Name": {condition: "`Trusted` = TRUE"}}, wantSQL: "(`Trusted` = TRUE AND SEARCH_SUBSTRING(`Name_Search`, @_p1))", wantParams: map[string]any{"_p1": "ann"}},
 		{name: "every field denied leaves the box false", filter: `*:search:"ann"`, dialect: Spanner, grants: map[string]searchGrant{"Name": {dropped: true}, "Email": {dropped: true}, "Title": {dropped: true}}, wantSQL: "FALSE", wantParams: map[string]any{}},
@@ -366,8 +366,8 @@ func TestSQLGenerator_Search(t *testing.T) {
 		{name: "postgres endswith", filter: "name:endswith:50%", dialect: PostgreSQL, wantSQL: `"Name" ILIKE @_p1`, wantParams: map[string]any{"_p1": `%50\%`}},
 		{name: "postgres digits", filter: "phone:contains:555-12", dialect: PostgreSQL, wantSQL: `regexp_replace("Phone", '\D', '', 'g') ILIKE @_p1`, wantParams: map[string]any{"_p1": "%55512%"}},
 		{name: "postgres prefix fact", filter: "code:startswith:AbC", dialect: PostgreSQL, wantSQL: `"Code_Lower" LIKE @_p1`, wantParams: map[string]any{"_p1": "abc%"}},
-		{name: "postgres box with a date and a branch as a correlated EXISTS", filter: `*:search:"1987"`, dialect: PostgreSQL, branches: true, wantSQL: `(("Name" ILIKE @_p1 OR "Name" ILIKE @_p2) OR regexp_replace("Phone", '\D', '', 'g') ILIKE @_p3 OR to_char("BornOn", 'YYYYMMDD') ILIKE @_p4 OR "Email" ILIKE @_p5 OR "Title" ILIKE @_p6 OR EXISTS (SELECT 1 FROM "Contacts" WHERE "Contacts"."RowId" = "Id" AND "DisplayName" ILIKE @_p7))`, wantParams: map[string]any{"_p1": "1987%", "_p2": "%1987", "_p3": "%1987%", "_p4": "%1987%", "_p5": "%1987%", "_p6": "%1987%", "_p7": "%1987%"}},
-		{name: "postgres branch under a denied child field drops out", filter: `*:search:"ann"`, dialect: PostgreSQL, branches: true, branchDrop: true, wantSQL: `(("Name" ILIKE @_p1 OR "Name" ILIKE @_p2) OR "Email" ILIKE @_p3 OR "Title" ILIKE @_p4)`, wantParams: map[string]any{"_p1": "ann%", "_p2": "%ann", "_p3": "%ann%", "_p4": "%ann%"}},
+		{name: "postgres box with a date and a branch as a correlated EXISTS", filter: `*:search:"1987"`, dialect: PostgreSQL, branches: true, wantSQL: `("Name" ILIKE @_p1 OR regexp_replace("Phone", '\D', '', 'g') ILIKE @_p2 OR to_char("BornOn", 'YYYYMMDD') ILIKE @_p3 OR "Email" ILIKE @_p4 OR "Title" ILIKE @_p5 OR EXISTS (SELECT 1 FROM "Contacts" WHERE "Contacts"."RowId" = "Id" AND "DisplayName" ILIKE @_p6))`, wantParams: map[string]any{"_p1": "%1987%", "_p2": "%1987%", "_p3": "%1987%", "_p4": "%1987%", "_p5": "%1987%", "_p6": "%1987%"}},
+		{name: "postgres branch under a denied child field drops out", filter: `*:search:"ann"`, dialect: PostgreSQL, branches: true, branchDrop: true, wantSQL: `("Name" ILIKE @_p1 OR "Email" ILIKE @_p2 OR "Title" ILIKE @_p3)`, wantParams: map[string]any{"_p1": "%ann%", "_p2": "%ann%", "_p3": "%ann%"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -442,22 +442,22 @@ func TestRenderSearchKeySet(t *testing.T) {
 		if set.empty {
 			t.Fatal("empty = true, want a key set")
 		}
-		want := "(SELECT `Rows`.`Id` AS zzSearchKey FROM `Rows` WHERE `Rows`.`TenantId` = @domain AND (SEARCH_SUBSTRING(`Name_Search`, @_p1, relative_search_type => 'value_prefix') OR SEARCH_SUBSTRING(`Name_Search`, @_p2, relative_search_type => 'value_suffix'))\n" +
+		want := "(SELECT `Rows`.`Id` AS zzSearchKey FROM `Rows` WHERE `Rows`.`TenantId` = @domain AND SEARCH_SUBSTRING(`Name_Search`, @_p1)\n" +
 			" UNION DISTINCT\n" +
-			" SELECT `Rows`.`Id` AS zzSearchKey FROM `Rows` WHERE `Rows`.`TenantId` = @domain AND SEARCH_SUBSTRING(`Title_Search`, @_p3)\n" +
+			" SELECT `Rows`.`Id` AS zzSearchKey FROM `Rows` WHERE `Rows`.`TenantId` = @domain AND SEARCH_SUBSTRING(`Title_Search`, @_p2)\n" +
 			" UNION DISTINCT\n" +
-			" SELECT `Contacts`.`RowId` AS zzSearchKey FROM `Contacts` WHERE SEARCH_SUBSTRING(`DisplayName_Search`, @_p4)) AS zzSearchKey1\n" +
-			"JOIN (SELECT `Rows`.`Id` AS zzSearchKey FROM `Rows` WHERE `Rows`.`TenantId` = @domain AND ((SEARCH_SUBSTRING(`Name_Search`, @_p5, relative_search_type => 'value_prefix') OR SEARCH_SUBSTRING(`Name_Search`, @_p6, relative_search_type => 'value_suffix')) OR SEARCH_SUBSTRING(`Phone_Search`, @_p7))\n" +
+			" SELECT `Contacts`.`RowId` AS zzSearchKey FROM `Contacts` WHERE SEARCH_SUBSTRING(`DisplayName_Search`, @_p3)) AS zzSearchKey1\n" +
+			"JOIN (SELECT `Rows`.`Id` AS zzSearchKey FROM `Rows` WHERE `Rows`.`TenantId` = @domain AND (SEARCH_SUBSTRING(`Name_Search`, @_p4) OR SEARCH_SUBSTRING(`Phone_Search`, @_p5))\n" +
 			" UNION DISTINCT\n" +
-			" SELECT `Rows`.`Id` AS zzSearchKey FROM `Rows` WHERE `Rows`.`TenantId` = @domain AND SEARCH_SUBSTRING(`Title_Search`, @_p8)\n" +
+			" SELECT `Rows`.`Id` AS zzSearchKey FROM `Rows` WHERE `Rows`.`TenantId` = @domain AND SEARCH_SUBSTRING(`Title_Search`, @_p6)\n" +
 			" UNION DISTINCT\n" +
-			" SELECT `Contacts`.`RowId` AS zzSearchKey FROM `Contacts` WHERE SEARCH_SUBSTRING(`DisplayName_Search`, @_p9)) AS zzSearchKey2 ON zzSearchKey2.zzSearchKey = zzSearchKey1.zzSearchKey\n" +
+			" SELECT `Contacts`.`RowId` AS zzSearchKey FROM `Contacts` WHERE SEARCH_SUBSTRING(`DisplayName_Search`, @_p7)) AS zzSearchKey2 ON zzSearchKey2.zzSearchKey = zzSearchKey1.zzSearchKey\n" +
 			"JOIN@{JOIN_METHOD=APPLY_JOIN} `Rows` ON `Rows`.`Id` = zzSearchKey1.zzSearchKey"
 		if set.from != want {
 			t.Errorf("from =\n%s\nwant\n%s", set.from, want)
 		}
-		if len(set.params) != 9 || set.params[6].Value != "555" {
-			t.Errorf("params = %+v, want nine, the seventh the digits 555", set.params)
+		if len(set.params) != 7 || set.params[4].Value != "555" {
+			t.Errorf("params = %+v, want seven, the fifth the phone's digits 555", set.params)
 		}
 	})
 
@@ -905,7 +905,7 @@ func TestSearch_InMemory(t *testing.T) {
 		})
 	}
 
-	t.Run("the box over a row: every term in some field, each anchor honored", func(t *testing.T) {
+	t.Run("the box over a row: every term in some field, found anywhere in the value", func(t *testing.T) {
 		t.Parallel()
 
 		box := &searchCondition{fields: []searchField{
@@ -918,7 +918,7 @@ func TestSearch_InMemory(t *testing.T) {
 			want  bool
 		}{
 			{terms: []string{"ánn", "4567", "1987"}, want: true},
-			{terms: []string{"neil"}, want: false}, // Name is anchored: a middle term meets no anchor
+			{terms: []string{"neil"}, want: true}, // Name is anchored, and the box still looks anywhere in it
 			{terms: []string{"smith", "3/14/1987"}, want: true},
 			{terms: []string{"smith", "1999"}, want: false},
 		} {
@@ -930,6 +930,30 @@ func TestSearch_InMemory(t *testing.T) {
 			if got != tt.want {
 				t.Errorf("matchSearchBox(%v) = %v, want %v", tt.terms, got, tt.want)
 			}
+		}
+	})
+
+	t.Run("an anchored name answers the box at its start, inside and at its end; the operators keep the anchors", func(t *testing.T) {
+		t.Parallel()
+
+		office := reflect.ValueOf(struct{ Name string }{Name: "Meridian Survey Office"})
+		box := &searchCondition{fields: []searchField{{goField: "Name", spec: searchNameSpec}}}
+		for _, term := range []string{"meridian", "survey", "office", "ian sur"} {
+			box.terms = strings.Fields(term)
+			got, err := matchSearchBox(box, office)
+			if err != nil {
+				t.Fatalf("matchSearchBox(%q) error = %v", term, err)
+			}
+			if !got {
+				t.Errorf("matchSearchBox(%q) = false, want the office found", term)
+			}
+		}
+		name := office.FieldByName("Name")
+		if matchFieldText(name, searchNameSpec, "survey", startswithStr) || matchFieldText(name, searchNameSpec, "survey", endswithStr) {
+			t.Error("startswith or endswith met a word inside the name; the anchors are the operators' alone")
+		}
+		if !matchFieldText(name, searchNameSpec, "survey", containsStr) {
+			t.Error("contains missed the word inside the name")
 		}
 	})
 

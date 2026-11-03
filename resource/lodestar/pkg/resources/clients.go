@@ -34,8 +34,9 @@ type (
 	// ContactName and ContactEmail hidden token columns under one search index,
 	// ClientsSearch, and the generator derives the vocabulary from that alone: the three
 	// fields join the resource's search box (`*:search:"halvard example"`, every term
-	// found in some field), Name's tokens are anchored, so Name answers startswith and
-	// endswith beside contains, and the other two answer contains alone. @searchAlso adds
+	// found anywhere in some field, `survey` meeting "Meridian Survey Office"), Name's
+	// tokens are anchored, so Name answers startswith and endswith beside contains, and
+	// the other two answer contains alone. @searchAlso adds
 	// the client contact's display name to the box through the contact table's own index,
 	// joined on ClientId. ContactEmail is PII, so a filter carrying the box posts. The
 	// ClientBrowser role reads name alone under `trusted = true`: its box drops the

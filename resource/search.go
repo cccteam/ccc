@@ -631,27 +631,10 @@ func matchSearchText(cell, term, operator string) bool {
 	}
 }
 
-// boxMatches evaluates a spec's box contribution for one normalized term against a
-// cell: each declared anchor, or contains where none is declared; an evaluated field
-// contributes contains.
-func boxMatches(cell, term string, spec *SearchSpec) bool {
-	if spec.InMemory || len(spec.Anchors) == 0 {
-		return strings.Contains(cell, term)
-	}
-	for _, anchor := range spec.Anchors {
-		switch anchor {
-		case SearchAnchorPrefix:
-			if strings.HasPrefix(cell, term) {
-				return true
-			}
-		case SearchAnchorSuffix:
-			if strings.HasSuffix(cell, term) {
-				return true
-			}
-		}
-	}
-
-	return false
+// boxMatches evaluates a field's box contribution for one normalized term against a
+// cell: contains, whatever anchors the field's tokens carry, as the rendered box.
+func boxMatches(cell, term string) bool {
+	return strings.Contains(cell, term)
 }
 
 // matchTermForRole reads an explicit match's term for the field's role and folds it the
