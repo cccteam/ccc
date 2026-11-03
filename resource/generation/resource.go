@@ -438,7 +438,7 @@ func (r *resourceGenerator) resolveCrossKindDeclarations() error {
 	if err := r.validatePickerSources(r.resources, r.computedResources); err != nil {
 		return err
 	}
-	if err := r.resolveRowsOf(r.resources, r.computedResources); err != nil {
+	if err := r.resolveViewDeclarations(r.resources, r.computedResources); err != nil {
 		return err
 	}
 

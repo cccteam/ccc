@@ -402,13 +402,13 @@ func TestPublish(t *testing.T) {
 			name:   "a committed request publishes under its route domain",
 			writes: []write{{res: "Ships", key: "s1"}},
 			domain: "anvil",
-			want:   []FakePublish{{Domain: "anvil", Touched: map[accesstypes.Resource][]resource.RowChange{"Ships": {{Key: "s1"}}}}},
+			want:   []FakePublish{{Domain: "anvil", Writes: Writes{Rows: map[accesstypes.Resource][]resource.RowChange{"Ships": {{Key: "s1"}}}}}},
 		},
 		{
 			name:   "rows decoded in their own tenant publish under it",
 			writes: []write{{domain: "bastion", res: "Hangars", key: "h1"}},
 			domain: "",
-			want:   []FakePublish{{Domain: "bastion", Touched: map[accesstypes.Resource][]resource.RowChange{"Hangars": {{Key: "h1"}}}}},
+			want:   []FakePublish{{Domain: "bastion", Writes: Writes{Rows: map[accesstypes.Resource][]resource.RowChange{"Hangars": {{Key: "h1"}}}}}},
 		},
 		{name: "a request that committed nothing publishes nothing", domain: "anvil"},
 	}
@@ -428,7 +428,7 @@ func TestPublish(t *testing.T) {
 				}
 			}
 
-			Publish(ctx, fake, tt.domain, touched)
+			Publish(ctx, fake, nil, tt.domain, touched)
 
 			if diff := cmp.Diff(tt.want, fake.Publishes(), cmpopts.EquateEmpty()); diff != "" {
 				t.Errorf("Publishes() mismatch (-want +got):\n%s", diff)
@@ -451,7 +451,7 @@ func TestPublish_failureIsLogged(t *testing.T) {
 	}
 
 	// The request still answers: Publish returns, nothing panics.
-	Publish(ctx, fake, "anvil", touched)
+	Publish(ctx, fake, nil, "anvil", touched)
 }
 
 func TestPrincipalID(t *testing.T) {

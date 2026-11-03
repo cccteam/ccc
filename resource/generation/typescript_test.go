@@ -29,6 +29,13 @@ func Test_typescriptResourcesTemplate_optionalFields(t *testing.T) {
 			f.typescriptType = "string"
 		}
 	})
+	publishedView := fixtureResource(t, structs, "Widget", func(res *resourceInfo) {
+		res.IsVirtual = true
+		res.published = &publishedSet{Root: "Widgets", Tables: []string{"Gizmos"}}
+		for _, f := range res.Fields {
+			f.typescriptType = "string"
+		}
+	})
 
 	tests := []struct {
 		name            string
@@ -83,6 +90,15 @@ func Test_typescriptResourcesTemplate_optionalFields(t *testing.T) {
 			},
 			wantContains:    []string{"    live: false,\n    fields: ["},
 			wantNotContains: []string{"live: true"},
+		},
+		{
+			name: "a virtual resource whose tables are known says its changes are published",
+			data: tsResourcesData{
+				Resources: []*resourceInfo{publishedView},
+				GenPrefix: "zz_gen",
+			},
+			wantContains:    []string{"    live: true,\n    fields: ["},
+			wantNotContains: []string{"live: false"},
 		},
 	}
 

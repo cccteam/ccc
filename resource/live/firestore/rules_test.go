@@ -82,7 +82,7 @@ func TestRules(t *testing.T) {
 		live.Subscription{Principal: alice, Tab: "t1", Resource: res, Key: "k1"},
 		live.Subscription{Principal: bob, Tab: "t2", Resource: res, Key: "k1"},
 	)
-	if err := svc.Publish(t.Context(), "anvil", map[accesstypes.Resource][]resource.RowChange{res: {{Key: "k1"}}}); err != nil {
+	if err := svc.Publish(t.Context(), "anvil", live.Writes{Rows: map[accesstypes.Resource][]resource.RowChange{res: {{Key: "k1"}}}}); err != nil {
 		t.Fatalf("Publish() error = %v", err)
 	}
 	ownDoc := "users/" + alice + "/changes/" + live.ChangeDocument{Kind: live.RowChange, Resource: res, Key: "k1"}.ID(now.Unix())

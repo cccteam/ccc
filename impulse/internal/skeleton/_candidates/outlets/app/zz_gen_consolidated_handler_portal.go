@@ -122,7 +122,7 @@ func (a *App) PatchPortalResources() http.HandlerFunc {
 		}); err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
-		live.Publish(ctx, a.LiveService(), "", touched)
+		live.Publish(ctx, a.LiveService(), liveDerivations, "", touched)
 
 		return httpio.NewEncoder(w).Ok(resp)
 	})

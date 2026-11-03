@@ -874,7 +874,7 @@ func Test_handlerTemplates_live(t *testing.T) {
 			template: patchTemplate,
 			want: []string{
 				"ctx, touched := resource.CollectTouchedRows(ctx)",
-				`live.Publish(ctx, {{ .ReceiverName }}.LiveService(), {{ if .Resource.IsDomainScoped }}domain{{ else }}""{{ end }}, touched)`,
+				`live.Publish(ctx, {{ .ReceiverName }}.LiveService(), liveDerivations, {{ if .Resource.IsDomainScoped }}domain{{ else }}""{{ end }}, touched)`,
 			},
 		},
 		{
@@ -882,7 +882,7 @@ func Test_handlerTemplates_live(t *testing.T) {
 			template: consolidatedPatchTemplate,
 			want: []string{
 				"ctx, touched := resource.CollectTouchedRows(ctx)",
-				`live.Publish(ctx, {{ .ReceiverName }}.LiveService(), "", touched)`,
+				`live.Publish(ctx, {{ .ReceiverName }}.LiveService(), liveDerivations, "", touched)`,
 			},
 		},
 		{
@@ -892,7 +892,7 @@ func Test_handlerTemplates_live(t *testing.T) {
 				`{{- template "rpcCollectTouched" $ }}`,
 				`{{- template "rpcPublish" $ }}`,
 				"ctx, touched := resource.CollectTouchedRows(ctx)",
-				`live.Publish(ctx, {{ $.ReceiverName }}.LiveService(), {{ if .RPCMethod.IsDomainScoped }}domain{{ else }}""{{ end }}, touched)`,
+				`live.Publish(ctx, {{ $.ReceiverName }}.LiveService(), liveDerivations, {{ if .RPCMethod.IsDomainScoped }}domain{{ else }}""{{ end }}, touched)`,
 			},
 		},
 		{

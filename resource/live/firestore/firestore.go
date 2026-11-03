@@ -20,7 +20,6 @@ import (
 	firebase "firebase.google.com/go/v4"
 	fbauth "firebase.google.com/go/v4/auth"
 	"github.com/cccteam/ccc/accesstypes"
-	"github.com/cccteam/ccc/resource"
 	"github.com/cccteam/ccc/resource/live"
 	"github.com/go-playground/errors/v5"
 	"google.golang.org/api/iterator"
@@ -385,8 +384,8 @@ func (s *Service) lookup(ctx context.Context, query *cloudfirestore.Query, keep 
 // one document per subscriber into their change set, set with merge under an id that
 // carries the current second, so writes to one target within a second coalesce. Every
 // document carries the server timestamp and an expiry the time-to-live policy acts on.
-func (s *Service) Publish(ctx context.Context, domain accesstypes.Domain, touched map[accesstypes.Resource][]resource.RowChange) error {
-	changes, err := live.Fanout(ctx, s, domain, touched)
+func (s *Service) Publish(ctx context.Context, domain accesstypes.Domain, writes live.Writes) error {
+	changes, err := live.Fanout(ctx, s, domain, writes)
 	if err != nil {
 		return errors.Wrap(err, "live.Fanout()")
 	}

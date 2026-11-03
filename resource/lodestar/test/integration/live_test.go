@@ -1,4 +1,4 @@
-// Demonstrates: live.pages.
+// Demonstrates: live.pages, live.derived.
 package integration
 
 // This suite pins live pages over the seeded world through an in-memory live service
@@ -307,4 +307,133 @@ func decodeJSON(body []byte, v any) error {
 	}
 
 	return nil
+}
+
+// The derived resources' cast: who watches a board, and who writes the tables behind it.
+const (
+	liveDispatcher    accesstypes.User = "live-dispatcher"
+	liveQuartermaster accesstypes.User = "live-quartermaster"
+	liveAnalyst       accesstypes.User = "live-analyst"
+	liveBooking       accesstypes.User = "live-booking"
+	liveTabBoards                      = "tab-boards-1"
+)
+
+// TestLivePages_derivedResources plays the publish through the virtual and computed
+// resources: a mission's write reaches the mission board, whose rows are Missions' rows
+// (@rowsOf), under the mission's own key and as the sector's list, exactly as Missions'
+// own subscribers are reached; a client's write, a table the board reads otherwise and a
+// global one, reaches every board subscriber in every sector as one resource document;
+// a ship's write reaches the hazard board, a computed resource that declares Ships with
+// @changedBy, in its sector alone; and the expense manifests, a computed resource that
+// declares nothing although its body reads Missions, hear nothing at all.
+func TestLivePages_derivedResources(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	db, err := prepareDatabase(ctx, t, migrationsSource, demoSeedSource)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fake := live.NewFake()
+	h := newTestAppWithLive(db, grants{
+		accesstypes.List:   {"MissionBoards", "ExpenseManifests", "SectorHazardBoards"},
+		accesstypes.Read:   {"MissionBoards"},
+		accesstypes.Update: slices.Concat(withFields("Missions", "brief"), withFields("Clients", "insured"), withFields("Ships", "cargoBays")),
+	}, fake)
+
+	// The dispatcher's mission board at Anvil with the Hauler open, the pilot's board and
+	// hazard board at Bastion, the quartermaster's expense manifests at Anvil, and the
+	// analyst's hazard board at Anvil.
+	subscribe := []struct {
+		user   accesstypes.User
+		tab    string
+		target string
+	}{
+		{liveDispatcher, liveTabBoards, versioned(sectorPath(anvil, "mission-boards"), liveSeed)},
+		{liveDispatcher, liveTabBoards, versioned(sectorPath(anvil, "mission-boards/"+missionHaulerID), liveSeed)},
+		{liveBastionPilot, liveTabBastion, sectorPath(bastion, "mission-boards")},
+		{liveBastionPilot, liveTabBastion, sectorPath(bastion, "sector-hazard-boards")},
+		{liveQuartermaster, liveTabBoards, sectorPath(anvil, "expense-manifests")},
+		{liveAnalyst, liveTabBoards, sectorPath(anvil, "sector-hazard-boards")},
+	}
+	for _, s := range subscribe {
+		rr := doRequestRecordedWithHeaders(t, h, s.user, http.MethodGet, s.target, "", liveHeaders(s.tab))
+		assertStatus(t, rr.Code, http.StatusOK, rr.Body.Bytes())
+	}
+	wantSubscriptions := []string{
+		fmt.Sprintf("%s|%s|MissionBoards||%s", principalID(liveDispatcher), liveTabBoards, anvil),
+		fmt.Sprintf("%s|%s|MissionBoards|%s|", principalID(liveDispatcher), liveTabBoards, missionHaulerID),
+		fmt.Sprintf("%s|%s|MissionBoards||%s", principalID(liveBastionPilot), liveTabBastion, bastion),
+		fmt.Sprintf("%s|%s|SectorHazardBoards||%s", principalID(liveBastionPilot), liveTabBastion, bastion),
+		fmt.Sprintf("%s|%s|ExpenseManifests||%s", principalID(liveQuartermaster), liveTabBoards, anvil),
+		fmt.Sprintf("%s|%s|SectorHazardBoards||%s", principalID(liveAnalyst), liveTabBoards, anvil),
+	}
+	slices.Sort(wantSubscriptions)
+	if got := subscriptionNames(fake.Subscriptions()); !slices.Equal(got, wantSubscriptions) {
+		t.Fatalf("subscriptions after the live requests = %v, want %v", got, wantSubscriptions)
+	}
+
+	steps := []struct {
+		name   string
+		target string
+		body   string
+		want   map[accesstypes.User][]string
+	}{
+		{
+			name:   "the Hauler's brief is rewritten: the board's row and the sector's list, as Missions' own; the manifests, undeclared, hear nothing",
+			target: "/console/api/resources",
+			body:   fmt.Sprintf(`[{"op":"patch","path":%q,"value":{"brief":"Reroute through the Anvil lanes."}}]`, opPath(anvil, "missions/"+missionHaulerID)),
+			want: map[accesstypes.User][]string{
+				liveDispatcher: {
+					"list|MissionBoards||" + anvil + "|false",
+					"row|MissionBoards|" + missionHaulerID + "||false",
+				},
+				liveBastionPilot:  {},
+				liveQuartermaster: {},
+				liveAnalyst:       {},
+			},
+		},
+		{
+			name:   "a client is insured: Clients is global, so every board in every sector is told once, wholesale",
+			target: "/console/api/clients",
+			body:   fmt.Sprintf(`[{"op":"patch","path":"/%s","value":{"insured":true}}]`, clientMeridianID),
+			want: map[accesstypes.User][]string{
+				liveDispatcher: {
+					"list|MissionBoards||" + anvil + "|false",
+					"resource|MissionBoards|||false",
+					"row|MissionBoards|" + missionHaulerID + "||false",
+				},
+				liveBastionPilot:  {"resource|MissionBoards|||false"},
+				liveQuartermaster: {},
+				liveAnalyst:       {},
+			},
+		},
+		{
+			name:   "a ship's bays change: the hazard board, which declares Ships, is told in Anvil alone",
+			target: "/console/api/resources",
+			body:   fmt.Sprintf(`[{"op":"patch","path":%q,"value":{"cargoBays":[12,8]}}]`, opPath(anvil, "ships/"+shipKingfisherID)),
+			want: map[accesstypes.User][]string{
+				liveDispatcher: {
+					"list|MissionBoards||" + anvil + "|false",
+					"resource|MissionBoards|||false",
+					"row|MissionBoards|" + missionHaulerID + "||false",
+				},
+				liveBastionPilot:  {"resource|MissionBoards|||false"},
+				liveQuartermaster: {},
+				liveAnalyst:       {"resource|SectorHazardBoards|||false"},
+			},
+		},
+	}
+	for _, step := range steps {
+		status, body := doRequestAs(t, h, liveBooking, http.MethodPatch, step.target, step.body)
+		assertStatus(t, status, http.StatusOK, body)
+		for user, want := range step.want {
+			if got := changeNames(fake.Changes(principalID(user))); !slices.Equal(got, want) {
+				t.Errorf("%s: %s's change set = %v, want %v", step.name, user, got, want)
+			}
+		}
+	}
+	if got := changeNames(fake.Changes(principalID(liveBooking))); len(got) != 0 {
+		t.Errorf("the writer subscribed to nothing and receives nothing; change set = %v", got)
+	}
 }

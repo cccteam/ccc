@@ -118,6 +118,7 @@ func (c *client) schemaWarnings(resources []*resourceInfo) []Warning {
 	var warnings []Warning
 	for _, res := range sorted {
 		warnings = append(warnings, res.searchWarnings...)
+		warnings = append(warnings, res.publishWarnings...)
 		if res.IsVirtual || res.ListHandlerDisabled() || res.DomainBinding == nil {
 			continue
 		}
@@ -299,4 +300,32 @@ func enumerationSizeWarning(typeName, table string, values []*enumData, fields [
 		Bytes:  len(enumerationLiteral(values)),
 		Fields: fields,
 	}, true
+}
+
+// ChangedByWarning says a virtual resource's @changedBy declaration, the set its changes
+// are published from, differs from the tables the generator read off its query:
+// Undeclared are the tables the query names that the declaration leaves out, Unread the
+// declared tables the query does not name, either empty but not both. Declared is the
+// declaration as written.
+type ChangedByWarning struct {
+	Resource   string
+	Declared   []string
+	Undeclared []string
+	Unread     []string
+}
+
+func (ChangedByWarning) warning() {}
+
+// String renders the one-line warning, names verbatim from the schema.
+func (w ChangedByWarning) String() string {
+	var findings []string
+	if len(w.Undeclared) > 0 {
+		findings = append(findings, fmt.Sprintf("the query names %s, which the declaration leaves out", strings.Join(w.Undeclared, ", ")))
+	}
+	if len(w.Unread) > 0 {
+		findings = append(findings, fmt.Sprintf("the declaration names %s, which the query does not", strings.Join(w.Unread, ", ")))
+	}
+
+	return fmt.Sprintf("%s publishes its changes from @%s(%s), which differs from what the query behind %s names: %s",
+		w.Resource, changedByKeyword, strings.Join(w.Declared, ", "), subqueryMethodName, strings.Join(findings, "; "))
 }

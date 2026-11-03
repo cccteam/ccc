@@ -253,7 +253,7 @@ func Test_scheduledHandlerTemplate(t *testing.T) {
 				"p := &schedulefixture.PruneLogs{}",
 				"answer, err := p.Execute(ctx, txn, a.RPCClient())",
 				"type response struct {",
-				`live.Publish(ctx, a.LiveService(), "", touched)`,
+				`live.Publish(ctx, a.LiveService(), liveDerivations, "", touched)`,
 			},
 		},
 		{

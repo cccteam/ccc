@@ -232,6 +232,7 @@ const (
 	tenantCreationOutputName      = "tenant_creation"
 	permissionsOutputName         = "permissions"
 	liveOutputName                = "live"
+	liveDerivationsOutputName     = "live_derivations"
 	decodersOutputName            = "decoders"
 	appContractOutputName         = "app_contract"
 	routesOutputName              = "routes"
@@ -853,6 +854,7 @@ type computedResource struct {
 	outletMembership
 	pagingDecl
 	rowsOfDecl
+	publishDecl
 	// Shape is the struct's wire shape: the fields as the handlers' local mirrors
 	// declare them, with every struct they reach. A nested field is opaque: one
 	// field for permission, PII, and selection, never filtered or keyed.
@@ -877,6 +879,12 @@ type computedResource struct {
 // domain scope (an absent annotation defaults to global).
 func (c *computedResource) IsDomainScoped() bool {
 	return c.PermissionScope == accesstypes.DomainPermissionScope
+}
+
+// Published reports whether the resource's changes are published to live pages, the
+// metadata's live: only with a @changedBy declaration naming the tables its body reads.
+func (c *computedResource) Published() bool {
+	return c.IsPublished()
 }
 
 func (c *computedResource) HasCompoundPrimaryKey() bool {
@@ -1147,6 +1155,7 @@ type resourceInfo struct {
 	outletMembership
 	pagingDecl
 	rowsOfDecl
+	publishDecl
 	Fields []*resourceField
 	// ColumnShapes are the structs the resource's columns hold, leaves first, each
 	// once: the interfaces the resource's TypeScript namespace declares.
@@ -1237,6 +1246,13 @@ type resourceInfo struct {
 // domain scope (an absent annotation defaults to global).
 func (r *resourceInfo) IsDomainScoped() bool {
 	return r.PermissionScope == accesstypes.DomainPermissionScope
+}
+
+// Published reports whether the resource's changes are published to live pages, the
+// metadata's live: a table's always, a virtual resource's once the tables its query
+// reads are known (resolvePublished).
+func (r *resourceInfo) Published() bool {
+	return !r.IsVirtual || r.IsPublished()
 }
 
 // TouchFields returns the fields a generated touch stamps: every field carrying
@@ -2158,6 +2174,7 @@ const (
 	answersKeyword              string = "answers"              // Declares the statuses an RPC method may answer with; its result chooses one per response through HTTPStatus()
 	uploadKeyword               string = "upload"               // Declares an RPC method as a multipart upload: @upload(max: 5MB[, store: S]); its Execute takes resource.Files, or resource.FilesIn[S] for the named store S
 	rowsOfKeyword               string = "rowsOf"               // Declares the table resource whose rows a virtual or computed view carries, one to one under the same key: @rowsOf(Missions)
+	changedByKeyword            string = "changedBy"            // Declares the tables whose changes change a virtual or computed resource, in place of what the generator reads off a virtual resource's query: @changedBy(Ships, DroidReports)
 	typescriptKeyword           string = "typescript"           // Declares the TypeScript type of a type used as a field, on the type's declaration: @typescript(Name, from: "module")
 	fileKeyword                 string = "file"                 // Declares a file served under the resource's read route: on the store-key field, @file[(segment[, name: Field, type: Field, log: word, trace: setting])]; on a keyed @computed struct, @file[(segment[, log: word, trace: setting])] rendered by <Name><Segment>
 	featureKeyword              string = "feature"              // Gates a resource, a field or an RPC method behind a feature flag, by the flag's constant: @feature(Debriefs)
@@ -2202,6 +2219,7 @@ func resourceKeywords() map[string]genlang.KeywordOpts {
 		answersKeyword:              {genlang.ScanStruct: genlang.ArgsRequired | genlang.Exclusive},
 		uploadKeyword:               {genlang.ScanStruct: genlang.ArgsRequired | genlang.Exclusive},
 		rowsOfKeyword:               {genlang.ScanStruct: genlang.ArgsRequired | genlang.Exclusive},
+		changedByKeyword:            {genlang.ScanStruct: genlang.ArgsRequired | genlang.Exclusive},
 		typescriptKeyword:           {genlang.ScanNamedType: genlang.ArgsRequired | genlang.Exclusive, genlang.ScanStruct: genlang.ArgsRequired | genlang.Exclusive},
 		fileKeyword:                 {genlang.ScanField: genlang.Exclusive, genlang.ScanStruct: genlang.Exclusive},
 		featureKeyword:              {genlang.ScanStruct: genlang.ArgsRequired | genlang.Exclusive, genlang.ScanField: genlang.ArgsRequired | genlang.Exclusive},

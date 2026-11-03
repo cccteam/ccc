@@ -113,7 +113,7 @@ func (a *App) CreateTenant() http.HandlerFunc {
 		}); err != nil {
 			return httpio.NewEncoder(w).ClientMessage(ctx, err)
 		}
-		live.Publish(ctx, a.LiveService(), "", touched)
+		live.Publish(ctx, a.LiveService(), liveDerivations, "", touched)
 
 		// This instance's roster learns the tenant before its administrator is seated:
 		// the seat is probed as the person's next request is answered, a foothold in a

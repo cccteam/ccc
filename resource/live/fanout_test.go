@@ -180,7 +180,7 @@ func TestFanout(t *testing.T) {
 			t.Parallel()
 
 			fake := subscribed(t, now, tt.subs...)
-			got, err := Fanout(t.Context(), fake, tt.domain, tt.touched)
+			got, err := Fanout(t.Context(), fake, tt.domain, Writes{Rows: tt.touched})
 			if err != nil {
 				t.Fatalf("Fanout() error = %v", err)
 			}
@@ -199,7 +199,7 @@ func TestFanout_recordFailure(t *testing.T) {
 
 	fake := NewFake()
 	fake.Err = errors.New("record down")
-	if _, err := Fanout(t.Context(), fake, "anvil", map[accesstypes.Resource][]resource.RowChange{"Ships": {{Key: "s1"}}}); err == nil {
+	if _, err := Fanout(t.Context(), fake, "anvil", Writes{Rows: map[accesstypes.Resource][]resource.RowChange{"Ships": {{Key: "s1"}}}}); err == nil {
 		t.Fatal("Fanout() error = nil, want the record's failure")
 	}
 }
@@ -235,14 +235,14 @@ func TestFake_Publish_coalesces(t *testing.T) {
 
 	now := time.Date(2026, 10, 2, 12, 0, 0, 0, time.UTC)
 	fake := subscribed(t, now, Subscription{Principal: "dispatcher", Tab: "t1", Resource: "Ships", Key: "s1"})
-	touched := map[accesstypes.Resource][]resource.RowChange{"Ships": {{Key: "s1"}}}
+	touched := Writes{Rows: map[accesstypes.Resource][]resource.RowChange{"Ships": {{Key: "s1"}}}}
 
 	// Two publishes within one second are one document; the second's deleted flag wins.
 	if err := fake.Publish(t.Context(), "anvil", touched); err != nil {
 		t.Fatalf("Publish() error = %v", err)
 	}
 	fake.Now = fixedClock(now.Add(500 * time.Millisecond))
-	if err := fake.Publish(t.Context(), "anvil", map[accesstypes.Resource][]resource.RowChange{"Ships": {{Key: "s1", Deleted: true}}}); err != nil {
+	if err := fake.Publish(t.Context(), "anvil", Writes{Rows: map[accesstypes.Resource][]resource.RowChange{"Ships": {{Key: "s1", Deleted: true}}}}); err != nil {
 		t.Fatalf("Publish() error = %v", err)
 	}
 	// A publish in the next second is a new document.
