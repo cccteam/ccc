@@ -921,6 +921,27 @@ var Steps = []Step{
 		Impulse: release("v0.6.16"),
 		Note:    "a virtual or computed resource's changes reach its live pages: the generator reads the tables a virtual resource's query names off the embedded SQL behind its Subquery method with the lexer, or takes the @changedBy declaration, which replaces the reading on a virtual resource and is the only source on a computed one (a query it cannot read refuses generation and names the declaration as the way out); the record of each published resource's tables, read or declared, is generated beside the resource as the package's LiveDerivations and assembled in the application for every publish; a write to the table whose rows a resource carries (@rowsOf) reaches its row and list subscribers under the same key, and a write to any other table it reads reaches every subscriber as one resource document; the metadata says live for such a resource, so its pages are live by default, and regeneration carries all of it, no code change is needed. The pins move to resource v0.16.8, the release that carries it.",
 	},
+	{
+		Pins: pins(`
+			access v0.12.0
+			ccc v0.3.7
+			ccc/accesstypes v0.7.1
+			ccc/cloud v0.2.3
+			ccc/resource v0.16.8
+			ccc/tracer v0.3.2
+			db-initiator v0.4.3
+			httpio v0.7.22
+			logger v0.1.31
+			session v0.13.20
+		`),
+		Web: web(`
+			@cccteam/resource 0.0.23
+			@cccteam/resource-angular 0.0.35
+			@cccteam/resource-firestore 0.0.22
+		`),
+		Impulse: release("v0.6.17"),
+		Note:    "leaving a live page no longer answers 403 when the application names its XSRF cookie: the browser library's page-leave unsubscribe, which rides a keepalive fetch and not the application's HTTP client, takes its XSRF token from the Angular adapter, which reads the cookie named in the application's HTTP configuration through Angular's own token extractor, and a session check that answers unauthenticated ends the feed without the unsubscribe call; the application configures nothing, no code change is needed. The pins move to the browser libraries (@cccteam/resource 0.0.23, @cccteam/resource-angular 0.0.35, @cccteam/resource-firestore 0.0.22).",
+	},
 }
 
 // validatePending holds a step's Pending mark to its pins: a pin at a pseudo-version
