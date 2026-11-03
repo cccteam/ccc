@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.16.7](https://github.com/cccteam/ccc/compare/resource/v0.16.6...resource/v0.16.7) (2026-11-03)
+
+
+### Features
+
+* **resource:** the generated metadata says whether a resource's changes are published (`live`: true on a table-backed resource, false on a virtual or computed resource), so a list or record page on a table is live by default in the browser library from resource-angular 0.0.33 and `live: false` opts a page out; Lodestar's Ships page drops its flag ([#1265](https://github.com/cccteam/ccc/issues/1265)) ([517cf4b](https://github.com/cccteam/ccc/commit/517cf4b2cd51c636f076fd7940ba42e36b7f34c5))
+
 ## [0.16.6](https://github.com/cccteam/ccc/compare/resource/v0.16.5...resource/v0.16.6) (2026-11-02)
 
 
