@@ -465,7 +465,9 @@ locals {
   # ID is the root with the pull request or the environment appended), the site whose
   # canonical hostname the callback is on, the callback's path and the cast in the
   # checkout. The triggers carry it as _PERSONA (persona_substitution) in {{.Integration}}, where
-  # the method is registered, and as nothing elsewhere.
+  # the method is registered, and as nothing elsewhere; the pipeline reads it back from the
+  # stack as applied (the substitutions output), so a release that adds or removes the method
+  # registers what it carries in that very run, where the trigger lags by one.
   persona_registrations = [
 {{- range .Personas}}
     {

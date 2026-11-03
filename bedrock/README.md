@@ -1283,10 +1283,12 @@ is the hourly sweep's one step: the pull requests whose services stand, which of
 are closed, and each closed one's stack destroyed, its state object deleted last.
 
 `deploy persona register` is the step after the hooks in a build whose environment has a
-persona provider (`_PERSONA`, which the triggers carry in the first environment alone; a
-pull-request build reads its own stack's registrations instead, `PERSONA` from
-`ReadPullRequestStack`, so a pull request that introduces or changes the method registers
-what its own code says before any release carries it to the triggers):
+persona provider. The registrations are read from the stack as applied (`PERSONA`: a
+release build's after its own `stack apply`, a pull-request build's from its stack job's
+outputs), so the release or pull request that introduces, changes or removes the method
+registers what its own code says in that very run; the trigger's `_PERSONA`, which the
+stack's apply sets and so says what the stack said at its last apply, is read only by a
+build that applied nothing, and the log names it when the two differ:
 for each persona method, it sends the provider the deployment's registration, the client ID
 the placement's root and the deployment make (`<root>-pr<N>` for a pull request,
 `<root>-<first environment>` for the environment), the callback on the deployment's
@@ -1296,8 +1298,9 @@ identity under its grant to create its own OpenID Connect tokens, from the organ
 environment layer), so the provider offers the cast for this deployment; a refusal fails the
 build before the record is written. A build with nothing
 to send, or a torn-down environment, does nothing. `deploy persona remove` runs after a
-teardown's `after-down` hook and removes the pull request's registrations; outside a
-teardown it does nothing, and the sweep removes a closed pull request's the same way, best
+teardown's `after-down` hook and removes the pull request's registrations, which its stack
+job read off the standing stack before the destroy; outside a teardown it does nothing, and
+the sweep removes a closed pull request's the same way, from the stack it destroys, best
 effort, since the provider forgets a registration nothing refreshes on its own.
 
 ## Maintenance windows

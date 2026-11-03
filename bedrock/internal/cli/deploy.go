@@ -763,10 +763,13 @@ func newDeployPersona(d deps) *cobra.Command {
 after traffic moved: the client ID the placement's root and the deployment make (<root>-pr<N> for a pull
 request, <root>-<environment> for the first environment), the callback on the deployment's canonical
 hostname, and the cast from the checkout (pkg/auth/<auth>/cast.json), as the build's deploy identity
-with its Google identity token for the provider. The registrations come from the _PERSONA substitution
-the stack's triggers carry in the first environment (locals.tf, persona_registrations); a build with
-none, or a torn-down environment, does nothing. persona remove removes a torn-down pull request's
-registrations and does nothing outside a teardown; the sweep removes a closed pull request's the same
+with its Google identity token for the provider. The registrations are read from the stack as applied
+(PERSONA: a release build's after its own stack apply, a pull request's from its stack job), so the
+release that adds or removes the method registers what it carries in that very run; the trigger's
+_PERSONA substitution (locals.tf, persona_registrations) says what the stack said at its last apply
+and is read only by a build that applied nothing. A build with none, or a torn-down environment, does
+nothing. persona remove removes a torn-down pull request's registrations, read off its stack before
+the destroy, and does nothing outside a teardown; the sweep removes a closed pull request's the same
 way. A refusal by the provider fails the step.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
