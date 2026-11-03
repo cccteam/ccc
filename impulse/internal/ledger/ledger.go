@@ -879,6 +879,28 @@ var Steps = []Step{
 		Impulse: release("v0.6.14"),
 		Note:    "every browser application's header carries the Feature flags link, shown to anyone holding List on FeatureFlags and opening the web library's dialog, so a feature administrator has a door to the flags: the recipe writes it into each header that still has the skeleton's shape and names the one it cannot edit. The pins move to resource v0.16.6 and the browser libraries (@cccteam/resource 0.0.20, @cccteam/resource-angular 0.0.31, @cccteam/resource-firestore 0.0.19): search over resources, where the schema states a search fact for a field, as the matches in a column's menu and the search box on the list page and in a paged picker, with a filter that reaches a PII field posted on its own.",
 	},
+	{
+		Pins: pins(`
+			access v0.12.0
+			ccc v0.3.7
+			ccc/accesstypes v0.7.1
+			ccc/cloud v0.2.3
+			ccc/resource v0.16.7-0.20261103005747-bf08e734a562
+			ccc/tracer v0.3.2
+			db-initiator v0.4.3
+			httpio v0.7.22
+			logger v0.1.31
+			session v0.13.20
+		`),
+		Web: web(`
+			@cccteam/resource 0.0.21
+			@cccteam/resource-angular 0.0.33
+			@cccteam/resource-firestore 0.0.20
+		`),
+		Impulse: release("v0.6.15"),
+		Pending: true,
+		Note:    "every list and record page on a table-backed resource is live by default: the generated metadata says whose changes are published (live, true on a table, false on a virtual or computed resource), the browser library reads it as the page's default, live: false opts a page out, and a page asking live of a resource whose changes are not published is told once and asks plainly; regeneration carries the metadata, no code change is needed. The pins move to resource at the commit that emits it, pending its release, and the browser libraries (@cccteam/resource 0.0.21, @cccteam/resource-angular 0.0.33, @cccteam/resource-firestore 0.0.20).",
+	},
 }
 
 // validatePending holds a step's Pending mark to its pins: a pin at a pseudo-version

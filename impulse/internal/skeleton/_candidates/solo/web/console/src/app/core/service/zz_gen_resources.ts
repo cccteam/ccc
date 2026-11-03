@@ -79,6 +79,7 @@ const resourceMap = defineResourceMap({
     createDisabled: true,
     updateDisabled: true,
     deleteDisabled: true,
+    live: false,
     fields: [
       { fieldName: 'name', primaryKey: { ordinalPosition: 1 }, displayType: 'string', required: true, isIndex: true },
       { fieldName: 'description', displayType: 'string', required: true, isIndex: false },
@@ -89,6 +90,7 @@ const resourceMap = defineResourceMap({
   },
   [Resources.StaffUsers]: {
     route: 'staff-users',
+    live: false,
     fields: [
       { fieldName: 'id', primaryKey: { ordinalPosition: 1 }, displayType: 'uuid', required: true, isIndex: true },
       { fieldName: 'username', displayType: 'string', required: true, isIndex: false },
@@ -109,6 +111,7 @@ const resourceMap = defineResourceMap({
   [Resources.StaffSeats]: {
     route: 'staff-seats',
     updateDisabled: true,
+    live: false,
     fields: [
       { fieldName: 'user', primaryKey: { ordinalPosition: 1 }, displayType: 'uuid', required: true, isIndex: true },
       { fieldName: 'role', primaryKey: { ordinalPosition: 2 }, displayType: 'string', required: true, isIndex: true },
@@ -121,6 +124,7 @@ const resourceMap = defineResourceMap({
     createDisabled: true,
     updateDisabled: true,
     deleteDisabled: true,
+    live: false,
     fields: [
       { fieldName: 'name', primaryKey: { ordinalPosition: 1 }, displayType: 'string', required: true, isIndex: true },
       { fieldName: 'kind', displayType: 'string', required: true, isIndex: false },
@@ -130,6 +134,7 @@ const resourceMap = defineResourceMap({
   [Resources.StaffInvitations]: {
     route: 'staff-invitations',
     updateDisabled: true,
+    live: false,
     fields: [
       { fieldName: 'id', primaryKey: { ordinalPosition: 1 }, displayType: 'uuid', required: true, isIndex: true },
       { fieldName: 'email', displayType: 'string', required: true, isIndex: false },
