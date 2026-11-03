@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.5](https://github.com/cccteam/ccc/compare/bedrock/v0.4.4...bedrock/v0.4.5) (2026-11-03)
+
+
+### Bug Fixes
+
+* **bedrock:** the persona registrations are read from the stack as applied rather than the trigger, so the release that adds the method registers its first environment in that release, a pull request torn down before any release removes its registration, and the sweep removes a closed pull request's from the stack it destroys ([#1266](https://github.com/cccteam/ccc/issues/1266)) ([dc95bc6](https://github.com/cccteam/ccc/commit/dc95bc623dd6921cb2acc810d4f68f666c7e5a87))
+
 ## [0.4.4](https://github.com/cccteam/ccc/compare/bedrock/v0.4.3...bedrock/v0.4.4) (2026-10-31)
 
 
