@@ -111,3 +111,17 @@ func (d *Derivations) Expand(touched map[accesstypes.Resource][]resource.RowChan
 
 	return writes
 }
+
+// Merge joins several packages' derivations into one value, in order; a nil part adds
+// nothing. The generated application file assembles the publishing packages' generated
+// values with it.
+func Merge(parts ...*Derivations) *Derivations {
+	merged := &Derivations{}
+	for _, part := range parts {
+		if part != nil {
+			merged.Resources = append(merged.Resources, part.Resources...)
+		}
+	}
+
+	return merged
+}

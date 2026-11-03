@@ -27,8 +27,9 @@ type (
 	// box then joins the rest of the filter with AND alone.
 	//
 	// The board is live without a declaration: the generator reads the tables its query
-	// names off mission_boards.sql (Missions, Clients, Squadrons), writes them into the
-	// handler package's live derivations, and marks the board published in its metadata.
+	// names off mission_boards.sql with memefish's lexer (Missions, Clients, Squadrons),
+	// records them in this package's generated live derivations, which the application
+	// assembles for every publish, and marks the board published in its metadata.
 	// A mission's write reaches the board's row and list subscribers under the mission's
 	// own key, as Missions' own do; a client's or a squadron's write reaches every
 	// subscriber of the board as one resource document, in every sector for Clients,

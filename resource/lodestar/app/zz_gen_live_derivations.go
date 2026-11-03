@@ -3,46 +3,16 @@
 
 package app
 
-import "github.com/cccteam/ccc/resource/live"
+import (
+	"github.com/cccteam/ccc/resource/live"
+	"github.com/cccteam/ccc/resource/lodestar/pkg/computedresources"
+	"github.com/cccteam/ccc/resource/lodestar/pkg/virtualresources"
+)
 
-// liveDerivations says which virtual and computed resources a table's changes reach, as
-// the generator read them off each virtual resource's query and the @changedBy
-// declarations; the generated handlers hand it to every publish. A root table's rows
-// reach the resource under the same keys, as the table's own subscribers are reached;
-// any other table's change reaches every subscriber of the resource as one resource
-// document. A table named here and global is told to the resource's lists in every
-// tenant.
-var liveDerivations = &live.Derivations{
-	Resources: []live.DerivedResource{
-		{Resource: "ClientRosters", Tables: []live.SourceTable{
-			{Name: "ClientContacts", Global: true},
-			{Name: "Clients", Global: true},
-			{Name: "Missions"},
-			{Name: "Sectors", Global: true},
-		}},
-		{Resource: "FeeByKinds", Global: true, Tables: []live.SourceTable{
-			{Name: "Missions"},
-		}},
-		{Resource: "MissionBoards", Root: "Missions", Tables: []live.SourceTable{
-			{Name: "Clients", Global: true},
-			{Name: "Squadrons"},
-		}},
-		{Resource: "OpenMissionsBySquadrons", Tables: []live.SourceTable{
-			{Name: "Missions"},
-			{Name: "Squadrons"},
-		}},
-		{Resource: "PilotAssignments", Root: "SquadronMemberships", Tables: []live.SourceTable{
-			{Name: "Squadrons"},
-			{Name: "Wings"},
-		}},
-		{Resource: "SectorHazardBoards", Tables: []live.SourceTable{
-			{Name: "DroidReports"},
-			{Name: "Ships"},
-		}},
-		{Resource: "SquadronRosters", Root: "SquadronMemberships", Tables: []live.SourceTable{
-			{Name: "Pilots", Global: true},
-			{Name: "Squadrons"},
-			{Name: "Wings"},
-		}},
-	},
-}
+// liveDerivations is the application's live derivations: the LiveDerivations of every
+// package holding a published virtual or computed resource, generated next to the
+// resources, merged into the one value the generated handlers hand to every publish.
+var liveDerivations = live.Merge(
+	computedresources.LiveDerivations,
+	virtualresources.LiveDerivations,
+)

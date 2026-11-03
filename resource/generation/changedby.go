@@ -6,7 +6,6 @@ import (
 	"go/token"
 	"os"
 	"path/filepath"
-	"regexp"
 	"slices"
 	"strings"
 
@@ -20,18 +19,19 @@ import (
 // its query or its body reads, so a commit that touches those tables changes it, and
 // the live publish has to know which tables those are. For a virtual resource the
 // generator reads them off the query itself: the text behind the struct's Subquery
-// method, an embedded file or a string literal, scanned for the schema's table names.
-// The scan cannot miss a table, since a query reads nothing it does not name, and it
-// may over-include a column that shares a table's name, which costs one needless
-// notification. A computed resource is Go, so its author declares the tables with
-// @changedBy; the declaration may also add tables to a virtual resource's derived set,
-// and it is the only source for a query the generator cannot read (one built at run
-// time), which is refused without it. The @rowsOf root, when the resource declares
-// one, must be in the set: it is the table whose rows the resource carries, and a change
-// to it reaches the resource under the same key (live.Derivations). The resolved sets
-// are written into the handler package as the generated live derivations, so what the
-// generator concluded is in the diff after every regeneration, and into the TypeScript
-// metadata as the resource's live flag.
+// method, an embedded file or a string literal, walked token by token for the names in
+// table positions (querytables.go). The author may declare the tables instead with
+// @changedBy, which replaces the reading: the way to drop a table the walk misread or
+// add one it cannot see, and the way out when the walk refuses the query or the query
+// cannot be read at all (one built at run time is refused without the declaration). The
+// query is still read beside a declaration, and a reading that differs from it is a
+// warning naming both sides, never a refusal. A computed resource is Go, so its author's
+// declaration is its only source. The @rowsOf root, when the resource declares one, must
+// be in the set: it is the table whose rows the resource carries, and a change to it
+// reaches the resource under the same key (live.Derivations). The resolved sets are
+// written into the handler package as the generated live derivations, each marked read
+// or declared, so what the generator concluded is in the diff after every regeneration,
+// and into the TypeScript metadata as the resource's live flag.
 
 // subqueryMethodName is the method a virtual resource's query is read from.
 const subqueryMethodName = "Subquery"
@@ -47,6 +47,9 @@ type publishDecl struct {
 	// published is the resolved set; nil while unresolved and for a resource whose
 	// changes are not published (a computed resource with no declaration).
 	published *publishedSet
+	// publishWarnings are the findings resolving raised (a declaration that differs from
+	// what the query names), reported with the schema warnings.
+	publishWarnings []Warning
 }
 
 // publishedSet is the tables a published resource's changes come from.
@@ -162,8 +165,12 @@ func (c *client) schemaTableNames() map[string]string {
 	return tables
 }
 
-// resolveVirtualPublished resolves one virtual resource: the tables its query names,
-// the ones declared, the root checked.
+// resolveVirtualPublished resolves one virtual resource. Its declaration, when it has
+// one, is the published set, the root checked; the query is still read, and a reading
+// that differs from the declaration is a warning, not a refusal, while a reading the
+// walk cannot make is nothing, since the declaration replaces it. Without a declaration
+// the reading is the set, and whatever stops it refuses with the declaration as the way
+// out.
 func (c *client) resolveVirtualPublished(res *resourceInfo, tables map[string]string) error {
 	declared, err := declaredTables(res.Name(), &res.publishDecl, tables)
 	if err != nil {
@@ -173,24 +180,46 @@ func (c *client) resolveVirtualPublished(res *resourceInfo, tables map[string]st
 	if err != nil {
 		return err
 	}
-	if !readable && !res.hasChangedBy {
-		return errors.Newf("struct %s: the query behind %s is built at run time, so the generator cannot read which tables it reads and cannot publish the resource's changes to live pages; keep the query an embedded file or a string literal, or declare the tables it reads with @%s(Table, ...)", res.Name(), subqueryMethodName, changedByKeyword)
-	}
-	var derived []string
-	if readable {
-		derived = tablesNamed(text, tables)
-	}
-	set := union(derived, declared)
-	if res.HasRowsOf() && !slices.Contains(set, res.RowsOf) {
-		if res.hasChangedBy {
+	if res.hasChangedBy {
+		if res.HasRowsOf() && !slices.Contains(declared, res.RowsOf) {
 			return errors.Newf("struct %s: @%s(%s) leaves out %s, the table @%s names, whose rows the resource carries; declare it with the others", res.Name(), changedByKeyword, strings.Join(res.changedBy, ", "), res.RowsOf, rowsOfKeyword)
 		}
+		if readable {
+			if derived, err := queryTables(text, tables); err == nil {
+				res.publishWarnings = append(res.publishWarnings, changedByWarnings(res.Name(), res.changedBy, derived, declared)...)
+			}
+		}
+		res.published = publishedSetOf(res.RowsOf, declared)
 
-		return errors.Newf("struct %s: the query behind %s names no table called %s, the table @%s says the resource carries the rows of; a query over a table's rows names the table, so fix the query or the declaration, or add @%s(%s)", res.Name(), subqueryMethodName, res.RowsOf, rowsOfKeyword, changedByKeyword, res.RowsOf)
+		return nil
 	}
-	res.published = publishedSetOf(res.RowsOf, set)
+	if !readable {
+		return errors.Newf("struct %s: the query behind %s is built at run time, so the generator cannot read which tables it reads and cannot publish the resource's changes to live pages; keep the query an embedded file or a string literal, or declare the tables it reads with @%s(Table, ...)", res.Name(), subqueryMethodName, changedByKeyword)
+	}
+	derived, err := queryTables(text, tables)
+	if err != nil {
+		return errors.Newf("struct %s: the query behind %s %s; declare the tables it reads with @%s(Table, ...), which replaces the reading", res.Name(), subqueryMethodName, err, changedByKeyword)
+	}
+	if res.HasRowsOf() && !slices.Contains(derived, res.RowsOf) {
+		return errors.Newf("struct %s: the query behind %s names no table called %s, the table @%s says the resource carries the rows of; a query over a table's rows names the table, so fix the query or the declaration, or declare the tables it reads with @%s(%s, ...), which replaces the reading", res.Name(), subqueryMethodName, res.RowsOf, rowsOfKeyword, changedByKeyword, res.RowsOf)
+	}
+	res.published = publishedSetOf(res.RowsOf, derived)
 
 	return nil
+}
+
+// changedByWarnings compares a virtual resource's declaration with what its query
+// names: a difference either way is one warning, since the declaration is what is
+// published and its author should see what it departs from. written is the declaration
+// as written, derived and declared the two sets in the schema's spelling.
+func changedByWarnings(structName string, written, derived, declared []string) []Warning {
+	undeclared := difference(derived, declared)
+	unread := difference(declared, derived)
+	if len(undeclared) == 0 && len(unread) == 0 {
+		return nil
+	}
+
+	return []Warning{ChangedByWarning{Resource: structName, Declared: written, Undeclared: undeclared, Unread: unread}}
 }
 
 // resolveComputedPublished resolves one computed resource: its declaration alone, the
@@ -249,45 +278,16 @@ func publishedSetOf(root string, set []string) *publishedSet {
 	return &publishedSet{Root: root, Tables: tables}
 }
 
-// union joins two name lists, each name once, in first-seen order.
-func union(a, b []string) []string {
-	joined := make([]string, 0, len(a)+len(b))
-	for _, name := range slices.Concat(a, b) {
-		if !slices.Contains(joined, name) {
-			joined = append(joined, name)
+// difference lists the names of a that b lacks, in a's order.
+func difference(a, b []string) []string {
+	var names []string
+	for _, name := range a {
+		if !slices.Contains(b, name) {
+			names = append(names, name)
 		}
 	}
 
-	return joined
-}
-
-// The query scan: comments and string literals go first, so a table named in a remark or
-// a label is not read; what is left is split into identifiers. A backticked name and a
-// dotted one both yield their identifiers, so Clients, `Clients` and c.Clients all name
-// Clients, and a parameter's @ is not an identifier character.
-var (
-	sqlLineComment   = regexp.MustCompile(`--[^\n]*`)
-	sqlBlockComment  = regexp.MustCompile(`(?s)/\*.*?\*/`)
-	sqlStringLiteral = regexp.MustCompile(`'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"`)
-	sqlIdentifier    = regexp.MustCompile(`[A-Za-z_][A-Za-z0-9_]*`)
-)
-
-// tablesNamed returns the schema tables a query's text names, in the schema's spelling,
-// sorted and unique.
-func tablesNamed(text string, tables map[string]string) []string {
-	stripped := sqlBlockComment.ReplaceAllString(text, " ")
-	stripped = sqlLineComment.ReplaceAllString(stripped, " ")
-	stripped = sqlStringLiteral.ReplaceAllString(stripped, " ")
-	var named []string
-	for _, identifier := range sqlIdentifier.FindAllString(stripped, -1) {
-		table, ok := tables[strings.ToLower(identifier)]
-		if ok && !slices.Contains(named, table) {
-			named = append(named, table)
-		}
-	}
-	slices.Sort(named)
-
-	return named
+	return names
 }
 
 // subqueryText reads the text of a virtual resource's query: what its Subquery method
@@ -466,66 +466,3 @@ func embeddedText(pkg *packages.Package, spec *ast.ValueSpec, pattern string) (t
 
 // The generated live derivations: one entry per published virtual or computed resource,
 // in name order, each table marked global when the resource backing it has no tenant.
-
-type liveDerivationsData struct {
-	Source    string
-	Package   string
-	Resources []derivedResourceData
-}
-
-type derivedResourceData struct {
-	Resource string
-	Global   bool
-	Root     string
-	Tables   []sourceTableData
-}
-
-type sourceTableData struct {
-	Name   string
-	Global bool
-}
-
-// liveDerivations lists the published virtual and computed resources for the generated
-// live derivations file.
-func (c *client) liveDerivations() []derivedResourceData {
-	var entries []derivedResourceData
-	for _, res := range c.resources {
-		if !res.IsVirtual || !res.IsPublished() {
-			continue
-		}
-		entries = append(entries, c.derivedResourceData(c.pluralize(res.Name()), !res.IsDomainScoped(), &res.publishDecl))
-	}
-	for _, res := range c.computedResources {
-		if !res.IsPublished() {
-			continue
-		}
-		entries = append(entries, c.derivedResourceData(c.pluralize(res.Name()), !res.IsDomainScoped(), &res.publishDecl))
-	}
-	slices.SortFunc(entries, func(a, b derivedResourceData) int {
-		return strings.Compare(a.Resource, b.Resource)
-	})
-
-	return entries
-}
-
-func (c *client) derivedResourceData(name string, global bool, decl *publishDecl) derivedResourceData {
-	entry := derivedResourceData{Resource: name, Global: global, Root: decl.PublishedRoot()}
-	for _, table := range decl.PublishedTables() {
-		entry.Tables = append(entry.Tables, sourceTableData{Name: table, Global: c.tableIsGlobal(table)})
-	}
-
-	return entry
-}
-
-// tableIsGlobal reports whether the table-backed resource over the table has no tenant
-// domain; a table no resource backs is never written through a handler, so its answer
-// does not matter and is false.
-func (c *client) tableIsGlobal(table string) bool {
-	for _, res := range c.resources {
-		if !res.IsVirtual && c.pluralize(res.Name()) == table {
-			return !res.IsDomainScoped()
-		}
-	}
-
-	return false
-}

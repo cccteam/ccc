@@ -204,3 +204,31 @@ func TestFanout_derived(t *testing.T) {
 		})
 	}
 }
+
+// TestMerge pins the assembly: the packages' values in order, a nil part adding
+// nothing, and no parts the empty value.
+func TestMerge(t *testing.T) {
+	t.Parallel()
+
+	boards := &Derivations{Resources: []DerivedResource{{Resource: "MissionBoards", Root: "Missions"}}}
+	hazards := &Derivations{Resources: []DerivedResource{{Resource: "SectorHazardBoards", Tables: []SourceTable{{Name: "Ships"}}}}}
+
+	tests := []struct {
+		name  string
+		parts []*Derivations
+		want  *Derivations
+	}{
+		{name: "no parts", want: &Derivations{}},
+		{name: "two parts in order, a nil between them", parts: []*Derivations{hazards, nil, boards}, want: &Derivations{Resources: []DerivedResource{hazards.Resources[0], boards.Resources[0]}}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if diff := cmp.Diff(tt.want, Merge(tt.parts...)); diff != "" {
+				t.Errorf("Merge() mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}

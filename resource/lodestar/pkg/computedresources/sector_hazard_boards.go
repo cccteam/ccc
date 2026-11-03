@@ -45,7 +45,8 @@ type (
 	// folded rows.
 	//
 	// The board is live: its body is Go, so the generator cannot read which tables it
-	// folds, and @changedBy names them, Ships and DroidReports. A droid's report or a
+	// folds, and @changedBy names them, Ships and DroidReports, recorded in this
+	// package's generated live derivations as declared. A droid's report or a
 	// ship's write reaches every subscriber of the board in the sector as one resource
 	// document, and the page asks again; a computed resource that declares nothing
 	// stays plain.

@@ -1,7 +1,6 @@
 package generation
 
 import (
-	"go/format"
 	"strings"
 	"testing"
 
@@ -61,7 +60,9 @@ func Test_resolvePublished(t *testing.T) {
 		structName string
 		computed   bool
 		want       *publishedSet
-		wantErr    string
+		// wantWarnings are the warnings resolving raises, rendered.
+		wantWarnings []string
+		wantErr      string
 	}{
 		{
 			name:       "an embedded file: the tables it names, the root apart, comments and literals ignored",
@@ -99,9 +100,25 @@ func Test_resolvePublished(t *testing.T) {
 			wantErr:    `struct Unknown: @changedBy(Nowhere): "Nowhere" is not a table in the schema`,
 		},
 		{
-			name:       "a declaration adds to what the query names",
-			structName: "Extra",
-			want:       &publishedSet{Root: "Berths", Tables: []string{"Docks", "Visits"}},
+			name:         "a declaration replaces what the query names, and the difference is a warning",
+			structName:   "Extra",
+			want:         &publishedSet{Root: "Berths", Tables: []string{"Visits"}},
+			wantWarnings: []string{"Extra publishes its changes from @changedBy(Berths, Visits), which differs from what the query behind Subquery names: the query names Docks, which the declaration leaves out; the declaration names Visits, which the query does not"},
+		},
+		{
+			name:       "a query naming neither a table nor a CTE in a table position is refused, the declaration the way out",
+			structName: "Unread",
+			wantErr:    "struct Unread: the query behind Subquery names Quays at line 1, column 18 in a table position (after FROM, JOIN or a comma of a FROM list), and that is neither a table in the schema nor a CTE in scope; declare the tables it reads with @changedBy(Table, ...), which replaces the reading",
+		},
+		{
+			name:       "a query the lexer refuses is refused with the lexer's place",
+			structName: "Broken",
+			wantErr:    "struct Broken: the query behind Subquery cannot be read: the lexer stopped at line 1, column 42 (unclosed string literal); declare the tables it reads with @changedBy(Table, ...), which replaces the reading",
+		},
+		{
+			name:       "a declaration beside a query the lexer refuses is taken without a word",
+			structName: "Rescued",
+			want:       &publishedSet{Tables: []string{"Berths"}},
 		},
 		{
 			name:       "a computed resource is its declaration",
@@ -127,16 +144,16 @@ func Test_resolvePublished(t *testing.T) {
 			t.Parallel()
 
 			c := changedByClient(loaded)
-			var got *publishedSet
+			var decl *publishDecl
 			var err error
 			if tt.computed {
 				res := fixtureComputedPublished(t, structs, tt.structName)
 				err = c.resolvePublished(nil, []*computedResource{res})
-				got = res.published
+				decl = &res.publishDecl
 			} else {
 				res := fixtureVirtualPublished(t, structs, tt.structName)
 				err = c.resolvePublished([]*resourceInfo{res}, nil)
-				got = res.published
+				decl = &res.publishDecl
 			}
 			if (err != nil) != (tt.wantErr != "") {
 				t.Fatalf("resolvePublished() error = %v, wantErr %v", err, tt.wantErr != "")
@@ -148,8 +165,15 @@ func Test_resolvePublished(t *testing.T) {
 
 				return
 			}
-			if diff := cmp.Diff(tt.want, got, cmp.AllowUnexported(publishedSet{})); diff != "" {
+			if diff := cmp.Diff(tt.want, decl.published, cmp.AllowUnexported(publishedSet{})); diff != "" {
 				t.Errorf("published set mismatch (-want +got):\n%s", diff)
+			}
+			var warnings []string
+			for _, warning := range decl.publishWarnings {
+				warnings = append(warnings, warning.String())
+			}
+			if diff := cmp.Diff(tt.wantWarnings, warnings); diff != "" {
+				t.Errorf("warnings mismatch (-want +got):\n%s", diff)
 			}
 		})
 	}
@@ -185,98 +209,6 @@ func Test_rejectChangedBy(t *testing.T) {
 			}
 			if err != nil && !strings.Contains(err.Error(), tt.wantErr) {
 				t.Errorf("rejectChangedBy() error = %v, want it to contain %q", err, tt.wantErr)
-			}
-		})
-	}
-}
-
-func Test_tablesNamed(t *testing.T) {
-	t.Parallel()
-
-	tables := map[string]string{"berths": "Berths", "docks": "Docks", "visits": "Visits", "name": "Name"}
-	tests := []struct {
-		name string
-		text string
-		want []string
-	}{
-		{name: "plain names, aliases ignored", text: "SELECT b.Slot FROM Berths b JOIN Docks d ON d.Id = b.DockId", want: []string{"Berths", "Docks"}},
-		{name: "backticked and dotted names", text: "SELECT 1 FROM `Berths` JOIN sch.Docks ON TRUE", want: []string{"Berths", "Docks"}},
-		{name: "case is not significant", text: "select * from berths", want: []string{"Berths"}},
-		{name: "a line comment does not count", text: "SELECT 1 FROM Berths -- and Docks\n", want: []string{"Berths"}},
-		{name: "a block comment does not count", text: "SELECT 1 /* Visits\n Docks */ FROM Berths", want: []string{"Berths"}},
-		{name: "a string literal does not count", text: "SELECT 'Docks' AS Label, \"Visits\" AS Other FROM Berths", want: []string{"Berths"}},
-		{name: "a CTE named like no table drops out", text: "WITH Booked AS (SELECT * FROM Visits) SELECT * FROM Booked", want: []string{"Visits"}},
-		{name: "a column sharing a table's name over-includes it", text: "SELECT d.Name FROM Docks d", want: []string{"Docks", "Name"}},
-		{name: "a parameter is not a table", text: "SELECT 1 FROM Berths WHERE Slot > @docks", want: []string{"Berths", "Docks"}},
-		{name: "nothing named", text: "SELECT 1", want: nil},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			if diff := cmp.Diff(tt.want, tablesNamed(tt.text, tables)); diff != "" {
-				t.Errorf("tablesNamed() mismatch (-want +got):\n%s", diff)
-			}
-		})
-	}
-}
-
-// Test_liveDerivationsTemplate renders the generated live derivations: the empty
-// value, and entries with a root, with tables, global and not.
-func Test_liveDerivationsTemplate(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name            string
-		data            *liveDerivationsData
-		wantContains    []string
-		wantNotContains []string
-	}{
-		{
-			name:            "nothing derives: the empty value, still handed to every publish",
-			data:            &liveDerivationsData{Source: "pkg/resources", Package: "app"},
-			wantContains:    []string{"package app", "var liveDerivations = &live.Derivations{}"},
-			wantNotContains: []string{"Resources:"},
-		},
-		{
-			name: "a root and its tables, a rootless global resource",
-			data: &liveDerivationsData{Source: "pkg/resources", Package: "app", Resources: []derivedResourceData{
-				{Resource: "MissionBoards", Root: "Missions", Tables: []sourceTableData{{Name: "Clients", Global: true}, {Name: "Squadrons"}}},
-				{Resource: "Rosters", Global: true, Tables: []sourceTableData{{Name: "Pilots"}}},
-			}},
-			wantContains: []string{
-				`{Resource: "MissionBoards", Root: "Missions", Tables: []live.SourceTable{`,
-				`{Name: "Clients", Global: true},`,
-				`{Name: "Squadrons"},`,
-				`{Resource: "Rosters", Global: true, Tables: []live.SourceTable{`,
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			c := &client{}
-			rendered, err := c.generateTemplateOutput("liveDerivationsTemplate", liveDerivationsTemplate, tt.data)
-			if err != nil {
-				t.Fatalf("generateTemplateOutput() error = %v", err)
-			}
-			// The writer formats the file, so the expectations read the formatted text.
-			out, err := format.Source(rendered)
-			if err != nil {
-				t.Fatalf("format.Source() error = %v:\n%s", err, rendered)
-			}
-			for _, want := range tt.wantContains {
-				if !strings.Contains(string(out), want) {
-					t.Errorf("output lacks %q:\n%s", want, out)
-				}
-			}
-			for _, notWant := range tt.wantNotContains {
-				if strings.Contains(string(out), notWant) {
-					t.Errorf("output carries %q:\n%s", notWant, out)
-				}
 			}
 		})
 	}

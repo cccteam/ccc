@@ -349,22 +349,45 @@ func (r *resourceGenerator) generateLive() error {
 	return nil
 }
 
-// generateLiveDerivations emits the handler package's live derivations: which virtual
-// and computed resources a table's changes reach, as the generator read them off each
-// virtual resource's query and the @changedBy declarations, handed to every publish.
-// The file is written on every run, empty when nothing derives, so a publish always has
-// a value to hand and a derivation that changed shows in the diff.
+// generateLiveDerivations writes the live derivations next to the resources, one file
+// per package holding published virtual or computed resources with that package's
+// LiveDerivations, and the handler package's assembly of them, liveDerivations, which
+// the generated handlers hand to every publish. A package with no published resource
+// gets no file, and the stale sweep removes one an earlier run wrote: the computed
+// package joins the sweep here, by header, since nothing else writes into it.
 func (r *resourceGenerator) generateLiveDerivations() error {
 	begin := time.Now()
-	destinationFilePath := filepath.Join(r.handler.Dir(), generatedGoFileName(liveDerivationsOutputName))
-	if err := r.writeFormattedGoFile(destinationFilePath, "liveDerivationsTemplate", liveDerivationsTemplate, &liveDerivationsData{
-		Source:    r.resource.Dir(),
-		Package:   r.handler.Package(),
-		Resources: r.liveDerivations(),
+	if r.computed != "" {
+		r.output.registerOutput(r.computed.Dir(), headerComment)
+	}
+	packages, err := r.liveDerivationsByPackage()
+	if err != nil {
+		return err
+	}
+	fileName := generatedGoFileName(liveDerivationsOutputName)
+	values := make([]string, 0, len(packages))
+	for _, pkg := range packages {
+		destinationFilePath := filepath.Join(pkg.dir.Dir(), fileName)
+		if err := r.writeFormattedGoFile(destinationFilePath, "liveDerivationsPackageTemplate", liveDerivationsPackageTemplate, &liveDerivationsPackageData{
+			Source:             r.resource.Dir(),
+			Package:            pkg.dir.Package(),
+			ResourcesQualifier: packageQualifier(pkg.dir, r.resource),
+			Resources:          pkg.Resources,
+		}); err != nil {
+			return errors.Wrap(err, "writeFormattedGoFile()")
+		}
+		log.Printf("Generated live derivations file in %s: %s", time.Since(begin), destinationFilePath)
+		values = append(values, packageQualifier(r.handler, pkg.dir)+liveDerivationsValueName)
+	}
+	destinationFilePath := filepath.Join(r.handler.Dir(), fileName)
+	if err := r.writeFormattedGoFile(destinationFilePath, "liveDerivationsTemplate", liveDerivationsTemplate, &liveDerivationsAssemblyData{
+		Source:  r.resource.Dir(),
+		Package: r.handler.Package(),
+		Values:  values,
 	}); err != nil {
 		return errors.Wrap(err, "writeFormattedGoFile()")
 	}
-	log.Printf("Generated live derivations file in %s: %s", time.Since(begin), destinationFilePath)
+	log.Printf("Generated live derivations assembly in %s: %s", time.Since(begin), destinationFilePath)
 
 	return nil
 }

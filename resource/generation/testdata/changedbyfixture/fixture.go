@@ -17,6 +17,12 @@ var rostersSubquery string
 // literalSubquery is a query the compiler knows whole.
 const literalSubquery = "SELECT d.Id, d.Name FROM Docks d"
 
+// quaysSubquery names a table the schema does not have.
+const quaysSubquery = "SELECT q.Id FROM Quays q"
+
+// brokenSubquery is a text the lexer refuses: its string literal never closes.
+const brokenSubquery = "SELECT b.Id FROM Berths b WHERE b.Name = 'open"
+
 // visitsSubquery is a concatenation of constants, which the compiler also knows whole.
 const visitsSubquery = "SELECT v.Id, v.BerthDockId FROM Visits v" + " JOIN Berths b ON b.DockId = v.BerthDockId"
 
@@ -116,16 +122,44 @@ type (
 		ID ccc.UUID `spanner:"Id" index:"true"`
 	}
 
-	// Extra reads the embedded file and declares a table beyond it.
+	// Extra reads the embedded file over Berths and Docks and declares Berths and Visits
+	// instead: the declaration is published, with a warning naming the difference.
 	//
 	// @virtual
 	// @rowsOf(Berths)
-	// @changedBy(Visits)
+	// @changedBy(Berths, Visits)
 	Extra struct {
 		// @primarykey
 		DockID ccc.UUID `spanner:"DockId" index:"true"`
 		// @primarykey
 		Slot int64 `spanner:"Slot"`
+	}
+
+	// Unread reads a literal that names, in a table position, a table the schema does
+	// not have: refused.
+	//
+	// @virtual
+	Unread struct {
+		// @primarykey
+		ID ccc.UUID `spanner:"Id" index:"true"`
+	}
+
+	// Broken reads a literal the lexer refuses: refused.
+	//
+	// @virtual
+	Broken struct {
+		// @primarykey
+		ID ccc.UUID `spanner:"Id" index:"true"`
+	}
+
+	// Rescued reads the literal the lexer refuses and declares what it reads: the
+	// declaration, with no warning.
+	//
+	// @virtual
+	// @changedBy(Berths)
+	Rescued struct {
+		// @primarykey
+		ID ccc.UUID `spanner:"Id" index:"true"`
 	}
 
 	// Tally is a computed resource that declares the tables its body reads.
@@ -200,4 +234,19 @@ func (Unknown) Subquery() (query string, params map[string]any) {
 // Subquery provides the embedded roster projection.
 func (Extra) Subquery() (query string, params map[string]any) {
 	return rostersSubquery, nil
+}
+
+// Subquery provides a projection over a table the schema lacks.
+func (Unread) Subquery() (query string, params map[string]any) {
+	return quaysSubquery, nil
+}
+
+// Subquery provides the text the lexer refuses.
+func (Broken) Subquery() (query string, params map[string]any) {
+	return brokenSubquery, nil
+}
+
+// Subquery provides the text the lexer refuses.
+func (Rescued) Subquery() (query string, params map[string]any) {
+	return brokenSubquery, nil
 }
