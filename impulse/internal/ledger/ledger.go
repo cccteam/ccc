@@ -942,6 +942,27 @@ var Steps = []Step{
 		Impulse: release("v0.6.17"),
 		Note:    "leaving a live page no longer answers 403 when the application names its XSRF cookie: the browser library's page-leave unsubscribe, which rides a keepalive fetch and not the application's HTTP client, takes its XSRF token from the Angular adapter, which reads the cookie named in the application's HTTP configuration through Angular's own token extractor, and a session check that answers unauthenticated ends the feed without the unsubscribe call; the application configures nothing, no code change is needed. The pins move to the browser libraries (@cccteam/resource 0.0.23, @cccteam/resource-angular 0.0.35, @cccteam/resource-firestore 0.0.22).",
 	},
+	{
+		Pins: pins(`
+			access v0.12.0
+			ccc v0.3.7
+			ccc/accesstypes v0.7.1
+			ccc/cloud v0.2.3
+			ccc/resource v0.16.10
+			ccc/tracer v0.3.2
+			db-initiator v0.4.3
+			httpio v0.7.22
+			logger v0.1.31
+			session v0.13.20
+		`),
+		Web: web(`
+			@cccteam/resource 0.0.24
+			@cccteam/resource-angular 0.0.36
+			@cccteam/resource-firestore 0.0.23
+		`),
+		Impulse: release("v0.6.18"),
+		Note:    "a filter on a date or timestamp column reads a date as a person writes it: the server reads 2026-12-15, 12/15/2026, 2026-12, 2026 or 2026-12-15T09:30 as the whole span it names (equals inside it, before and after at its edges, a list as several spans) in the zone the request names in its Time-Zone header, else the column's declared zone, else UTC, and a value it cannot read is refused in plain words with today's date as the example; the grid's filter menu takes a day from a date control on a date column and a day with an optional time of day on a timestamp column, sent in those forms, the resource client sends the browser's zone as the Time-Zone header on every request (ClientOptions.timeZone overrides it, an empty one sends none), and the menu commits on Apply, Enter, or closing, so a new operator alone sends nothing and an operator and a value changed together are one request; the search box finds a term anywhere in a field whose tokens carry anchors, as in a plain field; the application configures nothing, no code change is needed. The pins move to resource v0.16.10 and the browser libraries (@cccteam/resource 0.0.24, @cccteam/resource-angular 0.0.36, @cccteam/resource-firestore 0.0.23).",
+	},
 }
 
 // validatePending holds a step's Pending mark to its pins: a pin at a pseudo-version
