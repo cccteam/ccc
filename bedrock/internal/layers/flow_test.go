@@ -153,7 +153,7 @@ func (s *fakeStore) withoutState(prefix string) {
 // states are the state objects of every run, as an applied organization has them.
 func states() map[string]string {
 	objects := map[string]string{}
-	for _, layer := range org.Layers {
+	for _, layer := range org.HostingLayers {
 		if layer == "2-env" {
 			for _, env := range org.Environments {
 				objects[layer+"/"+env+"/"+stateObject] = "{}"

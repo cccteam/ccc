@@ -49,13 +49,21 @@ func appCheckout(t *testing.T, module string) string {
 }
 
 // orgRepo copies the fixture organization's placement into a temporary directory,
-// without its bedrock pin: the commands refuse a placement pinned to another bedrock
-// than the one running, and the tests run as the head commit.
+// without its bedrock pin.
 func orgRepo(t *testing.T) string {
 	t.Helper()
 
+	return fixtureRepo(t, orgFixture)
+}
+
+// fixtureRepo copies a fixture organization's placement into a temporary directory,
+// without its bedrock pin: the commands refuse a placement pinned to another bedrock
+// than the one running, and the tests run as the head commit.
+func fixtureRepo(t *testing.T, fixture string) string {
+	t.Helper()
+
 	dir := t.TempDir()
-	data, err := os.ReadFile(filepath.Join(orgFixture, "placement.json"))
+	data, err := os.ReadFile(filepath.Join(fixture, "placement.json"))
 	if err != nil {
 		t.Fatal(err)
 	}

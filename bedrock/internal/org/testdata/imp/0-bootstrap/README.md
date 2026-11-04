@@ -285,7 +285,7 @@ seed's values.
 
 The first apply runs on local state, so the `backend "gcs"` block in
 `initialize.tf` has to be commented out for it. A configuration that declares
-a backend refuses to plan until that backend is initialised, and the bucket
+a backend refuses to plan until that backend is initialized, and the bucket
 name is not in the block yet. The connection the console made in step 2 is
 adopted rather than made again:
 

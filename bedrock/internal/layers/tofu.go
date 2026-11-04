@@ -51,8 +51,9 @@ type tofu struct {
 }
 
 // newTofu sets a run up in the layer's directory as the identity, with the working
-// directory under the system's temporary files, and the GitHub token for 1-org.
-func newTofu(exec deploy.Runner, root string, lr org.LayerRun, identity, githubToken string, out io.Writer) (*tofu, error) {
+// directory under the system's temporary files, and the GitHub token for the layer with
+// the GitHub provider (githubLayer: 1-org, or 1-dns in a zones organization).
+func newTofu(exec deploy.Runner, root string, lr org.LayerRun, identity, githubLayer, githubToken string, out io.Writer) (*tofu, error) {
 	work, err := os.MkdirTemp("", "bedrock-"+lr.Layer+"-")
 	if err != nil {
 		return nil, errors.Wrap(err, "os.MkdirTemp()")
@@ -61,7 +62,7 @@ func newTofu(exec deploy.Runner, root string, lr org.LayerRun, identity, githubT
 	if lr.Environment != "" {
 		env = append(env, dataDirEnv+"=.terraform."+lr.Environment)
 	}
-	if lr.Layer == orgLayer {
+	if lr.Layer == githubLayer {
 		env = append(env, githubEnv+"="+githubToken)
 	}
 

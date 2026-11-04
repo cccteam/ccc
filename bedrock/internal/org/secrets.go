@@ -202,6 +202,9 @@ func pinKey(name string) string {
 	}
 }
 
+// releaseAppIDField is the placement field that names the release app by its App ID.
+const releaseAppIDField = "githubReleaseAppId"
+
 // appKey is the placement key the secret's app is named under, and appWhat what to
 // record there.
 func appKey(name string) string {
@@ -209,7 +212,7 @@ func appKey(name string) string {
 	case DeployerKey:
 		return "githubDeployerAppId"
 	case ReleaseKey:
-		return "githubReleaseAppId"
+		return releaseAppIDField
 	default:
 		return "githubInfrastructureAppId"
 	}
@@ -336,7 +339,7 @@ func PinSecret(ctx context.Context, open secret.ClientFunc, p *Placement, req *S
 	if err := p.Write(r.File); err != nil {
 		return nil, err
 	}
-	written, err := Write(files, req.Dir)
+	written, err := Write(p, files, req.Dir)
 	if err != nil {
 		return nil, err
 	}

@@ -5,7 +5,7 @@ locals {
   # A layer is one directory of this repository, applied as one identity. Layer
   # names follow {prefix}-{environment}-gbl; their service accounts add -tofu.
   boot_layer_name = "${var.prefix}-boot-gbl"
-  org_layer_name  = "${var.prefix}-org-gbl"
+  org_layer_name  = "${var.prefix}-{{.SecondIdentity}}-gbl"
 
 {{.LabelsBlockQuoted "0-bootstrap" "boot"}}
 }
@@ -28,25 +28,32 @@ locals {
 # Everything else in this layer is created normally.
 # ---------------------------------------------------------------------------
 
+{{- if .Zones}}
+
+# The terraform folder holds nothing but the automation plane. A zones
+# organization makes no other folder: its zones live in the boot project.
+{{- else}}
+
 # The terraform folder sits alongside the environment folders created by 1-org
 # and holds nothing but the automation plane. Keeping it out of the environment
-# hierarchy means an environment folder can be reorganised without touching the
+# hierarchy means an environment folder can be reorganized without touching the
 # identity that provisions it, and the org policies 1-org applies to the
 # environment folders never reach the identities that manage them.
+{{- end}}
 # The organization's suffix: a random value born with this state on the first
 # apply and gone with it, telling this bedrock organization from another in
 # the same GCP organization and from its own predecessor. It is the suffix of
 # every name the layers put at the organization node, where names must differ
 # between organizations and where Google holds a deleted name for weeks: the
-# custom roles (here and in 1-org) and the public-invoker tag key (1-org).
+# custom roles{{if .Zones}} here{{else}} (here and in 1-org) and the public-invoker tag key (1-org){{end}}.
 # Nothing inside a project carries it; the project ids carry their own.
 resource "random_id" "organization" {
   byte_length = 2
 }
 
 # The organization's folder, named after its prefix, holds everything the
-# layers make under the GCP organization: the terraform folder here, the
-# environment folders 1-org creates. Sibling folders must differ in name, so
+# layers make under the GCP organization: the terraform folder here{{if not .Zones}}, the
+# environment folders 1-org creates{{end}}. Sibling folders must differ in name, so
 # two bedrock organizations in one GCP organization each keep their own tree.
 # Seeded, like the terraform folder, since the boot project must exist before
 # this layer can run.
@@ -74,8 +81,9 @@ import {
 
 # The boot project hosts the layer identities, the state bucket, the Cloud
 # Build connection and triggers that plan and apply the layers (cloud-build.tf),
-# the two GitHub Apps' keys (github.tf), and acts as the quota and billing
-# project for every downstream layer.
+# the two GitHub Apps' keys (github.tf), and {{if .Zones}}the zones 1-dns makes, its one
+# downstream layer, which it is the quota and billing project for{{else}}acts as the quota and billing
+# project for every downstream layer{{end}}.
 #
 # random_project_id is off and the ID comes from a variable: the project already
 # exists with a suffix the seed script chose, and the module would otherwise
@@ -101,6 +109,21 @@ module "boot_project" {
   disable_services_on_destroy = !var.destroy
   deletion_policy             = var.destroy ? "DELETE" : "PREVENT"
   labels                      = local.labels
+
+{{- if .Zones}}
+
+  activate_apis = [
+    "cloudbuild.googleapis.com",           # the connection and the triggers that plan and apply the layers (cloud-build.tf)
+    "cloudresourcemanager.googleapis.com", # folders, IAM
+    "dns.googleapis.com",                  # the zones 1-dns makes here
+    "iam.googleapis.com",                  # service accounts
+    "iamcredentials.googleapis.com",       # the short-lived tokens a trigger's run impersonates a layer identity with
+    "logging.googleapis.com",              # the triggers' build logs
+    "secretmanager.googleapis.com",        # the two GitHub Apps' key containers (github.tf)
+    "serviceusage.googleapis.com",         # API enablement
+    "storage.googleapis.com",              # the state bucket
+  ]
+{{- else}}
 
   activate_apis = [
     "cloudbilling.googleapis.com",            # link the billing account to projects created by 1-org
@@ -132,6 +155,7 @@ module "boot_project" {
     "secretmanager.googleapis.com",
     "spanner.googleapis.com",
   ]
+{{- end}}
 }
 
 import {
@@ -183,6 +207,17 @@ resource "google_billing_account_iam_member" "boot_tofu" {
   member             = google_service_account.boot_tofu.member
 }
 
+{{- if .Zones}}
+
+# ---------------------------------------------------------------------------
+# DNS layer identity
+#
+# 1-dns makes the zones in this project and rules this repository's default
+# branch on GitHub, nothing else: its identity administers Cloud DNS in this
+# project and holds no role at the organization node.
+# ---------------------------------------------------------------------------
+{{- else}}
+
 # ---------------------------------------------------------------------------
 # Org layer identity
 #
@@ -190,13 +225,30 @@ resource "google_billing_account_iam_member" "boot_tofu" {
 # service accounts. Those grants have to sit at the org node because the
 # resources they act on do not exist yet.
 # ---------------------------------------------------------------------------
+{{- end}}
 
 resource "google_service_account" "org_tofu" {
   project      = module.boot_project.project_id
-  account_id   = "${var.prefix}-org-gbl-tofu"
+  account_id   = "${var.prefix}-{{.SecondIdentity}}-gbl-tofu"
   display_name = "OpenTofu SA - ${local.org_layer_name}"
-  description  = "Layer identity for ${local.org_layer_name}. Applies the 1-org layer from the infrastructure repository's apply trigger."
+  description  = "Layer identity for ${local.org_layer_name}. Applies the {{.SecondLayer}} layer from the infrastructure repository's apply trigger."
 }
+{{- if .Zones}}
+
+resource "google_project_iam_member" "org_tofu_dns" {
+  project = module.boot_project.project_id
+  role    = "roles/dns.admin"
+  member  = google_service_account.org_tofu.member
+}
+
+# A pull request plans 1-dns as its plan identity, which reads the zones and
+# their record sets: Cloud DNS's read, on this project alone.
+resource "google_project_iam_member" "dns_plan" {
+  project = module.boot_project.project_id
+  role    = "roles/dns.reader"
+  member  = google_service_account.boot_plan["dns"].member
+}
+{{- else}}
 
 resource "google_organization_iam_member" "org_tofu" {
   # checkov:skip=CKV_GCP_117: the org layer identity must manage folders, projects, org policies, IAM, and a custom role across the hierarchy this repo owns. It has no keys and runs only from the infrastructure repository's apply trigger, on its default branch.
@@ -208,25 +260,30 @@ resource "google_organization_iam_member" "org_tofu" {
   role   = each.value
   member = google_service_account.org_tofu.member
 }
+{{- end}}
 
 # ---------------------------------------------------------------------------
 # The two boot layers' plan identities
 #
-# A pull request plans this layer and 1-org as read-only identities of their
+# A pull request plans this layer and {{.SecondLayer}} as read-only identities of their
 # own, in the boot project beside the apply identities: a plan as an apply
 # identity would run a pull request's code with the power to apply. They are
 # this layer's to make, with the apply identities, and their organization-level
 # reads are this layer's to grant: a binding at the organization node is, like
-# every one of them, since the org layer identity holds no role there that
-# sets the organization's policy (var.org_layer_roles), by design.
+# every one of them, since the {{if .Zones}}dns layer identity holds no role there at all{{else}}org layer identity holds no role there that
+# sets the organization's policy (var.org_layer_roles){{end}}, by design.
 # ---------------------------------------------------------------------------
 
 locals {
-  # The two plan identities, named after their layers (boot, org), with the
+  # The two plan identities, named after their layers (boot, {{.SecondIdentity}}), with the
   # state prefixes each one reads (state-bucket.tf).
   boot_plans = {
     boot = { layer = "0-bootstrap", reads = ["0-bootstrap"] }
+{{- if .Zones}}
+    dns  = { layer = "1-dns", reads = ["1-dns"] }
+{{- else}}
     org  = { layer = "1-org", reads = ["0-bootstrap", "1-org"] }
+{{- end}}
   }
 }
 
@@ -271,11 +328,14 @@ resource "google_organization_iam_custom_role" "project_updater" {
   permissions = ["resourcemanager.projects.update"]
 }
 
+{{- if not .Zones}}
+
 resource "google_organization_iam_member" "org_tofu_project_updater" {
   org_id = local.org_id
   role   = google_organization_iam_custom_role.project_updater.id
   member = google_service_account.org_tofu.member
 }
+{{- end}}
 
 # The boot identity manages the boot project's labels and metadata through the
 # project module when this layer runs through the apply trigger; the bootstrap
@@ -285,6 +345,8 @@ resource "google_organization_iam_member" "boot_tofu_project_updater" {
   role   = google_organization_iam_custom_role.project_updater.id
   member = google_service_account.boot_tofu.member
 }
+
+{{- if not .Zones}}
 
 # 1-org declares on this project each environment's layer state entitlement:
 # the environment layer identity's slot in the state bucket and this project as
@@ -315,3 +377,4 @@ resource "google_billing_account_iam_member" "org_tofu" {
   role               = "roles/billing.user"
   member             = google_service_account.org_tofu.member
 }
+{{- end}}

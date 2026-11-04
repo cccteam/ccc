@@ -63,6 +63,9 @@ func (d deps) placeApplication(cmd *cobra.Command, dir, app string, envs []strin
 	if err != nil {
 		return err
 	}
+	if err := hostingOnly(p, "place"); err != nil {
+		return err
+	}
 	path := orgPlacementPath(dir, "")
 	if err := d.orgPinned(p, path); err != nil {
 		return err
@@ -94,7 +97,7 @@ func (d deps) placeApplication(cmd *cobra.Command, dir, app string, envs []strin
 	if err != nil {
 		return err
 	}
-	written, err := org.Write(files, dir)
+	written, err := org.Write(p, files, dir)
 	if err != nil {
 		return err
 	}

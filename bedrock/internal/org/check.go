@@ -92,7 +92,7 @@ func Check(p *Placement, dir string) (*Report, error) {
 			r.Findings = append(r.Findings, Finding{Path: f.Path, Line: line, Want: want, Got: got})
 		}
 	}
-	unknown, err := unknownFiles(dir, rendered)
+	unknown, err := unknownFiles(p, dir, rendered)
 	if err != nil {
 		return nil, err
 	}
@@ -103,9 +103,9 @@ func Check(p *Placement, dir string) (*Report, error) {
 
 // unknownFiles lists, in each layer, every .tf and .tf.json file the render does not
 // produce and every override file, each with the reason it is refused, in path order.
-func unknownFiles(dir string, rendered map[string]bool) ([]Finding, error) {
+func unknownFiles(p *Placement, dir string, rendered map[string]bool) ([]Finding, error) {
 	var findings []Finding
-	for _, layer := range Layers {
+	for _, layer := range p.Layers() {
 		entries, err := os.ReadDir(filepath.Join(dir, layer))
 		if err != nil {
 			if errors.Is(err, os.ErrNotExist) {

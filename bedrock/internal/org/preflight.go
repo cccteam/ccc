@@ -40,13 +40,16 @@ const (
 
 // BootstrapRole is one role the bootstrap administrator holds for the seed and the first
 // applies of 0-bootstrap and 1-org: its title as the console names it, its id, where it
-// is granted, the permissions tested for it, and what needs them.
+// is granted, the permissions tested for it, and what needs them; ZonesNeeds is what a
+// zones organization's seed and first applies need it for, empty for a role they do not
+// need (Placement.BootstrapRoles).
 type BootstrapRole struct {
 	Title       string
 	Role        string
 	On          Scope
 	Permissions []string
 	Needs       string
+	ZonesNeeds  string
 }
 
 // BootstrapRoles are the roles the seed and the first applies of 0-bootstrap and 1-org
@@ -62,6 +65,7 @@ var BootstrapRoles = []BootstrapRole{
 		On:          OnOrganization,
 		Permissions: []string{"resourcemanager.folders.create"},
 		Needs:       "the seed's terraform folder and 1-org's folders, at the organization root",
+		ZonesNeeds:  "the seed's two folders, at the organization root",
 	},
 	{
 		Title:       "Project Creator",
@@ -69,6 +73,7 @@ var BootstrapRoles = []BootstrapRole{
 		On:          OnOrganization,
 		Permissions: []string{"resourcemanager.projects.create"},
 		Needs:       "the seed's boot project and 1-org's projects",
+		ZonesNeeds:  "the seed's boot project",
 	},
 	{
 		Title:       "Organization Administrator",
@@ -76,6 +81,7 @@ var BootstrapRoles = []BootstrapRole{
 		On:          OnOrganization,
 		Permissions: []string{"resourcemanager.organizations.get", "resourcemanager.organizations.getIamPolicy", "resourcemanager.organizations.setIamPolicy"},
 		Needs:       "the organization roles the seed grants the boot identity, and those 0-bootstrap and 1-org grant the layer identities",
+		ZonesNeeds:  "the organization roles the seed grants the boot identity, and those 0-bootstrap grants the plan identities",
 	},
 	{
 		Title:       "Organization Policy Administrator",
@@ -90,6 +96,7 @@ var BootstrapRoles = []BootstrapRole{
 		On:          OnOrganization,
 		Permissions: []string{"iam.roles.create", "iam.roles.update"},
 		Needs:       "the custom roles 0-bootstrap and 1-org define at the organization",
+		ZonesNeeds:  "the custom roles 0-bootstrap defines at the organization",
 	},
 	{
 		Title:       "Tag Administrator",
@@ -104,7 +111,28 @@ var BootstrapRoles = []BootstrapRole{
 		On:          OnBillingAccount,
 		Permissions: []string{"billing.resourceAssociations.create"},
 		Needs:       "linking the boot project and 1-org's projects to the billing account",
+		ZonesNeeds:  "linking the boot project to the billing account",
 	},
+}
+
+// BootstrapRoles are the roles the organization's seed and first applies need, by its
+// kind: the table for a hosting organization; for a zones organization the roles its
+// bootstrap and 1-dns need, each with what needs it there, since 1-dns declares no
+// folder, project, policy or tag.
+func (p *Placement) BootstrapRoles() []BootstrapRole {
+	if !p.Zones() {
+		return BootstrapRoles
+	}
+	var roles []BootstrapRole
+	for _, role := range BootstrapRoles {
+		if role.ZonesNeeds == "" {
+			continue
+		}
+		role.Needs = role.ZonesNeeds
+		roles = append(roles, role)
+	}
+
+	return roles
 }
 
 // PermissionTester asks Google which of the permissions the caller holds: on an
@@ -138,11 +166,13 @@ func (c RoleCheck) Held() bool {
 }
 
 // PreflightResult is what the check found: the placement's organization, billing account
-// and bootstrap administrator, and each role's answer in the table's order.
+// and bootstrap administrator, the layer after the bootstrap whose first apply the roles
+// serve, and each role's answer in the table's order.
 type PreflightResult struct {
 	OrganizationID string
 	BillingAccount string
 	Operator       string
+	SecondLayer    string
 	Checks         []RoleCheck
 }
 
@@ -151,8 +181,9 @@ type PreflightResult struct {
 // to answer fails the check.
 func CheckPermissions(ctx context.Context, p *Placement, tester PermissionTester) (*PreflightResult, error) {
 	held := map[Scope][]string{}
+	roles := p.BootstrapRoles()
 	for _, scope := range []Scope{OnOrganization, OnBillingAccount} {
-		permissions := scopePermissions(scope)
+		permissions := scopePermissions(roles, scope)
 		var (
 			answer []string
 			err    error
@@ -168,8 +199,8 @@ func CheckPermissions(ctx context.Context, p *Placement, tester PermissionTester
 		}
 		held[scope] = answer
 	}
-	r := &PreflightResult{OrganizationID: p.OrganizationID, BillingAccount: p.BillingAccount, Operator: p.Operator}
-	for _, role := range BootstrapRoles {
+	r := &PreflightResult{OrganizationID: p.OrganizationID, BillingAccount: p.BillingAccount, Operator: p.Operator, SecondLayer: p.SecondLayer()}
+	for _, role := range roles {
 		check := RoleCheck{BootstrapRole: role}
 		for _, permission := range role.Permissions {
 			if !slices.Contains(held[role.On], permission) {
@@ -184,9 +215,9 @@ func CheckPermissions(ctx context.Context, p *Placement, tester PermissionTester
 
 // scopePermissions lists every permission the bootstrap roles granted at the scope stand
 // for, in the table's order.
-func scopePermissions(scope Scope) []string {
+func scopePermissions(roles []BootstrapRole, scope Scope) []string {
 	var permissions []string
-	for _, role := range BootstrapRoles {
+	for _, role := range roles {
 		if role.On == scope {
 			permissions = append(permissions, role.Permissions...)
 		}
@@ -198,9 +229,9 @@ func scopePermissions(scope Scope) []string {
 // Missing are the roles whose permissions the caller does not all hold.
 func (r *PreflightResult) Missing() []RoleCheck {
 	var missing []RoleCheck
-	for _, c := range r.Checks {
-		if !c.Held() {
-			missing = append(missing, c)
+	for i := range r.Checks {
+		if !r.Checks[i].Held() {
+			missing = append(missing, r.Checks[i])
 		}
 	}
 
@@ -219,7 +250,8 @@ func (r *PreflightResult) where(scope Scope) string {
 // Write prints one line per role, holds or missing with the permissions tested (all of
 // them when held, the ones lacking when not), then what to do.
 func (r *PreflightResult) Write(w io.Writer) {
-	for _, c := range r.Checks {
+	for i := range r.Checks {
+		c := &r.Checks[i]
 		verdict, permissions := verdictHolds, c.Permissions
 		if !c.Held() {
 			verdict, permissions = verdictMissing, c.Missing
@@ -228,12 +260,13 @@ func (r *PreflightResult) Write(w io.Writer) {
 	}
 	missing := r.Missing()
 	if len(missing) == 0 {
-		fmt.Fprintf(w, "These credentials hold every permission the seed and the first applies of 0-bootstrap and 1-org need (0-bootstrap/README.md, First-time setup).\n")
+		fmt.Fprintf(w, "These credentials hold every permission the seed and the first applies of 0-bootstrap and %s need (0-bootstrap/README.md, First-time setup).\n", r.SecondLayer)
 
 		return
 	}
 	var atOrg, atBilling []string
-	for _, c := range missing {
+	for i := range missing {
+		c := &missing[i]
 		if c.On == OnBillingAccount {
 			atBilling = append(atBilling, c.Title)
 

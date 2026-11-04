@@ -168,9 +168,10 @@ func authForm(label string) string {
 	return host + " CNAME " + strings.TrimSuffix(authData, ".")
 }
 
-// TestCheck classifies the apps domain, and a vanity domain the same way, over a fake
-// Cloud DNS and a fake resolver, and holds every record line the check prints, byte for
-// byte, to the fakes' values.
+// TestCheck classifies the apps domain, a vanity domain the same way, and a zones
+// organization's domain with the labels its zone hands onward, over a fake Cloud DNS and a
+// fake resolver, and holds every record line the check prints, byte for byte, to the
+// fakes' values.
 func TestCheck(t *testing.T) {
 	t.Parallel()
 
@@ -180,7 +181,11 @@ func TestCheck(t *testing.T) {
 		zones    *fakeZones
 		resolver *fakeResolver
 		// vanity marks the domain a vanity domain of the placement's.
-		vanity     bool
+		vanity bool
+		// delegating marks the domain a zones organization's, whose zone holds the
+		// delegation alone, with the labels it hands onward.
+		delegating bool
+		labels     []Label
 		want       Delegation
 		wantPassed bool
 		wantLines  []string
@@ -417,6 +422,151 @@ func TestCheck(t *testing.T) {
 			wantLines: bare(),
 		},
 		{
+			name:       "a zones organization's domain delegated, its label handed: the zone holds the delegation alone, no certificate",
+			domain:     "clientbay.example",
+			zones:      &fakeZones{zone: &Zone{DNSName: "clientbay.example.", NameServers: zoneServers}},
+			resolver:   &fakeResolver{ns: map[string][]string{"clientbay.example": zoneServers, "harbor.clientbay.example": movedServers}},
+			delegating: true,
+			labels:     []Label{{Name: "harbor", Organization: "imp", NameServers: movedServers}},
+			want:       Delegated,
+			wantPassed: true,
+			wantLines: []string{
+				"clientbay.example is delegated to the zone ex-net-gbl-dns-apps in ex-net-gbl-core-1a2b: it answers the zone's name servers (" + strings.Join(zoneServers, ", ") + ").",
+				"harbor.clientbay.example is handed to imp: it answers the name servers of its zone there (" + strings.Join(movedServers, ", ") + ").",
+			},
+			wantAbsent: []string{"authorization", "certificate"},
+		},
+		{
+			name:       "a zones organization's domain delegated, nothing handed yet",
+			domain:     "clientbay.example",
+			zones:      &fakeZones{zone: &Zone{DNSName: "clientbay.example.", NameServers: zoneServers}},
+			resolver:   &fakeResolver{ns: map[string][]string{"clientbay.example": zoneServers}},
+			delegating: true,
+			want:       Delegated,
+			wantPassed: true,
+			wantLines:  []string{"No name under clientbay.example is handed onward yet (domains in placement.json)."},
+		},
+		{
+			name:       "a label whose name servers do not answer for it: the application's zone not applied, or the servers not its",
+			domain:     "clientbay.example",
+			zones:      &fakeZones{zone: &Zone{DNSName: "clientbay.example.", NameServers: zoneServers}},
+			resolver:   &fakeResolver{ns: map[string][]string{"clientbay.example": zoneServers}, servfail: map[string]bool{"harbor.clientbay.example": true}},
+			delegating: true,
+			labels:     []Label{{Name: "harbor", Organization: "imp", NameServers: movedServers}},
+			want:       Delegated,
+			wantLines: []string{
+				"harbor.clientbay.example is handed to imp, and the name servers it is handed to do not answer for it: the application's zone in imp is not applied yet, or the servers recorded here (" + strings.Join(movedServers, ", ") + ") are not that zone's; bedrock domain check in imp's infrastructure repository prints them.",
+			},
+		},
+		{
+			name:       "a label that answers no name servers yet",
+			domain:     "clientbay.example",
+			zones:      &fakeZones{zone: &Zone{DNSName: "clientbay.example.", NameServers: zoneServers}},
+			resolver:   &fakeResolver{ns: map[string][]string{"clientbay.example": zoneServers}},
+			delegating: true,
+			labels:     []Label{{Name: "harbor", Organization: "imp", NameServers: movedServers}},
+			want:       Delegated,
+			wantLines: []string{
+				"harbor.clientbay.example is handed to imp, and it answers no name servers yet: the record set is in the zone, and an answer cached before it was added lasts until the zone's negative time to live runs out.",
+			},
+		},
+		{
+			name:       "a label that answers another set",
+			domain:     "clientbay.example",
+			zones:      &fakeZones{zone: &Zone{DNSName: "clientbay.example.", NameServers: zoneServers}},
+			resolver:   &fakeResolver{ns: map[string][]string{"clientbay.example": zoneServers, "harbor.clientbay.example": {"ns1.other.example."}}},
+			delegating: true,
+			labels:     []Label{{Name: "harbor", Organization: "imp", NameServers: movedServers}},
+			want:       Delegated,
+			wantLines: []string{
+				"harbor.clientbay.example is handed to imp on " + strings.Join(movedServers, ", ") + ", and it answers ns1.other.example.: a record set changed within the hour is still seen as it was (its time to live), and servers that are not the application's zone's are a wrong entry in placement.json (domains.clientbay.example.labels.harbor), to correct and render.",
+			},
+		},
+		{
+			name:       "a zones organization's domain not delegated: the registrar step, the labels waiting, no registration offered",
+			domain:     "clientbay.example",
+			zones:      &fakeZones{zone: &Zone{DNSName: "clientbay.example.", NameServers: zoneServers}},
+			resolver:   &fakeResolver{ns: map[string][]string{"clientbay.example": {"ns1.registrar.example.", "ns2.registrar.example."}}},
+			delegating: true,
+			labels:     []Label{{Name: "harbor", Organization: "imp", NameServers: movedServers}},
+			want:       ApexUndelegated,
+			wantLines: append(append([]string{
+				"clientbay.example does not answer the zone's name servers (it answers ns1.registrar.example., ns2.registrar.example.).",
+				"At the registrar where clientbay.example is registered: set its name servers to the zone's 4 below, in place of the ones it has. " + squarespacePath,
+			}, bare()...),
+				"The 1 name(s) handed onward under clientbay.example resolve once the domain is delegated here.",
+			),
+			wantAbsent: []string{"bedrock domain add", "certificate", "harbor.clientbay.example is handed"},
+		},
+		{
+			name:       "a zones organization's domain answering nothing at all: no registration offered",
+			domain:     "clientbay.example",
+			zones:      &fakeZones{zone: &Zone{DNSName: "clientbay.example.", NameServers: zoneServers}},
+			resolver:   &fakeResolver{},
+			delegating: true,
+			want:       ApexUndelegated,
+			wantLines:  []string{"clientbay.example does not answer the zone's name servers (it answers none)."},
+			wantAbsent: []string{"bedrock domain add"},
+		},
+		{
+			name:       "a zones organization's label of a domain served elsewhere: the NS records at its provider",
+			domain:     "zones.imp.example",
+			zones:      &fakeZones{zone: &Zone{DNSName: "zones.imp.example.", NameServers: zoneServers}},
+			resolver:   &fakeResolver{},
+			delegating: true,
+			want:       LabelUndelegated,
+			wantLines: append([]string{
+				"zones.imp.example does not answer the zone's name servers (it answers none).",
+				"At the DNS provider that serves imp.example: add NS records for zones pointing at the zone's name servers, in place of any it has, one record per line below as the provider's form takes it (host, type, value: the host relative to imp.example, the value without the trailing dot a zone file writes). The other records of imp.example stay as they are.",
+			}, formed("zones NS ")...),
+			wantAbsent: []string{"certificate", "authorization"},
+		},
+		{
+			name:   "a zones organization's domain carrying mail and a website is refused, with a label of it to hold instead",
+			domain: "clientbay.example",
+			zones:  &fakeZones{zone: &Zone{DNSName: "clientbay.example.", NameServers: zoneServers}},
+			resolver: &fakeResolver{
+				ns:    map[string][]string{"clientbay.example": {"ns1.example.net.", "ns2.example.net."}},
+				hosts: map[string][]string{"clientbay.example": {"192.0.2.80"}},
+				mx:    map[string][]*net.MX{"clientbay.example": {{Host: "mail.example.net.", Pref: 10}}},
+			},
+			delegating: true,
+			want:       Refused,
+			wantLines: []string{
+				"clientbay.example does not answer the zone's name servers (it answers ns1.example.net., ns2.example.net.), and it answers records that are not the zone's:",
+				"A 192.0.2.80",
+				"MX 10 mail.example.net.",
+				"Refused: a domain that carries other DNS (a website, mail) is never delegated whole, and the names handed onward would each need their own records at its DNS provider.",
+				"Hold a label of it instead, such as apps.clientbay.example: set it in place of clientbay.example in domains in placement.json, run bedrock org render, apply 1-dns, and run bedrock domain check again for the NS records to add at the DNS provider that serves clientbay.example.",
+			},
+			wantAbsent: []string{"vanityDomains", "appsDomain", "apps_domain"},
+		},
+		{
+			name:       "no zone for a zones organization's domain: 1-dns is not applied",
+			domain:     "clientbay.example",
+			zones:      &fakeZones{},
+			resolver:   &fakeResolver{},
+			delegating: true,
+			wantErr:    "no zone ex-net-gbl-dns-apps in ex-net-gbl-core-1a2b: the apply of 1-dns creates it; apply 1-dns, then check again",
+		},
+		{
+			name:       "a zones organization's zone serving another domain",
+			domain:     "clientbay.example",
+			zones:      &fakeZones{zone: &Zone{DNSName: "example.org.", NameServers: zoneServers}},
+			resolver:   &fakeResolver{},
+			delegating: true,
+			wantErr:    "the zone ex-net-gbl-dns-apps in ex-net-gbl-core-1a2b serves example.org., not the domain clientbay.example: 1-dns names a domain's zone after the domain (domains in placement.json, bedrock org render); apply 1-dns as rendered, then check again",
+		},
+		{
+			name:       "a label's lookup that fails, rather than finding nothing",
+			domain:     "clientbay.example",
+			zones:      &fakeZones{zone: &Zone{DNSName: "clientbay.example.", NameServers: zoneServers}},
+			resolver:   &fakeResolver{ns: map[string][]string{"clientbay.example": zoneServers}, fails: "harbor.clientbay.example"},
+			delegating: true,
+			labels:     []Label{{Name: "harbor", Organization: "imp", NameServers: movedServers}},
+			wantErr:    "resolving the name servers of harbor.clientbay.example",
+		},
+		{
 			name:     "no zone: 2-net is not applied",
 			domain:   "example.dev",
 			zones:    &fakeZones{},
@@ -466,7 +616,7 @@ func TestCheck(t *testing.T) {
 				},
 				Resolver: tt.resolver,
 			}
-			r, err := Check(context.Background(), lookups, CheckRequest{Domain: tt.domain, Project: checkProject, Zone: checkZone, Dir: repo, Vanity: tt.vanity})
+			r, err := Check(context.Background(), lookups, CheckRequest{Domain: tt.domain, Project: checkProject, Zone: checkZone, Dir: repo, Vanity: tt.vanity, Delegating: tt.delegating, Labels: tt.labels})
 			if tt.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 					t.Fatalf("Check() error = %v, wantErr %q", err, tt.wantErr)

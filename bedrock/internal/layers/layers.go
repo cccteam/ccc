@@ -40,12 +40,14 @@ const (
 	stateObject = "default.tfstate"
 )
 
-// The two commands, as the triggers run them, and the layer whose GitHub provider
-// needs a token.
+// The two commands, as the triggers run them, and the layers whose GitHub provider needs
+// a token: 1-org in a hosting organization, 1-dns in a zones organization
+// (org.Placement.SecondLayer answers by kind).
 const (
 	planCommand  = "plan"
 	applyCommand = "apply"
 	orgLayer     = "1-org"
+	dnsLayer     = "1-dns"
 )
 
 // Request is what a run was started with: the build (BUILD_ID, PROJECT_ID and LOCATION,
@@ -177,14 +179,14 @@ func (r *run) checkSteps(command string) error {
 	return nil
 }
 
-// layersOf maps the paths a change touches to the layers it changes, in layer order: a
-// layer's .tf and .tfvars files and its lock file change the layer, and the OpenTofu
-// version changes every layer.
-func layersOf(paths []string) []string {
+// layersOf maps the paths a change touches to the layers it changes (the organization's
+// layers, in layer order): a layer's .tf and .tfvars files and its lock file change the
+// layer, and the OpenTofu version changes every layer.
+func layersOf(layers, paths []string) []string {
 	touched := map[string]bool{}
 	for _, path := range paths {
 		if path == tofuVersionFile {
-			return slices.Clone(org.Layers)
+			return slices.Clone(layers)
 		}
 		layer, name, ok := strings.Cut(path, "/")
 		if !ok || strings.Contains(name, "/") {
@@ -194,14 +196,14 @@ func layersOf(paths []string) []string {
 			touched[layer] = true
 		}
 	}
-	var layers []string
-	for _, layer := range org.Layers {
+	var changed []string
+	for _, layer := range layers {
 		if touched[layer] {
-			layers = append(layers, layer)
+			changed = append(changed, layer)
 		}
 	}
 
-	return layers
+	return changed
 }
 
 // runsOf is every run of the layers named, in layer order (2-env once per environment).
@@ -248,10 +250,11 @@ func (r *run) changedFiles(ctx context.Context, base, head string) ([]string, er
 }
 
 // infrastructureToken mints the infrastructure GitHub App's installation token, which
-// 1-org's GitHub provider takes as GITHUB_TOKEN, from the key the boot project holds at
-// the version placement.json pins. It is refused while the app is not recorded.
+// the GitHub provider of 1-org, or of 1-dns in a zones organization, takes as
+// GITHUB_TOKEN, from the key the boot project holds at the version placement.json pins.
+// It is refused while the app is not recorded.
 func (r *run) infrastructureToken(ctx context.Context) (string, error) {
-	return r.appToken(ctx, org.InfrastructureKey, r.p.GithubInfrastructureAppID, "the infrastructure app", "1-org's GitHub provider needs the infrastructure GitHub App (0-bootstrap/README.md, \"The infrastructure GitHub App\"): create it, record its App ID as githubInfrastructureAppId in placement.json, add its key to %s in the boot project with bedrock secret add github-infrastructure-key, and pin the version with bedrock secret pin github-infrastructure-key <version>, which records githubInfrastructureKeyVersion and runs bedrock org render")
+	return r.appToken(ctx, org.InfrastructureKey, r.p.GithubInfrastructureAppID, "the infrastructure app", r.p.SecondLayer()+"'s GitHub provider needs the infrastructure GitHub App (0-bootstrap/README.md, \"The infrastructure GitHub App\"): create it, record its App ID as githubInfrastructureAppId in placement.json, add its key to %s in the boot project with bedrock secret add github-infrastructure-key, and pin the version with bedrock secret pin github-infrastructure-key <version>, which records githubInfrastructureKeyVersion and runs bedrock org render")
 }
 
 // deployerToken mints the deployer GitHub App's installation token, which the plan

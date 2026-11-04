@@ -1,9 +1,10 @@
 // Package org renders an organization foundation: the six layers of the CCC provisioning
 // model (the bootstrap, the organization, the shared registry, the shared Spanner
 // instance, the network, and the environments) from an organization placement, the way
-// the application stack is rendered from an application. The layers' .tf files and
-// their READMEs are owned and rewritten on every render; each layer's terraform.tfvars,
-// the journal and the ignore rules are seeded once and then a person's.
+// the application stack is rendered from an application; or, for a zones organization
+// (zones.go), the bootstrap and the one layer that holds its DNS zones. The layers' .tf
+// files and their READMEs are owned and rewritten on every render; each layer's
+// terraform.tfvars, the journal and the ignore rules are seeded once and then a person's.
 package org
 
 import (
@@ -92,6 +93,12 @@ var entitlementDefaults = map[string]time.Duration{
 // few constants the layers restate. Values the seed step chooses (the boot project's
 // suffix, the state bucket) are not here until it has run.
 type Placement struct {
+	// Kind is the kind of organization: hosting, the default when left out, which holds
+	// applications in its environments and renders the six layers; or zones, which holds
+	// DNS zones alone in its boot project and renders the bootstrap and 1-dns (zones.go).
+	// A zones organization names its domains (Domains) and none of the fields that
+	// describe applications or environments.
+	Kind string `json:"kind,omitempty"`
 	// Prefix is the organization's naming prefix: every resource name starts with
 	// <prefix>-<env>.
 	Prefix string `json:"prefix"`
@@ -103,8 +110,17 @@ type Placement struct {
 	// BillingAccount is the billing account projects are linked to.
 	BillingAccount string `json:"billingAccount"`
 	// AppsDomain is the domain the applications' hostnames hang under, never the
-	// identity domain.
-	AppsDomain string `json:"appsDomain"`
+	// identity domain. A zones organization has none.
+	AppsDomain string `json:"appsDomain,omitempty"`
+	// Domains are the domains a zones organization holds a zone for, by domain, each with
+	// the labels of it handed onward to the hosting organizations' zones (Domain). A
+	// customer delegates the domain to this organization's zone once, at its registrar or
+	// at the DNS provider that serves the domain above it (bedrock domain check prints
+	// the records); each application's name under it is then one label here, named at
+	// the application's registration with the four name servers of its zone in the
+	// hosting organization. 1-dns renders one zone per domain and one NS record set per
+	// label. None for a hosting organization.
+	Domains map[string]Domain `json:"domains,omitempty"`
 	// VanityDomains are the domains delegated whole to the network project beside the
 	// apps domain, each a client's own domain an application serves on (its brand
 	// domain, in production): 2-net serves each with a zone, a DNS authorization, a
@@ -233,16 +249,18 @@ type Placement struct {
 	// front). Each person's access to an environment comes from its group: the group
 	// holds the release approval where a release waits for one, and its members ask for
 	// the environment's entitlements. One per environment; the same address may serve
-	// several, but production's group is not the first environment's.
-	TeamGroups map[string]string `json:"teamGroups"`
+	// several, but production's group is not the first environment's. A zones
+	// organization has none.
+	TeamGroups map[string]string `json:"teamGroups,omitempty"`
 	// EntitlementDurations are the longest grants of the environments' entitlements, by
 	// entitlement (Entitlements) as a duration (1h, 90m); an entitlement not named takes
 	// its default. Between 30 minutes and 7 days.
 	EntitlementDurations map[string]string `json:"entitlementDurations,omitempty"`
-	// Regions are the two Cloud Run regions, the primary first.
+	// Regions are the two Cloud Run regions, the primary first; a zones organization's
+	// one region, where its connection, its triggers and its state bucket are.
 	Regions []Region `json:"regions"`
-	// Spanner is the shared instance's configuration.
-	Spanner Spanner `json:"spanner"`
+	// Spanner is the shared instance's configuration. A zones organization has none.
+	Spanner Spanner `json:"spanner,omitzero"`
 	// OutlierDetection is the outlier detection thresholds of the backend service 2-env
 	// renders for the pull-request environments, and those an application's first
 	// placement takes for its own backend service; a field left out, or the whole block,
@@ -339,10 +357,11 @@ const (
 	spnProject  = "spn"
 )
 
-// ProjectKeys are the model's projects by key, in layer order: the boot project (the
-// seed's, 0-bootstrap's and 1-org's layers run there), the shared projects, then the
-// environment projects.
-var ProjectKeys = []string{bootProject, shrProject, netProject, spnProject, tstEnvironment, stgEnvironment, prdEnvironment}
+// HostingProjectKeys are the hosting model's projects by key, in layer order: the boot
+// project (the seed's, 0-bootstrap's and 1-org's layers run there), the shared projects,
+// then the environment projects. A zones organization has the boot project alone
+// (Placement.ProjectKeys).
+var HostingProjectKeys = []string{bootProject, shrProject, netProject, spnProject, tstEnvironment, stgEnvironment, prdEnvironment}
 
 // Region is one region: its name and the three-letter code resource names carry.
 type Region struct {
@@ -392,42 +411,32 @@ func (p *Placement) normalizeRegistration() {
 	}
 }
 
-// Validate refuses a placement a layer could not be rendered from.
+// Validate refuses a placement a layer could not be rendered from: what every
+// organization has, then what its kind renders from.
 func (p *Placement) Validate() error {
 	if !prefixRE.MatchString(p.Prefix) {
 		return errors.Newf("prefix %q is not 2 to 4 lowercase alphanumeric characters starting with a letter", p.Prefix)
 	}
+	if err := p.validateKind(); err != nil {
+		return err
+	}
 	for name, value := range map[string]string{
 		"organizationDomain": p.OrganizationDomain, "organizationId": p.OrganizationID, "billingAccount": p.BillingAccount,
-		"appsDomain": p.AppsDomain, "githubOrganization": p.GithubOrganization, "sourceRepo": p.SourceRepo,
-		"githubReleaseAppId": p.GithubReleaseAppID, "githubDefaultBranch": p.GithubDefaultBranch,
-		"operator": p.Operator, "spanner.config": p.Spanner.Config,
+		"githubOrganization": p.GithubOrganization, "sourceRepo": p.SourceRepo, "githubDefaultBranch": p.GithubDefaultBranch,
+		"operator": p.Operator,
 	} {
 		if strings.TrimSpace(value) == "" {
 			return errors.Newf("%s is empty", name)
 		}
-	}
-	if len(p.Regions) != regionCount {
-		return errors.Newf("regions has %d entries; the model runs in two, the primary first", len(p.Regions))
 	}
 	for _, r := range p.Regions {
 		if r.Name == "" || !regionCodeRE.MatchString(r.Code) {
 			return errors.Newf("region %q needs a name and a three-character code", r.Name)
 		}
 	}
-	if err := p.validateSpanner(); err != nil {
-		return err
-	}
-	if err := p.OutlierDetection.Validate(); err != nil {
-		return err
-	}
-	if err := p.CloudArmor.Validate(); err != nil {
-		return err
-	}
 	for _, validate := range []func() error{
-		p.validateGithubApps, p.validateApprovingReviews, p.validateCloudBuild, p.validateBedrockPin,
-		p.validateCiLargeRunner, p.validateProjects, p.validateTeamGroups, p.validateEntitlementDurations,
-		p.validateApplications, p.validateOutOfService, p.validateVanityDomains, p.validateHostnames,
+		p.validateMachineAccount, p.validateGithubApps, p.validateApprovingReviews, p.validateCloudBuild,
+		p.validateBedrockPin, p.validateProjects,
 	} {
 		if err := validate(); err != nil {
 			return err
@@ -443,26 +452,80 @@ func (p *Placement) Validate() error {
 			return errors.Newf("label %q = %q is not a lowercase key with a value", k, v)
 		}
 	}
+	if p.Zones() {
+		return p.validateZones()
+	}
+
+	return p.validateHosting()
+}
+
+// validateHosting holds a hosting organization's placement to what the six layers render
+// from: the apps domain, the release app, the Spanner configuration, two regions, the
+// team groups, and the applications with everything recorded about them.
+func (p *Placement) validateHosting() error {
+	for name, value := range map[string]string{
+		"appsDomain": p.AppsDomain, releaseAppIDField: p.GithubReleaseAppID, "spanner.config": p.Spanner.Config,
+	} {
+		if strings.TrimSpace(value) == "" {
+			return errors.Newf("%s is empty", name)
+		}
+	}
+	if len(p.Regions) != regionCount {
+		return errors.Newf("regions has %d entries; the model runs in two, the primary first", len(p.Regions))
+	}
+	if len(p.Domains) > 0 {
+		return errors.New("domains is set, and a hosting organization holds no zone but the apps domain's and the vanity domains': a zones organization (kind) holds the zones that hand names onward")
+	}
+	if err := p.validateSpanner(); err != nil {
+		return err
+	}
+	if err := p.OutlierDetection.Validate(); err != nil {
+		return err
+	}
+	if err := p.CloudArmor.Validate(); err != nil {
+		return err
+	}
+	for _, validate := range []func() error{
+		p.validateReleaseApp, p.validateCiLargeRunner, p.validateTeamGroups, p.validateEntitlementDurations,
+		p.validateApplications, p.validateOutOfService, p.validateVanityDomains, p.validateHostnames,
+	} {
+		if err := validate(); err != nil {
+			return err
+		}
+	}
 
 	return nil
 }
 
-// validateGithubApps refuses a GitHub App named by its slug instead of its App ID, a
-// release app's slug that is not one, a key version that is not a version's number
-// (latest among them), and a machine account that is not named or not a GitHub login.
-func (p *Placement) validateGithubApps() error {
+// validateMachineAccount refuses a machine account that is not named or not a GitHub
+// login.
+func (p *Placement) validateMachineAccount() error {
 	if strings.TrimSpace(p.GithubMachineAccount) == "" {
 		return errors.New("githubMachineAccount is empty: the GitHub login of the organization's machine account, an owner of the organization, which authorizes the Cloud Build GitHub connection in the browser and owns the personal access token that can stand in for it")
 	}
 	if len(p.GithubMachineAccount) > githubLoginLength || !githubLoginRE.MatchString(p.GithubMachineAccount) {
 		return errors.Newf("githubMachineAccount %q is not a GitHub login (letters, digits and single hyphens, at most %d characters)", p.GithubMachineAccount, githubLoginLength)
 	}
+
+	return nil
+}
+
+// validateReleaseApp refuses a release app named by its slug instead of its App ID and a
+// slug that is not one.
+func (p *Placement) validateReleaseApp() error {
 	if !projectNumberRE.MatchString(p.GithubReleaseAppID) {
 		return errors.Newf("githubReleaseAppId %q is not an App ID (digits)", p.GithubReleaseAppID)
 	}
 	if !appSlugRE.MatchString(p.GithubReleaseAppSlug) {
 		return errors.Newf("githubReleaseAppSlug %q is not a GitHub App's slug (lowercase letters, digits and single hyphens, as in github.com/apps/<slug>): the release app's slug, which every application's placement records as the author of its releases", p.GithubReleaseAppSlug)
 	}
+
+	return nil
+}
+
+// validateGithubApps refuses an infrastructure or deployer app named by its slug instead
+// of its App ID, and a key version that is not a version's number (latest among them).
+func (p *Placement) validateGithubApps() error {
 	if p.GithubInfrastructureAppID != "" && !projectNumberRE.MatchString(p.GithubInfrastructureAppID) {
 		return errors.Newf("githubInfrastructureAppId %q is not an App ID (digits)", p.GithubInfrastructureAppID)
 	}
@@ -588,20 +651,21 @@ func (p *Placement) validateCiLargeRunner() error {
 	return nil
 }
 
-// validateProjects refuses a project or a project number under a key the model lacks, an
-// empty project id, and a number that is not one.
+// validateProjects refuses a project or a project number under a key the organization's
+// kind lacks, an empty project id, and a number that is not one.
 func (p *Placement) validateProjects() error {
+	keys := p.ProjectKeys()
 	for key, id := range p.Projects {
-		if !slices.Contains(ProjectKeys, key) {
-			return errors.Newf("projects names %q, which is not one of %s", key, strings.Join(ProjectKeys, ", "))
+		if !slices.Contains(keys, key) {
+			return errors.Newf("projects names %q, which is not one of %s", key, strings.Join(keys, ", "))
 		}
 		if strings.TrimSpace(id) == "" {
 			return errors.Newf("projects.%s is empty", key)
 		}
 	}
 	for key, number := range p.ProjectNumbers {
-		if !slices.Contains(ProjectKeys, key) {
-			return errors.Newf("projectNumbers names %q, which is not one of %s", key, strings.Join(ProjectKeys, ", "))
+		if !slices.Contains(keys, key) {
+			return errors.Newf("projectNumbers names %q, which is not one of %s", key, strings.Join(keys, ", "))
 		}
 		if !projectNumberRE.MatchString(number) {
 			return errors.Newf("projectNumbers.%s %q is not a project number (digits)", key, number)
@@ -834,7 +898,7 @@ func (p *Placement) VanityDomainOf(host string) (domain, label string, ok bool) 
 // once every layer can run.
 func (p *Placement) UnrecordedProjects() []string {
 	var missing []string
-	for _, key := range ProjectKeys {
+	for _, key := range p.ProjectKeys() {
 		if _, ok := p.Projects[key]; !ok {
 			missing = append(missing, "projects."+key)
 		}
@@ -979,11 +1043,13 @@ func (r LayerRun) Unrecorded() bool {
 }
 
 // LayerRuns is every run of the triggers in layer order: the five single-run layers,
-// then 2-env once per environment in promotion order. An identity under a project the
-// placement does not record carries REPLACEME, which the commands refuse to run.
+// then 2-env once per environment in promotion order; for a zones organization, the
+// bootstrap and 1-dns. An identity under a project the placement does not record carries
+// REPLACEME, which the commands refuse to run.
 func (p *Placement) LayerRuns() []LayerRun {
-	runs := make([]LayerRun, 0, len(Layers)-1+len(Environments))
-	for _, layer := range Layers {
+	layers := p.Layers()
+	runs := make([]LayerRun, 0, len(layers)-1+len(Environments))
+	for _, layer := range layers {
 		if layer == envLayer {
 			for _, env := range Environments {
 				runs = append(runs, LayerRun{
