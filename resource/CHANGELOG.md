@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.16.10](https://github.com/cccteam/ccc/compare/resource/v0.16.9...resource/v0.16.10) (2026-11-04)
+
+
+### Bug Fixes
+
+* **resource:** a filter on a date or timestamp column reads a value as a person writes it, 2026-12-15, 12/15/2026, 2026-12 or 2026-12-15T09:30, as the whole span it names in the person's zone, and refuses what it cannot read in plain words ([#1280](https://github.com/cccteam/ccc/issues/1280)) ([7d40e09](https://github.com/cccteam/ccc/commit/7d40e092d85a49bf9f643e0611c9c019e1d2c188))
+
 ## [0.16.9](https://github.com/cccteam/ccc/compare/resource/v0.16.8...resource/v0.16.9) (2026-11-03)
 
 
