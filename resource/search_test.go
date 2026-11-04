@@ -148,6 +148,7 @@ func TestNormalizeSearchTerm(t *testing.T) {
 		{term: "555-12", role: SearchRoleDigits, want: "55512", wantOK: true},
 		{term: "ext.", role: SearchRoleDigits, wantOK: false},
 		{term: "1987", role: SearchRoleDate, want: "1987", wantOK: true},
+		{term: "1987-03-14T09:30", role: SearchRoleDate, wantOK: false},
 		{term: "1987-3", role: SearchRoleDate, want: "198703", wantOK: true},
 		{term: "3/1987", role: SearchRoleDate, want: "198703", wantOK: true},
 		{term: "1987-03-14", role: SearchRoleDate, want: "19870314", wantOK: true},
@@ -784,7 +785,7 @@ func TestQueryDecoder_Search(t *testing.T) {
 	t.Run("a match that names no PII field travels in the URL", func(t *testing.T) {
 		t.Parallel()
 
-		parsed, err := newDecoder(t).parseQuery(url.Values{"filter": {`name:startswith:an`}}, nil)
+		parsed, err := newDecoder(t).parseQuery(url.Values{"filter": {`name:startswith:an`}}, nil, "")
 		if err != nil {
 			t.Fatalf("parseQuery() error = %v", err)
 		}

@@ -378,6 +378,10 @@ type FilterParser struct {
 	searchKeys     map[DBType]string
 	boxSeen        bool
 
+	// zone is the person's time zone, from the request (WithZone); a written date with
+	// no zone of its own is read in it, else in the column's declared zone, else UTC.
+	zone *time.Location
+
 	parsedExpression map[DBType]ExpressionNode
 }
 
@@ -390,6 +394,32 @@ func (p *FilterParser) WithSearch(branches []SearchBranch, keys map[DBType]strin
 	p.searchKeys = keys
 
 	return p
+}
+
+// WithZone hands the parser the person's time zone, read from the request's Time-Zone
+// header, which a written date or time with no zone of its own is read in (zoneFor). A
+// parser without one reads such a value in the column's declared zone, and in UTC where
+// the column declares none.
+func (p *FilterParser) WithZone(zone *time.Location) *FilterParser {
+	p.zone = zone
+
+	return p
+}
+
+// zoneFor answers the zone a written date on the field is read in: the request's, sent
+// by the browser as the person's own, else the zone the column's date search fact
+// declares, else UTC.
+func (p *FilterParser) zoneFor(fieldInfo *FilterFieldInfo) *time.Location {
+	if p.zone != nil {
+		return p.zone
+	}
+	if fieldInfo.Search != nil && fieldInfo.Search.Zone != "" {
+		if zone, err := loadZone(fieldInfo.Search.Zone); err == nil {
+			return zone
+		}
+	}
+
+	return time.UTC
 }
 
 // NewFilterParser creates a new parser with the given lexer and field information map.
@@ -600,6 +630,7 @@ func (p *FilterParser) parseConditionToken(dbType DBType) (ExpressionNode, error
 		Field:    field,
 		Operator: operator,
 	}
+	target := conditionField{jsonName: jsonFieldNameStr, fieldType: fieldInfo.FieldType, kind: fieldInfo.Kind, zone: p.zoneFor(&fieldInfo)}
 
 	switch condition.Operator {
 	case isnullStr, isnotnullStr:
@@ -608,13 +639,13 @@ func (p *FilterParser) parseConditionToken(dbType DBType) (ExpressionNode, error
 		}
 		condition.IsNullOp = true
 	case inStr, notinStr:
-		values, err := p.parseListValues(&fieldInfo, field, condition.Operator, parts)
+		values, err := p.parseListValues(target, condition.Operator, parts)
 		if err != nil {
 			return nil, err
 		}
 		condition.Values = values
 	case eqStr, neStr, gtStr, ltStr, gteStr, lteStr:
-		value, err := p.parseComparisonValue(&fieldInfo, condition.Operator, parts)
+		value, err := p.parseComparisonValue(target, condition.Operator, parts)
 		if err != nil {
 			return nil, err
 		}
@@ -635,12 +666,14 @@ func (p *FilterParser) parseConditionToken(dbType DBType) (ExpressionNode, error
 		return nil, httpio.NewBadRequestMessagef("unknown operator '%s' in condition '%s'", condition.Operator, p.current.Value)
 	}
 
-	return &ConditionNode{Condition: condition}, nil
+	// A written date, month or year is a span, expanded here into the comparisons the
+	// operator means, so the renderer and the in-memory matcher see plain comparisons.
+	return expandWrittenDates(&condition, target), nil
 }
 
 // parseListValues reads an in or notin condition's parenthesized list: every value
 // unquoted, non-empty, and typed by the field, or by its element type on a slice field.
-func (p *FilterParser) parseListValues(fieldInfo *FilterFieldInfo, field, operator string, parts []string) ([]any, error) {
+func (p *FilterParser) parseListValues(field conditionField, operator string, parts []string) ([]any, error) {
 	if len(parts) < 3 {
 		return nil, httpio.NewBadRequestMessagef("operator '%s' requires a value part in condition '%s'	", operator, p.current.Value)
 	}
@@ -652,13 +685,12 @@ func (p *FilterParser) parseListValues(fieldInfo *FilterFieldInfo, field, operat
 	if valPart == "" {                    // e.g. name:in:()
 		return nil, httpio.NewBadRequestMessagef("value list for '%s' cannot be empty in condition '%s'", operator, p.current.Value)
 	}
-	valueType, valueKind := fieldInfo.FieldType, fieldInfo.Kind
-	if valueKind == reflect.Slice || valueKind == reflect.Array {
-		if fieldInfo.FieldType == nil {
-			return nil, errors.Newf("FieldType not available in FieldInfo for slice/array field '%s' to determine element kind", field)
+	if field.kind == reflect.Slice || field.kind == reflect.Array {
+		if field.fieldType == nil {
+			return nil, errors.Newf("FieldType not available in FieldInfo for slice/array field '%s' to determine element kind", field.jsonName)
 		}
-		valueType = fieldInfo.FieldType.Elem()
-		valueKind = valueType.Kind()
+		field.fieldType = field.fieldType.Elem()
+		field.kind = field.fieldType.Kind()
 	}
 	values := splitQuotedList(valPart)
 	typed := make([]any, 0, len(values))
@@ -670,7 +702,7 @@ func (p *FilterParser) parseListValues(fieldInfo *FilterFieldInfo, field, operat
 		if trimmed == "" { // e.g. name:in:(v1,,v2)
 			return nil, httpio.NewBadRequestMessagef("empty value in list for operator '%s' in condition '%s'", operator, p.current.Value)
 		}
-		typedValue, err := p.convertValue(trimmed, valueType, valueKind)
+		typedValue, err := p.convertValue(trimmed, field)
 		if err != nil {
 			return nil, err
 		}
@@ -682,7 +714,7 @@ func (p *FilterParser) parseListValues(fieldInfo *FilterFieldInfo, field, operat
 
 // parseComparisonValue reads the value of an eq, ne, gt, lt, gte or lte condition,
 // unquoted and typed by the field.
-func (p *FilterParser) parseComparisonValue(fieldInfo *FilterFieldInfo, operator string, parts []string) (any, error) {
+func (p *FilterParser) parseComparisonValue(field conditionField, operator string, parts []string) (any, error) {
 	if len(parts) < 3 {
 		return nil, httpio.NewBadRequestMessagef("operator '%s' requires a value in condition '%s'", operator, p.current.Value)
 	}
@@ -691,7 +723,7 @@ func (p *FilterParser) parseComparisonValue(fieldInfo *FilterFieldInfo, operator
 		return nil, err
 	}
 
-	return p.convertValue(strValue, fieldInfo.FieldType, fieldInfo.Kind)
+	return p.convertValue(strValue, field)
 }
 
 // parsedMatch is an explicit match as the parser reads it: the term and the field's
@@ -829,76 +861,114 @@ func (p *FilterParser) boxFields(dbType DBType) []searchField {
 	return fields
 }
 
-// convertValue types a filter value for the field it compares against: by the field's
-// Go type when the field is a struct (a decimal, a time, a date, a UUID, or a nullable
-// wrapper), else by its kind.
-func (p *FilterParser) convertValue(strValue string, fieldType reflect.Type, kind reflect.Kind) (any, error) {
-	if kind == reflect.Struct && fieldType != nil {
-		return p.convertStructValue(strValue, fieldType)
+// convertValue types a filter value by the field it names: a whole number, true or
+// false, a number, text, or, on a struct-typed column, the column's own type
+// (convertStructValue). A value that is none of what the field takes is refused in plain
+// words, naming the field as the person wrote it.
+func (p *FilterParser) convertValue(strValue string, field conditionField) (any, error) {
+	if field.kind == reflect.Struct && field.fieldType != nil {
+		return p.convertStructValue(strValue, field)
 	}
 
-	switch kind {
+	switch field.kind {
 	case reflect.String, reflect.Struct:
 		return strValue, nil
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		i, err := strconv.Atoi(strValue)
 		if err != nil {
-			return nil, httpio.NewBadRequestMessagef("value '%s' in condition '%s' is not a valid integer: %v", strValue, p.current.Value, err)
+			return nil, httpio.NewBadRequestMessagef("%s: '%s' is not a whole number.", field.jsonName, strValue)
 		}
 
 		return i, nil
 	case reflect.Bool:
 		b, err := strconv.ParseBool(strValue)
 		if err != nil {
-			return nil, httpio.NewBadRequestMessagef("value '%s' in condition '%s' is not a valid boolean: %v", strValue, p.current.Value, err)
+			return nil, httpio.NewBadRequestMessagef("%s: '%s' is not true or false.", field.jsonName, strValue)
 		}
 
 		return b, nil
 	case reflect.Float32, reflect.Float64:
 		f, err := strconv.ParseFloat(strValue, 64)
 		if err != nil {
-			return nil, httpio.NewBadRequestMessagef("value '%s' in condition '%s' is not a valid float: %v", strValue, p.current.Value, err)
+			return nil, httpio.NewBadRequestMessagef("%s: '%s' is not a number.", field.jsonName, strValue)
 		}
-		if kind == reflect.Float32 {
+		if field.kind == reflect.Float32 {
 			return float32(f), nil
 		}
 
 		return f, nil
 	default:
-		return nil, httpio.NewBadRequestMessagef("Invalid value format. The value '%s' in condition '%s' cannot be processed due to an unsupported data type: %v.", strValue, p.current.Value, kind)
+		return nil, httpio.NewBadRequestMessagef("Invalid value format. The value '%s' in condition '%s' cannot be processed due to an unsupported data type: %v.", strValue, p.current.Value, field.kind)
 	}
 }
 
 // convertStructValue types a filter value for a struct-typed column by the column's Go
-// type, the way a cursor's boundary values are read: a decimal, a time, a date, or a
-// UUID compares as itself, and a nullable wrapper as its base type. Spanner types a
-// query parameter from its Go value, so a value left as text would meet a NUMERIC or
-// TIMESTAMP column as a STRING and the comparison would fail in the database.
-func (p *FilterParser) convertStructValue(strValue string, fieldType reflect.Type) (any, error) {
-	value, err := cursorValue(strValue, fieldType)
-	switch {
-	case err == nil:
-		return value, nil
-	case errors.Is(err, errInvalidCursor):
-		return nil, httpio.NewBadRequestMessagef("value '%s' in condition '%s' is not a valid %s", strValue, p.current.Value, filterValueWord(nullableBaseType(fieldType)))
+// type: a timestamp or a date as a person writes it (timestampValue, dateValue), and a
+// decimal or a UUID the way a cursor's boundary values are read; a nullable wrapper
+// reads as its base type. Spanner types a query parameter from its Go value, so a value
+// left as text would meet a NUMERIC or TIMESTAMP column as a STRING and the comparison
+// would fail in the database.
+func (p *FilterParser) convertStructValue(strValue string, field conditionField) (any, error) {
+	switch base := nullableBaseType(field.fieldType); base {
+	case reflect.TypeFor[time.Time]():
+		return timestampValue(strValue, field)
+	case reflect.TypeFor[civil.Date]():
+		return dateValue(strValue, field)
 	default:
-		return nil, httpio.NewBadRequestMessagef("Invalid value format. The value '%s' in condition '%s' cannot be processed due to an unsupported data type: %s.", strValue, p.current.Value, fieldType)
+		value, err := cursorValue(strValue, field.fieldType)
+		switch {
+		case err == nil:
+			return value, nil
+		case errors.Is(err, errInvalidCursor):
+			return nil, httpio.NewBadRequestMessagef("%s: '%s' is not %s.", field.jsonName, strValue, filterValueWord(base))
+		default:
+			return nil, httpio.NewBadRequestMessagef("Invalid value format. The value '%s' in condition '%s' cannot be processed due to an unsupported data type: %s.", strValue, p.current.Value, field.fieldType)
+		}
 	}
 }
 
-// filterValueWord names what a filter value for a column of type t must look like.
+// timestampValue reads a filter value on a timestamp column: an RFC 3339 instant with
+// its zone, as a machine writes one, stays an instant, and a written date or time is the
+// span it names, read in the field's zone when the operator expands it
+// (expandWrittenDates). Anything else is refused, with today's date as the example.
+func timestampValue(strValue string, field conditionField) (any, error) {
+	if instant, err := time.Parse(time.RFC3339Nano, strValue); err == nil {
+		return instant, nil
+	}
+	if written, ok := parseWrittenDate(strValue); ok {
+		return written, nil
+	}
+	iso, us := dateExamples(field.zone)
+
+	return nil, httpio.NewBadRequestMessagef("%s: '%s' is not a date. Write it as %s, %s, or %sT09:30 with the time.", field.jsonName, strValue, iso, us, iso)
+}
+
+// dateValue reads a filter value on a date column: a written day is the day, and a
+// written month or year is the span of days it names; a time of day is refused, since
+// the column holds none.
+func dateValue(strValue string, field conditionField) (any, error) {
+	written, ok := parseWrittenDate(strValue)
+	switch {
+	case !ok || written.unit > dateDay:
+		iso, us := dateExamples(field.zone)
+
+		return nil, httpio.NewBadRequestMessagef("%s: '%s' is not a date. Write it as %s or %s.", field.jsonName, strValue, iso, us)
+	case written.unit == dateDay:
+		return written.date(), nil
+	default:
+		return written, nil
+	}
+}
+
+// filterValueWord names what a filter value for a column of type t must be.
 func filterValueWord(t reflect.Type) string {
 	switch t {
-	case reflect.TypeFor[time.Time]():
-		return "RFC 3339 timestamp"
-	case reflect.TypeFor[civil.Date]():
-		return "date (YYYY-MM-DD)"
 	case reflect.TypeFor[decimal.Decimal]():
-		return "decimal number"
+		return "a number"
 	case reflect.TypeFor[ccc.UUID]():
-		return "UUID"
+		return "an identifier like 0f8fad5b-d9cb-469f-a165-70867728950e"
 	default:
-		return t.String()
+		return "a valid " + t.String()
 	}
 }
 

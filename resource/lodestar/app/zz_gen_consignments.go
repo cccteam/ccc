@@ -27,7 +27,7 @@ func (a *App) Consignments() http.HandlerFunc {
 		BondCode    string     `json:"bondCode"    index:"true"`
 		Description string     `json:"description"`
 		Mass        float64    `json:"mass"        allow_filter:"true"`
-		ExpiresOn   civil.Date `json:"expiresOn"`
+		ExpiresOn   civil.Date `json:"expiresOn"   allow_filter:"true"`
 		ReleasedAt  *time.Time `json:"releasedAt"  index:"true"`
 	}
 

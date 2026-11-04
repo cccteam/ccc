@@ -555,7 +555,7 @@ const resourceMap = defineResourceMap({
       { fieldName: 'bondCode', displayType: 'string', required: true, isIndex: true, filterable: 'always' },
       { fieldName: 'description', displayType: 'string', required: true, isIndex: false },
       { fieldName: 'mass', displayType: 'number', required: true, isIndex: false, filterable: 'withIndexed' },
-      { fieldName: 'expiresOn', displayType: 'civildate', required: true, isIndex: false },
+      { fieldName: 'expiresOn', displayType: 'civildate', required: true, isIndex: false, filterable: 'withIndexed' },
       { fieldName: 'releasedAt', displayType: 'date', required: false, isIndex: true, filterable: 'always' },
     ],
   },

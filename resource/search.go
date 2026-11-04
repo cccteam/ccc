@@ -3,9 +3,7 @@ package resource
 import (
 	"fmt"
 	"reflect"
-	"regexp"
 	"slices"
-	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -484,64 +482,22 @@ func digitsOf(s string) string {
 	return b.String()
 }
 
-// The typed date forms the server reads: ISO (a year, a year and month, a full date), US
-// month/day/year and month/year, and eight digits as YYYYMMDD.
-var (
-	isoYearPattern   = regexp.MustCompile(`^(\d{4})$`)
-	isoMonthPattern  = regexp.MustCompile(`^(\d{4})-(\d{1,2})$`)
-	isoDatePattern   = regexp.MustCompile(`^(\d{4})-(\d{1,2})-(\d{1,2})$`)
-	usDatePattern    = regexp.MustCompile(`^(\d{1,2})/(\d{1,2})/(\d{4})$`)
-	usMonthPattern   = regexp.MustCompile(`^(\d{1,2})/(\d{4})$`)
-	digitDatePattern = regexp.MustCompile(`^(\d{4})(\d{2})(\d{2})$`)
-)
-
-// dateDigits reads a typed term as a date and answers YYYYMMDD, YYYYMM or YYYY.
+// dateDigits reads a typed term as a date and answers YYYYMMDD, YYYYMM or YYYY, the
+// prefix of the day the date role tokenizes (parseWrittenDate has the forms); a term
+// with a time of day is not a date the box reads.
 func dateDigits(term string) (string, bool) {
-	term = strings.TrimSpace(term)
-	if m := isoYearPattern.FindStringSubmatch(term); m != nil {
-		return m[1], true
-	}
-	if m := isoMonthPattern.FindStringSubmatch(term); m != nil {
-		return yearMonth(m[1], m[2])
-	}
-	if m := usMonthPattern.FindStringSubmatch(term); m != nil {
-		return yearMonth(m[2], m[1])
-	}
-	if m := isoDatePattern.FindStringSubmatch(term); m != nil {
-		return fullDate(m[1], m[2], m[3])
-	}
-	if m := usDatePattern.FindStringSubmatch(term); m != nil {
-		return fullDate(m[3], m[1], m[2])
-	}
-	if m := digitDatePattern.FindStringSubmatch(term); m != nil {
-		return fullDate(m[1], m[2], m[3])
-	}
-
-	return "", false
-}
-
-func yearMonth(year, month string) (string, bool) {
-	m, err := strconv.Atoi(month)
-	if err != nil || m < 1 || m > 12 {
+	d, ok := parseWrittenDate(term)
+	if !ok || d.unit > dateDay {
 		return "", false
 	}
-
-	return fmt.Sprintf("%s%02d", year, m), true
-}
-
-func fullDate(year, month, day string) (string, bool) {
-	y, errY := strconv.Atoi(year)
-	m, errM := strconv.Atoi(month)
-	d, errD := strconv.Atoi(day)
-	if errY != nil || errM != nil || errD != nil {
-		return "", false
+	switch d.unit {
+	case dateYear:
+		return fmt.Sprintf("%04d", d.year), true
+	case dateMonth:
+		return fmt.Sprintf("%04d%02d", d.year, d.month), true
+	default:
+		return fmt.Sprintf("%04d%02d%02d", d.year, d.month, d.day), true
 	}
-	date := civil.Date{Year: y, Month: time.Month(m), Day: d}
-	if !date.IsValid() {
-		return "", false
-	}
-
-	return fmt.Sprintf("%04d%02d%02d", y, m, d), true
 }
 
 // foldSearchText normalizes text the way the substring tokenizer reads it on every case

@@ -265,6 +265,10 @@ func (p ConsignmentQueryPartialClause) Mass() ConsignmentQueryIdent[float64] {
 	return ConsignmentQueryIdent[float64]{Ident: resource.NewIdent[float64]("Mass", p.partialClause, false)}
 }
 
+func (p ConsignmentQueryPartialClause) ExpiresOn() ConsignmentQueryIdent[civil.Date] {
+	return ConsignmentQueryIdent[civil.Date]{Ident: resource.NewIdent[civil.Date]("ExpiresOn", p.partialClause, false)}
+}
+
 func (p ConsignmentQueryPartialClause) ReleasedAt() ConsignmentQueryIdent[time.Time] {
 	return ConsignmentQueryIdent[time.Time]{Ident: resource.NewIdent[time.Time]("ReleasedAt", p.partialClause, true)}
 }

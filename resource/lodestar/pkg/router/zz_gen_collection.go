@@ -94,7 +94,7 @@ func Collection() *resource.GeneratedCollection {
 				},
 				Domain:    &resource.DomainBindingData{Column: "SectorId"},
 				Order:     []accesstypes.Tag{"releasedAt"},
-				QueryKeys: []accesstypes.Tag{"sectorId", "clientId", "bondCode", "mass", "releasedAt"},
+				QueryKeys: []accesstypes.Tag{"sectorId", "clientId", "bondCode", "mass", "expiresOn", "releasedAt"},
 			},
 			{
 				Name:        "CrewSectorInvitations",

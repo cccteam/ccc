@@ -368,19 +368,19 @@ func TestQueryDecoder_parseQuery(t *testing.T) {
 			name:           "conversion error - int",
 			queryValues:    url.Values{"filter": []string{"age:eq:notanint"}},
 			wantErr:        true,
-			expectedErrMsg: "value 'notanint' in condition 'age:eq:notanint' is not a valid integer",
+			expectedErrMsg: "age: 'notanint' is not a whole number.",
 		},
 		{
 			name:           "conversion error - bool",
 			queryValues:    url.Values{"filter": []string{"isActive:eq:notabool"}},
 			wantErr:        true,
-			expectedErrMsg: "value 'notabool' in condition 'isActive:eq:notabool' is not a valid boolean",
+			expectedErrMsg: "isActive: 'notabool' is not true or false.",
 		},
 		{
 			name:           "conversion error - float",
 			queryValues:    url.Values{"filter": []string{"salary:eq:notafloat"}},
 			wantErr:        true,
-			expectedErrMsg: "value 'notafloat' in condition 'salary:eq:notafloat' is not a valid float",
+			expectedErrMsg: "salary: 'notafloat' is not a number.",
 		},
 
 		// Sort parameter processing
@@ -494,7 +494,7 @@ func TestQueryDecoder_parseQuery(t *testing.T) {
 				t.Fatalf("NewQueryDecoder should not fail with default setup for test case %s: %v", tt.name, err)
 			}
 
-			parsedQuery, err := decoder.parseQuery(tt.queryValues, nil)
+			parsedQuery, err := decoder.parseQuery(tt.queryValues, nil, "")
 			if err == nil && parsedQuery.FilterParser != nil {
 				_, err = parsedQuery.FilterParser(SpannerDBType)
 			}
@@ -855,7 +855,7 @@ func TestQueryDecoder_parseQuery_filterValidationTiming(t *testing.T) {
 				t.Fatalf("NewQueryDecoder() error = %v", err)
 			}
 
-			parsed, err := decoder.parseQuery(url.Values{"filter": []string{tt.filter}}, nil)
+			parsed, err := decoder.parseQuery(url.Values{"filter": []string{tt.filter}}, nil, "")
 			if tt.wantDecodeErr != "" {
 				if err == nil {
 					t.Fatal("parseQuery() expected an error, got nil")

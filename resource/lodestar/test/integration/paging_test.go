@@ -522,7 +522,7 @@ func TestPaging_visibleProjection(t *testing.T) {
 			if status != http.StatusOK {
 				want := "cannot sort or filter on fee"
 				if status == http.StatusBadRequest {
-					want = "value 'abc' in condition 'fee:gt:abc' is not a valid decimal number"
+					want = "fee: 'abc' is not a number."
 				}
 				if !strings.Contains(string(body), want) {
 					t.Errorf("body = %s, want it to say %q", body, want)
