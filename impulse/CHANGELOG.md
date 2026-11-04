@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.19](https://github.com/cccteam/ccc/compare/impulse/v0.6.18...impulse/v0.6.19) (2026-11-04)
+
+
+### Bug Fixes
+
+* **impulse:** the skeleton's web pins move to resource-angular 0.0.37, whose idle warning is one notice that any activity ends and nothing has to be clicked to stay signed in, and the v0.6.19 ledger step names it ([#1289](https://github.com/cccteam/ccc/issues/1289)) ([ce4520c](https://github.com/cccteam/ccc/commit/ce4520c0314c60a8510194fa2dc4497e78ce54d7))
+
 ## [0.6.18](https://github.com/cccteam/ccc/compare/impulse/v0.6.17...impulse/v0.6.18) (2026-11-04)
 
 
