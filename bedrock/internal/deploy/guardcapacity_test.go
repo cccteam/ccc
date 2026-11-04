@@ -52,7 +52,7 @@ func TestGuardSpannerCapacity(t *testing.T) {
 			target:      &capacityTarget{identity: "harbor-apply@p-tst.iam.gserviceaccount.com", bucket: bucket, env: "tst", database: "harbor-pr7-db"},
 			state:       `{"outputs": {"spanner_instance": {"value": {"project": "p-tst", "name": "imp-tst-gbl-spanner", "config": "regional-us-central1"}}}}`,
 			spanner:     &fakeSpanner{databases: tstFull, units: 100},
-			wantRefusal: "Build REJECTED: harbor-pr7-db does not exist, and projects/p-tst/instances/imp-tst-gbl-spanner holds its maximum: 10 databases, 4 of them pull-request stacks', what its 100 processing units allow (ten for every hundred below a node); close or merge a pull request whose stack is up (the sweep takes a closed one's down, /gcbrun down takes it down now), raise spanner_instances.tst.processing_units in 2-env/terraform.tfvars (100 or 200; beyond 200 is a change to the variable's validation), or bedrock destroy an application the organization no longer needs, which frees its databases",
+			wantRefusal: "Build REJECTED: harbor-pr7-db does not exist, and projects/p-tst/instances/imp-tst-gbl-spanner holds its maximum: 10 databases, 4 of them pull-request stacks', what its 100 processing units allow (ten for every hundred below a node); close or merge a pull request whose stack is up (the sweep takes a closed one's down, /gcbrun down takes it down now), raise spanner_instances.tst.processing_units in 2-env/terraform.tfvars (every hundred units below a node hold ten more databases; a node, 1000 units, holds a hundred), or bedrock destroy an application the organization no longer needs, which frees its databases",
 		},
 		{
 			name:    "a pull request's database already on the instance needs no room",
@@ -111,7 +111,7 @@ func TestGuardSpannerCapacity(t *testing.T) {
 			name:        "a full shared instance refuses the stack, naming 2-spn's setting",
 			state:       shared,
 			spanner:     &fakeSpanner{databases: full, units: 100},
-			wantRefusal: "Build REJECTED: imp-stg-gbl-harbor-db does not exist, and projects/p-spn/instances/shared-spanner holds its maximum: 10 databases, what its 100 processing units allow (ten for every hundred below a node); raise processing_units in 2-spn/terraform.tfvars (100 or 200; beyond 200 is a change to the variable's validation), or bedrock destroy an application the organization no longer needs, which frees its databases",
+			wantRefusal: "Build REJECTED: imp-stg-gbl-harbor-db does not exist, and projects/p-spn/instances/shared-spanner holds its maximum: 10 databases, what its 100 processing units allow (ten for every hundred below a node); raise processing_units in 2-spn/terraform.tfvars (every hundred units below a node hold ten more databases; a node, 1000 units, holds a hundred), or bedrock destroy an application the organization no longer needs, which frees its databases",
 		},
 		{
 			name:        "a full instance of the environment's own names 2-env's setting",

@@ -1,7 +1,7 @@
 # Committed on purpose: nothing here is a secret. Project IDs come from
 # 1-org's state, so nothing here needs a REPLACEME.
 
-processing_units = 100 # never above 200 without explicit agreement; variables.tf enforces it
+processing_units = 100 # steps of 100 below a node, whole nodes from 1000; raised for databases or load (README.md, Capacity)
 
 # The database admins (each application's apply identity in stg and prd) are in
 # applications.auto.tfvars, rendered from placement.json; a service account must

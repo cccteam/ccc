@@ -40,7 +40,7 @@ func TestInstanceCapacities(t *testing.T) {
 		{
 			name:         "a sixth application is past the shared instance",
 			applications: 6,
-			spn:          "processing_units = 100 # never above 200\n",
+			spn:          "processing_units = 100 # steps of 100 below a node\n",
 			want:         []InstanceCapacity{shared(6, 100, "stg", "prd"), own(6, 100, "tst")},
 		},
 		{
@@ -138,17 +138,22 @@ func TestInstanceCapacitySentences(t *testing.T) {
 	if !sharedFull.Exceeded() {
 		t.Fatal("Exceeded() = false, want true")
 	}
-	want := "the placement declares 12 databases on the shared Spanner instance (6 applications, one database each in stg and prd), and the instance holds 10 at 100 processing units (ten for every hundred below a node): raise processing_units in 2-spn/terraform.tfvars (100 or 200; beyond 200 is a change to the variable's validation, the decision of 2026-09-25 in JOURNAL.md), or bedrock destroy an application the organization no longer needs, which frees its databases"
+	want := "the placement declares 12 databases on the shared Spanner instance (6 applications, one database each in stg and prd), and the instance holds 10 at 100 processing units (ten for every hundred below a node): raise processing_units in 2-spn/terraform.tfvars (every hundred units below a node hold ten more databases; a node, 1000 units, holds a hundred), or bedrock destroy an application the organization no longer needs, which frees its databases"
 	if got := sharedFull.Problem(); got != want {
 		t.Errorf("Problem() =\n%s\nwant\n%s", got, want)
 	}
 	ownFull := InstanceCapacity{Environment: "tst", Environments: []string{"tst"}, ProcessingUnits: 100, Capacity: 10, Applications: 11, Declared: 11}
-	want = "the placement declares 11 databases on tst's own Spanner instance (11 applications, one database each in tst), and the instance holds 10 at 100 processing units (ten for every hundred below a node): raise spanner_instances.tst.processing_units in 2-env/terraform.tfvars (100 or 200; beyond 200 is a change to the variable's validation, the decision of 2026-09-25 in JOURNAL.md), or bedrock destroy an application the organization no longer needs, which frees its databases"
+	want = "the placement declares 11 databases on tst's own Spanner instance (11 applications, one database each in tst), and the instance holds 10 at 100 processing units (ten for every hundred below a node): raise spanner_instances.tst.processing_units in 2-env/terraform.tfvars (every hundred units below a node hold ten more databases; a node, 1000 units, holds a hundred), or bedrock destroy an application the organization no longer needs, which frees its databases"
 	if got := ownFull.Problem(); got != want {
 		t.Errorf("Problem() =\n%s\nwant\n%s", got, want)
 	}
 	if (InstanceCapacity{Capacity: 10, Declared: 10}).Exceeded() {
 		t.Error("Exceeded() = true for a placement that fills the instance exactly, want false")
+	}
+	node := InstanceCapacity{Environments: []string{"stg", "prd"}, ProcessingUnits: 1000, Capacity: 100, Applications: 51, Declared: 102}
+	want = "the placement declares 102 databases on the shared Spanner instance (51 applications, one database each in stg and prd), and the instance holds 100 at 1000 processing units (a hundred from a node on): no raise of processing_units in 2-spn/terraform.tfvars adds a database from a node on, so bedrock destroy an application the organization no longer needs, which frees its databases"
+	if got := node.Problem(); got != want {
+		t.Errorf("Problem() at a node =\n%s\nwant\n%s", got, want)
 	}
 	room := InstanceCapacity{Environment: "tst", Environments: []string{"tst"}, ProcessingUnits: 100, Capacity: 10, Applications: 6, Declared: 6}
 	want = "tst's own Spanner instance: 6 of the 10 databases it holds go to the applications, 4 are left for pull-request stacks across every application (each holds a database of its own unless it shares tst's)"

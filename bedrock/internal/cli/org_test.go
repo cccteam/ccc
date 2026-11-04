@@ -1591,7 +1591,7 @@ func TestOrgDestroy(t *testing.T) {
 func TestOrgRegisterCapacity(t *testing.T) {
 	t.Parallel()
 
-	const refused = "register sixth: the placement declares 12 databases on the shared Spanner instance (6 applications, one database each in stg and prd), and the instance holds 10 at 100 processing units (ten for every hundred below a node): raise processing_units in 2-spn/terraform.tfvars (100 or 200; beyond 200 is a change to the variable's validation, the decision of 2026-09-25 in JOURNAL.md), or bedrock destroy an application the organization no longer needs, which frees its databases"
+	const refused = "register sixth: the placement declares 12 databases on the shared Spanner instance (6 applications, one database each in stg and prd), and the instance holds 10 at 100 processing units (ten for every hundred below a node): raise processing_units in 2-spn/terraform.tfvars (every hundred units below a node hold ten more databases; a node, 1000 units, holds a hundred), or bedrock destroy an application the organization no longer needs, which frees its databases"
 	tests := []struct {
 		name string
 		// spn is 2-spn/terraform.tfvars, none when empty (the variable's default).

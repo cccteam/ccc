@@ -29,3 +29,32 @@ func TestSpannerDatabaseCapacity(t *testing.T) {
 		})
 	}
 }
+
+// TestSpannerSentences: the rule and the way out through the size change at a node, where
+// no raise adds a database.
+func TestSpannerSentences(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		units     int
+		wantRule  string
+		wantRaise string
+	}{
+		{name: "below a node", units: 300, wantRule: "ten for every hundred below a node", wantRaise: "raise processing_units in 2-spn/terraform.tfvars (every hundred units below a node hold ten more databases; a node, 1000 units, holds a hundred), or"},
+		{name: "a node", units: 1000, wantRule: "a hundred from a node on", wantRaise: "no raise of processing_units in 2-spn/terraform.tfvars adds a database from a node on, so"},
+		{name: "beyond a node", units: 2000, wantRule: "a hundred from a node on", wantRaise: "no raise of processing_units in 2-spn/terraform.tfvars adds a database from a node on, so"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := SpannerCapacityRule(tt.units); got != tt.wantRule {
+				t.Errorf("SpannerCapacityRule(%d) = %q, want %q", tt.units, got, tt.wantRule)
+			}
+			if got := SpannerRaise("processing_units in 2-spn/terraform.tfvars", tt.units); got != tt.wantRaise {
+				t.Errorf("SpannerRaise(%d) = %q, want %q", tt.units, got, tt.wantRaise)
+			}
+		})
+	}
+}
