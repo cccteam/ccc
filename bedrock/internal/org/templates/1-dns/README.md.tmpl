@@ -6,7 +6,7 @@ that serve the applications. The one layer after the bootstrap in a zones
 organization: no environments, no instances, no load balancer. Its zones live
 in the boot project. Applied by the apply trigger's run as
 `{{.Prefix}}-dns-gbl-tofu`, planned on a pull request as `{{.Prefix}}-dns-gbl-plan`,
-both made by `0-bootstrap`; the first apply is the bootstrap administrator's
+both made by `0-bootstrap`; the first apply is the break-glass account's
 ("Applying").
 
 ## What it creates
@@ -181,7 +181,7 @@ the application's servers, not this zone's.
 
 ## Applying
 
-The first apply is the bootstrap administrator's, by hand, once `0-bootstrap`
+The first apply is the break-glass account's, by hand, once `0-bootstrap`
 has applied and `boot_project_id` is set in `terraform.tfvars` (the seed's
 value, suffix included). In a terminal, in this directory, as the bootstrap
 administrator, with `GITHUB_TOKEN` set to an organization owner's token (gh's

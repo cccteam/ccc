@@ -87,7 +87,7 @@ resource "google_project_iam_member" "operations_trigger_runner" {
   for_each = local.apps
 
   project = local.project_id
-  role    = local.org.cloud_build_trigger_runner_role
+  role    = local.org.cloud_build_trigger_runner_role[var.environment]
   member  = google_service_account.operations[each.key].member
 }
 

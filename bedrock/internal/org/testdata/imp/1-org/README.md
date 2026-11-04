@@ -2,7 +2,7 @@
 
 Where the organization is described: folders, the org policy baseline,
 Essential Contacts, every project, and the identities that manage each
-project's own layer. Its first apply is the bootstrap administrator's; from
+project's own layer. Its first apply is the break-glass account's; from
 then on the apply trigger applies it as `imp-org-gbl-tofu` and the plan
 trigger plans it on a pull request as `imp-org-gbl-plan`.
 
@@ -36,7 +36,7 @@ trigger plans it on a pull request as `imp-org-gbl-plan`.
   `imp-<key>-gbl-tofu`, holding the roles of its role set
   (`var.layer_roles`), and the read-only plan identity `imp-<key>-gbl-plan`,
   holding the plan roles of the same set (`var.plan_roles`): the custom
-  organization role of its project's kind (`environmentLayerPlanReader`,
+  role of its project's kind, in its project (`environmentLayerPlanReader`,
   `servicesLayerPlanReader`, `networkLayerPlanReader` or
   `spannerLayerPlanReader`, below), which reads the resource types the layer
   declares and nothing of their data, and `roles/iam.securityReviewer` for the
@@ -54,10 +54,9 @@ trigger plans it on a pull request as `imp-org-gbl-plan`.
   on the project, creating a bucket and listing the project's buckets, is the
   custom role `storageBucketCreator` in the `app` role set (below).
 - Not the plan identities of the two boot layers, `imp-boot-gbl-plan`
-  and `imp-org-gbl-plan`: they are `0-bootstrap`'s, with their
-  organization-level reads (`0-bootstrap/README.md`), since a binding at the
-  organization node is `0-bootstrap`'s to make and this layer's identity holds
-  no role there that sets the organization's policy.
+  and `imp-org-gbl-plan`: they are `0-bootstrap`'s, with their reads
+  on the organization's folder (`0-bootstrap/README.md`), since a binding on
+  the folder is `0-bootstrap`'s to make.
 - For every identity it creates, what the Cloud Build triggers need
   (`runners.tf`): the right of the trigger runner of its kind to impersonate
   it (`roles/iam.serviceAccountTokenCreator`: the planner on a plan identity,
@@ -90,26 +89,31 @@ trigger plans it on a pull request as `imp-org-gbl-plan`.
   project, which `0-bootstrap` grants this layer's identity; the org plan
   identity reads the entitlements through `roles/privilegedaccessmanager.viewer`
   there.
-- `roles/resourcemanager.tagUser` on the public-invoker tag value for each
-  application's apply identity in every environment it is placed in (`tags.tf`, from
-  `public-invokers.auto.tfvars`): the identity binds the tag to its own Cloud
-  Run services. Rendered for the applications whose registration is past
+- `roles/resourcemanager.tagUser` on the environment project's public-invoker
+  tag value for each application's apply identity in every environment it is
+  placed in (`tags.tf`, from `public-invokers.auto.tfvars`): the identity binds
+  the tag to its own Cloud Run services. Rendered for the applications whose registration is past
   their identities (`placement.json`'s `registration`, moved by `bedrock org
   register <app> --next` once `2-env` has created them).
-- Every custom role here has the id `<name>_<suffix>`, and the public-invoker
-  tag key the short name `public-invoker-<suffix>`: the suffix is
-  `0-bootstrap`'s `organization_suffix` (four hex characters), since a role's
-  id and a tag key's short name are unique across the Google Cloud
-  organization, which may hold more than one bedrock organization, and a
-  deleted role's id stays taken for 37 days. This README names the roles by
-  their bare names.
-- The custom organization role `secretContainerAdmin`: creates, updates,
+- Every custom role here is created in each project this layer makes, with
+  the same permissions and a bare id (`secretContainerAdmin`), and
+  `secretContainerAdmin` and `bucketPolicyReader` in the boot project too,
+  for the grants on its key containers and the state bucket (`runners.tf`);
+  the public-invoker tag key is created in each environment project. Nothing
+  of the organization's sits at the organization node, whose names are shared
+  by every bedrock organization under it and held for 37 days after a delete,
+  and whose administration would be a role above this organization's folder
+  (the root `README.md`, "Several organizations"). The `projectUpdater` role
+  `0-bootstrap` makes in the boot project is made here in each project, for
+  this layer's identity, which did not create the projects (the first apply
+  did, as the break-glass account) and so holds no Owner on them.
+- The custom role `secretContainerAdmin`: creates, updates,
   deletes, and lists secrets, manages their IAM, and enables, disables, and
   destroys versions, but can neither add a version (`versions.add`) nor read
   one (`versions.access`). It replaces `roles/secretmanager.admin` in the
   `app` and `shr` role sets so a deploy pipeline can shape secrets without
   seeing their values.
-- The custom organization role `secretOperator`: creates secrets and adds
+- The custom role `secretOperator`: creates secrets and adds
   versions to them (`secrets.create`, `secrets.get`, `secrets.list`,
   `versions.add`, `versions.get`, `versions.list`), finds the environment
   project by its labels and bills Secret Manager to it
@@ -120,7 +124,7 @@ trigger plans it on a pull request as `imp-org-gbl-plan`.
   operator entitlement, creates a container ahead of the release that first
   reads it (`bedrock secret add`) and adds the value, and the application
   stack adopts the container.
-- The custom organization role `spannerPlanReader`: reads an instance's
+- The custom role `spannerPlanReader`: reads an instance's
   databases, their IAM policies and their backup schedules
   (`spanner.instances.get`, `spanner.databases.get`, `spanner.databases.list`,
   `spanner.databases.getIamPolicy`, `spanner.backupSchedules.get`,
@@ -132,7 +136,7 @@ trigger plans it on a pull request as `imp-org-gbl-plan`.
   (`databaseAdmin`, `backupAdmin`) or read the data (`databaseReader`).
   `2-spn` grants it on the shared instance and `2-env` on an environment's
   own instance to each application's plan identity.
-- The custom organization role `cloudBuildTriggerRunner`: runs Cloud Build
+- The custom role `cloudBuildTriggerRunner`: runs Cloud Build
   triggers, reads the builds they start and cancels one (`cloudbuild.builds.create`,
   `cloudbuild.builds.get`, `cloudbuild.builds.list`, `cloudbuild.builds.update`,
   `cloudbuild.triggers.get`, `cloudbuild.triggers.list`) and nothing else; the
@@ -154,7 +158,7 @@ trigger plans it on a pull request as `imp-org-gbl-plan`.
   resource condition that would narrow the role to the version trigger; no
   person holds it, and the operations identity's bound is who may become it
   (`2-env/operations.tf`).
-- The custom organization role `cloudBuildBuildReader`: reads Cloud Build
+- The custom role `cloudBuildBuildReader`: reads Cloud Build
   builds (`cloudbuild.builds.get`) and nothing else. The pipeline's first step
   reads the build it runs in (the trigger's kind, the tag or the pull request,
   the restore instruction and who asked for it). `2-env` grants it on each
@@ -163,7 +167,7 @@ trigger plans it on a pull request as `imp-org-gbl-plan`.
   account, which carries that read together with every object of every bucket
   in the project: with it a deployment record is not written once and an
   application's uploaded files are the build's to delete.
-- The custom organization role `applicationPlanReader`: the reads a plan of an
+- The custom role `applicationPlanReader`: the reads a plan of an
   application stack needs, found in the lab from the plans' refusals: Cloud
   Build builds (`cloudbuild.builds.get`, which answers a regional trigger's
   read), Cloud Scheduler jobs, Cloud Tasks queues, backend services and
@@ -179,7 +183,7 @@ trigger plans it on a pull request as `imp-org-gbl-plan`.
   applications' file stores carry none). The IAM policies the stack's
   grants are refreshed through come from `roles/iam.securityReviewer`, granted
   beside it.
-- The four custom organization roles of the layer plan identities, one per
+- The four custom roles of the layer plan identities, one per
   kind of project, each the reads a plan of that layer needs, found in the
   lab from the plans' refusals (the layer planned as its plan identity, each
   refused permission added, the list narrowed by taking permissions out
@@ -202,7 +206,7 @@ trigger plans it on a pull request as `imp-org-gbl-plan`.
   layers' grants are refreshed through come from `roles/iam.securityReviewer`
   beside it, and `2-net`'s domain registrations from `roles/domains.viewer`,
   since Cloud Domains permissions are not supported in custom roles.
-- The custom organization role `bucketPolicyReader`: reads a bucket's IAM
+- The custom role `bucketPolicyReader`: reads a bucket's IAM
   policy (`storage.buckets.getIamPolicy`) and nothing else about it. `2-env`
   grants the application identities it creates their slots in the state
   bucket, which lives in the boot project, where the environment project's
@@ -211,14 +215,14 @@ trigger plans it on a pull request as `imp-org-gbl-plan`.
   (`legacyBucketOwner`) or carry every object (`admin`). This layer grants it
   on the state bucket to each environment layer's plan identity
   (`runners.tf`).
-- The custom organization role `cloudTasksQueueOperator`: pauses, resumes and
+- The custom role `cloudTasksQueueOperator`: pauses, resumes and
   purges a Cloud Tasks queue, and reads it, nothing else. An application's stack
   grants it on the application's own queue to its deploy identity: a release that
   puts the application into maintenance (a restore run, a breaking release) pauses
   the queue while the database is replaced or migrated and resumes it after traffic
   moves; a restore purges it too. The cloud's own `roles/cloudtasks.queueAdmin`
   would also create, change and delete queues.
-- The custom organization role `storageBucketCreator`: creates a bucket in a
+- The custom role `storageBucketCreator`: creates a bucket in a
   project and lists the project's buckets (`storage.buckets.create`,
   `storage.buckets.list`), the two of `roles/storage.admin`'s permissions that
   Cloud Storage checks on the project (the request names the project; a
@@ -233,7 +237,7 @@ trigger plans it on a pull request as `imp-org-gbl-plan`.
   organization policy read, Storage Intelligence and storage batch
   operations) is not granted: no stack asks for it, and the project reads
   come with the identities' other roles.
-- The custom organization role `runJobPolicyAdmin`: reads and sets the IAM
+- The custom role `runJobPolicyAdmin`: reads and sets the IAM
   policy of Cloud Run jobs (`run.jobs.getIamPolicy`, `run.jobs.setIamPolicy`)
   and nothing else. `2-env` grants it to each application's deploy identity
   beside `roles/run.developer`, which lacks the setting: `bedrock deploy jobs`
@@ -267,7 +271,7 @@ trigger plans it on a pull request as `imp-org-gbl-plan`.
 
 ## Applying
 
-The first apply is the bootstrap administrator's, in a terminal, in this
+The first apply is the break-glass account's, in a terminal, in this
 directory, after `0-bootstrap` has been applied and its state migrated: the
 identities this layer creates do not exist yet, so nothing can run it as one.
 `terraform.tfvars` needs `boot_project_id` from the `0-bootstrap` output; the
@@ -290,26 +294,20 @@ first `init` writes `.terraform.lock.hcl`; commit it. Then record the
 identity by them, and `0-bootstrap` grants each environment project's Cloud
 Build service agent the read of the connections' token by its number.
 
-The apply leaves the person with what Google gives a creator: `roles/owner`
+The apply leaves the account with what Google gives a creator: `roles/owner`
 on each project it made, and Folder Admin and Folder Editor on each folder
-(the seed left the same on the boot project and the `terraform` folder).
-Nothing here grants them, and they are temporary: the layers run as their
-identities, and a person's access to an environment comes from its team
-group (`2-env/README.md`, "The team group"). Once the apply trigger applies
-the layers, remove them by hand, per project in `project_ids` and per folder
-in `folder_ids`:
-
-```bash
-gcloud projects remove-iam-policy-binding <project id> --member="user:<person>" --role=roles/owner
-gcloud resource-manager folders remove-iam-policy-binding <folder id> --member="user:<person>" --role=roles/resourcemanager.folderAdmin
-gcloud resource-manager folders remove-iam-policy-binding <folder id> --member="user:<person>" --role=roles/resourcemanager.folderEditor
-```
-
-`bedrock org check` lists each person still holding `roles/owner` on an
-environment project, with the project, when it runs with Google credentials
-that read the projects' IAM policies; without any it says so. The
-organization-level roles the seed names stay with the bootstrap
-administrator for recovery (`0-bootstrap/README.md`, "Recovery, by hand").
+(the seed left the same on the boot project and the `terraform` folder, and
+the seed's own grants on the organization's folder). Nothing here grants
+them, and they are temporary: the layers run as their identities, and a
+person's access to an environment comes from its team group
+(`2-env/README.md`, "The team group"). Once the apply trigger applies the
+layers, remove them by hand, per project in `project_ids` and per folder in
+`folder_ids` (`0-bootstrap/README.md`, "Trimming the break-glass account",
+which also removes the seed's grants); `bedrock org check` lists each grant
+still held, with its place, when it runs with Google credentials that read
+the projects' and folders' IAM policies. The account keeps Folder Admin on
+the organization's folder alone, for recovery (`0-bootstrap/README.md`,
+"Recovery, by hand").
 
 From then on the apply trigger applies this layer as `imp-org-gbl-tofu`
 on a merge into `master` and the plan trigger plans it on a
@@ -317,9 +315,11 @@ pull request as `imp-org-gbl-plan`, the plan identity `0-bootstrap` makes
 for it (`0-bootstrap/README.md`, "The Cloud Build triggers");
 the GitHub side runs with the infrastructure GitHub App's token, minted in
 the run (`0-bootstrap/README.md`, "The infrastructure GitHub App"). By hand,
-for recovery, the bootstrap administrator applies it the way the first apply
-ran: with their own sign-in, their own GitHub token and the organization-level
-roles the seed names. No entitlement covers this layer.
+for recovery, a person signed in as the break-glass account applies it the
+way the first apply ran: with its sign-in, their own GitHub token and the
+roles the account grants itself on the organization's folder for the run
+(`0-bootstrap/README.md`, "Recovery, by hand"). No entitlement covers this
+layer.
 
 Set `essential_contact_emails` in `terraform.tfvars` before applying if you
 want Essential Contacts registered. Addresses must be in one of
@@ -515,7 +515,7 @@ required checks, the rulesets' names.
 | `plan_roles` | Project roles per role set for the plan identities; a bare ID names a custom role from `custom-roles.tf`. | `map(list(string))` | `app`, `net`, `shr`, `spn`; see below | no |
 | `prefix` | Short org-wide prefix used in resource names. | `string` | `"imp"` | no |
 | `projects` | Every project, keyed by environment code. | `map(object)` | the six above | no |
-| `public_invokers` | Per application, its apply identities' members, granted tagUser on the public-invoker tag. Rendered into `public-invokers.auto.tfvars`. | `map(list(string))` | `{}` | no |
+| `public_invokers` | Per application, by environment, its apply identity's member there, granted tagUser on that environment project's public-invoker tag. Rendered into `public-invokers.auto.tfvars`. | `map(map(string))` | `{}` | no |
 | `required_apis` | APIs per API set. | `map(list(string))` | `app`, `log`, `net`, `shr`, `spn` | no |
 | `state_bucket` | The state bucket, read for `0-bootstrap`'s outputs and granted on for the identities created here. | `string` | the placement's `stateBucket` | no |
 
@@ -652,12 +652,12 @@ bucket, prefix `1-org`.
 | `plan_service_accounts` | Plan identity email by environment code. |
 | `prefix` | Org-wide naming prefix. |
 | `project_ids`, `project_numbers` | Project ID and number by environment code. |
-| `secret_container_admin_role` | Full name of the `secretContainerAdmin` role. |
-| `secret_operator_role` | Full name of the `secretOperator` role. |
-| `run_job_policy_admin_role` | Full name of the `runJobPolicyAdmin` role. |
-| `spanner_plan_reader_role` | Full name of the `spannerPlanReader` role. |
-| `cloud_build_trigger_runner_role` | Full name of the `cloudBuildTriggerRunner` role. |
-| `cloud_build_build_reader_role` | Full name of the `cloudBuildBuildReader` role. |
-| `application_plan_reader_role` | Full name of the `applicationPlanReader` role. |
-| `cloud_tasks_queue_operator_role` | Full name of the `cloudTasksQueueOperator` role. |
-| `storage_bucket_creator_role` | Full name of the `storageBucketCreator` role. |
+| `secret_container_admin_role` | By project key, the full name of the `secretContainerAdmin` role in that project. |
+| `secret_operator_role` | By project key, the full name of the `secretOperator` role in that project. |
+| `run_job_policy_admin_role` | By project key, the full name of the `runJobPolicyAdmin` role in that project. |
+| `spanner_plan_reader_role` | By project key, the full name of the `spannerPlanReader` role in that project. |
+| `cloud_build_trigger_runner_role` | By project key, the full name of the `cloudBuildTriggerRunner` role in that project. |
+| `cloud_build_build_reader_role` | By project key, the full name of the `cloudBuildBuildReader` role in that project. |
+| `application_plan_reader_role` | By project key, the full name of the `applicationPlanReader` role in that project. |
+| `cloud_tasks_queue_operator_role` | By project key, the full name of the `cloudTasksQueueOperator` role in that project. |
+| `storage_bucket_creator_role` | By project key, the full name of the `storageBucketCreator` role in that project. |

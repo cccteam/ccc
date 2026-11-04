@@ -8,14 +8,9 @@ organization can hold infrastructure for more than one Google Cloud
 organization without the names colliding. The other way round holds too: a
 Google Cloud organization can hold more than one bedrock organization, each
 under a folder of its prefix's name at the organization root (`0-bootstrap`),
-with projects, identities and custom roles of its own. The
-projects carry the label `organization = imz`, and the one kind of
-name that is unique across the Google Cloud organization, the custom roles'
-ids, carries a four-hex suffix of
-this organization's (`0-bootstrap`'s `random_id.organization`), so two
-organizations never collide on one and one torn down never waits for the
-other's names to clear. Development runs organizations side by side this
-way. Modeled on
+with projects, identities, custom roles and grants of its own and
+nothing at the organization node ("Several organizations", below). The
+projects carry the label `organization = imz`. Modeled on
 [cccteam/tf-gcp-setup](https://github.com/cccteam/tf-gcp-setup): numbered
 layers, one identity per layer, no static credentials anywhere. The difference
 is the control plane. There is no Scalr; state lives in a Cloud Storage bucket
@@ -31,8 +26,8 @@ gets a line there first.
 
 | Layer | Directory | Applied as | Creates |
 |---|---|---|---|
-| 0 | [`0-bootstrap/`](0-bootstrap/) | the bootstrap administrator the first time (local state, then migrated); then the apply trigger as `imz-boot-gbl-tofu` | adopts the seeded `terraform` folder, boot project, and boot identity; the dns layer identity and its grant on the boot project; the project-updater and state-bucket-policy custom roles; the Cloud Build connection, the two runner identities and the two triggers that plan and apply the layers; the two GitHub Apps' key containers; the state bucket's grants for its two identities |
-| 1 | [`1-dns/`](1-dns/) | the bootstrap administrator the first time; then the apply trigger as `imz-dns-gbl-tofu` | one Cloud DNS public zone per domain delegated to this organization, in the boot project, and one NS record set per label handed onward to a hosting organization's zone; this repository's default branch ruleset |
+| 0 | [`0-bootstrap/`](0-bootstrap/) | the break-glass account the first time (local state, then migrated); then the apply trigger as `imz-boot-gbl-tofu` | adopts the seeded `terraform` folder, boot project, and boot identity; the dns layer identity and its grant on the boot project; the project-updater and state-bucket-policy custom roles; the Cloud Build connection, the two runner identities and the two triggers that plan and apply the layers; the two GitHub Apps' key containers; the state bucket's grants for its two identities |
+| 1 | [`1-dns/`](1-dns/) | the break-glass account the first time; then the apply trigger as `imz-dns-gbl-tofu` | one Cloud DNS public zone per domain delegated to this organization, in the boot project, and one NS record set per label handed onward to a hosting organization's zone; this repository's default branch ruleset |
 
 Two layers, nothing else: this organization holds DNS zones alone, no
 environments, no instances and no load balancer. Every application's name
@@ -73,6 +68,36 @@ Nothing in an application's runtime path depends on anything but DNS: the
 zones here are rendered infrastructure, written by pull request. The steps,
 the records and the checks are in [`1-dns/README.md`](1-dns/README.md).
 
+## Several organizations
+
+A Google Cloud organization holds several bedrock organizations as sibling
+folders, each named after its prefix, and the folder is the whole of an
+organization's reach: every role a layer identity holds, the boot identity's,
+the dns layer identity's and the plan identities' (`0-bootstrap`),
+is granted on the organization's folder and nowhere higher, and every custom
+role lives in a project. Nothing of
+the organization's sits at the organization node.
+
+The reason is reach. A role granted at the organization node applies to every
+folder and project below it, so an identity holding project IAM administrator
+there could make itself owner of any other organization's project, one
+holding service account administrator could mint tokens as any other's layer
+identities, and one holding organization administrator could set the Google
+Cloud organization's own IAM policy. Whoever drives one organization's
+pipeline, through a merge into its infrastructure repository, through any
+pull request's plan for the read roles, through a build in its boot project,
+or simply through a wrong id in a placement, would reach all of that. Scoped
+to the folder, a mistake or a compromise in one organization's pipeline stops
+at that organization. Inside the folder nothing changes: the organization is
+the unit of blast radius, and the Google Cloud organization's administrator
+stays above every folder.
+
+The one account above the folders is the organization's break-glass account
+(`breakGlassAccount` in `placement.json`): it creates the folder at the
+organization root with Folder Creator, keeps the administration of the folder
+Google gives a creator, and holds nothing else once the first-time setup is
+trimmed (`0-bootstrap/README.md`, "Trimming the break-glass account").
+
 ## Naming
 
 ```
@@ -91,10 +116,8 @@ region code, `uc1` for us-central1.
 | state bucket | `imz-boot-gbl-state-a1b2` |
 
 Project IDs and bucket names are globally unique and permanent, so both carry a
-random four-hex suffix. The custom roles' ids (`orgProjectUpdater_a1b2`) carry one of the
-organization's own, since they are unique across the Google Cloud organization
-and a deleted role's id stays taken for 37 days; the READMEs name the roles by
-their bare names. Every project carries the label `organization = imz`, and every project and bucket the label
+random four-hex suffix. The custom roles (`projectUpdater`) live in the projects, where a name is the project's own,
+so they carry none. Every project carries the label `organization = imz`, and every project and bucket the label
 `bedrock-lab = "true"`.
 
 ## How the layers are applied
@@ -130,7 +153,7 @@ tofu, the planner the plan identities and the applier the apply identities.
 with no change to it
 (`0-bootstrap/README.md`, "The Cloud Build triggers", which also says how a
 change to the steps themselves lands one apply later). Recovery is by hand (`0-bootstrap/README.md`, "Recovery, by hand"),
-as the bootstrap administrator. Destroying the organization, projects and all,
+as the break-glass account. Destroying the organization, projects and all,
 is `bedrock org destroy`, by hand (`0-bootstrap/README.md`, "Destroying the
 organization").
 
@@ -145,23 +168,22 @@ the place it happens.
    layers'), and the deployer app ("The deployer GitHub App", below). A
    GitHub organization that holds a hosting organization has the machine
    account and the apps already; this organization records the same.
-2. **Seed.** In a terminal, as the bootstrap administrator: `bedrock org
-   preflight` first, which checks that the person holds each of these roles:
+2. **Seed.** In a terminal, as the break-glass account: `bedrock org
+   preflight` first, which checks that the account holds each of these roles
+   above the organization's folder:
    - Folder Creator (`roles/resourcemanager.folderCreator`), on the organization
-   - Project Creator (`roles/resourcemanager.projectCreator`), on the organization
-   - Organization Administrator (`roles/resourcemanager.organizationAdmin`), on the organization
-   - Organization Role Administrator (`roles/iam.organizationRoleAdmin`), on the organization
    - Billing Account User (`roles/billing.user`), on the billing account
 
-   Then the gcloud commands that make the `terraform` folder, the boot
-   project, the boot layer identity and its org-level roles, and the state
+   Then the gcloud commands that make the organization's folder, which makes
+   the account its administrator, the `terraform` folder under it, the boot
+   project, the boot layer identity and its roles on the folder, and the state
    bucket. Both are in [`0-bootstrap/README.md`](0-bootstrap/README.md), "1.
    Seed with gcloud". In a terminal, a billing administrator separately
    grants `roles/billing.user` on the billing account to the boot identity;
    in the Billing console, the same administrator sets the spend budget
    (`0-bootstrap/README.md`, "5. Billing grants and the budget").
 3. **The Cloud Build GitHub authorization.** In the boot project's Cloud
-   Build console, as the bootstrap administrator (Owner on the boot project
+   Build console, as the break-glass account (Owner on the boot project
    from the seed), signed in to GitHub as the machine account
    `imp-machine`, before the first apply of `0-bootstrap`
    (`0-bootstrap/README.md`, "2. The Cloud Build GitHub authorization"): the
@@ -172,8 +194,8 @@ the place it happens.
    the triggers run goes in beside them: `bedrock upgrade`, in this
    repository, which records the release as `bedrockVersion` and
    `bedrockSha256` and renders.
-4. **`0-bootstrap`.** In a terminal, in `0-bootstrap/`, as the bootstrap
-   administrator. The first apply runs on local state, with the backend block
+4. **`0-bootstrap`.** In a terminal, in `0-bootstrap/`, as the break-glass
+   account. The first apply runs on local state, with the backend block
    commented out, and adopts the seeded resources and the console's connection
    through `import` blocks and an import. The seed's values go into
    `placement.json` (`stateBucket`, `projects.boot`, `projectNumbers.boot`)
@@ -183,10 +205,12 @@ the place it happens.
 5. **`1-dns`.** In a terminal, in `1-dns/`, as the same person, against the
    bucket directly, with their own GitHub token
    ([`1-dns/README.md`](1-dns/README.md), "Applying"). From here on the apply
-   trigger applies both layers. The creator's grants that steps 2 to 5 leave
-   behind (Owner on the boot project, Folder Admin and Folder Editor on the
-   folders, which Google gives whoever creates them) are temporary: once the
-   apply trigger applies the layers, a hand step removes them.
+   trigger applies both layers. The grants steps 2 to 5 leave behind (Owner on
+   the boot project and Folder Admin and Folder Editor on the folders, which
+   Google gives whoever creates them, and the seed's own on the organization's
+   folder) are temporary: once the apply trigger applies the layers, a hand
+   step removes them (`0-bootstrap/README.md`, "Trimming the break-glass
+   account"), and Folder Admin on the organization's folder alone stays.
 6. **The infrastructure GitHub App** (`0-bootstrap/README.md`, "The
    infrastructure GitHub App"). On GitHub, as an organization owner: the app,
    its private key and its installation on this repository. Then in a
@@ -242,7 +266,7 @@ new. Otherwise, once, by a person:
    browser downloads a `.pem` file.
 3. In `placement.json`: the app's App ID as `githubDeployerAppId`.
 4. In a terminal, in this repository, once `0-bootstrap` has applied and made
-   the key's container, as the bootstrap administrator:
+   the key's container, as the break-glass account:
 
    ```bash
    bedrock secret add github-deployer-key --from-file <the deployer app's .pem file>

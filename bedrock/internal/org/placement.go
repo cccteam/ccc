@@ -242,8 +242,12 @@ type Placement struct {
 	// StateBucket is the seeded state bucket every backend block names; empty until the
 	// seed has run, and REPLACEME is rendered in its place.
 	StateBucket string `json:"stateBucket,omitempty"`
-	// Operator is the bootstrap administrator's account, who seeds and applies by hand.
-	Operator string `json:"operator"`
+	// BreakGlassAccount is the organization's break-glass account: a Google account in
+	// the Workspace directory with no person behind it, which seeds the organization and
+	// applies the two foundation layers by hand the first time, and after that is signed
+	// into only when the pipeline cannot act (0-bootstrap/README.md, "First-time setup").
+	// One per Google Cloud organization; several organizations in it name the same one.
+	BreakGlassAccount string `json:"breakGlassAccount"`
 	// TeamGroups are the environments' team groups by environment, each a group's
 	// address (team-tst@example.com, with no member prefix: the layers write group: in
 	// front). Each person's access to an environment comes from its group: the group
@@ -387,6 +391,9 @@ func ReadPlacement(path string) (*Placement, error) {
 	if err := json.Unmarshal(data, &p); err != nil {
 		return nil, errors.Wrapf(err, "json.Unmarshal(): %s", path)
 	}
+	if err := refuseRenamedKeys(data); err != nil {
+		return nil, errors.Wrapf(err, "%s", path)
+	}
 	p.normalizeRegistration()
 	if err := p.Validate(); err != nil {
 		return nil, errors.Wrapf(err, "%s", path)
@@ -394,6 +401,27 @@ func ReadPlacement(path string) (*Placement, error) {
 
 	return &p, nil
 }
+
+// refuseRenamedKeys refuses a placement written with a key that has since been renamed,
+// naming the new one: a key the struct does not know is otherwise dropped in silence,
+// and the refusal that follows ("breakGlassAccount is empty") would not say why.
+func refuseRenamedKeys(data []byte) error {
+	var keys map[string]json.RawMessage
+	if err := json.Unmarshal(data, &keys); err != nil {
+		return errors.Wrap(err, "json.Unmarshal()")
+	}
+	for old, now := range renamedKeys {
+		if _, ok := keys[old]; ok {
+			return errors.Newf("%s is now %s (the same account, the organization's break-glass account): rename the key", old, now)
+		}
+	}
+
+	return nil
+}
+
+// renamedKeys are the placement keys renamed since they were first written, each with
+// its name now.
+var renamedKeys = map[string]string{"operator": "breakGlassAccount"}
 
 // normalizeRegistration spreads a step read in the older form, one for the application,
 // over every environment the application is placed in.
@@ -423,7 +451,7 @@ func (p *Placement) Validate() error {
 	for name, value := range map[string]string{
 		"organizationDomain": p.OrganizationDomain, "organizationId": p.OrganizationID, "billingAccount": p.BillingAccount,
 		"githubOrganization": p.GithubOrganization, "sourceRepo": p.SourceRepo, "githubDefaultBranch": p.GithubDefaultBranch,
-		"operator": p.Operator,
+		"breakGlassAccount": p.BreakGlassAccount,
 	} {
 		if strings.TrimSpace(value) == "" {
 			return errors.Newf("%s is empty", name)

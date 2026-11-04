@@ -2,9 +2,11 @@
 
 The chicken-and-egg layer. It adopts the resources the seed step created by
 hand, creates the dns layer identity, grants it the zones' administration in the
-boot project and the boot identity what it needs at the org node, and makes the Cloud Build triggers that plan and apply every
-layer of this repository. Its first apply is the bootstrap administrator's,
-from their own computer, before any layer identity can run; from then on the
+boot project and the boot identity what it needs on the organization's folder, and makes the Cloud Build triggers that plan and apply every
+layer of this repository. Nothing is granted at the organization node: the
+folder is the whole of this organization's reach. Its first apply is the
+break-glass account's, from a person's computer, before any layer identity
+can run; from then on the
 apply trigger applies it as the boot identity, like every layer ("The Cloud
 Build triggers" below).
 
@@ -18,23 +20,23 @@ Build triggers" below).
 - The boot project's API set (Cloud Build, resource manager, Cloud DNS, IAM,
   IAM credentials, logging, Secret Manager, service usage, storage), its
   labels, and the deletion of its default compute service account.
-- Org-level role bindings for the boot layer identity (`var.boot_layer_roles`),
-  and `roles/dns.admin` on the boot project alone for the dns layer identity,
-  whose zones live there (`1-dns`).
+- Role bindings on the organization's folder for the boot layer identity
+  (`var.boot_layer_roles`), and `roles/dns.admin` on the boot project alone for
+  the dns layer identity, whose zones live there (`1-dns`).
 - The dns layer identity `imz-dns-gbl-tofu`, in the boot project.
 - The two boot layers' plan identities `imz-boot-gbl-plan` and
-  `imz-dns-gbl-plan`, in the boot project, with the organization-level
-  reads of `var.boot_plan_roles`, the boot project as their quota project, the
+  `imz-dns-gbl-plan`, in the boot project, with the reads on the
+  organization's folder of `var.boot_plan_roles`, the boot project as their quota project, the
   planner's right to become them (`cloud-build.tf`), for the boot one the
   reads of the connection, the repository link and the triggers on the boot
   project (`roles/cloudbuild.connectionViewer`, `roles/cloudbuild.builds.viewer`,
   `cloud-build.tf`) and, for the dns one, the read of the infrastructure
   GitHub App's key (`github.tf`) and of the zones (`roles/dns.reader` on the
   boot project): a pull request plans each boot layer as its own read-only
-  identity. A binding at the organization node is this layer's to make; the
-  dns layer identity holds no role there.
-- The custom organization role `imzGblOrgProjectUpdater`
-  (`resourcemanager.projects.update`), granted to the boot identity.
+  identity. A binding on the organization's folder is this layer's to make;
+  nothing of the organization's is bound at the organization node.
+- The custom role `projectUpdater` in the boot project
+  (`resourcemanager.projects.update`), granted to the boot identity on it.
 - `roles/billing.user` on the billing account for the boot identity, only when
   `manage_billing_iam` is true. See step 5.
 - The Cloud Build side (`cloud-build.tf`): the GitHub connection
@@ -56,7 +58,7 @@ Build triggers" below).
 - The state bucket's grants for the four identities (`state-bucket.tf`): the
   list, each apply identity's own prefix (`0-bootstrap/`, `1-dns/`), each plan
   identity's read of the prefixes its layer's plan reads, and the custom
-  organization role `imzGblStateBucketPolicyAdmin` (reads and sets a
+  role `stateBucketPolicyAdmin` in the boot project (reads and sets a
   bucket's IAM policy, nothing else) on the bucket for the boot identity,
   which applies this layer through the triggers; and for the applier, the
   markers under `applied/` that record each layer's last successful apply
@@ -67,39 +69,50 @@ OpenTofu because this layer's own state lives in it.
 
 ## First-time setup
 
-Steps 1, 2 and 5 happen once, by hand. Everything step 1 creates is adopted by
-an `import` block in step 3, so nothing stays outside OpenTofu except the
+Steps 1, 2, 5 and 6 happen once, by hand. Everything step 1 creates is adopted
+by an `import` block in step 3, so nothing stays outside OpenTofu except the
 bucket, the spend budget (step 5) and, while `manage_billing_iam` is false,
-the two billing grants.
+the billing grant.
 
-The person who runs them is left with what Google gives a creator: Owner on
-the boot project, and Folder Admin and Folder Editor on the `terraform`
-folder; `1-dns`'s first apply creates no folder and no project, so it leaves
-nothing more. Those grants are temporary. The layers run as their identities;
-once the apply trigger applies the layers, a hand step removes them. The roles
-step 1 lists stay with the bootstrap administrator for recovery ("Recovery,
-by hand", below).
+The person who runs them is signed in as the organization's break-glass
+account (`seed@imp.example`, `breakGlassAccount` in `placement.json`): a
+Google account created in the Google Workspace Directory with no person
+behind it, which seeds the organization and applies the two foundation
+layers the first time, and is signed into after that only when the pipeline
+cannot act (step 6, "Recovery, by hand" and "Destroying the organization"
+below, and a GitHub App's key rotation). Two grants are made for it in Google
+Cloud IAM before the seed, by an administrator of the Google Cloud
+organization and of the billing account; the table in step 1 names them. It
+creates the organization's folder, which makes it the folder's administrator,
+and everything else happens under that folder: the seed grants it there what
+the first applies need, and Google leaves a creator with Owner on each
+project and Folder Admin and Folder Editor on each folder it creates. All of
+those are temporary. The layers run as their identities; once the apply trigger
+applies the layers, step 6 removes them, and the account keeps one grant,
+Folder Admin on the organization's folder: its key to everything below, for
+the day the pipeline cannot act. `bedrock org check` lists every grant still
+to remove.
 
 ### 1. Seed with gcloud
 
-In a terminal, as the bootstrap administrator (`seed@imp.example`). The seed,
-the first apply of this layer and the first apply of `1-dns` run as that
-person, before any layer identity exists, so the person holds these roles:
+In a terminal, signed in as the break-glass account (`seed@imp.example`).
+The seed, the first apply of this layer and the first apply of `1-dns`
+run as that account, before any layer identity exists. Above the
+organization's folder it holds two roles, granted in Google Cloud IAM:
 
 | Role | Granted on | Needed for |
 |---|---|---|
-| Folder Creator (`roles/resourcemanager.folderCreator`) | the organization | the seed's two folders, at the organization root |
-| Project Creator (`roles/resourcemanager.projectCreator`) | the organization | the seed's boot project |
-| Organization Administrator (`roles/resourcemanager.organizationAdmin`) | the organization | the organization roles the seed grants the boot identity, and those 0-bootstrap grants the plan identities |
-| Organization Role Administrator (`roles/iam.organizationRoleAdmin`) | the organization | the custom roles 0-bootstrap defines at the organization |
+| Folder Creator (`roles/resourcemanager.folderCreator`) | the organization | the organization's folder, at the organization root; the seed's terraform folder is made under it as its administrator |
 | Billing Account User (`roles/billing.user`) | the billing account | linking the boot project to the billing account |
 
-Sign in, then check the roles before anything is created: `bedrock org
-preflight`, run at this repository's root, asks Google which of the permissions
-behind each role these credentials hold, on the organization and the billing
-account `placement.json` names. It prints one line per role, `holds` or
-`missing` with the permissions tested, and exits 1 naming each missing role
-and who grants it. Seed only once it passes:
+Everything else happens under the folder the seed creates, as its
+administrator, which Google makes a folder's creator. Sign in, then check
+the two roles before anything is created: `bedrock org preflight`, run at
+this repository's root, asks Google which of the permissions behind each
+role these credentials hold, on the organization and the billing account
+`placement.json` names. It prints one line per role, `holds` or `missing`
+with the permissions tested, and exits 1 naming each missing role and who
+grants it. Seed only once it passes:
 
 ```bash
 gcloud auth login
@@ -110,13 +123,19 @@ export ORG_ID=123456789012
 export BILLING_ACCOUNT_ID=012345-6789AB-CDEF01
 export PREFIX=imz
 export REGION=us-central1
+export BREAK_GLASS=seed@imp.example
 ```
 
-Create the organization's folder at the org root, named after the prefix,
-and the `terraform` folder under it. The organization's folder is the one
-tree this bedrock organization keeps in the GCP organization: another
-bedrock organization beside it keeps its own, since sibling folders must
-differ in name.
+Create the organization's folder at the org root, named after the prefix.
+Google gives its creator Folder Admin and Folder Editor on it, and from here
+on everything the seed and the layers make sits under it: the folder is the
+whole of this organization's reach in the Google Cloud organization, and
+another bedrock organization beside it keeps its own, since sibling folders
+must differ in name. Then the `terraform` folder under it, and the roles the
+seed and the first applies need on the folder, granted to the account itself:
+Project Creator, for the boot project. Its Folder Admin covers the rest: the folders it
+makes, the IAM on them and on the projects it creates, which it is Owner of
+as their creator. Step 6 removes these again.
 
 ```bash
 gcloud resource-manager folders create \
@@ -134,17 +153,25 @@ gcloud resource-manager folders create \
 export TERRAFORM_FOLDER_ID=$(gcloud resource-manager folders list \
   --folder="${ORGANIZATION_FOLDER_ID}" --filter="displayName=terraform" \
   --format='value(name)' | sed 's|folders/||')
+
+for role in \
+  roles/resourcemanager.projectCreator
+do
+  gcloud resource-manager folders add-iam-policy-binding "${ORGANIZATION_FOLDER_ID}" \
+    --member="user:${BREAK_GLASS}" --role="${role}" --condition=None
+done
 ```
 
 Create the boot project. The four-hex suffix is what the project factory would
-have generated, and the ID can never be changed afterwards. Cloud Build and
-Secret Manager are enabled here because step 2's browser authorization uses
-both before this layer's first apply:
+have generated, and the ID can never be changed afterwards; the display name
+carries no suffix, as the project module names the projects. Cloud Build and Secret Manager are enabled here because step 2's
+browser authorization uses both before this layer's first apply:
 
 ```bash
 export BOOT_PROJECT_ID="${PREFIX}-boot-gbl-core-$(od -An -tx1 -N2 /dev/urandom | tr -d ' \n')"
 
 gcloud projects create "${BOOT_PROJECT_ID}" \
+  --name="${PREFIX}-boot-gbl-core" \
   --folder="${TERRAFORM_FOLDER_ID}" \
   --labels=terraform=true,terraform_source_path=0-bootstrap,source_repo=imz-zones-infrastructure,organization=imz,environment=boot,bedrock-lab=true
 
@@ -166,8 +193,9 @@ until gcloud iam service-accounts list \
   --project="${BOOT_PROJECT_ID}" >/dev/null 2>&1; do sleep 10; done
 ```
 
-Create the boot layer identity and grant it the org roles. This list is the
-same one in `var.boot_layer_roles`; change both together:
+Create the boot layer identity and grant it its roles on the organization's
+folder. This list is the same one in `var.boot_layer_roles`; change both
+together. Nothing is granted at the organization node:
 
 ```bash
 export SA_EMAIL="${PREFIX}-boot-gbl-tofu@${BOOT_PROJECT_ID}.iam.gserviceaccount.com"
@@ -180,16 +208,15 @@ gcloud iam service-accounts create "${PREFIX}-boot-gbl-tofu" \
 for role in \
   roles/cloudbuild.builds.editor \
   roles/cloudbuild.connectionAdmin \
-  roles/iam.organizationRoleAdmin \
+  roles/iam.roleAdmin \
   roles/iam.serviceAccountAdmin \
   roles/resourcemanager.folderAdmin \
-  roles/resourcemanager.organizationAdmin \
   roles/resourcemanager.projectCreator \
   roles/resourcemanager.projectDeleter \
   roles/resourcemanager.projectIamAdmin \
   roles/serviceusage.serviceUsageAdmin
 do
-  gcloud organizations add-iam-policy-binding "${ORG_ID}" \
+  gcloud resource-manager folders add-iam-policy-binding "${ORGANIZATION_FOLDER_ID}" \
     --member="serviceAccount:${SA_EMAIL}" --role="${role}" --condition=None
 done
 ```
@@ -218,8 +245,8 @@ Keep `BOOT_PROJECT_ID`, `ORGANIZATION_FOLDER_ID`, `TERRAFORM_FOLDER_ID`, and `ST
 
 The boot project's Cloud Build connection, the layers', authorizes with a GitHub
 token that only a browser can produce, once per organization, here, before
-this layer's first apply. The person at the browser is the bootstrap
-administrator, who is Owner on the boot project from step 1; the GitHub
+this layer's first apply. The person at the browser is signed in as the
+break-glass account, Owner on the boot project from step 1; the GitHub
 account signed in is the organization's machine account,
 `imp-machine` (`githubMachineAccount` in `placement.json`): a GitHub
 user that acts for no person, belongs to the `imp-example`
@@ -228,7 +255,7 @@ organization takes an owner, and the connection's token is that account's,
 so a person leaving the organization breaks nothing.
 
 1. In the Google Cloud console, in the boot project `BOOT_PROJECT_ID`, as the
-   bootstrap administrator: Cloud Build, Repositories (2nd gen), Create host
+   break-glass account: Cloud Build, Repositories (2nd gen), Create host
    connection, GitHub, in the region `us-central1`, named
    `imz-boot-uc1-github`, the name this layer gives it. Sign in to GitHub as
    the machine account `imp-machine`, install or select the Google
@@ -319,10 +346,10 @@ carries the old value), and add a line to `JOURNAL.md`.
 
 ### 5. Billing grants and the budget, by a billing administrator
 
-The bootstrap administrator holds Billing Account User on the billing account. That role
+The break-glass account holds Billing Account User on the billing account. That role
 links projects to the account but cannot change the account's IAM policy, so
 the `google_billing_account_iam_member` resource in this layer cannot be
-applied as the bootstrap administrator. `manage_billing_iam = false` in `terraform.tfvars`
+applied as the break-glass account. `manage_billing_iam = false` in `terraform.tfvars`
 skips it. Instead, in a terminal, a Billing Account Administrator makes the
 grant by hand:
 
@@ -337,7 +364,7 @@ gcloud billing accounts add-iam-policy-binding "${BILLING_ACCOUNT_ID}" \
 
 Nothing depends on the grant until the apply trigger runs this layer as the
 boot identity, which keeps the boot project linked to the account; the
-bootstrap administrator's own Billing Account User role covers the first
+break-glass account's own Billing Account User role covers the first
 apply. Set `manage_billing_iam = true` once the identity applying this layer
 can manage billing IAM; the resource then asserts the same member. The dns
 identity links nothing and needs no grant.
@@ -351,13 +378,52 @@ budget sends alerts and stops nothing. Nothing in the layers renders it: it
 belongs to the billing account, where no layer identity holds a role that
 manages budgets.
 
+### 6. Trimming the break-glass account
+
+In a terminal, once the apply trigger has applied the layers (every push to
+`master` from here on): as the break-glass account for the
+grants on the folders and projects, and as the administrators who made them
+for the two above the folder. What comes off, and why it was there:
+
+- Owner on the boot project: a creator's grant, which Google gives
+  whoever creates a project.
+- Folder Admin and Folder Editor on the `terraform` folder, and Folder Editor on the
+  organization's folder: a creator's grant, which Google gives whoever creates
+  a folder.
+- Project Creator on the organization's folder: the seed's grant for the first
+  applies (step 1).
+- Folder Creator at the organization, by its administrator, and Billing
+  Account User on the billing account, by a billing administrator: the two
+  roles step 1's table names, which the seed and the first applies needed and
+  the layers' identities now hold for themselves (step 5).
+
+What stays: Folder Admin on the organization's folder, the account's one
+standing grant and its key to everything below. With it, on the day the
+pipeline cannot act, the account grants itself for the run what the recovery
+needs and takes it back after ("Recovery, by hand"). Nothing of the
+organization's is left at the organization node.
+
+```bash
+gcloud projects remove-iam-policy-binding <project id> --member="user:${BREAK_GLASS}" --role=roles/owner
+gcloud resource-manager folders remove-iam-policy-binding <folder id> --member="user:${BREAK_GLASS}" --role=roles/resourcemanager.folderAdmin
+gcloud resource-manager folders remove-iam-policy-binding <folder id> --member="user:${BREAK_GLASS}" --role=roles/resourcemanager.folderEditor
+gcloud resource-manager folders remove-iam-policy-binding "${ORGANIZATION_FOLDER_ID}" --member="user:${BREAK_GLASS}" --role=<each role the seed granted in step 1>
+gcloud organizations remove-iam-policy-binding "${ORG_ID}" --member="user:${BREAK_GLASS}" --role=roles/resourcemanager.folderCreator
+gcloud billing accounts remove-iam-policy-binding "${BILLING_ACCOUNT_ID}" --member="user:${BREAK_GLASS}" --role=roles/billing.user
+```
+
+`bedrock org check` lists each grant of this step still held on a project or
+a folder, with its place, when it runs with Google credentials that read
+their IAM policies. The two above the folder it cannot see from inside the
+folder, so their removal is the administrators' to confirm.
+
 ## Inputs
 
 | Name | Description | Type | Default | Required |
 |---|---|---|---|:---:|
 | `billing_account_id` | Billing account ID to link projects to. | `string` | n/a | yes |
-| `boot_layer_roles` | Org-level roles granted to the boot layer identity. The seed grants the same list; change both together. | `list(string)` | ten roles, see `variables.tf` | no |
-| `boot_plan_roles` | Organization-level reads of the two boot layers' plan identities. | `list(string)` | eight roles, see `variables.tf` | no |
+| `boot_layer_roles` | Roles granted to the boot layer identity on the organization's folder. The seed grants the same list; change both together. | `list(string)` | nine roles, see `variables.tf` | no |
+| `boot_plan_roles` | Reads on the organization's folder of the two boot layers' plan identities. | `list(string)` | eight roles, see `variables.tf` | no |
 | `boot_project_id` | Project ID of the seeded boot project, suffix included. Adopted, not created. | `string` | n/a | yes |
 | `github_default_branch` | The infrastructure repository's default branch: the plan trigger runs on a pull request into it, the apply trigger on a push to it. | `string` | `"master"` | no |
 | `github_organization` | The GitHub organization of the infrastructure and application repositories. | `string` | `"imp-example"` | no |
@@ -388,7 +454,7 @@ authorization among them.
 | `github_infrastructure_key_secret` | The container of the infrastructure GitHub App's private key. |
 | `org_id` | Numeric organization ID. |
 | `org_service_account_email` | The dns layer identity. |
-| `state_bucket_policy_admin_role` | The custom role that sets a bucket's IAM policy. |
+| `state_bucket_policy_admin_role` | The custom role in the boot project that sets a bucket's IAM policy. |
 | `terraform_folder_id` | The folder holding the automation plane. |
 
 ## The Cloud Build triggers
@@ -475,8 +541,8 @@ Who runs what, and why the first time works in order:
   (`imz-boot-gbl-plan`, `imz-dns-gbl-plan`), all of which exist
   when its grants apply; `1-dns` creates no identity.
 - The first apply of this layer and the first apply of `1-dns` are the
-  bootstrap administrator's (steps 3 and 4 above, and `1-dns/README.md`),
-  with the roles step 1 lists. The bucket exists from step 1, so this layer's
+  break-glass account's (steps 3 and 4 above, and `1-dns/README.md`), as the
+  organization folder's administrator and with the roles step 1 grants. The bucket exists from step 1, so this layer's
   grants on it apply in step 3; `1-dns` grants nothing on it.
 - From the first apply of this layer on, a push to `master`
   can apply this layer and `1-dns` through the apply trigger, and a pull
@@ -513,7 +579,7 @@ person:
 2. On the app's settings page: Private keys, Generate a private key. The
    browser downloads a `.pem` file.
 3. On the same page: Install App, on the organization, for all repositories.
-4. In a terminal, in this repository, as the bootstrap administrator, once
+4. In a terminal, in this repository, as the break-glass account, once
    this layer has made the container: record the App ID in `placement.json`
    as `githubInfrastructureAppId`, then add the key to the container and pin
    the version `add` prints (1 for the first):
@@ -546,7 +612,7 @@ from it, once, after its first apply has made the container:
 
 1. In `placement.json`: the app's App ID, from its settings page, as
    `githubDeployerAppId`.
-2. In a terminal, in this repository, as the bootstrap administrator:
+2. In a terminal, in this repository, as the break-glass account:
 
    ```bash
    bedrock secret add github-deployer-key --from-file <the .pem file>
@@ -567,9 +633,11 @@ nothing else is affected.
 
 When the triggers cannot run (the connection broken, the repository
 unreachable, a change that must be applied before it can merge), a person
-applies from their own computer: the bootstrap administrator, with the roles
-step 1 lists and their own sign-in, the way the first applies ran (step 3
-above, without the local state; `1-dns/README.md`, "Applying"). An apply by
+applies from their own computer, signed in as the break-glass account: with
+the Folder Admin it keeps on the organization's folder it grants itself, for
+the run, the roles the layer's identity holds there (`variables.tf`), applies
+the way the first applies ran (step 3 above, without the local state;
+`1-dns/README.md`, "Applying"), and takes the grants off after. An apply by
 hand leaves the layer's marker as it was, so the next push applies the layer
 again: the plan is empty when the hand apply was complete.
 
@@ -585,9 +653,10 @@ that answer nothing, so a zones organization is destroyed once no domain is
 delegated to it (`1-dns/README.md`). Google keeps a deleted project for 30
 days, in which the console can restore it; its id never returns after.
 
-It runs by hand, at a person's computer: an owner of the GCP organization
-(deleting projects and folders, organization roles and the tag is theirs),
-signed in with `gcloud auth application-default login`, with `GITHUB_TOKEN`
+It runs by hand, at a person's computer, signed in as the break-glass account
+(`gcloud auth application-default login`), holding Owner on the organization's
+folder for the run, which the Folder Admin it keeps there lets it grant itself
+and which goes with the folder; with `GITHUB_TOKEN`
 set to the infrastructure GitHub App's installation token or an organization
 owner's token (gh's token serves when gh is signed in as one). It says what
 goes, project by project, and asks for the prefix typed back before anything

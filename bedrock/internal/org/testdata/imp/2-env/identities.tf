@@ -101,7 +101,7 @@ resource "google_spanner_instance_iam_member" "apply_database_creator" {
 
   project  = local.instance_project
   instance = local.instance_name
-  role     = local.org.spanner_database_creator_role
+  role     = local.org.spanner_database_creator_role[var.environment]
   member   = google_service_account.apply[each.key].member
 }
 
@@ -221,7 +221,7 @@ resource "google_project_iam_member" "apply_bucket_creator" {
   for_each = local.apps
 
   project = local.project_id
-  role    = local.org.storage_bucket_creator_role
+  role    = local.org.storage_bucket_creator_role[var.environment]
   member  = google_service_account.apply[each.key].member
 }
 
@@ -455,7 +455,7 @@ resource "google_spanner_instance_iam_member" "plan_spanner_reader" {
 
   project  = local.instance_project
   instance = local.instance_name
-  role     = local.org.spanner_plan_reader_role
+  role     = local.org.spanner_plan_reader_role[var.environment]
   member   = google_service_account.plan[each.key].member
 }
 

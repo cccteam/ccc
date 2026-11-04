@@ -6,7 +6,7 @@
 # layer and holds the roles of its role set in var.layer_roles. The plan
 # identity ({prefix}-{env}-gbl-plan) is read-only and holds the roles of its
 # role set in var.plan_roles, so a plan can run from a pull request without
-# the power to apply: the custom organization role of its project's kind
+# the power to apply: the custom role of its project's kind, in its project
 # (custom-roles.tf), which reads the resource types the layer declares and
 # nothing of their data, and roles/iam.securityReviewer for the IAM policies
 # the layer's grants are refreshed through. roles/viewer is not among them:
@@ -57,10 +57,10 @@ resource "google_project_iam_member" "tofu" {
 
   project = module.project[each.value.proj].project_id
 
-  # A bare ID names a custom role from custom-roles.tf; a predefined role
-  # passes through unchanged. The for_each key keeps the bare ID so it is known
-  # before the custom role exists.
-  role   = lookup(local.custom_roles, each.value.role, each.value.role)
+  # A bare ID names a custom role from custom-roles.tf, the one in this
+  # project; a predefined role passes through unchanged. The for_each key keeps
+  # the bare ID so it is known before the custom role exists.
+  role   = lookup(local.custom_roles[each.value.proj], each.value.role, each.value.role)
   member = google_service_account.tofu[each.value.proj].member
 }
 
@@ -107,7 +107,7 @@ resource "google_project_iam_member" "plan" {
   }
 
   project = module.project[each.value.proj].project_id
-  role    = lookup(local.custom_roles, each.value.role, each.value.role)
+  role    = lookup(local.custom_roles[each.value.proj], each.value.role, each.value.role)
   member  = google_service_account.plan[each.value.proj].member
 }
 

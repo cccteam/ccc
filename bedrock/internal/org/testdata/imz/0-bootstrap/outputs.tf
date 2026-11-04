@@ -67,8 +67,8 @@ output "org_service_account_email" {
 }
 
 output "state_bucket_policy_admin_role" {
-  description = "Full name of the custom organization role that reads and sets a bucket's IAM policy, held on the state bucket by the boot identity."
-  value       = google_organization_iam_custom_role.state_bucket_policy_admin.id
+  description = "Full name of the custom role in the boot project that reads and sets a bucket's IAM policy, held on the state bucket by the boot identity."
+  value       = google_project_iam_custom_role.state_bucket_policy_admin.id
 }
 
 output "terraform_folder_id" {
@@ -79,9 +79,4 @@ output "terraform_folder_id" {
 output "organization_folder_id" {
   description = "Folder ID of the organization's folder, named after the prefix, which holds the terraform folder."
   value       = google_folder.organization.folder_id
-}
-
-output "organization_suffix" {
-  description = "The organization's suffix (bootstrap.tf): the random value every name at the organization node ends with, the custom roles and the public-invoker tag key among them."
-  value       = random_id.organization.hex
 }

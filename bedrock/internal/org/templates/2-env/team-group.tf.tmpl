@@ -93,7 +93,7 @@ locals {
       secret-operator = {
         declared = true
         duration = local.entitlement_durations.secret_operator
-        bindings = [{ role = local.org.secret_operator_role, condition = "" }]
+        bindings = [{ role = local.org.secret_operator_role[var.environment], condition = "" }]
       }
       spanner-admin = {
         declared = local.own_instance
@@ -108,7 +108,7 @@ locals {
         duration = local.entitlement_durations.spanner_viewer
         bindings = [
           { role = "roles/spanner.databaseReader", condition = "" },
-          { role = local.org.spanner_plan_reader_role, condition = "" },
+          { role = local.org.spanner_plan_reader_role[var.environment], condition = "" },
         ]
       }
       layer-administrator = {

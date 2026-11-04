@@ -170,7 +170,7 @@ database, with the indexes and time-to-live policies on it),
 `roles/serviceusage.apiKeysAdmin` (the web API key its browsers present),
 `roles/cloudbuild.builds.editor`,
 `roles/logging.admin`, `roles/monitoring.admin`,
-`roles/resourcemanager.projectIamAdmin`, and the custom organization role
+`roles/resourcemanager.projectIamAdmin`, and the custom role
 `secretContainerAdmin` from `1-org` (secrets as containers, never payloads). Cloud Storage
 is two bounded grants on the environment project: `roles/storage.admin` under
 a condition admitting every bucket whose name starts with
@@ -475,8 +475,8 @@ The layer administrator covers this layer alone. The apply identities of
 `0-bootstrap` and `1-org` (in the boot project) and of `2-shr`, `2-spn` and
 `2-net` (in the shared projects) sit outside the environment projects, and
 the groups are per environment, so no entitlement covers them: their
-recovery is the bootstrap administrator's, with the organization-level roles
-first-time setup uses, since those layers change rarely and a broken apply
+recovery is the break-glass account's, with the roles it grants itself on the
+organization's folder for the run, since those layers change rarely and a broken apply
 there is a setup-grade event (`0-bootstrap/README.md`, "Recovery, by hand").
 
 Creating the entitlements needs `roles/privilegedaccessmanager.admin` on the
@@ -526,7 +526,7 @@ done
 The connection authorizes with a GitHub OAuth token that only a browser can
 produce, once per organization, in the boot project's Cloud Build console,
 before the first apply of `0-bootstrap` (`0-bootstrap/README.md`, "2. The
-Cloud Build GitHub authorization"): the bootstrap administrator at the
+Cloud Build GitHub authorization"): the break-glass account at the
 console, signed in to GitHub as the organization's machine account
 `{{.GithubMachineAccount}}` (`githubMachineAccount` in `placement.json`). The
 console stores the token in the boot project, and `placement.json` records
@@ -574,7 +574,7 @@ application's stack makes its release trigger once the version is pinned.
   project, which the grant to the applications' identities needs, and the
   plan identity's read of that container's policy (`roles/secretmanager.viewer`
   on the container), which a plan refreshes the grants through.
-- `roles/resourcemanager.tagUser` on the public-invoker tag for each
+- `roles/resourcemanager.tagUser` on the environment project's public-invoker tag for each
   application's apply identity, from `1-org` (`public-invokers.auto.tfvars`),
   rendered once the registration is past its identities, after this layer has
   created them.

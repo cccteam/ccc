@@ -48,7 +48,8 @@ resource "google_org_policy_policy" "folder" {
 }
 
 # Domain restricted sharing, restated on the environment folders with one
-# exception (tags.tf): a resource tagged public-invoker=true may name allUsers.
+# exception (tags.tf): a resource tagged public-invoker=true, with the
+# environment project's own key, may name allUsers.
 # Without the copy the organization-level default applies unconditionally
 # and the application layers cannot open a Cloud Run service to the load
 # balancer. inherit_from_parent stays false, so this is the whole policy for
@@ -64,7 +65,7 @@ resource "google_org_policy_policy" "allowed_member_domains" {
       condition {
         title       = "public-invoker"
         description = "A Cloud Run service the application layer tagged for the load balancer."
-        expression  = "resource.matchTag('${local.org_id}/${google_tags_tag_key.public_invoker.short_name}', '${google_tags_tag_value.public_invoker.short_name}')"
+        expression  = "resource.matchTagId('${google_tags_tag_key.public_invoker[each.key].id}', '${google_tags_tag_value.public_invoker[each.key].id}')"
       }
       allow_all = "TRUE"
     }

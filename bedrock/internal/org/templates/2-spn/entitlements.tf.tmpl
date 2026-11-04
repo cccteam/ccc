@@ -51,7 +51,7 @@ locals {
       bindings = [
         { role = "roles/spanner.databaseAdmin", condition = "resource.name.startsWith(\"${local.environment_databases[env]}\")" },
         { role = "roles/spanner.backupAdmin", condition = "resource.name.startsWith(\"${local.environment_databases[env]}\") || resource.name.startsWith(\"${local.environment_backups[env]}\")" },
-        { role = local.org.spanner_plan_reader_role, condition = "" },
+        { role = local.org.spanner_plan_reader_role[local.environment], condition = "" },
       ]
     }
   }
@@ -64,7 +64,7 @@ locals {
       duration    = local.entitlement_durations.spanner_viewer
       bindings = [
         { role = "roles/spanner.databaseReader", condition = "resource.name.startsWith(\"${local.environment_databases[env]}\")" },
-        { role = local.org.spanner_plan_reader_role, condition = "" },
+        { role = local.org.spanner_plan_reader_role[local.environment], condition = "" },
       ]
     }
   }

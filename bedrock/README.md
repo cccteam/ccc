@@ -824,7 +824,7 @@ pull request that moved the pin from a release to a commit could not be planned.
 `upgrade` says so before it moves anything, asks for `yes` typed back (`--yes` stands in
 for it where there is no terminal; without either the run is refused and nothing is
 moved), and after the render applies 0-bootstrap as the person running it, with their
-sign-in, the way the bootstrap administrator applies the layer by hand (`tofu init`,
+sign-in, the way the break-glass account applies the layer by hand (`tofu init`,
 `plan` and `apply` in `0-bootstrap`, at its backend). It prints the plan's summary line
 (the two triggers updated in place) and the apply's, then the usual closing line. A move
 that keeps the kind applies nothing and reads as before. A pull request that reaches the
@@ -2356,7 +2356,7 @@ fails on it.
 
 ```sh
 bedrock org new ../infrastructure --placement placement.json   # a foundation for an organization that has none
-bedrock org preflight                                           # before the seed: the bootstrap administrator's roles
+bedrock org preflight                                           # before the seed: the break-glass account's roles
 bedrock org render                                              # after a placement change
 bedrock org check                                               # the committed layers against the placement
 bedrock org register quill ../quill                             # an application joins the foundation; its first placement.json is written into its checkout
@@ -2438,10 +2438,10 @@ and the rendered root README ("How the layers are applied", "The two GitHub Apps
    repositories, and the release app's two organization secrets (GitHub prerequisites,
    below). The team groups, the machine account and the release app's App ID and slug go
    into the placement, and `org new` renders.
-2. In a terminal, as the bootstrap administrator: `gcloud auth application-default
+2. In a terminal, as the break-glass account: `gcloud auth application-default
    login`, then `bedrock org preflight`, which must find every role held, then the seed.
 3. In this repository: the seed's values in the placement and `org render`.
-4. In the boot project's Cloud Build console, as the bootstrap administrator (Owner on
+4. In the boot project's Cloud Build console, as the break-glass account (Owner on
    the boot project from the seed), signed in to GitHub as the machine account: the Cloud
    Build GitHub authorization, before the first apply of 0-bootstrap. Its installation id
    and the token secret's version go into the placement (`cloudBuildInstallationId`,
@@ -2509,16 +2509,15 @@ environment turns on in the application's `terraform.tfvars` (the organization's
 backends carry none).
 
 `org preflight` is the check before the seed. The seed and the first applies of 0-bootstrap
-and 1-org run as the bootstrap administrator, a person, before any layer identity exists, so
-that person must hold the roles they need. Run with the administrator's Application Default
-Credentials (`gcloud auth application-default login`), it asks Google which of the
-permissions those runs need the caller holds: on the organization `placement.json` names
-(Cloud Resource Manager's `testIamPermissions`) and on its billing account (Cloud Billing's).
-The roles are Folder Creator, Project Creator, Organization Administrator, Organization
-Policy Administrator, Organization Role Administrator and Tag Administrator at the
-organization, and Billing Account User on the billing account (a zones organization's
-seed needs five of them: neither the organization policy nor the tag role, which 1-org
-alone uses). It prints one line per role,
+and 1-org run as the break-glass account (`breakGlassAccount` in the placement), before any
+layer identity exists, so that account must hold the two roles it needs above the
+organization's folder. Run with the account's Application Default Credentials (`gcloud auth
+application-default login`), it asks Google which of the permissions those runs need the
+caller holds: on the organization `placement.json` names (Cloud Resource Manager's
+`testIamPermissions`) and on its billing account (Cloud Billing's). The roles are Folder
+Creator at the organization, for the organization's folder, and Billing Account User on the
+billing account; everything else the seed and the first applies need is the account's as the
+folder's creator, or granted to it on the folder by the seed. It prints one line per role,
 `holds` or `missing` with the permissions tested, and exits 1 when a role is missing, saying
 who grants it where, or when it could not check (no credentials, or an API that refused).
 
@@ -2538,13 +2537,16 @@ registration's state and expiry date, an expiry within thirty days with the bill
 account to look at (renewal is automatic while it is active), and any other issue the
 registrar raises. It reads the registrations with the run's Google credentials
 (`roles/domains.viewer` on the network project); without any, or when Cloud Domains
-cannot be reached, it says so and never fails the check. `org check` then lists each person (a `user:`
-member) holding `roles/owner` on an environment project the placement records, with the
-project: the grant a project's creator receives, which the first apply of 1-org by hand
-leaves the bootstrap administrator with on every project it creates, temporary by design
-and removed by hand once the apply trigger applies the layers (`1-org/README.md`, "Applying").
-The listing reads the projects' IAM policies with the run's Google credentials (`gcloud
-auth application-default login`); without any it says so, and it never fails the check.
+cannot be reached, it says so and never fails the check. `org check` then lists each grant
+of the first-time setup still held, with its place: Owner held by a person (a `user:`
+member) on a project the placement records, Folder Admin or Folder Editor held by a person
+on a folder under the organization's folder, which Google gives whoever creates a project or
+a folder, and every role the break-glass account holds on the organization's folder or a
+project but the one it keeps, Folder Admin on the organization's folder. All of them are
+temporary by design and removed by hand once the apply trigger applies the layers
+(`0-bootstrap/README.md`, "Trimming the break-glass account"). The listing reads the
+projects' and folders' IAM policies with the run's Google credentials (`gcloud auth
+application-default login`); without any it says so, and it never fails the check.
 While the placement declares more databases on a Spanner instance than it holds (the
 count `org register` refuses on, for the shared instance and each environment's own), or
 the applications' databases take all of the integration environment's instance and leave
@@ -2644,11 +2646,11 @@ posted as (`githubDeployerAppId`, `githubDeployerKeyVersion`) and the bedrock pi
 applies a layer whose project the placement does not record yet (REPLACEME) stops and says
 which ids to record; one that plans or applies 1-org without the infrastructure app
 recorded stops and says what records it. The first applies of 0-bootstrap and 1-org are
-the bootstrap administrator's, before the identities exist; recovery is by hand, for 2-env
+the break-glass account's, before the identities exist; recovery is by hand, for 2-env
 by a member of the environment's team group under the layer administrator entitlement (the
 environment layer identity's roles on the environment project) and the layer state
 entitlement (its slot in the state bucket, on the boot project), running the layer as
-themselves, for the other layers as the bootstrap administrator; an apply by hand leaves
+themselves, for the other layers as the break-glass account; an apply by hand leaves
 the layer's marker as it was, so the next push applies the layer again, with an empty plan
 when the hand apply was complete.
 
@@ -2718,7 +2720,8 @@ backups of its databases and the data down). The code typed back gates the run (
 stands in for it). A retired application is registered again as a new one.
 
 `org destroy` deletes every project of the organization, by a person at their own computer
-with their own sign-in (an owner of the GCP organization; `GITHUB_TOKEN`, or gh's token, for
+with their own sign-in (the break-glass account, holding Owner on the organization's folder
+for the run; `GITHUB_TOKEN`, or gh's token, for
 1-org's GitHub provider: the infrastructure GitHub App's installation token, or an
 organization owner's). It says what goes, project by project, and asks for the prefix typed
 back before anything runs (`--yes` stands in for it where there is no terminal). It destroys
@@ -2907,7 +2910,7 @@ organization's GitHub plan, so its plan must include all four.
 
 And one account: the machine account (`githubMachineAccount`, under bedrock org above), a
 GitHub user that is an owner of the organization and acts for no person, which authorizes
-the Cloud Build GitHub connection once, in the boot project, as the bootstrap administrator
+the Cloud Build GitHub connection once, in the boot project, as the break-glass account
 at the console; the token secret lives there, and every connection, the boot project's for
 the layers' triggers and each environment's for the applications', is rendered from it.
 

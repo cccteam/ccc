@@ -151,55 +151,121 @@ func unauthorizeConnection(t *testing.T, dir string) {
 	})
 }
 
-// fakePolicyReader answers every project's IAM policy from one map; a project it lacks
-// has no bindings.
+// fakePolicyReader answers every project's and folder's IAM policy from one map each; a
+// project or folder it lacks has no bindings. The organization's folder is found when
+// folder names it, with children listed under it.
 type fakePolicyReader struct {
 	byProject map[string][]org.Binding
+	byFolder  map[string][]org.Binding
+	folder    string
+	children  []org.Folder
 }
 
 func (f *fakePolicyReader) ProjectPolicy(_ context.Context, project string) ([]org.Binding, error) {
 	return f.byProject[project], nil
 }
 
+func (f *fakePolicyReader) OrganizationFolder(context.Context, string, string) (string, error) {
+	return f.folder, nil
+}
+
+func (f *fakePolicyReader) ChildFolders(context.Context, string) ([]org.Folder, error) {
+	return f.children, nil
+}
+
+func (f *fakePolicyReader) FolderPolicy(_ context.Context, folder string) ([]org.Binding, error) {
+	return f.byFolder[folder], nil
+}
+
 func (*fakePolicyReader) Close() error {
 	return nil
 }
 
-// TestOrgCheckOwners: org check lists each person holding roles/owner on an environment
-// project, with the project, and says what it does when it has no credentials; neither
+// TestOrgCheckLeftovers: org check lists each grant the first-time setup left a person
+// with, with its place: a person's Owner on a project, a person's Folder Admin or Folder
+// Editor on a folder under the organization's, and every role the break-glass account
+// holds on the organization's folder but Folder Admin, the one it keeps. It says what it
+// does when it has no credentials or the seed has not made the folder yet; none of it
 // fails the check.
-func TestOrgCheckOwners(t *testing.T) {
+func TestOrgCheckLeftovers(t *testing.T) {
 	t.Parallel()
 
+	const (
+		tst       = "imp-tst-gbl-core-1a2b"
+		account   = "user:seed@imp.example"
+		trimmed   = `; it is temporary, removed once the apply trigger applies the layers (0-bootstrap/README.md, "Trimming the break-glass account").`
+		organized = "111111111111"
+		terraform = "222222222222"
+	)
 	tests := []struct {
 		name     string
 		policies org.PolicyReaderFunc
 		wantOut  []string
+		absent   []string
 	}{
 		{
-			name: "a person on roles/owner is reported with the project; a service account is not",
+			name: "each leftover grant is reported with its place; a service account and the kept Folder Admin are not",
 			policies: func(context.Context) (org.PolicyReader, error) {
-				return &fakePolicyReader{byProject: map[string][]org.Binding{
-					"imp-tst-gbl-core-1a2b": {{Role: "roles/owner", Members: []string{"user:seed@imp.example", "serviceAccount:imp-tst-gbl-tofu@imp-tst-gbl-core-1a2b.iam.gserviceaccount.com"}}},
-				}}, nil
+				return &fakePolicyReader{
+					byProject: map[string][]org.Binding{
+						tst: {{Role: "roles/owner", Members: []string{account, "serviceAccount:imp-tst-gbl-tofu@imp-tst-gbl-core-1a2b.iam.gserviceaccount.com"}}},
+					},
+					folder: organized,
+					byFolder: map[string][]org.Binding{
+						organized: {
+							{Role: "roles/resourcemanager.folderAdmin", Members: []string{account}},
+							{Role: "roles/resourcemanager.projectCreator", Members: []string{account}},
+						},
+						terraform: {
+							{Role: "roles/resourcemanager.folderAdmin", Members: []string{account}},
+							{Role: "roles/resourcemanager.folderEditor", Members: []string{account}},
+						},
+					},
+					children: []org.Folder{{ID: terraform, Name: "terraform"}},
+				}, nil
 			},
 			wantOut: []string{
-				"tst (imp-tst-gbl-core-1a2b): user:seed@imp.example holds roles/owner, the creator's grant from the first apply of 1-org by hand; it is temporary, removed once the apply trigger applies the layers (1-org/README.md, Applying).",
+				"project tst (" + tst + "): " + account + " holds roles/owner, the creator's grant from the first applies by hand" + trimmed,
+				"folder imp (" + organized + "): " + account + " holds roles/resourcemanager.projectCreator, the seed's grant for the first apply of 1-org" + trimmed,
+				"folder terraform (" + terraform + "): " + account + " holds roles/resourcemanager.folderAdmin, the creator's grant from the first applies by hand" + trimmed,
+				"folder terraform (" + terraform + "): " + account + " holds roles/resourcemanager.folderEditor, the creator's grant from the first applies by hand" + trimmed,
 				"owned file(s) match the placement",
+			},
+			absent: []string{
+				"folder imp (" + organized + "): " + account + " holds roles/resourcemanager.folderAdmin",
+				"serviceAccount:imp-tst-gbl-tofu",
+				"No grant of the first-time setup is left",
 			},
 		},
 		{
-			name: "nobody on roles/owner",
+			name: "nothing left but the kept Folder Admin",
+			policies: func(context.Context) (org.PolicyReader, error) {
+				return &fakePolicyReader{
+					folder:   organized,
+					byFolder: map[string][]org.Binding{organized: {{Role: "roles/resourcemanager.folderAdmin", Members: []string{account}}}},
+				}, nil
+			},
+			wantOut: []string{
+				"No grant of the first-time setup is left: nobody holds roles/owner on a project, nobody Folder Admin or Folder Editor on a folder under the organization's, and the break-glass account holds Folder Admin on the organization's folder alone.",
+				"owned file(s) match the placement",
+			},
+			absent: []string{"Leftover grants not checked"},
+		},
+		{
+			name: "before the seed there is no folder to read",
 			policies: func(context.Context) (org.PolicyReader, error) {
 				return &fakePolicyReader{}, nil
 			},
-			wantOut: []string{"No person holds roles/owner on an environment project.", "owned file(s) match the placement"},
+			wantOut: []string{
+				"Leftover grants not checked on the folders: no folder named imp under organization 123456789012 (the seed makes it).",
+				"owned file(s) match the placement",
+			},
 		},
 		{
 			name:     "without credentials the check says what it would do",
 			policies: noPolicies,
 			wantOut: []string{
-				"Owners not checked (no Google credentials in this test): org check lists each person (a user: member) holding roles/owner on an environment project, the creator's temporary grant, when it runs with Google credentials that read the projects' IAM policies (gcloud auth application-default login).",
+				"Leftover grants not checked (no Google credentials in this test): org check lists each grant the first-time setup left a person with (a person's roles/owner on a project, a person's Folder Admin or Folder Editor on a folder under the organization's, and the break-glass account's roles beyond its Folder Admin on the organization's folder), when it runs with Google credentials that read the projects' and folders' IAM policies (gcloud auth application-default login).",
 				"owned file(s) match the placement",
 			},
 		},
@@ -221,6 +287,11 @@ func TestOrgCheckOwners(t *testing.T) {
 			for _, want := range tt.wantOut {
 				if !strings.Contains(out, want) {
 					t.Errorf("output lacks %q:\n%s", want, out)
+				}
+			}
+			for _, absent := range tt.absent {
+				if strings.Contains(out, absent) {
+					t.Errorf("output carries %q:\n%s", absent, out)
 				}
 			}
 		})
@@ -544,12 +615,12 @@ func TestOrgPreflight(t *testing.T) {
 		{
 			name: "a role missing exits 1",
 			permissions: func(context.Context) (org.PermissionTester, error) {
-				return grantedTester{lacks: []string{"resourcemanager.tagValues.setIamPolicy"}}, nil
+				return grantedTester{lacks: []string{"resourcemanager.folders.create"}}, nil
 			},
 			wantCode: 1,
 			wantOut: []string{
-				"Tag Administrator (roles/resourcemanager.tagAdmin), on organization 123456789012: missing resourcemanager.tagValues.setIamPolicy",
-				"1 of 7 role(s) missing",
+				"Folder Creator (roles/resourcemanager.folderCreator), on organization 123456789012: missing resourcemanager.folders.create",
+				"1 of 2 role(s) missing",
 			},
 		},
 		{
@@ -637,18 +708,17 @@ func TestOrgCommands(t *testing.T) {
 				"In a terminal, in this repository, the apps' keys, never by hand, once 0-bootstrap\n     has made their three containers in the boot project: bedrock secret add\n     github-infrastructure-key and bedrock secret pin github-infrastructure-key\n     <version>; the same with github-deployer-key and github-release-key. No key reaches\n     GitHub: the release trigger of each application's stack mints the release app's\n     token from the pinned version in Cloud Build.",
 				"1. In a terminal, as seed@imp.example, after gcloud auth application-default login:\n     bedrock org preflight, which must find each of these roles held:\n" +
 					"       - Folder Creator (roles/resourcemanager.folderCreator), on the organization\n" +
-					"       - Project Creator (roles/resourcemanager.projectCreator), on the organization\n" +
-					"       - Organization Administrator (roles/resourcemanager.organizationAdmin), on the organization\n" +
-					"       - Organization Policy Administrator (roles/orgpolicy.policyAdmin), on the organization\n" +
-					"       - Organization Role Administrator (roles/iam.organizationRoleAdmin), on the organization\n" +
-					"       - Tag Administrator (roles/resourcemanager.tagAdmin), on the organization\n" +
 					"       - Billing Account User (roles/billing.user), on the billing account\n" +
-					"     then the seed: the terraform folder at the organization root (123456789012)",
+					"     then the seed: the organization's folder at the organization root (123456789012), which makes\n" +
+					"     the account its administrator, the terraform folder under it, the boot project\n" +
+					"     imp-boot-gbl-core-<suffix>, the boot identity imp-boot-gbl-tofu with its roles on the\n" +
+					"     organization's folder, and the state bucket imp-boot-gbl-state-<suffix>. Nothing of the\n" +
+					"     organization's sits at the organization node.",
 				"imp-boot-gbl-tofu", "projects.boot, projectNumbers.boot",
-				"3. In the boot project's Cloud Build console, as seed@imp.example (the bootstrap\n     administrator, Owner on the boot project from the seed), signed in to GitHub as the\n     organization's machine account (imp-machine): the Cloud Build GitHub App's authorization\n     (0-bootstrap/README.md, \"The Cloud Build GitHub authorization\"), a connection named\n     imp-boot-uc1-github in us-central1; its installation id and the token secret's version go\n     into placement.json (cloudBuildInstallationId, cloudBuildTokenSecretVersion). Then,\n     in a terminal, in this repository: bedrock upgrade, which pins the bedrock the\n     triggers run (bedrockVersion) and renders. bedrock org register refuses the first\n     application until the two values are set.",
+				"3. In the boot project's Cloud Build console, as seed@imp.example (the break-glass\n     account, Owner on the boot project from the seed), signed in to GitHub as the\n     organization's machine account (imp-machine): the Cloud Build GitHub App's authorization\n     (0-bootstrap/README.md, \"The Cloud Build GitHub authorization\"), a connection named\n     imp-boot-uc1-github in us-central1; its installation id and the token secret's version go\n     into placement.json (cloudBuildInstallationId, cloudBuildTokenSecretVersion). Then,\n     in a terminal, in this repository: bedrock upgrade, which pins the bedrock the\n     triggers run (bedrockVersion) and renders. bedrock org register refuses the first\n     application until the two values are set.",
 				"4. In a terminal, in 0-bootstrap: the apply on local state, the connection imported\n     into it first, then the migration of its state into the bucket.",
 				"5. In a terminal, as a billing administrator of 012345-6789AB-CDEF01: roles/billing.user on\n     it for the two identities. In the Billing console, as the same administrator: the\n     spend budget on the account (0-bootstrap/README.md, step 5)",
-				"6. In a terminal, in 1-org: the apply, with GITHUB_TOKEN", "a creator's grants,\n     temporary, removed by hand once the apply trigger applies the layers",
+				"6. In a terminal, in 1-org: the apply, with GITHUB_TOKEN", "a creator's grants, temporary, removed by hand once the apply\n     trigger applies the layers, with the roles the seed granted you on the organization's\n     folder for this apply (0-bootstrap/README.md, \"Trimming the break-glass account\";\n     bedrock org check lists each grant still held). Folder Admin on the organization's\n     folder alone stays with the account, its key for a recovery by hand.",
 				"7. In each environment project's Google Cloud console, before the first application's\n     OAuth client is made there: the consent screen (APIs & Services, OAuth consent\n     screen), with the audience Internal",
 				"From then on the two Cloud Build triggers in the boot project (imp-boot-uc1-layers-plan and imp-boot-uc1-layers-apply)\napply every layer, these two included: a pull request plans the layers it touches as their\nplan identities and posts the plans on it, the merge applies them as their apply\nidentities, in layer order.",
 				"Pinned bedrock " + headVersion + " in ",
@@ -1249,7 +1319,7 @@ func TestOrgRegisterNext(t *testing.T) {
 	const (
 		bucket  = "imp-boot-gbl-state-a1b2"
 		host    = `"quill-tst.apps.imp.example"`
-		invoker = `"serviceAccount:imp-tst-gbl-quill-tofu@imp-tst-gbl-core-1a2b.iam.gserviceaccount.com",`
+		invoker = `tst = "serviceAccount:imp-tst-gbl-quill-tofu@imp-tst-gbl-core-1a2b.iam.gserviceaccount.com"`
 	)
 	type step struct {
 		// objects are added to the store before the run.

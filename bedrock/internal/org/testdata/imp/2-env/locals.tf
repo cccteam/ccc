@@ -174,7 +174,7 @@ locals {
     "roles/logging.admin",
     "roles/monitoring.admin",
     "roles/resourcemanager.projectIamAdmin",
-    local.org.secret_container_admin_role,
+    local.org.secret_container_admin_role[var.environment],
   ]
 
   # The deploy identity runs every build and deploy and never writes
@@ -211,8 +211,8 @@ locals {
     "roles/cloudtrace.agent",
     "roles/telemetry.tracesWriter",
     "roles/monitoring.viewer",
-    local.org.run_job_policy_admin_role,
-    local.org.cloud_build_build_reader_role,
+    local.org.run_job_policy_admin_role[var.environment],
+    local.org.cloud_build_build_reader_role[var.environment],
   ]
 
   # The application plan identity plans the application's stack for this
@@ -227,7 +227,7 @@ locals {
   # the same as the apply identity.
   plan_project_roles = [
     "roles/serviceusage.serviceUsageConsumer",
-    local.org.application_plan_reader_role,
+    local.org.application_plan_reader_role[var.environment],
     "roles/iam.securityReviewer",
   ]
 

@@ -1,9 +1,12 @@
 // preflight.go is the check before the seed: it asks Google which of the permissions the
-// seed and the first applies of 0-bootstrap and 1-org need the caller holds, on the
+// seed and the first applies of 0-bootstrap and 1-org need the caller holds at the
 // organization and on the billing account, and names each role that grants what is
-// missing. Those three runs are the bootstrap administrator's, from their own computer,
-// before any layer identity exists, so the roles they need are a person's to hold; the
-// table below is the list the READMEs name them from.
+// missing. Those runs are the break-glass account's, from a person's computer, before
+// any layer identity exists, so the roles they need are that account's to hold; the table
+// below is the list the READMEs name them from. Everything else the runs need is under
+// the organization's folder, which the seed creates: Google makes a folder's creator its
+// administrator, and the seed grants the account there what the first apply of 1-org
+// needs (0-bootstrap/README.md, "First-time setup").
 
 package org
 
@@ -23,7 +26,7 @@ import (
 // Scope is where a bootstrap role is granted and its permissions are tested.
 type Scope string
 
-// The two places the bootstrap administrator holds roles.
+// The two places the break-glass account holds roles above the organization's folder.
 const (
 	// OnOrganization is the organization node: the roles there reach every folder and
 	// project under it.
@@ -38,7 +41,7 @@ const (
 	verdictMissing = "missing"
 )
 
-// BootstrapRole is one role the bootstrap administrator holds for the seed and the first
+// BootstrapRole is one role the break-glass account holds for the seed and the first
 // applies of 0-bootstrap and 1-org: its title as the console names it, its id, where it
 // is granted, the permissions tested for it, and what needs them; ZonesNeeds is what a
 // zones organization's seed and first applies need it for, empty for a role they do not
@@ -53,57 +56,22 @@ type BootstrapRole struct {
 }
 
 // BootstrapRoles are the roles the seed and the first applies of 0-bootstrap and 1-org
-// need, each with the permissions that stand for it. Everything else those runs do
-// happens inside a project or a folder the person just created, where Google makes the
-// creator Owner (a project) or Folder Admin and Folder Editor (a folder). Essential
-// Contacts are left out: 1-org registers none until essential_contact_emails is set, and
-// a later apply runs as the org identity, which holds the role.
+// need above the organization's folder, each with the permissions that stand for it:
+// creating the folder at the organization, and linking the projects to the billing
+// account. Everything else those runs do happens under the folder, where the seed grants
+// the break-glass account what 1-org's first apply needs (project creator, organization
+// policy administrator and tag administrator, on the folder) and where Google makes the
+// creator Owner (a project) or Folder Admin and Folder Editor (a folder); every one of
+// those grants is removed once the apply trigger applies the layers, and org check lists
+// what is left. Nothing of the organization's sits at the organization node afterward.
 var BootstrapRoles = []BootstrapRole{
 	{
 		Title:       "Folder Creator",
 		Role:        "roles/resourcemanager.folderCreator",
 		On:          OnOrganization,
 		Permissions: []string{"resourcemanager.folders.create"},
-		Needs:       "the seed's terraform folder and 1-org's folders, at the organization root",
-		ZonesNeeds:  "the seed's two folders, at the organization root",
-	},
-	{
-		Title:       "Project Creator",
-		Role:        "roles/resourcemanager.projectCreator",
-		On:          OnOrganization,
-		Permissions: []string{"resourcemanager.projects.create"},
-		Needs:       "the seed's boot project and 1-org's projects",
-		ZonesNeeds:  "the seed's boot project",
-	},
-	{
-		Title:       "Organization Administrator",
-		Role:        "roles/resourcemanager.organizationAdmin",
-		On:          OnOrganization,
-		Permissions: []string{"resourcemanager.organizations.get", "resourcemanager.organizations.getIamPolicy", "resourcemanager.organizations.setIamPolicy"},
-		Needs:       "the organization roles the seed grants the boot identity, and those 0-bootstrap and 1-org grant the layer identities",
-		ZonesNeeds:  "the organization roles the seed grants the boot identity, and those 0-bootstrap grants the plan identities",
-	},
-	{
-		Title:       "Organization Policy Administrator",
-		Role:        "roles/orgpolicy.policyAdmin",
-		On:          OnOrganization,
-		Permissions: []string{"orgpolicy.policy.set"},
-		Needs:       "1-org's organization policies on its folders",
-	},
-	{
-		Title:       "Organization Role Administrator",
-		Role:        "roles/iam.organizationRoleAdmin",
-		On:          OnOrganization,
-		Permissions: []string{"iam.roles.create", "iam.roles.update"},
-		Needs:       "the custom roles 0-bootstrap and 1-org define at the organization",
-		ZonesNeeds:  "the custom roles 0-bootstrap defines at the organization",
-	},
-	{
-		Title:       "Tag Administrator",
-		Role:        "roles/resourcemanager.tagAdmin",
-		On:          OnOrganization,
-		Permissions: []string{"resourcemanager.tagKeys.create", "resourcemanager.tagValues.create", "resourcemanager.tagValues.setIamPolicy"},
-		Needs:       "1-org's public-invoker tag, its value and the grants on the value",
+		Needs:       "the organization's folder, at the organization root; the seed's terraform folder and 1-org's folders are made under it as its administrator",
+		ZonesNeeds:  "the organization's folder, at the organization root; the seed's terraform folder is made under it as its administrator",
 	},
 	{
 		Title:       "Billing Account User",
@@ -116,9 +84,8 @@ var BootstrapRoles = []BootstrapRole{
 }
 
 // BootstrapRoles are the roles the organization's seed and first applies need, by its
-// kind: the table for a hosting organization; for a zones organization the roles its
-// bootstrap and 1-dns need, each with what needs it there, since 1-dns declares no
-// folder, project, policy or tag.
+// kind: the table for a hosting organization; for a zones organization the same roles,
+// each with what needs it there, since 1-dns declares no folder, project, policy or tag.
 func (p *Placement) BootstrapRoles() []BootstrapRole {
 	if !p.Zones() {
 		return BootstrapRoles
@@ -166,14 +133,14 @@ func (c RoleCheck) Held() bool {
 }
 
 // PreflightResult is what the check found: the placement's organization, billing account
-// and bootstrap administrator, the layer after the bootstrap whose first apply the roles
+// and break-glass account, the layer after the bootstrap whose first apply the roles
 // serve, and each role's answer in the table's order.
 type PreflightResult struct {
-	OrganizationID string
-	BillingAccount string
-	Operator       string
-	SecondLayer    string
-	Checks         []RoleCheck
+	OrganizationID    string
+	BillingAccount    string
+	BreakGlassAccount string
+	SecondLayer       string
+	Checks            []RoleCheck
 }
 
 // CheckPermissions asks, once per scope, which of the bootstrap roles' permissions the
@@ -199,7 +166,7 @@ func CheckPermissions(ctx context.Context, p *Placement, tester PermissionTester
 		}
 		held[scope] = answer
 	}
-	r := &PreflightResult{OrganizationID: p.OrganizationID, BillingAccount: p.BillingAccount, Operator: p.Operator, SecondLayer: p.SecondLayer()}
+	r := &PreflightResult{OrganizationID: p.OrganizationID, BillingAccount: p.BillingAccount, BreakGlassAccount: p.BreakGlassAccount, SecondLayer: p.SecondLayer()}
 	for _, role := range roles {
 		check := RoleCheck{BootstrapRole: role}
 		for _, permission := range role.Permissions {
@@ -260,7 +227,7 @@ func (r *PreflightResult) Write(w io.Writer) {
 	}
 	missing := r.Missing()
 	if len(missing) == 0 {
-		fmt.Fprintf(w, "These credentials hold every permission the seed and the first applies of 0-bootstrap and %s need (0-bootstrap/README.md, First-time setup).\n", r.SecondLayer)
+		fmt.Fprintf(w, "These credentials hold every permission the seed and the first applies of 0-bootstrap and %s need above the organization's folder (0-bootstrap/README.md, First-time setup).\n", r.SecondLayer)
 
 		return
 	}
@@ -281,12 +248,12 @@ func (r *PreflightResult) Write(w io.Writer) {
 	if len(atBilling) > 0 {
 		grants = append(grants, fmt.Sprintf("%s on %s, by a Billing Account Administrator of it", prose(atBilling), r.where(OnBillingAccount)))
 	}
-	fmt.Fprintf(w, "%d of %d role(s) missing: the bootstrap administrator (%s) is granted %s; then run org preflight again with that administrator's credentials (gcloud auth application-default login).\n",
-		len(missing), len(r.Checks), r.Operator, strings.Join(grants, ", and "))
+	fmt.Fprintf(w, "%d of %d role(s) missing: the break-glass account (%s) is granted %s; then run org preflight again with that account's credentials (gcloud auth application-default login).\n",
+		len(missing), len(r.Checks), r.BreakGlassAccount, strings.Join(grants, ", and "))
 }
 
 // preflightDoes says what the check does, for the line that says it did not run.
-const preflightDoes = "org preflight asks Google, with the run's Application Default Credentials (gcloud auth application-default login, as the bootstrap administrator), which of the permissions the seed and the first applies of 0-bootstrap and 1-org need they hold"
+const preflightDoes = "org preflight asks Google, with the run's Application Default Credentials (gcloud auth application-default login, as the break-glass account), which of the permissions the seed and the first applies of 0-bootstrap and 1-org need above the organization's folder they hold"
 
 // Preflight opens the tester, runs the check and writes its answer. It reports whether
 // the caller holds every role; without credentials, or when an API refuses to answer, it

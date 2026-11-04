@@ -68,7 +68,7 @@ resource "google_secret_manager_secret_iam_member" "org_plan_infrastructure_key"
 }
 
 # The boot identity manages the containers when this layer runs through the
-# apply trigger; the bootstrap administrator's Owner covered the first apply.
+# apply trigger; the break-glass account's Owner covered the first apply.
 resource "google_project_iam_member" "boot_tofu_secrets" {
   project = module.boot_project.project_id
   role    = "roles/secretmanager.admin"

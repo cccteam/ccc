@@ -17,7 +17,7 @@
   "bedrockSha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
   "sourceRepo": "imz-zones-infrastructure",
   "stateBucket": "imz-boot-gbl-state-c3d4",
-  "operator": "seed@imp.example",
+  "breakGlassAccount": "seed@imp.example",
   "regions": [
     {"name": "us-central1", "code": "uc1"}
   ],

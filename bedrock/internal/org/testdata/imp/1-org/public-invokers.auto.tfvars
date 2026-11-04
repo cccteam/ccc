@@ -4,20 +4,20 @@
 # terraform.tfvars, which keeps the values a person decides.
 
 # Each application's apply identity in every environment it is placed in (2-env's), granted
-# tagUser on the organization's public-invoker tag (tags.tf). An environment is listed once
+# tagUser on that environment project's public-invoker tag (tags.tf). An environment is listed once
 # the application's registration there is past its identities (placement.json's registration,
 # moved by bedrock org register <app> --next after 2-env's apply has created them), since a
 # grant on an identity that does not exist is refused. bedrock org register prints the
 # sequence.
 public_invokers = {
-  harbor = [
-    "serviceAccount:imp-tst-gbl-harbor-tofu@imp-tst-gbl-core-1a2b.iam.gserviceaccount.com",
-    "serviceAccount:imp-stg-gbl-harbor-tofu@imp-stg-gbl-core-3c4d.iam.gserviceaccount.com",
-    "serviceAccount:imp-prd-gbl-harbor-tofu@imp-prd-gbl-core-5e6f.iam.gserviceaccount.com",
-  ]
-  beacon = [
-    "serviceAccount:imp-tst-gbl-beacon-tofu@imp-tst-gbl-core-1a2b.iam.gserviceaccount.com",
-    "serviceAccount:imp-stg-gbl-beacon-tofu@imp-stg-gbl-core-3c4d.iam.gserviceaccount.com",
-    "serviceAccount:imp-prd-gbl-beacon-tofu@imp-prd-gbl-core-5e6f.iam.gserviceaccount.com",
-  ]
+  harbor = {
+    tst = "serviceAccount:imp-tst-gbl-harbor-tofu@imp-tst-gbl-core-1a2b.iam.gserviceaccount.com"
+    stg = "serviceAccount:imp-stg-gbl-harbor-tofu@imp-stg-gbl-core-3c4d.iam.gserviceaccount.com"
+    prd = "serviceAccount:imp-prd-gbl-harbor-tofu@imp-prd-gbl-core-5e6f.iam.gserviceaccount.com"
+  }
+  beacon = {
+    tst = "serviceAccount:imp-tst-gbl-beacon-tofu@imp-tst-gbl-core-1a2b.iam.gserviceaccount.com"
+    stg = "serviceAccount:imp-stg-gbl-beacon-tofu@imp-stg-gbl-core-3c4d.iam.gserviceaccount.com"
+    prd = "serviceAccount:imp-prd-gbl-beacon-tofu@imp-prd-gbl-core-5e6f.iam.gserviceaccount.com"
+  }
 }

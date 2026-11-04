@@ -409,11 +409,11 @@ func TestMachineAccount(t *testing.T) {
 		want []string
 	}{
 		{
-			name: "0-bootstrap's README: the browser step in the boot project, by the bootstrap administrator as the machine account, and the token",
+			name: "0-bootstrap's README: the browser step in the boot project, as the break-glass account signed in to GitHub as the machine account, and the token",
 			path: "0-bootstrap/README.md",
 			want: []string{
 				"### 2. The Cloud Build GitHub authorization\n",
-				"The person at the browser is the bootstrap\nadministrator, who is Owner on the boot project from step 1; the GitHub\naccount signed in is the organization's machine account,\n`imp-machine` (`githubMachineAccount` in `placement.json`)",
+				"The person at the browser is signed in as the\nbreak-glass account, Owner on the boot project from step 1; the GitHub\naccount signed in is the organization's machine account,\n`imp-machine` (`githubMachineAccount` in `placement.json`)",
 				"belongs to the `imp-example`\norganization and is an owner of it",
 				"Sign in to GitHub as\n   the machine account `imp-machine`, install or select",
 				"Record both in `placement.json`, as `cloudBuildInstallationId` and\n   `cloudBuildTokenSecretVersion`",
@@ -441,7 +441,7 @@ func TestMachineAccount(t *testing.T) {
 	}
 }
 
-// TestBootstrapRolesNamed reads the READMEs that tell the bootstrap administrator what to
+// TestBootstrapRolesNamed reads the READMEs that tell the break-glass account what to
 // hold: each names every role of org preflight's table, by title and id, and the
 // preflight command, so a role added to the check cannot be missing from the steps; the
 // four-role list the check replaced is gone.
@@ -466,7 +466,7 @@ func TestBootstrapRolesNamed(t *testing.T) {
 		{
 			name: "the root README's seed step",
 			path: "README.md",
-			want: []string{"3. **Seed.** In a terminal, as the bootstrap administrator: `bedrock org\n   preflight` first, which checks that the person holds each of these roles:\n"},
+			want: []string{"3. **Seed.** In a terminal, as the break-glass account: `bedrock org\n   preflight` first, which checks that the account holds each of these roles\n   above the organization's folder:\n"},
 		},
 	}
 	for _, tt := range tests {
@@ -893,7 +893,7 @@ func TestStorageAdminBounds(t *testing.T) {
 			name: "an application's apply identity: its own buckets by name, the creator role beside",
 			path: "2-env/identities.tf",
 			want: []string{
-				"resource \"google_project_iam_member\" \"apply_bucket_creator\" {\n  for_each = local.apps\n\n  project = local.project_id\n  role    = local.org.storage_bucket_creator_role\n  member  = google_service_account.apply[each.key].member\n}\n",
+				"resource \"google_project_iam_member\" \"apply_bucket_creator\" {\n  for_each = local.apps\n\n  project = local.project_id\n  role    = local.org.storage_bucket_creator_role[var.environment]\n  member  = google_service_account.apply[each.key].member\n}\n",
 				"resource \"google_project_iam_member\" \"apply_storage_admin\" {\n  for_each = local.apps\n\n  project = local.project_id\n  role    = \"roles/storage.admin\"\n  member  = google_service_account.apply[each.key].member\n\n  condition {\n    title       = \"${each.key} ${var.environment} buckets\"\n",
 				`expression  = join(" || ", [for code in local.files_bucket_codes : "resource.name.startsWith(\"projects/_/buckets/${local.name}-${code}-${each.key}-\")"])`,
 				"resource \"google_project_iam_member\" \"apply_security_policy_admin\" {\n  for_each = local.apps\n\n  project = local.project_id\n  role    = \"roles/compute.securityAdmin\"\n  member  = google_service_account.apply[each.key].member\n\n  condition {\n    title       = \"${each.key} ${var.environment} security policies\"\n",
@@ -940,12 +940,12 @@ func TestStorageAdminBounds(t *testing.T) {
 		{
 			name: "1-org resolves the creator role by bare id and publishes it",
 			path: "1-org/locals.tf",
-			want: []string{"    storageBucketCreator        = google_organization_iam_custom_role.storage_bucket_creator.id\n"},
+			want: []string{"    storageBucketCreator        = google_project_iam_custom_role.storage_bucket_creator[k].id\n"},
 		},
 		{
 			name: "the output",
 			path: "1-org/outputs.tf",
-			want: []string{"output \"storage_bucket_creator_role\" {", "  value       = google_organization_iam_custom_role.storage_bucket_creator.id\n"},
+			want: []string{"output \"storage_bucket_creator_role\" {", "  value       = { for k, r in google_project_iam_custom_role.storage_bucket_creator : k => r.id }\n"},
 		},
 		{
 			name: "the READMEs name what a bucket's name cannot bound",
@@ -1007,8 +1007,8 @@ func TestDeployProjectRoles(t *testing.T) {
 				"    \"roles/cloudtrace.agent\",\n" +
 				"    \"roles/telemetry.tracesWriter\",\n" +
 				"    \"roles/monitoring.viewer\",\n" +
-				"    local.org.run_job_policy_admin_role,\n" +
-				"    local.org.cloud_build_build_reader_role,\n" +
+				"    local.org.run_job_policy_admin_role[var.environment],\n" +
+				"    local.org.cloud_build_build_reader_role[var.environment],\n" +
 				"  ]\n",
 		},
 		{name: "no trigger runner for the deploy identity", text: "local.org.cloud_build_trigger_runner_role] : []", absent: true},
@@ -1047,7 +1047,7 @@ func TestPlanProjectRoles(t *testing.T) {
 			name: "the roles a plan needs",
 			text: "  plan_project_roles = [\n" +
 				"    \"roles/serviceusage.serviceUsageConsumer\",\n" +
-				"    local.org.application_plan_reader_role,\n" +
+				"    local.org.application_plan_reader_role[var.environment],\n" +
 				"    \"roles/iam.securityReviewer\",\n" +
 				"  ]\n",
 		},
@@ -1192,9 +1192,7 @@ func TestCustomRolePermissions(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			header := "resource \"google_organization_iam_custom_role\" \"" + tt.resource + "\" {\n" +
-				"  org_id      = local.org_id\n" +
-				"  role_id     = \"" + tt.roleID + "_${local.boot.organization_suffix}\"\n"
+			header := "resource \"google_project_iam_custom_role\" \"" + tt.resource + "\" {\n"
 			start := strings.Index(roles, header)
 			if start < 0 {
 				t.Fatalf("1-org/custom-roles.tf lacks the role %s", tt.roleID)
@@ -1202,6 +1200,10 @@ func TestCustomRolePermissions(t *testing.T) {
 			block, _, closed := strings.Cut(roles[start:], "\n}\n")
 			if !closed {
 				t.Fatalf("1-org/custom-roles.tf: the role %s has no closing brace", tt.roleID)
+			}
+			// One definition per project, with the bare id: nothing at the organization node.
+			if !strings.Contains(block, "\n  project     = each.value\n  role_id     = \""+tt.roleID+"\"\n") {
+				t.Fatalf("1-org/custom-roles.tf: the role %s is not created per project with its bare id:\n%s", tt.roleID, block)
 			}
 			_, list, found := strings.Cut(block, "  permissions = [\n")
 			if !found {
@@ -1264,7 +1266,7 @@ func TestLayerPlanRoles(t *testing.T) {
 			path: "1-org/service-accounts.tf",
 			want: []string{
 				"resource \"google_project_iam_member\" \"plan\" {\n  for_each = {\n    for pair in flatten([\n      for key, cfg in local.layers : [\n        for role in var.plan_roles[cfg.role_set] : {\n",
-				"  role    = lookup(local.custom_roles, each.value.role, each.value.role)\n  member  = google_service_account.plan[each.value.proj].member\n",
+				"  role    = lookup(local.custom_roles[each.value.proj], each.value.role, each.value.role)\n  member  = google_service_account.plan[each.value.proj].member\n",
 			},
 			absent: []string{"\"roles/viewer\"", "\"roles/browser\""},
 		},
@@ -1272,10 +1274,10 @@ func TestLayerPlanRoles(t *testing.T) {
 			name: "the custom roles resolve by bare ID",
 			path: "1-org/locals.tf",
 			want: []string{
-				"    environmentLayerPlanReader  = google_organization_iam_custom_role.environment_layer_plan_reader.id\n",
-				"    servicesLayerPlanReader     = google_organization_iam_custom_role.services_layer_plan_reader.id\n",
-				"    networkLayerPlanReader      = google_organization_iam_custom_role.network_layer_plan_reader.id\n",
-				"    spannerLayerPlanReader      = google_organization_iam_custom_role.spanner_layer_plan_reader.id\n",
+				"    environmentLayerPlanReader  = google_project_iam_custom_role.environment_layer_plan_reader[k].id\n",
+				"    servicesLayerPlanReader     = google_project_iam_custom_role.services_layer_plan_reader[k].id\n",
+				"    networkLayerPlanReader      = google_project_iam_custom_role.network_layer_plan_reader[k].id\n",
+				"    spannerLayerPlanReader      = google_project_iam_custom_role.spanner_layer_plan_reader[k].id\n",
 			},
 		},
 		{
@@ -1495,11 +1497,11 @@ func TestTeamGroup(t *testing.T) {
 			name: "what each entitlement grants, the Spanner ones for an own instance alone, the layer administrator the layer identity's roles",
 			path: "2-env/team-group.tf",
 			want: []string{
-				"      secret-operator = {\n        declared = true\n        duration = local.entitlement_durations.secret_operator\n        bindings = [{ role = local.org.secret_operator_role, condition = \"\" }]\n      }\n",
+				"      secret-operator = {\n        declared = true\n        duration = local.entitlement_durations.secret_operator\n        bindings = [{ role = local.org.secret_operator_role[var.environment], condition = \"\" }]\n      }\n",
 				"      spanner-admin = {\n        declared = local.own_instance\n",
 				"          { role = \"roles/spanner.databaseAdmin\", condition = \"\" },\n          { role = \"roles/spanner.backupAdmin\", condition = \"\" },\n",
 				"      spanner-viewer = {\n        declared = local.own_instance\n",
-				"          { role = \"roles/spanner.databaseReader\", condition = \"\" },\n          { role = local.org.spanner_plan_reader_role, condition = \"\" },\n",
+				"          { role = \"roles/spanner.databaseReader\", condition = \"\" },\n          { role = local.org.spanner_plan_reader_role[var.environment], condition = \"\" },\n",
 				"        bindings = local.layer_administrator_bindings\n",
 				"    } : name => e if e.declared\n",
 			},
@@ -1530,7 +1532,7 @@ func TestTeamGroup(t *testing.T) {
 				"  entitlement_durations = {\n    spanner_admin  = \"7200s\"\n    spanner_viewer = \"28800s\"\n  }\n",
 				"  environment_databases = { for env in keys(local.entitled_environments) : env => \"${local.instance_path}/databases/${local.prefix}-${env}-gbl-\" }\n  environment_backups   = { for env in keys(local.entitled_environments) : env => \"${local.instance_path}/backups/${local.prefix}-${env}-gbl-\" }\n",
 				"    for env, e in local.entitled_environments : \"${env}-spanner-admin\" => {\n",
-				"        { role = \"roles/spanner.databaseAdmin\", condition = \"resource.name.startsWith(\\\"${local.environment_databases[env]}\\\")\" },\n        { role = \"roles/spanner.backupAdmin\", condition = \"resource.name.startsWith(\\\"${local.environment_databases[env]}\\\") || resource.name.startsWith(\\\"${local.environment_backups[env]}\\\")\" },\n        { role = local.org.spanner_plan_reader_role, condition = \"\" },\n",
+				"        { role = \"roles/spanner.databaseAdmin\", condition = \"resource.name.startsWith(\\\"${local.environment_databases[env]}\\\")\" },\n        { role = \"roles/spanner.backupAdmin\", condition = \"resource.name.startsWith(\\\"${local.environment_databases[env]}\\\") || resource.name.startsWith(\\\"${local.environment_backups[env]}\\\")\" },\n        { role = local.org.spanner_plan_reader_role[local.environment], condition = \"\" },\n",
 				"    for env, e in local.entitled_environments : \"${env}-spanner-viewer\" => {\n",
 				"        { role = \"roles/spanner.databaseReader\", condition = \"resource.name.startsWith(\\\"${local.environment_databases[env]}\\\")\" },\n",
 				"  entitlement_id       = \"${local.prefix}-${each.key}\"\n",
@@ -1555,7 +1557,7 @@ func TestTeamGroup(t *testing.T) {
 				"The other,\nin every environment, is `roles/storage.objectUser` under `<app>/stacks/` in\nthe records bucket (`records.tf`)",
 				"unset, the secret operator an hour, the Spanner admin two hours, the Spanner viewer four hours and the layer administrator four hours.",
 				"so `2-spn`\ndeclares them on that project (`entitlements.tf` there)",
-				"recovery is the bootstrap administrator's",
+				"recovery is the break-glass account's",
 			},
 			absent: []string{"### Secret operators", "`var.secret_operators`"},
 		},
@@ -2144,7 +2146,7 @@ func TestRegistrationRender(t *testing.T) {
 
 	const (
 		repositories  = `applications = ["harbor", "beacon"]`
-		publicInvoker = `"serviceAccount:imp-tst-gbl-beacon-tofu@imp-tst-gbl-core-1a2b.iam.gserviceaccount.com",`
+		publicInvoker = `tst = "serviceAccount:imp-tst-gbl-beacon-tofu@imp-tst-gbl-core-1a2b.iam.gserviceaccount.com"`
 		pusher        = `"serviceAccount:imp-tst-gbl-beacon-deploy@imp-tst-gbl-core-1a2b.iam.gserviceaccount.com",`
 		admin         = `"serviceAccount:imp-stg-gbl-beacon-tofu@imp-stg-gbl-core-3c4d.iam.gserviceaccount.com" = { environment = "stg", application = "beacon", restore_from = "prd" }`
 		host          = `"beacon-tst.apps.imp.example"`
@@ -2748,7 +2750,7 @@ func TestTriggers(t *testing.T) {
 // identities 0-bootstrap creates with what each holds itself (the logs, the connection's
 // read token, the apps' keys, the markers for the applier), the applier's impersonation
 // of the two apply identities 0-bootstrap owns and the planner's of the two boot layers'
-// plan identities, which 0-bootstrap makes with their organization-level reads (a
+// plan identities, which 0-bootstrap makes with their reads on the organization's folder (a
 // binding at the organization node is 0-bootstrap's, since 1-org's identity sets no
 // policy there), 1-org's grants letting the planner impersonate every plan identity it
 // creates and the applier every apply identity, and the boot identity's organization
@@ -2788,12 +2790,12 @@ func TestRunnerIdentities(t *testing.T) {
 			absent: []string{"member             = google_service_account.planner.member\n}\n\nresource \"google_service_account_iam_member\" \"applier"},
 		},
 		{
-			name: "0-bootstrap makes the boot layers' plan identities, their organization-level reads, their quota project and the entitlements' read",
+			name: "0-bootstrap makes the boot layers' plan identities, their reads on the organization's folder, their quota project and the entitlements' read",
 			path: "0-bootstrap/bootstrap.tf",
 			want: []string{
 				"    boot = { layer = \"0-bootstrap\", reads = [\"0-bootstrap\"] }\n    org  = { layer = \"1-org\", reads = [\"0-bootstrap\", \"1-org\"] }\n",
 				"resource \"google_service_account\" \"boot_plan\" {\n  for_each = local.boot_plans\n\n  project      = module.boot_project.project_id\n  account_id   = \"${var.prefix}-${each.key}-gbl-plan\"\n",
-				"resource \"google_organization_iam_member\" \"boot_plan\" {\n  for_each = {\n    for pair in setproduct(keys(local.boot_plans), var.boot_plan_roles) :\n    \"${pair[0]}__${pair[1]}\" => { plan = pair[0], role = pair[1] }\n  }\n\n  org_id = local.org_id\n  role   = each.value.role\n  member = google_service_account.boot_plan[each.value.plan].member\n}\n",
+				"resource \"google_folder_iam_member\" \"boot_plan\" {\n  for_each = {\n    for pair in setproduct(keys(local.boot_plans), var.boot_plan_roles) :\n    \"${pair[0]}__${pair[1]}\" => { plan = pair[0], role = pair[1] }\n  }\n\n  folder = google_folder.organization.name\n  role   = each.value.role\n  member = google_service_account.boot_plan[each.value.plan].member\n}\n",
 				"resource \"google_project_iam_member\" \"boot_plan_quota\" {\n  for_each = local.boot_plans\n\n  project = module.boot_project.project_id\n  role    = \"roles/serviceusage.serviceUsageConsumer\"\n  member  = google_service_account.boot_plan[each.key].member\n}\n",
 				"resource \"google_project_iam_member\" \"org_plan_entitlements\" {\n  project = module.boot_project.project_id\n  role    = \"roles/privilegedaccessmanager.viewer\"\n  member  = google_service_account.boot_plan[\"org\"].member\n}\n",
 			},
@@ -2810,7 +2812,7 @@ func TestRunnerIdentities(t *testing.T) {
 			path: "0-bootstrap/variables.tf",
 			want: []string{
 				"variable \"boot_plan_roles\" {\n",
-				"    \"roles/browser\",                         # the organization, its folders and projects\n",
+				"    \"roles/browser\",                         # the organization's folder, its folders and projects\n",
 				"    \"roles/serviceusage.serviceUsageViewer\", # each project's enabled APIs\n  ]\n}\n",
 			},
 			absent: []string{"workloadIdentityPoolViewer"},
@@ -2832,7 +2834,7 @@ func TestRunnerIdentities(t *testing.T) {
 			want: []string{
 				"resource \"google_service_account_iam_member\" \"tofu_applier\" {\n  for_each = local.layers\n\n  service_account_id = google_service_account.tofu[each.key].name\n  role               = \"roles/iam.serviceAccountTokenCreator\"\n  member             = local.boot.applier_member\n}\n",
 				"resource \"google_service_account_iam_member\" \"plan_planner\" {\n  for_each = local.layers\n\n  service_account_id = google_service_account.plan[each.key].name\n  role               = \"roles/iam.serviceAccountTokenCreator\"\n  member             = local.boot.planner_member\n}\n",
-				"resource \"google_secret_manager_secret_iam_member\" \"environment_tofu_deployer_key\" {\n  for_each = local.environment_layers\n\n  project   = var.boot_project_id\n  secret_id = local.boot.github_deployer_key_secret\n  role      = google_organization_iam_custom_role.secret_container_admin.id\n  member    = google_service_account.tofu[each.key].member\n}\n",
+				"resource \"google_secret_manager_secret_iam_member\" \"environment_tofu_deployer_key\" {\n  for_each = local.environment_layers\n\n  project   = var.boot_project_id\n  secret_id = local.boot.github_deployer_key_secret\n  role      = google_project_iam_custom_role.secret_container_admin[\"boot\"].id\n  member    = google_service_account.tofu[each.key].member\n}\n",
 				"resource \"google_secret_manager_secret_iam_member\" \"environment_plan_deployer_key\" {\n  for_each = local.environment_layers\n\n  project   = var.boot_project_id\n  secret_id = local.boot.github_deployer_key_secret\n  role      = \"roles/secretmanager.viewer\"\n  member    = google_service_account.plan[each.key].member\n}\n",
 			},
 			absent: []string{"workflow_plan", "workflow_apply", "workloadIdentityUser", "github_pool_name", "resource \"google_service_account\" \"boot_plan\"", "var.boot_plan_roles", "local.boot_plans"},
@@ -2857,9 +2859,9 @@ func TestRunnerIdentities(t *testing.T) {
 			absent: []string{"github_pool_name", "github_provider_name"},
 		},
 		{
-			name:   "the boot identity's organization roles carry the connection administration, not the pool's; the org identity's the tag role",
+			name:   "the boot identity's folder roles carry the connection administration, not the pool's; the org identity's the tag role",
 			path:   "0-bootstrap/variables.tf",
-			want:   []string{`"roles/cloudbuild.builds.editor",          # the two triggers that plan and apply the layers (cloud-build.tf)`, `"roles/cloudbuild.connectionAdmin",        # the connection and the repository link the triggers watch (cloud-build.tf)`, `"roles/resourcemanager.tagAdmin",        # the public-invoker tag and the grants on its value`},
+			want:   []string{`"roles/cloudbuild.builds.editor",        # the two triggers that plan and apply the layers (cloud-build.tf)`, `"roles/cloudbuild.connectionAdmin",      # the connection and the repository link the triggers watch (cloud-build.tf)`, `"roles/resourcemanager.tagAdmin",        # the public-invoker tag key in each environment project and the grants on its value (1-org tags.tf)`},
 			absent: []string{"workloadIdentityPoolAdmin"},
 		},
 		{
@@ -2911,7 +2913,7 @@ func TestStateBucketGrants(t *testing.T) {
 			name: "the policy role sets a bucket's policy and nothing else",
 			path: "0-bootstrap/state-bucket.tf",
 			want: []string{
-				"resource \"google_organization_iam_custom_role\" \"state_bucket_policy_admin\" {\n  org_id      = local.org_id\n  role_id     = \"stateBucketPolicyAdmin_${random_id.organization.hex}\"\n",
+				"resource \"google_project_iam_custom_role\" \"state_bucket_policy_admin\" {\n  project     = module.boot_project.project_id\n  role_id     = \"stateBucketPolicyAdmin\"\n",
 				"  permissions = [\n    \"storage.buckets.get\",\n    \"storage.buckets.getIamPolicy\",\n    \"storage.buckets.setIamPolicy\",\n  ]\n",
 			},
 		},
@@ -2923,7 +2925,7 @@ func TestStateBucketGrants(t *testing.T) {
 				"resource \"google_storage_bucket_iam_member\" \"boot_plan_state_read\" {\n  for_each = local.boot_plans\n\n  bucket = var.state_bucket\n  role   = \"roles/storage.objectViewer\"\n  member = google_service_account.boot_plan[each.key].member\n",
 				`expression  = join(" || ", [for p in each.value.reads : "resource.name.startsWith(\"${local.state_bucket_objects}/${p}/\")"])`,
 				"    boot = { member = google_service_account.boot_tofu.member, prefix = \"0-bootstrap\" }\n    org  = { member = google_service_account.org_tofu.member, prefix = \"1-org\" }\n",
-				"resource \"google_storage_bucket_iam_member\" \"policy_admin\" {\n  for_each = local.own_identities\n\n  bucket = var.state_bucket\n  role   = google_organization_iam_custom_role.state_bucket_policy_admin.id\n",
+				"resource \"google_storage_bucket_iam_member\" \"policy_admin\" {\n  for_each = local.own_identities\n\n  bucket = var.state_bucket\n  role   = google_project_iam_custom_role.state_bucket_policy_admin.id\n",
 				"resource \"google_storage_bucket_iam_member\" \"state_list\" {\n  for_each = local.own_identities\n\n  bucket = var.state_bucket\n  role   = \"roles/storage.legacyBucketReader\"\n",
 				"resource \"google_storage_bucket_iam_member\" \"state_own\" {\n  for_each = local.own_identities\n\n  bucket = var.state_bucket\n  role   = \"roles/storage.objectUser\"\n",
 				`expression  = "resource.name.startsWith(\"${local.state_bucket_objects}/${each.value.prefix}/\")"`,
@@ -2952,7 +2954,7 @@ func TestStateBucketGrants(t *testing.T) {
 			name: "the environment layers' plan identities read the bucket's policy, which the slots refresh through",
 			path: "1-org/runners.tf",
 			want: []string{
-				"resource \"google_storage_bucket_iam_member\" \"environment_plan_policy_reader\" {\n  for_each = local.environment_layers\n\n  bucket = var.state_bucket\n  role   = google_organization_iam_custom_role.bucket_policy_reader.id\n  member = google_service_account.plan[each.key].member\n}\n",
+				"resource \"google_storage_bucket_iam_member\" \"environment_plan_policy_reader\" {\n  for_each = local.environment_layers\n\n  bucket = var.state_bucket\n  role   = google_project_iam_custom_role.bucket_policy_reader[\"boot\"].id\n  member = google_service_account.plan[each.key].member\n}\n",
 			},
 		},
 	}
@@ -2971,8 +2973,9 @@ func TestStateBucketGrants(t *testing.T) {
 }
 
 // TestPublicInvoker reads where the tagUser grant on the public-invoker tag lives: 1-org,
-// which owns the tag, from the members its public-invokers.auto.tfvars renders per
-// application and environment; 2-env, which created the identities, no longer grants it.
+// which owns each environment project's tag, from the members its public-invokers.auto.tfvars
+// renders per application and environment; 2-env, which created the identities, no longer
+// grants it.
 func TestPublicInvoker(t *testing.T) {
 	t.Parallel()
 
@@ -2985,19 +2988,19 @@ func TestPublicInvoker(t *testing.T) {
 		{
 			name: "1-org grants tagUser from the public invokers",
 			path: "1-org/tags.tf",
-			want: []string{"resource \"google_tags_tag_value_iam_member\" \"public_invoker\" {\n  for_each = toset(flatten(values(var.public_invokers)))\n\n  tag_value = google_tags_tag_value.public_invoker.id\n  role      = \"roles/resourcemanager.tagUser\"\n  member    = each.value\n}\n"},
+			want: []string{"resource \"google_tags_tag_value_iam_member\" \"public_invoker\" {\n  for_each = {\n    for pair in flatten([\n      for app, envs in var.public_invokers : [\n        for env, member in envs : { key = \"${app}__${env}\", env = env, member = member }\n      ]\n    ]) : pair.key => pair\n  }\n\n  tag_value = google_tags_tag_value.public_invoker[each.value.env].id\n  role      = \"roles/resourcemanager.tagUser\"\n  member    = each.value.member\n}\n"},
 		},
 		{
 			name: "the public invokers are each application's apply identities in every environment",
 			path: "1-org/public-invokers.auto.tfvars",
 			want: []string{
-				"public_invokers = {\n  harbor = [\n    \"serviceAccount:imp-tst-gbl-harbor-tofu@imp-tst-gbl-core-1a2b.iam.gserviceaccount.com\",\n    \"serviceAccount:imp-stg-gbl-harbor-tofu@imp-stg-gbl-core-3c4d.iam.gserviceaccount.com\",\n    \"serviceAccount:imp-prd-gbl-harbor-tofu@imp-prd-gbl-core-5e6f.iam.gserviceaccount.com\",\n  ]\n  beacon = [\n",
+				"public_invokers = {\n  harbor = {\n    tst = \"serviceAccount:imp-tst-gbl-harbor-tofu@imp-tst-gbl-core-1a2b.iam.gserviceaccount.com\"\n    stg = \"serviceAccount:imp-stg-gbl-harbor-tofu@imp-stg-gbl-core-3c4d.iam.gserviceaccount.com\"\n    prd = \"serviceAccount:imp-prd-gbl-harbor-tofu@imp-prd-gbl-core-5e6f.iam.gserviceaccount.com\"\n  }\n  beacon = {\n    tst = \"serviceAccount:imp-tst-gbl-beacon-tofu@imp-tst-gbl-core-1a2b.iam.gserviceaccount.com\"\n    stg = \"serviceAccount:imp-stg-gbl-beacon-tofu@imp-stg-gbl-core-3c4d.iam.gserviceaccount.com\"\n    prd = \"serviceAccount:imp-prd-gbl-beacon-tofu@imp-prd-gbl-core-5e6f.iam.gserviceaccount.com\"\n  }\n}\n",
 			},
 		},
 		{
 			name: "the variable",
 			path: "1-org/variables.tf",
-			want: []string{"variable \"public_invokers\" {", "  type        = map(list(string))\n  default     = {}\n"},
+			want: []string{"variable \"public_invokers\" {", "  type        = map(map(string))\n  default     = {}\n"},
 		},
 		{
 			name:   "2-env no longer grants it",

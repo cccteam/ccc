@@ -74,35 +74,30 @@ func TestPreflight(t *testing.T) {
 			wantAsked: []string{"organizations/123456789012", "billingAccounts/012345-6789AB-CDEF01"},
 			wantOut: []string{
 				"Folder Creator (roles/resourcemanager.folderCreator), on organization 123456789012: holds resourcemanager.folders.create\n",
-				"Project Creator (roles/resourcemanager.projectCreator), on organization 123456789012: holds resourcemanager.projects.create\n",
-				"Organization Administrator (roles/resourcemanager.organizationAdmin), on organization 123456789012: holds resourcemanager.organizations.get, resourcemanager.organizations.getIamPolicy, resourcemanager.organizations.setIamPolicy\n",
-				"Organization Policy Administrator (roles/orgpolicy.policyAdmin), on organization 123456789012: holds orgpolicy.policy.set\n",
-				"Organization Role Administrator (roles/iam.organizationRoleAdmin), on organization 123456789012: holds iam.roles.create, iam.roles.update\n",
-				"Tag Administrator (roles/resourcemanager.tagAdmin), on organization 123456789012: holds resourcemanager.tagKeys.create, resourcemanager.tagValues.create, resourcemanager.tagValues.setIamPolicy\n",
 				"Billing Account User (roles/billing.user), on billing account 012345-6789AB-CDEF01: holds billing.resourceAssociations.create\n",
-				"These credentials hold every permission the seed and the first applies of 0-bootstrap and 1-org need (0-bootstrap/README.md, First-time setup).\n",
+				"These credentials hold every permission the seed and the first applies of 0-bootstrap and 1-org need above the organization's folder (0-bootstrap/README.md, First-time setup).\n",
 			},
 			wantAbsent: []string{"missing"},
 		},
 		{
 			name:      "one permission missing names its role and who grants it",
-			tester:    fakeTester{lacks: []string{"resourcemanager.tagKeys.create"}},
+			tester:    fakeTester{lacks: []string{"billing.resourceAssociations.create"}},
 			wantAsked: []string{"organizations/123456789012", "billingAccounts/012345-6789AB-CDEF01"},
 			wantOut: []string{
 				"Folder Creator (roles/resourcemanager.folderCreator), on organization 123456789012: holds resourcemanager.folders.create\n",
-				"Tag Administrator (roles/resourcemanager.tagAdmin), on organization 123456789012: missing resourcemanager.tagKeys.create\n",
-				"1 of 7 role(s) missing: the bootstrap administrator (admin@example.com) is granted Tag Administrator at organization 123456789012, by someone who administers the organization; then run org preflight again with that administrator's credentials (gcloud auth application-default login).\n",
+				"Billing Account User (roles/billing.user), on billing account 012345-6789AB-CDEF01: missing billing.resourceAssociations.create\n",
+				"1 of 2 role(s) missing: the break-glass account (admin@example.com) is granted Billing Account User on billing account 012345-6789AB-CDEF01, by a Billing Account Administrator of it; then run org preflight again with that account's credentials (gcloud auth application-default login).\n",
 			},
-			wantAbsent: []string{"These credentials hold every permission", "Billing Account Administrator"},
+			wantAbsent: []string{"These credentials hold every permission", "by someone who administers the organization"},
 		},
 		{
 			name:      "roles missing at both scopes name both grants",
-			tester:    fakeTester{lacks: []string{"resourcemanager.folders.create", "iam.roles.create", "billing.resourceAssociations.create"}},
+			tester:    fakeTester{lacks: []string{"resourcemanager.folders.create", "billing.resourceAssociations.create"}},
 			wantAsked: []string{"organizations/123456789012", "billingAccounts/012345-6789AB-CDEF01"},
 			wantOut: []string{
-				"Organization Role Administrator (roles/iam.organizationRoleAdmin), on organization 123456789012: missing iam.roles.create\n",
+				"Folder Creator (roles/resourcemanager.folderCreator), on organization 123456789012: missing resourcemanager.folders.create\n",
 				"Billing Account User (roles/billing.user), on billing account 012345-6789AB-CDEF01: missing billing.resourceAssociations.create\n",
-				"3 of 7 role(s) missing: the bootstrap administrator (admin@example.com) is granted Folder Creator and Organization Role Administrator at organization 123456789012, by someone who administers the organization, and Billing Account User on billing account 012345-6789AB-CDEF01, by a Billing Account Administrator of it; then run org preflight again",
+				"2 of 2 role(s) missing: the break-glass account (admin@example.com) is granted Folder Creator at organization 123456789012, by someone who administers the organization, and Billing Account User on billing account 012345-6789AB-CDEF01, by a Billing Account Administrator of it; then run org preflight again with that account's credentials (gcloud auth application-default login).\n",
 			},
 		},
 		{
@@ -110,7 +105,7 @@ func TestPreflight(t *testing.T) {
 			tester:    fakeTester{orgErr: errors.New("rpc error: code = PermissionDenied desc = Cloud Resource Manager API has not been used in project 0")},
 			wantAsked: []string{"organizations/123456789012"},
 			wantOut: []string{
-				"Permissions not checked (rpc error: code = PermissionDenied desc = Cloud Resource Manager API has not been used in project 0): org preflight asks Google, with the run's Application Default Credentials (gcloud auth application-default login, as the bootstrap administrator), which of the permissions the seed and the first applies of 0-bootstrap and 1-org need they hold.\n",
+				"Permissions not checked (rpc error: code = PermissionDenied desc = Cloud Resource Manager API has not been used in project 0): org preflight asks Google, with the run's Application Default Credentials (gcloud auth application-default login, as the break-glass account), which of the permissions the seed and the first applies of 0-bootstrap and 1-org need above the organization's folder they hold.\n",
 			},
 			wantAbsent: []string{"holds", "missing"},
 		},
@@ -124,7 +119,7 @@ func TestPreflight(t *testing.T) {
 			name:          "no credentials: not checked, and says how to get them",
 			noCredentials: true,
 			wantOut: []string{
-				"Permissions not checked (google: could not find default credentials): org preflight asks Google, with the run's Application Default Credentials (gcloud auth application-default login, as the bootstrap administrator)",
+				"Permissions not checked (google: could not find default credentials): org preflight asks Google, with the run's Application Default Credentials (gcloud auth application-default login, as the break-glass account)",
 			},
 		},
 	}
@@ -132,7 +127,7 @@ func TestPreflight(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			p := &Placement{OrganizationID: "123456789012", BillingAccount: "012345-6789AB-CDEF01", Operator: "admin@example.com"}
+			p := &Placement{OrganizationID: "123456789012", BillingAccount: "012345-6789AB-CDEF01", BreakGlassAccount: "admin@example.com"}
 			var asked []string
 			tester := tt.tester
 			tester.asked = &asked

@@ -47,8 +47,9 @@ the six layers of the CCC provisioning model (0-bootstrap, 1-org, 2-shr, 2-spn, 
 and the two Cloud Build triggers in the boot project that plan them on a pull request and apply
 them on the merge, rendered from the organization placement, placement.json at the repository
 root, the way an application's stack is rendered from its code; the two commands those
-triggers run (plan, apply); and the check, before the seed, that the bootstrap administrator
-holds the roles the seed and the first applies need (preflight).`,
+triggers run (plan, apply); and the check, before the seed, that the break-glass account
+holds the roles the seed and the first applies need above the organization's folder
+(preflight).`,
 	}
 	cmd.AddCommand(newOrgNew(d), newOrgPreflight(d), newOrgRender(d), newOrgCheck(d), newOrgRegister(d), newOrgPlace(d), newOrgPlan(d), newOrgApply(d), newOrgTeardown(d), newOrgServe(d), newOrgHostnames(d), newOrgRetire(d), newOrgDestroy(d))
 
@@ -69,8 +70,9 @@ project, that plan the layers on a pull request and apply them on the merge, run
 org plan and bedrock org apply. It then prints the hand steps the model needs before the
 triggers can run, each opening with the place it happens: the team and role groups, the
 GitHub organization with its apps and their keys, org
-preflight's check of the bootstrap administrator's roles and the seed (the terraform folder,
-the boot project, the boot identity and the state bucket, as the bootstrap administrator), the
+preflight's check of the break-glass account's roles and the seed (the organization's folder
+and the terraform folder, the boot project, the boot identity and the state bucket, as the
+break-glass account), the
 Cloud Build GitHub authorization in the boot project, the bootstrap apply on local state and
 its migration into the bucket, the billing grants and the spend budget, the first apply of
 1-org and the consent screen, spelled out in 0-bootstrap/README.md and the root README; from
@@ -210,16 +212,18 @@ By hand, before the Cloud Build triggers can run (the commands are in 0-bootstra
      token from the pinned version in Cloud Build.
   1. In a terminal, as %s, after gcloud auth application-default login:
      bedrock org preflight, which must find each of these roles held:
-%s     then the seed: the terraform folder at the organization root (%s), the boot
-     project %s-boot-gbl-core-<suffix>, the boot identity %s-boot-gbl-tofu with its
-     organization roles, and the state bucket %s-boot-gbl-state-<suffix>.
+%s     then the seed: the organization's folder at the organization root (%s), which makes
+     the account its administrator, the terraform folder under it, the boot project
+     %s-boot-gbl-core-<suffix>, the boot identity %s-boot-gbl-tofu with its roles on the
+     organization's folder, and the state bucket %s-boot-gbl-state-<suffix>. Nothing of the
+     organization's sits at the organization node.
   2. In this repository, the seed's values: boot_project_id and terraform_folder_id in
      0-bootstrap/terraform.tfvars, boot_project_id in 1-org and 2-env, and in
      placement.json the bucket (stateBucket) and the boot project's id and number
      (projects.boot, projectNumbers.boot); then bedrock org render, for the backend
      blocks, the bucket's grants and the triggers.
-  3. In the boot project's Cloud Build console, as %s (the bootstrap
-     administrator, Owner on the boot project from the seed), signed in to GitHub as the
+  3. In the boot project's Cloud Build console, as %s (the break-glass
+     account, Owner on the boot project from the seed), signed in to GitHub as the
      organization's machine account (%s): the Cloud Build GitHub App's authorization
      (0-bootstrap/README.md, "The Cloud Build GitHub authorization"), a connection named
      %s in %s; its installation id and the token secret's version go
@@ -236,9 +240,12 @@ By hand, before the Cloud Build triggers can run (the commands are in 0-bootstra
      owner's token; then its project_ids and project_numbers recorded in placement.json
      (projects, projectNumbers), and bedrock org render, so the triggers name every
      layer's identities. The apply leaves you Owner on each project it creates, as the
-     seed left you Folder Admin and Folder Editor on the folder: a creator's grants,
-     temporary, removed by hand once the apply trigger applies the layers (bedrock org
-     check lists each person still holding roles/owner on an environment project).
+     seed left you Owner on the boot project and the folders' creation Folder Admin and
+     Folder Editor on them: a creator's grants, temporary, removed by hand once the apply
+     trigger applies the layers, with the roles the seed granted you on the organization's
+     folder for this apply (0-bootstrap/README.md, "Trimming the break-glass account";
+     bedrock org check lists each grant still held). Folder Admin on the organization's
+     folder alone stays with the account, its key for a recovery by hand.
   7. In each environment project's Google Cloud console, before the first application's
      OAuth client is made there: the consent screen (APIs & Services, OAuth consent
      screen), with the audience Internal, the organization's own users.
@@ -249,8 +256,8 @@ identities, in layer order. The shared layers, 2-env per environment and the app
 registrations go through them; a person applies by hand for recovery alone
 (0-bootstrap/README.md, "Recovery, by hand").
 After the first apply of 2-net: bedrock domain check prints what the apps domain, and each vanity domain, still needs, and where.
-`, p.OrganizationDomain, p.GithubMachineAccount, p.GithubDefaultBranch, p.Operator, roles.String(), p.OrganizationID, p.Prefix, p.Prefix, p.Prefix,
-		p.Operator, p.GithubMachineAccount, p.ConnectionName(), p.Primary().Name, p.BillingAccount, p.PlanTriggerName(), p.ApplyTriggerName())
+`, p.OrganizationDomain, p.GithubMachineAccount, p.GithubDefaultBranch, p.BreakGlassAccount, roles.String(), p.OrganizationID, p.Prefix, p.Prefix, p.Prefix,
+		p.BreakGlassAccount, p.GithubMachineAccount, p.ConnectionName(), p.Primary().Name, p.BillingAccount, p.PlanTriggerName(), p.ApplyTriggerName())
 }
 
 // zonesHandSteps is handSteps for a zones organization: the GitHub side without the
@@ -274,16 +281,18 @@ By hand, before the Cloud Build triggers can run (the commands are in 0-bootstra
      <version>; the same with github-deployer-key.
   1. In a terminal, as %s, after gcloud auth application-default login:
      bedrock org preflight, which must find each of these roles held:
-%s     then the seed: the terraform folder at the organization root (%s), the boot
-     project %s-boot-gbl-core-<suffix>, the boot identity %s-boot-gbl-tofu with its
-     organization roles, and the state bucket %s-boot-gbl-state-<suffix>.
+%s     then the seed: the organization's folder at the organization root (%s), which makes
+     the account its administrator, the terraform folder under it, the boot project
+     %s-boot-gbl-core-<suffix>, the boot identity %s-boot-gbl-tofu with its roles on the
+     organization's folder, and the state bucket %s-boot-gbl-state-<suffix>. Nothing of the
+     organization's sits at the organization node.
   2. In this repository, the seed's values: boot_project_id and terraform_folder_id in
      0-bootstrap/terraform.tfvars, boot_project_id in 1-dns, and in placement.json the
      bucket (stateBucket) and the boot project's id and number (projects.boot,
      projectNumbers.boot); then bedrock org render, for the backend blocks, the bucket's
      grants and the triggers.
-  3. In the boot project's Cloud Build console, as %s (the bootstrap
-     administrator, Owner on the boot project from the seed), signed in to GitHub as the
+  3. In the boot project's Cloud Build console, as %s (the break-glass
+     account, Owner on the boot project from the seed), signed in to GitHub as the
      organization's machine account (%s): the Cloud Build GitHub App's authorization
      (0-bootstrap/README.md, "The Cloud Build GitHub authorization"), a connection named
      %s in %s; its installation id and the token secret's version go
@@ -297,7 +306,10 @@ By hand, before the Cloud Build triggers can run (the commands are in 0-bootstra
      spend budget on the account (0-bootstrap/README.md, step 5); nothing renders it.
   6. In a terminal, in 1-dns: the apply, with GITHUB_TOKEN set to an organization
      owner's token (1-dns/README.md, "Applying"). It leaves nothing behind: the layer
-     creates no project and no identity.
+     creates no project and no identity. Then the trim: the seed's creator grants come
+     off (0-bootstrap/README.md, "Trimming the break-glass account"; bedrock org check
+     lists each grant still held), and Folder Admin on the organization's folder alone
+     stays with the account, its key for a recovery by hand.
 From then on the two Cloud Build triggers in the boot project (%s and %s)
 apply both layers: a pull request plans the layers it touches as their plan identities and
 posts the plans on it, the merge applies them as their apply identities, in layer order. A
@@ -308,8 +320,8 @@ customer, where the domain's DNS is set, the delegation to the zone's name serve
 bedrock domain check prints them with the place (1-dns/README.md, "Delegating a domain to
 this organization"). Each application's name under a domain follows at the application's
 registration, in two pull requests (1-dns/README.md, "Handing a label onward").
-`, p.GithubMachineAccount, p.GithubDefaultBranch, p.Operator, roles, p.OrganizationID, p.Prefix, p.Prefix, p.Prefix,
-		p.Operator, p.GithubMachineAccount, p.ConnectionName(), p.Primary().Name, p.BillingAccount, p.PlanTriggerName(), p.ApplyTriggerName())
+`, p.GithubMachineAccount, p.GithubDefaultBranch, p.BreakGlassAccount, roles, p.OrganizationID, p.Prefix, p.Prefix, p.Prefix,
+		p.BreakGlassAccount, p.GithubMachineAccount, p.ConnectionName(), p.Primary().Name, p.BillingAccount, p.PlanTriggerName(), p.ApplyTriggerName())
 }
 
 // hostingOnly refuses a command that acts on applications or environments in a zones
@@ -333,11 +345,14 @@ func newOrgPreflight(d deps) *cobra.Command {
 		Short: "Check, before the seed, that these credentials hold the roles the seed and the first applies need",
 		Long: `preflight asks Google which of the permissions the seed and the first applies of 0-bootstrap
 and 1-org need the caller holds, with the run's Application Default Credentials (gcloud auth
-application-default login, as the bootstrap administrator): on the organization the
+application-default login, as the break-glass account): on the organization the
 placement names (organizationId, through Cloud Resource Manager's testIamPermissions) and on
 its billing account (billingAccount, through Cloud Billing's). It prints one line per role,
-holds or missing, naming the permissions tested: Folder Creator, Project Creator,
-Organization Administrator, Organization Policy Administrator, Organization Role
+holds or missing, naming the permissions tested: Folder Creator at the organization, for
+the organization's folder, under which everything else happens as the folder's
+administrator, and Billing Account User. The seed grants the account what 1-org's first
+apply needs on the folder itself; nothing more sits above the folder, neither Organization
+Administrator nor Project Creator, Organization Policy Administrator, Organization Role
 Administrator and Tag Administrator at the organization, and Billing Account User on the
 billing account. It exits 1 when any is missing, saying who grants it where, and when the
 permissions could not be checked (no credentials, or an API that refused to answer). Run
@@ -479,13 +494,16 @@ application bedrock destroy took down still stands in the placement, and the che
 every plan and apply; bedrock org register refuses the registration that would exceed an
 instance. While an application is out of service in every environment (outOfService), it
 says that bedrock org retire <app> is the step that lets its entry go once its stacks are
-destroyed, without failing the check. It then lists each person (a user: member) holding
-roles/owner on an environment project the placement records: the grant a project's creator
-receives, which the first apply of 1-org by hand leaves the bootstrap administrator with on
-every project it creates, temporary by design and removed by hand once the apply trigger
-applies the layers. That listing reads the projects' IAM policies with the run's Google
-credentials (gcloud auth application-default login); without any it says so, and it never
-fails the check. Last it lists each API key in an environment project that carries no API
+destroyed, without failing the check. It then lists each grant the first-time setup left a
+person with and which the trim removes (0-bootstrap/README.md, "Trimming the break-glass
+account"): each person holding roles/owner on a project the placement records, which Google
+gives a project's creator; each person holding Folder Admin or Folder Editor on a folder
+under the organization's, which Google gives a folder's creator; and each role the
+break-glass account holds on a project or on the organization's folder beyond the one it
+keeps, Folder Admin on the organization's folder, its key for a recovery by hand. That
+listing reads the projects' and folders' IAM policies with the run's Google credentials
+(gcloud auth application-default login); without any it says so, and it never fails the
+check. Last it lists each API key in an environment project that carries no API
 restriction, which answers every API in the project that accepts an API key: Firebase's
 browser key, which initializing Identity Platform creates and bedrock org apply restricts
 after each apply of 2-env, when Firebase has made it again since, or any other.
@@ -543,7 +561,7 @@ func (d deps) writeOrgCheck(cmd *cobra.Command, p *org.Placement, dir string, r 
 		fmt.Fprintf(out, "%s: not seeded yet (org render writes it)\n", path)
 	}
 	if !p.Zones() {
-		ownerReport(cmd.Context(), d, p, out)
+		leftoverReport(cmd.Context(), d, p, out)
 		keyReport(cmd.Context(), d, p, out)
 	}
 	if !r.Clean() {
@@ -621,45 +639,64 @@ func registrationReport(ctx context.Context, d deps, p *org.Placement, dir strin
 	r.Write(out)
 }
 
-// ownerReport lists each person holding roles/owner on an environment project the
-// placement records: the grant a project's creator receives, which the first apply of
-// 1-org by hand leaves the bootstrap administrator with on every project it creates, and
-// which a hand step removes once the apply trigger applies the layers (1-org/README.md,
-// Applying). The read needs Google credentials; without any the report says so and what
-// it would have done. Nothing here fails the check: the drift between the placement and
-// the repository is the check's verdict, and the grants are a person's to remove.
-func ownerReport(ctx context.Context, d deps, p *org.Placement, out io.Writer) {
-	const does = "org check lists each person (a user: member) holding roles/owner on an environment project, the creator's temporary grant, when it runs with Google credentials that read the projects' IAM policies (gcloud auth application-default login)"
+// leftoverReport lists each grant the first-time setup left a person with: Owner on a
+// project, which Google gives a project's creator; Folder Admin and Folder Editor on a
+// folder under the organization's, which Google gives a folder's creator; and the roles
+// the break-glass account holds on a project or on the organization's folder beyond the
+// one it keeps there, Folder Admin, its key for a recovery by hand. A hand step removes
+// them once the apply trigger applies the layers (0-bootstrap/README.md, "Trimming the
+// break-glass account"). The read needs Google credentials; without any the report says so
+// and what it would have done. Nothing here fails the check: the drift between the
+// placement and the repository is the check's verdict, and the grants are a person's to
+// remove.
+func leftoverReport(ctx context.Context, d deps, p *org.Placement, out io.Writer) {
+	const does = "org check lists each grant the first-time setup left a person with (a person's roles/owner on a project, a person's Folder Admin or Folder Editor on a folder under the organization's, and the break-glass account's roles beyond its Folder Admin on the organization's folder), when it runs with Google credentials that read the projects' and folders' IAM policies (gcloud auth application-default login)"
 	if d.org == nil || d.org.policies == nil {
-		fmt.Fprintf(out, "Owners not checked: no IAM policy reader is wired; %s.\n", does)
+		fmt.Fprintf(out, "Leftover grants not checked: no IAM policy reader is wired; %s.\n", does)
 
 		return
 	}
 	reader, err := d.org.policies(ctx)
 	if err != nil {
-		fmt.Fprintf(out, "Owners not checked (%v): %s.\n", errors.Cause(err), does)
+		fmt.Fprintf(out, "Leftover grants not checked (%v): %s.\n", errors.Cause(err), does)
 
 		return
 	}
 	defer reader.Close()
-	owners, unrecorded, err := org.Owners(ctx, p, reader)
+	leftovers, unrecorded, folderFound, err := org.Leftovers(ctx, p, reader)
 	if err != nil {
-		fmt.Fprintf(out, "Owners not checked (%v): %s.\n", errors.Cause(err), does)
+		fmt.Fprintf(out, "Leftover grants not checked (%v): %s.\n", errors.Cause(err), does)
 
 		return
 	}
 	if len(unrecorded) > 0 {
-		fmt.Fprintf(out, "Owners not checked in %s: the placement records no project there (projects).\n", strings.Join(unrecorded, ", "))
+		fmt.Fprintf(out, "Leftover grants not checked in %s: the placement records no project there (projects).\n", strings.Join(unrecorded, ", "))
 	}
-	if len(owners) == 0 {
-		if len(unrecorded) < len(org.Environments) {
-			fmt.Fprintln(out, "No person holds roles/owner on an environment project.")
+	if !folderFound {
+		fmt.Fprintf(out, "Leftover grants not checked on the folders: no folder named %s under organization %s (the seed makes it).\n", p.Prefix, p.OrganizationID)
+	}
+	if len(leftovers) == 0 {
+		if folderFound || len(unrecorded) < len(org.Environments) {
+			fmt.Fprintln(out, "No grant of the first-time setup is left: nobody holds roles/owner on a project, nobody Folder Admin or Folder Editor on a folder under the organization's, and the break-glass account holds Folder Admin on the organization's folder alone.")
 		}
 
 		return
 	}
-	for _, o := range owners {
-		fmt.Fprintf(out, "%s (%s): %s holds roles/owner, the creator's grant from the first apply of 1-org by hand; it is temporary, removed once the apply trigger applies the layers (1-org/README.md, Applying).\n", o.Environment, o.Project, o.Member)
+	for _, l := range leftovers {
+		fmt.Fprintf(out, "%s: %s holds %s, %s; it is temporary, removed once the apply trigger applies the layers (0-bootstrap/README.md, \"Trimming the break-glass account\").\n", l.Place(), l.Member, l.Role, leftoverWhy(p, l))
+	}
+}
+
+// leftoverWhy says where a leftover grant came from: a creator's grant, or the seed's
+// grant to the break-glass account for the first apply of the second layer.
+func leftoverWhy(p *org.Placement, l org.Leftover) string {
+	switch {
+	case l.Role == org.OwnerRole, l.On == org.OnFolder && (l.Role == org.FolderAdminRole || l.Role == org.FolderEditorRole):
+		return "the creator's grant from the first applies by hand"
+	case l.On == org.OnFolder && l.Key == p.Prefix:
+		return "the seed's grant for the first apply of " + p.SecondLayer()
+	default:
+		return "a grant of the first-time setup"
 	}
 }
 
@@ -1523,8 +1560,9 @@ func newOrgDestroy(d deps) *cobra.Command {
 		Use:   destroyCommand,
 		Short: "Delete the organization's projects, and with them everything the layers and the applications made",
 		Long: `destroy deletes every project of the organization, by a person at their own computer with their
-own sign-in (gcloud auth application-default login as the bootstrap administrator, with the roles
-0-bootstrap/README.md step 1 lists; GITHUB_TOKEN, or gh's token, for 1-org's GitHub provider:
+own sign-in (gcloud auth application-default login as the break-glass account, holding Owner on
+the organization's folder for the run, which its Folder Admin there lets it grant itself;
+GITHUB_TOKEN, or gh's token, for 1-org's GitHub provider:
 the infrastructure GitHub App's installation token, or an organization owner's). It says what
 goes, project by project, and asks for the prefix typed back before anything runs (--yes stands
 in for it where there is no terminal, as in a disposable organization's scripts). Then it
@@ -1622,7 +1660,7 @@ func destroyWarning(p *org.Placement, registered []string) string {
 		}
 		fmt.Fprintf(&b, "  %s (%s): %s\n", p.Projects[key], key, projectContentsOf(key))
 	}
-	b.WriteString("\nAlso gone: the folders, the custom roles and the tag, the org policies, the entitlements, the audit log sink, and on GitHub the rulesets, the operations environments, the runner group and the organization variable. The repositories stay, with their code, pull requests and releases.\n")
+	b.WriteString("\nAlso gone: the folders, the custom roles and the tags, the org policies, the entitlements, the audit log sink, and on GitHub the rulesets, the operations environments, the runner group and the organization variable. The repositories stay, with their code, pull requests and releases.\n")
 	if len(registered) > 0 {
 		fmt.Fprintf(&b, "\nKept: the network project %s, with its folder and the organization's, since 2-net registers %s there (registrations in 2-net/terraform.tfvars) and a registration cannot move to another project; it is a person's to deal with (1-org/README.md, \"Removing a project\").\n", p.Projects[netKey], strings.Join(registered, ", "))
 	}

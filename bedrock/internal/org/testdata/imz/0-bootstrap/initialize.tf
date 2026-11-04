@@ -19,15 +19,11 @@ terraform {
       source  = "hashicorp/google-beta"
       version = "~> 7.0"
     }
-    random = {
-      source  = "hashicorp/random"
-      version = "~> 3.6"
-    }
   }
 }
 
 # Bootstrap is the one layer applied by a human. It runs locally against the
-# the bootstrap administrator's ADC (gcloud auth application-default login) because the identity
+# the break-glass account's ADC (gcloud auth application-default login) because the identity
 # every other layer runs as does not exist yet.
 provider "google" {
   user_project_override = false

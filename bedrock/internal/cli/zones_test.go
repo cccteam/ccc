@@ -64,11 +64,12 @@ func TestZonesOrgCommands(t *testing.T) {
 				"has made their two containers in the boot project: bedrock secret add\n     github-infrastructure-key and bedrock secret pin github-infrastructure-key\n     <version>; the same with github-deployer-key.",
 				"1. In a terminal, as seed@imp.example, after gcloud auth application-default login:\n     bedrock org preflight, which must find each of these roles held:\n" +
 					"       - Folder Creator (roles/resourcemanager.folderCreator), on the organization\n" +
-					"       - Project Creator (roles/resourcemanager.projectCreator), on the organization\n" +
-					"       - Organization Administrator (roles/resourcemanager.organizationAdmin), on the organization\n" +
-					"       - Organization Role Administrator (roles/iam.organizationRoleAdmin), on the organization\n" +
 					"       - Billing Account User (roles/billing.user), on the billing account\n" +
-					"     then the seed: the terraform folder at the organization root (123456789012), the boot\n     project imz-boot-gbl-core-<suffix>, the boot identity imz-boot-gbl-tofu with its\n     organization roles, and the state bucket imz-boot-gbl-state-<suffix>.",
+					"     then the seed: the organization's folder at the organization root (123456789012), which makes\n" +
+					"     the account its administrator, the terraform folder under it, the boot project\n" +
+					"     imz-boot-gbl-core-<suffix>, the boot identity imz-boot-gbl-tofu with its roles on the\n" +
+					"     organization's folder, and the state bucket imz-boot-gbl-state-<suffix>. Nothing of the\n" +
+					"     organization's sits at the organization node.",
 				"2. In this repository, the seed's values: boot_project_id and terraform_folder_id in\n     0-bootstrap/terraform.tfvars, boot_project_id in 1-dns, and in placement.json the\n     bucket (stateBucket) and the boot project's id and number (projects.boot,\n     projectNumbers.boot)",
 				"a connection named\n     imz-boot-uc1-github in us-central1",
 				"4. In a terminal, in 0-bootstrap: the apply on local state, the connection imported\n     into it first, then the migration of its state into the bucket.",

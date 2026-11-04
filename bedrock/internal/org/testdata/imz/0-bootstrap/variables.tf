@@ -4,32 +4,31 @@ variable "billing_account_id" {
 }
 
 variable "boot_layer_roles" {
-  description = "Organization-level roles granted to the boot layer identity. The gcloud seed in this layer's README grants the same list; change both together."
+  description = "Roles granted to the boot layer identity on the organization's folder, and nowhere higher. The gcloud seed in this layer's README grants the same list; change both together."
   type        = list(string)
   default = [
-    "roles/cloudbuild.builds.editor",          # the two triggers that plan and apply the layers (cloud-build.tf)
-    "roles/cloudbuild.connectionAdmin",        # the connection and the repository link the triggers watch (cloud-build.tf)
-    "roles/iam.organizationRoleAdmin",         # the custom roles this layer creates (project updater, state bucket policy admin)
-    "roles/iam.serviceAccountAdmin",           # the org layer identity, the two runner identities, the two plan identities, and the grants on each
-    "roles/resourcemanager.folderAdmin",       # the terraform folder
-    "roles/resourcemanager.organizationAdmin", # org-level IAM bindings for the org layer identity and the two plan identities
-    "roles/resourcemanager.projectCreator",    # the boot project
-    "roles/resourcemanager.projectDeleter",    # project lifecycle
-    "roles/resourcemanager.projectIamAdmin",   # IAM bindings inside the boot project
-    "roles/serviceusage.serviceUsageAdmin",    # API enablement in the boot project
+    "roles/cloudbuild.builds.editor",        # the two triggers that plan and apply the layers (cloud-build.tf)
+    "roles/cloudbuild.connectionAdmin",      # the connection and the repository link the triggers watch (cloud-build.tf)
+    "roles/iam.roleAdmin",                   # the custom roles this layer creates in the boot project (project updater, state bucket policy admin)
+    "roles/iam.serviceAccountAdmin",         # the dns layer identity, the two runner identities, the two plan identities, and the grants on each
+    "roles/resourcemanager.folderAdmin",     # the terraform folder, and the bindings on the organization's folder for the dns layer identity and the two plan identities
+    "roles/resourcemanager.projectCreator",  # the boot project
+    "roles/resourcemanager.projectDeleter",  # project lifecycle
+    "roles/resourcemanager.projectIamAdmin", # IAM bindings inside the boot project
+    "roles/serviceusage.serviceUsageAdmin",  # API enablement in the boot project
   ]
 }
 
 variable "boot_plan_roles" {
-  description = "Organization-level roles granted to the plan identities of the two boot layers (0-bootstrap and 1-dns, both in the boot project): the reads a plan of either layer needs, at the organization node since 0-bootstrap declares folders, organization-level grants and custom roles across it. A starting set, completed by refusal."
+  description = "Roles granted on the organization's folder to the plan identities of the two boot layers (0-bootstrap and 1-dns, both in the boot project): the reads a plan of either layer needs, on the folder since 0-bootstrap declares folders, grants and custom roles under it. A starting set, completed by refusal."
   type        = list(string)
   default = [
-    "roles/browser",                         # the organization, its folders and projects
+    "roles/browser",                         # the organization's folder, its folders and projects
     "roles/essentialcontacts.viewer",        # Essential Contacts per folder
     "roles/iam.securityReviewer",            # every IAM policy the grants are refreshed through, and the custom roles
     "roles/iam.serviceAccountViewer",        # the identities in every project
     "roles/orgpolicy.policyViewer",          # the folder-scoped constraints
-    "roles/resourcemanager.tagViewer",       # the public-invoker tag
+    "roles/resourcemanager.tagViewer",       # the public-invoker tag keys in the environment projects
     "roles/secretmanager.viewer",            # the key container's metadata, never a version's payload
     "roles/serviceusage.serviceUsageViewer", # each project's enabled APIs
   ]
@@ -79,7 +78,7 @@ variable "terraform_folder_id" {
 }
 
 variable "manage_billing_iam" {
-  description = "Whether this layer manages the roles/billing.user grant for the boot identity on the billing account. Changing a billing account's IAM policy needs Billing Account Administrator, which the bootstrap administrator does not hold on the CCC account. While this is false the grant is made by hand by a billing administrator (README, step 2) and stays outside OpenTofu."
+  description = "Whether this layer manages the roles/billing.user grant for the boot identity on the billing account. Changing a billing account's IAM policy needs Billing Account Administrator, which the break-glass account does not hold on the CCC account. While this is false the grant is made by hand by a billing administrator (README, step 2) and stays outside OpenTofu."
   type        = bool
   default     = true
 }

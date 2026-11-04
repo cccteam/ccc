@@ -84,7 +84,7 @@ a release pin renders the fetch step alone, a commit pin adds the step that buil
 and in the release shape the fetch step refuses a commit pin. So upgrade says so, asks for yes
 typed back (--yes stands in for it where there is no terminal; without either the run is refused
 and nothing is moved), and after the render applies 0-bootstrap as you, with your sign-in, the way
-the bootstrap administrator applies the layer by hand: the plan updates the two triggers in place.
+the break-glass account applies the layer by hand: the plan updates the two triggers in place.
 A move that keeps the kind applies nothing.
 
 Upgrade impulse first, then bedrock, and land both in one change: bedrock's checks read what
@@ -222,7 +222,7 @@ type shapeChange struct {
 // announcement says what the move does to the triggers: the kinds, the shapes, what
 // the triggers as applied do with the new pin, and that 0-bootstrap is applied here.
 func (c *shapeChange) announcement() string {
-	const applies = "bedrock upgrade applies 0-bootstrap after the render%s, as you, with your sign-in, the way the bootstrap administrator applies the layer by hand (in 0-bootstrap: tofu init, plan and apply, at its backend)%s; the plan updates the two triggers in place."
+	const applies = "bedrock upgrade applies 0-bootstrap after the render%s, as you, with your sign-in, the way the break-glass account applies the layer by hand (in 0-bootstrap: tofu init, plan and apply, at its backend)%s; the plan updates the two triggers in place."
 	if c.to == org.CommitKind {
 		return "The pin moves from a release to a commit, and the Cloud Build triggers' steps change shape with it (0-bootstrap/cloud-build.tf): a release pin renders the fetch step alone, a commit pin adds the step that builds it with go install. The triggers are applied in the release shape, whose fetch step refuses a commit pin, so no pull request with this pin can be planned until 0-bootstrap is applied in the commit shape. " +
 			fmt.Sprintf(applies, "", "")

@@ -7,7 +7,7 @@
 # trigger's run impersonates the plan identity for that layer's tofu, the
 # apply trigger's run the apply identity. This layer creates the identities of
 # the six project layers (service-accounts.tf); the two boot layers' plan
-# identities are 0-bootstrap's, with their organization-level reads
+# identities are 0-bootstrap's, with their reads on the organization's folder
 # (0-bootstrap/bootstrap.tf): a binding at the organization node is
 # 0-bootstrap's to make, since this layer's identity holds no role there that
 # sets the organization's policy.
@@ -84,7 +84,7 @@ resource "google_secret_manager_secret_iam_member" "environment_tofu_deployer_ke
 
   project   = var.boot_project_id
   secret_id = local.boot.github_deployer_key_secret
-  role      = google_organization_iam_custom_role.secret_container_admin.id
+  role      = google_project_iam_custom_role.secret_container_admin["boot"].id
   member    = google_service_account.tofu[each.key].member
 }
 
@@ -118,7 +118,7 @@ resource "google_secret_manager_secret_iam_member" "environment_tofu_release_key
 
   project   = var.boot_project_id
   secret_id = local.boot.github_release_key_secret
-  role      = google_organization_iam_custom_role.secret_container_admin.id
+  role      = google_project_iam_custom_role.secret_container_admin["boot"].id
   member    = google_service_account.tofu[each.key].member
 }
 
@@ -211,6 +211,6 @@ resource "google_storage_bucket_iam_member" "environment_plan_policy_reader" {
   for_each = local.environment_layers
 
   bucket = var.state_bucket
-  role   = google_organization_iam_custom_role.bucket_policy_reader.id
+  role   = google_project_iam_custom_role.bucket_policy_reader["boot"].id
   member = google_service_account.plan[each.key].member
 }

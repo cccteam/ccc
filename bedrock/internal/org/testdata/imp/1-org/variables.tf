@@ -142,9 +142,10 @@ variable "layer_roles" {
     Keys map to the role_set field of each entry in var.projects.
 
     An entry is either a predefined role ("roles/...") or the bare ID of a
-    custom organization role created in custom-roles.tf (secretContainerAdmin,
+    custom role created in custom-roles.tf, in every project (secretContainerAdmin,
     storageBucketCreator). Custom roles are named by bare ID because a
-    variable default cannot reference a resource; locals.tf resolves them.
+    variable default cannot reference a resource; locals.tf resolves them,
+    in the project the identity is granted on.
   EOT
   type        = map(list(string))
   default = {
@@ -322,7 +323,7 @@ variable "plan_roles" {
     reads a plan of the project's layer needs, and no bundle. Keys map to the
     role_set field of each entry in var.projects, as var.layer_roles' do.
 
-    Each set is the custom organization role of its kind from custom-roles.tf
+    Each set is the custom role of its kind from custom-roles.tf, in each project
     (named by bare ID; locals.tf resolves it), which reads the resource types
     the layer declares and nothing of their data, beside
     roles/iam.securityReviewer for the IAM policies the layer's grants are
@@ -431,8 +432,8 @@ variable "projects" {
 }
 
 variable "public_invokers" {
-  description = "Per application, the IAM members of its apply identities in every environment (2-env's), granted roles/resourcemanager.tagUser on the public-invoker tag value (tags.tf): an apply identity binds the tag to its own Cloud Run services, which is what lets it grant allUsers roles/run.invoker there. Rendered into public-invokers.auto.tfvars by bedrock org register and committed after 2-env has created the identities, since a grant on an identity that does not exist is refused."
-  type        = map(list(string))
+  description = "Per application, by environment, the IAM member of its apply identity there (2-env's), granted roles/resourcemanager.tagUser on that environment project's public-invoker tag value (tags.tf): an apply identity binds the tag to its own Cloud Run services, which is what lets it grant allUsers roles/run.invoker there. Rendered into public-invokers.auto.tfvars by bedrock org register and committed after 2-env has created the identities, since a grant on an identity that does not exist is refused."
+  type        = map(map(string))
   default     = {}
 }
 

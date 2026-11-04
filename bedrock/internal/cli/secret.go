@@ -559,7 +559,7 @@ the release GitHub App's private key, into <prefix>-boot-gbl-github-release-key,
 boot project (projects.boot). --project and --container override; --app and --layer are refused,
 and so is an application's [env] [VARIABLE]. The value is read as above; a .pem file is
 stored as given. The containers are 0-bootstrap's own resources, so a project without them
-is refused: apply the layer first. Adding to them is the bootstrap administrator's. The
+is refused: apply the layer first. Adding to them is the break-glass account's. The
 command prints the pin to make.`,
 		Args: cobra.MaximumNArgs(2),
 		ValidArgsFunction: func(cmd *cobra.Command, args []string, _ string) ([]string, cobra.ShellCompDirective) {

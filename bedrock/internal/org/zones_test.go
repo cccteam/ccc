@@ -139,7 +139,7 @@ func TestZonesBootstrapRoles(t *testing.T) {
 			t.Errorf("%s: Needs %q names 1-org, which a zones organization has not", r.Title, r.Needs)
 		}
 	}
-	want := []string{"Folder Creator", "Project Creator", "Organization Administrator", "Organization Role Administrator", "Billing Account User"}
+	want := []string{"Folder Creator", "Billing Account User"}
 	if !slices.Equal(titles, want) {
 		t.Errorf("a zones organization's BootstrapRoles() = %v, want %v", titles, want)
 	}
@@ -150,7 +150,7 @@ func TestZonesBootstrapRoles(t *testing.T) {
 				t.Errorf("%s lacks %s", path, r.Title)
 			}
 		}
-		for _, absent := range []string{"Organization Policy Administrator", "Tag Administrator"} {
+		for _, absent := range []string{"Organization Administrator", "Organization Policy Administrator", "Organization Role Administrator", "Tag Administrator"} {
 			if strings.Contains(got, absent) {
 				t.Errorf("%s names %s, which a zones organization's seed does not need", path, absent)
 			}
@@ -253,8 +253,8 @@ func TestZonesRender(t *testing.T) {
 				"resource \"google_project_iam_member\" \"dns_plan\" {\n  project = module.boot_project.project_id\n  role    = \"roles/dns.reader\"\n",
 				"    dns  = { layer = \"1-dns\", reads = [\"1-dns\"] }\n",
 				"    \"dns.googleapis.com\",",
-				"# custom roles here.\n",
-				"since the dns layer identity holds no role there at all, by design.",
+				"project and holds no role at the organization node.\n",
+				"their reads on the\n# organization's folder are this layer's to grant, like every binding on the\n# folder",
 			},
 			absent: []string{"privilegedaccessmanager", "org_tofu_project_updater", "google_organization_iam_member\" \"org_tofu\"", "entitlement"},
 		},

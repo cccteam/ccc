@@ -194,7 +194,7 @@ resource "google_project_iam_member" "runner_builds" {
 
 # Cloud Build runs a build as the trigger's service account on the service
 # agent's say-so, and whoever creates the trigger acts as that account: the
-# bootstrap administrator's Owner covers the first apply, the boot identity
+# break-glass account's Owner covers the first apply, the boot identity
 # every apply after it.
 resource "google_service_account_iam_member" "runner_agent_user" {
   for_each = local.runners
@@ -237,7 +237,7 @@ resource "google_service_account_iam_member" "boot_plan_planner" {
 }
 
 # A plan of this layer reads the connection, the repository link and the two
-# triggers as the boot plan identity, whose organization-level reads
+# triggers as the boot plan identity, whose reads on the organization's folder
 # (var.boot_plan_roles) carry nothing of Cloud Build: the connection and the
 # link through roles/cloudbuild.connectionViewer, a regional trigger through
 # roles/cloudbuild.builds.viewer (its read is answered on cloudbuild.builds.get;

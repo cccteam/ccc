@@ -15,7 +15,7 @@
 # nothing is auto-deleted. The Identity Toolkit API is in the set 1-org
 # enables on the project, and this layer's identity holds
 # roles/identityplatform.admin there for this resource, with the
-# organization's Identity Platform Initializer role (1-org/custom-roles.tf)
+# project's Identity Platform Initializer role (1-org/custom-roles.tf)
 # for the step inside the initialization that adds Firebase to the project
 # (firebase.projects.update).
 #

@@ -23,7 +23,7 @@
   "ciLargeRunnerMaximum": 10,
   "sourceRepo": "imp-impulse-infrastructure",
   "stateBucket": "imp-boot-gbl-state-a1b2",
-  "operator": "seed@imp.example",
+  "breakGlassAccount": "seed@imp.example",
   "teamGroups": {
     "tst": "team-tst@imp.example",
     "stg": "team-stg@imp.example",

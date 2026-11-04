@@ -151,8 +151,9 @@ applies it as the layer identity. Both hold
 their state-bucket grants from `1-org`. The first `init` writes
 `.terraform.lock.hcl`; commit it.
 
-By hand, for recovery, the bootstrap administrator applies it with their own
-sign-in and the organization-level roles the seed names (no entitlement
+By hand, for recovery, a person signed in as the break-glass account applies
+it, with the roles the account grants itself on the organization's folder for
+the run (`0-bootstrap/README.md`, "Recovery, by hand"; no entitlement
 covers a shared layer; `0-bootstrap/README.md`, "Recovery, by hand"):
 
 ```bash

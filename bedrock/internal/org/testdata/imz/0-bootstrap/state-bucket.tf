@@ -17,8 +17,8 @@
 # the boot identity the bucket's policy authority (the custom role below),
 # because it applies this layer through the workflow; 1-dns creates no identity
 # and grants nothing on the bucket. The first-time order holds by itself: the
-# seed makes the bucket, this layer grants on it as the bootstrap
-# administrator, and from then on the boot identity holds what its grants
+# seed makes the bucket, this layer grants on it as the break-glass
+# account, and from then on the boot identity holds what its grants
 # need. The apply trigger's runner keeps the markers of the layers' last
 # applies under applied/ (cloud-build.tf).
 #
@@ -39,10 +39,11 @@ locals {
 # that grants on the state bucket for identities it creates holds there.
 # roles/storage.admin would carry every object with it. Whoever sets a
 # bucket's policy could grant themselves the rest; the role names the intent
-# and keeps the day-to-day reach at the prefixes granted.
-resource "google_organization_iam_custom_role" "state_bucket_policy_admin" {
-  org_id      = local.org_id
-  role_id     = "stateBucketPolicyAdmin_${random_id.organization.hex}"
+# and keeps the day-to-day reach at the prefixes granted. A role in the boot
+# project, where the bucket is (bootstrap.tf, project_updater).
+resource "google_project_iam_custom_role" "state_bucket_policy_admin" {
+  project     = module.boot_project.project_id
+  role_id     = "stateBucketPolicyAdmin"
   title       = "State Bucket Policy Admin"
   description = "Reads and sets a bucket's IAM policy, for the layers that grant state-bucket access to the identities they create."
   permissions = [
@@ -56,7 +57,7 @@ resource "google_storage_bucket_iam_member" "policy_admin" {
   for_each = { boot = local.own_identities.boot }
 
   bucket = var.state_bucket
-  role   = google_organization_iam_custom_role.state_bucket_policy_admin.id
+  role   = google_project_iam_custom_role.state_bucket_policy_admin.id
   member = each.value.member
 }
 
