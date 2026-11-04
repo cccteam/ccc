@@ -257,21 +257,25 @@ type Placement struct {
 	// ContactDomains are the domains Essential Contacts may belong to, each with its
 	// leading @.
 	ContactDomains []string `json:"contactDomains"`
-	// Applications are the applications registered in every environment, in the order
-	// they were added, each by its code and its repository's name; empty for an
-	// organization with none yet. bedrock org register adds one; the layers'
-	// applications.auto.tfvars are rendered from it.
+	// Applications are the registered applications, in the order they were added, each
+	// by its code, its repository's name and the environments it is placed in (every one
+	// unless its entry names a prefix of the promotion order); empty for an organization
+	// with none yet. bedrock org register adds one, bedrock org place changes where one
+	// is placed; the layers' applications.auto.tfvars are rendered from it.
 	Applications []Application `json:"applications"`
-	// Registration is how far each application's registration has gone, by code, for
-	// the applications whose registration is under way: RegistrationIdentities, then
-	// RegistrationGrants; an application absent from the map is registered in full. The
-	// layers' values render from it, so the repository matches the render at every step
-	// of the sequence bedrock org register prints and bedrock org check passes on every
-	// pull request of it: the grants on an application's identities (1-org's
-	// public-invoker tag, 2-shr's registry, 2-spn's databases) are rendered once it is
-	// past identities, its hostnames (2-net) once its registration is complete. bedrock
-	// org register writes the first step, and register --next moves to the following.
-	Registration map[string]string `json:"registration,omitempty"`
+	// Registration is how far each application's registration has gone, by code and by
+	// environment, for the applications whose registration is under way somewhere:
+	// RegistrationIdentities, then RegistrationGrants; an environment absent from an
+	// application's steps, and an application absent from the map, is registered in
+	// full. The layers' values render from it, so the repository matches the render at
+	// every step of the sequence bedrock org register prints and bedrock org check
+	// passes on every pull request of it: the grants on an application's identities in
+	// an environment (1-org's public-invoker tag, 2-shr's registry, 2-spn's databases)
+	// are rendered once it is past identities there, its hostnames there (2-net) once
+	// its registration there is complete. bedrock org register writes the first step in
+	// every environment the application is placed in, bedrock org place in an
+	// environment added later, and register --next moves to the following.
+	Registration map[string]RegistrationSteps `json:"registration,omitempty"`
 	// Teardown says the organization is torn down: bedrock org teardown sets it, and
 	// 2-net renders with no hosts and its load balancer's listeners gone (serving =
 	// false in applications.auto.tfvars), the address, the certificate and its DNS
@@ -364,11 +368,28 @@ func ReadPlacement(path string) (*Placement, error) {
 	if err := json.Unmarshal(data, &p); err != nil {
 		return nil, errors.Wrapf(err, "json.Unmarshal(): %s", path)
 	}
+	p.normalizeRegistration()
 	if err := p.Validate(); err != nil {
 		return nil, errors.Wrapf(err, "%s", path)
 	}
 
 	return &p, nil
+}
+
+// normalizeRegistration spreads a step read in the older form, one for the application,
+// over every environment the application is placed in.
+func (p *Placement) normalizeRegistration() {
+	for app, steps := range p.Registration {
+		step, old := steps[everyPlacedEnvironment]
+		if !old {
+			continue
+		}
+		spread := RegistrationSteps{}
+		for _, env := range p.PlacedEnvironments(app) {
+			spread[env] = step
+		}
+		p.Registration[app] = spread
+	}
 }
 
 // Validate refuses a placement a layer could not be rendered from.
@@ -1006,6 +1027,18 @@ func (p *Placement) ApplicationProjects() (block string, missing []string) {
 	return "  \"projects\": {\n" + strings.Join(lines, ",\n") + "\n  }", missing
 }
 
+// seedEnvironments are the environments an application's first placement seeds: the
+// first alone when the application is placed in production, whose backups restore the
+// environments between; every placed environment otherwise, since an application not
+// placed in production has no backup to restore the others from.
+func seedEnvironments(placed []string) []string {
+	if slices.Contains(placed, Environments[len(Environments)-1]) {
+		return []string{placed[0]}
+	}
+
+	return slices.Clone(placed)
+}
+
 // ApplicationPlacement is the first placement of a registered application, every field
 // from this placement but the bedrock pin, which is the bedrock writing it (a release with
 // its pipeline binary's checksum, or a commit pin with none): the prefix, the model's
@@ -1028,8 +1061,13 @@ func (p *Placement) ApplicationPlacement(app, repository, bedrockVersion, bedroc
 	for _, r := range p.Regions {
 		regions = append(regions, derive.Region{Name: r.Name, Code: r.Code})
 	}
-	projects := make(map[string]derive.Project, len(Environments))
-	for _, env := range Environments {
+	placed := p.PlacedEnvironments(app)
+	if len(placed) == 0 {
+		// An application the placement does not list yet is placed in every environment.
+		placed = slices.Clone(Environments)
+	}
+	projects := make(map[string]derive.Project, len(placed))
+	for _, env := range placed {
 		projects[env] = derive.Project{ID: p.Projects[env], Number: p.ProjectNumbers[env]}
 	}
 	var labels map[string]string
@@ -1037,24 +1075,25 @@ func (p *Placement) ApplicationPlacement(app, repository, bedrockVersion, bedroc
 		labels = maps.Clone(p.Labels)
 	}
 	a := &derive.Placement{
-		Prefix:           p.Prefix,
-		Environments:     slices.Clone(Environments),
-		Regions:          regions,
-		AppsDomain:       p.AppsDomain,
-		HostedDomain:     p.OrganizationDomain,
-		StateBucket:      p.StateBucket,
-		PlaceholderImage: derive.PlaceholderImage,
-		DefaultBranch:    p.GithubDefaultBranch,
-		Code:             app,
-		Repository:       repository,
-		ReleaseApp:       p.GithubReleaseAppSlug,
-		BedrockVersion:   bedrockVersion,
-		BedrockSHA256:    bedrockSHA256,
-		Labels:           labels,
-		Seed:             []string{Environments[0]},
-		Projects:         projects,
-		OutlierDetection: p.OutlierDetection.Clone(),
-		CloudArmor:       p.CloudArmor.Clone(),
+		Prefix:                p.Prefix,
+		Environments:          placed,
+		ProductionEnvironment: Environments[len(Environments)-1],
+		Regions:               regions,
+		AppsDomain:            p.AppsDomain,
+		HostedDomain:          p.OrganizationDomain,
+		StateBucket:           p.StateBucket,
+		PlaceholderImage:      derive.PlaceholderImage,
+		DefaultBranch:         p.GithubDefaultBranch,
+		Code:                  app,
+		Repository:            repository,
+		ReleaseApp:            p.GithubReleaseAppSlug,
+		BedrockVersion:        bedrockVersion,
+		BedrockSHA256:         bedrockSHA256,
+		Labels:                labels,
+		Seed:                  seedEnvironments(placed),
+		Projects:              projects,
+		OutlierDetection:      p.OutlierDetection.Clone(),
+		CloudArmor:            p.CloudArmor.Clone(),
 	}
 	if err := a.Validate(); err != nil {
 		return nil, errors.Wrapf(err, "%s's placement", app)
@@ -1072,6 +1111,48 @@ const (
 	RegistrationGrants     = "grants"
 )
 
+// RegistrationSteps is how far an application's registration has gone in each
+// environment under way, by environment: RegistrationIdentities, then
+// RegistrationGrants; an environment absent from it is registered in full. Every
+// environment under way is at the same step (Validate), since register --next moves them
+// together and bedrock org place adds an environment to an application registered in
+// full alone. A placement written before the steps were per environment names one step
+// for the application, which reads as that step in every environment it is placed in.
+type RegistrationSteps map[string]string
+
+// EveryEnvironment is the steps of an application placed in every environment, each at
+// the step: what the older form of the field meant.
+func EveryEnvironment(step string) RegistrationSteps {
+	steps := RegistrationSteps{}
+	for _, env := range Environments {
+		steps[env] = step
+	}
+
+	return steps
+}
+
+// everyPlacedEnvironment marks a step read in the older form, one for the application,
+// until Placement.normalizeRegistration spreads it over the application's environments.
+const everyPlacedEnvironment = "*"
+
+// UnmarshalJSON reads the steps as written, or as the older form wrote them: one step
+// for the application.
+func (s *RegistrationSteps) UnmarshalJSON(data []byte) error {
+	var step string
+	if err := json.Unmarshal(data, &step); err == nil {
+		*s = RegistrationSteps{everyPlacedEnvironment: step}
+
+		return nil
+	}
+	var steps map[string]string
+	if err := json.Unmarshal(data, &steps); err != nil {
+		return errors.Wrap(err, "json.Unmarshal()")
+	}
+	*s = steps
+
+	return nil
+}
+
 // Application is one registered application: its code, the segment every resource name
 // of the application carries, one to six lowercase letters and digits starting with a
 // letter (derive.ApplicationCodePattern), and its repository's name under the GitHub
@@ -1080,6 +1161,13 @@ const (
 type Application struct {
 	Code       string `json:"code"`
 	Repository string `json:"repository"`
+	// Environments are the environments the application is placed in, a prefix of the
+	// promotion order: the first alone, the first two, or every environment. Registration
+	// creates the application's things there alone, the layers render for it there alone,
+	// and its release line ends at the last of them. Absent, every environment, so a
+	// placement written before this field reads as it did; bedrock org register
+	// --environments writes a prefix and bedrock org place changes it.
+	Environments []string `json:"environments,omitempty"`
 }
 
 // UnmarshalJSON reads an entry as written, or as a placement before the repository was
@@ -1155,10 +1243,11 @@ func (p *Placement) Retire(code string) error {
 	return nil
 }
 
-// Register adds an application to the placement, at the first step of its registration:
-// a code under the one rule (derive.ValidateApplicationCode) not registered yet, and a
-// repository name no other application has.
-func (p *Placement) Register(code, repository string) error {
+// Register adds an application to the placement, placed in the environments given (a
+// prefix of the promotion order; none means every environment), at the first step of
+// its registration in each: a code under the one rule (derive.ValidateApplicationCode)
+// not registered yet, and a repository name no other application has.
+func (p *Placement) Register(code, repository string, environments []string) error {
 	if err := derive.ValidateApplicationCode(code); err != nil {
 		return err
 	}
@@ -1173,31 +1262,129 @@ func (p *Placement) Register(code, repository string) error {
 			return errors.Newf("repository %q is %s's already", repository, a.Code)
 		}
 	}
-	p.Applications = append(p.Applications, Application{Code: code, Repository: repository})
-	if p.Registration == nil {
-		p.Registration = map[string]string{}
+	placed, err := placedPrefix(code, environments)
+	if err != nil {
+		return err
 	}
-	p.Registration[code] = RegistrationIdentities
+	p.Applications = append(p.Applications, Application{Code: code, Repository: repository, Environments: placed})
+	p.startRegistration(code, p.PlacedEnvironments(code))
 
 	return nil
 }
 
-// Step is how far the application's registration has gone: RegistrationIdentities,
-// RegistrationGrants, or "" for one registered in full.
-func (p *Placement) Step(app string) string {
-	return p.Registration[app]
+// placedPrefix is the environments an application's entry records: nil for every
+// environment (the default, which the file leaves out), else the list as given, a prefix
+// of the promotion order.
+func placedPrefix(code string, environments []string) ([]string, error) {
+	if len(environments) == 0 || slices.Equal(environments, Environments) {
+		return nil, nil
+	}
+	if err := validatePlacedEnvironments(code, environments); err != nil {
+		return nil, err
+	}
+
+	return slices.Clone(environments), nil
 }
 
-// Advance moves the application's registration to its next step and answers that step:
-// identities to grants, grants to complete (""). An application the placement does not
-// list and one registered in full are refused.
+// validatePlacedEnvironments refuses an environments list that is not a prefix of the
+// promotion order: an application is placed in the first environment, in the first two,
+// or in every one, since a release reaches an environment through the one before it.
+func validatePlacedEnvironments(code string, environments []string) error {
+	if len(environments) == 0 {
+		return errors.Newf("application %s is placed in no environment: leave environments out for every environment, or name a prefix of %s", code, strings.Join(Environments, ", "))
+	}
+	if len(environments) > len(Environments) || !slices.Equal(environments, Environments[:len(environments)]) {
+		return errors.Newf("application %s's environments (%s) are not a prefix of the promotion order (%s): an application is placed in %s, in %s and %s, or in every environment, since a release reaches an environment through the one before it", code, strings.Join(environments, ", "), strings.Join(Environments, ", "), Environments[0], Environments[0], Environments[1])
+	}
+
+	return nil
+}
+
+// startRegistration puts the environments at the first step of the application's
+// registration; nothing for no environment.
+func (p *Placement) startRegistration(code string, environments []string) {
+	if len(environments) == 0 {
+		return
+	}
+	if p.Registration == nil {
+		p.Registration = map[string]RegistrationSteps{}
+	}
+	if p.Registration[code] == nil {
+		p.Registration[code] = RegistrationSteps{}
+	}
+	for _, env := range environments {
+		p.Registration[code][env] = RegistrationIdentities
+	}
+}
+
+// PlacedEnvironments are the environments the application is placed in, in promotion
+// order: its entry's list, or every environment when the entry names none; none for an
+// application the placement does not list.
+func (p *Placement) PlacedEnvironments(code string) []string {
+	for _, a := range p.Applications {
+		if a.Code != code {
+			continue
+		}
+		if len(a.Environments) == 0 {
+			return slices.Clone(Environments)
+		}
+
+		return slices.Clone(a.Environments)
+	}
+
+	return nil
+}
+
+// Placed reports whether the application is placed in the environment.
+func (p *Placement) Placed(code, env string) bool {
+	return slices.Contains(p.PlacedEnvironments(code), env)
+}
+
+// StepIn is how far the application's registration has gone in the environment:
+// RegistrationIdentities, RegistrationGrants, or "" for an environment registered in
+// full, or one the application is not placed in.
+func (p *Placement) StepIn(app, env string) string {
+	return p.Registration[app][env]
+}
+
+// UnderWay lists the environments whose registration of the application is under way, in
+// promotion order; none for an application registered in full.
+func (p *Placement) UnderWay(app string) []string {
+	var envs []string
+	for _, env := range Environments {
+		if p.Registration[app][env] != "" {
+			envs = append(envs, env)
+		}
+	}
+
+	return envs
+}
+
+// Step is the step the application's registration is at in the environments under way,
+// the same in each (Validate): RegistrationIdentities, RegistrationGrants, or "" for an
+// application registered in full wherever it is placed.
+func (p *Placement) Step(app string) string {
+	for _, env := range Environments {
+		if step := p.Registration[app][env]; step != "" {
+			return step
+		}
+	}
+
+	return ""
+}
+
+// Advance moves the application's registration to its next step in every environment
+// under way and answers that step: identities to grants, grants to complete (""). An
+// application the placement does not list and one registered in full are refused.
 func (p *Placement) Advance(app string) (string, error) {
 	if !p.Registered(app) {
 		return "", errors.Newf("application %q is not registered (bedrock org register %s)", app, app)
 	}
-	switch p.Registration[app] {
+	switch p.Step(app) {
 	case RegistrationIdentities:
-		p.Registration[app] = RegistrationGrants
+		for _, env := range p.UnderWay(app) {
+			p.Registration[app][env] = RegistrationGrants
+		}
 
 		return RegistrationGrants, nil
 	case RegistrationGrants:
@@ -1212,26 +1399,41 @@ func (p *Placement) Advance(app string) (string, error) {
 	}
 }
 
-// Granted lists the applications past the identities step, in registration order: those
-// whose grants the layers render (1-org's public-invoker tag, 2-shr's registry, 2-spn's
-// databases), since their identities exist.
-func (p *Placement) Granted() []string {
-	apps := make([]string, 0, len(p.Applications))
-	for _, app := range p.Codes() {
-		if p.Registration[app] != RegistrationIdentities {
-			apps = append(apps, app)
+// GrantedEnvironments lists the environments the application is placed in whose
+// registration is past the identities step, in promotion order: those whose grants the
+// layers render (1-org's public-invoker tag, 2-shr's registry, 2-spn's databases), since
+// the application's identities exist there.
+func (p *Placement) GrantedEnvironments(app string) []string {
+	var envs []string
+	for _, env := range p.PlacedEnvironments(app) {
+		if p.Registration[app][env] != RegistrationIdentities {
+			envs = append(envs, env)
 		}
 	}
 
-	return apps
+	return envs
 }
 
-// Served lists the applications registered in full, in registration order: those whose
-// hostnames 2-net serves, since their stacks' backends exist.
+// ServedEnvironments lists the environments the application is registered in full in, in
+// promotion order: those whose hostnames 2-net serves, since the stack's backends exist
+// there.
+func (p *Placement) ServedEnvironments(app string) []string {
+	var envs []string
+	for _, env := range p.PlacedEnvironments(app) {
+		if p.Registration[app][env] == "" {
+			envs = append(envs, env)
+		}
+	}
+
+	return envs
+}
+
+// Served lists the applications registered in full in at least one environment, in
+// registration order: those with hostnames in 2-net.
 func (p *Placement) Served() []string {
 	apps := make([]string, 0, len(p.Applications))
 	for _, app := range p.Codes() {
-		if p.Registration[app] == "" {
+		if len(p.ServedEnvironments(app)) > 0 {
 			apps = append(apps, app)
 		}
 	}
@@ -1239,10 +1441,79 @@ func (p *Placement) Served() []string {
 	return apps
 }
 
+// Place sets the environments an application registered in full is placed in, a prefix
+// of the promotion order named in full, and answers the environments added and dropped.
+// An added environment starts at the first step of the application's registration there,
+// which register --next moves on. A dropped environment must be out of service already
+// (bedrock org teardown <app> <env>, the stack torn down there), so that nothing the
+// layers own there is left behind; its out-of-service entry and its recorded hostnames go
+// with it. An application whose registration is under way is refused until it completes.
+func (p *Placement) Place(code string, environments []string) (added, dropped []string, err error) {
+	i := slices.IndexFunc(p.Applications, func(a Application) bool { return a.Code == code })
+	if i < 0 {
+		return nil, nil, errors.Newf("application %q is not registered (bedrock org register %s)", code, code)
+	}
+	if under := p.UnderWay(code); len(under) > 0 {
+		return nil, nil, errors.Newf("%s's registration is at the %s step in %s: finish it (bedrock org register %s --next) before placing it elsewhere", p.Repository(code), p.Step(code), strings.Join(under, ", "), code)
+	}
+	if err := validatePlacedEnvironments(code, environments); err != nil {
+		return nil, nil, err
+	}
+	current := p.PlacedEnvironments(code)
+	for _, env := range environments {
+		if !slices.Contains(current, env) {
+			added = append(added, env)
+		}
+	}
+	for _, env := range current {
+		if !slices.Contains(environments, env) {
+			dropped = append(dropped, env)
+		}
+	}
+	if len(added) == 0 && len(dropped) == 0 {
+		return nil, nil, errors.Newf("%s is placed in %s already", p.Repository(code), strings.Join(current, ", "))
+	}
+	var standing []string
+	for _, env := range dropped {
+		if !slices.Contains(p.OutOfService[code], env) {
+			standing = append(standing, env)
+		}
+	}
+	if len(standing) > 0 {
+		return nil, nil, errors.Newf("%s is in service in %s: an environment leaves the list once its stack is down there, so that nothing the layers own is left behind. First bedrock org teardown %s %s, merge the pull request it leaves and let the apply trigger take the hostnames out of 2-net, then bedrock teardown from the application's checkout there, then place again", p.Repository(code), strings.Join(standing, ", "), code, strings.Join(standing, " "))
+	}
+	placed, err := placedPrefix(code, environments)
+	if err != nil {
+		return nil, nil, err
+	}
+	p.Applications[i].Environments = placed
+	p.startRegistration(code, added)
+	for _, env := range dropped {
+		p.OutOfService[code] = slices.DeleteFunc(p.OutOfService[code], func(e string) bool { return e == env })
+		delete(p.Hostnames[code], env)
+	}
+	if len(p.OutOfService[code]) == 0 {
+		delete(p.OutOfService, code)
+		if len(p.OutOfService) == 0 {
+			p.OutOfService = nil
+		}
+	}
+	if len(p.Hostnames[code]) == 0 {
+		delete(p.Hostnames, code)
+		if len(p.Hostnames) == 0 {
+			p.Hostnames = nil
+		}
+	}
+
+	return added, dropped, nil
+}
+
 // validateApplications refuses an application whose code breaks the one rule or whose
-// repository is not named, a code or a repository listed twice, and a registration step
-// naming an application the placement does not list or a step that is not one of the
-// two.
+// repository is not named, a code or a repository listed twice, an environments list
+// that is not a prefix of the promotion order, and a registration step naming an
+// application the placement does not list or an environment it is not placed in, a step
+// that is not one of the two, or steps that differ between an application's
+// environments.
 func (p *Placement) validateApplications() error {
 	codes := map[string]bool{}
 	repositories := map[string]bool{}
@@ -1260,13 +1531,32 @@ func (p *Placement) validateApplications() error {
 			return errors.Newf("repository %q is listed twice", a.Repository)
 		}
 		codes[a.Code], repositories[strings.ToLower(a.Repository)] = true, true
+		if a.Environments != nil {
+			if err := validatePlacedEnvironments(a.Code, a.Environments); err != nil {
+				return err
+			}
+		}
 	}
-	for app, step := range p.Registration {
+	for app, steps := range p.Registration {
 		if !p.Registered(app) {
 			return errors.Newf("registration names %q, which applications does not list", app)
 		}
-		if step != RegistrationIdentities && step != RegistrationGrants {
-			return errors.Newf("registration of %q is %q, not %s or %s", app, step, RegistrationIdentities, RegistrationGrants)
+		if len(steps) == 0 {
+			return errors.Newf("registration of %q names no environment: an application registered in full is left out of the map", app)
+		}
+		common := ""
+		for _, env := range slices.Sorted(maps.Keys(steps)) {
+			step := steps[env]
+			if !p.Placed(app, env) {
+				return errors.Newf("registration of %q names %s, which it is not placed in (%s)", app, env, strings.Join(p.PlacedEnvironments(app), ", "))
+			}
+			if step != RegistrationIdentities && step != RegistrationGrants {
+				return errors.Newf("registration of %q in %s is %q, not %s or %s", app, env, step, RegistrationIdentities, RegistrationGrants)
+			}
+			if common != "" && step != common {
+				return errors.Newf("registration of %q is at %s in one environment and %s in another: every environment under way moves together (bedrock org register %s --next)", app, common, step, app)
+			}
+			common = step
 		}
 	}
 
@@ -1289,6 +1579,9 @@ func (p *Placement) validateOutOfService() error {
 			i := slices.Index(Environments, env)
 			if i < 0 {
 				return errors.Newf("outOfService names %q for %q, which is not one of %s", env, app, strings.Join(Environments, ", "))
+			}
+			if !p.Placed(app, env) {
+				return errors.Newf("outOfService names %q for %q, which it is not placed in (%s)", env, app, strings.Join(p.PlacedEnvironments(app), ", "))
 			}
 			if i <= last {
 				return errors.Newf("outOfService lists %q's environments as %s: each once, in promotion order (%s)", app, strings.Join(envs, ", "), strings.Join(Environments, ", "))
@@ -1374,16 +1667,24 @@ func NextHostname(host string) string {
 
 // RecordHostnames records the hosts the application's stack serves, by environment
 // (hostname to backend service, every site's and the next revision's twins, as the
-// stack's net_hosts output lists them), as read from its state, and reports whether the
-// record changed. Every environment of the model is recorded, each with at least one
-// entry; what is recorded is held to the same rules as the placement is (Validate), so a
-// hostname another application serves is refused here, before the placement is written.
+// stack's net_hosts output lists them), as read from its state, for the environments
+// given, keeping the record of the others, and reports whether the record changed. Each
+// environment given is one the application is placed in and has at least one entry; what
+// is recorded is held to the same rules as the placement is (Validate), so a hostname
+// another application serves is refused here, before the placement is written.
 func (p *Placement) RecordHostnames(app string, byEnv map[string]map[string]string) (bool, error) {
 	if !p.Registered(app) {
 		return false, errors.Newf("application %q is not registered (bedrock org register %s)", app, app)
 	}
+	if len(byEnv) == 0 {
+		return false, errors.Newf("%s's hostnames: no environment to record", p.Repository(app))
+	}
 	record := make(map[string]map[string]string, len(Environments))
-	for _, env := range Environments {
+	maps.Copy(record, p.Hostnames[app])
+	for _, env := range slices.Sorted(maps.Keys(byEnv)) {
+		if !p.Placed(app, env) {
+			return false, errors.Newf("%s is not placed in %s (%s): nothing to record there", p.Repository(app), env, strings.Join(p.PlacedEnvironments(app), ", "))
+		}
 		hosts := byEnv[env]
 		if len(hosts) == 0 {
 			return false, errors.Newf("%s's stack serves no hostname in %s: its state's net_hosts output is empty", p.Repository(app), env)
@@ -1427,6 +1728,9 @@ func (p *Placement) validateHostnames() error {
 			if !slices.Contains(Environments, env) {
 				return errors.Newf("hostnames.%s names %q, which is not one of %s", app, env, strings.Join(Environments, ", "))
 			}
+			if !p.Placed(app, env) {
+				return errors.Newf("hostnames.%s names %s, which it is not placed in (%s)", app, env, strings.Join(p.PlacedEnvironments(app), ", "))
+			}
 			if len(hosts) == 0 {
 				return errors.Newf("hostnames.%s.%s lists no hostname", app, env)
 			}
@@ -1443,6 +1747,9 @@ func (p *Placement) validateHostnames() error {
 	for _, env := range Environments {
 		owners := map[string]string{}
 		for _, app := range p.Codes() {
+			if !p.Placed(app, env) {
+				continue
+			}
 			for _, h := range SortedHosts(p.ApplicationHosts(app, env)) {
 				if other, taken := owners[h]; taken && other != app {
 					return errors.Newf("hostname %s in %s is %s's and %s's: each hostname of an environment belongs to one application; declare another label in one of the two placements (hostnames) and record it (bedrock org hostnames <app>)", h, env, other, app)
@@ -1486,10 +1793,10 @@ func (p *Placement) validateRecordedHostname(app, env, host string) error {
 }
 
 // Routed says whether 2-net serves the application's hostnames in the environment: the
-// application is registered in full, the organization is not torn down, and the
-// environment is not out of service.
+// application is placed there and registered in full there, the organization is not torn
+// down, and the environment is not out of service.
 func (p *Placement) Routed(app, env string) bool {
-	return !p.Teardown && slices.Contains(p.Served(), app) && !slices.Contains(p.OutOfService[app], env)
+	return !p.Teardown && slices.Contains(p.ServedEnvironments(app), env) && !slices.Contains(p.OutOfService[app], env)
 }
 
 // TakeOutOfService adds the environments to the application's out-of-service entry
@@ -1550,21 +1857,24 @@ func (p *Placement) PutInService(app string, envs []string) ([]string, error) {
 }
 
 // serviceEnvironments checks the application and the environments an out-of-service
-// change names: the application registered in full, each environment one of the model's;
-// none given means every environment.
+// change names: the application registered in full, each environment one the application
+// is placed in; none given means every environment it is placed in.
 func (p *Placement) serviceEnvironments(app string, envs []string) ([]string, error) {
 	if !p.Registered(app) {
 		return nil, errors.Newf("application %q is not registered (bedrock org register %s)", app, app)
 	}
 	if !slices.Contains(p.Served(), app) {
-		return nil, errors.Newf("application %q is at the %s step of its registration: it has no hostnames in 2-net", app, p.Registration[app])
+		return nil, errors.Newf("application %q is at the %s step of its registration: it has no hostnames in 2-net", app, p.Step(app))
 	}
 	if len(envs) == 0 {
-		return slices.Clone(Environments), nil
+		return p.PlacedEnvironments(app), nil
 	}
 	for _, env := range envs {
 		if !slices.Contains(Environments, env) {
 			return nil, errors.Newf("environment %q is not one of %s", env, strings.Join(Environments, ", "))
+		}
+		if !p.Placed(app, env) {
+			return nil, errors.Newf("%s is not placed in %s (%s)", app, env, strings.Join(p.PlacedEnvironments(app), ", "))
 		}
 	}
 

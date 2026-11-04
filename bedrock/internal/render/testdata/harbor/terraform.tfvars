@@ -5,7 +5,7 @@
 state_bucket = "imp-boot-gbl-state-REPLACEME"
 
 # Placement per environment, filled as each environment is set up. Every map
-# is keyed by environment so one file serves all three applies.
+# is keyed by environment so one file serves every environment's apply.
 
 # The members auth's directory registration with Microsoft (README, "Hand
 # steps"): the client id of each environment's registration, and the tenant whose

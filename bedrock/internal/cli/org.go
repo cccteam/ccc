@@ -50,7 +50,7 @@ root, the way an application's stack is rendered from its code; the two commands
 triggers run (plan, apply); and the check, before the seed, that the bootstrap administrator
 holds the roles the seed and the first applies need (preflight).`,
 	}
-	cmd.AddCommand(newOrgNew(d), newOrgPreflight(d), newOrgRender(d), newOrgCheck(d), newOrgRegister(d), newOrgPlan(d), newOrgApply(d), newOrgTeardown(d), newOrgServe(d), newOrgHostnames(d), newOrgRetire(d), newOrgDestroy(d))
+	cmd.AddCommand(newOrgNew(d), newOrgPreflight(d), newOrgRender(d), newOrgCheck(d), newOrgRegister(d), newOrgPlace(d), newOrgPlan(d), newOrgApply(d), newOrgTeardown(d), newOrgServe(d), newOrgHostnames(d), newOrgRetire(d), newOrgDestroy(d))
 
 	return cmd
 }
@@ -618,17 +618,8 @@ func keyReport(ctx context.Context, d deps, p *org.Placement, out io.Writer) {
 	}
 }
 
-func newOrgRegister(d deps) *cobra.Command {
-	var (
-		dir       string
-		placement string
-		next      bool
-	)
-
-	cmd := &cobra.Command{
-		Use:   "register <code> <application checkout>",
-		Short: "Register an application in the foundation and write its first placement",
-		Long: `register adds an application to the organization: its code, the organization's naming
+// registerLong is bedrock org register's help.
+const registerLong = `register adds an application to the organization: its code, the organization's naming
 decision, and its repository's name, read from the checkout's go.mod module path (a module
 under github.com/<organization> is its repository; a vanity import path is refused), go into
 placement.json's applications, the layers' values are rendered from them (1-org's
@@ -651,6 +642,13 @@ bedrock org check passes on each. An application code is 1 to 6 lowercase letter
 digits starting with a letter, the segment every resource name of the application carries,
 registered once; the repository's name is bound by no such rule. Run from the repository
 root, or name it with --dir.
+
+The application is placed in every environment unless --environments names a prefix of
+the promotion order (tst; tst,stg): a proof application that stays in the first
+environment, say. Registration creates its things in those environments alone, the layers
+render for it there alone, the capacity count counts the databases it has there, and its
+release line ends at the last of them; its entry in placement.json records the list
+(environments). bedrock org place changes it later, in either direction.
 
 It also makes the application's first placement.json, the file bedrock render reads in the
 application's repository (infrastructure/placement.json), from this placement and nothing
@@ -683,8 +681,21 @@ grows it and bedrock destroy of an application no longer needed, which frees its
 databases. On the instance that holds the integration environment's databases every pull
 request's stack holds a database of its own too (unless it shares the environment's), so
 the registration says what the applications take there and what is left for them. A
-refusal changes nothing.`,
-		Args: cobra.RangeArgs(1, 2),
+refusal changes nothing.`
+
+func newOrgRegister(d deps) *cobra.Command {
+	var (
+		dir          string
+		placement    string
+		next         bool
+		environments []string
+	)
+
+	cmd := &cobra.Command{
+		Use:   "register <code> <application checkout>",
+		Short: "Register an application in the foundation and write its first placement",
+		Long:  registerLong,
+		Args:  cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			app := args[0]
 			if placement == "" {
@@ -708,12 +719,13 @@ refusal changes nothing.`,
 				return errors.Newf("register %s needs the application's checkout as its second argument: its go.mod names the repository, and its first placement is written there", app)
 			}
 
-			return d.registerFirst(cmd.Context(), cmd.OutOrStdout(), p, placement, dir, args)
+			return d.registerFirst(cmd.Context(), cmd.OutOrStdout(), p, placement, dir, args, environments)
 		},
 	}
 	cmd.Flags().StringVar(&dir, "dir", ".", "the repository root")
 	cmd.Flags().StringVar(&placement, "placement", "", "placement file (default: placement.json in the repository root)")
 	cmd.Flags().BoolVar(&next, "next", false, "move the application's registration to its next step: grants, then complete")
+	cmd.Flags().StringSliceVar(&environments, "environments", nil, "the environments the application is placed in, a prefix of the promotion order (tst; tst,stg); every environment when left out")
 
 	return cmd
 }
@@ -721,7 +733,7 @@ refusal changes nothing.`,
 // registerFirst registers the application at its identities: the placement written and
 // rendered, the sequence printed, and the application's first placement written into
 // the checkout named second, whose module path names the repository.
-func (d deps) registerFirst(ctx context.Context, out io.Writer, p *org.Placement, placement, dir string, args []string) error {
+func (d deps) registerFirst(ctx context.Context, out io.Writer, p *org.Placement, placement, dir string, args, environments []string) error {
 	app := args[0]
 	if err := derive.ValidateApplicationCode(app); err != nil {
 		return err
@@ -730,7 +742,7 @@ func (d deps) registerFirst(ctx context.Context, out io.Writer, p *org.Placement
 	if err != nil {
 		return err
 	}
-	if err := p.Register(app, repository); err != nil {
+	if err := p.Register(app, repository, environments); err != nil {
 		return err
 	}
 	if unset := p.ConnectionUnset(); len(unset) > 0 {
@@ -768,7 +780,7 @@ func (d deps) registerFirst(ctx context.Context, out io.Writer, p *org.Placement
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "Registered %s under the code %s in %s at its identities; rendered %d owned file(s), the five applications.auto.tfvars and 1-org/public-invokers.auto.tfvars among them.\n", repository, app, placement, written.Owned)
+	fmt.Fprintf(out, "Registered %s under the code %s in %s at its identities, placed in %s; rendered %d owned file(s), the five applications.auto.tfvars and 1-org/public-invokers.auto.tfvars among them.\n", repository, app, placement, strings.Join(p.PlacedEnvironments(app), ", "), written.Owned)
 	if c, ok := org.IntegrationInstance(capacities); ok {
 		fmt.Fprintf(out, "%s.\n", c.PullRequestRoom(org.Environments[0]))
 	}
@@ -809,15 +821,17 @@ func (d deps) registerNext(ctx context.Context, out io.Writer, p *org.Placement,
 			return err
 		}
 	}
+	under := p.UnderWay(app)
 	step, err := p.Advance(app)
 	if err != nil {
 		return err
 	}
 	if step == "" {
-		// The completion records the hostnames the stack serves in every environment,
-		// read from its state, so 2-net's hosts render from what is served and never
-		// from a rule; a hostname another application serves refuses the step.
-		if _, err := d.recordHostnames(ctx, p, app, repository); err != nil {
+		// The completion records the hostnames the stack serves in every environment
+		// the step completes, read from its state, so 2-net's hosts render from what is
+		// served and never from a rule; a hostname another application serves refuses
+		// the step.
+		if _, err := d.recordHostnames(ctx, p, app, repository, under); err != nil {
 			return err
 		}
 	}
@@ -842,7 +856,7 @@ applied for the first time in each environment%s`, repository, firstApplyInstruc
 
 		return nil
 	}
-	fmt.Fprintf(out, "Completed %s's registration in %s, its hostnames recorded from its stack's state (%s); rendered %d owned file(s).\n", repository, placement, hostnamesSummary(p, app), written.Owned)
+	fmt.Fprintf(out, "Completed %s's registration in %s in %s, its hostnames recorded from its stack's state (%s); rendered %d owned file(s).\n", repository, strings.Join(under, ", "), placement, hostnamesSummary(p, app), written.Owned)
 	fmt.Fprint(out, `
 The pull request now carries 2-net/applications.auto.tfvars and 1-org/applications.auto.tfvars:
 the hostnames, onto the backends the stack created, and the stack's check trigger as a
@@ -935,20 +949,20 @@ func firstApplyInstruction(p *org.Placement, app, repository string, start first
 	var b strings.Builder
 	switch start {
 	case firstApplyWorkflow:
-		fmt.Fprintf(&b, " through its operations workflow, which GitHub lists: %s. Then\n", workflowApply(p, repository))
+		fmt.Fprintf(&b, " through its operations workflow, which GitHub lists: %s. Then\n", workflowApply(p, app, repository))
 	case firstApplyAfterMerge:
 		fmt.Fprintf(&b, `. GitHub does not list its operations workflow yet: the push to %s that adds or
 changes the workflow's file (the merge of the stack rendered at this bedrock) runs the
 workflow's registered job, which lists it, and the first apply then starts through the
 workflow's apply action: %s. Then
-`, p.GithubDefaultBranch, workflowApply(p, repository))
+`, p.GithubDefaultBranch, workflowApply(p, app, repository))
 	case firstApplyAfterPush:
 		fmt.Fprintf(&b, `. The repository is empty: the application's first push comes first, to %s, the default
 branch the stack trigger builds, with its stack rendered there (bedrock render) from its
 first placement.json. That push runs the operations workflow's registered job, which lists
 the workflow, and the stack's first apply then starts through the workflow's apply action:
 %s. Then
-`, p.GithubDefaultBranch, workflowApply(p, repository))
+`, p.GithubDefaultBranch, workflowApply(p, app, repository))
 	}
 	fmt.Fprintf(&b, "bedrock org register %s --next.\n", app)
 
@@ -956,21 +970,22 @@ the workflow, and the stack's first apply then starts through the workflow's app
 }
 
 // workflowApply is the operations workflow's apply action, from Actions or with gh, per
-// environment in order: how the stack's first apply starts once GitHub lists the
-// workflow.
-func workflowApply(p *org.Placement, repository string) string {
+// environment under way in order: how the stack's first apply starts once GitHub lists
+// the workflow.
+func workflowApply(p *org.Placement, app, repository string) string {
 	return fmt.Sprintf(`Actions,
 operations, Run workflow, with the action apply and the environment, %s in that order (or
 gh workflow run %s --repo %s/%s -f action=apply -f environment=<env>; its
-infrastructure/README.md, Applying)`, strings.Join(org.Environments, ", "), render.OperationsWorkflow, p.GithubOrganization, repository)
+infrastructure/README.md, Applying)`, strings.Join(p.UnderWay(app), ", "), render.OperationsWorkflow, p.GithubOrganization, repository)
 }
 
 // registrationReady refuses the registration's next step while the state it needs is not
 // there: the grants need the application's identities in 2-env's state in every
-// environment (the apply run after the first pull request), and the completion needs the
-// stack's state in every environment (its first applies, as the grants step's output
-// said). An application the placement does not list or has registered in full is
-// refused by Advance. The refusals name the application by its repository.
+// environment under way (the apply run after the first pull request), and the completion
+// needs the stack's state in every environment under way (its first applies, as the
+// grants step's output said). An application the placement does not list or has
+// registered in full is refused by Advance. The refusals name the application by its
+// repository.
 func (d deps) registrationReady(ctx context.Context, p *org.Placement, app, repository string) error {
 	step := p.Step(app)
 	if step == "" || !p.Registered(app) {
@@ -981,7 +996,7 @@ func (d deps) registrationReady(ctx context.Context, p *org.Placement, app, repo
 		return err
 	}
 	defer func() { _ = store.Close() }()
-	for _, env := range org.Environments {
+	for _, env := range p.UnderWay(app) {
 		switch step {
 		case org.RegistrationIdentities:
 			if err := identitiesInState(ctx, store, p.StateBucket, env, app, repository); err != nil {
@@ -1042,18 +1057,18 @@ func identitiesInState(ctx context.Context, store deploy.Store, bucket, env, app
 	return nil
 }
 
-// recordHostnames reads the hostnames the application's stack serves in every environment
-// from its state (the net_hosts output) and records them in the placement, answering
-// whether the record changed. A state without the output, or with none, refuses: the
-// organization records what is served and invents nothing.
-func (d deps) recordHostnames(ctx context.Context, p *org.Placement, app, repository string) (bool, error) {
+// recordHostnames reads the hostnames the application's stack serves in the environments
+// given from its state (the net_hosts output) and records them in the placement,
+// answering whether the record changed. A state without the output, or with none,
+// refuses: the organization records what is served and invents nothing.
+func (d deps) recordHostnames(ctx context.Context, p *org.Placement, app, repository string, envs []string) (bool, error) {
 	store, err := d.deploy.Storage(ctx)
 	if err != nil {
 		return false, err
 	}
 	defer func() { _ = store.Close() }()
-	byEnv := make(map[string]map[string]string, len(org.Environments))
-	for _, env := range org.Environments {
+	byEnv := make(map[string]map[string]string, len(envs))
+	for _, env := range envs {
 		hosts, err := stackHosts(ctx, store, p.StateBucket, env, app, repository)
 		if err != nil {
 			return false, err
@@ -1091,10 +1106,12 @@ func stackHosts(ctx context.Context, store deploy.Store, bucket, env, app, repos
 	return hosts, nil
 }
 
-// hostnamesSummary restates the recorded hostnames in one line, env: hosts.
+// hostnamesSummary restates the recorded hostnames in one line, env: hosts, for the
+// environments the application is placed in.
 func hostnamesSummary(p *org.Placement, app string) string {
-	parts := make([]string, 0, len(org.Environments))
-	for _, env := range org.Environments {
+	placed := p.PlacedEnvironments(app)
+	parts := make([]string, 0, len(placed))
+	for _, env := range placed {
 		parts = append(parts, env+": "+strings.Join(p.ApplicationHostnames(app, env), ", "))
 	}
 
@@ -1249,12 +1266,12 @@ layers it touches, in layer order). placement.json records how far the registrat
 every rendered file:
   1. This render, %[4]s at its identities: its repository (private, squash the only merge,
      its rulesets and Environments; a repository made before this is imported first,
-     1-org/README.md) and its registry repository, then, in tst, stg and prd, its
+     1-org/README.md) and its registry repository, then, in %[5]s, its
      identities, database, repository link and triggers.
   2. The apply trigger by hand with 2-env, in a terminal:
      %[3]s
-     tst and stg grant the next environment's deploy identity read on their records
-     bucket, from state the first pass did not have.
+     each environment but the last of them grants the next environment's deploy identity
+     read on its records bucket, from state the first pass did not have.
   3. bedrock org register %[2]s --next, then the pull request it renders: the public-invoker
      tag (1-org), the registry grants (2-shr) and the database admins (2-spn), on
      identities that exist now. Its output says how step 4 starts.
@@ -1270,7 +1287,7 @@ every rendered file:
      as a required check of the repository (1-org), which the first apply made; until then
      the repository's pull requests merge on the CI jobs alone.
   6. After 2-net's apply: bedrock domain check, which passes when the apps domain and each vanity domain resolve to their zones.
-`, p.GithubDefaultBranch, app, triggerRun(p, ""), repository)
+`, p.GithubDefaultBranch, app, triggerRun(p, ""), repository, strings.Join(p.PlacedEnvironments(app), ", "))
 }
 
 // triggerUnrendered says, while the placement records no Cloud Build authorization, that

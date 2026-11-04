@@ -758,20 +758,20 @@ func TestRecordsBucketPolicy(t *testing.T) {
 			name: "the bindings, from the identities and the team group, and the policy",
 			path: "2-env/records.tf",
 			want: []string{
-				"  records_deploy_members = [for app in var.applications : google_service_account.deploy[app].member]\n  records_plan_members   = [for app in var.applications : google_service_account.plan[app].member]\n",
+				"  records_deploy_members = [for app in local.applications : google_service_account.deploy[app].member]\n  records_plan_members   = [for app in local.applications : google_service_account.plan[app].member]\n",
 				"      { role = \"roles/storage.objectCreator\", members = local.records_deploy_members, condition = local.records_creator_condition },\n",
 				"      { role = \"roles/storage.objectViewer\", members = concat(local.records_deploy_members, local.records_apply_members, local.records_plan_members, local.records_ops_members, local.records_lower_ops_members, local.records_rehearsal_members, values(local.next_deploy_members), [local.team_group]), condition = null },\n",
 				// What a stack writes itself (its id object, and in tst the stack jobs'
 				// outputs) is the apply identity's to write, under its prefix alone, which
 				// the deploy identities' creator binding excludes; the team group writes
 				// there too (a person's teardown record, a destroy taking the id object).
-				"  records_stack_prefix = { for app in var.applications : app => \"projects/_/buckets/${google_storage_bucket.records.name}/objects/${app}/stacks/\" }\n",
+				"  records_stack_prefix = { for app in local.applications : app => \"projects/_/buckets/${google_storage_bucket.records.name}/objects/${app}/stacks/\" }\n",
 				"    expression  = join(\" && \", [for app, prefix in local.records_stack_prefix : \"!resource.name.startsWith(\\\"${prefix}\\\")\"])\n",
 				"      role    = \"roles/storage.objectUser\"\n      members = [google_service_account.apply[app].member, local.team_group]\n",
 				"  ], local.records_stack_bindings)\n",
 				// In production, the lower environments' operations identities read the records
 				// for a restore from production's backup that names no release.
-				"  records_lower_ops_members = local.next_environment != \"\" ? [] : [\n    for pair in setproduct([for env, next in var.next_environment : env if next != \"\"], var.applications) :\n    \"serviceAccount:${local.prefix}-${pair[0]}-gbl-${pair[1]}-ops@${local.org.project_ids[pair[0]]}.iam.gserviceaccount.com\"\n  ]\n",
+				"  records_lower_ops_members = local.next_environment != \"\" ? [] : [\n    for pair in setproduct([for env, next in var.next_environment : env if next != \"\"], local.applications) :\n    \"serviceAccount:${local.prefix}-${pair[0]}-gbl-${pair[1]}-ops@${local.org.project_ids[pair[0]]}.iam.gserviceaccount.com\"\n  ]\n",
 				"    ] : b if length(b.members) > 0\n",
 				"data \"google_iam_policy\" \"records\" {\n  dynamic \"binding\" {\n    for_each = local.records_bindings\n    content {\n      role    = binding.value.role\n      members = binding.value.members\n\n      dynamic \"condition\" {\n        for_each = binding.value.condition == null ? [] : [binding.value.condition]\n",
 				"resource \"google_storage_bucket_iam_policy\" \"records\" {\n  bucket      = google_storage_bucket.records.name\n  policy_data = data.google_iam_policy.records.policy_data\n}\n",
@@ -790,7 +790,7 @@ func TestRecordsBucketPolicy(t *testing.T) {
 			name: "the apply identities read the records beside the deploy identities",
 			path: "2-env/records.tf",
 			want: []string{
-				"  records_apply_members = [for app in var.applications : google_service_account.apply[app].member]\n",
+				"  records_apply_members = [for app in local.applications : google_service_account.apply[app].member]\n",
 				"members = concat(local.records_deploy_members, local.records_apply_members, ",
 				"# is a binding of the bucket, as the deploy identities' is.\n",
 			},
@@ -1315,7 +1315,7 @@ func TestSpannerGrants(t *testing.T) {
 			name: "the environment's own instance lets each apply identity restore its own backups, for a rollback",
 			path: "2-env/identities.tf",
 			want: []string{
-				"resource \"google_spanner_instance_iam_member\" \"apply_restore_admin\" {\n  for_each = { for app in var.applications : app => app if local.own_instance }\n",
+				"resource \"google_spanner_instance_iam_member\" \"apply_restore_admin\" {\n  for_each = { for app in local.applications : app => app if local.own_instance }\n",
 				`role     = "roles/spanner.restoreAdmin"`,
 				`expression  = "resource.name.startsWith(\"${local.instance_path}/backups/${local.name}-gbl-${each.key}-\")"`,
 			},
@@ -1324,7 +1324,7 @@ func TestSpannerGrants(t *testing.T) {
 			name: "the operations identities read the deployment records, for a rollback's defaults",
 			path: "2-env/records.tf",
 			want: []string{
-				`records_ops_members = [for app in var.applications : google_service_account.operations[app].member]`,
+				`records_ops_members = [for app in local.applications : google_service_account.operations[app].member]`,
 				`concat(local.records_deploy_members, local.records_apply_members, local.records_plan_members, local.records_ops_members, local.records_lower_ops_members, local.records_rehearsal_members, values(local.next_deploy_members), [local.team_group])`,
 			},
 		},
@@ -1998,7 +1998,7 @@ func TestPlacementRegister(t *testing.T) {
 			t.Parallel()
 
 			p := Placement{Applications: tt.existing}
-			err := p.Register(tt.app, tt.repository)
+			err := p.Register(tt.app, tt.repository, nil)
 			if tt.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 					t.Fatalf("Register() error = %v, wantErr %q", err, tt.wantErr)
@@ -2031,15 +2031,16 @@ func TestPlacementAdvance(t *testing.T) {
 
 	tests := []struct {
 		name         string
-		registration map[string]string
+		registration map[string]RegistrationSteps
 		app          string
 		wantStep     string
-		wantAfter    map[string]string
+		wantAfter    map[string]RegistrationSteps
 		wantErr      string
 	}{
-		{name: "identities to grants", registration: map[string]string{"beacon": RegistrationIdentities}, app: "beacon", wantStep: RegistrationGrants, wantAfter: map[string]string{"beacon": RegistrationGrants}},
-		{name: "grants to complete, the last entry leaves", registration: map[string]string{"beacon": RegistrationGrants}, app: "beacon", wantStep: "", wantAfter: nil},
-		{name: "grants to complete beside another registration", registration: map[string]string{"beacon": RegistrationGrants, "harbor": RegistrationIdentities}, app: "beacon", wantStep: "", wantAfter: map[string]string{"harbor": RegistrationIdentities}},
+		{name: "identities to grants", registration: map[string]RegistrationSteps{"beacon": EveryEnvironment(RegistrationIdentities)}, app: "beacon", wantStep: RegistrationGrants, wantAfter: map[string]RegistrationSteps{"beacon": EveryEnvironment(RegistrationGrants)}},
+		{name: "grants to complete, the last entry leaves", registration: map[string]RegistrationSteps{"beacon": EveryEnvironment(RegistrationGrants)}, app: "beacon", wantStep: "", wantAfter: nil},
+		{name: "grants to complete beside another registration", registration: map[string]RegistrationSteps{"beacon": EveryEnvironment(RegistrationGrants), "harbor": EveryEnvironment(RegistrationIdentities)}, app: "beacon", wantStep: "", wantAfter: map[string]RegistrationSteps{"harbor": EveryEnvironment(RegistrationIdentities)}},
+		{name: "one environment under way moves alone", registration: map[string]RegistrationSteps{"beacon": {"stg": RegistrationIdentities}}, app: "beacon", wantStep: RegistrationGrants, wantAfter: map[string]RegistrationSteps{"beacon": {"stg": RegistrationGrants}}},
 		{name: "a registration in full is refused", app: "harbor", wantErr: `application "harbor" is registered in full`},
 		{name: "an application not registered is refused", app: "quill", wantErr: `application "quill" is not registered (bedrock org register quill)`},
 	}
@@ -2134,7 +2135,7 @@ func TestRegistrationRender(t *testing.T) {
 
 			p := testPlacement(t)
 			if tt.step != "" {
-				p.Registration = map[string]string{"beacon": tt.step}
+				p.Registration = map[string]RegistrationSteps{"beacon": EveryEnvironment(tt.step)}
 			}
 			files, err := Render(p)
 			if err != nil {
@@ -2335,7 +2336,7 @@ func TestApplicationPlacement(t *testing.T) {
 				labels = p.Labels
 			}
 			want := &derive.Placement{
-				Prefix: "imp", Environments: []string{"tst", "stg", "prd"},
+				Prefix: "imp", Environments: []string{"tst", "stg", "prd"}, ProductionEnvironment: "prd",
 				Regions:    []derive.Region{{Name: "us-central1", Code: "uc1"}, {Name: "us-west3", Code: "uw3"}},
 				AppsDomain: "apps.imp.example", HostedDomain: "imp.example", StateBucket: "imp-boot-gbl-state-a1b2",
 				PlaceholderImage: derive.PlaceholderImage, DefaultBranch: "master", Code: "quill", Repository: "quill-service", ReleaseApp: "imp-release",
@@ -3603,14 +3604,14 @@ func TestOutOfServiceValidate(t *testing.T) {
 	tests := []struct {
 		name         string
 		outOfService map[string][]string
-		registration map[string]string
+		registration map[string]RegistrationSteps
 		wantErr      string
 	}{
 		{name: "none"},
 		{name: "one environment", outOfService: map[string][]string{"beacon": {"stg"}}},
 		{name: "every environment in order", outOfService: map[string][]string{"harbor": {"tst", "stg", "prd"}}},
 		{name: "an application not registered is refused", outOfService: map[string][]string{"quill": {"tst"}}, wantErr: `outOfService names "quill", which is not registered in full: only a registered application has hostnames to take out`},
-		{name: "a registration under way is refused", outOfService: map[string][]string{"beacon": {"tst"}}, registration: map[string]string{"beacon": RegistrationGrants}, wantErr: `outOfService names "beacon", which is not registered in full`},
+		{name: "a registration under way is refused", outOfService: map[string][]string{"beacon": {"tst"}}, registration: map[string]RegistrationSteps{"beacon": EveryEnvironment(RegistrationGrants)}, wantErr: `outOfService names "beacon", which is not registered in full`},
 		{name: "no environment is refused", outOfService: map[string][]string{"beacon": {}}, wantErr: `outOfService lists no environment for "beacon": an application in service is left out of the map`},
 		{name: "an environment the model lacks is refused", outOfService: map[string][]string{"beacon": {"qa"}}, wantErr: `outOfService names "qa" for "beacon", which is not one of tst, stg, prd`},
 		{name: "out of promotion order is refused", outOfService: map[string][]string{"beacon": {"prd", "tst"}}, wantErr: `outOfService lists "beacon"'s environments as prd, tst: each once, in promotion order (tst, stg, prd)`},
@@ -3640,7 +3641,7 @@ func TestOutOfServiceChanges(t *testing.T) {
 	tests := []struct {
 		name         string
 		before       map[string][]string
-		registration map[string]string
+		registration map[string]RegistrationSteps
 		take         bool
 		app          string
 		envs         []string
@@ -3653,7 +3654,7 @@ func TestOutOfServiceChanges(t *testing.T) {
 		{name: "more environments out, kept in order", before: map[string][]string{"beacon": {"stg"}}, take: true, app: "beacon", envs: []string{"prd", "tst"}, wantChanged: []string{"tst", "prd"}, wantAfter: map[string][]string{"beacon": {"tst", "stg", "prd"}}},
 		{name: "out already is refused", before: map[string][]string{"beacon": {"tst"}}, take: true, app: "beacon", envs: []string{"tst"}, wantErr: "beacon is out of service in tst already (outOfService in placement.json)"},
 		{name: "an application not registered is refused", take: true, app: "quill", wantErr: `application "quill" is not registered (bedrock org register quill)`},
-		{name: "a registration under way is refused", registration: map[string]string{"beacon": RegistrationGrants}, take: true, app: "beacon", wantErr: `application "beacon" is at the grants step of its registration: it has no hostnames in 2-net`},
+		{name: "a registration under way is refused", registration: map[string]RegistrationSteps{"beacon": EveryEnvironment(RegistrationGrants)}, take: true, app: "beacon", wantErr: `application "beacon" is at the grants step of its registration: it has no hostnames in 2-net`},
 		{name: "an environment the model lacks is refused", take: true, app: "beacon", envs: []string{"qa"}, wantErr: `environment "qa" is not one of tst, stg, prd`},
 		{name: "one environment back", before: map[string][]string{"beacon": {"tst", "prd"}}, app: "beacon", envs: []string{"tst"}, wantChanged: []string{"tst"}, wantAfter: map[string][]string{"beacon": {"prd"}}},
 		{name: "the last environment back leaves the map", before: map[string][]string{"beacon": {"prd"}}, app: "beacon", envs: []string{"prd"}, wantChanged: []string{"prd"}, wantAfter: nil},
@@ -3718,8 +3719,14 @@ func TestHostRowsRecorded(t *testing.T) {
 	if changed, err = p.RecordHostnames("harbor", record); err != nil || changed {
 		t.Fatalf("RecordHostnames() again = %v, %v, want unchanged and no error", changed, err)
 	}
-	if _, err := p.RecordHostnames("harbor", map[string]map[string]string{"tst": served("tst", "lighthouse-tst.apps.imp.example")}); err == nil || !strings.Contains(err.Error(), "serves no hostname in stg") {
-		t.Fatalf("RecordHostnames() with an environment missing = %v, want a refusal naming stg", err)
+	if changed, err = p.RecordHostnames("harbor", map[string]map[string]string{"tst": served("tst", "lighthouse-tst.apps.imp.example")}); err != nil || changed {
+		t.Fatalf("RecordHostnames() of one environment = %v, %v, want unchanged and no error: the other environments' record stays", changed, err)
+	}
+	if _, ok := p.Hostnames["harbor"]["stg"]; !ok {
+		t.Fatal("RecordHostnames() of one environment dropped stg's record")
+	}
+	if _, err := p.RecordHostnames("harbor", map[string]map[string]string{"stg": {}}); err == nil || !strings.Contains(err.Error(), "serves no hostname in stg") {
+		t.Fatalf("RecordHostnames() with an empty environment = %v, want a refusal naming stg", err)
 	}
 	if _, err := p.RecordHostnames("beacon", map[string]map[string]string{"tst": served("tst", "lighthouse-tst.apps.imp.example"), "stg": served("stg", "beacon-stg.apps.imp.example"), "prd": served("prd", "beacon.apps.imp.example")}); err == nil || !strings.Contains(err.Error(), "is harbor's and beacon's") {
 		t.Fatalf("RecordHostnames() of a hostname harbor serves = %v, want a refusal", err)

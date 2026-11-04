@@ -613,15 +613,37 @@ func (v *view) ApplicationRepositoriesHCL() string {
 	return b.String()
 }
 
+// ApplicationEnvironmentsHCL is the environments each application is placed in as an
+// HCL map by code, the lists in one column; {} with no application. 1-org makes the
+// repository's GitHub Environments and 2-env the identities, link and triggers for those
+// environments alone.
+func (v *view) ApplicationEnvironmentsHCL() string {
+	if len(v.Applications) == 0 {
+		return emptyHCLMap
+	}
+	width := 0
+	for _, a := range v.Applications {
+		width = max(width, len(a.Code))
+	}
+	var b strings.Builder
+	b.WriteString("{\n")
+	for _, a := range v.Applications {
+		fmt.Fprintf(&b, "  %-*s = %s\n", width, a.Code, hclList(v.PlacedEnvironments(a.Code)))
+	}
+	b.WriteString("}")
+
+	return b.String()
+}
+
 // ApplicationCodePattern is the one rule for an application code, for the layers'
 // validations (derive.ApplicationCodePattern).
 func (*view) ApplicationCodePattern() string {
 	return derive.ApplicationCodePattern
 }
 
-// AppliedList is the applications registered in full (Served) as an HCL list: those whose
-// stacks have had their first apply, so their repositories' rulesets may require the
-// stack's check trigger.
+// AppliedList is the applications registered in full somewhere (Served) as an HCL list:
+// those whose stacks have had their first apply, so their repositories' rulesets may
+// require the stack's check trigger.
 func (v *view) AppliedList() string {
 	served := v.Served()
 	if len(served) == 0 {

@@ -1052,7 +1052,7 @@ func planIdentities(subs map[string]string) (map[string]string, error) {
 			return nil, errors.Newf("%s names an empty environment in %s: the stack's triggers carry the promotion order", BuildFile, environmentsSub)
 		}
 		if identities[e] == "" {
-			return nil, errors.Newf("%s names no plan identity for %s (%s): apply 2-env for %s with this bedrock, which makes one per application, then the application's stack, whose triggers carry it", BuildFile, e, planIdentitiesSub, e)
+			return nil, errors.Newf("%s names no plan identity for %s (%s): apply 2-env for %s with this bedrock, which makes one per application placed there, then the application's stack, whose triggers carry it; an organization that does not place the application in %s (its placement's environments) makes none, and the application's own placement lists the environments it is placed in", BuildFile, e, planIdentitiesSub, e, e)
 		}
 	}
 

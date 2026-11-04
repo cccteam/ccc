@@ -204,9 +204,11 @@ locals {
     "${pair[0]}:${pair[1]}" => { app = pair[0], name = local.lines[pair[1]].name, include = local.lines[pair[1]].include }
   }
 
+  # One GitHub Environment per application per environment it is placed in
+  # (var.application_environments): the operations workflow deploys through it.
   repository_environments = {
     for pair in setproduct(var.applications, local.operations_environments) :
-    "${pair[0]}-${pair[1]}" => { app = pair[0], environment = pair[1] }
+    "${pair[0]}-${pair[1]}" => { app = pair[0], environment = pair[1] } if contains(var.application_environments[pair[0]], pair[1])
   }
 }
 

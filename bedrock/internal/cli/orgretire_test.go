@@ -217,7 +217,7 @@ func TestRetireNotice(t *testing.T) {
 
 	p := &org.Placement{Applications: []org.Application{{Code: "harbor", Repository: "harbor"}, {Code: "beacon", Repository: "beacon"}}, OutOfService: map[string][]string{"harbor": {"tst", "stg", "prd"}, "beacon": {"tst"}}}
 	got := retireNotice(p)
-	want := "harbor is out of service in every environment (outOfService in placement.json): once bedrock destroy --all has taken its stacks down from its checkout, bedrock org retire harbor archives its repository, takes it out of 1-org's state and removes the entry; until then the entry stays, since 1-org never deletes a repository (prevent_destroy).\n"
+	want := "harbor is out of service in every environment it is placed in (outOfService in placement.json): once bedrock destroy --all has taken its stacks down from its checkout, bedrock org retire harbor archives its repository, takes it out of 1-org's state and removes the entry; until then the entry stays, since 1-org never deletes a repository (prevent_destroy).\n"
 	if got != want {
 		t.Errorf("retireNotice() =\n%s\nwant:\n%s", got, want)
 	}

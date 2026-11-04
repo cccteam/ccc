@@ -5,11 +5,11 @@
 
 applications = ["harbor", "beacon"]
 
-# Each application's deploy identity in every environment (2-env's), writer on the
-# application's repository in the shared registry. An application is listed once its
-# registration is past its identities (placement.json's registration, moved by bedrock org
-# register <app> --next after 2-env's apply has created them); its repository above exists
-# from the first step.
+# Each application's deploy identity in every environment it is placed in (2-env's), writer
+# on the application's repository in the shared registry. An environment is listed once the
+# application's registration there is past its identities (placement.json's registration,
+# moved by bedrock org register <app> --next after 2-env's apply has created them); the
+# repository above exists from the first step.
 pushers = {
   harbor = [
     "serviceAccount:imp-tst-gbl-harbor-deploy@imp-tst-gbl-core-1a2b.iam.gserviceaccount.com",
@@ -23,10 +23,10 @@ pushers = {
   ]
 }
 
-# Each application's apply identity in every environment (2-env's), reader on the
+# Each application's apply identity in the same environments (2-env's), reader on the
 # repository: a revision an apply creates carries the image the last deploy left, and
-# Cloud Run checks that the creator can read it. Listed once the registration is past its
-# identities, as the pushers.
+# Cloud Run checks that the creator can read it. Listed once the registration there is past
+# its identities, as the pushers.
 pullers = {
   harbor = [
     "serviceAccount:imp-tst-gbl-harbor-tofu@imp-tst-gbl-core-1a2b.iam.gserviceaccount.com",

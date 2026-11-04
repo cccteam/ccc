@@ -91,7 +91,7 @@ trigger plans it on a pull request as `imp-org-gbl-plan`.
   identity reads the entitlements through `roles/privilegedaccessmanager.viewer`
   there.
 - `roles/resourcemanager.tagUser` on the public-invoker tag value for each
-  application's apply identity in every environment (`tags.tf`, from
+  application's apply identity in every environment it is placed in (`tags.tf`, from
   `public-invokers.auto.tfvars`): the identity binds the tag to its own Cloud
   Run services. Rendered for the applications whose registration is past
   their identities (`placement.json`'s `registration`, moved by `bedrock org

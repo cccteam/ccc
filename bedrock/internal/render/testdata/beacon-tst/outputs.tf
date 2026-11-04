@@ -1,0 +1,110 @@
+# What the pipeline reads, and what 2-net reads to route this environment's
+# hostnames. Readable by anything that can read the state bucket; no secrets.
+
+output "backend_service_id" {
+  description = "Backend service URI in the form 2-net's hosts variable takes: projects/<project>/global/backendServices/<name>; null for a pull-request stack."
+  value       = try(google_compute_backend_service.app[0].id, null)
+}
+
+output "backend_service_self_link" {
+  description = "Full self link of the backend service the net project's URL map routes this environment's hostnames to (cross-project reference); null for a pull-request stack."
+  value       = try(google_compute_backend_service.app[0].self_link, null)
+}
+
+output "database" {
+  description = "The Spanner database the site opens: its project, instance, and name; for a pull-request stack in shared mode, tst's."
+  value = {
+    project  = local.instance.project
+    instance = local.instance.name
+    name     = local.database_name
+  }
+}
+
+output "hostnames" {
+  description = "Hostnames this environment's site answers on; 2-net registers them with the load balancer and the certificate."
+  value       = local.hostnames
+}
+
+output "identities" {
+  description = "Runtime identities by process: app (the site). The migration runs on the build worker as the deploy identity, 2-env's."
+  value = {
+    app = google_service_account.app.email
+  }
+}
+
+output "net_hosts" {
+  description = "The entries to add to 2-net's hosts variable for this environment: each hostname mapped to the backend service URI, and each next hostname (<app>-<env>-next) to the next revision's backend. Empty for a pull-request stack, whose hostname the wildcard rule serves."
+  value = local.is_pr ? {} : merge(
+    { for host in local.hostnames : host => google_compute_backend_service.app[0].id },
+    { for host in local.next_hostnames : host => google_compute_backend_service.next[0].id },
+  )
+}
+
+output "registry" {
+  description = "Image repository the pipeline pushes to, as <hostname>/<project>/<repository>; null until 2-shr registers the application."
+  value       = local.registry
+}
+
+output "revision_templates" {
+  description = "What each service's revision runs with, by service name (a pull request's service carries one name in every region, and one entry stands for them all), and the job process's job (none): identity, scaling, variables and secret mounts as this stack evaluates them. The pipeline builds every revision and job from it and the release's image (bedrock deploy service, deploy jobs), read off the stack it applied, or off the plan of the release's stack in a rollback run, so a release runs under its own release's configuration, forward or back, and no apply starts a revision."
+  value = {
+    services = {
+      # The services by name: an environment's services carry their region in their names,
+      # and a pull request's carry one name in every region, so the names are grouped and
+      # any one of a name's keys stands for the group (its site is the same in every region).
+      for name, keys in { for key, svc in google_cloud_run_v2_service.app : svc.name => key... } : name => {
+        serviceAccount = google_service_account.app.email
+        maxInstances   = null
+        timeout        = "300s"
+        port           = 8080
+        http2          = false
+        args           = []
+        cpu            = "1"
+        memory         = "512Mi"
+        labels         = local.labels
+        env            = local.service_env
+        secrets        = { for name, s in local.mounted_secrets : name => { secret = local.secret_ids[name], version = tostring(s.version) } }
+      }
+    }
+    job = null
+  }
+}
+
+output "secrets" {
+  description = "Secret container ID by the environment variable it feeds, and the version this environment runs (null when not pinned yet)."
+  value = {
+    for key, s in local.secrets : key => {
+      secret_id = local.secret_ids[key]
+      version   = lookup(local.secret_versions, key, null)
+    }
+  }
+}
+
+output "services" {
+  description = "Cloud Run service by region code: name, region, and the run.app URI (not the public one; that is the hostname through the load balancer)."
+  value = {
+    for code, svc in google_cloud_run_v2_service.app : code => {
+      name   = svc.name
+      region = svc.location
+      uri    = svc.uri
+    }
+  }
+}
+
+output "stack_id" {
+  description = "The stack's id (initialize.tf): the suffix of the names Google holds after a delete, and the prefix of this stack's deployment records in the records bucket, <app>/<env>/<id>/."
+  value       = random_id.stack.hex
+}
+
+output "substitutions" {
+  description = "The substitutions the version trigger passes to cloudbuild.yaml (_PR_NUMBER empty: no pull request); a pull-request build reads its own stack's copy from the state for the facts the deploy steps need. The pull-request trigger passes the same without _PR_NUMBER, which its event supplies."
+  value       = merge(local.substitutions, local.custom_substitutions, { _PR_NUMBER = "" })
+}
+
+output "triggers" {
+  description = "Cloud Build trigger IDs: version in every environment, pr in tst; null until 2-env holds the GitHub connection."
+  value = {
+    version = try(google_cloudbuild_trigger.version[0].id, null)
+    pr      = try(google_cloudbuild_trigger.pr[0].id, null)
+  }
+}

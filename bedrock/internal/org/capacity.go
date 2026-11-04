@@ -42,8 +42,8 @@ const (
 // InstanceCapacity is one Spanner instance's capacity against the placement: the shared
 // instance (2-spn's) or an environment's own (2-env's), the environments whose databases
 // live on it, its processing units, the databases Google lets an instance of that size
-// hold, and the databases the registered applications declare there, one each per
-// environment on it.
+// hold, the applications placed in at least one of its environments, and the databases
+// they declare there, one for each of its environments an application is placed in.
 type InstanceCapacity struct {
 	// Environment is the environment whose own instance this is; empty for the shared one.
 	Environment     string
@@ -93,7 +93,7 @@ func (c InstanceCapacity) Room() int {
 // Problem is the sentence for a placement past the instance: what is declared, what the
 // instance holds at its size, and the two ways out.
 func (c InstanceCapacity) Problem() string {
-	return fmt.Sprintf("the placement declares %d databases on %s (%d applications, one database each in %s), and the instance holds %d at %d processing units (%s): %s bedrock destroy an application the organization no longer needs, which frees its databases",
+	return fmt.Sprintf("the placement declares %d databases on %s (%d applications, a database for each of %s an application is placed in), and the instance holds %d at %d processing units (%s): %s bedrock destroy an application the organization no longer needs, which frees its databases",
 		c.Declared, c.Name(), c.Applications, strings.Join(c.Environments, " and "), c.Capacity, c.ProcessingUnits, derive.SpannerCapacityRule(c.ProcessingUnits), derive.SpannerRaise(c.Setting(), c.ProcessingUnits))
 }
 
@@ -141,10 +141,23 @@ func (p *Placement) InstanceCapacities(dir string) ([]InstanceCapacity, error) {
 	return capacities, nil
 }
 
-// instanceCapacity is one instance's capacity against the registered applications.
+// instanceCapacity is one instance's capacity against the registered applications: a
+// database for each of the instance's environments an application is placed in, and the
+// applications placed in at least one of them.
 func (p *Placement) instanceCapacity(environment string, environments []string, units int) InstanceCapacity {
-	c := InstanceCapacity{Environment: environment, Environments: environments, ProcessingUnits: units, Capacity: derive.SpannerDatabaseCapacity(units), Applications: len(p.Applications)}
-	c.Declared = c.Applications * len(environments)
+	c := InstanceCapacity{Environment: environment, Environments: environments, ProcessingUnits: units, Capacity: derive.SpannerDatabaseCapacity(units)}
+	for _, a := range p.Applications {
+		on := 0
+		for _, env := range p.PlacedEnvironments(a.Code) {
+			if slices.Contains(environments, env) {
+				on++
+			}
+		}
+		if on > 0 {
+			c.Applications++
+			c.Declared += on
+		}
+	}
 
 	return c
 }

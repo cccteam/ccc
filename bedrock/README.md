@@ -178,8 +178,18 @@ and what its absence means:
   for it, declared to `org register` and the organization's naming decision. A placement
   written before the code was recorded names none, and the repository's name stands in
   for it, the two having coincided then; `bedrock upgrade` writes it in.
-- `environments`: the environments in promotion order; pull requests deploy to the first,
-  and the last is production. The model's three, `tst`, `stg` and `prd`. Required.
+- `environments`: the environments the application is placed in, in promotion order, a
+  prefix of the organization's three (`tst`; `tst`, `stg`; or all): pull requests deploy to
+  the first, and the release line ends at the last. From the organization's placement, the
+  application's entry there, every environment unless `bedrock org register --environments`
+  or `bedrock org place` named a prefix. Required.
+- `productionEnvironment`: the organization's production environment, the last of its promotion
+  order: the one whose hostnames carry the bare label, and the one the environments between
+  the first and it restore their databases from. The application is placed there when
+  `environments` ends with it; placed in a prefix, it has no bare-label hostname, keeps no
+  release backups by default, and seeds every environment it is placed in, since nothing
+  restores them from production's backups. From the organization's promotion order. Absent,
+  the last of `environments`.
 - `regions`: the Cloud Run regions, each a `name` and the `code` regional resources are
   named by; the first is the primary. From the organization's `regions`. Required.
 - `appsDomain`: the domain the application's hostnames are under: `<label>-<env>.<domain>`,

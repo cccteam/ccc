@@ -14,9 +14,18 @@ application_repositories = {
   beacon = "beacon"
 }
 
-# The applications whose stacks have had their first apply in every environment: those
-# registered in full (placement.json's registration names them no more, which bedrock org
-# register <app> --next does once each environment's stack has a state). Their
+# The environments each application is placed in, by code, a prefix of the promotion
+# order: the repository's GitHub Environments are made for those alone (github.tf). An
+# application placed in every environment lists them all.
+application_environments = {
+  harbor = ["tst", "stg", "prd"]
+  beacon = ["tst", "stg", "prd"]
+}
+
+# The applications whose stacks have had their first apply in the environments they are
+# placed in: those registered in full there (placement.json's registration names them no
+# more, which bedrock org register <app> --next does once each such environment's stack
+# has a state). Their
 # repositories' rulesets require the stack's check trigger, which the first apply made
 # (github.tf); an application under registration merges on the CI jobs alone until then.
 applied_applications = ["harbor", "beacon"]

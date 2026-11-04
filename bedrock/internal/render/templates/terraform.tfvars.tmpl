@@ -5,7 +5,7 @@
 state_bucket = "{{.P.StateBucket}}"
 
 # Placement per environment, filled as each environment is set up. Every map
-# is keyed by environment so one file serves all {{.EnvCountWord}} applies.
+# is keyed by environment so one file serves every environment's apply.
 
 {{range .Methods -}}
 {{$m := . -}}

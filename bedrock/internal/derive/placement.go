@@ -51,9 +51,16 @@ type Placement struct {
 	// one under no domain it declares (bedrock org register --next, bedrock org
 	// hostnames).
 	Hostnames map[string]SiteHostnames `json:"hostnames,omitempty"`
-	// Environments are the environments in promotion order; the first is where pull
-	// requests deploy and the last is production.
+	// Environments are the environments the application is placed in, in promotion
+	// order, a prefix of the organization's: the first is where pull requests deploy, and
+	// the release line ends at the last.
 	Environments []string `json:"environments"`
+	// ProductionEnvironment is the organization's production environment, the last of
+	// its promotion order: the one the hostnames' bare label belongs to, and the one the
+	// environments between the first and it restore their databases from. The application
+	// is placed there when Environments ends with it. Absent, the last of Environments, as
+	// a placement written before an application could be placed in a prefix reads.
+	ProductionEnvironment string `json:"productionEnvironment,omitempty"`
 	// Regions are the Cloud Run regions; the first is primary.
 	Regions []Region `json:"regions"`
 	// AppsDomain is the domain the applications' hostnames hang under.
@@ -382,6 +389,9 @@ func (p *Placement) Validate() error {
 			return errors.Newf("environment %q: a lowercase word of two to eight characters", env)
 		}
 	}
+	if err := p.validateProduction(); err != nil {
+		return err
+	}
 	if len(p.Regions) == 0 {
 		return errors.New("at least one region")
 	}
@@ -633,10 +643,13 @@ func (p *Placement) Retention(env string) string {
 
 // ReleaseBackupEnvironments are the environments whose release builds start a backup
 // as of the cut, and that bedrock rollback serves: the placement's list, else production
-// alone.
+// alone when the application is placed there, else none.
 func (p *Placement) ReleaseBackupEnvironments() []string {
 	if p.ReleaseBackups != nil {
 		return p.ReleaseBackups
+	}
+	if !p.InProduction() {
+		return nil
 	}
 
 	return []string{p.Production()}
@@ -743,9 +756,46 @@ func (p *Placement) Integration() string {
 	return p.Environments[0]
 }
 
-// Production is the last environment.
+// Production is the organization's production environment: the placement's, else the
+// last of the application's environments.
 func (p *Placement) Production() string {
+	if p.ProductionEnvironment != "" {
+		return p.ProductionEnvironment
+	}
+
 	return p.Environments[len(p.Environments)-1]
+}
+
+// InProduction reports whether the application is placed in production: its environments
+// end with it. An application placed in a prefix of the promotion order is not, so no
+// hostname of its carries the bare label and nothing restores from production's backups.
+func (p *Placement) InProduction() bool {
+	return slices.Contains(p.Environments, p.Production())
+}
+
+// validateProduction holds the production environment to the environments: a name under
+// the one rule, the last of the environments when among them; and, for an application
+// not placed in production, every environment but the first seeded, since nothing
+// restores it from production's backups.
+func (p *Placement) validateProduction() error {
+	if p.ProductionEnvironment != "" {
+		if !envRE.MatchString(p.ProductionEnvironment) {
+			return errors.Newf("productionEnvironment %q: a lowercase word of two to eight characters", p.ProductionEnvironment)
+		}
+		if i := slices.Index(p.Environments, p.ProductionEnvironment); i >= 0 && i != len(p.Environments)-1 {
+			return errors.Newf("productionEnvironment %q is not the last of the environments (%s): the promotion order ends in production", p.ProductionEnvironment, strings.Join(p.Environments, ", "))
+		}
+	}
+	if p.InProduction() {
+		return nil
+	}
+	for _, env := range p.Environments[1:] {
+		if !slices.Contains(p.Seed, env) {
+			return errors.Newf("environment %s is neither seeded (seed) nor restorable from %s's backups, since the application is not placed in %s (environments): list %s under seed, or place the application in %s", env, p.Production(), p.Production(), env, p.Production())
+		}
+	}
+
+	return nil
 }
 
 // Primary is the primary region.

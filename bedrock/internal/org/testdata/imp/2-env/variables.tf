@@ -1,9 +1,10 @@
 variable "applications" {
   description = <<-EOT
-    Application codes registered in this environment. Each one gets an apply
-    identity, a deploy identity, a Cloud Build repository link, and the grants
-    in identities.tf. Registering an application is an entry here plus a
-    re-run; its own stack lives in its repository (state slot 3-app/<code>/).
+    Application codes registered in the organization. Each one placed in this
+    environment (application_environments) gets an apply identity, a deploy
+    identity, a Cloud Build repository link, and the grants in identities.tf.
+    Registering an application is an entry here plus a re-run; its own stack
+    lives in its repository (state slot 3-app/<code>/).
 
     A code is at most 6 characters because it is embedded in service account
     IDs, which are limited to 30: imp-<env>-gbl-<code>-deploy is 25 with a
@@ -52,6 +53,22 @@ variable "build_time_secrets" {
   EOT
   type        = map(list(string))
   default     = {}
+}
+
+variable "application_environments" {
+  description = "The environments each application is placed in, by code, a prefix of the promotion order (the first environment; the first two; every one): this environment's run makes identities, grants, a repository link and triggers for the applications placed in it alone (locals.tf, applications). Rendered into applications.auto.tfvars from placement.json's applications."
+  type        = map(list(string))
+  default     = {}
+
+  validation {
+    condition     = toset(keys(var.application_environments)) == toset(var.applications)
+    error_message = "application_environments names every application code and no other."
+  }
+
+  validation {
+    condition     = alltrue([for app, envs in var.application_environments : length(envs) > 0 && try(envs == slice(["tst", "stg", "prd"], 0, length(envs)), false)])
+    error_message = "Each application's environments are a prefix of the promotion order (`tst`, `stg` and `prd`)."
+  }
 }
 
 variable "next_environment" {
