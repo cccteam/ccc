@@ -23,7 +23,7 @@ terraform {
 }
 
 # Bootstrap is the one layer applied by a human. It runs locally against the
-# the break-glass account's ADC (gcloud auth application-default login) because the identity
+# break-glass account's ADC (gcloud auth application-default login) because the identity
 # every other layer runs as does not exist yet.
 provider "google" {
   user_project_override = false

@@ -26,8 +26,8 @@ gets a line there first.
 
 | Layer | Directory | Applied as | Creates |
 |---|---|---|---|
-| 0 | [`0-bootstrap/`](0-bootstrap/) | the break-glass account the first time (local state, then migrated); then the apply trigger as `imp-boot-gbl-tofu` | adopts the seeded `terraform` folder, boot project, and boot identity; the org layer identity and its grants on the organization's folder; the project-updater and state-bucket-policy custom roles; the Cloud Build connection, the two runner identities and the two triggers that plan and apply the layers; the grants on the root organization's three key secrets; the state bucket's grants for its two identities |
-| 1 | [`1-org/`](1-org/) | the break-glass account the first time; then the apply trigger as `imp-org-gbl-tofu` | folders `shared`, `tst`, `stg`, `prd`; the org policy baseline; Essential Contacts; the six projects; a layer identity and a plan identity per project and the two boot layers' plan identities, each impersonated by the trigger runner of its kind, with its state bucket grants; the `secretContainerAdmin` custom role; the applications' repositories |
+| 0 | [`0-bootstrap/`](0-bootstrap/) | the root organization's founding identity the first time, in the founding; then the apply trigger as `imp-boot-gbl-tofu` | adopts the seeded `terraform` folder, boot project, and boot identity; the org layer identity and its grants on the organization's folder; the project-updater and state-bucket-policy custom roles; the Cloud Build connection, the two runner identities and the two triggers that plan and apply the layers; the grants on the root organization's three key secrets; the state bucket's grants for its two identities |
+| 1 | [`1-org/`](1-org/) | the root organization's founding identity the first time, in the founding; then the apply trigger as `imp-org-gbl-tofu` | folders `shared`, `tst`, `stg`, `prd`; the org policy baseline; Essential Contacts; the six projects; a layer identity and a plan identity per project and the two boot layers' plan identities, each impersonated by the trigger runner of its kind, with its state bucket grants; the `secretContainerAdmin` custom role; the applications' repositories |
 | 2 | [`2-shr/`](2-shr/) | the apply trigger as `imp-shr-gbl-tofu` | one Artifact Registry Docker repository per application, immutable tags, cleanup policies; reader for each environment's Cloud Run, writer for each application's deploy identities |
 | 2 | [`2-spn/`](2-spn/) | the apply trigger as `imp-spn-gbl-tofu` | the shared Spanner instance `imp-spn-gbl-spanner` (nam10, 100 processing units to start, raised for databases or load); instance-level database admin grants; the Spanner entitlements of the environments on it |
 | 2 | [`2-net/`](2-net/) | the apply trigger as `imp-net-gbl-tofu` | the global external Application Load Balancer, its address, SSL policy, managed certificates and map, the apps domain's zone and each vanity domain's, and a URL map routed from `hosts`; no VPC |
@@ -69,11 +69,13 @@ at that organization. Inside the folder nothing changes: the organization is
 the unit of blast radius, and the Google Cloud organization's administrator
 stays above every folder.
 
-The one account above the folders is the organization's break-glass account
-(`breakGlassAccount` in `placement.json`): it creates the folder at the
-organization root with Folder Creator, keeps the administration of the folder
-Google gives a creator, and holds nothing else once the first-time setup is
-trimmed (`0-bootstrap/README.md`, "Trimming the break-glass account").
+The one account above the folder is the organization's break-glass account
+(`breakGlassAccount` in `placement.json`), which holds Folder Admin on the
+folder, given by the founding, and nothing else. The folder was made by the
+root organization's founding identity, with Folder Creator at the
+organization node, which took its own grants off everything it made at the
+founding's end and holds nothing under the folder since ("Founded by the
+root organization", below).
 
 ## Naming
 
@@ -147,124 +149,81 @@ the break-glass account. Destroying the organization, projects and all,
 is `bedrock org destroy`, by hand (`0-bootstrap/README.md`, "Destroying the
 organization").
 
-First-time setup, by hand, before any identity can run. Each step opens with
-the place it happens.
+## Founded by the root organization
 
-1. **The team groups.** In the Workspace Admin console: one group per
-   environment, named in `placement.json` (`teamGroups`, a group's address
+This organization was founded by its root organization `imr`
+(`root` in `placement.json`), from a pull request in that organization's
+repository, not seeded by hand: `bedrock org found imp` there wrote
+the record of this organization (`organizations/imp/placement.json`,
+this repository's `placement.json` before the founding filled in the
+projects), and the merge founded it as that organization's founding identity
+(`imr-found-gbl-tofu`): the organization's folder at the
+organization root, the `terraform` folder under it, the boot project
+`imp-boot-gbl-core-a1b2`, the boot identity `imp-boot-gbl-tofu` with its
+roles on the folder, the break-glass account's Folder Admin on the folder, and
+the state bucket `imp-boot-gbl-state-a1b2`; then the first applies of `0-bootstrap`
+and `1-org`, against the bucket, from which the connection, the repository
+link, the two triggers, the folders, the projects and every identity exist;
+then this repository, with the rendered foundation as its first push, which
+the apply trigger ran on, every layer as its own identity. The founding
+identity took its own grants off everything it made and holds nothing here;
+the root organization reaches in for nothing after, and its record of the
+folder (`hostingOrganizations` in its `placement.json`) is what keeps this
+organization's boot identity's grants on the shared secrets rendered
+([`0-bootstrap/README.md`](0-bootstrap/README.md), "Founded by the root
+organization" and "The GitHub Apps' keys").
+
+The GitHub side is the root organization's: the `imp-example`
+organization, its machine account `imp-machine`, the release,
+deployer and infrastructure apps with their keys, and the Cloud Build GitHub
+authorization; this placement names the same, filled in by the founding.
+`1-org` configures every application's repository and rules this repository's
+default branch.
+
+What is done by hand, each where it happens:
+
+1. **The team groups**, before the record. In the Workspace Admin console: one
+   group per environment, named in the record (`teamGroups`, a group's address
    each; the same group may serve several environments, but production's is
    not the first environment's). Each person's access to an environment comes
    from its group: the group approves the environment's releases where a
    release waits for an approval, and its members ask for its entitlements
    (`2-env/README.md`, "The team group"). Every render names them, and `2-env`
-   grants to them, so they exist before anything else.
-2. **GitHub.** On GitHub, as an owner of the `imp-example` organization
-   (whoever creates it is its first owner): the organization itself, its
-   machine account `imp-machine` (`githubMachineAccount`, a GitHub
-   user that is an owner of the organization and acts for no person), this
-   repository (`1-org` rules its default branch; nothing else of it is the
-   layers'), and the release and deployer apps ("The two GitHub Apps",
-   below). The release app's App ID and slug are in `placement.json` before
-   the first render. Nothing more is done by hand on GitHub: `1-org`
-   configures every application's repository and rules this repository's
-   default branch.
-3. **Seed.** In a terminal, as the break-glass account: `bedrock org
-   preflight` first, which checks that the account holds each of these roles
-   above the organization's folder:
-   - Folder Creator (`roles/resourcemanager.folderCreator`), on the organization
-   - Billing Account User (`roles/billing.user`), on the billing account
-
-   Then the gcloud commands that make the organization's folder, which makes
-   the account its administrator, the `terraform` folder under it, the boot
-   project, the boot layer identity and its roles on the folder, and the state
-   bucket. Both are in [`0-bootstrap/README.md`](0-bootstrap/README.md), "1.
-   Seed with gcloud". In a terminal, a billing administrator separately
-   grants `roles/billing.user` on the billing account to the two layer
-   identities; in the Billing console, the same administrator sets the spend
-   budget (`0-bootstrap/README.md`, "5. Billing grants and the budget").
-4. **The Cloud Build GitHub authorization.** In the boot project's Cloud
-   Build console, as the break-glass account (Owner on the boot project
-   from the seed), signed in to GitHub as the machine account
-   `imp-machine`, before the first apply of `0-bootstrap`
-   (`0-bootstrap/README.md`, "2. The Cloud Build GitHub authorization"): the
-   host connection, which installs the Google Cloud Build GitHub App on the
-   organization and stores its token in the boot project. Its installation
-   ID and the token secret's version go into `placement.json`
-   (`cloudBuildInstallationId`, `cloudBuildTokenSecretVersion`), where every
-   connection, the boot project's and each environment's, is rendered from.
-   The bedrock the triggers run goes in beside them: `bedrock upgrade`, in
-   this repository, which records the release as `bedrockVersion` and
-   `bedrockSha256` and renders.
-5. **`0-bootstrap`.** In a terminal, in `0-bootstrap/`, as the break-glass
-   account. The first apply runs on local state, with the backend block
-   commented out, and adopts the seeded resources and the console's connection
-   through `import` blocks and an import. The seed's values go into
-   `placement.json` (`stateBucket`, `projects.boot`, `projectNumbers.boot`)
-   and `bedrock org render` names the bucket in every backend block; the
-   state is then moved in with `tofu init -migrate-state`. From here the plan
-   and apply triggers exist, and their steps are the trigger's own. Two
-   things come before the first apply, since the layer grants on the three
-   GitHub App key secrets in the root organization `imr`'s
-   boot project: that organization lists this one in its `placement.json`
-   (`hostingOrganizations`: the prefix and the boot project, once step 2's
-   seed has made the boot identity) and applies, which gives the boot
-   identity the secrets' policy administration for every apply through the
-   trigger; and the break-glass account, which holds nothing on that project,
-   grants itself Secret Manager Admin on it for this one run, with the Folder
-   Admin it keeps on that organization's folder, and takes it off after
-   (`0-bootstrap/README.md`, "The GitHub Apps' keys").
-6. **`1-org`.** In a terminal, in `1-org/`, as the same person, against the
-   bucket directly, with their own GitHub token. Its `project_ids` and
-   `project_numbers` outputs go into `placement.json` (`projects`,
-   `projectNumbers`), and `bedrock org render` names every layer's identities
-   and grants each environment's Cloud Build service agent the token's read.
-   From here on the apply trigger applies every layer, these two included.
-   The grants steps 3 to 6 leave behind (Owner on each project made and Folder
-   Admin and Folder Editor on each folder, which Google gives whoever creates
-   them, and the seed's own on the organization's folder) are temporary: once
-   the apply trigger applies the layers, a hand step removes them
-   (`0-bootstrap/README.md`, "Trimming the break-glass account"), and
-   `bedrock org check` lists each grant still held until then. Folder Admin
-   on the organization's folder alone stays with the account.
-7. **The infrastructure GitHub App** (`0-bootstrap/README.md`, "The
-   infrastructure GitHub App"). On GitHub, as an organization owner: the app,
-   its private key and its installation. Then in a terminal, in this
-   repository: its App ID recorded in `placement.json`
-   (`githubInfrastructureAppId`) and `bedrock org render`. Its key lives in
-   the root organization `imr`'s boot project (`root` in
-   `placement.json`), added, proven and pinned there; nothing is added here.
-   Until the App ID is recorded and the alias names a version, a run of the
-   triggers that plans or applies `1-org` says so and stops.
-8. **The deployer and release apps' App IDs** (`0-bootstrap/README.md`, "The
-   GitHub Apps' keys"). In `placement.json`: `githubDeployerAppId`, and
-   `githubReleaseAppId` with `githubReleaseAppSlug` from the start; then
-   `bedrock org render` ("The two GitHub Apps", below). Their keys are the
-   root organization's, read through the alias `current`. Until the App IDs
-   are recorded the plans are in the runs' logs alone and the pipelines talk
-   back through nothing. `bedrock org register` refuses the first application while step
-   4's values are not recorded, since the applications' triggers exist once
-   `2-env` holds the connection and nothing is built by hand before them.
-9. **The consent screen.** In each environment project's Google Cloud
+   grants to them, so they exist before the founding.
+2. **The billing grants and the budget**, after the founding. In a terminal, a
+   billing administrator grants `roles/billing.user` on the billing account to
+   the two layer identities, `imp-boot-gbl-tofu` and
+   `imp-org-gbl-tofu`, which `1-org` needs the day it links a project
+   it creates (the founding identity's own Billing Account User covered the
+   first apply); in the Billing console, the same administrator sets the spend
+   budget (`0-bootstrap/README.md`, "Billing grants and the budget").
+3. **The consent screen.** In each environment project's Google Cloud
    console, before the first application's OAuth client is made there: APIs &
    Services, OAuth consent screen, with the audience **Internal**, so only the
    organization's own users sign in. The project has one consent screen, which
    every application's client in it shares, so it carries the organization's
    name, not an application's. Each application's README ("Hand steps") then
    makes its client.
-10. **The role groups.** In the Workspace Admin console, for each application
-    before its first sign-in: one group per role its sign-in grants, named
-    `<group prefix><role>@imp.example`, where the group prefix is the
-    application's own (its stack's `<sign-in>_oidc_group_prefix` variable,
-    under "Inputs" in its infrastructure README). When the group is
-    created, set "Who can view members" so that the group's members can: the
-    sign-in reads a person's groups with the person's own token, and Google
-    leaves out a group whose member list the person may not view, so that
-    membership, and the role it grants, is lost.
+4. **The role groups.** In the Workspace Admin console, for each application
+   before its first sign-in: one group per role its sign-in grants, named
+   `<group prefix><role>@imp.example`, where the group prefix is the
+   application's own (its stack's `<sign-in>_oidc_group_prefix` variable,
+   under "Inputs" in its infrastructure README). When the group is
+   created, set "Who can view members" so that the group's members can: the
+   sign-in reads a person's groups with the person's own token, and Google
+   leaves out a group whose member list the person may not view, so that
+   membership, and the role it grants, is lost.
+
+Nothing of a person's is left behind: no creator's grant to trim, no first
+apply on local state. The break-glass account `seed@imp.example` holds
+Folder Admin on the organization's folder, its key for a recovery by hand
+(`0-bootstrap/README.md`, "Recovery, by hand"), and `bedrock org check` lists
+each grant of a person's it finds and any grant on that folder to a principal
+outside the organization.
 
 GitHub prerequisites: the organization's private repositories need rulesets
-that GitHub enforces, environments and organization secrets; the organization
-holds GitHub Apps; and its machine account (`githubMachineAccount`) is an
-owner of it. bedrock's README lists each with what needs it
+that GitHub enforces and environments; the organization holds GitHub Apps; and
+its machine account (`githubMachineAccount`) is an owner of it. bedrock's README lists each with what needs it
 ([GitHub prerequisites](https://github.com/cccteam/ccc/blob/master/bedrock/README.md#github-prerequisites)).
 
 `bedrock org register <app> [<application checkout>]` prints the pull requests

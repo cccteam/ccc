@@ -524,7 +524,7 @@ resource "google_project_iam_custom_role" "identity_platform_initializer" {
 # role, so a custom role is the only way to grant it short of owner: the same
 # role 0-bootstrap makes in the boot project, here in each project this layer
 # creates, so the org layer identity can manage the projects' labels and
-# metadata through the project module (the break-glass account's Owner
+# metadata through the project module (the founding identity's Owner
 # covered the first apply, which created them).
 resource "google_project_iam_custom_role" "project_updater" {
   for_each = local.custom_role_projects

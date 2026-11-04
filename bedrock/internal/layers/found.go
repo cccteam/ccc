@@ -58,7 +58,7 @@ func (r *run) foundingPreview() string {
 	}
 	preview := ""
 	for _, h := range r.p.Pending() {
-		preview += fmt.Sprintf("The merge founds %s: folder %s at the organization node, boot project %s, repository %s/%s-infrastructure or as its record names it (%s/%s/placement.json), as %s; then the hand-off pull request.\n",
+		preview += fmt.Sprintf("The merge founds %s: folder %s at the organization node, boot project %s, repository %s/%s-infrastructure or as its record names it (%s/%s/placement.json), as %s, with the first applies of its two foundation layers and the push of its repository; then the hand-off pull request.\n",
 			h.Prefix, h.Prefix, h.BootProject, r.p.GithubOrganization, h.Prefix, "organizations", h.Prefix, r.p.FoundingIdentity())
 	}
 

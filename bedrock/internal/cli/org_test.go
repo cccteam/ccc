@@ -238,6 +238,23 @@ func TestOrgCheckLeftovers(t *testing.T) {
 			},
 		},
 		{
+			name: "a principal outside the organization on its folder is listed as such; its own identities are not",
+			policies: func(context.Context) (org.PolicyReader, error) {
+				return &fakePolicyReader{
+					folder: organized,
+					byFolder: map[string][]org.Binding{organized: {
+						{Role: "roles/resourcemanager.folderAdmin", Members: []string{account, "serviceAccount:imp-boot-gbl-tofu@imp-boot-gbl-core-a1b2.iam.gserviceaccount.com"}},
+						{Role: "roles/resourcemanager.projectCreator", Members: []string{"serviceAccount:imr-found-gbl-tofu@imr-boot-gbl-core-c3d4.iam.gserviceaccount.com"}},
+					}},
+				}, nil
+			},
+			wantOut: []string{
+				"folder imp (" + organized + "): serviceAccount:imr-found-gbl-tofu@imr-boot-gbl-core-c3d4.iam.gserviceaccount.com holds roles/resourcemanager.projectCreator, and is outside this organization (not the break-glass account, not an identity in one of its projects); nothing of the organization's grants to an outsider on its folder, and a root organization's founding identity takes its own grants off at the founding's end, so this one is to remove, or to explain in JOURNAL.md.",
+				"owned file(s) match the placement",
+			},
+			absent: []string{"imp-boot-gbl-tofu", "No grant of the first-time setup is left", "it is temporary"},
+		},
+		{
 			name: "nothing left but the kept Folder Admin",
 			policies: func(context.Context) (org.PolicyReader, error) {
 				return &fakePolicyReader{
@@ -246,7 +263,7 @@ func TestOrgCheckLeftovers(t *testing.T) {
 				}, nil
 			},
 			wantOut: []string{
-				"No grant of the first-time setup is left: nobody holds roles/owner on a project, nobody Folder Admin or Folder Editor on a folder under the organization's, and the break-glass account holds Folder Admin on the organization's folder alone.",
+				"No grant of the first-time setup is left: nobody holds roles/owner on a project, nobody Folder Admin or Folder Editor on a folder under the organization's, the break-glass account holds Folder Admin on the organization's folder alone, and nothing on that folder is granted to a principal outside the organization.",
 				"owned file(s) match the placement",
 			},
 			absent: []string{"Leftover grants not checked"},
@@ -265,7 +282,7 @@ func TestOrgCheckLeftovers(t *testing.T) {
 			name:     "without credentials the check says what it would do",
 			policies: noPolicies,
 			wantOut: []string{
-				"Leftover grants not checked (no Google credentials in this test): org check lists each grant the first-time setup left a person with (a person's roles/owner on a project, a person's Folder Admin or Folder Editor on a folder under the organization's, and the break-glass account's roles beyond its Folder Admin on the organization's folder), when it runs with Google credentials that read the projects' and folders' IAM policies (gcloud auth application-default login).",
+				"Leftover grants not checked (no Google credentials in this test): org check lists each grant the first-time setup left a person with (a person's roles/owner on a project, a person's Folder Admin or Folder Editor on a folder under the organization's, and the break-glass account's roles beyond its Folder Admin on the organization's folder) and each grant on the organization's folder to a principal outside the organization (neither the break-glass account nor an identity in one of its projects), when it runs with Google credentials that read the projects' and folders' IAM policies (gcloud auth application-default login).",
 				"owned file(s) match the placement",
 			},
 		},
@@ -701,25 +718,18 @@ func TestOrgCommands(t *testing.T) {
 			},
 			wantOut: []string{
 				"Rendered the imp foundation", "69 owned file(s)", "seeded .gitignore, 0-bootstrap/terraform.tfvars",
-				"By hand, before the Cloud Build triggers can run", "0. In the Workspace Admin console: one team group per environment, named in\n     placement.json (teamGroups",
-				"its role groups (<group prefix><role>@imp.example), each created with\n     \"Who can view members\" set so that its members can",
-				"On GitHub, as an organization owner: the organization, its machine account\n     (imp-machine, an owner of the organization, named in placement.json as\n     githubMachineAccount)",
-				"The apps' keys live in the root organization imr (root.organization), in its boot\n     project imr-boot-gbl-core-c3d4, one secret per app, and every run here reads each secret's alias\n     current, which that organization pins: nothing is added or pinned in this\n     repository (0-bootstrap/README.md, \"The GitHub Apps' keys\"). No key reaches GitHub:\n     the release trigger of each application's stack mints the release app's token from\n     the alias in Cloud Build.",
-				"1. In a terminal, as seed@imp.example, after gcloud auth application-default login:\n     bedrock org preflight, which must find each of these roles held:\n" +
-					"       - Folder Creator (roles/resourcemanager.folderCreator), on the organization\n" +
-					"       - Billing Account User (roles/billing.user), on the billing account\n" +
-					"     then the seed: the organization's folder at the organization root (123456789012), which makes\n" +
-					"     the account its administrator, the terraform folder under it, the boot project\n" +
-					"     imp-boot-gbl-core-<suffix>, the boot identity imp-boot-gbl-tofu with its roles on the\n" +
-					"     organization's folder, and the state bucket imp-boot-gbl-state-<suffix>. Nothing of the\n" +
-					"     organization's sits at the organization node.",
-				"imp-boot-gbl-tofu", "projects.boot, projectNumbers.boot",
-				"3. In the boot project's Cloud Build console, as seed@imp.example (the break-glass\n     account, Owner on the boot project from the seed), signed in to GitHub as the\n     organization's machine account (imp-machine): the Cloud Build GitHub App's authorization\n     (0-bootstrap/README.md, \"The Cloud Build GitHub authorization\"), a connection named\n     imp-boot-uc1-github in us-central1; its installation id and the token secret's version go\n     into placement.json (cloudBuildInstallationId, cloudBuildTokenSecretVersion). Then,\n     in a terminal, in this repository: bedrock upgrade, which pins the bedrock the\n     triggers run (bedrockVersion) and renders. bedrock org register refuses the first\n     application until the two values are set.",
-				"4. In a terminal, in 0-bootstrap: the apply on local state, the connection imported\n     into it first, then the migration of its state into the bucket.",
-				"5. In a terminal, as a billing administrator of 012345-6789AB-CDEF01: roles/billing.user on\n     it for the two identities. In the Billing console, as the same administrator: the\n     spend budget on the account (0-bootstrap/README.md, step 5)",
-				"6. In a terminal, in 1-org: the apply, with GITHUB_TOKEN", "a creator's grants, temporary, removed by hand once the apply\n     trigger applies the layers, with the roles the seed granted you on the organization's\n     folder for this apply (0-bootstrap/README.md, \"Trimming the break-glass account\";\n     bedrock org check lists each grant still held). Folder Admin on the organization's\n     folder alone stays with the account, its key for a recovery by hand.",
-				"7. In each environment project's Google Cloud console, before the first application's\n     OAuth client is made there: the consent screen (APIs & Services, OAuth consent\n     screen), with the audience Internal",
-				"From then on the two Cloud Build triggers in the boot project (imp-boot-uc1-layers-plan and imp-boot-uc1-layers-apply)\napply every layer, these two included: a pull request plans the layers it touches as their\nplan identities and posts the plans on it, the merge applies them as their apply\nidentities, in layer order.",
+				"A hosting organization is founded by its root organization (imr, root.organization in\nplacement.json), from that organization's repository, by pull request; nothing here is seeded\nor applied by hand",
+				"0. In the Workspace Admin console, before the record: one team group per environment, named\n     in placement.json (teamGroups",
+				"its role groups (<group prefix><role>@imp.example), each created with \"Who can view\n     members\" set so that its members can",
+				"On GitHub, nothing: the organization imp-example, its machine account (imp-machine), the release, deployer\n     and infrastructure apps with their keys and the Cloud Build authorization are the root\n     organization's",
+				"the root organization's boot project imr-boot-gbl-core-c3d4, one secret per app, and every run here reads\n     each secret's alias current",
+				"1. In a terminal, in the root organization's repository: bedrock org found imp, which\n     writes the record (organizations/imp/placement.json)",
+				"2. The merge, as the root organization's founding identity: the organization's folder at\n     the organization root (123456789012), the terraform folder under it, the boot project\n     imp-boot-gbl-core-<suffix>, the boot identity imp-boot-gbl-tofu with its roles on the\n     organization's folder, the break-glass account's (seed@imp.example) Folder Admin on it and the state\n     bucket imp-boot-gbl-state-<suffix>",
+				"the repository imp-example/imp-impulse-infrastructure with the rendered\n     foundation as its first push",
+				"3. In a terminal, as a billing administrator of 012345-6789AB-CDEF01, once the founding has made the two\n     identities: roles/billing.user on it for imp-boot-gbl-tofu and imp-org-gbl-tofu",
+				"4. In each environment project's Google Cloud console, before the first application's\n     OAuth client is made there: the consent screen (APIs & Services, OAuth consent\n     screen), with the audience Internal",
+				"From then on the two Cloud Build triggers in the boot project (imp-boot-uc1-layers-plan and imp-boot-uc1-layers-apply)\napply every layer: a pull request plans the layers it touches as their plan identities and\nposts the plans on it",
+				"bedrock org check lists\nany grant on the organization's folder to a principal outside the organization.",
 				"Pinned bedrock " + headVersion + " in ",
 				"\nAfter the first apply of 2-net: bedrock domain check prints what the apps domain, and each vanity domain, still needs, and where.\n",
 			},

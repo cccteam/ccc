@@ -67,17 +67,18 @@ its placement: the six layers of the CCC provisioning model, each with its .tf f
 README and its seeded terraform.tfvars, and at the root the README, the journal, the ignore
 rules and the OpenTofu version. 0-bootstrap carries the two Cloud Build triggers, in the boot
 project, that plan the layers on a pull request and apply them on the merge, running bedrock
-org plan and bedrock org apply. It then prints the hand steps the model needs before the
-triggers can run, each opening with the place it happens: the team and role groups, the
-GitHub organization with its apps and their keys, org
-preflight's check of the break-glass account's roles and the seed (the organization's folder
-and the terraform folder, the boot project, the boot identity and the state bucket, as the
-break-glass account), the
-Cloud Build GitHub authorization in the boot project, the bootstrap apply on local state and
-its migration into the bucket, the billing grants and the spend budget, the first apply of
-1-org and the consent screen, spelled out in 0-bootstrap/README.md and the root README; from
-then on the triggers plan every layer on a pull request and apply it on the merge, as the
-layer's own identity.
+org plan and bedrock org apply. It then prints the hand steps, each opening with the place
+it happens. For a root organization, the one bootstrapped by hand: the GitHub organization
+with its apps and their keys, org preflight's check of the break-glass account's roles and
+the seed (the organization's folder and the terraform folder, the boot project, the boot
+identity and the state bucket, as the break-glass account), the Cloud Build GitHub
+authorization in the boot project, the bootstrap apply on local state and its migration into
+the bucket, the billing grant and the spend budget, the first apply of 1-dns, the domains and
+the founding identity's grants, spelled out in 0-bootstrap/README.md and the root README. A
+hosting organization is founded by its root organization (bedrock org found there), so its
+steps are what comes before the record (the team groups) and after the founding (the billing
+grants, the budget, the consent screen, the role groups). From then on the triggers plan
+every layer on a pull request and apply it on the merge, as the layer's own identity.
 
 The placement is read from --placement, or from placement.json in the directory. The .tf
 files and the READMEs are owned: org render rewrites them, and org check compares them.
@@ -169,100 +170,86 @@ func (d deps) orgPinned(p *org.Placement, placement string) error {
 }
 
 // handSteps says what a person does before the triggers can run, and where the commands
-// are. Each step opens with the place it happens; the bootstrap roles are org preflight's
-// table, one line each, so the steps name what the check checks. A root organization
-// has fewer steps: no team group, no environment, no release app, and its domains after
-// the layers (rootHandSteps).
+// are. Each step opens with the place it happens. A root organization is the one
+// bootstrapped by hand: the bootstrap roles are org preflight's table, one line each, so
+// the steps name what the check checks (rootHandSteps). A hosting organization is founded
+// by its root organization, so its steps are what comes before the record and after the
+// founding.
 func handSteps(p *org.Placement) string {
-	var roles strings.Builder
-	for _, role := range p.BootstrapRoles() {
-		fmt.Fprintf(&roles, "       - %s (%s), on the %s\n", role.Title, role.Role, role.On)
-	}
 	if p.IsRoot() {
+		var roles strings.Builder
+		for _, role := range p.BootstrapRoles() {
+			fmt.Fprintf(&roles, "       - %s (%s), on the %s\n", role.Title, role.Role, role.On)
+		}
+
 		return rootHandSteps(p, roles.String())
 	}
 
 	return fmt.Sprintf(`
-By hand, before the Cloud Build triggers can run (the commands are in 0-bootstrap/README.md):
-  0. In the Workspace Admin console: one team group per environment, named in
-     placement.json (teamGroups: a group's address each; production's is not the first
+A hosting organization is founded by its root organization (%s, root.organization in
+placement.json), from that organization's repository, by pull request; nothing here is seeded
+or applied by hand (README.md, "Founded by the root organization"). By hand, each where it
+happens:
+  0. In the Workspace Admin console, before the record: one team group per environment, named
+     in placement.json (teamGroups: a group's address each; production's is not the first
      environment's), whose members approve the environment's releases and ask for its
-     entitlements; nothing else names a person. For each application, before its
-     first sign-in, its role groups (<group prefix><role>@%s), each created with
-     "Who can view members" set so that its members can: the sign-in reads a person's
-     groups with the person's own token, and Google leaves out a group whose member
-     list the person may not view.
-     On GitHub, as an organization owner: the organization, its machine account
-     (%s, an owner of the organization, named in placement.json as
-     githubMachineAccount), this infrastructure repository (default branch %s; 1-org
-     rules that branch and nothing else of it), the release, deployer and
-     infrastructure apps, each installed on all repositories, with their private keys
-     (README.md, "The two GitHub Apps", and 0-bootstrap/README.md, "The infrastructure
-     GitHub App"; the release
-     app's App ID and slug go into placement.json, githubReleaseAppId and
-     githubReleaseAppSlug, the deployer app's App ID into placement.json,
-     githubDeployerAppId, and the infrastructure app's into placement.json,
-     githubInfrastructureAppId) and, if a team is to approve changes to the applications'
-     check files, that team (githubInfrastructureTeam).
-     The apps' keys live in the root organization %s (root.organization), in its boot
-     project %s, one secret per app, and every run here reads each secret's alias
-     current, which that organization pins: nothing is added or pinned in this
-     repository (0-bootstrap/README.md, "The GitHub Apps' keys"). No key reaches GitHub:
-     the release trigger of each application's stack mints the release app's token from
-     the alias in Cloud Build.
-  1. In a terminal, as %s, after gcloud auth application-default login:
-     bedrock org preflight, which must find each of these roles held:
-%s     then the seed: the organization's folder at the organization root (%s), which makes
-     the account its administrator, the terraform folder under it, the boot project
+     entitlements; nothing else names a person. For each application, before its first
+     sign-in, its role groups (<group prefix><role>@%s), each created with "Who can view
+     members" set so that its members can: the sign-in reads a person's groups with the
+     person's own token, and Google leaves out a group whose member list the person may not
+     view.
+     On GitHub, nothing: the organization %s, its machine account (%s), the release, deployer
+     and infrastructure apps with their keys and the Cloud Build authorization are the root
+     organization's, recorded in its placement.json, and this placement names the same
+     (githubOrganization, githubMachineAccount, the three App IDs, cloudBuildInstallationId,
+     cloudBuildTokenSecretVersion, root), filled in by the founding. The apps' keys live in
+     the root organization's boot project %s, one secret per app, and every run here reads
+     each secret's alias current, which that organization pins (0-bootstrap/README.md, "The
+     GitHub Apps' keys"). No key reaches GitHub.
+  1. In a terminal, in the root organization's repository: bedrock org found %s, which
+     writes the record (organizations/%s/placement.json) for what is this organization's own
+     to decide (appsDomain, spanner.config, two regions with the primary the root
+     organization's, teamGroups, contactDomains, entitlementDurations, labels,
+     vanityDomains); run again, it fills in what the root organization supplies, chooses the
+     boot project's suffix and lists the organization in that placement.json
+     (hostingOrganizations); then the pull request, whose plan says what the merge founds.
+  2. The merge, as the root organization's founding identity: the organization's folder at
+     the organization root (%s), the terraform folder under it, the boot project
      %s-boot-gbl-core-<suffix>, the boot identity %s-boot-gbl-tofu with its roles on the
-     organization's folder, and the state bucket %s-boot-gbl-state-<suffix>. Nothing of the
-     organization's sits at the organization node.
-  2. In this repository, the seed's values: boot_project_id and terraform_folder_id in
-     0-bootstrap/terraform.tfvars, boot_project_id in 1-org and 2-env, and in
-     placement.json the bucket (stateBucket) and the boot project's id and number
-     (projects.boot, projectNumbers.boot); then bedrock org render, for the backend
-     blocks, the bucket's grants and the triggers.
-  3. In the boot project's Cloud Build console, as %s (the break-glass
-     account, Owner on the boot project from the seed), signed in to GitHub as the
-     organization's machine account (%s): the Cloud Build GitHub App's authorization
-     (0-bootstrap/README.md, "The Cloud Build GitHub authorization"), a connection named
-     %s in %s; its installation id and the token secret's version go
-     into placement.json (cloudBuildInstallationId, cloudBuildTokenSecretVersion). Then,
-     in a terminal, in this repository: bedrock upgrade, which pins the bedrock the
-     triggers run (bedrockVersion) and renders. bedrock org register refuses the first
-     application until the two values are set.
-  4. In a terminal, in 0-bootstrap: the apply on local state, the connection imported
-     into it first, then the migration of its state into the bucket.
-  5. In a terminal, as a billing administrator of %s: roles/billing.user on
-     it for the two identities. In the Billing console, as the same administrator: the
-     spend budget on the account (0-bootstrap/README.md, step 5); nothing renders it.
-  6. In a terminal, in 1-org: the apply, with GITHUB_TOKEN set to an organization
-     owner's token; then its project_ids and project_numbers recorded in placement.json
-     (projects, projectNumbers), and bedrock org render, so the triggers name every
-     layer's identities. The apply leaves you Owner on each project it creates, as the
-     seed left you Owner on the boot project and the folders' creation Folder Admin and
-     Folder Editor on them: a creator's grants, temporary, removed by hand once the apply
-     trigger applies the layers, with the roles the seed granted you on the organization's
-     folder for this apply (0-bootstrap/README.md, "Trimming the break-glass account";
-     bedrock org check lists each grant still held). Folder Admin on the organization's
-     folder alone stays with the account, its key for a recovery by hand.
-  7. In each environment project's Google Cloud console, before the first application's
+     organization's folder, the break-glass account's (%s) Folder Admin on it and the state
+     bucket %s-boot-gbl-state-<suffix>; the first applies of 0-bootstrap and 1-org against
+     the bucket (the connection from the recorded authorization, the repository link and the
+     two triggers; the folders, the projects and their identities, recorded in
+     placement.json as projects and projectNumbers); the repository %s/%s with the rendered
+     foundation as its first push, which its apply trigger runs on, every layer as its own
+     identity; then the founding identity's grants off everything it made, and a pull
+     request in the root organization's repository that records the folder. Nothing of the
+     organization's sits at the organization node, and nobody applies by hand.
+  3. In a terminal, as a billing administrator of %s, once the founding has made the two
+     identities: roles/billing.user on it for %s-boot-gbl-tofu and %s-org-gbl-tofu, which
+     1-org needs when it links a project it creates. In the Billing console, as the same
+     administrator: the spend budget on the account (0-bootstrap/README.md, "Billing grants
+     and the budget"); nothing renders it.
+  4. In each environment project's Google Cloud console, before the first application's
      OAuth client is made there: the consent screen (APIs & Services, OAuth consent
      screen), with the audience Internal, the organization's own users.
 From then on the two Cloud Build triggers in the boot project (%s and %s)
-apply every layer, these two included: a pull request plans the layers it touches as their
-plan identities and posts the plans on it, the merge applies them as their apply
-identities, in layer order. The shared layers, 2-env per environment and the applications'
-registrations go through them; a person applies by hand for recovery alone
-(0-bootstrap/README.md, "Recovery, by hand").
+apply every layer: a pull request plans the layers it touches as their plan identities and
+posts the plans on it, the merge applies them as their apply identities, in layer order. The
+shared layers, 2-env per environment and the applications' registrations go through them; a
+person applies by hand for recovery alone, as the break-glass account with the Folder Admin
+the founding gave it (0-bootstrap/README.md, "Recovery, by hand"). bedrock org check lists
+any grant on the organization's folder to a principal outside the organization.
 After the first apply of 2-net: bedrock domain check prints what the apps domain, and each vanity domain, still needs, and where.
-`, p.OrganizationDomain, p.GithubMachineAccount, p.GithubDefaultBranch, p.RootOrganization(), p.RootProject(), p.BreakGlassAccount, roles.String(), p.OrganizationID, p.Prefix, p.Prefix, p.Prefix,
-		p.BreakGlassAccount, p.GithubMachineAccount, p.ConnectionName(), p.Primary().Name, p.BillingAccount, p.PlanTriggerName(), p.ApplyTriggerName())
+`, p.RootOrganization(), p.OrganizationDomain, p.GithubOrganization, p.GithubMachineAccount, p.RootProject(), p.Prefix, p.Prefix,
+		p.OrganizationID, p.Prefix, p.Prefix, p.BreakGlassAccount, p.Prefix, p.GithubOrganization, p.SourceRepo,
+		p.BillingAccount, p.Prefix, p.Prefix, p.PlanTriggerName(), p.ApplyTriggerName())
 }
 
 // rootHandSteps is handSteps for a root organization: the GitHub side without the
-// release app, the seed, the authorization, the two applies, the billing grant, then the
-// domains and the labels handed onward, which 1-dns/README.md describes.
+// release app, the seed, the authorization, the two applies, the billing grant, the
+// founding identity's grants, then the domains and the labels handed onward, which
+// 1-dns/README.md describes.
 func rootHandSteps(p *org.Placement, roles string) string {
 	return fmt.Sprintf(`
 By hand, before the Cloud Build triggers can run (the commands are in 0-bootstrap/README.md):
@@ -316,10 +303,19 @@ By hand, before the Cloud Build triggers can run (the commands are in 0-bootstra
      off (0-bootstrap/README.md, "Trimming the break-glass account"; bedrock org check
      lists each grant still held), and Folder Admin on the organization's folder alone
      stays with the account, its key for a recovery by hand.
+  7. In a terminal, once 0-bootstrap has applied and made the founding identity
+     %s-found-gbl-tofu: an administrator of the Google Cloud organization grants it Folder
+     Creator (roles/resourcemanager.folderCreator) at the organization node, and a billing
+     administrator Billing Account User (roles/billing.user) on %s
+     (0-bootstrap/README.md, "The founding identity's grants"). With them this
+     organization founds each hosting organization by pull request, the first one
+     included: bedrock org found <prefix> here records it, the merge founds it
+     (README.md, "Founding a hosting organization").
 From then on the two Cloud Build triggers in the boot project (%s and %s)
 apply both layers: a pull request plans the layers it touches as their plan identities and
-posts the plans on it, the merge applies them as their apply identities, in layer order. A
-person applies by hand for recovery alone (0-bootstrap/README.md, "Recovery, by hand").
+posts the plans on it, the merge applies them as their apply identities, in layer order, and
+founds what placement.json lists without a folder yet. A person applies by hand for recovery
+alone (0-bootstrap/README.md, "Recovery, by hand").
 Then the domains: each domain delegated to this organization goes into placement.json
 (domains), bedrock org render and the pull request whose apply makes its zone; by the
 customer, where the domain's DNS is set, the delegation to the zone's name servers, as
@@ -327,7 +323,7 @@ bedrock domain check prints them with the place (1-dns/README.md, "Delegating a 
 this organization"). Each application's name under a domain follows at the application's
 registration, in two pull requests (1-dns/README.md, "Handing a label onward").
 `, p.GithubMachineAccount, p.GithubDefaultBranch, p.BreakGlassAccount, roles, p.OrganizationID, p.Prefix, p.Prefix, p.Prefix,
-		p.BreakGlassAccount, p.GithubMachineAccount, p.ConnectionName(), p.Primary().Name, p.BillingAccount, p.PlanTriggerName(), p.ApplyTriggerName())
+		p.BreakGlassAccount, p.GithubMachineAccount, p.ConnectionName(), p.Primary().Name, p.BillingAccount, p.Prefix, p.BillingAccount, p.PlanTriggerName(), p.ApplyTriggerName())
 }
 
 // hostingOnly refuses a command that acts on applications or environments in a root
@@ -539,10 +535,11 @@ and never fails the check either.`,
 }
 
 // writeOrgCheck prints what org check found: the registrations, the notices, each
-// finding, the owner and API key listings, and the verdict. The registrations, the
-// capacity and retire notices and the two listings are a hosting organization's alone: a
-// root organization registers no domain and has no Spanner instance, no application and
-// no environment project.
+// finding, the leftover grants and API key listings, and the verdict. The registrations,
+// the capacity and retire notices and the key listing are a hosting organization's
+// alone: a root organization registers no domain and has no Spanner instance, no
+// application and no environment project; its folder and boot project are read for
+// leftover grants like a hosting organization's.
 func (d deps) writeOrgCheck(cmd *cobra.Command, p *org.Placement, dir string, r *org.Report) error {
 	out := cmd.OutOrStdout()
 	if !p.IsRoot() {
@@ -566,8 +563,8 @@ func (d deps) writeOrgCheck(cmd *cobra.Command, p *org.Placement, dir string, r 
 	for _, path := range r.Unseeded {
 		fmt.Fprintf(out, "%s: not seeded yet (org render writes it)\n", path)
 	}
+	leftoverReport(cmd.Context(), d, p, out)
 	if !p.IsRoot() {
-		leftoverReport(cmd.Context(), d, p, out)
 		keyReport(cmd.Context(), d, p, out)
 	}
 	if !r.Clean() {
@@ -651,12 +648,14 @@ func registrationReport(ctx context.Context, d deps, p *org.Placement, dir strin
 // the break-glass account holds on a project or on the organization's folder beyond the
 // one it keeps there, Folder Admin, its key for a recovery by hand. A hand step removes
 // them once the apply trigger applies the layers (0-bootstrap/README.md, "Trimming the
-// break-glass account"). The read needs Google credentials; without any the report says so
-// and what it would have done. Nothing here fails the check: the drift between the
-// placement and the repository is the check's verdict, and the grants are a person's to
-// remove.
+// break-glass account"). It lists as well each grant on the organization's folder to a
+// principal outside the organization, which nothing of the organization's makes: the
+// founding identity of a root organization takes its own off at the founding's end. The
+// read needs Google credentials; without any the report says so and what it would have
+// done. Nothing here fails the check: the drift between the placement and the
+// repository is the check's verdict, and the grants are a person's to remove.
 func leftoverReport(ctx context.Context, d deps, p *org.Placement, out io.Writer) {
-	const does = "org check lists each grant the first-time setup left a person with (a person's roles/owner on a project, a person's Folder Admin or Folder Editor on a folder under the organization's, and the break-glass account's roles beyond its Folder Admin on the organization's folder), when it runs with Google credentials that read the projects' and folders' IAM policies (gcloud auth application-default login)"
+	const does = "org check lists each grant the first-time setup left a person with (a person's roles/owner on a project, a person's Folder Admin or Folder Editor on a folder under the organization's, and the break-glass account's roles beyond its Folder Admin on the organization's folder) and each grant on the organization's folder to a principal outside the organization (neither the break-glass account nor an identity in one of its projects), when it runs with Google credentials that read the projects' and folders' IAM policies (gcloud auth application-default login)"
 	if d.org == nil || d.org.policies == nil {
 		fmt.Fprintf(out, "Leftover grants not checked: no IAM policy reader is wired; %s.\n", does)
 
@@ -683,12 +682,17 @@ func leftoverReport(ctx context.Context, d deps, p *org.Placement, out io.Writer
 	}
 	if len(leftovers) == 0 {
 		if folderFound || len(unrecorded) < len(org.Environments) {
-			fmt.Fprintln(out, "No grant of the first-time setup is left: nobody holds roles/owner on a project, nobody Folder Admin or Folder Editor on a folder under the organization's, and the break-glass account holds Folder Admin on the organization's folder alone.")
+			fmt.Fprintln(out, "No grant of the first-time setup is left: nobody holds roles/owner on a project, nobody Folder Admin or Folder Editor on a folder under the organization's, the break-glass account holds Folder Admin on the organization's folder alone, and nothing on that folder is granted to a principal outside the organization.")
 		}
 
 		return
 	}
 	for _, l := range leftovers {
+		if l.Outside {
+			fmt.Fprintf(out, "%s: %s holds %s, and is outside this organization (not the break-glass account, not an identity in one of its projects); nothing of the organization's grants to an outsider on its folder, and a root organization's founding identity takes its own grants off at the founding's end, so this one is to remove, or to explain in JOURNAL.md.\n", l.Place(), l.Member, l.Role)
+
+			continue
+		}
 		fmt.Fprintf(out, "%s: %s holds %s, %s; it is temporary, removed once the apply trigger applies the layers (0-bootstrap/README.md, \"Trimming the break-glass account\").\n", l.Place(), l.Member, l.Role, leftoverWhy(p, l))
 	}
 }

@@ -149,7 +149,7 @@ func TestPlanPreviewsFounding(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Plan() error = %v; output:\n%s", err, out.String())
 	}
-	want := "The merge founds rgb: folder rgb at the organization node, boot project rgb-boot-gbl-core-e5f6, repository imp-example/rgb-infrastructure or as its record names it (organizations/rgb/placement.json), as " + root.FoundingIdentity() + "; then the hand-off pull request.\n"
+	want := "The merge founds rgb: folder rgb at the organization node, boot project rgb-boot-gbl-core-e5f6, repository imp-example/rgb-infrastructure or as its record names it (organizations/rgb/placement.json), as " + root.FoundingIdentity() + ", with the first applies of its two foundation layers and the push of its repository; then the hand-off pull request.\n"
 	if !strings.Contains(out.String(), want) || !strings.Contains(out.String(), "No layer changes in this pull request: nothing to plan.") {
 		t.Errorf("output lacks the preview:\n%s", out.String())
 	}

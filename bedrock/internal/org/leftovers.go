@@ -2,10 +2,15 @@
 // removed by hand once the apply trigger applies the layers: Owner on each project it
 // created, which Google gives a project's creator; Folder Admin and Folder Editor on each
 // folder it created, which Google gives a folder's creator; and the roles the seed grants
-// the break-glass account on the organization's folder for 1-org's first apply. The one
-// grant that stays is the break-glass account's Folder Admin on the organization's
-// folder, its key to everything below (0-bootstrap/README.md, "Trimming the break-glass
-// account"), and org check reports every other one until it is removed.
+// the break-glass account on the organization's folder for the second layer's first
+// apply. The one grant that stays is the break-glass account's Folder Admin on the
+// organization's folder, its key to everything below (0-bootstrap/README.md, "Trimming
+// the break-glass account"), and org check reports every other one until it is removed.
+// On the organization's folder it reports as well every grant to a principal outside the
+// organization, neither the break-glass account nor an identity in one of its projects:
+// the folder is the whole of the organization's reach, nothing of the organization's
+// grants there to an outsider, and a founding identity's grants come off at the
+// founding's end (a hosting organization founded by its root organization).
 
 package org
 
@@ -31,6 +36,12 @@ const (
 	FolderEditorRole = "roles/resourcemanager.folderEditor"
 	// userPrefix starts a member that is a person.
 	userPrefix = "user:"
+	// serviceAccountPrefix starts a member that is a service account.
+	serviceAccountPrefix = "serviceAccount:"
+	// identityDomainSuffix ends a service account's address after its project's id.
+	identityDomainSuffix = ".iam.gserviceaccount.com"
+	// googleAgentDomainPrefix starts the domain of one of Google's own service agents.
+	googleAgentDomainPrefix = "gcp-sa-"
 )
 
 // The two kinds of place a leftover grant sits on.
@@ -83,6 +94,10 @@ type Leftover struct {
 	Member string
 	// Role is the role held.
 	Role string
+	// Outside says the member is a principal outside the organization, on its folder:
+	// not the break-glass account, not an identity in one of the organization's
+	// projects. The other leftovers are a person's, from the first-time setup.
+	Outside bool
 }
 
 // Place names where the grant sits, for a line about it.
@@ -93,16 +108,19 @@ func (l Leftover) Place() string {
 // Leftovers lists the grants the setup left behind: on every project the placement
 // records (projects), in its order, each person holding Owner and each other role the
 // break-glass account holds; on the organization's folder, each role the break-glass
-// account holds but Folder Admin, the one it keeps; on each folder under it, each person
-// holding Folder Admin or Folder Editor and each other role the break-glass account
-// holds. Unrecorded names the environments the placement records no project for, which
-// are not read; a missing organization folder is reported as none found, not as an
-// error, since the check runs before the seed too.
+// account holds but Folder Admin, the one it keeps, and each grant to a principal
+// outside the organization (Outside); on each folder under it, each person holding
+// Folder Admin or Folder Editor and each other role the break-glass account holds.
+// Unrecorded names the environments the placement records no project for, which are
+// not read (a root organization has none); a missing organization folder is reported as
+// none found, not as an error, since the check runs before the seed too.
 func Leftovers(ctx context.Context, p *Placement, read PolicyReader) (leftovers []Leftover, unrecorded []string, folderFound bool, err error) {
 	account := userPrefix + p.BreakGlassAccount
-	for _, env := range Environments {
-		if p.Projects[env] == "" {
-			unrecorded = append(unrecorded, env)
+	if !p.IsRoot() {
+		for _, env := range Environments {
+			if p.Projects[env] == "" {
+				unrecorded = append(unrecorded, env)
+			}
 		}
 	}
 	leftovers, err = projectLeftovers(ctx, p, read, account)
@@ -151,8 +169,9 @@ func projectLeftovers(ctx context.Context, p *Placement, read PolicyReader, acco
 
 // folderLeftovers is the grants left on the organization's folder (folder, its numeric
 // id), each role the break-glass account holds there but Folder Admin, the one it keeps,
-// and on each folder under it, each person's Folder Admin or Folder Editor and each
-// other role the break-glass account holds.
+// and each grant to a principal outside the organization; and on each folder under it,
+// each person's Folder Admin or Folder Editor and each other role the break-glass
+// account holds.
 func folderLeftovers(ctx context.Context, p *Placement, read PolicyReader, account, folder string) ([]Leftover, error) {
 	bindings, err := read.FolderPolicy(ctx, folder)
 	if err != nil {
@@ -160,12 +179,14 @@ func folderLeftovers(ctx context.Context, p *Placement, read PolicyReader, accou
 	}
 	var leftovers []Leftover
 	for _, b := range bindings {
-		if b.Role == FolderAdminRole {
-			continue
-		}
 		for _, member := range b.Members {
-			if member == account {
-				leftovers = append(leftovers, Leftover{On: OnFolder, Key: p.Prefix, ID: folder, Member: member, Role: b.Role})
+			switch {
+			case member == account:
+				if b.Role != FolderAdminRole {
+					leftovers = append(leftovers, Leftover{On: OnFolder, Key: p.Prefix, ID: folder, Member: member, Role: b.Role})
+				}
+			case !p.OwnIdentity(member):
+				leftovers = append(leftovers, Leftover{On: OnFolder, Key: p.Prefix, ID: folder, Member: member, Role: b.Role, Outside: true})
 			}
 		}
 	}
@@ -189,6 +210,36 @@ func folderLeftovers(ctx context.Context, p *Placement, read PolicyReader, accou
 	}
 
 	return leftovers, nil
+}
+
+// OwnIdentity reports whether the member is an identity of the organization's own: a
+// service account in one of its projects (serviceAccount:<name>@<project>.iam.gserviceaccount.com,
+// the project one the placement records), or one of Google's own service agents
+// (@gcp-sa-<service>.iam.gserviceaccount.com), which Google grants where a service needs
+// them. Everything else on the organization's folder is outside the organization.
+func (p *Placement) OwnIdentity(member string) bool {
+	email, ok := strings.CutPrefix(member, serviceAccountPrefix)
+	if !ok {
+		return false
+	}
+	_, domain, ok := strings.Cut(email, "@")
+	if !ok {
+		return false
+	}
+	if strings.HasPrefix(domain, googleAgentDomainPrefix) {
+		return true
+	}
+	project, ok := strings.CutSuffix(domain, identityDomainSuffix)
+	if !ok {
+		return false
+	}
+	for _, own := range p.Projects {
+		if own == project {
+			return true
+		}
+	}
+
+	return false
 }
 
 // policies is the PolicyReader over the Cloud Resource Manager API.

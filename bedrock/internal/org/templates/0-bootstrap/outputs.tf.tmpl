@@ -1,6 +1,6 @@
-# Read by hand when substituting values into {{.SecondLayer}}/terraform.tfvars and
-# placement.json{{if not .IsRoot}}, and by 1-org through data "terraform_remote_state" on the
-# state bucket (prefix 0-bootstrap){{end}}. Nothing here is a secret; keep it that way.
+# {{if .IsRoot}}Read by hand when substituting values into {{.SecondLayer}}/terraform.tfvars and
+# placement.json{{else}}Read by the founding, which records them in placement.json, and by 1-org
+# through data "terraform_remote_state" on the state bucket (prefix 0-bootstrap){{end}}. Nothing here is a secret; keep it that way.
 
 output "boot_project_id" {
   description = "Project ID of the boot project, used as the quota and billing project by every downstream layer."

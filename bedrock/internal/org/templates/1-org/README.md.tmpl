@@ -2,8 +2,9 @@
 
 Where the organization is described: folders, the org policy baseline,
 Essential Contacts, every project, and the identities that manage each
-project's own layer. Its first apply is the break-glass account's; from
-then on the apply trigger applies it as `{{.Prefix}}-org-gbl-tofu` and the plan
+project's own layer. Its first apply is the root organization's founding
+identity's, in the founding (`0-bootstrap/README.md`, "Founded by the root
+organization"); from then on the apply trigger applies it as `{{.Prefix}}-org-gbl-tofu` and the plan
 trigger plans it on a pull request as `{{.Prefix}}-org-gbl-plan`.
 
 ## What it creates
@@ -108,7 +109,8 @@ trigger plans it on a pull request as `{{.Prefix}}-org-gbl-plan`.
   (the root `README.md`, "Several organizations"). The `projectUpdater` role
   `0-bootstrap` makes in the boot project is made here in each project, for
   this layer's identity, which did not create the projects (the first apply
-  did, as the break-glass account) and so holds no Owner on them.
+  did, as the founding identity, which took its Owner off them) and so holds
+  no Owner on them.
 - The custom role `secretContainerAdmin`: creates, updates,
   deletes, and lists secrets, manages their IAM, and enables, disables, and
   destroys versions, but can neither add a version (`versions.add`) nor read
@@ -273,43 +275,32 @@ trigger plans it on a pull request as `{{.Prefix}}-org-gbl-plan`.
 
 ## Applying
 
-The first apply is the break-glass account's, in a terminal, in this
-directory, after `0-bootstrap` has been applied and its state migrated: the
-identities this layer creates do not exist yet, so nothing can run it as one.
-`terraform.tfvars` needs `boot_project_id` from the `0-bootstrap` output; the
-backend block and the read of `0-bootstrap`'s state name the bucket from
-`placement.json`. `GITHUB_TOKEN` is the person's own (below).
+The first apply was the root organization's founding identity's, in the
+founding, after `0-bootstrap`'s (`0-bootstrap/README.md`, "Founded by the
+root organization"): the identities this layer creates did not exist yet, so
+nothing could run it as one. It ran in this directory against the bucket
+(`tofu init` at the prefix `1-org`, then `tofu apply`), with the
+infrastructure GitHub App's token as `GITHUB_TOKEN`; `terraform.tfvars` had
+`boot_project_id` from the seed, and the backend block and the read of
+`0-bootstrap`'s state name the bucket from `placement.json`. The layer makes
+folders, org policy, and projects with `deletion_policy = "PREVENT"` and a
+lien each, which are hard to undo; the root organization's pull request is
+where a founding is reviewed, its plan saying what the merge founds. The
+init's `.terraform.lock.hcl` came with the first push.
 
-```bash
-cd 1-org
-export GITHUB_TOKEN=$(gh auth token)
-tofu init
-tofu plan
-tofu apply
-```
-
-Review the plan carefully. It creates folders, org policy, and projects with
-`deletion_policy = "PREVENT"` and a lien each, which are hard to undo. The
-first `init` writes `.terraform.lock.hcl`; commit it. Then record the
-`project_ids` and `project_numbers` outputs in `placement.json` (`projects`,
-`projectNumbers`) and run `bedrock org render`: the layers name every
-identity by them, and `0-bootstrap` grants each environment project's Cloud
-Build service agent the read of the connections' token by its number.
-
-The apply leaves the account with what Google gives a creator: `roles/owner`
-on each project it made, and Folder Admin and Folder Editor on each folder
-(the seed left the same on the boot project and the `terraform` folder, and
-the seed's own grants on the organization's folder). Nothing here grants
-them, and they are temporary: the layers run as their identities, and a
+The founding recorded the `project_ids` and `project_numbers` outputs in
+`placement.json` (`projects`, `projectNumbers`) and rendered the layers
+again before the push: the layers name every identity by its project, and
+`0-bootstrap` grants each environment project's Cloud Build service agent
+the read of the connections' token by its number. The founding identity took
+off what Google gives a creator, `roles/owner` on each project it made and
+Folder Admin and Folder Editor on each folder, and holds nothing here; a
 person's access to an environment comes from its team group
-(`2-env/README.md`, "The team group"). Once the apply trigger applies the
-layers, remove them by hand, per project in `project_ids` and per folder in
-`folder_ids` (`0-bootstrap/README.md`, "Trimming the break-glass account",
-which also removes the seed's grants); `bedrock org check` lists each grant
-still held, with its place, when it runs with Google credentials that read
-the projects' and folders' IAM policies. The account keeps Folder Admin on
-the organization's folder alone, for recovery (`0-bootstrap/README.md`,
-"Recovery, by hand").
+(`2-env/README.md`, "The team group"), and the break-glass account keeps
+Folder Admin on the organization's folder alone, for recovery
+(`0-bootstrap/README.md`, "Recovery, by hand"). `bedrock org check` lists any
+grant on the organization's folder to a principal outside the organization,
+when it runs with Google credentials that read the folder's IAM policy.
 
 From then on the apply trigger applies this layer as `{{.Prefix}}-org-gbl-tofu`
 on a merge into `{{.GithubDefaultBranch}}` and the plan trigger plans it on a
@@ -318,8 +309,9 @@ for it (`0-bootstrap/README.md`, "The Cloud Build triggers");
 the GitHub side runs with the infrastructure GitHub App's token, minted in
 the run (`0-bootstrap/README.md`, "The infrastructure GitHub App"). By hand,
 for recovery, a person signed in as the break-glass account applies it the
-way the first apply ran: with its sign-in, their own GitHub token and the
-roles the account grants itself on the organization's folder for the run
+way the first apply ran, against the bucket: with its sign-in, their own
+GitHub token (`export GITHUB_TOKEN=$(gh auth token)`) and the roles the
+account grants itself on the organization's folder for the run
 (`0-bootstrap/README.md`, "Recovery, by hand"). No entitlement covers this
 layer.
 
@@ -611,7 +603,7 @@ Dropped from the model, and why. Add any of them back as an entry in
 
 - The `log` project under `shared` (API set `log`, no layer identity).
 - A versioned, uniform-access bucket `{{.Prefix}}-log-{{.Primary.Code}}-audit-logs-<suffix>` in it
-  with a `audit_log_retention_days` retention policy{{if .ExtraLabels}}, labelled {{.ExtraLabelKeys}}{{end}}.
+  with a `audit_log_retention_days` retention policy{{if .ExtraLabels}}, labeled {{.ExtraLabelKeys}}{{end}}.
 - One `google_logging_folder_sink` per folder with `include_children`,
   filtered to `logs/cloudaudit.googleapis.com`, and `roles/storage.objectCreator`
   on the bucket for each sink's writer identity.

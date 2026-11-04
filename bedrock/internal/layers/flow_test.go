@@ -382,6 +382,20 @@ func (r *fakeRunner) Output(_ context.Context, c deploy.Command, _ io.Writer) ([
 	r.ran = append(r.ran, c)
 	run := r.runs[r.key(c)]
 	r.mu.Unlock()
+	if c.Args[0] == "output" {
+		// A founding reads 1-org's outputs of the organization it founds.
+		value := func(v any) map[string]any { return map[string]any{"value": v} }
+		data, err := json.Marshal(map[string]any{
+			"project_ids":     value(map[string]string{"shr": "rgb-shr-gbl-core-e5f6", "net": "rgb-net-gbl-core-e5f6", "spn": "rgb-spn-gbl-core-e5f6", "tst": "rgb-tst-gbl-core-e5f6", "stg": "rgb-stg-gbl-core-e5f6", "prd": "rgb-prd-gbl-core-e5f6"}),
+			"project_numbers": value(map[string]string{"shr": "100000000101", "net": "100000000102", "spn": "100000000103", "tst": "100000000104", "stg": "100000000105", "prd": "100000000106"}),
+			"folder_ids":      value(map[string]string{"shared": "900000000011", "tst": "900000000012", "stg": "900000000013", "prd": "900000000014"}),
+		})
+		if err != nil {
+			return nil, errors.Wrap(err, "json.Marshal()")
+		}
+
+		return data, nil
+	}
 	changes := map[string]map[string][]string{}
 	for name, actions := range run.outputs {
 		changes[name] = map[string][]string{"actions": actions}

@@ -401,11 +401,13 @@ func TestMachineAccount(t *testing.T) {
 	tests := []struct {
 		name string
 		path string
+		root bool
 		want []string
 	}{
 		{
-			name: "0-bootstrap's README: the browser step in the boot project, as the break-glass account signed in to GitHub as the machine account, and the token",
+			name: "the root organization's 0-bootstrap README: the browser step in the boot project, as the break-glass account signed in to GitHub as the machine account, and the token",
 			path: "0-bootstrap/README.md",
+			root: true,
 			want: []string{
 				"### 2. The Cloud Build GitHub authorization\n",
 				"The person at the browser is signed in as the\nbreak-glass account, Owner on the boot project from step 1; the GitHub\naccount signed in is the organization's machine account,\n`imp-machine` (`githubMachineAccount` in `placement.json`)",
@@ -421,12 +423,22 @@ func TestMachineAccount(t *testing.T) {
 			want: []string{"## The GitHub authorization\n", "before the first apply of `0-bootstrap` (`0-bootstrap/README.md`, \"2. The\nCloud Build GitHub authorization\")", "signed in to GitHub as the organization's machine account\n`imp-machine` (`githubMachineAccount` in `placement.json`)"},
 		},
 		{name: "the environment connection's comment", path: "2-env/cloud-build.tf", want: []string{"machine account imp-machine, before the first apply of 0-bootstrap"}},
+		{
+			name: "a hosting organization's 0-bootstrap README: the authorization is the root organization's, recorded by the founding",
+			path: "0-bootstrap/README.md",
+			want: []string{
+				"the connection from the Cloud Build\n   authorization the root organization recorded (`cloudBuildInstallationId`\n   and `cloudBuildTokenSecretVersion`, which name the machine account's token\n   in that organization's boot project",
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
 			got := renderedFile(t, tt.path)
+			if tt.root {
+				got = rootRenderedFile(t, tt.path)
+			}
 			for _, want := range tt.want {
 				if !strings.Contains(got, want) {
 					t.Errorf("%s lacks %q", tt.path, want)
@@ -436,8 +448,9 @@ func TestMachineAccount(t *testing.T) {
 	}
 }
 
-// TestBootstrapRolesNamed reads the READMEs that tell the break-glass account what to
-// hold: each names every role of org preflight's table, by title and id, and the
+// TestBootstrapRolesNamed reads the root organization's READMEs, which tell the
+// break-glass account what to hold for the seed (a hosting organization is founded, not
+// seeded): each names every role of org preflight's table, by title and id, and the
 // preflight command, so a role added to the check cannot be missing from the steps; the
 // four-role list the check replaced is gone.
 func TestBootstrapRolesNamed(t *testing.T) {
@@ -461,14 +474,14 @@ func TestBootstrapRolesNamed(t *testing.T) {
 		{
 			name: "the root README's seed step",
 			path: "README.md",
-			want: []string{"3. **Seed.** In a terminal, as the break-glass account: `bedrock org\n   preflight` first, which checks that the account holds each of these roles\n   above the organization's folder:\n"},
+			want: []string{"2. **Seed.** In a terminal, as the break-glass account: `bedrock org\n   preflight` first, which checks that the account holds each of these roles\n   above the organization's folder:\n"},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			got := renderedFile(t, tt.path)
+			got := rootRenderedFile(t, tt.path)
 			want := slices.Clone(tt.want)
 			for _, role := range BootstrapRoles {
 				want = append(want, role.Title+" (`"+role.Role+"`)")
@@ -519,7 +532,9 @@ func TestGithubAppSteps(t *testing.T) {
 			name: "the root README: the consent screen and the role groups",
 			path: "README.md",
 			want: []string{
-				"9. **The consent screen.** In each environment project's Google Cloud\n   console, before the first application's OAuth client is made there",
+				"3. **The consent screen.** In each environment project's Google Cloud\n   console, before the first application's OAuth client is made there",
+				"## Founded by the root organization\n",
+				"2. **The billing grants and the budget**, after the founding.",
 				"with the audience **Internal**",
 				"`<group prefix><role>@imp.example`",
 				"set \"Who can view members\" so that the group's members can",
@@ -530,7 +545,9 @@ func TestGithubAppSteps(t *testing.T) {
 			path: "0-bootstrap/README.md",
 			want: []string{
 				"4. In `placement.json`: the App ID as `githubInfrastructureAppId`, then\n   `bedrock org render`. The key itself lives in the root organization\n   `imr`'s boot project (`root` in `placement.json`), added,\n   proven and pinned there by its key operators",
-				"### 5. Billing grants and the budget, by a billing administrator\n",
+				"### Billing grants and the budget, by a billing administrator\n",
+				"## Founded by the root organization\n",
+				"3. **The first apply of `1-org`**, the same way, with the infrastructure\n   GitHub App's token for its GitHub provider",
 				"In the Billing console, as the same billing administrator, set the spend\nbudget",
 				"## The GitHub Apps' keys\n",
 				"`imr-boot-gbl-core-c3d4`; `root` in\n`placement.json`), one secret per app for every bedrock organization in the\nGoogle Cloud organization: `imr-boot-gbl-github-infrastructure-key`,\n`imr-boot-gbl-github-deployer-key` and `imr-boot-gbl-github-release-key`.",

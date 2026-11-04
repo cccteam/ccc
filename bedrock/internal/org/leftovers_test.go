@@ -51,10 +51,13 @@ func (*fakePolicies) Close() error {
 
 // TestLeftovers: on every project the placement records, in its order, each person on
 // roles/owner and each other role of the break-glass account; on the organization's
-// folder each role of the account but Folder Admin; on the folders under it each person's
-// Folder Admin or Folder Editor and each other role of the account. Service accounts and
-// groups on those roles, and people on other roles, are not listed; an environment without
-// a project is named, not read; no organization folder is reported, not an error.
+// folder each role of the account but Folder Admin, and each grant to a principal
+// outside the organization (another organization's identity, a group, another person;
+// not the organization's own identities, not Google's service agents); on the folders
+// under it each person's Folder Admin or Folder Editor and each other role of the
+// account. Service accounts and groups on those roles, and people on other roles, are not
+// listed there; an environment without a project is named, not read (a root organization
+// has none to name); no organization folder is reported, not an error.
 func TestLeftovers(t *testing.T) {
 	t.Parallel()
 
@@ -79,8 +82,9 @@ func TestLeftovers(t *testing.T) {
 		"100": {
 			{Role: FolderAdminRole, Members: []string{account, "serviceAccount:imp-boot-gbl-tofu@imp-boot-gbl-core-7a8b.iam.gserviceaccount.com"}},
 			{Role: FolderEditorRole, Members: []string{account}},
-			{Role: "roles/resourcemanager.projectCreator", Members: []string{account, "serviceAccount:imp-org-gbl-tofu@imp-boot-gbl-core-7a8b.iam.gserviceaccount.com"}},
-			{Role: "roles/browser", Members: []string{"serviceAccount:imp-boot-gbl-plan@imp-boot-gbl-core-7a8b.iam.gserviceaccount.com"}},
+			{Role: "roles/resourcemanager.projectCreator", Members: []string{account, "serviceAccount:imp-org-gbl-tofu@imp-boot-gbl-core-7a8b.iam.gserviceaccount.com", "serviceAccount:imr-found-gbl-tofu@imr-boot-gbl-core-c3d4.iam.gserviceaccount.com"}},
+			{Role: "roles/browser", Members: []string{"serviceAccount:imp-boot-gbl-plan@imp-boot-gbl-core-7a8b.iam.gserviceaccount.com", "serviceAccount:service-100000000001@gcp-sa-pam.iam.gserviceaccount.com"}},
+			{Role: "roles/resourcemanager.folderViewer", Members: []string{"group:auditors@imp.example", "user:someone@imp.example"}},
 		},
 		"101": {
 			{Role: FolderAdminRole, Members: []string{"user:seed@imp.example"}},
@@ -93,6 +97,7 @@ func TestLeftovers(t *testing.T) {
 	children := []Folder{{ID: "101", Name: "terraform"}, {ID: "102", Name: "tst"}}
 	tests := []struct {
 		name           string
+		kind           string
 		projects       map[string]string
 		folder         string
 		wantLeftovers  []Leftover
@@ -112,6 +117,9 @@ func TestLeftovers(t *testing.T) {
 				{On: OnProject, Key: "prd", ID: "imp-prd-gbl-core-5e6f", Member: "user:other@imp.example", Role: "roles/owner"},
 				{On: OnFolder, Key: "imp", ID: "100", Member: account, Role: FolderEditorRole},
 				{On: OnFolder, Key: "imp", ID: "100", Member: account, Role: "roles/resourcemanager.projectCreator"},
+				{On: OnFolder, Key: "imp", ID: "100", Member: "serviceAccount:imr-found-gbl-tofu@imr-boot-gbl-core-c3d4.iam.gserviceaccount.com", Role: "roles/resourcemanager.projectCreator", Outside: true},
+				{On: OnFolder, Key: "imp", ID: "100", Member: "group:auditors@imp.example", Role: "roles/resourcemanager.folderViewer", Outside: true},
+				{On: OnFolder, Key: "imp", ID: "100", Member: "user:someone@imp.example", Role: "roles/resourcemanager.folderViewer", Outside: true},
 				{On: OnFolder, Key: "terraform", ID: "101", Member: "user:seed@imp.example", Role: FolderAdminRole},
 				{On: OnFolder, Key: "terraform", ID: "101", Member: "user:seed@imp.example", Role: FolderEditorRole},
 				{On: OnFolder, Key: "tst", ID: "102", Member: account, Role: "roles/resourcemanager.folderViewer"},
@@ -124,6 +132,25 @@ func TestLeftovers(t *testing.T) {
 			wantUnrecorded: "tst,prd",
 		},
 		{
+			name:     "a root organization: its boot project and its folder, no environment to name",
+			kind:     RootKind,
+			projects: map[string]string{"boot": "imp-boot-gbl-core-7a8b"},
+			folder:   "100",
+			wantLeftovers: []Leftover{
+				{On: OnProject, Key: "boot", ID: "imp-boot-gbl-core-7a8b", Member: account, Role: "roles/owner"},
+				{On: OnProject, Key: "boot", ID: "imp-boot-gbl-core-7a8b", Member: account, Role: "roles/iam.serviceAccountTokenCreator"},
+				{On: OnFolder, Key: "imp", ID: "100", Member: account, Role: FolderEditorRole},
+				{On: OnFolder, Key: "imp", ID: "100", Member: account, Role: "roles/resourcemanager.projectCreator"},
+				{On: OnFolder, Key: "imp", ID: "100", Member: "serviceAccount:imr-found-gbl-tofu@imr-boot-gbl-core-c3d4.iam.gserviceaccount.com", Role: "roles/resourcemanager.projectCreator", Outside: true},
+				{On: OnFolder, Key: "imp", ID: "100", Member: "group:auditors@imp.example", Role: "roles/resourcemanager.folderViewer", Outside: true},
+				{On: OnFolder, Key: "imp", ID: "100", Member: "user:someone@imp.example", Role: "roles/resourcemanager.folderViewer", Outside: true},
+				{On: OnFolder, Key: "terraform", ID: "101", Member: "user:seed@imp.example", Role: FolderAdminRole},
+				{On: OnFolder, Key: "terraform", ID: "101", Member: "user:seed@imp.example", Role: FolderEditorRole},
+				{On: OnFolder, Key: "tst", ID: "102", Member: account, Role: "roles/resourcemanager.folderViewer"},
+			},
+			wantFound: true,
+		},
+		{
 			name:     "a policy that cannot be read fails the listing",
 			projects: map[string]string{"tst": "imp-qa-gbl-core-0000"},
 			wantErr:  "GetIamPolicy(): imp-qa-gbl-core-0000: permission denied",
@@ -133,7 +160,7 @@ func TestLeftovers(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			p := &Placement{Prefix: "imp", OrganizationID: "123456789012", BreakGlassAccount: "bedrock@imp.example", Projects: tt.projects}
+			p := &Placement{Prefix: "imp", Kind: tt.kind, OrganizationID: "123456789012", BreakGlassAccount: "bedrock@imp.example", Projects: tt.projects}
 			leftovers, unrecorded, found, err := Leftovers(context.Background(), p, &fakePolicies{byProject: policies, byFolder: folders, folder: tt.folder, children: children})
 			if tt.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {

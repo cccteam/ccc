@@ -27,10 +27,10 @@ func newOrgFound(d deps) *cobra.Command {
 		Long: `found, in a root organization's repository, records a hosting organization the apply
 trigger founds on the merge: the organization's folder at the organization node and the
 foundation under it (the terraform folder, the boot project, the boot identity with its roles
-on the folder, the state bucket), the first apply of its 0-bootstrap, its infrastructure
-repository with the rendered foundation as its first push, and the hand-off, a pull request
-here that records the folder. Nobody applies by hand; the new repository's apply trigger
-applies 0-bootstrap and 1-org from the first push (README.md, "Founding a hosting
+on the folder, the state bucket), the first applies of its 0-bootstrap and 1-org with the
+projects recorded in its placement, its infrastructure repository with the rendered
+foundation as its first push, which its own apply trigger runs on, and the hand-off, a pull
+request here that records the folder. Nobody applies by hand (README.md, "Founding a hosting
 organization").
 
 The record is the organization's own placement, at organizations/<prefix>/placement.json:
@@ -46,7 +46,7 @@ to fill in and stops. With it, found fills it, lists the organization in placeme
 hand-off), renders, and says what the merge founds and what the administrators grant
 before it: the founding identity's Folder Creator at the organization node and Billing
 Account User on the billing account, once for every founding, and the new organization's
-billing grant (0-bootstrap/README.md there, step 5).`,
+billing grants after it (its 0-bootstrap/README.md, "Billing grants and the budget").`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return d.orgFound(cmd.Context(), dir, placement, args[0], cmd.OutOrStdout())
@@ -176,21 +176,23 @@ The merge of this pull request founds %s, as the founding identity (%s):
     (its APIs, its billing link to %s), the boot identity %s-boot-gbl-tofu with its roles on
     the folder, the break-glass account's Folder Admin on the folder, and the state bucket
     %s;
-  - the first apply of its 0-bootstrap, against that bucket: its connection from the Cloud
-    Build authorization this organization recorded, its repository link and its two
-    triggers;
+  - the first applies of its 0-bootstrap and 1-org, against that bucket: its connection from
+    the Cloud Build authorization this organization recorded, its repository link and its
+    two triggers; its folders, its six projects with their identities, recorded in its
+    placement (projects, projectNumbers);
   - the repository %s/%s, private, with the rendered foundation as its first push, which
-    its apply trigger runs on (0-bootstrap again, then 1-org);
-  - the founding identity's own grants under the folder taken off, a marker in this
+    its apply trigger runs on, every layer as its own identity;
+  - the founding identity's own grants off everything it made, a marker in this
     organization's state bucket, and the hand-off pull request here, which records the
     folder (placement.json, hostingOrganizations) and the placement as founded.
 Before the merge, by hand, once per root organization (0-bootstrap/README.md, "The founding
 identity's grants"): a Google Cloud organization administrator grants the founding identity
 Folder Creator (roles/resourcemanager.folderCreator) at the organization node, and a billing
-administrator grants it Billing Account User (roles/billing.user) on %s. For the new
-organization, before its 1-org applies: the same billing administrator grants its org
-identity Billing Account User (that repository's 0-bootstrap/README.md, step 5), and sets its
-spend budget; its consent screen and role groups follow as that README says.
+administrator grants it Billing Account User (roles/billing.user) on %s. After the merge, for
+the new organization: the same billing administrator grants its boot and org identities
+Billing Account User, which 1-org needs when it links a project it creates (that repository's
+0-bootstrap/README.md, "Billing grants and the budget"), and sets its spend budget; its
+consent screen and role groups follow as its README says.
 `, h.Prefix, root.FoundingIdentity(), h.Prefix, h.Projects["boot"], h.BillingAccount, h.Prefix, h.StateBucket, h.GithubOrganization, h.SourceRepo, h.BillingAccount)
 
 	return b.String()

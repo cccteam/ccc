@@ -21,10 +21,11 @@ locals {
 # Seeded resources
 #
 # The folder, project, and boot service account below already exist. They are
-# created by hand with gcloud during first-time setup, because this layer
+# made by the root organization's founding, as the hand seed makes
+# them for a root organization, because this layer
 # cannot create the identity it will later run as. They are adopted here so
 # that from the first run onward they are ordinary managed resources rather
-# than undocumented console state. The commands are in this layer's README.
+# than undocumented console state. The README says what the founding made.
 #
 # The state bucket is seeded too, and is the one seeded resource deliberately
 # left outside OpenTofu: this layer's own state lives in it, and a stack that
@@ -140,7 +141,7 @@ import {
 }
 
 # The identity this layer runs as through the apply trigger, after the
-# break-glass account's first apply (cloud-build.tf). The seed script
+# founding identity's first apply (cloud-build.tf). The seed
 # creates it; it is adopted rather than recreated, because destroying it
 # mid-run would cut off the run doing the destroying.
 resource "google_service_account" "boot_tofu" {
@@ -264,7 +265,7 @@ resource "google_project_iam_member" "boot_plan_quota" {
 # that needs it, nothing at the organization node, whose names are shared by
 # every organization under it and held after a delete). The boot identity
 # manages the boot project's labels and metadata through the project module
-# when this layer runs through the apply trigger; the break-glass account's
+# when this layer runs through the apply trigger; the founding identity's
 # Owner covered the first apply. 1-org makes the same role in each project
 # it creates, for the org layer identity.
 resource "google_project_iam_custom_role" "project_updater" {

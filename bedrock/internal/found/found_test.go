@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -76,8 +78,9 @@ func checkout(t *testing.T) (string, *org.Placement) {
 
 // fakeRunner records the programs run and answers success.
 type fakeRunner struct {
-	mu  sync.Mutex
-	ran []deploy.Command
+	mu          sync.Mutex
+	ran         []deploy.Command
+	outputsRead []deploy.Command
 }
 
 func (r *fakeRunner) Run(_ context.Context, c deploy.Command, _ io.Writer) error {
@@ -88,8 +91,34 @@ func (r *fakeRunner) Run(_ context.Context, c deploy.Command, _ io.Writer) error
 	return nil
 }
 
-func (r *fakeRunner) Output(context.Context, deploy.Command, io.Writer) ([]byte, error) {
-	return nil, nil
+// Output answers tofu output -json with 1-org's outputs: six projects and four folders.
+func (r *fakeRunner) Output(_ context.Context, c deploy.Command, _ io.Writer) ([]byte, error) {
+	if c.Args[0] != "output" {
+		return nil, nil
+	}
+	r.mu.Lock()
+	r.outputsRead = append(r.outputsRead, c)
+	r.mu.Unlock()
+
+	data, err := json.Marshal(orgOutputs())
+	if err != nil {
+		return nil, fmt.Errorf("json.Marshal(): %w", err)
+	}
+
+	return data, nil
+}
+
+// orgOutputs are 1-org's outputs as tofu output -json prints them.
+func orgOutputs() map[string]any {
+	ids, numbers := map[string]string{}, map[string]string{}
+	for i, key := range []string{"shr", "net", "spn", "tst", "stg", "prd"} {
+		ids[key] = "rgb-" + key + "-gbl-core-e5f6"
+		numbers[key] = "10000000010" + strconv.Itoa(i+1)
+	}
+	folders := map[string]string{"shared": "900000000011", "tst": "900000000012", "stg": "900000000013", "prd": "900000000014"}
+	value := func(v any) map[string]any { return map[string]any{"value": v} }
+
+	return map[string]any{"project_ids": value(ids), "project_numbers": value(numbers), "folder_ids": value(folders)}
 }
 
 // fakeStore is the root organization's state bucket.
@@ -201,6 +230,8 @@ func TestRun(t *testing.T) {
 	}
 	wantGrants := []string{
 		"folders/" + orgFolder + " roles/resourcemanager.projectCreator serviceAccount:" + foundingEmail,
+		"folders/" + orgFolder + " roles/orgpolicy.policyAdmin serviceAccount:" + foundingEmail,
+		"folders/" + orgFolder + " roles/resourcemanager.tagAdmin serviceAccount:" + foundingEmail,
 		"folders/" + orgFolder + " roles/cloudbuild.builds.editor " + bootIdentity,
 		"folders/" + orgFolder + " roles/serviceusage.serviceUsageAdmin " + bootIdentity,
 		"folders/" + orgFolder + " roles/resourcemanager.folderAdmin user:seed@imp.example",
@@ -213,24 +244,43 @@ func TestRun(t *testing.T) {
 			t.Errorf("grants lack %q:\n%s", want, strings.Join(f.google.Grants, "\n"))
 		}
 	}
-	if n := len(f.google.Grants); n != 1+len(org.BootLayerRoles)+1+4 {
-		t.Errorf("%d grants, want %d (Project Creator, the boot roles, Folder Admin, four secrets)", n, 1+len(org.BootLayerRoles)+1+4)
+	if n := len(f.google.Grants); n != 3+len(org.BootLayerRoles)+1+4 {
+		t.Errorf("%d grants, want %d (the three roles for the first applies, the boot roles, Folder Admin, four secrets)", n, 3+len(org.BootLayerRoles)+1+4)
 	}
+	creator := " serviceAccount:" + foundingEmail + " roles/resourcemanager.folderAdmin+roles/resourcemanager.folderEditor"
 	wantRevoked := []string{
-		"folders/" + tfFolder + " serviceAccount:" + foundingEmail + " roles/resourcemanager.folderAdmin+roles/resourcemanager.folderEditor",
+		"folders/900000000014" + creator, "folders/900000000011" + creator, "folders/900000000013" + creator, "folders/900000000012" + creator,
+		"projects/rgb-shr-gbl-core-e5f6 serviceAccount:" + foundingEmail + " roles/owner",
+		"projects/rgb-net-gbl-core-e5f6 serviceAccount:" + foundingEmail + " roles/owner",
+		"projects/rgb-spn-gbl-core-e5f6 serviceAccount:" + foundingEmail + " roles/owner",
+		"projects/rgb-tst-gbl-core-e5f6 serviceAccount:" + foundingEmail + " roles/owner",
+		"projects/rgb-stg-gbl-core-e5f6 serviceAccount:" + foundingEmail + " roles/owner",
+		"projects/rgb-prd-gbl-core-e5f6 serviceAccount:" + foundingEmail + " roles/owner",
+		"folders/" + tfFolder + creator,
 		"projects/rgb-boot-gbl-core-e5f6 serviceAccount:" + foundingEmail + " roles/owner",
-		"folders/" + orgFolder + " serviceAccount:" + foundingEmail + " roles/resourcemanager.folderAdmin+roles/resourcemanager.folderEditor+roles/resourcemanager.projectCreator",
+		"folders/" + orgFolder + creator + "+roles/resourcemanager.projectCreator+roles/orgpolicy.policyAdmin+roles/resourcemanager.tagAdmin",
 	}
 	if !slices.Equal(f.google.Revoked, wantRevoked) {
-		t.Errorf("revoked %v, want %v", f.google.Revoked, wantRevoked)
+		t.Errorf("revoked:\n%s\nwant:\n%s", strings.Join(f.google.Revoked, "\n"), strings.Join(wantRevoked, "\n"))
 	}
-	// The first apply, as the founding identity, in the rendered 0-bootstrap.
-	if len(f.runner.ran) != 2 {
-		t.Fatalf("%d programs ran, want tofu init and apply: %v", len(f.runner.ran), f.runner.ran)
+	// The first applies, as the founding identity, in the rendered 0-bootstrap and 1-org,
+	// the second with the infrastructure app's token, and 1-org's outputs read after it.
+	if len(f.runner.ran) != 4 {
+		t.Fatalf("%d programs ran, want tofu init and apply twice: %v", len(f.runner.ran), f.runner.ran)
 	}
 	init, apply := f.runner.ran[0], f.runner.ran[1]
 	if want := "tofu init -input=false -no-color -backend-config=prefix=0-bootstrap -backend-config=impersonate_service_account=" + foundingEmail; init.String() != want {
 		t.Errorf("init = %q, want %q", init.String(), want)
+	}
+	orgInit, orgApply := f.runner.ran[2], f.runner.ran[3]
+	if want := "tofu init -input=false -no-color -backend-config=prefix=1-org -backend-config=impersonate_service_account=" + foundingEmail; orgInit.String() != want || filepath.Base(orgInit.Dir) != "1-org" {
+		t.Errorf("1-org init = %q in %s, want %q", orgInit.String(), orgInit.Dir, want)
+	}
+	if filepath.Base(orgApply.Dir) != "1-org" || !slices.Contains(orgApply.Env, "GITHUB_TOKEN=test-token") || !slices.Contains(orgApply.Env, "GOOGLE_IMPERSONATE_SERVICE_ACCOUNT="+foundingEmail) {
+		t.Errorf("1-org apply = %q in %s with %v", orgApply.String(), orgApply.Dir, orgApply.Env)
+	}
+	if len(f.runner.outputsRead) != 1 || f.runner.outputsRead[0].String() != "tofu output -no-color -json" || filepath.Base(f.runner.outputsRead[0].Dir) != "1-org" {
+		t.Errorf("outputs read: %v", f.runner.outputsRead)
 	}
 	if want := "tofu apply -input=false -no-color -auto-approve"; apply.String() != want || filepath.Base(apply.Dir) != "0-bootstrap" || !slices.Contains(apply.Env, "GOOGLE_IMPERSONATE_SERVICE_ACCOUNT="+foundingEmail) {
 		t.Errorf("apply = %q in %s with %v", apply.String(), apply.Dir, apply.Env)
@@ -242,7 +292,8 @@ func TestRun(t *testing.T) {
 	hosting := f.srv.Repos[owner+"/rgb-infrastructure"]
 	tree := hosting.Trees[hosting.Refs["refs/heads/master"].SHA]
 	wantFiles := map[string][]string{
-		"placement.json":               {`"prefix": "rgb"`, `"boot": "100000000001"`, `"organization": "imr"`, `"stateBucket": "rgb-boot-gbl-state-e5f6"`},
+		"placement.json":               {`"prefix": "rgb"`, `"boot": "100000000001"`, `"organization": "imr"`, `"stateBucket": "rgb-boot-gbl-state-e5f6"`, `"net": "rgb-net-gbl-core-e5f6"`, `"prd": "100000000106"`},
+		"0-bootstrap/cloud-build.tf":   {"100000000104"},
 		"0-bootstrap/terraform.tfvars": {`boot_project_id        = "rgb-boot-gbl-core-e5f6"`, `organization_folder_id = "` + orgFolder + `"`, `terraform_folder_id    = "` + tfFolder + `"`},
 		"0-bootstrap/initialize.tf":    {`bucket = "rgb-boot-gbl-state-e5f6"`},
 		"1-org/terraform.tfvars":       {`boot_project_id     = "rgb-boot-gbl-core-e5f6"`},
@@ -272,6 +323,9 @@ func TestRun(t *testing.T) {
 	if marker.OrganizationFolder != orgFolder || marker.BootProject != "rgb-boot-gbl-core-e5f6" || marker.Repository != owner+"/rgb-infrastructure" || marker.FoundedFrom != rootCommit {
 		t.Errorf("marker = %+v", marker)
 	}
+	if marker.Projects["tst"] != "rgb-tst-gbl-core-e5f6" || marker.ProjectNumbers["tst"] != "100000000104" || len(marker.Projects) != 7 {
+		t.Errorf("marker's projects = %v, %v", marker.Projects, marker.ProjectNumbers)
+	}
 	if result.PullRequest != "https://github.com/"+owner+"/"+rootRepo+"/pull/1" || result.Already {
 		t.Errorf("result = %+v", result)
 	}
@@ -282,10 +336,11 @@ func TestRun(t *testing.T) {
 	if !strings.Contains(f.repo.Files[handOffTree+":placement.json"], `"folder": "`+orgFolder+`"`) {
 		t.Errorf("the hand-off's placement.json lacks the folder:\n%s", f.repo.Files[handOffTree+":placement.json"])
 	}
-	if !strings.Contains(f.repo.Files[handOffTree+":organizations/rgb/placement.json"], `"boot": "100000000001"`) {
-		t.Errorf("the hand-off's record lacks the project number:\n%s", f.repo.Files[handOffTree+":organizations/rgb/placement.json"])
+	founded := f.repo.Files[handOffTree+":organizations/rgb/placement.json"]
+	if !strings.Contains(founded, `"boot": "100000000001"`) || !strings.Contains(founded, `"spn": "rgb-spn-gbl-core-e5f6"`) {
+		t.Errorf("the hand-off's record lacks the projects:\n%s", founded)
 	}
-	if body := f.srv.Bodies[0]; !strings.Contains(body, "folder `"+orgFolder+"`") || !strings.Contains(body, "the founding identity's own grants taken off") {
+	if body := f.srv.Bodies[0]; !strings.Contains(body, "folder `"+orgFolder+"`") || !strings.Contains(body, "the founding identity's own grants taken off") || !strings.Contains(body, "of its `1-org`") {
 		t.Errorf("the hand-off's body:\n%s", body)
 	}
 	wantOut := []string{
@@ -296,8 +351,10 @@ func TestRun(t *testing.T) {
 		"Granted the boot identity the policy administration of the 4 shared secrets.\n",
 		"Created repository " + owner + "/rgb-infrastructure, private, default branch master.\n",
 		"=== first apply of rgb's 0-bootstrap as " + foundingEmail + ", state in gs://rgb-boot-gbl-state-e5f6/0-bootstrap ===\n",
+		"=== first apply of rgb's 1-org as " + foundingEmail + ", state in gs://rgb-boot-gbl-state-e5f6/1-org ===\n",
+		"Applied rgb's 1-org and recorded its 6 projects in the placement (projects, projectNumbers); it made 4 folders.\n",
 		"Pushed the foundation to " + owner + "/rgb-infrastructure at ",
-		"Took the founding identity's grants off folder " + orgFolder + ", folder " + tfFolder + " and project rgb-boot-gbl-core-e5f6.\n",
+		"Took the founding identity's grants off the 4 folders and 6 projects 1-org made, folder " + tfFolder + ", project rgb-boot-gbl-core-e5f6 and folder " + orgFolder + ".\n",
 		"Recorded the founding of rgb in gs://imr-boot-gbl-state-c3d4/applied/found/rgb.\n",
 		"Opened the hand-off pull request of rgb: https://github.com/" + owner + "/" + rootRepo + "/pull/1.\n",
 	}
@@ -314,7 +371,7 @@ func TestRun(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run() again error = %v; output:\n%s", err, out.String())
 	}
-	if !again.Already || again.PullRequest != result.PullRequest || len(f.google.Calls) != calls || len(f.google.Grants) != grants || len(f.repo.PullRequests) != 1 || len(f.runner.ran) != 2 {
+	if !again.Already || again.PullRequest != result.PullRequest || len(f.google.Calls) != calls || len(f.google.Grants) != grants || len(f.repo.PullRequests) != 1 || len(f.runner.ran) != 4 {
 		t.Errorf("the second run made something: result %+v, %d calls (was %d), %d pull requests, %d programs", again, len(f.google.Calls), calls, len(f.repo.PullRequests), len(f.runner.ran))
 	}
 	if !strings.Contains(out.String(), "rgb was founded on "+marker.FoundedAt+" (folder "+orgFolder+", boot project rgb-boot-gbl-core-e5f6): nothing to make.\n") {

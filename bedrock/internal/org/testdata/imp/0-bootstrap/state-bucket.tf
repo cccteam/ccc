@@ -18,10 +18,10 @@
 # boot identity because it applies this layer through the workflow, the org
 # identity so 1-org can grant for the fourteen identities it creates and hand
 # the environment layer identities the same authority for the application
-# identities 2-env creates. The first-time order holds by itself: the seed
-# makes the bucket, this layer grants on it as the break-glass account,
-# 1-org grants on it as the same account, and from then on each layer's own
-# identity holds what its grants need. The apply trigger's runner keeps the
+# identities 2-env creates. The first-time order holds by itself: the
+# founding makes the bucket, this layer grants on it as the founding
+# identity, 1-org grants on it as the same identity, and from then on each
+# layer's own identity holds what its grants need. The apply trigger's runner keeps the
 # markers of the layers' last applies under applied/ (cloud-build.tf).
 #
 # The bucket itself is seeded and stays outside OpenTofu (bootstrap.tf).

@@ -16,6 +16,8 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
+	"sort"
 	"time"
 
 	"github.com/go-playground/errors/v5"
@@ -58,14 +60,32 @@ type Marker struct {
 	BootProject        string `json:"bootProject"`
 	BootProjectNumber  string `json:"bootProjectNumber"`
 	StateBucket        string `json:"stateBucket"`
-	Repository         string `json:"repository"`
-	FoundedAt          string `json:"foundedAt"`
-	FoundedFrom        string `json:"foundedFrom"`
+	// Projects and ProjectNumbers are every project of the organization by key: the
+	// boot project the seed made and the six 1-org's first apply made.
+	Projects       map[string]string `json:"projects"`
+	ProjectNumbers map[string]string `json:"projectNumbers"`
+	Repository     string            `json:"repository"`
+	FoundedAt      string            `json:"foundedAt"`
+	FoundedFrom    string            `json:"foundedFrom"`
 }
 
 // MarkerObject is the marker's object in the state bucket, under the applier's markers.
 func MarkerObject(prefix string) string {
 	return org.MarkerPrefix + "/found/" + prefix
+}
+
+// record puts the projects the founding made into the placement.
+func (m *Marker) record(h *org.Placement) {
+	if h.ProjectNumbers == nil {
+		h.ProjectNumbers = map[string]string{}
+	}
+	h.ProjectNumbers[bootKey] = m.BootProjectNumber
+	for key, id := range m.Projects {
+		h.Projects[key] = id
+	}
+	for key, number := range m.ProjectNumbers {
+		h.ProjectNumbers[key] = number
+	}
 }
 
 // Result is what the founding did: the marker, and the hand-off pull request's URL.
@@ -81,8 +101,11 @@ type Result struct {
 // gcloud"), which the founding makes the same way.
 const (
 	terraformFolderName = "terraform"
+	bootKey             = "boot"
 	// services are the APIs the boot project needs before its 0-bootstrap applies.
 	bootProjectRoleCreator = "roles/resourcemanager.projectCreator"
+	orgPolicyAdminRole     = "roles/orgpolicy.policyAdmin"
+	tagAdminRole           = "roles/resourcemanager.tagAdmin"
 	folderAdminRole        = "roles/resourcemanager.folderAdmin"
 	folderEditorRole       = "roles/resourcemanager.folderEditor"
 	ownerRole              = "roles/owner"
@@ -94,6 +117,15 @@ const (
 	// request comes from, per organization.
 	handOffBranch = "found/"
 )
+
+// foundingFolderRoles are the roles the hand seed grants the break-glass account on the
+// organization's folder for the first applies (0-bootstrap/README.md, "Seed with gcloud"),
+// which the founding grants its identity the same way: Project Creator for the boot
+// project and 1-org's projects, Organization Policy Administrator for 1-org's policies on
+// its folders, and Tag Administrator for the tag keys 1-org makes in the environment
+// projects. Its Folder Admin, a creator's, covers the rest; the withdrawal takes all of
+// it off.
+var foundingFolderRoles = []string{bootProjectRoleCreator, orgPolicyAdminRole, tagAdminRole}
 
 // services are the APIs the hand seed enables in a boot project.
 var services = []string{
@@ -119,7 +151,7 @@ func Run(ctx context.Context, clients *Clients, req *Request, out io.Writer) (*R
 		if err != nil {
 			return nil, err
 		}
-		h.ProjectNumbers = map[string]string{"boot": marker.BootProjectNumber}
+		marker.record(h)
 		url, err := f.handOff(ctx, h, marker)
 		if err != nil {
 			return nil, err
@@ -208,14 +240,14 @@ func (f *founding) found(ctx context.Context) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
-	h.ProjectNumbers = map[string]string{"boot": number}
+	h.ProjectNumbers = map[string]string{bootKey: number}
 
 	return f.establish(ctx, g, h, seed, number)
 }
 
 // seed does what the hand seed does: the organization's folder at the organization node
-// (with Project Creator for the founding identity itself, since a folder's administrator
-// creates no project), the terraform folder, the boot project with its billing link and
+// (with the roles the first applies need for the founding identity itself, since a
+// folder's administrator creates no project), the terraform folder, the boot project with its billing link and
 // its APIs, the boot identity, the state bucket, the boot identity's roles and the
 // break-glass account's Folder Admin on the folder, and the boot identity's policy
 // administration of the shared secrets. It answers the folders and the project's number.
@@ -224,8 +256,10 @@ func (f *founding) seed(ctx context.Context, g Google, h *org.Placement) (*org.S
 	if err != nil {
 		return nil, "", err
 	}
-	if err := g.GrantFolder(ctx, organizationFolder, bootProjectRoleCreator, f.req.Root.FoundingIdentityMember()); err != nil {
-		return nil, "", err
+	for _, role := range foundingFolderRoles {
+		if err := g.GrantFolder(ctx, organizationFolder, role, f.req.Root.FoundingIdentityMember()); err != nil {
+			return nil, "", err
+		}
 	}
 	terraformFolder, err := f.folder(ctx, g, "folders/"+organizationFolder, terraformFolderName)
 	if err != nil {
@@ -262,33 +296,45 @@ func (f *founding) seed(ctx context.Context, g Google, h *org.Placement) (*org.S
 }
 
 // establish builds the foundation on the seed: the rendered repository, the repository
-// on GitHub, the first apply of 0-bootstrap, the push, the founding identity's
-// withdrawal, the marker and the hand-off.
+// on GitHub, the first applies of 0-bootstrap and 1-org, the render again with the
+// projects 1-org made, the push, the founding identity's withdrawal, the marker and the
+// hand-off.
 func (f *founding) establish(ctx context.Context, g Google, h *org.Placement, seed *org.Seed, number string) (*Result, error) {
-	dir, err := f.render(h, seed)
+	dir, err := os.MkdirTemp("", "bedrock-found-"+h.Prefix+"-")
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "os.MkdirTemp()")
 	}
 	defer os.RemoveAll(dir)
+	if err := f.render(h, seed, dir); err != nil {
+		return nil, err
+	}
 	repository, err := f.repository(ctx, h)
 	if err != nil {
 		return nil, err
 	}
-	if err := f.firstApply(ctx, dir, h); err != nil {
+	if err := f.firstApply(ctx, dir, h, bootstrapLayer, nil); err != nil {
+		return nil, err
+	}
+	fmt.Fprintf(f.out, "Applied %s's %s: its triggers exist, and its own apply trigger applies every layer from the first push on.\n", h.Prefix, bootstrapLayer)
+	folders, err := f.organize(ctx, dir, h)
+	if err != nil {
+		return nil, err
+	}
+	if err := f.render(h, seed, dir); err != nil {
 		return nil, err
 	}
 	commit, err := f.push(ctx, dir, h)
 	if err != nil {
 		return nil, err
 	}
-	if err := f.withdraw(ctx, g, seed.OrganizationFolder, seed.TerraformFolder, h.Projects["boot"]); err != nil {
+	if err := f.withdraw(ctx, g, seed, h, folders); err != nil {
 		return nil, err
 	}
 	marker := Marker{
-		Prefix: h.Prefix, OrganizationFolder: seed.OrganizationFolder, TerraformFolder: seed.TerraformFolder, BootProject: h.Projects["boot"], BootProjectNumber: number,
-		StateBucket: h.StateBucket, Repository: repository, FoundedAt: time.Now().UTC().Format(time.RFC3339), FoundedFrom: f.req.Commit,
+		Prefix: h.Prefix, OrganizationFolder: seed.OrganizationFolder, TerraformFolder: seed.TerraformFolder, BootProject: h.Projects[bootKey], BootProjectNumber: number,
+		StateBucket: h.StateBucket, Projects: h.Projects, ProjectNumbers: h.ProjectNumbers, Repository: repository, FoundedAt: time.Now().UTC().Format(time.RFC3339), FoundedFrom: f.req.Commit,
 	}
-	if err := f.writeMarker(ctx, marker); err != nil {
+	if err := f.writeMarker(ctx, &marker); err != nil {
 		return nil, err
 	}
 	fmt.Fprintf(f.out, "Founded %s: folder %s, boot project %s (%s), repository %s at %s; the founding identity holds nothing under the folder now.\n", h.Prefix, seed.OrganizationFolder, h.Projects["boot"], number, repository, short(commit))
@@ -402,48 +448,72 @@ func (f *founding) bucket(ctx context.Context, g Google, h *org.Placement) error
 	return nil
 }
 
-// render renders the new organization's repository into a directory of its own, the
-// seeded tfvars carrying the folders and the project the founding made.
-func (f *founding) render(h *org.Placement, seed *org.Seed) (string, error) {
+// render renders the new organization's repository into the directory, the seeded
+// tfvars carrying the folders and the project the founding made; rendered again once
+// 1-org has made the projects, so the layers name them (a seeded file already there is
+// kept, as a render keeps it).
+func (f *founding) render(h *org.Placement, seed *org.Seed, dir string) error {
 	files, err := org.RenderSeeded(h, seed)
 	if err != nil {
-		return "", err
-	}
-	dir, err := os.MkdirTemp("", "bedrock-found-"+h.Prefix+"-")
-	if err != nil {
-		return "", errors.Wrap(err, "os.MkdirTemp()")
+		return err
 	}
 	if _, err := org.Write(h, files, dir); err != nil {
-		return "", err
-	}
-	if err := h.Write(filepath.Join(dir, org.PlacementFile)); err != nil {
-		return "", err
+		return err
 	}
 
-	return dir, nil
+	return h.Write(filepath.Join(dir, org.PlacementFile))
 }
 
-// withdraw takes the founding identity's creator grants off: Folder Admin and Folder
-// Editor on the terraform folder, Owner on the boot project, and on the organization's
-// folder the same two with the Project Creator it granted itself, last, so that each
-// removal is still its to make.
-func (f *founding) withdraw(ctx context.Context, g Google, organizationFolder, terraformFolder, project string) error {
+// withdraw takes the founding identity's creator grants off, what the hand trim takes off
+// the break-glass account (0-bootstrap/README.md, "Trimming the break-glass account"):
+// Folder Admin and Folder Editor on each folder 1-org made and on the terraform folder,
+// Owner on each project 1-org made and on the boot project, and on the organization's
+// folder the same two with the roles it granted itself for the first applies, last, so
+// that each removal is still its to make.
+func (f *founding) withdraw(ctx context.Context, g Google, seed *org.Seed, h *org.Placement, folders map[string]string) error {
 	member := f.req.Root.FoundingIdentityMember()
-	if err := g.RevokeFolder(ctx, terraformFolder, member, []string{folderAdminRole, folderEditorRole}); err != nil {
+	creator := []string{folderAdminRole, folderEditorRole}
+	for _, key := range sortedKeys(folders) {
+		if err := g.RevokeFolder(ctx, folders[key], member, creator); err != nil {
+			return err
+		}
+	}
+	projects := 0
+	for _, key := range h.ProjectKeys() {
+		if key == bootKey || h.Projects[key] == "" {
+			continue
+		}
+		if err := g.RevokeProject(ctx, h.Projects[key], member, []string{ownerRole}); err != nil {
+			return err
+		}
+		projects++
+	}
+	if err := g.RevokeFolder(ctx, seed.TerraformFolder, member, creator); err != nil {
 		return err
 	}
-	if err := g.RevokeProject(ctx, project, member, []string{ownerRole}); err != nil {
+	if err := g.RevokeProject(ctx, h.Projects[bootKey], member, []string{ownerRole}); err != nil {
 		return err
 	}
-	if err := g.RevokeFolder(ctx, organizationFolder, member, []string{folderAdminRole, folderEditorRole, bootProjectRoleCreator}); err != nil {
+	if err := g.RevokeFolder(ctx, seed.OrganizationFolder, member, slices.Concat(creator, foundingFolderRoles)); err != nil {
 		return err
 	}
-	fmt.Fprintf(f.out, "Took the founding identity's grants off folder %s, folder %s and project %s.\n", organizationFolder, terraformFolder, project)
+	fmt.Fprintf(f.out, "Took the founding identity's grants off the %d folders and %d projects 1-org made, folder %s, project %s and folder %s.\n", len(folders), projects, seed.TerraformFolder, h.Projects[bootKey], seed.OrganizationFolder)
 
 	return nil
 }
 
-func (f *founding) writeMarker(ctx context.Context, m Marker) error {
+// sortedKeys are the map's keys in order, so the withdrawal runs the same way each time.
+func sortedKeys(m map[string]string) []string {
+	keys := make([]string, 0, len(m))
+	for key := range m {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+
+	return keys
+}
+
+func (f *founding) writeMarker(ctx context.Context, m *Marker) error {
 	data, err := json.MarshalIndent(m, "", "  ")
 	if err != nil {
 		return errors.Wrap(err, "json.MarshalIndent()")

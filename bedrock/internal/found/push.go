@@ -25,6 +25,10 @@ import (
 const (
 	fileMode = "100644"
 	blobType = "blob"
+	// providersDir is where an init puts the providers, and localState the state an
+	// apply without a backend would write; neither is pushed.
+	providersDir = ".terraform"
+	localState   = "terraform.tfstate"
 )
 
 // repository finds or makes the organization's infrastructure repository: private, with
@@ -87,14 +91,19 @@ func (f *founding) push(ctx context.Context, dir string, h *org.Placement) (stri
 }
 
 // blobs stores every file of the rendered directory as a blob and answers the tree
-// entries, in path order.
+// entries, in path order. The first applies' inits leave each layer's providers under
+// .terraform and its lock file beside them: the lock file is committed, as a person
+// commits the one their first init writes, the providers never are.
 func (f *founding) blobs(ctx context.Context, dir, owner, repo string) ([]github.TreeEntry, error) {
 	var paths []string
 	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
-		if !d.IsDir() {
+		if d.IsDir() && d.Name() == providersDir {
+			return filepath.SkipDir
+		}
+		if !d.IsDir() && !strings.HasPrefix(d.Name(), localState) {
 			paths = append(paths, path)
 		}
 
@@ -134,7 +143,7 @@ func (f *founding) handOff(ctx context.Context, h *org.Placement, marker *Marker
 		return "", errors.Wrapf(err, "listing pull requests from %s", branch)
 	}
 	if len(open) > 0 {
-		fmt.Fprintf(f.out, "The hand-off pull request of %s is open: %s.\n", h.Prefix, open[0].HTMLURL)
+		fmt.Fprintf(f.out, "The hand-off pull request of %s exists, %s: %s. One closed unmerged is reopened by hand.\n", h.Prefix, open[0].State, open[0].HTMLURL)
 
 		return open[0].HTMLURL, nil
 	}
@@ -182,11 +191,11 @@ func (f *founding) handOff(ctx context.Context, h *org.Placement, marker *Marker
 		"",
 		"- folder `" + marker.OrganizationFolder + "` at the organization node (named `" + h.Prefix + "`), with the `terraform` folder `" + marker.TerraformFolder + "` under it",
 		"- boot project `" + marker.BootProject + "` (" + marker.BootProjectNumber + "), its APIs, its billing link, the boot identity with its roles on the folder, and the state bucket `" + marker.StateBucket + "`",
-		"- the first apply of its `0-bootstrap` (the connection from the recorded authorization, the repository link, the two triggers)",
-		"- repository `" + marker.Repository + "`, with the rendered foundation as its first push, which its apply trigger runs on",
-		"- the founding identity's own grants taken off; the break-glass account holds Folder Admin on the folder",
+		"- the first apply of its `0-bootstrap` (the connection from the recorded authorization, the repository link, the two triggers) and of its `1-org` (the folders, the projects with their identities, roles and policies), with the projects recorded in its placement (`projects`, `projectNumbers`)",
+		"- repository `" + marker.Repository + "`, with the rendered foundation as its first push, which its apply trigger runs on: every layer, as its own identity, with nothing left to apply by hand",
+		"- the founding identity's own grants taken off everything it made; the break-glass account holds Folder Admin on the folder",
 		"",
-		"This pull request records the folder in `placement.json` (`hostingOrganizations`), from which 0-bootstrap grants the new boot identity the shared secrets' policy administration, and the placement as founded under `" + org.FoundingsDir + "/" + h.Prefix + "/`. Nothing under the folder is the root organization's to refresh.",
+		"This pull request records the folder in `placement.json` (`hostingOrganizations`), from which 0-bootstrap grants the new boot identity the shared secrets' policy administration, and the placement as founded under `" + org.FoundingsDir + "/" + h.Prefix + "/`. Nothing under the folder is the root organization's to refresh. Left to a billing administrator: `roles/billing.user` on the billing account for the new organization's boot and org identities, and its spend budget (its `0-bootstrap/README.md`, \"Founded by the root organization\").",
 	}, "\n")
 	commit, err := f.gh.CreateCommit(ctx, owner, repo, title+"\n\n"+body, tree, []string{base.Object.SHA})
 	if err != nil {

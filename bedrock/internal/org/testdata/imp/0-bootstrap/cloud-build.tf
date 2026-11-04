@@ -201,7 +201,7 @@ resource "google_project_iam_member" "runner_builds" {
 
 # Cloud Build runs a build as the trigger's service account on the service
 # agent's say-so, and whoever creates the trigger acts as that account: the
-# break-glass account's Owner covers the first apply, the boot identity
+# founding identity's Owner covers the first apply, the boot identity
 # every apply after it.
 resource "google_service_account_iam_member" "runner_agent_user" {
   for_each = local.runners
