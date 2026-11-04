@@ -6,15 +6,19 @@
   z-index: 1000;
 }
 
-// Error alerts stack centered at the bottom of the viewport, clear of the header and the
-// page's controls.
+// The notices stack centered at the top of the viewport, over the header, as the skeleton
+// places them: the idle warning counts down there and any activity ends it.
 .alert-container {
   position: fixed;
-  left: 16px;
-  right: 16px;
-  bottom: 16px;
-  margin: 0 auto;
-  width: max-content;
-  max-width: min(640px, 100%);
-  z-index: 1001;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1500;
+  max-width: min(640px, calc(100vw - 24px));
+
+  .alerts {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
 }

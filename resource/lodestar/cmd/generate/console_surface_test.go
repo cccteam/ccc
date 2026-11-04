@@ -11,8 +11,9 @@ import (
 // TestConsoleCarriesLibrarySurface pins the browser-library surface the console carries
 // beyond its generated pages, which no other application exercises since ccc-lib's
 // showcase retired: the idle session provided from the build's environment through the
-// library's six tokens, with confirmation required and the stay-logged-in action in the
-// header; the Squadrons page's componentConfig (the channel card) and arrayConfig (the
+// library's tokens, its warning the library's notice at the top of the viewport that any
+// activity ends, with no button of the console's (the retired confirmation flag is not
+// provided); the Squadrons page's componentConfig (the channel card) and arrayConfig (the
 // sector's other squadrons, filtered by the indexed key); and the leave-page
 // confirmation, which the library's resourceRoutes attaches to every config-driven list
 // and row route under the FRONTEND_LOGIN_PATH the console provides, so the console adds
@@ -37,17 +38,17 @@ func TestConsoleCarriesLibrarySurface(t *testing.T) {
 		absent []string
 	}{
 		{
-			name: "the six idle tokens are provided, the durations from the environment and confirmation required",
+			name: "the idle tokens are provided, the durations from the environment, and the retired confirmation flag is not",
 			file: "app/app.config.ts",
 			want: []string{
 				"{ provide: IDLE_SESSION_DURATION, useValue: environment.idle.sessionSeconds }",
 				"{ provide: IDLE_WARNING_DURATION, useValue: environment.idle.warningSeconds }",
 				"{ provide: IDLE_KEEPALIVE_DURATION, useValue: environment.idle.keepAliveSeconds }",
-				"{ provide: IDLE_TIMEOUT_REQUIRE_CONFIRMATION, useValue: true }",
 				"provide: IDLE_LOGOUT_ACTION,",
 				"provide: LOGOUT_ACTION,",
 				"{ provide: FRONTEND_LOGIN_PATH, useValue: '/login' }",
 			},
+			absent: []string{"IDLE_TIMEOUT_REQUIRE_CONFIRMATION"},
 		},
 		{
 			name: "a development build shortens the idle session",
@@ -60,9 +61,16 @@ func TestConsoleCarriesLibrarySurface(t *testing.T) {
 			want: []string{"idle: { sessionSeconds: 600, warningSeconds: 60, keepAliveSeconds: 30 }"},
 		},
 		{
-			name: "the header renders the stay-logged-in action while the warning holds",
-			file: "app/components/shared/header/header.component.html",
-			want: []string{"@if (idle.isWarning())", `(click)="idle.stayLoggedIn()"`, "idle.countdown()"},
+			name:   "the header offers no stay-signed-in button: the warning is the library's notice and any activity ends it",
+			file:   "app/components/shared/header/header.component.html",
+			want:   []string{`<span class="username">{{ auth.sessionInfo().username }}</span>`},
+			absent: []string{"stayLoggedIn", "idle."},
+		},
+		{
+			name:   "the notices stack at the top of the viewport, as the skeleton places them",
+			file:   "app/app.component.scss",
+			want:   []string{".alert-container {", "top: 12px;", "transform: translateX(-50%);"},
+			absent: []string{"bottom: 16px;"},
 		},
 		{
 			name: "the Squadrons page carries the channel card and the sector's other squadrons",

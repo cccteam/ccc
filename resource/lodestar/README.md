@@ -864,8 +864,8 @@ manifest: pick a card, sign in, switch, never more than two clicks.
   [cccteam/ccc-lib](https://github.com/cccteam/ccc-lib), hold no application of their own,
   and are proven here through the yalc loop (`web/ccclib.sh local|push`, "Running it"). The
   console carries the library surface no generated page reaches: the idle session
-  configured from the build's environment, with the stay-logged-in action in the header
-  ([`idle.configured`](web/console/src/app/app.config.ts)); the Squadrons page's channel
+  configured from the build's environment, its warning the library's notice that any
+  activity ends ([`idle.configured`](web/console/src/app/app.config.ts)); the Squadrons page's channel
   card and its "Other squadrons in this sector"
   ([`config.component`](web/console/src/app/configs/squadrons.config.ts),
   [`config.array`](web/console/src/app/configs/squadrons.config.ts)); the leave-page
