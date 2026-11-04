@@ -51,7 +51,7 @@ triggers run (plan, apply); and the check, before the seed, that the break-glass
 holds the roles the seed and the first applies need above the organization's folder
 (preflight).`,
 	}
-	cmd.AddCommand(newOrgNew(d), newOrgPreflight(d), newOrgRender(d), newOrgCheck(d), newOrgRegister(d), newOrgPlace(d), newOrgPlan(d), newOrgApply(d), newOrgTeardown(d), newOrgServe(d), newOrgHostnames(d), newOrgRetire(d), newOrgDestroy(d), newOrgSecrets(d))
+	cmd.AddCommand(newOrgNew(d), newOrgPreflight(d), newOrgRender(d), newOrgCheck(d), newOrgRegister(d), newOrgPlace(d), newOrgFound(d), newOrgPlan(d), newOrgApply(d), newOrgTeardown(d), newOrgServe(d), newOrgHostnames(d), newOrgRetire(d), newOrgDestroy(d), newOrgSecrets(d))
 
 	return cmd
 }
@@ -1779,10 +1779,10 @@ func layerRequest(dir string) *layers.Request {
 func (d deps) layerClients() *layers.Clients {
 	c := &layers.Clients{}
 	if d.deploy != nil {
-		c.Builds, c.Store, c.StoreAs, c.Secrets, c.GitHub, c.Exec = d.deploy.Builds, d.deploy.Storage, d.deploy.StorageAs, d.deploy.Secrets, d.deploy.GitHub, d.deploy.Exec
+		c.Builds, c.Store, c.StoreAs, c.Secrets, c.GitHub, c.Exec, c.Sleep = d.deploy.Builds, d.deploy.Storage, d.deploy.StorageAs, d.deploy.Secrets, d.deploy.GitHub, d.deploy.Exec, d.deploy.Sleep
 	}
 	if d.org != nil {
-		c.Keys = d.org.keysAs
+		c.Keys, c.Google = d.org.keysAs, d.org.googleAs
 	}
 
 	return c

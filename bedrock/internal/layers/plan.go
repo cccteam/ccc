@@ -43,6 +43,7 @@ func Plan(ctx context.Context, clients *Clients, req *Request, out io.Writer) er
 	if err != nil {
 		return err
 	}
+	fmt.Fprint(out, r.foundingPreview())
 	if len(runs) == 0 {
 		fmt.Fprintln(out, "No layer changes in this pull request: nothing to plan.")
 

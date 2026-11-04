@@ -99,6 +99,8 @@ type Server struct {
 	Messages []string
 	// Bodies are the bodies of the pull requests opened through the API, oldest first.
 	Bodies []string
+	// Created are the repositories made through the API (owner/name), oldest first.
+	Created []string
 	// Login is who the token belongs to, as /user answers; octocat by default.
 	Login string
 }
@@ -106,6 +108,8 @@ type Server struct {
 var (
 	refRE       = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/git/ref/(.+)$`)
 	refsRE      = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/git/refs$`)
+	refUpdRE    = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/git/refs/(.+)$`)
+	orgReposRE  = regexp.MustCompile(`^/orgs/([^/]+)/repos$`)
 	tagObjectRE = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/git/tags/([^/]+)$`)
 	compareRE   = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/compare/(.+)\.{3}(.+)$`)
 	tagsRE      = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/tags$`)
@@ -159,6 +163,12 @@ func (s *Server) Client() *github.Client {
 func (s *Server) AddRepo(owner, name string, repo *Repo) *Repo {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
+	return s.addRepo(owner, name, repo)
+}
+
+// addRepo is AddRepo with the lock held, for a repository made through the API.
+func (s *Server) addRepo(owner, name string, repo *Repo) *Repo {
 	if repo.Refs == nil {
 		repo.Refs = map[string]github.Object{}
 	}
@@ -207,6 +217,12 @@ type route struct {
 var routes = []route{
 	{refsRE, func(s *Server, w http.ResponseWriter, r *http.Request, m []string) {
 		s.createRef(w, r, m[1]+"/"+m[2])
+	}},
+	{refUpdRE, func(s *Server, w http.ResponseWriter, r *http.Request, m []string) {
+		s.updateRef(w, r, m[1]+"/"+m[2], m[3])
+	}},
+	{orgReposRE, func(s *Server, w http.ResponseWriter, r *http.Request, m []string) {
+		s.createRepo(w, r, m[1])
 	}},
 	{refRE, func(s *Server, w http.ResponseWriter, _ *http.Request, m []string) {
 		s.ref(w, m[1]+"/"+m[2], "refs/"+m[3])
@@ -391,6 +407,75 @@ func (s *Server) ref(w http.ResponseWriter, key, ref string) {
 		return
 	}
 	reply(w, http.StatusOK, github.Ref{Ref: ref, Object: obj})
+}
+
+// updateRef moves the reference (PATCH, refs/heads/... without the refs/ prefix) to the
+// commit given; an absent reference is 422, as GitHub answers it.
+func (s *Server) updateRef(w http.ResponseWriter, r *http.Request, key, ref string) {
+	repo, ok := s.repo(w, key)
+	if !ok {
+		return
+	}
+	if r.Method != http.MethodPatch {
+		reply(w, http.StatusMethodNotAllowed, map[string]string{messageKey: r.Method})
+
+		return
+	}
+	var in struct {
+		SHA   string `json:"sha"`
+		Force bool   `json:"force"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		reply(w, http.StatusUnprocessableEntity, map[string]string{messageKey: err.Error()})
+
+		return
+	}
+	full := "refs/" + ref
+	if _, exists := repo.Refs[full]; !exists {
+		reply(w, http.StatusUnprocessableEntity, map[string]string{messageKey: "Reference does not exist"})
+
+		return
+	}
+	repo.Refs[full] = github.Object{Type: typeCommit, SHA: in.SHA}
+	reply(w, http.StatusOK, github.Ref{Ref: full, Object: repo.Refs[full]})
+}
+
+// createRepo makes a repository in the organization (POST /orgs/{org}/repos): private,
+// with the default branch at an initial commit when auto_init is set, as GitHub does.
+// Created records the repositories made this way.
+func (s *Server) createRepo(w http.ResponseWriter, r *http.Request, owner string) {
+	if r.Method != http.MethodPost {
+		reply(w, http.StatusMethodNotAllowed, map[string]string{messageKey: r.Method})
+
+		return
+	}
+	var in github.RepositoryRequest
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil || in.Name == "" {
+		reply(w, http.StatusUnprocessableEntity, map[string]string{messageKey: "name is required"})
+
+		return
+	}
+	if _, exists := s.Repos[owner+"/"+in.Name]; exists {
+		reply(w, http.StatusUnprocessableEntity, map[string]string{messageKey: "name already exists on this account"})
+
+		return
+	}
+	branch := in.DefaultBranch
+	if branch == "" {
+		branch = "main"
+	}
+	repo := &Repo{Refs: map[string]github.Object{}, Ancestry: map[string][]string{}, Trees: map[string]string{}, Files: map[string]string{}, Blobs: map[string]string{}}
+	if in.AutoInit {
+		sha := s.newSHA(typeCommit)
+		tree := s.newSHA("tree")
+		repo.Refs["refs/heads/"+branch] = github.Object{Type: typeCommit, SHA: sha}
+		repo.Ancestry[sha] = []string{sha}
+		repo.Trees[sha] = tree
+		repo.Files[tree+":README.md"] = "# " + in.Name + "\n"
+	}
+	s.addRepo(owner, in.Name, repo)
+	s.Created = append(s.Created, owner+"/"+in.Name)
+	reply(w, http.StatusCreated, github.Repository{Name: in.Name, FullName: owner + "/" + in.Name, DefaultBranch: branch, Private: in.Private, HTMLURL: "https://github.example/" + owner + "/" + in.Name})
 }
 
 func (s *Server) createRef(w http.ResponseWriter, r *http.Request, key string) {

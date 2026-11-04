@@ -16,6 +16,7 @@ import (
 	"github.com/cccteam/ccc/bedrock/internal/deploy"
 	"github.com/cccteam/ccc/bedrock/internal/derive"
 	"github.com/cccteam/ccc/bedrock/internal/domain"
+	"github.com/cccteam/ccc/bedrock/internal/found"
 	"github.com/cccteam/ccc/bedrock/internal/github"
 	"github.com/cccteam/ccc/bedrock/internal/org"
 	"github.com/cccteam/ccc/bedrock/internal/prompt"
@@ -105,8 +106,11 @@ type orgClients struct {
 	registrations domain.RegistrationReaderFunc
 	permissions   org.PermissionTesterFunc
 	// keysAs opens the API Keys API as an impersonated identity, for org apply's
-	// restriction of Firebase's browser key as the environment's layer identity.
-	keysAs org.KeyClientAsFunc
+	// restriction of Firebase's browser key as the environment's layer identity;
+	// googleAs opens Google Cloud as the root organization's founding identity, for
+	// org apply's founding of a hosting organization.
+	keysAs   org.KeyClientAsFunc
+	googleAs found.GoogleAsFunc
 }
 
 func newRoot() *cobra.Command {
@@ -114,7 +118,7 @@ func newRoot() *cobra.Command {
 		domains:     domain.NewCloudDomains,
 		secrets:     secret.NewSecretManager,
 		projects:    where.NewProjects,
-		org:         &orgClients{policies: org.NewPolicyReader, keys: org.NewKeyLister, registrations: domain.NewRegistrationReader, permissions: org.NewPermissionTester, keysAs: org.NewKeyClientAs},
+		org:         &orgClients{policies: org.NewPolicyReader, keys: org.NewKeyLister, registrations: domain.NewRegistrationReader, permissions: org.NewPermissionTester, keysAs: org.NewKeyClientAs, googleAs: found.NewGoogleAs},
 		github:      github.Open,
 		githubToken: github.Token,
 		interactive: stdinIsTerminal,

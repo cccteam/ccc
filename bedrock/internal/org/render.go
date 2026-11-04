@@ -89,9 +89,41 @@ var seeded = map[string]bool{
 	ignoreFile:  true,
 }
 
-// view is what the templates see: the placement and the phrases derived from it.
+// view is what the templates see: the placement and the phrases derived from it, and
+// the founding's seed when the render is a founding's (the folder ids the seeded tfvars
+// carry; REPLACEME otherwise, for a person to fill in after a hand seed).
 type view struct {
 	*Placement
+	seed *Seed
+}
+
+// BootProjectID is the boot project's id for a seeded tfvars: the placement's once
+// recorded, else <prefix>-boot-gbl-core-REPLACEME for the seed to fill in.
+func (v *view) BootProjectID() string {
+	if id := v.Projects[bootProject]; id != "" {
+		return id
+	}
+
+	return v.Prefix + "-boot-gbl-core-" + replaceMe
+}
+
+// OrganizationFolderID is the organization's folder id for 0-bootstrap's seeded tfvars:
+// the founding's, else REPLACEME.
+func (v *view) OrganizationFolderID() string {
+	if v.seed != nil && v.seed.OrganizationFolder != "" {
+		return v.seed.OrganizationFolder
+	}
+
+	return replaceMe
+}
+
+// TerraformFolderID is the terraform folder's id for the same file.
+func (v *view) TerraformFolderID() string {
+	if v.seed != nil && v.seed.TerraformFolder != "" {
+		return v.seed.TerraformFolder
+	}
+
+	return replaceMe
 }
 
 // Environments is the model's environments in promotion order, for the templates.
@@ -830,10 +862,17 @@ func backticked(items []string) []string {
 // Render renders every file of the organization's repository: the layers' owned files
 // (the layers of its kind), each layer's seeded values, and the root files.
 func Render(p *Placement) ([]render.File, error) {
+	return RenderSeeded(p, nil)
+}
+
+// RenderSeeded renders the organization with the founding's seed in the seeded tfvars
+// (the folder ids and the boot project the founding made), for the repository the
+// founding pushes; a nil seed renders as Render does.
+func RenderSeeded(p *Placement, seed *Seed) ([]render.File, error) {
 	if err := p.Validate(); err != nil {
 		return nil, err
 	}
-	v := &view{Placement: p}
+	v := &view{Placement: p, seed: seed}
 	var files []render.File
 	root, err := renderDir(templateDir, "", v)
 	if err != nil {

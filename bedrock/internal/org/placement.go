@@ -436,6 +436,25 @@ func ReadPlacement(path string) (*Placement, error) {
 	return &p, nil
 }
 
+// ReadPlacementUnchecked reads a placement without validating it: a founding record a
+// person is still writing, which bedrock org found fills and then validates.
+func ReadPlacementUnchecked(path string) (*Placement, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, errors.Wrap(err, "os.ReadFile()")
+	}
+	var p Placement
+	if err := json.Unmarshal(data, &p); err != nil {
+		return nil, errors.Wrapf(err, "json.Unmarshal(): %s", path)
+	}
+	if err := refuseRenamedKeys(data); err != nil {
+		return nil, errors.Wrapf(err, "%s", path)
+	}
+	p.normalizeRegistration()
+
+	return &p, nil
+}
+
 // refuseRenamedKeys refuses a placement written with a key that has since been renamed,
 // naming the new one: a key the struct does not know is otherwise dropped in silence,
 // and the refusal that follows ("breakGlassAccount is empty") would not say why.
@@ -446,7 +465,7 @@ func refuseRenamedKeys(data []byte) error {
 	}
 	for old, now := range renamedKeys {
 		if _, ok := keys[old]; ok {
-			return errors.Newf("%s is now %s (the same account, the organization's break-glass account): rename the key", old, now)
+			return errors.Newf("%s is now %s: rename the key", old, now)
 		}
 	}
 
@@ -454,8 +473,11 @@ func refuseRenamedKeys(data []byte) error {
 }
 
 // renamedKeys are the placement keys renamed since they were first written, each with
-// its name now.
-var renamedKeys = map[string]string{"operator": "breakGlassAccount"}
+// its name now and what it is.
+var renamedKeys = map[string]string{
+	"operator": "breakGlassAccount (the same account, the organization's break-glass account)",
+	"keys":     "root (the same organization, the root organization that holds the GitHub Apps' keys and the Cloud Build token)",
+}
 
 // normalizeRegistration spreads a step read in the older form, one for the application,
 // over every environment the application is placed in.
@@ -2021,13 +2043,23 @@ func inPromotionOrder(envs []string) []string {
 	return ordered
 }
 
-// Write puts the placement back in its file, indented the way a person reads it.
-func (p *Placement) Write(path string) error {
+// JSON is the placement as its file holds it, indented the way a person reads it.
+func (p *Placement) JSON() ([]byte, error) {
 	data, err := json.MarshalIndent(p, "", "  ")
 	if err != nil {
-		return errors.Wrap(err, "json.MarshalIndent()")
+		return nil, errors.Wrap(err, "json.MarshalIndent()")
 	}
-	if err := os.WriteFile(path, append(data, '\n'), 0o600); err != nil {
+
+	return append(data, '\n'), nil
+}
+
+// Write puts the placement back in its file, indented the way a person reads it.
+func (p *Placement) Write(path string) error {
+	data, err := p.JSON()
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(path, data, 0o600); err != nil {
 		return errors.Wrapf(err, "os.WriteFile(): %s", path)
 	}
 

@@ -4,7 +4,7 @@
 
 # boot_project_id is the output boot_project_id of 0-bootstrap; state_bucket
 # the bucket in every backend block.
-boot_project_id = "imp-boot-gbl-core-REPLACEME"
+boot_project_id = "imp-boot-gbl-core-a1b2"
 state_bucket    = "imp-boot-gbl-state-a1b2"
 
 # The Cloud Build GitHub authorization (the connection's installation id and

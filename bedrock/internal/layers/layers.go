@@ -20,6 +20,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/cccteam/ccc/bedrock/internal/deploy"
+	"github.com/cccteam/ccc/bedrock/internal/found"
 	"github.com/cccteam/ccc/bedrock/internal/github"
 	"github.com/cccteam/ccc/bedrock/internal/org"
 )
@@ -85,6 +86,10 @@ type Clients struct {
 	GitHub  deploy.GitHubFunc
 	Keys    org.KeyClientAsFunc
 	Exec    deploy.Runner
+	// Google opens Google Cloud as the root organization's founding identity, for the
+	// founding of a hosting organization (found.go); Sleep waits between its tries.
+	Google found.GoogleAsFunc
+	Sleep  deploy.SleepFunc
 }
 
 // ready refuses a run whose seams are not all wired.

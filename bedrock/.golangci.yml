@@ -105,6 +105,9 @@ linters:
             # org check lists the API keys of the environment projects through the API
             # Keys REST client, naming each key that carries no API restriction.
             - google.golang.org/api/apikeys
+            # The founding of a hosting organization enables the new boot project's APIs
+            # through Service Usage's REST client, as the hand seed's gcloud does.
+            - google.golang.org/api/serviceusage
             # In the application layout the application is named by the module at the
             # repository root, read from its go.mod with the same parser impulse's
             # reader uses.

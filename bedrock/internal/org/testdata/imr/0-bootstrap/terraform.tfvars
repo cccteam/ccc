@@ -7,7 +7,7 @@ billing_account_id = "012345-6789AB-CDEF01"
 # boot_project_id is the ID the seed step chose, suffix included; organization_domain
 # is organization 123456789012; organization_folder_id and terraform_folder_id
 # are the bare numeric folder IDs from the seed step.
-boot_project_id        = "imr-boot-gbl-core-REPLACEME"
+boot_project_id        = "imr-boot-gbl-core-c3d4"
 organization_domain    = "imp.example"
 organization_folder_id = "REPLACEME"
 terraform_folder_id    = "REPLACEME"

@@ -3,5 +3,5 @@
 # is organization 123456789012.
 
 billing_account_id  = "012345-6789AB-CDEF01"
-boot_project_id     = "imp-boot-gbl-core-REPLACEME"
+boot_project_id     = "imp-boot-gbl-core-a1b2"
 organization_domain = "imp.example"
