@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.4.6](https://github.com/cccteam/ccc/compare/bedrock/v0.4.5...bedrock/v0.4.6) (2026-11-04)
+
+
+### Features
+
+* **bedrock:** a Spanner instance's size follows Spanner's own rule, raised for the databases it holds or for load, and the 200-unit cap is gone ([#1282](https://github.com/cccteam/ccc/issues/1282)) ([1221b7f](https://github.com/cccteam/ccc/commit/1221b7f5729457ad230f7f08dfcc2df99dc5bd87))
+* **bedrock:** a zones organization ("kind": "zones" in placement.json) holds DNS zones alone in 0-bootstrap and 1-dns, one zone per domain a customer delegates once and one NS record set per application name handed onward to the hosting organization that serves it, with the placement's validation, bedrock domain check reading the zones and the labels, and bedrock org destroy taking the zones out of the state ([#1284](https://github.com/cccteam/ccc/issues/1284)) ([bf91de3](https://github.com/cccteam/ccc/commit/bf91de3c9412f8a8ddea9c45411771f83f39d364))
+* **bedrock:** an application is placed in a prefix of the promotion order (tst; tst and stg; every environment), registered and rendered there alone, and bedrock org place moves it later ([#1283](https://github.com/cccteam/ccc/issues/1283)) ([0c735e9](https://github.com/cccteam/ccc/commit/0c735e9ca1fa70ff59b2395ae78f63e4fd99ebef))
+
 ## [0.4.5](https://github.com/cccteam/ccc/compare/bedrock/v0.4.4...bedrock/v0.4.5) (2026-11-03)
 
 
