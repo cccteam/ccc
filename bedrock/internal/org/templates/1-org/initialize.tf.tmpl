@@ -28,9 +28,8 @@ terraform {
   }
 }
 
-# 0-bootstrap's outputs: the triggers' runner identities, the bucket policy
-# role and the key containers, which this layer grants on and with
-# (runners.tf).
+# 0-bootstrap's outputs: the triggers' runner identities and the bucket policy
+# role, which this layer grants on and with (runners.tf).
 data "terraform_remote_state" "boot" {
   backend = "gcs"
   config = {

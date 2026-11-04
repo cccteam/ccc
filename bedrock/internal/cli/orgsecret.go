@@ -1,7 +1,8 @@
-// orgsecret.go is the organization form of secret add and pin: run in the organization's
-// infrastructure repository, they take one of the organization's secrets (the
-// infrastructure and deployer GitHub Apps' private keys, both in the boot project) in
-// place of an application's environment and variable.
+// orgsecret.go is the organization form of secret add and pin: run in the zones
+// organization's infrastructure repository, they take one of the three secrets it holds
+// for every organization (the infrastructure, deployer and release GitHub Apps' private
+// keys, in its boot project) in place of an application's environment and variable. A
+// hosting organization's repository refuses both, naming the zones organization.
 
 package cli
 
@@ -100,7 +101,7 @@ func orgSecretArgs(args []string, ask *prompt.Prompter, p *org.Placement, verb s
 		return "", 0, err
 	}
 	if slices.Contains(org.Environments, name) {
-		return "", 0, errors.Newf("this is the organization's infrastructure repository (placement.json names organization %s): secret %s takes an organization secret here, %s or %s; an application's secret ([env] [VARIABLE]) is %s from the application's repository", p.OrganizationID, verb, org.InfrastructureKey, org.DeployerKey, verbPast(verb))
+		return "", 0, errors.Newf("this is the organization's infrastructure repository (placement.json names organization %s): secret %s takes an organization secret here, %s; an application's secret ([env] [VARIABLE]) is %s from the application's repository", p.OrganizationID, verb, strings.Join(org.Secrets, ", "), verbPast(verb))
 	}
 	if err := org.ValidateSecret(name); err != nil {
 		return "", 0, err
@@ -118,7 +119,7 @@ func verbPast(verb string) string {
 	return "pinned"
 }
 
-// tooManyOrgArgs refuses arguments past the ones the secret takes: both organization
+// tooManyOrgArgs refuses arguments past the ones the secret takes: the organization's
 // secrets live in the boot project and take no environment. use spells the command line
 // the secret takes.
 func tooManyOrgArgs(args []string, name, use string, want int) error {
@@ -153,6 +154,9 @@ func (d deps) addOrgSecret(cmd *cobra.Command, args []string, f *addFlags, p *or
 	if err := orgFlags(&f.pinFlags); err != nil {
 		return err
 	}
+	if err := p.KeysElsewhere(); err != nil {
+		return err
+	}
 	name, next, err := orgSecretArgs(args, d.asker(cmd), p, addVerb)
 	if err != nil {
 		return err
@@ -181,6 +185,9 @@ func (d deps) addOrgSecret(cmd *cobra.Command, args []string, f *addFlags, p *or
 // read it, after Secret Manager confirms it is enabled.
 func (d deps) pinOrgSecret(cmd *cobra.Command, args []string, f *pinFlags, root string, p *org.Placement) error {
 	if err := orgFlags(f); err != nil {
+		return err
+	}
+	if err := p.KeysElsewhere(); err != nil {
 		return err
 	}
 	ask := d.asker(cmd)

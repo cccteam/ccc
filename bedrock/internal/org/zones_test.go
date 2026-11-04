@@ -51,7 +51,19 @@ func TestZonesPlacementValidate(t *testing.T) {
 		{name: "no default branch", mutate: func(p *Placement) { p.GithubDefaultBranch = "" }, wantErr: "githubDefaultBranch is empty"},
 		{name: "an apps domain", mutate: func(p *Placement) { p.AppsDomain = "apps.imp.example" }, wantErr: "appsDomain is set, and a zones organization has no use for it: it holds DNS zones alone, no applications and no environments"},
 		{name: "a Spanner configuration", mutate: func(p *Placement) { p.Spanner.Config = "nam6" }, wantErr: "spanner.config is set, and a zones organization has no use for it"},
-		{name: "a release app", mutate: func(p *Placement) { p.GithubReleaseAppID = "5080900" }, wantErr: "githubReleaseAppId is set, and a zones organization has no use for it"},
+		{name: "a release app's slug", mutate: func(p *Placement) { p.GithubReleaseAppSlug = "imp-release" }, wantErr: "githubReleaseAppSlug is set, and a zones organization has no use for it"},
+		{name: "the release app and its key's version", mutate: func(p *Placement) { p.GithubReleaseAppID, p.GithubReleaseKeyVersion = "5080645", "3" }},
+		{name: "keys of another organization", mutate: func(p *Placement) { p.Keys = &KeysPlace{Organization: "imq", Project: "imq-boot-gbl-core-0a0b"} }, wantErr: "keys is set, and a zones organization holds the GitHub Apps' keys itself"},
+		{name: "a key operator that is not a member", mutate: func(p *Placement) { p.KeyOperators = []string{"ops@imp.example"} }, wantErr: `keyOperators entry "ops@imp.example" is not an IAM member (user:, group:, serviceAccount:)`},
+		{name: "a hosting organization twice", mutate: func(p *Placement) {
+			p.HostingOrganizations = append(p.HostingOrganizations, HostingOrganization{Prefix: "imp", BootProject: "imp-boot-gbl-core-a1b2"})
+		}, wantErr: `hostingOrganizations names "imp" twice`},
+		{name: "a hosting organization with this prefix", mutate: func(p *Placement) {
+			p.HostingOrganizations = []HostingOrganization{{Prefix: "imz", BootProject: "imz-boot-gbl-core-c3d4"}}
+		}, wantErr: `hostingOrganizations names "imz", this organization's own prefix`},
+		{name: "a hosting organization without a project", mutate: func(p *Placement) {
+			p.HostingOrganizations = []HostingOrganization{{Prefix: "rgb", BootProject: "RGB"}}
+		}, wantErr: `hostingOrganizations entry "rgb": bootProject "RGB" is not a project id`},
 		{name: "an infrastructure team", mutate: func(p *Placement) { p.GithubInfrastructureTeam = "platform" }, wantErr: "githubInfrastructureTeam is set, and a zones organization has no use for it"},
 		{name: "a larger runner", mutate: func(p *Placement) { p.CiLargeRunnerSize = "8-core" }, wantErr: "ciLargeRunnerSize is set, and a zones organization has no use for it"},
 		{name: "an application", mutate: func(p *Placement) { p.Applications = []Application{{Code: "quill", Repository: "quill"}} }, wantErr: "applications is set, and a zones organization has no use for it"},
@@ -264,9 +276,18 @@ func TestZonesRender(t *testing.T) {
 			absent: []string{"org_tofu_state_upstream", "2-env"},
 		},
 		{
-			path:   "0-bootstrap/github.tf",
-			want:   []string{"github_infrastructure_key", "github_deployer_key", `boot_plan["dns"]`},
-			absent: []string{"github_release_key", "release app"},
+			path: "0-bootstrap/github.tf",
+			want: []string{
+				"github_infrastructure_key", "github_deployer_key", "github_release_key", `boot_plan["dns"]`,
+				"  labels          = local.labels\n  version_aliases = { current = \"1\" }\n",
+				"  labels          = local.labels\n  version_aliases = { current = \"2\" }\n",
+				"resource \"google_project_iam_custom_role\" \"secret_policy_admin\" {\n  project     = module.boot_project.project_id\n  role_id     = \"secretPolicyAdmin\"\n",
+				"    imp = \"serviceAccount:imp-boot-gbl-tofu@imp-boot-gbl-core-a1b2.iam.gserviceaccount.com\"\n",
+				"  key_operators = toset([\"group:key-operators@imp.example\"])\n",
+				"resource \"google_secret_manager_secret_iam_member\" \"hosting_boot_tofu_keys\" {\n  for_each = local.hosting_key_grants\n\n  project   = module.boot_project.project_id\n  secret_id = local.key_secrets[each.value.key]\n  role      = google_project_iam_custom_role.secret_policy_admin.id\n  member    = local.hosting_boot_identities[each.value.organization]\n}\n",
+				"resource \"google_secret_manager_secret_iam_member\" \"key_operators\" {\n  for_each = local.key_operator_grants\n",
+			},
+			absent: []string{"keys_policy_admin_role", "secret_container_admin"},
 		},
 		{
 			path:   "0-bootstrap/cloud-build.tf",
@@ -289,13 +310,18 @@ func TestZonesRender(t *testing.T) {
 			path: "0-bootstrap/README.md",
 			want: []string{
 				"creates the dns layer identity, grants it the zones' administration in the\nboot project",
+				"## The GitHub Apps' keys\n",
+				"## Rotating a GitHub App's key\n",
+				"- The key operators (`keyOperators`, IAM members: `user:`, `group:`) hold\n  Secret Version Adder and Secret Accessor on the three secrets",
+				"has its boot identity granted `secretPolicyAdmin` on the three\n  secrets",
+				"3. In the same terminal: `bedrock org secrets check <secret> <version>`, which\n   reads the version, signs as the app and asks GitHub for the app itself.",
 				"gcloud builds triggers run imz-boot-uc1-layers-apply --region=us-central1 --project=<boot project> --branch=master --substitutions=_LAYER=1-dns",
 				"a zones organization has no other layer",
 				"## The infrastructure GitHub App",
 				"## Destroying the organization",
 				"so a zones organization is destroyed once no domain is\ndelegated to it",
 			},
-			absent: []string{"github-release-key", "2-env", "1-org"},
+			absent: []string{"2-env", "1-org"},
 		},
 	}
 	for _, tt := range tests {
@@ -320,7 +346,7 @@ func TestZonesRender(t *testing.T) {
 		t.Fatalf("Render() error = %v", err)
 	}
 	for _, f := range hosting {
-		for _, absent := range []string{"1-dns", "zones organization", "dns layer", "handed onward"} {
+		for _, absent := range []string{"1-dns", "dns layer", "handed onward"} {
 			if strings.Contains(string(f.Content), absent) {
 				t.Errorf("the hosting organization's %s carries %q, which is the zones kind's", f.Path, absent)
 			}

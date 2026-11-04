@@ -60,8 +60,8 @@ func TestZonesOrgCommands(t *testing.T) {
 				"Rendered the imz foundation", "18 owned file(s) in 0-bootstrap, 1-dns; seeded .gitignore, 0-bootstrap/terraform.tfvars, 1-dns/terraform.tfvars, JOURNAL.md.",
 				"By hand, before the Cloud Build triggers can run",
 				"0. On GitHub, as an organization owner: the organization, its machine account (imp-machine, an\n     owner of the organization, named in placement.json as githubMachineAccount), this\n     infrastructure repository (default branch master; 1-dns rules that branch and nothing\n     else of it), and the deployer and infrastructure apps",
-				"A GitHub organization that holds a hosting organization\n     has the account and the apps already: record the same.",
-				"has made their two containers in the boot project: bedrock secret add\n     github-infrastructure-key and bedrock secret pin github-infrastructure-key\n     <version>; the same with github-deployer-key.",
+				"A GitHub organization that holds a hosting organization\n     has the account and the apps already: record the same, and the release app's App ID\n     too (githubReleaseAppId), since this organization holds its key for them.",
+				"In a terminal, in this repository, the three apps' keys, never by hand, once\n     0-bootstrap has made their secrets in the boot project, one per app for every\n     organization in the Google Cloud organization: bedrock secret add\n     github-infrastructure-key, bedrock org secrets check github-infrastructure-key\n     <version>, which proves the version with GitHub, and bedrock secret pin\n     github-infrastructure-key <version>, which pins the version the alias current points\n     at; the same with github-deployer-key and github-release-key. The pull request's\n     apply moves the alias, which every reader in every organization names\n     (0-bootstrap/README.md, \"Rotating a GitHub App's key\").",
 				"1. In a terminal, as seed@imp.example, after gcloud auth application-default login:\n     bedrock org preflight, which must find each of these roles held:\n" +
 					"       - Folder Creator (roles/resourcemanager.folderCreator), on the organization\n" +
 					"       - Billing Account User (roles/billing.user), on the billing account\n" +
@@ -79,7 +79,7 @@ func TestZonesOrgCommands(t *testing.T) {
 				"Then the domains: each domain delegated to this organization goes into placement.json\n(domains), bedrock org render and the pull request whose apply makes its zone; by the\ncustomer, where the domain's DNS is set, the delegation to the zone's name servers, as\nbedrock domain check prints them with the place (1-dns/README.md, \"Delegating a domain to\nthis organization\"). Each application's name under a domain follows at the application's\nregistration, in two pull requests (1-dns/README.md, \"Handing a label onward\").",
 				"Pinned bedrock " + headVersion + " in ",
 			},
-			absent: []string{"Organization Policy Administrator", "Tag Administrator", "team group", "consent screen", "2-net", "1-org", "github-release-key", "7. "},
+			absent: []string{"Organization Policy Administrator", "Tag Administrator", "team group", "consent screen", "2-net", "1-org", "7. "},
 		},
 		{
 			name: "check is clean after new, the two layers rendered and no other",

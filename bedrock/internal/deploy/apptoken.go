@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/go-playground/errors/v5"
+
+	"github.com/cccteam/ccc/bedrock/internal/github"
 )
 
 // AppInstallationToken mints a GitHub App's installation token on the repository from
@@ -32,6 +34,23 @@ func AppInstallationToken(ctx context.Context, gh GitHubFunc, appID string, pemK
 	}
 
 	return token, nil
+}
+
+// AppIdentity asks GitHub which app a key signs as: a JWT issued by appID and signed with
+// the key in PEM fetches the app's own record, which GitHub gives for the app's own key
+// alone. A key that is not the app's, or an App ID that is another app's, is refused by
+// GitHub. bedrock org secrets check proves a key's version with it.
+func AppIdentity(ctx context.Context, gh GitHubFunc, appID string, pemKey []byte) (*github.App, error) {
+	jwt, err := appJWT(appID, pemKey, time.Now())
+	if err != nil {
+		return nil, errors.Wrap(err, "the key")
+	}
+	app, err := gh(jwt).App(ctx)
+	if err != nil {
+		return nil, errors.Wrapf(err, "GitHub, asked for the app a token signed with the key is (App %s)", appID)
+	}
+
+	return app, nil
 }
 
 // ParseBuild reads a build as Cloud Build's API describes it: its id and substitutions.

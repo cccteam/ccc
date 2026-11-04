@@ -201,22 +201,23 @@ the container cannot be told apart (none or several found), when the placement h
 secret_versions map or that map has no <env> entry, and when the version is disabled or
 absent. A variable already pinned to the version leaves the file as it is.
 
-In the organization's infrastructure repository (the one whose placement.json at the root
-names the organization, organizationId), pin takes one of the organization's secrets and a
-version's number, never latest. pin github-infrastructure-key <version> writes
-githubInfrastructureKeyVersion in placement.json and runs org render; from the merge on,
-the Cloud Build triggers' runs mint 1-org's GitHub token from that version. The container
-is <prefix>-boot-gbl-github-infrastructure-key in the boot project (projects.boot). pin
-github-deployer-key <version> writes githubDeployerKeyVersion the same way; the plan
-trigger's runs post the layers' plans as the deployer app from that version, and 2-env's
-outputs carry it to the applications' pipelines. The container is
-<prefix>-boot-gbl-github-deployer-key, in the boot project too. pin github-release-key
-<version> writes githubReleaseKeyVersion the same way; 2-env's outputs carry it to the
-applications' release triggers, which mint the release app's token from it. The container is
-<prefix>-boot-gbl-github-release-key, in the boot project too. --project and --container
-override; --app and --layer are refused, and so is an application's [env] [VARIABLE].
-Secret Manager is asked first, as above, and the pull request carrying the change goes
-through the Cloud Build triggers.`,
+In the zones organization's infrastructure repository (the one whose placement.json at the
+root names the organization, organizationId, with kind zones), pin takes one of the three
+secrets that organization holds for every organization, the GitHub Apps' private keys, and
+a version's number, never latest: github-infrastructure-key, github-deployer-key or
+github-release-key, each a secret in the boot project (projects.boot) named
+<prefix>-boot-gbl-github-<app>-key. pin writes the version the secret's alias current is to
+point at in placement.json (githubInfrastructureKeyVersion, githubDeployerKeyVersion,
+githubReleaseKeyVersion) and runs org render, which writes the alias into 0-bootstrap's
+github.tf; the pull request's apply moves the alias, and every reader in every organization
+names the alias (a run of the triggers minting the second layer's GitHub token, the plan
+trigger's runs posting the plans, the applications' pipelines and release triggers in the
+hosting organizations), so all of them switch at that apply. org secrets check proves a
+version with GitHub first. --project and --container override; --app and --layer are
+refused, and so is an application's [env] [VARIABLE]. A hosting organization's repository
+refuses pin, naming the zones organization its placement records (keys). Secret Manager is
+asked first, as above, and the pull request carrying the change goes through the Cloud
+Build triggers.`,
 		Args: cobra.MaximumNArgs(3),
 		ValidArgsFunction: func(cmd *cobra.Command, args []string, _ string) ([]string, cobra.ShellCompDirective) {
 			if _, p, err := d.orgRepository(f.dir); err == nil && p != nil {
@@ -550,17 +551,20 @@ use of its services: the secretOperator role 1-org defines, which nobody holds s
 member of the environment's team group asks for the secret operator entitlement (2-env's
 team-group.tf) and holds the role for the time asked.
 
-In the organization's infrastructure repository (the one whose placement.json at the root
-names the organization, organizationId), add takes one of the organization's secrets in
-place of [env] [VARIABLE]: github-infrastructure-key, the infrastructure GitHub App's private
-key, into <prefix>-boot-gbl-github-infrastructure-key, github-deployer-key, the deployer
-GitHub App's private key, into <prefix>-boot-gbl-github-deployer-key, or github-release-key,
-the release GitHub App's private key, into <prefix>-boot-gbl-github-release-key, all in the
-boot project (projects.boot). --project and --container override; --app and --layer are refused,
-and so is an application's [env] [VARIABLE]. The value is read as above; a .pem file is
-stored as given. The containers are 0-bootstrap's own resources, so a project without them
-is refused: apply the layer first. Adding to them is the break-glass account's. The
-command prints the pin to make.`,
+In the zones organization's infrastructure repository (the one whose placement.json at the
+root names the organization, organizationId, with kind zones), add takes one of the three
+secrets that organization holds for every organization in place of [env] [VARIABLE]:
+github-infrastructure-key, the infrastructure GitHub App's private key, into
+<prefix>-boot-gbl-github-infrastructure-key, github-deployer-key, the deployer GitHub App's
+private key, into <prefix>-boot-gbl-github-deployer-key, or github-release-key, the release
+GitHub App's private key, into <prefix>-boot-gbl-github-release-key, all in the boot project
+(projects.boot). --project and --container override; --app and --layer are refused, and so
+is an application's [env] [VARIABLE]. The value is read as above; a .pem file is stored as
+given. The secrets are 0-bootstrap's own resources, so a project without them is refused:
+apply the layer first. Adding is a key operator's (keyOperators in placement.json). Nothing
+reads the new version until org secrets check has proven it and pin has moved the alias.
+A hosting organization's repository refuses add, naming the zones organization its
+placement records (keys). The command prints the check and the pin to make.`,
 		Args: cobra.MaximumNArgs(2),
 		ValidArgsFunction: func(cmd *cobra.Command, args []string, _ string) ([]string, cobra.ShellCompDirective) {
 			if _, p, err := d.orgRepository(f.dir); err == nil && p != nil {

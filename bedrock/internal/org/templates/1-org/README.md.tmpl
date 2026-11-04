@@ -64,12 +64,14 @@ trigger plans it on a pull request as `{{.Prefix}}-org-gbl-plan`.
   triggers") and the state bucket's grants (the list, the layer's own prefix,
   the upstream prefixes it reads). The environment layer identities also get
   the bucket's policy authority (`0-bootstrap`'s custom role), for the
-  application identities `2-env` creates, the administration of the deployer
-  GitHub App's key container in the boot project (`secretContainerAdmin`,
-  below), so `2-env` can grant those identities its read, and the environment
-  layers' plan identities the read of the bucket's policy (`bucketPolicyReader`,
-  below) and of that container's policy (`roles/secretmanager.viewer` on the
-  container), which a plan of `2-env` refreshes those grants through. Each layer grants
+  application identities `2-env` creates, the policy administration of the
+  deployer and release GitHub Apps' key secrets in the zones organization
+  `{{.KeysOrganization}}`'s boot project (`secretPolicyAdmin`, that
+  organization's role, which `0-bootstrap` holds for the org identity), so
+  `2-env` can grant those identities their read, and the environment layers'
+  plan identities the read of the bucket's policy (`bucketPolicyReader`,
+  below) and of those secrets' policies (`roles/secretmanager.viewer` on each
+  secret), which a plan of `2-env` refreshes those grants through. Each layer grants
   for the identities it creates because IAM refuses a binding for a service
   account that does not exist.
 - Per environment, the layer state entitlement `{{.Prefix}}-<env>-layer-state`
@@ -97,9 +99,9 @@ trigger plans it on a pull request as `{{.Prefix}}-org-gbl-plan`.
   register <app> --next` once `2-env` has created them).
 - Every custom role here is created in each project this layer makes, with
   the same permissions and a bare id (`secretContainerAdmin`), and
-  `secretContainerAdmin` and `bucketPolicyReader` in the boot project too,
-  for the grants on its key containers and the state bucket (`runners.tf`);
-  the public-invoker tag key is created in each environment project. Nothing
+  `bucketPolicyReader` in the boot project too, for the grants on the state
+  bucket (`runners.tf`); the public-invoker tag key is created in each
+  environment project. Nothing
   of the organization's sits at the organization node, whose names are shared
   by every bedrock organization under it and held for 37 days after a delete,
   and whose administration would be a role above this organization's folder

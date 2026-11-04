@@ -1,6 +1,6 @@
 // talk.go is how the pipeline speaks on a pull request: as the deployer GitHub App when
-// the environment has one (2-env holds its App ID and the pinned version of its private
-// key, which the stack passes as _DEPLOYER_APP_ID and _DEPLOYER_KEY_SECRET), minting the
+// the environment has one (2-env holds its App ID and its private key's alias in Secret
+// Manager, which the stack passes as _DEPLOYER_APP_ID and _DEPLOYER_KEY_SECRET), minting the
 // app's installation token when a step has something to say, never before and never
 // kept in the workspace. A refusal the app cannot post (no deployer app yet) is posted
 // with the repository's token instead; the talk-back itself is the app's alone.
@@ -104,7 +104,7 @@ func deployerToken(ctx context.Context, clients *Clients, subs map[string]string
 }
 
 // appToken mints a GitHub App's installation token on the repository: the app's private
-// key is read from Secret Manager by its pinned version, a JWT signed with it asks GitHub
+// key is read from Secret Manager by the version the stack names (an alias), a JWT signed with it asks GitHub
 // for the app's installation on the repository and then for a token good for an hour.
 // what names the app in an error (the deployer app, the release app).
 func appToken(ctx context.Context, clients *Clients, appID, keyVersion, owner, repo, what string) (string, error) {

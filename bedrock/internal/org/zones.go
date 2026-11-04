@@ -172,8 +172,7 @@ func (p *Placement) validateKind() error {
 // none of the fields that describe applications or environments, which it has neither of.
 func (p *Placement) validateZones() error {
 	for name, value := range map[string]string{
-		"appsDomain": p.AppsDomain, "spanner.config": p.Spanner.Config, releaseAppIDField: p.GithubReleaseAppID,
-		"githubReleaseAppSlug": p.GithubReleaseAppSlug, "githubReleaseKeyVersion": p.GithubReleaseKeyVersion,
+		"appsDomain": p.AppsDomain, "spanner.config": p.Spanner.Config, "githubReleaseAppSlug": p.GithubReleaseAppSlug,
 		"githubInfrastructureTeam": p.GithubInfrastructureTeam, "ciLargeRunner": p.CiLargeRunner, "ciLargeRunnerSize": p.CiLargeRunnerSize,
 	} {
 		if value != "" {
@@ -192,6 +191,9 @@ func (p *Placement) validateZones() error {
 	}
 	if len(p.Regions) != 1 {
 		return errors.Newf("regions has %d entries; a zones organization runs in one, where its connection, its triggers and its state bucket are", len(p.Regions))
+	}
+	if err := p.validateKeyHolding(); err != nil {
+		return err
 	}
 
 	return p.validateDomains()

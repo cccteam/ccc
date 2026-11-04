@@ -514,8 +514,9 @@ func TestGithubAppSteps(t *testing.T) {
 				"   - the release app: Contents, Issues and Pull requests, each read and\n     write;\n",
 				"   - the deployer app: Checks, Deployments, Issues and Pull requests, each\n     read and write.\n",
 				"Install App, on the organization,\n   for all repositories",
-				"   bedrock secret add github-deployer-key --from-file <the deployer app's .pem file>\n   bedrock secret pin github-deployer-key <version>\n   bedrock secret add github-release-key --from-file <the release app's .pem file>\n   bedrock secret pin github-release-key <version>\n",
-				"Both keys live in Secret Manager in the boot\nproject, and neither reaches GitHub.",
+				"5. In a terminal, in the zones organization `imz`'s\n   repository, as one of its key operators, for each of the two apps:\n   `bedrock secret add`, `bedrock org secrets check` and `bedrock secret pin`\n   with `github-deployer-key` and `github-release-key`",
+				"Both keys live in Secret Manager in the zones\norganization `imz`'s boot project, which holds them for every\norganization and rotates them in one place",
+				"Nothing is added in this\n   repository: `2-env`'s outputs name each key's alias `current`\n   (`imz-boot-gbl-github-deployer-key`, `imz-boot-gbl-github-release-key`, in that organization's\n   boot project)",
 				"([GitHub prerequisites](https://github.com/cccteam/ccc/blob/master/bedrock/README.md#github-prerequisites))",
 			},
 		},
@@ -530,27 +531,28 @@ func TestGithubAppSteps(t *testing.T) {
 			},
 		},
 		{
-			name: "0-bootstrap: the infrastructure key added and pinned with bedrock secret, the budget beside the billing grants",
+			name: "0-bootstrap: the infrastructure app's id recorded here and its key the zones organization's, the budget beside the billing grants",
 			path: "0-bootstrap/README.md",
 			want: []string{
-				"   bedrock secret add github-infrastructure-key --from-file <the .pem file>\n   bedrock secret pin github-infrastructure-key <version>\n",
+				"4. In `placement.json`: the App ID as `githubInfrastructureAppId`, then\n   `bedrock org render`. The key itself lives in the zones organization\n   `imz`'s boot project (`keys` in `placement.json`), added,\n   proven and pinned there by its key operators",
 				"### 5. Billing grants and the budget, by a billing administrator\n",
 				"In the Billing console, as the same billing administrator, set the spend\nbudget",
-				"## The deployer and release GitHub Apps' keys\n",
-				"   bedrock secret add github-deployer-key --from-file <the .pem file>\n   bedrock secret pin github-deployer-key <version>\n",
-				"records it as `githubDeployerKeyVersion` in `placement.json`",
+				"## The GitHub Apps' keys\n",
+				"`imz-boot-gbl-core-c3d4`; `keys` in\n`placement.json`), one secret per app for every bedrock organization in the\nGoogle Cloud organization: `imz-boot-gbl-github-infrastructure-key`,\n`imz-boot-gbl-github-deployer-key` and `imz-boot-gbl-github-release-key`.",
+				"`bedrock secret\nadd` and `pin` refuse here and name that organization",
+				"the zones organization gives this\norganization's boot identity `secretPolicyAdmin` on the three secrets",
 			},
-			absent: []string{"gcloud secrets versions add", "github-deployer-key <env>"},
+			absent: []string{"gcloud secrets versions add", "github-deployer-key <env>", "bedrock secret pin github-", "## Rotating a GitHub App's key", "githubDeployerKeyVersion", "key container"},
 		},
 		{
-			name: "2-env: the deployer key is 0-bootstrap's, added and pinned there",
+			name: "2-env: the deployer key is the zones organization's, read by its alias",
 			path: "2-env/README.md",
 			want: []string{
 				"## The deployer and release GitHub Apps' keys\n",
-				"added with\n`bedrock secret add github-deployer-key` and pinned with `bedrock secret pin\ngithub-deployer-key <version>` (`0-bootstrap/README.md`, \"The deployer and\nrelease GitHub Apps' keys\")",
-				"This layer carries the pinned version's resource name to the\napplications' pipelines through its output `github_deployer_key_secret_version`\nand grants their identities its read: every application's deploy identity,\nand in tst its apply identity too.",
+				"its key is a secret in the zones organization\n`imz`'s boot project (`imz-boot-gbl-github-deployer-key`, in\n`imz-boot-gbl-core-c3d4`; `keys` in `placement.json`), held there for every\norganization and read by its alias `current`, which that organization pins\nand moves (`0-bootstrap/README.md`, \"The GitHub Apps' keys\")",
+				"This layer\ncarries the alias's resource name to the applications' pipelines through its\noutput `github_deployer_key_secret_version` and grants their identities its\nread: every application's deploy identity, and in tst its apply identity too,",
 			},
-			absent: []string{"gcloud secrets versions add", "github-deployer-key <env>", "github_deployer_key_secret_versions"},
+			absent: []string{"gcloud secrets versions add", "github-deployer-key <env>", "github_deployer_key_secret_versions", "pinned version", "bedrock secret pin github-", "key container"},
 		},
 	}
 	for _, tt := range tests {
@@ -595,24 +597,25 @@ func TestReleaseKeyGrants(t *testing.T) {
 			},
 		},
 		{
-			name: "the release identity reads the boot container, in tst alone",
+			name: "the release identity reads the zones organization's secret, in tst alone",
 			path: "2-env/github-apps.tf",
 			want: []string{
-				"resource \"google_secret_manager_secret_iam_member\" \"release_release_key\" {\n  for_each = local.is_tst ? local.apps : toset([])\n\n  project   = var.boot_project_id\n  secret_id = local.github_release_key_secret\n  role      = \"roles/secretmanager.secretAccessor\"\n  member    = google_service_account.release[each.key].member\n}\n",
+				"resource \"google_secret_manager_secret_iam_member\" \"release_release_key\" {\n  for_each = local.is_tst ? local.apps : toset([])\n\n  project   = local.keys_project\n  secret_id = local.github_release_key_secret\n  role      = \"roles/secretmanager.secretAccessor\"\n  member    = google_service_account.release[each.key].member\n}\n",
 			},
 			absent: []string{"resource \"google_secret_manager_secret\" \"github_release_key\""},
 		},
 		{
-			name: "locals.tf names the boot container, the app and the pin from placement.json",
+			name: "locals.tf names the zones organization's secret, the app and the alias",
 			path: "2-env/locals.tf",
 			want: []string{
 				"  github_release_app_id             = 5080645\n",
-				"  github_release_key_secret         = \"${local.prefix}-boot-gbl-github-release-key\"\n",
-				"  github_release_key_secret_version = null\n",
+				"  github_release_key_secret         = \"imz-boot-gbl-github-release-key\"\n",
+				"  github_release_key_secret_version = \"projects/imz-boot-gbl-core-c3d4/secrets/imz-boot-gbl-github-release-key/versions/current\"\n",
+				"  keys_project = \"imz-boot-gbl-core-c3d4\"\n",
 			},
 		},
 		{
-			name: "the outputs carry the identity, the App ID and the pinned version's resource name",
+			name: "the outputs carry the identity, the App ID and the alias's resource name",
 			path: "2-env/outputs.tf",
 			want: []string{
 				"      release_identity_email     = try(google_service_account.release[app].email, null)\n",
@@ -622,18 +625,19 @@ func TestReleaseKeyGrants(t *testing.T) {
 			},
 		},
 		{
-			name: "0-bootstrap makes the container and 1-org hands its administration to the environment layers",
+			name: "0-bootstrap makes no secret: the org identity gets the deployer and release secrets' policy administration, with the zones organization's role",
 			path: "0-bootstrap/github.tf",
 			want: []string{
-				"resource \"google_secret_manager_secret\" \"github_release_key\" {\n  project   = module.boot_project.project_id\n  secret_id = \"${var.prefix}-boot-gbl-github-release-key\"\n",
-				"resource \"google_secret_manager_secret_iam_member\" \"org_tofu_release_key\" {",
+				"resource \"google_secret_manager_secret_iam_member\" \"org_tofu_keys\" {\n  for_each = toset([\"deployer\", \"release\"])\n\n  project   = local.keys_project\n  secret_id = local.key_secrets[each.key]\n  role      = local.keys_policy_admin_role\n  member    = google_service_account.org_tofu.member\n}\n",
+				"  keys_policy_admin_role = \"projects/imz-boot-gbl-core-c3d4/roles/secretPolicyAdmin\"\n",
 			},
+			absent: []string{"resource \"google_secret_manager_secret\" ", "version_aliases", "roles/secretmanager.admin\"\n  member    = google_service_account.org_tofu"},
 		},
 		{
-			name: "1-org grants the environment layers the container's administration and their plan identities its read",
+			name: "1-org grants the environment layers the secret's policy administration and their plan identities its read",
 			path: "1-org/runners.tf",
 			want: []string{
-				"resource \"google_secret_manager_secret_iam_member\" \"environment_tofu_release_key\" {\n  for_each = local.environment_layers\n\n  project   = var.boot_project_id\n  secret_id = local.boot.github_release_key_secret\n",
+				"resource \"google_secret_manager_secret_iam_member\" \"environment_tofu_release_key\" {\n  for_each = local.environment_layers\n\n  project   = local.keys_project\n  secret_id = local.key_secrets.release\n  role      = local.keys_policy_admin_role\n  member    = google_service_account.tofu[each.key].member\n}\n",
 				"resource \"google_secret_manager_secret_iam_member\" \"environment_plan_release_key\" {",
 			},
 		},
@@ -681,24 +685,24 @@ func TestDeployerKeyGrants(t *testing.T) {
 			absent: []string{"resource \"google_secret_manager_secret\" \"github_deployer_key\"", "local.project_id", "var.github_deployer", "removed {"},
 		},
 		{
-			name: "the deploy identities and tst's apply identities read the boot container",
+			name: "the deploy identities and tst's apply identities read the zones organization's secret",
 			path: "2-env/github-apps.tf",
 			want: []string{
-				"resource \"google_secret_manager_secret_iam_member\" \"deploy_deployer_key\" {\n  for_each = local.apps\n\n  project   = var.boot_project_id\n  secret_id = local.github_deployer_key_secret\n  role      = \"roles/secretmanager.secretAccessor\"\n  member    = google_service_account.deploy[each.key].member\n}\n",
-				"resource \"google_secret_manager_secret_iam_member\" \"apply_deployer_key\" {\n  for_each = local.is_tst ? local.apps : toset([])\n\n  project   = var.boot_project_id\n  secret_id = local.github_deployer_key_secret\n  role      = \"roles/secretmanager.secretAccessor\"\n  member    = google_service_account.apply[each.key].member\n}\n",
+				"resource \"google_secret_manager_secret_iam_member\" \"deploy_deployer_key\" {\n  for_each = local.apps\n\n  project   = local.keys_project\n  secret_id = local.github_deployer_key_secret\n  role      = \"roles/secretmanager.secretAccessor\"\n  member    = google_service_account.deploy[each.key].member\n}\n",
+				"resource \"google_secret_manager_secret_iam_member\" \"apply_deployer_key\" {\n  for_each = local.is_tst ? local.apps : toset([])\n\n  project   = local.keys_project\n  secret_id = local.github_deployer_key_secret\n  role      = \"roles/secretmanager.secretAccessor\"\n  member    = google_service_account.apply[each.key].member\n}\n",
 			},
 		},
 		{
-			name: "locals.tf names the boot container and carries the pin from placement.json",
+			name: "locals.tf names the zones organization's secret and its alias",
 			path: "2-env/locals.tf",
 			want: []string{
-				"  github_deployer_key_secret         = \"${local.prefix}-boot-gbl-github-deployer-key\"\n",
-				"  github_deployer_key_secret_version = \"projects/imp-boot-gbl-core-a1b2/secrets/imp-boot-gbl-github-deployer-key/versions/1\"\n",
+				"  github_deployer_key_secret         = \"imz-boot-gbl-github-deployer-key\"\n",
+				"  github_deployer_key_secret_version = \"projects/imz-boot-gbl-core-c3d4/secrets/imz-boot-gbl-github-deployer-key/versions/current\"\n",
 			},
 			absent: []string{"var.github_deployer_app_id", "var.github_deployer_key_secret_versions"},
 		},
 		{
-			name: "the outputs carry the App ID and the pinned version's resource name",
+			name: "the outputs carry the App ID and the alias's resource name",
 			path: "2-env/outputs.tf",
 			want: []string{
 				"output \"github_deployer_app_id\" {",
@@ -1775,12 +1779,12 @@ func TestViewPhrases(t *testing.T) {
 			want: "acme-boot-usc-github acme-boot-usc-infrastructure-repo acme-boot-usc-layers-plan acme-boot-usc-layers-apply",
 		},
 		{
-			name:      "the boot project, the repository and the two key containers",
-			placement: Placement{Prefix: "acme", GithubOrganization: "acme", SourceRepo: "acme-infrastructure", Projects: map[string]string{"boot": "acme-boot-gbl-core-1a2b"}},
+			name:      "the boot project, the repository and two of the zones organization's key secrets",
+			placement: Placement{Prefix: "acme", GithubOrganization: "acme", SourceRepo: "acme-infrastructure", Projects: map[string]string{"boot": "acme-boot-gbl-core-1a2b"}, Keys: &KeysPlace{Organization: "zo", Project: "zo-boot-gbl-core-9f8e"}},
 			check: func(v *view) string {
 				return v.BootProject() + " " + v.InfrastructureRepository() + " " + v.InfrastructureKeySecret() + " " + v.DeployerKeySecret()
 			},
-			want: "acme-boot-gbl-core-1a2b acme/acme-infrastructure acme-boot-gbl-github-infrastructure-key acme-boot-gbl-github-deployer-key",
+			want: "acme-boot-gbl-core-1a2b acme/acme-infrastructure zo-boot-gbl-github-infrastructure-key zo-boot-gbl-github-deployer-key",
 		},
 		{name: "the boot project before the seed", placement: Placement{Prefix: "acme"}, check: func(v *view) string { return v.BootProject() }, want: "acme-boot-gbl-core-REPLACEME"},
 		{
@@ -1796,12 +1800,12 @@ func TestViewPhrases(t *testing.T) {
 			placement: Placement{
 				Prefix: "acme", Projects: map[string]string{"boot": "acme-boot-gbl-core-1a2b"}, ProjectNumbers: map[string]string{"boot": "42", "tst": "43", "prd": "45"},
 				CloudBuildInstallationID: "12345678", CloudBuildTokenSecretVersion: "projects/acme-boot-gbl-core-1a2b/locations/us-central1/secrets/github-token/versions/1",
-				GithubDeployerAppID: "5080800", GithubDeployerKeyVersion: "3",
+				GithubDeployerAppID: "5080800", Keys: &KeysPlace{Organization: "zo", Project: "zo-boot-gbl-core-9f8e"},
 			},
 			check: func(v *view) string {
 				return v.CloudBuildInstallationIDHCL() + " " + v.CloudBuildTokenSecretVersionHCL() + " " + v.GithubDeployerAppIDHCL() + " " + v.DeployerKeyVersionNameHCL() + " " + v.EnvironmentProjectNumbersHCL()
 			},
-			want: "12345678 \"projects/acme-boot-gbl-core-1a2b/locations/us-central1/secrets/github-token/versions/1\" 5080800 \"projects/acme-boot-gbl-core-1a2b/secrets/acme-boot-gbl-github-deployer-key/versions/3\" {\n    tst = \"43\"\n    prd = \"45\"\n  }",
+			want: "12345678 \"projects/acme-boot-gbl-core-1a2b/locations/us-central1/secrets/github-token/versions/1\" 5080800 \"projects/zo-boot-gbl-core-9f8e/secrets/zo-boot-gbl-github-deployer-key/versions/current\" {\n    tst = \"43\"\n    prd = \"45\"\n  }",
 		},
 		{
 			name:      "identities, backends and hosts under the recorded projects, REPLACEME for the rest",
@@ -2774,7 +2778,7 @@ func TestRunnerIdentities(t *testing.T) {
 				"resource \"google_project_iam_member\" \"runner_builds\" {\n  for_each = local.runners\n\n  project = module.boot_project.project_id\n  role    = \"roles/cloudbuild.builds.viewer\"\n  member  = each.value.member\n}\n",
 				"resource \"google_service_account_iam_member\" \"runner_agent_user\" {\n  for_each = local.runners\n\n  service_account_id = each.value.name\n  role               = \"roles/iam.serviceAccountUser\"\n  member             = \"serviceAccount:service-${module.boot_project.project_number}@gcp-sa-cloudbuild.iam.gserviceaccount.com\"\n",
 				"resource \"google_cloudbuildv2_connection_iam_member\" \"runner_read_token\" {\n  for_each = local.connected ? local.runners : {}\n\n  project  = module.boot_project.project_id\n  location = google_cloudbuildv2_connection.github[0].location\n  name     = google_cloudbuildv2_connection.github[0].name\n  role     = \"roles/cloudbuild.readTokenAccessor\"\n  member   = each.value.member\n}\n",
-				"resource \"google_secret_manager_secret_iam_member\" \"runner_keys\" {\n  for_each = local.runner_keys\n\n  project   = module.boot_project.project_id\n  secret_id = local.key_containers[each.value.key]\n  role      = \"roles/secretmanager.secretAccessor\"\n  member    = local.runners[each.value.runner].member\n}\n",
+				"resource \"google_secret_manager_secret_iam_member\" \"runner_keys\" {\n  for_each = local.runner_keys\n\n  project   = local.keys_project\n  secret_id = local.key_secrets[each.value.key]\n  role      = \"roles/secretmanager.secretAccessor\"\n  member    = local.runners[each.value.runner].member\n}\n",
 				"resource \"google_storage_bucket_iam_member\" \"applier_markers\" {\n  bucket = var.state_bucket\n  role   = \"roles/storage.objectUser\"\n  member = google_service_account.applier.member\n\n  condition {\n    title       = \"${var.prefix}-org-gbl-applied-markers\"\n    description = \"The markers of the layers' last successful applies.\"\n    expression  = \"resource.name.startsWith(\\\"${local.state_bucket_objects}/applied/\\\")\"\n  }\n}\n",
 			},
 		},
@@ -2801,10 +2805,10 @@ func TestRunnerIdentities(t *testing.T) {
 			},
 		},
 		{
-			name: "the org plan identity reads the infrastructure app's key, granted where the key lives",
+			name: "the org plan identity reads the infrastructure app's key, granted where the key lives, in the zones organization's project",
 			path: "0-bootstrap/github.tf",
 			want: []string{
-				"resource \"google_secret_manager_secret_iam_member\" \"org_plan_infrastructure_key\" {\n  project   = module.boot_project.project_id\n  secret_id = google_secret_manager_secret.github_infrastructure_key.secret_id\n  role      = \"roles/secretmanager.secretAccessor\"\n  member    = google_service_account.boot_plan[\"org\"].member\n}\n",
+				"resource \"google_secret_manager_secret_iam_member\" \"org_plan_infrastructure_key\" {\n  project   = local.keys_project\n  secret_id = local.key_secrets.infrastructure\n  role      = \"roles/secretmanager.secretAccessor\"\n  member    = google_service_account.boot_plan[\"org\"].member\n}\n",
 			},
 		},
 		{
@@ -2818,13 +2822,15 @@ func TestRunnerIdentities(t *testing.T) {
 			absent: []string{"workloadIdentityPoolViewer"},
 		},
 		{
-			name: "the two key containers, administered by the org identity, and no workload identity pool",
+			name: "the zones organization's three key secrets, named; the org identity's policy administration of two; no workload identity pool",
 			path: "0-bootstrap/github.tf",
 			want: []string{
-				`secret_id = "${var.prefix}-boot-gbl-github-infrastructure-key"`,
-				`secret_id = "${var.prefix}-boot-gbl-github-deployer-key"`,
-				"resource \"google_secret_manager_secret_iam_member\" \"org_tofu_infrastructure_key\" {\n  project   = module.boot_project.project_id\n  secret_id = google_secret_manager_secret.github_infrastructure_key.secret_id\n  role      = \"roles/secretmanager.admin\"\n  member    = google_service_account.org_tofu.member\n}\n",
-				"resource \"google_secret_manager_secret_iam_member\" \"org_tofu_deployer_key\" {\n  project   = module.boot_project.project_id\n  secret_id = google_secret_manager_secret.github_deployer_key.secret_id\n  role      = \"roles/secretmanager.admin\"\n  member    = google_service_account.org_tofu.member\n}\n",
+				`    infrastructure = "imz-boot-gbl-github-infrastructure-key"`,
+				`    deployer       = "imz-boot-gbl-github-deployer-key"`,
+				`    release        = "imz-boot-gbl-github-release-key"`,
+				`  keys_project = "imz-boot-gbl-core-c3d4"`,
+				"resource \"google_secret_manager_secret_iam_member\" \"org_tofu_keys\" {\n  for_each = toset([\"deployer\", \"release\"])\n\n  project   = local.keys_project\n  secret_id = local.key_secrets[each.key]\n  role      = local.keys_policy_admin_role\n  member    = google_service_account.org_tofu.member\n}\n",
+				"resource \"google_secret_manager_secret_iam_member\" \"boot_plan_keys\" {\n  for_each = local.boot_plan_key_reads\n\n  project   = local.keys_project\n  secret_id = local.key_secrets[each.value.key]\n  role      = \"roles/secretmanager.viewer\"\n  member    = google_service_account.boot_plan[each.value.plan].member\n}\n",
 			},
 			absent: []string{"resource \"google_iam_workload_identity_pool\"", "workloadIdentityUser", "attribute.purpose", "token.actions.githubusercontent.com"},
 		},
@@ -2834,24 +2840,23 @@ func TestRunnerIdentities(t *testing.T) {
 			want: []string{
 				"resource \"google_service_account_iam_member\" \"tofu_applier\" {\n  for_each = local.layers\n\n  service_account_id = google_service_account.tofu[each.key].name\n  role               = \"roles/iam.serviceAccountTokenCreator\"\n  member             = local.boot.applier_member\n}\n",
 				"resource \"google_service_account_iam_member\" \"plan_planner\" {\n  for_each = local.layers\n\n  service_account_id = google_service_account.plan[each.key].name\n  role               = \"roles/iam.serviceAccountTokenCreator\"\n  member             = local.boot.planner_member\n}\n",
-				"resource \"google_secret_manager_secret_iam_member\" \"environment_tofu_deployer_key\" {\n  for_each = local.environment_layers\n\n  project   = var.boot_project_id\n  secret_id = local.boot.github_deployer_key_secret\n  role      = google_project_iam_custom_role.secret_container_admin[\"boot\"].id\n  member    = google_service_account.tofu[each.key].member\n}\n",
-				"resource \"google_secret_manager_secret_iam_member\" \"environment_plan_deployer_key\" {\n  for_each = local.environment_layers\n\n  project   = var.boot_project_id\n  secret_id = local.boot.github_deployer_key_secret\n  role      = \"roles/secretmanager.viewer\"\n  member    = google_service_account.plan[each.key].member\n}\n",
+				"resource \"google_secret_manager_secret_iam_member\" \"environment_tofu_deployer_key\" {\n  for_each = local.environment_layers\n\n  project   = local.keys_project\n  secret_id = local.key_secrets.deployer\n  role      = local.keys_policy_admin_role\n  member    = google_service_account.tofu[each.key].member\n}\n",
+				"resource \"google_secret_manager_secret_iam_member\" \"environment_plan_deployer_key\" {\n  for_each = local.environment_layers\n\n  project   = local.keys_project\n  secret_id = local.key_secrets.deployer\n  role      = \"roles/secretmanager.viewer\"\n  member    = google_service_account.plan[each.key].member\n}\n",
 			},
 			absent: []string{"workflow_plan", "workflow_apply", "workloadIdentityUser", "github_pool_name", "resource \"google_service_account\" \"boot_plan\"", "var.boot_plan_roles", "local.boot_plans"},
 		},
 		{
-			name: "1-org reads 0-bootstrap's state for the runners and the containers",
+			name: "1-org reads 0-bootstrap's state for the runners",
 			path: "1-org/initialize.tf",
 			want: []string{"data \"terraform_remote_state\" \"boot\" {\n  backend = \"gcs\"\n  config = {\n    bucket = var.state_bucket\n    prefix = \"0-bootstrap\"\n  }\n}\n"},
 		},
 		{
-			name: "0-bootstrap publishes the runners and the containers for 1-org",
+			name: "0-bootstrap publishes the runners for 1-org",
 			path: "0-bootstrap/outputs.tf",
 			want: []string{
 				"output \"planner_member\" {\n", "  value       = google_service_account.planner.member\n",
 				"output \"applier_member\" {\n", "  value       = google_service_account.applier.member\n",
 				"output \"boot_plan_service_accounts\" {\n", "  value       = { for k, sa in google_service_account.boot_plan : k => sa.email }\n",
-				"output \"github_deployer_key_secret\" {\n", "  value       = google_secret_manager_secret.github_deployer_key.secret_id\n",
 				"output \"connection_name\" {\n", "  value       = one(google_cloudbuildv2_connection.github[*].name)\n",
 				"output \"plan_trigger_name\" {\n", "  value       = one(google_cloudbuild_trigger.plan[*].name)\n",
 				"output \"apply_trigger_name\" {\n", "  value       = one(google_cloudbuild_trigger.apply[*].name)\n",

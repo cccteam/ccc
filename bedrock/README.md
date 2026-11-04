@@ -1478,36 +1478,39 @@ declaration and the name together in the next release. `check` lists each retire
 refuses a name nothing declares; a build secret retires the same way by its name. The stack
 README says the rule in full ("Retiring a secret or a file store").
 
-In the organization's infrastructure repository (the one whose `placement.json` at the root
-names the organization, `organizationId`), the same two commands take one of the
-organization's secrets, the private keys of its GitHub Apps, in place of an environment and
-a variable:
+In the zones organization's infrastructure repository (the one whose `placement.json` at
+the root names the organization, `organizationId`, with `"kind": "zones"`), the same two
+commands take one of the three secrets that organization holds for every organization in
+the Google Cloud organization, the private keys of the GitHub Apps, in place of an
+environment and a variable, with `org secrets check` between them:
 
 ```sh
-bedrock secret add github-infrastructure-key --from-file infrastructure.pem   # the boot project's container
-bedrock secret pin github-infrastructure-key 2                                # placement.json, then org render
-bedrock secret add github-deployer-key --from-file deployer.pem               # the boot project's other container
-bedrock secret pin github-deployer-key 1                                      # placement.json, then org render
+bedrock secret add github-deployer-key --from-file deployer.pem   # a new version of the secret in the boot project
+bedrock org secrets check github-deployer-key 2                   # GitHub accepts a token signed with it as the app
+bedrock secret pin github-deployer-key 2                          # placement.json, then org render: the alias
 ```
 
 `github-infrastructure-key` is the key of the infrastructure GitHub App, the app the
-triggers' runs act as when 1-org configures the applications' repositories. It lives in
-0-bootstrap's container `<prefix>-boot-gbl-github-infrastructure-key` in the boot project,
-and its pin is `githubInfrastructureKeyVersion` in `placement.json`: `pin` writes it and
-runs `org render`; from the merge on, a run of the triggers that plans or applies 1-org
-mints its token from that version. `github-deployer-key` is the key of the deployer GitHub
-App, the app the plan trigger's run posts each layer's plan as and the app every
-application's pipeline talks back on a pull request as. It lives in 0-bootstrap's other
-container, `<prefix>-boot-gbl-github-deployer-key`, in the boot project too, and its pin is
-`githubDeployerKeyVersion` in `placement.json`: `pin` writes it and runs `org render`, which
-carries the version's resource name into 2-env's output
-`github_deployer_key_secret_version`, from which the application stacks pass it to their
-pipelines. Both are pinned by number, never `latest`, after Secret Manager confirms the
-version is enabled. `add` refuses a project that lacks the container rather than creating
-it, because the container is 0-bootstrap's own and its apply makes it. The project comes
-from `placement.json` (`projects.boot`); `--project` and `--container` override. Neither
-takes an environment. In an application's repository these names are refused, and in the
-infrastructure repository an application's `[env] [VARIABLE]` is.
+triggers' runs act as when 1-org configures the applications' repositories (1-dns rules
+the zones organization's repository with it); `github-deployer-key` the key of the
+deployer GitHub App, the app the plan trigger's run posts each layer's plan as and the app
+every application's pipeline talks back on a pull request as; `github-release-key` the key
+of the release GitHub App, which each application's release trigger cuts the releases as.
+Each lives in one secret in the zones organization's boot project
+(`<prefix>-boot-gbl-github-<app>-key`), and every reader in every organization names the
+secret's alias `current`, never a number and never `latest`: `pin` writes the version the
+alias is to point at in `placement.json` (`githubInfrastructureKeyVersion`,
+`githubDeployerKeyVersion`, `githubReleaseKeyVersion`), after Secret Manager confirms the
+version is enabled, and runs `org render`, which writes the alias into 0-bootstrap's
+`github.tf`; the pull request's apply moves it, and every reader switches at once. `add`
+refuses a project that lacks the secret rather than creating it, because the secret is
+0-bootstrap's own and its apply makes it. The project comes from `placement.json`
+(`projects.boot`); `--project` and `--container` override. Neither takes an environment.
+A hosting organization's repository refuses both, naming the zones organization its
+placement records (`keys`); in an application's repository these names are refused, and in
+an infrastructure repository an application's `[env] [VARIABLE]` is. The rotation, in one
+place for every organization, is the zones organization's `0-bootstrap/README.md`,
+"Rotating a GitHub App's key".
 
 ## bedrock migration check
 
@@ -2404,11 +2407,18 @@ project (`<prefix>-boot-gbl-dns-<domain with hyphens>`, DNSSEC on, kept by
 record set per label with an hour's time to live, and rules this repository's default
 branch with the GitHub provider (the infrastructure app's token in a run of the triggers,
 as 1-org does in a hosting organization). Its placement carries the fields every
-organization has, one region (the boot project's) and `domains`: each domain with the
+organization has, one region (the boot project's), `domains`: each domain with the
 labels handed onward (`labels.<label>`: the hosting organization's prefix and the four
 name servers of the application's zone there, as `bedrock domain check` prints them in
 that organization's repository; a label may carry a dot, as in `east.acme`, and none is
-above or below another). A domain is a bare lowercase name, not the organization's own
+above or below another), and the keys' two lists: `keyOperators`, the IAM members
+(`user:`, `group:`) who add a key's version and read it back for the check, and
+`hostingOrganizations`, each hosting organization's prefix and boot project, whose boot
+identity gets the three key secrets' policy administration (`secretPolicyAdmin`, a role of
+the zones boot project: a secret's IAM policy and nothing else), listed once that
+organization's seed has made the identity and before its 0-bootstrap first applies. The
+three GitHub Apps' keys live in its boot project for every organization in the Google
+Cloud organization, and its placement pins each alias (`bedrock secret`, above). A domain is a bare lowercase name, not the organization's own
 domain (whose mail is on it; a label of it is fine) nor above it, none under another
 listed, and at most 46 characters, so the zone's name fits. The placement refuses the
 fields of the hosting model (`appsDomain`, `spanner.config`, `teamGroups`, `applications`
@@ -2453,12 +2463,12 @@ and the rendered root README ("How the layers are applied", "The two GitHub Apps
    console, as the same administrator: the spend budget, which nothing renders.
 7. In a terminal: the first apply of 1-org, then its projects in the placement and
    `org render`. From here on the apply trigger applies every layer.
-8. In a terminal, in this repository: the infrastructure app's key, `bedrock secret add
-   github-infrastructure-key` and `bedrock secret pin github-infrastructure-key
-   <version>`, with its App ID in the placement; and the deployer app's key, `bedrock
-   secret add github-deployer-key` and `bedrock secret pin github-deployer-key
-   <version>`, with its App ID in the placement (`githubDeployerAppId`). Both containers
-   are 0-bootstrap's, in the boot project.
+8. In `placement.json`: the infrastructure, deployer and release apps' App IDs
+   (`githubInfrastructureAppId`, `githubDeployerAppId`, `githubReleaseAppId`), then `org
+   render`. Their keys are the zones organization's, held in its boot project for every
+   organization (`keys` in the placement names it) and read through each secret's alias
+   `current`; they are added, checked and pinned there (`bedrock secret add`, `bedrock org
+   secrets check`, `bedrock secret pin`), never here.
 9. In each environment project's Google Cloud console: the consent screen, with the
    audience Internal, before the first application's OAuth client is made there.
 10. In the Workspace Admin console, for each application before its first sign-in: its
@@ -2520,6 +2530,15 @@ billing account; everything else the seed and the first applies need is the acco
 folder's creator, or granted to it on the folder by the seed. It prints one line per role,
 `holds` or `missing` with the permissions tested, and exits 1 when a role is missing, saying
 who grants it where, or when it could not check (no credentials, or an API that refused).
+
+`org secrets check` runs in the zones organization's repository, which holds the GitHub
+Apps' keys: given a secret's name and a version's number, it reads the version with the
+run's Google credentials, signs a token with it as the app `placement.json` records and
+asks GitHub for the app itself, which GitHub answers for the app's own key alone. It prints
+the app GitHub answered with, the version the alias `current` is pinned to and the pin to
+make; a version that is not the app's key, or an App ID that is another app's, is refused
+with GitHub's answer, and nothing moves either way. A hosting organization's repository
+refuses it, naming the zones organization.
 
 `org render` rewrites the owned files from the placement, seeds the absent ones, and says
 what the triggers still lack in the placement; `org check` compares the owned files and
@@ -2639,9 +2658,10 @@ Build triggers"). The placement names what the runs work with: every project und
 environment projects' numbers under `projectNumbers` (their Cloud Build service agents'
 read of the token), the Cloud Build GitHub authorization (`cloudBuildInstallationId`,
 `cloudBuildTokenSecretVersion`), the infrastructure GitHub App whose token 1-org's GitHub
-provider takes (`githubInfrastructureAppId`, and `githubInfrastructureKeyVersion`, the
-pinned version of its key in the boot project's container), the deployer app the plans are
-posted as (`githubDeployerAppId`, `githubDeployerKeyVersion`) and the bedrock pin;
+provider takes (`githubInfrastructureAppId`), the deployer app the plans are posted as
+(`githubDeployerAppId`), the zones organization whose boot project holds the apps' keys
+(`keys`: its prefix and that project, where every reader names each secret's alias
+`current`) and the bedrock pin;
 `0-bootstrap/README.md` has the person's steps. A run of the triggers that plans or
 applies a layer whose project the placement does not record yet (REPLACEME) stops and says
 which ids to record; one that plans or applies 1-org without the infrastructure app
@@ -2894,12 +2914,11 @@ organization's GitHub plan, so its plan must include all four.
   rerun or a rollback in a GitHub Environment per environment, each deploying from the
   default branch alone. No Environment requires reviewers: that rule needs GitHub
   Enterprise on a private repository, and the approval is Cloud Build's instead.
-- **Organization secrets that reach private repositories.** The release app's
-  `RELEASE_APP_ID` and `RELEASE_APP_PRIVATE_KEY` are set once for the organization,
-  visible to all repositories, and each application's release workflow makes the app's
-  token from them. Writing an organization secret takes an organization owner signed in,
-  or an owner's token carrying the organization-administration scope; a token without
-  that scope is refused.
+- **One GitHub organization per zones organization.** The three GitHub Apps are
+  installed on the whole GitHub organization, and their private keys live in Secret
+  Manager in the zones organization's boot project, one secret per app for every bedrock
+  organization in the Google Cloud organization, read through an alias and rotated in one
+  place; no key is a GitHub secret, and no repository secret carries one.
 - **GitHub Apps owned by the organization.** The release app (Contents, Issues and Pull
   requests, read and write), the deployer app (Checks, Deployments, Issues and Pull
   requests, read and write) and the infrastructure app (`0-bootstrap/README.md`:

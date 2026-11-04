@@ -101,8 +101,8 @@ resource "google_storage_bucket_iam_member" "state_own" {
 
 {{- if not .Zones}}
 
-# 1-org reads this layer's state: the runner identities it grants on, the
-# policy role it grants, the key containers it grants on.
+# 1-org reads this layer's state: the runner identities it grants on and the
+# policy role it grants.
 resource "google_storage_bucket_iam_member" "org_tofu_state_upstream" {
   bucket = var.state_bucket
   role   = "roles/storage.objectViewer"

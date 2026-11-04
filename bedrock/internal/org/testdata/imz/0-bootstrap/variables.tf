@@ -29,7 +29,7 @@ variable "boot_plan_roles" {
     "roles/iam.serviceAccountViewer",        # the identities in every project
     "roles/orgpolicy.policyViewer",          # the folder-scoped constraints
     "roles/resourcemanager.tagViewer",       # the public-invoker tag keys in the environment projects
-    "roles/secretmanager.viewer",            # the key container's metadata, never a version's payload
+    "roles/secretmanager.viewer",            # a secret's metadata in the boot project (the token secret), never a version's payload
     "roles/serviceusage.serviceUsageViewer", # each project's enabled APIs
   ]
 }

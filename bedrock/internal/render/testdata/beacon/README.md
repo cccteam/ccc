@@ -221,10 +221,10 @@ from `2-env`'s state.
   makes the tag and the GitHub Release of a release pull request the push
   merged, then opens or updates the release pull request from the commits
   since the last release. The step mints the app's token from its key's
-  pinned version in Secret Manager (`2-env`'s output; the key never reaches
-  GitHub), and the trigger exists once that version is pinned
-  (`bedrock secret pin github-release-key`, in the organization's
-  repository). The tag then fires the version trigger in every environment.
+  alias in Secret Manager (`2-env`'s output; the key never reaches GitHub),
+  which the zones organization that holds the keys pins (`bedrock secret pin
+  github-release-key`, in its repository). The tag then fires the version
+  trigger in every environment.
 - `imp-tst-<primary region code>-beacon-sweep`, tst only: the sweep, run
   hourly by the Cloud Scheduler job of the same name as the apply identity.
   The trigger-held steps are this file's text, so they change with the stack:

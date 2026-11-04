@@ -105,7 +105,7 @@ func TestRunRelease(t *testing.T) {
 		{
 			name:    "the step's variables are required",
 			req:     &ReleaseRequest{AppID: deployerAppID, RepoFullName: "acme/quill", Branch: "master"},
-			wantErr: "RELEASE_KEY_SECRET is not set: the release trigger's step passes the release app, its key's pinned version, the repository and the pushed branch to the command",
+			wantErr: "RELEASE_KEY_SECRET is not set: the release trigger's step passes the release app, its key, the repository and the pushed branch to the command",
 		},
 		{
 			name:    "a repository that is not owner/name is refused",

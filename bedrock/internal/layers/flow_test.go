@@ -20,6 +20,8 @@ import (
 	"testing"
 
 	"github.com/go-playground/errors/v5"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/cccteam/ccc/bedrock/internal/deploy"
 	"github.com/cccteam/ccc/bedrock/internal/github"
@@ -40,8 +42,8 @@ const (
 	infraAppID       = "5080700"
 	installation     = int64(77)
 	bucket           = "imp-boot-gbl-state-a1b2"
-	deployerVersion  = "projects/imp-boot-gbl-core-a1b2/secrets/imp-boot-gbl-github-deployer-key/versions/1"
-	infraVersion     = "projects/imp-boot-gbl-core-a1b2/secrets/imp-boot-gbl-github-infrastructure-key/versions/1"
+	deployerVersion  = "projects/imz-boot-gbl-core-c3d4/secrets/imz-boot-gbl-github-deployer-key/versions/current"
+	infraVersion     = "projects/imz-boot-gbl-core-c3d4/secrets/imz-boot-gbl-github-infrastructure-key/versions/current"
 )
 
 // appKey is the RSA key the apps' tokens are minted with in tests, made once.
@@ -226,10 +228,12 @@ func (s *fakeSecrets) open(context.Context) (deploy.Secrets, error) {
 	return s, nil
 }
 
+// Access answers the payload, or NotFound as Secret Manager does for an alias that names
+// no version.
 func (s *fakeSecrets) Access(_ context.Context, version string) ([]byte, error) {
 	payload, ok := s.payloads[version]
 	if !ok {
-		return nil, errors.Newf("NotFound: %s", version)
+		return nil, errors.Wrap(status.Errorf(codes.NotFound, "Secret Version [%s] not found", version), "secretmanager.Client.AccessSecretVersion()")
 	}
 
 	return []byte(payload), nil
@@ -546,9 +550,11 @@ func TestPlanRefusals(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name    string
-		subs    func(subs map[string]string)
-		mutate  func(p *org.Placement)
+		name   string
+		subs   func(subs map[string]string)
+		mutate func(p *org.Placement)
+		// secrets replaces the payloads Secret Manager answers, when set.
+		secrets map[string]string
 		changed []string
 		runs    map[string]tofuRun
 		wantErr string
@@ -595,10 +601,18 @@ func TestPlanRefusals(t *testing.T) {
 		},
 		{
 			name:    "the deployer app not recorded: the plans stay in the log",
-			mutate:  func(p *org.Placement) { p.GithubDeployerAppID, p.GithubDeployerKeyVersion = "", "" },
+			mutate:  func(p *org.Placement) { p.GithubDeployerAppID = "" },
 			changed: []string{"2-shr/registry.tf"},
 			runs:    map[string]tofuRun{"2-shr": {text: succeededPlan}},
-			wantOut: []string{"placement.json records no githubDeployerAppId or githubDeployerKeyVersion (0-bootstrap/README.md, \"The deployer GitHub App's key\"): the plans are in this log alone until both are recorded.\n"},
+			wantOut: []string{"placement.json records no githubDeployerAppId, or no project holding the keys (0-bootstrap/README.md, \"The GitHub Apps' keys\"): the plans are in this log alone until both are recorded.\n"},
+			absent:  []string{"Posted the plans"},
+		},
+		{
+			name:    "the deployer key's alias names no version yet: the plans stay in the log",
+			secrets: map[string]string{infraVersion: "the infrastructure key"},
+			changed: []string{"2-shr/registry.tf"},
+			runs:    map[string]tofuRun{"2-shr": {text: succeededPlan}},
+			wantOut: []string{"the alias current of " + deployerVersion + " names no version: the zones organization that holds the keys pins one (bedrock secret pin github-deployer-key <version> there) and its apply sets the alias; the plans are in this log alone until then.\n"},
 			absent:  []string{"Posted the plans"},
 		},
 		{
@@ -639,6 +653,9 @@ func TestPlanRefusals(t *testing.T) {
 			if tt.changed != nil {
 				f.repo.Changed[headSHA] = tt.changed
 			}
+			if tt.secrets != nil {
+				f.secrets = &fakeSecrets{payloads: tt.secrets}
+			}
 			mutate := tt.mutate
 			if mutate == nil {
 				mutate = func(*org.Placement) {}
@@ -678,11 +695,11 @@ func TestPlanOrgToken(t *testing.T) {
 		mutate  func(p *org.Placement)
 		wantErr string
 	}{
-		{name: "the token minted", mutate: func(p *org.Placement) { p.GithubDeployerAppID, p.GithubDeployerKeyVersion = "", "" }},
+		{name: "the token minted", mutate: func(p *org.Placement) { p.GithubDeployerAppID = "" }},
 		{
 			name:    "the app not recorded",
-			mutate:  func(p *org.Placement) { p.GithubInfrastructureAppID, p.GithubInfrastructureKeyVersion = "", "" },
-			wantErr: "1-org's GitHub provider needs the infrastructure GitHub App (0-bootstrap/README.md, \"The infrastructure GitHub App\"): create it, record its App ID as githubInfrastructureAppId in placement.json, add its key to imp-boot-gbl-github-infrastructure-key in the boot project with bedrock secret add github-infrastructure-key, and pin the version with bedrock secret pin github-infrastructure-key <version>, which records githubInfrastructureKeyVersion and runs bedrock org render",
+			mutate:  func(p *org.Placement) { p.GithubInfrastructureAppID = "" },
+			wantErr: "1-org's GitHub provider needs the infrastructure GitHub App (0-bootstrap/README.md, \"The infrastructure GitHub App\"): create it and record its App ID as githubInfrastructureAppId in placement.json; its key is the alias current of imz-boot-gbl-github-infrastructure-key in the zones organization's boot project, added and pinned there (bedrock secret add github-infrastructure-key, bedrock secret pin github-infrastructure-key <version>)",
 		},
 	}
 	for _, tt := range tests {

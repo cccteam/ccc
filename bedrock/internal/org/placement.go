@@ -45,6 +45,9 @@ var (
 	repositoryRE    = regexp.MustCompile(`^[A-Za-z0-9_.-]{1,100}$`)
 	labelRE         = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,62}$`)
 	projectNumberRE = regexp.MustCompile(`^\d+$`)
+	// projectIDRE is a project id: 6 to 30 lowercase letters, digits and hyphens,
+	// starting with a letter and not ending with a hyphen.
+	projectIDRE = regexp.MustCompile(`^[a-z][a-z0-9-]{4,28}[a-z0-9]$`)
 	// groupAddressRE is a group's address as the Workspace Admin console names it: a
 	// mailbox at a domain, with no member prefix in front.
 	groupAddressRE = regexp.MustCompile(`^[^@\s:/]+@[^@\s:/]+\.[^@\s:/]+$`)
@@ -169,9 +172,11 @@ type Placement struct {
 	// applies 1-org refuses until it is recorded.
 	GithubInfrastructureAppID string `json:"githubInfrastructureAppId,omitempty"`
 	// GithubInfrastructureKeyVersion is the number of the Secret Manager version holding
-	// the infrastructure app's private key, in the container 0-bootstrap creates in the
-	// boot project (<prefix>-boot-gbl-github-infrastructure-key): pinned, never latest.
-	// Empty until a version was added.
+	// the infrastructure app's private key, in the secret a zones organization holds in
+	// its boot project (<prefix>-boot-gbl-github-infrastructure-key): the version its
+	// alias current points at, which 0-bootstrap's apply moves and every reader names,
+	// never latest. A zones organization's; a hosting organization records none (Keys).
+	// Empty until a version was pinned.
 	GithubInfrastructureKeyVersion string `json:"githubInfrastructureKeyVersion,omitempty"`
 	// GithubDeployerAppID is the App ID of the deployer GitHub App, which the
 	// applications' pipelines talk back on a pull request as and the plan trigger's run
@@ -179,16 +184,35 @@ type Placement struct {
 	// app exists; until then the plans are in the run's log alone.
 	GithubDeployerAppID string `json:"githubDeployerAppId,omitempty"`
 	// GithubDeployerKeyVersion is the number of the Secret Manager version holding the
-	// deployer app's private key, in the container 0-bootstrap creates in the boot
-	// project (<prefix>-boot-gbl-github-deployer-key): pinned, never latest. Empty until
-	// a version was added.
+	// deployer app's private key, in the secret a zones organization holds in its boot
+	// project (<prefix>-boot-gbl-github-deployer-key): the version its alias current
+	// points at. A zones organization's; empty until a version was pinned.
 	GithubDeployerKeyVersion string `json:"githubDeployerKeyVersion,omitempty"`
 	// GithubReleaseKeyVersion is the number of the Secret Manager version holding the
-	// release GitHub App's private key, in the container 0-bootstrap creates in the boot
-	// project (<prefix>-boot-gbl-github-release-key): pinned, never latest. Empty until
-	// pinned; 2-env then carries the version to each application's release trigger, which
-	// mints the token release-please cuts the releases with.
+	// release GitHub App's private key, in the secret a zones organization holds in its
+	// boot project (<prefix>-boot-gbl-github-release-key): the version its alias current
+	// points at, from which each application's release trigger in the hosting
+	// organizations mints the token release-please cuts the releases with. A zones
+	// organization's; empty until a version was pinned.
 	GithubReleaseKeyVersion string `json:"githubReleaseKeyVersion,omitempty"`
+	// Keys is where a hosting organization's pipelines read the GitHub Apps' private
+	// keys: the zones organization that holds them for every organization in the Google
+	// Cloud organization, by its prefix (keys.organization), and its boot project
+	// (keys.project), where the three secrets live. Every reader names the alias current
+	// of a secret, which that organization's placement pins; nothing about the keys is
+	// recorded here. A zones organization has none: the keys are its own.
+	Keys *KeysPlace `json:"keys,omitempty"`
+	// KeyOperators are the members (user:..., group:...) a zones organization grants the
+	// adding of a version of a GitHub App's key, and the read that proves one, for the
+	// rotation (0-bootstrap/README.md, "Rotating a GitHub App's key"). None for a hosting
+	// organization.
+	KeyOperators []string `json:"keyOperators,omitempty"`
+	// HostingOrganizations are the hosting organizations that read a zones
+	// organization's keys, each by its prefix and its boot project: 0-bootstrap grants
+	// each one's boot identity the administration of the three secrets' policies
+	// (secretPolicyAdmin), which that organization's layers hand down to the identities
+	// that read a key. None for a hosting organization.
+	HostingOrganizations []HostingOrganization `json:"hostingOrganizations,omitempty"`
 	// CloudBuildInstallationID is the installation id of the Google Cloud Build GitHub
 	// App on the GitHub organization (digits, from the installation's settings page),
 	// which every Cloud Build connection names: the boot project's for the layers and
@@ -514,7 +538,7 @@ func (p *Placement) validateHosting() error {
 		return err
 	}
 	for _, validate := range []func() error{
-		p.validateReleaseApp, p.validateCiLargeRunner, p.validateTeamGroups, p.validateEntitlementDurations,
+		p.validateReleaseApp, p.validateKeys, p.validateCiLargeRunner, p.validateTeamGroups, p.validateEntitlementDurations,
 		p.validateApplications, p.validateOutOfService, p.validateVanityDomains, p.validateHostnames,
 	} {
 		if err := validate(); err != nil {

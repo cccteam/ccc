@@ -11,16 +11,14 @@
 # folder. A role's id is unique within its project, so it carries no suffix.
 # ---------------------------------------------------------------------------
 
-# Secret Manager without the payloads, in each project and in the boot project,
-# whose key containers the environment layer identities administer
-# (runners.tf). A layer identity creates secrets as
+# Secret Manager without the payloads, in each project. A layer identity creates secrets as
 # containers and manages their IAM and the lifecycle of their versions, but
 # never reads or writes a version: values are added by the operator that owns
 # them (secretmanager.versions.add) and read by the workload that needs them
 # (secretmanager.versions.access). roles/secretmanager.admin carries both, which
 # would put every secret value within reach of the deploy pipeline.
 resource "google_project_iam_custom_role" "secret_container_admin" {
-  for_each = merge(local.custom_role_projects, { boot = var.boot_project_id })
+  for_each = local.custom_role_projects
 
   project     = each.value
   role_id     = "secretContainerAdmin"

@@ -59,11 +59,14 @@ Build triggers" below).
   with their grants; and the two triggers, `imp-boot-uc1-layers-plan` on a pull
   request into `master` and `imp-boot-uc1-layers-apply` on a push
   to it, whose steps are the trigger's own ("The Cloud Build triggers").
-- The two GitHub Apps' key containers in the boot project (`github.tf`):
-  `imp-boot-gbl-github-infrastructure-key` for the infrastructure app, whose token
-  `1-org`'s GitHub provider needs, and `imp-boot-gbl-github-deployer-key` for the
-  deployer app, which the plan trigger posts the plans as and every
-  application's pipeline talks back as; the org identity administers both.
+- The grants on the three GitHub Apps' key secrets, which live in the zones
+  organization `imz`'s boot project (`keys` in
+  `placement.json`; `github.tf`): the org identity's policy administration of
+  the deployer and release secrets, the org plan identity's read of the
+  infrastructure key, and both boot plan identities' read of the three
+  secrets' policies. This layer makes no secret: every reader here names a
+  secret's alias `current`, which that organization pins ("The GitHub Apps'
+  keys").
 - The state bucket's grants for the four identities (`state-bucket.tf`): the
   list, each apply identity's own prefix (`0-bootstrap/`, `1-org/`), the org
   identity's read of `0-bootstrap/`, each plan identity's read of the prefixes
@@ -331,7 +334,7 @@ tofu plan
 
 The plan should show the folder, project, boot service account and the
 connection as imports rather than creates, and the rest as creates: the org
-identity and its grants, the custom roles, the key containers, the runner
+identity and its grants, the custom roles, the key grants, the runner
 identities, the repository link and the two triggers, and the bucket's
 grants. If any of the imports shows as a create, the ID in `boot_project_id`
 or `terraform_folder_id`, or the connection's name, is wrong. Stop and fix it
@@ -474,8 +477,6 @@ authorization and the environment projects' numbers among them.
 | `boot_project_number` | The boot project's number, recorded in `placement.json` as `projectNumbers.boot`. |
 | `boot_service_account_email` | The boot layer identity. |
 | `connection_name` | The boot project's Cloud Build GitHub connection; `null` until the authorization is recorded. |
-| `github_deployer_key_secret` | The container of the deployer GitHub App's private key. |
-| `github_infrastructure_key_secret` | The container of the infrastructure GitHub App's private key. |
 | `org_id` | Numeric organization ID. |
 | `org_service_account_email` | The org layer identity. |
 | `state_bucket_policy_admin_role` | The custom role in the boot project that sets a bucket's IAM policy. |
@@ -613,70 +614,76 @@ application pipeline those rights. Once, by a person:
 2. On the app's settings page: Private keys, Generate a private key. The
    browser downloads a `.pem` file.
 3. On the same page: Install App, on the organization, for all repositories.
-4. In a terminal, in this repository, as the break-glass account, once
-   this layer has made the container: record the App ID in `placement.json`
-   as `githubInfrastructureAppId`, then add the key to the container and pin
-   the version `add` prints (1 for the first):
+4. In `placement.json`: the App ID as `githubInfrastructureAppId`, then
+   `bedrock org render`. The key itself lives in the zones organization
+   `imz`'s boot project (`keys` in `placement.json`), added,
+   proven and pinned there by its key operators; a run of the triggers here
+   reads the alias `current` of `imz-boot-gbl-github-infrastructure-key`, which that
+   organization pins, and nothing is added in this repository.
 
-   ```bash
-   bedrock secret add github-infrastructure-key --from-file <the .pem file>
-   bedrock secret pin github-infrastructure-key <version>
-   ```
+Until the App ID is recorded and the alias names a version, a run of the
+triggers that plans or applies `1-org` says so and stops; the Google side of
+the layer is unaffected. A person applying `1-org` by hand keeps using their
+own token (`1-org/README.md`).
 
-   `add` puts the key into `imp-boot-gbl-github-infrastructure-key` in the boot project.
-   `pin` checks with Secret Manager that the version is enabled, records it as
-   `githubInfrastructureKeyVersion` in `placement.json` and runs `bedrock org
-   render`. Commit what they changed and delete the `.pem` file. Pinned, never
-   `latest`: a new key is a new version and a new pin, and nobody edits the
-   version in `placement.json` by hand.
+## The GitHub Apps' keys
 
-Until both values are recorded, a run of the triggers that plans or applies
-`1-org` says so and stops; the Google side of the layer is unaffected. A
-person applying `1-org` by hand keeps using their own token
-(`1-org/README.md`).
+The three GitHub Apps' private keys live in the zones organization
+`imz`'s boot project (`imz-boot-gbl-core-c3d4`; `keys` in
+`placement.json`), one secret per app for every bedrock organization in the
+Google Cloud organization: `imz-boot-gbl-github-infrastructure-key`,
+`imz-boot-gbl-github-deployer-key` and `imz-boot-gbl-github-release-key`. Every reader here names
+a secret's alias `current`, which that organization's placement pins and its
+apply moves; nothing is added or pinned in this repository, `bedrock secret
+add` and `pin` refuse here and name that organization, and a rotation there
+switches every reader at once (that organization's `0-bootstrap/README.md`,
+"Rotating a GitHub App's key"). No key reaches GitHub.
 
-## The deployer and release GitHub Apps' keys
+What this organization records is the apps' App IDs, which are not secrets:
+`githubInfrastructureAppId` for the infrastructure app, `githubDeployerAppId`
+for the deployer app, which the plan trigger's run posts each layer's plan on
+the pull request as and every application's pipeline talks back on its pull
+requests as (a deployment carrying the environment's URL, a comment, the
+guard's refusals), and `githubReleaseAppId` for the release app, which each
+application's release trigger cuts the application's releases as
+(release-please, in Cloud Build as the application's release identity). The
+apps themselves, their permissions and their installations are made once on
+GitHub (the root `README.md`, "The two GitHub Apps"); a GitHub organization
+that holds the zones organization has them already, and this organization
+records the same App IDs.
 
-The plan trigger's run posts each layer's plan on the pull request as the
-organization's deployer GitHub App, and every application's pipeline talks
-back on its pull requests as the same app (a deployment carrying the
-environment's URL, a comment, the guard's refusals). Each application's
-release trigger cuts the application's releases as the organization's
-release GitHub App (release-please, in Cloud Build as the application's
-release identity). The apps themselves, their permissions and their
-installations are made once on GitHub (the root `README.md`, "The two GitHub
-Apps"). What this layer needs from the deployer app, once, after its first
-apply has made the container (and the same for the release app, with
-`github-release-key`, `githubReleaseKeyVersion` and `imp-boot-gbl-github-release-key`;
-its App ID, `githubReleaseAppId`, is in `placement.json` from the start):
+How the reads are granted (`github.tf`): the zones organization gives this
+organization's boot identity `secretPolicyAdmin` on the three secrets, a
+custom role of its project that reads and sets a secret's IAM policy and
+nothing else. This layer grants from it: the org identity's policy
+administration of the deployer and release secrets, which `1-org` hands to
+each environment layer identity so `2-env` can grant the applications'
+identities their read; the org plan identity's read of the infrastructure
+key; the runners' reads of the infrastructure and deployer keys
+(`cloud-build.tf`); and both boot plan identities' read of the three secrets'
+policies, which a plan of this layer or of `1-org` refreshes the grants
+through. That is the only reach this organization has into that one.
 
-1. In `placement.json`: the app's App ID, from its settings page, as
-   `githubDeployerAppId`.
-2. In a terminal, in this repository, as the break-glass account:
+Two things come before this layer's first apply, which makes those grants:
+the zones organization lists this organization in its `placement.json`
+(`hostingOrganizations`: the prefix and the boot project, once the seed has
+made the boot identity, since a grant names an identity that exists) and
+applies, which gives the boot identity the role for every apply through the
+trigger; and the break-glass account, which applies this layer by hand the
+first time and holds nothing on that organization's boot project, grants
+itself Secret Manager Admin on that project for the run, with the Folder
+Admin it keeps on that organization's folder, and takes it off after:
 
-   ```bash
-   bedrock secret add github-deployer-key --from-file <the .pem file>
-   bedrock secret pin github-deployer-key <version>
-   ```
+```bash
+gcloud projects add-iam-policy-binding imz-boot-gbl-core-c3d4 --member="user:${BREAK_GLASS}" --role=roles/secretmanager.admin
+# the first apply
+gcloud projects remove-iam-policy-binding imz-boot-gbl-core-c3d4 --member="user:${BREAK_GLASS}" --role=roles/secretmanager.admin
+```
 
-   `add` puts the key into `imp-boot-gbl-github-deployer-key` in the boot project and
-   prints the version; `pin` checks with Secret Manager that the version is
-   enabled, records it as `githubDeployerKeyVersion` in `placement.json` and
-   runs `bedrock org render`, which writes the version's resource name into
-   `2-env`'s output `github_deployer_key_secret_version`. Commit what they
-   changed and delete the `.pem` file. Pinned, never `latest`, and never
-   edited by hand.
-3. On GitHub, the pull request that carries the two values: its merge applies
-   `2-env` in every environment through the apply trigger, and each
-   application's stack passes the key to its pipeline at its next apply. The
-   applications' identities read the container through the grant `2-env`
-   makes, with the administration `1-org` gives each environment layer
-   identity on it.
-
-Until both values are recorded, the plans are in the runs' logs alone and
-the pipelines talk back through nothing; nothing else is affected. Until the
-release key is pinned, no application's stack makes its release trigger, and
-no push cuts a release.
+Until the App IDs are recorded, the plans are in the runs' logs alone and
+the pipelines talk back through nothing; until the zones organization has
+pinned a key, the pipelines that read it say so and wait. Nothing else is
+affected.
 
 ## Recovery, by hand
 

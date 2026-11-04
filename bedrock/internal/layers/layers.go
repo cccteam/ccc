@@ -16,6 +16,8 @@ import (
 	"strings"
 
 	"github.com/go-playground/errors/v5"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/cccteam/ccc/bedrock/internal/deploy"
 	"github.com/cccteam/ccc/bedrock/internal/github"
@@ -251,29 +253,34 @@ func (r *run) changedFiles(ctx context.Context, base, head string) ([]string, er
 
 // infrastructureToken mints the infrastructure GitHub App's installation token, which
 // the GitHub provider of 1-org, or of 1-dns in a zones organization, takes as
-// GITHUB_TOKEN, from the key the boot project holds at the version placement.json pins.
-// It is refused while the app is not recorded.
+// GITHUB_TOKEN, from the key's alias in the project that holds the keys (the zones
+// organization's boot project). It is refused while the app is not recorded.
 func (r *run) infrastructureToken(ctx context.Context) (string, error) {
-	return r.appToken(ctx, org.InfrastructureKey, r.p.GithubInfrastructureAppID, "the infrastructure app", r.p.SecondLayer()+"'s GitHub provider needs the infrastructure GitHub App (0-bootstrap/README.md, \"The infrastructure GitHub App\"): create it, record its App ID as githubInfrastructureAppId in placement.json, add its key to %s in the boot project with bedrock secret add github-infrastructure-key, and pin the version with bedrock secret pin github-infrastructure-key <version>, which records githubInfrastructureKeyVersion and runs bedrock org render")
+	return r.appToken(ctx, org.InfrastructureKey, r.p.GithubInfrastructureAppID, "the infrastructure app", r.p.SecondLayer()+"'s GitHub provider needs the infrastructure GitHub App (0-bootstrap/README.md, \"The infrastructure GitHub App\"): create it and record its App ID as githubInfrastructureAppId in placement.json; its key is the alias "+org.KeyAlias+" of %s in the zones organization's boot project, added and pinned there (bedrock secret add github-infrastructure-key, bedrock secret pin github-infrastructure-key <version>)")
 }
 
 // deployerToken mints the deployer GitHub App's installation token, which the plan
-// comments are posted with; empty, with the reason, while the app is not recorded.
+// comments are posted with; empty, with the reason, while the app is not recorded or
+// the key's alias names no version yet.
 func (r *run) deployerToken(ctx context.Context) (token, reason string, err error) {
-	if r.p.GithubDeployerAppID == "" || r.p.GithubDeployerKeyVersion == "" {
-		return "", "placement.json records no githubDeployerAppId or githubDeployerKeyVersion (0-bootstrap/README.md, \"The deployer GitHub App's key\"): the plans are in this log alone until both are recorded", nil
+	if r.p.GithubDeployerAppID == "" || r.p.SecretVersionName(org.DeployerKey) == "" {
+		return "", "placement.json records no githubDeployerAppId, or no project holding the keys (0-bootstrap/README.md, \"The GitHub Apps' keys\"): the plans are in this log alone until both are recorded", nil
 	}
 	token, err = r.appToken(ctx, org.DeployerKey, r.p.GithubDeployerAppID, "the deployer app", "")
 	if err != nil {
+		if status.Code(errors.Cause(err)) == codes.NotFound {
+			return "", "the alias " + org.KeyAlias + " of " + r.p.SecretVersionName(org.DeployerKey) + " names no version: the zones organization that holds the keys pins one (bedrock secret pin github-deployer-key <version> there) and its apply sets the alias; the plans are in this log alone until then", nil
+		}
+
 		return "", "", err
 	}
 
 	return token, "", nil
 }
 
-// appToken mints an app's installation token from its key in the boot project; unset
-// names the refusal when the app's id or its key's version is not recorded, with the
-// container to add the key to.
+// appToken mints an app's installation token from its key's alias in the project that
+// holds the keys; unset names the refusal when the app's id is not recorded or no project
+// holds the keys, with the secret the key is in.
 func (r *run) appToken(ctx context.Context, key, appID, what, unset string) (string, error) {
 	version := r.p.SecretVersionName(key)
 	if appID == "" || version == "" {

@@ -271,8 +271,8 @@ func (v *view) CloudBuildTokenSecretVersionHCL() string {
 }
 
 // GithubDeployerAppIDHCL is the deployer app's App ID as an HCL value, or null until the
-// app is recorded; DeployerKeyVersionNameHCL the pinned version of its key by resource
-// name, quoted, or null until one is pinned.
+// app is recorded; DeployerKeyVersionNameHCL its key's alias by resource name, quoted,
+// or null on a zones organization before the app is recorded.
 func (v *view) GithubDeployerAppIDHCL() string {
 	if v.GithubDeployerAppID == "" {
 		return hclNull
@@ -285,8 +285,8 @@ func (v *view) DeployerKeyVersionNameHCL() string {
 	return hclStringOrNull(v.DeployerKeyVersionName())
 }
 
-// ReleaseKeyVersionNameHCL is the pinned version of the release app's key by resource
-// name, quoted, or null until one is pinned.
+// ReleaseKeyVersionNameHCL is the release app's key's alias by resource name, quoted,
+// or null on a zones organization before the app is recorded.
 func (v *view) ReleaseKeyVersionNameHCL() string {
 	return hclStringOrNull(v.ReleaseKeyVersionName())
 }

@@ -66,9 +66,9 @@ locals {
     local.environment_project_numbers,
   ) : {}
 
-  # The two runner identities, with the keys each reads: the planner posts
-  # the plans as the deployer app and mints 1-dns's GitHub token from the
-  # infrastructure app's key; the applier mints the same token.
+  # The two runner identities, with the keys each reads (github.tf): the
+  # planner posts the plans as the deployer app and mints 1-dns's GitHub
+  # token from the infrastructure app's key; the applier mints the same token.
   runners = {
     planner = google_service_account.planner
     applier = google_service_account.applier
@@ -76,10 +76,6 @@ locals {
   runner_keys = {
     for pair in setproduct(keys(local.runners), ["infrastructure", "deployer"]) :
     "${pair[0]}__${pair[1]}" => { runner = pair[0], key = pair[1] }
-  }
-  key_containers = {
-    infrastructure = google_secret_manager_secret.github_infrastructure_key.secret_id
-    deployer       = google_secret_manager_secret.github_deployer_key.secret_id
   }
 }
 
@@ -264,8 +260,8 @@ resource "google_cloudbuildv2_connection_iam_member" "runner_read_token" {
 resource "google_secret_manager_secret_iam_member" "runner_keys" {
   for_each = local.runner_keys
 
-  project   = module.boot_project.project_id
-  secret_id = local.key_containers[each.value.key]
+  project   = local.keys_project
+  secret_id = local.key_secrets[each.value.key]
   role      = "roles/secretmanager.secretAccessor"
   member    = local.runners[each.value.runner].member
 }

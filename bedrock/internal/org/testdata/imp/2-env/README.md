@@ -217,7 +217,7 @@ sweep), so there it also holds `roles/iam.serviceAccountTokenCreator` on
 every environment's plan identity (granted where that identity lives, from
 tst's `2-env` state), `roles/cloudbuild.readTokenAccessor` on the Cloud Build
 connection and `roles/secretmanager.secretAccessor` on the deployer GitHub
-App's key container in the boot project. In every environment it holds two
+App's key secret in the zones organization's boot project. In every environment it holds two
 bindings of the records bucket's policy (`records.tf`):
 `roles/storage.objectViewer` on the bucket, since the stack's pr-stack and
 check triggers run as this identity and the pull request's stack job reads
@@ -295,7 +295,7 @@ project roles reaches the bucket, and the apply identity it may act as holds
 storage admin only under a condition naming the application's own buckets,
 so it writes a record once);
 `roles/secretmanager.secretAccessor` on the build-time secrets named in
-`var.build_time_secrets` (empty by default) and on the deployer GitHub App's key container in the boot project (`github-apps.tf`), and on no runtime secret; nothing on
+`var.build_time_secrets` (empty by default) and on the deployer GitHub App's key secret in the zones organization's boot project (`github-apps.tf`), and on no runtime secret; nothing on
 its own environment's Spanner instance (pull-request databases are the pull-request stack's, which
 runs as the apply identity). tst's deploy identity alone holds two bounded grants on the other
 environments' instances (there, or in `2-spn` for the shared instance): `roles/spanner.fineGrainedAccessUser` on
@@ -319,9 +319,9 @@ list the application at all.
 In tst alone, where the application's release trigger runs (`cloud-build.tf`
 of its stack: every push to the default branch or a patch line). The trigger
 runs release-please as this identity, as the organization's release GitHub
-App: the step mints the app's token from the key's pinned version, which this
-layer grants the identity the read of (`github-apps.tf`, on the container in
-the boot project), and release-please opens the release pull request or, once
+App: the step mints the app's token from the key's alias, which this layer
+grants the identity the read of (`github-apps.tf`, on the secret in the zones
+organization's boot project), and release-please opens the release pull request or, once
 it merged, makes the tag and the GitHub Release. On the environment project
 `roles/logging.logWriter` alone (a build as a user-specified service account
 sends its logs to Cloud Logging). Nothing of the deploy identity's, and
@@ -544,23 +544,25 @@ is built by hand before them.
 
 The pipeline talks back on a pull request as the organization's deployer
 GitHub App (`github-apps.tf`): a deployment carrying the environment's URL, a
-comment, the guard's refusals. The app, its key and its pin are
-`0-bootstrap`'s: its App ID in `placement.json` (`githubDeployerAppId`), its
-key in the boot project's container `imp-boot-gbl-github-deployer-key`, added with
-`bedrock secret add github-deployer-key` and pinned with `bedrock secret pin
-github-deployer-key <version>` (`0-bootstrap/README.md`, "The deployer and
-release GitHub Apps' keys"). This layer carries the pinned version's resource name to the
-applications' pipelines through its output `github_deployer_key_secret_version`
-and grants their identities its read: every application's deploy identity,
-and in tst its apply identity too. Until both values are recorded, the pipelines
-talk back through nothing; the rest of the layer and the deployments are
-unaffected.
+comment, the guard's refusals. Its App ID is in `placement.json`
+(`githubDeployerAppId`); its key is a secret in the zones organization
+`imz`'s boot project (`imz-boot-gbl-github-deployer-key`, in
+`imz-boot-gbl-core-c3d4`; `keys` in `placement.json`), held there for every
+organization and read by its alias `current`, which that organization pins
+and moves (`0-bootstrap/README.md`, "The GitHub Apps' keys"). This layer
+carries the alias's resource name to the applications' pipelines through its
+output `github_deployer_key_secret_version` and grants their identities its
+read: every application's deploy identity, and in tst its apply identity too,
+with the policy administration of the secret `1-org` gives the environment
+layer identity. Until the App ID is recorded, the pipelines talk back through
+nothing; until the zones organization has pinned the key, they say so and
+wait; the rest of the layer and the deployments are unaffected.
 
 The release GitHub App's key is the same arrangement (`githubReleaseAppId`,
-`imp-boot-gbl-github-release-key`, `bedrock secret add|pin github-release-key`): this
-layer carries the pinned version through `github_release_key_secret_version`
-and, in tst, grants each application's release identity its read. Each
-application's stack makes its release trigger once the version is pinned.
+`imz-boot-gbl-github-release-key`): this layer carries the alias through
+`github_release_key_secret_version` and, in tst, grants each application's
+release identity its read. Each application's stack makes its release
+trigger from the alias.
 
 ## Prerequisites this layer does not create
 
@@ -570,10 +572,11 @@ application's stack makes its release trigger once the version is pinned.
   the bucket's policy authority (0-bootstrap's custom role) so this layer
   can grant the application identities their slots (below). The right of the
   apply trigger's runner to become the identity is `1-org`'s too, and so are
-  the identity's administration of the deployer key's container in the boot
-  project, which the grant to the applications' identities needs, and the
-  plan identity's read of that container's policy (`roles/secretmanager.viewer`
-  on the container), which a plan refreshes the grants through.
+  the identity's policy administration of the deployer key's secret in the
+  zones organization's boot project, which the grant to the applications'
+  identities needs, and the plan identity's read of that secret's policy
+  (`roles/secretmanager.viewer` on the secret), which a plan refreshes the
+  grants through.
 - `roles/resourcemanager.tagUser` on the environment project's public-invoker tag for each
   application's apply identity, from `1-org` (`public-invokers.auto.tfvars`),
   rendered once the registration is past its identities, after this layer has
@@ -610,7 +613,7 @@ Read by the application's stack through `data "terraform_remote_state"`, prefix
 |---|---|
 | `applications` | Per application: `apply_identity_email`, `apply_identity_member`, `deploy_identity_email`, `deploy_identity_member`, `deploy_identity_id` (full resource name, for triggers), `repository_id`, `repository_name`. |
 | `connection_id`, `connection_name` | The Cloud Build GitHub connection; `null` until `placement.json` records the authorization. |
-| `github_deployer_app_id`, `github_deployer_key_secret_version` | The deployer GitHub App's App ID and the resource name of its key's pinned version in the boot project, from `placement.json`; `null` until recorded. |
+| `github_deployer_app_id`, `github_deployer_key_secret_version` | The deployer GitHub App's App ID (`null` until recorded) and the resource name of its key's alias `current` in the zones organization's boot project, from `placement.json`. |
 | `environment` | Environment code. |
 | `prefix` | Naming prefix, from `1-org`. |
 | `project_id`, `project_number` | The environment project. |

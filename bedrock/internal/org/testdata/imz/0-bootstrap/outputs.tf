@@ -21,16 +21,6 @@ output "boot_plan_service_accounts" {
   value       = { for k, sa in google_service_account.boot_plan : k => sa.email }
 }
 
-output "github_infrastructure_key_secret" {
-  description = "Secret Manager container in the boot project holding the infrastructure GitHub App's private key; the dns plan identity reads it for a plan of 1-dns."
-  value       = google_secret_manager_secret.github_infrastructure_key.secret_id
-}
-
-output "github_deployer_key_secret" {
-  description = "Secret Manager container in the boot project holding the deployer GitHub App's private key, which the plan trigger's run posts the plans as."
-  value       = google_secret_manager_secret.github_deployer_key.secret_id
-}
-
 output "planner_member" {
   description = "The plan trigger's runner identity as an IAM member, which impersonates the two plan identities."
   value       = google_service_account.planner.member

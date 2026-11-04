@@ -21,13 +21,22 @@
 # layer grants for the identities it creates, and why the environment layer
 # identities receive the bucket's policy authority here: 2-env grants the
 # application identities it creates their slots (2-env/identities.tf). The
-# environment layer identities also administer the deployer GitHub App's key
-# container in the boot project here, so 2-env can grant the applications'
-# identities its read.
+# environment layer identities also receive the policy administration of the
+# deployer and release GitHub Apps' key secrets here, which live in the zones
+# organization's boot project, so 2-env can grant the applications' identities
+# their read.
 # ---------------------------------------------------------------------------
 
 locals {
   boot = data.terraform_remote_state.boot.outputs
+
+  # The GitHub Apps' keys live in the zones organization {{.KeysOrganization}}'s boot
+  # project (placement.json, keys), one secret per app, read by alias; this
+  # layer hands their policy administration down with the role of that
+  # project 0-bootstrap holds (0-bootstrap/github.tf).
+  keys_project           = "{{.KeysProject}}"
+  key_secrets            = { deployer = "{{.DeployerKeySecret}}", release = "{{.ReleaseKeySecret}}" }
+  keys_policy_admin_role = "projects/{{.KeysProject}}/roles/secretPolicyAdmin"
 
   state_bucket_objects = "projects/_/buckets/${var.state_bucket}/objects"
 
@@ -71,44 +80,44 @@ resource "google_service_account_iam_member" "plan_planner" {
 
 
 # ---------------------------------------------------------------------------
-# The deployer GitHub App's key container
+# The deployer GitHub App's key
 #
-# The environment layer identities administer the container's policy
-# (secretContainerAdmin: the policy and the container's lifecycle, never a
-# version's payload), so 2-env can grant each application's identities the
-# read of the pinned version its output names.
+# The environment layer identities administer the secret's policy
+# (secretPolicyAdmin, the zones organization's role: the policy and nothing
+# else, never a version's payload), so 2-env can grant each application's
+# identities the read of the alias its output names.
 # ---------------------------------------------------------------------------
 
 resource "google_secret_manager_secret_iam_member" "environment_tofu_deployer_key" {
   for_each = local.environment_layers
 
-  project   = var.boot_project_id
-  secret_id = local.boot.github_deployer_key_secret
-  role      = google_project_iam_custom_role.secret_container_admin["boot"].id
+  project   = local.keys_project
+  secret_id = local.key_secrets.deployer
+  role      = local.keys_policy_admin_role
   member    = google_service_account.tofu[each.key].member
 }
 
 # The environment layers' plan identities refresh those grants on a pull
-# request, which reads the container's policy: the container lives in the
-# boot project, where the plan identity's project roles do not reach. The
-# viewer role reads the container and its versions' metadata, never a
-# version's payload.
+# request, which reads the secret's policy: the secret lives in another
+# organization's project, where no role of this organization's reaches. The
+# viewer role reads the secret and its versions' metadata, never a version's
+# payload.
 resource "google_secret_manager_secret_iam_member" "environment_plan_deployer_key" {
   for_each = local.environment_layers
 
-  project   = var.boot_project_id
-  secret_id = local.boot.github_deployer_key_secret
+  project   = local.keys_project
+  secret_id = local.key_secrets.deployer
   role      = "roles/secretmanager.viewer"
   member    = google_service_account.plan[each.key].member
 }
 
 # ---------------------------------------------------------------------------
-# The release GitHub App's key container
+# The release GitHub App's key
 #
 # The same for the release app's key, which each application's release
 # trigger mints its token from (release-please, in tst's Cloud Build as the
 # application's release identity): the environment layer identities
-# administer the container's policy, so tst's 2-env can grant each release
+# administer the secret's policy, so tst's 2-env can grant each release
 # identity the read, and the plan identities read the policy on a pull
 # request.
 # ---------------------------------------------------------------------------
@@ -116,17 +125,17 @@ resource "google_secret_manager_secret_iam_member" "environment_plan_deployer_ke
 resource "google_secret_manager_secret_iam_member" "environment_tofu_release_key" {
   for_each = local.environment_layers
 
-  project   = var.boot_project_id
-  secret_id = local.boot.github_release_key_secret
-  role      = google_project_iam_custom_role.secret_container_admin["boot"].id
+  project   = local.keys_project
+  secret_id = local.key_secrets.release
+  role      = local.keys_policy_admin_role
   member    = google_service_account.tofu[each.key].member
 }
 
 resource "google_secret_manager_secret_iam_member" "environment_plan_release_key" {
   for_each = local.environment_layers
 
-  project   = var.boot_project_id
-  secret_id = local.boot.github_release_key_secret
+  project   = local.keys_project
+  secret_id = local.key_secrets.release
   role      = "roles/secretmanager.viewer"
   member    = google_service_account.plan[each.key].member
 }

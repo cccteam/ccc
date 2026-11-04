@@ -70,7 +70,7 @@ import {
 
 # The boot project hosts the layer identities, the state bucket, the Cloud
 # Build connection and triggers that plan and apply the layers (cloud-build.tf),
-# the two GitHub Apps' keys (github.tf), and the zones 1-dns makes, its one
+# the three GitHub Apps' keys for every organization (github.tf), and the zones 1-dns makes, its one
 # downstream layer, which it is the quota and billing project for.
 #
 # random_project_id is off and the ID comes from a variable: the project already
@@ -105,7 +105,7 @@ module "boot_project" {
     "iam.googleapis.com",                  # service accounts
     "iamcredentials.googleapis.com",       # the short-lived tokens a trigger's run impersonates a layer identity with
     "logging.googleapis.com",              # the triggers' build logs
-    "secretmanager.googleapis.com",        # the two GitHub Apps' key containers (github.tf)
+    "secretmanager.googleapis.com",        # the three GitHub Apps' key secrets (github.tf)
     "serviceusage.googleapis.com",         # API enablement
     "storage.googleapis.com",              # the state bucket
   ]

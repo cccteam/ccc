@@ -74,7 +74,7 @@ import {
 
 # The boot project hosts the layer identities, the state bucket, the Cloud
 # Build connection and triggers that plan and apply the layers (cloud-build.tf),
-# the two GitHub Apps' keys (github.tf), and acts as the quota and billing
+# acts as the quota and billing
 # project for every downstream layer.
 #
 # random_project_id is off and the ID comes from a variable: the project already

@@ -8,10 +8,10 @@ boot_project_id = "imp-boot-gbl-core-REPLACEME"
 state_bucket    = "imp-boot-gbl-state-a1b2"
 
 # The Cloud Build GitHub authorization (the connection's installation id and
-# token secret version) and the deployer GitHub App (its App ID and the pinned
-# version of its key) are placement.json's (cloudBuildInstallationId,
-# cloudBuildTokenSecretVersion, githubDeployerAppId, githubDeployerKeyVersion),
-# rendered into locals.tf; nothing of them is set here.
+# token secret version), the deployer GitHub App's App ID and the zones
+# organization holding the apps' keys are placement.json's
+# (cloudBuildInstallationId, cloudBuildTokenSecretVersion, githubDeployerAppId,
+# keys), rendered into locals.tf; nothing of them is set here.
 
 # The applications are in applications.auto.tfvars, rendered from placement.json
 # (bedrock org register <app> adds one).

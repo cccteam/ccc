@@ -1,8 +1,8 @@
 // releasejob.go is the release trigger's command: release-please, pinned, as the release
 // GitHub App, on every push to the default branch or a patch line (the stack's
 // cloud-build.tf, in the first environment, as the application's release identity). The
-// command mints the app's installation token from its key's pinned version in Secret
-// Manager and runs release-please twice for the pushed branch: github-release, which
+// command mints the app's installation token from its key's alias in Secret Manager
+// and runs release-please twice for the pushed branch: github-release, which
 // makes the tag and the GitHub Release of a release pull request the push merged, then
 // release-pr, which opens or updates the release pull request from the commits since the
 // last release. The token goes to the two processes as their --token argument, which is
@@ -28,7 +28,7 @@ import (
 )
 
 // The variables the release trigger's step passes the command, from the trigger's
-// substitutions (2-env's outputs: the release app's App ID and its key's pinned version)
+// substitutions (2-env's outputs: the release app's App ID and its key's alias)
 // and the build's own (the repository and the pushed branch).
 const (
 	releaseAppVar    = "RELEASE_APP_ID"
@@ -43,9 +43,9 @@ const (
 // request.
 var releasePleaseCommands = []string{"github-release", "release-pr"}
 
-// ReleaseRequest is what the release trigger's step passes: the release app, its key's
-// pinned version (a Secret Manager version's resource name), the repository and the
-// pushed branch.
+// ReleaseRequest is what the release trigger's step passes: the release app, its key
+// (a Secret Manager version's resource name, the alias 2-env names), the repository and
+// the pushed branch.
 type ReleaseRequest struct {
 	AppID        string
 	KeyVersion   string
@@ -57,7 +57,7 @@ type ReleaseRequest struct {
 func (r *ReleaseRequest) check() error {
 	for _, v := range []struct{ name, value string }{{releaseAppVar, r.AppID}, {releaseKeyVar, r.KeyVersion}, {repoFullNameVar, r.RepoFullName}, {branchVar, r.Branch}} {
 		if v.value == "" {
-			return errors.Newf("%s is not set: the release trigger's step passes the release app, its key's pinned version, the repository and the pushed branch to the command", v.name)
+			return errors.Newf("%s is not set: the release trigger's step passes the release app, its key, the repository and the pushed branch to the command", v.name)
 		}
 	}
 

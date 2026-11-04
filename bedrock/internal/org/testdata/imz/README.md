@@ -26,7 +26,7 @@ gets a line there first.
 
 | Layer | Directory | Applied as | Creates |
 |---|---|---|---|
-| 0 | [`0-bootstrap/`](0-bootstrap/) | the break-glass account the first time (local state, then migrated); then the apply trigger as `imz-boot-gbl-tofu` | adopts the seeded `terraform` folder, boot project, and boot identity; the dns layer identity and its grant on the boot project; the project-updater and state-bucket-policy custom roles; the Cloud Build connection, the two runner identities and the two triggers that plan and apply the layers; the two GitHub Apps' key containers; the state bucket's grants for its two identities |
+| 0 | [`0-bootstrap/`](0-bootstrap/) | the break-glass account the first time (local state, then migrated); then the apply trigger as `imz-boot-gbl-tofu` | adopts the seeded `terraform` folder, boot project, and boot identity; the dns layer identity and its grant on the boot project; the project-updater and state-bucket-policy custom roles; the Cloud Build connection, the two runner identities and the two triggers that plan and apply the layers; the three GitHub Apps' key secrets, held for every organization, with their aliases and the hosting organizations' and the key operators' grants; the state bucket's grants for its two identities |
 | 1 | [`1-dns/`](1-dns/) | the break-glass account the first time; then the apply trigger as `imz-dns-gbl-tofu` | one Cloud DNS public zone per domain delegated to this organization, in the boot project, and one NS record set per label handed onward to a hosting organization's zone; this repository's default branch ruleset |
 
 Two layers, nothing else: this organization holds DNS zones alone, no
@@ -216,16 +216,22 @@ the place it happens.
    its private key and its installation on this repository. Then in a
    terminal, in this repository: its App ID recorded in `placement.json`
    (`githubInfrastructureAppId`), and its key added to the boot project's
-   container and pinned with `bedrock secret add github-infrastructure-key`
-   and `bedrock secret pin github-infrastructure-key <version>`, which records
-   the version and renders. Until then a run of the triggers that plans or
-   applies `1-dns` says so and stops.
-7. **The deployer app's key** (`0-bootstrap/README.md`, "The deployer GitHub
-   App's key"). In a terminal, in this repository, once `0-bootstrap` has
-   applied: its App ID recorded in `placement.json` (`githubDeployerAppId`),
-   `bedrock secret add github-deployer-key` and `bedrock secret pin
-   github-deployer-key <version>` ("The deployer GitHub App", below). Until
-   then the plans are in the runs' logs alone.
+   secret, proven and pinned with `bedrock secret add
+   github-infrastructure-key`, `bedrock org secrets check
+   github-infrastructure-key <version>` and `bedrock secret pin
+   github-infrastructure-key <version>`, which records the version the alias
+   `current` points at and renders. Until then a run of the triggers that
+   plans or applies `1-dns` says so and stops.
+7. **The deployer and release apps' keys** (`0-bootstrap/README.md`, "The
+   GitHub Apps' keys"). In a terminal, in this repository, as a key operator
+   (`keyOperators` in `placement.json`), once `0-bootstrap` has applied: the
+   two App IDs recorded in `placement.json` (`githubDeployerAppId`,
+   `githubReleaseAppId`), then for each key `bedrock secret add`, `bedrock org
+   secrets check` and `bedrock secret pin` ("The deployer GitHub App", below).
+   This organization holds the three keys for every organization in the
+   Google Cloud organization, and each hosting organization reads them through
+   the alias `current` (`hostingOrganizations` names them). Until then the
+   plans are in the runs' logs alone.
 8. **The domains.** In `placement.json`: each domain delegated to this
    organization (`domains`), `bedrock org render`, and the pull request whose
    apply makes its zone; then, by the customer, where the domain's DNS is set:
@@ -248,11 +254,14 @@ the values a layer runs with belong in the repository.
 
 The organization holds one GitHub App beside the infrastructure app `1-dns`
 acts as (`0-bootstrap/README.md`): the deployer app, which the plan trigger
-posts each layer's plan on a pull request as. Its key lives in Secret Manager
-in the boot project and never reaches GitHub. A GitHub organization that holds
-a hosting organization has the app already, with the two permissions below
-among its own; this organization records the same App ID and installs nothing
-new. Otherwise, once, by a person:
+posts each layer's plan on a pull request as, here and in every hosting
+organization, whose pipelines talk back on their pull requests as it too. Its
+key lives in Secret Manager in this organization's boot project, for every
+organization, and never reaches GitHub; the release app's key lives beside it
+(`0-bootstrap/README.md`, "The GitHub Apps' keys"). A GitHub organization that
+holds a hosting organization has the app already, with the two permissions
+below among its own; this organization records the same App ID and installs
+nothing new. Otherwise, once, by a person:
 
 1. On GitHub, as an owner of the `imp-example` organization: the
    organization's Settings, Developer settings, GitHub Apps, New GitHub App.
@@ -266,18 +275,21 @@ new. Otherwise, once, by a person:
    browser downloads a `.pem` file.
 3. In `placement.json`: the app's App ID as `githubDeployerAppId`.
 4. In a terminal, in this repository, once `0-bootstrap` has applied and made
-   the key's container, as the break-glass account:
+   the key's secret, as a key operator (`keyOperators` in `placement.json`):
 
    ```bash
    bedrock secret add github-deployer-key --from-file <the deployer app's .pem file>
+   bedrock org secrets check github-deployer-key <version>
    bedrock secret pin github-deployer-key <version>
    ```
 
-   `add` puts the key into its container in the boot project
-   (`imz-boot-gbl-github-deployer-key`) and prints the version; `pin` checks that it is
-   enabled, records it in `placement.json` (`githubDeployerKeyVersion`) and
-   renders. The plan trigger posts the layers' plans as the deployer app from
-   then on. Delete the `.pem` file once it is pinned.
+   `add` puts the key into its secret in the boot project
+   (`imz-boot-gbl-github-deployer-key`) as a new version and prints the number; `check`
+   proves the version with GitHub; `pin` records it in `placement.json`
+   (`githubDeployerKeyVersion`) and renders the alias `current` at that
+   version, which the pull request's apply moves. The plan trigger posts the
+   layers' plans as the deployer app from then on, here and in every hosting
+   organization. Delete the `.pem` file once it is pinned.
 
 ## Contributing
 

@@ -22,21 +22,6 @@ output "boot_plan_service_accounts" {
   value       = { for k, sa in google_service_account.boot_plan : k => sa.email }
 }
 
-output "github_infrastructure_key_secret" {
-  description = "Secret Manager container in the boot project holding the infrastructure GitHub App's private key; the org plan identity reads it for a plan of 1-org."
-  value       = google_secret_manager_secret.github_infrastructure_key.secret_id
-}
-
-output "github_deployer_key_secret" {
-  description = "Secret Manager container in the boot project holding the deployer GitHub App's private key; 1-org grants each environment layer identity its administration, so 2-env can grant the applications' identities the read."
-  value       = google_secret_manager_secret.github_deployer_key.secret_id
-}
-
-output "github_release_key_secret" {
-  description = "Secret Manager container in the boot project holding the release GitHub App's private key; 1-org grants each environment layer identity its administration, so 2-env can grant the applications' release identities its read."
-  value       = google_secret_manager_secret.github_release_key.secret_id
-}
-
 output "planner_member" {
   description = "The plan trigger's runner identity as an IAM member; 1-org lets it impersonate the plan identities it creates (roles/iam.serviceAccountTokenCreator)."
   value       = google_service_account.planner.member

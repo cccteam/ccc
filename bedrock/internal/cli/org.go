@@ -51,7 +51,7 @@ triggers run (plan, apply); and the check, before the seed, that the break-glass
 holds the roles the seed and the first applies need above the organization's folder
 (preflight).`,
 	}
-	cmd.AddCommand(newOrgNew(d), newOrgPreflight(d), newOrgRender(d), newOrgCheck(d), newOrgRegister(d), newOrgPlace(d), newOrgPlan(d), newOrgApply(d), newOrgTeardown(d), newOrgServe(d), newOrgHostnames(d), newOrgRetire(d), newOrgDestroy(d))
+	cmd.AddCommand(newOrgNew(d), newOrgPreflight(d), newOrgRender(d), newOrgCheck(d), newOrgRegister(d), newOrgPlace(d), newOrgPlan(d), newOrgApply(d), newOrgTeardown(d), newOrgServe(d), newOrgHostnames(d), newOrgRetire(d), newOrgDestroy(d), newOrgSecrets(d))
 
 	return cmd
 }
@@ -204,12 +204,12 @@ By hand, before the Cloud Build triggers can run (the commands are in 0-bootstra
      githubDeployerAppId, and the infrastructure app's into placement.json,
      githubInfrastructureAppId) and, if a team is to approve changes to the applications'
      check files, that team (githubInfrastructureTeam).
-     In a terminal, in this repository, the apps' keys, never by hand, once 0-bootstrap
-     has made their three containers in the boot project: bedrock secret add
-     github-infrastructure-key and bedrock secret pin github-infrastructure-key
-     <version>; the same with github-deployer-key and github-release-key. No key reaches
-     GitHub: the release trigger of each application's stack mints the release app's
-     token from the pinned version in Cloud Build.
+     The apps' keys live in the zones organization %s (keys.organization), in its boot
+     project %s, one secret per app, and every run here reads each secret's alias
+     current, which that organization pins: nothing is added or pinned in this
+     repository (0-bootstrap/README.md, "The GitHub Apps' keys"). No key reaches GitHub:
+     the release trigger of each application's stack mints the release app's token from
+     the alias in Cloud Build.
   1. In a terminal, as %s, after gcloud auth application-default login:
      bedrock org preflight, which must find each of these roles held:
 %s     then the seed: the organization's folder at the organization root (%s), which makes
@@ -256,7 +256,7 @@ identities, in layer order. The shared layers, 2-env per environment and the app
 registrations go through them; a person applies by hand for recovery alone
 (0-bootstrap/README.md, "Recovery, by hand").
 After the first apply of 2-net: bedrock domain check prints what the apps domain, and each vanity domain, still needs, and where.
-`, p.OrganizationDomain, p.GithubMachineAccount, p.GithubDefaultBranch, p.BreakGlassAccount, roles.String(), p.OrganizationID, p.Prefix, p.Prefix, p.Prefix,
+`, p.OrganizationDomain, p.GithubMachineAccount, p.GithubDefaultBranch, p.KeysOrganization(), p.KeysProject(), p.BreakGlassAccount, roles.String(), p.OrganizationID, p.Prefix, p.Prefix, p.Prefix,
 		p.BreakGlassAccount, p.GithubMachineAccount, p.ConnectionName(), p.Primary().Name, p.BillingAccount, p.PlanTriggerName(), p.ApplyTriggerName())
 }
 
@@ -274,11 +274,17 @@ By hand, before the Cloud Build triggers can run (the commands are in 0-bootstra
      0-bootstrap/README.md, "The infrastructure GitHub App"; the deployer app's App ID
      goes into placement.json, githubDeployerAppId, and the infrastructure app's into
      githubInfrastructureAppId). A GitHub organization that holds a hosting organization
-     has the account and the apps already: record the same.
-     In a terminal, in this repository, the apps' keys, never by hand, once 0-bootstrap
-     has made their two containers in the boot project: bedrock secret add
-     github-infrastructure-key and bedrock secret pin github-infrastructure-key
-     <version>; the same with github-deployer-key.
+     has the account and the apps already: record the same, and the release app's App ID
+     too (githubReleaseAppId), since this organization holds its key for them.
+     In a terminal, in this repository, the three apps' keys, never by hand, once
+     0-bootstrap has made their secrets in the boot project, one per app for every
+     organization in the Google Cloud organization: bedrock secret add
+     github-infrastructure-key, bedrock org secrets check github-infrastructure-key
+     <version>, which proves the version with GitHub, and bedrock secret pin
+     github-infrastructure-key <version>, which pins the version the alias current points
+     at; the same with github-deployer-key and github-release-key. The pull request's
+     apply moves the alias, which every reader in every organization names
+     (0-bootstrap/README.md, "Rotating a GitHub App's key").
   1. In a terminal, as %s, after gcloud auth application-default login:
      bedrock org preflight, which must find each of these roles held:
 %s     then the seed: the organization's folder at the organization root (%s), which makes
@@ -1475,10 +1481,10 @@ has finished each gets its verdict: its Plan: line when it succeeded; passed, as
 the layers before it apply, when it failed only because it reads outputs their plans create,
 since the merge applies those first; failed otherwise, a plan that did not run included. One comment per layer goes on the pull request as the deployer
 GitHub App, found by its first line and updated on a later push; the plans stay in the run's
-log while placement.json records no deployer app (githubDeployerAppId,
-githubDeployerKeyVersion). 1-org's plan gets the infrastructure GitHub App's token as
-GITHUB_TOKEN, minted from the app's key in the boot project at the version placement.json
-pins. _LAYER names one layer to plan whatever the pull request changes, and _ENVIRONMENT one
+log while placement.json records no deployer app (githubDeployerAppId) or the key's alias
+names no version yet. 1-org's plan gets the infrastructure GitHub App's token as
+GITHUB_TOKEN, minted from the app's key, read by its alias in the zones organization's boot
+project. _LAYER names one layer to plan whatever the pull request changes, and _ENVIRONMENT one
 environment of 2-env. It exits 1 when any plan failed. It refuses a build that did not start
 from the trigger (no _BEDROCK_STEPS substitution) and a layer whose identity is under a
 project placement.json does not record yet (REPLACEME), and says so when it runs under a
@@ -1517,7 +1523,7 @@ the apply of that plan, then the marker. It stops at the first failure, the mark
 layers applied before it written. After each apply of 2-env it restricts Firebase's browser
 key in the environment project to the sign-in APIs (2-env/README.md, Identity Platform).
 1-org's apply gets the infrastructure GitHub App's token as GITHUB_TOKEN, minted from the
-app's key in the boot project at the version placement.json pins. It refuses a build that did
+app's key, read by its alias in the zones organization's boot project. It refuses a build that did
 not start from the trigger (no _BEDROCK_STEPS substitution) and a layer whose identity is
 under a project placement.json does not record yet (REPLACEME), and says so when it runs
 under a step list an earlier bedrock rendered: the trigger's steps lag one apply behind the

@@ -12,11 +12,12 @@ import (
 )
 
 const (
-	infraKey    = "imp-boot-gbl-github-infrastructure-key"
-	deployerKey = "imp-boot-gbl-github-deployer-key"
+	infraKey    = "imz-boot-gbl-github-infrastructure-key"
+	deployerKey = "imz-boot-gbl-github-deployer-key"
+	keysProject = "imz-boot-gbl-core-c3d4"
 )
 
-// orgSecrets are the organization's containers, both in the boot project: the
+// orgSecrets are the zones organization's secrets, in its boot project: the
 // infrastructure key at three versions, the third disabled, and the deployer key at two.
 func orgSecrets() labSecrets {
 	return labSecrets{containers: map[string][]string{
@@ -25,12 +26,13 @@ func orgSecrets() labSecrets {
 	}}
 }
 
-// orgSecretRepo is an infrastructure repository rendered from the fixture organization's
-// placement, marked a repository so it is found from a working directory inside it.
+// orgSecretRepo is the zones organization's infrastructure repository rendered from the
+// fixture placement, marked a repository so it is found from a working directory inside
+// it: the organization that holds the keys, where the commands run.
 func orgSecretRepo(t *testing.T) string {
 	t.Helper()
 
-	dir := orgRepo(t)
+	dir := zonesRepo(t)
 	if code, out := runOrg(t, "org", "new", dir); code != 0 {
 		t.Fatalf("org new: %d %s", code, out)
 	}
@@ -41,11 +43,11 @@ func orgSecretRepo(t *testing.T) string {
 	return dir
 }
 
-// TestOrgSecret: in the organization's infrastructure repository, secret add stores an
-// organization secret's value in the container 0-bootstrap made in the boot project, and
-// secret pin writes the version in placement.json, where the triggers' runs read it, and
-// renders (the deployer key's version reaches 2-env's outputs). An unknown secret, an
-// application's arguments and an environment are refused.
+// TestOrgSecret: in the zones organization's infrastructure repository, secret add stores
+// a key as a new version of the secret 0-bootstrap made in the boot project, and secret
+// pin writes the version the alias is to point at in placement.json and renders (the
+// alias reaches 0-bootstrap's github.tf). An unknown secret, an application's arguments
+// and an environment are refused.
 func TestOrgSecret(t *testing.T) {
 	t.Parallel()
 
@@ -71,27 +73,27 @@ func TestOrgSecret(t *testing.T) {
 			args:  []string{"add", "github-infrastructure-key"},
 			value: "infrastructure key\n",
 			wantOut: []string{
-				"Added version 4 of imp-boot-gbl-github-infrastructure-key in project imp-boot-gbl-core-a1b2: the infrastructure GitHub App's private key.\n",
+				"Added version 4 of imz-boot-gbl-github-infrastructure-key in project imz-boot-gbl-core-c3d4: the infrastructure GitHub App's private key.\n",
 				"Pin it: bedrock secret pin github-infrastructure-key 4\n",
 			},
 			wantAdded: map[string]string{infraKey: "infrastructure key\n"},
 		},
 		{
-			name:  "the deployer key is added to the boot project's container too, found from the working directory",
+			name:  "the deployer key is added to the boot project's secret too, found from the working directory",
 			args:  []string{"add", "github-deployer-key"},
-			cwd:   "2-env",
+			cwd:   "1-dns",
 			value: "deployer-pem",
 			wantOut: []string{
-				"Added version 3 of imp-boot-gbl-github-deployer-key in project imp-boot-gbl-core-a1b2: the deployer GitHub App's private key.\n",
+				"Added version 3 of imz-boot-gbl-github-deployer-key in project imz-boot-gbl-core-c3d4: the deployer GitHub App's private key.\n",
 				"Pin it: bedrock secret pin github-deployer-key 3\n",
 			},
 			wantAdded: map[string]string{deployerKey: "deployer-pem"},
 		},
 		{
 			name:    "a container the layer has not made is refused, not created",
-			args:    []string{"add", "github-deployer-key", "--container", "imp-boot-gbl-github-deployer-key-2"},
+			args:    []string{"add", "github-deployer-key", "--container", "imz-boot-gbl-github-deployer-key-2"},
 			value:   "deployer-pem",
-			wantErr: "project imp-boot-gbl-core-a1b2 has no container imp-boot-gbl-github-deployer-key-2: the apply of 0-bootstrap creates it; apply the layer, then add the value",
+			wantErr: "project imz-boot-gbl-core-c3d4 has no container imz-boot-gbl-github-deployer-key-2: the apply of 0-bootstrap creates it; apply the layer, then add the value",
 		},
 		{
 			name:    "an empty value is refused",
@@ -126,7 +128,7 @@ func TestOrgSecret(t *testing.T) {
 			name:    "an application's secret is refused on add",
 			args:    []string{"add", "tst", "APP_MAIL_API_KEY"},
 			value:   "k-1",
-			wantErr: "this is the organization's infrastructure repository (placement.json names organization 123456789012): secret add takes an organization secret here, github-infrastructure-key or github-deployer-key; an application's secret ([env] [VARIABLE]) is added from the application's repository",
+			wantErr: "this is the organization's infrastructure repository (placement.json names organization 123456789012): secret add takes an organization secret here, github-infrastructure-key, github-deployer-key, github-release-key; an application's secret ([env] [VARIABLE]) is added from the application's repository",
 		},
 		{
 			name:    "an application's layer flag is refused",
@@ -139,12 +141,15 @@ func TestOrgSecret(t *testing.T) {
 			args: []string{"pin", "github-infrastructure-key", "2"},
 			wantOut: []string{
 				"Pinned github-infrastructure-key to version 2: githubInfrastructureKeyVersion in ",
-				"Secret Manager confirms version 2 of imp-boot-gbl-github-infrastructure-key in project imp-boot-gbl-core-a1b2 is enabled.\n",
+				"Secret Manager confirms version 2 of imz-boot-gbl-github-infrastructure-key in project imz-boot-gbl-core-c3d4 is enabled.\n",
 				"Next: commit placement.json and the files org render rewrote (",
-				"from its merge on, the triggers' runs mint 1-org's GitHub token from version 2.\n",
+				"0-bootstrap/github.tf among them) and open the pull request; its apply moves the alias current of imz-boot-gbl-github-infrastructure-key to version 2, and every reader in every organization (each organization's runs of the triggers that plan or apply its second layer) names the alias, so all of them switch at that apply and nothing changes before it. Then, on GitHub, delete the old key on the app's settings page once the next run has gone through clean.\n",
 			},
 			wantAbsent: []string{"githubInfrastructureAppId"},
-			wantFiles:  map[string][]string{"placement.json": {`"githubInfrastructureKeyVersion": "2"`}},
+			wantFiles: map[string][]string{
+				"placement.json":        {`"githubInfrastructureKeyVersion": "2"`},
+				"0-bootstrap/github.tf": {"secret_id = \"${var.prefix}-boot-gbl-github-infrastructure-key\"\n\n  replication {\n    auto {}\n  }\n\n  labels          = local.labels\n  version_aliases = { current = \"2\" }\n"},
+			},
 		},
 		{
 			name:    "the infrastructure key's version pinned already changes nothing",
@@ -160,7 +165,7 @@ func TestOrgSecret(t *testing.T) {
 		{
 			name:    "a disabled version is refused",
 			args:    []string{"pin", "github-infrastructure-key", "3"},
-			wantErr: "version 3 of imp-boot-gbl-github-infrastructure-key in project imp-boot-gbl-core-a1b2 is DISABLED, not ENABLED: the triggers' runs could not read it; choose an enabled version",
+			wantErr: "version 3 of imz-boot-gbl-github-infrastructure-key in project imz-boot-gbl-core-c3d4 is DISABLED, not ENABLED: the triggers' runs could not read it; choose an enabled version",
 		},
 		{
 			name:    "latest is refused",
@@ -173,19 +178,19 @@ func TestOrgSecret(t *testing.T) {
 			wantErr: "github-infrastructure-key lives in the boot project and takes no environment: bedrock secret pin github-infrastructure-key <version> (given github-infrastructure-key tst 2)",
 		},
 		{
-			name: "the deployer key's version is pinned in placement.json and rendered into 2-env's outputs, from the working directory",
+			name: "the deployer key's version is pinned in placement.json and the alias rendered into 0-bootstrap, from the working directory",
 			args: []string{"pin", "github-deployer-key", "2"},
-			cwd:  "2-env",
+			cwd:  "1-dns",
 			wantOut: []string{
 				"Pinned github-deployer-key to version 2: githubDeployerKeyVersion in ",
-				"Secret Manager confirms version 2 of imp-boot-gbl-github-deployer-key in project imp-boot-gbl-core-a1b2 is enabled.\n",
+				"Secret Manager confirms version 2 of imz-boot-gbl-github-deployer-key in project imz-boot-gbl-core-c3d4 is enabled.\n",
 				"Next: commit placement.json and the files org render rewrote (",
-				"2-env's outputs among them) and open the pull request; from its merge on, the plan trigger's run posts the layers' plans as the deployer app from version 2, and each environment's apply of 2-env carries the version to the applications' pipelines through its output github_deployer_key_secret_version.\n",
+				"its apply moves the alias current of imz-boot-gbl-github-deployer-key to version 2, and every reader in every organization (each plan trigger's run posting the layers' plans, and every application's pipeline talking back on its pull requests) names the alias",
 			},
 			wantAbsent: []string{"githubDeployerAppId"},
 			wantFiles: map[string][]string{
-				"placement.json":  {`"githubDeployerKeyVersion": "2"`},
-				"2-env/locals.tf": {`github_deployer_key_secret_version = "projects/imp-boot-gbl-core-a1b2/secrets/imp-boot-gbl-github-deployer-key/versions/2"`},
+				"placement.json":        {`"githubDeployerKeyVersion": "2"`},
+				"0-bootstrap/github.tf": {"secret_id = \"${var.prefix}-boot-gbl-github-deployer-key\"\n\n  replication {\n    auto {}\n  }\n\n  labels          = local.labels\n  version_aliases = { current = \"2\" }\n"},
 			},
 		},
 		{
@@ -218,7 +223,7 @@ func TestOrgSecret(t *testing.T) {
 		{
 			name:    "an application's secret is refused on pin",
 			args:    []string{"pin", "tst", "APP_COOKIE_KEY", "3"},
-			wantErr: "secret pin takes an organization secret here, github-infrastructure-key or github-deployer-key; an application's secret ([env] [VARIABLE]) is pinned from the application's repository",
+			wantErr: "secret pin takes an organization secret here, github-infrastructure-key, github-deployer-key, github-release-key; an application's secret ([env] [VARIABLE]) is pinned from the application's repository",
 		},
 	}
 	for _, tt := range tests {
