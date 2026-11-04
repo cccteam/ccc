@@ -222,7 +222,7 @@ from `2-env`'s state.
   merged, then opens or updates the release pull request from the commits
   since the last release. The step mints the app's token from its key's
   alias in Secret Manager (`2-env`'s output; the key never reaches GitHub),
-  which the zones organization that holds the keys pins (`bedrock secret pin
+  which the root organization that holds the keys pins (`bedrock secret pin
   github-release-key`, in its repository). The tag then fires the version
   trigger in every environment.
 - `imp-tst-<primary region code>-beacon-sweep`, tst only: the sweep, run

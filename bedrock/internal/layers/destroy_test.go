@@ -115,7 +115,7 @@ func (r *handRunner) Output(_ context.Context, c deploy.Command, _ io.Writer) ([
 
 // destroyCheckout is a checkout with the layers' files the destroy reads and copies: the
 // variables, with or without the destroy variable for the two layers that declare it
-// (1-dns, a zones organization's second layer, never does), the backend, the values and
+// (1-dns, a root organization's second layer, never does), the backend, the values and
 // the lock, and the OpenTofu version at the root. It holds 1-org and 1-dns both, so one
 // checkout serves either kind.
 func destroyCheckout(t *testing.T, destroyVariable bool) string {
@@ -198,7 +198,7 @@ func TestDestroy(t *testing.T) {
 		name            string
 		destroyVariable bool
 		keepNet         bool
-		// zones marks a zones organization's checkout: 1-dns in place of 1-org.
+		// zones marks a root organization's checkout: 1-dns in place of 1-org.
 		zones   bool
 		token   func(context.Context) (string, error)
 		runs    map[string]*handRun
@@ -331,7 +331,7 @@ func TestDestroy(t *testing.T) {
 			},
 		},
 		{
-			name:            "a zones organization: destroys 1-dns then 0-bootstrap, the repository and the zones out of the state first, and sets no destroy variable on 1-dns, which declares none",
+			name:            "a root organization: destroys 1-dns then 0-bootstrap, the repository and the zones out of the state first, and sets no destroy variable on 1-dns, which declares none",
 			destroyVariable: true,
 			zones:           true,
 			token:           fixedToken,
@@ -363,7 +363,7 @@ func TestDestroy(t *testing.T) {
 			wantCopy:   true,
 		},
 		{
-			name:            "a zones organization refuses a 0-bootstrap rendered without the destroy variable, asking none of 1-dns",
+			name:            "a root organization refuses a 0-bootstrap rendered without the destroy variable, asking none of 1-dns",
 			destroyVariable: false,
 			zones:           true,
 			token:           fixedToken,
@@ -371,7 +371,7 @@ func TestDestroy(t *testing.T) {
 			wantErr:         "0-bootstrap/variables.tf declares no destroy variable",
 		},
 		{
-			name:            "a zones organization refuses 1-dns without a GitHub token, before anything changes",
+			name:            "a root organization refuses 1-dns without a GitHub token, before anything changes",
 			destroyVariable: true,
 			zones:           true,
 			token:           noToken,
@@ -390,7 +390,7 @@ func TestDestroy(t *testing.T) {
 			dir := destroyCheckout(t, tt.destroyVariable)
 			runner := &handRunner{runs: tt.runs}
 			var out bytes.Buffer
-			err := Destroy(context.Background(), runner, &DestroyRequest{Dir: dir, GithubToken: tt.token, KeepNet: tt.keepNet, Zones: tt.zones}, &out)
+			err := Destroy(context.Background(), runner, &DestroyRequest{Dir: dir, GithubToken: tt.token, KeepNet: tt.keepNet, Root: tt.zones}, &out)
 			switch {
 			case tt.wantErr == "" && err != nil:
 				t.Fatalf("Destroy() = %v, want no error; printed:\n%s", err, out.String())

@@ -1,5 +1,5 @@
 // keycheck.go is bedrock org secrets check: a version of a GitHub App's key, added to the
-// zones organization's secret, is proven with GitHub before the alias moves to it. A JWT
+// root organization's secret, is proven with GitHub before the alias moves to it. A JWT
 // signed with the version, issued by the App ID placement.json records, asks GitHub for the
 // app itself; GitHub answers for the app's own key alone, so an answer proves the version
 // and a refusal says the version is not the app's. Nothing moves: the alias stays where
@@ -58,7 +58,7 @@ type KeyCheckResult struct {
 
 // CheckKey proves the version: it must be enabled, GitHub must answer a JWT signed with
 // it as the app placement.json records, and the answer must be that app. A hosting
-// organization is sent to the zones organization that holds the keys; an app not
+// organization is sent to the root organization that holds the keys; an app not
 // recorded is refused, since there is nothing to sign as.
 func CheckKey(ctx context.Context, open secret.ClientFunc, access KeyAccessFunc, identity AppIdentityFunc, p *Placement, req *KeyCheckRequest) (*KeyCheckResult, error) {
 	if err := ValidateSecret(req.Secret); err != nil {

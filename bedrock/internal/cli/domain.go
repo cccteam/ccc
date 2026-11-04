@@ -66,7 +66,7 @@ zoneReplacement is set in placement.json (2-net's zones rendered without prevent
 for making a zone again), a check that passes on every domain says the value can be cleared
 now, and bedrock org render written.
 
-In a zones organization (kind in placement.json) the check reads each domain's zone in the
+In a root organization (kind in placement.json) the check reads each domain's zone in the
 boot project (1-dns's dns.tf, which holds the domain's delegation alone: no address, no
 certificate) and resolves the domain's delegation the same way, with the same steps printed
 for a domain as registered (the registrar) and for a label of a domain served elsewhere
@@ -125,11 +125,11 @@ is missing or refused on any domain.`,
 }
 
 // checkRequests is what domain check checks, by the organization's kind: the apps domain
-// and each vanity domain in the network project, or each domain of a zones organization
+// and each vanity domain in the network project, or each domain of a root organization
 // in the boot project with the labels its zone hands onward. It refuses a placement that
 // does not record the project yet.
 func checkRequests(p *org.Placement, dir string) ([]domain.CheckRequest, error) {
-	if p.Zones() {
+	if p.Root() {
 		project := p.ZoneProject()
 		if project == "" {
 			return nil, errors.New("placement.json records no boot project (projects.boot): record the seed's value there, then check again")

@@ -1,7 +1,7 @@
-# imz-zones-infrastructure
+# imr-root-infrastructure
 
 OpenTofu configurations for the imp.example Google Cloud organization,
-rendered by bedrock. The name says whose and what: `imz` is the
+rendered by bedrock. The name says whose and what: `imr` is the
 organization prefix every resource here carries, and this is the zones
 infrastructure, one repository per (organization, kind), so a GitHub
 organization can hold infrastructure for more than one Google Cloud
@@ -10,7 +10,7 @@ Google Cloud organization can hold more than one bedrock organization, each
 under a folder of its prefix's name at the organization root (`0-bootstrap`),
 with projects, identities, custom roles and grants of its own and
 nothing at the organization node ("Several organizations", below). The
-projects carry the label `organization = imz`. Modeled on
+projects carry the label `organization = imr`. Modeled on
 [cccteam/tf-gcp-setup](https://github.com/cccteam/tf-gcp-setup): numbered
 layers, one identity per layer, no static credentials anywhere. The difference
 is the control plane. There is no Scalr; state lives in a Cloud Storage bucket
@@ -26,8 +26,8 @@ gets a line there first.
 
 | Layer | Directory | Applied as | Creates |
 |---|---|---|---|
-| 0 | [`0-bootstrap/`](0-bootstrap/) | the break-glass account the first time (local state, then migrated); then the apply trigger as `imz-boot-gbl-tofu` | adopts the seeded `terraform` folder, boot project, and boot identity; the dns layer identity and its grant on the boot project; the project-updater and state-bucket-policy custom roles; the Cloud Build connection, the two runner identities and the two triggers that plan and apply the layers; the three GitHub Apps' key secrets, held for every organization, with their aliases and the hosting organizations' and the key operators' grants; the state bucket's grants for its two identities |
-| 1 | [`1-dns/`](1-dns/) | the break-glass account the first time; then the apply trigger as `imz-dns-gbl-tofu` | one Cloud DNS public zone per domain delegated to this organization, in the boot project, and one NS record set per label handed onward to a hosting organization's zone; this repository's default branch ruleset |
+| 0 | [`0-bootstrap/`](0-bootstrap/) | the break-glass account the first time (local state, then migrated); then the apply trigger as `imr-boot-gbl-tofu` | adopts the seeded `terraform` folder, boot project, and boot identity; the dns layer identity and its grant on the boot project; the project-updater and state-bucket-policy custom roles; the Cloud Build connection, the two runner identities and the two triggers that plan and apply the layers; the three GitHub Apps' key secrets, held for every organization, with their aliases and the hosting organizations' and the key operators' grants; the state bucket's grants for its two identities |
+| 1 | [`1-dns/`](1-dns/) | the break-glass account the first time; then the apply trigger as `imr-dns-gbl-tofu` | one Cloud DNS public zone per domain delegated to this organization, in the boot project, and one NS record set per label handed onward to a hosting organization's zone; this repository's default branch ruleset |
 
 Two layers, nothing else: this organization holds DNS zones alone, no
 environments, no instances and no load balancer. Every application's name
@@ -104,20 +104,20 @@ trimmed (`0-bootstrap/README.md`, "Trimming the break-glass account").
 {prefix}-{environment}-{region}-{purpose}
 ```
 
-Prefix `imz`. `gbl` is the region segment only for resources that really are
+Prefix `imr`. `gbl` is the region segment only for resources that really are
 global: projects, folders, service accounts, IAM. Regional resources carry the
 region code, `uc1` for us-central1.
 
 | Resource | Name |
 |---|---|
-| boot project | `imz-boot-gbl-core-a1b2` |
-| dns layer identity / plan identity | `imz-dns-gbl-tofu` / `imz-dns-gbl-plan` |
-| a domain's zone | `imz-boot-gbl-dns-mydomain-com` |
-| state bucket | `imz-boot-gbl-state-a1b2` |
+| boot project | `imr-boot-gbl-core-a1b2` |
+| dns layer identity / plan identity | `imr-dns-gbl-tofu` / `imr-dns-gbl-plan` |
+| a domain's zone | `imr-boot-gbl-dns-mydomain-com` |
+| state bucket | `imr-boot-gbl-state-a1b2` |
 
 Project IDs and bucket names are globally unique and permanent, so both carry a
 random four-hex suffix. The custom roles (`projectUpdater`) live in the projects, where a name is the project's own,
-so they carry none. Every project carries the label `organization = imz`, and every project and bucket the label
+so they carry none. Every project carries the label `organization = imr`, and every project and bucket the label
 `bedrock-lab = "true"`.
 
 ## How the layers are applied
@@ -284,7 +284,7 @@ nothing new. Otherwise, once, by a person:
    ```
 
    `add` puts the key into its secret in the boot project
-   (`imz-boot-gbl-github-deployer-key`) as a new version and prints the number; `check`
+   (`imr-boot-gbl-github-deployer-key`) as a new version and prints the number; `check`
    proves the version with GitHub; `pin` records it in `placement.json`
    (`githubDeployerKeyVersion`) and renders the alias `current` at that
    version, which the pull request's apply moves. The plan trigger posts the

@@ -42,8 +42,8 @@ const (
 	infraAppID       = "5080700"
 	installation     = int64(77)
 	bucket           = "imp-boot-gbl-state-a1b2"
-	deployerVersion  = "projects/imz-boot-gbl-core-c3d4/secrets/imz-boot-gbl-github-deployer-key/versions/current"
-	infraVersion     = "projects/imz-boot-gbl-core-c3d4/secrets/imz-boot-gbl-github-infrastructure-key/versions/current"
+	deployerVersion  = "projects/imr-boot-gbl-core-c3d4/secrets/imr-boot-gbl-github-deployer-key/versions/current"
+	infraVersion     = "projects/imr-boot-gbl-core-c3d4/secrets/imr-boot-gbl-github-infrastructure-key/versions/current"
 )
 
 // appKey is the RSA key the apps' tokens are minted with in tests, made once.
@@ -612,7 +612,7 @@ func TestPlanRefusals(t *testing.T) {
 			secrets: map[string]string{infraVersion: "the infrastructure key"},
 			changed: []string{"2-shr/registry.tf"},
 			runs:    map[string]tofuRun{"2-shr": {text: succeededPlan}},
-			wantOut: []string{"the alias current of " + deployerVersion + " names no version: the zones organization that holds the keys pins one (bedrock secret pin github-deployer-key <version> there) and its apply sets the alias; the plans are in this log alone until then.\n"},
+			wantOut: []string{"the alias current of " + deployerVersion + " names no version: the root organization that holds the keys pins one (bedrock secret pin github-deployer-key <version> there) and its apply sets the alias; the plans are in this log alone until then.\n"},
 			absent:  []string{"Posted the plans"},
 		},
 		{
@@ -699,7 +699,7 @@ func TestPlanOrgToken(t *testing.T) {
 		{
 			name:    "the app not recorded",
 			mutate:  func(p *org.Placement) { p.GithubInfrastructureAppID = "" },
-			wantErr: "1-org's GitHub provider needs the infrastructure GitHub App (0-bootstrap/README.md, \"The infrastructure GitHub App\"): create it and record its App ID as githubInfrastructureAppId in placement.json; its key is the alias current of imz-boot-gbl-github-infrastructure-key in the zones organization's boot project, added and pinned there (bedrock secret add github-infrastructure-key, bedrock secret pin github-infrastructure-key <version>)",
+			wantErr: "1-org's GitHub provider needs the infrastructure GitHub App (0-bootstrap/README.md, \"The infrastructure GitHub App\"): create it and record its App ID as githubInfrastructureAppId in placement.json; its key is the alias current of imr-boot-gbl-github-infrastructure-key in the root organization's boot project, added and pinned there (bedrock secret add github-infrastructure-key, bedrock secret pin github-infrastructure-key <version>)",
 		},
 	}
 	for _, tt := range tests {

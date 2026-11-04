@@ -130,7 +130,7 @@ func (r *run) namedRuns() (runs []org.LayerRun, named bool, err error) {
 }
 
 // tokenFor mints the GitHub token of the layer with the GitHub provider (1-org, or 1-dns
-// in a zones organization) when that layer is among the runs.
+// in a root organization) when that layer is among the runs.
 func (r *run) tokenFor(ctx context.Context, runs []org.LayerRun) (string, error) {
 	for _, lr := range runs {
 		if lr.Layer == r.p.SecondLayer() {

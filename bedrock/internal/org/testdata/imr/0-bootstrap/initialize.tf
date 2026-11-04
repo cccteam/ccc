@@ -6,7 +6,7 @@ terraform {
   # out, and the state is moved into the bucket with `tofu init -migrate-state`
   # once the name is in; see the README.
   backend "gcs" {
-    bucket = "imz-boot-gbl-state-c3d4"
+    bucket = "imr-boot-gbl-state-c3d4"
     prefix = "0-bootstrap"
   }
   required_version = ">= 1.11.0"

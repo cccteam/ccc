@@ -4,7 +4,7 @@ terraform {
   # 0-bootstrap/README.md creates the bucket, and the name is substituted here
   # once, by hand.
   backend "gcs" {
-    bucket = "imz-boot-gbl-state-c3d4"
+    bucket = "imr-boot-gbl-state-c3d4"
     prefix = "1-dns"
   }
   required_version = ">= 1.11.0"

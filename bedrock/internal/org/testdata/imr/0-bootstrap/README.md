@@ -14,8 +14,8 @@ Build triggers" below).
 
 - Adopts, through `import` blocks: the organization's folder at the org root
   and the `terraform` folder under it, the
-  boot project `imz-boot-gbl-core-<suffix>` inside it, and the boot layer
-  identity `imz-boot-gbl-tofu`. From the first apply on they are ordinary
+  boot project `imr-boot-gbl-core-<suffix>` inside it, and the boot layer
+  identity `imr-boot-gbl-tofu`. From the first apply on they are ordinary
   managed resources.
 - The boot project's API set (Cloud Build, resource manager, Cloud DNS, IAM,
   IAM credentials, logging, Secret Manager, service usage, storage), its
@@ -23,9 +23,9 @@ Build triggers" below).
 - Role bindings on the organization's folder for the boot layer identity
   (`var.boot_layer_roles`), and `roles/dns.admin` on the boot project alone for
   the dns layer identity, whose zones live there (`1-dns`).
-- The dns layer identity `imz-dns-gbl-tofu`, in the boot project.
-- The two boot layers' plan identities `imz-boot-gbl-plan` and
-  `imz-dns-gbl-plan`, in the boot project, with the reads on the
+- The dns layer identity `imr-dns-gbl-tofu`, in the boot project.
+- The two boot layers' plan identities `imr-boot-gbl-plan` and
+  `imr-dns-gbl-plan`, in the boot project, with the reads on the
   organization's folder of `var.boot_plan_roles`, the boot project as their quota project, the
   planner's right to become them (`cloud-build.tf`), for the boot one the
   reads of the connection, the repository link and the triggers on the boot
@@ -40,20 +40,20 @@ Build triggers" below).
 - `roles/billing.user` on the billing account for the boot identity, only when
   `manage_billing_iam` is true. See step 5.
 - The Cloud Build side (`cloud-build.tf`): the GitHub connection
-  `imz-boot-uc1-github` in the boot project, from the Cloud Build GitHub App's
+  `imr-boot-uc1-github` in the boot project, from the Cloud Build GitHub App's
   installation and the token secret's version `placement.json` records
   (`cloudBuildInstallationId`, `cloudBuildTokenSecretVersion`; "The Cloud
   Build GitHub authorization" below); the link of this repository
-  (imp-example/imz-zones-infrastructure) under it; the read of the token secret for
+  (imp-example/imr-root-infrastructure) under it; the read of the token secret for
   the boot project's Cloud Build service agent; the two runner identities
-  `imz-org-gbl-planner` and `imz-org-gbl-applier` with their
-  grants; and the two triggers, `imz-boot-uc1-layers-plan` on a pull request into
-  `master` and `imz-boot-uc1-layers-apply` on a push to it, whose
+  `imr-org-gbl-planner` and `imr-org-gbl-applier` with their
+  grants; and the two triggers, `imr-boot-uc1-layers-plan` on a pull request into
+  `master` and `imr-boot-uc1-layers-apply` on a push to it, whose
   steps are the trigger's own ("The Cloud Build triggers").
 - The three GitHub Apps' key secrets in the boot project (`github.tf`), one
   per app for every bedrock organization in the Google Cloud organization:
-  `imz-boot-gbl-github-infrastructure-key`, `imz-boot-gbl-github-deployer-key` and
-  `imz-boot-gbl-github-release-key`, each with the alias `current` at the version
+  `imr-boot-gbl-github-infrastructure-key`, `imr-boot-gbl-github-deployer-key` and
+  `imr-boot-gbl-github-release-key`, each with the alias `current` at the version
   `placement.json` pins, which every reader names; the custom role
   `secretPolicyAdmin`, which each hosting organization's boot identity holds
   on the three (`hostingOrganizations`); and the key operators' grants
@@ -125,7 +125,7 @@ bedrock org preflight
 
 export ORG_ID=123456789012
 export BILLING_ACCOUNT_ID=012345-6789AB-CDEF01
-export PREFIX=imz
+export PREFIX=imr
 export REGION=us-central1
 export BREAK_GLASS=seed@imp.example
 ```
@@ -177,7 +177,7 @@ export BOOT_PROJECT_ID="${PREFIX}-boot-gbl-core-$(od -An -tx1 -N2 /dev/urandom |
 gcloud projects create "${BOOT_PROJECT_ID}" \
   --name="${PREFIX}-boot-gbl-core" \
   --folder="${TERRAFORM_FOLDER_ID}" \
-  --labels=terraform=true,terraform_source_path=0-bootstrap,source_repo=imz-zones-infrastructure,organization=imz,environment=boot,bedrock-lab=true
+  --labels=terraform=true,terraform_source_path=0-bootstrap,source_repo=imr-root-infrastructure,organization=imr,environment=boot,bedrock-lab=true
 
 gcloud billing projects link "${BOOT_PROJECT_ID}" --billing-account="${BILLING_ACCOUNT_ID}"
 
@@ -239,7 +239,7 @@ gcloud storage buckets create "gs://${STATE_BUCKET}" \
 
 gcloud storage buckets update "gs://${STATE_BUCKET}" \
   --versioning \
-  --update-labels=terraform=true,terraform_source_path=0-bootstrap,source_repo=imz-zones-infrastructure,organization=imz,environment=boot,bedrock-lab=true
+  --update-labels=terraform=true,terraform_source_path=0-bootstrap,source_repo=imr-root-infrastructure,organization=imr,environment=boot,bedrock-lab=true
 ```
 
 Keep `BOOT_PROJECT_ID`, `ORGANIZATION_FOLDER_ID`, `TERRAFORM_FOLDER_ID`, and `STATE_BUCKET`. Steps 2 to
@@ -261,7 +261,7 @@ so a person leaving the organization breaks nothing.
 1. In the Google Cloud console, in the boot project `BOOT_PROJECT_ID`, as the
    break-glass account: Cloud Build, Repositories (2nd gen), Create host
    connection, GitHub, in the region `us-central1`, named
-   `imz-boot-uc1-github`, the name this layer gives it. Sign in to GitHub as
+   `imr-boot-uc1-github`, the name this layer gives it. Sign in to GitHub as
    the machine account `imp-machine`, install or select the Google
    Cloud Build GitHub App on the `imp-example` organization with
    access to all repositories, and finish. The console stores the token as a
@@ -311,7 +311,7 @@ adopted rather than made again:
 cd 0-bootstrap
 # comment out the backend "gcs" { ... } block in initialize.tf
 tofu init
-tofu import 'google_cloudbuildv2_connection.github[0]' "projects/${BOOT_PROJECT_ID}/locations/${REGION}/connections/imz-boot-uc1-github"
+tofu import 'google_cloudbuildv2_connection.github[0]' "projects/${BOOT_PROJECT_ID}/locations/${REGION}/connections/imr-boot-uc1-github"
 tofu plan
 ```
 
@@ -362,7 +362,7 @@ export BILLING_ACCOUNT_ID=012345-6789AB-CDEF01
 export BOOT_PROJECT_ID=<from step 1>
 
 gcloud billing accounts add-iam-policy-binding "${BILLING_ACCOUNT_ID}" \
-  --member="serviceAccount:imz-boot-gbl-tofu@${BOOT_PROJECT_ID}.iam.gserviceaccount.com" \
+  --member="serviceAccount:imr-boot-gbl-tofu@${BOOT_PROJECT_ID}.iam.gserviceaccount.com" \
   --role=roles/billing.user
 ```
 
@@ -431,7 +431,7 @@ folder, so their removal is the administrators' to confirm.
 | `boot_project_id` | Project ID of the seeded boot project, suffix included. Adopted, not created. | `string` | n/a | yes |
 | `github_default_branch` | The infrastructure repository's default branch: the plan trigger runs on a pull request into it, the apply trigger on a push to it. | `string` | `"master"` | no |
 | `github_organization` | The GitHub organization of the infrastructure and application repositories. | `string` | `"imp-example"` | no |
-| `infrastructure_repository` | This repository's name, the one the connection links and the triggers watch. | `string` | `"imz-zones-infrastructure"` | no |
+| `infrastructure_repository` | This repository's name, the one the connection links and the triggers watch. | `string` | `"imr-root-infrastructure"` | no |
 | `manage_billing_iam` | Whether this layer manages the `roles/billing.user` grant. Needs Billing Account Administrator to apply. | `bool` | `true` | no |
 | `organization_domain` | Domain of the GCP organization. | `string` | n/a | yes |
 | `prefix` | Short org-wide prefix used in resource names. | `string` | `"imp"` | no |
@@ -464,12 +464,12 @@ authorization among them.
 Every layer of this repository is planned on a pull request and applied on
 its merge by two Cloud Build triggers in the boot project, rendered by
 bedrock like the layers (`cloud-build.tf`). The plan trigger
-(`imz-boot-uc1-layers-plan`) runs on every pull request into
+(`imr-boot-uc1-layers-plan`) runs on every pull request into
 `master`: it plans each layer whose `.tf`, `.tfvars` or lock
 file the pull request changes, every layer when `.opentofu-version` changes,
 side by side, each as that layer's plan identity, and posts each plan on the
 pull request as the deployer GitHub App, one comment per layer kept current
-across pushes. The apply trigger (`imz-boot-uc1-layers-apply`) runs on every push
+across pushes. The apply trigger (`imr-boot-uc1-layers-apply`) runs on every push
 to `master`: it applies each layer changed since that layer's
 last successful apply (a marker under `applied/` in the state bucket holds
 the commit; a layer with no marker is applied), as that layer's apply
@@ -517,7 +517,7 @@ on the default branch with the layer; in a terminal, as a person holding `roles/
 on the boot project:
 
 ```bash
-gcloud builds triggers run imz-boot-uc1-layers-apply --region=us-central1 --project=<boot project> --branch=master --substitutions=_LAYER=1-dns
+gcloud builds triggers run imr-boot-uc1-layers-apply --region=us-central1 --project=<boot project> --branch=master --substitutions=_LAYER=1-dns
 ```
 
 Cloud Build runs the builds of a trigger as they come; two applies of one
@@ -526,11 +526,11 @@ fails on it, so start a run by hand when none is running.
 
 Who runs what, and why the first time works in order:
 
-- The plan trigger's builds run as the planner (`imz-org-gbl-planner`),
-  the apply trigger's as the applier (`imz-org-gbl-applier`). Neither
+- The plan trigger's builds run as the planner (`imr-org-gbl-planner`),
+  the apply trigger's as the applier (`imr-org-gbl-applier`). Neither
   holds a layer's roles: each impersonates the layer identity of its kind for
   that layer's tofu (`roles/iam.serviceAccountTokenCreator` on each identity:
-  this layer grants it on its four identities, every identity a zones
+  this layer grants it on its four identities, every identity a root
   organization has), so a plan runs with a plan identity's reads and an apply
   with the apply identity's writes. What each holds itself: the build logs,
   the read of its own build (its substitutions, the pull request, the
@@ -540,7 +540,7 @@ Who runs what, and why the first time works in order:
 - IAM refuses a binding for a service account that does not exist, so each
   layer grants for the identities it creates. This layer grants for the boot
   identity, the dns identity and the two boot layers' plan identities
-  (`imz-boot-gbl-plan`, `imz-dns-gbl-plan`), all of which exist
+  (`imr-boot-gbl-plan`, `imr-dns-gbl-plan`), all of which exist
   when its grants apply; `1-dns` creates no identity.
 - The first apply of this layer and the first apply of `1-dns` are the
   break-glass account's (steps 3 and 4 above, and `1-dns/README.md`), as the
@@ -549,7 +549,7 @@ Who runs what, and why the first time works in order:
 - From the first apply of this layer on, a push to `master`
   can apply this layer and `1-dns` through the apply trigger, and a pull
   request can plan them (their four identities and the runners' grants on
-  them exist). Nothing follows: a zones organization has no other layer.
+  them exist). Nothing follows: a root organization has no other layer.
 
 Each identity's role set is completed by refusal: a layer applied as its
 identity that is refused a permission gets the role that carries it, in
@@ -592,7 +592,7 @@ person:
    bedrock secret pin github-infrastructure-key <version>
    ```
 
-   `add` puts the key into `imz-boot-gbl-github-infrastructure-key` in the boot project
+   `add` puts the key into `imr-boot-gbl-github-infrastructure-key` in the boot project
    as a new version and prints its number (1 for the first). `check` reads the
    version, signs as the app and asks GitHub, which answers for the app's own
    key alone. `pin` records the version as `githubInfrastructureKeyVersion` in
@@ -611,8 +611,8 @@ own token (`1-dns/README.md`).
 
 This organization holds the private keys of the three GitHub Apps for every
 bedrock organization in the Google Cloud organization: one secret per app in
-the boot project (`github.tf`), `imz-boot-gbl-github-infrastructure-key`,
-`imz-boot-gbl-github-deployer-key` and `imz-boot-gbl-github-release-key`, each version a key.
+the boot project (`github.tf`), `imr-boot-gbl-github-infrastructure-key`,
+`imr-boot-gbl-github-deployer-key` and `imr-boot-gbl-github-release-key`, each version a key.
 Every reader, this organization's runs of the triggers and the hosting
 organizations' pipelines, names a secret's alias `current`, which
 `placement.json` pins (`githubInfrastructureKeyVersion`,
@@ -706,7 +706,7 @@ the connection and the triggers, the GitHub Apps' keys, and the zones with
 their record sets. The folders and the custom roles go with it, and on GitHub
 this repository's ruleset. The repository stays, with its code and pull
 requests. Every domain delegated to this organization then points at servers
-that answer nothing, so a zones organization is destroyed once no domain is
+that answer nothing, so a root organization is destroyed once no domain is
 delegated to it (`1-dns/README.md`). Google keeps a deleted project for 30
 days, in which the console can restore it; its id never returns after.
 

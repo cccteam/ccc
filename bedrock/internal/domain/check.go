@@ -6,7 +6,7 @@
 // or delegated as a label of a domain served elsewhere) is not configured: it is what
 // the answers show. A registered domain's name servers are read from the answers too,
 // never trusted from the registration: after its zone is made again, a registration
-// still names the old set until it is pointed at the zone in Cloud Domains. In a zones
+// still names the old set until it is pointed at the zone in Cloud Domains. In a root
 // organization the same check reads each domain's zone in 1-dns, which holds the
 // delegation alone, and then asks the world whether each label handed onward answers the
 // name servers it is handed to.
@@ -43,7 +43,7 @@ const (
 	authorizationPrefix = "_acme-challenge"
 	// netValues names the network layer's placement in a message.
 	netValues = DefaultLayer + "/" + tfvarsFile
-	// dnsLayer is a zones organization's layer, whose zones hold a domain's delegation
+	// dnsLayer is a root organization's layer, whose zones hold a domain's delegation
 	// alone.
 	dnsLayer = "1-dns"
 	// squarespacePath is where Squarespace Domains, the registrar of record behind Cloud
@@ -210,7 +210,7 @@ type CheckRequest struct {
 	// a domain that carries other DNS differs (a label of it declared as the vanity
 	// domain, not a new apps domain).
 	Vanity bool
-	// Delegating marks a domain of a zones organization (domains in its placement),
+	// Delegating marks a domain of a root organization (domains in its placement),
 	// whose zone in 1-dns holds the domain's delegation alone: no address record, no
 	// certificate authorization, one NS record set per label handed onward (Labels). The
 	// check reads the zone and resolves the domain as for any domain, skips the records
@@ -221,7 +221,7 @@ type CheckRequest struct {
 	Labels []Label
 }
 
-// Label is one label a zones organization's zone hands onward: the label (acme, for
+// Label is one label a root organization's zone hands onward: the label (acme, for
 // acme.mydomain.com), the hosting organization that serves the name, and the four name
 // servers of its zone there, as the record set names them.
 type Label struct {
@@ -297,10 +297,10 @@ type Report struct {
 	// as type and data.
 	Foreign []string
 	// Authorization is the zone's authorization record, and AuthorizationResolves
-	// whether the world sees it; neither for a zones organization's domain.
+	// whether the world sees it; neither for a root organization's domain.
 	Authorization         Record
 	AuthorizationResolves bool
-	// Delegating marks a zones organization's domain, and Labels are what the answers
+	// Delegating marks a root organization's domain, and Labels are what the answers
 	// show about each label it hands onward, in the request's order, read once the
 	// domain is delegated.
 	Delegating bool
@@ -602,7 +602,7 @@ func hostSet(names []string) []string {
 }
 
 // Passed reports whether nothing is missing: the domain answers the zone's name servers
-// and the authorization record resolves; for a zones organization's domain, the domain
+// and the authorization record resolves; for a root organization's domain, the domain
 // answers the zone's name servers and every label handed onward answers its own.
 func (r *Report) Passed() bool {
 	if r.Delegating {

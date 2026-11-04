@@ -65,13 +65,13 @@ const (
 // HostingLayers are the hosting model's layers, in apply order: 2-env before 2-net, since
 // 2-net's URL map names tst's pull-request backend, which 2-env tst makes, while nothing
 // in 2-env waits on 2-net (its two load balancer principals are derived from 1-org until
-// 2-net exists, and the apps domain is the placement's). A zones organization's are
-// ZonesLayers (zones.go); Placement.Layers answers by kind.
+// 2-net exists, and the apps domain is the placement's). A root organization's are
+// RootLayers (zones.go); Placement.Layers answers by kind.
 var HostingLayers = []string{bootstrapLayer, orgLayer, shrLayer, spnLayer, envLayer, netLayer}
 
 // layerProjects is the project each single-run layer's identities live in, by layer: the
 // boot project for the two boot layers (both identities are named after their layer, boot
-// and org, or dns for a zones organization), the layer's own project for the shared ones.
+// and org, or dns for a root organization), the layer's own project for the shared ones.
 // 2-env's are the environments'.
 var layerProjects = map[string]struct{ name, project string }{
 	bootstrapLayer: {name: bootProject, project: bootProject},
@@ -272,7 +272,7 @@ func (v *view) CloudBuildTokenSecretVersionHCL() string {
 
 // GithubDeployerAppIDHCL is the deployer app's App ID as an HCL value, or null until the
 // app is recorded; DeployerKeyVersionNameHCL its key's alias by resource name, quoted,
-// or null on a zones organization before the app is recorded.
+// or null on a root organization before the app is recorded.
 func (v *view) GithubDeployerAppIDHCL() string {
 	if v.GithubDeployerAppID == "" {
 		return hclNull
@@ -286,7 +286,7 @@ func (v *view) DeployerKeyVersionNameHCL() string {
 }
 
 // ReleaseKeyVersionNameHCL is the release app's key's alias by resource name, quoted,
-// or null on a zones organization before the app is recorded.
+// or null on a root organization before the app is recorded.
 func (v *view) ReleaseKeyVersionNameHCL() string {
 	return hclStringOrNull(v.ReleaseKeyVersionName())
 }
@@ -401,7 +401,7 @@ func (*view) ApplyBuildSeconds() int {
 }
 
 // LayerOrderProse spells the apply order: 0-bootstrap, 1-org, 2-shr and 2-spn, then
-// 2-env for tst, stg and prd, then 2-net; for a zones organization, 0-bootstrap, then
+// 2-env for tst, stg and prd, then 2-net; for a root organization, 0-bootstrap, then
 // 1-dns.
 func (v *view) LayerOrderProse() string {
 	layers := v.Layers()
@@ -761,7 +761,7 @@ func (v *view) LabelsBlockQuoted(layer, environment string) string {
 	return v.LabelsBlock(layer, fmt.Sprintf("%q", environment))
 }
 
-// DomainsHCL is a zones organization's domains as the HCL value 1-dns takes
+// DomainsHCL is a root organization's domains as the HCL value 1-dns takes
 // (var.domains): each domain with its labels handed onward, each label with the hosting
 // organization and the four name servers, in name order; {} with no domain.
 func (v *view) DomainsHCL() string {
@@ -791,7 +791,7 @@ func (v *view) DomainsHCL() string {
 	return b.String()
 }
 
-// DomainsProse names a zones organization's domains for a README, each in backticks,
+// DomainsProse names a root organization's domains for a README, each in backticks,
 // joined with "and"; empty when none is declared yet.
 func (v *view) DomainsProse() string {
 	return prose(backticked(v.DomainNames()))

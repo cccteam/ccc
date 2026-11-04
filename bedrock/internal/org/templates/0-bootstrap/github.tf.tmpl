@@ -1,7 +1,7 @@
 # ---------------------------------------------------------------------------
 # The GitHub Apps' keys
 #
-{{- if .Zones}}
+{{- if .Root}}
 # The three GitHub Apps' private keys live here, in this organization's boot
 # project, for every bedrock organization in the Google Cloud organization:
 # one secret per app, each version a key, and on each secret the alias
@@ -168,7 +168,7 @@ resource "google_project_iam_member" "boot_tofu_secrets" {
   member  = google_service_account.boot_tofu.member
 }
 {{- else}}
-# The three GitHub Apps' private keys live in the zones organization
+# The three GitHub Apps' private keys live in the root organization
 # {{.KeysOrganization}}'s boot project ({{.KeysProject}}; keys in placement.json), one
 # secret per app for every bedrock organization in the Google Cloud
 # organization, and every reader here names a secret's alias "current", which
@@ -194,7 +194,7 @@ resource "google_project_iam_member" "boot_tofu_secrets" {
 #     through its output and grants the release identities the read.
 #
 # This layer makes no secret. It grants on those three what its own
-# identities and 1-org's need, with the policy administration the zones
+# identities and 1-org's need, with the policy administration the root
 # organization gave this organization's boot identity (secretPolicyAdmin, a
 # role of that project: a secret's IAM policy and nothing else), which is the
 # only reach this organization has into that one: the org identity gets the

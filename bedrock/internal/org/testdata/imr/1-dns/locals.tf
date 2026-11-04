@@ -8,8 +8,8 @@ locals {
   labels = {
     terraform             = "true"
     terraform_source_path = "1-dns"
-    source_repo           = "imz-zones-infrastructure"
-    organization          = "imz"
+    source_repo           = "imr-root-infrastructure"
+    organization          = "imr"
     environment           = "boot"
     bedrock-lab           = "true"
   }

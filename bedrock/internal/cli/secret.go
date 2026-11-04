@@ -201,8 +201,8 @@ the container cannot be told apart (none or several found), when the placement h
 secret_versions map or that map has no <env> entry, and when the version is disabled or
 absent. A variable already pinned to the version leaves the file as it is.
 
-In the zones organization's infrastructure repository (the one whose placement.json at the
-root names the organization, organizationId, with kind zones), pin takes one of the three
+In the root organization's infrastructure repository (the one whose placement.json at the
+root names the organization, organizationId, with kind root), pin takes one of the three
 secrets that organization holds for every organization, the GitHub Apps' private keys, and
 a version's number, never latest: github-infrastructure-key, github-deployer-key or
 github-release-key, each a secret in the boot project (projects.boot) named
@@ -215,7 +215,7 @@ trigger's runs posting the plans, the applications' pipelines and release trigge
 hosting organizations), so all of them switch at that apply. org secrets check proves a
 version with GitHub first. --project and --container override; --app and --layer are
 refused, and so is an application's [env] [VARIABLE]. A hosting organization's repository
-refuses pin, naming the zones organization its placement records (keys). Secret Manager is
+refuses pin, naming the root organization its placement records (keys). Secret Manager is
 asked first, as above, and the pull request carrying the change goes through the Cloud
 Build triggers.`,
 		Args: cobra.MaximumNArgs(3),
@@ -551,8 +551,8 @@ use of its services: the secretOperator role 1-org defines, which nobody holds s
 member of the environment's team group asks for the secret operator entitlement (2-env's
 team-group.tf) and holds the role for the time asked.
 
-In the zones organization's infrastructure repository (the one whose placement.json at the
-root names the organization, organizationId, with kind zones), add takes one of the three
+In the root organization's infrastructure repository (the one whose placement.json at the
+root names the organization, organizationId, with kind root), add takes one of the three
 secrets that organization holds for every organization in place of [env] [VARIABLE]:
 github-infrastructure-key, the infrastructure GitHub App's private key, into
 <prefix>-boot-gbl-github-infrastructure-key, github-deployer-key, the deployer GitHub App's
@@ -563,7 +563,7 @@ is an application's [env] [VARIABLE]. The value is read as above; a .pem file is
 given. The secrets are 0-bootstrap's own resources, so a project without them is refused:
 apply the layer first. Adding is a key operator's (keyOperators in placement.json). Nothing
 reads the new version until org secrets check has proven it and pin has moved the alias.
-A hosting organization's repository refuses add, naming the zones organization its
+A hosting organization's repository refuses add, naming the root organization its
 placement records (keys). The command prints the check and the pin to make.`,
 		Args: cobra.MaximumNArgs(2),
 		ValidArgsFunction: func(cmd *cobra.Command, args []string, _ string) ([]string, cobra.ShellCompDirective) {

@@ -43,8 +43,8 @@ const (
 
 // BootstrapRole is one role the break-glass account holds for the seed and the first
 // applies of 0-bootstrap and 1-org: its title as the console names it, its id, where it
-// is granted, the permissions tested for it, and what needs them; ZonesNeeds is what a
-// zones organization's seed and first applies need it for, empty for a role they do not
+// is granted, the permissions tested for it, and what needs them; RootNeeds is what a
+// root organization's seed and first applies need it for, empty for a role they do not
 // need (Placement.BootstrapRoles).
 type BootstrapRole struct {
 	Title       string
@@ -52,7 +52,7 @@ type BootstrapRole struct {
 	On          Scope
 	Permissions []string
 	Needs       string
-	ZonesNeeds  string
+	RootNeeds   string
 }
 
 // BootstrapRoles are the roles the seed and the first applies of 0-bootstrap and 1-org
@@ -71,7 +71,7 @@ var BootstrapRoles = []BootstrapRole{
 		On:          OnOrganization,
 		Permissions: []string{"resourcemanager.folders.create"},
 		Needs:       "the organization's folder, at the organization root; the seed's terraform folder and 1-org's folders are made under it as its administrator",
-		ZonesNeeds:  "the organization's folder, at the organization root; the seed's terraform folder is made under it as its administrator",
+		RootNeeds:   "the organization's folder, at the organization root; the seed's terraform folder is made under it as its administrator",
 	},
 	{
 		Title:       "Billing Account User",
@@ -79,23 +79,23 @@ var BootstrapRoles = []BootstrapRole{
 		On:          OnBillingAccount,
 		Permissions: []string{"billing.resourceAssociations.create"},
 		Needs:       "linking the boot project and 1-org's projects to the billing account",
-		ZonesNeeds:  "linking the boot project to the billing account",
+		RootNeeds:   "linking the boot project to the billing account",
 	},
 }
 
 // BootstrapRoles are the roles the organization's seed and first applies need, by its
-// kind: the table for a hosting organization; for a zones organization the same roles,
+// kind: the table for a hosting organization; for a root organization the same roles,
 // each with what needs it there, since 1-dns declares no folder, project, policy or tag.
 func (p *Placement) BootstrapRoles() []BootstrapRole {
-	if !p.Zones() {
+	if !p.Root() {
 		return BootstrapRoles
 	}
 	var roles []BootstrapRole
 	for _, role := range BootstrapRoles {
-		if role.ZonesNeeds == "" {
+		if role.RootNeeds == "" {
 			continue
 		}
-		role.Needs = role.ZonesNeeds
+		role.Needs = role.RootNeeds
 		roles = append(roles, role)
 	}
 

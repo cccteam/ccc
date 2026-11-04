@@ -43,7 +43,7 @@ locals {
   # The Cloud Build GitHub App's installation on the organization and the
   # token secret's version, from placement.json; null until recorded.
   cloud_build_installation_id      = 12345678
-  cloud_build_token_secret_version = "projects/imz-boot-gbl-core-c3d4/locations/us-central1/secrets/github-github-oauthtoken-fedcba/versions/1"
+  cloud_build_token_secret_version = "projects/imr-boot-gbl-core-c3d4/locations/us-central1/secrets/github-github-oauthtoken-fedcba/versions/1"
   connected                        = local.cloud_build_installation_id != null && local.cloud_build_token_secret_version != null
 
   # The token secret's resource name without its version, in either of the
@@ -58,7 +58,7 @@ locals {
   token_secret   = local.connected ? local.token_parts[local.token_regional ? 5 : 3] : null
 
   # The Cloud Build service agents that read the token: this project's, for
-  # the triggers' connection, and no other, since a zones organization has no
+  # the triggers' connection, and no other, since a root organization has no
   # environment project.
   environment_project_numbers = {}
   token_readers = local.connected ? merge(
@@ -295,7 +295,7 @@ resource "google_storage_bucket_iam_member" "applier_markers" {
 # The apply trigger also applies one layer again by hand, with no change to
 # it (README, "The Cloud Build triggers"):
 #
-#   gcloud builds triggers run imz-boot-uc1-layers-apply --region=us-central1 --project=imz-boot-gbl-core-c3d4 --branch=master --substitutions=_LAYER=1-dns
+#   gcloud builds triggers run imr-boot-uc1-layers-apply --region=us-central1 --project=imr-boot-gbl-core-c3d4 --branch=master --substitutions=_LAYER=1-dns
 # ---------------------------------------------------------------------------
 
 locals {
@@ -303,7 +303,7 @@ locals {
   run_env = ["BUILD_ID=$BUILD_ID", "PROJECT_ID=$PROJECT_ID", "LOCATION=$LOCATION"]
   substitutions = {
     _LAYER         = ""          # a layer to apply again by hand, with no change check; empty for the push's changes
-    _ENVIRONMENT   = ""          # unused here: a zones organization has no environment layer
+    _ENVIRONMENT   = ""          # unused here: a root organization has no environment layer
     _BEDROCK_STEPS = "2-release" # the shape of these steps, which bedrock org plan and apply compare with their own
   }
 

@@ -18,10 +18,10 @@ import (
 	"github.com/cccteam/ccc/bedrock/internal/render"
 )
 
-// The two fixture organizations: a hosting organization, and a zones organization.
+// The two fixture organizations: a hosting organization, and a root organization.
 const (
-	fixture      = "testdata/imp"
-	zonesFixture = "testdata/imz"
+	fixture     = "testdata/imp"
+	rootFixture = "testdata/imr"
 )
 
 // update rewrites the fixture organization's files from the render (go test -update),
@@ -35,11 +35,11 @@ func testPlacement(t *testing.T) *Placement {
 	return fixturePlacement(t, fixture)
 }
 
-// zonesPlacement reads the zones fixture organization's placement.
-func zonesPlacement(t *testing.T) *Placement {
+// rootPlacement reads the zones fixture organization's placement.
+func rootPlacement(t *testing.T) *Placement {
 	t.Helper()
 
-	return fixturePlacement(t, zonesFixture)
+	return fixturePlacement(t, rootFixture)
 }
 
 // fixturePlacement reads a fixture organization's placement.
@@ -87,8 +87,8 @@ func TestPlacementValidate(t *testing.T) {
 	}{
 		{name: "the fixture", mutate: func(*Placement) {}},
 		{name: "the hosting kind named", mutate: func(p *Placement) { p.Kind = HostingKind }},
-		{name: "a kind that is neither", mutate: func(p *Placement) { p.Kind = "edge" }, wantErr: `kind "edge" is not one of hosting, zones: a hosting organization holds applications in its environments (the default, left out), a zones organization holds DNS zones alone`},
-		{name: "domains on a hosting organization", mutate: func(p *Placement) { p.Domains = map[string]Domain{"clientbay.example": {}} }, wantErr: "domains is set, and a hosting organization holds no zone but the apps domain's and the vanity domains': a zones organization (kind) holds the zones that hand names onward"},
+		{name: "a kind that is neither", mutate: func(p *Placement) { p.Kind = "edge" }, wantErr: `kind "edge" is not one of hosting, root: a hosting organization holds applications in its environments (the default, left out), a root organization holds DNS zones alone`},
+		{name: "domains on a hosting organization", mutate: func(p *Placement) { p.Domains = map[string]Domain{"clientbay.example": {}} }, wantErr: "domains is set, and a hosting organization holds no zone but the apps domain's and the vanity domains': a root organization (kind) holds the zones that hand names onward"},
 		{name: "a long prefix", mutate: func(p *Placement) { p.Prefix = "impulse" }, wantErr: "prefix"},
 		{name: "no organization domain", mutate: func(p *Placement) { p.OrganizationDomain = " " }, wantErr: "organizationDomain is empty"},
 		{name: "no billing account", mutate: func(p *Placement) { p.BillingAccount = "" }, wantErr: "billingAccount is empty"},
@@ -274,12 +274,12 @@ func TestPlacementValidate(t *testing.T) {
 }
 
 // TestRenderGolden compares every rendered file, owned and seeded alike, with each
-// fixture organization's committed one (the hosting organization and the zones
+// fixture organization's committed one (the hosting organization and the root
 // organization), and checks nothing committed goes unrendered.
 func TestRenderGolden(t *testing.T) {
 	t.Parallel()
 
-	for _, dir := range []string{fixture, zonesFixture} {
+	for _, dir := range []string{fixture, rootFixture} {
 		t.Run(dir, func(t *testing.T) {
 			t.Parallel()
 
@@ -514,9 +514,9 @@ func TestGithubAppSteps(t *testing.T) {
 				"   - the release app: Contents, Issues and Pull requests, each read and\n     write;\n",
 				"   - the deployer app: Checks, Deployments, Issues and Pull requests, each\n     read and write.\n",
 				"Install App, on the organization,\n   for all repositories",
-				"5. In a terminal, in the zones organization `imz`'s\n   repository, as one of its key operators, for each of the two apps:\n   `bedrock secret add`, `bedrock org secrets check` and `bedrock secret pin`\n   with `github-deployer-key` and `github-release-key`",
-				"Both keys live in Secret Manager in the zones\norganization `imz`'s boot project, which holds them for every\norganization and rotates them in one place",
-				"Nothing is added in this\n   repository: `2-env`'s outputs name each key's alias `current`\n   (`imz-boot-gbl-github-deployer-key`, `imz-boot-gbl-github-release-key`, in that organization's\n   boot project)",
+				"5. In a terminal, in the root organization `imr`'s\n   repository, as one of its key operators, for each of the two apps:\n   `bedrock secret add`, `bedrock org secrets check` and `bedrock secret pin`\n   with `github-deployer-key` and `github-release-key`",
+				"Both keys live in Secret Manager in the root\norganization `imr`'s boot project, which holds them for every\norganization and rotates them in one place",
+				"Nothing is added in this\n   repository: `2-env`'s outputs name each key's alias `current`\n   (`imr-boot-gbl-github-deployer-key`, `imr-boot-gbl-github-release-key`, in that organization's\n   boot project)",
 				"([GitHub prerequisites](https://github.com/cccteam/ccc/blob/master/bedrock/README.md#github-prerequisites))",
 			},
 		},
@@ -531,25 +531,25 @@ func TestGithubAppSteps(t *testing.T) {
 			},
 		},
 		{
-			name: "0-bootstrap: the infrastructure app's id recorded here and its key the zones organization's, the budget beside the billing grants",
+			name: "0-bootstrap: the infrastructure app's id recorded here and its key the root organization's, the budget beside the billing grants",
 			path: "0-bootstrap/README.md",
 			want: []string{
-				"4. In `placement.json`: the App ID as `githubInfrastructureAppId`, then\n   `bedrock org render`. The key itself lives in the zones organization\n   `imz`'s boot project (`keys` in `placement.json`), added,\n   proven and pinned there by its key operators",
+				"4. In `placement.json`: the App ID as `githubInfrastructureAppId`, then\n   `bedrock org render`. The key itself lives in the root organization\n   `imr`'s boot project (`keys` in `placement.json`), added,\n   proven and pinned there by its key operators",
 				"### 5. Billing grants and the budget, by a billing administrator\n",
 				"In the Billing console, as the same billing administrator, set the spend\nbudget",
 				"## The GitHub Apps' keys\n",
-				"`imz-boot-gbl-core-c3d4`; `keys` in\n`placement.json`), one secret per app for every bedrock organization in the\nGoogle Cloud organization: `imz-boot-gbl-github-infrastructure-key`,\n`imz-boot-gbl-github-deployer-key` and `imz-boot-gbl-github-release-key`.",
+				"`imr-boot-gbl-core-c3d4`; `keys` in\n`placement.json`), one secret per app for every bedrock organization in the\nGoogle Cloud organization: `imr-boot-gbl-github-infrastructure-key`,\n`imr-boot-gbl-github-deployer-key` and `imr-boot-gbl-github-release-key`.",
 				"`bedrock secret\nadd` and `pin` refuse here and name that organization",
-				"the zones organization gives this\norganization's boot identity `secretPolicyAdmin` on the three secrets",
+				"the root organization gives this\norganization's boot identity `secretPolicyAdmin` on the three secrets",
 			},
 			absent: []string{"gcloud secrets versions add", "github-deployer-key <env>", "bedrock secret pin github-", "## Rotating a GitHub App's key", "githubDeployerKeyVersion", "key container"},
 		},
 		{
-			name: "2-env: the deployer key is the zones organization's, read by its alias",
+			name: "2-env: the deployer key is the root organization's, read by its alias",
 			path: "2-env/README.md",
 			want: []string{
 				"## The deployer and release GitHub Apps' keys\n",
-				"its key is a secret in the zones organization\n`imz`'s boot project (`imz-boot-gbl-github-deployer-key`, in\n`imz-boot-gbl-core-c3d4`; `keys` in `placement.json`), held there for every\norganization and read by its alias `current`, which that organization pins\nand moves (`0-bootstrap/README.md`, \"The GitHub Apps' keys\")",
+				"its key is a secret in the root organization\n`imr`'s boot project (`imr-boot-gbl-github-deployer-key`, in\n`imr-boot-gbl-core-c3d4`; `keys` in `placement.json`), held there for every\norganization and read by its alias `current`, which that organization pins\nand moves (`0-bootstrap/README.md`, \"The GitHub Apps' keys\")",
 				"This layer\ncarries the alias's resource name to the applications' pipelines through its\noutput `github_deployer_key_secret_version` and grants their identities its\nread: every application's deploy identity, and in tst its apply identity too,",
 			},
 			absent: []string{"gcloud secrets versions add", "github-deployer-key <env>", "github_deployer_key_secret_versions", "pinned version", "bedrock secret pin github-", "key container"},
@@ -597,7 +597,7 @@ func TestReleaseKeyGrants(t *testing.T) {
 			},
 		},
 		{
-			name: "the release identity reads the zones organization's secret, in tst alone",
+			name: "the release identity reads the root organization's secret, in tst alone",
 			path: "2-env/github-apps.tf",
 			want: []string{
 				"resource \"google_secret_manager_secret_iam_member\" \"release_release_key\" {\n  for_each = local.is_tst ? local.apps : toset([])\n\n  project   = local.keys_project\n  secret_id = local.github_release_key_secret\n  role      = \"roles/secretmanager.secretAccessor\"\n  member    = google_service_account.release[each.key].member\n}\n",
@@ -605,13 +605,13 @@ func TestReleaseKeyGrants(t *testing.T) {
 			absent: []string{"resource \"google_secret_manager_secret\" \"github_release_key\""},
 		},
 		{
-			name: "locals.tf names the zones organization's secret, the app and the alias",
+			name: "locals.tf names the root organization's secret, the app and the alias",
 			path: "2-env/locals.tf",
 			want: []string{
 				"  github_release_app_id             = 5080645\n",
-				"  github_release_key_secret         = \"imz-boot-gbl-github-release-key\"\n",
-				"  github_release_key_secret_version = \"projects/imz-boot-gbl-core-c3d4/secrets/imz-boot-gbl-github-release-key/versions/current\"\n",
-				"  keys_project = \"imz-boot-gbl-core-c3d4\"\n",
+				"  github_release_key_secret         = \"imr-boot-gbl-github-release-key\"\n",
+				"  github_release_key_secret_version = \"projects/imr-boot-gbl-core-c3d4/secrets/imr-boot-gbl-github-release-key/versions/current\"\n",
+				"  keys_project = \"imr-boot-gbl-core-c3d4\"\n",
 			},
 		},
 		{
@@ -625,11 +625,11 @@ func TestReleaseKeyGrants(t *testing.T) {
 			},
 		},
 		{
-			name: "0-bootstrap makes no secret: the org identity gets the deployer and release secrets' policy administration, with the zones organization's role",
+			name: "0-bootstrap makes no secret: the org identity gets the deployer and release secrets' policy administration, with the root organization's role",
 			path: "0-bootstrap/github.tf",
 			want: []string{
 				"resource \"google_secret_manager_secret_iam_member\" \"org_tofu_keys\" {\n  for_each = toset([\"deployer\", \"release\"])\n\n  project   = local.keys_project\n  secret_id = local.key_secrets[each.key]\n  role      = local.keys_policy_admin_role\n  member    = google_service_account.org_tofu.member\n}\n",
-				"  keys_policy_admin_role = \"projects/imz-boot-gbl-core-c3d4/roles/secretPolicyAdmin\"\n",
+				"  keys_policy_admin_role = \"projects/imr-boot-gbl-core-c3d4/roles/secretPolicyAdmin\"\n",
 			},
 			absent: []string{"resource \"google_secret_manager_secret\" ", "version_aliases", "roles/secretmanager.admin\"\n  member    = google_service_account.org_tofu"},
 		},
@@ -685,7 +685,7 @@ func TestDeployerKeyGrants(t *testing.T) {
 			absent: []string{"resource \"google_secret_manager_secret\" \"github_deployer_key\"", "local.project_id", "var.github_deployer", "removed {"},
 		},
 		{
-			name: "the deploy identities and tst's apply identities read the zones organization's secret",
+			name: "the deploy identities and tst's apply identities read the root organization's secret",
 			path: "2-env/github-apps.tf",
 			want: []string{
 				"resource \"google_secret_manager_secret_iam_member\" \"deploy_deployer_key\" {\n  for_each = local.apps\n\n  project   = local.keys_project\n  secret_id = local.github_deployer_key_secret\n  role      = \"roles/secretmanager.secretAccessor\"\n  member    = google_service_account.deploy[each.key].member\n}\n",
@@ -693,11 +693,11 @@ func TestDeployerKeyGrants(t *testing.T) {
 			},
 		},
 		{
-			name: "locals.tf names the zones organization's secret and its alias",
+			name: "locals.tf names the root organization's secret and its alias",
 			path: "2-env/locals.tf",
 			want: []string{
-				"  github_deployer_key_secret         = \"imz-boot-gbl-github-deployer-key\"\n",
-				"  github_deployer_key_secret_version = \"projects/imz-boot-gbl-core-c3d4/secrets/imz-boot-gbl-github-deployer-key/versions/current\"\n",
+				"  github_deployer_key_secret         = \"imr-boot-gbl-github-deployer-key\"\n",
+				"  github_deployer_key_secret_version = \"projects/imr-boot-gbl-core-c3d4/secrets/imr-boot-gbl-github-deployer-key/versions/current\"\n",
 			},
 			absent: []string{"var.github_deployer_app_id", "var.github_deployer_key_secret_versions"},
 		},
@@ -1737,19 +1737,19 @@ func TestViewPhrases(t *testing.T) {
 		{name: "the bucket before the seed", placement: Placement{Prefix: "acme"}, check: func(v *view) string { return v.Bucket() }, want: "acme-boot-gbl-state-REPLACEME"},
 		{name: "the bucket after the seed", placement: Placement{Prefix: "acme", StateBucket: "acme-boot-gbl-state-1a2b"}, check: func(v *view) string { return v.Bucket() }, want: "acme-boot-gbl-state-1a2b"},
 		{name: "the layer order", placement: Placement{}, check: func(v *view) string { return v.LayerOrderProse() }, want: "0-bootstrap, 1-org, 2-shr and 2-spn, then 2-env for tst, stg and prd, then 2-net"},
-		{name: "the layer order of a zones organization", placement: Placement{Kind: ZonesKind}, check: func(v *view) string { return v.LayerOrderProse() }, want: "0-bootstrap, then 1-dns"},
+		{name: "the layer order of a root organization", placement: Placement{Kind: RootKind}, check: func(v *view) string { return v.LayerOrderProse() }, want: "0-bootstrap, then 1-dns"},
 		{name: "the second layer, its identity and the rerun example, per kind", placement: Placement{}, check: func(v *view) string {
 			hosting := v.SecondLayer() + " " + v.SecondIdentity() + " " + v.RerunExample()
-			v.Kind = ZonesKind
+			v.Kind = RootKind
 
 			return hosting + "|" + v.SecondLayer() + " " + v.SecondIdentity() + " " + v.RerunExample()
 		}, want: "1-org org _LAYER=2-env,_ENVIRONMENT=tst|1-dns dns _LAYER=1-dns"},
-		{name: "no domains", placement: Placement{Kind: ZonesKind}, check: func(v *view) string {
+		{name: "no domains", placement: Placement{Kind: RootKind}, check: func(v *view) string {
 			return v.DomainsHCL() + " " + strconv.Itoa(v.DelegationCount()) + " [" + v.DomainsProse() + "]"
 		}, want: "{} 0 []"},
 		{
 			name: "the domains and their labels as HCL, in name order, with the zones' names and project",
-			placement: Placement{Kind: ZonesKind, Prefix: "acme", Projects: map[string]string{"boot": "acme-boot-gbl-core-1a2b"}, Domains: map[string]Domain{
+			placement: Placement{Kind: RootKind, Prefix: "acme", Projects: map[string]string{"boot": "acme-boot-gbl-core-1a2b"}, Domains: map[string]Domain{
 				"b.example": {Labels: map[string]Delegation{
 					"z": {Organization: "rgb", NameServers: []string{"ns-cloud-d1.googledomains.com.", "ns-cloud-d2.googledomains.com."}},
 					"a": {Organization: "imp", NameServers: []string{"ns-cloud-c1.googledomains.com.", "ns-cloud-c2.googledomains.com."}},
@@ -1779,7 +1779,7 @@ func TestViewPhrases(t *testing.T) {
 			want: "acme-boot-usc-github acme-boot-usc-infrastructure-repo acme-boot-usc-layers-plan acme-boot-usc-layers-apply",
 		},
 		{
-			name:      "the boot project, the repository and two of the zones organization's key secrets",
+			name:      "the boot project, the repository and two of the root organization's key secrets",
 			placement: Placement{Prefix: "acme", GithubOrganization: "acme", SourceRepo: "acme-infrastructure", Projects: map[string]string{"boot": "acme-boot-gbl-core-1a2b"}, Keys: &KeysPlace{Organization: "zo", Project: "zo-boot-gbl-core-9f8e"}},
 			check: func(v *view) string {
 				return v.BootProject() + " " + v.InfrastructureRepository() + " " + v.InfrastructureKeySecret() + " " + v.DeployerKeySecret()
@@ -2591,8 +2591,8 @@ func TestLayerRuns(t *testing.T) {
 			},
 		},
 		{
-			name:     "a zones organization's two layers, both in the boot project",
-			kind:     ZonesKind,
+			name:     "a root organization's two layers, both in the boot project",
+			kind:     RootKind,
 			projects: map[string]string{"boot": "acme-boot-gbl-core-1a2b"},
 			want: []string{
 				"0-bootstrap|0-bootstrap|acme-boot-gbl-tofu@acme-boot-gbl-core-1a2b.iam.gserviceaccount.com|acme-boot-gbl-plan@acme-boot-gbl-core-1a2b.iam.gserviceaccount.com",
@@ -2805,7 +2805,7 @@ func TestRunnerIdentities(t *testing.T) {
 			},
 		},
 		{
-			name: "the org plan identity reads the infrastructure app's key, granted where the key lives, in the zones organization's project",
+			name: "the org plan identity reads the infrastructure app's key, granted where the key lives, in the root organization's project",
 			path: "0-bootstrap/github.tf",
 			want: []string{
 				"resource \"google_secret_manager_secret_iam_member\" \"org_plan_infrastructure_key\" {\n  project   = local.keys_project\n  secret_id = local.key_secrets.infrastructure\n  role      = \"roles/secretmanager.secretAccessor\"\n  member    = google_service_account.boot_plan[\"org\"].member\n}\n",
@@ -2822,13 +2822,13 @@ func TestRunnerIdentities(t *testing.T) {
 			absent: []string{"workloadIdentityPoolViewer"},
 		},
 		{
-			name: "the zones organization's three key secrets, named; the org identity's policy administration of two; no workload identity pool",
+			name: "the root organization's three key secrets, named; the org identity's policy administration of two; no workload identity pool",
 			path: "0-bootstrap/github.tf",
 			want: []string{
-				`    infrastructure = "imz-boot-gbl-github-infrastructure-key"`,
-				`    deployer       = "imz-boot-gbl-github-deployer-key"`,
-				`    release        = "imz-boot-gbl-github-release-key"`,
-				`  keys_project = "imz-boot-gbl-core-c3d4"`,
+				`    infrastructure = "imr-boot-gbl-github-infrastructure-key"`,
+				`    deployer       = "imr-boot-gbl-github-deployer-key"`,
+				`    release        = "imr-boot-gbl-github-release-key"`,
+				`  keys_project = "imr-boot-gbl-core-c3d4"`,
 				"resource \"google_secret_manager_secret_iam_member\" \"org_tofu_keys\" {\n  for_each = toset([\"deployer\", \"release\"])\n\n  project   = local.keys_project\n  secret_id = local.key_secrets[each.key]\n  role      = local.keys_policy_admin_role\n  member    = google_service_account.org_tofu.member\n}\n",
 				"resource \"google_secret_manager_secret_iam_member\" \"boot_plan_keys\" {\n  for_each = local.boot_plan_key_reads\n\n  project   = local.keys_project\n  secret_id = local.key_secrets[each.value.key]\n  role      = \"roles/secretmanager.viewer\"\n  member    = google_service_account.boot_plan[each.value.plan].member\n}\n",
 			},

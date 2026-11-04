@@ -1,4 +1,4 @@
-// orgsecrets.go is bedrock org secrets, the zones organization's commands on the GitHub
+// orgsecrets.go is bedrock org secrets, the root organization's commands on the GitHub
 // Apps' keys it holds for every organization: check, which proves a version of a key with
 // GitHub before bedrock secret pin and the pull request's apply move the alias to it
 // (0-bootstrap/README.md, "Rotating a GitHub App's key").
@@ -18,8 +18,8 @@ import (
 func newOrgSecrets(d deps) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "secrets",
-		Short: "The GitHub Apps' keys a zones organization holds for every organization",
-		Long: `secrets is the zones organization's view of the three secrets it holds for every
+		Short: "The GitHub Apps' keys a root organization holds for every organization",
+		Long: `secrets is the root organization's view of the three secrets it holds for every
 organization in the Google Cloud organization: the infrastructure, deployer and release GitHub
 Apps' private keys, one secret per app in its boot project, each read through its alias
 current by every pipeline in every organization. A key is added as a version with bedrock
@@ -46,8 +46,8 @@ as a key operator placement.json names) and prints the app GitHub answered with,
 the alias current is pinned to, and the pin to make. Nothing moves: the alias stays where
 placement.json pins it until bedrock secret pin and the pull request's apply. A version that
 is not the app's key, or an App ID that is another app's, is refused with GitHub's answer. It
-runs in the zones organization's infrastructure repository; a hosting organization's names
-the zones organization instead.`,
+runs in the root organization's infrastructure repository; a hosting organization's names
+the root organization instead.`,
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			_, p, err := d.orgRepository(dir)
@@ -55,7 +55,7 @@ the zones organization instead.`,
 				return err
 			}
 			if p == nil {
-				return errors.New("not in an organization's infrastructure repository (no placement.json naming an organization at its root): run secrets check at the zones organization's root, or pass --dir")
+				return errors.New("not in an organization's infrastructure repository (no placement.json naming an organization at its root): run secrets check at the root organization's root, or pass --dir")
 			}
 			if err := p.KeysElsewhere(); err != nil {
 				return err

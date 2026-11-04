@@ -2,10 +2,10 @@
 
 The zones of the domains customers delegate to this organization, one per
 domain, each handing the names under it onward to the hosting organizations
-that serve the applications. The one layer after the bootstrap in a zones
+that serve the applications. The one layer after the bootstrap in a root
 organization: no environments, no instances, no load balancer. Its zones live
 in the boot project. Applied by the apply trigger's run as
-`imz-dns-gbl-tofu`, planned on a pull request as `imz-dns-gbl-plan`,
+`imr-dns-gbl-tofu`, planned on a pull request as `imr-dns-gbl-plan`,
 both made by `0-bootstrap`; the first apply is the break-glass account's
 ("Applying").
 
@@ -13,7 +13,7 @@ both made by `0-bootstrap`; the first apply is the break-glass account's
 
 - A Cloud DNS public zone per domain (`domains`, from `placement.json`'s
   `domains`: `clientbay.example`, `impapps.example` and `zones.imp.example`), named
-  `imz-boot-gbl-dns-<the domain with hyphens for its dots>`, DNSSEC on.
+  `imr-boot-gbl-dns-<the domain with hyphens for its dots>`, DNSSEC on.
   The zone carries `prevent_destroy`, as every bedrock zone does, so neither
   a plan nor a stray destroy can make it again on other name servers ("Making
   a zone again").
@@ -197,15 +197,15 @@ tofu apply
 
 The plan shows this repository as an import, and as creates its ruleset and a
 zone per domain with the record sets of its labels. From then on the apply
-trigger applies this layer as `imz-dns-gbl-tofu` on every push to
+trigger applies this layer as `imr-dns-gbl-tofu` on every push to
 `master` that changes it, and a pull request plans it as
-`imz-dns-gbl-plan`, with the infrastructure GitHub App's token minted in
+`imr-dns-gbl-plan`, with the infrastructure GitHub App's token minted in
 the run; the first apply by hand leaves no grant behind, since this layer
 creates no identity and no project. Recovery is by hand the same way
 (`0-bootstrap/README.md`, "Recovery, by hand"). Destroying the organization
 is `bedrock org destroy`, which takes the zones out of this layer's state
 (they go with the boot project) and destroys the ruleset; the customers'
-delegations then point at servers that answer nothing, so a zones organization
+delegations then point at servers that answer nothing, so a root organization
 is destroyed once no domain is delegated to it.
 
 ## Inputs
@@ -216,8 +216,8 @@ is destroyed once no domain is delegated to it.
 | `domains` | The domains and their labels handed onward, rendered from `placement.json` into `domains.auto.tfvars`; never set by hand. | `map(object)` | n/a | yes |
 | `github_default_branch` | This repository's default branch, which the ruleset rules. | `string` | `"master"` | no |
 | `github_organization` | The GitHub organization that holds this repository. | `string` | `"imp-example"` | no |
-| `infrastructure_repository` | This repository's name. | `string` | `"imz-zones-infrastructure"` | no |
-| `prefix` | Short org-wide prefix used in resource names. | `string` | `"imz"` | no |
+| `infrastructure_repository` | This repository's name. | `string` | `"imr-root-infrastructure"` | no |
+| `prefix` | Short org-wide prefix used in resource names. | `string` | `"imr"` | no |
 
 `terraform.tfvars` sets `boot_project_id`; the rest are rendered from
 `placement.json`.

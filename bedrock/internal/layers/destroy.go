@@ -85,12 +85,12 @@ type DestroyRequest struct {
 	Dir         string
 	GithubToken func(ctx context.Context) (string, error)
 	KeepNet     bool
-	Zones       bool
+	Root        bool
 	Pause       time.Duration
 }
 
 // Destroy deletes the organization's projects, as the person running the command: 1-org
-// first (1-dns for a zones organization), its GitHub repositories taken out of the state,
+// first (1-dns for a root organization), its GitHub repositories taken out of the state,
 // then 0-bootstrap on a local copy of its state. In each layer an apply with destroy=true
 // records the projects' DELETE policy and lifts the folders' protection, then the destroy
 // runs, tried again after a pause while it fails. A layer whose state holds nothing is
@@ -102,7 +102,7 @@ func Destroy(ctx context.Context, exec deploy.Runner, req *DestroyRequest, out i
 	}
 	// 1-dns declares no project and no folder, so it declares no destroy variable.
 	checked := []string{orgLayer, BootstrapLayer}
-	if req.Zones {
+	if req.Root {
 		checked = []string{BootstrapLayer}
 	}
 	for _, layer := range checked {
@@ -122,10 +122,10 @@ func Destroy(ctx context.Context, exec deploy.Runner, req *DestroyRequest, out i
 	return destroyBootstrapLayer(ctx, exec, req, work, out)
 }
 
-// secondLayer is the layer after the bootstrap: 1-org, or 1-dns for a zones
+// secondLayer is the layer after the bootstrap: 1-org, or 1-dns for a root
 // organization.
 func (req *DestroyRequest) secondLayer() string {
-	if req.Zones {
+	if req.Root {
 		return dnsLayer
 	}
 
@@ -134,14 +134,14 @@ func (req *DestroyRequest) secondLayer() string {
 
 // keptOut reports whether a resource of the second layer's state is taken out of it
 // before the destroy, with what stays: the GitHub repositories (they outlive the
-// organization), and for a zones organization the zones and their record sets (they go
+// organization), and for a root organization the zones and their record sets (they go
 // with the boot project, which their prevent_destroy would otherwise refuse).
 func (req *DestroyRequest) keptOut(address string) (string, bool) {
 	switch resourceType(address) {
 	case repositoryType:
 		return "the repository stays", true
 	case zoneType, recordSetType:
-		if req.Zones {
+		if req.Root {
 			return "it goes with the boot project", true
 		}
 	}
@@ -164,12 +164,12 @@ func checkDestroyVariable(dir, layer string) error {
 	return nil
 }
 
-// destroySecondLayer destroys 1-org (1-dns for a zones organization) in the checkout: its
-// state in the bucket, its GitHub repositories taken out of the state first (and a zones
+// destroySecondLayer destroys 1-org (1-dns for a root organization) in the checkout: its
+// state in the bucket, its GitHub repositories taken out of the state first (and a root
 // organization's zones with them), the network project excluded when kept.
 func destroySecondLayer(ctx context.Context, exec deploy.Runner, req *DestroyRequest, work string, out io.Writer) error {
 	layer := req.secondLayer()
-	h := &handTofu{exec: exec, layer: layer, dir: filepath.Join(req.Dir, layer), data: filepath.Join(work, layer+".data"), out: out, declaresDestroy: !req.Zones}
+	h := &handTofu{exec: exec, layer: layer, dir: filepath.Join(req.Dir, layer), data: filepath.Join(work, layer+".data"), out: out, declaresDestroy: !req.Root}
 	fmt.Fprintf(out, "=== destroy of %s ===\n", layer)
 	if err := h.init(ctx); err != nil {
 		return err
@@ -185,7 +185,7 @@ func destroySecondLayer(ctx context.Context, exec deploy.Runner, req *DestroyReq
 	}
 	token, err := req.GithubToken(ctx)
 	if err != nil {
-		if req.Zones {
+		if req.Root {
 			return errors.Wrapf(err, "%s's GitHub provider needs a token for this repository's ruleset: the infrastructure GitHub App's installation token, or an organization owner's", layer)
 		}
 

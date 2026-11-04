@@ -12,12 +12,12 @@ import (
 )
 
 const (
-	infraKey    = "imz-boot-gbl-github-infrastructure-key"
-	deployerKey = "imz-boot-gbl-github-deployer-key"
-	keysProject = "imz-boot-gbl-core-c3d4"
+	infraKey    = "imr-boot-gbl-github-infrastructure-key"
+	deployerKey = "imr-boot-gbl-github-deployer-key"
+	keysProject = "imr-boot-gbl-core-c3d4"
 )
 
-// orgSecrets are the zones organization's secrets, in its boot project: the
+// orgSecrets are the root organization's secrets, in its boot project: the
 // infrastructure key at three versions, the third disabled, and the deployer key at two.
 func orgSecrets() labSecrets {
 	return labSecrets{containers: map[string][]string{
@@ -26,13 +26,13 @@ func orgSecrets() labSecrets {
 	}}
 }
 
-// orgSecretRepo is the zones organization's infrastructure repository rendered from the
+// orgSecretRepo is the root organization's infrastructure repository rendered from the
 // fixture placement, marked a repository so it is found from a working directory inside
 // it: the organization that holds the keys, where the commands run.
 func orgSecretRepo(t *testing.T) string {
 	t.Helper()
 
-	dir := zonesRepo(t)
+	dir := rootRepo(t)
 	if code, out := runOrg(t, "org", "new", dir); code != 0 {
 		t.Fatalf("org new: %d %s", code, out)
 	}
@@ -43,7 +43,7 @@ func orgSecretRepo(t *testing.T) string {
 	return dir
 }
 
-// TestOrgSecret: in the zones organization's infrastructure repository, secret add stores
+// TestOrgSecret: in the root organization's infrastructure repository, secret add stores
 // a key as a new version of the secret 0-bootstrap made in the boot project, and secret
 // pin writes the version the alias is to point at in placement.json and renders (the
 // alias reaches 0-bootstrap's github.tf). An unknown secret, an application's arguments
@@ -73,7 +73,7 @@ func TestOrgSecret(t *testing.T) {
 			args:  []string{"add", "github-infrastructure-key"},
 			value: "infrastructure key\n",
 			wantOut: []string{
-				"Added version 4 of imz-boot-gbl-github-infrastructure-key in project imz-boot-gbl-core-c3d4: the infrastructure GitHub App's private key.\n",
+				"Added version 4 of imr-boot-gbl-github-infrastructure-key in project imr-boot-gbl-core-c3d4: the infrastructure GitHub App's private key.\n",
 				"Pin it: bedrock secret pin github-infrastructure-key 4\n",
 			},
 			wantAdded: map[string]string{infraKey: "infrastructure key\n"},
@@ -84,16 +84,16 @@ func TestOrgSecret(t *testing.T) {
 			cwd:   "1-dns",
 			value: "deployer-pem",
 			wantOut: []string{
-				"Added version 3 of imz-boot-gbl-github-deployer-key in project imz-boot-gbl-core-c3d4: the deployer GitHub App's private key.\n",
+				"Added version 3 of imr-boot-gbl-github-deployer-key in project imr-boot-gbl-core-c3d4: the deployer GitHub App's private key.\n",
 				"Pin it: bedrock secret pin github-deployer-key 3\n",
 			},
 			wantAdded: map[string]string{deployerKey: "deployer-pem"},
 		},
 		{
 			name:    "a container the layer has not made is refused, not created",
-			args:    []string{"add", "github-deployer-key", "--container", "imz-boot-gbl-github-deployer-key-2"},
+			args:    []string{"add", "github-deployer-key", "--container", "imr-boot-gbl-github-deployer-key-2"},
 			value:   "deployer-pem",
-			wantErr: "project imz-boot-gbl-core-c3d4 has no container imz-boot-gbl-github-deployer-key-2: the apply of 0-bootstrap creates it; apply the layer, then add the value",
+			wantErr: "project imr-boot-gbl-core-c3d4 has no container imr-boot-gbl-github-deployer-key-2: the apply of 0-bootstrap creates it; apply the layer, then add the value",
 		},
 		{
 			name:    "an empty value is refused",
@@ -141,9 +141,9 @@ func TestOrgSecret(t *testing.T) {
 			args: []string{"pin", "github-infrastructure-key", "2"},
 			wantOut: []string{
 				"Pinned github-infrastructure-key to version 2: githubInfrastructureKeyVersion in ",
-				"Secret Manager confirms version 2 of imz-boot-gbl-github-infrastructure-key in project imz-boot-gbl-core-c3d4 is enabled.\n",
+				"Secret Manager confirms version 2 of imr-boot-gbl-github-infrastructure-key in project imr-boot-gbl-core-c3d4 is enabled.\n",
 				"Next: commit placement.json and the files org render rewrote (",
-				"0-bootstrap/github.tf among them) and open the pull request; its apply moves the alias current of imz-boot-gbl-github-infrastructure-key to version 2, and every reader in every organization (each organization's runs of the triggers that plan or apply its second layer) names the alias, so all of them switch at that apply and nothing changes before it. Then, on GitHub, delete the old key on the app's settings page once the next run has gone through clean.\n",
+				"0-bootstrap/github.tf among them) and open the pull request; its apply moves the alias current of imr-boot-gbl-github-infrastructure-key to version 2, and every reader in every organization (each organization's runs of the triggers that plan or apply its second layer) names the alias, so all of them switch at that apply and nothing changes before it. Then, on GitHub, delete the old key on the app's settings page once the next run has gone through clean.\n",
 			},
 			wantAbsent: []string{"githubInfrastructureAppId"},
 			wantFiles: map[string][]string{
@@ -165,7 +165,7 @@ func TestOrgSecret(t *testing.T) {
 		{
 			name:    "a disabled version is refused",
 			args:    []string{"pin", "github-infrastructure-key", "3"},
-			wantErr: "version 3 of imz-boot-gbl-github-infrastructure-key in project imz-boot-gbl-core-c3d4 is DISABLED, not ENABLED: the triggers' runs could not read it; choose an enabled version",
+			wantErr: "version 3 of imr-boot-gbl-github-infrastructure-key in project imr-boot-gbl-core-c3d4 is DISABLED, not ENABLED: the triggers' runs could not read it; choose an enabled version",
 		},
 		{
 			name:    "latest is refused",
@@ -183,9 +183,9 @@ func TestOrgSecret(t *testing.T) {
 			cwd:  "1-dns",
 			wantOut: []string{
 				"Pinned github-deployer-key to version 2: githubDeployerKeyVersion in ",
-				"Secret Manager confirms version 2 of imz-boot-gbl-github-deployer-key in project imz-boot-gbl-core-c3d4 is enabled.\n",
+				"Secret Manager confirms version 2 of imr-boot-gbl-github-deployer-key in project imr-boot-gbl-core-c3d4 is enabled.\n",
 				"Next: commit placement.json and the files org render rewrote (",
-				"its apply moves the alias current of imz-boot-gbl-github-deployer-key to version 2, and every reader in every organization (each plan trigger's run posting the layers' plans, and every application's pipeline talking back on its pull requests) names the alias",
+				"its apply moves the alias current of imr-boot-gbl-github-deployer-key to version 2, and every reader in every organization (each plan trigger's run posting the layers' plans, and every application's pipeline talking back on its pull requests) names the alias",
 			},
 			wantAbsent: []string{"githubDeployerAppId"},
 			wantFiles: map[string][]string{

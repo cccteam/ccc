@@ -1,7 +1,7 @@
 // Package org renders an organization foundation: the six layers of the CCC provisioning
 // model (the bootstrap, the organization, the shared registry, the shared Spanner
 // instance, the network, and the environments) from an organization placement, the way
-// the application stack is rendered from an application; or, for a zones organization
+// the application stack is rendered from an application; or, for a root organization
 // (zones.go), the bootstrap and the one layer that holds its DNS zones. The layers' .tf
 // files and their READMEs are owned and rewritten on every render; each layer's
 // terraform.tfvars, the journal and the ignore rules are seeded once and then a person's.
@@ -99,7 +99,7 @@ type Placement struct {
 	// Kind is the kind of organization: hosting, the default when left out, which holds
 	// applications in its environments and renders the six layers; or zones, which holds
 	// DNS zones alone in its boot project and renders the bootstrap and 1-dns (zones.go).
-	// A zones organization names its domains (Domains) and none of the fields that
+	// A root organization names its domains (Domains) and none of the fields that
 	// describe applications or environments.
 	Kind string `json:"kind,omitempty"`
 	// Prefix is the organization's naming prefix: every resource name starts with
@@ -113,9 +113,9 @@ type Placement struct {
 	// BillingAccount is the billing account projects are linked to.
 	BillingAccount string `json:"billingAccount"`
 	// AppsDomain is the domain the applications' hostnames hang under, never the
-	// identity domain. A zones organization has none.
+	// identity domain. A root organization has none.
 	AppsDomain string `json:"appsDomain,omitempty"`
-	// Domains are the domains a zones organization holds a zone for, by domain, each with
+	// Domains are the domains a root organization holds a zone for, by domain, each with
 	// the labels of it handed onward to the hosting organizations' zones (Domain). A
 	// customer delegates the domain to this organization's zone once, at its registrar or
 	// at the DNS provider that serves the domain above it (bedrock domain check prints
@@ -172,10 +172,10 @@ type Placement struct {
 	// applies 1-org refuses until it is recorded.
 	GithubInfrastructureAppID string `json:"githubInfrastructureAppId,omitempty"`
 	// GithubInfrastructureKeyVersion is the number of the Secret Manager version holding
-	// the infrastructure app's private key, in the secret a zones organization holds in
+	// the infrastructure app's private key, in the secret a root organization holds in
 	// its boot project (<prefix>-boot-gbl-github-infrastructure-key): the version its
 	// alias current points at, which 0-bootstrap's apply moves and every reader names,
-	// never latest. A zones organization's; a hosting organization records none (Keys).
+	// never latest. A root organization's; a hosting organization records none (Keys).
 	// Empty until a version was pinned.
 	GithubInfrastructureKeyVersion string `json:"githubInfrastructureKeyVersion,omitempty"`
 	// GithubDeployerAppID is the App ID of the deployer GitHub App, which the
@@ -184,30 +184,30 @@ type Placement struct {
 	// app exists; until then the plans are in the run's log alone.
 	GithubDeployerAppID string `json:"githubDeployerAppId,omitempty"`
 	// GithubDeployerKeyVersion is the number of the Secret Manager version holding the
-	// deployer app's private key, in the secret a zones organization holds in its boot
+	// deployer app's private key, in the secret a root organization holds in its boot
 	// project (<prefix>-boot-gbl-github-deployer-key): the version its alias current
-	// points at. A zones organization's; empty until a version was pinned.
+	// points at. A root organization's; empty until a version was pinned.
 	GithubDeployerKeyVersion string `json:"githubDeployerKeyVersion,omitempty"`
 	// GithubReleaseKeyVersion is the number of the Secret Manager version holding the
-	// release GitHub App's private key, in the secret a zones organization holds in its
+	// release GitHub App's private key, in the secret a root organization holds in its
 	// boot project (<prefix>-boot-gbl-github-release-key): the version its alias current
 	// points at, from which each application's release trigger in the hosting
-	// organizations mints the token release-please cuts the releases with. A zones
+	// organizations mints the token release-please cuts the releases with. A root
 	// organization's; empty until a version was pinned.
 	GithubReleaseKeyVersion string `json:"githubReleaseKeyVersion,omitempty"`
 	// Keys is where a hosting organization's pipelines read the GitHub Apps' private
-	// keys: the zones organization that holds them for every organization in the Google
+	// keys: the root organization that holds them for every organization in the Google
 	// Cloud organization, by its prefix (keys.organization), and its boot project
 	// (keys.project), where the three secrets live. Every reader names the alias current
 	// of a secret, which that organization's placement pins; nothing about the keys is
-	// recorded here. A zones organization has none: the keys are its own.
+	// recorded here. A root organization has none: the keys are its own.
 	Keys *KeysPlace `json:"keys,omitempty"`
-	// KeyOperators are the members (user:..., group:...) a zones organization grants the
+	// KeyOperators are the members (user:..., group:...) a root organization grants the
 	// adding of a version of a GitHub App's key, and the read that proves one, for the
 	// rotation (0-bootstrap/README.md, "Rotating a GitHub App's key"). None for a hosting
 	// organization.
 	KeyOperators []string `json:"keyOperators,omitempty"`
-	// HostingOrganizations are the hosting organizations that read a zones
+	// HostingOrganizations are the hosting organizations that read a root
 	// organization's keys, each by its prefix and its boot project: 0-bootstrap grants
 	// each one's boot identity the administration of the three secrets' policies
 	// (secretPolicyAdmin), which that organization's layers hand down to the identities
@@ -277,17 +277,17 @@ type Placement struct {
 	// front). Each person's access to an environment comes from its group: the group
 	// holds the release approval where a release waits for one, and its members ask for
 	// the environment's entitlements. One per environment; the same address may serve
-	// several, but production's group is not the first environment's. A zones
+	// several, but production's group is not the first environment's. A root
 	// organization has none.
 	TeamGroups map[string]string `json:"teamGroups,omitempty"`
 	// EntitlementDurations are the longest grants of the environments' entitlements, by
 	// entitlement (Entitlements) as a duration (1h, 90m); an entitlement not named takes
 	// its default. Between 30 minutes and 7 days.
 	EntitlementDurations map[string]string `json:"entitlementDurations,omitempty"`
-	// Regions are the two Cloud Run regions, the primary first; a zones organization's
+	// Regions are the two Cloud Run regions, the primary first; a root organization's
 	// one region, where its connection, its triggers and its state bucket are.
 	Regions []Region `json:"regions"`
-	// Spanner is the shared instance's configuration. A zones organization has none.
+	// Spanner is the shared instance's configuration. A root organization has none.
 	Spanner Spanner `json:"spanner,omitzero"`
 	// OutlierDetection is the outlier detection thresholds of the backend service 2-env
 	// renders for the pull-request environments, and those an application's first
@@ -387,7 +387,7 @@ const (
 
 // HostingProjectKeys are the hosting model's projects by key, in layer order: the boot
 // project (the seed's, 0-bootstrap's and 1-org's layers run there), the shared projects,
-// then the environment projects. A zones organization has the boot project alone
+// then the environment projects. A root organization has the boot project alone
 // (Placement.ProjectKeys).
 var HostingProjectKeys = []string{bootProject, shrProject, netProject, spnProject, tstEnvironment, stgEnvironment, prdEnvironment}
 
@@ -504,8 +504,8 @@ func (p *Placement) Validate() error {
 			return errors.Newf("label %q = %q is not a lowercase key with a value", k, v)
 		}
 	}
-	if p.Zones() {
-		return p.validateZones()
+	if p.Root() {
+		return p.validateRoot()
 	}
 
 	return p.validateHosting()
@@ -526,7 +526,7 @@ func (p *Placement) validateHosting() error {
 		return errors.Newf("regions has %d entries; the model runs in two, the primary first", len(p.Regions))
 	}
 	if len(p.Domains) > 0 {
-		return errors.New("domains is set, and a hosting organization holds no zone but the apps domain's and the vanity domains': a zones organization (kind) holds the zones that hand names onward")
+		return errors.New("domains is set, and a hosting organization holds no zone but the apps domain's and the vanity domains': a root organization (kind) holds the zones that hand names onward")
 	}
 	if err := p.validateSpanner(); err != nil {
 		return err
@@ -1095,7 +1095,7 @@ func (r LayerRun) Unrecorded() bool {
 }
 
 // LayerRuns is every run of the triggers in layer order: the five single-run layers,
-// then 2-env once per environment in promotion order; for a zones organization, the
+// then 2-env once per environment in promotion order; for a root organization, the
 // bootstrap and 1-dns. An identity under a project the placement does not record carries
 // REPLACEME, which the commands refuse to run.
 func (p *Placement) LayerRuns() []LayerRun {

@@ -2,7 +2,7 @@
 
 The zones of the domains customers delegate to this organization, one per
 domain, each handing the names under it onward to the hosting organizations
-that serve the applications. The one layer after the bootstrap in a zones
+that serve the applications. The one layer after the bootstrap in a root
 organization: no environments, no instances, no load balancer. Its zones live
 in the boot project. Applied by the apply trigger's run as
 `{{.Prefix}}-dns-gbl-tofu`, planned on a pull request as `{{.Prefix}}-dns-gbl-plan`,
@@ -205,7 +205,7 @@ creates no identity and no project. Recovery is by hand the same way
 (`0-bootstrap/README.md`, "Recovery, by hand"). Destroying the organization
 is `bedrock org destroy`, which takes the zones out of this layer's state
 (they go with the boot project) and destroys the ruleset; the customers'
-delegations then point at servers that answer nothing, so a zones organization
+delegations then point at servers that answer nothing, so a root organization
 is destroyed once no domain is delegated to it.
 
 ## Inputs

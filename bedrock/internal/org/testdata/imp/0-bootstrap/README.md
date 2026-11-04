@@ -59,8 +59,8 @@ Build triggers" below).
   with their grants; and the two triggers, `imp-boot-uc1-layers-plan` on a pull
   request into `master` and `imp-boot-uc1-layers-apply` on a push
   to it, whose steps are the trigger's own ("The Cloud Build triggers").
-- The grants on the three GitHub Apps' key secrets, which live in the zones
-  organization `imz`'s boot project (`keys` in
+- The grants on the three GitHub Apps' key secrets, which live in the root
+  organization `imr`'s boot project (`keys` in
   `placement.json`; `github.tf`): the org identity's policy administration of
   the deployer and release secrets, the org plan identity's read of the
   infrastructure key, and both boot plan identities' read of the three
@@ -615,10 +615,10 @@ application pipeline those rights. Once, by a person:
    browser downloads a `.pem` file.
 3. On the same page: Install App, on the organization, for all repositories.
 4. In `placement.json`: the App ID as `githubInfrastructureAppId`, then
-   `bedrock org render`. The key itself lives in the zones organization
-   `imz`'s boot project (`keys` in `placement.json`), added,
+   `bedrock org render`. The key itself lives in the root organization
+   `imr`'s boot project (`keys` in `placement.json`), added,
    proven and pinned there by its key operators; a run of the triggers here
-   reads the alias `current` of `imz-boot-gbl-github-infrastructure-key`, which that
+   reads the alias `current` of `imr-boot-gbl-github-infrastructure-key`, which that
    organization pins, and nothing is added in this repository.
 
 Until the App ID is recorded and the alias names a version, a run of the
@@ -628,11 +628,11 @@ own token (`1-org/README.md`).
 
 ## The GitHub Apps' keys
 
-The three GitHub Apps' private keys live in the zones organization
-`imz`'s boot project (`imz-boot-gbl-core-c3d4`; `keys` in
+The three GitHub Apps' private keys live in the root organization
+`imr`'s boot project (`imr-boot-gbl-core-c3d4`; `keys` in
 `placement.json`), one secret per app for every bedrock organization in the
-Google Cloud organization: `imz-boot-gbl-github-infrastructure-key`,
-`imz-boot-gbl-github-deployer-key` and `imz-boot-gbl-github-release-key`. Every reader here names
+Google Cloud organization: `imr-boot-gbl-github-infrastructure-key`,
+`imr-boot-gbl-github-deployer-key` and `imr-boot-gbl-github-release-key`. Every reader here names
 a secret's alias `current`, which that organization's placement pins and its
 apply moves; nothing is added or pinned in this repository, `bedrock secret
 add` and `pin` refuse here and name that organization, and a rotation there
@@ -649,10 +649,10 @@ application's release trigger cuts the application's releases as
 (release-please, in Cloud Build as the application's release identity). The
 apps themselves, their permissions and their installations are made once on
 GitHub (the root `README.md`, "The two GitHub Apps"); a GitHub organization
-that holds the zones organization has them already, and this organization
+that holds the root organization has them already, and this organization
 records the same App IDs.
 
-How the reads are granted (`github.tf`): the zones organization gives this
+How the reads are granted (`github.tf`): the root organization gives this
 organization's boot identity `secretPolicyAdmin` on the three secrets, a
 custom role of its project that reads and sets a secret's IAM policy and
 nothing else. This layer grants from it: the org identity's policy
@@ -665,7 +665,7 @@ policies, which a plan of this layer or of `1-org` refreshes the grants
 through. That is the only reach this organization has into that one.
 
 Two things come before this layer's first apply, which makes those grants:
-the zones organization lists this organization in its `placement.json`
+the root organization lists this organization in its `placement.json`
 (`hostingOrganizations`: the prefix and the boot project, once the seed has
 made the boot identity, since a grant names an identity that exists) and
 applies, which gives the boot identity the role for every apply through the
@@ -675,13 +675,13 @@ itself Secret Manager Admin on that project for the run, with the Folder
 Admin it keeps on that organization's folder, and takes it off after:
 
 ```bash
-gcloud projects add-iam-policy-binding imz-boot-gbl-core-c3d4 --member="user:${BREAK_GLASS}" --role=roles/secretmanager.admin
+gcloud projects add-iam-policy-binding imr-boot-gbl-core-c3d4 --member="user:${BREAK_GLASS}" --role=roles/secretmanager.admin
 # the first apply
-gcloud projects remove-iam-policy-binding imz-boot-gbl-core-c3d4 --member="user:${BREAK_GLASS}" --role=roles/secretmanager.admin
+gcloud projects remove-iam-policy-binding imr-boot-gbl-core-c3d4 --member="user:${BREAK_GLASS}" --role=roles/secretmanager.admin
 ```
 
 Until the App IDs are recorded, the plans are in the runs' logs alone and
-the pipelines talk back through nothing; until the zones organization has
+the pipelines talk back through nothing; until the root organization has
 pinned a key, the pipelines that read it say so and wait. Nothing else is
 affected.
 

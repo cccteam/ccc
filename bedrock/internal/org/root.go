@@ -1,4 +1,4 @@
-// zones.go is the zones kind of organization: a bedrock organization with no environments
+// root.go is the root kind of organization: a bedrock organization with no environments
 // that holds DNS zones alone, one per Google Cloud organization that hosts applications.
 // A customer delegates a shared domain to it once (mydomain.com, or a label such as
 // apps.mydomain.com), and each application's name under that domain is handed onward, as
@@ -25,13 +25,13 @@ import (
 // alone and hands labels of its domains onward to the hosting organizations' zones.
 const (
 	HostingKind = "hosting"
-	ZonesKind   = "zones"
+	RootKind    = "root"
 )
 
 // Kinds are the kinds a placement may name.
-var Kinds = []string{HostingKind, ZonesKind}
+var Kinds = []string{HostingKind, RootKind}
 
-// dnsLayer is the one layer of a zones organization after the bootstrap: the zones and
+// dnsLayer is the one layer of a root organization after the bootstrap: the zones and
 // their NS record sets, in the boot project, and the rule on this repository's default
 // branch.
 const dnsLayer = "1-dns"
@@ -43,18 +43,18 @@ const (
 	dnsIdentity = "dns"
 )
 
-// ZonesLayers are a zones organization's layers, in apply order.
-var ZonesLayers = []string{bootstrapLayer, dnsLayer}
+// RootLayers are a root organization's layers, in apply order.
+var RootLayers = []string{bootstrapLayer, dnsLayer}
 
-// zonesProjectKeys are a zones organization's projects by key: the boot project alone,
+// rootProjectKeys are a root organization's projects by key: the boot project alone,
 // where its zones live.
-var zonesProjectKeys = []string{bootProject}
+var rootProjectKeys = []string{bootProject}
 
 // nameServerCount is how many name servers Cloud DNS assigns a zone, and how many a
 // label handed onward names.
 const nameServerCount = 4
 
-// Domain is one domain a zones organization holds a zone for: the labels of it handed
+// Domain is one domain a root organization holds a zone for: the labels of it handed
 // onward, by label, each to the zone a hosting organization serves the name from. A domain
 // with no label yet holds its zone alone, so the customer's delegation is made once, at
 // the first application or before it.
@@ -76,16 +76,16 @@ type Delegation struct {
 	NameServers  []string `json:"nameServers"`
 }
 
-// Zones reports whether the placement is a zones organization's.
-func (p *Placement) Zones() bool {
-	return p.Kind == ZonesKind
+// Root reports whether the placement is a root organization's.
+func (p *Placement) Root() bool {
+	return p.Kind == RootKind
 }
 
 // Layers are the organization's layers in apply order, by its kind: the six layers of
 // the hosting model, or the bootstrap and 1-dns.
 func (p *Placement) Layers() []string {
-	if p.Zones() {
-		return ZonesLayers
+	if p.Root() {
+		return RootLayers
 	}
 
 	return HostingLayers
@@ -93,9 +93,9 @@ func (p *Placement) Layers() []string {
 
 // SecondLayer is the layer after the bootstrap, whose identity 0-bootstrap creates and
 // whose GitHub provider takes the infrastructure GitHub App's token: 1-org, or 1-dns for
-// a zones organization.
+// a root organization.
 func (p *Placement) SecondLayer() string {
-	if p.Zones() {
+	if p.Root() {
 		return dnsLayer
 	}
 
@@ -105,7 +105,7 @@ func (p *Placement) SecondLayer() string {
 // SecondIdentity is the name 0-bootstrap gives the second layer's identities
 // (<prefix>-org-gbl-tofu, <prefix>-dns-gbl-tofu).
 func (p *Placement) SecondIdentity() string {
-	if p.Zones() {
+	if p.Root() {
 		return dnsIdentity
 	}
 
@@ -116,8 +116,8 @@ func (p *Placement) SecondIdentity() string {
 // boot project, the shared projects and the environment projects, or the boot project
 // alone.
 func (p *Placement) ProjectKeys() []string {
-	if p.Zones() {
-		return zonesProjectKeys
+	if p.Root() {
+		return rootProjectKeys
 	}
 
 	return HostingProjectKeys
@@ -125,16 +125,16 @@ func (p *Placement) ProjectKeys() []string {
 
 // RerunExample is the substitutions a person starts the apply trigger by hand with, as
 // the READMEs and the triggers' comments show them: 2-env for one environment in the
-// hosting model, 1-dns for a zones organization.
+// hosting model, 1-dns for a root organization.
 func (p *Placement) RerunExample() string {
-	if p.Zones() {
+	if p.Root() {
 		return "_LAYER=" + dnsLayer
 	}
 
 	return "_LAYER=" + envLayer + ",_ENVIRONMENT=" + Environments[0]
 }
 
-// DomainNames lists the domains a zones organization holds zones for, in name order.
+// DomainNames lists the domains a root organization holds zones for, in name order.
 func (p *Placement) DomainNames() []string {
 	return slices.Sorted(maps.Keys(p.Domains))
 }
@@ -144,7 +144,7 @@ func (p *Placement) LabelNames(domain string) []string {
 	return slices.Sorted(maps.Keys(p.Domains[domain].Labels))
 }
 
-// ZoneProject is where a zones organization's zones are: the boot project, empty until
+// ZoneProject is where a root organization's zones are: the boot project, empty until
 // the placement records the seed's value (projects.boot).
 func (p *Placement) ZoneProject() string {
 	return p.Projects[bootProject]
@@ -160,23 +160,23 @@ func (p *Placement) ZoneName(domain string) string {
 // validateKind refuses a kind that is neither of the two.
 func (p *Placement) validateKind() error {
 	if p.Kind != "" && !slices.Contains(Kinds, p.Kind) {
-		return errors.Newf("kind %q is not one of %s: a hosting organization holds applications in its environments (the default, left out), a zones organization holds DNS zones alone", p.Kind, strings.Join(Kinds, ", "))
+		return errors.Newf("kind %q is not one of %s: a hosting organization holds applications in its environments (the default, left out), a root organization holds DNS zones alone", p.Kind, strings.Join(Kinds, ", "))
 	}
 
 	return nil
 }
 
-// validateZones holds a zones organization's placement to what its two layers render
+// validateRoot holds a root organization's placement to what its two layers render
 // from: the fields every organization has, one region (the boot project's, where the
 // connection, the triggers and the state bucket are), the domains and their labels, and
 // none of the fields that describe applications or environments, which it has neither of.
-func (p *Placement) validateZones() error {
+func (p *Placement) validateRoot() error {
 	for name, value := range map[string]string{
 		"appsDomain": p.AppsDomain, "spanner.config": p.Spanner.Config, "githubReleaseAppSlug": p.GithubReleaseAppSlug,
 		"githubInfrastructureTeam": p.GithubInfrastructureTeam, "ciLargeRunner": p.CiLargeRunner, "ciLargeRunnerSize": p.CiLargeRunnerSize,
 	} {
 		if value != "" {
-			return errors.Newf("%s is set, and a zones organization has no use for it: it holds DNS zones alone, no applications and no environments", name)
+			return errors.Newf("%s is set, and a root organization has no use for it: it holds DNS zones alone, no applications and no environments", name)
 		}
 	}
 	for name, set := range map[string]bool{
@@ -186,11 +186,11 @@ func (p *Placement) validateZones() error {
 		"outOfService": len(p.OutOfService) > 0, "hostnames": len(p.Hostnames) > 0,
 	} {
 		if set {
-			return errors.Newf("%s is set, and a zones organization has no use for it: it holds DNS zones alone, no applications and no environments", name)
+			return errors.Newf("%s is set, and a root organization has no use for it: it holds DNS zones alone, no applications and no environments", name)
 		}
 	}
 	if len(p.Regions) != 1 {
-		return errors.Newf("regions has %d entries; a zones organization runs in one, where its connection, its triggers and its state bucket are", len(p.Regions))
+		return errors.Newf("regions has %d entries; a root organization runs in one, where its connection, its triggers and its state bucket are", len(p.Regions))
 	}
 	if err := p.validateKeyHolding(); err != nil {
 		return err
@@ -213,7 +213,7 @@ func (p *Placement) validateDomains() error {
 		}
 		switch {
 		case d == p.OrganizationDomain:
-			return errors.Newf("domains names %q, which is the organization's domain, whose mail is on it: a zones organization holds a label of it (apps.%s) or another domain, and the identity domain stays at its registrar's DNS", d, d)
+			return errors.Newf("domains names %q, which is the organization's domain, whose mail is on it: a root organization holds a label of it (apps.%s) or another domain, and the identity domain stays at its registrar's DNS", d, d)
 		case strings.HasSuffix(p.OrganizationDomain, "."+d):
 			return errors.Newf("domains names %q, which is above the organization's domain %s: one zone would serve both", d, p.OrganizationDomain)
 		}
@@ -265,7 +265,7 @@ func (p *Placement) validateDelegation(where string, d Delegation) error {
 	case !prefixRE.MatchString(d.Organization):
 		return errors.Newf("%s names organization %q, which is not a bedrock organization's prefix (2 to 4 lowercase alphanumeric characters starting with a letter): the hosting organization whose zone serves the name", where, d.Organization)
 	case d.Organization == p.Prefix:
-		return errors.Newf("%s names organization %s, which is this organization: a zones organization hosts no application, and a label is handed to the hosting organization whose zone serves the name", where, d.Organization)
+		return errors.Newf("%s names organization %s, which is this organization: a root organization hosts no application, and a label is handed to the hosting organization whose zone serves the name", where, d.Organization)
 	case len(d.NameServers) != nameServerCount:
 		return errors.Newf("%s names %d name servers, not %d: the four name servers Cloud DNS assigned the application's zone in the hosting organization, as bedrock domain check prints them there", where, len(d.NameServers), nameServerCount)
 	}

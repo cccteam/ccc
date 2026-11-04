@@ -170,16 +170,16 @@ func (d deps) orgPinned(p *org.Placement, placement string) error {
 
 // handSteps says what a person does before the triggers can run, and where the commands
 // are. Each step opens with the place it happens; the bootstrap roles are org preflight's
-// table, one line each, so the steps name what the check checks. A zones organization
+// table, one line each, so the steps name what the check checks. A root organization
 // has fewer steps: no team group, no environment, no release app, and its domains after
-// the layers (zonesHandSteps).
+// the layers (rootHandSteps).
 func handSteps(p *org.Placement) string {
 	var roles strings.Builder
 	for _, role := range p.BootstrapRoles() {
 		fmt.Fprintf(&roles, "       - %s (%s), on the %s\n", role.Title, role.Role, role.On)
 	}
-	if p.Zones() {
-		return zonesHandSteps(p, roles.String())
+	if p.Root() {
+		return rootHandSteps(p, roles.String())
 	}
 
 	return fmt.Sprintf(`
@@ -204,7 +204,7 @@ By hand, before the Cloud Build triggers can run (the commands are in 0-bootstra
      githubDeployerAppId, and the infrastructure app's into placement.json,
      githubInfrastructureAppId) and, if a team is to approve changes to the applications'
      check files, that team (githubInfrastructureTeam).
-     The apps' keys live in the zones organization %s (keys.organization), in its boot
+     The apps' keys live in the root organization %s (keys.organization), in its boot
      project %s, one secret per app, and every run here reads each secret's alias
      current, which that organization pins: nothing is added or pinned in this
      repository (0-bootstrap/README.md, "The GitHub Apps' keys"). No key reaches GitHub:
@@ -260,10 +260,10 @@ After the first apply of 2-net: bedrock domain check prints what the apps domain
 		p.BreakGlassAccount, p.GithubMachineAccount, p.ConnectionName(), p.Primary().Name, p.BillingAccount, p.PlanTriggerName(), p.ApplyTriggerName())
 }
 
-// zonesHandSteps is handSteps for a zones organization: the GitHub side without the
+// rootHandSteps is handSteps for a root organization: the GitHub side without the
 // release app, the seed, the authorization, the two applies, the billing grant, then the
 // domains and the labels handed onward, which 1-dns/README.md describes.
-func zonesHandSteps(p *org.Placement, roles string) string {
+func rootHandSteps(p *org.Placement, roles string) string {
 	return fmt.Sprintf(`
 By hand, before the Cloud Build triggers can run (the commands are in 0-bootstrap/README.md):
   0. On GitHub, as an organization owner: the organization, its machine account (%s, an
@@ -330,14 +330,14 @@ registration, in two pull requests (1-dns/README.md, "Handing a label onward").
 		p.BreakGlassAccount, p.GithubMachineAccount, p.ConnectionName(), p.Primary().Name, p.BillingAccount, p.PlanTriggerName(), p.ApplyTriggerName())
 }
 
-// hostingOnly refuses a command that acts on applications or environments in a zones
+// hostingOnly refuses a command that acts on applications or environments in a root
 // organization, which has neither.
 func hostingOnly(p *org.Placement, command string) error {
-	if !p.Zones() {
+	if !p.Root() {
 		return nil
 	}
 
-	return errors.Newf("the %s organization is a zones organization (kind in placement.json), which holds DNS zones alone, no applications and no environments: bedrock org %s has nothing to act on here; the names under its domains are handed onward in placement.json (domains), and bedrock domain check reads them", p.Prefix, command)
+	return errors.Newf("the %s organization is a root organization (kind in placement.json), which holds DNS zones alone, no applications and no environments: bedrock org %s has nothing to act on here; the names under its domains are handed onward in placement.json (domains), and bedrock domain check reads them", p.Prefix, command)
 }
 
 func newOrgPreflight(d deps) *cobra.Command {
@@ -541,15 +541,15 @@ and never fails the check either.`,
 // writeOrgCheck prints what org check found: the registrations, the notices, each
 // finding, the owner and API key listings, and the verdict. The registrations, the
 // capacity and retire notices and the two listings are a hosting organization's alone: a
-// zones organization registers no domain and has no Spanner instance, no application and
+// root organization registers no domain and has no Spanner instance, no application and
 // no environment project.
 func (d deps) writeOrgCheck(cmd *cobra.Command, p *org.Placement, dir string, r *org.Report) error {
 	out := cmd.OutOrStdout()
-	if !p.Zones() {
+	if !p.Root() {
 		registrationReport(cmd.Context(), d, p, dir, out)
 	}
 	fmt.Fprint(out, zoneReplacementNotice(p))
-	if !p.Zones() {
+	if !p.Root() {
 		fmt.Fprint(out, capacityNotice(p, dir))
 		fmt.Fprint(out, retireNotice(p))
 	}
@@ -566,7 +566,7 @@ func (d deps) writeOrgCheck(cmd *cobra.Command, p *org.Placement, dir string, r 
 	for _, path := range r.Unseeded {
 		fmt.Fprintf(out, "%s: not seeded yet (org render writes it)\n", path)
 	}
-	if !p.Zones() {
+	if !p.Root() {
 		leftoverReport(cmd.Context(), d, p, out)
 		keyReport(cmd.Context(), d, p, out)
 	}
@@ -615,7 +615,7 @@ func zoneReplacementNotice(p *org.Placement) string {
 	if !p.ZoneReplacement {
 		return ""
 	}
-	if p.Zones() {
+	if p.Root() {
 		return "zoneReplacement is set in placement.json: 1-dns's zones are rendered without prevent_destroy, so a plan may destroy them and create them again on other name servers. Make the change that recreates the zone (bedrock org render), have the customer point the delegation at the new name servers as bedrock domain check prints, then clear zoneReplacement and run bedrock org render to write the rule back; bedrock domain check says when the domain points at the zone (1-dns/README.md, \"Making a zone again\").\n"
 	}
 
@@ -1483,7 +1483,7 @@ since the merge applies those first; failed otherwise, a plan that did not run i
 GitHub App, found by its first line and updated on a later push; the plans stay in the run's
 log while placement.json records no deployer app (githubDeployerAppId) or the key's alias
 names no version yet. 1-org's plan gets the infrastructure GitHub App's token as
-GITHUB_TOKEN, minted from the app's key, read by its alias in the zones organization's boot
+GITHUB_TOKEN, minted from the app's key, read by its alias in the root organization's boot
 project. _LAYER names one layer to plan whatever the pull request changes, and _ENVIRONMENT one
 environment of 2-env. It exits 1 when any plan failed. It refuses a build that did not start
 from the trigger (no _BEDROCK_STEPS substitution) and a layer whose identity is under a
@@ -1523,7 +1523,7 @@ the apply of that plan, then the marker. It stops at the first failure, the mark
 layers applied before it written. After each apply of 2-env it restricts Firebase's browser
 key in the environment project to the sign-in APIs (2-env/README.md, Identity Platform).
 1-org's apply gets the infrastructure GitHub App's token as GITHUB_TOKEN, minted from the
-app's key, read by its alias in the zones organization's boot project. It refuses a build that did
+app's key, read by its alias in the root organization's boot project. It refuses a build that did
 not start from the trigger (no _BEDROCK_STEPS substitution) and a layer whose identity is
 under a project placement.json does not record yet (REPLACEME), and says so when it runs
 under a step list an earlier bedrock rendered: the trigger's steps lag one apply behind the
@@ -1605,7 +1605,7 @@ func (d deps) destroyOrg(cmd *cobra.Command, dir string, yes bool) error {
 		return err
 	}
 	var registered []string
-	if !p.Zones() {
+	if !p.Root() {
 		registered, err = domain.RegisteredDomains(dir)
 		if err != nil {
 			return err
@@ -1631,7 +1631,7 @@ func (d deps) destroyOrg(cmd *cobra.Command, dir string, yes bool) error {
 	if d.deploy != nil {
 		exec = d.deploy.Exec
 	}
-	req := &layers.DestroyRequest{Dir: dir, GithubToken: d.githubToken, KeepNet: keepNet, Zones: p.Zones(), Pause: layers.DestroyPause}
+	req := &layers.DestroyRequest{Dir: dir, GithubToken: d.githubToken, KeepNet: keepNet, Root: p.Root(), Pause: layers.DestroyPause}
 	if err := layers.Destroy(cmd.Context(), exec, req, out); err != nil {
 		return err
 	}
@@ -1643,17 +1643,17 @@ func (d deps) destroyOrg(cmd *cobra.Command, dir string, yes bool) error {
 	return nil
 }
 
-// zonesBootContents says what a zones organization's boot project holds, for the
+// rootBootContents says what a root organization's boot project holds, for the
 // destroy's warning.
-const zonesBootContents = "the layer identities, the state bucket with both layers' states, the Cloud Build connection and triggers, the GitHub Apps' keys, and the zones with their record sets: every domain delegated to this organization then points at servers that answer nothing"
+const rootBootContents = "the layer identities, the state bucket with both layers' states, the Cloud Build connection and triggers, the GitHub Apps' keys, and the zones with their record sets: every domain delegated to this organization then points at servers that answer nothing"
 
 // destroyWarning says what the destroy deletes: each project the placement records
 // with what it holds, what else goes, what stays, and the grace Google gives.
 func destroyWarning(p *org.Placement, registered []string) string {
 	var b strings.Builder
-	if p.Zones() {
-		fmt.Fprintf(&b, "bedrock org destroy deletes the boot project of the %s zones organization, and with it everything the layers made:\n\n", p.Prefix)
-		fmt.Fprintf(&b, "  %s (%s): %s\n", p.BootProject(), "boot", zonesBootContents)
+	if p.Root() {
+		fmt.Fprintf(&b, "bedrock org destroy deletes the boot project of the %s root organization, and with it everything the layers made:\n\n", p.Prefix)
+		fmt.Fprintf(&b, "  %s (%s): %s\n", p.BootProject(), "boot", rootBootContents)
 		b.WriteString("\nAlso gone: the folders and the custom roles, and on GitHub this repository's ruleset. The repository stays, with its code and pull requests.\n")
 		b.WriteString("\nGoogle keeps a deleted project for 30 days, in which the console can restore it; its id never returns after. Nothing here is undone by bedrock.\n\n")
 
@@ -1717,8 +1717,8 @@ func projectContentsOf(key string) string {
 
 // destroyJournalLine is the line the destroy adds to the journal.
 func destroyJournalLine(p *org.Placement, keepNet bool, now time.Time) string {
-	if p.Zones() {
-		return fmt.Sprintf("- %s: bedrock org destroy deleted the zones organization's boot project (%s), with its zones: Google holds it for 30 days, its id never returns. The GitHub repository stays.\n", now.Format("2006-01-02 15:04Z"), p.BootProject())
+	if p.Root() {
+		return fmt.Sprintf("- %s: bedrock org destroy deleted the root organization's boot project (%s), with its zones: Google holds it for 30 days, its id never returns. The GitHub repository stays.\n", now.Format("2006-01-02 15:04Z"), p.BootProject())
 	}
 	var ids []string
 	for _, key := range destroyedProjectKeys(p) {
@@ -1752,8 +1752,8 @@ func appendJournal(dir, line string) error {
 // destroyEpilogue says what the destroy left and what starting over takes.
 func destroyEpilogue(p *org.Placement, keepNet bool) string {
 	var b strings.Builder
-	if p.Zones() {
-		fmt.Fprintf(&b, "\nDeleted the %s zones organization's boot project; a line went into %s. Google holds it for 30 days (its id never returns); the GitHub repository is as it was, without the ruleset 1-dns made.\n", p.Prefix, journalFile)
+	if p.Root() {
+		fmt.Fprintf(&b, "\nDeleted the %s root organization's boot project; a line went into %s. Google holds it for 30 days (its id never returns); the GitHub repository is as it was, without the ruleset 1-dns made.\n", p.Prefix, journalFile)
 		b.WriteString("To start over: a new seed (0-bootstrap/README.md, \"First-time setup\"), bedrock org render on its values, and the hand steps again (bedrock org new prints them); every domain delegated here is then delegated again, to the new zones' name servers.\n")
 
 		return b.String()

@@ -65,8 +65,8 @@ trigger plans it on a pull request as `imp-org-gbl-plan`.
   the upstream prefixes it reads). The environment layer identities also get
   the bucket's policy authority (`0-bootstrap`'s custom role), for the
   application identities `2-env` creates, the policy administration of the
-  deployer and release GitHub Apps' key secrets in the zones organization
-  `imz`'s boot project (`secretPolicyAdmin`, that
+  deployer and release GitHub Apps' key secrets in the root organization
+  `imr`'s boot project (`secretPolicyAdmin`, that
   organization's role, which `0-bootstrap` holds for the org identity), so
   `2-env` can grant those identities their read, and the environment layers'
   plan identities the read of the bucket's policy (`bucketPolicyReader`,

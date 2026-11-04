@@ -22,7 +22,7 @@
 # identities receive the bucket's policy authority here: 2-env grants the
 # application identities it creates their slots (2-env/identities.tf). The
 # environment layer identities also receive the policy administration of the
-# deployer and release GitHub Apps' key secrets here, which live in the zones
+# deployer and release GitHub Apps' key secrets here, which live in the root
 # organization's boot project, so 2-env can grant the applications' identities
 # their read.
 # ---------------------------------------------------------------------------
@@ -30,13 +30,13 @@
 locals {
   boot = data.terraform_remote_state.boot.outputs
 
-  # The GitHub Apps' keys live in the zones organization imz's boot
+  # The GitHub Apps' keys live in the root organization imr's boot
   # project (placement.json, keys), one secret per app, read by alias; this
   # layer hands their policy administration down with the role of that
   # project 0-bootstrap holds (0-bootstrap/github.tf).
-  keys_project           = "imz-boot-gbl-core-c3d4"
-  key_secrets            = { deployer = "imz-boot-gbl-github-deployer-key", release = "imz-boot-gbl-github-release-key" }
-  keys_policy_admin_role = "projects/imz-boot-gbl-core-c3d4/roles/secretPolicyAdmin"
+  keys_project           = "imr-boot-gbl-core-c3d4"
+  key_secrets            = { deployer = "imr-boot-gbl-github-deployer-key", release = "imr-boot-gbl-github-release-key" }
+  keys_policy_admin_role = "projects/imr-boot-gbl-core-c3d4/roles/secretPolicyAdmin"
 
   state_bucket_objects = "projects/_/buckets/${var.state_bucket}/objects"
 
@@ -83,7 +83,7 @@ resource "google_service_account_iam_member" "plan_planner" {
 # The deployer GitHub App's key
 #
 # The environment layer identities administer the secret's policy
-# (secretPolicyAdmin, the zones organization's role: the policy and nothing
+# (secretPolicyAdmin, the root organization's role: the policy and nothing
 # else, never a version's payload), so 2-env can grant each application's
 # identities the read of the alias its output names.
 # ---------------------------------------------------------------------------

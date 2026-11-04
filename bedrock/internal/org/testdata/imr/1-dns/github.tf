@@ -34,7 +34,7 @@ locals {
   approving_reviews = 1
 
   # The context the Cloud Build app reports the plan trigger's build under: the
-  # trigger's name as 0-bootstrap/cloud-build.tf gives it (imz-boot-uc1-layers-plan;
+  # trigger's name as 0-bootstrap/cloud-build.tf gives it (imr-boot-uc1-layers-plan;
   # a renamed trigger is a change in both files), then the boot project's id in
   # parentheses. The form is the app's, read off the checks it reports.
   layers_plan_check = "${var.prefix}-boot-uc1-layers-plan (${var.boot_project_id})"

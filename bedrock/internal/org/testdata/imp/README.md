@@ -26,7 +26,7 @@ gets a line there first.
 
 | Layer | Directory | Applied as | Creates |
 |---|---|---|---|
-| 0 | [`0-bootstrap/`](0-bootstrap/) | the break-glass account the first time (local state, then migrated); then the apply trigger as `imp-boot-gbl-tofu` | adopts the seeded `terraform` folder, boot project, and boot identity; the org layer identity and its grants on the organization's folder; the project-updater and state-bucket-policy custom roles; the Cloud Build connection, the two runner identities and the two triggers that plan and apply the layers; the grants on the zones organization's three key secrets; the state bucket's grants for its two identities |
+| 0 | [`0-bootstrap/`](0-bootstrap/) | the break-glass account the first time (local state, then migrated); then the apply trigger as `imp-boot-gbl-tofu` | adopts the seeded `terraform` folder, boot project, and boot identity; the org layer identity and its grants on the organization's folder; the project-updater and state-bucket-policy custom roles; the Cloud Build connection, the two runner identities and the two triggers that plan and apply the layers; the grants on the root organization's three key secrets; the state bucket's grants for its two identities |
 | 1 | [`1-org/`](1-org/) | the break-glass account the first time; then the apply trigger as `imp-org-gbl-tofu` | folders `shared`, `tst`, `stg`, `prd`; the org policy baseline; Essential Contacts; the six projects; a layer identity and a plan identity per project and the two boot layers' plan identities, each impersonated by the trigger runner of its kind, with its state bucket grants; the `secretContainerAdmin` custom role; the applications' repositories |
 | 2 | [`2-shr/`](2-shr/) | the apply trigger as `imp-shr-gbl-tofu` | one Artifact Registry Docker repository per application, immutable tags, cleanup policies; reader for each environment's Cloud Run, writer for each application's deploy identities |
 | 2 | [`2-spn/`](2-spn/) | the apply trigger as `imp-spn-gbl-tofu` | the shared Spanner instance `imp-spn-gbl-spanner` (nam10, 100 processing units to start, raised for databases or load); instance-level database admin grants; the Spanner entitlements of the environments on it |
@@ -204,7 +204,7 @@ the place it happens.
    state is then moved in with `tofu init -migrate-state`. From here the plan
    and apply triggers exist, and their steps are the trigger's own. Two
    things come before the first apply, since the layer grants on the three
-   GitHub App key secrets in the zones organization `imz`'s
+   GitHub App key secrets in the root organization `imr`'s
    boot project: that organization lists this one in its `placement.json`
    (`hostingOrganizations`: the prefix and the boot project, once step 2's
    seed has made the boot identity) and applies, which gives the boot
@@ -231,7 +231,7 @@ the place it happens.
    its private key and its installation. Then in a terminal, in this
    repository: its App ID recorded in `placement.json`
    (`githubInfrastructureAppId`) and `bedrock org render`. Its key lives in
-   the zones organization `imz`'s boot project (`keys` in
+   the root organization `imr`'s boot project (`keys` in
    `placement.json`), added, proven and pinned there; nothing is added here.
    Until the App ID is recorded and the alias names a version, a run of the
    triggers that plans or applies `1-org` says so and stops.
@@ -239,7 +239,7 @@ the place it happens.
    GitHub Apps' keys"). In `placement.json`: `githubDeployerAppId`, and
    `githubReleaseAppId` with `githubReleaseAppSlug` from the start; then
    `bedrock org render` ("The two GitHub Apps", below). Their keys are the
-   zones organization's, read through the alias `current`. Until the App IDs
+   root organization's, read through the alias `current`. Until the App IDs
    are recorded the plans are in the runs' logs alone and the pipelines talk
    back through nothing. `bedrock org register` refuses the first application while step
    4's values are not recorded, since the applications' triggers exist once
@@ -366,8 +366,8 @@ application's release trigger in Cloud Build, so the tag and the GitHub
 Release carry it as their author, and each repository's tag ruleset lets it
 alone make a release tag), and the deployer app, which the pipeline talks
 back on a pull request as (a deployment carrying the environment's URL, a
-comment, the guard's refusals). Both keys live in Secret Manager in the zones
-organization `imz`'s boot project, which holds them for every
+comment, the guard's refusals). Both keys live in Secret Manager in the root
+organization `imr`'s boot project, which holds them for every
 organization and rotates them in one place (`0-bootstrap/README.md`, "The
 GitHub Apps' keys"); neither reaches GitHub. Once, by a person:
 
@@ -393,18 +393,18 @@ GitHub Apps' keys"); neither reaches GitHub. Once, by a person:
    slug as the author of its releases.
 4. In `placement.json`: the deployer app's App ID as `githubDeployerAppId`,
    one value for the organization.
-5. In a terminal, in the zones organization `imz`'s
+5. In a terminal, in the root organization `imr`'s
    repository, as one of its key operators, for each of the two apps:
    `bedrock secret add`, `bedrock org secrets check` and `bedrock secret pin`
    with `github-deployer-key` and `github-release-key` (its
    `0-bootstrap/README.md`, "The GitHub Apps' keys"). Nothing is added in this
    repository: `2-env`'s outputs name each key's alias `current`
-   (`imz-boot-gbl-github-deployer-key`, `imz-boot-gbl-github-release-key`, in that organization's
+   (`imr-boot-gbl-github-deployer-key`, `imr-boot-gbl-github-release-key`, in that organization's
    boot project), each application's stack passes the aliases to its pipeline
    and its release trigger, and the plan trigger posts the layers' plans as
    the deployer app from the apply that sets the alias on. Until the App IDs
    are recorded here, the pipelines talk back through nothing and the plans
-   are in the runs' logs alone; until the zones organization has pinned a key,
+   are in the runs' logs alone; until the root organization has pinned a key,
    the pipelines that read it say so and wait.
 
 ## Deviations from tf-gcp-setup

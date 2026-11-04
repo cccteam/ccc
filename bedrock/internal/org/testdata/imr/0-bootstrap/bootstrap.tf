@@ -10,8 +10,8 @@ locals {
   labels = {
     terraform             = "true"
     terraform_source_path = "0-bootstrap"
-    source_repo           = "imz-zones-infrastructure"
-    organization          = "imz"
+    source_repo           = "imr-root-infrastructure"
+    organization          = "imr"
     environment           = "boot"
     bedrock-lab           = "true"
   }
@@ -35,7 +35,7 @@ locals {
 # Everything else in this layer is created normally.
 # ---------------------------------------------------------------------------
 
-# The terraform folder holds nothing but the automation plane. A zones
+# The terraform folder holds nothing but the automation plane. A root
 # organization makes no other folder: its zones live in the boot project.
 
 # The organization's folder, named after its prefix, holds everything the

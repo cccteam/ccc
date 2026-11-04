@@ -54,11 +54,11 @@ variable "github_organization" {
 variable "infrastructure_repository" {
   description = "This repository's name under the GitHub organization, whose default branch the ruleset rules (github.tf)."
   type        = string
-  default     = "imz-zones-infrastructure"
+  default     = "imr-root-infrastructure"
 }
 
 variable "prefix" {
-  description = "Short org-wide prefix used in resource names (e.g. \"imz\")."
+  description = "Short org-wide prefix used in resource names (e.g. \"imr\")."
   type        = string
-  default     = "imz"
+  default     = "imr"
 }

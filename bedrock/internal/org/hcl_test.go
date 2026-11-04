@@ -20,18 +20,18 @@ func TestRenderedOrganizationParsesAsHCL(t *testing.T) {
 	tests := make([]struct {
 		name string
 		dir  string
-	}, 0, len(HostingLayers)+len(ZonesLayers))
+	}, 0, len(HostingLayers)+len(RootLayers))
 	for _, layer := range HostingLayers {
 		tests = append(tests, struct {
 			name string
 			dir  string
 		}{name: layer, dir: filepath.Join(fixture, layer)})
 	}
-	for _, layer := range ZonesLayers {
+	for _, layer := range RootLayers {
 		tests = append(tests, struct {
 			name string
 			dir  string
-		}{name: "zones " + layer, dir: filepath.Join(zonesFixture, layer)})
+		}{name: "zones " + layer, dir: filepath.Join(rootFixture, layer)})
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

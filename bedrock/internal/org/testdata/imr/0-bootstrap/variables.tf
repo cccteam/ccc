@@ -35,7 +35,7 @@ variable "boot_plan_roles" {
 }
 
 variable "boot_project_id" {
-  description = "(Required) Project ID of the boot project created during the gcloud seed, including the random suffix chosen for it (e.g. \"imz-boot-gbl-core-a1b2\"). This layer adopts the project rather than creating it, so the ID has to be supplied rather than derived."
+  description = "(Required) Project ID of the boot project created during the gcloud seed, including the random suffix chosen for it (e.g. \"imr-boot-gbl-core-a1b2\"). This layer adopts the project rather than creating it, so the ID has to be supplied rather than derived."
   type        = string
 }
 
@@ -54,7 +54,7 @@ variable "github_organization" {
 variable "infrastructure_repository" {
   description = "This repository's name under the GitHub organization: the repository the boot project's connection links and the triggers watch (cloud-build.tf)."
   type        = string
-  default     = "imz-zones-infrastructure"
+  default     = "imr-root-infrastructure"
 }
 
 variable "organization_folder_id" {
@@ -89,15 +89,15 @@ variable "organization_domain" {
 }
 
 variable "prefix" {
-  description = "Short org-wide prefix used in resource names (e.g. \"imz\")."
+  description = "Short org-wide prefix used in resource names (e.g. \"imr\")."
   type        = string
-  default     = "imz"
+  default     = "imr"
 }
 
 variable "state_bucket" {
   description = "The seeded state bucket every backend block names (placement.json, stateBucket). This layer grants on it for the two identities it owns (state-bucket.tf); the bucket itself stays outside OpenTofu."
   type        = string
-  default     = "imz-boot-gbl-state-c3d4"
+  default     = "imr-boot-gbl-state-c3d4"
 }
 
 variable "destroy" {

@@ -2,14 +2,14 @@
 
 OpenTofu configurations for the {{.OrganizationDomain}} Google Cloud organization,
 rendered by bedrock. The name says whose and what: `{{.Prefix}}` is the
-organization prefix every resource here carries, and this is the {{if .Zones}}zones
+organization prefix every resource here carries, and this is the {{if .Root}}zones
 infrastructure{{else}}Impulse
 infrastructure{{end}}, one repository per (organization, kind), so a GitHub
 organization can hold infrastructure for more than one Google Cloud
 organization without the names colliding. The other way round holds too: a
 Google Cloud organization can hold more than one bedrock organization, each
 under a folder of its prefix's name at the organization root (`0-bootstrap`),
-with projects, identities, custom roles{{if not .Zones}}, tag keys{{end}} and grants of its own and
+with projects, identities, custom roles{{if not .Root}}, tag keys{{end}} and grants of its own and
 nothing at the organization node ("Several organizations", below). The
 projects carry the label `organization = {{.Prefix}}`. Modeled on
 [cccteam/tf-gcp-setup](https://github.com/cccteam/tf-gcp-setup): numbered
@@ -25,7 +25,7 @@ gets a line there first.
 
 ## Layers
 
-{{- if .Zones}}
+{{- if .Root}}
 
 | Layer | Directory | Applied as | Creates |
 |---|---|---|---|
@@ -74,7 +74,7 @@ the records and the checks are in [`1-dns/README.md`](1-dns/README.md).
 
 | Layer | Directory | Applied as | Creates |
 |---|---|---|---|
-| 0 | [`0-bootstrap/`](0-bootstrap/) | the break-glass account the first time (local state, then migrated); then the apply trigger as `{{.Prefix}}-boot-gbl-tofu` | adopts the seeded `terraform` folder, boot project, and boot identity; the org layer identity and its grants on the organization's folder; the project-updater and state-bucket-policy custom roles; the Cloud Build connection, the two runner identities and the two triggers that plan and apply the layers; the grants on the zones organization's three key secrets; the state bucket's grants for its two identities |
+| 0 | [`0-bootstrap/`](0-bootstrap/) | the break-glass account the first time (local state, then migrated); then the apply trigger as `{{.Prefix}}-boot-gbl-tofu` | adopts the seeded `terraform` folder, boot project, and boot identity; the org layer identity and its grants on the organization's folder; the project-updater and state-bucket-policy custom roles; the Cloud Build connection, the two runner identities and the two triggers that plan and apply the layers; the grants on the root organization's three key secrets; the state bucket's grants for its two identities |
 | 1 | [`1-org/`](1-org/) | the break-glass account the first time; then the apply trigger as `{{.Prefix}}-org-gbl-tofu` | folders `shared`, `tst`, `stg`, `prd`; the org policy baseline; Essential Contacts; the six projects; a layer identity and a plan identity per project and the two boot layers' plan identities, each impersonated by the trigger runner of its kind, with its state bucket grants; the `secretContainerAdmin` custom role; the applications' repositories |
 | 2 | [`2-shr/`](2-shr/) | the apply trigger as `{{.Prefix}}-shr-gbl-tofu` | one Artifact Registry Docker repository per application, immutable tags, cleanup policies; reader for each environment's Cloud Run, writer for each application's deploy identities |
 | 2 | [`2-spn/`](2-spn/) | the apply trigger as `{{.Prefix}}-spn-gbl-tofu` | the shared Spanner instance `{{.Prefix}}-spn-gbl-spanner` ({{.Spanner.Config}}, 100 processing units to start, raised for databases or load); instance-level database admin grants; the Spanner entitlements of the environments on it |
@@ -101,7 +101,7 @@ folders, each named after its prefix, and the folder is the whole of an
 organization's reach: every role a layer identity holds, the boot identity's,
 the {{.SecondIdentity}} layer identity's and the plan identities' (`0-bootstrap`),
 is granted on the organization's folder and nowhere higher, and every custom
-role{{if not .Zones}} and the public-invoker tag key{{end}} lives in a project. Nothing of
+role{{if not .Root}} and the public-invoker tag key{{end}} lives in a project. Nothing of
 the organization's sits at the organization node.
 
 The reason is reach. A role granted at the organization node applies to every
@@ -132,12 +132,12 @@ trimmed (`0-bootstrap/README.md`, "Trimming the break-glass account").
 
 Prefix `{{.Prefix}}`. `gbl` is the region segment only for resources that really are
 global: projects, folders, service accounts, IAM. Regional resources carry the
-region code, `{{.Primary.Code}}` for {{.Primary.Name}}{{if not .Zones}} and `{{.Secondary.Code}}` for {{.Secondary.Name}}{{end}}.
+region code, `{{.Primary.Code}}` for {{.Primary.Name}}{{if not .Root}} and `{{.Secondary.Code}}` for {{.Secondary.Name}}{{end}}.
 
 | Resource | Name |
 |---|---|
 | boot project | `{{.Prefix}}-boot-gbl-core-a1b2` |
-{{- if .Zones}}
+{{- if .Root}}
 | dns layer identity / plan identity | `{{.Prefix}}-dns-gbl-tofu` / `{{.Prefix}}-dns-gbl-plan` |
 | a domain's zone | `{{.Prefix}}-boot-gbl-dns-mydomain-com` |
 {{- else}}
@@ -148,7 +148,7 @@ region code, `{{.Primary.Code}}` for {{.Primary.Name}}{{if not .Zones}} and `{{.
 | state bucket | `{{.Prefix}}-boot-gbl-state-a1b2` |
 
 Project IDs and bucket names are globally unique and permanent, so both carry a
-random four-hex suffix. The custom roles (`projectUpdater`){{if not .Zones}} and the
+random four-hex suffix. The custom roles (`projectUpdater`){{if not .Root}} and the
 public-invoker tag key{{end}} live in the projects, where a name is the project's own,
 so they carry none. Every project carries the label `organization = {{.Prefix}}`{{if .ExtraLabels}}, and every project and bucket the label
 {{.ExtraLabelsProse}}{{end}}.
@@ -166,7 +166,7 @@ changed since its last successful apply as its apply identity, in layer order
 first applies (a layer that has never applied gets its empty state written by
 its own init, which a later layer may then read), stopping at the first
 failure.
-{{- if .Zones}}
+{{- if .Root}}
 
 The two layers share no output: `1-dns` reads nothing from `0-bootstrap`'s
 state, so a pull request that changes both has both planned at once, side by
@@ -200,9 +200,9 @@ file) and only then plans or applies. No key exists anywhere: the trigger's
 runner identity impersonates each layer's own identity for that layer's
 tofu, the planner the plan identities and the applier the apply identities.
 `gcloud builds triggers run` on the apply trigger applies one layer again
-with no change to it{{if not .Zones}}, which a registration's second pass of `2-env` needs{{end}}
+with no change to it{{if not .Root}}, which a registration's second pass of `2-env` needs{{end}}
 (`0-bootstrap/README.md`, "The Cloud Build triggers", which also says how a
-change to the steps themselves lands one apply later). Recovery is by hand (`0-bootstrap/README.md`, "Recovery, by hand"){{if .Zones}},
+change to the steps themselves lands one apply later). Recovery is by hand (`0-bootstrap/README.md`, "Recovery, by hand"){{if .Root}},
 as the break-glass account{{else}}:
 for `2-env` as a member of the environment's team group under the
 layer administrator and layer state entitlements, which grant the
@@ -212,7 +212,7 @@ the break-glass account{{end}}. Destroying the organization, projects and all,
 is `bedrock org destroy`, by hand (`0-bootstrap/README.md`, "Destroying the
 organization").
 
-{{- if .Zones}}
+{{- if .Root}}
 
 First-time setup, by hand, before any identity can run. Each step opens with
 the place it happens.
@@ -418,7 +418,7 @@ the place it happens.
    state is then moved in with `tofu init -migrate-state`. From here the plan
    and apply triggers exist, and their steps are the trigger's own. Two
    things come before the first apply, since the layer grants on the three
-   GitHub App key secrets in the zones organization `{{.KeysOrganization}}`'s
+   GitHub App key secrets in the root organization `{{.KeysOrganization}}`'s
    boot project: that organization lists this one in its `placement.json`
    (`hostingOrganizations`: the prefix and the boot project, once step 2's
    seed has made the boot identity) and applies, which gives the boot
@@ -445,7 +445,7 @@ the place it happens.
    its private key and its installation. Then in a terminal, in this
    repository: its App ID recorded in `placement.json`
    (`githubInfrastructureAppId`) and `bedrock org render`. Its key lives in
-   the zones organization `{{.KeysOrganization}}`'s boot project (`keys` in
+   the root organization `{{.KeysOrganization}}`'s boot project (`keys` in
    `placement.json`), added, proven and pinned there; nothing is added here.
    Until the App ID is recorded and the alias names a version, a run of the
    triggers that plans or applies `1-org` says so and stops.
@@ -453,7 +453,7 @@ the place it happens.
    GitHub Apps' keys"). In `placement.json`: `githubDeployerAppId`, and
    `githubReleaseAppId` with `githubReleaseAppSlug` from the start; then
    `bedrock org render` ("The two GitHub Apps", below). Their keys are the
-   zones organization's, read through the alias `current`. Until the App IDs
+   root organization's, read through the alias `current`. Until the App IDs
    are recorded the plans are in the runs' logs alone and the pipelines talk
    back through nothing. `bedrock org register` refuses the first application while step
    4's values are not recorded, since the applications' triggers exist once
@@ -580,7 +580,7 @@ application's release trigger in Cloud Build, so the tag and the GitHub
 Release carry it as their author, and each repository's tag ruleset lets it
 alone make a release tag), and the deployer app, which the pipeline talks
 back on a pull request as (a deployment carrying the environment's URL, a
-comment, the guard's refusals). Both keys live in Secret Manager in the zones
+comment, the guard's refusals). Both keys live in Secret Manager in the root
 organization `{{.KeysOrganization}}`'s boot project, which holds them for every
 organization and rotates them in one place (`0-bootstrap/README.md`, "The
 GitHub Apps' keys"); neither reaches GitHub. Once, by a person:
@@ -607,7 +607,7 @@ GitHub Apps' keys"); neither reaches GitHub. Once, by a person:
    slug as the author of its releases.
 4. In `placement.json`: the deployer app's App ID as `githubDeployerAppId`,
    one value for the organization.
-5. In a terminal, in the zones organization `{{.KeysOrganization}}`'s
+5. In a terminal, in the root organization `{{.KeysOrganization}}`'s
    repository, as one of its key operators, for each of the two apps:
    `bedrock secret add`, `bedrock org secrets check` and `bedrock secret pin`
    with `github-deployer-key` and `github-release-key` (its
@@ -618,7 +618,7 @@ GitHub Apps' keys"); neither reaches GitHub. Once, by a person:
    and its release trigger, and the plan trigger posts the layers' plans as
    the deployer app from the apply that sets the alias on. Until the App IDs
    are recorded here, the pipelines talk back through nothing and the plans
-   are in the runs' logs alone; until the zones organization has pinned a key,
+   are in the runs' logs alone; until the root organization has pinned a key,
    the pipelines that read it say so and wait.
 
 ## Deviations from tf-gcp-setup

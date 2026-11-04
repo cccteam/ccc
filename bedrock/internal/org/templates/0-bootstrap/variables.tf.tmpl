@@ -20,7 +20,7 @@ variable "boot_layer_roles" {
 }
 
 variable "boot_plan_roles" {
-  description = "Roles granted on the organization's folder to the plan identities of the two boot layers (0-bootstrap and {{.SecondLayer}}, both in the boot project): the reads a plan of either layer needs, on the folder since {{if .Zones}}0-bootstrap declares folders, grants and custom roles under it{{else}}the layers declare folders, projects, tags and custom roles under it{{end}}. A starting set, completed by refusal."
+  description = "Roles granted on the organization's folder to the plan identities of the two boot layers (0-bootstrap and {{.SecondLayer}}, both in the boot project): the reads a plan of either layer needs, on the folder since {{if .Root}}0-bootstrap declares folders, grants and custom roles under it{{else}}the layers declare folders, projects, tags and custom roles under it{{end}}. A starting set, completed by refusal."
   type        = list(string)
   default = [
     "roles/browser",                         # the organization's folder, its folders and projects
@@ -58,7 +58,7 @@ variable "infrastructure_repository" {
 }
 
 variable "organization_folder_id" {
-  description = "(Required) Numeric ID of the organization's folder created during the gcloud seed, without the folders/ prefix: the folder named after the prefix that holds the terraform folder{{if not .Zones}} and, from 1-org, the environment folders{{end}}. Adopted, not created."
+  description = "(Required) Numeric ID of the organization's folder created during the gcloud seed, without the folders/ prefix: the folder named after the prefix that holds the terraform folder{{if not .Root}} and, from 1-org, the environment folders{{end}}. Adopted, not created."
   type        = string
 
   validation {
@@ -78,12 +78,12 @@ variable "terraform_folder_id" {
 }
 
 variable "manage_billing_iam" {
-  description = "Whether this layer manages the roles/billing.user grant{{if .Zones}} for the boot identity{{else}}s for the two layer identities{{end}} on the billing account. Changing a billing account's IAM policy needs Billing Account Administrator, which the break-glass account does not hold on the CCC account. While this is false the grant{{if not .Zones}}s{{end}} {{if .Zones}}is{{else}}are{{end}} made by hand by a billing administrator (README, step 2) and stay{{if .Zones}}s{{end}} outside OpenTofu."
+  description = "Whether this layer manages the roles/billing.user grant{{if .Root}} for the boot identity{{else}}s for the two layer identities{{end}} on the billing account. Changing a billing account's IAM policy needs Billing Account Administrator, which the break-glass account does not hold on the CCC account. While this is false the grant{{if not .Root}}s{{end}} {{if .Root}}is{{else}}are{{end}} made by hand by a billing administrator (README, step 2) and stay{{if .Root}}s{{end}} outside OpenTofu."
   type        = bool
   default     = true
 }
 
-{{- if not .Zones}}
+{{- if not .Root}}
 
 variable "org_layer_roles" {
   description = "Roles granted to the org layer identity on the organization's folder, and nowhere higher. Turning on central_logging in 1-org needs roles/logging.configWriter and roles/storage.admin added here."

@@ -78,7 +78,7 @@ again does not, because its pull request is already labeled as tagged.
   `2-env` (per environment: the application identities and their grants, the records
   bucket, the repository links, the team group's release approval and entitlements).
   Rendered by `bedrock org` from the organization's placement into the organization's
-  infrastructure repository. A **zones organization** (`"kind": "zones"` in its
+  infrastructure repository. A **root organization** (`"kind": "root"` in its
   placement) is a bedrock organization with no environments that holds DNS zones alone,
   in two layers, `0-bootstrap` and `1-dns`: one public zone per domain a customer
   delegated to it once, and one NS record set per application name under the domain,
@@ -114,7 +114,7 @@ again does not, because its pull request is already labeled as tagged.
   applications, the environment projects and
   each environment's team group (`teamGroups`: the group whose members approve the
   environment's releases and ask for its entitlements, with `entitlementDurations` for
-  the longest grants); a zones organization's records its kind (`kind`), the fields every
+  the longest grants); a root organization's records its kind (`kind`), the fields every
   organization has, one region, and the domains it holds zones for with the labels handed
   onward (`domains`), and none of the applications' or the environments' fields.
 - **Environment**: `tst`, `stg` and `prd`, in promotion order. A pull request deploys to
@@ -1478,8 +1478,8 @@ declaration and the name together in the next release. `check` lists each retire
 refuses a name nothing declares; a build secret retires the same way by its name. The stack
 README says the rule in full ("Retiring a secret or a file store").
 
-In the zones organization's infrastructure repository (the one whose `placement.json` at
-the root names the organization, `organizationId`, with `"kind": "zones"`), the same two
+In the root organization's infrastructure repository (the one whose `placement.json` at
+the root names the organization, `organizationId`, with `"kind": "root"`), the same two
 commands take one of the three secrets that organization holds for every organization in
 the Google Cloud organization, the private keys of the GitHub Apps, in place of an
 environment and a variable, with `org secrets check` between them:
@@ -1492,11 +1492,11 @@ bedrock secret pin github-deployer-key 2                          # placement.js
 
 `github-infrastructure-key` is the key of the infrastructure GitHub App, the app the
 triggers' runs act as when 1-org configures the applications' repositories (1-dns rules
-the zones organization's repository with it); `github-deployer-key` the key of the
+the root organization's repository with it); `github-deployer-key` the key of the
 deployer GitHub App, the app the plan trigger's run posts each layer's plan as and the app
 every application's pipeline talks back on a pull request as; `github-release-key` the key
 of the release GitHub App, which each application's release trigger cuts the releases as.
-Each lives in one secret in the zones organization's boot project
+Each lives in one secret in the root organization's boot project
 (`<prefix>-boot-gbl-github-<app>-key`), and every reader in every organization names the
 secret's alias `current`, never a number and never `latest`: `pin` writes the version the
 alias is to point at in `placement.json` (`githubInfrastructureKeyVersion`,
@@ -1506,10 +1506,10 @@ version is enabled, and runs `org render`, which writes the alias into 0-bootstr
 refuses a project that lacks the secret rather than creating it, because the secret is
 0-bootstrap's own and its apply makes it. The project comes from `placement.json`
 (`projects.boot`); `--project` and `--container` override. Neither takes an environment.
-A hosting organization's repository refuses both, naming the zones organization its
+A hosting organization's repository refuses both, naming the root organization its
 placement records (`keys`); in an application's repository these names are refused, and in
 an infrastructure repository an application's `[env] [VARIABLE]` is. The rotation, in one
-place for every organization, is the zones organization's `0-bootstrap/README.md`,
+place for every organization, is the root organization's `0-bootstrap/README.md`,
 "Rotating a GitHub App's key".
 
 ## bedrock migration check
@@ -2301,7 +2301,7 @@ domain, declared as the vanity domain in its place for a vanity domain. The chec
 resolves the record that proves the domain to Certificate Manager and says when the
 certificate is still waiting on it. It exits 1 when anything is missing or refused.
 
-In a zones organization (`"kind": "zones"` in the placement; bedrock org, below) `domain
+In a root organization (`"kind": "root"` in the placement; bedrock org, below) `domain
 check` reads each domain's zone in the boot project (`projects.boot`; 1-dns makes it, and
 it holds the domain's delegation alone: no address, no certificate) and resolves the
 domain the same way, with the same step printed for a domain as registered (the registrar)
@@ -2316,7 +2316,7 @@ answer cached before the record set was added); or what it answers instead (a re
 changed within the hour, or a wrong entry to correct). Every domain delegated and every
 label handed is the check passing; while a domain is not delegated its labels are reported
 as waiting on it. A placement with no domain yet has nothing to check, and the command says
-so. `domain add` has no place in a zones organization, which registers nothing.
+so. `domain add` has no place in a root organization, which registers nothing.
 
 A domain 2-net registers has a registrant contact (`registrant_contact` in
 `2-net/terraform.tfvars`) that is the client's, never that of a contractor who builds or
@@ -2386,16 +2386,16 @@ or a commit installed with `go install`, and `bedrock upgrade`, run in the repos
 moves the pin and renders the layers with the bedrock it names; `org render`, `org check`
 and `org register` refuse a placement pinned to another bedrock than the one running them.
 
-A placement may name a second kind of organization: `"kind": "zones"`, a zones
+A placement may name a second kind of organization: `"kind": "root"`, a root
 organization, which holds DNS zones alone, no applications and no environments. It is how
 a customer's shared domain serves applications hosted in more than one bedrock
 organization: the customer delegates the domain (`mydomain.com`, or a label of it such as
-`apps.mydomain.com`) once, to a zone of the zones organization, and each application's
+`apps.mydomain.com`) once, to a zone of the root organization, and each application's
 name under it (`acme.mydomain.com`) is handed onward, as one NS record set in that zone, to
 the zone the application's hosting organization serves it from as a vanity domain
 (`vanityDomains` there, the environment names nested under the application's:
 `stg.acme.mydomain.com`), so a second application lands in another hosting organization
-with nothing moving at the customer's registrar. One zones organization per Google Cloud
+with nothing moving at the customer's registrar. One root organization per Google Cloud
 organization that hosts applications, in a Google Cloud organization and a GitHub
 organization of its own or shared with a hosting one (the machine account and the two
 apps are then recorded again, created once). `org new` renders two layers for it:
@@ -2423,18 +2423,18 @@ domain (whose mail is on it; a label of it is fine) nor above it, none under ano
 listed, and at most 46 characters, so the zone's name fits. The placement refuses the
 fields of the hosting model (`appsDomain`, `spanner.config`, `teamGroups`, `applications`
 and the rest), and a hosting organization's refuses `domains`. `org preflight` checks the
-five roles a zones organization's seed needs (no Organization Policy Administrator, no
+five roles a root organization's seed needs (no Organization Policy Administrator, no
 Tag Administrator: 1-org alone uses them); `org new` prints the hand steps in the same
 shape, with 1-dns's apply in 1-org's place and the domains last; `org register`, `org
-place`, `org teardown`, `org serve`, `org hostnames` and `org retire` refuse a zones
+place`, `org teardown`, `org serve`, `org hostnames` and `org retire` refuse a root
 organization, since there is nothing for them to act on; `org destroy` deletes the boot
 project and the zones with it, after taking this repository and the zones out of 1-dns's
 state (the zones go with the project, which their `prevent_destroy` would otherwise
-refuse), so a zones organization is destroyed once no domain is delegated to it; and
+refuse), so a root organization is destroyed once no domain is delegated to it; and
 `domain check` reads its domains and labels (bedrock domain, above). Handing a label
 onward is two pull requests: the hosting organization's, which declares the name as a
 vanity domain and applies 2-net, whose `bedrock domain check` then prints the zone's four
-name servers; and the zones organization's, which records them under the label and applies
+name servers; and the root organization's, which records them under the label and applies
 1-dns. The rendered `1-dns/README.md` carries both, with how a name resolves and the steps
 for delegating a domain to the organization.
 
@@ -2465,7 +2465,7 @@ and the rendered root README ("How the layers are applied", "The two GitHub Apps
    `org render`. From here on the apply trigger applies every layer.
 8. In `placement.json`: the infrastructure, deployer and release apps' App IDs
    (`githubInfrastructureAppId`, `githubDeployerAppId`, `githubReleaseAppId`), then `org
-   render`. Their keys are the zones organization's, held in its boot project for every
+   render`. Their keys are the root organization's, held in its boot project for every
    organization (`keys` in the placement names it) and read through each secret's alias
    `current`; they are added, checked and pinned there (`bedrock secret add`, `bedrock org
    secrets check`, `bedrock secret pin`), never here.
@@ -2531,14 +2531,14 @@ folder's creator, or granted to it on the folder by the seed. It prints one line
 `holds` or `missing` with the permissions tested, and exits 1 when a role is missing, saying
 who grants it where, or when it could not check (no credentials, or an API that refused).
 
-`org secrets check` runs in the zones organization's repository, which holds the GitHub
+`org secrets check` runs in the root organization's repository, which holds the GitHub
 Apps' keys: given a secret's name and a version's number, it reads the version with the
 run's Google credentials, signs a token with it as the app `placement.json` records and
 asks GitHub for the app itself, which GitHub answers for the app's own key alone. It prints
 the app GitHub answered with, the version the alias `current` is pinned to and the pin to
 make; a version that is not the app's key, or an App ID that is another app's, is refused
 with GitHub's answer, and nothing moves either way. A hosting organization's repository
-refuses it, naming the zones organization.
+refuses it, naming the root organization.
 
 `org render` rewrites the owned files from the placement, seeds the absent ones, and says
 what the triggers still lack in the placement; `org check` compares the owned files and
@@ -2635,7 +2635,7 @@ per layer in the state bucket (`applied/<layer>`, `applied/2-env/<env>`) holds t
 of that apply, the files changed between it and the push are read through the connection,
 and a layer with no marker is applied. The layers apply in layer order (0-bootstrap, 1-org,
 2-shr and 2-spn, then 2-env for tst, stg and prd, then 2-net: 2-net's URL map names tst's
-pull-request backend, which 2-env tst makes; 0-bootstrap, then 1-dns in a zones
+pull-request backend, which 2-env tst makes; 0-bootstrap, then 1-dns in a root
 organization), one at a time, each as its apply
 identity: every run's `tofu init` at its state prefix first, then, layer by layer, a plan,
 the apply of that plan and the marker, stopping at the first failure. The inits come first
@@ -2651,7 +2651,7 @@ Firebase assigns it and the Google provider finds no key by its name. A person a
 layer again with no change to it by starting the apply trigger with `_LAYER`, and for
 2-env `_ENVIRONMENT` (`gcloud builds triggers run <prefix>-boot-<region code>-layers-apply
 --region=<region> --project=<boot project> --branch=<default branch>
---substitutions=_LAYER=2-env,_ENVIRONMENT=tst`, or `_LAYER=1-dns` in a zones organization;
+--substitutions=_LAYER=2-env,_ENVIRONMENT=tst`, or `_LAYER=1-dns` in a root organization;
 `0-bootstrap/README.md`, "The Cloud
 Build triggers"). The placement names what the runs work with: every project under
 `projects` (`boot` from the seed, the six others from 1-org's `project_ids`), the
@@ -2659,7 +2659,7 @@ environment projects' numbers under `projectNumbers` (their Cloud Build service 
 read of the token), the Cloud Build GitHub authorization (`cloudBuildInstallationId`,
 `cloudBuildTokenSecretVersion`), the infrastructure GitHub App whose token 1-org's GitHub
 provider takes (`githubInfrastructureAppId`), the deployer app the plans are posted as
-(`githubDeployerAppId`), the zones organization whose boot project holds the apps' keys
+(`githubDeployerAppId`), the root organization whose boot project holds the apps' keys
 (`keys`: its prefix and that project, where every reader names each secret's alias
 `current`) and the bedrock pin;
 `0-bootstrap/README.md` has the person's steps. A run of the triggers that plans or
@@ -2759,7 +2759,7 @@ and are gone after. A layer whose state holds nothing is skipped. When 2-net reg
 with its folder and the organization's, for a person: a registration cannot move to another
 project. It refuses a layer rendered by an earlier bedrock, which declares no `destroy`
 variable, and ends with a line in `JOURNAL.md` and what starting over takes (the rendered
-`0-bootstrap/README.md`, "Destroying the organization"). In a zones organization it
+`0-bootstrap/README.md`, "Destroying the organization"). In a root organization it
 destroys 1-dns in 1-org's place, this repository and the zones taken out of its state
 first (the zones go with the boot project, which their `prevent_destroy` would otherwise
 refuse; 1-dns declares no `destroy` variable, having no project and no folder), then
@@ -2914,9 +2914,9 @@ organization's GitHub plan, so its plan must include all four.
   rerun or a rollback in a GitHub Environment per environment, each deploying from the
   default branch alone. No Environment requires reviewers: that rule needs GitHub
   Enterprise on a private repository, and the approval is Cloud Build's instead.
-- **One GitHub organization per zones organization.** The three GitHub Apps are
+- **One GitHub organization per root organization.** The three GitHub Apps are
   installed on the whole GitHub organization, and their private keys live in Secret
-  Manager in the zones organization's boot project, one secret per app for every bedrock
+  Manager in the root organization's boot project, one secret per app for every bedrock
   organization in the Google Cloud organization, read through an alias and rotated in one
   place; no key is a GitHub secret, and no repository secret carries one.
 - **GitHub Apps owned by the organization.** The release app (Contents, Issues and Pull

@@ -1,8 +1,8 @@
 # ---------------------------------------------------------------------------
 # The GitHub Apps' keys
 #
-# The three GitHub Apps' private keys live in the zones organization
-# imz's boot project (imz-boot-gbl-core-c3d4; keys in placement.json), one
+# The three GitHub Apps' private keys live in the root organization
+# imr's boot project (imr-boot-gbl-core-c3d4; keys in placement.json), one
 # secret per app for every bedrock organization in the Google Cloud
 # organization, and every reader here names a secret's alias "current", which
 # that organization's placement pins and its apply moves: a key is never added
@@ -10,24 +10,24 @@
 # once (that organization's 0-bootstrap/README.md, "Rotating a GitHub App's
 # key"):
 #
-#   imz-boot-gbl-github-infrastructure-key  the infrastructure GitHub App, whose
+#   imr-boot-gbl-github-infrastructure-key  the infrastructure GitHub App, whose
 #     installation token 1-org's GitHub provider needs, with an organization
 #     owner's rights over the applications' repositories. A run of the
 #     triggers mints it from the key (cloud-build.tf) for a plan or an apply
 #     of 1-org; a person applying 1-org by hand uses their own token.
-#   imz-boot-gbl-github-deployer-key  the deployer GitHub App, which the plan trigger's
+#   imr-boot-gbl-github-deployer-key  the deployer GitHub App, which the plan trigger's
 #     run posts each layer's plan on the pull request as, and which every
 #     application's pipeline talks back on its pull requests as: 2-env
 #     carries the alias to the applications through its output, and grants
 #     their identities the read.
-#   imz-boot-gbl-github-release-key  the release GitHub App, which cuts every
+#   imr-boot-gbl-github-release-key  the release GitHub App, which cuts every
 #     application's releases: each application's release trigger, in tst's
 #     Cloud Build as the application's release identity, mints the app's
 #     token from the key and runs release-please. 2-env carries the alias
 #     through its output and grants the release identities the read.
 #
 # This layer makes no secret. It grants on those three what its own
-# identities and 1-org's need, with the policy administration the zones
+# identities and 1-org's need, with the policy administration the root
 # organization gave this organization's boot identity (secretPolicyAdmin, a
 # role of that project: a secret's IAM policy and nothing else), which is the
 # only reach this organization has into that one: the org identity gets the
@@ -41,13 +41,13 @@
 # ---------------------------------------------------------------------------
 
 locals {
-  keys_project = "imz-boot-gbl-core-c3d4"
+  keys_project = "imr-boot-gbl-core-c3d4"
   key_secrets = {
-    infrastructure = "imz-boot-gbl-github-infrastructure-key"
-    deployer       = "imz-boot-gbl-github-deployer-key"
-    release        = "imz-boot-gbl-github-release-key"
+    infrastructure = "imr-boot-gbl-github-infrastructure-key"
+    deployer       = "imr-boot-gbl-github-deployer-key"
+    release        = "imr-boot-gbl-github-release-key"
   }
-  keys_policy_admin_role = "projects/imz-boot-gbl-core-c3d4/roles/secretPolicyAdmin"
+  keys_policy_admin_role = "projects/imr-boot-gbl-core-c3d4/roles/secretPolicyAdmin"
   boot_plan_key_reads = {
     for pair in setproduct(keys(local.boot_plans), keys(local.key_secrets)) :
     "${pair[0]}__${pair[1]}" => { plan = pair[0], key = pair[1] }

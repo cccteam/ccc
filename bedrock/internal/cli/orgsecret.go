@@ -1,8 +1,8 @@
-// orgsecret.go is the organization form of secret add and pin: run in the zones
+// orgsecret.go is the organization form of secret add and pin: run in the root
 // organization's infrastructure repository, they take one of the three secrets it holds
 // for every organization (the infrastructure, deployer and release GitHub Apps' private
 // keys, in its boot project) in place of an application's environment and variable. A
-// hosting organization's repository refuses both, naming the zones organization.
+// hosting organization's repository refuses both, naming the root organization.
 
 package cli
 

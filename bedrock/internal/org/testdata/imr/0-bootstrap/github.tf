@@ -11,15 +11,15 @@
 # so adding a version changes nothing by itself and one pull request here
 # switches every reader at once (README, "Rotating a GitHub App's key"):
 #
-#   imz-boot-gbl-github-infrastructure-key  the infrastructure GitHub App, whose
+#   imr-boot-gbl-github-infrastructure-key  the infrastructure GitHub App, whose
 #     installation token 1-dns's GitHub provider needs here and the second
 #     layer's in each hosting organization. A run of the triggers mints it from the key
 #     (cloud-build.tf); a person applying by hand uses their own token.
-#   imz-boot-gbl-github-deployer-key  the deployer GitHub App, which the plan trigger's
+#   imr-boot-gbl-github-deployer-key  the deployer GitHub App, which the plan trigger's
 #     run posts each layer's plan on the pull request as, here and in each
 #     hosting organization, and which every application's pipeline talks
 #     back on its pull requests as.
-#   imz-boot-gbl-github-release-key  the release GitHub App, which cuts every
+#   imr-boot-gbl-github-release-key  the release GitHub App, which cuts every
 #     application's releases in the hosting organizations; nothing here reads
 #     it.
 #
