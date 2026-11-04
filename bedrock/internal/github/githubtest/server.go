@@ -805,6 +805,19 @@ func (s *Server) updateRepo(w http.ResponseWriter, r *http.Request, key string) 
 	if !ok {
 		return
 	}
+	if r.Method == http.MethodGet {
+		branch := "master"
+		if _, ok := repo.Refs["refs/heads/"+branch]; !ok {
+			for ref := range repo.Refs {
+				if rest, isHead := strings.CutPrefix(ref, "refs/heads/"); isHead {
+					branch = rest
+				}
+			}
+		}
+		reply(w, http.StatusOK, github.Repository{Name: key[strings.Index(key, "/")+1:], FullName: key, DefaultBranch: branch, Private: true, HTMLURL: "https://github.com/" + key})
+
+		return
+	}
 	if r.Method != http.MethodPatch {
 		reply(w, http.StatusMethodNotAllowed, map[string]string{messageKey: "PATCH only"})
 
