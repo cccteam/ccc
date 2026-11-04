@@ -317,13 +317,16 @@ func (g *google) EnableServices(ctx context.Context, id string, services []strin
 	if err != nil {
 		return errors.Wrapf(err, "serviceusage.Services.BatchEnable(): %s", id)
 	}
+	name := op.Name
 	for !op.Done {
 		if err := sleep(ctx, enablePoll); err != nil {
 			return err
 		}
-		if op, err = g.services.Operations.Get(op.Name).Context(ctx).Do(); err != nil {
-			return errors.Wrapf(err, "serviceusage.Operations.Get(): %s", op.Name)
+		latest, err := g.services.Operations.Get(name).Context(ctx).Do()
+		if err != nil {
+			return errors.Wrapf(err, "serviceusage.Operations.Get(): %s", name)
 		}
+		op = latest
 	}
 	if op.Error != nil {
 		return errors.Newf("enabling the APIs of %s: %s", id, op.Error.Message)
