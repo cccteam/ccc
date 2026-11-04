@@ -424,7 +424,7 @@ func TestMachineAccount(t *testing.T) {
 		},
 		{name: "the environment connection's comment", path: "2-env/cloud-build.tf", want: []string{"machine account imp-machine, before the first apply of 0-bootstrap"}},
 		{
-			name: "a hosting organization's 0-bootstrap README: the authorization is the root organization's, recorded by the founding",
+			name: "a hosting organization's 0-bootstrap README: the authorization is the root organization's, recorded by the creation",
 			path: "0-bootstrap/README.md",
 			want: []string{
 				"the connection from the Cloud Build\n   authorization the root organization recorded (`cloudBuildInstallationId`\n   and `cloudBuildTokenSecretVersion`, which name the machine account's token\n   in that organization's boot project",
@@ -449,7 +449,7 @@ func TestMachineAccount(t *testing.T) {
 }
 
 // TestBootstrapRolesNamed reads the root organization's READMEs, which tell the
-// break-glass account what to hold for the seed (a hosting organization is founded, not
+// break-glass account what to hold for the seed (a hosting organization is created, not
 // seeded): each names every role of org preflight's table, by title and id, and the
 // preflight command, so a role added to the check cannot be missing from the steps; the
 // four-role list the check replaced is gone.
@@ -533,8 +533,8 @@ func TestGithubAppSteps(t *testing.T) {
 			path: "README.md",
 			want: []string{
 				"3. **The consent screen.** In each environment project's Google Cloud\n   console, before the first application's OAuth client is made there",
-				"## Founded by the root organization\n",
-				"2. **The billing grants and the budget**, after the founding.",
+				"## Created by the root organization\n",
+				"2. **The billing grants and the budget**, after the creation.",
 				"with the audience **Internal**",
 				"`<group prefix><role>@imp.example`",
 				"set \"Who can view members\" so that the group's members can",
@@ -546,7 +546,7 @@ func TestGithubAppSteps(t *testing.T) {
 			want: []string{
 				"4. In `placement.json`: the App ID as `githubInfrastructureAppId`, then\n   `bedrock org render`. The key itself lives in the root organization\n   `imr`'s boot project (`root` in `placement.json`), added,\n   proven and pinned there by its key operators",
 				"### Billing grants and the budget, by a billing administrator\n",
-				"## Founded by the root organization\n",
+				"## Created by the root organization\n",
 				"3. **The first apply of `1-org`**, the same way, with the infrastructure\n   GitHub App's token for its GitHub provider",
 				"In the Billing console, as the same billing administrator, set the spend\nbudget",
 				"## The GitHub Apps' keys\n",

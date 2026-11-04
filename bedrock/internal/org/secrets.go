@@ -67,41 +67,41 @@ type RootPlace struct {
 }
 
 // HostingOrganization is a hosting organization under a root organization, in the root
-// organization's placement (hostingOrganizations): one the root organization founds by
-// pull request (bedrock org found; README.md, "Founding a hosting organization"), or one
-// recorded as it stands. Its folder is recorded once the organization is founded, and
+// organization's placement (hostingOrganizations): one the root organization creates by
+// pull request (bedrock org create; README.md, "Creating a hosting organization"), or one
+// recorded as it stands. Its folder is recorded once the organization is created, and
 // the root organization's grants to its identities render from then on: a grant names
 // an identity that exists.
 type HostingOrganization struct {
 	// Prefix is the hosting organization's prefix.
 	Prefix string `json:"prefix"`
 	// BootProject is its boot project, where its boot identity lives; chosen when the
-	// organization is recorded (bedrock org found picks the suffix), so the project's
+	// organization is recorded (bedrock org create picks the suffix), so the project's
 	// id is known before anything is made.
 	BootProject string `json:"bootProject"`
 	// Folder is the numeric id of the organization's folder at the organization node,
-	// recorded by the founding's hand-off (or by hand, for an organization that stood
-	// before the root organization). Empty while the organization is not founded yet.
+	// recorded by the creation's hand-off (or by hand, for an organization that stood
+	// before the root organization). Empty while the organization is not created yet.
 	Folder string `json:"folder,omitempty"`
 }
 
-// Founded reports whether the hosting organization's folder is recorded: the founding
+// Created reports whether the hosting organization's folder is recorded: the creation
 // has handed it off, and the root organization's grants to its identities render.
-func (h HostingOrganization) Founded() bool {
+func (h HostingOrganization) Created() bool {
 	return h.Folder != ""
 }
 
-// FoundedHostingOrganizations are the hosting organizations whose folder is recorded,
+// CreatedHostingOrganizations are the hosting organizations whose folder is recorded,
 // the ones 0-bootstrap grants on the shared secrets.
-func (p *Placement) FoundedHostingOrganizations() []HostingOrganization {
-	var founded []HostingOrganization
+func (p *Placement) CreatedHostingOrganizations() []HostingOrganization {
+	var created []HostingOrganization
 	for _, h := range p.HostingOrganizations {
-		if h.Founded() {
-			founded = append(founded, h)
+		if h.Created() {
+			created = append(created, h)
 		}
 	}
 
-	return founded
+	return created
 }
 
 // HostingOrganization is the record of the hosting organization with the prefix, nil

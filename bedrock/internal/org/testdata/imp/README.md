@@ -26,8 +26,8 @@ gets a line there first.
 
 | Layer | Directory | Applied as | Creates |
 |---|---|---|---|
-| 0 | [`0-bootstrap/`](0-bootstrap/) | the root organization's founding identity the first time, in the founding; then the apply trigger as `imp-boot-gbl-tofu` | adopts the seeded `terraform` folder, boot project, and boot identity; the org layer identity and its grants on the organization's folder; the project-updater and state-bucket-policy custom roles; the Cloud Build connection, the two runner identities and the two triggers that plan and apply the layers; the grants on the root organization's three key secrets; the state bucket's grants for its two identities |
-| 1 | [`1-org/`](1-org/) | the root organization's founding identity the first time, in the founding; then the apply trigger as `imp-org-gbl-tofu` | folders `shared`, `tst`, `stg`, `prd`; the org policy baseline; Essential Contacts; the six projects; a layer identity and a plan identity per project and the two boot layers' plan identities, each impersonated by the trigger runner of its kind, with its state bucket grants; the `secretContainerAdmin` custom role; the applications' repositories |
+| 0 | [`0-bootstrap/`](0-bootstrap/) | the root organization's creating identity the first time, in the creation; then the apply trigger as `imp-boot-gbl-tofu` | adopts the seeded `terraform` folder, boot project, and boot identity; the org layer identity and its grants on the organization's folder; the project-updater and state-bucket-policy custom roles; the Cloud Build connection, the two runner identities and the two triggers that plan and apply the layers; the grants on the root organization's three key secrets; the state bucket's grants for its two identities |
+| 1 | [`1-org/`](1-org/) | the root organization's creating identity the first time, in the creation; then the apply trigger as `imp-org-gbl-tofu` | folders `shared`, `tst`, `stg`, `prd`; the org policy baseline; Essential Contacts; the six projects; a layer identity and a plan identity per project and the two boot layers' plan identities, each impersonated by the trigger runner of its kind, with its state bucket grants; the `secretContainerAdmin` custom role; the applications' repositories |
 | 2 | [`2-shr/`](2-shr/) | the apply trigger as `imp-shr-gbl-tofu` | one Artifact Registry Docker repository per application, immutable tags, cleanup policies; reader for each environment's Cloud Run, writer for each application's deploy identities |
 | 2 | [`2-spn/`](2-spn/) | the apply trigger as `imp-spn-gbl-tofu` | the shared Spanner instance `imp-spn-gbl-spanner` (nam10, 100 processing units to start, raised for databases or load); instance-level database admin grants; the Spanner entitlements of the environments on it |
 | 2 | [`2-net/`](2-net/) | the apply trigger as `imp-net-gbl-tofu` | the global external Application Load Balancer, its address, SSL policy, managed certificates and map, the apps domain's zone and each vanity domain's, and a URL map routed from `hosts`; no VPC |
@@ -71,10 +71,10 @@ stays above every folder.
 
 The one account above the folder is the organization's break-glass account
 (`breakGlassAccount` in `placement.json`), which holds Folder Admin on the
-folder, given by the founding, and nothing else. The folder was made by the
-root organization's founding identity, with Folder Creator at the
+folder, given by the creation, and nothing else. The folder was made by the
+root organization's creating identity, with Folder Creator at the
 organization node, which took its own grants off everything it made at the
-founding's end and holds nothing under the folder since ("Founded by the
+creation's end and holds nothing under the folder since ("Created by the
 root organization", below).
 
 ## Naming
@@ -149,15 +149,15 @@ the break-glass account. Destroying the organization, projects and all,
 is `bedrock org destroy`, by hand (`0-bootstrap/README.md`, "Destroying the
 organization").
 
-## Founded by the root organization
+## Created by the root organization
 
-This organization was founded by its root organization `imr`
+This organization was created by its root organization `imr`
 (`root` in `placement.json`), from a pull request in that organization's
-repository, not seeded by hand: `bedrock org found imp` there wrote
+repository, not seeded by hand: `bedrock org create imp` there wrote
 the record of this organization (`organizations/imp/placement.json`,
-this repository's `placement.json` before the founding filled in the
-projects), and the merge founded it as that organization's founding identity
-(`imr-found-gbl-tofu`): the organization's folder at the
+this repository's `placement.json` before the creation filled in the
+projects), and the merge created it as that organization's creating identity
+(`imr-create-gbl-tofu`): the organization's folder at the
 organization root, the `terraform` folder under it, the boot project
 `imp-boot-gbl-core-a1b2`, the boot identity `imp-boot-gbl-tofu` with its
 roles on the folder, the break-glass account's Folder Admin on the folder, and
@@ -165,18 +165,18 @@ the state bucket `imp-boot-gbl-state-a1b2`; then the first applies of `0-bootstr
 and `1-org`, against the bucket, from which the connection, the repository
 link, the two triggers, the folders, the projects and every identity exist;
 then this repository, with the rendered foundation as its first push, which
-the apply trigger ran on, every layer as its own identity. The founding
+the apply trigger ran on, every layer as its own identity. The creation
 identity took its own grants off everything it made and holds nothing here;
 the root organization reaches in for nothing after, and its record of the
 folder (`hostingOrganizations` in its `placement.json`) is what keeps this
 organization's boot identity's grants on the shared secrets rendered
-([`0-bootstrap/README.md`](0-bootstrap/README.md), "Founded by the root
+([`0-bootstrap/README.md`](0-bootstrap/README.md), "Created by the root
 organization" and "The GitHub Apps' keys").
 
 The GitHub side is the root organization's: the `imp-example`
 organization, its machine account `imp-machine`, the release,
 deployer and infrastructure apps with their keys, and the Cloud Build GitHub
-authorization; this placement names the same, filled in by the founding.
+authorization; this placement names the same, filled in by the creation.
 `1-org` configures every application's repository and rules this repository's
 default branch.
 
@@ -189,12 +189,12 @@ What is done by hand, each where it happens:
    from its group: the group approves the environment's releases where a
    release waits for an approval, and its members ask for its entitlements
    (`2-env/README.md`, "The team group"). Every render names them, and `2-env`
-   grants to them, so they exist before the founding.
-2. **The billing grants and the budget**, after the founding. In a terminal, a
+   grants to them, so they exist before the creation.
+2. **The billing grants and the budget**, after the creation. In a terminal, a
    billing administrator grants `roles/billing.user` on the billing account to
    the two layer identities, `imp-boot-gbl-tofu` and
    `imp-org-gbl-tofu`, which `1-org` needs the day it links a project
-   it creates (the founding identity's own Billing Account User covered the
+   it creates (the creating identity's own Billing Account User covered the
    first apply); in the Billing console, the same administrator sets the spend
    budget (`0-bootstrap/README.md`, "Billing grants and the budget").
 3. **The consent screen.** In each environment project's Google Cloud

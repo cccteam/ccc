@@ -34,7 +34,7 @@
 # before this layer's first apply, made once for every organization in the
 # Google Cloud organization. Until then the rest of the layer applies and
 # nothing runs. The token secret the browser step writes lives in this
-# project; each founded hosting organization's boot identity administers its
+# project; each created hosting organization's boot identity administers its
 # policy (github.tf) and grants its own Cloud Build service agents the read{{else}},
 # which the root organization made once, in its boot project's Cloud Build
 # console, and this placement carries (the same two values as that
@@ -203,7 +203,7 @@ resource "google_project_iam_member" "runner_builds" {
 
 # Cloud Build runs a build as the trigger's service account on the service
 # agent's say-so, and whoever creates the trigger acts as that account: the
-# {{if .IsRoot}}break-glass account's{{else}}founding identity's{{end}} Owner covers the first apply, the boot identity
+# {{if .IsRoot}}break-glass account's{{else}}creating identity's{{end}} Owner covers the first apply, the boot identity
 # every apply after it.
 resource "google_service_account_iam_member" "runner_agent_user" {
   for_each = local.runners
@@ -241,10 +241,10 @@ resource "google_service_account_iam_member" "applier_org_tofu" {
 }
 {{- if .IsRoot}}
 
-# The applier founds a hosting organization as the founding identity
+# The applier creates a hosting organization as the creating identity
 # (bootstrap.tf), in the same run as the layers' applies.
-resource "google_service_account_iam_member" "applier_found_tofu" {
-  service_account_id = google_service_account.found_tofu.name
+resource "google_service_account_iam_member" "applier_create_tofu" {
+  service_account_id = google_service_account.create_tofu.name
   role               = "roles/iam.serviceAccountTokenCreator"
   member             = google_service_account.applier.member
 }

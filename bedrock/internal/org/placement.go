@@ -211,10 +211,10 @@ type Placement struct {
 	// organization.
 	KeyOperators []string `json:"keyOperators,omitempty"`
 	// HostingOrganizations are the hosting organizations under a root organization,
-	// each by its prefix and its boot project, and its folder once founded: the ones
-	// the root organization founds by pull request (bedrock org found, whose record is
+	// each by its prefix and its boot project, and its folder once created: the ones
+	// the root organization creates by pull request (bedrock org create, whose record is
 	// the organization's own placement under organizations/<prefix>/), and the ones that
-	// stood before it, recorded as they are. For each founded one, 0-bootstrap grants
+	// stood before it, recorded as they are. For each created one, 0-bootstrap grants
 	// the boot identity the administration of the shared secrets' policies
 	// (secretPolicyAdmin: the three keys and the token), which that organization's
 	// layers hand down to the identities that read them. None for a hosting
@@ -436,8 +436,8 @@ func ReadPlacement(path string) (*Placement, error) {
 	return &p, nil
 }
 
-// ReadPlacementUnchecked reads a placement without validating it: a founding record a
-// person is still writing, which bedrock org found fills and then validates.
+// ReadPlacementUnchecked reads a placement without validating it: a record a
+// person is still writing, which bedrock org create fills and then validates.
 func ReadPlacementUnchecked(path string) (*Placement, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {

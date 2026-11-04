@@ -1,11 +1,11 @@
 # 0-bootstrap
 
-The chicken-and-egg layer. It adopts the resources the founding made, creates the org layer identity, grants both identities what they need
+The chicken-and-egg layer. It adopts the resources the creation made, creates the org layer identity, grants both identities what they need
 on the organization's folder, and makes the Cloud Build triggers that plan and apply every
 layer of this repository. Nothing is granted at the organization node: the folder is the whole of this
 organization's reach. Its first apply is the root organization's
-founding identity's, in the founding, before any layer identity can run
-("Founded by the root organization" below); from then on the
+creating identity's, in the creation, before any layer identity can run
+("Created by the root organization" below); from then on the
 apply trigger applies it as the boot identity, like every layer ("The Cloud
 Build triggers" below).
 
@@ -78,22 +78,22 @@ Build triggers" below).
 Not created here, on purpose: the state bucket. It is seeded and left outside
 OpenTofu because this layer's own state lives in it.
 
-## Founded by the root organization
+## Created by the root organization
 
 Nothing here was seeded or applied by hand. The root organization
-`imr` (`root` in `placement.json`) founded this
-organization from a pull request in its repository (`bedrock org found
-imp` there, then the merge), as its founding identity
-`imr-found-gbl-tofu`, which holds Folder Creator at the
+`imr` (`root` in `placement.json`) created this
+organization from a pull request in its repository (`bedrock org create
+imp` there, then the merge), as its creating identity
+`imr-create-gbl-tofu`, which holds Folder Creator at the
 organization node and Billing Account User on the billing account, granted by
 hand once by an administrator of the Google Cloud organization and a billing
-administrator (that organization's `0-bootstrap/README.md`, "The founding
-identity's grants"). The founding did under a new folder what the hand seed
+administrator (that organization's `0-bootstrap/README.md`, "The creation
+identity's grants"). The creation did under a new folder what the hand seed
 and the first applies do for a root organization, and left no person with a
 grant to trim:
 
 1. **The seed, by API.** The organization's folder at the organization root,
-   named `imp`, which made the founding identity its administrator, as
+   named `imp`, which made the creating identity its administrator, as
    Google makes a folder's creator, with Project Creator, Organization Policy
    Administrator and Tag Administrator for the identity itself, for the first
    applies; the `terraform` folder under it; the boot project
@@ -106,10 +106,10 @@ grant to trim:
    the three GitHub Apps' key secrets and the Cloud Build token secret ("The
    GitHub Apps' keys" below).
 2. **The first apply of this layer**, against the bucket (`tofu init` at the
-   prefix `0-bootstrap`; no local state, nothing to migrate), as the founding
+   prefix `0-bootstrap`; no local state, nothing to migrate), as the creation
    identity: the folders, the project and the boot identity adopted through
    the `import` blocks (`terraform.tfvars` carries their ids, seeded by the
-   founding), and the rest made: the org layer identity, the plan identities,
+   creation), and the rest made: the org layer identity, the plan identities,
    the custom roles, the key grants, the connection from the Cloud Build
    authorization the root organization recorded (`cloudBuildInstallationId`
    and `cloudBuildTokenSecretVersion`, which name the machine account's token
@@ -128,20 +128,20 @@ grant to trim:
    order, since none had a marker yet ("The Cloud Build triggers" below).
    Each layer's `.terraform.lock.hcl` came with the push, from the first
    applies' inits.
-5. **The withdrawal.** The founding identity took its own grants off
+5. **The withdrawal.** The creating identity took its own grants off
    everything it made: Owner on each project, Folder Admin and Folder Editor
    on each folder, and its three roles on the organization's folder. It holds
    nothing here now; a marker in the root organization's state bucket says the
-   founding is done, and a pull request there recorded the folder
+   creation is done, and a pull request there recorded the folder
    (`hostingOrganizations`), from which that organization keeps the boot
    identity's grants on the shared secrets rendered.
 
-Two things stay by hand, by a billing administrator, after the founding
+Two things stay by hand, by a billing administrator, after the creation
 ("Billing grants and the budget" below): `roles/billing.user` on the billing
 account for the two layer identities, which `1-org` needs the day it links a
-project it creates (the founding identity's own Billing Account User covered
+project it creates (the creating identity's own Billing Account User covered
 the first apply), and the spend budget. The consent screen of each environment
-project and the role groups follow as the root `README.md` says ("Founded by
+project and the role groups follow as the root `README.md` says ("Created by
 the root organization" there).
 
 `bedrock org check`, run with Google credentials that read the projects' and
@@ -150,18 +150,18 @@ Owner on a project, a person's Folder Admin or Folder Editor on a folder
 under the organization's, a role of the break-glass account's beyond its
 Folder Admin) and each grant on the organization's folder to a principal
 outside the organization: neither the break-glass account nor an identity in
-one of this organization's projects. After a founding there is none; one
-means the founding identity's withdrawal did not finish, or somebody granted
+one of this organization's projects. After a creation there is none; one
+means the creating identity's withdrawal did not finish, or somebody granted
 by hand.
 
 ### Billing grants and the budget, by a billing administrator
 
-The founding identity held Billing Account User on the billing account, which
+The creating identity held Billing Account User on the billing account, which
 links projects to the account but cannot change the account's IAM policy, so
 the two `google_billing_account_iam_member` resources in this layer were not
-applied in the founding. `manage_billing_iam = false` in `terraform.tfvars`
+applied in the creation. `manage_billing_iam = false` in `terraform.tfvars`
 skips them. Instead, in a terminal, a Billing Account Administrator makes the
-grants by hand once the founding has made the two identities:
+grants by hand once the creation has made the two identities:
 
 ```bash
 export BILLING_ACCOUNT_ID=012345-6789AB-CDEF01
@@ -176,7 +176,7 @@ done
 
 Nothing depends on these grants until the apply trigger runs `1-org` as its
 identity to link a project to the account, which it does for a project it
-creates; the founding linked the six. Set `manage_billing_iam = true` once
+creates; the creation linked the six. Set `manage_billing_iam = true` once
 the identity applying this layer can manage billing IAM; the resources then
 assert the same two members.
 
@@ -316,7 +316,7 @@ Who runs what, and why the first time works in order:
   projects. `2-env` grants for the application identities it creates, with
   the bucket's policy authority `1-org` gives each environment layer identity.
 - The first apply of this layer and the first apply of `1-org` are the
-  root organization's founding identity's, in the founding ("Founded by the
+  root organization's creating identity's, in the creation ("Created by the
   root organization" above, and `1-org/README.md`), as the organization
   folder's administrator and with the roles it granted itself there. The
   bucket exists from the seed, so this layer's grants on it apply in that
@@ -350,7 +350,7 @@ application pipeline those rights. Once, by a person:
    (read and write), Metadata (read); the provider reads a repository's
    environments and their branch policies on the Actions permission and
    writes them on Administration; Contents (read and write), with which the
-   root organization's founding pushes a founded organization's rendered
+   root organization's creation pushes a created organization's rendered
    repository. Organization permissions: Administration (read and write),
    Variables (read and write) and Self-hosted runners (read and write); the
    second is for the organization's `CI_LARGE_RUNNER` variable, which the
@@ -414,11 +414,11 @@ key; the runners' reads of the infrastructure and deployer keys
 policies, which a plan of this layer or of `1-org` refreshes the grants
 through. That is the only reach this organization has into that one.
 
-Both grants came with the founding ("Founded by the root organization"
-above): `bedrock org found` listed this organization in the root
+Both grants came with the creation ("Created by the root organization"
+above): `bedrock org create` listed this organization in the root
 organization's `placement.json` (`hostingOrganizations`: the prefix and the
 boot project, whose suffix the command chose) before the merge, and the
-founding identity, which holds the same role on the four shared secrets,
+creating identity, which holds the same role on the four shared secrets,
 granted the boot identity as the seed and then applied this layer with its
 own policy administration of them. The hand-off recorded the folder, from
 which that organization's `0-bootstrap` keeps the boot identity's grant
@@ -442,9 +442,9 @@ layer as themselves, with the identity's roles, on the same code as the
 triggers, and the audit log names the person (`2-env/README.md`). This layer
 and `1-org` have no entitlement: their recovery is the break-glass account's,
 which grants itself, for the run, the roles the layer's identity holds on the
-organization's folder (`variables.tf`) with the Folder Admin the founding
+organization's folder (`variables.tf`) with the Folder Admin the creation
 gave it there, applies from the layer's directory against the bucket as the
-founding's first applies ran (`tofu init`, then `tofu apply`, with its own
+creation's first applies ran (`tofu init`, then `tofu apply`, with its own
 sign-in and, for `1-org`, their own GitHub token), and takes the grants off
 after. An apply by hand leaves the layer's marker as it was, so the next
 push applies the layer again: the plan is empty when the hand apply was

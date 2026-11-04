@@ -10,14 +10,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cccteam/ccc/bedrock/internal/found"
-	"github.com/cccteam/ccc/bedrock/internal/found/foundtest"
+	"github.com/cccteam/ccc/bedrock/internal/create"
+	"github.com/cccteam/ccc/bedrock/internal/create/createtest"
 	"github.com/cccteam/ccc/bedrock/internal/github"
 	"github.com/cccteam/ccc/bedrock/internal/github/githubtest"
 	"github.com/cccteam/ccc/bedrock/internal/org"
 )
 
-// noSleep waits for nothing between the founding's tries.
+// noSleep waits for nothing between the creation's tries.
 func noSleep(context.Context, time.Duration) error {
 	return nil
 }
@@ -49,7 +49,7 @@ func rootCheckout(t *testing.T) (string, *org.Placement) {
 	if err := org.Fill(root, h); err != nil {
 		t.Fatal(err)
 	}
-	path := org.FoundingPlacementPath(dir, "rgb")
+	path := org.RecordPath(dir, "rgb")
 	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
 		t.Fatal(err)
 	}
@@ -60,11 +60,11 @@ func rootCheckout(t *testing.T) (string, *org.Placement) {
 	return dir, root
 }
 
-// TestApplyFounds: a push to a root organization whose layers are applied at the commit
-// already founds the pending organization in the same run, as the founding identity
+// TestApplyCreates: a push to a root organization whose layers are applied at the commit
+// already creates the pending organization in the same run, as the creating identity
 // with the infrastructure app's token, and says so; a run in a hosting organization, and
 // a root run with nothing pending, found nothing.
-func TestApplyFounds(t *testing.T) {
+func TestApplyCreates(t *testing.T) {
 	t.Parallel()
 
 	f := newFlow(t, pushSubs(), infraAppID, map[string]tofuRun{})
@@ -74,7 +74,7 @@ func TestApplyFounds(t *testing.T) {
 		Trees:    map[string]string{pushSHA: "treeroot"},
 		Files:    map[string]string{"treeroot:placement.json": "{}"},
 	})
-	google := foundtest.New()
+	google := createtest.New()
 	f.store.objects = map[string]string{"applied/0-bootstrap": pushSHA, "applied/1-dns": pushSHA}
 	dir, root := rootCheckout(t)
 	clients := f.clients()
@@ -86,20 +86,20 @@ func TestApplyFounds(t *testing.T) {
 	}
 	wantOut := []string{
 		"No layer changes since the last applies: nothing to apply.\n",
-		"=== founding rgb as " + root.FoundingIdentity() + " ===\n",
+		"=== creation rgb as " + root.CreatingIdentity() + " ===\n",
 		"Created repository imp-example/rgb-infrastructure, private, default branch master.\n",
-		"rgb is founded; its hand-off pull request records the folder: https://github.com/imp-example/imr-root-infrastructure/pull/1.\n",
+		"rgb is created; its hand-off pull request records the folder: https://github.com/imp-example/imr-root-infrastructure/pull/1.\n",
 	}
 	for _, want := range wantOut {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("output lacks %q:\n%s", want, out.String())
 		}
 	}
-	if len(google.Identities) != 1 || google.Identities[0] != root.FoundingIdentity() {
+	if len(google.Identities) != 1 || google.Identities[0] != root.CreatingIdentity() {
 		t.Errorf("Google opened as %v", google.Identities)
 	}
-	var marker found.Marker
-	if err := json.Unmarshal([]byte(f.store.objects["applied/found/rgb"]), &marker); err != nil || marker.FoundedFrom != pushSHA {
+	var marker create.Marker
+	if err := json.Unmarshal([]byte(f.store.objects["applied/created/rgb"]), &marker); err != nil || marker.CreatedFrom != pushSHA {
 		t.Errorf("marker: %v, %+v", err, marker)
 	}
 	// The infrastructure app's key was read for the token.
@@ -113,7 +113,7 @@ func TestApplyFounds(t *testing.T) {
 		g := newFlow(t, pushSubs(), infraAppID, map[string]tofuRun{})
 		g.srv.AddRepo(owner, rootRepo, &githubtest.Repo{Refs: map[string]github.Object{"refs/heads/master": {Type: "commit", SHA: pushSHA}}, Ancestry: map[string][]string{pushSHA: {pushSHA}}})
 		g.store.objects = map[string]string{"applied/0-bootstrap": pushSHA, "applied/1-dns": pushSHA}
-		google := foundtest.New()
+		google := createtest.New()
 		dir, _ := rootCheckout(t)
 		placement, _ := org.ReadPlacement(filepath.Join(dir, org.PlacementFile))
 		placement.HostingOrganization("rgb").Folder = "900000000009"
@@ -126,15 +126,15 @@ func TestApplyFounds(t *testing.T) {
 		if err := Apply(t.Context(), clients, &Request{BuildID: "build-1", Project: "imr-boot-gbl-core-c3d4", Location: "us-central1", Dir: dir}, &out); err != nil {
 			t.Fatalf("Apply() error = %v; output:\n%s", err, out.String())
 		}
-		if len(google.Calls) != 0 || strings.Contains(out.String(), "founding") {
-			t.Errorf("a run with nothing pending founded: %v\n%s", google.Calls, out.String())
+		if len(google.Calls) != 0 || strings.Contains(out.String(), "creation") {
+			t.Errorf("a run with nothing pending created: %v\n%s", google.Calls, out.String())
 		}
 	})
 }
 
-// TestPlanPreviewsFounding: a pull request of a root organization says what its merge
-// founds, before the plans.
-func TestPlanPreviewsFounding(t *testing.T) {
+// TestPlanPreviewsCreation: a pull request of a root organization says what its merge
+// creates, before the plans.
+func TestPlanPreviewsCreation(t *testing.T) {
 	t.Parallel()
 
 	f := newFlow(t, pullRequestSubs(), deployerAppID, map[string]tofuRun{})
@@ -149,7 +149,7 @@ func TestPlanPreviewsFounding(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Plan() error = %v; output:\n%s", err, out.String())
 	}
-	want := "The merge founds rgb: folder rgb at the organization node, boot project rgb-boot-gbl-core-e5f6, repository imp-example/rgb-infrastructure or as its record names it (organizations/rgb/placement.json), as " + root.FoundingIdentity() + ", with the first applies of its two foundation layers and the push of its repository; then the hand-off pull request.\n"
+	want := "The merge creates rgb: folder rgb at the organization node, boot project rgb-boot-gbl-core-e5f6, repository imp-example/rgb-infrastructure or as its record names it (organizations/rgb/placement.json), as " + root.CreatingIdentity() + ", with the first applies of its two foundation layers and the push of its repository; then the hand-off pull request.\n"
 	if !strings.Contains(out.String(), want) || !strings.Contains(out.String(), "No layer changes in this pull request: nothing to plan.") {
 		t.Errorf("output lacks the preview:\n%s", out.String())
 	}

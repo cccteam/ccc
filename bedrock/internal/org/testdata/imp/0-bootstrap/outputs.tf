@@ -1,4 +1,4 @@
-# Read by the founding, which records them in placement.json, and by 1-org
+# Read by the creation, which records them in placement.json, and by 1-org
 # through data "terraform_remote_state" on the state bucket (prefix 0-bootstrap). Nothing here is a secret; keep it that way.
 
 output "boot_project_id" {

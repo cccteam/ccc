@@ -14,11 +14,11 @@ locals {
 # Seeded resources
 #
 # The folder, project, and boot service account below already exist. They are
-# {{if .IsRoot}}created by hand with gcloud during first-time setup{{else}}made by the root organization's founding, as the hand seed makes
+# {{if .IsRoot}}created by hand with gcloud during first-time setup{{else}}made by the root organization's creation, as the hand seed makes
 # them for a root organization{{end}}, because this layer
 # cannot create the identity it will later run as. They are adopted here so
 # that from the first run onward they are ordinary managed resources rather
-# than undocumented console state. {{if .IsRoot}}The commands are in this layer's README.{{else}}The README says what the founding made.{{end}}
+# than undocumented console state. {{if .IsRoot}}The commands are in this layer's README.{{else}}The README says what the creation made.{{end}}
 #
 # The state bucket is seeded too, and is the one seeded resource deliberately
 # left outside OpenTofu: this layer's own state lives in it, and a stack that
@@ -158,7 +158,7 @@ import {
 }
 
 # The identity this layer runs as through the apply trigger, after the
-# {{if .IsRoot}}break-glass account's{{else}}founding identity's{{end}} first apply (cloud-build.tf). The seed{{if .IsRoot}} script{{end}}
+# {{if .IsRoot}}break-glass account's{{else}}creating identity's{{end}} first apply (cloud-build.tf). The seed{{if .IsRoot}} script{{end}}
 # creates it; it is adopted rather than recreated, because destroying it
 # mid-run would cut off the run doing the destroying.
 resource "google_service_account" "boot_tofu" {
@@ -236,28 +236,28 @@ resource "google_project_iam_member" "org_tofu_dns" {
 }
 
 # ---------------------------------------------------------------------------
-# The founding identity
+# The creating identity
 #
-# bedrock org apply, in the apply trigger's run, founds each hosting
+# bedrock org apply, in the apply trigger's run, creates each hosting
 # organization placement.json records without a folder yet (README,
-# "Founding a hosting organization") as this identity: it creates the
+# "Creating a hosting organization") as this identity: it creates the
 # organization's folder at the organization node and the foundation under it,
 # applies that organization's 0-bootstrap the first time, pushes the rendered
 # repository, and takes its own creator grants off, so that nothing of it
 # stays under the new folder. For that it holds, granted by hand once by the
-# administrators (README, "The founding identity's grants"): Folder Creator at
+# administrators (README, "The creating identity's grants"): Folder Creator at
 # the organization node and Billing Account User on the billing account, the
 # two roles the break-glass account held for the seed; here, the four shared
 # secrets' policy administration (github.tf), to grant the new organization's
-# identities their reads. Nothing else, and nothing on a folder it founded
-# once the founding is handed off.
+# identities their reads. Nothing else, and nothing on a folder it created
+# once the creation is handed off.
 # ---------------------------------------------------------------------------
 
-resource "google_service_account" "found_tofu" {
+resource "google_service_account" "create_tofu" {
   project      = module.boot_project.project_id
-  account_id   = "${var.prefix}-found-gbl-tofu"
-  display_name = "Founding SA - ${var.prefix}-found-gbl"
-  description  = "Founding identity for ${var.prefix}. Founds a hosting organization from the infrastructure repository's apply trigger: the folder at the organization node, the foundation under it, the first apply of its 0-bootstrap, and the hand-off."
+  account_id   = "${var.prefix}-create-gbl-tofu"
+  display_name = "Creation SA - ${var.prefix}-create-gbl"
+  description  = "Creating identity for ${var.prefix}. Creates a hosting organization from the infrastructure repository's apply trigger: the folder at the organization node, the foundation under it, the first apply of its 0-bootstrap, and the hand-off."
 }
 
 # A pull request plans 1-dns as its plan identity, which reads the zones and
@@ -341,7 +341,7 @@ resource "google_project_iam_member" "boot_plan_quota" {
 # every organization under it and held after a delete). The boot identity
 # manages the boot project's labels and metadata through the project module
 # when this layer runs through the apply trigger; the {{if .IsRoot}}break-glass account's
-# Owner covered the first apply.{{else}}founding identity's
+# Owner covered the first apply.{{else}}creating identity's
 # Owner covered the first apply. 1-org makes the same role in each project
 # it creates, for the org layer identity.{{end}}
 resource "google_project_iam_custom_role" "project_updater" {

@@ -8,7 +8,7 @@ stg and prd databases live on. Applied by the apply trigger's run as
 
 - The Spanner instance `{{.Prefix}}-spn-gbl-spanner` in the `spn` project:
   configuration `{{.Spanner.Config}}` (read-write replicas in {{.Primary.Name}} and {{.Secondary.Name}},
-  witness in us-central2), 100 processing units, STANDARD edition{{if .ExtraLabels}}, labelled
+  witness in us-central2), 100 processing units, STANDARD edition{{if .ExtraLabels}}, labeled
   {{.ExtraLabelKeys}}{{end}}. No autoscaler. `force_destroy` is off and the resource
   carries `prevent_destroy`, so neither a plan nor a stray destroy can take
   the databases with it.

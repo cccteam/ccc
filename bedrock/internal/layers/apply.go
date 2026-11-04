@@ -49,7 +49,7 @@ func Apply(ctx context.Context, clients *Clients, req *Request, out io.Writer) e
 	if len(runs) == 0 {
 		fmt.Fprintln(out, "No layer changes since the last applies: nothing to apply.")
 
-		return r.foundAll(ctx, store)
+		return r.createAll(ctx, store)
 	}
 	if err := r.recorded(runs); err != nil {
 		return err
@@ -69,7 +69,7 @@ func Apply(ctx context.Context, clients *Clients, req *Request, out io.Writer) e
 		}
 	}
 
-	return r.foundAll(ctx, store)
+	return r.createAll(ctx, store)
 }
 
 // initialized initializes every run, in order, as its apply identity, before any

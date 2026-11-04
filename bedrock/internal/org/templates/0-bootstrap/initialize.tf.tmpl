@@ -4,7 +4,7 @@ terraform {
   # creates the bucket, and the name is substituted here once, by hand. The
   # first apply of this layer runs on local state with this block commented
   # out, and the state is moved into the bucket with `tofu init -migrate-state`
-  # once the name is in; see the README.{{else}}founding makes the
+  # once the name is in; see the README.{{else}}creation makes the
   # bucket and renders the name here before the first apply, which runs
   # against the bucket from the start; see the README.{{end}}
   backend "gcs" {
@@ -26,8 +26,8 @@ terraform {
 
 # {{if .IsRoot}}Bootstrap is the one layer applied by a human. It runs locally against the
 # break-glass account's ADC (gcloud auth application-default login) because the identity
-# every other layer runs as does not exist yet.{{else}}Bootstrap's first apply is the root organization's founding identity's
-# (GOOGLE_IMPERSONATE_SERVICE_ACCOUNT in the founding), because the identity
+# every other layer runs as does not exist yet.{{else}}Bootstrap's first apply is the root organization's creating identity's
+# (GOOGLE_IMPERSONATE_SERVICE_ACCOUNT in the creation), because the identity
 # every other layer runs as does not exist yet.{{end}}
 provider "google" {
   user_project_override = false

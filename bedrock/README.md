@@ -2363,7 +2363,7 @@ bedrock org preflight                                           # before the see
 bedrock org render                                              # after a placement change
 bedrock org check                                               # the committed layers against the placement
 bedrock org register quill ../quill                             # an application joins the foundation; its first placement.json is written into its checkout
-bedrock org found rgb                                           # in a root organization: a hosting organization recorded, for the apply trigger to found on the merge
+bedrock org create rgb                                           # in a root organization: a hosting organization recorded, for the apply trigger to found on the merge
 bedrock org plan                                                # what the plan trigger runs on a pull request
 bedrock org apply                                               # what the apply trigger runs on a push to the default branch
 bedrock org teardown                                            # the applications out of service: 2-net's hosts and listeners, then every application torn down
@@ -2390,7 +2390,7 @@ and `org register` refuse a placement pinned to another bedrock than the one run
 A placement may name a second kind of organization: `"kind": "root"`, a root
 organization, which holds no application and no environment: the DNS zones, the GitHub
 Apps' keys and the Cloud Build authorization for every organization in the Google Cloud
-organization, and the founding of each hosting organization. The zones are how a
+organization, and the creation of each hosting organization. The zones are how a
 customer's shared domain serves applications hosted in more than one bedrock
 organization: the customer delegates the domain (`mydomain.com`, or a label of it such as
 `apps.mydomain.com`) once, to a zone of the root organization, and each application's
@@ -2401,9 +2401,9 @@ the zone the application's hosting organization serves it from as a vanity domai
 with nothing moving at the customer's registrar. One root organization per Google Cloud
 organization that hosts applications, and one GitHub organization per root organization,
 which the hosting organizations under it share (their placements name the same
-organization, machine account and apps, filled in by the founding). The root organization
+organization, machine account and apps, filled in by the creation). The root organization
 is the one bootstrapped by hand (`org new`, the seed, the first applies as the break-glass
-account); every hosting organization under it is founded from it by pull request. `org new`
+account); every hosting organization under it is created from it by pull request. `org new`
 renders two layers for it:
 `0-bootstrap`, as for every organization, with the triggers, the dns layer identity and
 its plan identity (`roles/dns.admin` and `roles/dns.reader` on the boot project, nothing
@@ -2420,16 +2420,16 @@ that organization's repository; a label may carry a dot, as in `east.acme`, and 
 above or below another), and the keys' two lists: `keyOperators`, the IAM members
 (`user:`, `group:`) who add a key's version and read it back for the check, and
 `hostingOrganizations`, each hosting organization's prefix, boot project and, once
-founded, folder, whose boot identity gets the four shared secrets' policy administration
+created, folder, whose boot identity gets the four shared secrets' policy administration
 (`secretPolicyAdmin`, a role of the root boot project: a secret's IAM policy and nothing
-else); `org found` lists an organization, and the founding's hand-off records its folder.
+else); `org create` lists an organization, and the creation's hand-off records its folder.
 The three GitHub Apps' keys and the Cloud Build token live in its boot project for every
 organization in the Google Cloud organization, and its placement pins each key's alias
 (`bedrock secret`, above). A hosting organization's placement names it (`root`: the prefix
 and the boot project) and carries no `ciLargeRunner` field: the larger runner, its runner
 group and the organization variable are the root organization's, which 1-dns makes.
 
-`org found <prefix>`, in a root organization's repository, records a hosting organization
+`org create <prefix>`, in a root organization's repository, records a hosting organization
 for the apply trigger to found on the merge. Run once, it writes
 `organizations/<prefix>/placement.json`, a hosting placement for a person to fill in with
 what is the new organization's own to decide (`appsDomain`, `spanner.config`, two regions
@@ -2439,27 +2439,27 @@ what the root organization supplies (the Google Cloud organization and billing a
 the GitHub organization with its machine account, default branch and three App IDs, the
 Cloud Build authorization, the break-glass account, the bedrock pin and `root`), chooses
 the boot project's four-hex suffix, lists the organization in `placement.json`
-(`hostingOrganizations`) and renders, printing what the merge founds and what the
-administrators grant before it. The merge's `org apply`, after the layers, founds each
-listed organization without a folder yet as the root organization's founding identity
-(`<prefix>-found-gbl-tofu`, made by its 0-bootstrap, holding Folder Creator at the
+(`hostingOrganizations`) and renders, printing what the merge creates and what the
+administrators grant before it. The merge's `org apply`, after the layers, creates each
+listed organization without a folder yet as the root organization's creating identity
+(`<prefix>-create-gbl-tofu`, made by its 0-bootstrap, holding Folder Creator at the
 organization node and Billing Account User on the billing account by the administrators'
 hand grants): the folder at the organization node, the `terraform` folder, the boot
 project with its billing link and APIs, the boot identity with its roles on the folder
 and the break-glass account's Folder Admin on it, the state bucket, the boot identity's
 policy administration of the four shared secrets; then, against the new bucket, the first
-applies of the new organization's 0-bootstrap and 1-org, as the founding identity, with
+applies of the new organization's 0-bootstrap and 1-org, as the creating identity, with
 1-org's `project_ids` and `project_numbers` recorded in the new placement and the layers
 rendered again; then the repository `<prefix>-infrastructure`, private in the GitHub
 organization, with the rendered foundation as its first push, which the new apply trigger
-runs on, every layer as its own identity; then the founding identity's grants off
+runs on, every layer as its own identity; then the creating identity's grants off
 everything it made (Owner on each project, Folder Admin and Folder Editor on each folder,
 its roles on the organization's folder), a marker in the root organization's state bucket
-(`applied/found/<prefix>`), and the hand-off, a pull request in the root organization's
-repository from the branch `found/<prefix>` recording the folder in `placement.json` and
-the placement as founded. Every step looks before it makes, so a founding that stopped
-finishes on the next push, and a founded organization is left alone. `org plan` says on
-the pull request what its merge founds. Left by hand, after the founding: a billing
+(`applied/created/<prefix>`), and the hand-off, a pull request in the root organization's
+repository from the branch `create/<prefix>` recording the folder in `placement.json` and
+the placement as created. Every step looks before it makes, so a creation that stopped
+finishes on the next push, and a created organization is left alone. `org plan` says on
+the pull request what its merge creates. Left by hand, after the creation: a billing
 administrator's `roles/billing.user` for the new organization's boot and org identities
 (1-org needs it when it links a project it creates) and its spend budget; the consent
 screens and the role groups as the hosting README says. `org check` in any organization
@@ -2970,7 +2970,7 @@ organization's GitHub plan, so its plan must include all four.
   requests, read and write), the deployer app (Checks, Deployments, Issues and Pull
   requests, read and write) and the infrastructure app (`0-bootstrap/README.md`:
   repository Actions, Administration, Contents and Metadata, organization Administration,
-  Variables and Self-hosted runners; Contents read and write is what the founding pushes a
+  Variables and Self-hosted runners; Contents read and write is what the creation pushes a
   new organization's repository with), each
   installed on all repositories, and the Google Cloud Build GitHub App, installed when
   the connection is authorized.

@@ -1,7 +1,7 @@
-// Package foundtest is a stand-in for the founding's Google seam: what the founding
+// Package createtest is a stand-in for the creation's Google seam: what the creation
 // asks Google Cloud, answered from memory and recorded, so a test can read what a
-// founding made and granted, and start from an organization half made.
-package foundtest
+// creation made and granted, and start from an organization half made.
+package createtest
 
 import (
 	"context"
@@ -13,7 +13,7 @@ import (
 
 	"github.com/go-playground/errors/v5"
 
-	"github.com/cccteam/ccc/bedrock/internal/found"
+	"github.com/cccteam/ccc/bedrock/internal/create"
 )
 
 // FakeGoogle is the stand-in. Folders are by "parent|name"; Projects, Accounts and
@@ -32,7 +32,7 @@ type FakeGoogle struct {
 	Revoked    []string
 	Calls      []string
 	Identities []string
-	// Refuse names a call (its method name) to answer with the error, for a founding
+	// Refuse names a call (its method name) to answer with the error, for a creation
 	// that stops halfway.
 	Refuse map[string]error
 	next   int
@@ -47,7 +47,7 @@ func New() *FakeGoogle {
 }
 
 // Open is the seam's opener: it records the identity and answers the stand-in.
-func (g *FakeGoogle) Open(_ context.Context, identity string) (found.Google, error) {
+func (g *FakeGoogle) Open(_ context.Context, identity string) (create.Google, error) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	g.Identities = append(g.Identities, identity)

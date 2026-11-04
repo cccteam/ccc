@@ -1,6 +1,6 @@
-// founding.go is how a root organization founds a hosting organization by pull request
-// (README.md, "Founding a hosting organization"): the record a person writes, the
-// values the root organization supplies, and what the founding run (internal/found)
+// record.go is how a root organization creates a hosting organization by pull request
+// (README.md, "Creating a hosting organization"): the record a person writes, the
+// values the root organization supplies, and what the creation run (internal/create)
 // renders for the new repository once the seed has made the folder and the project.
 //
 // The record is the new organization's own placement, kept in the root organization's
@@ -12,7 +12,7 @@
 // the break-glass account, the bedrock pin, and the root organization itself) and the
 // boot project's id, whose suffix is chosen then so that the id is known before anything
 // is made. placement.json lists the organization (hostingOrganizations) by prefix and
-// boot project; the folder is recorded once the founding has made it.
+// boot project; the folder is recorded once the creation has made it.
 
 package org
 
@@ -26,32 +26,32 @@ import (
 	"github.com/go-playground/errors/v5"
 )
 
-// FoundingsDir is the directory of the root organization's repository that holds the
-// founding records, one directory per hosting organization.
-const FoundingsDir = "organizations"
+// RecordsDir is the directory of the root organization's repository that holds the
+// creation records, one directory per hosting organization.
+const RecordsDir = "organizations"
 
 // suffixBytes is how many random bytes the boot project's suffix is made of: two, four
 // hex characters, what the project factory module would have generated.
 const suffixBytes = 2
 
-// FoundingPlacementPath is the path, under the root organization's repository, of the
-// hosting organization's founding record: its placement.
-func FoundingPlacementPath(dir, prefix string) string {
-	return filepath.Join(dir, FoundingsDir, prefix, PlacementFile)
+// RecordPath is the path, under the root organization's repository, of the
+// hosting organization's record: its placement.
+func RecordPath(dir, prefix string) string {
+	return filepath.Join(dir, RecordsDir, prefix, PlacementFile)
 }
 
-// FoundingIdentity is the root organization's founding identity, which founds a hosting
+// CreatingIdentity is the root organization's creating identity, which creates a hosting
 // organization from the apply trigger's run: a service account in the boot project.
-func (p *Placement) FoundingIdentity() string {
-	return p.Prefix + "-found-gbl-tofu@" + p.Projects[bootProject] + ".iam.gserviceaccount.com"
+func (p *Placement) CreatingIdentity() string {
+	return p.Prefix + "-create-gbl-tofu@" + p.Projects[bootProject] + ".iam.gserviceaccount.com"
 }
 
-// FoundingIdentityMember is the founding identity as an IAM member.
-func (p *Placement) FoundingIdentityMember() string {
-	return "serviceAccount:" + p.FoundingIdentity()
+// CreatingIdentityMember is the creating identity as an IAM member.
+func (p *Placement) CreatingIdentityMember() string {
+	return "serviceAccount:" + p.CreatingIdentity()
 }
 
-// Seed is what the founding learns as it makes the organization's folders: their
+// Seed is what the creation learns as it makes the organization's folders: their
 // numeric ids, which the seeded tfvars of the new repository carry. Nil renders the
 // REPLACEME values a person fills in after a hand seed.
 type Seed struct {
@@ -59,19 +59,19 @@ type Seed struct {
 	TerraformFolder    string
 }
 
-// ReadFounding reads the hosting organization's founding record from the root
+// ReadRecord reads the hosting organization's record from the root
 // organization's repository: a hosting placement, validated as one.
-func ReadFounding(dir, prefix string) (*Placement, error) {
-	path := FoundingPlacementPath(dir, prefix)
+func ReadRecord(dir, prefix string) (*Placement, error) {
+	path := RecordPath(dir, prefix)
 	h, err := ReadPlacement(path)
 	if err != nil {
 		return nil, err
 	}
 	if h.IsRoot() {
-		return nil, errors.Newf("%s describes a root organization (kind), and a founding record is a hosting organization's placement", path)
+		return nil, errors.Newf("%s describes a root organization (kind), and a record is a hosting organization's placement", path)
 	}
 	if h.Prefix != prefix {
-		return nil, errors.Newf("%s has prefix %q, and the record under %s/%s is that organization's", path, h.Prefix, FoundingsDir, prefix)
+		return nil, errors.Newf("%s has prefix %q, and the record under %s/%s is that organization's", path, h.Prefix, RecordsDir, prefix)
 	}
 
 	return h, nil
@@ -79,7 +79,7 @@ func ReadFounding(dir, prefix string) (*Placement, error) {
 
 // Fill puts into the hosting organization's placement what the root organization
 // supplies, and chooses the boot project's suffix when none is chosen yet, so that the
-// record is complete before the founding runs: the Google Cloud organization and its
+// record is complete before the creation runs: the Google Cloud organization and its
 // domain, the billing account (the root organization's unless the record names one), the
 // GitHub organization, its machine account, default branch and the three apps' ids and
 // slug, the Cloud Build authorization (the same connection token, read from the root
@@ -89,7 +89,7 @@ func ReadFounding(dir, prefix string) (*Placement, error) {
 // values contradict the root organization's.
 func Fill(root, h *Placement) error {
 	if !root.IsRoot() {
-		return errors.New("the placement is a hosting organization's, and only a root organization founds another organization")
+		return errors.New("the placement is a hosting organization's, and only a root organization creates another organization")
 	}
 	if root.Projects[bootProject] == "" || root.StateBucket == "" {
 		return errors.New("the root organization's placement records no boot project or no state bucket yet (projects.boot, stateBucket): the seed's values come first (0-bootstrap/README.md)")
@@ -98,7 +98,7 @@ func Fill(root, h *Placement) error {
 		return errors.Newf("prefix %q is the root organization's own; a hosting organization has a prefix of its own", h.Prefix)
 	}
 	if h.IsRoot() {
-		return errors.New("kind is root, and a founding record is a hosting organization's placement: leave kind out")
+		return errors.New("kind is root, and a record is a hosting organization's placement: leave kind out")
 	}
 	if h.BillingAccount == "" {
 		h.BillingAccount = root.BillingAccount
@@ -135,7 +135,7 @@ func Fill(root, h *Placement) error {
 	}
 	h.StateBucket = h.Prefix + "-boot-gbl-state-" + strings.TrimPrefix(h.Projects[bootProject], h.Prefix+"-boot-gbl-core-")
 	if slices.Contains([]string{"", replaceMe}, h.Spanner.Config) || h.AppsDomain == "" || len(h.Regions) != regionCount || len(h.TeamGroups) == 0 {
-		return errors.Newf("%s/%s/%s needs what is the organization's own to decide before it is recorded: appsDomain, spanner.config, two regions (the primary first) and teamGroups (one group per environment); contactDomains, entitlementDurations and labels as wanted", FoundingsDir, h.Prefix, PlacementFile)
+		return errors.Newf("%s/%s/%s needs what is the organization's own to decide before it is recorded: appsDomain, spanner.config, two regions (the primary first) and teamGroups (one group per environment); contactDomains, entitlementDurations and labels as wanted", RecordsDir, h.Prefix, PlacementFile)
 	}
 
 	return h.Validate()
@@ -199,12 +199,12 @@ func (p *Placement) Record(h *Placement) bool {
 	return true
 }
 
-// Pending are the hosting organizations recorded but not founded yet: the ones without a
-// folder, which the founding run founds in record order.
+// Pending are the hosting organizations recorded but not created yet: the ones without a
+// folder, which the creation run creates in record order.
 func (p *Placement) Pending() []HostingOrganization {
 	var pending []HostingOrganization
 	for _, h := range p.HostingOrganizations {
-		if !h.Founded() {
+		if !h.Created() {
 			pending = append(pending, h)
 		}
 	}
@@ -214,8 +214,8 @@ func (p *Placement) Pending() []HostingOrganization {
 
 // SecretPolicyAdminRole is the id of the custom role a root organization's 0-bootstrap
 // makes in its boot project (projects/<boot project>/roles/secretPolicyAdmin): a
-// secret's IAM policy and nothing else, which each founded hosting organization's boot
-// identity and the founding identity hold on the shared secrets.
+// secret's IAM policy and nothing else, which each created hosting organization's boot
+// identity and the creating identity hold on the shared secrets.
 const SecretPolicyAdminRole = "secretPolicyAdmin"
 
 // SharedSecrets are the secrets a root organization holds for every organization, by
@@ -235,7 +235,7 @@ func (p *Placement) SharedSecrets() []string {
 
 // BootLayerRoles are the roles the boot layer identity holds on the organization's
 // folder, and nowhere higher: the list 0-bootstrap's var.boot_layer_roles carries, which
-// the hand seed and the founding grant before the layer's first apply. The template's
+// the hand seed and the creation grant before the layer's first apply. The template's
 // list and this one say the same; a test holds them together.
 var BootLayerRoles = []string{
 	"roles/cloudbuild.builds.editor",

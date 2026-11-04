@@ -106,7 +106,7 @@ resource "google_secret_manager_secret_iam_member" "boot_plan_token" {
 }
 
 # The boot identity manages the token secret's policy (cloud-build.tf) when
-# this layer runs through the apply trigger; the founding identity's policy
+# this layer runs through the apply trigger; the creating identity's policy
 # administration of the token secret covered the first apply.
 resource "google_project_iam_member" "boot_tofu_secrets" {
   project = module.boot_project.project_id

@@ -2,8 +2,8 @@
 
 Where the organization is described: folders, the org policy baseline,
 Essential Contacts, every project, and the identities that manage each
-project's own layer. Its first apply is the root organization's founding
-identity's, in the founding (`0-bootstrap/README.md`, "Founded by the root
+project's own layer. Its first apply is the root organization's creation
+identity's, in the creation (`0-bootstrap/README.md`, "Created by the root
 organization"); from then on the apply trigger applies it as `imp-org-gbl-tofu` and the plan
 trigger plans it on a pull request as `imp-org-gbl-plan`.
 
@@ -109,7 +109,7 @@ trigger plans it on a pull request as `imp-org-gbl-plan`.
   (the root `README.md`, "Several organizations"). The `projectUpdater` role
   `0-bootstrap` makes in the boot project is made here in each project, for
   this layer's identity, which did not create the projects (the first apply
-  did, as the founding identity, which took its Owner off them) and so holds
+  did, as the creating identity, which took its Owner off them) and so holds
   no Owner on them.
 - The custom role `secretContainerAdmin`: creates, updates,
   deletes, and lists secrets, manages their IAM, and enables, disables, and
@@ -275,8 +275,8 @@ trigger plans it on a pull request as `imp-org-gbl-plan`.
 
 ## Applying
 
-The first apply was the root organization's founding identity's, in the
-founding, after `0-bootstrap`'s (`0-bootstrap/README.md`, "Founded by the
+The first apply was the root organization's creating identity's, in the
+creation, after `0-bootstrap`'s (`0-bootstrap/README.md`, "Created by the
 root organization"): the identities this layer creates did not exist yet, so
 nothing could run it as one. It ran in this directory against the bucket
 (`tofu init` at the prefix `1-org`, then `tofu apply`), with the
@@ -285,14 +285,14 @@ infrastructure GitHub App's token as `GITHUB_TOKEN`; `terraform.tfvars` had
 `0-bootstrap`'s state name the bucket from `placement.json`. The layer makes
 folders, org policy, and projects with `deletion_policy = "PREVENT"` and a
 lien each, which are hard to undo; the root organization's pull request is
-where a founding is reviewed, its plan saying what the merge founds. The
+where a creation is reviewed, its plan saying what the merge creates. The
 init's `.terraform.lock.hcl` came with the first push.
 
-The founding recorded the `project_ids` and `project_numbers` outputs in
+The creation recorded the `project_ids` and `project_numbers` outputs in
 `placement.json` (`projects`, `projectNumbers`) and rendered the layers
 again before the push: the layers name every identity by its project, and
 `0-bootstrap` grants each environment project's Cloud Build service agent
-the read of the connections' token by its number. The founding identity took
+the read of the connections' token by its number. The creating identity took
 off what Google gives a creator, `roles/owner` on each project it made and
 Folder Admin and Folder Editor on each folder, and holds nothing here; a
 person's access to an environment comes from its team group

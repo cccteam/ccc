@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-// hostingRecord is a hosting organization as a person records it for founding: what is
+// hostingRecord is a hosting organization as a person records it for creation: what is
 // the organization's own to decide, and nothing the root organization supplies.
 func hostingRecord() *Placement {
 	return &Placement{
@@ -83,7 +83,7 @@ func TestFill(t *testing.T) {
 		wantErr string
 	}{
 		{name: "the root organization's own prefix", mutate: func(h *Placement) { h.Prefix = "imr" }, wantErr: `prefix "imr" is the root organization's own`},
-		{name: "a root kind", mutate: func(h *Placement) { h.Kind = RootKind }, wantErr: "kind is root, and a founding record is a hosting organization's placement"},
+		{name: "a root kind", mutate: func(h *Placement) { h.Kind = RootKind }, wantErr: "kind is root, and a record is a hosting organization's placement"},
 		{name: "another primary region than the regional token's", mutate: func(h *Placement) {
 			h.Regions = []Region{{Name: "us-west3", Code: "uw3"}, {Name: "us-central1", Code: "uc1"}}
 		}, wantErr: "regions names us-west3 first, and the Cloud Build token the root organization recorded is a regional secret in us-central1"},
@@ -116,18 +116,18 @@ func TestFill(t *testing.T) {
 		})
 	}
 
-	t.Run("a hosting organization founds nothing", func(t *testing.T) {
+	t.Run("a hosting organization creates nothing", func(t *testing.T) {
 		t.Parallel()
 
 		err := Fill(testPlacement(t), hostingRecord())
-		if err == nil || !strings.Contains(err.Error(), "only a root organization founds another organization") {
+		if err == nil || !strings.Contains(err.Error(), "only a root organization creates another organization") {
 			t.Errorf("Fill() error = %v", err)
 		}
 	})
 }
 
 // TestRecordAndPending: Record lists a filled organization in the root organization's
-// placement once, keeps a recorded folder, and Pending names the ones not founded yet.
+// placement once, keeps a recorded folder, and Pending names the ones not created yet.
 func TestRecordAndPending(t *testing.T) {
 	t.Parallel()
 
@@ -142,18 +142,18 @@ func TestRecordAndPending(t *testing.T) {
 	if changed := root.Record(h); !changed {
 		t.Error("Record() changed nothing, want the boot project updated")
 	}
-	if got := root.HostingOrganization("rgb"); got == nil || got.BootProject != h.Projects["boot"] || got.Founded() {
+	if got := root.HostingOrganization("rgb"); got == nil || got.BootProject != h.Projects["boot"] || got.Created() {
 		t.Errorf("rgb = %+v", got)
 	}
 	if changed := root.Record(h); changed {
 		t.Error("Record() twice changed the placement")
 	}
 	imp := root.HostingOrganization("imp")
-	if imp == nil || imp.Folder != "123456789012345" || !imp.Founded() {
+	if imp == nil || imp.Folder != "123456789012345" || !imp.Created() {
 		t.Errorf("imp = %+v", imp)
 	}
-	if got := root.FoundedHostingOrganizations(); len(got) != 1 || got[0].Prefix != "imp" {
-		t.Errorf("FoundedHostingOrganizations() = %v", got)
+	if got := root.CreatedHostingOrganizations(); len(got) != 1 || got[0].Prefix != "imp" {
+		t.Errorf("CreatedHostingOrganizations() = %v", got)
 	}
 	n := len(root.HostingOrganizations)
 	h.Prefix, h.Projects["boot"] = "xyz", "xyz-boot-gbl-core-0a0b"
@@ -162,16 +162,16 @@ func TestRecordAndPending(t *testing.T) {
 	}
 }
 
-// TestReadFounding reads a record from the repository, and refuses a root kind or
+// TestReadRecord reads a record from the repository, and refuses a root kind or
 // another prefix.
-func TestReadFounding(t *testing.T) {
+func TestReadRecord(t *testing.T) {
 	t.Parallel()
 
 	root := rootPlacement(t)
 	write := func(t *testing.T, prefix string, h *Placement) string {
 		t.Helper()
 		dir := t.TempDir()
-		path := FoundingPlacementPath(dir, prefix)
+		path := RecordPath(dir, prefix)
 		if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
 			t.Fatal(err)
 		}
@@ -185,22 +185,22 @@ func TestReadFounding(t *testing.T) {
 	if err := Fill(root, h); err != nil {
 		t.Fatal(err)
 	}
-	if got, err := ReadFounding(write(t, "rgb", h), "rgb"); err != nil || got.Prefix != "rgb" || got.Root.Organization != "imr" {
-		t.Errorf("ReadFounding() = %+v, %v", got, err)
+	if got, err := ReadRecord(write(t, "rgb", h), "rgb"); err != nil || got.Prefix != "rgb" || got.Root.Organization != "imr" {
+		t.Errorf("ReadRecord() = %+v, %v", got, err)
 	}
-	if _, err := ReadFounding(write(t, "xyz", h), "xyz"); err == nil || !strings.Contains(err.Error(), `has prefix "rgb", and the record under organizations/xyz is that organization's`) {
-		t.Errorf("ReadFounding() of another prefix: %v", err)
+	if _, err := ReadRecord(write(t, "xyz", h), "xyz"); err == nil || !strings.Contains(err.Error(), `has prefix "rgb", and the record under organizations/xyz is that organization's`) {
+		t.Errorf("ReadRecord() of another prefix: %v", err)
 	}
-	if _, err := ReadFounding(write(t, "imr", root), "imr"); err == nil || !strings.Contains(err.Error(), "describes a root organization (kind), and a founding record is a hosting organization's placement") {
-		t.Errorf("ReadFounding() of a root kind: %v", err)
+	if _, err := ReadRecord(write(t, "imr", root), "imr"); err == nil || !strings.Contains(err.Error(), "describes a root organization (kind), and a record is a hosting organization's placement") {
+		t.Errorf("ReadRecord() of a root kind: %v", err)
 	}
-	if want := filepath.Join("r", "organizations", "rgb", "placement.json"); FoundingPlacementPath("r", "rgb") != want {
-		t.Errorf("FoundingPlacementPath() = %q, want %q", FoundingPlacementPath("r", "rgb"), want)
+	if want := filepath.Join("r", "organizations", "rgb", "placement.json"); RecordPath("r", "rgb") != want {
+		t.Errorf("RecordPath() = %q, want %q", RecordPath("r", "rgb"), want)
 	}
 }
 
 // TestSharedSecretsAndIdentity: a root organization's shared secrets are its three key
-// secrets and its token secret, by resource name, and its founding identity lives in its
+// secrets and its token secret, by resource name, and its creating identity lives in its
 // boot project; the boot identity's roles are the ones 0-bootstrap's variables.tf lists.
 func TestSharedSecretsAndIdentity(t *testing.T) {
 	t.Parallel()
@@ -219,8 +219,8 @@ func TestSharedSecretsAndIdentity(t *testing.T) {
 	if got := root.SharedSecrets(); len(got) != 3 {
 		t.Errorf("SharedSecrets() without the token = %v", got)
 	}
-	if got := root.FoundingIdentity(); got != "imr-found-gbl-tofu@imr-boot-gbl-core-c3d4.iam.gserviceaccount.com" {
-		t.Errorf("FoundingIdentity() = %q", got)
+	if got := root.CreatingIdentity(); got != "imr-create-gbl-tofu@imr-boot-gbl-core-c3d4.iam.gserviceaccount.com" {
+		t.Errorf("CreatingIdentity() = %q", got)
 	}
 	variables := rootRenderedFile(t, "0-bootstrap/variables.tf")
 	for _, role := range BootLayerRoles {
@@ -240,7 +240,7 @@ func TestSharedSecretsAndIdentity(t *testing.T) {
 	}
 }
 
-// TestRenderSeeded: a founding's render carries the folders and the boot project in the
+// TestRenderSeeded: a creation's render carries the folders and the boot project in the
 // seeded tfvars, where a hand seed's render carries REPLACEME.
 func TestRenderSeeded(t *testing.T) {
 	t.Parallel()

@@ -75,7 +75,7 @@ func TestRootPlacementValidate(t *testing.T) {
 		{name: "a name a hosted runner cannot carry", mutate: func(p *Placement) { p.CiLargeRunner = "ci large" }, wantErr: `ciLargeRunner "ci large" cannot name a GitHub-hosted runner`},
 		{name: "a cap without a size", mutate: func(p *Placement) { p.CiLargeRunnerSize = "" }, wantErr: "ciLargeRunnerMaximum 10 caps the runner 1-dns creates, and ciLargeRunnerSize is empty"},
 		{name: "a negative cap", mutate: func(p *Placement) { p.CiLargeRunnerMaximum = -1 }, wantErr: "ciLargeRunnerMaximum -1 is negative"},
-		{name: "a founded hosting organization", mutate: func(p *Placement) {
+		{name: "a created hosting organization", mutate: func(p *Placement) {
 			p.HostingOrganizations = []HostingOrganization{{Prefix: "rgb", BootProject: "rgb-boot-gbl-core-e5f6", Folder: "987654321098765"}}
 		}},
 		{name: "a hosting organization with a folder that is not an id", mutate: func(p *Placement) {

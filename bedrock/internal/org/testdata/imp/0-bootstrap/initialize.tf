@@ -1,6 +1,6 @@
 terraform {
   # State lives in a bucket in the boot project. A backend block cannot read a
-  # variable, so the bucket name is a placeholder: the founding makes the
+  # variable, so the bucket name is a placeholder: the creation makes the
   # bucket and renders the name here before the first apply, which runs
   # against the bucket from the start; see the README.
   backend "gcs" {
@@ -20,8 +20,8 @@ terraform {
   }
 }
 
-# Bootstrap's first apply is the root organization's founding identity's
-# (GOOGLE_IMPERSONATE_SERVICE_ACCOUNT in the founding), because the identity
+# Bootstrap's first apply is the root organization's creating identity's
+# (GOOGLE_IMPERSONATE_SERVICE_ACCOUNT in the creation), because the identity
 # every other layer runs as does not exist yet.
 provider "google" {
   user_project_override = false

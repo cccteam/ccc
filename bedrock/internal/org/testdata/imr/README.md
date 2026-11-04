@@ -50,8 +50,8 @@ pattern for shared hosting and for a client's own. Two more things are its,
 for every organization in the Google Cloud organization: the three GitHub
 Apps' keys and the Cloud Build authorization, which live in its boot project
 and are rotated in one place (`0-bootstrap/README.md`, "The GitHub Apps'
-keys"), and the founding of each hosting organization, by pull request
-("Founding a hosting organization", below).
+keys"), and the creation of each hosting organization, by pull request
+("Creating a hosting organization", below).
 
 Its placement lists the domains delegated to it (`domains` in
 `placement.json`) and, under each, the labels handed onward, each naming the
@@ -81,9 +81,9 @@ organization's reach: every role a layer identity holds, the boot identity's,
 the dns layer identity's and the plan identities' (`0-bootstrap`),
 is granted on the organization's folder and nowhere higher, and every custom
 role lives in a project. Nothing of
-the organization's sits at the organization node but the founding
+the organization's sits at the organization node but the creation
 identity's Folder Creator, by which it makes a hosting organization's folder
-there ("Founding a hosting organization").
+there ("Creating a hosting organization").
 
 The reason is reach. A role granted at the organization node applies to every
 folder and project below it, so an identity holding project IAM administrator
@@ -104,12 +104,12 @@ The one account above the folders is the organization's break-glass account
 organization root with Folder Creator, keeps the administration of the folder
 Google gives a creator, and holds nothing else once the first-time setup is
 trimmed (`0-bootstrap/README.md`, "Trimming the break-glass account"). Beside
-it, this organization's founding identity holds the same Folder Creator at
+it, this organization's creating identity holds the same Folder Creator at
 the organization node and Billing Account User on the billing account, the
 two roles the break-glass account held for the seed, granted once by the
-administrators: with them it founds each hosting organization under a folder
+administrators: with them it creates each hosting organization under a folder
 of its own, grants itself the rest there for the run, and holds nothing under
-that folder after (`0-bootstrap/README.md`, "The founding identity's grants").
+that folder after (`0-bootstrap/README.md`, "The creating identity's grants").
 
 ## Naming
 
@@ -253,13 +253,13 @@ the place it happens.
    organization"). Each application's name under a domain follows at the
    application's registration, in two pull requests (`1-dns/README.md`,
    "Handing a label onward").
-9. **The founding identity's grants.** In a terminal, once `0-bootstrap` has
-   applied and made the identity `imr-found-gbl-tofu`: an administrator
+9. **The creating identity's grants.** In a terminal, once `0-bootstrap` has
+   applied and made the identity `imr-create-gbl-tofu`: an administrator
    of the Google Cloud organization grants it Folder Creator at the
    organization node, and a billing administrator Billing Account User on the
-   billing account (`0-bootstrap/README.md`, "7. The founding identity's
-   grants"). From then on each hosting organization is founded from here, by
-   pull request, the first one included ("Founding a hosting organization",
+   billing account (`0-bootstrap/README.md`, "7. The creating identity's
+   grants"). From then on each hosting organization is created from here, by
+   pull request, the first one included ("Creating a hosting organization",
    below).
 
 GitHub prerequisites: the organization's private repositories need rulesets
@@ -271,20 +271,20 @@ each with what needs it
 Each layer's `terraform.tfvars` is committed. It holds IDs, not secrets, and
 the values a layer runs with belong in the repository.
 
-## Founding a hosting organization
+## Creating a hosting organization
 
-A hosting organization under this Google Cloud organization is founded from
-here, by pull request, not seeded by hand: this organization's founding
-identity `imr-found-gbl-tofu` (`0-bootstrap/bootstrap.tf`) does under
+A hosting organization under this Google Cloud organization is created from
+here, by pull request, not seeded by hand: this organization's creation
+identity `imr-create-gbl-tofu` (`0-bootstrap/bootstrap.tf`) does under
 a new folder what the hand seed and the first applies did for this one, and
 the new organization's own apply trigger takes over from its first push.
 Nobody signs in as the break-glass account for it. The identity holds Folder
 Creator at the organization node and Billing Account User on the billing
 account, granted once by the administrators (`0-bootstrap/README.md`, "The
-founding identity's grants"), and grants itself the rest under the folder it
+creating identity's grants"), and grants itself the rest under the folder it
 creates, for the run.
 
-1. **The record.** In a terminal, in this repository: `bedrock org found
+1. **The record.** In a terminal, in this repository: `bedrock org create
    <prefix>`, which writes `organizations/<prefix>/placement.json` for a
    person to fill in with what is the new organization's own to decide (its
    apps domain, the configuration of its shared database instance, its two
@@ -297,9 +297,9 @@ creates, for the run.
    bedrock pin, and `root`, which names this organization), chooses the boot
    project's suffix, lists the organization in `placement.json`
    (`hostingOrganizations`: its prefix and its boot project) and renders. The
-   pull request carries both files; its plan says what the merge founds.
-2. **The merge.** The apply trigger, after the layers, founds each listed
-   organization without a folder yet, in order, as the founding identity: the
+   pull request carries both files; its plan says what the merge creates.
+2. **The merge.** The apply trigger, after the layers, creates each listed
+   organization without a folder yet, in order, as the creating identity: the
    folder at the organization node named after the prefix, the `terraform`
    folder under it, the boot project with its billing link and its APIs, the
    boot identity with its roles on the folder, the break-glass account's
@@ -310,13 +310,13 @@ creates, for the run.
    projects, with those projects recorded in its placement; then the
    repository `<prefix>-infrastructure`, private in `imp-example`,
    with the rendered foundation as its first push, which its apply trigger
-   runs on, every layer as its own identity; then the founding identity's own
+   runs on, every layer as its own identity; then the creating identity's own
    grants off everything it made, a marker in this organization's state bucket
-   (`applied/found/<prefix>`), and the hand-off: a pull request here, from the
-   branch `found/<prefix>`, recording the folder in `placement.json` and the
-   placement as founded under `organizations/<prefix>/`. A founding that stops
+   (`applied/created/<prefix>`), and the hand-off: a pull request here, from the
+   branch `create/<prefix>`, recording the folder in `placement.json` and the
+   placement as created under `organizations/<prefix>/`. A creation that stops
    finishes on the next push, since every step looks before it makes; a
-   founded organization is left alone.
+   created organization is left alone.
 3. **The hand-off.** Its merge records the folder, from which `0-bootstrap`
    keeps the new boot identity's grants on the shared secrets rendered
    (`github.tf`), and that is the last reach into the new organization:
@@ -324,11 +324,11 @@ creates, for the run.
    org check` there lists any grant on the folder to a principal outside it.
    Left to a billing administrator, in the new organization: `roles/billing.user`
    on the billing account for its boot and org identities, and its spend
-   budget (its `0-bootstrap/README.md`, "Founded by the root organization");
+   budget (its `0-bootstrap/README.md`, "Created by the root organization");
    its apps domain is a label of a domain here, handed onward at its first
    registration like every application's name (`1-dns/README.md`).
 
-The first hosting organization is founded the same way as every later one. A
+The first hosting organization is created the same way as every later one. A
 hosting organization's primary region is this organization's when the Cloud
 Build token is a regional secret, as the console stores it: a connection
 reads a token in its own region.

@@ -4,7 +4,7 @@ The chicken-and-egg layer. It adopts the resources the seed step created by
 hand, creates the dns layer identity, grants it the zones' administration in the
 boot project and the boot identity what it needs on the organization's folder, and makes the Cloud Build triggers that plan and apply every
 layer of this repository. Nothing is granted at the organization node but
-the founding identity's Folder Creator, by which it makes a hosting
+the creating identity's Folder Creator, by which it makes a hosting
 organization's folder there (step 7): the folder is the whole of this
 organization's reach. Its first apply is the break-glass account's, from a
 person's computer, before any layer identity can run; from then on the
@@ -406,8 +406,8 @@ What stays: Folder Admin on the organization's folder, the account's one
 standing grant and its key to everything below. With it, on the day the
 pipeline cannot act, the account grants itself for the run what the recovery
 needs and takes it back after ("Recovery, by hand"). Nothing of the
-organization's is left at the organization node but the founding identity's
-Folder Creator (step 7), by which this organization founds the hosting
+organization's is left at the organization node but the creating identity's
+Folder Creator (step 7), by which this organization creates the hosting
 organizations.
 
 ```bash
@@ -424,12 +424,12 @@ a folder, with its place, when it runs with Google credentials that read
 their IAM policies. The two above the folder it cannot see from inside the
 folder, so their removal is the administrators' to confirm.
 
-### 7. The founding identity's grants, by the administrators
+### 7. The creating identity's grants, by the administrators
 
-This layer makes the founding identity `imr-found-gbl-tofu`
-(`bootstrap.tf`), which founds each hosting organization `placement.json`
+This layer makes the creating identity `imr-create-gbl-tofu`
+(`bootstrap.tf`), which creates each hosting organization `placement.json`
 lists without a folder yet (`hostingOrganizations`; the root `README.md`,
-"Founding a hosting organization"): from the apply trigger's run, it makes
+"Creating a hosting organization"): from the apply trigger's run, it makes
 the organization's folder at the organization node and, under it, does what
 steps 1 to 4 and the first apply of the second layer did here, then takes its
 own grants off everything it made. For that it holds the two roles the
@@ -442,22 +442,22 @@ to the identity, after this layer's first apply has made it:
 | Billing Account User (`roles/billing.user`) | the billing account | a Billing Account Administrator | the billing link of the hosting organization's boot project, and of the projects its second layer makes |
 
 ```bash
-export FOUNDING_IDENTITY="imr-found-gbl-tofu@${BOOT_PROJECT_ID}.iam.gserviceaccount.com"
+export CREATING_IDENTITY="imr-create-gbl-tofu@${BOOT_PROJECT_ID}.iam.gserviceaccount.com"
 
 gcloud organizations add-iam-policy-binding "${ORG_ID}" \
-  --member="serviceAccount:${FOUNDING_IDENTITY}" --role=roles/resourcemanager.folderCreator --condition=None
+  --member="serviceAccount:${CREATING_IDENTITY}" --role=roles/resourcemanager.folderCreator --condition=None
 
 gcloud billing accounts add-iam-policy-binding "${BILLING_ACCOUNT_ID}" \
-  --member="serviceAccount:${FOUNDING_IDENTITY}" --role=roles/billing.user
+  --member="serviceAccount:${CREATING_IDENTITY}" --role=roles/billing.user
 ```
 
-Everything else a founding needs the identity grants itself under the folder
+Everything else a creation needs the identity grants itself under the folder
 it creates, as the folder's administrator, which Google makes a creator, and
 removes at the end; on this boot project it holds the policy administration
 of the four shared secrets this layer grants it (`github.tf`), to give each
 new boot identity its read of the keys and the token. Nothing comes off after
-a founding: the two grants stand for the next one. `bedrock org found` prints
-them with each record, and a founding refused for one says which.
+a creation: the two grants stand for the next one. `bedrock org create` prints
+them with each record, and a creation refused for one says which.
 
 ## Inputs
 
@@ -670,12 +670,12 @@ Who does what, declared in `placement.json`:
   policy and nothing else (no payload, no version, no change to the secret).
   Its layers hand the right down to the identities that read a key, and that
   grant is the only reach a hosting organization has into this one. An
-  organization is listed by `bedrock org found` before its founding, with
+  organization is listed by `bedrock org create` before its creation, with
   the boot project the command names; the grant renders once the hand-off
-  has recorded the folder, and in between the founding identity, which
+  has recorded the folder, and in between the creating identity, which
   holds the same role on the four shared secrets (`bootstrap.tf`), grants
   the new boot identity as the seed, before the organization's `0-bootstrap`
-  first applies (that organization's `0-bootstrap/README.md`, "Founded by
+  first applies (that organization's `0-bootstrap/README.md`, "Created by
   the root organization").
 - The plan trigger's run posts each layer's plan on the pull request as the
   deployer app, and a run that plans or applies `1-dns` mints the

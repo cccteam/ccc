@@ -9,8 +9,8 @@
 // On the organization's folder it reports as well every grant to a principal outside the
 // organization, neither the break-glass account nor an identity in one of its projects:
 // the folder is the whole of the organization's reach, nothing of the organization's
-// grants there to an outsider, and a founding identity's grants come off at the
-// founding's end (a hosting organization founded by its root organization).
+// grants there to an outsider, and a creating identity's grants come off at the
+// creation's end (a hosting organization created by its root organization).
 
 package org
 

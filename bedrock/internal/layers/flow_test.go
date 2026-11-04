@@ -383,7 +383,7 @@ func (r *fakeRunner) Output(_ context.Context, c deploy.Command, _ io.Writer) ([
 	run := r.runs[r.key(c)]
 	r.mu.Unlock()
 	if c.Args[0] == "output" {
-		// A founding reads 1-org's outputs of the organization it founds.
+		// A creation reads 1-org's outputs of the organization it creates.
 		value := func(v any) map[string]any { return map[string]any{"value": v} }
 		data, err := json.Marshal(map[string]any{
 			"project_ids":     value(map[string]string{"shr": "rgb-shr-gbl-core-e5f6", "net": "rgb-net-gbl-core-e5f6", "spn": "rgb-spn-gbl-core-e5f6", "tst": "rgb-tst-gbl-core-e5f6", "stg": "rgb-stg-gbl-core-e5f6", "prd": "rgb-prd-gbl-core-e5f6"}),

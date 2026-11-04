@@ -26,14 +26,14 @@
 #
 # A key is added by the key operators placement.json names (keyOperators: the
 # adding of a version, and the read that proves it before the alias moves),
-# never by a layer. Each founded hosting organization's boot identity
+# never by a layer. Each created hosting organization's boot identity
 # (hostingOrganizations, the entries with a folder recorded) holds the policy
 # administration of the three secrets and of the Cloud Build token secret
 # (cloud-build.tf; recorded once here, read by every organization's
 # connections), secretPolicyAdmin: a secret's IAM policy and nothing else,
 # which that organization's layers hand down to the identities that read a
 # key or a connection's token. That grant is the only reach a hosting
-# organization has into this one. The founding identity (bootstrap.tf) holds
+# organization has into this one. The creating identity (bootstrap.tf) holds
 # the same on the four, for the first apply of a hosting organization's
 # 0-bootstrap, which makes its grants. The dns identity administers the two
 # secrets it reads from (and reads the infrastructure key for 1-dns's apply);
@@ -50,11 +50,11 @@ locals {
     release        = google_secret_manager_secret.github_release_key.secret_id
   }
 
-  # The founded hosting organizations that read the keys and the token, each
+  # The created hosting organizations that read the keys and the token, each
   # by its boot identity (placement.json, hostingOrganizations with a folder
-  # recorded; one without is not founded yet, and its identity does not exist).
+  # recorded; one without is not created yet, and its identity does not exist).
   hosting_boot_identities = {
-{{- range .FoundedHostingOrganizations}}
+{{- range .CreatedHostingOrganizations}}
     {{.Prefix}} = "{{.BootIdentityMember}}"
 {{- end}}
   }
@@ -64,9 +64,9 @@ locals {
   }
 
   # The policy administrators of the token secret (cloud-build.tf): the
-  # founded hosting organizations' boot identities and the founding identity,
+  # created hosting organizations' boot identities and the creating identity,
   # once the authorization is recorded.
-  token_policy_admins = local.connected ? merge(local.hosting_boot_identities, { founding = google_service_account.found_tofu.member }) : {}
+  token_policy_admins = local.connected ? merge(local.hosting_boot_identities, { creation = google_service_account.create_tofu.member }) : {}
 
   # The key operators (placement.json, keyOperators), each with the adding of
   # a version and the read of one, on each of the three secrets.
@@ -147,15 +147,15 @@ resource "google_secret_manager_secret_iam_member" "key_operators" {
   member    = each.value.member
 }
 
-# The founding identity grants on the three secrets while it applies a hosting
+# The creating identity grants on the three secrets while it applies a hosting
 # organization's 0-bootstrap the first time (bootstrap.tf).
-resource "google_secret_manager_secret_iam_member" "found_tofu_keys" {
+resource "google_secret_manager_secret_iam_member" "create_tofu_keys" {
   for_each = local.key_secrets
 
   project   = module.boot_project.project_id
   secret_id = each.value
   role      = google_project_iam_custom_role.secret_policy_admin.id
-  member    = google_service_account.found_tofu.member
+  member    = google_service_account.create_tofu.member
 }
 
 # The token secret's policy administration, for the same reach: a hosting
@@ -317,7 +317,7 @@ resource "google_secret_manager_secret_iam_member" "boot_plan_token" {
 }
 
 # The boot identity manages the token secret's policy (cloud-build.tf) when
-# this layer runs through the apply trigger; the founding identity's policy
+# this layer runs through the apply trigger; the creating identity's policy
 # administration of the token secret covered the first apply.
 resource "google_project_iam_member" "boot_tofu_secrets" {
   project = module.boot_project.project_id

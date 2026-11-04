@@ -1,10 +1,10 @@
-// google.go is the founding's seam to Google Cloud: what the founding identity makes
+// google.go is the creation's seam to Google Cloud: what the creating identity makes
 // and grants under the new organization's folder (Cloud Resource Manager, Cloud
 // Billing, Service Usage, IAM, Cloud Storage) and the shared secrets' policies in the
-// root organization's boot project (Secret Manager), each as the founding identity
+// root organization's boot project (Secret Manager), each as the creating identity
 // (impersonated by the apply trigger's runner), or a fake in tests.
 
-package found
+package create
 
 import (
 	"context"
@@ -30,7 +30,7 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// Google is what the founding asks Google Cloud, as the founding identity.
+// Google is what the creation asks Google Cloud, as the creating identity.
 type Google interface {
 	// FindFolder is the numeric id of the folder named displayName directly under the
 	// parent (organizations/N or folders/N), empty when there is none.
@@ -309,7 +309,7 @@ func (g *google) LinkBilling(ctx context.Context, id, billingAccount string) err
 	return nil
 }
 
-// enablePoll is how often the founding asks after a batch enable's operation.
+// enablePoll is how often the creation asks after a batch enable's operation.
 const enablePoll = 5 * time.Second
 
 func (g *google) EnableServices(ctx context.Context, id string, services []string) error {

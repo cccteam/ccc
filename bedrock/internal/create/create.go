@@ -1,13 +1,13 @@
-// Package found is how a root organization founds a hosting organization from its apply
-// trigger's run (README.md, "Founding a hosting organization"): for each hosting
+// Package create is how a root organization creates a hosting organization from its apply
+// trigger's run (README.md, "Creating a hosting organization"): for each hosting
 // organization placement.json records without a folder yet, the run, as the root
-// organization's founding identity, does under a new folder what the hand seed and the
+// organization's creating identity, does under a new folder what the hand seed and the
 // first apply do for an organization bootstrapped by hand, pushes the rendered
 // repository, takes its own creator grants off, and hands the organization off with a
 // pull request that records its folder. Every step looks before it makes, so a run
-// that stopped halfway finishes on the next push, and a founded organization is
+// that stopped halfway finishes on the next push, and a created organization is
 // left alone: its marker in the root organization's state bucket says so.
-package found
+package create
 
 import (
 	"context"
@@ -29,7 +29,7 @@ import (
 	"github.com/cccteam/ccc/bedrock/internal/org"
 )
 
-// Clients are the founding's seams: Google as the founding identity, GitHub with the
+// Clients are the creation's seams: Google as the creating identity, GitHub with the
 // infrastructure app's token, the programs a step runs (tofu), the root organization's
 // state bucket for the marker, and the wait between tries.
 type Clients struct {
@@ -40,7 +40,7 @@ type Clients struct {
 	Sleep  deploy.SleepFunc
 }
 
-// Request is one founding: the root organization's placement and checkout, the
+// Request is one creation: the root organization's placement and checkout, the
 // organization to found (a record without a folder), the infrastructure app's token
 // for the repositories, and the commit the run builds.
 type Request struct {
@@ -51,8 +51,8 @@ type Request struct {
 	Commit  string
 }
 
-// Marker is what the founding leaves in the root organization's state bucket once the
-// organization is handed off (applied/found/<prefix>): what it made, and when.
+// Marker is what the creation leaves in the root organization's state bucket once the
+// organization is handed off (applied/created/<prefix>): what it made, and when.
 type Marker struct {
 	Prefix             string `json:"prefix"`
 	OrganizationFolder string `json:"organizationFolder"`
@@ -65,16 +65,16 @@ type Marker struct {
 	Projects       map[string]string `json:"projects"`
 	ProjectNumbers map[string]string `json:"projectNumbers"`
 	Repository     string            `json:"repository"`
-	FoundedAt      string            `json:"foundedAt"`
-	FoundedFrom    string            `json:"foundedFrom"`
+	CreatedAt      string            `json:"createdAt"`
+	CreatedFrom    string            `json:"createdFrom"`
 }
 
 // MarkerObject is the marker's object in the state bucket, under the applier's markers.
 func MarkerObject(prefix string) string {
-	return org.MarkerPrefix + "/found/" + prefix
+	return org.MarkerPrefix + "/created/" + prefix
 }
 
-// record puts the projects the founding made into the placement.
+// record puts the projects the creation made into the placement.
 func (m *Marker) record(h *org.Placement) {
 	if h.ProjectNumbers == nil {
 		h.ProjectNumbers = map[string]string{}
@@ -88,17 +88,17 @@ func (m *Marker) record(h *org.Placement) {
 	}
 }
 
-// Result is what the founding did: the marker, and the hand-off pull request's URL.
+// Result is what the creation did: the marker, and the hand-off pull request's URL.
 type Result struct {
 	Marker      Marker
 	PullRequest string
-	// Already says the organization was founded by an earlier run; this one only made
+	// Already says the organization was created by an earlier run; this one only made
 	// sure the hand-off pull request exists.
 	Already bool
 }
 
 // The seed's values, as the hand seed names them (0-bootstrap/README.md, "Seed with
-// gcloud"), which the founding makes the same way.
+// gcloud"), which the creation makes the same way.
 const (
 	terraformFolderName = "terraform"
 	bootKey             = "boot"
@@ -109,23 +109,23 @@ const (
 	folderAdminRole        = "roles/resourcemanager.folderAdmin"
 	folderEditorRole       = "roles/resourcemanager.folderEditor"
 	ownerRole              = "roles/owner"
-	// grantSettle is how long the founding waits for a new project's creator grant to
+	// grantSettle is how long the creation waits for a new project's creator grant to
 	// reach IAM before it gives up (the hand seed polls the same way).
 	grantSettle = 3 * time.Minute
 	grantPoll   = 10 * time.Second
 	// handOffBranch is the root organization repository's branch the hand-off pull
 	// request comes from, per organization.
-	handOffBranch = "found/"
+	handOffBranch = "create/"
 )
 
-// foundingFolderRoles are the roles the hand seed grants the break-glass account on the
+// creatingFolderRoles are the roles the hand seed grants the break-glass account on the
 // organization's folder for the first applies (0-bootstrap/README.md, "Seed with gcloud"),
-// which the founding grants its identity the same way: Project Creator for the boot
+// which the creation grants its identity the same way: Project Creator for the boot
 // project and 1-org's projects, Organization Policy Administrator for 1-org's policies on
 // its folders, and Tag Administrator for the tag keys 1-org makes in the environment
 // projects. Its Folder Admin, a creator's, covers the rest; the withdrawal takes all of
 // it off.
-var foundingFolderRoles = []string{bootProjectRoleCreator, orgPolicyAdminRole, tagAdminRole}
+var creatingFolderRoles = []string{bootProjectRoleCreator, orgPolicyAdminRole, tagAdminRole}
 
 // services are the APIs the hand seed enables in a boot project.
 var services = []string{
@@ -134,19 +134,19 @@ var services = []string{
 	"serviceusage.googleapis.com", "storage.googleapis.com",
 }
 
-// Run founds the organization the request names, or makes sure a founded one is handed
+// Run creates the organization the request names, or makes sure a created one is handed
 // off, saying each step on out.
 func Run(ctx context.Context, clients *Clients, req *Request, out io.Writer) (*Result, error) {
 	if err := clients.ready(); err != nil {
 		return nil, err
 	}
-	f := &founding{clients: clients, req: req, out: out, gh: clients.GitHub(req.Token)}
+	f := &creation{clients: clients, req: req, out: out, gh: clients.GitHub(req.Token)}
 	marker, err := f.readMarker(ctx)
 	if err != nil {
 		return nil, err
 	}
 	if marker != nil {
-		fmt.Fprintf(out, "%s was founded on %s (folder %s, boot project %s): nothing to make.\n", req.Record.Prefix, marker.FoundedAt, marker.OrganizationFolder, marker.BootProject)
+		fmt.Fprintf(out, "%s was created on %s (folder %s, boot project %s): nothing to make.\n", req.Record.Prefix, marker.CreatedAt, marker.OrganizationFolder, marker.BootProject)
 		h, err := f.record()
 		if err != nil {
 			return nil, err
@@ -160,7 +160,7 @@ func Run(ctx context.Context, clients *Clients, req *Request, out io.Writer) (*R
 		return &Result{Marker: *marker, PullRequest: url, Already: true}, nil
 	}
 
-	return f.found(ctx)
+	return f.create(ctx)
 }
 
 func (c *Clients) ready() error {
@@ -176,25 +176,25 @@ func (c *Clients) ready() error {
 	}
 	for _, seam := range seams {
 		if seam.nil {
-			return errors.Newf("no %s is wired for the founding", seam.name)
+			return errors.Newf("no %s is wired for the creation", seam.name)
 		}
 	}
 
 	return nil
 }
 
-// founding is one run's state.
-type founding struct {
+// creation is one run's state.
+type creation struct {
 	clients *Clients
 	req     *Request
 	out     io.Writer
 	gh      *github.Client
 }
 
-// record reads the organization's founding record and fills it from the root
+// record reads the organization's record and fills it from the root
 // organization's placement, so that it is complete.
-func (f *founding) record() (*org.Placement, error) {
-	h, err := org.ReadFounding(f.req.RootDir, f.req.Record.Prefix)
+func (f *creation) record() (*org.Placement, error) {
+	h, err := org.ReadRecord(f.req.RootDir, f.req.Record.Prefix)
 	if err != nil {
 		return nil, err
 	}
@@ -202,13 +202,13 @@ func (f *founding) record() (*org.Placement, error) {
 		return nil, err
 	}
 	if h.Projects["boot"] != f.req.Record.BootProject {
-		return nil, errors.Newf("%s records boot project %s and placement.json's hostingOrganizations entry %s: bedrock org found %s brings them together", org.FoundingPlacementPath(f.req.RootDir, h.Prefix), h.Projects["boot"], f.req.Record.BootProject, h.Prefix)
+		return nil, errors.Newf("%s records boot project %s and placement.json's hostingOrganizations entry %s: bedrock org create %s brings them together", org.RecordPath(f.req.RootDir, h.Prefix), h.Projects["boot"], f.req.Record.BootProject, h.Prefix)
 	}
 
 	return h, nil
 }
 
-func (f *founding) readMarker(ctx context.Context) (*Marker, error) {
+func (f *creation) readMarker(ctx context.Context) (*Marker, error) {
 	data, err := f.clients.Store.Read(ctx, f.req.Root.StateBucket, MarkerObject(f.req.Record.Prefix))
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, nil
@@ -225,17 +225,17 @@ func (f *founding) readMarker(ctx context.Context) (*Marker, error) {
 }
 
 // found makes the organization: the seed, then the foundation on it.
-func (f *founding) found(ctx context.Context) (*Result, error) {
+func (f *creation) create(ctx context.Context) (*Result, error) {
 	h, err := f.record()
 	if err != nil {
 		return nil, err
 	}
-	g, err := f.clients.Google(ctx, f.req.Root.FoundingIdentity())
+	g, err := f.clients.Google(ctx, f.req.Root.CreatingIdentity())
 	if err != nil {
 		return nil, err
 	}
 	defer g.Close()
-	fmt.Fprintf(f.out, "=== founding %s as %s ===\n", h.Prefix, f.req.Root.FoundingIdentity())
+	fmt.Fprintf(f.out, "=== creation %s as %s ===\n", h.Prefix, f.req.Root.CreatingIdentity())
 	seed, number, err := f.seed(ctx, g, h)
 	if err != nil {
 		return nil, err
@@ -246,18 +246,18 @@ func (f *founding) found(ctx context.Context) (*Result, error) {
 }
 
 // seed does what the hand seed does: the organization's folder at the organization node
-// (with the roles the first applies need for the founding identity itself, since a
+// (with the roles the first applies need for the creating identity itself, since a
 // folder's administrator creates no project), the terraform folder, the boot project with its billing link and
 // its APIs, the boot identity, the state bucket, the boot identity's roles and the
 // break-glass account's Folder Admin on the folder, and the boot identity's policy
 // administration of the shared secrets. It answers the folders and the project's number.
-func (f *founding) seed(ctx context.Context, g Google, h *org.Placement) (*org.Seed, string, error) {
+func (f *creation) seed(ctx context.Context, g Google, h *org.Placement) (*org.Seed, string, error) {
 	organizationFolder, err := f.folder(ctx, g, "organizations/"+h.OrganizationID, h.Prefix)
 	if err != nil {
 		return nil, "", err
 	}
-	for _, role := range foundingFolderRoles {
-		if err := g.GrantFolder(ctx, organizationFolder, role, f.req.Root.FoundingIdentityMember()); err != nil {
+	for _, role := range creatingFolderRoles {
+		if err := g.GrantFolder(ctx, organizationFolder, role, f.req.Root.CreatingIdentityMember()); err != nil {
 			return nil, "", err
 		}
 	}
@@ -297,10 +297,10 @@ func (f *founding) seed(ctx context.Context, g Google, h *org.Placement) (*org.S
 
 // establish builds the foundation on the seed: the rendered repository, the repository
 // on GitHub, the first applies of 0-bootstrap and 1-org, the render again with the
-// projects 1-org made, the push, the founding identity's withdrawal, the marker and the
+// projects 1-org made, the push, the creating identity's withdrawal, the marker and the
 // hand-off.
-func (f *founding) establish(ctx context.Context, g Google, h *org.Placement, seed *org.Seed, number string) (*Result, error) {
-	dir, err := os.MkdirTemp("", "bedrock-found-"+h.Prefix+"-")
+func (f *creation) establish(ctx context.Context, g Google, h *org.Placement, seed *org.Seed, number string) (*Result, error) {
+	dir, err := os.MkdirTemp("", "bedrock-create-"+h.Prefix+"-")
 	if err != nil {
 		return nil, errors.Wrap(err, "os.MkdirTemp()")
 	}
@@ -332,12 +332,12 @@ func (f *founding) establish(ctx context.Context, g Google, h *org.Placement, se
 	}
 	marker := Marker{
 		Prefix: h.Prefix, OrganizationFolder: seed.OrganizationFolder, TerraformFolder: seed.TerraformFolder, BootProject: h.Projects[bootKey], BootProjectNumber: number,
-		StateBucket: h.StateBucket, Projects: h.Projects, ProjectNumbers: h.ProjectNumbers, Repository: repository, FoundedAt: time.Now().UTC().Format(time.RFC3339), FoundedFrom: f.req.Commit,
+		StateBucket: h.StateBucket, Projects: h.Projects, ProjectNumbers: h.ProjectNumbers, Repository: repository, CreatedAt: time.Now().UTC().Format(time.RFC3339), CreatedFrom: f.req.Commit,
 	}
 	if err := f.writeMarker(ctx, &marker); err != nil {
 		return nil, err
 	}
-	fmt.Fprintf(f.out, "Founded %s: folder %s, boot project %s (%s), repository %s at %s; the founding identity holds nothing under the folder now.\n", h.Prefix, seed.OrganizationFolder, h.Projects["boot"], number, repository, short(commit))
+	fmt.Fprintf(f.out, "Created %s: folder %s, boot project %s (%s), repository %s at %s; the creating identity holds nothing under the folder now.\n", h.Prefix, seed.OrganizationFolder, h.Projects["boot"], number, repository, short(commit))
 	url, err := f.handOff(ctx, h, &marker)
 	if err != nil {
 		return nil, err
@@ -347,7 +347,7 @@ func (f *founding) establish(ctx context.Context, g Google, h *org.Placement, se
 }
 
 // folder finds or makes the folder named under the parent.
-func (f *founding) folder(ctx context.Context, g Google, parent, name string) (string, error) {
+func (f *creation) folder(ctx context.Context, g Google, parent, name string) (string, error) {
 	id, err := g.FindFolder(ctx, parent, name)
 	if err != nil {
 		return "", err
@@ -368,8 +368,8 @@ func (f *founding) folder(ctx context.Context, g Google, parent, name string) (s
 
 // project finds or makes the boot project under the terraform folder, links it to the
 // billing account and enables its APIs, and answers its number. A project just made is
-// not readable by its creator at once; the founding waits for the grant.
-func (f *founding) project(ctx context.Context, g Google, h *org.Placement, terraformFolder string) (string, error) {
+// not readable by its creator at once; the creation waits for the grant.
+func (f *creation) project(ctx context.Context, g Google, h *org.Placement, terraformFolder string) (string, error) {
 	id := h.Projects["boot"]
 	exists, err := g.ProjectExists(ctx, id)
 	if err != nil {
@@ -398,7 +398,7 @@ func (f *founding) project(ctx context.Context, g Google, h *org.Placement, terr
 
 // settled runs the call until it is not refused for a permission the creator holds but
 // IAM has not seen yet, up to grantSettle.
-func (f *founding) settled(ctx context.Context, call func() error) error {
+func (f *creation) settled(ctx context.Context, call func() error) error {
 	deadline := time.Now().Add(grantSettle)
 	for {
 		err := call()
@@ -412,7 +412,7 @@ func (f *founding) settled(ctx context.Context, call func() error) error {
 	}
 }
 
-func (f *founding) serviceAccount(ctx context.Context, g Google, project, prefix, email string) error {
+func (f *creation) serviceAccount(ctx context.Context, g Google, project, prefix, email string) error {
 	exists, err := g.ServiceAccountExists(ctx, email)
 	if err != nil {
 		return err
@@ -430,7 +430,7 @@ func (f *founding) serviceAccount(ctx context.Context, g Google, project, prefix
 	return nil
 }
 
-func (f *founding) bucket(ctx context.Context, g Google, h *org.Placement) error {
+func (f *creation) bucket(ctx context.Context, g Google, h *org.Placement) error {
 	exists, err := g.BucketExists(ctx, h.StateBucket)
 	if err != nil {
 		return err
@@ -449,10 +449,10 @@ func (f *founding) bucket(ctx context.Context, g Google, h *org.Placement) error
 }
 
 // render renders the new organization's repository into the directory, the seeded
-// tfvars carrying the folders and the project the founding made; rendered again once
+// tfvars carrying the folders and the project the creation made; rendered again once
 // 1-org has made the projects, so the layers name them (a seeded file already there is
 // kept, as a render keeps it).
-func (f *founding) render(h *org.Placement, seed *org.Seed, dir string) error {
+func (f *creation) render(h *org.Placement, seed *org.Seed, dir string) error {
 	files, err := org.RenderSeeded(h, seed)
 	if err != nil {
 		return err
@@ -464,14 +464,14 @@ func (f *founding) render(h *org.Placement, seed *org.Seed, dir string) error {
 	return h.Write(filepath.Join(dir, org.PlacementFile))
 }
 
-// withdraw takes the founding identity's creator grants off, what the hand trim takes off
+// withdraw takes the creating identity's creator grants off, what the hand trim takes off
 // the break-glass account (0-bootstrap/README.md, "Trimming the break-glass account"):
 // Folder Admin and Folder Editor on each folder 1-org made and on the terraform folder,
 // Owner on each project 1-org made and on the boot project, and on the organization's
 // folder the same two with the roles it granted itself for the first applies, last, so
 // that each removal is still its to make.
-func (f *founding) withdraw(ctx context.Context, g Google, seed *org.Seed, h *org.Placement, folders map[string]string) error {
-	member := f.req.Root.FoundingIdentityMember()
+func (f *creation) withdraw(ctx context.Context, g Google, seed *org.Seed, h *org.Placement, folders map[string]string) error {
+	member := f.req.Root.CreatingIdentityMember()
 	creator := []string{folderAdminRole, folderEditorRole}
 	for _, key := range sortedKeys(folders) {
 		if err := g.RevokeFolder(ctx, folders[key], member, creator); err != nil {
@@ -494,10 +494,10 @@ func (f *founding) withdraw(ctx context.Context, g Google, seed *org.Seed, h *or
 	if err := g.RevokeProject(ctx, h.Projects[bootKey], member, []string{ownerRole}); err != nil {
 		return err
 	}
-	if err := g.RevokeFolder(ctx, seed.OrganizationFolder, member, slices.Concat(creator, foundingFolderRoles)); err != nil {
+	if err := g.RevokeFolder(ctx, seed.OrganizationFolder, member, slices.Concat(creator, creatingFolderRoles)); err != nil {
 		return err
 	}
-	fmt.Fprintf(f.out, "Took the founding identity's grants off the %d folders and %d projects 1-org made, folder %s, project %s and folder %s.\n", len(folders), projects, seed.TerraformFolder, h.Projects[bootKey], seed.OrganizationFolder)
+	fmt.Fprintf(f.out, "Took the creating identity's grants off the %d folders and %d projects 1-org made, folder %s, project %s and folder %s.\n", len(folders), projects, seed.TerraformFolder, h.Projects[bootKey], seed.OrganizationFolder)
 
 	return nil
 }
@@ -513,7 +513,7 @@ func sortedKeys(m map[string]string) []string {
 	return keys
 }
 
-func (f *founding) writeMarker(ctx context.Context, m *Marker) error {
+func (f *creation) writeMarker(ctx context.Context, m *Marker) error {
 	data, err := json.MarshalIndent(m, "", "  ")
 	if err != nil {
 		return errors.Wrap(err, "json.MarshalIndent()")
@@ -521,7 +521,7 @@ func (f *founding) writeMarker(ctx context.Context, m *Marker) error {
 	if err := f.clients.Store.Write(ctx, f.req.Root.StateBucket, MarkerObject(m.Prefix), append(data, '\n')); err != nil {
 		return err
 	}
-	fmt.Fprintf(f.out, "Recorded the founding of %s in gs://%s/%s.\n", m.Prefix, f.req.Root.StateBucket, MarkerObject(m.Prefix))
+	fmt.Fprintf(f.out, "Recorded the creation of %s in gs://%s/%s.\n", m.Prefix, f.req.Root.StateBucket, MarkerObject(m.Prefix))
 
 	return nil
 }

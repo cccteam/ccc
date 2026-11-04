@@ -90,7 +90,7 @@ var seeded = map[string]bool{
 }
 
 // view is what the templates see: the placement and the phrases derived from it, and
-// the founding's seed when the render is a founding's (the folder ids the seeded tfvars
+// the creation's seed when the render is a creation's (the folder ids the seeded tfvars
 // carry; REPLACEME otherwise, for a person to fill in after a hand seed).
 type view struct {
 	*Placement
@@ -108,7 +108,7 @@ func (v *view) BootProjectID() string {
 }
 
 // OrganizationFolderID is the organization's folder id for 0-bootstrap's seeded tfvars:
-// the founding's, else REPLACEME.
+// the creation's, else REPLACEME.
 func (v *view) OrganizationFolderID() string {
 	if v.seed != nil && v.seed.OrganizationFolder != "" {
 		return v.seed.OrganizationFolder
@@ -865,9 +865,9 @@ func Render(p *Placement) ([]render.File, error) {
 	return RenderSeeded(p, nil)
 }
 
-// RenderSeeded renders the organization with the founding's seed in the seeded tfvars
-// (the folder ids and the boot project the founding made), for the repository the
-// founding pushes; a nil seed renders as Render does.
+// RenderSeeded renders the organization with the creation's seed in the seeded tfvars
+// (the folder ids and the boot project the creation made), for the repository the
+// creation pushes; a nil seed renders as Render does.
 func RenderSeeded(p *Placement, seed *Seed) ([]render.File, error) {
 	if err := p.Validate(); err != nil {
 		return nil, err

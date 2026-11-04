@@ -1,4 +1,4 @@
-package found_test
+package create_test
 
 import (
 	"bytes"
@@ -15,9 +15,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cccteam/ccc/bedrock/internal/create"
+	"github.com/cccteam/ccc/bedrock/internal/create/createtest"
 	"github.com/cccteam/ccc/bedrock/internal/deploy"
-	"github.com/cccteam/ccc/bedrock/internal/found"
-	"github.com/cccteam/ccc/bedrock/internal/found/foundtest"
 	"github.com/cccteam/ccc/bedrock/internal/github"
 	"github.com/cccteam/ccc/bedrock/internal/github/githubtest"
 	"github.com/cccteam/ccc/bedrock/internal/org"
@@ -29,7 +29,7 @@ const (
 	rootRepo      = "imr-root-infrastructure"
 	baseSHA       = "base1"
 	rootCommit    = "push7"
-	foundingEmail = "imr-found-gbl-tofu@imr-boot-gbl-core-c3d4.iam.gserviceaccount.com"
+	creatingEmail = "imr-create-gbl-tofu@imr-boot-gbl-core-c3d4.iam.gserviceaccount.com"
 	bootIdentity  = "serviceAccount:rgb-boot-gbl-tofu@rgb-boot-gbl-core-e5f6.iam.gserviceaccount.com"
 	policyAdmin   = "projects/imr-boot-gbl-core-c3d4/roles/secretPolicyAdmin"
 )
@@ -65,7 +65,7 @@ func checkout(t *testing.T) (string, *org.Placement) {
 		t.Fatal(err)
 	}
 	h := record(t, root)
-	path := org.FoundingPlacementPath(dir, "rgb")
+	path := org.RecordPath(dir, "rgb")
 	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
 		t.Fatal(err)
 	}
@@ -159,7 +159,7 @@ func (*fakeStore) Close() error {
 }
 
 type flow struct {
-	google *foundtest.FakeGoogle
+	google *createtest.FakeGoogle
 	runner *fakeRunner
 	store  *fakeStore
 	srv    *githubtest.Server
@@ -176,11 +176,11 @@ func newFlow(t *testing.T) *flow {
 		Files:    map[string]string{"tree0:placement.json": "{}", "tree0:README.md": "# imr\n"},
 	})
 
-	return &flow{google: foundtest.New(), runner: &fakeRunner{}, store: &fakeStore{objects: map[string]string{}}, srv: srv, repo: repo}
+	return &flow{google: createtest.New(), runner: &fakeRunner{}, store: &fakeStore{objects: map[string]string{}}, srv: srv, repo: repo}
 }
 
-func (f *flow) clients() *found.Clients {
-	return &found.Clients{
+func (f *flow) clients() *create.Clients {
+	return &create.Clients{
 		Google: f.google.Open,
 		GitHub: func(token string) *github.Client { return github.New(f.srv.URL, token) },
 		Exec:   f.runner,
@@ -189,16 +189,16 @@ func (f *flow) clients() *found.Clients {
 	}
 }
 
-func request(root *org.Placement, dir string) *found.Request {
-	return &found.Request{Root: root, RootDir: dir, Record: *root.HostingOrganization("rgb"), Token: "test-token", Commit: rootCommit}
+func request(root *org.Placement, dir string) *create.Request {
+	return &create.Request{Root: root, RootDir: dir, Record: *root.HostingOrganization("rgb"), Token: "test-token", Commit: rootCommit}
 }
 
-// TestRun founds rgb from the root organization imr: the seed by API (both folders, the
+// TestRun creates rgb from the root organization imr: the seed by API (both folders, the
 // boot project with its billing link and APIs, the boot identity, the bucket, the grants
 // on the folder and on the four shared secrets), the repository with the rendered
 // foundation pushed on its initial commit (the seeded tfvars carrying the folder ids and
-// the boot project), the first apply as the founding identity against the new bucket,
-// the founding identity's withdrawal, the marker and the hand-off pull request; and a
+// the boot project), the first apply as the creating identity against the new bucket,
+// the creating identity's withdrawal, the marker and the hand-off pull request; and a
 // second run makes nothing and opens nothing.
 func TestRun(t *testing.T) {
 	t.Parallel()
@@ -206,7 +206,7 @@ func TestRun(t *testing.T) {
 	f := newFlow(t)
 	dir, root := checkout(t)
 	var out bytes.Buffer
-	result, err := found.Run(t.Context(), f.clients(), request(root, dir), &out)
+	result, err := create.Run(t.Context(), f.clients(), request(root, dir), &out)
 	if err != nil {
 		t.Fatalf("Run() error = %v; output:\n%s", err, out.String())
 	}
@@ -225,13 +225,13 @@ func TestRun(t *testing.T) {
 	if got := f.google.Made(); !slices.Equal(got, wantMade) {
 		t.Errorf("made %v, want %v", got, wantMade)
 	}
-	if want := []string{foundingEmail}; !slices.Equal(f.google.Identities, want) {
+	if want := []string{creatingEmail}; !slices.Equal(f.google.Identities, want) {
 		t.Errorf("Google opened as %v, want %v", f.google.Identities, want)
 	}
 	wantGrants := []string{
-		"folders/" + orgFolder + " roles/resourcemanager.projectCreator serviceAccount:" + foundingEmail,
-		"folders/" + orgFolder + " roles/orgpolicy.policyAdmin serviceAccount:" + foundingEmail,
-		"folders/" + orgFolder + " roles/resourcemanager.tagAdmin serviceAccount:" + foundingEmail,
+		"folders/" + orgFolder + " roles/resourcemanager.projectCreator serviceAccount:" + creatingEmail,
+		"folders/" + orgFolder + " roles/orgpolicy.policyAdmin serviceAccount:" + creatingEmail,
+		"folders/" + orgFolder + " roles/resourcemanager.tagAdmin serviceAccount:" + creatingEmail,
 		"folders/" + orgFolder + " roles/cloudbuild.builds.editor " + bootIdentity,
 		"folders/" + orgFolder + " roles/serviceusage.serviceUsageAdmin " + bootIdentity,
 		"folders/" + orgFolder + " roles/resourcemanager.folderAdmin user:seed@imp.example",
@@ -247,42 +247,42 @@ func TestRun(t *testing.T) {
 	if n := len(f.google.Grants); n != 3+len(org.BootLayerRoles)+1+4 {
 		t.Errorf("%d grants, want %d (the three roles for the first applies, the boot roles, Folder Admin, four secrets)", n, 3+len(org.BootLayerRoles)+1+4)
 	}
-	creator := " serviceAccount:" + foundingEmail + " roles/resourcemanager.folderAdmin+roles/resourcemanager.folderEditor"
+	creator := " serviceAccount:" + creatingEmail + " roles/resourcemanager.folderAdmin+roles/resourcemanager.folderEditor"
 	wantRevoked := []string{
 		"folders/900000000014" + creator, "folders/900000000011" + creator, "folders/900000000013" + creator, "folders/900000000012" + creator,
-		"projects/rgb-shr-gbl-core-e5f6 serviceAccount:" + foundingEmail + " roles/owner",
-		"projects/rgb-net-gbl-core-e5f6 serviceAccount:" + foundingEmail + " roles/owner",
-		"projects/rgb-spn-gbl-core-e5f6 serviceAccount:" + foundingEmail + " roles/owner",
-		"projects/rgb-tst-gbl-core-e5f6 serviceAccount:" + foundingEmail + " roles/owner",
-		"projects/rgb-stg-gbl-core-e5f6 serviceAccount:" + foundingEmail + " roles/owner",
-		"projects/rgb-prd-gbl-core-e5f6 serviceAccount:" + foundingEmail + " roles/owner",
+		"projects/rgb-shr-gbl-core-e5f6 serviceAccount:" + creatingEmail + " roles/owner",
+		"projects/rgb-net-gbl-core-e5f6 serviceAccount:" + creatingEmail + " roles/owner",
+		"projects/rgb-spn-gbl-core-e5f6 serviceAccount:" + creatingEmail + " roles/owner",
+		"projects/rgb-tst-gbl-core-e5f6 serviceAccount:" + creatingEmail + " roles/owner",
+		"projects/rgb-stg-gbl-core-e5f6 serviceAccount:" + creatingEmail + " roles/owner",
+		"projects/rgb-prd-gbl-core-e5f6 serviceAccount:" + creatingEmail + " roles/owner",
 		"folders/" + tfFolder + creator,
-		"projects/rgb-boot-gbl-core-e5f6 serviceAccount:" + foundingEmail + " roles/owner",
+		"projects/rgb-boot-gbl-core-e5f6 serviceAccount:" + creatingEmail + " roles/owner",
 		"folders/" + orgFolder + creator + "+roles/resourcemanager.projectCreator+roles/orgpolicy.policyAdmin+roles/resourcemanager.tagAdmin",
 	}
 	if !slices.Equal(f.google.Revoked, wantRevoked) {
 		t.Errorf("revoked:\n%s\nwant:\n%s", strings.Join(f.google.Revoked, "\n"), strings.Join(wantRevoked, "\n"))
 	}
-	// The first applies, as the founding identity, in the rendered 0-bootstrap and 1-org,
+	// The first applies, as the creating identity, in the rendered 0-bootstrap and 1-org,
 	// the second with the infrastructure app's token, and 1-org's outputs read after it.
 	if len(f.runner.ran) != 4 {
 		t.Fatalf("%d programs ran, want tofu init and apply twice: %v", len(f.runner.ran), f.runner.ran)
 	}
 	init, apply := f.runner.ran[0], f.runner.ran[1]
-	if want := "tofu init -input=false -no-color -backend-config=prefix=0-bootstrap -backend-config=impersonate_service_account=" + foundingEmail; init.String() != want {
+	if want := "tofu init -input=false -no-color -backend-config=prefix=0-bootstrap -backend-config=impersonate_service_account=" + creatingEmail; init.String() != want {
 		t.Errorf("init = %q, want %q", init.String(), want)
 	}
 	orgInit, orgApply := f.runner.ran[2], f.runner.ran[3]
-	if want := "tofu init -input=false -no-color -backend-config=prefix=1-org -backend-config=impersonate_service_account=" + foundingEmail; orgInit.String() != want || filepath.Base(orgInit.Dir) != "1-org" {
+	if want := "tofu init -input=false -no-color -backend-config=prefix=1-org -backend-config=impersonate_service_account=" + creatingEmail; orgInit.String() != want || filepath.Base(orgInit.Dir) != "1-org" {
 		t.Errorf("1-org init = %q in %s, want %q", orgInit.String(), orgInit.Dir, want)
 	}
-	if filepath.Base(orgApply.Dir) != "1-org" || !slices.Contains(orgApply.Env, "GITHUB_TOKEN=test-token") || !slices.Contains(orgApply.Env, "GOOGLE_IMPERSONATE_SERVICE_ACCOUNT="+foundingEmail) {
+	if filepath.Base(orgApply.Dir) != "1-org" || !slices.Contains(orgApply.Env, "GITHUB_TOKEN=test-token") || !slices.Contains(orgApply.Env, "GOOGLE_IMPERSONATE_SERVICE_ACCOUNT="+creatingEmail) {
 		t.Errorf("1-org apply = %q in %s with %v", orgApply.String(), orgApply.Dir, orgApply.Env)
 	}
 	if len(f.runner.outputsRead) != 1 || f.runner.outputsRead[0].String() != "tofu output -no-color -json" || filepath.Base(f.runner.outputsRead[0].Dir) != "1-org" {
 		t.Errorf("outputs read: %v", f.runner.outputsRead)
 	}
-	if want := "tofu apply -input=false -no-color -auto-approve"; apply.String() != want || filepath.Base(apply.Dir) != "0-bootstrap" || !slices.Contains(apply.Env, "GOOGLE_IMPERSONATE_SERVICE_ACCOUNT="+foundingEmail) {
+	if want := "tofu apply -input=false -no-color -auto-approve"; apply.String() != want || filepath.Base(apply.Dir) != "0-bootstrap" || !slices.Contains(apply.Env, "GOOGLE_IMPERSONATE_SERVICE_ACCOUNT="+creatingEmail) {
 		t.Errorf("apply = %q in %s with %v", apply.String(), apply.Dir, apply.Env)
 	}
 	// The repository and its first push.
@@ -316,11 +316,11 @@ func TestRun(t *testing.T) {
 		t.Error("the initial README is gone from the tree")
 	}
 	// The marker and the hand-off.
-	var marker found.Marker
-	if err := json.Unmarshal([]byte(f.store.objects["applied/found/rgb"]), &marker); err != nil {
+	var marker create.Marker
+	if err := json.Unmarshal([]byte(f.store.objects["applied/created/rgb"]), &marker); err != nil {
 		t.Fatalf("no marker: %v; objects %v", err, f.store.objects)
 	}
-	if marker.OrganizationFolder != orgFolder || marker.BootProject != "rgb-boot-gbl-core-e5f6" || marker.Repository != owner+"/rgb-infrastructure" || marker.FoundedFrom != rootCommit {
+	if marker.OrganizationFolder != orgFolder || marker.BootProject != "rgb-boot-gbl-core-e5f6" || marker.Repository != owner+"/rgb-infrastructure" || marker.CreatedFrom != rootCommit {
 		t.Errorf("marker = %+v", marker)
 	}
 	if marker.Projects["tst"] != "rgb-tst-gbl-core-e5f6" || marker.ProjectNumbers["tst"] != "100000000104" || len(marker.Projects) != 7 {
@@ -329,33 +329,33 @@ func TestRun(t *testing.T) {
 	if result.PullRequest != "https://github.com/"+owner+"/"+rootRepo+"/pull/1" || result.Already {
 		t.Errorf("result = %+v", result)
 	}
-	if len(f.repo.PullRequests) != 1 || f.repo.PullRequests[0].Head.Ref != "found/rgb" {
+	if len(f.repo.PullRequests) != 1 || f.repo.PullRequests[0].Head.Ref != "create/rgb" {
 		t.Fatalf("pull requests %v", f.repo.PullRequests)
 	}
-	handOffTree := f.repo.Trees[f.repo.Refs["refs/heads/found/rgb"].SHA]
+	handOffTree := f.repo.Trees[f.repo.Refs["refs/heads/create/rgb"].SHA]
 	if !strings.Contains(f.repo.Files[handOffTree+":placement.json"], `"folder": "`+orgFolder+`"`) {
 		t.Errorf("the hand-off's placement.json lacks the folder:\n%s", f.repo.Files[handOffTree+":placement.json"])
 	}
-	founded := f.repo.Files[handOffTree+":organizations/rgb/placement.json"]
-	if !strings.Contains(founded, `"boot": "100000000001"`) || !strings.Contains(founded, `"spn": "rgb-spn-gbl-core-e5f6"`) {
-		t.Errorf("the hand-off's record lacks the projects:\n%s", founded)
+	created := f.repo.Files[handOffTree+":organizations/rgb/placement.json"]
+	if !strings.Contains(created, `"boot": "100000000001"`) || !strings.Contains(created, `"spn": "rgb-spn-gbl-core-e5f6"`) {
+		t.Errorf("the hand-off's record lacks the projects:\n%s", created)
 	}
-	if body := f.srv.Bodies[0]; !strings.Contains(body, "folder `"+orgFolder+"`") || !strings.Contains(body, "the founding identity's own grants taken off") || !strings.Contains(body, "of its `1-org`") {
+	if body := f.srv.Bodies[0]; !strings.Contains(body, "folder `"+orgFolder+"`") || !strings.Contains(body, "the creating identity's own grants taken off") || !strings.Contains(body, "of its `1-org`") {
 		t.Errorf("the hand-off's body:\n%s", body)
 	}
 	wantOut := []string{
-		"=== founding rgb as " + foundingEmail + " ===\n",
+		"=== creation rgb as " + creatingEmail + " ===\n",
 		"Created folder rgb under organizations/123456789012: " + orgFolder + ".\n",
 		"Created project rgb-boot-gbl-core-e5f6 under folder " + tfFolder + ".\n",
 		"Granted the boot identity its 9 roles and the break-glass account Folder Admin on folder " + orgFolder + ".\n",
 		"Granted the boot identity the policy administration of the 4 shared secrets.\n",
 		"Created repository " + owner + "/rgb-infrastructure, private, default branch master.\n",
-		"=== first apply of rgb's 0-bootstrap as " + foundingEmail + ", state in gs://rgb-boot-gbl-state-e5f6/0-bootstrap ===\n",
-		"=== first apply of rgb's 1-org as " + foundingEmail + ", state in gs://rgb-boot-gbl-state-e5f6/1-org ===\n",
+		"=== first apply of rgb's 0-bootstrap as " + creatingEmail + ", state in gs://rgb-boot-gbl-state-e5f6/0-bootstrap ===\n",
+		"=== first apply of rgb's 1-org as " + creatingEmail + ", state in gs://rgb-boot-gbl-state-e5f6/1-org ===\n",
 		"Applied rgb's 1-org and recorded its 6 projects in the placement (projects, projectNumbers); it made 4 folders.\n",
 		"Pushed the foundation to " + owner + "/rgb-infrastructure at ",
-		"Took the founding identity's grants off the 4 folders and 6 projects 1-org made, folder " + tfFolder + ", project rgb-boot-gbl-core-e5f6 and folder " + orgFolder + ".\n",
-		"Recorded the founding of rgb in gs://imr-boot-gbl-state-c3d4/applied/found/rgb.\n",
+		"Took the creating identity's grants off the 4 folders and 6 projects 1-org made, folder " + tfFolder + ", project rgb-boot-gbl-core-e5f6 and folder " + orgFolder + ".\n",
+		"Recorded the creation of rgb in gs://imr-boot-gbl-state-c3d4/applied/created/rgb.\n",
 		"Opened the hand-off pull request of rgb: https://github.com/" + owner + "/" + rootRepo + "/pull/1.\n",
 	}
 	for _, want := range wantOut {
@@ -364,22 +364,22 @@ func TestRun(t *testing.T) {
 		}
 	}
 
-	// A second run: founded already, the hand-off open, nothing made.
+	// A second run: created already, the hand-off open, nothing made.
 	calls, grants := len(f.google.Calls), len(f.google.Grants)
 	out.Reset()
-	again, err := found.Run(t.Context(), f.clients(), request(root, dir), &out)
+	again, err := create.Run(t.Context(), f.clients(), request(root, dir), &out)
 	if err != nil {
 		t.Fatalf("Run() again error = %v; output:\n%s", err, out.String())
 	}
 	if !again.Already || again.PullRequest != result.PullRequest || len(f.google.Calls) != calls || len(f.google.Grants) != grants || len(f.repo.PullRequests) != 1 || len(f.runner.ran) != 4 {
 		t.Errorf("the second run made something: result %+v, %d calls (was %d), %d pull requests, %d programs", again, len(f.google.Calls), calls, len(f.repo.PullRequests), len(f.runner.ran))
 	}
-	if !strings.Contains(out.String(), "rgb was founded on "+marker.FoundedAt+" (folder "+orgFolder+", boot project rgb-boot-gbl-core-e5f6): nothing to make.\n") {
+	if !strings.Contains(out.String(), "rgb was created on "+marker.CreatedAt+" (folder "+orgFolder+", boot project rgb-boot-gbl-core-e5f6): nothing to make.\n") {
 		t.Errorf("output:\n%s", out.String())
 	}
 }
 
-// TestRunResumes founds an organization a run left half made: the folders, the project,
+// TestRunResumes creates an organization a run left half made: the folders, the project,
 // the identity and the repository exist, so none is made again, and the rest follows.
 func TestRunResumes(t *testing.T) {
 	t.Parallel()
@@ -396,7 +396,7 @@ func TestRunResumes(t *testing.T) {
 		Trees: map[string]string{"init1": "treeinit"}, Files: map[string]string{"treeinit:README.md": "# rgb-infrastructure\n"},
 	})
 	var out bytes.Buffer
-	result, err := found.Run(t.Context(), f.clients(), request(root, dir), &out)
+	result, err := create.Run(t.Context(), f.clients(), request(root, dir), &out)
 	if err != nil {
 		t.Fatalf("Run() error = %v; output:\n%s", err, out.String())
 	}
@@ -427,7 +427,7 @@ func TestRunResumes(t *testing.T) {
 }
 
 // TestRunRefusals: a record whose boot project is not the listing's, and a seam that
-// refuses a step, each stop the founding with the step named, and nothing after it runs.
+// refuses a step, each stop the creation with the step named, and nothing after it runs.
 func TestRunRefusals(t *testing.T) {
 	t.Parallel()
 
@@ -441,7 +441,7 @@ func TestRunRefusals(t *testing.T) {
 			prepare: func(_ *flow, root *org.Placement) {
 				root.HostingOrganization("rgb").BootProject = "rgb-boot-gbl-core-0000"
 			},
-			wantErr: "records boot project rgb-boot-gbl-core-e5f6 and placement.json's hostingOrganizations entry rgb-boot-gbl-core-0000: bedrock org found rgb brings them together",
+			wantErr: "records boot project rgb-boot-gbl-core-e5f6 and placement.json's hostingOrganizations entry rgb-boot-gbl-core-0000: bedrock org create rgb brings them together",
 		},
 		{
 			name: "a folder that cannot be made",
@@ -459,12 +459,12 @@ func TestRunRefusals(t *testing.T) {
 			dir, root := checkout(t)
 			tt.prepare(f, root)
 			var out bytes.Buffer
-			_, err := found.Run(t.Context(), f.clients(), request(root, dir), &out)
+			_, err := create.Run(t.Context(), f.clients(), request(root, dir), &out)
 			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 				t.Fatalf("Run() error = %v, want %q", err, tt.wantErr)
 			}
 			if len(f.runner.ran) != 0 || len(f.srv.Created) != 0 || len(f.store.objects) != 0 {
-				t.Errorf("the founding went on after the refusal: %v, %v, %v", f.runner.ran, f.srv.Created, f.store.objects)
+				t.Errorf("the creation went on after the refusal: %v, %v, %v", f.runner.ran, f.srv.Created, f.store.objects)
 			}
 		})
 	}
