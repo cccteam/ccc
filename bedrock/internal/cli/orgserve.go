@@ -65,6 +65,9 @@ func (d deps) serveApplication(cmd *cobra.Command, dir, app string, envs []strin
 	if err != nil {
 		return err
 	}
+	if err := hostingOnly(p, "serve"); err != nil {
+		return err
+	}
 	path := orgPlacementPath(dir, "")
 	if err := d.orgPinned(p, path); err != nil {
 		return err
@@ -89,7 +92,7 @@ func (d deps) serveApplication(cmd *cobra.Command, dir, app string, envs []strin
 	if err != nil {
 		return err
 	}
-	written, err := org.Write(files, dir)
+	written, err := org.Write(p, files, dir)
 	if err != nil {
 		return err
 	}
@@ -109,6 +112,9 @@ func (d deps) serveOrg(cmd *cobra.Command, dir string) error {
 	out, ctx := cmd.OutOrStdout(), cmd.Context()
 	p, err := orgPlacement(dir, "")
 	if err != nil {
+		return err
+	}
+	if err := hostingOnly(p, "serve"); err != nil {
 		return err
 	}
 	path := orgPlacementPath(dir, "")
@@ -131,7 +137,7 @@ func (d deps) serveOrg(cmd *cobra.Command, dir string) error {
 	if err != nil {
 		return err
 	}
-	written, err := org.Write(files, dir)
+	written, err := org.Write(p, files, dir)
 	if err != nil {
 		return err
 	}

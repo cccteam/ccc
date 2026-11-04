@@ -60,14 +60,18 @@ func ApplyByHand(ctx context.Context, exec deploy.Runner, dir, layer string, out
 // handTofu drives tofu in one layer's directory as the person running the command: no
 // identity is impersonated, the data directory is under the command's working files so
 // that the checkout's own init stays as it was (empty for a copy, which keeps its own),
-// and the environment carries the GitHub token for 1-org.
+// and the environment carries the GitHub token for the second layer. declaresDestroy
+// marks a layer that declares the destroy variable (0-bootstrap and 1-org; 1-dns declares
+// no project and no folder, so no variable), which its apply and destroy then set: tofu
+// refuses a value for a variable the layer does not declare.
 type handTofu struct {
-	exec  deploy.Runner
-	layer string
-	dir   string
-	data  string
-	env   []string
-	out   io.Writer
+	exec            deploy.Runner
+	layer           string
+	dir             string
+	data            string
+	env             []string
+	out             io.Writer
+	declaresDestroy bool
 }
 
 // command is one tofu command in the layer's directory.

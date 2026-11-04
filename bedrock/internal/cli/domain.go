@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/cccteam/ccc/bedrock/internal/domain"
+	"github.com/cccteam/ccc/bedrock/internal/org"
 	"github.com/cccteam/ccc/bedrock/internal/prompt"
 )
 
@@ -65,6 +66,17 @@ zoneReplacement is set in placement.json (2-net's zones rendered without prevent
 for making a zone again), a check that passes on every domain says the value can be cleared
 now, and bedrock org render written.
 
+In a zones organization (kind in placement.json) the check reads each domain's zone in the
+boot project (1-dns's dns.tf, which holds the domain's delegation alone: no address, no
+certificate) and resolves the domain's delegation the same way, with the same steps printed
+for a domain as registered (the registrar) and for a label of a domain served elsewhere
+(the NS records at its DNS provider); then, once the domain is delegated, it asks the world
+for each label handed onward (domains.<domain>.labels in placement.json) and says whether
+the name answers the four name servers of its zone in the hosting organization, or that the
+servers do not answer for it yet (the zone there not applied, or the servers recorded not
+its), or what it answers instead. It reads projects.boot. Every domain and every label
+passing is the check passing.
+
 The zones are read with the run's Google credentials (gcloud auth application-default login),
 which need to read the network project's zones (roles/dns.reader). It exits 1 when anything
 is missing or refused on any domain.`,
@@ -74,16 +86,16 @@ is missing or refused on any domain.`,
 			if err != nil {
 				return err
 			}
-			project, zone := p.AppsZone()
-			if project == "" {
-				return errors.New("placement.json records no network project (projects.net): record 1-org's project_ids in placement.json (projects), then check again")
-			}
-			requests := []domain.CheckRequest{{Domain: p.AppsDomain, Project: project, Zone: zone, Dir: dir}}
-			for _, vanity := range p.VanityDomains {
-				_, zone := p.VanityZone(vanity)
-				requests = append(requests, domain.CheckRequest{Domain: vanity, Project: project, Zone: zone, Dir: dir, Vanity: true})
+			requests, err := checkRequests(p, dir)
+			if err != nil {
+				return err
 			}
 			out := cmd.OutOrStdout()
+			if len(requests) == 0 {
+				fmt.Fprintln(out, "placement.json names no domain (domains): nothing to check until one is delegated to this organization.")
+
+				return nil
+			}
 			passed := true
 			for i, req := range requests {
 				r, err := domain.Check(cmd.Context(), d.lookups, req)
@@ -110,6 +122,41 @@ is missing or refused on any domain.`,
 	cmd.Flags().StringVar(&placement, "placement", "", "placement file (default: placement.json in the repository root)")
 
 	return cmd
+}
+
+// checkRequests is what domain check checks, by the organization's kind: the apps domain
+// and each vanity domain in the network project, or each domain of a zones organization
+// in the boot project with the labels its zone hands onward. It refuses a placement that
+// does not record the project yet.
+func checkRequests(p *org.Placement, dir string) ([]domain.CheckRequest, error) {
+	if p.Zones() {
+		project := p.ZoneProject()
+		if project == "" {
+			return nil, errors.New("placement.json records no boot project (projects.boot): record the seed's value there, then check again")
+		}
+		var requests []domain.CheckRequest
+		for _, d := range p.DomainNames() {
+			var labels []domain.Label
+			for _, name := range p.LabelNames(d) {
+				to := p.Domains[d].Labels[name]
+				labels = append(labels, domain.Label{Name: name, Organization: to.Organization, NameServers: to.NameServers})
+			}
+			requests = append(requests, domain.CheckRequest{Domain: d, Project: project, Zone: p.ZoneName(d), Dir: dir, Delegating: true, Labels: labels})
+		}
+
+		return requests, nil
+	}
+	project, zone := p.AppsZone()
+	if project == "" {
+		return nil, errors.New("placement.json records no network project (projects.net): record 1-org's project_ids in placement.json (projects), then check again")
+	}
+	requests := []domain.CheckRequest{{Domain: p.AppsDomain, Project: project, Zone: zone, Dir: dir}}
+	for _, vanity := range p.VanityDomains {
+		_, zone := p.VanityZone(vanity)
+		requests = append(requests, domain.CheckRequest{Domain: vanity, Project: project, Zone: zone, Dir: dir, Vanity: true})
+	}
+
+	return requests, nil
 }
 
 // zoneReplacementCleared is what the check says when zoneReplacement is set in the

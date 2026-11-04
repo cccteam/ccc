@@ -100,7 +100,7 @@ func (r *run) plannedRuns(ctx context.Context) ([]org.LayerRun, error) {
 	if err != nil {
 		return nil, err
 	}
-	layers := layersOf(files)
+	layers := layersOf(r.p.Layers(), files)
 	fmt.Fprintf(r.out, "The pull request changes %d file(s) against %s; layers to plan: %s.\n", len(files), base, nothingOr(layers))
 
 	return r.runsOf(layers), nil
@@ -122,17 +122,18 @@ func (r *run) namedRuns() (runs []org.LayerRun, named bool, err error) {
 		}
 	}
 	if len(runs) == 0 {
-		return nil, true, errors.Newf("%s is %s and %s is %q: no such run; the layers are %s, and %s names one of %s for 2-env", layerSub, layer, environmentSub, env, strings.Join(org.Layers, ", "), environmentSub, strings.Join(org.Environments, ", "))
+		return nil, true, errors.Newf("%s is %s and %s is %q: no such run; the layers are %s, and %s names one of %s for 2-env", layerSub, layer, environmentSub, env, strings.Join(r.p.Layers(), ", "), environmentSub, strings.Join(org.Environments, ", "))
 	}
 	fmt.Fprintf(r.out, "%s names %s: planning it alone.\n", layerSub, joined(names(runs)))
 
 	return runs, true, nil
 }
 
-// tokenFor mints 1-org's GitHub token when 1-org is among the runs.
+// tokenFor mints the GitHub token of the layer with the GitHub provider (1-org, or 1-dns
+// in a zones organization) when that layer is among the runs.
 func (r *run) tokenFor(ctx context.Context, runs []org.LayerRun) (string, error) {
 	for _, lr := range runs {
-		if lr.Layer == orgLayer {
+		if lr.Layer == r.p.SecondLayer() {
 			return r.infrastructureToken(ctx)
 		}
 	}
@@ -185,7 +186,7 @@ func (r *run) planOne(ctx context.Context, lr org.LayerRun, githubToken string) 
 
 		return res
 	}
-	t, err := newTofu(r.clients.Exec, r.req.Dir, lr, lr.Plan, githubToken, &log)
+	t, err := newTofu(r.clients.Exec, r.req.Dir, lr, lr.Plan, r.p.SecondLayer(), githubToken, &log)
 	if err != nil {
 		res.err = err
 

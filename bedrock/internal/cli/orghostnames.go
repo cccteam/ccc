@@ -55,6 +55,9 @@ func (d deps) recordApplicationHostnames(cmd *cobra.Command, dir, app string) er
 	if err != nil {
 		return err
 	}
+	if err := hostingOnly(p, "hostnames"); err != nil {
+		return err
+	}
 	path := orgPlacementPath(dir, "")
 	if err := d.orgPinned(p, path); err != nil {
 		return err
@@ -82,7 +85,7 @@ func (d deps) recordApplicationHostnames(cmd *cobra.Command, dir, app string) er
 	if err != nil {
 		return err
 	}
-	written, err := org.Write(files, dir)
+	written, err := org.Write(p, files, dir)
 	if err != nil {
 		return err
 	}

@@ -1,6 +1,6 @@
-# Read by hand when substituting values into 1-org/terraform.tfvars and
-# placement.json, and by 1-org through data "terraform_remote_state" on the
-# state bucket (prefix 0-bootstrap). Nothing here is a secret; keep it that way.
+# Read by hand when substituting values into {{.SecondLayer}}/terraform.tfvars and
+# placement.json{{if not .Zones}}, and by 1-org through data "terraform_remote_state" on the
+# state bucket (prefix 0-bootstrap){{end}}. Nothing here is a secret; keep it that way.
 
 output "boot_project_id" {
   description = "Project ID of the boot project, used as the quota and billing project by every downstream layer."
@@ -18,32 +18,34 @@ output "boot_service_account_email" {
 }
 
 output "boot_plan_service_accounts" {
-  description = "Read-only plan identity email of the two boot layers (boot for 0-bootstrap, org for 1-org), in the boot project; a pull request plans those layers as them."
+  description = "Read-only plan identity email of the two boot layers (boot for 0-bootstrap, {{.SecondIdentity}} for {{.SecondLayer}}), in the boot project; a pull request plans those layers as them."
   value       = { for k, sa in google_service_account.boot_plan : k => sa.email }
 }
 
 output "github_infrastructure_key_secret" {
-  description = "Secret Manager container in the boot project holding the infrastructure GitHub App's private key; the org plan identity reads it for a plan of 1-org."
+  description = "Secret Manager container in the boot project holding the infrastructure GitHub App's private key; the {{.SecondIdentity}} plan identity reads it for a plan of {{.SecondLayer}}."
   value       = google_secret_manager_secret.github_infrastructure_key.secret_id
 }
 
 output "github_deployer_key_secret" {
-  description = "Secret Manager container in the boot project holding the deployer GitHub App's private key; 1-org grants each environment layer identity its administration, so 2-env can grant the applications' identities the read."
+  description = "Secret Manager container in the boot project holding the deployer GitHub App's private key{{if .Zones}}, which the plan trigger's run posts the plans as{{else}}; 1-org grants each environment layer identity its administration, so 2-env can grant the applications' identities the read{{end}}."
   value       = google_secret_manager_secret.github_deployer_key.secret_id
 }
+{{- if not .Zones}}
 
 output "github_release_key_secret" {
   description = "Secret Manager container in the boot project holding the release GitHub App's private key; 1-org grants each environment layer identity its administration, so 2-env can grant the applications' release identities its read."
   value       = google_secret_manager_secret.github_release_key.secret_id
 }
+{{- end}}
 
 output "planner_member" {
-  description = "The plan trigger's runner identity as an IAM member; 1-org lets it impersonate the plan identities it creates (roles/iam.serviceAccountTokenCreator)."
+  description = "The plan trigger's runner identity as an IAM member{{if .Zones}}, which impersonates the two plan identities{{else}}; 1-org lets it impersonate the plan identities it creates (roles/iam.serviceAccountTokenCreator){{end}}."
   value       = google_service_account.planner.member
 }
 
 output "applier_member" {
-  description = "The apply trigger's runner identity as an IAM member; 1-org lets it impersonate the apply identities it creates."
+  description = "The apply trigger's runner identity as an IAM member{{if .Zones}}, which impersonates the two apply identities{{else}}; 1-org lets it impersonate the apply identities it creates{{end}}."
   value       = google_service_account.applier.member
 }
 
@@ -68,12 +70,12 @@ output "org_id" {
 }
 
 output "org_service_account_email" {
-  description = "Email of the org layer identity. The apply trigger's run applies 1-org as it, after the first apply."
+  description = "Email of the {{.SecondIdentity}} layer identity. The apply trigger's run applies {{.SecondLayer}} as it, after the first apply."
   value       = google_service_account.org_tofu.email
 }
 
 output "state_bucket_policy_admin_role" {
-  description = "Full name of the custom organization role that reads and sets a bucket's IAM policy; 1-org grants it on the state bucket to the environment layer identities, which grant the application identities their slots."
+  description = "Full name of the custom organization role that reads and sets a bucket's IAM policy{{if .Zones}}, held on the state bucket by the boot identity{{else}}; 1-org grants it on the state bucket to the environment layer identities, which grant the application identities their slots{{end}}."
   value       = google_organization_iam_custom_role.state_bucket_policy_admin.id
 }
 
@@ -83,7 +85,7 @@ output "terraform_folder_id" {
 }
 
 output "organization_folder_id" {
-  description = "Folder ID of the organization's folder, named after the prefix, under which 1-org creates the environment folders."
+  description = "Folder ID of the organization's folder, named after the prefix{{if .Zones}}, which holds the terraform folder{{else}}, under which 1-org creates the environment folders{{end}}."
   value       = google_folder.organization.folder_id
 }
 

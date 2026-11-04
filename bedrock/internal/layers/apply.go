@@ -82,7 +82,7 @@ func Apply(ctx context.Context, clients *Clients, req *Request, out io.Writer) e
 func (r *run) initialized(ctx context.Context, runs []org.LayerRun, githubToken string) ([]*tofu, error) {
 	tofus := make([]*tofu, 0, len(runs))
 	for _, lr := range runs {
-		t, err := newTofu(r.clients.Exec, r.req.Dir, lr, lr.Apply, githubToken, r.out)
+		t, err := newTofu(r.clients.Exec, r.req.Dir, lr, lr.Apply, r.p.SecondLayer(), githubToken, r.out)
 		if err != nil {
 			closeAll(tofus)
 
@@ -169,7 +169,7 @@ func (r *run) changedLayers(ctx context.Context, since, commit string) ([]string
 	if err != nil {
 		return nil, err
 	}
-	layers := layersOf(files)
+	layers := layersOf(r.p.Layers(), files)
 	if layers == nil {
 		layers = []string{}
 	}

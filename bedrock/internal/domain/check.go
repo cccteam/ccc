@@ -6,7 +6,10 @@
 // or delegated as a label of a domain served elsewhere) is not configured: it is what
 // the answers show. A registered domain's name servers are read from the answers too,
 // never trusted from the registration: after its zone is made again, a registration
-// still names the old set until it is pointed at the zone in Cloud Domains.
+// still names the old set until it is pointed at the zone in Cloud Domains. In a zones
+// organization the same check reads each domain's zone in 1-dns, which holds the
+// delegation alone, and then asks the world whether each label handed onward answers the
+// name servers it is handed to.
 
 package domain
 
@@ -40,6 +43,9 @@ const (
 	authorizationPrefix = "_acme-challenge"
 	// netValues names the network layer's placement in a message.
 	netValues = DefaultLayer + "/" + tfvarsFile
+	// dnsLayer is a zones organization's layer, whose zones hold a domain's delegation
+	// alone.
+	dnsLayer = "1-dns"
 	// squarespacePath is where Squarespace Domains, the registrar of record behind Cloud
 	// Domains and a common one besides, sets a domain's name servers; it has no API.
 	squarespacePath = "At Squarespace Domains: the domain's DNS settings, Domain Nameservers, Use Custom Nameservers (two to thirteen servers); the change takes up to 48 hours to take effect."
@@ -204,6 +210,39 @@ type CheckRequest struct {
 	// a domain that carries other DNS differs (a label of it declared as the vanity
 	// domain, not a new apps domain).
 	Vanity bool
+	// Delegating marks a domain of a zones organization (domains in its placement),
+	// whose zone in 1-dns holds the domain's delegation alone: no address record, no
+	// certificate authorization, one NS record set per label handed onward (Labels). The
+	// check reads the zone and resolves the domain as for any domain, skips the records
+	// 2-net's apply creates, and, once the domain is delegated, asks the world for each
+	// label's name servers.
+	Delegating bool
+	// Labels are the labels the zone hands onward, in the order they are reported.
+	Labels []Label
+}
+
+// Label is one label a zones organization's zone hands onward: the label (acme, for
+// acme.mydomain.com), the hosting organization that serves the name, and the four name
+// servers of its zone there, as the record set names them.
+type Label struct {
+	Name         string
+	Organization string
+	NameServers  []string
+}
+
+// LabelReport is what the answers show about one label handed onward: the name servers
+// the world sees for its name, and whether the servers it is handed to do not answer for
+// it (Lame: the application's zone in the hosting organization is not applied, or the
+// servers recorded are not that zone's).
+type LabelReport struct {
+	Label
+	Answered []string
+	Lame     bool
+}
+
+// Handed reports whether the name answers the name servers it is handed to.
+func (l LabelReport) Handed() bool {
+	return sameNames(l.Answered, l.NameServers)
 }
 
 // Delegation is what the answers show about the apps domain.
@@ -258,9 +297,14 @@ type Report struct {
 	// as type and data.
 	Foreign []string
 	// Authorization is the zone's authorization record, and AuthorizationResolves
-	// whether the world sees it.
+	// whether the world sees it; neither for a zones organization's domain.
 	Authorization         Record
 	AuthorizationResolves bool
+	// Delegating marks a zones organization's domain, and Labels are what the answers
+	// show about each label it hands onward, in the request's order, read once the
+	// domain is delegated.
+	Delegating bool
+	Labels     []LabelReport
 }
 
 // appsZone is what the zone holds that the check compares against.
@@ -291,7 +335,7 @@ func Check(ctx context.Context, l *Lookups, req CheckRequest) (*Report, error) {
 		return nil, err
 	}
 	r := &Report{
-		Domain: req.Domain, Project: req.Project, Zone: req.Zone, Vanity: req.Vanity,
+		Domain: req.Domain, Project: req.Project, Zone: req.Zone, Vanity: req.Vanity, Delegating: req.Delegating,
 		ZoneName: z.zone.DNSName, NameServers: z.zone.NameServers, Authorization: z.authorization,
 	}
 	r.Answered, err = nameServers(ctx, l.Resolver, req.Domain)
@@ -313,12 +357,40 @@ func Check(ctx context.Context, l *Lookups, req CheckRequest) (*Report, error) {
 			return nil, err
 		}
 	}
+	if req.Delegating {
+		if err := r.checkLabels(ctx, l.Resolver, req); err != nil {
+			return nil, err
+		}
+
+		return r, nil
+	}
 	r.AuthorizationResolves, err = resolvesTo(ctx, l.Resolver, z.authorization)
 	if err != nil && (r.Delegation == Delegated || !serverFailure(err)) {
 		return nil, err
 	}
 
 	return r, nil
+}
+
+// checkLabels asks the world, for each label the zone hands onward, which name servers
+// its name answers, once the domain is delegated to the zone; before that nothing under
+// the domain reaches the zone, and the labels are reported unread. Servers that do not
+// answer for the name (SERVFAIL) are Lame, not a failure of the check.
+func (r *Report) checkLabels(ctx context.Context, resolver Resolver, req CheckRequest) error {
+	for _, label := range req.Labels {
+		lr := LabelReport{Label: label}
+		if r.Delegation == Delegated {
+			answered, err := nameServers(ctx, resolver, label.Name+"."+req.Domain)
+			lr.Lame = serverFailure(err)
+			if err != nil && !lr.Lame {
+				return err
+			}
+			lr.Answered = answered
+		}
+		r.Labels = append(r.Labels, lr)
+	}
+
+	return nil
 }
 
 // serverFailure reports a lookup that the servers answered with a failure (SERVFAIL),
@@ -366,15 +438,26 @@ func readZone(ctx context.Context, open ZoneReaderFunc, req CheckRequest) (*apps
 	if err != nil {
 		return nil, err
 	}
+	layer := DefaultLayer
+	if req.Delegating {
+		layer = dnsLayer
+	}
 	if zone == nil {
-		return nil, errors.Newf("no zone %s in %s: the apply of %s creates it; apply %s, then check again", req.Zone, req.Project, DefaultLayer, DefaultLayer)
+		return nil, errors.Newf("no zone %s in %s: the apply of %s creates it; apply %s, then check again", req.Zone, req.Project, layer, layer)
 	}
 	if !sameName(zone.DNSName, req.Domain) {
+		if req.Delegating {
+			return nil, errors.Newf("the zone %s in %s serves %s, not the domain %s: %s names a domain's zone after the domain (domains in placement.json, bedrock org render); apply %s as rendered, then check again", req.Zone, req.Project, zone.DNSName, req.Domain, dnsLayer, dnsLayer)
+		}
 		if req.Vanity {
 			return nil, errors.Newf("the zone %s in %s serves %s, not the vanity domain %s: %s names a vanity domain's zone after the domain (vanityDomains in placement.json, bedrock org render); apply %s as rendered, then check again", req.Zone, req.Project, zone.DNSName, req.Domain, DefaultLayer, DefaultLayer)
 		}
 
 		return nil, errors.Newf("the zone %s in %s serves %s, not the apps domain %s: set apps_domain in %s to appsDomain in placement.json and apply %s, then check again", req.Zone, req.Project, zone.DNSName, req.Domain, netValues, DefaultLayer)
+	}
+	if req.Delegating {
+		// The zone holds the delegation alone: no address, no authorization record.
+		return &appsZone{zone: zone}, nil
 	}
 	records, err := reader.RecordSets(ctx, req.Project, req.Zone)
 	if err != nil {
@@ -519,8 +602,13 @@ func hostSet(names []string) []string {
 }
 
 // Passed reports whether nothing is missing: the domain answers the zone's name servers
-// and the authorization record resolves.
+// and the authorization record resolves; for a zones organization's domain, the domain
+// answers the zone's name servers and every label handed onward answers its own.
 func (r *Report) Passed() bool {
+	if r.Delegating {
+		return r.Delegation == Delegated && !slices.ContainsFunc(r.Labels, func(l LabelReport) bool { return !l.Handed() })
+	}
+
 	return r.Delegation == Delegated && r.AuthorizationResolves
 }
 
@@ -545,7 +633,7 @@ func (r *Report) Write(w io.Writer) {
 		for _, ns := range r.NameServers {
 			fmt.Fprintln(w, strings.TrimSuffix(ns, "."))
 		}
-		if len(r.Answered) == 0 {
+		if len(r.Answered) == 0 && !r.Delegating {
 			fmt.Fprintf(w, "%s answers no name servers at all: if it is not registered yet, bedrock domain add registers it through Cloud Domains in %s instead, with no registrar step.\n", r.Domain, DefaultLayer)
 		}
 	case Repoint:
@@ -564,6 +652,12 @@ func (r *Report) Write(w io.Writer) {
 		for _, f := range r.Foreign {
 			fmt.Fprintln(w, f)
 		}
+		if r.Delegating {
+			fmt.Fprintln(w, "Refused: a domain that carries other DNS (a website, mail) is never delegated whole, and the names handed onward would each need their own records at its DNS provider.")
+			fmt.Fprintf(w, "Hold a label of it instead, such as apps.%s: set it in place of %s in domains in placement.json, run bedrock org render, apply %s, and run bedrock domain check again for the NS records to add at the DNS provider that serves %s.\n", r.Domain, r.Domain, dnsLayer, r.Domain)
+
+			return
+		}
 		if r.Vanity {
 			fmt.Fprintln(w, "Refused: a domain that carries other DNS (a website, mail) is never delegated whole, and a site's hostnames directly on it would each need their own records at its DNS provider.")
 			fmt.Fprintf(w, "Declare a label of it as the vanity domain instead, such as app.%s: set it in place of %s in vanityDomains in placement.json and put the site's hostnames on it in the application's placement (hostnames.<site>.vanity), run bedrock org render, apply %s, and run bedrock domain check again for the NS records to add at the DNS provider that serves %s.\n", r.Domain, r.Domain, DefaultLayer, r.Domain)
@@ -575,7 +669,42 @@ func (r *Report) Write(w io.Writer) {
 
 		return
 	}
+	if r.Delegating {
+		r.writeLabels(w)
+
+		return
+	}
 	r.writeAuthorization(w)
+}
+
+// writeLabels says, for each label the zone hands onward, whether its name answers the
+// name servers it is handed to, and otherwise what the answer shows: the servers not
+// answering for it (the application's zone in the hosting organization not applied, or
+// the servers recorded not that zone's), no answer yet, or another set.
+func (r *Report) writeLabels(w io.Writer) {
+	if len(r.Labels) == 0 {
+		fmt.Fprintf(w, "No name under %s is handed onward yet (domains in placement.json).\n", r.Domain)
+
+		return
+	}
+	if r.Delegation != Delegated {
+		fmt.Fprintf(w, "The %d name(s) handed onward under %s resolve once the domain is delegated here.\n", len(r.Labels), r.Domain)
+
+		return
+	}
+	for _, l := range r.Labels {
+		name := l.Name + "." + r.Domain
+		switch {
+		case l.Handed():
+			fmt.Fprintf(w, "%s is handed to %s: it answers the name servers of its zone there (%s).\n", name, l.Organization, strings.Join(l.NameServers, ", "))
+		case l.Lame:
+			fmt.Fprintf(w, "%s is handed to %s, and the name servers it is handed to do not answer for it: the application's zone in %s is not applied yet, or the servers recorded here (%s) are not that zone's; bedrock domain check in %s's infrastructure repository prints them.\n", name, l.Organization, l.Organization, strings.Join(l.NameServers, ", "), l.Organization)
+		case len(l.Answered) == 0:
+			fmt.Fprintf(w, "%s is handed to %s, and it answers no name servers yet: the record set is in the zone, and an answer cached before it was added lasts until the zone's negative time to live runs out.\n", name, l.Organization)
+		default:
+			fmt.Fprintf(w, "%s is handed to %s on %s, and it answers %s: a record set changed within the hour is still seen as it was (its time to live), and servers that are not the application's zone's are a wrong entry in placement.json (domains.%s.labels.%s), to correct and render.\n", name, l.Organization, strings.Join(l.NameServers, ", "), strings.Join(l.Answered, ", "), r.Domain, l.Name)
+		}
+	}
 }
 
 // writeAuthorization says whether the certificate is waiting on the authorization record

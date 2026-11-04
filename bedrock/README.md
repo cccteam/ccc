@@ -78,7 +78,13 @@ again does not, because its pull request is already labeled as tagged.
   `2-env` (per environment: the application identities and their grants, the records
   bucket, the repository links, the team group's release approval and entitlements).
   Rendered by `bedrock org` from the organization's placement into the organization's
-  infrastructure repository.
+  infrastructure repository. A **zones organization** (`"kind": "zones"` in its
+  placement) is a bedrock organization with no environments that holds DNS zones alone,
+  in two layers, `0-bootstrap` and `1-dns`: one public zone per domain a customer
+  delegated to it once, and one NS record set per application name under the domain,
+  handed onward to the zone of the hosting organization that serves the application
+  (bedrock org, below). One per Google Cloud organization that hosts applications;
+  rendered by `bedrock org` from the same placement file.
 - **Application stack**: the OpenTofu root under the application repository's
   `infrastructure/` directory (or the one layer under `3-app/` of an infrastructure
   repository): the Cloud Run services (their port named `h2c` when the site's main
@@ -108,7 +114,9 @@ again does not, because its pull request is already labeled as tagged.
   applications, the environment projects and
   each environment's team group (`teamGroups`: the group whose members approve the
   environment's releases and ask for its entitlements, with `entitlementDurations` for
-  the longest grants).
+  the longest grants); a zones organization's records its kind (`kind`), the fields every
+  organization has, one region, and the domains it holds zones for with the labels handed
+  onward (`domains`), and none of the applications' or the environments' fields.
 - **Environment**: `tst`, `stg` and `prd`, in promotion order. A pull request deploys to
   the first; a release goes through them in order, each after it is live in the previous
   one.
@@ -2290,6 +2298,23 @@ domain, declared as the vanity domain in its place for a vanity domain. The chec
 resolves the record that proves the domain to Certificate Manager and says when the
 certificate is still waiting on it. It exits 1 when anything is missing or refused.
 
+In a zones organization (`"kind": "zones"` in the placement; bedrock org, below) `domain
+check` reads each domain's zone in the boot project (`projects.boot`; 1-dns makes it, and
+it holds the domain's delegation alone: no address, no certificate) and resolves the
+domain the same way, with the same step printed for a domain as registered (the registrar)
+and for a label of a domain served elsewhere (the NS records at its DNS provider), and the
+same refusal of a domain that carries other DNS, with a label of it to hold instead. Then,
+once the domain is delegated, it asks the world about each name handed onward
+(`domains.<domain>.labels`) and says whether the name answers the four name servers of its
+zone in the hosting organization; that the servers do not answer for it yet (the
+application's zone there not applied, or the servers recorded not its; `bedrock domain
+check` in that organization's repository prints them); that it answers nothing yet (an
+answer cached before the record set was added); or what it answers instead (a record set
+changed within the hour, or a wrong entry to correct). Every domain delegated and every
+label handed is the check passing; while a domain is not delegated its labels are reported
+as waiting on it. A placement with no domain yet has nothing to check, and the command says
+so. `domain add` has no place in a zones organization, which registers nothing.
+
 A domain 2-net registers has a registrant contact (`registrant_contact` in
 `2-net/terraform.tfvars`) that is the client's, never that of a contractor who builds or
 runs the foundation, with a mailbox a person reads: the verification mail and every notice
@@ -2357,6 +2382,51 @@ release `bedrockSha256`): `org new` records the bedrock running it when that is 
 or a commit installed with `go install`, and `bedrock upgrade`, run in the repository,
 moves the pin and renders the layers with the bedrock it names; `org render`, `org check`
 and `org register` refuse a placement pinned to another bedrock than the one running them.
+
+A placement may name a second kind of organization: `"kind": "zones"`, a zones
+organization, which holds DNS zones alone, no applications and no environments. It is how
+a customer's shared domain serves applications hosted in more than one bedrock
+organization: the customer delegates the domain (`mydomain.com`, or a label of it such as
+`apps.mydomain.com`) once, to a zone of the zones organization, and each application's
+name under it (`acme.mydomain.com`) is handed onward, as one NS record set in that zone, to
+the zone the application's hosting organization serves it from as a vanity domain
+(`vanityDomains` there, the environment names nested under the application's:
+`stg.acme.mydomain.com`), so a second application lands in another hosting organization
+with nothing moving at the customer's registrar. One zones organization per Google Cloud
+organization that hosts applications, in a Google Cloud organization and a GitHub
+organization of its own or shared with a hosting one (the machine account and the two
+apps are then recorded again, created once). `org new` renders two layers for it:
+`0-bootstrap`, as for every organization, with the triggers, the dns layer identity and
+its plan identity (`roles/dns.admin` and `roles/dns.reader` on the boot project, nothing
+at the organization node), and `1-dns`, which makes one public zone per domain in the boot
+project (`<prefix>-boot-gbl-dns-<domain with hyphens>`, DNSSEC on, kept by
+`prevent_destroy` as 2-net's zones are, with the same `zoneReplacement` steps), one NS
+record set per label with an hour's time to live, and rules this repository's default
+branch with the GitHub provider (the infrastructure app's token in a run of the triggers,
+as 1-org does in a hosting organization). Its placement carries the fields every
+organization has, one region (the boot project's) and `domains`: each domain with the
+labels handed onward (`labels.<label>`: the hosting organization's prefix and the four
+name servers of the application's zone there, as `bedrock domain check` prints them in
+that organization's repository; a label may carry a dot, as in `east.acme`, and none is
+above or below another). A domain is a bare lowercase name, not the organization's own
+domain (whose mail is on it; a label of it is fine) nor above it, none under another
+listed, and at most 46 characters, so the zone's name fits. The placement refuses the
+fields of the hosting model (`appsDomain`, `spanner.config`, `teamGroups`, `applications`
+and the rest), and a hosting organization's refuses `domains`. `org preflight` checks the
+five roles a zones organization's seed needs (no Organization Policy Administrator, no
+Tag Administrator: 1-org alone uses them); `org new` prints the hand steps in the same
+shape, with 1-dns's apply in 1-org's place and the domains last; `org register`, `org
+place`, `org teardown`, `org serve`, `org hostnames` and `org retire` refuse a zones
+organization, since there is nothing for them to act on; `org destroy` deletes the boot
+project and the zones with it, after taking this repository and the zones out of 1-dns's
+state (the zones go with the project, which their `prevent_destroy` would otherwise
+refuse), so a zones organization is destroyed once no domain is delegated to it; and
+`domain check` reads its domains and labels (bedrock domain, above). Handing a label
+onward is two pull requests: the hosting organization's, which declares the name as a
+vanity domain and applies 2-net, whose `bedrock domain check` then prints the zone's four
+name servers; and the zones organization's, which records them under the label and applies
+1-dns. The rendered `1-dns/README.md` carries both, with how a name resolves and the steps
+for delegating a domain to the organization.
 
 A new organization is set up in this order. Each step opens with the place it happens,
 and the rendered root README ("How the layers are applied", "The two GitHub Apps") and
@@ -2446,7 +2516,9 @@ permissions those runs need the caller holds: on the organization `placement.jso
 (Cloud Resource Manager's `testIamPermissions`) and on its billing account (Cloud Billing's).
 The roles are Folder Creator, Project Creator, Organization Administrator, Organization
 Policy Administrator, Organization Role Administrator and Tag Administrator at the
-organization, and Billing Account User on the billing account. It prints one line per role,
+organization, and Billing Account User on the billing account (a zones organization's
+seed needs five of them: neither the organization policy nor the tag role, which 1-org
+alone uses). It prints one line per role,
 `holds` or `missing` with the permissions tested, and exits 1 when a role is missing, saying
 who grants it where, or when it could not check (no credentials, or an API that refused).
 
@@ -2542,7 +2614,8 @@ per layer in the state bucket (`applied/<layer>`, `applied/2-env/<env>`) holds t
 of that apply, the files changed between it and the push are read through the connection,
 and a layer with no marker is applied. The layers apply in layer order (0-bootstrap, 1-org,
 2-shr and 2-spn, then 2-env for tst, stg and prd, then 2-net: 2-net's URL map names tst's
-pull-request backend, which 2-env tst makes), one at a time, each as its apply
+pull-request backend, which 2-env tst makes; 0-bootstrap, then 1-dns in a zones
+organization), one at a time, each as its apply
 identity: every run's `tofu init` at its state prefix first, then, layer by layer, a plan,
 the apply of that plan and the marker, stopping at the first failure. The inits come first
 because the gcs backend writes a state the first time anything opens it: a layer that has
@@ -2557,7 +2630,8 @@ Firebase assigns it and the Google provider finds no key by its name. A person a
 layer again with no change to it by starting the apply trigger with `_LAYER`, and for
 2-env `_ENVIRONMENT` (`gcloud builds triggers run <prefix>-boot-<region code>-layers-apply
 --region=<region> --project=<boot project> --branch=<default branch>
---substitutions=_LAYER=2-env,_ENVIRONMENT=tst`; `0-bootstrap/README.md`, "The Cloud
+--substitutions=_LAYER=2-env,_ENVIRONMENT=tst`, or `_LAYER=1-dns` in a zones organization;
+`0-bootstrap/README.md`, "The Cloud
 Build triggers"). The placement names what the runs work with: every project under
 `projects` (`boot` from the seed, the six others from 1-org's `project_ids`), the
 environment projects' numbers under `projectNumbers` (their Cloud Build service agents'
@@ -2662,7 +2736,12 @@ and are gone after. A layer whose state holds nothing is skipped. When 2-net reg
 with its folder and the organization's, for a person: a registration cannot move to another
 project. It refuses a layer rendered by an earlier bedrock, which declares no `destroy`
 variable, and ends with a line in `JOURNAL.md` and what starting over takes (the rendered
-`0-bootstrap/README.md`, "Destroying the organization").
+`0-bootstrap/README.md`, "Destroying the organization"). In a zones organization it
+destroys 1-dns in 1-org's place, this repository and the zones taken out of its state
+first (the zones go with the boot project, which their `prevent_destroy` would otherwise
+refuse; 1-dns declares no `destroy` variable, having no project and no folder), then
+0-bootstrap the same way: every domain delegated to the organization then points at
+servers that answer nothing, so it is destroyed once no domain is.
 
 `org register <code> <checkout>` adds an application: its code, the organization's naming
 decision under the one rule (one to six lowercase letters and digits starting with a

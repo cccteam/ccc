@@ -102,12 +102,12 @@ a build from a checkout is nobody's pin, and bedrock upgrade records one later.`
 			if err != nil {
 				return err
 			}
-			written, err := org.Write(files, dir)
+			written, err := org.Write(p, files, dir)
 			if err != nil {
 				return err
 			}
 			fmt.Fprintf(out, "Rendered the %s foundation into %s: %d owned file(s) in %s; seeded %s.\n",
-				p.Prefix, dir, written.Owned, strings.Join(org.Layers, ", "), strings.Join(written.Seeded, ", "))
+				p.Prefix, dir, written.Owned, strings.Join(p.Layers(), ", "), strings.Join(written.Seeded, ", "))
 			if len(written.Kept) > 0 {
 				fmt.Fprintf(out, "Kept %s as it was.\n", strings.Join(written.Kept, ", "))
 			}
@@ -168,11 +168,16 @@ func (d deps) orgPinned(p *org.Placement, placement string) error {
 
 // handSteps says what a person does before the triggers can run, and where the commands
 // are. Each step opens with the place it happens; the bootstrap roles are org preflight's
-// table, one line each, so the steps name what the check checks.
+// table, one line each, so the steps name what the check checks. A zones organization
+// has fewer steps: no team group, no environment, no release app, and its domains after
+// the layers (zonesHandSteps).
 func handSteps(p *org.Placement) string {
 	var roles strings.Builder
-	for _, role := range org.BootstrapRoles {
+	for _, role := range p.BootstrapRoles() {
 		fmt.Fprintf(&roles, "       - %s (%s), on the %s\n", role.Title, role.Role, role.On)
+	}
+	if p.Zones() {
+		return zonesHandSteps(p, roles.String())
 	}
 
 	return fmt.Sprintf(`
@@ -246,6 +251,75 @@ registrations go through them; a person applies by hand for recovery alone
 After the first apply of 2-net: bedrock domain check prints what the apps domain, and each vanity domain, still needs, and where.
 `, p.OrganizationDomain, p.GithubMachineAccount, p.GithubDefaultBranch, p.Operator, roles.String(), p.OrganizationID, p.Prefix, p.Prefix, p.Prefix,
 		p.Operator, p.GithubMachineAccount, p.ConnectionName(), p.Primary().Name, p.BillingAccount, p.PlanTriggerName(), p.ApplyTriggerName())
+}
+
+// zonesHandSteps is handSteps for a zones organization: the GitHub side without the
+// release app, the seed, the authorization, the two applies, the billing grant, then the
+// domains and the labels handed onward, which 1-dns/README.md describes.
+func zonesHandSteps(p *org.Placement, roles string) string {
+	return fmt.Sprintf(`
+By hand, before the Cloud Build triggers can run (the commands are in 0-bootstrap/README.md):
+  0. On GitHub, as an organization owner: the organization, its machine account (%s, an
+     owner of the organization, named in placement.json as githubMachineAccount), this
+     infrastructure repository (default branch %s; 1-dns rules that branch and nothing
+     else of it), and the deployer and infrastructure apps, each installed on this
+     repository, with their private keys (README.md, "The deployer GitHub App", and
+     0-bootstrap/README.md, "The infrastructure GitHub App"; the deployer app's App ID
+     goes into placement.json, githubDeployerAppId, and the infrastructure app's into
+     githubInfrastructureAppId). A GitHub organization that holds a hosting organization
+     has the account and the apps already: record the same.
+     In a terminal, in this repository, the apps' keys, never by hand, once 0-bootstrap
+     has made their two containers in the boot project: bedrock secret add
+     github-infrastructure-key and bedrock secret pin github-infrastructure-key
+     <version>; the same with github-deployer-key.
+  1. In a terminal, as %s, after gcloud auth application-default login:
+     bedrock org preflight, which must find each of these roles held:
+%s     then the seed: the terraform folder at the organization root (%s), the boot
+     project %s-boot-gbl-core-<suffix>, the boot identity %s-boot-gbl-tofu with its
+     organization roles, and the state bucket %s-boot-gbl-state-<suffix>.
+  2. In this repository, the seed's values: boot_project_id and terraform_folder_id in
+     0-bootstrap/terraform.tfvars, boot_project_id in 1-dns, and in placement.json the
+     bucket (stateBucket) and the boot project's id and number (projects.boot,
+     projectNumbers.boot); then bedrock org render, for the backend blocks, the bucket's
+     grants and the triggers.
+  3. In the boot project's Cloud Build console, as %s (the bootstrap
+     administrator, Owner on the boot project from the seed), signed in to GitHub as the
+     organization's machine account (%s): the Cloud Build GitHub App's authorization
+     (0-bootstrap/README.md, "The Cloud Build GitHub authorization"), a connection named
+     %s in %s; its installation id and the token secret's version go
+     into placement.json (cloudBuildInstallationId, cloudBuildTokenSecretVersion). Then,
+     in a terminal, in this repository: bedrock upgrade, which pins the bedrock the
+     triggers run (bedrockVersion) and renders.
+  4. In a terminal, in 0-bootstrap: the apply on local state, the connection imported
+     into it first, then the migration of its state into the bucket.
+  5. In a terminal, as a billing administrator of %s: roles/billing.user on
+     it for the boot identity. In the Billing console, as the same administrator: the
+     spend budget on the account (0-bootstrap/README.md, step 5); nothing renders it.
+  6. In a terminal, in 1-dns: the apply, with GITHUB_TOKEN set to an organization
+     owner's token (1-dns/README.md, "Applying"). It leaves nothing behind: the layer
+     creates no project and no identity.
+From then on the two Cloud Build triggers in the boot project (%s and %s)
+apply both layers: a pull request plans the layers it touches as their plan identities and
+posts the plans on it, the merge applies them as their apply identities, in layer order. A
+person applies by hand for recovery alone (0-bootstrap/README.md, "Recovery, by hand").
+Then the domains: each domain delegated to this organization goes into placement.json
+(domains), bedrock org render and the pull request whose apply makes its zone; by the
+customer, where the domain's DNS is set, the delegation to the zone's name servers, as
+bedrock domain check prints them with the place (1-dns/README.md, "Delegating a domain to
+this organization"). Each application's name under a domain follows at the application's
+registration, in two pull requests (1-dns/README.md, "Handing a label onward").
+`, p.GithubMachineAccount, p.GithubDefaultBranch, p.Operator, roles, p.OrganizationID, p.Prefix, p.Prefix, p.Prefix,
+		p.Operator, p.GithubMachineAccount, p.ConnectionName(), p.Primary().Name, p.BillingAccount, p.PlanTriggerName(), p.ApplyTriggerName())
+}
+
+// hostingOnly refuses a command that acts on applications or environments in a zones
+// organization, which has neither.
+func hostingOnly(p *org.Placement, command string) error {
+	if !p.Zones() {
+		return nil
+	}
+
+	return errors.Newf("the %s organization is a zones organization (kind in placement.json), which holds DNS zones alone, no applications and no environments: bedrock org %s has nothing to act on here; the names under its domains are handed onward in placement.json (domains), and bedrock domain check reads them", p.Prefix, command)
 }
 
 func newOrgPreflight(d deps) *cobra.Command {
@@ -344,7 +418,7 @@ or name it with --dir.`,
 			if err != nil {
 				return err
 			}
-			written, err := org.Write(files, dir)
+			written, err := org.Write(p, files, dir)
 			if err != nil {
 				return err
 			}
@@ -430,39 +504,56 @@ and never fails the check either.`,
 			if err != nil {
 				return err
 			}
-			registrationReport(cmd.Context(), d, p, dir, cmd.OutOrStdout())
-			fmt.Fprint(cmd.OutOrStdout(), zoneReplacementNotice(p))
-			fmt.Fprint(cmd.OutOrStdout(), capacityNotice(p, dir))
-			fmt.Fprint(cmd.OutOrStdout(), retireNotice(p))
-			for _, f := range r.Findings {
-				switch {
-				case f.Reason != "":
-					fmt.Fprintf(cmd.OutOrStdout(), "%s: %s\n", f.Path, f.Reason)
-				case f.Missing:
-					fmt.Fprintf(cmd.OutOrStdout(), "%s: missing\n", f.Path)
-				default:
-					fmt.Fprintf(cmd.OutOrStdout(), "%s: line %d differs\n  want: %s\n  got:  %s\n", f.Path, f.Line, f.Want, f.Got)
-				}
-			}
-			for _, path := range r.Unseeded {
-				fmt.Fprintf(cmd.OutOrStdout(), "%s: not seeded yet (org render writes it)\n", path)
-			}
-			ownerReport(cmd.Context(), d, p, cmd.OutOrStdout())
-			keyReport(cmd.Context(), d, p, cmd.OutOrStdout())
-			if !r.Clean() {
-				fmt.Fprintf(cmd.OutOrStdout(), "%d finding(s) against the %d owned file(s) the placement renders\n", len(r.Findings), r.Checked)
 
-				return exitError{code: 1}
-			}
-			fmt.Fprintf(cmd.OutOrStdout(), "%s: %d owned file(s) match the placement\n", dir, r.Checked)
-
-			return nil
+			return d.writeOrgCheck(cmd, p, dir, r)
 		},
 	}
 	cmd.Flags().StringVar(&dir, "dir", ".", "the repository root")
 	cmd.Flags().StringVar(&placement, "placement", "", "placement file (default: placement.json in the repository root)")
 
 	return cmd
+}
+
+// writeOrgCheck prints what org check found: the registrations, the notices, each
+// finding, the owner and API key listings, and the verdict. The registrations, the
+// capacity and retire notices and the two listings are a hosting organization's alone: a
+// zones organization registers no domain and has no Spanner instance, no application and
+// no environment project.
+func (d deps) writeOrgCheck(cmd *cobra.Command, p *org.Placement, dir string, r *org.Report) error {
+	out := cmd.OutOrStdout()
+	if !p.Zones() {
+		registrationReport(cmd.Context(), d, p, dir, out)
+	}
+	fmt.Fprint(out, zoneReplacementNotice(p))
+	if !p.Zones() {
+		fmt.Fprint(out, capacityNotice(p, dir))
+		fmt.Fprint(out, retireNotice(p))
+	}
+	for _, f := range r.Findings {
+		switch {
+		case f.Reason != "":
+			fmt.Fprintf(out, "%s: %s\n", f.Path, f.Reason)
+		case f.Missing:
+			fmt.Fprintf(out, "%s: missing\n", f.Path)
+		default:
+			fmt.Fprintf(out, "%s: line %d differs\n  want: %s\n  got:  %s\n", f.Path, f.Line, f.Want, f.Got)
+		}
+	}
+	for _, path := range r.Unseeded {
+		fmt.Fprintf(out, "%s: not seeded yet (org render writes it)\n", path)
+	}
+	if !p.Zones() {
+		ownerReport(cmd.Context(), d, p, out)
+		keyReport(cmd.Context(), d, p, out)
+	}
+	if !r.Clean() {
+		fmt.Fprintf(out, "%d finding(s) against the %d owned file(s) the placement renders\n", len(r.Findings), r.Checked)
+
+		return exitError{code: 1}
+	}
+	fmt.Fprintf(out, "%s: %d owned file(s) match the placement\n", dir, r.Checked)
+
+	return nil
 }
 
 // capacityNotice says, while the placement declares more databases on a Spanner instance
@@ -499,6 +590,9 @@ func capacityNotice(p *org.Placement, dir string) string {
 func zoneReplacementNotice(p *org.Placement) string {
 	if !p.ZoneReplacement {
 		return ""
+	}
+	if p.Zones() {
+		return "zoneReplacement is set in placement.json: 1-dns's zones are rendered without prevent_destroy, so a plan may destroy them and create them again on other name servers. Make the change that recreates the zone (bedrock org render), have the customer point the delegation at the new name servers as bedrock domain check prints, then clear zoneReplacement and run bedrock org render to write the rule back; bedrock domain check says when the domain points at the zone (1-dns/README.md, \"Making a zone again\").\n"
 	}
 
 	return "zoneReplacement is set in placement.json: 2-net's apps zone and parked zones are rendered without prevent_destroy, so a plan may destroy them and create them again on other name servers. Make the change that recreates the zone (a new appsDomain, then bedrock org render), point what pointed at the old name servers at the new ones as bedrock domain check prints, then clear zoneReplacement and run bedrock org render to write the rule back; bedrock domain check says when the domain points at the zone (2-net/README.md, \"Making a zone again\").\n"
@@ -708,6 +802,9 @@ func newOrgRegister(d deps) *cobra.Command {
 			if err := d.orgPinned(p, placement); err != nil {
 				return err
 			}
+			if err := hostingOnly(p, "register"); err != nil {
+				return err
+			}
 			if next {
 				if len(args) == 2 {
 					return errors.New("--next moves a registration on and writes no first placement: leave the checkout out")
@@ -776,7 +873,7 @@ func (d deps) registerFirst(ctx context.Context, out io.Writer, p *org.Placement
 	if err != nil {
 		return err
 	}
-	written, err := org.Write(files, dir)
+	written, err := org.Write(p, files, dir)
 	if err != nil {
 		return err
 	}
@@ -842,7 +939,7 @@ func (d deps) registerNext(ctx context.Context, out io.Writer, p *org.Placement,
 	if err != nil {
 		return err
 	}
-	written, err := org.Write(files, dir)
+	written, err := org.Write(p, files, dir)
 	if err != nil {
 		return err
 	}
@@ -1463,9 +1560,12 @@ func (d deps) destroyOrg(cmd *cobra.Command, dir string, yes bool) error {
 	if err != nil {
 		return err
 	}
-	registered, err := domain.RegisteredDomains(dir)
-	if err != nil {
-		return err
+	var registered []string
+	if !p.Zones() {
+		registered, err = domain.RegisteredDomains(dir)
+		if err != nil {
+			return err
+		}
 	}
 	keepNet := len(registered) > 0
 	fmt.Fprint(out, destroyWarning(p, registered))
@@ -1487,7 +1587,7 @@ func (d deps) destroyOrg(cmd *cobra.Command, dir string, yes bool) error {
 	if d.deploy != nil {
 		exec = d.deploy.Exec
 	}
-	req := &layers.DestroyRequest{Dir: dir, GithubToken: d.githubToken, KeepNet: keepNet, Pause: layers.DestroyPause}
+	req := &layers.DestroyRequest{Dir: dir, GithubToken: d.githubToken, KeepNet: keepNet, Zones: p.Zones(), Pause: layers.DestroyPause}
 	if err := layers.Destroy(cmd.Context(), exec, req, out); err != nil {
 		return err
 	}
@@ -1499,10 +1599,22 @@ func (d deps) destroyOrg(cmd *cobra.Command, dir string, yes bool) error {
 	return nil
 }
 
+// zonesBootContents says what a zones organization's boot project holds, for the
+// destroy's warning.
+const zonesBootContents = "the layer identities, the state bucket with both layers' states, the Cloud Build connection and triggers, the GitHub Apps' keys, and the zones with their record sets: every domain delegated to this organization then points at servers that answer nothing"
+
 // destroyWarning says what the destroy deletes: each project the placement records
 // with what it holds, what else goes, what stays, and the grace Google gives.
 func destroyWarning(p *org.Placement, registered []string) string {
 	var b strings.Builder
+	if p.Zones() {
+		fmt.Fprintf(&b, "bedrock org destroy deletes the boot project of the %s zones organization, and with it everything the layers made:\n\n", p.Prefix)
+		fmt.Fprintf(&b, "  %s (%s): %s\n", p.BootProject(), "boot", zonesBootContents)
+		b.WriteString("\nAlso gone: the folders and the custom roles, and on GitHub this repository's ruleset. The repository stays, with its code and pull requests.\n")
+		b.WriteString("\nGoogle keeps a deleted project for 30 days, in which the console can restore it; its id never returns after. Nothing here is undone by bedrock.\n\n")
+
+		return b.String()
+	}
 	fmt.Fprintf(&b, "bedrock org destroy deletes every project of the %s organization, and with them everything the layers and the applications made:\n\n", p.Prefix)
 	for _, key := range destroyedProjectKeys(p) {
 		if len(registered) > 0 && key == netKey {
@@ -1523,7 +1635,7 @@ func destroyWarning(p *org.Placement, registered []string) string {
 // their order and the rest after them.
 func destroyedProjectKeys(p *org.Placement) []string {
 	var keys []string
-	for _, key := range org.ProjectKeys {
+	for _, key := range p.ProjectKeys() {
 		if _, ok := p.Projects[key]; ok {
 			keys = append(keys, key)
 		}
@@ -1561,6 +1673,9 @@ func projectContentsOf(key string) string {
 
 // destroyJournalLine is the line the destroy adds to the journal.
 func destroyJournalLine(p *org.Placement, keepNet bool, now time.Time) string {
+	if p.Zones() {
+		return fmt.Sprintf("- %s: bedrock org destroy deleted the zones organization's boot project (%s), with its zones: Google holds it for 30 days, its id never returns. The GitHub repository stays.\n", now.Format("2006-01-02 15:04Z"), p.BootProject())
+	}
 	var ids []string
 	for _, key := range destroyedProjectKeys(p) {
 		if keepNet && key == netKey {
@@ -1593,6 +1708,12 @@ func appendJournal(dir, line string) error {
 // destroyEpilogue says what the destroy left and what starting over takes.
 func destroyEpilogue(p *org.Placement, keepNet bool) string {
 	var b strings.Builder
+	if p.Zones() {
+		fmt.Fprintf(&b, "\nDeleted the %s zones organization's boot project; a line went into %s. Google holds it for 30 days (its id never returns); the GitHub repository is as it was, without the ruleset 1-dns made.\n", p.Prefix, journalFile)
+		b.WriteString("To start over: a new seed (0-bootstrap/README.md, \"First-time setup\"), bedrock org render on its values, and the hand steps again (bedrock org new prints them); every domain delegated here is then delegated again, to the new zones' name servers.\n")
+
+		return b.String()
+	}
 	fmt.Fprintf(&b, "\nDeleted the %s organization's projects; a line went into %s. Google holds them for 30 days (their ids never return); the GitHub repositories are as they were, without the rulesets, environments and runners 1-org made.\n", p.Prefix, journalFile)
 	if keepNet {
 		fmt.Fprintf(&b, "The network project %s stays with its registrations, for a person.\n", p.Projects[netKey])

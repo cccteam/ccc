@@ -80,6 +80,9 @@ func (d deps) retireOrgApplication(cmd *cobra.Command, dir, app string, yes bool
 	if err != nil {
 		return err
 	}
+	if err := hostingOnly(p, "retire"); err != nil {
+		return err
+	}
 	path := orgPlacementPath(dir, "")
 	if err := d.orgPinned(p, path); err != nil {
 		return err
@@ -163,7 +166,7 @@ func retirePlacement(dir, path string, p *org.Placement, app string, out io.Writ
 	if err != nil {
 		return err
 	}
-	written, err := org.Write(files, dir)
+	written, err := org.Write(p, files, dir)
 	if err != nil {
 		return err
 	}

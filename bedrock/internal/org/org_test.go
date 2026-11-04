@@ -18,7 +18,11 @@ import (
 	"github.com/cccteam/ccc/bedrock/internal/render"
 )
 
-const fixture = "testdata/imp"
+// The two fixture organizations: a hosting organization, and a zones organization.
+const (
+	fixture      = "testdata/imp"
+	zonesFixture = "testdata/imz"
+)
 
 // update rewrites the fixture organization's files from the render (go test -update),
 // the way the render package's goldens are rewritten.
@@ -28,7 +32,21 @@ var update = flag.Bool("update", false, "rewrite the fixture organization under 
 func testPlacement(t *testing.T) *Placement {
 	t.Helper()
 
-	p, err := ReadPlacement(filepath.Join(fixture, "placement.json"))
+	return fixturePlacement(t, fixture)
+}
+
+// zonesPlacement reads the zones fixture organization's placement.
+func zonesPlacement(t *testing.T) *Placement {
+	t.Helper()
+
+	return fixturePlacement(t, zonesFixture)
+}
+
+// fixturePlacement reads a fixture organization's placement.
+func fixturePlacement(t *testing.T, dir string) *Placement {
+	t.Helper()
+
+	p, err := ReadPlacement(filepath.Join(dir, "placement.json"))
 	if err != nil {
 		t.Fatalf("ReadPlacement() error = %v", err)
 	}
@@ -68,6 +86,9 @@ func TestPlacementValidate(t *testing.T) {
 		wantErr string
 	}{
 		{name: "the fixture", mutate: func(*Placement) {}},
+		{name: "the hosting kind named", mutate: func(p *Placement) { p.Kind = HostingKind }},
+		{name: "a kind that is neither", mutate: func(p *Placement) { p.Kind = "edge" }, wantErr: `kind "edge" is not one of hosting, zones: a hosting organization holds applications in its environments (the default, left out), a zones organization holds DNS zones alone`},
+		{name: "domains on a hosting organization", mutate: func(p *Placement) { p.Domains = map[string]Domain{"clientbay.example": {}} }, wantErr: "domains is set, and a hosting organization holds no zone but the apps domain's and the vanity domains': a zones organization (kind) holds the zones that hand names onward"},
 		{name: "a long prefix", mutate: func(p *Placement) { p.Prefix = "impulse" }, wantErr: "prefix"},
 		{name: "no organization domain", mutate: func(p *Placement) { p.OrganizationDomain = " " }, wantErr: "organizationDomain is empty"},
 		{name: "no billing account", mutate: func(p *Placement) { p.BillingAccount = "" }, wantErr: "billingAccount is empty"},
@@ -252,24 +273,42 @@ func TestPlacementValidate(t *testing.T) {
 	}
 }
 
-// TestRenderGolden compares every rendered file, owned and seeded alike, with the
-// fixture organization's committed one, and checks nothing committed goes unrendered.
+// TestRenderGolden compares every rendered file, owned and seeded alike, with each
+// fixture organization's committed one (the hosting organization and the zones
+// organization), and checks nothing committed goes unrendered.
 func TestRenderGolden(t *testing.T) {
 	t.Parallel()
 
-	files, err := Render(testPlacement(t))
+	for _, dir := range []string{fixture, zonesFixture} {
+		t.Run(dir, func(t *testing.T) {
+			t.Parallel()
+
+			renderGolden(t, dir)
+		})
+	}
+}
+
+// renderGolden compares the render of one fixture organization with its files.
+func renderGolden(t *testing.T, dir string) {
+	t.Helper()
+
+	files, err := Render(fixturePlacement(t, dir))
 	if err != nil {
 		t.Fatalf("Render() error = %v", err)
 	}
 	rendered := map[string]bool{}
 	for _, f := range files {
 		rendered[f.Path] = true
+		path := filepath.Join(dir, filepath.FromSlash(f.Path))
 		if *update {
-			if err := os.WriteFile(filepath.Join(fixture, filepath.FromSlash(f.Path)), f.Content, 0o600); err != nil {
+			if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
+				t.Fatalf("os.MkdirAll(): %v", err)
+			}
+			if err := os.WriteFile(path, f.Content, 0o600); err != nil {
 				t.Fatalf("os.WriteFile(): %v", err)
 			}
 		}
-		want, err := os.ReadFile(filepath.Join(fixture, filepath.FromSlash(f.Path)))
+		want, err := os.ReadFile(path)
 		if err != nil {
 			t.Errorf("%s: rendered but not in the fixture: %v", f.Path, err)
 
@@ -279,11 +318,11 @@ func TestRenderGolden(t *testing.T) {
 			t.Errorf("%s differs from the fixture at line %d:\n  want: %s\n  got:  %s", f.Path, line, w, g)
 		}
 	}
-	err = filepath.WalkDir(fixture, func(path string, d os.DirEntry, err error) error {
+	err = filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
 			return err
 		}
-		rel, err := filepath.Rel(fixture, path)
+		rel, err := filepath.Rel(dir, path)
 		if err != nil {
 			t.Fatalf("filepath.Rel() error = %v", err)
 		}
@@ -1692,6 +1731,30 @@ func TestViewPhrases(t *testing.T) {
 		{name: "the bucket before the seed", placement: Placement{Prefix: "acme"}, check: func(v *view) string { return v.Bucket() }, want: "acme-boot-gbl-state-REPLACEME"},
 		{name: "the bucket after the seed", placement: Placement{Prefix: "acme", StateBucket: "acme-boot-gbl-state-1a2b"}, check: func(v *view) string { return v.Bucket() }, want: "acme-boot-gbl-state-1a2b"},
 		{name: "the layer order", placement: Placement{}, check: func(v *view) string { return v.LayerOrderProse() }, want: "0-bootstrap, 1-org, 2-shr and 2-spn, then 2-env for tst, stg and prd, then 2-net"},
+		{name: "the layer order of a zones organization", placement: Placement{Kind: ZonesKind}, check: func(v *view) string { return v.LayerOrderProse() }, want: "0-bootstrap, then 1-dns"},
+		{name: "the second layer, its identity and the rerun example, per kind", placement: Placement{}, check: func(v *view) string {
+			hosting := v.SecondLayer() + " " + v.SecondIdentity() + " " + v.RerunExample()
+			v.Kind = ZonesKind
+
+			return hosting + "|" + v.SecondLayer() + " " + v.SecondIdentity() + " " + v.RerunExample()
+		}, want: "1-org org _LAYER=2-env,_ENVIRONMENT=tst|1-dns dns _LAYER=1-dns"},
+		{name: "no domains", placement: Placement{Kind: ZonesKind}, check: func(v *view) string {
+			return v.DomainsHCL() + " " + strconv.Itoa(v.DelegationCount()) + " [" + v.DomainsProse() + "]"
+		}, want: "{} 0 []"},
+		{
+			name: "the domains and their labels as HCL, in name order, with the zones' names and project",
+			placement: Placement{Kind: ZonesKind, Prefix: "acme", Projects: map[string]string{"boot": "acme-boot-gbl-core-1a2b"}, Domains: map[string]Domain{
+				"b.example": {Labels: map[string]Delegation{
+					"z": {Organization: "rgb", NameServers: []string{"ns-cloud-d1.googledomains.com.", "ns-cloud-d2.googledomains.com."}},
+					"a": {Organization: "imp", NameServers: []string{"ns-cloud-c1.googledomains.com.", "ns-cloud-c2.googledomains.com."}},
+				}},
+				"a.example": {},
+			}},
+			check: func(v *view) string {
+				return v.DomainsHCL() + "\n" + v.DomainsProse() + " " + strconv.Itoa(v.DelegationCount()) + " " + v.ZoneName("b.example") + " " + v.ZoneProject()
+			},
+			want: "{\n  \"a.example\" = {\n    labels = {}\n  }\n  \"b.example\" = {\n    labels = {\n      \"a\" = { organization = \"imp\", name_servers = [\"ns-cloud-c1.googledomains.com.\", \"ns-cloud-c2.googledomains.com.\"] }\n      \"z\" = { organization = \"rgb\", name_servers = [\"ns-cloud-d1.googledomains.com.\", \"ns-cloud-d2.googledomains.com.\"] }\n    }\n  }\n}\n`a.example` and `b.example` 2 acme-boot-gbl-dns-b-example acme-boot-gbl-core-1a2b",
+		},
 		{name: "the approving reviews, left out and at 0, 2 and 12, as a count and as prose", placement: Placement{}, check: func(v *view) string {
 			parts := []string{strconv.Itoa(v.ApprovingReviewCount()) + " " + v.ApprovingReviewsProse()}
 			for _, n := range []int{0, 2, 12} {
@@ -1885,15 +1948,16 @@ func TestCheck(t *testing.T) {
 			t.Parallel()
 
 			dir := t.TempDir()
-			files, err := Render(testPlacement(t))
+			p := testPlacement(t)
+			files, err := Render(p)
 			if err != nil {
 				t.Fatalf("Render() error = %v", err)
 			}
-			if _, err := Write(files, dir); err != nil {
+			if _, err := Write(p, files, dir); err != nil {
 				t.Fatalf("Write() error = %v", err)
 			}
 			tt.mutate(t, dir)
-			r, err := Check(testPlacement(t), dir)
+			r, err := Check(p, dir)
 			if err != nil {
 				t.Fatalf("Check() error = %v", err)
 			}
@@ -1917,11 +1981,12 @@ func TestWriteKeepsSeeded(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
-	files, err := Render(testPlacement(t))
+	p := testPlacement(t)
+	files, err := Render(p)
 	if err != nil {
 		t.Fatalf("Render() error = %v", err)
 	}
-	first, err := Write(files, dir)
+	first, err := Write(p, files, dir)
 	if err != nil {
 		t.Fatalf("Write() error = %v", err)
 	}
@@ -1932,7 +1997,7 @@ func TestWriteKeepsSeeded(t *testing.T) {
 	if err := os.WriteFile(values, []byte("processing_units = 200\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	second, err := Write(files, dir)
+	second, err := Write(p, files, dir)
 	if err != nil {
 		t.Fatalf("Write() error = %v", err)
 	}
@@ -2487,6 +2552,7 @@ func TestLayerRuns(t *testing.T) {
 
 	tests := []struct {
 		name     string
+		kind     string
 		projects map[string]string
 		want     []string
 	}{
@@ -2518,12 +2584,21 @@ func TestLayerRuns(t *testing.T) {
 				"2-net|2-net|acme-net-gbl-tofu@acme-net-gbl-core-REPLACEME.iam.gserviceaccount.com|acme-net-gbl-plan@acme-net-gbl-core-REPLACEME.iam.gserviceaccount.com",
 			},
 		},
+		{
+			name:     "a zones organization's two layers, both in the boot project",
+			kind:     ZonesKind,
+			projects: map[string]string{"boot": "acme-boot-gbl-core-1a2b"},
+			want: []string{
+				"0-bootstrap|0-bootstrap|acme-boot-gbl-tofu@acme-boot-gbl-core-1a2b.iam.gserviceaccount.com|acme-boot-gbl-plan@acme-boot-gbl-core-1a2b.iam.gserviceaccount.com",
+				"1-dns|1-dns|acme-dns-gbl-tofu@acme-boot-gbl-core-1a2b.iam.gserviceaccount.com|acme-dns-gbl-plan@acme-boot-gbl-core-1a2b.iam.gserviceaccount.com",
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			p := &Placement{Prefix: "acme", Projects: tt.projects}
+			p := &Placement{Prefix: "acme", Kind: tt.kind, Projects: tt.projects}
 			var got []string
 			for _, r := range p.LayerRuns() {
 				got = append(got, r.Name+"|"+r.StatePrefix+"|"+r.Apply+"|"+r.Plan)

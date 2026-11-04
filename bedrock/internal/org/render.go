@@ -62,18 +62,21 @@ const (
 	envLayer       = "2-env"
 )
 
-// Layers are the model's layers, in apply order: 2-env before 2-net, since 2-net's URL
-// map names tst's pull-request backend, which 2-env tst makes, while nothing in 2-env
-// waits on 2-net (its two load balancer principals are derived from 1-org until 2-net
-// exists, and the apps domain is the placement's).
-var Layers = []string{bootstrapLayer, orgLayer, shrLayer, spnLayer, envLayer, netLayer}
+// HostingLayers are the hosting model's layers, in apply order: 2-env before 2-net, since
+// 2-net's URL map names tst's pull-request backend, which 2-env tst makes, while nothing
+// in 2-env waits on 2-net (its two load balancer principals are derived from 1-org until
+// 2-net exists, and the apps domain is the placement's). A zones organization's are
+// ZonesLayers (zones.go); Placement.Layers answers by kind.
+var HostingLayers = []string{bootstrapLayer, orgLayer, shrLayer, spnLayer, envLayer, netLayer}
 
 // layerProjects is the project each single-run layer's identities live in, by layer: the
 // boot project for the two boot layers (both identities are named after their layer, boot
-// and org), the layer's own project for the shared ones. 2-env's are the environments'.
+// and org, or dns for a zones organization), the layer's own project for the shared ones.
+// 2-env's are the environments'.
 var layerProjects = map[string]struct{ name, project string }{
 	bootstrapLayer: {name: bootProject, project: bootProject},
-	orgLayer:       {name: "org", project: bootProject},
+	orgLayer:       {name: orgIdentity, project: bootProject},
+	dnsLayer:       {name: dnsIdentity, project: bootProject},
 	shrLayer:       {name: shrProject, project: shrProject},
 	spnLayer:       {name: spnProject, project: spnProject},
 	netLayer:       {name: netProject, project: netProject},
@@ -398,25 +401,20 @@ func (*view) ApplyBuildSeconds() int {
 }
 
 // LayerOrderProse spells the apply order: 0-bootstrap, 1-org, 2-shr and 2-spn, then
-// 2-env for tst, stg and prd, then 2-net.
-func (*view) LayerOrderProse() string {
-	i := slices.Index(Layers, envLayer)
-	text := prose(Layers[:i]) + ", then " + envLayer + " for " + prose(Environments)
-	if after := Layers[i+1:]; len(after) > 0 {
+// 2-env for tst, stg and prd, then 2-net; for a zones organization, 0-bootstrap, then
+// 1-dns.
+func (v *view) LayerOrderProse() string {
+	layers := v.Layers()
+	i := slices.Index(layers, envLayer)
+	if i < 0 {
+		return strings.Join(layers, ", then ")
+	}
+	text := prose(layers[:i]) + ", then " + envLayer + " for " + prose(Environments)
+	if after := layers[i+1:]; len(after) > 0 {
 		text += ", then " + prose(after)
 	}
 
 	return text
-}
-
-// SingleRunLayers are the layers applied once, in order: every one but 2-env.
-func (*view) SingleRunLayers() []string {
-	return slices.DeleteFunc(slices.Clone(Layers), func(layer string) bool { return layer == envLayer })
-}
-
-// Layers is the model's layers in apply order, for the templates.
-func (*view) Layers() []string {
-	return Layers
 }
 
 // FirstEnvironment is the first environment in promotion order, where the pull-request
@@ -463,13 +461,6 @@ func (v *view) ApprovingReviewsProse() string {
 // `go`, `web`, `image`, `secrets` and `migrations`.
 func (*view) ImpulseChecksProseQuoted() string {
 	return prose(backticked(ci.FixedChecks))
-}
-
-// BootstrapRoles are the roles the bootstrap administrator holds for the seed and the
-// first applies, org preflight's table, which 0-bootstrap's README and the root README
-// list, so the READMEs name what org preflight checks.
-func (*view) BootstrapRoles() []BootstrapRole {
-	return BootstrapRoles
 }
 
 // EnvironmentsList is the environments as an HCL list, and EnvironmentsProse the same
@@ -770,6 +761,52 @@ func (v *view) LabelsBlockQuoted(layer, environment string) string {
 	return v.LabelsBlock(layer, fmt.Sprintf("%q", environment))
 }
 
+// DomainsHCL is a zones organization's domains as the HCL value 1-dns takes
+// (var.domains): each domain with its labels handed onward, each label with the hosting
+// organization and the four name servers, in name order; {} with no domain.
+func (v *view) DomainsHCL() string {
+	domains := v.DomainNames()
+	if len(domains) == 0 {
+		return emptyHCLMap
+	}
+	var b strings.Builder
+	b.WriteString("{\n")
+	for _, d := range domains {
+		fmt.Fprintf(&b, "  %q = {\n    labels = ", d)
+		labels := v.LabelNames(d)
+		if len(labels) == 0 {
+			b.WriteString(emptyHCLMap + "\n  }\n")
+
+			continue
+		}
+		b.WriteString("{\n")
+		for _, label := range labels {
+			h := v.Domains[d].Labels[label]
+			fmt.Fprintf(&b, "      %q = { organization = %q, name_servers = %s }\n", label, h.Organization, hclList(h.NameServers))
+		}
+		b.WriteString("    }\n  }\n")
+	}
+	b.WriteString("}")
+
+	return b.String()
+}
+
+// DomainsProse names a zones organization's domains for a README, each in backticks,
+// joined with "and"; empty when none is declared yet.
+func (v *view) DomainsProse() string {
+	return prose(backticked(v.DomainNames()))
+}
+
+// DelegationCount counts the labels handed onward across every domain.
+func (v *view) DelegationCount() int {
+	n := 0
+	for _, d := range v.Domains {
+		n += len(d.Labels)
+	}
+
+	return n
+}
+
 // prose lists the items the way a sentence does: a, b and c. One item is itself; none
 // is empty.
 func prose(items []string) string {
@@ -790,8 +827,8 @@ func backticked(items []string) []string {
 	return quoted
 }
 
-// Render renders every file of the organization's repository: the layers' owned files,
-// each layer's seeded values, and the root files.
+// Render renders every file of the organization's repository: the layers' owned files
+// (the layers of its kind), each layer's seeded values, and the root files.
 func Render(p *Placement) ([]render.File, error) {
 	if err := p.Validate(); err != nil {
 		return nil, err
@@ -803,7 +840,7 @@ func Render(p *Placement) ([]render.File, error) {
 		return nil, err
 	}
 	files = append(files, root...)
-	for _, layer := range Layers {
+	for _, layer := range p.Layers() {
 		rendered, err := renderDir(templateDir+"/"+layer, layer+"/", v)
 		if err != nil {
 			return nil, err
@@ -859,8 +896,8 @@ type Written struct {
 
 // Write puts the files into the repository directory, creating it and the layer
 // directories when absent: owned files always, seeded files only when absent.
-func Write(files []render.File, dir string) (*Written, error) {
-	for _, layer := range Layers {
+func Write(p *Placement, files []render.File, dir string) (*Written, error) {
+	for _, layer := range p.Layers() {
 		if err := os.MkdirAll(filepath.Join(dir, layer), 0o750); err != nil {
 			return nil, errors.Wrapf(err, "os.MkdirAll(): %s", layer)
 		}

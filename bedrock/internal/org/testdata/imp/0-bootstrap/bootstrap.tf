@@ -37,7 +37,7 @@ locals {
 
 # The terraform folder sits alongside the environment folders created by 1-org
 # and holds nothing but the automation plane. Keeping it out of the environment
-# hierarchy means an environment folder can be reorganised without touching the
+# hierarchy means an environment folder can be reorganized without touching the
 # identity that provisions it, and the org policies 1-org applies to the
 # environment folders never reach the identities that manage them.
 # The organization's suffix: a random value born with this state on the first

@@ -97,6 +97,9 @@ func (d deps) teardownOrg(cmd *cobra.Command, dir string, yes bool) error {
 	if err != nil {
 		return err
 	}
+	if err := hostingOnly(p, "teardown"); err != nil {
+		return err
+	}
 	if !p.Teardown {
 		return d.teardownOrgNet(cmd, dir, p, yes)
 	}
@@ -125,7 +128,7 @@ func (d deps) teardownOrgNet(cmd *cobra.Command, dir string, p *org.Placement, y
 	if err != nil {
 		return err
 	}
-	written, err := org.Write(files, dir)
+	written, err := org.Write(p, files, dir)
 	if err != nil {
 		return err
 	}
@@ -146,6 +149,9 @@ func (d deps) teardownOrgApplication(cmd *cobra.Command, dir, app string, envs [
 	out := cmd.OutOrStdout()
 	p, err := orgPlacement(dir, "")
 	if err != nil {
+		return err
+	}
+	if err := hostingOnly(p, "teardown"); err != nil {
 		return err
 	}
 	path := orgPlacementPath(dir, "")
@@ -172,7 +178,7 @@ func (d deps) teardownOrgApplication(cmd *cobra.Command, dir, app string, envs [
 	if err != nil {
 		return err
 	}
-	written, err := org.Write(files, dir)
+	written, err := org.Write(p, files, dir)
 	if err != nil {
 		return err
 	}
